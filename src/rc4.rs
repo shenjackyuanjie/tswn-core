@@ -85,6 +85,7 @@ impl RC4 {
     ///    }
     ///  }
     /// ```
+    #[inline]
     pub fn xor_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
             self.i = (self.i + 1) & 255;
@@ -111,6 +112,7 @@ impl RC4 {
     ///   }
     /// }
     /// ```
+    #[inline]
     pub fn encrypt_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
             self.i = (self.i + 1) & 255;
@@ -139,6 +141,7 @@ impl RC4 {
     ///   }
     /// }
     /// ```
+    #[inline]
     pub fn decrypt_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
             self.i = (self.i + 1) & 255;
@@ -162,6 +165,7 @@ impl RC4 {
     ///  return S[(S[i] + S[j]) & 255];
     /// }
     /// ```
+    #[inline]
     pub fn next_u8(&mut self) -> u8 {
         self.i = (self.i + 1) & 255;
         self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
@@ -185,6 +189,7 @@ impl RC4 {
     ///     return n
     /// }
     /// ```
+    #[inline]
     pub fn next_i32(&mut self, max: i32) -> i32 {
         if max == 0 {
             return 0;
@@ -222,7 +227,8 @@ impl RC4 {
     ///  }
     ///  i = j = 0;
     ///}
-    /// ``
+    /// ```
+    #[inline]
     pub fn round(&mut self, keys: Vec<u8>, round: Option<usize>) {
         let key_len = keys.len();
         for _ in 0..round.unwrap_or(1) {
@@ -262,6 +268,7 @@ impl RC4 {
     ///     return X.map((e) => list[e]).toList();
     /// }
     /// ```
+    #[inline]
     pub fn sort_list<T>(&mut self, list: &mut [T]) {
         if list.len() <= 1 {
             return;
@@ -293,6 +300,7 @@ impl RC4 {
     ///   return null;
     /// }
     /// ```
+    #[inline]
     pub fn pick<T>(&mut self, list: &[T]) -> Option<usize> {
         match list.len() {
             1 => Some(0),
@@ -330,6 +338,7 @@ impl RC4 {
     ///    return null;
     ///  }
     /// ```
+    #[inline]
     pub fn pick_skip<T>(&mut self, list: &[T], skip_after_index: usize) -> Option<usize> {
         match list.len() {
             1 => {
@@ -380,6 +389,7 @@ impl RC4 {
     ///     return null;
     /// }
     /// ```
+    #[inline]
     pub fn pick_skip_range<T>(&mut self, list: &[T], skips: Vec<usize>) -> Option<usize> {
         if skips.is_empty() {
             return self.pick(list);
@@ -401,66 +411,85 @@ impl RC4 {
     // 一大堆判定是否小于指定数字的函数
 
     /// next_u8 是否小于 240
+    #[inline]
     pub fn c94(&mut self) -> bool { self.next_u8() < 240 }
 
     /// next_u8 是否小于 192
+    #[inline]
     pub fn c75(&mut self) -> bool { self.next_u8() < 192 }
 
     /// next_u8 是否小于 128
+    #[inline]
     pub fn c50(&mut self) -> bool { self.next_u8() < 128 }
 
     /// next_u8 是否小于 64
+    #[inline]
     pub fn c25(&mut self) -> bool { self.next_u8() < 64 }
 
     /// next_u8 是否小于 32
+    #[inline]
     pub fn c12(&mut self) -> bool { self.next_u8() < 32 }
 
     /// next_u8 是否小于 84
+    #[inline]
     pub fn c33(&mut self) -> bool { self.next_u8() < 84 }
 
     /// next_u8 是否小于 171
+    #[inline]
     pub fn c66(&mut self) -> bool { self.next_u8() < 171 }
 
     // 两个颜色拼接
 
     /// 生成一个 RGB 颜色
+    #[inline]
     #[allow(non_snake_case)]
     pub fn rFFFFFF(&mut self) -> u32 { (self.next_u8() as u32) << 16 | (self.next_u8() as u32) << 8 | self.next_u8() as u32 }
 
     /// 生成一个 RGB 颜色
+    #[inline]
     #[allow(non_snake_case)]
     pub fn rFFFF(&mut self) -> u32 { (self.next_u8() as u32) << 8 | self.next_u8() as u32 }
 
     // 一些指定范围的随机数
 
     /// 生成一个 1-256 的随机数
+    #[inline]
     pub fn r256(&mut self) -> u32 { self.next_u8() as u32 + 1 }
 
     /// 生成一个 1-64 的随机数
+    #[inline]
     pub fn r64(&mut self) -> u32 { (self.next_u8() as u32 & 63) + 1 }
 
     /// 生成一个 1-16 的随机数
+    #[inline]
     pub fn r16(&mut self) -> u32 { (self.next_u8() as u32 & 15) + 1 }
 
     /// 生成一个 0-255 的随机数
+    #[inline]
     pub fn r255(&mut self) -> u32 { self.next_u8() as u32 }
 
     /// 生成一个 0-127 的随机数
+    #[inline]
     pub fn r127(&mut self) -> u32 { self.next_u8() as u32 & 127 }
 
     /// 生成一个 0-63 的随机数
+    #[inline]
     pub fn r63(&mut self) -> u32 { self.next_u8() as u32 & 63 }
 
     /// 生成一个 0-31 的随机数
+    #[inline]
     pub fn r31(&mut self) -> u32 { self.next_u8() as u32 & 31 }
 
     /// 生成一个 0-15 的随机数
+    #[inline]
     pub fn r15(&mut self) -> u32 { self.next_u8() as u32 & 15 }
 
     /// 生成一个 0-7 的随机数
+    #[inline]
     pub fn r7(&mut self) -> u32 { self.next_u8() as u32 & 7 }
 
     /// 生成一个 0-3 的随机数
+    #[inline]
     pub fn r3(&mut self) -> u32 { self.next_u8() as u32 & 3 }
 
     /// ```dart
@@ -473,6 +502,7 @@ impl RC4 {
     ///   return ((b1 * b2) >> 5) + 1;
     /// }
     /// ```
+    #[inline]
     pub fn r3x3(&mut self) -> u32 {
         let b = self.next_u8();
         let b1 = (b & 15) + 1;
