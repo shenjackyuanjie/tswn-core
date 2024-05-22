@@ -1,6 +1,9 @@
 [package]
-name = "namerena-runner"
+name = "tswn-core"
+description = "甚至是被技术封锁的名竞版本"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = { version = "1.0.86", features = ["backtrace"] }
+thiserror = "1.0"

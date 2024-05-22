@@ -3,7 +3,42 @@ pub mod utils;
 
 use std::fmt::Display;
 
+use thiserror::Error;
+
 use crate::rc4::RC4;
+
+/// 名字本体最大长度
+pub const NAME_MAX_LEN: usize = 256;
+/// 队伍名最大长度
+pub const TEAM_MAX_LEN: usize = 256;
+
+#[derive(Error, Debug)]
+pub enum PlayerError {
+    /// 名字中包含了非法字符
+    /// 
+    /// - String: 是啥
+    /// - usize: 在名字中的位置
+    #[error("Invalid Text: {0} in name[{1}]")]
+    InvalidTextInName(String, usize),
+    /// 名字太长了!!
+    /// 
+    /// - usize: bytes 实际长度
+    /// - usize: 字符串长度
+    #[error("Name too long, max length is {} < {0} strlen={1}", NAME_MAX_LEN)]
+    NameTooLong(usize, usize),
+    /// 队伍名太长了!!
+    /// 
+    /// - usize: bytes 实际长度
+    /// - usize: 字符串长度
+    #[error("Team name too long, max length is {} < {0} strlen={1}", TEAM_MAX_LEN)]
+    TeamNameTooLong(usize, usize),
+    /// 队伍名中包含了非法字符
+    /// 
+    /// - String: 是啥
+    /// - usize: 在队伍名中的位置
+    #[error("Invalid Text: {0} in team[{1}]")]
+    InvalidTextInTeam(String, usize),
+}
 
 pub struct PlayerStatus {
     /// 是否被冻结
