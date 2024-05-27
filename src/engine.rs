@@ -1,8 +1,12 @@
 pub const PROFILE_START: u32 = 33554431;
 
 pub mod runners {
-    use crate::player::Player;
+    use crate::player::{Player, PlayerResult};
     use crate::rc4::RC4;
+
+    pub enum PlayerGroupError {
+        
+    }
 
     pub struct PlayerGroup {
         players: Vec<Player>,
@@ -18,7 +22,7 @@ pub mod runners {
             // 首先以 \n 分割
             let raw_input = raw_input.split("\n");
             // 然后直接 map 生成 Player
-            let players: Vec<Player> = raw_input.map(|raw_name| {
+            let players: Vec<PlayerResult<Player>> = raw_input.map(|raw_name| {
                 Player::new_from_namerena_raw(raw_name.to_string())
             }).collect();
             
