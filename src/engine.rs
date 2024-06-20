@@ -78,7 +78,8 @@ pub mod runners {
             if !raw_input.contains("\n\n") {
                 return raw_input.split("\n").map(|x| vec![x.to_string()]).collect();
             }
-            todo!()
+            // 如果有\n\n, 那么就是一个队伍
+            raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect()
         }
     }
 }
@@ -104,6 +105,14 @@ mod tests {
             let raw_input = "a\nb\nc\n\n".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             assert_eq!(groups, vec![vec!["a"], vec!["b"], vec!["c"]]);
+        }
+
+        #[test]
+        fn spilt_teams() {
+            // 有 \n\n 的情况
+            let raw_input = "a\nb\n\nc\nd".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, vec![vec!["a", "b"], vec!["c", "d"]]);
         }
     }
 }
