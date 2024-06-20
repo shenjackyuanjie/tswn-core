@@ -72,6 +72,8 @@ pub mod runners {
         }
 
         pub fn spilt_namerena_into_groups(raw_input: String) -> Vec<Vec<String>> {
+            // 去除尾部的一个/多个 \n/带有几个空格的情况
+            let raw_input = raw_input.trim_end();
             // 首先，如果没有\n\n, 那么一行就是一个队伍
             if !raw_input.contains("\n\n") {
                 return raw_input.split("\n").map(|x| vec![x.to_string()]).collect();
@@ -85,9 +87,23 @@ pub mod runners {
 mod tests {
     use super::*;
 
-    fn test_spilt_namerena_into_groups() {
-        let raw_input = "a\nb\nc\nd\n\nx\ny\nz\n\n".to_string();
-        let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
-        assert_eq!(groups, vec![vec!["a", "b", "c", "d"], vec!["x", "y", "z"]]);
+    mod spilt_namerena_into_groups {
+        use super::*;
+        #[test]
+        fn basic_spilt() {
+            // 没有 \n\n 的最基本情况
+            let raw_input = "a\nb\nc".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, vec![vec!["a"], vec!["b"], vec!["c"]]);
+
+            // 跟随着一个或者多个尾部 \n 的情况
+            // 自动忽略
+            let raw_input = "a\nb\nc\n".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, vec![vec!["a"], vec!["b"], vec!["c"]]);
+            let raw_input = "a\nb\nc\n\n".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, vec![vec!["a"], vec!["b"], vec!["c"]]);
+        }
     }
 }
