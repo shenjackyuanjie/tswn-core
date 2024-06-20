@@ -61,50 +61,33 @@ pub mod runners {
         ///
         /// 其实就是解析名竞的输入格式
         pub fn new_from_namerena_raw(raw_input: String) -> RunnerResult<Runner> {
-            let spilted_input = raw_input.split("\n");
+            let spilted_input = raw_input.split("\n").collect::<Vec<&str>>();
             let mut players = Vec::new();
-            for raw_player in spilted_input {
-                let player = Player::new_from_namerena_raw(raw_player.to_string())?;
+            for player in spilted_input.iter().filter(|name| !name.is_empty()) {
+                let player = Player::new_from_namerena_raw(player.to_string())?;
                 players.push(player);
             }
+            // 根据原始输入解析队伍
+            todo!()
+        }
 
-            // 首先以 \n\n 分割
-            // let mut raw_input = raw_input.split("\n\n");
-            // let mut groups = Vec::new();
-            // // 如果只有一组
-            // if raw_input.clone().count() == 1 {
-            //     // 每个玩家一组
-            //     let input = raw_input.next().unwrap();
-            //     // 用 \n 分割
-            //     let raw_input = input.split("\n");
-            //     // 如果只有一个人
-            //     // 直接丢个错误
-            //     if raw_input.clone().count() == 1 {
-            //         return Err(RunnerError::OnlyOneGroup);
-            //     }
-            //     for player in raw_input {
-            //         let group = PlayerGroup::new_from_namerena_raw(player.to_string())?;
-            //         groups.push(group);
-            //     }
-            // } else {
-            //     // 每个组一组
-            //     for raw_group in raw_input {
-            //         let group = PlayerGroup::new_from_namerena_raw(raw_group.to_string())?;
-            //         groups.push(group);
-            //     }
-            // }
-            // // 尝试生成 PlayerGroup
-            // let mut players = Vec::new();
-            // for raw_group in raw_input {
-            //     let group = PlayerGroup::new_from_namerena_raw(raw_group.to_string())?;
-            //     players.push(group);
-            // }
-            // // 新建一个 Rc4 实例
-            // // let randomer = RC4::new(PROFILE_START);
+        pub fn spilt_namerena_into_groups(raw_input: String) -> Vec<Vec<String>> {
+            // 首先，如果没有\n\n, 那么一行就是一个队伍
+            if !raw_input.contains("\n\n") {
+                return raw_input.split("\n").map(|x| vec![x.to_string()]).collect();
+            }
             todo!()
         }
     }
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    fn test_spilt_namerena_into_groups() {
+        let raw_input = "a\nb\nc\nd\n\nx\ny\nz\n\n".to_string();
+        let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+        assert_eq!(groups, vec![vec!["a", "b", "c", "d"], vec!["x", "y", "z"]]);
+    }
+}

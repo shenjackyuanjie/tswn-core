@@ -15,32 +15,38 @@ pub const TEAM_MAX_LEN: usize = 256;
 #[derive(Error, Debug)]
 pub enum PlayerError {
     /// 名字中包含了非法字符
-    /// 
+    ///
     /// - String: 是啥
     /// - usize: 在名字中的位置
     #[error("Invalid Text(s): {0} in name[{1}]")]
     InvalidTextInName(String, usize),
     /// 名字太长了!!
-    /// 
+    ///
     /// - usize: bytes 实际长度
     /// - usize: 字符串长度
-    #[error("Name too long, max length is {} < {0} strlen={1}", NAME_MAX_LEN)]
+    #[error(
+        "Name too long, max length is {} < {0} strlen={1}",
+        NAME_MAX_LEN
+    )]
     NameTooLong(usize, usize),
     /// 队伍名太长了!!
-    /// 
+    ///
     /// - usize: bytes 实际长度
     /// - usize: 字符串长度
-    #[error("Team name too long, max length is {} < {0} strlen={1}", TEAM_MAX_LEN)]
+    #[error(
+        "Team name too long, max length is {} < {0} strlen={1}",
+        TEAM_MAX_LEN
+    )]
     TeamNameTooLong(usize, usize),
     /// 队伍名中包含了非法字符
-    /// 
+    ///
     /// - String: 是啥
     /// - usize: 在队伍名中的位置
     #[error("Invalid Text(s): {0} in team[{1}]")]
     InvalidTextInTeam(String, usize),
     /// 武器里怎么也包含非法字符呢
     /// 输入中包含换行符
-    /// 
+    ///
     /// 单独把你拿出来
     #[error("Input contains newline character in {0:?}")]
     NewlineInInput(Vec<usize>),
@@ -112,7 +118,7 @@ pub const BOSS_NAMES: [&str; 11] = [
 pub const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
 
 /// 匹配字符的 Unicode 码点
-/// 
+///
 /// 其实就是过滤一下不可见字符
 pub fn filter_char(s: char) -> bool {
     matches!(s as u32 , 9..13 | 32 | 133 | 160 | 5760 | 8192..8202 | 8232..8233 | 8239 | 8287 | 12288 | 65279)
@@ -261,7 +267,7 @@ impl Player {
     pub fn update_player(&mut self) {}
 
     /// 每回合中的玩家行动
-    /// 
+    ///
     /// 包括 pre, main, post
     pub fn step(&mut self, _randomer: &mut RC4) {}
 }
@@ -291,7 +297,6 @@ mod test {
     /// 测试根据原始输入创建 Player
     fn player_raw_new() {
         let player = Player::new_from_namerena_raw("mario".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, "mario");
@@ -299,7 +304,6 @@ mod test {
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario@red".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         println!("{}", player);
         assert_eq!(player.name, "mario");
@@ -308,7 +312,6 @@ mod test {
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario+fire".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, "mario");
@@ -316,7 +319,6 @@ mod test {
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario+fire+diy{xxxx}".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, "mario");
@@ -324,7 +326,6 @@ mod test {
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario@red+fire".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, "red");
@@ -332,7 +333,6 @@ mod test {
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario@red+fire+diy{xxxx}".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, "red");
@@ -343,46 +343,39 @@ mod test {
     #[test]
     pub fn player_raw_types() {
         let player = Player::new_from_namerena_raw("normal@normal".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Normal);
 
         // seed
         let player = Player::new_from_namerena_raw("seed:just seed@!".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.name, "seed:just seed");
         assert_eq!(player.player_type, PlayerType::Seed);
 
         // testEx
         let player = Player::new_from_namerena_raw("testEx@!".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::TestEx);
 
         // test1
         let player = Player::new_from_namerena_raw("test1@\u{0002}".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.team, "\u{0002}".to_string());
         assert_eq!(player.player_type, PlayerType::Test1);
 
         // test2
         let player = Player::new_from_namerena_raw("test2@\u{0003}".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.team, "\u{0003}".to_string());
         assert_eq!(player.player_type, PlayerType::Test2);
 
         // boss
         let player = Player::new_from_namerena_raw("mario@!".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Boss);
 
         // boosted
         let player = Player::new_from_namerena_raw("云剑狄卡敢@!".to_string());
-        assert!(player.is_ok());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Boost);
     }
