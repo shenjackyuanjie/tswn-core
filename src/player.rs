@@ -110,12 +110,16 @@ pub struct Player {
     status: PlayerStatus,
 }
 
+/// boss 玩家的名字
 pub const BOSS_NAMES: [&str; 11] = [
     "mario", "sonic", "mosquito", "yuri", "slime", "ikaruga", "conan", "aokiji", "lazy", "covid", "saitama",
 ];
 
-// ["田一人", 18, "云剑狄卡敢", 25, "云剑穸跄祇", 35]
+/// ["田一人", 18, "云剑狄卡敢", 25, "云剑穸跄祇", 35]
 pub const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
+
+/// 种子玩家的前缀
+pub const SEED_PREFIX: &str = "seed:";
 
 /// 匹配字符的 Unicode 码点
 ///
@@ -190,7 +194,7 @@ impl Player {
                         PlayerType::Boss
                     } else if BOOST_NAMES.contains(&name.as_str()) {
                         PlayerType::Boost
-                    } else if name.starts_with("seed:") {
+                    } else if name.starts_with(SEED_PREFIX) {
                         PlayerType::Seed
                     } else {
                         // 高强度测号用靶子
@@ -200,7 +204,7 @@ impl Player {
                 "\u{0002}" => PlayerType::Test1,
                 "\u{0003}" => PlayerType::Test2,
                 _ => {
-                    if name.starts_with("seed:") {
+                    if name.starts_with(SEED_PREFIX) {
                         PlayerType::Seed
                     } else {
                         PlayerType::Normal
@@ -218,6 +222,9 @@ impl Player {
             status: PlayerStatus::default(),
         })
     }
+
+    /// 检查输入的名字是否是种子玩家
+    pub fn check_is_seed(name: &str) -> bool { name.starts_with(SEED_PREFIX) }
 
     /// 直接从一个名竞的原始输入创建一个 Player
     ///

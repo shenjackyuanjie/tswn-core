@@ -79,7 +79,45 @@ pub mod runners {
                 return raw_input.split("\n").map(|x| vec![x.to_string()]).collect();
             }
             // 如果有\n\n, 那么就是一个队伍
-            raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect()
+
+            // 下面是为了修复一些容易手误的情况
+            // 比如
+            // aaaaa
+            // bbbb
+            //
+            // seed: xxx@!
+            // 上面的情况中，按照规范, 应该把 seed: xxx@! 那一行和上面并起来
+            // 但是很容易手误，多打一个回车
+            // 导致这个seed: xxx@!成为一个队伍
+            // aaaaa 和 bbbb 成为另一个队伍
+            // 这里修复一下这个问题
+
+            // 先检查有没有单独的seed玩家
+            let mut need_fix = false;
+            let mut groups = raw_input
+                .split("\n\n")
+                .map(|x| x.split("\n").map(|x| x.to_string()).collect())
+                .collect::<Vec<Vec<String>>>();
+            // groups.iter().for_each(|group| {
+            //     if group.len() == 1 && Player::check_is_seed(group[0]) {
+            //         need_fix = true;
+            //     }
+            // });
+            // 然后就是一些特判
+            // 比如双队伍, 同时其中一个是纯 seed
+            if groups.len() == 2 {
+                // 双队伍特判
+                // 队伍1是纯seed
+                // 队伍2不是纯seed
+                if groups[0].len() == 1
+                    && Player::check_is_seed(groups[0][0].as_str())
+                    && groups[1].iter().all(|x| !Player::check_is_seed(x))
+                {
+                    need_fix = true;
+                }
+            }
+
+            // raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect()
         }
     }
 }
@@ -88,7 +126,7 @@ pub mod runners {
 mod tests {
     use super::*;
 
-    mod spilt_namerena_into_groups {
+    mod spilt_namerena_groups {
         use super::*;
         #[test]
         fn basic_spilt() {
