@@ -71,9 +71,26 @@ pub mod runners {
             todo!()
         }
 
+        /// 将原始输入分拆成队伍
+        /// # 说明
+        ///
+        /// ## 特殊情况处理
+        /// - 去除尾部的一个/多个 \n/带有几个空格
+        /// - 将 \r\n 替换成 \n
+        /// - 将 \r 替换成 \n
+        /// - 将 大于等于3个 \n 替换成 2个 \n
+        ///
         pub fn spilt_namerena_into_groups(raw_input: String) -> Vec<Vec<String>> {
             // 去除尾部的一个/多个 \n/带有几个空格的情况
             let raw_input = raw_input.trim_end();
+            // 处理一下有 \r\n 的情况
+            let raw_input = raw_input.replace("\r\n", "\n");
+            // 处理一下 \r 的情况
+            let mut raw_input = raw_input.replace("\r", "\n");
+            // 处理一下 \n\n\n
+            while raw_input.contains("\n\n\n") {
+                raw_input = raw_input.replace("\n\n\n", "\n\n");
+            }
             // 首先，如果没有\n\n, 那么一行就是一个队伍
             if !raw_input.contains("\n\n") {
                 return raw_input.split("\n").map(|x| vec![x.to_string()]).collect();
@@ -93,7 +110,7 @@ pub mod runners {
             // 这里修复一下这个问题
 
             // 先检查有没有单独的seed玩家
-            let mut need_fix = false;
+            // let mut need_fix = false;
             let mut groups = raw_input
                 .split("\n\n")
                 .map(|x| x.split("\n").map(|x| x.to_string()).collect())
@@ -113,11 +130,11 @@ pub mod runners {
                     && Player::check_is_seed(groups[0][0].as_str())
                     && groups[1].iter().all(|x| !Player::check_is_seed(x))
                 {
-                    need_fix = true;
+                    // 进行一个 fix
                 }
             }
 
-            // raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect()
+            raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect()
         }
     }
 }
@@ -151,6 +168,36 @@ mod tests {
             let raw_input = "a\nb\n\nc\nd".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             assert_eq!(groups, vec![vec!["a", "b"], vec!["c", "d"]]);
+        }
+
+        #[test]
+        fn more_than_2_newline() {
+            // 有多个 \n 的情况
+            // 2个 \n 以上的情况，都会被替换成2个 \n
+            for x in 2..10 {
+                let new_lines = "\n".repeat(x);
+                let raw_input = format!("a\nb{}c\nd", new_lines);
+                let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+                assert_eq!(groups, vec![vec!["a", "b"], vec!["c", "d"]]);
+            }
+        }
+
+        #[test]
+        fn normal_seed() {
+            // 一个seed
+            let raw_input = "seed: a@!\nb\nc".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, vec![vec!["seed: a@!"], vec!["b"], vec!["c"]]);
+        }
+
+        #[test]
+        fn need_fix_seed() {
+            // 需要修复的seed
+            let raw_input = "aaaa\nbbbb\n\nseed: a@!".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            // assert_eq!(groups, vec![vec!["aaaa", "bbbb"], vec!["seed: a@!"]]);
+            // 这个情况下，应该是修复成三个队伍
+            assert_eq!(groups, vec![vec!["aaaa"], vec!["bbbb"], vec!["seed: a@!"]])
         }
     }
 }
