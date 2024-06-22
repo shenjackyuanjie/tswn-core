@@ -140,7 +140,8 @@ pub mod runners {
 }
 
 #[cfg(test)]
-mod tests {
+/// 酒吧点炒饭列表(确信)
+mod group {
     use super::*;
 
     mod spilt_namerena_groups {
@@ -180,6 +181,14 @@ mod tests {
                 let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
                 assert_eq!(groups, vec![vec!["a", "b"], vec!["c", "d"]]);
             }
+        }
+
+        #[test]
+        fn lot_of_teams() {
+            // 多个队伍
+            let raw_input = "a\nb\nc\nd\ne\nf".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, vec![vec!["a"], vec!["b"], vec!["c"], vec!["d"], vec!["e"], vec!["f"]]);
         }
 
         #[test]
