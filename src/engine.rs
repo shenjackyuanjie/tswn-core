@@ -181,6 +181,13 @@ mod group {
                 let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
                 assert_eq!(groups, vec![vec!["a", "b"], vec!["c", "d"]]);
             }
+            // 以及有多个队伍的情况
+            for x in 2..10 {
+                let new_lines = "\n".repeat(x);
+                let raw_input = format!("a\nb{}c\nd{}e", new_lines, new_lines);
+                let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+                assert_eq!(groups, vec![vec!["a", "b"], vec!["c", "d"], vec!["e"]]);
+            }
         }
 
         #[test]
