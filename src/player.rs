@@ -1,7 +1,7 @@
 pub mod skills;
 pub mod utils;
 
-use std::fmt::Display;
+use std::{cmp::Ordering, fmt::Display};
 
 use thiserror::Error;
 
@@ -93,7 +93,7 @@ impl Display for PlayerStatus {
 
 pub struct Player {
     /// 队伍
-    team: String,
+    team: Option<String>,
     /// 玩家名
     name: String,
     /// 武器
@@ -104,6 +104,9 @@ pub struct Player {
     skil_id: Vec<u32>,
     /// skl prop
     skil_prop: Vec<u32>,
+    /// 玩家的 sort int
+    /// 用于在排序中比较两个玩家
+    sort_int: i32,
     /// 玩家状态
     ///
     /// 主要是我懒得加一大堆字段
@@ -164,22 +167,25 @@ pub enum PlayerType {
 }
 
 impl Player {
-    pub fn new(team: String, name: String, weapon: Option<String>) -> PlayerResult<Self> {
+    pub fn new(team: Option<String>, name: String, weapon: Option<String>) -> PlayerResult<Self> {
         // 还是要先检查换行符
         // if team.chars().into_iter()
         // 先校验长度
-        if team.as_bytes().len() > TEAM_MAX_LEN {
-            return Err(PlayerError::TeamNameTooLong(team.as_bytes().len(), team.len()));
+        if team.is_some() && team.as_ref().unwrap().as_bytes().len() > TEAM_MAX_LEN {
+            let t = team.unwrap();
+            return Err(PlayerError::TeamNameTooLong(t.as_bytes().len(), t.len()));
         }
         if name.as_bytes().len() > NAME_MAX_LEN {
             return Err(PlayerError::NameTooLong(name.as_bytes().len(), name.len()));
         }
         // 再校验字符
-        if team.chars().any(filter_char) {
-            return Err(PlayerError::InvalidTextInTeam(
-                team.chars().find(|&char| filter_char(char)).unwrap().to_string(),
-                team.chars().position(filter_char).unwrap(),
-            ));
+        if let Some(t) = team.as_ref() {
+            if t.chars().any(filter_char) {
+                return Err(PlayerError::InvalidTextInTeam(
+                    t.chars().find(|&char| filter_char(char)).unwrap().to_string(),
+                    t.chars().position(filter_char).unwrap(),
+                ));
+            }
         }
         if name.chars().any(filter_char) {
             return Err(PlayerError::InvalidTextInName(
@@ -188,28 +194,32 @@ impl Player {
             ));
         }
         let player_type = {
-            match team.as_str() {
-                "!" => {
-                    if BOSS_NAMES.contains(&name.as_str()) {
-                        PlayerType::Boss
-                    } else if BOOST_NAMES.contains(&name.as_str()) {
-                        PlayerType::Boost
-                    } else if name.starts_with(SEED_PREFIX) {
-                        PlayerType::Seed
-                    } else {
-                        // 高强度测号用靶子
-                        PlayerType::TestEx
+            if let Some(t) = team.as_ref() {
+                match t.as_str() {
+                    "!" => {
+                        if BOSS_NAMES.contains(&name.as_str()) {
+                            PlayerType::Boss
+                        } else if BOOST_NAMES.contains(&name.as_str()) {
+                            PlayerType::Boost
+                        } else if name.starts_with(SEED_PREFIX) {
+                            PlayerType::Seed
+                        } else {
+                            // 高强度测号用靶子
+                            PlayerType::TestEx
+                        }
+                    }
+                    "\u{0002}" => PlayerType::Test1,
+                    "\u{0003}" => PlayerType::Test2,
+                    _ => {
+                        if name.starts_with(SEED_PREFIX) {
+                            PlayerType::Seed
+                        } else {
+                            PlayerType::Normal
+                        }
                     }
                 }
-                "\u{0002}" => PlayerType::Test1,
-                "\u{0003}" => PlayerType::Test2,
-                _ => {
-                    if name.starts_with(SEED_PREFIX) {
-                        PlayerType::Seed
-                    } else {
-                        PlayerType::Normal
-                    }
-                }
+            } else {
+                PlayerType::Normal
             }
         };
         Ok(Player {
@@ -217,11 +227,17 @@ impl Player {
             name,
             weapon,
             player_type,
+            sort_int: 0,
             skil_id: vec![],
             skil_prop: vec![],
             status: PlayerStatus::default(),
         })
     }
+
+    /// 设置 sort int
+    pub fn set_sort_int(&mut self, val: i32) { self.sort_int = val }
+    /// 获取 sort int
+    pub fn get_sort_int(&self) -> i32 { self.sort_int }
 
     /// 检查输入的名字是否是种子玩家
     pub fn check_is_seed(name: &str) -> bool { name.starts_with(SEED_PREFIX) }
@@ -241,7 +257,7 @@ impl Player {
     pub fn new_from_namerena_raw(raw_name: String) -> PlayerResult<Self> {
         // 先判断是否有 + 和 @
         if !raw_name.contains("@") && !raw_name.contains("+") {
-            return Player::new(raw_name.clone(), raw_name.clone(), None);
+            return Player::new(None, raw_name.clone(), None);
         }
         // 区分队伍名
         let name: &str;
@@ -270,7 +286,7 @@ impl Player {
                 weapon = None;
             }
         }
-        Player::new(team.to_string(), name.to_string(), weapon.map(|s| s.to_string()))
+        Player::new(Some(team.to_string()), name.to_string(), weapon.map(|s| s.to_string()))
     }
 
     pub fn update_player(&mut self) {}
@@ -279,15 +295,52 @@ impl Player {
     ///
     /// 包括 pre, main, post
     pub fn step(&mut self, _randomer: &mut RC4) {}
+
+    pub fn id_name(&self) -> String {
+        if self.team.is_some() {
+            format!("{}@{}", self.name, self.team.as_ref().unwrap())
+        } else {
+            self.name.clone()
+        }
+    }
+
+    fn p_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.sort_int - other.sort_int != 0 {
+            self.sort_int.partial_cmp(&other.sort_int)
+        } else {
+            self.id_name().partial_cmp(&other.id_name())
+        }
+    }
+}
+
+impl PartialOrd for Player {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { self.p_cmp(other) }
+    fn ge(&self, other: &Self) -> bool {
+        self.p_cmp(other)
+            .map(|x| matches!(x, Ordering::Greater | Ordering::Equal))
+            .unwrap_or(false)
+    }
+    fn gt(&self, other: &Self) -> bool { self.p_cmp(other).map(|x| matches!(x, Ordering::Greater)).unwrap_or(false) }
+    fn le(&self, other: &Self) -> bool {
+        self.p_cmp(other).map(|x| matches!(x, Ordering::Less | Ordering::Equal)).unwrap_or(false)
+    }
+    fn lt(&self, other: &Self) -> bool { self.p_cmp(other).map(|x| matches!(x, Ordering::Less)).unwrap_or(false) }
+}
+
+impl PartialEq for Player {
+    fn eq(&self, other: &Self) -> bool { self.p_cmp(other).map(|cmp| matches!(cmp, Ordering::Equal)).unwrap_or(false) }
 }
 
 impl Display for Player {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Player{{{}@{}{}, status: {}}}",
-            self.name,
-            self.team,
+            "Player{{{}{}, status: {}}}",
+            if self.team.is_some() {
+                format!("{}@{}", self.name, self.team.as_ref().unwrap())
+            } else {
+                self.name.to_string()
+            },
             if let Some(weapon) = &self.weapon {
                 format!("+{}", weapon)
             } else {
@@ -308,7 +361,7 @@ mod test {
         let player = Player::new_from_namerena_raw("mario".to_string());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
-        assert_eq!(player.team, "mario");
+        assert_eq!(player.team, None);
         assert_eq!(player.weapon, None);
         assert_eq!(player.player_type, PlayerType::Normal);
 
@@ -316,35 +369,35 @@ mod test {
         let player = player.unwrap();
         println!("{}", player);
         assert_eq!(player.name, "mario");
-        assert_eq!(player.team, "red");
+        assert_eq!(player.team, Some("red".to_string()));
         assert_eq!(player.weapon, None);
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario+fire".to_string());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
-        assert_eq!(player.team, "mario");
+        assert_eq!(player.team, None);
         assert_eq!(player.weapon, Some("fire".to_string()));
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario+fire+diy{xxxx}".to_string());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
-        assert_eq!(player.team, "mario");
+        assert_eq!(player.team, None);
         assert_eq!(player.weapon, Some("fire+diy{xxxx}".to_string()));
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario@red+fire".to_string());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
-        assert_eq!(player.team, "red");
+        assert_eq!(player.team, Some("red".to_string()));
         assert_eq!(player.weapon, Some("fire".to_string()));
         assert_eq!(player.player_type, PlayerType::Normal);
 
         let player = Player::new_from_namerena_raw("mario@red+fire+diy{xxxx}".to_string());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
-        assert_eq!(player.team, "red");
+        assert_eq!(player.team, Some("red".to_string()));
         assert_eq!(player.weapon, Some("fire+diy{xxxx}".to_string()));
         assert_eq!(player.player_type, PlayerType::Normal);
     }
@@ -369,13 +422,13 @@ mod test {
         // test1
         let player = Player::new_from_namerena_raw("test1@\u{0002}".to_string());
         let player = player.unwrap();
-        assert_eq!(player.team, "\u{0002}".to_string());
+        assert_eq!(player.team, Some("\u{0002}".to_string()));
         assert_eq!(player.player_type, PlayerType::Test1);
 
         // test2
         let player = Player::new_from_namerena_raw("test2@\u{0003}".to_string());
         let player = player.unwrap();
-        assert_eq!(player.team, "\u{0003}".to_string());
+        assert_eq!(player.team, Some("\u{0003}".to_string()));
         assert_eq!(player.player_type, PlayerType::Test2);
 
         // boss

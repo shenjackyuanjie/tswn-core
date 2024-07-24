@@ -68,6 +68,12 @@ pub mod runners {
                 players.push(player);
             }
             // 根据原始输入解析队伍
+
+            // 原始逻辑:
+            // 先提取一遍+sort(?) 一遍名字
+            // 然后 join "\n"
+            // 然后 utf8 encode
+            // 然后用于生成这个 Randomer
             todo!()
         }
 
