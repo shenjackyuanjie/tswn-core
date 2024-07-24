@@ -153,7 +153,10 @@ pub mod runners {
                 }
             }
 
-            (raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect(), seed)
+            (
+                raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect(),
+                seed,
+            )
         }
     }
 }
@@ -189,7 +192,10 @@ mod group {
         };
         ($($x:expr),+ $(,)?) => (
             vec![
-                $(plr!($x),)+
+                vec![
+                    // 填充 x, 每一个都调用一遍 to_string
+                    $($x.to_string()),+
+                ]
             ]
         );
     }
