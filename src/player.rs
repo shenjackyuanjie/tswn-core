@@ -273,20 +273,16 @@ impl Player {
             } else {
                 weapon = None;
             }
+            Player::new(Some(team.to_string()), name.to_string(), weapon.map(|s| s.to_string()))
         } else {
-            team = raw_name.as_str();
             // 没有队伍名, 直接是武器
-            if team.contains("+") {
-                let tmp;
-                (name, tmp) = raw_name.split_once("+").unwrap();
-                weapon = Some(tmp);
-                team = name;
+            if raw_name.contains("+") {
+                let (name, weapon) = raw_name.split_once("+").unwrap();
+                Player::new(None, name.to_string(), Some(weapon.to_string()))
             } else {
-                name = team;
-                weapon = None;
+                Player::new(None, raw_name, None)
             }
         }
-        Player::new(Some(team.to_string()), name.to_string(), weapon.map(|s| s.to_string()))
     }
 
     pub fn update_player(&mut self) {}
@@ -315,16 +311,6 @@ impl Player {
 
 impl PartialOrd for Player {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { self.p_cmp(other) }
-    fn ge(&self, other: &Self) -> bool {
-        self.p_cmp(other)
-            .map(|x| matches!(x, Ordering::Greater | Ordering::Equal))
-            .unwrap_or(false)
-    }
-    fn gt(&self, other: &Self) -> bool { self.p_cmp(other).map(|x| matches!(x, Ordering::Greater)).unwrap_or(false) }
-    fn le(&self, other: &Self) -> bool {
-        self.p_cmp(other).map(|x| matches!(x, Ordering::Less | Ordering::Equal)).unwrap_or(false)
-    }
-    fn lt(&self, other: &Self) -> bool { self.p_cmp(other).map(|x| matches!(x, Ordering::Less)).unwrap_or(false) }
 }
 
 impl PartialEq for Player {
