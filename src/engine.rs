@@ -67,7 +67,12 @@ pub mod runners {
             // 然后 utf8 encode
             // 然后用于生成这个 Randomer
             let (players, seed) = Runner::spilt_namerena_into_groups(raw_input);
-            let mut names = players.iter().flatten().chain(seed.iter()).map(|str| Player::raw_namerena_to_idname(str)).collect::<Vec<String>>();
+            let mut names = players
+                .iter()
+                .flatten()
+                .chain(seed.iter())
+                .map(|str| Player::raw_namerena_to_idname(str))
+                .collect::<Vec<String>>();
             names.sort();
             let mut keys = names.join("\n").as_bytes().to_vec();
             let mut randomer = RC4::new(&keys, 1);
