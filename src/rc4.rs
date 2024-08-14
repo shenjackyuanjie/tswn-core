@@ -23,14 +23,17 @@ const VAL_INIT: [u8; 256] = val!();
 /// 名竞的核心~
 #[allow(unused)]
 pub struct RC4 {
-    i: u32,
-    j: u32,
+    pub i: u32,
+    pub j: u32,
     /// [u8, 256]
-    main_val: Vec<u8>,
+    pub main_val: Vec<u8>,
 }
 
 #[allow(unused)]
 impl RC4 {
+    #[inline]
+    pub fn get_val(&self, index: u8) -> u8 { self.main_val[index as usize] }
+
     /// ```dart
     /// RC4(List<int> key, [int round = 1]) {
     ///   val = new List<int>(256);
@@ -51,12 +54,12 @@ impl RC4 {
     ///   i = j = 0;
     /// }
     /// ```
-    pub fn new(keys: Vec<u8>, round: Option<usize>) -> Self {
+    pub fn new(keys: &[u8], round: usize) -> Self {
         let mut val = VAL_INIT;
         let mut j = 0;
 
         let key_len = keys.len();
-        for _ in 0..round.unwrap_or(1) {
+        for _ in 0..round {
             j = 0;
             for x in 0..256 {
                 let key_v = keys[x % key_len];
@@ -67,7 +70,7 @@ impl RC4 {
         RC4 {
             i: 0,
             j: 0,
-            main_val: VAL_INIT.to_vec(),
+            main_val: val.to_vec(),
         }
     }
 
@@ -229,7 +232,7 @@ impl RC4 {
     ///}
     /// ```
     #[inline]
-    pub fn round(&mut self, keys: Vec<u8>, round: Option<usize>) {
+    pub fn round(&mut self, keys: &[u8], round: Option<usize>) {
         let key_len = keys.len();
         for _ in 0..round.unwrap_or(1) {
             let mut j = 0;

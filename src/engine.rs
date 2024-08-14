@@ -3,6 +3,8 @@ pub const PROFILE_START: u32 = 33554431;
 pub mod runners {
     use thiserror::Error;
 
+    use std::collections::HashMap;
+
     use crate::player::{Player, PlayerError};
     use crate::rc4::RC4;
 
@@ -37,44 +39,59 @@ pub mod runners {
     pub type PlayerGroupResult<T> = Result<T, PlayerGroupError>;
     pub type RunnerResult<T> = Result<T, RunnerError>;
 
-    pub struct PlayerGroup {
-        players: Vec<Player>,
-    }
-
-    impl PlayerGroup {
-        pub fn new(players: Vec<Player>) -> PlayerGroup { PlayerGroup { players } }
-    }
+    pub type PlayerGroup = Vec<Player>;
 
     pub struct Runner {
         /// 应该是一个 Rc4 实例类似物
-        randomer: RC4,
+        pub randomer: RC4,
         /// 所有玩家 (包括 boss)
-        players: Vec<PlayerGroup>,
+        pub players: Vec<PlayerGroup>,
         /// 赢家
         ///
         /// 也应该是一个队伍
-        winner: Option<PlayerGroup>,
+        pub winner: Option<PlayerGroup>,
     }
+
+    pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
 
     impl Runner {
         /// 从一个 名竞的原始输入 中创建一个 Runner
         ///
         /// 其实就是解析名竞的输入格式
         pub fn new_from_namerena_raw(raw_input: String) -> RunnerResult<Runner> {
-            let spilted_input = raw_input.split("\n").collect::<Vec<&str>>();
-            let mut players = Vec::new();
-            for player in spilted_input.iter().filter(|name| !name.is_empty()) {
-                let player = Player::new_from_namerena_raw(player.to_string())?;
-                players.push(player);
-            }
             // 根据原始输入解析队伍
 
             // 原始逻辑:
-            // 先提取一遍+sort(?) 一遍名字
-            // 然后 join "\n"
+            // 把所有\n去掉
+            // 然后 join "\r"
             // 然后 utf8 encode
             // 然后用于生成这个 Randomer
-            todo!()
+            let (players, seed) = Runner::spilt_namerena_into_groups(raw_input);
+            let mut names = players.iter().flatten().chain(seed.iter()).map(|str| Player::raw_namerena_to_idname(str)).collect::<Vec<String>>();
+            names.sort();
+            let mut keys = names.join("\n").as_bytes().to_vec();
+            let mut randomer = RC4::new(&keys, 1);
+            randomer.encrypt_bytes(&mut keys);
+            // 准备好了
+            // 用 randmoer 初始化玩家的 sort_int
+            let sort_ints: HashMap<&str, u32> = HashMap::from_iter(names.iter().map(|name| (name.as_str(), randomer.rFFFFFF())));
+            let mut plrs = Vec::with_capacity(players.len());
+            for group in players.iter() {
+                let mut plr = Vec::with_capacity(group.len());
+                for name in group {
+                    let mut player = Player::new_from_namerena_raw(name.to_owned())?; // 如果有问题，就直接返回错误
+                                                                                      // 不过大概率不会有问题就是了
+                    player.sort_int = sort_ints.get(player.name.as_str()).unwrap().to_owned() as i32;
+                    plr.push(player);
+                }
+                plrs.push(plr);
+            }
+            let winner = if plrs.len() == 1 { Some(plrs.pop().unwrap()) } else { None };
+            Ok(Runner {
+                randomer,
+                players: plrs,
+                winner,
+            })
         }
 
         /// 将原始输入分拆成队伍
@@ -87,7 +104,7 @@ pub mod runners {
         /// - 将 大于等于3个 \n 替换成 2个 \n
         ///
         /// 返回: (队伍, seed)
-        pub fn spilt_namerena_into_groups(raw_input: String) -> (Vec<Vec<String>>, Vec<String>) {
+        pub fn spilt_namerena_into_groups(raw_input: String) -> RawPlayers {
             // 去除尾部的一个/多个 \n/带有几个空格的情况
             let raw_input = raw_input.trim_end();
             // 处理一下有 \r\n 的情况
@@ -164,6 +181,9 @@ pub mod runners {
                 seed,
             )
         }
+
+        #[inline]
+        pub fn have_winner(&self) -> bool { self.winner.is_some() }
     }
 }
 
@@ -277,6 +297,23 @@ mod group {
             // 这个情况下，应该是修复成三个队伍
             // TODO
             assert_ne!(groups, (plrs!("aaaa", "bbbb"), plr!["seed: a@!"]))
+        }
+    }
+
+    mod runner {
+        use super::*;
+
+        #[test]
+        fn sort_int_test() {
+            let raw_input = "aaa\nbbb\nseed: aaaa@!";
+            let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+
+            let ints = [2415636, 7852640, 14598063];
+            assert!(!runner.have_winner());
+
+            for (i, plr) in runner.players.iter().flatten().enumerate() {
+                assert_eq!(plr.sort_int as u32, { ints[i] });
+            }
         }
     }
 }

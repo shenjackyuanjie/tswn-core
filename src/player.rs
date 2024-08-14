@@ -95,7 +95,7 @@ pub struct Player {
     /// 队伍
     team: Option<String>,
     /// 玩家名
-    name: String,
+    pub name: String,
     /// 武器
     weapon: Option<String>,
     /// 玩家类型
@@ -106,7 +106,7 @@ pub struct Player {
     skil_prop: Vec<u32>,
     /// 玩家的 sort int
     /// 用于在排序中比较两个玩家
-    sort_int: i32,
+    pub sort_int: i32,
     /// 玩家状态
     ///
     /// 主要是我懒得加一大堆字段
@@ -282,6 +282,18 @@ impl Player {
             } else {
                 Player::new(None, raw_name, None)
             }
+        }
+    }
+
+    #[inline]
+    pub fn raw_namerena_to_idname(raw_name: &str) -> String {
+        // @/+ 后面的部分不要
+        if let Some(idx) = raw_name.find("@") {
+            raw_name[..idx].to_string()
+        } else if let Some(idx) = raw_name.find("+") {
+            raw_name[..idx].to_string()
+        } else {
+            raw_name.to_string()
         }
     }
 
