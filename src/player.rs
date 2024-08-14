@@ -107,6 +107,8 @@ pub struct Player {
     /// 玩家的 sort int
     /// 用于在排序中比较两个玩家
     pub sort_int: i32,
+    /// RC4
+    pub rand: RC4,
     /// 玩家状态
     ///
     /// 主要是我懒得加一大堆字段
@@ -167,9 +169,12 @@ pub enum PlayerType {
 }
 
 impl Player {
+    /// 按照 namerena 的原始 new
+    pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self {
+        todo!()
+    }
+    
     pub fn new(team: Option<String>, name: String, weapon: Option<String>) -> PlayerResult<Self> {
-        // 还是要先检查换行符
-        // if team.chars().into_iter()
         // 先校验长度
         if team.is_some() && team.as_ref().unwrap().as_bytes().len() > TEAM_MAX_LEN {
             let t = team.unwrap();
@@ -228,6 +233,7 @@ impl Player {
             weapon,
             player_type,
             sort_int: 0,
+            rand: RC4::default(),
             skil_id: vec![],
             skil_prop: vec![],
             status: PlayerStatus::default(),

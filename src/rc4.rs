@@ -29,6 +29,16 @@ pub struct RC4 {
     pub main_val: Vec<u8>,
 }
 
+impl Default for RC4 {
+    fn default() -> Self {
+        RC4 {
+            i: 0,
+            j: 0,
+            main_val: VAL_INIT.to_vec(),
+        }
+    }
+}
+
 #[allow(unused)]
 impl RC4 {
     #[inline]
