@@ -59,10 +59,24 @@ pub struct PlayerStatus {
     frozen: bool,
     /// 是否存活
     alive: bool,
-    /// 血量
-    hp: u32,
     /// 分数
     point: u32,
+    /// 血量
+    hp: u32,
+    /// 攻击力
+    attack: u32,
+    /// 防御
+    defense: u32,
+    /// 速度
+    speed: u32,
+    /// 敏捷
+    agility: u32,
+    /// 魔法
+    magic: u32,
+    /// 抗性
+    resistance: u32,
+    /// 智力
+    wisdom: u32,
 }
 
 impl Default for PlayerStatus {
@@ -70,8 +84,15 @@ impl Default for PlayerStatus {
         PlayerStatus {
             frozen: false,
             alive: true,
-            hp: 0,
             point: 0,
+            hp: 0,
+            attack: 0,
+            defense: 0,
+            speed: 0,
+            agility: 0,
+            magic: 0,
+            resistance: 0,
+            wisdom: 0,
         }
     }
 }
@@ -80,13 +101,13 @@ impl Display for PlayerStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "PlayerStatus{{{},{} hp: {}, point: {} }}",
+            "PlayerStatus{{{},{} point: {}, hp: {} }}",
             // 冻结/正常
             // 存活/死亡
             if self.frozen { "冻结" } else { "正常" },
             if self.alive { "存活" } else { "死亡" },
+            self.point,
             self.hp,
-            self.point
         )
     }
 }
@@ -241,6 +262,8 @@ impl Player {
                 name_base.push(j);
             }
         }
+        let mut skills = (0..39).collect::<Vec<u32>>();
+        rand.sort_list(&mut skills);
 
         Ok(Player {
             team,
@@ -250,7 +273,7 @@ impl Player {
             sort_int: 0,
             rand,
             name_base,
-            skil_id: vec![],
+            skil_id: skills,
             skil_prop: vec![],
             status: PlayerStatus::default(),
         })
@@ -274,12 +297,12 @@ impl Player {
     /// 不许有 \n
     ///
     /// 可能的输入格式:
-    /// - <name>
-    /// - <name>@<team>
-    /// - <name>+<weapon>
-    /// - <name>+<weapon>+diy{xxxxx}
-    /// - <name>@<team>+<weapon>
-    /// - <name>@<team>+<weapon>+diy{xxxxx}
+    /// - \<name>
+    /// - \<name>@\<team>
+    /// - \<name>+\<weapon>
+    /// - \<name>+\<weapon>+diy{xxxxx}
+    /// - \<name>@<team>+\<weapon>
+    /// - \<name>@<team>+\<weapon>+diy{xxxxx}
     pub fn new_from_namerena_raw(raw_name: String) -> PlayerResult<Self> {
         // 先判断是否有 + 和 @
         if !raw_name.contains("@") && !raw_name.contains("+") {
