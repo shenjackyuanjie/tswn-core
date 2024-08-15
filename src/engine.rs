@@ -84,8 +84,9 @@ pub mod runners {
             for group in players.iter() {
                 let mut plr = Vec::with_capacity(group.len());
                 for name in group {
-                    let mut player = Player::new_from_namerena_raw(name.to_owned())?; // 如果有问题，就直接返回错误
-                                                                                      // 不过大概率不会有问题就是了
+                    let mut player = Player::new_from_namerena_raw(name.to_owned())?;
+                    // 如果有问题，就直接返回错误
+                    // 不过大概率不会有问题就是了
                     player.sort_int = sort_ints.get(player.name.as_str()).unwrap().to_owned() as i32;
                     plr.push(player);
                 }

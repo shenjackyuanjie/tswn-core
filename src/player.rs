@@ -62,21 +62,28 @@ pub struct PlayerStatus {
     /// 分数
     point: u32,
     /// 血量
-    hp: u32,
+    pub hp: u32,
     /// 攻击力
-    attack: u32,
+    pub attack: u32,
     /// 防御
-    defense: u32,
+    pub defense: u32,
     /// 速度
-    speed: u32,
+    pub speed: u32,
     /// 敏捷
-    agility: u32,
+    pub agility: u32,
     /// 魔法
-    magic: u32,
+    pub magic: u32,
     /// 抗性
-    resistance: u32,
+    pub resistance: u32,
     /// 智力
-    wisdom: u32,
+    pub wisdom: u32,
+}
+
+impl PlayerStatus {
+    #[inline]
+    pub fn frozed(&self) -> bool { self.frozen }
+    #[inline]
+    pub fn alive(&self) -> bool { self.alive }
 }
 
 impl Default for PlayerStatus {
@@ -101,13 +108,20 @@ impl Display for PlayerStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "PlayerStatus{{{},{} point: {}, hp: {} }}",
+            "PlayerStatus{{{},{} point: {}, hp: {} 攻|{} 防|{} 速|{} 敏|{} 魔|{} 抗|{} 智|{} }}",
             // 冻结/正常
             // 存活/死亡
             if self.frozen { "冻结" } else { "正常" },
             if self.alive { "存活" } else { "死亡" },
             self.point,
             self.hp,
+            self.attack,
+            self.defense,
+            self.speed,
+            self.agility,
+            self.magic,
+            self.resistance,
+            self.wisdom
         )
     }
 }
@@ -131,6 +145,7 @@ pub struct Player {
     /// RC4
     pub rand: RC4,
     /// name base?
+    /// [u8; 128]
     pub name_base: Vec<u8>,
     /// 玩家状态
     ///
@@ -249,7 +264,11 @@ impl Player {
             }
         };
         let name_bytes = [0_u8].iter().chain(name.as_bytes()).copied().collect::<Vec<u8>>();
-        let team_bytes = [0_u8].iter().chain(team.as_ref().unwrap_or(&name).as_bytes()).copied().collect::<Vec<u8>>();
+        let team_bytes = [0_u8]
+            .iter()
+            .chain(team.as_ref().unwrap_or(&name).as_bytes())
+            .copied()
+            .collect::<Vec<u8>>();
 
         let mut rand = RC4::new(&team_bytes, 1);
         rand.update(&name_bytes, 2);
@@ -273,10 +292,22 @@ impl Player {
             sort_int: 0,
             rand,
             name_base,
-            skil_id: skills,
-            skil_prop: vec![],
+            skil_id: skills.clone(),
+            skil_prop: skills,
             status: PlayerStatus::default(),
         })
+    }
+
+    pub fn build(&mut self) {
+        // TODO: weapon
+        if let Some(_weapon) = &self.weapon {
+            // weapon
+        }
+        // init raw attr
+        let mut rand_vals = [0_u8; 32];
+        rand_vals.copy_from_slice(&self.rand.main_val[0..32]);
+        rand_vals.get_mut(0..10).unwrap().sort_unstable();
+        self.status.hp = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
     }
 
     pub fn upgrade(&mut self, rand: &RC4) {
