@@ -170,10 +170,8 @@ pub enum PlayerType {
 
 impl Player {
     /// 按照 namerena 的原始 new
-    pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self {
-        todo!()
-    }
-    
+    pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
+
     pub fn new(team: Option<String>, name: String, weapon: Option<String>) -> PlayerResult<Self> {
         // 先校验长度
         if team.is_some() && team.as_ref().unwrap().as_bytes().len() > TEAM_MAX_LEN {
@@ -310,13 +308,10 @@ impl Player {
     /// 包括 pre, main, post
     pub fn step(&mut self, _randomer: &mut RC4) {}
 
-    pub fn id_name(&self) -> String {
-        if self.team.is_some() {
-            format!("{}@{}", self.name, self.team.as_ref().unwrap())
-        } else {
-            self.name.clone()
-        }
-    }
+    #[inline]
+    pub fn id_name(&self) -> String { self.name.clone() }
+    #[inline]
+    pub fn display_name(&self) -> String { self.name.split(" ").next().unwrap_or_default().to_string() }
 
     fn p_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self.sort_int - other.sort_int != 0 {
@@ -407,7 +402,29 @@ mod test {
     }
 
     #[test]
-    pub fn player_raw_types() {
+    fn player_name() {
+        let player = Player::new_from_namerena_raw("aaa".to_string()).unwrap();
+        assert_eq!(player.id_name(), "aaa");
+        assert_eq!(player.display_name(), "aaa");
+
+        // 包含了 @
+        let player = Player::new_from_namerena_raw("aaa@bbb".to_string()).unwrap();
+        assert_eq!(player.id_name(), "aaa");
+        assert_eq!(player.display_name(), "aaa");
+
+        // 空格分开的名字
+        let player = Player::new_from_namerena_raw("aaa bbb".to_string()).unwrap();
+        assert_eq!(player.id_name(), "aaa bbb");
+        assert_eq!(player.display_name(), "aaa");
+
+        // 包含了 + 的名字
+        let player = Player::new_from_namerena_raw("aaa+bbb".to_string()).unwrap();
+        assert_eq!(player.id_name(), "aaa");
+        assert_eq!(player.display_name(), "aaa");
+    }
+
+    #[test]
+    fn player_raw_types() {
         let player = Player::new_from_namerena_raw("normal@normal".to_string());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Normal);
