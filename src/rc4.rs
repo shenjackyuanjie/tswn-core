@@ -44,6 +44,9 @@ impl RC4 {
     #[inline]
     pub fn get_val(&self, index: u8) -> u8 { self.main_val[index as usize] }
 
+    #[inline]
+    pub fn set_val(&mut self, index: u8, value: u8) { self.main_val[index as usize] = value; }
+
     /// ```dart
     /// RC4(List<int> key, [int round = 1]) {
     ///   val = new List<int>(256);
@@ -81,6 +84,20 @@ impl RC4 {
             i: 0,
             j: 0,
             main_val: val.to_vec(),
+        }
+    }
+
+    /// update 一下
+    pub fn update(&mut self, keys: &[u8], round: usize) {
+        let key_len = keys.len();
+        let mut j = 0;
+        for _ in 0..round {
+            j = 0;
+            for x in 0..256 {
+                let key_v = keys[x % key_len];
+                j = (j + self.main_val[x] as u32 + key_v as u32) & 255;
+                self.main_val.swap(x, j as usize);
+            }
         }
     }
 

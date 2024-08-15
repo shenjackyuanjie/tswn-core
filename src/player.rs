@@ -109,6 +109,8 @@ pub struct Player {
     pub sort_int: i32,
     /// RC4
     pub rand: RC4,
+    /// name base?
+    pub name_base: Vec<u8>,
     /// 玩家状态
     ///
     /// 主要是我懒得加一大堆字段
@@ -225,17 +227,37 @@ impl Player {
                 PlayerType::Normal
             }
         };
+        let name_bytes = [0_u8].iter().chain(name.as_bytes()).copied().collect::<Vec<u8>>();
+        let team_bytes = [0_u8].iter().chain(team.as_ref().unwrap_or(&name).as_bytes()).copied().collect::<Vec<u8>>();
+
+        let mut rand = RC4::new(&team_bytes, 1);
+        rand.update(&name_bytes, 2);
+
+        let mut name_base = vec![];
+
+        for i in 0..255 {
+            let j = (rand.get_val(i) as u32 * 181 + 160) as u8;
+            if 88 < j && j < 217 {
+                name_base.push(j);
+            }
+        }
+
         Ok(Player {
             team,
             name,
             weapon,
             player_type,
             sort_int: 0,
-            rand: RC4::default(),
+            rand,
+            name_base,
             skil_id: vec![],
             skil_prop: vec![],
             status: PlayerStatus::default(),
         })
+    }
+
+    pub fn upgrade(&mut self, rand: &RC4) {
+        // 升级!
     }
 
     /// 设置 sort int
