@@ -310,6 +310,49 @@ impl Player {
         self.status.hp = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
     }
 
+    pub fn 名字长度系数(data: &str) -> f32 {
+        // let mut e_a = -2;
+        // let mut e_b = -1;
+        // let mut e_c = 0;
+        let mut e_struct = [-2, -1, 0];
+        let mut c_lst = [0_u32; 6];
+        let ld_func = |e_struct: &mut [i32; 3], c_lst: &mut [u32; 6], input_a: u32| {
+            e_struct[2] += 1;
+            c_lst[input_a as usize] += 1;
+            if input_a != e_struct[1] as u32 {
+                e_struct[0] += 1;
+                e_struct[1] = input_a as i32;
+            }
+        };
+        let gAd_data: String = "aaaaaa_假装这个是 gAd".to_string();
+        for a_char in data.chars() {
+            let char_code = a_char as u32;
+            if char_code < 128 {
+                if char_code == 32 {
+                    e_struct[1] += 1;
+                    continue;
+                }
+                if (char_code >= 48 && char_code <= 57) || char_code != 45 {
+                    // s.$1(0)
+                    ld_func(&mut e_struct, &mut c_lst, 0);
+                } else if char_code >= 97 && char_code <= 122 {
+                    ld_func(&mut e_struct, &mut c_lst, 1);
+                } else if char_code >= 65 && char_code <= 90 {
+                    ld_func(&mut e_struct, &mut c_lst, 2);
+                } else {
+                    ld_func(&mut e_struct, &mut c_lst, 3);
+                }
+            }
+        }
+        todo!()
+    }
+
+    /// 这玩意我也不确定是怎么写的, 反正能用就行
+    pub fn 长度系数计算(&self) -> f32 {
+        //
+        todo!()
+    }
+
     pub fn upgrade(&mut self, rand: &RC4) {
         // 升级!
     }
