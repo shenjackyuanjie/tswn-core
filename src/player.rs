@@ -1,8 +1,8 @@
+pub mod eval_name;
 pub mod skills;
 pub mod utils;
-pub mod eval_name;
 
-use std::{cmp::Ordering, fmt::Display};
+use std::cmp::Ordering;
 
 use thiserror::Error;
 
@@ -105,7 +105,7 @@ impl Default for PlayerStatus {
     }
 }
 
-impl Display for PlayerStatus {
+impl std::fmt::Display for PlayerStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -152,6 +152,8 @@ pub struct Player {
     ///
     /// 主要是我懒得加一大堆字段
     status: PlayerStatus,
+    /// 名字长度系数
+    name_factor: f64,
 }
 
 /// boss 玩家的名字
@@ -285,6 +287,15 @@ impl Player {
         let mut skills = (0..39).collect::<Vec<u32>>();
         rand.sort_list(&mut skills);
 
+        let name_factor = {
+            let factor_name = eval_name::eval_str_common(name.as_str());
+            let factor_team = match team.as_ref() {
+                Some(team) => eval_name::eval_str_common(team.as_str()),
+                None => factor_name,
+            };
+            factor_team.max(factor_name - 6.0)
+        };
+
         Ok(Player {
             team,
             name,
@@ -296,7 +307,17 @@ impl Player {
             skil_id: skills.clone(),
             skil_prop: skills,
             status: PlayerStatus::default(),
+            name_factor,
         })
+    }
+
+    /// 根据名字系数调整数值
+    ///
+    /// ```javascript
+    /// const result = Math.round(a * (1 - this.x / b))
+    /// ```
+    fn scale_by_name_factor(&self, val: i32, factor2: i32) -> i32 {
+        (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as i32
     }
 
     pub fn build(&mut self) {
@@ -310,45 +331,6 @@ impl Player {
         rand_vals.get_mut(0..10).unwrap().sort_unstable();
         self.status.hp = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
     }
-
-    // pub fn 名字长度系数(data: &str) -> f32 {
-    //     // let mut e_a = -2;
-    //     // let mut e_b = -1;
-    //     // let mut e_c = 0;
-    //     let mut e_struct = [-2, -1, 0];
-    //     let mut c_lst = [0_u32; 6];
-    //     let ld_func = |e_struct: &mut [i32; 3], c_lst: &mut [u32; 6], input_a: u32| {
-    //         e_struct[2] += 1;
-    //         c_lst[input_a as usize] += 1;
-    //         if input_a != e_struct[1] as u32 {
-    //             e_struct[0] += 1;
-    //             e_struct[1] = input_a as i32;
-    //         }
-    //     };
-    //     let gAd_data: String = "aaaaaa_假装这个是 gAd".to_string();
-    //     for a_char in data.chars() {
-    //         let char_code = a_char as u32;
-    //         if char_code < 128 {
-    //             if char_code == 32 {
-    //                 e_struct[1] += 1;
-    //                 continue;
-    //             }
-    //             if (48..=57).contains(&char_code) || char_code != 45 {
-    //                 // s.$1(0)
-    //                 ld_func(&mut e_struct, &mut c_lst, 0);
-    //             } else if (97..=122).contains(&char_code) {
-    //                 ld_func(&mut e_struct, &mut c_lst, 1);
-    //             } else if (65..=90).contains(&char_code) {
-    //                 ld_func(&mut e_struct, &mut c_lst, 2);
-    //             } else {
-    //                 ld_func(&mut e_struct, &mut c_lst, 3);
-    //             }
-    //         } else if todo!() {
-    //             todo!()
-    //         }
-    //     }
-    //     todo!()
-    // }
 
     pub fn upgrade(&mut self, rand: &RC4) {
         // 升级!
@@ -446,7 +428,7 @@ impl PartialEq for Player {
     fn eq(&self, other: &Self) -> bool { self.p_cmp(other).map(|cmp| matches!(cmp, Ordering::Equal)).unwrap_or(false) }
 }
 
-impl Display for Player {
+impl std::fmt::Display for Player {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

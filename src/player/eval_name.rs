@@ -144,7 +144,6 @@ pub fn eval_str_common(s: &str) -> f64 {
     }
 }
 
-
 /// 3500 个常用字符的表
 ///
 /// 以防你好奇这都是啥
@@ -668,7 +667,7 @@ pub fn char_in_char_map(c: u32) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
-    
+
     #[test]
     fn numbers() {
         assert_eq!(eval_str_common("1"), -14.61370563888011);
