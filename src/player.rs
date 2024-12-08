@@ -316,8 +316,8 @@ impl Player {
     /// ```javascript
     /// const result = Math.round(a * (1 - this.x / b))
     /// ```
-    fn scale_by_name_factor(&self, val: i32, factor2: i32) -> i32 {
-        (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as i32
+    fn scale_by_name_factor(&self, val: u32, factor2: u32) -> u32 {
+        (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as u32
     }
 
     pub fn build(&mut self) {
@@ -329,7 +329,10 @@ impl Player {
         let mut rand_vals = [0_u8; 32];
         rand_vals.copy_from_slice(&self.rand.main_val[0..32]);
         rand_vals.get_mut(0..10).unwrap().sort_unstable();
-        self.status.hp = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
+        self.status.hp = self.scale_by_name_factor(
+            rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32,
+            128,
+        );
     }
 
     pub fn upgrade(&mut self, rand: &RC4) {

@@ -61,7 +61,7 @@ pub fn eval_str_common(s: &str) -> f64 {
                     diff += 1;
                     last_char = OTHER;
                 }
-            } else if char_in_char_map(text as u32) {
+            } else if char_in_common_char_lst(text as u32) {
                 cnt[COMMON as usize] += 1;
                 if last_char != COMMON {
                     diff += 1;
@@ -408,7 +408,7 @@ const CHAR_LST: [u32; 3500] = [
 ///
 /// allow 了 match_like_matches
 #[allow(clippy::match_like_matches_macro)]
-pub fn char_in_char_map(c: u32) -> bool {
+pub fn char_in_common_char_lst(c: u32) -> bool {
     match c {
         19968 | 19969 | 19971 | 19975 | 19976 | 19977 | 19978 | 19979 | 19981 | 19982 | 19984 | 19985 | 19987 | 19988 | 19990
         | 19992 | 19993 | 19994 | 19995 | 19996 | 19997 | 20002 | 20004 | 20005 | 20007 | 20010 | 20013 | 20016 | 20018
