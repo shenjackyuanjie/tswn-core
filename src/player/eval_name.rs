@@ -99,14 +99,14 @@ pub fn eval_str_common(s: &str) -> f64 {
             }
         }
         cnt[UPPER as usize] -= 1;
-        for i in 0..6 {
-            if cnt[i] > 0 {
-                if cnt[i] >= tmp {
-                    cnt[i] -= tmp;
+        for char_type in cnt.iter_mut() {
+            if *char_type > 0 {
+                if *char_type >= tmp {
+                    *char_type -= tmp;
                     break;
                 } else {
-                    tmp -= cnt[i];
-                    cnt[i] = 0;
+                    tmp -= *char_type;
+                    *char_type = 0;
                 }
             }
         }

@@ -1,43 +1,12 @@
 pub const PROFILE_START: u32 = 33554431;
 
 pub mod runners {
-    use thiserror::Error;
 
     use std::collections::HashMap;
 
-    use crate::player::{Player, PlayerError};
+    use crate::error::runner::RunnerResult;
+    use crate::player::Player;
     use crate::rc4::RC4;
-
-    #[derive(Error, Debug)]
-    pub enum PlayerGroupError {
-        /// 某个玩家解析失败
-        /// 通常是因为名竞的输入格式不对
-        ///
-        /// 0: 玩家名
-        /// 1: 错误原因
-        #[error("Player parse error: {0}")]
-        PlayerParseError(#[from] PlayerError),
-    }
-
-    #[derive(Error, Debug)]
-    pub enum RunnerError {
-        /// 某个队伍解析失败
-        /// 通常是因为名竞的输入格式不对
-        ///
-        /// 0: 队伍名
-        /// 1: 错误原因
-        #[error("PlayerGroup parse error: {0}")]
-        PlayerGroupParseError(#[from] PlayerGroupError),
-        /// 某个人在创建过程中报错
-        #[error("Player parse error: {0}")]
-        PlayerError(#[from] PlayerError),
-        /// 只有一个队伍
-        #[error("Only one group")]
-        OnlyOneGroup,
-    }
-
-    pub type PlayerGroupResult<T> = Result<T, PlayerGroupError>;
-    pub type RunnerResult<T> = Result<T, RunnerError>;
 
     pub type PlayerGroup = Vec<Player>;
 
