@@ -1,6 +1,7 @@
 #[allow(dead_code)]
 mod engine;
 /// 就一堆错误
+#[allow(dead_code)]
 mod error;
 /// 万里长征, 始于足下
 #[allow(dead_code)]
