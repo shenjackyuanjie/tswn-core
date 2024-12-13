@@ -167,9 +167,10 @@ pub enum PlayerType {
 }
 
 impl Player {
-    /// 按照 namerena 的原始 new
-    pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
+    // /// 按照 namerena 的原始 new
+    // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
+    /// 创建一个新的玩家
     pub fn new(team: Option<String>, name: String, weapon: Option<String>) -> PlayerResult<Self> {
         // 先校验长度
         if team.is_some() && team.as_ref().unwrap().as_bytes().len() > TEAM_MAX_LEN {
