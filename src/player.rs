@@ -237,7 +237,7 @@ impl Player {
         let mut name_base = vec![];
 
         for i in 0..255 {
-            let j = (rand.get_val(i) as u32 * 181 + 160) as u8;
+            let j = (unsafe { rand.get_val_unchecked(i) } as u32 * 181 + 160) as u8;
             if 88 < j && j < 217 {
                 name_base.push(j);
             }

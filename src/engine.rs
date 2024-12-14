@@ -98,20 +98,16 @@ pub mod runners {
                 .collect::<Vec<String>>();
             // 首先，如果没有\n\n, 那么一行就是一个队伍
             if !raw_input.contains("\n\n") {
-                return (
-                    raw_input
-                        .split("\n")
-                        .filter(|x| !Player::check_is_seed(x))
-                        .map(|x| vec![x.to_string()])
-                        .collect(),
-                    seed,
-                );
+                return (raw_input.split("\n").map(|x| vec![x.to_string()]).collect(), seed);
             }
-            let raw_input = raw_input
-                .split("\n")
-                .filter(|x| !Player::check_is_seed(x))
-                .collect::<Vec<&str>>()
-                .join("\n");
+            let raw_groups: Vec<Vec<String>> =
+                raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect();
+            return raw_groups;
+            // let raw_input = raw_input
+            //     .split("\n")
+            //     // .filter(|x| !Player::check_is_seed(x))
+            //     .collect::<Vec<&str>>()
+            //     .join("\n");
             // 如果有\n\n, 那么就是一个队伍
 
             // 下面是为了修复一些容易手误的情况
@@ -127,27 +123,25 @@ pub mod runners {
             // 这里修复一下这个问题
 
             // 先检查有没有单独的seed玩家
-            // let mut need_fix = false;
+
             let groups = raw_input
                 .split("\n\n")
                 .map(|x| x.split("\n").map(|x| x.to_string()).collect())
                 .collect::<Vec<Vec<String>>>();
-            // groups.iter().for_each(|group| {
-            //     if group.len() == 1 && Player::check_is_seed(group[0]) {
-            //         need_fix = true;
-            //     }
-            // });
+
             // 然后就是一些特判
             // 比如双队伍, 同时其中一个是纯 seed
-            if groups.len() == 2 {
+            if raw_groups.len() == 2 {
+                println!("need fix {:?}", raw_groups);
                 // 双队伍特判
                 // 队伍1是纯seed
                 // 队伍2不是纯seed
-                if groups[0].len() == 1
-                    && Player::check_is_seed(groups[0][0].as_str())
-                    && groups[1].iter().all(|x| !Player::check_is_seed(x))
+                if raw_groups[0].len() == 1
+                    && Player::check_is_seed(raw_groups[0][0].as_str())
+                    && raw_groups[1].iter().all(|x| !Player::check_is_seed(x))
                 {
                     // 进行一个 fix
+                    // 也就是把那个非纯seed队伍分散成多个队伍
                 }
             }
 
@@ -264,7 +258,7 @@ mod group {
         }
 
         #[test]
-        fn need_fix_seed() {
+        fn need_fix_seed1() {
             // 需要修复的seed
             let raw_input = "aaaa\nbbbb\n\nseed: a@!".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
@@ -272,6 +266,20 @@ mod group {
             // 这个情况下，应该是修复成三个队伍
             // TODO
             assert_ne!(groups, (plrs!("aaaa", "bbbb"), plr!["seed: a@!"]))
+        }
+
+        #[test]
+        /// 应该faild
+        /// TODO
+        // #[should_panic]
+        fn need_fix_seed2() {
+            // 跟 test 1 顺序相反
+            let raw_input = "seed: a@!\n\naaaa\nbbbb".to_string();
+            // 合法输入: seed: a@!\naaaa\nbbbb
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_ne!(groups, (vec![plr!("aaaa", "bbbb")], plr!["seed: a@!"]));
+            // 这个情况下，应该是修复成三个队伍
+            assert_eq!(groups, (plrs!("aaaa", "bbbb"), plr!["seed: a@!"]))
         }
     }
 
