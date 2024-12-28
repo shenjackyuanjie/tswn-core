@@ -46,7 +46,12 @@ impl PlayerStatus {
     pub fn frozed(&self) -> bool { self.frozen }
     #[inline]
     pub fn alive(&self) -> bool { self.alive }
+    #[deprecated]
+    #[inline]
+    pub fn spsum(&self) -> u32 { self.move_point }
+    #[inline]
     pub fn check_move(&self) -> bool { self.move_point >= 2048 }
+
 }
 
 impl Default for PlayerStatus {

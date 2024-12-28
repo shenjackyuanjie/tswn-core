@@ -45,9 +45,9 @@ pub mod runners {
                 .collect::<Vec<String>>();
             // 这里顺便把 sorted hash 这块做了
             names.sort();
-            let mut keys = names.join("\n").as_bytes().to_vec();
+            let mut keys = names.join("\n");
             let mut randomer = RC4::new(&keys, 1);
-            randomer.encrypt_bytes(&mut keys);
+            randomer.encrypt_bytes_no_change(&keys);
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
 
@@ -79,6 +79,21 @@ pub mod runners {
                             plr_q.upgrade(&plr_p.rand);
                         }
                     }
+                }
+            }
+
+            for group in inited_plrs.iter_mut() {
+                for plr in group.iter_mut() {
+                    plr.build();
+                }
+            }
+
+            let mut sort_groups = inited_plrs.iter().collect::<Vec<&PlayerGroup>>();
+            sort_groups.sort_by(|a, b| a[0].partial_cmp(&b[0]).unwrap_or(std::cmp::Ordering::Equal));
+            
+            for group in sort_groups.iter() {
+                for plr in group.iter() {
+                    randomer.encrypt_bytes_no_change(&plr.id_name());
                 }
             }
 

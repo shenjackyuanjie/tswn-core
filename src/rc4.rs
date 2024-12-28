@@ -158,6 +158,17 @@ impl RC4 {
         }
     }
 
+    /// 只是加密, 不改变原来的字节
+    pub fn encrypt_bytes_no_change(&mut self, bytes: &str) {
+        for byte in bytes.as_bytes() {
+            self.i = (self.i + 1) & 255;
+            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
+            self.main_val.swap(self.i as usize, self.j as usize);
+            let tmp = self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
+            self.j = (self.j + tmp as u32) & 255;
+        }
+    }
+
     /// 解密字节
     /// ```dart
     /// custom decryption
