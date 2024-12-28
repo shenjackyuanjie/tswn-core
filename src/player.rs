@@ -224,6 +224,7 @@ impl Player {
                 PlayerType::Normal
             }
         };
+        // 开始处理 rc4 部分
         let name_bytes = [0_u8].iter().chain(name.as_bytes()).copied().collect::<Vec<u8>>();
         let team_bytes = [0_u8]
             .iter()
@@ -373,6 +374,8 @@ impl Player {
     pub fn id_name(&self) -> String { self.name.clone() }
     #[inline]
     pub fn display_name(&self) -> String { self.name.split(" ").next().unwrap_or_default().to_string() }
+    #[inline]
+    pub fn clan_name(&self) -> String { self.team.clone().unwrap_or(self.name.clone()) }
 
     fn p_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self.sort_int - other.sort_int != 0 {

@@ -2,7 +2,7 @@ pub const PROFILE_START: u32 = 33554431;
 
 pub mod runners {
 
-    use std::collections::HashMap;
+    // use std::collections::HashMap;
 
     use crate::error::runner::RunnerResult;
     use crate::player::Player;
@@ -36,6 +36,7 @@ pub mod runners {
             // 然后 utf8 encode
             // 然后用于生成这个 Randomer
             let (players, seed) = Runner::spilt_namerena_into_groups(raw_input);
+
             let mut names = players
                 .iter()
                 .flatten()
@@ -48,23 +49,45 @@ pub mod runners {
             randomer.encrypt_bytes(&mut keys);
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
-            let sort_ints: HashMap<&str, u32> = HashMap::from_iter(names.iter().map(|name| (name.as_str(), randomer.rFFFFFF())));
-            let mut plrs = Vec::with_capacity(players.len());
-            for group in players.iter() {
-                let mut plr = Vec::with_capacity(group.len());
-                for name in group {
-                    let mut player = Player::new_from_namerena_raw(name.to_owned())?;
+
+            let mut inited_plrs = Vec::with_capacity(players.len());
+            for plrs in players.iter() {
+                let mut group = Vec::with_capacity(plrs.len());
+                for plr in plrs.iter() {
+                    let mut player = Player::new_from_namerena_raw(plr.to_string())?;
+                    player.sort_int = randomer.rFFFFFF() as i32;
                     // 如果有问题，就直接返回错误
                     // 不过大概率不会有问题就是了
-                    player.sort_int = sort_ints.get(player.name.as_str()).unwrap().to_owned() as i32;
-                    plr.push(player);
+                    group.push(player);
                 }
-                plrs.push(plr);
+                inited_plrs.push(group);
             }
-            let winner = if plrs.len() == 1 { Some(plrs.pop().unwrap()) } else { None };
+
+            // 同队升级
+            for plr_group in inited_plrs.iter_mut() {
+                if plr_group.len() < 2 {
+                    continue;
+                }
+                for i in 0..plr_group.len() {
+                    let (left, right) = plr_group.split_at_mut(i + 1);
+                    let plr_p = &mut left[i];
+                    for plr_q in right.iter_mut() {
+                        if plr_p.clan_name() == plr_q.clan_name() {
+                            plr_p.upgrade(&plr_q.rand);
+                            plr_q.upgrade(&plr_p.rand);
+                        }
+                    }
+                }
+            }
+
+            let winner = if inited_plrs.len() == 1 {
+                Some(inited_plrs.pop().unwrap())
+            } else {
+                None
+            };
             Ok(Runner {
                 randomer,
-                players: plrs,
+                players: inited_plrs,
                 winner,
             })
         }
@@ -79,6 +102,7 @@ pub mod runners {
         /// - 将 大于等于3个 \n 替换成 2个 \n
         ///
         /// 返回: (队伍, seed)
+        #[allow(clippy::needless_return)]
         pub fn spilt_namerena_into_groups(raw_input: String) -> RawPlayers {
             // 去除尾部的一个/多个 \n/带有几个空格的情况
             let raw_input = raw_input.trim_end();
@@ -102,7 +126,9 @@ pub mod runners {
             }
             let raw_groups: Vec<Vec<String>> =
                 raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect();
-            return raw_groups;
+
+            // 修复是 TODO 项
+            return (raw_groups, seed);
             // let raw_input = raw_input
             //     .split("\n")
             //     // .filter(|x| !Player::check_is_seed(x))
@@ -124,31 +150,31 @@ pub mod runners {
 
             // 先检查有没有单独的seed玩家
 
-            let groups = raw_input
-                .split("\n\n")
-                .map(|x| x.split("\n").map(|x| x.to_string()).collect())
-                .collect::<Vec<Vec<String>>>();
+            // let groups = raw_input
+            //     .split("\n\n")
+            //     .map(|x| x.split("\n").map(|x| x.to_string()).collect())
+            //     .collect::<Vec<Vec<String>>>();
 
-            // 然后就是一些特判
-            // 比如双队伍, 同时其中一个是纯 seed
-            if raw_groups.len() == 2 {
-                println!("need fix {:?}", raw_groups);
-                // 双队伍特判
-                // 队伍1是纯seed
-                // 队伍2不是纯seed
-                if raw_groups[0].len() == 1
-                    && Player::check_is_seed(raw_groups[0][0].as_str())
-                    && raw_groups[1].iter().all(|x| !Player::check_is_seed(x))
-                {
-                    // 进行一个 fix
-                    // 也就是把那个非纯seed队伍分散成多个队伍
-                }
-            }
+            // // 然后就是一些特判
+            // // 比如双队伍, 同时其中一个是纯 seed
+            // if raw_groups.len() == 2 {
+            //     println!("need fix {:?}", raw_groups);
+            //     // 双队伍特判
+            //     // 队伍1是纯seed
+            //     // 队伍2不是纯seed
+            //     if raw_groups[0].len() == 1
+            //         && Player::check_is_seed(raw_groups[0][0].as_str())
+            //         && raw_groups[1].iter().all(|x| !Player::check_is_seed(x))
+            //     {
+            //         // 进行一个 fix
+            //         // 也就是把那个非纯seed队伍分散成多个队伍
+            //     }
+            // }
 
-            (
-                raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect(),
-                seed,
-            )
+            // (
+            //     raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect(),
+            //     seed,
+            // )
         }
 
         #[inline]
