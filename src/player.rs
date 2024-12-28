@@ -12,6 +12,7 @@ pub const NAME_MAX_LEN: usize = 256;
 /// 队伍名最大长度
 pub const TEAM_MAX_LEN: usize = 256;
 
+#[derive(Clone, Copy, Debug)]
 pub struct PlayerStatus {
     /// 是否被冻结
     frozen: bool,
@@ -19,6 +20,9 @@ pub struct PlayerStatus {
     alive: bool,
     /// 分数
     point: u32,
+    /// 原文: spsum
+    /// >= 2048 时才行动
+    pub move_point: u32,
     /// 血量
     pub hp: u32,
     /// 攻击力
@@ -42,6 +46,7 @@ impl PlayerStatus {
     pub fn frozed(&self) -> bool { self.frozen }
     #[inline]
     pub fn alive(&self) -> bool { self.alive }
+    pub fn check_move(&self) -> bool { self.move_point >= 2048 }
 }
 
 impl Default for PlayerStatus {
@@ -50,6 +55,7 @@ impl Default for PlayerStatus {
             frozen: false,
             alive: true,
             point: 0,
+            move_point: 0,
             hp: 0,
             attack: 0,
             defense: 0,
@@ -84,6 +90,7 @@ impl std::fmt::Display for PlayerStatus {
     }
 }
 
+#[derive(Clone)]
 pub struct Player {
     /// 队伍
     team: Option<String>,
@@ -133,7 +140,7 @@ pub fn filter_char(s: char) -> bool {
     matches!(s as u32 , 9..12 | 133 | 160 | 5760 | 8192..8202 | 8232..8233 | 8239 | 8287 | 12288 | 65279)
 }
 
-#[derive(Default, PartialEq, Eq, Debug)]
+#[derive(Default, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum PlayerType {
     #[default]
     Normal,
@@ -171,7 +178,7 @@ impl Player {
     // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
     /// 创建一个新的玩家
-    pub fn new(team: Option<String>, name: String, weapon: Option<String>) -> PlayerResult<Self> {
+    pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>) -> PlayerResult<Self> {
         // 先校验长度
         if team.is_some() && team.as_ref().unwrap().as_bytes().len() > TEAM_MAX_LEN {
             let t = team.unwrap();
@@ -321,7 +328,7 @@ impl Player {
     pub fn new_from_namerena_raw(raw_name: String) -> PlayerResult<Self> {
         // 先判断是否有 + 和 @
         if !raw_name.contains("@") && !raw_name.contains("+") {
-            return Player::new(None, raw_name.clone(), None);
+            return Player::new_and_init(None, raw_name.clone(), None);
         }
         // 区分队伍名
         let name: &str;
@@ -337,14 +344,14 @@ impl Player {
             } else {
                 weapon = None;
             }
-            Player::new(Some(team.to_string()), name.to_string(), weapon.map(|s| s.to_string()))
+            Player::new_and_init(Some(team.to_string()), name.to_string(), weapon.map(|s| s.to_string()))
         } else {
             // 没有队伍名, 直接是武器
             if raw_name.contains("+") {
                 let (name, weapon) = raw_name.split_once("+").unwrap();
-                Player::new(None, name.to_string(), Some(weapon.to_string()))
+                Player::new_and_init(None, name.to_string(), Some(weapon.to_string()))
             } else {
-                Player::new(None, raw_name, None)
+                Player::new_and_init(None, raw_name, None)
             }
         }
     }

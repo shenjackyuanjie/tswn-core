@@ -43,6 +43,7 @@ pub mod runners {
                 .chain(seed.iter())
                 .map(|str| Player::raw_namerena_to_idname(str))
                 .collect::<Vec<String>>();
+            // 这里顺便把 sorted hash 这块做了
             names.sort();
             let mut keys = names.join("\n").as_bytes().to_vec();
             let mut randomer = RC4::new(&keys, 1);
@@ -68,6 +69,7 @@ pub mod runners {
                 if plr_group.len() < 2 {
                     continue;
                 }
+                plr_group.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 for i in 0..plr_group.len() {
                     let (left, right) = plr_group.split_at_mut(i + 1);
                     let plr_p = &mut left[i];
@@ -81,7 +83,7 @@ pub mod runners {
             }
 
             let winner = if inited_plrs.len() == 1 {
-                Some(inited_plrs.pop().unwrap())
+                Some(inited_plrs[0].clone())
             } else {
                 None
             };

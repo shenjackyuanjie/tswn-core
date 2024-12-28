@@ -22,6 +22,7 @@ const VAL_INIT: [u8; 256] = val!();
 /// RC4 类
 /// 名竞的核心~
 #[allow(unused)]
+#[derive(Debug, Clone)]
 pub struct RC4 {
     pub i: u32,
     pub j: u32,
