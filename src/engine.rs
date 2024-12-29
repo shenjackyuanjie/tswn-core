@@ -90,12 +90,18 @@ pub mod runners {
 
             let mut sort_groups = inited_plrs.iter().collect::<Vec<&PlayerGroup>>();
             sort_groups.sort_by(|a, b| a[0].partial_cmp(&b[0]).unwrap_or(std::cmp::Ordering::Equal));
-            
+
             for group in sort_groups.iter() {
                 for plr in group.iter() {
                     randomer.encrypt_bytes_no_change(&plr.id_name());
                 }
                 randomer.encrypt_bytes(&mut [0]);
+            }
+
+            for group in inited_plrs.iter_mut() {
+                for plr in group.iter_mut() {
+                    plr.set_move_point(randomer.rFFFFFF());
+                }
             }
 
             let winner = if inited_plrs.len() == 1 {

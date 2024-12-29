@@ -51,7 +51,6 @@ impl PlayerStatus {
     pub fn spsum(&self) -> u32 { self.move_point }
     #[inline]
     pub fn check_move(&self) -> bool { self.move_point >= 2048 }
-
 }
 
 impl Default for PlayerStatus {
@@ -281,6 +280,23 @@ impl Player {
             name_factor,
         })
     }
+
+    /// 获取当前的 spsum(步数)
+    #[inline]
+    #[deprecated]
+    pub fn sp_sum(&self) -> u32 { self.status.move_point }
+
+    /// 设置 spsum
+    #[inline]
+    #[deprecated]
+    pub fn set_sp_sum(&mut self, val: u32) { self.status.move_point = val }
+
+    /// 获取当前的 move point
+    #[inline]
+    pub fn move_point(&self) -> u32 { self.status.move_point }
+
+    /// 设置 move point
+    pub fn set_move_point(&mut self, val: u32) { self.status.move_point = val }
 
     /// 根据名字系数调整数值
     ///
