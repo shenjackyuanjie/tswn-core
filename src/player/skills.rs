@@ -1,3 +1,5 @@
+use crate::player::Player;
+
 #[derive(Debug, Clone)]
 pub struct Skill {
     /// 是否被增强过
@@ -6,6 +8,150 @@ pub struct Skill {
     level: u32,
     /// 类型
     skill_type: SkillType,
+}
+
+impl Skill {
+    pub fn new_from_type_id(level: u32, id: u8) -> Self {
+        Self {
+            boosted: false,
+            level,
+            skill_type: SkillType::new_from_skill_type_id(id),
+        }
+    }
+
+    /// 如果没 boost, 那就 boost 一下
+    /// true: boost 成功
+    /// false: 已经 boost 过了
+    pub fn boost_if_not(&mut self) -> bool {
+        if self.boosted {
+            false
+        } else {
+            self.boosted = true;
+            self.level *= 2;
+            true
+        }
+    }
+}
+
+/// ```dart
+/// MList<PreStepEntry> presteps = new MList<PreStepEntry>();
+/// MList<PreActionEntry> preactions = new MList<PreActionEntry>();
+/// MList<PostActionEntry> postactions = new MList<PostActionEntry>();
+/// MList<PreDefendEntry> predefends = new MList<PreDefendEntry>();
+/// MList<PostDefendEntry> postdefends = new MList<PostDefendEntry>();
+/// MList<PostDamageEntry> postdamages = new MList<PostDamageEntry>();
+/// MList<DieEntry> dies = new MList<DieEntry>();
+/// MList<KillEntry> kills = new MList<KillEntry>();
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct SkillStore {
+    /// 实际存储 skill 的地方
+    pub skill_store: Vec<Skill>,
+    /// step 之前
+    pub pre_step: Vec<u32>,
+    /// 动作之前
+    pub pre_action: Vec<u32>,
+    /// 动作之后
+    pub post_action: Vec<u32>,
+    /// 防御之前
+    pub pre_defend: Vec<u32>,
+    /// 防御之后
+    pub post_defend: Vec<u32>,
+    /// 伤害之后
+    pub post_damage: Vec<u32>,
+    /// 死亡之后
+    pub post_death: Vec<u32>,
+    /// 干掉目标之后
+    pub post_kill: Vec<u32>,
+}
+
+impl SkillStore {
+    pub fn new() -> Self {
+        Self {
+            skill_store: vec![],
+            pre_step: vec![],
+            pre_action: vec![],
+            post_action: vec![],
+            pre_defend: vec![],
+            post_defend: vec![],
+            post_damage: vec![],
+            post_death: vec![],
+            post_kill: vec![],
+        }
+    }
+
+    fn clear_proc(&mut self) {
+        self.pre_step.clear();
+        self.pre_action.clear();
+        self.post_action.clear();
+        self.pre_defend.clear();
+        self.post_defend.clear();
+        self.post_damage.clear();
+        self.post_death.clear();
+        self.post_kill.clear();
+    }
+
+    pub fn update_proc(&mut self) {
+        self.clear_proc();
+        for (i, skill) in self.skill_store.iter().enumerate() {
+            let skill_type = &skill.skill_type;
+            let i = i as u32;
+            match skill_type {
+                SkillType::Counter => {
+                    self.post_damage.push(i);
+                }
+                SkillType::Defend => {
+                    self.post_defend.push(i);
+                }
+                SkillType::Hide => {
+                    self.post_damage.push(i);
+                    self.pre_action.push(i);
+                }
+                SkillType::Merge => {
+                    self.post_kill.push(i);
+                }
+                SkillType::Protect => {
+                    self.post_action.push(i);
+                }
+                SkillType::Reflect => {
+                    self.pre_defend.push(i);
+                }
+                SkillType::Reraise => {
+                    self.post_death.push(i);
+                }
+                SkillType::Shield => {
+                    self.pre_action.push(i);
+                }
+                SkillType::Upgrade => {
+                    self.post_damage.push(i);
+                }
+                SkillType::Zombie => {
+                    self.post_kill.push(i);
+                }
+                // TODO: BOSS 技能
+                SkillType::Slime => {
+                    self.post_damage.push(i);
+                }
+                // TODO: 武器技能
+                SkillType::DeathNote => {
+                    self.post_damage.push(i);
+                }
+
+                _ => (),
+            }
+        }
+    }
+
+    pub fn update_from_player(&mut self, player: &Player) {
+        self.skill_store.clear();
+        for (i, skill_id) in player.skil_id.iter().enumerate() {
+            let skill = Skill::new_from_type_id(player.skil_prop[i], *skill_id as u8);
+            self.skill_store.push(skill);
+        }
+        self.update_proc();
+    }
+
+    pub fn add_skill(&mut self, skill: Skill) { self.skill_store.push(skill); }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -27,10 +173,10 @@ pub enum SkillType {
     /// 会心一击
     Critical,
     /// 瘟疫
-    Poison2,
+    Plague,
     /// 生命之轮
     Life,
-    /// 狂暴
+    /// 狂暴术
     Berserk,
     /// 魅惑
     Charm,
@@ -40,6 +186,7 @@ pub enum SkillType {
     Slow,
     /// 诅咒
     Curse,
+
     /// 治愈魔法
     Heal,
     /// 苏生术
@@ -48,18 +195,22 @@ pub enum SkillType {
     Disperse,
     /// 铁壁
     Iron,
+
     /// 蓄力
     Charge,
     /// 聚气
     Accumulate,
+
     /// 潜行
-    Sneak,
+    Assassinate,
+
     /// 血祭
-    BloodSacrifice,
+    Summon,
     /// 分身
     Clone,
     /// 幻术
-    Illusion,
+    Shadow,
+
     /// 防御
     Defend,
     /// 守护
@@ -67,21 +218,30 @@ pub enum SkillType {
     /// 伤害反弹
     Reflect,
     /// 护身符
-    Amulet,
+    Reraise,
     /// 护盾
     Shield,
     /// 反击
     Counter,
     /// 吞噬
-    Devour,
+    Merge,
     /// 召唤亡灵
-    Summon,
+    Zombie,
     /// 垂死抗争
-    Reraise,
+    Upgrade,
     /// 隐匿
     Hide,
+
     /// 无 (35-40)
     None,
+
+    // TODO: BOSS 技能
+    /// 史莱姆(分裂)
+    Slime,
+
+    // TODO: 武器技能
+    /// 死亡笔记
+    DeathNote,
 }
 
 impl SkillType {
@@ -95,33 +255,40 @@ impl SkillType {
             5 => Self::Poison,
             6 => Self::Rapid,
             7 => Self::Critical,
-            8 => Self::Poison2,
+            8 => Self::Plague,
             9 => Self::Life,
             10 => Self::Berserk,
             11 => Self::Charm,
             12 => Self::Haste,
             13 => Self::Slow,
             14 => Self::Curse,
+
             15 => Self::Heal,
             16 => Self::Revive,
             17 => Self::Disperse,
             18 => Self::Iron,
+
             19 => Self::Charge,
             20 => Self::Accumulate,
-            21 => Self::Sneak,
-            22 => Self::BloodSacrifice,
+
+            21 => Self::Assassinate,
+
+            22 => Self::Summon,
             23 => Self::Clone,
-            24 => Self::Illusion,
+            24 => Self::Shadow,
+
             25 => Self::Defend,
             26 => Self::Protect,
             27 => Self::Reflect,
-            28 => Self::Amulet,
+            28 => Self::Reraise,
             29 => Self::Shield,
             30 => Self::Counter,
-            31 => Self::Devour,
+            31 => Self::Merge,
             32 => Self::Summon,
-            33 => Self::Reraise,
+            33 => Self::Upgrade,
             34 => Self::Hide,
+
+            35..40 => Self::None,
             _ => Self::None,
         }
     }

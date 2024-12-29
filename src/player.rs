@@ -1,11 +1,13 @@
 pub mod eval_name;
 pub mod skills;
 pub mod utils;
+pub mod weapon;
 
-use std::cmp::{max, min, Ordering};
+use std::cmp::{min, Ordering};
 
 use crate::engine::update::RunUpdates;
 use crate::error::player::{PlayerError, PlayerResult};
+use crate::player::skills::{Skill, SkillStore};
 use crate::rc4::RC4;
 
 /// 名字本体最大长度
@@ -34,19 +36,19 @@ pub struct PlayerStatus {
     pub move_point: u32,
     /// 血量
     pub hp: u32,
-    /// 攻击力
+    /// 攻击力 (atk)
     pub attack: u32,
-    /// 防御
+    /// 防御 (def)
     pub defense: u32,
-    /// 速度
+    /// 速度 (spd)
     pub speed: u32,
-    /// 敏捷
+    /// 敏捷 (agl)
     pub agility: u32,
-    /// 魔法
+    /// 魔法 (mag)
     pub magic: u32,
-    /// 抗性
+    /// 抗性 (mdf)
     pub resistance: u32,
-    /// 智力
+    /// 智力 (itl)
     pub wisdom: u32,
 }
 
@@ -129,14 +131,19 @@ pub struct Player {
     pub sort_int: i32,
     /// RC4
     pub rand: RC4,
-    /// name base?
-    /// [u8; 128]
+    /// name base
+    /// ```python
+    /// len(list(i for i in range(256) if (i * 181 + 160) % 256 > 88 and (i * 181 + 160) % 256 < 217 )) == 128
+    /// ```
     pub name_base: Vec<u8>,
     attr: [u32; 8],
+    last_skill: u8,
     /// 玩家状态
     ///
     /// 主要是我懒得加一大堆字段
     status: PlayerStatus,
+    /// 技能相关
+    skill_store: skills::SkillStore,
     /// 名字长度系数
     name_factor: f64,
     /// uid
@@ -289,9 +296,9 @@ impl Player {
         let mut name_base = vec![];
 
         for i in 0..255 {
-            let j = (unsafe { rand.get_val_unchecked(i) } as u32 * 181 + 160) as u8;
-            if 88 < j && j < 217 {
-                name_base.push(j);
+            let j = (unsafe { rand.get_val_unchecked(i) } as u32 * 181 + 87) as u8;
+            if j & 0x80 == 0 {
+                name_base.push(j + 89);
             }
         }
         // 技能顺序
@@ -315,10 +322,12 @@ impl Player {
             sort_int: 0,
             rand,
             name_base,
+            last_skill: 0,
             attr: [0; 8],
             skil_id: skills.clone(),
             skil_prop: skills,
             status: PlayerStatus::default(),
+            skill_store: SkillStore::default(),
             name_factor,
             uid: 0,
         };
@@ -365,7 +374,7 @@ impl Player {
     /// - 具体属性 ( 8围 )
     /// - 技能熟练度
     pub fn build(&mut self) {
-        // TODO: weapon
+        // TODO: 武器 pre upgrade
         if let Some(_weapon) = &self.weapon {
             // weapon
         }
@@ -394,63 +403,31 @@ impl Player {
         // 技能熟练度计算
         // 计算 skl_id 的已经在初始化做完了
         // DIY TODO
-        let mut last = -1;
         for (j, i) in (64..128).step_by(4).enumerate() {
-            let p = min(
+            // 取 val index ~ val index + 3 的最小值
+            let small = min(
                 min(self.name_base[i], self.name_base[i + 1]),
                 min(self.name_base[i + 2], self.name_base[i + 3]),
             );
-            if p > 10 && self.skil_id[j] < 35 {
-                self.skil_prop[j] = (p - 10) as u32;
-                if p < 35 {
-                    last = j as i8;
-                }
-            } else {
-                self.skil_prop[j] = 0;
+            if small > 10 && self.skil_id[j] < 35 {
+                let skill = Skill::new_from_type_id((small - 10) as u32, self.skil_id[i] as u8);
+                self.skill_store.add_skill(skill);
             }
         }
-        match last {
-            // 判断 14, 15 去
-            -1 => {
-                if self.skil_prop[14] != 0 {
-                    self.skil_prop[14] += min(min(self.name_base[60], self.name_base[61]), self.skil_prop[14] as u8) as u32
-                }
-                if self.skil_prop[15] != 0 {
-                    self.skil_prop[15] += min(min(self.name_base[62], self.name_base[63]), self.skil_prop[15] as u8) as u32
-                }
-            }
-            14 => {
-                self.skil_prop[14] <<= 1;
-                if self.skil_prop[15] != 0 {
-                    self.skil_prop[15] += min(min(self.name_base[62], self.name_base[63]), self.skil_prop[15] as u8) as u32
-                }
-            }
-            15 => {
-                self.skil_prop[15] <<= 1;
-                if self.skil_prop[14] != 0 {
-                    self.skil_prop[14] += min(min(self.name_base[60], self.name_base[61]), self.skil_prop[14] as u8) as u32
-                }
-            }
-            x => {
-                self.skil_prop[x as usize] <<= 1;
-                if self.skil_prop[14] != 0 {
-                    self.skil_prop[14] += min(min(self.name_base[60], self.name_base[61]), self.skil_prop[14] as u8) as u32
-                }
-                if self.skil_prop[15] != 0 {
-                    self.skil_prop[15] += min(min(self.name_base[62], self.name_base[63]), self.skil_prop[15] as u8) as u32
-                }
-            }
+        // TODO: 武器 post upgrade
+        if let Some(_weapon) = &self.weapon {
+            // weapon
         }
-
-        // 武器 init
-        // TODO
 
         // add skills to proc
         // DIY TODO
         let mut work_skills = self.skil_prop.iter().filter(|x| **x > 0).cloned().collect::<Vec<u32>>();
         // for skill in work_skills
+
         // init values
     }
+
+    fn init_skills(&mut self) {}
 
     /// 同队升级
     pub fn upgrade(&mut self, other: &Self) {
