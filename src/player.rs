@@ -3,7 +3,9 @@ pub mod skills;
 pub mod utils;
 
 use std::cmp::Ordering;
+use std::hash::Hasher;
 
+use crate::engine::update::RunUpdates;
 use crate::error::player::{PlayerError, PlayerResult};
 use crate::rc4::RC4;
 
@@ -14,6 +16,11 @@ pub const TEAM_MAX_LEN: usize = 256;
 
 /// 2048 以上才行动
 pub const MOVE_POINT_THRESHOLD: u32 = 2048;
+
+/// 假装是一个指针
+/// (其实就是 usize)
+/// (实践中其实就是 plr 的地址, 所以你还真可以通过他来访问)
+pub type PlrPtr = usize;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlayerStatus {
@@ -49,9 +56,7 @@ impl PlayerStatus {
     pub fn frozed(&self) -> bool { self.frozen }
     #[inline]
     pub fn alive(&self) -> bool { self.alive }
-    #[deprecated(
-        note = "请使用 move_point()",
-    )]
+    #[deprecated(note = "请使用 move_point()")]
     #[inline]
     pub fn spsum(&self) -> u32 { self.move_point }
     #[inline]
@@ -106,12 +111,15 @@ impl std::fmt::Display for PlayerStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum Action {}
+
 #[derive(Clone)]
 pub struct Player {
     /// 队伍
     team: Option<String>,
     /// 玩家名
-    pub name: String,
+    name: String,
     /// 武器
     weapon: Option<String>,
     /// 玩家类型
@@ -128,12 +136,15 @@ pub struct Player {
     /// name base?
     /// [u8; 128]
     pub name_base: Vec<u8>,
+    attr: [u32; 8],
     /// 玩家状态
     ///
     /// 主要是我懒得加一大堆字段
     status: PlayerStatus,
     /// 名字长度系数
     name_factor: f64,
+    /// uid
+    uid: PlrPtr,
 }
 
 /// boss 玩家的名字
@@ -156,6 +167,26 @@ pub fn filter_char(s: char) -> bool {
     matches!(s as u32 , 9..12 | 133 | 160 | 5760 | 8192..8202 | 8232..8233 | 8239 | 8287 | 12288 | 65279)
 }
 
+pub fn median<T>(x: T, y: T, z: T) -> T
+where
+    T: std::cmp::Ord + std::marker::Copy,
+{
+    if x < y {
+        if y < z {
+            y
+        } else if x < z {
+            z
+        } else {
+            x
+        }
+    } else if x < z {
+        x
+    } else if y < z {
+        z
+    } else {
+        y
+    }
+}
 #[derive(Default, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum PlayerType {
     #[default]
@@ -278,7 +309,7 @@ impl Player {
             factor_team.max(factor_name - 6.0)
         };
 
-        Ok(Player {
+        let mut plr = Player {
             team,
             name,
             weapon,
@@ -286,23 +317,31 @@ impl Player {
             sort_int: 0,
             rand,
             name_base,
+            attr: [0; 8],
             skil_id: skills.clone(),
             skil_prop: skills,
             status: PlayerStatus::default(),
             name_factor,
-        })
+            uid: 0,
+        };
+
+        // 通过新建的 player 的内存地址来生成 uid
+        // 我真是个天才
+        plr.uid = &plr as *const Player as PlrPtr;
+
+        Ok(plr)
     }
 
     /// 获取当前的 spsum(步数)
     #[inline]
-    #[deprecated(
-        note = "请使用 move_point()",
-    )]
+    #[deprecated(note = "请使用 move_point()")]
     pub fn sp_sum(&self) -> u32 { self.status.move_point }
 
     /// 获取当前的 move point (spsum)
     #[inline]
     pub fn move_point(&self) -> u32 { self.status.move_point }
+
+    pub fn uid(&self) -> PlrPtr { self.uid }
 
     /// 设置 move point (spsum)
     #[inline]
@@ -332,14 +371,40 @@ impl Player {
         let mut rand_vals = [0_u8; 32];
         rand_vals.copy_from_slice(&self.rand.main_val[0..32]);
         rand_vals.get_mut(0..10).unwrap().sort_unstable();
-        self.status.hp = self.scale_by_name_factor(
-            rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32,
-            128,
-        );
+
+        let mut attr = [0, 0, 0, 0, 0, 0, 0, 0];
+        // 10 - 31
+        // rand_vals 10~12 midle value
+        attr[0] = median(rand_vals[10], rand_vals[11], rand_vals[12]) as u32;
+        attr[1] = median(rand_vals[13], rand_vals[14], rand_vals[15]) as u32;
+        attr[2] = median(rand_vals[16], rand_vals[17], rand_vals[18]) as u32;
+        attr[3] = median(rand_vals[19], rand_vals[20], rand_vals[21]) as u32;
+        attr[4] = median(rand_vals[22], rand_vals[23], rand_vals[24]) as u32;
+        attr[5] = median(rand_vals[25], rand_vals[26], rand_vals[27]) as u32;
+        attr[6] = median(rand_vals[28], rand_vals[29], rand_vals[30]) as u32;
+        // 7 -> rand 3 + 4 + 5 + 6
+        attr[7] = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
+
+        self.attr = attr;
     }
 
+    /// 同队升级
     pub fn upgrade(&mut self, rand: &RC4) {
         // 升级!
+        for i in 7..RC4::val_len() {
+            let i = i as u8;
+            if rand.get_val(i - 1) == self.rand.get_val(i) && rand.get_val(i) > self.rand.get_val(i) {
+                self.rand.set_val(i, rand.get_val(i));
+            }
+        }
+        if self.base_name() == self.clan_name() {
+            for i in 5..RC4::val_len() {
+                let i = i as u8;
+                if rand.get_val(i - 2) == self.rand.get_val(i) && rand.get_val(i) > self.rand.get_val(i) {
+                    self.rand.set_val(i, rand.get_val(i));
+                }
+            }
+        }
     }
 
     /// 设置 sort int
@@ -412,7 +477,36 @@ impl Player {
     /// 每回合中的玩家行动
     ///
     /// 包括 pre, main, post
-    pub fn step(&mut self, _randomer: &mut RC4) {}
+    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates) {
+        if !self.status.alive() {
+            return;
+        }
+        let stp = self.status.speed * randomer.r3();
+
+        // 预动作
+        // todo
+
+        self.status.move_point += stp;
+        if self.check_move() {
+            self.status.move_point -= MOVE_POINT_THRESHOLD;
+            // 主动作
+            self.action(randomer, updates);
+        }
+        // 结束
+    }
+
+    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates) {
+        // let mut targets: Vec<_> = vec![];
+
+        let smart = self.status.wisdom > randomer.r63();
+        let req_mp = 0;
+
+        // todo: pre action
+
+        if self.status.frozed() {
+            return;
+        }
+    }
 
     #[inline]
     pub fn id_name(&self) -> String { self.name.clone() }
@@ -420,6 +514,8 @@ impl Player {
     pub fn display_name(&self) -> String { self.name.split(" ").next().unwrap_or_default().to_string() }
     #[inline]
     pub fn clan_name(&self) -> String { self.team.clone().unwrap_or(self.name.clone()) }
+    #[inline]
+    pub fn base_name(&self) -> String { self.name.clone() }
 
     fn p_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self.sort_int - other.sort_int != 0 {

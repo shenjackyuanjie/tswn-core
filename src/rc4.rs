@@ -19,6 +19,9 @@ macro_rules! val {
 /// 我是不是应该用宏来写这个玩意
 const VAL_INIT: [u8; 256] = val!();
 
+/// VAL_LEN
+pub const VAL_LEN: usize = 256;
+
 /// RC4 类
 /// 名竞的核心~
 #[allow(unused)]
@@ -42,6 +45,9 @@ impl Default for RC4 {
 
 #[allow(unused)]
 impl RC4 {
+    #[inline]
+    pub const fn val_len() -> usize { VAL_LEN }
+
     #[inline]
     pub fn get_val(&self, index: u8) -> u8 { self.main_val[index as usize] }
 

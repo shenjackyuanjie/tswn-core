@@ -2,10 +2,9 @@ pub const PROFILE_START: u32 = 33554431;
 
 pub mod runners {
 
-    // use std::collections::HashMap;
-
+    use crate::engine::update::{RunUpdate, RunUpdates};
     use crate::error::runner::RunnerResult;
-    use crate::player::Player;
+    use crate::player::{Player, PlrPtr};
     use crate::rc4::RC4;
 
     pub type PlayerGroup = Vec<Player>;
@@ -19,6 +18,8 @@ pub mod runners {
         ///
         /// 也应该是一个队伍
         pub winner: Option<PlayerGroup>,
+        /// 该哪个玩家动了
+        round_pos: i32,
     }
 
     pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
@@ -45,6 +46,7 @@ pub mod runners {
                 .collect::<Vec<String>>();
             // 这里顺便把 sorted hash 这块做了
             names.sort();
+            names.dedup();
             let keys = names.join("\n");
             let mut randomer = RC4::new(keys.as_bytes(), 1);
             randomer.encrypt_bytes_no_change(&keys);
@@ -113,7 +115,16 @@ pub mod runners {
                 randomer,
                 players: inited_plrs,
                 winner,
+                round_pos: -1,
             })
+        }
+
+        /// 获取所有存活的玩家
+        pub fn alives_flat(&self) -> Vec<&Player> { self.players.iter().flatten().filter(|x| x.status().alive()).collect() }
+
+        /// 以组为单位获取所有存活的玩家
+        pub fn alives(&self) -> Vec<Vec<&Player>> {
+            self.players.iter().map(|x| x.iter().filter(|x| x.status().alive()).collect()).collect()
         }
 
         /// 将原始输入分拆成队伍
@@ -203,6 +214,128 @@ pub mod runners {
 
         #[inline]
         pub fn have_winner(&self) -> bool { self.winner.is_some() }
+
+        #[inline]
+        pub fn all_plrs(&self) -> Vec<&Player> { self.players.iter().flatten().collect() }
+
+        /// 你甚至可以通过他们的指针来直接访问对应的玩家
+        pub fn all_plr_ptrs(&self) -> Vec<PlrPtr> { self.players.iter().flatten().map(|x| x.uid()).collect() }
+
+        #[inline]
+        pub fn all_plr_len(&self) -> usize { self.players.iter().map(|x| x.len()).sum() }
+
+        pub fn get_plr_by_ptr(&self, ptr: PlrPtr) -> Option<&Player> {
+            for group in self.players.iter() {
+                for plr in group.iter() {
+                    if plr.uid() == ptr {
+                        return Some(plr);
+                    }
+                }
+            }
+            None
+        }
+
+        pub unsafe fn get_plr_by_ptr_unchecked(&self, ptr: PlrPtr) -> &Player {
+            // 直接 unsafe 强转
+            let ptr = ptr as *const Player;
+            &*ptr
+        }
+
+        pub fn main_round(&mut self) { let mut updates = RunUpdates::new(); }
+
+        pub fn round_tick(&mut self, updates: &mut RunUpdates) {
+            self.round_pos += 1;
+            self.round_pos %= self.all_plr_len() as i32;
+
+            let tick_plr_index = self.round_pos as usize;
+
+            let tick_plr_ptr = self.all_plr_ptrs()[tick_plr_index];
+
+            // WARN: 我直接用 ptr 来获取玩家了
+            // TODO: 换成直接获取玩家的方法
+            let tick_plr = unsafe {
+                // 直接将 usize 转换成 &Player
+                // 这里是安全的，因为我们知道这个指针是有效的
+                &mut *(tick_plr_ptr as *mut Player)
+            };
+            // 调用 step 方法
+            tick_plr.step(&mut self.randomer, updates);
+        }
+    }
+}
+
+pub mod update {
+
+    use crate::player::PlrPtr;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum UpdateType {
+        /// 赢!
+        Win,
+        /// 没动作
+        None,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct RunUpdate {
+        score: i32,
+        delay0: i32,
+        delay1: i32,
+        message: String,
+        caster: PlrPtr,
+        target: PlrPtr,
+        targets: Vec<PlrPtr>,
+        update_type: UpdateType,
+        // param: Object ?
+    }
+
+    impl RunUpdate {
+        pub fn new_dummy() -> RunUpdate {
+            RunUpdate {
+                score: 0,
+                delay0: 0,
+                delay1: 0,
+                message: "\n".to_string(),
+                caster: 0,
+                target: 0,
+                targets: vec![],
+                update_type: UpdateType::None,
+                // param: Object ?
+            }
+        }
+
+        pub fn msg(&self) -> String {
+            // [0] -> caster
+            // [1] -> target
+            // [2] -> targets
+            let mut msg = self.message.clone();
+            msg = msg.replace("{0}", &self.caster.to_string());
+            msg = msg.replace("{1}", &self.target.to_string());
+            msg = msg.replace(
+                "{2}",
+                &self.targets.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
+            );
+            msg
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct RunUpdates {
+        pub updates: Vec<RunUpdate>,
+        // post_updates: Vec<RunUpdate>,
+    }
+
+    impl RunUpdates {
+        pub fn new() -> RunUpdates {
+            RunUpdates {
+                updates: vec![],
+                // post_updates: vec![],
+            }
+        }
+
+        pub fn add(&mut self, update: RunUpdate) { self.updates.push(update); }
+
+        pub fn add_all(&mut self, updates: &mut [RunUpdate]) { self.updates.extend_from_slice(updates); }
     }
 }
 
