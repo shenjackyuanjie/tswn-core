@@ -46,7 +46,7 @@ pub mod runners {
             // 这里顺便把 sorted hash 这块做了
             names.sort();
             let mut keys = names.join("\n");
-            let mut randomer = RC4::new(&keys, 1);
+            let mut randomer = RC4::new(&keys.as_bytes(), 1);
             randomer.encrypt_bytes_no_change(&keys);
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
@@ -95,6 +95,7 @@ pub mod runners {
                 for plr in group.iter() {
                     randomer.encrypt_bytes_no_change(&plr.id_name());
                 }
+                randomer.encrypt_bytes(&mut [0]);
             }
 
             let winner = if inited_plrs.len() == 1 {
