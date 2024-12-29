@@ -367,6 +367,7 @@ impl Player {
         if let Some(_weapon) = &self.weapon {
             // weapon
         }
+
         // init raw attr
         let mut rand_vals = [0_u8; 32];
         rand_vals.copy_from_slice(&self.rand.main_val[0..32]);
@@ -386,22 +387,21 @@ impl Player {
         attr[7] = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
 
         self.attr = attr;
+        // init skills
+
     }
 
     /// 同队升级
-    pub fn upgrade(&mut self, rand: &RC4) {
-        // 升级!
-        for i in 7..RC4::val_len() {
-            let i = i as u8;
-            if rand.get_val(i - 1) == self.rand.get_val(i) && rand.get_val(i) > self.rand.get_val(i) {
-                self.rand.set_val(i, rand.get_val(i));
+    pub fn upgrade(&mut self, other: &Self) {
+        for i in 7..128 {
+            if self.name_base[i] == other.name_base[i] && other.name_base[i] > self.name_base[i] {
+                self.name_base[i] = other.name_base[i];
             }
         }
         if self.base_name() == self.clan_name() {
-            for i in 5..RC4::val_len() {
-                let i = i as u8;
-                if rand.get_val(i - 2) == self.rand.get_val(i) && rand.get_val(i) > self.rand.get_val(i) {
-                    self.rand.set_val(i, rand.get_val(i));
+            for i in 5..128 {
+                if self.name_base[i - 2] == other.name_base[i] && other.name_base[i] > self.name_base[i] {
+                    self.name_base[i] = other.name_base[i];
                 }
             }
         }

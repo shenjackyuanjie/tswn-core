@@ -77,8 +77,8 @@ pub mod runners {
                     let plr_p = &mut left[i];
                     for plr_q in right.iter_mut() {
                         if plr_p.clan_name() == plr_q.clan_name() {
-                            plr_p.upgrade(&plr_q.rand);
-                            plr_q.upgrade(&plr_p.rand);
+                            plr_p.upgrade(plr_q);
+                            plr_q.upgrade(plr_p);
                         }
                     }
                 }
@@ -249,17 +249,15 @@ pub mod runners {
 
             let tick_plr_index = self.round_pos as usize;
 
-            let tick_plr_ptr = self.all_plr_ptrs()[tick_plr_index];
+            let mut all_plrs = self.players.iter_mut().flatten().collect::<Vec<&mut Player>>();
 
-            // WARN: 我直接用 ptr 来获取玩家了
-            // TODO: 换成直接获取玩家的方法
-            let tick_plr = unsafe {
-                // 直接将 usize 转换成 &Player
-                // 这里是安全的，因为我们知道这个指针是有效的
-                &mut *(tick_plr_ptr as *mut Player)
-            };
-            // 调用 step 方法
-            tick_plr.step(&mut self.randomer, updates);
+            // 获取当前 tick 的玩家
+            if let Some(tick_plr) = all_plrs.get_mut(tick_plr_index) {
+                // 调用 step 方法
+                tick_plr.step(&mut self.randomer, updates);
+            } else {
+                unreachable!("tick_plr_index out of range");
+            }
         }
     }
 }
