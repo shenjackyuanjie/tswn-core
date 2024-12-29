@@ -49,7 +49,9 @@ impl PlayerStatus {
     pub fn frozed(&self) -> bool { self.frozen }
     #[inline]
     pub fn alive(&self) -> bool { self.alive }
-    #[deprecated]
+    #[deprecated(
+        note = "请使用 move_point()",
+    )]
     #[inline]
     pub fn spsum(&self) -> u32 { self.move_point }
     #[inline]
@@ -293,7 +295,9 @@ impl Player {
 
     /// 获取当前的 spsum(步数)
     #[inline]
-    #[deprecated]
+    #[deprecated(
+        note = "请使用 move_point()",
+    )]
     pub fn sp_sum(&self) -> u32 { self.status.move_point }
 
     /// 获取当前的 move point (spsum)
