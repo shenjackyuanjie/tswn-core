@@ -12,6 +12,9 @@ pub const NAME_MAX_LEN: usize = 256;
 /// 队伍名最大长度
 pub const TEAM_MAX_LEN: usize = 256;
 
+/// 2048 以上才行动
+pub const MOVE_POINT_THRESHOLD: u32 = 2048;
+
 #[derive(Clone, Copy, Debug)]
 pub struct PlayerStatus {
     /// 是否被冻结
@@ -50,7 +53,13 @@ impl PlayerStatus {
     #[inline]
     pub fn spsum(&self) -> u32 { self.move_point }
     #[inline]
-    pub fn check_move(&self) -> bool { self.move_point >= 2048 }
+    pub fn check_move(&self) -> bool { self.move_point >= MOVE_POINT_THRESHOLD }
+
+    pub fn set_frozen(&mut self, val: bool) { self.frozen = val }
+
+    pub fn set_alive(&mut self, val: bool) { self.alive = val }
+
+    pub fn set_point(&mut self, val: u32) { self.point = val }
 }
 
 impl Default for PlayerStatus {
@@ -76,12 +85,13 @@ impl std::fmt::Display for PlayerStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "PlayerStatus{{{},{} point: {}, hp: {} 攻|{} 防|{} 速|{} 敏|{} 魔|{} 抗|{} 智|{} }}",
+            "PlayerStatus{{{},{} 分数: {}, hp: {} 移动点数: {} 攻|{} 防|{} 速|{} 敏|{} 魔|{} 抗|{} 智|{} }}",
             // 冻结/正常
             // 存活/死亡
             if self.frozen { "冻结" } else { "正常" },
             if self.alive { "存活" } else { "死亡" },
             self.point,
+            self.move_point,
             self.hp,
             self.attack,
             self.defense,
@@ -286,17 +296,19 @@ impl Player {
     #[deprecated]
     pub fn sp_sum(&self) -> u32 { self.status.move_point }
 
-    /// 设置 spsum
-    #[inline]
-    #[deprecated]
-    pub fn set_sp_sum(&mut self, val: u32) { self.status.move_point = val }
-
-    /// 获取当前的 move point
+    /// 获取当前的 move point (spsum)
     #[inline]
     pub fn move_point(&self) -> u32 { self.status.move_point }
 
-    /// 设置 move point
+    /// 设置 move point (spsum)
+    #[inline]
     pub fn set_move_point(&mut self, val: u32) { self.status.move_point = val }
+
+    /// 检查是否可以行动
+    pub fn check_move(&self) -> bool { self.status.check_move() }
+
+    /// 获取当前的玩家状态
+    pub fn status(&self) -> &PlayerStatus { &self.status }
 
     /// 根据名字系数调整数值
     ///

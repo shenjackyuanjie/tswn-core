@@ -487,11 +487,13 @@ impl RC4 {
     // 两个颜色拼接
 
     /// 生成一个 RGB 颜色
+    /// (或者用于生成一个 略大一些的随机数)
     #[inline]
     #[allow(non_snake_case)]
     pub fn rFFFFFF(&mut self) -> u32 { (self.next_u8() as u32) << 16 | (self.next_u8() as u32) << 8 | self.next_u8() as u32 }
 
     /// 生成一个 RGB 颜色
+    /// (或者用于生成一个 大一些的随机数)
     #[inline]
     #[allow(non_snake_case)]
     pub fn rFFFF(&mut self) -> u32 { (self.next_u8() as u32) << 8 | self.next_u8() as u32 }
