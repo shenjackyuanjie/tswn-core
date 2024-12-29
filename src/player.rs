@@ -2,8 +2,7 @@ pub mod eval_name;
 pub mod skills;
 pub mod utils;
 
-use std::cmp::Ordering;
-use std::hash::Hasher;
+use std::cmp::{max, min, Ordering};
 
 use crate::engine::update::RunUpdates;
 use crate::error::player::{PlayerError, PlayerResult};
@@ -110,9 +109,6 @@ impl std::fmt::Display for PlayerStatus {
         )
     }
 }
-
-#[derive(Clone, Copy, Debug)]
-pub enum Action {}
 
 #[derive(Clone)]
 pub struct Player {
@@ -289,6 +285,7 @@ impl Player {
         let mut rand = RC4::new(&team_bytes, 1);
         rand.update(&name_bytes, 2);
 
+        // 生成 name_base
         let mut name_base = vec![];
 
         for i in 0..255 {
@@ -297,6 +294,7 @@ impl Player {
                 name_base.push(j);
             }
         }
+        // 技能顺序
         let mut skills = (0..39).collect::<Vec<u32>>();
         rand.sort_list(&mut skills);
 
@@ -362,6 +360,10 @@ impl Player {
         (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as u32
     }
 
+    /// upgrade 之后
+    /// 计算:
+    /// - 具体属性 ( 8围 )
+    /// - 技能熟练度
     pub fn build(&mut self) {
         // TODO: weapon
         if let Some(_weapon) = &self.weapon {
@@ -376,6 +378,7 @@ impl Player {
         let mut attr = [0, 0, 0, 0, 0, 0, 0, 0];
         // 10 - 31
         // rand_vals 10~12 midle value
+        // DIY TODO
         attr[0] = median(rand_vals[10], rand_vals[11], rand_vals[12]) as u32;
         attr[1] = median(rand_vals[13], rand_vals[14], rand_vals[15]) as u32;
         attr[2] = median(rand_vals[16], rand_vals[17], rand_vals[18]) as u32;
@@ -388,7 +391,65 @@ impl Player {
 
         self.attr = attr;
         // init skills
+        // 技能熟练度计算
+        // 计算 skl_id 的已经在初始化做完了
+        // DIY TODO
+        let mut last = -1;
+        for (j, i) in (64..128).step_by(4).enumerate() {
+            let p = min(
+                min(self.name_base[i], self.name_base[i + 1]),
+                min(self.name_base[i + 2], self.name_base[i + 3]),
+            );
+            if p > 10 && self.skil_id[j] < 35 {
+                self.skil_prop[j] = (p - 10) as u32;
+                if p < 35 {
+                    last = j as i8;
+                }
+            } else {
+                self.skil_prop[j] = 0;
+            }
+        }
+        match last {
+            // 判断 14, 15 去
+            -1 => {
+                if self.skil_prop[14] != 0 {
+                    self.skil_prop[14] += min(min(self.name_base[60], self.name_base[61]), self.skil_prop[14] as u8) as u32
+                }
+                if self.skil_prop[15] != 0 {
+                    self.skil_prop[15] += min(min(self.name_base[62], self.name_base[63]), self.skil_prop[15] as u8) as u32
+                }
+            }
+            14 => {
+                self.skil_prop[14] <<= 1;
+                if self.skil_prop[15] != 0 {
+                    self.skil_prop[15] += min(min(self.name_base[62], self.name_base[63]), self.skil_prop[15] as u8) as u32
+                }
+            }
+            15 => {
+                self.skil_prop[15] <<= 1;
+                if self.skil_prop[14] != 0 {
+                    self.skil_prop[14] += min(min(self.name_base[60], self.name_base[61]), self.skil_prop[14] as u8) as u32
+                }
+            }
+            x => {
+                self.skil_prop[x as usize] <<= 1;
+                if self.skil_prop[14] != 0 {
+                    self.skil_prop[14] += min(min(self.name_base[60], self.name_base[61]), self.skil_prop[14] as u8) as u32
+                }
+                if self.skil_prop[15] != 0 {
+                    self.skil_prop[15] += min(min(self.name_base[62], self.name_base[63]), self.skil_prop[15] as u8) as u32
+                }
+            }
+        }
 
+        // 武器 init
+        // TODO
+
+        // add skills to proc
+        // DIY TODO
+        let mut work_skills = self.skil_prop.iter().filter(|x| **x > 0).cloned().collect::<Vec<u32>>();
+        // for skill in work_skills
+        // init values
     }
 
     /// 同队升级
