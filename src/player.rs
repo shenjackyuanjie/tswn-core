@@ -1,7 +1,7 @@
 pub mod eval_name;
 pub mod skills;
 pub mod utils;
-pub mod weapon;
+pub mod weapons;
 
 use std::cmp::{min, Ordering};
 
@@ -136,6 +136,7 @@ pub struct Player {
     /// len(list(i for i in range(256) if (i * 181 + 160) % 256 > 88 and (i * 181 + 160) % 256 < 217 )) == 128
     /// ```
     pub name_base: Vec<u8>,
+    raw_name_base: [u8; 128],
     attr: [u32; 8],
     last_skill: u8,
     /// 玩家状态
@@ -301,6 +302,12 @@ impl Player {
                 name_base.push(j + 89);
             }
         }
+        // UNWRAP SAFE: name_base.len() == 128
+        let raw_name_base: [u8; 128] = name_base
+            .as_slice()
+            .try_into()
+            .expect("unreachable(如果真到这里了就tm得好好怀疑一下自己的代码是怎么写的了)");
+
         // 技能顺序
         let mut skills = (0..39).collect::<Vec<u32>>();
         rand.sort_list(&mut skills);
@@ -322,6 +329,7 @@ impl Player {
             sort_int: 0,
             rand,
             name_base,
+            raw_name_base,
             last_skill: 0,
             attr: [0; 8],
             skil_id: skills.clone(),
@@ -410,10 +418,21 @@ impl Player {
                 min(self.name_base[i + 2], self.name_base[i + 3]),
             );
             if small > 10 && self.skil_id[j] < 35 {
-                let skill = Skill::new_from_type_id((small - 10) as u32, self.skil_id[i] as u8);
+                let mut skill = Skill::new_from_type_id((small - 10) as u32, self.skil_id[i] as u8);
+                let raw_small = min(
+                    min(self.raw_name_base[i], self.raw_name_base[i + 1]),
+                    min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
+                );
+                // 其实是懒得读取原始的last skill, 就直接按照原始代码来了
+                if raw_small < 10 {
+                    skill.boosted = true;
+                }
                 self.skill_store.add_skill(skill);
             }
         }
+        // 然后是boost最后一个
+        self.skill_store.boost_last();
+        self.skill_store.update_proc();
         // TODO: 武器 post upgrade
         if let Some(_weapon) = &self.weapon {
             // weapon
@@ -421,9 +440,7 @@ impl Player {
 
         // add skills to proc
         // DIY TODO
-        let mut work_skills = self.skil_prop.iter().filter(|x| **x > 0).cloned().collect::<Vec<u32>>();
-        // for skill in work_skills
-
+        self.skill_store.update_proc();
         // init values
     }
 

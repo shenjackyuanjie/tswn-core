@@ -3,7 +3,7 @@ use crate::player::Player;
 #[derive(Debug, Clone)]
 pub struct Skill {
     /// 是否被增强过
-    boosted: bool,
+    pub boosted: bool,
     /// 等级
     level: u32,
     /// 类型
@@ -142,19 +142,25 @@ impl SkillStore {
         }
     }
 
-    pub fn update_from_player(&mut self, player: &Player) {
-        self.skill_store.clear();
-        for (i, skill_id) in player.skil_id.iter().enumerate() {
-            let skill = Skill::new_from_type_id(player.skil_prop[i], *skill_id as u8);
-            self.skill_store.push(skill);
+    /// 最后一个技能 boost
+    pub fn boost_last(&mut self) {
+        for skill in self.skill_store.iter_mut().rev() {
+            if skill.boost_if_not() {
+                break;
+            }
         }
-        self.update_proc();
     }
 
+    /// 添加技能
     pub fn add_skill(&mut self, skill: Skill) { self.skill_store.push(skill); }
 }
 
-#[derive(Debug, Clone, Copy)]
+/// 技能类型
+/// 需要和游戏中的技能类型对应
+///
+/// 因为不知道啥时候会加新的, 所以务必带上 `#[non_exhaustive]`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum SkillType {
     /// 火球术
     Fire,
