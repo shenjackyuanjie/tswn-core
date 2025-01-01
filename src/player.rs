@@ -1,5 +1,6 @@
 pub mod eval_name;
 pub mod skills;
+pub mod states;
 pub mod utils;
 pub mod weapons;
 
@@ -22,6 +23,10 @@ pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 /// (其实就是 usize)
 /// (实践中其实就是 plr 的地址, 所以你还真可以通过他来访问)
 pub type PlrPtr = usize;
+
+/// 将 PlrPtr 转换为 &mut Player
+/// 其实就是一个包装
+pub fn player_ptr_as_mut_plr<'a>(ptr: &'a PlrPtr) -> &'a mut Player { unsafe { &mut *(*ptr as *mut Player) } }
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlayerStatus {
@@ -164,8 +169,6 @@ pub struct Player {
     skill_store: skills::SkillStore,
     /// 名字长度系数
     name_factor: f64,
-    /// uid
-    uid: PlrPtr,
 }
 
 /// boss 玩家的名字
@@ -338,7 +341,7 @@ impl Player {
             factor_team.max(factor_name - 6.0)
         };
 
-        let mut plr = Player {
+        Ok(Player {
             team,
             name,
             weapon,
@@ -356,14 +359,7 @@ impl Player {
             status: PlayerStatus::default(),
             skill_store: SkillStore::default(),
             name_factor,
-            uid: 0,
-        };
-
-        // 通过新建的 player 的内存地址来生成 uid
-        // 我真是个天才
-        plr.uid = &plr as *const Player as PlrPtr;
-
-        Ok(plr)
+        })
     }
 
     /// 获取当前的 spsum(步数)
@@ -375,7 +371,7 @@ impl Player {
     #[inline]
     pub fn move_point(&self) -> i32 { self.status.move_point }
 
-    pub fn uid(&self) -> PlrPtr { self.uid }
+    pub fn as_ptr(&self) -> PlrPtr { self as *const Player as usize }
 
     /// 设置 move point (spsum)
     #[inline]
@@ -499,11 +495,13 @@ impl Player {
         self.status.set_frozen(false);
         // update state entry
         // 先设置为 mut了,以防万一
+        let status = &mut self.status;
         for skill in self.skill_store.update_states.iter() {
             // 通过一个华丽的 unsafe 来绕过借用检查
-            // rinick我谢谢你啊
-            let slf = unsafe { &mut *(self as *const Player as *mut Player) };
-            skill.update_state(slf);
+            // rinick 我谢谢你啊
+            // let slf = unsafe { &mut *(self as *const Player as *mut Player) };
+            // 好家伙, 看来不需要了呢, 所有的非 status 修改都是 state 的, 不是 skill得到
+            skill.update_state(status);
         }
     }
 

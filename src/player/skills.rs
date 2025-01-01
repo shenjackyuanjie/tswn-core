@@ -1,4 +1,4 @@
-use crate::player::Player;
+use crate::player::{PlayerStatus, PlrPtr};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Skill {
@@ -8,6 +8,8 @@ pub struct Skill {
     level: u32,
     /// 类型
     skill_type: SkillType,
+    /// 目标
+    pub target: Option<PlrPtr>,
 }
 
 impl Skill {
@@ -16,8 +18,13 @@ impl Skill {
             boosted: false,
             level,
             skill_type: SkillType::new_from_skill_type_id(id),
+            target: None,
         }
     }
+
+    pub fn set_target(&mut self, target: PlrPtr) { self.target = Some(target); }
+
+    pub fn get_target(&self) -> Option<PlrPtr> { self.target }
 
     /// 如果没 boost, 那就 boost 一下
     /// true: boost 成功
@@ -46,8 +53,36 @@ impl Skill {
     /// 获取技能等级
     pub fn level(&self) -> u32 { self.level }
 
-    pub fn update_state(&self, plr: &mut Player) {
+    pub fn update_state(&self, status: &mut PlayerStatus) {
         match self.skill_type {
+            SkillType::Accumulate { acc } => {
+                status.at_boost *= acc;
+            }
+            SkillType::Charge => {
+                status.at_boost *= 3.0;
+            }
+            SkillType::Iron => {
+                status.attract *= 1.12;
+            }
+            SkillType::Hide => {
+                status.attract /= 10.0;
+                if self.level > 63 {
+                    let boost_level = (self.level - 63) as i32;
+                    status.agility += boost_level;
+                    status.defense += boost_level;
+                    status.resistance += boost_level;
+                }
+            }
+            SkillType::Upgrade => {
+                // 全属性 +30
+                status.attack += 30;
+                status.defense += 30;
+                status.agility += 30;
+                status.magic += 30;
+                status.resistance += 30;
+                status.speed += 30;
+                status.wisdom += 30;
+            }
             _ => (),
         }
     }
@@ -186,13 +221,13 @@ impl SkillStore {
 /// 需要和游戏中的技能类型对应
 ///
 /// 因为不知道啥时候会加新的, 所以务必带上 `#[non_exhaustive]`
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub enum SkillType {
     /// 火球术
     Fire,
     /// 冰冻术
-    Ice,
+    Ice { frozen_step: u32 },
     /// 雷击术
     Thunder,
     /// 地裂术
@@ -232,7 +267,7 @@ pub enum SkillType {
     /// 蓄力
     Charge,
     /// 聚气
-    Accumulate,
+    Accumulate { acc: f64 },
 
     /// 潜行
     Assassinate,
@@ -281,7 +316,7 @@ impl SkillType {
     pub fn new_from_skill_type_id(id: u8) -> Self {
         match id {
             0 => Self::Fire,
-            1 => Self::Ice,
+            1 => Self::Ice { frozen_step: 1024 },
             2 => Self::Thunder,
             3 => Self::Quake,
             4 => Self::Absorb,
@@ -302,7 +337,7 @@ impl SkillType {
             18 => Self::Iron,
 
             19 => Self::Charge,
-            20 => Self::Accumulate,
+            20 => Self::Accumulate { acc: 1.7 },
 
             21 => Self::Assassinate,
 
