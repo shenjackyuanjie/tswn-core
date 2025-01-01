@@ -80,8 +80,9 @@ impl Skill {
                 status.agility += 30;
                 status.magic += 30;
                 status.resistance += 30;
-                status.speed += 30;
-                status.wisdom += 30;
+                // 但是这俩只加 20
+                status.speed += 20;
+                status.wisdom += 20;
             }
             _ => (),
         }
