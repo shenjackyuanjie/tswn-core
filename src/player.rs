@@ -16,7 +16,7 @@ pub const NAME_MAX_LEN: usize = 256;
 pub const TEAM_MAX_LEN: usize = 256;
 
 /// 2048 以上才行动
-pub const MOVE_POINT_THRESHOLD: u32 = 2048;
+pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 
 /// 假装是一个指针
 /// (其实就是 usize)
@@ -33,23 +33,29 @@ pub struct PlayerStatus {
     point: u32,
     /// 原文: spsum
     /// >= 2048 时才行动
-    pub move_point: u32,
+    pub move_point: i32,
     /// 血量
-    pub hp: u32,
+    pub hp: i32,
+    /// 最大血量
+    pub max_hp: i32,
     /// 攻击力 (atk)
-    pub attack: u32,
+    pub attack: i32,
     /// 防御 (def)
-    pub defense: u32,
+    pub defense: i32,
     /// 速度 (spd)
-    pub speed: u32,
+    pub speed: i32,
     /// 敏捷 (agl)
-    pub agility: u32,
+    pub agility: i32,
     /// 魔法 (mag)
-    pub magic: u32,
+    pub magic: i32,
+    /// 蓝条
+    pub mp: i32,
     /// 抗性 (mdf)
-    pub resistance: u32,
+    pub resistance: i32,
     /// 智力 (itl)
-    pub wisdom: u32,
+    pub wisdom: i32,
+    /// 蓄力速度?
+    pub at_boost: f32,
 }
 
 impl PlayerStatus {
@@ -59,7 +65,7 @@ impl PlayerStatus {
     pub fn alive(&self) -> bool { self.alive }
     #[deprecated(note = "请使用 move_point()")]
     #[inline]
-    pub fn spsum(&self) -> u32 { self.move_point }
+    pub fn spsum(&self) -> i32 { self.move_point }
     #[inline]
     pub fn check_move(&self) -> bool { self.move_point >= MOVE_POINT_THRESHOLD }
 
@@ -78,13 +84,16 @@ impl Default for PlayerStatus {
             point: 0,
             move_point: 0,
             hp: 0,
+            max_hp: 0,
             attack: 0,
             defense: 0,
             speed: 0,
             agility: 0,
             magic: 0,
+            mp: 0,
             resistance: 0,
             wisdom: 0,
+            at_boost: 1.0,
         }
     }
 }
@@ -93,7 +102,7 @@ impl std::fmt::Display for PlayerStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "PlayerStatus{{{},{} 分数: {}, hp: {} 移动点数: {} 攻|{} 防|{} 速|{} 敏|{} 魔|{} 抗|{} 智|{} }}",
+            "PlayerStatus{{{},{} 分数: {}, hp: {} 移动点数: {} 攻|{} 防|{} 速|{} 敏|{} 魔|{} mp|{} 抗|{} 智|{} }}",
             // 冻结/正常
             // 存活/死亡
             if self.frozen { "冻结" } else { "正常" },
@@ -106,6 +115,7 @@ impl std::fmt::Display for PlayerStatus {
             self.speed,
             self.agility,
             self.magic,
+            self.mp,
             self.resistance,
             self.wisdom
         )
@@ -350,17 +360,17 @@ impl Player {
     /// 获取当前的 spsum(步数)
     #[inline]
     #[deprecated(note = "请使用 move_point()")]
-    pub fn sp_sum(&self) -> u32 { self.status.move_point }
+    pub fn sp_sum(&self) -> i32 { self.status.move_point }
 
     /// 获取当前的 move point (spsum)
     #[inline]
-    pub fn move_point(&self) -> u32 { self.status.move_point }
+    pub fn move_point(&self) -> i32 { self.status.move_point }
 
     pub fn uid(&self) -> PlrPtr { self.uid }
 
     /// 设置 move point (spsum)
     #[inline]
-    pub fn set_move_point(&mut self, val: u32) { self.status.move_point = val }
+    pub fn set_move_point(&mut self, val: i32) { self.status.move_point = val }
 
     /// 检查是否可以行动
     pub fn check_move(&self) -> bool { self.status.check_move() }
@@ -373,8 +383,12 @@ impl Player {
     /// ```javascript
     /// const result = Math.round(a * (1 - this.x / b))
     /// ```
-    fn scale_by_name_factor(&self, val: u32, factor2: u32) -> u32 {
+    fn scale_by_name_factor_u(&self, val: u32, factor2: u32) -> u32 {
         (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as u32
+    }
+
+    fn scale_by_name_factor_i(&self, val: i32, factor2: i32) -> i32 {
+        (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as i32
     }
 
     /// upgrade 之后
@@ -405,8 +419,8 @@ impl Player {
         attr[6] = median(rand_vals[28], rand_vals[29], rand_vals[30]) as u32;
         // 7 -> rand 3 + 4 + 5 + 6
         attr[7] = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
-
         self.attr = attr;
+
         // init skills
         // 技能熟练度计算
         // 计算 skl_id 的已经在初始化做完了
@@ -430,18 +444,39 @@ impl Player {
                 self.skill_store.add_skill(skill);
             }
         }
-        // 然后是boost最后一个
-        self.skill_store.boost_last();
-        self.skill_store.update_proc();
+
         // TODO: 武器 post upgrade
         if let Some(_weapon) = &self.weapon {
             // weapon
         }
 
-        // add skills to proc
-        // DIY TODO
+        // boost skills(addSkillsToProc)
+        // 然后是boost最后一个
+        self.skill_store.boost_last();
+        // 然后是 boost passive
+        if self.skill_store.skill_store.len() > 16 && !self.skill_store.skill_store[14].boosted {
+            let boost_level = min(
+                min(self.name_base[60], self.name_base[61]) as u32,
+                self.skill_store.skill_store[14].level(),
+            );
+            self.skill_store.skill_store[14].boost_level(boost_level);
+        }
+        // 更新 proc(其实就是缓存)
         self.skill_store.update_proc();
+
         // init values
+        self.status.attack = self.scale_by_name_factor_i(self.attr[0] as i32, 128);
+        self.status.defense = self.scale_by_name_factor_i(self.attr[1] as i32, 128);
+        self.status.speed = self.scale_by_name_factor_i(self.attr[2] as i32, 128) + 160;
+        self.status.agility = self.scale_by_name_factor_i(self.attr[3] as i32, 128);
+        self.status.magic = self.scale_by_name_factor_i(self.attr[4] as i32, 128);
+        self.status.mp = self.status.magic >> 1;
+        self.status.resistance = self.scale_by_name_factor_i(self.attr[5] as i32, 128);
+        self.status.wisdom = self.scale_by_name_factor_i(self.attr[6] as i32, 80);
+        self.status.max_hp = self.attr[7] as i32;
+        self.status.hp = self.status.max_hp;
+
+        // DIY TODO
     }
 
     fn init_skills(&mut self) {}
@@ -536,7 +571,7 @@ impl Player {
         if !self.status.alive() {
             return;
         }
-        let stp = self.status.speed * randomer.r3();
+        let stp = self.status.speed * randomer.r3() as i32;
 
         // 预动作
         // todo
@@ -553,15 +588,42 @@ impl Player {
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates) {
         // let mut targets: Vec<_> = vec![];
 
-        let smart = self.status.wisdom > randomer.r63();
+        let smart = self.status.wisdom > randomer.r63() as i32;
         let req_mp = 0;
 
         // todo: pre action
 
-        if self.status.frozed() {
-        }
+        if self.status.frozed() {}
     }
 
+    /// 当前玩家是否可行动
+    #[inline]
+    pub fn active(&self) -> bool { self.status.hp > 0 && !self.status.frozed() }
+    /// 活着呢吧?
+    #[inline]
+    pub fn alive(&self) -> bool { self.status.alive() }
+
+    // 一大堆 sum
+    pub fn attr_sum(&self) -> u32 { self.attr[0..7].iter().sum() }
+    pub fn all_sum(&self) -> u32 { (self.attr_sum() * 3) + self.attr[7] }
+    pub fn atk_sum(&self) -> u32 {
+        (self.attr[0] - self.attr[1] + self.attr[2] + self.attr[4] - self.attr[5]) * 2 + self.attr[3] + self.attr[6]
+    }
+
+    /// 蓝条是不是够用
+    pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
+        if !self.active() {
+            return false;
+        }
+        let require_mp = randomer.r3x3() as i32;
+        if self.status.mp >= require_mp {
+            self.status.mp -= require_mp;
+            return true;
+        }
+        false
+    }
+
+    // 用于兼容 namerena 的各种名字调用
     #[inline]
     pub fn id_name(&self) -> String { self.name.clone() }
     #[inline]

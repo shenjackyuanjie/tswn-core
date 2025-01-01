@@ -546,8 +546,8 @@ impl RC4 {
     #[inline]
     pub fn r3(&mut self) -> u32 { self.next_u8() as u32 & 3 }
 
-    /// ```dart
     /// used by req mp
+    /// ```dart
     /// int get r3x3 {
     ///   int b = nextByte();
     ///   int b1 = (b & 15) + 1;

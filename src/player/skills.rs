@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone)]
 pub struct Skill {
     /// 是否被增强过
@@ -30,6 +29,20 @@ impl Skill {
             true
         }
     }
+
+    pub fn boost_level(&mut self, level: u32) -> bool {
+        if self.boosted {
+            self.level += level;
+            false
+        } else {
+            self.level += level;
+            self.boosted = true;
+            true
+        }
+    }
+
+    /// 获取技能等级
+    pub fn level(&self) -> u32 { self.level }
 }
 
 /// ```dart
@@ -300,52 +313,51 @@ impl SkillType {
 
     /// 是否是普通技能
     pub fn is_normal_skill(&self) -> bool {
-        matches!(self, SkillType::Fire
-            | SkillType::Ice
-            | SkillType::Thunder
-            | SkillType::Quake
-            | SkillType::Absorb
-            | SkillType::Poison
-            | SkillType::Rapid
-            | SkillType::Critical
-            | SkillType::Plague
-            | SkillType::Life
-            | SkillType::Berserk
-            | SkillType::Charm
-            | SkillType::Haste
-            | SkillType::Slow
-            | SkillType::Curse
-            | SkillType::Heal
-            | SkillType::Revive
-            | SkillType::Disperse
-            | SkillType::Iron
-            | SkillType::Charge
-            | SkillType::Accumulate
-            | SkillType::Assassinate
-            | SkillType::Summon
-            | SkillType::Clone
-            | SkillType::Shadow
-            | SkillType::Defend
-            | SkillType::Protect
-            | SkillType::Reflect
-            | SkillType::Reraise
-            | SkillType::Shield
-            | SkillType::Counter
-            | SkillType::Merge
-            | SkillType::Zombie
-            | SkillType::Upgrade
-            | SkillType::Hide)
+        matches!(
+            self,
+            SkillType::Fire
+                | SkillType::Ice
+                | SkillType::Thunder
+                | SkillType::Quake
+                | SkillType::Absorb
+                | SkillType::Poison
+                | SkillType::Rapid
+                | SkillType::Critical
+                | SkillType::Plague
+                | SkillType::Life
+                | SkillType::Berserk
+                | SkillType::Charm
+                | SkillType::Haste
+                | SkillType::Slow
+                | SkillType::Curse
+                | SkillType::Heal
+                | SkillType::Revive
+                | SkillType::Disperse
+                | SkillType::Iron
+                | SkillType::Charge
+                | SkillType::Accumulate
+                | SkillType::Assassinate
+                | SkillType::Summon
+                | SkillType::Clone
+                | SkillType::Shadow
+                | SkillType::Defend
+                | SkillType::Protect
+                | SkillType::Reflect
+                | SkillType::Reraise
+                | SkillType::Shield
+                | SkillType::Counter
+                | SkillType::Merge
+                | SkillType::Zombie
+                | SkillType::Upgrade
+                | SkillType::Hide
+        )
     }
 
     /// 是否是 BOSS 技能
-    pub fn is_boss_skill(&self) -> bool {
-        matches!(self, SkillType::Slime)
-    }
+    pub fn is_boss_skill(&self) -> bool { matches!(self, SkillType::Slime) }
 
     /// 是否是武器技能
-    pub fn is_weapon_skill(&self) -> bool {
-        matches!(self, SkillType::DeathNote)
-    }
+    pub fn is_weapon_skill(&self) -> bool { matches!(self, SkillType::DeathNote) }
 }
 
 /*

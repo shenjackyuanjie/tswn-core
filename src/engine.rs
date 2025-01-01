@@ -102,7 +102,7 @@ pub mod runners {
 
             for group in inited_plrs.iter_mut() {
                 for plr in group.iter_mut() {
-                    plr.set_move_point(randomer.r255());
+                    plr.set_move_point(randomer.r255() as i32);
                 }
             }
 
