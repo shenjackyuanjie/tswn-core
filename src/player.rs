@@ -559,7 +559,6 @@ impl Player {
         // todo: pre action
 
         if self.status.frozed() {
-            return;
         }
     }
 

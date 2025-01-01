@@ -1,4 +1,3 @@
-use crate::player::Player;
 
 #[derive(Debug, Clone)]
 pub struct Skill {
@@ -297,6 +296,55 @@ impl SkillType {
             35..40 => Self::None,
             _ => Self::None,
         }
+    }
+
+    /// 是否是普通技能
+    pub fn is_normal_skill(&self) -> bool {
+        matches!(self, SkillType::Fire
+            | SkillType::Ice
+            | SkillType::Thunder
+            | SkillType::Quake
+            | SkillType::Absorb
+            | SkillType::Poison
+            | SkillType::Rapid
+            | SkillType::Critical
+            | SkillType::Plague
+            | SkillType::Life
+            | SkillType::Berserk
+            | SkillType::Charm
+            | SkillType::Haste
+            | SkillType::Slow
+            | SkillType::Curse
+            | SkillType::Heal
+            | SkillType::Revive
+            | SkillType::Disperse
+            | SkillType::Iron
+            | SkillType::Charge
+            | SkillType::Accumulate
+            | SkillType::Assassinate
+            | SkillType::Summon
+            | SkillType::Clone
+            | SkillType::Shadow
+            | SkillType::Defend
+            | SkillType::Protect
+            | SkillType::Reflect
+            | SkillType::Reraise
+            | SkillType::Shield
+            | SkillType::Counter
+            | SkillType::Merge
+            | SkillType::Zombie
+            | SkillType::Upgrade
+            | SkillType::Hide)
+    }
+
+    /// 是否是 BOSS 技能
+    pub fn is_boss_skill(&self) -> bool {
+        matches!(self, SkillType::Slime)
+    }
+
+    /// 是否是武器技能
+    pub fn is_weapon_skill(&self) -> bool {
+        matches!(self, SkillType::DeathNote)
     }
 }
 

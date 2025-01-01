@@ -2,7 +2,7 @@ pub const PROFILE_START: u32 = 33554431;
 
 pub mod runners {
 
-    use crate::engine::update::{RunUpdate, RunUpdates};
+    use crate::engine::update::RunUpdates;
     use crate::error::runner::RunnerResult;
     use crate::player::{Player, PlrPtr};
     use crate::rc4::RC4;
@@ -241,7 +241,7 @@ pub mod runners {
             &*ptr
         }
 
-        pub fn main_round(&mut self) { let mut updates = RunUpdates::new(); }
+        pub fn main_round(&mut self) { let updates = RunUpdates::new(); }
 
         pub fn round_tick(&mut self, updates: &mut RunUpdates) {
             self.round_pos += 1;
