@@ -59,22 +59,28 @@ impl Skill {
 pub struct SkillStore {
     /// 实际存储 skill 的地方
     pub skill_store: Vec<Skill>,
+    /// 更新状态的
+    /// (其他人加到自己身上的)
+    pub update_states: Vec<Skill>,
+    /// meta??
+    pub meta: Vec<Skill>,
+    // 自己的状态
     /// step 之前
-    pub pre_step: Vec<u32>,
+    pub pre_step: Vec<Skill>,
     /// 动作之前
-    pub pre_action: Vec<u32>,
+    pub pre_action: Vec<Skill>,
     /// 动作之后
-    pub post_action: Vec<u32>,
+    pub post_action: Vec<Skill>,
     /// 防御之前
-    pub pre_defend: Vec<u32>,
+    pub pre_defend: Vec<Skill>,
     /// 防御之后
-    pub post_defend: Vec<u32>,
+    pub post_defend: Vec<Skill>,
     /// 伤害之后
-    pub post_damage: Vec<u32>,
+    pub post_damage: Vec<Skill>,
     /// 死亡之后
-    pub post_death: Vec<u32>,
+    pub post_death: Vec<Skill>,
     /// 干掉目标之后
-    pub post_kill: Vec<u32>,
+    pub post_kill: Vec<Skill>,
 }
 
 impl SkillStore {
@@ -105,48 +111,47 @@ impl SkillStore {
 
     pub fn update_proc(&mut self) {
         self.clear_proc();
-        for (i, skill) in self.skill_store.iter().enumerate() {
+        for skill in self.skill_store.iter() {
             let skill_type = &skill.skill_type;
-            let i = i as u32;
             match skill_type {
                 SkillType::Counter => {
-                    self.post_damage.push(i);
+                    self.post_damage.push(skill.clone());
                 }
                 SkillType::Defend => {
-                    self.post_defend.push(i);
+                    self.post_defend.push(skill.clone());
                 }
                 SkillType::Hide => {
-                    self.post_damage.push(i);
-                    self.pre_action.push(i);
+                    self.post_damage.push(skill.clone());
+                    self.pre_action.push(skill.clone());
                 }
                 SkillType::Merge => {
-                    self.post_kill.push(i);
+                    self.post_kill.push(skill.clone());
                 }
                 SkillType::Protect => {
-                    self.post_action.push(i);
+                    self.post_action.push(skill.clone());
                 }
                 SkillType::Reflect => {
-                    self.pre_defend.push(i);
+                    self.pre_defend.push(skill.clone());
                 }
                 SkillType::Reraise => {
-                    self.post_death.push(i);
+                    self.post_death.push(skill.clone());
                 }
                 SkillType::Shield => {
-                    self.pre_action.push(i);
+                    self.pre_action.push(skill.clone());
                 }
                 SkillType::Upgrade => {
-                    self.post_damage.push(i);
+                    self.post_damage.push(skill.clone());
                 }
                 SkillType::Zombie => {
-                    self.post_kill.push(i);
+                    self.post_kill.push(skill.clone());
                 }
                 // TODO: BOSS 技能
                 SkillType::Slime => {
-                    self.post_damage.push(i);
+                    self.post_damage.push(skill.clone());
                 }
                 // TODO: 武器技能
                 SkillType::DeathNote => {
-                    self.post_damage.push(i);
+                    self.post_damage.push(skill.clone());
                 }
 
                 _ => (),

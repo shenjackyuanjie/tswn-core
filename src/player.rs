@@ -55,7 +55,9 @@ pub struct PlayerStatus {
     /// 智力 (itl)
     pub wisdom: i32,
     /// 蓄力速度?
-    pub at_boost: f32,
+    pub at_boost: f64,
+    /// attract ?
+    pub attract: f64,
 }
 
 impl PlayerStatus {
@@ -94,6 +96,7 @@ impl Default for PlayerStatus {
             resistance: 0,
             wisdom: 0,
             at_boost: 1.0,
+            attract: 32768.0,
         }
     }
 }
@@ -146,9 +149,13 @@ pub struct Player {
     /// len(list(i for i in range(256) if (i * 181 + 160) % 256 > 88 and (i * 181 + 160) % 256 < 217 )) == 128
     /// ```
     pub name_base: Vec<u8>,
+    /// 没 upgrade 过的 name base
     raw_name_base: [u8; 128],
+    /// 原始的属性数据
     attr: [u32; 8],
-    last_skill: u8,
+    attr_sum: u32,
+    atk_sum: u32,
+    all_sum: u32,
     /// 玩家状态
     ///
     /// 主要是我懒得加一大堆字段
@@ -340,8 +347,10 @@ impl Player {
             rand,
             name_base,
             raw_name_base,
-            last_skill: 0,
             attr: [0; 8],
+            attr_sum: 0,
+            atk_sum: 0,
+            all_sum: 0,
             skil_id: skills.clone(),
             skil_prop: skills,
             status: PlayerStatus::default(),
@@ -464,19 +473,39 @@ impl Player {
         // 更新 proc(其实就是缓存)
         self.skill_store.update_proc();
 
+        self.update_states();
+
+        // DIY TODO
+    }
+
+    /// 更新状态
+    pub fn update_states(&mut self) {
         // init values
         self.status.attack = self.scale_by_name_factor_i(self.attr[0] as i32, 128);
         self.status.defense = self.scale_by_name_factor_i(self.attr[1] as i32, 128);
         self.status.speed = self.scale_by_name_factor_i(self.attr[2] as i32, 128) + 160;
         self.status.agility = self.scale_by_name_factor_i(self.attr[3] as i32, 128);
         self.status.magic = self.scale_by_name_factor_i(self.attr[4] as i32, 128);
+        // 蓝条是魔法的一半
         self.status.mp = self.status.magic >> 1;
         self.status.resistance = self.scale_by_name_factor_i(self.attr[5] as i32, 128);
         self.status.wisdom = self.scale_by_name_factor_i(self.attr[6] as i32, 80);
         self.status.max_hp = self.attr[7] as i32;
         self.status.hp = self.status.max_hp;
 
-        // DIY TODO
+        self.calc_attr_sum();
+
+        self.status.at_boost = 1.0;
+        self.status.set_frozen(false);
+        // update state entry
+    }
+
+    /// 我真是谢谢您呢……
+    pub fn calc_attr_sum(&mut self) {
+        self.attr_sum = self.attr[0..7].iter().sum();
+        self.atk_sum = (self.attr[0] - self.attr[1] + self.attr[2] + self.attr[4] - self.attr[5]) * 2 + self.attr[3] + self.attr[6];
+        self.all_sum = (self.attr_sum * 3) + self.attr[7];
+        self.status.attract = 32768.0;
     }
 
     fn init_skills(&mut self) {}
@@ -602,13 +631,6 @@ impl Player {
     /// 活着呢吧?
     #[inline]
     pub fn alive(&self) -> bool { self.status.alive() }
-
-    // 一大堆 sum
-    pub fn attr_sum(&self) -> u32 { self.attr[0..7].iter().sum() }
-    pub fn all_sum(&self) -> u32 { (self.attr_sum() * 3) + self.attr[7] }
-    pub fn atk_sum(&self) -> u32 {
-        (self.attr[0] - self.attr[1] + self.attr[2] + self.attr[4] - self.attr[5]) * 2 + self.attr[3] + self.attr[6]
-    }
 
     /// 蓝条是不是够用
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
