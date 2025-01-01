@@ -1,4 +1,6 @@
-#[derive(Debug, Clone)]
+use crate::player::Player;
+
+#[derive(Debug, Clone, Copy)]
 pub struct Skill {
     /// 是否被增强过
     pub boosted: bool,
@@ -43,6 +45,12 @@ impl Skill {
 
     /// 获取技能等级
     pub fn level(&self) -> u32 { self.level }
+
+    pub fn update_state(&self, plr: &mut Player) {
+        match self.skill_type {
+            _ => (),
+        }
+    }
 }
 
 /// ```dart
@@ -87,6 +95,8 @@ impl SkillStore {
     pub fn new() -> Self {
         Self {
             skill_store: vec![],
+            update_states: vec![],
+            meta: vec![],
             pre_step: vec![],
             pre_action: vec![],
             post_action: vec![],

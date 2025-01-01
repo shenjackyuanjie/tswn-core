@@ -498,12 +498,20 @@ impl Player {
         self.status.at_boost = 1.0;
         self.status.set_frozen(false);
         // update state entry
+        // 先设置为 mut了,以防万一
+        for skill in self.skill_store.update_states.iter() {
+            // 通过一个华丽的 unsafe 来绕过借用检查
+            // rinick我谢谢你啊
+            let slf = unsafe { &mut *(self as *const Player as *mut Player) };
+            skill.update_state(slf);
+        }
     }
 
     /// 我真是谢谢您呢……
     pub fn calc_attr_sum(&mut self) {
         self.attr_sum = self.attr[0..7].iter().sum();
-        self.atk_sum = (self.attr[0] - self.attr[1] + self.attr[2] + self.attr[4] - self.attr[5]) * 2 + self.attr[3] + self.attr[6];
+        self.atk_sum =
+            (self.attr[0] - self.attr[1] + self.attr[2] + self.attr[4] - self.attr[5]) * 2 + self.attr[3] + self.attr[6];
         self.all_sum = (self.attr_sum * 3) + self.attr[7];
         self.status.attract = 32768.0;
     }
