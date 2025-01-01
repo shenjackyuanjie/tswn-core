@@ -26,7 +26,7 @@ pub type PlrPtr = usize;
 
 /// 将 PlrPtr 转换为 &mut Player
 /// 其实就是一个包装
-pub fn player_ptr_as_mut_plr<'a>(ptr: &'a PlrPtr) -> &'a mut Player { unsafe { &mut *(*ptr as *mut Player) } }
+pub fn player_ptr_as_mut_plr<'a>(ptr: &PlrPtr) -> &'a mut Player { unsafe { &mut *(*ptr as *mut Player) } }
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlayerStatus {

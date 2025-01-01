@@ -219,7 +219,7 @@ pub mod runners {
         pub fn all_plrs(&self) -> Vec<&Player> { self.players.iter().flatten().collect() }
 
         /// 你甚至可以通过他们的指针来直接访问对应的玩家
-        pub fn all_plr_ptrs(&self) -> Vec<PlrPtr> { self.players.iter().flatten().map(|x| x.uid()).collect() }
+        pub fn all_plr_ptrs(&self) -> Vec<PlrPtr> { self.players.iter().flatten().map(|x| x.as_ptr()).collect() }
 
         #[inline]
         pub fn all_plr_len(&self) -> usize { self.players.iter().map(|x| x.len()).sum() }
@@ -227,7 +227,7 @@ pub mod runners {
         pub fn get_plr_by_ptr(&self, ptr: PlrPtr) -> Option<&Player> {
             for group in self.players.iter() {
                 for plr in group.iter() {
-                    if plr.uid() == ptr {
+                    if plr.as_ptr() == ptr {
                         return Some(plr);
                     }
                 }

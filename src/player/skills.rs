@@ -366,7 +366,7 @@ impl SkillType {
         matches!(
             self,
             SkillType::Fire
-                | SkillType::Ice
+                | SkillType::Ice { .. }
                 | SkillType::Thunder
                 | SkillType::Quake
                 | SkillType::Absorb
@@ -385,7 +385,7 @@ impl SkillType {
                 | SkillType::Disperse
                 | SkillType::Iron
                 | SkillType::Charge
-                | SkillType::Accumulate
+                | SkillType::Accumulate { .. }
                 | SkillType::Assassinate
                 | SkillType::Summon
                 | SkillType::Clone
