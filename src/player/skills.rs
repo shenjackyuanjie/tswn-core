@@ -161,43 +161,43 @@ impl SkillStore {
             let skill_type = &skill.skill_type;
             match skill_type {
                 SkillType::Counter => {
-                    self.post_damage.push(skill.clone());
+                    self.post_damage.push(*skill);
                 }
                 SkillType::Defend => {
-                    self.post_defend.push(skill.clone());
+                    self.post_defend.push(*skill);
                 }
                 SkillType::Hide => {
-                    self.post_damage.push(skill.clone());
-                    self.pre_action.push(skill.clone());
+                    self.post_damage.push(*skill);
+                    self.pre_action.push(*skill);
                 }
                 SkillType::Merge => {
-                    self.post_kill.push(skill.clone());
+                    self.post_kill.push(*skill);
                 }
                 SkillType::Protect => {
-                    self.post_action.push(skill.clone());
+                    self.post_action.push(*skill);
                 }
                 SkillType::Reflect => {
-                    self.pre_defend.push(skill.clone());
+                    self.pre_defend.push(*skill);
                 }
                 SkillType::Reraise => {
-                    self.post_death.push(skill.clone());
+                    self.post_death.push(*skill);
                 }
                 SkillType::Shield => {
-                    self.pre_action.push(skill.clone());
+                    self.pre_action.push(*skill);
                 }
                 SkillType::Upgrade => {
-                    self.post_damage.push(skill.clone());
+                    self.post_damage.push(*skill);
                 }
                 SkillType::Zombie => {
-                    self.post_kill.push(skill.clone());
+                    self.post_kill.push(*skill);
                 }
                 // TODO: BOSS 技能
                 SkillType::Slime => {
-                    self.post_damage.push(skill.clone());
+                    self.post_damage.push(*skill);
                 }
                 // TODO: 武器技能
                 SkillType::DeathNote => {
-                    self.post_damage.push(skill.clone());
+                    self.post_damage.push(*skill);
                 }
 
                 _ => (),

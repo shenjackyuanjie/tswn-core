@@ -1,5 +1,90 @@
 pub const PROFILE_START: u32 = 33554431;
 
+/// 由 Bevy Ecs 启发的一个简单的 ECS 系统
+/// 主要用来存储 Skill (玩家技能), State (玩家状态)
+/// 有可能后面会一块干脆把 Player 也放进来
+pub mod storage {
+
+    use crate::player::skills::Skill;
+    use crate::player::states::State;
+
+    use foldhash::HashMap as FastHashMap;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct SkillId(usize);
+
+    impl SkillId {
+        pub fn new(id: usize) -> SkillId { SkillId(id) }
+
+        pub fn new_from_skill(skill: &Skill) -> SkillId {
+            SkillId({
+                let ptr = skill as *const Skill;
+                ptr as usize
+            })
+        }
+    }
+
+    pub struct StateId(usize);
+
+    impl StateId {
+        pub fn new(id: usize) -> StateId { StateId(id) }
+
+        pub fn new_from_state(state: &State) -> StateId {
+            StateId({
+                let ptr = state as *const State;
+                ptr as usize
+            })
+        }
+    }
+
+    /// 存数据的地方
+    ///
+    /// 使用了 foldhash 的 HashMap, 快一些
+    pub struct Storages {
+        /// 存技能
+        /// usize: memory address
+        skills: FastHashMap<usize, Skill>,
+        /// 存状态
+        /// usize: memory address
+        states: FastHashMap<usize, State>,
+    }
+
+    impl Storages {
+        pub fn new() -> Storages {
+            Storages {
+                skills: FastHashMap::default(),
+                states: FastHashMap::default(),
+            }
+        }
+
+        pub fn clear(&mut self) {
+            self.skills.clear();
+            self.states.clear();
+        }
+
+        pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
+
+        pub fn get_state(&self, id: StateId) -> Option<&State> { self.states.get(&id.0) }
+
+        pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills.get_mut(&id.0) }
+
+        pub fn get_state_mut(&mut self, id: StateId) -> Option<&mut State> { self.states.get_mut(&id.0) }
+
+        pub fn insert_skill(&mut self, skill: Skill) -> SkillId {
+            let id = SkillId::new_from_skill(&skill);
+            self.skills.insert(id.0, skill);
+            id
+        }
+
+        pub fn insert_state(&mut self, state: State) -> StateId {
+            let id = StateId::new_from_state(&state);
+            self.states.insert(id.0, state);
+            id
+        }
+    }
+}
+
+/// 核心的游戏逻辑
 pub mod runners {
 
     use crate::engine::update::RunUpdates;
