@@ -527,7 +527,7 @@ impl Player {
             // let slf = unsafe { &mut *(self as *const Player as *mut Player) };
             // 好家伙, 看来不需要了呢, 所有的非 status 修改都是 state 的, 不是 skill得到
             // skill.update_state(status);
-            let skill = self.storage.as_ref().just_get_skill_mut(skill_id).expect("skill not found");
+            let skill = self.storage.as_ref().just_get_skill_mut(*skill_id).expect("skill not found");
             skill.update_state(status);
         }
     }
