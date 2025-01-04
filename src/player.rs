@@ -521,11 +521,13 @@ impl Player {
         // update state entry
         // 先设置为 mut了,以防万一
         let status = &mut self.status;
-        for skill in self.skill_store.update_states.iter() {
+        for skill_id in self.skill_store.update_states.iter() {
             // 通过一个华丽的 unsafe 来绕过借用检查
             // rinick 我谢谢你啊
             // let slf = unsafe { &mut *(self as *const Player as *mut Player) };
             // 好家伙, 看来不需要了呢, 所有的非 status 修改都是 state 的, 不是 skill得到
+            // skill.update_state(status);
+            let skill = self.storage.as_ref().just_get_skill_mut(skill_id).expect("skill not found");
             skill.update_state(status);
         }
     }
