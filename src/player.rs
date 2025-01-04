@@ -5,7 +5,9 @@ pub mod utils;
 pub mod weapons;
 
 use std::cmp::{min, Ordering};
+use std::sync::Arc;
 
+use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::error::player::{PlayerError, PlayerResult};
 use crate::player::skills::{Skill, SkillStore};
@@ -63,6 +65,12 @@ pub struct PlayerStatus {
     pub at_boost: f64,
     /// attract ?
     pub attract: f64,
+    /// 总属性和
+    pub attr_sum: u32,
+    /// 攻击和?
+    pub atk_sum: u32,
+    /// 总和?
+    pub all_sum: u32,
 }
 
 impl PlayerStatus {
@@ -102,6 +110,9 @@ impl Default for PlayerStatus {
             wisdom: 0,
             at_boost: 1.0,
             attract: 32768.0,
+            attr_sum: 0,
+            atk_sum: 0,
+            all_sum: 0,
         }
     }
 }
@@ -110,13 +121,16 @@ impl std::fmt::Display for PlayerStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "PlayerStatus{{{},{} 分数: {}, hp: {} 移动点数: {} 攻|{} 防|{} 速|{} 敏|{} 魔|{} mp|{} 抗|{} 智|{} }}",
+            "PlayerStatus{{{},{} 分数: {}, hp: {} 移动点数: {} sums:{},{},{} 攻|{} 防|{} 速|{} 敏|{} 魔|{} mp|{} 抗|{} 智|{} }}",
             // 冻结/正常
             // 存活/死亡
             if self.frozen { "冻结" } else { "正常" },
             if self.alive { "存活" } else { "死亡" },
             self.point,
             self.move_point,
+            self.attr_sum,
+            self.atk_sum,
+            self.all_sum,
             self.hp,
             self.attack,
             self.defense,
@@ -128,47 +142,6 @@ impl std::fmt::Display for PlayerStatus {
             self.wisdom
         )
     }
-}
-
-#[derive(Clone)]
-pub struct Player {
-    /// 队伍
-    team: Option<String>,
-    /// 玩家名
-    name: String,
-    /// 武器
-    weapon: Option<String>,
-    /// 玩家类型
-    player_type: PlayerType,
-    /// skl id
-    skil_id: Vec<u32>,
-    /// skl prop
-    skil_prop: Vec<u32>,
-    /// 玩家的 sort int
-    /// 用于在排序中比较两个玩家
-    pub sort_int: i32,
-    /// RC4
-    pub rand: RC4,
-    /// name base
-    /// ```python
-    /// len(list(i for i in range(256) if (i * 181 + 160) % 256 > 88 and (i * 181 + 160) % 256 < 217 )) == 128
-    /// ```
-    pub name_base: Vec<u8>,
-    /// 没 upgrade 过的 name base
-    raw_name_base: [u8; 128],
-    /// 原始的属性数据
-    attr: [u32; 8],
-    attr_sum: u32,
-    atk_sum: u32,
-    all_sum: u32,
-    /// 玩家状态
-    ///
-    /// 主要是我懒得加一大堆字段
-    status: PlayerStatus,
-    /// 技能相关
-    skill_store: skills::SkillStore,
-    /// 名字长度系数
-    name_factor: f64,
 }
 
 /// boss 玩家的名字
@@ -244,12 +217,52 @@ pub enum PlayerType {
     TestEx,
 }
 
+#[derive(Clone)]
+pub struct Player {
+    /// 队伍
+    team: Option<String>,
+    /// 玩家名
+    name: String,
+    /// 武器
+    weapon: Option<String>,
+    /// 玩家类型
+    player_type: PlayerType,
+    /// skl id
+    skil_id: Vec<u32>,
+    /// skl prop
+    skil_prop: Vec<u32>,
+    /// 玩家的 sort int
+    /// 用于在排序中比较两个玩家
+    pub sort_int: i32,
+    /// RC4
+    pub rand: RC4,
+    /// name base
+    /// ```python
+    /// len(list(i for i in range(256) if (i * 181 + 160) % 256 > 88 and (i * 181 + 160) % 256 < 217 )) == 128
+    /// ```
+    pub name_base: Vec<u8>,
+    /// 没 upgrade 过的 name base
+    raw_name_base: [u8; 128],
+    /// 原始的属性数据
+    attr: [u32; 8],
+    /// 玩家状态
+    ///
+    /// 主要是我懒得加一大堆字段
+    status: PlayerStatus,
+    /// 技能相关
+    skill_store: skills::SkillStore,
+    /// 名字长度系数
+    name_factor: f64,
+    /// store
+    pub storage: Arc<Storage>,
+}
+
 impl Player {
     // /// 按照 namerena 的原始 new
     // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
     /// 创建一个新的玩家
-    pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>) -> PlayerResult<Self> {
+    pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>, storage: Arc<Storage>) -> PlayerResult<Self> {
         // 先校验长度
         if team.is_some() && team.as_ref().unwrap().as_bytes().len() > TEAM_MAX_LEN {
             let t = team.unwrap();
@@ -351,14 +364,12 @@ impl Player {
             name_base,
             raw_name_base,
             attr: [0; 8],
-            attr_sum: 0,
-            atk_sum: 0,
-            all_sum: 0,
             skil_id: skills.clone(),
             skil_prop: skills,
             status: PlayerStatus::default(),
-            skill_store: SkillStore::default(),
+            skill_store: SkillStore::new(storage.clone()),
             name_factor,
+            storage,
         })
     }
 
@@ -446,7 +457,8 @@ impl Player {
                 if raw_small < 10 {
                     skill.boosted = true;
                 }
-                self.skill_store.add_skill(skill);
+                let skill_id = self.storage.as_ref().just_insert_skill(skill);
+                self.skill_store.add_skill(skill_id);
             }
         }
 
@@ -456,15 +468,28 @@ impl Player {
         }
 
         // boost skills(addSkillsToProc)
-        // 然后是boost最后一个
+        // boost最后一个
         self.skill_store.boost_last();
         // 然后是 boost passive
-        if self.skill_store.skill_store.len() > 16 && !self.skill_store.skill_store[14].boosted {
-            let boost_level = min(
-                min(self.name_base[60], self.name_base[61]) as u32,
-                self.skill_store.skill_store[14].level(),
-            );
-            self.skill_store.skill_store[14].boost_level(boost_level);
+        if self.skill_store.skill_store.len() >= 16 {
+            // 14
+            let skill_14 = self
+                .storage
+                .just_get_skill_mut(self.skill_store.skill_store[14])
+                .expect("skill 14 not found??");
+            if skill_14.level() > 0 && !skill_14.boosted {
+                let boost_level = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
+                skill_14.boost_level(boost_level);
+            }
+            // 15
+            let skill_15 = self
+                .storage
+                .just_get_skill_mut(self.skill_store.skill_store[15])
+                .expect("skill 15 not found??");
+            if skill_15.level() > 0 && !skill_15.boosted {
+                let boost_level = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
+                skill_15.boost_level(boost_level);
+            }
         }
         // 更新 proc(其实就是缓存)
         self.skill_store.update_proc();
@@ -507,10 +532,10 @@ impl Player {
 
     /// 我真是谢谢您呢……
     pub fn calc_attr_sum(&mut self) {
-        self.attr_sum = self.attr[0..7].iter().sum();
-        self.atk_sum =
+        self.status.attr_sum = self.attr[0..7].iter().sum();
+        self.status.atk_sum =
             (self.attr[0] - self.attr[1] + self.attr[2] + self.attr[4] - self.attr[5]) * 2 + self.attr[3] + self.attr[6];
-        self.all_sum = (self.attr_sum * 3) + self.attr[7];
+        self.status.all_sum = (self.status.attr_sum * 3) + self.attr[7];
         self.status.attract = 32768.0;
     }
 
@@ -552,10 +577,10 @@ impl Player {
     /// - \<name>+\<weapon>+diy{xxxxx}
     /// - \<name>@<team>+\<weapon>
     /// - \<name>@<team>+\<weapon>+diy{xxxxx}
-    pub fn new_from_namerena_raw(raw_name: String) -> PlayerResult<Self> {
+    pub fn new_from_namerena_raw(raw_name: String, storage: Arc<Storage>) -> PlayerResult<Self> {
         // 先判断是否有 + 和 @
         if !raw_name.contains("@") && !raw_name.contains("+") {
-            return Player::new_and_init(None, raw_name.clone(), None);
+            return Player::new_and_init(None, raw_name.clone(), None, storage);
         }
         // 区分队伍名
         let name: &str;
@@ -571,14 +596,14 @@ impl Player {
             } else {
                 weapon = None;
             }
-            Player::new_and_init(Some(team.to_string()), name.to_string(), weapon.map(|s| s.to_string()))
+            Player::new_and_init(Some(team.to_string()), name.to_string(), weapon.map(|s| s.to_string()), storage)
         } else {
             // 没有队伍名, 直接是武器
             if raw_name.contains("+") {
                 let (name, weapon) = raw_name.split_once("+").unwrap();
-                Player::new_and_init(None, name.to_string(), Some(weapon.to_string()))
+                Player::new_and_init(None, name.to_string(), Some(weapon.to_string()), storage)
             } else {
-                Player::new_and_init(None, raw_name, None)
+                Player::new_and_init(None, raw_name, None, storage)
             }
         }
     }
@@ -705,14 +730,16 @@ mod test {
     #[test]
     /// 测试根据原始输入创建 Player
     fn player_raw_new() {
-        let player = Player::new_from_namerena_raw("mario".to_string());
+        let storage = Storage::new_arc();
+
+        let player = Player::new_from_namerena_raw("mario".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, None);
         assert_eq!(player.weapon, None);
         assert_eq!(player.player_type, PlayerType::Normal);
 
-        let player = Player::new_from_namerena_raw("mario@red".to_string());
+        let player = Player::new_from_namerena_raw("mario@red".to_string(), storage.clone());
         let player = player.unwrap();
         println!("{}", player);
         assert_eq!(player.name, "mario");
@@ -720,28 +747,28 @@ mod test {
         assert_eq!(player.weapon, None);
         assert_eq!(player.player_type, PlayerType::Normal);
 
-        let player = Player::new_from_namerena_raw("mario+fire".to_string());
+        let player = Player::new_from_namerena_raw("mario+fire".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, None);
         assert_eq!(player.weapon, Some("fire".to_string()));
         assert_eq!(player.player_type, PlayerType::Normal);
 
-        let player = Player::new_from_namerena_raw("mario+fire+diy{xxxx}".to_string());
+        let player = Player::new_from_namerena_raw("mario+fire+diy{xxxx}".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, None);
         assert_eq!(player.weapon, Some("fire+diy{xxxx}".to_string()));
         assert_eq!(player.player_type, PlayerType::Normal);
 
-        let player = Player::new_from_namerena_raw("mario@red+fire".to_string());
+        let player = Player::new_from_namerena_raw("mario@red+fire".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, Some("red".to_string()));
         assert_eq!(player.weapon, Some("fire".to_string()));
         assert_eq!(player.player_type, PlayerType::Normal);
 
-        let player = Player::new_from_namerena_raw("mario@red+fire+diy{xxxx}".to_string());
+        let player = Player::new_from_namerena_raw("mario@red+fire+diy{xxxx}".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.name, "mario");
         assert_eq!(player.team, Some("red".to_string()));
@@ -751,62 +778,66 @@ mod test {
 
     #[test]
     fn player_name() {
-        let player = Player::new_from_namerena_raw("aaa".to_string()).unwrap();
+        let storage = Storage::new_arc();
+
+        let player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
         assert_eq!(player.id_name(), "aaa");
         assert_eq!(player.display_name(), "aaa");
 
         // 包含了 @
-        let player = Player::new_from_namerena_raw("aaa@bbb".to_string()).unwrap();
+        let player = Player::new_from_namerena_raw("aaa@bbb".to_string(), storage.clone()).unwrap();
         assert_eq!(player.id_name(), "aaa");
         assert_eq!(player.display_name(), "aaa");
 
         // 空格分开的名字
-        let player = Player::new_from_namerena_raw("aaa bbb".to_string()).unwrap();
+        let player = Player::new_from_namerena_raw("aaa bbb".to_string(), storage.clone()).unwrap();
         assert_eq!(player.id_name(), "aaa bbb");
         assert_eq!(player.display_name(), "aaa");
 
         // 包含了 + 的名字
-        let player = Player::new_from_namerena_raw("aaa+bbb".to_string()).unwrap();
+        let player = Player::new_from_namerena_raw("aaa+bbb".to_string(), storage.clone()).unwrap();
         assert_eq!(player.id_name(), "aaa");
         assert_eq!(player.display_name(), "aaa");
     }
 
     #[test]
     fn player_raw_types() {
-        let player = Player::new_from_namerena_raw("normal@normal".to_string());
+        let storage = Storage::new_arc();
+
+        let player = Player::new_from_namerena_raw("normal@normal".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Normal);
 
         // seed
-        let player = Player::new_from_namerena_raw("seed:just seed@!".to_string());
+        let player = Player::new_from_namerena_raw("seed:just seed@!".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.name, "seed:just seed");
         assert_eq!(player.player_type, PlayerType::Seed);
 
         // testEx
-        let player = Player::new_from_namerena_raw("testEx@!".to_string());
+        let player = Player::new_from_namerena_raw("testEx@!".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::TestEx);
 
         // test1
-        let player = Player::new_from_namerena_raw("test1@\u{0002}".to_string());
+        let player = Player::new_from_namerena_raw("test1@\u{0002}".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.team, Some("\u{0002}".to_string()));
         assert_eq!(player.player_type, PlayerType::Test1);
 
         // test2
-        let player = Player::new_from_namerena_raw("test2@\u{0003}".to_string());
+        let player = Player::new_from_namerena_raw("test2@\u{0003}".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.team, Some("\u{0003}".to_string()));
         assert_eq!(player.player_type, PlayerType::Test2);
 
         // boss
-        let player = Player::new_from_namerena_raw("mario@!".to_string());
+        let player = Player::new_from_namerena_raw("mario@!".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Boss);
 
         // boosted
-        let player = Player::new_from_namerena_raw("云剑狄卡敢@!".to_string());
+        let player = Player::new_from_namerena_raw("云剑狄卡敢@!".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Boost);
     }

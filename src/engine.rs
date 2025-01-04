@@ -5,17 +5,22 @@ pub const PROFILE_START: u32 = 33554431;
 /// 有可能后面会一块干脆把 Player 也放进来
 pub mod storage {
 
+    use std::sync::Arc;
+
     use crate::player::skills::Skill;
     use crate::player::states::State;
 
     use foldhash::HashMap as FastHashMap;
 
+    /// 技能的 ID (ECS内的)
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct SkillId(usize);
 
     impl SkillId {
         pub fn new(id: usize) -> SkillId { SkillId(id) }
 
+        /// 根据一个 Skill 实例创建一个 SkillId
+        /// (其实就是取个内存地址)
         pub fn new_from_skill(skill: &Skill) -> SkillId {
             SkillId({
                 let ptr = skill as *const Skill;
@@ -24,11 +29,15 @@ pub mod storage {
         }
     }
 
+    /// 状态的 ID (ECS内的)
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct StateId(usize);
 
     impl StateId {
         pub fn new(id: usize) -> StateId { StateId(id) }
 
+        /// 根据一个 State 实例创建一个 StateId
+        /// (其实就是取个内存地址)
         pub fn new_from_state(state: &State) -> StateId {
             StateId({
                 let ptr = state as *const State;
@@ -40,7 +49,8 @@ pub mod storage {
     /// 存数据的地方
     ///
     /// 使用了 foldhash 的 HashMap, 快一些
-    pub struct Storages {
+    #[derive(Debug)]
+    pub struct Storage {
         /// 存技能
         /// usize: memory address
         skills: FastHashMap<usize, Skill>,
@@ -49,48 +59,97 @@ pub mod storage {
         states: FastHashMap<usize, State>,
     }
 
-    impl Storages {
-        pub fn new() -> Storages {
-            Storages {
+    impl Storage {
+        /// 创建一个新的 Storages
+        pub fn new() -> Storage {
+            Storage {
                 skills: FastHashMap::default(),
                 states: FastHashMap::default(),
             }
         }
+
+        pub fn new_arc() -> Arc<Self> { Arc::new(Self::new()) }
 
         pub fn clear(&mut self) {
             self.skills.clear();
             self.states.clear();
         }
 
+        /// 获取技能
         pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
 
+        /// 获取状态
         pub fn get_state(&self, id: StateId) -> Option<&State> { self.states.get(&id.0) }
 
+        /// 获取技能的可变引用
         pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills.get_mut(&id.0) }
+        /// 我就硬获取了
+        /// 不过这个方法不安全
+        pub fn just_get_skill_mut(&self, id: SkillId) -> Option<&mut Skill> {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                (*mut_slf).skills.get_mut(&id.0)
+            }
+        }
 
+        /// 获取状态的可变引用
         pub fn get_state_mut(&mut self, id: StateId) -> Option<&mut State> { self.states.get_mut(&id.0) }
+        /// 同 just_get_skill_mut
+        /// 不过这个方法不安全
+        pub fn just_get_state_mut(&self, id: StateId) -> Option<&mut State> {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                (*mut_slf).states.get_mut(&id.0)
+            }
+        }
 
+        /// 插入技能 (返回技能的 ID)
         pub fn insert_skill(&mut self, skill: Skill) -> SkillId {
             let id = SkillId::new_from_skill(&skill);
             self.skills.insert(id.0, skill);
             id
         }
+        pub fn just_insert_skill(&self, skill: Skill) -> SkillId {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                let id = SkillId::new_from_skill(&skill);
+                (*mut_slf).skills.insert(id.0, skill);
+                id
+            }
+        }
 
+        /// 插入状态 (返回状态的 ID)
         pub fn insert_state(&mut self, state: State) -> StateId {
             let id = StateId::new_from_state(&state);
             self.states.insert(id.0, state);
             id
         }
+        pub fn just_insert_state(&self, state: State) -> StateId {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                let id = StateId::new_from_state(&state);
+                (*mut_slf).states.insert(id.0, state);
+                id
+            }
+        }
+    }
+
+    impl std::default::Default for Storage {
+        fn default() -> Self { Self::new() }
     }
 }
 
 /// 核心的游戏逻辑
 pub mod runners {
 
+    use std::sync::Arc;
+
     use crate::engine::update::RunUpdates;
     use crate::error::runner::RunnerResult;
     use crate::player::{Player, PlrPtr};
     use crate::rc4::RC4;
+
+    use super::storage::Storage;
 
     pub type PlayerGroup = Vec<Player>;
 
@@ -105,6 +164,8 @@ pub mod runners {
         pub winner: Option<PlayerGroup>,
         /// 该哪个玩家动了
         round_pos: i32,
+        /// 存储所有 state 和 skill 的地方
+        storage: Arc<Storage>,
     }
 
     pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
@@ -138,11 +199,13 @@ pub mod runners {
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
 
+            let storage = Storage::new_arc();
+
             let mut inited_plrs = Vec::with_capacity(players.len());
             for plrs in players.iter() {
                 let mut group = Vec::with_capacity(plrs.len());
                 for plr in plrs.iter() {
-                    let mut player = Player::new_from_namerena_raw(plr.to_string())?;
+                    let mut player = Player::new_from_namerena_raw(plr.to_string(), storage.clone())?;
                     player.sort_int = randomer.rFFFFFF() as i32;
                     // 如果有问题，就直接返回错误
                     // 不过大概率不会有问题就是了
@@ -201,6 +264,7 @@ pub mod runners {
                 players: inited_plrs,
                 winner,
                 round_pos: -1,
+                storage,
             })
         }
 
