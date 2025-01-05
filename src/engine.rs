@@ -9,6 +9,7 @@ pub mod storage {
 
     use crate::player::skills::Skill;
     use crate::player::states::State;
+    use crate::player::PlrPtr;
 
     use foldhash::HashMap as FastHashMap;
 
@@ -57,6 +58,8 @@ pub mod storage {
         /// 存状态
         /// usize: memory address
         states: FastHashMap<usize, State>,
+        /// 存玩家组?
+        groups: FastHashMap<usize, Vec<PlrPtr>>,
     }
 
     impl Storage {
@@ -65,6 +68,7 @@ pub mod storage {
             Storage {
                 skills: FastHashMap::default(),
                 states: FastHashMap::default(),
+                groups: FastHashMap::default(),
             }
         }
 
@@ -130,6 +134,24 @@ pub mod storage {
                 let id = StateId::new_from_state(&state);
                 (*mut_slf).states.insert(id.0, state);
                 id
+            }
+        }
+
+        /// 删除技能
+        pub fn remove_skill(&mut self, id: SkillId) -> Option<Skill> { self.skills.remove(&id.0) }
+        pub fn just_remove_skill(&self, id: SkillId) -> Option<Skill> {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                (*mut_slf).skills.remove(&id.0)
+            }
+        }
+
+        /// 删除状态
+        pub fn remove_state(&mut self, id: StateId) -> Option<State> { self.states.remove(&id.0) }
+        pub fn just_remove_state(&self, id: StateId) -> Option<State> {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                (*mut_slf).states.remove(&id.0)
             }
         }
     }
@@ -269,11 +291,14 @@ pub mod runners {
         }
 
         /// 获取所有存活的玩家
-        pub fn alives_flat(&self) -> Vec<&Player> { self.players.iter().flatten().filter(|x| x.status().alive()).collect() }
+        pub fn alives_flat(&self) -> Vec<&Player> { self.players.iter().flatten().filter(|x| x.get_status().alive()).collect() }
 
         /// 以组为单位获取所有存活的玩家
         pub fn alives(&self) -> Vec<Vec<&Player>> {
-            self.players.iter().map(|x| x.iter().filter(|x| x.status().alive()).collect()).collect()
+            self.players
+                .iter()
+                .map(|x| x.iter().filter(|x| x.get_status().alive()).collect())
+                .collect()
         }
 
         /// 将原始输入分拆成队伍

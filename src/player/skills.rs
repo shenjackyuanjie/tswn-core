@@ -319,6 +319,8 @@ pub enum SkillType {
     // TODO: 武器技能
     /// 死亡笔记
     DeathNote,
+    /// Rinck 的修改器 (属性修改器)
+    RinickModifier,
 }
 
 impl SkillType {

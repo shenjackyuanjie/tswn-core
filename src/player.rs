@@ -382,8 +382,6 @@ impl Player {
     #[inline]
     pub fn move_point(&self) -> i32 { self.status.move_point }
 
-    pub fn as_ptr(&self) -> PlrPtr { self as *const Player as usize }
-
     /// 设置 move point (spsum)
     #[inline]
     pub fn set_move_point(&mut self, val: i32) { self.status.move_point = val }
@@ -391,8 +389,12 @@ impl Player {
     /// 检查是否可以行动
     pub fn check_move(&self) -> bool { self.status.check_move() }
 
+    // pub fn check_immune(&self, )
+
     /// 获取当前的玩家状态
-    pub fn status(&self) -> &PlayerStatus { &self.status }
+    pub fn get_status(&self) -> &PlayerStatus { &self.status }
+
+    pub fn as_ptr(&self) -> PlrPtr { self as *const Player as usize }
 
     /// 根据名字系数调整数值
     ///
