@@ -362,6 +362,11 @@ impl Player {
             factor_team.max(factor_name - 6.0)
         };
 
+        let mut status = PlayerStatus::default();
+        if player_type == PlayerType::Seed {
+            status.set_alive(false);
+        }
+
         Ok(Player {
             team,
             name,
@@ -374,7 +379,7 @@ impl Player {
             attr: [0; 8],
             skil_id: skills.clone(),
             skil_prop: skills,
-            status: PlayerStatus::default(),
+            status,
             skill_store: SkillStore::new(storage.clone()),
             name_factor,
             storage,
