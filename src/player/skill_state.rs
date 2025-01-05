@@ -335,7 +335,7 @@ pub enum SkillType {
     /// 被冻结
     IceState { frozen_step: u32 },
     /// 被迟缓
-    SlowState,
+    SlowState { step: u32 },
 
     // boss
     /// 懒惰状态
@@ -446,12 +446,12 @@ impl SkillType {
     pub fn is_normal_state(&self) -> bool {
         matches!(
             self,
-            SkillType::SlowState
-                | Self::LazyState
+            SkillType::SlowState { .. }
                 | Self::CurseState
                 | Self::IceState { .. }
                 | Self::CharmState { .. }
                 | Self::HasteState { .. }
+                | Self::LazyState
         )
     }
 
