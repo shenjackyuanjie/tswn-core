@@ -6,7 +6,7 @@ pub mod weapons;
 use std::cmp::{min, Ordering};
 use std::sync::Arc;
 
-use crate::engine::storage::Storage;
+use crate::engine::storage::{SkillId, Storage};
 use crate::engine::update::RunUpdates;
 use crate::error::player::{PlayerError, PlayerResult};
 use crate::player::skill_state::{Skill, SkillStore};
@@ -150,6 +150,15 @@ pub const BOSS_NAMES: [&str; 11] = [
 
 /// ["田一人", 18, "云剑狄卡敢", 25, "云剑穸跄祇", 35]
 pub const BOOST_NAMES: [&str; 3] = ["云剑狄卡敢", "云剑穸跄祇", "田一人"];
+
+pub fn boost_value(name: &str) -> u32 {
+    match name {
+        "云剑狄卡敢" => 25,
+        "云剑穸跄祇" => 35,
+        "田一人" => 18,
+        _ => 0,
+    }
+}
 
 /// 种子玩家的前缀
 pub const SEED_PREFIX: &str = "seed:";
@@ -388,7 +397,16 @@ impl Player {
     /// 检查是否可以行动
     pub fn check_move(&self) -> bool { self.status.check_move() }
 
-    // pub fn check_immune(&self, )
+    pub fn check_immune(&self, _skill: SkillId, randomer: &mut RC4) -> bool {
+        match self.player_type {
+            PlayerType::Boost => randomer.r127() < boost_value(&self.name),
+            PlayerType::Boss => {
+                // TODO
+                randomer.c33()
+            }
+            _ => false,
+        }
+    }
 
     /// 获取当前的玩家状态
     pub fn get_status(&self) -> &PlayerStatus { &self.status }

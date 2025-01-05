@@ -88,6 +88,7 @@ impl Skill {
                 status.wisdom += 20;
             }
             SkillType::CharmState { charmed_group } => {
+                todo!("魅惑我还不知道咋写")
                 // status.charm = true;
             }
             SkillType::CurseState => {
