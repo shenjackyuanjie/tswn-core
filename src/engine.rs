@@ -8,8 +8,7 @@ pub mod storage {
     use std::sync::Arc;
 
     use crate::player::skill_state::Skill;
-    use crate::player::states::State;
-    use crate::player::PlrPtr;
+    use crate::player::{Player, PlrPtr};
 
     use foldhash::HashMap as FastHashMap;
 
@@ -30,23 +29,6 @@ pub mod storage {
         }
     }
 
-    /// 状态的 ID (ECS内的)
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct StateId(usize);
-
-    impl StateId {
-        pub fn new(id: usize) -> StateId { StateId(id) }
-
-        /// 根据一个 State 实例创建一个 StateId
-        /// (其实就是取个内存地址)
-        pub fn new_from_state(state: &State) -> StateId {
-            StateId({
-                let ptr = state as *const State;
-                ptr as usize
-            })
-        }
-    }
-
     /// 存数据的地方
     ///
     /// 使用了 foldhash 的 HashMap, 快一些
@@ -55,11 +37,10 @@ pub mod storage {
         /// 存技能
         /// usize: memory address
         skills: FastHashMap<usize, Skill>,
-        /// 存状态
-        /// usize: memory address
-        states: FastHashMap<usize, State>,
         /// 存玩家组?
         groups: FastHashMap<usize, Vec<PlrPtr>>,
+        /// 玩家
+        players: FastHashMap<PlrPtr, Player>,
     }
 
     impl Storage {
@@ -67,8 +48,8 @@ pub mod storage {
         pub fn new() -> Storage {
             Storage {
                 skills: FastHashMap::default(),
-                states: FastHashMap::default(),
                 groups: FastHashMap::default(),
+                players: FastHashMap::default(),
             }
         }
 
@@ -76,14 +57,13 @@ pub mod storage {
 
         pub fn clear(&mut self) {
             self.skills.clear();
-            self.states.clear();
+            self.groups.clear();
+            self.players.clear();
         }
 
         /// 获取技能
         pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
-
-        /// 获取状态
-        pub fn get_state(&self, id: StateId) -> Option<&State> { self.states.get(&id.0) }
+        pub fn get_player(&self, ptr: PlrPtr) -> Option<&Player> { self.players.get(&ptr) }
 
         /// 获取技能的可变引用
         pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills.get_mut(&id.0) }
@@ -96,14 +76,10 @@ pub mod storage {
             }
         }
 
-        /// 获取状态的可变引用
-        pub fn get_state_mut(&mut self, id: StateId) -> Option<&mut State> { self.states.get_mut(&id.0) }
-        /// 同 just_get_skill_mut
-        /// 不过这个方法不安全
-        pub fn just_get_state_mut(&self, id: StateId) -> Option<&mut State> {
+        pub fn just_get_player_mut(&self, ptr: PlrPtr) -> Option<&mut Player> {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
-                (*mut_slf).states.get_mut(&id.0)
+                (*mut_slf).players.get_mut(&ptr)
             }
         }
 
@@ -122,18 +98,17 @@ pub mod storage {
             }
         }
 
-        /// 插入状态 (返回状态的 ID)
-        pub fn insert_state(&mut self, state: State) -> StateId {
-            let id = StateId::new_from_state(&state);
-            self.states.insert(id.0, state);
-            id
+        pub fn insert_player(&mut self, player: Player) -> PlrPtr {
+            let ptr = player.as_ptr();
+            self.players.insert(ptr, player);
+            ptr
         }
-        pub fn just_insert_state(&self, state: State) -> StateId {
+        pub fn just_insert_player(&self, player: Player) -> PlrPtr {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
-                let id = StateId::new_from_state(&state);
-                (*mut_slf).states.insert(id.0, state);
-                id
+                let ptr = player.as_ptr();
+                (*mut_slf).players.insert(ptr, player);
+                ptr
             }
         }
 
@@ -146,12 +121,10 @@ pub mod storage {
             }
         }
 
-        /// 删除状态
-        pub fn remove_state(&mut self, id: StateId) -> Option<State> { self.states.remove(&id.0) }
-        pub fn just_remove_state(&self, id: StateId) -> Option<State> {
+        pub fn just_remove_player(&self, ptr: PlrPtr) -> Option<Player> {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
-                (*mut_slf).states.remove(&id.0)
+                (*mut_slf).players.remove(&ptr)
             }
         }
     }
@@ -179,15 +152,15 @@ pub mod runners {
         /// 应该是一个 Rc4 实例类似物
         pub randomer: RC4,
         /// 所有玩家 (包括 boss)
-        pub players: Vec<PlayerGroup>,
+        pub players: Vec<Vec<PlrPtr>>,
         /// 赢家
         ///
         /// 也应该是一个队伍
-        pub winner: Option<PlayerGroup>,
+        pub winner: Option<Vec<PlrPtr>>,
         /// 该哪个玩家动了
         round_pos: i32,
         /// 存储所有 state 和 skill 的地方
-        storage: Arc<Storage>,
+        pub storage: Arc<Storage>,
     }
 
     pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
@@ -221,7 +194,7 @@ pub mod runners {
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
 
-            let storage = Storage::new_arc();
+            let mut storage = Storage::new_arc();
 
             let mut inited_plrs = Vec::with_capacity(players.len());
             for plrs in players.iter() {
@@ -229,9 +202,10 @@ pub mod runners {
                 for plr in plrs.iter() {
                     let mut player = Player::new_from_namerena_raw(plr.to_string(), storage.clone())?;
                     player.sort_int = randomer.rFFFFFF() as i32;
+                    let ptr = storage.just_insert_player(player);
                     // 如果有问题，就直接返回错误
                     // 不过大概率不会有问题就是了
-                    group.push(player);
+                    group.push(ptr);
                 }
                 inited_plrs.push(group);
             }
@@ -246,6 +220,8 @@ pub mod runners {
                     let (left, right) = plr_group.split_at_mut(i + 1);
                     let plr_p = &mut left[i];
                     for plr_q in right.iter_mut() {
+                        let plr_p = storage.just_get_player_mut(*plr_p).expect("plr not found when upgrade");
+                        let plr_q = storage.just_get_player_mut(*plr_q).expect("plr not found when upgrade");
                         if plr_p.clan_name() == plr_q.clan_name() {
                             plr_p.upgrade(plr_q);
                             plr_q.upgrade(plr_p);
@@ -256,15 +232,21 @@ pub mod runners {
 
             for group in inited_plrs.iter_mut() {
                 for plr in group.iter_mut() {
+                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when building");
                     plr.build();
                 }
             }
 
-            let mut sort_groups = inited_plrs.iter().collect::<Vec<&PlayerGroup>>();
-            sort_groups.sort_by(|a, b| a[0].partial_cmp(&b[0]).unwrap_or(std::cmp::Ordering::Equal));
+            let mut sort_groups = inited_plrs.iter().collect::<Vec<&Vec<PlrPtr>>>();
+            sort_groups.sort_by(|a, b| {{
+                let plr_a = storage.get_player(a[0]).expect("plr not found when sort");
+                let plr_b = storage.get_player(b[0]).expect("plr not found when sort");
+                plr_a.partial_cmp(plr_b)
+            }.unwrap_or(std::cmp::Ordering::Equal)});
 
             for group in sort_groups.iter() {
                 for plr in group.iter() {
+                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when enc");
                     randomer.encrypt_bytes_no_change(&plr.id_name());
                 }
                 randomer.encrypt_bytes(&mut [0]);
@@ -272,6 +254,7 @@ pub mod runners {
 
             for group in inited_plrs.iter_mut() {
                 for plr in group.iter_mut() {
+                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when enc");
                     plr.set_move_point(randomer.r255() as i32);
                 }
             }
@@ -291,13 +274,15 @@ pub mod runners {
         }
 
         /// 获取所有存活的玩家
-        pub fn alives_flat(&self) -> Vec<&Player> { self.players.iter().flatten().filter(|x| x.get_status().alive()).collect() }
+        pub fn alives_flat(&self) -> Vec<PlrPtr> { self.alives().iter().flatten().cloned().collect() }
 
         /// 以组为单位获取所有存活的玩家
-        pub fn alives(&self) -> Vec<Vec<&Player>> {
+        pub fn alives(&self) -> Vec<Vec<PlrPtr>> {
             self.players
                 .iter()
-                .map(|x| x.iter().filter(|x| x.get_status().alive()).collect())
+                .map(|x| x.iter().filter(|x| {
+                    let x = self.storage.get_player(**x).expect("plr not found when getting alive");
+                    x.get_status().alive()}).cloned().collect())
                 .collect()
         }
 
@@ -390,24 +375,10 @@ pub mod runners {
         pub fn have_winner(&self) -> bool { self.winner.is_some() }
 
         #[inline]
-        pub fn all_plrs(&self) -> Vec<&Player> { self.players.iter().flatten().collect() }
-
-        /// 你甚至可以通过他们的指针来直接访问对应的玩家
-        pub fn all_plr_ptrs(&self) -> Vec<PlrPtr> { self.players.iter().flatten().map(|x| x.as_ptr()).collect() }
+        pub fn all_plrs(&self) -> Vec<PlrPtr> { self.players.iter().flatten().cloned().collect() }
 
         #[inline]
         pub fn all_plr_len(&self) -> usize { self.players.iter().map(|x| x.len()).sum() }
-
-        pub fn get_plr_by_ptr(&self, ptr: PlrPtr) -> Option<&Player> {
-            for group in self.players.iter() {
-                for plr in group.iter() {
-                    if plr.as_ptr() == ptr {
-                        return Some(plr);
-                    }
-                }
-            }
-            None
-        }
 
         pub unsafe fn get_plr_by_ptr_unchecked(&self, ptr: PlrPtr) -> &Player {
             // 直接 unsafe 强转
@@ -423,11 +394,12 @@ pub mod runners {
 
             let tick_plr_index = self.round_pos as usize;
 
-            let mut all_plrs = self.players.iter_mut().flatten().collect::<Vec<&mut Player>>();
+            let mut all_plrs = self.players.iter().flatten().cloned().collect::<Vec<PlrPtr>>();
 
             // 获取当前 tick 的玩家
             if let Some(tick_plr) = all_plrs.get_mut(tick_plr_index) {
                 // 调用 step 方法
+                let tick_plr = self.storage.just_get_player_mut(*tick_plr).expect("plr not found when tick");
                 tick_plr.step(&mut self.randomer, updates);
             } else {
                 unreachable!("tick_plr_index out of range");
@@ -446,6 +418,8 @@ pub mod update {
         Win,
         /// 没动作
         None,
+        /// 下一行
+        NextLine,
     }
 
     #[derive(Debug, Clone)]
@@ -488,6 +462,20 @@ pub mod update {
                 &self.targets.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
             );
             msg
+        }
+
+        pub fn new_newline() -> RunUpdate {
+            RunUpdate {
+                score: 0,
+                delay0: 0,
+                delay1: 0,
+                message: "\n".to_string(),
+                caster: 0,
+                target: 0,
+                targets: vec![],
+                update_type: UpdateType::NextLine,
+                // param: Object ?
+            }
         }
     }
 
@@ -650,6 +638,7 @@ mod group {
             assert!(!runner.have_winner());
 
             for (i, plr) in runner.players.iter().flatten().enumerate() {
+                let plr = runner.storage.get_player(*plr).expect("plr not found");
                 assert_eq!(plr.sort_int as u32, { ints[i] });
             }
         }

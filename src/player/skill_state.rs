@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::engine::storage::{SkillId, Storage};
+use crate::engine::update::RunUpdates;
 use crate::player::{PlayerStatus, PlrPtr};
 
 #[derive(Debug, Clone, Copy)]
@@ -89,7 +90,6 @@ impl Skill {
             }
             SkillType::CharmState { charmed_group } => {
                 todo!("魅惑我还不知道咋写")
-                // status.charm = true;
             }
             SkillType::CurseState => {
                 status.atk_sum *= 4;
@@ -104,6 +104,28 @@ impl Skill {
             _ => (),
         }
     }
+
+    #[allow(clippy::single_match)]
+    pub fn pre_step(&mut self, step: i32, updates: &mut RunUpdates, status: &mut PlayerStatus) -> i32 {
+        match &mut self.skill_type {
+            SkillType::IceState { frozen_step } => {
+                if step > 0 {
+                    if *frozen_step > 0 {
+                        *frozen_step -= step as u32;
+                    } else if (step + status.move_point) >= 2048 {
+                        // destroy
+                        let target = self.target.expect("no target");
+
+                        return 0;
+                    }
+                }
+            }
+            _ => {}
+        }
+        step
+    }
+
+    pub fn destroy(&self, ) { todo!() }
 }
 
 /// ```dart

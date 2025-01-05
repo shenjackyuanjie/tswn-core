@@ -67,7 +67,7 @@ pub struct PlayerStatus {
     /// 总属性和
     pub attr_sum: u32,
     /// 攻击和?
-    pub atk_sum: u32,
+    pub atk_sum: i32,
     /// 总和?
     pub all_sum: u32,
 }
@@ -225,7 +225,7 @@ pub enum PlayerType {
     TestEx,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Player {
     /// 队伍
     team: Option<String>,
@@ -467,7 +467,7 @@ impl Player {
                 min(self.name_base[i + 2], self.name_base[i + 3]),
             );
             if small > 10 && self.skil_id[j] < 35 {
-                let mut skill = Skill::new_from_type_id((small - 10) as u32, self.skil_id[i] as u8);
+                let mut skill = Skill::new_from_type_id((small - 10) as u32, self.skil_id[j] as u8);
                 let raw_small = min(
                     min(self.raw_name_base[i], self.raw_name_base[i + 1]),
                     min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
@@ -555,7 +555,7 @@ impl Player {
     pub fn calc_attr_sum(&mut self) {
         self.status.attr_sum = self.attr[0..7].iter().sum();
         self.status.atk_sum =
-            (self.attr[0] - self.attr[1] + self.attr[2] + self.attr[4] - self.attr[5]) * 2 + self.attr[3] + self.attr[6];
+            (self.attr[0] as i32 - self.attr[1] as i32 + self.attr[2] as i32 + self.attr[4] as i32 - self.attr[5] as i32) * 2 + self.attr[3] as i32 + self.attr[6] as i32;
         self.status.all_sum = (self.status.attr_sum * 3) + self.attr[7];
         self.status.attract = 32768.0;
     }
