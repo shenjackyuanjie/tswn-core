@@ -182,13 +182,16 @@ pub mod runners {
             let mut names = players
                 .iter()
                 .flatten()
-                .chain(seed.iter())
+                .filter(|str| !Player::check_is_seed(str))
                 .map(|str| Player::raw_namerena_to_idname(str))
+                .chain(seed.iter().cloned())
                 .collect::<Vec<String>>();
             // 这里顺便把 sorted hash 这块做了
             names.sort();
             names.dedup();
-            let keys = names.join("\n");
+            println!("{:?}", names);
+            let keys = names.join("\r");
+            println!("{:?}", keys.as_bytes().to_vec());
             let mut randomer = RC4::new(keys.as_bytes(), 1);
             randomer.encrypt_bytes_no_change(&keys);
             // 准备好了
@@ -597,7 +600,7 @@ mod group {
             // 一个seed
             let raw_input = "seed: a@!\nb\nc".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
-            assert_eq!(groups, (plrs!("b", "c"), plr!["seed: a@!"]));
+            assert_eq!(groups, (plrs!("seed: a@!", "b", "c"), plr!["seed: a@!"]));
         }
 
         #[test]
@@ -608,7 +611,7 @@ mod group {
             // assert_eq!(groups, vec![vec!["aaaa", "bbbb"], vec!["seed: a@!"]]);
             // 这个情况下，应该是修复成三个队伍
             // TODO
-            assert_ne!(groups, (plrs!("aaaa", "bbbb"), plr!["seed: a@!"]))
+            assert_ne!(groups, (plrs!("aaaa", "bbbb", "seed: a@!"), plr!["seed: a@!"]))
         }
 
         #[test]
@@ -620,9 +623,9 @@ mod group {
             let raw_input = "seed: a@!\n\naaaa\nbbbb".to_string();
             // 合法输入: seed: a@!\naaaa\nbbbb
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
-            assert_ne!(groups, (vec![plr!("aaaa", "bbbb")], plr!["seed: a@!"]));
+            assert_ne!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]));
             // 这个情况下，应该是修复成三个队伍
-            assert_eq!(groups, (plrs!("aaaa", "bbbb"), plr!["seed: a@!"]))
+            assert_eq!(groups, (plrs!("seed: a@!", "aaaa", "bbbb"), plr!["seed: a@!"]))
         }
     }
 
@@ -634,7 +637,7 @@ mod group {
             let raw_input = "aaa\nbbb\nseed: aaaa@!";
             let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
 
-            let ints = [2415636, 7852640, 14598063];
+            let ints = [16391432, 11292362];
             assert!(!runner.have_winner());
 
             for (i, plr) in runner.players.iter().flatten().enumerate() {
