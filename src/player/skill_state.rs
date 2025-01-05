@@ -87,6 +87,19 @@ impl Skill {
                 status.speed += 20;
                 status.wisdom += 20;
             }
+            SkillType::CharmState { charmed_group } => {
+                // status.charm = true;
+            }
+            SkillType::CurseState => {
+                status.atk_sum *= 4;
+            }
+            SkillType::HasteState { faster } => {
+                status.speed *= faster;
+            }
+            SkillType::IceState { .. } => {
+                status.set_frozen(true);
+            }
+
             _ => (),
         }
     }
@@ -312,6 +325,22 @@ pub enum SkillType {
     /// 无 (35-40)
     None,
 
+    // 各种状态
+    /// 被魅惑
+    CharmState { charmed_group: u32 },
+    /// 被诅咒
+    CurseState,
+    /// 疾走状态
+    HasteState { faster: i32 },
+    /// 被冻结
+    IceState { frozen_step: u32 },
+    /// 被迟缓
+    SlowState,
+
+    // boss
+    /// 懒惰状态
+    LazyState,
+
     // TODO: BOSS 技能
     /// 史莱姆(分裂)
     Slime,
@@ -411,6 +440,18 @@ impl SkillType {
                 | SkillType::Zombie
                 | SkillType::Upgrade
                 | SkillType::Hide
+        )
+    }
+
+    pub fn is_normal_state(&self) -> bool {
+        matches!(
+            self,
+            SkillType::SlowState
+                | Self::LazyState
+                | Self::CurseState
+                | Self::IceState { .. }
+                | Self::CharmState { .. }
+                | Self::HasteState { .. }
         )
     }
 

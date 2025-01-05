@@ -1,6 +1,5 @@
 pub mod eval_name;
-pub mod skills;
-pub mod states;
+pub mod skill_state;
 pub mod utils;
 pub mod weapons;
 
@@ -10,7 +9,7 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::error::player::{PlayerError, PlayerResult};
-use crate::player::skills::{Skill, SkillStore};
+use crate::player::skill_state::{Skill, SkillStore};
 use crate::rc4::RC4;
 
 /// 名字本体最大长度
@@ -250,7 +249,7 @@ pub struct Player {
     /// 主要是我懒得加一大堆字段
     status: PlayerStatus,
     /// 技能相关
-    skill_store: skills::SkillStore,
+    skill_store: skill_state::SkillStore,
     /// 名字长度系数
     name_factor: f64,
     /// store
@@ -327,9 +326,9 @@ impl Player {
         rand.update(&name_bytes, 2);
 
         // 生成 name_base
-        let mut name_base = vec![];
+        let mut name_base: Vec<u8> = Vec::with_capacity(128);
 
-        for i in 0..255 {
+        for i in 0..=255 {
             let j = (unsafe { rand.get_val_unchecked(i) } as u32 * 181 + 87) as u8;
             if j & 0x80 == 0 {
                 name_base.push(j + 89);

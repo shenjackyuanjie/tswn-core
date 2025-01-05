@@ -7,7 +7,7 @@ pub mod storage {
 
     use std::sync::Arc;
 
-    use crate::player::skills::Skill;
+    use crate::player::skill_state::Skill;
     use crate::player::states::State;
     use crate::player::PlrPtr;
 
