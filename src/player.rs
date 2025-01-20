@@ -560,7 +560,9 @@ impl Player {
     pub fn calc_attr_sum(&mut self) {
         self.status.attr_sum = self.attr[0..7].iter().sum();
         self.status.atk_sum =
-            (self.attr[0] as i32 - self.attr[1] as i32 + self.attr[2] as i32 + self.attr[4] as i32 - self.attr[5] as i32) * 2 + self.attr[3] as i32 + self.attr[6] as i32;
+            (self.attr[0] as i32 - self.attr[1] as i32 + self.attr[2] as i32 + self.attr[4] as i32 - self.attr[5] as i32) * 2
+                + self.attr[3] as i32
+                + self.attr[6] as i32;
         self.status.all_sum = (self.status.attr_sum * 3) + self.attr[7];
         self.status.attract = 32768.0;
     }

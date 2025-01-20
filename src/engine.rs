@@ -193,7 +193,7 @@ pub mod runners {
             let keys = names.join("\r");
             println!("{:?}", keys.as_bytes().to_vec());
             let mut randomer = RC4::new(keys.as_bytes(), 1);
-            randomer.encrypt_bytes_no_change(&keys);
+            randomer.xor_str(&keys);
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
 
@@ -241,11 +241,14 @@ pub mod runners {
             }
 
             let mut sort_groups = inited_plrs.iter().collect::<Vec<&Vec<PlrPtr>>>();
-            sort_groups.sort_by(|a, b| {{
-                let plr_a = storage.get_player(a[0]).expect("plr not found when sort");
-                let plr_b = storage.get_player(b[0]).expect("plr not found when sort");
-                plr_a.partial_cmp(plr_b)
-            }.unwrap_or(std::cmp::Ordering::Equal)});
+            sort_groups.sort_by(|a, b| {
+                {
+                    let plr_a = storage.get_player(a[0]).expect("plr not found when sort");
+                    let plr_b = storage.get_player(b[0]).expect("plr not found when sort");
+                    plr_a.partial_cmp(plr_b)
+                }
+                .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             for group in sort_groups.iter() {
                 for plr in group.iter() {
@@ -283,9 +286,15 @@ pub mod runners {
         pub fn alives(&self) -> Vec<Vec<PlrPtr>> {
             self.players
                 .iter()
-                .map(|x| x.iter().filter(|x| {
-                    let x = self.storage.get_player(**x).expect("plr not found when getting alive");
-                    x.get_status().alive()}).cloned().collect())
+                .map(|x| {
+                    x.iter()
+                        .filter(|x| {
+                            let x = self.storage.get_player(**x).expect("plr not found when getting alive");
+                            x.get_status().alive()
+                        })
+                        .cloned()
+                        .collect()
+                })
                 .collect()
         }
 

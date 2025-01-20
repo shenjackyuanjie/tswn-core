@@ -125,7 +125,7 @@ impl Skill {
         step
     }
 
-    pub fn destroy(&self, ) { todo!() }
+    pub fn destroy(&self) { todo!() }
 }
 
 /// ```dart

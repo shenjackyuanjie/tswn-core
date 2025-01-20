@@ -136,6 +136,17 @@ impl RC4 {
         }
     }
 
+    pub fn xor_str(&mut self, bytes: &str) {
+        for byte in bytes.as_bytes() {
+            self.i = (self.i + 1) & 255;
+            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
+            self.main_val.swap(self.i as usize, self.j as usize);
+            self.j = (byte
+                ^ self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255])
+                as u32;
+        }
+    }
+
     /// 加密字节
     /// ```dart
     /// custom encryption
