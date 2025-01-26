@@ -213,8 +213,13 @@ pub mod runners {
                 inited_plrs.push(group);
             }
 
+            let mut local_plrs = inited_plrs
+                .iter()
+                .map(|x| x.iter().map(|p| storage.just_get_player_mut(*p).unwrap()).collect::<Vec<&mut Player>>())
+                .collect::<Vec<Vec<&mut Player>>>();
+
             // 同队升级
-            for plr_group in inited_plrs.iter_mut() {
+            for plr_group in local_plrs.iter_mut() {
                 if plr_group.len() < 2 {
                     continue;
                 }
@@ -223,8 +228,6 @@ pub mod runners {
                     let (left, right) = plr_group.split_at_mut(i + 1);
                     let plr_p = &mut left[i];
                     for plr_q in right.iter_mut() {
-                        let plr_p = storage.just_get_player_mut(*plr_p).expect("plr not found when upgrade");
-                        let plr_q = storage.just_get_player_mut(*plr_q).expect("plr not found when upgrade");
                         if plr_p.clan_name() == plr_q.clan_name() {
                             plr_p.upgrade(plr_q);
                             plr_q.upgrade(plr_p);
@@ -233,9 +236,8 @@ pub mod runners {
                 }
             }
 
-            for group in inited_plrs.iter_mut() {
+            for group in local_plrs.iter_mut() {
                 for plr in group.iter_mut() {
-                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when building");
                     plr.build();
                 }
             }

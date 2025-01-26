@@ -39,7 +39,7 @@ pub struct PlayerStatus {
     point: u32,
     /// 原文: spsum
     /// >= 2048 时才行动
-    /// 
+    ///
     /// 单调递增, >= 2048 时 -= 2048
     /// 然后接着单增
     pub move_point: i32,
