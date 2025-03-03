@@ -3,7 +3,7 @@ pub mod skill_state;
 pub mod utils;
 pub mod weapons;
 
-use std::cmp::{min, Ordering};
+use std::cmp::{Ordering, min};
 use std::sync::Arc;
 
 use crate::engine::storage::{SkillId, Storage};
@@ -275,12 +275,12 @@ impl Player {
     /// 创建一个新的玩家
     pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>, storage: Arc<Storage>) -> PlayerResult<Self> {
         // 先校验长度
-        if team.is_some() && team.as_ref().unwrap().as_bytes().len() > TEAM_MAX_LEN {
+        if team.is_some() && team.as_ref().unwrap().len() > TEAM_MAX_LEN {
             let t = team.unwrap();
-            return Err(PlayerError::TeamNameTooLong(t.as_bytes().len(), t.len()));
+            return Err(PlayerError::TeamNameTooLong(t.len(), t.len()));
         }
-        if name.as_bytes().len() > NAME_MAX_LEN {
-            return Err(PlayerError::NameTooLong(name.as_bytes().len(), name.len()));
+        if name.len() > NAME_MAX_LEN {
+            return Err(PlayerError::NameTooLong(name.len(), name.len()));
         }
         // 再校验字符
         if let Some(t) = team.as_ref() {

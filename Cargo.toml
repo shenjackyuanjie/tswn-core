@@ -2,7 +2,7 @@
 name = "tswn-core"
 description = "甚至是被技术封锁的名竞版本"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # 用于 fast hashmap

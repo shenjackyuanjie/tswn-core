@@ -260,7 +260,7 @@ impl RC4 {
         let mut round = max;
         let mut v = self.next_u8() as i32;
         loop {
-            v = v << 8 | self.next_u8() as i32;
+            v = (v << 8) | self.next_u8() as i32;
             if v >= max {
                 v %= max;
             }
@@ -413,11 +413,7 @@ impl RC4 {
             }
             n if n > 1 => {
                 let n = self.next_i32((n - 1) as i32) as usize;
-                if n >= skip_after_index {
-                    Some(n + 1)
-                } else {
-                    Some(n)
-                }
+                if n >= skip_after_index { Some(n + 1) } else { Some(n) }
             }
             _ => None,
         }
@@ -461,11 +457,7 @@ impl RC4 {
         let skip_len = skips.len();
         if list.len() > skip_len {
             let n = self.next_i32((list.len() - skip_len) as i32) as usize;
-            if n >= first {
-                Some(n + skip_len)
-            } else {
-                Some(n)
-            }
+            if n >= first { Some(n + skip_len) } else { Some(n) }
         } else {
             None
         }
@@ -507,13 +499,13 @@ impl RC4 {
     /// (或者用于生成一个 略大一些的随机数)
     #[inline]
     #[allow(non_snake_case)]
-    pub fn rFFFFFF(&mut self) -> u32 { (self.next_u8() as u32) << 16 | (self.next_u8() as u32) << 8 | self.next_u8() as u32 }
+    pub fn rFFFFFF(&mut self) -> u32 { ((self.next_u8() as u32) << 16) | ((self.next_u8() as u32) << 8) | self.next_u8() as u32 }
 
     /// 生成一个 RGB 颜色
     /// (或者用于生成一个 大一些的随机数)
     #[inline]
     #[allow(non_snake_case)]
-    pub fn rFFFF(&mut self) -> u32 { (self.next_u8() as u32) << 8 | self.next_u8() as u32 }
+    pub fn rFFFF(&mut self) -> u32 { ((self.next_u8() as u32) << 8) | self.next_u8() as u32 }
 
     // 一些指定范围的随机数
 
