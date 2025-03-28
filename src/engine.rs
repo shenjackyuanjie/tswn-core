@@ -656,5 +656,19 @@ mod group {
                 assert_eq!(plr.sort_int as u32, { ints[i] });
             }
         }
+
+        #[test]
+        fn sort_int_test2() {
+            let raw_input = "aaa\nbbb";
+            let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+
+            let ints = [16391432, 11292362];
+            assert!(!runner.have_winner());
+
+            for (i, plr) in runner.players.iter().flatten().enumerate() {
+                let plr = runner.storage.get_player(*plr).expect("plr not found");
+                assert_eq!(plr.sort_int as u32, { ints[i] });
+            }
+        }
     }
 }
