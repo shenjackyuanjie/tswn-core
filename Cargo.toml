@@ -6,4 +6,4 @@ edition = "2024"
 
 [dependencies]
 # 用于 fast hashmap
-foldhash = "0.1.4"
+foldhash = "0.1.5"
