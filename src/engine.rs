@@ -197,7 +197,7 @@ pub mod runners {
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
 
-            let mut storage = Storage::new_arc();
+            let storage = Storage::new_arc();
 
             let mut inited_plrs = Vec::with_capacity(players.len());
             for plrs in players.iter() {
@@ -416,10 +416,13 @@ pub mod runners {
 
         pub unsafe fn get_plr_by_ptr_unchecked(&self, ptr: PlrPtr) -> &Player {
             // 直接 unsafe 强转
-            let ptr = ptr as *const Player;
-            &*ptr
+            unsafe {
+                let ptr = ptr as *const Player;
+                &*ptr
+            }
         }
 
+        /// TODO: 实现 main_round 方法
         pub fn main_round(&mut self) { let updates = RunUpdates::new(); }
 
         pub fn round_tick(&mut self, updates: &mut RunUpdates) {
