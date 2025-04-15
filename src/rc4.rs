@@ -166,13 +166,12 @@ impl RC4 {
     #[inline]
     pub fn js_xor_str(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
+            let mut val = *byte;
             self.i = (self.i + 1) & 255;
             self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
             self.main_val.swap(self.i as usize, self.j as usize);
-            self.j = (byte
-                ^ self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255])
-                as u32;
-            self.j = (self.j + (*byte) as u32) & 255; // 新增此行
+            val ^= self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
+            self.j = (self.j + val as u32) & 255; // 新增此行
         }
     }
 
@@ -262,9 +261,7 @@ impl RC4 {
         self.i = (self.i + 1) & 255;
         self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
         self.main_val.swap(self.i as usize, self.j as usize);
-        let ret = self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-        // println!("next_u8: {}", ret);
-        ret
+        self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255]
     }
 
     /// 生成 i32 随机数

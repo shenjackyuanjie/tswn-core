@@ -99,16 +99,16 @@ pub mod storage {
         }
 
         pub fn insert_player(&mut self, player: Player) -> PlrPtr {
-            let ptr = player.as_ptr();
-            self.players.insert(ptr, player);
-            ptr
+            let id = player.id();
+            self.players.insert(id, player);
+            id
         }
         pub fn just_insert_player(&self, player: Player) -> PlrPtr {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
-                let ptr = player.as_ptr();
-                (*mut_slf).players.insert(ptr, player);
-                ptr
+                let id = player.id();
+                (*mut_slf).players.insert(id, player);
+                id
             }
         }
 
@@ -193,7 +193,7 @@ pub mod runners {
             let keys = names.join("\r");
             println!("{:?}", keys.as_bytes().to_vec());
             let mut randomer = RC4::new(keys.as_bytes(), 1);
-            randomer.xor_str(&keys);
+            randomer.js_xor_str(&keys);
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
 
@@ -204,7 +204,27 @@ pub mod runners {
                 let mut group = Vec::with_capacity(plrs.len());
                 for plr in plrs.iter() {
                     let mut player = Player::new_from_namerena_raw(plr.to_string(), storage.clone())?;
-                    player.sort_int = randomer.rFFFFFF() as i32;
+                    #[cfg(not(test))]
+                    {
+                        player.sort_int = randomer.rFFFFFF() as i32;
+                    }
+                    #[cfg(test)]
+                    {
+                        println!("randomer: {:?}", randomer);
+                        let int_a = randomer.next_u8();
+                        let int_b = randomer.next_u8();
+                        let int_c = randomer.next_u8();
+                        println!(
+                            "{} {} {} {}, {}",
+                            int_a,
+                            int_b,
+                            int_c,
+                            ((int_a as u32) << 16) | ((int_b as u32) << 8) | (int_c as u32),
+                            player.display_name()
+                        );
+                        let int = ((int_a as u32) << 16) | ((int_b as u32) << 8) | (int_c as u32);
+                        player.sort_int = int as i32;
+                    }
                     let ptr = storage.just_insert_player(player);
                     // 如果有问题，就直接返回错误
                     // 不过大概率不会有问题就是了
@@ -651,7 +671,13 @@ mod group {
             let ints = [16391432, 11292362];
             assert!(!runner.have_winner());
 
-            for (i, plr) in runner.players.iter().flatten().enumerate() {
+            for (i, plr) in runner
+                .players
+                .iter()
+                .flatten()
+                .filter(|plr| runner.storage.get_player(**plr).expect("wtf").is_seed_plr())
+                .enumerate()
+            {
                 let plr = runner.storage.get_player(*plr).expect("plr not found");
                 assert_eq!(plr.sort_int as u32, { ints[i] });
             }
@@ -662,11 +688,12 @@ mod group {
             let raw_input = "aaa\nbbb";
             let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
 
-            let ints = [16391432, 11292362];
+            let ints = [7525315, 8712372];
             assert!(!runner.have_winner());
 
             for (i, plr) in runner.players.iter().flatten().enumerate() {
                 let plr = runner.storage.get_player(*plr).expect("plr not found");
+                println!("plr: {}", plr.display_name());
                 assert_eq!(plr.sort_int as u32, { ints[i] });
             }
         }

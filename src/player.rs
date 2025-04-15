@@ -5,6 +5,7 @@ pub mod weapons;
 
 use std::cmp::{Ordering, min};
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
 use crate::engine::storage::{SkillId, Storage};
 use crate::engine::update::RunUpdates;
@@ -22,12 +23,14 @@ pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 
 /// 假装是一个指针
 /// (其实就是 usize)
-/// (实践中其实就是 plr 的地址, 所以你还真可以通过他来访问)
 pub type PlrPtr = usize;
 
 /// 将 PlrPtr 转换为 &mut Player
 /// 其实就是一个包装
 pub fn player_ptr_as_mut_plr<'a>(ptr: &PlrPtr) -> &'a mut Player { unsafe { &mut *(*ptr as *mut Player) } }
+
+/// Player 的自增 ID
+pub static PLAYER_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlayerStatus {
@@ -266,6 +269,8 @@ pub struct Player {
     name_factor: f64,
     /// store
     pub storage: Arc<Storage>,
+    /// plr id
+    id: usize,
 }
 
 impl Player {
@@ -370,6 +375,8 @@ impl Player {
             status.set_alive(false);
         }
 
+        let id = PLAYER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         Ok(Player {
             team,
             name,
@@ -386,6 +393,7 @@ impl Player {
             skill_store: SkillStore::new(storage.clone()),
             name_factor,
             storage,
+            id,
         })
     }
 
@@ -420,6 +428,8 @@ impl Player {
     pub fn get_status(&self) -> &PlayerStatus { &self.status }
 
     pub fn as_ptr(&self) -> PlrPtr { self as *const Player as usize }
+
+    pub fn id(&self) -> usize { self.id }
 
     /// 根据名字系数调整数值
     ///
@@ -716,6 +726,9 @@ impl Player {
     pub fn clan_name(&self) -> String { self.team.clone().unwrap_or(self.name.clone()) }
     #[inline]
     pub fn base_name(&self) -> String { self.name.clone() }
+
+    #[inline]
+    pub fn is_seed_plr(&self) -> bool { matches!(self.player_type, PlayerType::Boost) }
 
     fn p_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self.sort_int - other.sort_int != 0 {
