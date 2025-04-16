@@ -63,7 +63,12 @@ pub mod storage {
 
         /// 获取技能
         pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
-        pub fn get_player(&self, ptr: PlrPtr) -> Option<&Player> { self.players.get(&ptr) }
+        /// 获取玩家
+        pub fn get_player(&self, ptr: &PlrPtr) -> Option<&Player> { self.players.get(ptr) }
+        /// 获取玩家(不检查)
+        pub fn get_player_unchecked(&self, ptr: &PlrPtr) -> &Player {
+            self.players.get(ptr).expect("can't get player from storage")
+        }
 
         /// 获取技能的可变引用
         pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills.get_mut(&id.0) }
@@ -189,9 +194,9 @@ pub mod runners {
             // 这里顺便把 sorted hash 这块做了
             names.sort();
             names.dedup();
-            println!("{:?}", names);
+            // println!("{:?}", names);
             let keys = names.join("\r");
-            println!("{:?}", keys.as_bytes().to_vec());
+            // println!("{:?}", keys.as_bytes().to_vec());
             let mut randomer = RC4::new(keys.as_bytes(), 1);
             randomer.js_xor_str(&keys);
             // 准备好了
@@ -265,8 +270,8 @@ pub mod runners {
             let mut sort_groups = inited_plrs.iter().collect::<Vec<&Vec<PlrPtr>>>();
             sort_groups.sort_by(|a, b| {
                 {
-                    let plr_a = storage.get_player(a[0]).expect("plr not found when sort");
-                    let plr_b = storage.get_player(b[0]).expect("plr not found when sort");
+                    let plr_a = storage.get_player(&a[0]).expect("plr not found when sort");
+                    let plr_b = storage.get_player(&b[0]).expect("plr not found when sort");
                     plr_a.partial_cmp(plr_b)
                 }
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -311,7 +316,7 @@ pub mod runners {
                 .map(|x| {
                     x.iter()
                         .filter(|x| {
-                            let x = self.storage.get_player(**x).expect("plr not found when getting alive");
+                            let x = self.storage.get_player(x).expect("plr not found when getting alive");
                             x.get_status().alive()
                         })
                         .cloned()
@@ -678,10 +683,10 @@ mod group {
                 .players
                 .iter()
                 .flatten()
-                .filter(|plr| runner.storage.get_player(**plr).expect("wtf").is_seed_plr())
+                .filter(|plr| runner.storage.get_player(plr).expect("wtf").is_seed_plr())
                 .enumerate()
             {
-                let plr = runner.storage.get_player(*plr).expect("plr not found");
+                let plr = runner.storage.get_player(plr).expect("plr not found");
                 assert_eq!(plr.sort_int as u32, { ints[i] });
             }
         }
@@ -695,7 +700,7 @@ mod group {
             assert!(!runner.have_winner());
 
             for (i, plr) in runner.players.iter().flatten().enumerate() {
-                let plr = runner.storage.get_player(*plr).expect("plr not found");
+                let plr = runner.storage.get_player(plr).expect("plr not found");
                 println!("plr: {}", plr.display_name());
                 assert_eq!(plr.sort_int as u32, { ints[i] });
             }
