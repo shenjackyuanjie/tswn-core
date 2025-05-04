@@ -737,6 +737,27 @@ impl Player {
             self.id_name().partial_cmp(&other.id_name())
         }
     }
+
+    /// getAt
+    pub fn get_at(&self, use_mag: bool, randomer: &mut RC4) -> f64 {
+        let atk = if use_mag {
+            self.status.magic
+        } else {
+            self.status.attack
+        };
+        let a = {
+            let mut temp = [randomer.r127() as i32, randomer.r127() as i32, randomer.r127() as i32, atk + 64, atk];
+            temp.sort_unstable();
+            temp[2] as f64
+        };
+        let b = {
+            let mut temp = [randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64];
+            temp.sort_unstable();
+            temp[1] as f64
+        };
+        a * b * self.status.at_boost
+    }
+
 }
 
 impl PartialOrd for Player {
