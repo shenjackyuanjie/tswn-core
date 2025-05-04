@@ -94,6 +94,10 @@ impl PlayerStatus {
     pub fn set_alive(&mut self, val: bool) { self.alive = val }
 
     pub fn set_point(&mut self, val: u32) { self.point = val }
+
+    #[inline]
+    #[deprecated(note = "self.resistance")]
+    pub fn mdf(&self) -> i32 { self.resistance }
 }
 
 impl Default for PlayerStatus {
@@ -756,6 +760,15 @@ impl Player {
             temp[1] as f64
         };
         a * b * self.status.at_boost
+    }
+
+    /// getDf
+    pub fn get_df(&self, use_mag: bool) -> i32 {
+        if use_mag {
+            self.status.resistance + 64
+        } else {
+            self.status.defense + 64
+        }
     }
 
 }
