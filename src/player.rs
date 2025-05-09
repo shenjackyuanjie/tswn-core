@@ -771,6 +771,20 @@ impl Player {
         }
     }
 
+    pub fn dodge(al_a: i32, al_d: i32, randomer: &mut RC4) -> bool {
+        let ch = {
+            let temp = 24 + al_d - al_a;
+            if temp < 7 {
+                7
+            } else if temp > 64 {
+                temp / 4 + 48
+            } else {
+                temp
+            }
+        };
+    
+        randomer.next_u8() as i32 <= ch
+    }
 }
 
 impl PartialOrd for Player {

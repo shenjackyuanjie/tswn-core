@@ -25,6 +25,7 @@ pub const VAL_LEN: usize = 256;
 /// RC4 类
 /// 名竞的核心~
 #[allow(unused)]
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct RC4 {
     pub i: u32,

@@ -1,3 +1,4 @@
+/// namerena 评分机制里的第一个靶子
 pub const PROFILE_START: u32 = 33554431;
 
 /// 由 Bevy Ecs 启发的一个简单的 ECS 系统
