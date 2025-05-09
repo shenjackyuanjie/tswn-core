@@ -75,6 +75,7 @@ pub mod storage {
         pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills.get_mut(&id.0) }
         /// 我就硬获取了
         /// 不过这个方法不安全
+        #[allow(clippy::mut_from_ref)]
         pub fn just_get_skill_mut(&self, id: SkillId) -> Option<&mut Skill> {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
@@ -82,6 +83,7 @@ pub mod storage {
             }
         }
 
+        #[allow(clippy::mut_from_ref)]
         pub fn just_get_player_mut(&self, ptr: PlrPtr) -> Option<&mut Player> {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
@@ -614,14 +616,14 @@ mod group {
             // 2个 \n 以上的情况，都会被替换成2个 \n
             for x in 2..10 {
                 let new_lines = "\n".repeat(x);
-                let raw_input = format!("a\nb{}c\nd", new_lines);
+                let raw_input = format!("a\nb{new_lines}c\nd");
                 let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
                 assert_eq!(groups, (vec![plr!["a", "b"], plr!["c", "d"]], plr!()));
             }
             // 以及有多个队伍的情况
             for x in 2..10 {
                 let new_lines = "\n".repeat(x);
-                let raw_input = format!("a\nb{}c\nd{}e", new_lines, new_lines);
+                let raw_input = format!("a\nb{new_lines}c\nd{new_lines}e");
                 let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
                 assert_eq!(groups, (vec![plr!["a", "b"], plr!["c", "d"], plr!["e"]], plr!()));
             }
