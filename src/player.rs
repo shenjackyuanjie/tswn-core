@@ -271,8 +271,8 @@ pub struct Player {
     skill_store: skill_state::SkillStore,
     /// 名字长度系数
     name_factor: f64,
-    /// store
-    pub storage: Arc<Storage>,
+    // /// store
+    // pub storage: Arc<Storage>,
     /// plr id
     id: usize,
 }
@@ -366,9 +366,9 @@ impl Player {
         rand.sort_list(&mut skills);
 
         let name_factor = {
-            let factor_name = eval_name::eval_str_common(name.as_str());
+            let factor_name = eval_name::eval_str_common(name.as_str(), false);
             let factor_team = match team.as_ref() {
-                Some(team) => eval_name::eval_str_common(team.as_str()),
+                Some(team) => eval_name::eval_str_common(team.as_str(), false),
                 None => factor_name,
             };
             factor_team.max(factor_name - 6.0)
@@ -396,7 +396,6 @@ impl Player {
             status,
             skill_store: SkillStore::new(storage.clone()),
             name_factor,
-            storage,
             id,
         })
     }
@@ -782,7 +781,7 @@ impl Player {
                 temp
             }
         };
-    
+
         randomer.next_u8() as i32 <= ch
     }
 }

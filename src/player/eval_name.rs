@@ -9,7 +9,7 @@
 /// 以防底下的注释太长, 先把实际计算函数写了
 ///
 /// 用于计算一个字符串 "是否常见"
-pub fn eval_str_common(s: &str) -> f64 {
+pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
     let mut diff = -2;
     let mut last_char = -1;
     let mut char_count = 0;
@@ -125,7 +125,7 @@ pub fn eval_str_common(s: &str) -> f64 {
     .ln();
 
     if x > 48.0 {
-        if x > 80.0 {
+        if x > 80.0 && ladder_version {
             x = 80.0;
         }
         x = x * 0.5 + 24.0;
@@ -670,13 +670,13 @@ mod test {
 
     #[test]
     fn numbers() {
-        assert_eq!(eval_str_common("1"), -14.61370563888011);
-        assert_eq!(eval_str_common("11"), -13.227411277760218);
-        assert_eq!(eval_str_common("111"), -11.841116916640328);
-        assert_eq!(eval_str_common("1111"), -10.454822555520437);
-        assert_eq!(eval_str_common("11111"), -9.068528194400546);
-        assert_eq!(eval_str_common("111111"), -7.682233833280655);
-        assert_eq!(eval_str_common("1111111"), -6.295939472160768);
-        assert_eq!(eval_str_common("11111111"), -4.909645111040874);
+        assert_eq!(eval_str_common("1", false), -14.61370563888011);
+        assert_eq!(eval_str_common("11", false), -13.227411277760218);
+        assert_eq!(eval_str_common("111", false), -11.841116916640328);
+        assert_eq!(eval_str_common("1111", false), -10.454822555520437);
+        assert_eq!(eval_str_common("11111", false), -9.068528194400546);
+        assert_eq!(eval_str_common("111111", false), -7.682233833280655);
+        assert_eq!(eval_str_common("1111111", false), -6.295939472160768);
+        assert_eq!(eval_str_common("11111111", false), -4.909645111040874);
     }
 }

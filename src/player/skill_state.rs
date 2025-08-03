@@ -141,9 +141,9 @@ impl Skill {
 #[derive(Debug, Clone, Default)]
 pub struct SkillStore {
     /// 实际存储 skill 的地方
-    pub skill_store: Vec<SkillId>,
-    /// 全局状态
-    storage: Arc<Storage>,
+    pub skill_store: Vec<Skill>,
+    // /// 全局状态
+    // 移除全局存储引用
     /// 更新状态的
     /// (其他人加到自己身上的)
     pub update_states: Vec<SkillId>,
@@ -169,10 +169,10 @@ pub struct SkillStore {
 }
 
 impl SkillStore {
-    pub fn new(storage: Arc<Storage>) -> Self {
+    pub fn new() -> Self {
         Self {
             skill_store: vec![],
-            storage,
+            // 不再使用全局存储
             update_states: vec![],
             meta: vec![],
             pre_step: vec![],
@@ -199,40 +199,40 @@ impl SkillStore {
 
     pub fn update_proc(&mut self) {
         self.clear_proc();
-        for skill_id in self.skill_store.iter() {
-            let skill = self.storage.get_skill(*skill_id).expect("skill not found");
+        for skill in self.skill_store.iter() {
+            let skill_type = &skill.skill_type;
             let skill_type = &skill.skill_type;
             match skill_type {
                 SkillType::Counter => {
-                    self.post_damage.push(*skill_id);
+                    self.post_damage.push(skill_id);
                 }
                 SkillType::Defend => {
-                    self.post_defend.push(*skill_id);
+                    self.post_defend.push(skill_id);
                 }
                 SkillType::Hide => {
-                    self.post_damage.push(*skill_id);
-                    self.pre_action.push(*skill_id);
+                    self.post_damage.push(skill_id);
+                    self.pre_action.push(skill_id);
                 }
                 SkillType::Merge => {
-                    self.post_kill.push(*skill_id);
+                    self.post_kill.push(skill_id);
                 }
                 SkillType::Protect => {
-                    self.post_action.push(*skill_id);
+                    self.post_action.push(skill_id);
                 }
                 SkillType::Reflect => {
-                    self.pre_defend.push(*skill_id);
+                    self.pre_defend.push(skill_id);
                 }
                 SkillType::Reraise => {
-                    self.post_death.push(*skill_id);
+                    self.post_death.push(skill_id);
                 }
                 SkillType::Shield => {
                     self.pre_action.push(*skill_id);
                 }
                 SkillType::Upgrade => {
-                    self.post_damage.push(*skill_id);
+                    self.post_damage.push(skill_id);
                 }
                 SkillType::Zombie => {
-                    self.post_kill.push(*skill_id);
+                    self.post_kill.push(skill_id);
                 }
                 // TODO: BOSS 技能
                 SkillType::Slime => {
@@ -251,7 +251,7 @@ impl SkillStore {
     /// 最后一个技能 boost
     pub fn boost_last(&mut self) {
         for skill_id in self.skill_store.iter_mut().rev() {
-            let skill = self.storage.just_get_skill_mut(*skill_id).expect("skill not found");
+            let skill = &self.skill_store[*skill_id as usize]; // 直接从 skill_store 获取技能
             if skill.boost_if_not() {
                 break;
             }
