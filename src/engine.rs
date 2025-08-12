@@ -8,7 +8,7 @@ pub mod storage {
 
     use std::sync::Arc;
 
-    use crate::player::skill_state::Skill;
+    use crate::player::skill::Skill;
     use crate::player::{Player, PlrPtr};
 
     use foldhash::HashMap as FastHashMap;

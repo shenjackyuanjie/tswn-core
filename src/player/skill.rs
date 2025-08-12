@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::engine::storage::{SkillId, Storage};
+// use crate::engine::storage::{SkillId, Storage};
 use crate::engine::update::RunUpdates;
 use crate::player::{PlayerStatus, PlrPtr};
 
@@ -142,47 +142,45 @@ impl Skill {
 pub struct SkillStore {
     /// 实际存储 skill 的地方
     pub skill_store: Vec<Skill>,
-    // /// 全局状态
-    // 移除全局存储引用
-    /// 更新状态的
-    /// (其他人加到自己身上的)
-    pub update_states: Vec<SkillId>,
+    // /// 更新状态的
+    // /// (其他人加到自己身上的)
+    // pub update_states: Vec<SkillId>,
     /// meta??
-    pub meta: Vec<SkillId>,
-    // 自己的状态
+    pub meta: Vec<usize>,
+    // 自己的状态 (usize: index)
     /// step 之前
-    pub pre_step: Vec<SkillId>,
+    pub pre_step: Vec<usize>,
     /// 动作之前
-    pub pre_action: Vec<SkillId>,
+    pub pre_action: Vec<usize>,
     /// 动作之后
-    pub post_action: Vec<SkillId>,
+    pub post_action: Vec<usize>,
     /// 防御之前
-    pub pre_defend: Vec<SkillId>,
+    pub pre_defend: Vec<usize>,
     /// 防御之后
-    pub post_defend: Vec<SkillId>,
+    pub post_defend: Vec<usize>,
     /// 伤害之后
-    pub post_damage: Vec<SkillId>,
+    pub post_damage: Vec<usize>,
     /// 死亡之后
-    pub post_death: Vec<SkillId>,
+    pub post_death: Vec<usize>,
     /// 干掉目标之后
-    pub post_kill: Vec<SkillId>,
+    pub post_kill: Vec<usize>,
 }
 
 impl SkillStore {
     pub fn new() -> Self {
         Self {
-            skill_store: vec![],
+            skill_store: Vec::new(),
             // 不再使用全局存储
-            update_states: vec![],
-            meta: vec![],
-            pre_step: vec![],
-            pre_action: vec![],
-            post_action: vec![],
-            pre_defend: vec![],
-            post_defend: vec![],
-            post_damage: vec![],
-            post_death: vec![],
-            post_kill: vec![],
+            // update_states: Vec::new(),
+            meta: Vec::new(),
+            pre_step: Vec::new(),
+            pre_action: Vec::new(),
+            post_action: Vec::new(),
+            pre_defend: Vec::new(),
+            post_defend: Vec::new(),
+            post_damage: Vec::new(),
+            post_death: Vec::new(),
+            post_kill: Vec::new(),
         }
     }
 
@@ -199,48 +197,47 @@ impl SkillStore {
 
     pub fn update_proc(&mut self) {
         self.clear_proc();
-        for skill in self.skill_store.iter() {
-            let skill_type = &skill.skill_type;
+        for (idx, skill) in self.skill_store.iter().enumerate() {
             let skill_type = &skill.skill_type;
             match skill_type {
                 SkillType::Counter => {
-                    self.post_damage.push(skill_id);
+                    self.post_damage.push(idx);
                 }
                 SkillType::Defend => {
-                    self.post_defend.push(skill_id);
+                    self.post_defend.push(idx);
                 }
                 SkillType::Hide => {
-                    self.post_damage.push(skill_id);
-                    self.pre_action.push(skill_id);
+                    self.post_damage.push(idx);
+                    self.pre_action.push(idx);
                 }
                 SkillType::Merge => {
-                    self.post_kill.push(skill_id);
+                    self.post_kill.push(idx);
                 }
                 SkillType::Protect => {
-                    self.post_action.push(skill_id);
+                    self.post_action.push(idx);
                 }
                 SkillType::Reflect => {
-                    self.pre_defend.push(skill_id);
+                    self.pre_defend.push(idx);
                 }
                 SkillType::Reraise => {
-                    self.post_death.push(skill_id);
+                    self.post_death.push(idx);
                 }
                 SkillType::Shield => {
-                    self.pre_action.push(*skill_id);
+                    self.pre_action.push(idx);
                 }
                 SkillType::Upgrade => {
-                    self.post_damage.push(skill_id);
+                    self.post_damage.push(idx);
                 }
                 SkillType::Zombie => {
-                    self.post_kill.push(skill_id);
+                    self.post_kill.push(idx);
                 }
                 // TODO: BOSS 技能
                 SkillType::Slime => {
-                    self.post_damage.push(*skill_id);
+                    self.post_damage.push(idx);
                 }
                 // TODO: 武器技能
                 SkillType::DeathNote => {
-                    self.post_damage.push(*skill_id);
+                    self.post_damage.push(idx);
                 }
 
                 _ => (),
@@ -250,8 +247,7 @@ impl SkillStore {
 
     /// 最后一个技能 boost
     pub fn boost_last(&mut self) {
-        for skill_id in self.skill_store.iter_mut().rev() {
-            let skill = &self.skill_store[*skill_id as usize]; // 直接从 skill_store 获取技能
+        for skill in self.skill_store.iter_mut().rev() {
             if skill.boost_if_not() {
                 break;
             }
@@ -259,7 +255,7 @@ impl SkillStore {
     }
 
     /// 添加技能
-    pub fn add_skill(&mut self, skill: SkillId) { self.skill_store.push(skill); }
+    pub fn add_skill(&mut self, skill: Skill) { self.skill_store.push(skill); }
 }
 
 /// 技能类型

@@ -1,5 +1,5 @@
 pub mod eval_name;
-pub mod skill_state;
+pub mod skill;
 pub mod utils;
 pub mod weapons;
 
@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicUsize;
 use crate::engine::storage::{SkillId, Storage};
 use crate::engine::update::RunUpdates;
 use crate::error::player::{PlayerError, PlayerResult};
-use crate::player::skill_state::{Skill, SkillStore};
+use crate::player::skill::{Skill, SkillStore};
 use crate::rc4::RC4;
 
 /// 名字本体最大长度
@@ -268,7 +268,7 @@ pub struct Player {
     /// 主要是我懒得加一大堆字段
     status: PlayerStatus,
     /// 技能相关
-    skill_store: skill_state::SkillStore,
+    skill_store: skill::SkillStore,
     /// 名字长度系数
     name_factor: f64,
     // /// store
@@ -282,7 +282,12 @@ impl Player {
     // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
     /// 创建一个新的玩家
-    pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>, storage: Arc<Storage>) -> PlayerResult<Self> {
+    pub fn new_and_init(
+        team: Option<String>,
+        name: String,
+        weapon: Option<String>,
+        _storage: Arc<Storage>,
+    ) -> PlayerResult<Self> {
         // 先校验长度
         if team.is_some() && team.as_ref().unwrap().len() > TEAM_MAX_LEN {
             let t = team.unwrap();
@@ -292,13 +297,13 @@ impl Player {
             return Err(PlayerError::NameTooLong(name.len(), name.len()));
         }
         // 再校验字符
-        if let Some(t) = team.as_ref() {
-            if t.chars().any(filter_char) {
-                return Err(PlayerError::InvalidTextInTeam(
-                    t.chars().find(|&char| filter_char(char)).unwrap().to_string(),
-                    t.chars().position(filter_char).unwrap(),
-                ));
-            }
+        if let Some(t) = team.as_ref()
+            && t.chars().any(filter_char)
+        {
+            return Err(PlayerError::InvalidTextInTeam(
+                t.chars().find(|&char| filter_char(char)).unwrap().to_string(),
+                t.chars().position(filter_char).unwrap(),
+            ));
         }
         if name.chars().any(filter_char) {
             return Err(PlayerError::InvalidTextInName(
@@ -394,7 +399,7 @@ impl Player {
             skil_id: skills.clone(),
             skil_prop: skills,
             status,
-            skill_store: SkillStore::new(storage.clone()),
+            skill_store: SkillStore::new(),
             name_factor,
             id,
         })
@@ -497,8 +502,7 @@ impl Player {
                 if raw_small < 10 {
                     skill.boosted = true;
                 }
-                let skill_id = self.storage.as_ref().just_insert_skill(skill);
-                self.skill_store.add_skill(skill_id);
+                self.skill_store.add_skill(skill);
             }
         }
 
@@ -514,18 +518,20 @@ impl Player {
         if self.skill_store.skill_store.len() >= 16 {
             // 14
             let skill_14 = self
-                .storage
-                .just_get_skill_mut(self.skill_store.skill_store[14])
-                .expect("skill 14 not found??");
+                .skill_store
+                .skill_store
+                .get_mut(14)
+                .expect("faild to get skill index 14 when skill store len >= 16");
             if skill_14.level() > 0 && !skill_14.boosted {
                 let boost_level = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
                 skill_14.boost_level(boost_level);
             }
             // 15
             let skill_15 = self
-                .storage
-                .just_get_skill_mut(self.skill_store.skill_store[15])
-                .expect("skill 15 not found??");
+                .skill_store
+                .skill_store
+                .get_mut(15)
+                .expect("faild to get skill index 15 when skill store len >= 16");
             if skill_15.level() > 0 && !skill_15.boosted {
                 let boost_level = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
                 skill_15.boost_level(boost_level);
@@ -561,15 +567,17 @@ impl Player {
         // update state entry
         // 先设置为 mut了,以防万一
         let status = &mut self.status;
-        for skill_id in self.skill_store.update_states.iter() {
-            // 通过一个华丽的 unsafe 来绕过借用检查
-            // rinick 我谢谢你啊
-            // let slf = unsafe { &mut *(self as *const Player as *mut Player) };
-            // 好家伙, 看来不需要了呢, 所有的非 status 修改都是 state 的, 不是 skill得到
-            // skill.update_state(status);
-            let skill = self.storage.as_ref().just_get_skill_mut(*skill_id).expect("skill not found");
-            skill.update_state(status);
-        }
+        // for skill_idx in self.skill_store.update_states.iter() {
+        // 通过一个华丽的 unsafe 来绕过借用检查
+        // rinick 我谢谢你啊
+        // let slf = unsafe { &mut *(self as *const Player as *mut Player) };
+        // 好家伙, 看来不需要了呢, 所有的非 status 修改都是 state 的, 不是 skill得到
+        // skill.update_state(status);
+        // let skill = self.storage.as_ref().just_get_skill_mut(*skill_idx).expect("skill not found");
+        // let skill = self.skill_store.skill_store.get(skill_idx).expect("faild to get skill from storage");
+        // skill.update_state(status);
+        // TODO: 我觉得这玩意不应该放在这
+        // }
     }
 
     /// 我真是谢谢您呢……
@@ -743,13 +751,15 @@ impl Player {
 
     /// getAt
     pub fn get_at(&self, use_mag: bool, randomer: &mut RC4) -> f64 {
-        let atk = if use_mag {
-            self.status.magic
-        } else {
-            self.status.attack
-        };
+        let atk = if use_mag { self.status.magic } else { self.status.attack };
         let a = {
-            let mut temp = [randomer.r127() as i32, randomer.r127() as i32, randomer.r127() as i32, atk + 64, atk];
+            let mut temp = [
+                randomer.r127() as i32,
+                randomer.r127() as i32,
+                randomer.r127() as i32,
+                atk + 64,
+                atk,
+            ];
             temp.sort_unstable();
             temp[2] as f64
         };
