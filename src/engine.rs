@@ -469,14 +469,14 @@ pub mod update {
 
     #[derive(Debug, Clone)]
     pub struct RunUpdate {
-        score: i32,
-        delay0: i32,
-        delay1: i32,
-        message: String,
-        caster: PlrPtr,
-        target: PlrPtr,
-        targets: Vec<PlrPtr>,
-        update_type: UpdateType,
+        pub score: u32,
+        pub delay0: i32,
+        pub delay1: i32,
+        pub message: String,
+        pub caster: PlrPtr,
+        pub target: PlrPtr,
+        pub targets: Vec<PlrPtr>,
+        pub update_type: UpdateType,
         // param: Object ?
     }
 
@@ -500,10 +500,10 @@ pub mod update {
             // [1] -> target
             // [2] -> targets
             let mut msg = self.message.clone();
-            msg = msg.replace("{0}", &self.caster.to_string());
-            msg = msg.replace("{1}", &self.target.to_string());
+            msg = msg.replace("[0]", &self.caster.to_string());
+            msg = msg.replace("[1]", &self.target.to_string());
             msg = msg.replace(
-                "{2}",
+                "[2]",
                 &self.targets.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
             );
             msg
@@ -520,6 +520,19 @@ pub mod update {
                 targets: vec![],
                 update_type: UpdateType::NextLine,
                 // param: Object ?
+            }
+        }
+
+        pub fn new(msg: impl ToString, caster: PlrPtr, target: PlrPtr, score: u32) -> Self {
+            RunUpdate {
+                score,
+                delay0: 0,
+                delay1: 0,
+                message: msg.to_string(),
+                caster,
+                target,
+                targets: Vec::new(),
+                update_type: UpdateType::None,
             }
         }
     }

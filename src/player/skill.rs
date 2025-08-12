@@ -3,6 +3,7 @@ use std::sync::Arc;
 // use crate::engine::storage::{SkillId, Storage};
 use crate::engine::update::RunUpdates;
 use crate::player::{PlayerStatus, PlrPtr};
+use crate::rc4::RC4;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Skill {
@@ -124,6 +125,18 @@ impl Skill {
         }
         step
     }
+
+    pub fn act(&mut self, r: &mut RC4) {}
+
+    pub fn pre_action(&mut self, r: &mut RC4) {}
+
+    pub fn post_action(&mut self, r: &mut RC4) {}
+
+    pub fn pre_defend(&mut self, mut atp: f64, r: &mut RC4) -> f64 { atp }
+
+    pub fn post_defend(&mut self, mut dmg: i32, r: &mut RC4) -> i32 { dmg }
+
+    pub fn post_damage(&mut self, dmg: i32, caster: PlrPtr, r: &mut RC4, updates: &mut RunUpdates) {}
 
     pub fn destroy(&self) { todo!() }
 }
@@ -256,6 +269,10 @@ impl SkillStore {
 
     /// 添加技能
     pub fn add_skill(&mut self, skill: Skill) { self.skill_store.push(skill); }
+
+    pub fn get_skill(&self, idx: usize) -> &Skill { &self.skill_store[idx] }
+
+    pub fn get_skill_mut(&mut self, idx: usize) -> &mut Skill { &mut self.skill_store[idx] }
 }
 
 /// 技能类型

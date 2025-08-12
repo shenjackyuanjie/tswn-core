@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use crate::engine::storage::{SkillId, Storage};
-use crate::engine::update::RunUpdates;
+use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::error::player::{PlayerError, PlayerResult};
 use crate::player::skill::{Skill, SkillStore};
 use crate::rc4::RC4;
@@ -24,6 +24,15 @@ pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 /// 假装是一个指针
 /// (其实就是 usize)
 pub type PlrPtr = usize;
+
+/// OnDamage 函数
+///
+/// 为什么 dart 里函数类型这么写的啊(恼)
+///
+/// ```dart
+/// typedef OnDamage(Plr caster, Plr target, int dmg, R r, RunUpdates updates);
+/// ```
+pub type OnDamageFunc = fn(PlrPtr, PlrPtr, i32, &mut RC4, &mut RunUpdates);
 
 /// 将 PlrPtr 转换为 &mut Player
 /// 其实就是一个包装
@@ -98,6 +107,10 @@ impl PlayerStatus {
     #[inline]
     #[deprecated(note = "self.resistance")]
     pub fn mdf(&self) -> i32 { self.resistance }
+
+    #[inline]
+    #[deprecated(note = "self.wisdom")]
+    pub fn itl(&self) -> i32 { self.wisdom }
 }
 
 impl Default for PlayerStatus {
@@ -364,7 +377,7 @@ impl Player {
         let raw_name_base: [u8; 128] = name_base
             .as_slice()
             .try_into()
-            .expect("unreachable(如果真到这里了就tm得好好怀疑一下自己的代码是怎么写的了)");
+            .unwrap_or_else(|_| unreachable!("unreachable(如果真到这里了就tm得好好怀疑一下自己的代码是怎么写的了)"));
 
         // 技能顺序
         let mut skills = (0..39).collect::<Vec<u32>>();
@@ -565,8 +578,10 @@ impl Player {
         self.status.at_boost = 1.0;
         self.status.set_frozen(false);
         // update state entry
+        // TODO
+
         // 先设置为 mut了,以防万一
-        let status = &mut self.status;
+        // let status = &mut self.status;
         // for skill_idx in self.skill_store.update_states.iter() {
         // 通过一个华丽的 unsafe 来绕过借用检查
         // rinick 我谢谢你啊
@@ -793,6 +808,136 @@ impl Player {
         };
 
         randomer.next_u8() as i32 <= ch
+    }
+
+    /// preDefend
+    pub fn pre_defend(
+        &mut self,
+        mut atp: f64,
+        is_mag: bool,
+        caster: PlrPtr,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+    ) -> f64 {
+        let pre_defend_indices: Vec<_> = self.skill_store.pre_defend.iter().cloned().collect();
+        for skill_idx in pre_defend_indices {
+            let skill = self.skill_store.get_skill_mut(skill_idx);
+            atp = skill.pre_defend(atp, randomer);
+            if atp == 0.0 {
+                return atp;
+            }
+        }
+        atp
+    }
+
+    /// postDefend
+    pub fn post_defend(
+        &mut self,
+        mut dmg: i32,
+        caster: PlrPtr,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+    ) -> i32 {
+        let post_defend_indices: Vec<_> = self.skill_store.post_defend.iter().cloned().collect();
+        for skill_idx in post_defend_indices {
+            let skill = self.skill_store.get_skill_mut(skill_idx);
+            dmg = skill.post_defend(dmg, randomer);
+        }
+        dmg
+    }
+
+    pub fn attacked(
+        &mut self,
+        mut atp: f64,
+        is_mag: bool,
+        caster: PlrPtr,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+    ) -> i32 {
+        atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates);
+        if atp == 0.0 {
+            return 0;
+        }
+        let (accure, dodgeval) = if is_mag {
+            // TODO: caster
+            (0, self.status.resistance + self.status.agility)
+        } else {
+            // TODO: caster
+            (0, self.status.attack + self.status.agility)
+        };
+        if self.active() && Self::dodge(accure, dodgeval, randomer) {
+            let update = RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20);
+            updates.add(update);
+            return 0;
+        }
+        self.defned(atp, is_mag, caster, on_damage, randomer, updates)
+    }
+
+    pub fn defned(
+        &mut self,
+        atp: f64,
+        is_mag: bool,
+        caster: PlrPtr,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+    ) -> i32 {
+        let dfp = self.get_df(is_mag);
+        let mut dmg = (atp / dfp as f64).ceil() as i32;
+        dmg = self.post_defend(dmg, caster, on_damage, randomer, updates);
+        self.damage(dmg, caster, on_damage, randomer, updates)
+    }
+
+    pub fn damage(
+        &mut self,
+        dmg: i32,
+        caster: PlrPtr,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+    ) -> i32 {
+        if dmg < 0 {
+            let _old_hp = self.status.hp;
+            self.status.hp -= dmg;
+            if self.status.hp > self.status.max_hp {
+                self.status.hp = self.status.max_hp;
+            }
+            let update = RunUpdate::new("[1]回复体力[2]点", caster, self.as_ptr(), dmg.abs() as u32);
+            updates.add(update);
+            return 0;
+        }
+        if dmg == 0 {
+            let update = RunUpdate::new("[0]受到[2]点伤害", self.as_ptr(), self.as_ptr(), 10);
+            updates.add(update);
+            return 0;
+        }
+        let old_hp = self.status.hp;
+        self.status.hp -= dmg;
+        if self.status.hp < 0 {
+            self.status.hp = 0;
+        }
+        // TODO: > 160/120 的特殊标记
+        let update = RunUpdate::new("[0]受到[2]点伤害", self.as_ptr(), self.as_ptr(), dmg as u32);
+        updates.add(update);
+        on_damage(caster, self.as_ptr(), dmg, randomer, updates);
+        self.on_damaged(dmg, old_hp, caster, randomer, updates)
+    }
+
+    pub fn on_damaged(&mut self, dmg: i32, old_hp: i32, caster: PlrPtr, randomer: &mut RC4, updates: &mut RunUpdates) -> i32 {
+        let post_damaged_indices: Vec<_> = self.skill_store.post_damage.iter().cloned().collect();
+        for skill_idx in post_damaged_indices {
+            let skill = self.skill_store.get_skill_mut(skill_idx);
+            skill.post_damage(dmg, caster, randomer, updates);
+        }
+        if self.status.hp <= 0 {
+            // self.on_die(old_hp, caster, randomer, updates);
+            return old_hp;
+        } else {
+            return dmg;
+        }
     }
 }
 
