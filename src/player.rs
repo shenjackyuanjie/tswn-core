@@ -819,11 +819,12 @@ impl Player {
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
     ) -> f64 {
         let pre_defend_indices: Vec<_> = self.skill_store.pre_defend.iter().cloned().collect();
         for skill_idx in pre_defend_indices {
             let skill = self.skill_store.get_skill_mut(skill_idx);
-            atp = skill.pre_defend(atp, randomer);
+            atp = skill.pre_defend(self.as_ptr(), atp, randomer, updates, &storage);
             if atp == 0.0 {
                 return atp;
             }
@@ -839,11 +840,12 @@ impl Player {
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
     ) -> i32 {
         let post_defend_indices: Vec<_> = self.skill_store.post_defend.iter().cloned().collect();
         for skill_idx in post_defend_indices {
             let skill = self.skill_store.get_skill_mut(skill_idx);
-            dmg = skill.post_defend(dmg, randomer);
+            dmg = skill.post_defend(self.as_ptr(), caster, dmg, randomer, updates, &storage);
         }
         dmg
     }
@@ -856,24 +858,32 @@ impl Player {
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
     ) -> i32 {
-        atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates);
+        atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
         if atp == 0.0 {
             return 0;
         }
-        let (accure, dodgeval) = if is_mag {
-            // TODO: caster
-            (0, self.status.resistance + self.status.agility)
-        } else {
-            // TODO: caster
-            (0, self.status.attack + self.status.agility)
+        let (accure, dodgeval) = {
+            let caster_plr = storage.get_player(&caster).expect("faild to get caster player");
+            if is_mag {
+                (
+                    caster_plr.status.magic + caster_plr.status.agility,
+                    self.status.resistance + self.status.agility,
+                )
+            } else {
+                (
+                    caster_plr.status.attack + caster_plr.status.agility,
+                    self.status.attack + self.status.agility,
+                )
+            }
         };
         if self.active() && Self::dodge(accure, dodgeval, randomer) {
             let update = RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20);
             updates.add(update);
             return 0;
         }
-        self.defned(atp, is_mag, caster, on_damage, randomer, updates)
+        self.defned(atp, is_mag, caster, on_damage, randomer, updates, storage)
     }
 
     pub fn defned(
@@ -884,11 +894,12 @@ impl Player {
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
     ) -> i32 {
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
-        dmg = self.post_defend(dmg, caster, on_damage, randomer, updates);
-        self.damage(dmg, caster, on_damage, randomer, updates)
+        dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
+        self.damage(dmg, caster, on_damage, randomer, updates, storage)
     }
 
     pub fn damage(
@@ -898,6 +909,7 @@ impl Player {
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
     ) -> i32 {
         if dmg < 0 {
             let _old_hp = self.status.hp;
@@ -923,14 +935,22 @@ impl Player {
         let update = RunUpdate::new("[0]受到[2]点伤害", self.as_ptr(), self.as_ptr(), dmg as u32);
         updates.add(update);
         on_damage(caster, self.as_ptr(), dmg, randomer, updates);
-        self.on_damaged(dmg, old_hp, caster, randomer, updates)
+        self.on_damaged(dmg, old_hp, caster, randomer, updates, storage)
     }
 
-    pub fn on_damaged(&mut self, dmg: i32, old_hp: i32, caster: PlrPtr, randomer: &mut RC4, updates: &mut RunUpdates) -> i32 {
+    pub fn on_damaged(
+        &mut self,
+        dmg: i32,
+        old_hp: i32,
+        caster: PlrPtr,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> i32 {
         let post_damaged_indices: Vec<_> = self.skill_store.post_damage.iter().cloned().collect();
         for skill_idx in post_damaged_indices {
             let skill = self.skill_store.get_skill_mut(skill_idx);
-            skill.post_damage(dmg, caster, randomer, updates);
+            skill.post_damage(dmg, caster, randomer, updates, storage);
         }
         if self.status.hp <= 0 {
             // self.on_die(old_hp, caster, randomer, updates);

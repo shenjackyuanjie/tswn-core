@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-// use crate::engine::storage::{SkillId, Storage};
-use crate::engine::update::RunUpdates;
+use crate::engine::storage::Storage;
+use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{PlayerStatus, PlrPtr};
 use crate::rc4::RC4;
+
+use foldhash::HashMap as FoldHashMap;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Skill {
@@ -66,7 +68,7 @@ impl Skill {
             SkillType::Charge => {
                 status.at_boost *= 3.0;
             }
-            SkillType::Iron => {
+            SkillType::Iron { .. } => {
                 status.attract *= 1.12;
             }
             SkillType::Hide => {
@@ -89,10 +91,16 @@ impl Skill {
                 status.speed += 20;
                 status.wisdom += 20;
             }
-            SkillType::CharmState { charmed_group } => {
+            SkillType::CharmState { charmed_group: _ } => {
                 todo!("魅惑我还不知道咋写")
+                /*
+                                   void updateState(Plr p) {
+                     // 把目标拉到自己组
+                     target.allyGroup = grp;
+                   }
+                */
             }
-            SkillType::CurseState => {
+            SkillType::CurseState { prob: _, multiply: _ } => {
                 status.atk_sum *= 4;
             }
             SkillType::HasteState { faster } => {
@@ -126,17 +134,90 @@ impl Skill {
         step
     }
 
-    pub fn act(&mut self, r: &mut RC4) {}
+    pub fn act(&mut self, plr: PlrPtr, r: &mut RC4, updates: &mut RunUpdates, s: &Arc<Storage>) {
+        match self.skill_type {
+            SkillType::Iron { mut protect, mut step } => {
+                let update = RunUpdate::new("[0]发动[铁壁]", plr, plr, 60);
+                updates.add(update);
+                let plr_mut = s.just_get_player_mut(plr).expect("faild to get self plr");
+                // plr_mut.skill_store.post_defend.push();
+                // plr_mut.skill_store.post_action.push();
+                // plr_mut.skill_store.update
+                step = 3;
+                if plr_mut
+                    .skill_store
+                    .meta
+                    .iter()
+                    .map(|idx| plr_mut.skill_store.get_skill(*idx))
+                    .any(|skill| skill.skill_type == SkillType::Charge)
+                {
+                    step += 4;
+                    protect += 240 + plr_mut.status.magic * 4;
+                }
+                plr_mut.set_move_point(plr_mut.move_point() - 256);
+                let update = RunUpdate::new("[0]防御力大幅上升", plr, plr, 0);
+                updates.add(update);
+            }
+            _ => {}
+        }
+    }
 
-    pub fn pre_action(&mut self, r: &mut RC4) {}
+    pub fn pre_action(&mut self, plr: PlrPtr, r: &mut RC4, updates: &mut RunUpdates, s: &Arc<Storage>) {}
 
-    pub fn post_action(&mut self, r: &mut RC4) {}
+    pub fn post_action(&mut self, plr: PlrPtr, r: &mut RC4, updates: &mut RunUpdates, s: &Arc<Storage>) {}
 
-    pub fn pre_defend(&mut self, mut atp: f64, r: &mut RC4) -> f64 { atp }
+    pub fn pre_defend(&mut self, plr: PlrPtr, mut atp: f64, r: &mut RC4, updates: &mut RunUpdates, s: &Arc<Storage>) -> f64 {
+        atp
+    }
 
-    pub fn post_defend(&mut self, mut dmg: i32, r: &mut RC4) -> i32 { dmg }
+    pub fn post_defend(
+        &mut self,
+        plr: PlrPtr,
+        caster: PlrPtr,
+        mut dmg: i32,
+        r: &mut RC4,
+        updates: &mut RunUpdates,
+        s: &Arc<Storage>,
+    ) -> i32 {
+        match self.skill_type {
+            SkillType::Defend => {
+                let plr_mut = s.just_get_player_mut(plr).expect("faild to get self plr");
+                if r.r255() < self.level && plr_mut.mp_ready(r) {
+                    let update = RunUpdate::new("[0][防御]", plr, plr, 40);
+                    updates.add(update);
+                    dmg / 2
+                } else {
+                    dmg
+                }
+            }
+            SkillType::CurseState { prob, multiply } => {
+                if dmg > 0 && (r.r63() as i32) < prob {
+                    let update = RunUpdate::new("[诅咒]使伤害加倍", plr, caster, 0);
+                    updates.add(update);
+                    dmg * multiply
+                } else {
+                    dmg
+                }
+            }
+            SkillType::Iron { mut protect, .. } => {
+                if dmg > 0 {
+                    if dmg <= protect {
+                        dmg = 1;
+                        protect -= dmg - 1;
+                    } else {
+                        dmg -= protect;
+                        self.destroy();
+                    }
+                    dmg
+                } else {
+                    0
+                }
+            }
+            _ => dmg,
+        }
+    }
 
-    pub fn post_damage(&mut self, dmg: i32, caster: PlrPtr, r: &mut RC4, updates: &mut RunUpdates) {}
+    pub fn post_damage(&mut self, dmg: i32, caster: PlrPtr, r: &mut RC4, updates: &mut RunUpdates, s: &Arc<Storage>) {}
 
     pub fn destroy(&self) { todo!() }
 }
@@ -155,12 +236,11 @@ impl Skill {
 pub struct SkillStore {
     /// 实际存储 skill 的地方
     pub skill_store: Vec<Skill>,
-    // /// 更新状态的
-    // /// (其他人加到自己身上的)
-    // pub update_states: Vec<SkillId>,
     /// meta??
     pub meta: Vec<usize>,
     // 自己的状态 (usize: index)
+    /// 更新状态时?
+    pub update_states: Vec<usize>,
     /// step 之前
     pub pre_step: Vec<usize>,
     /// 动作之前
@@ -177,6 +257,8 @@ pub struct SkillStore {
     pub post_death: Vec<usize>,
     /// 干掉目标之后
     pub post_kill: Vec<usize>,
+    // 别的什么东西
+    pub pending_clear_states: bool,
 }
 
 impl SkillStore {
@@ -184,7 +266,7 @@ impl SkillStore {
         Self {
             skill_store: Vec::new(),
             // 不再使用全局存储
-            // update_states: Vec::new(),
+            update_states: Vec::new(),
             meta: Vec::new(),
             pre_step: Vec::new(),
             pre_action: Vec::new(),
@@ -194,6 +276,7 @@ impl SkillStore {
             post_damage: Vec::new(),
             post_death: Vec::new(),
             post_kill: Vec::new(),
+            pending_clear_states: false,
         }
     }
 
@@ -272,14 +355,17 @@ impl SkillStore {
 
     pub fn get_skill(&self, idx: usize) -> &Skill { &self.skill_store[idx] }
 
-    pub fn get_skill_mut(&mut self, idx: usize) -> &mut Skill { &mut self.skill_store[idx] }
+    pub fn get_skill_mut(&self, idx: usize) -> &mut Skill {
+        let slf = self as *const Self as *mut Self;
+        unsafe { &mut (&mut (*slf).skill_store)[idx] }
+    }
 }
 
 /// 技能类型
 /// 需要和游戏中的技能类型对应
 ///
 /// 因为不知道啥时候会加新的, 所以务必带上 `#[non_exhaustive]`
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum SkillType {
     /// 火球术
@@ -320,7 +406,7 @@ pub enum SkillType {
     /// 净化
     Disperse,
     /// 铁壁
-    Iron,
+    Iron { protect: i32, step: u32 },
 
     /// 蓄力
     Charge,
@@ -365,7 +451,7 @@ pub enum SkillType {
     /// 被魅惑
     CharmState { charmed_group: u32 },
     /// 被诅咒
-    CurseState,
+    CurseState { prob: i32, multiply: i32 },
     /// 疾走状态
     HasteState { faster: i32 },
     /// 被冻结
@@ -410,7 +496,7 @@ impl SkillType {
             15 => Self::Heal,
             16 => Self::Revive,
             17 => Self::Disperse,
-            18 => Self::Iron,
+            18 => Self::Iron { protect: 0, step: 0 },
 
             19 => Self::Charge,
             20 => Self::Accumulate { acc: 1.7 },
@@ -459,7 +545,7 @@ impl SkillType {
                 | SkillType::Heal
                 | SkillType::Revive
                 | SkillType::Disperse
-                | SkillType::Iron
+                | SkillType::Iron { .. }
                 | SkillType::Charge
                 | SkillType::Accumulate { .. }
                 | SkillType::Assassinate
@@ -483,7 +569,7 @@ impl SkillType {
         matches!(
             self,
             SkillType::SlowState { .. }
-                | Self::CurseState
+                | Self::CurseState { .. }
                 | Self::IceState { .. }
                 | Self::CharmState { .. }
                 | Self::HasteState { .. }
