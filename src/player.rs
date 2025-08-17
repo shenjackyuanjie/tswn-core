@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicUsize;
 use crate::engine::storage::{SkillId, Storage};
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::error::player::{PlayerError, PlayerResult};
-use crate::player::skill::{Skill, SkillStore};
+use crate::player::skill::{Skill, store::SkillStorage};
 use crate::rc4::RC4;
 
 /// 名字本体最大长度
@@ -22,6 +22,7 @@ pub const TEAM_MAX_LEN: usize = 256;
 pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 
 /// 假装是一个指针
+/// 其实是 idx
 /// (其实就是 usize)
 pub type PlrPtr = usize;
 
@@ -281,7 +282,7 @@ pub struct Player {
     /// 主要是我懒得加一大堆字段
     status: PlayerStatus,
     /// 技能相关
-    skill_store: skill::SkillStore,
+    skills: SkillStorage,
     /// 名字长度系数
     name_factor: f64,
     // /// store
@@ -302,8 +303,9 @@ impl Player {
         _storage: Arc<Storage>,
     ) -> PlayerResult<Self> {
         // 先校验长度
-        if team.is_some() && team.as_ref().unwrap().len() > TEAM_MAX_LEN {
-            let t = team.unwrap();
+        if let Some(t) = team.as_ref()
+            && t.len() > TEAM_MAX_LEN
+        {
             return Err(PlayerError::TeamNameTooLong(t.len(), t.len()));
         }
         if name.len() > NAME_MAX_LEN {
@@ -412,7 +414,7 @@ impl Player {
             skil_id: skills.clone(),
             skil_prop: skills,
             status,
-            skill_store: SkillStore::new(),
+            skills: SkillStorage::new(),
             name_factor,
             id,
         })
@@ -506,7 +508,7 @@ impl Player {
                 min(self.name_base[i + 2], self.name_base[i + 3]),
             );
             if small > 10 && self.skil_id[j] < 35 {
-                let mut skill = Skill::new_from_type_id((small - 10) as u32, self.skil_id[j] as u8);
+                let mut skill = Skill::new_with_id((small - 10) as u32, self.skil_id[j] as u8);
                 let raw_small = min(
                     min(self.raw_name_base[i], self.raw_name_base[i + 1]),
                     min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
@@ -515,7 +517,7 @@ impl Player {
                 if raw_small < 10 {
                     skill.boosted = true;
                 }
-                self.skill_store.add_skill(skill);
+                self.skills.add_skill(skill);
             }
         }
 
@@ -526,32 +528,24 @@ impl Player {
 
         // boost skills(addSkillsToProc)
         // boost最后一个
-        self.skill_store.boost_last();
+        self.skills.boost_last();
         // 然后是 boost passive
-        if self.skill_store.skill_store.len() >= 16 {
+        if self.skills.skill.len() >= 16 {
             // 14
-            let skill_14 = self
-                .skill_store
-                .skill_store
-                .get_mut(14)
-                .expect("faild to get skill index 14 when skill store len >= 16");
+            let skill_14 = self.skills.skill_by_idx_mut(14);
             if skill_14.level() > 0 && !skill_14.boosted {
                 let boost_level = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
                 skill_14.boost_level(boost_level);
             }
             // 15
-            let skill_15 = self
-                .skill_store
-                .skill_store
-                .get_mut(15)
-                .expect("faild to get skill index 15 when skill store len >= 16");
+            let skill_15 = self.skills.skill_by_idx_mut(15);
             if skill_15.level() > 0 && !skill_15.boosted {
                 let boost_level = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
                 skill_15.boost_level(boost_level);
             }
         }
         // 更新 proc(其实就是缓存)
-        self.skill_store.update_proc();
+        self.skills.update_proc();
 
         self.update_states();
 
@@ -811,44 +805,44 @@ impl Player {
     }
 
     /// preDefend
-    pub fn pre_defend(
-        &mut self,
-        mut atp: f64,
-        is_mag: bool,
-        caster: PlrPtr,
-        on_damage: OnDamageFunc,
-        randomer: &mut RC4,
-        updates: &mut RunUpdates,
-        storage: &Arc<Storage>,
-    ) -> f64 {
-        let pre_defend_indices: Vec<_> = self.skill_store.pre_defend.iter().cloned().collect();
-        for skill_idx in pre_defend_indices {
-            let skill = self.skill_store.get_skill_mut(skill_idx);
-            atp = skill.pre_defend(self.as_ptr(), atp, randomer, updates, &storage);
-            if atp == 0.0 {
-                return atp;
-            }
-        }
-        atp
-    }
+    // pub fn pre_defend(
+    //     &mut self,
+    //     mut atp: f64,
+    //     is_mag: bool,
+    //     caster: PlrPtr,
+    //     on_damage: OnDamageFunc,
+    //     randomer: &mut RC4,
+    //     updates: &mut RunUpdates,
+    //     storage: &Arc<Storage>,
+    // ) -> f64 {
+    //     let pre_defend_indices: Vec<_> = self.skills.pre_defend.iter().cloned().collect();
+    //     for skill_idx in pre_defend_indices {
+    //         let skill = self.skills.skill_by_id_mut(skill_idx);
+    //         atp = skill.pre_defend(self.as_ptr(), atp, randomer, updates, &storage);
+    //         if atp == 0.0 {
+    //             return atp;
+    //         }
+    //     }
+    //     atp
+    // }
 
     /// postDefend
-    pub fn post_defend(
-        &mut self,
-        mut dmg: i32,
-        caster: PlrPtr,
-        on_damage: OnDamageFunc,
-        randomer: &mut RC4,
-        updates: &mut RunUpdates,
-        storage: &Arc<Storage>,
-    ) -> i32 {
-        let post_defend_indices: Vec<_> = self.skill_store.post_defend.iter().cloned().collect();
-        for skill_idx in post_defend_indices {
-            let skill = self.skill_store.get_skill_mut(skill_idx);
-            dmg = skill.post_defend(self.as_ptr(), caster, dmg, randomer, updates, &storage);
-        }
-        dmg
-    }
+    // pub fn post_defend(
+    //     &mut self,
+    //     mut dmg: i32,
+    //     caster: PlrPtr,
+    //     on_damage: OnDamageFunc,
+    //     randomer: &mut RC4,
+    //     updates: &mut RunUpdates,
+    //     storage: &Arc<Storage>,
+    // ) -> i32 {
+    //     let post_defend_indices: Vec<_> = self.skills.post_defend.iter().cloned().collect();
+    //     for skill_idx in post_defend_indices {
+    //         let skill = self.skills.skill_by_id_mut(skill_idx);
+    //         dmg = skill.post_defend(self.as_ptr(), caster, dmg, randomer, updates, &storage);
+    //     }
+    //     dmg
+    // }
 
     pub fn attacked(
         &mut self,
@@ -860,7 +854,9 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        atp = self
+            .skills
+            .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
         if atp == 0.0 {
             return 0;
         }
@@ -898,7 +894,9 @@ impl Player {
     ) -> i32 {
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
-        dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
+        dmg = self
+            .skills
+            .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage));
         self.damage(dmg, caster, on_damage, randomer, updates, storage)
     }
 
@@ -947,10 +945,11 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        let post_damaged_indices: Vec<_> = self.skill_store.post_damage.iter().cloned().collect();
+        let post_damaged_indices: Vec<_> = self.skills.post_damage.iter().cloned().collect();
         for skill_idx in post_damaged_indices {
-            let skill = self.skill_store.get_skill_mut(skill_idx);
-            skill.post_damage(dmg, caster, randomer, updates, storage);
+            let ptr = self.as_ptr();
+            let skill = self.skills.skill_by_id_mut(skill_idx);
+            skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
         }
         if self.status.hp <= 0 {
             // self.on_die(old_hp, caster, randomer, updates);
@@ -959,6 +958,8 @@ impl Player {
             return dmg;
         }
     }
+
+    pub fn on_die(&mut self, old_hp: i32, caster: PlrPtr, randomer: &mut RC4, updates: &mut RunUpdates) {}
 }
 
 impl PartialOrd for Player {
