@@ -3,6 +3,7 @@ use crate::player::{
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
 
+/// 真的就是啥都没有啊喂
 #[derive(Debug, Clone)]
 pub struct NoneSkill {}
 

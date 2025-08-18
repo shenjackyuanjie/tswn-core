@@ -21,8 +21,15 @@ pub type SkillArgs<'d> = (PlrPtr, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Stora
 
 #[allow(unused_variables, unused_mut)]
 pub trait SkillTrait: Debug {
-    fn update_state(&self) {}
+    // ===== 必须实现的 =====
+    /// 销毁这个玩意 (技能用过了)
+    fn destroy(&self, plr: PlrPtr, args: SkillArgs);
+    /// 用于实现 Clone
+    fn clone_box(&self) -> Box<dyn SkillTrait>;
 
+    // ===== 可选实现的 =====
+    /// 更新状态
+    fn update_state(&self) {}
     /// 行动!
     fn act(&mut self, targets: Vec<PlrPtr>, smart: bool, args: SkillArgs) {}
 
@@ -37,18 +44,12 @@ pub trait SkillTrait: Debug {
     fn post_defend(&mut self, mut dmg: i32, caster: PlrPtr, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 { dmg }
     /// 伤害之后
     fn post_damage(&mut self, dmg: i32, caster: PlrPtr, args: SkillArgs) {}
-    /// 销毁这个玩意 (技能用过了)
-    fn destroy(&self, plr: PlrPtr, args: SkillArgs);
 
     fn is_normal_skill(&self) -> bool { true }
 
     fn is_boss_skill(&self) -> bool { false }
 
     fn is_weapon_skill(&self) -> bool { false }
-
-    fn is_normal_state(&self) -> bool { false }
-
-    fn clone_box(&self) -> Box<dyn SkillTrait>;
 }
 
 impl Clone for Box<dyn SkillTrait> {
@@ -139,7 +140,7 @@ impl Skill {
         self.skill_type.post_defend(dmg, caster, on_damage, args)
     }
 
-    pub fn post_damage(&mut self, dmg: i32, caster: PlrPtr, args: SkillArgs) { self.skill_type.post_damage(dmg, caster, args); }
+    pub fn post_damage(&mut self, dmg: i32, caster: PlrPtr, args: SkillArgs) { self.skill_type.post_damage(dmg, caster, args) }
 
     // pub fn update_state(&self, status: &mut PlayerStatus) {
     //     match self.skill_type {

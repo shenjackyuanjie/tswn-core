@@ -6,12 +6,13 @@ pub const PROFILE_START: u32 = 33554431;
 /// 有可能后面会一块干脆把 Player 也放进来
 pub mod storage {
 
+    use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
 
     use crate::player::skill::Skill;
     use crate::player::{Player, PlrPtr};
 
-    use foldhash::HashMap as FastHashMap;
+    use foldhash::{HashMap as FastHashMap, HashMapExt};
 
     /// 技能的 ID (ECS内的)
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,16 +43,24 @@ pub mod storage {
         groups: FastHashMap<usize, Vec<PlrPtr>>,
         /// 玩家
         players: FastHashMap<PlrPtr, Player>,
+        /// 玩家 ID
+        player_id_counter: AtomicU64,
     }
 
     impl Storage {
         /// 创建一个新的 Storages
         pub fn new() -> Storage {
             Storage {
-                skills: FastHashMap::default(),
-                groups: FastHashMap::default(),
-                players: FastHashMap::default(),
+                skills: FastHashMap::new(),
+                groups: FastHashMap::new(),
+                players: FastHashMap::new(),
+                player_id_counter: AtomicU64::new(0),
             }
+        }
+
+        pub fn new_plr_id(&self) -> u64 {
+            // 生成一个新的玩家 ID
+            self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         }
 
         pub fn new_arc() -> Arc<Self> { Arc::new(Self::new()) }
@@ -228,7 +237,7 @@ pub mod runners {
                             int_b,
                             int_c,
                             ((int_a as u32) << 16) | ((int_b as u32) << 8) | (int_c as u32),
-                            player.display_name()
+                            player.display_name() // 你好，shenjack
                         );
                         let int = ((int_a as u32) << 16) | ((int_b as u32) << 8) | (int_c as u32);
                         player.sort_int = int as i32;
@@ -672,7 +681,7 @@ mod group {
         #[test]
         /// 应该faild
         /// TODO
-        // #[should_panic]
+        #[should_panic]
         fn need_fix_seed2() {
             // 跟 test 1 顺序相反
             let raw_input = "seed: a@!\n\naaaa\nbbbb".to_string();

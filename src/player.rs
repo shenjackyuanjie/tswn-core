@@ -39,8 +39,8 @@ pub type OnDamageFunc = fn(PlrPtr, PlrPtr, i32, &mut RC4, &mut RunUpdates);
 /// 其实就是一个包装
 pub fn player_ptr_as_mut_plr<'a>(ptr: &PlrPtr) -> &'a mut Player { unsafe { &mut *(*ptr as *mut Player) } }
 
-/// Player 的自增 ID
-pub static PLAYER_ID: AtomicUsize = AtomicUsize::new(0);
+// /// Player 的自增 ID
+// pub static PLAYER_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlayerStatus {
@@ -288,7 +288,7 @@ pub struct Player {
     // /// store
     // pub storage: Arc<Storage>,
     /// plr id
-    id: usize,
+    id: u64,
 }
 
 impl Player {
@@ -300,7 +300,7 @@ impl Player {
         team: Option<String>,
         name: String,
         weapon: Option<String>,
-        _storage: Arc<Storage>,
+        storage: Arc<Storage>,
     ) -> PlayerResult<Self> {
         // 先校验长度
         if let Some(t) = team.as_ref()
@@ -399,7 +399,7 @@ impl Player {
             status.set_alive(false);
         }
 
-        let id = PLAYER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = storage.new_plr_id();
 
         Ok(Player {
             team,
@@ -450,9 +450,9 @@ impl Player {
     /// 获取当前的玩家状态
     pub fn get_status(&self) -> &PlayerStatus { &self.status }
 
-    pub fn as_ptr(&self) -> PlrPtr { self as *const Player as usize }
+    pub fn as_ptr(&self) -> PlrPtr { self as *const Player as PlrPtr }
 
-    pub fn id(&self) -> usize { self.id }
+    pub fn id(&self) -> u64 { self.id }
 
     /// 根据名字系数调整数值
     ///
