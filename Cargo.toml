@@ -7,3 +7,4 @@ edition = "2024"
 [dependencies]
 # 用于 fast hashmap
 foldhash = "0.1.5"
+slotmap = "1.0"

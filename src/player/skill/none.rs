@@ -1,7 +1,5 @@
-use crate::player::{
-    PlrPtr,
-    skill::{SkillArgs, SkillExt, SkillTrait},
-};
+use crate::engine::storage::PlrId;
+use crate::player::skill::{SkillArgs, SkillExt, SkillTrait};
 
 /// 真的就是啥都没有啊喂
 #[derive(Debug, Clone)]
@@ -16,7 +14,7 @@ impl SkillExt for NoneSkill {
 }
 
 impl SkillTrait for NoneSkill {
-    fn destroy(&self, plr: PlrPtr, args: SkillArgs) {}
+    fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 }

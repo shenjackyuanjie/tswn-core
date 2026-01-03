@@ -1,7 +1,6 @@
-use crate::player::{
-    PlrPtr,
-    skill::{SkillArgs, SkillExt, SkillTrait},
-};
+use crate::engine::storage::PlrId;
+use crate::engine::event::Event;
+use crate::player::skill::{SkillArgs, SkillExt, SkillTrait};
 
 #[derive(Debug, Clone)]
 pub struct FireSkill {
@@ -17,15 +16,21 @@ impl SkillExt for FireSkill {
 }
 
 impl SkillTrait for FireSkill {
-    fn destroy(&self, plr: PlrPtr, args: SkillArgs) {}
+    fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
-    fn act(&mut self, targets: Vec<PlrPtr>, smart: bool, args: SkillArgs) {
-        let target_ptr = targets[0];
-        let target = args.3.just_get_player_mut(target_ptr).expect("cannot get player in the storage");
-        let owner = args.3.just_get_player_mut(args.0).expect("cannot get owner from storage");
-        let atp = owner.get_at(true, args.1) * (1.5 + self.fire_mag);
-        
+    fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+        let Some(&target_id) = targets.first() else {
+            return;
+        };
+
+        // 事件化：不直接借用/修改 storage，交给 Runner 统一结算。
+        // 目前先做最小行为：造成一个固定伤害（后续再把 atp/倍率/抗性接回去）。
+        args.3.push(Event::DealDamage {
+            caster: args.0,
+            target: target_id,
+            dmg: 10,
+        });
     }
 }

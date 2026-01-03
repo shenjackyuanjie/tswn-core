@@ -6,144 +6,51 @@ pub const PROFILE_START: u32 = 33554431;
 /// 有可能后面会一块干脆把 Player 也放进来
 pub mod storage {
 
-    use std::sync::atomic::AtomicU64;
-    use std::sync::Arc;
+    use crate::player::Player;
 
-    use crate::player::skill::Skill;
-    use crate::player::{Player, PlrPtr};
+    use slotmap::{new_key_type, SlotMap};
 
-    use foldhash::{HashMap as FastHashMap, HashMapExt};
-
-    /// 技能的 ID (ECS内的)
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct SkillId(usize);
-
-    impl SkillId {
-        pub fn new(id: usize) -> SkillId { SkillId(id) }
-
-        /// 根据一个 Skill 实例创建一个 SkillId
-        /// (其实就是取个内存地址)
-        pub fn new_from_skill(skill: &Skill) -> SkillId {
-            SkillId({
-                let ptr = skill as *const Skill;
-                ptr as usize
-            })
-        }
+    new_key_type! {
+        /// 稳定的玩家句柄（Arena Key）
+        pub struct PlrId;
     }
 
     /// 存数据的地方
     ///
-    /// 使用了 foldhash 的 HashMap, 快一些
+    /// 单线程 Arena：使用 slotmap 提供稳定 key（不会随容器移动而失效）
     #[derive(Debug)]
     pub struct Storage {
-        /// 存技能
-        /// usize: memory address
-        skills: FastHashMap<usize, Skill>,
-        /// 存玩家组?
-        groups: FastHashMap<usize, Vec<PlrPtr>>,
         /// 玩家
-        players: FastHashMap<PlrPtr, Player>,
-        /// 玩家 ID
-        player_id_counter: AtomicU64,
+        players: SlotMap<PlrId, Player>,
     }
 
     impl Storage {
         /// 创建一个新的 Storages
         pub fn new() -> Storage {
             Storage {
-                skills: FastHashMap::new(),
-                groups: FastHashMap::new(),
-                players: FastHashMap::new(),
-                player_id_counter: AtomicU64::new(0),
+                players: SlotMap::with_key(),
             }
         }
 
-        pub fn new_plr_id(&self) -> u64 {
-            // 生成一个新的玩家 ID
-            self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        }
-
-        pub fn new_arc() -> Arc<Self> { Arc::new(Self::new()) }
+        pub fn new_arc() -> std::sync::Arc<Self> { std::sync::Arc::new(Self::new()) }
 
         pub fn clear(&mut self) {
-            self.skills.clear();
-            self.groups.clear();
             self.players.clear();
         }
 
-        /// 获取技能
-        pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
         /// 获取玩家
-        pub fn get_player(&self, ptr: &PlrPtr) -> Option<&Player> { self.players.get(ptr) }
-        /// 获取玩家(不检查)
-        pub fn get_player_unchecked(&self, ptr: &PlrPtr) -> &Player {
-            self.players.get(ptr).expect("can't get player from storage")
+        pub fn get_player(&self, id: PlrId) -> Option<&Player> { self.players.get(id) }
+        pub fn get_player_mut(&mut self, id: PlrId) -> Option<&mut Player> { self.players.get_mut(id) }
+
+        /// 同时可变借用两个不同玩家（用于升级/对战等）
+        ///
+        /// 只有当两个 id 都存在且不相等时才返回 Some。
+        pub fn get_two_players_mut(&mut self, a: PlrId, b: PlrId) -> Option<(&mut Player, &mut Player)> {
+            self.players.get_disjoint_mut([a, b]).map(|[pa, pb]| (pa, pb))
         }
 
-        /// 获取技能的可变引用
-        pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills.get_mut(&id.0) }
-        /// 我就硬获取了
-        /// 不过这个方法不安全
-        #[allow(clippy::mut_from_ref)]
-        pub fn just_get_skill_mut(&self, id: SkillId) -> Option<&mut Skill> {
-            unsafe {
-                let mut_slf = self as *const Storage as *mut Storage;
-                (*mut_slf).skills.get_mut(&id.0)
-            }
-        }
-
-        #[allow(clippy::mut_from_ref)]
-        pub fn just_get_player_mut(&self, ptr: PlrPtr) -> Option<&mut Player> {
-            unsafe {
-                let mut_slf = self as *const Storage as *mut Storage;
-                (*mut_slf).players.get_mut(&ptr)
-            }
-        }
-
-        /// 插入技能 (返回技能的 ID)
-        pub fn insert_skill(&mut self, skill: Skill) -> SkillId {
-            let id = SkillId::new_from_skill(&skill);
-            self.skills.insert(id.0, skill);
-            id
-        }
-        pub fn just_insert_skill(&self, skill: Skill) -> SkillId {
-            unsafe {
-                let mut_slf = self as *const Storage as *mut Storage;
-                let id = SkillId::new_from_skill(&skill);
-                (*mut_slf).skills.insert(id.0, skill);
-                id
-            }
-        }
-
-        pub fn insert_player(&mut self, player: Player) -> PlrPtr {
-            let id = player.id();
-            self.players.insert(id, player);
-            id
-        }
-        pub fn just_insert_player(&self, player: Player) -> PlrPtr {
-            unsafe {
-                let mut_slf = self as *const Storage as *mut Storage;
-                let id = player.id();
-                (*mut_slf).players.insert(id, player);
-                id
-            }
-        }
-
-        /// 删除技能
-        pub fn remove_skill(&mut self, id: SkillId) -> Option<Skill> { self.skills.remove(&id.0) }
-        pub fn just_remove_skill(&self, id: SkillId) -> Option<Skill> {
-            unsafe {
-                let mut_slf = self as *const Storage as *mut Storage;
-                (*mut_slf).skills.remove(&id.0)
-            }
-        }
-
-        pub fn just_remove_player(&self, ptr: PlrPtr) -> Option<Player> {
-            unsafe {
-                let mut_slf = self as *const Storage as *mut Storage;
-                (*mut_slf).players.remove(&ptr)
-            }
-        }
+        pub fn insert_player(&mut self, player: Player) -> PlrId { self.players.insert(player) }
+        pub fn remove_player(&mut self, id: PlrId) -> Option<Player> { self.players.remove(id) }
     }
 
     impl std::default::Default for Storage {
@@ -151,14 +58,55 @@ pub mod storage {
     }
 }
 
+/// 事件队列：跨实体影响通过事件表达，Runner 统一 drain 处理，避免借用冲突。
+pub mod event {
+    use std::collections::VecDeque;
+
+    use crate::engine::storage::PlrId;
+
+    #[derive(Debug, Clone)]
+    pub enum Event {
+        /// 玩家想要攻击（由 Runner 决定目标/执行）
+        TryAttack { caster: PlrId },
+        /// 具体攻击一次
+        Attack { caster: PlrId, target: PlrId, is_mag: bool },
+        /// 直接造成（或回复）伤害
+        DealDamage { caster: PlrId, target: PlrId, dmg: i32 },
+    }
+
+    #[derive(Debug, Default)]
+    pub struct EventQueue {
+        q: VecDeque<Event>,
+    }
+
+    impl EventQueue {
+        pub fn new() -> Self { Self { q: VecDeque::new() } }
+
+        #[inline]
+        pub fn push(&mut self, ev: Event) { self.q.push_back(ev) }
+
+        #[inline]
+        pub fn pop(&mut self) -> Option<Event> { self.q.pop_front() }
+
+        #[inline]
+        pub fn is_empty(&self) -> bool { self.q.is_empty() }
+
+        #[inline]
+        pub fn len(&self) -> usize { self.q.len() }
+
+        pub fn clear(&mut self) { self.q.clear() }
+    }
+}
+
 /// 核心的游戏逻辑
 pub mod runners {
 
-    use std::sync::Arc;
-
     use crate::engine::update::RunUpdates;
     use crate::error::runner::RunnerResult;
-    use crate::player::{Player, PlrPtr};
+    use crate::engine::event::{Event, EventQueue};
+    use crate::engine::storage::PlrId;
+    use crate::player::Player;
+    use crate::player::on_damage_default;
     use crate::rc4::RC4;
 
     use super::storage::Storage;
@@ -169,15 +117,18 @@ pub mod runners {
         /// 应该是一个 Rc4 实例类似物
         pub randomer: RC4,
         /// 所有玩家 (包括 boss)
-        pub players: Vec<Vec<PlrPtr>>,
+        pub players: Vec<Vec<PlrId>>,
         /// 赢家
         ///
         /// 也应该是一个队伍
-        pub winner: Option<Vec<PlrPtr>>,
+        pub winner: Option<Vec<PlrId>>,
         /// 该哪个玩家动了
         round_pos: i32,
         /// 存储所有 state 和 skill 的地方
-        pub storage: Arc<Storage>,
+        pub storage: Storage,
+
+        /// 跨实体事件队列（技能/武器/状态改动等通过事件表达）
+        pub events: EventQueue,
     }
 
     pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
@@ -214,16 +165,16 @@ pub mod runners {
             // 准备好了
             // 用 randmoer 初始化玩家的 sort_int
 
-            let storage = Storage::new_arc();
+            let mut storage = Storage::new();
 
             let mut inited_plrs = Vec::with_capacity(players.len());
             for plrs in players.iter() {
                 let mut group = Vec::with_capacity(plrs.len());
                 for plr in plrs.iter() {
-                    let mut player = Player::new_from_namerena_raw(plr.to_string(), storage.clone())?;
+                    let mut player = Player::new_from_namerena_raw(plr.to_string())?;
                     #[cfg(not(test))]
                     {
-                        player.sort_int = randomer.rFFFFFF() as i32;
+                        player.core_build.sort_int = randomer.rFFFFFF() as i32;
                     }
                     #[cfg(test)]
                     {
@@ -240,9 +191,9 @@ pub mod runners {
                             player.display_name() // 你好，shenjack
                         );
                         let int = ((int_a as u32) << 16) | ((int_b as u32) << 8) | (int_c as u32);
-                        player.sort_int = int as i32;
+                        player.core_build.sort_int = int as i32;
                     }
-                    let ptr = storage.just_insert_player(player);
+                    let ptr = storage.insert_player(player);
                     // 如果有问题，就直接返回错误
                     // 不过大概率不会有问题就是了
                     group.push(ptr);
@@ -250,40 +201,48 @@ pub mod runners {
                 inited_plrs.push(group);
             }
 
-            let mut local_plrs = inited_plrs
-                .iter()
-                .map(|x| x.iter().map(|p| storage.just_get_player_mut(*p).unwrap()).collect::<Vec<&mut Player>>())
-                .collect::<Vec<Vec<&mut Player>>>();
-
-            // 同队升级
-            for plr_group in local_plrs.iter_mut() {
-                if plr_group.len() < 2 {
+            // 同队升级（ID 驱动，避免同时借用整个 storage）
+            for group in inited_plrs.iter() {
+                if group.len() < 2 {
                     continue;
                 }
-                plr_group.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                for i in 0..plr_group.len() {
-                    let (left, right) = plr_group.split_at_mut(i + 1);
-                    let plr_p = &mut left[i];
-                    for plr_q in right.iter_mut() {
-                        if plr_p.clan_name() == plr_q.clan_name() {
-                            plr_p.upgrade(plr_q);
-                            plr_q.upgrade(plr_p);
+                // 先按 sort 比较稳定排序（读借用）
+                let mut sorted = group.clone();
+                sorted.sort_by(|a, b| {
+                    let plr_a = storage.get_player(*a).expect("plr not found when sort");
+                    let plr_b = storage.get_player(*b).expect("plr not found when sort");
+                    plr_a.partial_cmp(plr_b).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                for i in 0..sorted.len() {
+                    for j in (i + 1)..sorted.len() {
+                        let a = sorted[i];
+                        let b = sorted[j];
+                        let (plr_a_clan, plr_b_clan) = {
+                            let pa = storage.get_player(a).unwrap();
+                            let pb = storage.get_player(b).unwrap();
+                            (pa.clan_name(), pb.clan_name())
+                        };
+                        if plr_a_clan == plr_b_clan {
+                            let (pa, pb) = storage.get_two_players_mut(a, b).expect("plr not found");
+                            pa.upgrade(pb);
+                            pb.upgrade(pa);
                         }
                     }
                 }
             }
 
-            for group in local_plrs.iter_mut() {
-                for plr in group.iter_mut() {
+            for group in inited_plrs.iter() {
+                for plr_id in group.iter() {
+                    let plr = storage.get_player_mut(*plr_id).expect("plr not found when build");
                     plr.build();
                 }
             }
 
-            let mut sort_groups = inited_plrs.iter().collect::<Vec<&Vec<PlrPtr>>>();
+            let mut sort_groups = inited_plrs.iter().collect::<Vec<&Vec<PlrId>>>();
             sort_groups.sort_by(|a, b| {
                 {
-                    let plr_a = storage.get_player(&a[0]).expect("plr not found when sort");
-                    let plr_b = storage.get_player(&b[0]).expect("plr not found when sort");
+                    let plr_a = storage.get_player(a[0]).expect("plr not found when sort");
+                    let plr_b = storage.get_player(b[0]).expect("plr not found when sort");
                     plr_a.partial_cmp(plr_b)
                 }
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -291,16 +250,16 @@ pub mod runners {
 
             for group in sort_groups.iter() {
                 for plr in group.iter() {
-                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when enc");
-                    randomer.encrypt_bytes_no_change(&plr.id_name());
+                    let plr_ref = storage.get_player(*plr).expect("plr not found when enc");
+                    randomer.encrypt_bytes_no_change(&plr_ref.id_name());
                 }
                 randomer.encrypt_bytes(&mut [0]);
             }
 
             for group in inited_plrs.iter_mut() {
                 for plr in group.iter_mut() {
-                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when enc");
-                    plr.set_move_point(randomer.r255() as i32);
+                    let plr_ref = storage.get_player_mut(*plr).expect("plr not found when enc");
+                    plr_ref.set_move_point(randomer.r255() as i32);
                 }
             }
 
@@ -315,20 +274,21 @@ pub mod runners {
                 winner,
                 round_pos: -1,
                 storage,
+                events: EventQueue::new(),
             })
         }
 
         /// 获取所有存活的玩家
-        pub fn alives_flat(&self) -> Vec<PlrPtr> { self.alives().iter().flatten().cloned().collect() }
+        pub fn alives_flat(&self) -> Vec<PlrId> { self.alives().iter().flatten().cloned().collect() }
 
         /// 以组为单位获取所有存活的玩家
-        pub fn alives(&self) -> Vec<Vec<PlrPtr>> {
+        pub fn alives(&self) -> Vec<Vec<PlrId>> {
             self.players
                 .iter()
                 .map(|x| {
                     x.iter()
                         .filter(|x| {
-                            let x = self.storage.get_player(x).expect("plr not found when getting alive");
+                            let x = self.storage.get_player(**x).expect("plr not found when getting alive");
                             x.get_status().alive()
                         })
                         .cloned()
@@ -426,21 +386,13 @@ pub mod runners {
         pub fn have_winner(&self) -> bool { self.winner.is_some() }
 
         #[inline]
-        pub fn all_plrs(&self) -> Vec<PlrPtr> { self.players.iter().flatten().cloned().collect() }
+        pub fn all_plrs(&self) -> Vec<PlrId> { self.players.iter().flatten().cloned().collect() }
 
         #[inline]
         pub fn all_plr_len(&self) -> usize { self.players.iter().map(|x| x.len()).sum() }
 
-        pub unsafe fn get_plr_by_ptr_unchecked(&self, ptr: PlrPtr) -> &Player {
-            // 直接 unsafe 强转
-            unsafe {
-                let ptr = ptr as *const Player;
-                &*ptr
-            }
-        }
-
         /// TODO: 实现 main_round 方法
-        pub fn main_round(&mut self) { let updates = RunUpdates::new(); }
+        pub fn main_round(&mut self) { let _updates = RunUpdates::new(); }
 
         pub fn round_tick(&mut self, updates: &mut RunUpdates) {
             self.round_pos += 1;
@@ -448,15 +400,78 @@ pub mod runners {
 
             let tick_plr_index = self.round_pos as usize;
 
-            let mut all_plrs = self.players.iter().flatten().cloned().collect::<Vec<PlrPtr>>();
+            let mut all_plrs = self.players.iter().flatten().cloned().collect::<Vec<PlrId>>();
 
             // 获取当前 tick 的玩家
             if let Some(tick_plr) = all_plrs.get_mut(tick_plr_index) {
                 // 调用 step 方法
-                let tick_plr = self.storage.just_get_player_mut(*tick_plr).expect("plr not found when tick");
-                tick_plr.step(&mut self.randomer, updates);
+                let tick_plr_ref = self.storage.get_player_mut(*tick_plr).expect("plr not found when tick");
+                tick_plr_ref.step(*tick_plr, &mut self.randomer, updates, &mut self.events);
+
+                self.process_events(updates);
             } else {
                 unreachable!("tick_plr_index out of range");
+            }
+        }
+
+        fn process_events(&mut self, updates: &mut RunUpdates) {
+            // 防止错误技能导致无限事件循环
+            const MAX_EVENTS_PER_TICK: usize = 1024;
+            for _ in 0..MAX_EVENTS_PER_TICK {
+                let Some(ev) = self.events.pop() else {
+                    break;
+                };
+
+                match ev {
+                    Event::TryAttack { caster } => {
+                        let candidates: Vec<PlrId> = self
+                            .all_plrs()
+                            .into_iter()
+                            .filter(|id| *id != caster)
+                            .filter(|id| self.storage.get_player(*id).map(|p| p.alive()).unwrap_or(false))
+                            .collect();
+
+                        if candidates.is_empty() {
+                            continue;
+                        }
+
+                        let idx = (self.randomer.rFFFFFF() as usize) % candidates.len();
+                        let target = candidates[idx];
+                        self.events.push(Event::Attack {
+                            caster,
+                            target,
+                            is_mag: false,
+                        });
+                    }
+                    Event::Attack { caster, target, is_mag } => {
+                        let Some((caster_plr, target_plr)) = self.storage.get_two_players_mut(caster, target) else {
+                            continue;
+                        };
+                        if !caster_plr.active() || !target_plr.alive() {
+                            continue;
+                        }
+
+                        let caster_stats = caster_plr.caster_snapshot();
+                        let atp = caster_plr.get_at(is_mag, &mut self.randomer);
+                        target_plr.attacked(
+                            target,
+                            atp,
+                            is_mag,
+                            caster,
+                            caster_stats,
+                            on_damage_default,
+                            &mut self.randomer,
+                            updates,
+                            &mut self.events,
+                        );
+                    }
+                    Event::DealDamage { caster, target, dmg } => {
+                        let Some(target_plr) = self.storage.get_player_mut(target) else {
+                            continue;
+                        };
+                        target_plr.damage(target, dmg, caster, on_damage_default, &mut self.randomer, updates, &mut self.events);
+                    }
+                }
             }
         }
     }
@@ -464,7 +479,7 @@ pub mod runners {
 
 pub mod update {
 
-    use crate::player::PlrPtr;
+    use crate::engine::storage::PlrId;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum UpdateType {
@@ -482,9 +497,9 @@ pub mod update {
         pub delay0: i32,
         pub delay1: i32,
         pub message: String,
-        pub caster: PlrPtr,
-        pub target: PlrPtr,
-        pub targets: Vec<PlrPtr>,
+        pub caster: PlrId,
+        pub target: PlrId,
+        pub targets: Vec<PlrId>,
         pub update_type: UpdateType,
         // param: Object ?
     }
@@ -496,8 +511,8 @@ pub mod update {
                 delay0: 0,
                 delay1: 0,
                 message: "\n".to_string(),
-                caster: 0,
-                target: 0,
+                caster: PlrId::default(),
+                target: PlrId::default(),
                 targets: vec![],
                 update_type: UpdateType::None,
                 // param: Object ?
@@ -509,11 +524,16 @@ pub mod update {
             // [1] -> target
             // [2] -> targets
             let mut msg = self.message.clone();
-            msg = msg.replace("[0]", &self.caster.to_string());
-            msg = msg.replace("[1]", &self.target.to_string());
+            msg = msg.replace("[0]", &format!("{:?}", self.caster));
+            msg = msg.replace("[1]", &format!("{:?}", self.target));
             msg = msg.replace(
                 "[2]",
-                &self.targets.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
+                &self
+                    .targets
+                    .iter()
+                    .map(|x| format!("{:?}", x))
+                    .collect::<Vec<String>>()
+                    .join(","),
             );
             msg
         }
@@ -524,15 +544,15 @@ pub mod update {
                 delay0: 0,
                 delay1: 0,
                 message: "\n".to_string(),
-                caster: 0,
-                target: 0,
+                caster: PlrId::default(),
+                target: PlrId::default(),
                 targets: vec![],
                 update_type: UpdateType::NextLine,
                 // param: Object ?
             }
         }
 
-        pub fn new(msg: impl ToString, caster: PlrPtr, target: PlrPtr, score: u32) -> Self {
+        pub fn new(msg: impl ToString, caster: PlrId, target: PlrId, score: u32) -> Self {
             RunUpdate {
                 score,
                 delay0: 0,
@@ -708,11 +728,11 @@ mod group {
                 .players
                 .iter()
                 .flatten()
-                .filter(|plr| runner.storage.get_player(plr).expect("wtf").is_seed_plr())
+                .filter(|plr| runner.storage.get_player(**plr).expect("wtf").is_seed_plr())
                 .enumerate()
             {
-                let plr = runner.storage.get_player(plr).expect("plr not found");
-                assert_eq!(plr.sort_int as u32, { ints[i] });
+                let plr = runner.storage.get_player(*plr).expect("plr not found");
+                assert_eq!(plr.core_build.sort_int as u32, { ints[i] });
             }
         }
 
@@ -725,9 +745,9 @@ mod group {
             assert!(!runner.have_winner());
 
             for (i, plr) in runner.players.iter().flatten().enumerate() {
-                let plr = runner.storage.get_player(plr).expect("plr not found");
+                let plr = runner.storage.get_player(*plr).expect("plr not found");
                 println!("plr: {}", plr.display_name());
-                assert_eq!(plr.sort_int as u32, { ints[i] });
+                assert_eq!(plr.core_build.sort_int as u32, { ints[i] });
             }
         }
     }

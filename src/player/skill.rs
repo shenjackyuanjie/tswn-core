@@ -1,10 +1,10 @@
-use std::any::{Any, TypeId};
+use std::any::Any;
 use std::fmt::Debug;
-use std::sync::Arc;
 
-use crate::engine::storage::Storage;
-use crate::engine::update::{RunUpdate, RunUpdates};
-use crate::player::{OnDamageFunc, PlayerStatus, PlrPtr};
+use crate::engine::event::EventQueue;
+use crate::engine::storage::PlrId;
+use crate::engine::update::RunUpdates;
+use crate::player::OnDamageFunc;
 use crate::rc4::RC4;
 
 pub mod store;
@@ -13,17 +13,17 @@ pub mod fire;
 pub mod none;
 
 /// // 这玩意好像没必要了, 反正都是 TypeId usize: 这个 skill 的 index, 用于在需要的时候从
-/// PlrPtr: player pointer
+/// PlrId: player handle (slotmap key)
 /// &'d mut RC4: random number generator
 /// &'d mut RunUpdates: updates to be applied
-/// &'d Arc<Storage>: game storage
-pub type SkillArgs<'d> = (PlrPtr, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Storage>);
+/// &'d mut EventQueue: cross-entity effects via events
+pub type SkillArgs<'d> = (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d mut EventQueue);
 
 #[allow(unused_variables, unused_mut)]
 pub trait SkillTrait: Debug {
     // ===== 必须实现的 =====
     /// 销毁这个玩意 (技能用过了)
-    fn destroy(&self, plr: PlrPtr, args: SkillArgs);
+    fn destroy(&self, plr: PlrId, args: SkillArgs);
     /// 用于实现 Clone
     fn clone_box(&self) -> Box<dyn SkillTrait>;
 
@@ -31,7 +31,7 @@ pub trait SkillTrait: Debug {
     /// 更新状态
     fn update_state(&self) {}
     /// 行动!
-    fn act(&mut self, targets: Vec<PlrPtr>, smart: bool, args: SkillArgs) {}
+    fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
 
     fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 { step }
     /// 行动之前
@@ -39,11 +39,11 @@ pub trait SkillTrait: Debug {
     /// 行动之后
     fn post_action(&mut self, args: SkillArgs) {}
     /// 防御之前
-    fn pre_defend(&mut self, mut atp: f64, caster: PlrPtr, is_mag: bool, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 { atp }
+    fn pre_defend(&mut self, mut atp: f64, caster: PlrId, is_mag: bool, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 { atp }
     /// 防御之后
-    fn post_defend(&mut self, mut dmg: i32, caster: PlrPtr, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 { dmg }
+    fn post_defend(&mut self, mut dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 { dmg }
     /// 伤害之后
-    fn post_damage(&mut self, dmg: i32, caster: PlrPtr, args: SkillArgs) {}
+    fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {}
 
     fn is_normal_skill(&self) -> bool { true }
 
@@ -69,7 +69,7 @@ pub struct Skill {
     /// 类型
     skill_type: Box<dyn SkillTrait>,
     /// 目标
-    pub target: Option<PlrPtr>,
+    pub target: Option<PlrId>,
 }
 
 impl Skill {
@@ -97,9 +97,9 @@ impl Skill {
         }
     }
 
-    pub fn set_target(&mut self, target: PlrPtr) { self.target = Some(target); }
+    pub fn set_target(&mut self, target: PlrId) { self.target = Some(target); }
 
-    pub fn get_target(&self) -> Option<PlrPtr> { self.target }
+    pub fn get_target(&self) -> Option<PlrId> { self.target }
 
     /// 如果没 boost, 那就 boost 一下
     /// true: boost 成功
@@ -132,15 +132,15 @@ impl Skill {
     // 以下是技能 call pre/post 之类的东西
     // ==========
 
-    pub fn pre_defend(&mut self, atp: f64, is_mag: bool, caster: PlrPtr, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 {
+    pub fn pre_defend(&mut self, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 {
         self.skill_type.pre_defend(atp, caster, is_mag, on_damage, args)
     }
 
-    pub fn post_defend(&mut self, dmg: i32, caster: PlrPtr, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
+    pub fn post_defend(&mut self, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
         self.skill_type.post_defend(dmg, caster, on_damage, args)
     }
 
-    pub fn post_damage(&mut self, dmg: i32, caster: PlrPtr, args: SkillArgs) { self.skill_type.post_damage(dmg, caster, args) }
+    pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) { self.skill_type.post_damage(dmg, caster, args) }
 
     // pub fn update_state(&self, status: &mut PlayerStatus) {
     //     match self.skill_type {
