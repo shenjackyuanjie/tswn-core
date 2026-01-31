@@ -329,10 +329,43 @@ pub mod runners {
             if !raw_input.contains("\n\n") {
                 return (raw_input.split("\n").map(|x| vec![x.to_string()]).collect(), seed);
             }
-            let raw_groups: Vec<Vec<String>> =
-                raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect();
+            let mut raw_groups: Vec<Vec<String>> = raw_input
+                .split("\n\n")
+                .map(|x| x.split('\n').map(|x| x.to_string()).collect())
+                .filter(|g: &Vec<String>| !g.is_empty())
+                .collect();
 
-            // 修复是 TODO 项
+            // 修复: 将单独的 seed 队伍合并到相邻的非 seed 队伍
+            // 场景: "aaaa\nbbbb\n\nseed: a@!" 或 "seed: a@!\n\naaaa\nbbbb"
+            let mut i = 0;
+            while i < raw_groups.len() {
+                // 检查当前队伍是否是纯 seed 队伍
+                let is_seed_only = raw_groups[i].len() == 1
+                    && !raw_groups[i].is_empty()
+                    && Player::check_is_seed(&raw_groups[i][0]);
+
+                if is_seed_only {
+                    let seed_player = raw_groups[i][0].clone();
+
+                    if i > 0 {
+                        // 有前一个队伍，合并到前一个队伍
+                        raw_groups[i - 1].push(seed_player);
+                        raw_groups.remove(i);
+                        // 不递增 i，继续检查下一个
+                    } else if i + 1 < raw_groups.len() {
+                        // 是第一个队伍，合并到后一个队伍的开头
+                        raw_groups[i + 1].insert(0, seed_player);
+                        raw_groups.remove(i);
+                        // 不递增 i，继续检查下一个
+                    } else {
+                        // 只有一个队伍且是 seed，保留
+                        i += 1;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+
             return (raw_groups, seed);
             // let raw_input = raw_input
             //     .split("\n")
@@ -689,27 +722,24 @@ mod group {
 
         #[test]
         fn need_fix_seed1() {
-            // 需要修复的seed
+            // seed 被错误地单独分成一个队伍（手误多打了空行）
+            // 输入: "aaaa\nbbbb\n\nseed: a@!"
+            // 修复后: seed 应该合并到前一个队伍
             let raw_input = "aaaa\nbbbb\n\nseed: a@!".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
-            // assert_eq!(groups, vec![vec!["aaaa", "bbbb"], vec!["seed: a@!"]]);
-            // 这个情况下，应该是修复成三个队伍
-            // TODO
-            assert_ne!(groups, (plrs!("aaaa", "bbbb", "seed: a@!"), plr!["seed: a@!"]))
+            // 期望: [["aaaa", "bbbb", "seed: a@!"]] (一个队伍)
+            assert_eq!(groups, (vec![plr!("aaaa", "bbbb", "seed: a@!")], plr!["seed: a@!"]));
         }
 
         #[test]
-        /// 应该faild
-        /// TODO
-        #[should_panic]
         fn need_fix_seed2() {
             // 跟 test 1 顺序相反
+            // 输入: "seed: a@!\n\naaaa\nbbbb"
+            // 修复后: seed 应该合并到后一个队伍
             let raw_input = "seed: a@!\n\naaaa\nbbbb".to_string();
-            // 合法输入: seed: a@!\naaaa\nbbbb
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
-            assert_ne!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]));
-            // 这个情况下，应该是修复成三个队伍
-            assert_eq!(groups, (plrs!("seed: a@!", "aaaa", "bbbb"), plr!["seed: a@!"]))
+            // 期望: [["seed: a@!", "aaaa", "bbbb"]] (一个队伍)
+            assert_eq!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]));
         }
     }
 
