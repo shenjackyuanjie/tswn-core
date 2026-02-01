@@ -107,6 +107,9 @@ pub mod runner {
         PlayerError(PlayerError),
         /// 只有一个队伍
         OnlyOneGroup,
+        /// 游戏中有多个 seed 玩家
+        /// 一个游戏最多只能有 1 个 seed
+        TooManySeeds(usize),
     }
 
     impl From<PlayerError> for RunnerError {
@@ -125,6 +128,9 @@ pub mod runner {
                 RunnerError::OnlyOneGroup => {
                     write!(f, "Only one group")
                 }
+                RunnerError::TooManySeeds(n) => {
+                    write!(f, "Too many seeds: {}, only 1 seed is allowed", n)
+                }
             }
         }
     }
@@ -135,6 +141,7 @@ pub mod runner {
                 RunnerError::PlayerGroupParseError(e) => Some(e),
                 RunnerError::PlayerError(e) => Some(e),
                 RunnerError::OnlyOneGroup => None,
+                RunnerError::TooManySeeds(_) => None,
             }
         }
     }

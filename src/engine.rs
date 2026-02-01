@@ -147,6 +147,11 @@ pub mod runners {
             // 然后用于生成这个 Randomer
             let (players, seed) = Runner::spilt_namerena_into_groups(raw_input);
 
+            // 检查 seed 数量，一个游戏最多只能有 1 个 seed
+            if seed.len() > 1 {
+                return Err(crate::error::runner::RunnerError::TooManySeeds(seed.len()));
+            }
+
             let mut names = players
                 .iter()
                 .flatten()
@@ -740,6 +745,98 @@ mod group {
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             // 期望: [["seed: a@!", "aaaa", "bbbb"]] (一个队伍)
             assert_eq!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]));
+        }
+
+        #[test]
+        fn seed_in_middle_of_teams() {
+            // seed 在多个队伍中间
+            // 输入: "team1\n\nseed: a@!\n\nteam2"
+            // 修复后: seed 合并到前一个队伍（优先合并到左边）
+            let raw_input = "team1\n\nseed: a@!\n\nteam2".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            // 期望: [["team1", "seed: a@!"], ["team2"]]
+            assert_eq!(groups, (vec![plr!("team1", "seed: a@!"), plr!("team2")], plr!["seed: a@!"]));
+        }
+
+        #[test]
+        fn multiple_seeds_in_one_team() {
+            // 多个 seed 在一个队伍里 → 应该返回 TooManySeeds 错误
+            let raw_input = "seed: a@!\nseed: b@!\n\nnormal".to_string();
+            let result = runners::Runner::new_from_namerena_raw(raw_input);
+            assert!(matches!(result, Err(crate::error::runner::RunnerError::TooManySeeds(2))));
+        }
+
+        #[test]
+        fn consecutive_seed_only_teams() {
+            // 连续的纯 seed 队伍（2个 seed）→ 应该返回 TooManySeeds 错误
+            let raw_input = "normal\n\nseed: a@!\n\nseed: b@!\n\nteam2".to_string();
+            let result = runners::Runner::new_from_namerena_raw(raw_input);
+            assert!(matches!(result, Err(crate::error::runner::RunnerError::TooManySeeds(2))));
+        }
+
+        #[test]
+        fn only_seed_player() {
+            // 只有 seed 玩家（特殊情况）
+            let raw_input = "seed: a@!".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, (plrs!("seed: a@!"), plr!["seed: a@!"]));
+        }
+
+        #[test]
+        fn seed_mixed_with_normal_in_same_team() {
+            // seed 和普通玩家在一个队伍（正常输入，无需修复）
+            // 输入: "normal1\nnormal2\nseed: a@!"
+            // 注意：这里只有一个 \n，所以是一个队伍
+            let raw_input = "normal1\nnormal2\nseed: a@!".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, (plrs!("normal1", "normal2", "seed: a@!"), plr!["seed: a@!"]));
+        }
+
+        #[test]
+        fn multi_teams_with_seed_at_end() {
+            // 多队伍场景，seed 在最后一个队伍（被错误地单独分组）
+            // 输入: "a\nb\n\nc\nd\n\nseed: x@!"
+            let raw_input = "a\nb\n\nc\nd\n\nseed: x@!".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            // seed 合并到最后一个普通队伍
+            assert_eq!(groups, (vec![plr!("a", "b"), plr!("c", "d", "seed: x@!")], plr!["seed: x@!"]));
+        }
+
+        #[test]
+        fn empty_lines_between_normal_players() {
+            // 普通玩家之间有多个空行（不应该被合并）
+            // 输入: "a\n\n\nb\n\n\nc"
+            // 应该变成两个队伍：[a], [b], [c]
+            let raw_input = "a\n\n\nb\n\n\nc".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            assert_eq!(groups, (vec![plr!("a"), plr!("b"), plr!("c")], plr!()));
+        }
+
+        #[test]
+        fn seed_with_team_name() {
+            // seed 玩家带有队伍名
+            // 注意："seed: a@!red" 是以 "seed:" 开头的，所以被认为是 seed 玩家
+            // 修复逻辑会将其合并到前一个队伍
+            let raw_input = "aaa\n\nseed: a@!red".to_string();
+            let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            // 虽然是 seed: a@!red，但仍然以 seed: 开头，所以合并到 aaa
+            assert_eq!(groups, (vec![plr!("aaa", "seed: a@!red")], plr!["seed: a@!red"]));
+        }
+
+        #[test]
+        fn only_seeds_multiple_teams() {
+            // 全是 seed 的多个队伍（3个 seed）→ 应该返回 TooManySeeds 错误
+            let raw_input = "seed: a@!\n\nseed: b@!\n\nseed: c@!".to_string();
+            let result = runners::Runner::new_from_namerena_raw(raw_input);
+            assert!(matches!(result, Err(crate::error::runner::RunnerError::TooManySeeds(3))));
+        }
+
+        #[test]
+        fn too_many_seeds_error() {
+            // 显式测试多 seed 返回错误
+            let raw_input = "seed: a@!\nseed: b@!\nseed: c@!\nseed: d@!".to_string();
+            let result = runners::Runner::new_from_namerena_raw(raw_input);
+            assert!(matches!(result, Err(crate::error::runner::RunnerError::TooManySeeds(4))));
         }
     }
 
