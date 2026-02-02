@@ -74,6 +74,7 @@ pub mod event {
         DealDamage { caster: PlrId, target: PlrId, dmg: i32 },
     }
 
+    /// 事件队列：跨实体影响通过事件表达，Runner 统一 drain 处理，避免借用冲突。
     #[derive(Debug, Default)]
     pub struct EventQueue {
         q: VecDeque<Event>,
@@ -372,52 +373,6 @@ pub mod runners {
             }
 
             return (raw_groups, seed);
-            // let raw_input = raw_input
-            //     .split("\n")
-            //     // .filter(|x| !Player::check_is_seed(x))
-            //     .collect::<Vec<&str>>()
-            //     .join("\n");
-            // 如果有\n\n, 那么就是一个队伍
-
-            // 下面是为了修复一些容易手误的情况
-            // 比如
-            // aaaaa
-            // bbbb
-            //
-            // seed: xxx@!
-            // 上面的情况中，按照规范, 应该把 seed: xxx@! 那一行和上面并起来
-            // 但是很容易手误，多打一个回车
-            // 导致这个seed: xxx@!成为一个队伍
-            // aaaaa 和 bbbb 成为另一个队伍
-            // 这里修复一下这个问题
-
-            // 先检查有没有单独的seed玩家
-
-            // let groups = raw_input
-            //     .split("\n\n")
-            //     .map(|x| x.split("\n").map(|x| x.to_string()).collect())
-            //     .collect::<Vec<Vec<String>>>();
-
-            // // 然后就是一些特判
-            // // 比如双队伍, 同时其中一个是纯 seed
-            // if raw_groups.len() == 2 {
-            //     println!("need fix {:?}", raw_groups);
-            //     // 双队伍特判
-            //     // 队伍1是纯seed
-            //     // 队伍2不是纯seed
-            //     if raw_groups[0].len() == 1
-            //         && Player::check_is_seed(raw_groups[0][0].as_str())
-            //         && raw_groups[1].iter().all(|x| !Player::check_is_seed(x))
-            //     {
-            //         // 进行一个 fix
-            //         // 也就是把那个非纯seed队伍分散成多个队伍
-            //     }
-            // }
-
-            // (
-            //     raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect(),
-            //     seed,
-            // )
         }
 
         #[inline]
