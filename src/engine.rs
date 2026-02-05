@@ -66,12 +66,37 @@ pub mod event {
 
     #[derive(Debug, Clone)]
     pub enum Event {
+        // ===== Step / Action pipeline（对齐 dart 语义） =====
+        /// 进入 step（通常由 Runner 在 tick 时产生）
+        Step { actor: PlrId },
+        /// 执行 preStep 链（可能修改 stp）
+        PreStep { actor: PlrId, stp: i32 },
+        /// 执行 preAction 链（可能选择技能/改变 targets/解除冻结等）
+        PreAction { actor: PlrId },
+        /// action：选择技能/目标并产生后续事件（Attack/DealDamage/…）
+        Action { actor: PlrId },
+        /// 执行 postAction 链（dart 里会先 newline，再跑 postactions）
+        PostAction { actor: PlrId },
+
+        /// 请求清理 states（如果处于 postActioning 则会延后）
+        RequestClearStates { actor: PlrId, caster: Option<PlrId> },
+        /// 立即清理 states（Runner/Player 在合适时机执行）
+        ClearStatesNow { actor: PlrId, caster: Option<PlrId> },
+
         /// 玩家想要攻击（由 Runner 决定目标/执行）
         TryAttack { caster: PlrId },
         /// 具体攻击一次
         Attack { caster: PlrId, target: PlrId, is_mag: bool },
         /// 直接造成（或回复）伤害
         DealDamage { caster: PlrId, target: PlrId, dmg: i32 },
+
+        // ===== 生命周期：onDamaged/onDie/kill/revive 等 =====
+        /// 目标进入 onDie 流程
+        OnDie { target: PlrId, old_hp: i32, caster: Option<PlrId> },
+        /// caster 杀死 target（kills entries）
+        Kill { caster: PlrId, target: PlrId },
+        /// 复活（revive entries）
+        Revive { target: PlrId },
     }
 
     /// 事件队列：跨实体影响通过事件表达，Runner 统一 drain 处理，避免借用冲突。
@@ -407,6 +432,7 @@ pub mod runners {
             }
         }
 
+        #[deprecated(note = "虽说我不确定，但是我觉得这个方案不可行")]
         fn process_events(&mut self, updates: &mut RunUpdates) {
             // 防止错误技能导致无限事件循环
             const MAX_EVENTS_PER_TICK: usize = 1024;
@@ -416,6 +442,52 @@ pub mod runners {
                 };
 
                 match ev {
+                    // ===== 对齐 dart 的 action pipeline（最小可用版） =====
+                    Event::Step { actor } => {
+                        if let Some(plr) = self.storage.get_player_mut(actor) {
+                            plr.step(actor, &mut self.randomer, updates, &mut self.events);
+                        }
+                    }
+                    Event::PreStep { .. } => {
+                        // TODO: 等 presteps entry 结构落地后再接
+                    }
+                    Event::PreAction { actor } => {
+                        if let Some(plr) = self.storage.get_player_mut(actor) {
+                            plr.pre_action(actor, &mut self.randomer, updates, &mut self.events);
+                            // dart: preAction 后如果还 frozen，action 直接结束
+                            if plr.active() {
+                                self.events.push(Event::Action { actor });
+                            }
+                        }
+                    }
+                    Event::Action { actor } => {
+                        if let Some(plr) = self.storage.get_player_mut(actor) {
+                            // plr.action(actor, &mut self.randomer, updates, &mut self.events);
+                        }
+                    }
+                    Event::PostAction { actor } => {
+                        if let Some(plr) = self.storage.get_player_mut(actor) {
+                            plr.post_action(actor, &mut self.randomer, updates, &mut self.events);
+                        }
+                    }
+
+                    Event::RequestClearStates { actor, caster: _ } => {
+                        if let Some(plr) = self.storage.get_player_mut(actor) {
+                            plr.request_clear_states();
+                            if !plr.post_actioning {
+                                self.events.push(Event::ClearStatesNow { actor, caster: None });
+                            }
+                        }
+                    }
+                    Event::ClearStatesNow { actor, caster } => {
+                        // TODO: meta/states 还没落地，先占位
+                    }
+
+                    // ===== 生命周期/组逻辑：先占位 =====
+                    Event::OnDie { .. } | Event::Kill { .. } | Event::Revive { .. } => {
+                        // TODO: 等 group/meta/kills/dies 结构落地后再接
+                    }
+
                     Event::TryAttack { caster } => {
                         let candidates: Vec<PlrId> = self
                             .all_plrs()

@@ -11,6 +11,9 @@ pub struct SkillStorage {
     pub pre_defend: Vec<usize>,
     pub post_defend: Vec<usize>,
     pub post_damage: Vec<usize>,
+
+    pub pre_action: Vec<usize>,
+    pub post_action: Vec<usize>,
 }
 
 impl SkillStorage {
@@ -20,6 +23,8 @@ impl SkillStorage {
             pre_defend: Vec::new(),
             post_defend: Vec::new(),
             post_damage: Vec::new(),
+            pre_action: Vec::new(),
+            post_action: Vec::new(),
         }
     }
 
@@ -30,6 +35,8 @@ impl SkillStorage {
         self.pre_defend = (0..len).collect();
         self.post_defend = (0..len).collect();
         self.post_damage = (0..len).collect();
+        self.pre_action = (0..len).collect();
+        self.post_action = (0..len).collect();
     }
 
     /// 最后一个技能 boost
@@ -85,6 +92,22 @@ impl SkillStorage {
         for idx in indices {
             let skill = self.skill_by_idx_mut(idx);
             skill.post_damage(dmg, caster, (args.0, args.1, args.2, args.3));
+        }
+    }
+
+    pub fn run_pre_action(&mut self, args: SkillArgs) {
+        let indices = self.pre_action.clone();
+        for idx in indices {
+            let skill = self.skill_by_idx_mut(idx);
+            skill.pre_action((args.0, args.1, args.2, args.3));
+        }
+    }
+
+    pub fn run_post_action(&mut self, args: SkillArgs) {
+        let indices = self.post_action.clone();
+        for idx in indices {
+            let skill = self.skill_by_idx_mut(idx);
+            skill.post_action((args.0, args.1, args.2, args.3));
         }
     }
 }

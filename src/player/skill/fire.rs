@@ -1,6 +1,8 @@
-use crate::engine::storage::PlrId;
+use crate::engine::storage::{PlrId, Storage};
 use crate::engine::event::Event;
+use crate::engine::update::RunUpdates;
 use crate::player::skill::{SkillArgs, SkillExt, SkillTrait};
+use crate::rc4::RC4;
 
 #[derive(Debug, Clone)]
 pub struct FireSkill {
@@ -9,6 +11,11 @@ pub struct FireSkill {
 
 impl FireSkill {
     pub fn new() -> Self { Self { fire_mag: 0.0 } }
+
+    /// OnDamage 函数
+    pub fn on_fire(_caster: PlrId, target: PlrId, dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, storage: &mut Storage) {
+        // if dmg > 0 && 
+    }
 }
 
 impl SkillExt for FireSkill {

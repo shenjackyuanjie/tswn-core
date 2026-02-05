@@ -2,6 +2,7 @@ pub mod eval_name;
 pub mod skill;
 pub mod utils;
 pub mod weapons;
+pub mod action_trait;
 
 use std::cmp::{Ordering, min};
 
@@ -289,6 +290,13 @@ pub struct Player {
     status: PlayerStatus,
     /// 技能相关（每人 <= 20）
     skills: SkillStorage,
+
+    /// 本次行动的 smart 判定（dart: r.r63 < itl）
+    action_smart: bool,
+    /// 正在 postAction
+    pub(crate) post_actioning: bool,
+    /// postAction 中请求清理 state，需要延后
+    pending_clear_states: bool,
 }
 
 impl Player {
@@ -417,6 +425,9 @@ impl Player {
             },
             status,
             skills: SkillStorage::new(),
+            action_smart: false,
+            post_actioning: false,
+            pending_clear_states: false,
         })
     }
 
@@ -690,7 +701,7 @@ impl Player {
     /// 每回合中的玩家行动
     ///
     /// 包括 pre, main, post
-    pub fn step(&mut self, self_id: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, events: &mut EventQueue) {
+    pub fn step(&mut self, self_id: PlrId, randomer: &mut RC4, _updates: &mut RunUpdates, events: &mut EventQueue) {
         if !self.status.alive() {
             return;
         }
@@ -702,27 +713,67 @@ impl Player {
         self.status.move_point += stp;
         if self.check_move() {
             self.status.move_point -= MOVE_POINT_THRESHOLD;
-            // 主动作
-            self.action(self_id, randomer, updates, events);
+            // 事件化 action 流水线：BeginAction -> PreAction -> MainAction -> PostAction
+            if self.active() {
+                use crate::engine::event::Event;
+                events.push(Event::Action { actor: self_id });
+            }
         }
         // 结束
     }
 
-    pub fn action(&mut self, self_id: PlrId, randomer: &mut RC4, _updates: &mut RunUpdates, events: &mut EventQueue) {
-        // let mut targets: Vec<_> = vec![];
+    /// Action：记录本次 smart 判定，并进入 PreAction
+    pub fn action(&mut self, self_id: PlrId, randomer: &mut RC4, events: &mut EventQueue) {
+        self.action_smart = (randomer.r63() as i32) < self.status.wisdom;
+        use crate::engine::event::Event;
+        events.push(Event::PreAction { actor: self_id });
+    }
 
-        let _smart = self.status.wisdom > randomer.r63() as i32;
-        let _req_mp = 0;
+    /// PreAction：允许技能/状态修改本次行动（例如解除冻结）
+    pub fn pre_action(&mut self, self_id: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, events: &mut EventQueue) {
+        self.skills.run_pre_action((self_id, randomer, updates, events));
+    }
 
-        // todo: pre action
-
-        // 临时：把“做一次动作”的决定表达成事件，实际目标选择/结算由 Runner 处理。
-        if self.active() {
-            use crate::engine::event::Event;
-            events.push(Event::TryAttack { caster: self_id });
+    /// MainAction：选择技能/目标并产生后续事件
+    pub fn main_action(&mut self, self_id: PlrId, randomer: &mut RC4, _updates: &mut RunUpdates, events: &mut EventQueue) {
+        // dart: if frozen { return; } （允许 preAction 解冻）
+        if self.status.frozed() {
+            return;
         }
 
-        if self.status.frozed() {}
+        // TODO: 这里以后要对齐 dart 的“选择技能 + mp 消耗 + targets 选择 + acting”
+        // 先保留最小可用：发起一次 TryAttack。
+        use crate::engine::event::Event;
+        events.push(Event::TryAttack { caster: self_id });
+
+        // dart: if (r.r127 < itl + 64) mp += 16;
+        if (randomer.r127() as i32) < (self.status.wisdom + 64) {
+            self.status.mp += 16;
+        }
+
+        // postAction 由 Runner 统一调度，确保在本次行动事件之后。
+        events.push(Event::PostAction { actor: self_id });
+    }
+
+    pub fn post_action(&mut self, self_id: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, events: &mut EventQueue) {
+        self.post_actioning = true;
+        updates.add(RunUpdate::new_newline());
+        self.skills.run_post_action((self_id, randomer, updates, events));
+        self.post_actioning = false;
+
+        if self.pending_clear_states {
+            self.pending_clear_states = false;
+            use crate::engine::event::Event;
+            events.push(Event::ClearStatesNow { actor: self_id, caster: None });
+        }
+    }
+
+    pub fn request_clear_states(&mut self) {
+        if self.post_actioning {
+            self.pending_clear_states = true;
+        } else {
+            self.pending_clear_states = false;
+        }
     }
 
     /// 当前玩家是否可行动

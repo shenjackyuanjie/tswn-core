@@ -9,6 +9,7 @@ use crate::rc4::RC4;
 
 pub mod store;
 
+pub mod ice;
 pub mod fire;
 pub mod none;
 
@@ -32,6 +33,9 @@ pub trait SkillTrait: Debug {
     fn update_state(&self) {}
     /// 行动!
     fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
+
+    /// 我其实也不知道是啥
+    fn meta(&self) -> i32 { 0}
 
     fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 { step }
     /// 行动之前
@@ -84,8 +88,28 @@ impl Skill {
 
     pub fn new_with_id(level: u32, id: u8) -> Self {
         let skill_type = {
+            /*
+        skills.push(new T.SklFire(0)); // 0
+        skills.push(new T.SklIce(0)); // 1
+        skills.push(new T.SklThunder(0)); // 2
+        skills.push(new T.SklQuake(0)); // 3
+        skills.push(new T.SklAbsorb(0)); // 4
+        skills.push(new T.SklPoison(0)); // 5
+        skills.push(new T.SklRapid(0)); // 6
+        skills.push(new T.SklCritical(0)); // 7
+        skills.push(new T.sklHalf(0)); // 8
+        skills.push(new T.SklExchange(0)); // 9
+        skills.push(new T.SklBerserk(0)); // 10
+        skills.push(new T.SklCharm(0)); // 11
+        skills.push(new T.SklHaste(0)); // 12
+        skills.push(new T.SklSlow(0)); // 13
+        skills.push(new T.SklCurse(0)); // 14
+        skills.push(new T.SklHeal(0)); // 15
+        skills.push(new T.SklRevive(0)); // 16
+        skills.push(new T.SklDisperse(0)); // 17 */
             match id {
-                1 => fire::FireSkill::box_new(),
+                0 => fire::FireSkill::box_new(),
+                1 => ice::IceSkill::box_new(),
                 _ => none::NoneSkill::box_new(),
             }
         };
@@ -139,6 +163,10 @@ impl Skill {
     pub fn post_defend(&mut self, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
         self.skill_type.post_defend(dmg, caster, on_damage, args)
     }
+
+    pub fn pre_action(&mut self, args: SkillArgs) { self.skill_type.pre_action(args) }
+
+    pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action(args) }
 
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) { self.skill_type.post_damage(dmg, caster, args) }
 
