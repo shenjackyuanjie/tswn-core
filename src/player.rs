@@ -5,7 +5,6 @@ pub mod weapons;
 
 use std::cmp::{Ordering, min};
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
 
 use crate::engine::storage::{SkillId, Storage};
 use crate::engine::update::{RunUpdate, RunUpdates};
@@ -21,10 +20,9 @@ pub const TEAM_MAX_LEN: usize = 256;
 /// 2048 以上才行动
 pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 
-/// 假装是一个指针
-/// 其实是 idx
-/// (其实就是 usize)
-pub type PlrPtr = usize;
+/// 玩家句柄（运行期唯一 ID）。
+/// 为兼容旧命名仍叫 `PlrId`，但语义已从“裸指针”切到“稳定 ID”。
+pub type PlrId = usize;
 
 /// OnDamage 函数
 ///
@@ -33,11 +31,15 @@ pub type PlrPtr = usize;
 /// ```dart
 /// typedef OnDamage(Plr caster, Plr target, int dmg, R r, RunUpdates updates);
 /// ```
-pub type OnDamageFunc = fn(PlrPtr, PlrPtr, i32, &mut RC4, &mut RunUpdates);
+pub type OnDamageFunc = fn(PlrId, PlrId, i32, &mut RC4, &mut RunUpdates);
 
-/// 将 PlrPtr 转换为 &mut Player
-/// 其实就是一个包装
-pub fn player_ptr_as_mut_plr<'a>(ptr: &PlrPtr) -> &'a mut Player { unsafe { &mut *(*ptr as *mut Player) } }
+/// 通过玩家句柄从存储层取可变玩家引用。
+#[inline]
+pub fn player_id_as_mut_plr<'a>(ptr: PlrId, storage: &'a Arc<Storage>) -> &'a mut Player {
+    storage
+        .just_get_player_mut(ptr)
+        .expect("cannot get mutable player by player handle")
+}
 
 // /// Player 的自增 ID
 // pub static PLAYER_ID: AtomicUsize = AtomicUsize::new(0);
@@ -450,7 +452,13 @@ impl Player {
     /// 获取当前的玩家状态
     pub fn get_status(&self) -> &PlayerStatus { &self.status }
 
-    pub fn as_ptr(&self) -> PlrPtr { self as *const Player as PlrPtr }
+    /// 获取玩家句柄（兼容旧接口名）。
+    #[inline]
+    pub fn as_ptr(&self) -> PlrId { self.ptr() }
+
+    /// 获取玩家句柄（推荐新接口名）。
+    #[inline]
+    pub fn ptr(&self) -> PlrId { self.id.try_into().expect("player id overflow usize") }
 
     pub fn id(&self) -> u64 { self.id }
 
@@ -706,11 +714,11 @@ impl Player {
         // 结束
     }
 
-    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates) {
+    pub fn action(&mut self, randomer: &mut RC4, _updates: &mut RunUpdates) {
         // let mut targets: Vec<_> = vec![];
 
-        let smart = self.status.wisdom > randomer.r63() as i32;
-        let req_mp = 0;
+        let _smart = self.status.wisdom > randomer.r63() as i32;
+        let _req_mp = 0;
 
         // todo: pre action
 
@@ -809,7 +817,7 @@ impl Player {
     //     &mut self,
     //     mut atp: f64,
     //     is_mag: bool,
-    //     caster: PlrPtr,
+    //     caster: PlrId,
     //     on_damage: OnDamageFunc,
     //     randomer: &mut RC4,
     //     updates: &mut RunUpdates,
@@ -830,7 +838,7 @@ impl Player {
     // pub fn post_defend(
     //     &mut self,
     //     mut dmg: i32,
-    //     caster: PlrPtr,
+    //     caster: PlrId,
     //     on_damage: OnDamageFunc,
     //     randomer: &mut RC4,
     //     updates: &mut RunUpdates,
@@ -848,7 +856,7 @@ impl Player {
         &mut self,
         mut atp: f64,
         is_mag: bool,
-        caster: PlrPtr,
+        caster: PlrId,
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
@@ -886,7 +894,7 @@ impl Player {
         &mut self,
         atp: f64,
         is_mag: bool,
-        caster: PlrPtr,
+        caster: PlrId,
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
@@ -903,7 +911,7 @@ impl Player {
     pub fn damage(
         &mut self,
         dmg: i32,
-        caster: PlrPtr,
+        caster: PlrId,
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
@@ -940,7 +948,7 @@ impl Player {
         &mut self,
         dmg: i32,
         old_hp: i32,
-        caster: PlrPtr,
+        caster: PlrId,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
@@ -959,7 +967,7 @@ impl Player {
         }
     }
 
-    pub fn on_die(&mut self, old_hp: i32, caster: PlrPtr, randomer: &mut RC4, updates: &mut RunUpdates) {}
+    pub fn on_die(&mut self, _old_hp: i32, _caster: PlrId, _randomer: &mut RC4, _updates: &mut RunUpdates) {}
 }
 
 impl PartialOrd for Player {

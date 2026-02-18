@@ -1,54 +1,51 @@
-/// namerena 评分机制里的第一个靶子
-pub const PROFILE_START: u32 = 33554431;
+/// namerena 评分机制里的第一个靶子。
+pub const PROFILE_START: u32 = 33_554_431;
 
-/// 由 Bevy Ecs 启发的一个简单的 ECS 系统
-/// 主要用来存储 Skill (玩家技能), State (玩家状态)
-/// 有可能后面会一块干脆把 Player 也放进来
+/// 由 Bevy ECS 启发的轻量存储层。
+/// 目前集中托管 Skill / Group / Player 的运行期所有权。
 pub mod storage {
-
-    use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
 
     use crate::player::skill::Skill;
-    use crate::player::{Player, PlrPtr};
+    use crate::player::{Player, PlrId};
 
     use foldhash::{HashMap as FastHashMap, HashMapExt};
 
-    /// 技能的 ID (ECS内的)
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// 技能的 ID（ECS 内部标识）。
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct SkillId(usize);
 
     impl SkillId {
         pub fn new(id: usize) -> SkillId { SkillId(id) }
 
-        /// 根据一个 Skill 实例创建一个 SkillId
-        /// (其实就是取个内存地址)
+        /// 根据一个 Skill 实例创建 SkillId。
+        /// 当前实现直接使用内存地址。
         pub fn new_from_skill(skill: &Skill) -> SkillId {
-            SkillId({
-                let ptr = skill as *const Skill;
-                ptr as usize
-            })
+            let ptr = skill as *const Skill;
+            SkillId(ptr as usize)
         }
+
+        pub fn raw(self) -> usize { self.0 }
     }
 
-    /// 存数据的地方
+    /// 运行期数据仓库。
     ///
-    /// 使用了 foldhash 的 HashMap, 快一些
+    /// 使用 `foldhash::HashMap`，性能优先于标准库 `HashMap`。
     #[derive(Debug)]
     pub struct Storage {
-        /// 存技能
-        /// usize: memory address
+        /// 存技能（`usize` 为 SkillId 的原始值）。
         skills: FastHashMap<usize, Skill>,
-        /// 存玩家组?
-        groups: FastHashMap<usize, Vec<PlrPtr>>,
-        /// 玩家
-        players: FastHashMap<PlrPtr, Player>,
-        /// 玩家 ID
+        /// 存队伍分组。
+        groups: FastHashMap<usize, Vec<PlrId>>,
+        /// 存玩家实体。
+        players: FastHashMap<PlrId, Player>,
+        /// 玩家 ID 自增计数器。
         player_id_counter: AtomicU64,
     }
 
     impl Storage {
-        /// 创建一个新的 Storages
+        /// 创建一个新的 Storage。
         pub fn new() -> Storage {
             Storage {
                 skills: FastHashMap::new(),
@@ -56,11 +53,6 @@ pub mod storage {
                 players: FastHashMap::new(),
                 player_id_counter: AtomicU64::new(0),
             }
-        }
-
-        pub fn new_plr_id(&self) -> u64 {
-            // 生成一个新的玩家 ID
-            self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         }
 
         pub fn new_arc() -> Arc<Self> { Arc::new(Self::new()) }
@@ -71,19 +63,31 @@ pub mod storage {
             self.players.clear();
         }
 
-        /// 获取技能
-        pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
-        /// 获取玩家
-        pub fn get_player(&self, ptr: &PlrPtr) -> Option<&Player> { self.players.get(ptr) }
-        /// 获取玩家(不检查)
-        pub fn get_player_unchecked(&self, ptr: &PlrPtr) -> &Player {
-            self.players.get(ptr).expect("can't get player from storage")
+        /// 生成一个新的玩家 ID。
+        pub fn new_plr_id(&self) -> u64 {
+            self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         }
 
-        /// 获取技能的可变引用
+        pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) { self.groups.insert(id, plrs); }
+
+        pub fn get_group(&self, id: usize) -> Option<&Vec<PlrId>> { self.groups.get(&id) }
+
+        /// 获取技能。
+        pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
+
+        /// 获取玩家。
+        pub fn get_player(&self, ptr: &PlrId) -> Option<&Player> { self.players.get(ptr) }
+
+        /// 获取玩家（不做 Option 检查）。
+        pub fn get_player_unchecked(&self, ptr: &PlrId) -> &Player {
+            self.players.get(ptr).expect("cannot get player from storage")
+        }
+
+        /// 获取技能的可变引用（安全版本）。
         pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills.get_mut(&id.0) }
-        /// 我就硬获取了
-        /// 不过这个方法不安全
+
+        /// 强行从 `&self` 获取 `&mut Skill`。
+        /// 这个方法依赖 `unsafe`，需要调用方保证不会违反别名规则。
         #[allow(clippy::mut_from_ref)]
         pub fn just_get_skill_mut(&self, id: SkillId) -> Option<&mut Skill> {
             unsafe {
@@ -92,20 +96,23 @@ pub mod storage {
             }
         }
 
+        /// 强行从 `&self` 获取 `&mut Player`。
+        /// 这个方法依赖 `unsafe`，需要调用方保证不会违反别名规则。
         #[allow(clippy::mut_from_ref)]
-        pub fn just_get_player_mut(&self, ptr: PlrPtr) -> Option<&mut Player> {
+        pub fn just_get_player_mut(&self, ptr: PlrId) -> Option<&mut Player> {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
                 (*mut_slf).players.get_mut(&ptr)
             }
         }
 
-        /// 插入技能 (返回技能的 ID)
+        /// 插入技能，并返回技能 ID。
         pub fn insert_skill(&mut self, skill: Skill) -> SkillId {
             let id = SkillId::new_from_skill(&skill);
             self.skills.insert(id.0, skill);
             id
         }
+
         pub fn just_insert_skill(&self, skill: Skill) -> SkillId {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
@@ -115,22 +122,24 @@ pub mod storage {
             }
         }
 
-        pub fn insert_player(&mut self, player: Player) -> PlrPtr {
-            let id = player.id();
+        pub fn insert_player(&mut self, player: Player) -> PlrId {
+            let id: PlrId = player.id().try_into().expect("player id overflow usize");
             self.players.insert(id, player);
             id
         }
-        pub fn just_insert_player(&self, player: Player) -> PlrPtr {
+
+        pub fn just_insert_player(&self, player: Player) -> PlrId {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
-                let id = player.id();
+                let id: PlrId = player.id().try_into().expect("player id overflow usize");
                 (*mut_slf).players.insert(id, player);
                 id
             }
         }
 
-        /// 删除技能
+        /// 删除技能（安全版本）。
         pub fn remove_skill(&mut self, id: SkillId) -> Option<Skill> { self.skills.remove(&id.0) }
+
         pub fn just_remove_skill(&self, id: SkillId) -> Option<Skill> {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
@@ -138,7 +147,7 @@ pub mod storage {
             }
         }
 
-        pub fn just_remove_player(&self, ptr: PlrPtr) -> Option<Player> {
+        pub fn just_remove_player(&self, ptr: PlrId) -> Option<Player> {
             unsafe {
                 let mut_slf = self as *const Storage as *mut Storage;
                 (*mut_slf).players.remove(&ptr)
@@ -151,49 +160,345 @@ pub mod storage {
     }
 }
 
-/// 核心的游戏逻辑
+/// 核心的游戏逻辑（runner + engine core）。
 pub mod runners {
-
     use std::sync::Arc;
 
+    use crate::engine::storage::Storage;
     use crate::engine::update::RunUpdates;
     use crate::error::runner::RunnerResult;
-    use crate::player::{Player, PlrPtr};
+    use crate::player::{Player, PlrId};
     use crate::rc4::RC4;
 
-    use super::storage::Storage;
-
     pub type PlayerGroup = Vec<Player>;
-
-    pub struct Runner {
-        /// 应该是一个 Rc4 实例类似物
-        pub randomer: RC4,
-        /// 所有玩家 (包括 boss)
-        pub players: Vec<Vec<PlrPtr>>,
-        /// 赢家
-        ///
-        /// 也应该是一个队伍
-        pub winner: Option<Vec<PlrPtr>>,
-        /// 该哪个玩家动了
-        round_pos: i32,
-        /// 存储所有 state 和 skill 的地方
-        pub storage: Arc<Storage>,
-    }
-
     pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
 
-    impl Runner {
-        /// 从一个 名竞的原始输入 中创建一个 Runner
-        ///
-        /// 其实就是解析名竞的输入格式
-        pub fn new_from_namerena_raw(raw_input: String) -> RunnerResult<Runner> {
-            // 根据原始输入解析队伍
+    /// 对局共享世界状态。
+    #[derive(Debug, Clone)]
+    pub struct WorldState {
+        /// 所有队伍（按创建顺序）。
+        pub groups: Vec<Vec<PlrId>>,
+        /// 胜方队伍（存在时表示战斗结束）。
+        pub winner: Option<Vec<PlrId>>,
+        /// 下一次行动的轮转位置。
+        round_pos: i32,
+    }
 
-            // 原始逻辑:
-            // 把所有\n去掉
-            // 然后 join "\r"
-            // 然后 utf8 encode
-            // 然后用于生成这个 Randomer
+    impl WorldState {
+        pub fn new(groups: Vec<Vec<PlrId>>) -> Self {
+            Self {
+                groups,
+                winner: None,
+                round_pos: -1,
+            }
+        }
+
+        #[inline]
+        pub fn have_winner(&self) -> bool { self.winner.is_some() }
+
+        #[inline]
+        pub fn all_plrs(&self) -> Vec<PlrId> { self.groups.iter().flatten().copied().collect() }
+
+        #[inline]
+        pub fn all_plr_len(&self) -> usize { self.groups.iter().map(|x| x.len()).sum() }
+
+        pub fn team_index_of(&self, actor: PlrId) -> Option<usize> {
+            self.groups.iter().position(|group| group.contains(&actor))
+        }
+
+        pub fn alives(&self, storage: &Arc<Storage>) -> Vec<Vec<PlrId>> {
+            self.groups
+                .iter()
+                .map(|group| {
+                    group
+                        .iter()
+                        .filter(|plr| {
+                            storage
+                                .get_player(plr)
+                                .map(|x| x.get_status().alive())
+                                .unwrap_or(false)
+                        })
+                        .copied()
+                        .collect::<Vec<PlrId>>()
+                })
+                .collect::<Vec<Vec<PlrId>>>()
+        }
+
+        pub fn alives_flat(&self, storage: &Arc<Storage>) -> Vec<PlrId> {
+            self.alives(storage).iter().flatten().copied().collect()
+        }
+
+        fn next_round_index(&mut self, total: usize) -> usize {
+            if total == 0 {
+                return 0;
+            }
+            self.round_pos = (self.round_pos + 1).rem_euclid(total as i32);
+            self.round_pos as usize
+        }
+    }
+
+    type ActorHook = fn(PlrId, &Arc<Storage>, &mut RC4, &mut RunUpdates);
+
+    #[derive(Default)]
+    pub struct HookPipeline {
+        pre_action: Vec<ActorHook>,
+        post_action: Vec<ActorHook>,
+        pre_damage: Vec<ActorHook>,
+        post_damage: Vec<ActorHook>,
+    }
+
+    impl HookPipeline {
+        pub fn register_pre_action(&mut self, hook: ActorHook) { self.pre_action.push(hook); }
+
+        pub fn register_post_action(&mut self, hook: ActorHook) { self.post_action.push(hook); }
+
+        pub fn register_pre_damage(&mut self, hook: ActorHook) { self.pre_damage.push(hook); }
+
+        pub fn register_post_damage(&mut self, hook: ActorHook) { self.post_damage.push(hook); }
+
+        pub fn run_pre_action(&self, actor: PlrId, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
+            for hook in &self.pre_action {
+                hook(actor, storage, randomer, updates);
+            }
+        }
+
+        pub fn run_post_action(&self, actor: PlrId, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
+            for hook in &self.post_action {
+                hook(actor, storage, randomer, updates);
+            }
+        }
+
+        pub fn run_pre_damage(&self, actor: PlrId, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
+            for hook in &self.pre_damage {
+                hook(actor, storage, randomer, updates);
+            }
+        }
+
+        pub fn run_post_damage(&self, actor: PlrId, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
+            for hook in &self.post_damage {
+                hook(actor, storage, randomer, updates);
+            }
+        }
+    }
+
+    #[derive(Default)]
+    pub struct RuleRegistry {
+        pub skill_rules: usize,
+        pub weapon_rules: usize,
+        pub boss_rules: usize,
+    }
+
+    impl RuleRegistry {
+        pub fn register_skill_rule(&mut self) { self.skill_rules += 1; }
+
+        pub fn register_weapon_rule(&mut self) { self.weapon_rules += 1; }
+
+        pub fn register_boss_rule(&mut self) { self.boss_rules += 1; }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ActionDecision {
+        StepDriver,
+        Skip,
+    }
+
+    #[derive(Default)]
+    pub struct TurnScheduler;
+
+    impl TurnScheduler {
+        pub fn next_actor(&self, world: &mut WorldState, storage: &Arc<Storage>) -> Option<PlrId> {
+            let all = world.all_plrs();
+            if all.is_empty() {
+                return None;
+            }
+
+            for _ in 0..all.len() {
+                let idx = world.next_round_index(all.len());
+                let actor = all[idx];
+                if storage
+                    .get_player(&actor)
+                    .map(|x| x.get_status().alive())
+                    .unwrap_or(false)
+                {
+                    return Some(actor);
+                }
+            }
+            None
+        }
+    }
+
+    #[derive(Default)]
+    pub struct ActionSystem;
+
+    impl ActionSystem {
+        pub fn choose_action(
+            &self,
+            actor: PlrId,
+            world: &WorldState,
+            storage: &Arc<Storage>,
+            _randomer: &mut RC4,
+            _rules: &RuleRegistry,
+        ) -> ActionDecision {
+            if world.have_winner() {
+                return ActionDecision::Skip;
+            }
+            if storage
+                .get_player(&actor)
+                .map(|x| x.get_status().alive())
+                .unwrap_or(false)
+            {
+                ActionDecision::StepDriver
+            } else {
+                ActionDecision::Skip
+            }
+        }
+    }
+
+    #[derive(Default)]
+    pub struct TargetSystem;
+
+    impl TargetSystem {
+        pub fn select_targets(&self, actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> Vec<PlrId> {
+            let Some(team_idx) = world.team_index_of(actor) else {
+                return Vec::new();
+            };
+
+            world
+                .alives(storage)
+                .into_iter()
+                .enumerate()
+                .filter_map(|(idx, group)| if idx == team_idx { None } else { Some(group) })
+                .flatten()
+                .collect::<Vec<PlrId>>()
+        }
+    }
+
+    pub struct TickContext<'a> {
+        pub storage: &'a Arc<Storage>,
+        pub randomer: &'a mut RC4,
+        pub updates: &'a mut RunUpdates,
+    }
+
+    #[derive(Default)]
+    pub struct CombatResolver;
+
+    impl CombatResolver {
+        pub fn resolve(
+            &self,
+            actor: PlrId,
+            decision: ActionDecision,
+            _targets: &[PlrId],
+            ctx: &mut TickContext<'_>,
+            hooks: &HookPipeline,
+        ) {
+            match decision {
+                ActionDecision::StepDriver => {
+                    hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
+                    if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
+                        plr.step(ctx.randomer, ctx.updates);
+                    }
+                    hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
+                }
+                ActionDecision::Skip => {}
+            }
+        }
+    }
+
+    #[derive(Default)]
+    pub struct WinChecker;
+
+    impl WinChecker {
+        pub fn check(&self, world: &mut WorldState, storage: &Arc<Storage>) {
+            let mut alive_groups = world
+                .alives(storage)
+                .into_iter()
+                .filter(|group| !group.is_empty())
+                .collect::<Vec<Vec<PlrId>>>();
+
+            world.winner = if alive_groups.len() == 1 {
+                Some(alive_groups.remove(0))
+            } else {
+                None
+            };
+        }
+    }
+
+    #[derive(Default)]
+    pub struct RunUpdateCollector;
+
+    impl RunUpdateCollector {
+        pub fn has_updates(&self, updates: &RunUpdates) -> bool { !updates.updates.is_empty() }
+    }
+
+    #[derive(Default)]
+    pub struct EngineCore {
+        scheduler: TurnScheduler,
+        action_system: ActionSystem,
+        target_system: TargetSystem,
+        combat_resolver: CombatResolver,
+        hooks: HookPipeline,
+        rules: RuleRegistry,
+        win_checker: WinChecker,
+        collector: RunUpdateCollector,
+    }
+
+    impl EngineCore {
+        pub fn register_pre_action_hook(&mut self, hook: ActorHook) { self.hooks.register_pre_action(hook); }
+
+        pub fn register_post_action_hook(&mut self, hook: ActorHook) { self.hooks.register_post_action(hook); }
+
+        pub fn tick(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
+            if world.have_winner() {
+                return;
+            }
+
+            let Some(actor) = self.scheduler.next_actor(world, storage) else {
+                self.win_checker.check(world, storage);
+                return;
+            };
+
+            self.hooks.run_pre_action(actor, storage, randomer, updates);
+            let decision = self.action_system.choose_action(actor, world, storage, randomer, &self.rules);
+            let targets = self.target_system.select_targets(actor, world, storage);
+            let mut ctx = TickContext {
+                storage,
+                randomer,
+                updates,
+            };
+            self.combat_resolver.resolve(actor, decision, &targets, &mut ctx, &self.hooks);
+            self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
+            self.win_checker.check(world, storage);
+        }
+
+        pub fn main_round(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4) -> RunUpdates {
+            let mut updates = RunUpdates::new();
+            let max_ticks = world.all_plr_len().max(1) * 4;
+            let mut ticks = 0;
+
+            while ticks < max_ticks && !world.have_winner() && !self.collector.has_updates(&updates) {
+                self.tick(world, storage, randomer, &mut updates);
+                ticks += 1;
+            }
+
+            updates
+        }
+    }
+
+    pub struct Runner {
+        /// 随机数发生器（保持与旧实现一致的消费顺序）。
+        pub randomer: RC4,
+        /// 全局存储层。
+        pub storage: Arc<Storage>,
+        /// 世界状态。
+        pub world: WorldState,
+        /// 新架构下的引擎核心流程。
+        core: EngineCore,
+    }
+
+    impl Runner {
+        /// 从名竞原始输入构建 Runner。
+        pub fn new_from_namerena_raw(raw_input: String) -> RunnerResult<Runner> {
+            // 根据原始输入解析队伍。
             let (players, seed) = Runner::spilt_namerena_into_groups(raw_input);
 
             let mut names = players
@@ -203,48 +508,25 @@ pub mod runners {
                 .map(|str| Player::raw_namerena_to_idname(str))
                 .chain(seed.iter().cloned())
                 .collect::<Vec<String>>();
-            // 这里顺便把 sorted hash 这块做了
             names.sort();
             names.dedup();
-            // println!("{:?}", names);
+
+            // 原始逻辑：
+            // 把名称排序去重后 join "\r"，再作为 RC4 key。
             let keys = names.join("\r");
-            // println!("{:?}", keys.as_bytes().to_vec());
             let mut randomer = RC4::new(keys.as_bytes(), 1);
             randomer.js_xor_str(&keys);
-            // 准备好了
-            // 用 randmoer 初始化玩家的 sort_int
 
             let storage = Storage::new_arc();
 
-            let mut inited_plrs = Vec::with_capacity(players.len());
-            for plrs in players.iter() {
+            // 用 randomer 初始化玩家的 sort_int。
+            let mut inited_plrs: Vec<Vec<PlrId>> = Vec::with_capacity(players.len());
+            for plrs in &players {
                 let mut group = Vec::with_capacity(plrs.len());
-                for plr in plrs.iter() {
+                for plr in plrs {
                     let mut player = Player::new_from_namerena_raw(plr.to_string(), storage.clone())?;
-                    #[cfg(not(test))]
-                    {
-                        player.sort_int = randomer.rFFFFFF() as i32;
-                    }
-                    #[cfg(test)]
-                    {
-                        println!("randomer: {:?}", randomer);
-                        let int_a = randomer.next_u8();
-                        let int_b = randomer.next_u8();
-                        let int_c = randomer.next_u8();
-                        println!(
-                            "{} {} {} {}, {}",
-                            int_a,
-                            int_b,
-                            int_c,
-                            ((int_a as u32) << 16) | ((int_b as u32) << 8) | (int_c as u32),
-                            player.display_name() // 你好，shenjack
-                        );
-                        let int = ((int_a as u32) << 16) | ((int_b as u32) << 8) | (int_c as u32);
-                        player.sort_int = int as i32;
-                    }
+                    player.sort_int = randomer.rFFFFFF() as i32;
                     let ptr = storage.just_insert_player(player);
-                    // 如果有问题，就直接返回错误
-                    // 不过大概率不会有问题就是了
                     group.push(ptr);
                 }
                 inited_plrs.push(group);
@@ -252,11 +534,15 @@ pub mod runners {
 
             let mut local_plrs = inited_plrs
                 .iter()
-                .map(|x| x.iter().map(|p| storage.just_get_player_mut(*p).unwrap()).collect::<Vec<&mut Player>>())
+                .map(|x| {
+                    x.iter()
+                        .map(|p| storage.just_get_player_mut(*p).expect("player not found when local init"))
+                        .collect::<Vec<&mut Player>>()
+                })
                 .collect::<Vec<Vec<&mut Player>>>();
 
-            // 同队升级
-            for plr_group in local_plrs.iter_mut() {
+            // 同队升级：与旧实现一致，先做队内双向 upgrade。
+            for plr_group in &mut local_plrs {
                 if plr_group.len() < 2 {
                     continue;
                 }
@@ -273,13 +559,16 @@ pub mod runners {
                 }
             }
 
-            for group in local_plrs.iter_mut() {
-                for plr in group.iter_mut() {
+            // 构建所有玩家：属性/技能初始化入口。
+            for group in &mut local_plrs {
+                for plr in group {
                     plr.build();
                 }
             }
 
-            let mut sort_groups = inited_plrs.iter().collect::<Vec<&Vec<PlrPtr>>>();
+            // 这里顺便把 sorted hash 这块做了。
+            // 保持旧版随机流消费顺序，避免战斗回放偏移。
+            let mut sort_groups = inited_plrs.iter().collect::<Vec<&Vec<PlrId>>>();
             sort_groups.sort_by(|a, b| {
                 {
                     let plr_a = storage.get_player(&a[0]).expect("plr not found when sort");
@@ -289,190 +578,114 @@ pub mod runners {
                 .unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            for group in sort_groups.iter() {
-                for plr in group.iter() {
-                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when enc");
+            for group in &sort_groups {
+                for plr in *group {
+                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when encrypt");
                     randomer.encrypt_bytes_no_change(&plr.id_name());
                 }
                 randomer.encrypt_bytes(&mut [0]);
             }
 
-            for group in inited_plrs.iter_mut() {
-                for plr in group.iter_mut() {
-                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when enc");
+            for group in &inited_plrs {
+                for plr in group {
+                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when set move point");
                     plr.set_move_point(randomer.r255() as i32);
                 }
             }
 
-            let winner = if inited_plrs.len() == 1 {
-                Some(inited_plrs[0].clone())
-            } else {
-                None
-            };
+            let mut world = WorldState::new(inited_plrs);
+            if world.groups.len() == 1 {
+                world.winner = Some(world.groups[0].clone());
+            }
+
             Ok(Runner {
                 randomer,
-                players: inited_plrs,
-                winner,
-                round_pos: -1,
                 storage,
+                world,
+                core: EngineCore::default(),
             })
         }
 
-        /// 获取所有存活的玩家
-        pub fn alives_flat(&self) -> Vec<PlrPtr> { self.alives().iter().flatten().cloned().collect() }
+        pub fn alives_flat(&self) -> Vec<PlrId> { self.world.alives_flat(&self.storage) }
 
-        /// 以组为单位获取所有存活的玩家
-        pub fn alives(&self) -> Vec<Vec<PlrPtr>> {
-            self.players
-                .iter()
-                .map(|x| {
-                    x.iter()
-                        .filter(|x| {
-                            let x = self.storage.get_player(x).expect("plr not found when getting alive");
-                            x.get_status().alive()
-                        })
-                        .cloned()
-                        .collect()
-                })
-                .collect()
-        }
+        /// 以组为单位获取所有存活玩家。
+        pub fn alives(&self) -> Vec<Vec<PlrId>> { self.world.alives(&self.storage) }
 
-        /// 将原始输入分拆成队伍
+        /// 将名竞输入按队伍拆分。
         /// # 说明
+        /// - 去除尾部一个或多个换行/空白
+        /// - 将 `\r\n` 和 `\r` 统一成 `\n`
+        /// - 将大于等于 3 个连续 `\n` 压成 2 个 `\n`
         ///
-        /// ## 特殊情况处理
-        /// - 去除尾部的一个/多个 \n/带有几个空格
-        /// - 将 \r\n 替换成 \n
-        /// - 将 \r 替换成 \n
-        /// - 将 大于等于3个 \n 替换成 2个 \n
+        /// # 特殊情况处理
+        /// - 当前先保留旧行为：seed 行只负责提取，不做跨组修复
         ///
-        /// 返回: (队伍, seed)
+        /// 返回：(队伍列表, seed 行列表)
         #[allow(clippy::needless_return)]
         pub fn spilt_namerena_into_groups(raw_input: String) -> RawPlayers {
-            // 去除尾部的一个/多个 \n/带有几个空格的情况
+            // 去除尾部的一个/多个 `\n` 或空白。
             let raw_input = raw_input.trim_end();
-            // 处理一下有 \r\n 的情况
+            // 处理 `\r\n`。
             let raw_input = raw_input.replace("\r\n", "\n");
-            // 处理一下 \r 的情况
+            // 处理 `\r`。
             let mut raw_input = raw_input.replace("\r", "\n");
-            // 处理一下 \n\n\n
+            // 处理 `\n\n\n...`。
             while raw_input.contains("\n\n\n") {
                 raw_input = raw_input.replace("\n\n\n", "\n\n");
             }
-            // 先把 SEED_PREFIX 取出来
+
             let seed = raw_input
                 .split("\n")
                 .filter(|x| Player::check_is_seed(x))
                 .map(|x| x.to_string())
                 .collect::<Vec<String>>();
-            // 首先，如果没有\n\n, 那么一行就是一个队伍
+
+            // 没有空行分组：一行一个队伍（旧规则）。
             if !raw_input.contains("\n\n") {
                 return (raw_input.split("\n").map(|x| vec![x.to_string()]).collect(), seed);
             }
-            let raw_groups: Vec<Vec<String>> =
-                raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect();
 
-            // 修复是 TODO 项
+            let raw_groups: Vec<Vec<String>> = raw_input
+                .split("\n\n")
+                .map(|x| x.split("\n").map(|x| x.to_string()).collect())
+                .collect();
+
+            // 修复是 TODO 项，先保留旧行为。
+            // TODO: 处理 “seed 独占一组” 的自动并组修复。
             return (raw_groups, seed);
-            // let raw_input = raw_input
-            //     .split("\n")
-            //     // .filter(|x| !Player::check_is_seed(x))
-            //     .collect::<Vec<&str>>()
-            //     .join("\n");
-            // 如果有\n\n, 那么就是一个队伍
-
-            // 下面是为了修复一些容易手误的情况
-            // 比如
-            // aaaaa
-            // bbbb
-            //
-            // seed: xxx@!
-            // 上面的情况中，按照规范, 应该把 seed: xxx@! 那一行和上面并起来
-            // 但是很容易手误，多打一个回车
-            // 导致这个seed: xxx@!成为一个队伍
-            // aaaaa 和 bbbb 成为另一个队伍
-            // 这里修复一下这个问题
-
-            // 先检查有没有单独的seed玩家
-
-            // let groups = raw_input
-            //     .split("\n\n")
-            //     .map(|x| x.split("\n").map(|x| x.to_string()).collect())
-            //     .collect::<Vec<Vec<String>>>();
-
-            // // 然后就是一些特判
-            // // 比如双队伍, 同时其中一个是纯 seed
-            // if raw_groups.len() == 2 {
-            //     println!("need fix {:?}", raw_groups);
-            //     // 双队伍特判
-            //     // 队伍1是纯seed
-            //     // 队伍2不是纯seed
-            //     if raw_groups[0].len() == 1
-            //         && Player::check_is_seed(raw_groups[0][0].as_str())
-            //         && raw_groups[1].iter().all(|x| !Player::check_is_seed(x))
-            //     {
-            //         // 进行一个 fix
-            //         // 也就是把那个非纯seed队伍分散成多个队伍
-            //     }
-            // }
-
-            // (
-            //     raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect(),
-            //     seed,
-            // )
         }
 
         #[inline]
-        pub fn have_winner(&self) -> bool { self.winner.is_some() }
+        pub fn have_winner(&self) -> bool { self.world.have_winner() }
 
         #[inline]
-        pub fn all_plrs(&self) -> Vec<PlrPtr> { self.players.iter().flatten().cloned().collect() }
+        pub fn all_plrs(&self) -> Vec<PlrId> { self.world.all_plrs() }
 
         #[inline]
-        pub fn all_plr_len(&self) -> usize { self.players.iter().map(|x| x.len()).sum() }
+        pub fn all_plr_len(&self) -> usize { self.world.all_plr_len() }
 
-        pub unsafe fn get_plr_by_ptr_unchecked(&self, ptr: PlrPtr) -> &Player {
-            // 直接 unsafe 强转
-            unsafe {
-                let ptr = ptr as *const Player;
-                &*ptr
-            }
+        pub fn main_round(&mut self) -> RunUpdates {
+            self.core
+                .main_round(&mut self.world, &self.storage, &mut self.randomer)
         }
-
-        /// TODO: 实现 main_round 方法
-        pub fn main_round(&mut self) { let updates = RunUpdates::new(); }
 
         pub fn round_tick(&mut self, updates: &mut RunUpdates) {
-            self.round_pos += 1;
-            self.round_pos %= self.all_plr_len() as i32;
-
-            let tick_plr_index = self.round_pos as usize;
-
-            let mut all_plrs = self.players.iter().flatten().cloned().collect::<Vec<PlrPtr>>();
-
-            // 获取当前 tick 的玩家
-            if let Some(tick_plr) = all_plrs.get_mut(tick_plr_index) {
-                // 调用 step 方法
-                let tick_plr = self.storage.just_get_player_mut(*tick_plr).expect("plr not found when tick");
-                tick_plr.step(&mut self.randomer, updates);
-            } else {
-                unreachable!("tick_plr_index out of range");
-            }
+            self.core
+                .tick(&mut self.world, &self.storage, &mut self.randomer, updates);
         }
     }
 }
 
 pub mod update {
-
-    use crate::player::PlrPtr;
+    use crate::player::PlrId;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum UpdateType {
-        /// 赢!
+        /// 赢！
         Win,
-        /// 没动作
+        /// 没动作。
         None,
-        /// 下一行
+        /// 下一行（用于换行分隔）。
         NextLine,
     }
 
@@ -482,11 +695,10 @@ pub mod update {
         pub delay0: i32,
         pub delay1: i32,
         pub message: String,
-        pub caster: PlrPtr,
-        pub target: PlrPtr,
-        pub targets: Vec<PlrPtr>,
+        pub caster: PlrId,
+        pub target: PlrId,
+        pub targets: Vec<PlrId>,
         pub update_type: UpdateType,
-        // param: Object ?
     }
 
     impl RunUpdate {
@@ -500,20 +712,25 @@ pub mod update {
                 target: 0,
                 targets: vec![],
                 update_type: UpdateType::None,
-                // param: Object ?
             }
         }
 
         pub fn msg(&self) -> String {
+            let mut msg = self.message.clone();
+            // param: Object ?
             // [0] -> caster
             // [1] -> target
             // [2] -> targets
-            let mut msg = self.message.clone();
             msg = msg.replace("[0]", &self.caster.to_string());
             msg = msg.replace("[1]", &self.target.to_string());
             msg = msg.replace(
                 "[2]",
-                &self.targets.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
+                &self
+                    .targets
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+                    .join(","),
             );
             msg
         }
@@ -528,11 +745,10 @@ pub mod update {
                 target: 0,
                 targets: vec![],
                 update_type: UpdateType::NextLine,
-                // param: Object ?
             }
         }
 
-        pub fn new(msg: impl ToString, caster: PlrPtr, target: PlrPtr, score: u32) -> Self {
+        pub fn new(msg: impl ToString, caster: PlrId, target: PlrId, score: u32) -> Self {
             RunUpdate {
                 score,
                 delay0: 0,
@@ -549,16 +765,10 @@ pub mod update {
     #[derive(Debug, Clone)]
     pub struct RunUpdates {
         pub updates: Vec<RunUpdate>,
-        // post_updates: Vec<RunUpdate>,
     }
 
     impl RunUpdates {
-        pub fn new() -> RunUpdates {
-            RunUpdates {
-                updates: vec![],
-                // post_updates: vec![],
-            }
-        }
+        pub fn new() -> RunUpdates { RunUpdates { updates: vec![] } }
 
         pub fn add(&mut self, update: RunUpdate) { self.updates.push(update); }
 
@@ -567,10 +777,10 @@ pub mod update {
 }
 
 #[cfg(test)]
-/// 酒吧点炒饭列表(确信)
 mod group {
     use super::*;
 
+    /// 酒吧点炒饭列表（确信）。
     macro_rules! str_vec {
         () => {{
             let vec: Vec<String> = Vec::with_capacity(0);
@@ -584,13 +794,11 @@ mod group {
         };
         ($($x:expr),+ $(,)?) => (
             vec![
-                // 填充 x, 每一个都调用一遍 to_string
                 $($x.to_string()),+
             ]
         );
     }
 
-    // 自动把每一个分开填
     macro_rules! plrs {
         () => {
             str_vec!(str_vec!())
@@ -598,7 +806,6 @@ mod group {
         ($($x:expr),+ $(,)?) => (
             vec![
                 $(vec![
-                    // 填充 x, 每一个都调用一遍 to_string
                     $x.to_string()
                 ],)+
             ]
@@ -607,18 +814,17 @@ mod group {
 
     mod spilt_namerena_groups {
         use super::*;
+
         #[test]
         fn basic_spilt() {
-            // 没有 \n\n 的最基本情况
             let raw_input = "a\nb\nc".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             assert_eq!(groups, (plrs!("a", "b", "c"), plr!()));
 
-            // 跟随着一个或者多个尾部 \n 的情况
-            // 自动忽略
             let raw_input = "a\nb\nc\n".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             assert_eq!(groups, (plrs!("a", "b", "c"), plr!()));
+
             let raw_input = "a\nb\nc\n\n".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             assert_eq!(groups, (plrs!("a", "b", "c"), plr!()));
@@ -626,7 +832,6 @@ mod group {
 
         #[test]
         fn spilt_teams() {
-            // 有 \n\n 的情况
             let raw_input = "a\nb\n\nc\nd".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             assert_eq!(groups, (vec![plr!["a", "b"], plr!["c", "d"]], plr!()));
@@ -634,15 +839,13 @@ mod group {
 
         #[test]
         fn more_than_2_newline() {
-            // 有多个 \n 的情况
-            // 2个 \n 以上的情况，都会被替换成2个 \n
             for x in 2..10 {
                 let new_lines = "\n".repeat(x);
                 let raw_input = format!("a\nb{new_lines}c\nd");
                 let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
                 assert_eq!(groups, (vec![plr!["a", "b"], plr!["c", "d"]], plr!()));
             }
-            // 以及有多个队伍的情况
+
             for x in 2..10 {
                 let new_lines = "\n".repeat(x);
                 let raw_input = format!("a\nb{new_lines}c\nd{new_lines}e");
@@ -653,7 +856,6 @@ mod group {
 
         #[test]
         fn lot_of_teams() {
-            // 多个队伍
             let raw_input = "a\nb\nc\nd\ne\nf".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             assert_eq!(groups, (plrs!("a", "b", "c", "d", "e", "f"), plr!()));
@@ -661,7 +863,6 @@ mod group {
 
         #[test]
         fn normal_seed() {
-            // 一个seed
             let raw_input = "seed: a@!\nb\nc".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
             assert_eq!(groups, (plrs!("seed: a@!", "b", "c"), plr!["seed: a@!"]));
@@ -669,26 +870,20 @@ mod group {
 
         #[test]
         fn need_fix_seed1() {
-            // 需要修复的seed
             let raw_input = "aaaa\nbbbb\n\nseed: a@!".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
-            // assert_eq!(groups, vec![vec!["aaaa", "bbbb"], vec!["seed: a@!"]]);
-            // 这个情况下，应该是修复成三个队伍
-            // TODO
+            // 这个用例目前不会自动修复成同组，保留旧行为。
             assert_ne!(groups, (plrs!("aaaa", "bbbb", "seed: a@!"), plr!["seed: a@!"]))
         }
 
         #[test]
-        /// 应该faild
-        /// TODO
         #[should_panic]
         fn need_fix_seed2() {
-            // 跟 test 1 顺序相反
             let raw_input = "seed: a@!\n\naaaa\nbbbb".to_string();
-            // 合法输入: seed: a@!\naaaa\nbbbb
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
+            // 跟 need_fix_seed1 顺序相反。
             assert_ne!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]));
-            // 这个情况下，应该是修复成三个队伍
+            // TODO: 等 seed 修复逻辑补齐后再调整断言。
             assert_eq!(groups, (plrs!("seed: a@!", "aaaa", "bbbb"), plr!["seed: a@!"]))
         }
     }
@@ -701,18 +896,25 @@ mod group {
             let raw_input = "aaa\nbbb\nseed: aaaa@!";
             let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
 
-            let ints = [16391432, 11292362];
+            let ints = [16_391_432, 11_292_362];
             assert!(!runner.have_winner());
 
             for (i, plr) in runner
-                .players
+                .world
+                .groups
                 .iter()
                 .flatten()
-                .filter(|plr| runner.storage.get_player(plr).expect("wtf").is_seed_plr())
+                .filter(|plr| {
+                    runner
+                        .storage
+                        .get_player(plr)
+                        .expect("wtf")
+                        .is_seed_plr()
+                })
                 .enumerate()
             {
                 let plr = runner.storage.get_player(plr).expect("plr not found");
-                assert_eq!(plr.sort_int as u32, { ints[i] });
+                assert_eq!(plr.sort_int as u32, ints[i]);
             }
         }
 
@@ -721,13 +923,12 @@ mod group {
             let raw_input = "aaa\nbbb";
             let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
 
-            let ints = [7525315, 8712372];
+            let ints = [7_525_315, 8_712_372];
             assert!(!runner.have_winner());
 
-            for (i, plr) in runner.players.iter().flatten().enumerate() {
+            for (i, plr) in runner.world.groups.iter().flatten().enumerate() {
                 let plr = runner.storage.get_player(plr).expect("plr not found");
-                println!("plr: {}", plr.display_name());
-                assert_eq!(plr.sort_int as u32, { ints[i] });
+                assert_eq!(plr.sort_int as u32, ints[i]);
             }
         }
     }

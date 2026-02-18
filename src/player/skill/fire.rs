@@ -1,5 +1,5 @@
 use crate::player::{
-    PlrPtr,
+    PlrId,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
 
@@ -17,15 +17,23 @@ impl SkillExt for FireSkill {
 }
 
 impl SkillTrait for FireSkill {
-    fn destroy(&self, plr: PlrPtr, args: SkillArgs) {}
+    fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
-    fn act(&mut self, targets: Vec<PlrPtr>, smart: bool, args: SkillArgs) {
+    fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+        if targets.is_empty() {
+            return;
+        }
         let target_ptr = targets[0];
-        let target = args.3.just_get_player_mut(target_ptr).expect("cannot get player in the storage");
-        let owner = args.3.just_get_player_mut(args.0).expect("cannot get owner from storage");
-        let atp = owner.get_at(true, args.1) * (1.5 + self.fire_mag);
-        
+        let _target = args
+            .3
+            .just_get_player_mut(target_ptr)
+            .expect("cannot get player in the storage");
+        let owner = args
+            .3
+            .just_get_player_mut(args.0)
+            .expect("cannot get owner from storage");
+        let _atp = owner.get_at(true, args.1) * (1.5 + self.fire_mag);
     }
 }

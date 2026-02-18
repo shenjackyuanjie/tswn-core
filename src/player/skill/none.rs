@@ -1,5 +1,5 @@
 use crate::player::{
-    PlrPtr,
+    PlrId,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
 
@@ -16,7 +16,7 @@ impl SkillExt for NoneSkill {
 }
 
 impl SkillTrait for NoneSkill {
-    fn destroy(&self, plr: PlrPtr, args: SkillArgs) {}
+    fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 }

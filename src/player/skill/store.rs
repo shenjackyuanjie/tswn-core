@@ -1,12 +1,10 @@
-use std::{any::TypeId, sync::Arc};
+use std::any::TypeId;
 
 use crate::{
-    engine::{storage::Storage, update::RunUpdates},
     player::{
-        OnDamageFunc, PlrPtr,
-        skill::{Skill, SkillArgs, SkillTrait},
+        OnDamageFunc, PlrId,
+        skill::{Skill, SkillArgs},
     },
-    rc4::RC4,
 };
 
 use foldhash::{HashMap as FoldHashMap, HashMapExt, HashSet as FoldHashSet, HashSetExt};
@@ -103,9 +101,9 @@ impl SkillStorage {
     // 以下是从 plr 里拆过来的部分, pre/post 之类的东西
     // ==========
 
-    pub fn pre_step(&mut self, args: SkillArgs) {}
+    pub fn pre_step(&mut self, _args: SkillArgs) {}
 
-    pub fn pre_defend(&mut self, mut atp: f64, is_mag: bool, caster: PlrPtr, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {
+    pub fn pre_defend(&mut self, mut atp: f64, is_mag: bool, caster: PlrId, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {
         for skill_type in self.skill.iter() {
             let skill = self.store.get_mut(skill_type).expect("skill not found in store");
             atp = skill.pre_defend(atp, is_mag, caster, &on_damage, (args.0, args.1, args.2, args.3));
@@ -114,7 +112,7 @@ impl SkillStorage {
         atp
     }
 
-    pub fn post_defend(&mut self, mut dmg: i32, caster: PlrPtr, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
+    pub fn post_defend(&mut self, mut dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
         for skill_type in self.post_defend.iter() {
             let skill = self.store.get_mut(skill_type).expect("skill not found in store");
             dmg = skill.post_defend(dmg, caster, &on_damage, (args.0, args.1, args.2, args.3));
