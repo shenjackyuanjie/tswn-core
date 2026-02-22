@@ -9,8 +9,42 @@ use crate::rc4::RC4;
 
 pub mod store;
 
+pub mod absorb;
+pub mod accumulate;
+pub mod assassinate;
+pub mod berserk;
+pub mod charge;
+pub mod charm;
+pub mod clone;
+pub mod counter;
+pub mod critical;
+pub mod curse;
+pub mod defend;
+pub mod disperse;
+pub mod exchange;
 pub mod fire;
+pub mod half;
+pub mod haste;
+pub mod heal;
+pub mod hide;
+pub mod ice;
+pub mod iron;
+pub mod merge;
 pub mod none;
+pub mod poison;
+pub mod protect;
+pub mod quake;
+pub mod rapid;
+pub mod reflect;
+pub mod reraise;
+pub mod revive;
+pub mod shadow;
+pub mod shield;
+pub mod slow;
+pub mod summon;
+pub mod thunder;
+pub mod upgrade;
+pub mod zombie;
 
 /// SkillArgs:
 /// PlrId: player handle（稳定 ID，不是内存指针）
@@ -85,7 +119,41 @@ impl Skill {
     pub fn new_with_id(level: u32, id: u8) -> Self {
         let skill_type = {
             match id {
-                1 => fire::FireSkill::box_new(),
+                0 => fire::FireSkill::box_new(),
+                1 => ice::IceSkill::box_new(),
+                2 => thunder::ThunderSkill::box_new(),
+                3 => quake::QuakeSkill::box_new(),
+                4 => absorb::AbsorbSkill::box_new(),
+                5 => poison::PoisonSkill::box_new(),
+                6 => rapid::RapidSkill::box_new(),
+                7 => critical::CriticalSkill::box_new(),
+                8 => half::HalfSkill::box_new(),
+                9 => exchange::ExchangeSkill::box_new(),
+                10 => berserk::BerserkSkill::box_new(),
+                11 => charm::CharmSkill::box_new(),
+                12 => haste::HasteSkill::box_new(),
+                13 => slow::SlowSkill::box_new(),
+                14 => curse::CurseSkill::box_new(),
+                15 => heal::HealSkill::box_new(),
+                16 => revive::ReviveSkill::box_new(),
+                17 => disperse::DisperseSkill::box_new(),
+                18 => iron::IronSkill::box_new(),
+                19 => charge::ChargeSkill::box_new(),
+                20 => accumulate::AccumulateSkill::box_new(),
+                21 => assassinate::AssassinateSkill::box_new(),
+                22 => summon::SummonSkill::box_new(),
+                23 => clone::CloneSkill::box_new(),
+                24 => shadow::ShadowSkill::box_new(),
+                25 => defend::DefendSkill::box_new(),
+                26 => protect::ProtectSkill::box_new(),
+                27 => reflect::ReflectSkill::box_new(),
+                28 => reraise::ReraiseSkill::box_new(),
+                29 => shield::ShieldSkill::box_new(),
+                30 => counter::CounterSkill::box_new(),
+                31 => merge::MergeSkill::box_new(),
+                32 => zombie::ZombieSkill::box_new(),
+                33 => upgrade::UpgradeSkill::box_new(),
+                34 => hide::HideSkill::box_new(),
                 _ => none::NoneSkill::box_new(),
             }
         };
