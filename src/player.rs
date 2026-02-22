@@ -6,11 +6,12 @@ pub mod weapons;
 use std::cmp::{Ordering, min};
 use std::sync::Arc;
 
-use crate::engine::storage::{SkillId, Storage};
+use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::error::player::{PlayerError, PlayerResult};
 use crate::player::skill::{Skill, store::SkillStorage};
 use crate::rc4::RC4;
+use foldhash::HashMap as FastHashMap;
 
 /// 名字本体最大长度
 pub const NAME_MAX_LEN: usize = 256;
@@ -23,6 +24,56 @@ pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 /// 玩家句柄（运行期唯一 ID）。
 /// 为兼容旧命名仍叫 `PlrId`，但语义已从“裸指针”切到“稳定 ID”。
 pub type PlrId = usize;
+
+/// 火状态（参考 Dart `FireState`）。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FireState {
+    pub fire_mag: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum StateValue {
+    Fire(FireState),
+}
+
+pub type StateTag = std::mem::Discriminant<StateValue>;
+
+impl StateValue {
+    #[inline]
+    pub fn tag(&self) -> StateTag { std::mem::discriminant(self) }
+
+    #[inline]
+    pub fn fire_tag() -> StateTag { std::mem::discriminant(&StateValue::Fire(FireState::default())) }
+}
+
+/// 玩家状态容器（用于承载各种技能运行时状态）。
+#[derive(Clone, Debug, Default)]
+pub struct PlayerStateStore {
+    states: FastHashMap<StateTag, StateValue>,
+}
+
+impl PlayerStateStore {
+    #[inline]
+    fn fire_state(&self) -> Option<FireState> {
+        match self.states.get(&StateValue::fire_tag()) {
+            Some(StateValue::Fire(state)) => Some(*state),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn fire_mag(&self) -> f64 { self.fire_state().map(|x| x.fire_mag).unwrap_or(0.0) }
+
+    #[inline]
+    pub fn add_fire_mag(&mut self, val: f64) {
+        let state = self
+            .states
+            .entry(StateValue::fire_tag())
+            .or_insert(StateValue::Fire(FireState::default()));
+        let StateValue::Fire(fire) = state;
+        fire.fire_mag += val;
+    }
+}
 
 /// OnDamage 函数
 ///
@@ -283,6 +334,8 @@ pub struct Player {
     ///
     /// 主要是我懒得加一大堆字段
     status: PlayerStatus,
+    /// 运行时状态（meta）
+    state: PlayerStateStore,
     /// 技能相关
     skills: SkillStorage,
     /// 名字长度系数
@@ -416,6 +469,7 @@ impl Player {
             skil_id: skills.clone(),
             skil_prop: skills,
             status,
+            state: PlayerStateStore::default(),
             skills: SkillStorage::new(),
             name_factor,
             id,
@@ -438,7 +492,7 @@ impl Player {
     /// 检查是否可以行动
     pub fn check_move(&self) -> bool { self.status.check_move() }
 
-    pub fn check_immune(&self, _skill: SkillId, randomer: &mut RC4) -> bool {
+    pub fn check_immune(&self, _state: StateTag, randomer: &mut RC4) -> bool {
         match self.player_type {
             PlayerType::Boost => randomer.r127() < boost_value(&self.name),
             PlayerType::Boss => {
@@ -731,6 +785,12 @@ impl Player {
     /// 活着呢吧?
     #[inline]
     pub fn alive(&self) -> bool { self.status.alive() }
+
+    #[inline]
+    pub fn fire_mag(&self) -> f64 { self.state.fire_mag() }
+
+    #[inline]
+    pub fn add_fire_mag(&mut self, val: f64) { self.state.add_fire_mag(val) }
 
     /// 蓝条是不是够用
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {

@@ -1,15 +1,15 @@
+use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    PlrId,
+    OnDamageFunc, PlrId, StateValue,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
+use crate::rc4::RC4;
 
-#[derive(Debug, Clone)]
-pub struct FireSkill {
-    pub fire_mag: f64,
-}
+#[derive(Debug, Clone, Default)]
+pub struct FireSkill;
 
 impl FireSkill {
-    pub fn new() -> Self { Self { fire_mag: 0.0 } }
+    pub fn new() -> Self { Self }
 }
 
 impl SkillExt for FireSkill {
@@ -25,15 +25,33 @@ impl SkillTrait for FireSkill {
         if targets.is_empty() {
             return;
         }
-        let target_ptr = targets[0];
-        let _target = args
+        let target_id = targets[0];
+
+        let fire_mag = args
             .3
-            .just_get_player_mut(target_ptr)
-            .expect("cannot get player in the storage");
-        let owner = args
+            .get_player(&target_id)
+            .expect("cannot get target from storage")
+            .fire_mag();
+        let atp = args
             .3
-            .just_get_player_mut(args.0)
-            .expect("cannot get owner from storage");
-        let _atp = owner.get_at(true, args.1) * (1.5 + self.fire_mag);
+            .get_player(&args.0)
+            .expect("cannot get owner from storage")
+            .get_at(true, args.1)
+            * (1.5 + fire_mag);
+
+        args.2.add(RunUpdate::new("[0]使用[火球术]", args.0, target_id, 1));
+
+        let target = args
+            .3
+            .just_get_player_mut(target_id)
+            .expect("cannot get mutable target in storage");
+        let dmg = target.attacked(atp, true, args.0, on_fire as OnDamageFunc, args.1, args.2, args.3);
+
+        // 参考 dart: onFire(dmg > 0 && !target.dead) => fireMag += 0.5
+        if dmg > 0 && target.alive() && !target.check_immune(StateValue::fire_tag(), args.1) {
+            target.add_fire_mag(0.5);
+        }
     }
 }
+
+fn on_fire(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
