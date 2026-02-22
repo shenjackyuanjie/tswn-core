@@ -18,7 +18,7 @@ pub const NAME_MAX_LEN: usize = 256;
 /// 队伍名最大长度
 pub const TEAM_MAX_LEN: usize = 256;
 
-/// 2048 以上才行动
+/// 大于 2048 才行动
 pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 
 /// 玩家句柄（运行期唯一 ID）。
@@ -104,9 +104,9 @@ pub struct PlayerStatus {
     /// 分数
     point: u32,
     /// 原文: spsum
-    /// >= 2048 时才行动
+    /// > 2048 时才行动
     ///
-    /// 单调递增, >= 2048 时 -= 2048
+    /// 单调递增, > 2048 时 -= 2048
     /// 然后接着单增
     pub move_point: i32,
     /// 血量
@@ -150,7 +150,7 @@ impl PlayerStatus {
     #[inline]
     pub fn spsum(&self) -> i32 { self.move_point }
     #[inline]
-    pub fn check_move(&self) -> bool { self.move_point >= MOVE_POINT_THRESHOLD }
+    pub fn check_move(&self) -> bool { self.move_point > MOVE_POINT_THRESHOLD }
 
     pub fn set_frozen(&mut self, val: bool) { self.frozen = val }
 
@@ -609,9 +609,17 @@ impl Player {
         // 更新 proc(其实就是缓存)
         self.skills.update_proc();
 
-        self.update_states();
+        self.init_values();
 
         // DIY TODO
+    }
+
+    /// 初始化生命/蓝条（只在 build 阶段调用一次）
+    pub fn init_values(&mut self) {
+        self.update_states();
+        self.status.hp = self.status.max_hp;
+        // Dart: mp = itl ~/ 2
+        self.status.mp = self.status.wisdom >> 1;
     }
 
     /// 更新状态
@@ -622,12 +630,9 @@ impl Player {
         self.status.speed = self.scale_by_name_factor_i(self.attr[2] as i32, 128) + 160;
         self.status.agility = self.scale_by_name_factor_i(self.attr[3] as i32, 128);
         self.status.magic = self.scale_by_name_factor_i(self.attr[4] as i32, 128);
-        // 蓝条是魔法的一半
-        self.status.mp = self.status.magic >> 1;
         self.status.resistance = self.scale_by_name_factor_i(self.attr[5] as i32, 128);
         self.status.wisdom = self.scale_by_name_factor_i(self.attr[6] as i32, 80);
         self.status.max_hp = self.attr[7] as i32;
-        self.status.hp = self.status.max_hp;
 
         self.calc_attr_sum();
 
@@ -667,14 +672,14 @@ impl Player {
     /// 同队升级
     pub fn upgrade(&mut self, other: &Self) {
         for i in 7..128 {
-            if self.name_base[i] == other.name_base[i] && other.name_base[i] > self.name_base[i] {
-                self.name_base[i] = other.name_base[i];
+            if other.raw_name_base[i - 1] == self.raw_name_base[i] && other.raw_name_base[i] > self.name_base[i] {
+                self.name_base[i] = other.raw_name_base[i];
             }
         }
         if self.base_name() == self.clan_name() {
             for i in 5..128 {
-                if self.name_base[i - 2] == other.name_base[i] && other.name_base[i] > self.name_base[i] {
-                    self.name_base[i] = other.name_base[i];
+                if other.raw_name_base[i - 2] == self.raw_name_base[i] && other.raw_name_base[i] > self.name_base[i] {
+                    self.name_base[i] = other.raw_name_base[i];
                 }
             }
         }
@@ -938,7 +943,7 @@ impl Player {
             } else {
                 (
                     caster_plr.status.attack + caster_plr.status.agility,
-                    self.status.attack + self.status.agility,
+                    self.status.defense + self.status.agility,
                 )
             }
         };
@@ -998,7 +1003,7 @@ impl Player {
             self.status.hp = 0;
         }
         // TODO: > 160/120 的特殊标记
-        let update = RunUpdate::new("[0]受到[2]点伤害", self.as_ptr(), self.as_ptr(), dmg as u32);
+        let update = RunUpdate::new("[0]受到[2]点伤害", caster, self.as_ptr(), dmg as u32);
         updates.add(update);
         on_damage(caster, self.as_ptr(), dmg, randomer, updates);
         self.on_damaged(dmg, old_hp, caster, randomer, updates, storage)
@@ -1188,6 +1193,83 @@ mod test {
         let player = Player::new_from_namerena_raw("云剑狄卡敢@!".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Boost);
+    }
+
+    fn noop_on_damage(_: PlrId, _: PlrId, _: i32, _: &mut RC4, _: &mut RunUpdates) {}
+
+    #[test]
+    fn check_move_threshold_matches_dart() {
+        let mut status = PlayerStatus::default();
+        status.move_point = MOVE_POINT_THRESHOLD;
+        assert!(!status.check_move());
+        status.move_point = MOVE_POINT_THRESHOLD + 1;
+        assert!(status.check_move());
+    }
+
+    #[test]
+    fn update_states_does_not_reset_hp_or_mp() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+
+        player.attr = [10, 20, 30, 40, 50, 60, 70, 80];
+        player.init_values();
+        assert_eq!(player.status.hp, player.status.max_hp);
+        assert_eq!(player.status.mp, player.status.wisdom >> 1);
+
+        player.status.hp = 11;
+        player.status.mp = 22;
+        player.update_states();
+
+        assert_eq!(player.status.hp, 11);
+        assert_eq!(player.status.mp, 22);
+    }
+
+    #[test]
+    fn upgrade_uses_other_raw_name_base_rules() {
+        let storage = Storage::new_arc();
+        let mut lhs = Player::new_from_namerena_raw("lhs".to_string(), storage.clone()).unwrap();
+        let mut rhs = Player::new_from_namerena_raw("rhs".to_string(), storage.clone()).unwrap();
+
+        lhs.name_base = vec![0; 128];
+        rhs.name_base = vec![0; 128];
+        lhs.raw_name_base = [0; 128];
+        rhs.raw_name_base = [0; 128];
+
+        lhs.raw_name_base[10] = 42;
+        lhs.name_base[10] = 50;
+        rhs.raw_name_base[9] = 42;
+        rhs.raw_name_base[10] = 99;
+        rhs.name_base[10] = 1;
+
+        lhs.raw_name_base[8] = 77;
+        lhs.name_base[8] = 10;
+        rhs.raw_name_base[6] = 77;
+        rhs.raw_name_base[8] = 88;
+        rhs.name_base[8] = 2;
+
+        lhs.upgrade(&rhs);
+
+        assert_eq!(lhs.name_base[10], 99);
+        assert_eq!(lhs.name_base[8], 88);
+    }
+
+    #[test]
+    fn damage_update_uses_caster_as_actor() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let caster: PlrId = 999;
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        player.status.max_hp = 100;
+        player.status.hp = 100;
+        let result = player.damage(7, caster, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+        assert_eq!(result, 7);
+        assert!(!updates.updates.is_empty());
+        let update = updates.updates.last().unwrap();
+        assert_eq!(update.caster, caster);
+        assert_eq!(update.target, player.as_ptr());
     }
 
     #[test]

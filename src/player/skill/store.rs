@@ -1,5 +1,3 @@
-use std::any::TypeId;
-
 use crate::{
     player::{
         OnDamageFunc, PlrId,
@@ -9,31 +7,34 @@ use crate::{
 
 use foldhash::{HashMap as FoldHashMap, HashMapExt, HashSet as FoldHashSet, HashSetExt};
 
+/// SkillStorage 内部使用的稳定技能键。
+pub type SkillKey = usize;
+
 #[derive(Debug, Clone)]
 pub struct SkillStorage {
-    pub store: FoldHashMap<TypeId, Skill>,
-    pub skill: Vec<TypeId>,
+    pub store: FoldHashMap<SkillKey, Skill>,
+    pub skill: Vec<SkillKey>,
     /// meta??
-    pub meta: FoldHashSet<TypeId>,
+    pub meta: FoldHashSet<SkillKey>,
     // 自己的状态 (usize: index)
     /// 更新状态时?
-    pub update_states: Vec<TypeId>,
+    pub update_states: Vec<SkillKey>,
     /// step 之前
-    pub pre_step: Vec<TypeId>,
+    pub pre_step: Vec<SkillKey>,
     /// 动作之前
-    pub pre_action: Vec<TypeId>,
+    pub pre_action: Vec<SkillKey>,
     /// 动作之后
-    pub post_action: Vec<TypeId>,
+    pub post_action: Vec<SkillKey>,
     /// 防御之前
-    pub pre_defend: Vec<TypeId>,
+    pub pre_defend: Vec<SkillKey>,
     /// 防御之后
-    pub post_defend: Vec<TypeId>,
+    pub post_defend: Vec<SkillKey>,
     /// 伤害之后
-    pub post_damage: Vec<TypeId>,
+    pub post_damage: Vec<SkillKey>,
     /// 死亡之后
-    pub post_death: Vec<TypeId>,
+    pub post_death: Vec<SkillKey>,
     /// 干掉目标之后
-    pub post_kill: Vec<TypeId>,
+    pub post_kill: Vec<SkillKey>,
     // 别的什么东西
     pub pending_clear_states: bool,
 }
@@ -82,8 +83,8 @@ impl SkillStorage {
     }
 
     pub fn add_skill(&mut self, skill: Skill) {
-        let id = TypeId::of::<Skill>();
-        self.store.insert(id, skill.clone());
+        let id = self.skill.len();
+        self.store.insert(id, skill);
         self.skill.push(id);
     }
 
@@ -93,9 +94,9 @@ impl SkillStorage {
         self.store.get_mut(&self.skill[idx]).expect("skill not found in store")
     }
 
-    pub fn skill_by_id(&self, id: TypeId) -> &Skill { self.store.get(&id).expect("skill not found in store") }
+    pub fn skill_by_id(&self, id: SkillKey) -> &Skill { self.store.get(&id).expect("skill not found in store") }
 
-    pub fn skill_by_id_mut(&mut self, id: TypeId) -> &mut Skill { self.store.get_mut(&id).expect("skill not found in store") }
+    pub fn skill_by_id_mut(&mut self, id: SkillKey) -> &mut Skill { self.store.get_mut(&id).expect("skill not found in store") }
 
     // ==========
     // 以下是从 plr 里拆过来的部分, pre/post 之类的东西
