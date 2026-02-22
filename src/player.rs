@@ -1020,14 +1020,26 @@ impl Player {
             skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
         }
         if self.status.hp <= 0 {
-            // self.on_die(old_hp, caster, randomer, updates);
+            self.on_die(old_hp, caster, randomer, updates);
             return old_hp;
         } else {
             return dmg;
         }
     }
 
-    pub fn on_die(&mut self, _old_hp: i32, _caster: PlrId, _randomer: &mut RC4, _updates: &mut RunUpdates) {}
+    fn get_die_message(&self) -> &'static str { "[1]被击倒了" }
+
+    pub fn on_die(&mut self, _old_hp: i32, caster: PlrId, _randomer: &mut RC4, updates: &mut RunUpdates) {
+        updates.add(RunUpdate::new_newline());
+        updates.add(RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
+
+        if self.status.hp > 0 {
+            return;
+        }
+
+        self.status.hp = 0;
+        self.status.set_alive(false);
+    }
 }
 
 impl PartialOrd for Player {
@@ -1061,6 +1073,7 @@ impl std::fmt::Display for Player {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::engine::update::UpdateType;
 
     #[test]
     /// 测试根据原始输入创建 Player
@@ -1175,5 +1188,26 @@ mod test {
         let player = Player::new_from_namerena_raw("云剑狄卡敢@!".to_string(), storage.clone());
         let player = player.unwrap();
         assert_eq!(player.player_type, PlayerType::Boost);
+    }
+
+    #[test]
+    fn on_damaged_triggers_on_die() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        player.status.hp = 0;
+        player.status.set_alive(true);
+
+        let old_hp = 7;
+        let result = player.on_damaged(7, old_hp, player.as_ptr(), &mut randomer, &mut updates, &storage);
+
+        assert_eq!(result, old_hp);
+        assert!(!player.status.alive());
+        assert_eq!(player.status.hp, 0);
+        assert_eq!(updates.updates.len(), 2);
+        assert!(matches!(updates.updates[0].update_type, UpdateType::NextLine));
+        assert_eq!(updates.updates[1].message, "[1]被击倒了");
     }
 }
