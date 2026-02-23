@@ -8,43 +8,14 @@ use crate::player::{OnDamageFunc, PlrId};
 use crate::rc4::RC4;
 
 pub mod store;
+pub mod act;
+pub mod skl;
 
-pub mod absorb;
-pub mod accumulate;
-pub mod assassinate;
-pub mod berserk;
-pub mod charge;
-pub mod charm;
-pub mod clone;
-pub mod counter;
-pub mod critical;
-pub mod curse;
-pub mod defend;
-pub mod disperse;
-pub mod exchange;
-pub mod fire;
-pub mod half;
-pub mod haste;
-pub mod heal;
-pub mod hide;
-pub mod ice;
-pub mod iron;
-pub mod merge;
-pub mod none;
-pub mod poison;
-pub mod protect;
-pub mod quake;
-pub mod rapid;
-pub mod reflect;
-pub mod reraise;
-pub mod revive;
-pub mod shadow;
-pub mod shield;
-pub mod slow;
-pub mod summon;
-pub mod thunder;
-pub mod upgrade;
-pub mod zombie;
+pub use act::{
+    absorb, accumulate, assassinate, berserk, charge, charm, clone, critical, curse, disperse, exchange, fire, half, haste, heal,
+    ice, iron, poison, quake, rapid, revive, shadow, slow, summon, thunder,
+};
+pub use skl::{counter, defend, hide, merge, none, protect, reflect, reraise, shield, upgrade, zombie};
 
 /// SkillArgs:
 /// PlrId: player handle（稳定 ID，不是内存指针）
@@ -52,6 +23,20 @@ pub mod zombie;
 /// &'d mut RunUpdates: updates to be applied
 /// &'d Arc<Storage>: game storage
 pub type SkillArgs<'d> = (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Storage>);
+
+/// 技能注册的流程类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProcKind {
+    UpdateState,
+    PreStep,
+    PreAction,
+    PostAction,
+    PreDefend,
+    PostDefend,
+    PostDamage,
+    PostDeath,
+    PostKill,
+}
 
 #[allow(unused_variables, unused_mut)]
 pub trait SkillTrait: Debug {
@@ -63,7 +48,7 @@ pub trait SkillTrait: Debug {
 
     // ===== 可选实现的 =====
     /// 更新状态
-    fn update_state(&self) {}
+    fn update_state(&mut self, args: SkillArgs) {}
     /// 行动!
     fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
 
@@ -78,6 +63,13 @@ pub trait SkillTrait: Debug {
     fn post_defend(&mut self, mut dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 { dmg }
     /// 伤害之后
     fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {}
+    /// 死亡时（返回 true 表示短路，不再执行后续 die）
+    fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool { false }
+    /// 击杀目标后（返回 true 表示短路，不再执行后续 kill）
+    fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { false }
+
+    /// 声明该技能注册到哪些流程
+    fn proc_kinds(&self) -> &[ProcKind] { &[] }
 
     fn is_normal_skill(&self) -> bool { true }
 
@@ -200,6 +192,16 @@ impl Skill {
     // 以下是技能 call pre/post 之类的东西
     // ==========
 
+    pub fn update_state(&mut self, args: SkillArgs) { self.skill_type.update_state(args) }
+
+    pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) { self.skill_type.act(targets, smart, args) }
+
+    pub fn pre_step(&mut self, step: i32, args: SkillArgs) -> i32 { self.skill_type.pre_step(step, args) }
+
+    pub fn pre_action(&mut self, args: SkillArgs) { self.skill_type.pre_action(args) }
+
+    pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action(args) }
+
     pub fn pre_defend(&mut self, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 {
         self.skill_type.pre_defend(atp, caster, is_mag, on_damage, args)
     }
@@ -209,6 +211,12 @@ impl Skill {
     }
 
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) { self.skill_type.post_damage(dmg, caster, args) }
+
+    pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool { self.skill_type.die(oldhp, caster, args) }
+
+    pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.skill_type.kill(target, args) }
+
+    pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }
 
     // pub fn update_state(&self, status: &mut PlayerStatus) {
     //     match self.skill_type {

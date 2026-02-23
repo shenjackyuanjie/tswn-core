@@ -3,6 +3,7 @@ pub mod skill;
 pub mod utils;
 pub mod weapons;
 
+use std::any::{Any, TypeId};
 use std::cmp::{Ordering, min};
 use std::sync::Arc;
 
@@ -31,47 +32,89 @@ pub struct FireState {
     pub fire_mag: f64,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum StateValue {
-    Fire(FireState),
+pub type StateTag = TypeId;
+
+#[inline]
+pub fn state_tag<T: StateTrait + 'static>() -> StateTag { TypeId::of::<T>() }
+
+pub trait StateTrait: std::fmt::Debug + Any {
+    fn meta_type(&self) -> i32 { 0 }
+
+    fn as_any(&self) -> &dyn Any;
+
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    fn clone_box(&self) -> Box<dyn StateTrait>;
 }
 
-pub type StateTag = std::mem::Discriminant<StateValue>;
+impl Clone for Box<dyn StateTrait> {
+    fn clone(&self) -> Self { self.clone_box() }
+}
 
-impl StateValue {
-    #[inline]
-    pub fn tag(&self) -> StateTag { std::mem::discriminant(self) }
+impl StateTrait for FireState {
+    fn as_any(&self) -> &dyn Any { self }
 
-    #[inline]
-    pub fn fire_tag() -> StateTag { std::mem::discriminant(&StateValue::Fire(FireState::default())) }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+
+    fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
 /// 玩家状态容器（用于承载各种技能运行时状态）。
 #[derive(Clone, Debug, Default)]
 pub struct PlayerStateStore {
-    states: FastHashMap<StateTag, StateValue>,
+    states: FastHashMap<StateTag, Box<dyn StateTrait>>,
 }
 
 impl PlayerStateStore {
     #[inline]
-    fn fire_state(&self) -> Option<FireState> {
-        match self.states.get(&StateValue::fire_tag()) {
-            Some(StateValue::Fire(state)) => Some(*state),
-            _ => None,
+    pub fn set<T: StateTrait + 'static>(&mut self, state: T) {
+        self.states.insert(state_tag::<T>(), Box::new(state));
+    }
+
+    #[inline]
+    pub fn get<T: StateTrait + 'static>(&self) -> Option<&T> {
+        self.states.get(&state_tag::<T>())?.as_any().downcast_ref::<T>()
+    }
+
+    #[inline]
+    pub fn get_mut<T: StateTrait + 'static>(&mut self) -> Option<&mut T> {
+        self.states.get_mut(&state_tag::<T>())?.as_any_mut().downcast_mut::<T>()
+    }
+
+    #[inline]
+    pub fn has<T: StateTrait + 'static>(&self) -> bool { self.states.contains_key(&state_tag::<T>()) }
+
+    #[inline]
+    pub fn clear<T: StateTrait + 'static>(&mut self) { self.states.remove(&state_tag::<T>()); }
+
+    #[inline]
+    pub fn meta_type(&self, tag: StateTag) -> Option<i32> { self.states.get(&tag).map(|state| state.meta_type()) }
+
+    pub fn clear_negative_states(&mut self) {
+        let mut to_remove = Vec::new();
+        for (tag, state) in self.states.iter() {
+            if state.meta_type() < 0 {
+                to_remove.push(*tag);
+            }
+        }
+        for tag in to_remove {
+            self.states.remove(&tag);
         }
     }
+
+    #[inline]
+    fn fire_state(&self) -> Option<FireState> { self.get::<FireState>().copied() }
 
     #[inline]
     pub fn fire_mag(&self) -> f64 { self.fire_state().map(|x| x.fire_mag).unwrap_or(0.0) }
 
     #[inline]
     pub fn add_fire_mag(&mut self, val: f64) {
-        let state = self
-            .states
-            .entry(StateValue::fire_tag())
-            .or_insert(StateValue::Fire(FireState::default()));
-        let StateValue::Fire(fire) = state;
-        fire.fire_mag += val;
+        if let Some(fire) = self.get_mut::<FireState>() {
+            fire.fire_mag += val;
+            return;
+        }
+        self.set(FireState { fire_mag: val });
     }
 }
 
@@ -83,6 +126,8 @@ impl PlayerStateStore {
 /// typedef OnDamage(Plr caster, Plr target, int dmg, R r, RunUpdates updates);
 /// ```
 pub type OnDamageFunc = fn(PlrId, PlrId, i32, &mut RC4, &mut RunUpdates);
+
+fn noop_on_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
 
 /// 通过玩家句柄从存储层取可变玩家引用。
 #[inline]
@@ -638,8 +683,7 @@ impl Player {
 
         self.status.at_boost = 1.0;
         self.status.set_frozen(false);
-        // update state entry
-        // TODO
+        self.apply_update_state_effects();
 
         // 先设置为 mut了,以防万一
         // let status = &mut self.status;
@@ -755,33 +799,40 @@ impl Player {
     /// 每回合中的玩家行动
     ///
     /// 包括 pre, main, post
-    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates) {
+    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
         if !self.status.alive() {
             return;
         }
-        let stp = self.status.speed * randomer.r3() as i32;
-
-        // 预动作
-        // todo
-
+        self.update_states();
+        let ptr = self.as_ptr();
+        self.skills.update_state((ptr, randomer, updates, storage));
+        let mut stp = self.status.speed * randomer.r3() as i32;
+        stp = self.apply_pre_step_states(stp, updates);
+        stp = self.skills.pre_step(stp, (ptr, randomer, updates, storage));
         self.status.move_point += stp;
         if self.check_move() {
             self.status.move_point -= MOVE_POINT_THRESHOLD;
             // 主动作
-            self.action(randomer, updates);
+            self.action(randomer, updates, storage);
         }
         // 结束
     }
 
-    pub fn action(&mut self, randomer: &mut RC4, _updates: &mut RunUpdates) {
+    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
         // let mut targets: Vec<_> = vec![];
 
         let _smart = self.status.wisdom > randomer.r63() as i32;
         let _req_mp = 0;
 
-        // todo: pre action
-
-        if self.status.frozed() {}
+        let ptr = self.as_ptr();
+        self.skills.pre_action((ptr, randomer, updates, storage));
+        if self.status.frozed() {
+            return;
+        }
+        // todo: main action
+        updates.add(RunUpdate::new_newline());
+        self.skills.post_action((ptr, randomer, updates, storage));
+        self.apply_post_action_states(randomer, updates, storage);
     }
 
     /// 当前玩家是否可行动
@@ -796,6 +847,120 @@ impl Player {
 
     #[inline]
     pub fn add_fire_mag(&mut self, val: f64) { self.state.add_fire_mag(val) }
+
+    #[inline]
+    pub fn set_state<T: StateTrait + 'static>(&mut self, state: T) { self.state.set(state); }
+
+    #[inline]
+    pub fn get_state<T: StateTrait + 'static>(&self) -> Option<&T> { self.state.get::<T>() }
+
+    #[inline]
+    pub fn get_state_mut<T: StateTrait + 'static>(&mut self) -> Option<&mut T> { self.state.get_mut::<T>() }
+
+    #[inline]
+    pub fn has_state<T: StateTrait + 'static>(&self) -> bool { self.state.has::<T>() }
+
+    #[inline]
+    pub fn clear_state<T: StateTrait + 'static>(&mut self) { self.state.clear::<T>(); }
+
+    #[inline]
+    pub fn clear_negative_states(&mut self) { self.state.clear_negative_states(); }
+
+    fn apply_update_state_effects(&mut self) {
+        use crate::player::skill::{haste::HasteState, ice::IceState, slow::SlowState};
+
+        if let Some(haste) = self.get_state::<HasteState>() {
+            self.status.speed *= haste.faster;
+        }
+        if self.has_state::<SlowState>() {
+            self.status.speed /= 2;
+        }
+        if self.has_state::<IceState>() {
+            self.status.set_frozen(true);
+        }
+    }
+
+    fn apply_pre_step_states(&mut self, mut step: i32, updates: &mut RunUpdates) -> i32 {
+        use crate::player::skill::ice::IceState;
+
+        let mut clear_ice = false;
+        let move_point = self.status.move_point;
+        if let Some(ice) = self.get_state_mut::<IceState>()
+            && step > 0
+        {
+            if ice.frozen_step > 0 {
+                ice.frozen_step -= step;
+                step = 0;
+            } else if step + move_point >= MOVE_POINT_THRESHOLD {
+                clear_ice = true;
+                step = 0;
+            }
+        }
+        if clear_ice {
+            self.clear_state::<IceState>();
+            if self.alive() {
+                updates.add(RunUpdate::new_newline());
+                updates.add(RunUpdate::new("[1]从[冰冻]中解除", self.as_ptr(), self.as_ptr(), 0));
+            }
+        }
+        step
+    }
+
+    fn apply_post_action_states(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
+        use crate::player::skill::{haste::HasteState, poison::PoisonState, slow::SlowState};
+
+        let mut clear_poison = false;
+        let mut clear_haste = false;
+        let mut clear_slow = false;
+        let mut poison_tick: Option<(PlrId, i32)> = None;
+        let magic = self.status.magic;
+
+        if self.alive()
+            && let Some(poison) = self.get_state_mut::<PoisonState>()
+        {
+            let atpp = poison.atp * (1.0 + (poison.count - 1) as f64 * 0.1) / poison.count as f64;
+            poison.atp -= atpp;
+            let dmg = (atpp / (magic + 64) as f64).ceil() as i32;
+            poison.count -= 1;
+            clear_poison = poison.count <= 0;
+            poison_tick = Some((poison.caster.unwrap_or(self.as_ptr()), dmg));
+        }
+        if let Some((caster, dmg)) = poison_tick {
+            updates.add(RunUpdate::new("[1][毒性发作]", caster, self.as_ptr(), 0));
+            self.damage(dmg, caster, noop_on_damage, randomer, updates, storage);
+        }
+        if clear_poison {
+            self.clear_state::<PoisonState>();
+            if self.alive() {
+                updates.add(RunUpdate::new_newline());
+                updates.add(RunUpdate::new("[1]从[中毒]中解除", self.as_ptr(), self.as_ptr(), 0));
+            }
+        }
+
+        if let Some(haste) = self.get_state_mut::<HasteState>() {
+            haste.step -= 1;
+            clear_haste = haste.step <= 0;
+        }
+        if clear_haste {
+            self.clear_state::<HasteState>();
+            if self.alive() {
+                updates.add(RunUpdate::new_newline());
+                updates.add(RunUpdate::new("[1]从[疾走]中解除", self.as_ptr(), self.as_ptr(), 0));
+            }
+        }
+
+        if let Some(slow) = self.get_state_mut::<SlowState>() {
+            slow.step -= 1;
+            clear_slow = slow.step <= 0;
+        }
+        if clear_slow {
+            self.clear_state::<SlowState>();
+            if self.alive() {
+                updates.add(RunUpdate::new_newline());
+                updates.add(RunUpdate::new("[1]从[迟缓]中解除", self.as_ptr(), self.as_ptr(), 0));
+            }
+        }
+    }
 
     /// 蓝条是不是够用
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
@@ -1276,5 +1441,133 @@ mod test {
         assert_eq!(updates.updates.len(), 2);
         assert!(matches!(updates.updates[0].update_type, UpdateType::NextLine));
         assert_eq!(updates.updates[1].message, "[1]被击倒了");
+    }
+
+    #[test]
+    fn check_immune_matches_player_type_rules() {
+        let storage = Storage::new_arc();
+        let boost = Player::new_from_namerena_raw("云剑穸跄祇@!".to_string(), storage.clone()).unwrap();
+        let normal = Player::new_from_namerena_raw("normal".to_string(), storage.clone()).unwrap();
+        let mut randomer = RC4 {
+            i: 0,
+            j: 0,
+            main_val: vec![0; 256],
+        };
+
+        assert!(boost.check_immune(state_tag::<crate::player::skill::poison::PoisonState>(), &mut randomer));
+        assert!(!normal.check_immune(state_tag::<crate::player::skill::poison::PoisonState>(), &mut randomer));
+    }
+
+    #[test]
+    fn update_states_applies_haste_slow_and_ice_effects() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let ptr = player.as_ptr();
+        player.attr = [10, 10, 10, 10, 10, 10, 10, 100];
+        player.update_states();
+        let base_speed = player.get_status().speed;
+
+        player.set_state(crate::player::skill::haste::HasteState {
+            owner: Some(ptr),
+            target: Some(ptr),
+            on_post_action: None,
+            faster: 2,
+            step: 3,
+        });
+        player.update_states();
+        assert_eq!(player.get_status().speed, base_speed * 2);
+
+        player.clear_state::<crate::player::skill::haste::HasteState>();
+        player.set_state(crate::player::skill::slow::SlowState {
+            owner: Some(ptr),
+            target: Some(ptr),
+            on_post_action: None,
+            step: 2,
+        });
+        player.update_states();
+        assert_eq!(player.get_status().speed, base_speed / 2);
+
+        player.set_state(crate::player::skill::ice::IceState {
+            target: Some(ptr),
+            pre_step_impl: None,
+            frozen_step: 1024,
+        });
+        player.update_states();
+        assert!(player.get_status().frozed());
+    }
+
+    #[test]
+    fn clear_negative_states_keeps_positive_states() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let ptr = player.as_ptr();
+
+        player.set_state(crate::player::skill::haste::HasteState {
+            owner: Some(ptr),
+            target: Some(ptr),
+            on_post_action: None,
+            faster: 2,
+            step: 3,
+        });
+        player.set_state(crate::player::skill::slow::SlowState {
+            owner: Some(ptr),
+            target: Some(ptr),
+            on_post_action: None,
+            step: 2,
+        });
+        player.set_state(crate::player::skill::poison::PoisonState {
+            caster: Some(ptr),
+            target: Some(ptr),
+            atp: 12.0,
+            count: 4,
+        });
+        player.clear_negative_states();
+
+        assert!(player.has_state::<crate::player::skill::haste::HasteState>());
+        assert!(!player.has_state::<crate::player::skill::slow::SlowState>());
+        assert!(!player.has_state::<crate::player::skill::poison::PoisonState>());
+    }
+
+    #[test]
+    fn ice_state_pre_step_expires_with_threshold_check() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let ptr = player.as_ptr();
+        let mut updates = RunUpdates::new();
+
+        player.set_move_point(2000);
+        player.set_state(crate::player::skill::ice::IceState {
+            target: Some(ptr),
+            pre_step_impl: None,
+            frozen_step: 0,
+        });
+        let step = player.apply_pre_step_states(100, &mut updates);
+        assert_eq!(step, 0);
+        assert!(!player.has_state::<crate::player::skill::ice::IceState>());
+        assert!(updates.updates.iter().any(|x| x.message.contains("冰冻")));
+    }
+
+    #[test]
+    fn poison_state_ticks_and_expires_in_post_action() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let ptr = player.as_ptr();
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        player.status.max_hp = 100;
+        player.status.hp = 100;
+        player.status.magic = 32;
+        player.set_state(crate::player::skill::poison::PoisonState {
+            caster: Some(ptr),
+            target: Some(ptr),
+            atp: 80.0,
+            count: 1,
+        });
+        player.action(&mut randomer, &mut updates, &storage);
+
+        assert!(!player.has_state::<crate::player::skill::poison::PoisonState>());
+        assert!(updates.updates.iter().any(|x| x.message.contains("[毒性发作]")));
+        assert!(updates.updates.iter().any(|x| x.message.contains("从[中毒]中解除")));
     }
 }

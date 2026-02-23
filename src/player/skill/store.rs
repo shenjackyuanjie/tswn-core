@@ -1,7 +1,7 @@
 use crate::{
     player::{
         OnDamageFunc, PlrId,
-        skill::{Skill, SkillArgs},
+        skill::{ProcKind, Skill, SkillArgs},
     },
 };
 
@@ -71,7 +71,30 @@ impl SkillStorage {
         self.post_kill.clear();
     }
 
-    pub fn update_proc(&mut self) {}
+    pub fn update_proc(&mut self) {
+        self.clear_proc();
+        let keys: Vec<SkillKey> = self.skill.clone();
+        for key in keys {
+            let skill = self.store.get(&key).expect("skill not found in store");
+            if skill.level() == 0 {
+                continue;
+            }
+            let kinds: Vec<ProcKind> = skill.proc_kinds().to_vec();
+            for kind in kinds {
+                match kind {
+                    ProcKind::UpdateState => self.update_states.push(key),
+                    ProcKind::PreStep => self.pre_step.push(key),
+                    ProcKind::PreAction => self.pre_action.push(key),
+                    ProcKind::PostAction => self.post_action.push(key),
+                    ProcKind::PreDefend => self.pre_defend.push(key),
+                    ProcKind::PostDefend => self.post_defend.push(key),
+                    ProcKind::PostDamage => self.post_damage.push(key),
+                    ProcKind::PostDeath => self.post_death.push(key),
+                    ProcKind::PostKill => self.post_kill.push(key),
+                }
+            }
+        }
+    }
 
     /// 最后一个技能 boost
     pub fn boost_last(&mut self) {
@@ -102,22 +125,85 @@ impl SkillStorage {
     // 以下是从 plr 里拆过来的部分, pre/post 之类的东西
     // ==========
 
-    pub fn pre_step(&mut self, _args: SkillArgs) {}
+    pub fn update_state(&mut self, args: SkillArgs) {
+        let keys: Vec<SkillKey> = self.update_states.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            skill.update_state((args.0, args.1, args.2, args.3));
+        }
+    }
+
+    pub fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 {
+        let keys: Vec<SkillKey> = self.pre_step.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            step = skill.pre_step(step, (args.0, args.1, args.2, args.3));
+        }
+        step
+    }
+
+    pub fn pre_action(&mut self, args: SkillArgs) {
+        let keys: Vec<SkillKey> = self.pre_action.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            skill.pre_action((args.0, args.1, args.2, args.3));
+        }
+    }
+
+    pub fn post_action(&mut self, args: SkillArgs) {
+        let keys: Vec<SkillKey> = self.post_action.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            skill.post_action((args.0, args.1, args.2, args.3));
+        }
+    }
 
     pub fn pre_defend(&mut self, mut atp: f64, is_mag: bool, caster: PlrId, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {
-        for skill_type in self.skill.iter() {
-            let skill = self.store.get_mut(skill_type).expect("skill not found in store");
+        let keys: Vec<SkillKey> = self.pre_defend.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
             atp = skill.pre_defend(atp, is_mag, caster, &on_damage, (args.0, args.1, args.2, args.3));
+            if atp == 0.0 {
+                return 0.0;
+            }
         }
-
         atp
     }
 
     pub fn post_defend(&mut self, mut dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
-        for skill_type in self.post_defend.iter() {
-            let skill = self.store.get_mut(skill_type).expect("skill not found in store");
-            dmg = skill.post_defend(dmg, caster, &on_damage, (args.0, args.1, args.2, args.3));
+        let keys: Vec<SkillKey> = self.post_defend.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            dmg = skill.post_defend(dmg, caster, on_damage, (args.0, args.1, args.2, args.3));
         }
         dmg
+    }
+
+    pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
+        let keys: Vec<SkillKey> = self.post_damage.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            skill.post_damage(dmg, caster, (args.0, args.1, args.2, args.3));
+        }
+    }
+
+    pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) {
+        let keys: Vec<SkillKey> = self.post_death.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            if skill.die(oldhp, caster, (args.0, args.1, args.2, args.3)) {
+                break;
+            }
+        }
+    }
+
+    pub fn kill(&mut self, target: PlrId, args: SkillArgs) {
+        let keys: Vec<SkillKey> = self.post_kill.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            if skill.kill(target, (args.0, args.1, args.2, args.3)) {
+                break;
+            }
+        }
     }
 }

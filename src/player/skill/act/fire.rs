@@ -1,6 +1,6 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    OnDamageFunc, PlrId, StateValue,
+    FireState, OnDamageFunc, PlrId, state_tag,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
@@ -48,7 +48,7 @@ impl SkillTrait for FireSkill {
         let dmg = target.attacked(atp, true, args.0, on_fire as OnDamageFunc, args.1, args.2, args.3);
 
         // 参考 dart: onFire(dmg > 0 && !target.dead) => fireMag += 0.5
-        if dmg > 0 && target.alive() && !target.check_immune(StateValue::fire_tag(), args.1) {
+        if dmg > 0 && target.alive() && !target.check_immune(state_tag::<FireState>(), args.1) {
             target.add_fire_mag(0.5);
         }
     }

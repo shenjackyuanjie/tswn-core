@@ -1,34 +1,34 @@
 use crate::player::{
     PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone)]
-pub struct HideSkill {
-    pub on_pre_action: Option<()>,
-    pub on_update_state: Option<()>,
+pub struct ReraiseSkill {
+    pub sort_id: f64,
 }
 
-impl Default for HideSkill {
+impl Default for ReraiseSkill {
     fn default() -> Self {
         Self {
-            on_pre_action: None,
-            on_update_state: None,
+            sort_id: 10.0,
         }
     }
 }
 
-impl HideSkill {
+impl ReraiseSkill {
     pub fn new() -> Self { Self::default() }
 }
 
-impl SkillExt for HideSkill {
+impl SkillExt for ReraiseSkill {
     fn box_new() -> Box<dyn SkillTrait> { Box::new(Self::new()) }
 }
 
-impl SkillTrait for HideSkill {
+impl SkillTrait for ReraiseSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDeath] }
 }
 

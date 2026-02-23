@@ -395,7 +395,7 @@ pub mod runners {
                 ActionDecision::StepDriver => {
                     hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
                     if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
-                        plr.step(ctx.randomer, ctx.updates);
+                        plr.step(ctx.randomer, ctx.updates, ctx.storage);
                     }
                     hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
                 }
