@@ -878,44 +878,33 @@ impl Player {
     }
 
     /// preDefend
-    // pub fn pre_defend(
-    //     &mut self,
-    //     mut atp: f64,
-    //     is_mag: bool,
-    //     caster: PlrId,
-    //     on_damage: OnDamageFunc,
-    //     randomer: &mut RC4,
-    //     updates: &mut RunUpdates,
-    //     storage: &Arc<Storage>,
-    // ) -> f64 {
-    //     let pre_defend_indices: Vec<_> = self.skills.pre_defend.iter().cloned().collect();
-    //     for skill_idx in pre_defend_indices {
-    //         let skill = self.skills.skill_by_id_mut(skill_idx);
-    //         atp = skill.pre_defend(self.as_ptr(), atp, randomer, updates, &storage);
-    //         if atp == 0.0 {
-    //             return atp;
-    //         }
-    //     }
-    //     atp
-    // }
+    pub fn pre_defend(
+        &mut self,
+        atp: f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> f64 {
+        self.skills
+            .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage))
+    }
 
     /// postDefend
-    // pub fn post_defend(
-    //     &mut self,
-    //     mut dmg: i32,
-    //     caster: PlrId,
-    //     on_damage: OnDamageFunc,
-    //     randomer: &mut RC4,
-    //     updates: &mut RunUpdates,
-    //     storage: &Arc<Storage>,
-    // ) -> i32 {
-    //     let post_defend_indices: Vec<_> = self.skills.post_defend.iter().cloned().collect();
-    //     for skill_idx in post_defend_indices {
-    //         let skill = self.skills.skill_by_id_mut(skill_idx);
-    //         dmg = skill.post_defend(self.as_ptr(), caster, dmg, randomer, updates, &storage);
-    //     }
-    //     dmg
-    // }
+    pub fn post_defend(
+        &mut self,
+        dmg: i32,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> i32 {
+        self.skills
+            .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage))
+    }
 
     pub fn attacked(
         &mut self,
@@ -927,9 +916,7 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        atp = self
-            .skills
-            .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
+        atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
         if atp == 0.0 {
             return 0;
         }
@@ -967,9 +954,7 @@ impl Player {
     ) -> i32 {
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
-        dmg = self
-            .skills
-            .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage));
+        dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
         self.damage(dmg, caster, on_damage, randomer, updates, storage)
     }
 
