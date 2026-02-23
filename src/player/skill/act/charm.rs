@@ -23,6 +23,35 @@ impl SkillTrait for CharmSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
+    fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
+        if !smart {
+            return true;
+        }
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return false;
+        };
+        if let Some(charm) = target_plr.get_state::<CharmState>() {
+            charm.step <= 1
+        } else {
+            true
+        }
+    }
+
+    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return f64::MIN;
+        };
+        let mut score = if smart {
+            target_plr.get_status().attract
+        } else {
+            args.1.rFFFF() as f64 + target_plr.get_status().attract
+        };
+        if target_plr.has_state::<CharmState>() || target_plr.has_state::<crate::player::skill::berserk::BerserkState>() {
+            score /= 2.0;
+        }
+        score
+    }
+
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;

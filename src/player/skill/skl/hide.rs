@@ -1,3 +1,4 @@
+use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
@@ -31,5 +32,36 @@ impl SkillTrait for HideSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage, ProcKind::PreAction] }
+    fn post_damage_with_level(&mut self, level: u32, _dmg: i32, _caster: PlrId, args: SkillArgs) {
+        if level == 0 || self.on_update_state.is_some() {
+            return;
+        }
+        let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
+        if owner_active && args.1.r63() < level {
+            self.on_update_state = Some(());
+            args.2.add(RunUpdate::new("[0]发动[隐匿]", args.0, args.0, 10));
+        }
+    }
+
+    fn pre_action(&mut self, _args: SkillArgs) {
+        if self.on_update_state.is_some() {
+            self.on_update_state = None;
+        }
+    }
+
+    fn update_state_with_level(&mut self, level: u32, args: SkillArgs) {
+        if self.on_update_state.is_none() {
+            return;
+        }
+        let owner = args.3.just_get_player_mut(args.0).expect("cannot get hide owner from storage");
+        owner.mul_attract(0.1);
+        if level > 63 {
+            let boost = (level - 63) as i32;
+            owner.add_agility(boost);
+            owner.add_defense(boost);
+            owner.add_resistance(boost);
+        }
+    }
+
+    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage, ProcKind::PreAction, ProcKind::UpdateState] }
 }

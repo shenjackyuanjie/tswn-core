@@ -24,6 +24,31 @@ impl SkillTrait for BerserkSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
+    fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
+        if !smart {
+            return true;
+        }
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return false;
+        };
+        !target_plr.has_state::<BerserkState>()
+    }
+
+    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return f64::MIN;
+        };
+        let mut score = if smart {
+            target_plr.get_status().attract
+        } else {
+            args.1.rFFFF() as f64 + target_plr.get_status().attract
+        };
+        if target_plr.has_state::<BerserkState>() || target_plr.has_state::<crate::player::skill::charm::CharmState>() {
+            score /= 1.2;
+        }
+        score
+    }
+
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;

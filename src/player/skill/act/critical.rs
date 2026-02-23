@@ -1,7 +1,9 @@
+use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    PlrId,
+    OnDamageFunc, PlrId,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
+use crate::rc4::RC4;
 
 #[derive(Debug, Clone, Default)]
 pub struct CriticalSkill;
@@ -18,4 +20,27 @@ impl SkillTrait for CriticalSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn has_action_impl(&self) -> bool { true }
+
+    fn select_target_count(&self, _smart: bool) -> usize { 1 }
+
+    fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        let owner = args.3.get_player(&args.0).expect("cannot get critical owner from storage");
+        let atp0 = owner.get_at(false, args.1) * 1.15;
+        let atp1 = owner.get_at(false, args.1) * 1.2;
+        let atp2 = owner.get_at(false, args.1) * 1.25;
+        let atp = atp0.max(atp1).max(atp2);
+        args.2.add(RunUpdate::new("[0]发起[会心一击]", args.0, target_id, 20));
+        args.3
+            .just_get_player_mut(target_id)
+            .expect("cannot get critical target from storage")
+            .attacked(atp, false, args.0, on_critical as OnDamageFunc, args.1, args.2, args.3);
+    }
 }
+
+fn on_critical(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}

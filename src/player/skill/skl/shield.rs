@@ -19,16 +19,24 @@ impl SkillTrait for ShieldSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
-    fn pre_action(&mut self, args: SkillArgs) {
+    fn pre_action_with_level(&mut self, level: u32, args: SkillArgs) {
+        if level == 0 {
+            return;
+        }
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get shield owner from storage");
-        if let Some(state) = owner.get_state_mut::<ShieldState>() {
-            state.shield += args.1.r7() as i32 + 1;
+        let state = if let Some(state) = owner.get_state_mut::<ShieldState>() {
+            state
         } else {
             owner.set_state(ShieldState {
                 sort_id: 6000.0,
                 target: Some(args.0),
-                shield: args.1.r7() as i32 + 1,
+                shield: 0,
             });
+            owner.get_state_mut::<ShieldState>().expect("cannot get shield state from owner")
+        };
+        if level as i32 >= state.shield {
+            let add = args.1.next_i32((1 + (level as i32 * 3 / 4)).max(1)) + 1;
+            state.shield += add;
         }
     }
 

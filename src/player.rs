@@ -98,6 +98,18 @@ impl PlayerStateStore {
         }
     }
 
+    pub fn clear_positive_states(&mut self) {
+        let mut to_remove = Vec::new();
+        for (tag, state) in self.states.iter() {
+            if state.meta_type() > 0 {
+                to_remove.push(*tag);
+            }
+        }
+        for tag in to_remove {
+            self.states.remove(&tag);
+        }
+    }
+
     #[inline]
     fn fire_state(&self) -> Option<FireState> { self.get::<FireState>().copied() }
 
@@ -523,6 +535,42 @@ impl Player {
     #[inline]
     pub fn set_move_point(&mut self, val: i32) { self.status.move_point = val }
 
+    #[inline]
+    pub fn mp(&self) -> i32 { self.status.mp }
+
+    #[inline]
+    pub fn set_mp(&mut self, val: i32) { self.status.mp = val.max(0); }
+
+    #[inline]
+    pub fn mul_at_boost(&mut self, scale: f64) { self.status.at_boost *= scale; }
+
+    #[inline]
+    pub fn mul_attract(&mut self, scale: f64) { self.status.attract *= scale; }
+
+    #[inline]
+    pub fn add_agility(&mut self, val: i32) { self.status.agility += val; }
+
+    #[inline]
+    pub fn add_defense(&mut self, val: i32) { self.status.defense += val; }
+
+    #[inline]
+    pub fn add_resistance(&mut self, val: i32) { self.status.resistance += val; }
+
+    #[inline]
+    pub fn add_attack(&mut self, val: i32) { self.status.attack += val; }
+
+    #[inline]
+    pub fn add_magic(&mut self, val: i32) { self.status.magic += val; }
+
+    #[inline]
+    pub fn add_speed(&mut self, val: i32) { self.status.speed += val; }
+
+    #[inline]
+    pub fn add_wisdom(&mut self, val: i32) { self.status.wisdom += val; }
+
+    #[inline]
+    pub fn add_max_hp(&mut self, val: i32) { self.status.max_hp += val; }
+
     /// 检查是否可以行动
     pub fn check_move(&self) -> bool { self.status.check_move() }
 
@@ -530,8 +578,8 @@ impl Player {
         match self.player_type {
             PlayerType::Boost => randomer.r127() < boost_value(&self.name),
             PlayerType::Boss => {
-                // TODO
-                randomer.c33()
+                // Boss 对异常状态有更高抗性
+                randomer.r127() < 84
             }
             _ => false,
         }
@@ -700,7 +748,7 @@ impl Player {
         self.status.attract = 32768.0;
     }
 
-    fn init_skills(&mut self) {}
+    fn init_skills(&mut self) { self.skills.update_proc(); }
 
     /// 同队升级
     pub fn upgrade(&mut self, other: &Self) {
@@ -783,7 +831,10 @@ impl Player {
     }
 
     /// 更新玩家
-    pub fn update_player(&mut self) {}
+    pub fn update_player(&mut self) {
+        self.init_skills();
+        self.update_states();
+    }
 
     /// 每回合中的玩家行动
     ///
@@ -808,37 +859,46 @@ impl Player {
     }
 
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &[PlrId]) {
+        use crate::player::skill::berserk::BerserkState;
+
         let smart = self.status.wisdom > randomer.r63() as i32;
         let req_mp = randomer.r15() as i32 + 8;
         let ptr = self.as_ptr();
-        self.skills.pre_action((ptr, randomer, updates, storage));
+        let forced_skill = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
         if self.status.frozed() {
             return;
         }
 
         let mut acted = false;
-        let mut selected_skill_key: Option<usize> = None;
-        if self.status.mp >= req_mp {
+        let mut selected_skill_key: Option<usize> = forced_skill;
+        if self.has_state::<BerserkState>() {
+            self.default_attack(false, randomer, updates, storage, targets);
+            acted = true;
+        } else if selected_skill_key.is_none() && self.status.mp >= req_mp {
+            self.status.mp -= req_mp;
             let skill_keys = self.skills.skill.clone();
             for key in skill_keys {
                 let should_cast = {
                     let skill = self.skills.skill_by_id(key);
-                    skill.level() > 0 && skill.has_action_impl() && randomer.r127() < skill.level()
+                    skill.level() > 0 && skill.has_action_impl() && skill.prob(smart, (ptr, randomer, updates, storage))
                 };
                 if should_cast {
                     selected_skill_key = Some(key);
-                    self.status.mp -= req_mp;
                     break;
                 }
             }
         }
 
-        if let Some(skill_key) = selected_skill_key
-            && let Some(target_id) = Self::pick_target(targets, randomer)
-        {
-            let skill = self.skills.skill_by_id_mut(skill_key);
-            skill.act(vec![target_id], smart, (ptr, randomer, updates, storage));
-            acted = true;
+        if let Some(skill_key) = selected_skill_key {
+            let selected_targets = {
+                let skill = self.skills.skill_by_id(skill_key);
+                skill.select_targets(targets, smart, (ptr, randomer, updates, storage))
+            };
+            if !selected_targets.is_empty() {
+                let skill = self.skills.skill_by_id_mut(skill_key);
+                skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
+                acted = true;
+            }
         }
 
         if !acted {
@@ -854,9 +914,7 @@ impl Player {
         self.apply_post_action_states(randomer, updates, storage);
     }
 
-    fn pick_target(targets: &[PlrId], randomer: &mut RC4) -> Option<PlrId> {
-        randomer.pick(targets).map(|idx| targets[idx])
-    }
+    fn pick_target(targets: &[PlrId], randomer: &mut RC4) -> Option<PlrId> { randomer.pick(targets).map(|idx| targets[idx]) }
 
     fn default_attack(
         &mut self,
@@ -900,6 +958,13 @@ impl Player {
     pub fn alive(&self) -> bool { self.status.alive() }
 
     #[inline]
+    pub fn revive_with_hp(&mut self, hp: i32) {
+        self.status.hp = hp.clamp(1, self.status.max_hp.max(1));
+        self.status.set_alive(true);
+        self.status.set_frozen(false);
+    }
+
+    #[inline]
     pub fn fire_mag(&self) -> f64 { self.state.fire_mag() }
 
     #[inline]
@@ -922,6 +987,9 @@ impl Player {
 
     #[inline]
     pub fn clear_negative_states(&mut self) { self.state.clear_negative_states(); }
+
+    #[inline]
+    pub fn clear_positive_states(&mut self) { self.state.clear_positive_states(); }
 
     fn apply_update_state_effects(&mut self) {
         use crate::player::skill::{curse::CurseState, haste::HasteState, ice::IceState, slow::SlowState};
@@ -1293,7 +1361,7 @@ impl Player {
             {
                 killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
             }
-            self.on_die(old_hp, caster, randomer, updates);
+            self.on_die(old_hp, caster, randomer, updates, storage);
             return old_hp;
         } else {
             return dmg;
@@ -1302,14 +1370,19 @@ impl Player {
 
     fn get_die_message(&self) -> &'static str { "[1]被击倒了" }
 
-    pub fn on_die(&mut self, _old_hp: i32, caster: PlrId, _randomer: &mut RC4, updates: &mut RunUpdates) {
-        updates.add(RunUpdate::new_newline());
-        updates.add(RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
-
+    pub fn on_die(&mut self, old_hp: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
         if self.status.hp > 0 {
             return;
         }
 
+        let ptr = self.as_ptr();
+        self.skills.die(old_hp, caster, (ptr, randomer, updates, storage));
+        if self.status.hp > 0 {
+            return;
+        }
+
+        updates.add(RunUpdate::new_newline());
+        updates.add(RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
         self.status.hp = 0;
         self.status.set_alive(false);
     }
@@ -1783,5 +1856,102 @@ mod test {
         let target_ref = storage.get_player(&target_id).unwrap();
         assert!(target_ref.has_state::<crate::player::skill::merge::MergeState>());
         assert!(target_ref.has_state::<crate::player::skill::zombie::ZombieState>());
+    }
+
+    #[test]
+    fn action_uses_fire_skill_when_available() {
+        let storage = Storage::new_arc();
+        let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+        let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        let attacker_id = storage.just_insert_player(attacker);
+        let target_id = storage.just_insert_player(target);
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
+        attacker_mut.status.hp = 100;
+        attacker_mut.status.max_hp = 100;
+        attacker_mut.status.mp = 999;
+        attacker_mut.skills.add_skill(Skill::new_with_id(255, 0));
+        attacker_mut.skills.update_proc();
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.status.hp = 100;
+        target_mut.status.max_hp = 100;
+
+        attacker_mut.action(&mut randomer, &mut updates, &storage, &[target_id]);
+        assert!(updates.updates.iter().any(|x| x.message.contains("火球术")));
+    }
+
+    #[test]
+    fn action_falls_back_to_default_attack() {
+        let storage = Storage::new_arc();
+        let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+        let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        let attacker_id = storage.just_insert_player(attacker);
+        let target_id = storage.just_insert_player(target);
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
+        attacker_mut.status.hp = 100;
+        attacker_mut.status.max_hp = 100;
+        attacker_mut.status.mp = 999;
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.status.hp = 100;
+        target_mut.status.max_hp = 100;
+
+        attacker_mut.action(&mut randomer, &mut updates, &storage, &[target_id]);
+        assert!(updates.updates.iter().any(|x| x.message.contains("发起攻击")));
+    }
+
+    #[test]
+    fn reraise_skill_prevents_death() {
+        let storage = Storage::new_arc();
+        let caster = Player::new_from_namerena_raw("caster".to_string(), storage.clone()).unwrap();
+        let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        let caster_id = storage.just_insert_player(caster);
+        let target_id = storage.just_insert_player(target);
+        let mut randomer = RC4 {
+            i: 0,
+            j: 0,
+            main_val: vec![0; 256],
+        };
+        let mut updates = RunUpdates::new();
+
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.status.hp = 20;
+        target_mut.status.max_hp = 100;
+        target_mut.skills.add_skill(Skill::new_with_id(255, 28));
+        target_mut.skills.update_proc();
+
+        target_mut.damage(120, caster_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+        assert!(target_mut.alive());
+        assert!(target_mut.get_status().hp > 0);
+        assert!(updates.updates.iter().any(|x| x.message.contains("护身符")));
+    }
+
+    #[test]
+    fn assassinate_preaction_forces_backstab() {
+        let storage = Storage::new_arc();
+        let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+        let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        let attacker_id = storage.just_insert_player(attacker);
+        let target_id = storage.just_insert_player(target);
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
+        attacker_mut.status.hp = 120;
+        attacker_mut.status.max_hp = 120;
+        attacker_mut.status.mp = 999;
+        attacker_mut.skills.add_skill(Skill::new_with_id(255, 21));
+        attacker_mut.skills.update_proc();
+
+        attacker_mut.action(&mut randomer, &mut updates, &storage, &[target_id]);
+        assert!(updates.updates.iter().any(|x| x.message.contains("潜行")));
+
+        let mut updates2 = RunUpdates::new();
+        attacker_mut.action(&mut randomer, &mut updates2, &storage, &[target_id]);
+        assert!(updates2.updates.iter().any(|x| x.message.contains("背刺")));
     }
 }

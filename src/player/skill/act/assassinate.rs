@@ -1,7 +1,10 @@
+use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    PlrId,
+    OnDamageFunc, PlrId,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::poison::PoisonState,
 };
+use crate::rc4::RC4;
 
 #[derive(Debug, Clone)]
 pub struct AssassinateSkill {
@@ -33,5 +36,141 @@ impl SkillTrait for AssassinateSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn has_action_impl(&self) -> bool { true }
+
+    fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
+        if self.target.is_some() {
+            return true;
+        }
+        if smart
+            && args
+                .3
+                .get_player(&args.0)
+                .map(|p| p.has_state::<PoisonState>())
+                .unwrap_or(false)
+        {
+            return false;
+        }
+        args.1.r127() < level
+    }
+
+    fn select_target_count(&self, _smart: bool) -> usize { 1 }
+
+    fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
+        if let Some(locked) = self.target {
+            return locked == target;
+        }
+        if !smart {
+            return true;
+        }
+        args.3
+            .get_player(&target)
+            .map(|x| x.get_status().hp > 160)
+            .unwrap_or(false)
+    }
+
+    fn select_targets_with_level(&self, level: u32, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
+        if let Some(target) = self.target {
+            if args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
+                return vec![target];
+            }
+            return Vec::new();
+        }
+        let mut best: Option<(PlrId, f64)> = None;
+        for target in candidates.iter().copied() {
+            if !self.valid_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3)) {
+                continue;
+            }
+            let score = self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3));
+            if let Some((_, best_score)) = best {
+                if score <= best_score {
+                    continue;
+                }
+            }
+            best = Some((target, score));
+        }
+        best.map(|x| vec![x.0]).unwrap_or_default()
+    }
+
+    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+        if self.target.is_none() {
+            if targets.is_empty() {
+                return;
+            }
+            let target_id = targets[0];
+            self.target = Some(target_id);
+            self.on_pre_action = Some(());
+            self.on_post_damage = Some(());
+            let current_move = args
+                .3
+                .get_player(&args.0)
+                .expect("cannot get assassinate owner from storage")
+                .move_point();
+            let owner_magic = args
+                .3
+                .get_player(&args.0)
+                .expect("cannot get assassinate owner from storage")
+                .get_status()
+                .magic;
+            args.3
+                .just_get_player_mut(args.0)
+                .expect("cannot get assassinate owner from storage")
+                .set_move_point(current_move + owner_magic * 3);
+            args.2.add(RunUpdate::new("[0][潜行]到[1]身后", args.0, target_id, 20));
+            return;
+        }
+
+        let target_id = self.target.expect("assassinate target should exist");
+        self.clear_pending();
+        if !args.3.get_player(&target_id).map(|x| x.alive()).unwrap_or(false) {
+            return;
+        }
+        args.2.add(RunUpdate::new("[0]发动[背刺]", args.0, target_id, 60));
+        let owner = args.3.get_player(&args.0).expect("cannot get assassinate owner from storage");
+        let atp = owner.get_at(true, args.1).max(owner.get_at(true, args.1)).max(owner.get_at(true, args.1)) * 4.0;
+        args.3
+            .just_get_player_mut(target_id)
+            .expect("cannot get assassinate target from storage")
+            .attacked(atp, true, args.0, on_assassinate as OnDamageFunc, args.1, args.2, args.3);
+    }
+
+    fn pre_action(&mut self, _args: SkillArgs) {
+        if self.target.is_some() {
+            self.on_pre_action = Some(());
+        }
+    }
+
+    fn pre_action_select(&mut self, _smart: bool, args: SkillArgs) -> bool {
+        let Some(target) = self.target else {
+            return false;
+        };
+        if args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
+            true
+        } else {
+            self.clear_pending();
+            false
+        }
+    }
+
+    fn post_damage(&mut self, _dmg: i32, _caster: PlrId, args: SkillArgs) {
+        if self.target.is_none() {
+            return;
+        }
+        let target = self.target.expect("assassinate target should exist");
+        args.2.add(RunUpdate::new_newline());
+        args.2.add(RunUpdate::new("[0]的[潜行]被识破", args.0, target, 20));
+        self.clear_pending();
+    }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PreAction, ProcKind::PostDamage] }
 }
+
+impl AssassinateSkill {
+    fn clear_pending(&mut self) {
+        self.target = None;
+        self.on_post_damage = None;
+        self.on_pre_action = None;
+    }
+}
+
+fn on_assassinate(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}

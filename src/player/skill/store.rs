@@ -140,12 +140,17 @@ impl SkillStorage {
         step
     }
 
-    pub fn pre_action(&mut self, args: SkillArgs) {
+    pub fn pre_action(&mut self, smart: bool, args: SkillArgs) -> Option<SkillKey> {
         let keys: Vec<SkillKey> = self.pre_action.clone();
+        let mut forced_skill = None;
         for skill_key in keys.iter() {
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
             skill.pre_action((args.0, args.1, args.2, args.3));
+            if forced_skill.is_none() && skill.pre_action_select(smart, (args.0, args.1, args.2, args.3)) {
+                forced_skill = Some(*skill_key);
+            }
         }
+        forced_skill
     }
 
     pub fn post_action(&mut self, args: SkillArgs) {

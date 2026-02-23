@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -49,27 +50,150 @@ pub trait SkillTrait: Debug {
     // ===== 可选实现的 =====
     /// 更新状态
     fn update_state(&mut self, args: SkillArgs) {}
+    fn update_state_with_level(&mut self, _level: u32, args: SkillArgs) { self.update_state(args) }
     /// 行动!
     fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
+    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
+        self.act(targets, smart, args)
+    }
 
     fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 { step }
+    fn pre_step_with_level(&mut self, _level: u32, step: i32, args: SkillArgs) -> i32 { self.pre_step(step, args) }
     /// 行动之前
     fn pre_action(&mut self, args: SkillArgs) {}
+    fn pre_action_with_level(&mut self, _level: u32, args: SkillArgs) { self.pre_action(args) }
+    /// preAction 是否强制选择当前技能
+    fn pre_action_select(&mut self, _smart: bool, _args: SkillArgs) -> bool { false }
+    fn pre_action_select_with_level(&mut self, _level: u32, smart: bool, args: SkillArgs) -> bool {
+        self.pre_action_select(smart, args)
+    }
     /// 行动之后
     fn post_action(&mut self, args: SkillArgs) {}
+    fn post_action_with_level(&mut self, _level: u32, args: SkillArgs) { self.post_action(args) }
     /// 防御之前
     fn pre_defend(&mut self, mut atp: f64, caster: PlrId, is_mag: bool, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 { atp }
+    fn pre_defend_with_level(
+        &mut self,
+        _level: u32,
+        atp: f64,
+        caster: PlrId,
+        is_mag: bool,
+        on_damage: &OnDamageFunc,
+        args: SkillArgs,
+    ) -> f64 {
+        self.pre_defend(atp, caster, is_mag, on_damage, args)
+    }
     /// 防御之后
     fn post_defend(&mut self, mut dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 { dmg }
+    fn post_defend_with_level(
+        &mut self,
+        _level: u32,
+        dmg: i32,
+        caster: PlrId,
+        on_damage: &OnDamageFunc,
+        args: SkillArgs,
+    ) -> i32 {
+        self.post_defend(dmg, caster, on_damage, args)
+    }
     /// 伤害之后
     fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {}
+    fn post_damage_with_level(&mut self, _level: u32, dmg: i32, caster: PlrId, args: SkillArgs) {
+        self.post_damage(dmg, caster, args)
+    }
     /// 死亡时（返回 true 表示短路，不再执行后续 die）
     fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool { false }
+    fn die_with_level(&mut self, _level: u32, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
+        self.die(oldhp, caster, args)
+    }
     /// 击杀目标后（返回 true 表示短路，不再执行后续 kill）
     fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { false }
+    fn kill_with_level(&mut self, _level: u32, target: PlrId, args: SkillArgs) -> bool { self.kill(target, args) }
 
     /// 声明该技能注册到哪些流程
     fn proc_kinds(&self) -> &[ProcKind] { &[] }
+
+    /// 技能触发概率（默认对齐 Dart: r127 < level）
+    fn prob(&self, level: u32, _smart: bool, args: SkillArgs) -> bool { args.1.r127() < level }
+
+    /// 技能选目标数量（默认对齐 Dart）
+    fn select_target_count(&self, smart: bool) -> usize { if smart { 3 } else { 2 } }
+    fn select_target_count_with_level(&self, _level: u32, smart: bool) -> usize { self.select_target_count(smart) }
+
+    /// 技能目标合法性判定
+    fn valid_target(&self, _target: PlrId, _smart: bool, _args: SkillArgs) -> bool { true }
+    fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
+        self.valid_target(target, smart, args)
+    }
+
+    /// 技能目标打分（默认对齐 Dart 基础行为）
+    fn score_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return f64::MIN;
+        };
+        if smart {
+            target_plr.get_status().attract
+        } else {
+            args.1.rFFFF() as f64 + target_plr.get_status().attract
+        }
+    }
+    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        self.score_target(target, smart, args)
+    }
+
+    /// 技能选目标流程（默认：按 valid 过滤，随机采样后按 score 排序）
+    fn select_targets(&self, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
+        let mut valid = Vec::new();
+        for target in candidates.iter().copied() {
+            if self.valid_target(target, smart, (args.0, args.1, args.2, args.3)) {
+                valid.push(target);
+            }
+        }
+        if valid.is_empty() {
+            return Vec::new();
+        }
+
+        let take_count = self.select_target_count(smart).max(1).min(valid.len());
+        let mut selected = Vec::with_capacity(take_count);
+        let mut pool = valid;
+        while selected.len() < take_count && !pool.is_empty() {
+            let idx = args.1.pick(&pool).unwrap_or(0);
+            selected.push(pool.swap_remove(idx));
+        }
+
+        let mut scored = selected
+            .into_iter()
+            .map(|target| (target, self.score_target(target, smart, (args.0, args.1, args.2, args.3))))
+            .collect::<Vec<(PlrId, f64)>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        scored.into_iter().map(|x| x.0).collect()
+    }
+
+    fn select_targets_with_level(&self, level: u32, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
+        let mut valid = Vec::new();
+        for target in candidates.iter().copied() {
+            if self.valid_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3)) {
+                valid.push(target);
+            }
+        }
+        if valid.is_empty() {
+            return Vec::new();
+        }
+
+        let take_count = self.select_target_count_with_level(level, smart).max(1).min(valid.len());
+        let mut selected = Vec::with_capacity(take_count);
+        let mut pool = valid;
+        while selected.len() < take_count && !pool.is_empty() {
+            let idx = args.1.pick(&pool).unwrap_or(0);
+            selected.push(pool.swap_remove(idx));
+        }
+
+        let mut scored = selected
+            .into_iter()
+            .map(|target| (target, self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3))))
+            .collect::<Vec<(PlrId, f64)>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        scored.into_iter().map(|x| x.0).collect()
+    }
 
     /// 标记该技能的主动施放逻辑是否已接入当前运行链路。
     fn has_action_impl(&self) -> bool { false }
@@ -195,31 +319,48 @@ impl Skill {
     // 以下是技能 call pre/post 之类的东西
     // ==========
 
-    pub fn update_state(&mut self, args: SkillArgs) { self.skill_type.update_state(args) }
+    pub fn update_state(&mut self, args: SkillArgs) { self.skill_type.update_state_with_level(self.level, args) }
 
-    pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) { self.skill_type.act(targets, smart, args) }
+    pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
+        self.skill_type.act_with_level(self.level, targets, smart, args)
+    }
 
-    pub fn pre_step(&mut self, step: i32, args: SkillArgs) -> i32 { self.skill_type.pre_step(step, args) }
+    pub fn pre_step(&mut self, step: i32, args: SkillArgs) -> i32 { self.skill_type.pre_step_with_level(self.level, step, args) }
 
-    pub fn pre_action(&mut self, args: SkillArgs) { self.skill_type.pre_action(args) }
+    pub fn pre_action(&mut self, args: SkillArgs) { self.skill_type.pre_action_with_level(self.level, args) }
 
-    pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action(args) }
+    pub fn pre_action_select(&mut self, smart: bool, args: SkillArgs) -> bool {
+        self.skill_type.pre_action_select_with_level(self.level, smart, args)
+    }
+
+    pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action_with_level(self.level, args) }
 
     pub fn pre_defend(&mut self, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 {
-        self.skill_type.pre_defend(atp, caster, is_mag, on_damage, args)
+        self.skill_type
+            .pre_defend_with_level(self.level, atp, caster, is_mag, on_damage, args)
     }
 
     pub fn post_defend(&mut self, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
-        self.skill_type.post_defend(dmg, caster, on_damage, args)
+        self.skill_type.post_defend_with_level(self.level, dmg, caster, on_damage, args)
     }
 
-    pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) { self.skill_type.post_damage(dmg, caster, args) }
+    pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
+        self.skill_type.post_damage_with_level(self.level, dmg, caster, args)
+    }
 
-    pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool { self.skill_type.die(oldhp, caster, args) }
+    pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
+        self.skill_type.die_with_level(self.level, oldhp, caster, args)
+    }
 
-    pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.skill_type.kill(target, args) }
+    pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.skill_type.kill_with_level(self.level, target, args) }
 
     pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }
+
+    pub fn prob(&self, smart: bool, args: SkillArgs) -> bool { self.skill_type.prob(self.level, smart, args) }
+
+    pub fn select_targets(&self, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
+        self.skill_type.select_targets_with_level(self.level, candidates, smart, args)
+    }
 
     pub fn has_action_impl(&self) -> bool { self.skill_type.has_action_impl() }
 

@@ -342,15 +342,22 @@ pub mod runners {
 
     impl TargetSystem {
         pub fn select_targets(&self, actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> Vec<PlrId> {
+            use crate::player::skill::charm::CharmState;
+
             let Some(team_idx) = world.team_index_of(actor) else {
                 return Vec::new();
             };
+            let effective_team = storage
+                .get_player(&actor)
+                .and_then(|player| player.get_state::<CharmState>())
+                .and_then(|charm| world.team_index_of(charm.group_id))
+                .unwrap_or(team_idx);
 
             world
                 .alives(storage)
                 .into_iter()
                 .enumerate()
-                .filter_map(|(idx, group)| if idx == team_idx { None } else { Some(group) })
+                .filter_map(|(idx, group)| if idx == effective_team { None } else { Some(group) })
                 .flatten()
                 .collect::<Vec<PlrId>>()
         }
@@ -631,9 +638,36 @@ pub mod runners {
             let raw_groups: Vec<Vec<String>> =
                 raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect();
 
-            // 修复是 TODO 项，先保留旧行为。
-            // TODO: 处理 “seed 独占一组” 的自动并组修复。
-            return (raw_groups, seed);
+            let mut groups = raw_groups;
+            let is_seed_only = |group: &Vec<String>| !group.is_empty() && group.iter().all(|name| Player::check_is_seed(name));
+            let mut idx = 0usize;
+            while idx < groups.len() {
+                if !is_seed_only(&groups[idx]) {
+                    idx += 1;
+                    continue;
+                }
+
+                // seed 独占组：优先并到前一个非 seed 组，否则并到后一个非 seed 组。
+                let prev = (0..idx).rev().find(|x| !is_seed_only(&groups[*x]));
+                let next = ((idx + 1)..groups.len()).find(|x| !is_seed_only(&groups[*x]));
+                let Some(target_idx) = prev.or(next) else {
+                    idx += 1;
+                    continue;
+                };
+
+                let seed_group = groups.remove(idx);
+                if target_idx < idx {
+                    groups[target_idx].extend(seed_group);
+                    idx = target_idx + 1;
+                } else {
+                    let adjusted = target_idx - 1;
+                    let mut merged = seed_group;
+                    merged.extend(groups[adjusted].clone());
+                    groups[adjusted] = merged;
+                    idx = adjusted + 1;
+                }
+            }
+            return (groups, seed);
         }
 
         #[inline]
@@ -844,19 +878,14 @@ mod group {
         fn need_fix_seed1() {
             let raw_input = "aaaa\nbbbb\n\nseed: a@!".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
-            // 这个用例目前不会自动修复成同组，保留旧行为。
-            assert_ne!(groups, (plrs!("aaaa", "bbbb", "seed: a@!"), plr!["seed: a@!"]))
+            assert_eq!(groups, (vec![plr!("aaaa", "bbbb", "seed: a@!")], plr!["seed: a@!"]))
         }
 
         #[test]
-        #[should_panic]
         fn need_fix_seed2() {
             let raw_input = "seed: a@!\n\naaaa\nbbbb".to_string();
             let groups = runners::Runner::spilt_namerena_into_groups(raw_input);
-            // 跟 need_fix_seed1 顺序相反。
-            assert_ne!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]));
-            // TODO: 等 seed 修复逻辑补齐后再调整断言。
-            assert_eq!(groups, (plrs!("seed: a@!", "aaaa", "bbbb"), plr!["seed: a@!"]))
+            assert_eq!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]))
         }
     }
 
@@ -896,6 +925,30 @@ mod group {
                 let plr = runner.storage.get_player(plr).expect("plr not found");
                 assert_eq!(plr.sort_int as u32, ints[i]);
             }
+        }
+
+        #[test]
+        fn charm_state_redirects_target_group() {
+            let raw_input = "a\nc\n\nb";
+            let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+            let actor = runner.world.groups[0][0];
+            let ally = runner.world.groups[0][1];
+            let enemy = runner.world.groups[1][0];
+            runner
+                .storage
+                .just_get_player_mut(actor)
+                .expect("cannot get actor")
+                .set_state(crate::player::skill::charm::CharmState {
+                    group_id: enemy,
+                    target: Some(actor),
+                    on_post_action: None,
+                    step: 2,
+                });
+
+            let target_system = runners::TargetSystem;
+            let targets = target_system.select_targets(actor, &runner.world, &runner.storage);
+            assert!(targets.contains(&ally));
+            assert!(!targets.contains(&enemy));
         }
     }
 }
