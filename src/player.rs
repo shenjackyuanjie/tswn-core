@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::error::player::{PlayerError, PlayerResult};
-use crate::player::skill::{Skill, store::SkillStorage};
+use crate::player::skill::{Skill, SkillTargetDomain, store::SkillStorage};
 use crate::rc4::RC4;
 use foldhash::HashMap as FastHashMap;
 
@@ -25,6 +25,25 @@ pub const MOVE_POINT_THRESHOLD: i32 = 2048;
 /// 玩家句柄（运行期唯一 ID）。
 /// 为兼容旧命名仍叫 `PlrId`，但语义已从“裸指针”切到“稳定 ID”。
 pub type PlrId = usize;
+
+#[derive(Clone, Debug, Default)]
+pub struct ActionTargets {
+    pub enemy_alive: Vec<PlrId>,
+    pub ally_alive: Vec<PlrId>,
+    pub ally_all: Vec<PlrId>,
+    pub ally_dead: Vec<PlrId>,
+    pub all_alive: Vec<PlrId>,
+}
+
+impl ActionTargets {
+    pub fn from_enemy_alive(enemy_alive: &[PlrId]) -> Self {
+        Self {
+            enemy_alive: enemy_alive.to_vec(),
+            all_alive: enemy_alive.to_vec(),
+            ..Self::default()
+        }
+    }
+}
 
 /// 火状态（参考 Dart `FireState`）。
 #[derive(Clone, Copy, Debug, Default)]
@@ -109,6 +128,9 @@ impl PlayerStateStore {
             self.states.remove(&tag);
         }
     }
+
+    #[inline]
+    pub fn negative_state_count(&self) -> usize { self.states.values().filter(|state| state.meta_type() < 0).count() }
 
     #[inline]
     fn fire_state(&self) -> Option<FireState> { self.get::<FireState>().copied() }
@@ -578,8 +600,15 @@ impl Player {
         match self.player_type {
             PlayerType::Boost => randomer.r127() < boost_value(&self.name),
             PlayerType::Boss => {
-                // Boss 对异常状态有更高抗性
-                randomer.r127() < 84
+                let threshold: u32 = match self.name.as_str() {
+                    // 高抗性 boss
+                    "saitama" => 112,
+                    "covid" => 104,
+                    "aokiji" => 96,
+                    // 默认 boss 抗性（对齐原始 c33）
+                    _ => 84,
+                };
+                randomer.r127() < threshold
             }
             _ => false,
         }
@@ -587,6 +616,12 @@ impl Player {
 
     /// 获取当前的玩家状态
     pub fn get_status(&self) -> &PlayerStatus { &self.status }
+
+    #[inline]
+    pub fn attr_sum(&self) -> i32 { self.attr.iter().map(|x| *x as i32).sum() }
+
+    #[inline]
+    pub fn negative_state_count(&self) -> usize { self.state.negative_state_count() }
 
     /// 获取玩家句柄（兼容旧接口名）。
     #[inline]
@@ -616,9 +651,10 @@ impl Player {
     /// - 具体属性 ( 8围 )
     /// - 技能熟练度
     pub fn build(&mut self) {
-        // TODO: 武器 pre upgrade
-        if let Some(_weapon) = &self.weapon {
-            // weapon
+        let equipped_weapon = self.weapon.clone();
+        if let Some(weapon_name) = equipped_weapon.as_deref() {
+            let weapon = weapons::Weapon::from_name(weapon_name);
+            weapon.pre_upgrade(self);
         }
 
         // init raw attr
@@ -665,9 +701,9 @@ impl Player {
             }
         }
 
-        // TODO: 武器 post upgrade
-        if let Some(_weapon) = &self.weapon {
-            // weapon
+        if let Some(weapon_name) = equipped_weapon.as_deref() {
+            let weapon = weapons::Weapon::from_name(weapon_name);
+            weapon.post_upgrade(self);
         }
 
         // boost skills(addSkillsToProc)
@@ -839,7 +875,7 @@ impl Player {
     /// 每回合中的玩家行动
     ///
     /// 包括 pre, main, post
-    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &[PlrId]) {
+    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
         if !self.status.alive() {
             return;
         }
@@ -858,7 +894,7 @@ impl Player {
         // 结束
     }
 
-    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &[PlrId]) {
+    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
         use crate::player::skill::berserk::BerserkState;
 
         let smart = self.status.wisdom > randomer.r63() as i32;
@@ -872,7 +908,7 @@ impl Player {
         let mut acted = false;
         let mut selected_skill_key: Option<usize> = forced_skill;
         if self.has_state::<BerserkState>() {
-            self.default_attack(false, randomer, updates, storage, targets);
+            self.default_attack(false, randomer, updates, storage, &targets.enemy_alive);
             acted = true;
         } else if selected_skill_key.is_none() && self.status.mp >= req_mp {
             self.status.mp -= req_mp;
@@ -890,9 +926,18 @@ impl Player {
         }
 
         if let Some(skill_key) = selected_skill_key {
+            let self_candidates = [ptr];
             let selected_targets = {
                 let skill = self.skills.skill_by_id(skill_key);
-                skill.select_targets(targets, smart, (ptr, randomer, updates, storage))
+                let candidates: &[PlrId] = match skill.target_domain() {
+                    SkillTargetDomain::EnemyAlive => targets.enemy_alive.as_slice(),
+                    SkillTargetDomain::AllyAlive => targets.ally_alive.as_slice(),
+                    SkillTargetDomain::AllyAny => targets.ally_all.as_slice(),
+                    SkillTargetDomain::AllyDead => targets.ally_dead.as_slice(),
+                    SkillTargetDomain::SelfOnly => &self_candidates,
+                    SkillTargetDomain::AllAlive => targets.all_alive.as_slice(),
+                };
+                skill.select_targets(candidates, smart, (ptr, randomer, updates, storage))
             };
             if !selected_targets.is_empty() {
                 let skill = self.skills.skill_by_id_mut(skill_key);
@@ -902,7 +947,7 @@ impl Player {
         }
 
         if !acted {
-            self.default_attack(smart, randomer, updates, storage, targets);
+            self.default_attack(smart, randomer, updates, storage, &targets.enemy_alive);
         }
 
         let recover_threshold = (self.status.wisdom + 64).clamp(0, 127) as u32;
@@ -1118,6 +1163,88 @@ impl Player {
         }
     }
 
+    fn apply_pre_defend_states(
+        &mut self,
+        atp: f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> f64 {
+        use crate::player::skill::protect::ProtectState;
+
+        let target_id = self.as_ptr();
+        let links = self
+            .get_state::<ProtectState>()
+            .map(|state| state.protect_from.clone())
+            .unwrap_or_default();
+        if links.is_empty() {
+            return atp;
+        }
+
+        let mut stale_owners = Vec::new();
+        for link in links {
+            let protector_alive = storage.get_player(&link.owner).map(|p| p.alive()).unwrap_or(false);
+            if !protector_alive {
+                stale_owners.push(link.owner);
+                continue;
+            }
+            if randomer.r127() >= link.level {
+                continue;
+            }
+            let protector_ready = {
+                let protector = storage
+                    .just_get_player_mut(link.owner)
+                    .expect("cannot get protect owner from storage");
+                protector.mp_ready(randomer)
+            };
+            if !protector_ready {
+                continue;
+            }
+
+            updates.add(RunUpdate::new("[0][守护][1]", link.owner, target_id, 40));
+            let redirected_atp = {
+                let protector = storage
+                    .just_get_player_mut(link.owner)
+                    .expect("cannot get protect owner from storage");
+                protector.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage)
+            };
+            if redirected_atp == 0.0 {
+                return 0.0;
+            }
+            let mut redirected_dmg = {
+                let protector = storage.get_player(&link.owner).expect("cannot get protect owner from storage");
+                (redirected_atp * 0.5 / protector.get_df(is_mag) as f64).floor() as i32
+            };
+            redirected_dmg = {
+                let protector = storage
+                    .just_get_player_mut(link.owner)
+                    .expect("cannot get protect owner from storage");
+                protector.post_defend(redirected_dmg, caster, on_damage, randomer, updates, storage)
+            };
+            storage
+                .just_get_player_mut(link.owner)
+                .expect("cannot get protect owner from storage")
+                .damage(redirected_dmg, caster, on_damage, randomer, updates, storage);
+            return 0.0;
+        }
+
+        if !stale_owners.is_empty() {
+            let mut clear_state = false;
+            if let Some(state) = self.get_state_mut::<ProtectState>() {
+                state.protect_from.retain(|entry| !stale_owners.contains(&entry.owner));
+                clear_state = state.protect_from.is_empty();
+            }
+            if clear_state {
+                self.clear_state::<ProtectState>();
+            }
+        }
+
+        atp
+    }
+
     fn apply_post_defend_states(&mut self, mut dmg: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates) -> i32 {
         use crate::player::skill::{curse::CurseState, shield::ShieldState};
 
@@ -1225,7 +1352,7 @@ impl Player {
     /// preDefend
     pub fn pre_defend(
         &mut self,
-        atp: f64,
+        mut atp: f64,
         is_mag: bool,
         caster: PlrId,
         on_damage: OnDamageFunc,
@@ -1233,6 +1360,10 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> f64 {
+        atp = self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        if atp == 0.0 {
+            return 0.0;
+        }
         self.skills
             .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage))
     }
@@ -1324,7 +1455,7 @@ impl Player {
             return 0;
         }
         if dmg == 0 {
-            let update = RunUpdate::new("[0]受到[2]点伤害", self.as_ptr(), self.as_ptr(), 10);
+            let update = RunUpdate::new("[0]受到[2]点伤害[s_dmg0]", self.as_ptr(), self.as_ptr(), 10);
             updates.add(update);
             return 0;
         }
@@ -1333,8 +1464,14 @@ impl Player {
         if self.status.hp < 0 {
             self.status.hp = 0;
         }
-        // TODO: > 160/120 的特殊标记
-        let update = RunUpdate::new("[0]受到[2]点伤害", caster, self.as_ptr(), dmg as u32);
+        let mut msg = "[0]受到[2]点伤害".to_string();
+        if dmg >= 160 {
+            msg.push_str("[s_dmg160]");
+        } else if dmg >= 120 {
+            msg.push_str("[s_dmg120]");
+        }
+        let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
+        update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
         updates.add(update);
         on_damage(caster, self.as_ptr(), dmg, randomer, updates);
         self.on_damaged(dmg, old_hp, caster, randomer, updates, storage)
@@ -1371,20 +1508,47 @@ impl Player {
     fn get_die_message(&self) -> &'static str { "[1]被击倒了" }
 
     pub fn on_die(&mut self, old_hp: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        if self.status.hp > 0 {
-            return;
-        }
+        use crate::player::skill::act::minion::MinionRuntimeState;
 
-        let ptr = self.as_ptr();
-        self.skills.die(old_hp, caster, (ptr, randomer, updates, storage));
         if self.status.hp > 0 {
             return;
         }
 
         updates.add(RunUpdate::new_newline());
         updates.add(RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
+
+        let ptr = self.as_ptr();
+        self.skills.die(old_hp, caster, (ptr, randomer, updates, storage));
+        if self.status.hp > 0 {
+            return;
+        }
         self.status.hp = 0;
         self.status.set_alive(false);
+
+        let owner_id = self.as_ptr();
+        let linked_minions = storage
+            .all_player_ids()
+            .into_iter()
+            .filter(|id| *id != owner_id)
+            .filter(|id| {
+                storage
+                    .get_player(id)
+                    .and_then(|player| player.get_state::<MinionRuntimeState>())
+                    .map(|state| state.owner == Some(owner_id))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<PlrId>>();
+        for minion_id in linked_minions {
+            if let Some(minion) = storage.just_get_player_mut(minion_id)
+                && minion.alive()
+            {
+                minion.status.hp = 0;
+                minion.status.set_alive(false);
+                updates.add(RunUpdate::new_newline());
+                updates.add(RunUpdate::new("[1]消失了", owner_id, minion_id, 30));
+            }
+            storage.queue_remove_player(minion_id);
+        }
     }
 }
 
@@ -1755,7 +1919,7 @@ mod test {
             atp: 80.0,
             count: 1,
         });
-        player.action(&mut randomer, &mut updates, &storage, &[]);
+        player.action(&mut randomer, &mut updates, &storage, &ActionTargets::default());
 
         assert!(!player.has_state::<crate::player::skill::poison::PoisonState>());
         assert!(updates.updates.iter().any(|x| x.message.contains("[毒性发作]")));
@@ -1819,7 +1983,7 @@ mod test {
             on_post_action: None,
             step: 1,
         });
-        player.action(&mut randomer, &mut updates, &storage, &[]);
+        player.action(&mut randomer, &mut updates, &storage, &ActionTargets::default());
 
         assert!(!player.has_state::<crate::player::skill::berserk::BerserkState>());
         assert!(!player.has_state::<crate::player::skill::charm::CharmState>());
@@ -1878,8 +2042,140 @@ mod test {
         target_mut.status.hp = 100;
         target_mut.status.max_hp = 100;
 
-        attacker_mut.action(&mut randomer, &mut updates, &storage, &[target_id]);
+        attacker_mut.action(
+            &mut randomer,
+            &mut updates,
+            &storage,
+            &ActionTargets::from_enemy_alive(&[target_id]),
+        );
         assert!(updates.updates.iter().any(|x| x.message.contains("火球术")));
+    }
+
+    #[test]
+    fn heal_action_targets_injured_ally() {
+        let storage = Storage::new_arc();
+        let healer = Player::new_from_namerena_raw("healer@red".to_string(), storage.clone()).unwrap();
+        let ally = Player::new_from_namerena_raw("ally@red".to_string(), storage.clone()).unwrap();
+        let enemy = Player::new_from_namerena_raw("enemy@blue".to_string(), storage.clone()).unwrap();
+        let healer_id = storage.just_insert_player(healer);
+        let ally_id = storage.just_insert_player(ally);
+        let enemy_id = storage.just_insert_player(enemy);
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        let healer_mut = storage.just_get_player_mut(healer_id).unwrap();
+        healer_mut.status.mp = 999;
+        healer_mut.skills.add_skill(Skill::new_with_id(255, 15));
+        healer_mut.skills.update_proc();
+        let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
+        ally_mut.status.max_hp = 240;
+        ally_mut.status.hp = 40;
+        let old_ally_hp = ally_mut.status.hp;
+
+        let targets = ActionTargets {
+            enemy_alive: vec![enemy_id],
+            ally_alive: vec![healer_id, ally_id],
+            ally_all: vec![healer_id, ally_id],
+            ally_dead: vec![],
+            all_alive: vec![healer_id, ally_id, enemy_id],
+        };
+        healer_mut.action(&mut randomer, &mut updates, &storage, &targets);
+
+        let healed_hp = storage.get_player(&ally_id).unwrap().get_status().hp;
+        assert!(healed_hp > old_ally_hp);
+        assert!(updates
+            .updates
+            .iter()
+            .any(|u| u.message.contains("治愈魔法") && u.target == ally_id));
+    }
+
+    #[test]
+    fn revive_action_targets_dead_ally() {
+        let storage = Storage::new_arc();
+        let healer = Player::new_from_namerena_raw("reviver@red".to_string(), storage.clone()).unwrap();
+        let ally = Player::new_from_namerena_raw("corpse@red".to_string(), storage.clone()).unwrap();
+        let enemy = Player::new_from_namerena_raw("enemy@blue".to_string(), storage.clone()).unwrap();
+        let healer_id = storage.just_insert_player(healer);
+        let ally_id = storage.just_insert_player(ally);
+        let enemy_id = storage.just_insert_player(enemy);
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        let healer_mut = storage.just_get_player_mut(healer_id).unwrap();
+        healer_mut.status.mp = 999;
+        healer_mut.skills.add_skill(Skill::new_with_id(255, 16));
+        healer_mut.skills.update_proc();
+        let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
+        ally_mut.status.max_hp = 200;
+        ally_mut.status.hp = 0;
+        ally_mut.status.set_alive(false);
+
+        let targets = ActionTargets {
+            enemy_alive: vec![enemy_id],
+            ally_alive: vec![healer_id],
+            ally_all: vec![healer_id, ally_id],
+            ally_dead: vec![ally_id],
+            all_alive: vec![healer_id, enemy_id],
+        };
+        healer_mut.action(&mut randomer, &mut updates, &storage, &targets);
+
+        let revived = storage.get_player(&ally_id).unwrap();
+        assert!(revived.alive());
+        assert!(revived.get_status().hp > 0);
+        assert!(updates
+            .updates
+            .iter()
+            .any(|u| u.message.contains("苏生术") && u.target == ally_id));
+    }
+
+    #[test]
+    fn protect_redirects_damage_to_protector() {
+        let storage = Storage::new_arc();
+        let protector = Player::new_from_namerena_raw("protector@red".to_string(), storage.clone()).unwrap();
+        let ally = Player::new_from_namerena_raw("ally@red".to_string(), storage.clone()).unwrap();
+        let enemy = Player::new_from_namerena_raw("enemy@blue".to_string(), storage.clone()).unwrap();
+        let protector_id = storage.just_insert_player(protector);
+        let ally_id = storage.just_insert_player(ally);
+        let enemy_id = storage.just_insert_player(enemy);
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        let protector_mut = storage.just_get_player_mut(protector_id).unwrap();
+        protector_mut.status.mp = 999;
+        protector_mut.status.hp = 300;
+        protector_mut.status.max_hp = 300;
+        protector_mut.skills.add_skill(Skill::new_with_id(255, 26));
+        protector_mut.skills.update_proc();
+        let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
+        ally_mut.status.hp = 280;
+        ally_mut.status.max_hp = 280;
+
+        let targets = ActionTargets {
+            enemy_alive: vec![enemy_id],
+            ally_alive: vec![protector_id, ally_id],
+            ally_all: vec![protector_id, ally_id],
+            ally_dead: vec![],
+            all_alive: vec![protector_id, ally_id, enemy_id],
+        };
+        protector_mut.action(&mut randomer, &mut updates, &storage, &targets);
+        assert!(storage
+            .get_player(&ally_id)
+            .unwrap()
+            .has_state::<crate::player::skill::protect::ProtectState>());
+
+        let protector_hp_before = storage.get_player(&protector_id).unwrap().get_status().hp;
+        let ally_hp_before = storage.get_player(&ally_id).unwrap().get_status().hp;
+        let mut damage_updates = RunUpdates::new();
+        storage
+            .just_get_player_mut(ally_id)
+            .unwrap()
+            .attacked(260.0, false, enemy_id, noop_on_damage, &mut randomer, &mut damage_updates, &storage);
+
+        let protector_hp_after = storage.get_player(&protector_id).unwrap().get_status().hp;
+        let ally_hp_after = storage.get_player(&ally_id).unwrap().get_status().hp;
+        assert!(protector_hp_after < protector_hp_before);
+        assert_eq!(ally_hp_after, ally_hp_before);
+        assert!(damage_updates.updates.iter().any(|u| u.message.contains("[守护]")));
     }
 
     #[test]
@@ -1900,7 +2196,12 @@ mod test {
         target_mut.status.hp = 100;
         target_mut.status.max_hp = 100;
 
-        attacker_mut.action(&mut randomer, &mut updates, &storage, &[target_id]);
+        attacker_mut.action(
+            &mut randomer,
+            &mut updates,
+            &storage,
+            &ActionTargets::from_enemy_alive(&[target_id]),
+        );
         assert!(updates.updates.iter().any(|x| x.message.contains("发起攻击")));
     }
 
@@ -1947,11 +2248,205 @@ mod test {
         attacker_mut.skills.add_skill(Skill::new_with_id(255, 21));
         attacker_mut.skills.update_proc();
 
-        attacker_mut.action(&mut randomer, &mut updates, &storage, &[target_id]);
+        attacker_mut.action(
+            &mut randomer,
+            &mut updates,
+            &storage,
+            &ActionTargets::from_enemy_alive(&[target_id]),
+        );
         assert!(updates.updates.iter().any(|x| x.message.contains("潜行")));
 
         let mut updates2 = RunUpdates::new();
-        attacker_mut.action(&mut randomer, &mut updates2, &storage, &[target_id]);
+        attacker_mut.action(
+            &mut randomer,
+            &mut updates2,
+            &storage,
+            &ActionTargets::from_enemy_alive(&[target_id]),
+        );
         assert!(updates2.updates.iter().any(|x| x.message.contains("背刺")));
+    }
+
+    #[test]
+    fn damage_marks_high_damage_thresholds() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+        player.status.hp = 500;
+        player.status.max_hp = 500;
+
+        player.damage(130, player.as_ptr(), noop_on_damage, &mut randomer, &mut updates, &storage);
+        let hit120 = updates.updates.last().expect("120 damage update missing");
+        assert!(hit120.message.contains("s_dmg120"));
+        assert_eq!(hit120.delay0, 1260);
+
+        player.status.hp = 500;
+        updates.updates.clear();
+        player.damage(170, player.as_ptr(), noop_on_damage, &mut randomer, &mut updates, &storage);
+        let hit160 = updates.updates.last().expect("160 damage update missing");
+        assert!(hit160.message.contains("s_dmg160"));
+        assert_eq!(hit160.delay0, 1340);
+    }
+
+    #[test]
+    fn build_applies_s11_weapon_bonus() {
+        let storage = Storage::new_arc();
+        let mut base = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let mut with_weapon = Player::new_from_namerena_raw("aaa+剁手刀".to_string(), storage.clone()).unwrap();
+        base.build();
+        with_weapon.build();
+        assert_eq!(with_weapon.attr[0], base.attr[0] + 11);
+        assert_eq!(with_weapon.attr[2], base.attr[2] + 11);
+    }
+
+    #[test]
+    fn boss_has_higher_state_immunity() {
+        let storage = Storage::new_arc();
+        let boss = Player::new_from_namerena_raw("saitama@!".to_string(), storage.clone()).unwrap();
+        let normal = Player::new_from_namerena_raw("normal".to_string(), storage.clone()).unwrap();
+        let mut randomer = RC4 {
+            i: 0,
+            j: 0,
+            main_val: vec![0; 256],
+        };
+        assert!(boss.check_immune(state_tag::<FireState>(), &mut randomer));
+        assert!(!normal.check_immune(state_tag::<FireState>(), &mut randomer));
+    }
+
+    #[test]
+    fn merge_kill_applies_owner_growth() {
+        let storage = Storage::new_arc();
+        let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+        let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        let owner_id = storage.just_insert_player(owner);
+        let target_id = storage.just_insert_player(target);
+        let mut randomer = RC4 {
+            i: 0,
+            j: 0,
+            main_val: vec![0; 256],
+        };
+        let mut updates = RunUpdates::new();
+
+        {
+            let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+            owner_mut.status.hp = 200;
+            owner_mut.status.max_hp = 200;
+            owner_mut.skills.add_skill(Skill::new_with_id(255, 31));
+            owner_mut.skills.update_proc();
+            owner_mut.update_states();
+            owner_mut.skills.update_state((owner_id, &mut randomer, &mut updates, &storage));
+        }
+        let base_attack = storage.get_player(&owner_id).unwrap().get_status().attack;
+
+        {
+            let target_mut = storage.just_get_player_mut(target_id).unwrap();
+            target_mut.status.hp = 120;
+            target_mut.status.max_hp = 240;
+            target_mut.attr = [90, 80, 170, 70, 75, 65, 60, 240];
+            target_mut.status.attack = 90;
+            target_mut.status.defense = 80;
+            target_mut.status.speed = 170;
+            target_mut.status.agility = 70;
+            target_mut.status.magic = 75;
+            target_mut.status.resistance = 65;
+            target_mut.status.wisdom = 60;
+            target_mut.status.mp = 64;
+            target_mut.status.move_point = 512;
+            target_mut.status.set_alive(true);
+        }
+
+        storage
+            .just_get_player_mut(target_id)
+            .unwrap()
+            .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+        {
+            let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+            owner_mut.update_states();
+            owner_mut.skills.update_state((owner_id, &mut randomer, &mut updates, &storage));
+            assert!(owner_mut.get_status().attack > base_attack);
+            assert!(owner_mut.has_state::<crate::player::skill::merge::MergeState>());
+        }
+    }
+
+    #[test]
+    fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
+        let storage = Storage::new_arc();
+        let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+        let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        let owner_id = storage.just_insert_player(owner);
+        let target_id = storage.just_insert_player(target);
+        let mut randomer = RC4 {
+            i: 0,
+            j: 0,
+            main_val: vec![0; 256],
+        };
+        let mut updates = RunUpdates::new();
+
+        {
+            let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+            owner_mut.status.hp = 160;
+            owner_mut.status.max_hp = 160;
+            owner_mut.skills.add_skill(Skill::new_with_id(255, 32));
+            owner_mut.skills.update_proc();
+            owner_mut.status.mp = 999;
+        }
+
+        {
+            let target_mut = storage.just_get_player_mut(target_id).unwrap();
+            target_mut.status.hp = 100;
+            target_mut.status.max_hp = 200;
+            target_mut.status.wisdom = 80;
+            target_mut.status.set_alive(true);
+        }
+
+        storage
+            .just_get_player_mut(target_id)
+            .unwrap()
+            .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+        {
+            let target_mut = storage.just_get_player_mut(target_id).unwrap();
+            assert!(!target_mut.alive());
+            assert_eq!(target_mut.get_status().hp, 0);
+            assert!(target_mut.has_state::<crate::player::skill::zombie::ZombieState>());
+        }
+        let pending = storage.take_pending_spawns();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].owner, owner_id);
+        assert!(pending[0]
+            .player
+            .has_state::<crate::player::skill::act::minion::MinionRuntimeState>());
+        assert!(updates.updates.iter().any(|x| x.message.contains("变成了")));
+    }
+
+    #[test]
+    fn owner_death_marks_linked_minion_for_cleanup() {
+        let storage = Storage::new_arc();
+        let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+        let owner_id = storage.just_insert_player(owner);
+        let mut minion = storage.get_player(&owner_id).expect("cannot get owner").clone();
+        minion.id = storage.new_plr_id();
+        minion.name = "owner?m".to_string();
+        minion.set_state(crate::player::skill::act::minion::MinionRuntimeState {
+            owner: Some(owner_id),
+            kind: crate::player::skill::act::minion::MinionKind::Clone,
+        });
+        let minion_id = storage.just_insert_player(minion);
+        let mut randomer = RC4 {
+            i: 0,
+            j: 0,
+            main_val: vec![0; 256],
+        };
+        let mut updates = RunUpdates::new();
+
+        storage
+            .just_get_player_mut(owner_id)
+            .unwrap()
+            .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+        assert!(!storage.get_player(&minion_id).expect("minion should exist").alive());
+        let pending_remove = storage.take_pending_remove_players();
+        assert!(pending_remove.contains(&minion_id));
     }
 }

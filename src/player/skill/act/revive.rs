@@ -1,7 +1,10 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::act::minion::MinionRuntimeState,
+    skill::merge::MergeState,
+    skill::zombie::ZombieState,
 };
 
 #[derive(Debug, Clone)]
@@ -26,21 +29,36 @@ impl SkillTrait for ReviveSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn post_act_level(&self, level: u32) -> u32 { (level + 1) >> 1 }
+
     fn has_action_impl(&self) -> bool { true }
 
-    fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
-        let owner = args.3.get_player(&args.0).expect("cannot get revive owner from storage");
-        if smart && owner.get_status().hp > owner.get_status().max_hp / 2 {
+    fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyDead }
+
+    fn select_target_count_with_level(&self, _level: u32, _smart: bool) -> usize { 1 }
+
+    fn valid_target_with_level(&self, _level: u32, target: PlrId, _smart: bool, args: SkillArgs) -> bool {
+        let Some(target_plr) = args.3.get_player(&target) else {
             return false;
+        };
+        !target_plr.alive()
+            && !target_plr.has_state::<MinionRuntimeState>()
+            && !target_plr.has_state::<MergeState>()
+            && !target_plr.has_state::<ZombieState>()
+    }
+
+    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return f64::MIN;
+        };
+        if smart {
+            target_plr.attr_sum() as f64
+        } else {
+            args.1.rFFFF() as f64
         }
-        args.1.r127() < level
     }
 
-    fn select_targets_with_level(&self, _level: u32, _candidates: &[PlrId], _smart: bool, args: SkillArgs) -> Vec<PlrId> {
-        vec![args.0]
-    }
-
-    fn act_with_level(&mut self, level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }
@@ -50,35 +68,20 @@ impl SkillTrait for ReviveSkill {
             .get_player(&args.0)
             .expect("cannot get revive owner from storage")
             .get_at(true, args.1);
-        let mut heal = (atp / 75.0).ceil() as i32 + (level as i32 / 16);
-        if heal <= 0 {
-            heal = 1;
-        }
+        let mut heal = (atp / 75.0).ceil() as i32;
         let max_hp = args
             .3
             .get_player(&target_id)
             .expect("cannot get revive target from storage")
             .get_status()
             .max_hp;
-        if heal > max_hp {
-            heal = max_hp;
-        }
+        heal = heal.clamp(1, max_hp.max(1));
         args.2.add(RunUpdate::new("[0]使用[苏生术]", args.0, target_id, 40));
         let target = args.3.just_get_player_mut(target_id).expect("cannot get revive target from storage");
         if target.alive() {
-            target.damage(-heal, args.0, on_revive, args.1, args.2, args.3);
-        } else {
-            target.revive_with_hp(heal);
-            args.2.add(RunUpdate::new("[1][复活]了", args.0, target_id, (heal + 60) as u32));
+            return;
         }
+        target.revive_with_hp(heal);
+        args.2.add(RunUpdate::new("[1][复活]了", args.0, target_id, (heal + 60) as u32));
     }
-}
-
-fn on_revive(
-    _caster: PlrId,
-    _target: PlrId,
-    _dmg: i32,
-    _r: &mut crate::rc4::RC4,
-    _updates: &mut crate::engine::update::RunUpdates,
-) {
 }

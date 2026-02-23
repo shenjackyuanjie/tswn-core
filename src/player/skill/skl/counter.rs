@@ -8,7 +8,6 @@ use crate::rc4::RC4;
 #[derive(Debug, Clone)]
 pub struct CounterSkill {
     pub pending: bool,
-    pub last_updates: Option<RunUpdates>,
     pub last_target: Option<PlrId>,
 }
 
@@ -16,7 +15,6 @@ impl Default for CounterSkill {
     fn default() -> Self {
         Self {
             pending: false,
-            last_updates: None,
             last_target: None,
         }
     }
@@ -37,6 +35,18 @@ impl SkillTrait for CounterSkill {
 
     fn post_damage_with_level(&mut self, level: u32, dmg: i32, caster: PlrId, args: SkillArgs) {
         if dmg <= 0 {
+            return;
+        }
+        let (owner_wisdom, owner_clan) = {
+            let owner = args.3.get_player(&args.0).expect("cannot get counter owner from storage");
+            (owner.get_status().wisdom.clamp(0, 127) as u32, owner.clan_name())
+        };
+        let caster_clan = args
+            .3
+            .get_player(&caster)
+            .expect("cannot get counter caster from storage")
+            .clan_name();
+        if owner_clan == caster_clan && args.1.r63() < owner_wisdom {
             return;
         }
         if args.1.r255() < level {

@@ -39,6 +39,16 @@ pub enum ProcKind {
     PostKill,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SkillTargetDomain {
+    EnemyAlive,
+    AllyAlive,
+    AllyAny,
+    AllyDead,
+    SelfOnly,
+    AllAlive,
+}
+
 #[allow(unused_variables, unused_mut)]
 pub trait SkillTrait: Debug {
     // ===== 必须实现的 =====
@@ -56,6 +66,7 @@ pub trait SkillTrait: Debug {
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
         self.act(targets, smart, args)
     }
+    fn post_act_level(&self, level: u32) -> u32 { level }
 
     fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 { step }
     fn pre_step_with_level(&mut self, _level: u32, step: i32, args: SkillArgs) -> i32 { self.pre_step(step, args) }
@@ -114,6 +125,10 @@ pub trait SkillTrait: Debug {
 
     /// 技能触发概率（默认对齐 Dart: r127 < level）
     fn prob(&self, level: u32, _smart: bool, args: SkillArgs) -> bool { args.1.r127() < level }
+
+    /// 技能目标来源域。
+    fn target_domain(&self) -> SkillTargetDomain { SkillTargetDomain::EnemyAlive }
+    fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { self.target_domain() }
 
     /// 技能选目标数量（默认对齐 Dart）
     fn select_target_count(&self, smart: bool) -> usize { if smart { 3 } else { 2 } }
@@ -315,6 +330,8 @@ impl Skill {
     /// 获取技能等级
     pub fn level(&self) -> u32 { self.level }
 
+    pub fn set_level(&mut self, level: u32) { self.level = level; }
+
     // ==========
     // 以下是技能 call pre/post 之类的东西
     // ==========
@@ -322,7 +339,9 @@ impl Skill {
     pub fn update_state(&mut self, args: SkillArgs) { self.skill_type.update_state_with_level(self.level, args) }
 
     pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
-        self.skill_type.act_with_level(self.level, targets, smart, args)
+        let current_level = self.level;
+        self.skill_type.act_with_level(current_level, targets, smart, args);
+        self.level = self.skill_type.post_act_level(current_level);
     }
 
     pub fn pre_step(&mut self, step: i32, args: SkillArgs) -> i32 { self.skill_type.pre_step_with_level(self.level, step, args) }
@@ -357,6 +376,8 @@ impl Skill {
     pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }
 
     pub fn prob(&self, smart: bool, args: SkillArgs) -> bool { self.skill_type.prob(self.level, smart, args) }
+
+    pub fn target_domain(&self) -> SkillTargetDomain { self.skill_type.target_domain_with_level(self.level) }
 
     pub fn select_targets(&self, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
         self.skill_type.select_targets_with_level(self.level, candidates, smart, args)

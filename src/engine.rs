@@ -29,6 +29,12 @@ pub mod storage {
         pub fn raw(self) -> usize { self.0 }
     }
 
+    #[derive(Debug, Clone)]
+    pub struct PendingSpawn {
+        pub owner: PlrId,
+        pub player: Player,
+    }
+
     /// 运行期数据仓库。
     ///
     /// 使用 `foldhash::HashMap`，性能优先于标准库 `HashMap`。
@@ -40,6 +46,10 @@ pub mod storage {
         groups: FastHashMap<usize, Vec<PlrId>>,
         /// 存玩家实体。
         players: FastHashMap<PlrId, Player>,
+        /// 延迟到引擎 tick 同步的新增实体。
+        pending_spawns: Vec<PendingSpawn>,
+        /// 延迟到引擎 tick 同步的移除实体。
+        pending_remove_players: Vec<PlrId>,
         /// 玩家 ID 自增计数器。
         player_id_counter: AtomicU64,
     }
@@ -51,6 +61,8 @@ pub mod storage {
                 skills: FastHashMap::new(),
                 groups: FastHashMap::new(),
                 players: FastHashMap::new(),
+                pending_spawns: Vec::new(),
+                pending_remove_players: Vec::new(),
                 player_id_counter: AtomicU64::new(0),
             }
         }
@@ -61,6 +73,8 @@ pub mod storage {
             self.skills.clear();
             self.groups.clear();
             self.players.clear();
+            self.pending_spawns.clear();
+            self.pending_remove_players.clear();
         }
 
         /// 生成一个新的玩家 ID。
@@ -69,6 +83,22 @@ pub mod storage {
         pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) { self.groups.insert(id, plrs); }
 
         pub fn get_group(&self, id: usize) -> Option<&Vec<PlrId>> { self.groups.get(&id) }
+
+        pub fn group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
+            self.groups.values().find(|group| group.contains(&actor))
+        }
+
+        pub fn all_player_ids(&self) -> Vec<PlrId> { self.players.keys().copied().collect() }
+
+        pub fn sync_groups(&self, groups: &[Vec<PlrId>]) {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                (*mut_slf).groups.clear();
+                for (idx, group) in groups.iter().enumerate() {
+                    (*mut_slf).groups.insert(idx, group.clone());
+                }
+            }
+        }
 
         /// 获取技能。
         pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
@@ -135,6 +165,36 @@ pub mod storage {
             }
         }
 
+        pub fn queue_spawn(&self, owner: PlrId, player: Player) {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                (*mut_slf).pending_spawns.push(PendingSpawn { owner, player });
+            }
+        }
+
+        pub fn take_pending_spawns(&self) -> Vec<PendingSpawn> {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                std::mem::take(&mut (*mut_slf).pending_spawns)
+            }
+        }
+
+        pub fn queue_remove_player(&self, ptr: PlrId) {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                if !(*mut_slf).pending_remove_players.contains(&ptr) {
+                    (*mut_slf).pending_remove_players.push(ptr);
+                }
+            }
+        }
+
+        pub fn take_pending_remove_players(&self) -> Vec<PlrId> {
+            unsafe {
+                let mut_slf = self as *const Storage as *mut Storage;
+                std::mem::take(&mut (*mut_slf).pending_remove_players)
+            }
+        }
+
         /// 删除技能（安全版本）。
         pub fn remove_skill(&mut self, id: SkillId) -> Option<Skill> { self.skills.remove(&id.0) }
 
@@ -165,7 +225,7 @@ pub mod runners {
     use crate::engine::storage::Storage;
     use crate::engine::update::RunUpdates;
     use crate::error::runner::RunnerResult;
-    use crate::player::{Player, PlrId};
+    use crate::player::{ActionTargets, Player, PlrId};
     use crate::rc4::RC4;
 
     pub type PlayerGroup = Vec<Player>;
@@ -341,25 +401,47 @@ pub mod runners {
     pub struct TargetSystem;
 
     impl TargetSystem {
-        pub fn select_targets(&self, actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> Vec<PlrId> {
+        pub fn select_targets(&self, actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
             use crate::player::skill::charm::CharmState;
 
             let Some(team_idx) = world.team_index_of(actor) else {
-                return Vec::new();
+                return ActionTargets::default();
             };
             let effective_team = storage
                 .get_player(&actor)
                 .and_then(|player| player.get_state::<CharmState>())
                 .and_then(|charm| world.team_index_of(charm.group_id))
                 .unwrap_or(team_idx);
+            let Some(ally_all) = world.groups.get(effective_team).cloned() else {
+                return ActionTargets::default();
+            };
 
-            world
-                .alives(storage)
+            let alive_groups = world.alives(storage);
+            let all_alive = alive_groups.iter().flatten().copied().collect::<Vec<PlrId>>();
+            let enemy_alive = alive_groups
                 .into_iter()
                 .enumerate()
                 .filter_map(|(idx, group)| if idx == effective_team { None } else { Some(group) })
                 .flatten()
-                .collect::<Vec<PlrId>>()
+                .collect::<Vec<PlrId>>();
+            let ally_alive = ally_all
+                .iter()
+                .copied()
+                .filter(|id| storage.get_player(id).map(|x| x.get_status().alive()).unwrap_or(false))
+                .collect::<Vec<PlrId>>();
+            let ally_dead = ally_all
+                .iter()
+                .copied()
+                .filter(|id| !storage.get_player(id).map(|x| x.get_status().alive()).unwrap_or(false))
+                .collect::<Vec<PlrId>>();
+
+            ActionTargets {
+                enemy_alive,
+                ally_alive,
+                ally_all,
+                ally_dead,
+                all_alive,
+            }
         }
     }
 
@@ -377,7 +459,7 @@ pub mod runners {
             &self,
             actor: PlrId,
             decision: ActionDecision,
-            _targets: &[PlrId],
+            targets: &ActionTargets,
             ctx: &mut TickContext<'_>,
             hooks: &HookPipeline,
         ) {
@@ -385,7 +467,7 @@ pub mod runners {
                 ActionDecision::StepDriver => {
                     hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
                     if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
-                        plr.step(ctx.randomer, ctx.updates, ctx.storage, _targets);
+                        plr.step(ctx.randomer, ctx.updates, ctx.storage, targets);
                     }
                     hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
                 }
@@ -437,7 +519,35 @@ pub mod runners {
 
         pub fn register_post_action_hook(&mut self, hook: ActorHook) { self.hooks.register_post_action(hook); }
 
+        fn sync_runtime_entities(&self, world: &mut WorldState, storage: &Arc<Storage>) {
+            let pending_spawns = storage.take_pending_spawns();
+            for pending in pending_spawns {
+                let owner_team = world.team_index_of(pending.owner);
+                let plr_id = storage.just_insert_player(pending.player);
+                if let Some(team_idx) = owner_team {
+                    if let Some(group) = world.groups.get_mut(team_idx) {
+                        group.push(plr_id);
+                    }
+                } else {
+                    world.groups.push(vec![plr_id]);
+                }
+            }
+
+            let pending_remove_players = storage.take_pending_remove_players();
+            if !pending_remove_players.is_empty() {
+                for ptr in pending_remove_players {
+                    for group in &mut world.groups {
+                        group.retain(|x| *x != ptr);
+                    }
+                    storage.just_remove_player(ptr);
+                }
+            }
+
+            storage.sync_groups(&world.groups);
+        }
+
         pub fn tick(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
+            self.sync_runtime_entities(world, storage);
             if world.have_winner() {
                 return;
             }
@@ -456,6 +566,7 @@ pub mod runners {
                 updates,
             };
             self.combat_resolver.resolve(actor, decision, &targets, &mut ctx, &self.hooks);
+            self.sync_runtime_entities(world, storage);
             self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
             self.win_checker.check(world, storage);
         }
@@ -584,6 +695,7 @@ pub mod runners {
             }
 
             let mut world = WorldState::new(inited_plrs);
+            storage.sync_groups(&world.groups);
             if world.groups.len() == 1 {
                 world.winner = Some(world.groups[0].clone());
             }
@@ -947,8 +1059,40 @@ mod group {
 
             let target_system = runners::TargetSystem;
             let targets = target_system.select_targets(actor, &runner.world, &runner.storage);
-            assert!(targets.contains(&ally));
-            assert!(!targets.contains(&enemy));
+            assert!(targets.enemy_alive.contains(&ally));
+            assert!(!targets.enemy_alive.contains(&enemy));
+        }
+
+        #[test]
+        fn runtime_spawn_queue_syncs_into_world_group() {
+            let raw_input = "owner\n\nenemy";
+            let mut runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+            let owner = runner.world.groups[0][0];
+            let mut minion =
+                crate::player::Player::new_from_namerena_raw("owner?minion".to_string(), runner.storage.clone()).unwrap();
+            minion.set_state(crate::player::skill::act::minion::MinionRuntimeState {
+                owner: Some(owner),
+                kind: crate::player::skill::act::minion::MinionKind::Clone,
+            });
+            let minion_id = minion.as_ptr();
+            runner.storage.queue_spawn(owner, minion);
+
+            let mut updates = crate::engine::update::RunUpdates::new();
+            runner.round_tick(&mut updates);
+            assert!(runner.world.groups[0].contains(&minion_id));
+        }
+
+        #[test]
+        fn runtime_remove_queue_syncs_world_and_storage() {
+            let raw_input = "owner\n\nenemy";
+            let mut runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+            let enemy = runner.world.groups[1][0];
+            runner.storage.queue_remove_player(enemy);
+
+            let mut updates = crate::engine::update::RunUpdates::new();
+            runner.round_tick(&mut updates);
+            assert!(!runner.world.groups[1].contains(&enemy));
+            assert!(runner.storage.get_player(&enemy).is_none());
         }
     }
 }

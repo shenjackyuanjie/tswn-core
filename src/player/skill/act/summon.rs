@@ -1,22 +1,15 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlrId,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    PlrId, PlayerStateStore, PlayerType,
+    skill::{Skill, SkillArgs, SkillExt, SkillTrait},
+    skill::store::SkillStorage,
 };
 
-#[derive(Debug, Clone)]
+use super::minion::{MinionKind, MinionRuntimeState};
+
+#[derive(Debug, Clone, Default)]
 pub struct SummonSkill {
     pub summoned: Option<PlrId>,
-    pub step: i32,
-}
-
-impl Default for SummonSkill {
-    fn default() -> Self {
-        Self {
-            summoned: None,
-            step: 0,
-        }
-    }
 }
 
 impl SummonSkill {
@@ -35,14 +28,16 @@ impl SkillTrait for SummonSkill {
     fn has_action_impl(&self) -> bool { true }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
-        if self.step > 0 {
-            return false;
-        }
         if smart {
             let owner = args.3.get_player(&args.0).expect("cannot get summon owner from storage");
             if owner.get_status().hp < 80 {
                 return false;
             }
+        }
+        if let Some(summoned) = self.summoned
+            && args.3.get_player(&summoned).map(|p| p.alive()).unwrap_or(false)
+        {
+            return false;
         }
         args.1.r127() < level
     }
@@ -51,33 +46,45 @@ impl SkillTrait for SummonSkill {
         vec![args.0]
     }
 
-    fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
-        self.summoned = Some(args.0);
-        self.step = 3;
+    fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[血祭]", args.0, args.0, 60));
-        let owner = args.3.just_get_player_mut(args.0).expect("cannot get summon owner from storage");
-        owner.set_move_point(owner.move_point() + 256);
-        args.2.add(RunUpdate::new("召唤出[1]", args.0, args.0, 20));
-    }
+        let owner = args
+            .3
+            .get_player(&args.0)
+            .expect("cannot get summon owner from storage")
+            .clone();
+        let mut summoned = owner.clone();
+        summoned.id = args.3.new_plr_id();
+        summoned.name = format!("{}?summon{}", owner.id_name(), args.1.r255());
+        summoned.player_type = PlayerType::Clone;
+        summoned.sort_int = args.1.rFFFFFF() as i32;
+        summoned.state = PlayerStateStore::default();
+        summoned.set_state(MinionRuntimeState {
+            owner: Some(args.0),
+            kind: MinionKind::Summon,
+        });
+        summoned.status.max_hp = (owner.get_status().max_hp / 3).max(1);
+        summoned.status.hp = summoned.status.max_hp;
+        summoned.status.set_alive(true);
+        summoned.status.set_frozen(false);
 
-    fn post_action(&mut self, _args: SkillArgs) {
-        if self.step <= 0 {
-            return;
-        }
-        self.step -= 1;
-        if self.step == 0 {
-            self.summoned = None;
-        }
-    }
+        let owner_status = owner.get_status();
+        summoned.status.attack = 0;
+        summoned.status.defense = owner_status.defense;
+        summoned.status.magic = 0;
+        summoned.status.resistance = owner_status.resistance;
 
-    fn update_state(&mut self, args: SkillArgs) {
-        if self.step > 0 {
-            args.3
-                .just_get_player_mut(args.0)
-                .expect("cannot get summon owner from storage")
-                .mul_at_boost(1.3);
-        }
-    }
+        let mut skills = SkillStorage::new();
+        let summon_level = (level / 2).max(1);
+        skills.add_skill(Skill::new_with_id(summon_level, 0));
+        skills.add_skill(Skill::new_with_id(summon_level, 0));
+        summoned.skills = skills;
+        summoned.skills.update_proc();
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
+        summoned.status.move_point = args.1.r255() as i32 * 4;
+        let summoned_id = summoned.as_ptr();
+        self.summoned = Some(summoned_id);
+        args.3.queue_spawn(args.0, summoned);
+        args.2.add(RunUpdate::new("召唤出[1]", args.0, summoned_id, 20));
+    }
 }

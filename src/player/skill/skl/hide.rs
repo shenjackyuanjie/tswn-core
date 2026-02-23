@@ -37,7 +37,24 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
-        if owner_active && args.1.r63() < level {
+        let alive_allies = if let Some(group) = args.3.group_containing(args.0) {
+            group
+                .iter()
+                .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
+                .count()
+        } else {
+            let owner_clan = args
+                .3
+                .get_player(&args.0)
+                .map(|p| p.clan_name())
+                .unwrap_or_default();
+            args.3
+                .all_player_ids()
+                .into_iter()
+                .filter(|id| args.3.get_player(id).map(|p| p.alive() && p.clan_name() == owner_clan).unwrap_or(false))
+                .count()
+        };
+        if owner_active && alive_allies > 1 && args.1.r63() < level {
             self.on_update_state = Some(());
             args.2.add(RunUpdate::new("[0]发动[隐匿]", args.0, args.0, 10));
         }

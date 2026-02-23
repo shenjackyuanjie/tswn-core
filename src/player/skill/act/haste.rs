@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId, StateTrait,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -19,6 +19,48 @@ impl SkillTrait for HasteSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyAlive }
+
+    fn select_target_count_with_level(&self, _level: u32, _smart: bool) -> usize { 1 }
+
+    fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return false;
+        };
+        if !target_plr.alive() {
+            return false;
+        }
+        if !smart {
+            return true;
+        }
+        if target_plr.get_status().hp < 60 {
+            return false;
+        }
+        if let Some(haste) = target_plr.get_state::<HasteState>() {
+            if (haste.step + 1) * 60 > target_plr.get_status().hp {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return f64::MIN;
+        };
+        if smart {
+            let hp = target_plr.get_status().hp.max(1) as f64;
+            let max_hp = target_plr.get_status().max_hp.max(1) as f64;
+            let mut score = (hp / max_hp) * target_plr.attr_sum().max(1) as f64;
+            if target_plr.has_state::<HasteState>() {
+                score /= 2.0;
+            }
+            score
+        } else {
+            args.1.rFFFF() as f64
+        }
+    }
 
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {

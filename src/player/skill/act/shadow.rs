@@ -1,16 +1,17 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlrId,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    PlrId, PlayerStateStore, PlayerType,
+    skill::{Skill, SkillArgs, SkillExt, SkillTrait},
+    skill::store::SkillStorage,
 };
 
+use super::minion::{MinionKind, MinionRuntimeState};
+
 #[derive(Debug, Clone, Default)]
-pub struct ShadowSkill {
-    pub step: i32,
-}
+pub struct ShadowSkill;
 
 impl ShadowSkill {
-    pub fn new() -> Self { Self { step: 0 } }
+    pub fn new() -> Self { Self }
 }
 
 impl SkillExt for ShadowSkill {
@@ -24,10 +25,9 @@ impl SkillTrait for ShadowSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
+    fn post_act_level(&self, level: u32) -> u32 { ((level as f64) * 0.75).ceil().max(1.0) as u32 }
+
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
-        if self.step > 0 {
-            return false;
-        }
         if smart {
             let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage");
             if owner.get_status().hp < 80 {
@@ -41,27 +41,36 @@ impl SkillTrait for ShadowSkill {
         vec![args.0]
     }
 
-    fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
-        self.step = 2;
+    fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[幻术]", args.0, args.0, 60));
-        let owner = args.3.just_get_player_mut(args.0).expect("cannot get shadow owner from storage");
-        owner.set_move_point(owner.move_point() + 512);
-        args.2.add(RunUpdate::new("召唤出[1]", args.0, args.0, 20));
-    }
+        let owner = args
+            .3
+            .get_player(&args.0)
+            .expect("cannot get shadow owner from storage")
+            .clone();
+        let mut shadow = owner.clone();
+        shadow.id = args.3.new_plr_id();
+        shadow.name = format!("{}?shadow{}", owner.id_name(), args.1.r255());
+        shadow.player_type = PlayerType::Clone;
+        shadow.sort_int = args.1.rFFFFFF() as i32;
+        shadow.state = PlayerStateStore::default();
+        shadow.set_state(MinionRuntimeState {
+            owner: Some(args.0),
+            kind: MinionKind::Shadow,
+        });
+        shadow.status.max_hp = (owner.get_status().max_hp / 2).max(1);
+        shadow.status.hp = shadow.status.max_hp;
+        shadow.status.set_alive(true);
+        shadow.status.set_frozen(false);
 
-    fn post_action(&mut self, _args: SkillArgs) {
-        if self.step > 0 {
-            self.step -= 1;
-        }
-    }
+        let mut skills = SkillStorage::new();
+        skills.add_skill(Skill::new_with_id((level / 2 + 36).min(255), 10));
+        shadow.skills = skills;
+        shadow.skills.update_proc();
 
-    fn update_state(&mut self, args: SkillArgs) {
-        if self.step > 0 {
-            let owner = args.3.just_get_player_mut(args.0).expect("cannot get shadow owner from storage");
-            owner.mul_at_boost(1.2);
-            owner.mul_attract(0.8);
-        }
+        shadow.status.move_point = -2048;
+        let shadow_id = shadow.as_ptr();
+        args.3.queue_spawn(args.0, shadow);
+        args.2.add(RunUpdate::new("召唤出[1]", args.0, shadow_id, 20));
     }
-
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
 }

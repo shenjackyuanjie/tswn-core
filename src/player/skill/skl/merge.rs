@@ -1,21 +1,11 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    OnDamageFunc, PlrId, StateTrait,
+    PlrId, StateTrait,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
-use crate::rc4::RC4;
 
 #[derive(Debug, Clone, Default)]
-pub struct MergeSkill {
-    pub bonus_attack: i32,
-    pub bonus_defense: i32,
-    pub bonus_speed: i32,
-    pub bonus_agility: i32,
-    pub bonus_magic: i32,
-    pub bonus_resistance: i32,
-    pub bonus_wisdom: i32,
-    pub bonus_hp: i32,
-}
+pub struct MergeSkill;
 
 impl MergeSkill {
     pub fn new() -> Self { Self::default() }
@@ -30,8 +20,10 @@ impl SkillTrait for MergeSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
-    fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool {
-        if args.1.r63() >= 32 {
+    fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.kill_with_level(32, target, args) }
+
+    fn kill_with_level(&mut self, level: u32, target: PlrId, args: SkillArgs) -> bool {
+        if args.1.r63() >= level {
             return false;
         }
         if args.3.get_player(&args.0).is_none() {
@@ -46,52 +38,89 @@ impl SkillTrait for MergeSkill {
             args.2.add(RunUpdate::new("[0][吞噬]了[1]", args.0, target, 60));
             return true;
         }
-        let target_status = args
+        let target_attr = args.3.get_player(&target).expect("cannot get merge target from storage").attr;
+        let target_skill_levels = {
+            let target_plr = args.3.get_player(&target).expect("cannot get merge target from storage");
+            target_plr
+                .skills
+                .skill
+                .iter()
+                .map(|key| target_plr.skills.skill_by_id(*key).level())
+                .collect::<Vec<u32>>()
+        };
+        let target_mp = args
             .3
             .get_player(&target)
             .expect("cannot get merge target from storage")
-            .get_status()
-            .to_owned();
-        self.bonus_attack += (target_status.attack / 6).max(1);
-        self.bonus_defense += (target_status.defense / 6).max(1);
-        self.bonus_speed += (target_status.speed / 8).max(1);
-        self.bonus_agility += (target_status.agility / 6).max(1);
-        self.bonus_magic += (target_status.magic / 6).max(1);
-        self.bonus_resistance += (target_status.resistance / 6).max(1);
-        self.bonus_wisdom += (target_status.wisdom / 8).max(1);
-        self.bonus_hp += (target_status.max_hp / 4).max(8);
+            .mp();
+        let target_move_point = args
+            .3
+            .get_player(&target)
+            .expect("cannot get merge target from storage")
+            .move_point();
 
-        {
+        let mut merged = false;
+        let (transfer_mp, transfer_move_point) = {
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get merge owner from storage");
-            owner.set_state(MergeState {
+            for (idx, val) in target_attr.iter().enumerate() {
+                if *val > owner.attr[idx] {
+                    owner.attr[idx] = *val;
+                    merged = true;
+                }
+            }
+            let upper = owner.skills.skill.len().min(target_skill_levels.len());
+            for (idx, target_level) in target_skill_levels.into_iter().take(upper).enumerate() {
+                let owner_skill = owner.skills.skill_by_idx_mut(idx);
+                if target_level > owner_skill.level() {
+                    owner_skill.set_level(target_level);
+                    merged = true;
+                }
+            }
+            let transfer_mp = target_mp > owner.mp();
+            if transfer_mp {
+                owner.set_mp(target_mp);
+            }
+            let transfer_move_point = target_move_point > owner.move_point();
+            if transfer_move_point {
+                owner.set_move_point(owner.move_point() + target_move_point);
+            }
+            let next_stack = owner.get_state::<MergeState>().map(|x| x.stacks + 1).unwrap_or(1);
+            if merged {
+                owner.set_state(MergeState {
+                    target: Some(target),
+                    stacks: next_stack,
+                });
+                owner.update_states();
+                owner.skills.update_proc();
+            }
+            (transfer_mp, transfer_move_point)
+        };
+        {
+            let target_plr = args.3.just_get_player_mut(target).expect("cannot get merge target from storage");
+            if transfer_mp {
+                target_plr.set_mp(0);
+            }
+            if transfer_move_point {
+                target_plr.set_move_point(0);
+            }
+        }
+        if !merged {
+            return false;
+        }
+        {
+            let target_plr = args.3.just_get_player_mut(target).expect("cannot get merge target from storage");
+            target_plr.set_state(MergeState {
                 target: Some(target),
-                stacks: owner.get_state::<MergeState>().map(|x| x.stacks + 1).unwrap_or(1),
+                stacks: 1,
             });
-            owner.set_mp(owner.mp() + (target_status.mp / 2).max(8));
-            owner.set_move_point(owner.move_point() + (target_status.move_point / 4).max(128));
-            owner.damage(-(target_status.max_hp / 4).max(8), args.0, on_merge as OnDamageFunc, args.1, args.2, args.3);
         }
         args.2.add(RunUpdate::new_newline());
         args.2.add(RunUpdate::new("[0][吞噬]了[1]", args.0, target, 60));
+        args.2.add(RunUpdate::new("[0]属性上升", args.0, target, 20));
         true
     }
 
-    fn update_state(&mut self, args: SkillArgs) {
-        if self.bonus_hp <= 0 {
-            return;
-        }
-        let owner = args.3.just_get_player_mut(args.0).expect("cannot get merge owner from storage");
-        owner.add_attack(self.bonus_attack);
-        owner.add_defense(self.bonus_defense);
-        owner.add_speed(self.bonus_speed);
-        owner.add_agility(self.bonus_agility);
-        owner.add_magic(self.bonus_magic);
-        owner.add_resistance(self.bonus_resistance);
-        owner.add_wisdom(self.bonus_wisdom);
-        owner.add_max_hp(self.bonus_hp);
-    }
-
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostKill, ProcKind::UpdateState] }
+    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostKill] }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -101,7 +130,7 @@ pub struct MergeState {
 }
 
 impl StateTrait for MergeState {
-    fn meta_type(&self) -> i32 { 1 }
+    fn meta_type(&self) -> i32 { 0 }
 
     fn as_any(&self) -> &dyn std::any::Any { self }
 
@@ -109,5 +138,3 @@ impl StateTrait for MergeState {
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
-
-fn on_merge(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut crate::engine::update::RunUpdates) {}
