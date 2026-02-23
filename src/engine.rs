@@ -655,6 +655,8 @@ pub mod runners {
                         if plr_p.clan_name() == plr_q.clan_name() {
                             plr_p.upgrade(plr_q);
                             plr_q.upgrade(plr_p);
+                            // println!("{} {} {}", plr_p.id_name(), plr_p.clan_name(), plr_p.display_name());
+                            // println!("{} {} {}", plr_q.id_name(), plr_q.clan_name(), plr_q.display_name());
                         }
                     }
                 }

@@ -647,6 +647,7 @@ impl Player {
         // 7 -> rand 3 + 4 + 5 + 6
         attr[7] = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
         self.attr = attr;
+        println!("attr: {:?} {:?}", self.attr, self.rand.main_val);
 
         // init skills
         // 技能熟练度计算

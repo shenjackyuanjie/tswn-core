@@ -68,6 +68,33 @@ fn fmt_update(runner: &Runner, update: &RunUpdate) -> String {
     }
 }
 
+fn print_all_players(runner: &Runner) {
+    println!("=== 玩家状态 ===");
+    let player_ids = runner.storage.all_player_ids();
+    for id in player_ids {
+        if let Some(plr) = runner.storage.get_player(&id) {
+            let status = plr.get_status();
+            println!(
+                "- {} (id={}): HP={}/{}, ATK={}, DEF={}, SPD={}, AGI={}, MAG={}, MP={}, MDF={}, ITL={}, all_sum={}",
+                plr.id_name(),
+                id,
+                status.hp,
+                status.max_hp,
+                status.attack,
+                status.defense,
+                status.speed,
+                status.agility,
+                status.magic,
+                status.mp,
+                status.resistance,
+                status.wisdom,
+                status.all_sum
+            );
+        }
+    }
+    println!();
+}
+
 fn main() {
     let raw = match read_raw_input() {
         Ok(raw) => raw,
@@ -85,6 +112,8 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    print_all_players(&runner);
 
     let mut round = 1usize;
     let mut idle_rounds = 0usize;
