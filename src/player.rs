@@ -45,12 +45,6 @@ impl ActionTargets {
     }
 }
 
-/// 火状态（参考 Dart `FireState`）。
-#[derive(Clone, Copy, Debug, Default)]
-pub struct FireState {
-    pub fire_mag: f64,
-}
-
 pub type StateTag = TypeId;
 
 #[inline]
@@ -68,14 +62,6 @@ pub trait StateTrait: std::fmt::Debug + Any {
 
 impl Clone for Box<dyn StateTrait> {
     fn clone(&self) -> Self { self.clone_box() }
-}
-
-impl StateTrait for FireState {
-    fn as_any(&self) -> &dyn Any { self }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
-
-    fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
 /// 玩家状态容器（用于承载各种技能运行时状态）。
@@ -131,21 +117,6 @@ impl PlayerStateStore {
 
     #[inline]
     pub fn negative_state_count(&self) -> usize { self.states.values().filter(|state| state.meta_type() < 0).count() }
-
-    #[inline]
-    fn fire_state(&self) -> Option<FireState> { self.get::<FireState>().copied() }
-
-    #[inline]
-    pub fn fire_mag(&self) -> f64 { self.fire_state().map(|x| x.fire_mag).unwrap_or(0.0) }
-
-    #[inline]
-    pub fn add_fire_mag(&mut self, val: f64) {
-        if let Some(fire) = self.get_mut::<FireState>() {
-            fire.fire_mag += val;
-            return;
-        }
-        self.set(FireState { fire_mag: val });
-    }
 }
 
 /// OnDamage 函数
@@ -1008,12 +979,6 @@ impl Player {
         self.status.set_alive(true);
         self.status.set_frozen(false);
     }
-
-    #[inline]
-    pub fn fire_mag(&self) -> f64 { self.state.fire_mag() }
-
-    #[inline]
-    pub fn add_fire_mag(&mut self, val: f64) { self.state.add_fire_mag(val) }
 
     #[inline]
     pub fn set_state<T: StateTrait + 'static>(&mut self, state: T) { self.state.set(state); }
@@ -2304,8 +2269,8 @@ mod test {
             j: 0,
             main_val: vec![0; 256],
         };
-        assert!(boss.check_immune(state_tag::<FireState>(), &mut randomer));
-        assert!(!normal.check_immune(state_tag::<FireState>(), &mut randomer));
+        assert!(boss.check_immune(state_tag::<crate::player::skill::fire::FireState>(), &mut randomer));
+        assert!(!normal.check_immune(state_tag::<crate::player::skill::fire::FireState>(), &mut randomer));
     }
 
     #[test]
