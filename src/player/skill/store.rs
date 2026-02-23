@@ -1,8 +1,6 @@
-use crate::{
-    player::{
-        OnDamageFunc, PlrId,
-        skill::{ProcKind, Skill, SkillArgs},
-    },
+use crate::player::{
+    OnDamageFunc, PlrId,
+    skill::{ProcKind, Skill, SkillArgs},
 };
 
 use foldhash::{HashMap as FoldHashMap, HashMapExt, HashSet as FoldHashSet, HashSetExt};

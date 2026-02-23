@@ -67,14 +67,10 @@ pub struct PlayerStateStore {
 
 impl PlayerStateStore {
     #[inline]
-    pub fn set<T: StateTrait + 'static>(&mut self, state: T) {
-        self.states.insert(state_tag::<T>(), Box::new(state));
-    }
+    pub fn set<T: StateTrait + 'static>(&mut self, state: T) { self.states.insert(state_tag::<T>(), Box::new(state)); }
 
     #[inline]
-    pub fn get<T: StateTrait + 'static>(&self) -> Option<&T> {
-        self.states.get(&state_tag::<T>())?.as_any().downcast_ref::<T>()
-    }
+    pub fn get<T: StateTrait + 'static>(&self) -> Option<&T> { self.states.get(&state_tag::<T>())?.as_any().downcast_ref::<T>() }
 
     #[inline]
     pub fn get_mut<T: StateTrait + 'static>(&mut self) -> Option<&mut T> {
@@ -132,9 +128,7 @@ fn noop_on_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _upda
 /// 通过玩家句柄从存储层取可变玩家引用。
 #[inline]
 pub fn player_id_as_mut_plr<'a>(ptr: PlrId, storage: &'a Arc<Storage>) -> &'a mut Player {
-    storage
-        .just_get_player_mut(ptr)
-        .expect("cannot get mutable player by player handle")
+    storage.just_get_player_mut(ptr).expect("cannot get mutable player by player handle")
 }
 
 // /// Player 的自增 ID
@@ -396,12 +390,7 @@ impl Player {
     // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
     /// 创建一个新的玩家
-    pub fn new_and_init(
-        team: Option<String>,
-        name: String,
-        weapon: Option<String>,
-        storage: Arc<Storage>,
-    ) -> PlayerResult<Self> {
+    pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>, storage: Arc<Storage>) -> PlayerResult<Self> {
         // 先校验长度
         if let Some(t) = team.as_ref()
             && t.len() > TEAM_MAX_LEN
@@ -799,7 +788,7 @@ impl Player {
     /// 每回合中的玩家行动
     ///
     /// 包括 pre, main, post
-    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
+    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &[PlrId]) {
         if !self.status.alive() {
             return;
         }
@@ -813,26 +802,94 @@ impl Player {
         if self.check_move() {
             self.status.move_point -= MOVE_POINT_THRESHOLD;
             // 主动作
-            self.action(randomer, updates, storage);
+            self.action(randomer, updates, storage, targets);
         }
         // 结束
     }
 
-    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        // let mut targets: Vec<_> = vec![];
-
-        let _smart = self.status.wisdom > randomer.r63() as i32;
-        let _req_mp = 0;
-
+    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &[PlrId]) {
+        let smart = self.status.wisdom > randomer.r63() as i32;
+        let req_mp = randomer.r15() as i32 + 8;
         let ptr = self.as_ptr();
         self.skills.pre_action((ptr, randomer, updates, storage));
         if self.status.frozed() {
             return;
         }
-        // todo: main action
+
+        let mut acted = false;
+        let mut selected_skill_key: Option<usize> = None;
+        if self.status.mp >= req_mp {
+            let skill_keys = self.skills.skill.clone();
+            for key in skill_keys {
+                let should_cast = {
+                    let skill = self.skills.skill_by_id(key);
+                    skill.level() > 0 && skill.has_action_impl() && randomer.r127() < skill.level()
+                };
+                if should_cast {
+                    selected_skill_key = Some(key);
+                    self.status.mp -= req_mp;
+                    break;
+                }
+            }
+        }
+
+        if let Some(skill_key) = selected_skill_key
+            && let Some(target_id) = Self::pick_target(targets, randomer)
+        {
+            let skill = self.skills.skill_by_id_mut(skill_key);
+            skill.act(vec![target_id], smart, (ptr, randomer, updates, storage));
+            acted = true;
+        }
+
+        if !acted {
+            self.default_attack(smart, randomer, updates, storage, targets);
+        }
+
+        let recover_threshold = (self.status.wisdom + 64).clamp(0, 127) as u32;
+        if randomer.r127() < recover_threshold {
+            self.status.mp += 16;
+        }
         updates.add(RunUpdate::new_newline());
         self.skills.post_action((ptr, randomer, updates, storage));
         self.apply_post_action_states(randomer, updates, storage);
+    }
+
+    fn pick_target(targets: &[PlrId], randomer: &mut RC4) -> Option<PlrId> {
+        randomer.pick(targets).map(|idx| targets[idx])
+    }
+
+    fn default_attack(
+        &mut self,
+        smart: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        targets: &[PlrId],
+    ) {
+        let Some(target_id) = Self::pick_target(targets, randomer) else {
+            return;
+        };
+
+        if smart && self.status.magic > self.status.attack {
+            let req_mp = (self.status.magic - self.status.attack) >> 2;
+            if self.status.mp >= req_mp {
+                self.status.mp -= req_mp;
+                let atp = self.get_at(true, randomer);
+                updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
+                storage
+                    .just_get_player_mut(target_id)
+                    .expect("cannot get default-attack target from storage")
+                    .attacked(atp, true, self.as_ptr(), noop_on_damage, randomer, updates, storage);
+                return;
+            }
+        }
+
+        let atp = self.get_at(false, randomer);
+        updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
+        storage
+            .just_get_player_mut(target_id)
+            .expect("cannot get default-attack target from storage")
+            .attacked(atp, false, self.as_ptr(), noop_on_damage, randomer, updates, storage);
     }
 
     /// 当前玩家是否可行动
@@ -867,13 +924,16 @@ impl Player {
     pub fn clear_negative_states(&mut self) { self.state.clear_negative_states(); }
 
     fn apply_update_state_effects(&mut self) {
-        use crate::player::skill::{haste::HasteState, ice::IceState, slow::SlowState};
+        use crate::player::skill::{curse::CurseState, haste::HasteState, ice::IceState, slow::SlowState};
 
         if let Some(haste) = self.get_state::<HasteState>() {
             self.status.speed *= haste.faster;
         }
         if self.has_state::<SlowState>() {
             self.status.speed /= 2;
+        }
+        if self.has_state::<CurseState>() {
+            self.status.atk_sum *= 4;
         }
         if self.has_state::<IceState>() {
             self.status.set_frozen(true);
@@ -907,11 +967,15 @@ impl Player {
     }
 
     fn apply_post_action_states(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        use crate::player::skill::{haste::HasteState, poison::PoisonState, slow::SlowState};
+        use crate::player::skill::{
+            berserk::BerserkState, charm::CharmState, haste::HasteState, poison::PoisonState, slow::SlowState,
+        };
 
         let mut clear_poison = false;
         let mut clear_haste = false;
         let mut clear_slow = false;
+        let mut clear_berserk = false;
+        let mut clear_charm = false;
         let mut poison_tick: Option<(PlrId, i32)> = None;
         let magic = self.status.magic;
 
@@ -960,6 +1024,54 @@ impl Player {
                 updates.add(RunUpdate::new("[1]从[迟缓]中解除", self.as_ptr(), self.as_ptr(), 0));
             }
         }
+
+        if let Some(berserk) = self.get_state_mut::<BerserkState>() {
+            berserk.step -= 1;
+            clear_berserk = berserk.step <= 0;
+        }
+        if clear_berserk {
+            self.clear_state::<BerserkState>();
+            if self.alive() {
+                updates.add(RunUpdate::new_newline());
+                updates.add(RunUpdate::new("[1]从[狂暴]中解除", self.as_ptr(), self.as_ptr(), 0));
+            }
+        }
+
+        if let Some(charm) = self.get_state_mut::<CharmState>() {
+            charm.step -= 1;
+            clear_charm = charm.step <= 0;
+        }
+        if clear_charm {
+            self.clear_state::<CharmState>();
+            if self.alive() {
+                updates.add(RunUpdate::new_newline());
+                updates.add(RunUpdate::new("[1]从[魅惑]中解除", self.as_ptr(), self.as_ptr(), 0));
+            }
+        }
+    }
+
+    fn apply_post_defend_states(&mut self, mut dmg: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates) -> i32 {
+        use crate::player::skill::{curse::CurseState, shield::ShieldState};
+
+        if let Some(shield) = self.get_state_mut::<ShieldState>() {
+            if shield.shield > 0 {
+                if dmg > shield.shield {
+                    dmg -= shield.shield;
+                    shield.shield = 0;
+                } else {
+                    shield.shield -= dmg;
+                    dmg = 0;
+                }
+            }
+        }
+        if dmg > 0
+            && let Some(curse) = self.get_state::<CurseState>()
+            && randomer.r63() < curse.prob as u32
+        {
+            updates.add(RunUpdate::new("[诅咒]使伤害加倍", caster, self.as_ptr(), 0));
+            dmg *= curse.multiply;
+        }
+        dmg
     }
 
     /// 蓝条是不是够用
@@ -1060,13 +1172,14 @@ impl Player {
     /// postDefend
     pub fn post_defend(
         &mut self,
-        dmg: i32,
+        mut dmg: i32,
         caster: PlrId,
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        dmg = self.apply_post_defend_states(dmg, caster, randomer, updates);
         self.skills
             .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage))
     }
@@ -1175,6 +1288,11 @@ impl Player {
             skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
         }
         if self.status.hp <= 0 {
+            if caster != self.as_ptr()
+                && let Some(killer) = storage.just_get_player_mut(caster)
+            {
+                killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
+            }
             self.on_die(old_hp, caster, randomer, updates);
             return old_hp;
         } else {
@@ -1564,10 +1682,106 @@ mod test {
             atp: 80.0,
             count: 1,
         });
-        player.action(&mut randomer, &mut updates, &storage);
+        player.action(&mut randomer, &mut updates, &storage, &[]);
 
         assert!(!player.has_state::<crate::player::skill::poison::PoisonState>());
         assert!(updates.updates.iter().any(|x| x.message.contains("[毒性发作]")));
         assert!(updates.updates.iter().any(|x| x.message.contains("从[中毒]中解除")));
+    }
+
+    #[test]
+    fn post_defend_consumes_shield_state() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        player.set_state(crate::player::skill::shield::ShieldState {
+            sort_id: 6000.0,
+            target: Some(player.as_ptr()),
+            shield: 10,
+        });
+        let dmg = player.post_defend(6, 999, noop_on_damage, &mut randomer, &mut updates, &storage);
+        assert_eq!(dmg, 0);
+        assert_eq!(
+            player.get_state::<crate::player::skill::shield::ShieldState>().unwrap().shield,
+            4
+        );
+    }
+
+    #[test]
+    fn post_defend_applies_curse_multiplier() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let mut randomer = RC4 {
+            i: 0,
+            j: 0,
+            main_val: vec![0; 256],
+        };
+        let mut updates = RunUpdates::new();
+
+        player.set_state(crate::player::skill::curse::CurseState {
+            owner: Some(777),
+            target: Some(player.as_ptr()),
+            on_update_state: None,
+            prob: 42,
+            multiply: 2,
+        });
+        let dmg = player.post_defend(5, 777, noop_on_damage, &mut randomer, &mut updates, &storage);
+        assert_eq!(dmg, 10);
+        assert!(updates.updates.iter().any(|x| x.message.contains("诅咒")));
+    }
+
+    #[test]
+    fn action_expires_berserk_and_charm_states() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+
+        player.set_state(crate::player::skill::berserk::BerserkState { step: 1 });
+        player.set_state(crate::player::skill::charm::CharmState {
+            group_id: 1,
+            target: Some(player.as_ptr()),
+            on_post_action: None,
+            step: 1,
+        });
+        player.action(&mut randomer, &mut updates, &storage, &[]);
+
+        assert!(!player.has_state::<crate::player::skill::berserk::BerserkState>());
+        assert!(!player.has_state::<crate::player::skill::charm::CharmState>());
+        assert!(updates.updates.iter().any(|x| x.message.contains("狂暴")));
+        assert!(updates.updates.iter().any(|x| x.message.contains("魅惑")));
+    }
+
+    #[test]
+    fn merge_and_zombie_kill_write_target_states() {
+        let storage = Storage::new_arc();
+        let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        let target_id = storage.just_insert_player(target);
+        let mut randomer = RC4 {
+            i: 0,
+            j: 0,
+            main_val: vec![0; 256],
+        };
+        let mut updates = RunUpdates::new();
+        let mut merge = crate::player::skill::merge::MergeSkill::new();
+        let mut zombie = crate::player::skill::zombie::ZombieSkill::new();
+
+        let merged = <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill(
+            &mut merge,
+            target_id,
+            (7, &mut randomer, &mut updates, &storage),
+        );
+        let zombied = <crate::player::skill::zombie::ZombieSkill as crate::player::skill::SkillTrait>::kill(
+            &mut zombie,
+            target_id,
+            (7, &mut randomer, &mut updates, &storage),
+        );
+        assert!(merged);
+        assert!(zombied);
+        let target_ref = storage.get_player(&target_id).unwrap();
+        assert!(target_ref.has_state::<crate::player::skill::merge::MergeState>());
+        assert!(target_ref.has_state::<crate::player::skill::zombie::ZombieState>());
     }
 }

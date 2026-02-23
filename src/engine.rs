@@ -64,9 +64,7 @@ pub mod storage {
         }
 
         /// 生成一个新的玩家 ID。
-        pub fn new_plr_id(&self) -> u64 {
-            self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        }
+        pub fn new_plr_id(&self) -> u64 { self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 
         pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) { self.groups.insert(id, plrs); }
 
@@ -202,9 +200,7 @@ pub mod runners {
         #[inline]
         pub fn all_plr_len(&self) -> usize { self.groups.iter().map(|x| x.len()).sum() }
 
-        pub fn team_index_of(&self, actor: PlrId) -> Option<usize> {
-            self.groups.iter().position(|group| group.contains(&actor))
-        }
+        pub fn team_index_of(&self, actor: PlrId) -> Option<usize> { self.groups.iter().position(|group| group.contains(&actor)) }
 
         pub fn alives(&self, storage: &Arc<Storage>) -> Vec<Vec<PlrId>> {
             self.groups
@@ -212,12 +208,7 @@ pub mod runners {
                 .map(|group| {
                     group
                         .iter()
-                        .filter(|plr| {
-                            storage
-                                .get_player(plr)
-                                .map(|x| x.get_status().alive())
-                                .unwrap_or(false)
-                        })
+                        .filter(|plr| storage.get_player(plr).map(|x| x.get_status().alive()).unwrap_or(false))
                         .copied()
                         .collect::<Vec<PlrId>>()
                 })
@@ -315,11 +306,7 @@ pub mod runners {
             for _ in 0..all.len() {
                 let idx = world.next_round_index(all.len());
                 let actor = all[idx];
-                if storage
-                    .get_player(&actor)
-                    .map(|x| x.get_status().alive())
-                    .unwrap_or(false)
-                {
+                if storage.get_player(&actor).map(|x| x.get_status().alive()).unwrap_or(false) {
                     return Some(actor);
                 }
             }
@@ -342,11 +329,7 @@ pub mod runners {
             if world.have_winner() {
                 return ActionDecision::Skip;
             }
-            if storage
-                .get_player(&actor)
-                .map(|x| x.get_status().alive())
-                .unwrap_or(false)
-            {
+            if storage.get_player(&actor).map(|x| x.get_status().alive()).unwrap_or(false) {
                 ActionDecision::StepDriver
             } else {
                 ActionDecision::Skip
@@ -395,7 +378,7 @@ pub mod runners {
                 ActionDecision::StepDriver => {
                     hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
                     if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
-                        plr.step(ctx.randomer, ctx.updates, ctx.storage);
+                        plr.step(ctx.randomer, ctx.updates, ctx.storage, _targets);
                     }
                     hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
                 }
@@ -645,10 +628,8 @@ pub mod runners {
                 return (raw_input.split("\n").map(|x| vec![x.to_string()]).collect(), seed);
             }
 
-            let raw_groups: Vec<Vec<String>> = raw_input
-                .split("\n\n")
-                .map(|x| x.split("\n").map(|x| x.to_string()).collect())
-                .collect();
+            let raw_groups: Vec<Vec<String>> =
+                raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect();
 
             // 修复是 TODO 项，先保留旧行为。
             // TODO: 处理 “seed 独占一组” 的自动并组修复。
@@ -664,14 +645,10 @@ pub mod runners {
         #[inline]
         pub fn all_plr_len(&self) -> usize { self.world.all_plr_len() }
 
-        pub fn main_round(&mut self) -> RunUpdates {
-            self.core
-                .main_round(&mut self.world, &self.storage, &mut self.randomer)
-        }
+        pub fn main_round(&mut self) -> RunUpdates { self.core.main_round(&mut self.world, &self.storage, &mut self.randomer) }
 
         pub fn round_tick(&mut self, updates: &mut RunUpdates) {
-            self.core
-                .tick(&mut self.world, &self.storage, &mut self.randomer, updates);
+            self.core.tick(&mut self.world, &self.storage, &mut self.randomer, updates);
         }
     }
 }
@@ -725,12 +702,7 @@ pub mod update {
             msg = msg.replace("[1]", &self.target.to_string());
             msg = msg.replace(
                 "[2]",
-                &self
-                    .targets
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<String>>()
-                    .join(","),
+                &self.targets.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
             );
             msg
         }
@@ -904,13 +876,7 @@ mod group {
                 .groups
                 .iter()
                 .flatten()
-                .filter(|plr| {
-                    runner
-                        .storage
-                        .get_player(plr)
-                        .expect("wtf")
-                        .is_seed_plr()
-                })
+                .filter(|plr| runner.storage.get_player(plr).expect("wtf").is_seed_plr())
                 .enumerate()
             {
                 let plr = runner.storage.get_player(plr).expect("plr not found");

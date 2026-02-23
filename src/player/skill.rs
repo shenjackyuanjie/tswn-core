@@ -7,9 +7,9 @@ use crate::engine::update::RunUpdates;
 use crate::player::{OnDamageFunc, PlrId};
 use crate::rc4::RC4;
 
-pub mod store;
 pub mod act;
 pub mod skl;
+pub mod store;
 
 pub use act::{
     absorb, accumulate, assassinate, berserk, charge, charm, clone, critical, curse, disperse, exchange, fire, half, haste, heal,
@@ -70,6 +70,9 @@ pub trait SkillTrait: Debug {
 
     /// 声明该技能注册到哪些流程
     fn proc_kinds(&self) -> &[ProcKind] { &[] }
+
+    /// 标记该技能的主动施放逻辑是否已接入当前运行链路。
+    fn has_action_impl(&self) -> bool { false }
 
     fn is_normal_skill(&self) -> bool { true }
 
@@ -217,6 +220,8 @@ impl Skill {
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.skill_type.kill(target, args) }
 
     pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }
+
+    pub fn has_action_impl(&self) -> bool { self.skill_type.has_action_impl() }
 
     // pub fn update_state(&self, status: &mut PlayerStatus) {
     //     match self.skill_type {

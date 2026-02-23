@@ -9,11 +9,7 @@ pub struct SummonSkill {
 }
 
 impl Default for SummonSkill {
-    fn default() -> Self {
-        Self {
-            summoned: None,
-        }
-    }
+    fn default() -> Self { Self { summoned: None } }
 }
 
 impl SummonSkill {
@@ -29,4 +25,3 @@ impl SkillTrait for SummonSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 }
-

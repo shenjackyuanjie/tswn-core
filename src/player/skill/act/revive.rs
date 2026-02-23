@@ -9,11 +9,7 @@ pub struct ReviveSkill {
 }
 
 impl Default for ReviveSkill {
-    fn default() -> Self {
-        Self {
-            allow_sneak: false,
-        }
-    }
+    fn default() -> Self { Self { allow_sneak: false } }
 }
 
 impl ReviveSkill {
@@ -29,4 +25,3 @@ impl SkillTrait for ReviveSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 }
-

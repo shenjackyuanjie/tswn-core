@@ -35,4 +35,3 @@ impl SkillTrait for AssassinateSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PreAction, ProcKind::PostDamage] }
 }
-

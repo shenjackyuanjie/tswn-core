@@ -9,11 +9,7 @@ pub struct ReraiseSkill {
 }
 
 impl Default for ReraiseSkill {
-    fn default() -> Self {
-        Self {
-            sort_id: 10.0,
-        }
-    }
+    fn default() -> Self { Self { sort_id: 10.0 } }
 }
 
 impl ReraiseSkill {
@@ -31,4 +27,3 @@ impl SkillTrait for ReraiseSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDeath] }
 }
-

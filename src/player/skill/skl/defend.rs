@@ -9,11 +9,7 @@ pub struct DefendSkill {
 }
 
 impl Default for DefendSkill {
-    fn default() -> Self {
-        Self {
-            sort_id: 2000.0,
-        }
-    }
+    fn default() -> Self { Self { sort_id: 2000.0 } }
 }
 
 impl DefendSkill {
@@ -31,4 +27,3 @@ impl SkillTrait for DefendSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDefend] }
 }
-

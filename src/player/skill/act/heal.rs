@@ -9,11 +9,7 @@ pub struct HealSkill {
 }
 
 impl Default for HealSkill {
-    fn default() -> Self {
-        Self {
-            allow_sneak: false,
-        }
-    }
+    fn default() -> Self { Self { allow_sneak: false } }
 }
 
 impl HealSkill {
@@ -29,4 +25,3 @@ impl SkillTrait for HealSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 }
-

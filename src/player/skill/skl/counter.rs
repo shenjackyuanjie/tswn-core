@@ -36,4 +36,3 @@ impl SkillTrait for CounterSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage] }
 }
-

@@ -1,7 +1,8 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    OnDamageFunc, PlrId, StateTrait, state_tag,
+    OnDamageFunc, PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTrait},
+    state_tag,
 };
 use crate::rc4::RC4;
 
@@ -21,6 +22,8 @@ impl SkillTrait for IceSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn has_action_impl(&self) -> bool { true }
+
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
@@ -33,10 +36,7 @@ impl SkillTrait for IceSkill {
             .get_at(true, args.1)
             * 0.7;
         args.2.add(RunUpdate::new("[0]使用[冰冻术]", args.0, target_id, 1));
-        let target = args
-            .3
-            .just_get_player_mut(target_id)
-            .expect("cannot get ice target from storage");
+        let target = args.3.just_get_player_mut(target_id).expect("cannot get ice target from storage");
         let dmg = target.attacked(atp, true, args.0, on_ice as OnDamageFunc, args.1, args.2, args.3);
         if dmg <= 0 || !target.alive() || target.check_immune(state_tag::<IceState>(), args.1) {
             return;
@@ -82,4 +82,3 @@ impl StateTrait for IceState {
 }
 
 fn on_ice(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
-

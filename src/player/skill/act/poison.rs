@@ -1,7 +1,8 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    OnDamageFunc, PlrId, StateTrait, state_tag,
+    OnDamageFunc, PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTrait},
+    state_tag,
 };
 use crate::rc4::RC4;
 
@@ -20,6 +21,8 @@ impl SkillTrait for PoisonSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn has_action_impl(&self) -> bool { true }
 
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
@@ -46,10 +49,7 @@ impl SkillTrait for PoisonSkill {
             .expect("cannot get poison caster from storage")
             .get_at(true, args.1)
             * 1.2;
-        let target = args
-            .3
-            .just_get_player_mut(target_id)
-            .expect("cannot get poison target from storage");
+        let target = args.3.just_get_player_mut(target_id).expect("cannot get poison target from storage");
         if !target.alive() || target.check_immune(state_tag::<PoisonState>(), args.1) {
             return;
         }
@@ -101,4 +101,3 @@ impl StateTrait for PoisonState {
 fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut RunUpdates) {
     let _ = (caster, target, dmg, r, updates);
 }
-

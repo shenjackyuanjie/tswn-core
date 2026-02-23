@@ -31,4 +31,3 @@ impl SkillTrait for QuakeSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 }
-

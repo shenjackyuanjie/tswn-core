@@ -9,11 +9,7 @@ pub struct UpgradeSkill {
 }
 
 impl Default for UpgradeSkill {
-    fn default() -> Self {
-        Self {
-            on_update_state: None,
-        }
-    }
+    fn default() -> Self { Self { on_update_state: None } }
 }
 
 impl UpgradeSkill {
@@ -31,4 +27,3 @@ impl SkillTrait for UpgradeSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage] }
 }
-

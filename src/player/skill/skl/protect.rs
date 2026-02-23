@@ -33,4 +33,3 @@ impl SkillTrait for ProtectSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction] }
 }
-

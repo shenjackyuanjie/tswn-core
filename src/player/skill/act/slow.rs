@@ -1,7 +1,8 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    Player, PlrId, StateTrait, state_tag,
+    Player, PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTrait},
+    state_tag,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -20,6 +21,8 @@ impl SkillTrait for SlowSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn has_action_impl(&self) -> bool { true }
+
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
@@ -27,16 +30,8 @@ impl SkillTrait for SlowSkill {
         let target_id = targets[0];
         args.2.add(RunUpdate::new("[0]使用[减速术]", args.0, target_id, 1));
 
-        let owner_magic = args
-            .3
-            .get_player(&args.0)
-            .expect("cannot get slow owner from storage")
-            .get_status()
-            .magic;
-        let target = args
-            .3
-            .just_get_player_mut(target_id)
-            .expect("cannot get slow target from storage");
+        let owner_magic = args.3.get_player(&args.0).expect("cannot get slow owner from storage").get_status().magic;
+        let target = args.3.just_get_player_mut(target_id).expect("cannot get slow target from storage");
         if target.check_immune(state_tag::<SlowState>(), args.1)
             || (target.active() && Player::dodge(owner_magic, target.get_status().resistance, args.1))
         {
@@ -88,4 +83,3 @@ impl StateTrait for SlowState {
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
-

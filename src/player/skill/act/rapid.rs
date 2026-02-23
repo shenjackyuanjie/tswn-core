@@ -31,4 +31,3 @@ impl SkillTrait for RapidSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 }
-

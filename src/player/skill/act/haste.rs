@@ -27,16 +27,10 @@ impl SkillTrait for HasteSkill {
         let target_id = targets[0];
         args.2.add(RunUpdate::new("[0]使用[加速术]", args.0, target_id, 60));
 
-        let owner = args
-            .3
-            .just_get_player_mut(args.0)
-            .expect("cannot get haste owner from storage");
+        let owner = args.3.just_get_player_mut(args.0).expect("cannot get haste owner from storage");
         owner.set_move_point(owner.move_point() + owner.get_status().speed);
 
-        let target = args
-            .3
-            .just_get_player_mut(target_id)
-            .expect("cannot get haste target from storage");
+        let target = args.3.just_get_player_mut(target_id).expect("cannot get haste target from storage");
         if let Some(state) = target.get_state_mut::<HasteState>() {
             state.step += 4;
         } else {
@@ -82,4 +76,3 @@ impl StateTrait for HasteState {
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
-

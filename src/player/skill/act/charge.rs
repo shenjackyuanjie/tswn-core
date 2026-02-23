@@ -35,4 +35,3 @@ impl SkillTrait for ChargeSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
 }
-

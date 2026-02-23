@@ -41,4 +41,3 @@ impl SkillTrait for IronSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDefend, ProcKind::PostAction, ProcKind::UpdateState] }
 }
-

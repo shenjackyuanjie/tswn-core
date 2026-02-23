@@ -33,4 +33,3 @@ impl SkillTrait for HideSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage, ProcKind::PreAction] }
 }
-

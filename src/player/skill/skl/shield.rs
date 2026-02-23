@@ -1,5 +1,5 @@
 use crate::player::{
-    PlrId,
+    PlrId, StateTrait,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
@@ -18,6 +18,19 @@ impl SkillTrait for ShieldSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn pre_action(&mut self, args: SkillArgs) {
+        let owner = args.3.just_get_player_mut(args.0).expect("cannot get shield owner from storage");
+        if let Some(state) = owner.get_state_mut::<ShieldState>() {
+            state.shield += args.1.r7() as i32 + 1;
+        } else {
+            owner.set_state(ShieldState {
+                sort_id: 6000.0,
+                target: Some(args.0),
+                shield: args.1.r7() as i32 + 1,
+            });
+        }
+    }
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PreAction] }
 }
@@ -39,3 +52,12 @@ impl Default for ShieldState {
     }
 }
 
+impl StateTrait for ShieldState {
+    fn meta_type(&self) -> i32 { if self.shield > 0 { 1 } else { 0 } }
+
+    fn as_any(&self) -> &dyn std::any::Any { self }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+
+    fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
+}

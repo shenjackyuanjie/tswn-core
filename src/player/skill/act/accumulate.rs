@@ -33,4 +33,3 @@ impl SkillTrait for AccumulateSkill {
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::UpdateState] }
 }
-
