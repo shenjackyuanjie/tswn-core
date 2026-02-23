@@ -620,13 +620,12 @@ pub mod runners {
 
             let storage = Storage::new_arc();
 
-            // 用 randomer 初始化玩家的 sort_int。
+            // 先完成玩家实例化与分组，sort_int 在后续按名字排序后再初始化。
             let mut inited_plrs: Vec<Vec<PlrId>> = Vec::with_capacity(players.len());
             for plrs in &players {
                 let mut group = Vec::with_capacity(plrs.len());
                 for plr in plrs {
-                    let mut player = Player::new_from_namerena_raw(plr.to_string(), storage.clone())?;
-                    player.sort_int = randomer.rFFFFFF() as i32;
+                    let player = Player::new_from_namerena_raw(plr.to_string(), storage.clone())?;
                     let ptr = storage.just_insert_player(player);
                     group.push(ptr);
                 }
@@ -662,41 +661,69 @@ pub mod runners {
                 }
             }
 
-            // 构建所有玩家：属性/技能初始化入口。
-            for group in &mut local_plrs {
-                for plr in group {
-                    plr.build();
-                }
+            // 与 Dart 对齐：按 id_name 排序后逐个 build，再初始化 sort_int。
+            let mut sorted_plrs = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();
+            sorted_plrs.sort_by(|a, b| {
+                let plr_a = storage.get_player(a).expect("plr not found when sorted build");
+                let plr_b = storage.get_player(b).expect("plr not found when sorted build");
+                plr_a.cmp_by_id_name(plr_b)
+            });
+            for ptr in sorted_plrs {
+                let plr = storage.just_get_player_mut(ptr).expect("plr not found when build");
+                plr.build();
+                plr.sort_int = randomer.rFFFFFF() as i32;
             }
+
+            for group in &mut inited_plrs {
+                group.sort_by(|a, b| {
+                    let plr_a = storage.get_player(a).expect("plr not found when sort group member");
+                    let plr_b = storage.get_player(b).expect("plr not found when sort group member");
+                    plr_a.cmp_for_sort(plr_b)
+                });
+            }
+
+            let mut sorted_groups = inited_plrs.clone();
+            sorted_groups.sort_by(|a, b| {
+                let Some(first_a) = a.first() else {
+                    return std::cmp::Ordering::Less;
+                };
+                let Some(first_b) = b.first() else {
+                    return std::cmp::Ordering::Greater;
+                };
+                let plr_a = storage.get_player(first_a).expect("plr not found when sort group");
+                let plr_b = storage.get_player(first_b).expect("plr not found when sort group");
+                plr_a.cmp_for_sort(plr_b)
+            });
 
             // 这里顺便把 sorted hash 这块做了。
             // 保持旧版随机流消费顺序，避免战斗回放偏移。
-            let mut sort_groups = inited_plrs.iter().collect::<Vec<&Vec<PlrId>>>();
-            sort_groups.sort_by(|a, b| {
-                {
-                    let plr_a = storage.get_player(&a[0]).expect("plr not found when sort");
-                    let plr_b = storage.get_player(&b[0]).expect("plr not found when sort");
-                    plr_a.partial_cmp(plr_b)
-                }
-                .unwrap_or(std::cmp::Ordering::Equal)
-            });
+            let sort_groups = sorted_groups.iter().collect::<Vec<&Vec<PlrId>>>();
 
             for group in &sort_groups {
                 for plr in *group {
                     let plr = storage.just_get_player_mut(*plr).expect("plr not found when encrypt");
+                    println!("给 {} 加密 id_name {}", plr.get_sort_int(), plr.id_name());
                     randomer.encrypt_bytes_no_change(&plr.id_name());
                 }
                 randomer.encrypt_bytes(&mut [0]);
             }
 
-            for group in &inited_plrs {
-                for plr in group {
-                    let plr = storage.just_get_player_mut(*plr).expect("plr not found when set move point");
-                    plr.set_move_point(randomer.r255() as i32);
-                }
+            // println!(
+            //     "开始给 move point 之前的 rc4: {} {} {:?}",
+            //     randomer.i, randomer.j, randomer.main_val
+            // );
+            let mut sorted_for_move_point = sorted_groups.iter().flatten().copied().collect::<Vec<PlrId>>();
+            sorted_for_move_point.sort_by(|a, b| {
+                let plr_a = storage.get_player(a).expect("plr not found when sort move point");
+                let plr_b = storage.get_player(b).expect("plr not found when sort move point");
+                plr_a.cmp_for_sort(plr_b)
+            });
+            for ptr in &sorted_for_move_point {
+                let plr = storage.just_get_player_mut(*ptr).expect("plr not found when set move point");
+                plr.set_move_point(randomer.r255() as i32);
             }
 
-            let mut world = WorldState::new(inited_plrs);
+            let mut world = WorldState::new(sorted_groups);
             storage.sync_groups(&world.groups);
             if world.groups.len() == 1 {
                 world.winner = Some(world.groups[0].clone());
@@ -1039,6 +1066,34 @@ mod group {
                 let plr = runner.storage.get_player(plr).expect("plr not found");
                 assert_eq!(plr.sort_int as u32, ints[i]);
             }
+        }
+
+        #[test]
+        fn input_order_should_not_change_initial_state() {
+            let runner_ab = runners::Runner::new_from_namerena_raw("aaaaa\nhelp".to_string()).unwrap();
+            let runner_ba = runners::Runner::new_from_namerena_raw("help\naaaaa".to_string()).unwrap();
+
+            let mut state_ab = runner_ab
+                .world
+                .groups
+                .iter()
+                .flatten()
+                .map(|id| runner_ab.storage.get_player(id).expect("plr not found in runner_ab"))
+                .map(|plr| (plr.id_name(), plr.get_sort_int(), plr.move_point()))
+                .collect::<Vec<(String, i32, i32)>>();
+            state_ab.sort_by(|a, b| a.0.cmp(&b.0));
+
+            let mut state_ba = runner_ba
+                .world
+                .groups
+                .iter()
+                .flatten()
+                .map(|id| runner_ba.storage.get_player(id).expect("plr not found in runner_ba"))
+                .map(|plr| (plr.id_name(), plr.get_sort_int(), plr.move_point()))
+                .collect::<Vec<(String, i32, i32)>>();
+            state_ba.sort_by(|a, b| a.0.cmp(&b.0));
+
+            assert_eq!(state_ab, state_ba);
         }
 
         #[test]

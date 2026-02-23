@@ -214,7 +214,8 @@ impl RC4 {
             self.main_val.swap(self.i as usize, self.j as usize);
             let tmp =
                 self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            self.j = (self.j + tmp as u32) & 255;
+            let encrypted = *byte ^ tmp;
+            self.j = (self.j + encrypted as u32) & 255;
         }
     }
 

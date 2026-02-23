@@ -247,11 +247,11 @@ impl std::fmt::Display for PlayerStatus {
             if self.frozen { "冻结" } else { "正常" },
             if self.alive { "存活" } else { "死亡" },
             self.point,
+            self.hp,
             self.move_point,
             self.attr_sum,
             self.atk_sum,
             self.all_sum,
-            self.hp,
             self.attack,
             self.defense,
             self.speed,
@@ -724,6 +724,8 @@ impl Player {
         self.status.resistance = self.scale_by_name_factor_i(self.attr[5] as i32, 128);
         self.status.wisdom = self.scale_by_name_factor_i(self.attr[6] as i32, 80);
         self.status.max_hp = self.attr[7] as i32;
+
+        // println!("status before calc_attr_sum, factor: {}: {}", self.name_factor, self.status);
 
         self.calc_attr_sum();
 
@@ -1256,11 +1258,16 @@ impl Player {
     #[inline]
     pub fn is_seed_plr(&self) -> bool { matches!(self.player_type, PlayerType::Boost) }
 
-    fn p_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self.sort_int - other.sort_int != 0 {
-            self.sort_int.partial_cmp(&other.sort_int)
-        } else {
-            self.id_name().partial_cmp(&other.id_name())
+    #[inline]
+    pub fn cmp_by_id_name(&self, other: &Self) -> std::cmp::Ordering { self.id_name().cmp(&other.id_name()) }
+
+    #[inline]
+    pub fn cmp_for_sort(&self, other: &Self) -> std::cmp::Ordering { self.p_cmp(other) }
+
+    fn p_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.sort_int.cmp(&other.sort_int) {
+            Ordering::Equal => self.id_name().cmp(&other.id_name()),
+            ord => ord,
         }
     }
 
@@ -1411,7 +1418,7 @@ impl Player {
             if self.status.hp > self.status.max_hp {
                 self.status.hp = self.status.max_hp;
             }
-            let update = RunUpdate::new("[1]回复体力[2]点", caster, self.as_ptr(), dmg.abs() as u32);
+            let update = RunUpdate::new("[1]回复体力[2]点", caster, self.as_ptr(), dmg.unsigned_abs());
             updates.add(update);
             return 0;
         }
@@ -1447,7 +1454,7 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        let post_damaged_indices: Vec<_> = self.skills.post_damage.iter().cloned().collect();
+        let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
         for skill_idx in post_damaged_indices {
             let ptr = self.as_ptr();
             let skill = self.skills.skill_by_id_mut(skill_idx);
@@ -1460,9 +1467,9 @@ impl Player {
                 killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
             }
             self.on_die(old_hp, caster, randomer, updates, storage);
-            return old_hp;
+            old_hp
         } else {
-            return dmg;
+            dmg
         }
     }
 
@@ -1514,11 +1521,11 @@ impl Player {
 }
 
 impl PartialOrd for Player {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { self.p_cmp(other) }
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { Some(self.p_cmp(other)) }
 }
 
 impl PartialEq for Player {
-    fn eq(&self, other: &Self) -> bool { self.p_cmp(other).map(|cmp| matches!(cmp, Ordering::Equal)).unwrap_or(false) }
+    fn eq(&self, other: &Self) -> bool { self.p_cmp(other) == Ordering::Equal }
 }
 
 impl std::fmt::Display for Player {
@@ -1526,8 +1533,8 @@ impl std::fmt::Display for Player {
         write!(
             f,
             "Player{{{}{}, status: {}}}",
-            if self.team.is_some() {
-                format!("{}@{}", self.name, self.team.as_ref().unwrap())
+            if let Some(team) = &self.team {
+                format!("{}@{}", self.name, team)
             } else {
                 self.name.to_string()
             },
