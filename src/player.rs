@@ -464,9 +464,9 @@ impl Player {
         let mut name_base: Vec<u8> = Vec::with_capacity(128);
 
         for i in 0..=255 {
-            let j = (unsafe { rand.get_val_unchecked(i) } as u32 * 181 + 87) as u8;
-            if j & 0x80 == 0 {
-                name_base.push(j + 89);
+            let m = ((unsafe { rand.get_val_unchecked(i) } as u32 * 181) + 160) % 256;
+            if (89..217).contains(&m) {
+                name_base.push((m & 63) as u8);
             }
         }
         // UNWRAP SAFE: name_base.len() == 128
@@ -630,7 +630,7 @@ impl Player {
 
         // init raw attr
         let mut rand_vals = [0_u8; 32];
-        rand_vals.copy_from_slice(&self.rand.main_val[0..32]);
+        rand_vals.copy_from_slice(&self.name_base[0..32]);
         rand_vals.get_mut(0..10).unwrap().sort_unstable();
 
         let mut attr = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -645,9 +645,10 @@ impl Player {
         attr[5] = median(rand_vals[25], rand_vals[26], rand_vals[27]) as u32;
         attr[6] = median(rand_vals[28], rand_vals[29], rand_vals[30]) as u32;
         // 7 -> rand 3 + 4 + 5 + 6
-        attr[7] = rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
+        attr[7] = 154 + rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
         self.attr = attr;
-        println!("attr: {:?} {:?}", self.attr, self.rand.main_val);
+        println!("attr: {:?}", self.attr);
+        // println!("attr: {:?} {:?}", self.attr, self.name_base);
 
         // init skills
         // 技能熟练度计算
@@ -2258,6 +2259,19 @@ mod test {
         with_weapon.build();
         assert_eq!(with_weapon.attr[0], base.attr[0] + 11);
         assert_eq!(with_weapon.attr[2], base.attr[2] + 11);
+    }
+
+    #[test]
+    fn build_generates_expected_attr_for_help_and_aaaaa() {
+        let storage = Storage::new_arc();
+        let mut help = Player::new_from_namerena_raw("help".to_string(), storage.clone()).unwrap();
+        let mut aaaaa = Player::new_from_namerena_raw("aaaaa".to_string(), storage.clone()).unwrap();
+
+        help.build();
+        aaaaa.build();
+
+        assert_eq!(help.attr, [28, 51, 21, 32, 25, 43, 40, 261]);
+        assert_eq!(aaaaa.attr, [31, 36, 17, 30, 50, 50, 47, 315]);
     }
 
     #[test]

@@ -53,6 +53,8 @@ impl RC4 {
     pub fn get_val(&self, index: u8) -> u8 { self.main_val[index as usize] }
 
     #[inline]
+    /// # Safety
+    /// u8! u8懂不懂! safe!
     pub unsafe fn get_val_unchecked(&self, index: u8) -> u8 { unsafe { *self.main_val.get_unchecked(index as usize) } }
 
     #[inline]
