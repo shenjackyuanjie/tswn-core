@@ -1046,16 +1046,14 @@ mod group {
             let actor = runner.world.groups[0][0];
             let ally = runner.world.groups[0][1];
             let enemy = runner.world.groups[1][0];
-            runner
-                .storage
-                .just_get_player_mut(actor)
-                .expect("cannot get actor")
-                .set_state(crate::player::skill::charm::CharmState {
+            runner.storage.just_get_player_mut(actor).expect("cannot get actor").set_state(
+                crate::player::skill::charm::CharmState {
                     group_id: enemy,
                     target: Some(actor),
                     on_post_action: None,
                     step: 2,
-                });
+                },
+            );
 
             let target_system = runners::TargetSystem;
             let targets = target_system.select_targets(actor, &runner.world, &runner.storage);

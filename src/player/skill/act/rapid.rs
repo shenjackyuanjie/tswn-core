@@ -35,13 +35,7 @@ impl SkillTrait for RapidSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn select_target_count(&self, smart: bool) -> usize {
-        if smart {
-            self.sel_count_smart
-        } else {
-            self.sel_count
-        }
-    }
+    fn select_target_count(&self, smart: bool) -> usize { if smart { self.sel_count_smart } else { self.sel_count } }
 
     fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
         let Some(target_plr) = args.3.get_player(&target) else {

@@ -43,12 +43,7 @@ impl SkillTrait for UpgradeSkill {
     }
 
     fn update_state(&mut self, args: SkillArgs) {
-        if !args
-            .3
-            .get_player(&args.0)
-            .map(|owner| owner.has_state::<UpgradeState>())
-            .unwrap_or(false)
-        {
+        if !args.3.get_player(&args.0).map(|owner| owner.has_state::<UpgradeState>()).unwrap_or(false) {
             return;
         }
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get upgrade owner from storage");

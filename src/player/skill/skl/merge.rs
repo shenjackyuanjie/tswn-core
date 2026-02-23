@@ -48,16 +48,8 @@ impl SkillTrait for MergeSkill {
                 .map(|key| target_plr.skills.skill_by_id(*key).level())
                 .collect::<Vec<u32>>()
         };
-        let target_mp = args
-            .3
-            .get_player(&target)
-            .expect("cannot get merge target from storage")
-            .mp();
-        let target_move_point = args
-            .3
-            .get_player(&target)
-            .expect("cannot get merge target from storage")
-            .move_point();
+        let target_mp = args.3.get_player(&target).expect("cannot get merge target from storage").mp();
+        let target_move_point = args.3.get_player(&target).expect("cannot get merge target from storage").move_point();
 
         let mut merged = false;
         let (transfer_mp, transfer_move_point) = {

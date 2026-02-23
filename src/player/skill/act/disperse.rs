@@ -1,8 +1,8 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
     skill::shield::ShieldState,
+    skill::{SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 

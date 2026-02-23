@@ -96,14 +96,7 @@ pub trait SkillTrait: Debug {
     }
     /// 防御之后
     fn post_defend(&mut self, mut dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 { dmg }
-    fn post_defend_with_level(
-        &mut self,
-        _level: u32,
-        dmg: i32,
-        caster: PlrId,
-        on_damage: &OnDamageFunc,
-        args: SkillArgs,
-    ) -> i32 {
+    fn post_defend_with_level(&mut self, _level: u32, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
         self.post_defend(dmg, caster, on_damage, args)
     }
     /// 伤害之后
@@ -204,7 +197,12 @@ pub trait SkillTrait: Debug {
 
         let mut scored = selected
             .into_iter()
-            .map(|target| (target, self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3))))
+            .map(|target| {
+                (
+                    target,
+                    self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3)),
+                )
+            })
             .collect::<Vec<(PlrId, f64)>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
         scored.into_iter().map(|x| x.0).collect()
@@ -355,8 +353,7 @@ impl Skill {
     pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action_with_level(self.level, args) }
 
     pub fn pre_defend(&mut self, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 {
-        self.skill_type
-            .pre_defend_with_level(self.level, atp, caster, is_mag, on_damage, args)
+        self.skill_type.pre_defend_with_level(self.level, atp, caster, is_mag, on_damage, args)
     }
 
     pub fn post_defend(&mut self, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {

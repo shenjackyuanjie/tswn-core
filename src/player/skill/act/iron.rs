@@ -54,12 +54,7 @@ impl SkillTrait for IronSkill {
     }
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
-        let owner_magic = args
-            .3
-            .get_player(&args.0)
-            .expect("cannot get iron owner from storage")
-            .get_status()
-            .magic;
+        let owner_magic = args.3.get_player(&args.0).expect("cannot get iron owner from storage").get_status().magic;
         self.step = 3;
         self.protect = 110 + owner_magic;
         self.on_post_defend = Some(());

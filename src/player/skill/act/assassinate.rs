@@ -1,8 +1,8 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
     skill::poison::PoisonState,
+    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -42,13 +42,7 @@ impl SkillTrait for AssassinateSkill {
         if self.target.is_some() {
             return true;
         }
-        if smart
-            && args
-                .3
-                .get_player(&args.0)
-                .map(|p| p.has_state::<PoisonState>())
-                .unwrap_or(false)
-        {
+        if smart && args.3.get_player(&args.0).map(|p| p.has_state::<PoisonState>()).unwrap_or(false) {
             return false;
         }
         args.1.r127() < level
@@ -63,10 +57,7 @@ impl SkillTrait for AssassinateSkill {
         if !smart {
             return true;
         }
-        args.3
-            .get_player(&target)
-            .map(|x| x.get_status().hp > 160)
-            .unwrap_or(false)
+        args.3.get_player(&target).map(|x| x.get_status().hp > 160).unwrap_or(false)
     }
 
     fn select_targets_with_level(&self, level: u32, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {

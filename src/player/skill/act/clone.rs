@@ -1,9 +1,9 @@
+use super::minion::{MinionKind, MinionRuntimeState};
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlrId, PlayerStateStore, PlayerType,
+    PlayerStateStore, PlayerType, PlrId,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
-use super::minion::{MinionKind, MinionRuntimeState};
 
 #[derive(Debug, Clone, Default)]
 pub struct CloneSkill;
@@ -52,11 +52,7 @@ impl SkillTrait for CloneSkill {
             owner.update_states();
         }
 
-        let owner_snapshot = args
-            .3
-            .get_player(&args.0)
-            .expect("cannot get clone owner from storage")
-            .clone();
+        let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage").clone();
         let mut cloned = owner_snapshot.clone();
         let clone_suffix = args.1.r255();
         cloned.name = format!("{}?clone{}", owner_snapshot.id_name(), clone_suffix);

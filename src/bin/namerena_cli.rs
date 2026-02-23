@@ -54,12 +54,7 @@ fn fmt_update(runner: &Runner, update: &RunUpdate) -> String {
     let targets = if update.targets.is_empty() {
         update.score.to_string()
     } else {
-        update
-            .targets
-            .iter()
-            .map(|id| plr_name(runner, *id))
-            .collect::<Vec<String>>()
-            .join(",")
+        update.targets.iter().map(|id| plr_name(runner, *id)).collect::<Vec<String>>().join(",")
     };
 
     let mut msg = update.message.clone();

@@ -1,8 +1,8 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlrId, PlayerStateStore, PlayerType,
-    skill::{Skill, SkillArgs, SkillExt, SkillTrait},
+    PlayerStateStore, PlayerType, PlrId,
     skill::store::SkillStorage,
+    skill::{Skill, SkillArgs, SkillExt, SkillTrait},
 };
 
 use super::minion::{MinionKind, MinionRuntimeState};
@@ -43,11 +43,7 @@ impl SkillTrait for ShadowSkill {
 
     fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[幻术]", args.0, args.0, 60));
-        let owner = args
-            .3
-            .get_player(&args.0)
-            .expect("cannot get shadow owner from storage")
-            .clone();
+        let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage").clone();
         let mut shadow = owner.clone();
         shadow.id = args.3.new_plr_id();
         shadow.name = format!("{}?shadow{}", owner.id_name(), args.1.r255());

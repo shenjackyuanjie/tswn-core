@@ -1,10 +1,10 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
     skill::act::minion::MinionRuntimeState,
     skill::merge::MergeState,
     skill::zombie::ZombieState,
+    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone)]

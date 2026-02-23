@@ -1,8 +1,8 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlrId, PlayerStateStore, PlayerType, StateTrait,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    PlayerStateStore, PlayerType, PlrId, StateTrait,
     skill::act::minion::{MinionKind, MinionRuntimeState},
+    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -27,12 +27,7 @@ impl SkillTrait for ZombieSkill {
         if args.1.r63() >= level {
             return false;
         }
-        if args
-            .3
-            .get_player(&target)
-            .map(|p| p.has_state::<MinionRuntimeState>())
-            .unwrap_or(false)
-        {
+        if args.3.get_player(&target).map(|p| p.has_state::<MinionRuntimeState>()).unwrap_or(false) {
             return false;
         }
         let Some(owner) = args.3.get_player(&args.0).cloned() else {

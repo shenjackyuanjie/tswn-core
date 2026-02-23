@@ -1195,9 +1195,7 @@ impl Player {
                 continue;
             }
             let protector_ready = {
-                let protector = storage
-                    .just_get_player_mut(link.owner)
-                    .expect("cannot get protect owner from storage");
+                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
                 protector.mp_ready(randomer)
             };
             if !protector_ready {
@@ -1206,9 +1204,7 @@ impl Player {
 
             updates.add(RunUpdate::new("[0][守护][1]", link.owner, target_id, 40));
             let redirected_atp = {
-                let protector = storage
-                    .just_get_player_mut(link.owner)
-                    .expect("cannot get protect owner from storage");
+                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
                 protector.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage)
             };
             if redirected_atp == 0.0 {
@@ -1219,9 +1215,7 @@ impl Player {
                 (redirected_atp * 0.5 / protector.get_df(is_mag) as f64).floor() as i32
             };
             redirected_dmg = {
-                let protector = storage
-                    .just_get_player_mut(link.owner)
-                    .expect("cannot get protect owner from storage");
+                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
                 protector.post_defend(redirected_dmg, caster, on_damage, randomer, updates, storage)
             };
             storage
@@ -2083,10 +2077,7 @@ mod test {
 
         let healed_hp = storage.get_player(&ally_id).unwrap().get_status().hp;
         assert!(healed_hp > old_ally_hp);
-        assert!(updates
-            .updates
-            .iter()
-            .any(|u| u.message.contains("治愈魔法") && u.target == ally_id));
+        assert!(updates.updates.iter().any(|u| u.message.contains("治愈魔法") && u.target == ally_id));
     }
 
     #[test]
@@ -2122,10 +2113,7 @@ mod test {
         let revived = storage.get_player(&ally_id).unwrap();
         assert!(revived.alive());
         assert!(revived.get_status().hp > 0);
-        assert!(updates
-            .updates
-            .iter()
-            .any(|u| u.message.contains("苏生术") && u.target == ally_id));
+        assert!(updates.updates.iter().any(|u| u.message.contains("苏生术") && u.target == ally_id));
     }
 
     #[test]
@@ -2158,18 +2146,25 @@ mod test {
             all_alive: vec![protector_id, ally_id, enemy_id],
         };
         protector_mut.action(&mut randomer, &mut updates, &storage, &targets);
-        assert!(storage
-            .get_player(&ally_id)
-            .unwrap()
-            .has_state::<crate::player::skill::protect::ProtectState>());
+        assert!(
+            storage
+                .get_player(&ally_id)
+                .unwrap()
+                .has_state::<crate::player::skill::protect::ProtectState>()
+        );
 
         let protector_hp_before = storage.get_player(&protector_id).unwrap().get_status().hp;
         let ally_hp_before = storage.get_player(&ally_id).unwrap().get_status().hp;
         let mut damage_updates = RunUpdates::new();
-        storage
-            .just_get_player_mut(ally_id)
-            .unwrap()
-            .attacked(260.0, false, enemy_id, noop_on_damage, &mut randomer, &mut damage_updates, &storage);
+        storage.just_get_player_mut(ally_id).unwrap().attacked(
+            260.0,
+            false,
+            enemy_id,
+            noop_on_damage,
+            &mut randomer,
+            &mut damage_updates,
+            &storage,
+        );
 
         let protector_hp_after = storage.get_player(&protector_id).unwrap().get_status().hp;
         let ally_hp_after = storage.get_player(&ally_id).unwrap().get_status().hp;
@@ -2355,10 +2350,14 @@ mod test {
             target_mut.status.set_alive(true);
         }
 
-        storage
-            .just_get_player_mut(target_id)
-            .unwrap()
-            .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+        storage.just_get_player_mut(target_id).unwrap().damage(
+            999,
+            owner_id,
+            noop_on_damage,
+            &mut randomer,
+            &mut updates,
+            &storage,
+        );
 
         {
             let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
@@ -2400,10 +2399,14 @@ mod test {
             target_mut.status.set_alive(true);
         }
 
-        storage
-            .just_get_player_mut(target_id)
-            .unwrap()
-            .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+        storage.just_get_player_mut(target_id).unwrap().damage(
+            999,
+            owner_id,
+            noop_on_damage,
+            &mut randomer,
+            &mut updates,
+            &storage,
+        );
 
         {
             let target_mut = storage.just_get_player_mut(target_id).unwrap();
@@ -2414,9 +2417,7 @@ mod test {
         let pending = storage.take_pending_spawns();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].owner, owner_id);
-        assert!(pending[0]
-            .player
-            .has_state::<crate::player::skill::act::minion::MinionRuntimeState>());
+        assert!(pending[0].player.has_state::<crate::player::skill::act::minion::MinionRuntimeState>());
         assert!(updates.updates.iter().any(|x| x.message.contains("变成了")));
     }
 
@@ -2440,10 +2441,14 @@ mod test {
         };
         let mut updates = RunUpdates::new();
 
-        storage
-            .just_get_player_mut(owner_id)
-            .unwrap()
-            .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+        storage.just_get_player_mut(owner_id).unwrap().damage(
+            999,
+            owner_id,
+            noop_on_damage,
+            &mut randomer,
+            &mut updates,
+            &storage,
+        );
 
         assert!(!storage.get_player(&minion_id).expect("minion should exist").alive());
         let pending_remove = storage.take_pending_remove_players();

@@ -28,9 +28,7 @@ impl SkillTrait for HealSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn post_act_level(&self, level: u32) -> u32 {
-        if level > 8 { level - 1 } else { level }
-    }
+    fn post_act_level(&self, level: u32) -> u32 { if level > 8 { level - 1 } else { level } }
 
     fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyAlive }
 
@@ -87,5 +85,11 @@ impl SkillTrait for HealSkill {
     }
 }
 
-fn on_heal(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut crate::rc4::RC4, _updates: &mut crate::engine::update::RunUpdates) {
+fn on_heal(
+    _caster: PlrId,
+    _target: PlrId,
+    _dmg: i32,
+    _r: &mut crate::rc4::RC4,
+    _updates: &mut crate::engine::update::RunUpdates,
+) {
 }

@@ -41,11 +41,7 @@ impl SkillTrait for CounterSkill {
             let owner = args.3.get_player(&args.0).expect("cannot get counter owner from storage");
             (owner.get_status().wisdom.clamp(0, 127) as u32, owner.clan_name())
         };
-        let caster_clan = args
-            .3
-            .get_player(&caster)
-            .expect("cannot get counter caster from storage")
-            .clan_name();
+        let caster_clan = args.3.get_player(&caster).expect("cannot get counter caster from storage").clan_name();
         if owner_clan == caster_clan && args.1.r63() < owner_wisdom {
             return;
         }

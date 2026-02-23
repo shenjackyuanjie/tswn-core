@@ -48,11 +48,7 @@ impl ProtectSkill {
         let group = if let Some(group) = args.3.group_containing(args.0) {
             group.clone()
         } else {
-            let owner_clan = args
-                .3
-                .get_player(&args.0)
-                .expect("cannot get protect owner from storage")
-                .clan_name();
+            let owner_clan = args.3.get_player(&args.0).expect("cannot get protect owner from storage").clan_name();
             args.3
                 .all_player_ids()
                 .into_iter()
@@ -86,10 +82,8 @@ impl ProtectSkill {
             let score = if smart {
                 let hp = target.get_status().hp.max(0) as f64;
                 let max_hp = target.get_status().max_hp.max(1) as f64;
-                let protect_len = target
-                    .get_state::<ProtectState>()
-                    .map(|state| state.protect_from.len() + 1)
-                    .unwrap_or(1) as f64;
+                let protect_len =
+                    target.get_state::<ProtectState>().map(|state| state.protect_from.len() + 1).unwrap_or(1) as f64;
                 ((max_hp - hp) / max_hp) * target.attr_sum().max(1) as f64 / protect_len
             } else {
                 args.1.rFFFF() as f64
@@ -114,9 +108,7 @@ impl ProtectSkill {
             state.protect_from.retain(|entry| entry.owner != owner);
             clear_state = state.protect_from.is_empty();
         }
-        if clear_state
-            && let Some(target) = args.3.just_get_player_mut(target_id)
-        {
+        if clear_state && let Some(target) = args.3.just_get_player_mut(target_id) {
             target.clear_state::<ProtectState>();
         }
     }

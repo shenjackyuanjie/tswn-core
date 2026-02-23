@@ -53,10 +53,7 @@ impl SkillTrait for AbsorbSkill {
             .expect("cannot get absorb target from storage")
             .attacked(atp, true, args.0, on_absorb as OnDamageFunc, args.1, args.2, args.3);
         if dmg > 0 {
-            let owner = args
-                .3
-                .just_get_player_mut(args.0)
-                .expect("cannot get absorb owner from storage");
+            let owner = args.3.just_get_player_mut(args.0).expect("cannot get absorb owner from storage");
             let healed = ((dmg + 1) / 2).min(owner.get_status().max_hp - owner.get_status().hp);
             if healed > 0 {
                 owner.damage(-healed, args.0, on_absorb as OnDamageFunc, args.1, args.2, args.3);

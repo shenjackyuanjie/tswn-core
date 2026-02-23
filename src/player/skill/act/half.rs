@@ -29,10 +29,7 @@ impl SkillTrait for HalfSkill {
         if !smart {
             return true;
         }
-        args.3
-            .get_player(&target)
-            .map(|x| x.get_status().hp > 100)
-            .unwrap_or(false)
+        args.3.get_player(&target).map(|x| x.get_status().hp > 100).unwrap_or(false)
     }
 
     fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
@@ -53,12 +50,7 @@ impl SkillTrait for HalfSkill {
         }
         let target_id = targets[0];
         args.2.add(RunUpdate::new("[0]使用[生命之轮]", args.0, target_id, 20));
-        let owner_magic = args
-            .3
-            .get_player(&args.0)
-            .expect("cannot get half owner from storage")
-            .get_status()
-            .magic;
+        let owner_magic = args.3.get_player(&args.0).expect("cannot get half owner from storage").get_status().magic;
         let target_hp = args
             .3
             .get_player(&target_id)

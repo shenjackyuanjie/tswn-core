@@ -43,11 +43,7 @@ impl SkillTrait for HideSkill {
                 .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
                 .count()
         } else {
-            let owner_clan = args
-                .3
-                .get_player(&args.0)
-                .map(|p| p.clan_name())
-                .unwrap_or_default();
+            let owner_clan = args.3.get_player(&args.0).map(|p| p.clan_name()).unwrap_or_default();
             args.3
                 .all_player_ids()
                 .into_iter()

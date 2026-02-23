@@ -73,9 +73,7 @@ impl SkillTrait for ExchangeSkill {
             .expect("cannot get exchange target from storage")
             .get_status()
             .agility;
-        if args.3.get_player(&target_id).map(|x| x.active()).unwrap_or(false)
-            && Player::dodge(owner_magic, target_agl, args.1)
-        {
+        if args.3.get_player(&target_id).map(|x| x.active()).unwrap_or(false) && Player::dodge(owner_magic, target_agl, args.1) {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
             return;
         }
