@@ -1,5 +1,7 @@
-
 use crate::player::PlrId;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static RUN_UPDATES_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateType {
@@ -81,11 +83,17 @@ impl RunUpdate {
 
 #[derive(Debug, Clone, Default)]
 pub struct RunUpdates {
+    pub id: u64,
     pub updates: Vec<RunUpdate>,
 }
 
 impl RunUpdates {
-    pub fn new() -> RunUpdates { RunUpdates { updates: vec![] } }
+    pub fn new() -> RunUpdates {
+        RunUpdates {
+            id: RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed),
+            updates: vec![],
+        }
+    }
 
     pub fn add(&mut self, update: RunUpdate) { self.updates.push(update); }
 

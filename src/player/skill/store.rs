@@ -97,6 +97,13 @@ impl SkillStorage {
     /// 最后一个技能 boost
     pub fn boost_last(&mut self) {
         for skill in self.skill.iter().rev() {
+            let should_try_boost = {
+                let skill_ref = self.store.get(skill).expect("skill not found in store");
+                skill_ref.level() > 0 && skill_ref.has_action_impl()
+            };
+            if !should_try_boost {
+                continue;
+            }
             if self.store.get_mut(skill).expect("skill not found in store").boost_if_not() {
                 break;
             }
@@ -159,6 +166,16 @@ impl SkillStorage {
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
             skill.post_action((args.0, args.1, args.2, args.3));
         }
+    }
+
+    pub fn on_update_end(&mut self, args: SkillArgs) -> bool {
+        let keys: Vec<SkillKey> = self.skill.clone();
+        let mut triggered = false;
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            triggered |= skill.on_update_end((args.0, args.1, args.2, args.3));
+        }
+        triggered
     }
 
     pub fn pre_defend(&mut self, mut atp: f64, is_mag: bool, caster: PlrId, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {

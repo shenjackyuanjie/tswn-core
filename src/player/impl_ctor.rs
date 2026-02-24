@@ -86,7 +86,7 @@ impl Player {
             .unwrap_or_else(|_| unreachable!("unreachable(如果真到这里了就tm得好好怀疑一下自己的代码是怎么写的了)"));
 
         // 技能顺序
-        let mut skills = (0..39).collect::<Vec<u32>>();
+        let mut skills = (0..40).collect::<Vec<u32>>();
         rand.sort_list(&mut skills);
 
         let name_factor = {

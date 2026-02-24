@@ -44,13 +44,13 @@ impl Player {
         // 7 -> rand 3 + 4 + 5 + 6
         attr[7] = 154 + rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
         self.attr = attr;
-        println!("attr: {:?}", self.attr);
         // println!("attr: {:?} {:?}", self.attr, self.name_base);
 
         // init skills
         // 技能熟练度计算
         // 计算 skl_id 的已经在初始化做完了
         // DIY TODO
+        let mut slot_skill_keys: [Option<usize>; 16] = [None; 16];
         for (j, i) in (64..128).step_by(4).enumerate() {
             // 取 val index ~ val index + 3 的最小值
             let small = min(
@@ -64,10 +64,12 @@ impl Player {
                     min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
                 );
                 // 其实是懒得读取原始的last skill, 就直接按照原始代码来了
-                if raw_small < 10 {
+                if raw_small <= 10 {
                     skill.boosted = true;
                 }
+                let skill_key = self.skills.skill.len();
                 self.skills.add_skill(skill);
+                slot_skill_keys[j] = Some(skill_key);
             }
         }
 
@@ -80,15 +82,15 @@ impl Player {
         // boost最后一个
         self.skills.boost_last();
         // 然后是 boost passive
-        if self.skills.skill.len() >= 16 {
-            // 14
-            let skill_14 = self.skills.skill_by_idx_mut(14);
+        if let Some(skill_key) = slot_skill_keys[14] {
+            let skill_14 = self.skills.skill_by_id_mut(skill_key);
             if skill_14.level() > 0 && !skill_14.boosted {
                 let boost_level = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
                 skill_14.boost_level(boost_level);
             }
-            // 15
-            let skill_15 = self.skills.skill_by_idx_mut(15);
+        }
+        if let Some(skill_key) = slot_skill_keys[15] {
+            let skill_15 = self.skills.skill_by_id_mut(skill_key);
             if skill_15.level() > 0 && !skill_15.boosted {
                 let boost_level = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
                 skill_15.boost_level(boost_level);

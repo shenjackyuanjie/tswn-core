@@ -81,6 +81,9 @@ pub trait SkillTrait: Debug {
     /// 行动之后
     fn post_action(&mut self, args: SkillArgs) {}
     fn post_action_with_level(&mut self, _level: u32, args: SkillArgs) { self.post_action(args) }
+    /// 每次 action 结束后的回调（对齐 RunUpdates.onUpdateEnd）
+    fn on_update_end(&mut self, _args: SkillArgs) -> bool { false }
+    fn on_update_end_with_level(&mut self, _level: u32, args: SkillArgs) -> bool { self.on_update_end(args) }
     /// 防御之前
     fn pre_defend(&mut self, mut atp: f64, caster: PlrId, is_mag: bool, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 { atp }
     fn pre_defend_with_level(
@@ -150,22 +153,33 @@ pub trait SkillTrait: Debug {
 
     /// 技能选目标流程（默认：按 valid 过滤，随机采样后按 score 排序）
     fn select_targets(&self, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
-        let mut valid = Vec::new();
-        for target in candidates.iter().copied() {
-            if self.valid_target(target, smart, (args.0, args.1, args.2, args.3)) {
-                valid.push(target);
-            }
-        }
-        if valid.is_empty() {
+        let select_count = self.select_target_count(smart);
+        if select_count == 0 {
             return Vec::new();
         }
-
-        let take_count = self.select_target_count(smart).max(1).min(valid.len());
-        let mut selected = Vec::with_capacity(take_count);
-        let mut pool = valid;
-        while selected.len() < take_count && !pool.is_empty() {
-            let idx = args.1.pick(&pool).unwrap_or(0);
-            selected.push(pool.swap_remove(idx));
+        let mut selected = Vec::new();
+        let mut dup = 0usize;
+        let mut invalid = -(select_count as i32);
+        while dup <= select_count && invalid <= select_count as i32 {
+            let Some(idx) = args.1.pick(candidates) else {
+                return Vec::new();
+            };
+            let target = candidates[idx];
+            if !self.valid_target(target, smart, (args.0, args.1, args.2, args.3)) {
+                invalid += 1;
+                continue;
+            }
+            if selected.contains(&target) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return Vec::new();
         }
 
         let mut scored = selected
@@ -177,22 +191,33 @@ pub trait SkillTrait: Debug {
     }
 
     fn select_targets_with_level(&self, level: u32, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
-        let mut valid = Vec::new();
-        for target in candidates.iter().copied() {
-            if self.valid_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3)) {
-                valid.push(target);
-            }
-        }
-        if valid.is_empty() {
+        let select_count = self.select_target_count_with_level(level, smart);
+        if select_count == 0 {
             return Vec::new();
         }
-
-        let take_count = self.select_target_count_with_level(level, smart).max(1).min(valid.len());
-        let mut selected = Vec::with_capacity(take_count);
-        let mut pool = valid;
-        while selected.len() < take_count && !pool.is_empty() {
-            let idx = args.1.pick(&pool).unwrap_or(0);
-            selected.push(pool.swap_remove(idx));
+        let mut selected = Vec::new();
+        let mut dup = 0usize;
+        let mut invalid = -(select_count as i32);
+        while dup <= select_count && invalid <= select_count as i32 {
+            let Some(idx) = args.1.pick(candidates) else {
+                return Vec::new();
+            };
+            let target = candidates[idx];
+            if !self.valid_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3)) {
+                invalid += 1;
+                continue;
+            }
+            if selected.contains(&target) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return Vec::new();
         }
 
         let mut scored = selected
@@ -352,6 +377,8 @@ impl Skill {
 
     pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action_with_level(self.level, args) }
 
+    pub fn on_update_end(&mut self, args: SkillArgs) -> bool { self.skill_type.on_update_end_with_level(self.level, args) }
+
     pub fn pre_defend(&mut self, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 {
         self.skill_type.pre_defend_with_level(self.level, atp, caster, is_mag, on_damage, args)
     }
@@ -375,6 +402,16 @@ impl Skill {
     pub fn prob(&self, smart: bool, args: SkillArgs) -> bool { self.skill_type.prob(self.level, smart, args) }
 
     pub fn target_domain(&self) -> SkillTargetDomain { self.skill_type.target_domain_with_level(self.level) }
+
+    pub fn select_target_count(&self, smart: bool) -> usize { self.skill_type.select_target_count_with_level(self.level, smart) }
+
+    pub fn valid_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> bool {
+        self.skill_type.valid_target_with_level(self.level, target, smart, args)
+    }
+
+    pub fn score_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        self.skill_type.score_target_with_level(self.level, target, smart, args)
+    }
 
     pub fn select_targets(&self, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
         self.skill_type.select_targets_with_level(self.level, candidates, smart, args)

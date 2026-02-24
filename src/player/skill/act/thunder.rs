@@ -23,14 +23,12 @@ impl SkillTrait for ThunderSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn select_target_count(&self, _smart: bool) -> usize { 1 }
-
-    fn act_with_level(&mut self, level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }
         let target_id = targets[0];
-        args.2.add(RunUpdate::new("[0]使用[雷击术]", args.0, target_id, 10));
+        args.2.add(RunUpdate::new("[0]使用[雷击术]", args.0, target_id, 1));
 
         let mut agl = 100
             + args
@@ -66,7 +64,7 @@ impl SkillTrait for ThunderSkill {
             }
             agl -= 10;
             let owner = args.3.get_player(&args.0).expect("cannot get thunder owner from storage");
-            let atp = owner.get_at(true, args.1) * (0.36 + level as f64 / 2048.0);
+            let atp = owner.get_at(true, args.1) * 0.36;
             let dmg = args
                 .3
                 .just_get_player_mut(target_id)

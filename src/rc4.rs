@@ -369,13 +369,26 @@ impl RC4 {
             return;
         }
         let n = list.len();
-        // 直接对输入列表进行操作
-        let mut b = 0;
+        let mut order: Vec<usize> = (0..n).collect();
+        let mut b = 0usize;
         for _ in 0..2 {
             for a in 0..n {
-                let key_v = self.next_i32(n as i32);
-                b = (b + a + key_v as usize) % n;
-                list.swap(a, b);
+                let key_v = self.next_i32(n as i32) as usize;
+                let t = order[a];
+                b = (b + t + key_v) % n;
+                order[a] = order[b];
+                order[b] = t;
+            }
+        }
+        let mut old_to_new = vec![0usize; n];
+        for (new_idx, old_idx) in order.into_iter().enumerate() {
+            old_to_new[old_idx] = new_idx;
+        }
+        for i in 0..n {
+            while old_to_new[i] != i {
+                let next = old_to_new[i];
+                list.swap(i, next);
+                old_to_new.swap(i, next);
             }
         }
     }

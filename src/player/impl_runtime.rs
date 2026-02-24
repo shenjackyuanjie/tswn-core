@@ -32,7 +32,6 @@ impl Player {
         use crate::player::skill::berserk::BerserkState;
 
         let smart = self.status.wisdom > randomer.r63() as i32;
-        let req_mp = randomer.r15() as i32 + 8;
         let ptr = self.as_ptr();
         let forced_skill = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
         if self.status.frozed() {
@@ -41,39 +40,90 @@ impl Player {
 
         let mut acted = false;
         let mut selected_skill_key: Option<usize> = forced_skill;
+        let mut selected_targets: Vec<PlrId> = Vec::new();
         if self.has_state::<BerserkState>() {
-            self.default_attack(false, randomer, updates, storage, &targets.enemy_alive);
+            self.default_attack(false, randomer, updates, storage, targets);
             acted = true;
-        } else if selected_skill_key.is_none() && self.status.mp >= req_mp {
-            self.status.mp -= req_mp;
-            let skill_keys = self.skills.skill.clone();
-            for key in skill_keys {
-                let should_cast = {
-                    let skill = self.skills.skill_by_id(key);
-                    skill.level() > 0 && skill.has_action_impl() && skill.prob(smart, (ptr, randomer, updates, storage))
-                };
-                if should_cast {
-                    selected_skill_key = Some(key);
-                    break;
+        } else {
+            if selected_skill_key.is_none() {
+                let req_mp = randomer.r15() as i32 + 8;
+                if self.status.mp >= req_mp {
+                    self.status.mp -= req_mp;
+                    let skill_keys = self.skills.skill.clone();
+                    for key in skill_keys {
+                        let maybe_targets = {
+                            let skill = self.skills.skill_by_id(key);
+                            if !(skill.level() > 0
+                                && skill.has_action_impl()
+                                && skill.prob(smart, (ptr, randomer, updates, storage)))
+                            {
+                                None
+                            } else {
+                                let domain = skill.target_domain();
+                                let selected = {
+                                    let self_candidates = [ptr];
+                                    let duplicated_enemy = targets.enemy_alive.first().copied().map(|id| [id, id]);
+                                    let candidates: &[PlrId] = match domain {
+                                        SkillTargetDomain::EnemyAlive => {
+                                            if let Some(buf) = duplicated_enemy.as_ref() {
+                                                if targets.enemy_alive.len() == 1 {
+                                                    buf
+                                                } else {
+                                                    targets.enemy_alive.as_slice()
+                                                }
+                                            } else {
+                                                targets.enemy_alive.as_slice()
+                                            }
+                                        }
+                                        SkillTargetDomain::AllyAlive => targets.ally_alive.as_slice(),
+                                        SkillTargetDomain::AllyAny => targets.ally_all.as_slice(),
+                                        SkillTargetDomain::AllyDead => targets.ally_dead.as_slice(),
+                                        SkillTargetDomain::SelfOnly => &self_candidates,
+                                        SkillTargetDomain::AllAlive => targets.all_alive.as_slice(),
+                                    };
+                                    skill.select_targets(candidates, smart, (ptr, randomer, updates, storage))
+                                };
+                                if selected.is_empty() { None } else { Some(selected) }
+                            }
+                        };
+                        if let Some(selected) = maybe_targets {
+                            selected_skill_key = Some(key);
+                            selected_targets = selected;
+                            break;
+                        }
+                    }
                 }
-            }
-        }
-
-        if let Some(skill_key) = selected_skill_key {
-            let self_candidates = [ptr];
-            let selected_targets = {
-                let skill = self.skills.skill_by_id(skill_key);
-                let candidates: &[PlrId] = match skill.target_domain() {
-                    SkillTargetDomain::EnemyAlive => targets.enemy_alive.as_slice(),
-                    SkillTargetDomain::AllyAlive => targets.ally_alive.as_slice(),
-                    SkillTargetDomain::AllyAny => targets.ally_all.as_slice(),
-                    SkillTargetDomain::AllyDead => targets.ally_dead.as_slice(),
-                    SkillTargetDomain::SelfOnly => &self_candidates,
-                    SkillTargetDomain::AllAlive => targets.all_alive.as_slice(),
+            } else if let Some(skill_key) = selected_skill_key {
+                selected_targets = {
+                    let skill = self.skills.skill_by_id(skill_key);
+                    let domain = skill.target_domain();
+                    let self_candidates = [ptr];
+                    let duplicated_enemy = targets.enemy_alive.first().copied().map(|id| [id, id]);
+                    let candidates: &[PlrId] = match domain {
+                        SkillTargetDomain::EnemyAlive => {
+                            if let Some(buf) = duplicated_enemy.as_ref() {
+                                if targets.enemy_alive.len() == 1 {
+                                    buf
+                                } else {
+                                    targets.enemy_alive.as_slice()
+                                }
+                            } else {
+                                targets.enemy_alive.as_slice()
+                            }
+                        }
+                        SkillTargetDomain::AllyAlive => targets.ally_alive.as_slice(),
+                        SkillTargetDomain::AllyAny => targets.ally_all.as_slice(),
+                        SkillTargetDomain::AllyDead => targets.ally_dead.as_slice(),
+                        SkillTargetDomain::SelfOnly => &self_candidates,
+                        SkillTargetDomain::AllAlive => targets.all_alive.as_slice(),
+                    };
+                    skill.select_targets(candidates, smart, (ptr, randomer, updates, storage))
                 };
-                skill.select_targets(candidates, smart, (ptr, randomer, updates, storage))
-            };
-            if !selected_targets.is_empty() {
+            }
+
+            if let Some(skill_key) = selected_skill_key
+                && !selected_targets.is_empty()
+            {
                 let skill = self.skills.skill_by_id_mut(skill_key);
                 skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
                 acted = true;
@@ -81,7 +131,7 @@ impl Player {
         }
 
         if !acted {
-            self.default_attack(smart, randomer, updates, storage, &targets.enemy_alive);
+            self.default_attack(smart, randomer, updates, storage, targets);
         }
 
         let recover_threshold = (self.status.wisdom + 64).clamp(0, 127) as u32;
@@ -93,7 +143,81 @@ impl Player {
         self.apply_post_action_states(randomer, updates, storage);
     }
 
-    fn pick_target(targets: &[PlrId], randomer: &mut RC4) -> Option<PlrId> { randomer.pick(targets).map(|idx| targets[idx]) }
+    pub fn on_update_end(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
+        let ptr = self.as_ptr();
+        self.skills.on_update_end((ptr, randomer, updates, storage))
+    }
+
+    fn pick_enemy_target(targets: &ActionTargets, randomer: &mut RC4) -> Option<PlrId> {
+        if targets.all_alive.is_empty() {
+            return None;
+        }
+        let mut skip_indices = Vec::new();
+        for (idx, plr_id) in targets.all_alive.iter().enumerate() {
+            if targets.ally_alive.contains(plr_id) {
+                skip_indices.push(idx);
+            }
+        }
+        if skip_indices.is_empty() {
+            randomer.pick(&targets.all_alive).map(|idx| targets.all_alive[idx])
+        } else {
+            randomer
+                .pick_skip_range(&targets.all_alive, skip_indices)
+                .map(|idx| targets.all_alive[idx])
+        }
+    }
+
+    fn select_default_attack_target(
+        &self,
+        smart: bool,
+        randomer: &mut RC4,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) -> Option<PlrId> {
+        let select_count = if smart { 3 } else { 2 };
+        let mut selected = Vec::new();
+        let mut dup = 0usize;
+        let mut invalid = -(select_count as i32);
+        while dup <= select_count && invalid <= select_count as i32 {
+            let Some(target_id) = Self::pick_enemy_target(targets, randomer) else {
+                return None;
+            };
+            if !targets.enemy_alive.contains(&target_id) {
+                invalid += 1;
+                continue;
+            }
+            if selected.contains(&target_id) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target_id);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return None;
+        }
+
+        let mut scored = selected
+            .into_iter()
+            .map(|target_id| {
+                let score = storage
+                    .get_player(&target_id)
+                    .map(|target| {
+                        if smart {
+                            target.get_status().attract
+                        } else {
+                            randomer.rFFFF() as f64 + target.get_status().attract
+                        }
+                    })
+                    .unwrap_or(f64::MIN);
+                (target_id, score)
+            })
+            .collect::<Vec<(PlrId, f64)>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        scored.first().map(|x| x.0)
+    }
 
     fn default_attack(
         &mut self,
@@ -101,9 +225,9 @@ impl Player {
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
-        targets: &[PlrId],
+        targets: &ActionTargets,
     ) {
-        let Some(target_id) = Self::pick_target(targets, randomer) else {
+        let Some(target_id) = self.select_default_attack_target(smart, randomer, storage, targets) else {
             return;
         };
 
@@ -591,7 +715,7 @@ impl Player {
         if self.status.hp < 0 {
             self.status.hp = 0;
         }
-        let mut msg = "[0]受到[2]点伤害".to_string();
+        let mut msg = "[1]受到[2]点伤害".to_string();
         if dmg >= 160 {
             msg.push_str("[s_dmg160]");
         } else if dmg >= 120 {

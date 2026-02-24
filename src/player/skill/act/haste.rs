@@ -20,6 +20,8 @@ impl SkillTrait for HasteSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn has_action_impl(&self) -> bool { true }
+
     fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyAlive }
 
     fn select_target_count_with_level(&self, _level: u32, _smart: bool) -> usize { 1 }

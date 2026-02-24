@@ -1,4 +1,3 @@
-
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
@@ -247,6 +246,23 @@ fn check_winner(world: &mut WorldState, storage: &Arc<Storage>) {
 
 fn has_updates(updates: &RunUpdates) -> bool { !updates.updates.is_empty() }
 
+fn run_update_end(world: &WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
+    let actors = world.all_plrs();
+    let mut guard = 0usize;
+    while guard < 8 {
+        let mut triggered = false;
+        for actor in &actors {
+            if let Some(plr) = storage.just_get_player_mut(*actor) {
+                triggered |= plr.on_update_end(randomer, updates, storage);
+            }
+        }
+        if !triggered {
+            break;
+        }
+        guard += 1;
+    }
+}
+
 #[derive(Default)]
 pub struct EngineCore {
     hooks: HookPipeline,
@@ -305,6 +321,7 @@ impl EngineCore {
             updates,
         };
         resolve_combat(actor, decision, &targets, &mut ctx, &self.hooks);
+        run_update_end(world, storage, ctx.randomer, ctx.updates);
         self.sync_runtime_entities(world, storage);
         self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
         check_winner(world, storage);
@@ -441,7 +458,6 @@ impl Runner {
         for group in &sort_groups {
             for plr in *group {
                 let plr = storage.just_get_player_mut(*plr).expect("plr not found when encrypt");
-                println!("给 {} 加密 id_name {}", plr.get_sort_int(), plr.id_name());
                 randomer.encrypt_bytes_no_change(&plr.id_name());
             }
             randomer.encrypt_bytes(&mut [0]);

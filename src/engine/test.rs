@@ -1,4 +1,3 @@
-
 use super::*;
 
 /// 酒吧点炒饭列表（确信）。
@@ -106,6 +105,7 @@ mod spilt_namerena_groups {
 
 mod runner {
     use super::*;
+    use crate::engine::update::UpdateType;
 
     #[test]
     fn sort_int_test() {
@@ -168,6 +168,155 @@ mod runner {
         state_ba.sort_by(|a, b| a.0.cmp(&b.0));
 
         assert_eq!(state_ab, state_ba);
+    }
+
+    #[test]
+    fn help_vs_aaaaa_should_match_right_trace_step_by_step() {
+        let mut runner = runners::Runner::new_from_namerena_raw("help\naaaaa".to_string()).unwrap();
+        let mut events = Vec::new();
+
+        let mut guard = 0usize;
+        while !runner.have_winner() && guard < 256 {
+            let updates = runner.main_round();
+            for update in updates.updates {
+                if matches!(update.update_type, UpdateType::NextLine) {
+                    continue;
+                }
+                let caster = runner
+                    .storage
+                    .get_player(&update.caster)
+                    .map(|plr| plr.id_name())
+                    .unwrap_or_else(|| format!("#{}", update.caster));
+                let target = runner
+                    .storage
+                    .get_player(&update.target)
+                    .map(|plr| plr.id_name())
+                    .unwrap_or_else(|| format!("#{}", update.target));
+                let mut msg = update.message.clone();
+                msg = msg.replace("[0]", &caster);
+                msg = msg.replace("[1]", &target);
+                let param = if update.targets.is_empty() {
+                    update.score.to_string()
+                } else {
+                    update
+                        .targets
+                        .iter()
+                        .map(|id| runner.storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
+                        .collect::<Vec<String>>()
+                        .join(",")
+                };
+                msg = msg.replace("[2]", &param);
+                events.push(msg);
+            }
+            guard += 1;
+        }
+
+        assert!(guard < 256, "combat did not finish in expected rounds");
+        assert_eq!(
+            events,
+            vec![
+                "aaaaa发起攻击",
+                "help受到77点伤害",
+                "aaaaa发起攻击",
+                "help受到80点伤害",
+                "help发起攻击",
+                "aaaaa受到87点伤害",
+                "help发起攻击",
+                "aaaaa受到87点伤害",
+                "aaaaa发起攻击",
+                "help受到32点伤害",
+                "help使用[雷击术]",
+                "aaaaa受到26点伤害",
+                "aaaaa受到25点伤害",
+                "aaaaa受到10点伤害",
+                "aaaaa受到9点伤害",
+                "aaaaa受到10点伤害",
+                "aaaaa受到14点伤害",
+                "aaaaa发起攻击",
+                "help受到43点伤害",
+                "help发起攻击",
+                "aaaaa受到94点伤害",
+                "aaaaa被击倒了"
+            ]
+        );
+
+        let winner = runner
+            .world
+            .winner
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|id| {
+                runner
+                    .storage
+                    .get_player(&id)
+                    .map(|plr| plr.id_name())
+                    .unwrap_or_else(|| format!("#{id}"))
+            })
+            .collect::<Vec<String>>();
+        assert_eq!(winner, vec!["help".to_string()]);
+    }
+
+    #[test]
+    fn fight_md_should_match_trace_step_by_step() {
+        let fight_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fight.md");
+        let fight_text = std::fs::read_to_string(&fight_path).expect("cannot read fight.md");
+        let fight_text = fight_text.replace("\r\n", "\n").replace('\r', "\n");
+        let (raw_input, expected_part) = fight_text
+            .split_once("\n\n\n")
+            .expect("fight.md must contain a blank separator between input and trace");
+
+        let expected_lines = expected_part
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| line.to_string())
+            .collect::<Vec<String>>();
+        assert!(!expected_lines.is_empty(), "fight.md trace is empty");
+
+        let mut runner = runners::Runner::new_from_namerena_raw(raw_input.trim_end().to_string()).unwrap();
+        let mut actual_lines = Vec::new();
+        let mut guard = 0usize;
+        while !runner.have_winner() && guard < 50_000 {
+            let updates = runner.main_round();
+            let mut parts = Vec::new();
+            for update in updates.updates {
+                if matches!(update.update_type, UpdateType::NextLine) {
+                    continue;
+                }
+                let caster = runner
+                    .storage
+                    .get_player(&update.caster)
+                    .map(|plr| plr.id_name())
+                    .unwrap_or_else(|| format!("#{}", update.caster));
+                let target = runner
+                    .storage
+                    .get_player(&update.target)
+                    .map(|plr| plr.id_name())
+                    .unwrap_or_else(|| format!("#{}", update.target));
+                let mut msg = update.message.clone();
+                msg = msg.replace("[0]", &caster);
+                msg = msg.replace("[1]", &target);
+                let param = if update.targets.is_empty() {
+                    update.score.to_string()
+                } else {
+                    update
+                        .targets
+                        .iter()
+                        .map(|id| runner.storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
+                        .collect::<Vec<String>>()
+                        .join(",")
+                };
+                msg = msg.replace("[2]", &param);
+                parts.push(msg);
+            }
+            if !parts.is_empty() {
+                actual_lines.push(parts.join(", "));
+            }
+            guard += 1;
+        }
+        assert!(guard < 50_000, "fight.md combat did not finish in expected rounds");
+        assert_eq!(actual_lines, expected_lines);
     }
 
     #[test]
