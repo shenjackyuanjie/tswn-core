@@ -24,6 +24,83 @@ impl SkillTrait for CurseSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
+    fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
+        if !smart {
+            return true;
+        }
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return false;
+        };
+        if target_plr.get_status().hp < 80 {
+            return false;
+        }
+        if let Some(curse) = target_plr.get_state::<CurseState>()
+            && curse.prob > 32
+        {
+            return false;
+        }
+        true
+    }
+
+    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return f64::MIN;
+        };
+        let rate_hi_hp = |hp: i32| -> f64 {
+            if hp < 20 {
+                30.0
+            } else if hp > 300 {
+                300.0
+            } else {
+                hp as f64
+            }
+        };
+        let base = if smart {
+            let alive_group_count = {
+                let mut group_heads = Vec::new();
+                for id in args.3.all_player_ids() {
+                    let alive = args.3.get_player(&id).map(|plr| plr.alive()).unwrap_or(false);
+                    if !alive {
+                        continue;
+                    }
+                    let Some(group) = args.3.group_containing(id) else {
+                        continue;
+                    };
+                    let Some(head) = group.first() else {
+                        continue;
+                    };
+                    if !group_heads.contains(head) {
+                        group_heads.push(*head);
+                    }
+                }
+                group_heads.len()
+            };
+            let target_alive_group_len = args
+                .3
+                .group_containing(target)
+                .map(|group| {
+                    group
+                        .iter()
+                        .filter(|id| args.3.get_player(id).map(|plr| plr.alive()).unwrap_or(false))
+                        .count()
+                })
+                .unwrap_or(0);
+            let status = target_plr.get_status();
+            if alive_group_count > 2 {
+                rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract
+            } else {
+                (1.0 / rate_hi_hp(status.hp)) * status.atk_sum as f64 * status.attract
+            }
+        } else {
+            args.1.rFFFF() as f64 + target_plr.get_status().attract
+        };
+        if target_plr.get_state::<CurseState>().is_some() {
+            base / 2.0
+        } else {
+            base
+        }
+    }
+
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;

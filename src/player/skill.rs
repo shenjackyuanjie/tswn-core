@@ -142,8 +142,53 @@ pub trait SkillTrait: Debug {
             return f64::MIN;
         };
         if smart {
-            target_plr.get_status().attract
-        } else {
+            let rate_hi_hp = |hp: i32| -> f64 {
+                if hp < 20 {
+                    30.0
+                } else if hp > 300 {
+                    300.0
+                } else {
+                    hp as f64
+                }
+            };
+            let rate_low_hp = |hp: i32| -> f64 { 1.0 / rate_hi_hp(hp) };
+            let alive_group_count = {
+                let mut group_heads = Vec::new();
+                for id in args.3.all_player_ids() {
+                    let alive = args.3.get_player(&id).map(|plr| plr.alive()).unwrap_or(false);
+                    if !alive {
+                        continue;
+                    }
+                    let Some(group) = args.3.group_containing(id) else {
+                        continue;
+                    };
+                    let Some(head) = group.first() else {
+                        continue;
+                    };
+                    if !group_heads.contains(head) {
+                        group_heads.push(*head);
+                    }
+                }
+                group_heads.len()
+            };
+            let target_alive_group_len = args
+                .3
+                .group_containing(target)
+                .map(|group| {
+                    group
+                        .iter()
+                        .filter(|id| args.3.get_player(id).map(|plr| plr.alive()).unwrap_or(false))
+                        .count()
+                })
+                .unwrap_or(0);
+            let status = target_plr.get_status();
+            if alive_group_count > 2 {
+                rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract
+            } else {
+                rate_low_hp(status.hp) * status.atk_sum as f64 * status.attract
+            }
+        }
+        else {
             args.1.rFFFF() as f64 + target_plr.get_status().attract
         }
     }

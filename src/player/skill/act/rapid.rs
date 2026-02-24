@@ -37,43 +37,51 @@ impl SkillTrait for RapidSkill {
 
     fn select_target_count(&self, smart: bool) -> usize { if smart { self.sel_count_smart } else { self.sel_count } }
 
-    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
-        let Some(target_plr) = args.3.get_player(&target) else {
-            return f64::MIN;
-        };
-        if smart {
-            target_plr.get_status().max_hp as f64 - target_plr.get_status().hp as f64
-        } else {
-            args.1.rFFFF() as f64
-        }
-    }
-
     fn act_with_level(&mut self, level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }
-        let round = if args.1.c50() { 3 } else { 2 };
-        let cycle_len = targets.len().clamp(1, 3);
+        let _ = level;
+        let round = if args.1.c50() { 3.0 } else { 2.0 };
+        let mut targets = targets;
+        if targets.len() > 3 {
+            targets.truncate(3);
+        }
+        let mut hit_scores = vec![0.0f64; targets.len()];
         let mut pos = 0usize;
-        for hit in 0..round {
+        let mut i = 0.0f64;
+        while i < round {
+            let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
+            if !owner_active {
+                return;
+            }
             let target_id = targets[pos];
-            let owner = args.3.get_player(&args.0).expect("cannot get rapid owner from storage");
-            let atp = owner.get_at(false, args.1) * ((0.75 - hit as f64 * 0.15).max(0.35) + level as f64 / 1024.0);
-            if hit == 0 {
-                args.2.add(RunUpdate::new("[0]发起攻击", args.0, target_id, 8));
+            let target_dead = args.3.get_player(&target_id).map(|x| !x.alive()).unwrap_or(true);
+            if target_dead {
+                i -= 0.5;
             } else {
-                args.2.add(RunUpdate::new("[0][连击]", args.0, target_id, 8));
+                let atp = {
+                    let owner = args.3.get_player(&args.0).expect("cannot get rapid owner from storage");
+                    owner.get_at(false, args.1) * (0.75 - hit_scores[pos] * 0.15)
+                };
+                hit_scores[pos] += 1.0;
+                if i == 0.0 {
+                    args.2.add(RunUpdate::new("[0]发起攻击", args.0, target_id, 8));
+                } else {
+                    args.2.add(RunUpdate::new("[0][连击]", args.0, target_id, 1));
+                }
+                let dmg = args
+                    .3
+                    .just_get_player_mut(target_id)
+                    .expect("cannot get rapid target from storage")
+                    .attacked(atp, false, args.0, on_rapid as OnDamageFunc, args.1, args.2, args.3);
+                if dmg <= 0 {
+                    return;
+                }
+                args.2.add(RunUpdate::new_newline());
             }
-            let dmg = args
-                .3
-                .just_get_player_mut(target_id)
-                .expect("cannot get rapid target from storage")
-                .attacked(atp, false, args.0, on_rapid as OnDamageFunc, args.1, args.2, args.3);
-            if dmg <= 0 {
-                break;
-            }
-            args.2.add(RunUpdate::new_newline());
-            pos = (pos + args.1.r3() as usize) % cycle_len;
+            pos = (pos + args.1.r3() as usize) % targets.len();
+            i += 1.0;
         }
     }
 }

@@ -52,9 +52,15 @@ impl SkillTrait for HasteSkill {
             return f64::MIN;
         };
         if smart {
-            let hp = target_plr.get_status().hp.max(1) as f64;
-            let max_hp = target_plr.get_status().max_hp.max(1) as f64;
-            let mut score = (hp / max_hp) * target_plr.attr_sum().max(1) as f64;
+            let hp = target_plr.get_status().hp;
+            let rate_hi_hp = if hp < 20 {
+                30.0
+            } else if hp > 300 {
+                300.0
+            } else {
+                hp as f64
+            };
+            let mut score = rate_hi_hp * target_plr.get_status().attr_sum as f64;
             if target_plr.has_state::<HasteState>() {
                 score /= 2.0;
             }

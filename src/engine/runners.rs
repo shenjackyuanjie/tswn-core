@@ -130,19 +130,12 @@ pub enum ActionDecision {
 }
 
 fn next_actor(world: &mut WorldState, storage: &Arc<Storage>) -> Option<PlrId> {
-    let all = world.all_plrs();
+    let all = world.alives_flat(storage);
     if all.is_empty() {
         return None;
     }
-
-    for _ in 0..all.len() {
-        let idx = world.next_round_index(all.len());
-        let actor = all[idx];
-        if storage.get_player(&actor).map(|x| x.get_status().alive()).unwrap_or(false) {
-            return Some(actor);
-        }
-    }
-    None
+    let idx = world.next_round_index(all.len());
+    Some(all[idx])
 }
 
 fn choose_action(
@@ -246,18 +239,14 @@ fn check_winner(world: &mut WorldState, storage: &Arc<Storage>) {
 
 fn has_updates(updates: &RunUpdates) -> bool { !updates.updates.is_empty() }
 
-fn run_update_end(world: &WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
-    let actors = world.all_plrs();
+fn run_update_end(storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
     let mut guard = 0usize;
-    while guard < 8 {
-        let mut triggered = false;
-        for actor in &actors {
-            if let Some(plr) = storage.just_get_player_mut(*actor) {
-                triggered |= plr.on_update_end(randomer, updates, storage);
+    while guard < 64 && !updates.on_update_end.is_empty() {
+        let pending = std::mem::take(&mut updates.on_update_end);
+        for actor in pending {
+            if let Some(plr) = storage.just_get_player_mut(actor) {
+                let _ = plr.on_update_end(randomer, updates, storage);
             }
-        }
-        if !triggered {
-            break;
         }
         guard += 1;
     }
@@ -321,7 +310,7 @@ impl EngineCore {
             updates,
         };
         resolve_combat(actor, decision, &targets, &mut ctx, &self.hooks);
-        run_update_end(world, storage, ctx.randomer, ctx.updates);
+        run_update_end(storage, ctx.randomer, ctx.updates);
         self.sync_runtime_entities(world, storage);
         self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
         check_winner(world, storage);
@@ -381,11 +370,16 @@ impl Runner {
         for plrs in &players {
             let mut group = Vec::with_capacity(plrs.len());
             for plr in plrs {
+                if Player::check_is_seed(plr) {
+                    continue;
+                }
                 let player = Player::new_from_namerena_raw(plr.to_string(), storage.clone())?;
                 let ptr = storage.just_insert_player(player);
                 group.push(ptr);
             }
-            inited_plrs.push(group);
+            if !group.is_empty() {
+                inited_plrs.push(group);
+            }
         }
 
         let mut local_plrs = inited_plrs
@@ -458,7 +452,7 @@ impl Runner {
         for group in &sort_groups {
             for plr in *group {
                 let plr = storage.just_get_player_mut(*plr).expect("plr not found when encrypt");
-                randomer.encrypt_bytes_no_change(&plr.id_name());
+                randomer.encrypt_bytes_no_change(&plr.id_key_name());
             }
             randomer.encrypt_bytes(&mut [0]);
         }

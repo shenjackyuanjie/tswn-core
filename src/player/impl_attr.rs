@@ -50,6 +50,11 @@ impl Player {
         // 技能熟练度计算
         // 计算 skl_id 的已经在初始化做完了
         // DIY TODO
+        self.skills = crate::player::skill::store::SkillStorage::new();
+        for skill_id in 0..40u8 {
+            self.skills.add_skill(Skill::new_with_id(0, skill_id));
+        }
+        self.skills.skill = self.skil_id.iter().map(|id| *id as usize).collect();
         let mut slot_skill_keys: [Option<usize>; 16] = [None; 16];
         for (j, i) in (64..128).step_by(4).enumerate() {
             // 取 val index ~ val index + 3 的最小值
@@ -58,7 +63,9 @@ impl Player {
                 min(self.name_base[i + 2], self.name_base[i + 3]),
             );
             if small > 10 && self.skil_id[j] < 35 {
-                let mut skill = Skill::new_with_id((small - 10) as u32, self.skil_id[j] as u8);
+                let skill_id = self.skil_id[j] as usize;
+                let skill = self.skills.skill_by_id_mut(skill_id);
+                skill.set_level((small - 10) as u32);
                 let raw_small = min(
                     min(self.raw_name_base[i], self.raw_name_base[i + 1]),
                     min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
@@ -67,9 +74,7 @@ impl Player {
                 if raw_small <= 10 {
                     skill.boosted = true;
                 }
-                let skill_key = self.skills.skill.len();
-                self.skills.add_skill(skill);
-                slot_skill_keys[j] = Some(skill_key);
+                slot_skill_keys[j] = Some(skill_id);
             }
         }
 
@@ -230,13 +235,19 @@ impl Player {
     /// 把原始的 namerena 名字转换为 id name
     #[inline]
     pub fn raw_namerena_to_idname(raw_name: &str) -> String {
-        // @/+ 后面的部分不要
-        if let Some(idx) = raw_name.find("@") {
-            raw_name[..idx].to_string()
-        } else if let Some(idx) = raw_name.find("+") {
-            raw_name[..idx].to_string()
+        let no_weapon = if let Some((left, _)) = raw_name.split_once("+") {
+            left
         } else {
-            raw_name.to_string()
+            raw_name
+        };
+        if let Some((name, team)) = no_weapon.split_once("@") {
+            if team.is_empty() || team.contains(":") {
+                name.to_string()
+            } else {
+                format!("{name}@{team}")
+            }
+        } else {
+            no_weapon.to_string()
         }
     }
 }

@@ -95,7 +95,7 @@ impl Player {
                 Some(team) => eval_name::eval_str_common(team.as_str(), false),
                 None => factor_name,
             };
-            factor_team.max(factor_name - 6.0)
+            factor_name.max(factor_team - 6.0)
         };
 
         let mut status = PlayerStatus::default();

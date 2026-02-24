@@ -13,11 +13,9 @@ impl Player {
         if !self.status.alive() {
             return;
         }
-        self.update_states();
-        let ptr = self.as_ptr();
-        self.skills.update_state((ptr, randomer, updates, storage));
         let mut stp = self.status.speed * randomer.r3() as i32;
         stp = self.apply_pre_step_states(stp, updates);
+        let ptr = self.as_ptr();
         stp = self.skills.pre_step(stp, (ptr, randomer, updates, storage));
         self.status.move_point += stp;
         if self.check_move() {
@@ -32,6 +30,16 @@ impl Player {
         use crate::player::skill::berserk::BerserkState;
 
         let smart = self.status.wisdom > randomer.r63() as i32;
+        #[cfg(test)]
+        {
+            println!(
+                "DBG action {} smart={} mp={} move_point={}",
+                self.id_name(),
+                smart,
+                self.status.mp,
+                self.status.move_point
+            );
+        }
         let ptr = self.as_ptr();
         let forced_skill = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
         if self.status.frozed() {
@@ -59,30 +67,7 @@ impl Player {
                             {
                                 None
                             } else {
-                                let domain = skill.target_domain();
-                                let selected = {
-                                    let self_candidates = [ptr];
-                                    let duplicated_enemy = targets.enemy_alive.first().copied().map(|id| [id, id]);
-                                    let candidates: &[PlrId] = match domain {
-                                        SkillTargetDomain::EnemyAlive => {
-                                            if let Some(buf) = duplicated_enemy.as_ref() {
-                                                if targets.enemy_alive.len() == 1 {
-                                                    buf
-                                                } else {
-                                                    targets.enemy_alive.as_slice()
-                                                }
-                                            } else {
-                                                targets.enemy_alive.as_slice()
-                                            }
-                                        }
-                                        SkillTargetDomain::AllyAlive => targets.ally_alive.as_slice(),
-                                        SkillTargetDomain::AllyAny => targets.ally_all.as_slice(),
-                                        SkillTargetDomain::AllyDead => targets.ally_dead.as_slice(),
-                                        SkillTargetDomain::SelfOnly => &self_candidates,
-                                        SkillTargetDomain::AllAlive => targets.all_alive.as_slice(),
-                                    };
-                                    skill.select_targets(candidates, smart, (ptr, randomer, updates, storage))
-                                };
+                                let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
                                 if selected.is_empty() { None } else { Some(selected) }
                             }
                         };
@@ -96,28 +81,7 @@ impl Player {
             } else if let Some(skill_key) = selected_skill_key {
                 selected_targets = {
                     let skill = self.skills.skill_by_id(skill_key);
-                    let domain = skill.target_domain();
-                    let self_candidates = [ptr];
-                    let duplicated_enemy = targets.enemy_alive.first().copied().map(|id| [id, id]);
-                    let candidates: &[PlrId] = match domain {
-                        SkillTargetDomain::EnemyAlive => {
-                            if let Some(buf) = duplicated_enemy.as_ref() {
-                                if targets.enemy_alive.len() == 1 {
-                                    buf
-                                } else {
-                                    targets.enemy_alive.as_slice()
-                                }
-                            } else {
-                                targets.enemy_alive.as_slice()
-                            }
-                        }
-                        SkillTargetDomain::AllyAlive => targets.ally_alive.as_slice(),
-                        SkillTargetDomain::AllyAny => targets.ally_all.as_slice(),
-                        SkillTargetDomain::AllyDead => targets.ally_dead.as_slice(),
-                        SkillTargetDomain::SelfOnly => &self_candidates,
-                        SkillTargetDomain::AllAlive => targets.all_alive.as_slice(),
-                    };
-                    skill.select_targets(candidates, smart, (ptr, randomer, updates, storage))
+                    self.select_skill_targets(skill, smart, randomer, updates, storage, targets)
                 };
             }
 
@@ -167,6 +131,73 @@ impl Player {
         }
     }
 
+    fn pick_ally_target(&self, targets: &ActionTargets, randomer: &mut RC4) -> Option<PlrId> {
+        randomer.pick(&targets.ally_alive).map(|idx| targets.ally_alive[idx])
+    }
+
+    fn pick_target_by_domain(
+        &self,
+        domain: SkillTargetDomain,
+        targets: &ActionTargets,
+        randomer: &mut RC4,
+    ) -> Option<PlrId> {
+        match domain {
+            SkillTargetDomain::EnemyAlive => Self::pick_enemy_target(targets, randomer),
+            SkillTargetDomain::AllyAlive => self.pick_ally_target(targets, randomer),
+            SkillTargetDomain::AllyAny => randomer.pick(&targets.ally_all).map(|idx| targets.ally_all[idx]),
+            SkillTargetDomain::AllyDead => randomer.pick(&targets.ally_dead).map(|idx| targets.ally_dead[idx]),
+            SkillTargetDomain::SelfOnly => Some(self.as_ptr()),
+            SkillTargetDomain::AllAlive => randomer.pick(&targets.all_alive).map(|idx| targets.all_alive[idx]),
+        }
+    }
+
+    fn select_skill_targets(
+        &self,
+        skill: &crate::player::skill::Skill,
+        smart: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) -> Vec<PlrId> {
+        let domain = skill.target_domain();
+        let select_count = skill.select_target_count(smart);
+        if select_count == 0 {
+            return Vec::new();
+        }
+
+        let mut selected = Vec::new();
+        let mut dup = 0usize;
+        let mut invalid = -(select_count as i32);
+        while dup <= select_count && invalid <= select_count as i32 {
+            let Some(target_id) = self.pick_target_by_domain(domain, targets, randomer) else {
+                return Vec::new();
+            };
+            if !skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)) {
+                invalid += 1;
+                continue;
+            }
+            if selected.contains(&target_id) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target_id);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return Vec::new();
+        }
+
+        let mut scored = selected
+            .into_iter()
+            .map(|target_id| (target_id, skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage))))
+            .collect::<Vec<(PlrId, f64)>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        scored.into_iter().map(|x| x.0).collect()
+    }
+
     fn select_default_attack_target(
         &self,
         smart: bool,
@@ -206,7 +237,49 @@ impl Player {
                     .get_player(&target_id)
                     .map(|target| {
                         if smart {
-                            target.get_status().attract
+                            let rate_hi_hp = |hp: i32| -> f64 {
+                                if hp < 20 {
+                                    30.0
+                                } else if hp > 300 {
+                                    300.0
+                                } else {
+                                    hp as f64
+                                }
+                            };
+                            let alive_group_count = {
+                                let mut group_heads = Vec::new();
+                                for id in storage.all_player_ids() {
+                                    let alive = storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false);
+                                    if !alive {
+                                        continue;
+                                    }
+                                    let Some(group) = storage.group_containing(id) else {
+                                        continue;
+                                    };
+                                    let Some(head) = group.first() else {
+                                        continue;
+                                    };
+                                    if !group_heads.contains(head) {
+                                        group_heads.push(*head);
+                                    }
+                                }
+                                group_heads.len()
+                            };
+                            let target_alive_group_len = storage
+                                .group_containing(target_id)
+                                .map(|group| {
+                                    group
+                                        .iter()
+                                        .filter(|id| storage.get_player(id).map(|plr| plr.alive()).unwrap_or(false))
+                                        .count()
+                                })
+                                .unwrap_or(0);
+                            let status = target.get_status();
+                            if alive_group_count > 2 {
+                                rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract
+                            } else {
+                                (1.0 / rate_hi_hp(status.hp)) * status.atk_sum as f64 * status.attract
+                            }
                         } else {
                             randomer.rFFFF() as f64 + target.get_status().attract
                         }
@@ -268,7 +341,10 @@ impl Player {
     }
 
     #[inline]
-    pub fn set_state<T: StateTrait + 'static>(&mut self, state: T) { self.state.set(state); }
+    pub fn set_state<T: StateTrait + 'static>(&mut self, state: T) {
+        self.state.set(state);
+        self.update_states();
+    }
 
     #[inline]
     pub fn get_state<T: StateTrait + 'static>(&self) -> Option<&T> { self.state.get::<T>() }
@@ -280,7 +356,10 @@ impl Player {
     pub fn has_state<T: StateTrait + 'static>(&self) -> bool { self.state.has::<T>() }
 
     #[inline]
-    pub fn clear_state<T: StateTrait + 'static>(&mut self) { self.state.clear::<T>(); }
+    pub fn clear_state<T: StateTrait + 'static>(&mut self) {
+        self.state.clear::<T>();
+        self.update_states();
+    }
 
     #[inline]
     pub fn clear_negative_states(&mut self) { self.state.clear_negative_states(); }
@@ -532,6 +611,15 @@ impl Player {
     #[inline]
     pub fn id_name(&self) -> String { self.name.clone() }
     #[inline]
+    pub fn id_key_name(&self) -> String {
+        if let Some(team) = self.team.as_ref() {
+            if !team.is_empty() && team != &self.name {
+                return format!("{}@{}", self.name, team);
+            }
+        }
+        self.name.clone()
+    }
+    #[inline]
     pub fn display_name(&self) -> String { self.name.split(" ").next().unwrap_or_default().to_string() }
     #[inline]
     pub fn clan_name(&self) -> String { self.team.clone().unwrap_or(self.name.clone()) }
@@ -542,14 +630,14 @@ impl Player {
     pub fn is_seed_plr(&self) -> bool { matches!(self.player_type, PlayerType::Boost) }
 
     #[inline]
-    pub fn cmp_by_id_name(&self, other: &Self) -> std::cmp::Ordering { self.id_name().cmp(&other.id_name()) }
+    pub fn cmp_by_id_name(&self, other: &Self) -> std::cmp::Ordering { self.id_key_name().cmp(&other.id_key_name()) }
 
     #[inline]
     pub fn cmp_for_sort(&self, other: &Self) -> std::cmp::Ordering { self.p_cmp(other) }
 
     pub(super) fn p_cmp(&self, other: &Self) -> std::cmp::Ordering {
         match self.sort_int.cmp(&other.sort_int) {
-            Ordering::Equal => self.id_name().cmp(&other.id_name()),
+            Ordering::Equal => self.id_key_name().cmp(&other.id_key_name()),
             ord => ord,
         }
     }
@@ -744,11 +832,6 @@ impl Player {
             skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
         }
         if self.status.hp <= 0 {
-            if caster != self.as_ptr()
-                && let Some(killer) = storage.just_get_player_mut(caster)
-            {
-                killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
-            }
             self.on_die(old_hp, caster, randomer, updates, storage);
             old_hp
         } else {
@@ -799,6 +882,13 @@ impl Player {
                 updates.add(RunUpdate::new("[1]消失了", owner_id, minion_id, 30));
             }
             storage.queue_remove_player(minion_id);
+        }
+
+        if caster != self.as_ptr()
+            && let Some(killer) = storage.just_get_player_mut(caster)
+            && killer.alive()
+        {
+            killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
         }
     }
 }
