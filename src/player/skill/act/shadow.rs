@@ -2,7 +2,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
     skill::store::SkillStorage,
-    skill::{Skill, SkillArgs, SkillExt, SkillTrait},
+    skill::{Skill, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 use super::minion::{MinionKind, MinionRuntimeState};
@@ -24,6 +24,10 @@ impl SkillTrait for ShadowSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     fn has_action_impl(&self) -> bool { true }
+
+    fn target_domain(&self) -> SkillTargetDomain { SkillTargetDomain::SelfOnly }
+
+    fn select_target_count(&self, _smart: bool) -> usize { 1 }
 
     fn post_act_level(&self, level: u32) -> u32 { ((level as f64) * 0.75).ceil().max(1.0) as u32 }
 

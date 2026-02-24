@@ -68,8 +68,6 @@ impl WorldState {
     }
 
     fn sync_turn_order(&mut self, storage: &Arc<Storage>) {
-        use crate::player::skill::act::minion::MinionRuntimeState;
-
         let mut idx = 0usize;
         while idx < self.turn_order.len() {
             let id = self.turn_order[idx];
@@ -84,28 +82,10 @@ impl WorldState {
             self.turn_order.remove(idx);
         }
 
-        let alive_now = self.alives_flat(storage);
-        for (alive_pos, id) in alive_now.iter().enumerate() {
-            if self.turn_order.contains(id) {
-                continue;
+        for id in self.alives_flat(storage) {
+            if !self.turn_order.contains(&id) {
+                self.turn_order.push(id);
             }
-            let insert_pos = storage
-                .get_player(id)
-                .and_then(|plr| plr.get_state::<MinionRuntimeState>())
-                .and_then(|state| state.owner)
-                .and_then(|owner| self.team_index_of(owner))
-                .and_then(|team_idx| self.groups.get(team_idx))
-                .and_then(|group| {
-                    self.turn_order
-                        .iter()
-                        .rposition(|pid| group.contains(pid) && storage.get_player(pid).map(|plr| plr.alive()).unwrap_or(false))
-                })
-                .map(|idx| idx + 1)
-                .unwrap_or_else(|| alive_pos.min(self.turn_order.len()));
-            if self.round_pos >= insert_pos as i32 {
-                self.round_pos += 1;
-            }
-            self.turn_order.insert(insert_pos, *id);
         }
     }
 }
@@ -215,12 +195,7 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
     let Some(ally_all) = world.groups.get(effective_team).cloned() else {
         return ActionTargets::default();
     };
-    let all_alive = world
-        .turn_order
-        .iter()
-        .copied()
-        .filter(|id| storage.get_player(id).map(|x| x.get_status().alive()).unwrap_or(false))
-        .collect::<Vec<PlrId>>();
+    let all_alive = world.alives_flat(storage);
     let enemy_alive = all_alive.iter().copied().filter(|id| !ally_all.contains(id)).collect::<Vec<PlrId>>();
     let ally_alive = ally_all
         .iter()

@@ -2,14 +2,19 @@ use super::minion::{MinionKind, MinionRuntimeState};
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlayerStateStore, PlayerType, PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
-pub struct CloneSkill;
+pub struct CloneSkill {
+    /// JS 中 this_.f 在 v() 内部被直接修改，
+    /// Rust 需要在 act_with_level 中记录最终 level，
+    /// 然后在 post_act_level 中返回它。
+    final_level: Option<u32>,
+}
 
 impl CloneSkill {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self { Self { final_level: None } }
 }
 
 impl SkillExt for CloneSkill {
@@ -23,7 +28,15 @@ impl SkillTrait for CloneSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn post_act_level(&self, level: u32) -> u32 { ((level as f64) * 0.75).ceil().max(1.0) as u32 }
+    fn target_domain(&self) -> SkillTargetDomain { SkillTargetDomain::SelfOnly }
+
+    fn select_target_count(&self, _smart: bool) -> usize { 1 }
+
+    fn post_act_level(&self, level: u32) -> u32 {
+        // JS 中 level 的修改全部在 v() 内部完成，没有单独的 post_act_level。
+        // 所以这里返回 act_with_level 中记录的最终 level。
+        self.final_level.unwrap_or(((level as f64) * 0.75).ceil().max(1.0) as u32)
+    }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
         if smart {
@@ -40,50 +53,67 @@ impl SkillTrait for CloneSkill {
     }
 
     fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
-        args.2.add(RunUpdate::new("[0]使用[分身]", args.0, args.0, 60));
-        {
+        // JS: this_.f = ceil(this_.f * ((c.n() & 63) + 64) / 128)
+        // 使用随机数衰减 level，而非固定 0.75
+        let random_factor = (args.1.next_u8() as u32 & 63) + 64;
+        let mut decayed_level = ((level as f64) * random_factor as f64 / 128.0).ceil() as u32;
+
+        let charge_active = args
+            .3
+            .get_player(&args.0)
+            .map(|owner| owner.get_status().at_boost >= 3.0)
+            .unwrap_or(false);
+        if !charge_active {
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get clone owner from storage");
-            for i in 0..6 {
-                owner.attr[i] = ((owner.attr[i] as f64) * 0.6).ceil() as u32;
+            for i in 0..7 {
+                owner.attr[i] = ((owner.attr[i] as f64) * 0.78).ceil() as u32;
             }
             owner.attr[7] = ((owner.attr[7] as f64) * 0.5).ceil() as u32;
             owner.status.hp = ((owner.status.hp as f64) * 0.5).ceil() as i32;
             owner.status.hp = owner.status.hp.clamp(1, owner.status.max_hp.max(1));
+            owner.calc_attr_sum();
             owner.update_states();
         }
 
         let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage").clone();
         let mut cloned = owner_snapshot.clone();
-        let clone_suffix = args.1.r255();
-        cloned.name = format!("{}?clone{}", owner_snapshot.id_name(), clone_suffix);
+        cloned.name = owner_snapshot.id_name();
         cloned.id = args.3.new_plr_id();
         cloned.player_type = PlayerType::Clone;
-        cloned.sort_int = args.1.rFFFFFF() as i32;
+        cloned.sort_int = 0;
         cloned.state = PlayerStateStore::default();
         cloned.set_state(MinionRuntimeState {
             owner: Some(args.0),
             kind: MinionKind::Clone,
         });
-        cloned.status.move_point = args.1.r255() as i32 * 4 + 600;
+        // JS: p.l = c.n() * 4 + 256 (不设置 owner 的 spsum)
+        cloned.status.move_point = args.1.r255() as i32 * 4 + 256;
         cloned.status.hp = owner_snapshot.get_status().hp.max(1);
         cloned.status.set_alive(true);
         cloned.status.set_frozen(false);
 
-        let mut cloned_level = self.post_act_level(level);
+        // JS: if (q.fx + q.dx < c.n()) { this_.f = (this_.f >> 1) + 1 }
+        // q 是 owner_snapshot, q.fx = hp, q.dx = magic
         if owner_snapshot.get_status().hp + owner_snapshot.get_status().magic < args.1.r255() as i32 {
-            cloned_level = (cloned_level >> 1) + 1;
+            decayed_level = (decayed_level >> 1) + 1;
         }
+        // JS: q.f = ceil(sqrt(this_.f)) — 克隆体的 clone 技能 level = ceil(sqrt(decayed_level))
+        let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
         if cloned.skills.skill.len() > 23 {
-            cloned.skills.skill_by_idx_mut(23).set_level(cloned_level.max(1));
+            cloned.skills.skill_by_idx_mut(23).set_level(cloned_clone_level.max(1));
         }
         cloned.skills.update_proc();
 
         let cloned_id = cloned.as_ptr();
+
+        // JS: 先输出"使用分身"消息
+        args.2.add(RunUpdate::new("[0]使用[分身]", args.0, args.0, 60));
+        // 然后 addNew (queue_spawn)
         args.3.queue_spawn(args.0, cloned);
-        args.3
-            .just_get_player_mut(args.0)
-            .expect("cannot get clone owner from storage")
-            .set_move_point(args.1.r255() as i32 * 4 + 1024);
+        // 最后输出"出现一个新的"消息
         args.2.add(RunUpdate::new("出现一个新的[1]", args.0, cloned_id, 20));
+
+        // 记录最终 level，供 post_act_level 使用
+        self.final_level = Some(decayed_level);
     }
 }

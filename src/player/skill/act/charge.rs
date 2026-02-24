@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{ProcKind, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -25,6 +25,10 @@ impl SkillTrait for ChargeSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     fn has_action_impl(&self) -> bool { true }
+
+    fn target_domain(&self) -> SkillTargetDomain { SkillTargetDomain::SelfOnly }
+
+    fn select_target_count(&self, _smart: bool) -> usize { 1 }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
         if self.step > 0 {

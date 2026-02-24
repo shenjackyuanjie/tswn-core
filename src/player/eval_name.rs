@@ -71,6 +71,7 @@ pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
                 if cnt[ELSE as usize] > 0 {
                     cnt[ELSE as usize] += 1;
                 }
+                cnt[ELSE as usize] += 1;
                 if last_char != ELSE {
                     diff += 1;
                     last_char = ELSE;
