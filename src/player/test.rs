@@ -120,8 +120,10 @@ fn noop_on_damage(_: PlrId, _: PlrId, _: i32, _: &mut RC4, _: &mut RunUpdates) {
 
 #[test]
 fn check_move_threshold_matches_dart() {
-    let mut status = PlayerStatus::default();
-    status.move_point = MOVE_POINT_THRESHOLD;
+    let mut status = PlayerStatus {
+        move_point: MOVE_POINT_THRESHOLD,
+        ..Default::default()
+    };
     assert!(!status.check_move());
     status.move_point = MOVE_POINT_THRESHOLD + 1;
     assert!(status.check_move());
