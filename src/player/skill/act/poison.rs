@@ -5,7 +5,6 @@ use crate::player::{
     state_tag,
 };
 use crate::rc4::RC4;
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
 pub struct PoisonSkill;
@@ -92,6 +91,46 @@ impl Default for PoisonState {
 impl StateTrait for PoisonState {
     fn meta_type(&self) -> i32 { -1 }
 
+    fn post_action_priority(&self) -> i32 { 150 }
+
+    fn on_post_action(
+        &mut self,
+        owner: PlrId,
+        alive: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &std::sync::Arc<crate::engine::storage::Storage>,
+    ) -> bool {
+        if !alive {
+            return false;
+        }
+        let Some(owner_magic) = storage.get_player(&owner).map(|player| player.get_status().magic) else {
+            return false;
+        };
+        let atpp = self.atp * (1.0 + (self.count - 1) as f64 * 0.1) / self.count as f64;
+        self.atp -= atpp;
+        let dmg = (atpp / (owner_magic + 64) as f64).ceil() as i32;
+        self.count -= 1;
+        updates.add(RunUpdate::new("[1][毒性发作]", self.caster.unwrap_or(owner), owner, 0));
+        storage.just_get_player_mut(owner).expect("cannot get poison owner from storage").damage(
+            dmg,
+            self.caster.unwrap_or(owner),
+            on_poison as OnDamageFunc,
+            randomer,
+            updates,
+            storage,
+        );
+
+        if self.count > 0 {
+            return false;
+        }
+        if storage.get_player(&owner).map(|player| player.alive()).unwrap_or(false) {
+            updates.add(RunUpdate::new_newline());
+            updates.add(RunUpdate::new("[1]从[中毒]中解除", owner, owner, 0));
+        }
+        true
+    }
+
     fn as_any(&self) -> &dyn std::any::Any { self }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
@@ -101,53 +140,4 @@ impl StateTrait for PoisonState {
 
 fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut RunUpdates) {
     let _ = (caster, target, dmg, r, updates);
-}
-
-pub fn apply_poison_post_action(
-    owner: PlrId,
-    randomer: &mut RC4,
-    updates: &mut RunUpdates,
-    storage: &Arc<crate::engine::storage::Storage>,
-) {
-    let magic = storage
-        .get_player(&owner)
-        .expect("cannot get poison owner from storage")
-        .get_status()
-        .magic;
-
-    let mut clear_poison = false;
-    let mut poison_tick: Option<(PlrId, i32)> = None;
-    if storage.get_player(&owner).map(|player| player.alive()).unwrap_or(false)
-        && let Some(poison) = storage
-            .just_get_player_mut(owner)
-            .and_then(|player| player.get_state_mut::<PoisonState>())
-    {
-        let atpp = poison.atp * (1.0 + (poison.count - 1) as f64 * 0.1) / poison.count as f64;
-        poison.atp -= atpp;
-        let dmg = (atpp / (magic + 64) as f64).ceil() as i32;
-        poison.count -= 1;
-        clear_poison = poison.count <= 0;
-        poison_tick = Some((poison.caster.unwrap_or(owner), dmg));
-    }
-
-    if let Some((caster, dmg)) = poison_tick {
-        updates.add(RunUpdate::new("[1][毒性发作]", caster, owner, 0));
-        storage.just_get_player_mut(owner).expect("cannot get poison owner from storage").damage(
-            dmg,
-            caster,
-            on_poison as OnDamageFunc,
-            randomer,
-            updates,
-            storage,
-        );
-    }
-
-    if clear_poison {
-        let owner_player = storage.just_get_player_mut(owner).expect("cannot get poison owner from storage");
-        owner_player.clear_state::<PoisonState>();
-        if owner_player.alive() {
-            updates.add(RunUpdate::new_newline());
-            updates.add(RunUpdate::new("[1]从[中毒]中解除", owner, owner, 0));
-        }
-    }
 }

@@ -137,9 +137,22 @@ impl Default for BerserkState {
 impl StateTrait for BerserkState {
     fn meta_type(&self) -> i32 { -1 }
 
+    fn action_mode_priority(&self) -> i32 { 100 }
+
+    fn on_action_mode(&self, _smart: bool, force_default_attack_smart: &mut Option<bool>) {
+        *force_default_attack_smart = Some(false);
+    }
+
     fn post_action_priority(&self) -> i32 { 220 }
 
-    fn on_post_action(&mut self, owner: PlrId, alive: bool, updates: &mut RunUpdates) -> bool {
+    fn on_post_action(
+        &mut self,
+        owner: PlrId,
+        alive: bool,
+        _randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        _storage: &std::sync::Arc<crate::engine::storage::Storage>,
+    ) -> bool {
         self.step -= 1;
         if self.step > 0 {
             return false;

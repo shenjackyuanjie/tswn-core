@@ -159,7 +159,14 @@ impl StateTrait for SlowState {
 
     fn post_action_priority(&self) -> i32 { 210 }
 
-    fn on_post_action(&mut self, owner: PlrId, alive: bool, updates: &mut crate::engine::update::RunUpdates) -> bool {
+    fn on_post_action(
+        &mut self,
+        owner: PlrId,
+        alive: bool,
+        _randomer: &mut crate::rc4::RC4,
+        updates: &mut crate::engine::update::RunUpdates,
+        _storage: &std::sync::Arc<crate::engine::storage::Storage>,
+    ) -> bool {
         self.step -= 1;
         if self.step > 0 {
             return false;

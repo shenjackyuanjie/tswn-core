@@ -321,23 +321,25 @@ fn ice_state_pre_step_expires_with_threshold_check() {
 #[test]
 fn poison_state_ticks_and_expires_in_post_action() {
     let storage = Storage::new_arc();
-    let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
-    let ptr = player.as_ptr();
+    let player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+    let ptr = storage.just_insert_player(player);
     let mut randomer = RC4::default();
     let mut updates = RunUpdates::new();
 
-    player.status.max_hp = 100;
-    player.status.hp = 100;
-    player.status.magic = 32;
-    player.set_state(crate::player::skill::poison::PoisonState {
+    let player_mut = storage.just_get_player_mut(ptr).expect("cannot get player from storage");
+    player_mut.status.max_hp = 100;
+    player_mut.status.hp = 100;
+    player_mut.status.magic = 32;
+    player_mut.set_state(crate::player::skill::poison::PoisonState {
         caster: Some(ptr),
         target: Some(ptr),
         atp: 80.0,
         count: 1,
     });
-    player.action(&mut randomer, &mut updates, &storage, &ActionTargets::default());
+    player_mut.action(&mut randomer, &mut updates, &storage, &ActionTargets::default());
 
-    assert!(!player.has_state::<crate::player::skill::poison::PoisonState>());
+    let player_ref = storage.get_player(&ptr).expect("cannot get player from storage");
+    assert!(!player_ref.has_state::<crate::player::skill::poison::PoisonState>());
     assert!(updates.updates.iter().any(|x| x.message.contains("[毒性发作]")));
     assert!(updates.updates.iter().any(|x| x.message.contains("从[中毒]中解除")));
 }

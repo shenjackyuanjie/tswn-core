@@ -27,8 +27,6 @@ impl Player {
     }
 
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
-        use crate::player::skill::berserk::BerserkState;
-
         let smart = self.status.wisdom > randomer.r63() as i32;
         let ptr = self.as_ptr();
         let forced_skill = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
@@ -39,8 +37,8 @@ impl Player {
         let mut acted = false;
         let mut selected_skill_key: Option<usize> = forced_skill;
         let mut selected_targets: Vec<PlrId> = Vec::new();
-        if self.has_state::<BerserkState>() {
-            self.default_attack(false, randomer, updates, storage, targets);
+        if let Some(default_smart) = self.state.resolve_action_mode(smart) {
+            self.default_attack(default_smart, randomer, updates, storage, targets);
             acted = true;
         } else {
             if selected_skill_key.is_none() {
@@ -145,15 +143,47 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Vec<PlrId> {
-        let candidates = match skill.target_domain() {
-            SkillTargetDomain::EnemyAlive => targets.enemy_alive.clone(),
-            SkillTargetDomain::AllyAlive => targets.ally_alive.clone(),
-            SkillTargetDomain::AllyAny => targets.ally_all.clone(),
-            SkillTargetDomain::AllyDead => targets.ally_dead.clone(),
-            SkillTargetDomain::SelfOnly => vec![self.as_ptr()],
-            SkillTargetDomain::AllAlive => targets.all_alive.clone(),
-        };
-        skill.select_targets(&candidates, smart, (self.as_ptr(), randomer, updates, storage))
+        let domain = skill.target_domain();
+        let select_count = skill.select_target_count(smart);
+        if select_count == 0 {
+            return Vec::new();
+        }
+
+        let mut selected = Vec::new();
+        let mut dup = 0usize;
+        let mut invalid = -(select_count as i32);
+        while dup <= select_count && invalid <= select_count as i32 {
+            let Some(target_id) = self.pick_target_by_domain(domain, targets, randomer) else {
+                return Vec::new();
+            };
+            if !skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)) {
+                invalid += 1;
+                continue;
+            }
+            if selected.contains(&target_id) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target_id);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return Vec::new();
+        }
+
+        let mut scored = selected
+            .into_iter()
+            .map(|target_id| {
+                (
+                    target_id,
+                    skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
+                )
+            })
+            .collect::<Vec<(PlrId, f64)>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        scored.into_iter().map(|x| x.0).collect()
     }
 
     fn select_default_attack_target(
@@ -403,9 +433,7 @@ impl Player {
     }
 
     fn apply_post_action_states(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        crate::player::skill::poison::apply_poison_post_action(self.as_ptr(), randomer, updates, storage);
-
-        let clear_tags = self.state.on_post_action_states(self.as_ptr(), self.alive(), updates);
+        let clear_tags = self.state.on_post_action_states(self.as_ptr(), self.alive(), randomer, updates, storage);
         if !clear_tags.is_empty() {
             for tag in clear_tags {
                 self.state.clear_tag(tag);
@@ -686,17 +714,9 @@ impl Player {
         }
     }
 
-    fn get_die_message(&self) -> &'static str {
-        if self.has_state::<crate::player::skill::act::minion::MinionRuntimeState>() {
-            "[1]消失了"
-        } else {
-            "[1]被击倒了"
-        }
-    }
+    fn get_die_message(&self) -> &'static str { self.state.die_message_override().unwrap_or("[1]被击倒了") }
 
     pub fn on_die(&mut self, old_hp: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        use crate::player::skill::act::minion::MinionRuntimeState;
-
         if self.status.hp > 0 {
             return;
         }
@@ -720,21 +740,22 @@ impl Player {
             .filter(|id| {
                 storage
                     .get_player(id)
-                    .and_then(|player| player.get_state::<MinionRuntimeState>())
-                    .map(|state| state.owner == Some(owner_id))
+                    .map(|player| player.state.linked_to_owner(owner_id))
                     .unwrap_or(false)
             })
             .collect::<Vec<PlrId>>();
         for minion_id in linked_minions {
+            let mut should_remove = true;
             if let Some(minion) = storage.just_get_player_mut(minion_id)
                 && minion.alive()
             {
                 minion.status.hp = 0;
                 minion.status.set_alive(false);
-                updates.add(RunUpdate::new_newline());
-                updates.add(RunUpdate::new("[1]消失了", owner_id, minion_id, 30));
+                should_remove = minion.state.on_linked_owner_die(owner_id, minion_id, updates);
             }
-            storage.queue_remove_player(minion_id);
+            if should_remove {
+                storage.queue_remove_player(minion_id);
+            }
         }
 
         if caster != self.as_ptr()

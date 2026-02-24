@@ -53,6 +53,11 @@ pub fn state_tag<T: StateTrait + 'static>() -> StateTag { TypeId::of::<T>() }
 pub trait StateTrait: std::fmt::Debug + Any {
     fn meta_type(&self) -> i32 { 0 }
 
+    /// 状态在 action 决策阶段的执行顺序（数字越小越先执行）。
+    fn action_mode_priority(&self) -> i32 { 1000 }
+    /// action 决策钩子，可强制默认攻击（Some(bool) 表示 default_attack 的 smart 值）。
+    fn on_action_mode(&self, _smart: bool, _force_default_attack_smart: &mut Option<bool>) {}
+
     /// 状态在 update_states 阶段的执行顺序（数字越小越先执行）。
     fn update_state_priority(&self) -> i32 { 1000 }
     /// 在 update_states 阶段对 PlayerStatus 做修正。
@@ -84,12 +89,31 @@ pub trait StateTrait: std::fmt::Debug + Any {
     /// 状态在 post_action 阶段的执行顺序（数字越小越先执行）。
     fn post_action_priority(&self) -> i32 { 1000 }
     /// post_action 钩子。返回 true 表示该状态应在本次流程后被清理。
-    fn on_post_action(&mut self, _owner: PlrId, _alive: bool, _updates: &mut RunUpdates) -> bool { false }
+    fn on_post_action(
+        &mut self,
+        _owner: PlrId,
+        _alive: bool,
+        _randomer: &mut RC4,
+        _updates: &mut RunUpdates,
+        _storage: &Arc<Storage>,
+    ) -> bool {
+        false
+    }
 
     /// 状态在 post_defend 阶段的执行顺序（数字越小越先执行）。
     fn post_defend_priority(&self) -> i32 { 1000 }
     /// post_defend 钩子，可直接修正伤害值。
     fn on_post_defend(&mut self, _owner: PlrId, _dmg: &mut i32, _caster: PlrId, _randomer: &mut RC4, _updates: &mut RunUpdates) {}
+
+    /// 状态在死亡文案选择阶段的执行顺序（数字越小越先执行）。
+    fn die_message_priority(&self) -> i32 { 1000 }
+    /// 覆盖死亡文案。
+    fn die_message(&self) -> Option<&'static str> { None }
+
+    /// 若该状态绑定了某个 owner，返回 owner id。
+    fn linked_owner(&self) -> Option<PlrId> { None }
+    /// owner 死亡时的回调，返回 true 表示应清理该实体。
+    fn on_linked_owner_die(&mut self, _owner: PlrId, _self_id: PlrId, _updates: &mut RunUpdates) -> bool { false }
 
     fn as_any(&self) -> &dyn Any;
 
@@ -173,6 +197,25 @@ impl PlayerStateStore {
         }
     }
 
+    pub fn resolve_action_mode(&self, smart: bool) -> Option<bool> {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.action_mode_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        let mut forced = None;
+        for (tag, _) in ordered {
+            if let Some(state) = self.states.get(&tag) {
+                state.on_action_mode(smart, &mut forced);
+                if forced.is_some() {
+                    break;
+                }
+            }
+        }
+        forced
+    }
+
     pub fn on_pre_step_states(
         &mut self,
         owner: PlrId,
@@ -200,7 +243,14 @@ impl PlayerStateStore {
         clear_tags
     }
 
-    pub fn on_post_action_states(&mut self, owner: PlrId, alive: bool, updates: &mut RunUpdates) -> Vec<StateTag> {
+    pub fn on_post_action_states(
+        &mut self,
+        owner: PlrId,
+        alive: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> Vec<StateTag> {
         let mut ordered = self
             .states
             .iter()
@@ -212,7 +262,7 @@ impl PlayerStateStore {
             let should_clear = self
                 .states
                 .get_mut(&tag)
-                .map(|state| state.on_post_action(owner, alive, updates))
+                .map(|state| state.on_post_action(owner, alive, randomer, updates, storage))
                 .unwrap_or(false);
             if should_clear {
                 clear_tags.push(tag);
@@ -275,6 +325,35 @@ impl PlayerStateStore {
                 state.on_post_defend(owner, dmg, caster, randomer, updates);
             }
         }
+    }
+
+    pub fn die_message_override(&self) -> Option<&'static str> {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.die_message_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        for (tag, _) in ordered {
+            if let Some(msg) = self.states.get(&tag).and_then(|state| state.die_message()) {
+                return Some(msg);
+            }
+        }
+        None
+    }
+
+    pub fn linked_to_owner(&self, owner: PlrId) -> bool {
+        self.states
+            .values()
+            .any(|state| state.linked_owner().map(|id| id == owner).unwrap_or(false))
+    }
+
+    pub fn on_linked_owner_die(&mut self, owner: PlrId, self_id: PlrId, updates: &mut RunUpdates) -> bool {
+        let mut should_remove = false;
+        for state in self.states.values_mut() {
+            should_remove |= state.on_linked_owner_die(owner, self_id, updates);
+        }
+        should_remove
     }
 }
 
