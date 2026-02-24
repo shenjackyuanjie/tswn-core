@@ -1,5 +1,6 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
+    Player,
     PlayerStateStore, PlayerType, PlrId,
     skill::store::SkillStorage,
     skill::{Skill, SkillArgs, SkillExt, SkillTrait},
@@ -41,26 +42,31 @@ impl SkillTrait for ShadowSkill {
         vec![args.0]
     }
 
-    fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[幻术]", args.0, args.0, 60));
-        let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage").clone();
-        let mut shadow = owner.clone();
-        shadow.id = args.3.new_plr_id();
-        shadow.name = format!("{}?shadow", owner.id_name());
+        let (owner_name, owner_clan) = {
+            let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage");
+            (owner.id_name(), owner.clan_name())
+        };
+        let seed_name = format!("{owner_name}?shadow");
+        let mut shadow =
+            Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init shadow minion");
+        shadow.build();
+        shadow.attr[7] /= 2;
+        shadow.init_values();
+        shadow.name = "幻影".to_string();
         shadow.player_type = PlayerType::Clone;
-        shadow.sort_int = 0;
         shadow.state = PlayerStateStore::default();
         shadow.set_state(MinionRuntimeState {
             owner: Some(args.0),
             kind: MinionKind::Shadow,
         });
-        shadow.status.max_hp = (owner.get_status().max_hp / 2).max(1);
-        shadow.status.hp = shadow.status.max_hp;
         shadow.status.set_alive(true);
         shadow.status.set_frozen(false);
 
+        let possess_level = ((shadow.name_base[64..68].iter().copied().min().unwrap_or(0) as i32 - 10) / 2 + 36).max(0) as u32;
         let mut skills = SkillStorage::new();
-        skills.add_skill(Skill::new_with_id((level / 2 + 36).min(255), 10));
+        skills.add_skill(Skill::new(possess_level, super::possess::PossessSkill::box_new()));
         shadow.skills = skills;
         shadow.skills.update_proc();
 

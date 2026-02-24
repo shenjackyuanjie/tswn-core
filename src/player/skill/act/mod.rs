@@ -17,6 +17,7 @@ pub mod ice;
 pub mod iron;
 pub mod minion;
 pub mod poison;
+pub mod possess;
 pub mod quake;
 pub mod rapid;
 pub mod revive;

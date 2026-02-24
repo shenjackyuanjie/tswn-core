@@ -150,42 +150,15 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Vec<PlrId> {
-        let domain = skill.target_domain();
-        let select_count = skill.select_target_count(smart);
-        if select_count == 0 {
-            return Vec::new();
-        }
-
-        let mut selected = Vec::new();
-        let mut dup = 0usize;
-        let mut invalid = -(select_count as i32);
-        while dup <= select_count && invalid <= select_count as i32 {
-            let Some(target_id) = self.pick_target_by_domain(domain, targets, randomer) else {
-                return Vec::new();
-            };
-            if !skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)) {
-                invalid += 1;
-                continue;
-            }
-            if selected.contains(&target_id) {
-                dup += 1;
-                continue;
-            }
-            selected.push(target_id);
-            if selected.len() >= select_count {
-                break;
-            }
-        }
-        if selected.is_empty() {
-            return Vec::new();
-        }
-
-        let mut scored = selected
-            .into_iter()
-            .map(|target_id| (target_id, skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage))))
-            .collect::<Vec<(PlrId, f64)>>();
-        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
-        scored.into_iter().map(|x| x.0).collect()
+        let candidates = match skill.target_domain() {
+            SkillTargetDomain::EnemyAlive => targets.enemy_alive.clone(),
+            SkillTargetDomain::AllyAlive => targets.ally_alive.clone(),
+            SkillTargetDomain::AllyAny => targets.ally_all.clone(),
+            SkillTargetDomain::AllyDead => targets.ally_dead.clone(),
+            SkillTargetDomain::SelfOnly => vec![self.as_ptr()],
+            SkillTargetDomain::AllAlive => targets.all_alive.clone(),
+        };
+        skill.select_targets(&candidates, smart, (self.as_ptr(), randomer, updates, storage))
     }
 
     fn select_default_attack_target(
@@ -195,6 +168,8 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Option<PlrId> {
+        #[cfg(test)]
+        let actor_name = self.id_name();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::new();
         let mut dup = 0usize;
@@ -218,6 +193,56 @@ impl Player {
         }
         if selected.is_empty() {
             return None;
+        }
+        #[cfg(test)]
+        if actor_name == "wangif9nWzNbxCJ7wXi8E" {
+            use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+            static PRINTED_ENEMY_LIST: AtomicBool = AtomicBool::new(false);
+            if !PRINTED_ENEMY_LIST.swap(true, AtomicOrdering::Relaxed) {
+                let ally_indices = targets
+                    .all_alive
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, id)| if targets.ally_alive.contains(id) { Some(idx) } else { None })
+                    .collect::<Vec<usize>>();
+                let ally_all_names = targets
+                    .ally_all
+                    .iter()
+                    .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}")))
+                    .collect::<Vec<String>>();
+                let ally_alive_names = targets
+                    .ally_alive
+                    .iter()
+                    .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}")))
+                    .collect::<Vec<String>>();
+                let enemy_indexed = targets
+                    .enemy_alive
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, id)| {
+                        let name = storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}"));
+                        format!("{idx}:{name}")
+                    })
+                    .collect::<Vec<String>>();
+                eprintln!("DBG ally-indices actor={actor_name} {ally_indices:?}");
+                eprintln!("DBG ally-all actor={actor_name} {ally_all_names:?}");
+                eprintln!("DBG ally-alive actor={actor_name} {ally_alive_names:?}");
+                eprintln!("DBG enemy-list actor={actor_name} {}", enemy_indexed.join(" | "));
+            }
+            let selected_names = selected
+                .iter()
+                .map(|id| {
+                    let name = storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}"));
+                    let pos = targets.enemy_alive.iter().position(|x| x == id).unwrap_or(usize::MAX);
+                    format!("{pos}:{name}")
+                })
+                .collect::<Vec<String>>();
+            eprintln!(
+                "DBG target-select actor={actor_name} smart={} candidates={} selected={:?}",
+                smart,
+                targets.enemy_alive.len(),
+                selected_names
+            );
         }
 
         let mut scored = selected
@@ -279,6 +304,17 @@ impl Player {
             })
             .collect::<Vec<(PlrId, f64)>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        #[cfg(test)]
+        if actor_name == "wangif9nWzNbxCJ7wXi8E" {
+            let scored_names = scored
+                .iter()
+                .map(|(id, score)| {
+                    let name = storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}"));
+                    (name, *score)
+                })
+                .collect::<Vec<(String, f64)>>();
+            eprintln!("DBG target-score actor={actor_name} scored={scored_names:?}");
+        }
         scored.first().map(|x| x.0)
     }
 
@@ -839,7 +875,13 @@ impl Player {
         }
     }
 
-    fn get_die_message(&self) -> &'static str { "[1]被击倒了" }
+    fn get_die_message(&self) -> &'static str {
+        if self.has_state::<crate::player::skill::act::minion::MinionRuntimeState>() {
+            "[1]消失了"
+        } else {
+            "[1]被击倒了"
+        }
+    }
 
     pub fn on_die(&mut self, old_hp: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
         use crate::player::skill::act::minion::MinionRuntimeState;
