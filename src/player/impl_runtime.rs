@@ -123,12 +123,7 @@ impl Player {
         if targets.ally_alive.is_empty() {
             return None;
         }
-        let self_id = self.as_ptr();
-        if let Some(self_idx) = targets.ally_alive.iter().position(|id| *id == self_id) {
-            randomer.pick_skip(&targets.ally_alive, self_idx).map(|idx| targets.ally_alive[idx])
-        } else {
-            randomer.pick(&targets.ally_alive).map(|idx| targets.ally_alive[idx])
-        }
+        randomer.pick(&targets.ally_alive).map(|idx| targets.ally_alive[idx])
     }
 
     fn pick_target_by_domain(&self, domain: SkillTargetDomain, targets: &ActionTargets, randomer: &mut RC4) -> Option<PlrId> {
