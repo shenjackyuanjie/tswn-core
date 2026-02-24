@@ -220,10 +220,6 @@ impl SkillStorage {
 
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) {
         let keys: Vec<SkillKey> = self.post_kill.clone();
-        #[cfg(test)]
-        if !keys.is_empty() {
-            eprintln!("DBG kill hooks owner={:?} target={:?} keys={:?}", args.0, target, keys);
-        }
         for skill_key in keys.iter() {
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
             if skill.kill(target, (args.0, args.1, args.2, args.3)) {

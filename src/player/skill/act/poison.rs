@@ -34,7 +34,7 @@ impl SkillTrait for PoisonSkill {
             .get_player(&args.0)
             .expect("cannot get poison caster from storage")
             .get_at(true, args.1);
-        args.2.add(RunUpdate::new("[0]使用[投毒]", args.0, target_id, 1));
+        args.2.add(RunUpdate::new("[0][投毒]", args.0, target_id, 1));
         let dmg = args
             .3
             .just_get_player_mut(target_id)
@@ -65,7 +65,7 @@ impl SkillTrait for PoisonSkill {
                 count: 4,
             });
         }
-        args.2.add(RunUpdate::new("[1]进入[中毒]状态", args.0, target_id, 60));
+        args.2.add(RunUpdate::new("[1][中毒]", args.0, target_id, 60));
     }
 }
 

@@ -16,15 +16,19 @@ pub struct WorldState {
     pub groups: Vec<Vec<PlrId>>,
     /// 胜方队伍（存在时表示战斗结束）。
     pub winner: Option<Vec<PlrId>>,
+    /// 运行时行动顺序（对齐 Dart 的 players 列表）。
+    turn_order: Vec<PlrId>,
     /// 下一次行动的轮转位置。
     round_pos: i32,
 }
 
 impl WorldState {
     pub fn new(groups: Vec<Vec<PlrId>>) -> Self {
+        let turn_order = groups.iter().flatten().copied().collect::<Vec<PlrId>>();
         Self {
             groups,
             winner: None,
+            turn_order,
             round_pos: -1,
         }
     }
@@ -61,6 +65,28 @@ impl WorldState {
         }
         self.round_pos = (self.round_pos + 1).rem_euclid(total as i32);
         self.round_pos as usize
+    }
+
+    fn sync_turn_order(&mut self, storage: &Arc<Storage>) {
+        let mut idx = 0usize;
+        while idx < self.turn_order.len() {
+            let id = self.turn_order[idx];
+            let alive = storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false);
+            if alive {
+                idx += 1;
+                continue;
+            }
+            if self.round_pos <= idx as i32 {
+                self.round_pos -= 1;
+            }
+            self.turn_order.remove(idx);
+        }
+
+        for id in self.alives_flat(storage) {
+            if !self.turn_order.contains(&id) {
+                self.turn_order.push(id);
+            }
+        }
     }
 }
 
@@ -130,12 +156,12 @@ pub enum ActionDecision {
 }
 
 fn next_actor(world: &mut WorldState, storage: &Arc<Storage>) -> Option<PlrId> {
-    let all = world.alives_flat(storage);
-    if all.is_empty() {
+    world.sync_turn_order(storage);
+    if world.turn_order.is_empty() {
         return None;
     }
-    let idx = world.next_round_index(all.len());
-    Some(all[idx])
+    let idx = world.next_round_index(world.turn_order.len());
+    Some(world.turn_order[idx])
 }
 
 fn choose_action(

@@ -30,16 +30,6 @@ impl Player {
         use crate::player::skill::berserk::BerserkState;
 
         let smart = self.status.wisdom > randomer.r63() as i32;
-        #[cfg(test)]
-        {
-            println!(
-                "DBG action {} smart={} mp={} move_point={}",
-                self.id_name(),
-                smart,
-                self.status.mp,
-                self.status.move_point
-            );
-        }
         let ptr = self.as_ptr();
         let forced_skill = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
         if self.status.frozed() {
@@ -56,7 +46,6 @@ impl Player {
             if selected_skill_key.is_none() {
                 let req_mp = randomer.r15() as i32 + 8;
                 if self.status.mp >= req_mp {
-                    self.status.mp -= req_mp;
                     let skill_keys = self.skills.skill.clone();
                     for key in skill_keys {
                         let maybe_targets = {
@@ -77,6 +66,7 @@ impl Player {
                             break;
                         }
                     }
+                    self.status.mp -= req_mp;
                 }
             } else if let Some(skill_key) = selected_skill_key {
                 selected_targets = {
@@ -98,8 +88,8 @@ impl Player {
             self.default_attack(smart, randomer, updates, storage, targets);
         }
 
-        let recover_threshold = (self.status.wisdom + 64).clamp(0, 127) as u32;
-        if randomer.r127() < recover_threshold {
+        let recover_threshold = self.status.wisdom + 64;
+        if (randomer.r127() as i32) < recover_threshold {
             self.status.mp += 16;
         }
         updates.add(RunUpdate::new_newline());
@@ -368,7 +358,9 @@ impl Player {
     pub fn clear_positive_states(&mut self) { self.state.clear_positive_states(); }
 
     pub(super) fn apply_update_state_effects(&mut self) {
-        use crate::player::skill::{curse::CurseState, haste::HasteState, ice::IceState, slow::SlowState};
+        use crate::player::skill::{
+            curse::CurseState, haste::HasteState, ice::IceState, slow::SlowState, upgrade::UpgradeState,
+        };
 
         if let Some(haste) = self.get_state::<HasteState>() {
             self.status.speed *= haste.faster;
@@ -378,6 +370,15 @@ impl Player {
         }
         if self.has_state::<CurseState>() {
             self.status.atk_sum *= 4;
+        }
+        if self.has_state::<UpgradeState>() {
+            self.status.attack += 30;
+            self.status.defense += 30;
+            self.status.agility += 30;
+            self.status.magic += 30;
+            self.status.resistance += 30;
+            self.status.speed += 20;
+            self.status.wisdom += 20;
         }
         if self.has_state::<IceState>() {
             self.status.set_frozen(true);
@@ -576,7 +577,6 @@ impl Player {
         if let Some(shield) = self.get_state_mut::<ShieldState>() {
             if shield.shield > 0 {
                 if dmg > shield.shield {
-                    dmg -= shield.shield;
                     shield.shield = 0;
                 } else {
                     shield.shield -= dmg;

@@ -46,9 +46,9 @@ impl SkillTrait for ShadowSkill {
         let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage").clone();
         let mut shadow = owner.clone();
         shadow.id = args.3.new_plr_id();
-        shadow.name = format!("{}?shadow{}", owner.id_name(), args.1.r255());
+        shadow.name = format!("{}?shadow", owner.id_name());
         shadow.player_type = PlayerType::Clone;
-        shadow.sort_int = args.1.rFFFFFF() as i32;
+        shadow.sort_int = 0;
         shadow.state = PlayerStateStore::default();
         shadow.set_state(MinionRuntimeState {
             owner: Some(args.0),
@@ -65,8 +65,7 @@ impl SkillTrait for ShadowSkill {
         shadow.skills.update_proc();
 
         shadow.status.move_point = -2048;
-        let shadow_id = shadow.as_ptr();
         args.3.queue_spawn(args.0, shadow);
-        args.2.add(RunUpdate::new("召唤出[1]", args.0, shadow_id, 20));
+        args.2.add(RunUpdate::new("召唤出幻影", args.0, args.0, 20));
     }
 }
