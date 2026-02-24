@@ -652,7 +652,7 @@ impl Player {
     fn get_die_message(&self) -> &'static str { self.state.die_message_override().unwrap_or("[1]被击倒了") }
 
     pub fn on_die(&mut self, old_hp: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        if self.status.hp > 0 {
+        if self.status.hp > 0 || !self.status.alive() {
             return;
         }
 

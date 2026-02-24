@@ -3784,7 +3784,8 @@ wangifc5NuJx52y1cMSaD发起攻击, 丧尸回避了攻击
 
         let mut updates = crate::engine::update::RunUpdates::new();
         runner.round_tick(&mut updates);
+        // player 从 world groups 中移除，但保留在 storage 中（对齐 JS/Dart 设计：对象仍可被引用以查找名字）
         assert!(!runner.world.groups[1].contains(&enemy));
-        assert!(runner.storage.get_player(&enemy).is_none());
+        assert!(runner.storage.get_player(&enemy).is_some());
     }
 }
