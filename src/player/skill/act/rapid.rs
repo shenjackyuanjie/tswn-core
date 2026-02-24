@@ -53,7 +53,7 @@ impl SkillTrait for RapidSkill {
             return;
         }
         let round = if args.1.c50() { 3 } else { 2 };
-        let cycle_len = targets.len().min(3).max(1);
+        let cycle_len = targets.len().clamp(1, 3);
         let mut pos = 0usize;
         for hit in 0..round {
             let target_id = targets[pos];

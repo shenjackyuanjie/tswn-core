@@ -353,95 +353,79 @@ pub mod runners {
         Skip,
     }
 
-    #[derive(Default)]
-    pub struct TurnScheduler;
-
-    impl TurnScheduler {
-        pub fn next_actor(&self, world: &mut WorldState, storage: &Arc<Storage>) -> Option<PlrId> {
-            let all = world.all_plrs();
-            if all.is_empty() {
-                return None;
-            }
-
-            for _ in 0..all.len() {
-                let idx = world.next_round_index(all.len());
-                let actor = all[idx];
-                if storage.get_player(&actor).map(|x| x.get_status().alive()).unwrap_or(false) {
-                    return Some(actor);
-                }
-            }
-            None
+    fn next_actor(world: &mut WorldState, storage: &Arc<Storage>) -> Option<PlrId> {
+        let all = world.all_plrs();
+        if all.is_empty() {
+            return None;
         }
-    }
 
-    #[derive(Default)]
-    pub struct ActionSystem;
-
-    impl ActionSystem {
-        pub fn choose_action(
-            &self,
-            actor: PlrId,
-            world: &WorldState,
-            storage: &Arc<Storage>,
-            _randomer: &mut RC4,
-            _rules: &RuleRegistry,
-        ) -> ActionDecision {
-            if world.have_winner() {
-                return ActionDecision::Skip;
-            }
+        for _ in 0..all.len() {
+            let idx = world.next_round_index(all.len());
+            let actor = all[idx];
             if storage.get_player(&actor).map(|x| x.get_status().alive()).unwrap_or(false) {
-                ActionDecision::StepDriver
-            } else {
-                ActionDecision::Skip
+                return Some(actor);
             }
+        }
+        None
+    }
+
+    fn choose_action(
+        actor: PlrId,
+        world: &WorldState,
+        storage: &Arc<Storage>,
+        _randomer: &mut RC4,
+        _rules: &RuleRegistry,
+    ) -> ActionDecision {
+        if world.have_winner() {
+            return ActionDecision::Skip;
+        }
+        if storage.get_player(&actor).map(|x| x.get_status().alive()).unwrap_or(false) {
+            ActionDecision::StepDriver
+        } else {
+            ActionDecision::Skip
         }
     }
 
-    #[derive(Default)]
-    pub struct TargetSystem;
+    pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
+        use crate::player::skill::charm::CharmState;
 
-    impl TargetSystem {
-        pub fn select_targets(&self, actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
-            use crate::player::skill::charm::CharmState;
+        let Some(team_idx) = world.team_index_of(actor) else {
+            return ActionTargets::default();
+        };
+        let effective_team = storage
+            .get_player(&actor)
+            .and_then(|player| player.get_state::<CharmState>())
+            .and_then(|charm| world.team_index_of(charm.group_id))
+            .unwrap_or(team_idx);
+        let Some(ally_all) = world.groups.get(effective_team).cloned() else {
+            return ActionTargets::default();
+        };
 
-            let Some(team_idx) = world.team_index_of(actor) else {
-                return ActionTargets::default();
-            };
-            let effective_team = storage
-                .get_player(&actor)
-                .and_then(|player| player.get_state::<CharmState>())
-                .and_then(|charm| world.team_index_of(charm.group_id))
-                .unwrap_or(team_idx);
-            let Some(ally_all) = world.groups.get(effective_team).cloned() else {
-                return ActionTargets::default();
-            };
+        let alive_groups = world.alives(storage);
+        let all_alive = alive_groups.iter().flatten().copied().collect::<Vec<PlrId>>();
+        let enemy_alive = alive_groups
+            .into_iter()
+            .enumerate()
+            .filter_map(|(idx, group)| if idx == effective_team { None } else { Some(group) })
+            .flatten()
+            .collect::<Vec<PlrId>>();
+        let ally_alive = ally_all
+            .iter()
+            .copied()
+            .filter(|id| storage.get_player(id).map(|x| x.get_status().alive()).unwrap_or(false))
+            .collect::<Vec<PlrId>>();
+        let ally_dead = ally_all
+            .iter()
+            .copied()
+            .filter(|id| !storage.get_player(id).map(|x| x.get_status().alive()).unwrap_or(false))
+            .collect::<Vec<PlrId>>();
 
-            let alive_groups = world.alives(storage);
-            let all_alive = alive_groups.iter().flatten().copied().collect::<Vec<PlrId>>();
-            let enemy_alive = alive_groups
-                .into_iter()
-                .enumerate()
-                .filter_map(|(idx, group)| if idx == effective_team { None } else { Some(group) })
-                .flatten()
-                .collect::<Vec<PlrId>>();
-            let ally_alive = ally_all
-                .iter()
-                .copied()
-                .filter(|id| storage.get_player(id).map(|x| x.get_status().alive()).unwrap_or(false))
-                .collect::<Vec<PlrId>>();
-            let ally_dead = ally_all
-                .iter()
-                .copied()
-                .filter(|id| !storage.get_player(id).map(|x| x.get_status().alive()).unwrap_or(false))
-                .collect::<Vec<PlrId>>();
-
-            ActionTargets {
-                enemy_alive,
-                ally_alive,
-                ally_all,
-                ally_dead,
-                all_alive,
-            }
+        ActionTargets {
+            enemy_alive,
+            ally_alive,
+            ally_all,
+            ally_dead,
+            all_alive,
         }
     }
 
@@ -451,67 +435,45 @@ pub mod runners {
         pub updates: &'a mut RunUpdates,
     }
 
-    #[derive(Default)]
-    pub struct CombatResolver;
-
-    impl CombatResolver {
-        pub fn resolve(
-            &self,
-            actor: PlrId,
-            decision: ActionDecision,
-            targets: &ActionTargets,
-            ctx: &mut TickContext<'_>,
-            hooks: &HookPipeline,
-        ) {
-            match decision {
-                ActionDecision::StepDriver => {
-                    hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
-                    if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
-                        plr.step(ctx.randomer, ctx.updates, ctx.storage, targets);
-                    }
-                    hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
+    fn resolve_combat(
+        actor: PlrId,
+        decision: ActionDecision,
+        targets: &ActionTargets,
+        ctx: &mut TickContext<'_>,
+        hooks: &HookPipeline,
+    ) {
+        match decision {
+            ActionDecision::StepDriver => {
+                hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
+                if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
+                    plr.step(ctx.randomer, ctx.updates, ctx.storage, targets);
                 }
-                ActionDecision::Skip => {}
+                hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
             }
+            ActionDecision::Skip => {}
         }
     }
 
-    #[derive(Default)]
-    pub struct WinChecker;
+    fn check_winner(world: &mut WorldState, storage: &Arc<Storage>) {
+        let mut alive_groups = world
+            .alives(storage)
+            .into_iter()
+            .filter(|group| !group.is_empty())
+            .collect::<Vec<Vec<PlrId>>>();
 
-    impl WinChecker {
-        pub fn check(&self, world: &mut WorldState, storage: &Arc<Storage>) {
-            let mut alive_groups = world
-                .alives(storage)
-                .into_iter()
-                .filter(|group| !group.is_empty())
-                .collect::<Vec<Vec<PlrId>>>();
-
-            world.winner = if alive_groups.len() == 1 {
-                Some(alive_groups.remove(0))
-            } else {
-                None
-            };
-        }
+        world.winner = if alive_groups.len() == 1 {
+            Some(alive_groups.remove(0))
+        } else {
+            None
+        };
     }
 
-    #[derive(Default)]
-    pub struct RunUpdateCollector;
-
-    impl RunUpdateCollector {
-        pub fn has_updates(&self, updates: &RunUpdates) -> bool { !updates.updates.is_empty() }
-    }
+    fn has_updates(updates: &RunUpdates) -> bool { !updates.updates.is_empty() }
 
     #[derive(Default)]
     pub struct EngineCore {
-        scheduler: TurnScheduler,
-        action_system: ActionSystem,
-        target_system: TargetSystem,
-        combat_resolver: CombatResolver,
         hooks: HookPipeline,
         rules: RuleRegistry,
-        win_checker: WinChecker,
-        collector: RunUpdateCollector,
     }
 
     impl EngineCore {
@@ -552,23 +514,23 @@ pub mod runners {
                 return;
             }
 
-            let Some(actor) = self.scheduler.next_actor(world, storage) else {
-                self.win_checker.check(world, storage);
+            let Some(actor) = next_actor(world, storage) else {
+                check_winner(world, storage);
                 return;
             };
 
             self.hooks.run_pre_action(actor, storage, randomer, updates);
-            let decision = self.action_system.choose_action(actor, world, storage, randomer, &self.rules);
-            let targets = self.target_system.select_targets(actor, world, storage);
+            let decision = choose_action(actor, world, storage, randomer, &self.rules);
+            let targets = select_targets(actor, world, storage);
             let mut ctx = TickContext {
                 storage,
                 randomer,
                 updates,
             };
-            self.combat_resolver.resolve(actor, decision, &targets, &mut ctx, &self.hooks);
+            resolve_combat(actor, decision, &targets, &mut ctx, &self.hooks);
             self.sync_runtime_entities(world, storage);
             self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
-            self.win_checker.check(world, storage);
+            check_winner(world, storage);
         }
 
         pub fn main_round(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4) -> RunUpdates {
@@ -576,7 +538,7 @@ pub mod runners {
             let max_ticks = world.all_plr_len().max(1) * 4;
             let mut ticks = 0;
 
-            while ticks < max_ticks && !world.have_winner() && !self.collector.has_updates(&updates) {
+            while ticks < max_ticks && !world.have_winner() && !has_updates(&updates) {
                 self.tick(world, storage, randomer, &mut updates);
                 ticks += 1;
             }
@@ -1112,8 +1074,7 @@ mod group {
                 },
             );
 
-            let target_system = runners::TargetSystem;
-            let targets = target_system.select_targets(actor, &runner.world, &runner.storage);
+            let targets = runners::select_targets(actor, &runner.world, &runner.storage);
             assert!(targets.enemy_alive.contains(&ally));
             assert!(!targets.enemy_alive.contains(&enemy));
         }

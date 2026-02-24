@@ -38,7 +38,8 @@ impl SkillTrait for HasteSkill {
             return false;
         }
         if let Some(haste) = target_plr.get_state::<HasteState>()
-            && (haste.step + 1) * 60 > target_plr.get_status().hp {
+            && (haste.step + 1) * 60 > target_plr.get_status().hp
+        {
             return false;
         }
         true

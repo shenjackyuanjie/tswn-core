@@ -63,7 +63,9 @@ impl SkillTrait for AssassinateSkill {
                 continue;
             }
             let score = self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3));
-            if let Some((_, best_score)) = best && score <= best_score {
+            if let Some((_, best_score)) = best
+                && score <= best_score
+            {
                 continue;
             }
             best = Some((target, score));
