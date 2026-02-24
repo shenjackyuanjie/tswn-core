@@ -61,8 +61,13 @@ impl SkillTrait for QuakeSkill {
         args.2.add(RunUpdate::new("[0]使用[地裂术]", args.0, picked[0], 10));
         let divisor = picked.len() as f64 + 0.6;
         for target_id in picked {
+            // JS: getAt is called BEFORE the hp > 0 check, so RC4 is consumed even for dead targets
             let owner = args.3.get_player(&args.0).expect("cannot get quake owner from storage");
-            let atp = owner.get_at(true, args.1) * (2.44 + level as f64 / 512.0) / divisor;
+            let atp = owner.get_at(true, args.1) * 2.44 / divisor;
+            let target_alive = args.3.get_player(&target_id).map(|p| p.get_status().hp > 0).unwrap_or(false);
+            if !target_alive {
+                continue;
+            }
             args.2.add(RunUpdate::new_newline());
             args.3
                 .just_get_player_mut(target_id)
