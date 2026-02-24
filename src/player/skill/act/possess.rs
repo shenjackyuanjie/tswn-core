@@ -40,7 +40,9 @@ impl SkillTrait for PossessSkill {
             let dodged = if target.check_immune(state_tag::<BerserkState>(), args.1) {
                 true
             } else {
-                target.alive() && !target.get_status().frozed() && Player::dodge(caster.get_status().magic, target.get_status().resistance, args.1)
+                target.alive()
+                    && !target.get_status().frozed()
+                    && Player::dodge(caster.get_status().magic, target.get_status().resistance, args.1)
             };
             dodged
         };

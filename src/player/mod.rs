@@ -53,6 +53,44 @@ pub fn state_tag<T: StateTrait + 'static>() -> StateTag { TypeId::of::<T>() }
 pub trait StateTrait: std::fmt::Debug + Any {
     fn meta_type(&self) -> i32 { 0 }
 
+    /// 状态在 update_states 阶段的执行顺序（数字越小越先执行）。
+    fn update_state_priority(&self) -> i32 { 1000 }
+    /// 在 update_states 阶段对 PlayerStatus 做修正。
+    fn apply_update_state(&self, _status: &mut PlayerStatus) {}
+
+    /// 状态在 pre_step 阶段的执行顺序（数字越小越先执行）。
+    fn pre_step_priority(&self) -> i32 { 1000 }
+    /// pre_step 钩子。返回 true 表示该状态应在本次流程后被清理。
+    fn on_pre_step(&mut self, _owner: PlrId, _status: &PlayerStatus, _step: &mut i32, _updates: &mut RunUpdates) -> bool { false }
+
+    /// 状态在 pre_defend 阶段的执行顺序（数字越小越先执行）。
+    fn pre_defend_priority(&self) -> i32 { 1000 }
+    /// pre_defend 钩子。返回 true 表示该状态应在本次流程后被清理。
+    #[allow(clippy::too_many_arguments)]
+    fn on_pre_defend(
+        &mut self,
+        _owner: PlrId,
+        _atp: &mut f64,
+        _is_mag: bool,
+        _caster: PlrId,
+        _on_damage: OnDamageFunc,
+        _randomer: &mut RC4,
+        _updates: &mut RunUpdates,
+        _storage: &Arc<Storage>,
+    ) -> bool {
+        false
+    }
+
+    /// 状态在 post_action 阶段的执行顺序（数字越小越先执行）。
+    fn post_action_priority(&self) -> i32 { 1000 }
+    /// post_action 钩子。返回 true 表示该状态应在本次流程后被清理。
+    fn on_post_action(&mut self, _owner: PlrId, _alive: bool, _updates: &mut RunUpdates) -> bool { false }
+
+    /// 状态在 post_defend 阶段的执行顺序（数字越小越先执行）。
+    fn post_defend_priority(&self) -> i32 { 1000 }
+    /// post_defend 钩子，可直接修正伤害值。
+    fn on_post_defend(&mut self, _owner: PlrId, _dmg: &mut i32, _caster: PlrId, _randomer: &mut RC4, _updates: &mut RunUpdates) {}
+
     fn as_any(&self) -> &dyn Any;
 
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -89,6 +127,9 @@ impl PlayerStateStore {
     pub fn clear<T: StateTrait + 'static>(&mut self) { self.states.remove(&state_tag::<T>()); }
 
     #[inline]
+    pub fn clear_tag(&mut self, tag: StateTag) { self.states.remove(&tag); }
+
+    #[inline]
     pub fn meta_type(&self, tag: StateTag) -> Option<i32> { self.states.get(&tag).map(|state| state.meta_type()) }
 
     pub fn clear_negative_states(&mut self) {
@@ -117,6 +158,124 @@ impl PlayerStateStore {
 
     #[inline]
     pub fn negative_state_count(&self) -> usize { self.states.values().filter(|state| state.meta_type() < 0).count() }
+
+    pub fn apply_update_state_effects(&self, status: &mut PlayerStatus) {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.update_state_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        for (tag, _) in ordered {
+            if let Some(state) = self.states.get(&tag) {
+                state.apply_update_state(status);
+            }
+        }
+    }
+
+    pub fn on_pre_step_states(
+        &mut self,
+        owner: PlrId,
+        status: &PlayerStatus,
+        step: &mut i32,
+        updates: &mut RunUpdates,
+    ) -> Vec<StateTag> {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.pre_step_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        let mut clear_tags = Vec::new();
+        for (tag, _) in ordered {
+            let should_clear = self
+                .states
+                .get_mut(&tag)
+                .map(|state| state.on_pre_step(owner, status, step, updates))
+                .unwrap_or(false);
+            if should_clear {
+                clear_tags.push(tag);
+            }
+        }
+        clear_tags
+    }
+
+    pub fn on_post_action_states(&mut self, owner: PlrId, alive: bool, updates: &mut RunUpdates) -> Vec<StateTag> {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.post_action_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        let mut clear_tags = Vec::new();
+        for (tag, _) in ordered {
+            let should_clear = self
+                .states
+                .get_mut(&tag)
+                .map(|state| state.on_post_action(owner, alive, updates))
+                .unwrap_or(false);
+            if should_clear {
+                clear_tags.push(tag);
+            }
+        }
+        clear_tags
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_pre_defend_states(
+        &mut self,
+        owner: PlrId,
+        atp: &mut f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> Vec<StateTag> {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.pre_defend_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        let mut clear_tags = Vec::new();
+        for (tag, _) in ordered {
+            let should_clear = self
+                .states
+                .get_mut(&tag)
+                .map(|state| state.on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage))
+                .unwrap_or(false);
+            if should_clear {
+                clear_tags.push(tag);
+            }
+            if *atp == 0.0 {
+                break;
+            }
+        }
+        clear_tags
+    }
+
+    pub fn on_post_defend_states(
+        &mut self,
+        owner: PlrId,
+        dmg: &mut i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+    ) {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.post_defend_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        for (tag, _) in ordered {
+            if let Some(state) = self.states.get_mut(&tag) {
+                state.on_post_defend(owner, dmg, caster, randomer, updates);
+            }
+        }
+    }
 }
 
 /// OnDamage 函数

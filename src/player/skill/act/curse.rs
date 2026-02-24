@@ -165,6 +165,22 @@ impl Default for CurseState {
 impl StateTrait for CurseState {
     fn meta_type(&self) -> i32 { -1 }
 
+    fn update_state_priority(&self) -> i32 { 120 }
+
+    fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) { status.atk_sum *= 4; }
+
+    fn post_defend_priority(&self) -> i32 { 110 }
+
+    fn on_post_defend(&mut self, owner: PlrId, dmg: &mut i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates) {
+        if *dmg <= 0 {
+            return;
+        }
+        if randomer.r63() < self.prob as u32 {
+            updates.add(RunUpdate::new("[诅咒]使伤害加倍", caster, owner, 0));
+            *dmg *= self.multiply;
+        }
+    }
+
     fn as_any(&self) -> &dyn std::any::Any { self }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }

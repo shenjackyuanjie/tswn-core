@@ -1,8 +1,11 @@
+use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    PlrId, StateTrait,
+    OnDamageFunc, PlrId, StateTrait,
     skill::act::minion::MinionRuntimeState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
+use crate::rc4::RC4;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProtectLink {
@@ -18,6 +21,72 @@ pub struct ProtectState {
 
 impl StateTrait for ProtectState {
     fn meta_type(&self) -> i32 { 0 }
+
+    fn pre_defend_priority(&self) -> i32 { 100 }
+
+    #[allow(clippy::too_many_arguments)]
+    fn on_pre_defend(
+        &mut self,
+        owner: PlrId,
+        atp: &mut f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<crate::engine::storage::Storage>,
+    ) -> bool {
+        let links = self.protect_from.clone();
+        if links.is_empty() {
+            return false;
+        }
+        let mut stale_owners = Vec::new();
+        for link in links {
+            let protector_alive = storage.get_player(&link.owner).map(|p| p.alive()).unwrap_or(false);
+            if !protector_alive {
+                stale_owners.push(link.owner);
+                continue;
+            }
+            if randomer.r127() >= link.level {
+                continue;
+            }
+            let protector_ready = {
+                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
+                protector.mp_ready(randomer)
+            };
+            if !protector_ready {
+                continue;
+            }
+            updates.add(RunUpdate::new("[0][守护][1]", link.owner, owner, 40));
+            let redirected_atp = {
+                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
+                protector.pre_defend(*atp, is_mag, caster, on_damage, randomer, updates, storage)
+            };
+            if redirected_atp == 0.0 {
+                *atp = 0.0;
+                return false;
+            }
+            let mut redirected_dmg = {
+                let protector = storage.get_player(&link.owner).expect("cannot get protect owner from storage");
+                (redirected_atp * 0.5 / protector.get_df(is_mag) as f64).floor() as i32
+            };
+            redirected_dmg = {
+                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
+                protector.post_defend(redirected_dmg, caster, on_damage, randomer, updates, storage)
+            };
+            storage
+                .just_get_player_mut(link.owner)
+                .expect("cannot get protect owner from storage")
+                .damage(redirected_dmg, caster, on_damage, randomer, updates, storage);
+            *atp = 0.0;
+            return false;
+        }
+
+        if !stale_owners.is_empty() {
+            self.protect_from.retain(|entry| !stale_owners.contains(&entry.owner));
+        }
+        self.protect_from.is_empty()
+    }
 
     fn as_any(&self) -> &dyn std::any::Any { self }
 

@@ -1,7 +1,6 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    Player,
-    PlayerStateStore, PlayerType, PlrId,
+    Player, PlayerStateStore, PlayerType, PlrId,
     skill::store::SkillStorage,
     skill::{Skill, SkillArgs, SkillExt, SkillTrait},
 };

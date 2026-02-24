@@ -153,6 +153,24 @@ impl Default for SlowState {
 impl StateTrait for SlowState {
     fn meta_type(&self) -> i32 { -1 }
 
+    fn update_state_priority(&self) -> i32 { 110 }
+
+    fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) { status.speed /= 2; }
+
+    fn post_action_priority(&self) -> i32 { 210 }
+
+    fn on_post_action(&mut self, owner: PlrId, alive: bool, updates: &mut crate::engine::update::RunUpdates) -> bool {
+        self.step -= 1;
+        if self.step > 0 {
+            return false;
+        }
+        if alive {
+            updates.add(RunUpdate::new_newline());
+            updates.add(RunUpdate::new("[1]从[迟缓]中解除", owner, owner, 0));
+        }
+        true
+    }
+
     fn as_any(&self) -> &dyn std::any::Any { self }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }

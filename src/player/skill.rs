@@ -187,8 +187,7 @@ pub trait SkillTrait: Debug {
             } else {
                 rate_low_hp(status.hp) * status.atk_sum as f64 * status.attract
             }
-        }
-        else {
+        } else {
             args.1.rFFFF() as f64 + target_plr.get_status().attract
         }
     }

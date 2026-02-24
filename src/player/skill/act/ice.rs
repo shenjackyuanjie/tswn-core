@@ -1,6 +1,6 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    OnDamageFunc, PlrId, StateTrait,
+    MOVE_POINT_THRESHOLD, OnDamageFunc, PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTrait},
     state_tag,
 };
@@ -73,6 +73,38 @@ impl Default for IceState {
 
 impl StateTrait for IceState {
     fn meta_type(&self) -> i32 { -1 }
+
+    fn update_state_priority(&self) -> i32 { 300 }
+
+    fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) { status.set_frozen(true); }
+
+    fn pre_step_priority(&self) -> i32 { 100 }
+
+    fn on_pre_step(
+        &mut self,
+        owner: PlrId,
+        status: &crate::player::PlayerStatus,
+        step: &mut i32,
+        updates: &mut RunUpdates,
+    ) -> bool {
+        if *step <= 0 {
+            return false;
+        }
+        if self.frozen_step > 0 {
+            self.frozen_step -= *step;
+            *step = 0;
+            return false;
+        }
+        if *step + status.move_point >= MOVE_POINT_THRESHOLD {
+            *step = 0;
+            if status.alive() {
+                updates.add(RunUpdate::new_newline());
+                updates.add(RunUpdate::new("[1]从[冰冻]中解除", owner, owner, 0));
+            }
+            return true;
+        }
+        false
+    }
 
     fn as_any(&self) -> &dyn std::any::Any { self }
 

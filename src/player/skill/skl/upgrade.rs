@@ -67,6 +67,18 @@ pub struct UpgradeState {
 impl StateTrait for UpgradeState {
     fn meta_type(&self) -> i32 { 1 }
 
+    fn update_state_priority(&self) -> i32 { 130 }
+
+    fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) {
+        status.attack += 30;
+        status.defense += 30;
+        status.agility += 30;
+        status.magic += 30;
+        status.resistance += 30;
+        status.speed += 20;
+        status.wisdom += 20;
+    }
+
     fn as_any(&self) -> &dyn std::any::Any { self }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }

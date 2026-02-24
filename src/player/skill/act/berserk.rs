@@ -31,7 +31,8 @@ impl SkillTrait for BerserkSkill {
         let Some(target_plr) = args.3.get_player(&target) else {
             return false;
         };
-        !target_plr.has_state::<BerserkState>() && !target_plr.has_state::<crate::player::skill::act::minion::MinionRuntimeState>()
+        !target_plr.has_state::<BerserkState>()
+            && !target_plr.has_state::<crate::player::skill::act::minion::MinionRuntimeState>()
     }
 
     fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
@@ -135,6 +136,20 @@ impl Default for BerserkState {
 
 impl StateTrait for BerserkState {
     fn meta_type(&self) -> i32 { -1 }
+
+    fn post_action_priority(&self) -> i32 { 220 }
+
+    fn on_post_action(&mut self, owner: PlrId, alive: bool, updates: &mut RunUpdates) -> bool {
+        self.step -= 1;
+        if self.step > 0 {
+            return false;
+        }
+        if alive {
+            updates.add(RunUpdate::new_newline());
+            updates.add(RunUpdate::new("[1]从[狂暴]中解除", owner, owner, 0));
+        }
+        true
+    }
 
     fn as_any(&self) -> &dyn std::any::Any { self }
 

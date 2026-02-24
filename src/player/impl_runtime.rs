@@ -125,12 +125,7 @@ impl Player {
         randomer.pick(&targets.ally_alive).map(|idx| targets.ally_alive[idx])
     }
 
-    fn pick_target_by_domain(
-        &self,
-        domain: SkillTargetDomain,
-        targets: &ActionTargets,
-        randomer: &mut RC4,
-    ) -> Option<PlrId> {
+    fn pick_target_by_domain(&self, domain: SkillTargetDomain, targets: &ActionTargets, randomer: &mut RC4) -> Option<PlrId> {
         match domain {
             SkillTargetDomain::EnemyAlive => Self::pick_enemy_target(targets, randomer),
             SkillTargetDomain::AllyAlive => self.pick_ally_target(targets, randomer),
@@ -393,147 +388,35 @@ impl Player {
     #[inline]
     pub fn clear_positive_states(&mut self) { self.state.clear_positive_states(); }
 
-    pub(super) fn apply_update_state_effects(&mut self) {
-        use crate::player::skill::{
-            curse::CurseState, haste::HasteState, ice::IceState, slow::SlowState, upgrade::UpgradeState,
-        };
-
-        if let Some(haste) = self.get_state::<HasteState>() {
-            self.status.speed *= haste.faster;
-        }
-        if self.has_state::<SlowState>() {
-            self.status.speed /= 2;
-        }
-        if self.has_state::<CurseState>() {
-            self.status.atk_sum *= 4;
-        }
-        if self.has_state::<UpgradeState>() {
-            self.status.attack += 30;
-            self.status.defense += 30;
-            self.status.agility += 30;
-            self.status.magic += 30;
-            self.status.resistance += 30;
-            self.status.speed += 20;
-            self.status.wisdom += 20;
-        }
-        if self.has_state::<IceState>() {
-            self.status.set_frozen(true);
-        }
-    }
+    pub(super) fn apply_update_state_effects(&mut self) { self.state.apply_update_state_effects(&mut self.status); }
 
     pub(super) fn apply_pre_step_states(&mut self, mut step: i32, updates: &mut RunUpdates) -> i32 {
-        use crate::player::skill::ice::IceState;
-
-        let mut clear_ice = false;
-        let move_point = self.status.move_point;
-        if let Some(ice) = self.get_state_mut::<IceState>()
-            && step > 0
-        {
-            if ice.frozen_step > 0 {
-                ice.frozen_step -= step;
-                step = 0;
-            } else if step + move_point >= MOVE_POINT_THRESHOLD {
-                clear_ice = true;
-                step = 0;
+        let status_snapshot = self.status;
+        let clear_tags = self.state.on_pre_step_states(self.as_ptr(), &status_snapshot, &mut step, updates);
+        if !clear_tags.is_empty() {
+            for tag in clear_tags {
+                self.state.clear_tag(tag);
             }
-        }
-        if clear_ice {
-            self.clear_state::<IceState>();
-            if self.alive() {
-                updates.add(RunUpdate::new_newline());
-                updates.add(RunUpdate::new("[1]从[冰冻]中解除", self.as_ptr(), self.as_ptr(), 0));
-            }
+            self.update_states();
         }
         step
     }
 
     fn apply_post_action_states(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        use crate::player::skill::{
-            berserk::BerserkState, charm::CharmState, haste::HasteState, poison::PoisonState, slow::SlowState,
-        };
+        crate::player::skill::poison::apply_poison_post_action(self.as_ptr(), randomer, updates, storage);
 
-        let mut clear_poison = false;
-        let mut clear_haste = false;
-        let mut clear_slow = false;
-        let mut clear_berserk = false;
-        let mut clear_charm = false;
-        let mut poison_tick: Option<(PlrId, i32)> = None;
-        let magic = self.status.magic;
-
-        if self.alive()
-            && let Some(poison) = self.get_state_mut::<PoisonState>()
-        {
-            let atpp = poison.atp * (1.0 + (poison.count - 1) as f64 * 0.1) / poison.count as f64;
-            poison.atp -= atpp;
-            let dmg = (atpp / (magic + 64) as f64).ceil() as i32;
-            poison.count -= 1;
-            clear_poison = poison.count <= 0;
-            poison_tick = Some((poison.caster.unwrap_or(self.as_ptr()), dmg));
-        }
-        if let Some((caster, dmg)) = poison_tick {
-            updates.add(RunUpdate::new("[1][毒性发作]", caster, self.as_ptr(), 0));
-            self.damage(dmg, caster, noop_on_damage, randomer, updates, storage);
-        }
-        if clear_poison {
-            self.clear_state::<PoisonState>();
-            if self.alive() {
-                updates.add(RunUpdate::new_newline());
-                updates.add(RunUpdate::new("[1]从[中毒]中解除", self.as_ptr(), self.as_ptr(), 0));
+        let clear_tags = self.state.on_post_action_states(self.as_ptr(), self.alive(), updates);
+        if !clear_tags.is_empty() {
+            for tag in clear_tags {
+                self.state.clear_tag(tag);
             }
-        }
-
-        if let Some(haste) = self.get_state_mut::<HasteState>() {
-            haste.step -= 1;
-            clear_haste = haste.step <= 0;
-        }
-        if clear_haste {
-            self.clear_state::<HasteState>();
-            if self.alive() {
-                updates.add(RunUpdate::new_newline());
-                updates.add(RunUpdate::new("[1]从[疾走]中解除", self.as_ptr(), self.as_ptr(), 0));
-            }
-        }
-
-        if let Some(slow) = self.get_state_mut::<SlowState>() {
-            slow.step -= 1;
-            clear_slow = slow.step <= 0;
-        }
-        if clear_slow {
-            self.clear_state::<SlowState>();
-            if self.alive() {
-                updates.add(RunUpdate::new_newline());
-                updates.add(RunUpdate::new("[1]从[迟缓]中解除", self.as_ptr(), self.as_ptr(), 0));
-            }
-        }
-
-        if let Some(berserk) = self.get_state_mut::<BerserkState>() {
-            berserk.step -= 1;
-            clear_berserk = berserk.step <= 0;
-        }
-        if clear_berserk {
-            self.clear_state::<BerserkState>();
-            if self.alive() {
-                updates.add(RunUpdate::new_newline());
-                updates.add(RunUpdate::new("[1]从[狂暴]中解除", self.as_ptr(), self.as_ptr(), 0));
-            }
-        }
-
-        if let Some(charm) = self.get_state_mut::<CharmState>() {
-            charm.step -= 1;
-            clear_charm = charm.step <= 0;
-        }
-        if clear_charm {
-            self.clear_state::<CharmState>();
-            if self.alive() {
-                updates.add(RunUpdate::new_newline());
-                updates.add(RunUpdate::new("[1]从[魅惑]中解除", self.as_ptr(), self.as_ptr(), 0));
-            }
+            self.update_states();
         }
     }
 
     fn apply_pre_defend_states(
         &mut self,
-        atp: f64,
+        mut atp: f64,
         is_mag: bool,
         caster: PlrId,
         on_damage: OnDamageFunc,
@@ -541,92 +424,20 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> f64 {
-        use crate::player::skill::protect::ProtectState;
-
-        let target_id = self.as_ptr();
-        let links = self
-            .get_state::<ProtectState>()
-            .map(|state| state.protect_from.clone())
-            .unwrap_or_default();
-        if links.is_empty() {
-            return atp;
+        let clear_tags =
+            self.state
+                .on_pre_defend_states(self.as_ptr(), &mut atp, is_mag, caster, on_damage, randomer, updates, storage);
+        if !clear_tags.is_empty() {
+            for tag in clear_tags {
+                self.state.clear_tag(tag);
+            }
+            self.update_states();
         }
-
-        let mut stale_owners = Vec::new();
-        for link in links {
-            let protector_alive = storage.get_player(&link.owner).map(|p| p.alive()).unwrap_or(false);
-            if !protector_alive {
-                stale_owners.push(link.owner);
-                continue;
-            }
-            if randomer.r127() >= link.level {
-                continue;
-            }
-            let protector_ready = {
-                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
-                protector.mp_ready(randomer)
-            };
-            if !protector_ready {
-                continue;
-            }
-
-            updates.add(RunUpdate::new("[0][守护][1]", link.owner, target_id, 40));
-            let redirected_atp = {
-                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
-                protector.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage)
-            };
-            if redirected_atp == 0.0 {
-                return 0.0;
-            }
-            let mut redirected_dmg = {
-                let protector = storage.get_player(&link.owner).expect("cannot get protect owner from storage");
-                (redirected_atp * 0.5 / protector.get_df(is_mag) as f64).floor() as i32
-            };
-            redirected_dmg = {
-                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
-                protector.post_defend(redirected_dmg, caster, on_damage, randomer, updates, storage)
-            };
-            storage
-                .just_get_player_mut(link.owner)
-                .expect("cannot get protect owner from storage")
-                .damage(redirected_dmg, caster, on_damage, randomer, updates, storage);
-            return 0.0;
-        }
-
-        if !stale_owners.is_empty() {
-            let mut clear_state = false;
-            if let Some(state) = self.get_state_mut::<ProtectState>() {
-                state.protect_from.retain(|entry| !stale_owners.contains(&entry.owner));
-                clear_state = state.protect_from.is_empty();
-            }
-            if clear_state {
-                self.clear_state::<ProtectState>();
-            }
-        }
-
         atp
     }
 
     fn apply_post_defend_states(&mut self, mut dmg: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates) -> i32 {
-        use crate::player::skill::{curse::CurseState, shield::ShieldState};
-
-        if let Some(shield) = self.get_state_mut::<ShieldState>() {
-            if shield.shield > 0 {
-                if dmg > shield.shield {
-                    shield.shield = 0;
-                } else {
-                    shield.shield -= dmg;
-                    dmg = 0;
-                }
-            }
-        }
-        if dmg > 0
-            && let Some(curse) = self.get_state::<CurseState>()
-            && randomer.r63() < curse.prob as u32
-        {
-            updates.add(RunUpdate::new("[诅咒]使伤害加倍", caster, self.as_ptr(), 0));
-            dmg *= curse.multiply;
-        }
+        self.state.on_post_defend_states(self.as_ptr(), &mut dmg, caster, randomer, updates);
         dmg
     }
 

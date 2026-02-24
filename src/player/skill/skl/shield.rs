@@ -63,6 +63,27 @@ impl Default for ShieldState {
 impl StateTrait for ShieldState {
     fn meta_type(&self) -> i32 { if self.shield > 0 { 1 } else { 0 } }
 
+    fn post_defend_priority(&self) -> i32 { 100 }
+
+    fn on_post_defend(
+        &mut self,
+        _owner: PlrId,
+        dmg: &mut i32,
+        _caster: PlrId,
+        _randomer: &mut crate::rc4::RC4,
+        _updates: &mut crate::engine::update::RunUpdates,
+    ) {
+        if self.shield <= 0 {
+            return;
+        }
+        if *dmg > self.shield {
+            self.shield = 0;
+        } else {
+            self.shield -= *dmg;
+            *dmg = 0;
+        }
+    }
+
     fn as_any(&self) -> &dyn std::any::Any { self }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
