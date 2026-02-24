@@ -4,19 +4,10 @@ use crate::player::{
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HideSkill {
     pub on_pre_action: Option<()>,
     pub on_update_state: Option<()>,
-}
-
-impl Default for HideSkill {
-    fn default() -> Self {
-        Self {
-            on_pre_action: None,
-            on_update_state: None,
-        }
-    }
 }
 
 impl HideSkill {

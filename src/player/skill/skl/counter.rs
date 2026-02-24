@@ -5,19 +5,10 @@ use crate::player::{
 };
 use crate::rc4::RC4;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CounterSkill {
     pub pending: bool,
     pub last_target: Option<PlrId>,
-}
-
-impl Default for CounterSkill {
-    fn default() -> Self {
-        Self {
-            pending: false,
-            last_target: None,
-        }
-    }
 }
 
 impl CounterSkill {

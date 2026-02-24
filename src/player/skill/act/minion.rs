@@ -1,15 +1,12 @@
 use crate::player::{PlrId, StateTrait};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MinionKind {
+    #[default]
     Clone,
     Summon,
     Shadow,
     Zombie,
-}
-
-impl Default for MinionKind {
-    fn default() -> Self { Self::Clone }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

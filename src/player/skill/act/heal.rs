@@ -4,13 +4,9 @@ use crate::player::{
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HealSkill {
     pub allow_sneak: bool,
-}
-
-impl Default for HealSkill {
-    fn default() -> Self { Self { allow_sneak: false } }
 }
 
 impl HealSkill {

@@ -6,21 +6,11 @@ use crate::player::{
 };
 use crate::rc4::RC4;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AssassinateSkill {
     pub on_pre_action: Option<()>,
     pub on_post_damage: Option<()>,
     pub target: Option<PlrId>,
-}
-
-impl Default for AssassinateSkill {
-    fn default() -> Self {
-        Self {
-            on_pre_action: None,
-            on_post_damage: None,
-            target: None,
-        }
-    }
 }
 
 impl AssassinateSkill {
@@ -73,10 +63,8 @@ impl SkillTrait for AssassinateSkill {
                 continue;
             }
             let score = self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3));
-            if let Some((_, best_score)) = best {
-                if score <= best_score {
-                    continue;
-                }
+            if let Some((_, best_score)) = best && score <= best_score {
+                continue;
             }
             best = Some((target, score));
         }
@@ -84,10 +72,10 @@ impl SkillTrait for AssassinateSkill {
     }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+        if self.target.is_none() && targets.is_empty() {
+            return;
+        }
         if self.target.is_none() {
-            if targets.is_empty() {
-                return;
-            }
             let target_id = targets[0];
             self.target = Some(target_id);
             self.on_pre_action = Some(());

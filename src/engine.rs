@@ -909,7 +909,7 @@ pub mod update {
         }
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Default)]
     pub struct RunUpdates {
         pub updates: Vec<RunUpdate>,
     }

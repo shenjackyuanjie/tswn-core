@@ -4,21 +4,11 @@ use crate::player::{
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ChargeSkill {
     pub on_update_state: Option<()>,
     pub on_post_action: Option<()>,
     pub step: i32,
-}
-
-impl Default for ChargeSkill {
-    fn default() -> Self {
-        Self {
-            on_update_state: None,
-            on_post_action: None,
-            step: 0,
-        }
-    }
 }
 
 impl ChargeSkill {

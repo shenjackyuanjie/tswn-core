@@ -26,19 +26,10 @@ impl StateTrait for ProtectState {
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ProtectSkill {
     pub allow_sneak: bool,
     pub protect_to: Option<PlrId>,
-}
-
-impl Default for ProtectSkill {
-    fn default() -> Self {
-        Self {
-            allow_sneak: false,
-            protect_to: None,
-        }
-    }
 }
 
 impl ProtectSkill {
