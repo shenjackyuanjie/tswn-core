@@ -105,7 +105,129 @@ mod spilt_namerena_groups {
 
 mod runner {
     use super::*;
-    use crate::engine::update::UpdateType;
+    use crate::engine::update::{RunUpdate, UpdateType};
+
+    fn format_update_message(runner: &runners::Runner, update: &RunUpdate) -> String {
+        let caster = runner
+            .storage
+            .get_player(&update.caster)
+            .map(|plr| plr.id_name())
+            .unwrap_or_else(|| format!("#{}", update.caster));
+        let target = runner
+            .storage
+            .get_player(&update.target)
+            .map(|plr| plr.id_name())
+            .unwrap_or_else(|| format!("#{}", update.target));
+        let mut msg = update.message.clone();
+        msg = msg.replace("[0]", &caster);
+        msg = msg.replace("[1]", &target);
+        let param = if update.targets.is_empty() {
+            update.score.to_string()
+        } else {
+            update
+                .targets
+                .iter()
+                .map(|id| runner.storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
+                .collect::<Vec<String>>()
+                .join(",")
+        };
+        msg.replace("[2]", &param)
+    }
+
+    fn normalize_trace_line(line: String) -> String {
+        line.replace("[s_counter]", "")
+            .replace("[s_dmg160]", "")
+            .replace("[s_dmg120]", "")
+            .replace("[s_dmg0]", "")
+            .replace(['[', ']'], "")
+            .replace(' ', "")
+            .trim()
+            .to_string()
+    }
+
+    fn collect_replay_events(runner: &mut runners::Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize) {
+        let mut events = Vec::new();
+        let mut guard = 0usize;
+        while !runner.have_winner() && guard < max_rounds {
+            let updates = runner.main_round();
+            for update in updates.updates {
+                if matches!(update.update_type, UpdateType::NextLine) {
+                    continue;
+                }
+                let mut msg = format_update_message(runner, &update);
+                if normalize {
+                    msg = normalize_trace_line(msg);
+                    if msg.is_empty() {
+                        continue;
+                    }
+                }
+                events.push(msg);
+            }
+            guard += 1;
+        }
+        (events, guard)
+    }
+
+    fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize) {
+        let mut lines = Vec::new();
+        let mut guard = 0usize;
+        while !runner.have_winner() && guard < max_rounds {
+            let updates = runner.main_round();
+            let mut parts = Vec::new();
+            for update in updates.updates {
+                if matches!(update.update_type, UpdateType::NextLine) {
+                    if !parts.is_empty() {
+                        lines.push(parts.join(", "));
+                        parts.clear();
+                    }
+                    continue;
+                }
+                let mut msg = format_update_message(runner, &update);
+                if normalize {
+                    msg = normalize_trace_line(msg);
+                }
+                if !msg.is_empty() {
+                    parts.push(msg);
+                }
+            }
+            if !parts.is_empty() {
+                lines.push(parts.join(", "));
+            }
+            guard += 1;
+        }
+        (lines, guard)
+    }
+
+    fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) -> (String, Vec<String>) {
+        let fight_text = case_text.replace("\r\n", "\n").replace('\r', "\n");
+        let (raw_input, expected_part) = fight_text.split_once("\n\n\n").expect(split_err);
+        let expected_lines = expected_part
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| normalize_trace_line(line.to_string()))
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<String>>();
+        assert!(!expected_lines.is_empty(), "{empty_err}");
+        (raw_input.trim_end().to_string(), expected_lines)
+    }
+
+    fn winner_names(runner: &runners::Runner) -> Vec<String> {
+        runner
+            .world
+            .winner
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|id| {
+                runner
+                    .storage
+                    .get_player(&id)
+                    .map(|plr| plr.id_name())
+                    .unwrap_or_else(|| format!("#{id}"))
+            })
+            .collect::<Vec<String>>()
+    }
 
     #[test]
     fn sort_int_test() {
@@ -173,43 +295,7 @@ mod runner {
     #[test]
     fn help_vs_aaaaa_should_match_right_trace_step_by_step() {
         let mut runner = runners::Runner::new_from_namerena_raw("help\naaaaa".to_string()).unwrap();
-        let mut events = Vec::new();
-
-        let mut guard = 0usize;
-        while !runner.have_winner() && guard < 256 {
-            let updates = runner.main_round();
-            for update in updates.updates {
-                if matches!(update.update_type, UpdateType::NextLine) {
-                    continue;
-                }
-                let caster = runner
-                    .storage
-                    .get_player(&update.caster)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{}", update.caster));
-                let target = runner
-                    .storage
-                    .get_player(&update.target)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{}", update.target));
-                let mut msg = update.message.clone();
-                msg = msg.replace("[0]", &caster);
-                msg = msg.replace("[1]", &target);
-                let param = if update.targets.is_empty() {
-                    update.score.to_string()
-                } else {
-                    update
-                        .targets
-                        .iter()
-                        .map(|id| runner.storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
-                        .collect::<Vec<String>>()
-                        .join(",")
-                };
-                msg = msg.replace("[2]", &param);
-                events.push(msg);
-            }
-            guard += 1;
-        }
+        let (events, guard) = collect_replay_events(&mut runner, 256, false);
 
         assert!(guard < 256, "combat did not finish in expected rounds");
         assert_eq!(
@@ -240,78 +326,14 @@ mod runner {
             ]
         );
 
-        let winner = runner
-            .world
-            .winner
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|id| {
-                runner
-                    .storage
-                    .get_player(&id)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{id}"))
-            })
-            .collect::<Vec<String>>();
+        let winner = winner_names(&runner);
         assert_eq!(winner, vec!["help".to_string()]);
     }
 
     #[test]
-    fn aaaaa_vs_bbbbb_with_seed_should_match_given_trace_step_by_step() {
+    fn seed_small_replay_should_match() {
         let mut runner = runners::Runner::new_from_namerena_raw("aaaaa\nbbbbb\nseed:tester@!".to_string()).unwrap();
-        let mut lines = Vec::new();
-
-        let mut guard = 0usize;
-        while !runner.have_winner() && guard < 256 {
-            let updates = runner.main_round();
-            let mut parts = Vec::new();
-            for update in updates.updates {
-                if matches!(update.update_type, UpdateType::NextLine) {
-                    continue;
-                }
-                let caster = runner
-                    .storage
-                    .get_player(&update.caster)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{}", update.caster));
-                let target = runner
-                    .storage
-                    .get_player(&update.target)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{}", update.target));
-                let mut msg = update.message.clone();
-                msg = msg.replace("[0]", &caster);
-                msg = msg.replace("[1]", &target);
-                let param = if update.targets.is_empty() {
-                    update.score.to_string()
-                } else {
-                    update
-                        .targets
-                        .iter()
-                        .map(|id| runner.storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
-                        .collect::<Vec<String>>()
-                        .join(",")
-                };
-                msg = msg.replace("[2]", &param);
-                msg = msg
-                    .replace("[s_counter]", "")
-                    .replace("[s_dmg160]", "")
-                    .replace("[s_dmg120]", "")
-                    .replace("[s_dmg0]", "")
-                    .replace(['[', ']'], "")
-                    .replace(' ', "")
-                    .trim()
-                    .to_string();
-                if !msg.is_empty() {
-                    parts.push(msg);
-                }
-            }
-            if !parts.is_empty() {
-                lines.push(parts.join(", "));
-            }
-            guard += 1;
-        }
+        let (lines, guard) = collect_replay_lines(&mut runner, 256, true);
 
         assert!(guard < 256, "combat did not finish in expected rounds");
         assert_eq!(
@@ -328,25 +350,110 @@ mod runner {
             ]
         );
 
-        let winner = runner
-            .world
-            .winner
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|id| {
-                runner
-                    .storage
-                    .get_player(&id)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{id}"))
-            })
-            .collect::<Vec<String>>();
+        let winner = winner_names(&runner);
         assert_eq!(winner, vec!["aaaaa".to_string()]);
     }
 
     #[test]
-    fn fight_md_should_match_trace_step_by_step() {
+    fn fight_simple_replay_should_match() {
+        const FIGHT_SIMPLE_CASE: &str = r###"aaa
+bbb
+ccc
+ddd
+eee
+fff
+
+
+ddd发起攻击, aaa受到53点伤害
+
+ccc发起攻击, bbb受到47点伤害
+
+aaa发起攻击, eee受到38点伤害
+
+ aaa连击, ddd回避了攻击
+
+eee使用诅咒, aaa受到85点伤害, aaa被诅咒了
+
+fff发起攻击, eee受到90点伤害
+
+bbb发起攻击, ddd受到51点伤害
+
+ccc发起攻击, aaa受到63点伤害
+
+eee发起攻击, bbb受到63点伤害
+
+ddd发起攻击, ccc受到120点伤害
+
+bbb发起攻击, fff受到64点伤害
+
+eee发起攻击, ddd受到41点伤害
+
+aaa使用加速术, aaa进入疾走状态
+
+ccc发起攻击, ddd受到96点伤害
+
+ddd发起攻击, bbb受到69点伤害
+
+fff发起攻击, eee受到92点伤害
+
+aaa发起攻击, ddd受到37点伤害
+
+aaa发起攻击, eee受到72点伤害
+
+ eee做出垂死抗争, eee所有属性上升
+
+ aaa从疾走中解除
+
+bbb发起攻击, ccc受到35点伤害
+
+eee发起攻击, 诅咒使伤害加倍, aaa受到130点伤害
+
+ aaa被击倒了
+
+ddd发起攻击, bbb受到44点伤害
+
+fff发起攻击, ccc受到59点伤害
+
+ccc发起攻击, ddd受到84点伤害
+
+ ddd被击倒了
+
+ccc发起攻击, fff受到56点伤害
+
+eee使用诅咒, fff受到74点伤害, fff被诅咒了
+
+bbb发起攻击, fff受到72点伤害
+
+eee发起攻击, ccc受到66点伤害
+
+ ccc被击倒了
+
+bbb发起攻击, eee受到23点伤害
+
+ eee被击倒了
+
+fff发起攻击, bbb受到20点伤害
+
+ bbb被击倒了, bbb使用护身符抵挡了一次死亡, bbb回复体力16点
+
+bbb发起攻击, 诅咒使伤害加倍, fff受到134点伤害
+
+ fff被击倒了"###;
+        let (raw_input, expected_lines) = parse_embedded_fight_case(
+            FIGHT_SIMPLE_CASE,
+            "embedded simple fight case must contain a blank separator between input and trace",
+            "embedded simple fight trace is empty",
+        );
+
+        let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
+        let (actual_lines, guard) = collect_replay_lines(&mut runner, 10_000, true);
+
+        assert!(guard < 10_000, "fight_simple combat did not finish in expected rounds");
+        assert_eq!(actual_lines, expected_lines);
+    }
+
+    #[test]
+    fn fight_large_replay_should_match() {
         const FIGHT_CASE: &str = r###"兔蛙智仁$0a0LD4Dh@爱425
 沉睡在悲伤的海洋中#056ARx3e@爱425
 都江堰00217109183087@abruce425
@@ -1793,81 +1900,13 @@ wangifc5NuJx52y1cMSaD发起攻击, 丧尸回避了攻击
 (S("p{GE2up',7%^UGrP发起攻击, 哈莫雷特m6bi9z3ZWg9y受到70点伤害
 
  哈莫雷特m6bi9z3ZWg9y被击倒了"###;
-        let fight_text = FIGHT_CASE.replace("\r\n", "\n").replace('\r', "\n");
-        let (raw_input, expected_part) = fight_text
-            .split_once("\n\n\n")
-            .expect("embedded fight case must contain a blank separator between input and trace");
-
-        let expected_lines = expected_part
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(|line| {
-                line.replace("[s_counter]", "")
-                    .replace("[s_dmg160]", "")
-                    .replace("[s_dmg120]", "")
-                    .replace("[s_dmg0]", "")
-                    .replace(['[', ']'], "")
-                    .replace(' ', "")
-                    .trim()
-                    .to_string()
-            })
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<String>>();
-        assert!(!expected_lines.is_empty(), "embedded fight trace is empty");
-
-        let mut runner = runners::Runner::new_from_namerena_raw(raw_input.trim_end().to_string()).unwrap();
-        let mut actual_lines = Vec::new();
-        let mut guard = 0usize;
-        while !runner.have_winner() && guard < 50_000 {
-            let updates = runner.main_round();
-            let mut parts = Vec::new();
-            for update in updates.updates {
-                if matches!(update.update_type, UpdateType::NextLine) {
-                    continue;
-                }
-                let caster = runner
-                    .storage
-                    .get_player(&update.caster)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{}", update.caster));
-                let target = runner
-                    .storage
-                    .get_player(&update.target)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{}", update.target));
-                let mut msg = update.message.clone();
-                msg = msg.replace("[0]", &caster);
-                msg = msg.replace("[1]", &target);
-                let param = if update.targets.is_empty() {
-                    update.score.to_string()
-                } else {
-                    update
-                        .targets
-                        .iter()
-                        .map(|id| runner.storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
-                        .collect::<Vec<String>>()
-                        .join(",")
-                };
-                msg = msg.replace("[2]", &param);
-                msg = msg
-                    .replace("[s_counter]", "")
-                    .replace("[s_dmg160]", "")
-                    .replace("[s_dmg120]", "")
-                    .replace("[s_dmg0]", "")
-                    .replace(['[', ']'], "")
-                    .replace(' ', "")
-                    .trim()
-                    .to_string();
-                if !msg.is_empty() {
-                    parts.push(msg);
-                }
-            }
-            if !parts.is_empty() {
-                actual_lines.push(parts.join(", "));
-            }
-            guard += 1;
-        }
+        let (raw_input, expected_lines) = parse_embedded_fight_case(
+            FIGHT_CASE,
+            "embedded fight case must contain a blank separator between input and trace",
+            "embedded fight trace is empty",
+        );
+        let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
+        let (actual_lines, guard) = collect_replay_lines(&mut runner, 50_000, true);
         assert!(guard < 50_000, "fight.md combat did not finish in expected rounds");
         assert_eq!(actual_lines, expected_lines);
     }

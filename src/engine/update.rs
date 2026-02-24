@@ -85,6 +85,7 @@ impl RunUpdate {
 pub struct RunUpdates {
     pub id: u64,
     pub updates: Vec<RunUpdate>,
+    pub on_update_end: Vec<PlrId>,
 }
 
 impl RunUpdates {
@@ -92,6 +93,7 @@ impl RunUpdates {
         RunUpdates {
             id: RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed),
             updates: vec![],
+            on_update_end: vec![],
         }
     }
 

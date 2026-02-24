@@ -71,7 +71,8 @@ impl SkillStorage {
 
     pub fn update_proc(&mut self) {
         self.clear_proc();
-        let keys: Vec<SkillKey> = self.skill.clone();
+        let mut keys: Vec<SkillKey> = self.store.keys().copied().collect();
+        keys.sort_unstable();
         for key in keys {
             let skill = self.store.get(&key).expect("skill not found in store");
             if skill.level() == 0 {

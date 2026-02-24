@@ -46,6 +46,7 @@ impl SkillTrait for CounterSkill {
         if args.1.r255() < level {
             self.last_target = Some(caster);
             self.pending = true;
+            args.2.on_update_end.push(args.0);
         } else {
             self.pending = false;
             self.last_target = None;
