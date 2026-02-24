@@ -120,7 +120,15 @@ impl Player {
     }
 
     fn pick_ally_target(&self, targets: &ActionTargets, randomer: &mut RC4) -> Option<PlrId> {
-        randomer.pick(&targets.ally_alive).map(|idx| targets.ally_alive[idx])
+        if targets.ally_alive.is_empty() {
+            return None;
+        }
+        let self_id = self.as_ptr();
+        if let Some(self_idx) = targets.ally_alive.iter().position(|id| *id == self_id) {
+            randomer.pick_skip(&targets.ally_alive, self_idx).map(|idx| targets.ally_alive[idx])
+        } else {
+            randomer.pick(&targets.ally_alive).map(|idx| targets.ally_alive[idx])
+        }
     }
 
     fn pick_target_by_domain(&self, domain: SkillTargetDomain, targets: &ActionTargets, randomer: &mut RC4) -> Option<PlrId> {
@@ -193,20 +201,13 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Option<PlrId> {
-        #[cfg(test)]
-        let actor_name = self.id_name();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::new();
         let mut dup = 0usize;
-        let mut invalid = -(select_count as i32);
-        while dup <= select_count && invalid <= select_count as i32 {
+        while dup <= select_count {
             let Some(target_id) = Self::pick_enemy_target(targets, randomer) else {
                 return None;
             };
-            if !targets.enemy_alive.contains(&target_id) {
-                invalid += 1;
-                continue;
-            }
             if selected.contains(&target_id) {
                 dup += 1;
                 continue;
@@ -218,56 +219,6 @@ impl Player {
         }
         if selected.is_empty() {
             return None;
-        }
-        #[cfg(test)]
-        if actor_name == "wangif9nWzNbxCJ7wXi8E" {
-            use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
-            static PRINTED_ENEMY_LIST: AtomicBool = AtomicBool::new(false);
-            if !PRINTED_ENEMY_LIST.swap(true, AtomicOrdering::Relaxed) {
-                let ally_indices = targets
-                    .all_alive
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(idx, id)| if targets.ally_alive.contains(id) { Some(idx) } else { None })
-                    .collect::<Vec<usize>>();
-                let ally_all_names = targets
-                    .ally_all
-                    .iter()
-                    .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}")))
-                    .collect::<Vec<String>>();
-                let ally_alive_names = targets
-                    .ally_alive
-                    .iter()
-                    .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}")))
-                    .collect::<Vec<String>>();
-                let enemy_indexed = targets
-                    .enemy_alive
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, id)| {
-                        let name = storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}"));
-                        format!("{idx}:{name}")
-                    })
-                    .collect::<Vec<String>>();
-                eprintln!("DBG ally-indices actor={actor_name} {ally_indices:?}");
-                eprintln!("DBG ally-all actor={actor_name} {ally_all_names:?}");
-                eprintln!("DBG ally-alive actor={actor_name} {ally_alive_names:?}");
-                eprintln!("DBG enemy-list actor={actor_name} {}", enemy_indexed.join(" | "));
-            }
-            let selected_names = selected
-                .iter()
-                .map(|id| {
-                    let name = storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}"));
-                    let pos = targets.enemy_alive.iter().position(|x| x == id).unwrap_or(usize::MAX);
-                    format!("{pos}:{name}")
-                })
-                .collect::<Vec<String>>();
-            eprintln!(
-                "DBG target-select actor={actor_name} smart={} candidates={} selected={:?}",
-                smart,
-                targets.enemy_alive.len(),
-                selected_names
-            );
         }
 
         let mut scored = selected
@@ -329,17 +280,6 @@ impl Player {
             })
             .collect::<Vec<(PlrId, f64)>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
-        #[cfg(test)]
-        if actor_name == "wangif9nWzNbxCJ7wXi8E" {
-            let scored_names = scored
-                .iter()
-                .map(|(id, score)| {
-                    let name = storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("{id:?}"));
-                    (name, *score)
-                })
-                .collect::<Vec<(String, f64)>>();
-            eprintln!("DBG target-score actor={actor_name} scored={scored_names:?}");
-        }
         scored.first().map(|x| x.0)
     }
 
