@@ -147,6 +147,9 @@ impl Player {
         targets: &ActionTargets,
     ) -> Vec<PlrId> {
         let domain = skill.target_domain();
+        if domain == SkillTargetDomain::SelfOnly {
+            return vec![self.as_ptr()];
+        }
         let select_count = skill.select_target_count(smart);
         if select_count == 0 {
             return Vec::new();
