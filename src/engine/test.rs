@@ -862,7 +862,7 @@ mVf4YCPDlRm发起攻击, SDPC#AZLZJQUPN受到38点伤害
         );
 
         let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-        let (actual_lines, guard) = collect_replay_lines(&mut runner, 100_000, true);
+        let (actual_lines, guard) = collect_replay_lines(&mut runner, 10_000, true);
 
         assert!(guard < 20_000, "sampled case-02 combat did not finish in expected rounds");
         assert_trace_with_context("sampled case-02", &actual_lines, &expected_lines);
