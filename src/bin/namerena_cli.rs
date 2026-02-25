@@ -121,7 +121,7 @@ fn main() {
     let mut total_score = 0u64;
     let mut score_by_caster: HashMap<usize, u64> = HashMap::new();
 
-    while !runner.have_winner() && round <= 10_000 {
+    while !runner.have_winner() && round <= 100_000 {
         let updates = runner.main_round();
         if updates.updates.is_empty() {
             idle_rounds += 1;
