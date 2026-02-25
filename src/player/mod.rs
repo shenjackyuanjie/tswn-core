@@ -370,7 +370,7 @@ fn noop_on_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _upda
 
 /// 通过玩家句柄从存储层取可变玩家引用。
 #[inline]
-pub fn player_id_as_mut_plr<'a>(ptr: PlrId, storage: &'a Arc<Storage>) -> &'a mut Player {
+pub fn player_id_as_mut_plr(ptr: PlrId, storage: &Arc<Storage>) -> &mut Player {
     storage.just_get_player_mut(ptr).expect("cannot get mutable player by player handle")
 }
 
