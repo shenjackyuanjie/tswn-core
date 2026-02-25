@@ -1,7 +1,7 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
-    skill::act::minion::MinionRuntimeState,
+    skill::act::minion::is_combat_minion,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
@@ -136,7 +136,7 @@ impl ProtectSkill {
             if !target.alive() {
                 continue;
             }
-            if target.has_state::<MinionRuntimeState>() {
+            if is_combat_minion(target) {
                 continue;
             }
             let score = if smart {

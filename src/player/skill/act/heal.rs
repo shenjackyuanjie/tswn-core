@@ -28,8 +28,6 @@ impl SkillTrait for HealSkill {
 
     fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyAlive }
 
-    fn select_target_count_with_level(&self, _level: u32, _smart: bool) -> usize { 1 }
-
     fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
         let Some(target_plr) = args.3.get_player(&target) else {
             return false;

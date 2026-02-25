@@ -82,13 +82,32 @@ impl SkillTrait for CloneSkill {
         cloned.player_type = PlayerType::Clone;
         cloned.sort_int = 0;
         cloned.state = PlayerStateStore::default();
+
+        // JS: PlrClone 先重新 build，重置技能内部运行时状态；
+        // 然后把技能等级 clamp 到 owner 当前等级。
+        cloned.build();
+        let skill_keys = cloned.skills.skill.clone();
+        for skill_key in skill_keys {
+            let owner_level = owner_snapshot.skills.skill_by_id(skill_key).level();
+            let skill = cloned.skills.skill_by_id_mut(skill_key);
+            if skill.level() > owner_level {
+                skill.set_level(owner_level);
+            }
+        }
+
+        // JS PlrClone.aU: 克隆体八围直接拷贝 owner 当前八围。
+        cloned.attr = owner_snapshot.attr;
+        cloned.state = PlayerStateStore::default();
         cloned.set_state(MinionRuntimeState {
             owner: Some(args.0),
             kind: MinionKind::Clone,
         });
+        cloned.update_states();
         // JS: p.l = c.n() * 4 + 256 (不设置 owner 的 spsum)
         cloned.status.move_point = args.1.r255() as i32 * 4 + 256;
         cloned.status.hp = owner_snapshot.get_status().hp.max(1);
+        // JS clone 是重新 build 的实体，mp 取 itl/2，而不是 owner 当前 mp。
+        cloned.status.mp = (cloned.status.wisdom >> 1).max(0);
         cloned.status.set_alive(true);
         cloned.status.set_frozen(false);
 

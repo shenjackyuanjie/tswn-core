@@ -862,7 +862,7 @@ fn owner_death_marks_linked_minion_for_cleanup() {
     minion.name = "owner?m".to_string();
     minion.set_state(crate::player::skill::act::minion::MinionRuntimeState {
         owner: Some(owner_id),
-        kind: crate::player::skill::act::minion::MinionKind::Clone,
+        kind: crate::player::skill::act::minion::MinionKind::Summon,
     });
     let minion_id = storage.just_insert_player(minion);
     let mut randomer = RC4 {

@@ -1,6 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId, StateTrait,
+    skill::act::minion::is_combat_minion,
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
@@ -24,8 +25,6 @@ impl SkillTrait for HasteSkill {
 
     fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyAlive }
 
-    fn select_target_count_with_level(&self, _level: u32, _smart: bool) -> usize { 1 }
-
     fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
         let Some(target_plr) = args.3.get_player(&target) else {
             return false;
@@ -42,6 +41,9 @@ impl SkillTrait for HasteSkill {
         if let Some(haste) = target_plr.get_state::<HasteState>()
             && (haste.step + 1) * 60 > target_plr.get_status().hp
         {
+            return false;
+        }
+        if is_combat_minion(target_plr) {
             return false;
         }
         true
@@ -62,7 +64,7 @@ impl SkillTrait for HasteSkill {
             };
             let mut score = rate_hi_hp * target_plr.get_status().attr_sum as f64;
             if target_plr.has_state::<HasteState>() {
-                score /= 2.0;
+                score /= 4.0;
             }
             score
         } else {
@@ -76,6 +78,13 @@ impl SkillTrait for HasteSkill {
         }
         let target_id = targets[0];
         args.2.add(RunUpdate::new("[0]使用[加速术]", args.0, target_id, 60));
+        let charge_active = args
+            .3
+            .get_player(&args.0)
+            .expect("cannot get haste owner from storage")
+            .get_status()
+            .at_boost
+            >= 3.0;
 
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get haste owner from storage");
         owner.set_move_point(owner.move_point() + owner.get_status().speed);
@@ -91,6 +100,11 @@ impl SkillTrait for HasteSkill {
                 faster: 2,
                 step: 3,
             });
+        }
+        if charge_active {
+            let state = target.get_state_mut::<HasteState>().expect("haste state should exist after apply");
+            state.faster += 2;
+            state.step += 2;
         }
         args.2.add(RunUpdate::new("[1]进入[疾走]状态", args.0, target_id, 60));
     }

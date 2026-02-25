@@ -1,6 +1,7 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
+    skill::act::minion::is_combat_minion,
     skill::{SkillArgs, SkillExt, SkillTrait},
     state_tag,
 };
@@ -31,8 +32,7 @@ impl SkillTrait for BerserkSkill {
         let Some(target_plr) = args.3.get_player(&target) else {
             return false;
         };
-        !target_plr.has_state::<BerserkState>()
-            && !target_plr.has_state::<crate::player::skill::act::minion::MinionRuntimeState>()
+        !target_plr.has_state::<BerserkState>() && !is_combat_minion(target_plr)
     }
 
     fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
@@ -112,14 +112,24 @@ impl SkillTrait for BerserkSkill {
         if dmg <= 0 {
             return;
         }
+        let charge_active = args
+            .3
+            .get_player(&args.0)
+            .map(|caster| caster.get_status().at_boost >= 3.0)
+            .unwrap_or(false);
         let target = args.3.just_get_player_mut(target_id).expect("cannot get berserk target from storage");
         if !target.alive() || target.check_immune(state_tag::<BerserkState>(), args.1) {
             return;
         }
         if let Some(state) = target.get_state_mut::<BerserkState>() {
             state.step += 1;
+            if charge_active {
+                state.step += 1;
+            }
         } else {
-            target.set_state(BerserkState { step: 1 });
+            target.set_state(BerserkState {
+                step: if charge_active { 2 } else { 1 },
+            });
             args.2.add(RunUpdate::new("[1]进入[狂暴]状态", args.0, target_id, 60));
         }
     }
@@ -139,8 +149,8 @@ impl StateTrait for BerserkState {
 
     fn action_mode_priority(&self) -> i32 { 100 }
 
-    fn on_action_mode(&self, _smart: bool, force_default_attack_smart: &mut Option<bool>) {
-        *force_default_attack_smart = Some(false);
+    fn on_action_mode(&self, smart: bool, force_default_attack_smart: &mut Option<bool>) {
+        *force_default_attack_smart = Some(smart);
     }
 
     fn post_action_priority(&self) -> i32 { 220 }

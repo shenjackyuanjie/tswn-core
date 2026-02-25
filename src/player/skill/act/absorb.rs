@@ -23,8 +23,6 @@ impl SkillTrait for AbsorbSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn select_target_count(&self, _smart: bool) -> usize { 1 }
-
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
         if smart {
             let owner = args.3.get_player(&args.0).expect("cannot get absorb owner from storage");

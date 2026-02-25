@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::act::minion::MinionRuntimeState,
+    skill::act::minion::is_combat_minion,
     skill::merge::MergeState,
     skill::zombie::ZombieState,
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
@@ -31,14 +31,12 @@ impl SkillTrait for ReviveSkill {
 
     fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyDead }
 
-    fn select_target_count_with_level(&self, _level: u32, _smart: bool) -> usize { 1 }
-
     fn valid_target_with_level(&self, _level: u32, target: PlrId, _smart: bool, args: SkillArgs) -> bool {
         let Some(target_plr) = args.3.get_player(&target) else {
             return false;
         };
         !target_plr.alive()
-            && !target_plr.has_state::<MinionRuntimeState>()
+            && !is_combat_minion(target_plr)
             && !target_plr.has_state::<MergeState>()
             && !target_plr.has_state::<ZombieState>()
     }

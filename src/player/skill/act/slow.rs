@@ -105,6 +105,13 @@ impl SkillTrait for SlowSkill {
         }
         let target_id = targets[0];
         args.2.add(RunUpdate::new("[0]使用[减速术]", args.0, target_id, 1));
+        let charge_active = args
+            .3
+            .get_player(&args.0)
+            .expect("cannot get slow owner from storage")
+            .get_status()
+            .at_boost
+            >= 3.0;
 
         let owner_magic = args.3.get_player(&args.0).expect("cannot get slow owner from storage").get_status().magic;
         let target = args.3.just_get_player_mut(target_id).expect("cannot get slow target from storage");
@@ -126,6 +133,10 @@ impl SkillTrait for SlowSkill {
                 on_post_action: None,
                 step: 2,
             });
+        }
+        if charge_active {
+            let state = target.get_state_mut::<SlowState>().expect("slow state should exist after apply");
+            state.step += 4;
         }
         args.2.add(RunUpdate::new("[1]进入[迟缓]状态", args.0, target_id, 60));
     }

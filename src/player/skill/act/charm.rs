@@ -41,8 +41,51 @@ impl SkillTrait for CharmSkill {
         let Some(target_plr) = args.3.get_player(&target) else {
             return f64::MIN;
         };
+        let rate_hi_hp = |hp: i32| -> f64 {
+            if hp < 20 {
+                30.0
+            } else if hp > 300 {
+                300.0
+            } else {
+                hp as f64
+            }
+        };
         let mut score = if smart {
-            target_plr.get_status().attract
+            let alive_group_count = {
+                let mut group_heads = Vec::new();
+                for id in args.3.all_player_ids() {
+                    let alive = args.3.get_player(&id).map(|plr| plr.alive()).unwrap_or(false);
+                    if !alive {
+                        continue;
+                    }
+                    let Some(group) = args.3.group_containing(id) else {
+                        continue;
+                    };
+                    let Some(head) = group.first() else {
+                        continue;
+                    };
+                    if !group_heads.contains(head) {
+                        group_heads.push(*head);
+                    }
+                }
+                group_heads.len()
+            };
+            let target_alive_group_len = args
+                .3
+                .group_containing(target)
+                .map(|group| {
+                    group
+                        .iter()
+                        .filter(|id| args.3.get_player(id).map(|plr| plr.alive()).unwrap_or(false))
+                        .count()
+                })
+                .unwrap_or(0);
+            let status = target_plr.get_status();
+            if alive_group_count > 2 {
+                rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract
+            } else {
+                rate_hi_hp(status.hp) * status.attr_sum as f64 * status.attract
+            }
         } else {
             args.1.rFFFF() as f64 + target_plr.get_status().attract
         };
@@ -59,12 +102,10 @@ impl SkillTrait for CharmSkill {
         let target_id = targets[0];
         args.2.add(RunUpdate::new("[0]使用[魅惑]", args.0, target_id, 1));
 
-        let owner_magic = args
-            .3
-            .get_player(&args.0)
-            .expect("cannot get charm owner from storage")
-            .get_status()
-            .magic;
+        let (owner_magic, charge_active) = {
+            let owner = args.3.get_player(&args.0).expect("cannot get charm owner from storage");
+            (owner.get_status().magic, owner.get_status().at_boost >= 3.0)
+        };
         let target = args.3.just_get_player_mut(target_id).expect("cannot get charm target from storage");
         if target.check_immune(state_tag::<CharmState>(), args.1)
             || (target.active()
@@ -84,12 +125,15 @@ impl SkillTrait for CharmSkill {
             } else {
                 state.group_id = args.0;
             }
+            if charge_active {
+                state.step += 3;
+            }
         } else {
             target.set_state(CharmState {
                 group_id: args.0,
                 target: Some(target_id),
                 on_post_action: None,
-                step: 1,
+                step: if charge_active { 4 } else { 1 },
             });
         }
         args.2.add(RunUpdate::new("[1]被[魅惑]了", args.0, target_id, 120));
