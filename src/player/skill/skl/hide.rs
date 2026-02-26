@@ -67,5 +67,18 @@ impl SkillTrait for HideSkill {
         }
     }
 
+    fn update_state_inline(&mut self, level: u32, status: &mut crate::player::PlayerStatus) {
+        if self.on_update_state.is_none() {
+            return;
+        }
+        status.attract *= 0.1;
+        if level > 63 {
+            let boost = (level - 63) as i32;
+            status.agility += boost;
+            status.defense += boost;
+            status.resistance += boost;
+        }
+    }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage, ProcKind::PreAction, ProcKind::UpdateState] }
 }

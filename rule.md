@@ -126,3 +126,7 @@ python track_test.py delete 名称
 - 每次运行测试后，失败 idx 会自动保存到 `target/test_regression.json`
 - 下次运行时会自动与上次的 idx 比较，同时也与最近存档点比较
 - 日志记录在 `target/test_regression.log`
+
+## 检查注意事项
+
+- **检查过程中不需要检查 RC4 实现的相关问题** — RC4 随机数生成器的实现已经过多次验证，无需重复检查

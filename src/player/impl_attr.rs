@@ -136,20 +136,9 @@ impl Player {
         self.status.at_boost = 1.0;
         self.status.set_frozen(false);
         self.apply_update_state_effects();
-
-        // 先设置为 mut了,以防万一
-        // let status = &mut self.status;
-        // for skill_idx in self.skill_store.update_states.iter() {
-        // 通过一个华丽的 unsafe 来绕过借用检查
-        // rinick 我谢谢你啊
-        // let slf = unsafe { &mut *(self as *const Player as *mut Player) };
-        // 好家伙, 看来不需要了呢, 所有的非 status 修改都是 state 的, 不是 skill得到
-        // skill.update_state(status);
-        // let skill = self.storage.as_ref().just_get_skill_mut(*skill_idx).expect("skill not found");
-        // let skill = self.skill_store.skill_store.get(skill_idx).expect("faild to get skill from storage");
-        // skill.update_state(status);
-        // TODO: 我觉得这玩意不应该放在这
-        // }
+        // JS 的 F() (updateStates) 遍历 rx 列表，其中包含 state 和 skill 的 update_state 回调。
+        // apply_update_state_effects 已处理 state 回调，下面调用 skill 的 update_state 回调。
+        self.skills.update_state_inline(&mut self.status);
     }
 
     /// 我真是谢谢您呢……

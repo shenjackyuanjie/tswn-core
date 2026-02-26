@@ -76,5 +76,11 @@ impl SkillTrait for AccumulateSkill {
         }
     }
 
+    fn update_state_inline(&mut self, _level: u32, status: &mut crate::player::PlayerStatus) {
+        if self.on_update_state.is_some() {
+            status.at_boost *= self.acc;
+        }
+    }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::UpdateState] }
 }

@@ -61,6 +61,9 @@ pub trait SkillTrait: Debug {
     /// 更新状态
     fn update_state(&mut self, args: SkillArgs) {}
     fn update_state_with_level(&mut self, _level: u32, args: SkillArgs) { self.update_state(args) }
+    /// 内联版更新状态 — 直接修改 PlayerStatus，不经过 Storage。
+    /// 在 Player::update_states() 中调用，对齐 JS 的 F() 遍历 rx 回调。
+    fn update_state_inline(&mut self, _level: u32, _status: &mut super::PlayerStatus) {}
     /// 行动!
     fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
@@ -404,6 +407,10 @@ impl Skill {
     // ==========
 
     pub fn update_state(&mut self, args: SkillArgs) { self.skill_type.update_state_with_level(self.level, args) }
+
+    pub fn update_state_inline(&mut self, status: &mut super::PlayerStatus) {
+        self.skill_type.update_state_inline(self.level, status)
+    }
 
     pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
         let current_level = self.level;

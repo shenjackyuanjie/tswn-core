@@ -76,5 +76,11 @@ impl SkillTrait for ChargeSkill {
         }
     }
 
+    fn update_state_inline(&mut self, _level: u32, status: &mut crate::player::PlayerStatus) {
+        if self.step > 0 {
+            status.at_boost *= 3.0;
+        }
+    }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
 }

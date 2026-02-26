@@ -112,5 +112,11 @@ impl SkillTrait for IronSkill {
         }
     }
 
+    fn update_state_inline(&mut self, _level: u32, status: &mut crate::player::PlayerStatus) {
+        if self.step > 0 {
+            status.attract *= 1.12;
+        }
+    }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDefend, ProcKind::PostAction, ProcKind::UpdateState] }
 }

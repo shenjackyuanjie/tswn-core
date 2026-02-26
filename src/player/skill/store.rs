@@ -139,6 +139,14 @@ impl SkillStorage {
         }
     }
 
+    pub fn update_state_inline(&mut self, status: &mut crate::player::PlayerStatus) {
+        let keys: Vec<SkillKey> = self.update_states.clone();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            skill.update_state_inline(status);
+        }
+    }
+
     pub fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 {
         let keys: Vec<SkillKey> = self.pre_step.clone();
         for skill_key in keys.iter() {
