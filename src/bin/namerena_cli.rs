@@ -75,7 +75,7 @@ fn print_all_players(runner: &Runner) {
         if let Some(plr) = runner.storage.get_player(&id) {
             let status = plr.get_status();
             println!(
-                "- {} (id={}): HP={}/{}, move_point:{} ATK={}, DEF={}, SPD={}, AGI={}, MAG={}, MP={}, MDF={}, ITL={}, all_sum={}",
+                "- {} (id={}): HP={}/{}, move_point:{} ATK={}, DEF={}, SPD={}, AGI={}, MAG={}, MP={}, MDF={}, ITL={}, all_sum={} 系数: {}",
                 plr.id_name(),
                 id,
                 status.hp,
@@ -89,7 +89,8 @@ fn print_all_players(runner: &Runner) {
                 status.mp,
                 status.resistance,
                 status.wisdom,
-                status.all_sum
+                status.all_sum,
+                plr.get_name_factor()
             );
         }
     }
