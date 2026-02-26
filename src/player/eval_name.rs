@@ -27,7 +27,6 @@ pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
     // 按 UTF-16 码元遍历（与 JavaScript 完全一致）
     let code_units: Vec<u16> = s.encode_utf16().collect();
     for &code in &code_units {
-        println!("当前码元: {}", code);
         if code == 32 {
             // ASCII 空格
             space_count += 1;
@@ -77,21 +76,16 @@ pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
         }
         // 其他 Unicode（非常用汉字）
         else {
-            println!("ELSE之前 cnt[5] = {}", cnt[ELSE]);
             if cnt[ELSE] > 0 {
                 cnt[ELSE] += 1;
-                println!("  第一次加后: {}", cnt[ELSE]);
             }
             cnt[ELSE] += 1;
-            println!("  第二次加后: {}", cnt[ELSE]);
             if last_char != ELSE as i32 {
                 diff += 1;
                 last_char = ELSE as i32;
-                println!("  diff变化: {}", diff);
             }
         }
     }
-    println!("最终 cnt = {:?}", cnt);
 
     // 空格处理：超过 2 个的部分计入数字类
     if space_count > 2 {
