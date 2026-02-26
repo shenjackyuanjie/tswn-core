@@ -27,9 +27,29 @@ impl Player {
     }
 
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
+        let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_target
+            .as_deref()
+            .map(|name| name == self.id_name().as_str())
+            .unwrap_or(false);
         let smart = self.status.wisdom > randomer.r63() as i32;
+        if debug_this {
+            eprintln!(
+                "[action] start actor={} rc4=({}, {}) smart={}",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+                smart
+            );
+        }
         let ptr = self.as_ptr();
         let forced_skill = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
+        if debug_this {
+            eprintln!(
+                "[action] after pre_action forced={forced_skill:?} rc4=({}, {})",
+                randomer.i, randomer.j
+            );
+        }
         if self.status.frozed() {
             return;
         }
@@ -43,19 +63,55 @@ impl Player {
         } else {
             if selected_skill_key.is_none() {
                 let req_mp = randomer.r15() as i32 + 8;
+                if debug_this {
+                    eprintln!(
+                        "[action] req_mp={req_mp} mp={} rc4=({}, {})",
+                        self.status.mp, randomer.i, randomer.j
+                    );
+                }
                 if self.status.mp >= req_mp {
                     let skill_keys = self.skills.skill.clone();
                     for key in skill_keys {
                         let maybe_targets = {
                             let skill = self.skills.skill_by_id(key);
+                            let rc4_before_prob = (randomer.i, randomer.j);
+                            let level_ok = skill.level() > 0;
+                            let action_ok = skill.has_action_impl();
+                            let prob_ok = level_ok && action_ok && skill.prob(smart, (ptr, randomer, updates, storage));
+                            if debug_this && (level_ok || action_ok) {
+                                eprintln!(
+                                    "[action] skill={key} lv={} action={} prob={} rc4 {}:{} -> {}:{}",
+                                    skill.level(),
+                                    action_ok,
+                                    prob_ok,
+                                    rc4_before_prob.0,
+                                    rc4_before_prob.1,
+                                    randomer.i,
+                                    randomer.j
+                                );
+                            }
                             if !(skill.level() > 0
                                 && skill.has_action_impl()
-                                && skill.prob(smart, (ptr, randomer, updates, storage)))
+                                && prob_ok)
                             {
                                 None
                             } else {
                                 let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
-                                if selected.is_empty() { None } else { Some(selected) }
+                                let allow_empty = skill.target_domain() == SkillTargetDomain::SelfOnly;
+                                if debug_this {
+                                    eprintln!(
+                                        "[action] skill={key} selected_len={} allow_empty={} rc4=({}, {})",
+                                        selected.len(),
+                                        allow_empty,
+                                        randomer.i,
+                                        randomer.j
+                                    );
+                                }
+                                if selected.is_empty() && !allow_empty {
+                                    None
+                                } else {
+                                    Some(selected)
+                                }
                             }
                         };
                         if let Some(selected) = maybe_targets {
@@ -65,6 +121,9 @@ impl Player {
                         }
                     }
                     self.status.mp -= req_mp;
+                    if debug_this {
+                        eprintln!("[action] consume mp now={} rc4=({}, {})", self.status.mp, randomer.i, randomer.j);
+                    }
                 }
             } else if let Some(skill_key) = selected_skill_key {
                 selected_targets = {
@@ -73,12 +132,24 @@ impl Player {
                 };
             }
 
-            if let Some(skill_key) = selected_skill_key
-                && !selected_targets.is_empty()
-            {
-                let skill = self.skills.skill_by_id_mut(skill_key);
-                skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
-                acted = true;
+            if let Some(skill_key) = selected_skill_key {
+                let allow_empty = {
+                    let skill = self.skills.skill_by_id(skill_key);
+                    skill.target_domain() == SkillTargetDomain::SelfOnly
+                };
+                if !selected_targets.is_empty() || allow_empty {
+                    let skill = self.skills.skill_by_id_mut(skill_key);
+                    if debug_this {
+                        eprintln!(
+                            "[action] act skill={skill_key} targets={} rc4=({}, {})",
+                            selected_targets.len(),
+                            randomer.i,
+                            randomer.j
+                        );
+                    }
+                    skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
+                    acted = true;
+                }
             }
         }
 
@@ -90,9 +161,24 @@ impl Player {
         if (randomer.r127() as i32) < recover_threshold {
             self.status.mp += 16;
         }
+        if debug_this {
+            eprintln!(
+                "[action] end actor={} mp={} rc4=({}, {})",
+                self.id_name(),
+                self.status.mp,
+                randomer.i,
+                randomer.j
+            );
+        }
         updates.add(RunUpdate::new_newline());
         self.skills.post_action((ptr, randomer, updates, storage));
+        if debug_this {
+            eprintln!("[action] after skills.post_action rc4=({}, {})", randomer.i, randomer.j);
+        }
         self.apply_post_action_states(randomer, updates, storage);
+        if debug_this {
+            eprintln!("[action] after state.post_action rc4=({}, {})", randomer.i, randomer.j);
+        }
     }
 
     pub fn on_update_end(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
@@ -188,7 +274,7 @@ impl Player {
                 )
             })
             .collect::<Vec<(PlrId, f64)>>();
-        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|x| x.0).collect()
     }
 

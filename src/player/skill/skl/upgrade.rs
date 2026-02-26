@@ -22,6 +22,11 @@ impl SkillTrait for UpgradeSkill {
 
     fn post_damage_with_level(&mut self, level: u32, _dmg: i32, _caster: PlrId, args: SkillArgs) {
         let owner = args.3.get_player(&args.0).expect("cannot get upgrade owner from storage");
+        let debug_target = std::env::var("TSWN_DEBUG_UPGRADE").ok();
+        let debug_this = debug_target
+            .as_deref()
+            .map(|name| owner.id_name() == name)
+            .unwrap_or(false);
         if level == 0 || owner.has_state::<UpgradeState>() {
             return;
         }
@@ -32,7 +37,38 @@ impl SkillTrait for UpgradeSkill {
         if level > 63 {
             minhp += (level - 63) as i32;
         }
-        if owner_alive && owner_hp < minhp + args.1.r63() as i32 && args.1.r63() < level {
+        if !owner_alive {
+            return;
+        }
+        let roll_hp = args.1.r63() as i32;
+        let hp_gate = owner_hp < minhp + roll_hp;
+        if debug_this {
+            eprintln!(
+                "[upgrade_post_damage] owner={} hp={} minhp={} level={} roll_hp={} hp_gate={} rc4=({}, {})",
+                owner.id_name(),
+                owner_hp,
+                minhp,
+                level,
+                roll_hp,
+                hp_gate,
+                args.1.i,
+                args.1.j
+            );
+        }
+        if !hp_gate {
+            return;
+        }
+        let roll_level = args.1.r63();
+        if debug_this {
+            eprintln!(
+                "[upgrade_post_damage] owner={} roll_level={} rc4=({}, {})",
+                owner.id_name(),
+                roll_level,
+                args.1.i,
+                args.1.j
+            );
+        }
+        if roll_level < level {
             args.2.add(RunUpdate::new_newline());
             args.2.add(RunUpdate::new("[0]做出[垂死]抗争", args.0, args.0, 60));
             args.2.add(RunUpdate::new("[0]所有属性上升", args.0, args.0, 30));

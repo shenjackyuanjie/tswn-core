@@ -171,6 +171,10 @@ impl Storage {
         }
     }
 
+    pub fn pending_spawn_count_for_owner(&self, owner: PlrId) -> usize {
+        self.pending_spawns.iter().filter(|pending| pending.owner == owner).count()
+    }
+
     pub fn queue_remove_player(&self, ptr: PlrId) {
         unsafe {
             let mut_slf = self as *const Storage as *mut Storage;

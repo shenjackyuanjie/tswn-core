@@ -104,7 +104,7 @@ impl SkillTrait for DisperseSkill {
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get disperse target from storage")
-            .attacked(atp, true, args.0, on_disperse as OnDamageFunc, args.1, args.2, args.3);
+            .defned(atp, true, args.0, on_disperse as OnDamageFunc, args.1, args.2, args.3);
 
         if dmg > 0 {
             let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
@@ -115,7 +115,7 @@ impl SkillTrait for DisperseSkill {
             } else if mp > 32 {
                 target.set_mp(0);
             } else {
-                target.set_mp((mp - 32).max(0));
+                target.set_mp(mp - 32);
             }
         }
     }

@@ -1,3 +1,5 @@
+use std::cell::{Cell, RefCell};
+
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
@@ -5,6 +7,11 @@ use crate::player::{
     state_tag,
 };
 use crate::rc4::RC4;
+
+thread_local! {
+    static POISON_CB_STORAGE: Cell<*const crate::engine::storage::Storage> = const { Cell::new(std::ptr::null()) };
+    static POISON_CB_ATP: RefCell<Option<f64>> = const { RefCell::new(None) };
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct PoisonSkill;
@@ -35,24 +42,27 @@ impl SkillTrait for PoisonSkill {
             .expect("cannot get poison caster from storage")
             .get_at(true, args.1);
         args.2.add(RunUpdate::new("[0][投毒]", args.0, target_id, 1));
+        POISON_CB_STORAGE.with(|slot| slot.set(std::sync::Arc::as_ptr(args.3)));
+        POISON_CB_ATP.with(|slot| *slot.borrow_mut() = None);
         let dmg = args
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get poison target from storage")
             .attacked(atp, true, args.0, on_poison as OnDamageFunc, args.1, args.2, args.3);
+        let poison_atp = POISON_CB_ATP.with(|slot| slot.borrow_mut().take());
+        POISON_CB_STORAGE.with(|slot| slot.set(std::ptr::null()));
         if dmg <= 4 {
             return;
         }
-        let poison_atp = args
-            .3
-            .get_player(&args.0)
-            .expect("cannot get poison caster from storage")
-            .get_at(true, args.1)
-            * 1.2;
-        let target = args.3.just_get_player_mut(target_id).expect("cannot get poison target from storage");
-        if !target.alive() || target.check_immune(state_tag::<PoisonState>(), args.1) {
+        let blocked = {
+            let target = args.3.just_get_player_mut(target_id).expect("cannot get poison target from storage");
+            !target.alive() || target.check_immune(state_tag::<PoisonState>(), args.1)
+        };
+        if blocked {
             return;
         }
+        let poison_atp = poison_atp.expect("poison callback should set pending poison atp");
+        let target = args.3.just_get_player_mut(target_id).expect("cannot get poison target from storage");
         if let Some(state) = target.get_state_mut::<PoisonState>() {
             state.atp += poison_atp;
             state.count = 4;
@@ -139,5 +149,18 @@ impl StateTrait for PoisonState {
 }
 
 fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut RunUpdates) {
-    let _ = (caster, target, dmg, r, updates);
+    let _ = (target, updates);
+    if dmg <= 4 {
+        return;
+    }
+    let storage_ptr = POISON_CB_STORAGE.with(|slot| slot.get());
+    if storage_ptr.is_null() {
+        return;
+    }
+    let storage = unsafe { &*storage_ptr };
+    let Some(caster_plr) = storage.get_player(&caster) else {
+        return;
+    };
+    let poison_atp = caster_plr.get_at(true, r) * 1.2;
+    POISON_CB_ATP.with(|slot| *slot.borrow_mut() = Some(poison_atp));
 }

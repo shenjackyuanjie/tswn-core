@@ -163,9 +163,26 @@ impl SkillStorage {
 
     pub fn post_action(&mut self, args: SkillArgs) {
         let keys: Vec<SkillKey> = self.post_action.clone();
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| {
+                args.3
+                    .get_player(&args.0)
+                    .map(|p| p.id_name() == name)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
         for skill_key in keys.iter() {
+            let rc4_before = (args.1.i, args.1.j);
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
             skill.post_action((args.0, args.1, args.2, args.3));
+            if debug_this {
+                eprintln!(
+                    "[post_action_skill] key={} rc4 {}:{} -> {}:{}",
+                    skill_key, rc4_before.0, rc4_before.1, args.1.i, args.1.j
+                );
+            }
         }
     }
 
@@ -220,9 +237,27 @@ impl SkillStorage {
 
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) {
         let keys: Vec<SkillKey> = self.post_kill.clone();
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| {
+                args.3
+                    .get_player(&args.0)
+                    .map(|p| p.id_name() == name)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
         for skill_key in keys.iter() {
+            let rc4_before = (args.1.i, args.1.j);
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
-            if skill.kill(target, (args.0, args.1, args.2, args.3)) {
+            let triggered = skill.kill(target, (args.0, args.1, args.2, args.3));
+            if debug_this {
+                eprintln!(
+                    "[post_kill_skill] key={} triggered={} rc4 {}:{} -> {}:{}",
+                    skill_key, triggered, rc4_before.0, rc4_before.1, args.1.i, args.1.j
+                );
+            }
+            if triggered {
                 break;
             }
         }

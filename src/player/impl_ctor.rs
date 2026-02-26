@@ -142,7 +142,7 @@ impl Player {
     pub fn mp(&self) -> i32 { self.status.mp }
 
     #[inline]
-    pub fn set_mp(&mut self, val: i32) { self.status.mp = val.max(0); }
+    pub fn set_mp(&mut self, val: i32) { self.status.mp = val; }
 
     #[inline]
     pub fn mul_at_boost(&mut self, scale: f64) { self.status.at_boost *= scale; }

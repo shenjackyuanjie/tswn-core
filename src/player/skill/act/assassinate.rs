@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
@@ -38,7 +40,7 @@ impl SkillTrait for AssassinateSkill {
         args.1.r127() < level
     }
 
-    fn select_target_count(&self, _smart: bool) -> usize { 1 }
+    fn select_target_count(&self, smart: bool) -> usize { if smart { 3 } else { 2 } }
 
     fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
         if let Some(locked) = self.target {
@@ -57,20 +59,45 @@ impl SkillTrait for AssassinateSkill {
             }
             return Vec::new();
         }
-        let mut best: Option<(PlrId, f64)> = None;
-        for target in candidates.iter().copied() {
-            if !self.valid_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3)) {
-                continue;
-            }
-            let score = self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3));
-            if let Some((_, best_score)) = best
-                && score <= best_score
-            {
-                continue;
-            }
-            best = Some((target, score));
+        let select_count = self.select_target_count_with_level(level, smart);
+        if select_count == 0 {
+            return Vec::new();
         }
-        best.map(|x| vec![x.0]).unwrap_or_default()
+        let mut selected = Vec::new();
+        let mut dup = 0usize;
+        let mut invalid = -(select_count as i32);
+        while dup <= select_count && invalid <= select_count as i32 {
+            let Some(idx) = args.1.pick(candidates) else {
+                return Vec::new();
+            };
+            let target = candidates[idx];
+            if !self.valid_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3)) {
+                invalid += 1;
+                continue;
+            }
+            if selected.contains(&target) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return Vec::new();
+        }
+        let mut scored = selected
+            .into_iter()
+            .map(|target| {
+                (
+                    target,
+                    self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3)),
+                )
+            })
+            .collect::<Vec<(PlrId, f64)>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        scored.into_iter().map(|x| x.0).collect()
     }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {

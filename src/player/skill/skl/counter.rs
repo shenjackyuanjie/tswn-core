@@ -1,6 +1,7 @@
 use crate::engine::update::RunUpdates;
 use crate::player::{
     OnDamageFunc, PlrId,
+    skill::act::charm::CharmState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
@@ -27,12 +28,18 @@ impl SkillTrait for CounterSkill {
 
     fn post_damage_with_level(&mut self, level: u32, dmg: i32, caster: PlrId, args: SkillArgs) {
         let _ = dmg;
-        let (owner_wisdom, owner_clan) = {
+        let owner_wisdom = {
             let owner = args.3.get_player(&args.0).expect("cannot get counter owner from storage");
-            (owner.get_status().wisdom.clamp(0, 127) as u32, owner.clan_name())
+            owner.get_status().wisdom.clamp(0, 127) as u32
         };
-        let caster_clan = args.3.get_player(&caster).expect("cannot get counter caster from storage").clan_name();
-        if owner_clan == caster_clan && args.1.r63() < owner_wisdom {
+        let owner_ally_group = args.3.get_player(&args.0).and_then(|owner| {
+            owner
+                .get_state::<CharmState>()
+                .and_then(|charm| args.3.group_containing(charm.group_id).cloned())
+                .or_else(|| args.3.group_containing(args.0).cloned())
+        });
+        let caster_group = args.3.group_containing(caster).cloned();
+        if owner_ally_group == caster_group && args.1.r63() < owner_wisdom {
             return;
         }
         let updates_id = args.2.id;

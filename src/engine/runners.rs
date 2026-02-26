@@ -313,8 +313,40 @@ impl EngineCore {
 
     pub fn register_post_action_hook(&mut self, hook: ActorHook) { self.hooks.register_post_action(hook); }
 
+    fn debug_world_state(tag: &str, world: &WorldState, storage: &Arc<Storage>) {
+        if std::env::var_os("TSWN_DEBUG_WORLD").is_none() {
+            return;
+        }
+        let players = world
+            .players
+            .iter()
+            .map(|id| {
+                storage
+                    .get_player(id)
+                    .map(|p| p.id_name())
+                    .unwrap_or_else(|| format!("#{id}"))
+            })
+            .collect::<Vec<String>>()
+            .join(" -> ");
+        eprintln!("[world:{tag}] round_pos={} players=[{}]", world.round_pos, players);
+    }
+
     fn sync_runtime_entities(&self, world: &mut WorldState, storage: &Arc<Storage>) {
-        // 1) 同步死亡：将 alives/players 中已死的 player 移除（对齐 Dart 的 group.die → f.remove）
+        Self::debug_world_state("pre_sync", world, storage);
+        // 1) 先处理 pending removes（minion 等需要从行动列表中移除的）。
+        // 对齐 JS：由状态回调触发的 remove 会先影响 round 指针，再处理普通死亡移除。
+        let pending_remove_players = storage.take_pending_remove_players();
+        if !pending_remove_players.is_empty() {
+            for ptr in pending_remove_players {
+                world.remove_player(ptr);
+                for group in &mut world.groups {
+                    group.retain(|x| *x != ptr);
+                }
+                Self::debug_world_state("after_pending_remove", world, storage);
+            }
+        }
+
+        // 2) 同步死亡：将 alives/players 中已死的 player 移除（对齐 Dart 的 group.die → f.remove）
         let dead_ids: Vec<PlrId> = world
             .alives
             .iter()
@@ -323,9 +355,10 @@ impl EngineCore {
             .collect();
         for id in dead_ids {
             world.remove_player(id);
+            Self::debug_world_state("after_dead_remove", world, storage);
         }
 
-        // 2) 处理 pending spawns
+        // 3) 处理 pending spawns
         let pending_spawns = storage.take_pending_spawns();
         for pending in pending_spawns {
             let owner = pending.owner;
@@ -342,21 +375,8 @@ impl EngineCore {
             world.add_new_player(plr_id, owner);
         }
 
-        // 3) 处理 pending removes（minion 等需要从行动列表中移除的）
-        // 注意：不从 storage 中删除 player，保留其数据以供消息格式化时查找名字
-        // （对齐 JS/Dart 的设计：players 列表中删除，但对象本身仍可被引用）
-        let pending_remove_players = storage.take_pending_remove_players();
-        if !pending_remove_players.is_empty() {
-            for ptr in pending_remove_players {
-                // 从 alives/players 中移除
-                world.remove_player(ptr);
-                for group in &mut world.groups {
-                    group.retain(|x| *x != ptr);
-                }
-            }
-        }
-
         storage.sync_groups(&world.groups);
+        Self::debug_world_state("post_sync", world, storage);
     }
 
     pub fn tick(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
@@ -369,6 +389,18 @@ impl EngineCore {
             check_winner(world, storage);
             return;
         };
+        if std::env::var_os("TSWN_DEBUG_TICK").is_some()
+            && let Some(plr) = storage.get_player(&actor)
+        {
+            eprintln!(
+                "[tick] actor={} mp={} hp={} rc4=({}, {})",
+                plr.id_name(),
+                plr.move_point(),
+                plr.get_status().hp,
+                randomer.i,
+                randomer.j
+            );
+        }
 
         self.hooks.run_pre_action(actor, storage, randomer, updates);
         let decision = choose_action(actor, world, storage, randomer, &self.rules);

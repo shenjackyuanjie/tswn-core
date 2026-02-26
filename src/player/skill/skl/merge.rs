@@ -23,6 +23,16 @@ impl SkillTrait for MergeSkill {
     fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.kill_with_level(32, target, args) }
 
     fn kill_with_level(&mut self, level: u32, target: PlrId, args: SkillArgs) -> bool {
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| {
+                args.3
+                    .get_player(&args.0)
+                    .map(|p| p.id_name() == name)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
         if args.1.r63() >= level {
             return false;
         }
@@ -41,12 +51,14 @@ impl SkillTrait for MergeSkill {
         let target_attr = args.3.get_player(&target).expect("cannot get merge target from storage").attr;
         let target_skill_levels = {
             let target_plr = args.3.get_player(&target).expect("cannot get merge target from storage");
-            target_plr
+            let mut levels = target_plr
                 .skills
-                .skill
+                .store
                 .iter()
-                .map(|key| target_plr.skills.skill_by_id(*key).level())
-                .collect::<Vec<u32>>()
+                .map(|(skill_key, skill)| (*skill_key, skill.level()))
+                .collect::<Vec<(usize, u32)>>();
+            levels.sort_by_key(|(skill_key, _)| *skill_key);
+            levels
         };
         let target_mp = args.3.get_player(&target).expect("cannot get merge target from storage").mp();
         let target_move_point = args.3.get_player(&target).expect("cannot get merge target from storage").move_point();
@@ -54,18 +66,36 @@ impl SkillTrait for MergeSkill {
         let mut merged = false;
         let (transfer_mp, transfer_move_point) = {
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get merge owner from storage");
+            if debug_this {
+                eprintln!(
+                    "[merge] owner={} target={} owner_spd={} target_spd={} owner_mp={} target_mp={} owner_mv={} target_mv={}",
+                    owner.id_name(),
+                    args.3.get_player(&target).map(|p| p.id_name()).unwrap_or_else(|| format!("#{target}")),
+                    owner.attr[5],
+                    target_attr[5],
+                    owner.mp(),
+                    target_mp,
+                    owner.move_point(),
+                    target_move_point
+                );
+            }
             for (idx, val) in target_attr.iter().enumerate() {
                 if *val > owner.attr[idx] {
                     owner.attr[idx] = *val;
                     merged = true;
                 }
             }
-            let upper = owner.skills.skill.len().min(target_skill_levels.len());
-            for (idx, target_level) in target_skill_levels.into_iter().take(upper).enumerate() {
-                let owner_skill = owner.skills.skill_by_idx_mut(idx);
-                if target_level > owner_skill.level() {
+            for (skill_key, target_level) in target_skill_levels {
+                let mut should_add_action = false;
+                if let Some(owner_skill) = owner.skills.store.get_mut(&skill_key)
+                    && target_level > owner_skill.level()
+                {
+                    should_add_action = owner_skill.level() == 0 && owner_skill.has_action_impl();
                     owner_skill.set_level(target_level);
                     merged = true;
+                }
+                if should_add_action && !owner.skills.skill.contains(&skill_key) {
+                    owner.skills.skill.push(skill_key);
                 }
             }
             let transfer_mp = target_mp > owner.mp();
@@ -87,6 +117,18 @@ impl SkillTrait for MergeSkill {
             }
             (transfer_mp, transfer_move_point)
         };
+        if debug_this {
+            let owner = args.3.get_player(&args.0).expect("cannot get merge owner after merge");
+            eprintln!(
+                "[merge] merged={} transfer_mp={} transfer_mv={} owner_spd_after={} owner_mp_after={} owner_mv_after={}",
+                merged,
+                transfer_mp,
+                transfer_move_point,
+                owner.attr[5],
+                owner.mp(),
+                owner.move_point()
+            );
+        }
         {
             let target_plr = args.3.just_get_player_mut(target).expect("cannot get merge target from storage");
             if transfer_mp {

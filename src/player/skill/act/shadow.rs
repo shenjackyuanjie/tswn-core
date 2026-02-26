@@ -41,15 +41,15 @@ impl SkillTrait for ShadowSkill {
         args.1.r127() < level
     }
 
-    fn select_targets_with_level(&self, _level: u32, _candidates: &[PlrId], _smart: bool, args: SkillArgs) -> Vec<PlrId> {
-        vec![args.0]
+    fn select_targets_with_level(&self, _level: u32, _candidates: &[PlrId], _smart: bool, _args: SkillArgs) -> Vec<PlrId> {
+        Vec::new()
     }
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[幻术]", args.0, args.0, 60));
-        let (owner_name, owner_clan) = {
+        let (owner_name, owner_clan, charge_active) = {
             let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage");
-            (owner.id_name(), owner.clan_name())
+            (owner.id_name(), owner.clan_name(), owner.get_status().at_boost >= 3.0)
         };
         let seed_name = format!("{owner_name}?shadow");
         let mut shadow =
@@ -73,7 +73,7 @@ impl SkillTrait for ShadowSkill {
         shadow.skills = skills;
         shadow.skills.update_proc();
 
-        shadow.status.move_point = -2048;
+        shadow.status.move_point = if charge_active { 2048 } else { -2048 };
         args.3.queue_spawn(args.0, shadow);
         args.2.add(RunUpdate::new("召唤出幻影", args.0, args.0, 20));
     }

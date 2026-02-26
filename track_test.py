@@ -17,6 +17,7 @@ from pathlib import Path
 PROJECT_ROOT = Path("d:/githubs/namer/tswn-core")
 RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
 LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
+CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
 
 
 def load_previous_records() -> dict:
@@ -146,6 +147,177 @@ def write_log(message: str):
         f.write(log_message + "\n")
 
 
+# ---- 存档点功能 ----
+
+
+def _list_checkpoint_files():
+    """列出所有存档点文件，按文件名排序（最新在前）"""
+    if not CHECKPOINT_DIR.exists():
+        return []
+    return sorted(CHECKPOINT_DIR.glob("*.json"), reverse=True)
+
+
+def _load_checkpoint(path):
+    """加载存档点"""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _find_checkpoint(name):
+    """按名字查找存档点文件路径"""
+    for f in _list_checkpoint_files():
+        data = _load_checkpoint(f)
+        if data.get("name") == name:
+            return f
+    return None
+
+
+def _get_latest_checkpoint():
+    """获取最近的存档点数据"""
+    files = _list_checkpoint_files()
+    if not files:
+        return None
+    return _load_checkpoint(files[0])
+
+
+def _print_conclusion(changes):
+    """打印结论"""
+    any_improved = any(c["change"] in ("IMPROVED", "NEW_PASS") for c in changes)
+    any_regressed = any(c["change"] == "REGRESSED" for c in changes)
+    if any_improved and not any_regressed:
+        print("结论: 修改有效 (有改进且无退步)")
+    elif any_regressed:
+        print("结论: 修改有问题 (存在退步)")
+    else:
+        print("结论: 无明显变化")
+
+
+def _print_checkpoint_comparison(current_records, quiet):
+    """与最近存档点对比并输出"""
+    cp = _get_latest_checkpoint()
+    if cp is None:
+        return
+
+    cp_name = cp.get("name", "?")
+    cp_time = cp.get("time", "?")
+    cp_records = cp.get("records", {})
+
+    changes = compare_records(current_records, cp_records)
+
+    print()
+    print(f'--- vs 存档点 "{cp_name}" ({cp_time}) ---')
+    if not quiet:
+        for change in changes:
+            if change["change"] == "IMPROVED":
+                print(f"[改进] {change['test']}: idx {change['prev_idx']} -> {change['idx']}")
+            elif change["change"] == "REGRESSED":
+                print(f"[退步] {change['test']}: idx {change['prev_idx']} -> {change['idx']}")
+            elif change["change"] == "NEW_FAIL":
+                print(f"[新失败] {change['test']}: idx={change.get('idx', -1)}")
+            elif change["change"] == "NEW_PASS":
+                print(f"[修复] {change['test']}: 从失败变为通过")
+    _print_conclusion(changes)
+
+
+def cmd_save(name):
+    """将当前记录保存为存档点"""
+    records = load_previous_records()
+    now = datetime.now()
+    if name is None:
+        name = now.strftime("%Y%m%d_%H%M%S")
+
+    existing = _find_checkpoint(name)
+    if existing:
+        print(f'存档点 "{name}" 已存在，覆盖')
+        existing.unlink()
+
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    filename = f"{timestamp}_{name}.json"
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+
+    data = {
+        "name": name,
+        "time": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "records": records,
+    }
+
+    with open(CHECKPOINT_DIR / filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print(f'存档点 "{name}" 已保存 ({now.strftime("%Y-%m-%d %H:%M")})')
+    failed = sum(1 for v in records.values()
+                 if v.get("status") == "FAILED" and v.get("idx", -1) >= 0)
+    if failed:
+        print(f"  包含 {failed} 个失败测试")
+    else:
+        print("  当前所有测试通过")
+
+
+def cmd_list():
+    """列出所有存档点"""
+    files = _list_checkpoint_files()
+    if not files:
+        print("没有存档点")
+        return
+
+    print(f"存档点列表 ({len(files)} 个):")
+    for f in files:
+        data = _load_checkpoint(f)
+        name = data.get("name", "?")
+        time = data.get("time", "?")
+        records = data.get("records", {})
+        failed = sum(1 for v in records.values()
+                     if v.get("status") == "FAILED" and v.get("idx", -1) >= 0)
+        if failed:
+            print(f"  {name} ({time}) - {failed} 个失败")
+        else:
+            print(f"  {name} ({time}) - 全部通过")
+
+
+def cmd_diff(name):
+    """对比当前记录与存档点"""
+    if name:
+        cp_path = _find_checkpoint(name)
+        if not cp_path:
+            print(f'存档点 "{name}" 不存在')
+            return
+        cp_data = _load_checkpoint(cp_path)
+    else:
+        cp_data = _get_latest_checkpoint()
+        if not cp_data:
+            print("没有存档点")
+            return
+
+    current = load_previous_records()
+    cp_records = cp_data.get("records", {})
+    cp_name = cp_data.get("name", "?")
+    cp_time = cp_data.get("time", "?")
+
+    changes = compare_records(current, cp_records)
+
+    print(f'--- vs 存档点 "{cp_name}" ({cp_time}) ---')
+    for change in changes:
+        if change["change"] == "IMPROVED":
+            print(f"[改进] {change['test']}: idx {change['prev_idx']} -> {change['idx']}")
+        elif change["change"] == "REGRESSED":
+            print(f"[退步] {change['test']}: idx {change['prev_idx']} -> {change['idx']}")
+        elif change["change"] == "NEW_FAIL":
+            print(f"[新失败] {change['test']}: idx={change.get('idx', -1)}")
+        elif change["change"] == "NEW_PASS":
+            print(f"[修复] {change['test']}: 从失败变为通过")
+    _print_conclusion(changes)
+
+
+def cmd_delete(name):
+    """删除存档点"""
+    cp_path = _find_checkpoint(name)
+    if not cp_path:
+        print(f'存档点 "{name}" 不存在')
+        return
+    cp_path.unlink()
+    print(f'存档点 "{name}" 已删除')
+
+
 def main():
     parser = argparse.ArgumentParser(description="测试回归追踪工具")
     parser.add_argument(
@@ -168,7 +340,27 @@ def main():
         action="store_true",
         help="安静模式，只输出关键信息"
     )
+    subparsers = parser.add_subparsers(dest="command")
+    save_parser = subparsers.add_parser("save", help="将当前记录保存为存档点")
+    save_parser.add_argument("name", nargs="?", default=None, help="存档点名称 (默认用时间戳)")
+    subparsers.add_parser("list", help="列出所有存档点")
+    diff_parser = subparsers.add_parser("diff", help="对比当前记录与指定存档点")
+    diff_parser.add_argument("name", nargs="?", default=None, help="存档点名称 (默认最近)")
+    delete_parser = subparsers.add_parser("delete", help="删除指定存档点")
+    delete_parser.add_argument("name", help="存档点名称")
     args = parser.parse_args()
+
+    # 子命令分发
+    if args.command:
+        if args.command == "save":
+            cmd_save(args.name)
+        elif args.command == "list":
+            cmd_list()
+        elif args.command == "diff":
+            cmd_diff(args.name)
+        elif args.command == "delete":
+            cmd_delete(args.name)
+        return
 
     if not args.quiet:
         print("=" * 40)
@@ -233,6 +425,7 @@ def main():
         else:
             print("所有测试通过！")
 
+        _print_checkpoint_comparison({}, args.quiet)
         save_records({})
         write_log("所有测试通过")
         return
@@ -243,6 +436,7 @@ def main():
     else:
         print("测试失败，分析中...")
 
+    print("--- vs 上次运行 ---")
     changes = compare_records(current_records, previous_records)
 
     improved_count = 0
@@ -292,6 +486,8 @@ def main():
         print("结论: 修改有问题 (存在退步)")
     else:
         print("结论: 无明显变化")
+
+    _print_checkpoint_comparison(current_records, args.quiet)
 
     save_records(current_records)
     write_log(f"改进:{improved_count}, 退步:{regressed_count}, 新失败:{new_fail_count}, 修复:{fixed_count}")

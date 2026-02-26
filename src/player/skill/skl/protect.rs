@@ -1,7 +1,7 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
-    skill::act::minion::is_combat_minion,
+    skill::act::minion::MinionRuntimeState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
@@ -37,6 +37,20 @@ impl StateTrait for ProtectState {
         storage: &Arc<crate::engine::storage::Storage>,
     ) -> bool {
         let links = self.protect_from.clone();
+        let debug_target = std::env::var("TSWN_DEBUG_PROTECT").ok();
+        let debug_this = debug_target
+            .as_deref()
+            .map(|name| storage.get_player(&owner).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
+        if debug_this {
+            eprintln!(
+                "[protect_pre_defend] owner={} links={} rc4=({}, {})",
+                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{owner}")),
+                links.len(),
+                randomer.i,
+                randomer.j
+            );
+        }
         if links.is_empty() {
             return false;
         }
@@ -47,7 +61,18 @@ impl StateTrait for ProtectState {
                 stale_owners.push(link.owner);
                 continue;
             }
-            if randomer.r127() >= link.level {
+            let roll = randomer.r127();
+            if debug_this {
+                eprintln!(
+                    "[protect_pre_defend] link_owner={} level={} roll={} rc4=({}, {})",
+                    storage.get_player(&link.owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", link.owner)),
+                    link.level,
+                    roll,
+                    randomer.i,
+                    randomer.j
+                );
+            }
+            if roll >= link.level {
                 continue;
             }
             let protector_ready = {
@@ -104,17 +129,36 @@ pub struct ProtectSkill {
 impl ProtectSkill {
     pub fn new() -> Self { Self::default() }
 
-    fn pick_target(&mut self, level: u32, args: SkillArgs) -> Option<PlrId> {
+    fn pick_target(&mut self, _level: u32, args: SkillArgs) -> Option<PlrId> {
         let group = if let Some(group) = args.3.group_containing(args.0) {
             group.clone()
         } else {
-            let owner_clan = args.3.get_player(&args.0).expect("cannot get protect owner from storage").clan_name();
+            let owner_clan = args
+                .3
+                .get_player(&args.0)
+                .expect("cannot get protect owner from storage")
+                .clan_name();
             args.3
                 .all_player_ids()
                 .into_iter()
                 .filter(|id| args.3.get_player(id).map(|p| p.clan_name() == owner_clan).unwrap_or(false))
                 .collect::<Vec<PlrId>>()
         };
+        let alive_group = group
+            .into_iter()
+            .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
+            .collect::<Vec<PlrId>>();
+        if alive_group.is_empty() {
+            return None;
+        }
+        let pending_spawns = args.3.pending_spawn_count_for_owner(args.0);
+        let mut candidates = alive_group.iter().copied().map(Some).collect::<Vec<Option<PlrId>>>();
+        if pending_spawns > 0 {
+            candidates.extend(std::iter::repeat(None).take(pending_spawns));
+        }
+        if candidates.is_empty() {
+            return None;
+        }
         let owner_wisdom = args
             .3
             .get_player(&args.0)
@@ -123,41 +167,76 @@ impl ProtectSkill {
             .wisdom
             .clamp(0, 127) as u32;
         let smart = args.1.r127() < owner_wisdom;
+        let owner_pos = candidates.iter().position(|entry| *entry == Some(args.0));
 
-        let mut best_target = None;
-        let mut best_score = f64::MIN;
-        for candidate in group {
-            if candidate == args.0 {
-                continue;
-            }
-            let Some(target) = args.3.get_player(&candidate) else {
-                continue;
-            };
-            if !target.alive() {
-                continue;
-            }
-            if is_combat_minion(target) {
-                continue;
-            }
-            let score = if smart {
-                let hp = target.get_status().hp.max(0) as f64;
-                let max_hp = target.get_status().max_hp.max(1) as f64;
-                let protect_len =
-                    target.get_state::<ProtectState>().map(|state| state.protect_from.len() + 1).unwrap_or(1) as f64;
-                ((max_hp - hp) / max_hp) * target.attr_sum().max(1) as f64 / protect_len
+        let select_count = if smart { 3 } else { 2 };
+        let mut selected = Vec::new();
+        let mut dup = 0usize;
+        let mut invalid = -(select_count as i32);
+        while dup <= select_count && invalid <= select_count as i32 {
+            let next_idx = if let Some(pos) = owner_pos {
+                args.1.pick_skip(&candidates, pos)
             } else {
-                args.1.rFFFF() as f64
+                args.1.pick(&candidates)
             };
-            if score > best_score {
-                best_score = score;
-                best_target = Some(candidate);
+            let Some(idx) = next_idx else {
+                return None;
+            };
+            let Some(target_id) = candidates[idx] else {
+                invalid += 1;
+                continue;
+            };
+            let valid = args
+                .3
+                .get_player(&target_id)
+                .map(|target| !target.has_state::<MinionRuntimeState>())
+                .unwrap_or(false);
+            if !valid {
+                invalid += 1;
+                continue;
+            }
+            if selected.contains(&target_id) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target_id);
+            if selected.len() >= select_count {
+                break;
             }
         }
-
-        if best_target.is_none() && level > 0 {
-            best_target = self.protect_to;
+        if selected.is_empty() {
+            return None;
         }
-        best_target
+
+        let mut scored = selected
+            .into_iter()
+            .map(|target_id| {
+                let score = args
+                    .3
+                    .get_player(&target_id)
+                    .map(|target| {
+                        if smart {
+                            let hp = target.get_status().hp;
+                            let rate_hi_hp = if hp < 20 {
+                                30.0
+                            } else if hp > 300 {
+                                300.0
+                            } else {
+                                hp as f64
+                            };
+                            let protect_len =
+                                target.get_state::<ProtectState>().map(|state| state.protect_from.len() + 1).unwrap_or(1) as f64;
+                            (1.0 / rate_hi_hp) * target.get_status().atk_sum as f64 / protect_len
+                        } else {
+                            args.1.rFFFF() as f64
+                        }
+                    })
+                    .unwrap_or(f64::MIN);
+                (target_id, score)
+            })
+            .collect::<Vec<(PlrId, f64)>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.first().map(|x| x.0)
     }
 
     fn unregister_owner(&self, owner: PlrId, target_id: PlrId, args: SkillArgs) {
