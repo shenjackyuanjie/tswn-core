@@ -54,11 +54,7 @@ impl WorldState {
             .iter()
             .map(|group| {
                 // 只保留在 self.alives 中出现的成员，顺序取 group 内顺序
-                group
-                    .iter()
-                    .copied()
-                    .filter(|id| self.alives.contains(id))
-                    .collect::<Vec<PlrId>>()
+                group.iter().copied().filter(|id| self.alives.contains(id)).collect::<Vec<PlrId>>()
             })
             .collect()
     }
@@ -240,16 +236,8 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
     };
     let all_alive = world.alives_flat(storage);
     let enemy_alive = all_alive.iter().copied().filter(|id| !ally_all.contains(id)).collect::<Vec<PlrId>>();
-    let ally_alive = ally_all
-        .iter()
-        .copied()
-        .filter(|id| all_alive.contains(id))
-        .collect::<Vec<PlrId>>();
-    let ally_dead = ally_all
-        .iter()
-        .copied()
-        .filter(|id| !all_alive.contains(id))
-        .collect::<Vec<PlrId>>();
+    let ally_alive = ally_all.iter().copied().filter(|id| all_alive.contains(id)).collect::<Vec<PlrId>>();
+    let ally_dead = ally_all.iter().copied().filter(|id| !all_alive.contains(id)).collect::<Vec<PlrId>>();
 
     ActionTargets {
         enemy_alive,

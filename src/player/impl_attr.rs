@@ -187,7 +187,7 @@ impl Player {
     pub fn get_sort_int(&self) -> i32 { self.sort_int }
     /// 获取 短号系数
     pub fn get_name_factor(&self) -> f64 { self.name_factor }
-    
+
     /// 检查输入的名字是否是种子玩家
     pub fn check_is_seed(name: &str) -> bool { name.starts_with(SEED_PREFIX) }
 

@@ -90,9 +90,9 @@ impl Player {
         rand.sort_list(&mut skills);
 
         let name_factor = {
-            let factor_name = eval_name::eval_str_common(name.as_str(), false);
+            let factor_name = eval_name::eval_str_common(name.as_str(), true);
             let factor_team = match team.as_ref() {
-                Some(team) => eval_name::eval_str_common(team.as_str(), false),
+                Some(team) => eval_name::eval_str_common(team.as_str(), true),
                 None => factor_name,
             };
             factor_name.max(factor_team - 6.0)

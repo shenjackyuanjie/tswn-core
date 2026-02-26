@@ -10,121 +10,151 @@
 ///
 /// 用于计算一个字符串 "是否常见"
 pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
-    let mut diff = -2;
-    let mut last_char = -1;
-    let mut char_count = 0;
-    let mut space_count = 0;
-    // 用于记录每个字符出现的次数
-    let mut cnt = [0, 0, 0, 0, 0, 0];
-    // 常用字符
-    const NUMBER: i32 = 0;
-    // 小写字母
-    const LOWER: i32 = 1;
-    // 大写字母
-    const UPPER: i32 = 2;
-    // 其他 ascii 字符
-    const OTHER: i32 = 3;
-    // 常见汉字
-    const COMMON: i32 = 4;
-    // 其他符号
-    const ELSE: i32 = 5;
+    let mut diff: i32 = -2; // 类型变化计数，可为负，后续会被钳位
+    let mut last_char: i32 = -1; // 上一个字符类别（用 i32 方便与常量比较）
+    let mut char_count = 0; // 非空格字符数
+    let mut space_count = 0; // 空格数
+    let mut cnt = [0_usize; 6]; // 六类字符计数（必须为 usize 以便索引）
 
-    // 预处理
-    for text in s.chars() {
-        if text.is_whitespace() {
+    // 类别常量（用 usize 作为数组索引）
+    const NUMBER: usize = 0;
+    const LOWER: usize = 1;
+    const UPPER: usize = 2;
+    const OTHER: usize = 3;
+    const COMMON: usize = 4;
+    const ELSE: usize = 5;
+
+    // 按 UTF-16 码元遍历（与 JavaScript 完全一致）
+    let code_units: Vec<u16> = s.encode_utf16().collect();
+    for &code in &code_units {
+        println!("当前码元: {}", code);
+        if code == 32 {
+            // ASCII 空格
             space_count += 1;
             continue;
-        } else {
-            char_count += 1;
-            // - or numbers
-            if text.is_ascii_digit() || text == '-' {
-                cnt[NUMBER as usize] += 1;
-                if last_char != NUMBER {
-                    diff += 1;
-                    last_char = NUMBER;
-                }
-            } else if text.is_ascii_lowercase() {
-                cnt[LOWER as usize] += 1;
-                if last_char != LOWER {
-                    diff += 1;
-                    last_char = LOWER;
-                }
-            } else if text.is_ascii_uppercase() {
-                cnt[UPPER as usize] += 1;
-                if last_char != UPPER {
-                    diff += 1;
-                    last_char = UPPER;
-                }
-            } else if (text as u32) < 128 {
-                cnt[OTHER as usize] += 1;
-                if last_char != OTHER {
-                    diff += 1;
-                    last_char = OTHER;
-                }
-            } else if char_in_common_char_lst(text as u32) {
-                cnt[COMMON as usize] += 1;
-                if last_char != COMMON {
-                    diff += 1;
-                    last_char = COMMON;
-                }
-            } else {
-                if cnt[ELSE as usize] > 0 {
-                    cnt[ELSE as usize] += 1;
-                }
-                cnt[ELSE as usize] += 1;
-                if last_char != ELSE {
-                    diff += 1;
-                    last_char = ELSE;
-                }
+        }
+        char_count += 1;
+
+        // 数字或短横线
+        if (code >= b'0' as u16 && code <= b'9' as u16) || code == b'-' as u16 {
+            cnt[NUMBER] += 1;
+            if last_char != NUMBER as i32 {
+                diff += 1;
+                last_char = NUMBER as i32;
+            }
+        }
+        // 小写字母
+        else if code >= b'a' as u16 && code <= b'z' as u16 {
+            cnt[LOWER] += 1;
+            if last_char != LOWER as i32 {
+                diff += 1;
+                last_char = LOWER as i32;
+            }
+        }
+        // 大写字母
+        else if code >= b'A' as u16 && code <= b'Z' as u16 {
+            cnt[UPPER] += 1;
+            if last_char != UPPER as i32 {
+                diff += 1;
+                last_char = UPPER as i32;
+            }
+        }
+        // 其他 ASCII（0-127，排除已处理的数字、字母和短横线）
+        else if code < 128 {
+            cnt[OTHER] += 1;
+            if last_char != OTHER as i32 {
+                diff += 1;
+                last_char = OTHER as i32;
+            }
+        }
+        // 常用汉字（需根据你的 CHAR_SET 判断）
+        else if char_in_common_char_lst(code as u32) {
+            cnt[COMMON] += 1;
+            if last_char != COMMON as i32 {
+                diff += 1;
+                last_char = COMMON as i32;
+            }
+        }
+        // 其他 Unicode（非常用汉字）
+        else {
+            println!("ELSE之前 cnt[5] = {}", cnt[ELSE]);
+            if cnt[ELSE] > 0 {
+                cnt[ELSE] += 1;
+                println!("  第一次加后: {}", cnt[ELSE]);
+            }
+            cnt[ELSE] += 1;
+            println!("  第二次加后: {}", cnt[ELSE]);
+            if last_char != ELSE as i32 {
+                diff += 1;
+                last_char = ELSE as i32;
+                println!("  diff变化: {}", diff);
             }
         }
     }
+    println!("最终 cnt = {:?}", cnt);
+
+    // 空格处理：超过 2 个的部分计入数字类
     if space_count > 2 {
-        cnt[NUMBER as usize] += space_count;
+        cnt[NUMBER] += space_count;
     }
+
+    // 确保 diff 非负
     if diff < 0 {
-        diff = 0
+        diff = 0;
     }
-    let mut tmp = diff;
+    let mut tmp = diff as usize; // 转换为 usize 以便后续减法操作
+
+    // 字符数超过 8 的处理
     if char_count > 8 {
-        cnt[OTHER as usize] += char_count - 8;
-        cnt[COMMON as usize] += char_count - 8;
-        tmp += 2 * (char_count - 8);
+        let exceed = char_count - 8;
+        cnt[OTHER] += exceed;
+        cnt[COMMON] += exceed;
+        tmp += 2 * exceed;
     }
+
+    // 调整计数（核心逻辑）
     if tmp > 0 {
-        cnt[UPPER as usize] += 1;
+        cnt[UPPER] += 1;
+        // 从高到低找到第一个非零类，加上 diff
         for i in (0..=5).rev() {
             if cnt[i] > 0 {
-                cnt[i] += diff;
+                cnt[i] += diff as usize; // diff 已非负
                 break;
             }
         }
-        cnt[UPPER as usize] -= 1;
-        for char_type in cnt.iter_mut() {
-            if *char_type > 0 {
-                if *char_type >= tmp {
-                    *char_type -= tmp;
+        cnt[UPPER] -= 1;
+
+        // 从低到高依次减去 tmp
+        let mut tmp_remaining = tmp;
+        for cnt_i in cnt.iter_mut() {
+            if *cnt_i > 0 {
+                if *cnt_i >= tmp_remaining {
+                    *cnt_i -= tmp_remaining;
                     break;
                 } else {
-                    tmp -= *char_type;
-                    *char_type = 0;
+                    tmp_remaining -= *cnt_i;
+                    *cnt_i = 0;
                 }
             }
         }
     }
-    if cnt[COMMON as usize] == 1 {
-        cnt[ELSE as usize] += 1;
-        cnt[COMMON as usize] = 0;
+
+    // 若常用汉字恰好为 1，则转移到 ELSE 类
+    if cnt[COMMON] == 1 {
+        cnt[ELSE] += 1;
+        cnt[COMMON] = 0;
     }
 
-    let mut x = (16f64.powi(cnt[0])
-        * 32f64.powi(cnt[1])
-        * 64f64.powi(cnt[2])
-        * 256f64.powi(cnt[3])
-        * 2048f64.powi(cnt[4])
-        * 32768f64.powi(cnt[5]))
+    // 计算幂乘积的对数
+    let mut x = (16f64.powi(cnt[0] as i32)
+        * 32f64.powi(cnt[1] as i32)
+        * 64f64.powi(cnt[2] as i32)
+        * 256f64.powi(cnt[3] as i32)
+        * 2048f64.powi(cnt[4] as i32)
+        * 32768f64.powi(cnt[5] as i32))
     .ln();
 
+    // 分段线性变换
     if x > 48.0 {
         if x > 80.0 && ladder_version {
             x = 80.0;
@@ -136,6 +166,7 @@ pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
 
     x -= 32.0;
 
+    // 最终归一化
     if x > 0.0 {
         x / (32768.0 - 3500.0)
     } else if x < -4.0 {
