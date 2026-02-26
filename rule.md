@@ -36,11 +36,11 @@ dart 项目 有一个 dart compile js 产物
 
 ### 测试回归追踪工具
 
-项目提供了一个辅助测试回归的工具，可以追踪每次修改后测试失败点的变化。
+项目提供了一个辅助测试回归的工具，可以追踪每次修改后测试失败点的变化，并支持存档点功能。
 
 **工具位置：** `tswn-core/track_test.py`
 
-**使用方式：**
+**基本用法：**
 
 ```bash
 # 进入项目目录
@@ -54,6 +54,9 @@ python track_test.py -q
 
 # 只显示当前失败状态，不运行测试
 python track_test.py -s
+
+# 重置历史记录
+python track_test.py -r
 ```
 
 **参数说明：**
@@ -62,9 +65,35 @@ python track_test.py -s
 | ------ | ------ |
 | `-f, --filter` | 测试过滤表达式（默认：`sampled_large_case fight_large`） |
 | `-s, --show` | 只显示当前失败状态，不运行测试 |
-| `-q, --quiet` | 安静模式，只输出关键结论 |
+| `-q, --quiet` | 安静模式，只输出关键信息 |
+| `-r, --reset` | 重置历史记录 |
+
+**存档点子命令：**
+
+```bash
+# 将当前记录保存为存档点（可指定名称）
+python track_test.py save [名称]
+
+# 列出所有存档点
+python track_test.py list
+
+# 对比当前记录与指定存档点（不指定则与最近存档点对比）
+python track_test.py diff [名称]
+
+# 删除存档点
+python track_test.py delete 名称
+```
+
+存档点保存在 `target/test_checkpoints/` 目录下，用于标记重要的进度节点（如某次重要修复前后），方便长期对比。
 
 **输出解读：**
+
+每次运行测试后，工具会输出两段对比：
+
+1. **vs 上次运行**：与上一次运行结果对比
+2. **vs 存档点**：与最近存档点对比（如果存在）
+
+变化类型：
 
 - **[改进]**：测试分叉点延后（idx 变大），说明修改正确
 - **[退步]**：测试分叉点提前（idx 变小），说明修改引入问题
@@ -82,14 +111,18 @@ python track_test.py -s
 ```text
 [track_test] 运行测试: sampled_large_case fight_large
 测试失败，分析中...
+--- vs 上次运行 ---
+结论: 修改有效 (有改进且无退步)
 
-结论: 无明显变化
+--- vs 存档点 "before_fix" (2026-02-26 10:00:00) ---
+结论: 修改有效 (有改进且无退步)
 ```
 
-这种模式只输出关键信息，适合在自动化流程或AI调用时使用。
+安静模式只输出关键信息，适合在自动化流程或AI调用时使用。
 
 **重要提示：**
 
 - 首次使用不需要额外动作，工具会自动创建基线
-- 每次运行测试后，失败idx会自动保存到 `target/test_regression.json`
-- 下次运行时会自动与上次的idx比较
+- 每次运行测试后，失败 idx 会自动保存到 `target/test_regression.json`
+- 下次运行时会自动与上次的 idx 比较，同时也与最近存档点比较
+- 日志记录在 `target/test_regression.log`
