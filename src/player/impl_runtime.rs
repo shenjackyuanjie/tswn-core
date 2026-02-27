@@ -289,9 +289,7 @@ impl Player {
         let mut selected = Vec::new();
         let mut dup = 0usize;
         while dup <= select_count {
-            let Some(target_id) = Self::pick_enemy_target(targets, randomer) else {
-                return None;
-            };
+            let target_id = Self::pick_enemy_target(targets, randomer)?;
             if selected.contains(&target_id) {
                 dup += 1;
                 continue;
@@ -511,11 +509,10 @@ impl Player {
     pub fn id_name(&self) -> String { self.name.clone() }
     #[inline]
     pub fn id_key_name(&self) -> String {
-        if let Some(team) = self.team.as_ref() {
-            if !team.is_empty() && team != &self.name {
+        if let Some(team) = self.team.as_ref()
+            && !team.is_empty() && team != &self.name {
                 return format!("{}@{}", self.name, team);
             }
-        }
         self.name.clone()
     }
     #[inline]
