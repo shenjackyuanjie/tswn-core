@@ -1,9 +1,10 @@
-use crate::engine::update::{RunUpdate, RunUpdates};
+use crate::engine::update::RunUpdate;
 use crate::player::{
-    OnDamageFunc, Player, PlrId,
+    Player, PlrId,
+    state_tag,
+    skill::poison::PoisonState,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
-use crate::rc4::RC4;
 
 #[derive(Debug, Clone, Default)]
 pub struct HalfSkill;
@@ -27,7 +28,10 @@ impl SkillTrait for HalfSkill {
         if !smart {
             return true;
         }
-        args.3.get_player(&target).map(|x| x.get_status().hp > 100).unwrap_or(false)
+        args.3
+            .get_player(&target)
+            .map(|x| x.get_status().hp > 160 && x.get_status().hp < 400)
+            .unwrap_or(false)
     }
 
     fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
@@ -90,44 +94,58 @@ impl SkillTrait for HalfSkill {
             return;
         }
         let target_id = targets[0];
-        args.2.add(RunUpdate::new("[0]使用[生命之轮]", args.0, target_id, 20));
-        let owner_magic = args.3.get_player(&args.0).expect("cannot get half owner from storage").get_status().magic;
-        let target_hp = args
+        args.2.add(RunUpdate::new("[0]使用[瘟疫]", args.0, target_id, 1));
+
+        let (owner_wisdom, owner_magic, charge_active) = args
+            .3
+            .get_player(&args.0)
+            .map(|owner| {
+                (
+                    owner.get_status().wisdom,
+                    owner.get_status().magic,
+                    owner.get_status().at_boost >= 3.0,
+                )
+            })
+            .expect("cannot get half owner from storage");
+        let (target_hp, target_resistance, target_agility, target_immune, target_active) = args
             .3
             .get_player(&target_id)
-            .expect("cannot get half target from storage")
-            .get_status()
-            .hp;
-        let mut chance = (400 - target_hp) / 3;
+            .map(|target| {
+                (
+                    target.get_status().hp,
+                    target.get_status().resistance,
+                    target.get_status().agility,
+                    target.check_immune(state_tag::<PoisonState>(), args.1),
+                    target.active(),
+                )
+            })
+            .expect("cannot get half target from storage");
+        let mut chance = owner_wisdom + ((360 - target_hp) >> 3);
         if chance < 0 {
             chance = 0;
         }
-        let target_dodge = args
-            .3
-            .get_player(&target_id)
-            .expect("cannot get half target from storage")
-            .get_status()
-            .resistance
-            + args
-                .3
-                .get_player(&target_id)
-                .expect("cannot get half target from storage")
-                .get_status()
-                .agility;
-        let target = args.3.just_get_player_mut(target_id).expect("cannot get half target from storage");
-        if target.active() && Player::dodge(chance, target_dodge, args.1) {
+        if target_immune || (target_active && !charge_active && Player::dodge(chance, target_resistance + target_agility, args.1)) {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
             return;
         }
-        let mut x = (owner_magic - target.get_status().resistance / 2) / 2 + 47;
-        x = x.clamp(1, 99);
-        let old_hp = target.get_status().hp;
-        let new_hp = ((old_hp as f64) * (100 - x) as f64 / 100.0).ceil() as i32;
-        let dmg = (old_hp - new_hp).max(0);
-        if dmg > 0 {
-            target.damage(dmg, args.0, on_half as OnDamageFunc, args.1, args.2, args.3);
+
+        let mut percent = ((owner_magic - (target_resistance >> 1)) >> 1) + 47;
+        if charge_active {
+            percent = owner_magic + 50;
         }
+        if percent > 99 {
+            percent = 99;
+        }
+        let old_hp = target_hp;
+        let new_hp = ((old_hp as f64) * (100 - percent) as f64 / 100.0).ceil() as i32;
+        let dmg = (old_hp - new_hp).max(0);
+
+        args.2.add(RunUpdate::new("[1]体力减少[2]%", args.0, target_id, percent.max(0) as u32));
+        if dmg <= 0 {
+            return;
+        }
+        let target = args.3.just_get_player_mut(target_id).expect("cannot get half target from storage");
+        target.set_hp_raw(new_hp);
+        target.on_damaged(dmg, old_hp, args.0, args.1, args.2, args.3);
     }
 }
-
-fn on_half(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}

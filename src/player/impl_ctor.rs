@@ -145,6 +145,14 @@ impl Player {
     pub fn set_mp(&mut self, val: i32) { self.status.mp = val; }
 
     #[inline]
+    pub fn set_hp_raw(&mut self, val: i32) {
+        self.status.hp = val.max(0);
+        if self.status.hp <= 0 {
+            self.status.set_alive(false);
+        }
+    }
+
+    #[inline]
     pub fn mul_at_boost(&mut self, scale: f64) { self.status.at_boost *= scale; }
 
     #[inline]

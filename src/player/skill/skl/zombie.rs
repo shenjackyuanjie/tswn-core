@@ -59,9 +59,9 @@ impl SkillTrait for ZombieSkill {
 
         let mut zombie = owner.clone();
         zombie.id = args.3.new_plr_id();
-        zombie.name = format!("{}?zombie{}", owner.id_name(), args.1.r255());
+        zombie.name = "丧尸".to_string();
         zombie.player_type = PlayerType::Clone;
-        zombie.sort_int = args.1.rFFFFFF() as i32;
+        zombie.sort_int = 0;
         zombie.state = PlayerStateStore::default();
         zombie.set_state(MinionRuntimeState {
             owner: Some(args.0),
@@ -81,7 +81,9 @@ impl SkillTrait for ZombieSkill {
 
         args.2.add(RunUpdate::new_newline());
         args.2.add(RunUpdate::new("[0][召唤亡灵]", args.0, target, 60));
-        args.2.add(RunUpdate::new("[2]变成了[1]", args.0, zombie_id, 40));
+        let mut zombied = RunUpdate::new("[2]变成了[1]", args.0, zombie_id, 0);
+        zombied.targets.push(target);
+        args.2.add(zombied);
         true
     }
 

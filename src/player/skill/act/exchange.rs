@@ -1,9 +1,10 @@
-use crate::engine::update::{RunUpdate, RunUpdates};
+use crate::engine::update::RunUpdate;
 use crate::player::{
-    OnDamageFunc, Player, PlrId,
+    Player, PlrId,
+    state_tag,
+    skill::poison::PoisonState,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
-use crate::rc4::RC4;
 
 #[derive(Debug, Clone, Default)]
 pub struct ExchangeSkill;
@@ -31,7 +32,7 @@ impl SkillTrait for ExchangeSkill {
             return false;
         };
         if smart {
-            target_plr.get_status().hp - owner.get_status().hp > 1
+            target_plr.get_status().hp - owner.get_status().hp > 32
         } else {
             target_plr.get_status().hp > owner.get_status().hp
         }
@@ -50,7 +51,7 @@ impl SkillTrait for ExchangeSkill {
                 hp as f64
             }
         };
-        let mut score = if smart {
+        let score = if smart {
             let alive_group_count = {
                 let mut group_heads = Vec::new();
                 for id in args.3.all_player_ids() {
@@ -90,9 +91,10 @@ impl SkillTrait for ExchangeSkill {
             args.1.rFFFF() as f64 + target_plr.get_status().attract
         };
         if smart {
-            score *= target_plr.get_status().hp as f64;
+            score * target_plr.get_status().hp as f64
+        } else {
+            score
         }
-        score
     }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
@@ -100,53 +102,72 @@ impl SkillTrait for ExchangeSkill {
             return;
         }
         let target_id = targets[0];
-        args.2.add(RunUpdate::new("[0]使用[交换]", args.0, target_id, 20));
+        args.2.add(RunUpdate::new("[0]使用[生命之轮]", args.0, target_id, 1));
 
-        let owner_magic = args
+        let (owner_magic, charge_active, owner_hp, owner_max_hp) = args
             .3
             .get_player(&args.0)
-            .expect("cannot get exchange owner from storage")
-            .get_status()
-            .magic;
-        let target_agl = args
+            .map(|owner| {
+                (
+                    owner.get_status().magic,
+                    owner.get_status().at_boost >= 3.0,
+                    owner.get_status().hp,
+                    owner.get_status().max_hp,
+                )
+            })
+            .expect("cannot get exchange owner from storage");
+        let (target_res, target_def, target_agl, target_hp, target_immune, target_active) = args
             .3
             .get_player(&target_id)
-            .expect("cannot get exchange target from storage")
-            .get_status()
-            .agility;
-        if args.3.get_player(&target_id).map(|x| x.active()).unwrap_or(false) && Player::dodge(owner_magic, target_agl, args.1) {
+            .map(|target| {
+                (
+                    target.get_status().resistance,
+                    target.get_status().defense,
+                    target.get_status().agility,
+                    target.get_status().hp,
+                    target.check_immune(state_tag::<PoisonState>(), args.1),
+                    target.active(),
+                )
+            })
+            .expect("cannot get exchange target from storage");
+        if target_immune || (target_active && !charge_active && Player::dodge(owner_magic, target_res + target_def + target_agl, args.1))
+        {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
             return;
         }
 
-        let owner_hp = args
-            .3
-            .get_player(&args.0)
-            .expect("cannot get exchange owner from storage")
-            .get_status()
-            .hp;
-        let target_hp = args
-            .3
-            .get_player(&target_id)
-            .expect("cannot get exchange target from storage")
-            .get_status()
-            .hp;
-
-        let owner_delta = owner_hp - target_hp;
-        if owner_delta != 0 {
-            args.3
-                .just_get_player_mut(args.0)
-                .expect("cannot get exchange owner from storage")
-                .damage(owner_delta, args.0, on_exchange as OnDamageFunc, args.1, args.2, args.3);
-        }
-        let target_delta = target_hp - owner_hp;
-        if target_delta != 0 {
-            args.3
-                .just_get_player_mut(target_id)
+        if charge_active {
+            let target_move_point = args
+                .3
+                .get_player(&target_id)
                 .expect("cannot get exchange target from storage")
-                .damage(target_delta, args.0, on_exchange as OnDamageFunc, args.1, args.2, args.3);
+                .move_point();
+            {
+                let owner = args.3.just_get_player_mut(args.0).expect("cannot get exchange owner from storage");
+                owner.set_move_point(owner.move_point() + target_move_point);
+            }
+            {
+                let target = args.3.just_get_player_mut(target_id).expect("cannot get exchange target from storage");
+                target.set_move_point(0);
+            }
+        }
+
+        let owner_new_hp = target_hp.min(owner_max_hp);
+        let target_new_hp = owner_hp;
+        {
+            let owner = args.3.just_get_player_mut(args.0).expect("cannot get exchange owner from storage");
+            owner.set_hp_raw(owner_new_hp);
+        }
+        {
+            let target = args.3.just_get_player_mut(target_id).expect("cannot get exchange target from storage");
+            target.set_hp_raw(target_new_hp);
+        }
+
+        args.2.add(RunUpdate::new("[1]的体力值与[0]互换", args.0, target_id, 20));
+
+        if target_hp > target_new_hp {
+            let target = args.3.just_get_player_mut(target_id).expect("cannot get exchange target from storage");
+            target.on_damaged(target_hp - target_new_hp, target_hp, args.0, args.1, args.2, args.3);
         }
     }
 }
-
-fn on_exchange(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
