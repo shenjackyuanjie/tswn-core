@@ -32,6 +32,10 @@
   - GPT 5.2
   - GPT 5.2-Codex
   - DeepSeek V3.2 (好哦，是DeepSeek)
+- 目前花销：
+  - Qwen3.5-plus-2026-02-15: 152.74 RMB
+  - Claude Opus 4.6: 50 RMB (在中转站充的)
+  - GPT 5.3-Codex Xhigh: 50 RMB (让哥们帮忙所以在中转站充的)
 - 20260228
 
 - SortInt 结束, 可以开始哐哐写逻辑了
