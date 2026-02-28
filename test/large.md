@@ -3,34 +3,34 @@
 ## 复现摘要
 
 - 复现命令：`cargo test fight_large_replay_should_match -- --nocapture`
-- 当前结果：失败，首分叉 `idx=59`
-  - 期望：`湖心SHVPEMAPV使用生命之轮, 锋利ⅤEGZPVQMY的体力值与湖心SHVPEMAPV互换`
-  - 实际：`湖心SHVPEMAPV使用交换, 湖心SHVPEMAPV回复体力56点, 锋利ⅤEGZPVQMY受到56点伤害`
-  - 附加现象：`actual_len=696`, `expected_len=677`
+- 当前结果：失败，首分叉 `idx=135`
+  - 期望：`泠珞VmRtntb使用瘟疫, 都江堰00217109183087体力减少64%`
+  - 实际：`泠珞VmRtntb使用瘟疫, 都江堰00217109183087回避了攻击`
+  - 附加现象：`actual_len=682`, `expected_len=677`
 
 ## cargo test 原文（摘录）
 
 ```text
-fight_large mismatch context [54..64):
-  idx=54: actual=Some("PHKBUUPNHGMI发起攻击, 缇亚卡#WOVLHAESD受到70点伤害") | expected=Same
-  idx=55: actual=Some("力气30#zxQ4y6发起攻击, 湖心SHVPEMAPV受到39点伤害") | expected=Same
-  idx=56: actual=Some("态度jX2HoULfsFU9发起攻击, 冥河WyO8MUZPPtKH受到85点伤害") | expected=Same
-  idx=57: actual=Some("SDPC#AZLZJQUPN开始聚气, SDPC#AZLZJQUPN攻击力上升") | expected=Same
-  idx=58: actual=Some("PraykxtsMobhMzey发起攻击, <ζε>-fhepgq2n受到77点伤害") | expected=Same
-  idx=59: actual=Some("湖心SHVPEMAPV使用交换, 湖心SHVPEMAPV回复体力56点, 锋利ⅤEGZPVQMY受到56点伤害") | expected=Some("湖心SHVPEMAPV使用生命之轮, 锋利ⅤEGZPVQMY的体力值与湖心SHVPEMAPV互换")
-  idx=60: actual=Some("\"铁胆\"哈拉文领主-ksbGnquBbq-发起攻击, 可可萝#EZBAOSOOV回避了攻击") | expected=Same
-  idx=61: actual=Some("<ζε>-fhepgq2n发起攻击, 力气30#zxQ4y6受到122点伤害") | expected=Same
-  idx=62: actual=Some("看到这个号说明你要豹了Xa2Zuiqj发起攻击, 可可萝#EZBAOSOOV受到111点伤害") | expected=Same
-  idx=63: actual=Some("冥河WyO8MUZPPtKH发起攻击, <ζο>-2ny1o5sk受到33点伤害") | expected=Same
+fight_large mismatch context [130..140):
+  idx=130: actual=Some("咲夜bJjbFYez使用净化, 运松翁nkJspy1Oh54A受到57点伤害") | expected=Same
+  idx=131: actual=Some("虚空咦aubHluOMPElA发起攻击, 涵虚不等式PFVKEUPBU受到70点伤害") | expected=Same
+  idx=132: actual=Some("<ζο>-2ny1o5sk发起攻击, 权计WN13vmJnn受到41点伤害") | expected=Same
+  idx=133: actual=Some("灀瑈篆狓鵃发起攻击, Reku_Mochizuki#494460162188受到67点伤害") | expected=Same
+  idx=134: actual=Some("oWmjI_$'4Z#GK,,BX2发动会心一击, 神谷紫苑#EUKSOXAA受到85点伤害") | expected=Same
+  idx=135: actual=Some("泠珞VmRtntb使用瘟疫, 都江堰00217109183087回避了攻击") | expected=Some("泠珞VmRtntb使用瘟疫, 都江堰00217109183087体力减少64%")
+  idx=136: actual=Some("稗田阿求OQL68NN8发起攻击, 看到这个号说明你要豹了Xa2Zuiqj受到88点伤害") | expected=Same
+  idx=137: actual=Some("GordonALYJDXORPTER发起攻击, 东乡幻翎#BCBNRCXFX受到91点伤害") | expected=Same
+  idx=138: actual=Some("tCtrVweRgshV发起攻击, <ζο>-2ny1o5sk受到45点伤害") | expected=Same
+  idx=139: actual=Some("<ζο>-2ny1o5sk被击倒了") | expected=Same
 ```
 
 ## 关键现象
 
-1. `idx=0..58` 完全对齐，属于中段分叉。
-2. 首分叉：技能选择错误——应使用“生命之轮”（体力值互换）却使用了“交换”（造成伤害并回复自身）。
-3. 分叉后 `idx=60..63` 的事件依然对齐，但事件长度变化（696 vs 677），说明分叉点之后的部分事件被跳过或新增，但此处提供的上下文有限，后续仍有较长序列出现偏移。
-4. 该分叉与 `sampled_large_case_10` 非常相似，均为生命之轮与交换的混淆，但影响范围更大（导致总事件数变化）。
+1. `idx=0..134` 完全对齐，属于后段分叉（战斗进行到中后期）。
+2. 首分叉：技能名称相同（瘟疫），但效果不同——实际为“回避了攻击”（未命中），期望为“体力减少64%”（命中并造成百分比伤害）。
+3. 分叉后事件序列从 `idx=136` 开始重新对齐，说明该分叉未引发后续连锁偏移，仅改变了该技能的效果描述。
+4. 事件长度差异（682 vs 677）表明分叉点之后的事件数量有变化，但上下文显示后续事件仍然对齐，可能是分叉前后的事件计数有细微调整。
 
 ## 问题分类
 
-**技能选择** — 在特定时机下，角色应使用生命之轮但实际使用了交换，可能是技能优先级、目标状态判定或随机选择机制与预期不符。由于战斗规模较大，该分叉引发了后续连锁反应，导致整体事件长度变化。
+**命中判定/技能效果** — 相同技能（瘟疫）的命中判定与实际效果不一致：期望命中并造成百分比伤害，实际被回避。可能是目标的回避率计算、技能命中率或状态免疫判定与预期不符。由于战斗规模较大，该分叉虽未引发后续连锁反应，但导致了整体事件长度变化。
