@@ -1,36 +1,36 @@
-# fight_large_replay_should_match 失败分析
+# fight_large_replay_should_match 失败分析（2026-02-28 更新）
 
 ## 复现摘要
 
 - 复现命令：`cargo test fight_large_replay_should_match -- --nocapture`
-- 当前结果：失败，首分叉 `idx=42`
-  - 期望：`BZoPIow发起狂暴攻击, 兔蛙智仁$0a0LD4Dh受到115点伤害`
-  - 实际：`BZoPIow发起攻击, 七七#EUEMIGPI受到110点伤害`
-  - 附加现象：`actual_len=737`, `expected_len=677`
+- 当前结果：失败，首分叉 `idx=59`
+  - 期望：`湖心SHVPEMAPV使用生命之轮, 锋利ⅤEGZPVQMY的体力值与湖心SHVPEMAPV互换`
+  - 实际：`湖心SHVPEMAPV使用交换, 湖心SHVPEMAPV回复体力56点, 锋利ⅤEGZPVQMY受到56点伤害`
+  - 附加现象：`actual_len=696`, `expected_len=677`
 
 ## cargo test 原文（摘录）
 
 ```text
-fight_large mismatch context [37..47):
-  idx=37: actual=Some("稗田阿求OQL68NN8发起攻击, 泠珞VmRtntb防御, 泠珞VmRtntb受到25点伤害") | expected=Same
-  idx=38: actual=Some("权计WN13vmJnn使用诅咒, 三田一重TxtrdTN4l8nT受到61点伤害, 三田一重TxtrdTN4l8nT被诅咒了") | expected=Same
-  idx=39: actual=Some("子子油渍柚不子油不是子柚渍不不渍柚油柚子发起攻击, Tik_Tok#IBxWzGZtr受到46点伤害") | expected=Same
-  idx=40: actual=Some("「OS」#c1#E7WGTekQTugF发起攻击, 东乡幻翎#BCBNRCXFX受到29点伤害") | expected=Same
-  idx=41: actual=Some("封魔宣夜8uW56ll发起攻击, 十六夜咲夜zgJ6eH3TkLFp受到108点伤害") | expected=Same
-  idx=42: actual=Some("BZoPIow发起攻击, 七七#EUEMIGPI受到110点伤害") | expected=Some("BZoPIow发起狂暴攻击, 兔蛙智仁$0a0LD4Dh受到115点伤害")
-  idx=43: actual=Some("BZoPIow从狂暴中解除") | expected=Same
-  idx=44: actual=Some("仇决clFJZCMHS发起攻击, DianmuYKFMWRPXIMCQ受到99点伤害") | expected=Some("仇决clFJZCMHS发起攻击, 石之自由jV3zf35受到69点伤害")
-  idx=45: actual=Some("兔蛙智仁$0a0LD4Dh使用雷击术") | expected=Some("「OS」#H1#YoRmfG4zW9发起攻击, MeltelabRC3P3Go7受到43点伤害")
-  idx=46: actual=Some("ImmutableZYsdlabOOz受到17点伤害") | expected=Some("针刀霜|U/T)h8J\"发起攻击, 七七#EUEMIGPI回避了攻击")
+fight_large mismatch context [54..64):
+  idx=54: actual=Some("PHKBUUPNHGMI发起攻击, 缇亚卡#WOVLHAESD受到70点伤害") | expected=Same
+  idx=55: actual=Some("力气30#zxQ4y6发起攻击, 湖心SHVPEMAPV受到39点伤害") | expected=Same
+  idx=56: actual=Some("态度jX2HoULfsFU9发起攻击, 冥河WyO8MUZPPtKH受到85点伤害") | expected=Same
+  idx=57: actual=Some("SDPC#AZLZJQUPN开始聚气, SDPC#AZLZJQUPN攻击力上升") | expected=Same
+  idx=58: actual=Some("PraykxtsMobhMzey发起攻击, <ζε>-fhepgq2n受到77点伤害") | expected=Same
+  idx=59: actual=Some("湖心SHVPEMAPV使用交换, 湖心SHVPEMAPV回复体力56点, 锋利ⅤEGZPVQMY受到56点伤害") | expected=Some("湖心SHVPEMAPV使用生命之轮, 锋利ⅤEGZPVQMY的体力值与湖心SHVPEMAPV互换")
+  idx=60: actual=Some("\"铁胆\"哈拉文领主-ksbGnquBbq-发起攻击, 可可萝#EZBAOSOOV回避了攻击") | expected=Same
+  idx=61: actual=Some("<ζε>-fhepgq2n发起攻击, 力气30#zxQ4y6受到122点伤害") | expected=Same
+  idx=62: actual=Some("看到这个号说明你要豹了Xa2Zuiqj发起攻击, 可可萝#EZBAOSOOV受到111点伤害") | expected=Same
+  idx=63: actual=Some("冥河WyO8MUZPPtKH发起攻击, <ζο>-2ny1o5sk受到33点伤害") | expected=Same
 ```
 
 ## 关键现象
 
-1. `idx=0..41` 完全对齐，属于中后段分叉。
-2. 分叉点：应发起**狂暴攻击**但实际执行了**普通攻击**，且目标不同（兔蛙智仁 vs 七七）。
-3. 注意 `idx=43` 仍有"从狂暴中解除"，与 case_03 表现一致：角色处于狂暴状态但未正确触发狂暴攻击。
-4. 总长度差异大（737 vs 677），后续完全发散。
+1. `idx=0..58` 完全对齐，属于中段分叉。
+2. 首分叉：技能选择错误——应使用“生命之轮”（体力值互换）却使用了“交换”（造成伤害并回复自身）。
+3. 分叉后 `idx=60..63` 的事件依然对齐，但事件长度变化（696 vs 677），说明分叉点之后的部分事件被跳过或新增，但此处提供的上下文有限，后续仍有较长序列出现偏移。
+4. 该分叉与 `sampled_large_case_10` 非常相似，均为生命之轮与交换的混淆，但影响范围更大（导致总事件数变化）。
 
 ## 问题分类
 
-**狂暴攻击触发 + 目标选择** — 与 case_03 属同类问题。角色处于狂暴状态但攻击动作和目标选择均与期望不同。
+**技能选择** — 在特定时机下，角色应使用生命之轮但实际使用了交换，可能是技能优先级、目标状态判定或随机选择机制与预期不符。由于战斗规模较大，该分叉引发了后续连锁反应，导致整体事件长度变化。
