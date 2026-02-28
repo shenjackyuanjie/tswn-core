@@ -2,15 +2,47 @@
 
 > 坏了, 我真开始技术封锁了
 
+- 感谢 GPT 5.3-Codex Xhigh & Cluade Opus 4.6 两位大哥
+- 成功的把项目推进到了 debug 抠细节阶段
+- 感谢 minimax m2.5, 写了个 `track_test.py`
+  - 非常好的测试工具
+  - 当然有个小 bug, 如果 `cargo test` 没跑起来 (比如网炸了) 他也会认为是 pass
+    - 当然这种情况属于酒吧点炒饭，也没什么好追究的
+  - 然后感谢 Claude Opus 4.6
+  - 改进了测试工具, 添加了存档点功能
+- 感谢 DouBao Seed 2.0-code
+  - 成功把 case 07+10 推进了几个 idx
+  - 还是免费的!
+- 非常不感谢 qwen3.5-plus-2026-02-15
+  - 烧了我 `当月未结清 ¥ 152.74` 块钱还一点进度没有
+- 项目已经成 AI benchmark 了捏
+  - 无敌的DeepSeek V4大人
+  - 快带着你无敌的定价
+  - 无敌的1M上下文注意力
+  - 还有无敌的SOTA成绩
+  - 创翻这个沟槽的项目
+  - 也顺手把无能的 GPT 5.3-codex xhigh & Claude Opus 4.6 创飞吧😭
+- 目前用过的 AI (按照我自己爱怎么排怎么排):
+  - GPT 5.3-Codex Xhigh
+  - Claude Opus 4.6
+  - MiniMax M 2.5
+  - DouBao Seed 2.0-code
+  - qwen3.5-plus-2026-02-15
+  - GPT 5 mini (好哦，是免费模型)
+  - GPT 5.2
+  - GPT 5.2-Codex
+  - DeepSeek V3.2 (好哦，是DeepSeek)
+- 20260228
+
+- SortInt 结束, 可以开始哐哐写逻辑了
+  - 2025 04 16 00:52
+
 - 我也不知道这个库啥时候会公开
 - 但是我尽快吧
   - 20240521 ( 00:13 )
 - 不过我估计不会公开, 毕竟名竞这玩意的活力也不大
 - 我这玩意要是公开了，直接就是一个灭顶之灾
 - 当然，在各位名竞 oier 骂我之前, 我先忏悔, 我太狂妄了(笑)
-
-- SortInt 结束, 可以开始哐哐写逻辑了
-  - 2025 04 16 00:52
 
 > shenjack
 > @夜冴 啊？
