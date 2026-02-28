@@ -63,7 +63,7 @@ impl Default for ShieldState {
 impl StateTrait for ShieldState {
     fn meta_type(&self) -> i32 { if self.shield > 0 { 1 } else { 0 } }
 
-    fn post_defend_priority(&self) -> i32 { 100 }
+    fn post_defend_priority(&self) -> i32 { self.sort_id as i32 }
 
     fn on_post_defend(
         &mut self,
