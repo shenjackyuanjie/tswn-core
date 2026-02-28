@@ -18,7 +18,7 @@ PROJECT_ROOT = Path("d:/githubs/namer/tswn-core")
 RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
 LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
 CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
-DEFAULT_FILTER = "large_01_10 large_11_16 large_full help_vs_aaaaa_should_match_right_trace_step_by_step small_seed"
+DEFAULT_FILTER = "large_01_10 large_11_16 large_full case_17 small_seed"
 
 
 def load_previous_records() -> dict:
@@ -74,6 +74,7 @@ def parse_cargo_test_output(output: str) -> dict:
 
     # 额外注册直接需要识别的测试名（某些 mismatch 行可能不包含 thread 信息）
     _direct_tests = {
+        "case_17",
         "help_vs_aaaaa_should_match_right_trace_step_by_step",
         "seed_small_replay_should_match",
         "small_seed",
