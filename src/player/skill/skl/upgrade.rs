@@ -23,10 +23,7 @@ impl SkillTrait for UpgradeSkill {
     fn post_damage_with_level(&mut self, level: u32, _dmg: i32, _caster: PlrId, args: SkillArgs) {
         let owner = args.3.get_player(&args.0).expect("cannot get upgrade owner from storage");
         let debug_target = std::env::var("TSWN_DEBUG_UPGRADE").ok();
-        let debug_this = debug_target
-            .as_deref()
-            .map(|name| owner.id_name() == name)
-            .unwrap_or(false);
+        let debug_this = debug_target.as_deref().map(|name| owner.id_name() == name).unwrap_or(false);
         if level == 0 || owner.has_state::<UpgradeState>() {
             return;
         }

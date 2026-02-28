@@ -28,10 +28,7 @@ impl Player {
 
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
         let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
-        let debug_this = debug_target
-            .as_deref()
-            .map(|name| name == self.id_name().as_str())
-            .unwrap_or(false);
+        let debug_this = debug_target.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
         let smart = self.status.wisdom > randomer.r63() as i32;
         if debug_this {
             eprintln!(
@@ -92,10 +89,7 @@ impl Player {
                                     randomer.j
                                 );
                             }
-                            if !(skill.level() > 0
-                                && skill.has_action_impl()
-                                && prob_ok)
-                            {
+                            if !(skill.level() > 0 && skill.has_action_impl() && prob_ok) {
                                 None
                             } else {
                                 let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
@@ -124,7 +118,10 @@ impl Player {
                     }
                     self.status.mp -= req_mp;
                     if debug_this {
-                        eprintln!("[action] consume mp now={} rc4=({}, {})", self.status.mp, randomer.i, randomer.j);
+                        eprintln!(
+                            "[action] consume mp now={} rc4=({}, {})",
+                            self.status.mp, randomer.i, randomer.j
+                        );
                     }
                 }
             } else if let Some(skill_key) = selected_skill_key {
@@ -318,9 +315,7 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Option<PlrId> {
-        if config.target_domain == ForcedAttackTargetDomain::EnemyAlive
-            && config.score_mode == ForcedAttackScoreMode::Default
-        {
+        if config.target_domain == ForcedAttackTargetDomain::EnemyAlive && config.score_mode == ForcedAttackScoreMode::Default {
             return self.select_default_attack_target(config.smart, randomer, storage, targets);
         }
         let select_count = if config.smart { 3 } else { 2 };
@@ -430,7 +425,10 @@ impl Player {
                 .iter()
                 .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
                 .collect::<Vec<String>>();
-            eprintln!("[default_select] sampled={selected_names:?} rc4=({}, {})", randomer.i, randomer.j);
+            eprintln!(
+                "[default_select] sampled={selected_names:?} rc4=({}, {})",
+                randomer.i, randomer.j
+            );
         }
 
         let mut scored = selected
@@ -502,7 +500,10 @@ impl Player {
                             randomer.j
                         );
                     } else {
-                        eprintln!("[default_select] score target=#{target_id} score={score} rc4=({}, {})", randomer.i, randomer.j);
+                        eprintln!(
+                            "[default_select] score target=#{target_id} score={score} rc4=({}, {})",
+                            randomer.i, randomer.j
+                        );
                     }
                 }
                 (target_id, score)
@@ -621,7 +622,9 @@ impl Player {
     }
 
     fn apply_forced_action_states(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        let clear_tags = self.state.on_forced_action_states(self.as_ptr(), self.alive(), randomer, updates, storage);
+        let clear_tags = self
+            .state
+            .on_forced_action_states(self.as_ptr(), self.alive(), randomer, updates, storage);
         if !clear_tags.is_empty() {
             for tag in clear_tags {
                 self.state.clear_tag(tag);
@@ -675,9 +678,11 @@ impl Player {
     #[inline]
     pub fn id_key_name(&self) -> String {
         if let Some(team) = self.team.as_ref()
-            && !team.is_empty() && team != &self.name {
-                return format!("{}@{}", self.name, team);
-            }
+            && !team.is_empty()
+            && team != &self.name
+        {
+            return format!("{}@{}", self.name, team);
+        }
         self.name.clone()
     }
     #[inline]

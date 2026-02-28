@@ -1,9 +1,9 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,
-    state_tag,
     skill::poison::PoisonState,
     skill::{SkillArgs, SkillExt, SkillTrait},
+    state_tag,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -124,7 +124,8 @@ impl SkillTrait for HalfSkill {
         if chance < 0 {
             chance = 0;
         }
-        if target_immune || (target_active && !charge_active && Player::dodge(chance, target_resistance + target_agility, args.1)) {
+        if target_immune || (target_active && !charge_active && Player::dodge(chance, target_resistance + target_agility, args.1))
+        {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
             return;
         }

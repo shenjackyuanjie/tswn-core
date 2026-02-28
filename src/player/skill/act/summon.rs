@@ -57,13 +57,9 @@ impl SkillTrait for SummonSkill {
         let charge_active = owner.get_status().at_boost >= 3.0;
         let summon_team = owner.clan_name();
         let summon_name = format!("{}?summon", owner.base_name());
-        let mut summoned = crate::player::Player::new_and_init(
-            Some(summon_team.clone()),
-            summon_name.clone(),
-            None,
-            args.3.clone(),
-        )
-        .expect("cannot init summon minion");
+        let mut summoned =
+            crate::player::Player::new_and_init(Some(summon_team.clone()), summon_name.clone(), None, args.3.clone())
+                .expect("cannot init summon minion");
         summoned.build();
         summoned.attr[7] = (summoned.attr[7] / 3).max(1);
         summoned.attr[0] = 0;
@@ -95,16 +91,8 @@ impl SkillTrait for SummonSkill {
             minv.saturating_sub(10) as u32
         };
         let mut skill_order = [0usize, 1, 2];
-        let team_bytes = [0_u8]
-            .iter()
-            .chain(summon_team.as_bytes())
-            .copied()
-            .collect::<Vec<u8>>();
-        let name_bytes = [0_u8]
-            .iter()
-            .chain(summon_name.as_bytes())
-            .copied()
-            .collect::<Vec<u8>>();
+        let team_bytes = [0_u8].iter().chain(summon_team.as_bytes()).copied().collect::<Vec<u8>>();
+        let name_bytes = [0_u8].iter().chain(summon_name.as_bytes()).copied().collect::<Vec<u8>>();
         let mut skill_rand = RC4::new(&team_bytes, 1);
         skill_rand.update(&name_bytes, 2);
         skill_rand.sort_list(&mut skill_order);

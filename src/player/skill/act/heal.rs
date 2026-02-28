@@ -72,6 +72,25 @@ impl SkillTrait for HealSkill {
             return;
         }
         let heal = ((atp / 60.0).ceil() as i32).clamp(1, missing_hp);
+        if std::env::var_os("TSWN_DEBUG_HEAL").is_some() {
+            let owner = args.3.get_player(&args.0).expect("cannot get heal owner from storage");
+            let target = args.3.get_player(&target_id).expect("cannot get heal target from storage");
+            eprintln!(
+                "[heal] owner={} target={} owner_hp={}/{} target_hp={}/{} at_boost={} atp={:.2} missing={} heal={} rc4=({}, {})",
+                owner.id_name(),
+                target.id_name(),
+                owner.get_status().hp,
+                owner.get_status().max_hp,
+                target.get_status().hp,
+                target.get_status().max_hp,
+                owner.get_status().at_boost,
+                atp,
+                missing_hp,
+                heal,
+                args.1.i,
+                args.1.j
+            );
+        }
         args.2.add(RunUpdate::new("[0]使用[治愈魔法]", args.0, target_id, 20));
         let target = args.3.just_get_player_mut(target_id).expect("cannot get heal target from storage");
         target.damage(-heal, args.0, on_heal, args.1, args.2, args.3);

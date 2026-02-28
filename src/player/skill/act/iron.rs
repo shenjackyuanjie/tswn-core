@@ -31,11 +31,7 @@ impl SkillTrait for IronSkill {
     fn select_target_count(&self, _smart: bool) -> usize { 1 }
 
     fn prob(&self, level: u32, _smart: bool, args: SkillArgs) -> bool {
-        let owner_has_iron = args
-            .3
-            .get_player(&args.0)
-            .and_then(|owner| owner.get_state::<IronState>())
-            .is_some();
+        let owner_has_iron = args.3.get_player(&args.0).and_then(|owner| owner.get_state::<IronState>()).is_some();
         if owner_has_iron {
             return false;
         }
@@ -113,7 +109,14 @@ impl StateTrait for IronState {
 
     fn post_defend_priority(&self) -> i32 { 4000 }
 
-    fn on_post_defend(&mut self, owner: PlrId, dmg: &mut i32, caster: PlrId, _randomer: &mut RC4, updates: &mut crate::engine::update::RunUpdates) {
+    fn on_post_defend(
+        &mut self,
+        owner: PlrId,
+        dmg: &mut i32,
+        caster: PlrId,
+        _randomer: &mut RC4,
+        updates: &mut crate::engine::update::RunUpdates,
+    ) {
         if *dmg <= 0 {
             *dmg = 0;
             return;

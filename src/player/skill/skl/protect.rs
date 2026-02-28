@@ -65,7 +65,10 @@ impl StateTrait for ProtectState {
             if debug_this {
                 eprintln!(
                     "[protect_pre_defend] link_owner={} level={} roll={} rc4=({}, {})",
-                    storage.get_player(&link.owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", link.owner)),
+                    storage
+                        .get_player(&link.owner)
+                        .map(|p| p.id_name())
+                        .unwrap_or_else(|| format!("#{}", link.owner)),
                     link.level,
                     roll,
                     randomer.i,
@@ -133,11 +136,7 @@ impl ProtectSkill {
         let group = if let Some(group) = args.3.group_containing(args.0) {
             group.clone()
         } else {
-            let owner_clan = args
-                .3
-                .get_player(&args.0)
-                .expect("cannot get protect owner from storage")
-                .clan_name();
+            let owner_clan = args.3.get_player(&args.0).expect("cannot get protect owner from storage").clan_name();
             args.3
                 .all_player_ids()
                 .into_iter()

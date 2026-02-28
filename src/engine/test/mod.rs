@@ -379,7 +379,10 @@ mod runner {
             "help发起攻击",
             "aaaaa受到94点伤害",
             "aaaaa被击倒了",
-        ].into_iter().map(String::from).collect();
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
 
         let mut runner = runners::Runner::new_from_namerena_raw("help\naaaaa".to_string()).unwrap();
         let (actual, guard) = collect_replay_events(&mut runner, 256, false);
@@ -391,11 +394,11 @@ mod runner {
         assert_eq!(winner, vec!["help".to_string()]);
     }
 
-    mod small;
-    mod simple;
+    mod fight_large;
     mod large_01_10;
     mod large_11_16;
-    mod fight_large;
+    mod simple;
+    mod small;
 
     #[test]
     fn charm_state_redirects_target_group() {

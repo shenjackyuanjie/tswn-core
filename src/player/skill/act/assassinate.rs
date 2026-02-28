@@ -112,13 +112,7 @@ impl SkillTrait for AssassinateSkill {
             let (current_move, owner_magic, charge_active) = args
                 .3
                 .get_player(&args.0)
-                .map(|owner| {
-                    (
-                        owner.move_point(),
-                        owner.get_status().magic,
-                        owner.get_status().at_boost >= 3.0,
-                    )
-                })
+                .map(|owner| (owner.move_point(), owner.get_status().magic, owner.get_status().at_boost >= 3.0))
                 .expect("cannot get assassinate owner from storage");
             if !charge_active {
                 self.on_post_damage = Some(());

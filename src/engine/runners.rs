@@ -320,12 +320,7 @@ impl EngineCore {
         let players = world
             .players
             .iter()
-            .map(|id| {
-                storage
-                    .get_player(id)
-                    .map(|p| p.id_name())
-                    .unwrap_or_else(|| format!("#{id}"))
-            })
+            .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
             .collect::<Vec<String>>()
             .join(" -> ");
         eprintln!("[world:{tag}] round_pos={} players=[{}]", world.round_pos, players);

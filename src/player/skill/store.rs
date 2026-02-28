@@ -174,12 +174,7 @@ impl SkillStorage {
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()
-            .map(|name| {
-                args.3
-                    .get_player(&args.0)
-                    .map(|p| p.id_name() == name)
-                    .unwrap_or(false)
-            })
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
         for skill_key in keys.iter() {
             let rc4_before = (args.1.i, args.1.j);
@@ -248,12 +243,7 @@ impl SkillStorage {
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()
-            .map(|name| {
-                args.3
-                    .get_player(&args.0)
-                    .map(|p| p.id_name() == name)
-                    .unwrap_or(false)
-            })
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
         for skill_key in keys.iter() {
             let rc4_before = (args.1.i, args.1.j);

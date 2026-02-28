@@ -1,9 +1,9 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,
-    state_tag,
     skill::poison::PoisonState,
     skill::{SkillArgs, SkillExt, SkillTrait},
+    state_tag,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -130,7 +130,8 @@ impl SkillTrait for ExchangeSkill {
                 )
             })
             .expect("cannot get exchange target from storage");
-        if target_immune || (target_active && !charge_active && Player::dodge(owner_magic, target_res + target_def + target_agl, args.1))
+        if target_immune
+            || (target_active && !charge_active && Player::dodge(owner_magic, target_res + target_def + target_agl, args.1))
         {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
             return;

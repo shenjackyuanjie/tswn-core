@@ -26,12 +26,7 @@ impl SkillTrait for MergeSkill {
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()
-            .map(|name| {
-                args.3
-                    .get_player(&args.0)
-                    .map(|p| p.id_name() == name)
-                    .unwrap_or(false)
-            })
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
         if args.1.r63() >= level {
             return false;
