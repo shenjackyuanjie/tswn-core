@@ -63,6 +63,16 @@ def parse_cargo_test_output(output: str) -> dict:
             case_key = match.group(1)
             case_to_test[case_key] = test_name
 
+    # 额外注册直接需要识别的测试名（某些 mismatch 行可能不包含 thread 信息）
+    _direct_tests = {
+        "help_vs_aaaaa_should_match_right_trace_step_by_step",
+        "seed_small_replay_should_match",
+    }
+    for name in _direct_tests:
+        if name in results:
+            # 将其自身作为 key，便于在没有 thread 信息时通过行内容匹配
+            case_to_test[name] = name
+
     for line in lines:
         if "mismatch at idx=" in line:
             idx_match = re.search(r"mismatch at idx=(\d+)", line)
@@ -74,6 +84,7 @@ def parse_cargo_test_output(output: str) -> dict:
                     if test_name in results:
                         results[test_name]["idx"] = idx
                 else:
+                    # 先尝试旧有的 sampled/fight 匹配
                     case_match = re.search(r"(sampled case-?\d+|fight_large)", line)
                     if case_match:
                         case_key = case_match.group(1)
@@ -81,6 +92,12 @@ def parse_cargo_test_output(output: str) -> dict:
                         test_name = case_to_test.get(normalized_key)
                         if test_name and test_name in results:
                             results[test_name]["idx"] = idx
+                            continue
+                    # 如果行中直接包含我们关注的测试名，也记录 idx
+                    for direct_name in _direct_tests:
+                        if direct_name in line and direct_name in results:
+                            results[direct_name]["idx"] = idx
+                            break
 
     return results
 
@@ -89,6 +106,9 @@ def compare_records(current: dict, previous: dict) -> list:
     """
     比较当前记录和上次记录
     返回变化列表
+
+    仅在两次都有记录时才报告状态变化（NEW_FAIL/NEW_PASS），
+    仅在两次都有有效 idx (>=0) 时才比较 idx 并报告 IMPROVED/REGRESSED。
     """
     changes = []
 
@@ -98,42 +118,55 @@ def compare_records(current: dict, previous: dict) -> list:
         curr = current.get(test)
         prev = previous.get(test)
 
-        if curr is None:
-            changes.append({
-                "test": test,
-                "change": "NEW_PASS",
-                "message": "测试从失败变为通过",
-            })
+        # 如果两边都没有记录，跳过
+        if curr is None and prev is None:
             continue
 
-        if prev is None:
-            changes.append({
-                "test": test,
-                "change": "NEW_FAIL",
-                "message": "新失败的测试",
-                "idx": curr.get("idx", -1),
-            })
+        # 只有当两次都有记录时，才考虑状态变更与 idx 比较
+        if curr is not None and prev is not None:
+            curr_status = curr.get("status")
+            prev_status = prev.get("status")
+            curr_idx = curr.get("idx", -1)
+            prev_idx = prev.get("idx", -1)
+
+            # 报告状态变化：仅当状态实际从 FAILED <-> 非 FAILED 发生变化时
+            if prev_status == "FAILED" and curr_status != "FAILED":
+                changes.append({
+                    "test": test,
+                    "change": "NEW_PASS",
+                    "message": "测试从失败变为通过",
+                })
+            elif prev_status != "FAILED" and curr_status == "FAILED":
+                changes.append({
+                    "test": test,
+                    "change": "NEW_FAIL",
+                    "message": "新失败的测试",
+                    "idx": curr_idx,
+                })
+
+            # 仅在两次都有有效 idx 时比较 idx
+            if curr_idx >= 0 and prev_idx >= 0:
+                if curr_idx > prev_idx:
+                    changes.append({
+                        "test": test,
+                        "change": "IMPROVED",
+                        "message": f"分叉点延后 (idx: {prev_idx} -> {curr_idx})",
+                        "idx": curr_idx,
+                        "prev_idx": prev_idx,
+                    })
+                elif curr_idx < prev_idx:
+                    changes.append({
+                        "test": test,
+                        "change": "REGRESSED",
+                        "message": f"分叉点提前 (idx: {prev_idx} -> {curr_idx})",
+                        "idx": curr_idx,
+                        "prev_idx": prev_idx,
+                    })
             continue
 
-        curr_idx = curr.get("idx", -1)
-        prev_idx = prev.get("idx", -1)
-
-        if curr_idx > prev_idx:
-            changes.append({
-                "test": test,
-                "change": "IMPROVED",
-                "message": f"分叉点延后 (idx: {prev_idx} -> {curr_idx})",
-                "idx": curr_idx,
-                "prev_idx": prev_idx,
-            })
-        elif curr_idx < prev_idx and curr_idx >= 0:
-            changes.append({
-                "test": test,
-                "change": "REGRESSED",
-                "message": f"分叉点提前 (idx: {prev_idx} -> {curr_idx})",
-                "idx": curr_idx,
-                "prev_idx": prev_idx,
-            })
+        # 如果只有一侧有记录（新出现或消失），不报告状态变化或 idx 变化，
+        # 因为无法确定这是实际的状态变更还是测试集差异。
+        continue
 
     return changes
 
@@ -322,8 +355,8 @@ def main():
     parser = argparse.ArgumentParser(description="测试回归追踪工具")
     parser.add_argument(
         "-f", "--filter",
-        default="sampled_large_case fight_large",
-        help="测试过滤表达式 (default: sampled_large_case fight_large)"
+        default="sampled_large_case fight_large help_vs_aaaaa_should_match_right_trace_step_by_step seed_small_replay_should_match",
+        help="测试过滤表达式 (default: sampled_large_case fight_large help_vs_aaaaa_should_match_right_trace_step_by_step seed_small_replay_should_match)"
     )
     parser.add_argument(
         "-s", "--show",

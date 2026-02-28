@@ -36,7 +36,7 @@ dart 项目 有一个 dart compile js 产物
 
 ### 测试回归追踪工具
 
-项目提供了一个辅助测试回归的工具，可以追踪每次修改后测试失败点的变化，并支持存档点功能。
+项目提供了一个辅助测试回归的工具，可以追踪每次修改后测试失败点的变化，并支持存档点功能。该工具主要用于比较每次运行时测试失败的分叉点 idx，从而判断修改是否朝着与 JS/Dart 产物一致的方向前进。
 
 **工具位置：** `tswn-core/track_test.py`
 
@@ -46,7 +46,7 @@ dart 项目 有一个 dart compile js 产物
 # 进入项目目录
 cd tswn-core
 
-# 运行测试并比较（默认追踪 sampled_large_case 和 fight_large）
+# 运行测试并比较（默认追踪 sampled_large_case、fight_large 以及两个特殊测试）
 python track_test.py
 
 # 安静模式（-q），只输出关键结论，适合AI使用
@@ -59,14 +59,33 @@ python track_test.py -s
 python track_test.py -r
 ```
 
+注意：脚本的默认过滤器已扩展，默认会运行并追踪以下测试关键词：
+- `sampled_large_case`
+- `fight_large`
+- `help_vs_aaaaa_should_match_right_trace_step_by_step`
+- `seed_small_replay_should_match`
+
 **参数说明：**
 
 | 参数 | 说明 |
 | ------ | ------ |
-| `-f, --filter` | 测试过滤表达式（默认：`sampled_large_case fight_large`） |
+| `-f, --filter` | 测试过滤表达式（默认：`sampled_large_case fight_large help_vs_aaaaa_should_match_right_trace_step_by_step seed_small_replay_should_match`） |
 | `-s, --show` | 只显示当前失败状态，不运行测试 |
 | `-q, --quiet` | 安静模式，只输出关键信息 |
 | `-r, --reset` | 重置历史记录 |
+
+解析与比对行为说明（重要）：
+
+- 输出解析：脚本会解析 `cargo test` 的输出，识别 `test ... ... FAILED/ok` 的行，并在出现 `mismatch at idx=...` 的行时尝试提取 idx。
+  - 若 `mismatch` 行包含 `thread '...'"`，会用线程名作为测试名关联 idx。
+  - 若 `mismatch` 行不包含 thread 信息，脚本会：
+    - 尝试根据 `sampled case-N` / `fight_large` 等文本恢复到对应的测试名；
+    - 并额外直接检测行中是否包含 `help_vs_aaaaa_should_match_right_trace_step_by_step` 或 `seed_small_replay_should_match`，如果包含则把该 idx 关联到对应测试名。
+- 比较规则修正（已修复的问题）：
+  - 脚本现在只在当前运行和上次运行都存在该测试记录的情况下，才判断状态变化（即 NEW_FAIL / NEW_PASS）。这避免了因为某次运行未包含该测试而造成的误报。
+  - 仅当当前与上次都有有效的 idx（>= 0）时，才比较 idx 并报告 **IMPROVED**（idx 变大）或 **REGRESSED**（idx 变小）。如果任意一侧 idx 为 -1（未知/无效），则不会报告 idx 变化。
+  - 如果一个测试通过（非 FAILED），它默认的 idx 为 -1，不会被误判为“新失败”。
+- 存档点比较：脚本会同时把当前结果与最近的存档点对比（若存在），并输出相应结论。
 
 **存档点子命令：**
 
@@ -95,10 +114,10 @@ python track_test.py delete 名称
 
 变化类型：
 
-- **[改进]**：测试分叉点延后（idx 变大），说明修改正确
-- **[退步]**：测试分叉点提前（idx 变小），说明修改引入问题
-- **[新失败]**：之前通过的测试现在失败了
-- **[修复]**：之前失败的测试现在通过了
+- **[改进]**：测试分叉点延后（idx 变大），说明修改正确（仅在 idx 均有效时报告）
+- **[退步]**：测试分叉点提前（idx 变小），说明修改引入问题（仅在 idx 均有效时报告）
+- **[新失败]**：之前通过的测试现在失败了（仅在两次都有记录且状态发生变化时报告）
+- **[修复]**：之前失败的测试现在通过了（仅在两次都有记录且状态发生变化时报告）
 
 **结论判断：**
 
@@ -109,7 +128,7 @@ python track_test.py delete 名称
 **安静模式输出示例：**
 
 ```text
-[track_test] 运行测试: sampled_large_case fight_large
+[track_test] 运行测试: sampled_large_case fight_large help_vs_aaaaa_should_match_right_trace_step_by_step seed_small_replay_should_match
 测试失败，分析中...
 --- vs 上次运行 ---
 结论: 修改有效 (有改进且无退步)
@@ -126,6 +145,7 @@ python track_test.py delete 名称
 - 每次运行测试后，失败 idx 会自动保存到 `target/test_regression.json`
 - 下次运行时会自动与上次的 idx 比较，同时也与最近存档点比较
 - 日志记录在 `target/test_regression.log`
+- 如果你需要追踪额外的测试名，可以通过 `--filter` 传入更多关键词或具体测试名
 
 ## 检查注意事项
 
