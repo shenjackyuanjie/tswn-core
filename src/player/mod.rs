@@ -45,6 +45,28 @@ impl ActionTargets {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForcedAttackTargetDomain {
+    EnemyAlive,
+    AllAlive,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForcedAttackScoreMode {
+    Default,
+    RandomAttract,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ForcedAttackConfig {
+    pub smart: bool,
+    pub target_domain: ForcedAttackTargetDomain,
+    pub score_mode: ForcedAttackScoreMode,
+    pub use_mag: bool,
+    pub attack_scale: f64,
+    pub message: &'static str,
+}
+
 pub type StateTag = TypeId;
 
 #[inline]
@@ -55,8 +77,19 @@ pub trait StateTrait: std::fmt::Debug + Any {
 
     /// 状态在 action 决策阶段的执行顺序（数字越小越先执行）。
     fn action_mode_priority(&self) -> i32 { 1000 }
-    /// action 决策钩子，可强制默认攻击（Some(bool) 表示 default_attack 的 smart 值）。
-    fn on_action_mode(&self, _smart: bool, _force_default_attack_smart: &mut Option<bool>) {}
+    /// action 决策钩子，可强制动作（Some(...) 表示覆盖默认动作流程）。
+    fn on_action_mode(&self, _smart: bool, _forced_attack: &mut Option<ForcedAttackConfig>) {}
+    /// 强制动作执行后的状态回调。返回 true 表示应清理该状态。
+    fn on_forced_action(
+        &mut self,
+        _owner: PlrId,
+        _alive: bool,
+        _randomer: &mut RC4,
+        _updates: &mut RunUpdates,
+        _storage: &Arc<Storage>,
+    ) -> bool {
+        false
+    }
 
     /// 状态在 update_states 阶段的执行顺序（数字越小越先执行）。
     fn update_state_priority(&self) -> i32 { 1000 }
@@ -197,7 +230,7 @@ impl PlayerStateStore {
         }
     }
 
-    pub fn resolve_action_mode(&self, smart: bool) -> Option<bool> {
+    pub fn resolve_action_mode(&self, smart: bool) -> Option<ForcedAttackConfig> {
         let mut ordered = self
             .states
             .iter()
@@ -214,6 +247,34 @@ impl PlayerStateStore {
             }
         }
         forced
+    }
+
+    pub fn on_forced_action_states(
+        &mut self,
+        owner: PlrId,
+        alive: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> Vec<StateTag> {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.action_mode_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        let mut clear_tags = Vec::new();
+        for (tag, _) in ordered {
+            let should_clear = self
+                .states
+                .get_mut(&tag)
+                .map(|state| state.on_forced_action(owner, alive, randomer, updates, storage))
+                .unwrap_or(false);
+            if should_clear {
+                clear_tags.push(tag);
+            }
+        }
+        clear_tags
     }
 
     pub fn on_pre_step_states(

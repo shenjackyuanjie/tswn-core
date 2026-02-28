@@ -403,7 +403,11 @@ fn action_expires_berserk_and_charm_states() {
         on_post_action: None,
         step: 1,
     });
-    player.action(&mut randomer, &mut updates, &storage, &ActionTargets::default());
+    let targets = ActionTargets {
+        all_alive: vec![player.as_ptr()],
+        ..ActionTargets::default()
+    };
+    player.action(&mut randomer, &mut updates, &storage, &targets);
 
     assert!(!player.has_state::<crate::player::skill::berserk::BerserkState>());
     assert!(!player.has_state::<crate::player::skill::charm::CharmState>());

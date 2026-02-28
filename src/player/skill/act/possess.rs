@@ -56,7 +56,7 @@ impl SkillTrait for PossessSkill {
             if let Some(state) = target.get_state_mut::<BerserkState>() {
                 state.step += 4;
             } else {
-                target.set_state(BerserkState { step: 4 });
+                target.state.set(BerserkState { step: 4 });
             }
         }
         args.2.add(RunUpdate::new("[1]进入[狂暴]状态", args.0, target_id, 60));

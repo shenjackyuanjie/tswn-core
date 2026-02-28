@@ -75,7 +75,6 @@ impl SkillTrait for IronSkill {
             return dmg.max(0);
         }
         if dmg <= self.protect {
-            self.protect -= dmg - 1;
             return 1;
         }
         dmg -= self.protect;

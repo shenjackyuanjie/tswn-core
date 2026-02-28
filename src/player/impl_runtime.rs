@@ -57,8 +57,10 @@ impl Player {
         let mut acted = false;
         let mut selected_skill_key: Option<usize> = forced_skill;
         let mut selected_targets: Vec<PlrId> = Vec::new();
-        if let Some(default_smart) = self.state.resolve_action_mode(smart) {
-            self.default_attack(default_smart, randomer, updates, storage, targets);
+        let selected_from_forced_pre_action = forced_skill.is_some();
+        if let Some(forced_attack) = self.state.resolve_action_mode(smart) {
+            self.forced_attack(forced_attack, randomer, updates, storage, targets);
+            self.apply_forced_action_states(randomer, updates, storage);
             acted = true;
         } else {
             if selected_skill_key.is_none() {
@@ -128,7 +130,11 @@ impl Player {
             } else if let Some(skill_key) = selected_skill_key {
                 selected_targets = {
                     let skill = self.skills.skill_by_id(skill_key);
-                    self.select_skill_targets(skill, smart, randomer, updates, storage, targets)
+                    if selected_from_forced_pre_action {
+                        self.select_forced_skill_targets(skill, smart, randomer, updates, storage, targets)
+                    } else {
+                        self.select_skill_targets(skill, smart, randomer, updates, storage, targets)
+                    }
                 };
             }
 
@@ -278,6 +284,102 @@ impl Player {
         scored.into_iter().map(|x| x.0).collect()
     }
 
+    fn select_forced_skill_targets(
+        &self,
+        skill: &crate::player::skill::Skill,
+        smart: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) -> Vec<PlrId> {
+        let domain = skill.target_domain();
+        if domain == SkillTargetDomain::SelfOnly {
+            return vec![self.as_ptr()];
+        }
+        let candidates: &[PlrId] = match domain {
+            SkillTargetDomain::EnemyAlive => &targets.enemy_alive,
+            SkillTargetDomain::AllyAlive => &targets.ally_alive,
+            SkillTargetDomain::AllyAny => &targets.ally_all,
+            SkillTargetDomain::AllyDead => &targets.ally_dead,
+            SkillTargetDomain::AllAlive => &targets.all_alive,
+            SkillTargetDomain::SelfOnly => &[],
+        };
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+        skill.select_targets(candidates, smart, (self.as_ptr(), randomer, updates, storage))
+    }
+
+    fn select_forced_attack_target(
+        &self,
+        config: ForcedAttackConfig,
+        randomer: &mut RC4,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) -> Option<PlrId> {
+        if config.target_domain == ForcedAttackTargetDomain::EnemyAlive
+            && config.score_mode == ForcedAttackScoreMode::Default
+        {
+            return self.select_default_attack_target(config.smart, randomer, storage, targets);
+        }
+        let select_count = if config.smart { 3 } else { 2 };
+        let mut selected = Vec::new();
+        let mut dup = 0usize;
+        while dup <= select_count {
+            let target_id = match config.target_domain {
+                ForcedAttackTargetDomain::EnemyAlive => Self::pick_enemy_target(targets, randomer)?,
+                ForcedAttackTargetDomain::AllAlive => randomer.pick(&targets.all_alive).map(|idx| targets.all_alive[idx])?,
+            };
+            if selected.contains(&target_id) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target_id);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return None;
+        }
+
+        let mut scored = selected
+            .into_iter()
+            .map(|target_id| {
+                let score = storage
+                    .get_player(&target_id)
+                    .map(|target| match config.score_mode {
+                        ForcedAttackScoreMode::Default => randomer.rFFFF() as f64 + target.get_status().attract,
+                        ForcedAttackScoreMode::RandomAttract => randomer.rFFFF() as f64 * target.get_status().attract,
+                    })
+                    .unwrap_or(f64::MIN);
+                (target_id, score)
+            })
+            .collect::<Vec<(PlrId, f64)>>();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        scored.first().map(|x| x.0)
+    }
+
+    fn forced_attack(
+        &mut self,
+        config: ForcedAttackConfig,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) {
+        let Some(target_id) = self.select_forced_attack_target(config, randomer, storage, targets) else {
+            return;
+        };
+        let atp = self.get_at(config.use_mag, randomer) * config.attack_scale;
+        updates.add(RunUpdate::new(config.message, self.as_ptr(), target_id, 0));
+        let Some(target) = storage.just_get_player_mut(target_id) else {
+            return;
+        };
+        target.attacked(atp, config.use_mag, self.as_ptr(), noop_on_damage, randomer, updates, storage);
+    }
+
     fn select_default_attack_target(
         &self,
         smart: bool,
@@ -285,6 +387,27 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Option<PlrId> {
+        let debug_this = std::env::var("TSWN_DEBUG_ACTION")
+            .ok()
+            .as_deref()
+            .map(|name| name == self.id_name().as_str())
+            .unwrap_or(false);
+        if debug_this {
+            let enemy_names = targets
+                .enemy_alive
+                .iter()
+                .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
+                .collect::<Vec<String>>();
+            let all_names = targets
+                .all_alive
+                .iter()
+                .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
+                .collect::<Vec<String>>();
+            eprintln!(
+                "[default_select] smart={smart} rc4=({}, {}) all={all_names:?} enemy={enemy_names:?}",
+                randomer.i, randomer.j
+            );
+        }
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::new();
         let mut dup = 0usize;
@@ -301,6 +424,13 @@ impl Player {
         }
         if selected.is_empty() {
             return None;
+        }
+        if debug_this {
+            let selected_names = selected
+                .iter()
+                .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
+                .collect::<Vec<String>>();
+            eprintln!("[default_select] sampled={selected_names:?} rc4=({}, {})", randomer.i, randomer.j);
         }
 
         let mut scored = selected
@@ -358,10 +488,36 @@ impl Player {
                         }
                     })
                     .unwrap_or(f64::MIN);
+                if debug_this {
+                    if let Some(target) = storage.get_player(&target_id) {
+                        let status = target.get_status();
+                        eprintln!(
+                            "[default_select] score target={} hp={} attract={} atksum={} score={} rc4=({}, {})",
+                            target.id_name(),
+                            status.hp,
+                            status.attract,
+                            status.atk_sum,
+                            score,
+                            randomer.i,
+                            randomer.j
+                        );
+                    } else {
+                        eprintln!("[default_select] score target=#{target_id} score={score} rc4=({}, {})", randomer.i, randomer.j);
+                    }
+                }
                 (target_id, score)
             })
             .collect::<Vec<(PlrId, f64)>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        if debug_this {
+            if let Some((target_id, _)) = scored.first() {
+                let name = storage
+                    .get_player(target_id)
+                    .map(|p| p.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!("[default_select] chose={name} rc4=({}, {})", randomer.i, randomer.j);
+            }
+        }
         scored.first().map(|x| x.0)
     }
 
@@ -461,6 +617,15 @@ impl Player {
                 self.state.clear_tag(tag);
             }
             self.update_states();
+        }
+    }
+
+    fn apply_forced_action_states(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
+        let clear_tags = self.state.on_forced_action_states(self.as_ptr(), self.alive(), randomer, updates, storage);
+        if !clear_tags.is_empty() {
+            for tag in clear_tags {
+                self.state.clear_tag(tag);
+            }
         }
     }
 

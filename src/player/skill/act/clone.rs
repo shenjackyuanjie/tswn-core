@@ -38,23 +38,13 @@ impl SkillTrait for CloneSkill {
         self.final_level.unwrap_or(((level as f64) * 0.75).ceil().max(1.0) as u32)
     }
 
-    fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
-        if smart {
-            let owner = args.3.get_player(&args.0).expect("cannot get clone owner from storage");
-            if owner.get_status().hp < 80 {
-                return false;
-            }
-        }
-        args.1.r127() < level
-    }
+    fn prob(&self, level: u32, _smart: bool, args: SkillArgs) -> bool { args.1.r127() < level }
 
     fn select_targets_with_level(&self, _level: u32, _candidates: &[PlrId], _smart: bool, args: SkillArgs) -> Vec<PlrId> {
         vec![args.0]
     }
 
     fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
-        // JS: this_.f = ceil(this_.f * ((c.n() & 63) + 64) / 128)
-        // 使用随机数衰减 level，而非固定 0.75
         let random_factor = (args.1.next_u8() as u32 & 63) + 64;
         let mut decayed_level = ((level as f64) * random_factor as f64 / 128.0).ceil() as u32;
 
@@ -103,7 +93,6 @@ impl SkillTrait for CloneSkill {
             kind: MinionKind::Clone,
         });
         cloned.update_states();
-        // JS: p.l = c.n() * 4 + 256 (不设置 owner 的 spsum)
         cloned.status.move_point = args.1.r255() as i32 * 4 + 256;
         cloned.status.hp = owner_snapshot.get_status().hp.max(1);
         // JS clone 是重新 build 的实体，mp 取 itl/2，而不是 owner 当前 mp。
@@ -111,12 +100,9 @@ impl SkillTrait for CloneSkill {
         cloned.status.set_alive(true);
         cloned.status.set_frozen(false);
 
-        // JS: if (q.fx + q.dx < c.n()) { this_.f = (this_.f >> 1) + 1 }
-        // q 是 owner_snapshot, q.fx = hp, q.dx = magic
         if owner_snapshot.get_status().hp + owner_snapshot.get_status().magic < args.1.r255() as i32 {
             decayed_level = (decayed_level >> 1) + 1;
         }
-        // JS: q.f = ceil(sqrt(this_.f)) — 克隆体的 clone 技能 level = ceil(sqrt(decayed_level))
         let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
         if cloned.skills.skill.len() > 23 {
             cloned.skills.skill_by_idx_mut(23).set_level(cloned_clone_level.max(1));

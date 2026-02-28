@@ -1,6 +1,6 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    OnDamageFunc, PlrId, StateTrait,
+    ForcedAttackConfig, ForcedAttackScoreMode, ForcedAttackTargetDomain, OnDamageFunc, PlrId, StateTrait,
     skill::act::minion::is_combat_minion,
     skill::{SkillArgs, SkillExt, SkillTrait},
     state_tag,
@@ -127,7 +127,7 @@ impl SkillTrait for BerserkSkill {
                 state.step += 1;
             }
         } else {
-            target.set_state(BerserkState {
+            target.state.set(BerserkState {
                 step: if charge_active { 2 } else { 1 },
             });
             args.2.add(RunUpdate::new("[1]进入[狂暴]状态", args.0, target_id, 60));
@@ -149,13 +149,18 @@ impl StateTrait for BerserkState {
 
     fn action_mode_priority(&self) -> i32 { 100 }
 
-    fn on_action_mode(&self, smart: bool, force_default_attack_smart: &mut Option<bool>) {
-        *force_default_attack_smart = Some(smart);
+    fn on_action_mode(&self, smart: bool, forced_attack: &mut Option<ForcedAttackConfig>) {
+        *forced_attack = Some(ForcedAttackConfig {
+            smart,
+            target_domain: ForcedAttackTargetDomain::AllAlive,
+            score_mode: ForcedAttackScoreMode::RandomAttract,
+            use_mag: false,
+            attack_scale: 1.2,
+            message: "[0]发起[狂暴攻击]",
+        });
     }
 
-    fn post_action_priority(&self) -> i32 { 220 }
-
-    fn on_post_action(
+    fn on_forced_action(
         &mut self,
         owner: PlrId,
         alive: bool,

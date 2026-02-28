@@ -5,6 +5,7 @@ use crate::player::{
     OnDamageFunc, PlrId,
     skill::poison::PoisonState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    state_tag,
 };
 use crate::rc4::RC4;
 
@@ -108,23 +109,25 @@ impl SkillTrait for AssassinateSkill {
             let target_id = targets[0];
             self.target = Some(target_id);
             self.on_pre_action = Some(());
-            self.on_post_damage = Some(());
-            let current_move = args
+            let (current_move, owner_magic, charge_active) = args
                 .3
                 .get_player(&args.0)
-                .expect("cannot get assassinate owner from storage")
-                .move_point();
-            let owner_magic = args
-                .3
-                .get_player(&args.0)
-                .expect("cannot get assassinate owner from storage")
-                .get_status()
-                .magic;
+                .map(|owner| {
+                    (
+                        owner.move_point(),
+                        owner.get_status().magic,
+                        owner.get_status().at_boost >= 3.0,
+                    )
+                })
+                .expect("cannot get assassinate owner from storage");
+            if !charge_active {
+                self.on_post_damage = Some(());
+            }
             args.3
                 .just_get_player_mut(args.0)
                 .expect("cannot get assassinate owner from storage")
-                .set_move_point(current_move + owner_magic * 3);
-            args.2.add(RunUpdate::new("[0][潜行]到[1]身后", args.0, target_id, 20));
+                .set_move_point(current_move + owner_magic * 3 + if charge_active { 1600 } else { 0 });
+            args.2.add(RunUpdate::new("[0][潜行]到[1]身后", args.0, target_id, 1));
             return;
         }
 
@@ -133,13 +136,22 @@ impl SkillTrait for AssassinateSkill {
         if !args.3.get_player(&target_id).map(|x| x.alive()).unwrap_or(false) {
             return;
         }
-        args.2.add(RunUpdate::new("[0]发动[背刺]", args.0, target_id, 60));
+        args.2.add(RunUpdate::new("[0]发动[背刺]", args.0, target_id, 1));
         let owner = args.3.get_player(&args.0).expect("cannot get assassinate owner from storage");
         let atp = owner.get_at(true, args.1).max(owner.get_at(true, args.1)).max(owner.get_at(true, args.1)) * 4.0;
+        let dodged = args
+            .3
+            .get_player(&target_id)
+            .map(|target| target.check_immune(state_tag::<PoisonState>(), args.1))
+            .unwrap_or(false);
+        if dodged {
+            args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
+            return;
+        }
         args.3
             .just_get_player_mut(target_id)
             .expect("cannot get assassinate target from storage")
-            .attacked(atp, true, args.0, on_assassinate as OnDamageFunc, args.1, args.2, args.3);
+            .defned(atp, true, args.0, on_assassinate as OnDamageFunc, args.1, args.2, args.3);
     }
 
     fn pre_action(&mut self, _args: SkillArgs) {
