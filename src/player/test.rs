@@ -864,6 +864,9 @@ fn owner_death_marks_linked_minion_for_cleanup() {
     let mut minion = storage.get_player(&owner_id).expect("cannot get owner").clone();
     minion.id = storage.new_plr_id();
     minion.name = "owner?m".to_string();
+    minion.status.hp = 1;
+    minion.status.max_hp = 1;
+    minion.status.set_alive(true);
     minion.set_state(crate::player::skill::act::minion::MinionRuntimeState {
         owner: Some(owner_id),
         kind: crate::player::skill::act::minion::MinionKind::Summon,

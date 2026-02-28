@@ -931,14 +931,17 @@ impl Player {
             })
             .collect::<Vec<PlrId>>();
         for minion_id in linked_minions {
-            let mut should_remove = true;
-            if let Some(minion) = storage.just_get_player_mut(minion_id)
-                && minion.alive()
-            {
-                minion.status.hp = 0;
-                minion.status.set_alive(false);
-                should_remove = minion.state.on_linked_owner_die(owner_id, minion_id, updates);
-            }
+            let should_remove = if let Some(minion) = storage.just_get_player_mut(minion_id) {
+                if !minion.alive() || minion.get_status().hp <= 0 {
+                    false
+                } else {
+                    minion.status.hp = 0;
+                    minion.status.set_alive(false);
+                    minion.state.on_linked_owner_die(owner_id, minion_id, updates)
+                }
+            } else {
+                false
+            };
             if should_remove {
                 storage.queue_remove_player(minion_id);
             }
