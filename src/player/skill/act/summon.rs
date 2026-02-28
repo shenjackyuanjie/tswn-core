@@ -3,6 +3,7 @@ use crate::player::{
     OnDamageFunc, PlayerStateStore, PlayerType, PlrId,
     skill::store::SkillStorage,
     skill::{Skill, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    state_tag,
 };
 use crate::rc4::RC4;
 
@@ -55,9 +56,11 @@ impl SkillTrait for SummonSkill {
         args.2.add(RunUpdate::new("[0]使用[血祭]", args.0, args.0, 60));
         let owner = args.3.get_player(&args.0).expect("cannot get summon owner from storage").clone();
         let charge_active = owner.get_status().at_boost >= 3.0;
+        let summon_team = owner.clan_name();
+        let summon_name = format!("{}?summon", owner.base_name());
         let mut summoned = crate::player::Player::new_and_init(
-            Some(owner.clan_name()),
-            format!("{}?summon", owner.base_name()),
+            Some(summon_team.clone()),
+            summon_name.clone(),
             None,
             args.3.clone(),
         )
@@ -92,13 +95,29 @@ impl SkillTrait for SummonSkill {
             let minv = summoned.name_base[base..base + 4].iter().copied().min().unwrap_or(0);
             minv.saturating_sub(10) as u32
         };
+        let mut skill_order = [0usize, 1, 2];
+        let team_bytes = [0_u8]
+            .iter()
+            .chain(summon_team.as_bytes())
+            .copied()
+            .collect::<Vec<u8>>();
+        let name_bytes = [0_u8]
+            .iter()
+            .chain(summon_name.as_bytes())
+            .copied()
+            .collect::<Vec<u8>>();
+        let mut skill_rand = RC4::new(&team_bytes, 1);
+        skill_rand.update(&name_bytes, 2);
+        skill_rand.sort_list(&mut skill_order);
         let mut skills = SkillStorage::new();
-        let fire_level_1 = skill_level_from_slot(0);
-        let fire_level_2 = skill_level_from_slot(1);
-        let explode_level = skill_level_from_slot(2);
-        skills.add_skill(Skill::new_with_id(fire_level_1, 0));
-        skills.add_skill(Skill::new_with_id(fire_level_2, 0));
-        skills.add_skill(Skill::new(explode_level, Box::new(SummonExplodeSkill::new())));
+        for (slot, skill_kind) in skill_order.into_iter().enumerate() {
+            let level = skill_level_from_slot(slot);
+            match skill_kind {
+                0 | 1 => skills.add_skill(Skill::new_with_id(level, 0)),
+                2 => skills.add_skill(Skill::new(level, Box::new(SummonExplodeSkill::new()))),
+                _ => unreachable!("unexpected summon skill index"),
+            }
+        }
         if !charge_active {
             skills.add_skill(Skill::new(1, Box::new(SummonShareDamageSkill::new())));
         }
@@ -151,7 +170,7 @@ impl SkillTrait for SummonExplodeSkill {
             .expect("cannot get summon explode owner from storage")
             .get_at(true, args.1)
             * (4.0 + fire_mag);
-        args.2.add(RunUpdate::new("[0]使用[自爆]", args.0, target_id, 1));
+        args.2.add(RunUpdate::new("[0]使用[自爆]", args.0, target_id, 0));
         let old_hp = {
             let owner = args
                 .3
@@ -161,10 +180,24 @@ impl SkillTrait for SummonExplodeSkill {
             owner.status.hp = 0;
             old_hp
         };
-        args.3
+        let dmg = args
+            .3
             .just_get_player_mut(target_id)
             .expect("cannot get mutable summon explode target from storage")
             .attacked(atp, true, args.0, on_summon_explode as OnDamageFunc, args.1, args.2, args.3);
+        if dmg > 0 {
+            let target = args
+                .3
+                .just_get_player_mut(target_id)
+                .expect("cannot get mutable summon explode target from storage");
+            if target.alive() && !target.check_immune(state_tag::<super::fire::FireState>(), args.1) {
+                if let Some(fire) = target.get_state_mut::<super::fire::FireState>() {
+                    fire.fire_mag += 0.5;
+                } else {
+                    target.set_state(super::fire::FireState { fire_mag: 0.5 });
+                }
+            }
+        }
         args.3
             .just_get_player_mut(args.0)
             .expect("cannot get mutable summon explode owner from storage")
