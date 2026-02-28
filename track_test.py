@@ -18,6 +18,7 @@ PROJECT_ROOT = Path("d:/githubs/namer/tswn-core")
 RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
 LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
 CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
+DEFAULT_FILTER = "large_01_10 large_11_16 large_full help_vs_aaaaa_should_match_right_trace_step_by_step small_seed"
 
 
 def load_previous_records() -> dict:
@@ -58,15 +59,26 @@ def parse_cargo_test_output(output: str) -> dict:
 
     case_to_test = {}
     for test_name in results.keys():
-        match = re.search(r"(sampled_large_case_\d+|fight_large)", test_name)
-        if match:
-            case_key = match.group(1)
+        old_match = re.search(r"(sampled_large_case_\d+|fight_large)", test_name)
+        if old_match:
+            case_key = old_match.group(1)
             case_to_test[case_key] = test_name
+        new_match = re.search(r"::large_(\d{2})$", test_name)
+        if new_match:
+            idx = new_match.group(1)
+            case_to_test[f"sampled_large_case_{idx}"] = test_name
+            case_to_test[f"large_{idx}"] = test_name
+        if re.search(r"::large_full$", test_name):
+            case_to_test["fight_large"] = test_name
+            case_to_test["large_full"] = test_name
 
     # 额外注册直接需要识别的测试名（某些 mismatch 行可能不包含 thread 信息）
     _direct_tests = {
         "help_vs_aaaaa_should_match_right_trace_step_by_step",
         "seed_small_replay_should_match",
+        "small_seed",
+        "fight_simple_replay_should_match",
+        "simple_fight",
     }
     for name in _direct_tests:
         if name in results:
@@ -85,10 +97,13 @@ def parse_cargo_test_output(output: str) -> dict:
                         results[test_name]["idx"] = idx
                 else:
                     # 先尝试旧有的 sampled/fight 匹配
-                    case_match = re.search(r"(sampled case-?\d+|fight_large)", line)
+                    case_match = re.search(r"(sampled case-?\d+|fight_large|large_full)", line)
                     if case_match:
                         case_key = case_match.group(1)
-                        normalized_key = case_key.replace("case-", "case_").replace("sampled ", "sampled_large_")
+                        if case_key.startswith("sampled "):
+                            normalized_key = case_key.replace("case-", "case_").replace("sampled ", "sampled_large_")
+                        else:
+                            normalized_key = case_key
                         test_name = case_to_test.get(normalized_key)
                         if test_name and test_name in results:
                             results[test_name]["idx"] = idx
@@ -355,8 +370,8 @@ def main():
     parser = argparse.ArgumentParser(description="测试回归追踪工具")
     parser.add_argument(
         "-f", "--filter",
-        default="sampled_large_case fight_large help_vs_aaaaa_should_match_right_trace_step_by_step seed_small_replay_should_match",
-        help="测试过滤表达式 (default: sampled_large_case fight_large help_vs_aaaaa_should_match_right_trace_step_by_step seed_small_replay_should_match)"
+        default=DEFAULT_FILTER,
+        help=f"测试过滤表达式 (default: {DEFAULT_FILTER})"
     )
     parser.add_argument(
         "-s", "--show",
