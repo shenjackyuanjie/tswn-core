@@ -1,4 +1,6 @@
 use std::any::Any;
+use std::cell::Cell;
+use std::sync::Arc;
 
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
@@ -7,6 +9,16 @@ use crate::player::{
     state_tag,
 };
 use crate::rc4::RC4;
+
+thread_local! {
+    static FIRE_CB_STORAGE: Cell<*const crate::engine::storage::Storage> = const { Cell::new(std::ptr::null()) };
+}
+
+pub(crate) fn enter_fire_cb(storage: &Arc<crate::engine::storage::Storage>) {
+    FIRE_CB_STORAGE.with(|slot| slot.set(Arc::as_ptr(storage)));
+}
+
+pub(crate) fn leave_fire_cb() { FIRE_CB_STORAGE.with(|slot| slot.set(std::ptr::null())); }
 
 /// 火状态（参考 Dart `FireState`）。
 #[derive(Clone, Copy, Debug, Default)]
@@ -57,18 +69,34 @@ impl SkillTrait for FireSkill {
 
         args.2.add(RunUpdate::new("[0]使用[火球术]", args.0, target_id, 1));
 
-        let target = args.3.just_get_player_mut(target_id).expect("cannot get mutable target in storage");
-        let dmg = target.attacked(atp, true, args.0, on_fire as OnDamageFunc, args.1, args.2, args.3);
-
-        // 参考 dart: onFire(dmg > 0 && !target.dead) => fireMag += 0.5
-        if dmg > 0 && target.alive() && !target.check_immune(state_tag::<FireState>(), args.1) {
-            if let Some(fire) = target.get_state_mut::<FireState>() {
-                fire.fire_mag += 0.5;
-            } else {
-                target.set_state(FireState { fire_mag: 0.5 });
-            }
-        }
+        enter_fire_cb(args.3);
+        let _ = args
+            .3
+            .just_get_player_mut(target_id)
+            .expect("cannot get mutable target in storage")
+            .attacked(atp, true, args.0, on_fire as OnDamageFunc, args.1, args.2, args.3);
+        leave_fire_cb();
     }
 }
 
-fn on_fire(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
+pub(crate) fn on_fire(_caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, _updates: &mut RunUpdates) {
+    if dmg <= 0 {
+        return;
+    }
+    let storage_ptr = FIRE_CB_STORAGE.with(|slot| slot.get());
+    if storage_ptr.is_null() {
+        return;
+    }
+    let storage = unsafe { &*storage_ptr };
+    let Some(target_plr) = storage.just_get_player_mut(target) else {
+        return;
+    };
+    if !target_plr.alive() || target_plr.check_immune(state_tag::<FireState>(), r) {
+        return;
+    }
+    if let Some(fire) = target_plr.get_state_mut::<FireState>() {
+        fire.fire_mag += 0.5;
+    } else {
+        target_plr.set_state(FireState { fire_mag: 0.5 });
+    }
+}

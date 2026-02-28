@@ -1,8 +1,8 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlayerStateStore, PlayerType, PlrId, StateTrait,
+    Player, PlayerStateStore, PlayerType, PlrId, StateTrait,
     skill::act::minion::{MinionKind, MinionRuntimeState, is_combat_minion},
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -30,7 +30,7 @@ impl SkillTrait for ZombieSkill {
         if args.3.get_player(&target).map(is_combat_minion).unwrap_or(false) {
             return false;
         }
-        let Some(owner) = args.3.get_player(&args.0).cloned() else {
+        let Some((owner_name, owner_clan)) = args.3.get_player(&args.0).map(|owner| (owner.id_name(), owner.clan_name())) else {
             args.3
                 .just_get_player_mut(target)
                 .expect("cannot get zombie target from storage")
@@ -57,9 +57,16 @@ impl SkillTrait for ZombieSkill {
                 owner: Some(args.0),
             });
 
-        let mut zombie = owner.clone();
+        let seed_name = format!("{owner_name}?zombie");
+        let mut zombie =
+            Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init zombie minion");
+        zombie.build();
         zombie.id = args.3.new_plr_id();
         zombie.name = "丧尸".to_string();
+        zombie.attr[0] = 0;
+        zombie.attr[6] = 0;
+        zombie.attr[7] = (zombie.attr[7] >> 1).max(1);
+        zombie.init_values();
         zombie.player_type = PlayerType::Clone;
         zombie.sort_int = 0;
         zombie.state = PlayerStateStore::default();
@@ -67,14 +74,10 @@ impl SkillTrait for ZombieSkill {
             owner: Some(args.0),
             kind: MinionKind::Zombie,
         });
-        zombie.status.attack = 0;
-        zombie.status.wisdom = 0;
-        zombie.status.max_hp = (owner.get_status().max_hp / 2).max(1);
-        zombie.status.hp = zombie.status.max_hp;
         zombie.status.set_alive(true);
         zombie.status.set_frozen(false);
         zombie.status.move_point = args.1.r255() as i32 * 4;
-        zombie.skills = crate::player::skill::store::SkillStorage::new();
+        zombie.skills = SkillStorage::new();
         zombie.skills.update_proc();
         let zombie_id = zombie.as_ptr();
         args.3.queue_spawn(args.0, zombie);

@@ -3,7 +3,6 @@ use crate::player::{
     OnDamageFunc, PlayerStateStore, PlayerType, PlrId,
     skill::store::SkillStorage,
     skill::{Skill, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
-    state_tag,
 };
 use crate::rc4::RC4;
 
@@ -180,24 +179,13 @@ impl SkillTrait for SummonExplodeSkill {
             owner.status.hp = 0;
             old_hp
         };
-        let dmg = args
+        super::fire::enter_fire_cb(args.3);
+        let _dmg = args
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get mutable summon explode target from storage")
-            .attacked(atp, true, args.0, on_summon_explode as OnDamageFunc, args.1, args.2, args.3);
-        if dmg > 0 {
-            let target = args
-                .3
-                .just_get_player_mut(target_id)
-                .expect("cannot get mutable summon explode target from storage");
-            if target.alive() && !target.check_immune(state_tag::<super::fire::FireState>(), args.1) {
-                if let Some(fire) = target.get_state_mut::<super::fire::FireState>() {
-                    fire.fire_mag += 0.5;
-                } else {
-                    target.set_state(super::fire::FireState { fire_mag: 0.5 });
-                }
-            }
-        }
+            .attacked(atp, true, args.0, super::fire::on_fire as OnDamageFunc, args.1, args.2, args.3);
+        super::fire::leave_fire_cb();
         args.3
             .just_get_player_mut(args.0)
             .expect("cannot get mutable summon explode owner from storage")
@@ -233,7 +221,5 @@ impl SkillTrait for SummonShareDamageSkill {
 
     fn proc_kinds(&self) -> &[crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PostDamage] }
 }
-
-fn on_summon_explode(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
 
 fn on_summon_share_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
