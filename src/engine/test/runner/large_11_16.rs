@@ -171,75 +171,49 @@ L6x5GQXq47发起攻击, m8iy8R0bkF受到53点伤害
 
 WmG4iW0iZI投毒, L6x5GQXq47受到42点伤害
 
-L6x5GQXq47被击倒了
+ L6x5GQXq47被击倒了
 
-m8iy8R0bkF使用冰冻术, m6SPYplZoz受到63点伤害, m6SPYplZoz被冰冻了
+m8iy8R0bkF发起攻击, PzFvkx7lP7受到106点伤害
 
-PzFvkx7lP7发起攻击, m6SPYplZoz受到58点伤害
+PzFvkx7lP7发起攻击, m6SPYplZoz受到33点伤害
 
-WmG4iW0iZI发起攻击, PzFvkx7lP7回避了攻击
+m6SPYplZoz发起攻击, WmG4iW0iZI受到28点伤害
 
-m8iy8R0bkF发起攻击, WmG4iW0iZI受到65点伤害
+m8iy8R0bkF发起攻击, m6SPYplZoz受到61点伤害
 
-PzFvkx7lP7发起攻击, WmG4iW0iZI回避了攻击
+m6SPYplZoz发起攻击, WmG4iW0iZI回避了攻击
 
-m6SPYplZoz从冰冻中解除
+WmG4iW0iZI发起攻击, PzFvkx7lP7受到44点伤害
 
-m6SPYplZoz发起攻击, m8iy8R0bkF受到88点伤害
+ PzFvkx7lP7被击倒了
 
-WmG4iW0iZI发起攻击, m6SPYplZoz受到26点伤害
+WmG4iW0iZI发起攻击, m8iy8R0bkF受到0点伤害
 
-m8iy8R0bkF发起攻击, PzFvkx7lP7回避了攻击
+m8iy8R0bkF发起攻击, WmG4iW0iZI受到83点伤害
 
-PzFvkx7lP7发起攻击, WmG4iW0iZI回避了攻击
+m6SPYplZoz发起攻击, m8iy8R0bkF受到131点伤害
 
-m6SPYplZoz发起攻击, m8iy8R0bkF受到79点伤害
+m8iy8R0bkF发起攻击, m6SPYplZoz受到72点伤害
 
-m8iy8R0bkF被击倒了
+m6SPYplZoz发起攻击, WmG4iW0iZI受到85点伤害
 
-WmG4iW0iZI发起攻击, m6SPYplZoz受到38点伤害
+WmG4iW0iZI发起攻击, m8iy8R0bkF受到61点伤害
 
-PzFvkx7lP7使用治愈魔法, PzFvkx7lP7回复体力150点
+ m8iy8R0bkF被击倒了
 
-m6SPYplZoz使用生命之轮, PzFvkx7lP7回避了攻击
+m6SPYplZoz发起攻击, WmG4iW0iZI受到31点伤害
 
-PzFvkx7lP7发起攻击, WmG4iW0iZI受到33点伤害
+WmG4iW0iZI发起攻击, m6SPYplZoz回避了攻击
 
-WmG4iW0iZI发起攻击, PzFvkx7lP7受到35点伤害
+m6SPYplZoz发起攻击, WmG4iW0iZI受到29点伤害
 
-m6SPYplZoz发起攻击, PzFvkx7lP7受到111点伤害
+ WmG4iW0iZI被击倒了, WmG4iW0iZI使用护身符抵挡了一次死亡, WmG4iW0iZI回复体力10点
 
-PzFvkx7lP7发起攻击, WmG4iW0iZI受到98点伤害
+WmG4iW0iZI发起攻击, m6SPYplZoz受到70点伤害
 
-m6SPYplZoz发起攻击, WmG4iW0iZI受到55点伤害
+m6SPYplZoz发起攻击, WmG4iW0iZI受到85点伤害
 
-WmG4iW0iZI被击倒了
-
-PzFvkx7lP7使用治愈魔法, PzFvkx7lP7回复体力124点
-
-PzFvkx7lP7发起攻击, m6SPYplZoz回避了攻击
-
-m6SPYplZoz发起攻击, PzFvkx7lP7受到37点伤害
-
-PzFvkx7lP7发起攻击, m6SPYplZoz受到51点伤害
-
-m6SPYplZoz发起攻击, PzFvkx7lP7受到68点伤害
-
-m6SPYplZoz使用雷击术
-
-PzFvkx7lP7受到38点伤害
-
-PzFvkx7lP7受到37点伤害
-
-PzFvkx7lP7受到13点伤害
-
-PzFvkx7lP7受到22点伤害
-
-PzFvkx7lP7受到21点伤害
-
-PzFvkx7lP7受到13点伤害
-
-PzFvkx7lP7被击倒了"####;
+ WmG4iW0iZI被击倒了"####;
     let (raw_input, expected_lines) = parse_embedded_fight_case(
         CASE,
         "sampled case-12 must contain a blank separator between input and trace",
@@ -373,7 +347,7 @@ jcy0qZvM58发起攻击, zCqAbiIWgv受到40点伤害
 
 LTfpktRhRR发起攻击, jcy0qZvM58受到124点伤害
 
-jcy0qZvM58被击倒了
+ jcy0qZvM58被击倒了
 
 幻影发起攻击, gKDx7bsm2Z受到94点伤害
 
@@ -383,7 +357,7 @@ zCqAbiIWgv发起攻击, fIF34rkasK受到19点伤害
 
 gKDx7bsm2Z发起攻击, fIF34rkasK受到46点伤害
 
-fIF34rkasK被击倒了
+ fIF34rkasK被击倒了
 
 fIF34rkasK发起攻击, gKDx7bsm2Z受到40点伤害
 
@@ -393,7 +367,7 @@ gKDx7bsm2Z发起攻击, LTfpktRhRR回避了攻击
 
 幻影使用附体, LTfpktRhRR进入狂暴状态
 
-幻影消失了
+ 幻影消失了
 
 zCqAbiIWgv发起攻击, LTfpktRhRR受到62点伤害
 
@@ -401,7 +375,7 @@ fIF34rkasK发起攻击, gKDx7bsm2Z受到76点伤害
 
 LTfpktRhRR发起狂暴攻击, fIF34rkasK受到72点伤害
 
-fIF34rkasK被击倒了
+ fIF34rkasK被击倒了
 
 zCqAbiIWgv使用治愈魔法, zCqAbiIWgv回复体力63点
 
@@ -411,11 +385,15 @@ zCqAbiIWgv使用治愈魔法, zCqAbiIWgv回复体力72点
 
 LTfpktRhRR发起狂暴攻击, gKDx7bsm2Z受到75点伤害
 
-gKDx7bsm2Z被击倒了
+ gKDx7bsm2Z被击倒了
 
-zCqAbiIWgv发起攻击, LTfpktRhRR受到113点伤害
+zCqAbiIWgv使用治愈魔法, zCqAbiIWgv回复体力56点
 
-LTfpktRhRR被击倒了"####;
+LTfpktRhRR发起狂暴攻击, LTfpktRhRR受到63点伤害
+
+zCqAbiIWgv发起攻击, LTfpktRhRR受到49点伤害
+
+ LTfpktRhRR被击倒了"####;
     let (raw_input, expected_lines) = parse_embedded_fight_case(
         CASE,
         "sampled case-14 must contain a blank separator between input and trace",
@@ -533,13 +511,13 @@ WxDNynGfG7使用冰冻术, BQfPHVmVNP受到40点伤害, BQfPHVmVNP被冰冻了
 
 jFpq8Wxd1S使用雷击术
 
-Ja7D2kEICH受到42点伤害
+ Ja7D2kEICH受到42点伤害
 
-Ja7D2kEICH的潜行被识破
+ Ja7D2kEICH的潜行被识破
 
-Ja7D2kEICH受到47点伤害
+ Ja7D2kEICH受到47点伤害
 
-Ja7D2kEICH受到29点伤害
+ Ja7D2kEICH受到29点伤害
 
 Qa2SeIjNn5发起攻击, Ja7D2kEICH受到95点伤害
 
@@ -557,7 +535,7 @@ Qa2SeIjNn5发起攻击, jFpq8Wxd1S受到94点伤害
 
 WxDNynGfG7发起攻击, Qa2SeIjNn5受到115点伤害
 
-Qa2SeIjNn5被击倒了
+ Qa2SeIjNn5被击倒了
 
 BQfPHVmVNP发起攻击, WxDNynGfG7受到41点伤害
 
@@ -565,19 +543,17 @@ Ja7D2kEICH发起攻击, BQfPHVmVNP受到85点伤害
 
 jFpq8Wxd1S发起攻击, Ja7D2kEICH受到116点伤害
 
-Ja7D2kEICH被击倒了
+ Ja7D2kEICH被击倒了
 
 WxDNynGfG7发起攻击, jFpq8Wxd1S受到70点伤害
 
-jFpq8Wxd1S被击倒了
+ jFpq8Wxd1S被击倒了
 
-BQfPHVmVNP发起攻击, WxDNynGfG7受到58点伤害
+BQfPHVmVNP发起攻击, WxDNynGfG7受到63点伤害
 
-WxDNynGfG7发起攻击, BQfPHVmVNP回避了攻击
+WxDNynGfG7发动会心一击, BQfPHVmVNP受到120点伤害
 
-BQfPHVmVNP发起攻击, WxDNynGfG7受到49点伤害
-
-WxDNynGfG7被击倒了"####;
+ BQfPHVmVNP被击倒了"####;
     let (raw_input, expected_lines) = parse_embedded_fight_case(
         CASE,
         "sampled case-16 must contain a blank separator between input and trace",

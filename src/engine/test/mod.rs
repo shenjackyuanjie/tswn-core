@@ -355,7 +355,7 @@ mod runner {
     }
 
     #[test]
-    fn help_vs_aaaaa_should_match_right_trace_step_by_step() {
+    fn case_17() {
         let mut runner = runners::Runner::new_from_namerena_raw("help\naaaaa".to_string()).unwrap();
         let (events, guard) = collect_replay_events(&mut runner, 256, false);
 
