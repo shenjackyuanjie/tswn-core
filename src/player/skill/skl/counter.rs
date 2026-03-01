@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::player::{
     OnDamageFunc, PlrId,
@@ -96,4 +99,12 @@ impl SkillTrait for CounterSkill {
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage] }
 }
 
-fn on_counter(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
+fn on_counter(
+    _caster: PlrId,
+    _target: PlrId,
+    _dmg: i32,
+    _r: &mut RC4,
+    _updates: &mut RunUpdates,
+    _storage: &Arc<Storage>,
+) {
+}

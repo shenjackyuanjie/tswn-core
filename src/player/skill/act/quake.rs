@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
@@ -77,4 +80,12 @@ impl SkillTrait for QuakeSkill {
     }
 }
 
-fn on_quake(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
+fn on_quake(
+    _caster: PlrId,
+    _target: PlrId,
+    _dmg: i32,
+    _r: &mut RC4,
+    _updates: &mut RunUpdates,
+    _storage: &Arc<Storage>,
+) {
+}

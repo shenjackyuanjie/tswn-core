@@ -1,7 +1,7 @@
 use std::any::Any;
-use std::cell::Cell;
 use std::sync::Arc;
 
+use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
@@ -9,16 +9,6 @@ use crate::player::{
     state_tag,
 };
 use crate::rc4::RC4;
-
-thread_local! {
-    static FIRE_CB_STORAGE: Cell<*const crate::engine::storage::Storage> = const { Cell::new(std::ptr::null()) };
-}
-
-pub(crate) fn enter_fire_cb(storage: &Arc<crate::engine::storage::Storage>) {
-    FIRE_CB_STORAGE.with(|slot| slot.set(Arc::as_ptr(storage)));
-}
-
-pub(crate) fn leave_fire_cb() { FIRE_CB_STORAGE.with(|slot| slot.set(std::ptr::null())); }
 
 /// 火状态（参考 Dart `FireState`）。
 #[derive(Clone, Copy, Debug, Default)]
@@ -69,25 +59,25 @@ impl SkillTrait for FireSkill {
 
         args.2.add(RunUpdate::new("[0]使用[火球术]", args.0, target_id, 1));
 
-        enter_fire_cb(args.3);
         let _ = args
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get mutable target in storage")
             .attacked(atp, true, args.0, on_fire as OnDamageFunc, args.1, args.2, args.3);
-        leave_fire_cb();
     }
 }
 
-pub(crate) fn on_fire(_caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, _updates: &mut RunUpdates) {
+pub(crate) fn on_fire(
+    _caster: PlrId,
+    target: PlrId,
+    dmg: i32,
+    r: &mut RC4,
+    _updates: &mut RunUpdates,
+    storage: &Arc<Storage>,
+) {
     if dmg <= 0 {
         return;
     }
-    let storage_ptr = FIRE_CB_STORAGE.with(|slot| slot.get());
-    if storage_ptr.is_null() {
-        return;
-    }
-    let storage = unsafe { &*storage_ptr };
     let Some(target_plr) = storage.just_get_player_mut(target) else {
         return;
     };

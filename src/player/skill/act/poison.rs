@@ -1,5 +1,7 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
+use std::sync::Arc;
 
+use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
@@ -9,7 +11,6 @@ use crate::player::{
 use crate::rc4::RC4;
 
 thread_local! {
-    static POISON_CB_STORAGE: Cell<*const crate::engine::storage::Storage> = const { Cell::new(std::ptr::null()) };
     static POISON_CB_ATP: RefCell<Option<f64>> = const { RefCell::new(None) };
 }
 
@@ -42,7 +43,6 @@ impl SkillTrait for PoisonSkill {
             .expect("cannot get poison caster from storage")
             .get_at(true, args.1);
         args.2.add(RunUpdate::new("[0][投毒]", args.0, target_id, 1));
-        POISON_CB_STORAGE.with(|slot| slot.set(std::sync::Arc::as_ptr(args.3)));
         POISON_CB_ATP.with(|slot| *slot.borrow_mut() = None);
         let dmg = args
             .3
@@ -50,7 +50,6 @@ impl SkillTrait for PoisonSkill {
             .expect("cannot get poison target from storage")
             .attacked(atp, true, args.0, on_poison as OnDamageFunc, args.1, args.2, args.3);
         let poison_atp = POISON_CB_ATP.with(|slot| slot.borrow_mut().take());
-        POISON_CB_STORAGE.with(|slot| slot.set(std::ptr::null()));
         if dmg <= 4 {
             return;
         }
@@ -148,16 +147,18 @@ impl StateTrait for PoisonState {
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
-fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut RunUpdates) {
+fn on_poison(
+    caster: PlrId,
+    target: PlrId,
+    dmg: i32,
+    r: &mut RC4,
+    updates: &mut RunUpdates,
+    storage: &Arc<Storage>,
+) {
     let _ = (target, updates);
     if dmg <= 4 {
         return;
     }
-    let storage_ptr = POISON_CB_STORAGE.with(|slot| slot.get());
-    if storage_ptr.is_null() {
-        return;
-    }
-    let storage = unsafe { &*storage_ptr };
     let Some(caster_plr) = storage.get_player(&caster) else {
         return;
     };

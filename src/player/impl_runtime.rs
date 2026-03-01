@@ -878,7 +878,7 @@ impl Player {
         let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
         update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
         updates.add(update);
-        on_damage(caster, self.as_ptr(), dmg, randomer, updates);
+        on_damage(caster, self.as_ptr(), dmg, randomer, updates, storage);
         self.on_damaged(dmg, old_hp, caster, randomer, updates, storage)
     }
 

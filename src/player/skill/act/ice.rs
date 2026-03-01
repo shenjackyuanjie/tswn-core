@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     MOVE_POINT_THRESHOLD, OnDamageFunc, PlrId, StateTrait,
@@ -113,4 +116,12 @@ impl StateTrait for IceState {
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
-fn on_ice(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
+fn on_ice(
+    _caster: PlrId,
+    _target: PlrId,
+    _dmg: i32,
+    _r: &mut RC4,
+    _updates: &mut RunUpdates,
+    _storage: &Arc<Storage>,
+) {
+}

@@ -35,7 +35,15 @@ mod tests {
     use crate::player::OnDamageFunc;
     use crate::rc4::RC4;
 
-    fn dummy_on_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
+    fn dummy_on_damage(
+        _caster: PlrId,
+        _target: PlrId,
+        _dmg: i32,
+        _r: &mut RC4,
+        _updates: &mut RunUpdates,
+        _storage: &std::sync::Arc<Storage>,
+    ) {
+    }
 
     #[test]
     fn none_skill_is_noop() {

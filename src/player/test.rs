@@ -116,7 +116,15 @@ fn player_raw_types() {
     assert_eq!(player.player_type, PlayerType::Boost);
 }
 
-fn noop_on_damage(_: PlrId, _: PlrId, _: i32, _: &mut RC4, _: &mut RunUpdates) {}
+fn noop_on_damage(
+    _: PlrId,
+    _: PlrId,
+    _: i32,
+    _: &mut RC4,
+    _: &mut RunUpdates,
+    _: &std::sync::Arc<Storage>,
+) {
+}
 
 #[test]
 fn check_move_threshold_matches_dart() {

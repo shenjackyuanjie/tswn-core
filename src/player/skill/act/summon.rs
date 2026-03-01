@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlayerStateStore, PlayerType, PlrId,
@@ -167,13 +170,11 @@ impl SkillTrait for SummonExplodeSkill {
             owner.status.hp = 0;
             old_hp
         };
-        super::fire::enter_fire_cb(args.3);
         let _dmg = args
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get mutable summon explode target from storage")
             .attacked(atp, true, args.0, super::fire::on_fire as OnDamageFunc, args.1, args.2, args.3);
-        super::fire::leave_fire_cb();
         args.3
             .just_get_player_mut(args.0)
             .expect("cannot get mutable summon explode owner from storage")
@@ -210,4 +211,12 @@ impl SkillTrait for SummonShareDamageSkill {
     fn proc_kinds(&self) -> &[crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PostDamage] }
 }
 
-fn on_summon_share_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
+fn on_summon_share_damage(
+    _caster: PlrId,
+    _target: PlrId,
+    _dmg: i32,
+    _r: &mut RC4,
+    _updates: &mut RunUpdates,
+    _storage: &Arc<Storage>,
+) {
+}

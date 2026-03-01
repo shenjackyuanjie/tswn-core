@@ -104,5 +104,6 @@ fn on_heal(
     _dmg: i32,
     _r: &mut crate::rc4::RC4,
     _updates: &mut crate::engine::update::RunUpdates,
+    _storage: &std::sync::Arc<crate::engine::storage::Storage>,
 ) {
 }

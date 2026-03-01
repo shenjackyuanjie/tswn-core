@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     ForcedAttackConfig, ForcedAttackScoreMode, ForcedAttackTargetDomain, OnDamageFunc, PlrId, StateTrait,
@@ -186,4 +189,12 @@ impl StateTrait for BerserkState {
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
-fn on_berserk(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates) {}
+fn on_berserk(
+    _caster: PlrId,
+    _target: PlrId,
+    _dmg: i32,
+    _r: &mut RC4,
+    _updates: &mut RunUpdates,
+    _storage: &Arc<Storage>,
+) {
+}
