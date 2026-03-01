@@ -70,6 +70,7 @@ impl SkillTrait for ShadowSkill {
         let possess_level = ((shadow.name_base[64..68].iter().copied().min().unwrap_or(0) as i32 - 10) / 2 + 36).max(0) as u32;
         let mut skills = SkillStorage::new();
         skills.add_skill(Skill::new(possess_level, super::possess::PossessSkill::box_new()));
+        skills.boost_last();
         shadow.skills = skills;
         shadow.skills.update_proc();
 
