@@ -41,6 +41,10 @@ def parse_cargo_test_output(output: str) -> dict:
     """
     解析 cargo test 输出
     返回: {test_name: {"status": "FAILED"/"PASSED", "idx": int}}
+    增强点:
+      - 跟踪最近的 panic/thread header（如 "---- ... stdout ----" 或 "thread '...'"），
+        这样 mismatch 行如果没有内联 thread 信息也能关联到对应的测试。
+      - 保留原有的基于 case_name 的回退匹配逻辑。
     """
     results = {}
 
@@ -80,34 +84,66 @@ def parse_cargo_test_output(output: str) -> dict:
             # 将其自身作为 key，便于在没有 thread 信息时通过行内容匹配
             case_to_test[name] = name
 
+    # 第二遍扫描，尝试找到 mismatch 行并将 idx 关联到正确的测试。
+    # 通过维护一个 current_thread（由 header 或 thread 行设置）来处理
+    # mismatch 行没有内联 thread 时的情况。
+    current_thread = None
     for line in lines:
+        # header 示例: "---- engine::test::runner::fight_multi_2::fight_multi_2 stdout ----"
+        header_match = re.match(r"^----\s+(.+?)\s+stdout\s+----", line)
+        if header_match:
+            current_thread = header_match.group(1)
+
+        # thread 行示例: "thread 'engine::test::runner::fight_multi_2::fight_multi_2' (70548) panicked at ..."
+        thread_line_match = re.search(r"thread '(.+?)'", line)
+        if thread_line_match:
+            # 更新 current_thread（后续 mismatch 行可以复用）
+            current_thread = thread_line_match.group(1)
+
         if "mismatch at idx=" in line:
             idx_match = re.search(r"mismatch at idx=(\d+)", line)
-            if idx_match:
-                idx = int(idx_match.group(1))
-                thread_match = re.search(r"thread '(.+?)'", line)
-                if thread_match:
-                    test_name = thread_match.group(1)
-                    if test_name in results:
-                        results[test_name]["idx"] = idx
+            if not idx_match:
+                continue
+            idx = int(idx_match.group(1))
+
+            # 优先使用同一行内的 thread 信息（更精确）
+            inline_thread = None
+            inline_tm = re.search(r"thread '(.+?)'", line)
+            if inline_tm:
+                inline_thread = inline_tm.group(1)
+
+            found = False
+            # 先尝试 inline thread
+            if inline_thread and inline_thread in results:
+                results[inline_thread]["idx"] = idx
+                found = True
+
+            # 再尝试最近出现的 header/thread
+            if not found and current_thread and current_thread in results:
+                results[current_thread]["idx"] = idx
+                found = True
+
+            if found:
+                continue
+
+            # 先尝试旧有的 sampled/fight 匹配 (兼容旧格式)
+            case_match = re.search(r"(sampled case-?\d+|fight_large|large_full|large_\d{2})", line)
+            if case_match:
+                case_key = case_match.group(1)
+                if case_key.startswith("sampled "):
+                    normalized_key = case_key.replace("case-", "case_").replace("sampled ", "sampled_large_")
                 else:
-                    # 先尝试旧有的 sampled/fight 匹配
-                    case_match = re.search(r"(sampled case-?\d+|fight_large|large_full|large_\d{2})", line)
-                    if case_match:
-                        case_key = case_match.group(1)
-                        if case_key.startswith("sampled "):
-                            normalized_key = case_key.replace("case-", "case_").replace("sampled ", "sampled_large_")
-                        else:
-                            normalized_key = case_key
-                        test_name = case_to_test.get(normalized_key)
-                        if test_name and test_name in results:
-                            results[test_name]["idx"] = idx
-                            continue
-                    # 如果行中直接包含我们关注的测试名，也记录 idx
-                    for direct_name in _direct_tests:
-                        if direct_name in line and direct_name in results:
-                            results[direct_name]["idx"] = idx
-                            break
+                    normalized_key = case_key
+                test_name = case_to_test.get(normalized_key)
+                if test_name and test_name in results:
+                    results[test_name]["idx"] = idx
+                    continue
+
+            # 如果行中直接包含我们关注的测试名，也记录 idx（例如 small_seed、simple_fight 等）
+            for direct_name in _direct_tests:
+                if direct_name in line and direct_name in results:
+                    results[direct_name]["idx"] = idx
+                    break
 
     return results
 
