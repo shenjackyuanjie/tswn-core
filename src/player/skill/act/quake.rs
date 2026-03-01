@@ -80,12 +80,4 @@ impl SkillTrait for QuakeSkill {
     }
 }
 
-fn on_quake(
-    _caster: PlrId,
-    _target: PlrId,
-    _dmg: i32,
-    _r: &mut RC4,
-    _updates: &mut RunUpdates,
-    _storage: &Arc<Storage>,
-) {
-}
+fn on_quake(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}

@@ -567,8 +567,6 @@ WxDNynGfG7发动会心一击, BQfPHVmVNP受到120点伤害
     assert_trace_with_context("sampled case-16", &actual_lines, &expected_lines);
 }
 
-
-
 #[test]
 fn case_17() {
     let expected: Vec<String> = vec![

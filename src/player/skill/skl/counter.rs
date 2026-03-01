@@ -99,12 +99,4 @@ impl SkillTrait for CounterSkill {
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage] }
 }
 
-fn on_counter(
-    _caster: PlrId,
-    _target: PlrId,
-    _dmg: i32,
-    _r: &mut RC4,
-    _updates: &mut RunUpdates,
-    _storage: &Arc<Storage>,
-) {
-}
+fn on_counter(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}

@@ -189,12 +189,4 @@ impl AssassinateSkill {
     }
 }
 
-fn on_assassinate(
-    _caster: PlrId,
-    _target: PlrId,
-    _dmg: i32,
-    _r: &mut RC4,
-    _updates: &mut RunUpdates,
-    _storage: &Arc<Storage>,
-) {
-}
+fn on_assassinate(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}

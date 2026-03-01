@@ -55,14 +55,7 @@ impl SkillTrait for AbsorbSkill {
     }
 }
 
-fn on_absorb(
-    caster: PlrId,
-    _target: PlrId,
-    dmg: i32,
-    _r: &mut RC4,
-    updates: &mut RunUpdates,
-    storage: &Arc<Storage>,
-) {
+fn on_absorb(caster: PlrId, _target: PlrId, dmg: i32, _r: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
     if dmg <= 0 {
         return;
     }
