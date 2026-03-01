@@ -43,13 +43,21 @@ impl SkillTrait for HideSkill {
         };
         if owner_active && alive_allies > 1 && args.1.r63() < level {
             self.on_update_state = Some(());
+            args.3
+                .just_get_player_mut(args.0)
+                .expect("cannot get hide owner from storage")
+                .update_states();
             args.2.add(RunUpdate::new("[0]发动[隐匿]", args.0, args.0, 10));
         }
     }
 
-    fn pre_action(&mut self, _args: SkillArgs) {
+    fn pre_action(&mut self, args: SkillArgs) {
         if self.on_update_state.is_some() {
             self.on_update_state = None;
+            args.3
+                .just_get_player_mut(args.0)
+                .expect("cannot get hide owner from storage")
+                .update_states();
         }
     }
 
