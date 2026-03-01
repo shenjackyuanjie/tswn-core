@@ -105,7 +105,7 @@ impl SkillTrait for CloneSkill {
         }
         let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
         if cloned.skills.skill.len() > 23 {
-            cloned.skills.skill_by_idx_mut(23).set_level(cloned_clone_level.max(1));
+            cloned.skills.skill_by_id_mut(23).set_level(cloned_clone_level.max(1));
         }
         cloned.skills.update_proc();
 
