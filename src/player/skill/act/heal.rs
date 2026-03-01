@@ -2,8 +2,8 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
     skill::{
-        berserk::BerserkState, charm::CharmState, ice::IceState, poison::PoisonState, slow::SlowState, SkillArgs, SkillExt,
-        SkillTargetDomain, SkillTrait,
+        SkillArgs, SkillExt, SkillTargetDomain, SkillTrait, berserk::BerserkState, charm::CharmState, ice::IceState,
+        poison::PoisonState, slow::SlowState,
     },
 };
 
