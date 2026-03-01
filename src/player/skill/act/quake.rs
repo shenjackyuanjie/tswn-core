@@ -40,17 +40,6 @@ impl SkillTrait for QuakeSkill {
 
     fn select_target_count(&self, smart: bool) -> usize { if smart { self.sel_count_smart } else { self.sel_count } }
 
-    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
-        let Some(target_plr) = args.3.get_player(&target) else {
-            return f64::MIN;
-        };
-        if smart {
-            target_plr.get_status().hp as f64
-        } else {
-            args.1.rFFFF() as f64
-        }
-    }
-
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
