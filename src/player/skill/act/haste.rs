@@ -38,11 +38,7 @@ impl SkillTrait for HasteSkill {
         if target_plr.get_status().hp < 60 {
             return false;
         }
-        if let Some(haste) = target_plr.get_state::<HasteState>()
-            && (haste.step + 1) * 60 > target_plr.get_status().hp
-        {
-            return false;
-        }
+        // 对齐 JS：疾走可以在已有疾走状态时继续续时，这里不按 step/hp 比例额外拒绝目标。
         if is_combat_minion(target_plr) {
             return false;
         }

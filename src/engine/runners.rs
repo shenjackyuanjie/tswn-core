@@ -353,6 +353,24 @@ impl EngineCore {
             Self::debug_world_state("after_dead_remove", world, storage);
         }
 
+        // 2.5) 同步复活：把已复活但已从 round/alives 移除的实体加回世界。
+        let mut revived_ids: Vec<PlrId> = Vec::new();
+        for group in &world.groups {
+            for id in group {
+                if world.alives.contains(id) {
+                    continue;
+                }
+                let revived = storage.get_player(id).map(|p| p.alive()).unwrap_or(false);
+                if revived && !revived_ids.contains(id) {
+                    revived_ids.push(*id);
+                }
+            }
+        }
+        for id in revived_ids {
+            world.revive_player(id, id);
+            Self::debug_world_state("after_revive_sync", world, storage);
+        }
+
         // 3) 处理 pending spawns
         let pending_spawns = storage.take_pending_spawns();
         for pending in pending_spawns {
