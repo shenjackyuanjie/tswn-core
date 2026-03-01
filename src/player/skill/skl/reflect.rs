@@ -29,7 +29,13 @@ impl SkillTrait for ReflectSkill {
         on_damage: &OnDamageFunc,
         args: SkillArgs,
     ) -> f64 {
-        if caster == args.0 {
+        // JS: if (caster.dead) return atp; dead 仅由 hp<=0 判定。
+        if args
+            .3
+            .get_player(&caster)
+            .map(|p| p.get_status().hp <= 0)
+            .unwrap_or(true)
+        {
             return atp;
         }
         let reflect_atp = {
