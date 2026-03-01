@@ -1,6 +1,8 @@
 import random
 import string
 
+counter = 0
+
 def generate_random_line(length=10):
     """生成一行随机ASCII字符"""
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
@@ -8,11 +10,13 @@ def generate_random_line(length=10):
 def generate_paragraph(lines=5, line_length=10):
     """生成一个段落"""
     paragraph = []
+    global counter
     for i in range(lines):
-        paragraph.append(f"{i}_{generate_random_line(line_length)}")
+        paragraph.append(f"{counter}_{i}_{generate_random_line(line_length)}")
+    counter += 1
     return '\n'.join(paragraph)
 
-def generate_text(paragraphs=5, lines_per_paragraph=10, line_length=10):
+def generate_text(paragraphs=10, lines_per_paragraph=5, line_length=10):
     """生成完整的文本"""
     text = []
     for i in range(paragraphs):
