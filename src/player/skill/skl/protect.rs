@@ -51,19 +51,13 @@ impl StateTrait for ProtectState {
                 break;
             };
             let link = self.protect_from[idx];
-            let protector_alive = storage.get_player(&link.owner).map(|p| p.alive()).unwrap_or(false);
-            let protector_group = if protector_alive {
-                effective_group(storage, link.owner)
-            } else {
-                None
-            };
+            let protector_group = effective_group(storage, link.owner);
             let target_group = effective_group(storage, owner);
             let same_group = protector_group == target_group;
 
-            let trigger_ok = if same_group { randomer.r127() < link.level } else { false };
+            let trigger_ok = same_group && randomer.r127() < link.level;
             let protector_ready = if trigger_ok {
-                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
-                protector.mp_ready(randomer)
+                storage.just_get_player_mut(link.owner).map(|protector| protector.mp_ready(randomer)).unwrap_or(false)
             } else {
                 false
             };

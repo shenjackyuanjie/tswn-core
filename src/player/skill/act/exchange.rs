@@ -24,6 +24,8 @@ impl SkillTrait for ExchangeSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
+    fn post_act_level(&self, level: u32) -> u32 { (level + 1) >> 1 }
+
     fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
         let Some(owner) = args.3.get_player(&args.0) else {
             return false;
