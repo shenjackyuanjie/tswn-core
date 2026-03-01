@@ -1,7 +1,7 @@
 # 测试失败清单（2026-03-01）
 
 本文件仅保留当前运行 `cargo test` 后仍未通过的测试用例清单，便于聚焦修复工作。
-最近一次运行命令：`cargo test -- --nocapture`（在本仓库根目录下执行），结果为 70 通过，10 失败。
+最近一次运行命令：`cargo test -- --nocapture`（在本仓库根目录下执行），结果为 72 通过，8 失败。
 
 失败用例（按测试套件/用例名列出）：
 
@@ -9,14 +9,12 @@
 | --- | ---: | ---: | ---: | --- | --- |
 | `engine::test::runner::large_01_10::large_07` | 53 | 92 | 87 | 行动顺序、目标和伤害值均不同（0伤害 vs 65伤害） | `test/07.md` |
 | `engine::test::runner::large_01_10::large_09` | 14 | 78 | 77 | 同一攻击伤害数值不一致（110 vs 63伤害） | `test/09.md` |
-| `engine::test::runner::large_11_17::large_12` | 12 | 33 | 46 | 普通攻击被替换为冰冻术，链式偏移 | `test/12.md` |
 | `engine::test::runner::large_18_22::large_18` | 35 | 57 | 58 | 攻击被替换为分身技能，后续事件错位 | `test/18.md` |
 | `engine::test::runner::large_23_30::large_24` | 80 | 84 | 83 | 攻击命中判定差异（命中 vs 回避） | `test/24.md` |
 | `engine::test::runner::large_23_30::large_26` | 16 | 93 | 86 | 目标选择差异，分身单位被错误选为目标 | `test/26.md` |
 | `engine::test::runner::large_23_30::large_28` | 10 | 63 | 84 | 行动顺序和技能选择差异，诅咒提前触发 | `test/28.md` |
 | `engine::test::runner::large_23_30::large_29` | 31 | 72 | 95 | 狂暴技能提前触发，目标选择差异 | `test/29.md` |
-| `engine::test::runner::large_23_30::large_30` | 63 | 82 | 80 | 铁壁解除与攻击行动顺序差异 | `test/30.md` |
-| `engine::test::runner::fight_large::large_full` | 135 | 677 | 695 | 瘟疫技能命中判定差异（回避 vs 百分比伤害） | `test/large.md` |
+| `engine::test::runner::fight_large::large_full` | 135 | 677 | 696 | 瘟疫技能命中判定差异（回避 vs 百分比伤害） | `test/large.md` |
 
 说明与建议
 1. 本表仅包含仍然失败的测试项；之前已修复或通过的测试项已从此表中移除，便于集中精力处理当前问题。
