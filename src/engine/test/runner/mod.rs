@@ -6,7 +6,7 @@
     mod large_01_10;
     mod large_11_17;
     mod large_18_22;
-    mod large_23_25;
+    mod large_23_30;
     mod simple;
     mod small;
 
