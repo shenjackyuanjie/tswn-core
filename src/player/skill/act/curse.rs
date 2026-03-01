@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
-    OnDamageFunc, PlrId, StateTrait,
+    OnDamageFunc, PlayerType, PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTrait},
     state_tag,
 };
@@ -140,7 +140,6 @@ impl SkillTrait for CurseSkill {
                 multiply: 2,
             });
         }
-        args.2.add(RunUpdate::new("[1]被[诅咒]了", args.0, target_id, 60));
     }
 }
 
@@ -191,4 +190,15 @@ impl StateTrait for CurseState {
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
-fn on_curse(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}
+fn on_curse(caster: PlrId, target: PlrId, dmg: i32, _r: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
+    if dmg <= 0 {
+        return;
+    }
+    let Some(target_plr) = storage.get_player(&target) else {
+        return;
+    };
+    if target_plr.get_status().hp <= 0 || matches!(target_plr.player_type, PlayerType::Boss | PlayerType::Boost) {
+        return;
+    }
+    updates.add(RunUpdate::new("[1]被[诅咒]了", caster, target, 60));
+}
