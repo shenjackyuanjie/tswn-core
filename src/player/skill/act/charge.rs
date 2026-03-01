@@ -57,7 +57,7 @@ impl SkillTrait for ChargeSkill {
         owner.set_mp(owner.mp() + 32);
     }
 
-    fn post_action(&mut self, _args: SkillArgs) {
+    fn post_action(&mut self, args: SkillArgs) {
         if self.step <= 0 {
             return;
         }
@@ -65,6 +65,10 @@ impl SkillTrait for ChargeSkill {
         if self.step <= 0 {
             self.on_post_action = None;
             self.on_update_state = None;
+            args.3
+                .just_get_player_mut(args.0)
+                .expect("cannot get charge owner from storage")
+                .update_states();
         }
     }
 
