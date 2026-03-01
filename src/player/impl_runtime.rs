@@ -708,7 +708,10 @@ impl Player {
 
     pub(super) fn p_cmp(&self, other: &Self) -> std::cmp::Ordering {
         match self.sort_int.cmp(&other.sort_int) {
-            Ordering::Equal => self.id_key_name().cmp(&other.id_key_name()),
+            Ordering::Equal => match self.id_key_name().cmp(&other.id_key_name()) {
+                Ordering::Equal => self.id.cmp(&other.id),
+                ord => ord,
+            },
             ord => ord,
         }
     }

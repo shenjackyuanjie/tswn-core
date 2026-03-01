@@ -29,7 +29,7 @@ impl SkillTrait for ReviveSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyDead }
+    fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyAny }
 
     fn valid_target_with_level(&self, _level: u32, target: PlrId, _smart: bool, args: SkillArgs) -> bool {
         let Some(target_plr) = args.3.get_player(&target) else {
