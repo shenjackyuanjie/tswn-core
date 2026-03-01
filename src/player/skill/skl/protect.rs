@@ -57,7 +57,10 @@ impl StateTrait for ProtectState {
 
             let trigger_ok = same_group && randomer.r127() < link.level;
             let protector_ready = if trigger_ok {
-                storage.just_get_player_mut(link.owner).map(|protector| protector.mp_ready(randomer)).unwrap_or(false)
+                storage
+                    .just_get_player_mut(link.owner)
+                    .map(|protector| protector.mp_ready(randomer))
+                    .unwrap_or(false)
             } else {
                 false
             };
