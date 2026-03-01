@@ -2,7 +2,7 @@ use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
     skill::act::charm::CharmState,
-    skill::act::minion::MinionRuntimeState,
+    skill::act::minion::is_combat_minion,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
@@ -138,14 +138,8 @@ impl ProtectSkill {
             .into_iter()
             .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
             .collect::<Vec<PlrId>>();
-        if alive_group.is_empty() {
-            return None;
-        }
-        let pending_spawns = args.3.pending_spawn_count_for_owner(args.0);
-        let mut candidates = alive_group.iter().copied().map(Some).collect::<Vec<Option<PlrId>>>();
-        if pending_spawns > 0 {
-            candidates.extend(std::iter::repeat(None).take(pending_spawns));
-        }
+        let mut candidates = alive_group;
+        candidates.extend(args.3.pending_spawn_ids_for_owner(args.0));
         if candidates.is_empty() {
             return None;
         }
@@ -155,9 +149,9 @@ impl ProtectSkill {
             .expect("cannot get protect owner from storage")
             .get_status()
             .wisdom
-            .clamp(0, 127) as u32;
+            .max(0) as u32;
         let smart = args.1.r127() < owner_wisdom;
-        let owner_pos = candidates.iter().position(|entry| *entry == Some(args.0));
+        let owner_pos = candidates.iter().position(|entry| *entry == args.0);
 
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::new();
@@ -172,14 +166,11 @@ impl ProtectSkill {
             let Some(idx) = next_idx else {
                 return None;
             };
-            let Some(target_id) = candidates[idx] else {
-                invalid += 1;
-                continue;
-            };
+            let target_id = candidates[idx];
             let valid = args
                 .3
-                .get_player(&target_id)
-                .map(|target| !target.has_state::<MinionRuntimeState>())
+                .get_player_or_pending(&target_id)
+                .map(|target| !is_combat_minion(target))
                 .unwrap_or(false);
             if !valid {
                 invalid += 1;
@@ -203,7 +194,7 @@ impl ProtectSkill {
             .map(|target_id| {
                 let score = args
                     .3
-                    .get_player(&target_id)
+                    .get_player_or_pending(&target_id)
                     .map(|target| {
                         if smart {
                             let hp = target.get_status().hp;
@@ -231,19 +222,22 @@ impl ProtectSkill {
 
     fn unregister_owner(&self, owner: PlrId, target_id: PlrId, args: SkillArgs) {
         let mut clear_state = false;
-        if let Some(target) = args.3.just_get_player_mut(target_id)
+        if let Some(target) = args.3.just_get_player_or_pending_mut(target_id)
             && let Some(state) = target.get_state_mut::<ProtectState>()
         {
             state.protect_from.retain(|entry| entry.owner != owner);
             clear_state = state.protect_from.is_empty();
         }
-        if clear_state && let Some(target) = args.3.just_get_player_mut(target_id) {
+        if clear_state && let Some(target) = args.3.just_get_player_or_pending_mut(target_id) {
             target.clear_state::<ProtectState>();
         }
     }
 
     fn register_owner(&self, owner: PlrId, level: u32, target_id: PlrId, args: SkillArgs) {
-        let target = args.3.just_get_player_mut(target_id).expect("cannot get protect target from storage");
+        let target = args
+            .3
+            .just_get_player_or_pending_mut(target_id)
+            .expect("cannot get protect target from storage or pending spawn");
         if let Some(state) = target.get_state_mut::<ProtectState>() {
             if let Some(entry) = state.protect_from.iter_mut().find(|entry| entry.owner == owner) {
                 entry.level = level;
@@ -261,7 +255,7 @@ impl ProtectSkill {
 
     fn link_registered(owner: PlrId, target_id: PlrId, args: SkillArgs) -> bool {
         args.3
-            .get_player(&target_id)
+            .get_player_or_pending(&target_id)
             .and_then(|target| target.get_state::<ProtectState>())
             .map(|state| state.protect_from.iter().any(|entry| entry.owner == owner))
             .unwrap_or(false)

@@ -100,6 +100,15 @@ impl Storage {
     /// 获取玩家。
     pub fn get_player(&self, ptr: &PlrId) -> Option<&Player> { self.players.get(ptr) }
 
+    pub fn get_player_or_pending(&self, ptr: &PlrId) -> Option<&Player> {
+        self.players.get(ptr).or_else(|| {
+            self.pending_spawns
+                .iter()
+                .find(|pending| pending.player.as_ptr() == *ptr)
+                .map(|pending| &pending.player)
+        })
+    }
+
     /// 获取玩家（不做 Option 检查）。
     pub fn get_player_unchecked(&self, ptr: &PlrId) -> &Player { self.players.get(ptr).expect("cannot get player from storage") }
 
@@ -124,6 +133,23 @@ impl Storage {
             let mut_slf = self as *const Storage as *mut Storage;
             (*mut_slf).players.get_mut(&ptr)
         }
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    pub fn just_get_pending_spawn_player_mut(&self, ptr: PlrId) -> Option<&mut Player> {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            (*mut_slf)
+                .pending_spawns
+                .iter_mut()
+                .find(|pending| pending.player.as_ptr() == ptr)
+                .map(|pending| &mut pending.player)
+        }
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    pub fn just_get_player_or_pending_mut(&self, ptr: PlrId) -> Option<&mut Player> {
+        self.just_get_player_mut(ptr).or_else(|| self.just_get_pending_spawn_player_mut(ptr))
     }
 
     /// 插入技能，并返回技能 ID。
@@ -173,6 +199,21 @@ impl Storage {
 
     pub fn pending_spawn_count_for_owner(&self, owner: PlrId) -> usize {
         self.pending_spawns.iter().filter(|pending| pending.owner == owner).count()
+    }
+
+    pub fn pending_spawn_ids_for_owner(&self, owner: PlrId) -> Vec<PlrId> {
+        self.pending_spawns
+            .iter()
+            .filter(|pending| pending.owner == owner)
+            .map(|pending| pending.player.as_ptr())
+            .collect()
+    }
+
+    pub fn get_pending_spawn_player(&self, ptr: PlrId) -> Option<&Player> {
+        self.pending_spawns
+            .iter()
+            .find(|pending| pending.player.as_ptr() == ptr)
+            .map(|pending| &pending.player)
     }
 
     pub fn queue_remove_player(&self, ptr: PlrId) {
