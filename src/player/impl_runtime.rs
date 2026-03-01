@@ -961,7 +961,19 @@ impl Player {
             }
         }
 
-        if caster != self.as_ptr()
+        let has_enemy_alive = if let Some(ally_group) = storage.group_containing(caster) {
+            storage
+                .all_player_ids()
+                .into_iter()
+                .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
+        } else {
+            storage
+                .all_player_ids()
+                .into_iter()
+                .any(|id| id != caster && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
+        };
+        if has_enemy_alive
+            && caster != self.as_ptr()
             && let Some(killer) = storage.just_get_player_mut(caster)
             && killer.alive()
         {
