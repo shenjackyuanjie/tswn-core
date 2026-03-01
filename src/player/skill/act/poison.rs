@@ -131,7 +131,7 @@ fn on_poison(
         let Some(target_plr) = storage.just_get_player_mut(target) else {
             return;
         };
-        !target_plr.alive() || target_plr.check_immune(state_tag::<PoisonState>(), r)
+        target_plr.get_status().hp <= 0 || target_plr.check_immune(state_tag::<PoisonState>(), r)
     };
     if blocked {
         return;

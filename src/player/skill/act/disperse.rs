@@ -118,6 +118,7 @@ impl SkillTrait for DisperseSkill {
                 .unwrap_or(false);
             let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
             target.clear_positive_states();
+            target.update_states();
             let mp = target.get_status().mp;
             if mp > 64 {
                 target.set_mp(mp - 64);
