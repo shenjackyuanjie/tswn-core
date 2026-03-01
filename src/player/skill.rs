@@ -81,6 +81,11 @@ pub trait SkillTrait: Debug {
     fn pre_action_select_with_level(&mut self, _level: u32, smart: bool, args: SkillArgs) -> bool {
         self.pre_action_select(smart, args)
     }
+    /// preAction 是否清空当前强制动作（对齐 JS preAction 链可返回 null）。
+    fn pre_action_clear_forced(&mut self, _smart: bool, _args: SkillArgs) -> bool { false }
+    fn pre_action_clear_forced_with_level(&mut self, _level: u32, smart: bool, args: SkillArgs) -> bool {
+        self.pre_action_clear_forced(smart, args)
+    }
     /// 行动之后
     fn post_action(&mut self, args: SkillArgs) {}
     fn post_action_with_level(&mut self, _level: u32, args: SkillArgs) { self.post_action(args) }
@@ -424,6 +429,10 @@ impl Skill {
 
     pub fn pre_action_select(&mut self, smart: bool, args: SkillArgs) -> bool {
         self.skill_type.pre_action_select_with_level(self.level, smart, args)
+    }
+
+    pub fn pre_action_clear_forced(&mut self, smart: bool, args: SkillArgs) -> bool {
+        self.skill_type.pre_action_clear_forced_with_level(self.level, smart, args)
     }
 
     pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action_with_level(self.level, args) }

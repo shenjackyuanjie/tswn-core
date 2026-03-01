@@ -32,8 +32,8 @@ impl SkillTrait for CriticalSkill {
         }
         let target_id = targets[0];
         let owner = args.3.get_player(&args.0).expect("cannot get critical owner from storage");
-        let atp0 = owner.get_at(false, args.1) * 1.15;
-        let atp1 = owner.get_at(false, args.1) * 1.2;
+        let atp0 = owner.get_at(false, args.1) * 1.149999976158142;
+        let atp1 = owner.get_at(false, args.1) * 1.2000000476837158;
         let atp2 = owner.get_at(false, args.1) * 1.25;
         let atp = atp0.max(atp1).max(atp2);
         args.2.add(RunUpdate::new("[0]发动[会心一击]", args.0, target_id, 20));
@@ -44,12 +44,4 @@ impl SkillTrait for CriticalSkill {
     }
 }
 
-fn on_critical(
-    _caster: PlrId,
-    _target: PlrId,
-    _dmg: i32,
-    _r: &mut RC4,
-    _updates: &mut RunUpdates,
-    _storage: &Arc<Storage>,
-) {
-}
+fn on_critical(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}

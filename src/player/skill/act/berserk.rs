@@ -107,34 +107,11 @@ impl SkillTrait for BerserkSkill {
             .expect("cannot get berserk caster from storage")
             .get_at(true, args.1);
         args.2.add(RunUpdate::new("[0]使用[狂暴术]", args.0, target_id, 1));
-        let dmg = args
+        let _ = args
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get berserk target from storage")
             .attacked(atp, true, args.0, on_berserk as OnDamageFunc, args.1, args.2, args.3);
-        if dmg <= 0 {
-            return;
-        }
-        let charge_active = args
-            .3
-            .get_player(&args.0)
-            .map(|caster| caster.get_status().at_boost >= 3.0)
-            .unwrap_or(false);
-        let target = args.3.just_get_player_mut(target_id).expect("cannot get berserk target from storage");
-        if !target.alive() || target.check_immune(state_tag::<BerserkState>(), args.1) {
-            return;
-        }
-        if let Some(state) = target.get_state_mut::<BerserkState>() {
-            state.step += 1;
-            if charge_active {
-                state.step += 1;
-            }
-        } else {
-            target.state.set(BerserkState {
-                step: if charge_active { 2 } else { 1 },
-            });
-            args.2.add(RunUpdate::new("[1]进入[狂暴]状态", args.0, target_id, 60));
-        }
     }
 }
 
@@ -189,12 +166,29 @@ impl StateTrait for BerserkState {
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
-fn on_berserk(
-    _caster: PlrId,
-    _target: PlrId,
-    _dmg: i32,
-    _r: &mut RC4,
-    _updates: &mut RunUpdates,
-    _storage: &Arc<Storage>,
-) {
+fn on_berserk(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
+    if dmg <= 0 {
+        return;
+    }
+    let charge_active = storage
+        .get_player(&caster)
+        .map(|caster_plr| caster_plr.get_status().at_boost >= 3.0)
+        .unwrap_or(false);
+    let Some(target_plr) = storage.just_get_player_mut(target) else {
+        return;
+    };
+    if target_plr.get_status().hp <= 0 || target_plr.check_immune(state_tag::<BerserkState>(), r) {
+        return;
+    }
+    if let Some(state) = target_plr.get_state_mut::<BerserkState>() {
+        state.step += 1;
+        if charge_active {
+            state.step += 1;
+        }
+    } else {
+        target_plr.state.set(BerserkState {
+            step: if charge_active { 2 } else { 1 },
+        });
+        updates.add(RunUpdate::new("[1]进入[狂暴]状态", caster, target, 60));
+    }
 }

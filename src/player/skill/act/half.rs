@@ -120,7 +120,7 @@ impl SkillTrait for HalfSkill {
                 )
             })
             .expect("cannot get half target from storage");
-        let mut chance = owner_wisdom + ((360 - target_hp) >> 3);
+        let mut chance = owner_wisdom + ((360 - target_hp) / 8);
         if chance < 0 {
             chance = 0;
         }
@@ -130,7 +130,7 @@ impl SkillTrait for HalfSkill {
             return;
         }
 
-        let mut percent = ((owner_magic - (target_resistance >> 1)) >> 1) + 47;
+        let mut percent = ((owner_magic - (target_resistance / 2)) / 2) + 47;
         if charge_active {
             percent = owner_magic + 50;
         }

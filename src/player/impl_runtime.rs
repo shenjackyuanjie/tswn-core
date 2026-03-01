@@ -40,11 +40,11 @@ impl Player {
             );
         }
         let ptr = self.as_ptr();
-        let forced_skill = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
+        let pre_action_outcome = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
         if debug_this {
             eprintln!(
-                "[action] after pre_action forced={forced_skill:?} rc4=({}, {})",
-                randomer.i, randomer.j
+                "[action] after pre_action forced={:?} rc4=({}, {})",
+                pre_action_outcome.forced_skill, randomer.i, randomer.j
             );
         }
         if self.status.frozed() {
@@ -52,10 +52,15 @@ impl Player {
         }
 
         let mut acted = false;
-        let mut selected_skill_key: Option<usize> = forced_skill;
+        let mut selected_skill_key: Option<usize> = pre_action_outcome.forced_skill;
         let mut selected_targets: Vec<PlrId> = Vec::new();
-        let selected_from_forced_pre_action = forced_skill.is_some();
-        if let Some(forced_attack) = self.state.resolve_action_mode(smart) {
+        let selected_from_forced_pre_action = pre_action_outcome.forced_skill.is_some();
+        let forced_attack = if pre_action_outcome.clear_forced_action {
+            None
+        } else {
+            self.state.resolve_action_mode(smart)
+        };
+        if let Some(forced_attack) = forced_attack {
             self.forced_attack(forced_attack, randomer, updates, storage, targets);
             self.apply_forced_action_states(randomer, updates, storage);
             acted = true;

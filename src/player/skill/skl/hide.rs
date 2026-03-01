@@ -53,6 +53,13 @@ impl SkillTrait for HideSkill {
         }
     }
 
+    fn pre_action_clear_forced(&mut self, _smart: bool, args: SkillArgs) -> bool {
+        args.3
+            .get_player(&args.0)
+            .map(|owner| owner.has_state::<crate::player::skill::berserk::BerserkState>())
+            .unwrap_or(false)
+    }
+
     fn update_state_with_level(&mut self, level: u32, args: SkillArgs) {
         if self.on_update_state.is_none() {
             return;

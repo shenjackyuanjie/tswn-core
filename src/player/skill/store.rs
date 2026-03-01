@@ -8,6 +8,12 @@ use foldhash::{HashMap as FoldHashMap, HashMapExt, HashSet as FoldHashSet, HashS
 /// SkillStorage 内部使用的稳定技能键。
 pub type SkillKey = usize;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PreActionOutcome {
+    pub forced_skill: Option<SkillKey>,
+    pub clear_forced_action: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct SkillStorage {
     pub store: FoldHashMap<SkillKey, Skill>,
@@ -156,17 +162,26 @@ impl SkillStorage {
         step
     }
 
-    pub fn pre_action(&mut self, smart: bool, args: SkillArgs) -> Option<SkillKey> {
+    pub fn pre_action(&mut self, smart: bool, args: SkillArgs) -> PreActionOutcome {
         let keys: Vec<SkillKey> = self.pre_action.clone();
         let mut forced_skill = None;
+        let mut clear_forced_action = false;
         for skill_key in keys.iter() {
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            if skill.pre_action_clear_forced(smart, (args.0, args.1, args.2, args.3)) {
+                forced_skill = None;
+                clear_forced_action = true;
+            }
             skill.pre_action((args.0, args.1, args.2, args.3));
             if forced_skill.is_none() && skill.pre_action_select(smart, (args.0, args.1, args.2, args.3)) {
                 forced_skill = Some(*skill_key);
+                clear_forced_action = false;
             }
         }
-        forced_skill
+        PreActionOutcome {
+            forced_skill,
+            clear_forced_action,
+        }
     }
 
     pub fn post_action(&mut self, args: SkillArgs) {
