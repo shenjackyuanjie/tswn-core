@@ -16,7 +16,7 @@ PROJECT_ROOT = Path("d:/githubs/namer/tswn-core")
 RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
 LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
 CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
-DEFAULT_FILTER = "large_01_10 large_11_17 large_18_22 large_23_30 large_full small_seed"
+DEFAULT_FILTER = "large large_full small_seed"
 
 
 def load_previous_records() -> dict:

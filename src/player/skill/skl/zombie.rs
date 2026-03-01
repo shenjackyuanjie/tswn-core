@@ -24,10 +24,10 @@ impl SkillTrait for ZombieSkill {
     fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.kill_with_level(32, target, args) }
 
     fn kill_with_level(&mut self, level: u32, target: PlrId, args: SkillArgs) -> bool {
-        if args.1.r63() >= level {
+        if args.3.get_player(&target).map(is_combat_minion).unwrap_or(false) {
             return false;
         }
-        if args.3.get_player(&target).map(is_combat_minion).unwrap_or(false) {
+        if args.1.r63() >= level {
             return false;
         }
         let Some((owner_name, owner_clan)) = args.3.get_player(&args.0).map(|owner| (owner.id_name(), owner.clan_name())) else {
