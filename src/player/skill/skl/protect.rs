@@ -1,6 +1,7 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
+    skill::act::charm::CharmState,
     skill::act::minion::MinionRuntimeState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
@@ -17,6 +18,15 @@ pub struct ProtectLink {
 pub struct ProtectState {
     pub target: Option<PlrId>,
     pub protect_from: Vec<ProtectLink>,
+}
+
+fn effective_group(storage: &Arc<crate::engine::storage::Storage>, plr: PlrId) -> Option<Vec<PlrId>> {
+    storage.get_player(&plr).and_then(|player| {
+        player
+            .get_state::<CharmState>()
+            .and_then(|charm| storage.group_containing(charm.group_id).cloned())
+            .or_else(|| storage.group_containing(plr).cloned())
+    })
 }
 
 impl StateTrait for ProtectState {
@@ -36,82 +46,61 @@ impl StateTrait for ProtectState {
         updates: &mut RunUpdates,
         storage: &Arc<crate::engine::storage::Storage>,
     ) -> bool {
-        let links = self.protect_from.clone();
-        let debug_target = std::env::var("TSWN_DEBUG_PROTECT").ok();
-        let debug_this = debug_target
-            .as_deref()
-            .map(|name| storage.get_player(&owner).map(|p| p.id_name() == name).unwrap_or(false))
-            .unwrap_or(false);
-        if debug_this {
-            eprintln!(
-                "[protect_pre_defend] owner={} links={} rc4=({}, {})",
-                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{owner}")),
-                links.len(),
-                randomer.i,
-                randomer.j
-            );
-        }
-        if links.is_empty() {
-            return false;
-        }
-        let mut stale_owners = Vec::new();
-        for link in links {
+        while !self.protect_from.is_empty() {
+            let Some(idx) = randomer.pick(&self.protect_from) else {
+                break;
+            };
+            let link = self.protect_from[idx];
             let protector_alive = storage.get_player(&link.owner).map(|p| p.alive()).unwrap_or(false);
-            if !protector_alive {
-                stale_owners.push(link.owner);
-                continue;
-            }
-            let roll = randomer.r127();
-            if debug_this {
-                eprintln!(
-                    "[protect_pre_defend] link_owner={} level={} roll={} rc4=({}, {})",
-                    storage
-                        .get_player(&link.owner)
-                        .map(|p| p.id_name())
-                        .unwrap_or_else(|| format!("#{}", link.owner)),
-                    link.level,
-                    roll,
-                    randomer.i,
-                    randomer.j
-                );
-            }
-            if roll >= link.level {
-                continue;
-            }
-            let protector_ready = {
+            let protector_group = if protector_alive {
+                effective_group(storage, link.owner)
+            } else {
+                None
+            };
+            let target_group = effective_group(storage, owner);
+            let same_group = protector_group == target_group;
+
+            let trigger_ok = if same_group { randomer.r127() < link.level } else { false };
+            let protector_ready = if trigger_ok {
                 let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
                 protector.mp_ready(randomer)
+            } else {
+                false
             };
-            if !protector_ready {
-                continue;
-            }
-            updates.add(RunUpdate::new("[0][守护][1]", link.owner, owner, 40));
-            let redirected_atp = {
-                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
-                protector.pre_defend(*atp, is_mag, caster, on_damage, randomer, updates, storage)
-            };
-            if redirected_atp == 0.0 {
+
+            if trigger_ok && protector_ready {
+                {
+                    let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
+                    if protector.skills.skill_by_id(26).level() > 0 {
+                        protector.skills.skill_by_id_mut(26).post_action((link.owner, randomer, updates, storage));
+                    }
+                }
+                updates.add(RunUpdate::new("[0][守护][1]", link.owner, owner, 40));
+                let redirected_atp = {
+                    let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
+                    protector.pre_defend(*atp, is_mag, caster, on_damage, randomer, updates, storage)
+                };
+                if redirected_atp == 0.0 {
+                    *atp = 0.0;
+                    return false;
+                }
+                let mut redirected_dmg = {
+                    let protector = storage.get_player(&link.owner).expect("cannot get protect owner from storage");
+                    (redirected_atp * 0.5 / protector.get_df(is_mag) as f64).floor() as i32
+                };
+                redirected_dmg = {
+                    let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
+                    protector.post_defend(redirected_dmg, caster, on_damage, randomer, updates, storage)
+                };
+                storage
+                    .just_get_player_mut(link.owner)
+                    .expect("cannot get protect owner from storage")
+                    .damage(redirected_dmg, caster, on_damage, randomer, updates, storage);
                 *atp = 0.0;
                 return false;
             }
-            let mut redirected_dmg = {
-                let protector = storage.get_player(&link.owner).expect("cannot get protect owner from storage");
-                (redirected_atp * 0.5 / protector.get_df(is_mag) as f64).floor() as i32
-            };
-            redirected_dmg = {
-                let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
-                protector.post_defend(redirected_dmg, caster, on_damage, randomer, updates, storage)
-            };
-            storage
-                .just_get_player_mut(link.owner)
-                .expect("cannot get protect owner from storage")
-                .damage(redirected_dmg, caster, on_damage, randomer, updates, storage);
-            *atp = 0.0;
-            return false;
-        }
 
-        if !stale_owners.is_empty() {
-            self.protect_from.retain(|entry| !stale_owners.contains(&entry.owner));
+            self.protect_from.remove(idx);
         }
         self.protect_from.is_empty()
     }
@@ -133,7 +122,9 @@ impl ProtectSkill {
     pub fn new() -> Self { Self::default() }
 
     fn pick_target(&mut self, _level: u32, args: SkillArgs) -> Option<PlrId> {
-        let group = if let Some(group) = args.3.group_containing(args.0) {
+        let group = if let Some(group) = effective_group(args.3, args.0) {
+            group
+        } else if let Some(group) = args.3.group_containing(args.0) {
             group.clone()
         } else {
             let owner_clan = args.3.get_player(&args.0).expect("cannot get protect owner from storage").clan_name();
@@ -267,6 +258,14 @@ impl ProtectSkill {
             protect_from: vec![ProtectLink { owner, level }],
         });
     }
+
+    fn link_registered(owner: PlrId, target_id: PlrId, args: SkillArgs) -> bool {
+        args.3
+            .get_player(&target_id)
+            .and_then(|target| target.get_state::<ProtectState>())
+            .map(|state| state.protect_from.iter().any(|entry| entry.owner == owner))
+            .unwrap_or(false)
+    }
 }
 
 impl SkillExt for ProtectSkill {
@@ -281,7 +280,13 @@ impl SkillTrait for ProtectSkill {
     fn post_action_with_level(&mut self, level: u32, args: SkillArgs) {
         let next_target = self.pick_target(level, (args.0, args.1, args.2, args.3));
         if self.protect_to == next_target {
-            return;
+            if let Some(target_id) = next_target {
+                if Self::link_registered(args.0, target_id, (args.0, args.1, args.2, args.3)) {
+                    return;
+                }
+            } else {
+                return;
+            }
         }
         if let Some(old_target) = self.protect_to {
             self.unregister_owner(args.0, old_target, (args.0, args.1, args.2, args.3));

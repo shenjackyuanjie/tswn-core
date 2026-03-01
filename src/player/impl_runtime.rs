@@ -788,9 +788,10 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        dmg = self.apply_post_defend_states(dmg, caster, randomer, updates);
-        self.skills
-            .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage))
+        dmg = self
+            .skills
+            .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage));
+        self.apply_post_defend_states(dmg, caster, randomer, updates)
     }
 
     pub fn attacked(
