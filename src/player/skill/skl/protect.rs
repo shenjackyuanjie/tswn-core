@@ -71,8 +71,10 @@ impl StateTrait for ProtectState {
             if trigger_ok && protector_ready {
                 {
                     let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
-                    if protector.skills.skill_by_id(26).level() > 0 {
-                        protector.skills.skill_by_id_mut(26).post_action((link.owner, randomer, updates, storage));
+                    if let Some(protect_skill) = protector.skills.store.get_mut(&26) {
+                        if protect_skill.level() > 0 {
+                            protect_skill.post_action((link.owner, randomer, updates, storage));
+                        }
                     }
                 }
                 updates.add(RunUpdate::new("[0][守护][1]", link.owner, owner, 40));
