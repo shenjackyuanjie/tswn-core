@@ -89,7 +89,10 @@ impl SkillTrait for MergeSkill {
                     owner_skill.set_level(target_level);
                     merged = true;
                 }
-                if should_add_action && !owner.skills.skill.contains(&skill_key) {
+                if should_add_action {
+                    if let Some(pos) = owner.skills.skill.iter().position(|key| *key == skill_key) {
+                        owner.skills.skill.remove(pos);
+                    }
                     owner.skills.skill.push(skill_key);
                 }
             }
