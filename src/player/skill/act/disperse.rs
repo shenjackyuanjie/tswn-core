@@ -4,6 +4,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
+    skill::act::iron::IronState,
     skill::act::minion::is_combat_minion,
     skill::shield::ShieldState,
     skill::{SkillArgs, SkillExt, SkillTrait},
@@ -110,6 +111,11 @@ impl SkillTrait for DisperseSkill {
             .defned(atp, true, args.0, on_disperse as OnDamageFunc, args.1, args.2, args.3);
 
         if dmg > 0 {
+            let had_iron = args
+                .3
+                .get_player(&target_id)
+                .map(|target| target.has_state::<IronState>())
+                .unwrap_or(false);
             let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
             target.clear_positive_states();
             let mp = target.get_status().mp;
@@ -119,6 +125,10 @@ impl SkillTrait for DisperseSkill {
                 target.set_mp(0);
             } else {
                 target.set_mp(mp - 32);
+            }
+            if had_iron {
+                args.2.add(RunUpdate::new_newline());
+                args.2.add(RunUpdate::new("[1]的[铁壁]被打消了", args.0, target_id, 20));
             }
         }
     }
