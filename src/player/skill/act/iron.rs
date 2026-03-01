@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
-use crate::engine::update::RunUpdate;
+use crate::engine::update::{RunUpdate, UpdateType};
 use crate::player::{
     PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
@@ -122,7 +122,14 @@ impl StateTrait for IronState {
             return;
         }
         if *dmg <= self.protect {
-            *dmg = 1;
+            let defended = updates
+                .updates
+                .iter()
+                .rev()
+                .find(|update| !matches!(update.update_type, UpdateType::NextLine))
+                .map(|update| update.message == "[0][防御]" && update.caster == owner && update.target == caster)
+                .unwrap_or(false);
+            *dmg = if defended { 0 } else { 1 };
             return;
         }
 

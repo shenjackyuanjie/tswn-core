@@ -97,6 +97,7 @@ impl SkillTrait for DisperseSkill {
             .get_player(&args.0)
             .expect("cannot get disperse owner from storage")
             .get_at(true, args.1);
+        let target_is_minion = args.3.get_player(&target_id).map(is_combat_minion).unwrap_or(false);
         args.2.add(RunUpdate::new("[0]使用[净化]", args.0, target_id, 20));
 
         {
@@ -108,7 +109,15 @@ impl SkillTrait for DisperseSkill {
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get disperse target from storage")
-            .defned(atp, true, args.0, on_disperse as OnDamageFunc, args.1, args.2, args.3);
+            .defned(
+                if target_is_minion { atp * 2.0 } else { atp },
+                true,
+                args.0,
+                on_disperse as OnDamageFunc,
+                args.1,
+                args.2,
+                args.3,
+            );
 
         if dmg > 0 {
             let had_iron = args
