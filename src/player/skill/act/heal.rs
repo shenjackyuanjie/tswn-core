@@ -1,7 +1,10 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{
+        berserk::BerserkState, charm::CharmState, ice::IceState, poison::PoisonState, slow::SlowState, SkillArgs, SkillExt,
+        SkillTargetDomain, SkillTrait,
+    },
 };
 
 #[derive(Debug, Clone, Default)]
@@ -92,9 +95,37 @@ impl SkillTrait for HealSkill {
             );
         }
         args.2.add(RunUpdate::new("[0]使用[治愈魔法]", args.0, target_id, 20));
-        let target = args.3.just_get_player_mut(target_id).expect("cannot get heal target from storage");
-        target.damage(-heal, args.0, on_heal, args.1, args.2, args.3);
-        target.clear_negative_states();
+        let (had_slow, had_poison, had_ice, had_berserk, had_charm) = {
+            let target = args.3.just_get_player_mut(target_id).expect("cannot get heal target from storage");
+            let had_slow = target.has_state::<SlowState>();
+            let had_poison = target.has_state::<PoisonState>();
+            let had_ice = target.has_state::<IceState>();
+            let had_berserk = target.has_state::<BerserkState>();
+            let had_charm = target.has_state::<CharmState>();
+            target.damage(-heal, args.0, on_heal, args.1, args.2, args.3);
+            target.clear_negative_states();
+            (had_slow, had_poison, had_ice, had_berserk, had_charm)
+        };
+        if had_slow {
+            args.2.add(RunUpdate::new_newline());
+            args.2.add(RunUpdate::new("[1]从[迟缓]中解除", args.0, target_id, 0));
+        }
+        if had_poison {
+            args.2.add(RunUpdate::new_newline());
+            args.2.add(RunUpdate::new("[1]从[中毒]中解除", args.0, target_id, 0));
+        }
+        if had_ice {
+            args.2.add(RunUpdate::new_newline());
+            args.2.add(RunUpdate::new("[1]从[冰冻]中解除", args.0, target_id, 0));
+        }
+        if had_berserk {
+            args.2.add(RunUpdate::new_newline());
+            args.2.add(RunUpdate::new("[1]从[狂暴]中解除", args.0, target_id, 0));
+        }
+        if had_charm {
+            args.2.add(RunUpdate::new_newline());
+            args.2.add(RunUpdate::new("[1]从[魅惑]中解除", args.0, target_id, 0));
+        }
     }
 }
 

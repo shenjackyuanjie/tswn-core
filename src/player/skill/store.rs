@@ -243,6 +243,18 @@ impl SkillStorage {
         }
     }
 
+    pub fn clear_positive_runtime(&mut self, args: SkillArgs) -> Vec<&'static str> {
+        let keys: Vec<SkillKey> = self.skill.clone();
+        let mut messages = Vec::new();
+        for skill_key in keys.iter() {
+            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            if let Some(message) = skill.clear_positive_runtime((args.0, args.1, args.2, args.3)) {
+                messages.push(message);
+            }
+        }
+        messages
+    }
+
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) {
         let keys: Vec<SkillKey> = self.post_death.clone();
         for skill_key in keys.iter() {

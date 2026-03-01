@@ -77,5 +77,6 @@ impl SkillTrait for ReviveSkill {
         }
         target.revive_with_hp(heal);
         args.2.add(RunUpdate::new("[1][复活]了", args.0, target_id, (heal + 60) as u32));
+        args.2.add(RunUpdate::new("[1]回复体力[2]点", args.0, target_id, heal as u32));
     }
 }

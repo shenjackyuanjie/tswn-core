@@ -597,10 +597,16 @@ impl Player {
     }
 
     #[inline]
-    pub fn clear_negative_states(&mut self) { self.state.clear_negative_states(); }
+    pub fn clear_negative_states(&mut self) {
+        self.state.clear_negative_states();
+        self.update_states();
+    }
 
     #[inline]
-    pub fn clear_positive_states(&mut self) { self.state.clear_positive_states(); }
+    pub fn clear_positive_states(&mut self) {
+        self.state.clear_positive_states();
+        self.update_states();
+    }
 
     pub(super) fn apply_update_state_effects(&mut self) { self.state.apply_update_state_effects(&mut self.status); }
 
@@ -961,18 +967,13 @@ impl Player {
             }
         }
 
-        let has_enemy_alive = if let Some(ally_group) = storage.group_containing(caster) {
+        let has_enemy_alive = storage.group_containing(caster).map(|ally_group| {
             storage
                 .all_player_ids()
                 .into_iter()
                 .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
-        } else {
-            storage
-                .all_player_ids()
-                .into_iter()
-                .any(|id| id != caster && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
-        };
-        if has_enemy_alive
+        });
+        if has_enemy_alive.unwrap_or(true)
             && caster != self.as_ptr()
             && let Some(killer) = storage.just_get_player_mut(caster)
             && killer.alive()

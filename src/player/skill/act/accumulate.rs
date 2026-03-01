@@ -82,5 +82,17 @@ impl SkillTrait for AccumulateSkill {
         }
     }
 
+    fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
+        if self.on_update_state.is_none() {
+            return None;
+        }
+        self.on_update_state = None;
+        args.3
+            .just_get_player_mut(args.0)
+            .expect("cannot get accumulate owner from storage")
+            .update_states();
+        Some("[1]的[聚气]被打消了")
+    }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::UpdateState] }
 }

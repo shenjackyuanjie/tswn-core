@@ -127,7 +127,7 @@ impl SkillTrait for DisperseSkill {
                 .unwrap_or(false);
             let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
             target.clear_positive_states();
-            target.update_states();
+            let cleared_positive_messages = target.skills.clear_positive_runtime((target_id, args.1, args.2, args.3));
             let mp = target.get_status().mp;
             if mp > 64 {
                 target.set_mp(mp - 64);
@@ -135,6 +135,10 @@ impl SkillTrait for DisperseSkill {
                 target.set_mp(0);
             } else {
                 target.set_mp(mp - 32);
+            }
+            for message in cleared_positive_messages {
+                args.2.add(RunUpdate::new_newline());
+                args.2.add(RunUpdate::new(message, args.0, target_id, 20));
             }
             if had_iron {
                 args.2.add(RunUpdate::new_newline());

@@ -123,6 +123,11 @@ pub trait SkillTrait: Debug {
     /// 击杀目标后（返回 true 表示短路，不再执行后续 kill）
     fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { false }
     fn kill_with_level(&mut self, _level: u32, target: PlrId, args: SkillArgs) -> bool { self.kill(target, args) }
+    /// 被净化等效果清理正向运行时状态时触发，可返回对应文案模板。
+    fn clear_positive_runtime(&mut self, _args: SkillArgs) -> Option<&'static str> { None }
+    fn clear_positive_runtime_with_level(&mut self, _level: u32, args: SkillArgs) -> Option<&'static str> {
+        self.clear_positive_runtime(args)
+    }
 
     /// 声明该技能注册到哪些流程
     fn proc_kinds(&self) -> &[ProcKind] { &[] }
@@ -456,6 +461,10 @@ impl Skill {
     }
 
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.skill_type.kill_with_level(self.level, target, args) }
+
+    pub fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
+        self.skill_type.clear_positive_runtime_with_level(self.level, args)
+    }
 
     pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }
 
