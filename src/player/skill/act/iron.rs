@@ -107,7 +107,7 @@ impl StateTrait for IronState {
         true
     }
 
-    fn post_defend_priority(&self) -> i32 { 4000 }
+    fn post_defend_priority(&self) -> i32 { 10 }
 
     fn on_post_defend(
         &mut self,
