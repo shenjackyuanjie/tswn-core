@@ -8,8 +8,8 @@ def generate_random_line(length=10):
 def generate_paragraph(lines=5, line_length=10):
     """生成一个段落"""
     paragraph = []
-    for _ in range(lines):
-        paragraph.append(generate_random_line(line_length))
+    for i in range(lines):
+        paragraph.append(f"{i}_{generate_random_line(line_length)}")
     return '\n'.join(paragraph)
 
 def generate_text(paragraphs=5, lines_per_paragraph=10, line_length=10):
