@@ -6,10 +6,8 @@
 
 import argparse
 import json
-import os
 import re
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +16,7 @@ PROJECT_ROOT = Path("d:/githubs/namer/tswn-core")
 RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
 LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
 CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
-DEFAULT_FILTER = "large_01_10 large_11_16 large_full case_17 small_seed"
+DEFAULT_FILTER = "large_01_10 large_11_17 large_18_22 large_23_25 large_full small_seed"
 
 
 def load_previous_records() -> dict:
@@ -74,11 +72,7 @@ def parse_cargo_test_output(output: str) -> dict:
 
     # 额外注册直接需要识别的测试名（某些 mismatch 行可能不包含 thread 信息）
     _direct_tests = {
-        "case_17",
-        "help_vs_aaaaa_should_match_right_trace_step_by_step",
-        "seed_small_replay_should_match",
         "small_seed",
-        "fight_simple_replay_should_match",
         "simple_fight",
     }
     for name in _direct_tests:
@@ -98,7 +92,7 @@ def parse_cargo_test_output(output: str) -> dict:
                         results[test_name]["idx"] = idx
                 else:
                     # 先尝试旧有的 sampled/fight 匹配
-                    case_match = re.search(r"(sampled case-?\d+|fight_large|large_full)", line)
+                    case_match = re.search(r"(sampled case-?\d+|fight_large|large_full|large_\d{2})", line)
                     if case_match:
                         case_key = case_match.group(1)
                         if case_key.startswith("sampled "):

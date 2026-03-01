@@ -566,3 +566,45 @@ WxDNynGfG7发动会心一击, BQfPHVmVNP受到120点伤害
     assert!(guard < 20_000, "sampled case-16 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-16", &actual_lines, &expected_lines);
 }
+
+
+
+#[test]
+fn case_17() {
+    let expected: Vec<String> = vec![
+        "aaaaa发起攻击",
+        "help受到77点伤害",
+        "aaaaa发起攻击",
+        "help受到80点伤害",
+        "help发起攻击",
+        "aaaaa受到87点伤害",
+        "help发起攻击",
+        "aaaaa受到87点伤害",
+        "aaaaa发起攻击",
+        "help受到32点伤害",
+        "help使用[雷击术]",
+        "aaaaa受到26点伤害",
+        "aaaaa受到25点伤害",
+        "aaaaa受到10点伤害",
+        "aaaaa受到9点伤害",
+        "aaaaa受到10点伤害",
+        "aaaaa受到14点伤害",
+        "aaaaa发起攻击",
+        "help受到43点伤害",
+        "help发起攻击",
+        "aaaaa受到94点伤害",
+        "aaaaa被击倒了",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let mut runner = runners::Runner::new_from_namerena_raw("help\naaaaa".to_string()).unwrap();
+    let (actual, guard) = collect_replay_events(&mut runner, 256, false);
+
+    assert!(guard < 256, "combat did not finish in expected rounds");
+    assert_trace_with_context("case_17", &actual, &expected);
+
+    let winner = winner_names(&runner);
+    assert_eq!(winner, vec!["help".to_string()]);
+}

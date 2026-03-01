@@ -37,6 +37,9 @@ impl SkillTrait for UpgradeSkill {
         if !owner_alive {
             return;
         }
+        if owner_hp <= 0 {
+            return;
+        }
         let roll_hp = args.1.r63() as i32;
         let hp_gate = owner_hp < minhp + roll_hp;
         if debug_this {

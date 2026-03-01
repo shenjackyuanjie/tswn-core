@@ -12,7 +12,7 @@ def generate_paragraph(lines=5, line_length=10):
         paragraph.append(generate_random_line(line_length))
     return '\n'.join(paragraph)
 
-def generate_text(paragraphs=5, lines_per_paragraph=5, line_length=10):
+def generate_text(paragraphs=5, lines_per_paragraph=10, line_length=10):
     """生成完整的文本"""
     text = []
     for i in range(paragraphs):

@@ -6,7 +6,7 @@
 
 dart 原始项目位于 namer-src
 请注意，这里的源码并不完整，并且是老版本的
-所以如果用户指出“某个地方的实现不正确”不要急着说 dart 的实现就是这样的
+所以如果用户指出"某个地方的实现不正确"不要急着说 dart 的实现就是这样的
 要问用户是在哪里看到的实现，是dart还是js产物
 
 dart 项目 有一个 dart compile js 产物
@@ -25,7 +25,7 @@ dart 项目 有一个 dart compile js 产物
 在重写过程中，实现方案优先参考 dart 版本，但是如果 dart 版本缺少了你所需要部分的代码
 可以向用户提问，js产物中这里的逻辑实现是怎么样的/在哪里，尽可能减少盲目读取 js 源码的情况
 
-**目前项目已经进行到了debug阶段，修改功能的时候优先参考js产物**
+**现在应当优先参考js实现**
 
 ## 测试说明
 
@@ -46,7 +46,7 @@ dart 项目 有一个 dart compile js 产物
 # 进入项目目录
 cd tswn-core
 
-# 运行测试并比较（默认追踪 sampled_large_case、fight_large 以及两个特殊测试）
+# 运行测试并比较（默认追踪多个 large 测试分组与少量特殊测试）
 python track_test.py
 
 # 安静模式（-q），只输出关键结论，适合AI使用
@@ -59,17 +59,24 @@ python track_test.py -s
 python track_test.py -r
 ```
 
-注意：脚本的默认过滤器已扩展，默认会运行并追踪以下测试关键词：
-- `sampled_large_case`
-- `fight_large`
-- `help_vs_aaaaa_should_match_right_trace_step_by_step`
-- `seed_small_replay_should_match`
+注意：脚本的默认过滤器已更新，默认会运行并追踪以下测试关键词组合（可作为 cargo test 的 filter 参数）：
+- `large_01_10`（第一批 large 测试）
+- `large_11_17`（第二批 large 测试）
+- `large_18_22`（第三批 large 测试，最近新增）
+- `large_full`（相当于 fight_large / 完整 large 测试）
+- `small_seed`（小样例的 seed 测试）
+
+这些关键字可以组合或替换为具体测试名传入 `--filter`，例如只运行 `large_18_22`：`python track_test.py -f large_18_22`。
+
+**默认过滤器（DEFAULT_FILTER）当前值：**
+
+`large_01_10 large_11_17 large_18_22 large_full small_seed`
 
 **参数说明：**
 
 | 参数 | 说明 |
 | ------ | ------ |
-| `-f, --filter` | 测试过滤表达式（默认：`sampled_large_case fight_large help_vs_aaaaa_should_match_right_trace_step_by_step seed_small_replay_should_match`） |
+| `-f, --filter` | 测试过滤表达式（默认见上方 DEFAULT_FILTER）。可传入任意关键词或具体测试名以控制运行的测试集。 |
 | `-s, --show` | 只显示当前失败状态，不运行测试 |
 | `-q, --quiet` | 安静模式，只输出关键信息 |
 | `-r, --reset` | 重置历史记录 |
@@ -77,14 +84,14 @@ python track_test.py -r
 解析与比对行为说明（重要）：
 
 - 输出解析：脚本会解析 `cargo test` 的输出，识别 `test ... ... FAILED/ok` 的行，并在出现 `mismatch at idx=...` 的行时尝试提取 idx。
-  - 若 `mismatch` 行包含 `thread '...'"`，会用线程名作为测试名关联 idx。
+  - 若 `mismatch` 行包含 `thread '...'`，会用线程名作为测试名关联 idx。
   - 若 `mismatch` 行不包含 thread 信息，脚本会：
-    - 尝试根据 `sampled case-N` / `fight_large` 等文本恢复到对应的测试名；
-    - 并额外直接检测行中是否包含 `help_vs_aaaaa_should_match_right_trace_step_by_step` 或 `seed_small_replay_should_match`，如果包含则把该 idx 关联到对应测试名。
+    - 尝试根据输出中的文本（例如 `sampled case-N`、`fight_large`、`large_full`、或 `::large_18` 之类的线程名）恢复到对应的测试名；脚本会把诸如 `::large_18` 的线程名映射回 `large_18` / `sampled_large_case_18` 等测试表示；
+    - 并额外直接检测行中是否包含一些在代码中注册为"直接匹配项"的测试名（当前实现包含 `small_seed` 和 `simple_fight`），如果命中则把该 idx 关联到对应测试名。
 - 比较规则修正（已修复的问题）：
   - 脚本现在只在当前运行和上次运行都存在该测试记录的情况下，才判断状态变化（即 NEW_FAIL / NEW_PASS）。这避免了因为某次运行未包含该测试而造成的误报。
   - 仅当当前与上次都有有效的 idx（>= 0）时，才比较 idx 并报告 **IMPROVED**（idx 变大）或 **REGRESSED**（idx 变小）。如果任意一侧 idx 为 -1（未知/无效），则不会报告 idx 变化。
-  - 如果一个测试通过（非 FAILED），它默认的 idx 为 -1，不会被误判为“新失败”。
+  - 如果一个测试通过（非 FAILED），它默认的 idx 为 -1，不会被误判为"新失败"。
 - 存档点比较：脚本会同时把当前结果与最近的存档点对比（若存在），并输出相应结论。
 
 **存档点子命令：**
@@ -128,7 +135,7 @@ python track_test.py delete 名称
 **安静模式输出示例：**
 
 ```text
-[track_test] 运行测试: sampled_large_case fight_large help_vs_aaaaa_should_match_right_trace_step_by_step seed_small_replay_should_match
+[track_test] 运行测试: large_01_10 large_11_17 large_18_22 large_full small_seed
 测试失败，分析中...
 --- vs 上次运行 ---
 结论: 修改有效 (有改进且无退步)
