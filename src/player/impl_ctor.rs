@@ -207,7 +207,7 @@ impl Player {
     pub fn get_status(&self) -> &PlayerStatus { &self.status }
 
     #[inline]
-    pub fn attr_sum(&self) -> i32 { self.attr.iter().map(|x| *x as i32).sum() }
+    pub fn attr_sum(&self) -> i32 { self.status.attr_sum as i32 }
 
     #[inline]
     pub fn negative_state_count(&self) -> usize { self.state.negative_state_count() }

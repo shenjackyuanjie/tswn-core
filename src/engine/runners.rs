@@ -233,7 +233,7 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
     };
     let all_alive = world.alives_flat(storage);
     let enemy_alive = all_alive.iter().copied().filter(|id| !ally_all.contains(id)).collect::<Vec<PlrId>>();
-    let ally_alive = ally_all.iter().copied().filter(|id| all_alive.contains(id)).collect::<Vec<PlrId>>();
+    let ally_alive = all_alive.iter().copied().filter(|id| ally_all.contains(id)).collect::<Vec<PlrId>>();
     let ally_dead = ally_all.iter().copied().filter(|id| !all_alive.contains(id)).collect::<Vec<PlrId>>();
 
     ActionTargets {
@@ -325,27 +325,33 @@ impl EngineCore {
 
     fn sync_runtime_entities(&self, world: &mut WorldState, storage: &Arc<Storage>) {
         Self::debug_world_state("pre_sync", world, storage);
-        // 1) 先处理 pending removes（minion 等需要从行动列表中移除的）。
-        // 对齐 JS：由状态回调触发的 remove 会先影响 round 指针，再处理普通死亡移除。
-        let pending_remove_players = storage.take_pending_remove_players();
-        if !pending_remove_players.is_empty() {
-            for ptr in pending_remove_players {
-                world.remove_player(ptr);
-                for group in &mut world.groups {
-                    group.retain(|x| *x != ptr);
-                }
-                Self::debug_world_state("after_pending_remove", world, storage);
-            }
-        }
 
-        // 2) 同步死亡：按死亡发生顺序处理（对齐 Dart 的即时 group.die → f.remove）。
-        //    Dart 中 onDie 会立即调用 group.die，因此多个死亡的 remove 顺序与
-        //    combat 中的死亡发生顺序一致。Rust 延迟处理，需靠 death_queue 保序。
+        // 1+2) 统一处理死亡：按 death_queue 记录的死亡发生顺序逐个移除。
+        //   对齐 Dart：onDie 内部即时调用 group.die → f.remove，因此多死亡的 remove
+        //   顺序必须与 combat 中死亡发生顺序一致。pending_remove（minion group 移除）
+        //   与 death_queue 合并处理，避免 pending_remove 抢先改变 round_pos。
+        let pending_remove_players = storage.take_pending_remove_players();
         let death_queue = storage.take_death_queue();
         for id in &death_queue {
+            // 如果该 player 也在 pending_remove 中，同时从 groups 中移除。
+            if pending_remove_players.contains(id) {
+                for group in &mut world.groups {
+                    group.retain(|x| x != id);
+                }
+            }
             if world.alives.contains(id) && !storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
                 world.remove_player(*id);
                 Self::debug_world_state("after_dead_remove", world, storage);
+            }
+        }
+        // 处理不在 death_queue 中的 pending_remove（理论上不应发生，safety net）。
+        for ptr in &pending_remove_players {
+            if !death_queue.contains(ptr) {
+                world.remove_player(*ptr);
+                for group in &mut world.groups {
+                    group.retain(|x| x != ptr);
+                }
+                Self::debug_world_state("after_pending_remove_only", world, storage);
             }
         }
         // Fallback: 处理可能遗漏的死亡（不在 death_queue 中但已标记死亡的 player）。

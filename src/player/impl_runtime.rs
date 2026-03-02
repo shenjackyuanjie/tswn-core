@@ -79,8 +79,8 @@ impl Player {
                         let maybe_targets = {
                             let skill = self.skills.skill_by_id(key);
                             let rc4_before_prob = (randomer.i, randomer.j);
-                            let level_ok = skill.level() > 0;
                             let action_ok = skill.has_action_impl();
+                            let level_ok = skill.level() > 0;
                             let prob_ok = level_ok && action_ok && skill.prob(smart, (ptr, randomer, updates, storage));
                             if debug_this && (level_ok || action_ok) {
                                 eprintln!(
@@ -831,6 +831,20 @@ impl Player {
                 )
             }
         };
+        if std::env::var_os("TSWN_DEBUG_DODGE").is_some() {
+            eprintln!(
+                "[dodge] target={} caster={} active={} is_mag={} accure={} dodgeval={} atp={} rc4=({}, {})",
+                self.id_name(),
+                storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default(),
+                self.active(),
+                is_mag,
+                accure,
+                dodgeval,
+                atp,
+                randomer.i,
+                randomer.j,
+            );
+        }
         if self.active() && Self::dodge(accure, dodgeval, randomer) {
             let update = RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20);
             updates.add(update);
