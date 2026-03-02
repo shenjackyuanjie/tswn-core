@@ -44,6 +44,8 @@ pub struct Storage {
     pending_spawns: Vec<PendingSpawn>,
     /// 延迟到引擎 tick 同步的移除实体。
     pending_remove_players: Vec<PlrId>,
+    /// 按死亡发生顺序记录的死亡队列（对齐 Dart 的即时死亡处理顺序）。
+    death_queue: Vec<PlrId>,
     /// 玩家 ID 自增计数器。
     player_id_counter: AtomicU64,
 }
@@ -57,6 +59,7 @@ impl Storage {
             players: FastHashMap::new(),
             pending_spawns: Vec::new(),
             pending_remove_players: Vec::new(),
+            death_queue: Vec::new(),
             player_id_counter: AtomicU64::new(0),
         }
     }
@@ -69,6 +72,7 @@ impl Storage {
         self.players.clear();
         self.pending_spawns.clear();
         self.pending_remove_players.clear();
+        self.death_queue.clear();
     }
 
     /// 生成一个新的玩家 ID。
@@ -229,6 +233,24 @@ impl Storage {
         unsafe {
             let mut_slf = self as *const Storage as *mut Storage;
             std::mem::take(&mut (*mut_slf).pending_remove_players)
+        }
+    }
+
+    /// 记录一次死亡（按发生顺序），对齐 Dart 的即时死亡处理顺序。
+    pub fn record_death(&self, ptr: PlrId) {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            if !(*mut_slf).death_queue.contains(&ptr) {
+                (*mut_slf).death_queue.push(ptr);
+            }
+        }
+    }
+
+    /// 取出并清空死亡队列。
+    pub fn take_death_queue(&self) -> Vec<PlrId> {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            std::mem::take(&mut (*mut_slf).death_queue)
         }
     }
 

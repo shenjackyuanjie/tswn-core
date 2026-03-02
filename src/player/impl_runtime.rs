@@ -938,6 +938,8 @@ impl Player {
         self.status.hp = 0;
         self.status.set_alive(false);
 
+        // 对齐 Dart: 在 dies 回调中 minion 先于 owner 被移除。
+        // 因此先处理 linked minions，记录它们的死亡顺序，最后再记录 owner 的死亡。
         let owner_id = self.as_ptr();
         let linked_minions = storage
             .all_player_ids()
@@ -957,6 +959,7 @@ impl Player {
                 } else {
                     minion.status.hp = 0;
                     minion.status.set_alive(false);
+                    storage.record_death(minion_id);
                     minion.state.on_linked_owner_die(owner_id, minion_id, updates)
                 }
             } else {
@@ -967,16 +970,22 @@ impl Player {
             }
         }
 
+        // 最后记录 owner 的死亡（minion 已先于 owner 入队）。
+        storage.record_death(owner_id);
+
         let has_enemy_alive = storage.group_containing(caster).map(|ally_group| {
             storage
                 .all_player_ids()
                 .into_iter()
                 .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
         });
+        // Dart 中 alive 是 hp > 0 的派生属性，而 Rust 使用独立的 alive flag。
+        // 自爆等场景下 caster 先把 hp 设为 0 但 alive flag 还没更新，
+        // 此处必须用 hp > 0 判定才能与 Dart 行为一致。
         if has_enemy_alive.unwrap_or(true)
             && caster != self.as_ptr()
             && let Some(killer) = storage.just_get_player_mut(caster)
-            && killer.alive()
+            && killer.get_status().hp > 0
         {
             killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
         }

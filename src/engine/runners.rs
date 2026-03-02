@@ -88,18 +88,17 @@ impl WorldState {
             self.players.push(plr);
         }
         if !self.alives.contains(&plr) {
-            // 找到 owner 所在队伍
-            let team_alives: Vec<PlrId> = self
+            // 找到 owner 所在队伍的成员集合
+            let team_members: Vec<PlrId> = self
                 .team_index_of(owner)
                 .and_then(|ti| self.groups.get(ti))
-                .map(|group| group.iter().copied().filter(|id| self.alives.contains(id)).collect())
+                .map(|group| group.to_vec())
                 .unwrap_or_default();
-            if let Some(&last) = team_alives.last() {
-                if let Some(pos) = self.alives.iter().position(|x| *x == last) {
-                    self.alives.insert(pos + 1, plr);
-                } else {
-                    self.alives.push(plr);
-                }
+            // 对齐 Dart: 找到该队在 alives 中实际最后一个成员的位置。
+            // 不能用静态 group 顺序，因为 revive/add 会改变 alives 内的队内顺序。
+            let last_pos = self.alives.iter().rposition(|id| team_members.contains(id));
+            if let Some(pos) = last_pos {
+                self.alives.insert(pos + 1, plr);
             } else {
                 self.alives.push(plr);
             }
@@ -112,17 +111,15 @@ impl WorldState {
             self.players.push(plr);
         }
         if !self.alives.contains(&plr) {
-            let team_alives: Vec<PlrId> = self
+            let team_members: Vec<PlrId> = self
                 .team_index_of(owner)
                 .and_then(|ti| self.groups.get(ti))
-                .map(|group| group.iter().copied().filter(|id| self.alives.contains(id)).collect())
+                .map(|group| group.to_vec())
                 .unwrap_or_default();
-            if let Some(&last) = team_alives.last() {
-                if let Some(pos) = self.alives.iter().position(|x| *x == last) {
-                    self.alives.insert(pos + 1, plr);
-                } else {
-                    self.alives.push(plr);
-                }
+            // 对齐 Dart: 找到该队在 alives 中实际最后一个成员的位置。
+            let last_pos = self.alives.iter().rposition(|id| team_members.contains(id));
+            if let Some(pos) = last_pos {
+                self.alives.insert(pos + 1, plr);
             } else {
                 self.alives.push(plr);
             }
@@ -341,16 +338,26 @@ impl EngineCore {
             }
         }
 
-        // 2) 同步死亡：将 alives/players 中已死的 player 移除（对齐 Dart 的 group.die → f.remove）
-        let dead_ids: Vec<PlrId> = world
+        // 2) 同步死亡：按死亡发生顺序处理（对齐 Dart 的即时 group.die → f.remove）。
+        //    Dart 中 onDie 会立即调用 group.die，因此多个死亡的 remove 顺序与
+        //    combat 中的死亡发生顺序一致。Rust 延迟处理，需靠 death_queue 保序。
+        let death_queue = storage.take_death_queue();
+        for id in &death_queue {
+            if world.alives.contains(id) && !storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
+                world.remove_player(*id);
+                Self::debug_world_state("after_dead_remove", world, storage);
+            }
+        }
+        // Fallback: 处理可能遗漏的死亡（不在 death_queue 中但已标记死亡的 player）。
+        let remaining_dead: Vec<PlrId> = world
             .alives
             .iter()
             .copied()
             .filter(|id| !storage.get_player(id).map(|p| p.alive()).unwrap_or(false))
             .collect();
-        for id in dead_ids {
+        for id in remaining_dead {
             world.remove_player(id);
-            Self::debug_world_state("after_dead_remove", world, storage);
+            Self::debug_world_state("after_dead_remove_fallback", world, storage);
         }
 
         // 2.5) 同步复活：把已复活但已从 round/alives 移除的实体加回世界。
