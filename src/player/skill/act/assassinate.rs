@@ -55,6 +55,60 @@ impl SkillTrait for AssassinateSkill {
         args.3.get_player(&target).map(|x| x.get_status().hp > 160).unwrap_or(false)
     }
 
+    fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
+        let Some(target_plr) = args.3.get_player(&target) else {
+            return f64::MIN;
+        };
+        if !smart {
+            return args.1.rFFFF() as f64 + target_plr.get_status().attract;
+        }
+
+        let rate_hi_hp = |hp: i32| -> f64 {
+            if hp < 20 {
+                30.0
+            } else if hp > 300 {
+                300.0
+            } else {
+                hp as f64
+            }
+        };
+        let alive_group_count = {
+            let mut group_heads = Vec::new();
+            for id in args.3.all_player_ids() {
+                let alive = args.3.get_player(&id).map(|plr| plr.alive()).unwrap_or(false);
+                if !alive {
+                    continue;
+                }
+                let Some(group) = args.3.group_containing(id) else {
+                    continue;
+                };
+                let Some(head) = group.first() else {
+                    continue;
+                };
+                if !group_heads.contains(head) {
+                    group_heads.push(*head);
+                }
+            }
+            group_heads.len()
+        };
+        let target_alive_group_len = args
+            .3
+            .group_containing(target)
+            .map(|group| {
+                group
+                    .iter()
+                    .filter(|id| args.3.get_player(id).map(|plr| plr.alive()).unwrap_or(false))
+                    .count()
+            })
+            .unwrap_or(0);
+        let status = target_plr.get_status();
+        if alive_group_count > 2 {
+            rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract
+        } else {
+            rate_hi_hp(status.hp) * status.attr_sum as f64 * status.attract
+        }
+    }
+
     fn select_targets_with_level(&self, level: u32, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
         if let Some(target) = self.target {
             if args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
