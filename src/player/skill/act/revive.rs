@@ -35,10 +35,34 @@ impl SkillTrait for ReviveSkill {
         let Some(target_plr) = args.3.get_player(&target) else {
             return false;
         };
-        !target_plr.alive()
+        let valid = !target_plr.alive()
             && !is_combat_minion(target_plr)
             && !target_plr.has_state::<MergeState>()
-            && !target_plr.has_state::<ZombieState>()
+            && !target_plr.has_state::<ZombieState>();
+        let debug_this = std::env::var("TSWN_DEBUG_ACTION")
+            .ok()
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
+        if debug_this {
+            let team = args
+                .3
+                .group_containing(args.0)
+                .into_iter()
+                .flat_map(|group| group.iter().copied())
+                .filter_map(|id| args.3.get_player(&id).map(|p| p.id_name()))
+                .collect::<Vec<String>>();
+            eprintln!(
+                "[revive_valid] owner={} team={team:?} target={} alive={} minion={} merge={} zombie={} valid={}",
+                args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                target_plr.id_name(),
+                target_plr.alive(),
+                is_combat_minion(target_plr),
+                target_plr.has_state::<MergeState>(),
+                target_plr.has_state::<ZombieState>(),
+                valid
+            );
+        }
+        valid
     }
 
     fn score_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> f64 {

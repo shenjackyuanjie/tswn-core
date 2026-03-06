@@ -28,10 +28,22 @@ pub type PlrId = usize;
 
 #[derive(Clone, Debug, Default)]
 pub struct ActionTargets {
+    /// 敌方存活目标域。
+    ///
+    /// 这里保存的是已经按 world/team 运行时语义构造好的紧凑 enemy 列表；
+    /// 但默认普攻的抽样并不总是直接从这个列表里 pick，某些路径仍会基于
+    /// `all_alive` 做“跳过己方”的抽样，以保持 JS 侧消费 RC4 的方式。
     pub enemy_alive: Vec<PlrId>,
+    /// 己方当前存活顺序。
     pub ally_alive: Vec<PlrId>,
+    /// 己方静态 roster 顺序。
+    ///
+    /// 该域对齐 Dart 里的 `owner.allyGroup.players`：它表示队伍成员的 roster 视图，
+    /// 不会因为死亡而删项，只会在运行期新增实体时 append。
     pub ally_all: Vec<PlrId>,
+    /// 己方当前死亡成员，顺序与 roster 兼容。
     pub ally_dead: Vec<PlrId>,
+    /// 全局当前存活顺序，由各 team 的 alive 直接串接而来。
     pub all_alive: Vec<PlrId>,
 }
 

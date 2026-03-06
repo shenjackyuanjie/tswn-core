@@ -9,30 +9,51 @@ use crate::rc4::RC4;
 pub type PlayerGroup = Vec<Player>;
 pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
 
+#[derive(Debug, Clone)]
+pub struct TeamState {
+    /// 队伍 roster：队伍成员的静态归属顺序。
+    ///
+    /// 这个顺序只在“加入/永久移除”时改变，不应因为死亡/复活而重建。
+    pub roster: Vec<PlrId>,
+    /// 队伍 alive：当前存活成员的运行时顺序。
+    ///
+    /// 这是本次重构的核心状态。复活、召唤、死亡都必须直接修改它，
+    /// 不能再通过“用 roster 过滤全局 alive”来间接得到。
+    pub alive: Vec<PlrId>,
+}
+
 /// 对局共享世界状态。
 #[derive(Debug, Clone)]
 pub struct WorldState {
+    /// 队伍状态，包含 roster 和当前 alive 顺序。
+    pub teams: Vec<TeamState>,
     /// 所有队伍（按创建顺序）。
+    /// 兼容镜像：始终与 teams.roster 同步。
     pub groups: Vec<Vec<PlrId>>,
     /// 胜方队伍（存在时表示战斗结束）。
     pub winner: Option<Vec<PlrId>>,
     /// 轮转列表（对齐 Dart 的 `Fgt.players`，包含死的，用于 round 轮转）。
     players: Vec<PlrId>,
-    /// 存活列表（对齐 Dart 的 `Fgt.alives`，只含活的，用于目标选择）。
-    alives: Vec<PlrId>,
     /// 下一次行动的轮转位置（基于 `players`）。
     round_pos: i32,
 }
 
 impl WorldState {
     pub fn new(groups: Vec<Vec<PlrId>>) -> Self {
-        let players = groups.iter().flatten().copied().collect::<Vec<PlrId>>();
-        let alives = players.clone();
+        // 初始化时 team roster 与 team alive 一致；之后两者会分叉演化。
+        let teams = groups
+            .iter()
+            .map(|group| TeamState {
+                roster: group.clone(),
+                alive: group.clone(),
+            })
+            .collect::<Vec<TeamState>>();
+        let players = teams.iter().flat_map(|team| team.roster.iter().copied()).collect::<Vec<PlrId>>();
         Self {
+            teams,
             groups,
             winner: None,
             players,
-            alives,
             round_pos: -1,
         }
     }
@@ -41,26 +62,44 @@ impl WorldState {
     pub fn have_winner(&self) -> bool { self.winner.is_some() }
 
     #[inline]
-    pub fn all_plrs(&self) -> Vec<PlrId> { self.groups.iter().flatten().copied().collect() }
+    pub fn all_plrs(&self) -> Vec<PlrId> { self.teams.iter().flat_map(|team| team.roster.iter().copied()).collect() }
 
     #[inline]
-    pub fn all_plr_len(&self) -> usize { self.groups.iter().map(|x| x.len()).sum() }
+    pub fn all_plr_len(&self) -> usize { self.teams.iter().map(|team| team.roster.len()).sum() }
 
-    pub fn team_index_of(&self, actor: PlrId) -> Option<usize> { self.groups.iter().position(|group| group.contains(&actor)) }
-
-    /// 按 groups 分组返回每个队伍的存活列表（保持 alives 中的顺序）。
-    pub fn alives_by_group(&self, _storage: &Arc<Storage>) -> Vec<Vec<PlrId>> {
-        self.groups
-            .iter()
-            .map(|group| {
-                // 只保留在 self.alives 中出现的成员，顺序取 group 内顺序
-                group.iter().copied().filter(|id| self.alives.contains(id)).collect::<Vec<PlrId>>()
-            })
-            .collect()
+    pub fn team_index_of(&self, actor: PlrId) -> Option<usize> {
+        self.teams.iter().position(|team| team.roster.contains(&actor))
     }
 
-    /// 返回扁平化的存活列表（直接用维护好的 alives）。
-    pub fn alives_flat(&self, _storage: &Arc<Storage>) -> Vec<PlrId> { self.alives.clone() }
+    #[inline]
+    pub fn team_roster(&self, team_idx: usize) -> Option<&[PlrId]> {
+        self.teams.get(team_idx).map(|team| team.roster.as_slice())
+    }
+
+    #[inline]
+    pub fn team_alive(&self, team_idx: usize) -> Option<&[PlrId]> {
+        self.teams.get(team_idx).map(|team| team.alive.as_slice())
+    }
+
+    #[inline]
+    pub fn contains_alive(&self, plr: PlrId) -> bool {
+        self.teams.iter().any(|team| team.alive.contains(&plr))
+    }
+
+    fn sync_group_rosters(&mut self) {
+        // `groups` 仍保留给旧接口和测试使用，但语义被限制为 roster-only 镜像。
+        self.groups = self.teams.iter().map(|team| team.roster.clone()).collect();
+    }
+
+    /// 按 teams 分组返回每个队伍的存活列表（保持队内 alive 顺序）。
+    pub fn alives_by_group(&self, _storage: &Arc<Storage>) -> Vec<Vec<PlrId>> {
+        self.teams.iter().map(|team| team.alive.clone()).collect()
+    }
+
+    /// 返回扁平化的存活列表（由 team alive 顺序拼接）。
+    pub fn alives_flat(&self, _storage: &Arc<Storage>) -> Vec<PlrId> {
+        self.teams.iter().flat_map(|team| team.alive.iter().copied()).collect()
+    }
 
     fn next_round_index(&mut self, total: usize) -> usize {
         if total == 0 {
@@ -70,9 +109,18 @@ impl WorldState {
         self.round_pos as usize
     }
 
-    /// Dart `Fgt.remove`: player 死亡时从 alives 和 players 中移除，调整 round_pos。
+    pub fn remove_alive(&mut self, plr: PlrId) {
+        if let Some(team_idx) = self.team_index_of(plr)
+            && let Some(team) = self.teams.get_mut(team_idx)
+        {
+            // 死亡只影响 team-local alive，不改变 roster 归属。
+            team.alive.retain(|id| *id != plr);
+        }
+    }
+
+    /// Dart `Fgt.remove`: player 死亡时从 alive 和 players 中移除，调整 round_pos。
     pub fn remove_player(&mut self, plr: PlrId) {
-        self.alives.retain(|x| *x != plr);
+        self.remove_alive(plr);
 
         if let Some(idx) = self.players.iter().position(|x| *x == plr) {
             if self.round_pos <= idx as i32 {
@@ -82,48 +130,73 @@ impl WorldState {
         }
     }
 
-    /// Dart `Fgt.addNew`: 新 player 加入 players 末尾；加入 alives 时插入到同队最后一个活人后面。
-    pub fn add_new_player(&mut self, plr: PlrId, owner: PlrId) {
+    pub fn remove_from_roster(&mut self, plr: PlrId) {
+        if let Some(team_idx) = self.team_index_of(plr)
+            && let Some(team) = self.teams.get_mut(team_idx)
+        {
+            // 永久移除是比死亡更强的操作：同时从 roster 和 alive 抹掉。
+            team.roster.retain(|id| *id != plr);
+            team.alive.retain(|id| *id != plr);
+        }
+        self.remove_player(plr);
+        self.sync_group_rosters();
+    }
+
+    fn ensure_player_in_round(&mut self, plr: PlrId) {
         if !self.players.contains(&plr) {
             self.players.push(plr);
-        }
-        if !self.alives.contains(&plr) {
-            // 找到 owner 所在队伍的成员集合
-            let team_members: Vec<PlrId> = self
-                .team_index_of(owner)
-                .and_then(|ti| self.groups.get(ti))
-                .map(|group| group.to_vec())
-                .unwrap_or_default();
-            // 对齐 Dart: 找到该队在 alives 中实际最后一个成员的位置。
-            // 不能用静态 group 顺序，因为 revive/add 会改变 alives 内的队内顺序。
-            let last_pos = self.alives.iter().rposition(|id| team_members.contains(id));
-            if let Some(pos) = last_pos {
-                self.alives.insert(pos + 1, plr);
-            } else {
-                self.alives.push(plr);
-            }
         }
     }
 
-    /// Dart `Fgt.revive`: 复活 player，加回 alives（插入到同队最后一个活人后面）。
+    pub fn revive_into_team(&mut self, plr: PlrId, team_idx: usize) {
+        self.ensure_player_in_round(plr);
+        if let Some(team) = self.teams.get_mut(team_idx)
+            && !team.alive.contains(&plr)
+        {
+            // 当前对齐策略：复活/重新加入的成员追加到 team alive 队尾。
+            team.alive.push(plr);
+        }
+    }
+
+    /// Dart `Fgt.addNew`: 新 player 加入 players 末尾；team.roster 加入队尾；alive 加入队内 alive 队尾。
+    pub fn add_new_player(&mut self, plr: PlrId, owner: PlrId) {
+        let Some(team_idx) = self.team_index_of(owner) else {
+            self.teams.push(TeamState {
+                roster: vec![plr],
+                alive: vec![plr],
+            });
+            self.ensure_player_in_round(plr);
+            self.sync_group_rosters();
+            return;
+        };
+        if let Some(team) = self.teams.get_mut(team_idx)
+            && !team.roster.contains(&plr)
+        {
+            team.roster.push(plr);
+        }
+        self.revive_into_team(plr, team_idx);
+        self.sync_group_rosters();
+    }
+
+    /// Dart `Fgt.revive`: 复活 player，加回对应队伍的 alive 队尾。
     pub fn revive_player(&mut self, plr: PlrId, owner: PlrId) {
-        if !self.players.contains(&plr) {
-            self.players.push(plr);
+        if let Some(team_idx) = self.team_index_of(plr).or_else(|| self.team_index_of(owner)) {
+            self.revive_into_team(plr, team_idx);
+        } else {
+            self.teams.push(TeamState {
+                roster: vec![plr],
+                alive: vec![plr],
+            });
+            self.ensure_player_in_round(plr);
+            self.sync_group_rosters();
         }
-        if !self.alives.contains(&plr) {
-            let team_members: Vec<PlrId> = self
-                .team_index_of(owner)
-                .and_then(|ti| self.groups.get(ti))
-                .map(|group| group.to_vec())
-                .unwrap_or_default();
-            // 对齐 Dart: 找到该队在 alives 中实际最后一个成员的位置。
-            let last_pos = self.alives.iter().rposition(|id| team_members.contains(id));
-            if let Some(pos) = last_pos {
-                self.alives.insert(pos + 1, plr);
-            } else {
-                self.alives.push(plr);
-            }
-        }
+    }
+
+    #[inline]
+    pub fn roster_count(&self) -> usize { self.teams.len() }
+
+    pub fn winner_roster(&self, team_idx: usize) -> Option<Vec<PlrId>> {
+        self.teams.get(team_idx).map(|team| team.roster.clone())
     }
 }
 
@@ -228,13 +301,28 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
         .and_then(|player| player.get_state::<CharmState>())
         .and_then(|charm| world.team_index_of(charm.group_id))
         .unwrap_or(team_idx);
-    let Some(ally_all) = world.groups.get(effective_team).cloned() else {
+    let Some(team_roster) = world.team_roster(effective_team).map(|team| team.to_vec()) else {
         return ActionTargets::default();
     };
+    // 目标域显式由 team state 生成：
+    // - ally_alive 使用 team.alive 的当前顺序
+    // - ally_dead 使用 roster - alive
+    // - ally_all 保持 roster 语义，对齐 Dart 的 group.players
+    let ally_alive = world.team_alive(effective_team).map(|team| team.to_vec()).unwrap_or_default();
+    let ally_all = team_roster.clone();
+    let ally_dead = team_roster
+        .iter()
+        .copied()
+        .filter(|id| !ally_alive.contains(id))
+        .collect::<Vec<PlrId>>();
     let all_alive = world.alives_flat(storage);
-    let enemy_alive = all_alive.iter().copied().filter(|id| !ally_all.contains(id)).collect::<Vec<PlrId>>();
-    let ally_alive = all_alive.iter().copied().filter(|id| ally_all.contains(id)).collect::<Vec<PlrId>>();
-    let ally_dead = ally_all.iter().copied().filter(|id| !all_alive.contains(id)).collect::<Vec<PlrId>>();
+    let enemy_alive = world
+        .teams
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| *idx != effective_team)
+        .flat_map(|(_, team)| team.alive.iter().copied())
+        .collect::<Vec<PlrId>>();
 
     ActionTargets {
         enemy_alive,
@@ -270,15 +358,16 @@ fn resolve_combat(
     }
 }
 
-fn check_winner(world: &mut WorldState, storage: &Arc<Storage>) {
-    let mut alive_groups = world
-        .alives_by_group(storage)
-        .into_iter()
-        .filter(|group| !group.is_empty())
-        .collect::<Vec<Vec<PlrId>>>();
+fn check_winner(world: &mut WorldState, _storage: &Arc<Storage>) {
+    let mut alive_team_indices = world
+        .teams
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, team)| (!team.alive.is_empty()).then_some(idx))
+        .collect::<Vec<usize>>();
 
-    world.winner = if alive_groups.len() == 1 {
-        Some(alive_groups.remove(0))
+    world.winner = if alive_team_indices.len() == 1 {
+        world.winner_roster(alive_team_indices.remove(0))
     } else {
         None
     };
@@ -335,11 +424,9 @@ impl EngineCore {
         for id in &death_queue {
             // 如果该 player 也在 pending_remove 中，同时从 groups 中移除。
             if pending_remove_players.contains(id) {
-                for group in &mut world.groups {
-                    group.retain(|x| x != id);
-                }
+                world.remove_from_roster(*id);
             }
-            if world.alives.contains(id) && !storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
+            if world.contains_alive(*id) && !storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
                 world.remove_player(*id);
                 Self::debug_world_state("after_dead_remove", world, storage);
             }
@@ -347,18 +434,14 @@ impl EngineCore {
         // 处理不在 death_queue 中的 pending_remove（理论上不应发生，safety net）。
         for ptr in &pending_remove_players {
             if !death_queue.contains(ptr) {
-                world.remove_player(*ptr);
-                for group in &mut world.groups {
-                    group.retain(|x| x != ptr);
-                }
+                world.remove_from_roster(*ptr);
                 Self::debug_world_state("after_pending_remove_only", world, storage);
             }
         }
         // Fallback: 处理可能遗漏的死亡（不在 death_queue 中但已标记死亡的 player）。
         let remaining_dead: Vec<PlrId> = world
-            .alives
-            .iter()
-            .copied()
+            .alives_flat(storage)
+            .into_iter()
             .filter(|id| !storage.get_player(id).map(|p| p.alive()).unwrap_or(false))
             .collect();
         for id in remaining_dead {
@@ -368,9 +451,9 @@ impl EngineCore {
 
         // 2.5) 同步复活：把已复活但已从 round/alives 移除的实体加回世界。
         let mut revived_ids: Vec<PlrId> = Vec::new();
-        for group in &world.groups {
-            for id in group {
-                if world.alives.contains(id) {
+        for team in &world.teams {
+            for id in &team.roster {
+                if world.contains_alive(*id) {
                     continue;
                 }
                 let revived = storage.get_player(id).map(|p| p.alive()).unwrap_or(false);
@@ -389,19 +472,11 @@ impl EngineCore {
         for pending in pending_spawns {
             let owner = pending.owner;
             let plr_id = storage.just_insert_player(pending.player);
-            let owner_team = world.team_index_of(owner);
-            if let Some(team_idx) = owner_team {
-                if let Some(group) = world.groups.get_mut(team_idx) {
-                    group.push(plr_id);
-                }
-            } else {
-                world.groups.push(vec![plr_id]);
-            }
-            // 对齐 Dart: addNew — players 末尾, alives 插入同队最后一个活人后面
             world.add_new_player(plr_id, owner);
         }
 
         storage.sync_groups(&world.groups);
+        storage.sync_alive_groups(&world.alives_by_group(storage));
         Self::debug_world_state("post_sync", world, storage);
     }
 
@@ -601,13 +676,10 @@ impl Runner {
 
         let mut world = WorldState::new(sorted_groups);
         world.players = sorted_for_move_point;
-        // Dart: alives 的初始顺序是按 groups 分组的（先 group1 的所有成员，再 group2...），
-        // 而不是全局排序。对齐 Dart 的:
-        //   for (Grp g in groups) { alives.addAll(g.alives); }
-        world.alives = world.groups.iter().flatten().copied().collect();
         storage.sync_groups(&world.groups);
-        if world.groups.len() == 1 {
-            world.winner = Some(world.groups[0].clone());
+        storage.sync_alive_groups(&world.alives_by_group(&storage));
+        if world.roster_count() == 1 {
+            world.winner = world.winner_roster(0);
         }
 
         Ok(Runner {

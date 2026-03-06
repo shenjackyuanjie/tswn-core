@@ -38,6 +38,8 @@ pub struct Storage {
     skills: FastHashMap<usize, Skill>,
     /// 存队伍分组。
     groups: FastHashMap<usize, Vec<PlrId>>,
+    /// 运行期每队存活视图，由 world 同步。
+    alive_groups: Vec<Vec<PlrId>>,
     /// 存玩家实体。
     players: FastHashMap<PlrId, Player>,
     /// 延迟到引擎 tick 同步的新增实体。
@@ -56,6 +58,7 @@ impl Storage {
         Storage {
             skills: FastHashMap::new(),
             groups: FastHashMap::new(),
+            alive_groups: Vec::new(),
             players: FastHashMap::new(),
             pending_spawns: Vec::new(),
             pending_remove_players: Vec::new(),
@@ -69,6 +72,7 @@ impl Storage {
     pub fn clear(&mut self) {
         self.skills.clear();
         self.groups.clear();
+        self.alive_groups.clear();
         self.players.clear();
         self.pending_spawns.clear();
         self.pending_remove_players.clear();
@@ -86,6 +90,14 @@ impl Storage {
         self.groups.values().find(|group| group.contains(&actor))
     }
 
+    pub fn alive_group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
+        self.alive_groups.iter().find(|group| group.contains(&actor))
+    }
+
+    pub fn alive_group_count(&self) -> usize { self.alive_groups.iter().filter(|group| !group.is_empty()).count() }
+
+    pub fn all_alive_ids(&self) -> Vec<PlrId> { self.alive_groups.iter().flat_map(|group| group.iter().copied()).collect() }
+
     pub fn all_player_ids(&self) -> Vec<PlrId> { self.players.keys().copied().collect() }
 
     pub fn sync_groups(&self, groups: &[Vec<PlrId>]) {
@@ -95,6 +107,13 @@ impl Storage {
             for (idx, group) in groups.iter().enumerate() {
                 (*mut_slf).groups.insert(idx, group.clone());
             }
+        }
+    }
+
+    pub fn sync_alive_groups(&self, groups: &[Vec<PlrId>]) {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            (*mut_slf).alive_groups = groups.to_vec();
         }
     }
 

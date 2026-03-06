@@ -241,7 +241,9 @@ impl Player {
     ///
     /// 1. `EnemyAlive` 在 JS 产物里对应的是基于 `all_alive + pickSkipRange` 的抽样语义，
     ///    不是一个纯粹的 `enemy_alive` 紧凑列表。
-    /// 2. 现有部分技能虽然实现了 `select_targets_with_level`，但如果全量切换到统一入口，
+    /// 2. `AllyAny` 需要保持 Dart 的 `group.players` 语义，也就是 team roster 视图；
+    ///    它和 `AllyAlive` / `AllAlive` 是不同维度的数据，不能互相替代。
+    /// 3. 现有部分技能虽然实现了 `select_targets_with_level`，但如果全量切换到统一入口，
     ///    会改变随机数消费顺序和重复/无效目标处理细节，从而造成隐藏 RC4 漂移。
     ///
     /// 因此这里先保留“按 domain 手工抽样，再按 valid/score 排序”的稳定路径。
