@@ -7,6 +7,7 @@ mod fight_multi_2;
 mod fight_multi_3;
 mod fight_multi_4;
 mod fight_multi_5;
+mod fight_multi_6;
 mod large_01_10;
 mod large_11_17;
 mod large_18_22;
@@ -20,12 +21,12 @@ fn format_update_message(runner: &runners::Runner, update: &RunUpdate) -> String
     let caster = runner
         .storage
         .get_player(&update.caster)
-        .map(|plr| plr.id_name())
+        .map(|plr| plr.display_name())
         .unwrap_or_else(|| format!("#{}", update.caster));
     let target = runner
         .storage
         .get_player(&update.target)
-        .map(|plr| plr.id_name())
+        .map(|plr| plr.display_name())
         .unwrap_or_else(|| format!("#{}", update.target));
     let mut msg = update.message.clone();
     msg = msg.replace("[0]", &caster);
@@ -36,7 +37,7 @@ fn format_update_message(runner: &runners::Runner, update: &RunUpdate) -> String
         update
             .targets
             .iter()
-            .map(|id| runner.storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
+            .map(|id| runner.storage.get_player(id).map(|plr| plr.display_name()).unwrap_or_else(|| format!("#{id}")))
             .collect::<Vec<String>>()
             .join(",")
     };

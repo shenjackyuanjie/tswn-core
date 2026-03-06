@@ -76,7 +76,7 @@ fn print_all_players(runner: &Runner) {
             let status = plr.get_status();
             println!(
                 "- {} (id={}): HP={}/{}, move_point:{} ATK={}, DEF={}, SPD={}, AGI={}, MAG={}, MP={}, MDF={}, ITL={}, all_sum={} 系数: {}",
-                plr.id_name(),
+                plr.display_name(),
                 id,
                 status.hp,
                 status.max_hp,
@@ -157,7 +157,7 @@ fn main() {
                 let battle_score = score_by_caster.get(&winner).copied().unwrap_or(0);
                 println!(
                     "- {} (id={}, all_sum={}, battle_score={}, hp={})",
-                    plr.id_name(),
+                    plr.display_name(),
                     winner,
                     plr.get_status().all_sum,
                     battle_score,
