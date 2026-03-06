@@ -231,6 +231,22 @@ impl Player {
         }
     }
 
+    /// NOTE:
+    /// 这里不能直接退化成：
+    ///   skill.select_targets(candidates, smart, ...)
+    ///
+    /// 之前已经反复验证过，这种“看起来更统一”的改法会把当前对局随机流打歪，
+    /// 典型回归就是 `fight_multi_6` 会重新失败。根因是当前 Rust 侧的主动技能选目标
+    /// 语义并不完全等同于“先构出 candidate 列表，再走 trait 默认 select_targets”：
+    ///
+    /// 1. `EnemyAlive` 在 JS 产物里对应的是基于 `all_alive + pickSkipRange` 的抽样语义，
+    ///    不是一个纯粹的 `enemy_alive` 紧凑列表。
+    /// 2. 现有部分技能虽然实现了 `select_targets_with_level`，但如果全量切换到统一入口，
+    ///    会改变随机数消费顺序和重复/无效目标处理细节，从而造成隐藏 RC4 漂移。
+    ///
+    /// 因此这里先保留“按 domain 手工抽样，再按 valid/score 排序”的稳定路径。
+    /// 如果后续要接入某个技能自己的特殊选目标逻辑，应该做“逐技能 opt-in” 的窄改，
+    /// 而不是把整个主动技能入口一次性切到 `skill.select_targets(...)`。
     fn select_skill_targets(
         &self,
         skill: &crate::player::skill::Skill,
