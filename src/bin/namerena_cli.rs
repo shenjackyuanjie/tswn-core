@@ -6,10 +6,17 @@ use tswn_core::Runner;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 
 fn print_usage() {
-    eprintln!("用法:");
-    eprintln!("  namerena_cli --raw \"a\\nb\\n\\nc\\nd\"");
-    eprintln!("  namerena_cli --file input.txt");
-    eprintln!("  echo \"a\\nb\\n\\nc\\nd\" | namerena_cli");
+    println!("用法:");
+    println!("  namerena_cli [选项]");
+    println!();
+    println!("选项:");
+    println!("  --raw <字符串>    使用提供的原始字符串作为输入");
+    println!("  --file <文件路径>  从文件读取输入");
+    println!("  --help, -h        显示此帮助信息");
+    println!();
+    println!("  namerena_cli --raw \"a\\nb\\n\\nc\\nd\"");
+    println!("  namerena_cli --file input.txt");
+    println!("  echo \"a\\nb\\n\\nc\\nd\" | namerena_cli");
 }
 
 fn read_raw_input() -> Result<String, String> {
@@ -24,6 +31,10 @@ fn read_raw_input() -> Result<String, String> {
     }
 
     match args[0].as_str() {
+        "--help" | "-h" => {
+            print_usage();
+            std::process::exit(0);
+        }
         "--raw" => {
             if args.len() < 2 {
                 return Err("--raw 需要一个字符串参数".to_string());
