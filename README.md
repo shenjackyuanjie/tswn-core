@@ -3,7 +3,7 @@
 > 坏了, 我真开始技术封锁了
 
 - 项目最大赞助商: Github Copilot Pro ( 甚至是 Github Edu 送的 )
-  - 我敲，你懂什么叫 Claude Opus 4.6 跑了一百天还只消耗了一次额度的震撼吗.png
+  - 我敲，你懂什么叫 Claude Opus 4.6 跑了快一整天还只消耗了一次额度的震撼吗.png
   - 这太TM震撼了
   - 甚至它会自动 compat
     - 还是免费的 ( 不消耗额度 )
