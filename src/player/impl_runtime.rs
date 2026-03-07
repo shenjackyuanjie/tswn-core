@@ -29,12 +29,23 @@ impl Player {
         }
         stp = self.apply_pre_step_states(stp, updates);
         if trace_fine {
-            eprintln!("[step_after_pre_step_states] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+            eprintln!(
+                "[step_after_pre_step_states] plr={} rc4=({}, {})",
+                self.id_name(),
+                randomer.i,
+                randomer.j
+            );
         }
         let ptr = self.as_ptr();
         stp = self.skills.pre_step(stp, (ptr, randomer, updates, storage));
         if trace_fine {
-            eprintln!("[step_after_pre_step_skills] plr={} rc4=({}, {}) move_after={}", self.id_name(), randomer.i, randomer.j, self.status.move_point + stp);
+            eprintln!(
+                "[step_after_pre_step_skills] plr={} rc4=({}, {}) move_after={}",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+                self.status.move_point + stp
+            );
         }
         self.status.move_point += stp;
         if debug_this {
@@ -66,7 +77,13 @@ impl Player {
         let smart_roll = randomer.r63() as i32;
         let smart = self.status.wisdom > smart_roll;
         if trace_fine {
-            eprintln!("[action_after_smart] plr={} smart={} rc4=({}, {})", self.id_name(), smart, randomer.i, randomer.j);
+            eprintln!(
+                "[action_after_smart] plr={} smart={} rc4=({}, {})",
+                self.id_name(),
+                smart,
+                randomer.i,
+                randomer.j
+            );
         }
         if debug_this {
             eprintln!(
@@ -84,7 +101,12 @@ impl Player {
         let ptr = self.as_ptr();
         let pre_action_outcome = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
         if trace_fine {
-            eprintln!("[action_after_preaction] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+            eprintln!(
+                "[action_after_preaction] plr={} rc4=({}, {})",
+                self.id_name(),
+                randomer.i,
+                randomer.j
+            );
         }
         if debug_this {
             eprintln!(
@@ -215,7 +237,12 @@ impl Player {
 
         if !acted {
             if trace_fine {
-                eprintln!("[action_before_default_attack] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+                eprintln!(
+                    "[action_before_default_attack] plr={} rc4=({}, {})",
+                    self.id_name(),
+                    randomer.i,
+                    randomer.j
+                );
             }
             self.default_attack(smart, randomer, updates, storage, targets);
         }
@@ -260,7 +287,13 @@ impl Player {
             }
         }
         if std::env::var_os("TSWN_DEBUG_PICK").is_some() {
-            eprintln!("[pick_enemy] all_alive_len={} skip={:?} rc4=({},{})", targets.all_alive.len(), skip_indices, randomer.i, randomer.j);
+            eprintln!(
+                "[pick_enemy] all_alive_len={} skip={:?} rc4=({},{})",
+                targets.all_alive.len(),
+                skip_indices,
+                randomer.i,
+                randomer.j
+            );
         }
         if skip_indices.is_empty() {
             randomer.pick(&targets.all_alive).map(|idx| targets.all_alive[idx])
@@ -697,13 +730,24 @@ impl Player {
     ) {
         let trace_fine = DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
         if trace_fine {
-            eprintln!("[default_attack_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+            eprintln!(
+                "[default_attack_begin] plr={} rc4=({}, {})",
+                self.id_name(),
+                randomer.i,
+                randomer.j
+            );
         }
         let Some(target_id) = self.select_default_attack_target(smart, randomer, storage, targets) else {
             return;
         };
         if trace_fine {
-            eprintln!("[default_attack_after_target] plr={} target={:?} rc4=({}, {})", self.id_name(), target_id, randomer.i, randomer.j);
+            eprintln!(
+                "[default_attack_after_target] plr={} target={:?} rc4=({}, {})",
+                self.id_name(),
+                target_id,
+                randomer.i,
+                randomer.j
+            );
         }
 
         if smart && self.status.magic > self.status.attack {
@@ -712,7 +756,13 @@ impl Player {
                 self.status.mp -= req_mp;
                 let atp = self.get_at(true, randomer);
                 if trace_fine {
-                    eprintln!("[default_attack_before_attacked] plr={} is_mag=true atp={} rc4=({}, {})", self.id_name(), atp, randomer.i, randomer.j);
+                    eprintln!(
+                        "[default_attack_before_attacked] plr={} is_mag=true atp={} rc4=({}, {})",
+                        self.id_name(),
+                        atp,
+                        randomer.i,
+                        randomer.j
+                    );
                 }
                 updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
                 storage
@@ -725,7 +775,13 @@ impl Player {
 
         let atp = self.get_at(false, randomer);
         if trace_fine {
-            eprintln!("[default_attack_before_attacked] plr={} is_mag=false atp={} rc4=({}, {})", self.id_name(), atp, randomer.i, randomer.j);
+            eprintln!(
+                "[default_attack_before_attacked] plr={} is_mag=false atp={} rc4=({}, {})",
+                self.id_name(),
+                atp,
+                randomer.i,
+                randomer.j
+            );
         }
         updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
         storage
@@ -939,7 +995,10 @@ impl Player {
             use std::sync::atomic::{AtomicU32, Ordering};
             static DODGE_COUNT: AtomicU32 = AtomicU32::new(0);
             let count = DODGE_COUNT.fetch_add(1, Ordering::Relaxed);
-            eprintln!("[dodge_all] #{count} accure={al_a} dodgeval={al_d} rc4=({}, {})", randomer.i, randomer.j);
+            eprintln!(
+                "[dodge_all] #{count} accure={al_a} dodgeval={al_d} rc4=({}, {})",
+                randomer.i, randomer.j
+            );
             // Set/clear trace flag around dodge 200-201
             static TRACE_FLAG: AtomicU32 = AtomicU32::new(0);
             if count == 200 {

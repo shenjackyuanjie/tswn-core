@@ -479,9 +479,7 @@ impl EngineCore {
         };
         let debug_tick = std::env::var_os("TSWN_DEBUG_TICK").is_some();
         let rc4_before = if debug_tick { (randomer.i, randomer.j) } else { (0, 0) };
-        if debug_tick
-            && let Some(plr) = storage.get_player(&actor)
-        {
+        if debug_tick && let Some(plr) = storage.get_player(&actor) {
             eprintln!(
                 "[tick] actor={} mp={} hp={} rc4=({}, {})",
                 plr.id_name(),
@@ -508,8 +506,10 @@ impl EngineCore {
                 eprintln!(
                     "[tick_end] actor={} rc4=({},{})->({},{}) bytes={}",
                     plr.id_name(),
-                    rc4_before.0, rc4_before.1,
-                    ctx.randomer.i, ctx.randomer.j,
+                    rc4_before.0,
+                    rc4_before.1,
+                    ctx.randomer.i,
+                    ctx.randomer.j,
                     bytes
                 );
             }

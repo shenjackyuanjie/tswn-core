@@ -15,7 +15,7 @@ mod large_11_17;
 mod large_18_22;
 mod large_23_30;
 mod large_31_40;
-mod large_41;
+mod large_41_45;
 mod simple;
 mod small;
 
@@ -90,16 +90,14 @@ fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normali
     let mut lines = Vec::new();
     let mut guard = 0usize;
     let track_rc4 = std::env::var_os("TSWN_TRACK_RC4").is_some();
-    let track_rc4_range: Option<(usize, usize)> = std::env::var("TSWN_TRACK_RC4")
-        .ok()
-        .and_then(|v| {
-            let parts: Vec<&str> = v.split(',').collect();
-            if parts.len() == 2 {
-                Some((parts[0].parse().ok()?, parts[1].parse().ok()?))
-            } else {
-                None
-            }
-        });
+    let track_rc4_range: Option<(usize, usize)> = std::env::var("TSWN_TRACK_RC4").ok().and_then(|v| {
+        let parts: Vec<&str> = v.split(',').collect();
+        if parts.len() == 2 {
+            Some((parts[0].parse().ok()?, parts[1].parse().ok()?))
+        } else {
+            None
+        }
+    });
     while !runner.have_winner() && guard < max_rounds {
         let in_range = track_rc4_range
             .map(|(lo, hi)| lines.len() >= lo && lines.len() <= hi)

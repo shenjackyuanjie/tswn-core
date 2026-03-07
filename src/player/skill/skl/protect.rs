@@ -211,9 +211,7 @@ impl ProtectSkill {
             .or_else(|| args.3.group_containing(args.0).cloned())
             .unwrap_or_default();
         for id in &roster {
-            if !candidates.contains(id)
-                && args.3.get_player(id).map(|p| p.alive()).unwrap_or(false)
-            {
+            if !candidates.contains(id) && args.3.get_player(id).map(|p| p.alive()).unwrap_or(false) {
                 candidates.push(*id);
             }
         }

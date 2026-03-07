@@ -37,7 +37,10 @@ impl SkillTrait for ReflectSkill {
         if debug_reflect {
             let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_default();
             let caster_name = args.3.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-            eprintln!("[reflect] start owner={owner_name} caster={caster_name} atp={atp} level={level} rc4=({}, {})", args.1.i, args.1.j);
+            eprintln!(
+                "[reflect] start owner={owner_name} caster={caster_name} atp={atp} level={level} rc4=({}, {})",
+                args.1.i, args.1.j
+            );
         }
         let reflect_atp = {
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get reflect owner from storage");
@@ -52,7 +55,10 @@ impl SkillTrait for ReflectSkill {
             }
             let mut reflect_atp = owner.get_at(true, args.1) * 0.5;
             if debug_reflect {
-                eprintln!("[reflect] after get_at reflect_atp={reflect_atp} rc4=({}, {})", args.1.i, args.1.j);
+                eprintln!(
+                    "[reflect] after get_at reflect_atp={reflect_atp} rc4=({}, {})",
+                    args.1.i, args.1.j
+                );
             }
             if reflect_atp > atp {
                 reflect_atp = atp;
@@ -62,7 +68,10 @@ impl SkillTrait for ReflectSkill {
         };
         args.2.add(RunUpdate::new("[0]使用[伤害反弹]", args.0, caster, 20));
         if debug_reflect {
-            eprintln!("[reflect] before reflected_attacked reflect_atp={reflect_atp} rc4=({}, {})", args.1.i, args.1.j);
+            eprintln!(
+                "[reflect] before reflected_attacked reflect_atp={reflect_atp} rc4=({}, {})",
+                args.1.i, args.1.j
+            );
         }
         args.3
             .just_get_player_mut(caster)

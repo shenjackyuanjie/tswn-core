@@ -81,8 +81,7 @@ impl SkillTrait for DisperseSkill {
             target.clear_state::<ShieldState>();
         }
 
-        args
-            .3
+        args.3
             .just_get_player_mut(target_id)
             .expect("cannot get disperse target from storage")
             .defned(

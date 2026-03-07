@@ -134,9 +134,7 @@ impl Default for HasteState {
 impl StateTrait for HasteState {
     fn meta_type(&self) -> i32 { 1 }
 
-    fn cancel_message(&self, alive: bool) -> Option<&'static str> {
-        if alive { Some("[1]从[疾走]中解除") } else { None }
-    }
+    fn cancel_message(&self, alive: bool) -> Option<&'static str> { if alive { Some("[1]从[疾走]中解除") } else { None } }
 
     fn update_state_priority(&self) -> i32 { 100 }
 

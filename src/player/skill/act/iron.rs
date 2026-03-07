@@ -76,9 +76,7 @@ pub struct IronState {
 impl StateTrait for IronState {
     fn meta_type(&self) -> i32 { self.step.max(0) }
 
-    fn cancel_message(&self, _alive: bool) -> Option<&'static str> {
-        Some("[1]的[铁壁]被打消了")
-    }
+    fn cancel_message(&self, _alive: bool) -> Option<&'static str> { Some("[1]的[铁壁]被打消了") }
 
     fn update_state_priority(&self) -> i32 { 4000 }
 
