@@ -117,7 +117,7 @@ pub trait SkillTrait: Debug {
     }
     /// 死亡时（返回 true 表示短路，不再执行后续 die）
     fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool { false }
-    fn die_with_level(&mut self, _level: u32, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
+    fn die_with_level(&mut self, _level: &mut u32, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
         self.die(oldhp, caster, args)
     }
     /// 击杀目标后（返回 true 表示短路，不再执行后续 kill）
@@ -465,7 +465,7 @@ impl Skill {
     }
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
-        self.skill_type.die_with_level(self.level, oldhp, caster, args)
+        self.skill_type.die_with_level(&mut self.level, oldhp, caster, args)
     }
 
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.skill_type.kill_with_level(self.level, target, args) }

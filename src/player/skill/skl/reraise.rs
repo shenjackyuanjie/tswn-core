@@ -26,10 +26,12 @@ impl SkillTrait for ReraiseSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
-    fn die_with_level(&mut self, level: u32, _oldhp: i32, _caster: PlrId, args: SkillArgs) -> bool {
-        if args.1.r127() >= level {
+    fn die_with_level(&mut self, level: &mut u32, _oldhp: i32, _caster: PlrId, args: SkillArgs) -> bool {
+        if args.1.r127() >= *level {
             return false;
         }
+        // Dart: level = (level+1) ~/ 2
+        *level = (*level + 1) / 2;
         let hp = args.1.r16() as i32;
         args.2.add(RunUpdate::new("[0]使用[护身符]抵挡了一次死亡", args.0, args.0, 80));
         args.3
