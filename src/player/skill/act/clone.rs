@@ -74,16 +74,8 @@ impl SkillTrait for CloneSkill {
         cloned.state = PlayerStateStore::default();
 
         // JS: PlrClone 先重新 build，重置技能内部运行时状态；
-        // 然后把技能等级 clamp 到 owner 当前等级。
-        cloned.build();
-        let skill_keys = cloned.skills.skill.clone();
-        for skill_key in skill_keys {
-            let owner_level = owner_snapshot.skills.skill_by_id(skill_key).level();
-            let skill = cloned.skills.skill_by_id_mut(skill_key);
-            if skill.level() > owner_level {
-                skill.set_level(owner_level);
-            }
-        }
+        // PlrClone.addSkillsToProc 先 clamp 等级到 owner 当前等级，然后再 boost。
+        cloned.build_for_clone(&owner_snapshot.skills);
 
         // JS PlrClone.aU: 克隆体八围直接拷贝 owner 当前八围。
         cloned.attr = owner_snapshot.attr;

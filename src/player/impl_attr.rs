@@ -19,6 +19,17 @@ impl Player {
     /// - 具体属性 ( 8围 )
     /// - 技能熟练度
     pub fn build(&mut self) {
+        self.build_inner(None);
+    }
+
+    /// Dart PlrClone 在 addSkillsToProc 中先 clamp 技能等级到 owner 的当前等级，
+    /// 然后再执行 boost（super.addSkillsToProc）。
+    /// 普通 build 不做 clamp，clone 通过传入 owner 的 skill store 来执行 clamp。
+    pub fn build_for_clone(&mut self, owner_skills: &crate::player::skill::store::SkillStorage) {
+        self.build_inner(Some(owner_skills));
+    }
+
+    fn build_inner(&mut self, clamp_source: Option<&crate::player::skill::store::SkillStorage>) {
         let equipped_weapon = self.weapon.clone();
         if let Some(weapon_name) = equipped_weapon.as_deref() {
             let weapon = weapons::Weapon::from_name(weapon_name);
@@ -81,6 +92,18 @@ impl Player {
         if let Some(weapon_name) = equipped_weapon.as_deref() {
             let weapon = weapons::Weapon::from_name(weapon_name);
             weapon.post_upgrade(self);
+        }
+
+        // Dart PlrClone.addSkillsToProc: clamp 发生在 boost 之前
+        if let Some(owner_skills) = clamp_source {
+            let skill_keys = self.skills.skill.clone();
+            for skill_key in skill_keys {
+                let owner_level = owner_skills.skill_by_id(skill_key).level();
+                let skill = self.skills.skill_by_id_mut(skill_key);
+                if skill.level() > owner_level {
+                    skill.set_level(owner_level);
+                }
+            }
         }
 
         // boost skills(addSkillsToProc)
