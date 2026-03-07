@@ -80,22 +80,67 @@ impl Player {
             }
         }
         // UNWRAP SAFE: name_base.len() == 128
-        let raw_name_base: [u8; 128] = name_base
+        let mut raw_name_base: [u8; 128] = name_base
             .as_slice()
             .try_into()
             .unwrap_or_else(|_| unreachable!("unreachable(如果真到这里了就tm得好好怀疑一下自己的代码是怎么写的了)"));
+
+        // Test1/Test2/TestEx 特殊 name_base 修改（对应 JS e4/e5/e2）
+        match player_type {
+            PlayerType::Test1 => {
+                // JS PlrBossTest.e4: for i in 0..50, if val < 12, val = 63 - val
+                for i in 0..50 {
+                    let v = name_base[i];
+                    if v < 12 {
+                        name_base[i] = 63 - v;
+                    }
+                }
+            }
+            PlayerType::Test2 => {
+                // JS PlrBossTest2.e5: for i in 0..50, if val < 32, val = 63 - val
+                for i in 0..50 {
+                    let v = name_base[i];
+                    if v < 32 {
+                        name_base[i] = 63 - v;
+                    }
+                }
+            }
+            PlayerType::TestEx => {
+                // JS PlrEx.e2: for i in 6..50, if val < 41, val = (val & 15) + 41
+                for i in 6..50 {
+                    let v = name_base[i];
+                    if v < 41 {
+                        name_base[i] = (v & 15) + 41;
+                    }
+                }
+                // for i in 50..128, if val < 16, val += 32
+                for i in 50..128 {
+                    let v = name_base[i];
+                    if v < 16 {
+                        name_base[i] = v + 32;
+                    }
+                }
+                // TestEx 还会将修改后的 name_base 复制到 raw_name_base
+                raw_name_base = name_base.as_slice().try_into().unwrap();
+            }
+            _ => {}
+        }
 
         // 技能顺序
         let mut skills = (0..40).collect::<Vec<u32>>();
         rand.sort_list(&mut skills);
 
-        let name_factor = {
-            let factor_name = eval_name::eval_str_common(name.as_str(), true);
-            let factor_team = match team.as_ref() {
-                Some(team) => eval_name::eval_str_common(team.as_str(), true),
-                None => factor_name,
-            };
-            factor_name.max(factor_team - 6.0)
+        // JS bf(): Test1/Test2/TestEx 的 name_factor 强制为 0
+        let name_factor = match player_type {
+            PlayerType::Test1 | PlayerType::Test2 | PlayerType::TestEx => 0.0,
+            _ => {
+                let factor_name = eval_name::eval_str_common(name.as_str(), true);
+                let factor_team = match team.as_ref() {
+                    Some(team) => eval_name::eval_str_common(team.as_str(), true),
+                    None => factor_name,
+                };
+                factor_name.max(factor_team - 6.0)
+            }
         };
 
         let mut status = PlayerStatus::default();

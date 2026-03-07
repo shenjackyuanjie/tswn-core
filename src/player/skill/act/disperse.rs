@@ -5,7 +5,6 @@ use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
     skill::act::minion::is_combat_minion,
-    skill::shield::ShieldState,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
@@ -72,14 +71,8 @@ impl SkillTrait for DisperseSkill {
         let target_is_minion = args.3.get_player(&target_id).map(is_combat_minion).unwrap_or(false);
         args.2.add(RunUpdate::new("[0]使用[净化]", args.0, target_id, 20));
 
-        // Pre-cancel shield before damage
         // Note: Dart source has 'Dt.shield'/'Dt.iron' (string literal) instead of Dt.shield/Dt.iron (variable)
-        // so these checks NEVER match in Dart/JS. The shield pre-clear was already in Rust and tests pass
-        // with it. Iron pre-clear is NOT done to match the JS behavior.
-        {
-            let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
-            target.clear_state::<ShieldState>();
-        }
+        // so these checks NEVER match in Dart/JS. Shield/Iron are NOT pre-cleared before damage.
 
         args.3
             .just_get_player_mut(target_id)
