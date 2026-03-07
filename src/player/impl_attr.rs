@@ -115,6 +115,11 @@ impl Player {
         self.status.hp = self.status.max_hp;
         // Dart: mp = itl ~/ 2
         self.status.mp = self.status.wisdom >> 1;
+        // DEBUG: dump stats after build (disabled to reduce noise)
+        // eprintln!("[STATS] {}: atk={} def={} spd={} agl={} mag={} mdf={} wis={} hp={} name_factor={} attr={:?}",
+        //     self.id_name(), self.status.attack, self.status.defense, self.status.speed,
+        //     self.status.agility, self.status.magic, self.status.resistance,
+        //     self.status.wisdom, self.status.max_hp, self.name_factor, self.attr);
     }
 
     /// 更新状态

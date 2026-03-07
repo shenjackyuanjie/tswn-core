@@ -67,7 +67,7 @@ impl SkillTrait for ThunderSkill {
             }
             agl -= 10;
             let owner = args.3.get_player(&args.0).expect("cannot get thunder owner from storage");
-            let atp = owner.get_at(true, args.1) * 0.36;
+            let atp = owner.get_at(true, args.1) * 0.36000001430511475;
             let dmg = args
                 .3
                 .just_get_player_mut(target_id)

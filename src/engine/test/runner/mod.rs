@@ -90,8 +90,21 @@ fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normali
     let mut lines = Vec::new();
     let mut guard = 0usize;
     let track_rc4 = std::env::var_os("TSWN_TRACK_RC4").is_some();
+    let track_rc4_range: Option<(usize, usize)> = std::env::var("TSWN_TRACK_RC4")
+        .ok()
+        .and_then(|v| {
+            let parts: Vec<&str> = v.split(',').collect();
+            if parts.len() == 2 {
+                Some((parts[0].parse().ok()?, parts[1].parse().ok()?))
+            } else {
+                None
+            }
+        });
     while !runner.have_winner() && guard < max_rounds {
-        if track_rc4 && lines.len() >= 250 && lines.len() <= 260 {
+        let in_range = track_rc4_range
+            .map(|(lo, hi)| lines.len() >= lo && lines.len() <= hi)
+            .unwrap_or(track_rc4 && lines.len() >= 250 && lines.len() <= 260);
+        if in_range {
             eprintln!(
                 "[rc4_track] before_round line_count={} rc4=({}, {})",
                 lines.len(),

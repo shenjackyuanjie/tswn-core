@@ -114,7 +114,7 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get hide owner from storage");
-        owner.mul_attract(0.1);
+        owner.mul_attract(0.10000000149011612);
         if level > 63 {
             let boost = (level - 63) as i32;
             owner.add_agility(boost);
@@ -127,7 +127,7 @@ impl SkillTrait for HideSkill {
         if self.on_update_state.is_none() {
             return;
         }
-        status.attract *= 0.1;
+        status.attract *= 0.10000000149011612;
         if level > 63 {
             let boost = (level - 63) as i32;
             status.agility += boost;

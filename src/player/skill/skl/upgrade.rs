@@ -103,6 +103,10 @@ pub struct UpgradeState {
 impl StateTrait for UpgradeState {
     fn meta_type(&self) -> i32 { 1 }
 
+    fn cancel_message(&self, alive: bool) -> Option<&'static str> {
+        if alive { Some("[1]的[垂死]属性被打消") } else { None }
+    }
+
     fn update_state_priority(&self) -> i32 { 130 }
 
     fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) {

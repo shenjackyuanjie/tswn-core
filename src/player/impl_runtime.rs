@@ -1,5 +1,7 @@
 use super::*;
 
+pub static DODGE_TRACE_ACTIVE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 impl Player {
     pub fn update_player(&mut self) {
         self.init_skills();
@@ -13,13 +15,27 @@ impl Player {
         if !self.status.alive() {
             return;
         }
+        // Fine-grained RC4 trace between dodge 200 and 201
+        let trace_fine = DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
+        if trace_fine {
+            eprintln!("[step_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+        }
         let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_target.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
         let move_before = self.status.move_point;
         let mut stp = self.status.speed * randomer.r3() as i32;
+        if trace_fine {
+            eprintln!("[step_after_r3] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+        }
         stp = self.apply_pre_step_states(stp, updates);
+        if trace_fine {
+            eprintln!("[step_after_pre_step_states] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+        }
         let ptr = self.as_ptr();
         stp = self.skills.pre_step(stp, (ptr, randomer, updates, storage));
+        if trace_fine {
+            eprintln!("[step_after_pre_step_skills] plr={} rc4=({}, {}) move_after={}", self.id_name(), randomer.i, randomer.j, self.status.move_point + stp);
+        }
         self.status.move_point += stp;
         if debug_this {
             eprintln!(
@@ -43,8 +59,15 @@ impl Player {
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
         let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_target.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
+        let trace_fine = DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
+        if trace_fine {
+            eprintln!("[action_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+        }
         let smart_roll = randomer.r63() as i32;
         let smart = self.status.wisdom > smart_roll;
+        if trace_fine {
+            eprintln!("[action_after_smart] plr={} smart={} rc4=({}, {})", self.id_name(), smart, randomer.i, randomer.j);
+        }
         if debug_this {
             eprintln!(
                 "[action] start actor={} rc4=({}, {}) smart={} smart_roll={}",
@@ -60,6 +83,9 @@ impl Player {
         }
         let ptr = self.as_ptr();
         let pre_action_outcome = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
+        if trace_fine {
+            eprintln!("[action_after_preaction] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+        }
         if debug_this {
             eprintln!(
                 "[action] after pre_action forced={:?} rc4=({}, {})",
@@ -93,6 +119,7 @@ impl Player {
                     );
                 }
                 if self.status.mp >= req_mp {
+                    let is_boss = self.player_type == PlayerType::Boss;
                     let skill_keys = self.skills.skill.clone();
                     for key in skill_keys {
                         let maybe_targets = {
@@ -100,7 +127,13 @@ impl Player {
                             let rc4_before_prob = (randomer.i, randomer.j);
                             let action_ok = skill.has_action_impl();
                             let level_ok = skill.level() > 0;
-                            let prob_ok = level_ok && action_ok && skill.prob(smart, (ptr, randomer, updates, storage));
+                            // JS PlrBoss.bs() 把所有 ActionSkill 加入 k4，不检查 level。
+                            // 因此 boss 的 level=0 动作技能也要消耗 prob 字节（虽然必定失败）。
+                            let prob_ok = if is_boss {
+                                action_ok && skill.prob(smart, (ptr, randomer, updates, storage))
+                            } else {
+                                level_ok && action_ok && skill.prob(smart, (ptr, randomer, updates, storage))
+                            };
                             if debug_this && (level_ok || action_ok) {
                                 eprintln!(
                                     "[action] skill={key} lv={} action={} prob={} rc4 {}:{} -> {}:{}",
@@ -113,7 +146,7 @@ impl Player {
                                     randomer.j
                                 );
                             }
-                            if !(skill.level() > 0 && skill.has_action_impl() && prob_ok) {
+                            if !(level_ok && action_ok && prob_ok) {
                                 None
                             } else {
                                 let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
@@ -181,6 +214,9 @@ impl Player {
         }
 
         if !acted {
+            if trace_fine {
+                eprintln!("[action_before_default_attack] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+            }
             self.default_attack(smart, randomer, updates, storage, targets);
         }
 
@@ -222,6 +258,9 @@ impl Player {
             if targets.ally_alive.contains(plr_id) {
                 skip_indices.push(idx);
             }
+        }
+        if std::env::var_os("TSWN_DEBUG_PICK").is_some() {
+            eprintln!("[pick_enemy] all_alive_len={} skip={:?} rc4=({},{})", targets.all_alive.len(), skip_indices, randomer.i, randomer.j);
         }
         if skip_indices.is_empty() {
             randomer.pick(&targets.all_alive).map(|idx| targets.all_alive[idx])
@@ -656,15 +695,25 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) {
+        let trace_fine = DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
+        if trace_fine {
+            eprintln!("[default_attack_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+        }
         let Some(target_id) = self.select_default_attack_target(smart, randomer, storage, targets) else {
             return;
         };
+        if trace_fine {
+            eprintln!("[default_attack_after_target] plr={} target={:?} rc4=({}, {})", self.id_name(), target_id, randomer.i, randomer.j);
+        }
 
         if smart && self.status.magic > self.status.attack {
             let req_mp = (self.status.magic - self.status.attack) >> 2;
             if self.status.mp >= req_mp {
                 self.status.mp -= req_mp;
                 let atp = self.get_at(true, randomer);
+                if trace_fine {
+                    eprintln!("[default_attack_before_attacked] plr={} is_mag=true atp={} rc4=({}, {})", self.id_name(), atp, randomer.i, randomer.j);
+                }
                 updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
                 storage
                     .just_get_player_mut(target_id)
@@ -675,6 +724,9 @@ impl Player {
         }
 
         let atp = self.get_at(false, randomer);
+        if trace_fine {
+            eprintln!("[default_attack_before_attacked] plr={} is_mag=false atp={} rc4=({}, {})", self.id_name(), atp, randomer.i, randomer.j);
+        }
         updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
         storage
             .just_get_player_mut(target_id)
@@ -727,6 +779,14 @@ impl Player {
     pub fn clear_positive_states(&mut self) {
         self.state.clear_positive_states();
         self.update_states();
+    }
+
+    #[inline]
+    pub fn clear_positive_states_with_messages(&mut self) -> Vec<&'static str> {
+        let alive = self.alive();
+        let messages = self.state.clear_positive_states_with_messages(alive);
+        self.update_states();
+        messages
     }
 
     pub(super) fn apply_update_state_effects(&mut self) { self.state.apply_update_state_effects(&mut self.status); }
@@ -875,6 +935,21 @@ impl Player {
     }
 
     pub fn dodge(al_a: i32, al_d: i32, randomer: &mut RC4) -> bool {
+        if std::env::var_os("TSWN_DEBUG_DODGE_ALL").is_some() {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static DODGE_COUNT: AtomicU32 = AtomicU32::new(0);
+            let count = DODGE_COUNT.fetch_add(1, Ordering::Relaxed);
+            eprintln!("[dodge_all] #{count} accure={al_a} dodgeval={al_d} rc4=({}, {})", randomer.i, randomer.j);
+            // Set/clear trace flag around dodge 200-201
+            static TRACE_FLAG: AtomicU32 = AtomicU32::new(0);
+            if count == 200 {
+                TRACE_FLAG.store(1, Ordering::Relaxed);
+            } else if count == 201 {
+                TRACE_FLAG.store(0, Ordering::Relaxed);
+            }
+            // Export trace flag for use in step()
+            DODGE_TRACE_ACTIVE.store(TRACE_FLAG.load(Ordering::Relaxed), Ordering::Relaxed);
+        }
         let ch = {
             let temp = 24 + al_d - al_a;
             if temp < 7 {
@@ -900,12 +975,15 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> f64 {
-        atp = self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        // JS y1 列表中，技能（setup 阶段注册）排在状态（运行时注册）之前
+        // 两者优先级相同（10000），按插入顺序决定迭代顺序
+        atp = self
+            .skills
+            .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
         if atp == 0.0 {
             return 0.0;
         }
-        self.skills
-            .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage))
+        self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage)
     }
 
     /// postDefend

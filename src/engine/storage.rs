@@ -94,6 +94,13 @@ impl Storage {
         self.alive_groups.iter().find(|group| group.contains(&actor))
     }
 
+    /// 通过 roster 找到 actor 所在队伍的索引，再返回该队伍的 alive 列表。
+    /// 即使 actor 已死亡也能找到正确的 alive 列表（因为 roster 不移除死亡成员）。
+    pub fn alive_group_at_team_of(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
+        let team_idx = self.groups.iter().find(|(_, group)| group.contains(&actor)).map(|(idx, _)| *idx)?;
+        self.alive_groups.get(team_idx)
+    }
+
     pub fn alive_group_count(&self) -> usize { self.alive_groups.iter().filter(|group| !group.is_empty()).count() }
 
     pub fn all_alive_ids(&self) -> Vec<PlrId> { self.alive_groups.iter().flat_map(|group| group.iter().copied()).collect() }
@@ -228,6 +235,15 @@ impl Storage {
         self.pending_spawns
             .iter()
             .filter(|pending| pending.owner == owner)
+            .map(|pending| pending.player.as_ptr())
+            .collect()
+    }
+
+    /// 返回所有 owner 在指定队员集合内的 pending spawn 的 PlrId。
+    pub fn pending_spawn_ids_for_group(&self, group_members: &[PlrId]) -> Vec<PlrId> {
+        self.pending_spawns
+            .iter()
+            .filter(|pending| group_members.contains(&pending.owner))
             .map(|pending| pending.player.as_ptr())
             .collect()
     }

@@ -64,7 +64,7 @@ impl SkillTrait for BerserkSkill {
             args.1.rFFFF() as f64 + target_plr.get_status().attract
         };
         if target_plr.has_state::<BerserkState>() || target_plr.has_state::<crate::player::skill::charm::CharmState>() {
-            score /= 1.2;
+            score /= 1.2000000476837158;
         }
         score
     }
@@ -108,7 +108,7 @@ impl StateTrait for BerserkState {
             target_domain: ForcedAttackTargetDomain::AllAlive,
             score_mode: ForcedAttackScoreMode::RandomAttract,
             use_mag: false,
-            attack_scale: 1.2,
+            attack_scale: 1.2000000476837158,
             message: "[0]发起[狂暴攻击]",
         });
     }

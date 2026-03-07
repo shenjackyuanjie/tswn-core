@@ -155,6 +155,9 @@ pub trait StateTrait: std::fmt::Debug + Any {
     /// 覆盖死亡文案。
     fn die_message(&self) -> Option<&'static str> { None }
 
+    /// 被净化(disperse)打消时的文案。返回 None 表示不生成文案。
+    fn cancel_message(&self, _alive: bool) -> Option<&'static str> { None }
+
     /// 若该状态绑定了某个 owner，返回 owner id。
     fn linked_owner(&self) -> Option<PlrId> { None }
     /// owner 死亡时的回调，返回 true 表示应清理该实体。
@@ -223,6 +226,23 @@ impl PlayerStateStore {
         for tag in to_remove {
             self.states.remove(&tag);
         }
+    }
+
+    pub fn clear_positive_states_with_messages(&mut self, alive: bool) -> Vec<&'static str> {
+        let mut to_remove = Vec::new();
+        let mut messages = Vec::new();
+        for (tag, state) in self.states.iter() {
+            if state.meta_type() > 0 {
+                if let Some(msg) = state.cancel_message(alive) {
+                    messages.push(msg);
+                }
+                to_remove.push(*tag);
+            }
+        }
+        for tag in to_remove {
+            self.states.remove(&tag);
+        }
+        messages
     }
 
     #[inline]

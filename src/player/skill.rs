@@ -132,6 +132,9 @@ pub trait SkillTrait: Debug {
     /// 声明该技能注册到哪些流程
     fn proc_kinds(&self) -> &[ProcKind] { &[] }
 
+    /// 清除 protect 目标（默认无操作，仅 ProtectSkill 实现）
+    fn clear_protect_to(&mut self) {}
+
     /// 技能触发概率（默认对齐 Dart: r127 < level）
     fn prob(&self, level: u32, _smart: bool, args: SkillArgs) -> bool { args.1.r127() < level }
 
@@ -472,6 +475,8 @@ impl Skill {
     }
 
     pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }
+
+    pub fn clear_protect_to(&mut self) { self.skill_type.clear_protect_to() }
 
     pub fn prob(&self, smart: bool, args: SkillArgs) -> bool { self.skill_type.prob(self.level, smart, args) }
 

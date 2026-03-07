@@ -65,7 +65,7 @@ impl SkillTrait for RapidSkill {
             } else {
                 let atp = {
                     let owner = args.3.get_player(&args.0).expect("cannot get rapid owner from storage");
-                    owner.get_at(false, args.1) * (0.75 - hit_scores[pos] * 0.15)
+                    owner.get_at(false, args.1) * (0.75 - hit_scores[pos] * 0.15000000596046448)
                 };
                 hit_scores[pos] += 1.0;
                 if i == 0.0 {

@@ -4,7 +4,6 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::act::iron::IronState,
     skill::act::minion::is_combat_minion,
     skill::shield::ShieldState,
     skill::{SkillArgs, SkillExt, SkillTrait},
@@ -73,12 +72,16 @@ impl SkillTrait for DisperseSkill {
         let target_is_minion = args.3.get_player(&target_id).map(is_combat_minion).unwrap_or(false);
         args.2.add(RunUpdate::new("[0]使用[净化]", args.0, target_id, 20));
 
+        // Pre-cancel shield before damage
+        // Note: Dart source has 'Dt.shield'/'Dt.iron' (string literal) instead of Dt.shield/Dt.iron (variable)
+        // so these checks NEVER match in Dart/JS. The shield pre-clear was already in Rust and tests pass
+        // with it. Iron pre-clear is NOT done to match the JS behavior.
         {
             let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
             target.clear_state::<ShieldState>();
         }
 
-        let dmg = args
+        args
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get disperse target from storage")
@@ -91,34 +94,30 @@ impl SkillTrait for DisperseSkill {
                 args.2,
                 args.3,
             );
-
-        if dmg > 0 {
-            let had_iron = args
-                .3
-                .get_player(&target_id)
-                .map(|target| target.has_state::<IronState>())
-                .unwrap_or(false);
-            let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
-            target.clear_positive_states();
-            let cleared_positive_messages = target.skills.clear_positive_runtime((target_id, args.1, args.2, args.3));
-            let mp = target.get_status().mp;
-            if mp > 64 {
-                target.set_mp(mp - 64);
-            } else if mp > 32 {
-                target.set_mp(0);
-            } else {
-                target.set_mp(mp - 32);
-            }
-            for message in cleared_positive_messages {
-                args.2.add(RunUpdate::new_newline());
-                args.2.add(RunUpdate::new(message, args.0, target_id, 20));
-            }
-            if had_iron {
-                args.2.add(RunUpdate::new_newline());
-                args.2.add(RunUpdate::new("[1]的[铁壁]被打消了", args.0, target_id, 20));
-            }
-        }
     }
 }
 
-fn on_disperse(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}
+fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
+    if dmg <= 0 {
+        return;
+    }
+    // Clear positive meta states and collect messages (matching Dart's onDamage callback)
+    // Dart iterates sorted meta keys, calling destroy() on each positive meta.
+    // In Rust, skill-based clearing (accumulate, charge) and state-based clearing (haste, upgrade)
+    // are separate mechanisms. We call both and combine messages.
+    let target = storage.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
+    let state_messages = target.clear_positive_states_with_messages();
+    let skill_messages = target.skills.clear_positive_runtime((target_id, r, updates, storage));
+    let mp = target.get_status().mp;
+    if mp > 64 {
+        target.set_mp(mp - 64);
+    } else if mp > 32 {
+        target.set_mp(0);
+    } else {
+        target.set_mp(mp - 32);
+    }
+    for message in skill_messages.iter().chain(state_messages.iter()) {
+        updates.add(RunUpdate::new_newline());
+        updates.add(RunUpdate::new(message, caster, target_id, 20));
+    }
+}

@@ -29,6 +29,18 @@ fn effective_group(storage: &Arc<crate::engine::storage::Storage>, plr: PlrId) -
     })
 }
 
+/// 返回玩家所在队伍的 alive 列表（保持 alive 顺序，匹配 Dart 的 Grp.alives）。
+/// 与 effective_group 不同：effective_group 返回 roster（含死亡成员），
+/// 此函数直接返回 alive 列表，复活成员在队尾（与 Dart 一致）。
+fn effective_alive_group(storage: &Arc<crate::engine::storage::Storage>, plr: PlrId) -> Option<Vec<PlrId>> {
+    storage.get_player(&plr).and_then(|player| {
+        player
+            .get_state::<CharmState>()
+            .and_then(|charm| storage.alive_group_at_team_of(charm.group_id).cloned())
+            .or_else(|| storage.alive_group_at_team_of(plr).cloned())
+    })
+}
+
 impl StateTrait for ProtectState {
     fn meta_type(&self) -> i32 { 0 }
 
@@ -66,8 +78,10 @@ impl StateTrait for ProtectState {
                 break;
             };
             let link = self.protect_from[idx];
+            // Dart: pskl.owner.allyGroup == target.group
+            // protector uses allyGroup (affected by charm), target uses original group
             let protector_group = effective_group(storage, link.owner);
-            let target_group = effective_group(storage, owner);
+            let target_group = storage.group_containing(owner).cloned();
             let same_group = protector_group == target_group;
 
             let trigger_ok = same_group && randomer.r127() < link.level;
@@ -131,6 +145,12 @@ impl StateTrait for ProtectState {
             }
 
             self.protect_from.remove(idx);
+            // JS: p.Q = null — protector 的 protectTo 在保护失败时被清除
+            if let Some(protector) = storage.just_get_player_mut(link.owner) {
+                if let Some(protect_skill) = protector.skills.store.get_mut(&26) {
+                    protect_skill.clear_protect_to();
+                }
+            }
         }
         if debug_this {
             eprintln!(
@@ -167,24 +187,38 @@ impl ProtectSkill {
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
-        let group = if let Some(group) = effective_group(args.3, args.0) {
+        let group = if let Some(group) = effective_alive_group(args.3, args.0) {
             group
-        } else if let Some(group) = args.3.group_containing(args.0) {
+        } else if let Some(group) = args.3.alive_group_containing(args.0) {
             group.clone()
         } else {
             let owner_clan = args.3.get_player(&args.0).expect("cannot get protect owner from storage").clan_name();
             args.3
                 .all_player_ids()
                 .into_iter()
-                .filter(|id| args.3.get_player(id).map(|p| p.clan_name() == owner_clan).unwrap_or(false))
+                .filter(|id| args.3.get_player(id).map(|p| p.clan_name() == owner_clan && p.alive()).unwrap_or(false))
                 .collect::<Vec<PlrId>>()
         };
-        let alive_group = group
-            .into_iter()
+        // 基于 team.alive 顺序，但过滤掉本轮死亡尚未 sync 的成员
+        let alive_group: Vec<PlrId> = group
+            .iter()
+            .copied()
             .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
-            .collect::<Vec<PlrId>>();
+            .collect();
         let mut candidates = alive_group;
-        candidates.extend(args.3.pending_spawn_ids_for_owner(args.0));
+        // 追加刚复活但尚未 sync 到 team.alive 的成员（Dart 立刻加入 alives 末尾）
+        let roster = effective_group(args.3, args.0)
+            .or_else(|| args.3.group_containing(args.0).cloned())
+            .unwrap_or_default();
+        for id in &roster {
+            if !candidates.contains(id)
+                && args.3.get_player(id).map(|p| p.alive()).unwrap_or(false)
+            {
+                candidates.push(*id);
+            }
+        }
+        // 追加整个队伍的 pending spawn（Dart 中 addNew 立刻加入 alives）
+        candidates.extend(args.3.pending_spawn_ids_for_group(&roster));
         if candidates.is_empty() {
             return None;
         }
@@ -375,8 +409,21 @@ impl SkillTrait for ProtectSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn clear_protect_to(&mut self) { self.protect_to = None; }
+
     fn post_action_with_level(&mut self, level: u32, args: SkillArgs) {
         let next_target = self.pick_target(level, (args.0, args.1, args.2, args.3));
+        if let Ok(probe_owner) = std::env::var("TSWN_PROBE_PROTECT") {
+            let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_default();
+            if owner_name == probe_owner {
+                let old_name = self.protect_to.and_then(|id| args.3.get_player_or_pending(&id).map(|p| p.id_name()));
+                let next_name = next_target.and_then(|id| args.3.get_player_or_pending(&id).map(|p| p.id_name()));
+                eprintln!(
+                    "[protect_probe] owner={} level={} old={:?} new={:?} rc4=({}, {})",
+                    owner_name, level, old_name, next_name, args.1.i, args.1.j
+                );
+            }
+        }
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()

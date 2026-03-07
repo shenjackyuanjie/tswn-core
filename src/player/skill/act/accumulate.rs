@@ -14,7 +14,7 @@ impl Default for AccumulateSkill {
     fn default() -> Self {
         Self {
             on_update_state: None,
-            acc: 1.7,
+            acc: 1.7000000476837158,
         }
     }
 }

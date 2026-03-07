@@ -84,7 +84,7 @@ impl StateTrait for PoisonState {
         let Some(owner_magic) = storage.get_player(&owner).map(|player| player.get_status().magic) else {
             return false;
         };
-        let atpp = self.atp * (1.0 + (self.count - 1) as f64 * 0.1) / self.count as f64;
+        let atpp = self.atp * (1.0 + (self.count - 1) as f64 * 0.10000000149011612) / self.count as f64;
         self.atp -= atpp;
         let dmg = (atpp / (owner_magic + 64) as f64).ceil() as i32;
         self.count -= 1;
@@ -133,7 +133,7 @@ fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut 
     let Some(caster_plr) = storage.get_player(&caster) else {
         return;
     };
-    let poison_atp = caster_plr.get_at(true, r) * 1.2;
+    let poison_atp = caster_plr.get_at(true, r) * 1.2000000476837158;
 
     let Some(target_plr) = storage.just_get_player_mut(target) else {
         return;

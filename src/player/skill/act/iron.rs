@@ -76,11 +76,15 @@ pub struct IronState {
 impl StateTrait for IronState {
     fn meta_type(&self) -> i32 { self.step.max(0) }
 
+    fn cancel_message(&self, _alive: bool) -> Option<&'static str> {
+        Some("[1]的[铁壁]被打消了")
+    }
+
     fn update_state_priority(&self) -> i32 { 4000 }
 
     fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) {
         if self.step > 0 {
-            status.attract *= 1.12;
+            status.attract *= 1.1200000047683716;
         }
     }
 
