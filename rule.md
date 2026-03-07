@@ -5,7 +5,7 @@
 ## 源码说明
 
 dart 原始项目位于 namer-src
-请注意，这里的源码并不完整，并且是老版本的
+请注意，这里的源码并不完整，并且是老版本的，不要试图运行它
 所以如果用户指出"某个地方的实现不正确"不要急着说 dart 的实现就是这样的
 要问用户是在哪里看到的实现，是dart还是js产物
 
@@ -62,17 +62,16 @@ python track_test.py -r
 ```
 
 注意：脚本的默认过滤器已更新，默认会运行并追踪以下测试关键词组合（可作为 cargo test 的 filter 参数）：
-- `large_01_10`（第一批 large 测试）
-- `large_11_17`（第二批 large 测试）
-- `large_18_22`（第三批 large 测试，最近新增）
+- `large`（所有 large 测试）
 - `large_full`（相当于 fight_large / 完整 large 测试）
 - `small_seed`（小样例的 seed 测试）
+- `fight_multi`（多线程 fight 测试）
 
-这些关键字可以组合或替换为具体测试名传入 `--filter`，例如只运行 `large_18_22`：`python track_test.py -f large_18_22`。
+这些关键字可以组合或替换为具体测试名传入 `--filter`，例如只运行 `large`：`python track_test.py -f large`。
 
 **默认过滤器（DEFAULT_FILTER）当前值：**
 
-`large_01_10 large_11_17 large_18_22 large_full small_seed`
+`large large_full small_seed fight_multi`
 
 **参数说明：**
 
@@ -86,9 +85,11 @@ python track_test.py -r
 解析与比对行为说明（重要）：
 
 - 输出解析：脚本会解析 `cargo test` 的输出，识别 `test ... ... FAILED/ok` 的行，并在出现 `mismatch at idx=...` 的行时尝试提取 idx。
+  - 增强点：跟踪最近的 panic/thread header（如 "---- ... stdout ----" 或 "thread '...'"），这样 mismatch 行如果没有内联 thread 信息也能关联到对应的测试。
   - 若 `mismatch` 行包含 `thread '...'`，会用线程名作为测试名关联 idx。
   - 若 `mismatch` 行不包含 thread 信息，脚本会：
-    - 尝试根据输出中的文本（例如 `sampled case-N`、`fight_large`、`large_full`、或 `::large_18` 之类的线程名）恢复到对应的测试名；脚本会把诸如 `::large_18` 的线程名映射回 `large_18` / `sampled_large_case_18` 等测试表示；
+    - 尝试使用最近出现的 header/thread 信息关联到对应的测试；
+    - 尝试根据输出中的文本（例如 `sampled case-N`、`fight_large`、`large_full`、`large_\d{2}` 或 `::large_18` 之类的线程名）恢复到对应的测试名；
     - 并额外直接检测行中是否包含一些在代码中注册为"直接匹配项"的测试名（当前实现包含 `small_seed` 和 `simple_fight`），如果命中则把该 idx 关联到对应测试名。
 - 比较规则修正（已修复的问题）：
   - 脚本现在只在当前运行和上次运行都存在该测试记录的情况下，才判断状态变化（即 NEW_FAIL / NEW_PASS）。这避免了因为某次运行未包含该测试而造成的误报。
@@ -137,7 +138,7 @@ python track_test.py delete 名称
 **安静模式输出示例：**
 
 ```text
-[track_test] 运行测试: large_01_10 large_11_17 large_18_22 large_full small_seed
+[track_test] 运行测试: large large_full small_seed fight_multi
 测试失败，分析中...
 --- vs 上次运行 ---
 结论: 修改有效 (有改进且无退步)
