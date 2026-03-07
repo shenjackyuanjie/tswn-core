@@ -33,7 +33,7 @@ impl SkillTrait for AssassinateSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn uses_custom_target_selection(&self) -> bool { true }
+    fn uses_custom_target_selection(&self) -> bool { false }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
         if self.target.is_some() {
