@@ -881,6 +881,8 @@ fn fight_multi_2() {
 
 0_0_XJc3TefogX发起攻击, 8_4_4f0sDTwwp1受到54点伤害
 
+ 8_4_4f0sDTwwp1被击倒了
+
 "###;
     let (raw_input, expected_lines) = parse_embedded_fight_case(
         FIGHT_CASE,

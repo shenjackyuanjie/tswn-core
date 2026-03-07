@@ -46,6 +46,21 @@ impl StateTrait for ProtectState {
         updates: &mut RunUpdates,
         storage: &Arc<crate::engine::storage::Storage>,
     ) -> bool {
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| storage.get_player(&owner).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
+        if debug_this {
+            eprintln!(
+                "[protect_pre_defend] owner={} links={} atp={} rc4=({}, {})",
+                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                self.protect_from.len(),
+                *atp,
+                randomer.i,
+                randomer.j,
+            );
+        }
         while !self.protect_from.is_empty() {
             let Some(idx) = randomer.pick(&self.protect_from) else {
                 break;
@@ -64,6 +79,22 @@ impl StateTrait for ProtectState {
             } else {
                 false
             };
+
+            if debug_this {
+                eprintln!(
+                    "[protect_pre_defend] owner={} picked_link_owner={} same_group={} trigger_ok={} protector_ready={} rc4=({}, {})",
+                    storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                    storage
+                        .get_player(&link.owner)
+                        .map(|p| p.id_name())
+                        .unwrap_or_else(|| format!("#{}", link.owner)),
+                    same_group,
+                    trigger_ok,
+                    protector_ready,
+                    randomer.i,
+                    randomer.j,
+                );
+            }
 
             if trigger_ok && protector_ready {
                 {
@@ -101,6 +132,16 @@ impl StateTrait for ProtectState {
 
             self.protect_from.remove(idx);
         }
+        if debug_this {
+            eprintln!(
+                "[protect_pre_defend] owner={} end links={} atp={} rc4=({}, {})",
+                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                self.protect_from.len(),
+                *atp,
+                randomer.i,
+                randomer.j,
+            );
+        }
         self.protect_from.is_empty()
     }
 
@@ -121,6 +162,11 @@ impl ProtectSkill {
     pub fn new() -> Self { Self::default() }
 
     fn pick_target(&mut self, _level: u32, args: SkillArgs) -> Option<PlrId> {
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
         let group = if let Some(group) = effective_group(args.3, args.0) {
             group
         } else if let Some(group) = args.3.group_containing(args.0) {
@@ -151,6 +197,26 @@ impl ProtectSkill {
             .max(0) as u32;
         let smart = args.1.r127() < owner_wisdom;
         let owner_pos = candidates.iter().position(|entry| *entry == args.0);
+        if debug_this {
+            let candidate_names = candidates
+                .iter()
+                .map(|id| {
+                    args.3
+                        .get_player_or_pending(id)
+                        .map(|target| target.id_name())
+                        .unwrap_or_else(|| format!("#{id}"))
+                })
+                .collect::<Vec<_>>();
+            eprintln!(
+                "[protect_pick] owner={} smart={} wisdom={} candidates={:?} rc4=({}, {})",
+                args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                smart,
+                owner_wisdom,
+                candidate_names,
+                args.1.i,
+                args.1.j
+            );
+        }
 
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::new();
@@ -171,6 +237,28 @@ impl ProtectSkill {
                 .get_player_or_pending(&target_id)
                 .map(|target| !is_combat_minion(target))
                 .unwrap_or(false);
+            if debug_this {
+                let picked_name = args
+                    .3
+                    .get_player_or_pending(&target_id)
+                    .map(|target| target.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!(
+                    "[protect_pick] picked={} valid={} selected={:?} rc4=({}, {})",
+                    picked_name,
+                    valid,
+                    selected
+                        .iter()
+                        .map(|id| args
+                            .3
+                            .get_player_or_pending(id)
+                            .map(|target| target.id_name())
+                            .unwrap_or_else(|| format!("#{id}")))
+                        .collect::<Vec<_>>(),
+                    args.1.i,
+                    args.1.j
+                );
+            }
             if !valid {
                 invalid += 1;
                 continue;
@@ -212,10 +300,27 @@ impl ProtectSkill {
                         }
                     })
                     .unwrap_or(f64::MIN);
+                if debug_this {
+                    let target_name = args
+                        .3
+                        .get_player_or_pending(&target_id)
+                        .map(|target| target.id_name())
+                        .unwrap_or_else(|| format!("#{target_id}"));
+                    eprintln!(
+                        "[protect_pick] score target={} score={} rc4=({}, {})",
+                        target_name, score, args.1.i, args.1.j
+                    );
+                }
                 (target_id, score)
             })
             .collect::<Vec<(PlrId, f64)>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        if debug_this {
+            let chosen = scored
+                .first()
+                .and_then(|(target_id, _)| args.3.get_player_or_pending(target_id).map(|target| target.id_name()));
+            eprintln!("[protect_pick] chosen={:?} rc4=({}, {})", chosen, args.1.i, args.1.j);
+        }
         scored.first().map(|x| x.0)
     }
 
@@ -272,6 +377,19 @@ impl SkillTrait for ProtectSkill {
 
     fn post_action_with_level(&mut self, level: u32, args: SkillArgs) {
         let next_target = self.pick_target(level, (args.0, args.1, args.2, args.3));
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
+        if debug_this {
+            let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0));
+            let next_name = next_target.and_then(|id| args.3.get_player_or_pending(&id).map(|p| p.id_name()));
+            eprintln!(
+                "[protect_post_action] owner={} current={:?} next={:?} rc4=({}, {})",
+                owner_name, self.protect_to, next_name, args.1.i, args.1.j
+            );
+        }
         if self.protect_to == next_target {
             if let Some(target_id) = next_target {
                 if Self::link_registered(args.0, target_id, (args.0, args.1, args.2, args.3)) {

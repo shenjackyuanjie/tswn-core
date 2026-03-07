@@ -216,9 +216,27 @@ impl SkillStorage {
 
     pub fn pre_defend(&mut self, mut atp: f64, is_mag: bool, caster: PlrId, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {
         let keys: Vec<SkillKey> = self.pre_defend.clone();
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
         for skill_key in keys.iter() {
+            let rc4_before = (args.1.i, args.1.j);
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
             atp = skill.pre_defend(atp, is_mag, caster, &on_damage, (args.0, args.1, args.2, args.3));
+            if debug_this {
+                eprintln!(
+                    "[pre_defend_skill] owner={} key={} atp={} rc4 {}:{} -> {}:{}",
+                    args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                    skill_key,
+                    atp,
+                    rc4_before.0,
+                    rc4_before.1,
+                    args.1.i,
+                    args.1.j,
+                );
+            }
             if atp == 0.0 {
                 return 0.0;
             }
@@ -237,9 +255,21 @@ impl SkillStorage {
 
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
         let keys: Vec<SkillKey> = self.post_damage.clone();
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
         for skill_key in keys.iter() {
+            let rc4_before = (args.1.i, args.1.j);
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
             skill.post_damage(dmg, caster, (args.0, args.1, args.2, args.3));
+            if debug_this {
+                eprintln!(
+                    "[post_damage_skill] key={} rc4 {}:{} -> {}:{}",
+                    skill_key, rc4_before.0, rc4_before.1, args.1.i, args.1.j,
+                );
+            }
         }
     }
 
@@ -257,9 +287,22 @@ impl SkillStorage {
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) {
         let keys: Vec<SkillKey> = self.post_death.clone();
+        let debug_action = std::env::var("TSWN_DEBUG_DIE").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
         for skill_key in keys.iter() {
+            let rc4_before = (args.1.i, args.1.j);
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
-            if skill.die(oldhp, caster, (args.0, args.1, args.2, args.3)) {
+            let triggered = skill.die(oldhp, caster, (args.0, args.1, args.2, args.3));
+            if debug_this {
+                eprintln!(
+                    "[post_death_skill] key={} triggered={} rc4 {}:{} -> {}:{}",
+                    skill_key, triggered, rc4_before.0, rc4_before.1, args.1.i, args.1.j
+                );
+            }
+            if triggered {
                 break;
             }
         }

@@ -13,11 +13,25 @@ impl Player {
         if !self.status.alive() {
             return;
         }
+        let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_target.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
+        let move_before = self.status.move_point;
         let mut stp = self.status.speed * randomer.r3() as i32;
         stp = self.apply_pre_step_states(stp, updates);
         let ptr = self.as_ptr();
         stp = self.skills.pre_step(stp, (ptr, randomer, updates, storage));
         self.status.move_point += stp;
+        if debug_this {
+            eprintln!(
+                "[step] actor={} move_before={} stp={} move_after={} rc4=({}, {})",
+                self.id_name(),
+                move_before,
+                stp,
+                self.status.move_point,
+                randomer.i,
+                randomer.j,
+            );
+        }
         if self.check_move() {
             self.status.move_point -= MOVE_POINT_THRESHOLD;
             // 主动作
@@ -29,15 +43,20 @@ impl Player {
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
         let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_target.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
-        let smart = self.status.wisdom > randomer.r63() as i32;
+        let smart_roll = randomer.r63() as i32;
+        let smart = self.status.wisdom > smart_roll;
         if debug_this {
             eprintln!(
-                "[action] start actor={} rc4=({}, {}) smart={}",
+                "[action] start actor={} rc4=({}, {}) smart={} smart_roll={}",
                 self.id_name(),
                 randomer.i,
                 randomer.j,
-                smart
+                smart,
+                smart_roll,
             );
+            let mut preview = randomer.clone();
+            let peek = (0..6).map(|_| preview.next_u8()).collect::<Vec<u8>>();
+            eprintln!("[action] peek_next={peek:?}");
         }
         let ptr = self.as_ptr();
         let pre_action_outcome = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
@@ -175,7 +194,7 @@ impl Player {
                 self.id_name(),
                 self.status.mp,
                 randomer.i,
-                randomer.j
+                randomer.j,
             );
         }
         updates.add(RunUpdate::new_newline());
@@ -267,6 +286,48 @@ impl Player {
             return Vec::new();
         }
 
+        let debug_this = std::env::var("TSWN_DEBUG_ACTION")
+            .ok()
+            .map(|name| name == self.id_name())
+            .unwrap_or(false);
+        let format_targets = |ids: &[PlrId]| -> Vec<String> {
+            ids.iter()
+                .map(|id| storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
+                .collect::<Vec<String>>()
+        };
+        if debug_this {
+            eprintln!(
+                "[action_select] actor={} skill_level={} domain={:?} candidates ally_all={:?} ally_alive={:?} ally_dead={:?} enemy_alive={:?}",
+                self.id_name(),
+                skill.level(),
+                domain,
+                format_targets(&targets.ally_all),
+                format_targets(&targets.ally_alive),
+                format_targets(&targets.ally_dead),
+                format_targets(&targets.enemy_alive),
+            );
+        }
+
+        if skill.uses_custom_target_selection() {
+            let candidates: &[PlrId] = match domain {
+                SkillTargetDomain::EnemyAlive => &targets.enemy_alive,
+                SkillTargetDomain::AllyAlive => &targets.ally_alive,
+                SkillTargetDomain::AllyAny => &targets.ally_all,
+                SkillTargetDomain::AllyDead => &targets.ally_dead,
+                SkillTargetDomain::AllAlive => &targets.all_alive,
+                SkillTargetDomain::SelfOnly => &[],
+            };
+            if debug_this {
+                eprintln!(
+                    "[action_select] actor={} skill_level={} using_custom_selector candidates={:?}",
+                    self.id_name(),
+                    skill.level(),
+                    format_targets(candidates),
+                );
+            }
+            return skill.select_targets(candidates, smart, (self.as_ptr(), randomer, updates, storage));
+        }
+
         let mut selected = Vec::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
@@ -274,7 +335,22 @@ impl Player {
             let Some(target_id) = self.pick_target_by_domain(domain, targets, randomer) else {
                 return Vec::new();
             };
-            if !skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)) {
+            let valid = skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
+            if debug_this {
+                let target_name = storage
+                    .get_player(&target_id)
+                    .map(|plr| plr.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!(
+                    "[action_select] actor={} skill_level={} picked={} valid={} selected_so_far={:?}",
+                    self.id_name(),
+                    skill.level(),
+                    target_name,
+                    valid,
+                    format_targets(&selected),
+                );
+            }
+            if !valid {
                 invalid += 1;
                 continue;
             }
@@ -300,7 +376,34 @@ impl Player {
                 )
             })
             .collect::<Vec<(PlrId, f64)>>();
+        if debug_this {
+            for (target_id, score) in &scored {
+                eprintln!(
+                    "[action_select] actor={} scored={} score={score}",
+                    self.id_name(),
+                    storage
+                        .get_player(target_id)
+                        .map(|plr| plr.id_name())
+                        .unwrap_or_else(|| format!("#{target_id}")),
+                );
+            }
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        if debug_this {
+            let sorted = scored
+                .iter()
+                .map(|(target_id, score)| {
+                    format!(
+                        "{}:{score}",
+                        storage
+                            .get_player(target_id)
+                            .map(|plr| plr.id_name())
+                            .unwrap_or_else(|| format!("#{target_id}"))
+                    )
+                })
+                .collect::<Vec<String>>();
+            eprintln!("[action_select] actor={} sorted={sorted:?}", self.id_name());
+        }
         scored.into_iter().map(|x| x.0).collect()
     }
 
@@ -815,9 +918,26 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action.as_deref().map(|name| name == self.id_name()).unwrap_or(false);
         dmg = self
             .skills
             .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage));
+        if debug_this {
+            let ordered = self
+                .state
+                .states
+                .iter()
+                .map(|(tag, state)| (*tag, state.post_defend_priority()))
+                .collect::<Vec<(crate::player::StateTag, i32)>>();
+            eprintln!(
+                "[post_defend_states] owner={} after_skill dmg={} states={ordered:?} rc4=({}, {})",
+                self.id_name(),
+                dmg,
+                randomer.i,
+                randomer.j,
+            );
+        }
         self.apply_post_defend_states(dmg, caster, randomer, updates)
     }
 
@@ -831,7 +951,26 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
+        let target_name = self.id_name();
+        let debug_this = debug_target
+            .as_deref()
+            .map(|name| name == caster_name || name == target_name)
+            .unwrap_or(false);
+        if debug_this {
+            eprintln!(
+                "[damage_flow] attacked start caster={} target={} is_mag={} atp_before_pre={} rc4=({}, {})",
+                caster_name, target_name, is_mag, atp, randomer.i, randomer.j,
+            );
+        }
         atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        if debug_this {
+            eprintln!(
+                "[damage_flow] after_pre_defend caster={} target={} atp_after_pre={} rc4=({}, {})",
+                caster_name, target_name, atp, randomer.i, randomer.j,
+            );
+        }
         if atp == 0.0 {
             return 0;
         }
@@ -881,9 +1020,35 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
+        let target_name = self.id_name();
+        let debug_this = debug_target
+            .as_deref()
+            .map(|name| name == caster_name || name == target_name)
+            .unwrap_or(false);
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
+        if debug_this {
+            eprintln!(
+                "[damage_flow] before_post_defend caster={} target={} atp={} dfp={} raw_div={} dmg_before_post={} rc4=({}, {})",
+                caster_name,
+                target_name,
+                atp,
+                dfp,
+                atp / dfp as f64,
+                dmg,
+                randomer.i,
+                randomer.j,
+            );
+        }
         dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
+        if debug_this {
+            eprintln!(
+                "[damage_flow] after_post_defend caster={} target={} dmg_after_post={} rc4=({}, {})",
+                caster_name, target_name, dmg, randomer.i, randomer.j,
+            );
+        }
         self.damage(dmg, caster, on_damage, randomer, updates, storage)
     }
 
@@ -938,14 +1103,28 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
         let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
         for skill_idx in post_damaged_indices {
             let ptr = self.as_ptr();
+            let rc4_before = (randomer.i, randomer.j);
             let skill = self.skills.skill_by_id_mut(skill_idx);
             skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
+            if debug_this {
+                eprintln!(
+                    "[on_damaged_post_damage] owner={} key={} rc4 {}:{} -> {}:{}",
+                    self.id_name(),
+                    skill_idx,
+                    rc4_before.0,
+                    rc4_before.1,
+                    randomer.i,
+                    randomer.j,
+                );
+            }
         }
         if self.status.hp <= 0 {
-            self.on_die(old_hp, caster, randomer, updates, storage);
+            self.on_die_impl(old_hp, caster, randomer, updates, storage, true);
             old_hp
         } else {
             dmg
@@ -955,8 +1134,47 @@ impl Player {
     fn get_die_message(&self) -> &'static str { self.state.die_message_override().unwrap_or("[1]被击倒了") }
 
     pub fn on_die(&mut self, old_hp: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        if self.status.hp > 0 || !self.status.alive() {
+        self.on_die_impl(old_hp, caster, randomer, updates, storage, false);
+    }
+
+    fn on_die_impl(
+        &mut self,
+        old_hp: i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        allow_dead_reentry: bool,
+    ) {
+        if self.status.hp > 0 {
             return;
+        }
+
+        if !self.status.alive() {
+            if !allow_dead_reentry {
+                return;
+            }
+            if caster != self.as_ptr()
+                && let Some(killer) = storage.just_get_player_mut(caster)
+                && killer.get_status().hp > 0
+            {
+                killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
+            }
+            return;
+        }
+
+        let debug_die = std::env::var("TSWN_DEBUG_DIE").ok();
+        let debug_this = debug_die.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
+        if debug_this {
+            eprintln!(
+                "[on_die] start actor={} caster={} rc4=({}, {}) hp={} old_hp={}",
+                self.id_name(),
+                storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_else(|| format!("#{caster}")),
+                randomer.i,
+                randomer.j,
+                self.status.hp,
+                old_hp
+            );
         }
 
         updates.add(RunUpdate::new_newline());
@@ -964,6 +1182,12 @@ impl Player {
 
         let ptr = self.as_ptr();
         self.skills.die(old_hp, caster, (ptr, randomer, updates, storage));
+        if debug_this {
+            eprintln!(
+                "[on_die] after skills.die rc4=({}, {}) hp={}",
+                randomer.i, randomer.j, self.status.hp
+            );
+        }
         if self.status.hp > 0 {
             return;
         }
@@ -984,6 +1208,13 @@ impl Player {
                     .unwrap_or(false)
             })
             .collect::<Vec<PlrId>>();
+        if debug_this {
+            let names = linked_minions
+                .iter()
+                .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
+                .collect::<Vec<String>>();
+            eprintln!("[on_die] linked_minions={names:?} rc4=({}, {})", randomer.i, randomer.j);
+        }
         for minion_id in linked_minions {
             let should_remove = if let Some(minion) = storage.just_get_player_mut(minion_id) {
                 if !minion.alive() || minion.get_status().hp <= 0 {
@@ -1019,7 +1250,18 @@ impl Player {
             && let Some(killer) = storage.just_get_player_mut(caster)
             && killer.get_status().hp > 0
         {
+            if debug_this {
+                eprintln!(
+                    "[on_die] killer={} before kill rc4=({}, {})",
+                    killer.id_name(),
+                    randomer.i,
+                    randomer.j
+                );
+            }
             killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
+            if debug_this {
+                eprintln!("[on_die] after killer.kill rc4=({}, {})", randomer.i, randomer.j);
+            }
         }
     }
 }

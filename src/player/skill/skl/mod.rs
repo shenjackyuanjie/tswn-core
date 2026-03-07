@@ -1,3 +1,4 @@
+pub mod corpse;
 pub mod counter;
 pub mod defend;
 pub mod hide;

@@ -1028,29 +1028,5 @@ fn fight_multi_4() {
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
     let (actual_lines, guard) = collect_replay_lines(&mut runner, 50_000, true);
     assert!(guard < 50_000, "fight_multi_4 combat did not finish in expected rounds");
-    if actual_lines != expected_lines {
-        let min_len = actual_lines.len().min(expected_lines.len());
-        let mismatch_idx = actual_lines
-            .iter()
-            .zip(expected_lines.iter())
-            .position(|(lhs, rhs)| lhs != rhs)
-            .unwrap_or(min_len);
-        let ctx_start = mismatch_idx.saturating_sub(5);
-        let ctx_end = (mismatch_idx + 5).min(min_len);
-        eprintln!("fight_multi_4 mismatch context [{ctx_start}..{ctx_end}):");
-        for idx in ctx_start..ctx_end {
-            eprintln!(
-                "  idx={idx}: actual={:?} | expected={:?}",
-                actual_lines.get(idx),
-                expected_lines.get(idx)
-            );
-        }
-        panic!(
-            "fight_multi_4 mismatch at idx={mismatch_idx}, actual_len={}, expected_len={}, actual={:?}, expected={:?}",
-            actual_lines.len(),
-            expected_lines.len(),
-            actual_lines.get(mismatch_idx),
-            expected_lines.get(mismatch_idx)
-        );
-    }
+    assert_trace_with_context("fight_multi_4", &actual_lines, &expected_lines);
 }

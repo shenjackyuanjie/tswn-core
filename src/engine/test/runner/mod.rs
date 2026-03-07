@@ -123,6 +123,22 @@ fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normali
     (lines, guard)
 }
 
+fn should_dump_full_trace(case_name: &str) -> bool {
+    let Some(raw) = std::env::var_os("TSWN_DUMP_TRACE") else {
+        return false;
+    };
+    let raw = raw.to_string_lossy();
+    let filter = raw.trim();
+    filter.is_empty() || filter == "1" || case_name.contains(filter)
+}
+
+fn dump_full_trace(label: &str, lines: &[String]) {
+    eprintln!("{label} full trace (len={}):", lines.len());
+    for (idx, line) in lines.iter().enumerate() {
+        eprintln!("  idx={idx}: {line}");
+    }
+}
+
 fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) -> (String, Vec<String>) {
     let fight_text = case_text.replace("\r\n", "\n").replace('\r', "\n");
     let (raw_input, expected_part) = fight_text.split_once("\n\n\n").expect(split_err);
@@ -157,6 +173,13 @@ fn winner_names(runner: &runners::Runner) -> Vec<String> {
 fn assert_trace_with_context(case_name: &str, actual_lines: &[String], expected_lines: &[String]) {
     if actual_lines == expected_lines {
         return;
+    }
+    // Full trace dumps are extremely noisy, so keep them behind an opt-in env var.
+    // Accept either `TSWN_DUMP_TRACE=1` for every failing case or a substring such as
+    // `TSWN_DUMP_TRACE=fight_multi_4` to only dump the trace that is currently under investigation.
+    if should_dump_full_trace(case_name) {
+        dump_full_trace(&format!("{case_name} actual"), actual_lines);
+        dump_full_trace(&format!("{case_name} expected"), expected_lines);
     }
     let min_len = actual_lines.len().min(expected_lines.len());
     let mismatch_idx = actual_lines
@@ -325,11 +348,73 @@ fn runtime_remove_queue_syncs_world_and_storage() {
     let raw_input = "owner\n\nenemy";
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
     let enemy = runner.world.groups[1][0];
+    runner.storage.just_get_player_mut(enemy).unwrap().set_hp_raw(0);
+    runner.storage.record_death(enemy);
     runner.storage.queue_remove_player(enemy);
 
     let mut updates = crate::engine::update::RunUpdates::new();
     runner.round_tick(&mut updates);
-    // player 从 world groups 中移除，但保留在 storage 中（对齐 JS/Dart 设计：对象仍可被引用以查找名字）
-    assert!(!runner.world.groups[1].contains(&enemy));
+    // queue_remove 只影响运行期 alive/round 视图，不改变 roster / groups 镜像。
+    assert!(runner.world.groups[1].contains(&enemy));
+    assert!(runner.world.team_roster(1).unwrap().contains(&enemy));
+    assert!(!runner.world.team_alive(1).unwrap().contains(&enemy));
+    assert!(!runner.world.alives_flat(&runner.storage).contains(&enemy));
+    assert!(runner.storage.group_containing(enemy).unwrap().contains(&enemy));
+    assert!(runner.storage.alive_group_containing(enemy).is_none());
+    assert!(!runner.storage.all_alive_ids().contains(&enemy));
+    assert_eq!(runner.storage.alive_group_count(), 1);
     assert!(runner.storage.get_player(&enemy).is_some());
+}
+
+#[test]
+fn runtime_remove_queue_does_not_remove_still_alive_player() {
+    let raw_input = "owner\n\nenemy";
+    let mut runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+    let enemy = runner.world.groups[1][0];
+    runner.storage.queue_remove_player(enemy);
+
+    let mut updates = crate::engine::update::RunUpdates::new();
+    runner.round_tick(&mut updates);
+
+    assert!(runner.world.groups[1].contains(&enemy));
+    assert!(runner.world.team_roster(1).unwrap().contains(&enemy));
+    assert!(runner.world.team_alive(1).unwrap().contains(&enemy));
+    assert!(runner.world.alives_flat(&runner.storage).contains(&enemy));
+    assert!(runner.storage.group_containing(enemy).unwrap().contains(&enemy));
+    assert!(runner.storage.alive_group_containing(enemy).unwrap().contains(&enemy));
+    assert!(runner.storage.all_alive_ids().contains(&enemy));
+    assert_eq!(runner.storage.alive_group_count(), 2);
+    assert!(runner.storage.get_player(&enemy).is_some());
+}
+
+#[test]
+fn world_remove_player_keeps_roster_but_prunes_alive_view() {
+    let raw_input = "owner\n\nenemy";
+    let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+    let enemy = runner.world.groups[1][0];
+    let mut world = runner.world.clone();
+
+    world.remove_player(enemy);
+
+    assert!(world.groups[1].contains(&enemy));
+    assert!(world.team_roster(1).unwrap().contains(&enemy));
+    assert!(!world.team_alive(1).unwrap().contains(&enemy));
+    assert!(world.all_plrs().contains(&enemy));
+    assert!(!world.alives_flat(&runner.storage).contains(&enemy));
+}
+
+#[test]
+fn world_remove_from_roster_prunes_roster_and_alive_view() {
+    let raw_input = "owner\n\nenemy";
+    let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+    let enemy = runner.world.groups[1][0];
+    let mut world = runner.world.clone();
+
+    world.remove_from_roster(enemy);
+
+    assert!(!world.groups[1].contains(&enemy));
+    assert!(!world.team_roster(1).unwrap().contains(&enemy));
+    assert!(!world.team_alive(1).unwrap().contains(&enemy));
+    assert!(!world.all_plrs().contains(&enemy));
+    assert!(!world.alives_flat(&runner.storage).contains(&enemy));
 }

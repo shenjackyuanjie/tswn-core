@@ -1,6 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlrId, StateTrait,
+    PlrId,
+    skill::corpse::CorpseState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
@@ -35,10 +36,7 @@ impl SkillTrait for MergeSkill {
             args.3
                 .just_get_player_mut(target)
                 .expect("cannot get merge target from storage")
-                .set_state(MergeState {
-                    target: Some(target),
-                    stacks: 1,
-                });
+                .set_state(CorpseState::merge());
             args.2.add(RunUpdate::new_newline());
             args.2.add(RunUpdate::new("[0][吞噬]了[1]", args.0, target, 60));
             return true;
@@ -104,12 +102,7 @@ impl SkillTrait for MergeSkill {
             if transfer_move_point {
                 owner.set_move_point(owner.move_point() + target_move_point);
             }
-            let next_stack = owner.get_state::<MergeState>().map(|x| x.stacks + 1).unwrap_or(1);
             if merged {
-                owner.set_state(MergeState {
-                    target: Some(target),
-                    stacks: next_stack,
-                });
                 owner.update_states();
                 owner.skills.update_proc();
             }
@@ -141,10 +134,7 @@ impl SkillTrait for MergeSkill {
         }
         {
             let target_plr = args.3.just_get_player_mut(target).expect("cannot get merge target from storage");
-            target_plr.set_state(MergeState {
-                target: Some(target),
-                stacks: 1,
-            });
+            target_plr.set_state(CorpseState::merge());
         }
         args.2.add(RunUpdate::new_newline());
         args.2.add(RunUpdate::new("[0][吞噬]了[1]", args.0, target, 60));
@@ -153,20 +143,4 @@ impl SkillTrait for MergeSkill {
     }
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostKill] }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct MergeState {
-    pub target: Option<PlrId>,
-    pub stacks: i32,
-}
-
-impl StateTrait for MergeState {
-    fn meta_type(&self) -> i32 { 0 }
-
-    fn as_any(&self) -> &dyn std::any::Any { self }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
-
-    fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }

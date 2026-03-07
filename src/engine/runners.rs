@@ -67,24 +67,16 @@ impl WorldState {
     #[inline]
     pub fn all_plr_len(&self) -> usize { self.teams.iter().map(|team| team.roster.len()).sum() }
 
-    pub fn team_index_of(&self, actor: PlrId) -> Option<usize> {
-        self.teams.iter().position(|team| team.roster.contains(&actor))
-    }
+    pub fn team_index_of(&self, actor: PlrId) -> Option<usize> { self.teams.iter().position(|team| team.roster.contains(&actor)) }
 
     #[inline]
-    pub fn team_roster(&self, team_idx: usize) -> Option<&[PlrId]> {
-        self.teams.get(team_idx).map(|team| team.roster.as_slice())
-    }
+    pub fn team_roster(&self, team_idx: usize) -> Option<&[PlrId]> { self.teams.get(team_idx).map(|team| team.roster.as_slice()) }
 
     #[inline]
-    pub fn team_alive(&self, team_idx: usize) -> Option<&[PlrId]> {
-        self.teams.get(team_idx).map(|team| team.alive.as_slice())
-    }
+    pub fn team_alive(&self, team_idx: usize) -> Option<&[PlrId]> { self.teams.get(team_idx).map(|team| team.alive.as_slice()) }
 
     #[inline]
-    pub fn contains_alive(&self, plr: PlrId) -> bool {
-        self.teams.iter().any(|team| team.alive.contains(&plr))
-    }
+    pub fn contains_alive(&self, plr: PlrId) -> bool { self.teams.iter().any(|team| team.alive.contains(&plr)) }
 
     fn sync_group_rosters(&mut self) {
         // `groups` 仍保留给旧接口和测试使用，但语义被限制为 roster-only 镜像。
@@ -310,11 +302,7 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
     // - ally_all 保持 roster 语义，对齐 Dart 的 group.players
     let ally_alive = world.team_alive(effective_team).map(|team| team.to_vec()).unwrap_or_default();
     let ally_all = team_roster.clone();
-    let ally_dead = team_roster
-        .iter()
-        .copied()
-        .filter(|id| !ally_alive.contains(id))
-        .collect::<Vec<PlrId>>();
+    let ally_dead = team_roster.iter().copied().filter(|id| !ally_alive.contains(id)).collect::<Vec<PlrId>>();
     let all_alive = world.alives_flat(storage);
     let enemy_alive = world
         .teams
@@ -417,24 +405,23 @@ impl EngineCore {
 
         // 1+2) 统一处理死亡：按 death_queue 记录的死亡发生顺序逐个移除。
         //   对齐 Dart：onDie 内部即时调用 group.die → f.remove，因此多死亡的 remove
-        //   顺序必须与 combat 中死亡发生顺序一致。pending_remove（minion group 移除）
+        //   顺序必须与 combat 中死亡发生顺序一致。pending_remove 只表示“该实体已从
+        //   运行态退出”，但不应从 team roster/group.players 永久抹掉；否则会改变
+        //   AllyAny 抽样池，导致隐藏 RC4 漂移。pending_remove（minion group 移除）
         //   与 death_queue 合并处理，避免 pending_remove 抢先改变 round_pos。
         let pending_remove_players = storage.take_pending_remove_players();
         let death_queue = storage.take_death_queue();
         for id in &death_queue {
-            // 如果该 player 也在 pending_remove 中，同时从 groups 中移除。
-            if pending_remove_players.contains(id) {
-                world.remove_from_roster(*id);
-            }
             if world.contains_alive(*id) && !storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
                 world.remove_player(*id);
                 Self::debug_world_state("after_dead_remove", world, storage);
             }
         }
         // 处理不在 death_queue 中的 pending_remove（理论上不应发生，safety net）。
+        // 这里同样不改 roster，只确保它不会残留在 alive/round 视图里。
         for ptr in &pending_remove_players {
             if !death_queue.contains(ptr) {
-                world.remove_from_roster(*ptr);
+                world.remove_player(*ptr);
                 Self::debug_world_state("after_pending_remove_only", world, storage);
             }
         }

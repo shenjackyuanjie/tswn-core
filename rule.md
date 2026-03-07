@@ -27,6 +27,8 @@ dart 项目 有一个 dart compile js 产物
 
 **现在应当优先参考js实现**
 
+目前系统上装了 bunjs，可以直接运行 js 产物中的 js 文件来观察它的行为
+
 ## 测试说明
 
 目前在 tswn-core/test 文件夹有 01.md ~ 10.md 十个中型测试和 large.md 一个大型测试

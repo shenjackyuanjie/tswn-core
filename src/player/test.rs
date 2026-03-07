@@ -434,6 +434,13 @@ fn merge_and_zombie_kill_write_target_states() {
         target_id,
         (7, &mut randomer, &mut updates, &storage),
     );
+    {
+        let target_ref = storage.get_player(&target_id).unwrap();
+        let corpse = target_ref
+            .get_state::<crate::player::skill::corpse::CorpseState>()
+            .expect("merge should write corpse state");
+        assert_eq!(corpse.kind, crate::player::skill::corpse::CorpseKind::Merge);
+    }
     let zombied = <crate::player::skill::zombie::ZombieSkill as crate::player::skill::SkillTrait>::kill(
         &mut zombie,
         target_id,
@@ -442,8 +449,10 @@ fn merge_and_zombie_kill_write_target_states() {
     assert!(merged);
     assert!(zombied);
     let target_ref = storage.get_player(&target_id).unwrap();
-    assert!(target_ref.has_state::<crate::player::skill::merge::MergeState>());
-    assert!(target_ref.has_state::<crate::player::skill::zombie::ZombieState>());
+    let corpse = target_ref
+        .get_state::<crate::player::skill::corpse::CorpseState>()
+        .expect("zombie should overwrite corpse state");
+    assert_eq!(corpse.kind, crate::player::skill::corpse::CorpseKind::Zombie);
 }
 
 #[test]
@@ -803,8 +812,36 @@ fn merge_kill_applies_owner_growth() {
         owner_mut.update_states();
         owner_mut.skills.update_state((owner_id, &mut randomer, &mut updates, &storage));
         assert!(owner_mut.get_status().attack > base_attack);
-        assert!(owner_mut.has_state::<crate::player::skill::merge::MergeState>());
+        assert!(!owner_mut.has_state::<crate::player::skill::corpse::CorpseState>());
     }
+}
+
+#[test]
+fn revive_rejects_merge_corpse_target() {
+    let storage = Storage::new_arc();
+    let reviver = Player::new_from_namerena_raw("reviver@red".to_string(), storage.clone()).unwrap();
+    let corpse = Player::new_from_namerena_raw("corpse@red".to_string(), storage.clone()).unwrap();
+    let reviver_id = storage.just_insert_player(reviver);
+    let corpse_id = storage.just_insert_player(corpse);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let revive = crate::player::skill::revive::ReviveSkill::new();
+
+    {
+        let corpse_mut = storage.just_get_player_mut(corpse_id).unwrap();
+        corpse_mut.status.hp = 0;
+        corpse_mut.status.set_alive(false);
+        corpse_mut.set_state(crate::player::skill::corpse::CorpseState::merge());
+    }
+
+    let valid = <crate::player::skill::revive::ReviveSkill as crate::player::skill::SkillTrait>::valid_target_with_level(
+        &revive,
+        32,
+        corpse_id,
+        false,
+        (reviver_id, &mut randomer, &mut updates, &storage),
+    );
+    assert!(!valid);
 }
 
 #[test]
@@ -847,7 +884,10 @@ fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
         let target_mut = storage.just_get_player_mut(target_id).unwrap();
         assert!(!target_mut.alive());
         assert_eq!(target_mut.get_status().hp, 0);
-        assert!(target_mut.has_state::<crate::player::skill::zombie::ZombieState>());
+        let corpse = target_mut
+            .get_state::<crate::player::skill::corpse::CorpseState>()
+            .expect("zombie kill should mark corpse");
+        assert_eq!(corpse.kind, crate::player::skill::corpse::CorpseKind::Zombie);
     }
     let pending = storage.take_pending_spawns();
     assert_eq!(pending.len(), 1);

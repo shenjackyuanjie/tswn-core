@@ -33,6 +33,8 @@ impl SkillTrait for AssassinateSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
+    fn uses_custom_target_selection(&self) -> bool { true }
+
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
         if self.target.is_some() {
             return true;
@@ -73,11 +75,7 @@ impl SkillTrait for AssassinateSkill {
             }
         };
         let alive_group_count = args.3.alive_group_count();
-        let target_alive_group_len = args
-            .3
-            .alive_group_containing(target)
-            .map(|group| group.len())
-            .unwrap_or(0);
+        let target_alive_group_len = args.3.alive_group_containing(target).map(|group| group.len()).unwrap_or(0);
         let status = target_plr.get_status();
         if alive_group_count > 2 {
             rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract

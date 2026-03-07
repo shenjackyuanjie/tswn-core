@@ -60,11 +60,7 @@ impl SkillTrait for CurseSkill {
         };
         let base = if smart {
             let alive_group_count = args.3.alive_group_count();
-            let target_alive_group_len = args
-                .3
-                .alive_group_containing(target)
-                .map(|group| group.len())
-                .unwrap_or(0);
+            let target_alive_group_len = args.3.alive_group_containing(target).map(|group| group.len()).unwrap_or(0);
             let status = target_plr.get_status();
             if alive_group_count > 2 {
                 rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract
@@ -151,12 +147,26 @@ impl StateTrait for CurseState {
     fn post_defend_priority(&self) -> i32 { 110 }
 
     fn on_post_defend(&mut self, owner: PlrId, dmg: &mut i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates) {
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action.as_deref().map(|name| format!("#{owner}") == name).unwrap_or(false);
         if *dmg <= 0 {
             return;
+        }
+        if debug_this {
+            eprintln!(
+                "[curse_post_defend] owner=#{owner} dmg={} prob={} before rc4=({}, {})",
+                *dmg, self.prob, randomer.i, randomer.j,
+            );
         }
         if randomer.r63() < self.prob as u32 {
             updates.add(RunUpdate::new("[诅咒]使伤害加倍", caster, owner, 0));
             *dmg *= self.multiply;
+        }
+        if debug_this {
+            eprintln!(
+                "[curse_post_defend] owner=#{owner} after dmg={} rc4=({}, {})",
+                *dmg, randomer.i, randomer.j,
+            );
         }
     }
 

@@ -34,10 +34,41 @@ impl SkillTrait for DefendSkill {
         _on_damage: &crate::player::OnDamageFunc,
         args: SkillArgs,
     ) -> i32 {
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get defend owner from storage");
+        if debug_this {
+            eprintln!(
+                "[defend_post_defend] owner={} dmg={} level={} before rc4=({}, {})",
+                owner.id_name(),
+                dmg,
+                level,
+                args.1.i,
+                args.1.j,
+            );
+        }
         if args.1.r255() < level && owner.mp_ready(args.1) {
             args.2.add(RunUpdate::new("[0][防御]", args.0, caster, 40));
+            if debug_this {
+                eprintln!(
+                    "[defend_post_defend] owner={} triggered rc4=({}, {})",
+                    owner.id_name(),
+                    args.1.i,
+                    args.1.j,
+                );
+            }
             return dmg / 2;
+        }
+        if debug_this {
+            eprintln!(
+                "[defend_post_defend] owner={} not_triggered rc4=({}, {})",
+                owner.id_name(),
+                args.1.i,
+                args.1.j,
+            );
         }
         dmg
     }

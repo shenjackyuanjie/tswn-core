@@ -1,7 +1,8 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    Player, PlayerStateStore, PlayerType, PlrId, StateTrait,
+    Player, PlayerStateStore, PlayerType, PlrId,
     skill::act::minion::{MinionKind, MinionRuntimeState, is_combat_minion},
+    skill::corpse::CorpseState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
 };
 
@@ -34,10 +35,7 @@ impl SkillTrait for ZombieSkill {
             args.3
                 .just_get_player_mut(target)
                 .expect("cannot get zombie target from storage")
-                .set_state(ZombieState {
-                    target: Some(target),
-                    owner: None,
-                });
+                .set_state(CorpseState::zombie());
             return true;
         };
         if !args
@@ -52,10 +50,7 @@ impl SkillTrait for ZombieSkill {
         args.3
             .just_get_player_mut(target)
             .expect("cannot get zombie target from storage")
-            .set_state(ZombieState {
-                target: Some(target),
-                owner: Some(args.0),
-            });
+            .set_state(CorpseState::zombie());
 
         let seed_name = format!("{owner_name}?zombie");
         let mut zombie =
@@ -91,20 +86,4 @@ impl SkillTrait for ZombieSkill {
     }
 
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostKill] }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ZombieState {
-    pub target: Option<PlrId>,
-    pub owner: Option<PlrId>,
-}
-
-impl StateTrait for ZombieState {
-    fn meta_type(&self) -> i32 { 0 }
-
-    fn as_any(&self) -> &dyn std::any::Any { self }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
-
-    fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }

@@ -2,8 +2,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
     skill::act::minion::is_combat_minion,
-    skill::merge::MergeState,
-    skill::zombie::ZombieState,
+    skill::corpse::CorpseState,
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
@@ -35,10 +34,7 @@ impl SkillTrait for ReviveSkill {
         let Some(target_plr) = args.3.get_player(&target) else {
             return false;
         };
-        let valid = !target_plr.alive()
-            && !is_combat_minion(target_plr)
-            && !target_plr.has_state::<MergeState>()
-            && !target_plr.has_state::<ZombieState>();
+        let valid = !target_plr.alive() && !is_combat_minion(target_plr) && !target_plr.has_state::<CorpseState>();
         let debug_this = std::env::var("TSWN_DEBUG_ACTION")
             .ok()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
@@ -52,13 +48,12 @@ impl SkillTrait for ReviveSkill {
                 .filter_map(|id| args.3.get_player(&id).map(|p| p.id_name()))
                 .collect::<Vec<String>>();
             eprintln!(
-                "[revive_valid] owner={} team={team:?} target={} alive={} minion={} merge={} zombie={} valid={}",
+                "[revive_valid] owner={} team={team:?} target={} alive={} minion={} corpse={} valid={}",
                 args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
                 target_plr.id_name(),
                 target_plr.alive(),
                 is_combat_minion(target_plr),
-                target_plr.has_state::<MergeState>(),
-                target_plr.has_state::<ZombieState>(),
+                target_plr.has_state::<CorpseState>(),
                 valid
             );
         }

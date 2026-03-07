@@ -24,7 +24,22 @@ impl SkillTrait for HideSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     fn post_damage_with_level(&mut self, level: u32, _dmg: i32, _caster: PlrId, args: SkillArgs) {
+        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
         if level == 0 || self.on_update_state.is_some() {
+            if debug_this {
+                eprintln!(
+                    "[hide_post_damage] owner={} skip level={} pending={} rc4=({}, {})",
+                    args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                    level,
+                    self.on_update_state.is_some(),
+                    args.1.i,
+                    args.1.j,
+                );
+            }
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
@@ -41,6 +56,17 @@ impl SkillTrait for HideSkill {
                 .filter(|id| args.3.get_player(id).map(|p| p.alive() && p.clan_name() == owner_clan).unwrap_or(false))
                 .count()
         };
+        if debug_this {
+            eprintln!(
+                "[hide_post_damage] owner={} active={} alive_allies={} level={} before_roll rc4=({}, {})",
+                args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                owner_active,
+                alive_allies,
+                level,
+                args.1.i,
+                args.1.j,
+            );
+        }
         if owner_active && alive_allies > 1 && args.1.r63() < level {
             self.on_update_state = Some(());
             args.3
@@ -48,6 +74,21 @@ impl SkillTrait for HideSkill {
                 .expect("cannot get hide owner from storage")
                 .update_states();
             args.2.add(RunUpdate::new("[0]发动[隐匿]", args.0, args.0, 10));
+            if debug_this {
+                eprintln!(
+                    "[hide_post_damage] owner={} triggered rc4=({}, {})",
+                    args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                    args.1.i,
+                    args.1.j,
+                );
+            }
+        } else if debug_this {
+            eprintln!(
+                "[hide_post_damage] owner={} not_triggered rc4=({}, {})",
+                args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                args.1.i,
+                args.1.j,
+            );
         }
     }
 
