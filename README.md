@@ -2,6 +2,16 @@
 
 > 坏了, 我真开始技术封锁了
 
+- 项目最大赞助商: Github Copilot Pro ( 甚至是 Github Edu 送的 )
+  - 我敲，你懂什么叫 Claude Opus 4.6 跑了一百天还只消耗了一次额度的震撼吗.png
+  - 这太TM震撼了
+  - 甚至它会自动 compat
+    - 还是免费的 ( 不消耗额度 )
+  - 此处稍微 cue 一下 GPT 5.4, 他在 context 快用完的时候会自己停下来
+    - 倒不是说不好吧，但是在这种项目里自己停下 == 消耗另一次额度
+  - 所以 Claude Opus 4.6 就是超级大救星.png
+- 20260307
+
 - 感谢 GPT 5.3-Codex Xhigh & Cluade Opus 4.6 两位大哥
 - 成功的把项目推进到了 debug 抠细节阶段
 - 感谢 minimax m2.5, 写了个 `track_test.py`
