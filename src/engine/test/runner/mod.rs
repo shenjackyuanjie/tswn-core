@@ -8,6 +8,8 @@ mod fight_multi_3;
 mod fight_multi_4;
 mod fight_multi_5;
 mod fight_multi_6;
+mod fight_multi_7;
+mod fight_multi_8;
 mod large_01_10;
 mod large_11_17;
 mod large_18_22;
