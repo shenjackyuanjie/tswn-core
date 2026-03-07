@@ -31,7 +31,8 @@ impl SkillTrait for ChargeSkill {
     fn select_target_count(&self, _smart: bool) -> usize { 1 }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
-        if self.step > 0 {
+        // JS checks meta map (cleared by K()), not step. After interrupt, step > 0 but meta is gone.
+        if self.on_update_state.is_some() {
             return false;
         }
         if smart {
@@ -48,6 +49,7 @@ impl SkillTrait for ChargeSkill {
     }
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+        // JS: s.fy = s.fy + 2 — ADDS to step, does not reset.
         self.step += 2;
         self.on_post_action = Some(());
         self.on_update_state = Some(());
@@ -58,7 +60,9 @@ impl SkillTrait for ChargeSkill {
     }
 
     fn post_action(&mut self, args: SkillArgs) {
-        if self.step <= 0 {
+        // JS: fx is only in x2 when charge is active (added in v(), removed in K()).
+        // In Rust, proc_kinds always includes PostAction, so guard with on_post_action flag.
+        if self.on_post_action.is_none() {
             return;
         }
         self.step -= 1;
@@ -73,7 +77,7 @@ impl SkillTrait for ChargeSkill {
     }
 
     fn update_state(&mut self, args: SkillArgs) {
-        if self.step > 0 {
+        if self.on_update_state.is_some() {
             args.3
                 .just_get_player_mut(args.0)
                 .expect("cannot get charge owner from storage")
@@ -82,7 +86,7 @@ impl SkillTrait for ChargeSkill {
     }
 
     fn update_state_inline(&mut self, _level: u32, status: &mut crate::player::PlayerStatus) {
-        if self.step > 0 {
+        if self.on_update_state.is_some() {
             status.at_boost *= 3.0;
         }
     }
@@ -91,7 +95,7 @@ impl SkillTrait for ChargeSkill {
         if self.on_update_state.is_none() {
             return None;
         }
-        self.step = 0;
+        // JS K() does NOT reset fy (step). Leave step as-is so next activation accumulates.
         self.on_update_state = None;
         self.on_post_action = None;
         args.3
