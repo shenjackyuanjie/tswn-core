@@ -1,5 +1,6 @@
 pub mod boss;
 pub mod eval_name;
+pub mod icon;
 pub mod skill;
 pub mod utils;
 pub mod weapons;
