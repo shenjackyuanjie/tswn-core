@@ -1,5 +1,6 @@
 use super::*;
 use crate::engine::update::{RunUpdate, UpdateType};
+use std::collections::HashMap;
 
 mod fight_large;
 mod fight_multi_1;
@@ -139,6 +140,30 @@ fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normali
         guard += 1;
     }
     (lines, guard)
+}
+
+/// Run a fight and return (total_score, per-caster scores keyed by display name).
+fn collect_battle_scores(runner: &mut runners::Runner, max_rounds: usize) -> (u64, HashMap<String, u64>) {
+    let mut total_score = 0u64;
+    let mut score_by_name: HashMap<String, u64> = HashMap::new();
+    let mut guard = 0usize;
+    while !runner.have_winner() && guard < max_rounds {
+        let updates = runner.main_round();
+        for update in &updates.updates {
+            if matches!(update.update_type, UpdateType::NextLine) || update.score == 0 {
+                continue;
+            }
+            total_score += update.score as u64;
+            let caster_name = runner
+                .storage
+                .get_player(&update.caster)
+                .map(|plr| plr.display_name())
+                .unwrap_or_else(|| format!("#{}", update.caster));
+            *score_by_name.entry(caster_name).or_insert(0) += update.score as u64;
+        }
+        guard += 1;
+    }
+    (total_score, score_by_name)
 }
 
 fn should_dump_full_trace(case_name: &str) -> bool {

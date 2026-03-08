@@ -97,3 +97,29 @@ bbb发起攻击, 诅咒使伤害加倍, fff受到134点伤害
     assert!(guard < 10_000, "fight_simple combat did not finish in expected rounds");
     assert_eq!(actual_lines, expected_lines);
 }
+
+#[test]
+fn simple_fight_scores() {
+    let input = "aaa\nbbb\nccc\nddd\neee\nfff";
+    let mut runner = runners::Runner::new_from_namerena_raw(input.to_string()).unwrap();
+    let (total, by_name) = collect_battle_scores(&mut runner, 10_000);
+    eprintln!("total_score={total}");
+    let mut entries: Vec<_> = by_name.iter().collect();
+    entries.sort_by(|a, b| b.1.cmp(a.1));
+    for (name, score) in &entries {
+        eprintln!("  {name}={score}");
+    }
+    // Snapshot: verified against JS (branch/latest/md5.js) score hook
+    assert_eq!(total, 2521, "total battle score mismatch");
+}
+
+#[test]
+fn small_seed_scores() {
+    let input = "aaaaa\nbbbbb\nseed:tester@!";
+    let mut runner = runners::Runner::new_from_namerena_raw(input.to_string()).unwrap();
+    let (total, by_name) = collect_battle_scores(&mut runner, 10_000);
+    // Snapshot: verified against JS (branch/latest/md5.js) score hook
+    assert_eq!(total, 635, "total battle score mismatch");
+    assert_eq!(by_name["aaaaa"], 463);
+    assert_eq!(by_name["bbbbb"], 172);
+}
