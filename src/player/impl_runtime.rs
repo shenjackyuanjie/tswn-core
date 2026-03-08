@@ -74,6 +74,9 @@ impl Player {
         if trace_fine {
             eprintln!("[action_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
         }
+        if std::env::var_os("TSWN_TRACE_RC4").is_some() {
+            eprintln!("[RC4_ACTION] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
+        }
         let smart_roll = randomer.r63() as i32;
         let smart = self.status.wisdom > smart_roll;
         if trace_fine {

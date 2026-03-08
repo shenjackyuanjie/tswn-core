@@ -22,6 +22,8 @@ impl StateTrait for FireState {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
+
+    fn meta_type(&self) -> i32 { -1 }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -55,7 +57,13 @@ impl SkillTrait for FireSkill {
             .get_state::<FireState>()
             .map(|state| state.fire_mag)
             .unwrap_or(0.0);
-        let atp = args.3.get_player(&args.0).expect("cannot get owner from storage").get_at(true, args.1) * (1.5 + fire_mag);
+        let get_at_val = args.3.get_player(&args.0).expect("cannot get owner from storage").get_at(true, args.1);
+        let atp = get_at_val * (1.5 + fire_mag);
+        if std::env::var_os("TSWN_DEBUG_FIRE").is_some() {
+            let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_default();
+            let target_name = args.3.get_player(&target_id).map(|p| p.id_name()).unwrap_or_default();
+            eprintln!("[fire] caster={} target={} get_at={} fire_mag={} atp={} rc4=({},{})", owner_name, target_name, get_at_val, fire_mag, atp, args.1.i, args.1.j);
+        }
 
         args.2.add(RunUpdate::new("[0]使用[火球术]", args.0, target_id, 1));
 
