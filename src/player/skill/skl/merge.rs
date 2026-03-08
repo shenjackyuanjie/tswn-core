@@ -9,7 +9,7 @@ use crate::player::{
 pub struct MergeSkill;
 
 impl MergeSkill {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self { Self }
 }
 
 impl SkillExt for MergeSkill {

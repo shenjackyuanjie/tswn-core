@@ -7,7 +7,6 @@ use crate::player::{
     OnDamageFunc, PlrId,
     skill::poison::PoisonState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
-    state_tag,
 };
 use crate::rc4::RC4;
 

@@ -3,7 +3,6 @@ use crate::player::{
     Player, PlrId,
     skill::berserk::BerserkState,
     skill::{SkillArgs, SkillExt, SkillTrait},
-    state_tag,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -30,21 +29,16 @@ impl SkillTrait for PossessSkill {
         };
         args.2.add(RunUpdate::new("[0]使用[附体]", args.0, target_id, 0));
 
-        let dodged = {
-            let Some(caster) = args.3.get_player(&args.0) else {
-                return;
-            };
-            let Some(target) = args.3.get_player(&target_id) else {
-                return;
-            };
-            let dodged = if target.check_immune("berserk", args.1) {
+        let dodged = if let (Some(caster), Some(target)) = (args.3.get_player(&args.0), args.3.get_player(&target_id)) {
+            if target.check_immune("berserk", args.1) {
                 true
             } else {
                 target.alive()
                     && !target.get_status().frozed()
                     && Player::dodge(caster.get_status().magic, target.get_status().resistance, args.1)
-            };
-            dodged
+            }
+        } else {
+            return;
         };
         if dodged {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));

@@ -6,7 +6,6 @@ use crate::player::{
     ForcedAttackConfig, ForcedAttackScoreMode, ForcedAttackTargetDomain, OnDamageFunc, PlrId, StateTrait,
     skill::act::minion::is_combat_minion,
     skill::{SkillArgs, SkillExt, SkillTrait},
-    state_tag,
 };
 use crate::rc4::RC4;
 

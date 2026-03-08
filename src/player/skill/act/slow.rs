@@ -2,7 +2,6 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTrait},
-    state_tag,
 };
 
 #[derive(Debug, Clone, Default)]

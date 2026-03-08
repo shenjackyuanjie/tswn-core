@@ -57,8 +57,8 @@ impl Player {
         // Boss appendAttr: 在基础八围之上加成
         if self.player_type == PlayerType::Boss {
             let bonus = boss_append_attr(&self.name);
-            for i in 0..8 {
-                self.attr[i] = (self.attr[i] as i32 + bonus[i]).max(0) as u32;
+            for (a, b) in self.attr.iter_mut().zip(bonus.iter()) {
+                *a = (*a as i32 + *b).max(0) as u32;
             }
         }
         // println!("attr: {:?} {:?}", self.attr, self.name_base);

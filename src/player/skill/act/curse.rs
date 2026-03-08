@@ -5,7 +5,6 @@ use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlayerType, PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTrait},
-    state_tag,
 };
 use crate::rc4::RC4;
 

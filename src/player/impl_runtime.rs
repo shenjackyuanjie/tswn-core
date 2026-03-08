@@ -942,6 +942,7 @@ impl Player {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn apply_pre_defend_states(
         &mut self,
         mut atp: f64,
@@ -1099,6 +1100,7 @@ impl Player {
     }
 
     /// preDefend
+    #[allow(clippy::too_many_arguments)]
     pub fn pre_defend(
         &mut self,
         mut atp: f64,
@@ -1153,6 +1155,7 @@ impl Player {
         self.apply_post_defend_states(dmg, caster, randomer, updates, storage)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn attacked(
         &mut self,
         mut atp: f64,
@@ -1222,6 +1225,7 @@ impl Player {
         self.defned(atp, is_mag, caster, on_damage, randomer, updates, storage)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn defned(
         &mut self,
         atp: f64,

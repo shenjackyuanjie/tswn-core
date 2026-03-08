@@ -86,7 +86,7 @@ fn print_icon(name: &str) {
         6 => '╍',
         _ => '─',
     };
-    let border_line: String = std::iter::repeat(border_char).take(18).collect();
+    let border_line: String = std::iter::repeat_n(border_char, 18).collect();
     println!("┌{}┐", border_line);
 
     // Render 8 rows for the icon

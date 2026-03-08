@@ -92,11 +92,8 @@ impl SkillTrait for ChargeSkill {
     }
 
     fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
-        if self.on_update_state.is_none() {
-            return None;
-        }
+        self.on_update_state.take()?;
         // JS K() does NOT reset fy (step). Leave step as-is so next activation accumulates.
-        self.on_update_state = None;
         self.on_post_action = None;
         args.3
             .just_get_player_mut(args.0)

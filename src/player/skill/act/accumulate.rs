@@ -83,10 +83,7 @@ impl SkillTrait for AccumulateSkill {
     }
 
     fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
-        if self.on_update_state.is_none() {
-            return None;
-        }
-        self.on_update_state = None;
+        self.on_update_state.take()?;
         args.3
             .just_get_player_mut(args.0)
             .expect("cannot get accumulate owner from storage")

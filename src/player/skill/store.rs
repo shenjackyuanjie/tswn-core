@@ -333,3 +333,9 @@ impl SkillStorage {
         }
     }
 }
+
+impl Default for SkillStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -5,7 +5,6 @@ use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     MOVE_POINT_THRESHOLD, OnDamageFunc, PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTrait},
-    state_tag,
 };
 use crate::rc4::RC4;
 

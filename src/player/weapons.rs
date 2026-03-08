@@ -150,7 +150,7 @@ impl WeaponState {
 
     // ── JS T.Weapon.prototype.cB (base version) ────────
     /// 返回 |m| + |j| + |r|，并可能修改 name_base
-    fn cb_base(raw_name_base: &[u8; 128], name_base: &mut Vec<u8>, weapon_seed: &[u8], d: usize) -> i32 {
+    fn cb_base(raw_name_base: &[u8; 128], name_base: &mut [u8], weapon_seed: &[u8], d: usize) -> i32 {
         let m = weapon_seed[d] as i32 - raw_name_base[d] as i32;
         let j = weapon_seed[d + 1] as i32 - raw_name_base[d + 1] as i32;
         let r = weapon_seed[d + 2] as i32 - raw_name_base[d + 2] as i32;
@@ -173,7 +173,7 @@ impl WeaponState {
 
     // ── JS T.Weapon.prototype.bn (preUpgrade) ──────────
     /// 基础 preUpgrade: 遍历 name_base 三元组, 累积 delta, 计算 skill_factor
-    pub fn pre_upgrade_base(&mut self, raw_name_base: &[u8; 128], name_base: &mut Vec<u8>) {
+    pub fn pre_upgrade_base(&mut self, raw_name_base: &[u8; 128], name_base: &mut [u8]) {
         let mut o = 0i32;
         let mut s = 10;
         while s < D1 {
@@ -258,7 +258,7 @@ impl Weapon {
         match state.weapon_type {
             WeaponType::Generic | WeaponType::S11 | WeaponType::DeathNote => {
                 // 继承 T.Weapon.prototype.bn
-                state.pre_upgrade_base(&player.raw_name_base, &mut player.name_base);
+                state.pre_upgrade_base(&player.raw_name_base, &mut player.name_base[..]);
             }
             WeaponType::BossEx => {
                 // BossWeapon 有不同的 cB 和 bn 逻辑
@@ -267,7 +267,7 @@ impl Weapon {
             }
             WeaponType::RinickModifier => {
                 // RinickModifier 继承 base bn
-                state.pre_upgrade_base(&player.raw_name_base, &mut player.name_base);
+                state.pre_upgrade_base(&player.raw_name_base, &mut player.name_base[..]);
             }
             WeaponType::None => {}
         }
@@ -300,13 +300,13 @@ fn boss_weapon_pre_upgrade(state: &mut WeaponState, player: &mut Player) {
     // 然后调用 this.dW() (= base bn)
     // BossWeapon.cB 不同于 T.Weapon.cB
     let d = AP; // $.ap() = 7
-    boss_weapon_cb(&player.raw_name_base, &mut player.name_base, &state.seed, d);
+    boss_weapon_cb(&player.raw_name_base, &mut player.name_base[..], &state.seed, d);
     // dW = base bn
-    state.pre_upgrade_base(&player.raw_name_base, &mut player.name_base);
+    state.pre_upgrade_base(&player.raw_name_base, &mut player.name_base[..]);
 }
 
 /// BossWeapon.cB (不同于 T.Weapon.cB)
-fn boss_weapon_cb(raw_name_base: &[u8; 128], name_base: &mut Vec<u8>, weapon_seed: &[u8], d: usize) {
+fn boss_weapon_cb(_raw_name_base: &[u8; 128], name_base: &mut [u8], weapon_seed: &[u8], d: usize) {
     // JS BossWeapon.prototype.cB
     for p in 0..3usize {
         let o = d + p;

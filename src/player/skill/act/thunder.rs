@@ -40,7 +40,7 @@ impl SkillTrait for ThunderSkill {
                 .expect("cannot get thunder owner from storage")
                 .get_status()
                 .agility;
-        let mut hit = false;
+        let mut _hit = false;
         let count = 3 + args.1.r3() as usize;
         for _ in 0..count {
             let alive = args.3.get_player(&target_id).map(|x| x.alive()).unwrap_or(false);
@@ -73,7 +73,7 @@ impl SkillTrait for ThunderSkill {
                 .expect("cannot get thunder target from storage")
                 .defned(atp, true, args.0, on_thunder as OnDamageFunc, args.1, args.2, args.3);
             if dmg > 0 {
-                hit = true;
+                _hit = true;
             }
         }
     }

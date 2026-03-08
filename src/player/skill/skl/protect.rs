@@ -260,9 +260,7 @@ impl ProtectSkill {
             } else {
                 args.1.pick(&candidates)
             };
-            let Some(idx) = next_idx else {
-                return None;
-            };
+            let idx = next_idx?;
             let target_id = candidates[idx];
             let valid = args
                 .3

@@ -89,35 +89,31 @@ impl Player {
         match player_type {
             PlayerType::Test1 => {
                 // JS PlrBossTest.e4: for i in 0..50, if val < 12, val = 63 - val
-                for i in 0..50 {
-                    let v = name_base[i];
-                    if v < 12 {
-                        name_base[i] = 63 - v;
+                for val in name_base.iter_mut().take(50) {
+                    if *val < 12 {
+                        *val = 63 - *val;
                     }
                 }
             }
             PlayerType::Test2 => {
                 // JS PlrBossTest2.e5: for i in 0..50, if val < 32, val = 63 - val
-                for i in 0..50 {
-                    let v = name_base[i];
-                    if v < 32 {
-                        name_base[i] = 63 - v;
+                for val in name_base.iter_mut().take(50) {
+                    if *val < 32 {
+                        *val = 63 - *val;
                     }
                 }
             }
             PlayerType::TestEx => {
                 // JS PlrEx.e2: for i in 6..50, if val < 41, val = (val & 15) + 41
-                for i in 6..50 {
-                    let v = name_base[i];
-                    if v < 41 {
-                        name_base[i] = (v & 15) + 41;
+                for val in name_base.iter_mut().skip(6).take(50 - 6) {
+                    if *val < 41 {
+                        *val = (*val & 15) + 41;
                     }
                 }
                 // for i in 50..128, if val < 16, val += 32
-                for i in 50..128 {
-                    let v = name_base[i];
-                    if v < 16 {
-                        name_base[i] = v + 32;
+                for val in name_base.iter_mut().skip(50).take(128 - 50) {
+                    if *val < 16 {
+                        *val += 32;
                     }
                 }
                 // TestEx 还会将修改后的 name_base 复制到 raw_name_base
@@ -151,7 +147,7 @@ impl Player {
         let id = storage.new_plr_id();
 
         // 创建武器状态 (JS: new T.Weapon + b3)
-        let weapon_state = weapon.as_deref().map(weapons::Weapon::create_state).flatten();
+        let weapon_state = weapon.as_deref().and_then(weapons::Weapon::create_state);
 
         Ok(Player {
             team,
