@@ -537,7 +537,7 @@ fn covid_pneumonia(
     );
     let at_val = owner_plr.get_at(true, randomer);
     let df_val = owner_plr.get_df(true);
-    let dmg = ((at_val + (mutation * 80) as f64) / df_val as f64).floor() as i32;
+    let dmg = ((at_val + (mutation * 80) as f64) / df_val as f64).ceil() as i32;
     eprintln!("[COVID_PNEUMONIA] at_val={at_val} df_val={df_val} mutation={mutation} dmg={dmg}");
 
     if dmg <= 0 {
@@ -555,22 +555,25 @@ fn covid_pneumonia(
         let plr = storage.just_get_player_mut(owner).expect("covid_pneumonia owner");
         plr.damage(dmg, boss_id, noop_on_damage, randomer, updates, storage)
     };
+    eprintln!("[COVID_PNEUMONIA] actual_dmg={actual_dmg} dmg={dmg}");
 
     // Boss heals: min(dmg>>1, actualDmg) or min((dmg>>2)+1, actualDmg) if full HP
     let boss_hp_full = storage
         .get_player(&boss_id)
         .map(|p| {
             let s = p.get_status();
+            eprintln!("[COVID_PNEUMONIA] boss hp={} max_hp={}", s.hp, s.max_hp);
             s.hp >= s.max_hp
         })
         .unwrap_or(false);
 
+    // JS: n = s >> 1; if full: n = (n >> 2) + 1 = (s >> 3) + 1
     let heal_amount = if boss_hp_full {
-        std::cmp::min((dmg >> 2) + 1, actual_dmg)
+        std::cmp::min((dmg >> 3) + 1, actual_dmg)
     } else {
         std::cmp::min(dmg >> 1, actual_dmg)
     };
-
+    eprintln!("[COVID_PNEUMONIA] boss_hp_full={boss_hp_full} heal_amount={heal_amount}");
     if heal_amount > 0 {
         if let Some(boss_plr) = storage.just_get_player_mut(boss_id) {
             let boss_display = boss_plr.display_name();
