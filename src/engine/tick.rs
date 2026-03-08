@@ -1,3 +1,23 @@
+//! # 单 Tick 行动流程 (tick)
+//!
+//! 本模块包含每个 tick 内战斗解算的各个步骤函数，由 [`EngineCore::tick`](crate::engine::engine_core::EngineCore::tick) 按序调用。
+//!
+//! ## Tick 执行流程
+//!
+//! ```text
+//! 1. next_actor()         — 从 WorldState.players 中轮流取出下一个行动角色
+//! 2. choose_action()      — 决定该角色本 tick 是否执行行动（存活且未冻结）
+//! 3. select_targets()     — 根据魅惑状态等确定友方/敌方/全场存活目标集合
+//! 4. resolve_combat()     — 驱动 pre_damage 钩子 → Player::step() → post_damage 钩子
+//! 5. run_update_end()     — 处理 on_update_end 回调队列（持续效果结算）
+//! 6. check_winner()       — 检查是否只剩一支队伍存活，若是则写入 winner
+//! ```
+//!
+//! ## 可见性说明
+//!
+//! 本模块中的大部分函数标记为 `pub(super)`，意味着只有 `engine` 模块内部
+//!（主要是 `engine_core`）可以调用它们，外部包不直接调用单独的 tick 步骤。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
@@ -6,6 +26,7 @@ use crate::engine::{world_state::WorldState, hooks::HookPipeline, rules::RuleReg
 use crate::player::{ActionTargets, PlrId};
 use crate::rc4::RC4;
 
+/// Tick 行动决策枚举，由 [`choose_action`] 返回。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionDecision {
     StepDriver,

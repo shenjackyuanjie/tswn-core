@@ -1,3 +1,77 @@
+//! # 玩家模块 (player)
+//!
+//! 本模块定义了战斗中所有参与者（普通玩家、Boss、召唤物等）的完整实现。
+//!
+//! ---
+//!
+//! ## 子模块一览
+//!
+//! ### 🧩 玩家实体
+//! - **`mod.rs`**（本文件）— [`Player`] 结构体定义及常量，
+//!   `Display`、`PartialOrd`、`PartialEq` 实现。
+//! - [`impl_ctor`]（私有）— 构造函数：`new_and_init`、`new_from_namerena_raw` 等。
+//! - [`impl_attr`]（私有）— 属性计算：`build`、`upgrade`、八围推导逻辑。
+//! - [`impl_runtime`]（私有）— 运行时行为：`step`、`action`、`attacked`、`on_update_end` 等。
+//!
+//! ### 🎯 战斗目标
+//! - [`action_targets`] — [`ActionTargets`]（友军/敌军/全场存活分类）
+//!   及 [`ForcedAttackConfig`]（强制攻击配置）。
+//!
+//! ### 📊 状态系统
+//! - [`state`] — [`StateTrait`]（可扩展的玩家状态 trait）及 [`PlayerStateStore`]（状态容器）。
+//!   技能效果（中毒、冰冻、魅惑等）通过实现 `StateTrait` 挂载到玩家。
+//! - [`status`] — [`PlayerStatus`]（运行期属性快照，含 hp/mp/attack 等）。
+//!
+//! ### ⚔️ 技能系统
+//! - [`skill`] — 所有技能的基础 trait、技能分发、技能槽管理。
+//!   - [`skill::act`] — 主动技能（吸血、火球、冰冻等共计 ~27 种）。
+//!   - [`skill::skl`] — 被动/防御技能（反击、防御、隐匿等共计 ~13 种）。
+//!   - [`skill::store`] — [`SkillStorage`]，管理玩家当前装备的技能列表
+//!     及各阶段触发器（pre_step / pre_action / post_action 等）。
+//!
+//! ### 🐲 Boss 系统
+//! - [`boss`] — Boss 专用初始化及专属行为：
+//!   - `covid.rs` — 新冠病毒 Boss（感染传播、变异机制）
+//!   - `lazy.rs` — 懒癌 Boss
+//!   - `saitama.rs` — 一拳超人 Boss
+//!
+//! ### 🔧 辅助模块
+//! - [`eval_name`] — 名字强度评估工具。
+//! - [`icon`] — 玩家图标相关（对应 JS 的 icon 映射）。
+//! - [`utils`] — 内部工具函数（名字处理、显示名生成等）。
+//! - [`weapons`] — 武器系统（死亡笔记、属性修改器、促销武器等）。
+//!
+//! ---
+//!
+//! ## 玩家类型 (`PlayerType`)
+//!
+//! | 类型      | 说明                            | 判断方式                  |
+//! |-----------|--------------------------------|--------------------------|
+//! | `Normal`  | 普通玩家                        | 默认                     |
+//! | `Boss`    | Boss 角色（团队 `!`）           | 名字匹配 `BOSS_NAMES`    |
+//! | `Boost`   | 加成角色（云剑系等）             | 名字匹配 `BOOST_NAMES`   |
+//! | `Seed`    | 种子（`seed:` 前缀）            | 名字以 `seed:` 开头      |
+//! | `Clone`   | 分身技召唤的克隆体              | 由分身技能创建           |
+//! | `Test1`   | 高强度测试靶（团队 `\x02`）     | 特殊字节团队名           |
+//! | `Test2`   | 高强度测试靶 2（团队 `\x03`）   | 特殊字节团队名           |
+//! | `TestEx`  | 超级靶（团队 `!` 但非 Boss/Boost）| 用于调试                |
+//!
+//! ---
+//!
+//! ## 行动流程概览
+//!
+//! ```text
+//! Player::step(randomer, updates, storage, targets)
+//!   ├── 计算移动点数（speed × r3()）
+//!   ├── apply_pre_step_states()  ← 状态修改移动点（加速/减速效果）
+//!   ├── SkillStorage::pre_step() ← 技能修改移动点
+//!   └── 若 move_point >= 2048：
+//!         └── Player::action()
+//!               ├── 判断 smart（wisdom > r63()）
+//!               ├── 状态 on_pre_action()  ← 魅惑/强制行动等
+//!               └── SkillStorage::act()   ← 技能主动触发
+//! ```
+
 pub mod action_targets;
 pub mod boss;
 pub mod eval_name;

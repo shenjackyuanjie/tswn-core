@@ -10,16 +10,24 @@ fn print_usage() {
     println!("用法:");
     println!("  namerena_cli [选项]");
     println!();
-    println!("选项:");
-    println!("  --raw <字符串>    使用提供的原始字符串作为输入");
-    println!("  --file <文件路径>  从文件读取输入");
-    println!("  --icon <名字>...  输出玩家图标信息 (可指定多个名字)");
-    println!("  --help, -h        显示此帮助信息");
+    println!("对战模式（默认）:");
+    println!("  --raw <字符串>         使用提供的原始字符串作为输入");
+    println!("  --file <文件路径>       从文件读取输入");
+    println!("  <无参数>               从 stdin 读取");
     println!();
+    println!("Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:");
+    println!("  --bench [N]            从 stdin 读取，运行 N 场 (默认 1000)");
+    println!("  --bench-raw \"...\" [N]  使用提供的原始字符串");
+    println!("  --bench-file \"...\" [N] 从文件读取");
+    println!();
+    println!("其他:");
+    println!("  --icon <名字>...       输出玩家图标信息 (可指定多个名字)");
+    println!("  --help, -h             显示此帮助信息");
+    println!();
+    println!("示例:");
     println!("  namerena_cli --raw \"a\\nb\\n\\nc\\nd\"");
-    println!("  namerena_cli --file input.txt");
-    println!("  namerena_cli --icon mario aaa test");
-    println!("  echo \"a\\nb\\n\\nc\\nd\" | namerena_cli");
+    println!("  echo \"mario\" | namerena_cli --bench 500");
+    println!("  namerena_cli --bench-raw \"team1\\n\\nteam2\" 1000");
 }
 
 fn read_raw_input() -> Result<String, String> {
@@ -148,6 +156,139 @@ fn fmt_update(runner: &Runner, update: &RunUpdate) -> String {
     }
 }
 
+// ─────────────────────────── Benchmark ───────────────────────────────────────
+
+/// Benchmark 入口：根据输入组数自动选择模式。
+/// - 2+ 组 → 胜率（team1 vs team2）
+/// - 1 组  → 普通评分 + !评分
+fn run_benchmark(raw: &str, n: usize) {
+    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let group_count = groups.iter().filter(|g| !g.is_empty()).count();
+    match group_count {
+        0 => eprintln!("benchmark: 输入为空或无有效玩家"),
+        1 => run_bench_score(raw, n),
+        _ => run_bench_winrate(raw, n),
+    }
+}
+
+/// 胜率测试：team1（组0）vs team2（组1），跑 n 场，统计组0胜率。
+fn run_bench_winrate(raw: &str, n: usize) {
+    println!("=== 对战胜率测试 ({n} 场) ===");
+    let mut wins = 0usize;
+    let mut total = 0usize;
+
+    for i in 0..n {
+        // 每场加不同 seed 行以引入随机差异
+        let bench_input = format!("{raw}\n\nseed:wr_{i}@!");
+
+        let mut runner = match Runner::new_from_namerena_raw(bench_input) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let team0_roster: Vec<usize> =
+            runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
+
+        let mut idle = 0usize;
+        let mut rounds = 0usize;
+        while !runner.have_winner() && idle < 32 && rounds < 100_000 {
+            let updates = runner.main_round();
+            if updates.updates.is_empty() {
+                idle += 1;
+            } else {
+                idle = 0;
+            }
+            rounds += 1;
+        }
+        total += 1;
+        if let Some(ref winners) = runner.world.winner {
+            if winners.iter().any(|w| team0_roster.contains(w)) {
+                wins += 1;
+            }
+        }
+        if (i + 1) % 100 == 0 {
+            eprint!("\r进度: {}/{n}  ", i + 1);
+        }
+    }
+    eprintln!();
+    let rate = wins as f64 * 100.0 / total.max(1) as f64;
+    println!("胜率: {:.2}%  ({}/{})", rate, wins, total);
+}
+
+/// 评分测试：目标组 vs N 个测试靶，跑 n 场，返回 (胜场数, 总场数)。
+///
+/// - `modifier = "\u{0002}"` → Test1 靶（普通评分）
+/// - `modifier = "!"` → TestEx 靶（!评分）
+fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, n: usize) -> (usize, usize) {
+    let opp_count = target_count.max(3);
+    let mut wins = 0usize;
+    let mut total = 0usize;
+
+    for i in 0..n {
+        let opponents: String = (0..opp_count)
+            .map(|j| format!("bench_{i}_{j}@{modifier}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let bench_input = format!("{target_str}\n\n{opponents}");
+
+        let mut runner = match Runner::new_from_namerena_raw(bench_input) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let team0_roster: Vec<usize> =
+            runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
+
+        let mut idle = 0usize;
+        let mut rounds = 0usize;
+        while !runner.have_winner() && idle < 32 && rounds < 100_000 {
+            let updates = runner.main_round();
+            if updates.updates.is_empty() {
+                idle += 1;
+            } else {
+                idle = 0;
+            }
+            rounds += 1;
+        }
+        total += 1;
+        if let Some(ref winners) = runner.world.winner {
+            if winners.iter().any(|w| team0_roster.contains(w)) {
+                wins += 1;
+            }
+        }
+        if (i + 1) % 100 == 0 {
+            eprint!("\r  进度: {}/{n}  ", i + 1);
+        }
+    }
+    eprintln!();
+    (wins, total)
+}
+
+/// 评分测试入口：同时跑普通评分和 !评分。
+fn run_bench_score(raw: &str, n: usize) {
+    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let target_group = groups.into_iter().next().unwrap_or_default();
+    let target_count = target_group.len();
+    if target_count == 0 {
+        eprintln!("评分: 无目标玩家");
+        return;
+    }
+    let target_str = target_group.join("\n");
+
+    println!("=== 实力评分测试 ({n} 场) ===");
+    println!("目标: {}", target_group.join(", "));
+
+    eprint!("[普通评分] ");
+    let (nw, nt) = run_bench_score_inner(&target_str, target_count, "\u{0002}", n);
+    let ns = nw as f64 * 10_000.0 / nt.max(1) as f64;
+    println!("普通评分: {:.0} / 10000  ({nw}/{nt})", ns);
+
+    eprint!("[!评分]    ");
+    let (bw, bt) = run_bench_score_inner(&target_str, target_count, "!", n);
+    let bs = bw as f64 * 10_000.0 / bt.max(1) as f64;
+    println!("!评分:     {:.0} / 10000  ({bw}/{bt})", bs);
+}
+
+// ─────────────────────────── 普通对战 ────────────────────────────────────────
+
 fn print_all_players(runner: &Runner) {
     println!("=== 玩家状态 ===");
     let player_ids = runner.storage.all_player_ids();
@@ -184,6 +325,51 @@ fn main() {
     );
     println!("WARNING: PRE ALPHA 版本, 仅供测试使用, 已知有 bug, 暂未实现: 天卫、Boss、武器");
     println!("发现行为不一致请不要惊慌, 呼叫 shenjack 即可 (qq: 3695888)");
+
+    // ── Benchmark 模式优先检测 ──────────────────────────────────────────────
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.is_empty() {
+        match args[0].as_str() {
+            "--bench" => {
+                let n = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
+                let mut raw = String::new();
+                if let Err(e) = io::stdin().read_to_string(&mut raw) {
+                    eprintln!("读取 stdin 失败: {e}");
+                    std::process::exit(2);
+                }
+                run_benchmark(raw.trim(), n);
+                return;
+            }
+            "--bench-raw" => {
+                if args.len() < 2 {
+                    eprintln!("--bench-raw 需要一个字符串参数");
+                    std::process::exit(2);
+                }
+                let raw = args[1].replace("\\n", "\n");
+                let n = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
+                run_benchmark(raw.trim(), n);
+                return;
+            }
+            "--bench-file" => {
+                if args.len() < 2 {
+                    eprintln!("--bench-file 需要一个文件路径参数");
+                    std::process::exit(2);
+                }
+                let raw = match fs::read_to_string(&args[1]) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("读取文件失败: {e}");
+                        std::process::exit(2);
+                    }
+                };
+                let n = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
+                run_benchmark(raw.trim(), n);
+                return;
+            }
+            _ => {}
+        }
+    }
+
     let raw = match read_raw_input() {
         Ok(raw) => raw,
         Err(err) => {

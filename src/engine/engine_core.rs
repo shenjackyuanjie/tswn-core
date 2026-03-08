@@ -1,3 +1,31 @@
+//! # 引擎核心调度器 (engine_core)
+//!
+//! 本模块提供 [`EngineCore`]，是整个战斗循环的主调度器，负责：
+//!
+//! 1. **实体同步** (`sync_runtime_entities`) — 每个 tick 开始前，将上一 tick 中
+//!    发生的死亡/复活/召唤操作同步到 [`WorldState`]。
+//! 2. **单 tick 驱动** (`tick`) — 从 [`WorldState`] 中选出本 tick 的行动角色，
+//!    执行完整的「行动前钩子 → 行动决策 → 目标选取 → 战斗解算 → 钩子后处理」流程。
+//! 3. **回合驱动** (`main_round`) — 循环调用 `tick`，直到产生第一条有效的 [`RunUpdates`]
+//!    或战斗结束。
+//!
+//! ## 关系图
+//!
+//! ```text
+//! Runner::main_round()
+//!   └── EngineCore::tick()
+//!         ├── sync_runtime_entities()   ← 实体同步
+//!         ├── tick::next_actor()         ← 轮次推进
+//!         ├── hooks::run_pre_action()    ← 前置钩子
+//!         ├── tick::choose_action()      ← 行动决策
+//!         ├── tick::select_targets()     ← 目标选取
+//!         ├── tick::resolve_combat()     ← 战斗解算（含 Player::step()）
+//!         ├── tick::run_update_end()     ← 持续效果结算
+//!         ├── sync_runtime_entities()   ← 二次同步
+//!         ├── hooks::run_post_action()   ← 后置钩子
+//!         └── tick::check_winner()       ← 胜负检查
+//! ```
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
@@ -6,6 +34,8 @@ use crate::engine::{world_state::WorldState, hooks::HookPipeline, rules::RuleReg
 use crate::player::PlrId;
 use crate::rc4::RC4;
 
+/// 战斗引擎核心，持有 [`HookPipeline`] 和 [`RuleRegistry`]，
+/// 是调用 `tick` / `main_round` 的入口。
 #[derive(Default)]
 pub struct EngineCore {
     pub hooks: HookPipeline,

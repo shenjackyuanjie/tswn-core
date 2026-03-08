@@ -1,13 +1,58 @@
-pub mod engine_core;
-pub mod hooks;
-pub mod runner;
-pub mod runners;
-pub mod rules;
+//! # Engine 模块
+//!
+//! 引擎模块负责战斗循环的调度、实体管理与消息输出。
+//!
+//! ---
+//!
+//! ## 功能模块一览
+//!
+//! ### 🗄️ 数据层
+//! - [`storage`] — ECS 风格的实体仓库（玩家实例、技能实例）。
+//!   持有运行期所有实体的所有权，通过 `Arc<Storage>` 共享给各子系统。
+//! - [`world_state`] — 世界状态快照（队伍 roster、存活列表、行动轮次指针、胜负结果）。
+//!   纯数据结构，不持有实体，通过 `PlrId` 与 Storage 配合使用。
+//!
+//! ### ⚙️ 引擎核心
+//! - [`engine_core`] — 主调度器（`EngineCore`）：协调每个 tick 的步骤、
+//!   管理实体同步（玩家复活/死亡/召唤）、驱动 `main_round`。
+//! - [`tick`] — 单 tick 内的完整行动流程：
+//!   选出行动角色 → 决策行动类型 → 选取目标 → 执行战斗 → 检查胜负。
+//! - [`hooks`] — 可注册的回调钩子管线（`HookPipeline`）：
+//!   pre/post action、pre/post damage 四个注入点。
+//! - [`rules`] — 规则注册表（`RuleRegistry`）：
+//!   统计已注册技能/武器/Boss 规则数量，供扩展系统使用。
+//!
+//! ### 📨 运行输出
+//! - [`update`] — 运行时消息帧（`RunUpdate` / `RunUpdates`）：
+//!   每条战斗事件（伤害、技能、死亡等）都对应一个 `RunUpdate`，
+//!   通过 `msg()` 方法将模板字符串中的 `[0]`/`[1]`/`[2]` 替换为实际名称。
+//! - [`lang`] — 语言包模块（参考 JS 产物的 `LangData`）：
+//!   提供静态键值对（键名对齐 `assets/zh.json`），通过 [`lang::get_lang`](lang::get_lang) 查询。
+//!   推荐配合 [`keys`](lang::keys) 常量模块使用，避免裸字符串硬编码。
+//!
+//! ### 🚀 对局入口
+//! - [`runners`] — 顶层对局 Runner：
+//!   解析原始名竞输入 → 构建玩家/世界 → 运行至结束。
+//!   这是外部使用引擎的主要入口点。
+
+// ── 数据层 ────────────────────────────────────────────────────────────────────
 pub mod storage;
-pub mod tick;
-pub mod update;
 pub mod world_state;
 
+// ── 引擎核心 ──────────────────────────────────────────────────────────────────
+pub mod engine_core;
+pub mod hooks;
+pub mod rules;
+pub mod tick;
+
+// ── 运行输出 ──────────────────────────────────────────────────────────────────
+pub mod update;
+pub mod lang;
+
+// ── 对局入口 ──────────────────────────────────────────────────────────────────
+pub mod runners;
+
+// ── 公开 re-export（保持原有对外接口不变）────────────────────────────────────
 pub use engine_core::*;
 pub use hooks::*;
 pub use runners::*;

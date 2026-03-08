@@ -1,3 +1,30 @@
+//! # 玩家状态系统 (state)
+//!
+//! 本模块定义可扩展的玩家状态模型，用于展示命中/冰冻/狂暴/魅惑等持续性战斗效果。
+//!
+//! ## 设计思路
+//!
+//! 每种持续性技能效果（如 `IceState`、`PoisonState`）实现 [`StateTrait`] 并通过
+//! `Player::set_state` 挂载到玩家上。
+//! 引擎在相应时机遍历所有已挂载的状态并调用对应的动词方法。
+//!
+//! ## 状态类型标识
+//!
+//! - `meta_type() == -1` — 供 `Player::build` 阶段的扩展属性模块（如 `FireState`）
+//! - `meta_type() == 0`  — 战斗运行期状态（如 `BerserkState`、`IceState`）
+//!
+//! ## 重要动词一览
+//!
+//! | 动词                   | 说明                                              |
+//! |--------------------------|--------------------------------------------------------|
+//! | `on_pre_action`          | 行动前，返回 `true` 则跳过本次行动                  |
+//! | `on_forced_action`       | 强制行动（魅惑状态下攻击己方）               |
+//! | `on_pre_defend`          | 被攻击前，可修改 atp 或截断伤害                    |
+//! | `on_post_defend`         | 被攻击后，可修改实际伤害值                        |
+//! | `on_post_action`         | 我方行动结束后，用于计时型持续效果的 tick 计数 |
+//! | `on_post_damage`         | 我方造成伤害后（属于我方的状态响应）             |
+//! | `apply_update_state`     | 每回合刷新属性快照（如将防御提高部分）             |
+
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 
@@ -8,8 +35,10 @@ use crate::player::status::PlayerStatus;
 use crate::rc4::RC4;
 use foldhash::HashMap as FastHashMap;
 
+/// 状态类型标识，内部使用 [`TypeId`] 区分不同状态，与 Dart 的 `Type<T>` 类似。
 pub type StateTag = TypeId;
 
+/// 返回类型 `T` 对应的状态标识。
 #[inline]
 pub fn state_tag<T: StateTrait + 'static>() -> StateTag { TypeId::of::<T>() }
 

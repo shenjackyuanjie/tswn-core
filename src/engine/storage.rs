@@ -1,3 +1,30 @@
+//! # 实体仓库 (storage)
+//!
+//! 本模块提供 [`Storage`]，是引擎的 ECS 风格实体容器。
+//!
+//! ## 设计说明
+//!
+//! `Storage` 持有运行期所有实体的所有权，并以共享引用的方式（`Arc<Storage>`）
+//! 传递给引擎各子系统和技能实现。
+//!
+//! ### 内容概览
+//!
+//! | 字段                   | 类型                    | 说明                              |
+//! |------------------------|------------------------|-------------------------------------|
+//! | `players`              | `HashMap<PlrId, Player>` | 所有玩家实体（含已死/待展开+存活）   |
+//! | `skills`               | `HashMap<usize, Skill>`  | 所有技能实例，以内存地址为 key      |
+//! | `groups`               | `HashMap<usize, Vec<PlrId>>` | 队伍分组 roster            |
+//! | `alive_groups`         | `Vec<Vec<PlrId>>`      | 存活分组，由 WorldState 同步维护 |
+//! | `pending_spawns`       | `Vec<PendingSpawn>`    | 待 tick 同步的新在1实体（召唤物等）   |
+//! | `pending_remove_players` | `Vec<PlrId>`         | 待 tick 同步的当回转移除              |
+//! | `death_queue`          | `Vec<PlrId>`           | 实际斶序的死亡记录，对齐 Dart 死亡顺序 |
+//!
+//! ### 不安全访问说明
+//!
+//! `Storage` 内部使用了多处 `unsafe` 的 `just_get_*_mut` 方法，
+//! 主要是为了得到 `&mut Player` 而不破坏共享的 `&Arc<Storage>`。
+//! 调用方需确保在单一 tick 内不会有两个代码路径同时可变地引用同一玩家。
+
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 

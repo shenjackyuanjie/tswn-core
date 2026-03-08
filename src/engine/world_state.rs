@@ -1,5 +1,33 @@
+//! # 世界状态 (world_state)
+//!
+//! 本模块定义 [`WorldState`] 和 [`TeamState`]，作为战斗世界的轻量级快照。
+//!
+//! ## 设计说明
+//!
+//! `WorldState` **不直接持有玩家实体**，只保存 [`PlrId`]（玩家句柄/ID）列表。
+//! 玩家实体存储在 [`Storage`](crate::engine::storage::Storage) 中，
+//! 通过 `PlrId` 与世界状态相互配合使用。
+//!
+//! ### 数据结构  
+//!
+//! ```text
+//! WorldState
+//!   ├── teams: Vec<TeamState>     ← 每支队伍的 roster（全员）和 alive（存活）
+//!   ├── groups: Vec<Vec<PlrId>>   ← 与 teams.roster 保持同步（供 Storage 查询）
+//!   ├── players: Vec<PlrId>       ← 当前回合行动顺序列表（存活成员）
+//!   ├── round_pos: i32            ← 当前轮次指针（循环推进）
+//!   └── winner: Option<Vec<PlrId>>← 胜者 roster，Some 表示战斗已结束
+//! ```
+//!
+//! ### 关键操作
+//!
+//! - [`remove_player`](WorldState::remove_player) — 死亡时同时从 `alive` 和 `players` 轮次表中移除
+//! - [`revive_player`](WorldState::revive_player) — 复活时重新加入 `alive` 列表
+//! - [`add_new_player`](WorldState::add_new_player) — 召唤物出现时动态加入队伍
+
 use crate::player::PlrId;
 
+/// 单支队伍的状态快照。
 #[derive(Debug, Clone)]
 pub struct TeamState {
     pub roster: Vec<PlrId>,

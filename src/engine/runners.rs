@@ -1,3 +1,36 @@
+//! # 对局 Runner (runners)
+//!
+//! 本模块提供 [`Runner`]，是外部使用整个战斗引擎的**唯一入口**。
+//!
+//! ## 使用方式
+//!
+//! ```rust,no_run
+//! use tswn_core::Runner;
+//!
+//! let input = "player1\n\nplayer2".to_string();
+//! let mut runner = Runner::new_from_namerena_raw(input).unwrap();
+//!
+//! // 逐回合推进，直到有胜负
+//! while !runner.have_winner() {
+//!     let updates = runner.main_round();
+//!     // 处理 updates.updates 中的事件帧...
+//! }
+//! ```
+//!
+//! ## 初始化流程
+//!
+//! `new_from_namerena_raw` 按以下顺序初始化：
+//!
+//! 1. 解析原始输入，拆分队伍与种子行
+//! 2. 去重名字列表并生成 RC4 随机数种子
+//! 3. 按组创建玩家实例，注入 Storage
+//! 4. 同组玩家双向 `upgrade`（同族名加成）
+//! 5. 按 `id_name` 排序后逐个 `build`（计算八围 + 技能熟练度）
+//! 6. 为 Boss 玩家初始化专属状态
+//! 7. 按 `sort_int` 排序确定战斗顺序
+//! 8. 为每个玩家分配初始 `move_point`
+//! 9. 构建 `WorldState`
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
@@ -6,7 +39,9 @@ use crate::error::runner::RunnerResult;
 use crate::player::{ActionTargets, Player, PlrId};
 use crate::rc4::RC4;
 
+/// 一组玩家的集合类型，供内部初始化使用。
 pub type PlayerGroup = Vec<Player>;
+/// 原始输入解析结果：(队伍列表, 种子行列表)。
 pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
 
 use crate::engine::{world_state::WorldState, engine_core::EngineCore};
@@ -26,7 +61,7 @@ impl Runner {
     /// 从名竞原始输入构建 Runner。
     pub fn new_from_namerena_raw(raw_input: String) -> RunnerResult<Runner> {
         // 根据原始输入解析队伍。
-        let (players, seed) = Runner::spilt_namerena_into_groups(raw_input);
+        let (players, seed) = Runner::split_namerena_into_groups(raw_input);
 
         let mut names = players
             .iter()
@@ -182,7 +217,7 @@ impl Runner {
     ///
     /// 返回：(队伍列表, seed 行列表)
     #[allow(clippy::needless_return)]
-    pub fn spilt_namerena_into_groups(raw_input: String) -> RawPlayers {
+    pub fn split_namerena_into_groups(raw_input: String) -> RawPlayers {
         // 去除尾部的一个/多个 `\n` 或空白。
         let raw_input = raw_input.trim_end();
         // 处理 `\r\n`。
