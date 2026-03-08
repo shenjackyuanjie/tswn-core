@@ -76,6 +76,6 @@ impl SkillTrait for ShadowSkill {
 
         shadow.status.move_point = if charge_active { 2048 } else { -2048 };
         args.3.queue_spawn(args.0, shadow);
-        args.2.add(RunUpdate::new("召唤出幻影", args.0, args.0, 20));
+        args.2.add(RunUpdate::new("召唤出幻影", args.0, args.0, 0));
     }
 }

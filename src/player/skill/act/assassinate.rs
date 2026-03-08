@@ -170,7 +170,7 @@ impl SkillTrait for AssassinateSkill {
             .map(|target| target.check_immune(state_tag::<PoisonState>(), args.1))
             .unwrap_or(false);
         if dodged {
-            args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
+            args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 0));
             return;
         }
         args.3
@@ -203,7 +203,7 @@ impl SkillTrait for AssassinateSkill {
         }
         let target = self.target.expect("assassinate target should exist");
         args.2.add(RunUpdate::new_newline());
-        args.2.add(RunUpdate::new("[0]的[潜行]被识破", args.0, target, 20));
+        args.2.add(RunUpdate::new("[0]的[潜行]被识破", args.0, target, 0));
         self.clear_pending();
     }
 

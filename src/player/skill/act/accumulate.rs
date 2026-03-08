@@ -60,11 +60,11 @@ impl SkillTrait for AccumulateSkill {
             return;
         }
         self.on_update_state = Some(());
-        args.2.add(RunUpdate::new("[0]开始[聚气]", args.0, args.0, 20));
+        args.2.add(RunUpdate::new("[0]开始[聚气]", args.0, args.0, 1));
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get accumulate owner from storage");
         owner.set_move_point(owner.move_point() + 400);
         owner.mul_at_boost(self.acc);
-        args.2.add(RunUpdate::new("[0]攻击力上升", args.0, args.0, 20));
+        args.2.add(RunUpdate::new("[0]攻击力上升", args.0, args.0, 0));
     }
 
     fn update_state(&mut self, args: SkillArgs) {

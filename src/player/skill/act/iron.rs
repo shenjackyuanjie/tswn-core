@@ -63,7 +63,7 @@ impl SkillTrait for IronSkill {
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get iron owner from storage");
         owner.set_state(IronState { protect, step });
         owner.set_move_point(owner.move_point() - 256);
-        args.2.add(RunUpdate::new("[0]防御力大幅上升", args.0, args.0, 20));
+        args.2.add(RunUpdate::new("[0]防御力大幅上升", args.0, args.0, 0));
     }
 }
 
@@ -109,7 +109,7 @@ impl StateTrait for IronState {
         }
         if alive {
             updates.add(RunUpdate::new_newline());
-            updates.add(RunUpdate::new("[1]从[铁壁]中解除", owner, owner, 20));
+            updates.add(RunUpdate::new("[1]从[铁壁]中解除", owner, owner, 0));
         }
         true
     }
@@ -148,7 +148,7 @@ impl StateTrait for IronState {
         self.step = 0;
         updates.add(RunUpdate::new_newline());
         // 铁壁被击破时应使用“被打消”文案；自然结束才是“从铁壁中解除”。
-        updates.add(RunUpdate::new("[1]的[铁壁]被打消了", caster, owner, 20));
+        updates.add(RunUpdate::new("[1]的[铁壁]被打消了", caster, owner, 0));
     }
 
     fn as_any(&self) -> &dyn std::any::Any { self }

@@ -114,7 +114,9 @@ impl SkillTrait for HalfSkill {
         let new_hp = ((old_hp as f64) * (100 - percent) as f64 / 100.0).ceil() as i32;
         let dmg = (old_hp - new_hp).max(0);
 
-        args.2.add(RunUpdate::new("[1]体力减少[2]%", args.0, target_id, percent.max(0) as u32));
+        let mut update = RunUpdate::new("[1]体力减少[2]%", args.0, target_id, dmg as u32);
+        update.param = Some(percent.max(0) as u32);
+        args.2.add(update);
         if dmg <= 0 {
             return;
         }

@@ -28,7 +28,7 @@ impl SkillTrait for PossessSkill {
         let Some(&target_id) = targets.first() else {
             return;
         };
-        args.2.add(RunUpdate::new("[0]使用[附体]", args.0, target_id, 1));
+        args.2.add(RunUpdate::new("[0]使用[附体]", args.0, target_id, 0));
 
         let dodged = {
             let Some(caster) = args.3.get_player(&args.0) else {
@@ -59,7 +59,7 @@ impl SkillTrait for PossessSkill {
                 target.state.set(BerserkState { step: 4 });
             }
         }
-        args.2.add(RunUpdate::new("[1]进入[狂暴]状态", args.0, target_id, 60));
+        args.2.add(RunUpdate::new("[1]进入[狂暴]状态", args.0, target_id, 0));
 
         let old_hp = {
             let caster = args.3.just_get_player_mut(args.0).expect("cannot get possess caster from storage");

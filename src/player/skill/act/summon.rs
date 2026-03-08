@@ -124,7 +124,7 @@ impl SkillTrait for SummonSkill {
         let summoned_id = summoned.as_ptr();
         self.summoned = Some(summoned_id);
         args.3.queue_spawn(args.0, summoned);
-        args.2.add(RunUpdate::new("召唤出[1]", args.0, summoned_id, 20));
+        args.2.add(RunUpdate::new("召唤出[1]", args.0, summoned_id, 0));
     }
 }
 

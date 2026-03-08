@@ -139,7 +139,7 @@ impl SkillTrait for ExchangeSkill {
             target.set_hp_raw(target_new_hp);
         }
 
-        args.2.add(RunUpdate::new("[1]的体力值与[0]互换", args.0, target_id, 20));
+        args.2.add(RunUpdate::new("[1]的体力值与[0]互换", args.0, target_id, ((target_hp - owner_hp) * 2).max(0) as u32));
 
         if target_hp > target_new_hp {
             let target = args.3.just_get_player_mut(target_id).expect("cannot get exchange target from storage");

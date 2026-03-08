@@ -94,7 +94,7 @@ impl SkillTrait for HealSkill {
                 args.1.j
             );
         }
-        args.2.add(RunUpdate::new("[0]使用[治愈魔法]", args.0, target_id, 20));
+        args.2.add(RunUpdate::new("[0]使用[治愈魔法]", args.0, target_id, heal as u32));
         let (had_slow, had_poison, had_ice, had_berserk, had_charm) = {
             let target = args.3.just_get_player_mut(target_id).expect("cannot get heal target from storage");
             let had_slow = target.has_state::<SlowState>();

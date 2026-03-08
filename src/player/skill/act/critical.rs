@@ -36,7 +36,7 @@ impl SkillTrait for CriticalSkill {
         let atp1 = owner.get_at(false, args.1) * 1.2000000476837158;
         let atp2 = owner.get_at(false, args.1) * 1.25;
         let atp = atp0.max(atp1).max(atp2);
-        args.2.add(RunUpdate::new("[0]发动[会心一击]", args.0, target_id, 20));
+        args.2.add(RunUpdate::new("[0]发动[会心一击]", args.0, target_id, 1));
         args.3
             .just_get_player_mut(target_id)
             .expect("cannot get critical target from storage")

@@ -62,7 +62,7 @@ impl SkillTrait for ThunderSkill {
                     .resistance;
             if Player::dodge(agl, target_dodge, args.1) {
                 args.2
-                    .add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, if hit { 10 } else { 20 }));
+                    .add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 0));
                 return;
             }
             agl -= 10;

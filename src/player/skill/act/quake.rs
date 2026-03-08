@@ -50,7 +50,7 @@ impl SkillTrait for QuakeSkill {
         if picked.is_empty() {
             return;
         }
-        args.2.add(RunUpdate::new("[0]使用[地裂术]", args.0, picked[0], 10));
+        args.2.add(RunUpdate::new("[0]使用[地裂术]", args.0, picked[0], 1));
         let divisor = picked.len() as f64 + 0.6000000238418579;
         for target_id in picked {
             // JS: getAt is called BEFORE the hp > 0 check, so RC4 is consumed even for dead targets

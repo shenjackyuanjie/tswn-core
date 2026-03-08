@@ -69,7 +69,7 @@ impl SkillTrait for RapidSkill {
                 };
                 hit_scores[pos] += 1.0;
                 if i == 0.0 {
-                    args.2.add(RunUpdate::new("[0]发起攻击", args.0, target_id, 8));
+                    args.2.add(RunUpdate::new("[0]发起攻击", args.0, target_id, 0));
                 } else {
                     args.2.add(RunUpdate::new("[0][连击]", args.0, target_id, 1));
                 }

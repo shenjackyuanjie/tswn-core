@@ -42,7 +42,7 @@ impl StateTrait for MinionRuntimeState {
             return false;
         }
         updates.add(crate::engine::update::RunUpdate::new_newline());
-        updates.add(crate::engine::update::RunUpdate::new("[1]消失了", owner, self_id, 30));
+        updates.add(crate::engine::update::RunUpdate::new("[1]消失了", owner, self_id, 50));
         true
     }
 

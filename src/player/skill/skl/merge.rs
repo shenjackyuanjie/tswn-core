@@ -138,7 +138,7 @@ impl SkillTrait for MergeSkill {
         }
         args.2.add(RunUpdate::new_newline());
         args.2.add(RunUpdate::new("[0][吞噬]了[1]", args.0, target, 60));
-        args.2.add(RunUpdate::new("[0]属性上升", args.0, target, 20));
+        args.2.add(RunUpdate::new("[0]属性上升", args.0, target, 0));
         true
     }
 

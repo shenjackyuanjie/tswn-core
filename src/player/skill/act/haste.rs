@@ -106,7 +106,7 @@ impl SkillTrait for HasteSkill {
             state.faster += 2;
             state.step += 2;
         }
-        args.2.add(RunUpdate::new("[1]进入[疾走]状态", args.0, target_id, 60));
+        args.2.add(RunUpdate::new("[1]进入[疾走]状态", args.0, target_id, 0));
     }
 }
 

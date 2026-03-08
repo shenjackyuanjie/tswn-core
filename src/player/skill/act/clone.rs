@@ -115,7 +115,7 @@ impl SkillTrait for CloneSkill {
         // 然后 addNew (queue_spawn)
         args.3.queue_spawn(args.0, cloned);
         // 最后输出"出现一个新的"消息
-        args.2.add(RunUpdate::new("出现一个新的[1]", args.0, cloned_id, 20));
+        args.2.add(RunUpdate::new("出现一个新的[1]", args.0, cloned_id, 0));
 
         // 记录最终 level，供 post_act_level 使用
         self.final_level = Some(decayed_level);
