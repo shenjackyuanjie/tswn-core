@@ -891,7 +891,8 @@ fn fight_multi_2() {
     );
     const MAX_ROUNDS: usize = 2_000;
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, MAX_ROUNDS, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, MAX_ROUNDS, true);
+    assert_eq!(total_score, 24592, "fight_multi_2 score mismatch");
     if guard >= MAX_ROUNDS {
         let min_len = actual_lines.len().min(expected_lines.len());
         let mismatch_idx = actual_lines

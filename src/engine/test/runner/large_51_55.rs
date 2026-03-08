@@ -221,7 +221,8 @@ Freddy发起攻击, 我力回避了攻击
         "sampled case-51 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 6177, "large_51 score mismatch");
     assert!(guard < 20_000, "sampled case-51 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-51", &actual_lines, &expected_lines);
 }
@@ -271,7 +272,8 @@ bbb发起攻击, aaaa受到56点伤害
         "sampled case-52 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 924, "large_52 score mismatch");
     assert!(guard < 20_000, "sampled case-52 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-52", &actual_lines, &expected_lines);
 }
@@ -415,9 +417,11 @@ Dianmu和幻影近距离接触
         "sampled case-53 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+
     assert!(guard < 20_000, "sampled case-53 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-53", &actual_lines, &expected_lines);
+    assert_eq!(total_score, 2557, "sampled case-53 total score");
 }
 
 /// lazy
@@ -499,9 +503,11 @@ Dianmu打开了文明6, 这回合什么也没做
         "sampled case-54 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+
     assert!(guard < 20_000, "sampled case-54 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-54", &actual_lines, &expected_lines);
+    assert_eq!(total_score, 1767, "sampled case-54 total score");
 }
 
 /// saitama
@@ -1299,7 +1305,9 @@ Dianmu使用魅惑, 一拳超人回避了攻击
         "sampled case-55 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+
     assert!(guard < 20_000, "sampled case-55 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-55", &actual_lines, &expected_lines);
+    assert_eq!(total_score, 11370, "large_55 score mismatch");
 }

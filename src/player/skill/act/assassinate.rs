@@ -167,7 +167,7 @@ impl SkillTrait for AssassinateSkill {
         let dodged = args
             .3
             .get_player(&target_id)
-            .map(|target| target.check_immune(state_tag::<PoisonState>(), args.1))
+            .map(|target| target.check_immune("assassinate", args.1))
             .unwrap_or(false);
         if dodged {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 0));

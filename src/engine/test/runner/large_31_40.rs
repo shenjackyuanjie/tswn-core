@@ -152,7 +152,8 @@ nXOINTHn5q发起攻击, 9Qjf75FlDX受到60点伤害
         "sampled case-31 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 3974, "large_31 score mismatch");
     assert!(guard < 20_000, "sampled case-31 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-31", &actual_lines, &expected_lines);
 }
@@ -371,7 +372,8 @@ KSaiixrj1P发起攻击, nXhfTAItPU受到26点伤害
         "sampled case-32 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 5227, "large_32 score mismatch");
     assert!(guard < 20_000, "sampled case-32 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-32", &actual_lines, &expected_lines);
 }
@@ -600,7 +602,8 @@ D0u3a5rj7B发起攻击, MAmaTlrqOH受到96点伤害
         "sampled case-33 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 5074, "large_33 score mismatch");
     assert!(guard < 20_000, "sampled case-33 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-33", &actual_lines, &expected_lines);
 }
@@ -789,7 +792,8 @@ BPbll4S27a发起攻击, fQfZ40hRlV受到72点伤害
         "sampled case-34 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 5135, "large_34 score mismatch");
     assert!(guard < 20_000, "sampled case-34 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-34", &actual_lines, &expected_lines);
 }
@@ -974,7 +978,8 @@ Pgj5pPNlys发动会心一击, 6ZHVUk2Mw0回避了攻击
         "sampled case-35 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 4659, "large_35 score mismatch");
     assert!(guard < 20_000, "sampled case-35 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-35", &actual_lines, &expected_lines);
 }
@@ -1159,7 +1164,8 @@ fn large_36() {
         "sampled case-36 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 4790, "large_36 score mismatch");
     assert!(guard < 20_000, "sampled case-36 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-36", &actual_lines, &expected_lines);
 }
@@ -1330,7 +1336,8 @@ fn large_37() {
         "sampled case-37 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 4371, "large_37 score mismatch");
     assert!(guard < 20_000, "sampled case-37 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-37", &actual_lines, &expected_lines);
 }
@@ -1469,7 +1476,8 @@ fn large_38() {
         "sampled case-38 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 3961, "large_38 score mismatch");
     assert!(guard < 20_000, "sampled case-38 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-38", &actual_lines, &expected_lines);
 }
@@ -1648,7 +1656,8 @@ fn large_39() {
         "sampled case-39 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 4551, "large_39 score mismatch");
     assert!(guard < 20_000, "sampled case-39 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-39", &actual_lines, &expected_lines);
 }
@@ -1845,7 +1854,8 @@ fn large_40() {
         "sampled case-40 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 4189, "large_40 score mismatch");
     assert!(guard < 20_000, "sampled case-40 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-40", &actual_lines, &expected_lines);
 }

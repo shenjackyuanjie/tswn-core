@@ -88,7 +88,7 @@ impl SkillTrait for HalfSkill {
                     target.get_status().hp,
                     target.get_status().resistance,
                     target.get_status().agility,
-                    target.check_immune(state_tag::<PoisonState>(), args.1),
+                    target.check_immune("half", args.1),
                     target.active(),
                 )
             })

@@ -96,7 +96,8 @@ syVS:et发起攻击, ♯受到46点伤害
         "sampled case-56 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 2977, "large_56 score mismatch");
     assert!(guard < 20_000, "sampled case-56 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-56", &actual_lines, &expected_lines);
 }
@@ -146,7 +147,8 @@ Meranti发动背刺, 涵虚不等式受到334点伤害
         "sampled case-57 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 1450, "large_57 score mismatch");
     assert!(guard < 20_000, "sampled case-57 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-57", &actual_lines, &expected_lines);
 }
@@ -228,7 +230,8 @@ Bascor发起攻击, 'Yz|AS}受到118点伤害
         "sampled case-58 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 2100, "large_58 score mismatch");
     assert!(guard < 20_000, "sampled case-58 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-58", &actual_lines, &expected_lines);
 }
@@ -527,7 +530,8 @@ Tan965596700284发起狂暴攻击, 发发开行进开力开进瓜进进行瓜进
         "sampled case-59 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 7633, "large_59 score mismatch");
     assert!(guard < 20_000, "sampled case-59 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-59", &actual_lines, &expected_lines);
 }
@@ -701,7 +705,8 @@ Abby潜行到看到这个号说明你要豹了ZLoYMiQp身后
         "sampled case-60 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 5043, "large_60 score mismatch");
     assert!(guard < 20_000, "sampled case-60 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-60", &actual_lines, &expected_lines);
 }
@@ -912,7 +917,8 @@ Shinohara_akari使用加速术, 权计WN13vmJnn进入疾走状态
         "sampled case-61 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 5468, "large_61 score mismatch");
     assert!(guard < 20_000, "sampled case-61 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-61", &actual_lines, &expected_lines);
 }

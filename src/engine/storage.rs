@@ -90,6 +90,10 @@ impl Storage {
         self.groups.values().find(|group| group.contains(&actor))
     }
 
+    pub fn group_index_of(&self, actor: PlrId) -> Option<usize> {
+        self.groups.iter().find(|(_, group)| group.contains(&actor)).map(|(idx, _)| *idx)
+    }
+
     pub fn alive_group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
         self.alive_groups.iter().find(|group| group.contains(&actor))
     }

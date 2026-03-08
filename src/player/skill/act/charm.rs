@@ -79,8 +79,13 @@ impl SkillTrait for CharmSkill {
             let owner = args.3.get_player(&args.0).expect("cannot get charm owner from storage");
             (owner.get_status().magic, owner.get_status().at_boost >= 3.0)
         };
+        // Dart compares owner.allyGroup (group object) vs charmState.grp (group object).
+        // Two players from the same team have the same allyGroup.
+        // We store the caster's PlrId in group_id (for select_targets compatibility)
+        // but compare by TEAM INDEX to match Dart's group-level comparison.
+        let caster_team_idx = args.3.group_index_of(args.0).unwrap_or(usize::MAX);
         let target = args.3.just_get_player_mut(target_id).expect("cannot get charm target from storage");
-        if target.check_immune(state_tag::<CharmState>(), args.1)
+        if target.check_immune("charm", args.1)
             || (target.active()
                 && Player::dodge(
                     owner_magic,
@@ -93,7 +98,9 @@ impl SkillTrait for CharmSkill {
         }
 
         if let Some(state) = target.get_state_mut::<CharmState>() {
-            if state.group_id == args.0 {
+            // Compare by team index: look up the team that stored group_id belongs to
+            let existing_team_idx = args.3.group_index_of(state.group_id);
+            if existing_team_idx == Some(caster_team_idx) {
                 state.step += 1;
             } else {
                 state.group_id = args.0;

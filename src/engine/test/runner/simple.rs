@@ -92,7 +92,8 @@ bbb发起攻击, 诅咒使伤害加倍, fff受到134点伤害
     );
 
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 10_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 10_000, true);
+    assert_eq!(total_score, 2521, "simple_fight score mismatch");
 
     assert!(guard < 10_000, "fight_simple combat did not finish in expected rounds");
     assert_eq!(actual_lines, expected_lines);

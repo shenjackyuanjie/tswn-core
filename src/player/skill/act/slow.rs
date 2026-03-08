@@ -88,7 +88,7 @@ impl SkillTrait for SlowSkill {
 
         let owner_magic = args.3.get_player(&args.0).expect("cannot get slow owner from storage").get_status().magic;
         let target = args.3.just_get_player_mut(target_id).expect("cannot get slow target from storage");
-        if target.check_immune(state_tag::<SlowState>(), args.1)
+        if target.check_immune("slow", args.1)
             || (target.active() && Player::dodge(owner_magic, target.get_status().resistance, args.1))
         {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));

@@ -142,7 +142,8 @@ Reku_Mochizuki发起攻击, 丧尸受到107点伤害
         "sampled case-41 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 2880, "large_41 score mismatch");
     assert!(guard < 20_000, "sampled case-41 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-41", &actual_lines, &expected_lines);
 }
@@ -444,7 +445,8 @@ Boundless_Ocean,Vast_Skies发动背刺
         "sampled case-42 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 6766, "large_42 score mismatch");
     assert!(guard < 20_000, "sampled case-42 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-42", &actual_lines, &expected_lines);
 }
@@ -507,7 +509,8 @@ fn large_43() {
         "sampled case-43 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 1078, "large_43 score mismatch");
     assert!(guard < 20_000, "sampled case-43 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-43", &actual_lines, &expected_lines);
 }
@@ -994,7 +997,8 @@ seed:1129 R1-#9-3@!
         "sampled case-44 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 6584, "large_44 score mismatch");
     assert!(guard < 20_000, "sampled case-44 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-44", &actual_lines, &expected_lines);
 }
@@ -1141,7 +1145,8 @@ Reku_Mochizuki发起攻击, 丧尸受到107点伤害
         "sampled case-45 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 2880, "large_45 score mismatch");
     assert!(guard < 20_000, "sampled case-45 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-45", &actual_lines, &expected_lines);
 }

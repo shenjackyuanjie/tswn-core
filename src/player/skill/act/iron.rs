@@ -116,6 +116,7 @@ impl StateTrait for IronState {
 
     fn post_defend_priority(&self) -> i32 { 10 }
 
+    #[allow(clippy::too_many_arguments)]
     fn on_post_defend(
         &mut self,
         owner: PlrId,
@@ -123,6 +124,7 @@ impl StateTrait for IronState {
         caster: PlrId,
         _randomer: &mut RC4,
         updates: &mut crate::engine::update::RunUpdates,
+        _storage: &std::sync::Arc<crate::engine::storage::Storage>,
     ) {
         if self.step <= 0 || self.protect <= 0 {
             return;

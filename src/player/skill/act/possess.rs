@@ -37,7 +37,7 @@ impl SkillTrait for PossessSkill {
             let Some(target) = args.3.get_player(&target_id) else {
                 return;
             };
-            let dodged = if target.check_immune(state_tag::<BerserkState>(), args.1) {
+            let dodged = if target.check_immune("berserk", args.1) {
                 true
             } else {
                 target.alive()

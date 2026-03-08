@@ -112,7 +112,7 @@ fn on_ice(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut Run
         let Some(target_plr) = storage.just_get_player_mut(target) else {
             return;
         };
-        target_plr.get_status().hp <= 0 || !target_plr.alive() || target_plr.check_immune(state_tag::<IceState>(), r)
+        target_plr.get_status().hp <= 0 || !target_plr.alive() || target_plr.check_immune("ice", r)
     };
     if blocked {
         return;

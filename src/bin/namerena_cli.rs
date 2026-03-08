@@ -4,6 +4,7 @@ use std::io::{self, Read};
 
 use tswn_core::Runner;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
+use tswn_core::player::icon::icon_from_name;
 
 fn print_usage() {
     println!("用法:");
@@ -12,10 +13,12 @@ fn print_usage() {
     println!("选项:");
     println!("  --raw <字符串>    使用提供的原始字符串作为输入");
     println!("  --file <文件路径>  从文件读取输入");
+    println!("  --icon <名字>...  输出玩家图标信息 (可指定多个名字)");
     println!("  --help, -h        显示此帮助信息");
     println!();
     println!("  namerena_cli --raw \"a\\nb\\n\\nc\\nd\"");
     println!("  namerena_cli --file input.txt");
+    println!("  namerena_cli --icon mario aaa test");
     println!("  echo \"a\\nb\\n\\nc\\nd\" | namerena_cli");
 }
 
@@ -35,6 +38,16 @@ fn read_raw_input() -> Result<String, String> {
             print_usage();
             std::process::exit(0);
         }
+        "--icon" => {
+            if args.len() < 2 {
+                eprintln!("--icon 需要至少一个名字参数");
+                std::process::exit(2);
+            }
+            for name in &args[1..] {
+                print_icon(name);
+            }
+            std::process::exit(0);
+        }
         "--raw" => {
             if args.len() < 2 {
                 return Err("--raw 需要一个字符串参数".to_string());
@@ -49,6 +62,62 @@ fn read_raw_input() -> Result<String, String> {
         }
         _ => Ok(args.join(" ").replace("\\n", "\n")),
     }
+}
+
+/// Print a TUI representation of the icon for a given player name.
+fn print_icon(name: &str) {
+    let icon = icon_from_name(name);
+    let [br, bg, bb] = icon.bg_color;
+
+    println!("=== Icon: {name} ===");
+    println!("边框样式: {}", icon.border_style);
+    println!("形状: {:?}", icon.shapes);
+    println!("背景色: #{:02X}{:02X}{:02X} (索引 {})", br, bg, bb, icon.bg_color_idx);
+
+    // TUI: render a colored block preview using ANSI true-color escape codes
+    // Top border
+    let border_char = match icon.border_style {
+        0 => '─',
+        1 => '━',
+        2 => '═',
+        3 => '┄',
+        4 => '┅',
+        5 => '╌',
+        6 => '╍',
+        _ => '─',
+    };
+    let border_line: String = std::iter::repeat(border_char).take(18).collect();
+    println!("┌{}┐", border_line);
+
+    // Render 8 rows for the icon
+    for row in 0..8 {
+        print!("│");
+        // Background fill with foreground shape blocks interleaved
+        for col in 0..9 {
+            // Determine which shape/color occupies this cell
+            let shape_idx = (row * 9 + col) % (icon.shapes.len() + 1);
+            if shape_idx == 0 {
+                // Background cell
+                print!("\x1b[48;2;{br};{bg};{bb}m  \x1b[0m");
+            } else {
+                let ci = (shape_idx - 1) % icon.fg_colors.len();
+                let [fr, fg, fb] = icon.fg_colors[ci];
+                print!("\x1b[48;2;{fr};{fg};{fb}m  \x1b[0m");
+            }
+        }
+        println!("│");
+    }
+    println!("└{}┘", border_line);
+
+    // Foreground colors detail
+    for (i, (idx, color)) in icon.fg_color_indices.iter().zip(icon.fg_colors.iter()).enumerate() {
+        let [r, g, b] = *color;
+        println!(
+            "前景色 {i}: \x1b[48;2;{r};{g};{b}m    \x1b[0m #{r:02X}{g:02X}{b:02X} (索引 {idx}, 形状 {})",
+            icon.shapes[i]
+        );
+    }
+    println!();
 }
 
 fn plr_name(runner: &Runner, id: usize) -> String {

@@ -97,7 +97,7 @@ impl SkillTrait for CurseSkill {
             return;
         }
         let target = args.3.just_get_player_mut(target_id).expect("cannot get curse target from storage");
-        if !target.alive() || target.check_immune(state_tag::<CurseState>(), args.1) {
+        if !target.alive() || target.check_immune("curse", args.1) {
             return;
         }
         if let Some(state) = target.get_state_mut::<CurseState>() {
@@ -146,7 +146,15 @@ impl StateTrait for CurseState {
 
     fn post_defend_priority(&self) -> i32 { 110 }
 
-    fn on_post_defend(&mut self, owner: PlrId, dmg: &mut i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates) {
+    fn on_post_defend(
+        &mut self,
+        owner: PlrId,
+        dmg: &mut i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        _storage: &std::sync::Arc<crate::engine::storage::Storage>,
+    ) {
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action.as_deref().map(|name| format!("#{owner}") == name).unwrap_or(false);
         if *dmg <= 0 {

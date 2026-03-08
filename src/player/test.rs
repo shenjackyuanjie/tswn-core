@@ -227,8 +227,8 @@ fn check_immune_matches_player_type_rules() {
         main_val: vec![0; 256],
     };
 
-    assert!(boost.check_immune(state_tag::<crate::player::skill::poison::PoisonState>(), &mut randomer));
-    assert!(!normal.check_immune(state_tag::<crate::player::skill::poison::PoisonState>(), &mut randomer));
+    assert!(boost.check_immune("poison", &mut randomer));
+    assert!(!normal.check_immune("poison", &mut randomer));
 }
 
 #[test]
@@ -756,8 +756,8 @@ fn boss_has_higher_state_immunity() {
         j: 0,
         main_val: vec![0; 256],
     };
-    assert!(boss.check_immune(state_tag::<crate::player::skill::fire::FireState>(), &mut randomer));
-    assert!(!normal.check_immune(state_tag::<crate::player::skill::fire::FireState>(), &mut randomer));
+    assert!(boss.check_immune("fire", &mut randomer));
+    assert!(!normal.check_immune("fire", &mut randomer));
 }
 
 #[test]

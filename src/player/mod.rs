@@ -150,7 +150,16 @@ pub trait StateTrait: std::fmt::Debug + Any {
     /// 状态在 post_defend 阶段的执行顺序（数字越小越先执行）。
     fn post_defend_priority(&self) -> i32 { 1000 }
     /// post_defend 钩子，可直接修正伤害值。
-    fn on_post_defend(&mut self, _owner: PlrId, _dmg: &mut i32, _caster: PlrId, _randomer: &mut RC4, _updates: &mut RunUpdates) {}
+    fn on_post_defend(
+        &mut self,
+        _owner: PlrId,
+        _dmg: &mut i32,
+        _caster: PlrId,
+        _randomer: &mut RC4,
+        _updates: &mut RunUpdates,
+        _storage: &std::sync::Arc<crate::engine::storage::Storage>,
+    ) {
+    }
 
     /// 状态在 post_damage 阶段的执行顺序（数字越小越先执行）。
     fn post_damage_priority(&self) -> i32 { 1000 }
@@ -219,11 +228,18 @@ impl PlayerStateStore {
         let tag = state_tag::<T>();
         let had = self.states.contains_key(&tag);
         if had {
-            eprintln!("[STATE_SET] OVERWRITING existing state tag={:?} meta_type={}", tag, state.meta_type());
+            eprintln!(
+                "[STATE_SET] OVERWRITING existing state tag={:?} meta_type={}",
+                tag,
+                state.meta_type()
+            );
         }
         // Trace: log address when setting CovidInfection
         if std::any::type_name::<T>().contains("CovidInfection") {
-            eprintln!("[STATE_TRACE] SET CovidInfection store_addr={:p} tag={:?}", self as *const _, tag);
+            eprintln!(
+                "[STATE_TRACE] SET CovidInfection store_addr={:p} tag={:?}",
+                self as *const _, tag
+            );
         }
         self.states.insert(tag, Box::new(state));
     }
@@ -240,7 +256,12 @@ impl PlayerStateStore {
     pub fn has<T: StateTrait + 'static>(&self) -> bool {
         let result = self.states.contains_key(&state_tag::<T>());
         if std::any::type_name::<T>().contains("CovidInfection") {
-            eprintln!("[STATE_TRACE] HAS CovidInfection store_addr={:p} result={} all_tags={:?}", self as *const _, result, self.states.keys().collect::<Vec<_>>());
+            eprintln!(
+                "[STATE_TRACE] HAS CovidInfection store_addr={:p} result={} all_tags={:?}",
+                self as *const _,
+                result,
+                self.states.keys().collect::<Vec<_>>()
+            );
         }
         result
     }
@@ -257,7 +278,11 @@ impl PlayerStateStore {
     #[inline]
     pub fn clear_tag(&mut self, tag: StateTag) {
         if self.states.contains_key(&tag) {
-            eprintln!("[STATE_CLEAR_TAG] removing tag={:?} meta_type={:?}", tag, self.states.get(&tag).map(|s| s.meta_type()));
+            eprintln!(
+                "[STATE_CLEAR_TAG] removing tag={:?} meta_type={:?}",
+                tag,
+                self.states.get(&tag).map(|s| s.meta_type())
+            );
         }
         self.states.remove(&tag);
     }
@@ -468,6 +493,7 @@ impl PlayerStateStore {
         caster: PlrId,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
+        storage: &std::sync::Arc<crate::engine::storage::Storage>,
     ) {
         let mut ordered = self
             .states
@@ -477,7 +503,7 @@ impl PlayerStateStore {
         ordered.sort_unstable_by_key(|(_, priority)| *priority);
         for (tag, _) in ordered {
             if let Some(state) = self.states.get_mut(&tag) {
-                state.on_post_defend(owner, dmg, caster, randomer, updates);
+                state.on_post_defend(owner, dmg, caster, randomer, updates, storage);
             }
         }
     }

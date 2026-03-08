@@ -62,7 +62,10 @@ impl SkillTrait for FireSkill {
         if std::env::var_os("TSWN_DEBUG_FIRE").is_some() {
             let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_default();
             let target_name = args.3.get_player(&target_id).map(|p| p.id_name()).unwrap_or_default();
-            eprintln!("[fire] caster={} target={} get_at={} fire_mag={} atp={} rc4=({},{})", owner_name, target_name, get_at_val, fire_mag, atp, args.1.i, args.1.j);
+            eprintln!(
+                "[fire] caster={} target={} get_at={} fire_mag={} atp={} rc4=({},{})",
+                owner_name, target_name, get_at_val, fire_mag, atp, args.1.i, args.1.j
+            );
         }
 
         args.2.add(RunUpdate::new("[0]使用[火球术]", args.0, target_id, 1));
@@ -82,7 +85,7 @@ pub(crate) fn on_fire(_caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, _upd
     let Some(target_plr) = storage.just_get_player_mut(target) else {
         return;
     };
-    if target_plr.get_status().hp <= 0 || target_plr.check_immune(state_tag::<FireState>(), r) {
+    if target_plr.get_status().hp <= 0 || target_plr.check_immune("fire", r) {
         return;
     }
     if let Some(fire) = target_plr.get_state_mut::<FireState>() {

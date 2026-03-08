@@ -150,7 +150,7 @@ fn on_berserk(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut
     let Some(target_plr) = storage.just_get_player_mut(target) else {
         return;
     };
-    if target_plr.get_status().hp <= 0 || target_plr.check_immune(state_tag::<BerserkState>(), r) {
+    if target_plr.get_status().hp <= 0 || target_plr.check_immune("berserk", r) {
         return;
     }
     if let Some(state) = target_plr.get_state_mut::<BerserkState>() {

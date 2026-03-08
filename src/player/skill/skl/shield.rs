@@ -72,6 +72,7 @@ impl StateTrait for ShieldState {
         _caster: PlrId,
         _randomer: &mut crate::rc4::RC4,
         _updates: &mut crate::engine::update::RunUpdates,
+        _storage: &std::sync::Arc<crate::engine::storage::Storage>,
     ) {
         if self.shield <= 0 {
             return;

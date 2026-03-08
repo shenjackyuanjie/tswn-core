@@ -910,7 +910,8 @@ fn fight_multi_3() {
         "embedded fight trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 50_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 50_000, true);
+    assert_eq!(total_score, 26430, "fight_multi_3 score mismatch");
     assert!(guard < 50_000, "fight_multi_3 combat did not finish in expected rounds");
     if actual_lines != expected_lines {
         let min_len = actual_lines.len().min(expected_lines.len());

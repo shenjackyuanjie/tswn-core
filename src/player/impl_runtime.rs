@@ -175,6 +175,7 @@ impl Player {
                     // JS PlrBoss.bs() 只把 k1 中的 ActionSkill 加入 k4。
                     // 对 COVID/Lazy 等 boss，k1 中的 SklCovidDefend/SklLazyDefend
                     // 不是 ActionSkill，因此 k4 为空，不消耗任何 prob 字节。
+                    // 但 Saitama/Generic 的 dftAct 在 k4 中，消耗 1 个 prob 字节。
                     if !is_boss {
                         let skill_keys = self.skills.skill.clone();
                         for key in skill_keys {
@@ -222,6 +223,15 @@ impl Player {
                                 selected_targets = selected;
                                 break;
                             }
+                        }
+                    } else {
+                        // Boss: consume prob bytes for boss ActionSkls
+                        // Dart calls prob() for each ActionSkl in the actions list;
+                        // for Saitama/Generic, dftAct is in the list (1 byte);
+                        // for COVID/Lazy, the actions list is empty (0 bytes).
+                        let prob_count = crate::player::boss::boss_action_prob_count(&self.name);
+                        for _ in 0..prob_count {
+                            let _ = randomer.r127();
                         }
                     } // end if !is_boss
                     self.status.mp -= req_mp;
@@ -954,8 +964,16 @@ impl Player {
         atp
     }
 
-    fn apply_post_defend_states(&mut self, mut dmg: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates) -> i32 {
-        self.state.on_post_defend_states(self.as_ptr(), &mut dmg, caster, randomer, updates);
+    fn apply_post_defend_states(
+        &mut self,
+        mut dmg: i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> i32 {
+        self.state
+            .on_post_defend_states(self.as_ptr(), &mut dmg, caster, randomer, updates, storage);
         dmg
     }
 
@@ -1132,7 +1150,7 @@ impl Player {
                 randomer.j,
             );
         }
-        self.apply_post_defend_states(dmg, caster, randomer, updates)
+        self.apply_post_defend_states(dmg, caster, randomer, updates, storage)
     }
 
     pub fn attacked(

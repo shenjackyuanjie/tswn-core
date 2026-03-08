@@ -3,7 +3,6 @@
 /// Produces the color selections that would be used to render a 16x16 player icon.
 /// Since we don't have canvas/PNG shape data, we output the logical selections:
 /// border style, shape indices, background color, and foreground colors (RGB).
-
 use crate::rc4::RC4;
 
 /// 21 predefined colors (sig_colors / $.mf)

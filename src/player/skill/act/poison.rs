@@ -124,7 +124,7 @@ fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut 
         let Some(target_plr) = storage.just_get_player_mut(target) else {
             return;
         };
-        target_plr.get_status().hp <= 0 || target_plr.check_immune(state_tag::<PoisonState>(), r)
+        target_plr.get_status().hp <= 0 || target_plr.check_immune("poison", r)
     };
     if blocked {
         return;

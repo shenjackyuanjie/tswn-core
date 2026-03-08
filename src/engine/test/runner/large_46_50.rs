@@ -32,7 +32,8 @@ Momomomo发动背刺, 泠珞受到214点伤害
         "sampled case-46 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 550, "large_46 score mismatch");
     assert!(guard < 20_000, "sampled case-46 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-46", &actual_lines, &expected_lines);
 }
@@ -72,7 +73,8 @@ Momomomo发起攻击, 泠珞受到62点伤害
         "sampled case-47 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 705, "large_47 score mismatch");
     assert!(guard < 20_000, "sampled case-47 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-47", &actual_lines, &expected_lines);
 }
@@ -135,7 +137,8 @@ seed:2026-03-07 22:54 #013595@!
         "sampled case-48 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 1577, "large_48 score mismatch");
     assert!(guard < 20_000, "sampled case-48 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-48", &actual_lines, &expected_lines);
 }
@@ -182,7 +185,8 @@ seed:2026-03-07 22:53 #500299@!
         "sampled case-49 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 910, "large_49 score mismatch");
     assert!(guard < 20_000, "sampled case-49 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-49", &actual_lines, &expected_lines);
 }
@@ -331,7 +335,8 @@ Dianmu发起狂暴攻击, Dianmu受到43点伤害
         "sampled case-50 trace is empty",
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard) = collect_replay_lines(&mut runner, 20_000, true);
+    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    assert_eq!(total_score, 3912, "large_50 score mismatch");
     assert!(guard < 20_000, "sampled case-50 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-50", &actual_lines, &expected_lines);
 }

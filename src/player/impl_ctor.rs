@@ -242,19 +242,12 @@ impl Player {
     /// 检查是否可以行动
     pub fn check_move(&self) -> bool { self.status.check_move() }
 
-    pub fn check_immune(&self, _state: StateTag, randomer: &mut RC4) -> bool {
+    pub fn check_immune(&self, key: &str, randomer: &mut RC4) -> bool {
         match self.player_type {
             PlayerType::Boost => randomer.r127() < boost_value(&self.name),
             PlayerType::Boss => {
-                let threshold: u32 = match self.name.as_str() {
-                    // 高抗性 boss
-                    "saitama" => 112,
-                    "covid" => 104,
-                    "aokiji" => 96,
-                    // 默认 boss 抗性（对齐原始 c33）
-                    _ => 84,
-                };
-                randomer.r127() < threshold
+                let threshold = crate::player::boss::boss_immune_threshold(&self.name, key);
+                (randomer.next_u8() as i32) < threshold
             }
             _ => false,
         }

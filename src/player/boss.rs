@@ -25,12 +25,12 @@ fn covid_spread_on_damage(
     let Some((boss_id, mutation)) = COVID_ON_DAMAGE_CTX.get() else {
         return;
     };
-    // JS tB: if target not already infected AND (rc4.n() & 63) + 1 < dmg → infect
+    // JS tB: if target not already infected AND (rc4.n() & 63) < dmg → infect
     let already_infected = storage.get_player(&target).map(|p| p.has_state::<CovidInfection>()).unwrap_or(false);
     if already_infected {
         return;
     }
-    let roll = (randomer.next_u8() & 63) as i32 + 1;
+    let roll = (randomer.next_u8() & 63) as i32;
     if roll < dmg {
         covid_infect(boss_id, target, mutation, randomer, updates, storage);
     }
@@ -91,8 +91,8 @@ pub fn init_boss_state(player: &mut Player) {
             player.set_state(SaitamaState {
                 turns: 0,
                 damages: 0,
-                hitters: 0,
-                minions: 0,
+                hitters: std::collections::HashSet::new(),
+                minions: std::collections::HashSet::new(),
             });
         }
         BossKind::Generic => {}
@@ -100,6 +100,50 @@ pub fn init_boss_state(player: &mut Player) {
 }
 
 // ─── boss_default_action: called from default_attack for Boss players ─────
+
+/// Number of ActionSkl prob() bytes to consume for a boss.
+///
+/// In Dart, PlrBoss.addSkillsToProc() adds ActionSkls from `skills` to `actions`.
+/// During the normal action loop, each ActionSkl's prob() consumes 1 RC4 byte (r127).
+/// - Saitama, Generic: dftAct IS in skills → actions=[dftAct] → 1 prob byte
+/// - COVID, Lazy: dftAct NOT in skills → actions=[] → 0 prob bytes
+pub fn boss_action_prob_count(name: &str) -> usize {
+    match boss_kind(name) {
+        BossKind::Covid | BossKind::Lazy => 0,
+        BossKind::Saitama | BossKind::Generic => 1,
+    }
+}
+
+/// Per-skill immunity threshold for a boss (matches Dart PlrBoss.immune()).
+///
+/// Dart has three tiers:
+/// - immunedx skills → r.c94 (94/127)
+/// - immuned skills → r.c75 (75/127)
+/// - default → r.c33 (33/127)
+/// Returns the raw-byte threshold for boss immunity checks.
+/// Dart: `c94` → `nextByte() < 240`, `c75` → `nextByte() < 192`, `c33` → `nextByte() < 84`.
+/// The caller must compare with `next_u8() as i32`, NOT `r127()`.
+pub fn boss_immune_threshold(boss_name: &str, key: &str) -> i32 {
+    match boss_kind(boss_name) {
+        BossKind::Saitama => match key {
+            "half" | "exchange" => 240,        // c94
+            "berserk" | "slow" | "ice" => 192, // c75
+            _ => 84,                           // c33
+        },
+        BossKind::Covid => match key {
+            "charm" | "berserk" | "exchange" => 192, // c75
+            _ => 84,                                 // c33
+        },
+        BossKind::Lazy => match key {
+            "assassinate" | "half" | "curse" | "exchange" => 192, // c75
+            _ => 84,                                              // c33
+        },
+        BossKind::Generic => match key {
+            "assassinate" | "charm" | "berserk" | "half" | "curse" | "exchange" | "slow" | "ice" => 192,
+            _ => 84,
+        },
+    }
+}
 
 pub fn boss_default_action(
     player: &mut Player,
@@ -167,6 +211,20 @@ impl StateTrait for CovidBossState {
         storage: &Arc<Storage>,
     ) {
         let boss_id = _owner;
+        // Dart: if (caster.meta[Dt.covid] == null) { ... }
+        // Any existing CovidMeta (including recovered) blocks infection.
+        let has_any_covid = storage.get_player(&caster).map(|p| p.has_state::<CovidInfection>()).unwrap_or(false);
+        if has_any_covid {
+            return;
+        }
+        // Dart: if (_hasMask(caster) && r.c75) return;
+        let has_mask = storage
+            .get_player(&caster)
+            .and_then(|p| p.get_weapon_name().map(|n| n.ends_with("mask") || n.ends_with("口罩")))
+            .unwrap_or(false);
+        if has_mask && randomer.c75() {
+            return;
+        }
         covid_infect(boss_id, caster, self.mutation, randomer, updates, storage);
     }
 
@@ -193,13 +251,17 @@ pub struct CovidInfection {
     pub entries: Vec<CovidEntry>,
     /// All mutations this player has ever been infected with (JS CovidMeta.c set).
     pub mutation_set: Vec<i32>,
+    /// Dart CovidMeta.recovered — true once all entries have been cured (days > 6).
+    /// The state is NOT removed; it persists with recovered=true so new infection
+    /// of a different mutation can still happen, but same-mutation re-infection is blocked.
+    pub recovered: bool,
 }
 
 impl StateTrait for CovidInfection {
     // JS CovidMeta.gT() returns 0, NOT negative. Must be 0 so clear_negative_states() doesn't remove it.
     fn meta_type(&self) -> i32 { 0 }
 
-    // ── PreAction hook: ALWAYS hijacks the player's action ──
+    // ── PreAction hook: ALWAYS hijacks the player's action (while actively infected) ──
     // JS: ALL CovidState.aN() fire (mutation check), then LAST CovidState's aa()+v() fires.
     fn pre_action_priority(&self) -> i32 { 1000 }
     fn on_pre_action(
@@ -211,21 +273,37 @@ impl StateTrait for CovidInfection {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> bool {
+        // Recovered (no active entries) → don't hijack
+        if self.entries.is_empty() {
+            return false;
+        }
         // === Step 1: aN() for ALL entries (mutation check) ===
         // In JS, each CovidState's aN() fires. It consumes 1 byte (possibly 2 if mutation changes).
         let owner_name_pre = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
-        eprintln!("[COVID_PREACT] owner={} entries={} rc4=({},{})", owner_name_pre, self.entries.len(), randomer.i, randomer.j);
+        eprintln!(
+            "[COVID_PREACT] owner={} entries={} rc4=({},{})",
+            owner_name_pre,
+            self.entries.len(),
+            randomer.i,
+            randomer.j
+        );
         for (ei, entry) in self.entries.iter_mut().enumerate() {
             let pre_byte = randomer.next_u8();
             if pre_byte < 64 {
                 let new_mutation = randomer.r127() as i32;
-                eprintln!("[COVID_aN] owner={} entry={} mutation {} -> {} rc4=({},{})", owner_name_pre, ei, entry.mutation, new_mutation, randomer.i, randomer.j);
+                eprintln!(
+                    "[COVID_aN] owner={} entry={} mutation {} -> {} rc4=({},{})",
+                    owner_name_pre, ei, entry.mutation, new_mutation, randomer.i, randomer.j
+                );
                 entry.mutation = new_mutation;
                 if !self.mutation_set.contains(&new_mutation) {
                     self.mutation_set.push(new_mutation);
                 }
             } else {
-                eprintln!("[COVID_aN] owner={} entry={} mutation={} no_change rc4=({},{})", owner_name_pre, ei, entry.mutation, randomer.i, randomer.j);
+                eprintln!(
+                    "[COVID_aN] owner={} entry={} mutation={} no_change rc4=({},{})",
+                    owner_name_pre, ei, entry.mutation, randomer.i, randomer.j
+                );
             }
         }
         eprintln!("[COVID_aN] owner={} mutation_set={:?}", owner_name_pre, self.mutation_set);
@@ -244,7 +322,10 @@ impl StateTrait for CovidInfection {
             // Boss group = group containing boss_id
             let boss_group_vec;
             let boss_group: &[PlrId] = match storage.group_containing(boss_id) {
-                Some(g) => { boss_group_vec = g; boss_group_vec.as_slice() },
+                Some(g) => {
+                    boss_group_vec = g;
+                    boss_group_vec.as_slice()
+                }
                 None => &[],
             };
             let skip_indices: Vec<usize> = targets
@@ -377,29 +458,33 @@ impl StateTrait for CovidInfection {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> bool {
+        if self.entries.is_empty() {
+            return false;
+        }
         let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
-        eprintln!("[COVID_POSTACT] owner={} alive={} entries={} days={:?}", owner_name, alive, self.entries.len(), self.entries.iter().map(|e| e.days).collect::<Vec<_>>());
+        eprintln!(
+            "[COVID_POSTACT] owner={} alive={} entries={} days={:?}",
+            owner_name,
+            alive,
+            self.entries.len(),
+            self.entries.iter().map(|e| e.days).collect::<Vec<_>>()
+        );
         // Pneumonia for EACH entry
         for entry in &self.entries {
             if alive && entry.days > 1 {
                 covid_pneumonia(owner, entry.boss_id, entry.mutation, randomer, updates, storage);
             }
         }
-        // Auto-cure: remove entries with days > 6
-        let before = self.entries.len();
+        // Auto-cure: remove entries with days > 6 (Dart: CovidState.destroy sets recovered=true)
         self.entries.retain(|e| e.days <= 6);
-        let after = self.entries.len();
-        if before != after {
-            eprintln!("[COVID_POSTACT] owner={} retained {}->{}", owner_name, before, after);
-        }
-        if self.entries.is_empty() {
-            eprintln!("[COVID_POSTACT] owner={} ALL ENTRIES REMOVED, returning true", owner_name);
+        if self.entries.is_empty() && !self.recovered {
+            self.recovered = true;
+            // Dart: destroy() calls target.updateStates()
             if let Some(plr) = storage.just_get_player_mut(owner) {
                 plr.update_states();
             }
-            return true; // request removal of entire state
         }
-        false
+        false // never remove the state; keep it with recovered=true for immunity tracking
     }
 
     fn as_any(&self) -> &dyn std::any::Any { self }
@@ -458,18 +543,17 @@ fn covid_infect(
     let _target_name = target_plr.display_name();
     let boss_display = storage.get_player(&boss_id).map(|p| p.display_name()).unwrap_or_default();
 
-    // Check if target already has this specific mutation → skip (JS: l.b && !l.c.w(0, c))
-    let has_covid = target_plr.has_state::<CovidInfection>();
-    eprintln!("[COVID_INFECT_CHECK] target={} has_covid={}", _target_name, has_covid);
+    // Dart newState: if (covidMeta == null || (covidMeta.recovered && !covidMeta.hasMutation(mutation)))
     if let Some(inf) = target_plr.get_state::<CovidInfection>() {
-        eprintln!("[COVID_INFECT_CHECK] target={} existing set={:?} checking mutation={}", _target_name, inf.mutation_set, mutation);
-        if inf.mutation_set.contains(&mutation) {
+        // CovidMeta exists — only allow re-infection if recovered AND new mutation
+        if !inf.recovered || inf.mutation_set.contains(&mutation) {
             return;
         }
     }
 
     // Add entry to existing CovidInfection, or create new one
     if let Some(inf) = target_plr.get_state_mut::<CovidInfection>() {
+        inf.recovered = false; // re-activated
         inf.entries.push(CovidEntry {
             boss_id,
             mutation,
@@ -478,9 +562,7 @@ fn covid_infect(
         if !inf.mutation_set.contains(&mutation) {
             inf.mutation_set.push(mutation);
         }
-        eprintln!("[COVID_INFECT] target={} ADDED entry mutation={} entries={} set={:?}", _target_name, mutation, inf.entries.len(), inf.mutation_set);
     } else {
-        eprintln!("[COVID_INFECT] target={} NEW infection mutation={}", _target_name, mutation);
         target_plr.set_state(CovidInfection {
             entries: vec![CovidEntry {
                 boss_id,
@@ -488,6 +570,7 @@ fn covid_infect(
                 days: 0,
             }],
             mutation_set: vec![mutation],
+            recovered: false,
         });
     }
     updates.add(RunUpdate::new(format!("[1]感染了{boss_display}"), boss_id, target, 0));
@@ -528,10 +611,17 @@ fn covid_contact_spread(
         0,
     ));
 
-    // JS fH: s = a.fr; s = oq(a) ? s + 192 : s >> 1; if (b.n() < s) → resisted
-    // oq = has shield. For now we only handle the no-shield case.
-    let candidate_smart = storage.get_player(&candidate).map(|p| p.get_status().wisdom).unwrap_or(0);
-    let threshold = candidate_smart >> 1;
+    // JS talk: itlMask = _hasMask(candidate) ? itl + 192 : itl >> 1; if (r.r255 < itlMask) → resisted
+    let candidate_wisdom = storage.get_player(&candidate).map(|p| p.get_status().wisdom).unwrap_or(0);
+    let has_mask = storage
+        .get_player(&candidate)
+        .and_then(|p| p.get_weapon_name().map(|n| n.ends_with("mask") || n.ends_with("口罩")))
+        .unwrap_or(false);
+    let threshold = if has_mask {
+        candidate_wisdom + 192
+    } else {
+        candidate_wisdom >> 1
+    };
     let roll = randomer.next_u8() as i32;
     if roll < threshold {
         updates.add(RunUpdate::new(format!("但{candidate_name}没被感染"), owner, candidate, 0));
@@ -701,7 +791,7 @@ impl StateTrait for LazyInfection {
     fn on_pre_action(
         &mut self,
         owner: PlrId,
-        _smart: bool,
+        smart: bool,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
@@ -709,10 +799,12 @@ impl StateTrait for LazyInfection {
     ) -> bool {
         let roll = randomer.next_u8();
         if roll < 128 {
-            // Skip turn: be lazy
+            // Dart: preAction returns LazyState → normal action flow runs select → act.
+            // LazyState inherits Skill.select() using boss as owner → boss.selectEnemy()
+            // We must consume the same RC4 bytes as LazyState.select() would.
+            lazy_select_consume_bytes(self.boss_id, smart, randomer, storage);
+            // Skip turn: be lazy (damage handled by on_post_action after NewLine)
             be_lazy(owner, randomer, updates, storage);
-            // PostAction: lazy damage
-            lazy_post_action_damage(owner, self.boss_id, randomer, updates, storage);
             return true;
         }
         false // don't hijack, let normal action proceed
@@ -728,6 +820,11 @@ impl StateTrait for LazyInfection {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> bool {
+        // Dart throws an exception when the boss's group is eliminated, aborting postAction.
+        // Replicate by skipping when the boss is dead (fight would end).
+        if !storage.get_player(&self.boss_id).map(|p| p.alive()).unwrap_or(false) {
+            return false;
+        }
         lazy_post_action_damage(owner, self.boss_id, randomer, updates, storage);
         false
     }
@@ -748,71 +845,90 @@ fn lazy_boss_action(
 ) {
     let boss_id = player.as_ptr();
 
-    // JS SklLazyAttack.v(): 50% chance + target infected → be lazy
-    let lazy_roll = randomer.next_u8();
-    if lazy_roll < 128 {
-        // Check if intended target is infected
-        let Some(target_id) = player.select_default_attack_target(smart, randomer, storage, targets) else {
-            return;
-        };
-        let target_infected = storage.get_player(&target_id).map(|p| p.has_state::<LazyInfection>()).unwrap_or(false);
-        if target_infected {
-            // Boss is lazy this turn, atboost += 0.5
-            if let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
-                boss_state.at_boost += 0.5;
-            }
-            be_lazy(boss_id, randomer, updates, storage);
-            return;
+    // Dart flow: dftAct.select() runs BEFORE dftAct.act(), so select target first
+    let Some(target_id) = player.select_default_attack_target(smart, randomer, storage, targets) else {
+        return;
+    };
+
+    // Dart: `if (lazyState != null && r.c50)` — short-circuit: byte only consumed if infected
+    let target_infected = storage.get_player(&target_id).map(|p| p.has_state::<LazyInfection>()).unwrap_or(false);
+    if target_infected && randomer.next_u8() < 128 {
+        // Boss is lazy this turn
+        be_lazy(boss_id, randomer, updates, storage);
+        if let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
+            boss_state.at_boost += 0.5;
         }
-        // Target not infected, attack normally with atboost
-        let at_boost = player.get_state::<LazyBossState>().map(|s| s.at_boost).unwrap_or(1.0);
-        let atp = player.get_at(false, randomer) * at_boost;
-        updates.add(RunUpdate::new("[0]发起攻击", boss_id, target_id, 0));
+        return;
+    }
 
-        // Set thread-local for on_damage callback
-        LAZY_ON_DAMAGE_CTX.set(Some(boss_id));
-        let actual_dmg = storage.just_get_player_mut(target_id).expect("lazy_boss_action target").attacked(
-            atp,
-            false,
-            boss_id,
-            lazy_attack_on_damage,
-            randomer,
-            updates,
-            storage,
-        );
-        LAZY_ON_DAMAGE_CTX.set(None);
+    // Normal attack with atboost
+    let at_boost = player.get_state::<LazyBossState>().map(|s| s.at_boost).unwrap_or(1.0);
+    let atp = player.get_at(false, randomer) * at_boost;
+    updates.add(RunUpdate::new("[0]发起攻击", boss_id, target_id, 0));
 
-        // Reset atboost on hit
-        if actual_dmg > 0 {
-            if let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
-                boss_state.at_boost = 1.0;
-            }
+    LAZY_ON_DAMAGE_CTX.set(Some(boss_id));
+    let actual_dmg = storage.just_get_player_mut(target_id).expect("lazy_boss_action target").attacked(
+        atp,
+        false,
+        boss_id,
+        lazy_attack_on_damage,
+        randomer,
+        updates,
+        storage,
+    );
+    LAZY_ON_DAMAGE_CTX.set(None);
+
+    // Reset atboost on hit
+    if actual_dmg > 0 {
+        if let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
+            boss_state.at_boost = 1.0;
         }
-    } else {
-        // Normal attack with atboost
-        let Some(target_id) = player.select_default_attack_target(smart, randomer, storage, targets) else {
-            return;
+    }
+}
+
+/// Simulate the bytes consumed by Dart's LazyState.select() when lazy preAction fires.
+/// LazyState inherits Skill.select() with selCount=2, selCountSmart=3.
+/// selectOneTarget() = boss.selectEnemy(r) = r.pickSkipRange(all_alives, boss_alives).
+/// validTarget() always returns true. scoreTarget: non-smart → r.rFFFF (2 bytes), smart → 0 bytes.
+fn lazy_select_consume_bytes(boss_id: PlrId, smart: bool, randomer: &mut RC4, storage: &Arc<Storage>) {
+    let n = if smart { 3usize } else { 2usize };
+    let all_alive = storage.all_alive_ids();
+    let boss_group = storage.alive_group_at_team_of(boss_id).cloned().unwrap_or_default();
+
+    // Build skip indices (positions of boss group members in all_alive)
+    let skip_indices: Vec<usize> = boss_group.iter().filter_map(|id| all_alive.iter().position(|a| a == id)).collect();
+
+    let mut selected = Vec::new();
+    let mut dup = 0usize;
+    let n_i32 = n as i32;
+    let mut invalid = -n_i32;
+
+    while (dup as i32) <= n_i32 && invalid <= n_i32 {
+        let picked = if skip_indices.is_empty() {
+            randomer.pick(&all_alive)
+        } else if all_alive.len() > skip_indices.len() {
+            randomer.pick_skip_range(&all_alive, skip_indices.clone())
+        } else {
+            None
         };
-        let at_boost = player.get_state::<LazyBossState>().map(|s| s.at_boost).unwrap_or(1.0);
-        let atp = player.get_at(false, randomer) * at_boost;
-        updates.add(RunUpdate::new("[0]发起攻击", boss_id, target_id, 0));
-
-        LAZY_ON_DAMAGE_CTX.set(Some(boss_id));
-        let actual_dmg = storage.just_get_player_mut(target_id).expect("lazy_boss_action target").attacked(
-            atp,
-            false,
-            boss_id,
-            lazy_attack_on_damage,
-            randomer,
-            updates,
-            storage,
-        );
-        LAZY_ON_DAMAGE_CTX.set(None);
-
-        if actual_dmg > 0 {
-            if let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
-                boss_state.at_boost = 1.0;
+        let Some(picked_idx) = picked else {
+            break;
+        };
+        // validTarget always true; no invalid increments
+        if !selected.contains(&picked_idx) {
+            selected.push(picked_idx);
+            if selected.len() >= n {
+                break;
             }
+        } else {
+            dup += 1;
+        }
+    }
+
+    // scoreTarget for each selected target
+    for _ in &selected {
+        if !smart {
+            let _ = randomer.rFFFF();
         }
     }
 }
@@ -901,8 +1017,10 @@ fn lazy_post_action_damage(owner: PlrId, boss_id: PlrId, randomer: &mut RC4, upd
 pub struct SaitamaState {
     pub turns: i32,
     pub damages: i32,
-    pub hitters: i32,
-    pub minions: i32,
+    /// Unique hitters (Dart: Set<Plr>). For IAddPlr, stores owner; for normal, stores caster.
+    pub hitters: std::collections::HashSet<PlrId>,
+    /// Unique minions (Dart: Set<Plr>). Only IAddPlr casters themselves.
+    pub minions: std::collections::HashSet<PlrId>,
 }
 
 impl StateTrait for SaitamaState {
@@ -910,9 +1028,31 @@ impl StateTrait for SaitamaState {
 
     // ── PostDefend: dmg / 100 ──
     fn post_defend_priority(&self) -> i32 { i32::MAX } // JS: priority = Infinity
-    fn on_post_defend(&mut self, _owner: PlrId, dmg: &mut i32, _caster: PlrId, _randomer: &mut RC4, _updates: &mut RunUpdates) {
+    fn on_post_defend(
+        &mut self,
+        _owner: PlrId,
+        dmg: &mut i32,
+        caster: PlrId,
+        _randomer: &mut RC4,
+        _updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) {
         self.damages += *dmg;
-        self.hitters += 1;
+        // Check if caster is a minion/clone (IAddPlr in Dart)
+        if let Some(caster_plr) = storage.get_player(&caster) {
+            if let Some(minion_state) = caster_plr.get_state::<crate::player::skill::act::minion::MinionRuntimeState>() {
+                if let Some(owner_id) = minion_state.owner {
+                    self.hitters.insert(owner_id);
+                    self.minions.insert(caster);
+                } else {
+                    self.hitters.insert(caster);
+                }
+            } else {
+                self.hitters.insert(caster);
+            }
+        } else {
+            self.hitters.insert(caster);
+        }
         *dmg /= 100;
     }
 
@@ -931,23 +1071,28 @@ fn saitama_boss_action(
 ) {
     let boss_id = player.as_ptr();
 
-    // Hunger check: damages / (hitters + minions/3 + 1) > 255
-    let (damages, hitters, minions) = player
+    // Dart: dftAct.select() is called BEFORE act(), even when turns < 10.
+    // We must always select a target to consume the same RC4 bytes as Dart.
+    let selected_target = player.select_default_attack_target(smart, randomer, storage, targets);
+
+    // Hunger check: damages / (hitters.len + minions.len/3 + 1) > 255
+    let (damages, hitters_len, minions_len) = player
         .get_state::<SaitamaState>()
-        .map(|s| (s.damages, s.hitters, s.minions))
+        .map(|s| (s.damages, s.hitters.len() as i32, s.minions.len() as i32))
         .unwrap_or((0, 0, 0));
 
-    let hunger_denominator = hitters + minions / 3 + 1;
+    let hunger_denominator = hitters_len + minions_len / 3 + 1;
     if damages / hunger_denominator.max(1) > 255 {
         // 觉得有点饿 → 离开了战场
         let boss_display = player.display_name();
         updates.add(RunUpdate::new(format!("{boss_display}觉得有点饿"), boss_id, boss_id, 0));
         updates.add(RunUpdate::new_newline());
         updates.add(RunUpdate::new(format!(" {boss_display}离开了战场"), boss_id, boss_id, 0));
-        // Self-death
+        // Dart: owner.group.die(owner) — just removes from alive, no die event
         let old_hp = player.get_status().hp;
         player.apply_raw_damage(old_hp);
-        player.on_die(old_hp, boss_id, randomer, updates, storage);
+        player.status.set_alive(false);
+        storage.record_death(boss_id);
         return;
     }
 
@@ -955,7 +1100,7 @@ fn saitama_boss_action(
     let turns = player.get_state::<SaitamaState>().map(|s| s.turns).unwrap_or(0);
 
     if turns < 10 {
-        // Increment and do nothing (no attack)
+        // Increment and do nothing (no attack); target selected but unused
         if let Some(state) = player.get_state_mut::<SaitamaState>() {
             state.turns += 1;
         }
@@ -963,7 +1108,7 @@ fn saitama_boss_action(
     }
 
     // turns >= 10: attack with getAt × 12
-    let Some(target_id) = player.select_default_attack_target(smart, randomer, storage, targets) else {
+    let Some(target_id) = selected_target else {
         return;
     };
     let atp = player.get_at(false, randomer) * 12.0;

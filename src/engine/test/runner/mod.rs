@@ -69,14 +69,18 @@ fn normalize_trace_line(line: String) -> String {
         .to_string()
 }
 
-fn collect_replay_events(runner: &mut runners::Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize) {
+fn collect_replay_events(runner: &mut runners::Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize, u64) {
     let mut events = Vec::new();
     let mut guard = 0usize;
+    let mut total_score = 0u64;
     while !runner.have_winner() && guard < max_rounds {
         let updates = runner.main_round();
         for update in updates.updates {
             if matches!(update.update_type, UpdateType::NextLine) {
                 continue;
+            }
+            if update.score > 0 {
+                total_score += update.score as u64;
             }
             let mut msg = format_update_message(runner, &update);
             if normalize {
@@ -89,12 +93,13 @@ fn collect_replay_events(runner: &mut runners::Runner, max_rounds: usize, normal
         }
         guard += 1;
     }
-    (events, guard)
+    (events, guard, total_score)
 }
 
-fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize) {
+fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize, u64) {
     let mut lines = Vec::new();
     let mut guard = 0usize;
+    let mut total_score = 0u64;
     let track_rc4 = std::env::var_os("TSWN_TRACK_RC4").is_some();
     let track_rc4_range: Option<(usize, usize)> = std::env::var("TSWN_TRACK_RC4").ok().and_then(|v| {
         let parts: Vec<&str> = v.split(',').collect();
@@ -126,6 +131,9 @@ fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normali
                 }
                 continue;
             }
+            if update.score > 0 {
+                total_score += update.score as u64;
+            }
             let mut msg = format_update_message(runner, &update);
             if normalize {
                 msg = normalize_trace_line(msg);
@@ -139,7 +147,7 @@ fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normali
         }
         guard += 1;
     }
-    (lines, guard)
+    (lines, guard, total_score)
 }
 
 /// Run a fight and return (total_score, per-caster scores keyed by display name).
