@@ -169,7 +169,9 @@ impl SkillStorage {
         for skill_key in keys.iter() {
             let skill = self.store.get_mut(skill_key).expect("skill not found in store");
             if skill.pre_action_clear_forced(smart, (args.0, args.1, args.2, args.3)) {
-                forced_skill = None;
+                // Only set clear_forced_action to block state-based forced attacks (berserk/charm).
+                // Do NOT clear forced_skill — it may have been set by Assassinate's pre_action_select,
+                // and in JS the assassinate entry is always processed after berserk/hide in x1.
                 clear_forced_action = true;
             }
             skill.pre_action((args.0, args.1, args.2, args.3));
