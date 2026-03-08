@@ -2,6 +2,10 @@
 
 > 坏了, 我真开始技术封锁了
 
+- Claude Sonnet 4.6 也挺好用的
+  - 完成了 icon 部分
+- 20260308
+
 - 项目最大赞助商: Github Copilot Pro ( 甚至是 Github Edu 送的 )
   - 我敲，你懂什么叫 Claude Opus 4.6 跑了快一整天还只消耗了一次额度的震撼吗.png
   - 这太TM震撼了
