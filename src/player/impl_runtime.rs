@@ -747,14 +747,13 @@ impl Player {
             })
             .collect::<Vec<(PlrId, f64)>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
-        if debug_this
-            && let Some((target_id, _)) = scored.first() {
-                let name = storage
-                    .get_player(target_id)
-                    .map(|p| p.id_name())
-                    .unwrap_or_else(|| format!("#{target_id}"));
-                eprintln!("[default_select] chose={name} rc4=({}, {})", randomer.i, randomer.j);
-            }
+        if debug_this && let Some((target_id, _)) = scored.first() {
+            let name = storage
+                .get_player(target_id)
+                .map(|p| p.id_name())
+                .unwrap_or_else(|| format!("#{target_id}"));
+            eprintln!("[default_select] chose={name} rc4=({}, {})", randomer.i, randomer.j);
+        }
         scored.first().map(|x| x.0)
     }
 

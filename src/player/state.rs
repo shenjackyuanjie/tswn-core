@@ -30,8 +30,8 @@ use std::sync::Arc;
 
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
-use crate::player::{ActionTargets, OnDamageFunc, PlrId};
 use crate::player::status::PlayerStatus;
+use crate::player::{ActionTargets, OnDamageFunc, PlrId};
 use crate::rc4::RC4;
 use foldhash::HashMap as FastHashMap;
 
@@ -476,9 +476,10 @@ impl PlayerStateStore {
         ordered.sort_unstable_by_key(|(_, priority)| *priority);
         for (tag, _) in ordered {
             if let Some(state) = self.states.get_mut(&tag)
-                && state.on_pre_action(owner, smart, randomer, updates, storage, targets) {
-                    return true;
-                }
+                && state.on_pre_action(owner, smart, randomer, updates, storage, targets)
+            {
+                return true;
+            }
         }
         false
     }

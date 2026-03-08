@@ -38,21 +38,13 @@ pub struct HookPipeline {
 }
 
 impl HookPipeline {
-    pub fn register_pre_action(&mut self, hook: ActorHook) {
-        self.pre_action.push(hook);
-    }
+    pub fn register_pre_action(&mut self, hook: ActorHook) { self.pre_action.push(hook); }
 
-    pub fn register_post_action(&mut self, hook: ActorHook) {
-        self.post_action.push(hook);
-    }
+    pub fn register_post_action(&mut self, hook: ActorHook) { self.post_action.push(hook); }
 
-    pub fn register_pre_damage(&mut self, hook: ActorHook) {
-        self.pre_damage.push(hook);
-    }
+    pub fn register_pre_damage(&mut self, hook: ActorHook) { self.pre_damage.push(hook); }
 
-    pub fn register_post_damage(&mut self, hook: ActorHook) {
-        self.post_damage.push(hook);
-    }
+    pub fn register_post_damage(&mut self, hook: ActorHook) { self.post_damage.push(hook); }
 
     pub fn run_pre_action(&self, actor: PlrId, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
         for hook in &self.pre_action {

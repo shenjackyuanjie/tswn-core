@@ -82,9 +82,7 @@ impl WorldState {
     #[inline]
     pub fn contains_alive(&self, plr: PlrId) -> bool { self.teams.iter().any(|team| team.alive.contains(&plr)) }
 
-    fn sync_group_rosters(&mut self) {
-        self.groups = self.teams.iter().map(|team| team.roster.clone()).collect();
-    }
+    fn sync_group_rosters(&mut self) { self.groups = self.teams.iter().map(|team| team.roster.clone()).collect(); }
 
     pub fn alives_by_group(&self, _storage: &std::sync::Arc<crate::engine::storage::Storage>) -> Vec<Vec<PlrId>> {
         self.teams.iter().map(|team| team.alive.clone()).collect()

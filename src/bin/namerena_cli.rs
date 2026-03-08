@@ -185,8 +185,7 @@ fn run_bench_winrate(raw: &str, n: usize) {
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_roster: Vec<usize> =
-            runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
+        let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
 
         let mut idle = 0usize;
         let mut rounds = 0usize;
@@ -200,10 +199,10 @@ fn run_bench_winrate(raw: &str, n: usize) {
             rounds += 1;
         }
         total += 1;
-        if let Some(ref winners) = runner.world.winner {
-            if winners.iter().any(|w| team0_roster.contains(w)) {
-                wins += 1;
-            }
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|w| team0_roster.contains(w))
+        {
+            wins += 1;
         }
         if (i + 1) % 100 == 0 {
             eprint!("\r进度: {}/{n}  ", i + 1);
@@ -224,18 +223,14 @@ fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, 
     let mut total = 0usize;
 
     for i in 0..n {
-        let opponents: String = (0..opp_count)
-            .map(|j| format!("bench_{i}_{j}@{modifier}"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let opponents: String = (0..opp_count).map(|j| format!("bench_{i}_{j}@{modifier}")).collect::<Vec<_>>().join("\n");
         let bench_input = format!("{target_str}\n\n{opponents}");
 
         let mut runner = match Runner::new_from_namerena_raw(bench_input) {
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_roster: Vec<usize> =
-            runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
+        let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
 
         let mut idle = 0usize;
         let mut rounds = 0usize;

@@ -516,14 +516,15 @@ fn covid_pneumonia(
     };
     eprintln!("[COVID_PNEUMONIA] boss_hp_full={boss_hp_full} heal_amount={heal_amount}");
     if heal_amount > 0
-        && let Some(boss_plr) = storage.just_get_player_mut(boss_id) {
-            let boss_display = boss_plr.display_name();
-            boss_plr.heal(heal_amount);
-            updates.add(RunUpdate::new(
-                format!("{boss_display}回复体力{heal_amount}点"),
-                boss_id,
-                boss_id,
-                0,
-            ));
-        }
+        && let Some(boss_plr) = storage.just_get_player_mut(boss_id)
+    {
+        let boss_display = boss_plr.display_name();
+        boss_plr.heal(heal_amount);
+        updates.add(RunUpdate::new(
+            format!("{boss_display}回复体力{heal_amount}点"),
+            boss_id,
+            boss_id,
+            0,
+        ));
+    }
 }

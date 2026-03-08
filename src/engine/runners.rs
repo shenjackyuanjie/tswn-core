@@ -44,7 +44,7 @@ pub type PlayerGroup = Vec<Player>;
 /// 原始输入解析结果：(队伍列表, 种子行列表)。
 pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
 
-use crate::engine::{world_state::WorldState, engine_core::EngineCore};
+use crate::engine::{engine_core::EngineCore, world_state::WorldState};
 
 pub struct Runner {
     /// 随机数发生器（保持与旧实现一致的消费顺序）。

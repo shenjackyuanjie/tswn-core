@@ -46,8 +46,8 @@ pub mod rules;
 pub mod tick;
 
 // ── 运行输出 ──────────────────────────────────────────────────────────────────
-pub mod update;
 pub mod lang;
+pub mod update;
 
 // ── 对局入口 ──────────────────────────────────────────────────────────────────
 pub mod runners;
@@ -55,8 +55,8 @@ pub mod runners;
 // ── 公开 re-export（保持原有对外接口不变）────────────────────────────────────
 pub use engine_core::*;
 pub use hooks::*;
-pub use runners::*;
 pub use rules::*;
+pub use runners::*;
 pub use tick::*;
 pub use world_state::*;
 

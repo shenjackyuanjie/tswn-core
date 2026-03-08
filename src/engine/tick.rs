@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
-use crate::engine::{world_state::WorldState, hooks::HookPipeline, rules::RuleRegistry};
+use crate::engine::{hooks::HookPipeline, rules::RuleRegistry, world_state::WorldState};
 use crate::player::{ActionTargets, PlrId};
 use crate::rc4::RC4;
 
@@ -72,7 +72,7 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
     let Some(team_roster) = world.team_roster(effective_team).map(|team| team.to_vec()) else {
         return ActionTargets::default();
     };
-    
+
     let ally_alive = world.team_alive(effective_team).map(|team| team.to_vec()).unwrap_or_default();
     let ally_all = team_roster.clone();
     let ally_dead = team_roster.iter().copied().filter(|id| !ally_alive.contains(id)).collect::<Vec<PlrId>>();
@@ -133,9 +133,7 @@ pub(super) fn check_winner(world: &mut WorldState, _storage: &Arc<Storage>) {
     };
 }
 
-pub(super) fn has_updates(updates: &RunUpdates) -> bool {
-    !updates.updates.is_empty()
-}
+pub(super) fn has_updates(updates: &RunUpdates) -> bool { !updates.updates.is_empty() }
 
 pub(super) fn run_update_end(storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
     let mut guard = 0usize;

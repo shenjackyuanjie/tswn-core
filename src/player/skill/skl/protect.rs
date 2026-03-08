@@ -114,9 +114,10 @@ impl StateTrait for ProtectState {
                 {
                     let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
                     if let Some(protect_skill) = protector.skills.store.get_mut(&26)
-                        && protect_skill.level() > 0 {
-                            protect_skill.post_action((link.owner, randomer, updates, storage));
-                        }
+                        && protect_skill.level() > 0
+                    {
+                        protect_skill.post_action((link.owner, randomer, updates, storage));
+                    }
                 }
                 updates.add(RunUpdate::new("[0][守护][1]", link.owner, owner, 40));
                 let redirected_atp = {
@@ -146,9 +147,10 @@ impl StateTrait for ProtectState {
             self.protect_from.remove(idx);
             // JS: p.Q = null — protector 的 protectTo 在保护失败时被清除
             if let Some(protector) = storage.just_get_player_mut(link.owner)
-                && let Some(protect_skill) = protector.skills.store.get_mut(&26) {
-                    protect_skill.clear_protect_to();
-                }
+                && let Some(protect_skill) = protector.skills.store.get_mut(&26)
+            {
+                protect_skill.clear_protect_to();
+            }
         }
         if debug_this {
             eprintln!(

@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
-use crate::engine::{world_state::WorldState, hooks::HookPipeline, rules::RuleRegistry};
+use crate::engine::{hooks::HookPipeline, rules::RuleRegistry, world_state::WorldState};
 use crate::player::PlrId;
 use crate::rc4::RC4;
 
@@ -43,13 +43,9 @@ pub struct EngineCore {
 }
 
 impl EngineCore {
-    pub fn register_pre_action_hook(&mut self, hook: crate::engine::hooks::ActorHook) {
-        self.hooks.register_pre_action(hook);
-    }
+    pub fn register_pre_action_hook(&mut self, hook: crate::engine::hooks::ActorHook) { self.hooks.register_pre_action(hook); }
 
-    pub fn register_post_action_hook(&mut self, hook: crate::engine::hooks::ActorHook) {
-        self.hooks.register_post_action(hook);
-    }
+    pub fn register_post_action_hook(&mut self, hook: crate::engine::hooks::ActorHook) { self.hooks.register_post_action(hook); }
 
     pub fn debug_world_state(tag: &str, world: &WorldState, storage: &Arc<Storage>) {
         if std::env::var_os("TSWN_DEBUG_WORLD").is_none() {
@@ -156,19 +152,21 @@ impl EngineCore {
         };
         crate::engine::tick::resolve_combat(actor, decision, &targets, &mut ctx, &self.hooks);
         crate::engine::tick::run_update_end(storage, ctx.randomer, ctx.updates);
-        if debug_tick && (ctx.randomer.i != rc4_before.0 || ctx.randomer.j != rc4_before.1)
-            && let Some(plr) = storage.get_player(&actor) {
-                let bytes = (ctx.randomer.i as i32 - rc4_before.0 as i32).rem_euclid(256);
-                eprintln!(
-                    "[tick_end] actor={} rc4=({},{})->({},{}) bytes={}",
-                    plr.id_name(),
-                    rc4_before.0,
-                    rc4_before.1,
-                    ctx.randomer.i,
-                    ctx.randomer.j,
-                    bytes
-                );
-            }
+        if debug_tick
+            && (ctx.randomer.i != rc4_before.0 || ctx.randomer.j != rc4_before.1)
+            && let Some(plr) = storage.get_player(&actor)
+        {
+            let bytes = (ctx.randomer.i as i32 - rc4_before.0 as i32).rem_euclid(256);
+            eprintln!(
+                "[tick_end] actor={} rc4=({},{})->({},{}) bytes={}",
+                plr.id_name(),
+                rc4_before.0,
+                rc4_before.1,
+                ctx.randomer.i,
+                ctx.randomer.j,
+                bytes
+            );
+        }
         self.sync_runtime_entities(world, storage);
         self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
         crate::engine::tick::check_winner(world, storage);

@@ -127,9 +127,10 @@ pub fn lazy_boss_action(
     LAZY_ON_DAMAGE_CTX.set(None);
 
     if actual_dmg > 0
-        && let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
-            boss_state.at_boost = 1.0;
-        }
+        && let Some(boss_state) = player.get_state_mut::<LazyBossState>()
+    {
+        boss_state.at_boost = 1.0;
+    }
 }
 
 fn lazy_attack_on_damage(
