@@ -624,6 +624,9 @@ impl Runner {
         for ptr in sorted_plrs {
             let plr = storage.just_get_player_mut(ptr).expect("plr not found when build");
             plr.build();
+            if plr.player_type() == crate::player::PlayerType::Boss {
+                crate::player::boss::init_boss_state(plr);
+            }
             plr.sort_int = randomer.rFFFFFF() as i32;
         }
 

@@ -187,6 +187,14 @@ impl Player {
     #[inline]
     pub fn set_move_point(&mut self, val: i32) { self.status.move_point = val }
 
+    /// 增减 move point (spsum)
+    #[inline]
+    pub fn add_move_point(&mut self, val: i32) { self.status.move_point += val }
+
+    /// 获取武器名
+    #[inline]
+    pub fn get_weapon_name(&self) -> Option<&str> { self.weapon.as_deref() }
+
     #[inline]
     pub fn mp(&self) -> i32 { self.status.mp }
 
