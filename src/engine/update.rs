@@ -16,6 +16,7 @@ pub enum UpdateType {
 #[derive(Debug, Clone)]
 pub struct RunUpdate {
     pub score: u32,
+    pub param: Option<u32>,
     pub delay0: i32,
     pub delay1: i32,
     pub message: String,
@@ -29,6 +30,7 @@ impl RunUpdate {
     pub fn new_dummy() -> RunUpdate {
         RunUpdate {
             score: 0,
+            param: None,
             delay0: 0,
             delay1: 0,
             message: "\n".to_string(),
@@ -44,19 +46,22 @@ impl RunUpdate {
         // param: Object ?
         // [0] -> caster
         // [1] -> target
-        // [2] -> targets
+        // [2] -> param or targets
         msg = msg.replace("[0]", &self.caster.to_string());
         msg = msg.replace("[1]", &self.target.to_string());
-        msg = msg.replace(
-            "[2]",
-            &self.targets.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(","),
-        );
+        let param_str = if let Some(p) = self.param {
+            p.to_string()
+        } else {
+            self.targets.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(",")
+        };
+        msg = msg.replace("[2]", &param_str);
         msg
     }
 
     pub fn new_newline() -> RunUpdate {
         RunUpdate {
             score: 0,
+            param: None,
             delay0: 0,
             delay1: 0,
             message: "\n".to_string(),
@@ -70,6 +75,7 @@ impl RunUpdate {
     pub fn new(msg: impl ToString, caster: PlrId, target: PlrId, score: u32) -> Self {
         RunUpdate {
             score,
+            param: None,
             delay0: 0,
             delay1: 0,
             message: msg.to_string(),

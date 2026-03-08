@@ -23,7 +23,7 @@ impl SkillTrait for HideSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
-    fn post_damage_with_level(&mut self, level: u32, _dmg: i32, _caster: PlrId, args: SkillArgs) {
+    fn post_damage_with_level(&mut self, level: u32, dmg: i32, caster: PlrId, args: SkillArgs) {
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()
@@ -31,11 +31,14 @@ impl SkillTrait for HideSkill {
             .unwrap_or(false);
         if level == 0 || self.on_update_state.is_some() {
             if debug_this {
+                let caster_name = args.3.get_player(&caster).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", caster));
                 eprintln!(
-                    "[hide_post_damage] owner={} skip level={} pending={} rc4=({}, {})",
+                    "[hide_post_damage] owner={} skip level={} pending={} caster={} dmg={} rc4=({}, {})",
                     args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
                     level,
                     self.on_update_state.is_some(),
+                    caster_name,
+                    dmg,
                     args.1.i,
                     args.1.j,
                 );
@@ -57,12 +60,15 @@ impl SkillTrait for HideSkill {
                 .count()
         };
         if debug_this {
+            let caster_name = args.3.get_player(&caster).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", caster));
             eprintln!(
-                "[hide_post_damage] owner={} active={} alive_allies={} level={} before_roll rc4=({}, {})",
+                "[hide_post_damage] owner={} active={} alive_allies={} level={} caster={} dmg={} before_roll rc4=({}, {})",
                 args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
                 owner_active,
                 alive_allies,
                 level,
+                caster_name,
+                dmg,
                 args.1.i,
                 args.1.j,
             );

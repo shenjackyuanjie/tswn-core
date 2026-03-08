@@ -1261,12 +1261,14 @@ impl Player {
             if self.status.hp > self.status.max_hp {
                 self.status.hp = self.status.max_hp;
             }
-            let update = RunUpdate::new("[1]回复体力[2]点", caster, self.as_ptr(), dmg.unsigned_abs());
+            let mut update = RunUpdate::new("[1]回复体力[2]点", caster, self.as_ptr(), 0);
+            update.param = Some(dmg.unsigned_abs());
             updates.add(update);
             return 0;
         }
         if dmg == 0 {
-            let update = RunUpdate::new("[0]受到[2]点伤害[s_dmg0]", self.as_ptr(), self.as_ptr(), 0);
+            let mut update = RunUpdate::new("[0]受到[2]点伤害[s_dmg0]", self.as_ptr(), self.as_ptr(), 10);
+            update.param = Some(0);
             updates.add(update);
             return 0;
         }

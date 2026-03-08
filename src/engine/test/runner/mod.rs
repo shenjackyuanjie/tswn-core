@@ -36,7 +36,9 @@ fn format_update_message(runner: &runners::Runner, update: &RunUpdate) -> String
     let mut msg = update.message.clone();
     msg = msg.replace("[0]", &caster);
     msg = msg.replace("[1]", &target);
-    let param = if update.targets.is_empty() {
+    let param = if let Some(p) = update.param {
+        p.to_string()
+    } else if update.targets.is_empty() {
         update.score.to_string()
     } else {
         update

@@ -198,7 +198,7 @@ impl SkillTrait for AssassinateSkill {
     }
 
     fn post_damage(&mut self, _dmg: i32, _caster: PlrId, args: SkillArgs) {
-        if self.target.is_none() {
+        if self.on_post_damage.is_none() || self.target.is_none() {
             return;
         }
         let target = self.target.expect("assassinate target should exist");
