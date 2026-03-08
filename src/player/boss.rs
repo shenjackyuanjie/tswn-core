@@ -181,13 +181,15 @@ impl StateTrait for CovidBossState {
 pub struct CovidInfection {
     pub boss_id: PlrId,
     pub mutation: i32,
-    pub pandemic_stage: i32,
+    /// JS 'days' — incremented in act (v()), checked in postAction (at())
+    pub days: i32,
 }
 
 impl StateTrait for CovidInfection {
     fn meta_type(&self) -> i32 { -1 }
 
     // ── PreAction hook: ALWAYS hijacks the player's action ──
+    // This combines JS preAction (aN) + act (v)
     fn pre_action_priority(&self) -> i32 { 1000 }
     fn on_pre_action(
         &mut self,
@@ -198,34 +200,122 @@ impl StateTrait for CovidInfection {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> bool {
-        // Mutation check: 25% chance to mutate
-        if randomer.next_u8() < 64 {
-            self.mutation += 1;
+        // === preAction (aN): mutation check ===
+        let pre_byte = randomer.next_u8();
+        if pre_byte < 64 {
+            self.mutation = randomer.r127() as i32;
         }
-        // ICU check: pandemic_stage > 6 → remove infection
-        if self.pandemic_stage > 6 {
-            // ICU: skip action, remove infection
-            let _boss_name = storage.get_player(&self.boss_id).map(|p| p.display_name()).unwrap_or_default();
+
+        // === act (v): spreading / ICU / home isolation ===
+        let owner_wisdom = storage
+            .get_player(&owner)
+            .map(|p| p.get_status().wisdom)
+            .unwrap_or(0);
+        let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
+
+        let condition = self.days == 0 || (randomer.next_u8() as i32) > owner_wisdom;
+        eprintln!("[COVID_ACT] owner={} days={} condition={} pre_byte={} rc4=({},{})", 
+            owner_name, self.days, condition, pre_byte, randomer.i, randomer.j);
+        if condition {
+            self.days += (randomer.next_u8() & 3) as i32; // 1st increment (r3)
+            // Try spreading: 5 attempts
+            let all_alive = targets.all_alive.clone();
+            eprintln!("[COVID_SPREAD] all_alive={:?} rc4=({},{})", 
+                all_alive.iter().map(|id| storage.get_player(id).map(|p| p.display_name()).unwrap_or_default()).collect::<Vec<_>>(),
+                randomer.i, randomer.j);
+            for attempt in 0..5 {
+                if all_alive.is_empty() {
+                    break;
+                }
+                let Some(pick_idx) = randomer.pick(&all_alive) else {
+                    break;
+                };
+                let candidate = all_alive[pick_idx];
+                let cand_name = storage.get_player(&candidate).map(|p| p.display_name()).unwrap_or_default();
+                eprintln!("[COVID_PICK] attempt={} pick_idx={} candidate={} is_owner={} is_boss={}", 
+                    attempt, pick_idx, cand_name, candidate == owner, candidate == self.boss_id);
+                if candidate == owner || candidate == self.boss_id {
+                    continue;
+                }
+                let candidate_alive = storage
+                    .get_player(&candidate)
+                    .map(|p| p.alive())
+                    .unwrap_or(false);
+                if !candidate_alive {
+                    continue;
+                }
+
+                // Check if candidate already has this mutation (immune)
+                let already_has_mutation = storage
+                    .get_player(&candidate)
+                    .and_then(|p| p.get_state::<CovidInfection>())
+                    .map(|inf| inf.mutation == self.mutation)
+                    .unwrap_or(false);
+                if already_has_mutation {
+                    continue;
+                }
+
+                // Determine if same team as owner
+                let owner_group = storage.group_containing(owner);
+                let candidate_in_owner_group = owner_group
+                    .map(|g| g.contains(&candidate))
+                    .unwrap_or(false);
+
+                if candidate_in_owner_group {
+                    covid_contact_spread(owner, candidate, self.boss_id, self.mutation, randomer, updates, storage);
+                } else {
+                    covid_attack_spread(owner, candidate, self.boss_id, self.mutation, randomer, updates, storage);
+                }
+                return true; // spread succeeded → early return, skip ICU/home
+            }
+            // Fall through: no spread target found
+        }
+
+        // 2nd increment (always reaches here if condition was false OR no spread target)
+        self.days += (randomer.next_u8() & 3) as i32;
+
+        if self.days > 2 {
             updates.add(RunUpdate::new(
-                format!("[0]在重症监护室无法行动"),
-                owner,
+                "[1]在重症监护室无法行动",
+                self.boss_id,
                 owner,
                 0,
             ));
-            // Do spreading + pneumonia, then remove
-            covid_spreading(owner, self.boss_id, self.mutation, randomer, updates, storage, targets);
-            covid_pneumonia(owner, self.boss_id, self.mutation, randomer, updates, storage);
-            // Remove infection state (ICU cures)
-            if let Some(plr) = storage.just_get_player_mut(owner) {
-                plr.clear_state::<CovidInfection>();
-            }
-            return true;
+        } else {
+            updates.add(RunUpdate::new(
+                "[1]在家中自我隔离",
+                self.boss_id,
+                owner,
+                0,
+            ));
         }
-        // Normal infected action: spreading + pneumonia
-        covid_spreading(owner, self.boss_id, self.mutation, randomer, updates, storage, targets);
-        covid_pneumonia(owner, self.boss_id, self.mutation, randomer, updates, storage);
-        self.pandemic_stage += 1;
+
         true // always hijack
+    }
+
+    // ── PostAction hook: pneumonia + auto-cure ──
+    fn post_action_priority(&self) -> i32 { 1000 }
+    fn on_post_action(
+        &mut self,
+        owner: PlrId,
+        alive: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> bool {
+        // Pneumonia: only if alive and days > 1
+        if alive && self.days > 1 {
+            covid_pneumonia(owner, self.boss_id, self.mutation, randomer, updates, storage);
+        }
+        // Auto-cure: days > 6
+        if self.days > 6 {
+            // Remove infection state
+            if let Some(plr) = storage.just_get_player_mut(owner) {
+                plr.update_states();
+            }
+            return true; // request removal
+        }
+        false
     }
 
     fn as_any(&self) -> &dyn std::any::Any { self }
@@ -291,7 +381,7 @@ fn covid_infect(
     target_plr.set_state(CovidInfection {
         boss_id,
         mutation,
-        pandemic_stage: 0,
+        days: 0,
     });
     updates.add(RunUpdate::new(
         format!("[1]感染了{boss_display}"),
@@ -300,65 +390,19 @@ fn covid_infect(
         0,
     ));
 
-    // spsum adjustments: infected player += 2048, others in boss group -= 256
-    // For boss@!, boss is the only member, so we adjust boss's move_point -= 256
-    // and target += 2048
-    target_plr.add_move_point(2048);
-    // Adjust boss group members (only boss itself for boss@!)
-    if let Some(boss_plr) = storage.just_get_player_mut(boss_id) {
-        boss_plr.add_move_point(-256);
-    }
-}
-
-/// v(): COVID spreading — pick from all alive, try contact or attack spread
-fn covid_spreading(
-    owner: PlrId,
-    boss_id: PlrId,
-    mutation: i32,
-    randomer: &mut RC4,
-    updates: &mut RunUpdates,
-    storage: &Arc<Storage>,
-    targets: &ActionTargets,
-) {
-    // JS: boss.y.a.e = engine.e = all alive players globally
-    let all_alive = targets.all_alive.clone();
-
-    for _ in 0..5 {
-        // Pick random from all alive
-        if all_alive.is_empty() {
-            break;
-        }
-        let Some(pick_idx) = randomer.pick(&all_alive) else {
-            break;
-        };
-        let candidate = all_alive[pick_idx];
-        if candidate == owner || candidate == boss_id {
-            continue;
-        }
-
-        // Check if alive
-        let candidate_alive = storage
-            .get_player(&candidate)
-            .map(|p| p.alive())
-            .unwrap_or(false);
-        if !candidate_alive {
-            continue;
-        }
-
-        // Determine if same team as owner
-        let owner_group = storage.group_containing(owner);
-        let candidate_in_owner_group = owner_group
-            .map(|g| g.contains(&candidate))
-            .unwrap_or(false);
-
-        if candidate_in_owner_group {
-            // Contact spread (fH)
-            covid_contact_spread(owner, candidate, boss_id, mutation, randomer, updates, storage);
+    // spsum adjustments: iterate ALL alive players (JS: caster.group.f.alives)
+    // infected target += 2048, everyone else -= 256
+    let all_alive = storage.all_alive_ids();
+    for &pid in &all_alive {
+        if pid == target {
+            if let Some(p) = storage.just_get_player_mut(pid) {
+                p.add_move_point(2048);
+            }
         } else {
-            // Attack spread
-            covid_attack_spread(owner, candidate, boss_id, mutation, randomer, updates, storage);
+            if let Some(p) = storage.just_get_player_mut(pid) {
+                p.add_move_point(-256);
+            }
         }
-        return; // Only one spread per action
     }
 }
 
