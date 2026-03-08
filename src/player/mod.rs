@@ -76,6 +76,7 @@ pub mod action_targets;
 pub mod boss;
 pub mod eval_name;
 pub mod icon;
+pub mod icon_render;
 pub mod skill;
 pub mod state;
 pub mod status;

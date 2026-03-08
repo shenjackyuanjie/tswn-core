@@ -5,6 +5,7 @@ use std::io::{self, Read};
 use tswn_core::Runner;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::player::icon::icon_from_name;
+use tswn_core::player::icon_render::{render_icon_b64_from_name, render_icon_png_from_name};
 
 fn print_usage() {
     println!("用法:");
@@ -21,8 +22,10 @@ fn print_usage() {
     println!("  --bench-file \"...\" [N] 从文件读取");
     println!();
     println!("其他:");
-    println!("  --icon <名字>...       输出玩家图标信息 (可指定多个名字)");
-    println!("  --help, -h             显示此帮助信息");
+    println!("  --icon <名字>...             输出玩家图标信息 (可指定多个名字)");
+    println!("  --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL (可多个名字)");
+    println!("  --icon-path <目录> <名字>... 将图标 PNG 保存到 <目录>/<名字>.png");
+    println!("  --help, -h                   显示此帮助信息");
     println!();
     println!("示例:");
     println!("  namerena_cli --raw \"a\\nb\\n\\nc\\nd\"");
@@ -53,6 +56,43 @@ fn read_raw_input() -> Result<String, String> {
             }
             for name in &args[1..] {
                 print_icon(name);
+            }
+            std::process::exit(0);
+        }
+        "--icon-b64" => {
+            if args.len() < 2 {
+                eprintln!("--icon-b64 需要至少一个名字参数");
+                std::process::exit(2);
+            }
+            for name in &args[1..] {
+                let b64 = render_icon_b64_from_name(name);
+                if args.len() == 2 {
+                    // 单个名字时直接输出 data URL
+                    println!("{b64}");
+                } else {
+                    println!("{name}: {b64}");
+                }
+            }
+            std::process::exit(0);
+        }
+        "--icon-path" => {
+            if args.len() < 3 {
+                eprintln!("--icon-path 需要: <目录> <名字> [更多名字...]");
+                std::process::exit(2);
+            }
+            let dir = std::path::Path::new(&args[1]);
+            if let Err(e) = fs::create_dir_all(dir) {
+                eprintln!("创建目录失败: {e}");
+                std::process::exit(1);
+            }
+            for name in &args[2..] {
+                let path = dir.join(format!("{name}.png"));
+                let png = render_icon_png_from_name(name);
+                if let Err(e) = fs::write(&path, &png) {
+                    eprintln!("写入 {} 失败: {e}", path.display());
+                    std::process::exit(1);
+                }
+                println!("已保存: {}", path.display());
             }
             std::process::exit(0);
         }
