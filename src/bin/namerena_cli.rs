@@ -109,7 +109,10 @@ fn print_all_players(runner: &Runner) {
 }
 
 fn main() {
-    println!("欢迎来到 tswn - {}, 某个充满怨念的人向你问好, 使用 --help/-h 获取帮助信息谢谢喵", tswn_core::version());
+    println!(
+        "欢迎来到 tswn - {}, 某个充满怨念的人向你问好, 使用 --help/-h 获取帮助信息谢谢喵",
+        tswn_core::version()
+    );
     println!("WARNING: PRE ALPHA 版本, 仅供测试使用, 已知有 bug, 暂未实现: 天卫、Boss、武器");
     println!("发现行为不一致请不要惊慌, 呼叫 shenjack 即可 (qq: 3695888)");
     let raw = match read_raw_input() {

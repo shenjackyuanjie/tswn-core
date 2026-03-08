@@ -18,9 +18,7 @@ impl Player {
     /// 计算:
     /// - 具体属性 ( 8围 )
     /// - 技能熟练度
-    pub fn build(&mut self) {
-        self.build_inner(None);
-    }
+    pub fn build(&mut self) { self.build_inner(None); }
 
     /// Dart PlrClone 在 addSkillsToProc 中先 clamp 技能等级到 owner 的当前等级，
     /// 然后再执行 boost（super.addSkillsToProc）。
@@ -30,10 +28,10 @@ impl Player {
     }
 
     fn build_inner(&mut self, clamp_source: Option<&crate::player::skill::store::SkillStorage>) {
-        let equipped_weapon = self.weapon.clone();
-        if let Some(weapon_name) = equipped_weapon.as_deref() {
-            let weapon = weapons::Weapon::from_name(weapon_name);
-            weapon.pre_upgrade(self);
+        // pre_upgrade: 修改 name_base (JS: weapon.bn)
+        if let Some(mut ws) = self.weapon_state.take() {
+            weapons::Weapon::pre_upgrade(&mut ws, self);
+            self.weapon_state = Some(ws);
         }
 
         // init raw attr
@@ -55,6 +53,14 @@ impl Player {
         // 7 -> rand 3 + 4 + 5 + 6
         attr[7] = 154 + rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
         self.attr = attr;
+
+        // Boss appendAttr: 在基础八围之上加成
+        if self.player_type == PlayerType::Boss {
+            let bonus = boss_append_attr(&self.name);
+            for i in 0..8 {
+                self.attr[i] = (self.attr[i] as i32 + bonus[i]).max(0) as u32;
+            }
+        }
         // println!("attr: {:?} {:?}", self.attr, self.name_base);
 
         // init skills
@@ -67,31 +73,47 @@ impl Player {
         }
         self.skills.skill = self.skil_id.iter().map(|id| *id as usize).collect();
         let mut slot_skill_keys: [Option<usize>; 16] = [None; 16];
-        for (j, i) in (64..128).step_by(4).enumerate() {
-            // 取 val index ~ val index + 3 的最小值
-            let small = min(
-                min(self.name_base[i], self.name_base[i + 1]),
-                min(self.name_base[i + 2], self.name_base[i + 3]),
-            );
-            if small > 10 && self.skil_id[j] < 35 {
-                let skill_id = self.skil_id[j] as usize;
-                let skill = self.skills.skill_by_id_mut(skill_id);
-                skill.set_level((small - 10) as u32);
-                let raw_small = min(
-                    min(self.raw_name_base[i], self.raw_name_base[i + 1]),
-                    min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
+        // JS PlrBoss.dm() overrides initSkills: boss skills are all level 0.
+        // All 40 skills are created (for k4 prob byte consumption in action loop)
+        // but no levels are set. This prevents boss from using normal skills.
+        let is_boss = self.player_type == PlayerType::Boss;
+        if !is_boss {
+            for (j, i) in (64..128).step_by(4).enumerate() {
+                // 取 val index ~ val index + 3 的最小值
+                let small = min(
+                    min(self.name_base[i], self.name_base[i + 1]),
+                    min(self.name_base[i + 2], self.name_base[i + 3]),
                 );
-                // 其实是懒得读取原始的last skill, 就直接按照原始代码来了
-                if raw_small <= 10 {
-                    skill.boosted = true;
+                if small > 10 && self.skil_id[j] < 35 {
+                    let skill_id = self.skil_id[j] as usize;
+                    let skill = self.skills.skill_by_id_mut(skill_id);
+                    skill.set_level((small - 10) as u32);
+                    let raw_small = min(
+                        min(self.raw_name_base[i], self.raw_name_base[i + 1]),
+                        min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
+                    );
+                    // 其实是懒得读取原始的last skill, 就直接按照原始代码来了
+                    if raw_small <= 10 {
+                        skill.boosted = true;
+                    }
+                    slot_skill_keys[j] = Some(skill_id);
                 }
-                slot_skill_keys[j] = Some(skill_id);
             }
         }
 
-        if let Some(weapon_name) = equipped_weapon.as_deref() {
-            let weapon = weapons::Weapon::from_name(weapon_name);
-            weapon.post_upgrade(self);
+        // post_upgrade: 加八围 + boost skill (JS: weapon.cs)
+        if let Some(ref ws) = self.weapon_state {
+            if std::env::var_os("TSWN_DEBUG_STATS").is_some() {
+                eprintln!(
+                    "[WEAPON] {}: attr_bonus={:?} skill_idx={} skill_factor={}",
+                    self.id_name(),
+                    ws.attr_bonus,
+                    ws.skill_index,
+                    ws.skill_factor
+                );
+            }
+            let ws = ws.clone();
+            weapons::Weapon::post_upgrade(&ws, self);
         }
 
         // Dart PlrClone.addSkillsToProc: clamp 发生在 boost 之前
@@ -139,10 +161,21 @@ impl Player {
         // Dart: mp = itl ~/ 2
         self.status.mp = self.status.wisdom >> 1;
         if std::env::var_os("TSWN_DEBUG_STATS").is_some() {
-            eprintln!("[STATS] {}: atk={} def={} spd={} agl={} mag={} mdf={} wis={} hp={} name_factor={} attr={:?} name_base[0..10]={:?}",
-                self.id_name(), self.status.attack, self.status.defense, self.status.speed,
-                self.status.agility, self.status.magic, self.status.resistance,
-                self.status.wisdom, self.status.max_hp, self.name_factor, self.attr, &self.name_base[0..10]);
+            eprintln!(
+                "[STATS] {}: atk={} def={} spd={} agl={} mag={} mdf={} wis={} hp={} name_factor={} attr={:?} name_base[0..10]={:?}",
+                self.id_name(),
+                self.status.attack,
+                self.status.defense,
+                self.status.speed,
+                self.status.agility,
+                self.status.magic,
+                self.status.resistance,
+                self.status.wisdom,
+                self.status.max_hp,
+                self.name_factor,
+                self.attr,
+                &self.name_base[0..10]
+            );
         }
     }
 

@@ -504,7 +504,6 @@ Dianmu打开了文明6, 这回合什么也没做
     assert_trace_with_context("sampled case-54", &actual_lines, &expected_lines);
 }
 
-
 /// saitama
 #[test]
 fn large_55() {

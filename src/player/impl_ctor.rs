@@ -150,6 +150,9 @@ impl Player {
 
         let id = storage.new_plr_id();
 
+        // 创建武器状态 (JS: new T.Weapon + b3)
+        let weapon_state = weapon.as_deref().map(weapons::Weapon::create_state).flatten();
+
         Ok(Player {
             team,
             name,
@@ -166,6 +169,7 @@ impl Player {
             state: PlayerStateStore::default(),
             skills: SkillStorage::new(),
             name_factor,
+            weapon_state,
             id,
         })
     }

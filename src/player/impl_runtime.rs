@@ -142,59 +142,58 @@ impl Player {
                 }
                 if self.status.mp >= req_mp {
                     let is_boss = self.player_type == PlayerType::Boss;
-                    let skill_keys = self.skills.skill.clone();
-                    for key in skill_keys {
-                        let maybe_targets = {
-                            let skill = self.skills.skill_by_id(key);
-                            let rc4_before_prob = (randomer.i, randomer.j);
-                            let action_ok = skill.has_action_impl();
-                            let level_ok = skill.level() > 0;
-                            // JS PlrBoss.bs() 把所有 ActionSkill 加入 k4，不检查 level。
-                            // 因此 boss 的 level=0 动作技能也要消耗 prob 字节（虽然必定失败）。
-                            let prob_ok = if is_boss {
-                                action_ok && skill.prob(smart, (ptr, randomer, updates, storage))
-                            } else {
-                                level_ok && action_ok && skill.prob(smart, (ptr, randomer, updates, storage))
-                            };
-                            if debug_this && (level_ok || action_ok) {
-                                eprintln!(
-                                    "[action] skill={key} lv={} action={} prob={} rc4 {}:{} -> {}:{}",
-                                    skill.level(),
-                                    action_ok,
-                                    prob_ok,
-                                    rc4_before_prob.0,
-                                    rc4_before_prob.1,
-                                    randomer.i,
-                                    randomer.j
-                                );
-                            }
-                            if !(level_ok && action_ok && prob_ok) {
-                                None
-                            } else {
-                                let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
-                                let allow_empty = skill.target_domain() == SkillTargetDomain::SelfOnly;
-                                if debug_this {
+                    // JS PlrBoss.bs() 只把 k1 中的 ActionSkill 加入 k4。
+                    // 对 COVID/Lazy 等 boss，k1 中的 SklCovidDefend/SklLazyDefend
+                    // 不是 ActionSkill，因此 k4 为空，不消耗任何 prob 字节。
+                    if !is_boss {
+                        let skill_keys = self.skills.skill.clone();
+                        for key in skill_keys {
+                            let maybe_targets = {
+                                let skill = self.skills.skill_by_id(key);
+                                let rc4_before_prob = (randomer.i, randomer.j);
+                                let action_ok = skill.has_action_impl();
+                                let level_ok = skill.level() > 0;
+                                let prob_ok = level_ok && action_ok && skill.prob(smart, (ptr, randomer, updates, storage));
+                                if debug_this && (level_ok || action_ok) {
                                     eprintln!(
-                                        "[action] skill={key} selected_len={} allow_empty={} rc4=({}, {})",
-                                        selected.len(),
-                                        allow_empty,
+                                        "[action] skill={key} lv={} action={} prob={} rc4 {}:{} -> {}:{}",
+                                        skill.level(),
+                                        action_ok,
+                                        prob_ok,
+                                        rc4_before_prob.0,
+                                        rc4_before_prob.1,
                                         randomer.i,
                                         randomer.j
                                     );
                                 }
-                                if selected.is_empty() && !allow_empty {
+                                if !(level_ok && action_ok && prob_ok) {
                                     None
                                 } else {
-                                    Some(selected)
+                                    let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
+                                    let allow_empty = skill.target_domain() == SkillTargetDomain::SelfOnly;
+                                    if debug_this {
+                                        eprintln!(
+                                            "[action] skill={key} selected_len={} allow_empty={} rc4=({}, {})",
+                                            selected.len(),
+                                            allow_empty,
+                                            randomer.i,
+                                            randomer.j
+                                        );
+                                    }
+                                    if selected.is_empty() && !allow_empty {
+                                        None
+                                    } else {
+                                        Some(selected)
+                                    }
                                 }
+                            };
+                            if let Some(selected) = maybe_targets {
+                                selected_skill_key = Some(key);
+                                selected_targets = selected;
+                                break;
                             }
-                        };
-                        if let Some(selected) = maybe_targets {
-                            selected_skill_key = Some(key);
-                            selected_targets = selected;
-                            break;
                         }
-                    }
+                    } // end if !is_boss
                     self.status.mp -= req_mp;
                     if debug_this {
                         eprintln!(
@@ -934,7 +933,12 @@ impl Player {
         self.name.clone()
     }
     #[inline]
-    pub fn display_name(&self) -> String { self.name.split(" ").next().unwrap_or_default().to_string() }
+    pub fn display_name(&self) -> String {
+        if self.player_type == PlayerType::Boss {
+            return boss_display_name(&self.name).to_string();
+        }
+        self.name.split(" ").next().unwrap_or_default().to_string()
+    }
     #[inline]
     pub fn clan_name(&self) -> String { self.team.clone().unwrap_or(self.name.clone()) }
     #[inline]

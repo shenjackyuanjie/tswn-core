@@ -999,7 +999,6 @@ seed:1129 R1-#9-3@!
     assert_trace_with_name_noise_ignored("sampled case-44", &actual_lines, &expected_lines);
 }
 
-
 /// 滚木?
 #[test]
 fn large_45() {

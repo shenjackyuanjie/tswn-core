@@ -140,7 +140,6 @@ seed:2026-03-07 22:54 #013595@!
     assert_trace_with_context("sampled case-48", &actual_lines, &expected_lines);
 }
 
-
 #[test]
 fn large_49() {
     const CASE: &str = r#"虚空托腮 IVHEWTNEA@TigerStar
