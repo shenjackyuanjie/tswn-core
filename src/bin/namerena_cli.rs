@@ -244,10 +244,10 @@ fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, 
             rounds += 1;
         }
         total += 1;
-        if let Some(ref winners) = runner.world.winner {
-            if winners.iter().any(|w| team0_roster.contains(w)) {
-                wins += 1;
-            }
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|w| team0_roster.contains(w))
+        {
+            wins += 1;
         }
         if (i + 1) % 100 == 0 {
             eprint!("\r  进度: {}/{n}  ", i + 1);

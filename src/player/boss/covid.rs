@@ -347,9 +347,10 @@ fn covid_infect(
     let boss_display = storage.get_player(&boss_id).map(|p| p.display_name()).unwrap_or_default();
 
     if let Some(inf) = target_plr.get_state::<CovidInfection>()
-        && (!inf.recovered || inf.mutation_set.contains(&mutation)) {
-            return;
-        }
+        && (!inf.recovered || inf.mutation_set.contains(&mutation))
+    {
+        return;
+    }
 
     if let Some(inf) = target_plr.get_state_mut::<CovidInfection>() {
         inf.recovered = false;

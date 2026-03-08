@@ -371,7 +371,7 @@ fn charm_state_redirects_target_group() {
             step: 2,
         });
 
-    let targets = runners::select_targets(actor, &runner.world, &runner.storage);
+    let targets = tick::select_targets(actor, &runner.world, &runner.storage);
     assert!(targets.enemy_alive.contains(&ally));
     assert!(!targets.enemy_alive.contains(&enemy));
 }

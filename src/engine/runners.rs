@@ -36,7 +36,7 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::error::runner::RunnerResult;
-use crate::player::{ActionTargets, Player, PlrId};
+use crate::player::{Player, PlrId};
 use crate::rc4::RC4;
 
 /// 一组玩家的集合类型，供内部初始化使用。
@@ -289,9 +289,4 @@ impl Runner {
     pub fn round_tick(&mut self, updates: &mut RunUpdates) {
         self.core.tick(&mut self.world, &self.storage, &mut self.randomer, updates);
     }
-}
-
-/// Wrapper to expose tick's select_targets through the `runners` module for tests
-pub fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
-    crate::engine::tick::select_targets(actor, world, storage)
 }
