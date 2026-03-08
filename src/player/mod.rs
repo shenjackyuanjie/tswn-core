@@ -214,7 +214,18 @@ pub struct PlayerStateStore {
 
 impl PlayerStateStore {
     #[inline]
-    pub fn set<T: StateTrait + 'static>(&mut self, state: T) { self.states.insert(state_tag::<T>(), Box::new(state)); }
+    pub fn set<T: StateTrait + 'static>(&mut self, state: T) {
+        let tag = state_tag::<T>();
+        let had = self.states.contains_key(&tag);
+        if had {
+            eprintln!("[STATE_SET] OVERWRITING existing state tag={:?} meta_type={}", tag, state.meta_type());
+        }
+        // Trace: log address when setting CovidInfection
+        if std::any::type_name::<T>().contains("CovidInfection") {
+            eprintln!("[STATE_TRACE] SET CovidInfection store_addr={:p} tag={:?}", self as *const _, tag);
+        }
+        self.states.insert(tag, Box::new(state));
+    }
 
     #[inline]
     pub fn get<T: StateTrait + 'static>(&self) -> Option<&T> { self.states.get(&state_tag::<T>())?.as_any().downcast_ref::<T>() }
@@ -225,13 +236,30 @@ impl PlayerStateStore {
     }
 
     #[inline]
-    pub fn has<T: StateTrait + 'static>(&self) -> bool { self.states.contains_key(&state_tag::<T>()) }
+    pub fn has<T: StateTrait + 'static>(&self) -> bool {
+        let result = self.states.contains_key(&state_tag::<T>());
+        if std::any::type_name::<T>().contains("CovidInfection") {
+            eprintln!("[STATE_TRACE] HAS CovidInfection store_addr={:p} result={} all_tags={:?}", self as *const _, result, self.states.keys().collect::<Vec<_>>());
+        }
+        result
+    }
 
     #[inline]
-    pub fn clear<T: StateTrait + 'static>(&mut self) { self.states.remove(&state_tag::<T>()); }
+    pub fn clear<T: StateTrait + 'static>(&mut self) {
+        let tag = state_tag::<T>();
+        if self.states.contains_key(&tag) {
+            eprintln!("[STATE_CLEAR] removing tag={:?}", tag);
+        }
+        self.states.remove(&tag);
+    }
 
     #[inline]
-    pub fn clear_tag(&mut self, tag: StateTag) { self.states.remove(&tag); }
+    pub fn clear_tag(&mut self, tag: StateTag) {
+        if self.states.contains_key(&tag) {
+            eprintln!("[STATE_CLEAR_TAG] removing tag={:?} meta_type={:?}", tag, self.states.get(&tag).map(|s| s.meta_type()));
+        }
+        self.states.remove(&tag);
+    }
 
     #[inline]
     pub fn meta_type(&self, tag: StateTag) -> Option<i32> { self.states.get(&tag).map(|state| state.meta_type()) }
@@ -240,6 +268,7 @@ impl PlayerStateStore {
         let mut to_remove = Vec::new();
         for (tag, state) in self.states.iter() {
             if state.meta_type() < 0 {
+                eprintln!("[CLEAR_NEG] removing tag={:?} meta_type={}", tag, state.meta_type());
                 to_remove.push(*tag);
             }
         }

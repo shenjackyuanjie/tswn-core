@@ -175,20 +175,32 @@ impl StateTrait for CovidBossState {
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
 }
 
-/// Infection state on a non-boss player.
+/// A single COVID infection entry (corresponds to one JS CovidState).
 #[derive(Clone, Debug)]
-pub struct CovidInfection {
+pub struct CovidEntry {
     pub boss_id: PlrId,
     pub mutation: i32,
     /// JS 'days' — incremented in act (v()), checked in postAction (at())
     pub days: i32,
 }
 
+/// Infection state on a non-boss player.
+/// In JS, a player can have multiple CovidState objects (one per different mutation).
+/// CovidMeta tracks a mutation set for immunity.
+/// We unify all of this into a single state with multiple entries.
+#[derive(Clone, Debug)]
+pub struct CovidInfection {
+    pub entries: Vec<CovidEntry>,
+    /// All mutations this player has ever been infected with (JS CovidMeta.c set).
+    pub mutation_set: Vec<i32>,
+}
+
 impl StateTrait for CovidInfection {
-    fn meta_type(&self) -> i32 { -1 }
+    // JS CovidMeta.gT() returns 0, NOT negative. Must be 0 so clear_negative_states() doesn't remove it.
+    fn meta_type(&self) -> i32 { 0 }
 
     // ── PreAction hook: ALWAYS hijacks the player's action ──
-    // This combines JS preAction (aN) + act (v)
+    // JS: ALL CovidState.aN() fire (mutation check), then LAST CovidState's aa()+v() fires.
     fn pre_action_priority(&self) -> i32 { 1000 }
     fn on_pre_action(
         &mut self,
@@ -199,22 +211,47 @@ impl StateTrait for CovidInfection {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> bool {
-        // === preAction (aN): mutation check ===
-        let pre_byte = randomer.next_u8();
-        if pre_byte < 64 {
-            self.mutation = randomer.r127() as i32;
+        // === Step 1: aN() for ALL entries (mutation check) ===
+        // In JS, each CovidState's aN() fires. It consumes 1 byte (possibly 2 if mutation changes).
+        let owner_name_pre = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
+        eprintln!("[COVID_PREACT] owner={} entries={} rc4=({},{})", owner_name_pre, self.entries.len(), randomer.i, randomer.j);
+        for (ei, entry) in self.entries.iter_mut().enumerate() {
+            let pre_byte = randomer.next_u8();
+            if pre_byte < 64 {
+                let new_mutation = randomer.r127() as i32;
+                eprintln!("[COVID_aN] owner={} entry={} mutation {} -> {} rc4=({},{})", owner_name_pre, ei, entry.mutation, new_mutation, randomer.i, randomer.j);
+                entry.mutation = new_mutation;
+                if !self.mutation_set.contains(&new_mutation) {
+                    self.mutation_set.push(new_mutation);
+                }
+            } else {
+                eprintln!("[COVID_aN] owner={} entry={} mutation={} no_change rc4=({},{})", owner_name_pre, ei, entry.mutation, randomer.i, randomer.j);
+            }
         }
+        eprintln!("[COVID_aN] owner={} mutation_set={:?}", owner_name_pre, self.mutation_set);
+
+        // === Step 2: aa() + v() for LAST entry only ===
+        let last_idx = self.entries.len() - 1;
+        let boss_id = self.entries[last_idx].boss_id;
+        let mutation = self.entries[last_idx].mutation;
+        let days = self.entries[last_idx].days;
 
         // === JS aa(): dummy target picking (results discarded but RC4 must be consumed) ===
-        // JS picks from engine.alives, skipping boss's allyGroup (boss group).
-        // From infected player perspective: skip = enemy_alive (boss side).
+        // JS gap() returns the boss player, so aa() picks from boss's enemies (all non-boss alive).
+        // Skip indices = boss's team members in all_alive.
         {
             let select_count: usize = if smart { 3 } else { 2 };
+            // Boss group = group containing boss_id
+            let boss_group_vec;
+            let boss_group: &[PlrId] = match storage.group_containing(boss_id) {
+                Some(g) => { boss_group_vec = g; boss_group_vec.as_slice() },
+                None => &[],
+            };
             let skip_indices: Vec<usize> = targets
                 .all_alive
                 .iter()
                 .enumerate()
-                .filter(|(_, id)| targets.enemy_alive.contains(id))
+                .filter(|(_, id)| boss_group.contains(id))
                 .map(|(i, _)| i)
                 .collect();
             let mut selected = Vec::new();
@@ -228,7 +265,6 @@ impl StateTrait for CovidInfection {
                 };
                 let Some(pick_idx) = picked else { break };
                 let target_id = targets.all_alive[pick_idx];
-                // valid_target always true for default Skill
                 if selected.contains(&target_id) {
                     dup += 1;
                     continue;
@@ -238,7 +274,6 @@ impl StateTrait for CovidInfection {
                     break;
                 }
             }
-            // Score each: non-smart = rFFFF (2 bytes), smart = 0 bytes
             if !smart {
                 for _ in &selected {
                     let _ = randomer.rFFFF();
@@ -250,14 +285,13 @@ impl StateTrait for CovidInfection {
         let owner_wisdom = storage.get_player(&owner).map(|p| p.get_status().wisdom).unwrap_or(0);
         let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
 
-        let condition = self.days == 0 || (randomer.next_u8() as i32) > owner_wisdom;
+        let condition = days == 0 || (randomer.next_u8() as i32) > owner_wisdom;
         eprintln!(
-            "[COVID_ACT] owner={} days={} condition={} pre_byte={} rc4=({},{})",
-            owner_name, self.days, condition, pre_byte, randomer.i, randomer.j
+            "[COVID_ACT] owner={} days={} condition={} mutation={} rc4=({},{})",
+            owner_name, days, condition, mutation, randomer.i, randomer.j
         );
         if condition {
-            self.days += (randomer.next_u8() & 3) as i32; // 1st increment (r3)
-            // Try spreading: 5 attempts
+            self.entries[last_idx].days += (randomer.next_u8() & 3) as i32;
             let all_alive = targets.all_alive.clone();
             eprintln!(
                 "[COVID_SPREAD] all_alive={:?} rc4=({},{})",
@@ -283,9 +317,9 @@ impl StateTrait for CovidInfection {
                     pick_idx,
                     cand_name,
                     candidate == owner,
-                    candidate == self.boss_id
+                    candidate == boss_id
                 );
-                if candidate == owner || candidate == self.boss_id {
+                if candidate == owner || candidate == boss_id {
                     continue;
                 }
                 let candidate_alive = storage.get_player(&candidate).map(|p| p.alive()).unwrap_or(false);
@@ -294,42 +328,46 @@ impl StateTrait for CovidInfection {
                 }
 
                 // Check if candidate already has this mutation (immune)
-                let already_has_mutation = storage
+                // JS: n = CovidMeta of candidate; if n != null: m = !n.c.w(0, mutation)
+                let candidate_set = storage
                     .get_player(&candidate)
                     .and_then(|p| p.get_state::<CovidInfection>())
-                    .map(|inf| inf.mutation == self.mutation)
-                    .unwrap_or(false);
+                    .map(|inf| inf.mutation_set.clone());
+                let already_has_mutation = candidate_set.as_ref().map(|s| s.contains(&mutation)).unwrap_or(false);
+                eprintln!(
+                    "[COVID_MUTCHECK] candidate={} mutation={} candidate_set={:?} already={}",
+                    cand_name, mutation, candidate_set, already_has_mutation
+                );
                 if already_has_mutation {
                     continue;
                 }
 
-                // Determine if same team as owner
                 let owner_group = storage.group_containing(owner);
                 let candidate_in_owner_group = owner_group.map(|g| g.contains(&candidate)).unwrap_or(false);
 
                 if candidate_in_owner_group {
-                    covid_contact_spread(owner, candidate, self.boss_id, self.mutation, randomer, updates, storage);
+                    covid_contact_spread(owner, candidate, boss_id, mutation, randomer, updates, storage);
                 } else {
-                    covid_attack_spread(owner, candidate, self.boss_id, self.mutation, randomer, updates, storage);
+                    covid_attack_spread(owner, candidate, boss_id, mutation, randomer, updates, storage);
                 }
-                return true; // spread succeeded → early return, skip ICU/home
+                return true;
             }
-            // Fall through: no spread target found
         }
 
-        // 2nd increment (always reaches here if condition was false OR no spread target)
-        self.days += (randomer.next_u8() & 3) as i32;
+        // 2nd increment
+        self.entries[last_idx].days += (randomer.next_u8() & 3) as i32;
 
-        if self.days > 2 {
-            updates.add(RunUpdate::new("[1]在重症监护室无法行动", self.boss_id, owner, 0));
+        if self.entries[last_idx].days > 2 {
+            updates.add(RunUpdate::new("[1]在重症监护室无法行动", boss_id, owner, 0));
         } else {
-            updates.add(RunUpdate::new("[1]在家中自我隔离", self.boss_id, owner, 0));
+            updates.add(RunUpdate::new("[1]在家中自我隔离", boss_id, owner, 0));
         }
 
-        true // always hijack
+        true
     }
 
     // ── PostAction hook: pneumonia + auto-cure ──
+    // JS: ALL CovidState.at() fire (pneumonia for each).
     fn post_action_priority(&self) -> i32 { 1000 }
     fn on_post_action(
         &mut self,
@@ -339,17 +377,27 @@ impl StateTrait for CovidInfection {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> bool {
-        // Pneumonia: only if alive and days > 1
-        if alive && self.days > 1 {
-            covid_pneumonia(owner, self.boss_id, self.mutation, randomer, updates, storage);
+        let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
+        eprintln!("[COVID_POSTACT] owner={} alive={} entries={} days={:?}", owner_name, alive, self.entries.len(), self.entries.iter().map(|e| e.days).collect::<Vec<_>>());
+        // Pneumonia for EACH entry
+        for entry in &self.entries {
+            if alive && entry.days > 1 {
+                covid_pneumonia(owner, entry.boss_id, entry.mutation, randomer, updates, storage);
+            }
         }
-        // Auto-cure: days > 6
-        if self.days > 6 {
-            // Remove infection state
+        // Auto-cure: remove entries with days > 6
+        let before = self.entries.len();
+        self.entries.retain(|e| e.days <= 6);
+        let after = self.entries.len();
+        if before != after {
+            eprintln!("[COVID_POSTACT] owner={} retained {}->{}", owner_name, before, after);
+        }
+        if self.entries.is_empty() {
+            eprintln!("[COVID_POSTACT] owner={} ALL ENTRIES REMOVED, returning true", owner_name);
             if let Some(plr) = storage.just_get_player_mut(owner) {
                 plr.update_states();
             }
-            return true; // request removal
+            return true; // request removal of entire state
         }
         false
     }
@@ -406,18 +454,42 @@ fn covid_infect(
     if target_plr.as_ptr() == boss_id {
         return;
     }
-    if target_plr.has_state::<CovidInfection>() {
-        return;
-    }
 
     let _target_name = target_plr.display_name();
     let boss_display = storage.get_player(&boss_id).map(|p| p.display_name()).unwrap_or_default();
 
-    target_plr.set_state(CovidInfection {
-        boss_id,
-        mutation,
-        days: 0,
-    });
+    // Check if target already has this specific mutation → skip (JS: l.b && !l.c.w(0, c))
+    let has_covid = target_plr.has_state::<CovidInfection>();
+    eprintln!("[COVID_INFECT_CHECK] target={} has_covid={}", _target_name, has_covid);
+    if let Some(inf) = target_plr.get_state::<CovidInfection>() {
+        eprintln!("[COVID_INFECT_CHECK] target={} existing set={:?} checking mutation={}", _target_name, inf.mutation_set, mutation);
+        if inf.mutation_set.contains(&mutation) {
+            return;
+        }
+    }
+
+    // Add entry to existing CovidInfection, or create new one
+    if let Some(inf) = target_plr.get_state_mut::<CovidInfection>() {
+        inf.entries.push(CovidEntry {
+            boss_id,
+            mutation,
+            days: 0,
+        });
+        if !inf.mutation_set.contains(&mutation) {
+            inf.mutation_set.push(mutation);
+        }
+        eprintln!("[COVID_INFECT] target={} ADDED entry mutation={} entries={} set={:?}", _target_name, mutation, inf.entries.len(), inf.mutation_set);
+    } else {
+        eprintln!("[COVID_INFECT] target={} NEW infection mutation={}", _target_name, mutation);
+        target_plr.set_state(CovidInfection {
+            entries: vec![CovidEntry {
+                boss_id,
+                mutation,
+                days: 0,
+            }],
+            mutation_set: vec![mutation],
+        });
+    }
     updates.add(RunUpdate::new(format!("[1]感染了{boss_display}"), boss_id, target, 0));
 
     // spsum adjustments: iterate ALL alive players (JS: caster.group.f.alives)
@@ -456,21 +528,12 @@ fn covid_contact_spread(
         0,
     ));
 
-    // Check if already infected
-    let already_infected = storage.get_player(&candidate).map(|p| p.has_state::<CovidInfection>()).unwrap_or(false);
-
-    if already_infected {
-        return;
-    }
-
-    // Resistance check: rc4.n() < (oq ? smart+192 : smart>>1)
-    // oq = candidate has CovidInfection already (it's a re-infection check)
-    // Since already_infected=false here, we use smart>>1
+    // JS fH: s = a.fr; s = oq(a) ? s + 192 : s >> 1; if (b.n() < s) → resisted
+    // oq = has shield. For now we only handle the no-shield case.
     let candidate_smart = storage.get_player(&candidate).map(|p| p.get_status().wisdom).unwrap_or(0);
     let threshold = candidate_smart >> 1;
     let roll = randomer.next_u8() as i32;
     if roll < threshold {
-        // Resisted
         updates.add(RunUpdate::new(format!("但{candidate_name}没被感染"), owner, candidate, 0));
         return;
     }
