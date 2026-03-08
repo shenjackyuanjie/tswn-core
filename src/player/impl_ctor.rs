@@ -256,6 +256,9 @@ impl Player {
     pub fn get_status(&self) -> &PlayerStatus { &self.status }
 
     #[inline]
+    pub fn player_type(&self) -> PlayerType { self.player_type }
+
+    #[inline]
     pub fn attr_sum(&self) -> i32 { self.status.attr_sum as i32 }
 
     #[inline]

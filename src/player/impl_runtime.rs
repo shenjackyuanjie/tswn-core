@@ -118,6 +118,32 @@ impl Player {
             return;
         }
 
+        // State-based pre-action hijack (COVID/Lazy infection replaces player's action)
+        let state_hijacked = self.state.on_pre_action_states(
+            self.as_ptr(), smart, randomer, updates, storage, targets,
+        );
+        if state_hijacked {
+            // State handled the entire action; skip to recovery + post_action.
+            let recover_threshold = self.status.wisdom + 64;
+            if (randomer.r127() as i32) < recover_threshold {
+                self.status.mp += 16;
+            }
+            if debug_this {
+                eprintln!(
+                    "[action] state_hijacked end actor={} mp={} rc4=({}, {})",
+                    self.id_name(), self.status.mp, randomer.i, randomer.j,
+                );
+            }
+            updates.add(RunUpdate::new_newline());
+            let ptr = self.as_ptr();
+            self.skills.post_action((ptr, randomer, updates, storage));
+            self.apply_post_action_states(randomer, updates, storage);
+            if debug_this {
+                eprintln!("[action] after state_hijacked post_action rc4=({}, {})", randomer.i, randomer.j);
+            }
+            return;
+        }
+
         let mut acted = false;
         let mut selected_skill_key: Option<usize> = pre_action_outcome.forced_skill;
         let mut selected_targets: Vec<PlrId> = Vec::new();
@@ -572,7 +598,7 @@ impl Player {
         target.attacked(atp, config.use_mag, self.as_ptr(), noop_on_damage, randomer, updates, storage);
     }
 
-    fn select_default_attack_target(
+    pub fn select_default_attack_target(
         &self,
         smart: bool,
         randomer: &mut RC4,
@@ -727,6 +753,11 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) {
+        // Boss 使用专属行动逻辑
+        if self.player_type == PlayerType::Boss {
+            crate::player::boss::boss_default_action(self, smart, randomer, updates, storage, targets);
+            return;
+        }
         let trace_fine = DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
         if trace_fine {
             eprintln!(
@@ -795,6 +826,24 @@ impl Player {
     /// 活着呢吧?
     #[inline]
     pub fn alive(&self) -> bool { self.status.alive() }
+
+    /// 直接扣血（不走完整攻防链）。
+    #[inline]
+    pub fn apply_raw_damage(&mut self, dmg: i32) {
+        self.status.hp -= dmg;
+        if self.status.hp < 0 {
+            self.status.hp = 0;
+        }
+    }
+
+    /// 直接回血（不超过 max_hp）。
+    #[inline]
+    pub fn heal(&mut self, amount: i32) {
+        self.status.hp += amount;
+        if self.status.hp > self.status.max_hp {
+            self.status.hp = self.status.max_hp;
+        }
+    }
 
     #[inline]
     pub fn revive_with_hp(&mut self, hp: i32) {
@@ -1264,6 +1313,8 @@ impl Player {
                 );
             }
         }
+        // State-based post_damage hooks (e.g. SklCovidDefend/SklLazyDefend on boss)
+        self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
         if self.status.hp <= 0 {
             self.on_die_impl(old_hp, caster, randomer, updates, storage, true);
             old_hp

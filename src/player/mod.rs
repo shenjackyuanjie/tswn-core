@@ -1,3 +1,4 @@
+pub mod boss;
 pub mod eval_name;
 pub mod skill;
 pub mod utils;
@@ -149,6 +150,37 @@ pub trait StateTrait: std::fmt::Debug + Any {
     fn post_defend_priority(&self) -> i32 { 1000 }
     /// post_defend 钩子，可直接修正伤害值。
     fn on_post_defend(&mut self, _owner: PlrId, _dmg: &mut i32, _caster: PlrId, _randomer: &mut RC4, _updates: &mut RunUpdates) {}
+
+    /// 状态在 post_damage 阶段的执行顺序（数字越小越先执行）。
+    fn post_damage_priority(&self) -> i32 { 1000 }
+    /// post_damage 钩子（boss被打后的回调，如COVID/Lazy感染攻击者）。
+    fn on_post_damage(
+        &mut self,
+        _owner: PlrId,
+        _dmg: i32,
+        _caster: PlrId,
+        _randomer: &mut RC4,
+        _updates: &mut RunUpdates,
+        _storage: &Arc<Storage>,
+    ) {
+    }
+
+    /// pre_action 状态钩子的优先级（数字越小越先执行）。
+    fn pre_action_priority(&self) -> i32 { 1000 }
+    /// pre_action 钩子: 可劫持整个行动。
+    /// 返回 true 表示该状态已接管本回合行动（player action 被跳过）。
+    #[allow(clippy::too_many_arguments)]
+    fn on_pre_action(
+        &mut self,
+        _owner: PlrId,
+        _smart: bool,
+        _randomer: &mut RC4,
+        _updates: &mut RunUpdates,
+        _storage: &Arc<Storage>,
+        _targets: &ActionTargets,
+    ) -> bool {
+        false
+    }
 
     /// 状态在死亡文案选择阶段的执行顺序（数字越小越先执行）。
     fn die_message_priority(&self) -> i32 { 1000 }
@@ -420,6 +452,53 @@ impl PlayerStateStore {
         }
     }
 
+    pub fn on_post_damage_states(
+        &mut self,
+        owner: PlrId,
+        dmg: i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.post_damage_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        for (tag, _) in ordered {
+            if let Some(state) = self.states.get_mut(&tag) {
+                state.on_post_damage(owner, dmg, caster, randomer, updates, storage);
+            }
+        }
+    }
+
+    pub fn on_pre_action_states(
+        &mut self,
+        owner: PlrId,
+        smart: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) -> bool {
+        let mut ordered = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, state.pre_action_priority()))
+            .collect::<Vec<(StateTag, i32)>>();
+        ordered.sort_unstable_by_key(|(_, priority)| *priority);
+        for (tag, _) in ordered {
+            if let Some(state) = self.states.get_mut(&tag) {
+                if state.on_pre_action(owner, smart, randomer, updates, storage, targets) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn die_message_override(&self) -> Option<&'static str> {
         let mut ordered = self
             .states
@@ -459,7 +538,7 @@ impl PlayerStateStore {
 /// ```
 pub type OnDamageFunc = fn(PlrId, PlrId, i32, &mut RC4, &mut RunUpdates, &Arc<Storage>);
 
-fn noop_on_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}
+pub fn noop_on_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}
 
 /// 通过玩家句柄从存储层取可变玩家引用。
 #[inline]
