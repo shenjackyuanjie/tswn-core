@@ -79,6 +79,13 @@ impl SkillTrait for CloneSkill {
 
         // JS PlrClone.aU: 克隆体八围直接拷贝 owner 当前八围。
         cloned.attr = owner_snapshot.attr;
+        // JS: 之后 weapon.cs() (postUpgrade) 再次叠加武器 attr_bonus，
+        // 导致武器属性加成被二次计入。
+        if let Some(ref ws) = cloned.weapon_state {
+            for i in 0..8 {
+                cloned.attr[i] = (cloned.attr[i] as i32 + ws.attr_bonus[i]) as u32;
+            }
+        }
         cloned.state = PlayerStateStore::default();
         cloned.set_state(MinionRuntimeState {
             owner: Some(args.0),
