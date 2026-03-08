@@ -120,9 +120,9 @@ pub fn boss_action_prob_count(name: &str) -> usize {
 /// - immunedx skills → r.c94 (94/127)
 /// - immuned skills → r.c75 (75/127)
 /// - default → r.c33 (33/127)
-/// Returns the raw-byte threshold for boss immunity checks.
-/// Dart: `c94` → `nextByte() < 240`, `c75` → `nextByte() < 192`, `c33` → `nextByte() < 84`.
-/// The caller must compare with `next_u8() as i32`, NOT `r127()`.
+///   Returns the raw-byte threshold for boss immunity checks.
+///   Dart: `c94` → `nextByte() < 240`, `c75` → `nextByte() < 192`, `c33` → `nextByte() < 84`.
+///   The caller must compare with `next_u8() as i32`, NOT `r127()`.
 pub fn boss_immune_threshold(boss_name: &str, key: &str) -> i32 {
     match boss_kind(boss_name) {
         BossKind::Saitama => match key {
@@ -337,7 +337,7 @@ impl StateTrait for CovidInfection {
                 .collect();
             let mut selected = Vec::new();
             let mut dup = 0usize;
-            let mut invalid = -(select_count as i32);
+            let invalid = -(select_count as i32);
             while dup <= select_count && invalid <= select_count as i32 {
                 let picked = if skip_indices.is_empty() {
                     randomer.pick(&targets.all_alive)
@@ -901,7 +901,7 @@ fn lazy_select_consume_bytes(boss_id: PlrId, smart: bool, randomer: &mut RC4, st
     let mut selected = Vec::new();
     let mut dup = 0usize;
     let n_i32 = n as i32;
-    let mut invalid = -n_i32;
+    let invalid = -n_i32;
 
     while (dup as i32) <= n_i32 && invalid <= n_i32 {
         let picked = if skip_indices.is_empty() {

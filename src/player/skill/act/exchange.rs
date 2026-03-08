@@ -1,7 +1,6 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,
-    skill::poison::PoisonState,
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
 
