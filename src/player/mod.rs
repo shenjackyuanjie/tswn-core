@@ -546,11 +546,10 @@ impl PlayerStateStore {
             .collect::<Vec<(StateTag, i32)>>();
         ordered.sort_unstable_by_key(|(_, priority)| *priority);
         for (tag, _) in ordered {
-            if let Some(state) = self.states.get_mut(&tag) {
-                if state.on_pre_action(owner, smart, randomer, updates, storage, targets) {
+            if let Some(state) = self.states.get_mut(&tag)
+                && state.on_pre_action(owner, smart, randomer, updates, storage, targets) {
                     return true;
                 }
-            }
         }
         false
     }

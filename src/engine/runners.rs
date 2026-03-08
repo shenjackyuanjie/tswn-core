@@ -500,8 +500,8 @@ impl EngineCore {
         };
         resolve_combat(actor, decision, &targets, &mut ctx, &self.hooks);
         run_update_end(storage, ctx.randomer, ctx.updates);
-        if debug_tick && (ctx.randomer.i != rc4_before.0 || ctx.randomer.j != rc4_before.1) {
-            if let Some(plr) = storage.get_player(&actor) {
+        if debug_tick && (ctx.randomer.i != rc4_before.0 || ctx.randomer.j != rc4_before.1)
+            && let Some(plr) = storage.get_player(&actor) {
                 let bytes = (ctx.randomer.i as i32 - rc4_before.0 as i32).rem_euclid(256);
                 eprintln!(
                     "[tick_end] actor={} rc4=({},{})->({},{}) bytes={}",
@@ -513,7 +513,6 @@ impl EngineCore {
                     bytes
                 );
             }
-        }
         self.sync_runtime_entities(world, storage);
         self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
         check_winner(world, storage);

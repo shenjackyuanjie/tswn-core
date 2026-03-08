@@ -727,8 +727,8 @@ fn covid_pneumonia(
         std::cmp::min(dmg >> 1, actual_dmg)
     };
     eprintln!("[COVID_PNEUMONIA] boss_hp_full={boss_hp_full} heal_amount={heal_amount}");
-    if heal_amount > 0 {
-        if let Some(boss_plr) = storage.just_get_player_mut(boss_id) {
+    if heal_amount > 0
+        && let Some(boss_plr) = storage.just_get_player_mut(boss_id) {
             let boss_display = boss_plr.display_name();
             boss_plr.heal(heal_amount);
             updates.add(RunUpdate::new(
@@ -738,7 +738,6 @@ fn covid_pneumonia(
                 0,
             ));
         }
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -879,11 +878,10 @@ fn lazy_boss_action(
     LAZY_ON_DAMAGE_CTX.set(None);
 
     // Reset atboost on hit
-    if actual_dmg > 0 {
-        if let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
+    if actual_dmg > 0
+        && let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
             boss_state.at_boost = 1.0;
         }
-    }
 }
 
 /// Simulate the bytes consumed by Dart's LazyState.select() when lazy preAction fires.
