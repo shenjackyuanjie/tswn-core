@@ -3,10 +3,7 @@ use std::sync::Arc;
 
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
-use crate::player::{
-    ActionTargets, Player, PlayerStatus, PlrId, StateTrait,
-    noop_on_damage,
-};
+use crate::player::{ActionTargets, Player, PlayerStatus, PlrId, StateTrait, noop_on_damage};
 use crate::rc4::RC4;
 
 // ─── Thread-local context for COVID on_damage callback ────────────────────
@@ -29,10 +26,7 @@ fn covid_spread_on_damage(
         return;
     };
     // JS tB: if target not already infected AND (rc4.n() & 63) + 1 < dmg → infect
-    let already_infected = storage
-        .get_player(&target)
-        .map(|p| p.has_state::<CovidInfection>())
-        .unwrap_or(false);
+    let already_infected = storage.get_player(&target).map(|p| p.has_state::<CovidInfection>()).unwrap_or(false);
     if already_infected {
         return;
     }
@@ -137,10 +131,15 @@ fn generic_boss_action(
     };
     let atp = player.get_at(false, randomer);
     updates.add(RunUpdate::new("[0]发起攻击", player.as_ptr(), target_id, 0));
-    storage
-        .just_get_player_mut(target_id)
-        .expect("generic_boss_action target")
-        .attacked(atp, false, player.as_ptr(), noop_on_damage, randomer, updates, storage);
+    storage.just_get_player_mut(target_id).expect("generic_boss_action target").attacked(
+        atp,
+        false,
+        player.as_ptr(),
+        noop_on_damage,
+        randomer,
+        updates,
+        storage,
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -194,7 +193,7 @@ impl StateTrait for CovidInfection {
     fn on_pre_action(
         &mut self,
         owner: PlrId,
-        _smart: bool,
+        smart: bool,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
@@ -206,23 +205,69 @@ impl StateTrait for CovidInfection {
             self.mutation = randomer.r127() as i32;
         }
 
+        // === JS aa(): dummy target picking (results discarded but RC4 must be consumed) ===
+        // JS picks from engine.alives, skipping boss's allyGroup (boss group).
+        // From infected player perspective: skip = enemy_alive (boss side).
+        {
+            let select_count: usize = if smart { 3 } else { 2 };
+            let skip_indices: Vec<usize> = targets
+                .all_alive
+                .iter()
+                .enumerate()
+                .filter(|(_, id)| targets.enemy_alive.contains(id))
+                .map(|(i, _)| i)
+                .collect();
+            let mut selected = Vec::new();
+            let mut dup = 0usize;
+            let mut invalid = -(select_count as i32);
+            while dup <= select_count && invalid <= select_count as i32 {
+                let picked = if skip_indices.is_empty() {
+                    randomer.pick(&targets.all_alive)
+                } else {
+                    randomer.pick_skip_range(&targets.all_alive, skip_indices.clone())
+                };
+                let Some(pick_idx) = picked else { break };
+                let target_id = targets.all_alive[pick_idx];
+                // valid_target always true for default Skill
+                if selected.contains(&target_id) {
+                    dup += 1;
+                    continue;
+                }
+                selected.push(target_id);
+                if selected.len() >= select_count {
+                    break;
+                }
+            }
+            // Score each: non-smart = rFFFF (2 bytes), smart = 0 bytes
+            if !smart {
+                for _ in &selected {
+                    let _ = randomer.rFFFF();
+                }
+            }
+        }
+
         // === act (v): spreading / ICU / home isolation ===
-        let owner_wisdom = storage
-            .get_player(&owner)
-            .map(|p| p.get_status().wisdom)
-            .unwrap_or(0);
+        let owner_wisdom = storage.get_player(&owner).map(|p| p.get_status().wisdom).unwrap_or(0);
         let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
 
         let condition = self.days == 0 || (randomer.next_u8() as i32) > owner_wisdom;
-        eprintln!("[COVID_ACT] owner={} days={} condition={} pre_byte={} rc4=({},{})", 
-            owner_name, self.days, condition, pre_byte, randomer.i, randomer.j);
+        eprintln!(
+            "[COVID_ACT] owner={} days={} condition={} pre_byte={} rc4=({},{})",
+            owner_name, self.days, condition, pre_byte, randomer.i, randomer.j
+        );
         if condition {
             self.days += (randomer.next_u8() & 3) as i32; // 1st increment (r3)
             // Try spreading: 5 attempts
             let all_alive = targets.all_alive.clone();
-            eprintln!("[COVID_SPREAD] all_alive={:?} rc4=({},{})", 
-                all_alive.iter().map(|id| storage.get_player(id).map(|p| p.display_name()).unwrap_or_default()).collect::<Vec<_>>(),
-                randomer.i, randomer.j);
+            eprintln!(
+                "[COVID_SPREAD] all_alive={:?} rc4=({},{})",
+                all_alive
+                    .iter()
+                    .map(|id| storage.get_player(id).map(|p| p.display_name()).unwrap_or_default())
+                    .collect::<Vec<_>>(),
+                randomer.i,
+                randomer.j
+            );
             for attempt in 0..5 {
                 if all_alive.is_empty() {
                     break;
@@ -232,15 +277,18 @@ impl StateTrait for CovidInfection {
                 };
                 let candidate = all_alive[pick_idx];
                 let cand_name = storage.get_player(&candidate).map(|p| p.display_name()).unwrap_or_default();
-                eprintln!("[COVID_PICK] attempt={} pick_idx={} candidate={} is_owner={} is_boss={}", 
-                    attempt, pick_idx, cand_name, candidate == owner, candidate == self.boss_id);
+                eprintln!(
+                    "[COVID_PICK] attempt={} pick_idx={} candidate={} is_owner={} is_boss={}",
+                    attempt,
+                    pick_idx,
+                    cand_name,
+                    candidate == owner,
+                    candidate == self.boss_id
+                );
                 if candidate == owner || candidate == self.boss_id {
                     continue;
                 }
-                let candidate_alive = storage
-                    .get_player(&candidate)
-                    .map(|p| p.alive())
-                    .unwrap_or(false);
+                let candidate_alive = storage.get_player(&candidate).map(|p| p.alive()).unwrap_or(false);
                 if !candidate_alive {
                     continue;
                 }
@@ -257,9 +305,7 @@ impl StateTrait for CovidInfection {
 
                 // Determine if same team as owner
                 let owner_group = storage.group_containing(owner);
-                let candidate_in_owner_group = owner_group
-                    .map(|g| g.contains(&candidate))
-                    .unwrap_or(false);
+                let candidate_in_owner_group = owner_group.map(|g| g.contains(&candidate)).unwrap_or(false);
 
                 if candidate_in_owner_group {
                     covid_contact_spread(owner, candidate, self.boss_id, self.mutation, randomer, updates, storage);
@@ -275,19 +321,9 @@ impl StateTrait for CovidInfection {
         self.days += (randomer.next_u8() & 3) as i32;
 
         if self.days > 2 {
-            updates.add(RunUpdate::new(
-                "[1]在重症监护室无法行动",
-                self.boss_id,
-                owner,
-                0,
-            ));
+            updates.add(RunUpdate::new("[1]在重症监护室无法行动", self.boss_id, owner, 0));
         } else {
-            updates.add(RunUpdate::new(
-                "[1]在家中自我隔离",
-                self.boss_id,
-                owner,
-                0,
-            ));
+            updates.add(RunUpdate::new("[1]在家中自我隔离", self.boss_id, owner, 0));
         }
 
         true // always hijack
@@ -336,20 +372,22 @@ fn covid_boss_action(
         return;
     };
     let boss_id = player.as_ptr();
-    let mutation = player
-        .get_state::<CovidBossState>()
-        .map(|s| s.mutation)
-        .unwrap_or(40);
+    let mutation = player.get_state::<CovidBossState>().map(|s| s.mutation).unwrap_or(40);
 
     let atp = player.get_at(false, randomer);
     updates.add(RunUpdate::new("[0]发起攻击", boss_id, target_id, 0));
 
     // Set thread-local context for on_damage callback
     COVID_ON_DAMAGE_CTX.set(Some((boss_id, mutation)));
-    storage
-        .just_get_player_mut(target_id)
-        .expect("covid_boss_action target")
-        .attacked(atp, false, boss_id, covid_spread_on_damage, randomer, updates, storage);
+    storage.just_get_player_mut(target_id).expect("covid_boss_action target").attacked(
+        atp,
+        false,
+        boss_id,
+        covid_spread_on_damage,
+        randomer,
+        updates,
+        storage,
+    );
     COVID_ON_DAMAGE_CTX.set(None);
 }
 
@@ -373,22 +411,14 @@ fn covid_infect(
     }
 
     let _target_name = target_plr.display_name();
-    let boss_display = storage
-        .get_player(&boss_id)
-        .map(|p| p.display_name())
-        .unwrap_or_default();
+    let boss_display = storage.get_player(&boss_id).map(|p| p.display_name()).unwrap_or_default();
 
     target_plr.set_state(CovidInfection {
         boss_id,
         mutation,
         days: 0,
     });
-    updates.add(RunUpdate::new(
-        format!("[1]感染了{boss_display}"),
-        boss_id,
-        target,
-        0,
-    ));
+    updates.add(RunUpdate::new(format!("[1]感染了{boss_display}"), boss_id, target, 0));
 
     // spsum adjustments: iterate ALL alive players (JS: caster.group.f.alives)
     // infected target += 2048, everyone else -= 256
@@ -427,10 +457,7 @@ fn covid_contact_spread(
     ));
 
     // Check if already infected
-    let already_infected = storage
-        .get_player(&candidate)
-        .map(|p| p.has_state::<CovidInfection>())
-        .unwrap_or(false);
+    let already_infected = storage.get_player(&candidate).map(|p| p.has_state::<CovidInfection>()).unwrap_or(false);
 
     if already_infected {
         return;
@@ -439,20 +466,12 @@ fn covid_contact_spread(
     // Resistance check: rc4.n() < (oq ? smart+192 : smart>>1)
     // oq = candidate has CovidInfection already (it's a re-infection check)
     // Since already_infected=false here, we use smart>>1
-    let candidate_smart = storage
-        .get_player(&candidate)
-        .map(|p| p.get_status().wisdom)
-        .unwrap_or(0);
+    let candidate_smart = storage.get_player(&candidate).map(|p| p.get_status().wisdom).unwrap_or(0);
     let threshold = candidate_smart >> 1;
     let roll = randomer.next_u8() as i32;
     if roll < threshold {
         // Resisted
-        updates.add(RunUpdate::new(
-            format!("但{candidate_name}没被感染"),
-            owner,
-            candidate,
-            0,
-        ));
+        updates.add(RunUpdate::new(format!("但{candidate_name}没被感染"), owner, candidate, 0));
         return;
     }
     covid_infect(boss_id, candidate, mutation, randomer, updates, storage);
@@ -481,10 +500,15 @@ fn covid_attack_spread(
 
     // Set thread-local for on_damage callback
     COVID_ON_DAMAGE_CTX.set(Some((boss_id, mutation)));
-    storage
-        .just_get_player_mut(candidate)
-        .expect("covid_attack_spread candidate")
-        .attacked(atp, false, owner, covid_spread_on_damage, randomer, updates, storage);
+    storage.just_get_player_mut(candidate).expect("covid_attack_spread candidate").attacked(
+        atp,
+        false,
+        owner,
+        covid_spread_on_damage,
+        randomer,
+        updates,
+        storage,
+    );
     COVID_ON_DAMAGE_CTX.set(None);
 }
 
@@ -507,20 +531,20 @@ fn covid_pneumonia(
     let owner_name = owner_plr.display_name();
 
     // JS: floor((getAt(target, true, rc4) + mutation*80) / getDf(target, true))
+    eprintln!(
+        "[COVID_PNEUMONIA] owner={} rc4=({},{}) before get_at",
+        owner_name, randomer.i, randomer.j
+    );
     let at_val = owner_plr.get_at(true, randomer);
     let df_val = owner_plr.get_df(true);
     let dmg = ((at_val + (mutation * 80) as f64) / df_val as f64).floor() as i32;
+    eprintln!("[COVID_PNEUMONIA] at_val={at_val} df_val={df_val} mutation={mutation} dmg={dmg}");
 
     if dmg <= 0 {
         return;
     }
 
-    updates.add(RunUpdate::new(
-        format!(" {owner_name}肺炎发作"),
-        boss_id,
-        owner,
-        0,
-    ));
+    updates.add(RunUpdate::new(format!(" {owner_name}肺炎发作"), boss_id, owner, 0));
 
     // Apply damage to target (raw, through `damage` for proper death handling)
     let _old_hp = {
@@ -604,9 +628,7 @@ impl StateTrait for LazyInfection {
 
     // ── UpdateState: speed /= 2 ──
     fn update_state_priority(&self) -> i32 { 1000 }
-    fn apply_update_state(&self, status: &mut PlayerStatus) {
-        status.speed /= 2;
-    }
+    fn apply_update_state(&self, status: &mut PlayerStatus) { status.speed /= 2; }
 
     // ── PreAction: 50% chance to skip turn ──
     fn pre_action_priority(&self) -> i32 { 1000 }
@@ -667,10 +689,7 @@ fn lazy_boss_action(
         let Some(target_id) = player.select_default_attack_target(smart, randomer, storage, targets) else {
             return;
         };
-        let target_infected = storage
-            .get_player(&target_id)
-            .map(|p| p.has_state::<LazyInfection>())
-            .unwrap_or(false);
+        let target_infected = storage.get_player(&target_id).map(|p| p.has_state::<LazyInfection>()).unwrap_or(false);
         if target_infected {
             // Boss is lazy this turn, atboost += 0.5
             if let Some(boss_state) = player.get_state_mut::<LazyBossState>() {
@@ -686,10 +705,15 @@ fn lazy_boss_action(
 
         // Set thread-local for on_damage callback
         LAZY_ON_DAMAGE_CTX.set(Some(boss_id));
-        let actual_dmg = storage
-            .just_get_player_mut(target_id)
-            .expect("lazy_boss_action target")
-            .attacked(atp, false, boss_id, lazy_attack_on_damage, randomer, updates, storage);
+        let actual_dmg = storage.just_get_player_mut(target_id).expect("lazy_boss_action target").attacked(
+            atp,
+            false,
+            boss_id,
+            lazy_attack_on_damage,
+            randomer,
+            updates,
+            storage,
+        );
         LAZY_ON_DAMAGE_CTX.set(None);
 
         // Reset atboost on hit
@@ -708,10 +732,15 @@ fn lazy_boss_action(
         updates.add(RunUpdate::new("[0]发起攻击", boss_id, target_id, 0));
 
         LAZY_ON_DAMAGE_CTX.set(Some(boss_id));
-        let actual_dmg = storage
-            .just_get_player_mut(target_id)
-            .expect("lazy_boss_action target")
-            .attacked(atp, false, boss_id, lazy_attack_on_damage, randomer, updates, storage);
+        let actual_dmg = storage.just_get_player_mut(target_id).expect("lazy_boss_action target").attacked(
+            atp,
+            false,
+            boss_id,
+            lazy_attack_on_damage,
+            randomer,
+            updates,
+            storage,
+        );
         LAZY_ON_DAMAGE_CTX.set(None);
 
         if actual_dmg > 0 {
@@ -723,13 +752,7 @@ fn lazy_boss_action(
 }
 
 /// Infect target with lazy
-fn lazy_infect(
-    boss_id: PlrId,
-    target: PlrId,
-    _randomer: &mut RC4,
-    updates: &mut RunUpdates,
-    storage: &Arc<Storage>,
-) {
+fn lazy_infect(boss_id: PlrId, target: PlrId, _randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
     let Some(target_plr) = storage.just_get_player_mut(target) else {
         return;
     };
@@ -740,18 +763,10 @@ fn lazy_infect(
         return;
     }
 
-    let boss_display = storage
-        .get_player(&boss_id)
-        .map(|p| p.display_name())
-        .unwrap_or_default();
+    let boss_display = storage.get_player(&boss_id).map(|p| p.display_name()).unwrap_or_default();
 
     target_plr.set_state(LazyInfection { boss_id });
-    updates.add(RunUpdate::new(
-        format!("[1]感染了{boss_display}"),
-        boss_id,
-        target,
-        0,
-    ));
+    updates.add(RunUpdate::new(format!("[1]感染了{boss_display}"), boss_id, target, 0));
 }
 
 /// be_lazy: display a lazy message
@@ -780,13 +795,7 @@ fn be_lazy(owner: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: 
 }
 
 /// PostAction damage: ceil(getAt(boss, true, rc4) / getDf(target, true))
-fn lazy_post_action_damage(
-    owner: PlrId,
-    boss_id: PlrId,
-    randomer: &mut RC4,
-    updates: &mut RunUpdates,
-    storage: &Arc<Storage>,
-) {
+fn lazy_post_action_damage(owner: PlrId, boss_id: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
     let Some(owner_plr) = storage.get_player(&owner) else {
         return;
     };
@@ -811,12 +820,7 @@ fn lazy_post_action_damage(
     let boss_display = storage.get_player(&boss_id).map(|p| p.display_name()).unwrap_or_default();
     let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
 
-    updates.add(RunUpdate::new(
-        format!(" {owner_name}{boss_display}发作"),
-        boss_id,
-        owner,
-        0,
-    ));
+    updates.add(RunUpdate::new(format!(" {owner_name}{boss_display}发作"), boss_id, owner, 0));
 
     let owner_plr = storage.just_get_player_mut(owner).expect("lazy_post_action owner");
     owner_plr.damage(dmg, boss_id, noop_on_damage, randomer, updates, storage);
@@ -840,14 +844,7 @@ impl StateTrait for SaitamaState {
 
     // ── PostDefend: dmg / 100 ──
     fn post_defend_priority(&self) -> i32 { i32::MAX } // JS: priority = Infinity
-    fn on_post_defend(
-        &mut self,
-        _owner: PlrId,
-        dmg: &mut i32,
-        _caster: PlrId,
-        _randomer: &mut RC4,
-        _updates: &mut RunUpdates,
-    ) {
+    fn on_post_defend(&mut self, _owner: PlrId, dmg: &mut i32, _caster: PlrId, _randomer: &mut RC4, _updates: &mut RunUpdates) {
         self.damages += *dmg;
         self.hitters += 1;
         *dmg /= 100;
@@ -878,19 +875,9 @@ fn saitama_boss_action(
     if damages / hunger_denominator.max(1) > 255 {
         // 觉得有点饿 → 离开了战场
         let boss_display = player.display_name();
-        updates.add(RunUpdate::new(
-            format!("{boss_display}觉得有点饿"),
-            boss_id,
-            boss_id,
-            0,
-        ));
+        updates.add(RunUpdate::new(format!("{boss_display}觉得有点饿"), boss_id, boss_id, 0));
         updates.add(RunUpdate::new_newline());
-        updates.add(RunUpdate::new(
-            format!(" {boss_display}离开了战场"),
-            boss_id,
-            boss_id,
-            0,
-        ));
+        updates.add(RunUpdate::new(format!(" {boss_display}离开了战场"), boss_id, boss_id, 0));
         // Self-death
         let old_hp = player.get_status().hp;
         player.apply_raw_damage(old_hp);
@@ -899,10 +886,7 @@ fn saitama_boss_action(
     }
 
     // Turn counter
-    let turns = player
-        .get_state::<SaitamaState>()
-        .map(|s| s.turns)
-        .unwrap_or(0);
+    let turns = player.get_state::<SaitamaState>().map(|s| s.turns).unwrap_or(0);
 
     if turns < 10 {
         // Increment and do nothing (no attack)
@@ -918,10 +902,15 @@ fn saitama_boss_action(
     };
     let atp = player.get_at(false, randomer) * 12.0;
     updates.add(RunUpdate::new("[0]发起攻击", boss_id, target_id, 0));
-    storage
-        .just_get_player_mut(target_id)
-        .expect("saitama attack target")
-        .attacked(atp, false, boss_id, noop_on_damage, randomer, updates, storage);
+    storage.just_get_player_mut(target_id).expect("saitama attack target").attacked(
+        atp,
+        false,
+        boss_id,
+        noop_on_damage,
+        randomer,
+        updates,
+        storage,
+    );
 
     // After attack: all allies spsum=0, self spsum=1700
     // For boss@!, boss is the only team member

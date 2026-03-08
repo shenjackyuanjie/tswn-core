@@ -119,9 +119,7 @@ impl Player {
         }
 
         // State-based pre-action hijack (COVID/Lazy infection replaces player's action)
-        let state_hijacked = self.state.on_pre_action_states(
-            self.as_ptr(), smart, randomer, updates, storage, targets,
-        );
+        let state_hijacked = self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
         if state_hijacked {
             // State handled the entire action; skip to recovery + post_action.
             let recover_threshold = self.status.wisdom + 64;
@@ -131,7 +129,10 @@ impl Player {
             if debug_this {
                 eprintln!(
                     "[action] state_hijacked end actor={} mp={} rc4=({}, {})",
-                    self.id_name(), self.status.mp, randomer.i, randomer.j,
+                    self.id_name(),
+                    self.status.mp,
+                    randomer.i,
+                    randomer.j,
                 );
             }
             updates.add(RunUpdate::new_newline());

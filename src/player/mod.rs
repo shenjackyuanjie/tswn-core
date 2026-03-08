@@ -538,7 +538,15 @@ impl PlayerStateStore {
 /// ```
 pub type OnDamageFunc = fn(PlrId, PlrId, i32, &mut RC4, &mut RunUpdates, &Arc<Storage>);
 
-pub fn noop_on_damage(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}
+pub fn noop_on_damage(
+    _caster: PlrId,
+    _target: PlrId,
+    _dmg: i32,
+    _r: &mut RC4,
+    _updates: &mut RunUpdates,
+    _storage: &Arc<Storage>,
+) {
+}
 
 /// 通过玩家句柄从存储层取可变玩家引用。
 #[inline]
