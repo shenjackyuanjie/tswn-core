@@ -149,7 +149,7 @@ impl Player {
         let mut selected_skill_key: Option<usize> = pre_action_outcome.forced_skill;
         let mut selected_targets: Vec<PlrId> = Vec::new();
         let selected_from_forced_pre_action = pre_action_outcome.forced_skill.is_some();
-        let forced_attack = if pre_action_outcome.clear_forced_action {
+        let forced_attack = if pre_action_outcome.clear_forced_action || pre_action_outcome.forced_skill.is_some() {
             None
         } else {
             self.state.resolve_action_mode(smart)
