@@ -179,7 +179,9 @@ fn plr_name(runner: &Runner, id: usize) -> String {
 fn fmt_update(runner: &Runner, update: &RunUpdate) -> String {
     let caster = plr_name(runner, update.caster);
     let target = plr_name(runner, update.target);
-    let targets = if update.targets.is_empty() {
+    let targets = if let Some(p) = update.param {
+        p.to_string()
+    } else if update.targets.is_empty() {
         update.score.to_string()
     } else {
         update.targets.iter().map(|id| plr_name(runner, *id)).collect::<Vec<String>>().join(",")
