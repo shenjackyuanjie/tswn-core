@@ -96,7 +96,12 @@ impl StateTrait for CovidInfection {
                 debug_println!(
                     debug_covid,
                     "[COVID_aN] owner={} entry={} mutation {} -> {} rc4=({},{})",
-                    owner_name_pre, ei, entry.mutation, new_mutation, randomer.i, randomer.j
+                    owner_name_pre,
+                    ei,
+                    entry.mutation,
+                    new_mutation,
+                    randomer.i,
+                    randomer.j
                 );
                 entry.mutation = new_mutation;
                 if !self.mutation_set.contains(&new_mutation) {
@@ -106,11 +111,20 @@ impl StateTrait for CovidInfection {
                 debug_println!(
                     debug_covid,
                     "[COVID_aN] owner={} entry={} mutation={} no_change rc4=({},{})",
-                    owner_name_pre, ei, entry.mutation, randomer.i, randomer.j
+                    owner_name_pre,
+                    ei,
+                    entry.mutation,
+                    randomer.i,
+                    randomer.j
                 );
             }
         }
-        debug_println!(debug_covid, "[COVID_aN] owner={} mutation_set={:?}", owner_name_pre, self.mutation_set);
+        debug_println!(
+            debug_covid,
+            "[COVID_aN] owner={} mutation_set={:?}",
+            owner_name_pre,
+            self.mutation_set
+        );
 
         let last_idx = self.entries.len() - 1;
         let boss_id = self.entries[last_idx].boss_id;
@@ -168,7 +182,12 @@ impl StateTrait for CovidInfection {
         debug_println!(
             debug_covid,
             "[COVID_ACT] owner={} days={} condition={} mutation={} rc4=({},{})",
-            owner_name, days, condition, mutation, randomer.i, randomer.j
+            owner_name,
+            days,
+            condition,
+            mutation,
+            randomer.i,
+            randomer.j
         );
         if condition {
             self.entries[last_idx].days += (randomer.next_u8() & 3) as i32;
@@ -217,7 +236,10 @@ impl StateTrait for CovidInfection {
                 debug_println!(
                     debug_covid,
                     "[COVID_MUTCHECK] candidate={} mutation={} candidate_set={:?} already={}",
-                    cand_name, mutation, candidate_set, already_has_mutation
+                    cand_name,
+                    mutation,
+                    candidate_set,
+                    already_has_mutation
                 );
                 if already_has_mutation {
                     continue;
@@ -490,12 +512,17 @@ fn covid_pneumonia(
     debug_println!(
         debug_covid,
         "[COVID_PNEUMONIA] owner={} rc4=({},{}) before get_at",
-        owner_name, randomer.i, randomer.j
+        owner_name,
+        randomer.i,
+        randomer.j
     );
     let at_val = owner_plr.get_at(true, randomer);
     let df_val = owner_plr.get_df(true);
     let dmg = ((at_val + (mutation * 80) as f64) / df_val as f64).ceil() as i32;
-    debug_println!(debug_covid, "[COVID_PNEUMONIA] at_val={at_val} df_val={df_val} mutation={mutation} dmg={dmg}");
+    debug_println!(
+        debug_covid,
+        "[COVID_PNEUMONIA] at_val={at_val} df_val={df_val} mutation={mutation} dmg={dmg}"
+    );
 
     if dmg <= 0 {
         return;
@@ -527,7 +554,10 @@ fn covid_pneumonia(
     } else {
         std::cmp::min(dmg >> 1, actual_dmg)
     };
-    debug_println!(debug_covid, "[COVID_PNEUMONIA] boss_hp_full={boss_hp_full} heal_amount={heal_amount}");
+    debug_println!(
+        debug_covid,
+        "[COVID_PNEUMONIA] boss_hp_full={boss_hp_full} heal_amount={heal_amount}"
+    );
     if heal_amount > 0
         && let Some(boss_plr) = storage.just_get_player_mut(boss_id)
     {

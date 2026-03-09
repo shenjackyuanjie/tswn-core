@@ -426,13 +426,20 @@ fn run_bench_winrate(raw: &str, n: usize) {
 /// - `modifier = "\u{0002}"` → Test1 靶（普通评分）
 /// - `modifier = "!"` → TestEx 靶（!评分）
 fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, n: usize) -> (usize, usize) {
-    let opp_count = target_count.max(3);
     let mut wins = 0usize;
     let mut total = 0usize;
+    let mut targe_id = tswn_core::engine::PROFILE_START;
 
     for i in 0..n {
-        let opponents: String = (0..opp_count).map(|j| format!("bench_{i}_{j}@{modifier}")).collect::<Vec<_>>().join("\n");
-        let bench_input = format!("{target_str}\n\n{opponents}");
+        let targets = (0..target_count)
+            .map(|_| {
+                let id = targe_id;
+                targe_id += 1;
+                format!("{}@{modifier}", id)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let bench_input = format!("{target_str}\n\n{targets}");
 
         let mut runner = match Runner::new_from_namerena_raw(bench_input) {
             Ok(r) => r,
@@ -458,10 +465,10 @@ fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, 
             wins += 1;
         }
         if (i + 1) % 100 == 0 {
-            eprint!("\r  进度: {}/{n}  ", i + 1);
+            print!("\r  进度: {}/{n}  ", i + 1);
         }
     }
-    eprintln!();
+    println!();
     (wins, total)
 }
 
@@ -479,6 +486,7 @@ fn run_bench_score(raw: &str, n: usize) {
     println!("=== 实力评分测试 ({n} 场) ===");
     println!("目标: {}", target_group.join(", "));
 
+    println!("info: {target_count}");
     eprint!("[普通评分] ");
     let (nw, nt) = run_bench_score_inner(&target_str, target_count, "\u{0002}", n);
     let ns = nw as f64 * 10_000.0 / nt.max(1) as f64;

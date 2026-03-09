@@ -35,6 +35,9 @@
 //!   解析原始名竞输入 → 构建玩家/世界 → 运行至结束。
 //!   这是外部使用引擎的主要入口点。
 
+/// namerena 评分机制里的第一个靶子
+pub const PROFILE_START: u32 = 33554431;
+
 // ── 数据层 ────────────────────────────────────────────────────────────────────
 pub mod storage;
 pub mod world_state;
@@ -51,14 +54,6 @@ pub mod update;
 
 // ── 对局入口 ──────────────────────────────────────────────────────────────────
 pub mod runners;
-
-// ── 公开 re-export（保持原有对外接口不变）────────────────────────────────────
-pub use engine_core::*;
-pub use hooks::*;
-pub use rules::*;
-pub use runners::*;
-pub use tick::*;
-pub use world_state::*;
 
 #[cfg(test)]
 mod test;
