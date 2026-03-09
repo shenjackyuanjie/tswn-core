@@ -71,6 +71,18 @@
 //! - 5: `╌`
 //! - 6: `╍`
 //!
+//! **注意**: `--icon` 功能不需要 `png_render` feature，可以直接使用：
+//!
+//! ```bash
+//! cargo run --bin namerena_cli -- --icon mario
+//! ```
+//!
+//! `--icon-b64` 和 `--icon-path` 功能需要 `png_render` feature：
+//!
+//! ```bash
+//! cargo run --bin namerena_cli --features png_render -- --icon-b64 mario
+//! ```
+//!
 //! ## 示例
 //!
 //! ```bash
@@ -100,7 +112,11 @@ use std::io::{self, Read};
 use tswn_core::Runner;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::player::icon::icon_from_name;
-use tswn_core::player::icon_render::{render_icon_b64_from_name, render_icon_png, render_icon_vec_from_name};
+
+use tswn_core::player::icon_render::render_icon_vec_from_name;
+
+#[cfg(feature = "png_render")]
+use tswn_core::player::icon_render::{render_icon_b64_from_name, render_icon_png};
 
 fn print_usage() {
     println!(
@@ -119,8 +135,8 @@ Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:
 
 其他:
   --icon <名字>...             输出玩家图标信息 (可指定多个名字)
-  --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL (可多个名字)
-  --icon-path <目录> <名字>... 将图标 PNG 保存到 <目录>/<名字>.png
+  --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL (可多个名字) [需要 png_render feature]
+  --icon-path <目录> <名字>... 将图标 PNG 保存到 <目录>/<名字>.png [需要 png_render feature]
   --help, -h                   显示此帮助信息
 
 示例:
@@ -157,42 +173,60 @@ fn read_raw_input() -> Result<String, String> {
             std::process::exit(0);
         }
         "--icon-b64" => {
-            if args.len() < 2 {
-                eprintln!("--icon-b64 需要至少一个名字参数");
-                std::process::exit(2);
-            }
-            for name in &args[1..] {
-                let b64 = render_icon_b64_from_name(name);
-                if args.len() == 2 {
-                    // 单个名字时直接输出 data URL
-                    println!("{b64}");
-                } else {
-                    println!("{name}: {b64}");
+            #[cfg(feature = "png_render")]
+            {
+                if args.len() < 2 {
+                    eprintln!("--icon-b64 需要至少一个名字参数");
+                    std::process::exit(2);
                 }
+                for name in &args[1..] {
+                    let b64 = render_icon_b64_from_name(name);
+                    if args.len() == 2 {
+                        // 单个名字时直接输出 data URL
+                        println!("{b64}");
+                    } else {
+                        println!("{name}: {b64}");
+                    }
+                }
+                std::process::exit(0);
             }
-            std::process::exit(0);
-        }
-        "--icon-path" => {
-            if args.len() < 3 {
-                eprintln!("--icon-path 需要: <目录> <名字> [更多名字...]");
-                std::process::exit(2);
-            }
-            let dir = std::path::Path::new(&args[1]);
-            if let Err(e) = fs::create_dir_all(dir) {
-                eprintln!("创建目录失败: {e}");
+            #[cfg(not(feature = "png_render"))]
+            {
+                eprintln!("错误: --icon-b64 需要 png_render feature");
+                eprintln!("请使用: cargo run --bin namerena_cli --features png_render -- --icon-b64 <名字>");
                 std::process::exit(1);
             }
-            for name in &args[2..] {
-                let path = dir.join(format!("{name}.png"));
-                let icon = icon_from_name(name);
-                let png = render_icon_png(&icon);
-                if let Err(e) = fs::write(&path, &png) {
-                    eprintln!("写入 {} 失败: {e}", path.display());
+        }
+        "--icon-path" => {
+            #[cfg(feature = "png_render")]
+            {
+                if args.len() < 3 {
+                    eprintln!("--icon-path 需要: <目录> <名字> [更多名字...]");
+                    std::process::exit(2);
+                }
+                let dir = std::path::Path::new(&args[1]);
+                if let Err(e) = fs::create_dir_all(dir) {
+                    eprintln!("创建目录失败: {e}");
                     std::process::exit(1);
                 }
-                println!("已保存: {}", path.display());
+                for name in &args[2..] {
+                    let path = dir.join(format!("{name}.png"));
+                    let icon = icon_from_name(name);
+                    let png = render_icon_png(&icon);
+                    if let Err(e) = fs::write(&path, &png) {
+                        eprintln!("写入 {} 失败: {e}", path.display());
+                        std::process::exit(1);
+                    }
+                    println!("已保存: {}", path.display());
+                }
+                std::process::exit(0);
             }
-            std::process::exit(0);
+            #[cfg(not(feature = "png_render"))]
+            {
+                eprintln!("错误: --icon-path 需要 png_render feature");
+                eprintln!("请使用: cargo run --bin namerena_cli --features png_render -- --icon-path <目录> <名字>");
+                std::process::exit(1);
+            }
         }
         "--raw" => {
             if args.len() < 2 {
@@ -238,9 +272,9 @@ fn print_icon(name: &str) {
 /// 将 RGBA 像素数据渲染到终端，使用 ANSI 块字符实现 1:1 渲染
 fn render_pixels_to_terminal(pixels: &[u8]) {
     // 绘制边框
-    let border_line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+    let border_line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
     println!("┌{}┐", border_line);
-    
+
     // 使用 ANSI 块字符渲染
     // 每个终端字符显示 2 个横向像素，补偿终端字符的宽高比
     for y in 0..16 {
@@ -248,7 +282,7 @@ fn render_pixels_to_terminal(pixels: &[u8]) {
         for x in 0..16 {
             // 获取像素颜色
             let pixel = get_pixel(pixels, x, y);
-            
+
             if let Some((r, g, b)) = pixel {
                 // 使用前景色和块字符
                 print!("\x1b[38;2;{r};{g};{b}m██\x1b[0m");
@@ -258,7 +292,7 @@ fn render_pixels_to_terminal(pixels: &[u8]) {
         }
         println!("│");
     }
-    
+
     println!("└{}┘", border_line);
 }
 

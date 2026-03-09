@@ -7,4 +7,11 @@ edition = "2024"
 [dependencies]
 # 用于 fast hashmap
 foldhash = "0.2.0"
+png = { version = "0.18", optional = true }
+
+[dev-dependencies]
 png = "0.18"
+
+[features]
+default = ["png_render"]
+png_render = ["dep:png"]
