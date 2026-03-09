@@ -62,6 +62,10 @@ impl EngineCore {
     }
 
     pub fn sync_runtime_entities(&self, world: &mut WorldState, storage: &Arc<Storage>) {
+        if !storage.needs_sync() {
+            return;
+        }
+
         #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("pre_sync", world, storage);
 
@@ -131,6 +135,7 @@ impl EngineCore {
 
         storage.sync_groups(&world.groups);
         storage.sync_alive_groups(&world.alives_by_group(storage));
+        storage.clear_sync_flag();
         #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("post_sync", world, storage);
     }

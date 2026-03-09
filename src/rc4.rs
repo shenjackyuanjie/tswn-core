@@ -30,8 +30,8 @@ pub const VAL_LEN: usize = 256;
 pub struct RC4 {
     pub i: u32,
     pub j: u32,
-    /// [u8, 256]
-    pub main_val: Vec<u8>,
+    /// [u8; 256]
+    pub main_val: [u8; 256],
 }
 
 impl Default for RC4 {
@@ -39,7 +39,7 @@ impl Default for RC4 {
         RC4 {
             i: 0,
             j: 0,
-            main_val: VAL_INIT.to_vec(),
+            main_val: VAL_INIT,
         }
     }
 }
@@ -96,7 +96,7 @@ impl RC4 {
         RC4 {
             i: 0,
             j: 0,
-            main_val: val.to_vec(),
+            main_val: val,
         }
     }
 

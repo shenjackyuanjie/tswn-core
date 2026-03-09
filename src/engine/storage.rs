@@ -26,7 +26,7 @@
 //! 调用方需确保在单一 tick 内不会有两个代码路径同时可变地引用同一玩家。
 
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 
 use crate::player::skill::Skill;
 use crate::player::{Player, PlrId};
@@ -77,6 +77,8 @@ pub struct Storage {
     death_queue: Vec<PlrId>,
     /// 技能/触发器复活已有玩家后，延迟到 tick 同步回 WorldState 的复活队列。
     pending_revivals: Vec<PlrId>,
+    /// 脏标记：当有死亡/移除/复活/召唤入队时置 true，sync_runtime_entities 据此跳过无用同步。
+    needs_sync: AtomicBool,
     /// 玩家 ID 自增计数器。
     player_id_counter: AtomicU64,
 }
@@ -93,6 +95,7 @@ impl Storage {
             pending_remove_players: Vec::new(),
             death_queue: Vec::new(),
             pending_revivals: Vec::new(),
+            needs_sync: AtomicBool::new(false),
             player_id_counter: AtomicU64::new(0),
         }
     }
@@ -108,10 +111,23 @@ impl Storage {
         self.pending_remove_players.clear();
         self.death_queue.clear();
         self.pending_revivals.clear();
+        self.needs_sync.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// 生成一个新的玩家 ID。
     pub fn new_plr_id(&self) -> u64 { self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
+
+    /// 标记需要同步（有死亡/移除/复活/召唤入队时调用）。
+    #[inline]
+    fn mark_dirty(&self) { self.needs_sync.store(true, std::sync::atomic::Ordering::Relaxed); }
+
+    /// 检查是否需要同步。
+    #[inline]
+    pub fn needs_sync(&self) -> bool { self.needs_sync.load(std::sync::atomic::Ordering::Relaxed) }
+
+    /// 清除同步标记（sync_runtime_entities 完成后调用）。
+    #[inline]
+    pub fn clear_sync_flag(&self) { self.needs_sync.store(false, std::sync::atomic::Ordering::Relaxed); }
 
     pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) { self.groups.insert(id, plrs); }
 
@@ -253,6 +269,7 @@ impl Storage {
             let mut_slf = self as *const Storage as *mut Storage;
             (*mut_slf).pending_spawns.push(PendingSpawn { owner, player });
         }
+        self.mark_dirty();
     }
 
     pub fn take_pending_spawns(&self) -> Vec<PendingSpawn> {
@@ -297,6 +314,7 @@ impl Storage {
                 (*mut_slf).pending_remove_players.push(ptr);
             }
         }
+        self.mark_dirty();
     }
 
     pub fn take_pending_remove_players(&self) -> Vec<PlrId> {
@@ -314,6 +332,7 @@ impl Storage {
                 (*mut_slf).death_queue.push(ptr);
             }
         }
+        self.mark_dirty();
     }
 
     /// 取出并清空死亡队列。
@@ -332,6 +351,7 @@ impl Storage {
                 (*mut_slf).pending_revivals.push(ptr);
             }
         }
+        self.mark_dirty();
     }
 
     /// 取出并清空复活队列。

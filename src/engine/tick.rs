@@ -25,7 +25,6 @@ use crate::engine::update::RunUpdates;
 use crate::engine::{hooks::HookPipeline, rules::RuleRegistry, world_state::WorldState};
 use crate::player::{ActionTargets, PlrId, action_targets::PlrVec};
 use crate::rc4::RC4;
-use foldhash::HashSet as FoldHashSet;
 
 /// Tick 行动决策枚举，由 [`choose_action`] 返回。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,9 +75,7 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
 
     let ally_alive: PlrVec = world.team_alive(effective_team).map(|s| PlrVec::from_slice(s)).unwrap_or_default();
     let ally_all = team_roster.clone();
-    // O(n) set lookup: 避免对每个 roster 成员做 O(alive) 的线性扫描
-    let ally_alive_set: FoldHashSet<PlrId> = ally_alive.iter().copied().collect();
-    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !ally_alive_set.contains(id)).collect();
+    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !ally_alive.contains(id)).collect();
     let all_alive: PlrVec = world.teams.iter().flat_map(|t| t.alive.iter().copied()).collect();
     let enemy_alive: PlrVec = world
         .teams
@@ -123,14 +120,19 @@ pub fn resolve_combat(
 }
 
 pub fn check_winner(world: &mut WorldState, _storage: &Arc<Storage>) {
-    let mut alive_team_indices = world
-        .teams
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, team)| (!team.alive.is_empty()).then_some(idx))
-        .collect::<Vec<usize>>();
-    world.winner = if alive_team_indices.len() == 1 {
-        world.winner_roster(alive_team_indices.remove(0))
+    let mut alive_count = 0u32;
+    let mut last_alive_idx = 0usize;
+    for (idx, team) in world.teams.iter().enumerate() {
+        if !team.alive.is_empty() {
+            alive_count += 1;
+            last_alive_idx = idx;
+            if alive_count > 1 {
+                break;
+            }
+        }
+    }
+    world.winner = if alive_count == 1 {
+        world.winner_roster(last_alive_idx)
     } else {
         None
     };
