@@ -77,13 +77,11 @@ impl Player {
         if !self.status.alive() {
             return;
         }
-        // Fine-grained RC4 trace between dodge 200 and 201
-        let trace_fine = DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
+        let trace_fine = cfg!(not(feature = "no_debug")) && DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
         if trace_fine {
             eprintln!("[step_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
         }
-        let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
-        let debug_this = debug_target.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
+        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
         let move_before = self.status.move_point;
         let mut stp = self.status.speed * randomer.r3() as i32;
         if trace_fine {
@@ -130,13 +128,12 @@ impl Player {
     }
 
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
-        let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
-        let debug_this = debug_target.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
-        let trace_fine = DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
+        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
+        let trace_fine = cfg!(not(feature = "no_debug")) && DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
         if trace_fine {
             eprintln!("[action_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
         }
-        if std::env::var_os("TSWN_TRACE_RC4").is_some() {
+        if cfg!(not(feature = "no_debug")) && crate::debug::trace_rc4() {
             eprintln!("[RC4_ACTION] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
         }
         let smart_roll = randomer.r63() as i32;
@@ -387,7 +384,7 @@ impl Player {
                 skip_indices.push(idx);
             }
         }
-        if std::env::var_os("TSWN_DEBUG_PICK").is_some() {
+        if cfg!(not(feature = "no_debug")) && crate::debug::debug_pick() {
             eprintln!(
                 "[pick_enemy] all_alive_len={} skip={:?} rc4=({},{})",
                 targets.all_alive.len(),
@@ -459,10 +456,7 @@ impl Player {
             return Vec::new();
         }
 
-        let debug_this = std::env::var("TSWN_DEBUG_ACTION")
-            .ok()
-            .map(|name| name == self.id_name())
-            .unwrap_or(false);
+        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
         let format_targets = |ids: &[PlrId]| -> Vec<String> {
             ids.iter()
                 .map(|id| storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
@@ -681,11 +675,7 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Option<PlrId> {
-        let debug_this = std::env::var("TSWN_DEBUG_ACTION")
-            .ok()
-            .as_deref()
-            .map(|name| name == self.id_name().as_str())
-            .unwrap_or(false);
+        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
         if debug_this {
             let enemy_names = targets
                 .enemy_alive
@@ -746,33 +736,10 @@ impl Player {
                                     hp as f64
                                 }
                             };
-                            let alive_group_count = {
-                                let mut group_heads = Vec::new();
-                                for id in storage.all_player_ids() {
-                                    let alive = storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false);
-                                    if !alive {
-                                        continue;
-                                    }
-                                    let Some(group) = storage.group_containing(id) else {
-                                        continue;
-                                    };
-                                    let Some(head) = group.first() else {
-                                        continue;
-                                    };
-                                    if !group_heads.contains(head) {
-                                        group_heads.push(*head);
-                                    }
-                                }
-                                group_heads.len()
-                            };
+                            let alive_group_count = storage.alive_group_count();
                             let target_alive_group_len = storage
-                                .group_containing(target_id)
-                                .map(|group| {
-                                    group
-                                        .iter()
-                                        .filter(|id| storage.get_player(id).map(|plr| plr.alive()).unwrap_or(false))
-                                        .count()
-                                })
+                                .alive_group_at_team_of(target_id)
+                                .map(|alive_group| alive_group.len())
                                 .unwrap_or(0);
                             let status = target.get_status();
                             if alive_group_count > 2 {
@@ -832,7 +799,7 @@ impl Player {
             crate::player::boss::boss_default_action(self, smart, randomer, updates, storage, targets);
             return;
         }
-        let trace_fine = DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
+        let trace_fine = cfg!(not(feature = "no_debug")) && DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
         if trace_fine {
             eprintln!(
                 "[default_attack_begin] plr={} rc4=({}, {})",
@@ -1127,7 +1094,7 @@ impl Player {
     }
 
     pub fn dodge(al_a: i32, al_d: i32, randomer: &mut RC4) -> bool {
-        if std::env::var_os("TSWN_DEBUG_DODGE_ALL").is_some() {
+        if cfg!(not(feature = "no_debug")) && crate::debug::debug_dodge_all() {
             use std::sync::atomic::{AtomicU32, Ordering};
             static DODGE_COUNT: AtomicU32 = AtomicU32::new(0);
             let count = DODGE_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -1192,8 +1159,7 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
-        let debug_this = debug_action.as_deref().map(|name| name == self.id_name()).unwrap_or(false);
+        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
         dmg = self
             .skills
             .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage));
@@ -1226,14 +1192,16 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
-        let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-        let target_name = self.id_name();
-        let debug_this = debug_target
-            .as_deref()
-            .map(|name| name == caster_name || name == target_name)
-            .unwrap_or(false);
+        #[cfg(not(feature = "no_debug"))]
+        let debug_this = {
+            let cn = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
+            crate::debug::debug_action().as_deref().map(|n| n == cn || n == self.id_name()).unwrap_or(false)
+        };
+        #[cfg(feature = "no_debug")]
+        let debug_this = false;
         if debug_this {
+            let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
+            let target_name = self.id_name();
             eprintln!(
                 "[damage_flow] attacked start caster={} target={} is_mag={} atp_before_pre={} rc4=({}, {})",
                 caster_name, target_name, is_mag, atp, randomer.i, randomer.j,
@@ -1241,6 +1209,8 @@ impl Player {
         }
         atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
         if debug_this {
+            let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
+            let target_name = self.id_name();
             eprintln!(
                 "[damage_flow] after_pre_defend caster={} target={} atp_after_pre={} rc4=({}, {})",
                 caster_name, target_name, atp, randomer.i, randomer.j,
@@ -1263,7 +1233,7 @@ impl Player {
                 )
             }
         };
-        if std::env::var_os("TSWN_DEBUG_DODGE").is_some() {
+        if cfg!(not(feature = "no_debug")) && crate::debug::debug_dodge() {
             eprintln!(
                 "[dodge] target={} caster={} active={} is_mag={} accure={} dodgeval={} atp={} rc4=({}, {})",
                 self.id_name(),
@@ -1296,16 +1266,18 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        let debug_target = std::env::var("TSWN_DEBUG_ACTION").ok();
-        let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-        let target_name = self.id_name();
-        let debug_this = debug_target
-            .as_deref()
-            .map(|name| name == caster_name || name == target_name)
-            .unwrap_or(false);
+        #[cfg(not(feature = "no_debug"))]
+        let debug_this = {
+            let cn = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
+            crate::debug::debug_action().as_deref().map(|n| n == cn || n == self.id_name()).unwrap_or(false)
+        };
+        #[cfg(feature = "no_debug")]
+        let debug_this = false;
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
         if debug_this {
+            let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
+            let target_name = self.id_name();
             eprintln!(
                 "[damage_flow] before_post_defend caster={} target={} atp={} dfp={} raw_div={} dmg_before_post={} rc4=({}, {})",
                 caster_name,
@@ -1320,6 +1292,8 @@ impl Player {
         }
         dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
         if debug_this {
+            let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
+            let target_name = self.id_name();
             eprintln!(
                 "[damage_flow] after_post_defend caster={} target={} dmg_after_post={} rc4=({}, {})",
                 caster_name, target_name, dmg, randomer.i, randomer.j,
@@ -1381,8 +1355,7 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
-        let debug_this = debug_action.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
+        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
         let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
         for skill_idx in post_damaged_indices {
             let ptr = self.as_ptr();
@@ -1443,8 +1416,7 @@ impl Player {
             return;
         }
 
-        let debug_die = std::env::var("TSWN_DEBUG_DIE").ok();
-        let debug_this = debug_die.as_deref().map(|name| name == self.id_name().as_str()).unwrap_or(false);
+        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_die().as_deref().map(|n| n == self.id_name().as_str()).unwrap_or(false);
         if debug_this {
             eprintln!(
                 "[on_die] start actor={} caster={} rc4=({}, {}) hp={} old_hp={}",

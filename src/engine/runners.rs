@@ -188,7 +188,7 @@ impl Runner {
         let mut world = WorldState::new(sorted_groups);
         world.players = sorted_for_move_point;
         storage.sync_groups(&world.groups);
-        storage.sync_alive_groups(&world.alives_by_group(&storage));
+        storage.sync_alive_groups_owned(world.alives_by_group(&storage));
 
         // 对初始即为死亡状态的玩家（如 Seed 类型）补充 record_death，
         // 保证 sync_runtime_entities 快速路径不会遗漏它们，第一次 tick 就能正常清除。
@@ -294,6 +294,35 @@ impl Runner {
     pub fn all_plr_len(&self) -> usize { self.world.all_plr_len() }
 
     pub fn main_round(&mut self) -> RunUpdates { self.core.main_round(&mut self.world, &self.storage, &mut self.randomer) }
+
+    /// 直接跑完整场战斗，不收集中间 RunUpdates（用于 bench/winrate 高速路径）。
+    ///
+    /// 返回值：是否正常结束（有胜者或达到 idle 上限）。
+    pub fn run_to_completion(&mut self) -> bool {
+        let mut updates = RunUpdates::new();
+        let mut idle = 0usize;
+        let mut rounds = 0usize;
+        while !self.world.have_winner() && idle < 32 && rounds < 100_000 {
+            updates.updates.clear();
+            updates.on_update_end.clear();
+            let max_ticks = self.world.all_plr_len().max(1) * 4;
+            let mut ticks = 0;
+            while ticks < max_ticks
+                && !self.world.have_winner()
+                && updates.updates.is_empty()
+            {
+                self.core.tick(&mut self.world, &self.storage, &mut self.randomer, &mut updates);
+                ticks += 1;
+            }
+            if updates.updates.is_empty() {
+                idle += 1;
+            } else {
+                idle = 0;
+            }
+            rounds += 1;
+        }
+        self.world.have_winner()
+    }
 
     pub fn round_tick(&mut self, updates: &mut RunUpdates) {
         self.core.tick(&mut self.world, &self.storage, &mut self.randomer, updates);

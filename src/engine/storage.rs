@@ -175,6 +175,14 @@ impl Storage {
         }
     }
 
+    /// 接收 owned 数据直接存入，避免再次 clone。
+    pub fn sync_alive_groups_owned(&self, groups: Vec<Vec<PlrId>>) {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            (*mut_slf).alive_groups = groups;
+        }
+    }
+
     /// 获取技能。
     pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
 

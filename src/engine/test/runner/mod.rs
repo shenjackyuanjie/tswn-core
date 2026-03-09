@@ -34,7 +34,7 @@ fn format_update_message(runner: &runners::Runner, update: &RunUpdate) -> String
         .get_player(&update.target)
         .map(|plr| plr.display_name())
         .unwrap_or_else(|| format!("#{}", update.target));
-    let mut msg = update.message.clone();
+    let mut msg = update.message.to_string();
     msg = msg.replace("[0]", &caster);
     msg = msg.replace("[1]", &target);
     let param = if let Some(p) = update.param {

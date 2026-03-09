@@ -25,6 +25,7 @@
 //! ```
 
 use crate::player::PlrId;
+use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 全局自增 ID，用于为每批 [`RunUpdates`] 分配唯一标识。
@@ -60,7 +61,7 @@ pub struct RunUpdate {
     /// 动画延迟 1（毫秒，JS 端使用）。
     pub delay1: i32,
     /// 消息模板字符串，可包含 `[0]`/`[1]`/`[2]` 占位符。
-    pub message: String,
+    pub message: Cow<'static, str>,
     /// 施法者 PlrId（替换 `[0]`）。
     pub caster: PlrId,
     /// 目标 PlrId（替换 `[1]`）。
@@ -79,7 +80,7 @@ impl RunUpdate {
             param: None,
             delay0: 0,
             delay1: 0,
-            message: "\n".to_string(),
+            message: Cow::Borrowed("\n"),
             caster: 0,
             target: 0,
             targets: smallvec::SmallVec::new(),
@@ -96,7 +97,7 @@ impl RunUpdate {
             param: None,
             delay0: 0,
             delay1: 0,
-            message: "\n".to_string(),
+            message: Cow::Borrowed("\n"),
             caster: 0,
             target: 0,
             targets: smallvec::SmallVec::new(),
@@ -111,13 +112,13 @@ impl RunUpdate {
     /// - `caster`：施法者 ID（替换 `[0]`）。
     /// - `target`：目标 ID（替换 `[1]`）。
     /// - `score`：UI 显示分值。
-    pub fn new(msg: impl ToString, caster: PlrId, target: PlrId, score: u32) -> Self {
+    pub fn new(msg: impl Into<Cow<'static, str>>, caster: PlrId, target: PlrId, score: u32) -> Self {
         RunUpdate {
             score,
             param: None,
             delay0: 0,
             delay1: 0,
-            message: msg.to_string(),
+            message: msg.into(),
             caster,
             target,
             targets: smallvec::SmallVec::new(),
@@ -156,7 +157,7 @@ impl RunUpdate {
     /// - `[1]` → `target` ID 的字符串形式
     /// - `[2]` → `param`（若有）的字符串，否则为 `targets` 列表的逗号拼接
     pub fn msg(&self) -> String {
-        let mut msg = self.message.clone();
+        let mut msg = self.message.to_string();
         msg = msg.replace("[0]", &self.caster.to_string());
         msg = msg.replace("[1]", &self.target.to_string());
         let param_str = if let Some(p) = self.param {

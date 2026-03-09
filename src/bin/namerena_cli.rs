@@ -136,6 +136,9 @@ Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:
 胜率测试（简化版）:
   --win_rate <team1> <team2> [N]  两队对战，运行 N 场 (默认 1000)，输出胜率
 
+性能测试:
+  --perf <team1> <team2> [N]      性能基准测试，运行 N 场 (默认 10000)，输出 init/fight 耗时分解
+
 其他:
   --icon <名字>...             输出玩家图标信息 (可指定多个名字)
   --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL (可多个名字) [需要 png_render feature]
@@ -357,7 +360,7 @@ fn fmt_update(runner: &Runner, update: &RunUpdate) -> String {
         update.targets.iter().map(|id| plr_name(runner, *id)).collect::<Vec<String>>().join(",")
     };
 
-    let mut msg = update.message.clone();
+    let mut msg = update.message.to_string();
     msg = msg.replace("[0]", &caster);
     msg = msg.replace("[1]", &target);
     msg = msg.replace("[2]", &targets);
@@ -369,6 +372,79 @@ fn fmt_update(runner: &Runner, update: &RunUpdate) -> String {
 }
 
 // ─────────────────────────── Benchmark ───────────────────────────────────────
+
+/// 性能测试：输出详细的 init/fight/total 耗时分解。
+fn run_perf(team1: &str, team2: &str, n: usize) {
+    let raw = format!("{team1}\n\n{team2}");
+    println!("=== 性能测试 ({n} 场) ===");
+    println!("team1: {team1}  team2: {team2}");
+
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut init_nanos = 0u128;
+    let mut fight_nanos = 0u128;
+
+    // warmup
+    for i in 0..10 {
+        let bench_input = format!("{raw}\n\nseed:warmup{i}@!");
+        if let Ok(mut runner) = Runner::new_from_namerena_raw(bench_input) {
+            runner.run_to_completion();
+        }
+    }
+
+    let t_total = std::time::Instant::now();
+
+    for i in 0..n {
+        let bench_input = format!("{raw}\n\nseed:{i}@!");
+
+        let t_init = std::time::Instant::now();
+        let mut runner = match Runner::new_from_namerena_raw(bench_input) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
+        init_nanos += t_init.elapsed().as_nanos();
+
+        let t_fight = std::time::Instant::now();
+        runner.run_to_completion();
+        fight_nanos += t_fight.elapsed().as_nanos();
+
+        total += 1;
+        if let Some(ref w) = runner.world.winner
+            && w.iter().any(|id| team0_roster.contains(id))
+        {
+            wins += 1;
+        }
+        if (i + 1) % 1000 == 0 {
+            eprint!("\r进度: {}/{n}  ", i + 1);
+        }
+    }
+
+    let total_elapsed = t_total.elapsed();
+    eprint!("\r                    \r");
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+
+    let rate = wins as f64 * 100.0 / total.max(1) as f64;
+    let n_f = total.max(1) as f64;
+    println!("胜率: {:.2}%  ({}/{})", rate, wins, total);
+    println!("─────────────────────────────────");
+    println!(
+        "total :  {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+        total_elapsed.as_secs_f64(),
+        total_elapsed.as_micros() as f64 / n_f,
+        n_f / total_elapsed.as_secs_f64()
+    );
+    println!(
+        "init  :  {:.3}s  ({:.1}µs/场)",
+        init_nanos as f64 / 1e9,
+        init_nanos as f64 / 1e3 / n_f
+    );
+    println!(
+        "fight :  {:.3}s  ({:.1}µs/场)",
+        fight_nanos as f64 / 1e9,
+        fight_nanos as f64 / 1e3 / n_f
+    );
+}
 
 /// Benchmark 入口：根据输入组数自动选择模式。
 /// - 2+ 组 → 胜率（team1 vs team2）
@@ -389,6 +465,8 @@ fn run_bench_winrate(raw: &str, n: usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
 
+    let t_start = std::time::Instant::now();
+
     for i in 0..n {
         // 每场加不同 seed 行以引入随机差异
         let bench_input = format!("{raw}\n\nseed:{i}@!");
@@ -399,17 +477,7 @@ fn run_bench_winrate(raw: &str, n: usize) {
         };
         let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
 
-        let mut idle = 0usize;
-        let mut rounds = 0usize;
-        while !runner.have_winner() && idle < 32 && rounds < 100_000 {
-            let updates = runner.main_round();
-            if updates.updates.is_empty() {
-                idle += 1;
-            } else {
-                idle = 0;
-            }
-            rounds += 1;
-        }
+        runner.run_to_completion();
         total += 1;
         if let Some(ref winners) = runner.world.winner
             && winners.iter().any(|w| team0_roster.contains(w))
@@ -420,9 +488,17 @@ fn run_bench_winrate(raw: &str, n: usize) {
             eprint!("\r进度: {}/{n}  ", i + 1);
         }
     }
+
+    let elapsed = t_start.elapsed();
     eprintln!();
     let rate = wins as f64 * 100.0 / total.max(1) as f64;
     println!("胜率: {:.2}%  ({}/{})", rate, wins, total);
+    println!(
+        "耗时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+        elapsed.as_secs_f64(),
+        elapsed.as_micros() as f64 / total.max(1) as f64,
+        total as f64 / elapsed.as_secs_f64()
+    );
 }
 
 /// 评分测试：目标组 vs N 个测试靶，跑 n 场，返回 (胜场数, 总场数)。
@@ -451,17 +527,7 @@ fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, 
         };
         let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
 
-        let mut idle = 0usize;
-        let mut rounds = 0usize;
-        while !runner.have_winner() && idle < 32 && rounds < 100_000 {
-            let updates = runner.main_round();
-            if updates.updates.is_empty() {
-                idle += 1;
-            } else {
-                idle = 0;
-            }
-            rounds += 1;
-        }
+        runner.run_to_completion();
         total += 1;
         if let Some(ref winners) = runner.world.winner
             && winners.iter().any(|w| team0_roster.contains(w))
@@ -591,6 +657,17 @@ fn main() {
                 let n = args.get(3).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
                 let raw = format!("{team1}\n\n{team2}");
                 run_bench_winrate(&raw, n);
+                return;
+            }
+            "--perf" => {
+                if args.len() < 3 {
+                    eprintln!("--perf 需要 <team1> <team2> [N] 参数");
+                    std::process::exit(2);
+                }
+                let team1 = &args[1];
+                let team2 = &args[2];
+                let n = args.get(3).and_then(|s| s.parse::<usize>().ok()).unwrap_or(10000);
+                run_perf(team1, team2, n);
                 return;
             }
             _ => {}

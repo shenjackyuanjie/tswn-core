@@ -88,8 +88,9 @@ impl EngineCore {
         }
 
         let remaining_dead: smallvec::SmallVec<[PlrId; 4]> = world
-            .alives_flat(storage)
-            .into_iter()
+            .teams
+            .iter()
+            .flat_map(|team| team.alive.iter().copied())
             .filter(|id| !storage.get_player(id).map(|p| p.alive()).unwrap_or(false))
             .collect();
         for id in remaining_dead {
@@ -134,7 +135,7 @@ impl EngineCore {
         }
 
         storage.sync_groups(&world.groups);
-        storage.sync_alive_groups(&world.alives_by_group(storage));
+        storage.sync_alive_groups_owned(world.alives_by_group(storage));
         storage.clear_sync_flag();
         #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("post_sync", world, storage);
