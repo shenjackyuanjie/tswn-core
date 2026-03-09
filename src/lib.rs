@@ -1,4 +1,6 @@
 #[allow(dead_code)]
+pub mod debug;
+#[allow(dead_code)]
 pub mod engine;
 #[allow(dead_code)]
 pub mod error;

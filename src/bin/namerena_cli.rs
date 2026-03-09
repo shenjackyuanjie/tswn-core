@@ -139,10 +139,28 @@ Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:
   --icon-path <目录> <名字>... 将图标 PNG 保存到 <目录>/<名字>.png [需要 png_render feature]
   --help, -h                   显示此帮助信息
 
+调试环境变量:
+  TSWN_DEBUG_ACTION=<名字>   调试特定玩家的行动
+  TSWN_DEBUG_STATS           调试玩家属性计算
+  TSWN_DEBUG_WORLD           调试世界状态同步
+  TSWN_DEBUG_TICK            调试每个 tick 的执行
+  TSWN_DEBUG_PICK            调试目标选择逻辑
+  TSWN_DEBUG_DODGE           调试闪避逻辑
+  TSWN_DEBUG_DODGE_ALL       调试所有玩家的闪避
+  TSWN_DEBUG_DIE             调试死亡处理
+  TSWN_DEBUG_STATE           调试状态系统（状态设置/清除/追踪）
+  TSWN_DEBUG_COVID           调试 COVID Boss 相关逻辑
+  TSWN_DEBUG_FIRE            调试火焰技能
+  TSWN_DEBUG_HEAL            调试治疗技能
+  TSWN_DEBUG_UPGRADE=<名字>  调试升级技能
+  TSWN_DEBUG_REFLECT         调试反射技能
+  TSWN_TRACE_RC4             追踪 RC4 随机数状态
+
 示例:
   namerena_cli --raw "a\nb\n\nc\nd"
   echo "mario" | namerena_cli --bench 500
-  namerena_cli --bench-raw "team1\n\nteam2" 1000"#
+  namerena_cli --bench-raw "team1\n\nteam2" 1000
+  TSWN_DEBUG_ACTION=mario namerena_cli --raw "mario\nluigi""#
     );
 }
 

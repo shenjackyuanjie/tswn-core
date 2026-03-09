@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::sync::Arc;
 
+use crate::debug::debug_println;
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{ActionTargets, Player, PlrId, StateTrait, noop_on_damage};
@@ -78,8 +79,10 @@ impl StateTrait for CovidInfection {
         if self.entries.is_empty() {
             return false;
         }
+        let debug_covid = crate::debug::debug_covid();
         let owner_name_pre = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
-        eprintln!(
+        debug_println!(
+            debug_covid,
             "[COVID_PREACT] owner={} entries={} rc4=({},{})",
             owner_name_pre,
             self.entries.len(),
@@ -90,7 +93,8 @@ impl StateTrait for CovidInfection {
             let pre_byte = randomer.next_u8();
             if pre_byte < 64 {
                 let new_mutation = randomer.r127() as i32;
-                eprintln!(
+                debug_println!(
+                    debug_covid,
                     "[COVID_aN] owner={} entry={} mutation {} -> {} rc4=({},{})",
                     owner_name_pre, ei, entry.mutation, new_mutation, randomer.i, randomer.j
                 );
@@ -99,13 +103,14 @@ impl StateTrait for CovidInfection {
                     self.mutation_set.push(new_mutation);
                 }
             } else {
-                eprintln!(
+                debug_println!(
+                    debug_covid,
                     "[COVID_aN] owner={} entry={} mutation={} no_change rc4=({},{})",
                     owner_name_pre, ei, entry.mutation, randomer.i, randomer.j
                 );
             }
         }
-        eprintln!("[COVID_aN] owner={} mutation_set={:?}", owner_name_pre, self.mutation_set);
+        debug_println!(debug_covid, "[COVID_aN] owner={} mutation_set={:?}", owner_name_pre, self.mutation_set);
 
         let last_idx = self.entries.len() - 1;
         let boss_id = self.entries[last_idx].boss_id;
@@ -160,14 +165,16 @@ impl StateTrait for CovidInfection {
         let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
 
         let condition = days == 0 || (randomer.next_u8() as i32) > owner_wisdom;
-        eprintln!(
+        debug_println!(
+            debug_covid,
             "[COVID_ACT] owner={} days={} condition={} mutation={} rc4=({},{})",
             owner_name, days, condition, mutation, randomer.i, randomer.j
         );
         if condition {
             self.entries[last_idx].days += (randomer.next_u8() & 3) as i32;
             let all_alive = targets.all_alive.clone();
-            eprintln!(
+            debug_println!(
+                debug_covid,
                 "[COVID_SPREAD] all_alive={:?} rc4=({},{})",
                 all_alive
                     .iter()
@@ -185,7 +192,8 @@ impl StateTrait for CovidInfection {
                 };
                 let candidate = all_alive[pick_idx];
                 let cand_name = storage.get_player(&candidate).map(|p| p.display_name()).unwrap_or_default();
-                eprintln!(
+                debug_println!(
+                    debug_covid,
                     "[COVID_PICK] attempt={} pick_idx={} candidate={} is_owner={} is_boss={}",
                     attempt,
                     pick_idx,
@@ -206,7 +214,8 @@ impl StateTrait for CovidInfection {
                     .and_then(|p| p.get_state::<CovidInfection>())
                     .map(|inf| inf.mutation_set.clone());
                 let already_has_mutation = candidate_set.as_ref().map(|s| s.contains(&mutation)).unwrap_or(false);
-                eprintln!(
+                debug_println!(
+                    debug_covid,
                     "[COVID_MUTCHECK] candidate={} mutation={} candidate_set={:?} already={}",
                     cand_name, mutation, candidate_set, already_has_mutation
                 );
@@ -249,8 +258,10 @@ impl StateTrait for CovidInfection {
         if self.entries.is_empty() {
             return false;
         }
+        let debug_covid = crate::debug::debug_covid();
         let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
-        eprintln!(
+        debug_println!(
+            debug_covid,
             "[COVID_POSTACT] owner={} alive={} entries={} days={:?}",
             owner_name,
             alive,
@@ -473,16 +484,18 @@ fn covid_pneumonia(
         return;
     }
 
+    let debug_covid = crate::debug::debug_covid();
     let owner_name = owner_plr.display_name();
 
-    eprintln!(
+    debug_println!(
+        debug_covid,
         "[COVID_PNEUMONIA] owner={} rc4=({},{}) before get_at",
         owner_name, randomer.i, randomer.j
     );
     let at_val = owner_plr.get_at(true, randomer);
     let df_val = owner_plr.get_df(true);
     let dmg = ((at_val + (mutation * 80) as f64) / df_val as f64).ceil() as i32;
-    eprintln!("[COVID_PNEUMONIA] at_val={at_val} df_val={df_val} mutation={mutation} dmg={dmg}");
+    debug_println!(debug_covid, "[COVID_PNEUMONIA] at_val={at_val} df_val={df_val} mutation={mutation} dmg={dmg}");
 
     if dmg <= 0 {
         return;
@@ -498,13 +511,13 @@ fn covid_pneumonia(
         let plr = storage.just_get_player_mut(owner).expect("covid_pneumonia owner");
         plr.damage(dmg, boss_id, noop_on_damage, randomer, updates, storage)
     };
-    eprintln!("[COVID_PNEUMONIA] actual_dmg={actual_dmg} dmg={dmg}");
+    debug_println!(debug_covid, "[COVID_PNEUMONIA] actual_dmg={actual_dmg} dmg={dmg}");
 
     let boss_hp_full = storage
         .get_player(&boss_id)
         .map(|p| {
             let s = p.get_status();
-            eprintln!("[COVID_PNEUMONIA] boss hp={} max_hp={}", s.hp, s.max_hp);
+            debug_println!(debug_covid, "[COVID_PNEUMONIA] boss hp={} max_hp={}", s.hp, s.max_hp);
             s.hp >= s.max_hp
         })
         .unwrap_or(false);
@@ -514,7 +527,7 @@ fn covid_pneumonia(
     } else {
         std::cmp::min(dmg >> 1, actual_dmg)
     };
-    eprintln!("[COVID_PNEUMONIA] boss_hp_full={boss_hp_full} heal_amount={heal_amount}");
+    debug_println!(debug_covid, "[COVID_PNEUMONIA] boss_hp_full={boss_hp_full} heal_amount={heal_amount}");
     if heal_amount > 0
         && let Some(boss_plr) = storage.just_get_player_mut(boss_id)
     {
