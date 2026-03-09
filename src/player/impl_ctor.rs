@@ -245,10 +245,13 @@ impl Player {
     pub fn set_mp(&mut self, val: i32) { self.status.mp = val; }
 
     #[inline]
-    pub fn set_hp_raw(&mut self, val: i32) {
+    pub fn set_hp_raw(&mut self, val: i32) -> bool {
         self.status.hp = val.max(0);
         if self.status.hp <= 0 {
             self.status.set_alive(false);
+            true
+        } else {
+            false
         }
     }
 

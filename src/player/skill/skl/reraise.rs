@@ -38,6 +38,7 @@ impl SkillTrait for ReraiseSkill {
             .just_get_player_mut(args.0)
             .expect("cannot get reraise owner from storage")
             .revive_with_hp(hp);
+        args.3.queue_revival(args.0);
         let mut recover_update = RunUpdate::new("[1]回复体力[2]点", args.0, args.0, 0);
         recover_update.param = Some(hp as u32);
         args.2.add(recover_update);

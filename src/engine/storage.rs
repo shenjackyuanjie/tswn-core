@@ -75,6 +75,8 @@ pub struct Storage {
     pending_remove_players: Vec<PlrId>,
     /// 按死亡发生顺序记录的死亡队列（对齐 Dart 的即时死亡处理顺序）。
     death_queue: Vec<PlrId>,
+    /// 技能/触发器复活已有玩家后，延迟到 tick 同步回 WorldState 的复活队列。
+    pending_revivals: Vec<PlrId>,
     /// 玩家 ID 自增计数器。
     player_id_counter: AtomicU64,
 }
@@ -90,6 +92,7 @@ impl Storage {
             pending_spawns: Vec::new(),
             pending_remove_players: Vec::new(),
             death_queue: Vec::new(),
+            pending_revivals: Vec::new(),
             player_id_counter: AtomicU64::new(0),
         }
     }
@@ -104,6 +107,7 @@ impl Storage {
         self.pending_spawns.clear();
         self.pending_remove_players.clear();
         self.death_queue.clear();
+        self.pending_revivals.clear();
     }
 
     /// 生成一个新的玩家 ID。
@@ -319,6 +323,27 @@ impl Storage {
             std::mem::take(&mut (*mut_slf).death_queue)
         }
     }
+
+    /// 技能/触发器复活已有玩家时，注册到复活队列，待 tick 同步回 WorldState。
+    pub fn queue_revival(&self, ptr: PlrId) {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            if !(*mut_slf).pending_revivals.contains(&ptr) {
+                (*mut_slf).pending_revivals.push(ptr);
+            }
+        }
+    }
+
+    /// 取出并清空复活队列。
+    pub fn take_pending_revivals(&self) -> Vec<PlrId> {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            std::mem::take(&mut (*mut_slf).pending_revivals)
+        }
+    }
+
+    /// 当前待处理的召唤数量（用于快速路径判断）。
+    pub fn pending_spawn_count(&self) -> usize { self.pending_spawns.len() }
 
     /// 删除技能（安全版本）。
     pub fn remove_skill(&mut self, id: SkillId) -> Option<Skill> { self.skills.remove(&id.0) }

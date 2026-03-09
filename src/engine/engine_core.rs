@@ -94,6 +94,16 @@ impl EngineCore {
             Self::debug_world_state("after_dead_remove_fallback", world, storage);
         }
 
+        // 复活：先处理 pending_revivals 队列（由技能触发），再做兜底的 roster 扫描，
+        // 确保任何复活路径都能被正确同步到 WorldState。
+        let revivals = storage.take_pending_revivals();
+        for id in revivals {
+            if !world.contains_alive(id) && storage.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
+                world.revive_player(id, id);
+                #[cfg(not(feature = "no_debug"))]
+                Self::debug_world_state("after_revive_sync", world, storage);
+            }
+        }
         let mut revived_ids: smallvec::SmallVec<[PlrId; 4]> = smallvec::SmallVec::new();
         for team in &world.teams {
             for id in &team.roster {

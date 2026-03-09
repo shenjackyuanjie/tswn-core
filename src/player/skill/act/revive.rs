@@ -95,6 +95,7 @@ impl SkillTrait for ReviveSkill {
             return;
         }
         target.revive_with_hp(heal);
+        args.3.queue_revival(target_id);
         args.2.add(RunUpdate::new("[1][复活]了", args.0, target_id, (heal + 60) as u32));
         let mut recover_update = RunUpdate::new("[1]回复体力[2]点", args.0, target_id, 0);
         recover_update.param = Some(heal as u32);
