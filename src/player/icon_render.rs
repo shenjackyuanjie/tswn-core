@@ -1,9 +1,10 @@
 //! # 图标渲染 (icon_render)
 //!
-//! 本模块实现玩家图标的渲染，将 [`IconResult`] 转换为 16×16 RGBA PNG 图像。
+//! 本模块实现玩家图标的渲染，将 [`IconResult`] 转换为 16×16 RGBA 像素数据或 PNG 图像。
 //!
 //! ## 功能说明
 //!
+//! - **像素渲染** — 将图标颜色选择渲染为 RGBA 像素数据 (1024 字节)
 //! - **PNG 渲染** — 将图标颜色选择渲染为 PNG 字节流
 //! - **Base64 编码** — 将 PNG 编码为 data URL 格式
 //! - **便捷接口** — 直接从玩家名称渲染图标
@@ -16,7 +17,7 @@
 //! 2. **合成前景** — 使用 source-over 混合模式合成每个前景形状
 //! 3. **绘制边框** — 绘制深色边框覆盖层
 //! 4. **应用掩码** — 应用边框不透明度掩码（直接替换 alpha 通道）
-//! 5. **编码 PNG** — 编码为 16×16 RGBA PNG
+//! 5. **输出数据** — 返回 RGBA 像素数据或编码为 PNG
 //!
 //! ## 精灵表
 //!
@@ -155,8 +156,8 @@ fn draw_shape(canvas: &mut [[u8; 4]; 256], alpha_map: &[u8; 256], fg: [u8; 3]) {
 
 // ── 公共 API ────────────────────────────────────────────────────────────────
 
-/// 将 `IconResult` 渲染为 16×16 RGBA PNG (以原始字节返回)。
-pub fn render_icon_png(icon: &IconResult) -> Vec<u8> {
+/// 将 `IconResult` 渲染为 16×16 RGBA 像素数据 (1024 字节, 行主序)。
+pub fn render_icon_vec(icon: &IconResult) -> Vec<u8> {
     let sprites = &*SPRITES;
     let mut canvas = [[0u8; 4]; 256]; // 16×16, 初始完全透明
 
@@ -188,8 +189,13 @@ pub fn render_icon_png(icon: &IconResult) -> Vec<u8> {
         }
     }
 
-    // 5. 编码为 16×16 RGBA PNG。
-    let flat: Vec<u8> = canvas.iter().flat_map(|&px| px).collect();
+    // 5. 展平为 1024 字节的 RGBA 数据 (16×16×4)。
+    canvas.iter().flat_map(|&px| px).collect()
+}
+
+/// 将 `IconResult` 渲染为 16×16 RGBA PNG (以原始字节返回)。
+pub fn render_icon_png(icon: &IconResult) -> Vec<u8> {
+    let flat = render_icon_vec(icon);
     let mut out = Vec::new();
     let mut encoder = png::Encoder::new(&mut out, 16, 16);
     encoder.set_color(png::ColorType::Rgba);
@@ -213,6 +219,9 @@ pub fn render_icon_png_from_name(name: &str) -> Vec<u8> { render_icon_png(&icon_
 
 /// 便捷包装器: 通过玩家名称渲染 → base64 data URL。
 pub fn render_icon_b64_from_name(name: &str) -> String { render_icon_b64(&icon_from_name(name)) }
+
+/// 便捷包装器: 通过玩家名称渲染 → RGBA 像素数据 (1024 字节)。
+pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> { render_icon_vec(&icon_from_name(name)) }
 
 // ── 内部辅助函数 ──────────────────────────────────────────────────────────
 

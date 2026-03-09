@@ -1,3 +1,98 @@
+//! # 名竞 CLI 工具 (namerena_cli)
+//!
+//! 本模块实现名竞的命令行工具，提供对战、Benchmark、图标生成等功能。
+//!
+//! ## 功能说明
+//!
+//! - **对战模式** — 支持从 stdin、命令行参数或文件读取输入，进行对战
+//! - **Benchmark 模式** — 自动检测输入组数，支持评分测试和胜率测试
+//! - **图标生成** — 支持生成玩家图标、Base64 编码、保存 PNG 文件
+//!
+//! ## 使用方法
+//!
+//! ### 对战模式（默认）
+//!
+//! ```bash
+//! # 从 stdin 读取
+//! echo "a\nb\n\nc\nd" | namerena_cli
+//!
+//! # 使用命令行参数
+//! namerena_cli --raw "a\nb\n\nc\nd"
+//!
+//! # 从文件读取
+//! namerena_cli --file input.txt
+//! ```
+//!
+//! ### Benchmark 模式
+//!
+//! ```bash
+//! # 评分测试（1组）
+//! echo "mario" | namerena_cli --bench 500
+//!
+//! # 胜率测试（2+组）
+//! namerena_cli --bench-raw "team1\n\nteam2" 1000
+//!
+//! # 从文件读取
+//! namerena_cli --bench-file input.txt 1000
+//! ```
+//!
+//! ### 图标生成
+//!
+//! ```bash
+//! # 显示图标信息
+//! namerena_cli --icon mario luigi
+//!
+//! # 输出 Base64 PNG
+//! namerena_cli --icon-b64 mario
+//!
+//! # 保存 PNG 文件
+//! namerena_cli --icon-path ./icons mario luigi
+//! ```
+//!
+//! ## Benchmark 模式说明
+//!
+//! - **1组输入** → 评分测试（普通评分 + !评分）
+//! - **2+组输入** → 胜率测试（team1 vs team2）
+//!
+//! 评分测试会生成 N 个测试靶（普通评分使用 `\u{0002}` 前缀，!评分使用 `!` 前缀），
+//! 统计目标组的胜场数并计算评分。
+//!
+//! 胜率测试会统计 team1（组0）的胜场数，计算胜率百分比。
+//!
+//! ## 图标渲染
+//!
+//! 图标渲染使用 ANSI 真彩色转义码在终端显示彩色方块预览。
+//! 支持的边框样式：
+//! - 0: `─`
+//! - 1: `━`
+//! - 2: `═`
+//! - 3: `┄`
+//! - 4: `┅`
+//! - 5: `╌`
+//! - 6: `╍`
+//!
+//! ## 示例
+//!
+//! ```bash
+//! # 显示帮助
+//! namerena_cli --help
+//!
+//! # 简单对战
+//! echo -e "mario\nluigi\n\npeach\nbowser" | namerena_cli
+//!
+//! # 评分测试
+//! echo "mario" | namerena_cli --bench 1000
+//!
+//! # 生成图标
+//! namerena_cli --icon mario
+//! ```
+//!
+//! ## 限制
+//!
+//! - PRE ALPHA 版本，仅供测试使用
+//! - 已知有 bug
+//! - 暂未实现：天卫、Boss、武器
+
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read};
@@ -5,32 +100,34 @@ use std::io::{self, Read};
 use tswn_core::Runner;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::player::icon::icon_from_name;
-use tswn_core::player::icon_render::{render_icon_b64_from_name, render_icon_png_from_name};
+use tswn_core::player::icon_render::{render_icon_b64_from_name, render_icon_png, render_icon_vec_from_name};
 
 fn print_usage() {
-    println!("用法:");
-    println!("  namerena_cli [选项]");
-    println!();
-    println!("对战模式（默认）:");
-    println!("  --raw <字符串>         使用提供的原始字符串作为输入");
-    println!("  --file <文件路径>       从文件读取输入");
-    println!("  <无参数>               从 stdin 读取");
-    println!();
-    println!("Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:");
-    println!("  --bench [N]            从 stdin 读取，运行 N 场 (默认 1000)");
-    println!("  --bench-raw \"...\" [N]  使用提供的原始字符串");
-    println!("  --bench-file \"...\" [N] 从文件读取");
-    println!();
-    println!("其他:");
-    println!("  --icon <名字>...             输出玩家图标信息 (可指定多个名字)");
-    println!("  --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL (可多个名字)");
-    println!("  --icon-path <目录> <名字>... 将图标 PNG 保存到 <目录>/<名字>.png");
-    println!("  --help, -h                   显示此帮助信息");
-    println!();
-    println!("示例:");
-    println!("  namerena_cli --raw \"a\\nb\\n\\nc\\nd\"");
-    println!("  echo \"mario\" | namerena_cli --bench 500");
-    println!("  namerena_cli --bench-raw \"team1\\n\\nteam2\" 1000");
+    println!(
+        r#"用法:
+  namerena_cli [选项]
+
+对战模式（默认）:
+  --raw <字符串>         使用提供的原始字符串作为输入
+  --file <文件路径>       从文件读取输入
+  <无参数>               从 stdin 读取
+
+Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:
+  --bench [N]            从 stdin 读取，运行 N 场 (默认 1000)
+  --bench-raw "..." [N]  使用提供的原始字符串
+  --bench-file "..." [N] 从文件读取
+
+其他:
+  --icon <名字>...             输出玩家图标信息 (可指定多个名字)
+  --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL (可多个名字)
+  --icon-path <目录> <名字>... 将图标 PNG 保存到 <目录>/<名字>.png
+  --help, -h                   显示此帮助信息
+
+示例:
+  namerena_cli --raw "a\nb\n\nc\nd"
+  echo "mario" | namerena_cli --bench 500
+  namerena_cli --bench-raw "team1\n\nteam2" 1000"#
+    );
 }
 
 fn read_raw_input() -> Result<String, String> {
@@ -87,7 +184,8 @@ fn read_raw_input() -> Result<String, String> {
             }
             for name in &args[2..] {
                 let path = dir.join(format!("{name}.png"));
-                let png = render_icon_png_from_name(name);
+                let icon = icon_from_name(name);
+                let png = render_icon_png(&icon);
                 if let Err(e) = fs::write(&path, &png) {
                     eprintln!("写入 {} 失败: {e}", path.display());
                     std::process::exit(1);
@@ -112,7 +210,7 @@ fn read_raw_input() -> Result<String, String> {
     }
 }
 
-/// Print a TUI representation of the icon for a given player name.
+/// 打印给定玩家名称的图标 TUI 表示。
 fn print_icon(name: &str) {
     let icon = icon_from_name(name);
     let [br, bg, bb] = icon.bg_color;
@@ -122,42 +220,11 @@ fn print_icon(name: &str) {
     println!("形状: {:?}", icon.shapes);
     println!("背景色: #{:02X}{:02X}{:02X} (索引 {})", br, bg, bb, icon.bg_color_idx);
 
-    // TUI: render a colored block preview using ANSI true-color escape codes
-    // Top border
-    let border_char = match icon.border_style {
-        0 => '─',
-        1 => '━',
-        2 => '═',
-        3 => '┄',
-        4 => '┅',
-        5 => '╌',
-        6 => '╍',
-        _ => '─',
-    };
-    let border_line: String = std::iter::repeat_n(border_char, 18).collect();
-    println!("┌{}┐", border_line);
+    // 渲染 RGBA 像素数据到终端
+    let pixels = render_icon_vec_from_name(name);
+    render_pixels_to_terminal(&pixels);
 
-    // Render 8 rows for the icon
-    for row in 0..8 {
-        print!("│");
-        // Background fill with foreground shape blocks interleaved
-        for col in 0..9 {
-            // Determine which shape/color occupies this cell
-            let shape_idx = (row * 9 + col) % (icon.shapes.len() + 1);
-            if shape_idx == 0 {
-                // Background cell
-                print!("\x1b[48;2;{br};{bg};{bb}m  \x1b[0m");
-            } else {
-                let ci = (shape_idx - 1) % icon.fg_colors.len();
-                let [fr, fg, fb] = icon.fg_colors[ci];
-                print!("\x1b[48;2;{fr};{fg};{fb}m  \x1b[0m");
-            }
-        }
-        println!("│");
-    }
-    println!("└{}┘", border_line);
-
-    // Foreground colors detail
+    // 前景色详情
     for (i, (idx, color)) in icon.fg_color_indices.iter().zip(icon.fg_colors.iter()).enumerate() {
         let [r, g, b] = *color;
         println!(
@@ -166,6 +233,53 @@ fn print_icon(name: &str) {
         );
     }
     println!();
+}
+
+/// 将 RGBA 像素数据渲染到终端，使用 ANSI 块字符实现 1:1 渲染
+fn render_pixels_to_terminal(pixels: &[u8]) {
+    // 绘制边框
+    let border_line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+    println!("┌{}┐", border_line);
+    
+    // 使用 ANSI 块字符渲染
+    // 每个终端字符显示 2 个横向像素，补偿终端字符的宽高比
+    for y in 0..16 {
+        print!("│");
+        for x in 0..16 {
+            // 获取像素颜色
+            let pixel = get_pixel(pixels, x, y);
+            
+            if let Some((r, g, b)) = pixel {
+                // 使用前景色和块字符
+                print!("\x1b[38;2;{r};{g};{b}m██\x1b[0m");
+            } else {
+                print!("  ");
+            }
+        }
+        println!("│");
+    }
+    
+    println!("└{}┘", border_line);
+}
+
+/// 获取指定位置的像素颜色 (RGBA)
+fn get_pixel(pixels: &[u8], x: usize, y: usize) -> Option<(u8, u8, u8)> {
+    if x >= 16 || y >= 16 {
+        return None;
+    }
+    let idx = (y * 16 + x) * 4;
+    if idx + 3 >= pixels.len() {
+        return None;
+    }
+    let r = pixels[idx];
+    let g = pixels[idx + 1];
+    let b = pixels[idx + 2];
+    let a = pixels[idx + 3];
+    if a == 0 {
+        None // 透明像素
+    } else {
+        Some((r, g, b))
+    }
 }
 
 fn plr_name(runner: &Runner, id: usize) -> String {
