@@ -26,6 +26,7 @@
 //! - [`add_new_player`](WorldState::add_new_player) — 召唤物出现时动态加入队伍
 
 use crate::player::PlrId;
+use foldhash::{HashMap as FoldHashMap, HashSet as FoldHashSet};
 
 /// 单支队伍的状态快照。
 #[derive(Debug, Clone)]
@@ -41,6 +42,12 @@ pub struct WorldState {
     pub winner: Option<Vec<PlrId>>,
     pub players: Vec<PlrId>,
     pub round_pos: i32,
+    /// 存活玩家集合，用于 O(1) contains_alive 查询。
+    alive_set: FoldHashSet<PlrId>,
+    /// 玩家 → 所属队伍索引，用于 O(1) team_index_of 查询。
+    player_team: FoldHashMap<PlrId, usize>,
+    /// 已在行动轮次中的玩家集合，用于 O(1) ensure_player_in_round 去重检查。
+    players_set: FoldHashSet<PlrId>,
 }
 
 impl WorldState {
@@ -52,13 +59,23 @@ impl WorldState {
                 alive: group.clone(),
             })
             .collect::<Vec<TeamState>>();
-        let players = teams.iter().flat_map(|team| team.roster.iter().copied()).collect::<Vec<PlrId>>();
+        let players: Vec<PlrId> = teams.iter().flat_map(|team| team.roster.iter().copied()).collect();
+        let alive_set: FoldHashSet<PlrId> = teams.iter().flat_map(|t| t.alive.iter().copied()).collect();
+        let player_team: FoldHashMap<PlrId, usize> = teams
+            .iter()
+            .enumerate()
+            .flat_map(|(idx, team)| team.roster.iter().map(move |id| (*id, idx)))
+            .collect();
+        let players_set: FoldHashSet<PlrId> = players.iter().copied().collect();
         Self {
             teams,
             groups,
             winner: None,
             players,
             round_pos: -1,
+            alive_set,
+            player_team,
+            players_set,
         }
     }
 
@@ -71,7 +88,8 @@ impl WorldState {
     #[inline]
     pub fn all_plr_len(&self) -> usize { self.teams.iter().map(|team| team.roster.len()).sum() }
 
-    pub fn team_index_of(&self, actor: PlrId) -> Option<usize> { self.teams.iter().position(|team| team.roster.contains(&actor)) }
+    #[inline]
+    pub fn team_index_of(&self, actor: PlrId) -> Option<usize> { self.player_team.get(&actor).copied() }
 
     #[inline]
     pub fn team_roster(&self, team_idx: usize) -> Option<&[PlrId]> { self.teams.get(team_idx).map(|team| team.roster.as_slice()) }
@@ -80,7 +98,7 @@ impl WorldState {
     pub fn team_alive(&self, team_idx: usize) -> Option<&[PlrId]> { self.teams.get(team_idx).map(|team| team.alive.as_slice()) }
 
     #[inline]
-    pub fn contains_alive(&self, plr: PlrId) -> bool { self.teams.iter().any(|team| team.alive.contains(&plr)) }
+    pub fn contains_alive(&self, plr: PlrId) -> bool { self.alive_set.contains(&plr) }
 
     fn sync_group_rosters(&mut self) { self.groups = self.teams.iter().map(|team| team.roster.clone()).collect(); }
 
@@ -101,7 +119,8 @@ impl WorldState {
     }
 
     pub fn remove_alive(&mut self, plr: PlrId) {
-        if let Some(team_idx) = self.team_index_of(plr)
+        self.alive_set.remove(&plr);
+        if let Some(&team_idx) = self.player_team.get(&plr)
             && let Some(team) = self.teams.get_mut(team_idx)
         {
             team.alive.retain(|id| *id != plr);
@@ -116,28 +135,32 @@ impl WorldState {
                 self.round_pos -= 1;
             }
             self.players.remove(idx);
+            self.players_set.remove(&plr);
         }
     }
 
     pub fn remove_from_roster(&mut self, plr: PlrId) {
-        if let Some(team_idx) = self.team_index_of(plr)
+        if let Some(&team_idx) = self.player_team.get(&plr)
             && let Some(team) = self.teams.get_mut(team_idx)
         {
             team.roster.retain(|id| *id != plr);
             team.alive.retain(|id| *id != plr);
         }
+        self.player_team.remove(&plr);
+        self.alive_set.remove(&plr);
         self.remove_player(plr);
         self.sync_group_rosters();
     }
 
     fn ensure_player_in_round(&mut self, plr: PlrId) {
-        if !self.players.contains(&plr) {
+        if self.players_set.insert(plr) {
             self.players.push(plr);
         }
     }
 
     pub fn revive_into_team(&mut self, plr: PlrId, team_idx: usize) {
         self.ensure_player_in_round(plr);
+        self.alive_set.insert(plr);
         if let Some(team) = self.teams.get_mut(team_idx)
             && !team.alive.contains(&plr)
         {
@@ -146,11 +169,14 @@ impl WorldState {
     }
 
     pub fn add_new_player(&mut self, plr: PlrId, owner: PlrId) {
-        let Some(team_idx) = self.team_index_of(owner) else {
+        let Some(team_idx) = self.player_team.get(&owner).copied() else {
+            let new_idx = self.teams.len();
             self.teams.push(TeamState {
                 roster: vec![plr],
                 alive: vec![plr],
             });
+            self.player_team.insert(plr, new_idx);
+            self.alive_set.insert(plr);
             self.ensure_player_in_round(plr);
             self.sync_group_rosters();
             return;
@@ -160,18 +186,22 @@ impl WorldState {
         {
             team.roster.push(plr);
         }
+        self.player_team.entry(plr).or_insert(team_idx);
         self.revive_into_team(plr, team_idx);
         self.sync_group_rosters();
     }
 
     pub fn revive_player(&mut self, plr: PlrId, owner: PlrId) {
-        if let Some(team_idx) = self.team_index_of(plr).or_else(|| self.team_index_of(owner)) {
+        if let Some(team_idx) = self.player_team.get(&plr).copied().or_else(|| self.player_team.get(&owner).copied()) {
             self.revive_into_team(plr, team_idx);
         } else {
+            let new_idx = self.teams.len();
             self.teams.push(TeamState {
                 roster: vec![plr],
                 alive: vec![plr],
             });
+            self.player_team.insert(plr, new_idx);
+            self.alive_set.insert(plr);
             self.ensure_player_in_round(plr);
             self.sync_group_rosters();
         }

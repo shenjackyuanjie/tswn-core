@@ -133,6 +133,9 @@ Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:
   --bench-raw "..." [N]  使用提供的原始字符串
   --bench-file "..." [N] 从文件读取
 
+胜率测试（简化版）:
+  --win_rate <team1> <team2> [N]  两队对战，运行 N 场 (默认 1000)，输出胜率
+
 其他:
   --icon <名字>...             输出玩家图标信息 (可指定多个名字)
   --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL (可多个名字) [需要 png_render feature]
@@ -160,6 +163,7 @@ Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:
   namerena_cli --raw "a\nb\n\nc\nd"
   echo "mario" | namerena_cli --bench 500
   namerena_cli --bench-raw "team1\n\nteam2" 1000
+  namerena_cli --win_rate "mario" "luigi" 1000
   TSWN_DEBUG_ACTION=mario namerena_cli --raw "mario\nluigi""#
     );
 }
@@ -387,7 +391,7 @@ fn run_bench_winrate(raw: &str, n: usize) {
 
     for i in 0..n {
         // 每场加不同 seed 行以引入随机差异
-        let bench_input = format!("{raw}\n\nseed:wr_{i}@!");
+        let bench_input = format!("{raw}\n\nseed:{i}@!");
 
         let mut runner = match Runner::new_from_namerena_raw(bench_input) {
             Ok(r) => r,
@@ -575,6 +579,18 @@ fn main() {
                 };
                 let n = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
                 run_benchmark(raw.trim(), n);
+                return;
+            }
+            "--win_rate" => {
+                if args.len() < 3 {
+                    eprintln!("--win_rate 需要 <team1> <team2> [N] 参数");
+                    std::process::exit(2);
+                }
+                let team1 = &args[1];
+                let team2 = &args[2];
+                let n = args.get(3).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
+                let raw = format!("{team1}\n\n{team2}");
+                run_bench_winrate(&raw, n);
                 return;
             }
             _ => {}

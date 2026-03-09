@@ -9,7 +9,7 @@
 //!
 //! 消息模板中使用三种占位符（与 JS 产物一致）：
 //! - `[0]` — 施法者的显示名
-//! - `[1]` — 目标的显示名  
+//! - `[1]` — 目标的显示名
 //! - `[2]` — 参数值（数值 或 多目标 ID 拼接字符串）
 //!
 //! 调用 [`RunUpdate::msg()`] 可将 caster/target ID 及 param 替换进模板后得到最终字符串。
@@ -66,7 +66,7 @@ pub struct RunUpdate {
     /// 目标 PlrId（替换 `[1]`）。
     pub target: PlrId,
     /// 多目标列表（替换 `[2]`，与 `param` 二选一）。
-    pub targets: Vec<PlrId>,
+    pub targets: smallvec::SmallVec<[PlrId; 2]>,
     /// 事件类型标记。
     pub update_type: UpdateType,
 }
@@ -82,7 +82,7 @@ impl RunUpdate {
             message: "\n".to_string(),
             caster: 0,
             target: 0,
-            targets: vec![],
+            targets: smallvec::SmallVec::new(),
             update_type: UpdateType::None,
         }
     }
@@ -99,7 +99,7 @@ impl RunUpdate {
             message: "\n".to_string(),
             caster: 0,
             target: 0,
-            targets: vec![],
+            targets: smallvec::SmallVec::new(),
             update_type: UpdateType::NextLine,
         }
     }
@@ -120,7 +120,7 @@ impl RunUpdate {
             message: msg.to_string(),
             caster,
             target,
-            targets: Vec::new(),
+            targets: smallvec::SmallVec::new(),
             update_type: UpdateType::None,
         }
     }
@@ -183,9 +183,9 @@ pub struct RunUpdates {
     /// 批次唯一 ID（自增，从 1 开始）。
     pub id: u64,
     /// 本批次内所有事件帧，按时间顺序排列。
-    pub updates: Vec<RunUpdate>,
+    pub updates: smallvec::SmallVec<[RunUpdate; 8]>,
     /// 本批次结束后需要触发 `on_update_end` 回调的玩家列表。
-    pub on_update_end: Vec<PlrId>,
+    pub on_update_end: smallvec::SmallVec<[PlrId; 8]>,
 }
 
 impl RunUpdates {
@@ -193,14 +193,14 @@ impl RunUpdates {
     pub fn new() -> RunUpdates {
         RunUpdates {
             id: RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed),
-            updates: vec![],
-            on_update_end: vec![],
+            updates: smallvec::SmallVec::new(),
+            on_update_end: smallvec::SmallVec::new(),
         }
     }
 
     /// 追加一条事件帧。
     pub fn add(&mut self, update: RunUpdate) { self.updates.push(update); }
 
-    /// 批量追加事件帧（从切片复制）。
-    pub fn add_all(&mut self, updates: &mut [RunUpdate]) { self.updates.extend_from_slice(updates); }
+    // /// 批量追加事件帧（从切片复制）。
+    // pub fn add_all(&mut self, updates: &mut [RunUpdate]) { self.updates.extend_from_slice(updates); }
 }

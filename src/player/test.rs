@@ -439,7 +439,7 @@ fn action_expires_berserk_and_charm_states() {
         step: 1,
     });
     let targets = ActionTargets {
-        all_alive: vec![player.as_ptr()],
+        all_alive: vec![player.as_ptr()].into(),
         ..ActionTargets::default()
     };
     player.action(&mut randomer, &mut updates, &storage, &targets);
@@ -541,11 +541,11 @@ fn heal_action_targets_injured_ally() {
     let old_ally_hp = ally_mut.status.hp;
 
     let targets = ActionTargets {
-        enemy_alive: vec![enemy_id],
-        ally_alive: vec![healer_id, ally_id],
-        ally_all: vec![healer_id, ally_id],
-        ally_dead: vec![],
-        all_alive: vec![healer_id, ally_id, enemy_id],
+        enemy_alive: vec![enemy_id].into(),
+        ally_alive: vec![healer_id, ally_id].into(),
+        ally_all: vec![healer_id, ally_id].into(),
+        ally_dead: vec![].into(),
+        all_alive: vec![healer_id, ally_id, enemy_id].into(),
     };
     healer_mut.action(&mut randomer, &mut updates, &storage, &targets);
 
@@ -576,11 +576,11 @@ fn revive_action_targets_dead_ally() {
     ally_mut.status.set_alive(false);
 
     let targets = ActionTargets {
-        enemy_alive: vec![enemy_id],
-        ally_alive: vec![healer_id],
-        ally_all: vec![healer_id, ally_id],
-        ally_dead: vec![ally_id],
-        all_alive: vec![healer_id, enemy_id],
+        enemy_alive: vec![enemy_id].into(),
+        ally_alive: vec![healer_id].into(),
+        ally_all: vec![healer_id, ally_id].into(),
+        ally_dead: vec![ally_id].into(),
+        all_alive: vec![healer_id, enemy_id].into(),
     };
     healer_mut.action(&mut randomer, &mut updates, &storage, &targets);
 
@@ -613,11 +613,11 @@ fn protect_redirects_damage_to_protector() {
     ally_mut.status.max_hp = 280;
 
     let targets = ActionTargets {
-        enemy_alive: vec![enemy_id],
-        ally_alive: vec![protector_id, ally_id],
-        ally_all: vec![protector_id, ally_id],
-        ally_dead: vec![],
-        all_alive: vec![protector_id, ally_id, enemy_id],
+        enemy_alive: vec![enemy_id].into(),
+        ally_alive: vec![protector_id, ally_id].into(),
+        ally_all: vec![protector_id, ally_id].into(),
+        ally_dead: vec![].into(),
+        all_alive: vec![protector_id, ally_id, enemy_id].into(),
     };
     protector_mut.action(&mut randomer, &mut updates, &storage, &targets);
     assert!(

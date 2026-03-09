@@ -156,7 +156,9 @@ impl PlayerStateStore {
     #[inline]
     pub fn set<T: StateTrait + 'static>(&mut self, state: T) {
         let tag = state_tag::<T>();
+        #[cfg(not(feature = "no_debug"))]
         let had = self.states.contains_key(&tag);
+        #[cfg(not(feature = "no_debug"))]
         if had && crate::debug::debug_state() {
             eprintln!(
                 "[STATE_SET] OVERWRITING existing state tag={:?} meta_type={}",
@@ -164,6 +166,7 @@ impl PlayerStateStore {
                 state.meta_type()
             );
         }
+        #[cfg(not(feature = "no_debug"))]
         if std::any::type_name::<T>().contains("CovidInfection") && crate::debug::debug_state() {
             eprintln!(
                 "[STATE_TRACE] SET CovidInfection store_addr={:p} tag={:?}",
@@ -184,6 +187,7 @@ impl PlayerStateStore {
     #[inline]
     pub fn has<T: StateTrait + 'static>(&self) -> bool {
         let result = self.states.contains_key(&state_tag::<T>());
+        #[cfg(not(feature = "no_debug"))]
         if std::any::type_name::<T>().contains("CovidInfection") && crate::debug::debug_state() {
             eprintln!(
                 "[STATE_TRACE] HAS CovidInfection store_addr={:p} result={} all_tags={:?}",
@@ -198,6 +202,7 @@ impl PlayerStateStore {
     #[inline]
     pub fn clear<T: StateTrait + 'static>(&mut self) {
         let tag = state_tag::<T>();
+        #[cfg(not(feature = "no_debug"))]
         if self.states.contains_key(&tag) && crate::debug::debug_state() {
             eprintln!("[STATE_CLEAR] removing tag={:?}", tag);
         }
@@ -206,6 +211,7 @@ impl PlayerStateStore {
 
     #[inline]
     pub fn clear_tag(&mut self, tag: StateTag) {
+        #[cfg(not(feature = "no_debug"))]
         if self.states.contains_key(&tag) && crate::debug::debug_state() {
             eprintln!(
                 "[STATE_CLEAR_TAG] removing tag={:?} meta_type={:?}",
@@ -220,10 +226,12 @@ impl PlayerStateStore {
     pub fn meta_type(&self, tag: StateTag) -> Option<i32> { self.states.get(&tag).map(|state| state.meta_type()) }
 
     pub fn clear_negative_states(&mut self) {
+        #[cfg(not(feature = "no_debug"))]
         let debug_state = crate::debug::debug_state();
         let mut to_remove = Vec::new();
         for (tag, state) in self.states.iter() {
             if state.meta_type() < 0 {
+                #[cfg(not(feature = "no_debug"))]
                 if debug_state {
                     eprintln!("[CLEAR_NEG] removing tag={:?} meta_type={}", tag, state.meta_type());
                 }

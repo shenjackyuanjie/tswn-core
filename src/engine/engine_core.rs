@@ -47,6 +47,7 @@ impl EngineCore {
 
     pub fn register_post_action_hook(&mut self, hook: crate::engine::hooks::ActorHook) { self.hooks.register_post_action(hook); }
 
+    #[cfg(not(feature = "no_debug"))]
     pub fn debug_world_state(tag: &str, world: &WorldState, storage: &Arc<Storage>) {
         if std::env::var_os("TSWN_DEBUG_WORLD").is_none() {
             return;
@@ -61,6 +62,7 @@ impl EngineCore {
     }
 
     pub fn sync_runtime_entities(&self, world: &mut WorldState, storage: &Arc<Storage>) {
+        #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("pre_sync", world, storage);
 
         let pending_remove_players = storage.take_pending_remove_players();
@@ -68,6 +70,7 @@ impl EngineCore {
         for id in &death_queue {
             if world.contains_alive(*id) && !storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
                 world.remove_player(*id);
+                #[cfg(not(feature = "no_debug"))]
                 Self::debug_world_state("after_dead_remove", world, storage);
             }
         }
@@ -75,21 +78,23 @@ impl EngineCore {
         for ptr in &pending_remove_players {
             if !death_queue.contains(ptr) {
                 world.remove_player(*ptr);
+                #[cfg(not(feature = "no_debug"))]
                 Self::debug_world_state("after_pending_remove_only", world, storage);
             }
         }
 
-        let remaining_dead: Vec<PlrId> = world
+        let remaining_dead: smallvec::SmallVec<[PlrId; 4]> = world
             .alives_flat(storage)
             .into_iter()
             .filter(|id| !storage.get_player(id).map(|p| p.alive()).unwrap_or(false))
             .collect();
         for id in remaining_dead {
             world.remove_player(id);
+            #[cfg(not(feature = "no_debug"))]
             Self::debug_world_state("after_dead_remove_fallback", world, storage);
         }
 
-        let mut revived_ids: Vec<PlrId> = Vec::new();
+        let mut revived_ids: smallvec::SmallVec<[PlrId; 4]> = smallvec::SmallVec::new();
         for team in &world.teams {
             for id in &team.roster {
                 if world.contains_alive(*id) {
@@ -103,6 +108,7 @@ impl EngineCore {
         }
         for id in revived_ids {
             world.revive_player(id, id);
+            #[cfg(not(feature = "no_debug"))]
             Self::debug_world_state("after_revive_sync", world, storage);
         }
 
@@ -115,6 +121,7 @@ impl EngineCore {
 
         storage.sync_groups(&world.groups);
         storage.sync_alive_groups(&world.alives_by_group(storage));
+        #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("post_sync", world, storage);
     }
 
@@ -129,8 +136,11 @@ impl EngineCore {
             return;
         };
 
+        #[cfg(not(feature = "no_debug"))]
         let debug_tick = std::env::var_os("TSWN_DEBUG_TICK").is_some();
+        #[cfg(not(feature = "no_debug"))]
         let rc4_before = if debug_tick { (randomer.i, randomer.j) } else { (0, 0) };
+        #[cfg(not(feature = "no_debug"))]
         if debug_tick && let Some(plr) = storage.get_player(&actor) {
             eprintln!(
                 "[tick] actor={} mp={} hp={} rc4=({}, {})",
@@ -152,6 +162,7 @@ impl EngineCore {
         };
         crate::engine::tick::resolve_combat(actor, decision, &targets, &mut ctx, &self.hooks);
         crate::engine::tick::run_update_end(storage, ctx.randomer, ctx.updates);
+        #[cfg(not(feature = "no_debug"))]
         if debug_tick
             && (ctx.randomer.i != rc4_before.0 || ctx.randomer.j != rc4_before.1)
             && let Some(plr) = storage.get_player(&actor)

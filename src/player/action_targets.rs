@@ -16,21 +16,25 @@
 //! 它的队伍视角反转（将敌方视为友方、友方视为敌方）。
 
 use crate::player::PlrId;
+use smallvec::SmallVec;
+
+pub type PlrVec = SmallVec<[PlrId; 4]>;
 
 #[derive(Clone, Debug, Default)]
 pub struct ActionTargets {
-    pub enemy_alive: Vec<PlrId>,
-    pub ally_alive: Vec<PlrId>,
-    pub ally_all: Vec<PlrId>,
-    pub ally_dead: Vec<PlrId>,
-    pub all_alive: Vec<PlrId>,
+    pub enemy_alive: PlrVec,
+    pub ally_alive: PlrVec,
+    pub ally_all: PlrVec,
+    pub ally_dead: PlrVec,
+    pub all_alive: PlrVec,
 }
 
 impl ActionTargets {
     pub fn from_enemy_alive(enemy_alive: &[PlrId]) -> Self {
+        let v: PlrVec = SmallVec::from_slice(enemy_alive);
         Self {
-            enemy_alive: enemy_alive.to_vec(),
-            all_alive: enemy_alive.to_vec(),
+            enemy_alive: v.clone(),
+            all_alive: v,
             ..Self::default()
         }
     }

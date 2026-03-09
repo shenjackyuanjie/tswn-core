@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::sync::Arc;
 
+#[allow(unused_imports)]
 use crate::debug::debug_println;
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
@@ -79,8 +80,11 @@ impl StateTrait for CovidInfection {
         if self.entries.is_empty() {
             return false;
         }
+        #[cfg(not(feature = "no_debug"))]
         let debug_covid = crate::debug::debug_covid();
+        #[cfg(not(feature = "no_debug"))]
         let owner_name_pre = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
+        #[cfg(not(feature = "no_debug"))]
         debug_println!(
             debug_covid,
             "[COVID_PREACT] owner={} entries={} rc4=({},{})",
@@ -89,7 +93,7 @@ impl StateTrait for CovidInfection {
             randomer.i,
             randomer.j
         );
-        for (ei, entry) in self.entries.iter_mut().enumerate() {
+        for (_ei, entry) in self.entries.iter_mut().enumerate() {
             let pre_byte = randomer.next_u8();
             if pre_byte < 64 {
                 let new_mutation = randomer.r127() as i32;
@@ -97,7 +101,7 @@ impl StateTrait for CovidInfection {
                     debug_covid,
                     "[COVID_aN] owner={} entry={} mutation {} -> {} rc4=({},{})",
                     owner_name_pre,
-                    ei,
+                    _ei,
                     entry.mutation,
                     new_mutation,
                     randomer.i,
@@ -112,7 +116,7 @@ impl StateTrait for CovidInfection {
                     debug_covid,
                     "[COVID_aN] owner={} entry={} mutation={} no_change rc4=({},{})",
                     owner_name_pre,
-                    ei,
+                    _ei,
                     entry.mutation,
                     randomer.i,
                     randomer.j
@@ -176,6 +180,7 @@ impl StateTrait for CovidInfection {
         }
 
         let owner_wisdom = storage.get_player(&owner).map(|p| p.get_status().wisdom).unwrap_or(0);
+        #[cfg(not(feature = "no_debug"))]
         let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
 
         let condition = days == 0 || (randomer.next_u8() as i32) > owner_wisdom;
@@ -202,7 +207,7 @@ impl StateTrait for CovidInfection {
                 randomer.i,
                 randomer.j
             );
-            for attempt in 0..5 {
+            for _attempt in 0..5 {
                 if all_alive.is_empty() {
                     break;
                 }
@@ -210,11 +215,12 @@ impl StateTrait for CovidInfection {
                     break;
                 };
                 let candidate = all_alive[pick_idx];
+                #[cfg(not(feature = "no_debug"))]
                 let cand_name = storage.get_player(&candidate).map(|p| p.display_name()).unwrap_or_default();
                 debug_println!(
                     debug_covid,
                     "[COVID_PICK] attempt={} pick_idx={} candidate={} is_owner={} is_boss={}",
-                    attempt,
+                    _attempt,
                     pick_idx,
                     cand_name,
                     candidate == owner,
@@ -280,8 +286,11 @@ impl StateTrait for CovidInfection {
         if self.entries.is_empty() {
             return false;
         }
+        #[cfg(not(feature = "no_debug"))]
         let debug_covid = crate::debug::debug_covid();
+        #[cfg(not(feature = "no_debug"))]
         let owner_name = storage.get_player(&owner).map(|p| p.display_name()).unwrap_or_default();
+        #[cfg(not(feature = "no_debug"))]
         debug_println!(
             debug_covid,
             "[COVID_POSTACT] owner={} alive={} entries={} days={:?}",
@@ -506,9 +515,11 @@ fn covid_pneumonia(
         return;
     }
 
+    #[cfg(not(feature = "no_debug"))]
     let debug_covid = crate::debug::debug_covid();
     let owner_name = owner_plr.display_name();
 
+    #[cfg(not(feature = "no_debug"))]
     debug_println!(
         debug_covid,
         "[COVID_PNEUMONIA] owner={} rc4=({},{}) before get_at",

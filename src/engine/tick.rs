@@ -23,8 +23,9 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::engine::{hooks::HookPipeline, rules::RuleRegistry, world_state::WorldState};
-use crate::player::{ActionTargets, PlrId};
+use crate::player::{ActionTargets, PlrId, action_targets::PlrVec};
 use crate::rc4::RC4;
+use foldhash::HashSet as FoldHashSet;
 
 /// Tick 行动决策枚举，由 [`choose_action`] 返回。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,21 +70,23 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
         .and_then(|player| player.get_state::<CharmState>())
         .and_then(|charm| world.team_index_of(charm.group_id))
         .unwrap_or(team_idx);
-    let Some(team_roster) = world.team_roster(effective_team).map(|team| team.to_vec()) else {
+    let Some(team_roster) = world.team_roster(effective_team).map(|s| PlrVec::from_slice(s)) else {
         return ActionTargets::default();
     };
 
-    let ally_alive = world.team_alive(effective_team).map(|team| team.to_vec()).unwrap_or_default();
+    let ally_alive: PlrVec = world.team_alive(effective_team).map(|s| PlrVec::from_slice(s)).unwrap_or_default();
     let ally_all = team_roster.clone();
-    let ally_dead = team_roster.iter().copied().filter(|id| !ally_alive.contains(id)).collect::<Vec<PlrId>>();
-    let all_alive = world.alives_flat(storage);
-    let enemy_alive = world
+    // O(n) set lookup: 避免对每个 roster 成员做 O(alive) 的线性扫描
+    let ally_alive_set: FoldHashSet<PlrId> = ally_alive.iter().copied().collect();
+    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !ally_alive_set.contains(id)).collect();
+    let all_alive: PlrVec = world.teams.iter().flat_map(|t| t.alive.iter().copied()).collect();
+    let enemy_alive: PlrVec = world
         .teams
         .iter()
         .enumerate()
         .filter(|(idx, _)| *idx != effective_team)
         .flat_map(|(_, team)| team.alive.iter().copied())
-        .collect::<Vec<PlrId>>();
+        .collect();
 
     ActionTargets {
         enemy_alive,
