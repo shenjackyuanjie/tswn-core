@@ -1,3 +1,47 @@
+//! # 技能存储 (store)
+//!
+//! 本模块定义 [`SkillStorage`]，管理玩家当前装备的技能列表及各阶段触发器。
+//!
+//! ## 功能说明
+//!
+//! - **技能存储** — 使用 HashMap 存储所有技能
+//! - **技能索引** — 维护技能列表以便快速访问
+//! - **触发器管理** — 按流程阶段管理技能触发器
+//! - **技能注册** — 提供便捷的技能注册接口
+//!
+//! ## 触发器阶段
+//!
+//! | 阶段          | 说明                              |
+//! |---------------|-----------------------------------|
+//! | `update_states` | 每回合刷新属性快照时            |
+//! | `pre_step`     | 行动前（移动点数计算）            |
+//! | `pre_action`   | 行动前（目标选择前）             |
+//! | `post_action`  | 行动后                          |
+//! | `pre_defend`   | 被攻击前（可修改 atp 或截断伤害） |
+//! | `post_defend`  | 被攻击后（可修改实际伤害值）       |
+//! | `post_damage`  | 造成伤害后                        |
+//! | `post_death`   | 死亡时                          |
+//! | `post_kill`    | 击杀时                          |
+//!
+//! ## 技能键
+//!
+//! 使用 `SkillKey` (usize) 作为稳定技能键，用于在存储中唯一标识技能。
+//!
+//! ## Pre-Action 结果
+//!
+//! [`PreActionOutcome`] 存储 pre-action 阶段的执行结果：
+//! - `forced_skill` — 强制使用的技能键
+//! - `clear_forced_action` — 是否清除强制行动
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! use tswn_core::player::skill::store::SkillStorage;
+//!
+//! let mut storage = SkillStorage::new();
+//! // 注册技能到各个触发器阶段
+//! ```
+
 use crate::player::{
     OnDamageFunc, PlrId,
     skill::{ProcKind, Skill, SkillArgs},

@@ -1,3 +1,40 @@
+//! # 技能系统 (skill)
+//!
+//! 本模块定义技能系统的基础 trait、技能分发和技能槽管理。
+//!
+//! ## 子模块
+//!
+//! - **`act`** — 主动技能（吸血、火球、冰冻等共计 ~27 种）
+//! - **`skl`** — 被动/防御技能（反击、防御、隐匿等共计 ~13 种）
+//! - **`store`** — [`store::SkillStorage`]，管理玩家当前装备的技能列表及各阶段触发器
+//!
+//! ## 技能注册流程类型
+//!
+//! 技能可以在以下流程阶段注册并触发：
+//!
+//! | 流程阶段          | 说明                              |
+//! |-------------------|-----------------------------------|
+//! | `UpdateState`     | 每回合刷新属性快照时            |
+//! | `PreStep`         | 行动前（移动点数计算）            |
+//! | `PreAction`        | 行动前（目标选择前）             |
+//! | `PostAction`       | 行动后                          |
+//! | `PreDefend`        | 被攻击前（可修改 atp 或截断伤害） |
+//! | `PostDefend`       | 被攻击后（可修改实际伤害值）       |
+//! | `PostDamage`       | 造成伤害后                        |
+//! | `PostDeath`        | 死亡时                          |
+//! | `PostKill`         | 击杀时                          |
+//!
+//! ## 技能目标域
+//!
+//! | 目标域        | 说明                          |
+//! |---------------|-------------------------------|
+//! | `EnemyAlive`   | 敌方存活玩家                  |
+//! | `AllyAlive`    | 同队存活玩家（含自身）         |
+//! | `AllyAny`      | 同队全部玩家（含已死亡）         |
+//! | `AllyDead`     | 同队已死亡玩家                |
+//! | `SelfOnly`     | 仅自身                        |
+//! | `AllAlive`     | 全场存活玩家（可能跨队伍）      |
+
 use std::any::Any;
 use std::cmp::Ordering;
 use std::fmt::Debug;
@@ -22,7 +59,7 @@ pub use skl::{corpse, counter, defend, hide, merge, none, protect, reflect, rera
 /// PlrId: player handle（稳定 ID，不是内存指针）
 /// &'d mut RC4: random number generator
 /// &'d mut RunUpdates: updates to be applied
-/// &'d Arc<Storage>: game storage
+/// &'d `Arc<Storage>`: game storage
 pub type SkillArgs<'d> = (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Storage>);
 
 /// 技能注册的流程类型

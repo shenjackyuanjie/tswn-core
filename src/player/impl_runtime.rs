@@ -1,3 +1,65 @@
+//! # 玩家运行时行为 (impl_runtime)
+//!
+//! 本模块实现 [`Player`] 的运行时行为，包括行动、攻击、被攻击等。
+//!
+//! ## 功能说明
+//!
+//! - **玩家行动** — `step()` 实现每回合中的玩家行动
+//! - **攻击处理** — `action()` 实现玩家攻击逻辑
+//! - **被攻击处理** — `attacked()` 实现被攻击逻辑
+//! - **更新结束** — `on_update_end()` 处理回合结束
+//! - **状态管理** — 各种状态相关的处理函数
+//!
+//! ## 行动流程
+//!
+//! `step()` 实现每回合中的玩家行动，包括：
+//!
+//! 1. **Pre-Step** — 行动前，计算移动点数
+//! 2. **Pre-Action** — 行动前，目标选择前
+//! 3. **Main Action** — 主行动（攻击、技能等）
+//! 4. **Post-Action** — 行动后
+//!
+//! ## 攻击流程
+//!
+//! `attacked()` 实现被攻击逻辑，包括：
+//!
+//! 1. **Pre-Defends** — 被攻击前，遍历所有 predefend entry
+//! 2. **Dodge** — 闪避判定
+//! 3. **Defend** — 防御处理
+//! 4. **Damage** — 伤害计算
+//! 5. **Post-Damages** — 被攻击后，遍历所有 postdamage entry
+//! 6. **OnDamaged** — 受到伤害后处理
+//! 7. **OnDie** — 死亡处理
+//!
+//! ## 状态处理
+//!
+//! - **Pre-Step States** — 行动前状态处理
+//! - **Pre-Action States** — 行动前状态处理
+//! - **Post-Action States** — 行动后状态处理
+//! - **Pre-Defend States** — 被攻击前状态处理
+//! - **Post-Defend States** — 被攻击后状态处理
+//! - **Post-Damage States** — 造成伤害后状态处理
+//!
+//! ## 调试支持
+//!
+//! - **DODGE_TRACE** — 闪避追踪，用于调试闪避逻辑
+//! - **TSWN_DEBUG_ACTION** — 环境变量，用于调试特定玩家的行动
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! use tswn_core::player::Player;
+//! use tswn_core::rc4::RC4;
+//! use tswn_core::engine::update::RunUpdates;
+//!
+//! let mut player = /* ... */;
+//! let mut randomer = RC4::new(&[0], 2);
+//! let mut updates = RunUpdates::new();
+//! let targets = /* ... */;
+//!
+//! player.step(&mut randomer, &mut updates, &storage, &targets);
+//! ```
+
 use super::*;
 
 pub static DODGE_TRACE_ACTIVE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);

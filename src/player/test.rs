@@ -1,3 +1,38 @@
+//! # 玩家测试 (test)
+//!
+//! 本模块包含 [`Player`] 的单元测试和集成测试。
+//!
+//! ## 测试内容
+//!
+//! - **玩家创建** — 测试根据原始输入创建 Player
+//! - **属性计算** — 测试属性计算逻辑
+//! - **技能系统** — 测试技能触发和效果
+//! - **状态系统** — 测试状态挂载和触发
+//! - **武器系统** — 测试武器计算和效果
+//! - **Boss 系统** — 测试各种 Boss 的特殊行为
+//!
+//! ## 测试函数
+//!
+//! - `player_raw_new()` — 测试根据原始输入创建 Player
+//! - 更多测试函数...
+//!
+//! ## 运行测试
+//!
+//! ```bash
+//! cargo test --package tswn-core --lib player::test
+//! ```
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! #[test]
+//! fn player_raw_new() {
+//!     let storage = Storage::new_arc();
+//!     let player = Player::new_from_namerena_raw("mario".to_string(), storage.clone());
+//!     assert_eq!(player.unwrap().name, "mario");
+//! }
+//! ```
+
 use super::*;
 use crate::engine::update::UpdateType;
 

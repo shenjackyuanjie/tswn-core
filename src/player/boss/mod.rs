@@ -1,3 +1,53 @@
+//! # Boss 系统 (boss)
+//!
+//! 本模块定义 Boss 专用初始化及专属行为。
+//!
+//! ## Boss 类型
+//!
+//! | Boss 名称 | 说明                          |
+//! |-----------|-------------------------------|
+//! | `Covid`   | 新冠病毒 Boss（感染传播、变异机制）|
+//! | `Lazy`    | 懒癌 Boss                     |
+//! | `Saitama` | 一拳超人 Boss                 |
+//! | `Generic` | 通用 Boss（无特殊行为）       |
+//!
+//! ## Boss 状态
+//!
+//! 每个 Boss 都有专属的状态结构：
+//! - [`CovidBossState`] — 新冠病毒 Boss 状态
+//! - [`LazyBossState`] — 懒癌 Boss 状态
+//! - [`SaitamaState`] — 一拳超人 Boss 状态
+//!
+//! ## Boss 行为
+//!
+//! - **初始化** — `init_boss_state()` 根据 Boss 名称初始化状态
+//! - **行动概率** — `boss_action_prob_count()` 返回 Boss 行动概率计数
+//! - **免疫阈值** — `boss_immune_threshold()` 返回 Boss 对特定技能的免疫阈值
+//! - **默认行动** — `boss_default_action()` 执行 Boss 的默认行动
+//!
+//! ## Boss 免疫
+//!
+//! 不同 Boss 对不同技能有不同的免疫阈值：
+//! - **一拳超人** — 对 `half`、`exchange` 免疫阈值 240，对 `berserk`、`slow`、`ice` 免疫阈值 192
+//! - **新冠病毒** — 对 `charm`、`berserk`、`exchange` 免疫阈值 192
+//! - **懒癌** — 对 `assassinate`、`half`、`curse`、`exchange` 免疫阈值 192
+//! - **通用 Boss** — 对 `assassinate`、`charm`、`berserk`、`half`、`curse`、`exchange`、`slow`、`ice` 免疫阈值 192
+//!
+//! ## 子模块
+//!
+//! - **`covid`** — 新冠病毒 Boss 实现
+//! - **`lazy`** — 懒癌 Boss 实现
+//! - **`saitama`** — 一拳超人 Boss 实现
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! use tswn_core::player::boss::{boss_kind, init_boss_state};
+//!
+//! let kind = boss_kind("covid");
+//! init_boss_state(&mut player);
+//! ```
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

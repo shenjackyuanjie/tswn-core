@@ -33,7 +33,7 @@ pub enum ActionDecision {
     Skip,
 }
 
-pub(super) fn next_actor(world: &mut WorldState, _storage: &Arc<Storage>) -> Option<PlrId> {
+pub fn next_actor(world: &mut WorldState, _storage: &Arc<Storage>) -> Option<PlrId> {
     if world.players.is_empty() {
         return None;
     }
@@ -41,7 +41,7 @@ pub(super) fn next_actor(world: &mut WorldState, _storage: &Arc<Storage>) -> Opt
     Some(world.players[idx])
 }
 
-pub(super) fn choose_action(
+pub fn choose_action(
     actor: PlrId,
     world: &WorldState,
     storage: &Arc<Storage>,
@@ -100,7 +100,7 @@ pub struct TickContext<'a> {
     pub updates: &'a mut RunUpdates,
 }
 
-pub(super) fn resolve_combat(
+pub fn resolve_combat(
     actor: PlrId,
     decision: ActionDecision,
     targets: &ActionTargets,
@@ -119,7 +119,7 @@ pub(super) fn resolve_combat(
     }
 }
 
-pub(super) fn check_winner(world: &mut WorldState, _storage: &Arc<Storage>) {
+pub fn check_winner(world: &mut WorldState, _storage: &Arc<Storage>) {
     let mut alive_team_indices = world
         .teams
         .iter()

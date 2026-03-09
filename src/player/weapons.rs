@@ -1,3 +1,64 @@
+//! # 武器系统 (weapons)
+//!
+//! 本模块实现武器系统，包括武器计算和属性修改。
+//!
+//! ## 功能说明
+//!
+//! - **武器计算** — 根据武器名称计算八围加成和技能 boost
+//! - **属性修改** — 死亡笔记等特殊武器效果
+//! - **促销武器** — 特殊促销武器的处理
+//!
+//! ## 武器计算流程
+//!
+//! 1. **初始化 RC4** — 使用武器名称作为种子
+//! 2. **计算八围加成** — 根据 RC4 序列计算各属性加成
+//! 3. **选择技能** — 根据 RC4 选择要 boost 的技能 ID
+//! 4. **计算 boost 量** — 在 pre_upgrade 中计算技能 boost 量
+//!
+//! ## 武器类型
+//!
+//! | 类型        | 说明                          |
+//! |-------------|-------------------------------|
+//! | `Normal`    | 普通武器                      |
+//! | `DeathNote` | 死亡笔记（直接击杀）          |
+//! | `Promo`     | 促销武器                      |
+//! | `RModifier`  | 属性修改器                    |
+//!
+//! ## 常量说明
+//!
+//! 对应 JS 中的各种常量（如 `$.av()`、`$.ap()` 等）：
+//! - `AV` — 属性数量 (8 围)
+//! - `AP` — 循环上界 / HP index
+//! - `BG` — 技能总数
+//! - `AI` — seed slice 上界
+//! - `A4` — attr randomizer 特殊值
+//! - `IH` — p\[r_idx] 赋值
+//! - `PN` — kp 比较阈值
+//! - `B1` — kp 减数
+//! - `D1` — bn 循环上界
+//! - `MY` — skill_factor 基数
+//! - `Q8` — cB delta 常量
+//!
+//! ## 武器状态
+//!
+//! [`WeaponState`] 存储武器计算状态：
+//! - `seed` — RC4 状态 (JS: this.d)
+//! - `attr_bonus` — 八围加成 (JS: this.r)
+//! - `skill_index` — 要 boost 的技能 ID (JS: this.e)
+//! - `skill_factor` — 技能 boost 量 (JS: this.f)
+//! - `weapon_type` — 武器类型
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! use tswn_core::player::weapons::calc_weapon;
+//!
+//! let weapon_state = calc_weapon("死亡笔记");
+//! println!("八围加成: {:?}", weapon_state.attr_bonus);
+//! println!("技能 ID: {}", weapon_state.skill_index);
+//! println!("boost 量: {}", weapon_state.skill_factor);
+//! ```
+
 use crate::player::Player;
 use crate::rc4::RC4;
 

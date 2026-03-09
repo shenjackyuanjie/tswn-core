@@ -1,3 +1,50 @@
+//! # 玩家构造 (impl_ctor)
+//!
+//! 本模块实现 [`Player`] 的构造函数和初始化逻辑。
+//!
+//! ## 功能说明
+//!
+//! - **创建玩家** — `new_and_init()` 创建新玩家并初始化
+//! - **从原始数据创建** — `new_from_namerena_raw()` 从 namerena 原始数据创建玩家
+//! - **克隆玩家** — `new_from_clone()` 创建玩家克隆
+//! - **Boss 初始化** — 各种 Boss 的专用初始化函数
+//!
+//! ## 构造流程
+//!
+//! 1. **参数校验** — 校验队名、玩家名称长度和字符
+//! 2. **初始化状态** — 创建初始的 [`PlayerStatus`]
+//! 3. **计算名字系数** — 根据名字计算 name_factor
+//! 4. **初始化武器** — 解析武器名称并计算武器效果
+//! 5. **初始化技能** — 根据名字和武器初始化技能
+//! 6. **构建属性** — 计算八围和技能熟练度
+//!
+//! ## Boss 初始化
+//!
+//! 为各种 Boss 提供专用初始化函数：
+//! - `new_boss_covid()` — 新冠病毒 Boss
+//! - `new_boss_lazy()` — 懒癌 Boss
+//! - `new_boss_saitama()` — 一拳超人 Boss
+//! - `new_boss_mario()` — 马里奥 Boss
+//! - `new_boss_slime()` — 史莱姆 Boss
+//! - `new_boss_sonic()` — 索尼克 Boss
+//! - `new_boss_yuri()` — 尤里 Boss
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! use tswn_core::player::Player;
+//! use std::sync::Arc;
+//! use tswn_core::engine::storage::Storage;
+//!
+//! let storage = Arc::new(Storage::default());
+//! let player = Player::new_and_init(
+//!     Some("TeamA".to_string()),
+//!     "PlayerName".to_string(),
+//!     Some("WeaponName".to_string()),
+//!     storage
+//! ).unwrap();
+//! ```
+
 use super::*;
 
 impl Player {

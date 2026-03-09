@@ -1,11 +1,51 @@
-/// Icon generation algorithm - replicates JS/Dart Sgl.createFromName()
-///
-/// Produces the color selections that would be used to render a 16x16 player icon.
-/// Since we don't have canvas/PNG shape data, we output the logical selections:
-/// border style, shape indices, background color, and foreground colors (RGB).
-use crate::rc4::RC4;
+//! # 图标生成 (icon)
+//!
+//! 本模块实现玩家图标的生成算法，复现 JS/Dart `Sgl.createFromName()`。
+//!
+//! ## 功能说明
+//!
+//! 根据玩家名称生成图标所需的颜色选择：
+//! - 边框样式
+//! - 形状索引
+//! - 背景色
+//! - 前景色 (RGB)
+//!
+//! ## 算法流程
+//!
+//! 1. **RC4 密钥生成** — 使用 `[0] + UTF-8(name)` 作为密钥，2 轮
+//! 2. **S 表映射** — 每个字节 → `((byte ^ 6) * 99 + 218) & 255`
+//! 3. **颜色选择** — 使用映射表选择形状和颜色
+//!
+//! ## 颜色距离矩阵
+//!
+//! 使用预计算的颜色距离矩阵来确保前景色与背景色有足够的对比度。
+//! 矩阵使用 `OnceLock` 实现懒加载，首次调用时计算，之后直接返回缓存。
+//!
+//! ## 相关模块
+//!
+//! - [`crate::player::icon_render`] — 图标渲染，将颜色选择转换为 PNG 图像
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! use tswn_core::player::icon::icon_from_name;
+//!
+//! let result = icon_from_name("mario");
+//! println!("边框样式: {}", result.border_style);
+//! println!("形状: {:?}", result.shapes);
+//! println!("背景色: {:?}", result.bg_color);
+//! println!("前景色: {:?}", result.fg_colors);
+//! ```
 
-/// 21 predefined colors (sig_colors / $.mf)
+/// 图标生成算法 - 复现 JS/Dart Sgl.createFromName()
+///
+/// 生成用于渲染 16x16 玩家图标的颜色选择。
+/// 由于我们没有 canvas/PNG 形状数据，输出逻辑选择：
+/// 边框样式、形状索引、背景色和前景色（RGB）。
+use crate::rc4::RC4;
+use std::sync::OnceLock;
+
+/// 21 个预定义颜色（sig_colors / $.mf）
 pub const SIG_COLORS: [[u8; 3]; 21] = [
     [255, 255, 255], // 0
     [255, 255, 255], // 1
@@ -34,36 +74,42 @@ const C_COUNT: usize = SIG_COLORS.len(); // 21
 const NUM_SHAPES: usize = 38;
 const NUM_BORDERS: usize = 8;
 
-/// Precomputed color distance matrix.
-/// Uses the same formula as Dart/JS: weighted euclidean on R,G,B + luminance diff.
-/// Note: the Dart code has a bug where it uses `sig_colors[i][0]` (R channel) for all
-/// three luminance terms instead of R,G,B — we replicate that bug faithfully.
+/// 预计算的颜色距离矩阵。
+/// 使用与 Dart/JS 相同的公式：R,G,B 加权欧几里得距离 + 亮度差异。
+/// 注意：Dart 代码有一个 bug，它对所有三个亮度项都使用 `sig_colors[i][0]`（R 通道）
+/// 而不是 R,G,B — 我们忠实地复现了这个 bug。
 fn color_distance(i: usize, j: usize) -> f64 {
     let ci = SIG_COLORS[i];
     let cj = SIG_COLORS[j];
     let dr = (ci[0] as f64 - cj[0] as f64) * 0.3;
     let dg = (ci[1] as f64 - cj[1] as f64) * 0.4;
     let db = (ci[2] as f64 - cj[2] as f64) * 0.25;
-    // Bug-compatible: Dart uses sig_colors[i][0] for all three luminance terms
+    // Bug 兼容：Dart 对所有三个亮度项都使用 sig_colors[i][0]
     let dl = (ci[0] as f64 * 0.15 + ci[0] as f64 * 0.25 + ci[0] as f64 * 0.1)
         - (cj[0] as f64 * 0.15 + cj[0] as f64 * 0.25 + cj[0] as f64 * 0.1);
     (dr * dr + dg * dg + db * db + dl * dl).sqrt()
 }
 
-/// Lazy-initialized color distance matrix
-fn cdif() -> [[f64; C_COUNT]; C_COUNT] {
-    let mut dds = [[0.0_f64; C_COUNT]; C_COUNT];
-    for i in 1..C_COUNT {
-        for j in 0..i {
-            let d = color_distance(i, j);
-            dds[i][j] = d;
-            dds[j][i] = d;
+/// 全局颜色距离矩阵，首次使用时初始化。
+static CDIF: OnceLock<[[f64; C_COUNT]; C_COUNT]> = OnceLock::new();
+
+/// 获取颜色距离矩阵（首次调用时懒初始化）。
+#[allow(clippy::needless_range_loop)]
+fn cdif() -> &'static [[f64; C_COUNT]; C_COUNT] {
+    CDIF.get_or_init(|| {
+        let mut dds = [[0.0_f64; C_COUNT]; C_COUNT];
+        for i in 1..C_COUNT {
+            for j in 0..i {
+                let d = color_distance(i, j);
+                dds[i][j] = d;
+                dds[j][i] = d;
+            }
         }
-    }
-    dds
+        dds
+    })
 }
 
-/// Result of icon generation — the logical color selections.
+/// 图标生成结果 — 逻辑颜色选择。
 #[derive(Debug, Clone)]
 pub struct IconResult {
     pub border_style: usize,
@@ -72,39 +118,39 @@ pub struct IconResult {
     pub bg_color: [u8; 3],
     pub fg_color_indices: Vec<usize>,
     pub fg_colors: Vec<[u8; 3]>,
-    /// How many entries from the colors array were consumed
+    /// 从颜色数组中消耗了多少条目
     pub colors_consumed: usize,
 }
 
-/// Generate icon color selections from a player name.
+/// 从玩家名称生成图标颜色选择。
 ///
-/// Replicates Sgl.createFromName(name):
-///   1. RC4 key = [0] + UTF-8(name), 2 rounds
-///   2. Map S table: each byte → ((byte ^ 6) * 99 + 218) & 255
-///   3. Use mapped table to select shapes and colors
+/// 复现 Sgl.createFromName(name):
+///   1. RC4 密钥 = \[0] + UTF-8(name)，2 轮
+///   2. 映射 S 表：每个字节 → ((byte ^ 6) * 99 + 218) & 255
+///   3. 使用映射表选择形状和颜色
 pub fn icon_from_name(name: &str) -> IconResult {
-    // Step 1: RC4 with [0] + utf8(name) as key, 2 rounds
+    // 步骤 1：使用 [0] + utf8(name) 作为密钥的 RC4，2 轮
     let mut key = Vec::with_capacity(1 + name.len());
     key.push(0u8);
     key.extend_from_slice(name.as_bytes());
     let rc4 = RC4::new(&key, 2);
 
-    // Step 2: Transform S table
+    // 步骤 2：转换 S 表
     let colors: Vec<u8> = rc4.main_val.iter().map(|&n| (((n ^ 6) as u16 * 99 + 218) & 255) as u8).collect();
 
     icon_from_colors(&colors)
 }
 
-/// Generate icon from the transformed color array (replicates Sgl.create()).
+/// 从转换后的颜色数组生成图标（复现 Sgl.create()）。
 fn icon_from_colors(colors: &[u8]) -> IconResult {
     let cdif = cdif();
     let mut pos = 0;
 
-    // 1. Border style (0..7)
+    // 1. 边框样式 (0..7)
     let border_style = colors[pos] as usize % NUM_BORDERS;
     pos += 1;
 
-    // 2. Shapes (2-4)
+    // 2. 形状 (2-4)
     let mut shapes = Vec::new();
     let shape1 = colors[pos] as usize % NUM_SHAPES;
     shapes.push(shape1);
@@ -131,11 +177,11 @@ fn icon_from_colors(colors: &[u8]) -> IconResult {
         pos += 1;
     }
 
-    // 3. Background color (from first 15 = cCount-6)
+    // 3. 背景颜色（从前 15 个 = cCount-6）
     let bg_color_idx = colors[pos] as usize % (C_COUNT - 6);
     pos += 1;
 
-    // 4. Foreground colors
+    // 4. 前景颜色
     let mut used_colors: Vec<usize> = Vec::new();
     let mut fg_color_indices = Vec::new();
     let mut fg_colors = Vec::new();

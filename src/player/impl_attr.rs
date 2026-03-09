@@ -1,3 +1,43 @@
+//! # 玩家属性计算 (impl_attr)
+//!
+//! 本模块实现 [`Player`] 的属性计算逻辑。
+//!
+//! ## 功能说明
+//!
+//! - **属性构建** — `build()` 和 `build_for_clone()` 计算具体属性
+//! - **属性升级** — `upgrade()` 升级属性
+//! - **八围推导** — 根据名字系数推导八围属性
+//! - **技能熟练度** — 计算技能熟练度
+//!
+//! ## 属性计算流程
+//!
+//! 1. **名字系数调整** — 根据名字系数调整数值
+//! 2. **八围计算** — 根据名字系数推导八围属性
+//! 3. **技能熟练度** — 计算技能熟练度
+//! 4. **属性汇总** — 计算属性总和、攻击总和、全部总和
+//!
+//! ## 名字系数调整
+//!
+//! 根据名字系数调整数值：
+//! ```javascript
+//! const result = Math.round(a * (1 - this.x / b))
+//! ```
+//!
+//! ## 克隆玩家处理
+//!
+//! Dart `PlrClone` 在 `addSkillsToProc` 中先 clamp 技能等级到 owner 的当前等级，
+//! 然后再执行 boost（`super.addSkillsToProc`）。
+//! 普通 `build` 不做 clamp，clone 通过传入 owner 的 skill store 来执行 clamp。
+//!
+//! ## 示例
+//!
+//! ```rust,ignore
+//! use tswn_core::player::Player;
+//!
+//! let mut player = /* ... */;
+//! player.build(); // 计算属性
+//! ```
+
 use super::*;
 
 impl Player {
@@ -252,8 +292,8 @@ impl Player {
     /// - \<name>@\<team>
     /// - \<name>+\<weapon>
     /// - \<name>+\<weapon>+diy{xxxxx}
-    /// - \<name>@<team>+\<weapon>
-    /// - \<name>@<team>+\<weapon>+diy{xxxxx}
+    /// - \<name>@\<team>+\<weapon>
+    /// - \<name>@\<team>+\<weapon>+diy{xxxxx}
     pub fn new_from_namerena_raw(raw_name: String, storage: Arc<Storage>) -> PlayerResult<Self> {
         // 先判断是否有 + 和 @
         if !raw_name.contains("@") && !raw_name.contains("+") {
