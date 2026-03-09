@@ -10,6 +10,14 @@
 //! - 背景色
 //! - 前景色 (RGB)
 //!
+//! ## sglname 解析规则
+//!
+//! 根据 JS 源码，icon 使用的名称（sglname）解析规则如下：
+//! - 输入格式 `name@team` → sglname = `team`（使用队伍名生成 icon）
+//! - 输入格式 `name` → sglname = `name`（使用玩家名生成 icon）
+//!
+//! 这意味着同一队伍的玩家会有相同的 icon。
+//!
 //! ## 算法流程
 //!
 //! 1. **RC4 密钥生成** — 使用 `[0] + UTF-8(name)` 作为密钥，2 轮
@@ -28,20 +36,17 @@
 //! ## 示例
 //!
 //! ```rust,ignore
-//! use tswn_core::player::icon::icon_from_name;
+//! use tswn_core::player::icon::{icon_from_name, icon_from_raw_name};
 //!
+//! // 直接使用名称生成 icon
 //! let result = icon_from_name("mario");
 //! println!("边框样式: {}", result.border_style);
-//! println!("形状: {:?}", result.shapes);
-//! println!("背景色: {:?}", result.bg_color);
-//! println!("前景色: {:?}", result.fg_colors);
+//!
+//! // 从原始名称解析 sglname 后生成 icon
+//! // "player@team" 会使用 "team" 生成 icon
+//! let result = icon_from_raw_name("player@team");
 //! ```
 
-/// 图标生成算法 - 复现 JS/Dart Sgl.createFromName()
-///
-/// 生成用于渲染 16x16 玩家图标的颜色选择。
-/// 由于我们没有 canvas/PNG 形状数据，输出逻辑选择：
-/// 边框样式、形状索引、背景色和前景色（RGB）。
 use crate::rc4::RC4;
 use std::sync::OnceLock;
 
@@ -139,6 +144,30 @@ pub fn icon_from_name(name: &str) -> IconResult {
     let colors: Vec<u8> = rc4.main_val.iter().map(|&n| (((n ^ 6) as u16 * 99 + 218) & 255) as u8).collect();
 
     icon_from_colors(&colors)
+}
+
+/// 从原始名称解析 sglname（用于生成 icon 的名称）。
+///
+/// 根据 JS 源码逻辑：
+/// - `name@team` → 返回 `team`
+/// - `name` → 返回 `name`
+///
+/// 这意味着同一队伍的玩家会有相同的 icon。
+pub fn parse_sglname(raw_name: &str) -> &str {
+    if let Some((_, team)) = raw_name.split_once('@') {
+        team
+    } else {
+        raw_name
+    }
+}
+
+/// 从原始名称生成图标颜色选择。
+///
+/// 会自动解析 `name@team` 格式，使用队伍名生成 icon。
+/// 如果没有队伍名，则使用玩家名。
+pub fn icon_from_raw_name(raw_name: &str) -> IconResult {
+    let sglname = parse_sglname(raw_name);
+    icon_from_name(sglname)
 }
 
 /// 从转换后的颜色数组生成图标（复现 Sgl.create()）。
@@ -303,5 +332,30 @@ mod tests {
         assert_eq!(r.fg_color_indices, vec![10, 13]);
         assert_eq!(r.fg_colors, vec![[255, 108, 0], [0, 255, 255]]);
         assert_eq!(r.colors_consumed, 8);
+    }
+
+    #[test]
+    fn test_parse_sglname() {
+        assert_eq!(parse_sglname("player"), "player");
+        assert_eq!(parse_sglname("player@team"), "team");
+        assert_eq!(parse_sglname("name@team"), "team");
+        assert_eq!(parse_sglname("a@b"), "b");
+    }
+
+    #[test]
+    fn test_icon_from_raw_name() {
+        let r1 = icon_from_raw_name("mario");
+        let r2 = icon_from_raw_name("someone@mario");
+        assert_eq!(r1.border_style, r2.border_style);
+        assert_eq!(r1.shapes, r2.shapes);
+        assert_eq!(r1.bg_color, r2.bg_color);
+        assert_eq!(r1.fg_colors, r2.fg_colors);
+
+        let r3 = icon_from_raw_name("player@team");
+        let r4 = icon_from_name("team");
+        assert_eq!(r3.border_style, r4.border_style);
+        assert_eq!(r3.shapes, r4.shapes);
+        assert_eq!(r3.bg_color, r4.bg_color);
+        assert_eq!(r3.fg_colors, r4.fg_colors);
     }
 }

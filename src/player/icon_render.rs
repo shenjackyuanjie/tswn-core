@@ -62,7 +62,7 @@
 //! - Base64 编码器为标准 RFC 4648 实现，避免额外依赖
 //! - 混合算法复现 HTML Canvas `source-over` 混合模式
 
-use crate::player::icon::{IconResult, icon_from_name};
+use crate::player::icon::{IconResult, icon_from_raw_name};
 
 #[path = "sprite_data.rs"]
 mod sprite_data;
@@ -164,14 +164,14 @@ pub fn render_icon_b64(icon: &IconResult) -> String {
 
 /// 便捷包装器: 通过玩家名称渲染 → PNG 字节。
 #[cfg(feature = "png_render")]
-pub fn render_icon_png_from_name(name: &str) -> Vec<u8> { render_icon_png(&icon_from_name(name)) }
+pub fn render_icon_png_from_name(name: &str) -> Vec<u8> { render_icon_png(&icon_from_raw_name(name)) }
 
 /// 便捷包装器: 通过玩家名称渲染 → base64 data URL。
 #[cfg(feature = "png_render")]
-pub fn render_icon_b64_from_name(name: &str) -> String { render_icon_b64(&icon_from_name(name)) }
+pub fn render_icon_b64_from_name(name: &str) -> String { render_icon_b64(&icon_from_raw_name(name)) }
 
 /// 便捷包装器: 通过玩家名称渲染 → RGBA 像素数据 (1024 字节)。
-pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> { render_icon_vec(&icon_from_name(name)) }
+pub fn render_icon_vec_from_name(name: &str) -> Vec<u8> { render_icon_vec(&icon_from_raw_name(name)) }
 
 // ── 内部辅助函数 ──────────────────────────────────────────────────────────
 

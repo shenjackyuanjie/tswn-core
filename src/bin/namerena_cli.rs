@@ -111,7 +111,7 @@ use std::io::{self, Read};
 
 use tswn_core::Runner;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::player::icon::icon_from_name;
+use tswn_core::player::icon::icon_from_raw_name;
 
 use tswn_core::player::icon_render::render_icon_vec_from_name;
 
@@ -211,7 +211,7 @@ fn read_raw_input() -> Result<String, String> {
                 }
                 for name in &args[2..] {
                     let path = dir.join(format!("{name}.png"));
-                    let icon = icon_from_name(name);
+                    let icon = icon_from_raw_name(name);
                     let png = render_icon_png(&icon);
                     if let Err(e) = fs::write(&path, &png) {
                         eprintln!("写入 {} 失败: {e}", path.display());
@@ -246,7 +246,7 @@ fn read_raw_input() -> Result<String, String> {
 
 /// 打印给定玩家名称的图标 TUI 表示。
 fn print_icon(name: &str) {
-    let icon = icon_from_name(name);
+    let icon = icon_from_raw_name(name);
     let [br, bg, bb] = icon.bg_color;
 
     println!("=== Icon: {name} ===");
