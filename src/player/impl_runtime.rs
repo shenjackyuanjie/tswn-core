@@ -40,11 +40,6 @@
 //! - **Post-Defend States** — 被攻击后状态处理
 //! - **Post-Damage States** — 造成伤害后状态处理
 //!
-//! ## 调试支持
-//!
-//! - **DODGE_TRACE** — 闪避追踪，用于调试闪避逻辑
-//! - **TSWN_DEBUG_ACTION** — 环境变量，用于调试特定玩家的行动
-//!
 //! ## 示例
 //!
 //! ```rust,ignore
@@ -62,148 +57,46 @@
 
 use super::*;
 
-pub static DODGE_TRACE_ACTIVE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-
 impl Player {
     pub fn update_player(&mut self) {
         self.init_skills();
         self.update_states();
     }
 
-    /// 每回合中的玩家行动
-    ///
-    /// 包括 pre, main, post
     pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
         if !self.status.alive() {
             return;
         }
-        let trace_fine = cfg!(not(feature = "no_debug")) && DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
-        if trace_fine {
-            eprintln!("[step_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
-        }
-        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
-        let move_before = self.status.move_point;
         let mut stp = self.status.speed * randomer.r3() as i32;
-        if trace_fine {
-            eprintln!("[step_after_r3] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
-        }
         stp = self.apply_pre_step_states(stp, updates);
-        if trace_fine {
-            eprintln!(
-                "[step_after_pre_step_states] plr={} rc4=({}, {})",
-                self.id_name(),
-                randomer.i,
-                randomer.j
-            );
-        }
         let ptr = self.as_ptr();
         stp = self.skills.pre_step(stp, (ptr, randomer, updates, storage));
-        if trace_fine {
-            eprintln!(
-                "[step_after_pre_step_skills] plr={} rc4=({}, {}) move_after={}",
-                self.id_name(),
-                randomer.i,
-                randomer.j,
-                self.status.move_point + stp
-            );
-        }
         self.status.move_point += stp;
-        if debug_this {
-            eprintln!(
-                "[step] actor={} move_before={} stp={} move_after={} rc4=({}, {})",
-                self.id_name(),
-                move_before,
-                stp,
-                self.status.move_point,
-                randomer.i,
-                randomer.j,
-            );
-        }
         if self.check_move() {
             self.status.move_point -= MOVE_POINT_THRESHOLD;
-            // 主动作
             self.action(randomer, updates, storage, targets);
         }
-        // 结束
     }
 
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
-        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
-        let trace_fine = cfg!(not(feature = "no_debug")) && DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
-        if trace_fine {
-            eprintln!("[action_begin] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
-        }
-        if cfg!(not(feature = "no_debug")) && crate::debug::trace_rc4() {
-            eprintln!("[RC4_ACTION] plr={} rc4=({}, {})", self.id_name(), randomer.i, randomer.j);
-        }
         let smart_roll = randomer.r63() as i32;
         let smart = self.status.wisdom > smart_roll;
-        if trace_fine {
-            eprintln!(
-                "[action_after_smart] plr={} smart={} rc4=({}, {})",
-                self.id_name(),
-                smart,
-                randomer.i,
-                randomer.j
-            );
-        }
-        if debug_this {
-            eprintln!(
-                "[action] start actor={} rc4=({}, {}) smart={} smart_roll={}",
-                self.id_name(),
-                randomer.i,
-                randomer.j,
-                smart,
-                smart_roll,
-            );
-            let mut preview = randomer.clone();
-            let peek = (0..6).map(|_| preview.next_u8()).collect::<Vec<u8>>();
-            eprintln!("[action] peek_next={peek:?}");
-        }
         let ptr = self.as_ptr();
         let pre_action_outcome = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
-        if trace_fine {
-            eprintln!(
-                "[action_after_preaction] plr={} rc4=({}, {})",
-                self.id_name(),
-                randomer.i,
-                randomer.j
-            );
-        }
-        if debug_this {
-            eprintln!(
-                "[action] after pre_action forced={:?} rc4=({}, {})",
-                pre_action_outcome.forced_skill, randomer.i, randomer.j
-            );
-        }
         if self.status.frozed() {
             return;
         }
 
-        // State-based pre-action hijack (COVID/Lazy infection replaces player's action)
         let state_hijacked = self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
         if state_hijacked {
-            // State handled the entire action; skip to recovery + post_action.
             let recover_threshold = self.status.wisdom + 64;
             if (randomer.r127() as i32) < recover_threshold {
                 self.status.mp += 16;
-            }
-            if debug_this {
-                eprintln!(
-                    "[action] state_hijacked end actor={} mp={} rc4=({}, {})",
-                    self.id_name(),
-                    self.status.mp,
-                    randomer.i,
-                    randomer.j,
-                );
             }
             updates.add(RunUpdate::new_newline());
             let ptr = self.as_ptr();
             self.skills.post_action((ptr, randomer, updates, storage));
             self.apply_post_action_states(randomer, updates, storage);
-            if debug_this {
-                eprintln!("[action] after state_hijacked post_action rc4=({}, {})", randomer.i, randomer.j);
-            }
             return;
         }
 
@@ -223,53 +116,21 @@ impl Player {
         } else {
             if selected_skill_key.is_none() {
                 let req_mp = randomer.r15() as i32 + 8;
-                if debug_this {
-                    eprintln!(
-                        "[action] req_mp={req_mp} mp={} rc4=({}, {})",
-                        self.status.mp, randomer.i, randomer.j
-                    );
-                }
                 if self.status.mp >= req_mp {
                     let is_boss = self.player_type == PlayerType::Boss;
-                    // JS PlrBoss.bs() 只把 k1 中的 ActionSkill 加入 k4。
-                    // 对 COVID/Lazy 等 boss，k1 中的 SklCovidDefend/SklLazyDefend
-                    // 不是 ActionSkill，因此 k4 为空，不消耗任何 prob 字节。
-                    // 但 Saitama/Generic 的 dftAct 在 k4 中，消耗 1 个 prob 字节。
                     if !is_boss {
                         let skill_keys = self.skills.skill.clone();
                         for key in skill_keys {
                             let maybe_targets = {
                                 let skill = self.skills.skill_by_id(key);
-                                let rc4_before_prob = (randomer.i, randomer.j);
                                 let action_ok = skill.has_action_impl();
                                 let level_ok = skill.level() > 0;
                                 let prob_ok = level_ok && action_ok && skill.prob(smart, (ptr, randomer, updates, storage));
-                                if debug_this && (level_ok || action_ok) {
-                                    eprintln!(
-                                        "[action] skill={key} lv={} action={} prob={} rc4 {}:{} -> {}:{}",
-                                        skill.level(),
-                                        action_ok,
-                                        prob_ok,
-                                        rc4_before_prob.0,
-                                        rc4_before_prob.1,
-                                        randomer.i,
-                                        randomer.j
-                                    );
-                                }
                                 if !(level_ok && action_ok && prob_ok) {
                                     None
                                 } else {
                                     let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
                                     let allow_empty = skill.target_domain() == SkillTargetDomain::SelfOnly;
-                                    if debug_this {
-                                        eprintln!(
-                                            "[action] skill={key} selected_len={} allow_empty={} rc4=({}, {})",
-                                            selected.len(),
-                                            allow_empty,
-                                            randomer.i,
-                                            randomer.j
-                                        );
-                                    }
                                     if selected.is_empty() && !allow_empty {
                                         None
                                     } else {
@@ -284,22 +145,12 @@ impl Player {
                             }
                         }
                     } else {
-                        // Boss: consume prob bytes for boss ActionSkls
-                        // Dart calls prob() for each ActionSkl in the actions list;
-                        // for Saitama/Generic, dftAct is in the list (1 byte);
-                        // for COVID/Lazy, the actions list is empty (0 bytes).
                         let prob_count = crate::player::boss::boss_action_prob_count(&self.name);
                         for _ in 0..prob_count {
                             let _ = randomer.r127();
                         }
-                    } // end if !is_boss
-                    self.status.mp -= req_mp;
-                    if debug_this {
-                        eprintln!(
-                            "[action] consume mp now={} rc4=({}, {})",
-                            self.status.mp, randomer.i, randomer.j
-                        );
                     }
+                    self.status.mp -= req_mp;
                 }
             } else if let Some(skill_key) = selected_skill_key {
                 selected_targets = {
@@ -319,14 +170,6 @@ impl Player {
                 };
                 if !selected_targets.is_empty() || allow_empty {
                     let skill = self.skills.skill_by_id_mut(skill_key);
-                    if debug_this {
-                        eprintln!(
-                            "[action] act skill={skill_key} targets={} rc4=({}, {})",
-                            selected_targets.len(),
-                            randomer.i,
-                            randomer.j
-                        );
-                    }
                     skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
                     acted = true;
                 }
@@ -334,14 +177,6 @@ impl Player {
         }
 
         if !acted {
-            if trace_fine {
-                eprintln!(
-                    "[action_before_default_attack] plr={} rc4=({}, {})",
-                    self.id_name(),
-                    randomer.i,
-                    randomer.j
-                );
-            }
             self.default_attack(smart, randomer, updates, storage, targets);
         }
 
@@ -349,24 +184,9 @@ impl Player {
         if (randomer.r127() as i32) < recover_threshold {
             self.status.mp += 16;
         }
-        if debug_this {
-            eprintln!(
-                "[action] end actor={} mp={} rc4=({}, {})",
-                self.id_name(),
-                self.status.mp,
-                randomer.i,
-                randomer.j,
-            );
-        }
         updates.add(RunUpdate::new_newline());
         self.skills.post_action((ptr, randomer, updates, storage));
-        if debug_this {
-            eprintln!("[action] after skills.post_action rc4=({}, {})", randomer.i, randomer.j);
-        }
         self.apply_post_action_states(randomer, updates, storage);
-        if debug_this {
-            eprintln!("[action] after state.post_action rc4=({}, {})", randomer.i, randomer.j);
-        }
     }
 
     pub fn on_update_end(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
@@ -383,15 +203,6 @@ impl Player {
             if targets.ally_alive.contains(plr_id) {
                 skip_indices.push(idx);
             }
-        }
-        if cfg!(not(feature = "no_debug")) && crate::debug::debug_pick() {
-            eprintln!(
-                "[pick_enemy] all_alive_len={} skip={:?} rc4=({},{})",
-                targets.all_alive.len(),
-                skip_indices,
-                randomer.i,
-                randomer.j
-            );
         }
         if skip_indices.is_empty() {
             randomer.pick(&targets.all_alive).map(|idx| targets.all_alive[idx])
@@ -424,9 +235,9 @@ impl Player {
     /// 这里不能直接退化成：
     ///   skill.select_targets(candidates, smart, ...)
     ///
-    /// 之前已经反复验证过，这种“看起来更统一”的改法会把当前对局随机流打歪，
+    /// 之前已经反复验证过，这种"看起来更统一"的改法会把当前对局随机流打歪，
     /// 典型回归就是 `fight_multi_6` 会重新失败。根因是当前 Rust 侧的主动技能选目标
-    /// 语义并不完全等同于“先构出 candidate 列表，再走 trait 默认 select_targets”：
+    /// 语义并不完全等同于"先构出 candidate 列表，再走 trait 默认 select_targets"：
     ///
     /// 1. `EnemyAlive` 在 JS 产物里对应的是基于 `all_alive + pickSkipRange` 的抽样语义，
     ///    不是一个纯粹的 `enemy_alive` 紧凑列表。
@@ -435,8 +246,8 @@ impl Player {
     /// 3. 现有部分技能虽然实现了 `select_targets_with_level`，但如果全量切换到统一入口，
     ///    会改变随机数消费顺序和重复/无效目标处理细节，从而造成隐藏 RC4 漂移。
     ///
-    /// 因此这里先保留“按 domain 手工抽样，再按 valid/score 排序”的稳定路径。
-    /// 如果后续要接入某个技能自己的特殊选目标逻辑，应该做“逐技能 opt-in” 的窄改，
+    /// 因此这里先保留"按 domain 手工抽样，再按 valid/score 排序"的稳定路径。
+    /// 如果后续要接入某个技能自己的特殊选目标逻辑，应该做"逐技能 opt-in" 的窄改，
     /// 而不是把整个主动技能入口一次性切到 `skill.select_targets(...)`。
     fn select_skill_targets(
         &self,
@@ -456,25 +267,6 @@ impl Player {
             return Vec::new();
         }
 
-        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
-        let format_targets = |ids: &[PlrId]| -> Vec<String> {
-            ids.iter()
-                .map(|id| storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
-                .collect::<Vec<String>>()
-        };
-        if debug_this {
-            eprintln!(
-                "[action_select] actor={} skill_level={} domain={:?} candidates ally_all={:?} ally_alive={:?} ally_dead={:?} enemy_alive={:?}",
-                self.id_name(),
-                skill.level(),
-                domain,
-                format_targets(&targets.ally_all),
-                format_targets(&targets.ally_alive),
-                format_targets(&targets.ally_dead),
-                format_targets(&targets.enemy_alive),
-            );
-        }
-
         if skill.uses_custom_target_selection() {
             let candidates: &[PlrId] = match domain {
                 SkillTargetDomain::EnemyAlive => &targets.enemy_alive,
@@ -484,14 +276,6 @@ impl Player {
                 SkillTargetDomain::AllAlive => &targets.all_alive,
                 SkillTargetDomain::SelfOnly => &[],
             };
-            if debug_this {
-                eprintln!(
-                    "[action_select] actor={} skill_level={} using_custom_selector candidates={:?}",
-                    self.id_name(),
-                    skill.level(),
-                    format_targets(candidates),
-                );
-            }
             return skill.select_targets(candidates, smart, (self.as_ptr(), randomer, updates, storage));
         }
 
@@ -503,20 +287,6 @@ impl Player {
                 return Vec::new();
             };
             let valid = skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
-            if debug_this {
-                let target_name = storage
-                    .get_player(&target_id)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{target_id}"));
-                eprintln!(
-                    "[action_select] actor={} skill_level={} picked={} valid={} selected_so_far={:?}",
-                    self.id_name(),
-                    skill.level(),
-                    target_name,
-                    valid,
-                    format_targets(&selected),
-                );
-            }
             if !valid {
                 invalid += 1;
                 continue;
@@ -543,34 +313,7 @@ impl Player {
                 )
             })
             .collect::<Vec<(PlrId, f64)>>();
-        if debug_this {
-            for (target_id, score) in &scored {
-                eprintln!(
-                    "[action_select] actor={} scored={} score={score}",
-                    self.id_name(),
-                    storage
-                        .get_player(target_id)
-                        .map(|plr| plr.id_name())
-                        .unwrap_or_else(|| format!("#{target_id}")),
-                );
-            }
-        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
-        if debug_this {
-            let sorted = scored
-                .iter()
-                .map(|(target_id, score)| {
-                    format!(
-                        "{}:{score}",
-                        storage
-                            .get_player(target_id)
-                            .map(|plr| plr.id_name())
-                            .unwrap_or_else(|| format!("#{target_id}"))
-                    )
-                })
-                .collect::<Vec<String>>();
-            eprintln!("[action_select] actor={} sorted={sorted:?}", self.id_name());
-        }
         scored.into_iter().map(|x| x.0).collect()
     }
 
@@ -675,23 +418,6 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Option<PlrId> {
-        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
-        if debug_this {
-            let enemy_names = targets
-                .enemy_alive
-                .iter()
-                .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
-                .collect::<Vec<String>>();
-            let all_names = targets
-                .all_alive
-                .iter()
-                .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
-                .collect::<Vec<String>>();
-            eprintln!(
-                "[default_select] smart={smart} rc4=({}, {}) all={all_names:?} enemy={enemy_names:?}",
-                randomer.i, randomer.j
-            );
-        }
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::new();
         let mut dup = 0usize;
@@ -708,16 +434,6 @@ impl Player {
         }
         if selected.is_empty() {
             return None;
-        }
-        if debug_this {
-            let selected_names = selected
-                .iter()
-                .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
-                .collect::<Vec<String>>();
-            eprintln!(
-                "[default_select] sampled={selected_names:?} rc4=({}, {})",
-                randomer.i, randomer.j
-            );
         }
 
         let mut scored = selected
@@ -752,37 +468,10 @@ impl Player {
                         }
                     })
                     .unwrap_or(f64::MIN);
-                if debug_this {
-                    if let Some(target) = storage.get_player(&target_id) {
-                        let status = target.get_status();
-                        eprintln!(
-                            "[default_select] score target={} hp={} attract={} atksum={} score={} rc4=({}, {})",
-                            target.id_name(),
-                            status.hp,
-                            status.attract,
-                            status.atk_sum,
-                            score,
-                            randomer.i,
-                            randomer.j
-                        );
-                    } else {
-                        eprintln!(
-                            "[default_select] score target=#{target_id} score={score} rc4=({}, {})",
-                            randomer.i, randomer.j
-                        );
-                    }
-                }
                 (target_id, score)
             })
             .collect::<Vec<(PlrId, f64)>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
-        if debug_this && let Some((target_id, _)) = scored.first() {
-            let name = storage
-                .get_player(target_id)
-                .map(|p| p.id_name())
-                .unwrap_or_else(|| format!("#{target_id}"));
-            eprintln!("[default_select] chose={name} rc4=({}, {})", randomer.i, randomer.j);
-        }
         scored.first().map(|x| x.0)
     }
 
@@ -794,47 +483,19 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) {
-        // Boss 使用专属行动逻辑
         if self.player_type == PlayerType::Boss {
             crate::player::boss::boss_default_action(self, smart, randomer, updates, storage, targets);
             return;
         }
-        let trace_fine = cfg!(not(feature = "no_debug")) && DODGE_TRACE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) == 1;
-        if trace_fine {
-            eprintln!(
-                "[default_attack_begin] plr={} rc4=({}, {})",
-                self.id_name(),
-                randomer.i,
-                randomer.j
-            );
-        }
         let Some(target_id) = self.select_default_attack_target(smart, randomer, storage, targets) else {
             return;
         };
-        if trace_fine {
-            eprintln!(
-                "[default_attack_after_target] plr={} target={:?} rc4=({}, {})",
-                self.id_name(),
-                target_id,
-                randomer.i,
-                randomer.j
-            );
-        }
 
         if smart && self.status.magic > self.status.attack {
             let req_mp = (self.status.magic - self.status.attack) >> 2;
             if self.status.mp >= req_mp {
                 self.status.mp -= req_mp;
                 let atp = self.get_at(true, randomer);
-                if trace_fine {
-                    eprintln!(
-                        "[default_attack_before_attacked] plr={} is_mag=true atp={} rc4=({}, {})",
-                        self.id_name(),
-                        atp,
-                        randomer.i,
-                        randomer.j
-                    );
-                }
                 updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
                 storage
                     .just_get_player_mut(target_id)
@@ -845,15 +506,6 @@ impl Player {
         }
 
         let atp = self.get_at(false, randomer);
-        if trace_fine {
-            eprintln!(
-                "[default_attack_before_attacked] plr={} is_mag=false atp={} rc4=({}, {})",
-                self.id_name(),
-                atp,
-                randomer.i,
-                randomer.j
-            );
-        }
         updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
         storage
             .just_get_player_mut(target_id)
@@ -861,14 +513,12 @@ impl Player {
             .attacked(atp, false, self.as_ptr(), noop_on_damage, randomer, updates, storage);
     }
 
-    /// 当前玩家是否可行动
     #[inline]
     pub fn active(&self) -> bool { self.status.hp > 0 && !self.status.frozed() }
-    /// 活着呢吧?
+
     #[inline]
     pub fn alive(&self) -> bool { self.status.alive() }
 
-    /// 直接扣血（不走完整攻防链）。
     #[inline]
     pub fn apply_raw_damage(&mut self, dmg: i32) {
         self.status.hp -= dmg;
@@ -877,7 +527,6 @@ impl Player {
         }
     }
 
-    /// 直接回血（不超过 max_hp）。
     #[inline]
     pub fn heal(&mut self, amount: i32) {
         self.status.hp += amount;
@@ -1005,7 +654,6 @@ impl Player {
         dmg
     }
 
-    /// 蓝条是不是够用
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
         if !self.active() {
             return false;
@@ -1018,9 +666,9 @@ impl Player {
         false
     }
 
-    // 用于兼容 namerena 的各种名字调用
     #[inline]
     pub fn id_name(&self) -> String { self.name.clone() }
+
     #[inline]
     pub fn id_key_name(&self) -> String {
         if let Some(team) = self.team.as_ref()
@@ -1031,6 +679,7 @@ impl Player {
         }
         self.name.clone()
     }
+
     #[inline]
     pub fn display_name(&self) -> String {
         if self.player_type == PlayerType::Boss {
@@ -1038,8 +687,10 @@ impl Player {
         }
         self.name.split(" ").next().unwrap_or_default().to_string()
     }
+
     #[inline]
     pub fn clan_name(&self) -> String { self.team.clone().unwrap_or(self.name.clone()) }
+
     #[inline]
     pub fn base_name(&self) -> String { self.name.clone() }
 
@@ -1062,7 +713,6 @@ impl Player {
         }
     }
 
-    /// getAt
     pub fn get_at(&self, use_mag: bool, randomer: &mut RC4) -> f64 {
         let atk = if use_mag { self.status.magic } else { self.status.attack };
         let a = {
@@ -1084,7 +734,6 @@ impl Player {
         a * b * self.status.at_boost
     }
 
-    /// getDf
     pub fn get_df(&self, use_mag: bool) -> i32 {
         if use_mag {
             self.status.resistance + 64
@@ -1094,24 +743,6 @@ impl Player {
     }
 
     pub fn dodge(al_a: i32, al_d: i32, randomer: &mut RC4) -> bool {
-        if cfg!(not(feature = "no_debug")) && crate::debug::debug_dodge_all() {
-            use std::sync::atomic::{AtomicU32, Ordering};
-            static DODGE_COUNT: AtomicU32 = AtomicU32::new(0);
-            let count = DODGE_COUNT.fetch_add(1, Ordering::Relaxed);
-            eprintln!(
-                "[dodge_all] #{count} accure={al_a} dodgeval={al_d} rc4=({}, {})",
-                randomer.i, randomer.j
-            );
-            // Set/clear trace flag around dodge 200-201
-            static TRACE_FLAG: AtomicU32 = AtomicU32::new(0);
-            if count == 200 {
-                TRACE_FLAG.store(1, Ordering::Relaxed);
-            } else if count == 201 {
-                TRACE_FLAG.store(0, Ordering::Relaxed);
-            }
-            // Export trace flag for use in step()
-            DODGE_TRACE_ACTIVE.store(TRACE_FLAG.load(Ordering::Relaxed), Ordering::Relaxed);
-        }
         let ch = {
             let temp = 24 + al_d - al_a;
             if temp < 7 {
@@ -1126,7 +757,6 @@ impl Player {
         randomer.next_u8() as i32 <= ch
     }
 
-    /// preDefend
     #[allow(clippy::too_many_arguments)]
     pub fn pre_defend(
         &mut self,
@@ -1138,8 +768,6 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> f64 {
-        // JS y1 列表中，技能（setup 阶段注册）排在状态（运行时注册）之前
-        // 两者优先级相同（10000），按插入顺序决定迭代顺序
         atp = self
             .skills
             .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
@@ -1149,7 +777,6 @@ impl Player {
         self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage)
     }
 
-    /// postDefend
     pub fn post_defend(
         &mut self,
         mut dmg: i32,
@@ -1159,25 +786,9 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
         dmg = self
             .skills
             .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage));
-        if debug_this {
-            let ordered = self
-                .state
-                .states
-                .iter()
-                .map(|(tag, state)| (*tag, state.post_defend_priority()))
-                .collect::<Vec<(crate::player::StateTag, i32)>>();
-            eprintln!(
-                "[post_defend_states] owner={} after_skill dmg={} states={ordered:?} rc4=({}, {})",
-                self.id_name(),
-                dmg,
-                randomer.i,
-                randomer.j,
-            );
-        }
         self.apply_post_defend_states(dmg, caster, randomer, updates, storage)
     }
 
@@ -1192,30 +803,7 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        #[cfg(not(feature = "no_debug"))]
-        let debug_this = {
-            let cn = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-            crate::debug::debug_action().as_deref().map(|n| n == cn || n == self.id_name()).unwrap_or(false)
-        };
-        #[cfg(feature = "no_debug")]
-        let debug_this = false;
-        if debug_this {
-            let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-            let target_name = self.id_name();
-            eprintln!(
-                "[damage_flow] attacked start caster={} target={} is_mag={} atp_before_pre={} rc4=({}, {})",
-                caster_name, target_name, is_mag, atp, randomer.i, randomer.j,
-            );
-        }
         atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
-        if debug_this {
-            let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-            let target_name = self.id_name();
-            eprintln!(
-                "[damage_flow] after_pre_defend caster={} target={} atp_after_pre={} rc4=({}, {})",
-                caster_name, target_name, atp, randomer.i, randomer.j,
-            );
-        }
         if atp == 0.0 {
             return 0;
         }
@@ -1233,20 +821,6 @@ impl Player {
                 )
             }
         };
-        if cfg!(not(feature = "no_debug")) && crate::debug::debug_dodge() {
-            eprintln!(
-                "[dodge] target={} caster={} active={} is_mag={} accure={} dodgeval={} atp={} rc4=({}, {})",
-                self.id_name(),
-                storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default(),
-                self.active(),
-                is_mag,
-                accure,
-                dodgeval,
-                atp,
-                randomer.i,
-                randomer.j,
-            );
-        }
         if self.active() && Self::dodge(accure, dodgeval, randomer) {
             let update = RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20);
             updates.add(update);
@@ -1266,39 +840,9 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        #[cfg(not(feature = "no_debug"))]
-        let debug_this = {
-            let cn = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-            crate::debug::debug_action().as_deref().map(|n| n == cn || n == self.id_name()).unwrap_or(false)
-        };
-        #[cfg(feature = "no_debug")]
-        let debug_this = false;
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
-        if debug_this {
-            let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-            let target_name = self.id_name();
-            eprintln!(
-                "[damage_flow] before_post_defend caster={} target={} atp={} dfp={} raw_div={} dmg_before_post={} rc4=({}, {})",
-                caster_name,
-                target_name,
-                atp,
-                dfp,
-                atp / dfp as f64,
-                dmg,
-                randomer.i,
-                randomer.j,
-            );
-        }
         dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
-        if debug_this {
-            let caster_name = storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_default();
-            let target_name = self.id_name();
-            eprintln!(
-                "[damage_flow] after_post_defend caster={} target={} dmg_after_post={} rc4=({}, {})",
-                caster_name, target_name, dmg, randomer.i, randomer.j,
-            );
-        }
         self.damage(dmg, caster, on_damage, randomer, updates, storage)
     }
 
@@ -1355,26 +899,12 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_action_matches(&self.id_name());
         let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
         for skill_idx in post_damaged_indices {
             let ptr = self.as_ptr();
-            let rc4_before = (randomer.i, randomer.j);
             let skill = self.skills.skill_by_id_mut(skill_idx);
             skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
-            if debug_this {
-                eprintln!(
-                    "[on_damaged_post_damage] owner={} key={} rc4 {}:{} -> {}:{}",
-                    self.id_name(),
-                    skill_idx,
-                    rc4_before.0,
-                    rc4_before.1,
-                    randomer.i,
-                    randomer.j,
-                );
-            }
         }
-        // State-based post_damage hooks (e.g. SklCovidDefend/SklLazyDefend on boss)
         self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
         if self.status.hp <= 0 {
             self.on_die_impl(old_hp, caster, randomer, updates, storage, true);
@@ -1416,38 +946,17 @@ impl Player {
             return;
         }
 
-        let debug_this = cfg!(not(feature = "no_debug")) && crate::debug::debug_die().as_deref().map(|n| n == self.id_name().as_str()).unwrap_or(false);
-        if debug_this {
-            eprintln!(
-                "[on_die] start actor={} caster={} rc4=({}, {}) hp={} old_hp={}",
-                self.id_name(),
-                storage.get_player(&caster).map(|p| p.id_name()).unwrap_or_else(|| format!("#{caster}")),
-                randomer.i,
-                randomer.j,
-                self.status.hp,
-                old_hp
-            );
-        }
-
         updates.add(RunUpdate::new_newline());
         updates.add(RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
 
         let ptr = self.as_ptr();
         self.skills.die(old_hp, caster, (ptr, randomer, updates, storage));
-        if debug_this {
-            eprintln!(
-                "[on_die] after skills.die rc4=({}, {}) hp={}",
-                randomer.i, randomer.j, self.status.hp
-            );
-        }
         if self.status.hp > 0 {
             return;
         }
         self.status.hp = 0;
         self.status.set_alive(false);
 
-        // 对齐 Dart: 在 dies 回调中 minion 先于 owner 被移除。
-        // 因此先处理 linked minions，记录它们的死亡顺序，最后再记录 owner 的死亡。
         let owner_id = self.as_ptr();
         let linked_minions = storage
             .all_player_ids()
@@ -1460,13 +969,6 @@ impl Player {
                     .unwrap_or(false)
             })
             .collect::<Vec<PlrId>>();
-        if debug_this {
-            let names = linked_minions
-                .iter()
-                .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
-                .collect::<Vec<String>>();
-            eprintln!("[on_die] linked_minions={names:?} rc4=({}, {})", randomer.i, randomer.j);
-        }
         for minion_id in linked_minions {
             let should_remove = if let Some(minion) = storage.just_get_player_mut(minion_id) {
                 if !minion.alive() || minion.get_status().hp <= 0 {
@@ -1485,7 +987,6 @@ impl Player {
             }
         }
 
-        // 最后记录 owner 的死亡（minion 已先于 owner 入队）。
         storage.record_death(owner_id);
 
         let has_enemy_alive = storage.group_containing(caster).map(|ally_group| {
@@ -1494,26 +995,12 @@ impl Player {
                 .into_iter()
                 .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
         });
-        // Dart 中 alive 是 hp > 0 的派生属性，而 Rust 使用独立的 alive flag。
-        // 自爆等场景下 caster 先把 hp 设为 0 但 alive flag 还没更新，
-        // 此处必须用 hp > 0 判定才能与 Dart 行为一致。
         if has_enemy_alive.unwrap_or(true)
             && caster != self.as_ptr()
             && let Some(killer) = storage.just_get_player_mut(caster)
             && killer.get_status().hp > 0
         {
-            if debug_this {
-                eprintln!(
-                    "[on_die] killer={} before kill rc4=({}, {})",
-                    killer.id_name(),
-                    randomer.i,
-                    randomer.j
-                );
-            }
             killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
-            if debug_this {
-                eprintln!("[on_die] after killer.kill rc4=({}, {})", randomer.i, randomer.j);
-            }
         }
     }
 }

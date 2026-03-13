@@ -17,3 +17,7 @@ png = "0.18"
 default = ["png_render"]
 png_render = ["dep:png"]
 no_debug = []
+
+[lib]
+name = "tswn-core"
+crate-type = ["cdylib"]

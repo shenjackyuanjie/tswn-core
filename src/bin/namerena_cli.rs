@@ -124,25 +124,28 @@ fn print_usage() {
   namerena_cli [选项]
 
 对战模式（默认）:
-  --raw <字符串>         使用提供的原始字符串作为输入
+  --raw <字符串>         使用提供的原始字符串作为输入（支持 \n 换行）
   --file <文件路径>       从文件读取输入
-  <无参数>               从 stdin 读取
+  <无参数>               从 stdin 读取（输入格式：用空行分隔队伍）
 
-Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:
+Benchmark 模式:
+  自动检测：1组输入 → 实力评分测试，2+组输入 → 对战胜率测试
   --bench [N]            从 stdin 读取，运行 N 场 (默认 1000)
   --bench-raw "..." [N]  使用提供的原始字符串
-  --bench-file "..." [N] 从文件读取
+  --bench-file <文件> [N] 从文件读取
 
 胜率测试（简化版）:
-  --win_rate <team1> <team2> [N]  两队对战，运行 N 场 (默认 1000)，输出胜率
+  --win_rate <队伍1> <队伍2> [N]  两队对战，运行 N 场 (默认 1000)，输出胜率
 
 性能测试:
-  --perf <team1> <team2> [N]      性能基准测试，运行 N 场 (默认 10000)，输出 init/fight 耗时分解
+  --perf <队伍1> <队伍2> [N]      性能基准测试，运行 N 场 (默认 10000)，输出 init/fight 耗时分解
+
+图标功能:
+  --icon <名字>...             输出玩家图标信息（终端渲染预览）
+  --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL [需要 png_render feature]
+  --icon-path <目录> <名字>... 将图标 PNG 保存到 <目录>/<名字>.png [需要 png_render feature]
 
 其他:
-  --icon <名字>...             输出玩家图标信息 (可指定多个名字)
-  --icon-b64 <名字>...         输出图标的 base64 PNG 数据 URL (可多个名字) [需要 png_render feature]
-  --icon-path <目录> <名字>... 将图标 PNG 保存到 <目录>/<名字>.png [需要 png_render feature]
   --help, -h                   显示此帮助信息
 
 调试环境变量:
@@ -162,11 +165,29 @@ Benchmark 模式（自动检测：1组→评分, 2+组→胜率）:
   TSWN_DEBUG_REFLECT         调试反射技能
   TSWN_TRACE_RC4             追踪 RC4 随机数状态
 
+输入格式说明:
+  - 用空行分隔不同队伍
+  - 每行一个玩家名称
+  - 示例：
+    mario
+    luigi
+
+    peach
+    bowser
+
 示例:
+  # 对战
   namerena_cli --raw "a\nb\n\nc\nd"
+  echo -e "mario\nluigi\n\npeach\nbowser" | namerena_cli
+
+  # 评分测试
   echo "mario" | namerena_cli --bench 500
+
+  # 胜率测试
   namerena_cli --bench-raw "team1\n\nteam2" 1000
   namerena_cli --win_rate "mario" "luigi" 1000
+
+  # 带调试信息
   TSWN_DEBUG_ACTION=mario namerena_cli --raw "mario\nluigi""#
     );
 }
