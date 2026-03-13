@@ -1,0 +1,25 @@
+[package]
+name = "tswn_core"
+description = "甚至是被技术封锁的名竞版本"
+version = "0.1.9"
+edition = "2024"
+
+[dependencies]
+# 用于 fast hashmap
+foldhash = "0.2.0"
+# 用来渲染 png + base 64 编码
+png = { version = "0.18", optional = true }
+# 用来优化性能
+smallvec = "1.15.1"
+
+[dev-dependencies]
+png = "0.18"
+
+[features]
+default = ["png_render"]
+png_render = ["dep:png"]
+no_debug = []
+
+[[bin]]
+name = "tswn-cli"
+path = "src/bin/tswn_cli.rs"
