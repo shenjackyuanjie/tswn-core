@@ -46,6 +46,7 @@ pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
 
 use crate::engine::{engine_core::EngineCore, world_state::WorldState};
 
+/// 核心 Runner 结构，包含随机数发生器、存储层、世界状态和引擎核心流程。
 pub struct Runner {
     /// 随机数发生器（保持与旧实现一致的消费顺序）。
     pub randomer: RC4,
@@ -307,10 +308,7 @@ impl Runner {
             updates.on_update_end.clear();
             let max_ticks = self.world.all_plr_len().max(1) * 4;
             let mut ticks = 0;
-            while ticks < max_ticks
-                && !self.world.have_winner()
-                && updates.updates.is_empty()
-            {
+            while ticks < max_ticks && !self.world.have_winner() && updates.updates.is_empty() {
                 self.core.tick(&mut self.world, &self.storage, &mut self.randomer, &mut updates);
                 ticks += 1;
             }

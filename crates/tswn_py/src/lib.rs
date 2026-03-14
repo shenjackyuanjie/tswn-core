@@ -1,14 +1,45 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! tswn-py
+//!
+//! 某个满是怨念的人向你问好
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// 类型 wrapper
+pub mod wrapper;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+use pyo3::{
+    Bound, PyResult, pyfunction, pymodule,
+    types::{PyModule, PyModuleMethods},
+    wrap_pyfunction,
+};
+
+/// tswn-py 的版本字符串
+#[pyfunction]
+fn wrapper_version_str() -> String { env!("CARGO_PKG_VERSION").to_string() }
+
+/// tswn-core 的版本字符串
+#[pyfunction]
+fn core_version_str() -> String { tswn_core::version().to_string() }
+
+/// 根据玩家名称生成 PNG 图标的 Base64 编码字符串
+#[pyfunction]
+fn name_to_png_base64(name: String) -> String { tswn_core::player::icon_render::render_icon_b64_from_name(&name) }
+
+/// 根据玩家名称生成 PNG 图标的字节数据
+#[pyfunction]
+fn name_to_png_bytes(name: String) -> Vec<u8> { tswn_core::player::icon_render::render_icon_png_from_name(&name) }
+
+/// tswn-py
+///
+/// 某个充满怨念的人向你问好
+#[pymodule]
+#[pyo3(name = "tswn_py")]
+fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(wrapper_version_str, m)?)?;
+    m.add_function(wrap_pyfunction!(core_version_str, m)?)?;
+    m.add_function(wrap_pyfunction!(name_to_png_base64, m)?)?;
+    m.add_function(wrap_pyfunction!(name_to_png_bytes, m)?)?;
+    m.add_class::<wrapper::PyRunner>()?;
+    m.add_class::<wrapper::PyRunUpdate>()?;
+    m.add_class::<wrapper::PyRunUpdates>()?;
+    m.add_class::<wrapper::error::PyRunnerError>()?;
+    Ok(())
 }

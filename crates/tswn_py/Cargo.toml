@@ -1,12 +1,13 @@
 [package]
 name = "tswn_py"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-pyo3 = "0.28.2"
+pyo3 = { version = "0.28.2", features = ["smallvec"] }
+smallvec = "1.15.1"
 tswn_core = { path = "../tswn_core" }
 
 [lib]
 name = "tswn_py"
-crate_type = ["cdylib"]
+crate-type = ["cdylib"]

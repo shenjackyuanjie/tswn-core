@@ -122,6 +122,7 @@ dependencies = [
  "pyo3-build-config",
  "pyo3-ffi",
  "pyo3-macros",
+ "smallvec",
 ]
 
 [[package]]
@@ -217,9 +218,10 @@ dependencies = [
 
 [[package]]
 name = "tswn_py"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pyo3",
+ "smallvec",
  "tswn_core",
 ]
 

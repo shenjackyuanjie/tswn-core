@@ -87,7 +87,7 @@ pub enum SkillTargetDomain {
 }
 
 #[allow(unused_variables, unused_mut)]
-pub trait SkillTrait: Debug {
+pub trait SkillTrait: Debug + Send + Sync {
     // ===== 必须实现的 =====
     /// 销毁这个玩意 (技能用过了)
     fn destroy(&self, plr: PlrId, args: SkillArgs);

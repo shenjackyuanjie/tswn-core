@@ -42,7 +42,7 @@ pub type StateTag = TypeId;
 #[inline]
 pub fn state_tag<T: StateTrait + 'static>() -> StateTag { TypeId::of::<T>() }
 
-pub trait StateTrait: std::fmt::Debug + Any {
+pub trait StateTrait: std::fmt::Debug + Any + Send + Sync {
     fn meta_type(&self) -> i32 { 0 }
 
     fn action_mode_priority(&self) -> i32 { 1000 }
