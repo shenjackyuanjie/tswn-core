@@ -49,6 +49,12 @@ impl PyRunUpdates {
         self.inner.updates.clear();
         self.inner.on_update_end.clear();
     }
+
+    #[getter]
+    pub fn get_id(&self) -> u64 { self.inner.id }
+
+    #[getter]
+    pub fn get_updates(&self) -> Vec<PyRunUpdate> { self.inner.updates.iter().cloned().map(|u| u.into()).collect() }
 }
 
 impl From<RunUpdates> for PyRunUpdates {
@@ -66,6 +72,14 @@ impl From<PyRunUpdates> for RunUpdates {
 #[pyo3(name = "RunUpdate")]
 pub struct PyRunUpdate {
     pub inner: RunUpdate,
+}
+
+impl From<RunUpdate> for PyRunUpdate {
+    fn from(value: RunUpdate) -> Self { Self { inner: value } }
+}
+
+impl From<PyRunUpdate> for RunUpdate {
+    fn from(value: PyRunUpdate) -> Self { value.inner }
 }
 
 #[pymethods]
