@@ -3,13 +3,13 @@
 tswn_py wheel 构建脚本
 
 用法（推荐）：
-  uv run python build_py.py [options]
+  uv run build_py.py [options]
 
 常用示例：
-  uv run python build_py.py                        # 标准构建（隔离环境）
-  uv run python build_py.py --no-isolation          # 快速构建（复用当前环境）
-  uv run python build_py.py --no-isolation --clean  # 清理后快速构建
-  uv run python build_py.py --verify                # 构建并验证 import
+  uv run build_py.py                         # 标准构建（隔离环境）
+  uv run build_py.py --no-isolation          # 快速构建（复用当前环境）
+  uv run build_py.py --no-isolation --clean  # 清理后快速构建
+  uv run build_py.py --verify                # 构建并验证 import
 
 参数：
   -o, --output-dir DIR   wheel 输出目录（默认：crates/tswn_py/dist）

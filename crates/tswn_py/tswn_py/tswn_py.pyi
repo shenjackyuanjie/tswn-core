@@ -24,28 +24,22 @@ def core_version_str() -> str:
 
 def name_to_png_base64(name: str) -> str:
     """
-    将玩家名字转换为 PNG 图片的 Base64 编码字符串。
-
-    该函数使用引擎内置的字体渲染机制，生成包含玩家名字的 PNG 图片，并返回其 Base64 编码字符串。
-    生成的图片尺寸和样式与引擎内使用的名字标签一致，适合在 Web 前端直接使用。
+    将玩家名字渲染为 PNG 并返回 Base64 编码字符串。
 
     Parameters
     ----------
-    str:
+    name:
         玩家名字字符串。
     """
     ...
 
 def name_to_png_bytes(name: str) -> bytes:
     """
-    将玩家名字转换为 PNG 图片的字节数据。
-
-    该函数使用引擎内置的字体渲染机制，生成包含玩家名字的 PNG 图片，并返回其字节数据。
-    生成的图片尺寸和样式与引擎内使用的名字标签一致，适合在需要直接处理图片数据的场景使用。
+    将玩家名字渲染为 PNG 并返回原始字节数据。
 
     Parameters
     ----------
-    str:
+    name:
         玩家名字字符串。
     """
     ...
@@ -54,12 +48,12 @@ def name_to_png_bytes(name: str) -> bytes:
 # 异常
 # ---------------------------------------------------------------------------
 
-class PyRunnerError(Exception):
+class RunnerError(Exception):
     """
     Runner 初始化或运行时错误。
 
     由 ``Runner.new_from_namerena_raw`` 在输入解析失败时抛出。
-    继承自 ``Exception``，可直接 ``except PyRunnerError`` 捕获。
+    继承自 ``Exception``，可直接 ``except RunnerError`` 捕获。
     """
     ...
 
@@ -196,12 +190,12 @@ class Runner:
 
         runner = tswn_py.Runner.new_from_namerena_raw("玩家甲\\n\\n玩家乙")
 
-        while not runner.run_to_completion():
-            pass  # run_to_completion 内部自行推进至结束
+        # 一次性跑完
+        runner.run_to_completion()
 
-        # 或逐回合推进并收集事件：
+        # 或逐 tick 推进并复用容器：
         runner2 = tswn_py.Runner.new_from_namerena_raw("玩家甲\\n\\n玩家乙")
-        updates = tswn_py.PyRunUpdates()
+        updates = tswn_py.RunUpdates()
         for _ in range(10000):
             runner2.round_tick(updates)
             updates.clear()
@@ -229,7 +223,7 @@ class Runner:
 
         Raises
         ------
-        PyRunnerError
+        RunnerError
             输入解析失败（如名字格式非法、玩家数量异常等）时抛出。
         """
         ...
@@ -241,7 +235,8 @@ class Runner:
         Parameters
         ----------
         update:
-            事件容器，新帧将被追加进去（不自动清空，需调用方手动 :meth:`PyRunUpdates.clear`）。
+            事件容器，新帧将被追加进去（不自动清空，需调用方手动
+            :meth:`RunUpdates.clear`）。
         """
         ...
 
@@ -251,7 +246,7 @@ class Runner:
 
         Returns
         -------
-        PyRunUpdates
+        RunUpdates
             仅包含本次 tick 产生的事件帧的新容器。
         """
         ...

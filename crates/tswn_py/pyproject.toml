@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tswn_py"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python bindings for tswn_core (PyO3)"
 requires-python = ">=3.12"
 classifiers = [
@@ -27,6 +27,9 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["tswn_py*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "tswn_py._version.__version__"}
 
 [tool.setuptools.package-data]
 tswn_py = ["__init__.py", "*.pyi", "py.typed"]

@@ -2,7 +2,7 @@ use pyo3::{PyErr, exceptions::PyException, pyclass};
 use tswn_core::error::runner::RunnerError;
 
 #[pyclass(extends=PyException)]
-#[pyo3(name = "PyRunnerError")]
+#[pyo3(name = "RunnerError")]
 pub struct PyRunnerError {
     pub inner: RunnerError,
 }

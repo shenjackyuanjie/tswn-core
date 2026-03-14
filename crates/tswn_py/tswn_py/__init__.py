@@ -1,9 +1,13 @@
 """
-Python 包入口。
+tswn_py — tswn_core 的 Python 绑定（PyO3 扩展模块）。
 
-说明：
-- 该文件存在的目的主要是让 setuptools 能稳定发现 `tswn_py` 这个包目录并打进 wheel。
-- 实际导出的符号来自同包内的 PyO3 扩展模块：`tswn_py/tswn_py.*`。
+导出内容
+--------
+* 所有 PyO3 绑定符号（来自编译扩展模块 ``tswn_py.tswn_py``）：
+  ``Runner``、``PyRunUpdates``、``PyRunUpdate``、``PyRunnerError``、
+  ``wrapper_version_str``、``core_version_str``
+* ``__version__``：与 ``Cargo.toml`` 保持同步的版本字符串。
 """
 
-from .tswn_py import *  # type: ignore F401,F403
+from ._version import __version__ as __version__
+from .tswn_py import *  # type: ignore[reportWildcardImportFromLibrary]
