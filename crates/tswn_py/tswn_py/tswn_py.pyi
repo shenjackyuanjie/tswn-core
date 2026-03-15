@@ -284,10 +284,9 @@ class RC4:
         """设置RC4算法状态变量j（u32）。"""
         ...
 
-    @property
-    def val(self) -> bytes:
+    def get_val(self) -> bytes:
         """
-        RC4算法的VAL数组（长度为val_len()的字节数组）。
+        获取RC4算法的VAL数组（长度为val_len()的字节数组）。
 
         Returns
         -------
@@ -316,10 +315,32 @@ class Storage:
     """
     存储接口，供引擎访问玩家、技能等数据。
     """
-    def have_winner(self) -> bool:
+
+    def get_player_by_id(self, plr_id: int) -> Player | None:
         """
-        当前是否已有胜者
-        其实就是用的 world_state 的 have_winner 方法
+        根据玩家ID获取玩家对象。
+
+        Parameters
+        ----------
+        plr_id: int
+            玩家ID
+
+        Returns
+        -------
+        Player | None
+            玩家对象，如果不存在则返回 None
+        """
+        ...
+
+    @property
+    def current_plr_id(self) -> int:
+        """
+        返回当前正在行动的玩家 ID。
+
+        Returns
+        -------
+        int
+            当前玩家 ID
         """
         ...
 
