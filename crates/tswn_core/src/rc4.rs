@@ -268,6 +268,14 @@ impl RC4 {
         self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255]
     }
 
+    /// 我就看一眼 next_u8 的结果, 不改变状态
+    #[inline]
+    pub fn peek_next_u8(&self) -> u8 {
+        let i = (self.i + 1) & 255;
+        let j = (self.j + self.main_val[i as usize] as u32) & 255;
+        self.main_val[(self.main_val[i as usize] as u32 + self.main_val[j as usize] as u32) as usize & 255]
+    }
+
     /// 生成 i32 随机数
     /// ```javascript
     /// ax(a) {

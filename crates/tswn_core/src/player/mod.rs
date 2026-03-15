@@ -213,22 +213,39 @@ pub enum PlayerType {
 
 #[derive(Clone, Debug)]
 pub struct Player {
+    // 玩家所属团队名称，None 表示无团队
     team: Option<String>,
+    // 玩家显示名称
     name: String,
+    // 玩家装备的武器名称，None 表示无武器
     weapon: Option<String>,
+    // 玩家类型（普通玩家、Boss、种子等）
     player_type: PlayerType,
+    // 技能ID列表
     skil_id: Vec<u32>,
+    // 技能属性列表
     skil_prop: Vec<u32>,
+    // 排序用的整数值，用于战斗中的行动顺序
     pub sort_int: i32,
+    // 玩家专用的随机数生成器
     pub rand: RC4,
+    // 名字的字节表示（用于属性计算）
     pub name_base: Vec<u8>,
+    // 原始名字字节数组（固定长度128）
     raw_name_base: [u8; 128],
+    // 八维属性数组：[力量, 体质, 速度, 智力, 精神, 运气, 未知, 生命值]
     attr: [u32; 8],
+    // 玩家当前状态（HP、MP、攻击力等运行时属性）
     status: PlayerStatus,
+    // 状态效果容器（中毒、冰冻、魅惑等）
     state: PlayerStateStore,
+    // 技能存储和管理系统
     skills: SkillStorage,
+    // 名字强度因子（用于属性计算）
     name_factor: f64,
+    // 武器状态（死亡笔记、属性修改器等特殊武器效果）
     pub weapon_state: Option<weapons::WeaponState>,
+    // 玩家唯一标识符
     id: u64,
 }
 

@@ -8,7 +8,7 @@
 //! 玩家实体存储在 [`Storage`](crate::engine::storage::Storage) 中，
 //! 通过 `PlrId` 与世界状态相互配合使用。
 //!
-//! ### 数据结构  
+//! ### 数据结构
 //!
 //! ```text
 //! WorldState
@@ -31,22 +31,29 @@ use foldhash::{HashMap as FoldHashMap, HashSet as FoldHashSet};
 /// 单支队伍的状态快照。
 #[derive(Debug, Clone)]
 pub struct TeamState {
+    /// 队伍成员列表（不区分存活与否）
     pub roster: Vec<PlrId>,
+    /// 存活成员列表（roster 的子集）
     pub alive: Vec<PlrId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct WorldState {
+    /// 所有队伍的状态信息，包含每支队伍的 roster（全员）和 alive（存活成员）
     pub teams: Vec<TeamState>,
+    /// 队伍分组信息，与 teams.roster 保持同步，供 Storage 查询使用
     pub groups: Vec<Vec<PlrId>>,
+    /// 胜者队伍，Some 表示战斗已结束，包含胜者队伍的 roster
     pub winner: Option<Vec<PlrId>>,
+    /// 当前回合行动顺序列表（仅包含存活成员）
     pub players: Vec<PlrId>,
+    /// 当前轮次指针，用于循环推进行动顺序
     pub round_pos: i32,
-    /// 存活玩家集合，用于 O(1) contains_alive 查询。
+    /// 存活玩家集合，用于 O(1) contains_alive 查询
     alive_set: FoldHashSet<PlrId>,
-    /// 玩家 → 所属队伍索引，用于 O(1) team_index_of 查询。
+    /// 玩家 → 所属队伍索引映射，用于 O(1) team_index_of 查询
     player_team: FoldHashMap<PlrId, usize>,
-    /// 已在行动轮次中的玩家集合，用于 O(1) ensure_player_in_round 去重检查。
+    /// 已在行动轮次中的玩家集合，用于 O(1) ensure_player_in_round 去重检查
     players_set: FoldHashSet<PlrId>,
 }
 

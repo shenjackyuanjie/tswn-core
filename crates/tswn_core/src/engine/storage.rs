@@ -114,6 +114,9 @@ impl Storage {
         self.needs_sync.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// 获取当前玩家 ID 计数器的值（不增加）。
+    pub fn current_plr_id(&self) -> u64 { self.player_id_counter.load(std::sync::atomic::Ordering::Relaxed) }
+
     /// 生成一个新的玩家 ID。
     pub fn new_plr_id(&self) -> u64 { self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 

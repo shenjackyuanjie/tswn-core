@@ -38,8 +38,12 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(name_to_png_base64, m)?)?;
     m.add_function(wrap_pyfunction!(name_to_png_bytes, m)?)?;
     m.add_class::<wrapper::PyRunner>()?;
+    m.add_class::<wrapper::PyWorldState>()?;
+    m.add_class::<wrapper::PyStorage>()?;
     m.add_class::<wrapper::PyRunUpdate>()?;
     m.add_class::<wrapper::PyRunUpdates>()?;
+    m.add_class::<wrapper::player::PyPlayer>()?;
+    m.add_class::<wrapper::rc4::PyRC4>()?;
     m.add_class::<wrapper::error::PyRunnerError>()?;
     Ok(())
 }
