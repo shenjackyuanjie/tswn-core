@@ -135,6 +135,18 @@ class RunUpdate:
         """
         ...
 
+    def is_win(self) -> bool:
+        """是否为胜利帧（UpdateType::Win）。"""
+        ...
+
+    def is_none(self) -> bool:
+        """是否为空占位帧（UpdateType::None）。"""
+        ...
+
+    def is_next_line(self) -> bool:
+        """是否为换行帧（UpdateType::NextLine）。"""
+        ...
+
     def msg(self) -> str:
         """
         将 :attr:`message` 中的占位符替换后，返回最终可显示字符串。
@@ -160,6 +172,11 @@ class Player:
     @property
     def id(self) -> int:
         """玩家 ID（PlrId / u64）。"""
+        ...
+
+    @property
+    def ptr(self) -> int:
+        """玩家运行期指针 ID（PlrId / usize）。"""
         ...
 
     @property
@@ -190,6 +207,110 @@ class Player:
     @property
     def base_name(self) -> str:
         """玩家基础名字字符串。"""
+        ...
+
+    @property
+    def weapon_name(self) -> str | None:
+        """玩家武器名（若无则为 None）。"""
+        ...
+
+    @property
+    def player_type(self) -> str:
+        """玩家类型（Rust `PlayerType` 的 Debug 字符串）。"""
+        ...
+
+    @property
+    def sort_int(self) -> int:
+        """排序用随机值。"""
+        ...
+
+    @property
+    def move_point(self) -> int:
+        """当前移动点数。"""
+        ...
+
+    @property
+    def mp(self) -> int:
+        """当前 MP。"""
+        ...
+
+    @property
+    def hp(self) -> int:
+        """当前 HP。"""
+        ...
+
+    @property
+    def max_hp(self) -> int:
+        """最大 HP。"""
+        ...
+
+    @property
+    def attack(self) -> int:
+        ...
+
+    @property
+    def defense(self) -> int:
+        ...
+
+    @property
+    def speed(self) -> int:
+        ...
+
+    @property
+    def agility(self) -> int:
+        ...
+
+    @property
+    def magic(self) -> int:
+        ...
+
+    @property
+    def resistance(self) -> int:
+        ...
+
+    @property
+    def wisdom(self) -> int:
+        ...
+
+    @property
+    def point(self) -> int:
+        ...
+
+    @property
+    def frozen(self) -> bool:
+        ...
+
+    @property
+    def at_boost(self) -> float:
+        ...
+
+    @property
+    def attract(self) -> float:
+        ...
+
+    @property
+    def attr_sum(self) -> int:
+        ...
+
+    @property
+    def atk_sum(self) -> int:
+        ...
+
+    @property
+    def all_sum(self) -> int:
+        ...
+
+    @property
+    def negative_state_count(self) -> int:
+        ...
+
+    def active(self) -> bool:
+        ...
+
+    def alive(self) -> bool:
+        ...
+
+    def check_move(self) -> bool:
         ...
 
     def __str__(self) -> str:
@@ -241,6 +362,19 @@ class RunUpdates:
         """
         ...
 
+    @property
+    def on_update_end(self) -> list[int]:
+        """本批次结束后触发 on_update_end 的玩家 ID 列表。"""
+        ...
+
+    def len(self) -> int:
+        """当前 updates 帧数量。"""
+        ...
+
+    def is_empty(self) -> bool:
+        """当前 updates 是否为空。"""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # RC4 — 核心算法
@@ -252,58 +386,144 @@ class RC4:
     RC4 核心算法接口，供引擎访问核心算法功能。
     """
 
+    def __init__(self, keys: bytes, round: int | None = 1) -> None:
+        """使用 key 初始化 RC4。`keys` 不能为空。"""
+        ...
+
     @staticmethod
     def val_len() -> int:
-        """
-        返回RC4算法中VAL数组的长度。
-
-        Returns
-        -------
-        int
-            VAL数组的长度。
-        """
+        """返回 RC4 S 盒长度（固定 256）。"""
         ...
 
     @property
     def i(self) -> int:
-        """RC4算法状态变量i（u32）。"""
+        """RC4 状态变量 i（u32）。"""
         ...
 
     @i.setter
     def i(self, val: int) -> None:
-        """设置RC4算法状态变量i（u32）。"""
+        """设置 RC4 状态变量 i（u32）。"""
         ...
 
     @property
     def j(self) -> int:
-        """RC4算法状态变量j（u32）。"""
+        """RC4 状态变量 j（u32）。"""
         ...
 
     @j.setter
     def j(self, val: int) -> None:
-        """设置RC4算法状态变量j（u32）。"""
+        """设置 RC4 状态变量 j（u32）。"""
         ...
 
     def get_val(self) -> bytes:
-        """
-        获取RC4算法的VAL数组（长度为val_len()的字节数组）。
+        """获取当前 S 盒完整字节数组。"""
+        ...
 
-        Returns
-        -------
-        bytes
-            VAL数组的字节数据。
-        """
+    def get_val_at(self, index: int) -> int:
+        """读取 S 盒指定下标字节。"""
+        ...
+
+    def set_val_at(self, index: int, value: int) -> None:
+        """设置 S 盒指定下标字节。"""
+        ...
+
+    def update(self, keys: bytes, round: int | None = 1) -> None:
+        """按 key 再混洗一次当前 S 盒。`keys` 不能为空。"""
+        ...
+
+    def xor_bytes(self, data: bytes) -> bytes:
+        ...
+
+    def js_xor_bytes(self, data: bytes) -> bytes:
+        ...
+
+    def xor_str(self, text: str) -> None:
+        ...
+
+    def js_xor_str(self, text: str) -> None:
+        ...
+
+    def encrypt_bytes(self, data: bytes) -> bytes:
+        ...
+
+    def encrypt_bytes_no_change(self, text: str) -> None:
+        ...
+
+    def decrypt_bytes(self, data: bytes) -> bytes:
+        ...
+
+    def next_u8(self) -> int:
+        ...
+
+    def next_i32(self, max: int) -> int:
+        ...
+
+    def round(self, keys: bytes, round: int | None = 1) -> None:
+        """重置 i/j 后按 key 执行 round 混洗。`keys` 不能为空。"""
         ...
 
     def peek_next_u8(self) -> int:
-        """
-        查看下一个将要生成的u8值，但不推进状态。
+        """查看下一个随机字节，不推进状态。"""
+        ...
 
-        Returns
-        -------
-        int
-            下一个u8值（0-255）。
-        """
+    def c94(self) -> bool:
+        ...
+
+    def c75(self) -> bool:
+        ...
+
+    def c50(self) -> bool:
+        ...
+
+    def c25(self) -> bool:
+        ...
+
+    def c12(self) -> bool:
+        ...
+
+    def c33(self) -> bool:
+        ...
+
+    def c66(self) -> bool:
+        ...
+
+    def rFFFFFF(self) -> int:
+        ...
+
+    def rFFFF(self) -> int:
+        ...
+
+    def r256(self) -> int:
+        ...
+
+    def r64(self) -> int:
+        ...
+
+    def r16(self) -> int:
+        ...
+
+    def r255(self) -> int:
+        ...
+
+    def r127(self) -> int:
+        ...
+
+    def r63(self) -> int:
+        ...
+
+    def r31(self) -> int:
+        ...
+
+    def r15(self) -> int:
+        ...
+
+    def r7(self) -> int:
+        ...
+
+    def r3(self) -> int:
+        ...
+
+    def r3x3(self) -> int:
         ...
 
 # ---------------------------------------------------------------------------
@@ -317,31 +537,62 @@ class Storage:
     """
 
     def get_player_by_id(self, plr_id: int) -> Player | None:
-        """
-        根据玩家ID获取玩家对象。
+        """根据玩家 ID 获取玩家对象。"""
+        ...
 
-        Parameters
-        ----------
-        plr_id: int
-            玩家ID
+    def get_player_or_pending_by_id(self, plr_id: int) -> Player | None:
+        """优先从 players 查询，失败时从 pending_spawns 查询。"""
+        ...
 
-        Returns
-        -------
-        Player | None
-            玩家对象，如果不存在则返回 None
-        """
+    def get_pending_spawn_player_by_id(self, plr_id: int) -> Player | None:
+        """仅从 pending_spawns 按 ID 查询玩家。"""
+        ...
+
+    def get_group(self, group_id: int) -> list[int] | None:
+        ...
+
+    def group_containing(self, actor: int) -> list[int] | None:
+        ...
+
+    def group_index_of(self, actor: int) -> int | None:
+        ...
+
+    def alive_group_containing(self, actor: int) -> list[int] | None:
+        ...
+
+    def alive_group_at_team_of(self, actor: int) -> list[int] | None:
+        ...
+
+    def all_alive_ids(self) -> list[int]:
+        ...
+
+    def all_player_ids(self) -> list[int]:
+        ...
+
+    @property
+    def pending_spawn_count(self) -> int:
+        ...
+
+    def pending_spawn_count_for_owner(self, owner: int) -> int:
+        ...
+
+    def pending_spawn_ids_for_owner(self, owner: int) -> list[int]:
+        ...
+
+    def pending_spawn_ids_for_group(self, group_members: list[int]) -> list[int]:
+        ...
+
+    @property
+    def alive_group_count(self) -> int:
+        ...
+
+    @property
+    def needs_sync(self) -> bool:
         ...
 
     @property
     def current_plr_id(self) -> int:
-        """
-        返回当前正在行动的玩家 ID。
-
-        Returns
-        -------
-        int
-            当前玩家 ID
-        """
+        """返回当前玩家 ID 计数器值。"""
         ...
 
 # ---------------------------------------------------------------------------
@@ -356,9 +607,44 @@ class WorldState:
     @property
     def round_pos(self) -> int:
         """当前轮次指针"""
+        ...
+
+    @property
+    def players(self) -> list[int]:
+        """当前行动顺序玩家列表（仅存活）。"""
+        ...
+
+    @property
+    def winner(self) -> list[int] | None:
+        """胜者 roster（若有）。"""
+        ...
 
     def have_winner(self) -> bool:
         """当前是否已有胜者"""
+        ...
+
+    def all_plrs(self) -> list[int]:
+        ...
+
+    def all_plr_len(self) -> int:
+        ...
+
+    def roster_count(self) -> int:
+        ...
+
+    def team_index_of(self, actor: int) -> int | None:
+        ...
+
+    def team_roster(self, team_idx: int) -> list[int] | None:
+        ...
+
+    def team_alive(self, team_idx: int) -> list[int] | None:
+        ...
+
+    def contains_alive(self, plr_id: int) -> bool:
+        ...
+
+    def winner_roster(self, team_idx: int) -> list[int] | None:
         ...
 
 # ---------------------------------------------------------------------------
@@ -416,6 +702,15 @@ class Runner:
         """
         ...
 
+    @staticmethod
+    def split_namerena_into_groups(raw_str: str) -> tuple[list[list[str]], list[str]]:
+        """将名竞原始输入拆分为 (分组, seed 列表)。"""
+        ...
+
+    def main_round(self) -> RunUpdates:
+        """执行一个主回合并返回更新。"""
+        ...
+
     def round_tick(self, update: RunUpdates) -> None:
         """
         执行引擎的一个 tick，将产生的事件帧追加到 ``update`` 中。
@@ -469,4 +764,20 @@ class Runner:
 
     def have_winner(self) -> bool:
         """当前是否已有胜者"""
+        ...
+
+    def alives_flat(self) -> list[int]:
+        """存活玩家扁平列表。"""
+        ...
+
+    def alives(self) -> list[list[int]]:
+        """存活玩家按组列表。"""
+        ...
+
+    def all_plrs(self) -> list[int]:
+        """全部玩家 ID（含死亡）。"""
+        ...
+
+    def all_plr_len(self) -> int:
+        """全部玩家数量（含死亡）。"""
         ...
