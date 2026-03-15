@@ -218,7 +218,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_py"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "pyo3",
  "smallvec",
