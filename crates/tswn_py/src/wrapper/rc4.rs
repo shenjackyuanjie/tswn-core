@@ -1,4 +1,4 @@
-use pyo3::{PyResult, pyclass, pymethods};
+use pyo3::{pyclass, pymethods};
 
 use tswn_core::rc4::{RC4, VAL_LEN};
 
