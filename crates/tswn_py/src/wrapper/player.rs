@@ -1,7 +1,6 @@
 use pyo3::{pyclass, pymethods};
 use tswn_core::player::Player;
 
-
 #[pyclass]
 #[pyo3(name = "Player")]
 pub struct PyPlayer {
