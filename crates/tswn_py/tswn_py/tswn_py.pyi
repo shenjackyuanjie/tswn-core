@@ -340,13 +340,32 @@ class RunUpdates:
         """创建一个空的 RunUpdates 容器。"""
         ...
 
+    @staticmethod
+    def new_no_capture() -> RunUpdates:
+        """
+        创建一个不采集详细事件帧的容器。
+
+        适合高性能统计场景：仍可通过 :meth:`had_updates` 判断本轮是否有活动，
+        但 ``updates`` 列表不会累积具体文本帧。
+        """
+        ...
+
     def clear(self) -> None:
         """清空本批次内所有事件帧及回调列表，以便复用。"""
+        ...
+
+    def reset(self) -> None:
+        """同 :meth:`clear`，并重置内部活动标记。"""
         ...
 
     @property
     def id(self) -> int:
         """返回此批次更新的唯一标识符（u64）。"""
+        ...
+
+    @property
+    def capture_updates(self) -> bool:
+        """当前是否采集详细更新帧。"""
         ...
 
     @property
@@ -373,6 +392,10 @@ class RunUpdates:
 
     def is_empty(self) -> bool:
         """当前 updates 是否为空。"""
+        ...
+
+    def had_updates(self) -> bool:
+        """本批次是否发生过有效事件（不依赖是否采集详细帧）。"""
         ...
 
 
@@ -703,6 +726,11 @@ class Runner:
         ...
 
     @staticmethod
+    def new_from_groups_with_seed(groups: list[list[str]], seed: list[str]) -> Runner:
+        """从已分组输入与 seed 列表构建 Runner。"""
+        ...
+
+    @staticmethod
     def split_namerena_into_groups(raw_str: str) -> tuple[list[list[str]], list[str]]:
         """将名竞原始输入拆分为 (分组, seed 列表)。"""
         ...
@@ -731,6 +759,12 @@ class Runner:
         -------
         RunUpdates
             仅包含本次 tick 产生的事件帧的新容器。
+        """
+        ...
+
+    def round_tick_new_update_no_capture(self) -> RunUpdates:
+        """
+        执行一个 tick，返回不采集详细帧的更新容器（仅活动标记 + 回调队列）。
         """
         ...
 

@@ -1,5 +1,35 @@
 # 更新日志
 
+## [0.2.1] - 2026-03-16
+
+### 新增
+- CLI 新增单线程 benchmark 命令：
+  - `--bench-st` / `--bench-raw-st` / `--bench-file-st`
+  - `--win_rate_st`
+- benchmark 新增并发线程环境变量：
+  - `TSWN_BENCH_WORKERS`
+  - `TSWN_WINRATE_WORKERS`（兼容旧变量，行为同上）
+
+### 优化
+- `--bench` 默认走并行优化路径（含评分模式与胜率模式）
+- `Runner::new_from_groups_with_seed` 增加预构建玩家模板缓存，减少重复构造/升级/build 成本
+- `SkillStorage` 多处热路径移除临时 `Vec` clone，改为按索引遍历，降低分配与拷贝开销
+- `--win_rate_st` 单线程路径进一步优化，尽量缩小与多线程模式差距
+
+### Python 绑定
+- `tswn_py` 同步新增接口：
+  - `Runner.new_from_groups_with_seed`
+  - `Runner.round_tick_new_update_no_capture`
+  - `RunUpdates.new_no_capture` / `RunUpdates.reset` / `RunUpdates.capture_updates` / `RunUpdates.had_updates`
+
+### 性能
+- 在 `target\release\tswn-cli.exe --win_rate aaa bbb 10000` 场景：
+  - 多线程典型耗时约 `0.059s`
+  - 单线程典型耗时约 `0.214s`（较此前约 `0.344s` 明显下降）
+
+### 验证
+- `cargo test --workspace --quiet` 全量通过
+
 ## [0.2.0] - 2026-03-15
 
 ### ⚠️ Breaking Changes

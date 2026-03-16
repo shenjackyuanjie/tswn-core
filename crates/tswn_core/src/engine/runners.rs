@@ -31,7 +31,9 @@
 //! 8. 为每个玩家分配初始 `move_point`
 //! 9. 构建 `WorldState`
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
@@ -45,6 +47,26 @@ pub type PlayerGroup = Vec<Player>;
 pub type RawPlayers = (Vec<Vec<String>>, Vec<String>);
 
 use crate::engine::{engine_core::EngineCore, world_state::WorldState};
+
+type PreparedGroups = Vec<Vec<Player>>;
+struct PreparedRunnerTemplate {
+    groups: PreparedGroups,
+    base_names_sorted: Vec<String>,
+}
+
+fn groups_cache_key(players: &[Vec<String>]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for group in players {
+        group.hash(&mut hasher);
+        0xFF_u8.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn prebuilt_groups_cache() -> &'static RwLock<HashMap<u64, Arc<PreparedRunnerTemplate>>> {
+    static CACHE: OnceLock<RwLock<HashMap<u64, Arc<PreparedRunnerTemplate>>>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
 
 /// 核心 Runner 结构，包含随机数发生器、存储层、世界状态和引擎核心流程。
 pub struct Runner {
@@ -70,25 +92,32 @@ impl Runner {
     ///
     /// 该接口用于高频 benchmark 场景，可复用分组解析结果，避免重复字符串切分成本。
     pub fn new_from_groups_with_seed(players: &[Vec<String>], seed: &[String]) -> RunnerResult<Runner> {
-        let mut names = players
+        let cache_key = groups_cache_key(players);
+        let prepared = {
+            if let Some(hit) = prebuilt_groups_cache().read().expect("prebuilt cache poisoned").get(&cache_key).cloned() {
+                hit
+            } else {
+                let built = Arc::new(Self::build_prepared_groups(players)?);
+                let mut writer = prebuilt_groups_cache().write().expect("prebuilt cache poisoned");
+                writer.entry(cache_key).or_insert_with(|| Arc::clone(&built)).clone()
+            }
+        };
+        Self::new_from_prepared_groups_with_seed(prepared.as_ref(), seed)
+    }
+
+    fn build_prepared_groups(players: &[Vec<String>]) -> RunnerResult<PreparedRunnerTemplate> {
+        let mut base_names_sorted = players
             .iter()
             .flatten()
             .filter(|str| !Player::check_is_seed(str))
             .map(|str| Player::raw_namerena_to_idname(str))
-            .chain(seed.iter().cloned())
             .collect::<Vec<String>>();
-        names.sort();
-        names.dedup();
-
-        // 原始逻辑：
-        // 把名称排序去重后 join "\r"，再作为 RC4 key。
-        let keys = names.join("\r");
-        let mut randomer = RC4::new(keys.as_bytes(), 1);
-        randomer.js_xor_str(&keys);
+        base_names_sorted.sort();
+        base_names_sorted.dedup();
 
         let storage = Storage::new_arc();
 
-        // 先完成玩家实例化与分组，sort_int 在后续按名字排序后再初始化。
+        // 先完成玩家实例化与分组（跳过 seed 行），与正常初始化路径保持一致。
         let mut inited_plrs: Vec<Vec<PlrId>> = Vec::with_capacity(players.len());
         for plrs in players {
             let mut group = Vec::with_capacity(plrs.len());
@@ -132,7 +161,7 @@ impl Runner {
             }
         }
 
-        // 与 Dart 对齐：按 id_name 排序后逐个 build，再初始化 sort_int。
+        // 与 Dart 对齐：按 id_name 排序后逐个 build。
         let mut sorted_plrs = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();
         sorted_plrs.sort_by(|a, b| {
             let plr_a = storage.get_player(a).expect("plr not found when sorted build");
@@ -145,6 +174,65 @@ impl Runner {
             if plr.player_type() == crate::player::PlayerType::Boss {
                 crate::player::boss::init_boss_state(plr);
             }
+        }
+
+        // 固化成可复用模板（深拷贝 Player）。
+        let mut prepared_groups = Vec::with_capacity(inited_plrs.len());
+        for group in inited_plrs {
+            let mut prepared_group = Vec::with_capacity(group.len());
+            for ptr in group {
+                let plr = storage.get_player(&ptr).expect("prepared player not found");
+                prepared_group.push(plr.clone());
+            }
+            prepared_groups.push(prepared_group);
+        }
+        Ok(PreparedRunnerTemplate {
+            groups: prepared_groups,
+            base_names_sorted,
+        })
+    }
+
+    fn new_from_prepared_groups_with_seed(prepared: &PreparedRunnerTemplate, seed: &[String]) -> RunnerResult<Runner> {
+        let mut names = prepared.base_names_sorted.clone();
+        for seed_item in seed {
+            if let Err(pos) = names.binary_search(seed_item) {
+                names.insert(pos, seed_item.clone());
+            }
+        }
+
+        // 原始逻辑：
+        // 把名称排序去重后 join "\r"，再作为 RC4 key。
+        let keys = names.join("\r");
+        let mut randomer = RC4::new(keys.as_bytes(), 1);
+        randomer.js_xor_str(&keys);
+
+        let storage = Storage::new_arc();
+        let total_players = prepared.groups.iter().map(|group| group.len()).sum::<usize>();
+        for _ in 0..total_players {
+            let _ = storage.new_plr_id();
+        }
+
+        let mut inited_plrs: Vec<Vec<PlrId>> = Vec::with_capacity(prepared.groups.len());
+        for group in &prepared.groups {
+            let mut copied_group = Vec::with_capacity(group.len());
+            for player in group {
+                let ptr = storage.just_insert_player(player.clone());
+                copied_group.push(ptr);
+            }
+            if !copied_group.is_empty() {
+                inited_plrs.push(copied_group);
+            }
+        }
+
+        // 与 Dart 对齐：按 id_name 排序后初始化 sort_int（依赖 seed）。
+        let mut sorted_plrs = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();
+        sorted_plrs.sort_by(|a, b| {
+            let plr_a = storage.get_player(a).expect("plr not found when sorted sort_int");
+            let plr_b = storage.get_player(b).expect("plr not found when sorted sort_int");
+            plr_a.cmp_by_id_name(plr_b)
+        });
+        for ptr in sorted_plrs {
+            let plr = storage.just_get_player_mut(ptr).expect("plr not found when set sort_int");
             plr.sort_int = randomer.rFFFFFF() as i32;
         }
 
@@ -169,12 +257,9 @@ impl Runner {
             plr_a.cmp_for_sort(plr_b)
         });
 
-        // 这里顺便把 sorted hash 这块做了。
         // 保持旧版随机流消费顺序，避免战斗回放偏移。
-        let sort_groups = sorted_groups.iter().collect::<Vec<&Vec<PlrId>>>();
-
-        for group in &sort_groups {
-            for plr in *group {
+        for group in &sorted_groups {
+            for plr in group {
                 let plr = storage.just_get_player_mut(*plr).expect("plr not found when encrypt");
                 randomer.encrypt_bytes_no_change(&plr.id_key_name());
             }

@@ -1,5 +1,23 @@
 # 更新日志
 
+## [0.1.6] - 2026-03-16
+
+### 新增
+
+- `Runner` 新增：
+  - `new_from_groups_with_seed(groups, seed)`：对齐 core 新增构造接口
+  - `round_tick_new_update_no_capture()`：返回 no-capture 更新容器
+- `RunUpdates` 新增：
+  - `new_no_capture()`：创建不采集详细帧的容器
+  - `reset()`：对齐 core 的复用/重置语义
+  - `capture_updates` 属性
+  - `had_updates()` 活动标记查询
+
+### 变更
+
+- `RunUpdates.clear()` 内部行为对齐 core `reset()`，避免仅清列表导致活动标记未复位
+- 更新 `tswn_py.pyi` 类型存根，补齐上述 API
+
 ## [0.1.5] - 2026-03-15
 
 ### 新增

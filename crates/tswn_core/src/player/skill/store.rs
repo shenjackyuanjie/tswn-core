@@ -182,36 +182,36 @@ impl SkillStorage {
     // ==========
 
     pub fn update_state(&mut self, args: SkillArgs) {
-        let keys: Vec<SkillKey> = self.update_states.clone();
-        for skill_key in keys.iter() {
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+        for idx in 0..self.update_states.len() {
+            let skill_key = self.update_states[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             skill.update_state((args.0, args.1, args.2, args.3));
         }
     }
 
     pub fn update_state_inline(&mut self, status: &mut crate::player::PlayerStatus) {
-        let keys: Vec<SkillKey> = self.update_states.clone();
-        for skill_key in keys.iter() {
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+        for idx in 0..self.update_states.len() {
+            let skill_key = self.update_states[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             skill.update_state_inline(status);
         }
     }
 
     pub fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 {
-        let keys: Vec<SkillKey> = self.pre_step.clone();
-        for skill_key in keys.iter() {
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+        for idx in 0..self.pre_step.len() {
+            let skill_key = self.pre_step[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             step = skill.pre_step(step, (args.0, args.1, args.2, args.3));
         }
         step
     }
 
     pub fn pre_action(&mut self, smart: bool, args: SkillArgs) -> PreActionOutcome {
-        let keys: Vec<SkillKey> = self.pre_action.clone();
         let mut forced_skill = None;
         let mut clear_forced_action = false;
-        for skill_key in keys.iter() {
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+        for idx in 0..self.pre_action.len() {
+            let skill_key = self.pre_action[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             if skill.pre_action_clear_forced(smart, (args.0, args.1, args.2, args.3)) {
                 // Only set clear_forced_action to block state-based forced attacks (berserk/charm).
                 // Do NOT clear forced_skill — it may have been set by Assassinate's pre_action_select,
@@ -220,7 +220,7 @@ impl SkillStorage {
             }
             skill.pre_action((args.0, args.1, args.2, args.3));
             if forced_skill.is_none() && skill.pre_action_select(smart, (args.0, args.1, args.2, args.3)) {
-                forced_skill = Some(*skill_key);
+                forced_skill = Some(skill_key);
                 clear_forced_action = false;
             }
         }
@@ -231,15 +231,15 @@ impl SkillStorage {
     }
 
     pub fn post_action(&mut self, args: SkillArgs) {
-        let keys: Vec<SkillKey> = self.post_action.clone();
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
-        for skill_key in keys.iter() {
+        for idx in 0..self.post_action.len() {
+            let skill_key = self.post_action[idx];
             let rc4_before = (args.1.i, args.1.j);
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             skill.post_action((args.0, args.1, args.2, args.3));
             if debug_this {
                 eprintln!(
@@ -251,25 +251,25 @@ impl SkillStorage {
     }
 
     pub fn on_update_end(&mut self, args: SkillArgs) -> bool {
-        let keys: Vec<SkillKey> = self.skill.clone();
         let mut triggered = false;
-        for skill_key in keys.iter() {
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+        for idx in 0..self.skill.len() {
+            let skill_key = self.skill[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             triggered |= skill.on_update_end((args.0, args.1, args.2, args.3));
         }
         triggered
     }
 
     pub fn pre_defend(&mut self, mut atp: f64, is_mag: bool, caster: PlrId, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {
-        let keys: Vec<SkillKey> = self.pre_defend.clone();
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
-        for skill_key in keys.iter() {
+        for idx in 0..self.pre_defend.len() {
+            let skill_key = self.pre_defend[idx];
             let rc4_before = (args.1.i, args.1.j);
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             atp = skill.pre_defend(atp, is_mag, caster, &on_damage, (args.0, args.1, args.2, args.3));
             if debug_this {
                 eprintln!(
@@ -291,24 +291,24 @@ impl SkillStorage {
     }
 
     pub fn post_defend(&mut self, mut dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
-        let keys: Vec<SkillKey> = self.post_defend.clone();
-        for skill_key in keys.iter() {
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+        for idx in 0..self.post_defend.len() {
+            let skill_key = self.post_defend[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             dmg = skill.post_defend(dmg, caster, on_damage, (args.0, args.1, args.2, args.3));
         }
         dmg
     }
 
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
-        let keys: Vec<SkillKey> = self.post_damage.clone();
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
-        for skill_key in keys.iter() {
+        for idx in 0..self.post_damage.len() {
+            let skill_key = self.post_damage[idx];
             let rc4_before = (args.1.i, args.1.j);
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             skill.post_damage(dmg, caster, (args.0, args.1, args.2, args.3));
             if debug_this {
                 eprintln!(
@@ -320,10 +320,10 @@ impl SkillStorage {
     }
 
     pub fn clear_positive_runtime(&mut self, args: SkillArgs) -> Vec<&'static str> {
-        let keys: Vec<SkillKey> = self.skill.clone();
         let mut messages = Vec::new();
-        for skill_key in keys.iter() {
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+        for idx in 0..self.skill.len() {
+            let skill_key = self.skill[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             if let Some(message) = skill.clear_positive_runtime((args.0, args.1, args.2, args.3)) {
                 messages.push(message);
             }
@@ -332,15 +332,15 @@ impl SkillStorage {
     }
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) {
-        let keys: Vec<SkillKey> = self.post_death.clone();
         let debug_action = std::env::var("TSWN_DEBUG_DIE").ok();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
-        for skill_key in keys.iter() {
+        for idx in 0..self.post_death.len() {
+            let skill_key = self.post_death[idx];
             let rc4_before = (args.1.i, args.1.j);
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             let triggered = skill.die(oldhp, caster, (args.0, args.1, args.2, args.3));
             if debug_this {
                 eprintln!(
@@ -355,15 +355,15 @@ impl SkillStorage {
     }
 
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) {
-        let keys: Vec<SkillKey> = self.post_kill.clone();
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
-        for skill_key in keys.iter() {
+        for idx in 0..self.post_kill.len() {
+            let skill_key = self.post_kill[idx];
             let rc4_before = (args.1.i, args.1.j);
-            let skill = self.store.get_mut(skill_key).expect("skill not found in store");
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             let triggered = skill.kill(target, (args.0, args.1, args.2, args.3));
             if debug_this {
                 eprintln!(

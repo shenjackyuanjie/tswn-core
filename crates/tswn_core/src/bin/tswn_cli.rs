@@ -26,12 +26,18 @@
 //! ### Benchmark 模式
 //!
 //! ```bash
-//! # 评分测试（1组）
+//! # 评分测试（1组，多线程）
 //! echo "mario" | namerena_cli --bench 500
 //!
-//! # 胜率测试（2+组）
+//! # 单线程 benchmark
+//! echo "mario" | namerena_cli --bench-st 500
+//!
+//! # 胜率测试（2+组，多线程）
 //! namerena_cli --bench-raw "team1\n\nteam2" 1000
 //!
+//! # 胜率测试（2+组，单线程）
+//! namerena_cli --bench-raw-st "team1\n\nteam2" 1000
+//! 
 //! # 从文件读取
 //! namerena_cli --bench-file input.txt 1000
 //! ```
@@ -131,12 +137,16 @@ fn print_usage() {
 
 Benchmark 模式:
   自动检测：1组输入 → 实力评分测试，2+组输入 → 对战胜率测试
-  --bench [N]            从 stdin 读取，运行 N 场 (默认 1000)
-  --bench-raw "..." [N]  使用提供的原始字符串
-  --bench-file <文件> [N] 从文件读取
+  --bench [N]              从 stdin 读取，运行 N 场 (默认 1000，多线程)
+  --bench-raw "..." [N]    使用提供的原始字符串（多线程）
+  --bench-file <文件> [N]   从文件读取（多线程）
+  --bench-st [N]           从 stdin 读取（单线程）
+  --bench-raw-st "..." [N] 使用提供的原始字符串（单线程）
+  --bench-file-st <文件> [N] 从文件读取（单线程）
 
 胜率测试（简化版）:
-  --win_rate <队伍1> <队伍2> [N]  两队对战，运行 N 场 (默认 1000)，输出胜率
+  --win_rate <队伍1> <队伍2> [N]     两队对战，多线程 (默认 1000)
+  --win_rate_st <队伍1> <队伍2> [N]  两队对战，单线程 (默认 1000)
 
 性能测试:
   --perf <队伍1> <队伍2> [N]      性能基准测试，运行 N 场 (默认 10000)，输出 init/fight 耗时分解
@@ -165,6 +175,8 @@ Benchmark 模式:
   TSWN_DEBUG_UPGRADE=<名字>  调试升级技能
   TSWN_DEBUG_REFLECT         调试反射技能
   TSWN_TRACE_RC4             追踪 RC4 随机数状态
+  TSWN_BENCH_WORKERS=<N>     benchmark 线程数覆盖（并行模式）
+  TSWN_WINRATE_WORKERS=<N>   兼容旧变量名，作用同上
 
 输入格式说明:
   - 用空行分隔不同队伍
@@ -183,10 +195,13 @@ Benchmark 模式:
 
   # 评分测试
   echo "mario" | namerena_cli --bench 500
+  echo "mario" | namerena_cli --bench-st 500
 
   # 胜率测试
   namerena_cli --bench-raw "team1\n\nteam2" 1000
+  namerena_cli --bench-raw-st "team1\n\nteam2" 1000
   namerena_cli --win_rate "mario" "luigi" 1000
+  namerena_cli --win_rate_st "mario" "luigi" 1000
 
   # 带调试信息
   TSWN_DEBUG_ACTION=mario namerena_cli --raw "mario\nluigi""#
@@ -471,18 +486,47 @@ fn run_perf(team1: &str, team2: &str, n: usize) {
 /// Benchmark 入口：根据输入组数自动选择模式。
 /// - 2+ 组 → 胜率（team1 vs team2）
 /// - 1 组  → 普通评分 + !评分
-fn run_benchmark(raw: &str, n: usize) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BenchThreadMode {
+    Parallel,
+    SingleThread,
+}
+
+fn resolve_bench_workers(mode: BenchThreadMode, total: usize) -> usize {
+    match mode {
+        BenchThreadMode::SingleThread => 1,
+        BenchThreadMode::Parallel => {
+            let default_workers = std::thread::available_parallelism()
+                .map(|x| x.get().saturating_mul(5).div_ceil(4))
+                .unwrap_or(1);
+            std::env::var("TSWN_BENCH_WORKERS")
+                .ok()
+                .and_then(|raw| raw.parse::<usize>().ok())
+                .filter(|value| *value > 0)
+                .or_else(|| {
+                    std::env::var("TSWN_WINRATE_WORKERS")
+                        .ok()
+                        .and_then(|raw| raw.parse::<usize>().ok())
+                        .filter(|value| *value > 0)
+                })
+                .unwrap_or(default_workers)
+                .min(total.max(1))
+        }
+    }
+}
+
+fn run_benchmark(raw: &str, n: usize, mode: BenchThreadMode) {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     match group_count {
         0 => eprintln!("benchmark: 输入为空或无有效玩家"),
-        1 => run_bench_score(raw, n),
-        _ => run_bench_winrate(raw, n),
+        1 => run_bench_score(raw, n, mode),
+        _ => run_bench_winrate(raw, n, mode),
     }
 }
 
 /// 胜率测试：team1（组0）vs team2（组1），跑 n 场，统计组0胜率。
-fn run_bench_winrate(raw: &str, n: usize) {
+fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode) {
     println!("=== 对战胜率测试 ({n} 场) ===");
     let t_start = std::time::Instant::now();
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
@@ -491,15 +535,7 @@ fn run_bench_winrate(raw: &str, n: usize) {
         .map(|group| group.iter().filter(|name| !tswn_core::player::Player::check_is_seed(name)).count())
         .unwrap_or(0);
     let groups = std::sync::Arc::new(groups);
-    let default_workers = std::thread::available_parallelism()
-        .map(|x| x.get().saturating_mul(5).div_ceil(4))
-        .unwrap_or(1);
-    let workers = std::env::var("TSWN_WINRATE_WORKERS")
-        .ok()
-        .and_then(|raw| raw.parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(default_workers)
-        .min(n.max(1));
+    let workers = resolve_bench_workers(mode, n);
 
     let (wins, total) = if workers <= 1 || n < 2000 {
         run_bench_winrate_range(groups.as_ref(), team0_count, 0, n)
@@ -592,23 +628,61 @@ fn run_bench_winrate_worker(
 ///
 /// - `modifier = "\u{0002}"` → Test1 靶（普通评分）
 /// - `modifier = "!"` → TestEx 靶（!评分）
-fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, n: usize) -> (usize, usize) {
+fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, n: usize, mode: BenchThreadMode) -> (usize, usize) {
+    let workers = resolve_bench_workers(mode, n);
+    if workers <= 1 || n < 2000 {
+        return run_bench_score_range(target_str, target_count, modifier, 0, n, true);
+    }
+
+    let next = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut handles = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        let target_str = target_str.to_string();
+        let modifier = modifier.to_string();
+        let next = std::sync::Arc::clone(&next);
+        handles.push(std::thread::spawn(move || {
+            run_bench_score_worker(target_str.as_str(), target_count, modifier.as_str(), next.as_ref(), n)
+        }));
+    }
+
+    let mut merged = (0usize, 0usize);
+    for handle in handles {
+        let (w, t) = handle.join().expect("score worker thread panicked");
+        merged.0 += w;
+        merged.1 += t;
+    }
+    merged
+}
+
+fn run_bench_score_range(
+    target_str: &str,
+    target_count: usize,
+    modifier: &str,
+    start: usize,
+    end: usize,
+    show_progress: bool,
+) -> (usize, usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
-    let mut targe_id = tswn_core::engine::PROFILE_START;
+    let mut targets = String::with_capacity(target_count.saturating_mul(24));
+    let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
 
-    for i in 0..n {
-        let targets = (0..target_count)
-            .map(|_| {
-                let id = targe_id;
-                targe_id += 1;
-                format!("{}@{modifier}", id)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        let bench_input = format!("{target_str}\n\n{targets}");
+    for i in start..end {
+        targets.clear();
+        let base = tswn_core::engine::PROFILE_START as usize + i * target_count;
+        for offset in 0..target_count {
+            if offset > 0 {
+                targets.push('\n');
+            }
+            let _ = write!(&mut targets, "{}@{modifier}", base + offset);
+        }
 
-        let mut runner = match Runner::new_from_namerena_raw(bench_input) {
+        bench_input.clear();
+        bench_input.push_str(target_str);
+        bench_input.push_str("\n\n");
+        bench_input.push_str(&targets);
+
+        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -621,16 +695,66 @@ fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, 
         {
             wins += 1;
         }
-        if (i + 1) % 100 == 0 {
-            print!("\r  进度: {}/{n}  ", i + 1);
+        if show_progress && (i + 1) % 100 == 0 {
+            print!("\r  进度: {}/{}  ", i + 1, end);
         }
     }
-    println!();
+    if show_progress {
+        println!();
+    }
+    (wins, total)
+}
+
+fn run_bench_score_worker(
+    target_str: &str,
+    target_count: usize,
+    modifier: &str,
+    next: &std::sync::atomic::AtomicUsize,
+    end: usize,
+) -> (usize, usize) {
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut targets = String::with_capacity(target_count.saturating_mul(24));
+    let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
+
+    loop {
+        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if i >= end {
+            break;
+        }
+        targets.clear();
+        let base = tswn_core::engine::PROFILE_START as usize + i * target_count;
+        for offset in 0..target_count {
+            if offset > 0 {
+                targets.push('\n');
+            }
+            let _ = write!(&mut targets, "{}@{modifier}", base + offset);
+        }
+
+        bench_input.clear();
+        bench_input.push_str(target_str);
+        bench_input.push_str("\n\n");
+        bench_input.push_str(&targets);
+
+        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
+
+        runner.run_to_completion();
+        total += 1;
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|w| team0_roster.contains(w))
+        {
+            wins += 1;
+        }
+    }
     (wins, total)
 }
 
 /// 评分测试入口：同时跑普通评分和 !评分。
-fn run_bench_score(raw: &str, n: usize) {
+fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode) {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let target_group = groups.into_iter().next().unwrap_or_default();
     let target_count = target_group.len();
@@ -645,12 +769,12 @@ fn run_bench_score(raw: &str, n: usize) {
 
     println!("info: {target_count}");
     eprint!("[普通评分] ");
-    let (nw, nt) = run_bench_score_inner(&target_str, target_count, "\u{0002}", n);
+    let (nw, nt) = run_bench_score_inner(&target_str, target_count, "\u{0002}", n, mode);
     let ns = nw as f64 * 10_000.0 / nt.max(1) as f64;
     println!("普通评分: {:.0} / 10000  ({nw}/{nt})", ns);
 
     eprint!("[!评分]    ");
-    let (bw, bt) = run_bench_score_inner(&target_str, target_count, "!", n);
+    let (bw, bt) = run_bench_score_inner(&target_str, target_count, "!", n, mode);
     let bs = bw as f64 * 10_000.0 / bt.max(1) as f64;
     println!("!评分:     {:.0} / 10000  ({bw}/{bt})", bs);
 }
@@ -698,29 +822,39 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if !args.is_empty() {
         match args[0].as_str() {
-            "--bench" => {
+            "--bench" | "--bench-st" => {
                 let n = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
+                let mode = if args[0] == "--bench-st" {
+                    BenchThreadMode::SingleThread
+                } else {
+                    BenchThreadMode::Parallel
+                };
                 let mut raw = String::new();
                 if let Err(e) = io::stdin().read_to_string(&mut raw) {
                     eprintln!("读取 stdin 失败: {e}");
                     std::process::exit(2);
                 }
-                run_benchmark(raw.trim(), n);
+                run_benchmark(raw.trim(), n, mode);
                 return;
             }
-            "--bench-raw" => {
+            "--bench-raw" | "--bench-raw-st" => {
                 if args.len() < 2 {
-                    eprintln!("--bench-raw 需要一个字符串参数");
+                    eprintln!("{} 需要一个字符串参数", args[0]);
                     std::process::exit(2);
                 }
                 let raw = args[1].replace("\\n", "\n");
                 let n = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
-                run_benchmark(raw.trim(), n);
+                let mode = if args[0] == "--bench-raw-st" {
+                    BenchThreadMode::SingleThread
+                } else {
+                    BenchThreadMode::Parallel
+                };
+                run_benchmark(raw.trim(), n, mode);
                 return;
             }
-            "--bench-file" => {
+            "--bench-file" | "--bench-file-st" => {
                 if args.len() < 2 {
-                    eprintln!("--bench-file 需要一个文件路径参数");
+                    eprintln!("{} 需要一个文件路径参数", args[0]);
                     std::process::exit(2);
                 }
                 let raw = match fs::read_to_string(&args[1]) {
@@ -731,19 +865,29 @@ fn main() {
                     }
                 };
                 let n = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
-                run_benchmark(raw.trim(), n);
+                let mode = if args[0] == "--bench-file-st" {
+                    BenchThreadMode::SingleThread
+                } else {
+                    BenchThreadMode::Parallel
+                };
+                run_benchmark(raw.trim(), n, mode);
                 return;
             }
-            "--win_rate" => {
+            "--win_rate" | "--win_rate_st" => {
                 if args.len() < 3 {
-                    eprintln!("--win_rate 需要 <team1> <team2> [N] 参数");
+                    eprintln!("{} 需要 <team1> <team2> [N] 参数", args[0]);
                     std::process::exit(2);
                 }
                 let team1 = &args[1];
                 let team2 = &args[2];
                 let n = args.get(3).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
                 let raw = format!("{team1}\n\n{team2}");
-                run_bench_winrate(&raw, n);
+                let mode = if args[0] == "--win_rate_st" {
+                    BenchThreadMode::SingleThread
+                } else {
+                    BenchThreadMode::Parallel
+                };
+                run_bench_winrate(&raw, n, mode);
                 return;
             }
             "--perf" => {

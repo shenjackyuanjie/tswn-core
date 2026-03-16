@@ -34,6 +34,13 @@ impl PyRunner {
         Runner::split_namerena_into_groups(raw_str)
     }
 
+    #[staticmethod]
+    fn new_from_groups_with_seed(groups: Vec<Vec<String>>, seed: Vec<String>) -> PyResult<Self> {
+        Ok(Self {
+            inner: Runner::new_from_groups_with_seed(&groups, &seed).map_err(error::PyRunnerError::new)?,
+        })
+    }
+
     /// 进行一个主回合（直到出现可见更新），并返回更新内容
     pub fn main_round(&mut self) -> PyRunUpdates { self.inner.main_round().into() }
 
@@ -43,6 +50,13 @@ impl PyRunner {
     /// 进行一轮更新，并返回更新内容
     pub fn round_tick_new_update(&mut self) -> PyRunUpdates {
         let mut update = RunUpdates::new();
+        self.inner.round_tick(&mut update);
+        update.into()
+    }
+
+    /// 进行一轮更新，但不采集详细更新帧（仅保留活动标记与 on_update_end 队列处理）。
+    pub fn round_tick_new_update_no_capture(&mut self) -> PyRunUpdates {
+        let mut update = RunUpdates::new_no_capture();
         self.inner.round_tick(&mut update);
         update.into()
     }
@@ -224,13 +238,22 @@ impl PyRunUpdates {
     #[new]
     pub fn new() -> Self { Self::default() }
 
-    pub fn clear(&mut self) {
-        self.inner.updates.clear();
-        self.inner.on_update_end.clear();
+    #[staticmethod]
+    pub fn new_no_capture() -> Self {
+        Self {
+            inner: RunUpdates::new_no_capture(),
+        }
     }
+
+    pub fn clear(&mut self) { self.inner.reset(); }
+
+    pub fn reset(&mut self) { self.inner.reset(); }
 
     #[getter]
     pub fn get_id(&self) -> u64 { self.inner.id }
+
+    #[getter]
+    pub fn get_capture_updates(&self) -> bool { self.inner.capture_updates }
 
     #[getter]
     pub fn get_updates(&self) -> Vec<PyRunUpdate> { self.inner.updates.iter().cloned().map(|u| u.into()).collect() }
@@ -241,6 +264,8 @@ impl PyRunUpdates {
     pub fn len(&self) -> usize { self.inner.updates.len() }
 
     pub fn is_empty(&self) -> bool { self.inner.updates.is_empty() }
+
+    pub fn had_updates(&self) -> bool { self.inner.had_updates() }
 }
 
 impl From<RunUpdates> for PyRunUpdates {
