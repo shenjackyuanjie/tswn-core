@@ -45,7 +45,27 @@ pub struct EngineCore {
 impl EngineCore {
     pub fn register_pre_action_hook(&mut self, hook: crate::engine::hooks::ActorHook) { self.hooks.register_pre_action(hook); }
 
+    pub fn register_pre_action_hook_dyn<H: crate::engine::hooks::ActorHookDyn + 'static>(&mut self, hook: H) {
+        self.hooks.register_pre_action_dyn(hook);
+    }
+
     pub fn register_post_action_hook(&mut self, hook: crate::engine::hooks::ActorHook) { self.hooks.register_post_action(hook); }
+
+    pub fn register_post_action_hook_dyn<H: crate::engine::hooks::ActorHookDyn + 'static>(&mut self, hook: H) {
+        self.hooks.register_post_action_dyn(hook);
+    }
+
+    pub fn register_pre_damage_hook(&mut self, hook: crate::engine::hooks::ActorHook) { self.hooks.register_pre_damage(hook); }
+
+    pub fn register_pre_damage_hook_dyn<H: crate::engine::hooks::ActorHookDyn + 'static>(&mut self, hook: H) {
+        self.hooks.register_pre_damage_dyn(hook);
+    }
+
+    pub fn register_post_damage_hook(&mut self, hook: crate::engine::hooks::ActorHook) { self.hooks.register_post_damage(hook); }
+
+    pub fn register_post_damage_hook_dyn<H: crate::engine::hooks::ActorHookDyn + 'static>(&mut self, hook: H) {
+        self.hooks.register_post_damage_dyn(hook);
+    }
 
     #[cfg(not(feature = "no_debug"))]
     pub fn debug_world_state(tag: &str, world: &WorldState, storage: &Arc<Storage>) {

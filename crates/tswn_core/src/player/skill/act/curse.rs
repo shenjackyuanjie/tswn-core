@@ -166,7 +166,7 @@ impl StateTrait for CurseState {
             );
         }
         if randomer.r63() < self.prob as u32 {
-            updates.add(RunUpdate::new("[诅咒]使伤害加倍", caster, owner, 0));
+            updates.emit(|| RunUpdate::new("[诅咒]使伤害加倍", caster, owner, 0));
             *dmg *= self.multiply;
         }
         if debug_this {
@@ -177,9 +177,7 @@ impl StateTrait for CurseState {
         }
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
@@ -194,5 +192,5 @@ fn on_curse(caster: PlrId, target: PlrId, dmg: i32, _r: &mut RC4, updates: &mut 
     if target_plr.get_status().hp <= 0 || matches!(target_plr.player_type, PlayerType::Boss | PlayerType::Boost) {
         return;
     }
-    updates.add(RunUpdate::new("[1]被[诅咒]了", caster, target, 60));
+    updates.emit(|| RunUpdate::new("[1]被[诅咒]了", caster, target, 60));
 }

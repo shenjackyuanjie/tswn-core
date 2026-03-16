@@ -109,7 +109,7 @@ fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: 
         target.set_mp(mp - 32);
     }
     for message in skill_messages.iter().chain(state_messages.iter()) {
-        updates.add(RunUpdate::new_newline());
-        updates.add(RunUpdate::new(*message, caster, target_id, 0));
+        updates.emit(RunUpdate::new_newline);
+        updates.emit(|| RunUpdate::new(*message, caster, target_id, 0));
     }
 }

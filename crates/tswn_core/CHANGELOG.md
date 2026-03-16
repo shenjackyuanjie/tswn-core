@@ -1,5 +1,30 @@
 # 更新日志
 
+## [0.2.0] - 2026-03-15
+
+### ⚠️ Breaking Changes
+- 状态系统不再依赖 `Any/downcast`：`StateTrait` 移除 `as_any/as_any_mut`，改为稳定 `StateTag` + `state_type_id` 校验路径
+- `SkillExt` 不再要求实现 `Any`
+- `RunUpdates` 引入可选帧采集开关，`run_to_completion` 默认走无帧采集高速路径
+
+### 新增
+- 技能注册中心：新增 `register_skill_factory`，支持外部注册/覆盖技能工厂
+- Boss 注册中心：新增 `register_boss_handler`，统一 Boss 初始化/行动/免疫策略扩展入口
+- Hook 动态扩展通道：新增 `ActorHookDyn` 与 `EngineCore` 的 `*_hook_dyn` 注册 API
+- Runner 新增 `new_from_groups_with_seed`，支持复用已解析分组输入
+
+### 优化
+- `--win_rate` 改为并行模拟，并支持 `TSWN_WINRATE_WORKERS` 覆盖并发 worker 数
+- 胜率热点路径改为低分配实现（延迟构建 `RunUpdate`、`SmallVec` 小集合优化、动态负载均衡）
+- 玩家目标选择热路径减少临时分配与排序开销
+- Release 配置优化：`lto = "fat"`、`codegen-units = 1`
+
+### 性能
+- 在 `target\release\tswn-cli.exe --win_rate aaa bbb 10000` 场景下，典型耗时由约 `0.422s` 降至约 `0.064s`（机器/负载相关）
+
+### 验证
+- `cargo test --workspace --quiet` 全量通过
+
 ## [0.1.9] - 2026-03-15
 
 ### 新增

@@ -48,12 +48,13 @@
 //! init_boss_state(&mut player);
 //! ```
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{ActionTargets, Player};
 use crate::rc4::RC4;
+use foldhash::HashMap as FastHashMap;
 
 mod covid;
 mod lazy;
@@ -71,6 +72,86 @@ pub enum BossKind {
     Generic,
 }
 
+type BossInitFn = fn(&mut Player);
+type BossActionProbFn = fn() -> usize;
+type BossImmuneFn = fn(&str) -> i32;
+type BossActionFn = fn(&mut Player, bool, &mut RC4, &mut RunUpdates, &Arc<Storage>, &ActionTargets);
+
+#[derive(Clone, Copy)]
+pub struct BossHandler {
+    pub init_state: BossInitFn,
+    pub action_prob_count: BossActionProbFn,
+    pub immune_threshold: BossImmuneFn,
+    pub default_action: BossActionFn,
+}
+
+impl BossHandler {
+    pub const fn new(
+        init_state: BossInitFn,
+        action_prob_count: BossActionProbFn,
+        immune_threshold: BossImmuneFn,
+        default_action: BossActionFn,
+    ) -> Self {
+        Self {
+            init_state,
+            action_prob_count,
+            immune_threshold,
+            default_action,
+        }
+    }
+}
+
+struct BossRegistry {
+    handlers: FastHashMap<&'static str, BossHandler>,
+    fallback: BossHandler,
+}
+
+impl BossRegistry {
+    fn with_builtins() -> Self {
+        let fallback = BossHandler::new(init_generic_state, generic_action_prob_count, generic_immune_threshold, generic_boss_action);
+        let mut handlers = FastHashMap::default();
+        handlers.insert(
+            "covid",
+            BossHandler::new(init_covid_state, covid_action_prob_count, covid_immune_threshold, covid::covid_boss_action),
+        );
+        handlers.insert(
+            "lazy",
+            BossHandler::new(init_lazy_state, lazy_action_prob_count, lazy_immune_threshold, lazy::lazy_boss_action),
+        );
+        handlers.insert(
+            "saitama",
+            BossHandler::new(
+                init_saitama_state,
+                saitama_action_prob_count,
+                saitama_immune_threshold,
+                saitama::saitama_boss_action,
+            ),
+        );
+        Self {
+            handlers,
+            fallback,
+        }
+    }
+
+    #[inline]
+    fn handler_for(&self, name: &str) -> BossHandler { self.handlers.get(name).copied().unwrap_or(self.fallback) }
+
+    #[inline]
+    fn register(&mut self, name: &'static str, handler: BossHandler) -> Option<BossHandler> { self.handlers.insert(name, handler) }
+}
+
+fn global_boss_registry() -> &'static RwLock<BossRegistry> {
+    static REGISTRY: OnceLock<RwLock<BossRegistry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| RwLock::new(BossRegistry::with_builtins()))
+}
+
+/// 注册（或覆盖）一个 Boss 行为处理器。
+/// 默认内置 `covid/lazy/saitama`，其余名称会回退到通用 Boss 逻辑。
+pub fn register_boss_handler(name: &'static str, handler: BossHandler) -> Option<BossHandler> {
+    let mut registry = global_boss_registry().write().expect("boss registry poisoned");
+    registry.register(name, handler)
+}
+
 pub fn boss_kind(name: &str) -> BossKind {
     match name {
         "covid" => BossKind::Covid,
@@ -82,52 +163,21 @@ pub fn boss_kind(name: &str) -> BossKind {
 
 pub fn init_boss_state(player: &mut Player) {
     let name = player.id_name();
-    match boss_kind(&name) {
-        BossKind::Covid => {
-            player.set_state(CovidBossState { mutation: 40 });
-        }
-        BossKind::Lazy => {
-            player.set_state(LazyBossState { at_boost: 1.0 });
-        }
-        BossKind::Saitama => {
-            player.set_state(SaitamaState {
-                turns: 0,
-                damages: 0,
-                hitters: std::collections::HashSet::new(),
-                minions: std::collections::HashSet::new(),
-            });
-        }
-        BossKind::Generic => {}
-    }
+    let registry = global_boss_registry().read().expect("boss registry poisoned");
+    let handler = registry.handler_for(name.as_str());
+    (handler.init_state)(player);
 }
 
 pub fn boss_action_prob_count(name: &str) -> usize {
-    match boss_kind(name) {
-        BossKind::Covid | BossKind::Lazy => 0,
-        BossKind::Saitama | BossKind::Generic => 1,
-    }
+    let registry = global_boss_registry().read().expect("boss registry poisoned");
+    let handler = registry.handler_for(name);
+    (handler.action_prob_count)()
 }
 
 pub fn boss_immune_threshold(boss_name: &str, key: &str) -> i32 {
-    match boss_kind(boss_name) {
-        BossKind::Saitama => match key {
-            "half" | "exchange" => 240,
-            "berserk" | "slow" | "ice" => 192,
-            _ => 84,
-        },
-        BossKind::Covid => match key {
-            "charm" | "berserk" | "exchange" => 192,
-            _ => 84,
-        },
-        BossKind::Lazy => match key {
-            "assassinate" | "half" | "curse" | "exchange" => 192,
-            _ => 84,
-        },
-        BossKind::Generic => match key {
-            "assassinate" | "charm" | "berserk" | "half" | "curse" | "exchange" | "slow" | "ice" => 192,
-            _ => 84,
-        },
-    }
+    let registry = global_boss_registry().read().expect("boss registry poisoned");
+    let handler = registry.handler_for(boss_name);
+    (handler.immune_threshold)(key)
 }
 
 pub fn boss_default_action(
@@ -139,11 +189,72 @@ pub fn boss_default_action(
     targets: &ActionTargets,
 ) {
     let name = player.id_name();
-    match boss_kind(&name) {
-        BossKind::Covid => covid::covid_boss_action(player, smart, randomer, updates, storage, targets),
-        BossKind::Lazy => lazy::lazy_boss_action(player, smart, randomer, updates, storage, targets),
-        BossKind::Saitama => saitama::saitama_boss_action(player, smart, randomer, updates, storage, targets),
-        BossKind::Generic => generic_boss_action(player, smart, randomer, updates, storage, targets),
+    let registry = global_boss_registry().read().expect("boss registry poisoned");
+    let handler = registry.handler_for(name.as_str());
+    (handler.default_action)(player, smart, randomer, updates, storage, targets);
+}
+
+#[inline]
+fn init_covid_state(player: &mut Player) { player.set_state(CovidBossState { mutation: 40 }); }
+
+#[inline]
+fn init_lazy_state(player: &mut Player) { player.set_state(LazyBossState { at_boost: 1.0 }); }
+
+#[inline]
+fn init_saitama_state(player: &mut Player) {
+    player.set_state(SaitamaState {
+        turns: 0,
+        damages: 0,
+        hitters: std::collections::HashSet::new(),
+        minions: std::collections::HashSet::new(),
+    });
+}
+
+#[inline]
+fn init_generic_state(_player: &mut Player) {}
+
+#[inline]
+fn covid_action_prob_count() -> usize { 0 }
+
+#[inline]
+fn lazy_action_prob_count() -> usize { 0 }
+
+#[inline]
+fn saitama_action_prob_count() -> usize { 1 }
+
+#[inline]
+fn generic_action_prob_count() -> usize { 1 }
+
+#[inline]
+fn saitama_immune_threshold(key: &str) -> i32 {
+    match key {
+        "half" | "exchange" => 240,
+        "berserk" | "slow" | "ice" => 192,
+        _ => 84,
+    }
+}
+
+#[inline]
+fn covid_immune_threshold(key: &str) -> i32 {
+    match key {
+        "charm" | "berserk" | "exchange" => 192,
+        _ => 84,
+    }
+}
+
+#[inline]
+fn lazy_immune_threshold(key: &str) -> i32 {
+    match key {
+        "assassinate" | "half" | "curse" | "exchange" => 192,
+        _ => 84,
+    }
+}
+
+#[inline]
+fn generic_immune_threshold(key: &str) -> i32 {
+    match key {
+        "assassinate" | "charm" | "berserk" | "half" | "curse" | "exchange" | "slow" | "ice" => 192,
+        _ => 84,
     }
 }
 

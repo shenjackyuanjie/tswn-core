@@ -63,7 +63,13 @@ impl Runner {
     pub fn new_from_namerena_raw(raw_input: String) -> RunnerResult<Runner> {
         // 根据原始输入解析队伍。
         let (players, seed) = Runner::split_namerena_into_groups(raw_input);
+        Runner::new_from_groups_with_seed(&players, &seed)
+    }
 
+    /// 从已解析队伍和 seed 列表构建 Runner。
+    ///
+    /// 该接口用于高频 benchmark 场景，可复用分组解析结果，避免重复字符串切分成本。
+    pub fn new_from_groups_with_seed(players: &[Vec<String>], seed: &[String]) -> RunnerResult<Runner> {
         let mut names = players
             .iter()
             .flatten()
@@ -84,7 +90,7 @@ impl Runner {
 
         // 先完成玩家实例化与分组，sort_int 在后续按名字排序后再初始化。
         let mut inited_plrs: Vec<Vec<PlrId>> = Vec::with_capacity(players.len());
-        for plrs in &players {
+        for plrs in players {
             let mut group = Vec::with_capacity(plrs.len());
             for plr in plrs {
                 if Player::check_is_seed(plr) {
@@ -300,19 +306,18 @@ impl Runner {
     ///
     /// 返回值：是否正常结束（有胜者或达到 idle 上限）。
     pub fn run_to_completion(&mut self) -> bool {
-        let mut updates = RunUpdates::new();
+        let mut updates = RunUpdates::new_no_capture();
         let mut idle = 0usize;
         let mut rounds = 0usize;
         while !self.world.have_winner() && idle < 32 && rounds < 100_000 {
-            updates.updates.clear();
-            updates.on_update_end.clear();
+            updates.reset();
             let max_ticks = self.world.all_plr_len().max(1) * 4;
             let mut ticks = 0;
-            while ticks < max_ticks && !self.world.have_winner() && updates.updates.is_empty() {
+            while ticks < max_ticks && !self.world.have_winner() && !updates.had_updates() {
                 self.core.tick(&mut self.world, &self.storage, &mut self.randomer, &mut updates);
                 ticks += 1;
             }
-            if updates.updates.is_empty() {
+            if !updates.had_updates() {
                 idle += 1;
             } else {
                 idle = 0;

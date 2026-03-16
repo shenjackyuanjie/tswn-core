@@ -145,15 +145,13 @@ impl StateTrait for CharmState {
             return false;
         }
         if alive {
-            updates.add(RunUpdate::new_newline());
-            updates.add(RunUpdate::new("[1]从[魅惑]中解除", owner, owner, 0));
+            updates.emit(RunUpdate::new_newline);
+            updates.emit(|| RunUpdate::new("[1]从[魅惑]中解除", owner, owner, 0));
         }
         true
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }

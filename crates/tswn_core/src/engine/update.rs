@@ -179,7 +179,7 @@ impl RunUpdate {
 ///
 /// `on_update_end` 是一个待回调列表：本回合结束时，引擎会对列表中每个玩家
 /// 调用 `on_update_end`，用于处理持续性效果的结算（如中毒、冰冻计时等）。
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RunUpdates {
     /// 批次唯一 ID（自增，从 1 开始）。
     pub id: u64,
@@ -187,21 +187,62 @@ pub struct RunUpdates {
     pub updates: smallvec::SmallVec<[RunUpdate; 8]>,
     /// 本批次结束后需要触发 `on_update_end` 回调的玩家列表。
     pub on_update_end: smallvec::SmallVec<[PlrId; 8]>,
+    /// 是否缓存详细帧内容（benchmark 高速路径可关闭）。
+    pub capture_updates: bool,
+    /// 本批次是否出现过事件（无论是否缓存详细帧）。
+    has_activity: bool,
 }
 
 impl RunUpdates {
-    /// 创建一个新的空批次，分配唯一 `id`。
-    pub fn new() -> RunUpdates {
+    fn new_with_capture(capture_updates: bool) -> RunUpdates {
         RunUpdates {
             id: RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed),
             updates: smallvec::SmallVec::new(),
             on_update_end: smallvec::SmallVec::new(),
+            capture_updates,
+            has_activity: false,
         }
     }
 
+    /// 创建一个新的空批次，分配唯一 `id`。
+    pub fn new() -> RunUpdates { Self::new_with_capture(true) }
+
+    /// 创建不缓存详细事件帧的批次（仍可判断是否发生过事件）。
+    pub fn new_no_capture() -> RunUpdates { Self::new_with_capture(false) }
+
+    /// 清理批次内容，复用分配。
+    pub fn reset(&mut self) {
+        self.updates.clear();
+        self.on_update_end.clear();
+        self.has_activity = false;
+    }
+
+    /// 本批次是否发生过有效事件。
+    pub fn had_updates(&self) -> bool { self.has_activity }
+
     /// 追加一条事件帧。
-    pub fn add(&mut self, update: RunUpdate) { self.updates.push(update); }
+    pub fn add(&mut self, update: RunUpdate) {
+        self.has_activity = true;
+        if self.capture_updates {
+            self.updates.push(update);
+        }
+    }
+
+    /// 延迟构建事件帧：仅在 `capture_updates=true` 时执行构建闭包。
+    pub fn emit<F>(&mut self, build: F)
+    where
+        F: FnOnce() -> RunUpdate,
+    {
+        self.has_activity = true;
+        if self.capture_updates {
+            self.updates.push(build());
+        }
+    }
 
     // /// 批量追加事件帧（从切片复制）。
     // pub fn add_all(&mut self, updates: &mut [RunUpdate]) { self.updates.extend_from_slice(updates); }
+}
+
+impl Default for RunUpdates {
+    fn default() -> Self { Self::new() }
 }

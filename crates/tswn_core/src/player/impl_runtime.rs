@@ -56,6 +56,7 @@
 //! ```
 
 use super::*;
+use smallvec::SmallVec;
 
 impl Player {
     pub fn update_player(&mut self) {
@@ -93,7 +94,7 @@ impl Player {
             if (randomer.r127() as i32) < recover_threshold {
                 self.status.mp += 16;
             }
-            updates.add(RunUpdate::new_newline());
+            updates.emit(RunUpdate::new_newline);
             let ptr = self.as_ptr();
             self.skills.post_action((ptr, randomer, updates, storage));
             self.apply_post_action_states(randomer, updates, storage);
@@ -184,7 +185,7 @@ impl Player {
         if (randomer.r127() as i32) < recover_threshold {
             self.status.mp += 16;
         }
-        updates.add(RunUpdate::new_newline());
+        updates.emit(RunUpdate::new_newline);
         self.skills.post_action((ptr, randomer, updates, storage));
         self.apply_post_action_states(randomer, updates, storage);
     }
@@ -279,7 +280,7 @@ impl Player {
             return skill.select_targets(candidates, smart, (self.as_ptr(), randomer, updates, storage));
         }
 
-        let mut selected = Vec::new();
+        let mut selected: SmallVec<[PlrId; 4]> = SmallVec::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
@@ -304,7 +305,7 @@ impl Player {
             return Vec::new();
         }
 
-        let mut scored = selected
+        let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
             .into_iter()
             .map(|target_id| {
                 (
@@ -312,7 +313,7 @@ impl Player {
                     skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
                 )
             })
-            .collect::<Vec<(PlrId, f64)>>();
+            .collect();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|x| x.0).collect()
     }
@@ -355,7 +356,7 @@ impl Player {
             return self.select_default_attack_target(config.smart, randomer, storage, targets);
         }
         let select_count = if config.smart { 3 } else { 2 };
-        let mut selected = Vec::new();
+        let mut selected: SmallVec<[PlrId; 4]> = SmallVec::new();
         let mut dup = 0usize;
         while dup <= select_count {
             let target_id = match config.target_domain {
@@ -375,7 +376,7 @@ impl Player {
             return None;
         }
 
-        let mut scored = selected
+        let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
             .into_iter()
             .map(|target_id| {
                 let score = storage
@@ -387,7 +388,7 @@ impl Player {
                     .unwrap_or(f64::MIN);
                 (target_id, score)
             })
-            .collect::<Vec<(PlrId, f64)>>();
+            .collect();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
         scored.first().map(|x| x.0)
     }
@@ -404,7 +405,7 @@ impl Player {
             return;
         };
         let atp = self.get_at(config.use_mag, randomer) * config.attack_scale;
-        updates.add(RunUpdate::new(config.message, self.as_ptr(), target_id, 0));
+        updates.emit(|| RunUpdate::new(config.message, self.as_ptr(), target_id, 0));
         let Some(target) = storage.just_get_player_mut(target_id) else {
             return;
         };
@@ -419,7 +420,7 @@ impl Player {
         targets: &ActionTargets,
     ) -> Option<PlrId> {
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::new();
+        let mut selected: SmallVec<[PlrId; 4]> = SmallVec::new();
         let mut dup = 0usize;
         while dup <= select_count {
             let target_id = Self::pick_enemy_target(targets, randomer)?;
@@ -436,7 +437,7 @@ impl Player {
             return None;
         }
 
-        let mut scored = selected
+        let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
             .into_iter()
             .map(|target_id| {
                 let score = storage
@@ -470,7 +471,7 @@ impl Player {
                     .unwrap_or(f64::MIN);
                 (target_id, score)
             })
-            .collect::<Vec<(PlrId, f64)>>();
+            .collect();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
         scored.first().map(|x| x.0)
     }
@@ -496,7 +497,7 @@ impl Player {
             if self.status.mp >= req_mp {
                 self.status.mp -= req_mp;
                 let atp = self.get_at(true, randomer);
-                updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
+                updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
                 storage
                     .just_get_player_mut(target_id)
                     .expect("cannot get default-attack target from storage")
@@ -506,7 +507,7 @@ impl Player {
         }
 
         let atp = self.get_at(false, randomer);
-        updates.add(RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
+        updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
         storage
             .just_get_player_mut(target_id)
             .expect("cannot get default-attack target from storage")
@@ -822,8 +823,7 @@ impl Player {
             }
         };
         if self.active() && Self::dodge(accure, dodgeval, randomer) {
-            let update = RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20);
-            updates.add(update);
+            updates.emit(|| RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20));
             return 0;
         }
         self.defned(atp, is_mag, caster, on_damage, randomer, updates, storage)
@@ -861,15 +861,19 @@ impl Player {
             if self.status.hp > self.status.max_hp {
                 self.status.hp = self.status.max_hp;
             }
-            let mut update = RunUpdate::new("[1]回复体力[2]点", caster, self.as_ptr(), 0);
-            update.param = Some(dmg.unsigned_abs());
-            updates.add(update);
+            updates.emit(|| {
+                let mut update = RunUpdate::new("[1]回复体力[2]点", caster, self.as_ptr(), 0);
+                update.param = Some(dmg.unsigned_abs());
+                update
+            });
             return 0;
         }
         if dmg == 0 {
-            let mut update = RunUpdate::new("[0]受到[2]点伤害[s_dmg0]", self.as_ptr(), self.as_ptr(), 10);
-            update.param = Some(0);
-            updates.add(update);
+            updates.emit(|| {
+                let mut update = RunUpdate::new("[0]受到[2]点伤害[s_dmg0]", self.as_ptr(), self.as_ptr(), 10);
+                update.param = Some(0);
+                update
+            });
             return 0;
         }
         let old_hp = self.status.hp;
@@ -883,9 +887,11 @@ impl Player {
         } else if dmg >= 120 {
             msg.push_str("[s_dmg120]");
         }
-        let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
-        update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
-        updates.add(update);
+        updates.emit(|| {
+            let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
+            update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
+            update
+        });
         on_damage(caster, self.as_ptr(), dmg, randomer, updates, storage);
         self.on_damaged(dmg, old_hp, caster, randomer, updates, storage)
     }
@@ -946,8 +952,8 @@ impl Player {
             return;
         }
 
-        updates.add(RunUpdate::new_newline());
-        updates.add(RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
+        updates.emit(RunUpdate::new_newline);
+        updates.emit(|| RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
 
         let ptr = self.as_ptr();
         self.skills.die(old_hp, caster, (ptr, randomer, updates, storage));

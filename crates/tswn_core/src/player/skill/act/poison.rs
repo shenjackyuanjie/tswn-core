@@ -87,7 +87,7 @@ impl StateTrait for PoisonState {
         self.atp -= atpp;
         let dmg = (atpp / (owner_magic + 64) as f64).ceil() as i32;
         self.count -= 1;
-        updates.add(RunUpdate::new("[1][毒性发作]", self.caster.unwrap_or(owner), owner, 0));
+        updates.emit(|| RunUpdate::new("[1][毒性发作]", self.caster.unwrap_or(owner), owner, 0));
         storage.just_get_player_mut(owner).expect("cannot get poison owner from storage").damage(
             dmg,
             self.caster.unwrap_or(owner),
@@ -101,15 +101,13 @@ impl StateTrait for PoisonState {
             return false;
         }
         if storage.get_player(&owner).map(|player| player.alive()).unwrap_or(false) {
-            updates.add(RunUpdate::new_newline());
-            updates.add(RunUpdate::new("[1]从[中毒]中解除", owner, owner, 0));
+            updates.emit(RunUpdate::new_newline);
+            updates.emit(|| RunUpdate::new("[1]从[中毒]中解除", owner, owner, 0));
         }
         true
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
@@ -149,7 +147,7 @@ fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut 
             count: 4,
         });
     }
-    updates.add(RunUpdate::new("[1][中毒]", caster, target, 60));
+    updates.emit(|| RunUpdate::new("[1][中毒]", caster, target, 60));
 }
 
 fn on_poison_tick(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}

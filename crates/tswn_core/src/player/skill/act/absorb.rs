@@ -73,5 +73,5 @@ fn on_absorb(caster: PlrId, _target: PlrId, dmg: i32, _r: &mut RC4, updates: &mu
     if healed > 0 {
         owner.set_hp_raw((hp + healed).min(max_hp));
     }
-    updates.add(RunUpdate::new("[1]回复体力[2]点", caster, caster, healed as u32));
+    updates.emit(|| RunUpdate::new("[1]回复体力[2]点", caster, caster, healed as u32));
 }

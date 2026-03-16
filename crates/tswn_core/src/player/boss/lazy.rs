@@ -31,8 +31,6 @@ impl StateTrait for LazyBossState {
         lazy_infect(owner, caster, randomer, updates, storage);
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
 }
 
@@ -82,8 +80,6 @@ impl StateTrait for LazyInfection {
         false
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
 }
 

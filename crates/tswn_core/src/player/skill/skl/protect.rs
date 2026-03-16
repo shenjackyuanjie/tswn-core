@@ -119,7 +119,7 @@ impl StateTrait for ProtectState {
                         protect_skill.post_action((link.owner, randomer, updates, storage));
                     }
                 }
-                updates.add(RunUpdate::new("[0][守护][1]", link.owner, owner, 40));
+                updates.emit(|| RunUpdate::new("[0][守护][1]", link.owner, owner, 40));
                 let redirected_atp = {
                     let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
                     protector.pre_defend(*atp, is_mag, caster, on_damage, randomer, updates, storage)
@@ -165,9 +165,7 @@ impl StateTrait for ProtectState {
         self.protect_from.is_empty()
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
 }

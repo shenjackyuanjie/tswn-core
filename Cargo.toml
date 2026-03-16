@@ -1,3 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/tswn_core", "crates/tswn_py"]
+
+[profile.release]
+codegen-units = 1
+lto = "fat"

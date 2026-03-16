@@ -125,15 +125,13 @@ impl StateTrait for BerserkState {
             return false;
         }
         if alive {
-            updates.add(RunUpdate::new_newline());
-            updates.add(RunUpdate::new("[1]从[狂暴]中解除", owner, owner, 0));
+            updates.emit(RunUpdate::new_newline);
+            updates.emit(|| RunUpdate::new("[1]从[狂暴]中解除", owner, owner, 0));
         }
         true
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
@@ -161,6 +159,6 @@ fn on_berserk(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut
         target_plr.state.set(BerserkState {
             step: if charge_active { 2 } else { 1 },
         });
-        updates.add(RunUpdate::new("[1]进入[狂暴]状态", caster, target, 60));
+        updates.emit(|| RunUpdate::new("[1]进入[狂暴]状态", caster, target, 60));
     }
 }

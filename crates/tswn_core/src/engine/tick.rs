@@ -138,7 +138,7 @@ pub fn check_winner(world: &mut WorldState, _storage: &Arc<Storage>) {
     };
 }
 
-pub(super) fn has_updates(updates: &RunUpdates) -> bool { !updates.updates.is_empty() }
+pub(super) fn has_updates(updates: &RunUpdates) -> bool { updates.had_updates() }
 
 pub(super) fn run_update_end(storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
     let mut guard = 0usize;

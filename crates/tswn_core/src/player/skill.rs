@@ -35,15 +35,18 @@
 //! | `SelfOnly`     | 仅自身                        |
 //! | `AllAlive`     | 全场存活玩家（可能跨队伍）      |
 
-use std::any::Any;
 use std::cmp::Ordering;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{
+    Arc, OnceLock, RwLock,
+    atomic::{AtomicBool, Ordering as AtomicOrdering},
+};
 
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::player::{OnDamageFunc, PlrId};
 use crate::rc4::RC4;
+use foldhash::HashMap as FastHashMap;
 
 pub mod act;
 pub mod skl;
@@ -54,6 +57,102 @@ pub use act::{
     ice, iron, poison, quake, rapid, revive, shadow, slow, summon, thunder,
 };
 pub use skl::{corpse, counter, defend, hide, merge, none, protect, reflect, reraise, shield, upgrade, zombie};
+
+pub type SkillFactory = fn() -> Box<dyn SkillTrait>;
+
+const BUILTIN_SKILL_FACTORIES: [SkillFactory; 35] = [
+    fire::FireSkill::box_new,
+    ice::IceSkill::box_new,
+    thunder::ThunderSkill::box_new,
+    quake::QuakeSkill::box_new,
+    absorb::AbsorbSkill::box_new,
+    poison::PoisonSkill::box_new,
+    rapid::RapidSkill::box_new,
+    critical::CriticalSkill::box_new,
+    half::HalfSkill::box_new,
+    exchange::ExchangeSkill::box_new,
+    berserk::BerserkSkill::box_new,
+    charm::CharmSkill::box_new,
+    haste::HasteSkill::box_new,
+    slow::SlowSkill::box_new,
+    curse::CurseSkill::box_new,
+    heal::HealSkill::box_new,
+    revive::ReviveSkill::box_new,
+    disperse::DisperseSkill::box_new,
+    iron::IronSkill::box_new,
+    charge::ChargeSkill::box_new,
+    accumulate::AccumulateSkill::box_new,
+    assassinate::AssassinateSkill::box_new,
+    summon::SummonSkill::box_new,
+    clone::CloneSkill::box_new,
+    shadow::ShadowSkill::box_new,
+    defend::DefendSkill::box_new,
+    protect::ProtectSkill::box_new,
+    reflect::ReflectSkill::box_new,
+    reraise::ReraiseSkill::box_new,
+    shield::ShieldSkill::box_new,
+    counter::CounterSkill::box_new,
+    merge::MergeSkill::box_new,
+    zombie::ZombieSkill::box_new,
+    upgrade::UpgradeSkill::box_new,
+    hide::HideSkill::box_new,
+];
+
+#[derive(Default)]
+struct SkillRegistry {
+    factories: FastHashMap<u8, SkillFactory>,
+}
+
+impl SkillRegistry {
+    fn with_builtins() -> Self {
+        let mut registry = Self::default();
+        for (id, factory) in BUILTIN_SKILL_FACTORIES.iter().copied().enumerate() {
+            registry.register_builtin(id as u8, factory);
+        }
+        registry
+    }
+
+    #[inline]
+    fn register_builtin(&mut self, id: u8, factory: SkillFactory) { self.factories.insert(id, factory); }
+
+    #[inline]
+    fn register(&mut self, id: u8, factory: SkillFactory) -> Option<SkillFactory> { self.factories.insert(id, factory) }
+
+    #[inline]
+    fn create(&self, id: u8) -> Option<Box<dyn SkillTrait>> { self.factories.get(&id).map(|factory| factory()) }
+}
+
+fn global_skill_registry() -> &'static RwLock<SkillRegistry> {
+    static REGISTRY: OnceLock<RwLock<SkillRegistry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| RwLock::new(SkillRegistry::with_builtins()))
+}
+
+static SKILL_REGISTRY_DIRTY: AtomicBool = AtomicBool::new(false);
+
+#[inline]
+fn create_builtin_skill(id: u8) -> Option<Box<dyn SkillTrait>> {
+    BUILTIN_SKILL_FACTORIES.get(id as usize).copied().map(|factory| factory())
+}
+
+/// 注册（或覆盖）一个技能工厂。
+/// 这为后续 DLL/hook 式扩展提供稳定入口，内置技能仍走零配置默认注册。
+pub fn register_skill_factory(id: u8, factory: SkillFactory) -> Option<SkillFactory> {
+    SKILL_REGISTRY_DIRTY.store(true, AtomicOrdering::Release);
+    let mut registry = global_skill_registry().write().expect("skill registry poisoned");
+    registry.register(id, factory)
+}
+
+#[inline]
+fn create_skill_from_registry(id: u8) -> Box<dyn SkillTrait> {
+    if !SKILL_REGISTRY_DIRTY.load(AtomicOrdering::Acquire) {
+        return create_builtin_skill(id).unwrap_or_else(none::NoneSkill::box_new);
+    }
+    let registry = global_skill_registry().read().expect("skill registry poisoned");
+    registry
+        .create(id)
+        .or_else(|| create_builtin_skill(id))
+        .unwrap_or_else(none::NoneSkill::box_new)
+}
 
 /// SkillArgs:
 /// PlrId: player handle（稳定 ID，不是内存指针）
@@ -349,7 +448,7 @@ impl Clone for Box<dyn SkillTrait> {
     fn clone(&self) -> Box<dyn SkillTrait> { self.clone_box() }
 }
 
-pub trait SkillExt: SkillTrait + Any {
+pub trait SkillExt: SkillTrait {
     fn box_new() -> Box<dyn SkillTrait>;
 }
 
@@ -376,46 +475,7 @@ impl Skill {
     }
 
     pub fn new_with_id(level: u32, id: u8) -> Self {
-        let skill_type = {
-            match id {
-                0 => fire::FireSkill::box_new(),
-                1 => ice::IceSkill::box_new(),
-                2 => thunder::ThunderSkill::box_new(),
-                3 => quake::QuakeSkill::box_new(),
-                4 => absorb::AbsorbSkill::box_new(),
-                5 => poison::PoisonSkill::box_new(),
-                6 => rapid::RapidSkill::box_new(),
-                7 => critical::CriticalSkill::box_new(),
-                8 => half::HalfSkill::box_new(),
-                9 => exchange::ExchangeSkill::box_new(),
-                10 => berserk::BerserkSkill::box_new(),
-                11 => charm::CharmSkill::box_new(),
-                12 => haste::HasteSkill::box_new(),
-                13 => slow::SlowSkill::box_new(),
-                14 => curse::CurseSkill::box_new(),
-                15 => heal::HealSkill::box_new(),
-                16 => revive::ReviveSkill::box_new(),
-                17 => disperse::DisperseSkill::box_new(),
-                18 => iron::IronSkill::box_new(),
-                19 => charge::ChargeSkill::box_new(),
-                20 => accumulate::AccumulateSkill::box_new(),
-                21 => assassinate::AssassinateSkill::box_new(),
-                22 => summon::SummonSkill::box_new(),
-                23 => clone::CloneSkill::box_new(),
-                24 => shadow::ShadowSkill::box_new(),
-                25 => defend::DefendSkill::box_new(),
-                26 => protect::ProtectSkill::box_new(),
-                27 => reflect::ReflectSkill::box_new(),
-                28 => reraise::ReraiseSkill::box_new(),
-                29 => shield::ShieldSkill::box_new(),
-                30 => counter::CounterSkill::box_new(),
-                31 => merge::MergeSkill::box_new(),
-                32 => zombie::ZombieSkill::box_new(),
-                33 => upgrade::UpgradeSkill::box_new(),
-                34 => hide::HideSkill::box_new(),
-                _ => none::NoneSkill::box_new(),
-            }
-        };
+        let skill_type = create_skill_from_registry(id);
         Self {
             boosted: false,
             level,

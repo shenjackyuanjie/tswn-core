@@ -87,17 +87,15 @@ impl StateTrait for IceState {
         if *step + status.move_point >= MOVE_POINT_THRESHOLD {
             *step = 0;
             if status.alive() {
-                updates.add(RunUpdate::new_newline());
-                updates.add(RunUpdate::new("[1]从[冰冻]中解除", owner, owner, 0));
+                updates.emit(RunUpdate::new_newline);
+                updates.emit(|| RunUpdate::new("[1]从[冰冻]中解除", owner, owner, 0));
             }
             return true;
         }
         false
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
@@ -129,5 +127,5 @@ fn on_ice(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut Run
             frozen_step: 1024,
         });
     }
-    updates.add(RunUpdate::new("[1]被[冰冻]了", caster, target, 40));
+    updates.emit(|| RunUpdate::new("[1]被[冰冻]了", caster, target, 40));
 }

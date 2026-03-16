@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
@@ -16,9 +15,7 @@ pub struct FireState {
 }
 
 impl StateTrait for FireState {
-    fn as_any(&self) -> &dyn Any { self }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 

@@ -106,6 +106,7 @@
 //! - 暂未实现：天卫、Boss、武器
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read};
 
@@ -483,35 +484,43 @@ fn run_benchmark(raw: &str, n: usize) {
 /// 胜率测试：team1（组0）vs team2（组1），跑 n 场，统计组0胜率。
 fn run_bench_winrate(raw: &str, n: usize) {
     println!("=== 对战胜率测试 ({n} 场) ===");
-    let mut wins = 0usize;
-    let mut total = 0usize;
-
     let t_start = std::time::Instant::now();
+    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let team0_count = groups
+        .first()
+        .map(|group| group.iter().filter(|name| !tswn_core::player::Player::check_is_seed(name)).count())
+        .unwrap_or(0);
+    let groups = std::sync::Arc::new(groups);
+    let default_workers = std::thread::available_parallelism()
+        .map(|x| x.get().saturating_mul(5).div_ceil(4))
+        .unwrap_or(1);
+    let workers = std::env::var("TSWN_WINRATE_WORKERS")
+        .ok()
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default_workers)
+        .min(n.max(1));
 
-    for i in 0..n {
-        // 每场加不同 seed 行以引入随机差异
-        let bench_input = format!("{raw}\n\nseed:{i}@!");
-
-        let mut runner = match Runner::new_from_namerena_raw(bench_input) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
-
-        runner.run_to_completion();
-        total += 1;
-        if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|w| team0_roster.contains(w))
-        {
-            wins += 1;
+    let (wins, total) = if workers <= 1 || n < 2000 {
+        run_bench_winrate_range(groups.as_ref(), team0_count, 0, n)
+    } else {
+        let next = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut handles = Vec::with_capacity(workers);
+        for _ in 0..workers {
+            let groups = std::sync::Arc::clone(&groups);
+            let next = std::sync::Arc::clone(&next);
+            handles.push(std::thread::spawn(move || run_bench_winrate_worker(groups.as_ref(), team0_count, next.as_ref(), n)));
         }
-        if (i + 1) % 100 == 0 {
-            eprint!("\r进度: {}/{n}  ", i + 1);
+        let mut merged = (0usize, 0usize);
+        for handle in handles {
+            let (w, t) = handle.join().expect("winrate worker thread panicked");
+            merged.0 += w;
+            merged.1 += t;
         }
-    }
+        merged
+    };
 
     let elapsed = t_start.elapsed();
-    eprintln!();
     let rate = wins as f64 * 100.0 / total.max(1) as f64;
     println!("胜率: {:.2}%  ({}/{})", rate, wins, total);
     println!(
@@ -520,6 +529,63 @@ fn run_bench_winrate(raw: &str, n: usize) {
         elapsed.as_micros() as f64 / total.max(1) as f64,
         total as f64 / elapsed.as_secs_f64()
     );
+}
+
+fn run_bench_winrate_range(groups: &[Vec<String>], team0_count: usize, start: usize, end: usize) -> (usize, usize) {
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut seed = String::with_capacity(24);
+
+    for i in start..end {
+        seed.clear();
+        let _ = write!(&mut seed, "seed:{i}@!");
+        let seed_ref = std::slice::from_ref(&seed);
+        let mut runner = match Runner::new_from_groups_with_seed(groups, seed_ref) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        runner.run_to_completion();
+        total += 1;
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|winner| *winner < team0_count)
+        {
+            wins += 1;
+        }
+    }
+    (wins, total)
+}
+
+fn run_bench_winrate_worker(
+    groups: &[Vec<String>],
+    team0_count: usize,
+    next: &std::sync::atomic::AtomicUsize,
+    end: usize,
+) -> (usize, usize) {
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut seed = String::with_capacity(24);
+
+    loop {
+        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if i >= end {
+            break;
+        }
+        seed.clear();
+        let _ = write!(&mut seed, "seed:{i}@!");
+        let seed_ref = std::slice::from_ref(&seed);
+        let mut runner = match Runner::new_from_groups_with_seed(groups, seed_ref) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        runner.run_to_completion();
+        total += 1;
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|winner| *winner < team0_count)
+        {
+            wins += 1;
+        }
+    }
+    (wins, total)
 }
 
 /// 评分测试：目标组 vs N 个测试靶，跑 n 场，返回 (胜场数, 总场数)。

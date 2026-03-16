@@ -25,7 +25,7 @@
 //! | `on_post_damage`         | 我方造成伤害后（属于我方的状态响应）             |
 //! | `apply_update_state`     | 每回合刷新属性快照（如将防御提高部分）             |
 
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
@@ -34,15 +34,24 @@ use crate::player::status::PlayerStatus;
 use crate::player::{ActionTargets, OnDamageFunc, PlrId};
 use crate::rc4::RC4;
 use foldhash::HashMap as FastHashMap;
+use smallvec::SmallVec;
 
-/// 状态类型标识，内部使用 [`TypeId`] 区分不同状态，与 Dart 的 `Type<T>` 类似。
-pub type StateTag = TypeId;
+/// 状态类型标识，使用稳定的类型名字符串。
+/// 相比 `TypeId` 更容易跨动态库/插件边界做协议映射。
+pub type StateTag = &'static str;
 
-/// 返回类型 `T` 对应的状态标识。
+/// 返回类型 `T` 对应的状态标识（稳定类型名）。
 #[inline]
-pub fn state_tag<T: StateTrait + 'static>() -> StateTag { TypeId::of::<T>() }
+pub fn state_tag<T: StateTrait + 'static>() -> StateTag { std::any::type_name::<T>() }
 
-pub trait StateTrait: std::fmt::Debug + Any + Send + Sync {
+pub trait StateTrait: std::fmt::Debug + Send + Sync + 'static {
+    /// 跨边界可读的稳定状态标识。
+    fn state_tag(&self) -> StateTag { std::any::type_name::<Self>() }
+
+    /// 用于类型安全转回具体状态类型。
+    /// 仅在内部 `get/get_mut` 处校验后做指针转换。
+    fn state_type_id(&self) -> TypeId { TypeId::of::<Self>() }
+
     fn meta_type(&self) -> i32 { 0 }
 
     fn action_mode_priority(&self) -> i32 { 1000 }
@@ -138,8 +147,6 @@ pub trait StateTrait: std::fmt::Debug + Any + Send + Sync {
     fn linked_owner(&self) -> Option<PlrId> { None }
     fn on_linked_owner_die(&mut self, _owner: PlrId, _self_id: PlrId, _updates: &mut RunUpdates) -> bool { false }
 
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
     fn clone_box(&self) -> Box<dyn StateTrait>;
 }
 
@@ -152,7 +159,47 @@ pub struct PlayerStateStore {
     pub(crate) states: FastHashMap<StateTag, Box<dyn StateTrait>>,
 }
 
+type PriorityPairs = SmallVec<[(StateTag, i32); 8]>;
+
 impl PlayerStateStore {
+    #[inline]
+    fn cast_ref<T: StateTrait + 'static>(state: &dyn StateTrait) -> Option<&T> {
+        if state.state_type_id() != TypeId::of::<T>() {
+            return None;
+        }
+        let ptr = state as *const dyn StateTrait as *const T;
+        // SAFETY:
+        // 1. 上面已通过 state_type_id 与 T::TypeId 做严格等值校验；
+        // 2. 该 trait object 的底层动态类型即为 T；
+        // 3. 生命周期由入参 `state` 保证。
+        Some(unsafe { &*ptr })
+    }
+
+    #[inline]
+    fn cast_mut<T: StateTrait + 'static>(state: &mut dyn StateTrait) -> Option<&mut T> {
+        if state.state_type_id() != TypeId::of::<T>() {
+            return None;
+        }
+        let ptr = state as *mut dyn StateTrait as *mut T;
+        // SAFETY:
+        // 与 cast_ref 同理，且 `state` 为独占可变引用，别名规则成立。
+        Some(unsafe { &mut *ptr })
+    }
+
+    #[inline]
+    fn ordered_tags_by<F>(&self, mut priority: F) -> SmallVec<[StateTag; 8]>
+    where
+        F: FnMut(&dyn StateTrait) -> i32,
+    {
+        let mut ordered: PriorityPairs = self
+            .states
+            .iter()
+            .map(|(tag, state)| (*tag, priority(state.as_ref())))
+            .collect();
+        ordered.sort_unstable_by_key(|(_, p)| *p);
+        ordered.into_iter().map(|(tag, _)| tag).collect()
+    }
+
     #[inline]
     pub fn set<T: StateTrait + 'static>(&mut self, state: T) {
         let tag = state_tag::<T>();
@@ -177,11 +224,15 @@ impl PlayerStateStore {
     }
 
     #[inline]
-    pub fn get<T: StateTrait + 'static>(&self) -> Option<&T> { self.states.get(&state_tag::<T>())?.as_any().downcast_ref::<T>() }
+    pub fn get<T: StateTrait + 'static>(&self) -> Option<&T> {
+        let state = self.states.get(&state_tag::<T>())?;
+        Self::cast_ref::<T>(state.as_ref())
+    }
 
     #[inline]
     pub fn get_mut<T: StateTrait + 'static>(&mut self) -> Option<&mut T> {
-        self.states.get_mut(&state_tag::<T>())?.as_any_mut().downcast_mut::<T>()
+        let state = self.states.get_mut(&state_tag::<T>())?;
+        Self::cast_mut::<T>(state.as_mut())
     }
 
     #[inline]
@@ -276,13 +327,7 @@ impl PlayerStateStore {
     pub fn negative_state_count(&self) -> usize { self.states.values().filter(|state| state.meta_type() < 0).count() }
 
     pub fn apply_update_state_effects(&self, status: &mut PlayerStatus) {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.update_state_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        for (tag, _) in ordered {
+        for tag in self.ordered_tags_by(|state| state.update_state_priority()) {
             if let Some(state) = self.states.get(&tag) {
                 state.apply_update_state(status);
             }
@@ -290,14 +335,8 @@ impl PlayerStateStore {
     }
 
     pub fn resolve_action_mode(&self, smart: bool) -> Option<crate::player::action_targets::ForcedAttackConfig> {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.action_mode_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
         let mut forced = None;
-        for (tag, _) in ordered {
+        for tag in self.ordered_tags_by(|state| state.action_mode_priority()) {
             if let Some(state) = self.states.get(&tag) {
                 state.on_action_mode(smart, &mut forced);
                 if forced.is_some() {
@@ -316,14 +355,8 @@ impl PlayerStateStore {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> Vec<StateTag> {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.action_mode_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        let mut clear_tags = Vec::new();
-        for (tag, _) in ordered {
+        let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
+        for tag in self.ordered_tags_by(|state| state.action_mode_priority()) {
             let should_clear = self
                 .states
                 .get_mut(&tag)
@@ -333,7 +366,7 @@ impl PlayerStateStore {
                 clear_tags.push(tag);
             }
         }
-        clear_tags
+        clear_tags.into_vec()
     }
 
     pub fn on_pre_step_states(
@@ -343,14 +376,8 @@ impl PlayerStateStore {
         step: &mut i32,
         updates: &mut RunUpdates,
     ) -> Vec<StateTag> {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.pre_step_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        let mut clear_tags = Vec::new();
-        for (tag, _) in ordered {
+        let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
+        for tag in self.ordered_tags_by(|state| state.pre_step_priority()) {
             let should_clear = self
                 .states
                 .get_mut(&tag)
@@ -360,7 +387,7 @@ impl PlayerStateStore {
                 clear_tags.push(tag);
             }
         }
-        clear_tags
+        clear_tags.into_vec()
     }
 
     pub fn on_post_action_states(
@@ -371,14 +398,8 @@ impl PlayerStateStore {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> Vec<StateTag> {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.post_action_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        let mut clear_tags = Vec::new();
-        for (tag, _) in ordered {
+        let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
+        for tag in self.ordered_tags_by(|state| state.post_action_priority()) {
             let should_clear = self
                 .states
                 .get_mut(&tag)
@@ -388,7 +409,7 @@ impl PlayerStateStore {
                 clear_tags.push(tag);
             }
         }
-        clear_tags
+        clear_tags.into_vec()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -403,14 +424,8 @@ impl PlayerStateStore {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> Vec<StateTag> {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.pre_defend_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        let mut clear_tags = Vec::new();
-        for (tag, _) in ordered {
+        let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
+        for tag in self.ordered_tags_by(|state| state.pre_defend_priority()) {
             let should_clear = self
                 .states
                 .get_mut(&tag)
@@ -423,7 +438,7 @@ impl PlayerStateStore {
                 break;
             }
         }
-        clear_tags
+        clear_tags.into_vec()
     }
 
     pub fn on_post_defend_states(
@@ -435,13 +450,7 @@ impl PlayerStateStore {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.post_defend_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        for (tag, _) in ordered {
+        for tag in self.ordered_tags_by(|state| state.post_defend_priority()) {
             if let Some(state) = self.states.get_mut(&tag) {
                 state.on_post_defend(owner, dmg, caster, randomer, updates, storage);
             }
@@ -457,13 +466,7 @@ impl PlayerStateStore {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.post_damage_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        for (tag, _) in ordered {
+        for tag in self.ordered_tags_by(|state| state.post_damage_priority()) {
             if let Some(state) = self.states.get_mut(&tag) {
                 state.on_post_damage(owner, dmg, caster, randomer, updates, storage);
             }
@@ -479,13 +482,7 @@ impl PlayerStateStore {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> bool {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.pre_action_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        for (tag, _) in ordered {
+        for tag in self.ordered_tags_by(|state| state.pre_action_priority()) {
             if let Some(state) = self.states.get_mut(&tag)
                 && state.on_pre_action(owner, smart, randomer, updates, storage, targets)
             {
@@ -496,13 +493,7 @@ impl PlayerStateStore {
     }
 
     pub fn die_message_override(&self) -> Option<&'static str> {
-        let mut ordered = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, state.die_message_priority()))
-            .collect::<Vec<(StateTag, i32)>>();
-        ordered.sort_unstable_by_key(|(_, priority)| *priority);
-        for (tag, _) in ordered {
+        for tag in self.ordered_tags_by(|state| state.die_message_priority()) {
             if let Some(msg) = self.states.get(&tag).and_then(|state| state.die_message()) {
                 return Some(msg);
             }

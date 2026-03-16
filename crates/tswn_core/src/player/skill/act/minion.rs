@@ -41,14 +41,12 @@ impl StateTrait for MinionRuntimeState {
         if !self.is_combat_minion() {
             return false;
         }
-        updates.add(crate::engine::update::RunUpdate::new_newline());
-        updates.add(crate::engine::update::RunUpdate::new("[1]消失了", owner, self_id, 50));
+        updates.emit(crate::engine::update::RunUpdate::new_newline);
+        updates.emit(|| crate::engine::update::RunUpdate::new("[1]消失了", owner, self_id, 50));
         true
     }
 
-    fn as_any(&self) -> &dyn std::any::Any { self }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
