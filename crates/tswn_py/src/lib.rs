@@ -28,8 +28,6 @@ fn name_to_png_base64(name: String) -> String { tswn_core::player::icon_render::
 fn name_to_png_bytes(name: String) -> Vec<u8> { tswn_core::player::icon_render::render_icon_png_from_name(&name) }
 
 /// tswn-py
-///
-/// 某个充满怨念的人向你问好
 #[pymodule]
 #[pyo3(name = "tswn_py")]
 fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {

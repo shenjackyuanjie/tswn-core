@@ -37,7 +37,7 @@
 //!
 //! # 胜率测试（2+组，单线程）
 //! namerena_cli --bench-raw-st "team1\n\nteam2" 1000
-//! 
+//!
 //! # 从文件读取
 //! namerena_cli --bench-file input.txt 1000
 //! ```
@@ -812,11 +812,11 @@ fn print_all_players(runner: &Runner) {
 
 fn main() {
     println!(
-        "欢迎来到 tswn - {}, 某个充满怨念的人向你问好, 使用 --help/-h 获取帮助信息谢谢喵",
+        "欢迎来到 tswn - {}, 使用 --help/-h 获取帮助信息谢谢喵",
         tswn_core::version()
     );
-    println!("WARNING: PRE ALPHA 版本, 仅供测试使用, 已知有 bug, 暂未实现: 天卫、Boss、武器");
-    println!("发现行为不一致请不要惊慌, 呼叫 shenjack 即可 (qq: 3695888)");
+    println!("WARNING: ALPHA 版本, 仅供测试使用, 已知有 bug, 暂未实现: 天卫、Boss、武器");
+    println!("发现行为不一致请不要惊慌, 呼叫 shenjack 即可 (qq: 3695888)（欢迎入群 hack: 935216900）");
 
     // ── Benchmark 模式优先检测 ──────────────────────────────────────────────
     let args: Vec<String> = std::env::args().skip(1).collect();
