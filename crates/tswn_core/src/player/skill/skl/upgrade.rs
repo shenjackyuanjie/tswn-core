@@ -119,7 +119,5 @@ impl StateTrait for UpgradeState {
         status.wisdom += 20;
     }
 
-
-
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }

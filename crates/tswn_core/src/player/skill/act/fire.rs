@@ -15,8 +15,6 @@ pub struct FireState {
 }
 
 impl StateTrait for FireState {
-
-
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 
     fn meta_type(&self) -> i32 { -1 }

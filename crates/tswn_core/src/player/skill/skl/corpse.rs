@@ -24,7 +24,5 @@ impl CorpseState {
 impl StateTrait for CorpseState {
     fn meta_type(&self) -> i32 { 0 }
 
-
-
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }

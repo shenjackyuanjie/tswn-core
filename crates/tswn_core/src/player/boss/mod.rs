@@ -108,15 +108,30 @@ struct BossRegistry {
 
 impl BossRegistry {
     fn with_builtins() -> Self {
-        let fallback = BossHandler::new(init_generic_state, generic_action_prob_count, generic_immune_threshold, generic_boss_action);
+        let fallback = BossHandler::new(
+            init_generic_state,
+            generic_action_prob_count,
+            generic_immune_threshold,
+            generic_boss_action,
+        );
         let mut handlers = FastHashMap::default();
         handlers.insert(
             "covid",
-            BossHandler::new(init_covid_state, covid_action_prob_count, covid_immune_threshold, covid::covid_boss_action),
+            BossHandler::new(
+                init_covid_state,
+                covid_action_prob_count,
+                covid_immune_threshold,
+                covid::covid_boss_action,
+            ),
         );
         handlers.insert(
             "lazy",
-            BossHandler::new(init_lazy_state, lazy_action_prob_count, lazy_immune_threshold, lazy::lazy_boss_action),
+            BossHandler::new(
+                init_lazy_state,
+                lazy_action_prob_count,
+                lazy_immune_threshold,
+                lazy::lazy_boss_action,
+            ),
         );
         handlers.insert(
             "saitama",
@@ -127,17 +142,16 @@ impl BossRegistry {
                 saitama::saitama_boss_action,
             ),
         );
-        Self {
-            handlers,
-            fallback,
-        }
+        Self { handlers, fallback }
     }
 
     #[inline]
     fn handler_for(&self, name: &str) -> BossHandler { self.handlers.get(name).copied().unwrap_or(self.fallback) }
 
     #[inline]
-    fn register(&mut self, name: &'static str, handler: BossHandler) -> Option<BossHandler> { self.handlers.insert(name, handler) }
+    fn register(&mut self, name: &'static str, handler: BossHandler) -> Option<BossHandler> {
+        self.handlers.insert(name, handler)
+    }
 }
 
 fn global_boss_registry() -> &'static RwLock<BossRegistry> {

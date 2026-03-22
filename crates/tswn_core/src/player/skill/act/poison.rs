@@ -107,8 +107,6 @@ impl StateTrait for PoisonState {
         true
     }
 
-
-
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 

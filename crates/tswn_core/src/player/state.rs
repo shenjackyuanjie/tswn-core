@@ -191,11 +191,7 @@ impl PlayerStateStore {
     where
         F: FnMut(&dyn StateTrait) -> i32,
     {
-        let mut ordered: PriorityPairs = self
-            .states
-            .iter()
-            .map(|(tag, state)| (*tag, priority(state.as_ref())))
-            .collect();
+        let mut ordered: PriorityPairs = self.states.iter().map(|(tag, state)| (*tag, priority(state.as_ref()))).collect();
         ordered.sort_unstable_by_key(|(_, p)| *p);
         ordered.into_iter().map(|(tag, _)| tag).collect()
     }

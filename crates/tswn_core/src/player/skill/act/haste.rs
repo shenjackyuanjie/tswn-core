@@ -161,7 +161,5 @@ impl StateTrait for HasteState {
         true
     }
 
-
-
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }

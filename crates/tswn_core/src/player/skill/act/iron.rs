@@ -153,7 +153,5 @@ impl StateTrait for IronState {
         updates.emit(|| RunUpdate::new("[1]的[铁壁]被打消了", caster, owner, 0));
     }
 
-
-
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }

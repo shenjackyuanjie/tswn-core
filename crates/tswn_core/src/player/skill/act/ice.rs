@@ -95,8 +95,6 @@ impl StateTrait for IceState {
         false
     }
 
-
-
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 

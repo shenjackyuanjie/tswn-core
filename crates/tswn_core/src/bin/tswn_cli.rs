@@ -133,6 +133,7 @@ fn print_usage() {
 对战模式（默认）:
   --raw <字符串>         使用提供的原始字符串作为输入（支持 \n 换行）
   --file <文件路径>       从文件读取输入
+  --out-raw             输出 raw 聚合战斗日志（仅普通对战模式生效）
   <无参数>               从 stdin 读取（输入格式：用空行分隔队伍）
 
 Benchmark 模式:
@@ -191,6 +192,7 @@ Benchmark 模式:
 示例:
   # 对战
   namerena_cli --raw "a\nb\n\nc\nd"
+  namerena_cli --out-raw --raw "a\nb\n\nc\nd"
   echo -e "mario\nluigi\n\npeach\nbowser" | namerena_cli
 
   # 评分测试
@@ -208,8 +210,7 @@ Benchmark 模式:
     );
 }
 
-fn read_raw_input() -> Result<String, String> {
-    let args = std::env::args().skip(1).collect::<Vec<String>>();
+fn read_raw_input(args: &[String]) -> Result<String, String> {
     if args.is_empty() {
         let mut raw = String::new();
         io::stdin().read_to_string(&mut raw).map_err(|e| format!("读取 stdin 失败: {e}"))?;
@@ -306,6 +307,43 @@ fn read_raw_input() -> Result<String, String> {
     }
 }
 
+fn collect_args_with_flags() -> (Vec<String>, bool) {
+    let mut out_raw = false;
+    let mut args = Vec::new();
+    for arg in std::env::args().skip(1) {
+        if arg == "--out-raw" {
+            out_raw = true;
+        } else {
+            args.push(arg);
+        }
+    }
+    (args, out_raw)
+}
+
+fn is_bench_like_command(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some(
+            "--bench"
+                | "--bench-st"
+                | "--bench-raw"
+                | "--bench-raw-st"
+                | "--bench-file"
+                | "--bench-file-st"
+                | "--win_rate"
+                | "--win_rate_st"
+                | "--perf"
+        )
+    )
+}
+
+fn is_non_fight_command(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some("--help" | "-h" | "--icon" | "--icon-b64" | "--icon-path")
+    ) || is_bench_like_command(args)
+}
+
 /// 打印给定玩家名称的图标 TUI 表示。
 fn print_icon(name: &str) {
     let icon = icon_from_raw_name(name);
@@ -386,7 +424,7 @@ fn plr_name(runner: &Runner, id: usize) -> String {
         .unwrap_or_else(|| format!("#{id}"))
 }
 
-fn fmt_update(runner: &Runner, update: &RunUpdate) -> String {
+fn fmt_update_with_mode(runner: &Runner, update: &RunUpdate, append_score: bool) -> String {
     let caster = plr_name(runner, update.caster);
     let target = plr_name(runner, update.target);
     let targets = if let Some(p) = update.param {
@@ -401,10 +439,113 @@ fn fmt_update(runner: &Runner, update: &RunUpdate) -> String {
     msg = msg.replace("[0]", &caster);
     msg = msg.replace("[1]", &target);
     msg = msg.replace("[2]", &targets);
-    if update.score > 0 {
+    if append_score && update.score > 0 {
         format!("{msg}  (+{})", update.score)
     } else {
         msg
+    }
+}
+
+fn fmt_update(runner: &Runner, update: &RunUpdate) -> String { fmt_update_with_mode(runner, update, true) }
+
+fn fmt_update_raw(runner: &Runner, update: &RunUpdate) -> String { fmt_update_with_mode(runner, update, false) }
+
+fn sanitize_output_line(line: &str) -> String {
+    let filtered = line
+        .chars()
+        .filter(|ch| !ch.is_control() && !matches!(*ch, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}'))
+        .collect::<String>();
+
+    let mut normalized = String::with_capacity(filtered.len());
+    let mut prev_space = false;
+    for ch in filtered.chars() {
+        if ch.is_whitespace() {
+            if !prev_space {
+                normalized.push(' ');
+                prev_space = true;
+            }
+        } else {
+            normalized.push(ch);
+            prev_space = false;
+        }
+    }
+    normalized.trim().to_string()
+}
+
+fn is_action_line(line: &str) -> bool {
+    line.contains("发起攻击")
+        || (line.contains("使用") && !line.contains("护身符抵挡了一次死亡"))
+        || line.contains("做出垂死抗争")
+        || line.contains("连击")
+        || line.contains("从疾走中解除")
+}
+
+fn emit_current_turn(output_lines: &mut Vec<String>, pending_action_line: &mut String, pending_misc_lines: &mut Vec<String>) {
+    if !pending_action_line.is_empty() {
+        output_lines.push(std::mem::take(pending_action_line));
+        output_lines.push(String::new());
+        pending_misc_lines.clear();
+        return;
+    }
+    if !pending_misc_lines.is_empty() {
+        output_lines.push(pending_misc_lines.join(", "));
+        output_lines.push(String::new());
+        pending_misc_lines.clear();
+    }
+}
+
+fn print_fight_raw(runner: &mut Runner) {
+    let mut output_lines: Vec<String> = Vec::new();
+    let mut pending_action_line = String::new();
+    let mut pending_misc_lines: Vec<String> = Vec::new();
+
+    let mut round = 1usize;
+    let mut idle_rounds = 0usize;
+    while !runner.have_winner() && round <= 100_000 {
+        let updates = runner.main_round();
+        if updates.updates.is_empty() {
+            idle_rounds += 1;
+            if idle_rounds > 16 {
+                break;
+            }
+            continue;
+        }
+        idle_rounds = 0;
+
+        for update in updates.updates {
+            if matches!(update.update_type, UpdateType::NextLine) {
+                emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
+                continue;
+            }
+
+            let line = sanitize_output_line(&fmt_update_raw(runner, &update));
+            if line.is_empty() {
+                continue;
+            }
+
+            if is_action_line(&line) {
+                emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
+                pending_action_line = line;
+                continue;
+            }
+
+            if pending_action_line.is_empty() {
+                pending_misc_lines.push(line);
+            } else {
+                pending_action_line.push_str(", ");
+                pending_action_line.push_str(&line);
+            }
+        }
+        round += 1;
+    }
+
+    emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
+    while matches!(output_lines.last(), Some(line) if line.is_empty()) {
+        output_lines.pop();
+    }
+
+    if !output_lines.is_empty() {
+        println!("{}", output_lines.join("\n"));
     }
 }
 
@@ -545,7 +686,9 @@ fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode) {
         for _ in 0..workers {
             let groups = std::sync::Arc::clone(&groups);
             let next = std::sync::Arc::clone(&next);
-            handles.push(std::thread::spawn(move || run_bench_winrate_worker(groups.as_ref(), team0_count, next.as_ref(), n)));
+            handles.push(std::thread::spawn(move || {
+                run_bench_winrate_worker(groups.as_ref(), team0_count, next.as_ref(), n)
+            }));
         }
         let mut merged = (0usize, 0usize);
         for handle in handles {
@@ -628,7 +771,13 @@ fn run_bench_winrate_worker(
 ///
 /// - `modifier = "\u{0002}"` → Test1 靶（普通评分）
 /// - `modifier = "!"` → TestEx 靶（!评分）
-fn run_bench_score_inner(target_str: &str, target_count: usize, modifier: &str, n: usize, mode: BenchThreadMode) -> (usize, usize) {
+fn run_bench_score_inner(
+    target_str: &str,
+    target_count: usize,
+    modifier: &str,
+    n: usize,
+    mode: BenchThreadMode,
+) -> (usize, usize) {
     let workers = resolve_bench_workers(mode, n);
     if workers <= 1 || n < 2000 {
         return run_bench_score_range(target_str, target_count, modifier, 0, n, true);
@@ -811,15 +960,16 @@ fn print_all_players(runner: &Runner) {
 }
 
 fn main() {
-    println!(
-        "欢迎来到 tswn - {}, 使用 --help/-h 获取帮助信息谢谢喵",
-        tswn_core::version()
-    );
-    println!("WARNING: ALPHA 版本, 仅供测试使用, 已知有 bug, 暂未实现: 天卫、Boss、武器");
-    println!("发现行为不一致请不要惊慌, 呼叫 shenjack 即可 (qq: 3695888)（欢迎入群 hack: 935216900）");
+    let (args, out_raw_requested) = collect_args_with_flags();
+    let out_raw = out_raw_requested && !is_non_fight_command(&args);
+
+    if !out_raw {
+        println!("欢迎来到 tswn - {}, 使用 --help/-h 获取帮助信息谢谢喵", tswn_core::version());
+        println!("WARNING: ALPHA 版本, 仅供测试使用, 已知有 bug, 暂未实现: 天卫、Boss、武器");
+        println!("发现行为不一致请不要惊慌, 呼叫 shenjack 即可 (qq: 3695888)（欢迎入群 hack: 935216900）");
+    }
 
     // ── Benchmark 模式优先检测 ──────────────────────────────────────────────
-    let args: Vec<String> = std::env::args().skip(1).collect();
     if !args.is_empty() {
         match args[0].as_str() {
             "--bench" | "--bench-st" => {
@@ -905,7 +1055,7 @@ fn main() {
         }
     }
 
-    let raw = match read_raw_input() {
+    let raw = match read_raw_input(&args) {
         Ok(raw) => raw,
         Err(err) => {
             eprintln!("输入错误: {err}");
@@ -921,6 +1071,11 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    if out_raw {
+        print_fight_raw(&mut runner);
+        return;
+    }
 
     print_all_players(&runner);
 

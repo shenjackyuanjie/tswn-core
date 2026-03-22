@@ -165,8 +165,6 @@ impl StateTrait for ProtectState {
         self.protect_from.is_empty()
     }
 
-
-
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
 }
 
