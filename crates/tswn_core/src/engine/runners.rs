@@ -317,7 +317,6 @@ impl Runner {
     /// - 当前先保留旧行为：seed 行只负责提取，不做跨组修复
     ///
     /// 返回：(队伍列表, seed 行列表)
-    #[allow(clippy::needless_return)]
     pub fn split_namerena_into_groups(raw_input: String) -> RawPlayers {
         // 去除尾部的一个/多个 `\n` 或空白。
         let raw_input = raw_input.trim_end();
@@ -373,7 +372,7 @@ impl Runner {
                 idx = adjusted + 1;
             }
         }
-        return (groups, seed);
+        (groups, seed)
     }
 
     #[inline]
