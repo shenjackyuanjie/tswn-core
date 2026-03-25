@@ -97,6 +97,20 @@ struct CaseRecord {
     diff_signature: String,
 }
 
+#[derive(Debug)]
+struct TsEmptyRecord {
+    id: String,
+    mode: String,
+    players: Vec<String>,
+    input_hash: u64,
+    input_path: PathBuf,
+    ts_path: PathBuf,
+    rust_path: PathBuf,
+    meta_path: PathBuf,
+    ts_line_count: usize,
+    rust_line_count: usize,
+}
+
 #[derive(Debug, Default)]
 struct Summary {
     total_generated: usize,
@@ -106,12 +120,15 @@ struct Summary {
     skipped_insufficient_library: usize,
     ts_failures: usize,
     rust_failures: usize,
+    ts_empty_outputs: usize,
     diff_failures: usize,
     deduped_diff_failures: usize,
     saved_pass_cases: usize,
     saved_failed_cases: usize,
+    saved_ts_empty_cases: usize,
     per_mode_generated: BTreeMap<String, usize>,
     per_mode_failures: BTreeMap<String, usize>,
+    per_mode_ts_empty_outputs: BTreeMap<String, usize>,
 }
 
 fn main() {
@@ -144,6 +161,7 @@ fn try_main() -> Result<(), String> {
     let mut seen_inputs = HashSet::new();
     let mut seen_signatures = HashSet::new();
     let mut records = Vec::new();
+    let mut ts_empty_records = Vec::new();
     let mut unique_cases = Vec::new();
 
     for mode in &config.modes {
@@ -203,6 +221,16 @@ fn try_main() -> Result<(), String> {
 
         let ts_lines = split_output_lines(&ts_output);
         let rust_lines = split_output_lines(&rust_output);
+
+        if ts_lines.is_empty() {
+            summary.ts_empty_outputs += 1;
+            *summary.per_mode_ts_empty_outputs.entry(case.mode.label()).or_insert(0) += 1;
+            let record = save_ts_empty_case(&config.out_dir, &config.md5_tool, &case, &ts_output, &rust_output)?;
+            summary.saved_ts_empty_cases += 1;
+            ts_empty_records.push(record);
+            continue;
+        }
+
         if ts_lines == rust_lines {
             if config.save_all {
                 save_passing_case(&config.out_dir, &case, &ts_output, &rust_output)?;
@@ -233,8 +261,8 @@ fn try_main() -> Result<(), String> {
         records.push(record);
     }
 
-    write_summary(&config, &summary, &records)?;
-    write_report(&config, &summary, &records)?;
+    write_summary(&config, &summary, &records, &ts_empty_records)?;
+    write_report(&config, &summary, &records, &ts_empty_records)?;
 
     println!("号库: {}", config.library.display());
     println!("md5 工具: {}", config.md5_tool.display());
@@ -244,6 +272,7 @@ fn try_main() -> Result<(), String> {
     println!("执行成功: {}", summary.executed - summary.ts_failures - summary.rust_failures);
     println!("TS 执行失败: {}", summary.ts_failures);
     println!("Rust 执行失败: {}", summary.rust_failures);
+    println!("TS 空输出: {}", summary.ts_empty_outputs);
     println!("failed case: {}", summary.diff_failures);
     println!("去重后失败类别: {}", summary.deduped_diff_failures);
 
@@ -648,7 +677,7 @@ fn stable_hash<T: Hash>(value: &T) -> u64 {
 fn case_id(mode: CaseMode, input_hash: u64) -> String { format!("{}-{:016x}", mode.label(), input_hash) }
 
 fn reset_run_output(out_dir: &Path) -> Result<(), String> {
-    for name in ["failed", "passed", ".tmp"] {
+    for name in ["failed", "passed", "ts_empty", ".tmp"] {
         let path = out_dir.join(name);
         if path.exists() {
             fs::remove_dir_all(&path).map_err(|e| format!("清理 {} 失败: {e}", path.display()))?;
@@ -670,6 +699,54 @@ fn save_passing_case(out_dir: &Path, case: &GeneratedCase, ts_output: &str, rust
     fs::write(case_dir.join("ts.txt"), ts_output).map_err(|e| format!("写入 ts.txt 失败: {e}"))?;
     fs::write(case_dir.join("rust.txt"), rust_output).map_err(|e| format!("写入 rust.txt 失败: {e}"))?;
     Ok(())
+}
+
+fn save_ts_empty_case(
+    out_dir: &Path,
+    md5_tool: &Path,
+    case: &GeneratedCase,
+    ts_output: &str,
+    rust_output: &str,
+) -> Result<TsEmptyRecord, String> {
+    let id = case_id(case.mode, case.input_hash);
+    let case_dir = out_dir.join("ts_empty").join(&id);
+    fs::create_dir_all(&case_dir).map_err(|e| format!("创建 ts_empty case 目录失败: {e}"))?;
+
+    let input_path = case_dir.join("input.txt");
+    let ts_path = case_dir.join("ts.txt");
+    let rust_path = case_dir.join("rust.txt");
+    let meta_path = case_dir.join("meta.json");
+
+    fs::write(&input_path, &case.input).map_err(|e| format!("写入 input.txt 失败: {e}"))?;
+    fs::write(&ts_path, ts_output).map_err(|e| format!("写入 ts.txt 失败: {e}"))?;
+    fs::write(&rust_path, rust_output).map_err(|e| format!("写入 rust.txt 失败: {e}"))?;
+
+    let ts_line_count = split_output_lines(ts_output).len();
+    let rust_line_count = split_output_lines(rust_output).len();
+    let meta = format!(
+        "{{\n  \"id\": \"{}\",\n  \"mode\": \"{}\",\n  \"players\": {},\n  \"input_hash\": \"{:016x}\",\n  \"reason\": \"ts_output_empty\",\n  \"ts_line_count\": {},\n  \"rust_line_count\": {},\n  \"md5_tool_path\": \"{}\"\n}}\n",
+        json_escape(&id),
+        json_escape(&case.mode.label()),
+        json_string_array(&case.players),
+        case.input_hash,
+        ts_line_count,
+        rust_line_count,
+        json_escape(&md5_tool.display().to_string()),
+    );
+    fs::write(&meta_path, meta).map_err(|e| format!("写入 meta.json 失败: {e}"))?;
+
+    Ok(TsEmptyRecord {
+        id,
+        mode: case.mode.label(),
+        players: case.players.clone(),
+        input_hash: case.input_hash,
+        input_path,
+        ts_path,
+        rust_path,
+        meta_path,
+        ts_line_count,
+        rust_line_count,
+    })
 }
 
 fn save_failed_case(
@@ -727,7 +804,12 @@ fn save_failed_case(
     })
 }
 
-fn write_summary(config: &Config, summary: &Summary, records: &[CaseRecord]) -> Result<(), String> {
+fn write_summary(
+    config: &Config,
+    summary: &Summary,
+    records: &[CaseRecord],
+    ts_empty_records: &[TsEmptyRecord],
+) -> Result<(), String> {
     let mut json = String::new();
     let _ = writeln!(&mut json, "{{");
     let _ = writeln!(
@@ -760,10 +842,12 @@ fn write_summary(config: &Config, summary: &Summary, records: &[CaseRecord]) -> 
     );
     let _ = writeln!(&mut json, "  \"ts_failures\": {},", summary.ts_failures);
     let _ = writeln!(&mut json, "  \"rust_failures\": {},", summary.rust_failures);
+    let _ = writeln!(&mut json, "  \"ts_empty_outputs\": {},", summary.ts_empty_outputs);
     let _ = writeln!(&mut json, "  \"diff_failures\": {},", summary.diff_failures);
     let _ = writeln!(&mut json, "  \"deduped_diff_failures\": {},", summary.deduped_diff_failures);
     let _ = writeln!(&mut json, "  \"saved_pass_cases\": {},", summary.saved_pass_cases);
     let _ = writeln!(&mut json, "  \"saved_failed_cases\": {},", summary.saved_failed_cases);
+    let _ = writeln!(&mut json, "  \"saved_ts_empty_cases\": {},", summary.saved_ts_empty_cases);
     let _ = writeln!(
         &mut json,
         "  \"per_mode_generated\": {},",
@@ -773,6 +857,11 @@ fn write_summary(config: &Config, summary: &Summary, records: &[CaseRecord]) -> 
         &mut json,
         "  \"per_mode_failures\": {},",
         json_btreemap(&summary.per_mode_failures)
+    );
+    let _ = writeln!(
+        &mut json,
+        "  \"per_mode_ts_empty_outputs\": {},",
+        json_btreemap(&summary.per_mode_ts_empty_outputs)
     );
     let _ = writeln!(&mut json, "  \"failed_cases\": [");
     for (idx, record) in records.iter().enumerate() {
@@ -793,13 +882,37 @@ fn write_summary(config: &Config, summary: &Summary, records: &[CaseRecord]) -> 
             comma
         );
     }
+    let _ = writeln!(&mut json, "  ],");
+    let _ = writeln!(&mut json, "  \"ts_empty_cases\": [");
+    for (idx, record) in ts_empty_records.iter().enumerate() {
+        let comma = if idx + 1 == ts_empty_records.len() { "" } else { "," };
+        let _ = writeln!(
+            &mut json,
+            "    {{\"id\":\"{}\",\"mode\":\"{}\",\"input_hash\":\"{:016x}\",\"ts_line_count\":{},\"rust_line_count\":{},\"input\":\"{}\",\"ts\":\"{}\",\"rust\":\"{}\",\"meta\":\"{}\"}}{}",
+            json_escape(&record.id),
+            json_escape(&record.mode),
+            record.input_hash,
+            record.ts_line_count,
+            record.rust_line_count,
+            json_escape(&record.input_path.display().to_string()),
+            json_escape(&record.ts_path.display().to_string()),
+            json_escape(&record.rust_path.display().to_string()),
+            json_escape(&record.meta_path.display().to_string()),
+            comma
+        );
+    }
     let _ = writeln!(&mut json, "  ]");
     let _ = writeln!(&mut json, "}}");
 
     fs::write(config.out_dir.join("summary.json"), json).map_err(|e| format!("写入 summary.json 失败: {e}"))
 }
 
-fn write_report(config: &Config, summary: &Summary, records: &[CaseRecord]) -> Result<(), String> {
+fn write_report(
+    config: &Config,
+    summary: &Summary,
+    records: &[CaseRecord],
+    ts_empty_records: &[TsEmptyRecord],
+) -> Result<(), String> {
     let mut report = String::new();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|dur| dur.as_secs()).unwrap_or(0);
     let _ = writeln!(&mut report, "# TS/Rust Failed Case Report");
@@ -811,6 +924,7 @@ fn write_report(config: &Config, summary: &Summary, records: &[CaseRecord]) -> R
     let _ = writeln!(&mut report, "- unique_inputs: {}", summary.unique_inputs);
     let _ = writeln!(&mut report, "- ts_failures: {}", summary.ts_failures);
     let _ = writeln!(&mut report, "- rust_failures: {}", summary.rust_failures);
+    let _ = writeln!(&mut report, "- ts_empty_outputs: {}", summary.ts_empty_outputs);
     let _ = writeln!(&mut report, "- diff_failures: {}", summary.diff_failures);
     let _ = writeln!(&mut report, "- deduped_diff_failures: {}", summary.deduped_diff_failures);
     let _ = writeln!(&mut report);
@@ -832,6 +946,26 @@ fn write_report(config: &Config, summary: &Summary, records: &[CaseRecord]) -> R
         let _ = writeln!(&mut report, "  ts: `{}`", record.ts_path.display());
         let _ = writeln!(&mut report, "  rust: `{}`", record.rust_path.display());
         let _ = writeln!(&mut report, "  diff: `{}`", record.diff_path.display());
+        let _ = writeln!(&mut report, "  meta: `{}`", record.meta_path.display());
+    }
+
+    let _ = writeln!(&mut report);
+    let _ = writeln!(&mut report, "## TS Empty Output Cases");
+    let _ = writeln!(&mut report);
+
+    for record in ts_empty_records {
+        let _ = writeln!(
+            &mut report,
+            "- `{}` mode=`{}` ts_lines={} rust_lines={} players={}",
+            record.id,
+            record.mode,
+            record.ts_line_count,
+            record.rust_line_count,
+            record.players.join(", ")
+        );
+        let _ = writeln!(&mut report, "  input: `{}`", record.input_path.display());
+        let _ = writeln!(&mut report, "  ts: `{}`", record.ts_path.display());
+        let _ = writeln!(&mut report, "  rust: `{}`", record.rust_path.display());
         let _ = writeln!(&mut report, "  meta: `{}`", record.meta_path.display());
     }
 
