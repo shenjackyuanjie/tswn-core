@@ -1,6 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
+    skill::act::charm::CharmState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
@@ -46,19 +47,23 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
-        let alive_allies = if let Some(group) = args.3.group_containing(args.0) {
-            group
-                .iter()
-                .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
-                .count()
-        } else {
-            let owner_clan = args.3.get_player(&args.0).map(|p| p.clan_name()).unwrap_or_default();
-            args.3
-                .all_player_ids()
-                .into_iter()
-                .filter(|id| args.3.get_player(id).map(|p| p.alive() && p.clan_name() == owner_clan).unwrap_or(false))
-                .count()
-        };
+        let alive_allies = args
+            .3
+            .get_player(&args.0)
+            .and_then(|owner| {
+                owner
+                    .get_state::<CharmState>()
+                    .and_then(|charm| args.3.alive_group_at_team_of(charm.group_id).map(|group| group.len()))
+                    .or_else(|| args.3.alive_group_at_team_of(args.0).map(|group| group.len()))
+            })
+            .unwrap_or_else(|| {
+                let owner_clan = args.3.get_player(&args.0).map(|p| p.clan_name()).unwrap_or_default();
+                args.3
+                    .all_player_ids()
+                    .into_iter()
+                    .filter(|id| args.3.get_player(id).map(|p| p.alive() && p.clan_name() == owner_clan).unwrap_or(false))
+                    .count()
+            });
         if debug_this {
             let caster_name = args.3.get_player(&caster).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", caster));
             eprintln!(
