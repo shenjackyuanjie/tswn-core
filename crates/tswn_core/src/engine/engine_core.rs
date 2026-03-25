@@ -22,8 +22,9 @@
 //!         ├── tick::resolve_combat()     ← 战斗解算（含 Player::step()）
 //!         ├── tick::run_update_end()     ← 持续效果结算
 //!         ├── sync_runtime_entities()   ← 二次同步
+//!         ├── tick::check_winner()       ← 胜负检查（若已决出胜负则本 tick 结束）
 //!         ├── hooks::run_post_action()   ← 后置钩子
-//!         └── tick::check_winner()       ← 胜负检查
+//!         └── tick::check_winner()       ← 兜底胜负检查
 //! ```
 
 use std::sync::Arc;
@@ -215,6 +216,12 @@ impl EngineCore {
             );
         }
         self.sync_runtime_entities(world, storage);
+        // 对齐 JS：当本次行动在执行过程中已经决出胜负时，会中断当前流程，
+        // 不再继续执行当前 actor 的 post_action 链路（例如避免额外的“从铁壁中解除”尾日志）。
+        crate::engine::tick::check_winner(world, storage);
+        if world.have_winner() {
+            return;
+        }
         self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
         crate::engine::tick::check_winner(world, storage);
     }

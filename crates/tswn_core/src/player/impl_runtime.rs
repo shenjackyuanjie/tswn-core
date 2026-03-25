@@ -181,6 +181,21 @@ impl Player {
             self.default_attack(smart, randomer, updates, storage, targets);
         }
 
+        // 对齐 JS：当本次行动导致战场上只剩当前阵营存活时，round 会被中断（类似 throw 退出），
+        // 不再继续执行当前 actor 的 recover/newline/post_action 链路。
+        let battle_ended = storage
+            .group_containing(ptr)
+            .map(|ally_group| {
+                !storage
+                    .all_player_ids()
+                    .into_iter()
+                    .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
+            })
+            .unwrap_or(false);
+        if battle_ended {
+            return;
+        }
+
         let recover_threshold = self.status.wisdom + 64;
         if (randomer.r127() as i32) < recover_threshold {
             self.status.mp += 16;
