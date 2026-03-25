@@ -75,6 +75,8 @@
 - `Rust failures = 0`
 - `diff failures = 0`
 
+在本阶段排查中，`ts_empty_outputs` 先作为已知噪音暂不纳入修复判定，优先持续压低真实行为分歧（`diff_failures`）。
+
 也就是最后达到 **全 pass**。
 
 ## 测试输入

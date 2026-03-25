@@ -143,7 +143,9 @@ impl StateTrait for CurseState {
 
     fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) { status.atk_sum *= 4; }
 
-    fn post_defend_priority(&self) -> i32 { 110 }
+    // JS CurseState is inserted directly into y2 (post_defend) with default ga4()=10000.
+    // Keep default ordering so Defend/Iron(ga4=4000)/Shield(ga4=6000) run before curse.
+    fn post_defend_priority(&self) -> i32 { 10000 }
 
     fn on_post_defend(
         &mut self,
