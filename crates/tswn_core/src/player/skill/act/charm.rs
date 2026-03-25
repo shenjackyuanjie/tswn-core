@@ -79,10 +79,22 @@ impl SkillTrait for CharmSkill {
             (owner.get_status().magic, owner.get_status().at_boost >= 3.0)
         };
         // Dart compares owner.allyGroup (group object) vs charmState.grp (group object).
-        // Two players from the same team have the same allyGroup.
-        // We store the caster's PlrId in group_id (for select_targets compatibility)
-        // but compare by TEAM INDEX to match Dart's group-level comparison.
-        let caster_team_idx = args.3.group_index_of(args.0).unwrap_or(usize::MAX);
+        // In Dart/JS, a charmed player's allyGroup is dynamically updated to the charmer's group
+        // via CharmState.ar() (updateState). So when comparing, we must use the caster's
+        // "effective" group (which may have been changed by a charm on the caster).
+        //
+        // If the caster is charmed, their effective team is the charmer's team.
+        // We need to look up the caster's CharmState and use its group_id's team.
+        let caster_effective_team_idx = {
+            let owner = args.3.get_player(&args.0).expect("cannot get charm owner from storage");
+            if let Some(caster_charm) = owner.get_state::<CharmState>() {
+                // Caster is charmed, use the charmer's team
+                args.3.group_index_of(caster_charm.group_id).unwrap_or(usize::MAX)
+            } else {
+                // Caster is not charmed, use their original team
+                args.3.group_index_of(args.0).unwrap_or(usize::MAX)
+            }
+        };
         let target = args.3.just_get_player_mut(target_id).expect("cannot get charm target from storage");
         if target.check_immune("charm", args.1)
             || (target.active()
@@ -99,7 +111,7 @@ impl SkillTrait for CharmSkill {
         if let Some(state) = target.get_state_mut::<CharmState>() {
             // Compare by team index: look up the team that stored group_id belongs to
             let existing_team_idx = args.3.group_index_of(state.group_id);
-            if existing_team_idx == Some(caster_team_idx) {
+            if existing_team_idx == Some(caster_effective_team_idx) {
                 state.step += 1;
             } else {
                 state.group_id = args.0;

@@ -149,6 +149,78 @@ python track_test.py delete 名称
 
 安静模式只输出关键信息，适合在自动化流程或AI调用时使用。
 
+### `tswn_case_miner` 跟踪工具
+
+现在另有一个专门给 `tswn_case_miner` 用的跟踪脚本：
+
+**工具位置：** `tswn-core/track_case_miner.py`
+
+这个工具不会解析终端输出，而是直接读取 `tswn_case_miner` 生成的 `target/ts_diff_cases/summary.json`，追踪：
+
+- failed case 集合变化
+- 相同 failed case 的 `first_mismatch_idx` 变化
+- 存档点对比
+
+**基本用法：**
+
+```bash
+# 运行 miner 并与上次结果比较
+python track_case_miner.py --library tests/sqp6000.txt --md5-tool ../fast-namerena/branch/latest/out_md5.ts
+
+# 安静模式
+python track_case_miner.py -q --library tests/sqp6000.txt --md5-tool ../fast-namerena/branch/latest/out_md5.ts
+
+# 只显示当前记录，不运行 miner
+python track_case_miner.py -s
+
+# 重置历史记录
+python track_case_miner.py -r
+```
+
+**常用参数：**
+
+| 参数 | 说明 |
+| ------ | ------ |
+| `--library` | 号库文件路径 |
+| `--md5-tool` | `out_md5.ts` 路径 |
+| `--out-dir` | miner 输出目录，默认 `target/ts_diff_cases` |
+| `--modes` | 对战模式，默认 `1v1,2v2,3v3v3,ffa` |
+| `--ffa-sizes` | ffa 人数列表，默认 `4,6,8` |
+| `--max-cases-per-mode` | 每种模式的 case 上限 |
+| `--keep-going` | 单个 case 失败时继续 |
+| `-s, --show` | 只显示当前失败状态，不运行 miner |
+| `-q, --quiet` | 安静模式，只输出关键结论 |
+| `-r, --reset` | 重置历史记录 |
+
+**存档点子命令：**
+
+```bash
+python track_case_miner.py save [名称]
+python track_case_miner.py list
+python track_case_miner.py diff [名称]
+python track_case_miner.py delete 名称
+```
+
+默认记录位置：
+
+- 当前记录：`target/case_miner_regression.json`
+- 日志：`target/case_miner_regression.log`
+- 存档点：`target/case_miner_checkpoints/`
+
+### 统一入口
+
+如果你不想记两个脚本，可以直接用：
+
+```bash
+python track.py test ...
+python track.py miner ...
+```
+
+其中：
+
+- `python track.py test ...` 转发给 `track_test.py`
+- `python track.py miner ...` 转发给 `track_case_miner.py`
+
 **重要提示：**
 
 - 首次使用不需要额外动作，工具会自动创建基线

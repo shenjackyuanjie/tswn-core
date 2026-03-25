@@ -251,6 +251,8 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn post_damage_with_level(&mut self, _level: u32, dmg: i32, caster: PlrId, args: SkillArgs) {
         self.post_damage(dmg, caster, args)
     }
+    /// post_damage 优先级（越大越后执行）。JS 中使用 sortId (ga4())，Infinity 表示最后执行。
+    fn post_damage_priority(&self) -> i32 { 10000 }
     /// 死亡时（返回 true 表示短路，不再执行后续 die）
     fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool { false }
     fn die_with_level(&mut self, _level: &mut u32, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
@@ -560,6 +562,8 @@ impl Skill {
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
         self.skill_type.post_damage_with_level(self.level, dmg, caster, args)
     }
+
+    pub fn post_damage_priority(&self) -> i32 { self.skill_type.post_damage_priority() }
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
         self.skill_type.die_with_level(&mut self.level, oldhp, caster, args)

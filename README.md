@@ -27,6 +27,9 @@
     - 当然这种情况属于酒吧点炒饭，也没什么好追究的
   - 然后感谢 Claude Opus 4.6
   - 改进了测试工具, 添加了存档点功能
+- 现在也有 `track_case_miner.py`
+  - 专门追踪 `tswn_case_miner` 产出的 failed case 集合和 `first_mismatch_idx`
+  - 还有个统一薄封装 `track.py`
 - 感谢 DouBao Seed 2.0-code
   - 成功把 case 07+10 推进了几个 idx
   - 还是免费的!

@@ -143,6 +143,9 @@ impl SkillStorage {
                 }
             }
         }
+        // Sort post_damage by priority (JS uses sortId/ga4(), higher = later execution)
+        self.post_damage
+            .sort_by_key(|&key| self.store.get(&key).map(|s| s.post_damage_priority()).unwrap_or(0));
     }
 
     /// 最后一个技能 boost
