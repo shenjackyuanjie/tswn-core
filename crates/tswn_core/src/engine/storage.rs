@@ -81,6 +81,11 @@ pub struct Storage {
     needs_sync: AtomicBool,
     /// 玩家 ID 自增计数器。
     player_id_counter: AtomicU64,
+    /// JS `aR` flag: 正在执行 post_damage 回调的使魔 ID。
+    /// 当使魔的 SummonShareDamageSkill 把伤害分摊给 owner 导致 owner 死亡时，
+    /// owner 的 on_die_impl 不应立即处理该使魔的死亡（应由使魔自身的 on_damaged 路径处理），
+    /// 以确保死亡顺序为 [owner, summon] 而非 [summon, owner]。
+    in_post_damage_player: Option<PlrId>,
 }
 
 impl Storage {
@@ -97,6 +102,7 @@ impl Storage {
             pending_revivals: Vec::new(),
             needs_sync: AtomicBool::new(false),
             player_id_counter: AtomicU64::new(0),
+            in_post_damage_player: None,
         }
     }
 
@@ -112,6 +118,7 @@ impl Storage {
         self.death_queue.clear();
         self.pending_revivals.clear();
         self.needs_sync.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.in_post_damage_player = None;
     }
 
     /// 获取当前玩家 ID 计数器的值（不增加）。
@@ -131,6 +138,27 @@ impl Storage {
     /// 清除同步标记（sync_runtime_entities 完成后调用）。
     #[inline]
     pub fn clear_sync_flag(&self) { self.needs_sync.store(false, std::sync::atomic::Ordering::Relaxed); }
+
+    /// 标记某个使魔正在执行 post_damage 回调（对应 JS PlrSummon.aR 标志）。
+    /// 在 SummonShareDamageSkill::post_damage 中设置，防止 owner 死亡时立即处理该使魔的死亡。
+    pub fn set_in_post_damage(&self, plr: PlrId) {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            (*mut_slf).in_post_damage_player = Some(plr);
+        }
+    }
+
+    /// 清除 post_damage 标记。
+    pub fn clear_in_post_damage(&self) {
+        unsafe {
+            let mut_slf = self as *const Storage as *mut Storage;
+            (*mut_slf).in_post_damage_player = None;
+        }
+    }
+
+    /// 检查某个玩家是否正在执行 post_damage 回调。
+    #[inline]
+    pub fn is_in_post_damage(&self, plr: PlrId) -> bool { self.in_post_damage_player == Some(plr) }
 
     pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) { self.groups.insert(id, plrs); }
 

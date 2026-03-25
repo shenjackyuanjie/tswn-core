@@ -203,9 +203,13 @@ impl SkillTrait for SummonShareDamageSkill {
         let Some(owner_id) = owner_id else {
             return;
         };
+        // JS PlrSummon.aR: 在伤害分摊期间标记使魔，
+        // 防止 owner 死亡时通过 linked minion 路径立即处理使魔的死亡。
+        args.3.set_in_post_damage(args.0);
         if let Some(owner) = args.3.just_get_player_mut(owner_id) {
             owner.damage(dmg / 2, caster, on_summon_share_damage as OnDamageFunc, args.1, args.2, args.3);
         }
+        args.3.clear_in_post_damage();
     }
 
     fn proc_kinds(&self) -> &[crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PostDamage] }

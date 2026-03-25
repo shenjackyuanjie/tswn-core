@@ -259,8 +259,7 @@ fn check_immune_matches_player_type_rules() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
 
     assert!(boost.check_immune("poison", &mut randomer));
     assert!(!normal.check_immune("poison", &mut randomer));
@@ -408,8 +407,7 @@ fn post_defend_applies_curse_multiplier() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
     let mut updates = RunUpdates::new();
 
     player.set_state(crate::player::skill::curse::CurseState {
@@ -458,8 +456,7 @@ fn merge_and_zombie_kill_write_target_states() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
     let mut updates = RunUpdates::new();
     let mut merge = crate::player::skill::merge::MergeSkill::new();
     let mut zombie = crate::player::skill::zombie::ZombieSkill::new();
@@ -684,8 +681,7 @@ fn reraise_skill_prevents_death() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
     let mut updates = RunUpdates::new();
 
     let target_mut = storage.just_get_player_mut(target_id).unwrap();
@@ -789,8 +785,7 @@ fn boss_has_higher_state_immunity() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
     assert!(boss.check_immune("fire", &mut randomer));
     assert!(!normal.check_immune("fire", &mut randomer));
 }
@@ -805,8 +800,7 @@ fn merge_kill_applies_owner_growth() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
     let mut updates = RunUpdates::new();
 
     {
@@ -889,8 +883,7 @@ fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
     let mut updates = RunUpdates::new();
 
     {
@@ -950,8 +943,7 @@ fn owner_death_marks_linked_minion_for_cleanup() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
     let mut updates = RunUpdates::new();
 
     storage
@@ -1004,8 +996,7 @@ fn owner_death_removes_linked_minions_in_roster_order() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256],
-    };
+        main_val: [0u8; 256], ..Default::default() };
     let mut updates = RunUpdates::new();
 
     storage

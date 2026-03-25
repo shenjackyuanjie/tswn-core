@@ -32,6 +32,8 @@ pub struct RC4 {
     pub j: u32,
     /// [u8; 256]
     pub main_val: [u8; 256],
+    #[cfg(not(feature = "no_debug"))]
+    pub byte_count: u64,
 }
 
 impl Default for RC4 {
@@ -40,6 +42,8 @@ impl Default for RC4 {
             i: 0,
             j: 0,
             main_val: VAL_INIT,
+            #[cfg(not(feature = "no_debug"))]
+            byte_count: 0,
         }
     }
 }
@@ -97,6 +101,8 @@ impl RC4 {
             i: 0,
             j: 0,
             main_val: val,
+            #[cfg(not(feature = "no_debug"))]
+            byte_count: 0,
         }
     }
 
@@ -261,11 +267,23 @@ impl RC4 {
     /// }
     /// ```
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn next_u8(&mut self) -> u8 {
         self.i = (self.i + 1) & 255;
         self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
         self.main_val.swap(self.i as usize, self.j as usize);
-        self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255]
+        let val = self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
+        #[cfg(not(feature = "no_debug"))]
+        {
+            if std::env::var("TSWN_PROBE_RC4").is_ok() {
+                self.byte_count += 1;
+                let loc = std::panic::Location::caller();
+                let file = loc.file();
+                let short = file.rsplit_once(['\\', '/']).map(|(_,f)| f).unwrap_or(file);
+                eprintln!("[rc4] n={} i={} j={} val={} at {}:{}", self.byte_count, self.i, self.j, val, short, loc.line());
+            }
+        }
+        val
     }
 
     /// 我就看一眼 next_u8 的结果, 不改变状态
@@ -293,6 +311,7 @@ impl RC4 {
     /// }
     /// ```
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn next_i32(&mut self, max: i32) -> i32 {
         if max == 0 {
             return 0;
@@ -524,26 +543,32 @@ impl RC4 {
 
     /// next_u8 是否小于 192
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn c75(&mut self) -> bool { self.next_u8() < 192 }
 
     /// next_u8 是否小于 128
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn c50(&mut self) -> bool { self.next_u8() < 128 }
 
     /// next_u8 是否小于 64
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn c25(&mut self) -> bool { self.next_u8() < 64 }
 
     /// next_u8 是否小于 32
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn c12(&mut self) -> bool { self.next_u8() < 32 }
 
     /// next_u8 是否小于 84
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn c33(&mut self) -> bool { self.next_u8() < 84 }
 
     /// next_u8 是否小于 171
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn c66(&mut self) -> bool { self.next_u8() < 171 }
 
     // 两个颜色拼接
@@ -551,12 +576,14 @@ impl RC4 {
     /// 生成一个 RGB 颜色
     /// (或者用于生成一个 略大一些的随机数)
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     #[allow(non_snake_case)]
     pub fn rFFFFFF(&mut self) -> u32 { ((self.next_u8() as u32) << 16) | ((self.next_u8() as u32) << 8) | self.next_u8() as u32 }
 
     /// 生成一个 RGB 颜色
     /// (或者用于生成一个 大一些的随机数)
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     #[allow(non_snake_case)]
     pub fn rFFFF(&mut self) -> u32 { ((self.next_u8() as u32) << 8) | self.next_u8() as u32 }
 
@@ -564,42 +591,52 @@ impl RC4 {
 
     /// 生成一个 1-256 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r256(&mut self) -> u32 { self.next_u8() as u32 + 1 }
 
     /// 生成一个 1-64 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r64(&mut self) -> u32 { (self.next_u8() as u32 & 63) + 1 }
 
     /// 生成一个 1-16 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r16(&mut self) -> u32 { (self.next_u8() as u32 & 15) + 1 }
 
     /// 生成一个 0-255 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r255(&mut self) -> u32 { self.next_u8() as u32 }
 
     /// 生成一个 0-127 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r127(&mut self) -> u32 { self.next_u8() as u32 & 127 }
 
     /// 生成一个 0-63 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r63(&mut self) -> u32 { self.next_u8() as u32 & 63 }
 
     /// 生成一个 0-31 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r31(&mut self) -> u32 { self.next_u8() as u32 & 31 }
 
     /// 生成一个 0-15 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r15(&mut self) -> u32 { self.next_u8() as u32 & 15 }
 
     /// 生成一个 0-7 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r7(&mut self) -> u32 { self.next_u8() as u32 & 7 }
 
     /// 生成一个 0-3 的随机数
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r3(&mut self) -> u32 { self.next_u8() as u32 & 3 }
 
     /// used by req mp
@@ -613,6 +650,7 @@ impl RC4 {
     /// }
     /// ```
     #[inline]
+    #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r3x3(&mut self) -> u32 {
         let b = self.next_u8();
         let b1 = (b & 15) + 1;

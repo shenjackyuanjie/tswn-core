@@ -555,7 +555,7 @@ impl Player {
     pub fn revive_with_hp(&mut self, hp: i32) {
         self.status.hp = hp.clamp(1, self.status.max_hp.max(1));
         self.status.set_alive(true);
-        self.status.set_frozen(false);
+        // JS 的 reraise / revive 仅设置 HP，不清除冰冻状态
     }
 
     #[inline]
@@ -741,12 +741,22 @@ impl Player {
                 atk + 64,
                 atk,
             ];
+            let raw = [temp[0], temp[1], temp[2]];
             temp.sort_unstable();
+            if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
+                eprintln!("[GET_AT] {} atk={} r127=[{},{},{}] sorted5={:?} median={}",
+                    self.id_name(), atk, raw[0], raw[1], raw[2], temp, temp[2]);
+            }
             temp[2] as f64
         };
         let b = {
             let mut temp = [randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64];
+            let raw = [temp[0], temp[1]];
             temp.sort_unstable();
+            if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
+                eprintln!("[GET_AT]   r63=[{},{}] sorted3={:?} median={} boost={:.6} result={:.4}",
+                    raw[0], raw[1], temp, temp[1], self.status.at_boost, a * temp[1] as f64 * self.status.at_boost);
+            }
             temp[1] as f64
         };
         a * b * self.status.at_boost
@@ -786,13 +796,21 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> f64 {
+        let atp_before = atp;
         atp = self
             .skills
             .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
+        if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() && (atp - atp_before).abs() > 0.001 {
+            eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
+        }
         if atp == 0.0 {
             return 0.0;
         }
-        self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage)
+        let atp2 = self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() && (atp2 - atp).abs() > 0.001 {
+            eprintln!("[PRE_DEFEND_STATE] {} atp: {:.4} -> {:.4}", self.id_name(), atp, atp2);
+        }
+        atp2
     }
 
     pub fn post_defend(
@@ -859,6 +877,10 @@ impl Player {
     ) -> i32 {
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
+        if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
+            eprintln!("[DEFNED] target={} dfp={} atp={:.4} raw_dmg={} is_mag={}",
+                self.id_name(), dfp, atp, dmg, is_mag);
+        }
         dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
         self.damage(dmg, caster, on_damage, randomer, updates, storage)
     }
@@ -1000,6 +1022,17 @@ impl Player {
             })
             .collect::<Vec<PlrId>>();
         for minion_id in linked_minions {
+            // JS PlrSummon.aR: 如果使魔正在执行 post_damage（伤害分摊），
+            // 只设置 HP=0，不立即处理死亡。使魔的死亡将由其自身的 on_damaged 路径处理，
+            // 确保死亡顺序为 [owner, summon] 而非 [summon, owner]。
+            if storage.is_in_post_damage(minion_id) {
+                if let Some(minion) = storage.just_get_player_mut(minion_id) {
+                    if minion.alive() && minion.get_status().hp > 0 {
+                        minion.status.hp = 0;
+                    }
+                }
+                continue;
+            }
             let should_remove = if let Some(minion) = storage.just_get_player_mut(minion_id) {
                 if !minion.alive() || minion.get_status().hp <= 0 {
                     false

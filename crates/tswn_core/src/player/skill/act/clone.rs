@@ -107,6 +107,35 @@ impl SkillTrait for CloneSkill {
             cloned.skills.skill_by_id_mut(23).set_level(cloned_clone_level.max(1));
         }
         cloned.skills.update_proc();
+        if std::env::var_os("TSWN_DEBUG_STATS").is_some() {
+            eprintln!(
+                "[CLONE_FINAL] owner={} owner_attr={:?} owner_hp={} owner_mp={} owner_atk={} owner_def={} owner_spd={} owner_agl={} owner_mag={} owner_mdf={} owner_wis={} | clone_base={} clone_attr={:?} clone_hp={} clone_mp={} clone_atk={} clone_def={} clone_spd={} clone_agl={} clone_mag={} clone_mdf={} clone_wis={} clone_move={} clone_clone_lvl={}",
+                owner_snapshot.id_name(),
+                owner_snapshot.attr,
+                owner_snapshot.get_status().hp,
+                owner_snapshot.get_status().mp,
+                owner_snapshot.get_status().attack,
+                owner_snapshot.get_status().defense,
+                owner_snapshot.get_status().speed,
+                owner_snapshot.get_status().agility,
+                owner_snapshot.get_status().magic,
+                owner_snapshot.get_status().resistance,
+                owner_snapshot.get_status().wisdom,
+                cloned.id_name(),
+                cloned.attr,
+                cloned.get_status().hp,
+                cloned.get_status().mp,
+                cloned.get_status().attack,
+                cloned.get_status().defense,
+                cloned.get_status().speed,
+                cloned.get_status().agility,
+                cloned.get_status().magic,
+                cloned.get_status().resistance,
+                cloned.get_status().wisdom,
+                cloned.get_status().move_point,
+                cloned.skills.skill_by_id(23).level(),
+            );
+        }
 
         let cloned_id = cloned.as_ptr();
 
