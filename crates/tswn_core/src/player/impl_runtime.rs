@@ -578,7 +578,9 @@ impl Player {
 
     #[inline]
     pub fn clear_positive_states_with_messages(&mut self) -> Vec<&'static str> {
-        let alive = self.alive();
+        // 对齐 JS: 净化在 onDamage 回调中触发清状态，发生在目标本次受击“死亡结算前”。
+        // 若当前 hp<=0（已被这次伤害打空）则不应输出“被打消”类取消文案。
+        let alive = self.alive() && self.status.hp > 0;
         let messages = self.state.clear_positive_states_with_messages(alive);
         self.update_states();
         messages
@@ -964,8 +966,15 @@ impl Player {
         self.status.set_alive(false);
 
         let owner_id = self.as_ptr();
-        let linked_minions = storage
-            .all_player_ids()
+        // JS 按队伍 roster 顺序处理 linked minion（也就是召唤/分身出现顺序），
+        // 这样 owner 死亡时会先清理 `?0` 再清理 `?1`。
+        // Rust 之前走 HashMap keys 顺序，会导致顺序不稳定并出现反序日志。
+        let linked_minions_src = storage.group_containing(owner_id).cloned().unwrap_or_else(|| {
+            let mut ids = storage.all_player_ids();
+            ids.sort_unstable();
+            ids
+        });
+        let linked_minions = linked_minions_src
             .into_iter()
             .filter(|id| *id != owner_id)
             .filter(|id| {

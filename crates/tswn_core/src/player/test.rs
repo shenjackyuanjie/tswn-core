@@ -963,3 +963,56 @@ fn owner_death_marks_linked_minion_for_cleanup() {
     let pending_remove = storage.take_pending_remove_players();
     assert!(pending_remove.contains(&minion_id));
 }
+
+#[test]
+fn owner_death_removes_linked_minions_in_roster_order() {
+    use crate::player::skill::act::minion::{MinionKind, MinionRuntimeState};
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@team".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+
+    // 按 ?0 -> ?1 的顺序插入，同一队伍 roster 顺序应保持该顺序。
+    let mut minion0 = storage.get_player(&owner_id).expect("cannot get owner").clone();
+    minion0.id = storage.new_plr_id();
+    minion0.name = "owner?0".to_string();
+    minion0.status.hp = 1;
+    minion0.status.max_hp = 1;
+    minion0.status.set_alive(true);
+    minion0.set_state(MinionRuntimeState {
+        owner: Some(owner_id),
+        kind: MinionKind::Summon,
+    });
+    let minion0_id = storage.just_insert_player(minion0);
+
+    let mut minion1 = storage.get_player(&owner_id).expect("cannot get owner").clone();
+    minion1.id = storage.new_plr_id();
+    minion1.name = "owner?1".to_string();
+    minion1.status.hp = 1;
+    minion1.status.max_hp = 1;
+    minion1.status.set_alive(true);
+    minion1.set_state(MinionRuntimeState {
+        owner: Some(owner_id),
+        kind: MinionKind::Summon,
+    });
+    let minion1_id = storage.just_insert_player(minion1);
+
+    // 构造与实际运行一致的分组（owner, ?0, ?1）。
+    storage.sync_groups(&[vec![owner_id, minion0_id, minion1_id]]);
+    storage.sync_alive_groups(&[vec![owner_id, minion0_id, minion1_id]]);
+
+    let mut randomer = RC4 {
+        i: 0,
+        j: 0,
+        main_val: [0u8; 256],
+    };
+    let mut updates = RunUpdates::new();
+
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    let pending_remove = storage.take_pending_remove_players();
+    assert_eq!(pending_remove, vec![minion0_id, minion1_id]);
+}
