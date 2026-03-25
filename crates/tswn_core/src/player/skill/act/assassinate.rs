@@ -184,6 +184,13 @@ impl SkillTrait for AssassinateSkill {
         }
     }
 
+    fn pre_action_clear_forced(&mut self, _smart: bool, args: SkillArgs) -> bool {
+        let Some(target) = self.target else {
+            return false;
+        };
+        !args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false)
+    }
+
     fn pre_action_select(&mut self, _smart: bool, args: SkillArgs) -> bool {
         let Some(target) = self.target else {
             return false;
