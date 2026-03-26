@@ -213,9 +213,6 @@ impl ProtectSkill {
         }
         // 追加整个队伍的 pending spawn（Dart 中 addNew 立刻加入 alives）
         candidates.extend(args.3.pending_spawn_ids_for_group(&roster));
-        if candidates.is_empty() {
-            return None;
-        }
         let owner_wisdom = args
             .3
             .get_player(&args.0)
@@ -223,7 +220,12 @@ impl ProtectSkill {
             .get_status()
             .wisdom
             .max(0) as u32;
+        // JS `SklProtect.cI()` 先消耗 smart roll，再让 `aa()` 处理空队伍/null 结果。
+        // 所以 charm 指向的队伍 alive 列表为空时，Protect 仍会前进 1 个 RC4 字节。
         let smart = args.1.r127() < owner_wisdom;
+        if candidates.is_empty() {
+            return None;
+        }
         let owner_pos = candidates.iter().position(|entry| *entry == args.0);
         if debug_this {
             let candidate_names = candidates

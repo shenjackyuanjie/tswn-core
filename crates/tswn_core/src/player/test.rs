@@ -204,6 +204,49 @@ fn register_skill_proc_appends_late_post_damage_skill() {
 }
 
 #[test]
+fn protect_post_action_consumes_smart_roll_for_empty_charm_alive_group() {
+    use crate::player::skill::Skill;
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@red".to_string(), storage.clone()).unwrap();
+    let enemy = Player::new_from_namerena_raw("enemy@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let enemy_id = storage.just_insert_player(enemy);
+    storage.sync_groups(&[vec![owner_id], vec![enemy_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![]]);
+
+    let protect_key;
+    {
+        let enemy_mut = storage.just_get_player_mut(enemy_id).unwrap();
+        enemy_mut.status.hp = 0;
+        enemy_mut.status.set_alive(false);
+
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.set_state(crate::player::skill::act::charm::CharmState {
+            group_id: enemy_id,
+            target: Some(enemy_id),
+            on_post_action: None,
+            step: 1,
+        });
+        protect_key = owner_mut.skills.skill.len();
+        owner_mut.skills.add_skill(Skill::new_with_id(7, 26));
+    }
+
+    let mut randomer = RC4::default();
+    let before = (randomer.i, randomer.j);
+    let mut updates = RunUpdates::new();
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut
+            .skills
+            .skill_by_id_mut(protect_key)
+            .post_action((owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    assert_eq!(randomer.i, before.0.wrapping_add(1));
+}
+
+#[test]
 fn upgrade_uses_other_raw_name_base_rules() {
     let storage = Storage::new_arc();
     let mut lhs = Player::new_from_namerena_raw("lhs".to_string(), storage.clone()).unwrap();
@@ -280,7 +323,9 @@ fn check_immune_matches_player_type_rules() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
 
     assert!(boost.check_immune("poison", &mut randomer));
     assert!(!normal.check_immune("poison", &mut randomer));
@@ -428,7 +473,9 @@ fn post_defend_applies_curse_multiplier() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     let mut updates = RunUpdates::new();
 
     player.set_state(crate::player::skill::curse::CurseState {
@@ -477,7 +524,9 @@ fn merge_and_zombie_kill_write_target_states() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     let mut updates = RunUpdates::new();
     let mut merge = crate::player::skill::merge::MergeSkill::new();
     let mut zombie = crate::player::skill::zombie::ZombieSkill::new();
@@ -702,7 +751,9 @@ fn reraise_skill_prevents_death() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     let mut updates = RunUpdates::new();
 
     let target_mut = storage.just_get_player_mut(target_id).unwrap();
@@ -727,7 +778,9 @@ fn curse_does_not_apply_to_reraise_survivor() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     let mut updates = RunUpdates::new();
 
     let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
@@ -844,7 +897,9 @@ fn boss_has_higher_state_immunity() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     assert!(boss.check_immune("fire", &mut randomer));
     assert!(!normal.check_immune("fire", &mut randomer));
 }
@@ -859,7 +914,9 @@ fn merge_kill_applies_owner_growth() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     let mut updates = RunUpdates::new();
 
     {
@@ -957,7 +1014,10 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
 
     {
         let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
-        owner_mut.skills.skill_by_id_mut(0).act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut
+            .skills
+            .skill_by_id_mut(0)
+            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
         owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
     }
 
@@ -966,10 +1026,16 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
 
     {
         let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
-        owner_mut.skills.skill_by_id_mut(1).act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut
+            .skills
+            .skill_by_id_mut(1)
+            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
     }
 
-    assert_eq!(storage.get_player(&owner_id).unwrap().move_point(), move_before_accumulate + 900);
+    assert_eq!(
+        storage.get_player(&owner_id).unwrap().move_point(),
+        move_before_accumulate + 900
+    );
 
     {
         let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
@@ -981,7 +1047,11 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
 
     {
         let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
-        let cleared = owner_mut.skills.skill_by_id_mut(1).clear_positive_runtime((owner_id, &mut randomer, &mut updates, &storage));
+        let cleared =
+            owner_mut
+                .skills
+                .skill_by_id_mut(1)
+                .clear_positive_runtime((owner_id, &mut randomer, &mut updates, &storage));
         assert_eq!(cleared, Some("[1]的[聚气]被打消了"));
     }
 
@@ -1027,7 +1097,9 @@ fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     let mut updates = RunUpdates::new();
 
     {
@@ -1087,7 +1159,9 @@ fn owner_death_marks_linked_minion_for_cleanup() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     let mut updates = RunUpdates::new();
 
     storage
@@ -1140,7 +1214,9 @@ fn owner_death_removes_linked_minions_in_roster_order() {
     let mut randomer = RC4 {
         i: 0,
         j: 0,
-        main_val: [0u8; 256], ..Default::default() };
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
     let mut updates = RunUpdates::new();
 
     storage
