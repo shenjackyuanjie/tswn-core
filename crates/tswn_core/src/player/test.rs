@@ -1130,3 +1130,75 @@ fn owner_death_removes_linked_minions_in_roster_order() {
     let pending_remove = storage.take_pending_remove_players();
     assert_eq!(pending_remove, vec![minion0_id, minion1_id]);
 }
+
+#[test]
+fn ice_score_halves_already_frozen_targets() {
+    let storage = Storage::new_arc();
+    let caster = Player::new_from_namerena_raw("caster@a".to_string(), storage.clone()).unwrap();
+    let iced = Player::new_from_namerena_raw("iced@b".to_string(), storage.clone()).unwrap();
+    let fresh = Player::new_from_namerena_raw("fresh@b".to_string(), storage.clone()).unwrap();
+    let plain = Player::new_from_namerena_raw("plain@b".to_string(), storage.clone()).unwrap();
+    let caster_id = storage.just_insert_player(caster);
+    let iced_id = storage.just_insert_player(iced);
+    let fresh_id = storage.just_insert_player(fresh);
+    let plain_id = storage.just_insert_player(plain);
+    storage.sync_groups(&[vec![caster_id], vec![iced_id, fresh_id, plain_id]]);
+    storage.sync_alive_groups(&[vec![caster_id], vec![iced_id, fresh_id, plain_id]]);
+
+    {
+        let iced_mut = storage.just_get_player_mut(iced_id).unwrap();
+        iced_mut.set_state(crate::player::skill::act::ice::IceState {
+            target: Some(iced_id),
+            pre_step_impl: None,
+            frozen_step: 1024,
+        });
+        iced_mut.status.hp = 100;
+        iced_mut.status.max_hp = 100;
+        iced_mut.status.atk_sum = 200;
+        iced_mut.status.attract = 1.0;
+        iced_mut.status.set_alive(true);
+    }
+
+    {
+        let fresh_mut = storage.just_get_player_mut(fresh_id).unwrap();
+        fresh_mut.status.hp = 100;
+        fresh_mut.status.max_hp = 100;
+        fresh_mut.status.atk_sum = 200;
+        fresh_mut.status.attract = 1.0;
+        fresh_mut.status.set_alive(true);
+    }
+
+    {
+        let plain_mut = storage.just_get_player_mut(plain_id).unwrap();
+        plain_mut.status.hp = 100;
+        plain_mut.status.max_hp = 100;
+        plain_mut.status.atk_sum = 150;
+        plain_mut.status.attract = 1.0;
+        plain_mut.status.set_alive(true);
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let ice = crate::player::skill::act::ice::IceSkill::new();
+    let iced_score = <crate::player::skill::act::ice::IceSkill as crate::player::skill::SkillTrait>::score_target(
+        &ice,
+        iced_id,
+        true,
+        (caster_id, &mut randomer, &mut updates, &storage),
+    );
+    let fresh_score = <crate::player::skill::act::ice::IceSkill as crate::player::skill::SkillTrait>::score_target(
+        &ice,
+        fresh_id,
+        true,
+        (caster_id, &mut randomer, &mut updates, &storage),
+    );
+    let plain_score = <crate::player::skill::act::ice::IceSkill as crate::player::skill::SkillTrait>::score_target(
+        &ice,
+        plain_id,
+        true,
+        (caster_id, &mut randomer, &mut updates, &storage),
+    );
+
+    assert!((fresh_score - iced_score * 2.0).abs() < 1e-9);
+    assert!(plain_score > iced_score);
+}
