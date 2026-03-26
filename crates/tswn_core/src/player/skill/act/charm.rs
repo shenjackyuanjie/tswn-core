@@ -79,20 +79,16 @@ impl SkillTrait for CharmSkill {
             (owner.get_status().magic, owner.get_status().at_boost >= 3.0)
         };
         // Dart compares owner.allyGroup (group object) vs charmState.grp (group object).
-        // In Dart/JS, a charmed player's allyGroup is dynamically updated to the charmer's group
-        // via CharmState.ar() (updateState). So when comparing, we must use the caster's
-        // "effective" group (which may have been changed by a charm on the caster).
-        //
-        // If the caster is charmed, their effective team is the charmer's team.
-        // We need to look up the caster's CharmState and use its group_id's team.
+        // Rust keeps the charm source player id in group_id, but also needs the already-resolved
+        // effective team so chained charm does not collapse back to the source player's original team.
         let caster_effective_team_idx = {
             let owner = args.3.get_player(&args.0).expect("cannot get charm owner from storage");
             if let Some(caster_charm) = owner.get_state::<CharmState>() {
-                // Caster is charmed, use the charmer's team
-                args.3.group_index_of(caster_charm.group_id).unwrap_or(usize::MAX)
+                caster_charm
+                    .effective_team_idx
+                    .or_else(|| args.3.group_index_of(caster_charm.group_id))
             } else {
-                // Caster is not charmed, use their original team
-                args.3.group_index_of(args.0).unwrap_or(usize::MAX)
+                args.3.group_index_of(args.0)
             }
         };
         let target = args.3.just_get_player_mut(target_id).expect("cannot get charm target from storage");
@@ -109,19 +105,20 @@ impl SkillTrait for CharmSkill {
         }
 
         if let Some(state) = target.get_state_mut::<CharmState>() {
-            // Compare by team index: look up the team that stored group_id belongs to
-            let existing_team_idx = args.3.group_index_of(state.group_id);
-            if existing_team_idx == Some(caster_effective_team_idx) {
+            let existing_team_idx = state.effective_team_idx.or_else(|| args.3.group_index_of(state.group_id));
+            if existing_team_idx == caster_effective_team_idx {
                 state.step += 1;
             } else {
                 state.group_id = args.0;
             }
+            state.effective_team_idx = caster_effective_team_idx;
             if charge_active {
                 state.step += 3;
             }
         } else {
             target.set_state(CharmState {
                 group_id: args.0,
+                effective_team_idx: caster_effective_team_idx,
                 target: Some(target_id),
                 on_post_action: None,
                 step: if charge_active { 4 } else { 1 },
@@ -134,6 +131,7 @@ impl SkillTrait for CharmSkill {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CharmState {
     pub group_id: usize,
+    pub effective_team_idx: Option<usize>,
     pub target: Option<PlrId>,
     pub on_post_action: Option<()>,
     pub step: i32,

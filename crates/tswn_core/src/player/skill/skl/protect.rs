@@ -24,7 +24,12 @@ fn effective_group(storage: &Arc<crate::engine::storage::Storage>, plr: PlrId) -
     storage.get_player(&plr).and_then(|player| {
         player
             .get_state::<CharmState>()
-            .and_then(|charm| storage.group_containing(charm.group_id).cloned())
+            .and_then(|charm| {
+                charm
+                    .effective_team_idx
+                    .and_then(|team_idx| storage.get_group(team_idx).cloned())
+                    .or_else(|| storage.group_containing(charm.group_id).cloned())
+            })
             .or_else(|| storage.group_containing(plr).cloned())
     })
 }
@@ -36,7 +41,12 @@ fn effective_alive_group(storage: &Arc<crate::engine::storage::Storage>, plr: Pl
     storage.get_player(&plr).and_then(|player| {
         player
             .get_state::<CharmState>()
-            .and_then(|charm| storage.alive_group_at_team_of(charm.group_id).cloned())
+            .and_then(|charm| {
+                charm
+                    .effective_team_idx
+                    .and_then(|team_idx| storage.alive_group_at(team_idx).cloned())
+                    .or_else(|| storage.alive_group_at_team_of(charm.group_id).cloned())
+            })
             .or_else(|| storage.alive_group_at_team_of(plr).cloned())
     })
 }

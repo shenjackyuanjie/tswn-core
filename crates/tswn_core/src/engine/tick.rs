@@ -67,7 +67,7 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
     let effective_team = storage
         .get_player(&actor)
         .and_then(|player| player.get_state::<CharmState>())
-        .and_then(|charm| world.team_index_of(charm.group_id))
+        .and_then(|charm| charm.effective_team_idx.or_else(|| world.team_index_of(charm.group_id)))
         .unwrap_or(team_idx);
     let Some(team_roster) = world.team_roster(effective_team).map(|s| PlrVec::from_slice(s)) else {
         return ActionTargets::default();

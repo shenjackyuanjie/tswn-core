@@ -164,6 +164,8 @@ impl Storage {
 
     pub fn get_group(&self, id: usize) -> Option<&Vec<PlrId>> { self.groups.get(&id) }
 
+    pub fn alive_group_at(&self, team_idx: usize) -> Option<&Vec<PlrId>> { self.alive_groups.get(team_idx) }
+
     pub fn group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
         self.groups.values().find(|group| group.contains(&actor))
     }

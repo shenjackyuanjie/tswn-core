@@ -366,6 +366,7 @@ fn charm_state_redirects_target_group() {
         .expect("cannot get actor")
         .set_state(crate::player::skill::charm::CharmState {
             group_id: enemy,
+            effective_team_idx: None,
             target: Some(actor),
             on_post_action: None,
             step: 2,
@@ -374,6 +375,35 @@ fn charm_state_redirects_target_group() {
     let targets = tick::select_targets(actor, &runner.world, &runner.storage);
     assert!(targets.enemy_alive.contains(&ally));
     assert!(!targets.enemy_alive.contains(&enemy));
+}
+
+#[test]
+fn charm_state_prefers_effective_team_idx_for_target_group() {
+    let raw_input = "a\nc\n\nb\nd\n\ne\nf";
+    let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+    let actor = runner.world.groups[0][0];
+    let actor_ally = runner.world.groups[0][1];
+    let enemy = runner.world.groups[1][0];
+    let third = runner.world.groups[2][0];
+    let third_ally = runner.world.groups[2][1];
+
+    runner
+        .storage
+        .just_get_player_mut(actor)
+        .expect("cannot get actor")
+        .set_state(crate::player::skill::act::charm::CharmState {
+            group_id: enemy,
+            effective_team_idx: Some(2),
+            target: Some(actor),
+            on_post_action: None,
+            step: 2,
+        });
+
+    let targets = tick::select_targets(actor, &runner.world, &runner.storage);
+    assert!(!targets.ally_alive.contains(&actor));
+    assert!(!targets.ally_alive.contains(&actor_ally));
+    assert!(targets.ally_alive.contains(&third));
+    assert!(targets.ally_alive.contains(&third_ally));
 }
 
 #[test]

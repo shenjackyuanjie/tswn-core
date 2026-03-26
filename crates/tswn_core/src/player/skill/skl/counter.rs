@@ -38,7 +38,12 @@ impl SkillTrait for CounterSkill {
         let owner_ally_group = args.3.get_player(&args.0).and_then(|owner| {
             owner
                 .get_state::<CharmState>()
-                .and_then(|charm| args.3.group_containing(charm.group_id).cloned())
+                .and_then(|charm| {
+                    charm
+                        .effective_team_idx
+                        .and_then(|team_idx| args.3.get_group(team_idx).cloned())
+                        .or_else(|| args.3.group_containing(charm.group_id).cloned())
+                })
                 .or_else(|| args.3.group_containing(args.0).cloned())
         });
         let caster_group = args.3.group_containing(caster).cloned();

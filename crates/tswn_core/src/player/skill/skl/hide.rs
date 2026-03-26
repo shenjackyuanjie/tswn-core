@@ -54,12 +54,16 @@ impl SkillTrait for HideSkill {
                 owner
                     .get_state::<CharmState>()
                     .and_then(|charm| {
-                        args.3.alive_group_at_team_of(charm.group_id).map(|group| {
-                            group
-                                .iter()
-                                .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
-                                .count()
-                        })
+                        charm
+                            .effective_team_idx
+                            .and_then(|team_idx| args.3.alive_group_at(team_idx))
+                            .or_else(|| args.3.alive_group_at_team_of(charm.group_id))
+                            .map(|group| {
+                                group
+                                    .iter()
+                                    .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
+                                    .count()
+                            })
                     })
                     .or_else(|| {
                         args.3.alive_group_at_team_of(args.0).map(|group| {
