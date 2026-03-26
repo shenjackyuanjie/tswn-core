@@ -1114,6 +1114,72 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
 }
 
 #[test]
+fn clear_positive_runtime_orders_messages_by_meta_key() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.add_skill(Skill::new_with_id(1, 19));
+        owner_mut.skills.add_skill(Skill::new_with_id(1, 20));
+        owner_mut.skills.update_proc();
+    }
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.skill_by_id_mut(0).act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut.skills.skill_by_id_mut(1).act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    let cleared = {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.clear_positive_runtime_with_order((owner_id, &mut randomer, &mut updates, &storage))
+    };
+
+    assert_eq!(
+        cleared,
+        vec![
+            (100, "[1]的[聚气]被打消了"),
+            (200, "[1]的[蓄力]被中止了"),
+        ]
+    );
+}
+
+#[test]
+fn clear_positive_states_orders_messages_by_state_tag() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.status.hp = 100;
+        owner_mut.status.alive = true;
+        owner_mut.set_state(crate::player::skill::act::haste::HasteState::default());
+        owner_mut.set_state(crate::player::skill::act::iron::IronState { protect: 1, step: 1 });
+        owner_mut.set_state(crate::player::skill::skl::upgrade::UpgradeState::default());
+    }
+
+    let cleared = {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.clear_positive_states_with_ordered_messages()
+    };
+
+    assert_eq!(
+        cleared,
+        vec![
+            (300, "[1]从[疾走]中解除"),
+            (400, "[1]的[铁壁]被打消了"),
+            (500, "[1]的[垂死]属性被打消"),
+        ]
+    );
+}
+
+#[test]
 fn revive_rejects_merge_corpse_target() {
     let storage = Storage::new_arc();
     let reviver = Player::new_from_namerena_raw("reviver@red".to_string(), storage.clone()).unwrap();

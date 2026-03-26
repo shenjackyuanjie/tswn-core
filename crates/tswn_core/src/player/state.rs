@@ -53,6 +53,7 @@ pub trait StateTrait: std::fmt::Debug + Send + Sync + 'static {
     fn state_type_id(&self) -> TypeId { TypeId::of::<Self>() }
 
     fn meta_type(&self) -> i32 { 0 }
+    fn clear_positive_priority(&self) -> i32 { 1000 }
 
     fn action_mode_priority(&self) -> i32 { 1000 }
     fn on_action_mode(&self, _smart: bool, _forced_attack: &mut Option<crate::player::action_targets::ForcedAttackConfig>) {}
@@ -303,21 +304,29 @@ impl PlayerStateStore {
         }
     }
 
-    pub fn clear_positive_states_with_messages(&mut self, alive: bool) -> Vec<&'static str> {
+    pub fn clear_positive_states_with_ordered_messages(&mut self, alive: bool) -> Vec<(i32, &'static str)> {
         let mut to_remove = Vec::new();
         let mut messages = Vec::new();
         for (tag, state) in self.states.iter() {
             if state.meta_type() > 0 {
                 if let Some(msg) = state.cancel_message(alive) {
-                    messages.push(msg);
+                    messages.push((state.clear_positive_priority(), msg));
                 }
                 to_remove.push(*tag);
             }
         }
+        messages.sort_unstable_by_key(|(priority, _)| *priority);
         for tag in to_remove {
             self.states.remove(&tag);
         }
         messages
+    }
+
+    pub fn clear_positive_states_with_messages(&mut self, alive: bool) -> Vec<&'static str> {
+        self.clear_positive_states_with_ordered_messages(alive)
+            .into_iter()
+            .map(|(_, message)| message)
+            .collect()
     }
 
     #[inline]

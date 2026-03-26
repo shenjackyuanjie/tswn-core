@@ -267,6 +267,7 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn clear_positive_runtime_with_level(&mut self, _level: u32, args: SkillArgs) -> Option<&'static str> {
         self.clear_positive_runtime(args)
     }
+    fn clear_positive_runtime_priority(&self) -> i32 { 1000 }
 
     /// 声明该技能注册到哪些流程
     fn proc_kinds(&self) -> &[ProcKind] { &[] }
@@ -606,6 +607,8 @@ impl Skill {
     pub fn uses_custom_target_selection(&self) -> bool { self.skill_type.uses_custom_target_selection() }
 
     pub fn has_action_impl(&self) -> bool { self.skill_type.has_action_impl() }
+
+    pub fn clear_positive_runtime_priority(&self) -> i32 { self.skill_type.clear_positive_runtime_priority() }
 
     pub fn debug_skill_type_name(&self) -> &'static str { type_name_of_val(self.skill_type.as_ref()) }
 }

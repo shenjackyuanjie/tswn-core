@@ -108,5 +108,7 @@ impl SkillTrait for AccumulateSkill {
         Some("[1]的[聚气]被打消了")
     }
 
+    fn clear_positive_runtime_priority(&self) -> i32 { 100 }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::UpdateState] }
 }

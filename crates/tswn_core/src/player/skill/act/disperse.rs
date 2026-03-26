@@ -93,13 +93,13 @@ fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: 
     if dmg <= 0 {
         return;
     }
-    // Clear positive meta states and collect messages (matching Dart's onDamage callback)
-    // Dart iterates sorted meta keys, calling destroy() on each positive meta.
-    // In Rust, skill-based clearing (accumulate, charge) and state-based clearing (haste, upgrade)
-    // are separate mechanisms. We call both and combine messages.
+    // JS/Dart clears positive meta in sorted meta-key order.
+    // Rust stores positive skill/runtime meta and state meta separately, so we collect both with
+    // their stable type-name tags, then sort once before emitting cancel messages.
     let target = storage.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
-    let state_messages = target.clear_positive_states_with_messages();
-    let skill_messages = target.skills.clear_positive_runtime((target_id, r, updates, storage));
+    let mut clear_messages = target.skills.clear_positive_runtime_with_order((target_id, r, updates, storage));
+    clear_messages.extend(target.clear_positive_states_with_ordered_messages());
+    clear_messages.sort_unstable_by_key(|(priority, _)| *priority);
     let mp = target.get_status().mp;
     if mp > 64 {
         target.set_mp(mp - 64);
@@ -108,8 +108,8 @@ fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: 
     } else {
         target.set_mp(mp - 32);
     }
-    for message in skill_messages.iter().chain(state_messages.iter()) {
+    for (_, message) in clear_messages {
         updates.emit(RunUpdate::new_newline);
-        updates.emit(|| RunUpdate::new(*message, caster, target_id, 0));
+        updates.emit(|| RunUpdate::new(message, caster, target_id, 0));
     }
 }

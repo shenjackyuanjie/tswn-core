@@ -102,5 +102,7 @@ impl SkillTrait for ChargeSkill {
         Some("[1]的[蓄力]被中止了")
     }
 
+    fn clear_positive_runtime_priority(&self) -> i32 { 200 }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
 }

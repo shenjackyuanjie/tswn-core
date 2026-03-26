@@ -46,7 +46,6 @@ use crate::player::{
     OnDamageFunc, PlrId,
     skill::{ProcKind, Skill, SkillArgs},
 };
-
 use foldhash::{HashMap as FoldHashMap, HashMapExt, HashSet as FoldHashSet, HashSetExt};
 
 /// SkillStorage 内部使用的稳定技能键。
@@ -387,14 +386,22 @@ impl SkillStorage {
     }
 
     pub fn clear_positive_runtime(&mut self, args: SkillArgs) -> Vec<&'static str> {
+        self.clear_positive_runtime_with_order(args)
+            .into_iter()
+            .map(|(_, message)| message)
+            .collect()
+    }
+
+    pub fn clear_positive_runtime_with_order(&mut self, args: SkillArgs) -> Vec<(i32, &'static str)> {
         let mut messages = Vec::new();
         for idx in 0..self.skill.len() {
             let skill_key = self.skill[idx];
             let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             if let Some(message) = skill.clear_positive_runtime((args.0, args.1, args.2, args.3)) {
-                messages.push(message);
+                messages.push((skill.clear_positive_runtime_priority(), message));
             }
         }
+        messages.sort_unstable_by_key(|(priority, _)| *priority);
         messages
     }
 

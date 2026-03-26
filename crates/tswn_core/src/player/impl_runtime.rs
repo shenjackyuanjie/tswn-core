@@ -604,6 +604,14 @@ impl Player {
         messages
     }
 
+    #[inline]
+    pub fn clear_positive_states_with_ordered_messages(&mut self) -> Vec<(i32, &'static str)> {
+        let alive = self.alive() && self.status.hp > 0;
+        let messages = self.state.clear_positive_states_with_ordered_messages(alive);
+        self.update_states();
+        messages
+    }
+
     pub(super) fn apply_update_state_effects(&mut self) { self.state.apply_update_state_effects(&mut self.status); }
 
     pub(super) fn apply_pre_step_states(&mut self, mut step: i32, updates: &mut RunUpdates) -> i32 {
