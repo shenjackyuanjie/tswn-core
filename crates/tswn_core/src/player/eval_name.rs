@@ -152,7 +152,7 @@ pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
 
     // 调整计数（核心逻辑）
     if tmp > 0 {
-        cnt[UPPER] += 1;
+        cnt[OTHER] += 1;
         // 从高到低找到第一个非零类，加上 diff
         for i in (0..=5).rev() {
             if cnt[i] > 0 {
@@ -160,7 +160,7 @@ pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
                 break;
             }
         }
-        cnt[UPPER] -= 1;
+        cnt[OTHER] -= 1;
 
         // 从低到高依次减去 tmp
         let mut tmp_remaining = tmp;
@@ -748,5 +748,17 @@ mod test {
         assert_eq!(eval_str_common("111111", false), -7.682233833280655);
         assert_eq!(eval_str_common("1111111", false), -6.295939472160768);
         assert_eq!(eval_str_common("11111111", false), -4.909645111040874);
+    }
+
+    #[test]
+    fn mixed_case_ascii_name_matches_js() {
+        let value = eval_str_common("tOeyDD", false);
+        assert!((value - (-0.9672599581621313)).abs() < 1e-12, "unexpected value: {value}");
+    }
+
+    #[test]
+    fn ascii_team_name_matches_js() {
+        let value = eval_str_common("Shabby_fish", false);
+        assert!((value - 0.0008871194426485349).abs() < 1e-15, "unexpected value: {value}");
     }
 }
