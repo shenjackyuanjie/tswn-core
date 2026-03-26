@@ -962,6 +962,60 @@ fn merge_kill_applies_owner_growth() {
 }
 
 #[test]
+fn skill_act_preserves_level_upgrades_happening_mid_act() {
+    #[derive(Debug, Clone)]
+    struct MidActUpgradeSkill {
+        skill_key: usize,
+        upgraded_level: u32,
+    }
+
+    impl crate::player::skill::SkillTrait for MidActUpgradeSkill {
+        fn destroy(&self, _plr: PlrId, _args: crate::player::skill::SkillArgs) {}
+
+        fn clone_box(&self) -> Box<dyn crate::player::skill::SkillTrait> { Box::new(self.clone()) }
+
+        fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: crate::player::skill::SkillArgs) {
+            args.3
+                .just_get_player_mut(args.0)
+                .unwrap()
+                .skills
+                .skill_by_id_mut(self.skill_key)
+                .set_level(self.upgraded_level);
+        }
+    }
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    let skill_key = {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        let skill_key = owner_mut.skills.skill.len();
+        owner_mut.skills.add_skill(crate::player::skill::Skill::new(
+            76,
+            Box::new(MidActUpgradeSkill {
+                skill_key,
+                upgraded_level: 100,
+            }),
+        ));
+        skill_key
+    };
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut
+            .skills
+            .skill_by_id_mut(skill_key)
+            .act(Vec::new(), true, (owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    let owner_after = storage.get_player(&owner_id).unwrap();
+    assert_eq!(owner_after.skills.skill_by_id(skill_key).level(), 100);
+}
+
+#[test]
 fn iron_break_refreshes_attract_immediately() {
     let storage = Storage::new_arc();
     let mut owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();

@@ -35,6 +35,7 @@
 //! | `SelfOnly`     | 仅自身                        |
 //! | `AllAlive`     | 全场存活玩家（可能跨队伍）      |
 
+use std::any::type_name_of_val;
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::sync::{
@@ -532,7 +533,12 @@ impl Skill {
     pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
         let current_level = self.level;
         self.skill_type.act_with_level(current_level, targets, smart, args);
-        self.level = self.skill_type.post_act_level(current_level);
+        let post_level = self.skill_type.post_act_level(current_level);
+        if self.level == current_level {
+            self.level = post_level;
+        } else if post_level > self.level {
+            self.level = post_level;
+        }
     }
 
     pub fn pre_step(&mut self, step: i32, args: SkillArgs) -> i32 { self.skill_type.pre_step_with_level(self.level, step, args) }
@@ -600,4 +606,6 @@ impl Skill {
     pub fn uses_custom_target_selection(&self) -> bool { self.skill_type.uses_custom_target_selection() }
 
     pub fn has_action_impl(&self) -> bool { self.skill_type.has_action_impl() }
+
+    pub fn debug_skill_type_name(&self) -> &'static str { type_name_of_val(self.skill_type.as_ref()) }
 }
