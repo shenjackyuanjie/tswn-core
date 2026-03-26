@@ -73,9 +73,9 @@ impl StateTrait for ShieldState {
         _randomer: &mut crate::rc4::RC4,
         _updates: &mut crate::engine::update::RunUpdates,
         _storage: &std::sync::Arc<crate::engine::storage::Storage>,
-    ) {
+    ) -> bool {
         if self.shield <= 0 {
-            return;
+            return false;
         }
         if *dmg > self.shield {
             self.shield = 0;
@@ -83,6 +83,7 @@ impl StateTrait for ShieldState {
             self.shield -= *dmg;
             *dmg = 0;
         }
+        false
     }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }

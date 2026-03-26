@@ -110,7 +110,8 @@ pub trait StateTrait: std::fmt::Debug + Send + Sync + 'static {
         _randomer: &mut RC4,
         _updates: &mut RunUpdates,
         _storage: &Arc<Storage>,
-    ) {
+    ) -> bool {
+        false
     }
 
     fn post_damage_priority(&self) -> i32 { 1000 }
@@ -445,12 +446,14 @@ impl PlayerStateStore {
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
-    ) {
+    ) -> bool {
+        let mut status_dirty = false;
         for tag in self.ordered_tags_by(|state| state.post_defend_priority()) {
             if let Some(state) = self.states.get_mut(&tag) {
-                state.on_post_defend(owner, dmg, caster, randomer, updates, storage);
+                status_dirty |= state.on_post_defend(owner, dmg, caster, randomer, updates, storage);
             }
         }
+        status_dirty
     }
 
     pub fn on_post_damage_states(

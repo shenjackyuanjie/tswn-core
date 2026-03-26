@@ -25,7 +25,7 @@ impl StateTrait for SaitamaState {
         _randomer: &mut RC4,
         _updates: &mut RunUpdates,
         storage: &Arc<Storage>,
-    ) {
+    ) -> bool {
         self.damages += *dmg;
         if let Some(caster_plr) = storage.get_player(&caster) {
             if let Some(minion_state) = caster_plr.get_state::<crate::player::skill::act::minion::MinionRuntimeState>() {
@@ -42,6 +42,7 @@ impl StateTrait for SaitamaState {
             self.hitters.insert(caster);
         }
         *dmg /= 100;
+        false
     }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }

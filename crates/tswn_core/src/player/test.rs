@@ -697,6 +697,44 @@ fn reraise_skill_prevents_death() {
 }
 
 #[test]
+fn curse_does_not_apply_to_reraise_survivor() {
+    let storage = Storage::new_arc();
+    let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+    let attacker_id = storage.just_insert_player(attacker);
+    let target_id = storage.just_insert_player(target);
+    let mut randomer = RC4 {
+        i: 0,
+        j: 0,
+        main_val: [0u8; 256], ..Default::default() };
+    let mut updates = RunUpdates::new();
+
+    let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
+    attacker_mut.status.mp = 999;
+    attacker_mut.skills.add_skill(Skill::new_with_id(127, 14));
+    attacker_mut.skills.update_proc();
+
+    let target_mut = storage.just_get_player_mut(target_id).unwrap();
+    target_mut.status.hp = 1;
+    target_mut.status.max_hp = 100;
+    target_mut.skills.add_skill(Skill::new_with_id(127, 28));
+    target_mut.skills.update_proc();
+
+    attacker_mut.action(
+        &mut randomer,
+        &mut updates,
+        &storage,
+        &ActionTargets::from_enemy_alive(&[target_id]),
+    );
+
+    let target_plr = storage.get_player(&target_id).unwrap();
+    assert!(target_plr.alive());
+    assert!(target_plr.get_status().hp > 0);
+    assert!(!target_plr.has_state::<crate::player::skill::curse::CurseState>());
+    assert!(!updates.updates.iter().any(|x| x.message.contains("被诅咒了")));
+}
+
+#[test]
 fn assassinate_preaction_forces_backstab() {
     let storage = Storage::new_arc();
     let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
@@ -843,6 +881,39 @@ fn merge_kill_applies_owner_growth() {
         assert!(owner_mut.get_status().attack > base_attack);
         assert!(!owner_mut.has_state::<crate::player::skill::corpse::CorpseState>());
     }
+}
+
+#[test]
+fn iron_break_refreshes_attract_immediately() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let mut caster = Player::new_from_namerena_raw("caster".to_string(), storage.clone()).unwrap();
+    owner.build();
+    caster.build();
+    let owner_id = storage.just_insert_player(owner);
+    let caster_id = storage.just_insert_player(caster);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.set_state(crate::player::skill::act::iron::IronState { protect: 5, step: 1 });
+    }
+
+    let boosted_attract = storage.get_player(&owner_id).unwrap().get_status().attract;
+    assert!(boosted_attract > 32768.0);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        let dmg = owner_mut.post_defend(10, caster_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+        assert_eq!(dmg, 5);
+    }
+
+    let owner_after = storage.get_player(&owner_id).unwrap();
+    let iron = owner_after.get_state::<crate::player::skill::act::iron::IronState>().unwrap();
+    assert_eq!(iron.protect, 0);
+    assert_eq!(iron.step, 0);
+    assert_eq!(owner_after.get_status().attract, 32768.0);
 }
 
 #[test]

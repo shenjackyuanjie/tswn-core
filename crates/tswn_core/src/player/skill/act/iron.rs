@@ -125,13 +125,13 @@ impl StateTrait for IronState {
         _randomer: &mut RC4,
         updates: &mut crate::engine::update::RunUpdates,
         _storage: &std::sync::Arc<crate::engine::storage::Storage>,
-    ) {
+    ) -> bool {
         if self.step <= 0 || self.protect <= 0 {
-            return;
+            return false;
         }
         if *dmg <= 0 {
             *dmg = 0;
-            return;
+            return false;
         }
         if *dmg <= self.protect {
             let defended = updates
@@ -142,7 +142,7 @@ impl StateTrait for IronState {
                 .map(|update| update.message == "[0][防御]" && update.caster == owner && update.target == caster)
                 .unwrap_or(false);
             *dmg = if defended { 0 } else { 1 };
-            return;
+            return false;
         }
 
         *dmg -= self.protect;
@@ -151,6 +151,7 @@ impl StateTrait for IronState {
         updates.emit(RunUpdate::new_newline);
         // 铁壁被击破时应使用“被打消”文案；自然结束才是“从铁壁中解除”。
         updates.emit(|| RunUpdate::new("[1]的[铁壁]被打消了", caster, owner, 0));
+        true
     }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }

@@ -667,8 +667,12 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        self.state
-            .on_post_defend_states(self.as_ptr(), &mut dmg, caster, randomer, updates, storage);
+        if self
+            .state
+            .on_post_defend_states(self.as_ptr(), &mut dmg, caster, randomer, updates, storage)
+        {
+            self.update_states();
+        }
         dmg
     }
 

@@ -87,31 +87,11 @@ impl SkillTrait for CurseSkill {
             .expect("cannot get curse caster from storage")
             .get_at(true, args.1);
         args.2.add(RunUpdate::new("[0]使用[诅咒]", args.0, target_id, 1));
-        let dmg = args
+        let _ = args
             .3
             .just_get_player_mut(target_id)
             .expect("cannot get curse target from storage")
             .attacked(atp, true, args.0, on_curse as OnDamageFunc, args.1, args.2, args.3);
-        if dmg <= 0 {
-            return;
-        }
-        let target = args.3.just_get_player_mut(target_id).expect("cannot get curse target from storage");
-        if !target.alive() || target.check_immune("curse", args.1) {
-            return;
-        }
-        if let Some(state) = target.get_state_mut::<CurseState>() {
-            state.prob += 10;
-            state.multiply += 1;
-            state.owner = Some(args.0);
-        } else {
-            target.set_state(CurseState {
-                owner: Some(args.0),
-                target: Some(target_id),
-                on_update_state: None,
-                prob: 42,
-                multiply: 2,
-            });
-        }
     }
 }
 
@@ -155,11 +135,11 @@ impl StateTrait for CurseState {
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         _storage: &std::sync::Arc<crate::engine::storage::Storage>,
-    ) {
+    ) -> bool {
         let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
         let debug_this = debug_action.as_deref().map(|name| format!("#{owner}") == name).unwrap_or(false);
         if *dmg <= 0 {
-            return;
+            return false;
         }
         if debug_this {
             eprintln!(
@@ -177,20 +157,53 @@ impl StateTrait for CurseState {
                 *dmg, randomer.i, randomer.j,
             );
         }
+        false
     }
 
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
-fn on_curse(caster: PlrId, target: PlrId, dmg: i32, _r: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
+fn on_curse(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
     if dmg <= 0 {
         return;
     }
-    let Some(target_plr) = storage.get_player(&target) else {
+    let blocked = {
+        let Some(target_plr) = storage.just_get_player_mut(target) else {
+            return;
+        };
+        target_plr.get_status().hp <= 0
+            || matches!(target_plr.player_type, PlayerType::Boss | PlayerType::Boost)
+            || target_plr.check_immune("curse", r)
+    };
+    if blocked {
+        return;
+    }
+
+    let charge_active = storage
+        .get_player(&target)
+        .map(|target_plr| target_plr.get_status().at_boost >= 3.0)
+        .unwrap_or(false);
+
+    let Some(target_plr) = storage.just_get_player_mut(target) else {
         return;
     };
-    if target_plr.get_status().hp <= 0 || matches!(target_plr.player_type, PlayerType::Boss | PlayerType::Boost) {
-        return;
+    if let Some(state) = target_plr.get_state_mut::<CurseState>() {
+        state.prob += 10;
+        state.multiply += 1;
+        state.owner = Some(caster);
+        state.target = Some(target);
+        if charge_active {
+            state.prob += 10;
+            state.multiply += 1;
+        }
+    } else {
+        target_plr.set_state(CurseState {
+            owner: Some(caster),
+            target: Some(target),
+            on_update_state: None,
+            prob: 42 + if charge_active { 10 } else { 0 },
+            multiply: 2 + if charge_active { 1 } else { 0 },
+        });
     }
     updates.emit(|| RunUpdate::new("[1]被[诅咒]了", caster, target, 60));
 }
