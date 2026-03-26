@@ -103,8 +103,12 @@ impl SkillTrait for CloneSkill {
             decayed_level = (decayed_level >> 1) + 1;
         }
         let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
-        if cloned.skills.skill.len() > 23 {
-            cloned.skills.skill_by_id_mut(23).set_level(cloned_clone_level.max(1));
+        // JS 在 p.az() 之后才把 clone skill 改成 sqrt(level)。
+        // 这会更新共享技能对象的等级，但不会让一个 build 时为 0 的 clone skill retroactively 进入 k4。
+        let clone_skill_was_zero = cloned.skills.skill_by_id(23).level() == 0;
+        cloned.skills.skill_by_id_mut(23).set_level(cloned_clone_level.max(1));
+        if clone_skill_was_zero {
+            cloned.skills.disable_action_key(23);
         }
         cloned.skills.update_proc();
         if std::env::var_os("TSWN_DEBUG_STATS").is_some() {

@@ -122,6 +122,9 @@ impl Player {
                     if !is_boss {
                         let skill_keys = self.skills.skill.clone();
                         for key in skill_keys {
+                            if !self.skills.action_enabled(key) {
+                                continue;
+                            }
                             let maybe_targets = {
                                 let skill = self.skills.skill_by_id(key);
                                 let action_ok = skill.has_action_impl();

@@ -183,6 +183,27 @@ fn update_states_does_not_reset_hp_or_mp() {
 }
 
 #[test]
+fn register_skill_proc_appends_late_post_damage_skill() {
+    use crate::player::skill::{Skill, store::SkillStorage};
+
+    let mut skills = SkillStorage::new();
+    skills.add_skill(Skill::new_with_id(1, 21)); // Assassinate
+    skills.add_skill(Skill::new_with_id(1, 30)); // Counter
+    skills.add_skill(Skill::new_with_id(0, 33)); // Upgrade, gained later
+    skills.add_skill(Skill::new_with_id(1, 34)); // Hide
+
+    skills.update_proc();
+    assert_eq!(skills.update_states, vec![3]);
+    assert_eq!(skills.post_damage, vec![1, 3, 0]);
+
+    skills.skill_by_id_mut(2).set_level(1);
+    skills.register_skill_proc(2);
+
+    assert_eq!(skills.update_states, vec![3, 2]);
+    assert_eq!(skills.post_damage, vec![1, 3, 2, 0]);
+}
+
+#[test]
 fn upgrade_uses_other_raw_name_base_rules() {
     let storage = Storage::new_arc();
     let mut lhs = Player::new_from_namerena_raw("lhs".to_string(), storage.clone()).unwrap();

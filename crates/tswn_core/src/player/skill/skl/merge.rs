@@ -59,6 +59,7 @@ impl SkillTrait for MergeSkill {
         let mut merged = false;
         let (transfer_mp, transfer_move_point) = {
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get merge owner from storage");
+            let mut newly_enabled_skills = Vec::new();
             if debug_this {
                 eprintln!(
                     "[merge] owner={} target={} owner_spd={} target_spd={} owner_mp={} target_mp={} owner_mv={} target_mv={}",
@@ -83,16 +84,24 @@ impl SkillTrait for MergeSkill {
                 if let Some(owner_skill) = owner.skills.store.get_mut(&skill_key)
                     && target_level > owner_skill.level()
                 {
-                    should_add_action = owner_skill.level() == 0 && owner_skill.has_action_impl();
+                    let was_zero = owner_skill.level() == 0;
+                    should_add_action = was_zero && owner_skill.has_action_impl();
                     owner_skill.set_level(target_level);
+                    if was_zero {
+                        newly_enabled_skills.push(skill_key);
+                    }
                     merged = true;
                 }
                 if should_add_action {
+                    owner.skills.enable_action_key(skill_key);
                     if let Some(pos) = owner.skills.skill.iter().position(|key| *key == skill_key) {
                         owner.skills.skill.remove(pos);
                     }
                     owner.skills.skill.push(skill_key);
                 }
+            }
+            for skill_key in newly_enabled_skills {
+                owner.skills.register_skill_proc(skill_key);
             }
             let transfer_mp = target_mp > owner.mp();
             if transfer_mp {
@@ -104,7 +113,6 @@ impl SkillTrait for MergeSkill {
             }
             if merged {
                 owner.update_states();
-                owner.skills.update_proc();
             }
             (transfer_mp, transfer_move_point)
         };

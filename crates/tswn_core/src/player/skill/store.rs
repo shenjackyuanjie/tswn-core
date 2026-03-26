@@ -62,6 +62,7 @@ pub struct PreActionOutcome {
 pub struct SkillStorage {
     pub store: FoldHashMap<SkillKey, Skill>,
     pub skill: Vec<SkillKey>,
+    pub disabled_action: FoldHashSet<SkillKey>,
     /// meta??
     pub meta: FoldHashSet<SkillKey>,
     // 自己的状态 (usize: index)
@@ -92,6 +93,7 @@ impl SkillStorage {
         Self {
             store: FoldHashMap::new(),
             skill: Vec::new(),
+            disabled_action: FoldHashSet::new(),
             update_states: Vec::new(),
             meta: FoldHashSet::new(),
             pre_step: Vec::new(),
@@ -119,33 +121,89 @@ impl SkillStorage {
         self.post_kill.clear();
     }
 
+    fn push_proc_key(&mut self, kind: ProcKind, key: SkillKey) {
+        match kind {
+            ProcKind::UpdateState => {
+                if !self.update_states.contains(&key) {
+                    self.update_states.push(key);
+                }
+            }
+            ProcKind::PreStep => {
+                if !self.pre_step.contains(&key) {
+                    self.pre_step.push(key);
+                }
+            }
+            ProcKind::PreAction => {
+                if !self.pre_action.contains(&key) {
+                    self.pre_action.push(key);
+                }
+            }
+            ProcKind::PostAction => {
+                if !self.post_action.contains(&key) {
+                    self.post_action.push(key);
+                }
+            }
+            ProcKind::PreDefend => {
+                if !self.pre_defend.contains(&key) {
+                    self.pre_defend.push(key);
+                }
+            }
+            ProcKind::PostDefend => {
+                if !self.post_defend.contains(&key) {
+                    self.post_defend.push(key);
+                }
+            }
+            ProcKind::PostDamage => {
+                if self.post_damage.contains(&key) {
+                    return;
+                }
+                let priority = self.store.get(&key).map(|s| s.post_damage_priority()).unwrap_or(0);
+                let insert_at = self.post_damage.iter().position(|existing| {
+                    self.store
+                        .get(existing)
+                        .map(|skill| skill.post_damage_priority())
+                        .unwrap_or(0)
+                        > priority
+                });
+                if let Some(idx) = insert_at {
+                    self.post_damage.insert(idx, key);
+                } else {
+                    self.post_damage.push(key);
+                }
+            }
+            ProcKind::PostDeath => {
+                if !self.post_death.contains(&key) {
+                    self.post_death.push(key);
+                }
+            }
+            ProcKind::PostKill => {
+                if !self.post_kill.contains(&key) {
+                    self.post_kill.push(key);
+                }
+            }
+        }
+    }
+
+    pub fn register_skill_proc(&mut self, key: SkillKey) {
+        let Some(skill) = self.store.get(&key) else {
+            return;
+        };
+        if skill.level() == 0 {
+            return;
+        }
+        let kinds: Vec<ProcKind> = skill.proc_kinds().to_vec();
+        for kind in kinds {
+            self.push_proc_key(kind, key);
+        }
+    }
+
     pub fn update_proc(&mut self) {
         self.clear_proc();
         let mut keys: Vec<SkillKey> = self.store.keys().copied().collect();
         keys.sort_unstable();
         for key in keys {
-            let skill = self.store.get(&key).expect("skill not found in store");
-            if skill.level() == 0 {
-                continue;
-            }
-            let kinds: Vec<ProcKind> = skill.proc_kinds().to_vec();
-            for kind in kinds {
-                match kind {
-                    ProcKind::UpdateState => self.update_states.push(key),
-                    ProcKind::PreStep => self.pre_step.push(key),
-                    ProcKind::PreAction => self.pre_action.push(key),
-                    ProcKind::PostAction => self.post_action.push(key),
-                    ProcKind::PreDefend => self.pre_defend.push(key),
-                    ProcKind::PostDefend => self.post_defend.push(key),
-                    ProcKind::PostDamage => self.post_damage.push(key),
-                    ProcKind::PostDeath => self.post_death.push(key),
-                    ProcKind::PostKill => self.post_kill.push(key),
-                }
-            }
+            self.register_skill_proc(key);
         }
-        // Sort post_damage by priority (JS uses sortId/ga4(), higher = later execution)
-        self.post_damage
-            .sort_by_key(|&key| self.store.get(&key).map(|s| s.post_damage_priority()).unwrap_or(0));
     }
 
     /// 最后一个技能 boost
@@ -163,6 +221,12 @@ impl SkillStorage {
             }
         }
     }
+
+    pub fn disable_action_key(&mut self, key: SkillKey) { self.disabled_action.insert(key); }
+
+    pub fn enable_action_key(&mut self, key: SkillKey) { self.disabled_action.remove(&key); }
+
+    pub fn action_enabled(&self, key: SkillKey) -> bool { !self.disabled_action.contains(&key) }
 
     pub fn add_skill(&mut self, skill: Skill) {
         let id = self.skill.len();
