@@ -8,6 +8,7 @@ use crate::player::{
 pub struct AccumulateSkill {
     pub on_update_state: Option<()>,
     pub acc: f64,
+    pub charge_bonus: f64,
 }
 
 impl Default for AccumulateSkill {
@@ -15,6 +16,7 @@ impl Default for AccumulateSkill {
         Self {
             on_update_state: None,
             acc: 1.7000000476837158,
+            charge_bonus: 0.0,
         }
     }
 }
@@ -60,10 +62,24 @@ impl SkillTrait for AccumulateSkill {
             return;
         }
         self.on_update_state = Some(());
+        self.charge_bonus = 0.0;
         args.2.add(RunUpdate::new("[0]开始[聚气]", args.0, args.0, 1));
+
+        let charge_active = args
+            .3
+            .get_player(&args.0)
+            .map(|owner| owner.get_status().at_boost >= 3.0)
+            .unwrap_or(false);
+        if charge_active {
+            self.charge_bonus = 1.0;
+        }
+
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get accumulate owner from storage");
+        if charge_active {
+            owner.set_move_point(owner.move_point() + 500);
+        }
+        owner.update_states();
         owner.set_move_point(owner.move_point() + 400);
-        owner.mul_at_boost(self.acc);
         args.2.add(RunUpdate::new("[0]攻击力上升", args.0, args.0, 0));
     }
 
@@ -72,18 +88,19 @@ impl SkillTrait for AccumulateSkill {
             args.3
                 .just_get_player_mut(args.0)
                 .expect("cannot get accumulate owner from storage")
-                .mul_at_boost(self.acc);
+                .mul_at_boost(self.acc + self.charge_bonus);
         }
     }
 
     fn update_state_inline(&mut self, _level: u32, status: &mut crate::player::PlayerStatus) {
         if self.on_update_state.is_some() {
-            status.at_boost *= self.acc;
+            status.at_boost *= self.acc + self.charge_bonus;
         }
     }
 
     fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
         self.on_update_state.take()?;
+        self.charge_bonus = 0.0;
         args.3
             .just_get_player_mut(args.0)
             .expect("cannot get accumulate owner from storage")

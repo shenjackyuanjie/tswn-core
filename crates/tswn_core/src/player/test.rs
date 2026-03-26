@@ -917,6 +917,58 @@ fn iron_break_refreshes_attract_immediately() {
 }
 
 #[test]
+fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.add_skill(Skill::new_with_id(1, 19)); // Charge
+        owner_mut.skills.add_skill(Skill::new_with_id(1, 20)); // Accumulate
+        owner_mut.skills.update_proc();
+        owner_mut.update_states();
+        owner_mut.status.move_point = 100;
+        owner_mut.status.mp = 100;
+    }
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.skill_by_id_mut(0).act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    let move_before_accumulate = storage.get_player(&owner_id).unwrap().move_point();
+    assert_eq!(move_before_accumulate, 100);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.skill_by_id_mut(1).act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    assert_eq!(storage.get_player(&owner_id).unwrap().move_point(), move_before_accumulate + 900);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    let boosted = storage.get_player(&owner_id).unwrap().get_status().at_boost;
+    assert!((boosted - 2.7000000476837158).abs() < 1e-6);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        let cleared = owner_mut.skills.skill_by_id_mut(1).clear_positive_runtime((owner_id, &mut randomer, &mut updates, &storage));
+        assert_eq!(cleared, Some("[1]的[聚气]被打消了"));
+    }
+
+    let cleared_boost = storage.get_player(&owner_id).unwrap().get_status().at_boost;
+    assert!((cleared_boost - 1.0).abs() < 1e-6);
+}
+
+#[test]
 fn revive_rejects_merge_corpse_target() {
     let storage = Storage::new_arc();
     let reviver = Player::new_from_namerena_raw("reviver@red".to_string(), storage.clone()).unwrap();
