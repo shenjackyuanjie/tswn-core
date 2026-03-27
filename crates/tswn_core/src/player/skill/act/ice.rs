@@ -175,6 +175,8 @@ fn on_ice(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut Run
         return;
     }
 
+    let charge_active = storage.get_player(&caster).map(|p| p.get_status().at_boost >= 3.0).unwrap_or(false);
+
     let Some(target_plr) = storage.just_get_player_mut(target) else {
         return;
     };
@@ -186,6 +188,11 @@ fn on_ice(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut Run
             pre_step_impl: None,
             frozen_step: 1024,
         });
+    }
+    if charge_active {
+        if let Some(state) = target_plr.get_state_mut::<IceState>() {
+            state.frozen_step += 2048;
+        }
     }
     updates.emit(|| RunUpdate::new("[1]被[冰冻]了", caster, target, 40));
 }

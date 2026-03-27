@@ -43,26 +43,34 @@ impl SkillTrait for ThunderSkill {
         let mut _hit = false;
         let count = 3 + args.1.r3() as usize;
         for _ in 0..count {
-            let alive = args.3.get_player(&target_id).map(|x| x.alive()).unwrap_or(false);
-            if !alive {
-                break;
+            // JS: if (n.fx > p && !n.A && h.fx > p)
+            // caster must be alive+not frozen, target must be alive
+            let caster_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
+            let target_alive = args.3.get_player(&target_id).map(|x| x.alive()).unwrap_or(false);
+            if !caster_active || !target_alive {
+                continue;
             }
             args.2.add(RunUpdate::new_newline());
-            let target_dodge = args
-                .3
-                .get_player(&target_id)
-                .expect("cannot get thunder target from storage")
-                .get_status()
-                .agility
-                + args
+            // JS: if (h.fx > 0 && !h.A && T.dodge(...))
+            // target must be active (alive+not frozen) for dodge to trigger
+            let target_active = args.3.get_player(&target_id).map(|x| x.active()).unwrap_or(false);
+            if target_active {
+                let target_dodge = args
                     .3
                     .get_player(&target_id)
                     .expect("cannot get thunder target from storage")
                     .get_status()
-                    .resistance;
-            if Player::dodge(agl, target_dodge, args.1) {
-                args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 0));
-                return;
+                    .agility
+                    + args
+                        .3
+                        .get_player(&target_id)
+                        .expect("cannot get thunder target from storage")
+                        .get_status()
+                        .resistance;
+                if Player::dodge(agl, target_dodge, args.1) {
+                    args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 0));
+                    return;
+                }
             }
             agl -= 10;
             let owner = args.3.get_player(&args.0).expect("cannot get thunder owner from storage");
