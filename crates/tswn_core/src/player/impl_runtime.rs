@@ -131,9 +131,10 @@ impl Player {
             let battle_ended_early = storage
                 .group_containing(ptr)
                 .map(|ally_group| {
-                    !storage.all_player_ids().into_iter().any(|id| {
-                        !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false)
-                    })
+                    !storage
+                        .all_player_ids()
+                        .into_iter()
+                        .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
                 })
                 .unwrap_or(false);
             if !battle_ended_early {

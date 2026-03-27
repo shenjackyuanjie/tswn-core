@@ -59,9 +59,7 @@ pub const WIN_RATE_EVAL_RQ: f64 = 6.0;
 /// 以防底下的注释太长, 先把实际计算函数写了
 ///
 /// 用于计算一个字符串 "是否常见"
-pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
-    eval_str_common_with_rq(s, ladder_version, DEFAULT_EVAL_RQ)
-}
+pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 { eval_str_common_with_rq(s, ladder_version, DEFAULT_EVAL_RQ) }
 
 /// 用于计算一个字符串 "是否常见"，并显式指定 `$.rq()` 等价值。
 pub fn eval_str_common_with_rq(s: &str, ladder_version: bool, rq: f64) -> f64 {
@@ -778,6 +776,9 @@ mod test {
     fn win_rate_rq_changes_negative_threshold() {
         let default_value = eval_str_common("111111", false);
         let win_rate_value = eval_str_common_with_rq("111111", false, WIN_RATE_EVAL_RQ);
-        assert!(win_rate_value > default_value, "expected win_rate rq to be less punitive: default={default_value}, win_rate={win_rate_value}");
+        assert!(
+            win_rate_value > default_value,
+            "expected win_rate rq to be less punitive: default={default_value}, win_rate={win_rate_value}"
+        );
     }
 }

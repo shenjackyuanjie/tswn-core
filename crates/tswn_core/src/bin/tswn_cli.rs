@@ -116,9 +116,9 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read};
 
-use tswn_core::{PreparedRunner, Runner};
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::player::icon::icon_from_raw_name;
+use tswn_core::{PreparedRunner, Runner};
 
 use tswn_core::player::icon_render::render_icon_vec_from_name;
 

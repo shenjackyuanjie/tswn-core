@@ -103,11 +103,7 @@ impl Runner {
     }
 
     /// 从已解析队伍和 seed 列表构建 Runner，并显式指定名字强度评估使用的 `rq`。
-    pub fn new_from_groups_with_seed_and_eval_rq(
-        players: &[Vec<String>],
-        seed: &[String],
-        eval_rq: f64,
-    ) -> RunnerResult<Runner> {
+    pub fn new_from_groups_with_seed_and_eval_rq(players: &[Vec<String>], seed: &[String], eval_rq: f64) -> RunnerResult<Runner> {
         let prepared = Self::prepare_groups_with_eval_rq(players, eval_rq)?;
         Self::new_from_prepared_with_seed(&prepared, seed)
     }
