@@ -1,5 +1,42 @@
 # 更新日志
 
+## [0.2.5] - 2026-03-27
+
+### 修复
+
+- **战斗结束后停止 post-action 尾部**：行动决定战斗结束后，同回合的 MP 回复/换行/post_action 链不再继续执行，与 md5.js 对齐，消除大量 EOF 式的额外结尾日志（如 `铁壁解除`、`疾走解除` 等）。
+- **隐匿存活友军计数对齐魅惑有效队伍**：隐匿触发判断现在在魅惑状态存在时使用魅惑有效队伍（`allyGroup`），而非原始队伍，修复被魅惑后隐匿触发错误的问题。
+- **诅咒 post_defend 优先级对齐 JS ga4**：`CurseState` 的 `post_defend` 优先级从 110 修正为 10000，使诅咒增伤在 defend/iron/shield 之后结算，与 md5.js 的钩子顺序对齐。
+- **刺杀目标陈旧锁清理**：强制行动开始前，若刺杀锁定的目标已死亡，现在会提前清除该锁，避免行动模式因陈旧锁而漂移。
+- **隐匿 post-damage 存活友军计数修正**：`post_damage` 回调中的友军存活计数现在过滤掉 `alive()` 为假的队友，防止刚死亡的队友仍出现在存活快照中导致额外的 RNG 消耗。
+- **召唤兽伤害分摊死亡顺序修复**：新增 `in_post_damage` 标记（对应 JS `PlrSummon.aR`），在 `SummonShareDamageSkill` 将伤害分摊给 owner 期间阻止 owner 死亡时立即处理使魔死亡，确保死亡顺序为 `[owner, summon]`。
+- **复活不再清除冰冻状态**：`revive_with_hp` 不再重置冰冻标志，对齐 JS 的 `reraise/revive` 仅设置 HP 的语义。
+- **post_defend 刷新与诅咒结算时机**：铁壁被 `post_defend` 击破时立刻刷新状态快照，避免 `attract` 读取旧值；诅咒附着移至实际伤害回调之后，防止护身符复活等路径把幸存目标错误标为诅咒。
+- **蓄力中聚气联动**：聚气激活时若蓄力仍处于激活状态，补 500 行动条并将临时攻击倍率从 1.7 提升到 2.7，与 JS charge 活跃时的聚气结算对齐。
+- **冰冻选目标评分修正**：智能选目标时对已带冰冻状态的目标得分减半，避免重复优先打同一已冻结单位，与 JS 基准实现对齐。
+- **晚启用技能的 proc 与动作可见性**：吞噬/复制后新启用的技能现在按单技能补注册 proc；动作阶段显式跳过 build 时未进入 action 列表的技能，对齐 JS `clone` 在 `p.az()` 之后升级但不会 retroactively 进入 k4 的语义。
+- **heal 清除诅咒补输出解除事件**：`heal` 在 `clear_negative_states()` 清除 `CurseState` 后现在输出"从诅咒中解除"消息，与 JS/Dart 对齐；负面状态解除消息的输出顺序改为字母序（berserk→charm→curse→ice→poison→slow），与 Dart `clearStates` 的 `sort()` 遍历一致。
+- **Protect 空魅惑队伍时 RC4 消耗修复**：修复保护技能在魅惑队伍为空时仍错误消耗 RC4 随机数的问题。
+- **行动中技能升级被旧等级覆盖修复**：修复行动执行过程中发生技能升级后，旧等级数据被写回覆盖新等级的问题。
+- **净化后正向状态清除顺序修复**：修复净化（disperse）触发后正向状态清除顺序不一致的问题。
+- **混合大小写名称评分哨兵类别修复**：JS 的 `lC` 逻辑调整计数时临时抬高的是 `OTHER(3)` 而非 `UPPER(2)`，Rust 之前用错类别，导致 `tOeyDD` 这类混合大小写 ASCII 名称的 `name_factor` 计算偏差，现已对齐。
+- **链式魅惑继承已解析队伍视角**：`CharmState` 新增 `effective_team_idx` 字段，链式魅惑后的友军视角（选目标、保护、隐藏、反击等路径）现在优先使用已解析队伍，与 md5.js 的 `allyGroup` 继承语义对齐。
+- **post_kill 回调中 `&mut Player` 别名 UB 修复**：`on_die_impl()` 的 killer kill 回调链持有 `&mut Player` 期间，`MergeSkill::kill_with_level()` 会对同一玩家创建第二个 `&mut Player`，违反 Rust 别名规则，导致 LLVM `noalias` 优化在 release 构建中丢失写入。新增 `run_post_kill()`，在调用每个 kill 回调前通过 `take_skill_type()` 临时取出技能实现并释放引用。
+
+### 优化
+
+- **`TSWN_DEBUG` 环境变量收口 + `no_debug` 编译期消除**：将所有直接 `std::env::var("TSWN_DEBUG_*")` 调用替换为 `crate::debug::*` 函数；启用 `no_debug` feature 时这些函数内联为 `const false/None`，零开销。实测（aaa vs bbb 10w 场，`--features no_debug`）单线程快约 25%，多线程快约 7.2x（消除 env 锁竞争）。
+- **win_rate rq 兼容与构造热路径优化**：
+  - `eval_name` 中的 `rq` 从全局共享状态改为显式配置（`Storage.eval_rq`），避免模式切换残留与多线程 worker 间的状态污染。
+  - 引入可复用的 `PreparedRunner` 句柄，`prepare_groups_with_eval_rq` + `new_from_prepared_with_seed` 接口；win_rate 路径先按当前 rq 预构建一次模板，每局直接按 seed 构造 `Runner`，省去缓存键哈希、锁读取和模板命中分发的重复开销。
+  - CLI `--win_rate` / `--win_rate_st` 新增可选开关 `--keep-rq`：默认保持 win_rate 使用 `rq=6` 的兼容行为，显式带上则回到普通对战的 `rq=4` 语义，方便对照排查差异。
+  - 修正狂暴收尾日志：强制攻击在击倒最后一个敌人、战斗已结束时，不再继续执行 `forced_action_states`，避免额外输出"从狂暴中解除"等与 JS 不一致的尾部日志。
+
+### 验证
+
+- SBY 测试差异从 311 持续下降到 13（多轮修复）
+- `cargo test --workspace --quiet` 全量通过
+
 ## [0.2.4] - 2026-03-25
 
 ### 修复
