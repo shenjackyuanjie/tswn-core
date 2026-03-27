@@ -69,11 +69,11 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
         .and_then(|player| player.get_state::<CharmState>())
         .and_then(|charm| charm.effective_team_idx.or_else(|| world.team_index_of(charm.group_id)))
         .unwrap_or(team_idx);
-    let Some(team_roster) = world.team_roster(effective_team).map(|s| PlrVec::from_slice(s)) else {
+    let Some(team_roster) = world.team_roster(effective_team).map(PlrVec::from_slice) else {
         return ActionTargets::default();
     };
 
-    let ally_alive: PlrVec = world.team_alive(effective_team).map(|s| PlrVec::from_slice(s)).unwrap_or_default();
+    let ally_alive: PlrVec = world.team_alive(effective_team).map(PlrVec::from_slice).unwrap_or_default();
     let ally_all = team_roster.clone();
     let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !ally_alive.contains(id)).collect();
     let all_alive: PlrVec = world.teams.iter().flat_map(|t| t.alive.iter().copied()).collect();

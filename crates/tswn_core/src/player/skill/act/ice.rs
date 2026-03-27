@@ -189,10 +189,8 @@ fn on_ice(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut Run
             frozen_step: 1024,
         });
     }
-    if charge_active {
-        if let Some(state) = target_plr.get_state_mut::<IceState>() {
-            state.frozen_step += 2048;
-        }
+    if charge_active && let Some(state) = target_plr.get_state_mut::<IceState>() {
+        state.frozen_step += 2048;
     }
     updates.emit(|| RunUpdate::new("[1]被[冰冻]了", caster, target, 40));
 }

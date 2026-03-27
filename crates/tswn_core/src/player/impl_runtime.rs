@@ -1143,10 +1143,11 @@ impl Player {
             // 只设置 HP=0，不立即处理死亡。使魔的死亡将由其自身的 on_damaged 路径处理，
             // 确保死亡顺序为 [owner, summon] 而非 [summon, owner]。
             if storage.is_in_post_damage(minion_id) {
-                if let Some(minion) = storage.just_get_player_mut(minion_id) {
-                    if minion.alive() && minion.get_status().hp > 0 {
-                        minion.status.hp = 0;
-                    }
+                if let Some(minion) = storage.just_get_player_mut(minion_id)
+                    && minion.alive()
+                    && minion.get_status().hp > 0
+                {
+                    minion.status.hp = 0;
                 }
                 continue;
             }
