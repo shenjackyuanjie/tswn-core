@@ -25,6 +25,7 @@
 //! 主要是为了得到 `&mut Player` 而不破坏共享的 `&Arc<Storage>`。
 //! 调用方需确保在单一 tick 内不会有两个代码路径同时可变地引用同一玩家。
 
+use std::cell::UnsafeCell;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 
@@ -62,21 +63,21 @@ pub struct PendingSpawn {
 #[derive(Debug)]
 pub struct Storage {
     /// 存技能（`usize` 为 SkillId 的原始值）。
-    skills: FastHashMap<usize, Skill>,
+    skills: UnsafeCell<FastHashMap<usize, Skill>>,
     /// 存队伍分组。
-    groups: FastHashMap<usize, Vec<PlrId>>,
+    groups: UnsafeCell<FastHashMap<usize, Vec<PlrId>>>,
     /// 运行期每队存活视图，由 world 同步。
-    alive_groups: Vec<Vec<PlrId>>,
+    alive_groups: UnsafeCell<Vec<Vec<PlrId>>>,
     /// 存玩家实体。
-    players: FastHashMap<PlrId, Player>,
+    players: UnsafeCell<FastHashMap<PlrId, UnsafeCell<Player>>>,
     /// 延迟到引擎 tick 同步的新增实体。
-    pending_spawns: Vec<PendingSpawn>,
+    pending_spawns: UnsafeCell<Vec<PendingSpawn>>,
     /// 延迟到引擎 tick 同步的移除实体。
-    pending_remove_players: Vec<PlrId>,
+    pending_remove_players: UnsafeCell<Vec<PlrId>>,
     /// 按死亡发生顺序记录的死亡队列（对齐 Dart 的即时死亡处理顺序）。
-    death_queue: Vec<PlrId>,
+    death_queue: UnsafeCell<Vec<PlrId>>,
     /// 技能/触发器复活已有玩家后，延迟到 tick 同步回 WorldState 的复活队列。
-    pending_revivals: Vec<PlrId>,
+    pending_revivals: UnsafeCell<Vec<PlrId>>,
     /// 脏标记：当有死亡/移除/复活/召唤入队时置 true，sync_runtime_entities 据此跳过无用同步。
     needs_sync: AtomicBool,
     /// 玩家 ID 自增计数器。
@@ -85,40 +86,103 @@ pub struct Storage {
     /// 当使魔的 SummonShareDamageSkill 把伤害分摊给 owner 导致 owner 死亡时，
     /// owner 的 on_die_impl 不应立即处理该使魔的死亡（应由使魔自身的 on_damaged 路径处理），
     /// 以确保死亡顺序为 [owner, summon] 而非 [summon, owner]。
-    in_post_damage_player: Option<PlrId>,
+    in_post_damage_player: UnsafeCell<Option<PlrId>>,
 }
+
+// Storage 通过 UnsafeCell 实现运行期内部可变性。
+// 引擎保证单线程推进单场战斗，不会并发地可变访问同一个 Storage。
+unsafe impl Send for Storage {}
+unsafe impl Sync for Storage {}
 
 impl Storage {
     /// 创建一个新的 Storage。
     pub fn new() -> Storage {
         Storage {
-            skills: FastHashMap::new(),
-            groups: FastHashMap::new(),
-            alive_groups: Vec::new(),
-            players: FastHashMap::new(),
-            pending_spawns: Vec::new(),
-            pending_remove_players: Vec::new(),
-            death_queue: Vec::new(),
-            pending_revivals: Vec::new(),
+            skills: UnsafeCell::new(FastHashMap::new()),
+            groups: UnsafeCell::new(FastHashMap::new()),
+            alive_groups: UnsafeCell::new(Vec::new()),
+            players: UnsafeCell::new(FastHashMap::new()),
+            pending_spawns: UnsafeCell::new(Vec::new()),
+            pending_remove_players: UnsafeCell::new(Vec::new()),
+            death_queue: UnsafeCell::new(Vec::new()),
+            pending_revivals: UnsafeCell::new(Vec::new()),
             needs_sync: AtomicBool::new(false),
             player_id_counter: AtomicU64::new(0),
-            in_post_damage_player: None,
+            in_post_damage_player: UnsafeCell::new(None),
         }
     }
 
     pub fn new_arc() -> Arc<Self> { Arc::new(Self::new()) }
 
     pub fn clear(&mut self) {
-        self.skills.clear();
-        self.groups.clear();
-        self.alive_groups.clear();
-        self.players.clear();
-        self.pending_spawns.clear();
-        self.pending_remove_players.clear();
-        self.death_queue.clear();
-        self.pending_revivals.clear();
+        self.skills_mut().clear();
+        self.groups_mut().clear();
+        self.alive_groups_mut().clear();
+        self.players_mut().clear();
+        self.pending_spawns_mut().clear();
+        self.pending_remove_players_mut().clear();
+        self.death_queue_mut().clear();
+        self.pending_revivals_mut().clear();
         self.needs_sync.store(false, std::sync::atomic::Ordering::Relaxed);
-        self.in_post_damage_player = None;
+        self.set_in_post_damage_player(None);
+    }
+
+    #[inline]
+    fn skills_ref(&self) -> &FastHashMap<usize, Skill> { unsafe { &*self.skills.get() } }
+
+    #[inline]
+    fn skills_mut(&self) -> &mut FastHashMap<usize, Skill> { unsafe { &mut *self.skills.get() } }
+
+    #[inline]
+    fn groups_ref(&self) -> &FastHashMap<usize, Vec<PlrId>> { unsafe { &*self.groups.get() } }
+
+    #[inline]
+    fn groups_mut(&self) -> &mut FastHashMap<usize, Vec<PlrId>> { unsafe { &mut *self.groups.get() } }
+
+    #[inline]
+    fn alive_groups_ref(&self) -> &Vec<Vec<PlrId>> { unsafe { &*self.alive_groups.get() } }
+
+    #[inline]
+    fn alive_groups_mut(&self) -> &mut Vec<Vec<PlrId>> { unsafe { &mut *self.alive_groups.get() } }
+
+    #[inline]
+    fn players_ref(&self) -> &FastHashMap<PlrId, UnsafeCell<Player>> { unsafe { &*self.players.get() } }
+
+    #[inline]
+    fn players_mut(&self) -> &mut FastHashMap<PlrId, UnsafeCell<Player>> { unsafe { &mut *self.players.get() } }
+
+    #[inline]
+    fn pending_spawns_ref(&self) -> &Vec<PendingSpawn> { unsafe { &*self.pending_spawns.get() } }
+
+    #[inline]
+    fn pending_spawns_mut(&self) -> &mut Vec<PendingSpawn> { unsafe { &mut *self.pending_spawns.get() } }
+
+    #[inline]
+    fn pending_remove_players_ref(&self) -> &Vec<PlrId> { unsafe { &*self.pending_remove_players.get() } }
+
+    #[inline]
+    fn pending_remove_players_mut(&self) -> &mut Vec<PlrId> { unsafe { &mut *self.pending_remove_players.get() } }
+
+    #[inline]
+    fn death_queue_ref(&self) -> &Vec<PlrId> { unsafe { &*self.death_queue.get() } }
+
+    #[inline]
+    fn death_queue_mut(&self) -> &mut Vec<PlrId> { unsafe { &mut *self.death_queue.get() } }
+
+    #[inline]
+    fn pending_revivals_ref(&self) -> &Vec<PlrId> { unsafe { &*self.pending_revivals.get() } }
+
+    #[inline]
+    fn pending_revivals_mut(&self) -> &mut Vec<PlrId> { unsafe { &mut *self.pending_revivals.get() } }
+
+    #[inline]
+    fn in_post_damage_player_ref(&self) -> Option<PlrId> { unsafe { *self.in_post_damage_player.get() } }
+
+    #[inline]
+    fn set_in_post_damage_player(&self, value: Option<PlrId>) {
+        unsafe {
+            *self.in_post_damage_player.get() = value;
+        }
     }
 
     /// 获取当前玩家 ID 计数器的值（不增加）。
@@ -141,90 +205,70 @@ impl Storage {
 
     /// 标记某个使魔正在执行 post_damage 回调（对应 JS PlrSummon.aR 标志）。
     /// 在 SummonShareDamageSkill::post_damage 中设置，防止 owner 死亡时立即处理该使魔的死亡。
-    pub fn set_in_post_damage(&self, plr: PlrId) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).in_post_damage_player = Some(plr);
-        }
-    }
+    pub fn set_in_post_damage(&self, plr: PlrId) { self.set_in_post_damage_player(Some(plr)); }
 
     /// 清除 post_damage 标记。
-    pub fn clear_in_post_damage(&self) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).in_post_damage_player = None;
-        }
-    }
+    pub fn clear_in_post_damage(&self) { self.set_in_post_damage_player(None); }
 
     /// 检查某个玩家是否正在执行 post_damage 回调。
     #[inline]
-    pub fn is_in_post_damage(&self, plr: PlrId) -> bool { self.in_post_damage_player == Some(plr) }
+    pub fn is_in_post_damage(&self, plr: PlrId) -> bool { self.in_post_damage_player_ref() == Some(plr) }
 
-    pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) { self.groups.insert(id, plrs); }
+    pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) { self.groups_mut().insert(id, plrs); }
 
-    pub fn get_group(&self, id: usize) -> Option<&Vec<PlrId>> { self.groups.get(&id) }
+    pub fn get_group(&self, id: usize) -> Option<&Vec<PlrId>> { self.groups_ref().get(&id) }
 
-    pub fn alive_group_at(&self, team_idx: usize) -> Option<&Vec<PlrId>> { self.alive_groups.get(team_idx) }
+    pub fn alive_group_at(&self, team_idx: usize) -> Option<&Vec<PlrId>> { self.alive_groups_ref().get(team_idx) }
 
     pub fn group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
-        self.groups.values().find(|group| group.contains(&actor))
+        self.groups_ref().values().find(|group| group.contains(&actor))
     }
 
     pub fn group_index_of(&self, actor: PlrId) -> Option<usize> {
-        self.groups.iter().find(|(_, group)| group.contains(&actor)).map(|(idx, _)| *idx)
+        self.groups_ref().iter().find(|(_, group)| group.contains(&actor)).map(|(idx, _)| *idx)
     }
 
     pub fn alive_group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
-        self.alive_groups.iter().find(|group| group.contains(&actor))
+        self.alive_groups_ref().iter().find(|group| group.contains(&actor))
     }
 
     /// 通过 roster 找到 actor 所在队伍的索引，再返回该队伍的 alive 列表。
     /// 即使 actor 已死亡也能找到正确的 alive 列表（因为 roster 不移除死亡成员）。
     pub fn alive_group_at_team_of(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
-        let team_idx = self.groups.iter().find(|(_, group)| group.contains(&actor)).map(|(idx, _)| *idx)?;
-        self.alive_groups.get(team_idx)
+        let team_idx = self.groups_ref().iter().find(|(_, group)| group.contains(&actor)).map(|(idx, _)| *idx)?;
+        self.alive_groups_ref().get(team_idx)
     }
 
-    pub fn alive_group_count(&self) -> usize { self.alive_groups.iter().filter(|group| !group.is_empty()).count() }
+    pub fn alive_group_count(&self) -> usize { self.alive_groups_ref().iter().filter(|group| !group.is_empty()).count() }
 
-    pub fn all_alive_ids(&self) -> Vec<PlrId> { self.alive_groups.iter().flat_map(|group| group.iter().copied()).collect() }
+    pub fn all_alive_ids(&self) -> Vec<PlrId> { self.alive_groups_ref().iter().flat_map(|group| group.iter().copied()).collect() }
 
-    pub fn all_player_ids(&self) -> Vec<PlrId> { self.players.keys().copied().collect() }
+    pub fn all_player_ids(&self) -> Vec<PlrId> { self.players_ref().keys().copied().collect() }
 
     pub fn sync_groups(&self, groups: &[Vec<PlrId>]) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).groups.clear();
-            for (idx, group) in groups.iter().enumerate() {
-                (*mut_slf).groups.insert(idx, group.clone());
-            }
+        let storage_groups = self.groups_mut();
+        storage_groups.clear();
+        for (idx, group) in groups.iter().enumerate() {
+            storage_groups.insert(idx, group.clone());
         }
     }
 
-    pub fn sync_alive_groups(&self, groups: &[Vec<PlrId>]) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).alive_groups = groups.to_vec();
-        }
-    }
+    pub fn sync_alive_groups(&self, groups: &[Vec<PlrId>]) { *self.alive_groups_mut() = groups.to_vec(); }
 
     /// 接收 owned 数据直接存入，避免再次 clone。
-    pub fn sync_alive_groups_owned(&self, groups: Vec<Vec<PlrId>>) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).alive_groups = groups;
-        }
-    }
+    pub fn sync_alive_groups_owned(&self, groups: Vec<Vec<PlrId>>) { *self.alive_groups_mut() = groups; }
 
     /// 获取技能。
-    pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills.get(&id.0) }
+    pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills_ref().get(&id.0) }
 
     /// 获取玩家。
-    pub fn get_player(&self, ptr: &PlrId) -> Option<&Player> { self.players.get(ptr) }
+    pub fn get_player(&self, ptr: &PlrId) -> Option<&Player> {
+        self.players_ref().get(ptr).map(|player| unsafe { &*player.get() })
+    }
 
     pub fn get_player_or_pending(&self, ptr: &PlrId) -> Option<&Player> {
-        self.players.get(ptr).or_else(|| {
-            self.pending_spawns
+        self.players_ref().get(ptr).map(|player| unsafe { &*player.get() }).or_else(|| {
+            self.pending_spawns_ref()
                 .iter()
                 .find(|pending| pending.player.as_ptr() == *ptr)
                 .map(|pending| &pending.player)
@@ -232,41 +276,34 @@ impl Storage {
     }
 
     /// 获取玩家（不做 Option 检查）。
-    pub fn get_player_unchecked(&self, ptr: &PlrId) -> &Player { self.players.get(ptr).expect("cannot get player from storage") }
+    pub fn get_player_unchecked(&self, ptr: &PlrId) -> &Player {
+        self.players_ref()
+            .get(ptr)
+            .map(|player| unsafe { &*player.get() })
+            .expect("cannot get player from storage")
+    }
 
     /// 获取技能的可变引用（安全版本）。
-    pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills.get_mut(&id.0) }
+    pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills_mut().get_mut(&id.0) }
 
     /// 强行从 `&self` 获取 `&mut Skill`。
     /// 这个方法依赖 `unsafe`，需要调用方保证不会违反别名规则。
     #[allow(clippy::mut_from_ref)]
-    pub fn just_get_skill_mut(&self, id: SkillId) -> Option<&mut Skill> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).skills.get_mut(&id.0)
-        }
-    }
+    pub fn just_get_skill_mut(&self, id: SkillId) -> Option<&mut Skill> { self.skills_mut().get_mut(&id.0) }
 
     /// 强行从 `&self` 获取 `&mut Player`。
     /// 这个方法依赖 `unsafe`，需要调用方保证不会违反别名规则。
     #[allow(clippy::mut_from_ref)]
     pub fn just_get_player_mut(&self, ptr: PlrId) -> Option<&mut Player> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).players.get_mut(&ptr)
-        }
+        self.players_ref().get(&ptr).map(|player| unsafe { &mut *player.get() })
     }
 
     #[allow(clippy::mut_from_ref)]
     pub fn just_get_pending_spawn_player_mut(&self, ptr: PlrId) -> Option<&mut Player> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf)
-                .pending_spawns
-                .iter_mut()
-                .find(|pending| pending.player.as_ptr() == ptr)
-                .map(|pending| &mut pending.player)
-        }
+        self.pending_spawns_mut()
+            .iter_mut()
+            .find(|pending| pending.player.as_ptr() == ptr)
+            .map(|pending| &mut pending.player)
     }
 
     #[allow(clippy::mut_from_ref)]
@@ -277,55 +314,41 @@ impl Storage {
     /// 插入技能，并返回技能 ID。
     pub fn insert_skill(&mut self, skill: Skill) -> SkillId {
         let id = SkillId::new_from_skill(&skill);
-        self.skills.insert(id.0, skill);
+        self.skills_mut().insert(id.0, skill);
         id
     }
 
     pub fn just_insert_skill(&self, skill: Skill) -> SkillId {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            let id = SkillId::new_from_skill(&skill);
-            (*mut_slf).skills.insert(id.0, skill);
-            id
-        }
+        let id = SkillId::new_from_skill(&skill);
+        self.skills_mut().insert(id.0, skill);
+        id
     }
 
     pub fn insert_player(&mut self, player: Player) -> PlrId {
         let id: PlrId = player.id().try_into().expect("player id overflow usize");
-        self.players.insert(id, player);
+        self.players_mut().insert(id, UnsafeCell::new(player));
         id
     }
 
     pub fn just_insert_player(&self, player: Player) -> PlrId {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            let id: PlrId = player.id().try_into().expect("player id overflow usize");
-            (*mut_slf).players.insert(id, player);
-            id
-        }
+        let id: PlrId = player.id().try_into().expect("player id overflow usize");
+        self.players_mut().insert(id, UnsafeCell::new(player));
+        id
     }
 
     pub fn queue_spawn(&self, owner: PlrId, player: Player) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).pending_spawns.push(PendingSpawn { owner, player });
-        }
+        self.pending_spawns_mut().push(PendingSpawn { owner, player });
         self.mark_dirty();
     }
 
-    pub fn take_pending_spawns(&self) -> Vec<PendingSpawn> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            std::mem::take(&mut (*mut_slf).pending_spawns)
-        }
-    }
+    pub fn take_pending_spawns(&self) -> Vec<PendingSpawn> { std::mem::take(self.pending_spawns_mut()) }
 
     pub fn pending_spawn_count_for_owner(&self, owner: PlrId) -> usize {
-        self.pending_spawns.iter().filter(|pending| pending.owner == owner).count()
+        self.pending_spawns_ref().iter().filter(|pending| pending.owner == owner).count()
     }
 
     pub fn pending_spawn_ids_for_owner(&self, owner: PlrId) -> Vec<PlrId> {
-        self.pending_spawns
+        self.pending_spawns_ref()
             .iter()
             .filter(|pending| pending.owner == owner)
             .map(|pending| pending.player.as_ptr())
@@ -334,7 +357,7 @@ impl Storage {
 
     /// 返回所有 owner 在指定队员集合内的 pending spawn 的 PlrId。
     pub fn pending_spawn_ids_for_group(&self, group_members: &[PlrId]) -> Vec<PlrId> {
-        self.pending_spawns
+        self.pending_spawns_ref()
             .iter()
             .filter(|pending| group_members.contains(&pending.owner))
             .map(|pending| pending.player.as_ptr())
@@ -342,86 +365,52 @@ impl Storage {
     }
 
     pub fn get_pending_spawn_player(&self, ptr: PlrId) -> Option<&Player> {
-        self.pending_spawns
+        self.pending_spawns_ref()
             .iter()
             .find(|pending| pending.player.as_ptr() == ptr)
             .map(|pending| &pending.player)
     }
 
     pub fn queue_remove_player(&self, ptr: PlrId) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            if !(*mut_slf).pending_remove_players.contains(&ptr) {
-                (*mut_slf).pending_remove_players.push(ptr);
-            }
+        if !self.pending_remove_players_ref().contains(&ptr) {
+            self.pending_remove_players_mut().push(ptr);
         }
         self.mark_dirty();
     }
 
-    pub fn take_pending_remove_players(&self) -> Vec<PlrId> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            std::mem::take(&mut (*mut_slf).pending_remove_players)
-        }
-    }
+    pub fn take_pending_remove_players(&self) -> Vec<PlrId> { std::mem::take(self.pending_remove_players_mut()) }
 
     /// 记录一次死亡（按发生顺序），对齐 Dart 的即时死亡处理顺序。
     pub fn record_death(&self, ptr: PlrId) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            if !(*mut_slf).death_queue.contains(&ptr) {
-                (*mut_slf).death_queue.push(ptr);
-            }
+        if !self.death_queue_ref().contains(&ptr) {
+            self.death_queue_mut().push(ptr);
         }
         self.mark_dirty();
     }
 
     /// 取出并清空死亡队列。
-    pub fn take_death_queue(&self) -> Vec<PlrId> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            std::mem::take(&mut (*mut_slf).death_queue)
-        }
-    }
+    pub fn take_death_queue(&self) -> Vec<PlrId> { std::mem::take(self.death_queue_mut()) }
 
     /// 技能/触发器复活已有玩家时，注册到复活队列，待 tick 同步回 WorldState。
     pub fn queue_revival(&self, ptr: PlrId) {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            if !(*mut_slf).pending_revivals.contains(&ptr) {
-                (*mut_slf).pending_revivals.push(ptr);
-            }
+        if !self.pending_revivals_ref().contains(&ptr) {
+            self.pending_revivals_mut().push(ptr);
         }
         self.mark_dirty();
     }
 
     /// 取出并清空复活队列。
-    pub fn take_pending_revivals(&self) -> Vec<PlrId> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            std::mem::take(&mut (*mut_slf).pending_revivals)
-        }
-    }
+    pub fn take_pending_revivals(&self) -> Vec<PlrId> { std::mem::take(self.pending_revivals_mut()) }
 
     /// 当前待处理的召唤数量（用于快速路径判断）。
-    pub fn pending_spawn_count(&self) -> usize { self.pending_spawns.len() }
+    pub fn pending_spawn_count(&self) -> usize { self.pending_spawns_ref().len() }
 
     /// 删除技能（安全版本）。
-    pub fn remove_skill(&mut self, id: SkillId) -> Option<Skill> { self.skills.remove(&id.0) }
+    pub fn remove_skill(&mut self, id: SkillId) -> Option<Skill> { self.skills_mut().remove(&id.0) }
 
-    pub fn just_remove_skill(&self, id: SkillId) -> Option<Skill> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).skills.remove(&id.0)
-        }
-    }
+    pub fn just_remove_skill(&self, id: SkillId) -> Option<Skill> { self.skills_mut().remove(&id.0) }
 
-    pub fn just_remove_player(&self, ptr: PlrId) -> Option<Player> {
-        unsafe {
-            let mut_slf = self as *const Storage as *mut Storage;
-            (*mut_slf).players.remove(&ptr)
-        }
-    }
+    pub fn just_remove_player(&self, ptr: PlrId) -> Option<Player> { self.players_mut().remove(&ptr).map(UnsafeCell::into_inner) }
 }
 
 impl std::default::Default for Storage {

@@ -521,6 +521,15 @@ impl Skill {
 
     pub fn set_level(&mut self, level: u32) { self.level = level; }
 
+    /// 临时取出技能实现，留下 NoneSkill 占位。
+    /// 配合 `put_skill_type` 使用，用于在释放 &mut Player 后安全地调用回调。
+    pub fn take_skill_type(&mut self) -> Box<dyn SkillTrait> {
+        std::mem::replace(&mut self.skill_type, Box::new(skl::none::NoneSkill))
+    }
+
+    /// 将之前取出的技能实现放回。
+    pub fn put_skill_type(&mut self, skill_type: Box<dyn SkillTrait>) { self.skill_type = skill_type; }
+
     // ==========
     // 以下是技能 call pre/post 之类的东西
     // ==========

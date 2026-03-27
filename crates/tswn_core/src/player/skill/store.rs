@@ -158,11 +158,7 @@ impl SkillStorage {
                 }
                 let priority = self.store.get(&key).map(|s| s.post_damage_priority()).unwrap_or(0);
                 let insert_at = self.post_damage.iter().position(|existing| {
-                    self.store
-                        .get(existing)
-                        .map(|skill| skill.post_damage_priority())
-                        .unwrap_or(0)
-                        > priority
+                    self.store.get(existing).map(|skill| skill.post_damage_priority()).unwrap_or(0) > priority
                 });
                 if let Some(idx) = insert_at {
                     self.post_damage.insert(idx, key);
@@ -429,25 +425,55 @@ impl SkillStorage {
     }
 
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
-        let debug_this = debug_action
-            .as_deref()
-            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
-            .unwrap_or(false);
-        for idx in 0..self.post_kill.len() {
-            let skill_key = self.post_kill[idx];
-            let rc4_before = (args.1.i, args.1.j);
-            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
-            let triggered = skill.kill(target, (args.0, args.1, args.2, args.3));
-            if debug_this {
-                eprintln!(
-                    "[post_kill_skill] key={} triggered={} rc4 {}:{} -> {}:{}",
-                    skill_key, triggered, rc4_before.0, rc4_before.1, args.1.i, args.1.j
-                );
-            }
-            if triggered {
-                break;
-            }
+        let keys = self.post_kill.clone();
+        run_post_kill(keys, args.0, target, args.1, args.2, args.3);
+    }
+}
+
+/// 执行 post_kill 回调。
+///
+/// 为避免 `&mut Player` 别名 UB，每次回调前先从 storage 中获取并临时取出
+/// 技能实现（`skill_type`），释放 player 引用后再调用回调。回调结束后将技能
+/// 实现放回。这确保 kill 回调（如吞噬）中通过 `just_get_player_mut` 获取的
+/// `&mut Player` 不会与此处的引用重叠。
+pub fn run_post_kill(
+    keys: Vec<usize>,
+    caster: PlrId,
+    target: PlrId,
+    randomer: &mut crate::rc4::RC4,
+    updates: &mut crate::engine::update::RunUpdates,
+    storage: &std::sync::Arc<crate::engine::storage::Storage>,
+) {
+    let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+    let debug_this = debug_action
+        .as_deref()
+        .map(|name| storage.get_player(&caster).map(|p| p.id_name() == name).unwrap_or(false))
+        .unwrap_or(false);
+    for skill_key in keys {
+        let rc4_before = (randomer.i, randomer.j);
+        // 取出技能实现和等级，释放 killer 的 &mut Player
+        let (mut skill_type, level) = {
+            let killer = storage.just_get_player_mut(caster).expect("killer not found in storage");
+            let skill = killer.skills.store.get_mut(&skill_key).expect("skill not found in store");
+            (skill.take_skill_type(), skill.level())
+            // killer 引用在此处结束
+        };
+        // 此时无 &mut Player 引用存活，回调中 just_get_player_mut 安全
+        let triggered = skill_type.kill_with_level(level, target, (caster, randomer, updates, storage));
+        // 将技能实现放回
+        {
+            let killer = storage.just_get_player_mut(caster).expect("killer not found in storage");
+            let skill = killer.skills.store.get_mut(&skill_key).expect("skill not found in store");
+            skill.put_skill_type(skill_type);
+        }
+        if debug_this {
+            eprintln!(
+                "[post_kill_skill] key={} triggered={} rc4 {}:{} -> {}:{}",
+                skill_key, triggered, rc4_before.0, rc4_before.1, randomer.i, randomer.j
+            );
+        }
+        if triggered {
+            break;
         }
     }
 }

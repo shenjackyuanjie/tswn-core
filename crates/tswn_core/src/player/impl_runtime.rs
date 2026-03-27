@@ -84,6 +84,20 @@ impl Player {
         let smart = self.status.wisdom > smart_roll;
         let ptr = self.as_ptr();
         let pre_action_outcome = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
+        #[cfg(not(feature = "no_debug"))]
+        let debug_action_this = crate::debug::debug_action_matches(&self.id_name());
+        #[cfg(not(feature = "no_debug"))]
+        if debug_action_this {
+            eprintln!(
+                "[action] actor={} smart_roll={} wisdom={} smart={} forced_skill={:?} clear_forced={}",
+                self.id_name(),
+                smart_roll,
+                self.status.wisdom,
+                smart,
+                pre_action_outcome.forced_skill,
+                pre_action_outcome.clear_forced_action,
+            );
+        }
         if self.status.frozed() {
             return;
         }
@@ -123,6 +137,17 @@ impl Player {
                         let skill_keys = self.skills.skill.clone();
                         for key in skill_keys {
                             if !self.skills.action_enabled(key) {
+                                #[cfg(not(feature = "no_debug"))]
+                                if debug_action_this {
+                                    let skill = self.skills.skill_by_id(key);
+                                    eprintln!(
+                                        "[action_skill] actor={} key={} type={} level={} enabled=false",
+                                        self.id_name(),
+                                        key,
+                                        skill.debug_skill_type_name(),
+                                        skill.level(),
+                                    );
+                                }
                                 continue;
                             }
                             let maybe_targets = {
@@ -130,11 +155,34 @@ impl Player {
                                 let action_ok = skill.has_action_impl();
                                 let level_ok = skill.level() > 0;
                                 let prob_ok = level_ok && action_ok && skill.prob(smart, (ptr, randomer, updates, storage));
+                                #[cfg(not(feature = "no_debug"))]
+                                if debug_action_this {
+                                    eprintln!(
+                                        "[action_skill] actor={} key={} type={} level={} action_ok={} level_ok={} prob_ok={}",
+                                        self.id_name(),
+                                        key,
+                                        skill.debug_skill_type_name(),
+                                        skill.level(),
+                                        action_ok,
+                                        level_ok,
+                                        prob_ok,
+                                    );
+                                }
                                 if !(level_ok && action_ok && prob_ok) {
                                     None
                                 } else {
                                     let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
                                     let allow_empty = skill.target_domain() == SkillTargetDomain::SelfOnly;
+                                    #[cfg(not(feature = "no_debug"))]
+                                    if debug_action_this {
+                                        eprintln!(
+                                            "[action_skill_targets] actor={} key={} allow_empty={} selected={:?}",
+                                            self.id_name(),
+                                            key,
+                                            allow_empty,
+                                            selected,
+                                        );
+                                    }
                                     if selected.is_empty() && !allow_empty {
                                         None
                                     } else {
@@ -168,6 +216,18 @@ impl Player {
             }
 
             if let Some(skill_key) = selected_skill_key {
+                #[cfg(not(feature = "no_debug"))]
+                if debug_action_this {
+                    let skill = self.skills.skill_by_id(skill_key);
+                    eprintln!(
+                        "[action_choice] actor={} selected_skill={} type={} targets={:?} forced_pre_action={}",
+                        self.id_name(),
+                        skill_key,
+                        skill.debug_skill_type_name(),
+                        selected_targets,
+                        selected_from_forced_pre_action,
+                    );
+                }
                 let allow_empty = {
                     let skill = self.skills.skill_by_id(skill_key);
                     skill.target_domain() == SkillTargetDomain::SelfOnly
@@ -181,6 +241,10 @@ impl Player {
         }
 
         if !acted {
+            #[cfg(not(feature = "no_debug"))]
+            if debug_action_this {
+                eprintln!("[action_choice] actor={} fallback=default_attack", self.id_name());
+            }
             self.default_attack(smart, randomer, updates, storage, targets);
         }
 
@@ -759,8 +823,16 @@ impl Player {
             let raw = [temp[0], temp[1], temp[2]];
             temp.sort_unstable();
             if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
-                eprintln!("[GET_AT] {} atk={} r127=[{},{},{}] sorted5={:?} median={}",
-                    self.id_name(), atk, raw[0], raw[1], raw[2], temp, temp[2]);
+                eprintln!(
+                    "[GET_AT] {} atk={} r127=[{},{},{}] sorted5={:?} median={}",
+                    self.id_name(),
+                    atk,
+                    raw[0],
+                    raw[1],
+                    raw[2],
+                    temp,
+                    temp[2]
+                );
             }
             temp[2] as f64
         };
@@ -769,8 +841,15 @@ impl Player {
             let raw = [temp[0], temp[1]];
             temp.sort_unstable();
             if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
-                eprintln!("[GET_AT]   r63=[{},{}] sorted3={:?} median={} boost={:.6} result={:.4}",
-                    raw[0], raw[1], temp, temp[1], self.status.at_boost, a * temp[1] as f64 * self.status.at_boost);
+                eprintln!(
+                    "[GET_AT]   r63=[{},{}] sorted3={:?} median={} boost={:.6} result={:.4}",
+                    raw[0],
+                    raw[1],
+                    temp,
+                    temp[1],
+                    self.status.at_boost,
+                    a * temp[1] as f64 * self.status.at_boost
+                );
             }
             temp[1] as f64
         };
@@ -893,8 +972,14 @@ impl Player {
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
         if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
-            eprintln!("[DEFNED] target={} dfp={} atp={:.4} raw_dmg={} is_mag={}",
-                self.id_name(), dfp, atp, dmg, is_mag);
+            eprintln!(
+                "[DEFNED] target={} dfp={} atp={:.4} raw_dmg={} is_mag={}",
+                self.id_name(),
+                dfp,
+                atp,
+                dmg,
+                is_mag
+            );
         }
         dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
         self.damage(dmg, caster, on_damage, randomer, updates, storage)
@@ -997,11 +1082,15 @@ impl Player {
             if !allow_dead_reentry {
                 return;
             }
-            if caster != self.as_ptr()
-                && let Some(killer) = storage.just_get_player_mut(caster)
-                && killer.get_status().hp > 0
-            {
-                killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
+            if caster != self.as_ptr() {
+                let kill_keys = storage
+                    .get_player(&caster)
+                    .filter(|k| k.get_status().hp > 0)
+                    .map(|k| k.skills.post_kill.clone());
+                if let Some(keys) = kill_keys {
+                    let target_id = self.as_ptr();
+                    crate::player::skill::store::run_post_kill(keys, caster, target_id, randomer, updates, storage);
+                }
             }
             return;
         }
@@ -1073,12 +1162,18 @@ impl Player {
                 .into_iter()
                 .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
         });
-        if has_enemy_alive.unwrap_or(true)
-            && caster != self.as_ptr()
-            && let Some(killer) = storage.just_get_player_mut(caster)
-            && killer.get_status().hp > 0
-        {
-            killer.skills.kill(self.as_ptr(), (caster, randomer, updates, storage));
+        if has_enemy_alive.unwrap_or(true) && caster != self.as_ptr() {
+            // 避免在 kill 回调（如吞噬）中产生 &mut Player 别名：
+            // 先获取 post_kill 键列表并检查 HP，然后释放 killer 引用，
+            // 再逐个通过 storage 重新获取 &mut 来调用回调。
+            let kill_keys = storage
+                .get_player(&caster)
+                .filter(|k| k.get_status().hp > 0)
+                .map(|k| k.skills.post_kill.clone());
+            if let Some(keys) = kill_keys {
+                let target_id = self.as_ptr();
+                crate::player::skill::store::run_post_kill(keys, caster, target_id, randomer, updates, storage);
+            }
         }
     }
 }

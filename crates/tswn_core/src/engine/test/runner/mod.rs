@@ -387,17 +387,15 @@ fn charm_state_prefers_effective_team_idx_for_target_group() {
     let third = runner.world.groups[2][0];
     let third_ally = runner.world.groups[2][1];
 
-    runner
-        .storage
-        .just_get_player_mut(actor)
-        .expect("cannot get actor")
-        .set_state(crate::player::skill::act::charm::CharmState {
+    runner.storage.just_get_player_mut(actor).expect("cannot get actor").set_state(
+        crate::player::skill::act::charm::CharmState {
             group_id: enemy,
             effective_team_idx: Some(2),
             target: Some(actor),
             on_post_action: None,
             step: 2,
-        });
+        },
+    );
 
     let targets = tick::select_targets(actor, &runner.world, &runner.storage);
     assert!(!targets.ally_alive.contains(&actor));

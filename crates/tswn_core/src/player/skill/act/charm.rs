@@ -84,9 +84,7 @@ impl SkillTrait for CharmSkill {
         let caster_effective_team_idx = {
             let owner = args.3.get_player(&args.0).expect("cannot get charm owner from storage");
             if let Some(caster_charm) = owner.get_state::<CharmState>() {
-                caster_charm
-                    .effective_team_idx
-                    .or_else(|| args.3.group_index_of(caster_charm.group_id))
+                caster_charm.effective_team_idx.or_else(|| args.3.group_index_of(caster_charm.group_id))
             } else {
                 args.3.group_index_of(args.0)
             }

@@ -194,7 +194,11 @@ impl PlayerStateStore {
         F: FnMut(&dyn StateTrait) -> i32,
     {
         let mut ordered: PriorityPairs = self.states.iter().map(|(tag, state)| (*tag, priority(state.as_ref()))).collect();
-        ordered.sort_unstable_by_key(|(_, p)| *p);
+        // 相同 priority 也要按稳定次序执行；否则会继承 FastHashMap 的迭代顺序，
+        // 导致 debug/release 在同优先级状态链上走出不同战斗分支。
+        ordered.sort_unstable_by(|(tag_a, priority_a), (tag_b, priority_b)| {
+            priority_a.cmp(priority_b).then_with(|| tag_a.cmp(tag_b))
+        });
         ordered.into_iter().map(|(tag, _)| tag).collect()
     }
 
@@ -310,16 +314,18 @@ impl PlayerStateStore {
         for (tag, state) in self.states.iter() {
             if state.meta_type() > 0 {
                 if let Some(msg) = state.cancel_message(alive) {
-                    messages.push((state.clear_positive_priority(), msg));
+                    messages.push((state.clear_positive_priority(), *tag, msg));
                 }
                 to_remove.push(*tag);
             }
         }
-        messages.sort_unstable_by_key(|(priority, _)| *priority);
+        messages.sort_unstable_by(|(priority_a, tag_a, _), (priority_b, tag_b, _)| {
+            priority_a.cmp(priority_b).then_with(|| tag_a.cmp(tag_b))
+        });
         for tag in to_remove {
             self.states.remove(&tag);
         }
-        messages
+        messages.into_iter().map(|(priority, _, message)| (priority, message)).collect()
     }
 
     pub fn clear_positive_states_with_messages(&mut self, alive: bool) -> Vec<&'static str> {
@@ -521,5 +527,39 @@ impl PlayerStateStore {
             should_remove |= state.on_linked_owner_die(owner, self_id, updates);
         }
         should_remove
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    struct AlphaState;
+
+    impl StateTrait for AlphaState {
+        fn pre_action_priority(&self) -> i32 { 1000 }
+
+        fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
+    }
+
+    #[derive(Debug, Clone)]
+    struct BetaState;
+
+    impl StateTrait for BetaState {
+        fn pre_action_priority(&self) -> i32 { 1000 }
+
+        fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
+    }
+
+    #[test]
+    fn ordered_tags_are_stable_when_priorities_match() {
+        let mut store = PlayerStateStore::default();
+        store.set(BetaState);
+        store.set(AlphaState);
+
+        let ordered = store.ordered_tags_by(|state| state.pre_action_priority());
+
+        assert_eq!(ordered.into_vec(), vec![state_tag::<AlphaState>(), state_tag::<BetaState>()]);
     }
 }

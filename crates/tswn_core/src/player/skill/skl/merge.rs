@@ -29,7 +29,8 @@ impl SkillTrait for MergeSkill {
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
-        if args.1.r63() >= level {
+        let r63_val = args.1.r63();
+        if r63_val >= level {
             return false;
         }
         if args.3.get_player(&args.0).is_none() {

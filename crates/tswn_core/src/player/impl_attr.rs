@@ -143,15 +143,6 @@ impl Player {
 
         // post_upgrade: 加八围 + boost skill (JS: weapon.cs)
         if let Some(ref ws) = self.weapon_state {
-            if std::env::var_os("TSWN_DEBUG_STATS").is_some() {
-                eprintln!(
-                    "[WEAPON] {}: attr_bonus={:?} skill_idx={} skill_factor={}",
-                    self.id_name(),
-                    ws.attr_bonus,
-                    ws.skill_index,
-                    ws.skill_factor
-                );
-            }
             let ws = ws.clone();
             weapons::Weapon::post_upgrade(&ws, self);
         }
@@ -200,23 +191,6 @@ impl Player {
         self.status.hp = self.status.max_hp;
         // Dart: mp = itl ~/ 2
         self.status.mp = self.status.wisdom >> 1;
-        if std::env::var_os("TSWN_DEBUG_STATS").is_some() {
-            eprintln!(
-                "[STATS] {}: atk={} def={} spd={} agl={} mag={} mdf={} wis={} hp={} name_factor={} attr={:?} name_base[0..10]={:?}",
-                self.id_name(),
-                self.status.attack,
-                self.status.defense,
-                self.status.speed,
-                self.status.agility,
-                self.status.magic,
-                self.status.resistance,
-                self.status.wisdom,
-                self.status.max_hp,
-                self.name_factor,
-                self.attr,
-                &self.name_base[0..10]
-            );
-        }
     }
 
     /// 更新状态

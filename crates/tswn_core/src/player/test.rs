@@ -1132,23 +1132,25 @@ fn clear_positive_runtime_orders_messages_by_meta_key() {
 
     {
         let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
-        owner_mut.skills.skill_by_id_mut(0).act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut
+            .skills
+            .skill_by_id_mut(0)
+            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
         owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
-        owner_mut.skills.skill_by_id_mut(1).act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut
+            .skills
+            .skill_by_id_mut(1)
+            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
     }
 
     let cleared = {
         let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
-        owner_mut.skills.clear_positive_runtime_with_order((owner_id, &mut randomer, &mut updates, &storage))
+        owner_mut
+            .skills
+            .clear_positive_runtime_with_order((owner_id, &mut randomer, &mut updates, &storage))
     };
 
-    assert_eq!(
-        cleared,
-        vec![
-            (100, "[1]的[聚气]被打消了"),
-            (200, "[1]的[蓄力]被中止了"),
-        ]
-    );
+    assert_eq!(cleared, vec![(100, "[1]的[聚气]被打消了"), (200, "[1]的[蓄力]被中止了"),]);
 }
 
 #[test]

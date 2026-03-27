@@ -279,8 +279,16 @@ impl RC4 {
                 self.byte_count += 1;
                 let loc = std::panic::Location::caller();
                 let file = loc.file();
-                let short = file.rsplit_once(['\\', '/']).map(|(_,f)| f).unwrap_or(file);
-                eprintln!("[rc4] n={} i={} j={} val={} at {}:{}", self.byte_count, self.i, self.j, val, short, loc.line());
+                let short = file.rsplit_once(['\\', '/']).map(|(_, f)| f).unwrap_or(file);
+                eprintln!(
+                    "[rc4] n={} i={} j={} val={} at {}:{}",
+                    self.byte_count,
+                    self.i,
+                    self.j,
+                    val,
+                    short,
+                    loc.line()
+                );
             }
         }
         val
