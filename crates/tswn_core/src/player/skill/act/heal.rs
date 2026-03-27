@@ -76,7 +76,7 @@ impl SkillTrait for HealSkill {
             return;
         }
         let heal = ((atp / 60.0).ceil() as i32).clamp(1, missing_hp);
-        if std::env::var_os("TSWN_DEBUG_HEAL").is_some() {
+        if crate::debug::debug_heal() {
             let owner = args.3.get_player(&args.0).expect("cannot get heal owner from storage");
             let target = args.3.get_player(&target_id).expect("cannot get heal target from storage");
             eprintln!(

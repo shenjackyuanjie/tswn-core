@@ -34,7 +34,7 @@ impl SkillTrait for DefendSkill {
         _on_damage: &crate::player::OnDamageFunc,
         args: SkillArgs,
     ) -> i32 {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))

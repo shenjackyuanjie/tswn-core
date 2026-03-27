@@ -68,7 +68,7 @@ impl StateTrait for ProtectState {
         updates: &mut RunUpdates,
         storage: &Arc<crate::engine::storage::Storage>,
     ) -> bool {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| storage.get_player(&owner).map(|p| p.id_name() == name).unwrap_or(false))
@@ -188,7 +188,7 @@ impl ProtectSkill {
     pub fn new() -> Self { Self::default() }
 
     fn pick_target(&mut self, _level: u32, args: SkillArgs) -> Option<PlrId> {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
@@ -417,6 +417,7 @@ impl SkillTrait for ProtectSkill {
 
     fn post_action_with_level(&mut self, level: u32, args: SkillArgs) {
         let next_target = self.pick_target(level, (args.0, args.1, args.2, args.3));
+        #[cfg(not(feature = "no_debug"))]
         if let Ok(probe_owner) = std::env::var("TSWN_PROBE_PROTECT") {
             let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_default();
             if owner_name == probe_owner {
@@ -428,7 +429,7 @@ impl SkillTrait for ProtectSkill {
                 );
             }
         }
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))

@@ -24,7 +24,7 @@ impl SkillTrait for MergeSkill {
     fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.kill_with_level(32, target, args) }
 
     fn kill_with_level(&mut self, level: u32, target: PlrId, args: SkillArgs) -> bool {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))

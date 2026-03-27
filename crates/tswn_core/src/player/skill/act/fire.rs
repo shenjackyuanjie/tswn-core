@@ -53,7 +53,7 @@ impl SkillTrait for FireSkill {
             .unwrap_or(0.0);
         let get_at_val = args.3.get_player(&args.0).expect("cannot get owner from storage").get_at(true, args.1);
         let atp = get_at_val * (1.5 + fire_mag);
-        if std::env::var_os("TSWN_DEBUG_FIRE").is_some() {
+        if crate::debug::debug_fire() {
             let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_default();
             let target_name = args.3.get_player(&target_id).map(|p| p.id_name()).unwrap_or_default();
             eprintln!(

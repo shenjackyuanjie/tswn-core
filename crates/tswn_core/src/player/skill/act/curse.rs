@@ -136,7 +136,7 @@ impl StateTrait for CurseState {
         updates: &mut RunUpdates,
         _storage: &std::sync::Arc<crate::engine::storage::Storage>,
     ) -> bool {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action.as_deref().map(|name| format!("#{owner}") == name).unwrap_or(false);
         if *dmg <= 0 {
             return false;

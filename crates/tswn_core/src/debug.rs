@@ -20,6 +20,7 @@
 //! | `TSWN_DEBUG_HEAL` | 调试治疗技能 |
 //! | `TSWN_DEBUG_UPGRADE` | 调试升级技能 |
 //! | `TSWN_DEBUG_REFLECT` | 调试反射技能 |
+//! | `TSWN_DEBUG_DAMAGE` | 调试伤害计算 |
 //! | `TSWN_TRACE_RC4` | 追踪 RC4 随机数状态 |
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,6 +39,7 @@ static DEBUG_FIRE: AtomicBool = AtomicBool::new(false);
 static DEBUG_HEAL: AtomicBool = AtomicBool::new(false);
 static DEBUG_UPGRADE: AtomicBool = AtomicBool::new(false);
 static DEBUG_REFLECT: AtomicBool = AtomicBool::new(false);
+static DEBUG_DAMAGE: AtomicBool = AtomicBool::new(false);
 static TRACE_RC4: AtomicBool = AtomicBool::new(false);
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
@@ -61,6 +63,7 @@ fn init_once() {
     DEBUG_HEAL.store(std::env::var_os("TSWN_DEBUG_HEAL").is_some(), Ordering::Relaxed);
     DEBUG_UPGRADE.store(std::env::var("TSWN_DEBUG_UPGRADE").is_ok(), Ordering::Relaxed);
     DEBUG_REFLECT.store(std::env::var_os("TSWN_DEBUG_REFLECT").is_some(), Ordering::Relaxed);
+    DEBUG_DAMAGE.store(std::env::var_os("TSWN_DEBUG_DAMAGE").is_some(), Ordering::Relaxed);
     TRACE_RC4.store(std::env::var_os("TSWN_TRACE_RC4").is_some(), Ordering::Relaxed);
 }
 
@@ -168,6 +171,12 @@ pub fn debug_upgrade() -> Option<String> {
 pub fn debug_reflect() -> bool {
     init_once();
     DEBUG_REFLECT.load(Ordering::Relaxed)
+}
+
+#[inline]
+pub fn debug_damage() -> bool {
+    init_once();
+    DEBUG_DAMAGE.load(Ordering::Relaxed)
 }
 
 #[inline]

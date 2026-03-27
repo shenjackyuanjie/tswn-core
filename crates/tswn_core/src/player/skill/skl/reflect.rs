@@ -29,7 +29,7 @@ impl SkillTrait for ReflectSkill {
         on_damage: &OnDamageFunc,
         args: SkillArgs,
     ) -> f64 {
-        let debug_reflect = std::env::var("TSWN_DEBUG_REFLECT").is_ok();
+        let debug_reflect = crate::debug::debug_reflect();
         // JS: if (caster.dead) return atp; dead 仅由 hp<=0 判定。
         if args.3.get_player(&caster).map(|p| p.get_status().hp <= 0).unwrap_or(true) {
             return atp;

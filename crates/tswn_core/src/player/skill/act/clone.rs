@@ -111,7 +111,7 @@ impl SkillTrait for CloneSkill {
             cloned.skills.disable_action_key(23);
         }
         cloned.skills.update_proc();
-        if std::env::var_os("TSWN_DEBUG_STATS").is_some() {
+        if crate::debug::debug_stats() {
             eprintln!(
                 "[CLONE_FINAL] owner={} owner_attr={:?} owner_hp={} owner_mp={} owner_atk={} owner_def={} owner_spd={} owner_agl={} owner_mag={} owner_mdf={} owner_wis={} | clone_base={} clone_attr={:?} clone_hp={} clone_mp={} clone_atk={} clone_def={} clone_spd={} clone_agl={} clone_mag={} clone_mdf={} clone_wis={} clone_move={} clone_clone_lvl={}",
                 owner_snapshot.id_name(),

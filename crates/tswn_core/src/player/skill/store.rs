@@ -293,7 +293,7 @@ impl SkillStorage {
     }
 
     pub fn post_action(&mut self, args: SkillArgs) {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
@@ -323,7 +323,7 @@ impl SkillStorage {
     }
 
     pub fn pre_defend(&mut self, mut atp: f64, is_mag: bool, caster: PlrId, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
@@ -362,7 +362,7 @@ impl SkillStorage {
     }
 
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
-        let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+        let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
@@ -402,7 +402,7 @@ impl SkillStorage {
     }
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) {
-        let debug_action = std::env::var("TSWN_DEBUG_DIE").ok();
+        let debug_action = crate::debug::debug_die();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
@@ -444,7 +444,7 @@ pub fn run_post_kill(
     updates: &mut crate::engine::update::RunUpdates,
     storage: &std::sync::Arc<crate::engine::storage::Storage>,
 ) {
-    let debug_action = std::env::var("TSWN_DEBUG_ACTION").ok();
+    let debug_action = crate::debug::debug_action();
     let debug_this = debug_action
         .as_deref()
         .map(|name| storage.get_player(&caster).map(|p| p.id_name() == name).unwrap_or(false))

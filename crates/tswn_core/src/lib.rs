@@ -35,6 +35,8 @@ pub mod debug {
     #[inline(always)]
     pub const fn debug_reflect() -> bool { false }
     #[inline(always)]
+    pub const fn debug_damage() -> bool { false }
+    #[inline(always)]
     pub const fn trace_rc4() -> bool { false }
 
     macro_rules! debug_println {

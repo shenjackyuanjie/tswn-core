@@ -35,8 +35,7 @@ impl SkillTrait for ReviveSkill {
             return false;
         };
         let valid = !target_plr.alive() && !is_combat_minion(target_plr) && !target_plr.has_state::<CorpseState>();
-        let debug_this = std::env::var("TSWN_DEBUG_ACTION")
-            .ok()
+        let debug_this = crate::debug::debug_action()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
         if debug_this {

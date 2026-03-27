@@ -822,7 +822,7 @@ impl Player {
             ];
             let raw = [temp[0], temp[1], temp[2]];
             temp.sort_unstable();
-            if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
+            if crate::debug::debug_damage() {
                 eprintln!(
                     "[GET_AT] {} atk={} r127=[{},{},{}] sorted5={:?} median={}",
                     self.id_name(),
@@ -840,7 +840,7 @@ impl Player {
             let mut temp = [randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64];
             let raw = [temp[0], temp[1]];
             temp.sort_unstable();
-            if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
+            if crate::debug::debug_damage() {
                 eprintln!(
                     "[GET_AT]   r63=[{},{}] sorted3={:?} median={} boost={:.6} result={:.4}",
                     raw[0],
@@ -894,14 +894,14 @@ impl Player {
         atp = self
             .skills
             .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
-        if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() && (atp - atp_before).abs() > 0.001 {
+        if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
             eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
         }
         if atp == 0.0 {
             return 0.0;
         }
         let atp2 = self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage);
-        if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() && (atp2 - atp).abs() > 0.001 {
+        if crate::debug::debug_damage() && (atp2 - atp).abs() > 0.001 {
             eprintln!("[PRE_DEFEND_STATE] {} atp: {:.4} -> {:.4}", self.id_name(), atp, atp2);
         }
         atp2
@@ -971,7 +971,7 @@ impl Player {
     ) -> i32 {
         let dfp = self.get_df(is_mag);
         let mut dmg = (atp / dfp as f64).ceil() as i32;
-        if std::env::var_os("TSWN_DEBUG_DAMAGE").is_some() {
+        if crate::debug::debug_damage() {
             eprintln!(
                 "[DEFNED] target={} dfp={} atp={:.4} raw_dmg={} is_mag={}",
                 self.id_name(),
