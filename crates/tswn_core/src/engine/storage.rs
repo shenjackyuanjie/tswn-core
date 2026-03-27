@@ -82,6 +82,8 @@ pub struct Storage {
     needs_sync: AtomicBool,
     /// 玩家 ID 自增计数器。
     player_id_counter: AtomicU64,
+    /// 名字强度评估时使用的 `$.rq()` 等价值。
+    eval_rq: f64,
     /// JS `aR` flag: 正在执行 post_damage 回调的使魔 ID。
     /// 当使魔的 SummonShareDamageSkill 把伤害分摊给 owner 导致 owner 死亡时，
     /// owner 的 on_die_impl 不应立即处理该使魔的死亡（应由使魔自身的 on_damaged 路径处理），
@@ -96,7 +98,10 @@ unsafe impl Sync for Storage {}
 
 impl Storage {
     /// 创建一个新的 Storage。
-    pub fn new() -> Storage {
+    pub fn new() -> Storage { Self::new_with_eval_rq(crate::player::eval_name::DEFAULT_EVAL_RQ) }
+
+    /// 创建一个新的 Storage，并显式指定名字强度评估使用的 `$.rq()` 等价值。
+    pub fn new_with_eval_rq(eval_rq: f64) -> Storage {
         Storage {
             skills: UnsafeCell::new(FastHashMap::new()),
             groups: UnsafeCell::new(FastHashMap::new()),
@@ -108,11 +113,14 @@ impl Storage {
             pending_revivals: UnsafeCell::new(Vec::new()),
             needs_sync: AtomicBool::new(false),
             player_id_counter: AtomicU64::new(0),
+            eval_rq,
             in_post_damage_player: UnsafeCell::new(None),
         }
     }
 
     pub fn new_arc() -> Arc<Self> { Arc::new(Self::new()) }
+
+    pub fn new_arc_with_eval_rq(eval_rq: f64) -> Arc<Self> { Arc::new(Self::new_with_eval_rq(eval_rq)) }
 
     pub fn clear(&mut self) {
         self.skills_mut().clear();
@@ -187,6 +195,10 @@ impl Storage {
 
     /// 获取当前玩家 ID 计数器的值（不增加）。
     pub fn current_plr_id(&self) -> u64 { self.player_id_counter.load(std::sync::atomic::Ordering::Relaxed) }
+
+    /// 获取当前 Storage 使用的名字强度评估 `rq`。
+    #[inline]
+    pub fn eval_rq(&self) -> f64 { self.eval_rq }
 
     /// 生成一个新的玩家 ID。
     pub fn new_plr_id(&self) -> u64 { self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }

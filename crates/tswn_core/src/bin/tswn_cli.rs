@@ -116,7 +116,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read};
 
-use tswn_core::Runner;
+use tswn_core::{PreparedRunner, Runner};
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::player::icon::icon_from_raw_name;
 
@@ -146,11 +146,14 @@ Benchmark 模式:
   --bench-file-st <文件> [N] 从文件读取（单线程）
 
 胜率测试（简化版）:
-  --win_rate <队伍1> <队伍2> [N]     两队对战，多线程 (默认 1000)
-  --win_rate_st <队伍1> <队伍2> [N]  两队对战，单线程 (默认 1000)
+    --win_rate [--keep-rq] <队伍1> <队伍2> [N]     两队对战，多线程 (默认 1000)
+    --win_rate_st [--keep-rq] <队伍1> <队伍2> [N]  两队对战，单线程 (默认 1000)
 
 性能测试:
   --perf <队伍1> <队伍2> [N]      性能基准测试，运行 N 场 (默认 10000)，输出 init/fight 耗时分解
+
+胜率附加选项:
+    --keep-rq                  仅用于 --win_rate / --win_rate_st，保持 rq=4，不模拟 JS win_rate 对 rq 的污染
 
 图标功能:
   --icon <名字>...             输出玩家图标信息（终端渲染预览）
@@ -202,8 +205,9 @@ Benchmark 模式:
   # 胜率测试
   namerena_cli --bench-raw "team1\n\nteam2" 1000
   namerena_cli --bench-raw-st "team1\n\nteam2" 1000
-  namerena_cli --win_rate "mario" "luigi" 1000
-  namerena_cli --win_rate_st "mario" "luigi" 1000
+    namerena_cli --win_rate "mario" "luigi" 1000
+    namerena_cli --win_rate --keep-rq "mario" "luigi" 1000
+    namerena_cli --win_rate_st "mario" "luigi" 1000
 
   # 带调试信息
   TSWN_DEBUG_ACTION=mario namerena_cli --raw "mario\nluigi""#
@@ -845,12 +849,12 @@ fn run_benchmark(raw: &str, n: usize, mode: BenchThreadMode) {
     match group_count {
         0 => eprintln!("benchmark: 输入为空或无有效玩家"),
         1 => run_bench_score(raw, n, mode),
-        _ => run_bench_winrate(raw, n, mode),
+        _ => run_bench_winrate(raw, n, mode, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ),
     }
 }
 
 /// 胜率测试：team1（组0）vs team2（组1），跑 n 场，统计组0胜率。
-fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode) {
+fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode, eval_rq: f64) {
     println!("=== 对战胜率测试 ({n} 场) ===");
     let t_start = std::time::Instant::now();
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
@@ -858,19 +862,26 @@ fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode) {
         .first()
         .map(|group| group.iter().filter(|name| !tswn_core::player::Player::check_is_seed(name)).count())
         .unwrap_or(0);
-    let groups = std::sync::Arc::new(groups);
+    let prepared = match Runner::prepare_groups_with_eval_rq(&groups, eval_rq) {
+        Ok(prepared) => prepared,
+        Err(err) => {
+            eprintln!("构建胜率模板失败: {err}");
+            return;
+        }
+    };
+    let prepared = std::sync::Arc::new(prepared);
     let workers = resolve_bench_workers(mode, n);
 
     let (wins, total) = if workers <= 1 || n < 2000 {
-        run_bench_winrate_range(groups.as_ref(), team0_count, 0, n)
+        run_bench_winrate_range(prepared.as_ref(), team0_count, 0, n)
     } else {
         let next = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut handles = Vec::with_capacity(workers);
         for _ in 0..workers {
-            let groups = std::sync::Arc::clone(&groups);
+            let prepared = std::sync::Arc::clone(&prepared);
             let next = std::sync::Arc::clone(&next);
             handles.push(std::thread::spawn(move || {
-                run_bench_winrate_worker(groups.as_ref(), team0_count, next.as_ref(), n)
+                run_bench_winrate_worker(prepared.as_ref(), team0_count, next.as_ref(), n)
             }));
         }
         let mut merged = (0usize, 0usize);
@@ -893,7 +904,7 @@ fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode) {
     );
 }
 
-fn run_bench_winrate_range(groups: &[Vec<String>], team0_count: usize, start: usize, end: usize) -> (usize, usize) {
+fn run_bench_winrate_range(prepared: &PreparedRunner, team0_count: usize, start: usize, end: usize) -> (usize, usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut seed = String::with_capacity(24);
@@ -902,7 +913,7 @@ fn run_bench_winrate_range(groups: &[Vec<String>], team0_count: usize, start: us
         seed.clear();
         let _ = write!(&mut seed, "seed:{i}@!");
         let seed_ref = std::slice::from_ref(&seed);
-        let mut runner = match Runner::new_from_groups_with_seed(groups, seed_ref) {
+        let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -918,7 +929,7 @@ fn run_bench_winrate_range(groups: &[Vec<String>], team0_count: usize, start: us
 }
 
 fn run_bench_winrate_worker(
-    groups: &[Vec<String>],
+    prepared: &PreparedRunner,
     team0_count: usize,
     next: &std::sync::atomic::AtomicUsize,
     end: usize,
@@ -935,7 +946,7 @@ fn run_bench_winrate_worker(
         seed.clear();
         let _ = write!(&mut seed, "seed:{i}@!");
         let seed_ref = std::slice::from_ref(&seed);
-        let mut runner = match Runner::new_from_groups_with_seed(groups, seed_ref) {
+        let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -1111,6 +1122,27 @@ fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode) {
     println!("!评分:     {:.0} / 10000  ({bw}/{bt})", bs);
 }
 
+fn parse_win_rate_cli_args(args: &[String]) -> Result<(usize, f64), String> {
+    let mut idx = 1;
+    let mut eval_rq = tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
+
+    while let Some(arg) = args.get(idx).map(String::as_str) {
+        match arg {
+            "--keep-rq" => {
+                eval_rq = tswn_core::player::eval_name::DEFAULT_EVAL_RQ;
+                idx += 1;
+            }
+            _ => break,
+        }
+    }
+
+    if args.len() < idx + 2 {
+        return Err(format!("{} 需要 [--keep-rq] <team1> <team2> [N] 参数", args[0]));
+    }
+
+    Ok((idx, eval_rq))
+}
+
 // ─────────────────────────── 普通对战 ────────────────────────────────────────
 
 fn print_all_players(runner: &Runner) {
@@ -1207,20 +1239,27 @@ fn main() {
                 return;
             }
             "--win_rate" | "--win_rate_st" => {
-                if args.len() < 3 {
-                    eprintln!("{} 需要 <team1> <team2> [N] 参数", args[0]);
+                let (idx, eval_rq) = match parse_win_rate_cli_args(&args) {
+                    Ok(parsed) => parsed,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        std::process::exit(2);
+                    }
+                };
+                if args.len() < idx + 2 {
+                    eprintln!("{} 需要 [--keep-rq] <team1> <team2> [N] 参数", args[0]);
                     std::process::exit(2);
                 }
-                let team1 = &args[1];
-                let team2 = &args[2];
-                let n = args.get(3).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
+                let team1 = &args[idx];
+                let team2 = &args[idx + 1];
+                let n = args.get(idx + 2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
                 let raw = format!("{team1}\n\n{team2}");
                 let mode = if args[0] == "--win_rate_st" {
                     BenchThreadMode::SingleThread
                 } else {
                     BenchThreadMode::Parallel
                 };
-                run_bench_winrate(&raw, n, mode);
+                run_bench_winrate(&raw, n, mode, eval_rq);
                 return;
             }
             "--perf" => {

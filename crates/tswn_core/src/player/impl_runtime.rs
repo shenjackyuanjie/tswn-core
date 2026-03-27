@@ -126,7 +126,19 @@ impl Player {
         };
         if let Some(forced_attack) = forced_attack {
             self.forced_attack(forced_attack, randomer, updates, storage, targets);
-            self.apply_forced_action_states(randomer, updates, storage);
+            // 对齐 JS：强制攻击（狂暴）击倒最后一个敌人后，battle 已结束，
+            // 不再执行 forced_action_states（避免额外的"从狂暴中解除"日志）。
+            let battle_ended_early = storage
+                .group_containing(ptr)
+                .map(|ally_group| {
+                    !storage.all_player_ids().into_iter().any(|id| {
+                        !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            if !battle_ended_early {
+                self.apply_forced_action_states(randomer, updates, storage);
+            }
             acted = true;
         } else {
             if selected_skill_key.is_none() {

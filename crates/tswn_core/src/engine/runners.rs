@@ -52,14 +52,21 @@ type PreparedGroups = Vec<Vec<Player>>;
 struct PreparedRunnerTemplate {
     groups: PreparedGroups,
     base_names_sorted: Vec<String>,
+    eval_rq: f64,
 }
 
-fn groups_cache_key(players: &[Vec<String>]) -> u64 {
+#[derive(Clone)]
+pub struct PreparedRunner {
+    template: Arc<PreparedRunnerTemplate>,
+}
+
+fn groups_cache_key(players: &[Vec<String>], eval_rq: f64) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     for group in players {
         group.hash(&mut hasher);
         0xFF_u8.hash(&mut hasher);
     }
+    eval_rq.to_bits().hash(&mut hasher);
     hasher.finish()
 }
 
@@ -92,20 +99,45 @@ impl Runner {
     ///
     /// 该接口用于高频 benchmark 场景，可复用分组解析结果，避免重复字符串切分成本。
     pub fn new_from_groups_with_seed(players: &[Vec<String>], seed: &[String]) -> RunnerResult<Runner> {
-        let cache_key = groups_cache_key(players);
-        let prepared = {
+        Self::new_from_groups_with_seed_and_eval_rq(players, seed, crate::player::eval_name::DEFAULT_EVAL_RQ)
+    }
+
+    /// 从已解析队伍和 seed 列表构建 Runner，并显式指定名字强度评估使用的 `rq`。
+    pub fn new_from_groups_with_seed_and_eval_rq(
+        players: &[Vec<String>],
+        seed: &[String],
+        eval_rq: f64,
+    ) -> RunnerResult<Runner> {
+        let prepared = Self::prepare_groups_with_eval_rq(players, eval_rq)?;
+        Self::new_from_prepared_with_seed(&prepared, seed)
+    }
+
+    /// 预构建一份可复用的玩家模板，后续可多次按不同 seed 构造 Runner。
+    pub fn prepare_groups(players: &[Vec<String>]) -> RunnerResult<PreparedRunner> {
+        Self::prepare_groups_with_eval_rq(players, crate::player::eval_name::DEFAULT_EVAL_RQ)
+    }
+
+    /// 预构建一份可复用的玩家模板，并显式指定名字强度评估使用的 `rq`。
+    pub fn prepare_groups_with_eval_rq(players: &[Vec<String>], eval_rq: f64) -> RunnerResult<PreparedRunner> {
+        let cache_key = groups_cache_key(players, eval_rq);
+        let template = {
             if let Some(hit) = prebuilt_groups_cache().read().expect("prebuilt cache poisoned").get(&cache_key).cloned() {
                 hit
             } else {
-                let built = Arc::new(Self::build_prepared_groups(players)?);
+                let built = Arc::new(Self::build_prepared_groups(players, eval_rq)?);
                 let mut writer = prebuilt_groups_cache().write().expect("prebuilt cache poisoned");
                 writer.entry(cache_key).or_insert_with(|| Arc::clone(&built)).clone()
             }
         };
-        Self::new_from_prepared_groups_with_seed(prepared.as_ref(), seed)
+        Ok(PreparedRunner { template })
     }
 
-    fn build_prepared_groups(players: &[Vec<String>]) -> RunnerResult<PreparedRunnerTemplate> {
+    /// 通过预构建模板和 seed 列表构建 Runner。
+    pub fn new_from_prepared_with_seed(prepared: &PreparedRunner, seed: &[String]) -> RunnerResult<Runner> {
+        Self::new_from_prepared_groups_with_seed(prepared.template.as_ref(), seed)
+    }
+
+    fn build_prepared_groups(players: &[Vec<String>], eval_rq: f64) -> RunnerResult<PreparedRunnerTemplate> {
         let mut base_names_sorted = players
             .iter()
             .flatten()
@@ -115,7 +147,7 @@ impl Runner {
         base_names_sorted.sort();
         base_names_sorted.dedup();
 
-        let storage = Storage::new_arc();
+        let storage = Storage::new_arc_with_eval_rq(eval_rq);
 
         // 先完成玩家实例化与分组（跳过 seed 行），与正常初始化路径保持一致。
         let mut inited_plrs: Vec<Vec<PlrId>> = Vec::with_capacity(players.len());
@@ -189,6 +221,7 @@ impl Runner {
         Ok(PreparedRunnerTemplate {
             groups: prepared_groups,
             base_names_sorted,
+            eval_rq,
         })
     }
 
@@ -206,7 +239,7 @@ impl Runner {
         let mut randomer = RC4::new(keys.as_bytes(), 1);
         randomer.js_xor_str(&keys);
 
-        let storage = Storage::new_arc();
+        let storage = Storage::new_arc_with_eval_rq(prepared.eval_rq);
         let total_players = prepared.groups.iter().map(|group| group.len()).sum::<usize>();
         for _ in 0..total_players {
             let _ = storage.new_plr_id();

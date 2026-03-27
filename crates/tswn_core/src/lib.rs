@@ -55,7 +55,7 @@ pub mod player;
 #[allow(dead_code)]
 pub mod rc4;
 
-pub use engine::runners::Runner;
+pub use engine::runners::{PreparedRunner, Runner};
 pub use engine::update::{RunUpdate, RunUpdates};
 
 #[inline]

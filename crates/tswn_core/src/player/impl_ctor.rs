@@ -177,9 +177,10 @@ impl Player {
         let name_factor = match player_type {
             PlayerType::Test1 | PlayerType::Test2 | PlayerType::TestEx => 0.0,
             _ => {
-                let factor_name = eval_name::eval_str_common(name.as_str(), true);
+                let eval_rq = storage.eval_rq();
+                let factor_name = eval_name::eval_str_common_with_rq(name.as_str(), true, eval_rq);
                 let factor_team = match team.as_ref() {
-                    Some(team) => eval_name::eval_str_common(team.as_str(), true),
+                    Some(team) => eval_name::eval_str_common_with_rq(team.as_str(), true, eval_rq),
                     None => factor_name,
                 };
                 factor_name.max(factor_team - 6.0)

@@ -50,10 +50,21 @@
 //! - 直接使用 match 的方式来判断是否是常用字符
 //! - 使用这个常用字符表来计算一个字符串"是否常见" 的函数
 
+/// 默认 `$.rq()` 等价值（普通 fight 模式）。
+pub const DEFAULT_EVAL_RQ: f64 = 4.0;
+
+/// JS ProfileWinChance / `win_rate` 模式下实际表现出来的 `$.rq()` 等价值。
+pub const WIN_RATE_EVAL_RQ: f64 = 6.0;
+
 /// 以防底下的注释太长, 先把实际计算函数写了
 ///
 /// 用于计算一个字符串 "是否常见"
 pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
+    eval_str_common_with_rq(s, ladder_version, DEFAULT_EVAL_RQ)
+}
+
+/// 用于计算一个字符串 "是否常见"，并显式指定 `$.rq()` 等价值。
+pub fn eval_str_common_with_rq(s: &str, ladder_version: bool, rq: f64) -> f64 {
     let mut diff: i32 = -2; // 类型变化计数，可为负，后续会被钳位
     let mut last_char: i32 = -1; // 上一个字符类别（用 i32 方便与常量比较）
     let mut char_count = 0; // 非空格字符数
@@ -205,10 +216,11 @@ pub fn eval_str_common(s: &str, ladder_version: bool) -> f64 {
     x -= 32.0;
 
     // 最终归一化
+    // JS: `d = $.rq()`，fight 模式 d=4，win_rate 模式 d=6。
     if x > 0.0 {
         x / (32768.0 - 3500.0)
-    } else if x < -4.0 {
-        (x + 4.0) / (3497.0 + 4.0 - 3500.0)
+    } else if x < -rq {
+        (x + rq) / (3497.0 + rq - 3500.0)
     } else {
         0.0
     }
@@ -760,5 +772,12 @@ mod test {
     fn ascii_team_name_matches_js() {
         let value = eval_str_common("Shabby_fish", false);
         assert!((value - 0.0008871194426485349).abs() < 1e-15, "unexpected value: {value}");
+    }
+
+    #[test]
+    fn win_rate_rq_changes_negative_threshold() {
+        let default_value = eval_str_common("111111", false);
+        let win_rate_value = eval_str_common_with_rq("111111", false, WIN_RATE_EVAL_RQ);
+        assert!(win_rate_value > default_value, "expected win_rate rq to be less punitive: default={default_value}, win_rate={win_rate_value}");
     }
 }
