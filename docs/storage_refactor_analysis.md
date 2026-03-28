@@ -8,7 +8,7 @@
 由于技能回调、伤害链、死亡处理等路径需要同时持有多个 `&mut Player` 引用,
 Rust 标准的借用规则(独占可变引用)无法直接满足需求。
 
-项目历史上出现过三种方案:
+项目历史上主线实际落地过三种方案:
 
 | 阶段 | 方案 | 时间线 |
 |------|------|--------|
@@ -16,7 +16,16 @@ Rust 标准的借用规则(独占可变引用)无法直接满足需求。
 | B | `UnsafeCell` 包装 + `run_post_kill` 拆分 | `330cd46` 引入 |
 | C | 方案 B + nightly `mutable-noalias=no` | 当前状态 |
 
-本文档对比三种方案的 UB 风险、性能和可维护性。
+此外, old 分支在 `63b81ddf87732475ba5b11e77ae098cb9c20e7eb` → `2456131` 一度试验过一个未完成的全局 `EventQueue` 原型。由于它没有进入主线,不计入上表,但下文会单独分析其可行性。
+
+本文档对比三种主线方案的 UB 风险、性能和可维护性,并补充评估 event queue 旁支方案,以及 Dart async / async-like 改造的可行性。
+
+### 1.1 当前现状摘要
+
+- **当前主线实际状态**: 已经不是“裸 `unsafe` 强转”,而是 **方案 C = UnsafeCell + 局部延迟结算 + `mutable-noalias=no`**。其中 Storage / Player 层 provenance 已修复,kill 回调路径的同实体别名已修复,剩余风险主要收敛在少数 `on_damage` 重入路径。
+- **Dart 原版确实用了 `async`**: 但它主要出现在 `nextUpdates()`、初始化构建和 HTML 驱动层,用于分批产出更新、避免浏览器事件循环长时间阻塞。核心战斗链 `round() -> step() -> attacked() -> damage()` 仍然是同步栈调用。
+- **因此,“引入真正的 Rust async runtime” 不是当前问题的直接解**: Rust 的 `async/await` 不会放宽 `&mut` 独占规则。真正有帮助的是 **async-like 的分阶段执行**: 在敏感回调前先释放 `&mut Player`,回调结束后再重新获取并继续结算。
+- **从投入产出看,当前最合理的路线不变**: 短期维持方案 C；中期若要彻底去掉 UB,优先推进方案 D（延迟 `on_damage` / staged damage）,而不是回退到方案 A 或直接全面改写成全局 async/event machine。
 
 ---
 
@@ -233,11 +242,226 @@ tick → storage.just_get_player_mut(actor) → &mut player_A
 
 ---
 
-## 7. "彻底消除 UB" 的可行路径
+## 7. 旁支方案: 全局 EventQueue (`63b81dd` 原型)
+
+### 7.1 实现方式
+
+`63b81ddf87732475ba5b11e77ae098cb9c20e7eb` 的原型并没有把 `Storage` 做成内部可变容器,而是尝试把**跨实体副作用**改写成全局命令队列:
+
+```rust
+pub enum Event {
+    TryAttack { caster: PlrId },
+    Attack { caster: PlrId, target: PlrId, is_mag: bool },
+    DealDamage { caster: PlrId, target: PlrId, dmg: i32 },
+}
+
+pub type SkillArgs<'d> =
+    (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d mut EventQueue);
+```
+
+关键特征:
+
+1. `Runner` 独占持有 `Storage` 和 `EventQueue`,在 `process_events()` 中统一 drain。
+2. `Player::action()` 不直接攻击目标,而是 `push(Event::TryAttack { caster })`。
+3. 技能实现拿不到 `Storage`,只能 `push(Event::DealDamage { .. })` 这类命令。`FireSkill` 就是典型例子。
+4. `Attack` 事件在 `Runner` 中通过 `SlotMap::get_disjoint_mut()` 的包装 `get_two_players_mut(caster, target)` 一次性拿到 attacker/target 两个不同玩家。
+
+也就是说,这个方案本质上是 **single-thread command buffer / event sourcing**: 业务代码负责“描述接下来要发生什么”,真正改写实体状态的地方尽量收敛到 `Runner::process_events()`。
+
+### 7.2 理论上能解决什么问题
+
+如果把这个思路贯彻到底,它确实可以**从架构层面**消灭当前主线的大部分 UB 来源:
+
+| 问题 | EventQueue 彻底化后的状态 | 原因 |
+|------|--------------------------|------|
+| `&self → &mut Storage` provenance | ✅ 可避免 | `Runner` 直接持有 `&mut Storage`,不需要共享引用下的内部可变性 |
+| 跨实体 split borrow | ✅ 可避免 | `Attack/Heal/Revive` 等都在事件边界统一结算,不同实体可通过 `get_disjoint_mut` 或串行处理拿到 |
+| 回调重入拿到第二个 `&mut same_player` | ✅ **若严格禁止回调直接碰 Storage** | 技能/状态回调只发命令,不直接递归获取玩家引用 |
+| `mutable-noalias=no` 依赖 | ✅ 可移除 | 不再依赖共享引用下的 `&mut Player` 别名技巧 |
+
+这是它相对方案 B/C 的最大优点:它不是“让 UB 暂时不炸”,而是试图把**可变访问权集中到事件分发器**里,从语义上规避别名。
+
+### 7.3 为什么 `63b81dd` 原型本身还不够
+
+问题在于,`63b81dd` 离“彻底事件化”还差得很远。它更像一个方向验证,不是可直接回收的成品方案。
+
+1. **覆盖面极窄**: 这版 `Event` 只有 `TryAttack / Attack / DealDamage` 三种。`pre_action`、`post_action`、`on_die`、`kill`、`revive`、state clear、summon/remove/sync world 等都还没有进队列。
+2. **伤害生命周期仍然是同步栈调用**: `Attack` 事件最终还是直接进入 `target.attacked() → damage() → on_damaged() → run_post_damage()`。也就是说,最复杂的 reentrant 生命周期并没有被命令化。
+3. **原型之所以“看起来安全”,很大程度上是因为功能还没长出来**: 当时 `SkillArgs` 里没有 `Storage`,技能回调根本做不了现在这些跨实体读写、查队伍、查 state、召唤/转移伤害/复活等操作。它不是已经解决了难题,而是暂时还没遇到这些难题。
+4. **事件负载表达力不够**: 当前主线很多路径不仅需要 `(caster, target, dmg)`,还需要 `on_damage` 回调语义、kill/revive 顺序、forced action、目标域、召唤物 owner 关系、world sync 等上下文。若继续 event 化,`Event` 枚举会迅速膨胀成一套完整命令语言。
+5. **顺序语义未定型**: `VecDeque` + FIFO 只解决了“延后执行”,没有天然解决“何时插队/何时立刻结算/哪些事件必须同帧递归 drain”。反伤、保护、分摊、连锁死亡、复活、清状态等路径都需要精确定义顺序,否则很容易偏离 JS/Dart 语义。
+
+后续 old 分支在 `2456131` 一度把 `Event` 扩展到 `Step/PreAction/PostAction/OnDie/Kill/Revive` 等占位,但 `process_events()` 同时被直接标注为“虽说我不确定,但是我觉得这个方案不可行”。这说明当原型开始接近真实战斗语义时,复杂度已经明显上升。
+
+### 7.4 对当前主线的可行性评估
+
+**结论先说:** 对当前主线来说,全局 EventQueue 仍然**理论可行**,但它是一次**架构重写**,不是一个能替代 `UnsafeCell + 局部延迟回调` 的小修补。
+
+当前代码规模下,它至少会碰到以下现实成本:
+
+1. **改造面已经很大**: 当前非测试源码里有 **112 处** `just_get_player_mut()` 调用点。
+2. **行为入口很多**: 当前 `player/skill` 与 `player/boss` 下有 **37 个** `impl SkillTrait for ...` 行为实现文件。
+3. **直接伤害入口分散**: 非测试源码中有 **19 个文件** 直接调用 `.attacked()` / `.damage()`。
+4. **生命周期钩子需要整体重签名**: 当前至少有 **10 处** `pre_action/post_action/post_damage/kill` 相关实现要改成“只发事件,不直接改状态”。
+5. **还要重新设计队列边界**: 需要新增或重写 `ApplyDamage`、`RunOnDamage`、`RunPostDamage`、`OnDie`、`Kill`、`Revive`、`Spawn`、`Remove`、`ClearStates`、`SyncWorld` 等事件,并为每个事件定义严格顺序。
+
+这件事的工作量**至少与方案 E (Arena + token)** 同级,很多情况下还会更大,因为它不只是改 API,还要重写语义边界。Arena/token 方案至少还能保留“同步调用”的业务形态; 全局 EventQueue 则要求大量逻辑改写成“提交命令 + Runner 解释执行”。
+
+### 7.5 与当前主线的关系
+
+值得注意的是,当前主线其实已经吸收了这个思路里**最划算的部分**:
+
+1. `run_post_kill()` 本质上就是一个局部 command buffer: 先释放 `&mut killer`,再执行 kill 回调,最后放回技能实现。
+2. `pending_spawns / pending_remove_players / death_queue / pending_revivals` 已经把最敏感的实体生命周期顺序改成了延迟同步。
+3. `run_update_end()` 也是一个受控 drain loop,专门处理回合末继续触发。
+
+换句话说,主线并不是完全放弃了 event queue 思路,而是把它**局部化**了: 只在真正会引发别名/顺序问题的路径上做延迟结算,而不是把整个战斗系统都改写成通用事件机。
+
+### 7.6 结论
+
+**是否可行?** 可行,但前提是把它当成一次**完整的命令缓冲架构重构**,而不是当前 UB 的快捷修复。
+
+**是否值得现在做?** 对“消除当前剩余 UB”这个目标来说,通常不值得:
+
+1. 当前剩余 UB 已经收敛到少数 `on_damage` 重入路径,用方案 D 的定点拆分就能解决。
+2. `mutable-noalias=no` 的性能成本实测 < 0.2%,没有逼着项目立刻换架构的性能压力。
+3. 全局 EventQueue 的主要收益是“架构纯度 / 事件日志化 / 更强的执行边界”,不是眼下最短路径。
+
+因此,**不建议为了处理当前这批 UB 而重启全局 EventQueue 方案**。只有当项目未来明确想走“命令缓冲 / replayable event log / 强约束 ECS”路线时,它才值得作为长期重构方向重新评估。
+
+---
+
+## 8. Dart async / async-like 方案评估
+
+### 8.1 Dart 里的 `async` 实际解决了什么
+
+原版 namerena 确实在战斗驱动层用了 `async`,但它的职责主要是**把战斗推进包装成“可暂停、可分批返回更新”的外层接口**,而不是把每个技能/伤害回调都变成异步状态机。
+
+`fgt.dart` 的主线结构大致如下:
+
+```dart
+Future<RunUpdates> nextUpdates() async {
+    if (_winner != null) {
+        await _checktime();
+        return updates;
+    }
+    while (_winner == null) {
+        round(updates);
+        if (updates.updates.isNotEmpty) {
+            return updates;
+        }
+    }
+}
+
+void round(RunUpdates updates) {
+    roundPos = (roundPos + 1) % players.length;
+    players[roundPos].step(rander, updates);
+}
+
+int damage(int dmg, Plr caster, OnDamage ondmg, R r, RunUpdates updates) {
+    // ...应用伤害...
+    updates.add(update);
+    ondmg(caster, this, dmg, r, updates);
+    return onDamaged(dmg, oldhp, caster, r, updates);
+}
+```
+
+这说明 Dart 版的 `async` 有三个核心用途:
+
+1. **外层驱动分帧**: `nextUpdates()` 以 `Future<RunUpdates>` 形式向 UI/HTML runner 分批返回更新。
+2. **让出浏览器事件循环**: 通过 `Future.delayed(...)` / `Timer(...)` 避免长时间卡住页面线程。
+3. **初始化阶段异步化**: `buildAsync()`、资源加载等流程天然适合 Future 化。
+
+但同一时间,它**没有**改变战斗内核的关键事实:
+
+1. `round()` / `step()` / `action()` / `attacked()` / `damage()` 都仍是同步调用。
+2. `ondmg(caster, this, ...)` 之后立刻执行 `onDamaged(...)`,中间没有 Future 边界。
+3. Dart 本身允许多个对象引用别名同一 `Plr`,不存在 Rust 式“`&mut` 必须独占”的语言约束。
+
+因此,Dart async 在原版里解决的是**UI 驱动与节流问题**,不是**可变别名合法性**问题。
+
+### 8.2 为什么“直接改成 Rust async”不能自动修掉 UB
+
+如果把当前 Rust 代码机械地改成 `async fn`,例如:
+
+```rust
+async fn damage(&mut self, dmg: i32, caster: PlrId, ...) -> i32 {
+        self.status.hp -= dmg;
+        on_damage(caster, self.as_ptr(), dmg, ...).await;
+        self.on_damaged(dmg, old_hp, caster, ...)
+}
+```
+
+它并不会天然解决现有问题,原因如下:
+
+| 问题 | `async` 的实际效果 |
+|------|--------------------|
+| **`&mut` 独占规则** | **完全不变**。`async fn` 只是把函数改写成状态机,Rust 借用规则照样适用 |
+| **跨 `await` 持有 `&mut Player`** | Future 会把这份独占借用保存在状态机里。只要还没恢复执行,这份借用就仍然活着,并不能安全地再次从 storage 拿同一个 player |
+| **如果在 `await` 前先释放 `&mut Player`** | 那本质上已经手动做了 staged split / continuation。真正起作用的是“释放借用后再继续”,不是 `async` 关键字本身 |
+| **签名改造成本** | 当前 `SkillTrait` / `post_damage` / `kill` / `pre_action` / `post_action` 等大量 trait 与函数签名都要 async 化。Rust 这类场景通常需要 `async_trait` 或装箱 Future,改造面很大 |
+| **执行顺序语义** | 现在引擎是严格单线程、同步、可预测顺序。引入 executor / poll / wake 后,必须重新定义“哪些 await 点允许插队、何时恢复、同 tick 内 drain 到什么程度” |
+
+更关键的一点是:当前问题不是“缺少暂停能力”,而是“**暂停前没有先释放对同一实体的独占借用**”。如果这一点不做,`async` 只会把同一个借用冲突搬进 Future 状态机里；如果这一点做了,那已经是在显式分阶段了。
+
+### 8.3 真正可借鉴的是“async-like 的分阶段状态机”
+
+从这个角度看,对当前项目真正有价值的不是“上 async runtime”,而是借鉴 async 的**暂停/恢复边界**思想,把同步栈改写成显式阶段:
+
+1. **阶段 1**: 持有 `&mut target`,执行 `damage_core()` / 计算伤害 / 写入 HP / 产出 update。
+2. **阶段 2**: 释放 `&mut target`,执行 `on_damage` 回调。
+3. **阶段 3**: 重新获取 `&mut target`,执行 `on_damaged()` / `post_damage` / `on_die`。
+
+这本质上就是一个**手写 continuation / 手写 Future 状态机**,但它比真实 `async` 更适合当前战斗引擎:
+
+- 不需要引入 executor、waker、poll 语义。
+- 不需要把整条技能 trait 链改成 async。
+- 顺序边界完全由引擎显式控制,更容易对齐 JS/Dart 语义。
+- 数据可以保持为普通结构体 / 临时上下文,不会引入额外的 Future 装箱与生命周期复杂度。
+
+如果继续抽象下去,甚至可以把它写成一个小型的 staged command:
+
+```rust
+struct PendingDamage {
+        target: PlrId,
+        caster: PlrId,
+        dmg: i32,
+        old_hp: i32,
+}
+```
+
+然后由驱动层按“apply -> callback -> finalize”的顺序推进。这个思路与方案 D 本质一致,只是表述上更接近 coroutine / continuation。
+
+### 8.4 当前主线其实已经在用这种思路
+
+严格来说,当前主线并不是完全“同步到底”,而是已经局部采用了 async-like 的暂停/恢复模式:
+
+1. `run_post_kill()` 先取出技能实现、释放 `&mut killer`,再执行 kill 回调,最后放回技能实现。
+2. `pending_spawns / pending_remove_players / death_queue / pending_revivals` 把最容易出顺序问题的实体生命周期改成延迟同步。
+3. `run_update_end()` 通过受控 drain loop 推进回合末回调,本质上也是分阶段执行。
+
+所以,如果要“借 Dart async 的灵感”,最自然的延伸不是全面 async 化,而是**沿着现有局部 staged execution 的方向继续推进**,把 `on_damage` 这条剩余危险路径也拆开。
+
+### 8.5 结论
+
+**能不能借 async 思路?** 能,但要区分两个层次:
+
+1. **真实 Rust async/await**: 不建议作为当前 UB 问题的直接解。它不会放宽借用规则,却会显著扩大签名和执行模型改造面。
+2. **async-like / staged / continuation 风格**: 非常值得借鉴,而且当前主线已经证明这种局部拆分是有效的。
+
+换句话说:
+
+- 如果目标是**修掉剩余 UB**,最优路径仍然是方案 D 这种“手写分阶段 damage”方案。
+- 如果目标是**提供像 Dart `nextUpdates()` 那样的可暂停外层接口**,可以在引擎驱动层额外封装 iterator / stream-like API,但这与内部别名修复是两个独立问题。
+- 如果目标是**长期架构纯化**,那应该在“局部 staged execution”与“全局 EventQueue / command buffer”之间做取舍,而不是先把全项目改成 async fn。
+
+---
+
+## 9. "彻底消除 UB" 的可行路径
 
 当前方案 C 仍有 `on_damage` 回调中的 `&mut Player` 别名 UB(约 8 个技能实现),只是被 `mutable-noalias=no` 掩盖。
 
-### 7.1 方案 D: 延迟 on_damage 回调 (推荐的增量改进)
+### 9.1 方案 D: 延迟 on_damage 回调 (推荐的 async-like 增量改进)
 
 类似 `run_post_kill` 的 `take/put` 模式,将 `damage()` 拆分:
 
@@ -267,7 +491,9 @@ pub fn damage_core(&mut self, dmg: i32, ...) -> (i32, bool) {
 **工作量**: 约 150-200 行改动。
 **收益**: 消除最后一类 `&mut Player` 别名 UB,可以移除 `mutable-noalias=no`,回到 stable toolchain。
 
-### 7.2 方案 E: Arena + token 模式 (大规模重构)
+它从工程形态上看,本质就是一个**手写的 async-like continuation**: 先完成伤害核心阶段,暂时“挂起”后续结算,待危险回调执行完后再恢复。这也是为什么它比“直接把 damage 改成 async fn”更贴近问题本质。
+
+### 9.2 方案 E: Arena + token 模式 (大规模重构)
 
 将 `Storage` 改为 arena 分配器,用 `SlotMap<PlrId, Player>`:
 
@@ -285,7 +511,7 @@ pub struct Storage {
 **收益**: 完全消除 unsafe,标准 Rust 借用检查。
 **风险**: 每次通过 storage 间接访问 player 需要额外的 HashMap 查找,hot path 可能有 5-10% 性能下降。
 
-### 7.3 方案 F: RefCell 运行时检查 (调试辅助)
+### 9.3 方案 F: RefCell 运行时检查 (调试辅助)
 
 用 `RefCell<Player>` 替代 `UnsafeCell<Player>`,在 debug 模式下检测别名:
 
@@ -298,7 +524,7 @@ players: UnsafeCell<FastHashMap<PlrId, RefCell<Player>>>,
 
 ---
 
-## 8. 推荐路线
+## 10. 推荐路线
 
 ```
 当前状态 (方案 C: UnsafeCell + noalias=no)
@@ -306,10 +532,18 @@ players: UnsafeCell<FastHashMap<PlrId, RefCell<Player>>>,
     ├─ 短期: 维持现状,无需任何改动
     │         零性能损失,release 正确性已验证
     │
-    ├─ 中期 (可选): 实施方案 D (延迟 on_damage)
+    ├─ 中期 (可选): 实施方案 D (延迟 on_damage / async-like staged damage)
     │         消除最后的 &mut 别名 UB
     │         移除 nightly 依赖和 mutable-noalias=no
     │         回到 stable toolchain
+    │
+    ├─ 若未来想保留 Dart 风格的“可暂停推进接口”
+    │         在引擎外层封装 iterator / stream-like 驱动
+    │         但不要把这当成别名问题的主修复手段
+    │
+    ├─ 长期 (仅在愿意做架构重写时): 全局 EventQueue
+    │         理论上可完全去掉 UnsafeCell 和 noalias=no
+    │         但改造面 ≥ 方案 E,且需要重写事件顺序语义
     │
     └─ 不推荐: 回退到方案 A
               零收益,更差的 provenance 安全性
@@ -318,7 +552,7 @@ players: UnsafeCell<FastHashMap<PlrId, RefCell<Player>>>,
 
 ---
 
-## 9. 性能基准参考
+## 11. 性能基准参考
 
 已完成的基准测试 (mario vs luigi, 100000 场, single-thread, `--features no_debug`):
 
