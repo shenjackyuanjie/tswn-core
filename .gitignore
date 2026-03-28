@@ -3,3 +3,4 @@ vendor
 .lh
 __pycache__
 *.txt
+tests

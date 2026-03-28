@@ -96,6 +96,7 @@ pub struct Storage {
 unsafe impl Send for Storage {}
 unsafe impl Sync for Storage {}
 
+#[allow(clippy::mut_from_ref)] // UnsafeCell 内部可变性：从 &self 返回 &mut T 是预期行为
 impl Storage {
     /// 创建一个新的 Storage。
     pub fn new() -> Storage { Self::new_with_eval_rq(crate::player::eval_name::DEFAULT_EVAL_RQ) }

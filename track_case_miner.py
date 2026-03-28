@@ -243,7 +243,7 @@ def run_miner(args):
         "cargo",
         "run",
         "--quiet",
-        # "--release",
+        "--release",
         "--features",
         "no_debug",
         "--bin",
