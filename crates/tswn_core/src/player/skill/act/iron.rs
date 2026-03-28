@@ -88,7 +88,7 @@ impl StateTrait for IronState {
         }
     }
 
-    fn post_action_priority(&self) -> i32 { 205 }
+    fn post_action_priority(&self) -> i32 { 210 }
 
     fn on_post_action(
         &mut self,

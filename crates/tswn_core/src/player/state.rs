@@ -159,9 +159,11 @@ impl Clone for Box<dyn StateTrait> {
 #[derive(Clone, Debug, Default)]
 pub struct PlayerStateStore {
     pub(crate) states: FastHashMap<StateTag, Box<dyn StateTrait>>,
+    state_orders: FastHashMap<StateTag, u64>,
+    next_state_order: u64,
 }
 
-type PriorityPairs = SmallVec<[(StateTag, i32); 8]>;
+type PriorityPairs = SmallVec<[(StateTag, i32, u64); 8]>;
 
 impl PlayerStateStore {
     #[inline]
@@ -189,17 +191,42 @@ impl PlayerStateStore {
     }
 
     #[inline]
+    fn register_tag_if_needed(&mut self, tag: StateTag) {
+        if self.state_orders.contains_key(&tag) {
+            return;
+        }
+        let order = self.next_state_order;
+        self.next_state_order += 1;
+        self.state_orders.insert(tag, order);
+    }
+
+    #[inline]
+    fn remove_tag_internal(&mut self, tag: StateTag) -> Option<Box<dyn StateTrait>> {
+        self.state_orders.remove(&tag);
+        self.states.remove(&tag)
+    }
+
+    #[inline]
     fn ordered_tags_by<F>(&self, mut priority: F) -> SmallVec<[StateTag; 8]>
     where
         F: FnMut(&dyn StateTrait) -> i32,
     {
-        let mut ordered: PriorityPairs = self.states.iter().map(|(tag, state)| (*tag, priority(state.as_ref()))).collect();
-        // 相同 priority 也要按稳定次序执行；否则会继承 FastHashMap 的迭代顺序，
-        // 导致 debug/release 在同优先级状态链上走出不同战斗分支。
-        ordered.sort_unstable_by(|(tag_a, priority_a), (tag_b, priority_b)| {
-            priority_a.cmp(priority_b).then_with(|| tag_a.cmp(tag_b))
+        let mut ordered: PriorityPairs = self
+            .states
+            .iter()
+            .map(|(tag, state)| {
+                (*tag, priority(state.as_ref()), self.state_orders.get(tag).copied().unwrap_or(u64::MAX))
+            })
+            .collect();
+        // JS 的 postAction 在同优先级下保持注册顺序；这里不能再退化成 tag 字典序，
+        // 否则像 Slow/Iron 这类同层 timer 状态会在 Rust 侧固定成错误的结束顺序。
+        ordered.sort_unstable_by(|(tag_a, priority_a, order_a), (tag_b, priority_b, order_b)| {
+            priority_a
+                .cmp(priority_b)
+                .then_with(|| order_a.cmp(order_b))
+                .then_with(|| tag_a.cmp(tag_b))
         });
-        ordered.into_iter().map(|(tag, _)| tag).collect()
+        ordered.into_iter().map(|(tag, _, _)| tag).collect()
     }
 
     #[inline]
@@ -222,6 +249,7 @@ impl PlayerStateStore {
                 self as *const _, tag
             );
         }
+        self.register_tag_if_needed(tag);
         self.states.insert(tag, Box::new(state));
     }
 
@@ -259,7 +287,7 @@ impl PlayerStateStore {
         if self.states.contains_key(&tag) && crate::debug::debug_state() {
             eprintln!("[STATE_CLEAR] removing tag={:?}", tag);
         }
-        self.states.remove(&tag);
+        self.remove_tag_internal(tag);
     }
 
     #[inline]
@@ -272,7 +300,7 @@ impl PlayerStateStore {
                 self.states.get(&tag).map(|s| s.meta_type())
             );
         }
-        self.states.remove(&tag);
+        self.remove_tag_internal(tag);
     }
 
     #[inline]
@@ -292,7 +320,7 @@ impl PlayerStateStore {
             }
         }
         for tag in to_remove {
-            self.states.remove(&tag);
+            self.remove_tag_internal(tag);
         }
     }
 
@@ -304,7 +332,7 @@ impl PlayerStateStore {
             }
         }
         for tag in to_remove {
-            self.states.remove(&tag);
+            self.remove_tag_internal(tag);
         }
     }
 
@@ -323,7 +351,7 @@ impl PlayerStateStore {
             priority_a.cmp(priority_b).then_with(|| tag_a.cmp(tag_b))
         });
         for tag in to_remove {
-            self.states.remove(&tag);
+            self.remove_tag_internal(tag);
         }
         messages.into_iter().map(|(priority, _, message)| (priority, message)).collect()
     }
@@ -553,10 +581,23 @@ mod tests {
     }
 
     #[test]
-    fn ordered_tags_are_stable_when_priorities_match() {
+    fn ordered_tags_follow_registration_order_when_priorities_match() {
         let mut store = PlayerStateStore::default();
         store.set(BetaState);
         store.set(AlphaState);
+
+        let ordered = store.ordered_tags_by(|state| state.pre_action_priority());
+
+        assert_eq!(ordered.into_vec(), vec![state_tag::<BetaState>(), state_tag::<AlphaState>()]);
+    }
+
+    #[test]
+    fn readded_state_gets_new_registration_order() {
+        let mut store = PlayerStateStore::default();
+        store.set(BetaState);
+        store.set(AlphaState);
+        store.clear::<BetaState>();
+        store.set(BetaState);
 
         let ordered = store.ordered_tags_by(|state| state.pre_action_priority());
 
