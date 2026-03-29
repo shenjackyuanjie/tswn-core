@@ -15,6 +15,8 @@ impl Default for AccumulateSkill {
     fn default() -> Self {
         Self {
             on_update_state: None,
+            // JS constructs SklAccumulate with 1.7000000476837158, but clear/cancel
+            // paths later reset it to 1.600000023841858 for subsequent uses.
             acc: 1.7000000476837158,
             charge_bonus: 0.0,
         }
@@ -100,6 +102,7 @@ impl SkillTrait for AccumulateSkill {
 
     fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
         self.on_update_state.take()?;
+        self.acc = 1.600000023841858;
         self.charge_bonus = 0.0;
         args.3
             .just_get_player_mut(args.0)

@@ -1324,6 +1324,56 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
 }
 
 #[test]
+fn accumulate_reuse_after_clear_uses_js_reset_multiplier() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.add_skill(Skill::new_with_id(1, 20)); // Accumulate
+        owner_mut.skills.update_proc();
+        owner_mut.update_states();
+        owner_mut.status.move_point = 100;
+        owner_mut.status.mp = 100;
+    }
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut
+            .skills
+            .skill_by_id_mut(0)
+            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    let first_boost = storage.get_player(&owner_id).unwrap().get_status().at_boost;
+    assert!((first_boost - 1.7000000476837158).abs() < 1e-6);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        let cleared =
+            owner_mut
+                .skills
+                .skill_by_id_mut(0)
+                .clear_positive_runtime((owner_id, &mut randomer, &mut updates, &storage));
+        assert_eq!(cleared, Some("[1]的[聚气]被打消了"));
+    }
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut
+            .skills
+            .skill_by_id_mut(0)
+            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    let second_boost = storage.get_player(&owner_id).unwrap().get_status().at_boost;
+    assert!((second_boost - 1.600000023841858).abs() < 1e-6);
+}
+
+#[test]
 fn charge_post_action_tail_runs_after_state_ticks() {
     let storage = Storage::new_arc();
     let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
