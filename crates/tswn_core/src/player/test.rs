@@ -1265,6 +1265,56 @@ fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
 }
 
 #[test]
+fn summon_merge_uses_fixed_skill_slots() {
+    let storage = Storage::new_arc();
+    let mut summoner = Player::new_from_namerena_raw("地狱之轮 #mW88BamWo@Shabby_fish".to_string(), storage.clone()).unwrap();
+    summoner.build();
+    let summoner_id = storage.just_insert_player(summoner);
+
+    let mut merge_owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    merge_owner.build();
+    let merge_owner_id = storage.just_insert_player(merge_owner);
+
+    {
+        let owner_mut = storage.just_get_player_mut(merge_owner_id).unwrap();
+        owner_mut.skills.skill_by_id_mut(0).set_level(0);
+        owner_mut.skills.skill_by_id_mut(1).set_level(0);
+        owner_mut.skills.skill_by_id_mut(3).set_level(0);
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = pending.into_iter().next().unwrap().player;
+    assert!(summoned.skills.store.contains_key(&255));
+    assert!(!summoned.skills.store.contains_key(&3));
+    let summoned_id = storage.just_insert_player(summoned);
+
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(<crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+        &mut merge,
+        255,
+        summoned_id,
+        (merge_owner_id, &mut randomer, &mut updates, &storage),
+    ));
+
+    let owner_after = storage.get_player(&merge_owner_id).unwrap();
+    assert_eq!(owner_after.skills.skill_by_id(0).level(), 6);
+    assert_eq!(owner_after.skills.skill_by_id(1).level(), 0);
+    assert_eq!(owner_after.skills.skill_by_id(3).level(), 0);
+}
+
+#[test]
 fn owner_death_marks_linked_minion_for_cleanup() {
     let storage = Storage::new_arc();
     let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();

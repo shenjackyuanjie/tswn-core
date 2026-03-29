@@ -11,6 +11,8 @@ use crate::rc4::RC4;
 
 use super::minion::{MinionKind, MinionRuntimeState};
 
+const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
+
 #[derive(Debug, Clone, Default)]
 pub struct SummonSkill {
     pub summoned: Option<PlrId>,
@@ -100,16 +102,22 @@ impl SkillTrait for SummonSkill {
         skill_rand.update(&name_bytes, 2);
         skill_rand.sort_list(&mut skill_order);
         let mut skills = SkillStorage::new();
-        for (slot, skill_kind) in skill_order.into_iter().enumerate() {
+        skills.add_skill(Skill::new_with_id(0, 0));
+        skills.add_skill(Skill::new_with_id(0, 0));
+        skills.add_skill(Skill::new(0, Box::new(SummonExplodeSkill::new())));
+        // JS PlrSummon keeps k1 fixed as [fire, fire, explode] and only shuffles k2.
+        // Merge compares the fixed k1 slots, so we must preserve the stable slot keys here
+        // and only use `skills.skill` to model the shuffled action order.
+        for (slot, skill_key) in skill_order.iter().copied().enumerate() {
             let level = skill_level_from_slot(slot);
-            match skill_kind {
-                0 | 1 => skills.add_skill(Skill::new_with_id(level, 0)),
-                2 => skills.add_skill(Skill::new(level, Box::new(SummonExplodeSkill::new()))),
-                _ => unreachable!("unexpected summon skill index"),
-            }
+            skills.skill_by_id_mut(skill_key).set_level(level);
         }
+        skills.skill = skill_order.to_vec();
         if !charge_active {
-            skills.add_skill(Skill::new(1, Box::new(SummonShareDamageSkill::new())));
+            skills.store.insert(
+                SUMMON_SHARE_DAMAGE_SKILL_KEY,
+                Skill::new(1, Box::new(SummonShareDamageSkill::new())),
+            );
         }
         skills.boost_last();
         summoned.skills = skills;
