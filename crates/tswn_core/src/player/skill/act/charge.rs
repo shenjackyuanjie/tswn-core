@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{PostActionPhase, ProcKind, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -74,6 +74,12 @@ impl SkillTrait for ChargeSkill {
                 .expect("cannot get charge owner from storage")
                 .update_states();
         }
+    }
+
+    fn post_action_phase(&self) -> PostActionPhase {
+        // JS 把 Charge 的 PostActionImpl 以 ga4()=Infinity 追加到 x2 尾部，
+        // 所以要晚于普通的 Poison/Protect/state post_action 收尾。
+        PostActionPhase::Late
     }
 
     fn update_state(&mut self, args: SkillArgs) {

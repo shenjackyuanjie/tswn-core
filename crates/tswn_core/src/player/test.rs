@@ -1081,6 +1081,140 @@ fn iron_break_refreshes_attract_immediately() {
     assert_eq!(owner_after.get_status().attract, 32768.0);
 }
 
+#[derive(Debug, Clone, Default)]
+struct ObservePreDefendByteSkill;
+
+impl crate::player::skill::SkillTrait for ObservePreDefendByteSkill {
+    fn destroy(&self, _plr: PlrId, _args: crate::player::skill::SkillArgs) {}
+
+    fn clone_box(&self) -> Box<dyn crate::player::skill::SkillTrait> { Box::new(self.clone()) }
+
+    fn pre_defend(
+        &mut self,
+        atp: f64,
+        _caster: PlrId,
+        _is_mag: bool,
+        _on_damage: &OnDamageFunc,
+        args: crate::player::skill::SkillArgs,
+    ) -> f64 {
+        let byte = args.1.next_u8();
+        args.2.add(crate::engine::update::RunUpdate::new(
+            format!("pre_defend_skill_byte={byte}"),
+            args.0,
+            args.0,
+            1,
+        ));
+        atp
+    }
+
+    fn proc_kinds(&self) -> &[crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PreDefend] }
+}
+
+#[test]
+fn protect_state_runs_after_existing_pre_defend_skills() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let protector = Player::new_from_namerena_raw("protector@red".to_string(), storage.clone()).unwrap();
+    let caster = Player::new_from_namerena_raw("caster@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let protector_id = storage.just_insert_player(protector);
+    let caster_id = storage.just_insert_player(caster);
+    storage.sync_groups(&[vec![owner_id, protector_id], vec![caster_id]]);
+    let mut randomer = RC4::default();
+    let mut probe = randomer.clone();
+    let first = probe.next_u8();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.add_skill(Skill::new(1, Box::new(ObservePreDefendByteSkill)));
+        owner_mut.skills.update_proc();
+        owner_mut.set_state(crate::player::skill::protect::ProtectState {
+            target: Some(owner_id),
+            protect_from: vec![crate::player::skill::protect::ProtectLink {
+                owner: protector_id,
+                level: 0,
+            }],
+            pre_defend_skill_count: owner_mut.skills.pre_defend.len(),
+        });
+
+        let atp = owner_mut.pre_defend(100.0, false, caster_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+        assert_eq!(atp, 100.0);
+    }
+
+    let observed: Vec<&str> = updates.updates.iter().map(|update| update.message.as_ref()).collect();
+    assert_eq!(observed, vec![format!("pre_defend_skill_byte={first}")]);
+}
+
+#[test]
+fn protect_state_runs_before_late_registered_pre_defend_skills() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let protector = Player::new_from_namerena_raw("protector@red".to_string(), storage.clone()).unwrap();
+    let caster = Player::new_from_namerena_raw("caster@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let protector_id = storage.just_insert_player(protector);
+    let caster_id = storage.just_insert_player(caster);
+    storage.sync_groups(&[vec![owner_id, protector_id], vec![caster_id]]);
+    let mut randomer = RC4::default();
+    let mut probe = randomer.clone();
+    let _first = probe.next_u8();
+    let second = probe.next_u8();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.add_skill(Skill::new(1, Box::new(ObservePreDefendByteSkill)));
+        owner_mut.skills.update_proc();
+        owner_mut.set_state(crate::player::skill::protect::ProtectState {
+            target: Some(owner_id),
+            protect_from: vec![crate::player::skill::protect::ProtectLink {
+                owner: protector_id,
+                level: 0,
+            }],
+            pre_defend_skill_count: 0,
+        });
+
+        let atp = owner_mut.pre_defend(100.0, false, caster_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+        assert_eq!(atp, 100.0);
+    }
+
+    let observed: Vec<&str> = updates.updates.iter().map(|update| update.message.as_ref()).collect();
+    assert_eq!(observed, vec![format!("pre_defend_skill_byte={second}")]);
+}
+
+#[derive(Debug, Clone, Default)]
+struct ObserveChargeBoostState;
+
+impl crate::player::state::StateTrait for ObserveChargeBoostState {
+    fn clone_box(&self) -> Box<dyn crate::player::state::StateTrait> { Box::new(self.clone()) }
+
+    fn on_post_action(
+        &mut self,
+        owner: PlrId,
+        _alive: bool,
+        _randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &std::sync::Arc<Storage>,
+    ) -> bool {
+        let boosted = storage
+            .get_player(&owner)
+            .map(|player| player.get_status().at_boost > 1.0)
+            .unwrap_or(false);
+        updates.add(crate::engine::update::RunUpdate::new(
+            if boosted {
+                "observe_charge_boost=boosted"
+            } else {
+                "observe_charge_boost=normal"
+            },
+            owner,
+            owner,
+            1,
+        ));
+        false
+    }
+}
+
 #[test]
 fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
     let storage = Storage::new_arc();
@@ -1144,6 +1278,40 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
 
     let cleared_boost = storage.get_player(&owner_id).unwrap().get_status().at_boost;
     assert!((cleared_boost - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn charge_post_action_tail_runs_after_state_ticks() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.add_skill(Skill::new_with_id(1, 19)); // Charge
+        owner_mut.skills.update_proc();
+        owner_mut.update_states();
+        owner_mut
+            .skills
+            .skill_by_id_mut(0)
+            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
+        owner_mut.set_state(ObserveChargeBoostState);
+    }
+
+    assert!(storage.get_player(&owner_id).unwrap().get_status().at_boost > 1.0);
+
+    let mut final_updates = RunUpdates::new();
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.run_post_action_chain(&mut randomer, &mut final_updates, &storage);
+    }
+
+    let observed: Vec<&str> = final_updates.updates.iter().map(|update| update.message.as_ref()).collect();
+    assert_eq!(observed, vec!["observe_charge_boost=boosted"]);
+    assert!((storage.get_player(&owner_id).unwrap().get_status().at_boost - 1.0).abs() < 1e-6);
 }
 
 #[test]
@@ -1332,12 +1500,14 @@ fn summon_merge_uses_fixed_skill_slots() {
     let summoned_id = storage.just_insert_player(summoned);
 
     let mut merge = crate::player::skill::merge::MergeSkill::new();
-    assert!(<crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
-        &mut merge,
-        255,
-        summoned_id,
-        (merge_owner_id, &mut randomer, &mut updates, &storage),
-    ));
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            summoned_id,
+            (merge_owner_id, &mut randomer, &mut updates, &storage),
+        )
+    );
 
     let owner_after = storage.get_player(&merge_owner_id).unwrap();
     assert_eq!(owner_after.skills.skill_by_id(0).level(), 6);
@@ -1433,10 +1603,12 @@ fn owner_death_marks_pending_linked_minion_dead_before_sync() {
         .expect("pending shadow should remain available until sync");
     assert!(!pending_shadow.alive());
     assert_eq!(pending_shadow.get_status().hp, 0);
-    assert!(updates
-        .updates
-        .iter()
-        .any(|update| update.message == "[1]消失了" && update.target == pending_shadow_id));
+    assert!(
+        updates
+            .updates
+            .iter()
+            .any(|update| update.message == "[1]消失了" && update.target == pending_shadow_id)
+    );
 }
 
 #[test]

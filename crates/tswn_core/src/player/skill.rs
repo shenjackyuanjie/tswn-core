@@ -177,6 +177,12 @@ pub enum ProcKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PostActionPhase {
+    Early,
+    Late,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SkillTargetDomain {
     EnemyAlive,
     AllyAlive,
@@ -226,6 +232,7 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 行动之后
     fn post_action(&mut self, args: SkillArgs) {}
     fn post_action_with_level(&mut self, _level: u32, args: SkillArgs) { self.post_action(args) }
+    fn post_action_phase(&self) -> PostActionPhase { PostActionPhase::Early }
     /// 每次 action 结束后的回调（对齐 RunUpdates.onUpdateEnd）
     fn on_update_end(&mut self, _args: SkillArgs) -> bool { false }
     fn on_update_end_with_level(&mut self, _level: u32, args: SkillArgs) -> bool { self.on_update_end(args) }
@@ -564,6 +571,8 @@ impl Skill {
     }
 
     pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action_with_level(self.level, args) }
+
+    pub fn post_action_phase(&self) -> PostActionPhase { self.skill_type.post_action_phase() }
 
     pub fn on_update_end(&mut self, args: SkillArgs) -> bool { self.skill_type.on_update_end_with_level(self.level, args) }
 

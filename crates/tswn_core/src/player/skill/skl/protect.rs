@@ -18,6 +18,7 @@ pub struct ProtectLink {
 pub struct ProtectState {
     pub target: Option<PlrId>,
     pub protect_from: Vec<ProtectLink>,
+    pub pre_defend_skill_count: usize,
 }
 
 fn effective_group(storage: &Arc<crate::engine::storage::Storage>, plr: PlrId) -> Option<Vec<PlrId>> {
@@ -53,8 +54,6 @@ fn effective_alive_group(storage: &Arc<crate::engine::storage::Storage>, plr: Pl
 
 impl StateTrait for ProtectState {
     fn meta_type(&self) -> i32 { 0 }
-
-    fn pre_defend_priority(&self) -> i32 { 100 }
 
     #[allow(clippy::too_many_arguments)]
     fn on_pre_defend(
@@ -188,7 +187,11 @@ impl ProtectSkill {
     pub fn new() -> Self { Self::default() }
 
     fn pick_target(&mut self, _level: u32, args: SkillArgs) -> Option<PlrId> {
-        let debug_this = args.3.get_player(&args.0).map(|p| crate::debug::debug_action_matches(&p.id_name())).unwrap_or(false);
+        let debug_this = args
+            .3
+            .get_player(&args.0)
+            .map(|p| crate::debug::debug_action_matches(&p.id_name()))
+            .unwrap_or(false);
         let group = if let Some(group) = effective_alive_group(args.3, args.0) {
             group
         } else if let Some(group) = args.3.alive_group_containing(args.0) {
@@ -388,6 +391,7 @@ impl ProtectSkill {
         target.set_state(ProtectState {
             target: Some(target_id),
             protect_from: vec![ProtectLink { owner, level }],
+            pre_defend_skill_count: target.skills.pre_defend.len(),
         });
     }
 

@@ -215,7 +215,11 @@ impl PlayerStateStore {
             .states
             .iter()
             .map(|(tag, state)| {
-                (*tag, priority(state.as_ref()), self.state_orders.get(tag).copied().unwrap_or(u64::MAX))
+                (
+                    *tag,
+                    priority(state.as_ref()),
+                    self.state_orders.get(tag).copied().unwrap_or(u64::MAX),
+                )
             })
             .collect();
         // JS 的 postAction 在同优先级下保持注册顺序；这里不能再退化成 tag 字典序，
@@ -487,6 +491,59 @@ impl PlayerStateStore {
     ) -> Vec<StateTag> {
         let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
         for tag in self.ordered_tags_by(|state| state.pre_defend_priority()) {
+            let should_clear = self
+                .states
+                .get_mut(&tag)
+                .map(|state| state.on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage))
+                .unwrap_or(false);
+            if should_clear {
+                clear_tags.push(tag);
+            }
+            if *atp == 0.0 {
+                break;
+            }
+        }
+        clear_tags.into_vec()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_pre_defend_state_tag(
+        &mut self,
+        tag: StateTag,
+        owner: PlrId,
+        atp: &mut f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> Vec<StateTag> {
+        let Some(state) = self.states.get_mut(&tag) else {
+            return Vec::new();
+        };
+        let should_clear = state.on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage);
+        if should_clear { vec![tag] } else { Vec::new() }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_pre_defend_states_except_tag(
+        &mut self,
+        skip_tag: StateTag,
+        owner: PlrId,
+        atp: &mut f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> Vec<StateTag> {
+        let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
+        for tag in self.ordered_tags_by(|state| state.pre_defend_priority()) {
+            if tag == skip_tag {
+                continue;
+            }
             let should_clear = self
                 .states
                 .get_mut(&tag)

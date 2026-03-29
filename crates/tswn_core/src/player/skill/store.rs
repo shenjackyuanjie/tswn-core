@@ -44,7 +44,7 @@
 
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::{ProcKind, Skill, SkillArgs},
+    skill::{PostActionPhase, ProcKind, Skill, SkillArgs},
 };
 use foldhash::{HashMap as FoldHashMap, HashMapExt, HashSet as FoldHashSet, HashSetExt};
 
@@ -292,7 +292,7 @@ impl SkillStorage {
         }
     }
 
-    pub fn post_action(&mut self, args: SkillArgs) {
+    fn post_action_with_phase(&mut self, phase: PostActionPhase, args: SkillArgs) {
         let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
@@ -300,16 +300,29 @@ impl SkillStorage {
             .unwrap_or(false);
         for idx in 0..self.post_action.len() {
             let skill_key = self.post_action[idx];
+            if self.store.get(&skill_key).map(|skill| skill.post_action_phase()) != Some(phase) {
+                continue;
+            }
             let rc4_before = (args.1.i, args.1.j);
             let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             skill.post_action((args.0, args.1, args.2, args.3));
             if debug_this {
                 eprintln!(
-                    "[post_action_skill] key={} rc4 {}:{} -> {}:{}",
-                    skill_key, rc4_before.0, rc4_before.1, args.1.i, args.1.j
+                    "[post_action_skill/{:?}] key={} rc4 {}:{} -> {}:{}",
+                    phase, skill_key, rc4_before.0, rc4_before.1, args.1.i, args.1.j
                 );
             }
         }
+    }
+
+    pub fn post_action_early(&mut self, args: SkillArgs) { self.post_action_with_phase(PostActionPhase::Early, args) }
+
+    pub fn post_action_late(&mut self, args: SkillArgs) { self.post_action_with_phase(PostActionPhase::Late, args) }
+
+    pub fn post_action(&mut self, args: SkillArgs) {
+        let (owner, randomer, updates, storage) = args;
+        self.post_action_early((owner, randomer, updates, storage));
+        self.post_action_late((owner, randomer, updates, storage));
     }
 
     pub fn on_update_end(&mut self, args: SkillArgs) -> bool {
@@ -322,13 +335,28 @@ impl SkillStorage {
         triggered
     }
 
-    pub fn pre_defend(&mut self, mut atp: f64, is_mag: bool, caster: PlrId, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {
+    pub fn pre_defend(&mut self, atp: f64, is_mag: bool, caster: PlrId, on_damage: OnDamageFunc, args: SkillArgs) -> f64 {
+        self.pre_defend_range(0, self.pre_defend.len(), atp, is_mag, caster, on_damage, args)
+    }
+
+    pub fn pre_defend_range(
+        &mut self,
+        start: usize,
+        end: usize,
+        mut atp: f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        args: SkillArgs,
+    ) -> f64 {
         let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
             .as_deref()
             .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
             .unwrap_or(false);
-        for idx in 0..self.pre_defend.len() {
+        let end = end.min(self.pre_defend.len());
+        let start = start.min(end);
+        for idx in start..end {
             let skill_key = self.pre_defend[idx];
             let rc4_before = (args.1.i, args.1.j);
             let skill = self.store.get_mut(&skill_key).expect("skill not found in store");

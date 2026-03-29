@@ -68,7 +68,23 @@ impl Player {
         if !self.status.alive() {
             return;
         }
-        let mut stp = self.status.speed * randomer.r3() as i32;
+        let step_byte = randomer.next_u8();
+        let step_roll = step_byte & 3;
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_action_matches(&self.id_name()) {
+            eprintln!(
+                "[step_roll] actor={} id={} rc4=({}, {}) byte={} roll={} speed={} step={}",
+                self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
+                step_byte,
+                step_roll,
+                self.status.speed,
+                self.status.speed * step_roll as i32,
+            );
+        }
+        let mut stp = self.status.speed * step_roll as i32;
         stp = self.apply_pre_step_states(stp, updates);
         let ptr = self.as_ptr();
         stp = self.skills.pre_step(stp, (ptr, randomer, updates, storage));
@@ -80,7 +96,8 @@ impl Player {
     }
 
     pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
-        let smart_roll = randomer.r63() as i32;
+        let smart_byte = randomer.next_u8();
+        let smart_roll = (smart_byte & 63) as i32;
         let smart = self.status.wisdom > smart_roll;
         let ptr = self.as_ptr();
         let pre_action_outcome = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
@@ -89,30 +106,22 @@ impl Player {
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
-                "[action] actor={} id={} rc4=({}, {}) smart_roll={} wisdom={} smart={} forced_skill={:?} clear_forced={}",
+                "[action] actor={} id={} rc4=({}, {}) smart_byte={} smart_roll={} wisdom={} smart={} mp={} forced_skill={:?} clear_forced={}",
                 self.id_name(),
                 self.as_ptr(),
                 randomer.i,
                 randomer.j,
+                smart_byte,
                 smart_roll,
                 self.status.wisdom,
                 smart,
+                self.status.mp,
                 pre_action_outcome.forced_skill,
                 pre_action_outcome.clear_forced_action,
             );
         }
         if self.status.frozed() {
             return;
-                #[cfg(not(feature = "no_debug"))]
-                if debug_action_this {
-                    eprintln!(
-                        "[action_after_act] actor={} id={} rc4=({}, {})",
-                        self.id_name(),
-                        self.as_ptr(),
-                        randomer.i,
-                        randomer.j,
-                    );
-                }
         }
 
         let state_hijacked = self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
@@ -122,9 +131,7 @@ impl Player {
                 self.status.mp += 16;
             }
             updates.emit(RunUpdate::new_newline);
-            let ptr = self.as_ptr();
-            self.skills.post_action((ptr, randomer, updates, storage));
-            self.apply_post_action_states(randomer, updates, storage);
+            self.run_post_action_chain(randomer, updates, storage);
             return;
         }
 
@@ -156,7 +163,21 @@ impl Player {
             acted = true;
         } else {
             if selected_skill_key.is_none() {
-                let req_mp = randomer.r15() as i32 + 8;
+                let req_mp_byte = randomer.next_u8();
+                let req_mp = (req_mp_byte & 15) as i32 + 8;
+                #[cfg(not(feature = "no_debug"))]
+                if debug_action_this {
+                    eprintln!(
+                        "[action_req_mp] actor={} id={} rc4=({}, {}) req_mp_byte={} req_mp={} mp_before={}",
+                        self.id_name(),
+                        self.as_ptr(),
+                        randomer.i,
+                        randomer.j,
+                        req_mp_byte,
+                        req_mp,
+                        self.status.mp,
+                    );
+                }
                 if self.status.mp >= req_mp {
                     let is_boss = self.player_type == PlayerType::Boss;
                     if !is_boss {
@@ -324,7 +345,7 @@ impl Player {
             );
         }
         updates.emit(RunUpdate::new_newline);
-        self.skills.post_action((ptr, randomer, updates, storage));
+        self.run_post_action_chain(randomer, updates, storage);
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
@@ -337,7 +358,6 @@ impl Player {
                 self.status.hp,
             );
         }
-        self.apply_post_action_states(randomer, updates, storage);
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
@@ -350,6 +370,15 @@ impl Player {
                 self.status.hp,
             );
         }
+    }
+
+    pub(super) fn run_post_action_chain(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
+        let ptr = self.as_ptr();
+        // JS 的 x2 是一条统一 post_action 队列；Charge 会把 Infinity 尾节点追加进去，
+        // 所以这里要先跑普通技能，再跑 state tick，最后再跑 charge 这类尾节点。
+        self.skills.post_action_early((ptr, randomer, updates, storage));
+        self.apply_post_action_states(randomer, updates, storage);
+        self.skills.post_action_late((ptr, randomer, updates, storage));
     }
 
     pub fn on_update_end(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
@@ -970,7 +999,103 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> f64 {
+        use crate::player::skill::protect::ProtectState;
+        use crate::player::state::state_tag;
+
         let atp_before = atp;
+        let protect_split = self.get_state::<ProtectState>().map(|state| state.pre_defend_skill_count);
+        if let Some(split) = protect_split {
+            let split = split.min(self.skills.pre_defend.len());
+            atp = self.skills.pre_defend_range(
+                0,
+                split,
+                atp,
+                is_mag,
+                caster,
+                on_damage,
+                (self.as_ptr(), randomer, updates, storage),
+            );
+            if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
+                eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
+            }
+            if atp == 0.0 {
+                return 0.0;
+            }
+
+            let protect_tag = state_tag::<ProtectState>();
+            let mut clear_tags = self.state.on_pre_defend_state_tag(
+                protect_tag,
+                self.as_ptr(),
+                &mut atp,
+                is_mag,
+                caster,
+                on_damage,
+                randomer,
+                updates,
+                storage,
+            );
+            if atp == 0.0 {
+                if !clear_tags.is_empty() {
+                    for tag in clear_tags {
+                        self.state.clear_tag(tag);
+                    }
+                    self.update_states();
+                }
+                return 0.0;
+            }
+
+            let atp_after_protect = atp;
+            atp = self.skills.pre_defend_range(
+                split,
+                self.skills.pre_defend.len(),
+                atp,
+                is_mag,
+                caster,
+                on_damage,
+                (self.as_ptr(), randomer, updates, storage),
+            );
+            if crate::debug::debug_damage() && (atp - atp_after_protect).abs() > 0.001 {
+                eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_after_protect, atp);
+            }
+            if atp == 0.0 {
+                if !clear_tags.is_empty() {
+                    for tag in clear_tags {
+                        self.state.clear_tag(tag);
+                    }
+                    self.update_states();
+                }
+                return 0.0;
+            }
+
+            let atp_before_other_states = atp;
+            clear_tags.extend(self.state.on_pre_defend_states_except_tag(
+                protect_tag,
+                self.as_ptr(),
+                &mut atp,
+                is_mag,
+                caster,
+                on_damage,
+                randomer,
+                updates,
+                storage,
+            ));
+            if !clear_tags.is_empty() {
+                for tag in clear_tags {
+                    self.state.clear_tag(tag);
+                }
+                self.update_states();
+            }
+            if crate::debug::debug_damage() && (atp - atp_before_other_states).abs() > 0.001 {
+                eprintln!(
+                    "[PRE_DEFEND_STATE] {} atp: {:.4} -> {:.4}",
+                    self.id_name(),
+                    atp_before_other_states,
+                    atp
+                );
+            }
+            return atp;
+        }
+
         atp = self
             .skills
             .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
