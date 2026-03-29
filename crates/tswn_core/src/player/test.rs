@@ -492,6 +492,37 @@ fn post_defend_applies_curse_multiplier() {
 }
 
 #[test]
+fn hide_requires_real_alive_group_instead_of_clan_fallback() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@same".to_string(), storage.clone()).unwrap();
+    let ally = Player::new_from_namerena_raw("ally@same".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker@other".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let ally_id = storage.just_insert_player(ally);
+    let attacker_id = storage.just_insert_player(attacker);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.status.hp = 120;
+        owner_mut.status.max_hp = 120;
+        owner_mut.skills.add_skill(Skill::new_with_id(127, 34));
+        owner_mut.skills.update_proc();
+    }
+
+    storage.sync_groups(&[vec![ally_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![ally_id], vec![attacker_id]]);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .damage(8, attacker_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert!(!updates.updates.iter().any(|x| x.message.contains("发动隐匿")));
+}
+
+#[test]
 fn action_expires_berserk_and_charm_states() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();

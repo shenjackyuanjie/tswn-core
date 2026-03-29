@@ -439,12 +439,33 @@ impl PlayerStateStore {
         storage: &Arc<Storage>,
     ) -> Vec<StateTag> {
         let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
+        #[cfg(not(feature = "no_debug"))]
+        let debug_this = storage
+            .get_player(&owner)
+            .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+            .unwrap_or(false);
         for tag in self.ordered_tags_by(|state| state.post_action_priority()) {
+            #[cfg(not(feature = "no_debug"))]
+            let rc4_before = (randomer.i, randomer.j);
             let should_clear = self
                 .states
                 .get_mut(&tag)
                 .map(|state| state.on_post_action(owner, alive, randomer, updates, storage))
                 .unwrap_or(false);
+            #[cfg(not(feature = "no_debug"))]
+            if debug_this {
+                eprintln!(
+                    "[post_action_state] owner={} tag={:?} rc4 {}:{} -> {}:{} clear={} alive={}",
+                    storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                    tag,
+                    rc4_before.0,
+                    rc4_before.1,
+                    randomer.i,
+                    randomer.j,
+                    should_clear,
+                    alive,
+                );
+            }
             if should_clear {
                 clear_tags.push(tag);
             }
@@ -508,9 +529,30 @@ impl PlayerStateStore {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) {
+        #[cfg(not(feature = "no_debug"))]
+        let debug_this = storage
+            .get_player(&owner)
+            .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+            .unwrap_or(false);
         for tag in self.ordered_tags_by(|state| state.post_damage_priority()) {
+            #[cfg(not(feature = "no_debug"))]
+            let rc4_before = (randomer.i, randomer.j);
             if let Some(state) = self.states.get_mut(&tag) {
                 state.on_post_damage(owner, dmg, caster, randomer, updates, storage);
+                #[cfg(not(feature = "no_debug"))]
+                if debug_this {
+                    eprintln!(
+                        "[post_damage_state] owner={} tag={:?} dmg={} caster={} rc4 {}:{} -> {}:{}",
+                        storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                        tag,
+                        dmg,
+                        caster,
+                        rc4_before.0,
+                        rc4_before.1,
+                        randomer.i,
+                        randomer.j,
+                    );
+                }
             }
         }
     }

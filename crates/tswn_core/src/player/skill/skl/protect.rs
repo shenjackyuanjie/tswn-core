@@ -188,11 +188,7 @@ impl ProtectSkill {
     pub fn new() -> Self { Self::default() }
 
     fn pick_target(&mut self, _level: u32, args: SkillArgs) -> Option<PlrId> {
-        let debug_action = crate::debug::debug_action();
-        let debug_this = debug_action
-            .as_deref()
-            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
-            .unwrap_or(false);
+        let debug_this = args.3.get_player(&args.0).map(|p| crate::debug::debug_action_matches(&p.id_name())).unwrap_or(false);
         let group = if let Some(group) = effective_alive_group(args.3, args.0) {
             group
         } else if let Some(group) = args.3.alive_group_containing(args.0) {

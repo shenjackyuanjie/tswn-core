@@ -89,8 +89,11 @@ impl Player {
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
-                "[action] actor={} smart_roll={} wisdom={} smart={} forced_skill={:?} clear_forced={}",
+                "[action] actor={} id={} rc4=({}, {}) smart_roll={} wisdom={} smart={} forced_skill={:?} clear_forced={}",
                 self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
                 smart_roll,
                 self.status.wisdom,
                 smart,
@@ -100,6 +103,16 @@ impl Player {
         }
         if self.status.frozed() {
             return;
+                #[cfg(not(feature = "no_debug"))]
+                if debug_action_this {
+                    eprintln!(
+                        "[action_after_act] actor={} id={} rc4=({}, {})",
+                        self.id_name(),
+                        self.as_ptr(),
+                        randomer.i,
+                        randomer.j,
+                    );
+                }
         }
 
         let state_hijacked = self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
@@ -154,8 +167,11 @@ impl Player {
                                 if debug_action_this {
                                     let skill = self.skills.skill_by_id(key);
                                     eprintln!(
-                                        "[action_skill] actor={} key={} type={} level={} enabled=false",
+                                        "[action_skill] actor={} id={} rc4=({}, {}) key={} type={} level={} enabled=false",
                                         self.id_name(),
+                                        self.as_ptr(),
+                                        randomer.i,
+                                        randomer.j,
                                         key,
                                         skill.debug_skill_type_name(),
                                         skill.level(),
@@ -171,8 +187,11 @@ impl Player {
                                 #[cfg(not(feature = "no_debug"))]
                                 if debug_action_this {
                                     eprintln!(
-                                        "[action_skill] actor={} key={} type={} level={} action_ok={} level_ok={} prob_ok={}",
+                                        "[action_skill] actor={} id={} rc4=({}, {}) key={} type={} level={} action_ok={} level_ok={} prob_ok={}",
                                         self.id_name(),
+                                        self.as_ptr(),
+                                        randomer.i,
+                                        randomer.j,
                                         key,
                                         skill.debug_skill_type_name(),
                                         skill.level(),
@@ -189,8 +208,11 @@ impl Player {
                                     #[cfg(not(feature = "no_debug"))]
                                     if debug_action_this {
                                         eprintln!(
-                                            "[action_skill_targets] actor={} key={} allow_empty={} selected={:?}",
+                                            "[action_skill_targets] actor={} id={} rc4=({}, {}) key={} allow_empty={} selected={:?}",
                                             self.id_name(),
+                                            self.as_ptr(),
+                                            randomer.i,
+                                            randomer.j,
                                             key,
                                             allow_empty,
                                             selected,
@@ -233,8 +255,11 @@ impl Player {
                 if debug_action_this {
                     let skill = self.skills.skill_by_id(skill_key);
                     eprintln!(
-                        "[action_choice] actor={} selected_skill={} type={} targets={:?} forced_pre_action={}",
+                        "[action_choice] actor={} id={} rc4=({}, {}) selected_skill={} type={} targets={:?} forced_pre_action={}",
                         self.id_name(),
+                        self.as_ptr(),
+                        randomer.i,
+                        randomer.j,
                         skill_key,
                         skill.debug_skill_type_name(),
                         selected_targets,
@@ -256,7 +281,13 @@ impl Player {
         if !acted {
             #[cfg(not(feature = "no_debug"))]
             if debug_action_this {
-                eprintln!("[action_choice] actor={} fallback=default_attack", self.id_name());
+                eprintln!(
+                    "[action_choice] actor={} id={} rc4=({}, {}) fallback=default_attack",
+                    self.id_name(),
+                    self.as_ptr(),
+                    randomer.i,
+                    randomer.j,
+                );
             }
             self.default_attack(smart, randomer, updates, storage, targets);
         }
@@ -280,9 +311,45 @@ impl Player {
         if (randomer.r127() as i32) < recover_threshold {
             self.status.mp += 16;
         }
+        #[cfg(not(feature = "no_debug"))]
+        if debug_action_this {
+            eprintln!(
+                "[action_after_recover] actor={} id={} rc4=({}, {}) mp={} hp={}",
+                self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
+                self.status.mp,
+                self.status.hp,
+            );
+        }
         updates.emit(RunUpdate::new_newline);
         self.skills.post_action((ptr, randomer, updates, storage));
+        #[cfg(not(feature = "no_debug"))]
+        if debug_action_this {
+            eprintln!(
+                "[action_after_post_action] actor={} id={} rc4=({}, {}) mp={} hp={}",
+                self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
+                self.status.mp,
+                self.status.hp,
+            );
+        }
         self.apply_post_action_states(randomer, updates, storage);
+        #[cfg(not(feature = "no_debug"))]
+        if debug_action_this {
+            eprintln!(
+                "[action_end] actor={} id={} rc4=({}, {}) mp={} hp={}",
+                self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
+                self.status.mp,
+                self.status.hp,
+            );
+        }
     }
 
     pub fn on_update_end(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
@@ -1007,6 +1074,20 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        #[cfg(not(feature = "no_debug"))]
+        let debug_this = crate::debug::debug_action_matches(&self.id_name());
+        #[cfg(not(feature = "no_debug"))]
+        if debug_this {
+            eprintln!(
+                "[damage] target={} caster={} dmg={} rc4=({}, {}) hp_before={}",
+                self.id_name(),
+                caster,
+                dmg,
+                randomer.i,
+                randomer.j,
+                self.status.hp,
+            );
+        }
         if dmg < 0 {
             let _old_hp = self.status.hp;
             self.status.hp -= dmg;
@@ -1045,7 +1126,21 @@ impl Player {
             update
         });
         on_damage(caster, self.as_ptr(), dmg, randomer, updates, storage);
-        self.on_damaged(dmg, old_hp, caster, randomer, updates, storage)
+        let result = self.on_damaged(dmg, old_hp, caster, randomer, updates, storage);
+        #[cfg(not(feature = "no_debug"))]
+        if debug_this {
+            eprintln!(
+                "[damage_end] target={} caster={} dmg={} rc4=({}, {}) hp_after={} result={}",
+                self.id_name(),
+                caster,
+                dmg,
+                randomer.i,
+                randomer.j,
+                self.status.hp,
+                result,
+            );
+        }
+        result
     }
 
     pub fn on_damaged(
@@ -1057,14 +1152,40 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        #[cfg(not(feature = "no_debug"))]
+        let debug_this = crate::debug::debug_action_matches(&self.id_name());
         let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
         for skill_idx in post_damaged_indices {
             let ptr = self.as_ptr();
+            #[cfg(not(feature = "no_debug"))]
+            let rc4_before = (randomer.i, randomer.j);
             let skill = self.skills.skill_by_id_mut(skill_idx);
             skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
+            #[cfg(not(feature = "no_debug"))]
+            if debug_this {
+                eprintln!(
+                    "[post_damage_skill] target={} key={} rc4 {}:{} -> {}:{}",
+                    self.id_name(),
+                    skill_idx,
+                    rc4_before.0,
+                    rc4_before.1,
+                    randomer.i,
+                    randomer.j,
+                );
+            }
         }
         self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
         if self.status.hp <= 0 {
+            #[cfg(not(feature = "no_debug"))]
+            if debug_this {
+                eprintln!(
+                    "[on_damaged_die] target={} old_hp={} rc4=({}, {})",
+                    self.id_name(),
+                    old_hp,
+                    randomer.i,
+                    randomer.j,
+                );
+            }
             self.on_die_impl(old_hp, caster, randomer, updates, storage, true);
             old_hp
         } else {
@@ -1087,6 +1208,22 @@ impl Player {
         storage: &Arc<Storage>,
         allow_dead_reentry: bool,
     ) {
+        #[cfg(not(feature = "no_debug"))]
+        let debug_this = crate::debug::debug_action_matches(&self.id_name());
+        #[cfg(not(feature = "no_debug"))]
+        if debug_this {
+            eprintln!(
+                "[on_die] target={} old_hp={} caster={} allow_dead_reentry={} rc4=({}, {}) alive={} hp={}",
+                self.id_name(),
+                old_hp,
+                caster,
+                allow_dead_reentry,
+                randomer.i,
+                randomer.j,
+                self.status.alive(),
+                self.status.hp,
+            );
+        }
         if self.status.hp > 0 {
             return;
         }
@@ -1130,7 +1267,9 @@ impl Player {
         });
         let mut linked_minions_src = linked_group_members.clone();
         // JS 中如果 owner 在同一回合先生成 pending minion，随后自己立即死亡，
-        // 这些尚未 sync 进 world 的 pending minion 也会立刻随 owner 消失。
+        // 这些 pending minion 仍会先经过 addNew 进入 round roster，
+        // 然后在同一轮 sync 中随 owner 一起移除并推进 round_pos。
+        // 所以这里仍要把 pending minion 标成死亡，交给后续 sync 落地并移除。
         linked_minions_src.extend(storage.pending_spawn_ids_for_group(&linked_group_members));
         let linked_minions = linked_minions_src
             .into_iter()
@@ -1174,6 +1313,18 @@ impl Player {
         }
 
         storage.record_death(owner_id);
+
+        #[cfg(not(feature = "no_debug"))]
+        if debug_this {
+            eprintln!(
+                "[on_die_after_record] target={} rc4=({}, {}) alive={} hp={}",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+                self.status.alive(),
+                self.status.hp,
+            );
+        }
 
         let has_enemy_alive = storage.group_containing(caster).map(|ally_group| {
             storage

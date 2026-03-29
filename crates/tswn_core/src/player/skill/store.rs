@@ -403,10 +403,15 @@ impl SkillStorage {
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) {
         let debug_action = crate::debug::debug_die();
-        let debug_this = debug_action
-            .as_deref()
-            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
-            .unwrap_or(false);
+        let debug_this = args
+            .3
+            .get_player(&args.0)
+            .map(|p| crate::debug::debug_action_matches(&p.id_name()))
+            .unwrap_or(false)
+            || debug_action
+                .as_deref()
+                .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
+                .unwrap_or(false);
         for idx in 0..self.post_death.len() {
             let skill_key = self.post_death[idx];
             let rc4_before = (args.1.i, args.1.j);

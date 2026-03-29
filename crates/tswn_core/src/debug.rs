@@ -81,7 +81,9 @@ pub fn debug_action() -> Option<String> {
 pub fn debug_action_matches(name: &str) -> bool {
     init_once();
     if DEBUG_ACTION.load(Ordering::Relaxed) {
-        std::env::var("TSWN_DEBUG_ACTION").map(|v| v == name).unwrap_or(false)
+        std::env::var("TSWN_DEBUG_ACTION")
+            .map(|needle| needle == name || name.contains(&needle))
+            .unwrap_or(false)
     } else {
         false
     }
