@@ -55,7 +55,8 @@ impl SkillTrait for QuakeSkill {
         for target_id in picked {
             // JS: getAt is called BEFORE the hp > 0 check, so RC4 is consumed even for dead targets
             let owner = args.3.get_player(&args.0).expect("cannot get quake owner from storage");
-            let atp = owner.get_at(true, args.1) * 2.44 / divisor;
+            // Keep the decompiled JS float literal exactly. 2.44 shifts some cases across ceil() boundaries.
+            let atp = owner.get_at(true, args.1) * 2.440000057220459 / divisor;
             let target_alive = args.3.get_player(&target_id).map(|p| p.get_status().hp > 0).unwrap_or(false);
             if !target_alive {
                 continue;
