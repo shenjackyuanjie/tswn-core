@@ -49,10 +49,14 @@ fn sync_runtime_entities_adds_pending_linked_shadow_before_same_tick_owner_clean
     };
     let mut updates = RunUpdates::new();
 
-    storage
-        .just_get_player_mut(clone_id)
-        .expect("cannot get clone mut")
-        .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+    storage.just_get_player_mut(clone_id).expect("cannot get clone mut").damage(
+        999,
+        owner_id,
+        noop_on_damage,
+        &mut randomer,
+        &mut updates,
+        &storage,
+    );
 
     EngineCore::default().sync_runtime_entities(&mut world, &storage);
 
@@ -63,7 +67,9 @@ fn sync_runtime_entities_adds_pending_linked_shadow_before_same_tick_owner_clean
     assert!(!world.contains_alive(clone_id));
     assert!(!world.contains_alive(pending_shadow_id));
 
-    let shadow = storage.get_player(&pending_shadow_id).expect("pending shadow should be inserted during sync");
+    let shadow = storage
+        .get_player(&pending_shadow_id)
+        .expect("pending shadow should be inserted during sync");
     assert!(!shadow.alive());
     assert_eq!(shadow.get_status().hp, 0);
 }

@@ -76,7 +76,12 @@ impl EngineCore {
         let players = world
             .players
             .iter()
-            .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
+            .map(|id| {
+                storage
+                    .get_player(id)
+                    .map(|p| format!("{}:{}", id, p.id_name()))
+                    .unwrap_or_else(|| format!("#{id}"))
+            })
             .collect::<Vec<String>>()
             .join(" -> ");
         eprintln!("[world:{}] round_pos={} players=[{}]", tag, world.round_pos, players);
@@ -182,8 +187,9 @@ impl EngineCore {
         #[cfg(not(feature = "no_debug"))]
         if debug_tick && let Some(plr) = storage.get_player(&actor) {
             eprintln!(
-                "[tick] actor={} mp={} hp={} rc4=({}, {})",
+                "[tick] actor={} id={} mp={} hp={} rc4=({}, {})",
                 plr.id_name(),
+                actor,
                 plr.move_point(),
                 plr.get_status().hp,
                 randomer.i,
@@ -208,8 +214,9 @@ impl EngineCore {
         {
             let bytes = (ctx.randomer.i as i32 - rc4_before.0 as i32).rem_euclid(256);
             eprintln!(
-                "[tick_end] actor={} rc4=({},{})->({},{}) bytes={}",
+                "[tick_end] actor={} id={} rc4=({},{})->({},{}) bytes={}",
                 plr.id_name(),
+                actor,
                 rc4_before.0,
                 rc4_before.1,
                 ctx.randomer.i,

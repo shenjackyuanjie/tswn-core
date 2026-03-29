@@ -61,7 +61,12 @@ impl SkillTrait for HideSkill {
                     })
                     .or_else(|| args.3.alive_group_at_team_of(args.0))
             })
-            .map(|group| group.iter().filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false)).count())
+            .map(|group| {
+                group
+                    .iter()
+                    .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
+                    .count()
+            })
             .unwrap_or(0);
         if debug_this {
             let caster_name = args.3.get_player(&caster).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", caster));

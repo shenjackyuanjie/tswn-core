@@ -455,11 +455,7 @@ fn format_trace_minion_name(owner: &tswn_core::player::Player, index: usize) -> 
     }
 }
 
-fn alloc_trace_minion_name(
-    trace_names: &mut TraceNameState,
-    root_owner_id: usize,
-    owner: &tswn_core::player::Player,
-) -> String {
+fn alloc_trace_minion_name(trace_names: &mut TraceNameState, root_owner_id: usize, owner: &tswn_core::player::Player) -> String {
     let index = trace_names.next_index.entry(root_owner_id).or_insert(0);
     let name = format_trace_minion_name(owner, *index);
     *index += 1;
