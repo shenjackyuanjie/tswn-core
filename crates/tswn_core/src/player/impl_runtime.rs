@@ -1123,17 +1123,21 @@ impl Player {
         // JS 按队伍 roster 顺序处理 linked minion（也就是召唤/分身出现顺序），
         // 这样 owner 死亡时会先清理 `?0` 再清理 `?1`。
         // Rust 之前走 HashMap keys 顺序，会导致顺序不稳定并出现反序日志。
-        let linked_minions_src = storage.group_containing(owner_id).cloned().unwrap_or_else(|| {
+        let linked_group_members = storage.group_containing(owner_id).cloned().unwrap_or_else(|| {
             let mut ids = storage.all_player_ids();
             ids.sort_unstable();
             ids
         });
+        let mut linked_minions_src = linked_group_members.clone();
+        // JS 中如果 owner 在同一回合先生成 pending minion，随后自己立即死亡，
+        // 这些尚未 sync 进 world 的 pending minion 也会立刻随 owner 消失。
+        linked_minions_src.extend(storage.pending_spawn_ids_for_group(&linked_group_members));
         let linked_minions = linked_minions_src
             .into_iter()
             .filter(|id| *id != owner_id)
             .filter(|id| {
                 storage
-                    .get_player(id)
+                    .get_player_or_pending(id)
                     .map(|player| player.state.linked_to_owner(owner_id))
                     .unwrap_or(false)
             })
@@ -1143,7 +1147,7 @@ impl Player {
             // 只设置 HP=0，不立即处理死亡。使魔的死亡将由其自身的 on_damaged 路径处理，
             // 确保死亡顺序为 [owner, summon] 而非 [summon, owner]。
             if storage.is_in_post_damage(minion_id) {
-                if let Some(minion) = storage.just_get_player_mut(minion_id)
+                if let Some(minion) = storage.just_get_player_or_pending_mut(minion_id)
                     && minion.alive()
                     && minion.get_status().hp > 0
                 {
@@ -1151,7 +1155,8 @@ impl Player {
                 }
                 continue;
             }
-            let should_remove = if let Some(minion) = storage.just_get_player_mut(minion_id) {
+            let should_queue_remove = storage.get_player(&minion_id).is_some();
+            let should_remove = if let Some(minion) = storage.just_get_player_or_pending_mut(minion_id) {
                 if !minion.alive() || minion.get_status().hp <= 0 {
                     false
                 } else {
@@ -1163,7 +1168,7 @@ impl Player {
             } else {
                 false
             };
-            if should_remove {
+            if should_remove && should_queue_remove {
                 storage.queue_remove_player(minion_id);
             }
         }

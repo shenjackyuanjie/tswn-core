@@ -151,8 +151,11 @@ impl EngineCore {
         let pending_spawns = storage.take_pending_spawns();
         for pending in pending_spawns {
             let owner = pending.owner;
+            let alive = pending.player.alive();
             let plr_id = storage.just_insert_player(pending.player);
-            world.add_new_player(plr_id, owner);
+            if alive {
+                world.add_new_player(plr_id, owner);
+            }
         }
 
         storage.sync_groups(&world.groups);
