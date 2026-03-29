@@ -424,6 +424,8 @@ fn get_pixel(pixels: &[u8], x: usize, y: usize) -> Option<(u8, u8, u8)> {
 struct TraceNameState {
     assigned: std::collections::HashMap<usize, String>,
     next_index: std::collections::HashMap<usize, usize>,
+    /// Blood sacrifice summon name cache, keyed by direct caster entity ID (owner_id).
+    /// When the same caster recasts blood sacrifice, the summon reuses the same trace name.
     summon_name: std::collections::HashMap<usize, String>,
 }
 
@@ -504,7 +506,7 @@ fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) ->
     };
 
     use tswn_core::player::PlayerType;
-    use tswn_core::player::skill::act::minion::{MinionKind, MinionRuntimeState};
+    use tswn_core::player::skill::act::minion::MinionRuntimeState;
 
     let name = if plr.player_type() == PlayerType::Boss {
         plr.display_name()
@@ -512,13 +514,16 @@ fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) ->
         if let Some(owner_id) = minion.owner {
             let root_owner_id = root_trace_owner_id(&runner.storage, owner_id);
             if let Some(owner) = runner.storage.get_player_or_pending(&root_owner_id) {
+                use tswn_core::player::skill::act::minion::MinionKind;
                 if minion.kind == MinionKind::Summon {
-                    if let Some(name) = trace_names.summon_name.get(&root_owner_id) {
+                    // Blood sacrifice summon: cache by direct caster (owner_id).
+                    // Same caster recasting reuses the same trace name;
+                    // a different caster under the same root owner allocates a new name.
+                    if let Some(name) = trace_names.summon_name.get(&owner_id) {
                         name.clone()
                     } else {
-                        // JS blood summon reuses the same summon entity/name slot across recasts.
                         let name = alloc_trace_minion_name(trace_names, root_owner_id, owner);
-                        trace_names.summon_name.insert(root_owner_id, name.clone());
+                        trace_names.summon_name.insert(owner_id, name.clone());
                         name
                     }
                 } else {
