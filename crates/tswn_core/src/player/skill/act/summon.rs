@@ -110,7 +110,23 @@ impl SkillTrait for SummonSkill {
         // and only use `skills.skill` to model the shuffled action order.
         for (slot, skill_key) in skill_order.iter().copied().enumerate() {
             let level = skill_level_from_slot(slot);
-            skills.skill_by_id_mut(skill_key).set_level(level);
+            let skill = skills.skill_by_id_mut(skill_key);
+            skill.set_level(level);
+            // JS Plr.dm(): if computed level > 0, check the *original* (raw) hash;
+            // if raw min - 10 <= 0, mark skill as already boosted so boost_last skips it.
+            if level > 0 {
+                let raw_base = 64 + slot * 4;
+                if raw_base + 3 < summoned.raw_name_base.len() {
+                    let raw_min = summoned.raw_name_base[raw_base..raw_base + 4]
+                        .iter()
+                        .copied()
+                        .min()
+                        .unwrap_or(0);
+                    if raw_min <= 10 {
+                        skill.boosted = true;
+                    }
+                }
+            }
         }
         skills.skill = skill_order.to_vec();
         if !charge_active {
