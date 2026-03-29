@@ -481,39 +481,46 @@ fn generate_cases_for_mode(names: &[String], mode: CaseMode, max_cases: usize, s
     }
 
     let mut cases = Vec::new();
-    let limit = max_cases.min(names.len());
-    let step = choose_step(names.len());
     let mut seen_hashes = HashSet::new();
 
-    for offset in 0..limit.saturating_mul(4).max(limit) {
-        if cases.len() >= max_cases {
-            break;
+    // 单一连续窗口最多只能产出 names.len() 个唯一 case。
+    // 这里改成“多组互质步长 + 滚动起点”，在保持确定性的前提下，
+    // 能从同一份号库中稳定扩出更多唯一输入，满足 500-case 基线。
+    for step in candidate_steps(names.len()) {
+        for offset in 0..names.len() {
+            if cases.len() >= max_cases {
+                return cases;
+            }
+            let start = (offset * step) % names.len();
+            let players = sample_unique_window(names, start, total, step);
+            let input = mode.build_input(&players);
+            let input_hash = stable_hash(&input);
+            if !seen_hashes.insert(input_hash) {
+                continue;
+            }
+            cases.push(GeneratedCase {
+                mode,
+                players,
+                input,
+                input_hash,
+            });
         }
-        let start = (offset * step) % names.len();
-        let players = sample_unique_window(names, start, total);
-        let input = mode.build_input(&players);
-        let input_hash = stable_hash(&input);
-        if !seen_hashes.insert(input_hash) {
-            continue;
-        }
-        cases.push(GeneratedCase {
-            mode,
-            players,
-            input,
-            input_hash,
-        });
     }
 
     cases
 }
 
-fn choose_step(len: usize) -> usize {
-    for candidate in [7usize, 11, 13, 17, 19, 23, 29, 31] {
-        if gcd(candidate, len) == 1 {
-            return candidate;
+fn candidate_steps(len: usize) -> Vec<usize> {
+    let mut steps = Vec::new();
+    for candidate in [1usize, 7, 11, 13, 17, 19, 23, 29, 31] {
+        if candidate < len && gcd(candidate, len) == 1 {
+            steps.push(candidate);
         }
     }
-    1
+    if steps.is_empty() {
+        steps.push(1);
+    }
+    steps
 }
 
 fn gcd(mut lhs: usize, mut rhs: usize) -> usize {
@@ -525,12 +532,45 @@ fn gcd(mut lhs: usize, mut rhs: usize) -> usize {
     lhs
 }
 
-fn sample_unique_window(names: &[String], start: usize, total: usize) -> Vec<String> {
+fn sample_unique_window(names: &[String], start: usize, total: usize, step: usize) -> Vec<String> {
     let mut players = Vec::with_capacity(total);
     for idx in 0..total {
-        players.push(names[(start + idx) % names.len()].clone());
+        players.push(names[(start + idx * step) % names.len()].clone());
     }
     players
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_names(count: usize) -> Vec<String> { (0..count).map(|idx| format!("name_{idx}")).collect() }
+
+    #[test]
+    fn generate_cases_for_mode_can_expand_beyond_library_len() {
+        let names = sample_names(329);
+        let mut summary = Summary::default();
+
+        let cases = generate_cases_for_mode(&names, CaseMode::OneVsOne, 500, &mut summary);
+        let unique = cases.iter().map(|case| case.input_hash).collect::<HashSet<_>>();
+
+        assert_eq!(cases.len(), 500);
+        assert_eq!(unique.len(), 500);
+    }
+
+    #[test]
+    fn generated_cases_keep_players_unique_within_case() {
+        let names = sample_names(64);
+        let mut summary = Summary::default();
+
+        let cases = generate_cases_for_mode(&names, CaseMode::FreeForAll(8), 128, &mut summary);
+
+        assert_eq!(cases.len(), 128);
+        for case in cases {
+            let unique = case.players.iter().collect::<HashSet<_>>();
+            assert_eq!(unique.len(), case.players.len());
+        }
+    }
 }
 
 fn run_ts_trace(md5_tool: &Path, temp_root: &Path, case: &GeneratedCase) -> Result<String, String> {
