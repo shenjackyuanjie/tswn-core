@@ -56,16 +56,26 @@ impl SkillTrait for HideSkill {
                     .and_then(|charm| {
                         charm
                             .effective_team_idx
-                            .and_then(|team_idx| args.3.alive_group_at(team_idx))
-                            .or_else(|| args.3.alive_group_at_team_of(charm.group_id))
+                            .and_then(|team_idx| args.3.alive_group_at(team_idx).cloned())
+                            .or_else(|| args.3.alive_group_at_team_of(charm.group_id).cloned())
                     })
-                    .or_else(|| args.3.alive_group_at_team_of(args.0))
+                    .or_else(|| args.3.alive_group_at_team_of(args.0).cloned())
             })
             .map(|group| {
-                group
+                // JS 的 Shadow.addNew 会让新幻影在同一 action 的 post_damage / post_action
+                // 链里立刻出现在 owner 当前 alive 列表中；Rust 这里需要把 pending spawn
+                // 一并算入，否则会少掉 Hide 的一次 r63 检定。
+                let alive_group_count = group
                     .iter()
                     .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
-                    .count()
+                    .count();
+                let pending_alive_count = args
+                    .3
+                    .pending_spawn_ids_for_group(&group)
+                    .into_iter()
+                    .filter(|id| args.3.get_pending_spawn_player(*id).map(|p| p.alive()).unwrap_or(false))
+                    .count();
+                alive_group_count + pending_alive_count
             })
             .unwrap_or(0);
         if debug_this {

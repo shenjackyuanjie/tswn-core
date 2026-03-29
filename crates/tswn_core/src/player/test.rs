@@ -523,6 +523,49 @@ fn hide_requires_real_alive_group_instead_of_clan_fallback() {
 }
 
 #[test]
+fn hide_counts_pending_shadow_as_alive_ally_before_sync() {
+    use crate::player::skill::act::minion::{MinionKind, MinionRuntimeState};
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@same".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker@other".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let attacker_id = storage.just_insert_player(attacker);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.status.hp = 120;
+        owner_mut.status.max_hp = 120;
+        owner_mut.skills.add_skill(Skill::new_with_id(64, 34));
+        owner_mut.skills.update_proc();
+    }
+
+    storage.sync_groups(&[vec![owner_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![attacker_id]]);
+
+    let mut pending_shadow = storage.get_player(&owner_id).expect("cannot get owner").clone();
+    pending_shadow.id = storage.new_plr_id();
+    pending_shadow.name = "owner?0".to_string();
+    pending_shadow.status.hp = 1;
+    pending_shadow.status.max_hp = 1;
+    pending_shadow.status.set_alive(true);
+    pending_shadow.set_state(MinionRuntimeState {
+        owner: Some(owner_id),
+        kind: MinionKind::Shadow,
+    });
+    storage.queue_spawn(owner_id, pending_shadow);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .damage(8, attacker_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert!(updates.updates.iter().any(|x| x.message.contains("[隐匿]")));
+}
+
+#[test]
 fn action_expires_berserk_and_charm_states() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
