@@ -1,5 +1,29 @@
 # 更新日志
 
+## [0.2.6] - 2026-03-29
+
+> 提交范围: 01a8a7f..6ea9390
+
+### 修复
+
+- **冰冻术蓄力加成与雷击循环条件修复**：补齐 `Ice` 在 charge 激活时的行为分支，并修正 `Thunder` 的循环/终止检查，避免雷击段数与 JS 基准漂移。
+- **同级状态后处理顺序对齐注册顺序**：当多个状态拥有相同 `post_action` / `post_damage` 优先级时，改为按状态注册顺序执行，修复同级状态结算顺序不稳定的问题。
+- **召唤物追踪名称槽位复用**：同一 root owner 重复召唤 Summon 时复用既有 `?n` 追踪槽位，避免 CLI 与 case miner 把同一追踪实体误判成新的召唤物。
+- **主人死亡时待同步使魔清理**：owner 死亡时，尚未同步进 world 的 linked pending minion 也会被标记死亡并按 linked cleanup 顺序处理，避免 storage/world 视图分叉。
+- **召唤物吞噬继承固定技能槽位修复**：修复 Summon 被吞噬或继承后固定技能槽位错位的问题，与 JS 固定槽位合并语义对齐。
+- **同回合幻影生成后的同步顺序修复**：同一 action 内新生成的 shadow 在 owner 随后死亡时，会先进入 round roster 再移除，修复 `round_pos` 少减一次导致的后续调度漂移。
+- **隐匿仅依据真实 alive group 触发**：`Hide` 不再在缺失真实存活队伍时回退到 clan 级别统计，修复“无同队存活者但同 clan 玩家仍触发隐匿”的误判。
+
+### 调试与排查
+
+- **`TSWN_DEBUG_ACTION` 支持包含匹配**：调试目标不再要求与 `id_name()` 完全相等，允许用子串直接命中 `?n`、幻影和 linked minion，降低 failed case 定位成本。
+- **补充 action / state / death 的细粒度 RC4 追踪**：为 `action`、`post_action`、`post_damage`、`die` 等路径增加 actor/id/rc4 级别日志，方便对照 `md5.js` 缩小随机消费与调度差异。
+
+### 验证
+
+- `cargo test -p tswn_core` 全量通过（159 passed）
+- 固定 SBY 大样本对比中，`diff_failures` 从 13 降至 6，且 `ts_failures = 0`、`rust_failures = 0`
+
 ## [0.2.5] - 2026-03-27
 
 ### 修复
