@@ -90,6 +90,16 @@ impl EngineCore {
         #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("pre_sync", world, storage);
 
+        let pending_spawns = storage.take_pending_spawns();
+        // JS `addNew` 会在当前行动尚未结束前把新召唤物挂进 roster/alive。
+        // 因此如果 owner 在同一 tick 后续死亡，linked minion 需要先进入 round roster，
+        // 再在同一轮 sync 中按 death/remove 顺序移除，才能让 round_pos 与 JS 对齐。
+        for pending in pending_spawns {
+            let owner = pending.owner;
+            let plr_id = storage.just_insert_player(pending.player);
+            world.add_new_player(plr_id, owner);
+        }
+
         let pending_remove_players = storage.take_pending_remove_players();
         let death_queue = storage.take_death_queue();
         for id in &death_queue {
@@ -147,17 +157,6 @@ impl EngineCore {
             #[cfg(not(feature = "no_debug"))]
             Self::debug_world_state("after_revive_sync", world, storage);
         }
-
-        let pending_spawns = storage.take_pending_spawns();
-        for pending in pending_spawns {
-            let owner = pending.owner;
-            let alive = pending.player.alive();
-            let plr_id = storage.just_insert_player(pending.player);
-            if alive {
-                world.add_new_player(plr_id, owner);
-            }
-        }
-
         storage.sync_groups(&world.groups);
         storage.sync_alive_groups_owned(world.alives_by_group(storage));
         storage.clear_sync_flag();

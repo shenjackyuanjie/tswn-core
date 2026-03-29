@@ -279,3 +279,5 @@ impl std::fmt::Display for Player {
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod test_shadow_sync;
