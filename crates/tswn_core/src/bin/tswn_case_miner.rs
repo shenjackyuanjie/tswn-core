@@ -1044,6 +1044,7 @@ fn json_btreemap(values: &BTreeMap<String, usize>) -> String {
 struct TraceNameState {
     assigned: std::collections::HashMap<usize, String>,
     next_index: std::collections::HashMap<usize, usize>,
+    summon_name: std::collections::HashMap<usize, String>,
 }
 
 fn root_trace_owner_id(storage: &tswn_core::engine::storage::Storage, start_id: usize) -> usize {
@@ -1064,6 +1065,27 @@ fn root_trace_owner_id(storage: &tswn_core::engine::storage::Storage, start_id: 
     }
 }
 
+fn format_trace_minion_name(owner: &tswn_core::player::Player, index: usize) -> String {
+    let base = format!("{}?{}", owner.id_name(), index);
+    let team = owner.clan_name();
+    if !team.is_empty() && team != owner.id_name() {
+        format!("{base}@{team}")
+    } else {
+        base
+    }
+}
+
+fn alloc_trace_minion_name(
+    trace_names: &mut TraceNameState,
+    root_owner_id: usize,
+    owner: &tswn_core::player::Player,
+) -> String {
+    let index = trace_names.next_index.entry(root_owner_id).or_insert(0);
+    let name = format_trace_minion_name(owner, *index);
+    *index += 1;
+    name
+}
+
 fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) -> String {
     if let Some(name) = trace_names.assigned.get(&id) {
         return name.clone();
@@ -1074,7 +1096,7 @@ fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) ->
     };
 
     use tswn_core::player::PlayerType;
-    use tswn_core::player::skill::act::minion::MinionRuntimeState;
+    use tswn_core::player::skill::act::minion::{MinionKind, MinionRuntimeState};
 
     let name = if plr.player_type() == PlayerType::Boss {
         plr.display_name()
@@ -1082,14 +1104,17 @@ fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) ->
         if let Some(owner_id) = minion.owner {
             let root_owner_id = root_trace_owner_id(&runner.storage, owner_id);
             if let Some(owner) = runner.storage.get_player_or_pending(&root_owner_id) {
-                let index = trace_names.next_index.entry(root_owner_id).or_insert(0);
-                let base = format!("{}?{}", owner.id_name(), *index);
-                *index += 1;
-                let team = owner.clan_name();
-                if !team.is_empty() && team != owner.id_name() {
-                    format!("{base}@{team}")
+                if minion.kind == MinionKind::Summon {
+                    if let Some(name) = trace_names.summon_name.get(&root_owner_id) {
+                        name.clone()
+                    } else {
+                        // JS blood summon reuses the same summon entity/name slot across recasts.
+                        let name = alloc_trace_minion_name(trace_names, root_owner_id, owner);
+                        trace_names.summon_name.insert(root_owner_id, name.clone());
+                        name
+                    }
                 } else {
-                    base
+                    alloc_trace_minion_name(trace_names, root_owner_id, owner)
                 }
             } else {
                 plr.id_key_name()
