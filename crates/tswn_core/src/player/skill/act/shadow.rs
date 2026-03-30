@@ -59,6 +59,7 @@ impl SkillTrait for ShadowSkill {
         shadow.init_values();
         shadow.name = "幻影".to_string();
         shadow.player_type = PlayerType::Clone;
+        shadow.sort_int = 0;
         shadow.state = PlayerStateStore::default();
         shadow.set_state(MinionRuntimeState {
             owner: Some(args.0),
