@@ -62,7 +62,9 @@ fn on_absorb(caster: PlrId, _target: PlrId, dmg: i32, _r: &mut RC4, updates: &mu
     let Some(owner) = storage.just_get_player_mut(caster) else {
         return;
     };
-    if !owner.alive() {
+    // JS 基准检查的是 caster 当前 hp，而不是 alive flag。
+    // 被魅惑后打到自己时，如果这一击已经把自己打到 0，吸血不会把人再抬起来。
+    if owner.get_status().hp <= 0 {
         return;
     }
     let (hp, max_hp) = {

@@ -1643,9 +1643,24 @@ fn summon_recast_reuses_dead_minion_and_advances_boost_progress() {
         (summoned.skills.skill_by_id(1).level(), summoned.skills.skill_by_id(1).boosted),
         (summoned.skills.skill_by_id(2).level(), summoned.skills.skill_by_id(2).boosted),
     ];
-    assert_eq!(summoned.skills.skill_by_id(0).level(), 6, "initial summon skills: {:?}", initial_skills);
-    assert_eq!(summoned.skills.skill_by_id(1).level(), 12, "initial summon skills: {:?}", initial_skills);
-    assert_eq!(summoned.skills.skill_by_id(2).level(), 22, "initial summon skills: {:?}", initial_skills);
+    assert_eq!(
+        summoned.skills.skill_by_id(0).level(),
+        6,
+        "initial summon skills: {:?}",
+        initial_skills
+    );
+    assert_eq!(
+        summoned.skills.skill_by_id(1).level(),
+        12,
+        "initial summon skills: {:?}",
+        initial_skills
+    );
+    assert_eq!(
+        summoned.skills.skill_by_id(2).level(),
+        22,
+        "initial summon skills: {:?}",
+        initial_skills
+    );
     assert!(summoned.skills.skill_by_id(0).boosted);
     assert!(!summoned.skills.skill_by_id(2).boosted);
     let summoned_id = storage.just_insert_player(summoned);
@@ -1683,9 +1698,24 @@ fn summon_recast_reuses_dead_minion_and_advances_boost_progress() {
         ),
     ];
     assert!(summoned_after.alive());
-    assert_eq!(summoned_after.skills.skill_by_id(0).level(), 6, "recast summon skills: {:?}", recast_skills);
-    assert_eq!(summoned_after.skills.skill_by_id(1).level(), 12, "recast summon skills: {:?}", recast_skills);
-    assert_eq!(summoned_after.skills.skill_by_id(2).level(), 44, "recast summon skills: {:?}", recast_skills);
+    assert_eq!(
+        summoned_after.skills.skill_by_id(0).level(),
+        6,
+        "recast summon skills: {:?}",
+        recast_skills
+    );
+    assert_eq!(
+        summoned_after.skills.skill_by_id(1).level(),
+        12,
+        "recast summon skills: {:?}",
+        recast_skills
+    );
+    assert_eq!(
+        summoned_after.skills.skill_by_id(2).level(),
+        44,
+        "recast summon skills: {:?}",
+        recast_skills
+    );
     assert!(summoned_after.skills.skill_by_id(0).boosted);
     assert!(summoned_after.skills.skill_by_id(2).boosted);
 }

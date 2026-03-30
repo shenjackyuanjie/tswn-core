@@ -151,11 +151,7 @@ impl SkillTrait for SummonSkill {
             if level > 0 {
                 let raw_base = 64 + slot * 4;
                 if raw_base + 3 < summoned.raw_name_base.len() {
-                    let raw_min = summoned.raw_name_base[raw_base..raw_base + 4]
-                        .iter()
-                        .copied()
-                        .min()
-                        .unwrap_or(0);
+                    let raw_min = summoned.raw_name_base[raw_base..raw_base + 4].iter().copied().min().unwrap_or(0);
                     if raw_min <= 10 {
                         skill.boosted = true;
                     }

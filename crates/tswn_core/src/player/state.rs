@@ -449,12 +449,16 @@ impl PlayerStateStore {
             .map(|player| crate::debug::debug_action_matches(&player.id_name()))
             .unwrap_or(false);
         for tag in self.ordered_tags_by(|state| state.post_action_priority()) {
+            // JS 的各状态 post_action 回调会动态检查当前 hp > 0，而非使用循环开始前的快照。
+            // 因此每次迭代前重新从 storage 获取存活状态，避免前序状态（如 Poison）杀死玩家后
+            // 后序状态（如 Charm）仍看到旧的 alive=true。
+            let current_alive = storage.get_player(&owner).map(|p| p.alive()).unwrap_or(alive);
             #[cfg(not(feature = "no_debug"))]
             let rc4_before = (randomer.i, randomer.j);
             let should_clear = self
                 .states
                 .get_mut(&tag)
-                .map(|state| state.on_post_action(owner, alive, randomer, updates, storage))
+                .map(|state| state.on_post_action(owner, current_alive, randomer, updates, storage))
                 .unwrap_or(false);
             #[cfg(not(feature = "no_debug"))]
             if debug_this {
@@ -467,7 +471,7 @@ impl PlayerStateStore {
                     randomer.i,
                     randomer.j,
                     should_clear,
-                    alive,
+                    current_alive,
                 );
             }
             if should_clear {
