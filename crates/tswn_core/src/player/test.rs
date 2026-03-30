@@ -1588,6 +1588,14 @@ fn summon_merge_uses_fixed_skill_slots() {
     let pending = storage.take_pending_spawns();
     assert_eq!(pending.len(), 1);
     let summoned = pending.into_iter().next().unwrap().player;
+    println!(
+        "initial summon skills: {:?}",
+        [
+            (summoned.skills.skill_by_id(0).level(), summoned.skills.skill_by_id(0).boosted),
+            (summoned.skills.skill_by_id(1).level(), summoned.skills.skill_by_id(1).boosted),
+            (summoned.skills.skill_by_id(2).level(), summoned.skills.skill_by_id(2).boosted),
+        ]
+    );
     assert!(summoned.skills.store.contains_key(&255));
     assert!(!summoned.skills.store.contains_key(&3));
     let summoned_id = storage.just_insert_player(summoned);
@@ -1606,6 +1614,132 @@ fn summon_merge_uses_fixed_skill_slots() {
     assert_eq!(owner_after.skills.skill_by_id(0).level(), 6);
     assert_eq!(owner_after.skills.skill_by_id(1).level(), 0);
     assert_eq!(owner_after.skills.skill_by_id(3).level(), 0);
+}
+
+#[test]
+fn summon_recast_reuses_dead_minion_and_advances_boost_progress() {
+    let storage = Storage::new_arc();
+    let mut summoner = Player::new_from_namerena_raw("昊寵 #9fzRs7Z1l@Shabby_fish".to_string(), storage.clone()).unwrap();
+    summoner.build();
+    let summoner_id = storage.just_insert_player(summoner);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = pending.into_iter().next().unwrap().player;
+    let initial_skills = [
+        (summoned.skills.skill_by_id(0).level(), summoned.skills.skill_by_id(0).boosted),
+        (summoned.skills.skill_by_id(1).level(), summoned.skills.skill_by_id(1).boosted),
+        (summoned.skills.skill_by_id(2).level(), summoned.skills.skill_by_id(2).boosted),
+    ];
+    assert_eq!(summoned.skills.skill_by_id(0).level(), 6, "initial summon skills: {:?}", initial_skills);
+    assert_eq!(summoned.skills.skill_by_id(1).level(), 12, "initial summon skills: {:?}", initial_skills);
+    assert_eq!(summoned.skills.skill_by_id(2).level(), 22, "initial summon skills: {:?}", initial_skills);
+    assert!(summoned.skills.skill_by_id(0).boosted);
+    assert!(!summoned.skills.skill_by_id(2).boosted);
+    let summoned_id = storage.just_insert_player(summoned);
+
+    {
+        let summoned_mut = storage.just_get_player_mut(summoned_id).unwrap();
+        summoned_mut.status.hp = 0;
+        summoned_mut.status.set_alive(false);
+    }
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    assert_eq!(storage.pending_spawn_count(), 0);
+    assert_eq!(storage.take_pending_revivals(), vec![summoned_id]);
+
+    let summoned_after = storage.get_player(&summoned_id).unwrap();
+    let recast_skills = [
+        (
+            summoned_after.skills.skill_by_id(0).level(),
+            summoned_after.skills.skill_by_id(0).boosted,
+        ),
+        (
+            summoned_after.skills.skill_by_id(1).level(),
+            summoned_after.skills.skill_by_id(1).boosted,
+        ),
+        (
+            summoned_after.skills.skill_by_id(2).level(),
+            summoned_after.skills.skill_by_id(2).boosted,
+        ),
+    ];
+    assert!(summoned_after.alive());
+    assert_eq!(summoned_after.skills.skill_by_id(0).level(), 6, "recast summon skills: {:?}", recast_skills);
+    assert_eq!(summoned_after.skills.skill_by_id(1).level(), 12, "recast summon skills: {:?}", recast_skills);
+    assert_eq!(summoned_after.skills.skill_by_id(2).level(), 44, "recast summon skills: {:?}", recast_skills);
+    assert!(summoned_after.skills.skill_by_id(0).boosted);
+    assert!(summoned_after.skills.skill_by_id(2).boosted);
+}
+
+#[test]
+fn summon_recast_refreshes_charge_dependent_state_on_reused_minion() {
+    let storage = Storage::new_arc();
+    let mut summoner = Player::new_from_namerena_raw("昊寵 #9fzRs7Z1l@Shabby_fish".to_string(), storage.clone()).unwrap();
+    summoner.build();
+    let summoner_id = storage.just_insert_player(summoner);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = pending.into_iter().next().unwrap().player;
+    assert_eq!(summoned.skills.skill_by_id(255).level(), 1);
+    let summoned_id = storage.just_insert_player(summoned);
+
+    {
+        let owner_mut = storage.just_get_player_mut(summoner_id).unwrap();
+        owner_mut.status.at_boost = 3.0;
+    }
+    {
+        let summoned_mut = storage.just_get_player_mut(summoned_id).unwrap();
+        summoned_mut.status.hp = 0;
+        summoned_mut.status.set_alive(false);
+    }
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    assert_eq!(storage.pending_spawn_count(), 0);
+    assert_eq!(storage.take_pending_revivals(), vec![summoned_id]);
+
+    let summoned_after = storage.get_player(&summoned_id).unwrap();
+    assert!(summoned_after.alive());
+    assert_eq!(summoned_after.skills.skill_by_id(255).level(), 0);
+    assert_eq!(summoned_after.status.move_point, 2048);
 }
 
 #[test]

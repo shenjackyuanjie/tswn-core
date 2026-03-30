@@ -13,6 +13,20 @@ use super::minion::{MinionKind, MinionRuntimeState};
 
 const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 
+fn ensure_summon_share_damage_skill(skills: &mut SkillStorage, enabled: bool) {
+    if !skills.store.contains_key(&SUMMON_SHARE_DAMAGE_SKILL_KEY) {
+        skills.store.insert(
+            SUMMON_SHARE_DAMAGE_SKILL_KEY,
+            Skill::new(1, Box::new(SummonShareDamageSkill::new())),
+        );
+    }
+    skills
+        .store
+        .get_mut(&SUMMON_SHARE_DAMAGE_SKILL_KEY)
+        .expect("summon share-damage skill missing")
+        .set_level(if enabled { 1 } else { 0 });
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SummonSkill {
     pub summoned: Option<PlrId>,
@@ -60,6 +74,26 @@ impl SkillTrait for SummonSkill {
         args.2.add(RunUpdate::new("[0]使用[血祭]", args.0, args.0, 60));
         let owner = args.3.get_player(&args.0).expect("cannot get summon owner from storage").clone();
         let charge_active = owner.get_status().at_boost >= 3.0;
+        if let Some(summoned_id) = self.summoned
+            && let Some(summoned) = args.3.just_get_player_mut(summoned_id)
+            && !summoned.alive()
+        {
+            // JS SklSummon.v(): after the first creation, recasts reuse the same dead summon
+            // object and only rerun bP()/bs()/cn(). That means action boosted flags persist
+            // across recasts, so the second cast boosts the next still-unboosted action.
+            ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
+            summoned.skills.boost_last();
+            summoned.skills.update_proc();
+            summoned.init_values();
+            summoned.status.set_alive(true);
+            summoned.status.move_point = args.1.r255() as i32 * 4;
+            if charge_active {
+                summoned.status.move_point = 2048;
+            }
+            args.3.queue_revival(summoned_id);
+            args.2.add(RunUpdate::new("召唤出[1]", args.0, summoned_id, 0));
+            return;
+        }
         let summon_team = owner.clan_name();
         let summon_name = format!("{}?summon", owner.base_name());
         let mut summoned =
@@ -129,12 +163,7 @@ impl SkillTrait for SummonSkill {
             }
         }
         skills.skill = skill_order.to_vec();
-        if !charge_active {
-            skills.store.insert(
-                SUMMON_SHARE_DAMAGE_SKILL_KEY,
-                Skill::new(1, Box::new(SummonShareDamageSkill::new())),
-            );
-        }
+        ensure_summon_share_damage_skill(&mut skills, !charge_active);
         skills.boost_last();
         summoned.skills = skills;
         summoned.skills.update_proc();
