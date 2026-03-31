@@ -58,6 +58,24 @@
 use super::*;
 use smallvec::SmallVec;
 
+// JS addNew 之后的新单位会立刻参与“战斗是否结束”的判断，
+// Rust 侧这里也要把敌方 pending spawn 视为仍然存活的敌人。
+fn has_alive_enemy_or_pending(storage: &Arc<Storage>, ally_group: &[PlrId]) -> bool {
+    let all_ids = storage.all_player_ids();
+    if all_ids
+        .iter()
+        .any(|id| !ally_group.contains(id) && storage.get_player(id).map(|plr| plr.alive()).unwrap_or(false))
+    {
+        return true;
+    }
+
+    all_ids
+        .into_iter()
+        .filter(|owner_id| !ally_group.contains(owner_id))
+        .flat_map(|owner_id| storage.pending_spawn_ids_for_owner(owner_id))
+        .any(|pending_id| storage.get_pending_spawn_player(pending_id).map(|plr| plr.alive()).unwrap_or(false))
+}
+
 impl Player {
     pub fn update_player(&mut self) {
         self.init_skills();
@@ -150,12 +168,7 @@ impl Player {
             // 不再执行 forced_action_states（避免额外的"从狂暴中解除"日志）。
             let battle_ended_early = storage
                 .group_containing(ptr)
-                .map(|ally_group| {
-                    !storage
-                        .all_player_ids()
-                        .into_iter()
-                        .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
-                })
+                .map(|ally_group| !has_alive_enemy_or_pending(storage, ally_group))
                 .unwrap_or(false);
             if !battle_ended_early {
                 self.apply_forced_action_states(randomer, updates, storage);
@@ -317,12 +330,7 @@ impl Player {
         // 不再继续执行当前 actor 的 recover/newline/post_action 链路。
         let battle_ended = storage
             .group_containing(ptr)
-            .map(|ally_group| {
-                !storage
-                    .all_player_ids()
-                    .into_iter()
-                    .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
-            })
+            .map(|ally_group| !has_alive_enemy_or_pending(storage, ally_group))
             .unwrap_or(false);
         if battle_ended {
             return;
@@ -1505,12 +1513,7 @@ impl Player {
             );
         }
 
-        let has_enemy_alive = storage.group_containing(caster).map(|ally_group| {
-            storage
-                .all_player_ids()
-                .into_iter()
-                .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
-        });
+        let has_enemy_alive = storage.group_containing(caster).map(|ally_group| has_alive_enemy_or_pending(storage, ally_group));
         if has_enemy_alive.unwrap_or(true) && caster != self.as_ptr() {
             // 避免在 kill 回调（如吞噬）中产生 &mut Player 别名：
             // 先获取 post_kill 键列表并检查 HP，然后释放 killer 引用，

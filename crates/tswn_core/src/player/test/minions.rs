@@ -282,6 +282,61 @@ fn merge_does_not_inherit_mismatched_slot_hide_skill() {
 }
 
 #[test]
+fn post_kill_runs_when_only_remaining_enemy_is_pending_spawn() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@ally".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target@enemy".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let target_id = storage.just_insert_player(target);
+    let mut randomer = RC4 {
+        i: 0,
+        j: 0,
+        main_val: [0u8; 256],
+        ..Default::default()
+    };
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.add_skill(Skill::new_with_id(255, 31));
+        owner_mut.skills.update_proc();
+        owner_mut.status.hp = 200;
+        owner_mut.status.max_hp = 200;
+    }
+
+    {
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.status.hp = 30;
+        target_mut.status.max_hp = 200;
+        target_mut.status.set_alive(true);
+        target_mut.attr = [90, 80, 70, 60, 50, 40, 30, 200];
+    }
+
+    let mut pending_enemy = Player::new_from_namerena_raw("pending@enemy".to_string(), storage.clone()).unwrap();
+    pending_enemy.status.hp = 50;
+    pending_enemy.status.max_hp = 50;
+    pending_enemy.status.set_alive(true);
+    storage.queue_spawn(target_id, pending_enemy);
+
+    storage
+        .just_get_player_mut(target_id)
+        .unwrap()
+        .damage(999, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert!(
+        updates.updates.iter().any(|update| update.message.contains("吞噬")),
+        "pending enemy spawn should keep post_kill callbacks alive",
+    );
+    assert!(
+        storage
+            .get_player(&target_id)
+            .and_then(|player| player.get_state::<crate::player::skill::corpse::CorpseState>())
+            .map(|corpse| corpse.kind == crate::player::skill::corpse::CorpseKind::Merge)
+            .unwrap_or(false)
+    );
+}
+
+#[test]
 fn summon_recast_reuses_dead_minion_and_advances_boost_progress() {
     let storage = Storage::new_arc();
     let mut summoner = Player::new_from_namerena_raw("昊寵 #9fzRs7Z1l@Shabby_fish".to_string(), storage.clone()).unwrap();
