@@ -73,6 +73,10 @@ pub struct SkillStorage {
     pub pre_action: Vec<SkillKey>,
     /// 动作之后
     pub post_action: Vec<SkillKey>,
+    /// 战斗中途新增的 early post_action。
+    /// tuple.0 是注册当时的 state 插入游标：它应当在所有 order < cursor 的 state 之后、
+    /// 所有 order >= cursor 的 state 之前执行，贴近 JS 统一 x2 队列的插入语义。
+    pub post_action_after_states: Vec<(u64, SkillKey)>,
     /// 防御之前
     pub pre_defend: Vec<SkillKey>,
     /// 防御之后
@@ -98,6 +102,7 @@ impl SkillStorage {
             pre_step: Vec::new(),
             pre_action: Vec::new(),
             post_action: Vec::new(),
+            post_action_after_states: Vec::new(),
             pre_defend: Vec::new(),
             post_defend: Vec::new(),
             post_damage: Vec::new(),
@@ -113,6 +118,7 @@ impl SkillStorage {
         self.pre_step.clear();
         self.pre_action.clear();
         self.post_action.clear();
+        self.post_action_after_states.clear();
         self.pre_defend.clear();
         self.post_defend.clear();
         self.post_damage.clear();
@@ -188,6 +194,27 @@ impl SkillStorage {
         }
         let kinds: Vec<ProcKind> = skill.proc_kinds().to_vec();
         for kind in kinds {
+            self.push_proc_key(kind, key);
+        }
+    }
+
+    pub fn register_skill_proc_after_states(&mut self, key: SkillKey, state_order_cursor: u64) {
+        let Some(skill) = self.store.get(&key) else {
+            return;
+        };
+        if skill.level() == 0 {
+            return;
+        }
+        let post_action_phase = skill.post_action_phase();
+        let kinds: Vec<ProcKind> = skill.proc_kinds().to_vec();
+        for kind in kinds {
+            if kind == ProcKind::PostAction && post_action_phase == PostActionPhase::Early {
+                if !self.post_action_after_states.iter().any(|(_, queued_key)| *queued_key == key) {
+                    self.post_action_after_states.push((state_order_cursor, key));
+                    self.post_action_after_states.sort_by_key(|(cursor, _)| *cursor);
+                }
+                continue;
+            }
             self.push_proc_key(kind, key);
         }
     }
@@ -319,9 +346,22 @@ impl SkillStorage {
 
     pub fn post_action_late(&mut self, args: SkillArgs) { self.post_action_with_phase(PostActionPhase::Late, args) }
 
+    pub fn run_post_action_key(&mut self, skill_key: SkillKey, args: SkillArgs) {
+        let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
+        skill.post_action((args.0, args.1, args.2, args.3));
+    }
+
+    pub fn post_action_after_states(&mut self, args: SkillArgs) {
+        for idx in 0..self.post_action_after_states.len() {
+            let skill_key = self.post_action_after_states[idx].1;
+            self.run_post_action_key(skill_key, (args.0, args.1, args.2, args.3));
+        }
+    }
+
     pub fn post_action(&mut self, args: SkillArgs) {
         let (owner, randomer, updates, storage) = args;
         self.post_action_early((owner, randomer, updates, storage));
+        self.post_action_after_states((owner, randomer, updates, storage));
         self.post_action_late((owner, randomer, updates, storage));
     }
 

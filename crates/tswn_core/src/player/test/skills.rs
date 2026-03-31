@@ -387,6 +387,64 @@ fn protect_redirects_damage_to_protector() {
 }
 
 #[test]
+fn reflect_penalty_runs_after_reflected_kill_merge_check() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let attacker_id = storage.just_insert_player(attacker);
+    let mut randomer = RC4 {
+        i: 0,
+        j: 0,
+        main_val: [127u8; 256],
+        ..Default::default()
+    };
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills = crate::player::skill::store::SkillStorage::new();
+        owner_mut.status.hp = 300;
+        owner_mut.status.max_hp = 300;
+        owner_mut.status.mp = 100;
+        owner_mut.status.move_point = 800;
+        owner_mut.skills.add_skill(Skill::new_with_id(255, 27));
+        owner_mut.skills.add_skill(Skill::new_with_id(255, 31));
+        owner_mut.skills.update_proc();
+    }
+
+    {
+        let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
+        attacker_mut.skills = crate::player::skill::store::SkillStorage::new();
+        attacker_mut.status.hp = 40;
+        attacker_mut.status.max_hp = 40;
+        attacker_mut.status.defense = 0;
+        attacker_mut.status.agility = 0;
+        attacker_mut.status.mp = 10;
+        attacker_mut.status.move_point = 500;
+        attacker_mut.status.set_frozen(true);
+        attacker_mut.status.set_alive(true);
+    }
+
+    storage.just_get_player_mut(owner_id).unwrap().attacked(
+        99999.0,
+        false,
+        attacker_id,
+        noop_on_damage,
+        &mut randomer,
+        &mut updates,
+        &storage,
+    );
+
+    let owner_after = storage.get_player(&owner_id).unwrap();
+    let attacker_after = storage.get_player(&attacker_id).unwrap();
+    assert!(updates.updates.iter().any(|u| u.message.contains("[伤害反弹]")));
+    assert!(!attacker_after.alive());
+    assert_eq!(owner_after.move_point(), 320);
+    assert_eq!(attacker_after.move_point(), 500);
+}
+
+#[test]
 fn action_falls_back_to_default_attack() {
     let storage = Storage::new_arc();
     let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
@@ -771,6 +829,95 @@ fn charge_post_action_tail_runs_after_state_ticks() {
     let observed: Vec<&str> = final_updates.updates.iter().map(|update| update.message.as_ref()).collect();
     assert_eq!(observed, vec!["observe_charge_boost=boosted"]);
     assert!((storage.get_player(&owner_id).unwrap().get_status().at_boost - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn late_registered_post_action_skill_respects_state_insertion_cursor() {
+    #[derive(Debug, Clone)]
+    struct ObserveLateRegisteredPostActionSkill;
+
+    impl crate::player::skill::SkillTrait for ObserveLateRegisteredPostActionSkill {
+        fn destroy(&self, _plr: PlrId, _args: crate::player::skill::SkillArgs) {}
+
+        fn clone_box(&self) -> Box<dyn crate::player::skill::SkillTrait> { Box::new(self.clone()) }
+
+        fn post_action(&mut self, args: crate::player::skill::SkillArgs) {
+            args.2.add(RunUpdate::new("observe_late_registered_post_action", args.0, args.0, 0));
+        }
+
+        fn proc_kinds(&self) -> &[crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PostAction] }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct ObserveExistingPostActionState;
+
+    impl crate::player::StateTrait for ObserveExistingPostActionState {
+        fn on_post_action(
+            &mut self,
+            owner: PlrId,
+            _alive: bool,
+            _randomer: &mut RC4,
+            updates: &mut RunUpdates,
+            _storage: &Arc<Storage>,
+        ) -> bool {
+            updates.add(RunUpdate::new("observe_existing_post_action_state", owner, owner, 0));
+            false
+        }
+
+        fn clone_box(&self) -> Box<dyn crate::player::StateTrait> { Box::new(*self) }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct ObserveFuturePostActionState;
+
+    impl crate::player::StateTrait for ObserveFuturePostActionState {
+        fn on_post_action(
+            &mut self,
+            owner: PlrId,
+            _alive: bool,
+            _randomer: &mut RC4,
+            updates: &mut RunUpdates,
+            _storage: &Arc<Storage>,
+        ) -> bool {
+            updates.add(RunUpdate::new("observe_future_post_action_state", owner, owner, 0));
+            false
+        }
+
+        fn clone_box(&self) -> Box<dyn crate::player::StateTrait> { Box::new(*self) }
+    }
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.set_state(ObserveExistingPostActionState);
+        let state_cursor = owner_mut.state.post_action_registration_cursor();
+        let skill_key = owner_mut.skills.skill.len();
+        owner_mut
+            .skills
+            .add_skill(crate::player::skill::Skill::new(1, Box::new(ObserveLateRegisteredPostActionSkill)));
+        owner_mut.skills.register_skill_proc_after_states(skill_key, state_cursor);
+        owner_mut.set_state(ObserveFuturePostActionState);
+    }
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.run_post_action_chain(&mut randomer, &mut updates, &storage);
+    }
+
+    let observed: Vec<&str> = updates.updates.iter().map(|update| update.message.as_ref()).collect();
+    assert_eq!(
+        observed,
+        vec![
+            "observe_existing_post_action_state",
+            "observe_late_registered_post_action",
+            "observe_future_post_action_state",
+        ]
+    );
 }
 
 #[test]

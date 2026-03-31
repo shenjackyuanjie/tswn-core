@@ -63,7 +63,6 @@ impl SkillTrait for ReflectSkill {
             if reflect_atp > atp {
                 reflect_atp = atp;
             }
-            owner.set_move_point(owner.move_point() - 480);
             reflect_atp
         };
         args.2.add(RunUpdate::new("[0]使用[伤害反弹]", args.0, caster, 20));
@@ -77,8 +76,22 @@ impl SkillTrait for ReflectSkill {
             .just_get_player_mut(caster)
             .expect("cannot get reflect caster from storage")
             .attacked(reflect_atp, true, args.0, *on_damage, args.1, args.2, args.3);
+        args.3
+            .just_get_player_mut(args.0)
+            .expect("cannot get reflect owner from storage after reflected attack")
+            .set_move_point(
+                args.3
+                    .get_player(&args.0)
+                    .expect("cannot get reflect owner after reflected attack")
+                    .move_point()
+                    - 480,
+            );
         if debug_reflect {
-            eprintln!("[reflect] after reflected_attacked rc4=({}, {})", args.1.i, args.1.j);
+            let owner_move_point = args.3.get_player(&args.0).map(|player| player.move_point()).unwrap_or_default();
+            eprintln!(
+                "[reflect] after reflected_attacked rc4=({}, {}) owner_mv_after_penalty={owner_move_point}",
+                args.1.i, args.1.j
+            );
         }
         0.0
     }

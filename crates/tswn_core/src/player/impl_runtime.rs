@@ -800,7 +800,32 @@ impl Player {
     }
 
     fn apply_post_action_states(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        let clear_tags = self.state.on_post_action_states(self.as_ptr(), self.alive(), randomer, updates, storage);
+        let owner_id = self.as_ptr();
+        let deferred = self.skills.post_action_after_states.clone();
+        let mut deferred_idx = 0usize;
+        let mut clear_tags = smallvec::SmallVec::<[crate::player::StateTag; 8]>::new();
+        for (tag, state_order) in self.state.ordered_post_action_tags_with_order() {
+            while deferred_idx < deferred.len() && deferred[deferred_idx].0 <= state_order {
+                let skill_key = deferred[deferred_idx].1;
+                self.skills.run_post_action_key(skill_key, (owner_id, randomer, updates, storage));
+                deferred_idx += 1;
+            }
+            let current_alive = storage.get_player(&owner_id).map(|p| p.alive()).unwrap_or(self.alive());
+            let should_clear = self
+                .state
+                .states
+                .get_mut(&tag)
+                .map(|state| state.on_post_action(owner_id, current_alive, randomer, updates, storage))
+                .unwrap_or(false);
+            if should_clear {
+                clear_tags.push(tag);
+            }
+        }
+        while deferred_idx < deferred.len() {
+            let skill_key = deferred[deferred_idx].1;
+            self.skills.run_post_action_key(skill_key, (owner_id, randomer, updates, storage));
+            deferred_idx += 1;
+        }
         if !clear_tags.is_empty() {
             for tag in clear_tags {
                 self.state.clear_tag(tag);

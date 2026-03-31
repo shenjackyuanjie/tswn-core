@@ -164,6 +164,7 @@ pub struct PlayerStateStore {
 }
 
 type PriorityPairs = SmallVec<[(StateTag, i32, u64); 8]>;
+type OrderedTagWithOrder = SmallVec<[(StateTag, u64); 8]>;
 
 impl PlayerStateStore {
     #[inline]
@@ -207,7 +208,7 @@ impl PlayerStateStore {
     }
 
     #[inline]
-    fn ordered_tags_by<F>(&self, mut priority: F) -> SmallVec<[StateTag; 8]>
+    fn ordered_pairs_by<F>(&self, mut priority: F) -> PriorityPairs
     where
         F: FnMut(&dyn StateTrait) -> i32,
     {
@@ -230,8 +231,28 @@ impl PlayerStateStore {
                 .then_with(|| order_a.cmp(order_b))
                 .then_with(|| tag_a.cmp(tag_b))
         });
+        ordered
+    }
+
+    #[inline]
+    fn ordered_tags_by<F>(&self, priority: F) -> SmallVec<[StateTag; 8]>
+    where
+        F: FnMut(&dyn StateTrait) -> i32,
+    {
+        let ordered = self.ordered_pairs_by(priority);
         ordered.into_iter().map(|(tag, _, _)| tag).collect()
     }
+
+    #[inline]
+    pub(crate) fn ordered_post_action_tags_with_order(&self) -> OrderedTagWithOrder {
+        self.ordered_pairs_by(|state| state.post_action_priority())
+            .into_iter()
+            .map(|(tag, _, order)| (tag, order))
+            .collect()
+    }
+
+    #[inline]
+    pub(crate) fn post_action_registration_cursor(&self) -> u64 { self.next_state_order }
 
     #[inline]
     pub fn set<T: StateTrait + 'static>(&mut self, state: T) {

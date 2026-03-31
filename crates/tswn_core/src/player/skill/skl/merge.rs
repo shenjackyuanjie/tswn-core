@@ -81,19 +81,19 @@ impl SkillTrait for MergeSkill {
                 }
             }
             for (skill_key, target_level) in target_skill_levels {
-                let mut should_add_action = false;
+                let mut should_enable_action = false;
                 if let Some(owner_skill) = owner.skills.store.get_mut(&skill_key)
                     && target_level > owner_skill.level()
                 {
                     let was_zero = owner_skill.level() == 0;
-                    should_add_action = was_zero && owner_skill.has_action_impl();
+                    should_enable_action = was_zero && owner_skill.has_action_impl();
                     owner_skill.set_level(target_level);
                     if was_zero {
                         newly_enabled_skills.push(skill_key);
                     }
                     merged = true;
                 }
-                if should_add_action {
+                if should_enable_action {
                     owner.skills.enable_action_key(skill_key);
                     if let Some(pos) = owner.skills.skill.iter().position(|key| *key == skill_key) {
                         owner.skills.skill.remove(pos);
@@ -101,8 +101,9 @@ impl SkillTrait for MergeSkill {
                     owner.skills.skill.push(skill_key);
                 }
             }
+            let post_action_state_cursor = owner.state.post_action_registration_cursor();
             for skill_key in newly_enabled_skills {
-                owner.skills.register_skill_proc(skill_key);
+                owner.skills.register_skill_proc_after_states(skill_key, post_action_state_cursor);
             }
             let transfer_mp = target_mp > owner.mp();
             if transfer_mp {
