@@ -1448,6 +1448,8 @@ impl Player {
         let ptr = self.as_ptr();
         self.skills.die(old_hp, caster, (ptr, randomer, updates, storage));
         if self.status.hp > 0 {
+            // 对齐 JS：护身符等 post_death 复活后，当前 post_action 队列仍会继续跑，
+            // 不能在死亡分支里提前清掉正面状态（例如 IronState），否则会漏掉同轮尾部的自然结束日志。
             return;
         }
         self.status.hp = 0;
