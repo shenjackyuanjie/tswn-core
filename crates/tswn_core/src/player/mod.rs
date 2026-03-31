@@ -215,8 +215,16 @@ pub enum PlayerType {
 pub struct Player {
     // 玩家所属团队名称，None 表示无团队
     team: Option<String>,
-    // 玩家显示名称
+    // 玩家原始内部名称；用于属性/内部语义。
     name: String,
+    // JS 的 e 字段：战斗日志里展示的 id 名称，minion 常见为 owner?N。
+    id_name_override: Option<String>,
+    // 某些 JS minion（幻影、丧尸、使魔）内部 id 名与 UI 显示名不同。
+    // Rust 需要保留 owner?N 作为内部标识，同时单独覆盖显示层文案。
+    display_name_override: Option<String>,
+    // JS minion 命名计数器只是 owner 上的运行时计数，不应进入 state store，
+    // 否则会污染状态遍历顺序并拖偏后续 RC4 / post_action 行为。
+    minion_name_next_index: usize,
     // 玩家装备的武器名称，None 表示无武器
     weapon: Option<String>,
     // 玩家类型（普通玩家、Boss、种子等）

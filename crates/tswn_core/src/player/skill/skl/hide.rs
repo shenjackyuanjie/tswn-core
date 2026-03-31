@@ -25,29 +25,12 @@ impl SkillTrait for HideSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     fn post_damage_with_level(&mut self, level: u32, dmg: i32, caster: PlrId, args: SkillArgs) {
-        let debug_action = crate::debug::debug_action();
-        let debug_this = debug_action
-            .as_deref()
-            .map(|name| args.3.get_player(&args.0).map(|p| p.id_name() == name).unwrap_or(false))
-            .unwrap_or(false);
+        let _ = (dmg, caster);
         if level == 0 || self.on_update_state.is_some() {
-            if debug_this {
-                let caster_name = args.3.get_player(&caster).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", caster));
-                eprintln!(
-                    "[hide_post_damage] owner={} skip level={} pending={} caster={} dmg={} rc4=({}, {})",
-                    args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
-                    level,
-                    self.on_update_state.is_some(),
-                    caster_name,
-                    dmg,
-                    args.1.i,
-                    args.1.j,
-                );
-            }
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
-        let alive_allies = args
+        let alive_group_snapshot = args
             .3
             .get_player(&args.0)
             .and_then(|owner| {
@@ -60,7 +43,10 @@ impl SkillTrait for HideSkill {
                             .or_else(|| args.3.alive_group_at_team_of(charm.group_id).cloned())
                     })
                     .or_else(|| args.3.alive_group_at_team_of(args.0).cloned())
-            })
+            });
+        let pending_spawn_ids = args.3.pending_spawn_ids_for_owner(args.0);
+        let alive_allies = alive_group_snapshot
+            .as_ref()
             .map(|group| {
                 // JS 的 Shadow.addNew 会让 owner 自己刚造出的新幻影在同一 action 的
                 // post_damage / post_action 链里立刻可见；Rust 这里至少要把 owner
@@ -69,29 +55,13 @@ impl SkillTrait for HideSkill {
                     .iter()
                     .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
                     .count();
-                let pending_alive_count = args
-                    .3
-                    .pending_spawn_ids_for_owner(args.0)
-                    .into_iter()
-                    .filter(|id| args.3.get_pending_spawn_player(*id).map(|p| p.alive()).unwrap_or(false))
+                let pending_alive_count = pending_spawn_ids
+                    .iter()
+                    .filter(|id| args.3.get_pending_spawn_player(**id).map(|p| p.alive()).unwrap_or(false))
                     .count();
                 alive_group_count + pending_alive_count
             })
             .unwrap_or(0);
-        if debug_this {
-            let caster_name = args.3.get_player(&caster).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", caster));
-            eprintln!(
-                "[hide_post_damage] owner={} active={} alive_allies={} level={} caster={} dmg={} before_roll rc4=({}, {})",
-                args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
-                owner_active,
-                alive_allies,
-                level,
-                caster_name,
-                dmg,
-                args.1.i,
-                args.1.j,
-            );
-        }
         if owner_active && alive_allies > 1 && args.1.r63() < level {
             self.on_update_state = Some(());
             args.3
@@ -99,21 +69,6 @@ impl SkillTrait for HideSkill {
                 .expect("cannot get hide owner from storage")
                 .update_states();
             args.2.add(RunUpdate::new("[0]发动[隐匿]", args.0, args.0, 10));
-            if debug_this {
-                eprintln!(
-                    "[hide_post_damage] owner={} triggered rc4=({}, {})",
-                    args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
-                    args.1.i,
-                    args.1.j,
-                );
-            }
-        } else if debug_this {
-            eprintln!(
-                "[hide_post_damage] owner={} not_triggered rc4=({}, {})",
-                args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
-                args.1.i,
-                args.1.j,
-            );
         }
     }
 

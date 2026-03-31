@@ -73,3 +73,63 @@ fn sync_runtime_entities_adds_pending_linked_shadow_before_same_tick_owner_clean
     assert!(!shadow.alive());
     assert_eq!(shadow.get_status().hp, 0);
 }
+
+#[test]
+fn possess_shadow_self_death_removes_shadow_from_storage_and_world_alive_views() {
+    use crate::engine::engine_core::EngineCore;
+    use crate::engine::world_state::WorldState;
+    use crate::player::skill::SkillTrait;
+
+    let storage = Storage::new_arc();
+
+    let mut owner = Player::new_from_namerena_raw("owner@ally".to_string(), storage.clone()).expect("cannot init owner");
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+
+    let mut target = Player::new_from_namerena_raw("target@enemy".to_string(), storage.clone()).expect("cannot init target");
+    target.build();
+    let target_id = storage.just_insert_player(target);
+
+    storage.sync_groups(&[vec![owner_id], vec![target_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![target_id]]);
+
+    let mut world = WorldState::new(vec![vec![owner_id], vec![target_id]]);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    let mut shadow_skill = crate::player::skill::act::shadow::ShadowSkill::new();
+    shadow_skill.act_with_level(255, Vec::new(), false, (owner_id, &mut randomer, &mut updates, &storage));
+
+    let shadow_id = storage
+        .pending_spawn_ids_for_owner(owner_id)
+        .into_iter()
+        .next()
+        .expect("shadow spawn should be queued");
+
+    EngineCore::default().sync_runtime_entities(&mut world, &storage);
+
+    {
+        let target = storage.just_get_player_mut(target_id).expect("cannot get target");
+        target.status.set_frozen(true);
+    }
+
+    let mut possess = crate::player::skill::act::possess::PossessSkill::new();
+    possess.act_with_level(1, vec![target_id], false, (shadow_id, &mut randomer, &mut updates, &storage));
+
+    let shadow_after_possess = storage.get_player(&shadow_id).expect("shadow should exist in storage");
+    assert!(
+        updates
+            .updates
+            .iter()
+            .any(|update| update.message == "[1]消失了" && update.target == shadow_id),
+        "possess should emit shadow disappear log"
+    );
+    assert!(!shadow_after_possess.alive(), "shadow should be marked dead after possess");
+    assert_eq!(shadow_after_possess.get_status().hp, 0, "shadow hp should be zero after possess");
+
+    EngineCore::default().sync_runtime_entities(&mut world, &storage);
+
+    assert!(!world.contains_alive(shadow_id), "dead possess shadow must be removed from world alive view");
+    assert_eq!(world.team_alive(0), Some(&[owner_id][..]));
+    assert_eq!(storage.alive_group_at(0), Some(&vec![owner_id]));
+}

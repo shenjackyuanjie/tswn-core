@@ -200,6 +200,9 @@ impl Player {
         Ok(Player {
             team,
             name,
+            id_name_override: None,
+            display_name_override: None,
+            minion_name_next_index: 0,
             weapon,
             player_type,
             sort_int: 0,

@@ -374,8 +374,11 @@ impl Player {
 
     pub(super) fn run_post_action_chain(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
         let ptr = self.as_ptr();
-        // JS 的 x2 是一条统一 post_action 队列；Charge 会把 Infinity 尾节点追加进去，
-        // 所以这里要先跑普通技能，再跑 state tick，最后再跑 charge 这类尾节点。
+        // JS 的 x2 是一条统一 post_action 队列；
+        // - 初始技能（如 Protect）先于后续 runtime 挂入的 PoisonState
+        // - 但如果战斗中途才通过 Merge 获得 Protect，这个新 entry 会挂到已有 PoisonState 后面
+        // - 后续再新增的 state 会继续排到这个新 Protect 后面，不能粗暴地“永远放在所有 state 后面”
+        // - Charge / Haste / Slow 这类 PostActionImpl(ga4=Infinity) 则继续留在尾部
         self.skills.post_action_early((ptr, randomer, updates, storage));
         self.apply_post_action_states(randomer, updates, storage);
         self.skills.post_action_late((ptr, randomer, updates, storage));
@@ -898,26 +901,49 @@ impl Player {
     }
 
     #[inline]
-    pub fn id_name(&self) -> String { self.name.clone() }
+    pub fn id_name(&self) -> String { self.id_name_override.clone().unwrap_or_else(|| self.name.clone()) }
 
     #[inline]
     pub fn id_key_name(&self) -> String {
+        let id_name = self.id_name();
         if let Some(team) = self.team.as_ref()
             && !team.is_empty()
-            && team != &self.name
+            && team != &id_name
         {
-            return format!("{}@{}", self.name, team);
+            return format!("{}@{}", id_name, team);
         }
-        self.name.clone()
+        id_name
     }
 
     #[inline]
     pub fn display_name(&self) -> String {
+        if let Some(display_name) = self.display_name_override.as_ref() {
+            return display_name.clone();
+        }
+        if let Some(id_name) = self.id_name_override.as_ref() {
+            return id_name.split(" ").next().unwrap_or_default().to_string();
+        }
         if self.player_type == PlayerType::Boss {
             return boss_display_name(&self.name).to_string();
         }
         self.name.split(" ").next().unwrap_or_default().to_string()
     }
+
+    #[inline]
+    pub fn set_id_name_override(&mut self, id_name: Option<String>) { self.id_name_override = id_name; }
+
+    #[inline]
+    pub fn set_display_name_override(&mut self, display_name: Option<String>) { self.display_name_override = display_name; }
+
+    #[inline]
+    pub(crate) fn take_next_minion_name_index(&mut self) -> usize {
+        let index = self.minion_name_next_index;
+        self.minion_name_next_index += 1;
+        index
+    }
+
+    #[inline]
+    pub(crate) fn reset_minion_name_counter(&mut self) { self.minion_name_next_index = 0; }
 
     #[inline]
     pub fn clan_name(&self) -> String { self.team.clone().unwrap_or(self.name.clone()) }
@@ -1028,6 +1054,7 @@ impl Player {
         use crate::player::state::state_tag;
 
         let atp_before = atp;
+        let started_zero = atp == 0.0;
         let protect_split = self.get_state::<ProtectState>().map(|state| state.pre_defend_skill_count);
         if let Some(split) = protect_split {
             let split = split.min(self.skills.pre_defend.len());
@@ -1043,7 +1070,9 @@ impl Player {
             if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
                 eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
             }
-            if atp == 0.0 {
+            // JS 的 y1/pre_defend 混合链即便在入参 atp 已经为 0 时，仍会继续跑到当前顺序里的状态 entry。
+            // 这里只在“前面的 skill entry 把 atp 打成 0”时提前返回；若是一开始就为 0，需要继续让 protect/state entry 消耗 RC4。
+            if atp == 0.0 && !started_zero {
                 return 0.0;
             }
 
@@ -1127,7 +1156,7 @@ impl Player {
         if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
             eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
         }
-        if atp == 0.0 {
+        if atp == 0.0 && !started_zero {
             return 0.0;
         }
         let atp2 = self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage);

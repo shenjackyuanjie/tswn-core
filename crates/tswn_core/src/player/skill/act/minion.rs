@@ -1,4 +1,9 @@
-use crate::player::{PlrId, StateTrait};
+use std::sync::Arc;
+
+use crate::{
+    engine::storage::Storage,
+    player::{PlrId, StateTrait},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MinionKind {
@@ -18,6 +23,44 @@ pub struct MinionRuntimeState {
 impl MinionRuntimeState {
     #[inline]
     pub fn is_combat_minion(&self) -> bool { !matches!(self.kind, MinionKind::Clone) }
+}
+
+#[inline]
+pub fn root_minion_name_owner_id(storage: &Arc<Storage>, start_id: PlrId) -> PlrId {
+    let mut current = start_id;
+    loop {
+        let Some(player) = storage.get_player_or_pending(&current) else {
+            return current;
+        };
+        let Some(minion) = player.get_state::<MinionRuntimeState>() else {
+            return current;
+        };
+        if minion.kind != MinionKind::Clone {
+            return current;
+        }
+        let Some(owner) = minion.owner else {
+            return current;
+        };
+        current = owner;
+    }
+}
+
+#[inline]
+pub fn alloc_minion_name(storage: &Arc<Storage>, owner_id: PlrId) -> String {
+    let root_owner_id = root_minion_name_owner_id(storage, owner_id);
+    let owner_name = storage
+        .get_player_or_pending(&root_owner_id)
+        .map(|owner| owner.id_name())
+        .expect("cannot get minion root owner from storage");
+    let index = {
+        let owner = storage
+            .just_get_player_or_pending_mut(root_owner_id)
+            .expect("cannot get mutable minion root owner from storage");
+        owner.take_next_minion_name_index()
+    };
+    // JS getMinionName 返回的是 name?N@team；Rust 把 team 单独存放，
+    // 所以这里只写入 name?N，最终显示时再由 id_key_name()/格式化补上 @team。
+    format!("{owner_name}?{index}")
 }
 
 #[inline]

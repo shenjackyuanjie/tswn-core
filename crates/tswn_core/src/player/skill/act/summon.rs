@@ -9,7 +9,7 @@ use crate::player::{
 };
 use crate::rc4::RC4;
 
-use super::minion::{MinionKind, MinionRuntimeState};
+use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name};
 
 const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 
@@ -110,7 +110,8 @@ impl SkillTrait for SummonSkill {
         summoned.status.mp = summoned.status.wisdom >> 1;
 
         summoned.id = args.3.new_plr_id();
-        summoned.name = "使魔".to_string();
+        summoned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
+        summoned.set_display_name_override(Some("使魔".to_string()));
         summoned.player_type = PlayerType::Clone;
         summoned.sort_int = 0;
         summoned.state = PlayerStateStore::default();

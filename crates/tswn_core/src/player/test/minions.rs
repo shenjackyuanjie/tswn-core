@@ -101,7 +101,7 @@ fn merge_kill_applies_owner_growth() {
 #[test]
 fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
     let storage = Storage::new_arc();
-    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let owner = Player::new_from_namerena_raw("owner@same".to_string(), storage.clone()).unwrap();
     let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
     let owner_id = storage.just_insert_player(owner);
     let target_id = storage.just_insert_player(target);
@@ -148,7 +148,34 @@ fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].owner, owner_id);
     assert!(pending[0].player.has_state::<crate::player::skill::act::minion::MinionRuntimeState>());
+    assert_eq!(pending[0].player.id_name(), "owner?0");
+    assert_eq!(pending[0].player.id_key_name(), "owner?0@same");
+    assert_eq!(pending[0].player.base_name(), "owner?zombie");
+    assert_eq!(pending[0].player.display_name(), "丧尸");
     assert!(updates.updates.iter().any(|x| x.message.contains("变成了")));
+}
+
+#[test]
+fn minion_name_counter_uses_root_clone_owner() {
+    use crate::player::skill::act::minion::{MinionKind, MinionRuntimeState, alloc_minion_name};
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@same".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+
+    assert_eq!(alloc_minion_name(&storage, owner_id), "owner?0");
+    assert_eq!(alloc_minion_name(&storage, owner_id), "owner?1");
+
+    let mut clone = storage.get_player(&owner_id).expect("cannot get owner").clone();
+    clone.id = storage.new_plr_id();
+    clone.name = "owner?0".to_string();
+    clone.set_state(MinionRuntimeState {
+        owner: Some(owner_id),
+        kind: MinionKind::Clone,
+    });
+    let clone_id = storage.just_insert_player(clone);
+
+    assert_eq!(alloc_minion_name(&storage, clone_id), "owner?2");
 }
 
 #[test]
@@ -183,14 +210,9 @@ fn summon_merge_uses_fixed_skill_slots() {
     let pending = storage.take_pending_spawns();
     assert_eq!(pending.len(), 1);
     let summoned = pending.into_iter().next().unwrap().player;
-    println!(
-        "initial summon skills: {:?}",
-        [
-            (summoned.skills.skill_by_id(0).level(), summoned.skills.skill_by_id(0).boosted),
-            (summoned.skills.skill_by_id(1).level(), summoned.skills.skill_by_id(1).boosted),
-            (summoned.skills.skill_by_id(2).level(), summoned.skills.skill_by_id(2).boosted),
-        ]
-    );
+    assert_eq!(summoned.id_key_name(), "地狱之轮 #mW88BamWo?0@Shabby_fish");
+    assert_eq!(summoned.base_name(), "地狱之轮 #mW88BamWo?summon");
+    assert_eq!(summoned.display_name(), "使魔");
     assert!(summoned.skills.store.contains_key(&255));
     assert!(!summoned.skills.store.contains_key(&3));
     let summoned_id = storage.just_insert_player(summoned);
@@ -253,6 +275,7 @@ fn merge_does_not_inherit_mismatched_slot_hide_skill() {
     );
 
     let owner_after = storage.get_player(&owner_id).unwrap();
+    assert_eq!(owner_after.skills.skill_by_id(0).level(), 1);
     assert_eq!(owner_after.skills.skill_by_id(34).level(), 0);
     assert_eq!(owner_after.skills.skill_by_id(1).level(), 7);
     assert_eq!(owner_after.skills.skill_by_id(2).level(), 9);
@@ -360,6 +383,34 @@ fn summon_recast_reuses_dead_minion_and_advances_boost_progress() {
     );
     assert!(summoned_after.skills.skill_by_id(0).boosted);
     assert!(summoned_after.skills.skill_by_id(2).boosted);
+}
+
+#[test]
+fn shadow_skill_queues_named_shadow_minion() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw("owner@same".to_string(), storage.clone()).unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut shadow = crate::player::skill::act::shadow::ShadowSkill::new();
+
+    <crate::player::skill::act::shadow::ShadowSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut shadow,
+        255,
+        Vec::new(),
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let shadow = &pending[0].player;
+    assert_eq!(shadow.id_name(), "owner?0");
+    assert_eq!(shadow.id_key_name(), "owner?0@same");
+    assert_eq!(shadow.base_name(), "owner?shadow");
+    assert_eq!(shadow.display_name(), "幻影");
+    assert!(updates.updates.iter().any(|update| update.message == "召唤出[1]" && update.target == shadow.as_ptr()));
 }
 
 #[test]

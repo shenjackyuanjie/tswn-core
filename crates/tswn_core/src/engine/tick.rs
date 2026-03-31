@@ -61,6 +61,8 @@ pub fn choose_action(
 pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
     use crate::player::skill::charm::CharmState;
 
+    let is_alive_now = |id: &PlrId| storage.get_player(id).map(|player| player.alive()).unwrap_or(false);
+
     let Some(team_idx) = world.team_index_of(actor) else {
         return ActionTargets::default();
     };
@@ -73,16 +75,25 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
         return ActionTargets::default();
     };
 
-    let ally_alive: PlrVec = world.team_alive(effective_team).map(PlrVec::from_slice).unwrap_or_default();
+    let ally_alive: PlrVec = world
+        .team_alive(effective_team)
+        .map(|team| team.iter().copied().filter(is_alive_now).collect())
+        .unwrap_or_default();
     let ally_all = team_roster.clone();
     let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !ally_alive.contains(id)).collect();
-    let all_alive: PlrVec = world.teams.iter().flat_map(|t| t.alive.iter().copied()).collect();
+    let all_alive: PlrVec = world
+        .teams
+        .iter()
+        .flat_map(|team| team.alive.iter().copied())
+        .filter(is_alive_now)
+        .collect();
     let enemy_alive: PlrVec = world
         .teams
         .iter()
         .enumerate()
         .filter(|(idx, _)| *idx != effective_team)
         .flat_map(|(_, team)| team.alive.iter().copied())
+        .filter(is_alive_now)
         .collect();
 
     ActionTargets {

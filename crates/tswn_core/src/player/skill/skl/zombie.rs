@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
-    skill::act::minion::{MinionKind, MinionRuntimeState, is_combat_minion},
+    skill::act::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, is_combat_minion},
     skill::corpse::CorpseState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
 };
@@ -31,7 +31,7 @@ impl SkillTrait for ZombieSkill {
         if args.1.r63() >= level {
             return false;
         }
-        let Some((owner_name, owner_clan)) = args.3.get_player(&args.0).map(|owner| (owner.id_name(), owner.clan_name())) else {
+        let Some(owner_clan) = args.3.get_player(&args.0).map(|owner| owner.clan_name()) else {
             args.3
                 .just_get_player_mut(target)
                 .expect("cannot get zombie target from storage")
@@ -52,12 +52,13 @@ impl SkillTrait for ZombieSkill {
             .expect("cannot get zombie target from storage")
             .set_state(CorpseState::zombie());
 
-        let seed_name = format!("{owner_name}?zombie");
+        let seed_name = format!("{}?zombie", args.3.get_player(&args.0).expect("cannot get zombie owner").base_name());
         let mut zombie =
             Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init zombie minion");
         zombie.build();
         zombie.id = args.3.new_plr_id();
-        zombie.name = "丧尸".to_string();
+        zombie.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
+        zombie.set_display_name_override(Some("丧尸".to_string()));
         zombie.attr[0] = 0;
         zombie.attr[6] = 0;
         zombie.attr[7] = (zombie.attr[7] >> 1).max(1);

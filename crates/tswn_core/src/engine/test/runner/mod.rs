@@ -467,6 +467,40 @@ fn runtime_remove_queue_does_not_remove_still_alive_player() {
 }
 
 #[test]
+fn select_targets_ignores_dead_enemy_shadow_left_in_world_alive_view() {
+    let raw_input = "actor\n\nenemy";
+    let mut runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+    let actor = runner.world.groups[0][0];
+    let enemy = runner.world.groups[1][0];
+
+    let mut shadow = crate::player::Player::new_from_namerena_raw("enemy_shadow".to_string(), runner.storage.clone()).unwrap();
+    shadow.revive_with_hp(1);
+    shadow.set_state(crate::player::skill::act::minion::MinionRuntimeState {
+        owner: Some(enemy),
+        kind: crate::player::skill::act::minion::MinionKind::Shadow,
+    });
+    let shadow_id = runner.storage.just_insert_player(shadow);
+
+    runner.world.add_new_player(shadow_id, enemy);
+    runner.storage.sync_groups(&runner.world.groups);
+    runner.storage.sync_alive_groups_owned(runner.world.alives_by_group(&runner.storage));
+
+    assert!(runner.world.team_alive(1).unwrap().contains(&shadow_id));
+    assert!(runner.storage.get_player(&shadow_id).unwrap().alive());
+
+    runner.storage.just_get_player_mut(shadow_id).expect("cannot get shadow").set_hp_raw(0);
+
+    assert!(runner.world.team_alive(1).unwrap().contains(&shadow_id));
+    assert!(!runner.storage.get_player(&shadow_id).unwrap().alive());
+
+    let targets = tick::select_targets(actor, &runner.world, &runner.storage);
+
+    assert!(targets.enemy_alive.contains(&enemy));
+    assert!(!targets.enemy_alive.contains(&shadow_id));
+    assert!(!targets.all_alive.contains(&shadow_id));
+}
+
+#[test]
 fn world_remove_player_keeps_roster_but_prunes_alive_view() {
     let raw_input = "owner\n\nenemy";
     let runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();

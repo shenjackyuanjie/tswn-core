@@ -5,7 +5,7 @@ use crate::player::{
     skill::{Skill, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
-use super::minion::{MinionKind, MinionRuntimeState};
+use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name};
 
 #[derive(Debug, Clone, Default)]
 pub struct ShadowSkill;
@@ -47,17 +47,18 @@ impl SkillTrait for ShadowSkill {
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[幻术]", args.0, args.0, 60));
-        let (owner_name, owner_clan, charge_active) = {
+        let (owner_base_name, owner_clan, charge_active) = {
             let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage");
-            (owner.id_name(), owner.clan_name(), owner.get_status().at_boost >= 3.0)
+            (owner.base_name(), owner.clan_name(), owner.get_status().at_boost >= 3.0)
         };
-        let seed_name = format!("{owner_name}?shadow");
+        let seed_name = format!("{owner_base_name}?shadow");
         let mut shadow =
             Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init shadow minion");
         shadow.build();
         shadow.attr[7] /= 2;
         shadow.init_values();
-        shadow.name = "幻影".to_string();
+        shadow.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
+        shadow.set_display_name_override(Some("幻影".to_string()));
         shadow.player_type = PlayerType::Clone;
         shadow.sort_int = 0;
         shadow.state = PlayerStateStore::default();
@@ -76,7 +77,8 @@ impl SkillTrait for ShadowSkill {
         shadow.skills.update_proc();
 
         shadow.status.move_point = if charge_active { 2048 } else { -2048 };
+        let shadow_id = shadow.as_ptr();
         args.3.queue_spawn(args.0, shadow);
-        args.2.add(RunUpdate::new("召唤出幻影", args.0, args.0, 0));
+        args.2.add(RunUpdate::new("召唤出[1]", args.0, shadow_id, 0));
     }
 }

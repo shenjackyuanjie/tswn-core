@@ -1,4 +1,4 @@
-use super::minion::{MinionKind, MinionRuntimeState};
+use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, root_minion_name_owner_id};
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlayerStateStore, PlayerType, PlrId,
@@ -65,9 +65,12 @@ impl SkillTrait for CloneSkill {
             owner.update_states();
         }
 
+        let root_owner_id = root_minion_name_owner_id(args.3, args.0);
         let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage").clone();
         let mut cloned = owner_snapshot.clone();
-        cloned.name = owner_snapshot.id_name();
+        cloned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
+        cloned.set_display_name_override(None);
+        cloned.reset_minion_name_counter();
         cloned.id = args.3.new_plr_id();
         cloned.player_type = PlayerType::Clone;
         cloned.sort_int = 0;
@@ -88,7 +91,7 @@ impl SkillTrait for CloneSkill {
         }
         cloned.state = PlayerStateStore::default();
         cloned.set_state(MinionRuntimeState {
-            owner: Some(args.0),
+            owner: Some(root_owner_id),
             kind: MinionKind::Clone,
         });
         cloned.update_states();
