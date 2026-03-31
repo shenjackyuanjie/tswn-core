@@ -1432,8 +1432,18 @@ impl Player {
             return;
         }
 
-        updates.emit(RunUpdate::new_newline);
-        updates.emit(|| RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
+        let suppress_combat_minion_die_log = self
+            .get_state::<crate::player::skill::act::minion::MinionRuntimeState>()
+            .map(|state| state.is_combat_minion())
+            .unwrap_or(false)
+            && storage
+                .group_containing(self.as_ptr())
+                .map(|ally_group| !has_alive_enemy_or_pending(storage, ally_group))
+                .unwrap_or(false);
+        if !suppress_combat_minion_die_log {
+            updates.emit(RunUpdate::new_newline);
+            updates.emit(|| RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
+        }
 
         let ptr = self.as_ptr();
         self.skills.die(old_hp, caster, (ptr, randomer, updates, storage));
