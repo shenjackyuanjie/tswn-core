@@ -69,7 +69,7 @@ impl SkillTrait for CloneSkill {
         let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage").clone();
         let mut cloned = owner_snapshot.clone();
         cloned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
-        cloned.set_display_name_override(None);
+        cloned.set_display_name_override(Some(owner_snapshot.display_name()));
         cloned.reset_minion_name_counter();
         cloned.id = args.3.new_plr_id();
         cloned.player_type = PlayerType::Clone;
