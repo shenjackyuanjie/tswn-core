@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 
-PROJECT_ROOT = Path("d:/githubs/namer/tswn-core")
+PROJECT_ROOT = Path(__file__).resolve().parent
 TOOLS = {
     "test": PROJECT_ROOT / "track_test.py",
     "miner": PROJECT_ROOT / "track_case_miner.py",

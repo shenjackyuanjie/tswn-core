@@ -6,20 +6,92 @@ tswn_case_miner 回归追踪工具
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 
-PROJECT_ROOT = Path("d:/githubs/namer/tswn-core")
-DEFAULT_OUT_DIR = PROJECT_ROOT / "target" / "ts_diff_cases"
-RECORD_FILE = PROJECT_ROOT / "target" / "case_miner_regression.json"
-LOG_FILE = PROJECT_ROOT / "target" / "case_miner_regression.log"
-CHECKPOINT_DIR = PROJECT_ROOT / "target" / "case_miner_checkpoints"
 DEFAULT_MODES = "1v1,2v2,3v3v3,ffa"
 DEFAULT_FFA_SIZES = "4,6,8"
 DEFAULT_MAX_CASES_PER_MODE = 64
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def _read_first_line(path: Path):
+    try:
+        return path.read_text(encoding="utf-8").splitlines()[0].strip()
+    except (OSError, UnicodeDecodeError, IndexError):
+        return None
+
+
+def _read_gitdir(git_entry: Path):
+    raw = _read_first_line(git_entry)
+    if not raw or not raw.startswith("gitdir:"):
+        return None
+    git_dir = Path(raw.split(":", 1)[1].strip())
+    if git_dir.is_absolute():
+        return git_dir.resolve()
+    return (git_entry.parent / git_dir).resolve()
+
+
+def _detect_git_common_dir(project_root: Path) -> Path:
+    git_entry = project_root / ".git"
+    if git_entry.is_dir():
+        return git_entry.resolve()
+
+    git_dir = _read_gitdir(git_entry)
+    if git_dir is None:
+        return git_entry
+
+    common_dir_file = git_dir / "commondir"
+    common_dir = _read_first_line(common_dir_file)
+    if common_dir:
+        common_dir_path = Path(common_dir)
+        if common_dir_path.is_absolute():
+            return common_dir_path.resolve()
+        return (git_dir / common_dir_path).resolve()
+
+    return git_dir.resolve()
+
+
+GIT_COMMON_DIR = _detect_git_common_dir(PROJECT_ROOT)
+SHARED_REPO_ROOT = GIT_COMMON_DIR.parent if GIT_COMMON_DIR.name == ".git" else PROJECT_ROOT
+PROJECT_TARGET_DIR = PROJECT_ROOT / "target"
+DEFAULT_OUT_DIR = Path("target") / "ts_diff_cases"
+RECORD_FILE = PROJECT_TARGET_DIR / "case_miner_regression.json"
+LOG_FILE = PROJECT_TARGET_DIR / "case_miner_regression.log"
+CHECKPOINT_DIR = PROJECT_TARGET_DIR / "case_miner_checkpoints"
+DEFAULT_LIBRARY = SHARED_REPO_ROOT / "tests" / "sqp6000.txt"
+DEFAULT_SHARED_CACHE_DIR = SHARED_REPO_ROOT / "target" / "tswn_case_miner_cache"
+
+
+def _detect_default_md5_tool():
+    candidates = []
+    for repo_root in (PROJECT_ROOT, SHARED_REPO_ROOT):
+        candidates.append(repo_root.parent / "fast-namerena" / "branch" / "latest" / "out_md5.ts")
+        candidates.append(repo_root / "fast-namerena" / "branch" / "latest" / "out_md5.ts")
+
+    seen = set()
+    for candidate in candidates:
+        key = str(candidate.resolve()) if candidate.exists() else str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+DEFAULT_MD5_TOOL = _detect_default_md5_tool()
+
+
+def _resolve_runtime_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return (PROJECT_ROOT / path).resolve()
 
 
 def load_previous_records() -> dict:
@@ -95,9 +167,11 @@ def summarize_run(summary: dict, args) -> dict:
     return {
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "config": {
-            "library": str(args.library) if args.library else None,
-            "md5_tool": str(args.md5_tool) if args.md5_tool else None,
-            "out_dir": str(args.out_dir),
+            "library": str(args.library_path) if args.library_path else None,
+            "md5_tool": str(args.md5_tool_path) if args.md5_tool_path else None,
+            "out_dir": str(args.out_dir_path),
+            "shared_cache_dir": str(args.shared_cache_dir_path),
+            "bun_cache_dir": str(args.bun_cache_dir_path),
             "modes": args.modes,
             "ffa_sizes": args.ffa_sizes,
             "max_cases_per_mode": args.max_cases_per_mode,
@@ -250,11 +324,11 @@ def run_miner(args):
         "tswn_case_miner",
         "--",
         "--library",
-        str(args.library),
+        str(args.library_path),
         "--md5-tool",
-        str(args.md5_tool),
+        str(args.md5_tool_path),
         "--out-dir",
-        str(args.out_dir),
+        str(args.out_dir_path),
         "--modes",
         args.modes,
         "--ffa-sizes",
@@ -265,6 +339,12 @@ def run_miner(args):
     if args.keep_going:
         cmd.append("--keep-going")
 
+    args.shared_cache_dir_path.mkdir(parents=True, exist_ok=True)
+    args.bun_cache_dir_path.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["TSWN_CASE_MINER_TS_CACHE_DIR"] = str(args.shared_cache_dir_path / "ts_trace")
+    env["TSWN_CASE_MINER_BUN_CACHE_DIR"] = str(args.bun_cache_dir_path)
+
     result = subprocess.run(
         cmd,
         cwd=str(PROJECT_ROOT),
@@ -272,6 +352,7 @@ def run_miner(args):
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=env,
     )
     return result
 
@@ -353,9 +434,20 @@ def cmd_delete(name):
 
 def main():
     parser = argparse.ArgumentParser(description="tswn_case_miner 回归追踪工具")
-    parser.add_argument("--library", type=Path, help="号库文件路径")
-    parser.add_argument("--md5-tool", type=Path, help="out_md5.ts 路径")
+    parser.add_argument("--library", type=Path, default=DEFAULT_LIBRARY, help=f"号库文件路径 (default: {DEFAULT_LIBRARY})")
+    parser.add_argument(
+        "--md5-tool",
+        type=Path,
+        default=DEFAULT_MD5_TOOL,
+        help=f"out_md5.ts 路径 (default: {DEFAULT_MD5_TOOL if DEFAULT_MD5_TOOL else '自动推导'})",
+    )
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR, help=f"miner 输出目录 (default: {DEFAULT_OUT_DIR})")
+    parser.add_argument(
+        "--shared-cache-dir",
+        type=Path,
+        default=DEFAULT_SHARED_CACHE_DIR,
+        help=f"共享 bun/TS 缓存目录 (default: {DEFAULT_SHARED_CACHE_DIR})",
+    )
     parser.add_argument("--modes", default=DEFAULT_MODES, help=f"对战模式 (default: {DEFAULT_MODES})")
     parser.add_argument("--ffa-sizes", default=DEFAULT_FFA_SIZES, help=f"ffa 人数列表 (default: {DEFAULT_FFA_SIZES})")
     parser.add_argument(
@@ -400,19 +492,31 @@ def main():
         print_current_status(load_previous_records())
         return
 
-    if args.library is None or args.md5_tool is None:
-        parser.error("运行 miner 时必须提供 --library 和 --md5-tool")
+    args.library_path = _resolve_runtime_path(args.library)
+    args.out_dir_path = _resolve_runtime_path(args.out_dir)
+    args.shared_cache_dir_path = _resolve_runtime_path(args.shared_cache_dir)
+    args.bun_cache_dir_path = args.shared_cache_dir_path / "bun"
+    args.md5_tool_path = _resolve_runtime_path(args.md5_tool) if args.md5_tool else None
+
+    if not args.library_path.is_file():
+        parser.error(f"号库文件不存在: {args.library_path}")
+    if args.md5_tool_path is None:
+        parser.error("运行 miner 时必须提供 --md5-tool，或保证默认 fast-namerena 路径可自动推导")
+    if not args.md5_tool_path.is_file():
+        parser.error(f"md5 工具文件不存在: {args.md5_tool_path}")
 
     if not args.quiet:
         print("=" * 40)
         print("  tswn_case_miner 回归追踪工具")
         print("=" * 40)
         print()
-        print(f"运行 miner: library={args.library}")
-        print(f"md5 tool: {args.md5_tool}")
+        print(f"运行 miner: library={args.library_path}")
+        print(f"md5 tool: {args.md5_tool_path}")
+        print(f"shared cache: {args.shared_cache_dir_path}")
+        print(f"bun cache: {args.bun_cache_dir_path}")
         print()
     else:
-        print(f"[track_case_miner] 运行 miner: {args.library}")
+        print(f"[track_case_miner] 运行 miner: {args.library_path}")
 
     result = run_miner(args)
     if result.returncode != 0:
@@ -423,7 +527,7 @@ def main():
             print(result.stderr.rstrip())
         sys.exit(result.returncode)
 
-    summary_path = args.out_dir / "summary.json"
+    summary_path = args.out_dir_path / "summary.json"
     try:
         summary = load_summary(summary_path)
     except FileNotFoundError as exc:

@@ -83,8 +83,8 @@
 
 ## 测试输入
 
-- 号库文件：`tests/sqp6000.txt`
-- TS 基准工具：`../fast-namerena/branch/latest/out_md5.ts`
+- 号库文件：默认使用共享主仓库固定路径 `tests/sqp6000.txt`
+- TS 基准工具：默认自动推导 `../fast-namerena/branch/latest/out_md5.ts`
 - JS 逻辑优先参考：`../fast-namerena/branch/latest/md5.js`
 
 case 生成方式由 `tswn_case_miner` 负责，覆盖：
@@ -96,19 +96,36 @@ case 生成方式由 `tswn_case_miner` 负责，覆盖：
 - `ffa_6`
 - `ffa_8`
 
-每种模式生成 `1000` 个 case，总计 `6000` 个 case。
+每种模式生成 `1100` 个 case，总计 `6600` 个 case。
 
 ## 标准测试方法
 
 在 `tswn-core` 目录下运行：
 
 ```bash
-python track_case_miner.py -q \
-  --library tests/sqp6000.txt \
-  --md5-tool ../fast-namerena/branch/latest/out_md5.ts \
+python ./track_case_miner.py -q \
   --modes 1v1,2v2,3v3v3,ffa \
   --ffa-sizes 4,6,8 \
-  --max-cases-per-mode 1000 \
+  --max-cases-per-mode 1100 \
+  --keep-going
+```
+
+默认行为：
+
+- 当前 worktree 下的脚本路径与输出路径统一按 `./` 相对路径使用
+- 号库默认取共享主仓库中的 `tests/sqp6000.txt`
+- `out_md5.ts` 默认自动推导到共享 `fast-namerena/branch/latest/out_md5.ts`
+- bun 与 TS trace 缓存默认指向主 worktree 的 `target/tswn_case_miner_cache/`
+
+如果默认推导不适用，再显式传入固定路径，例如：
+
+```bash
+python ./track_case_miner.py -q \
+  --library D:/shared/tswn-core/tests/sqp6000.txt \
+  --md5-tool D:/shared/fast-namerena/branch/latest/out_md5.ts \
+  --modes 1v1,2v2,3v3v3,ffa \
+  --ffa-sizes 4,6,8 \
+  --max-cases-per-mode 1100 \
   --keep-going
 ```
 
@@ -116,11 +133,9 @@ python track_case_miner.py -q \
 
 ```powershell
 python .\track_case_miner.py -q `
-  --library .\tests\sqp6000.txt `
-  --md5-tool ..\fast-namerena\branch\latest\out_md5.ts `
   --modes 1v1,2v2,3v3v3,ffa `
   --ffa-sizes 4,6,8 `
-  --max-cases-per-mode 1000 `
+  --max-cases-per-mode 1100 `
   --keep-going
 ```
 
@@ -188,36 +203,34 @@ python .\track_case_miner.py -q `
 cargo test -p tswn_core
 ```
 
-2. 如果改了 Rust 代码格式，再执行：
+1. 如果改了 Rust 代码格式，再执行：
 
 ```bash
 cargo +nightly fmt --package tswn_core
 ```
 
-3. 再跑这组固定的 SBY 测试：
+1. 再跑这组固定的 SBY 测试：
 
 ```bash
-python track_case_miner.py -q \
-  --library tests/sqp6000.txt \
-  --md5-tool ../fast-namerena/branch/latest/out_md5.ts \
+python ./track_case_miner.py -q \
   --modes 1v1,2v2,3v3v3,ffa \
   --ffa-sizes 4,6,8 \
-  --max-cases-per-mode 1000 \
+  --max-cases-per-mode 1100 \
   --keep-going
 ```
 
-4. 对比本轮与上轮：
+1. 对比本轮与上轮：
    - `diff failures` 是否下降
    - 相同 failed case 的 `first_mismatch_idx` 是否延后
    - 是否出现新的 failed case
    - 是否出现退步
 
-5. 如果本轮改动有效（`diff failures` 下降或可确认关键 case 修复），应在验证通过后执行 git 提交：
+1. 如果本轮改动有效（`diff failures` 下降或可确认关键 case 修复），应在验证通过后执行 git 提交：
    - 提交前确保工作区只包含本轮相关改动
    - commit message 需要写明“修复了什么”与“为什么这样修”，并且必须使用中文
    - 保持一次 commit 对应一个清晰修复点，便于后续回溯
 
-6. 如果这轮修复依赖了对 `md5.js` 某个复杂片段的新理解，再检查一次：
+1. 如果这轮修复依赖了对 `md5.js` 某个复杂片段的新理解，再检查一次：
    - 对应位置是否已经补上逻辑注释
    - 注释是否足够帮助下次继续排查同类问题
 
@@ -241,7 +254,7 @@ python track_case_miner.py -q \
 
 最终目标不是“比上次少几个 failed case”，而是这组测试 **全部通过**：
 
-- `total_generated = 6000`
+- `total_generated = 6600`
 - `ts_failures = 0`
 - `rust_failures = 0`
 - `diff_failures = 0`

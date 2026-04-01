@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-PROJECT_ROOT = Path("d:/githubs/namer/tswn-core")
+PROJECT_ROOT = Path(__file__).resolve().parent
 RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
 LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
 CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"

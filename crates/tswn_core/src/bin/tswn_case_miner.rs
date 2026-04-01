@@ -153,8 +153,10 @@ fn try_main() -> Result<(), String> {
 
     let temp_root = config.out_dir.join(".tmp");
     fs::create_dir_all(&temp_root).map_err(|e| format!("创建临时目录失败: {e}"))?;
-    let ts_cache_dir = config.out_dir.join(".ts_cache");
+    let ts_cache_dir = detect_default_ts_cache_dir(&config.out_dir);
     fs::create_dir_all(&ts_cache_dir).map_err(|e| format!("创建 TS 缓存目录失败: {e}"))?;
+    let bun_cache_dir = detect_default_bun_cache_dir(&config.out_dir);
+    fs::create_dir_all(&bun_cache_dir).map_err(|e| format!("创建 bun 缓存目录失败: {e}"))?;
     let md5_tool_signature = file_signature(&config.md5_tool)?;
 
     let mut summary = Summary::default();
@@ -184,6 +186,7 @@ fn try_main() -> Result<(), String> {
         &config.md5_tool,
         md5_tool_signature,
         &ts_cache_dir,
+        &bun_cache_dir,
         &temp_root,
         &unique_cases,
         8,
@@ -343,7 +346,11 @@ fn parse_args() -> Result<Config, String> {
         idx += 1;
     }
 
-    let library = library.ok_or_else(|| "缺少 --library <path>".to_string())?;
+    let library = match library {
+        Some(path) => path,
+        None => detect_default_library()
+            .ok_or_else(|| "缺少 --library <path>，且无法自动推导共享号库 tests/sqp6000.txt".to_string())?,
+    };
     let md5_tool = match md5_tool {
         Some(path) => path,
         None => detect_default_md5_tool()
@@ -383,13 +390,11 @@ fn parse_args() -> Result<Config, String> {
 fn print_usage() {
     println!(
         r#"用法:
-  tswn_case_miner --library <号库文件> --md5-tool <out_md5.ts 路径> [选项]
-
-必填:
-  --library <path>          一行一个玩家名的号库文件
-  --md5-tool <path>         TS 基准工具路径（通常是 fast-namerena/branch/latest/out_md5.ts）
+    tswn_case_miner [选项]
 
 选项:
+    --library <path>          号库文件；默认共享仓库 tests/sqp6000.txt
+    --md5-tool <path>         TS 基准工具路径；默认自动推导 fast-namerena/branch/latest/out_md5.ts
   --out-dir <path>          failed case 输出目录（默认 target/ts_diff_cases）
   --modes <csv>             生成模式，默认 1v1,2v2,3v3v3,ffa
   --ffa-sizes <csv>         自由混战人数，默认 4,6,8
@@ -433,16 +438,6 @@ fn parse_usize_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
         return Err(format!("{flag} 不能为空"));
     }
     Ok(values)
-}
-
-fn detect_default_md5_tool() -> Option<PathBuf> {
-    let cwd = std::env::current_dir().ok()?;
-    let candidates = [
-        cwd.join("../fast-namerena/branch/latest/out_md5.ts"),
-        cwd.join("fast-namerena/branch/latest/out_md5.ts"),
-        cwd.join("../../fast-namerena/branch/latest/out_md5.ts"),
-    ];
-    candidates.into_iter().find(|path| path.is_file())
 }
 
 fn load_library(path: &Path) -> Result<Vec<String>, String> {
@@ -540,6 +535,111 @@ fn sample_unique_window(names: &[String], start: usize, total: usize, step: usiz
     players
 }
 
+fn detect_default_library() -> Option<PathBuf> {
+    let shared_repo_root = detect_shared_repo_root()?;
+    let candidate = shared_repo_root.join("tests").join("sqp6000.txt");
+    if candidate.is_file() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn detect_default_md5_tool() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    let repo_root = find_repo_root(&cwd).unwrap_or(cwd);
+    let shared_repo_root = detect_shared_repo_root().unwrap_or_else(|| repo_root.clone());
+
+    let mut candidates = Vec::new();
+    for root in [repo_root, shared_repo_root] {
+        if let Some(parent) = root.parent() {
+            candidates.push(parent.join("fast-namerena").join("branch").join("latest").join("out_md5.ts"));
+        }
+        candidates.push(root.join("fast-namerena").join("branch").join("latest").join("out_md5.ts"));
+    }
+
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn detect_default_ts_cache_dir(out_dir: &Path) -> PathBuf {
+    path_from_env("TSWN_CASE_MINER_TS_CACHE_DIR")
+        .or_else(|| detect_shared_cache_root().map(|root| root.join("ts_trace")))
+        .unwrap_or_else(|| out_dir.join(".ts_cache"))
+}
+
+fn detect_default_bun_cache_dir(out_dir: &Path) -> PathBuf {
+    path_from_env("TSWN_CASE_MINER_BUN_CACHE_DIR")
+        .or_else(|| detect_shared_cache_root().map(|root| root.join("bun")))
+        .unwrap_or_else(|| out_dir.join(".bun_cache"))
+}
+
+fn path_from_env(name: &str) -> Option<PathBuf> { std::env::var_os(name).map(PathBuf::from) }
+
+fn detect_shared_cache_root() -> Option<PathBuf> {
+    let shared_repo_root = detect_shared_repo_root()?;
+    Some(shared_repo_root.join("target").join("tswn_case_miner_cache"))
+}
+
+fn detect_shared_repo_root() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    let repo_root = find_repo_root(&cwd)?;
+    let common_dir = detect_git_common_dir_from_repo_root(&repo_root)?;
+    if common_dir.file_name().and_then(|name| name.to_str()) == Some(".git") {
+        common_dir.parent().map(Path::to_path_buf)
+    } else {
+        Some(repo_root)
+    }
+}
+
+fn find_repo_root(start: &Path) -> Option<PathBuf> {
+    for candidate in start.ancestors() {
+        let git_entry = candidate.join(".git");
+        if git_entry.is_dir() || git_entry.is_file() {
+            return Some(candidate.to_path_buf());
+        }
+    }
+    None
+}
+
+fn detect_git_common_dir_from_repo_root(repo_root: &Path) -> Option<PathBuf> {
+    let git_entry = repo_root.join(".git");
+    if git_entry.is_dir() {
+        return Some(normalize_existing_path(git_entry));
+    }
+
+    let git_dir = parse_gitdir_file(&git_entry)?;
+    let common_dir_file = git_dir.join("commondir");
+    if common_dir_file.is_file() {
+        let common_dir = PathBuf::from(read_first_line(&common_dir_file)?);
+        let resolved = if common_dir.is_absolute() {
+            common_dir
+        } else {
+            git_dir.join(common_dir)
+        };
+        return Some(normalize_existing_path(resolved));
+    }
+
+    Some(normalize_existing_path(git_dir))
+}
+
+fn parse_gitdir_file(git_entry: &Path) -> Option<PathBuf> {
+    let raw = read_first_line(git_entry)?;
+    let git_dir = PathBuf::from(raw.strip_prefix("gitdir:")?.trim());
+    let resolved = if git_dir.is_absolute() {
+        git_dir
+    } else {
+        git_entry.parent()?.join(git_dir)
+    };
+    Some(normalize_existing_path(resolved))
+}
+
+fn read_first_line(path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(path).ok()?;
+    raw.lines().next().map(str::trim).map(str::to_string).filter(|line| !line.is_empty())
+}
+
+fn normalize_existing_path(path: PathBuf) -> PathBuf { path.canonicalize().unwrap_or(path) }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -573,11 +673,16 @@ mod tests {
     }
 }
 
-fn run_ts_trace(md5_tool: &Path, temp_root: &Path, case: &GeneratedCase) -> Result<String, String> {
+fn run_ts_trace(md5_tool: &Path, bun_cache_dir: &Path, temp_root: &Path, case: &GeneratedCase) -> Result<String, String> {
     let temp_input = temp_root.join(format!("input-{:016x}.txt", case.input_hash));
     fs::write(&temp_input, &case.input).map_err(|e| format!("写入 TS 临时输入失败: {e}"))?;
+    let bun_install_cache_dir = bun_cache_dir.join("install");
+    fs::create_dir_all(&bun_install_cache_dir).map_err(|e| format!("创建 bun 安装缓存目录失败: {e}"))?;
+    let bun_runtime_cache_path = bun_cache_dir.join("runtime_transpiler.cache");
 
     let output = Command::new("bun")
+        .env("BUN_INSTALL_CACHE_DIR", &bun_install_cache_dir)
+        .env("BUN_RUNTIME_TRANSPILER_CACHE_PATH", &bun_runtime_cache_path)
         .arg(md5_tool)
         .arg(&temp_input)
         .output()
@@ -598,6 +703,7 @@ fn collect_ts_traces(
     md5_tool: &Path,
     md5_tool_signature: u64,
     cache_dir: &Path,
+    bun_cache_dir: &Path,
     temp_root: &Path,
     cases: &[GeneratedCase],
     max_jobs: usize,
@@ -608,6 +714,7 @@ fn collect_ts_traces(
     let (tx, rx) = mpsc::channel::<TsTraceResult>();
     let md5_tool = md5_tool.to_path_buf();
     let cache_dir = cache_dir.to_path_buf();
+    let bun_cache_dir = bun_cache_dir.to_path_buf();
     let temp_root = temp_root.to_path_buf();
 
     let mut handles = Vec::new();
@@ -617,6 +724,7 @@ fn collect_ts_traces(
         let index = Arc::clone(&index);
         let md5_tool = md5_tool.clone();
         let cache_dir = cache_dir.clone();
+        let bun_cache_dir = bun_cache_dir.clone();
         let temp_root = temp_root.clone();
         handles.push(thread::spawn(move || {
             loop {
@@ -624,7 +732,7 @@ fn collect_ts_traces(
                 let Some(case) = cases.get(next) else {
                     break;
                 };
-                let output = load_or_run_ts_trace(&md5_tool, md5_tool_signature, &cache_dir, &temp_root, case);
+                let output = load_or_run_ts_trace(&md5_tool, md5_tool_signature, &cache_dir, &bun_cache_dir, &temp_root, case);
                 let _ = tx.send(TsTraceResult {
                     input_hash: case.input_hash,
                     output,
@@ -650,6 +758,7 @@ fn load_or_run_ts_trace(
     md5_tool: &Path,
     md5_tool_signature: u64,
     cache_dir: &Path,
+    bun_cache_dir: &Path,
     temp_root: &Path,
     case: &GeneratedCase,
 ) -> Result<String, String> {
@@ -658,7 +767,7 @@ fn load_or_run_ts_trace(
         return Ok(cached);
     }
 
-    let output = run_ts_trace(md5_tool, temp_root, case)?;
+    let output = run_ts_trace(md5_tool, bun_cache_dir, temp_root, case)?;
     fs::write(&cache_path, &output).map_err(|e| format!("写入 TS 缓存失败: {e}"))?;
     Ok(output)
 }

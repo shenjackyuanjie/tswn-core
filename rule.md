@@ -165,25 +165,29 @@ python track_test.py delete 名称
 
 ```bash
 # 运行 miner 并与上次结果比较
-python track_case_miner.py --library tests/sqp6000.txt --md5-tool ../fast-namerena/branch/latest/out_md5.ts
+python ./track_case_miner.py
 
 # 安静模式
-python track_case_miner.py -q --library tests/sqp6000.txt --md5-tool ../fast-namerena/branch/latest/out_md5.ts
+python ./track_case_miner.py -q
 
 # 只显示当前记录，不运行 miner
-python track_case_miner.py -s
+python ./track_case_miner.py -s
 
 # 重置历史记录
-python track_case_miner.py -r
+python ./track_case_miner.py -r
+
+# 需要时显式指定固定号库路径
+python ./track_case_miner.py --library D:/shared/tswn-core/tests/sqp6000.txt
 ```
 
 **常用参数：**
 
 | 参数 | 说明 |
 | ------ | ------ |
-| `--library` | 号库文件路径 |
-| `--md5-tool` | `out_md5.ts` 路径 |
+| `--library` | 号库文件路径；默认优先使用共享主仓库的 `tests/sqp6000.txt` |
+| `--md5-tool` | `out_md5.ts` 路径；默认自动推导 `fast-namerena/branch/latest/out_md5.ts` |
 | `--out-dir` | miner 输出目录，默认 `target/ts_diff_cases` |
+| `--shared-cache-dir` | 共享 bun/TS 缓存目录，默认在主 worktree 的 `target` 下 |
 | `--modes` | 对战模式，默认 `1v1,2v2,3v3v3,ffa` |
 | `--ffa-sizes` | ffa 人数列表，默认 `4,6,8` |
 | `--max-cases-per-mode` | 每种模式的 case 上限 |
@@ -206,6 +210,12 @@ python track_case_miner.py delete 名称
 - 当前记录：`target/case_miner_regression.json`
 - 日志：`target/case_miner_regression.log`
 - 存档点：`target/case_miner_checkpoints/`
+
+worktree 模式下的默认规则：
+
+- 当前 worktree 内的脚本、输出、测试相关路径统一按 `./` 解析
+- 默认号库优先指向共享主仓库中的 `tests/sqp6000.txt`
+- bun/TS 结果缓存默认落到主 worktree 的 `target/tswn_case_miner_cache/`
 
 ### 统一入口
 
