@@ -76,6 +76,39 @@ fn has_alive_enemy_or_pending(storage: &Arc<Storage>, ally_group: &[PlrId]) -> b
         .any(|pending_id| storage.get_pending_spawn_player(pending_id).map(|plr| plr.alive()).unwrap_or(false))
 }
 
+/// 对齐 JS dj() 的判定：检查当前所有存活玩家（含 pending spawn）是否全属于同一组。
+/// 若仅剩一组（或零组）存活，则视为战斗结束。
+fn is_battle_over(storage: &Arc<Storage>) -> bool {
+    let all_ids = storage.all_player_ids();
+    let mut first_group: Option<usize> = None;
+    for id in &all_ids {
+        if storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
+            if let Some(idx) = storage.group_index_of(*id) {
+                match first_group {
+                    None => first_group = Some(idx),
+                    Some(existing) if existing != idx => return false,
+                    _ => {}
+                }
+            }
+        }
+    }
+    // 同时检查 pending spawn
+    for owner_id in &all_ids {
+        for pending_id in storage.pending_spawn_ids_for_owner(*owner_id) {
+            if storage.get_pending_spawn_player(pending_id).map(|p| p.alive()).unwrap_or(false) {
+                if let Some(idx) = storage.group_index_of(*owner_id) {
+                    match first_group {
+                        None => first_group = Some(idx),
+                        Some(existing) if existing != idx => return false,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
 impl Player {
     pub fn update_player(&mut self) {
         self.init_skills();
@@ -821,7 +854,13 @@ impl Player {
                 self.skills.run_post_action_key(skill_key, (owner_id, randomer, updates, storage));
                 deferred_idx += 1;
             }
+            // JS 中 post_action 期间若有玩家死亡导致战斗结束，dj() 会 throw 中断整条链。
+            // dj() 的 throw 发生在造成伤害后（例如中毒），此后的 state 不再执行。
+            // Rust 不使用异常，故在每个 state 执行前检查：若玩家已死且战斗已结束则提前中断。
             let current_alive = storage.get_player(&owner_id).map(|p| p.alive()).unwrap_or(self.alive());
+            if !current_alive && is_battle_over(storage) {
+                break;
+            }
             let should_clear = self
                 .state
                 .states

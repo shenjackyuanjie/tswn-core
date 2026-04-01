@@ -109,10 +109,9 @@ impl StateTrait for IronState {
         if let Some(owner_plr) = storage.just_get_player_mut(owner) {
             owner_plr.set_move_point(owner_plr.move_point() - 128);
         }
-        if alive {
-            updates.emit(RunUpdate::new_newline);
-            updates.emit(|| RunUpdate::new("[1]从[铁壁]中解除", owner, owner, 0));
-        }
+        // JS 的 SklIron.K(null, b) 不检查 alive，始终发出"从铁壁中解除"。
+        updates.emit(RunUpdate::new_newline);
+        updates.emit(|| RunUpdate::new("[1]从[铁壁]中解除", owner, owner, 0));
         true
     }
 
