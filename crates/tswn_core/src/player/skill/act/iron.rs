@@ -109,11 +109,10 @@ impl StateTrait for IronState {
         if let Some(owner_plr) = storage.just_get_player_mut(owner) {
             owner_plr.set_move_point(owner_plr.move_point() - 128);
         }
-        // TS/JS 会在铁壁自然结束时补发“从铁壁中解除”，即使 owner 已在本次行动内死亡。
-        // 这里不能用 alive 过滤，否则会漏掉“死亡后时序”里的解除日志。
-        let _ = alive;
-        updates.emit(RunUpdate::new_newline);
-        updates.emit(|| RunUpdate::new("[1]从[铁壁]中解除", owner, owner, 0));
+        if alive {
+            updates.emit(RunUpdate::new_newline);
+            updates.emit(|| RunUpdate::new("[1]从[铁壁]中解除", owner, owner, 0));
+        }
         true
     }
 

@@ -683,45 +683,6 @@ fn iron_break_refreshes_attract_immediately() {
 }
 
 #[test]
-fn poison_death_with_reraise_still_runs_iron_end_log() {
-    use crate::player::skill::Skill;
-
-    let storage = Storage::new_arc();
-    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
-    let caster = Player::new_from_namerena_raw("caster".to_string(), storage.clone()).unwrap();
-    let owner_id = storage.just_insert_player(owner);
-    let caster_id = storage.just_insert_player(caster);
-    let mut randomer = RC4::default();
-    let mut updates = RunUpdates::new();
-
-    {
-        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
-        owner_mut.status.max_hp = 100;
-        owner_mut.status.hp = 1;
-        owner_mut.status.magic = 0;
-        owner_mut.set_state(crate::player::skill::act::iron::IronState { protect: 10, step: 1 });
-        owner_mut.set_state(crate::player::skill::act::poison::PoisonState {
-            caster: Some(caster_id),
-            target: Some(owner_id),
-            atp: 5.0,
-            count: 1,
-        });
-        owner_mut.skills.add_skill(Skill::new_with_id(255, 28));
-        owner_mut.skills.update_proc();
-    }
-
-    {
-        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
-        owner_mut.run_post_action_chain(&mut randomer, &mut updates, &storage);
-    }
-
-    let messages: Vec<_> = updates.updates.iter().map(|u| u.message.clone()).collect();
-    assert!(messages.iter().any(|m| m == "[1][毒性发作]"));
-    assert!(messages.iter().any(|m| m.contains("护身符")));
-    assert!(messages.iter().any(|m| m == "[1]从[铁壁]中解除"));
-}
-
-#[test]
 fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
     let storage = Storage::new_arc();
     let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
