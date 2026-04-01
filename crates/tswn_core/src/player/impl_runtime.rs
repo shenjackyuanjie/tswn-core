@@ -1183,10 +1183,49 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        dmg = self
-            .skills
-            .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage));
-        self.apply_post_defend_states(dmg, caster, randomer, updates, storage)
+        // JS 中 skill 和 state 的 post_defend 共享同一个 y2 链表，按 ga4() (sortId) 升序执行。
+        // 这里将 skill 和 state 的 post_defend entry 合并到统一优先级链中执行。
+        #[derive(Clone, Copy)]
+        enum PostDefendEntry {
+            Skill(crate::player::skill::store::SkillKey),
+            State(crate::player::StateTag),
+        }
+
+        let skill_entries = self.skills.post_defend_keys_with_priority();
+        let state_entries = self.state.post_defend_tags_with_priority();
+
+        let mut merged: smallvec::SmallVec<[(i32, PostDefendEntry); 8]> = smallvec::SmallVec::new();
+        for (key, priority) in &skill_entries {
+            merged.push((*priority, PostDefendEntry::Skill(*key)));
+        }
+        for (tag, priority) in &state_entries {
+            merged.push((*priority, PostDefendEntry::State(*tag)));
+        }
+        merged.sort_by_key(|&(p, _)| p);
+
+        let mut status_dirty = false;
+        for (_, entry) in merged {
+            match entry {
+                PostDefendEntry::Skill(key) => {
+                    dmg = self.skills.post_defend_run_one(
+                        key,
+                        dmg,
+                        caster,
+                        &on_damage,
+                        (self.as_ptr(), randomer, updates, storage),
+                    );
+                }
+                PostDefendEntry::State(tag) => {
+                    status_dirty |=
+                        self.state
+                            .run_one_post_defend(tag, self.as_ptr(), &mut dmg, caster, randomer, updates, storage);
+                }
+            }
+        }
+        if status_dirty {
+            self.update_states();
+        }
+        dmg
     }
 
     #[allow(clippy::too_many_arguments)]

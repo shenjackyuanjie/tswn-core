@@ -254,6 +254,8 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn post_defend_with_level(&mut self, _level: u32, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
         self.post_defend(dmg, caster, on_damage, args)
     }
+    /// post_defend 优先级（越小越先执行）。JS 中 skill 和 state 共享同一个 y2 链表，按 ga4() 排序。
+    fn post_defend_priority(&self) -> i32 { 1000 }
     /// 伤害之后
     fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {}
     fn post_damage_with_level(&mut self, _level: u32, dmg: i32, caster: PlrId, args: SkillArgs) {
@@ -583,6 +585,8 @@ impl Skill {
     pub fn post_defend(&mut self, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
         self.skill_type.post_defend_with_level(self.level, dmg, caster, on_damage, args)
     }
+
+    pub fn post_defend_priority(&self) -> i32 { self.skill_type.post_defend_priority() }
 
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
         self.skill_type.post_damage_with_level(self.level, dmg, caster, args)

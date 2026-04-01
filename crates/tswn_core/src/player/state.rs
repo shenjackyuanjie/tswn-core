@@ -602,6 +602,37 @@ impl PlayerStateStore {
         status_dirty
     }
 
+    /// 返回 post_defend 状态的 (tag, priority) 列表，用于和 skill 统一排序。
+    pub fn post_defend_tags_with_priority(&self) -> SmallVec<[(StateTag, i32); 8]> {
+        let mut result = SmallVec::new();
+        for (&tag, state) in &self.states {
+            let priority = state.post_defend_priority();
+            if priority != 1000 || state.post_defend_priority() != 1000 {
+                // 只收集实际覆盖了 post_defend_priority 的 state
+            }
+            result.push((tag, priority));
+        }
+        result.sort_by_key(|&(_, p)| p);
+        result
+    }
+
+    pub fn run_one_post_defend(
+        &mut self,
+        tag: StateTag,
+        owner: PlrId,
+        dmg: &mut i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> bool {
+        if let Some(state) = self.states.get_mut(&tag) {
+            state.on_post_defend(owner, dmg, caster, randomer, updates, storage)
+        } else {
+            false
+        }
+    }
+
     pub fn on_post_damage_states(
         &mut self,
         owner: PlrId,

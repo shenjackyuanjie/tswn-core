@@ -429,6 +429,22 @@ impl SkillStorage {
         dmg
     }
 
+    /// 返回 post_defend 技能的 (key, priority) 列表，用于和 state 统一排序。
+    pub fn post_defend_keys_with_priority(&self) -> Vec<(SkillKey, i32)> {
+        self.post_defend
+            .iter()
+            .map(|key| {
+                let priority = self.store.get(key).map(|s| s.post_defend_priority()).unwrap_or(1000);
+                (*key, priority)
+            })
+            .collect()
+    }
+
+    pub fn post_defend_run_one(&mut self, key: SkillKey, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
+        let skill = self.store.get_mut(&key).expect("skill not found in store");
+        skill.post_defend(dmg, caster, on_damage, args)
+    }
+
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
         let debug_action = crate::debug::debug_action();
         let debug_this = debug_action
