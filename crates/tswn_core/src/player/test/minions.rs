@@ -233,6 +233,53 @@ fn summon_merge_uses_fixed_skill_slots() {
     assert_eq!(owner_after.skills.skill_by_id(3).level(), 0);
 }
 
+#[test]
+fn merge_does_not_inherit_mismatched_slot_hide_skill() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+
+    let mut target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+    target.build();
+    let target_id = storage.just_insert_player(target);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.skill = vec![0, 1, 2];
+        owner_mut.skills.skill_by_id_mut(0).set_level(1);
+        owner_mut.skills.skill_by_id_mut(1).set_level(1);
+        owner_mut.skills.skill_by_id_mut(2).set_level(1);
+        owner_mut.skills.skill_by_id_mut(34).set_level(0);
+        owner_mut.skills.update_proc();
+    }
+    {
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.skills.skill = vec![34, 1, 2];
+        target_mut.skills.skill_by_id_mut(34).set_level(64);
+        target_mut.skills.skill_by_id_mut(1).set_level(7);
+        target_mut.skills.skill_by_id_mut(2).set_level(9);
+        target_mut.skills.update_proc();
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            target_id,
+            (owner_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let owner_after = storage.get_player(&owner_id).unwrap();
+    assert_eq!(owner_after.skills.skill_by_id(0).level(), 1);
+    assert_eq!(owner_after.skills.skill_by_id(34).level(), 0);
+    assert_eq!(owner_after.skills.skill_by_id(1).level(), 7);
+    assert_eq!(owner_after.skills.skill_by_id(2).level(), 9);
+}
 
 #[test]
 fn post_kill_runs_when_only_remaining_enemy_is_pending_spawn() {
