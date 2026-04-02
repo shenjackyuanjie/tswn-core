@@ -276,7 +276,7 @@ def _print_conclusion(changes):
     any_improved = any(c["change"] in ("IMPROVED", "FIXED_CASE") for c in changes)
     any_regressed = any(c["change"] in ("REGRESSED", "NEW_FAILED_CASE") for c in changes)
     if any_improved and not any_regressed:
-        print("结论: 修改有效 (有改进且无退步)")
+        print("结论: 修改有效 (有改进且无退步)，可进行 commit 提交")
     elif any_regressed:
         print("结论: 修改有问题 (存在退步)")
     else:
