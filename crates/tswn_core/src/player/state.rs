@@ -367,18 +367,24 @@ impl PlayerStateStore {
         for (tag, state) in self.states.iter() {
             if state.meta_type() > 0 {
                 if let Some(msg) = state.cancel_message(alive) {
-                    messages.push((state.clear_positive_priority(), *tag, msg));
+                    let order = self.state_orders.get(tag).copied().unwrap_or(u64::MAX);
+                    messages.push((state.clear_positive_priority(), order, *tag, msg));
                 }
                 to_remove.push(*tag);
             }
         }
-        messages.sort_unstable_by(|(priority_a, tag_a, _), (priority_b, tag_b, _)| {
-            priority_a.cmp(priority_b).then_with(|| tag_a.cmp(tag_b))
+        // JS 中同优先级的正面状态清除消息按注册顺序排列，
+        // 这里必须使用 registration_order 作为 tiebreaker 而非仅靠 tag 字典序。
+        messages.sort_unstable_by(|(priority_a, order_a, tag_a, _), (priority_b, order_b, tag_b, _)| {
+            priority_a
+                .cmp(priority_b)
+                .then_with(|| order_a.cmp(order_b))
+                .then_with(|| tag_a.cmp(tag_b))
         });
         for tag in to_remove {
             self.remove_tag_internal(tag);
         }
-        messages.into_iter().map(|(priority, _, message)| (priority, message)).collect()
+        messages.into_iter().map(|(priority, _, _, message)| (priority, message)).collect()
     }
 
     pub fn clear_positive_states_with_messages(&mut self, alive: bool) -> Vec<&'static str> {
@@ -603,17 +609,21 @@ impl PlayerStateStore {
     }
 
     /// 返回 post_defend 状态的 (tag, priority) 列表，用于和 skill 统一排序。
+    ///
+    /// JS 中 post_defend 回调同样通过 MList 管理，同优先级下保持注册顺序。
+    /// 这里必须加入 registration_order 作为 tiebreaker，否则同优先级的 state
+    /// 会按 HashMap 迭代顺序（非确定性）排列，导致与 JS 行为不一致。
     pub fn post_defend_tags_with_priority(&self) -> SmallVec<[(StateTag, i32); 8]> {
-        let mut result = SmallVec::new();
+        let mut result: SmallVec<[(StateTag, i32, u64); 8]> = SmallVec::new();
         for (&tag, state) in &self.states {
             let priority = state.post_defend_priority();
-            if priority != 1000 || state.post_defend_priority() != 1000 {
-                // 只收集实际覆盖了 post_defend_priority 的 state
-            }
-            result.push((tag, priority));
+            let order = self.state_orders.get(&tag).copied().unwrap_or(u64::MAX);
+            result.push((tag, priority, order));
         }
-        result.sort_by_key(|&(_, p)| p);
-        result
+        result.sort_unstable_by(|(tag_a, p_a, o_a), (tag_b, p_b, o_b)| {
+            p_a.cmp(p_b).then_with(|| o_a.cmp(o_b)).then_with(|| tag_a.cmp(tag_b))
+        });
+        result.into_iter().map(|(tag, priority, _)| (tag, priority)).collect()
     }
 
     pub fn run_one_post_defend(
