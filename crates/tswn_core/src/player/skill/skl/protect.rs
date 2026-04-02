@@ -448,6 +448,12 @@ impl SkillTrait for ProtectSkill {
         if self.protect_to == next_target {
             if let Some(target_id) = next_target {
                 if Self::link_registered(args.0, target_id, (args.0, args.1, args.2, args.3)) {
+                    // 即使 link 已注册，也需要刷新 level：
+                    // merge/devour 可能在本次 action 中提升了 protect level，
+                    // 但 ProtectLink 中仍存储旧 level，导致 on_pre_defend
+                    // 的 r127() < level 检查使用过时的阈值。
+                    // JS 中 cI() 每次都会重新挂 entry，level 自然是最新值。
+                    self.register_owner(args.0, level, target_id, (args.0, args.1, args.2, args.3));
                     return;
                 }
             } else {
