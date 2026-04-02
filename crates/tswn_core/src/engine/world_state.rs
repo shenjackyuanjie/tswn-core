@@ -55,6 +55,17 @@ pub struct WorldState {
     player_team: FoldHashMap<PlrId, usize>,
     /// 已在行动轮次中的玩家集合，用于 O(1) ensure_player_in_round 去重检查
     players_set: FoldHashSet<PlrId>,
+    /// JS Engine.e 兼容的全局存活列表。
+    ///
+    /// 与 JS 的 `Engine.e`（`all_alive`）保持相同的插入/删除语义：
+    /// - 初始化时按队伍顺序拼接
+    /// - 新实体插入到最后一个存活队友之后
+    /// - 复活时如果队伍无存活成员，追加到末尾
+    /// - 死亡时 splice 移除，保持剩余元素相对顺序
+    ///
+    /// `select_targets` 应使用此列表（而非从 teams 重建）来构建 `all_alive`，
+    /// 以确保 `pickSkipRange` 的索引映射与 JS 一致。
+    pub flat_alive: Vec<PlrId>,
 }
 
 impl WorldState {
@@ -74,6 +85,8 @@ impl WorldState {
             .flat_map(|(idx, team)| team.roster.iter().map(move |id| (*id, idx)))
             .collect();
         let players_set: FoldHashSet<PlrId> = players.iter().copied().collect();
+        // 初始 flat_alive 按队伍顺序拼接，与 JS Engine 构造函数中 _.e 的初始顺序一致
+        let flat_alive: Vec<PlrId> = teams.iter().flat_map(|team| team.alive.iter().copied()).collect();
         Self {
             teams,
             groups,
@@ -83,6 +96,7 @@ impl WorldState {
             alive_set,
             player_team,
             players_set,
+            flat_alive,
         }
     }
 
@@ -114,7 +128,7 @@ impl WorldState {
     }
 
     pub fn alives_flat(&self, _storage: &std::sync::Arc<crate::engine::storage::Storage>) -> Vec<PlrId> {
-        self.teams.iter().flat_map(|team| team.alive.iter().copied()).collect()
+        self.flat_alive.clone()
     }
 
     pub fn next_round_index(&mut self, total: usize) -> usize {
@@ -132,6 +146,8 @@ impl WorldState {
         {
             team.alive.retain(|id| *id != plr);
         }
+        // JS Engine.e: dj 中 C.Array.U(r, a) 会 splice 移除，保持剩余元素顺序
+        self.flat_alive.retain(|id| *id != plr);
     }
 
     pub fn remove_player(&mut self, plr: PlrId) {
@@ -155,6 +171,7 @@ impl WorldState {
         }
         self.player_team.remove(&plr);
         self.alive_set.remove(&plr);
+        self.flat_alive.retain(|id| *id != plr);
         self.remove_player(plr);
         self.sync_group_rosters();
     }
@@ -168,10 +185,44 @@ impl WorldState {
     pub fn revive_into_team(&mut self, plr: PlrId, team_idx: usize) {
         self.ensure_player_in_round(plr);
         self.alive_set.insert(plr);
+        let already_in_team = self.teams.get(team_idx).map(|t| t.alive.contains(&plr)).unwrap_or(false);
         if let Some(team) = self.teams.get_mut(team_idx)
-            && !team.alive.contains(&plr)
+            && !already_in_team
         {
             team.alive.push(plr);
+        }
+        // JS Engine.e (aZ) 的插入语义：
+        //   r = grp.f (team alive)
+        //   if (r.length > 0) splice(indexOf(all_alive, last(r)) + 1, 0, new)
+        //   else              push(new)
+        //
+        // 注意：这里要用 team.alive 在 push 之后的状态，但排除 plr 自身来找
+        // "已有的最后一个队友"，因为 plr 刚被 push 进去。
+        if !self.flat_alive.contains(&plr) {
+            let team_alive = self.teams.get(team_idx).map(|t| &t.alive);
+            // JS aZ 的语义：
+            //   r = grp.f (team alive，此时尚未 push 新成员)
+            //   gbl(r) → r 的最后一个元素
+            //   indexOf(all_alive, gbl(r)) → 在 flat list 中找到那个元素的位置
+            //   splice(pos + 1, 0, new)
+            //
+            // 关键：JS 取的是 team alive 数组中的 **最后一个元素**（gbl），
+            // 然后查它在 all_alive 中的位置。不是"所有队友中在 flat_alive 里最靠右的"。
+            let last_teammate_pos = team_alive.and_then(|alive| {
+                // 从 team.alive 尾部往前找第一个不是 plr 的成员（= JS 的 gbl(r)）
+                alive
+                    .iter()
+                    .rev()
+                    .find(|id| **id != plr)
+                    .and_then(|last_id| self.flat_alive.iter().position(|x| x == last_id))
+            });
+            if let Some(pos) = last_teammate_pos {
+                // 插入到该队友之后（与 JS splice(indexOf + 1, 0, a) 一致）
+                self.flat_alive.insert(pos + 1, plr);
+            } else {
+                // 队伍中无其他存活成员 → 追加到末尾（与 JS aZ 的 else push 分支一致）
+                self.flat_alive.push(plr);
+            }
         }
     }
 

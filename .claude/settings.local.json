@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo test:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Bash(TSWN_DEBUG_TICK=1 cargo test:*)",
+      "Bash(TSWN_DEBUG_ACTION=\"Imperio#4B4UZThv\" TSWN_DEBUG_TICK=1 cargo test:*)",
+      "Bash(TSWN_DEBUG_ACTION=\"Imperio#4B4UZThv\" cargo test:*)",
+      "Bash(TSWN_DEBUG_ACTION='Parallel #yNVhujlqY' cargo run --manifest-path \"D:/githubs/namer/tswn-core/Cargo.toml\" --bin tswn-cli -- --file \"D:/githubs/namer/tswn-core/target/ts_diff_cases/failed/ffa_6-3ae9dd4b7b788849/input.txt\")",
+      "Bash(\"D:/githubs/namer/tswn-core/target/tmp_3ae9_parallel_debug_after.txt\")",
+      "Bash(cargo run:*)",
+      "Bash(git worktree:*)",
+      "Bash(TSWN_DEBUG_ACTION='Un_Momento #nrBpioCPG' cargo run:*)"
+    ]
+  }
+}

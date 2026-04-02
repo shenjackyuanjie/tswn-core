@@ -138,7 +138,10 @@ pub struct CharmState {
 impl StateTrait for CharmState {
     fn meta_type(&self) -> i32 { -1 }
 
-    fn post_action_priority(&self) -> i32 { 230 }
+    // JS 中 CharmState 和 SlowState 都通过 PostActionImpl 包装，ga4() = Infinity，
+    // 即同优先级，实际执行顺序由注册时机决定。Rust 侧必须与 SlowState 保持同层(210)，
+    // 否则会出现固定的消息顺序反转（如"从魅惑中解除"与"从迟缓中解除"顺序不一致）。
+    fn post_action_priority(&self) -> i32 { 210 }
 
     fn on_post_action(
         &mut self,
