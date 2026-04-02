@@ -12,7 +12,11 @@
       "Bash(\"D:/githubs/namer/tswn-core/target/tmp_3ae9_parallel_debug_after.txt\")",
       "Bash(cargo run:*)",
       "Bash(git worktree:*)",
-      "Bash(TSWN_DEBUG_ACTION='Un_Momento #nrBpioCPG' cargo run:*)"
+      "Bash(TSWN_DEBUG_ACTION='Un_Momento #nrBpioCPG' cargo run:*)",
+      "Bash(git:*)",
+      "Bash(TSWN_DEBUG_ACTION=HELL TSWN_DEBUG_WORLD=1 cargo run:*)",
+      "Bash(cargo build:*)",
+      "Bash(TSWN_DEBUG_WORLD=1 TSWN_DEBUG_ACTION=HELL TSWN_DEBUG_PICK=1 D:/githubs/namer/tswn-core/.claude/worktrees/sby-research-03b427b/target/debug/tswn-cli.exe:*)"
     ]
   }
 }

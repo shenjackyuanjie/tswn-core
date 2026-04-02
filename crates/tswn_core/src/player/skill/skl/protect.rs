@@ -388,7 +388,10 @@ impl ProtectSkill {
             state.target = Some(target_id);
             return;
         }
-        target.set_state(ProtectState {
+        // JS 的 Protect 注册只是把 entry 挂进链表，不触发 F()（updateStates）。
+        // 如果用 set_state（内部会调 update_states），会导致 HasteState.faster
+        // 的蓄力加成提前反映到 speed 上，与 JS 的延迟生效时序不一致。
+        target.set_state_no_update(ProtectState {
             target: Some(target_id),
             protect_from: vec![ProtectLink { owner, level }],
             pre_defend_skill_count: target.skills.pre_defend.len(),

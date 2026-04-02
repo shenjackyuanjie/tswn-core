@@ -923,6 +923,17 @@ impl Player {
         self.update_states();
     }
 
+    /// 设置状态但**不**调用 `update_states()`。
+    ///
+    /// JS 中很多 state 的注册（如 Protect）只是把 entry 挂进链表，并不触发 `F()`。
+    /// 如果 Rust 侧无条件地在 `set_state` 里调 `update_states`，会导致那些已被
+    /// 修改过 field（如 HasteState.faster 的蓄力加成）的 state 提前生效，与 JS
+    /// 的延迟生效时序不一致。
+    ///
+    /// 使用场景：ProtectState 等不需要立即重算属性的 state。
+    #[inline]
+    pub fn set_state_no_update<T: StateTrait + 'static>(&mut self, state: T) { self.state.set(state); }
+
     #[inline]
     pub fn get_state<T: StateTrait + 'static>(&self) -> Option<&T> { self.state.get::<T>() }
 
