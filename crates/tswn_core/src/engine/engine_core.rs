@@ -105,38 +105,10 @@ impl EngineCore {
             world.add_new_player(plr_id, owner);
         }
 
-        let pending_remove_players = storage.take_pending_remove_players();
-        let death_queue = storage.take_death_queue();
-        for id in &death_queue {
-            if world.contains_alive(*id) && !storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
-                world.remove_player(*id);
-                #[cfg(not(feature = "no_debug"))]
-                Self::debug_world_state("after_dead_remove", world, storage);
-            }
-        }
-
-        for ptr in &pending_remove_players {
-            if !death_queue.contains(ptr) {
-                world.remove_player(*ptr);
-                #[cfg(not(feature = "no_debug"))]
-                Self::debug_world_state("after_pending_remove_only", world, storage);
-            }
-        }
-
-        let remaining_dead: smallvec::SmallVec<[PlrId; 4]> = world
-            .teams
-            .iter()
-            .flat_map(|team| team.alive.iter().copied())
-            .filter(|id| !storage.get_player(id).map(|p| p.alive()).unwrap_or(false))
-            .collect();
-        for id in remaining_dead {
-            world.remove_player(id);
-            #[cfg(not(feature = "no_debug"))]
-            Self::debug_world_state("after_dead_remove_fallback", world, storage);
-        }
-
-        // 复活：先处理 pending_revivals 队列（由技能触发），再做兜底的 roster 扫描，
-        // 确保任何复活路径都能被正确同步到 WorldState。
+        // 复活也要先于同一批死亡落地：JS Revive / Reraise / 复用召唤物都会立刻 aZ 回当前
+        // grp.f / all_alive 视图里；如果稍后同一 action 里 reviver/teammate 又死亡，应该是“先插入
+        // 再删除”，这样 revived target 会继承当时的队友相对位置，而不是在所有死亡清理完后被
+        // 追加到末尾。
         let revivals = storage.take_pending_revivals();
         for id in revivals {
             if !world.contains_alive(id) && storage.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
@@ -161,6 +133,36 @@ impl EngineCore {
             world.revive_player(id, id);
             #[cfg(not(feature = "no_debug"))]
             Self::debug_world_state("after_revive_sync", world, storage);
+        }
+
+        let pending_remove_players = storage.take_pending_remove_players();
+        let death_queue = storage.take_death_queue();
+        for id in &death_queue {
+            if world.contains_alive(*id) && !storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
+                world.remove_player(*id);
+                #[cfg(not(feature = "no_debug"))]
+                Self::debug_world_state("after_dead_remove", world, storage);
+            }
+        }
+
+        for ptr in &pending_remove_players {
+            if !death_queue.contains(ptr) && !storage.get_player(ptr).map(|p| p.alive()).unwrap_or(false) {
+                world.remove_player(*ptr);
+                #[cfg(not(feature = "no_debug"))]
+                Self::debug_world_state("after_pending_remove_only", world, storage);
+            }
+        }
+
+        let remaining_dead: smallvec::SmallVec<[PlrId; 4]> = world
+            .teams
+            .iter()
+            .flat_map(|team| team.alive.iter().copied())
+            .filter(|id| !storage.get_player(id).map(|p| p.alive()).unwrap_or(false))
+            .collect();
+        for id in remaining_dead {
+            world.remove_player(id);
+            #[cfg(not(feature = "no_debug"))]
+            Self::debug_world_state("after_dead_remove_fallback", world, storage);
         }
         storage.sync_groups(&world.groups);
         storage.sync_alive_groups_owned(world.alives_by_group(storage));

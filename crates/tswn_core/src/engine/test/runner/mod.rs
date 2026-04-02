@@ -533,3 +533,27 @@ fn world_remove_from_roster_prunes_roster_and_alive_view() {
     assert!(!world.all_plrs().contains(&enemy));
     assert!(!world.alives_flat(&runner.storage).contains(&enemy));
 }
+
+#[test]
+fn sync_runtime_entities_revives_before_death_removal_preserves_flat_alive_order() {
+    let raw_input = "anchor\nrevived\n\nenemy";
+    let mut runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+    let anchor = runner.world.groups[0][0];
+    let revived = runner.world.groups[0][1];
+    let enemy = runner.world.groups[1][0];
+
+    runner.storage.just_get_player_mut(revived).unwrap().set_hp_raw(0);
+    runner.world.remove_player(revived);
+
+    assert_eq!(runner.world.alives_flat(&runner.storage), vec![anchor, enemy]);
+
+    runner.storage.just_get_player_mut(revived).unwrap().revive_with_hp(1);
+    runner.storage.queue_revival(revived);
+    runner.storage.just_get_player_mut(anchor).unwrap().set_hp_raw(0);
+    runner.storage.record_death(anchor);
+
+    crate::engine::engine_core::EngineCore::default().sync_runtime_entities(&mut runner.world, &runner.storage);
+
+    assert_eq!(runner.world.team_alive(0).unwrap(), &[revived]);
+    assert_eq!(runner.world.alives_flat(&runner.storage), vec![revived, enemy]);
+}
