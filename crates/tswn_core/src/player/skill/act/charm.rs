@@ -104,7 +104,7 @@ impl SkillTrait for CharmSkill {
 
         if let Some(state) = target.get_state_mut::<CharmState>() {
             // JS 的 recharm 逻辑：
-            //   s = caster.z          (caster 当前 allyGroup)
+            //   s = caster.z          (caster 当前 allyGroup — 即 caster 的有效队伍)
             //   if (s != charm.r) charm.r = s   (不同队 → 替换 .r)
             //   else charm.z += 1               (同队 → 叠层数)
             //
@@ -113,15 +113,19 @@ impl SkillTrait for CharmSkill {
             // 而 recharm 不会触发 F()。因此 recharm 后 player.z 仍然是首次 charm 时的 group。
             //
             // Rust 对应：
-            // - group_id 对应 JS 的 charm.r（用于 recharm 比较）
-            // - effective_team_idx 对应 JS 的 player.z（用于 select_targets）
-            // - recharm 只更新 group_id，不更新 effective_team_idx，
+            // - group_id 对应 JS 的 charm.r 中存储的 caster PlrId（用于 select_targets 兜底）
+            // - source_team_idx 对应 JS 的 charm.r 解析后的 team index（用于 recharm 比较）
+            //   当 caster 本身被 charm 时，group_index_of(group_id) 返回 caster 原始队伍，
+            //   而 JS 的 charm.r 存储的是 caster 的有效队伍。source_team_idx 修复了这个差异。
+            // - effective_team_idx 对应 JS 的 player.z（用于 select_targets，首次 charm 后不变）
+            // - recharm 更新 group_id 和 source_team_idx，但不更新 effective_team_idx，
             //   使 select_targets 继续使用首次 charm 时缓存的 team index。
-            let existing_team_idx = args.3.group_index_of(state.group_id);
+            let existing_team_idx = state.source_team_idx.or_else(|| args.3.group_index_of(state.group_id));
             if existing_team_idx == caster_effective_team_idx {
                 state.step += 1;
             } else {
                 state.group_id = args.0;
+                state.source_team_idx = caster_effective_team_idx;
             }
             // 不更新 effective_team_idx — 它保持首次 charm 时由 set_state → update_states 设定的值，
             // 与 JS 中 F()/ar() 只在 aP() 时运行一次、recharm 不触发 F() 的行为一致。
@@ -132,6 +136,7 @@ impl SkillTrait for CharmSkill {
             target.set_state(CharmState {
                 group_id: args.0,
                 effective_team_idx: caster_effective_team_idx,
+                source_team_idx: caster_effective_team_idx,
                 target: Some(target_id),
                 on_post_action: None,
                 step: if charge_active { 4 } else { 1 },
@@ -141,10 +146,22 @@ impl SkillTrait for CharmSkill {
     }
 }
 
+/// 魅惑状态。
+///
+/// 字段语义对照 JS (`md5.js`)：
+/// - `group_id`          → JS `charm.r` 中的 caster PlrId（select_targets 兜底用）
+/// - `source_team_idx`   → JS `charm.r` 解析后的有效 team index（recharm 同队/异队判定用）
+/// - `effective_team_idx` → JS `player.z`（被 charm 后的有效队伍，用于 select_targets，首次设置后不变）
+/// - `step`              → JS `charm.z`（剩余回合数）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CharmState {
     pub group_id: usize,
     pub effective_team_idx: Option<usize>,
+    /// 上一次 charm/recharm 时 caster 的有效 team index，用于 recharm 时判断"同队叠层 vs 异队替换"。
+    /// 对应 JS 中 `charm.r` 存储的 group 引用的 team index。
+    /// 当 caster 本身被 charm 时，其有效队伍可能与原始队伍不同，
+    /// 因此不能用 `group_index_of(group_id)` 代替。
+    pub source_team_idx: Option<usize>,
     pub target: Option<PlrId>,
     pub on_post_action: Option<()>,
     pub step: i32,

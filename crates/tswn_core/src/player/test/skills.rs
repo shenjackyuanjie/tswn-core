@@ -22,6 +22,7 @@ fn protect_post_action_consumes_smart_roll_for_empty_charm_alive_group() {
         owner_mut.set_state(crate::player::skill::act::charm::CharmState {
             group_id: enemy_id,
             effective_team_idx: None,
+            source_team_idx: None,
             target: Some(enemy_id),
             on_post_action: None,
             step: 1,
@@ -213,6 +214,7 @@ fn action_expires_berserk_and_charm_states() {
     player.set_state(crate::player::skill::charm::CharmState {
         group_id: 1,
         effective_team_idx: None,
+        source_team_idx: None,
         target: Some(player.as_ptr()),
         on_post_action: None,
         step: 1,
