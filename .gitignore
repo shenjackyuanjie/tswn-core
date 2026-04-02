@@ -4,3 +4,4 @@ vendor
 __pycache__
 *.txt
 tests
+.claude
