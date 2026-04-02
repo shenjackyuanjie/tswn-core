@@ -465,7 +465,12 @@ fn shadow_skill_queues_named_shadow_minion() {
     assert_eq!(shadow.id_key_name(), "owner?0@same");
     assert_eq!(shadow.base_name(), "owner?shadow");
     assert_eq!(shadow.display_name(), "幻影");
-    assert!(updates.updates.iter().any(|update| update.message == "召唤出[1]" && update.target == shadow.as_ptr()));
+    assert!(
+        updates
+            .updates
+            .iter()
+            .any(|update| update.message == "召唤出[1]" && update.target == shadow.as_ptr())
+    );
 }
 
 #[test]

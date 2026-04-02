@@ -156,8 +156,28 @@ impl Player {
         let debug_action_this = crate::debug::debug_action_matches(&self.id_name());
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
+            let fmt_targets = |ids: &[PlrId]| {
+                ids.iter()
+                    .map(|target_id| {
+                        let target_name = storage
+                            .get_player(target_id)
+                            .map(|target| target.id_name())
+                            .unwrap_or_else(|| format!("#{target_id}"));
+                        format!("{target_id}:{target_name}")
+                    })
+                    .collect::<Vec<String>>()
+            };
+            let charm_state = self.get_state::<crate::player::skill::act::charm::CharmState>().map(|state| {
+                format!(
+                    "group_id={} effective_team_idx={:?} target={:?} step={}",
+                    state.group_id, state.effective_team_idx, state.target, state.step
+                )
+            });
+            let slow_state = self
+                .get_state::<crate::player::skill::act::slow::SlowState>()
+                .map(|state| format!("owner={:?} target={:?} step={}", state.owner, state.target, state.step));
             eprintln!(
-                "[action] actor={} id={} rc4=({}, {}) smart_byte={} smart_roll={} wisdom={} smart={} mp={} forced_skill={:?} clear_forced={}",
+                "[action] actor={} id={} rc4=({}, {}) smart_byte={} smart_roll={} wisdom={} smart={} mp={} forced_skill={:?} clear_forced={} enemy_alive={:?} ally_alive={:?} all_alive={:?} charm_state={:?} slow_state={:?}",
                 self.id_name(),
                 self.as_ptr(),
                 randomer.i,
@@ -169,6 +189,11 @@ impl Player {
                 self.status.mp,
                 pre_action_outcome.forced_skill,
                 pre_action_outcome.clear_forced_action,
+                fmt_targets(&targets.enemy_alive),
+                fmt_targets(&targets.ally_alive),
+                fmt_targets(&targets.all_alive),
+                charm_state,
+                slow_state,
             );
         }
         if self.status.frozed() {
@@ -587,6 +612,33 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Option<PlrId> {
+        #[cfg(not(feature = "no_debug"))]
+        let debug_action_this = crate::debug::debug_action_matches(&self.id_name());
+        #[cfg(not(feature = "no_debug"))]
+        if debug_action_this {
+            let alive_list = targets
+                .all_alive
+                .iter()
+                .map(|target_id| {
+                    let target_name = storage
+                        .get_player(target_id)
+                        .map(|target| target.id_name())
+                        .unwrap_or_else(|| format!("#{target_id}"));
+                    format!("{target_id}:{target_name}")
+                })
+                .collect::<Vec<String>>();
+            eprintln!(
+                "[forced_all_alive] actor={} id={} rc4=({}, {}) domain={:?} score_mode={:?} all_alive={:?}",
+                self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
+                config.target_domain,
+                config.score_mode,
+                alive_list,
+            );
+        }
+
         if config.target_domain == ForcedAttackTargetDomain::EnemyAlive && config.score_mode == ForcedAttackScoreMode::Default {
             return self.select_default_attack_target(config.smart, randomer, storage, targets);
         }
@@ -598,8 +650,41 @@ impl Player {
                 ForcedAttackTargetDomain::EnemyAlive => Self::pick_enemy_target(targets, randomer)?,
                 ForcedAttackTargetDomain::AllAlive => randomer.pick(&targets.all_alive).map(|idx| targets.all_alive[idx])?,
             };
+            #[cfg(not(feature = "no_debug"))]
+            if debug_action_this {
+                let target_name = storage
+                    .get_player(&target_id)
+                    .map(|target| target.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!(
+                    "[forced_pick] actor={} id={} rc4=({}, {}) domain={:?} score_mode={:?} candidate={} candidate_name={} selected_so_far={:?}",
+                    self.id_name(),
+                    self.as_ptr(),
+                    randomer.i,
+                    randomer.j,
+                    config.target_domain,
+                    config.score_mode,
+                    target_id,
+                    target_name,
+                    selected,
+                );
+            }
+
             if selected.contains(&target_id) {
                 dup += 1;
+                #[cfg(not(feature = "no_debug"))]
+                if debug_action_this {
+                    eprintln!(
+                        "[forced_pick_dup] actor={} id={} rc4=({}, {}) candidate={} dup={}",
+                        self.id_name(),
+                        self.as_ptr(),
+                        randomer.i,
+                        randomer.j,
+                        target_id,
+                        dup,
+                    );
+                }
+
                 continue;
             }
             selected.push(target_id);
@@ -608,6 +693,19 @@ impl Player {
             }
         }
         if selected.is_empty() {
+            #[cfg(not(feature = "no_debug"))]
+            if debug_action_this {
+                eprintln!(
+                    "[forced_pick_empty] actor={} id={} rc4=({}, {}) domain={:?} score_mode={:?}",
+                    self.id_name(),
+                    self.as_ptr(),
+                    randomer.i,
+                    randomer.j,
+                    config.target_domain,
+                    config.score_mode,
+                );
+            }
+
             return None;
         }
 
@@ -621,10 +719,51 @@ impl Player {
                         ForcedAttackScoreMode::RandomAttract => randomer.rFFFF() as f64 * target.get_status().attract,
                     })
                     .unwrap_or(f64::MIN);
+                #[cfg(not(feature = "no_debug"))]
+                if debug_action_this {
+                    let target_name = storage
+                        .get_player(&target_id)
+                        .map(|target| target.id_name())
+                        .unwrap_or_else(|| format!("#{target_id}"));
+                    eprintln!(
+                        "[forced_score] actor={} id={} rc4=({}, {}) target={} target_name={} score={}",
+                        self.id_name(),
+                        self.as_ptr(),
+                        randomer.i,
+                        randomer.j,
+                        target_id,
+                        target_name,
+                        score,
+                    );
+                }
+
                 (target_id, score)
             })
             .collect();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        #[cfg(not(feature = "no_debug"))]
+        if debug_action_this {
+            let ranked = scored
+                .iter()
+                .map(|(target_id, score)| {
+                    let target_name = storage
+                        .get_player(target_id)
+                        .map(|target| target.id_name())
+                        .unwrap_or_else(|| format!("#{target_id}"));
+                    format!("{target_id}:{target_name}:{score}")
+                })
+                .collect::<Vec<String>>();
+            eprintln!(
+                "[forced_choice] actor={} id={} rc4=({}, {}) ranked={:?} chosen={:?}",
+                self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
+                ranked,
+                scored.first().map(|x| x.0),
+            );
+        }
+
         scored.first().map(|x| x.0)
     }
 
@@ -1601,7 +1740,9 @@ impl Player {
             );
         }
 
-        let has_enemy_alive = storage.group_containing(caster).map(|ally_group| has_alive_enemy_or_pending(storage, ally_group));
+        let has_enemy_alive = storage
+            .group_containing(caster)
+            .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group));
         if has_enemy_alive.unwrap_or(true) && caster != self.as_ptr() {
             // 避免在 kill 回调（如吞噬）中产生 &mut Player 别名：
             // 先获取 post_kill 键列表并检查 HP，然后释放 killer 引用，

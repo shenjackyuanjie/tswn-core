@@ -30,20 +30,17 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
-        let alive_group_snapshot = args
-            .3
-            .get_player(&args.0)
-            .and_then(|owner| {
-                owner
-                    .get_state::<CharmState>()
-                    .and_then(|charm| {
-                        charm
-                            .effective_team_idx
-                            .and_then(|team_idx| args.3.alive_group_at(team_idx).cloned())
-                            .or_else(|| args.3.alive_group_at_team_of(charm.group_id).cloned())
-                    })
-                    .or_else(|| args.3.alive_group_at_team_of(args.0).cloned())
-            });
+        let alive_group_snapshot = args.3.get_player(&args.0).and_then(|owner| {
+            owner
+                .get_state::<CharmState>()
+                .and_then(|charm| {
+                    charm
+                        .effective_team_idx
+                        .and_then(|team_idx| args.3.alive_group_at(team_idx).cloned())
+                        .or_else(|| args.3.alive_group_at_team_of(charm.group_id).cloned())
+                })
+                .or_else(|| args.3.alive_group_at_team_of(args.0).cloned())
+        });
         let pending_spawn_ids = args.3.pending_spawn_ids_for_owner(args.0);
         let alive_allies = alive_group_snapshot
             .as_ref()

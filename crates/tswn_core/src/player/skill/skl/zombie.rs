@@ -52,7 +52,10 @@ impl SkillTrait for ZombieSkill {
             .expect("cannot get zombie target from storage")
             .set_state(CorpseState::zombie());
 
-        let seed_name = format!("{}?zombie", args.3.get_player(&args.0).expect("cannot get zombie owner").base_name());
+        let seed_name = format!(
+            "{}?zombie",
+            args.3.get_player(&args.0).expect("cannot get zombie owner").base_name()
+        );
         let mut zombie =
             Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init zombie minion");
         zombie.build();

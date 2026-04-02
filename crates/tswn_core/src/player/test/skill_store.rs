@@ -93,4 +93,3 @@ fn protect_state_runs_before_late_registered_pre_defend_skills() {
     let observed: Vec<&str> = updates.updates.iter().map(|update| update.message.as_ref()).collect();
     assert_eq!(observed, vec![format!("pre_defend_skill_byte={second}")]);
 }
-

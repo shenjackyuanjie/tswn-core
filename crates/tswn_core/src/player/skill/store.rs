@@ -440,7 +440,14 @@ impl SkillStorage {
             .collect()
     }
 
-    pub fn post_defend_run_one(&mut self, key: SkillKey, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
+    pub fn post_defend_run_one(
+        &mut self,
+        key: SkillKey,
+        dmg: i32,
+        caster: PlrId,
+        on_damage: &OnDamageFunc,
+        args: SkillArgs,
+    ) -> i32 {
         let skill = self.store.get_mut(&key).expect("skill not found in store");
         skill.post_defend(dmg, caster, on_damage, args)
     }

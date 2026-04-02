@@ -538,11 +538,7 @@ fn sample_unique_window(names: &[String], start: usize, total: usize, step: usiz
 fn detect_default_library() -> Option<PathBuf> {
     let shared_repo_root = detect_shared_repo_root()?;
     let candidate = shared_repo_root.join("tests").join("sqp6000.txt");
-    if candidate.is_file() {
-        Some(candidate)
-    } else {
-        None
-    }
+    if candidate.is_file() { Some(candidate) } else { None }
 }
 
 fn detect_default_md5_tool() -> Option<PathBuf> {

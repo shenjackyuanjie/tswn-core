@@ -897,9 +897,10 @@ fn late_registered_post_action_skill_respects_state_insertion_cursor() {
         owner_mut.set_state(ObserveExistingPostActionState);
         let state_cursor = owner_mut.state.post_action_registration_cursor();
         let skill_key = owner_mut.skills.skill.len();
-        owner_mut
-            .skills
-            .add_skill(crate::player::skill::Skill::new(1, Box::new(ObserveLateRegisteredPostActionSkill)));
+        owner_mut.skills.add_skill(crate::player::skill::Skill::new(
+            1,
+            Box::new(ObserveLateRegisteredPostActionSkill),
+        ));
         owner_mut.skills.register_skill_proc_after_states(skill_key, state_cursor);
         owner_mut.set_state(ObserveFuturePostActionState);
     }

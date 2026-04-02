@@ -125,11 +125,18 @@ fn possess_shadow_self_death_removes_shadow_from_storage_and_world_alive_views()
         "possess should emit shadow disappear log"
     );
     assert!(!shadow_after_possess.alive(), "shadow should be marked dead after possess");
-    assert_eq!(shadow_after_possess.get_status().hp, 0, "shadow hp should be zero after possess");
+    assert_eq!(
+        shadow_after_possess.get_status().hp,
+        0,
+        "shadow hp should be zero after possess"
+    );
 
     EngineCore::default().sync_runtime_entities(&mut world, &storage);
 
-    assert!(!world.contains_alive(shadow_id), "dead possess shadow must be removed from world alive view");
+    assert!(
+        !world.contains_alive(shadow_id),
+        "dead possess shadow must be removed from world alive view"
+    );
     assert_eq!(world.team_alive(0), Some(&[owner_id][..]));
     assert_eq!(storage.alive_group_at(0), Some(&vec![owner_id]));
 }
