@@ -103,13 +103,28 @@ impl SkillTrait for CharmSkill {
         }
 
         if let Some(state) = target.get_state_mut::<CharmState>() {
-            let existing_team_idx = state.effective_team_idx.or_else(|| args.3.group_index_of(state.group_id));
+            // JS 的 recharm 逻辑：
+            //   s = caster.z          (caster 当前 allyGroup)
+            //   if (s != charm.r) charm.r = s   (不同队 → 替换 .r)
+            //   else charm.z += 1               (同队 → 叠层数)
+            //
+            // 关键：JS 只更新 charm.r（用于下次 recharm 比较和 ar() 源），
+            // 但 player.z（实际用于 target selection 的缓存）只在 F() 中由 ar() 设置，
+            // 而 recharm 不会触发 F()。因此 recharm 后 player.z 仍然是首次 charm 时的 group。
+            //
+            // Rust 对应：
+            // - group_id 对应 JS 的 charm.r（用于 recharm 比较）
+            // - effective_team_idx 对应 JS 的 player.z（用于 select_targets）
+            // - recharm 只更新 group_id，不更新 effective_team_idx，
+            //   使 select_targets 继续使用首次 charm 时缓存的 team index。
+            let existing_team_idx = args.3.group_index_of(state.group_id);
             if existing_team_idx == caster_effective_team_idx {
                 state.step += 1;
             } else {
                 state.group_id = args.0;
             }
-            state.effective_team_idx = caster_effective_team_idx;
+            // 不更新 effective_team_idx — 它保持首次 charm 时由 set_state → update_states 设定的值，
+            // 与 JS 中 F()/ar() 只在 aP() 时运行一次、recharm 不触发 F() 的行为一致。
             if charge_active {
                 state.step += 3;
             }
