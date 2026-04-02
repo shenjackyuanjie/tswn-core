@@ -96,7 +96,7 @@ case 生成方式由 `tswn_case_miner` 负责，覆盖：
 - `ffa_6`
 - `ffa_8`
 
-每种模式生成 `1100` 个 case，总计 `6600` 个 case。
+每种模式生成 `2000` 个 case，总计 `12000` 个 case。
 
 ## 标准测试方法
 
@@ -106,7 +106,7 @@ case 生成方式由 `tswn_case_miner` 负责，覆盖：
 python ./track_case_miner.py -q \
   --modes 1v1,2v2,3v3v3,ffa \
   --ffa-sizes 4,6,8 \
-  --max-cases-per-mode 1100 \
+  --max-cases-per-mode 2000 \
   --keep-going
 ```
 
@@ -125,7 +125,7 @@ python ./track_case_miner.py -q \
   --md5-tool D:/shared/fast-namerena/branch/latest/out_md5.ts \
   --modes 1v1,2v2,3v3v3,ffa \
   --ffa-sizes 4,6,8 \
-  --max-cases-per-mode 1100 \
+  --max-cases-per-mode 2000 \
   --keep-going
 ```
 
@@ -135,7 +135,7 @@ python ./track_case_miner.py -q \
 python .\track_case_miner.py -q `
   --modes 1v1,2v2,3v3v3,ffa `
   --ffa-sizes 4,6,8 `
-  --max-cases-per-mode 1100 `
+  --max-cases-per-mode 2000 `
   --keep-going
 ```
 
@@ -215,7 +215,7 @@ cargo +nightly fmt --package tswn_core
 python ./track_case_miner.py -q \
   --modes 1v1,2v2,3v3v3,ffa \
   --ffa-sizes 4,6,8 \
-  --max-cases-per-mode 1100 \
+  --max-cases-per-mode 2000 \
   --keep-going
 ```
 
@@ -254,7 +254,7 @@ python ./track_case_miner.py -q \
 
 最终目标不是“比上次少几个 failed case”，而是这组测试 **全部通过**：
 
-- `total_generated = 6600`
+- `total_generated = 12000`
 - `ts_failures = 0`
 - `rust_failures = 0`
 - `diff_failures = 0`
