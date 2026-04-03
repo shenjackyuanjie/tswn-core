@@ -1,5 +1,31 @@
 # 更新日志
 
+## [0.2.7] - 2026-04-03
+
+> 提交范围: 87732e4..e21368d
+
+### 修复
+
+- **战斗时序与状态链继续对齐 JS**：将 `Charge` 的 `post_action` 拆成早晚两段，`ProtectState` 按 JS 的混合注册顺序进入防御链；`post_defend` 改为 skill/state 统一优先级链，并在同优先级下按 `registration_order` 稳定排序，修复 `Protect` / `Reflect` / `Iron` 等路径的顺序漂移。
+- **战斗结束时中断尾部状态链**：战斗已结束时不再继续执行无意义的 `post_action` 尾链，同时修复 `Iron` 在死亡后到期时遗漏“从铁壁中解除”日志的问题。
+- **Charm / alive 视图 / 复活同步顺序修复**：引入 `flat_alive` 对齐 JS `Engine.e` 的全局存活顺序，修复 `CharmState` 的 `post_action` 优先级、`recharm` 的 `effective/source team` 判定，以及同 tick 下“复活先于死亡移除”的同步顺序，避免 FFA 目标链和 `all_alive` 顺序分叉。
+- **隐匿与幻影统计继续对齐**：`Hide` 改为统计本回合 pending 幻影，并进一步限制为只统计施法者自己本回合生成的幻影，减少同回合幻影场景下的触发偏差。
+- **召唤物 / 分身生命周期与命名修复**：血祭/使魔重施会复用已死亡召唤物对象并按 revival 刷新状态；补齐 minion 命名与 root owner `?n` 编号规则，修复 clone display name override，并让 shadow 使用稳定 `sort_int`。
+- **pending spawn / post_kill / 战斗结束日志修复**：将 pending enemy spawn 纳入敌方存活判定，避免误跳过吞噬等 `post_kill`；战斗结束后召唤物不再额外输出“被击倒了”，只保留“消失了”。
+- **状态链迭代与反伤顺序修复**：`post_action` 状态链中的 `alive` 参数会随迭代实时刷新，`Reflect` 反伤与 `kill/post_kill` 回调顺序同步到 JS 行为。
+- **Protect / merge / devour 联动修复**：`ProtectState` 使用 `set_state_no_update`，避免 `Haste` 蓄力加成提前生效；同时修复 `Protect` 技能 level 在 `merge/devour` 后不更新的问题。
+- **技能数值与生命周期对齐**：保留 `Quake` 的 JS 原始浮点常量，修正聚气清除后的重用倍率生命周期，并为使魔技能补 `boosted` 标记判断。
+
+### 调试与排查
+
+- **case miner 样本扩展与测试补强**：case miner 支持每模式 500 样本，补充 summon / charm / world sync / iron / hide 等回归测试，并整理 player 相关测试结构以便继续对账。
+- **补充已知问题定位用例**：新增 `merge` 技能槽位不匹配时隐藏技能不继承的测试用例，先保留为 `ignore` 以持续跟踪未完全收敛的问题。
+
+### 验证
+
+- 持续以 `cargo test -p tswn_core` 和固定 case miner / SBY 对账驱动本轮回归
+- 覆盖 `Protect` / `Charm` / `Summon` / revive / `flat_alive` 等重点路径
+
 ## [0.2.6] - 2026-03-29
 
 > 提交范围: 01a8a7f..6ea9390
