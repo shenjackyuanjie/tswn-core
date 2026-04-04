@@ -25,6 +25,10 @@ pub mod debug {
     #[inline(always)]
     pub const fn debug_state() -> bool { false }
     #[inline(always)]
+    pub const fn debug_post_action() -> bool { false }
+    #[inline(always)]
+    pub const fn debug_forced_skill() -> bool { false }
+    #[inline(always)]
     pub const fn debug_covid() -> bool { false }
     #[inline(always)]
     pub const fn debug_fire() -> bool { false }

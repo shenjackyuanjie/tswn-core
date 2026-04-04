@@ -300,7 +300,7 @@ impl Player {
                                     #[cfg(not(feature = "no_debug"))]
                                     if debug_action_this {
                                         eprintln!(
-                                            "[action_skill_targets] actor={} id={} rc4=({}, {}) key={} allow_empty={} selected={:?}",
+                                            "[action_skill_targets] actor={} id={} rc4=({}, {}) key={} allow_empty={} selected={:?} empty_after_prob={}",
                                             self.id_name(),
                                             self.as_ptr(),
                                             randomer.i,
@@ -369,6 +369,7 @@ impl Player {
                 }
             }
         }
+                                        let empty_after_prob = selected.is_empty() && !allow_empty;
 
         if !acted {
             #[cfg(not(feature = "no_debug"))]
@@ -378,7 +379,19 @@ impl Player {
                     self.id_name(),
                     self.as_ptr(),
                     randomer.i,
+                                            empty_after_prob,
                     randomer.j,
+                                        if empty_after_prob {
+                                            eprintln!(
+                                                "[action_skill_targets_empty_after_prob] actor={} id={} rc4=({}, {}) key={} type={} reason=prob_passed_but_targets_empty",
+                                                self.id_name(),
+                                                self.as_ptr(),
+                                                randomer.i,
+                                                randomer.j,
+                                                key,
+                                                skill.debug_skill_type_name(),
+                                            );
+                                        }
                 );
             }
             self.default_attack(smart, randomer, updates, storage, targets);
@@ -510,14 +523,101 @@ impl Player {
     /// 因此这里先保留"按 domain 手工抽样，再按 valid/score 排序"的稳定路径。
     /// 如果后续要接入某个技能自己的特殊选目标逻辑，应该做"逐技能 opt-in" 的窄改，
     /// 而不是把整个主动技能入口一次性切到 `skill.select_targets(...)`。
+        #[cfg(not(feature = "no_debug"))]
+        let debug_post_action_this = crate::debug::debug_post_action() && crate::debug::debug_action_matches(&self.id_name());
+        #[cfg(not(feature = "no_debug"))]
+        if debug_post_action_this {
+            eprintln!(
+                "[post_action_chain/start] owner={} id={} rc4=({}, {})",
+                self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
+            );
+        }
     fn select_skill_targets(
         &self,
         skill: &crate::player::skill::Skill,
         smart: bool,
         randomer: &mut RC4,
+        #[cfg(not(feature = "no_debug"))]
+        if debug_post_action_this {
+            eprintln!(
+                "[post_action_chain/early_before] owner={} rc4=({}, {})",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+            );
+        }
         updates: &mut RunUpdates,
+        #[cfg(not(feature = "no_debug"))]
+        if debug_post_action_this {
+            eprintln!(
+                "[post_action_chain/early_after] owner={} rc4=({}, {})",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+            );
+            let ordered = self
+                .state
+                .ordered_post_action_tags_with_order()
+                .into_iter()
+                .map(|(tag, order)| {
+                    let priority = self
+                        .state
+                        .states
+                        .get(&tag)
+                        .map(|state| state.post_action_priority())
+                        .unwrap_or_default();
+                    format!("{:?}@{}#{}", tag, priority, order)
+                })
+                .collect::<Vec<String>>();
+            let deferred = self
+                .skills
+                .post_action_after_states
+                .iter()
+                .map(|(cursor, key)| format!("skill{}@{}", key, cursor))
+                .collect::<Vec<String>>();
+            eprintln!(
+                "[post_action_chain/state_plan] owner={} states={:?} deferred={:?}",
+                self.id_name(),
+                ordered,
+                deferred,
+            );
+        }
         storage: &Arc<Storage>,
+        #[cfg(not(feature = "no_debug"))]
+        if debug_post_action_this {
+            eprintln!(
+                "[post_action_chain/states_after] owner={} rc4=({}, {})",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+            );
+            eprintln!(
+                "[post_action_chain/late_before] owner={} rc4=({}, {})",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+            );
+        }
         targets: &ActionTargets,
+        #[cfg(not(feature = "no_debug"))]
+        if debug_post_action_this {
+            eprintln!(
+                "[post_action_chain/late_after] owner={} rc4=({}, {})",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+            );
+            eprintln!(
+                "[post_action_chain/end] owner={} id={} rc4=({}, {})",
+                self.id_name(),
+                self.as_ptr(),
+                randomer.i,
+                randomer.j,
+            );
+        }
     ) -> Vec<PlrId> {
         let domain = skill.target_domain();
         if domain == SkillTargetDomain::SelfOnly {
@@ -1065,13 +1165,42 @@ impl Player {
             }
             self.update_states();
         }
+        #[cfg(not(feature = "no_debug"))]
+        let debug_post_action_this = crate::debug::debug_post_action()
+            && storage
+                .get_player(&owner_id)
+                .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+                .unwrap_or(false);
         atp
     }
 
     fn apply_post_defend_states(
         &mut self,
         mut dmg: i32,
+                #[cfg(not(feature = "no_debug"))]
+                if debug_post_action_this {
+                    eprintln!(
+                        "[post_action_deferred/before_state] owner={} skill_key={} cursor={} state_tag={:?} state_order={} rc4=({}, {})",
+                        storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                        skill_key,
+                        deferred[deferred_idx].0,
+                        tag,
+                        state_order,
+                        randomer.i,
+                        randomer.j,
+                    );
+                }
         caster: PlrId,
+                #[cfg(not(feature = "no_debug"))]
+                if debug_post_action_this {
+                    eprintln!(
+                        "[post_action_deferred/after_state] owner={} skill_key={} rc4=({}, {})",
+                        storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                        skill_key,
+                        randomer.i,
+                        randomer.j,
+                    );
+                }
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
@@ -1079,24 +1208,89 @@ impl Player {
         if self
             .state
             .on_post_defend_states(self.as_ptr(), &mut dmg, caster, randomer, updates, storage)
+                #[cfg(not(feature = "no_debug"))]
+                if debug_post_action_this {
+                    eprintln!(
+                        "[post_action_state/break_battle_over] owner={} state_tag={:?} state_order={} rc4=({}, {})",
+                        storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                        tag,
+                        state_order,
+                        randomer.i,
+                        randomer.j,
+                    );
+                }
         {
             self.update_states();
+            #[cfg(not(feature = "no_debug"))]
+            let rc4_before = (randomer.i, randomer.j);
+            #[cfg(not(feature = "no_debug"))]
+            let priority = self
+                .state
+                .states
+                .get(&tag)
+                .map(|state| state.post_action_priority())
+                .unwrap_or_default();
         }
         dmg
     }
 
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
         if !self.active() {
+            #[cfg(not(feature = "no_debug"))]
+            if debug_post_action_this {
+                eprintln!(
+                    "[post_action_state] owner={} tag={:?} priority={} order={} clear={} alive={} rc4 {}:{} -> {}:{}",
+                    storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                    tag,
+                    priority,
+                    state_order,
+                    should_clear,
+                    current_alive,
+                    rc4_before.0,
+                    rc4_before.1,
+                    randomer.i,
+                    randomer.j,
+                );
+            }
             return false;
         }
         let require_mp = randomer.r3x3() as i32;
         if self.status.mp >= require_mp {
             self.status.mp -= require_mp;
             return true;
+            #[cfg(not(feature = "no_debug"))]
+            if debug_post_action_this {
+                eprintln!(
+                    "[post_action_deferred/tail_before] owner={} skill_key={} cursor={} rc4=({}, {})",
+                    storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                    skill_key,
+                    deferred[deferred_idx].0,
+                    randomer.i,
+                    randomer.j,
+                );
+            }
         }
+            #[cfg(not(feature = "no_debug"))]
+            if debug_post_action_this {
+                eprintln!(
+                    "[post_action_deferred/tail_after] owner={} skill_key={} rc4=({}, {})",
+                    storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                    skill_key,
+                    randomer.i,
+                    randomer.j,
+                );
+            }
         false
     }
 
+            #[cfg(not(feature = "no_debug"))]
+            if debug_post_action_this {
+                eprintln!(
+                    "[post_action_clear_tags] owner={} clear_tags={:?}",
+                    storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                    clear_tags,
+                );
+            }
     #[inline]
     pub fn id_name(&self) -> String { self.id_name_override.clone().unwrap_or_else(|| self.name.clone()) }
 

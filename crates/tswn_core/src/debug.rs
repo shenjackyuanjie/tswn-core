@@ -15,6 +15,8 @@
 //! | `TSWN_DEBUG_DODGE_ALL` | 调试所有玩家的闪避 |
 //! | `TSWN_DEBUG_DIE` | 调试死亡处理 |
 //! | `TSWN_DEBUG_STATE` | 调试状态系统（状态设置/清除/追踪） |
+//! | `TSWN_DEBUG_POST_ACTION` | 调试 post_action 链顺序 |
+//! | `TSWN_DEBUG_FORCED_SKILL` | 调试 pre_action 强制技能选择 |
 //! | `TSWN_DEBUG_COVID` | 调试 COVID Boss 相关逻辑 |
 //! | `TSWN_DEBUG_FIRE` | 调试火焰技能 |
 //! | `TSWN_DEBUG_HEAL` | 调试治疗技能 |
@@ -34,6 +36,8 @@ static DEBUG_DODGE: AtomicBool = AtomicBool::new(false);
 static DEBUG_DODGE_ALL: AtomicBool = AtomicBool::new(false);
 static DEBUG_DIE: AtomicBool = AtomicBool::new(false);
 static DEBUG_STATE: AtomicBool = AtomicBool::new(false);
+static DEBUG_POST_ACTION: AtomicBool = AtomicBool::new(false);
+static DEBUG_FORCED_SKILL: AtomicBool = AtomicBool::new(false);
 static DEBUG_COVID: AtomicBool = AtomicBool::new(false);
 static DEBUG_FIRE: AtomicBool = AtomicBool::new(false);
 static DEBUG_HEAL: AtomicBool = AtomicBool::new(false);
@@ -58,6 +62,8 @@ fn init_once() {
     DEBUG_DODGE_ALL.store(std::env::var_os("TSWN_DEBUG_DODGE_ALL").is_some(), Ordering::Relaxed);
     DEBUG_DIE.store(std::env::var("TSWN_DEBUG_DIE").is_ok(), Ordering::Relaxed);
     DEBUG_STATE.store(std::env::var_os("TSWN_DEBUG_STATE").is_some(), Ordering::Relaxed);
+    DEBUG_POST_ACTION.store(std::env::var_os("TSWN_DEBUG_POST_ACTION").is_some(), Ordering::Relaxed);
+    DEBUG_FORCED_SKILL.store(std::env::var_os("TSWN_DEBUG_FORCED_SKILL").is_some(), Ordering::Relaxed);
     DEBUG_COVID.store(std::env::var_os("TSWN_DEBUG_COVID").is_some(), Ordering::Relaxed);
     DEBUG_FIRE.store(std::env::var_os("TSWN_DEBUG_FIRE").is_some(), Ordering::Relaxed);
     DEBUG_HEAL.store(std::env::var_os("TSWN_DEBUG_HEAL").is_some(), Ordering::Relaxed);
@@ -139,6 +145,18 @@ pub fn debug_die() -> Option<String> {
 pub fn debug_state() -> bool {
     init_once();
     DEBUG_STATE.load(Ordering::Relaxed)
+}
+
+#[inline]
+pub fn debug_post_action() -> bool {
+    init_once();
+    DEBUG_POST_ACTION.load(Ordering::Relaxed)
+}
+
+#[inline]
+pub fn debug_forced_skill() -> bool {
+    init_once();
+    DEBUG_FORCED_SKILL.load(Ordering::Relaxed)
 }
 
 #[inline]

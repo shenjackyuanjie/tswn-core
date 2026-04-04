@@ -298,20 +298,62 @@ impl SkillStorage {
     pub fn pre_action(&mut self, smart: bool, args: SkillArgs) -> PreActionOutcome {
         let mut forced_skill = None;
         let mut clear_forced_action = false;
+        let debug_forced = crate::debug::debug_forced_skill();
+        let debug_this = debug_forced
+            && args
+                .3
+                .get_player(&args.0)
+                .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+                .unwrap_or(false);
         for idx in 0..self.pre_action.len() {
             let skill_key = self.pre_action[idx];
+            let rc4_before = if debug_this { Some((args.1.i, args.1.j)) } else { None };
             let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
-            if skill.pre_action_clear_forced(smart, (args.0, args.1, args.2, args.3)) {
+            let clear_forced = skill.pre_action_clear_forced(smart, (args.0, args.1, args.2, args.3));
+            if clear_forced {
                 // Only set clear_forced_action to block state-based forced attacks (berserk/charm).
                 // Do NOT clear forced_skill — it may have been set by Assassinate's pre_action_select,
                 // and in JS the assassinate entry is always processed after berserk/hide in x1.
                 clear_forced_action = true;
             }
             skill.pre_action((args.0, args.1, args.2, args.3));
-            if forced_skill.is_none() && skill.pre_action_select(smart, (args.0, args.1, args.2, args.3)) {
+            let selected = forced_skill.is_none() && skill.pre_action_select(smart, (args.0, args.1, args.2, args.3));
+            if selected {
                 forced_skill = Some(skill_key);
                 clear_forced_action = false;
             }
+            if debug_this {
+                let rc4_after = (args.1.i, args.1.j);
+                let skill_name = self
+                    .store
+                    .get(&skill_key)
+                    .map(|skill| skill.debug_skill_type_name())
+                    .unwrap_or("unknown_skill");
+                let (before_i, before_j) = rc4_before.unwrap_or((0, 0));
+                eprintln!(
+                    "[pre_action_skill] owner={} key={} type={} smart={} clear_forced={} selected={} forced_skill={:?} clear_forced_action={} rc4 {}:{} -> {}:{}",
+                    args.3.get_player(&args.0).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                    skill_key,
+                    skill_name,
+                    smart,
+                    clear_forced,
+                    selected,
+                    forced_skill,
+                    clear_forced_action,
+                    before_i,
+                    before_j,
+                    rc4_after.0,
+                    rc4_after.1,
+                );
+            }
+        }
+        if debug_this {
+            eprintln!(
+                "[pre_action_result] owner={} forced_skill={:?} clear_forced_action={}",
+                args.3.get_player(&args.0).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                forced_skill,
+                clear_forced_action,
+            );
         }
         PreActionOutcome {
             forced_skill,
