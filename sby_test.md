@@ -102,10 +102,23 @@ case 生成方式由 `tswn_case_miner` 负责，覆盖：
 
 在 `tswn-core` 目录下运行：
 
+注意：这里优先运行 `python ./track_case_miner.py ...`，不要直接跑裸 `cargo run`。
+如果需要直接运行普通 CLI 重放 failed case，Cargo 里的二进制名是 `tswn-cli`，不是 `tswn_cli`。
+`tswn_cli.rs` 只是源码文件名；`cargo run --bin ...` 时必须写 `tswn-cli`。
+否则 agent 很容易踩到 `error: no bin target named 'tswn_cli' in default-run packages`，而 Cargo 实际提示的相近目标是 `tswn-cli`。
+如果你确实要直接启动 miner，命令必须写成 `cargo run --bin tswn_case_miner -- ...`，不能省略 `--bin tswn_case_miner`。
+
+例如要直接查看某个 failed case 的原始输出，应写成：
+
+```bash
+cargo run -q --release --bin tswn-cli -- --out-raw --file "target/ts_diff_cases/failed/<case-id>/input.txt"
+```
+
 ```bash
 python ./track_case_miner.py -q \
   --modes 1v1,2v2,3v3v3,ffa \
   --ffa-sizes 4,6,8 \
+  --case-offset-per-mode 0 \
   --max-cases-per-mode 2000 \
   --keep-going
 ```
@@ -125,6 +138,7 @@ python ./track_case_miner.py -q \
   --md5-tool D:/shared/fast-namerena/branch/latest/out_md5.ts \
   --modes 1v1,2v2,3v3v3,ffa \
   --ffa-sizes 4,6,8 \
+  --case-offset-per-mode 0 \
   --max-cases-per-mode 2000 \
   --keep-going
 ```
@@ -135,9 +149,27 @@ python ./track_case_miner.py -q \
 python .\track_case_miner.py -q `
   --modes 1v1,2v2,3v3v3,ffa `
   --ffa-sizes 4,6,8 `
+  --case-offset-per-mode 0 `
   --max-cases-per-mode 2000 `
   --keep-going
 ```
+
+如果前面一段 case 已经修掉，想直接看后面的稳定顺序区间，可以加 `--case-offset-per-mode`。
+
+它的语义是：**每种模式**都先按固定顺序跳过前 `N` 个唯一 case，再继续取后面的 `--max-cases-per-mode` 个 case。
+
+例如下面这条命令会跳过每种模式前 2000 个 case，直接检查第 2001 到 4000 段：
+
+```bash
+python ./track_case_miner.py -q \
+  --modes 1v1,2v2,3v3v3,ffa \
+  --ffa-sizes 4,6,8 \
+  --case-offset-per-mode 2000 \
+  --max-cases-per-mode 2000 \
+  --keep-going
+```
+
+这不是全局总 offset，而是对 `1v1`、`2v2`、`3v3v3`、`ffa_4/6/8` 分别独立生效。
 
 ## 结果查看方法
 
@@ -215,6 +247,7 @@ cargo +nightly fmt --package tswn_core
 python ./track_case_miner.py -q \
   --modes 1v1,2v2,3v3v3,ffa \
   --ffa-sizes 4,6,8 \
+  --case-offset-per-mode 0 \
   --max-cases-per-mode 2000 \
   --keep-going
 ```

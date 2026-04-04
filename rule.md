@@ -155,6 +155,16 @@ python track_test.py delete 名称
 
 **工具位置：** `tswn-core/track_case_miner.py`
 
+**执行提醒（重要）：**
+
+- 在 `tswn-core` 里不要直接跑裸 `cargo run`。
+- 如果你要运行普通 CLI，对 Cargo 来说二进制名是 `tswn-cli`，不是 `tswn_cli`。
+- `tswn_cli.rs` 只是源码文件名；`cargo run --bin ...` 里必须写 `tswn-cli`。
+- 很多 AI/agent 会因此踩到 `error: no bin target named 'tswn_cli' in default-run packages`，然后 Cargo 会提示相近目标其实是 `tswn-cli`。
+- 日常跑 case miner 时，优先使用 `python ./track_case_miner.py ...`。
+- 如果确实需要直接启动 miner，必须显式写成 `cargo run --bin tswn_case_miner -- ...`，不要省略 `--bin tswn_case_miner`。
+- 如果需要直接重放某个 failed case 的原始战斗输出，命令应写成 `cargo run --bin tswn-cli -- --out-raw --file <input.txt>`。
+
 这个工具不会解析终端输出，而是直接读取 `tswn_case_miner` 生成的 `target/ts_diff_cases/summary.json`，追踪：
 
 - failed case 集合变化
@@ -190,11 +200,20 @@ python ./track_case_miner.py --library D:/shared/tswn-core/tests/sqp6000.txt
 | `--shared-cache-dir` | 共享 bun/TS 缓存目录，默认在主 worktree 的 `target` 下 |
 | `--modes` | 对战模式，默认 `1v1,2v2,3v3v3,ffa` |
 | `--ffa-sizes` | ffa 人数列表，默认 `4,6,8` |
+| `--case-offset-per-mode` | 每种模式按稳定顺序跳过前 N 个唯一 case |
 | `--max-cases-per-mode` | 每种模式的 case 上限 |
 | `--keep-going` | 单个 case 失败时继续 |
 | `-s, --show` | 只显示当前失败状态，不运行 miner |
 | `-q, --quiet` | 安静模式，只输出关键结论 |
 | `-r, --reset` | 重置历史记录 |
+
+如果前面一段 case 已经修完，可以配合使用：
+
+```bash
+python ./track_case_miner.py -q --case-offset-per-mode 2000 --max-cases-per-mode 2000 --keep-going
+```
+
+这表示每种模式都跳过前 2000 个稳定生成的唯一 case，直接检查后面的 2000 个。
 
 **存档点子命令：**
 

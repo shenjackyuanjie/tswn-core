@@ -1,5 +1,24 @@
 # 更新日志
 
+## [0.2.8] - 2026-04-05
+
+### 调试与排查
+
+- **case miner 支持稳定分段排查**：`tswn_case_miner` 与 `track_case_miner.py` 新增 `--case-offset-per-mode`，允许按每种模式的稳定生成顺序跳过前 N 个唯一 case，直接检查后续区间，避免前面已经修过的样本反复重跑，缩短大样本排查反馈周期。
+- **TS 缓存命中信息显式可见**：case miner 现在会统计并输出 `TS cache hit`、`TS cache miss` 与 `bun` 调用次数，同时把这些统计写入 `summary.json`，便于区分“命中共享 trace 缓存”和“真的重新调用了 bun”。
+- **tracker 非 quiet 模式改为流式显示阶段信息**：`track_case_miner.py` 在非 `-q` 下不再吞掉 `cargo run` 输出，会直接显示 Rust 编译日志以及 miner 的阶段提示，降低“卡在编译/缓存/比对哪一步”不透明的问题。
+- **比较范围变化时不再误判回归**：tracker 现在会把 `case_offset_per_mode`、`max_cases_per_mode`、`modes` 等关键配置纳入比较范围检查；当本轮与上轮/存档点的测试区间不一致时，直接提示“比较范围已变化”，避免把不同区间的 failed case 误报成修复或退步。
+
+### 文档
+
+- **补充 Cargo 二进制名提醒**：在 `rule.md` 与 `sby_test.md` 中明确写出 Cargo 的普通 CLI bin 名是 `tswn-cli`，不是源码文件名 `tswn_cli`；并补充 `--out-raw --file` 的 failed case 重放示例，减少 agent 误用 `cargo run --bin tswn_cli` 的报错。
+- **同步记录 offset 用法**：文档中的固定 SBY 命令已补上 `--case-offset-per-mode` 示例，并明确它是“每种模式独立生效”的稳定切片，而不是全局总 offset。
+
+### 验证
+
+- `cargo fmt --package tswn_core`
+- `cargo test -p tswn_core --bin tswn_case_miner`
+
 ## [0.2.7] - 2026-04-03
 
 > 提交范围: 87732e4..e21368d

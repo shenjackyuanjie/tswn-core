@@ -60,6 +60,7 @@ struct Config {
     md5_tool: PathBuf,
     out_dir: PathBuf,
     modes: Vec<CaseMode>,
+    case_offset_per_mode: usize,
     max_cases_per_mode: usize,
     shuffle_seed: u64,
     keep_going: bool,
@@ -78,6 +79,14 @@ struct GeneratedCase {
 struct TsTraceResult {
     input_hash: u64,
     output: Result<String, String>,
+    cache_hit: bool,
+}
+
+#[derive(Debug, Default)]
+struct TsTraceCollection {
+    outputs: HashMap<u64, Result<String, String>>,
+    cache_hits: usize,
+    cache_misses: usize,
 }
 
 #[derive(Debug)]
@@ -118,6 +127,9 @@ struct Summary {
     executed: usize,
     skipped_duplicate_inputs: usize,
     skipped_insufficient_library: usize,
+    ts_cache_hits: usize,
+    ts_cache_misses: usize,
+    bun_invocations: usize,
     ts_failures: usize,
     rust_failures: usize,
     ts_empty_outputs: usize,
@@ -167,7 +179,13 @@ fn try_main() -> Result<(), String> {
     let mut unique_cases = Vec::new();
 
     for mode in &config.modes {
-        let generated = generate_cases_for_mode(&names, *mode, config.max_cases_per_mode, &mut summary);
+        let generated = generate_cases_for_mode(
+            &names,
+            *mode,
+            config.case_offset_per_mode,
+            config.max_cases_per_mode,
+            &mut summary,
+        );
         for case in generated {
             summary.total_generated += 1;
             *summary.per_mode_generated.entry(case.mode.label()).or_insert(0) += 1;
@@ -182,7 +200,12 @@ fn try_main() -> Result<(), String> {
         }
     }
 
-    let ts_outputs = collect_ts_traces(
+    println!(
+        "阶段 1/3: case 已生成，准备处理 TS trace 缓存 (唯一输入: {})",
+        summary.unique_inputs
+    );
+
+    let ts_traces = collect_ts_traces(
         &config.md5_tool,
         md5_tool_signature,
         &ts_cache_dir,
@@ -191,9 +214,18 @@ fn try_main() -> Result<(), String> {
         &unique_cases,
         8,
     );
+    summary.ts_cache_hits = ts_traces.cache_hits;
+    summary.ts_cache_misses = ts_traces.cache_misses;
+    summary.bun_invocations = ts_traces.cache_misses;
+
+    println!(
+        "阶段 2/3: TS trace 缓存完成 (hit={}, miss={}, bun调用={})",
+        summary.ts_cache_hits, summary.ts_cache_misses, summary.bun_invocations
+    );
+    println!("阶段 3/3: 开始执行 Rust trace 并比对输出...");
 
     for case in unique_cases {
-        let ts_output = match ts_outputs.get(&case.input_hash) {
+        let ts_output = match ts_traces.outputs.get(&case.input_hash) {
             Some(Ok(output)) => output.clone(),
             Some(Err(err)) => {
                 summary.ts_failures += 1;
@@ -273,6 +305,9 @@ fn try_main() -> Result<(), String> {
     println!("生成 case: {}", summary.total_generated);
     println!("唯一输入: {}", summary.unique_inputs);
     println!("执行成功: {}", summary.executed - summary.ts_failures - summary.rust_failures);
+    println!("TS cache hit: {}", summary.ts_cache_hits);
+    println!("TS cache miss: {}", summary.ts_cache_misses);
+    println!("bun 调用次数: {}", summary.bun_invocations);
     println!("TS 执行失败: {}", summary.ts_failures);
     println!("Rust 执行失败: {}", summary.rust_failures);
     println!("TS 空输出: {}", summary.ts_empty_outputs);
@@ -289,6 +324,7 @@ fn parse_args() -> Result<Config, String> {
     let mut modes = None;
     let mut include_ffa_from_modes = false;
     let mut ffa_sizes = vec![4usize, 6, 8];
+    let mut case_offset_per_mode = 0usize;
     let mut max_cases_per_mode = 64usize;
     let mut shuffle_seed = 0x5EED_2026_u64;
     let mut keep_going = false;
@@ -323,6 +359,12 @@ fn parse_args() -> Result<Config, String> {
             "--ffa-sizes" => {
                 idx += 1;
                 ffa_sizes = parse_usize_csv(require_arg(&args, idx, "--ffa-sizes")?, "--ffa-sizes")?;
+            }
+            "--case-offset-per-mode" => {
+                idx += 1;
+                case_offset_per_mode = require_arg(&args, idx, "--case-offset-per-mode")?
+                    .parse::<usize>()
+                    .map_err(|e| format!("解析 --case-offset-per-mode 失败: {e}"))?;
             }
             "--max-cases-per-mode" => {
                 idx += 1;
@@ -380,6 +422,7 @@ fn parse_args() -> Result<Config, String> {
         md5_tool,
         out_dir,
         modes,
+        case_offset_per_mode,
         max_cases_per_mode,
         shuffle_seed,
         keep_going,
@@ -398,6 +441,7 @@ fn print_usage() {
   --out-dir <path>          failed case 输出目录（默认 target/ts_diff_cases）
   --modes <csv>             生成模式，默认 1v1,2v2,3v3v3,ffa
   --ffa-sizes <csv>         自由混战人数，默认 4,6,8
+  --case-offset-per-mode <N> 每种模式按稳定顺序跳过前 N 个唯一 case，默认 0
   --max-cases-per-mode <N>  每种模式最多生成多少 case，默认 64
   --shuffle-seed <N>        固定采样顺序，默认 1592597030
   --keep-going              个别 case 执行失败时继续
@@ -468,7 +512,13 @@ fn deterministic_shuffle(values: &mut [String], seed: u64) {
     }
 }
 
-fn generate_cases_for_mode(names: &[String], mode: CaseMode, max_cases: usize, summary: &mut Summary) -> Vec<GeneratedCase> {
+fn generate_cases_for_mode(
+    names: &[String],
+    mode: CaseMode,
+    case_offset: usize,
+    max_cases: usize,
+    summary: &mut Summary,
+) -> Vec<GeneratedCase> {
     let total = mode.total_players();
     if names.len() < total {
         summary.skipped_insufficient_library += 1;
@@ -477,20 +527,25 @@ fn generate_cases_for_mode(names: &[String], mode: CaseMode, max_cases: usize, s
 
     let mut cases = Vec::new();
     let mut seen_hashes = HashSet::new();
+    let mut skipped = 0usize;
 
     // 单一连续窗口最多只能产出 names.len() 个唯一 case。
     // 这里改成“多组互质步长 + 滚动起点”，在保持确定性的前提下，
     // 能从同一份号库中稳定扩出更多唯一输入，满足 500-case 基线。
     for step in candidate_steps(names.len()) {
-        for offset in 0..names.len() {
+        for offset_idx in 0..names.len() {
             if cases.len() >= max_cases {
                 return cases;
             }
-            let start = (offset * step) % names.len();
+            let start = (offset_idx * step) % names.len();
             let players = sample_unique_window(names, start, total, step);
             let input = mode.build_input(&players);
             let input_hash = stable_hash(&input);
             if !seen_hashes.insert(input_hash) {
+                continue;
+            }
+            if skipped < case_offset {
+                skipped += 1;
                 continue;
             }
             cases.push(GeneratedCase {
@@ -647,7 +702,7 @@ mod tests {
         let names = sample_names(329);
         let mut summary = Summary::default();
 
-        let cases = generate_cases_for_mode(&names, CaseMode::OneVsOne, 500, &mut summary);
+        let cases = generate_cases_for_mode(&names, CaseMode::OneVsOne, 0, 500, &mut summary);
         let unique = cases.iter().map(|case| case.input_hash).collect::<HashSet<_>>();
 
         assert_eq!(cases.len(), 500);
@@ -659,13 +714,28 @@ mod tests {
         let names = sample_names(64);
         let mut summary = Summary::default();
 
-        let cases = generate_cases_for_mode(&names, CaseMode::FreeForAll(8), 128, &mut summary);
+        let cases = generate_cases_for_mode(&names, CaseMode::FreeForAll(8), 0, 128, &mut summary);
 
         assert_eq!(cases.len(), 128);
         for case in cases {
             let unique = case.players.iter().collect::<HashSet<_>>();
             assert_eq!(unique.len(), case.players.len());
         }
+    }
+
+    #[test]
+    fn generate_cases_for_mode_offset_matches_stable_slice() {
+        let names = sample_names(329);
+        let mut full_summary = Summary::default();
+        let mut offset_summary = Summary::default();
+
+        let full = generate_cases_for_mode(&names, CaseMode::TwoVsTwo, 0, 40, &mut full_summary);
+        let offset = generate_cases_for_mode(&names, CaseMode::TwoVsTwo, 12, 10, &mut offset_summary);
+
+        let expected = full[12..22].iter().map(|case| case.input_hash).collect::<Vec<_>>();
+        let actual = offset.iter().map(|case| case.input_hash).collect::<Vec<_>>();
+
+        assert_eq!(actual, expected);
     }
 }
 
@@ -703,7 +773,7 @@ fn collect_ts_traces(
     temp_root: &Path,
     cases: &[GeneratedCase],
     max_jobs: usize,
-) -> HashMap<u64, Result<String, String>> {
+) -> TsTraceCollection {
     let jobs = max_jobs.clamp(1, 8);
     let cases = Arc::new(cases.to_vec());
     let index = Arc::new(AtomicUsize::new(0));
@@ -728,10 +798,12 @@ fn collect_ts_traces(
                 let Some(case) = cases.get(next) else {
                     break;
                 };
-                let output = load_or_run_ts_trace(&md5_tool, md5_tool_signature, &cache_dir, &bun_cache_dir, &temp_root, case);
+                let (output, cache_hit) =
+                    load_or_run_ts_trace(&md5_tool, md5_tool_signature, &cache_dir, &bun_cache_dir, &temp_root, case);
                 let _ = tx.send(TsTraceResult {
                     input_hash: case.input_hash,
                     output,
+                    cache_hit,
                 });
             }
         }));
@@ -739,7 +811,14 @@ fn collect_ts_traces(
     drop(tx);
 
     let mut results = HashMap::with_capacity(cases.len());
+    let mut cache_hits = 0usize;
+    let mut cache_misses = 0usize;
     for result in rx {
+        if result.cache_hit {
+            cache_hits += 1;
+        } else {
+            cache_misses += 1;
+        }
         results.insert(result.input_hash, result.output);
     }
 
@@ -747,7 +826,11 @@ fn collect_ts_traces(
         let _ = handle.join();
     }
 
-    results
+    TsTraceCollection {
+        outputs: results,
+        cache_hits,
+        cache_misses,
+    }
 }
 
 fn load_or_run_ts_trace(
@@ -757,15 +840,20 @@ fn load_or_run_ts_trace(
     bun_cache_dir: &Path,
     temp_root: &Path,
     case: &GeneratedCase,
-) -> Result<String, String> {
+) -> (Result<String, String>, bool) {
     let cache_path = cache_dir.join(format!("{md5_tool_signature:016x}-{:016x}.txt", case.input_hash));
     if let Ok(cached) = fs::read_to_string(&cache_path) {
-        return Ok(cached);
+        return (Ok(cached), true);
     }
 
-    let output = run_ts_trace(md5_tool, bun_cache_dir, temp_root, case)?;
-    fs::write(&cache_path, &output).map_err(|e| format!("写入 TS 缓存失败: {e}"))?;
-    Ok(output)
+    let output = match run_ts_trace(md5_tool, bun_cache_dir, temp_root, case) {
+        Ok(output) => output,
+        Err(err) => return (Err(err), false),
+    };
+    if let Err(err) = fs::write(&cache_path, &output) {
+        return (Err(format!("写入 TS 缓存失败: {err}")), false);
+    }
+    (Ok(output), false)
 }
 
 fn file_signature(path: &Path) -> Result<u64, String> {
@@ -975,6 +1063,9 @@ fn write_summary(
     let _ = writeln!(&mut json, "  \"total_generated\": {},", summary.total_generated);
     let _ = writeln!(&mut json, "  \"unique_inputs\": {},", summary.unique_inputs);
     let _ = writeln!(&mut json, "  \"executed\": {},", summary.executed);
+    let _ = writeln!(&mut json, "  \"ts_cache_hits\": {},", summary.ts_cache_hits);
+    let _ = writeln!(&mut json, "  \"ts_cache_misses\": {},", summary.ts_cache_misses);
+    let _ = writeln!(&mut json, "  \"bun_invocations\": {},", summary.bun_invocations);
     let _ = writeln!(
         &mut json,
         "  \"skipped_duplicate_inputs\": {},",

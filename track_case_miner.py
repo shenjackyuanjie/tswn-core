@@ -15,6 +15,7 @@ from pathlib import Path
 
 DEFAULT_MODES = "1v1,2v2,3v3v3,ffa"
 DEFAULT_FFA_SIZES = "4,6,8"
+DEFAULT_CASE_OFFSET_PER_MODE = 0
 DEFAULT_MAX_CASES_PER_MODE = 64
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -58,7 +59,9 @@ def _detect_git_common_dir(project_root: Path) -> Path:
 
 
 GIT_COMMON_DIR = _detect_git_common_dir(PROJECT_ROOT)
-SHARED_REPO_ROOT = GIT_COMMON_DIR.parent if GIT_COMMON_DIR.name == ".git" else PROJECT_ROOT
+SHARED_REPO_ROOT = (
+    GIT_COMMON_DIR.parent if GIT_COMMON_DIR.name == ".git" else PROJECT_ROOT
+)
 PROJECT_TARGET_DIR = PROJECT_ROOT / "target"
 DEFAULT_OUT_DIR = Path("target") / "ts_diff_cases"
 RECORD_FILE = PROJECT_TARGET_DIR / "case_miner_regression.json"
@@ -71,8 +74,12 @@ DEFAULT_SHARED_CACHE_DIR = SHARED_REPO_ROOT / "target" / "tswn_case_miner_cache"
 def _detect_default_md5_tool():
     candidates = []
     for repo_root in (PROJECT_ROOT, SHARED_REPO_ROOT):
-        candidates.append(repo_root.parent / "fast-namerena" / "branch" / "latest" / "out_md5.ts")
-        candidates.append(repo_root / "fast-namerena" / "branch" / "latest" / "out_md5.ts")
+        candidates.append(
+            repo_root.parent / "fast-namerena" / "branch" / "latest" / "out_md5.ts"
+        )
+        candidates.append(
+            repo_root / "fast-namerena" / "branch" / "latest" / "out_md5.ts"
+        )
 
     seen = set()
     for candidate in candidates:
@@ -174,6 +181,7 @@ def summarize_run(summary: dict, args) -> dict:
             "bun_cache_dir": str(args.bun_cache_dir_path),
             "modes": args.modes,
             "ffa_sizes": args.ffa_sizes,
+            "case_offset_per_mode": args.case_offset_per_mode,
             "max_cases_per_mode": args.max_cases_per_mode,
             "keep_going": args.keep_going,
         },
@@ -181,6 +189,9 @@ def summarize_run(summary: dict, args) -> dict:
             "total_generated": summary.get("total_generated", 0),
             "unique_inputs": summary.get("unique_inputs", 0),
             "executed": summary.get("executed", 0),
+            "ts_cache_hits": summary.get("ts_cache_hits", 0),
+            "ts_cache_misses": summary.get("ts_cache_misses", 0),
+            "bun_invocations": summary.get("bun_invocations", 0),
             "ts_failures": summary.get("ts_failures", 0),
             "rust_failures": summary.get("rust_failures", 0),
             "diff_failures": summary.get("diff_failures", 0),
@@ -190,6 +201,56 @@ def summarize_run(summary: dict, args) -> dict:
         },
         "failed_cases": failed_cases,
     }
+
+
+COMPARISON_CONFIG_FIELDS = {
+    "library": "号库",
+    "md5_tool": "md5 工具",
+    "modes": "modes",
+    "ffa_sizes": "ffa sizes",
+    "case_offset_per_mode": "case offset per mode",
+    "max_cases_per_mode": "max cases per mode",
+}
+
+
+def _normalized_config(records: dict) -> dict:
+    config = dict(records.get("config") or {})
+    config.setdefault("case_offset_per_mode", DEFAULT_CASE_OFFSET_PER_MODE)
+    return config
+
+
+def find_scope_mismatches(current: dict, previous: dict) -> list:
+    if not previous or not previous.get("config"):
+        return []
+
+    current_config = _normalized_config(current)
+    previous_config = _normalized_config(previous)
+    mismatches = []
+    for key, label in COMPARISON_CONFIG_FIELDS.items():
+        if current_config.get(key) == previous_config.get(key):
+            continue
+        mismatches.append(
+            {
+                "key": key,
+                "label": label,
+                "current": current_config.get(key),
+                "previous": previous_config.get(key),
+            }
+        )
+    return mismatches
+
+
+def _format_config_value(value) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def print_scope_mismatches(mismatches: list):
+    print("比较范围已变化，跳过 failed case 直接对比:")
+    for item in mismatches:
+        print(
+            f"  {item['label']}: {_format_config_value(item['previous'])} "
+            f"-> {_format_config_value(item['current'])}"
+        )
 
 
 def compare_records(current: dict, previous: dict) -> list:
@@ -261,20 +322,29 @@ def print_current_status(records: dict):
     summary = records.get("summary", {})
     failed_cases = records.get("failed_cases", {})
     print("当前 miner 失败状态:")
+    print(f"  ts_cache_hits={summary.get('ts_cache_hits', 0)}")
+    print(f"  ts_cache_misses={summary.get('ts_cache_misses', 0)}")
+    print(f"  bun_invocations={summary.get('bun_invocations', 0)}")
     print(f"  diff_failures={summary.get('diff_failures', len(failed_cases))}")
-    print(f"  deduped_diff_failures={summary.get('deduped_diff_failures', len(failed_cases))}")
+    print(
+        f"  deduped_diff_failures={summary.get('deduped_diff_failures', len(failed_cases))}"
+    )
     for mode, count in summary.get("per_mode_failures", {}).items():
         print(f"  {mode}: {count}")
     if failed_cases:
         print()
         print("failed cases:")
         for case_id, info in sorted(failed_cases.items()):
-            print(f"  {case_id} => mode={info.get('mode', '?')} idx={info.get('idx', -1)}")
+            print(
+                f"  {case_id} => mode={info.get('mode', '?')} idx={info.get('idx', -1)}"
+            )
 
 
 def _print_conclusion(changes):
     any_improved = any(c["change"] in ("IMPROVED", "FIXED_CASE") for c in changes)
-    any_regressed = any(c["change"] in ("REGRESSED", "NEW_FAILED_CASE") for c in changes)
+    any_regressed = any(
+        c["change"] in ("REGRESSED", "NEW_FAILED_CASE") for c in changes
+    )
     if any_improved and not any_regressed:
         print("结论: 修改有效 (有改进且无退步)，可进行 commit 提交")
     elif any_regressed:
@@ -291,10 +361,15 @@ def _print_checkpoint_comparison(current_records: dict, quiet: bool):
     cp_name = cp.get("name", "?")
     cp_time = cp.get("time", "?")
     cp_records = cp.get("records", {})
-    changes = compare_records(current_records, cp_records)
+    scope_mismatches = find_scope_mismatches(current_records, cp_records)
 
     print()
     print(f'--- vs 存档点 "{cp_name}" ({cp_time}) ---')
+    if scope_mismatches:
+        print_scope_mismatches(scope_mismatches)
+        return
+
+    changes = compare_records(current_records, cp_records)
     if not quiet:
         print_changes(changes)
     _print_conclusion(changes)
@@ -303,20 +378,27 @@ def _print_checkpoint_comparison(current_records: dict, quiet: bool):
 def print_changes(changes: list):
     for change in changes:
         if change["change"] == "IMPROVED":
-            print(f"[改进] {change['case']} ({change['mode']}): idx {change['prev_idx']} -> {change['idx']}")
+            print(
+                f"[改进] {change['case']} ({change['mode']}): idx {change['prev_idx']} -> {change['idx']}"
+            )
         elif change["change"] == "REGRESSED":
-            print(f"[退步] {change['case']} ({change['mode']}): idx {change['prev_idx']} -> {change['idx']}")
+            print(
+                f"[退步] {change['case']} ({change['mode']}): idx {change['prev_idx']} -> {change['idx']}"
+            )
         elif change["change"] == "NEW_FAILED_CASE":
-            print(f"[新失败] {change['case']} ({change['mode']}): idx={change.get('idx', -1)}")
+            print(
+                f"[新失败] {change['case']} ({change['mode']}): idx={change.get('idx', -1)}"
+            )
         elif change["change"] == "FIXED_CASE":
-            print(f"[修复] {change['case']} ({change['mode']}): 上次 idx={change.get('prev_idx', -1)}")
+            print(
+                f"[修复] {change['case']} ({change['mode']}): 上次 idx={change.get('prev_idx', -1)}"
+            )
 
 
 def run_miner(args):
     cmd = [
         "cargo",
         "run",
-        "--quiet",
         "--release",
         "--features",
         "no_debug",
@@ -333,9 +415,13 @@ def run_miner(args):
         args.modes,
         "--ffa-sizes",
         args.ffa_sizes,
+        "--case-offset-per-mode",
+        str(args.case_offset_per_mode),
         "--max-cases-per-mode",
         str(args.max_cases_per_mode),
     ]
+    if args.quiet:
+        cmd.insert(2, "--quiet")
     if args.keep_going:
         cmd.append("--keep-going")
 
@@ -345,15 +431,17 @@ def run_miner(args):
     env["TSWN_CASE_MINER_TS_CACHE_DIR"] = str(args.shared_cache_dir_path / "ts_trace")
     env["TSWN_CASE_MINER_BUN_CACHE_DIR"] = str(args.bun_cache_dir_path)
 
-    result = subprocess.run(
-        cmd,
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-    )
+    kwargs = {
+        "cwd": str(PROJECT_ROOT),
+        "env": env,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+    if args.quiet:
+        kwargs["capture_output"] = True
+
+    result = subprocess.run(cmd, **kwargs)
     return result
 
 
@@ -416,9 +504,14 @@ def cmd_diff(name):
     cp_records = cp_data.get("records", {})
     cp_name = cp_data.get("name", "?")
     cp_time = cp_data.get("time", "?")
-    changes = compare_records(current, cp_records)
 
     print(f'--- vs 存档点 "{cp_name}" ({cp_time}) ---')
+    scope_mismatches = find_scope_mismatches(current, cp_records)
+    if scope_mismatches:
+        print_scope_mismatches(scope_mismatches)
+        return
+
+    changes = compare_records(current, cp_records)
     print_changes(changes)
     _print_conclusion(changes)
 
@@ -434,38 +527,70 @@ def cmd_delete(name):
 
 def main():
     parser = argparse.ArgumentParser(description="tswn_case_miner 回归追踪工具")
-    parser.add_argument("--library", type=Path, default=DEFAULT_LIBRARY, help=f"号库文件路径 (default: {DEFAULT_LIBRARY})")
+    parser.add_argument(
+        "--library",
+        type=Path,
+        default=DEFAULT_LIBRARY,
+        help=f"号库文件路径 (default: {DEFAULT_LIBRARY})",
+    )
     parser.add_argument(
         "--md5-tool",
         type=Path,
         default=DEFAULT_MD5_TOOL,
         help=f"out_md5.ts 路径 (default: {DEFAULT_MD5_TOOL if DEFAULT_MD5_TOOL else '自动推导'})",
     )
-    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR, help=f"miner 输出目录 (default: {DEFAULT_OUT_DIR})")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=DEFAULT_OUT_DIR,
+        help=f"miner 输出目录 (default: {DEFAULT_OUT_DIR})",
+    )
     parser.add_argument(
         "--shared-cache-dir",
         type=Path,
         default=DEFAULT_SHARED_CACHE_DIR,
         help=f"共享 bun/TS 缓存目录 (default: {DEFAULT_SHARED_CACHE_DIR})",
     )
-    parser.add_argument("--modes", default=DEFAULT_MODES, help=f"对战模式 (default: {DEFAULT_MODES})")
-    parser.add_argument("--ffa-sizes", default=DEFAULT_FFA_SIZES, help=f"ffa 人数列表 (default: {DEFAULT_FFA_SIZES})")
+    parser.add_argument(
+        "--modes", default=DEFAULT_MODES, help=f"对战模式 (default: {DEFAULT_MODES})"
+    )
+    parser.add_argument(
+        "--ffa-sizes",
+        default=DEFAULT_FFA_SIZES,
+        help=f"ffa 人数列表 (default: {DEFAULT_FFA_SIZES})",
+    )
+    parser.add_argument(
+        "--case-offset-per-mode",
+        type=int,
+        default=DEFAULT_CASE_OFFSET_PER_MODE,
+        help=f"每种模式按稳定顺序跳过前多少个 case (default: {DEFAULT_CASE_OFFSET_PER_MODE})",
+    )
     parser.add_argument(
         "--max-cases-per-mode",
         type=int,
         default=DEFAULT_MAX_CASES_PER_MODE,
         help=f"每种模式最多生成多少 case (default: {DEFAULT_MAX_CASES_PER_MODE})",
     )
-    parser.add_argument("--keep-going", action="store_true", help="单个 case 失败时继续")
-    parser.add_argument("-s", "--show", action="store_true", help="只显示当前失败状态，不运行 miner")
+    parser.add_argument(
+        "--keep-going", action="store_true", help="单个 case 失败时继续"
+    )
+    parser.add_argument(
+        "-s", "--show", action="store_true", help="只显示当前失败状态，不运行 miner"
+    )
     parser.add_argument("-r", "--reset", action="store_true", help="重置历史记录")
-    parser.add_argument("-q", "--quiet", action="store_true", help="安静模式，只输出关键信息")
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", help="安静模式，只输出关键信息"
+    )
     subparsers = parser.add_subparsers(dest="command")
     save_parser = subparsers.add_parser("save", help="将当前记录保存为存档点")
-    save_parser.add_argument("name", nargs="?", default=None, help="存档点名称 (默认用时间戳)")
+    save_parser.add_argument(
+        "name", nargs="?", default=None, help="存档点名称 (默认用时间戳)"
+    )
     subparsers.add_parser("list", help="列出所有存档点")
     diff_parser = subparsers.add_parser("diff", help="对比当前记录与指定存档点")
-    diff_parser.add_argument("name", nargs="?", default=None, help="存档点名称 (默认最近)")
+    diff_parser.add_argument(
+        "name", nargs="?", default=None, help="存档点名称 (默认最近)"
+    )
     delete_parser = subparsers.add_parser("delete", help="删除指定存档点")
     delete_parser.add_argument("name", help="存档点名称")
     args = parser.parse_args()
@@ -492,6 +617,11 @@ def main():
         print_current_status(load_previous_records())
         return
 
+    if args.case_offset_per_mode < 0:
+        parser.error("--case-offset-per-mode 必须 >= 0")
+    if args.max_cases_per_mode <= 0:
+        parser.error("--max-cases-per-mode 必须 > 0")
+
     args.library_path = _resolve_runtime_path(args.library)
     args.out_dir_path = _resolve_runtime_path(args.out_dir)
     args.shared_cache_dir_path = _resolve_runtime_path(args.shared_cache_dir)
@@ -501,7 +631,9 @@ def main():
     if not args.library_path.is_file():
         parser.error(f"号库文件不存在: {args.library_path}")
     if args.md5_tool_path is None:
-        parser.error("运行 miner 时必须提供 --md5-tool，或保证默认 fast-namerena 路径可自动推导")
+        parser.error(
+            "运行 miner 时必须提供 --md5-tool，或保证默认 fast-namerena 路径可自动推导"
+        )
     if not args.md5_tool_path.is_file():
         parser.error(f"md5 工具文件不存在: {args.md5_tool_path}")
 
@@ -514,9 +646,15 @@ def main():
         print(f"md5 tool: {args.md5_tool_path}")
         print(f"shared cache: {args.shared_cache_dir_path}")
         print(f"bun cache: {args.bun_cache_dir_path}")
+        print(f"case offset per mode: {args.case_offset_per_mode}")
+        print(f"max cases per mode: {args.max_cases_per_mode}")
         print()
+        print("准备阶段: 启动 cargo run（这里可能会出现 Rust 编译输出）")
     else:
-        print(f"[track_case_miner] 运行 miner: {args.library_path}")
+        print(
+            f"[track_case_miner] 运行 miner: {args.library_path} "
+            f"(offset={args.case_offset_per_mode}, max={args.max_cases_per_mode})"
+        )
 
     result = run_miner(args)
     if result.returncode != 0:
@@ -536,23 +674,41 @@ def main():
 
     current_records = summarize_run(summary, args)
     previous_records = load_previous_records()
-    changes = compare_records(current_records, previous_records)
+    scope_mismatches = find_scope_mismatches(current_records, previous_records)
+    changes = (
+        [] if scope_mismatches else compare_records(current_records, previous_records)
+    )
 
     if not args.quiet:
+        print()
+        print("收尾阶段: 读取 summary.json 并比较结果")
         print("--- vs 上次运行 ---")
-        print_changes(changes)
+        if scope_mismatches:
+            print_scope_mismatches(scope_mismatches)
+        else:
+            print_changes(changes)
         print()
         print("=" * 40)
         print("  汇总")
         print("=" * 40)
+        print(f"TS cache hit: {current_records['summary'].get('ts_cache_hits', 0)}")
+        print(f"TS cache miss: {current_records['summary'].get('ts_cache_misses', 0)}")
+        print(
+            f"bun invocations: {current_records['summary'].get('bun_invocations', 0)}"
+        )
         print(f"failed case: {current_records['summary'].get('diff_failures', 0)}")
-        print(f"deduped failed case: {current_records['summary'].get('deduped_diff_failures', 0)}")
+        print(
+            f"deduped failed case: {current_records['summary'].get('deduped_diff_failures', 0)}"
+        )
         print(f"TS failures: {current_records['summary'].get('ts_failures', 0)}")
         print(f"Rust failures: {current_records['summary'].get('rust_failures', 0)}")
     else:
         print("--- vs 上次运行 ---")
 
-    _print_conclusion(changes)
+    if scope_mismatches:
+        print("结论: 比较范围已变化，本次结果不与上次直接判优劣")
+    else:
+        _print_conclusion(changes)
     _print_checkpoint_comparison(current_records, args.quiet)
 
     save_records(current_records)
