@@ -142,7 +142,11 @@ impl StateTrait for HasteState {
 
     fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) { status.speed *= self.faster; }
 
-    fn post_action_priority(&self) -> i32 { 200 }
+    // JS 中 HasteState 同样通过 PostActionImpl 包装；而 PostActionImpl.ga4() = Infinity，
+    // 会被追加到统一 x2/post_action 链尾。
+    // Rust 若把它放在普通状态层(如 200)，就会把“从疾走中解除”提前到潜行/背刺之前，
+    // 正是当前剩余 failed case 里出现的顺序偏差。
+    fn post_action_priority(&self) -> i32 { 210 }
 
     fn on_post_action(
         &mut self,

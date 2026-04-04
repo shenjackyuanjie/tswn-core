@@ -35,7 +35,7 @@ impl SkillTrait for AssassinateSkill {
     fn uses_custom_target_selection(&self) -> bool { false }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
-        if self.target.is_some() {
+        if self.on_pre_action.is_some() {
             return true;
         }
         if smart && args.3.get_player(&args.0).map(|p| p.has_state::<PoisonState>()).unwrap_or(false) {
@@ -84,8 +84,10 @@ impl SkillTrait for AssassinateSkill {
     }
 
     fn select_targets_with_level(&self, level: u32, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
-        if let Some(target) = self.target {
-            if args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
+        if self.on_pre_action.is_some() {
+            if let Some(target) = self.target
+                && args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false)
+            {
                 return vec![target];
             }
             return Vec::new();
@@ -178,21 +180,25 @@ impl SkillTrait for AssassinateSkill {
             .defned(atp, true, args.0, on_assassinate as OnDamageFunc, args.1, args.2, args.3);
     }
 
-    fn pre_action(&mut self, _args: SkillArgs) {
-        if self.target.is_some() {
-            self.on_pre_action = Some(());
-        }
-    }
+    fn pre_action(&mut self, _args: SkillArgs) {}
 
     fn pre_action_clear_forced(&mut self, _smart: bool, args: SkillArgs) -> bool {
         let Some(target) = self.target else {
             return false;
         };
-        !args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false)
+        if !args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
+            self.clear_pending();
+            return true;
+        }
+        false
     }
 
     fn pre_action_select(&mut self, _smart: bool, args: SkillArgs) -> bool {
+        if self.on_pre_action.is_none() {
+            return false;
+        }
         let Some(target) = self.target else {
+            self.clear_pending();
             return false;
         };
         if args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
