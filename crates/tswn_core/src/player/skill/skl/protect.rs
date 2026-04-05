@@ -55,6 +55,8 @@ fn effective_alive_group(storage: &Arc<crate::engine::storage::Storage>, plr: Pl
 impl StateTrait for ProtectState {
     fn meta_type(&self) -> i32 { 0 }
 
+    fn clear_updates_status(&self) -> bool { false }
+
     #[allow(clippy::too_many_arguments)]
     fn on_pre_defend(
         &mut self,

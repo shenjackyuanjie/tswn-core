@@ -563,12 +563,7 @@ impl Player {
                 .ordered_post_action_tags_with_order()
                 .into_iter()
                 .map(|(tag, order)| {
-                    let priority = self
-                        .state
-                        .states
-                        .get(&tag)
-                        .map(|state| state.post_action_priority())
-                        .unwrap_or_default();
+                    let priority = self.state.states.get(&tag).map(|state| state.post_action_priority()).unwrap_or_default();
                     format!("{:?}@{}#{}", tag, priority, order)
                 })
                 .collect::<Vec<String>>();
@@ -963,11 +958,38 @@ impl Player {
         storage: &Arc<Storage>,
         targets: &ActionTargets,
     ) -> Option<PlrId> {
+        #[cfg(not(feature = "no_debug"))]
+        let debug_action_this = crate::debug::debug_action_matches(&self.id_name());
         let select_count = if smart { 3 } else { 2 };
         let mut selected: SmallVec<[PlrId; 4]> = SmallVec::new();
         let mut dup = 0usize;
         while dup <= select_count {
             let target_id = Self::pick_enemy_target(targets, randomer)?;
+            #[cfg(not(feature = "no_debug"))]
+            if debug_action_this {
+                let target_name = storage
+                    .get_player(&target_id)
+                    .map(|t| t.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!(
+                    "[default_pick] actor={} rc4=({}, {}) candidate={} target={} all_alive={:?} ally_alive={:?}",
+                    self.id_name(),
+                    randomer.i,
+                    randomer.j,
+                    selected.len(),
+                    target_name,
+                    targets
+                        .all_alive
+                        .iter()
+                        .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
+                        .collect::<Vec<String>>(),
+                    targets
+                        .ally_alive
+                        .iter()
+                        .map(|id| storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
+                        .collect::<Vec<String>>(),
+                );
+            }
             if selected.contains(&target_id) {
                 dup += 1;
                 continue;
@@ -1013,10 +1035,45 @@ impl Player {
                         }
                     })
                     .unwrap_or(f64::MIN);
+                #[cfg(not(feature = "no_debug"))]
+                if debug_action_this {
+                    let target_name = storage
+                        .get_player(&target_id)
+                        .map(|t| t.id_name())
+                        .unwrap_or_else(|| format!("#{target_id}"));
+                    eprintln!(
+                        "[default_score] actor={} rc4=({}, {}) target={} score={}",
+                        self.id_name(),
+                        randomer.i,
+                        randomer.j,
+                        target_name,
+                        score,
+                    );
+                }
                 (target_id, score)
             })
             .collect();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
+        #[cfg(not(feature = "no_debug"))]
+        if debug_action_this {
+            let ranked = scored
+                .iter()
+                .map(|(target_id, score)| {
+                    let target_name = storage
+                        .get_player(target_id)
+                        .map(|t| t.id_name())
+                        .unwrap_or_else(|| format!("#{target_id}"));
+                    format!("{target_name}:{score}")
+                })
+                .collect::<Vec<String>>();
+            eprintln!(
+                "[default_choice] actor={} rc4=({}, {}) ranked={:?}",
+                self.id_name(),
+                randomer.i,
+                randomer.j,
+                ranked
+            );
+        }
         scored.first().map(|x| x.0)
     }
 
@@ -1115,8 +1172,11 @@ impl Player {
 
     #[inline]
     pub fn clear_state<T: StateTrait + 'static>(&mut self) {
+        let should_update_states = self.get_state::<T>().map(|state| state.clear_updates_status()).unwrap_or(true);
         self.state.clear::<T>();
-        self.update_states();
+        if should_update_states {
+            self.update_states();
+        }
     }
 
     #[inline]
@@ -1155,10 +1215,13 @@ impl Player {
         let status_snapshot = self.status;
         let clear_tags = self.state.on_pre_step_states(self.as_ptr(), &status_snapshot, &mut step, updates);
         if !clear_tags.is_empty() {
+            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
             for tag in clear_tags {
                 self.state.clear_tag(tag);
             }
-            self.update_states();
+            if should_update_states {
+                self.update_states();
+            }
         }
         step
     }
@@ -1181,7 +1244,10 @@ impl Player {
                 if debug_post_action_this {
                     eprintln!(
                         "[post_action_deferred/before_state] owner={} skill_key={} cursor={} state_tag={:?} state_order={} rc4=({}, {})",
-                        storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                        storage
+                            .get_player(&owner_id)
+                            .map(|player| player.id_name())
+                            .unwrap_or_else(|| format!("#{}", owner_id)),
                         skill_key,
                         deferred[deferred_idx].0,
                         tag,
@@ -1195,7 +1261,10 @@ impl Player {
                 if debug_post_action_this {
                     eprintln!(
                         "[post_action_deferred/after_state] owner={} skill_key={} rc4=({}, {})",
-                        storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                        storage
+                            .get_player(&owner_id)
+                            .map(|player| player.id_name())
+                            .unwrap_or_else(|| format!("#{}", owner_id)),
                         skill_key,
                         randomer.i,
                         randomer.j,
@@ -1212,7 +1281,10 @@ impl Player {
                 if debug_post_action_this {
                     eprintln!(
                         "[post_action_state/break_battle_over] owner={} state_tag={:?} state_order={} rc4=({}, {})",
-                        storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                        storage
+                            .get_player(&owner_id)
+                            .map(|player| player.id_name())
+                            .unwrap_or_else(|| format!("#{}", owner_id)),
                         tag,
                         state_order,
                         randomer.i,
@@ -1224,12 +1296,7 @@ impl Player {
             #[cfg(not(feature = "no_debug"))]
             let rc4_before = (randomer.i, randomer.j);
             #[cfg(not(feature = "no_debug"))]
-            let priority = self
-                .state
-                .states
-                .get(&tag)
-                .map(|state| state.post_action_priority())
-                .unwrap_or_default();
+            let priority = self.state.states.get(&tag).map(|state| state.post_action_priority()).unwrap_or_default();
             let should_clear = self
                 .state
                 .states
@@ -1240,7 +1307,10 @@ impl Player {
             if debug_post_action_this {
                 eprintln!(
                     "[post_action_state] owner={} tag={:?} priority={} order={} clear={} alive={} rc4 {}:{} -> {}:{}",
-                    storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                    storage
+                        .get_player(&owner_id)
+                        .map(|player| player.id_name())
+                        .unwrap_or_else(|| format!("#{}", owner_id)),
                     tag,
                     priority,
                     state_order,
@@ -1262,7 +1332,10 @@ impl Player {
             if debug_post_action_this {
                 eprintln!(
                     "[post_action_deferred/tail_before] owner={} skill_key={} cursor={} rc4=({}, {})",
-                    storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                    storage
+                        .get_player(&owner_id)
+                        .map(|player| player.id_name())
+                        .unwrap_or_else(|| format!("#{}", owner_id)),
                     skill_key,
                     deferred[deferred_idx].0,
                     randomer.i,
@@ -1274,7 +1347,10 @@ impl Player {
             if debug_post_action_this {
                 eprintln!(
                     "[post_action_deferred/tail_after] owner={} skill_key={} rc4=({}, {})",
-                    storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                    storage
+                        .get_player(&owner_id)
+                        .map(|player| player.id_name())
+                        .unwrap_or_else(|| format!("#{}", owner_id)),
                     skill_key,
                     randomer.i,
                     randomer.j,
@@ -1283,18 +1359,24 @@ impl Player {
             deferred_idx += 1;
         }
         if !clear_tags.is_empty() {
+            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
             #[cfg(not(feature = "no_debug"))]
             if debug_post_action_this {
                 eprintln!(
                     "[post_action_clear_tags] owner={} clear_tags={:?}",
-                    storage.get_player(&owner_id).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", owner_id)),
+                    storage
+                        .get_player(&owner_id)
+                        .map(|player| player.id_name())
+                        .unwrap_or_else(|| format!("#{}", owner_id)),
                     clear_tags,
                 );
             }
             for tag in clear_tags {
                 self.state.clear_tag(tag);
             }
-            self.update_states();
+            if should_update_states {
+                self.update_states();
+            }
         }
     }
 
@@ -1324,10 +1406,13 @@ impl Player {
             self.state
                 .on_pre_defend_states(self.as_ptr(), &mut atp, is_mag, caster, on_damage, randomer, updates, storage);
         if !clear_tags.is_empty() {
+            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
             for tag in clear_tags {
                 self.state.clear_tag(tag);
             }
-            self.update_states();
+            if should_update_states {
+                self.update_states();
+            }
         }
         atp
     }
@@ -1551,10 +1636,13 @@ impl Player {
             );
             if atp == 0.0 {
                 if !clear_tags.is_empty() {
+                    let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
                     for tag in clear_tags {
                         self.state.clear_tag(tag);
                     }
-                    self.update_states();
+                    if should_update_states {
+                        self.update_states();
+                    }
                 }
                 return 0.0;
             }
@@ -1574,10 +1662,13 @@ impl Player {
             }
             if atp == 0.0 {
                 if !clear_tags.is_empty() {
+                    let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
                     for tag in clear_tags {
                         self.state.clear_tag(tag);
                     }
-                    self.update_states();
+                    if should_update_states {
+                        self.update_states();
+                    }
                 }
                 return 0.0;
             }
@@ -1595,10 +1686,13 @@ impl Player {
                 storage,
             ));
             if !clear_tags.is_empty() {
+                let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
                 for tag in clear_tags {
                     self.state.clear_tag(tag);
                 }
-                self.update_states();
+                if should_update_states {
+                    self.update_states();
+                }
             }
             if crate::debug::debug_damage() && (atp - atp_before_other_states).abs() > 0.001 {
                 eprintln!(

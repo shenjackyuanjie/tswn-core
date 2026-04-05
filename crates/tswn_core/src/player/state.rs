@@ -54,6 +54,7 @@ pub trait StateTrait: std::fmt::Debug + Send + Sync + 'static {
 
     fn meta_type(&self) -> i32 { 0 }
     fn clear_positive_priority(&self) -> i32 { 1000 }
+    fn clear_updates_status(&self) -> bool { true }
 
     fn action_mode_priority(&self) -> i32 { 1000 }
     fn on_action_mode(&self, _smart: bool, _forced_attack: &mut Option<crate::player::action_targets::ForcedAttackConfig>) {}
@@ -326,6 +327,11 @@ impl PlayerStateStore {
             );
         }
         self.remove_tag_internal(tag);
+    }
+
+    #[inline]
+    pub fn tag_clear_updates_status(&self, tag: StateTag) -> bool {
+        self.states.get(&tag).map(|state| state.clear_updates_status()).unwrap_or(true)
     }
 
     #[inline]
