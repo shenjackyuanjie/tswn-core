@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, UpdateType};
 use crate::player::{
-    PlrId, StateTrait,
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    PlrId, StateTrait,
 };
 use crate::rc4::RC4;
 
@@ -93,7 +93,7 @@ impl StateTrait for IronState {
     fn on_post_action(
         &mut self,
         owner: PlrId,
-        alive: bool,
+        _alive: bool,
         _randomer: &mut RC4,
         updates: &mut crate::engine::update::RunUpdates,
         storage: &Arc<Storage>,
@@ -111,7 +111,7 @@ impl StateTrait for IronState {
                 self.step,
                 self.protect,
                 storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
-                alive,
+                _alive,
             );
         }
         if self.step <= 0 {

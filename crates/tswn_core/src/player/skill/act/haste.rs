@@ -187,58 +187,15 @@ impl StateTrait for HasteState {
         alive: bool,
         _randomer: &mut crate::rc4::RC4,
         updates: &mut crate::engine::update::RunUpdates,
-        storage: &std::sync::Arc<crate::engine::storage::Storage>,
+        _storage: &std::sync::Arc<crate::engine::storage::Storage>,
     ) -> bool {
-        #[cfg(not(feature = "no_debug"))]
-        if crate::debug::debug_post_action()
-            && storage
-                .get_player(&owner)
-                .map(|player| crate::debug::debug_action_matches(&player.id_name()))
-                .unwrap_or(false)
-        {
-            eprintln!(
-                "[haste_post_action/before] owner={} step={} move_point={} alive={}",
-                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
-                self.step,
-                storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
-                alive,
-            );
-        }
         self.step -= 1;
         if self.step > 0 {
-            #[cfg(not(feature = "no_debug"))]
-            if crate::debug::debug_post_action()
-                && storage
-                    .get_player(&owner)
-                    .map(|player| crate::debug::debug_action_matches(&player.id_name()))
-                    .unwrap_or(false)
-            {
-                eprintln!(
-                    "[haste_post_action/after] owner={} step={} clear=false move_point={}",
-                    storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
-                    self.step,
-                    storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
-                );
-            }
             return false;
         }
         if alive {
             updates.emit(RunUpdate::new_newline);
             updates.emit(|| RunUpdate::new("[1]从[疾走]中解除", owner, owner, 0));
-        }
-        #[cfg(not(feature = "no_debug"))]
-        if crate::debug::debug_post_action()
-            && storage
-                .get_player(&owner)
-                .map(|player| crate::debug::debug_action_matches(&player.id_name()))
-                .unwrap_or(false)
-        {
-            eprintln!(
-                "[haste_post_action/after] owner={} step={} clear=true move_point={}",
-                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
-                self.step,
-                storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
-            );
         }
         true
     }

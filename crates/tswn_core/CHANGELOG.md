@@ -13,6 +13,16 @@
 - **CLI 内部模块化拆分**：将原本超长的 `tswn_cli.rs` 按职责拆成 `args` / `bench` / `fight` / `icon` 模块，主入口只保留 banner 和命令分发，降低继续维护 benchmark 与图标逻辑时的耦合。
 - **`bench win-rate` 结果重新对齐 JS 基准**：修复 benchmark 将排序后队伍误判成输入第一队的问题，并让 `run_to_completion()` 复用正常 `main_round()` 推进逻辑，消除高速路径与普通 fight 的胜者分叉；默认 `bench win-rate` 同时改为复刻 JS `ProfileWinChance` 的 seed 调度（首局无 seed，后续从 `seed:33554431@!` 开始），使默认模式重新对齐 `md5.js::win_rate`，而 `--keep-rq` 继续保持普通 `fight + seed:i@!` 语义用于对照。
 
+### 性能
+
+- **`no_debug` 下的 `win-rate` 速度补充验证**：
+  - `aaa` vs `bbb`、`100000` 场：Rust 单线程约 `2.749s`（`36379 场/s`），默认多线程约 `0.493s`（`202824 场/s`，相对单线程约 `5.57x`）；同样输入下 Bun `md5.js::win_rate` 约 `12.674s`（`7890 场/s`），Rust 单线程约快 `4.61x`，默认多线程约快 `25.71x`。
+  - `喘际瞬爆@昀澤` vs `蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall`、`100000` 场：Rust 单线程约 `4.247s`（`23545 场/s`），默认多线程约 `0.843s`（`118609 场/s`，相对单线程约 `5.04x`）；同样输入下 Bun `md5.js::win_rate` 约 `15.524s`（`6442 场/s`），Rust 单线程约快 `3.66x`，默认多线程约快 `18.41x`。两组样例中默认自动线程数都比强制 `-t 16` 更快，说明当前默认线程策略比直接拉满 `16` 线程更适合这类 `win-rate` workload。
+
+### 清理
+
+- **移除遗留的 `haste/iron` 调试输出并清空 `no_debug` 构建 warning**：删除 `crates/tswn_core/src/player/skill/act/haste.rs` 中只用于排查的 `haste_post_action` 调试输出，并同步整理 `crates/tswn_core/src/player/skill/act/iron.rs` 的未使用参数；`cargo build -p tswn_core --bin tswn-cli --release --features no_debug` 现已恢复到无 warning 通过。
+
 ### 验证
 
 - `cargo check -p tswn_core --bin tswn-cli`
