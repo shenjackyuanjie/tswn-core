@@ -195,6 +195,20 @@ impl Player {
 
     /// 更新状态
     pub fn update_states(&mut self) {
+        #[cfg(not(feature = "no_debug"))]
+        let debug_update_this = crate::debug::debug_action_matches(&self.id_name());
+        #[cfg(not(feature = "no_debug"))]
+        let before = if debug_update_this {
+            Some((
+                self.status.attack,
+                self.status.speed,
+                self.status.magic,
+                self.status.at_boost,
+                self.status.move_point,
+            ))
+        } else {
+            None
+        };
         // init values
         self.status.attack = self.scale_by_name_factor_i(self.attr[0] as i32, 128);
         self.status.defense = self.scale_by_name_factor_i(self.attr[1] as i32, 128);
@@ -215,6 +229,26 @@ impl Player {
         // JS 的 F() (updateStates) 遍历 rx 列表，其中包含 state 和 skill 的 update_state 回调。
         // apply_update_state_effects 已处理 state 回调，下面调用 skill 的 update_state 回调。
         self.skills.update_state_inline(&mut self.status);
+        #[cfg(not(feature = "no_debug"))]
+        if let Some((attack_before, speed_before, magic_before, boost_before, move_before)) = before {
+            eprintln!(
+                "[update_states] actor={} atk {}->{} spd {}->{} mag {}->{} boost {:.6}->{:.6} move={} hp={}",
+                self.id_name(),
+                attack_before,
+                self.status.attack,
+                speed_before,
+                self.status.speed,
+                magic_before,
+                self.status.magic,
+                boost_before,
+                self.status.at_boost,
+                move_before,
+                self.status.hp,
+            );
+            if std::env::var_os("TSWN_DEBUG_UPDATE_BT").is_some() {
+                eprintln!("[update_states_bt] {:?}", std::backtrace::Backtrace::capture());
+            }
+        }
     }
 
     /// 我真是谢谢您呢……

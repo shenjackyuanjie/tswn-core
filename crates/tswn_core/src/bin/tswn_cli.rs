@@ -711,6 +711,8 @@ fn print_fight_raw(runner: &mut Runner) {
     let mut pending_action_line = String::new();
     let mut pending_misc_lines: Vec<String> = Vec::new();
     let mut trace_names = TraceNameState::default();
+    let debug_raw_seq = std::env::var_os("TSWN_DEBUG_RAW_SEQ").is_some();
+    let mut raw_seq_idx = 0usize;
 
     let mut round = 1usize;
     let mut idle_rounds = 0usize;
@@ -727,6 +729,10 @@ fn print_fight_raw(runner: &mut Runner) {
 
         for update in updates.updates {
             if matches!(update.update_type, UpdateType::NextLine) {
+                if debug_raw_seq {
+                    eprintln!("[raw_seq/{raw_seq_idx}] <NextLine>");
+                    raw_seq_idx += 1;
+                }
                 emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
                 continue;
             }
@@ -734,6 +740,11 @@ fn print_fight_raw(runner: &mut Runner) {
             let line = normalize_trace_line(fmt_update_raw_with_state(runner, &update, &mut trace_names));
             if line.is_empty() {
                 continue;
+            }
+
+            if debug_raw_seq {
+                eprintln!("[raw_seq/{raw_seq_idx}] {line}");
+                raw_seq_idx += 1;
             }
 
             if is_action_line(&line) {

@@ -144,7 +144,10 @@ impl SkillTrait for AssassinateSkill {
             let (current_move, owner_magic, charge_active) = args
                 .3
                 .get_player(&args.0)
-                .map(|owner| (owner.move_point(), owner.get_status().magic, owner.get_status().at_boost >= 3.0))
+                .map(|owner| {
+                    let charge_active = owner.skills.store.get(&19).map(|skill| skill.charge_runtime_active()).unwrap_or(false);
+                    (owner.move_point(), owner.get_status().magic, charge_active)
+                })
                 .expect("cannot get assassinate owner from storage");
             if !charge_active {
                 self.on_post_damage = Some(());
@@ -164,7 +167,29 @@ impl SkillTrait for AssassinateSkill {
         }
         args.2.add(RunUpdate::new("[0]发动[背刺]", args.0, target_id, 1));
         let owner = args.3.get_player(&args.0).expect("cannot get assassinate owner from storage");
-        let atp = owner.get_at(true, args.1).max(owner.get_at(true, args.1)).max(owner.get_at(true, args.1)) * 4.0;
+        let at1 = owner.get_at(true, args.1);
+        let at2 = owner.get_at(true, args.1);
+        let at3 = owner.get_at(true, args.1);
+        let atp = at1.max(at2).max(at3) * 4.0;
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_action_matches(&owner.id_name()) {
+            let target_name = args
+                .3
+                .get_player(&target_id)
+                .map(|p| p.id_name())
+                .unwrap_or_else(|| format!("#{target_id}"));
+            eprintln!(
+                "[assassinate_atp] actor={} target={} at1={} at2={} at3={} atp={} rc4=({}, {})",
+                owner.id_name(),
+                target_name,
+                at1,
+                at2,
+                at3,
+                atp,
+                args.1.i,
+                args.1.j,
+            );
+        }
         let dodged = args
             .3
             .get_player(&target_id)

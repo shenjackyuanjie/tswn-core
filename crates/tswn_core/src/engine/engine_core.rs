@@ -216,9 +216,11 @@ impl EngineCore {
         {
             let bytes = (ctx.randomer.i as i32 - rc4_before.0 as i32).rem_euclid(256);
             eprintln!(
-                "[tick_end] actor={} id={} rc4=({},{})->({},{}) bytes={}",
+                "[tick_end] actor={} id={} mp_after={} hp_after={} rc4=({},{})->({},{}) bytes={}",
                 plr.id_name(),
                 actor,
+                plr.move_point(),
+                plr.get_status().hp,
                 rc4_before.0,
                 rc4_before.1,
                 ctx.randomer.i,

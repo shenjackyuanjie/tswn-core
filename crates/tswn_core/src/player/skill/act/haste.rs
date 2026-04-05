@@ -81,10 +81,27 @@ impl SkillTrait for HasteSkill {
         let charge_active = args
             .3
             .get_player(&args.0)
-            .expect("cannot get haste owner from storage")
-            .get_status()
-            .at_boost
-            >= 3.0;
+            .and_then(|owner| owner.skills.store.get(&19))
+            .map(|skill| skill.charge_runtime_active())
+            .unwrap_or(false);
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_post_action() {
+            let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0));
+            let target_name = args
+                .3
+                .get_player(&target_id)
+                .map(|p| p.id_name())
+                .unwrap_or_else(|| format!("#{}", target_id));
+            if crate::debug::debug_action_matches(&owner_name) || crate::debug::debug_action_matches(&target_name) {
+                eprintln!(
+                    "[haste_act] owner={} target={} charge_active={} owner_boost={:.6}",
+                    owner_name,
+                    target_name,
+                    charge_active,
+                    args.3.get_player(&args.0).map(|p| p.get_status().at_boost).unwrap_or_default(),
+                );
+            }
+        }
 
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get haste owner from storage");
         owner.set_move_point(owner.move_point() + owner.get_status().speed);
@@ -105,6 +122,22 @@ impl SkillTrait for HasteSkill {
             let state = target.get_state_mut::<HasteState>().expect("haste state should exist after apply");
             state.faster += 2;
             state.step += 2;
+        }
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_post_action() {
+            let owner_name = args.3.get_player(&args.0).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", args.0));
+            let target_name = args
+                .3
+                .get_player(&target_id)
+                .map(|p| p.id_name())
+                .unwrap_or_else(|| format!("#{}", target_id));
+            if crate::debug::debug_action_matches(&owner_name) || crate::debug::debug_action_matches(&target_name) {
+                let state = args.3.get_player(&target_id).and_then(|p| p.get_state::<HasteState>()).copied();
+                eprintln!(
+                    "[haste_act/result] owner={} target={} state={:?}",
+                    owner_name, target_name, state
+                );
+            }
         }
         args.2.add(RunUpdate::new("[1]进入[疾走]状态", args.0, target_id, 0));
     }
@@ -154,15 +187,58 @@ impl StateTrait for HasteState {
         alive: bool,
         _randomer: &mut crate::rc4::RC4,
         updates: &mut crate::engine::update::RunUpdates,
-        _storage: &std::sync::Arc<crate::engine::storage::Storage>,
+        storage: &std::sync::Arc<crate::engine::storage::Storage>,
     ) -> bool {
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_post_action()
+            && storage
+                .get_player(&owner)
+                .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+                .unwrap_or(false)
+        {
+            eprintln!(
+                "[haste_post_action/before] owner={} step={} move_point={} alive={}",
+                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                self.step,
+                storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
+                alive,
+            );
+        }
         self.step -= 1;
         if self.step > 0 {
+            #[cfg(not(feature = "no_debug"))]
+            if crate::debug::debug_post_action()
+                && storage
+                    .get_player(&owner)
+                    .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+                    .unwrap_or(false)
+            {
+                eprintln!(
+                    "[haste_post_action/after] owner={} step={} clear=false move_point={}",
+                    storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                    self.step,
+                    storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
+                );
+            }
             return false;
         }
         if alive {
             updates.emit(RunUpdate::new_newline);
             updates.emit(|| RunUpdate::new("[1]从[疾走]中解除", owner, owner, 0));
+        }
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_post_action()
+            && storage
+                .get_player(&owner)
+                .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+                .unwrap_or(false)
+        {
+            eprintln!(
+                "[haste_post_action/after] owner={} step={} clear=true move_point={}",
+                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                self.step,
+                storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
+            );
         }
         true
     }

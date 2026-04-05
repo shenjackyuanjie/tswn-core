@@ -154,6 +154,8 @@ impl WorldState {
         self.remove_alive(plr);
 
         if let Some(idx) = self.players.iter().position(|x| *x == plr) {
+            #[cfg(not(feature = "no_debug"))]
+            let round_pos_before = self.round_pos;
             // 对齐 JS Engine.dj():
             //   if (s.ch <= __idx) --s.ch
             // 其中 ch 指向“刚刚被选中的 actor 下标”。
@@ -161,6 +163,17 @@ impl WorldState {
             // 需要把 round_pos 左移一格，保证下一次 next_round_index() 取到与 JS 相同的实体。
             if idx as i32 >= self.round_pos {
                 self.round_pos -= 1;
+            }
+            #[cfg(not(feature = "no_debug"))]
+            if std::env::var_os("TSWN_DEBUG_WORLD").is_some() {
+                eprintln!(
+                    "[remove_player] plr={} idx={} round_pos_before={} round_pos_after={} players_len_before={}",
+                    plr,
+                    idx,
+                    round_pos_before,
+                    self.round_pos,
+                    self.players.len(),
+                );
             }
             self.players.remove(idx);
             self.players_set.remove(&plr);

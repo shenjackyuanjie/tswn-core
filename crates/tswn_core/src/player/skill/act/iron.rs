@@ -98,11 +98,42 @@ impl StateTrait for IronState {
         updates: &mut crate::engine::update::RunUpdates,
         storage: &Arc<Storage>,
     ) -> bool {
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_post_action()
+            && storage
+                .get_player(&owner)
+                .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+                .unwrap_or(false)
+        {
+            eprintln!(
+                "[iron_post_action/before] owner={} step={} protect={} move_point={} alive={}",
+                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                self.step,
+                self.protect,
+                storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
+                alive,
+            );
+        }
         if self.step <= 0 {
             return true;
         }
         self.step -= 1;
         if self.step > 0 {
+            #[cfg(not(feature = "no_debug"))]
+            if crate::debug::debug_post_action()
+                && storage
+                    .get_player(&owner)
+                    .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+                    .unwrap_or(false)
+            {
+                eprintln!(
+                    "[iron_post_action/after] owner={} step={} protect={} clear=false move_point={}",
+                    storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                    self.step,
+                    self.protect,
+                    storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
+                );
+            }
             return false;
         }
 
@@ -112,6 +143,21 @@ impl StateTrait for IronState {
         // JS 的 SklIron.K(null, b) 不检查 alive，始终发出"从铁壁中解除"。
         updates.emit(RunUpdate::new_newline);
         updates.emit(|| RunUpdate::new("[1]从[铁壁]中解除", owner, owner, 0));
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_post_action()
+            && storage
+                .get_player(&owner)
+                .map(|player| crate::debug::debug_action_matches(&player.id_name()))
+                .unwrap_or(false)
+        {
+            eprintln!(
+                "[iron_post_action/after] owner={} step={} protect={} clear=true move_point={}",
+                storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
+                self.step,
+                self.protect,
+                storage.get_player(&owner).map(|p| p.move_point()).unwrap_or_default(),
+            );
+        }
         true
     }
 

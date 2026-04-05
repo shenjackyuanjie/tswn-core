@@ -278,6 +278,10 @@ pub trait SkillTrait: Debug + Send + Sync {
     }
     fn clear_positive_runtime_priority(&self) -> i32 { 1000 }
 
+    /// 仅供少数需要复用 JS meta("charge") 语义的技能查询。
+    /// 默认关闭，只有 ChargeSkill 会在其运行时生效期间返回 true。
+    fn charge_runtime_active(&self) -> bool { false }
+
     /// 声明该技能注册到哪些流程
     fn proc_kinds(&self) -> &[ProcKind] { &[] }
 
@@ -631,6 +635,8 @@ impl Skill {
     pub fn has_action_impl(&self) -> bool { self.skill_type.has_action_impl() }
 
     pub fn clear_positive_runtime_priority(&self) -> i32 { self.skill_type.clear_positive_runtime_priority() }
+
+    pub fn charge_runtime_active(&self) -> bool { self.skill_type.charge_runtime_active() }
 
     pub fn debug_skill_type_name(&self) -> &'static str { type_name_of_val(self.skill_type.as_ref()) }
 }

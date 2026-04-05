@@ -332,7 +332,10 @@ impl SkillStorage {
                 let (before_i, before_j) = rc4_before.unwrap_or((0, 0));
                 eprintln!(
                     "[pre_action_skill] owner={} key={} type={} smart={} clear_forced={} selected={} forced_skill={:?} clear_forced_action={} rc4 {}:{} -> {}:{}",
-                    args.3.get_player(&args.0).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                    args.3
+                        .get_player(&args.0)
+                        .map(|player| player.id_name())
+                        .unwrap_or_else(|| format!("#{}", args.0)),
                     skill_key,
                     skill_name,
                     smart,
@@ -350,7 +353,10 @@ impl SkillStorage {
         if debug_this {
             eprintln!(
                 "[pre_action_result] owner={} forced_skill={:?} clear_forced_action={}",
-                args.3.get_player(&args.0).map(|player| player.id_name()).unwrap_or_else(|| format!("#{}", args.0)),
+                args.3
+                    .get_player(&args.0)
+                    .map(|player| player.id_name())
+                    .unwrap_or_else(|| format!("#{}", args.0)),
                 forced_skill,
                 clear_forced_action,
             );

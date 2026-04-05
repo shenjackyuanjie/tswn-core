@@ -110,5 +110,7 @@ impl SkillTrait for ChargeSkill {
 
     fn clear_positive_runtime_priority(&self) -> i32 { 200 }
 
+    fn charge_runtime_active(&self) -> bool { self.on_update_state.is_some() }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
 }
