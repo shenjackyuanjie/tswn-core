@@ -1,5 +1,24 @@
 # 更新日志
 
+## [0.2.9] - 2026-04-05
+
+### 修复
+
+- **修复 Protect 防御链提前刷新疾走倍率**：`ProtectState` 相关的 `pre_defend` 清态路径不再无条件 `update_states()`，改为只有在被清除状态确实影响属性时才重算。这样可以避免把 `HasteState` 的延迟倍率提前刷进 `speed`，修复 `3v3v3` 大样本中由此引发的行动顺序漂移、默认攻击目标偏移和后续 RC4 连锁分歧。
+- **Reraise 继续保持 JS 语义**：`Reraise` 仍然只在当前死亡链中直接回 HP，不额外排一次 revival/sync；补充中文注释说明这个选择已经过全量 `1w2 case` 验证，避免后续误改回错误同步路径。
+
+### 调试与排查
+
+- **补充定向调试探针**：保留了 `raw update`、`tick_end`、`update_states`、`haste/iron/assassinate/default attack` 等窗口探针，便于继续对照 `md5.js` 排查随机流、状态刷新和选技链路差异。所有探针默认受环境变量控制，不影响正常运行。
+- **补充 md5.js 对照注释**：在 `fast-namerena/branch/latest/md5.js` 中补充了 `Reraise`、`Haste`、默认攻击等关键逻辑的说明，降低下一轮继续对账时的阅读成本。
+
+### 验证
+
+- `cargo +nightly fmt --package tswn_core`
+- `cargo test -p tswn_core --lib`
+- `python .\track_case_miner.py -q --modes 1v1,2v2,3v3v3,ffa --ffa-sizes 4,6,8 --case-offset-per-mode 0 --max-cases-per-mode 2000 --keep-going`
+- 固定大样本结果：`diff_failures = 0`、`ts_failures = 0`、`rust_failures = 0`
+
 ## [0.2.8] - 2026-04-05
 
 ### 调试与排查
