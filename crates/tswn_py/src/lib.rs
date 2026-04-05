@@ -6,9 +6,9 @@
 pub mod wrapper;
 
 use pyo3::{
-    Bound, PyResult, pyfunction, pymodule,
+    pyfunction, pymodule,
     types::{PyModule, PyModuleMethods},
-    wrap_pyfunction,
+    wrap_pyfunction, Bound, PyResult,
 };
 
 /// tswn-py 的版本字符串
@@ -36,6 +36,7 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(name_to_png_base64, m)?)?;
     m.add_function(wrap_pyfunction!(name_to_png_bytes, m)?)?;
     m.add_class::<wrapper::PyRunner>()?;
+    m.add_class::<wrapper::PyPreparedRunner>()?;
     m.add_class::<wrapper::PyWorldState>()?;
     m.add_class::<wrapper::PyStorage>()?;
     m.add_class::<wrapper::PyRunUpdate>()?;

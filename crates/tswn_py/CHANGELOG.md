@@ -1,5 +1,26 @@
 # 更新日志
 
+## [0.1.8] - 2026-04-05
+
+### 新增
+
+- `Runner` 新增：
+  - `new_from_groups_with_seed_and_eval_rq(groups, seed, eval_rq)`
+  - `prepare_groups(groups)`
+  - `prepare_groups_with_eval_rq(groups, eval_rq)`
+  - `new_from_prepared_with_seed(prepared, seed)`
+- 新增 `PreparedRunner` 类型，用于复用预处理后的分组输入。
+- `Runner` 新增 `input_groups` 属性，暴露原始输入顺序对应的队伍 roster。
+- `Storage` 新增 `eval_rq` 属性。
+- 新增 Python examples：
+  - `examples/runner_prepared.py`
+  - `examples/runner_eval_rq.py`
+
+### 变更
+
+- 将 `tswn_py.pyi` 拆分为多个较短的 stub 文件，减少单文件维护成本。
+- 更新类型存根以对齐 `tswn_core` 新公开的 runner / storage API。
+
 ## [0.1.7] - 2026-03-22
 
 - 去掉了某些文字

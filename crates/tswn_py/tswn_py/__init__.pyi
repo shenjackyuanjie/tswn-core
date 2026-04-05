@@ -8,6 +8,7 @@ tswn_py 包顶层类型存根。
 
 from ._version import __version__ as __version__
 from .tswn_py import (
+    PreparedRunner as PreparedRunner,
     RunnerError as RunnerError,
     RunUpdate as RunUpdate,
     RunUpdates as RunUpdates,
@@ -25,6 +26,7 @@ from .tswn_py import (
 __all__ = [
     "__version__",
     "RunnerError",
+    "PreparedRunner",
     "RunUpdate",
     "RunUpdates",
     "Runner",

@@ -2,16 +2,30 @@
 
 use std::sync::Arc;
 
-use pyo3::{PyResult, pyclass, pymethods};
+use pyo3::{pyclass, pymethods, PyResult};
 use tswn_core::{
-    RunUpdate, RunUpdates, Runner,
     engine::{storage::Storage, update::UpdateType, world_state::WorldState},
     player::PlrId,
+    PreparedRunner as CorePreparedRunner, RunUpdate, RunUpdates, Runner,
 };
 
 pub mod error;
 pub mod player;
 pub mod rc4;
+
+/// Python Wrapper for PreparedRunner
+#[pyclass]
+#[pyo3(name = "PreparedRunner")]
+pub struct PyPreparedRunner {
+    pub inner: CorePreparedRunner,
+}
+
+#[pymethods]
+impl PyPreparedRunner {}
+
+impl From<CorePreparedRunner> for PyPreparedRunner {
+    fn from(value: CorePreparedRunner) -> Self { Self { inner: value } }
+}
 
 /// Python Wrapper for Runner
 #[pyclass]
@@ -38,6 +52,34 @@ impl PyRunner {
     fn new_from_groups_with_seed(groups: Vec<Vec<String>>, seed: Vec<String>) -> PyResult<Self> {
         Ok(Self {
             inner: Runner::new_from_groups_with_seed(&groups, &seed).map_err(error::PyRunnerError::new)?,
+        })
+    }
+
+    #[staticmethod]
+    fn new_from_groups_with_seed_and_eval_rq(groups: Vec<Vec<String>>, seed: Vec<String>, eval_rq: f64) -> PyResult<Self> {
+        Ok(Self {
+            inner: Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq).map_err(error::PyRunnerError::new)?,
+        })
+    }
+
+    #[staticmethod]
+    fn prepare_groups(groups: Vec<Vec<String>>) -> PyResult<PyPreparedRunner> {
+        Runner::prepare_groups(&groups)
+            .map(Into::into)
+            .map_err(|err| error::PyRunnerError::new(err).into())
+    }
+
+    #[staticmethod]
+    fn prepare_groups_with_eval_rq(groups: Vec<Vec<String>>, eval_rq: f64) -> PyResult<PyPreparedRunner> {
+        Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
+            .map(Into::into)
+            .map_err(|err| error::PyRunnerError::new(err).into())
+    }
+
+    #[staticmethod]
+    fn new_from_prepared_with_seed(prepared: &PyPreparedRunner, seed: Vec<String>) -> PyResult<Self> {
+        Ok(Self {
+            inner: Runner::new_from_prepared_with_seed(&prepared.inner, &seed).map_err(error::PyRunnerError::new)?,
         })
     }
 
@@ -71,6 +113,10 @@ impl PyRunner {
     /// 获取当前的 WorldState
     #[getter]
     pub fn get_world_state(&self) -> PyWorldState { self.inner.world.clone().into() }
+
+    /// 返回原始输入顺序对应的队伍 roster（不受内部排序影响）
+    #[getter]
+    pub fn get_input_groups(&self) -> Vec<Vec<PlrId>> { self.inner.input_groups.clone() }
 
     /// 获取当前的 rc4
     #[getter]
@@ -219,6 +265,9 @@ impl PyStorage {
 
     #[getter]
     pub fn get_current_plr_id(&self) -> PlrId { self.inner.current_plr_id() as PlrId }
+
+    #[getter]
+    pub fn get_eval_rq(&self) -> f64 { self.inner.eval_rq() }
 }
 
 impl From<Arc<Storage>> for PyStorage {
