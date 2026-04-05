@@ -83,6 +83,8 @@ pub struct Runner {
     pub storage: Arc<Storage>,
     /// 世界状态。
     pub world: WorldState,
+    /// 原始输入顺序对应的队伍 roster（不受 sort 后 world.teams 顺序影响）。
+    pub input_groups: Vec<Vec<PlrId>>,
     /// 新架构下的引擎核心流程。
     core: EngineCore,
 }
@@ -265,6 +267,8 @@ impl Runner {
             plr.sort_int = randomer.rFFFFFF() as i32;
         }
 
+        let input_groups = inited_plrs.clone();
+
         for group in &mut inited_plrs {
             group.sort_by(|a, b| {
                 let plr_a = storage.get_player(a).expect("plr not found when sort group member");
@@ -327,6 +331,7 @@ impl Runner {
             randomer,
             storage,
             world,
+            input_groups,
             core: EngineCore::default(),
         })
     }
@@ -415,22 +420,16 @@ impl Runner {
 
     pub fn main_round(&mut self) -> RunUpdates { self.core.main_round(&mut self.world, &self.storage, &mut self.randomer) }
 
-    /// 直接跑完整场战斗，不收集中间 RunUpdates（用于 bench/winrate 高速路径）。
+    /// 直接跑完整场战斗。
     ///
-    /// 返回值：是否正常结束（有胜者或达到 idle 上限）。
+    /// 这里复用 `main_round()`，保持与普通 fight CLI 一致的空回合判定语义，
+    /// 避免高速路径与正常对局出现不同胜者。
     pub fn run_to_completion(&mut self) -> bool {
-        let mut updates = RunUpdates::new_no_capture();
         let mut idle = 0usize;
         let mut rounds = 0usize;
-        while !self.world.have_winner() && idle < 32 && rounds < 100_000 {
-            updates.reset();
-            let max_ticks = self.world.all_plr_len().max(1) * 4;
-            let mut ticks = 0;
-            while ticks < max_ticks && !self.world.have_winner() && !updates.had_updates() {
-                self.core.tick(&mut self.world, &self.storage, &mut self.randomer, &mut updates);
-                ticks += 1;
-            }
-            if !updates.had_updates() {
+        while !self.world.have_winner() && idle <= 16 && rounds < 100_000 {
+            let updates = self.main_round();
+            if updates.updates.is_empty() {
                 idle += 1;
             } else {
                 idle = 0;

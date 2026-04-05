@@ -4,6 +4,7 @@ use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::{engine, Runner};
 
 pub fn run(raw: String, out_raw: bool) {
+    let (input_groups, _) = Runner::split_namerena_into_groups(raw.clone());
     let mut runner = match Runner::new_from_namerena_raw(raw) {
         Ok(runner) => runner,
         Err(err) => {
@@ -11,9 +12,10 @@ pub fn run(raw: String, out_raw: bool) {
             std::process::exit(1);
         }
     };
+    let input_player_ids = collect_input_player_ids(&runner, input_groups.len());
 
     if out_raw {
-        print_fight_raw(&mut runner);
+        print_fight_raw(&mut runner, &input_player_ids);
         return;
     }
 
@@ -71,6 +73,33 @@ pub fn run(raw: String, out_raw: bool) {
         println!("未分出胜负（达到安全轮次或连续空更新）。");
     }
     println!("总战斗分: {total_score}");
+    if let Some(win_idx_line) = fmt_winner_input_indices(&runner, &input_player_ids) {
+        println!("{win_idx_line}");
+    }
+}
+
+fn collect_input_player_ids(runner: &Runner, group_count: usize) -> Vec<usize> {
+    let mut ids = Vec::new();
+    for group_idx in 0..group_count {
+        if let Some(group) = runner.storage.get_group(group_idx) {
+            ids.extend(group.iter().copied());
+        }
+    }
+    ids
+}
+
+fn fmt_winner_input_indices(runner: &Runner, input_player_ids: &[usize]) -> Option<String> {
+    let winners = runner.world.winner.as_ref()?;
+    let indices = winners
+        .iter()
+        .filter_map(|winner| input_player_ids.iter().position(|id| id == winner))
+        .map(|idx| idx.to_string())
+        .collect::<Vec<String>>();
+    if indices.is_empty() {
+        None
+    } else {
+        Some(format!("win_idx={}", indices.join(",")))
+    }
 }
 
 fn print_all_players(runner: &Runner) {
@@ -383,7 +412,7 @@ fn emit_current_turn(output_lines: &mut Vec<String>, pending_action_line: &mut S
     }
 }
 
-fn print_fight_raw(runner: &mut Runner) {
+fn print_fight_raw(runner: &mut Runner, input_player_ids: &[usize]) {
     let mut output_lines: Vec<String> = Vec::new();
     let mut pending_action_line = String::new();
     let mut pending_misc_lines: Vec<String> = Vec::new();
@@ -447,5 +476,8 @@ fn print_fight_raw(runner: &mut Runner) {
 
     if !output_lines.is_empty() {
         println!("{}", output_lines.join("\n"));
+    }
+    if let Some(win_idx_line) = fmt_winner_input_indices(runner, input_player_ids) {
+        println!("{win_idx_line}");
     }
 }

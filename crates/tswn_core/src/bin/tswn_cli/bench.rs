@@ -7,6 +7,10 @@ use tswn_core::{PreparedRunner, Runner};
 
 use crate::args::BenchThreadMode;
 
+const PROFILE_WINRATE_SEED_START: usize = 33_554_431;
+
+fn use_js_profile_seed_schedule(eval_rq: f64) -> bool { eval_rq == tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
+
 #[derive(Debug, Clone, Copy, Default)]
 struct TimingParts {
     init_nanos: u128,
@@ -123,10 +127,11 @@ fn bench_winrate_summary(
     };
     let prepared = Arc::new(prepared);
     let workers = resolve_bench_workers(mode, threads, n);
+    let use_profile_seed = use_js_profile_seed_schedule(eval_rq);
     let started_at = Instant::now();
 
     let mut summary = if workers <= 1 || n < 2000 {
-        let (wins, total, timing) = run_bench_winrate_range(prepared.as_ref(), team0_count, 0, n);
+        let (wins, total, timing) = run_bench_winrate_range(prepared.as_ref(), team0_count, 0, n, use_profile_seed);
         BenchSummary {
             wins,
             total,
@@ -140,7 +145,7 @@ fn bench_winrate_summary(
             let prepared = Arc::clone(&prepared);
             let next = Arc::clone(&next);
             handles.push(std::thread::spawn(move || {
-                run_bench_winrate_worker(prepared.as_ref(), team0_count, next.as_ref(), n)
+                run_bench_winrate_worker(prepared.as_ref(), team0_count, next.as_ref(), n, use_profile_seed)
             }));
         }
         let mut merged = BenchSummary {
@@ -190,21 +195,38 @@ fn resolve_bench_workers(mode: BenchThreadMode, threads: Option<usize>, total: u
     }
 }
 
-fn run_bench_winrate_range(prepared: &PreparedRunner, team0_count: usize, start: usize, end: usize) -> (usize, usize, TimingParts) {
+fn run_bench_winrate_range(
+    prepared: &PreparedRunner,
+    _team0_count: usize,
+    start: usize,
+    end: usize,
+    use_profile_seed: bool,
+) -> (usize, usize, TimingParts) {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut seed = String::with_capacity(24);
     let mut timing = TimingParts::default();
 
     for i in start..end {
-        seed.clear();
-        let _ = write!(&mut seed, "seed:{i}@!");
-        let seed_ref = std::slice::from_ref(&seed);
+        let seed_ref: &[String] = if use_profile_seed {
+            if i == 0 {
+                &[]
+            } else {
+                seed.clear();
+                let _ = write!(&mut seed, "seed:{}@!", PROFILE_WINRATE_SEED_START + i - 1);
+                std::slice::from_ref(&seed)
+            }
+        } else {
+            seed.clear();
+            let _ = write!(&mut seed, "seed:{i}@!");
+            std::slice::from_ref(&seed)
+        };
         let t_init = Instant::now();
         let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
             Ok(r) => r,
             Err(_) => continue,
         };
+        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = Instant::now();
@@ -212,7 +234,7 @@ fn run_bench_winrate_range(prepared: &PreparedRunner, team0_count: usize, start:
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|winner| *winner < team0_count)
+            && winners.iter().any(|winner| team0_roster.contains(winner))
         {
             wins += 1;
         }
@@ -222,9 +244,10 @@ fn run_bench_winrate_range(prepared: &PreparedRunner, team0_count: usize, start:
 
 fn run_bench_winrate_worker(
     prepared: &PreparedRunner,
-    team0_count: usize,
+    _team0_count: usize,
     next: &AtomicUsize,
     end: usize,
+    use_profile_seed: bool,
 ) -> (usize, usize, TimingParts) {
     let mut wins = 0usize;
     let mut total = 0usize;
@@ -236,14 +259,25 @@ fn run_bench_winrate_worker(
         if i >= end {
             break;
         }
-        seed.clear();
-        let _ = write!(&mut seed, "seed:{i}@!");
-        let seed_ref = std::slice::from_ref(&seed);
+        let seed_ref: &[String] = if use_profile_seed {
+            if i == 0 {
+                &[]
+            } else {
+                seed.clear();
+                let _ = write!(&mut seed, "seed:{}@!", PROFILE_WINRATE_SEED_START + i - 1);
+                std::slice::from_ref(&seed)
+            }
+        } else {
+            seed.clear();
+            let _ = write!(&mut seed, "seed:{i}@!");
+            std::slice::from_ref(&seed)
+        };
         let t_init = Instant::now();
         let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
             Ok(r) => r,
             Err(_) => continue,
         };
+        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = Instant::now();
@@ -251,7 +285,7 @@ fn run_bench_winrate_worker(
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|winner| *winner < team0_count)
+            && winners.iter().any(|winner| team0_roster.contains(winner))
         {
             wins += 1;
         }
@@ -376,7 +410,7 @@ fn run_bench_score_range(
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
+        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = Instant::now();
@@ -436,7 +470,7 @@ fn run_bench_score_worker(
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_roster: Vec<usize> = runner.world.teams.first().map(|t| t.roster.clone()).unwrap_or_default();
+        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = Instant::now();

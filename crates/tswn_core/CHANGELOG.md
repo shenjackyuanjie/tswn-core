@@ -6,10 +6,12 @@
 
 - **CLI 参数解析迁移到 `clap`**：`tswn-cli` 不再维护超长的手写参数分支，改为基于 `clap` 的结构化参数解析，help 文案也切换为按子命令原生生成，降低后续继续扩展命令时的维护成本。
 - **CLI 改为子命令结构**：顶层收敛为 `fight` / `bench` / `icon`，并进一步细分为 `bench auto`、`bench win-rate`、`bench group-win-rate` 以及 `icon show`、`icon b64`、`icon save`，替换旧的平铺 `--bench*` / `--win_rate*` / `--icon*` 入口。
+- **`fight` 结果追加赢家输入索引**：普通输出和 `--out-raw` 输出在战斗结束后都会追加 `win_idx=...`，用于直接标识胜者对应的原始输入顺序；普通模式下该行放在 `总战斗分` 之后，作为最终输出尾行。
 - **新增 `bench group-win-rate`**：支持 `--target <组>` 搭配可重复的 `-a, --against <组>` 输入，对目标组分别计算多组胜率并输出平均胜率，且每个 `against` 都支持单人或多行组输入，方便批量评估固定目标组。
 - **`bench` 统一支持 `--perf` 计时开关**：原先独立的性能测试能力并入 benchmark 路径，`bench auto`、`bench win-rate` 和 `bench group-win-rate` 现在都可以通过 `--perf` 输出 `total/init/fight` 耗时拆分，同时保留原有结果统计。
 - **benchmark 线程配置改为显式参数**：移除 `TSWN_BENCH_WORKERS` / `TSWN_WINRATE_WORKERS` 环境变量入口，统一改为 `-t, --thread <N>` 和 `--single-thread`，避免隐藏环境状态影响结果复现。
 - **CLI 内部模块化拆分**：将原本超长的 `tswn_cli.rs` 按职责拆成 `args` / `bench` / `fight` / `icon` 模块，主入口只保留 banner 和命令分发，降低继续维护 benchmark 与图标逻辑时的耦合。
+- **`bench win-rate` 结果重新对齐 JS 基准**：修复 benchmark 将排序后队伍误判成输入第一队的问题，并让 `run_to_completion()` 复用正常 `main_round()` 推进逻辑，消除高速路径与普通 fight 的胜者分叉；默认 `bench win-rate` 同时改为复刻 JS `ProfileWinChance` 的 seed 调度（首局无 seed，后续从 `seed:33554431@!` 开始），使默认模式重新对齐 `md5.js::win_rate`，而 `--keep-rq` 继续保持普通 `fight + seed:i@!` 语义用于对照。
 
 ### 验证
 
