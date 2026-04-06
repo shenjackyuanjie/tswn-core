@@ -263,8 +263,7 @@ def default_bundle_name() -> str:
 
 def bundled_cli_binary_name(src_binary: Path) -> str:
     version = _version_token(tswn_core_version())
-    system = platform.system().lower()
-    suffix = ".exe" if system == "windows" else ".bin"
+    suffix = ".exe" if src_binary.suffix.lower() == ".exe" else ".bin"
     return f"tswn-cli_alpha_{version}{suffix}"
 
 
