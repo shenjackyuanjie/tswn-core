@@ -1,0 +1,11 @@
+[package]
+name = "tswn_capi"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tswn_core = { path = "../tswn_core" }
+
+[lib]
+name = "tswn_capi"
+crate-type = ["cdylib"]
