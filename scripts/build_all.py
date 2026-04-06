@@ -264,7 +264,7 @@ def default_bundle_name() -> str:
 def bundled_cli_binary_name(src_binary: Path) -> str:
     version = _version_token(tswn_core_version())
     system = platform.system().lower()
-    suffix = ".exe" if system == "windows" else ""
+    suffix = ".exe" if system == "windows" else ".bin"
     return f"tswn-cli_alpha_{version}{suffix}"
 
 
@@ -293,7 +293,7 @@ def collect_existing_linux_cli_artifacts(dst_dir: Path, copied_support: list[Pat
     bin_dir = dst_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
 
-    dst = bin_dir / LINUX_CLI_ARTIFACT.name
+    dst = bin_dir / bundled_cli_binary_name(LINUX_CLI_ARTIFACT)
     copy_file(LINUX_CLI_ARTIFACT, dst)
     copied_support.append(dst)
 
@@ -573,7 +573,7 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         "## 主要产物",
         "",
         f"- CLI: `cli/bin/{bundled_cli_binary_name(Path('tswn-cli'))}`、可选的 Linux `cli/bin/tswn-cli`，以及 `cli/changelog/`",
-        "- C-API: `capi/include/tswn_capi.h`、`capi/lib/`（包含 Windows DLL 与现有 Linux `.so`）以及 `capi/changelog/`",
+        "- C-API: `capi/include/tswn_capi.h`、`capi/lib/`（包含 Windows DLL、Windows staticlib `.lib` 与现有 Linux `.so`）以及 `capi/changelog/`",
         "- Python: `py/dist/*.whl`、`py/examples/` 与 `py/changelog/`",
         "",
         "## 说明",
