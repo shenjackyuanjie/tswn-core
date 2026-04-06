@@ -4,11 +4,41 @@
 
 ### 新增
 
+- **补充 `prepare` / `raw` 一致性测试**：新增覆盖多模式、多 case 的 runner 一致性验证，直接比较 `Runner::new_from_namerena_raw(...)` 与 `prepare_groups_with_eval_rq(...) + new_from_prepared_with_seed(...)` 两条路径在相同输入、相同 seed 下的行为是否一致。
+- **一致性测试覆盖常见对战模式**：新增测试覆盖：
+  - `1v1`
+  - `2v2`
+  - `3v3v3`
+  - `ffa_4`
+  - `ffa_6`
+  - `ffa_8`
+  并为每种模式固定生成 10 个 deterministic case。
+- **一致性测试比较维度扩展到完整 replay**：除 `winner` 外，还同时比较：
+  - `input_groups`
+  - battle score
+  - full replay trace
+  以便尽早发现 `prepare` 路径在排序、构造顺序、初始状态或随机流上的潜在分叉。
+
 ### 修复
+
+- **清理 `tswn_core` 的 clippy 警告**：修正 `map_entry`、`if_same_then_else`、`collapsible_if`、`explicit_auto_deref`、`excessive_precision` 等问题，并对个别稳定辅助函数补充局部 `#[allow(clippy::too_many_arguments)]`，使 `tswn_core` 在严格 `clippy -D warnings` 下恢复通过。
+- **清理 `tswn_capi` / `tswn_py` 的 clippy 警告**：补齐 `tswn_capi` 导出 `unsafe extern "C"` 接口的中文 `# Safety` 文档，整理 raw pointer 访问写法，并修正 `tswn_py` 中的冗余闭包等低风险 lint，确保 `core/capi/py`（排除 `ds3`）整体通过严格 clippy 检查。
 
 ### 调整
 
+- **`tswn_capi` / `tswn_py` 版本步进**：
+  - `tswn_capi` 从 `0.1.0` 升至 `0.1.1`
+  - `tswn_py` 从 `0.1.8` 升至 `0.1.9`
+- **补充调用方按输入队伍归属判断胜者的辅助接口**：
+  - `tswn_capi` 新增 `tswn_runner_player_input_group_index(...)`
+  - `tswn_py.Runner` 新增 `player_input_group_index(player_id)`
+  便于直接按原始输入 `group_index` 判断玩家归属，而不必调用方自行扫描 `input_groups` roster 构造映射。
+
 ### 验证
+
+- `cargo test -p tswn_core prepared_runner_matches_raw_runner_across_modes_and_cases -- --nocapture`
+- `cargo +nightly fmt --package tswn_core --package tswn_capi --package tswn_py`
+- `cargo clippy -p tswn_core -p tswn_capi -p tswn_py --all-targets -- -D warnings`
 
 ## [0.2.10] - 2026-04-05
 

@@ -427,6 +427,7 @@ impl SkillStorage {
         self.pre_defend_range(0, self.pre_defend.len(), atp, is_mag, caster, on_damage, args)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn pre_defend_range(
         &mut self,
         start: usize,

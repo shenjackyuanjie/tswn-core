@@ -47,14 +47,7 @@ pub fn run_benchmark(raw: &str, n: usize, mode: BenchThreadMode, threads: Option
     }
 }
 
-pub fn run_bench_winrate(
-    raw: &str,
-    n: usize,
-    mode: BenchThreadMode,
-    threads: Option<usize>,
-    eval_rq: f64,
-    perf: bool,
-) {
+pub fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64, perf: bool) {
     println!("=== 对战胜率测试 ({n} 场) ===");
     let summary = bench_winrate_summary(raw, n, mode, threads, eval_rq);
     print_bench_winrate_summary(summary, perf);
@@ -95,19 +88,18 @@ pub fn run_bench_group_win_rate(
 
     println!();
     println!("平均胜率: {:.2}%", accumulated_rate / against.len().max(1) as f64);
-    println!("汇总胜率: {:.2}%  ({}/{})", accumulated_wins as f64 * 100.0 / accumulated_total.max(1) as f64, accumulated_wins, accumulated_total);
+    println!(
+        "汇总胜率: {:.2}%  ({}/{})",
+        accumulated_wins as f64 * 100.0 / accumulated_total.max(1) as f64,
+        accumulated_wins,
+        accumulated_total
+    );
     if perf {
         print_perf_lines(overall_started.elapsed(), accumulated_timing, accumulated_total);
     }
 }
 
-fn bench_winrate_summary(
-    raw: &str,
-    n: usize,
-    mode: BenchThreadMode,
-    threads: Option<usize>,
-    eval_rq: f64,
-) -> BenchSummary {
+fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64) -> BenchSummary {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let team0_count = groups
         .first()
@@ -169,7 +161,11 @@ fn bench_winrate_summary(
 
 fn print_bench_winrate_summary(summary: BenchSummary, perf: bool) {
     let elapsed_secs = summary.elapsed.as_secs_f64();
-    let throughput = if elapsed_secs > 0.0 { summary.total as f64 / elapsed_secs } else { 0.0 };
+    let throughput = if elapsed_secs > 0.0 {
+        summary.total as f64 / elapsed_secs
+    } else {
+        0.0
+    };
     println!("胜率: {:.2}%  ({}/{})", summary.win_rate_percent(), summary.wins, summary.total);
     println!(
         "耗时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",

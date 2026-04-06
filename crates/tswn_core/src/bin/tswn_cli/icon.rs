@@ -114,9 +114,5 @@ fn get_pixel(pixels: &[u8], x: usize, y: usize) -> Option<(u8, u8, u8)> {
     let g = pixels[idx + 1];
     let b = pixels[idx + 2];
     let a = pixels[idx + 3];
-    if a == 0 {
-        None
-    } else {
-        Some((r, g, b))
-    }
+    if a == 0 { None } else { Some((r, g, b)) }
 }

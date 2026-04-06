@@ -632,6 +632,7 @@ impl PlayerStateStore {
         result.into_iter().map(|(tag, priority, _)| (tag, priority)).collect()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn run_one_post_defend(
         &mut self,
         tag: StateTag,

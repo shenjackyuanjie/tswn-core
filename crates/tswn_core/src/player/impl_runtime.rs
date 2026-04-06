@@ -82,26 +82,26 @@ fn is_battle_over(storage: &Arc<Storage>) -> bool {
     let all_ids = storage.all_player_ids();
     let mut first_group: Option<usize> = None;
     for id in &all_ids {
-        if storage.get_player(id).map(|p| p.alive()).unwrap_or(false) {
-            if let Some(idx) = storage.group_index_of(*id) {
-                match first_group {
-                    None => first_group = Some(idx),
-                    Some(existing) if existing != idx => return false,
-                    _ => {}
-                }
+        if storage.get_player(id).map(|p| p.alive()).unwrap_or(false)
+            && let Some(idx) = storage.group_index_of(*id)
+        {
+            match first_group {
+                None => first_group = Some(idx),
+                Some(existing) if existing != idx => return false,
+                _ => {}
             }
         }
     }
     // 同时检查 pending spawn
     for owner_id in &all_ids {
         for pending_id in storage.pending_spawn_ids_for_owner(*owner_id) {
-            if storage.get_pending_spawn_player(pending_id).map(|p| p.alive()).unwrap_or(false) {
-                if let Some(idx) = storage.group_index_of(*owner_id) {
-                    match first_group {
-                        None => first_group = Some(idx),
-                        Some(existing) if existing != idx => return false,
-                        _ => {}
-                    }
+            if storage.get_pending_spawn_player(pending_id).map(|p| p.alive()).unwrap_or(false)
+                && let Some(idx) = storage.group_index_of(*owner_id)
+            {
+                match first_group {
+                    None => first_group = Some(idx),
+                    Some(existing) if existing != idx => return false,
+                    _ => {}
                 }
             }
         }
@@ -1215,7 +1215,7 @@ impl Player {
         let status_snapshot = self.status;
         let clear_tags = self.state.on_pre_step_states(self.as_ptr(), &status_snapshot, &mut step, updates);
         if !clear_tags.is_empty() {
-            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
+            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(tag));
             for tag in clear_tags {
                 self.state.clear_tag(tag);
             }
@@ -1359,7 +1359,7 @@ impl Player {
             deferred_idx += 1;
         }
         if !clear_tags.is_empty() {
-            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
+            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(tag));
             #[cfg(not(feature = "no_debug"))]
             if debug_post_action_this {
                 eprintln!(
@@ -1406,7 +1406,7 @@ impl Player {
             self.state
                 .on_pre_defend_states(self.as_ptr(), &mut atp, is_mag, caster, on_damage, randomer, updates, storage);
         if !clear_tags.is_empty() {
-            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
+            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(tag));
             for tag in clear_tags {
                 self.state.clear_tag(tag);
             }
@@ -1636,7 +1636,7 @@ impl Player {
             );
             if atp == 0.0 {
                 if !clear_tags.is_empty() {
-                    let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
+                    let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(tag));
                     for tag in clear_tags {
                         self.state.clear_tag(tag);
                     }
@@ -1662,7 +1662,7 @@ impl Player {
             }
             if atp == 0.0 {
                 if !clear_tags.is_empty() {
-                    let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
+                    let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(tag));
                     for tag in clear_tags {
                         self.state.clear_tag(tag);
                     }
@@ -1686,7 +1686,7 @@ impl Player {
                 storage,
             ));
             if !clear_tags.is_empty() {
-                let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(*tag));
+                let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(tag));
                 for tag in clear_tags {
                     self.state.clear_tag(tag);
                 }
@@ -1746,7 +1746,7 @@ impl Player {
             merged.push((*priority, PostDefendEntry::Skill(*key)));
         }
         for (tag, priority) in &state_entries {
-            merged.push((*priority, PostDefendEntry::State(*tag)));
+            merged.push((*priority, PostDefendEntry::State(tag)));
         }
         merged.sort_by_key(|&(p, _)| p);
 

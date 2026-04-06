@@ -557,9 +557,7 @@ impl Skill {
         let current_level = self.level;
         self.skill_type.act_with_level(current_level, targets, smart, args);
         let post_level = self.skill_type.post_act_level(current_level);
-        if self.level == current_level {
-            self.level = post_level;
-        } else if post_level > self.level {
+        if self.level == current_level || post_level > self.level {
             self.level = post_level;
         }
     }

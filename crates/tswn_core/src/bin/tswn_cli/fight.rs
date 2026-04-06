@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::{engine, Runner};
+use tswn_core::{Runner, engine};
 
 pub fn run(raw: String, out_raw: bool) {
     let (input_groups, _) = Runner::split_namerena_into_groups(raw.clone());
@@ -214,8 +214,8 @@ fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) ->
         return format!("#{id}");
     };
 
-    use tswn_core::player::skill::act::minion::MinionRuntimeState;
     use tswn_core::player::PlayerType;
+    use tswn_core::player::skill::act::minion::MinionRuntimeState;
 
     let name = if plr.player_type() == PlayerType::Boss {
         plr.display_name()

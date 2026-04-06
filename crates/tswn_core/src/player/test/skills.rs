@@ -733,7 +733,7 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
     }
 
     let boosted = storage.get_player(&owner_id).unwrap().get_status().at_boost;
-    assert!((boosted - 2.7000000476837158).abs() < 1e-6);
+    assert!((boosted - 2.700_000_047_683_716).abs() < 1e-6);
 
     {
         let owner_mut = storage.just_get_player_mut(owner_id).unwrap();

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, UpdateType};
 use crate::player::{
-    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
     PlrId, StateTrait,
+    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 use crate::rc4::RC4;
 
