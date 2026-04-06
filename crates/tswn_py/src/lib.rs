@@ -6,10 +6,11 @@
 pub mod wrapper;
 
 use pyo3::{
+    Bound, PyResult,
     exceptions::PyValueError,
     pyfunction, pymodule,
     types::{PyModule, PyModuleMethods},
-    wrap_pyfunction, Bound, PyResult,
+    wrap_pyfunction,
 };
 use tswn_core::{PreparedRunner, Runner};
 
@@ -38,8 +39,7 @@ fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, use_profile_seed: 
         } else {
             vec![format!("seed:{i}@!")]
         };
-        let mut runner = Runner::new_from_prepared_with_seed(prepared, &seed)
-            .map_err(|err| wrapper::error::PyRunnerError::new(err))?;
+        let mut runner = Runner::new_from_prepared_with_seed(prepared, &seed).map_err(wrapper::error::PyRunnerError::new)?;
         let team0_roster = runner.input_groups.first().cloned().unwrap_or_default();
         runner.run_to_completion();
         if let Some(winners) = runner.world.winner.as_ref()
@@ -77,8 +77,7 @@ fn win_rate(raw: String, n: usize, eval_rq: Option<f64>) -> PyResult<f64> {
     let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
     let groups = Runner::split_namerena_into_groups(raw).0;
     ensure_win_rate_group_count(&groups)?;
-    let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
-        .map_err(|err| wrapper::error::PyRunnerError::new(err))?;
+    let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq).map_err(wrapper::error::PyRunnerError::new)?;
     run_prepared_win_rate(&prepared, n, use_js_profile_seed_schedule(eval_rq))
 }
 

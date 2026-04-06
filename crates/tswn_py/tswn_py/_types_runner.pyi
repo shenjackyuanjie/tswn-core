@@ -78,6 +78,9 @@ class Runner:
     def rc4(self) -> RC4:
         """底层 RC4 状态。"""
         ...
+    def player_input_group_index(self, player_id: int) -> int | None:
+        """查询指定玩家在原始输入中的队伍下标；若不存在则返回 None。"""
+        ...
     def have_winner(self) -> bool:
         """当前是否已有赢家。"""
         ...

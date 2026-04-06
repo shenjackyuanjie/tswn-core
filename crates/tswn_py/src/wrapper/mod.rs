@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use pyo3::{pyclass, pymethods, PyResult};
+use pyo3::{PyResult, pyclass, pymethods};
 use tswn_core::{
+    PreparedRunner as CorePreparedRunner, RunUpdate, RunUpdates, Runner,
     engine::{storage::Storage, update::UpdateType, world_state::WorldState},
     player::PlrId,
-    PreparedRunner as CorePreparedRunner, RunUpdate, RunUpdates, Runner,
 };
 
 pub mod error;
@@ -117,6 +117,11 @@ impl PyRunner {
     /// 返回原始输入顺序对应的队伍 roster（不受内部排序影响）
     #[getter]
     pub fn get_input_groups(&self) -> Vec<Vec<PlrId>> { self.inner.input_groups.clone() }
+
+    /// 查询指定玩家在原始输入中的队伍下标
+    pub fn player_input_group_index(&self, player_id: PlrId) -> Option<usize> {
+        self.inner.input_groups.iter().position(|group| group.contains(&player_id))
+    }
 
     /// 获取当前的 rc4
     #[getter]

@@ -1,4 +1,4 @@
-use pyo3::{exceptions::PyException, pyclass, PyErr};
+use pyo3::{PyErr, exceptions::PyException, pyclass};
 use tswn_core::error::runner::RunnerError;
 
 #[pyclass(extends=PyException)]

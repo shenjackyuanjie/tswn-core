@@ -1,4 +1,4 @@
-use pyo3::{exceptions::PyValueError, pyclass, pymethods, PyResult};
+use pyo3::{PyResult, exceptions::PyValueError, pyclass, pymethods};
 
 use tswn_core::rc4::{RC4, VAL_LEN};
 

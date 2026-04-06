@@ -1,5 +1,16 @@
 # 更新日志
 
+## [0.1.9] - 2026-04-06
+
+### 新增
+
+- `Runner` 新增：
+  - `player_input_group_index(player_id)`：根据玩家 `id` 直接查询其对应的原始输入 `group_index`，便于调用方按输入队伍归属判断胜者属于哪一组，而不必再自行扫描 `input_groups` roster 构造映射。
+
+### 变更
+
+- 更新类型存根以对齐新的 `Runner.player_input_group_index()` 接口。
+
 ## [0.1.8] - 2026-04-05
 
 ### 新增
