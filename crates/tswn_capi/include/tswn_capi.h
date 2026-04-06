@@ -166,6 +166,9 @@ size_t tswn_runner_input_group_len(const tswn_runner_t* runner, size_t group_ind
 /* 复制指定输入队伍的 roster 到调用方缓冲区。 */
 tswn_status_t tswn_runner_input_group_copy(const tswn_runner_t* runner, size_t group_index, uint64_t* out_ids, size_t cap);
 
+/* 查询指定玩家在原始输入中的队伍下标。 */
+tswn_status_t tswn_runner_player_input_group_index(const tswn_runner_t* runner, uint64_t player_id, size_t* out_group_index);
+
 /* 返回胜者 roster 长度；若尚未分出胜负则为 0。 */
 size_t tswn_runner_winner_len(const tswn_runner_t* runner);
 
