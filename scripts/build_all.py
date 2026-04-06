@@ -22,6 +22,7 @@ dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_bundle/
   cli/
     bin/
       tswn-cli_alpha_x_y_z.exe
+      tswn-cli
     README.txt
     MANIFEST.txt
   py/
@@ -75,6 +76,8 @@ CORE_CHANGELOG = ROOT / "crates" / "tswn_core" / "CHANGELOG.md"
 CAPI_CHANGELOG = CRATE_CAPI_DIR / "CHANGELOG.md"
 PY_CHANGELOG = CRATE_PY_DIR / "CHANGELOG.md"
 UPDATE_DOCS_DIR = ROOT / "docs" / "update"
+LINUX_CAPI_ARTIFACT = ROOT / "target" / "release" / "libtswn_capi.so"
+LINUX_CLI_ARTIFACT = ROOT / "target" / "release" / "tswn-cli"
 
 DEFAULT_OUTPUT_DIR = ROOT / "dist" / "all"
 
@@ -283,6 +286,27 @@ def package_component_changelog(dst_dir: Path, changelog_src: Path, update_doc_s
     return copied
 
 
+def collect_existing_linux_cli_artifacts(dst_dir: Path, copied_support: list[Path]) -> None:
+    if not LINUX_CLI_ARTIFACT.exists():
+        return
+
+    bin_dir = dst_dir / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    dst = bin_dir / LINUX_CLI_ARTIFACT.name
+    copy_file(LINUX_CLI_ARTIFACT, dst)
+    copied_support.append(dst)
+
+
+def collect_existing_linux_capi_artifacts(dst_dir: Path) -> None:
+    if not LINUX_CAPI_ARTIFACT.exists():
+        return
+
+    lib_dir = dst_dir / "lib"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    copy_file(LINUX_CAPI_ARTIFACT, lib_dir / LINUX_CAPI_ARTIFACT.name)
+
+
 def build_cli(
     dst_dir: Path,
     release: bool,
@@ -318,6 +342,8 @@ def build_cli(
         copy_file(item, dst)
         copied_support.append(dst)
 
+    collect_existing_linux_cli_artifacts(dst_dir, copied_support)
+
     return bundled_binary, copied_support
 
 
@@ -329,10 +355,10 @@ def write_cli_readme(dst_dir: Path, binary_path: Path, support_files: list[Path]
         "",
         "## 内容",
         "",
-        f"- 可执行文件：`bin/{binary_path.name}`",
+        f"- Windows 可执行文件：`bin/{binary_path.name}`",
     ]
     for item in support_files:
-        lines.append(f"- 伴生产物：`bin/{item.name}`")
+        lines.append(f"- 附带产物：`bin/{item.name}`")
 
     lines += [
         "",
@@ -341,6 +367,11 @@ def write_cli_readme(dst_dir: Path, binary_path: Path, support_files: list[Path]
         f"- `bin/{binary_path.name} fight --help`",
         f"- `bin/{binary_path.name} bench auto --help`",
         f"- `bin/{binary_path.name} icon show --help`",
+        "",
+        "## 说明",
+        "",
+        "- 聚合包会现场构建当前平台的 CLI，并在存在时额外收集已有的 Linux `tswn-cli` 二进制。",
+        "- Windows 与 Linux 产物会一起放在 `cli/bin/` 下，便于统一分发。",
         "",
     ]
 
@@ -398,6 +429,7 @@ def build_capi(dst_dir: Path, args: argparse.Namespace) -> None:
         cmd += args.cargo
 
     run(cmd, cwd=ROOT)
+    collect_existing_linux_capi_artifacts(dst_dir)
 
 
 def collect_py_artifacts(dst_dir: Path) -> tuple[list[Path], list[Path], list[Path]]:
@@ -540,13 +572,14 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         "",
         "## 主要产物",
         "",
-        f"- CLI: `cli/bin/{bundled_cli_binary_name(Path('tswn-cli'))}` 与 `cli/changelog/`",
-        "- C-API: `capi/include/tswn_capi.h`、`capi/lib/` 与 `capi/changelog/`",
+        f"- CLI: `cli/bin/{bundled_cli_binary_name(Path('tswn-cli'))}`、可选的 Linux `cli/bin/tswn-cli`，以及 `cli/changelog/`",
+        "- C-API: `capi/include/tswn_capi.h`、`capi/lib/`（包含 Windows DLL 与现有 Linux `.so`）以及 `capi/changelog/`",
         "- Python: `py/dist/*.whl`、`py/examples/` 与 `py/changelog/`",
         "",
         "## 说明",
         "",
         "- `capi/` 与 `cli/` 可以现场构建。",
+        "- 若仓库里已经存在 Linux `so` / `tswn-cli` 产物，聚合包也会一并收集。",
         "- `py/` 只收集现有产物，不现场构建。",
         "- 最终 zip 为整个 bundle 目录的压缩包。",
         "",

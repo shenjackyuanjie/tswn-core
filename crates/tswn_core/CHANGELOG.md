@@ -20,6 +20,7 @@
 - **CLI 分发文件名带版本号**：聚合打包时，`tswn-cli` 会整理为带 `tswn_core` 版本号的可执行文件名（如 `tswn-cli_alpha_0_2_10.exe`），降低外部分发时多版本覆盖和混淆的风险。
 - **Python 分发补充示例源码**：聚合打包结果中的 `py/` 目录除了已有 wheel 外，还会一并收集 `crates/tswn_py/examples/`，方便直接参考 Python 调用方式。
 - **补充分发文档与脚本说明**：完善 `scripts/README.md`，补充 `build_all.py` / `build_capi.py` / `build_py.py` 的用途、典型命令与输出位置说明；bundle 顶层 `README.txt` 也同步加入 `tswn_core` / `tswn_capi` / `tswn_py` 版本概览和主要产物说明。
+- **聚合包额外收集现有 Linux CLI / C-API 产物**：在仓库中已经存在 Linux 构建结果时，`build_all.py` 现在会把 `target/release/tswn-cli` 与 `target/release/libtswn_capi.so` 一并带入最终 bundle，使同一个分发包可以同时包含 Windows 的 `.exe` / `.dll` 与现有 Linux 的 CLI / `.so`。
 - **C-API README 补充跨编译器示例**：`tswn_capi` 的分发 README 与 `examples/README.md` 新增了 MSVC / clang / gcc 的示例编译参数说明，并补充 Windows 下动态库查找与运行方式说明；其中 MSVC 与 clang 的 Windows 编译方式已在当前打包结果上实测验证。
 
 ### 性能
@@ -38,6 +39,7 @@
 - `cargo build -p tswn_core --bin tswn-cli --release --features no_debug`
 - `python scripts/build_capi.py --release`
 - `python scripts/build_all.py --release --clean`
+- 在 WSL 下执行 `cargo build -p tswn_capi --release` 与 `cargo build -p tswn_core --bin tswn-cli --release --features no_debug`，并确认 `target/release/libtswn_capi.so` 与 `target/release/tswn-cli` 能被聚合包一并收集
 - `start-vs-pwsh.ps1` + `cl /nologo /Iinclude examples\version_and_error.c /link /OUT:examples\version_and_error.exe lib\tswn_capi.dll.lib`
 - `clang -Iinclude examples/version_and_error.c lib/tswn_capi.dll.lib -o examples/version_and_error.exe`
 
