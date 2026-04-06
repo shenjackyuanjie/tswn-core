@@ -1,7 +1,7 @@
 #include "common.h"
 
 int main(void) {
-    const char* raw = "SB\n\nLJ\nseed:33554431@!";
+    const char* raw = "114514\n\n1919810\nseed:33554431@!";
     tswn_runner_t* runner = NULL;
     tswn_updates_t* updates = NULL;
     if (!tswn_example_require(tswn_runner_new_from_raw(raw, &runner), "create runner failed")) {

@@ -1,8 +1,8 @@
 #include "common.h"
 
 int main(void) {
-    const char* target = "SB";
-    const char* against[] = {"LJ", "aaa", "bbb"};
+    const char* target = "114514";
+    const char* against[] = {"1919810", "aaa", "bbb"};
     tswn_win_rate_result_t results[3];
 
     if (!tswn_example_require(

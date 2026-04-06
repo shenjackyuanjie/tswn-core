@@ -1,7 +1,7 @@
 #include "common.h"
 
 int main(void) {
-    const char* raw = "SB\n\nLJ";
+    const char* raw = "114514\n\n1919810";
     tswn_win_rate_result_t result;
 
     if (!tswn_example_require(tswn_win_rate(raw, 1000, &result), "win_rate failed")) {

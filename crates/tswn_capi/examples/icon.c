@@ -5,14 +5,14 @@ int main(void) {
     tswn_bytes_t png;
     tswn_str_t b64;
 
-    if (!tswn_example_require(tswn_name_to_icon_rgba("SB", &rgba), "icon rgba failed")) {
+    if (!tswn_example_require(tswn_name_to_icon_rgba("114514", &rgba), "icon rgba failed")) {
         return 1;
     }
-    if (!tswn_example_require(tswn_name_to_png_bytes("SB", &png), "icon png failed")) {
+    if (!tswn_example_require(tswn_name_to_png_bytes("114514", &png), "icon png failed")) {
         tswn_bytes_free(rgba);
         return 1;
     }
-    b64 = tswn_name_to_png_base64("SB");
+    b64 = tswn_name_to_png_base64("114514");
     if (b64.ptr == NULL) {
         tswn_example_print_error("icon b64 failed");
         tswn_bytes_free(rgba);

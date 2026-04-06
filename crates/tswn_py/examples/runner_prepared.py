@@ -1,9 +1,9 @@
 import tswn_py
 
 
-raw = """SB
+raw = """114514
 
-LJ
+1919810
 seed:33554431@!"""
 
 groups, seed = tswn_py.Runner.split_namerena_into_groups(raw)

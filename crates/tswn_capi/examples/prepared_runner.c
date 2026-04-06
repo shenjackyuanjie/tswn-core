@@ -11,7 +11,7 @@ static void run_with_seed(tswn_prepared_runner_t* prepared, const char* seed) {
 }
 
 int main(void) {
-    const char* raw = "SB\n\nLJ";
+    const char* raw = "114514\n\n1919810";
     tswn_prepared_runner_t* prepared = NULL;
     if (!tswn_example_require(tswn_prepared_runner_new_from_raw(raw, &prepared), "prepare failed")) {
         return 1;
