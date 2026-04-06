@@ -8,6 +8,7 @@ tswn_py 包顶层类型存根。
 
 from ._version import __version__ as __version__
 from .tswn_py import (
+    DEFAULT_EVAL_RQ as DEFAULT_EVAL_RQ,
     PreparedRunner as PreparedRunner,
     RunnerError as RunnerError,
     RunUpdate as RunUpdate,
@@ -17,9 +18,13 @@ from .tswn_py import (
     Storage as Storage,
     Player as Player,
     RC4 as RC4,
+    WIN_RATE_EVAL_RQ as WIN_RATE_EVAL_RQ,
     core_version_str as core_version_str,
+    group_win_rate as group_win_rate,
+    name_to_icon_rgba as name_to_icon_rgba,
     name_to_png_base64 as name_to_png_base64,
     name_to_png_bytes as name_to_png_bytes,
+    win_rate as win_rate,
     wrapper_version_str as wrapper_version_str,
 )
 
@@ -34,8 +39,13 @@ __all__ = [
     "Storage",
     "Player",
     "RC4",
+    "DEFAULT_EVAL_RQ",
+    "WIN_RATE_EVAL_RQ",
     "core_version_str",
+    "group_win_rate",
+    "name_to_icon_rgba",
     "name_to_png_base64",
     "name_to_png_bytes",
+    "win_rate",
     "wrapper_version_str",
 ]

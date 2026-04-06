@@ -12,9 +12,17 @@
 - 新增 `PreparedRunner` 类型，用于复用预处理后的分组输入。
 - `Runner` 新增 `input_groups` 属性，暴露原始输入顺序对应的队伍 roster。
 - `Storage` 新增 `eval_rq` 属性。
+- 顶层新增高层 helper：
+  - `win_rate(raw, n, eval_rq=None)`
+  - `group_win_rate(target, against, n, eval_rq=None)`
+- 顶层新增常量：
+  - `DEFAULT_EVAL_RQ`
+  - `WIN_RATE_EVAL_RQ`
+- 顶层新增 `name_to_icon_rgba(name)`，用于获取 16x16 RGBA 原始像素。
 - 新增 Python examples：
   - `examples/runner_prepared.py`
   - `examples/runner_eval_rq.py`
+  - `examples/win_rate.py`
 
 ### 变更
 
