@@ -10,4 +10,4 @@ tswn_py — tswn_core 的 Python 绑定（PyO3 扩展模块）。
 """
 
 from ._version import __version__ as __version__
-from .tswn_py import *  # type: ignore[reportWildcardImportFromLibrary]
+from .tswn_py import *  # type: ignore[reportWildcardImportFromLibrary]  # noqa: F403
