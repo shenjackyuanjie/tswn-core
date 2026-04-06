@@ -18,6 +18,12 @@
   - battle score
   - full replay trace
   以便尽早发现 `prepare` 路径在排序、构造顺序、初始状态或随机流上的潜在分叉。
+- **补充无 seed 情况下的 prepare/raw 一致性测试**：新增单测，直接比较“raw 输入不带 seed”与“PreparedRunner 构造 runner 时不传 seed”两条路径在同一输入下的：
+  - `winner`
+  - battle score
+  - round count
+  - replay trace
+  以确认 no-seed 语义同样保持一致。
 
 ### 修复
 
@@ -33,12 +39,26 @@
   - `tswn_capi` 新增 `tswn_runner_player_input_group_index(...)`
   - `tswn_py.Runner` 新增 `player_input_group_index(player_id)`
   便于直接按原始输入 `group_index` 判断玩家归属，而不必调用方自行扫描 `input_groups` roster 构造映射。
+- **`tswn_capi` 现在同时产出 `cdylib` 与 `staticlib`**：Windows 打包结果中除 `tswn_capi.dll` / `tswn_capi.dll.lib` 外，还会包含 `tswn_capi.lib`，便于 C/C++ 调用方按需选择动态链接或静态链接。
+- **`tswn_capi` / `tswn_py` 默认依赖 `tswn_core/no_debug`**：减少外部分发产物在默认构建路径中的调试噪音，也使 `capi` / `py` 与当前 release 打包配置更一致。
 
 ### 验证
 
 - `cargo test -p tswn_core prepared_runner_matches_raw_runner_across_modes_and_cases -- --nocapture`
+- `cargo test -p tswn_core no_seed_runner_and_prepared_runner_match -- --nocapture`
 - `cargo +nightly fmt --package tswn_core --package tswn_capi --package tswn_py`
 - `cargo clippy -p tswn_core -p tswn_capi -p tswn_py --all-targets -- -D warnings`
+
+### 分发与调用说明补充
+
+- **补充 Windows C++/CAPI 使用文档**：新增 `docs/howto/capi_cpp_windows.md`，记录：
+  - `clang++` 动态链接 `tswn_capi.dll.lib` 的推荐命令
+  - `clang++` 静态链接 `tswn_capi.lib` 时需要额外补 `ntdll.lib`
+  - `g++` / MinGW 使用 `.dll.lib` 可能遇到的兼容性问题
+  - `PreparedRunner` 的 seed 参数必须传完整 `seed:...` 行，而不是裸 seed 值
+- **修正并补充 `tswn_capi/examples` 注释与说明**：
+  - `examples/prepared_runner.c` 现在显式说明 `tswn_runner_new_from_prepared()` 应传完整 `seed:...` 字符串
+  - `examples/README.md` 现在补充了 Windows `staticlib` 链接注意事项，以及 `PreparedRunner` 的 seed 格式要求
 
 ## [0.2.10] - 2026-04-05
 

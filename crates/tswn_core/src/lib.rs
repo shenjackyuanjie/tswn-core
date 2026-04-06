@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 #[cfg(not(feature = "no_debug"))]
 pub mod debug;
 
@@ -50,15 +49,18 @@ pub mod debug {
     pub(crate) use debug_println;
 }
 
-#[allow(dead_code)]
 pub mod engine;
-#[allow(dead_code)]
 pub mod error;
-#[allow(dead_code)]
 pub mod player;
-#[allow(dead_code)]
 pub mod rc4;
 
+/// 核心对局入口。
+///
+/// - [`Runner`] 表示一场具体可运行的对局
+/// - [`PreparedRunner`] 表示一份可复用的预构建模板，适合同一输入下按不同 seed 批量构造 `Runner`
+///
+/// 当你只需要跑单局时，通常直接使用 [`Runner`] 即可；
+/// 当你需要对同一组输入重复跑很多局（如 win-rate / benchmark）时，优先考虑先构造 [`PreparedRunner`] 再复用。
 pub use engine::runners::{PreparedRunner, Runner};
 pub use engine::update::{RunUpdate, RunUpdates};
 

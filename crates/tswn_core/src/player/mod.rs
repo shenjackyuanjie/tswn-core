@@ -232,6 +232,7 @@ pub struct Player {
     // 技能ID列表
     skil_id: Vec<u32>,
     // 技能属性列表
+    #[allow(dead_code)]
     skil_prop: Vec<u32>,
     // 排序用的整数值，用于战斗中的行动顺序
     pub sort_int: i32,

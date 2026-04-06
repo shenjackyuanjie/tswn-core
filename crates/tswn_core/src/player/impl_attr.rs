@@ -46,6 +46,7 @@ impl Player {
     /// ```javascript
     /// const result = Math.round(a * (1 - this.x / b))
     /// ```
+    #[allow(dead_code)]
     fn scale_by_name_factor_u(&self, val: u32, factor2: u32) -> u32 {
         (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as u32
     }

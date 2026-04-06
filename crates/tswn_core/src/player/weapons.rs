@@ -66,6 +66,7 @@ use crate::rc4::RC4;
 const AV: usize = 8; // $.av() - 属性数量(8围)
 const AP: usize = 7; // $.ap() - 循环上界 / HP index
 const BG: usize = 40; // $.bg() - 技能总数
+#[allow(dead_code)]
 const AI: usize = 48; // $.aI() - seed slice 上界
 const A4: usize = 6; // $.a4() - attr randomizer 特殊值
 const IH: i32 = 18; // $.iH() - p[r_idx] 赋值

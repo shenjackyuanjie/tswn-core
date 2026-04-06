@@ -1,6 +1,7 @@
 use super::*;
 
 mod runner;
+use self::runner::{collect_replay_lines, winner_names};
 
 /// 酒吧点炒饭列表（确信）。
 macro_rules! str_vec {
@@ -104,3 +105,49 @@ mod split_namerena_groups {
         assert_eq!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]))
     }
 }
+
+mod prepared_raw_consistency {
+    use super::*;
+
+    fn winner_names_sorted(runner: &runners::Runner) -> Vec<String> {
+        let mut names = winner_names(runner);
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn no_seed_runner_and_prepared_runner_match() {
+        let raw_input = "喘际瞬爆@昀澤\n\n蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall".to_string();
+
+        let mut raw_runner = runners::Runner::new_from_namerena_raw(raw_input.clone()).expect("raw runner should build");
+        let (groups, seed) = runners::Runner::split_namerena_into_groups(raw_input);
+        assert!(seed.is_empty(), "expected no seed in raw input");
+
+        let prepared = runners::Runner::prepare_groups(&groups).expect("prepared runner should build");
+        let mut prepared_runner =
+            runners::Runner::new_from_prepared_with_seed(&prepared, &[]).expect("prepared runner without seed should build");
+
+        let (raw_lines, raw_rounds, raw_score) = collect_replay_lines(&mut raw_runner, 100_000, true);
+        let (prepared_lines, prepared_rounds, prepared_score) = collect_replay_lines(&mut prepared_runner, 100_000, true);
+
+        assert_eq!(
+            winner_names_sorted(&raw_runner),
+            winner_names_sorted(&prepared_runner),
+            "winner names differ between raw and prepared without seed"
+        );
+        assert_eq!(
+            raw_score, prepared_score,
+            "battle score differs between raw and prepared without seed"
+        );
+        assert_eq!(
+            raw_rounds, prepared_rounds,
+            "round count differs between raw and prepared without seed"
+        );
+        assert_eq!(
+            raw_lines, prepared_lines,
+            "replay trace differs between raw and prepared without seed"
+        );
+    }
+}
+
+

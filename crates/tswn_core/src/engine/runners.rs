@@ -55,6 +55,34 @@ struct PreparedRunnerTemplate {
     eval_rq: f64,
 }
 
+/// 可复用的对局预构建模板。
+///
+/// `PreparedRunner` 本身不是一场正在运行的对局；它更像是把“与 seed 无关、但构造成本较高”的那部分初始化结果先缓存下来，
+/// 以便后续在相同输入下反复按不同 seed 构造具体的 [`Runner`]。
+///
+/// 适用场景：
+///
+/// - 同一组输入需要批量跑很多局（如 win-rate / benchmark / Monte Carlo）
+/// - 希望避免每次都重新解析输入、实例化玩家并完成 build
+/// - 需要在保持 `raw` 路径语义一致的前提下，提高重复模拟性能
+///
+/// 不适合的场景：
+///
+/// - 只跑单局对战；此时直接使用 [`Runner::new_from_namerena_raw`] 通常更直接
+///
+/// 与 [`Runner`] 的区别：
+///
+/// - [`Runner`]：表示一场“具体可运行”的对局，可推进回合、读取 winner、读取 updates
+/// - `PreparedRunner`：表示一份“可重复产出 Runner 的模板”，自身不承载对局过程
+///
+/// 关于 seed：
+///
+/// - 不传 seed 时，应传空切片 `&[]`
+/// - 传 seed 时，应传与 raw 文本一致的完整 `seed:...` 行
+/// - 例如：`&["seed:33554431@!".to_string()]`
+///
+/// 这样可以与 `raw -> split_namerena_into_groups -> new_from_groups_with_seed(...)`
+/// 的行为保持一致。
 #[derive(Clone)]
 pub struct PreparedRunner {
     template: Arc<PreparedRunnerTemplate>,
@@ -110,12 +138,34 @@ impl Runner {
         Self::new_from_prepared_with_seed(&prepared, seed)
     }
 
-    /// 预构建一份可复用的玩家模板，后续可多次按不同 seed 构造 Runner。
+    /// 预构建一份可复用的对局模板，后续可多次按不同 seed 构造 [`Runner`]。
+    ///
+    /// 这个接口会把与 seed 无关的初始化工作提前做掉，例如：
+    ///
+    /// - 玩家字符串解析
+    /// - 玩家实例构造
+    /// - 同队 upgrade
+    /// - build 后得到的基础属性 / 技能模板
+    ///
+    /// 之后调用方可以通过 [`Runner::new_from_prepared_with_seed`] 反复构造具体对局，
+    /// 适合同一输入下批量跑很多局。
+    ///
+    /// 注意：
+    ///
+    /// - `players` 是“已按组拆分后的输入”，不需要额外传 raw 文本
+    /// - 这里只 prepare，不会实际开始一场对局
+    /// - 若只跑单局，直接从 raw 构造 [`Runner`] 往往更简单
     pub fn prepare_groups(players: &[Vec<String>]) -> RunnerResult<PreparedRunner> {
         Self::prepare_groups_with_eval_rq(players, crate::player::eval_name::DEFAULT_EVAL_RQ)
     }
 
-    /// 预构建一份可复用的玩家模板，并显式指定名字强度评估使用的 `rq`。
+    /// 预构建一份可复用的对局模板，并显式指定名字强度评估使用的 `rq`。
+    ///
+    /// 与 [`Runner::prepare_groups`] 相比，这个版本允许调用方显式控制 `eval_rq`，
+    /// 从而保证 prepare 路径与后续对局路径使用完全一致的名字评估语义。
+    ///
+    /// 返回的 [`PreparedRunner`] 可被重复复用；相同 `players + eval_rq` 组合还会命中内部缓存，
+    /// 避免重复构建同一份模板。
     pub fn prepare_groups_with_eval_rq(players: &[Vec<String>], eval_rq: f64) -> RunnerResult<PreparedRunner> {
         let cache_key = groups_cache_key(players, eval_rq);
         let template = {
@@ -130,7 +180,32 @@ impl Runner {
         Ok(PreparedRunner { template })
     }
 
-    /// 通过预构建模板和 seed 列表构建 Runner。
+    /// 通过 [`PreparedRunner`] 和 seed 列表构建一场具体的 [`Runner`]。
+    ///
+    /// 这是 `PreparedRunner` 的主要用途：在同一份已 prepare 的模板上，
+    /// 反复按不同 seed 构造具体对局。
+    ///
+    /// `seed` 的约定与 raw 路径保持一致：
+    ///
+    /// - 不传 seed：使用空切片 `&[]`
+    /// - 传 seed：传完整的 `seed:...` 行，而不是裸 seed 值
+    ///
+    /// 例如：
+    ///
+    /// - `&[]`
+    /// - `&["seed:33554431@!".to_string()]`
+    ///
+    /// 不建议传：
+    ///
+    /// - `&["33554431@!".to_string()]`
+    ///
+    /// 因为那样与 raw 文本中的 seed 语义不一致。
+    ///
+    /// 典型用法：
+    ///
+    /// 1. 先调用 [`Runner::prepare_groups`] / [`Runner::prepare_groups_with_eval_rq`]
+    /// 2. 再在循环中多次调用本函数构造不同 seed 的 [`Runner`]
+    /// 3. 对每个 `Runner` 调用 `run_to_completion()` 或逐回合推进
     pub fn new_from_prepared_with_seed(prepared: &PreparedRunner, seed: &[String]) -> RunnerResult<Runner> {
         Self::new_from_prepared_groups_with_seed(prepared.template.as_ref(), seed)
     }

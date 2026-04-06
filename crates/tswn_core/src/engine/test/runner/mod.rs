@@ -96,7 +96,7 @@ fn collect_replay_events(runner: &mut runners::Runner, max_rounds: usize, normal
     (events, guard, total_score)
 }
 
-fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize, u64) {
+pub fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize, u64) {
     let mut lines = Vec::new();
     let mut guard = 0usize;
     let mut total_score = 0u64;
@@ -204,7 +204,7 @@ fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) 
     (raw_input.trim_end().to_string(), expected_lines)
 }
 
-fn winner_names(runner: &runners::Runner) -> Vec<String> {
+pub fn winner_names(runner: &runners::Runner) -> Vec<String> {
     runner
         .world
         .winner

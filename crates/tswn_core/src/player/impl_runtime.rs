@@ -1417,6 +1417,7 @@ impl Player {
         atp
     }
 
+    #[allow(dead_code)]
     fn apply_post_defend_states(
         &mut self,
         mut dmg: i32,
