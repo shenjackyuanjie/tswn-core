@@ -305,6 +305,47 @@ pub extern "C" fn tswn_default_eval_rq() -> f64 { tswn_core::player::eval_name::
 #[unsafe(no_mangle)]
 pub extern "C" fn tswn_win_rate_eval_rq() -> f64 { tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
 
+/// # Safety
+///
+/// `prepared` 必须是由本库返回且仍然有效的 `tswn_prepared_runner_t` 句柄；
+/// `out_result` 必须指向一个可写的 `tswn_win_rate_result_t` 输出位置。
+/// 若 `prepared` 为 `NULL`、`out_result` 为 `NULL`，或传入悬空/伪造指针，会导致错误返回或未定义行为。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_prepared_win_rate(
+    prepared: *const tswn_prepared_runner_t,
+    n: usize,
+    out_result: *mut tswn_win_rate_result_t,
+) -> tswn_status_t {
+    unsafe { tswn_prepared_win_rate_with_eval_rq(prepared, n, tswn_win_rate_eval_rq(), out_result) }
+}
+
+/// # Safety
+///
+/// `prepared` 必须是由本库返回且仍然有效的 `tswn_prepared_runner_t` 句柄；
+/// `out_result` 必须指向一个可写的 `tswn_win_rate_result_t` 输出位置。
+/// 若 `prepared` 为 `NULL`、`out_result` 为 `NULL`，或传入悬空/伪造指针，会导致错误返回或未定义行为。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_prepared_win_rate_with_eval_rq(
+    prepared: *const tswn_prepared_runner_t,
+    n: usize,
+    eval_rq: f64,
+    out_result: *mut tswn_win_rate_result_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        if prepared.is_null() {
+            return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "prepared is null"));
+        }
+        if out_result.is_null() {
+            return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "out_result is null"));
+        }
+        let result = run_prepared_win_rate(unsafe { &(*prepared).inner }, n, eval_rq)?;
+        unsafe {
+            *out_result = result;
+        }
+        Ok(())
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn tswn_last_error_message() -> tswn_str_t {
     LAST_ERROR.with(|slot| into_tswn_str(slot.borrow().clone().unwrap_or_default()))

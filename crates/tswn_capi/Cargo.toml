@@ -4,8 +4,8 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-tswn_core = { path = "../tswn_core" }
+tswn_core = { path = "../tswn_core", features = ["no_debug"] }
 
 [lib]
 name = "tswn_capi"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "staticlib"]

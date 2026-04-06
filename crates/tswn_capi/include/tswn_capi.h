@@ -215,6 +215,12 @@ tswn_status_t tswn_group_win_rate(const char* target_utf8, const char* const* ag
 /* 按显式 eval_rq 批量计算 target 对多个 against 的胜率统计。 */
 tswn_status_t tswn_group_win_rate_with_eval_rq(const char* target_utf8, const char* const* against_utf8, size_t against_len, size_t n, double eval_rq, tswn_win_rate_result_t* out_results);
 
+/* 基于 PreparedRunner 按默认 win-rate 语义计算第一组对其余组的胜率统计。 */
+tswn_status_t tswn_prepared_win_rate(const tswn_prepared_runner_t* prepared, size_t n, tswn_win_rate_result_t* out_result);
+
+/* 基于 PreparedRunner 按显式 eval_rq 计算第一组对其余组的胜率统计。 */
+tswn_status_t tswn_prepared_win_rate_with_eval_rq(const tswn_prepared_runner_t* prepared, size_t n, double eval_rq, tswn_win_rate_result_t* out_result);
+
 /* Icon helpers */
 
 /* 将名字渲染为 16x16 RGBA 原始像素。结果需用 `tswn_bytes_free` 释放。 */
