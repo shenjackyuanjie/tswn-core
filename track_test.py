@@ -127,11 +127,15 @@ def parse_cargo_test_output(output: str) -> dict:
                 continue
 
             # 先尝试旧有的 sampled/fight 匹配 (兼容旧格式)
-            case_match = re.search(r"(sampled case-?\d+|fight_large|large_full|large_\d{2})", line)
+            case_match = re.search(
+                r"(sampled case-?\d+|fight_large|large_full|large_\d{2})", line
+            )
             if case_match:
                 case_key = case_match.group(1)
                 if case_key.startswith("sampled "):
-                    normalized_key = case_key.replace("case-", "case_").replace("sampled ", "sampled_large_")
+                    normalized_key = case_key.replace("case-", "case_").replace(
+                        "sampled ", "sampled_large_"
+                    )
                 else:
                     normalized_key = case_key
                 test_name = case_to_test.get(normalized_key)
@@ -177,37 +181,45 @@ def compare_records(current: dict, previous: dict) -> list:
 
             # 报告状态变化：仅当状态实际从 FAILED <-> 非 FAILED 发生变化时
             if prev_status == "FAILED" and curr_status != "FAILED":
-                changes.append({
-                    "test": test,
-                    "change": "NEW_PASS",
-                    "message": "测试从失败变为通过",
-                })
+                changes.append(
+                    {
+                        "test": test,
+                        "change": "NEW_PASS",
+                        "message": "测试从失败变为通过",
+                    }
+                )
             elif prev_status != "FAILED" and curr_status == "FAILED":
-                changes.append({
-                    "test": test,
-                    "change": "NEW_FAIL",
-                    "message": "新失败的测试",
-                    "idx": curr_idx,
-                })
+                changes.append(
+                    {
+                        "test": test,
+                        "change": "NEW_FAIL",
+                        "message": "新失败的测试",
+                        "idx": curr_idx,
+                    }
+                )
 
             # 仅在两次都有有效 idx 时比较 idx
             if curr_idx >= 0 and prev_idx >= 0:
                 if curr_idx > prev_idx:
-                    changes.append({
-                        "test": test,
-                        "change": "IMPROVED",
-                        "message": f"分叉点延后 (idx: {prev_idx} -> {curr_idx})",
-                        "idx": curr_idx,
-                        "prev_idx": prev_idx,
-                    })
+                    changes.append(
+                        {
+                            "test": test,
+                            "change": "IMPROVED",
+                            "message": f"分叉点延后 (idx: {prev_idx} -> {curr_idx})",
+                            "idx": curr_idx,
+                            "prev_idx": prev_idx,
+                        }
+                    )
                 elif curr_idx < prev_idx:
-                    changes.append({
-                        "test": test,
-                        "change": "REGRESSED",
-                        "message": f"分叉点提前 (idx: {prev_idx} -> {curr_idx})",
-                        "idx": curr_idx,
-                        "prev_idx": prev_idx,
-                    })
+                    changes.append(
+                        {
+                            "test": test,
+                            "change": "REGRESSED",
+                            "message": f"分叉点提前 (idx: {prev_idx} -> {curr_idx})",
+                            "idx": curr_idx,
+                            "prev_idx": prev_idx,
+                        }
+                    )
             continue
 
         # 如果只有一侧有记录（新出现或消失），不报告状态变化或 idx 变化，
@@ -288,9 +300,13 @@ def _print_checkpoint_comparison(current_records, quiet):
     if not quiet:
         for change in changes:
             if change["change"] == "IMPROVED":
-                print(f"[改进] {change['test']}: idx {change['prev_idx']} -> {change['idx']}")
+                print(
+                    f"[改进] {change['test']}: idx {change['prev_idx']} -> {change['idx']}"
+                )
             elif change["change"] == "REGRESSED":
-                print(f"[退步] {change['test']}: idx {change['prev_idx']} -> {change['idx']}")
+                print(
+                    f"[退步] {change['test']}: idx {change['prev_idx']} -> {change['idx']}"
+                )
             elif change["change"] == "NEW_FAIL":
                 print(f"[新失败] {change['test']}: idx={change.get('idx', -1)}")
             elif change["change"] == "NEW_PASS":
@@ -324,8 +340,11 @@ def cmd_save(name):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
     print(f'存档点 "{name}" 已保存 ({now.strftime("%Y-%m-%d %H:%M")})')
-    failed = sum(1 for v in records.values()
-                 if v.get("status") == "FAILED" and v.get("idx", -1) >= 0)
+    failed = sum(
+        1
+        for v in records.values()
+        if v.get("status") == "FAILED" and v.get("idx", -1) >= 0
+    )
     if failed:
         print(f"  包含 {failed} 个失败测试")
     else:
@@ -345,8 +364,11 @@ def cmd_list():
         name = data.get("name", "?")
         time = data.get("time", "?")
         records = data.get("records", {})
-        failed = sum(1 for v in records.values()
-                     if v.get("status") == "FAILED" and v.get("idx", -1) >= 0)
+        failed = sum(
+            1
+            for v in records.values()
+            if v.get("status") == "FAILED" and v.get("idx", -1) >= 0
+        )
         if failed:
             print(f"  {name} ({time}) - {failed} 个失败")
         else:
@@ -377,9 +399,13 @@ def cmd_diff(name):
     print(f'--- vs 存档点 "{cp_name}" ({cp_time}) ---')
     for change in changes:
         if change["change"] == "IMPROVED":
-            print(f"[改进] {change['test']}: idx {change['prev_idx']} -> {change['idx']}")
+            print(
+                f"[改进] {change['test']}: idx {change['prev_idx']} -> {change['idx']}"
+            )
         elif change["change"] == "REGRESSED":
-            print(f"[退步] {change['test']}: idx {change['prev_idx']} -> {change['idx']}")
+            print(
+                f"[退步] {change['test']}: idx {change['prev_idx']} -> {change['idx']}"
+            )
         elif change["change"] == "NEW_FAIL":
             print(f"[新失败] {change['test']}: idx={change.get('idx', -1)}")
         elif change["change"] == "NEW_PASS":
@@ -400,31 +426,28 @@ def cmd_delete(name):
 def main():
     parser = argparse.ArgumentParser(description="测试回归追踪工具")
     parser.add_argument(
-        "-f", "--filter",
+        "-f",
+        "--filter",
         default=DEFAULT_FILTER,
-        help=f"测试过滤表达式 (default: {DEFAULT_FILTER})"
+        help=f"测试过滤表达式 (default: {DEFAULT_FILTER})",
     )
     parser.add_argument(
-        "-s", "--show",
-        action="store_true",
-        help="只显示当前失败状态，不运行测试"
+        "-s", "--show", action="store_true", help="只显示当前失败状态，不运行测试"
     )
+    parser.add_argument("-r", "--reset", action="store_true", help="重置历史记录")
     parser.add_argument(
-        "-r", "--reset",
-        action="store_true",
-        help="重置历史记录"
-    )
-    parser.add_argument(
-        "-q", "--quiet",
-        action="store_true",
-        help="安静模式，只输出关键信息"
+        "-q", "--quiet", action="store_true", help="安静模式，只输出关键信息"
     )
     subparsers = parser.add_subparsers(dest="command")
     save_parser = subparsers.add_parser("save", help="将当前记录保存为存档点")
-    save_parser.add_argument("name", nargs="?", default=None, help="存档点名称 (默认用时间戳)")
+    save_parser.add_argument(
+        "name", nargs="?", default=None, help="存档点名称 (默认用时间戳)"
+    )
     subparsers.add_parser("list", help="列出所有存档点")
     diff_parser = subparsers.add_parser("diff", help="对比当前记录与指定存档点")
-    diff_parser.add_argument("name", nargs="?", default=None, help="存档点名称 (默认最近)")
+    diff_parser.add_argument(
+        "name", nargs="?", default=None, help="存档点名称 (默认最近)"
+    )
     delete_parser = subparsers.add_parser("delete", help="删除指定存档点")
     delete_parser.add_argument("name", help="存档点名称")
     args = parser.parse_args()
@@ -495,7 +518,9 @@ def main():
         if not args.quiet:
             print("所有测试通过！")
 
-            passing_tests = [t for t, r in current_records.items() if r.get("status") != "FAILED"]
+            passing_tests = [
+                t for t, r in current_records.items() if r.get("status") != "FAILED"
+            ]
             if passing_tests:
                 print()
                 print("通过的测试:")
@@ -569,7 +594,9 @@ def main():
     _print_checkpoint_comparison(current_records, args.quiet)
 
     save_records(current_records)
-    write_log(f"改进:{improved_count}, 退步:{regressed_count}, 新失败:{new_fail_count}, 修复:{fixed_count}")
+    write_log(
+        f"改进:{improved_count}, 退步:{regressed_count}, 新失败:{new_fail_count}, 修复:{fixed_count}"
+    )
 
 
 if __name__ == "__main__":

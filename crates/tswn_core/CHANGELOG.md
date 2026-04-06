@@ -13,6 +13,15 @@
 - **CLI 内部模块化拆分**：将原本超长的 `tswn_cli.rs` 按职责拆成 `args` / `bench` / `fight` / `icon` 模块，主入口只保留 banner 和命令分发，降低继续维护 benchmark 与图标逻辑时的耦合。
 - **`bench win-rate` 结果重新对齐 JS 基准**：修复 benchmark 将排序后队伍误判成输入第一队的问题，并让 `run_to_completion()` 复用正常 `main_round()` 推进逻辑，消除高速路径与普通 fight 的胜者分叉；默认 `bench win-rate` 同时改为复刻 JS `ProfileWinChance` 的 seed 调度（首局无 seed，后续从 `seed:33554431@!` 开始），使默认模式重新对齐 `md5.js::win_rate`，而 `--keep-rq` 继续保持普通 `fight + seed:i@!` 语义用于对照。
 
+### 分发与打包
+
+- **新增 `tswn_capi` 分发脚本**：增加 `scripts/build_capi.py`，可一键构建 `tswn_capi` 并整理分发目录，统一收集 `include/`、`lib/`、`examples/`、`README.txt` 与 `MANIFEST.txt`，方便直接对外提供 C-API 包。
+- **新增聚合打包脚本**：增加 `scripts/build_all.py`，支持一次性构建并打包 `capi` / `cli` / 现有 `tswn_py` 产物，默认生成带版本信息的 bundle 名与 zip 名，例如 `tswn_core_0_2_10_capi_0_1_0_py_0_1_8_bundle.zip`。
+- **CLI 分发文件名带版本号**：聚合打包时，`tswn-cli` 会整理为带 `tswn_core` 版本号的可执行文件名（如 `tswn-cli_alpha_0_2_10.exe`），降低外部分发时多版本覆盖和混淆的风险。
+- **Python 分发补充示例源码**：聚合打包结果中的 `py/` 目录除了已有 wheel 外，还会一并收集 `crates/tswn_py/examples/`，方便直接参考 Python 调用方式。
+- **补充分发文档与脚本说明**：完善 `scripts/README.md`，补充 `build_all.py` / `build_capi.py` / `build_py.py` 的用途、典型命令与输出位置说明；bundle 顶层 `README.txt` 也同步加入 `tswn_core` / `tswn_capi` / `tswn_py` 版本概览和主要产物说明。
+- **C-API README 补充跨编译器示例**：`tswn_capi` 的分发 README 与 `examples/README.md` 新增了 MSVC / clang / gcc 的示例编译参数说明，并补充 Windows 下动态库查找与运行方式说明；其中 MSVC 与 clang 的 Windows 编译方式已在当前打包结果上实测验证。
+
 ### 性能
 
 - **`no_debug` 下的 `win-rate` 速度补充验证**：
@@ -27,6 +36,10 @@
 
 - `cargo check -p tswn_core --bin tswn-cli`
 - `cargo build -p tswn_core --bin tswn-cli --release --features no_debug`
+- `python scripts/build_capi.py --release`
+- `python scripts/build_all.py --release --clean`
+- `start-vs-pwsh.ps1` + `cl /nologo /Iinclude examples\version_and_error.c /link /OUT:examples\version_and_error.exe lib\tswn_capi.dll.lib`
+- `clang -Iinclude examples/version_and_error.c lib/tswn_capi.dll.lib -o examples/version_and_error.exe`
 
 ## [0.2.9] - 2026-04-05
 

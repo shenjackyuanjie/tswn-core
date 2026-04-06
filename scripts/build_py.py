@@ -3,13 +3,13 @@
 tswn_py wheel 构建脚本
 
 用法（推荐）：
-  uv run build_py.py [options]
+  uv run scripts/build_py.py [options]
 
 常用示例：
-  uv run build_py.py                         # 标准构建（隔离环境）
-  uv run build_py.py --no-isolation          # 快速构建（复用当前环境）
-  uv run build_py.py --no-isolation --clean  # 清理后快速构建
-  uv run build_py.py --verify                # 构建并验证 import
+  uv run scripts/build_py.py                         # 标准构建（隔离环境）
+  uv run scripts/build_py.py --no-isolation          # 快速构建（复用当前环境）
+  uv run scripts/build_py.py --no-isolation --clean  # 清理后快速构建
+  uv run scripts/build_py.py --verify                # 构建并验证 import
 
 参数：
   -o, --output-dir DIR   wheel 输出目录（默认：crates/tswn_py/dist）
@@ -28,7 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 CRATE_DIR = ROOT / "crates" / "tswn_py"
 
 
@@ -45,7 +45,10 @@ def ensure_build_frontend() -> None:
     run(["uv", "pip", "install", "build"])
     # 重新检查
     if importlib.util.find_spec("build") is None:
-        print("[error] 安装 `build` 失败，请手动执行：uv pip install build", file=sys.stderr)
+        print(
+            "[error] 安装 `build` 失败，请手动执行：uv pip install build",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
 
 
@@ -58,14 +61,17 @@ def verify_wheel(wheel: Path) -> None:
     print(f"\n[verify] 安装 wheel：{wheel.name}")
     run(["uv", "pip", "install", "--force-reinstall", str(wheel)])
     print("[verify] 验证 import ...")
-    run([
-        sys.executable, "-c",
-        (
-            "import tswn_py; "
-            "print('  wrapper_version_str():', tswn_py.wrapper_version_str()); "
-            "print('  core_version_str():   ', tswn_py.core_version_str())"
-        ),
-    ])
+    run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import tswn_py; "
+                "print('  wrapper_version_str():', tswn_py.wrapper_version_str()); "
+                "print('  core_version_str():   ', tswn_py.core_version_str())"
+            ),
+        ]
+    )
     print("[verify] OK")
 
 
@@ -75,7 +81,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
-        "-o", "--output-dir",
+        "-o",
+        "--output-dir",
         default=str(CRATE_DIR / "dist"),
         metavar="DIR",
         help="wheel 输出目录（默认：crates/tswn_py/dist）",
@@ -120,9 +127,12 @@ def main(argv: list[str]) -> int:
 
     # 3) 执行 python -m build --wheel
     cmd: list[str | Path] = [
-        sys.executable, "-m", "build",
+        sys.executable,
+        "-m",
+        "build",
         "--wheel",
-        "-o", str(output_dir),
+        "-o",
+        str(output_dir),
     ]
     if args.no_isolation:
         cmd.append("--no-isolation")
@@ -135,7 +145,9 @@ def main(argv: list[str]) -> int:
     # 4) 报告产物
     wheel = find_latest_wheel(output_dir)
     if wheel is None:
-        print("\n[error] 构建完成但未找到 wheel 文件，请检查上方输出。", file=sys.stderr)
+        print(
+            "\n[error] 构建完成但未找到 wheel 文件，请检查上方输出。", file=sys.stderr
+        )
         return 1
 
     print(f"\n[ok] 产出：{wheel}")
