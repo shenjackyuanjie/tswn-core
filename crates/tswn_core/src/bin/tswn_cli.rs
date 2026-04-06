@@ -9,8 +9,8 @@
 //! 示例：
 //! ```bash
 //! tswn-cli fight --raw "mario\nluigi\n\npeach\nbowser"
-//! tswn-cli bench auto --raw "mario" -n 500 --perf
-//! tswn-cli bench win-rate "mario" "luigi" -n 1000 -t 4
+//! tswn-cli bench auto --raw "mario" -n 10000 --perf
+//! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
 //! tswn-cli icon show mario luigi
 //! ```
 
@@ -34,12 +34,16 @@ fn print_banner() {
 fn main() {
     let cli = args::parse().unwrap_or_else(|err| err.exit());
 
-    if !matches!(cli.command, ParsedCommand::Fight { out_raw: true, .. }) {
+    if !matches!(
+        cli.command,
+        ParsedCommand::Fight { out_raw: true, .. } | ParsedCommand::FightRaw { .. }
+    ) {
         print_banner();
     }
 
     match cli.command {
         ParsedCommand::Fight { raw, out_raw } => fight::run(raw, out_raw),
+        ParsedCommand::FightRaw { raw, n, threads } => fight::run_raw(raw, n, threads),
         ParsedCommand::BenchAuto {
             raw,
             n,

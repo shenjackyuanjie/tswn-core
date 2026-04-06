@@ -17,6 +17,11 @@ pub enum ParsedCommand {
         raw: String,
         out_raw: bool,
     },
+    FightRaw {
+        raw: String,
+        n: usize,
+        threads: Option<usize>,
+    },
     BenchAuto {
         raw: String,
         n: usize,
@@ -82,6 +87,14 @@ enum CliCommand {
     ///   tswn-cli fight --out-raw --file input.txt
     #[command(verbatim_doc_comment)]
     Fight(FightCommand),
+    /// 运行原始 namerena 对战，并直接输出 raw 聚合战斗日志。
+    ///
+    /// 示例:
+    ///   tswn-cli raw
+    ///   tswn-cli raw --raw "mario\nluigi\n\npeach\nbowser"
+    ///   tswn-cli raw --file input.txt
+    #[command(name = "raw", verbatim_doc_comment)]
+    FightRaw(FightRawCommand),
     /// 运行 benchmark 相关功能。
     Bench(BenchCommand),
     /// 玩家图标相关功能。
@@ -99,6 +112,25 @@ struct FightCommand {
 }
 
 #[derive(Debug, Args)]
+struct FightRawCommand {
+    #[command(flatten)]
+    input: InputArgs,
+
+    /// 评分对局数量。
+    #[arg(
+        short = 'n',
+        long = "count",
+        default_value_t = 10000,
+        value_name = "N"
+    )]
+    count: usize,
+
+    /// 指定 benchmark 线程数。
+    #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
+    thread: Option<usize>,
+}
+
+#[derive(Debug, Args)]
 struct BenchCommand {
     #[command(subcommand)]
     command: BenchSubcommand,
@@ -112,14 +144,14 @@ enum BenchSubcommand {
     ///
     /// 示例:
     ///   tswn-cli bench auto
-    ///   tswn-cli bench auto --raw "mario" -n 500 --perf
-    ///   tswn-cli bench auto --file input.txt -n 1000 -t 8
+    ///   tswn-cli bench auto --raw "mario" -n 10000 --perf
+    ///   tswn-cli bench auto --file input.txt -n 10000 -t 8
     #[command(verbatim_doc_comment)]
     Auto(BenchAutoCommand),
     /// 显式运行两队胜率测试。
     ///
     /// 示例:
-    ///   tswn-cli bench win-rate "mario" "luigi" -n 1000
+    ///   tswn-cli bench win-rate "mario" "luigi" -n 10000
     ///   tswn-cli bench win-rate "mario" "luigi" --keep-rq --perf
     #[command(name = "win-rate", verbatim_doc_comment)]
     WinRate(BenchWinRateCommand),
@@ -129,7 +161,7 @@ enum BenchSubcommand {
     ///
     /// 示例:
     ///   tswn-cli bench group-win-rate --target "mario\nluigi" --against "bowser" --against "peach\ndaisy"
-    ///   tswn-cli bench group-win-rate --target "mario" -a "luigi" -a "peach" -n 1000 --perf
+    ///   tswn-cli bench group-win-rate --target "mario" -a "luigi" -a "peach" -n 10000 --perf
     #[command(name = "group-win-rate", verbatim_doc_comment)]
     GroupWinRate(BenchGroupWinRateCommand),
 }
@@ -188,7 +220,7 @@ struct BenchOptions {
     #[arg(
         short = 'n',
         long = "count",
-        default_value_t = 1000,
+        default_value_t = 10000,
         value_name = "N"
     )]
     count: usize,
@@ -277,6 +309,11 @@ impl ParsedCli {
             CliCommand::Fight(cmd) => ParsedCommand::Fight {
                 raw: cmd.input.read_or_stdin()?,
                 out_raw: cmd.out_raw,
+            },
+            CliCommand::FightRaw(cmd) => ParsedCommand::FightRaw {
+                raw: cmd.input.read_or_stdin()?,
+                n: cmd.count.max(1),
+                threads: cmd.thread,
             },
             CliCommand::Bench(BenchCommand { command }) => match command {
                 BenchSubcommand::Auto(cmd) => ParsedCommand::BenchAuto {

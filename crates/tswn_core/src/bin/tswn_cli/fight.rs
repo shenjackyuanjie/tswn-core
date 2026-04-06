@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::{Runner, engine};
@@ -76,6 +78,384 @@ pub fn run(raw: String, out_raw: bool) {
     if let Some(win_idx_line) = fmt_winner_input_indices(&runner, &input_player_ids) {
         println!("{win_idx_line}");
     }
+}
+
+pub fn run_raw(raw: String, n: usize, threads: Option<usize>) {
+    let trimmed = raw.trim().to_string();
+    if trimmed.is_empty() {
+        eprintln!("raw: 输入为空或无有效玩家");
+        return;
+    }
+
+    if !starts_with_raw_bench_header(&trimmed) {
+        let (input_groups, _) = Runner::split_namerena_into_groups(trimmed.clone());
+        let mut runner = match Runner::new_from_namerena_raw(trimmed) {
+            Ok(runner) => runner,
+            Err(err) => {
+                eprintln!("构建对局失败: {err}");
+                std::process::exit(1);
+            }
+        };
+        let input_player_ids = collect_input_player_ids(&runner, input_groups.len());
+        print_fight_raw(&mut runner, &input_player_ids);
+        return;
+    }
+
+    let body = strip_raw_bench_header(&trimmed).trim().to_string();
+    if body.is_empty() {
+        eprintln!("raw: !test! 之后未提供有效输入");
+        return;
+    }
+
+    let (groups, _) = Runner::split_namerena_into_groups(body.clone());
+    let group_count = groups.iter().filter(|g| !g.is_empty()).count();
+    match group_count {
+        0 => eprintln!("raw: !test! 之后未提供有效输入"),
+        1 => run_raw_score(body, n, threads),
+        2 => run_raw_winrate(body, n, threads),
+        _ => eprintln!("raw: !test! 模式只支持 1 组（评分）或 2 组（胜率）输入"),
+    }
+}
+
+fn run_raw_score(raw: String, n: usize, threads: Option<usize>) {
+    let (groups, _) = Runner::split_namerena_into_groups(raw.clone());
+    let target_group = groups.into_iter().next().unwrap_or_default();
+    let target_count = target_group.len();
+    if target_count == 0 {
+        eprintln!("评分: 无目标玩家");
+        return;
+    }
+
+    let target_str = target_group.join("\n");
+    println!("=== 原始 namerena 评分测试 ({n} 场) ===");
+    println!("目标: {}", target_group.join(", "));
+    println!("info: {target_count}");
+
+    print!("[普通评分] ");
+    let normal = run_raw_score_inner(&target_str, target_count, "\u{0002}", n, threads);
+    let ns = normal.0 as f64 * 10_000.0 / normal.1.max(1) as f64;
+    println!("普通评分: {:.0} / 10000  ({}/{})", ns, normal.0, normal.1);
+
+    print!("[!评分]    ");
+    let bang = run_raw_score_inner(&target_str, target_count, "!", n, threads);
+    let bs = bang.0 as f64 * 10_000.0 / bang.1.max(1) as f64;
+    println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.0, bang.1);
+}
+
+fn run_raw_score_inner(target_str: &str, target_count: usize, modifier: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
+    let workers = resolve_raw_workers(threads, n);
+
+    if workers <= 1 || n < 2000 {
+        return run_raw_score_range(target_str, target_count, modifier, 0, n, true);
+    }
+
+    let next = Arc::new(AtomicUsize::new(0));
+    let mut handles = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        let target_str = target_str.to_string();
+        let modifier = modifier.to_string();
+        let next = Arc::clone(&next);
+        handles.push(std::thread::spawn(move || {
+            run_raw_score_worker(target_str.as_str(), target_count, modifier.as_str(), next.as_ref(), n)
+        }));
+    }
+
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    for handle in handles {
+        let (part_wins, part_total) = handle.join().expect("raw score worker thread panicked");
+        wins += part_wins;
+        total += part_total;
+    }
+    (wins, total)
+}
+
+fn run_raw_score_range(target_str: &str, target_count: usize, modifier: &str, start: usize, end: usize, show_progress: bool) -> (usize, usize) {
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut progress_printed = false;
+    let mut targets = String::with_capacity(target_count.saturating_mul(24));
+    let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
+
+    for i in start..end {
+        targets.clear();
+        let base = tswn_core::engine::PROFILE_START as usize + i * target_count;
+        for offset in 0..target_count {
+            if offset > 0 {
+                targets.push('\n');
+            }
+            let _ = std::fmt::Write::write_fmt(&mut targets, format_args!("{}@{modifier}", base + offset));
+        }
+
+        bench_input.clear();
+        bench_input.push_str(target_str);
+        bench_input.push_str("\n\n");
+        bench_input.push_str(&targets);
+
+        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
+
+        runner.run_to_completion();
+        total += 1;
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|w| team0_roster.contains(w))
+        {
+            wins += 1;
+        }
+        if show_progress && (i + 1) % 100 == 0 {
+            print!("\r  进度: {}/{}  ", i + 1, end);
+            progress_printed = true;
+        }
+    }
+    if progress_printed {
+        println!();
+    }
+    (wins, total)
+}
+
+fn run_raw_score_worker(
+    target_str: &str,
+    target_count: usize,
+    modifier: &str,
+    next: &AtomicUsize,
+    end: usize,
+) -> (usize, usize) {
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut targets = String::with_capacity(target_count.saturating_mul(24));
+    let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
+
+    loop {
+        let i = next.fetch_add(1, Ordering::Relaxed);
+        if i >= end {
+            break;
+        }
+
+        targets.clear();
+        let base = tswn_core::engine::PROFILE_START as usize + i * target_count;
+        for offset in 0..target_count {
+            if offset > 0 {
+                targets.push('\n');
+            }
+            let _ = std::fmt::Write::write_fmt(&mut targets, format_args!("{}@{modifier}", base + offset));
+        }
+
+        bench_input.clear();
+        bench_input.push_str(target_str);
+        bench_input.push_str("\n\n");
+        bench_input.push_str(&targets);
+
+        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
+
+        runner.run_to_completion();
+        total += 1;
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|w| team0_roster.contains(w))
+        {
+            wins += 1;
+        }
+    }
+
+    (wins, total)
+}
+
+fn resolve_raw_workers(threads: Option<usize>, total: usize) -> usize {
+    threads
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|x| x.get().saturating_mul(5).div_ceil(4))
+                .unwrap_or(1)
+        })
+        .min(total.max(1))
+}
+
+fn starts_with_raw_bench_header(raw: &str) -> bool {
+    let raw = raw.trim_start_matches('\u{feff}');
+    raw.strip_prefix("!test!")
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+}
+
+fn strip_raw_bench_header(raw: &str) -> &str {
+    let raw = raw.trim_start_matches('\u{feff}');
+    raw.strip_prefix("!test!").unwrap_or(raw)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_bench_header_detects_plain_header() {
+        assert!(starts_with_raw_bench_header("!test!\n\nmario"));
+    }
+
+    #[test]
+    fn raw_bench_header_detects_leading_blank_lines() {
+        let trimmed = "\n\n!test!\n\nmario".trim().to_string();
+        assert!(starts_with_raw_bench_header(&trimmed));
+        assert_eq!(strip_raw_bench_header(&trimmed).trim(), "mario");
+    }
+
+    #[test]
+    fn raw_bench_header_detects_bom_prefixed_header() {
+        assert!(starts_with_raw_bench_header("\u{feff}!test!\n\nmario"));
+    }
+
+    #[test]
+    fn raw_bench_header_rejects_non_header_inputs() {
+        assert!(!starts_with_raw_bench_header("mario\n\nluigi"));
+        assert!(!starts_with_raw_bench_header("!test!mario"));
+    }
+
+    #[test]
+    fn strip_raw_bench_header_keeps_bench_body() {
+        assert_eq!(strip_raw_bench_header("!test!\n\nmario\n\nluigi").trim(), "mario\n\nluigi");
+    }
+
+    #[test]
+    fn trimmed_leading_blank_line_input_routes_to_bench_group_count() {
+        let trimmed = "\n!test!\n\nmario\n\nluigi".trim().to_string();
+        assert!(starts_with_raw_bench_header(&trimmed));
+
+        let body = strip_raw_bench_header(&trimmed).trim().to_string();
+        let (groups, _) = Runner::split_namerena_into_groups(body);
+        let group_count = groups.iter().filter(|g| !g.is_empty()).count();
+
+        assert_eq!(group_count, 2);
+    }
+}
+
+fn run_raw_winrate(raw: String, n: usize, threads: Option<usize>) {
+    println!("=== 原始 namerena 胜率测试 ({n} 场) ===");
+    let summary = run_raw_winrate_inner(&raw, n, threads);
+    let rate = summary.0 as f64 * 100.0 / summary.1.max(1) as f64;
+    println!("胜率: {:.2}%  ({}/{})", rate, summary.0, summary.1);
+}
+
+fn run_raw_winrate_inner(raw: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
+    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let team0_count = groups
+        .first()
+        .map(|group| group.iter().filter(|name| !tswn_core::player::Player::check_is_seed(name)).count())
+        .unwrap_or(0);
+    let prepared = match Runner::prepare_groups_with_eval_rq(&groups, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ) {
+        Ok(prepared) => prepared,
+        Err(err) => {
+            eprintln!("构建胜率模板失败: {err}");
+            return (0, 0);
+        }
+    };
+    let prepared = Arc::new(prepared);
+    let workers = resolve_raw_workers(threads, n);
+
+    if workers <= 1 || n < 2000 {
+        return run_raw_winrate_range(prepared.as_ref(), team0_count, 0, n);
+    }
+
+    let next = Arc::new(AtomicUsize::new(0));
+    let mut handles = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        let prepared = Arc::clone(&prepared);
+        let next = Arc::clone(&next);
+        handles.push(std::thread::spawn(move || {
+            run_raw_winrate_worker(prepared.as_ref(), team0_count, next.as_ref(), n)
+        }));
+    }
+
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    for handle in handles {
+        let (part_wins, part_total) = handle.join().expect("raw winrate worker thread panicked");
+        wins += part_wins;
+        total += part_total;
+    }
+    (wins, total)
+}
+
+fn run_raw_winrate_range(prepared: &tswn_core::PreparedRunner, _team0_count: usize, start: usize, end: usize) -> (usize, usize) {
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut seed = String::with_capacity(24);
+
+    for i in start..end {
+        let seed_ref: &[String] = if i == 0 {
+            &[]
+        } else {
+            seed.clear();
+            let _ = std::fmt::Write::write_fmt(
+                &mut seed,
+                format_args!("seed:{}@!", 33_554_431usize + i - 1),
+            );
+            std::slice::from_ref(&seed)
+        };
+
+        let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
+
+        runner.run_to_completion();
+        total += 1;
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|winner| team0_roster.contains(winner))
+        {
+            wins += 1;
+        }
+    }
+    (wins, total)
+}
+
+fn run_raw_winrate_worker(
+    prepared: &tswn_core::PreparedRunner,
+    _team0_count: usize,
+    next: &AtomicUsize,
+    end: usize,
+) -> (usize, usize) {
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut seed = String::with_capacity(24);
+
+    loop {
+        let i = next.fetch_add(1, Ordering::Relaxed);
+        if i >= end {
+            break;
+        }
+
+        let seed_ref: &[String] = if i == 0 {
+            &[]
+        } else {
+            seed.clear();
+            let _ = std::fmt::Write::write_fmt(
+                &mut seed,
+                format_args!("seed:{}@!", 33_554_431usize + i - 1),
+            );
+            std::slice::from_ref(&seed)
+        };
+
+        let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
+
+        runner.run_to_completion();
+        total += 1;
+        if let Some(ref winners) = runner.world.winner
+            && winners.iter().any(|winner| team0_roster.contains(winner))
+        {
+            wins += 1;
+        }
+    }
+
+    (wins, total)
 }
 
 fn collect_input_player_ids(runner: &Runner, group_count: usize) -> Vec<usize> {
