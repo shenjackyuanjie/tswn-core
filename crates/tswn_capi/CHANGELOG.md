@@ -2,6 +2,18 @@
 
 ## [0.1.2] - 2026-04-07
 
+### 新增
+
+- 为高层胜率接口新增 `thread: u32` 参数，统一支持 `0=自动线程数`、`1=单线程`、`n=指定多线程数量`：
+  - `tswn_win_rate(...)`
+  - `tswn_win_rate_with_eval_rq(...)`
+  - `tswn_group_win_rate(...)`
+  - `tswn_group_win_rate_with_eval_rq(...)`
+  - `tswn_prepared_win_rate(...)`
+  - `tswn_prepared_win_rate_with_eval_rq(...)`
+- `tswn_capi` 胜率统计内部改为支持基于 `PreparedRunner` 的多线程执行，线程分发策略参考 `tswn_cli`：自动线程模式下优先使用 `available_parallelism()`，并按总局数自动收敛。
+- 补充了头文件注释、README、examples README 与 C 示例中的 `thread` 参数使用说明。
+
 ### 修复
 
 - 修复 `tswn_prepared_win_rate(...)` / `tswn_prepared_win_rate_with_eval_rq(...)` 的 JS profile seed 调度偏移：首局保持无 seed，后续局数改为从 `seed:33554431@! + i` 开始递增，避免 prepared 胜率结果整体错位一局。

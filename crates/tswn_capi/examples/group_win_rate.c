@@ -3,10 +3,11 @@
 int main(void) {
     const char* target = "114514";
     const char* against[] = {"1919810", "aaa", "bbb"};
+    const uint32_t thread = 0; /* 0=自动线程数, 1=单线程, n=指定线程数 */
     tswn_win_rate_result_t results[3];
 
     if (!tswn_example_require(
-            tswn_group_win_rate(target, against, 3, 1000, results),
+            tswn_group_win_rate(target, against, 3, 1000, thread, results),
             "group_win_rate failed")) {
         return 1;
     }

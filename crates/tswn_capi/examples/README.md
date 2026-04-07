@@ -36,8 +36,8 @@
 
 当前除了 `tswn_win_rate(...)` / `tswn_win_rate_with_eval_rq(...)` 之外，还提供了基于 `PreparedRunner` 的高层胜率接口：
 
-- `tswn_prepared_win_rate(prepared, n, &out_result)`
-- `tswn_prepared_win_rate_with_eval_rq(prepared, n, eval_rq, &out_result)`
+- `tswn_prepared_win_rate(prepared, n, thread, &out_result)`
+- `tswn_prepared_win_rate_with_eval_rq(prepared, n, thread, eval_rq, &out_result)`
 
 适用场景：
 
@@ -46,6 +46,20 @@
 - 避免每次都从 raw 文本重新构造整个对局模板
 
 `examples/prepared_win_rate.c` 演示了这种用法。
+
+### 胜率接口的 `thread` 参数
+
+所有高层胜率接口都使用统一的 `thread` 约定：
+
+- `0`：自动线程数
+- `1`：单线程
+- `n`：指定多线程数量
+
+示例：
+
+- `tswn_win_rate(raw, 1000, 0, &result)`：自动多线程
+- `tswn_win_rate(raw, 1000, 1, &result)`：强制单线程
+- `tswn_prepared_win_rate(prepared, 1000, 4, &result)`：固定 4 线程
 
 ### Windows staticlib 说明
 

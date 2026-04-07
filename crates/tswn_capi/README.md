@@ -18,3 +18,22 @@
 - `RunUpdates` 基本读取
 - `win_rate` / `group_win_rate`
 - icon RGBA / PNG / Base64
+
+## 胜率接口线程参数
+
+`tswn_capi` 的高层胜率接口现在都带有 `thread` 参数：
+
+- `0`：自动线程数
+- `1`：单线程
+- `n`：指定多线程数量
+
+覆盖接口：
+
+- `tswn_win_rate(...)`
+- `tswn_win_rate_with_eval_rq(...)`
+- `tswn_group_win_rate(...)`
+- `tswn_group_win_rate_with_eval_rq(...)`
+- `tswn_prepared_win_rate(...)`
+- `tswn_prepared_win_rate_with_eval_rq(...)`
+
+自动线程数策略与 `tswn_cli` 保持一致：优先使用 `available_parallelism()`，再按当前总局数上限收敛。

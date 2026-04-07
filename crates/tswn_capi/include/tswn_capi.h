@@ -203,23 +203,62 @@ tswn_str_t tswn_updates_message_rendered(const tswn_updates_t* updates, size_t i
 
 /* High-level win-rate helpers */
 
-/* 按默认 win-rate 语义计算第一组对其余组的胜率统计。 */
-tswn_status_t tswn_win_rate(const char* raw_text_utf8, size_t n, tswn_win_rate_result_t* out_result);
+/*
+ * 按默认 win-rate 语义计算第一组对其余组的胜率统计。
+ * `thread` 语义：0=自动线程数，1=单线程，n=指定线程数。
+ */
+tswn_status_t tswn_win_rate(const char* raw_text_utf8, size_t n, uint32_t thread, tswn_win_rate_result_t* out_result);
 
-/* 按显式 eval_rq 计算第一组对其余组的胜率统计。 */
-tswn_status_t tswn_win_rate_with_eval_rq(const char* raw_text_utf8, size_t n, double eval_rq, tswn_win_rate_result_t* out_result);
+/*
+ * 按显式 eval_rq 计算第一组对其余组的胜率统计。
+ * `thread` 语义：0=自动线程数，1=单线程，n=指定线程数。
+ */
+tswn_status_t tswn_win_rate_with_eval_rq(const char* raw_text_utf8, size_t n, uint32_t thread, double eval_rq, tswn_win_rate_result_t* out_result);
 
-/* 按默认 win-rate 语义批量计算 target 对多个 against 的胜率统计。 */
-tswn_status_t tswn_group_win_rate(const char* target_utf8, const char* const* against_utf8, size_t against_len, size_t n, tswn_win_rate_result_t* out_results);
+/*
+ * 按默认 win-rate 语义批量计算 target 对多个 against 的胜率统计。
+ * `thread` 语义：0=自动线程数，1=单线程，n=指定线程数。
+ */
+tswn_status_t tswn_group_win_rate(
+    const char* target_utf8,
+    const char* const* against_utf8,
+    size_t against_len,
+    size_t n,
+    uint32_t thread,
+    tswn_win_rate_result_t* out_results
+);
 
-/* 按显式 eval_rq 批量计算 target 对多个 against 的胜率统计。 */
-tswn_status_t tswn_group_win_rate_with_eval_rq(const char* target_utf8, const char* const* against_utf8, size_t against_len, size_t n, double eval_rq, tswn_win_rate_result_t* out_results);
+/*
+ * 按显式 eval_rq 批量计算 target 对多个 against 的胜率统计。
+ * `thread` 语义：0=自动线程数，1=单线程，n=指定线程数。
+ */
+tswn_status_t tswn_group_win_rate_with_eval_rq(
+    const char* target_utf8,
+    const char* const* against_utf8,
+    size_t against_len,
+    size_t n,
+    uint32_t thread,
+    double eval_rq,
+    tswn_win_rate_result_t* out_results
+);
 
-/* 基于 PreparedRunner 按默认 win-rate 语义计算第一组对其余组的胜率统计。 */
-tswn_status_t tswn_prepared_win_rate(const tswn_prepared_runner_t* prepared, size_t n, tswn_win_rate_result_t* out_result);
+/*
+ * 基于 PreparedRunner 按默认 win-rate 语义计算第一组对其余组的胜率统计。
+ * `thread` 语义：0=自动线程数，1=单线程，n=指定线程数。
+ */
+tswn_status_t tswn_prepared_win_rate(const tswn_prepared_runner_t* prepared, size_t n, uint32_t thread, tswn_win_rate_result_t* out_result);
 
-/* 基于 PreparedRunner 按显式 eval_rq 计算第一组对其余组的胜率统计。 */
-tswn_status_t tswn_prepared_win_rate_with_eval_rq(const tswn_prepared_runner_t* prepared, size_t n, double eval_rq, tswn_win_rate_result_t* out_result);
+/*
+ * 基于 PreparedRunner 按显式 eval_rq 计算第一组对其余组的胜率统计。
+ * `thread` 语义：0=自动线程数，1=单线程，n=指定线程数。
+ */
+tswn_status_t tswn_prepared_win_rate_with_eval_rq(
+    const tswn_prepared_runner_t* prepared,
+    size_t n,
+    uint32_t thread,
+    double eval_rq,
+    tswn_win_rate_result_t* out_result
+);
 
 /* Icon helpers */
 

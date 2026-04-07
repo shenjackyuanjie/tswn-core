@@ -1,10 +1,12 @@
 #![allow(non_camel_case_types, non_snake_case)]
 
 use std::cell::RefCell;
-
 use std::ffi::{CStr, c_char};
+use std::fmt::Write;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tswn_core::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use tswn_core::player::PlrId;
@@ -246,29 +248,130 @@ fn update_snapshot(update: &RunUpdate) -> tswn_update_snapshot_t {
     }
 }
 
-fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64) -> FfiResult<tswn_win_rate_result_t> {
+fn resolve_win_rate_workers(thread: u32, total: usize) -> usize {
+    let workers = match thread {
+        0 => std::thread::available_parallelism()
+            .map(|x| x.get().saturating_mul(5).div_ceil(4))
+            .unwrap_or(1),
+        1 => 1,
+        n => n as usize,
+    };
+    workers.min(total.max(1))
+}
+
+fn run_prepared_win_rate_range(
+    prepared: &PreparedRunner,
+    start: usize,
+    end: usize,
+    use_profile_seed: bool,
+) -> FfiResult<tswn_win_rate_result_t> {
     let mut wins = 0u64;
-    for i in 0..n {
-        let seed = if use_js_profile_seed_schedule(eval_rq) {
+    let mut total = 0u64;
+    let mut seed = String::with_capacity(24);
+
+    for i in start..end {
+        let seed_ref: &[String] = if use_profile_seed {
             if i == 0 {
-                Vec::new()
+                &[]
             } else {
-                vec![format!("seed:{}@!", tswn_core::engine::PROFILE_START as usize + i)]
+                seed.clear();
+                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
+                std::slice::from_ref(&seed)
             }
         } else {
-            vec![format!("seed:{i}@!")]
+            seed.clear();
+            let _ = write!(&mut seed, "seed:{i}@!");
+            std::slice::from_ref(&seed)
         };
-        let mut runner = Runner::new_from_prepared_with_seed(prepared, &seed)
+
+        let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)
             .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
         let team0_roster = runner.input_groups.first().cloned().unwrap_or_default();
         runner.run_to_completion();
+        total += 1;
         if let Some(winners) = runner.world.winner.as_ref()
             && winners.iter().any(|winner| team0_roster.contains(winner))
         {
             wins += 1;
         }
     }
-    Ok(tswn_win_rate_result_t { wins, total: n as u64 })
+
+    Ok(tswn_win_rate_result_t { wins, total })
+}
+
+fn run_prepared_win_rate_worker(
+    prepared: &PreparedRunner,
+    next: &AtomicUsize,
+    end: usize,
+    use_profile_seed: bool,
+) -> FfiResult<tswn_win_rate_result_t> {
+    let mut wins = 0u64;
+    let mut total = 0u64;
+    let mut seed = String::with_capacity(24);
+
+    loop {
+        let i = next.fetch_add(1, Ordering::Relaxed);
+        if i >= end {
+            break;
+        }
+
+        let seed_ref: &[String] = if use_profile_seed {
+            if i == 0 {
+                &[]
+            } else {
+                seed.clear();
+                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
+                std::slice::from_ref(&seed)
+            }
+        } else {
+            seed.clear();
+            let _ = write!(&mut seed, "seed:{i}@!");
+            std::slice::from_ref(&seed)
+        };
+
+        let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)
+            .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
+        let team0_roster = runner.input_groups.first().cloned().unwrap_or_default();
+        runner.run_to_completion();
+        total += 1;
+        if let Some(winners) = runner.world.winner.as_ref()
+            && winners.iter().any(|winner| team0_roster.contains(winner))
+        {
+            wins += 1;
+        }
+    }
+
+    Ok(tswn_win_rate_result_t { wins, total })
+}
+
+fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> FfiResult<tswn_win_rate_result_t> {
+    let workers = resolve_win_rate_workers(thread, n);
+    let use_profile_seed = use_js_profile_seed_schedule(eval_rq);
+
+    if workers <= 1 || n < 2000 {
+        return run_prepared_win_rate_range(prepared, 0, n, use_profile_seed);
+    }
+
+    let prepared = Arc::new(prepared.clone());
+    let next = Arc::new(AtomicUsize::new(0));
+    let mut handles = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        let prepared = Arc::clone(&prepared);
+        let next = Arc::clone(&next);
+        handles.push(std::thread::spawn(move || {
+            run_prepared_win_rate_worker(prepared.as_ref(), next.as_ref(), n, use_profile_seed)
+        }));
+    }
+
+    let mut merged = tswn_win_rate_result_t::default();
+    for handle in handles {
+        let partial = handle
+            .join()
+            .map_err(|_| ffi_error(tswn_status_t::TSWN_ERR_PANIC, "win-rate worker thread panicked"))??;
+        merged.wins += partial.wins;
+        merged.total += partial.total;
+    }
+    Ok(merged)
 }
 
 fn copy_ids(ids: &[PlrId], out: *mut u64, cap: usize, name: &str) -> FfiResult<()> {
@@ -307,26 +410,30 @@ pub extern "C" fn tswn_win_rate_eval_rq() -> f64 { tswn_core::player::eval_name:
 /// # Safety
 ///
 /// `prepared` 必须是由本库返回且仍然有效的 `tswn_prepared_runner_t` 句柄；
+/// `thread` 语义：`0=自动线程数`、`1=单线程`、`n=指定线程数`；
 /// `out_result` 必须指向一个可写的 `tswn_win_rate_result_t` 输出位置。
 /// 若 `prepared` 为 `NULL`、`out_result` 为 `NULL`，或传入悬空/伪造指针，会导致错误返回或未定义行为。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_prepared_win_rate(
     prepared: *const tswn_prepared_runner_t,
     n: usize,
+    thread: u32,
     out_result: *mut tswn_win_rate_result_t,
 ) -> tswn_status_t {
-    unsafe { tswn_prepared_win_rate_with_eval_rq(prepared, n, tswn_win_rate_eval_rq(), out_result) }
+    unsafe { tswn_prepared_win_rate_with_eval_rq(prepared, n, thread, tswn_win_rate_eval_rq(), out_result) }
 }
 
 /// # Safety
 ///
 /// `prepared` 必须是由本库返回且仍然有效的 `tswn_prepared_runner_t` 句柄；
+/// `thread` 语义：`0=自动线程数`、`1=单线程`、`n=指定线程数`；
 /// `out_result` 必须指向一个可写的 `tswn_win_rate_result_t` 输出位置。
 /// 若 `prepared` 为 `NULL`、`out_result` 为 `NULL`，或传入悬空/伪造指针，会导致错误返回或未定义行为。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_prepared_win_rate_with_eval_rq(
     prepared: *const tswn_prepared_runner_t,
     n: usize,
+    thread: u32,
     eval_rq: f64,
     out_result: *mut tswn_win_rate_result_t,
 ) -> tswn_status_t {
@@ -337,7 +444,7 @@ pub unsafe extern "C" fn tswn_prepared_win_rate_with_eval_rq(
         if out_result.is_null() {
             return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "out_result is null"));
         }
-        let result = run_prepared_win_rate(unsafe { &(*prepared).inner }, n, eval_rq)?;
+        let result = run_prepared_win_rate(unsafe { &(*prepared).inner }, n, eval_rq, thread)?;
         unsafe {
             *out_result = result;
         }
@@ -852,26 +959,30 @@ pub unsafe extern "C" fn tswn_updates_message_rendered(updates: *const tswn_upda
 /// # Safety
 ///
 /// `raw_text_utf8` 必须是一个有效的、以 `\0` 结尾的 UTF-8 C 字符串；
+/// `thread` 语义：`0=自动线程数`、`1=单线程`、`n=指定线程数`；
 /// `out_result` 必须指向一个可写的 `tswn_win_rate_result_t` 输出位置。
 /// 若传入悬空指针、伪造指针或无效输出地址，会导致未定义行为。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_win_rate(
     raw_text_utf8: *const c_char,
     n: usize,
+    thread: u32,
     out_result: *mut tswn_win_rate_result_t,
 ) -> tswn_status_t {
-    unsafe { tswn_win_rate_with_eval_rq(raw_text_utf8, n, tswn_win_rate_eval_rq(), out_result) }
+    unsafe { tswn_win_rate_with_eval_rq(raw_text_utf8, n, thread, tswn_win_rate_eval_rq(), out_result) }
 }
 
 /// # Safety
 ///
 /// `raw_text_utf8` 必须是一个有效的、以 `\0` 结尾的 UTF-8 C 字符串；
+/// `thread` 语义：`0=自动线程数`、`1=单线程`、`n=指定线程数`；
 /// `out_result` 必须指向一个可写的 `tswn_win_rate_result_t` 输出位置。
 /// 若传入悬空指针、伪造指针或无效输出地址，会导致未定义行为。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_win_rate_with_eval_rq(
     raw_text_utf8: *const c_char,
     n: usize,
+    thread: u32,
     eval_rq: f64,
     out_result: *mut tswn_win_rate_result_t,
 ) -> tswn_status_t {
@@ -885,7 +996,7 @@ pub unsafe extern "C" fn tswn_win_rate_with_eval_rq(
         let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
             .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
         unsafe {
-            *out_result = run_prepared_win_rate(&prepared, n, eval_rq)?;
+            *out_result = run_prepared_win_rate(&prepared, n, eval_rq, thread)?;
         }
         Ok(())
     })
@@ -896,6 +1007,7 @@ pub unsafe extern "C" fn tswn_win_rate_with_eval_rq(
 /// `target_utf8` 必须是一个有效的、以 `\0` 结尾的 UTF-8 C 字符串；
 /// 当 `against_len > 0` 时，`against_utf8` 必须指向一个长度至少为 `against_len` 的有效指针数组，
 /// 且其中每个元素都必须是有效的、以 `\0` 结尾的 UTF-8 C 字符串；
+/// `thread` 语义：`0=自动线程数`、`1=单线程`、`n=指定线程数`；
 /// `out_results` 在 `against_len > 0` 时必须指向一段至少可写入 `against_len` 个结果的有效缓冲区。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_group_win_rate(
@@ -903,9 +1015,20 @@ pub unsafe extern "C" fn tswn_group_win_rate(
     against_utf8: *const *const c_char,
     against_len: usize,
     n: usize,
+    thread: u32,
     out_results: *mut tswn_win_rate_result_t,
 ) -> tswn_status_t {
-    unsafe { tswn_group_win_rate_with_eval_rq(target_utf8, against_utf8, against_len, n, tswn_win_rate_eval_rq(), out_results) }
+    unsafe {
+        tswn_group_win_rate_with_eval_rq(
+            target_utf8,
+            against_utf8,
+            against_len,
+            n,
+            thread,
+            tswn_win_rate_eval_rq(),
+            out_results,
+        )
+    }
 }
 
 /// # Safety
@@ -913,6 +1036,7 @@ pub unsafe extern "C" fn tswn_group_win_rate(
 /// `target_utf8` 必须是一个有效的、以 `\0` 结尾的 UTF-8 C 字符串；
 /// 当 `against_len > 0` 时，`against_utf8` 必须指向一个长度至少为 `against_len` 的有效指针数组，
 /// 且其中每个元素都必须是有效的、以 `\0` 结尾的 UTF-8 C 字符串；
+/// `thread` 语义：`0=自动线程数`、`1=单线程`、`n=指定线程数`；
 /// `out_results` 在 `against_len > 0` 时必须指向一段至少可写入 `against_len` 个结果的有效缓冲区。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_group_win_rate_with_eval_rq(
@@ -920,6 +1044,7 @@ pub unsafe extern "C" fn tswn_group_win_rate_with_eval_rq(
     against_utf8: *const *const c_char,
     against_len: usize,
     n: usize,
+    thread: u32,
     eval_rq: f64,
     out_results: *mut tswn_win_rate_result_t,
 ) -> tswn_status_t {
@@ -940,7 +1065,7 @@ pub unsafe extern "C" fn tswn_group_win_rate_with_eval_rq(
             let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
                 .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
             unsafe {
-                *out_results.add(index) = run_prepared_win_rate(&prepared, n, eval_rq)?;
+                *out_results.add(index) = run_prepared_win_rate(&prepared, n, eval_rq, thread)?;
             }
         }
         Ok(())
