@@ -14,8 +14,6 @@ use pyo3::{
 };
 use tswn_core::{PreparedRunner, Runner};
 
-const PROFILE_WINRATE_SEED_START: usize = 33_554_431;
-
 fn use_js_profile_seed_schedule(eval_rq: f64) -> bool { eval_rq == tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
 
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
@@ -34,7 +32,7 @@ fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, use_profile_seed: 
             if i == 0 {
                 Vec::new()
             } else {
-                vec![format!("seed:{}@!", PROFILE_WINRATE_SEED_START + i)]
+                vec![format!("seed:{}@!", tswn_core::engine::PROFILE_START as usize + i)]
             }
         } else {
             vec![format!("seed:{i}@!")]

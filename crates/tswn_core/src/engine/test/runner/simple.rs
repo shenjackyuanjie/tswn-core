@@ -103,7 +103,7 @@ fn assert_prepare_vs_raw_case(mode: PreparedParityMode, case_idx: usize, library
     let total_players = mode.total_players();
     let mut players = library[..total_players].to_vec();
     deterministic_rotate(&mut players, case_idx);
-    let seed = format!("seed:{}@!", 33_554_431 + case_idx);
+    let seed = format!("seed:{}@!", crate::engine::PROFILE_START as usize + case_idx);
     let raw = mode.build_input(&players, &seed);
     let (groups, parsed_seed) = runners::Runner::split_namerena_into_groups(raw.clone());
 

@@ -7,8 +7,6 @@ use tswn_core::{PreparedRunner, Runner};
 
 use crate::args::BenchThreadMode;
 
-const PROFILE_WINRATE_SEED_START: usize = 33_554_431;
-
 fn use_js_profile_seed_schedule(eval_rq: f64) -> bool { eval_rq == tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -209,7 +207,7 @@ fn run_bench_winrate_range(
                 &[]
             } else {
                 seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", PROFILE_WINRATE_SEED_START + i);
+                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
                 std::slice::from_ref(&seed)
             }
         } else {
@@ -260,7 +258,7 @@ fn run_bench_winrate_worker(
                 &[]
             } else {
                 seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", PROFILE_WINRATE_SEED_START + i);
+                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
                 std::slice::from_ref(&seed)
             }
         } else {

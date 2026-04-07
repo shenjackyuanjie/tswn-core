@@ -149,5 +149,3 @@ mod prepared_raw_consistency {
         );
     }
 }
-
-

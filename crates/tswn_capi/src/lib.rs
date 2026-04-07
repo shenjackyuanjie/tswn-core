@@ -10,7 +10,6 @@ use tswn_core::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use tswn_core::player::PlrId;
 use tswn_core::{PreparedRunner, Runner};
 
-const PROFILE_WINRATE_SEED_START: usize = 33_554_431;
 const TSWN_CAPI_ABI_VERSION: u32 = 1;
 
 thread_local! {
@@ -254,7 +253,7 @@ fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64) -> F
             if i == 0 {
                 Vec::new()
             } else {
-                vec![format!("seed:{}@!", PROFILE_WINRATE_SEED_START + i)]
+                vec![format!("seed:{}@!", tswn_core::engine::PROFILE_START as usize + i)]
             }
         } else {
             vec![format!("seed:{i}@!")]

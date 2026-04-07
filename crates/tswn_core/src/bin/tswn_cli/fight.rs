@@ -142,7 +142,13 @@ fn run_raw_score(raw: String, n: usize, threads: Option<usize>) {
     println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.0, bang.1);
 }
 
-fn run_raw_score_inner(target_str: &str, target_count: usize, modifier: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
+fn run_raw_score_inner(
+    target_str: &str,
+    target_count: usize,
+    modifier: &str,
+    n: usize,
+    threads: Option<usize>,
+) -> (usize, usize) {
     let workers = resolve_raw_workers(threads, n);
 
     if workers <= 1 || n < 2000 {
@@ -170,7 +176,14 @@ fn run_raw_score_inner(target_str: &str, target_count: usize, modifier: &str, n:
     (wins, total)
 }
 
-fn run_raw_score_range(target_str: &str, target_count: usize, modifier: &str, start: usize, end: usize, show_progress: bool) -> (usize, usize) {
+fn run_raw_score_range(
+    target_str: &str,
+    target_count: usize,
+    modifier: &str,
+    start: usize,
+    end: usize,
+    show_progress: bool,
+) -> (usize, usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut progress_printed = false;
@@ -216,13 +229,7 @@ fn run_raw_score_range(target_str: &str, target_count: usize, modifier: &str, st
     (wins, total)
 }
 
-fn run_raw_score_worker(
-    target_str: &str,
-    target_count: usize,
-    modifier: &str,
-    next: &AtomicUsize,
-    end: usize,
-) -> (usize, usize) {
+fn run_raw_score_worker(target_str: &str, target_count: usize, modifier: &str, next: &AtomicUsize, end: usize) -> (usize, usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut targets = String::with_capacity(target_count.saturating_mul(24));
@@ -391,7 +398,7 @@ fn run_raw_winrate_range(prepared: &tswn_core::PreparedRunner, _team0_count: usi
             seed.clear();
             let _ = std::fmt::Write::write_fmt(
                 &mut seed,
-                format_args!("seed:{}@!", 33_554_431usize + i - 1),
+                format_args!("seed:{}@!", tswn_core::engine::PROFILE_START as usize + i - 1),
             );
             std::slice::from_ref(&seed)
         };
@@ -435,7 +442,7 @@ fn run_raw_winrate_worker(
             seed.clear();
             let _ = std::fmt::Write::write_fmt(
                 &mut seed,
-                format_args!("seed:{}@!", 33_554_431usize + i - 1),
+                format_args!("seed:{}@!", tswn_core::engine::PROFILE_START as usize + i - 1),
             );
             std::slice::from_ref(&seed)
         };
