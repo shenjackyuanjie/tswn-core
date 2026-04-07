@@ -157,7 +157,7 @@ impl StateTrait for CovidInfection {
                 let picked = if skip_indices.is_empty() {
                     randomer.pick(&targets.all_alive)
                 } else {
-                    randomer.pick_skip_range(&targets.all_alive, skip_indices.clone())
+                    randomer.pick_skip_range(&targets.all_alive, &skip_indices)
                 };
                 let Some(pick_idx) = picked else { break };
                 let target_id = targets.all_alive[pick_idx];

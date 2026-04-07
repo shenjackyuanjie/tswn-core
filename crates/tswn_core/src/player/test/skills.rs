@@ -287,6 +287,7 @@ fn heal_action_targets_injured_ally() {
         ally_all: vec![healer_id, ally_id].into(),
         ally_dead: vec![].into(),
         all_alive: vec![healer_id, ally_id, enemy_id].into(),
+        enemy_skip_indices: vec![0, 1].into(),
     };
     healer_mut.action(&mut randomer, &mut updates, &storage, &targets);
 
@@ -322,6 +323,7 @@ fn revive_action_targets_dead_ally() {
         ally_all: vec![healer_id, ally_id].into(),
         ally_dead: vec![ally_id].into(),
         all_alive: vec![healer_id, enemy_id].into(),
+        enemy_skip_indices: vec![0].into(),
     };
     healer_mut.action(&mut randomer, &mut updates, &storage, &targets);
 
@@ -359,6 +361,7 @@ fn protect_redirects_damage_to_protector() {
         ally_all: vec![protector_id, ally_id].into(),
         ally_dead: vec![].into(),
         all_alive: vec![protector_id, ally_id, enemy_id].into(),
+        enemy_skip_indices: vec![0, 1].into(),
     };
     protector_mut.action(&mut randomer, &mut updates, &storage, &targets);
     assert!(

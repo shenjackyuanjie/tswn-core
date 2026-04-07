@@ -159,7 +159,7 @@ fn lazy_select_consume_bytes(boss_id: PlrId, smart: bool, randomer: &mut RC4, st
         let picked = if skip_indices.is_empty() {
             randomer.pick(&all_alive)
         } else if all_alive.len() > skip_indices.len() {
-            randomer.pick_skip_range(&all_alive, skip_indices.clone())
+            randomer.pick_skip_range(&all_alive, &skip_indices)
         } else {
             None
         };

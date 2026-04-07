@@ -27,6 +27,7 @@ pub struct ActionTargets {
     pub ally_all: PlrVec,
     pub ally_dead: PlrVec,
     pub all_alive: PlrVec,
+    pub enemy_skip_indices: SmallVec<[usize; 4]>,
 }
 
 impl ActionTargets {

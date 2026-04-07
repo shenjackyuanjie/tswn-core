@@ -529,7 +529,7 @@ impl RC4 {
     /// }
     /// ```
     #[inline]
-    pub fn pick_skip_range<T>(&mut self, list: &[T], skips: Vec<usize>) -> Option<usize> {
+    pub fn pick_skip_range<T>(&mut self, list: &[T], skips: &[usize]) -> Option<usize> {
         if skips.is_empty() {
             return self.pick(list);
         }

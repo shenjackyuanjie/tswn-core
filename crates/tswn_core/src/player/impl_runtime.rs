@@ -322,8 +322,7 @@ impl Player {
                 if self.status.mp >= req_mp {
                     let is_boss = self.player_type == PlayerType::Boss;
                     if !is_boss {
-                        let skill_keys = self.skills.skill.clone();
-                        for key in skill_keys {
+                        for &key in &self.skills.skill {
                             if !self.skills.action_enabled(key) {
                                 #[cfg(not(feature = "no_debug"))]
                                 if debug_action_this {
@@ -624,17 +623,11 @@ impl Player {
         if targets.all_alive.is_empty() {
             return None;
         }
-        let mut skip_indices = Vec::new();
-        for (idx, plr_id) in targets.all_alive.iter().enumerate() {
-            if targets.ally_alive.contains(plr_id) {
-                skip_indices.push(idx);
-            }
-        }
-        if skip_indices.is_empty() {
+        if targets.enemy_skip_indices.is_empty() {
             randomer.pick(&targets.all_alive).map(|idx| targets.all_alive[idx])
         } else {
             randomer
-                .pick_skip_range(&targets.all_alive, skip_indices)
+                .pick_skip_range(&targets.all_alive, &targets.enemy_skip_indices)
                 .map(|idx| targets.all_alive[idx])
         }
     }
