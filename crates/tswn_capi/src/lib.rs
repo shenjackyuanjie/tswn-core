@@ -2,11 +2,8 @@
 
 use std::cell::RefCell;
 use std::ffi::{CStr, c_char};
-use std::fmt::Write;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tswn_core::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use tswn_core::player::PlrId;
@@ -127,8 +124,6 @@ fn set_last_error(message: impl Into<String>) { LAST_ERROR.with(|slot| *slot.bor
 
 fn clear_last_error() { LAST_ERROR.with(|slot| *slot.borrow_mut() = None); }
 
-fn use_js_profile_seed_schedule(eval_rq: f64) -> bool { eval_rq == tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
-
 fn update_type_to_c(update_type: UpdateType) -> tswn_update_type_t {
     match update_type {
         UpdateType::Win => tswn_update_type_t::Win,
@@ -248,130 +243,13 @@ fn update_snapshot(update: &RunUpdate) -> tswn_update_snapshot_t {
     }
 }
 
-fn resolve_win_rate_workers(thread: u32, total: usize) -> usize {
-    let workers = match thread {
-        0 => std::thread::available_parallelism()
-            .map(|x| x.get().saturating_mul(5).div_ceil(4))
-            .unwrap_or(1),
-        1 => 1,
-        n => n as usize,
-    };
-    workers.min(total.max(1))
-}
-
-fn run_prepared_win_rate_range(
-    prepared: &PreparedRunner,
-    start: usize,
-    end: usize,
-    use_profile_seed: bool,
-) -> FfiResult<tswn_win_rate_result_t> {
-    let mut wins = 0u64;
-    let mut total = 0u64;
-    let mut seed = String::with_capacity(24);
-
-    for i in start..end {
-        let seed_ref: &[String] = if use_profile_seed {
-            if i == 0 {
-                &[]
-            } else {
-                seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
-                std::slice::from_ref(&seed)
-            }
-        } else {
-            seed.clear();
-            let _ = write!(&mut seed, "seed:{i}@!");
-            std::slice::from_ref(&seed)
-        };
-
-        let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)
-            .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
-        let team0_roster = runner.input_groups.first().cloned().unwrap_or_default();
-        runner.run_to_completion();
-        total += 1;
-        if let Some(winners) = runner.world.winner.as_ref()
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
-        }
-    }
-
-    Ok(tswn_win_rate_result_t { wins, total })
-}
-
-fn run_prepared_win_rate_worker(
-    prepared: &PreparedRunner,
-    next: &AtomicUsize,
-    end: usize,
-    use_profile_seed: bool,
-) -> FfiResult<tswn_win_rate_result_t> {
-    let mut wins = 0u64;
-    let mut total = 0u64;
-    let mut seed = String::with_capacity(24);
-
-    loop {
-        let i = next.fetch_add(1, Ordering::Relaxed);
-        if i >= end {
-            break;
-        }
-
-        let seed_ref: &[String] = if use_profile_seed {
-            if i == 0 {
-                &[]
-            } else {
-                seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
-                std::slice::from_ref(&seed)
-            }
-        } else {
-            seed.clear();
-            let _ = write!(&mut seed, "seed:{i}@!");
-            std::slice::from_ref(&seed)
-        };
-
-        let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)
-            .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
-        let team0_roster = runner.input_groups.first().cloned().unwrap_or_default();
-        runner.run_to_completion();
-        total += 1;
-        if let Some(winners) = runner.world.winner.as_ref()
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
-        }
-    }
-
-    Ok(tswn_win_rate_result_t { wins, total })
-}
-
 fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> FfiResult<tswn_win_rate_result_t> {
-    let workers = resolve_win_rate_workers(thread, n);
-    let use_profile_seed = use_js_profile_seed_schedule(eval_rq);
-
-    if workers <= 1 || n < 2000 {
-        return run_prepared_win_rate_range(prepared, 0, n, use_profile_seed);
-    }
-
-    let prepared = Arc::new(prepared.clone());
-    let next = Arc::new(AtomicUsize::new(0));
-    let mut handles = Vec::with_capacity(workers);
-    for _ in 0..workers {
-        let prepared = Arc::clone(&prepared);
-        let next = Arc::clone(&next);
-        handles.push(std::thread::spawn(move || {
-            run_prepared_win_rate_worker(prepared.as_ref(), next.as_ref(), n, use_profile_seed)
-        }));
-    }
-
-    let mut merged = tswn_win_rate_result_t::default();
-    for handle in handles {
-        let partial = handle
-            .join()
-            .map_err(|_| ffi_error(tswn_status_t::TSWN_ERR_PANIC, "win-rate worker thread panicked"))??;
-        merged.wins += partial.wins;
-        merged.total += partial.total;
-    }
-    Ok(merged)
+    let summary = tswn_core::win_rate::prepared_win_rate(prepared, n, eval_rq, thread)
+        .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
+    Ok(tswn_win_rate_result_t {
+        wins: summary.wins as u64,
+        total: summary.total as u64,
+    })
 }
 
 fn copy_ids(ids: &[PlrId], out: *mut u64, cap: usize, name: &str) -> FfiResult<()> {
