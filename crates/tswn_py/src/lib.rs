@@ -14,8 +14,6 @@ use pyo3::{
 };
 use tswn_core::{PreparedRunner, Runner};
 
-fn use_js_profile_seed_schedule(eval_rq: f64) -> bool { eval_rq == tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
-
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     if group_count < 2 {
@@ -25,28 +23,10 @@ fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     }
 }
 
-fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, use_profile_seed: bool) -> PyResult<f64> {
-    let mut wins = 0usize;
-    for i in 0..n {
-        let seed = if use_profile_seed {
-            if i == 0 {
-                Vec::new()
-            } else {
-                vec![format!("seed:{}@!", tswn_core::engine::PROFILE_START as usize + i)]
-            }
-        } else {
-            vec![format!("seed:{i}@!")]
-        };
-        let mut runner = Runner::new_from_prepared_with_seed(prepared, &seed).map_err(wrapper::error::PyRunnerError::new)?;
-        let team0_roster = runner.input_groups.first().cloned().unwrap_or_default();
-        runner.run_to_completion();
-        if let Some(winners) = runner.world.winner.as_ref()
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
-        }
-    }
-    Ok(wins as f64 * 100.0 / n.max(1) as f64)
+fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> PyResult<f64> {
+    let summary =
+        tswn_core::win_rate::prepared_win_rate(prepared, n, eval_rq, thread).map_err(wrapper::error::PyRunnerError::new)?;
+    Ok(summary.win_rate_percent())
 }
 
 /// tswn-py 的版本字符串
@@ -70,23 +50,29 @@ fn name_to_png_bytes(name: String) -> Vec<u8> { tswn_core::player::icon_render::
 fn name_to_icon_rgba(name: String) -> Vec<u8> { tswn_core::player::icon_render::render_icon_vec_from_name(&name) }
 
 /// 以 CLI 默认语义计算第一组对其余组的胜率（百分比）
-#[pyfunction(signature = (raw, n, eval_rq=None))]
-fn win_rate(raw: String, n: usize, eval_rq: Option<f64>) -> PyResult<f64> {
+#[pyfunction(signature = (raw, n, eval_rq=None, thread=0))]
+fn win_rate(raw: String, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
     let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
     let groups = Runner::split_namerena_into_groups(raw).0;
     ensure_win_rate_group_count(&groups)?;
     let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq).map_err(wrapper::error::PyRunnerError::new)?;
-    run_prepared_win_rate(&prepared, n, use_js_profile_seed_schedule(eval_rq))
+    run_prepared_win_rate(&prepared, n, eval_rq, thread)
 }
 
 /// 以 CLI 默认语义批量计算 target 对多个 opponent 的胜率（百分比）
-#[pyfunction(signature = (target, against, n, eval_rq=None))]
-fn group_win_rate(target: String, against: Vec<String>, n: usize, eval_rq: Option<f64>) -> PyResult<Vec<(String, f64)>> {
+#[pyfunction(signature = (target, against, n, eval_rq=None, thread=0))]
+fn group_win_rate(
+    target: String,
+    against: Vec<String>,
+    n: usize,
+    eval_rq: Option<f64>,
+    thread: u32,
+) -> PyResult<Vec<(String, f64)>> {
     let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
     let mut results = Vec::with_capacity(against.len());
     for opponent in against {
         let raw = format!("{target}\n\n{opponent}");
-        let rate = win_rate(raw, n, Some(eval_rq))?;
+        let rate = win_rate(raw, n, Some(eval_rq), thread)?;
         results.push((opponent, rate));
     }
     Ok(results)

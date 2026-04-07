@@ -1,5 +1,19 @@
 # 更新日志
 
+## [0.1.11] - 2026-04-07
+
+### 新增
+
+- Python 高层 `win_rate(raw, n, eval_rq=None, thread=0)` / `group_win_rate(target, against, n, eval_rq=None, thread=0)` 新增可选 `thread` 参数，语义与 CLI / C-API 对齐：
+  - `0`：自动线程数
+  - `1`：单线程
+  - `n`：指定线程数
+- Python prepared 胜率统计内部新增多线程执行路径，线程分发策略与 CLI / C-API 保持一致。
+
+### 变更
+
+- 更新顶层类型存根以对齐新的 `thread` 可选参数签名。
+
 ## [0.1.10] - 2026-04-07
 
 ### 修复

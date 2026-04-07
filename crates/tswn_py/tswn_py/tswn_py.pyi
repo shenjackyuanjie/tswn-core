@@ -24,14 +24,18 @@ def name_to_icon_rgba(name: str) -> bytes:
     """将名字渲染为 16x16 RGBA 原始像素字节。"""
     ...
 
-def win_rate(raw: str, n: int, eval_rq: float | None = None) -> float:
-    """按 CLI 默认语义计算第一组对其余组的胜率百分比。"""
+def win_rate(raw: str, n: int, eval_rq: float | None = None, thread: int = 0) -> float:
+    """按 CLI 默认语义计算第一组对其余组的胜率百分比。thread: 0=自动, 1=单线程, n=指定线程数。"""
     ...
 
 def group_win_rate(
-    target: str, against: list[str], n: int, eval_rq: float | None = None
+    target: str,
+    against: list[str],
+    n: int,
+    eval_rq: float | None = None,
+    thread: int = 0,
 ) -> list[tuple[str, float]]:
-    """按 CLI 默认语义批量计算 target 对多个 opponent 的胜率百分比。"""
+    """按 CLI 默认语义批量计算 target 对多个 opponent 的胜率百分比。thread: 0=自动, 1=单线程, n=指定线程数。"""
     ...
 
 def name_to_png_base64(name: str) -> str:

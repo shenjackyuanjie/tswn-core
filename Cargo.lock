@@ -374,14 +374,14 @@ checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "tswn_capi"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "tswn_core",
 ]
 
 [[package]]
 name = "tswn_core"
-version = "0.2.12"
+version = "0.2.13"
 dependencies = [
  "clap",
  "foldhash",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_py"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "pyo3",
  "smallvec",
