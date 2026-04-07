@@ -1,8 +1,8 @@
 # 更新日志
 
-## [0.1.2] - 2026-04-07
+## [0.2.0] - 2026-04-07
 
-### 新增
+### Breaking Changes
 
 - 为高层胜率接口新增 `thread: u32` 参数，统一支持 `0=自动线程数`、`1=单线程`、`n=指定多线程数量`：
   - `tswn_win_rate(...)`
@@ -11,6 +11,11 @@
   - `tswn_group_win_rate_with_eval_rq(...)`
   - `tswn_prepared_win_rate(...)`
   - `tswn_prepared_win_rate_with_eval_rq(...)`
+- 上述函数签名变化会影响现有 C 调用方，属于 breaking API / ABI change；调用方需要按新参数列表重新编译并重新链接。
+- `tswn_capi_abi_version()` 返回值从 `1` 升为 `2`，用于标记这次 ABI 不兼容变更。
+
+### 新增
+
 - `tswn_capi` 胜率统计内部改为支持基于 `PreparedRunner` 的多线程执行，线程分发策略参考 `tswn_cli`：自动线程模式下优先使用 `available_parallelism()`，并按总局数自动收敛。
 - 补充了头文件注释、README、examples README 与 C 示例中的 `thread` 参数使用说明。
 

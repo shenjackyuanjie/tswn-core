@@ -12,7 +12,7 @@ use tswn_core::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use tswn_core::player::PlrId;
 use tswn_core::{PreparedRunner, Runner};
 
-const TSWN_CAPI_ABI_VERSION: u32 = 1;
+const TSWN_CAPI_ABI_VERSION: u32 = 2;
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
