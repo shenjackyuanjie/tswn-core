@@ -254,7 +254,7 @@ fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64) -> F
             if i == 0 {
                 Vec::new()
             } else {
-                vec![format!("seed:{}@!", PROFILE_WINRATE_SEED_START + i - 1)]
+                vec![format!("seed:{}@!", PROFILE_WINRATE_SEED_START + i)]
             }
         } else {
             vec![format!("seed:{i}@!")]

@@ -209,7 +209,7 @@ fn run_bench_winrate_range(
                 &[]
             } else {
                 seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", PROFILE_WINRATE_SEED_START + i - 1);
+                let _ = write!(&mut seed, "seed:{}@!", PROFILE_WINRATE_SEED_START + i);
                 std::slice::from_ref(&seed)
             }
         } else {
@@ -260,7 +260,7 @@ fn run_bench_winrate_worker(
                 &[]
             } else {
                 seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", PROFILE_WINRATE_SEED_START + i - 1);
+                let _ = write!(&mut seed, "seed:{}@!", PROFILE_WINRATE_SEED_START + i);
                 std::slice::from_ref(&seed)
             }
         } else {

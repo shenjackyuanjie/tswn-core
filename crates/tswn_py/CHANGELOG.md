@@ -1,5 +1,11 @@
 # 更新日志
 
+## [0.1.10] - 2026-04-07
+
+### 修复
+
+- 修复 Python 高层 `win_rate(...)` / `group_win_rate(...)` 在 prepared 路径下的 JS profile seed 调度偏移：首局继续不带 seed，后续局数改为从 `seed:33554431@! + i` 递增，避免与 CLI / C-API 的 prepared 胜率语义错开一位。
+
 ## [0.1.9] - 2026-04-06
 
 ### 新增

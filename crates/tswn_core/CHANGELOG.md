@@ -1,5 +1,12 @@
 # 更新日志
 
+## [0.2.13] - 2026-04-07
+
+### 修复
+
+- 修复 `tswn-cli` 的 prepared win-rate benchmark seed 调度偏移：在默认 JS profile seed 语义下，首局仍保持无 seed，但后续局数现在会按 `seed:33554431@! + i` 递增，不再错误地整体前移一位。
+- 同步修正单线程与并行 worker 两条 benchmark 路径，避免 `bench win-rate` 在不同线程模式下继续复用同一处 off-by-one seed 调度错误。
+
 ## [0.2.12] - 2026-04-06
 
 ### CLI

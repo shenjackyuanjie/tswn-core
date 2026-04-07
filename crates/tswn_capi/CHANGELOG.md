@@ -1,5 +1,11 @@
 # 更新日志
 
+## [0.1.2] - 2026-04-07
+
+### 修复
+
+- 修复 `tswn_prepared_win_rate(...)` / `tswn_prepared_win_rate_with_eval_rq(...)` 的 JS profile seed 调度偏移：首局保持无 seed，后续局数改为从 `seed:33554431@! + i` 开始递增，避免 prepared 胜率结果整体错位一局。
+
 ## [0.1.1] - 2026-04-06
 
 ### 新增
