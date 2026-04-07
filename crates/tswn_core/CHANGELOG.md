@@ -2,6 +2,17 @@
 
 ## [0.2.13] - 2026-04-07
 
+### 重构
+
+- 将 prepared 胜率统计的公共逻辑下沉到 `tswn_core::win_rate`，统一复用：
+  - `thread=0/1/n` 线程参数语义
+  - 自动线程数策略
+  - JS profile seed 调度
+  - `PreparedRunner` 多线程 worker 分发
+  - 第一组胜负判定与 `wins/total` 汇总
+  - `init/fight` timing 统计
+- `tswn-cli` 的 `bench win-rate`、`bench group-win-rate` 和 `raw !test!` 胜率路径改为统一调用 `tswn_core::win_rate`，减少 CLI/C-API/Python 三侧实现漂移风险。
+
 ### 修复
 
 - 修复 `tswn-cli` 的 prepared win-rate benchmark seed 调度偏移：在默认 JS profile seed 语义下，首局仍保持无 seed，但后续局数现在会按 `seed:33554431@! + i` 递增，不再错误地整体前移一位。

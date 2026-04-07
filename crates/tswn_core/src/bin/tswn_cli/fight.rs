@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::{Runner, engine};
+use tswn_core::{Runner, engine, win_rate::groups_win_rate};
 
 pub fn run(raw: String, out_raw: bool) {
     let (input_groups, _) = Runner::split_namerena_into_groups(raw.clone());
@@ -348,121 +348,14 @@ fn run_raw_winrate(raw: String, n: usize, threads: Option<usize>) {
 
 fn run_raw_winrate_inner(raw: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    let team0_count = groups
-        .first()
-        .map(|group| group.iter().filter(|name| !tswn_core::player::Player::check_is_seed(name)).count())
-        .unwrap_or(0);
-    let prepared = match Runner::prepare_groups_with_eval_rq(&groups, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ) {
-        Ok(prepared) => prepared,
+    let thread = threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0);
+    match groups_win_rate(&groups, n, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ, thread) {
+        Ok(summary) => (summary.wins, summary.total),
         Err(err) => {
             eprintln!("构建胜率模板失败: {err}");
-            return (0, 0);
-        }
-    };
-    let prepared = Arc::new(prepared);
-    let workers = resolve_raw_workers(threads, n);
-
-    if workers <= 1 || n < 2000 {
-        return run_raw_winrate_range(prepared.as_ref(), team0_count, 0, n);
-    }
-
-    let next = Arc::new(AtomicUsize::new(0));
-    let mut handles = Vec::with_capacity(workers);
-    for _ in 0..workers {
-        let prepared = Arc::clone(&prepared);
-        let next = Arc::clone(&next);
-        handles.push(std::thread::spawn(move || {
-            run_raw_winrate_worker(prepared.as_ref(), team0_count, next.as_ref(), n)
-        }));
-    }
-
-    let mut wins = 0usize;
-    let mut total = 0usize;
-    for handle in handles {
-        let (part_wins, part_total) = handle.join().expect("raw winrate worker thread panicked");
-        wins += part_wins;
-        total += part_total;
-    }
-    (wins, total)
-}
-
-fn run_raw_winrate_range(prepared: &tswn_core::PreparedRunner, _team0_count: usize, start: usize, end: usize) -> (usize, usize) {
-    let mut wins = 0usize;
-    let mut total = 0usize;
-    let mut seed = String::with_capacity(24);
-
-    for i in start..end {
-        let seed_ref: &[String] = if i == 0 {
-            &[]
-        } else {
-            seed.clear();
-            let _ = std::fmt::Write::write_fmt(
-                &mut seed,
-                format_args!("seed:{}@!", tswn_core::engine::PROFILE_START as usize + i - 1),
-            );
-            std::slice::from_ref(&seed)
-        };
-
-        let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
-
-        runner.run_to_completion();
-        total += 1;
-        if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
+            (0, 0)
         }
     }
-    (wins, total)
-}
-
-fn run_raw_winrate_worker(
-    prepared: &tswn_core::PreparedRunner,
-    _team0_count: usize,
-    next: &AtomicUsize,
-    end: usize,
-) -> (usize, usize) {
-    let mut wins = 0usize;
-    let mut total = 0usize;
-    let mut seed = String::with_capacity(24);
-
-    loop {
-        let i = next.fetch_add(1, Ordering::Relaxed);
-        if i >= end {
-            break;
-        }
-
-        let seed_ref: &[String] = if i == 0 {
-            &[]
-        } else {
-            seed.clear();
-            let _ = std::fmt::Write::write_fmt(
-                &mut seed,
-                format_args!("seed:{}@!", tswn_core::engine::PROFILE_START as usize + i - 1),
-            );
-            std::slice::from_ref(&seed)
-        };
-
-        let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
-
-        runner.run_to_completion();
-        total += 1;
-        if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
-        }
-    }
-
-    (wins, total)
 }
 
 fn collect_input_player_ids(runner: &Runner, group_count: usize) -> Vec<usize> {

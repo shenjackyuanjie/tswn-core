@@ -3,30 +3,18 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use tswn_core::{PreparedRunner, Runner};
+use tswn_core::{
+    Runner,
+    win_rate::{WinRateTiming, prepared_win_rate, resolve_win_rate_workers},
+};
 
 use crate::args::BenchThreadMode;
-
-fn use_js_profile_seed_schedule(eval_rq: f64) -> bool { eval_rq == tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
-
-#[derive(Debug, Clone, Copy, Default)]
-struct TimingParts {
-    init_nanos: u128,
-    fight_nanos: u128,
-}
-
-impl TimingParts {
-    fn merge(&mut self, other: Self) {
-        self.init_nanos += other.init_nanos;
-        self.fight_nanos += other.fight_nanos;
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 struct BenchSummary {
     wins: usize,
     total: usize,
-    timing: TimingParts,
+    timing: WinRateTiming,
     elapsed: Duration,
 }
 
@@ -67,7 +55,7 @@ pub fn run_bench_group_win_rate(
     let mut accumulated_rate = 0.0;
     let mut accumulated_wins = 0usize;
     let mut accumulated_total = 0usize;
-    let mut accumulated_timing = TimingParts::default();
+    let mut accumulated_timing = WinRateTiming::default();
 
     for (index, opponent) in against.iter().enumerate() {
         println!();
@@ -99,10 +87,6 @@ pub fn run_bench_group_win_rate(
 
 fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64) -> BenchSummary {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    let team0_count = groups
-        .first()
-        .map(|group| group.iter().filter(|name| !tswn_core::player::Player::check_is_seed(name)).count())
-        .unwrap_or(0);
     let prepared = match Runner::prepare_groups_with_eval_rq(&groups, eval_rq) {
         Ok(prepared) => prepared,
         Err(err) => {
@@ -110,47 +94,35 @@ fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Op
             return BenchSummary {
                 wins: 0,
                 total: 0,
-                timing: TimingParts::default(),
+                timing: WinRateTiming::default(),
                 elapsed: Duration::default(),
             };
         }
     };
-    let prepared = Arc::new(prepared);
-    let workers = resolve_bench_workers(mode, threads, n);
-    let use_profile_seed = use_js_profile_seed_schedule(eval_rq);
     let started_at = Instant::now();
 
-    let mut summary = if workers <= 1 || n < 2000 {
-        let (wins, total, timing) = run_bench_winrate_range(prepared.as_ref(), team0_count, 0, n, use_profile_seed);
-        BenchSummary {
-            wins,
-            total,
-            timing,
-            elapsed: Duration::default(),
+    let thread = match mode {
+        BenchThreadMode::SingleThread => 1,
+        BenchThreadMode::Parallel => threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0),
+    };
+    let summary = match prepared_win_rate(&prepared, n, eval_rq, thread) {
+        Ok(summary) => summary,
+        Err(err) => {
+            eprintln!("执行胜率测试失败: {err}");
+            return BenchSummary {
+                wins: 0,
+                total: 0,
+                timing: WinRateTiming::default(),
+                elapsed: Duration::default(),
+            };
         }
-    } else {
-        let next = Arc::new(AtomicUsize::new(0));
-        let mut handles = Vec::with_capacity(workers);
-        for _ in 0..workers {
-            let prepared = Arc::clone(&prepared);
-            let next = Arc::clone(&next);
-            handles.push(std::thread::spawn(move || {
-                run_bench_winrate_worker(prepared.as_ref(), team0_count, next.as_ref(), n, use_profile_seed)
-            }));
-        }
-        let mut merged = BenchSummary {
-            wins: 0,
-            total: 0,
-            timing: TimingParts::default(),
-            elapsed: Duration::default(),
-        };
-        for handle in handles {
-            let (wins, total, timing) = handle.join().expect("winrate worker thread panicked");
-            merged.wins += wins;
-            merged.total += total;
-            merged.timing.merge(timing);
-        }
-        merged
+    };
+
+    let mut summary = BenchSummary {
+        wins: summary.wins,
+        total: summary.total,
+        timing: summary.timing,
+        elapsed: Duration::default(),
     };
 
     summary.elapsed = started_at.elapsed();
@@ -179,112 +151,8 @@ fn print_bench_winrate_summary(summary: BenchSummary, perf: bool) {
 fn resolve_bench_workers(mode: BenchThreadMode, threads: Option<usize>, total: usize) -> usize {
     match mode {
         BenchThreadMode::SingleThread => 1,
-        BenchThreadMode::Parallel => threads
-            .unwrap_or_else(|| {
-                std::thread::available_parallelism()
-                    .map(|x| x.get().saturating_mul(5).div_ceil(4))
-                    .unwrap_or(1)
-            })
-            .min(total.max(1)),
+        BenchThreadMode::Parallel => resolve_win_rate_workers(threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0), total),
     }
-}
-
-fn run_bench_winrate_range(
-    prepared: &PreparedRunner,
-    _team0_count: usize,
-    start: usize,
-    end: usize,
-    use_profile_seed: bool,
-) -> (usize, usize, TimingParts) {
-    let mut wins = 0usize;
-    let mut total = 0usize;
-    let mut seed = String::with_capacity(24);
-    let mut timing = TimingParts::default();
-
-    for i in start..end {
-        let seed_ref: &[String] = if use_profile_seed {
-            if i == 0 {
-                &[]
-            } else {
-                seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
-                std::slice::from_ref(&seed)
-            }
-        } else {
-            seed.clear();
-            let _ = write!(&mut seed, "seed:{i}@!");
-            std::slice::from_ref(&seed)
-        };
-        let t_init = Instant::now();
-        let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
-        timing.init_nanos += t_init.elapsed().as_nanos();
-
-        let t_fight = Instant::now();
-        runner.run_to_completion();
-        timing.fight_nanos += t_fight.elapsed().as_nanos();
-        total += 1;
-        if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
-        }
-    }
-    (wins, total, timing)
-}
-
-fn run_bench_winrate_worker(
-    prepared: &PreparedRunner,
-    _team0_count: usize,
-    next: &AtomicUsize,
-    end: usize,
-    use_profile_seed: bool,
-) -> (usize, usize, TimingParts) {
-    let mut wins = 0usize;
-    let mut total = 0usize;
-    let mut seed = String::with_capacity(24);
-    let mut timing = TimingParts::default();
-
-    loop {
-        let i = next.fetch_add(1, Ordering::Relaxed);
-        if i >= end {
-            break;
-        }
-        let seed_ref: &[String] = if use_profile_seed {
-            if i == 0 {
-                &[]
-            } else {
-                seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
-                std::slice::from_ref(&seed)
-            }
-        } else {
-            seed.clear();
-            let _ = write!(&mut seed, "seed:{i}@!");
-            std::slice::from_ref(&seed)
-        };
-        let t_init = Instant::now();
-        let mut runner = match Runner::new_from_prepared_with_seed(prepared, seed_ref) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
-        timing.init_nanos += t_init.elapsed().as_nanos();
-
-        let t_fight = Instant::now();
-        runner.run_to_completion();
-        timing.fight_nanos += t_fight.elapsed().as_nanos();
-        total += 1;
-        if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
-        }
-    }
-    (wins, total, timing)
 }
 
 fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, perf: bool) {
@@ -353,7 +221,7 @@ fn run_bench_score_inner(
         let mut merged = BenchSummary {
             wins: 0,
             total: 0,
-            timing: TimingParts::default(),
+            timing: WinRateTiming::default(),
             elapsed: Duration::default(),
         };
         for handle in handles {
@@ -376,10 +244,10 @@ fn run_bench_score_range(
     start: usize,
     end: usize,
     show_progress: bool,
-) -> (usize, usize, TimingParts) {
+) -> (usize, usize, WinRateTiming) {
     let mut wins = 0usize;
     let mut total = 0usize;
-    let mut timing = TimingParts::default();
+    let mut timing = WinRateTiming::default();
     let mut progress_printed = false;
     let mut targets = String::with_capacity(target_count.saturating_mul(24));
     let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
@@ -433,10 +301,10 @@ fn run_bench_score_worker(
     modifier: &str,
     next: &AtomicUsize,
     end: usize,
-) -> (usize, usize, TimingParts) {
+) -> (usize, usize, WinRateTiming) {
     let mut wins = 0usize;
     let mut total = 0usize;
-    let mut timing = TimingParts::default();
+    let mut timing = WinRateTiming::default();
     let mut targets = String::with_capacity(target_count.saturating_mul(24));
     let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
 
@@ -480,7 +348,7 @@ fn run_bench_score_worker(
     (wins, total, timing)
 }
 
-fn print_perf_lines(total_elapsed: Duration, timing: TimingParts, total: usize) {
+fn print_perf_lines(total_elapsed: Duration, timing: WinRateTiming, total: usize) {
     let total_f = total.max(1) as f64;
     let total_secs = total_elapsed.as_secs_f64();
     let throughput = if total_secs > 0.0 { total_f / total_secs } else { 0.0 };

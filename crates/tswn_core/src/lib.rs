@@ -53,6 +53,7 @@ pub mod engine;
 pub mod error;
 pub mod player;
 pub mod rc4;
+pub mod win_rate;
 
 /// 核心对局入口。
 ///
