@@ -342,8 +342,6 @@ impl Runner {
             plr.sort_int = randomer.rFFFFFF() as i32;
         }
 
-        let input_groups = inited_plrs.clone();
-
         for group in &mut inited_plrs {
             group.sort_by(|a, b| {
                 let plr_a = storage.get_player(a).expect("plr not found when sort group member");
@@ -352,8 +350,9 @@ impl Runner {
             });
         }
 
-        let mut sorted_groups = inited_plrs.clone();
-        sorted_groups.sort_by(|a, b| {
+        let input_groups = inited_plrs.clone();
+
+        inited_plrs.sort_by(|a, b| {
             let Some(first_a) = a.first() else {
                 return std::cmp::Ordering::Less;
             };
@@ -366,7 +365,7 @@ impl Runner {
         });
 
         // 保持旧版随机流消费顺序，避免战斗回放偏移。
-        for group in &sorted_groups {
+        for group in &inited_plrs {
             for plr in group {
                 let plr = storage.just_get_player_mut(*plr).expect("plr not found when encrypt");
                 randomer.encrypt_bytes_no_change(&plr.id_key_name());
@@ -374,7 +373,7 @@ impl Runner {
             randomer.encrypt_bytes(&mut [0]);
         }
 
-        let mut sorted_for_move_point = sorted_groups.iter().flatten().copied().collect::<Vec<PlrId>>();
+        let mut sorted_for_move_point = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();
         sorted_for_move_point.sort_by(|a, b| {
             let plr_a = storage.get_player(a).expect("plr not found when sort move point");
             let plr_b = storage.get_player(b).expect("plr not found when sort move point");
@@ -385,7 +384,7 @@ impl Runner {
             plr.set_move_point(randomer.r255() as i32);
         }
 
-        let mut world = WorldState::new(sorted_groups);
+        let mut world = WorldState::new(inited_plrs);
         world.players = sorted_for_move_point;
         storage.sync_groups(&world.groups);
         storage.sync_alive_groups_owned(world.alives_by_group(&storage));
