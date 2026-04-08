@@ -562,7 +562,12 @@ impl Player {
                 .ordered_post_action_tags_with_order()
                 .into_iter()
                 .map(|(tag, order)| {
-                    let priority = self.state.states.get(&tag).map(|state| state.post_action_priority()).unwrap_or_default();
+                    let priority = self
+                        .state
+                        .entries
+                        .get(&tag)
+                        .map(|entry| entry.state.post_action_priority())
+                        .unwrap_or_default();
                     format!("{:?}@{}#{}", tag, priority, order)
                 })
                 .collect::<Vec<String>>();
@@ -1289,12 +1294,17 @@ impl Player {
             #[cfg(not(feature = "no_debug"))]
             let rc4_before = (randomer.i, randomer.j);
             #[cfg(not(feature = "no_debug"))]
-            let priority = self.state.states.get(&tag).map(|state| state.post_action_priority()).unwrap_or_default();
+            let priority = self
+                .state
+                .entries
+                .get(&tag)
+                .map(|entry| entry.state.post_action_priority())
+                .unwrap_or_default();
             let should_clear = self
                 .state
-                .states
+                .entries
                 .get_mut(&tag)
-                .map(|state| state.on_post_action(owner_id, current_alive, randomer, updates, storage))
+                .map(|entry| entry.state.on_post_action(owner_id, current_alive, randomer, updates, storage))
                 .unwrap_or(false);
             #[cfg(not(feature = "no_debug"))]
             if debug_post_action_this {

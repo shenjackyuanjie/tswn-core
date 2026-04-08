@@ -157,10 +157,15 @@ impl Clone for Box<dyn StateTrait> {
     fn clone(&self) -> Self { self.clone_box() }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct StateEntry {
+    pub(crate) state: Box<dyn StateTrait>,
+    pub(crate) order: u64,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PlayerStateStore {
-    pub(crate) states: FastHashMap<StateTag, Box<dyn StateTrait>>,
-    state_orders: FastHashMap<StateTag, u64>,
+    pub(crate) entries: FastHashMap<StateTag, StateEntry>,
     next_state_order: u64,
 }
 
@@ -193,19 +198,8 @@ impl PlayerStateStore {
     }
 
     #[inline]
-    fn register_tag_if_needed(&mut self, tag: StateTag) {
-        if self.state_orders.contains_key(&tag) {
-            return;
-        }
-        let order = self.next_state_order;
-        self.next_state_order += 1;
-        self.state_orders.insert(tag, order);
-    }
-
-    #[inline]
     fn remove_tag_internal(&mut self, tag: StateTag) -> Option<Box<dyn StateTrait>> {
-        self.state_orders.remove(&tag);
-        self.states.remove(&tag)
+        self.entries.remove(&tag).map(|entry| entry.state)
     }
 
     #[inline]
@@ -214,15 +208,9 @@ impl PlayerStateStore {
         F: FnMut(&dyn StateTrait) -> i32,
     {
         let mut ordered: PriorityPairs = self
-            .states
+            .entries
             .iter()
-            .map(|(tag, state)| {
-                (
-                    *tag,
-                    priority(state.as_ref()),
-                    self.state_orders.get(tag).copied().unwrap_or(u64::MAX),
-                )
-            })
+            .map(|(tag, entry)| (*tag, priority(entry.state.as_ref()), entry.order))
             .collect();
         // JS 的 postAction 在同优先级下保持注册顺序；这里不能再退化成 tag 字典序，
         // 否则像 Slow/Iron 这类同层 timer 状态会在 Rust 侧固定成错误的结束顺序。
@@ -259,7 +247,7 @@ impl PlayerStateStore {
     pub fn set<T: StateTrait + 'static>(&mut self, state: T) {
         let tag = state_tag::<T>();
         #[cfg(not(feature = "no_debug"))]
-        let had = self.states.contains_key(&tag);
+        let had = self.entries.contains_key(&tag);
         #[cfg(not(feature = "no_debug"))]
         if had && crate::debug::debug_state() {
             eprintln!(
@@ -275,32 +263,44 @@ impl PlayerStateStore {
                 self as *const _, tag
             );
         }
-        self.register_tag_if_needed(tag);
-        self.states.insert(tag, Box::new(state));
+        let order = if let Some(existing) = self.entries.get(&tag) {
+            existing.order
+        } else {
+            let order = self.next_state_order;
+            self.next_state_order += 1;
+            order
+        };
+        self.entries.insert(
+            tag,
+            StateEntry {
+                state: Box::new(state),
+                order,
+            },
+        );
     }
 
     #[inline]
     pub fn get<T: StateTrait + 'static>(&self) -> Option<&T> {
-        let state = self.states.get(&state_tag::<T>())?;
-        Self::cast_ref::<T>(state.as_ref())
+        let entry = self.entries.get(&state_tag::<T>())?;
+        Self::cast_ref::<T>(entry.state.as_ref())
     }
 
     #[inline]
     pub fn get_mut<T: StateTrait + 'static>(&mut self) -> Option<&mut T> {
-        let state = self.states.get_mut(&state_tag::<T>())?;
-        Self::cast_mut::<T>(state.as_mut())
+        let entry = self.entries.get_mut(&state_tag::<T>())?;
+        Self::cast_mut::<T>(entry.state.as_mut())
     }
 
     #[inline]
     pub fn has<T: StateTrait + 'static>(&self) -> bool {
-        let result = self.states.contains_key(&state_tag::<T>());
+        let result = self.entries.contains_key(&state_tag::<T>());
         #[cfg(not(feature = "no_debug"))]
         if std::any::type_name::<T>().contains("CovidInfection") && crate::debug::debug_state() {
             eprintln!(
                 "[STATE_TRACE] HAS CovidInfection store_addr={:p} result={} all_tags={:?}",
                 self as *const _,
                 result,
-                self.states.keys().collect::<Vec<_>>()
+                self.entries.keys().collect::<Vec<_>>()
             );
         }
         result
@@ -310,7 +310,7 @@ impl PlayerStateStore {
     pub fn clear<T: StateTrait + 'static>(&mut self) {
         let tag = state_tag::<T>();
         #[cfg(not(feature = "no_debug"))]
-        if self.states.contains_key(&tag) && crate::debug::debug_state() {
+        if self.entries.contains_key(&tag) && crate::debug::debug_state() {
             eprintln!("[STATE_CLEAR] removing tag={:?}", tag);
         }
         self.remove_tag_internal(tag);
@@ -319,11 +319,11 @@ impl PlayerStateStore {
     #[inline]
     pub fn clear_tag(&mut self, tag: StateTag) {
         #[cfg(not(feature = "no_debug"))]
-        if self.states.contains_key(&tag) && crate::debug::debug_state() {
+        if self.entries.contains_key(&tag) && crate::debug::debug_state() {
             eprintln!(
                 "[STATE_CLEAR_TAG] removing tag={:?} meta_type={:?}",
                 tag,
-                self.states.get(&tag).map(|s| s.meta_type())
+                self.entries.get(&tag).map(|entry| entry.state.meta_type())
             );
         }
         self.remove_tag_internal(tag);
@@ -331,21 +331,21 @@ impl PlayerStateStore {
 
     #[inline]
     pub fn tag_clear_updates_status(&self, tag: StateTag) -> bool {
-        self.states.get(&tag).map(|state| state.clear_updates_status()).unwrap_or(true)
+        self.entries.get(&tag).map(|entry| entry.state.clear_updates_status()).unwrap_or(true)
     }
 
     #[inline]
-    pub fn meta_type(&self, tag: StateTag) -> Option<i32> { self.states.get(&tag).map(|state| state.meta_type()) }
+    pub fn meta_type(&self, tag: StateTag) -> Option<i32> { self.entries.get(&tag).map(|entry| entry.state.meta_type()) }
 
     pub fn clear_negative_states(&mut self) {
         #[cfg(not(feature = "no_debug"))]
         let debug_state = crate::debug::debug_state();
         let mut to_remove = Vec::new();
-        for (tag, state) in self.states.iter() {
-            if state.meta_type() < 0 {
+        for (tag, entry) in self.entries.iter() {
+            if entry.state.meta_type() < 0 {
                 #[cfg(not(feature = "no_debug"))]
                 if debug_state {
-                    eprintln!("[CLEAR_NEG] removing tag={:?} meta_type={}", tag, state.meta_type());
+                    eprintln!("[CLEAR_NEG] removing tag={:?} meta_type={}", tag, entry.state.meta_type());
                 }
                 to_remove.push(*tag);
             }
@@ -357,8 +357,8 @@ impl PlayerStateStore {
 
     pub fn clear_positive_states(&mut self) {
         let mut to_remove = Vec::new();
-        for (tag, state) in self.states.iter() {
-            if state.meta_type() > 0 {
+        for (tag, entry) in self.entries.iter() {
+            if entry.state.meta_type() > 0 {
                 to_remove.push(*tag);
             }
         }
@@ -370,11 +370,10 @@ impl PlayerStateStore {
     pub fn clear_positive_states_with_ordered_messages(&mut self, alive: bool) -> Vec<(i32, &'static str)> {
         let mut to_remove = Vec::new();
         let mut messages = Vec::new();
-        for (tag, state) in self.states.iter() {
-            if state.meta_type() > 0 {
-                if let Some(msg) = state.cancel_message(alive) {
-                    let order = self.state_orders.get(tag).copied().unwrap_or(u64::MAX);
-                    messages.push((state.clear_positive_priority(), order, *tag, msg));
+        for (tag, entry) in self.entries.iter() {
+            if entry.state.meta_type() > 0 {
+                if let Some(msg) = entry.state.cancel_message(alive) {
+                    messages.push((entry.state.clear_positive_priority(), entry.order, *tag, msg));
                 }
                 to_remove.push(*tag);
             }
@@ -401,12 +400,12 @@ impl PlayerStateStore {
     }
 
     #[inline]
-    pub fn negative_state_count(&self) -> usize { self.states.values().filter(|state| state.meta_type() < 0).count() }
+    pub fn negative_state_count(&self) -> usize { self.entries.values().filter(|entry| entry.state.meta_type() < 0).count() }
 
     pub fn apply_update_state_effects(&self, status: &mut PlayerStatus) {
         for tag in self.ordered_tags_by(|state| state.update_state_priority()) {
-            if let Some(state) = self.states.get(&tag) {
-                state.apply_update_state(status);
+            if let Some(entry) = self.entries.get(&tag) {
+                entry.state.apply_update_state(status);
             }
         }
     }
@@ -414,8 +413,8 @@ impl PlayerStateStore {
     pub fn resolve_action_mode(&self, smart: bool) -> Option<crate::player::action_targets::ForcedAttackConfig> {
         let mut forced = None;
         for tag in self.ordered_tags_by(|state| state.action_mode_priority()) {
-            if let Some(state) = self.states.get(&tag) {
-                state.on_action_mode(smart, &mut forced);
+            if let Some(entry) = self.entries.get(&tag) {
+                entry.state.on_action_mode(smart, &mut forced);
                 if forced.is_some() {
                     break;
                 }
@@ -435,9 +434,9 @@ impl PlayerStateStore {
         let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
         for tag in self.ordered_tags_by(|state| state.action_mode_priority()) {
             let should_clear = self
-                .states
+                .entries
                 .get_mut(&tag)
-                .map(|state| state.on_forced_action(owner, alive, randomer, updates, storage))
+                .map(|entry| entry.state.on_forced_action(owner, alive, randomer, updates, storage))
                 .unwrap_or(false);
             if should_clear {
                 clear_tags.push(tag);
@@ -456,9 +455,9 @@ impl PlayerStateStore {
         let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
         for tag in self.ordered_tags_by(|state| state.pre_step_priority()) {
             let should_clear = self
-                .states
+                .entries
                 .get_mut(&tag)
-                .map(|state| state.on_pre_step(owner, status, step, updates))
+                .map(|entry| entry.state.on_pre_step(owner, status, step, updates))
                 .unwrap_or(false);
             if should_clear {
                 clear_tags.push(tag);
@@ -489,9 +488,9 @@ impl PlayerStateStore {
             #[cfg(not(feature = "no_debug"))]
             let rc4_before = (randomer.i, randomer.j);
             let should_clear = self
-                .states
+                .entries
                 .get_mut(&tag)
-                .map(|state| state.on_post_action(owner, current_alive, randomer, updates, storage))
+                .map(|entry| entry.state.on_post_action(owner, current_alive, randomer, updates, storage))
                 .unwrap_or(false);
             #[cfg(not(feature = "no_debug"))]
             if debug_this {
@@ -529,9 +528,13 @@ impl PlayerStateStore {
         let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
         for tag in self.ordered_tags_by(|state| state.pre_defend_priority()) {
             let should_clear = self
-                .states
+                .entries
                 .get_mut(&tag)
-                .map(|state| state.on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage))
+                .map(|entry| {
+                    entry
+                        .state
+                        .on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage)
+                })
                 .unwrap_or(false);
             if should_clear {
                 clear_tags.push(tag);
@@ -556,10 +559,12 @@ impl PlayerStateStore {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> Vec<StateTag> {
-        let Some(state) = self.states.get_mut(&tag) else {
+        let Some(entry) = self.entries.get_mut(&tag) else {
             return Vec::new();
         };
-        let should_clear = state.on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage);
+        let should_clear = entry
+            .state
+            .on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage);
         if should_clear { vec![tag] } else { Vec::new() }
     }
 
@@ -582,9 +587,13 @@ impl PlayerStateStore {
                 continue;
             }
             let should_clear = self
-                .states
+                .entries
                 .get_mut(&tag)
-                .map(|state| state.on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage))
+                .map(|entry| {
+                    entry
+                        .state
+                        .on_pre_defend(owner, atp, is_mag, caster, on_damage, randomer, updates, storage)
+                })
                 .unwrap_or(false);
             if should_clear {
                 clear_tags.push(tag);
@@ -607,8 +616,8 @@ impl PlayerStateStore {
     ) -> bool {
         let mut status_dirty = false;
         for tag in self.ordered_tags_by(|state| state.post_defend_priority()) {
-            if let Some(state) = self.states.get_mut(&tag) {
-                status_dirty |= state.on_post_defend(owner, dmg, caster, randomer, updates, storage);
+            if let Some(entry) = self.entries.get_mut(&tag) {
+                status_dirty |= entry.state.on_post_defend(owner, dmg, caster, randomer, updates, storage);
             }
         }
         status_dirty
@@ -621,10 +630,8 @@ impl PlayerStateStore {
     /// 会按 HashMap 迭代顺序（非确定性）排列，导致与 JS 行为不一致。
     pub fn post_defend_tags_with_priority(&self) -> SmallVec<[(StateTag, i32); 8]> {
         let mut result: SmallVec<[(StateTag, i32, u64); 8]> = SmallVec::new();
-        for (&tag, state) in &self.states {
-            let priority = state.post_defend_priority();
-            let order = self.state_orders.get(&tag).copied().unwrap_or(u64::MAX);
-            result.push((tag, priority, order));
+        for (&tag, entry) in &self.entries {
+            result.push((tag, entry.state.post_defend_priority(), entry.order));
         }
         result.sort_unstable_by(|(tag_a, p_a, o_a), (tag_b, p_b, o_b)| {
             p_a.cmp(p_b).then_with(|| o_a.cmp(o_b)).then_with(|| tag_a.cmp(tag_b))
@@ -643,8 +650,8 @@ impl PlayerStateStore {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> bool {
-        if let Some(state) = self.states.get_mut(&tag) {
-            state.on_post_defend(owner, dmg, caster, randomer, updates, storage)
+        if let Some(entry) = self.entries.get_mut(&tag) {
+            entry.state.on_post_defend(owner, dmg, caster, randomer, updates, storage)
         } else {
             false
         }
@@ -667,8 +674,8 @@ impl PlayerStateStore {
         for tag in self.ordered_tags_by(|state| state.post_damage_priority()) {
             #[cfg(not(feature = "no_debug"))]
             let rc4_before = (randomer.i, randomer.j);
-            if let Some(state) = self.states.get_mut(&tag) {
-                state.on_post_damage(owner, dmg, caster, randomer, updates, storage);
+            if let Some(entry) = self.entries.get_mut(&tag) {
+                entry.state.on_post_damage(owner, dmg, caster, randomer, updates, storage);
                 #[cfg(not(feature = "no_debug"))]
                 if debug_this {
                     eprintln!(
@@ -697,8 +704,8 @@ impl PlayerStateStore {
         targets: &ActionTargets,
     ) -> bool {
         for tag in self.ordered_tags_by(|state| state.pre_action_priority()) {
-            if let Some(state) = self.states.get_mut(&tag)
-                && state.on_pre_action(owner, smart, randomer, updates, storage, targets)
+            if let Some(entry) = self.entries.get_mut(&tag)
+                && entry.state.on_pre_action(owner, smart, randomer, updates, storage, targets)
             {
                 return true;
             }
@@ -708,7 +715,7 @@ impl PlayerStateStore {
 
     pub fn die_message_override(&self) -> Option<&'static str> {
         for tag in self.ordered_tags_by(|state| state.die_message_priority()) {
-            if let Some(msg) = self.states.get(&tag).and_then(|state| state.die_message()) {
+            if let Some(msg) = self.entries.get(&tag).and_then(|entry| entry.state.die_message()) {
                 return Some(msg);
             }
         }
@@ -716,15 +723,15 @@ impl PlayerStateStore {
     }
 
     pub fn linked_to_owner(&self, owner: PlrId) -> bool {
-        self.states
+        self.entries
             .values()
-            .any(|state| state.linked_owner().map(|id| id == owner).unwrap_or(false))
+            .any(|entry| entry.state.linked_owner().map(|id| id == owner).unwrap_or(false))
     }
 
     pub fn on_linked_owner_die(&mut self, owner: PlrId, self_id: PlrId, updates: &mut RunUpdates) -> bool {
         let mut should_remove = false;
-        for state in self.states.values_mut() {
-            should_remove |= state.on_linked_owner_die(owner, self_id, updates);
+        for entry in self.entries.values_mut() {
+            should_remove |= entry.state.on_linked_owner_die(owner, self_id, updates);
         }
         should_remove
     }
