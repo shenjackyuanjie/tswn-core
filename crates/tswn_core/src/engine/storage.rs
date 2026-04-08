@@ -70,6 +70,8 @@ pub struct Storage {
     alive_groups: UnsafeCell<Vec<Vec<PlrId>>>,
     /// 存玩家实体。
     players: UnsafeCell<FastHashMap<PlrId, UnsafeCell<Player>>>,
+    /// 玩家 -> 所属分组索引的反向映射，由 `sync_groups` 维护。
+    player_group: UnsafeCell<FastHashMap<PlrId, usize>>,
     /// 延迟到引擎 tick 同步的新增实体。
     pending_spawns: UnsafeCell<Vec<PendingSpawn>>,
     /// 延迟到引擎 tick 同步的移除实体。
@@ -108,6 +110,7 @@ impl Storage {
             groups: UnsafeCell::new(FastHashMap::new()),
             alive_groups: UnsafeCell::new(Vec::new()),
             players: UnsafeCell::new(FastHashMap::new()),
+            player_group: UnsafeCell::new(FastHashMap::new()),
             pending_spawns: UnsafeCell::new(Vec::new()),
             pending_remove_players: UnsafeCell::new(Vec::new()),
             death_queue: UnsafeCell::new(Vec::new()),
@@ -128,6 +131,7 @@ impl Storage {
         self.groups_mut().clear();
         self.alive_groups_mut().clear();
         self.players_mut().clear();
+        self.player_group_mut().clear();
         self.pending_spawns_mut().clear();
         self.pending_remove_players_mut().clear();
         self.death_queue_mut().clear();
@@ -159,6 +163,12 @@ impl Storage {
 
     #[inline]
     fn players_mut(&self) -> &mut FastHashMap<PlrId, UnsafeCell<Player>> { unsafe { &mut *self.players.get() } }
+
+    #[inline]
+    fn player_group_ref(&self) -> &FastHashMap<PlrId, usize> { unsafe { &*self.player_group.get() } }
+
+    #[inline]
+    fn player_group_mut(&self) -> &mut FastHashMap<PlrId, usize> { unsafe { &mut *self.player_group.get() } }
 
     #[inline]
     fn pending_spawns_ref(&self) -> &Vec<PendingSpawn> { unsafe { &*self.pending_spawns.get() } }
@@ -234,12 +244,10 @@ impl Storage {
     pub fn alive_group_at(&self, team_idx: usize) -> Option<&Vec<PlrId>> { self.alive_groups_ref().get(team_idx) }
 
     pub fn group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
-        self.groups_ref().values().find(|group| group.contains(&actor))
+        self.player_group_ref().get(&actor).and_then(|&idx| self.groups_ref().get(&idx))
     }
 
-    pub fn group_index_of(&self, actor: PlrId) -> Option<usize> {
-        self.groups_ref().iter().find(|(_, group)| group.contains(&actor)).map(|(idx, _)| *idx)
-    }
+    pub fn group_index_of(&self, actor: PlrId) -> Option<usize> { self.player_group_ref().get(&actor).copied() }
 
     pub fn alive_group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
         self.alive_groups_ref().iter().find(|group| group.contains(&actor))
@@ -248,7 +256,7 @@ impl Storage {
     /// 通过 roster 找到 actor 所在队伍的索引，再返回该队伍的 alive 列表。
     /// 即使 actor 已死亡也能找到正确的 alive 列表（因为 roster 不移除死亡成员）。
     pub fn alive_group_at_team_of(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
-        let team_idx = self.groups_ref().iter().find(|(_, group)| group.contains(&actor)).map(|(idx, _)| *idx)?;
+        let team_idx = self.player_group_ref().get(&actor).copied()?;
         self.alive_groups_ref().get(team_idx)
     }
 
@@ -258,10 +266,19 @@ impl Storage {
 
     pub fn all_player_ids(&self) -> Vec<PlrId> { self.players_ref().keys().copied().collect() }
 
+    pub fn iter_player_ids(&self) -> impl Iterator<Item = PlrId> + '_ { self.players_ref().keys().copied() }
+
+    pub fn iter_pending_spawns(&self) -> impl Iterator<Item = &PendingSpawn> + '_ { self.pending_spawns_ref().iter() }
+
     pub fn sync_groups(&self, groups: &[Vec<PlrId>]) {
         let storage_groups = self.groups_mut();
         storage_groups.clear();
+        let player_group = self.player_group_mut();
+        player_group.clear();
         for (idx, group) in groups.iter().enumerate() {
+            for &id in group {
+                player_group.insert(id, idx);
+            }
             storage_groups.insert(idx, group.clone());
         }
     }

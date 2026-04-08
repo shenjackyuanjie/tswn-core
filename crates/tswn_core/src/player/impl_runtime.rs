@@ -61,29 +61,25 @@ use smallvec::SmallVec;
 // JS addNew 之后的新单位会立刻参与“战斗是否结束”的判断，
 // Rust 侧这里也要把敌方 pending spawn 视为仍然存活的敌人。
 fn has_alive_enemy_or_pending(storage: &Arc<Storage>, ally_group: &[PlrId]) -> bool {
-    let all_ids = storage.all_player_ids();
-    if all_ids
-        .iter()
-        .any(|id| !ally_group.contains(id) && storage.get_player(id).map(|plr| plr.alive()).unwrap_or(false))
+    if storage
+        .iter_player_ids()
+        .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
     {
         return true;
     }
 
-    all_ids
-        .into_iter()
-        .filter(|owner_id| !ally_group.contains(owner_id))
-        .flat_map(|owner_id| storage.pending_spawn_ids_for_owner(owner_id))
-        .any(|pending_id| storage.get_pending_spawn_player(pending_id).map(|plr| plr.alive()).unwrap_or(false))
+    storage
+        .iter_pending_spawns()
+        .any(|pending| !ally_group.contains(&pending.owner) && pending.player.alive())
 }
 
 /// 对齐 JS dj() 的判定：检查当前所有存活玩家（含 pending spawn）是否全属于同一组。
 /// 若仅剩一组（或零组）存活，则视为战斗结束。
 fn is_battle_over(storage: &Arc<Storage>) -> bool {
-    let all_ids = storage.all_player_ids();
     let mut first_group: Option<usize> = None;
-    for id in &all_ids {
-        if storage.get_player(id).map(|p| p.alive()).unwrap_or(false)
-            && let Some(idx) = storage.group_index_of(*id)
+    for id in storage.iter_player_ids() {
+        if storage.get_player(&id).map(|p| p.alive()).unwrap_or(false)
+            && let Some(idx) = storage.group_index_of(id)
         {
             match first_group {
                 None => first_group = Some(idx),
@@ -93,16 +89,14 @@ fn is_battle_over(storage: &Arc<Storage>) -> bool {
         }
     }
     // 同时检查 pending spawn
-    for owner_id in &all_ids {
-        for pending_id in storage.pending_spawn_ids_for_owner(*owner_id) {
-            if storage.get_pending_spawn_player(pending_id).map(|p| p.alive()).unwrap_or(false)
-                && let Some(idx) = storage.group_index_of(*owner_id)
-            {
-                match first_group {
-                    None => first_group = Some(idx),
-                    Some(existing) if existing != idx => return false,
-                    _ => {}
-                }
+    for pending in storage.iter_pending_spawns() {
+        if pending.player.alive()
+            && let Some(idx) = storage.group_index_of(pending.owner)
+        {
+            match first_group {
+                None => first_group = Some(idx),
+                Some(existing) if existing != idx => return false,
+                _ => {}
             }
         }
     }
