@@ -212,6 +212,7 @@ impl RunUpdates {
 
     /// 清理批次内容，复用分配。
     pub fn reset(&mut self) {
+        self.id = RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed);
         self.updates.clear();
         self.on_update_end.clear();
         self.has_activity = false;

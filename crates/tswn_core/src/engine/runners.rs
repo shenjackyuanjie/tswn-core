@@ -502,9 +502,12 @@ impl Runner {
     pub fn run_to_completion(&mut self) -> bool {
         let mut idle = 0usize;
         let mut rounds = 0usize;
+        let mut updates = RunUpdates::new_no_capture();
         while !self.world.have_winner() && idle <= 16 && rounds < 100_000 {
-            let updates = self.main_round();
-            if updates.updates.is_empty() {
+            updates.reset();
+            self.core
+                .main_round_into(&mut self.world, &self.storage, &mut self.randomer, &mut updates);
+            if !updates.had_updates() {
                 idle += 1;
             } else {
                 idle = 0;

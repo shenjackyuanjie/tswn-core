@@ -241,13 +241,25 @@ impl EngineCore {
 
     pub fn main_round(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4) -> RunUpdates {
         let mut updates = RunUpdates::new();
+        self.main_round_into(world, storage, randomer, &mut updates);
+        updates
+    }
+
+    /// 与 `main_round` 逻辑相同，但复用调用方传入的 `RunUpdates`。
+    /// 调用前需确保已调用 `updates.reset()`。
+    pub fn main_round_into(
+        &mut self,
+        world: &mut WorldState,
+        storage: &Arc<Storage>,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+    ) {
         let max_ticks = world.all_plr_len().max(1) * 4;
         let mut ticks = 0;
 
-        while ticks < max_ticks && !world.have_winner() && !crate::engine::tick::has_updates(&updates) {
-            self.tick(world, storage, randomer, &mut updates);
+        while ticks < max_ticks && !world.have_winner() && !crate::engine::tick::has_updates(updates) {
+            self.tick(world, storage, randomer, updates);
             ticks += 1;
         }
-        updates
     }
 }

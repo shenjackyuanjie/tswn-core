@@ -65,6 +65,37 @@ fn damage_update_uses_caster_as_actor() {
 }
 
 #[test]
+fn counter_treats_reused_updates_as_new_batch_after_reset() {
+    use crate::player::skill::SkillTrait;
+    use crate::player::skill::skl::counter::CounterSkill;
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let attacker_id = storage.just_insert_player(attacker);
+    storage.sync_groups(&[vec![owner_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![attacker_id]]);
+
+    let mut skill = CounterSkill::new();
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    skill.post_damage_with_level(0, 1, attacker_id, (owner_id, &mut randomer, &mut updates, &storage));
+    assert!(!skill.pending);
+    assert!(updates.on_update_end.is_empty());
+
+    let first_batch_id = updates.id;
+    updates.reset();
+    assert_ne!(updates.id, first_batch_id, "reset() should advance to a fresh update batch id");
+
+    skill.post_damage_with_level(256, 1, attacker_id, (owner_id, &mut randomer, &mut updates, &storage));
+    assert!(skill.pending, "counter should be allowed to trigger again in a new batch");
+    assert_eq!(skill.last_target, Some(attacker_id));
+    assert_eq!(updates.on_update_end.as_slice(), &[owner_id]);
+}
+
+#[test]
 fn on_damaged_triggers_on_die() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
