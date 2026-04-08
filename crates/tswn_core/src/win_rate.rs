@@ -104,17 +104,18 @@ fn run_prepared_win_rate_range(
 
         let t_init = std::time::Instant::now();
         let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)?;
-        let team0_roster = runner.input_groups.first().cloned().unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = std::time::Instant::now();
         runner.run_to_completion();
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
-        if let Some(winners) = runner.world.winner.as_ref()
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
+        if let Some(winners) = runner.world.winner.as_ref() {
+            if let Some(team0) = runner.input_groups.first() {
+                if winners.iter().any(|winner| team0.contains(winner)) {
+                    wins += 1;
+                }
+            }
         }
     }
 
@@ -154,17 +155,18 @@ fn run_prepared_win_rate_worker(
 
         let t_init = std::time::Instant::now();
         let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)?;
-        let team0_roster = runner.input_groups.first().cloned().unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = std::time::Instant::now();
         runner.run_to_completion();
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
-        if let Some(winners) = runner.world.winner.as_ref()
-            && winners.iter().any(|winner| team0_roster.contains(winner))
-        {
-            wins += 1;
+        if let Some(winners) = runner.world.winner.as_ref() {
+            if let Some(team0) = runner.input_groups.first() {
+                if winners.iter().any(|winner| team0.contains(winner)) {
+                    wins += 1;
+                }
+            }
         }
     }
 
