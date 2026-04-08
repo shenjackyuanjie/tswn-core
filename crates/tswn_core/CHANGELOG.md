@@ -1,5 +1,21 @@
 # 更新日志
 
+## [0.2.14] - 2026-04-08
+
+### 性能优化
+
+- 回迁 `PlayerStateStore` 的单表存储优化：将 `states + state_orders` 双 `HashMap` 合并为单个 `entries` 表，减少状态排序与遍历时的额外查询开销。
+- 优化 `run_to_completion()`：
+  - 复用单个 `RunUpdates`
+  - 使用 `new_no_capture()` 关闭 benchmark 高速路径中的详细帧缓存
+  - 保留 `had_updates()` 语义，避免高速路径与普通对局的空回合判定分叉
+- 回迁 `Storage` 的 `player_group` 反向索引，并将 `has_alive_enemy_or_pending()` / `is_battle_over()` 改为直接迭代，消除热路径里的 `Vec` 分配与队伍线性扫描。
+
+### 修复
+
+- 修复复用 `RunUpdates` 时的批次 `id` 复用问题：`reset()` 现在会刷新新的批次 `id`，避免 `CounterSkill` 等依赖批次标识的逻辑在 `run_to_completion()` / `bench win-rate` 路径上产生结果分叉。
+- 补充最小回归测试，覆盖“复用同一个 `RunUpdates` 时，下一批次仍应允许重新触发反击判定”的场景。
+
 ## [0.2.13] - 2026-04-07
 
 ### 重构
