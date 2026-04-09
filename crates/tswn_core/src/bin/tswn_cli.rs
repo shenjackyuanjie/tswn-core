@@ -4,6 +4,7 @@
 //! - `fight`: 普通对战
 //! - `bench auto`: 自动选择评分或胜率 benchmark
 //! - `bench win-rate`: 显式双队胜率 benchmark
+//! - `bench group-win-rate|batch-rate`: 组胜率与批量胜率 benchmark
 //! - `icon show|b64|save`: 图标预览与导出
 //!
 //! 示例：
@@ -11,6 +12,7 @@
 //! tswn-cli fight --raw "mario\nluigi\n\npeach\nbowser"
 //! tswn-cli bench auto --raw "mario" -n 10000 --perf
 //! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
+//! tswn-cli bench batch-rate --target-list targets.txt --player-list players.txt -n 10000
 //! tswn-cli icon show mario luigi
 //! ```
 
@@ -83,6 +85,38 @@ fn main() {
                 tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
             };
             bench::run_bench_group_win_rate(&target, &against, n, mode, threads, eval_rq, perf);
+        }
+        ParsedCommand::BenchBatchRate {
+            target_groups,
+            player_groups,
+            player_labels,
+            n,
+            mode,
+            threads,
+            perf,
+            keep_rq,
+            verbose,
+            out_file,
+            force,
+        } => {
+            let eval_rq = if keep_rq {
+                tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+            } else {
+                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
+            };
+            bench::run_bench_batch_rate(
+                &target_groups,
+                &player_groups,
+                &player_labels,
+                n,
+                mode,
+                threads,
+                eval_rq,
+                verbose,
+                perf,
+                out_file.as_deref(),
+                force,
+            );
         }
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
         ParsedCommand::IconB64 { names } => {
