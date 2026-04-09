@@ -3,6 +3,7 @@
 本目录提供 `tswn_capi` 的最小 C 示例。
 
 - `version_and_error.c`: 版本、常量与错误读取
+- `error_handling.c`: 状态码、last-error 与失败后恢复调用流程
 - `runner_fight.c`: 从 raw 输入创建 `Runner` 并跑完整场对局
 - `prepared_runner.c`: 复用 `PreparedRunner` 构造多场对局
 - `prepared_win_rate.c`: 基于 `PreparedRunner` 批量统计胜率
@@ -13,6 +14,20 @@
 - `player_snapshot.c`: 读取玩家快照
 
 这些示例默认通过相对路径包含 `../include/tswn_capi.h`。
+
+### 错误处理范例
+
+如果你想看更完整的错误处理流程，而不只是最小的“触发一次错误后读消息”，可以直接看：
+
+- `examples/error_handling.c`
+
+这个示例演示了：
+
+- 如何检查 `tswn_status_t`
+- 如何读取 `tswn_last_error_message()`
+- 如何用 `tswn_clear_error()` 手动清空错误
+- 如何在一次失败之后继续调用其他接口
+- 成功调用后，旧的 last-error 会如何被清掉
 
 ## 重要说明
 
