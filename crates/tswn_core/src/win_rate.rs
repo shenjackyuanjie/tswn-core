@@ -110,12 +110,11 @@ fn run_prepared_win_rate_range(
         runner.run_to_completion();
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
-        if let Some(winners) = runner.world.winner.as_ref() {
-            if let Some(team0) = runner.input_groups.first() {
-                if winners.iter().any(|winner| team0.contains(winner)) {
-                    wins += 1;
-                }
-            }
+        if let Some(winners) = runner.world.winner.as_ref()
+            && let Some(team0) = runner.input_groups.first()
+            && winners.iter().any(|winner| team0.contains(winner))
+        {
+            wins += 1;
         }
     }
 
@@ -161,12 +160,11 @@ fn run_prepared_win_rate_worker(
         runner.run_to_completion();
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
-        if let Some(winners) = runner.world.winner.as_ref() {
-            if let Some(team0) = runner.input_groups.first() {
-                if winners.iter().any(|winner| team0.contains(winner)) {
-                    wins += 1;
-                }
-            }
+        if let Some(winners) = runner.world.winner.as_ref()
+            && let Some(team0) = runner.input_groups.first()
+            && winners.iter().any(|winner| team0.contains(winner))
+        {
+            wins += 1;
         }
     }
 

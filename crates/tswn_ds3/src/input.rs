@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[derive(Debug, Clone)]
 pub struct InputRecord {
     pub raw_score: f64,

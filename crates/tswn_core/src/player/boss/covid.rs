@@ -91,7 +91,8 @@ impl StateTrait for CovidInfection {
             randomer.i,
             randomer.j
         );
-        for (_ei, entry) in self.entries.iter_mut().enumerate() {
+        for (ei, entry) in self.entries.iter_mut().enumerate() {
+            let _ = ei;
             let pre_byte = randomer.next_u8();
             if pre_byte < 64 {
                 let new_mutation = randomer.r127() as i32;
@@ -99,7 +100,7 @@ impl StateTrait for CovidInfection {
                     debug_covid,
                     "[COVID_aN] owner={} entry={} mutation {} -> {} rc4=({},{})",
                     owner_name_pre,
-                    _ei,
+                    ei,
                     entry.mutation,
                     new_mutation,
                     randomer.i,
@@ -114,7 +115,7 @@ impl StateTrait for CovidInfection {
                     debug_covid,
                     "[COVID_aN] owner={} entry={} mutation={} no_change rc4=({},{})",
                     owner_name_pre,
-                    _ei,
+                    ei,
                     entry.mutation,
                     randomer.i,
                     randomer.j

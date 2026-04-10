@@ -34,6 +34,7 @@ impl ScoreMode {
     }
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn init_pos_tables() -> ([usize; 46], [[Option<usize>; 46]; 46]) {
     let mut pos = [0usize; 46];
     let mut pos2 = [[None; 46]; 46];
@@ -46,7 +47,7 @@ pub fn init_pos_tables() -> ([usize; 46], [[Option<usize>; 46]; 46]) {
 
     for i in 0..46 {
         for j in i..46 {
-            if (i == 26 && j == 37) || (i == 26 && j == 45) || (i == 42 && j == 44) || (i == 44 && j == 44) {
+            if (i == 26 && matches!(j, 37 | 45)) || (j == 44 && matches!(i, 42 | 44)) {
                 continue;
             }
             count += 1;
@@ -124,8 +125,8 @@ impl NameFeature {
         }
 
         let mut at_pos: Option<usize> = None;
-        for i in (l as usize)..=(r as usize) {
-            if bytes[i] == b'@' {
+        for (i, byte) in bytes.iter().enumerate().take(r as usize + 1).skip(l as usize) {
+            if *byte == b'@' {
                 at_pos = Some(i);
             }
         }

@@ -144,7 +144,8 @@ fn post_defend_applies_curse_multiplier() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
@@ -433,7 +434,8 @@ fn reflect_penalty_runs_after_reflected_kill_merge_check() {
         i: 0,
         j: 0,
         main_val: [127u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
@@ -518,7 +520,8 @@ fn reraise_skill_prevents_death() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
@@ -545,7 +548,8 @@ fn curse_does_not_apply_to_reraise_survivor() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 

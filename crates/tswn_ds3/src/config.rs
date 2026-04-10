@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -78,7 +80,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn single(self: &Self, mode: SingleMode) -> SingleThreshold {
+    pub fn single(&self, mode: SingleMode) -> SingleThreshold {
         match mode {
             SingleMode::Bc => self.single_bc,
             SingleMode::Fz => self.single_fz,
@@ -88,7 +90,7 @@ impl Config {
         }
     }
 
-    pub fn pair(self: &Self, mode: PairMode) -> PairThreshold {
+    pub fn pair(&self, mode: PairMode) -> PairThreshold {
         match mode {
             PairMode::Fc => self.pair_fc,
             PairMode::Wc => self.pair_wc,

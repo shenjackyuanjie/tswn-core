@@ -9,7 +9,8 @@ fn boss_has_higher_state_immunity() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     assert!(boss.check_immune("fire", &mut randomer));
     assert!(!normal.check_immune("fire", &mut randomer));

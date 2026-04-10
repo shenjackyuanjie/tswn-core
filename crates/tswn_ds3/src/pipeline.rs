@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::fs;
 use std::path::Path;
 
@@ -72,7 +74,7 @@ pub fn run_stage1_with_store(store: &Store, config: &Config) -> Ds3Result<Stage1
     let dedup = if config.run_dedup {
         remove_duplicates(&store.tmp_new_file(), &store.file_old(), &store.tmp_new_dup_file())?
     } else {
-        let copied = fs::read(&store.tmp_new_file()).unwrap_or_default();
+        let copied = fs::read(store.tmp_new_file()).unwrap_or_default();
         write_bytes_atomic(&store.tmp_new_dup_file(), &copied)?;
         let remaining = copied.split(|ch| *ch == b'\n').filter(|line| !line.is_empty()).count();
         DedupStats {

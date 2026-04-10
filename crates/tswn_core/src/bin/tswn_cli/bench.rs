@@ -88,6 +88,7 @@ pub fn run_bench_group_win_rate(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_bench_batch_rate(
     target_groups: &[String],
     player_groups: &[String],

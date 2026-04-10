@@ -1,5 +1,24 @@
 # 更新日志
 
+## [0.2.16] - 2026-04-10
+
+### 修复
+
+- 修正名字解析中的 trim/reject 语义混用：不再把 `md5.js` 的 trim 字符集合直接当作 `name/team` 的非法字符集合处理，避免像 `U+3000` 这类 JS 可保留/可裁剪空白在 Rust 里被误判为构造失败。
+- 对齐 `md5.js` 的最小相关解析语义：raw 输入现在会按 JS `\s` 规则裁掉每行尾部空白，`+weapon` 后半段会按 `trim_name` 风格去掉两端可裁剪空白与 `133` 扩展边界空白。
+- 修正旧 `filter_char` 范围翻译中的边界偏差，不再继续依赖 `9..12` / `8192..8202` 这类 Rust 半开区间写法去近似 JS 的显式码点集合。
+
+### 测试
+
+- 新增回归测试，覆盖：
+  - `U+3000` 在 `name/team` 内部时不再误报非法字符
+  - raw 行尾 `U+3000` 会在分组前被裁掉
+  - `+weapon` 后半段会按 JS 语义裁掉首尾 `U+3000` / `133` 等 trim 字符
+
+### 工程
+
+- 清理当前 workspace 的 clippy warning：`tswn_core` 侧收敛了 `collapsible_if`、`unused_enumerate_index`、测试中的 `needless_update` 等告警；`tswn_ds3` 侧修正了低风险样式问题，并对当前保留的生成系数/未接线辅助接口加上局部 `allow`，使 `cargo clippy --workspace --all-targets` 恢复无 warning 通过。
+
 ## [0.2.15] - 2026-04-09
 
 ### CLI

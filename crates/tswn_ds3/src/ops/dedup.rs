@@ -62,9 +62,7 @@ fn read_optional_file(path: &Path) -> Ds3Result<String> {
     Ok(fs::read_to_string(path)?)
 }
 
-fn split_like_cpp(source: &str) -> impl Iterator<Item = &str> {
-    source.split(|ch| ch == '\n' || ch == '\r').filter(|line| !line.is_empty())
-}
+fn split_like_cpp(source: &str) -> impl Iterator<Item = &str> { source.split(['\n', '\r']).filter(|line| !line.is_empty()) }
 
 #[cfg(test)]
 mod tests {

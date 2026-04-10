@@ -9,7 +9,8 @@ fn merge_and_zombie_kill_write_target_states() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
     let mut merge = crate::player::skill::merge::MergeSkill::new();
@@ -52,7 +53,8 @@ fn merge_kill_applies_owner_growth() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
@@ -109,7 +111,8 @@ fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
@@ -293,7 +296,8 @@ fn post_kill_runs_when_only_remaining_enemy_is_pending_spawn() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
@@ -546,7 +550,8 @@ fn owner_death_marks_linked_minion_for_cleanup() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
@@ -601,7 +606,8 @@ fn owner_death_marks_pending_linked_minion_dead_before_sync() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
@@ -691,7 +697,8 @@ fn owner_death_removes_linked_minions_in_roster_order() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
