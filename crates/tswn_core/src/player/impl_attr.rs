@@ -38,6 +38,7 @@
 //! player.build(); // 计算属性
 //! ```
 
+use super::utils::{trim_js_line_end, trim_js_name_like};
 use super::*;
 
 impl Player {
@@ -304,9 +305,10 @@ impl Player {
     /// - \<name>@\<team>+\<weapon>
     /// - \<name>@\<team>+\<weapon>+diy{xxxxx}
     pub fn new_from_namerena_raw(raw_name: String, storage: Arc<Storage>) -> PlayerResult<Self> {
+        let raw_name = trim_js_line_end(&raw_name);
         // 先判断是否有 + 和 @
         if !raw_name.contains("@") && !raw_name.contains("+") {
-            return Player::new_and_init(None, raw_name.clone(), None, storage);
+            return Player::new_and_init(None, raw_name.to_string(), None, storage);
         }
         // 区分队伍名
         let name: &str;
@@ -318,7 +320,8 @@ impl Player {
             if team.contains("+") {
                 let tmp;
                 (team, tmp) = team.split_once("+").unwrap();
-                weapon = Some(tmp);
+                team = trim_js_line_end(team);
+                weapon = Some(trim_js_name_like(tmp));
             } else {
                 weapon = None;
             }
@@ -327,9 +330,14 @@ impl Player {
             // 没有队伍名, 直接是武器
             if raw_name.contains("+") {
                 let (name, weapon) = raw_name.split_once("+").unwrap();
-                Player::new_and_init(None, name.to_string(), Some(weapon.to_string()), storage)
+                Player::new_and_init(
+                    None,
+                    trim_js_line_end(name).to_string(),
+                    Some(trim_js_name_like(weapon).to_string()),
+                    storage,
+                )
             } else {
-                Player::new_and_init(None, raw_name, None, storage)
+                Player::new_and_init(None, raw_name.to_string(), None, storage)
             }
         }
     }

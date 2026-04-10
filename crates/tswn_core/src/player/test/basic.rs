@@ -50,6 +50,32 @@ fn player_raw_new() {
 }
 
 #[test]
+fn player_raw_keeps_internal_js_trim_chars_in_name_and_team() {
+    let storage = Storage::new_arc();
+
+    let player = Player::new_from_namerena_raw("ab\u{3000}cd@red\u{3000}team".to_string(), storage.clone()).unwrap();
+    assert_eq!(player.name, "ab\u{3000}cd");
+    assert_eq!(player.team, Some("red\u{3000}team".to_string()));
+}
+
+#[test]
+fn player_raw_trims_js_line_end_and_weapon_name_like() {
+    let storage = Storage::new_arc();
+
+    let player = Player::new_from_namerena_raw(
+        "mario@red\u{3000}+\u{3000}fire\u{3000}\u{0085}\u{3000}".to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    assert_eq!(player.name, "mario");
+    assert_eq!(player.team, Some("red".to_string()));
+    assert_eq!(player.weapon, Some("fire".to_string()));
+
+    let player = Player::new_from_namerena_raw("luigi\u{3000}".to_string(), storage.clone()).unwrap();
+    assert_eq!(player.name, "luigi");
+}
+
+#[test]
 fn player_name() {
     let storage = Storage::new_arc();
 
@@ -115,6 +141,7 @@ fn player_raw_types() {
     assert_eq!(player.player_type, PlayerType::Boost);
 }
 
+#[allow(dead_code)]
 fn noop_on_damage(_: PlrId, _: PlrId, _: i32, _: &mut RC4, _: &mut RunUpdates, _: &std::sync::Arc<Storage>) {}
 
 #[test]
@@ -155,7 +182,8 @@ fn check_immune_matches_player_type_rules() {
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
 
     assert!(boost.check_immune("poison", &mut randomer));

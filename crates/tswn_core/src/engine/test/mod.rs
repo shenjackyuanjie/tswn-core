@@ -85,6 +85,13 @@ mod split_namerena_groups {
     }
 
     #[test]
+    fn trim_js_line_end_before_grouping() {
+        let raw_input = "a\u{3000}\n\u{3000}\n\u{3000}b\u{3000}".to_string();
+        let groups = runners::Runner::split_namerena_into_groups(raw_input);
+        assert_eq!(groups, (vec![plr!["a"], plr!["\u{3000}b"]], plr!()));
+    }
+
+    #[test]
     fn normal_seed() {
         let raw_input = "seed: a@!\nb\nc".to_string();
         let groups = runners::Runner::split_namerena_into_groups(raw_input);

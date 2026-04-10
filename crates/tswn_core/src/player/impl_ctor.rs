@@ -62,21 +62,6 @@ impl Player {
         if name.len() > NAME_MAX_LEN {
             return Err(PlayerError::NameTooLong(name.len(), name.len()));
         }
-        // 再校验字符
-        if let Some(t) = team.as_ref()
-            && t.chars().any(filter_char)
-        {
-            return Err(PlayerError::InvalidTextInTeam(
-                t.chars().find(|&char| filter_char(char)).unwrap().to_string(),
-                t.chars().position(filter_char).unwrap(),
-            ));
-        }
-        if name.chars().any(filter_char) {
-            return Err(PlayerError::InvalidTextInName(
-                name.chars().find(|&char| filter_char(char)).unwrap().to_string(),
-                name.chars().position(filter_char).unwrap(),
-            ));
-        }
         let player_type = {
             if let Some(t) = team.as_ref() {
                 match t.as_str() {

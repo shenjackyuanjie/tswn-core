@@ -71,6 +71,7 @@ impl crate::player::state::StateTrait for ObserveChargeBoostState {
 mod basic;
 mod boss;
 mod minions;
+mod shadow_sync;
 mod skill_store;
 mod skills;
 mod states;

@@ -173,10 +173,6 @@ pub fn boost_value(name: &str) -> u32 {
 
 pub const SEED_PREFIX: &str = "seed:";
 
-pub fn filter_char(s: char) -> bool {
-    matches!(s as u32 , 9..12 | 133 | 160 | 5760 | 8192..8202 | 8232..8233 | 8239 | 8287 | 12288 | 65279)
-}
-
 pub fn median<T>(x: T, y: T, z: T) -> T
 where
     T: std::cmp::Ord + std::marker::Copy,
@@ -288,5 +284,3 @@ impl std::fmt::Display for Player {
 
 #[cfg(test)]
 mod test;
-#[cfg(test)]
-mod test_shadow_sync;

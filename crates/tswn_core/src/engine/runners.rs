@@ -38,6 +38,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::error::runner::RunnerResult;
+use crate::player::utils::trim_js_line_end;
 use crate::player::{Player, PlrId};
 use crate::rc4::RC4;
 
@@ -426,30 +427,38 @@ impl Runner {
     ///
     /// 返回：(队伍列表, seed 行列表)
     pub fn split_namerena_into_groups(raw_input: String) -> RawPlayers {
-        // 去除尾部的一个/多个 `\n` 或空白。
-        let raw_input = raw_input.trim_end();
         // 处理 `\r\n`。
         let raw_input = raw_input.replace("\r\n", "\n");
         // 处理 `\r`。
-        let mut raw_input = raw_input.replace("\r", "\n");
-        // 处理 `\n\n\n...`。
-        while raw_input.contains("\n\n\n") {
-            raw_input = raw_input.replace("\n\n\n", "\n\n");
+        let raw_input = raw_input.replace("\r", "\n");
+
+        let mut lines = raw_input.split('\n').map(trim_js_line_end).map(str::to_string).collect::<Vec<String>>();
+
+        while lines.last().is_some_and(|line| line.is_empty()) {
+            lines.pop();
         }
 
-        let seed = raw_input
-            .split("\n")
-            .filter(|x| Player::check_is_seed(x))
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>();
+        let seed = lines.iter().filter(|x| Player::check_is_seed(x)).cloned().collect::<Vec<String>>();
 
         // 没有空行分组：一行一个队伍（旧规则）。
-        if !raw_input.contains("\n\n") {
-            return (raw_input.split("\n").map(|x| vec![x.to_string()]).collect(), seed);
+        if !lines.iter().any(|line| line.is_empty()) {
+            return (lines.into_iter().map(|x| vec![x]).collect(), seed);
         }
 
-        let raw_groups: Vec<Vec<String>> =
-            raw_input.split("\n\n").map(|x| x.split("\n").map(|x| x.to_string()).collect()).collect();
+        let mut raw_groups: Vec<Vec<String>> = Vec::new();
+        let mut current_group: Vec<String> = Vec::new();
+        for line in lines {
+            if line.is_empty() {
+                if !current_group.is_empty() {
+                    raw_groups.push(std::mem::take(&mut current_group));
+                }
+                continue;
+            }
+            current_group.push(line);
+        }
+        if !current_group.is_empty() {
+            raw_groups.push(current_group);
+        }
 
         let mut groups = raw_groups;
         let is_seed_only = |group: &Vec<String>| !group.is_empty() && group.iter().all(|name| Player::check_is_seed(name));

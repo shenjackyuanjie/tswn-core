@@ -45,7 +45,8 @@ fn sync_runtime_entities_adds_pending_linked_shadow_before_same_tick_owner_clean
         i: 0,
         j: 0,
         main_val: [0u8; 256],
-        ..Default::default()
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
     };
     let mut updates = RunUpdates::new();
 
