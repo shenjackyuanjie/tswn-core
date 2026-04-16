@@ -1,5 +1,22 @@
 # 更新日志
 
+## [0.2.17] - 2026-04-16
+
+### CLI
+
+- 改进 `tswn-cli bench batch-rate` 的帮助信息，明确 `bench cqp` 与 `bench batch-rate` 是同一个命令的两个名字，并补充别名示例与 `--min-wr/-m` 参数说明。
+- `bench batch-rate` 新增 `--min-wr/-m <N>`，允许以 `0..10000` 的万分比阈值过滤终端显示结果；写入 `--out-file` 的 JSONL 结果不受该参数影响。
+- `bench batch-rate` 新增批量进度条：按 `选手组 × 靶子组` 的对局数显示总进度，并同时给出按全量平均速度估算的总体剩余时间和按最近 5 个选手速度估算的滑动剩余时间。
+- `tswn-cli` 的 clap 顶层 help 现在显式带上 crate 版本号，便于直接确认当前 CLI 二进制版本。
+
+### 性能
+
+- 统一当前 benchmark 的串并行切换阈值到 `n >= 100`：`prepared_win_rate` 不再固定等到 `n >= 2000` 才并行；CLI 评分 benchmark 也同步从 `2000` 下调到 `100`。这让 `bench win-rate`、`bench group-win-rate`、`bench batch-rate`、单组 `bench auto`、raw `!test!` 的评分/胜率路径，以及 `tswn_capi` / `tswn_py` 的 prepared win-rate 在中小样本批次下都能更早利用并行执行。
+
+### 修复
+
+- `bench batch-rate` 的进度条刷新和完成提示现在只在交互式 stderr 终端下启用，避免输出被重定向到文件、管道或 CI 日志时混入 ANSI 清行控制符。
+
 ## [0.2.16] - 2026-04-10
 
 ### 修复

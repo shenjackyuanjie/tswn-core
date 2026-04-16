@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Write as _};
+use std::io::{self, BufRead, BufReader, IsTerminal, Write as _};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -11,7 +11,138 @@ use tswn_core::{
     win_rate::{WinRateTiming, prepared_win_rate, resolve_win_rate_workers},
 };
 
-use crate::args::BenchThreadMode;
+use crate::{BENCH_PARALLEL_THRESHOLD, args::BenchThreadMode};
+
+const PROGRESS_BAR_WIDTH: usize = 30;
+const SLIDING_WINDOW: usize = 5;
+
+/// 批量胜率测试的终端进度条。
+///
+/// 以「对局」(matchup = 选手×靶子) 粒度推进进度条动画，
+/// 以「选手」粒度计算总体预计剩余时间和滑动窗口预计时间。
+struct BatchProgress {
+    enabled: bool,
+    total_players: usize,
+    completed_players: usize,
+    targets_per_player: usize,
+    completed_targets_in_current: usize,
+    player_durations: Vec<Duration>,
+    started_at: Instant,
+}
+
+impl BatchProgress {
+    fn new(total_players: usize, targets_per_player: usize) -> Self {
+        Self {
+            enabled: io::stderr().is_terminal(),
+            total_players,
+            completed_players: 0,
+            targets_per_player,
+            completed_targets_in_current: 0,
+            player_durations: Vec::with_capacity(total_players),
+            started_at: Instant::now(),
+        }
+    }
+
+    /// 完成当前选手的一个靶子对局，刷新进度条。
+    fn tick_target(&mut self) {
+        self.completed_targets_in_current += 1;
+        self.draw();
+    }
+
+    /// 完成一个选手组的全部对局，记录耗时用于 ETA 计算。
+    fn complete_player(&mut self, duration: Duration) {
+        self.completed_players += 1;
+        self.completed_targets_in_current = 0;
+        self.player_durations.push(duration);
+    }
+
+    /// 清除当前进度行（用于在进度条上方插入结果输出）。
+    fn clear(&self) {
+        if !self.enabled {
+            return;
+        }
+        eprint!("\r\x1b[K");
+        let _ = io::stderr().flush();
+    }
+
+    /// 绘制 / 刷新进度条。
+    fn draw(&self) {
+        if !self.enabled {
+            return;
+        }
+        let total_matchups = self.total_players * self.targets_per_player;
+        if total_matchups == 0 {
+            return;
+        }
+
+        let done_matchups =
+            self.completed_players * self.targets_per_player + self.completed_targets_in_current;
+        let frac = done_matchups as f64 / total_matchups as f64;
+        let filled = (frac * PROGRESS_BAR_WIDTH as f64) as usize;
+        let empty = PROGRESS_BAR_WIDTH.saturating_sub(filled);
+        let remaining_players = self.total_players - self.completed_players;
+
+        // 总体预计：已完成选手的平均耗时 × 剩余选手数
+        let total_eta = if self.completed_players > 0 {
+            let elapsed = self.started_at.elapsed().as_secs_f64();
+            let avg_per_player = elapsed / self.completed_players as f64;
+            format_duration(avg_per_player * remaining_players as f64)
+        } else {
+            "--".to_string()
+        };
+
+        // 滑动预计：最近 N 个选手的平均耗时 × 剩余选手数
+        let sliding_eta = if self.completed_players > 0 {
+            let window_start = self.player_durations.len().saturating_sub(SLIDING_WINDOW);
+            let window = &self.player_durations[window_start..];
+            let window_sum: f64 = window.iter().map(|d| d.as_secs_f64()).sum();
+            let avg_per_player = window_sum / window.len() as f64;
+            format_duration(avg_per_player * remaining_players as f64)
+        } else {
+            "--".to_string()
+        };
+
+        let bar_filled: String = "█".repeat(filled);
+        let bar_empty: String = "░".repeat(empty);
+        eprint!(
+            "\r进度 [{bar_filled}{bar_empty}] {done}/{total} ({pct:.1}%) | 预计: {total_eta} | 滑动: {sliding_eta}\x1b[K",
+            done = done_matchups,
+            total = total_matchups,
+            pct = frac * 100.0,
+        );
+        let _ = io::stderr().flush();
+    }
+
+    /// 全部完成时清除进度条并输出汇总行。
+    fn finish(&self) {
+        if !self.enabled {
+            return;
+        }
+        self.clear();
+        let elapsed = self.started_at.elapsed();
+        eprintln!(
+            "完成: {}/{} 组选手, 总用时: {}",
+            self.completed_players,
+            self.total_players,
+            format_duration(elapsed.as_secs_f64()),
+        );
+    }
+}
+
+/// 将秒数格式化成人类可读的时间字符串。
+fn format_duration(secs: f64) -> String {
+    if secs < 0.0 || secs.is_nan() || secs.is_infinite() {
+        return "--".to_string();
+    }
+    let s = secs.round() as u64;
+    if s < 60 {
+        format!("{s}s")
+    } else if s < 3600 {
+        format!("{}m{}s", s / 60, s % 60)
+    } else {
+        format!("{}h{}m{}s", s / 3600, (s % 3600) / 60, s % 60)
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct BenchSummary {
@@ -101,6 +232,7 @@ pub fn run_bench_batch_rate(
     perf: bool,
     out_file: Option<&Path>,
     force: bool,
+    min_wr: Option<u16>,
 ) {
     let mut out_file = match out_file {
         Some(path) => match open_batch_rate_output(path, force) {
@@ -118,11 +250,28 @@ pub fn run_bench_batch_rate(
         player_groups.len(),
         target_groups.len()
     );
+    if let Some(threshold) = min_wr {
+        println!(
+            "最低胜率阈值: {threshold}/10000 ({:.2}%)",
+            threshold as f64 / 100.0
+        );
+    }
+
+    let mut progress = BatchProgress::new(player_groups.len(), target_groups.len());
+    progress.draw();
 
     for (pi, (player, label)) in player_groups.iter().zip(player_labels.iter()).enumerate() {
+        // 在 verbose 模式下，先缓冲逐靶输出，待阈值判定后再决定是否打印。
+        let mut verbose_buf = String::new();
         if verbose {
-            println!();
-            println!("━━━ [{}/{}] {} ━━━", pi + 1, player_groups.len(), label);
+            let _ = writeln!(&mut verbose_buf);
+            let _ = writeln!(
+                &mut verbose_buf,
+                "━━━ [{}/{}] {} ━━━",
+                pi + 1,
+                player_groups.len(),
+                label
+            );
         }
 
         let overall_started = Instant::now();
@@ -135,7 +284,8 @@ pub fn run_bench_batch_rate(
             let raw = format!("{player}\n\n{target}");
             let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq);
             if verbose {
-                println!(
+                let _ = writeln!(
+                    &mut verbose_buf,
                     "  [{}/{}] vs {}  =>  {:.2}%  ({}/{})",
                     ti + 1,
                     target_groups.len(),
@@ -149,6 +299,7 @@ pub fn run_bench_batch_rate(
             accumulated_wins += summary.wins;
             accumulated_total += summary.total;
             accumulated_timing.merge(summary.timing);
+            progress.tick_target();
         }
 
         let avg = accumulated_rate / target_groups.len().max(1) as f64;
@@ -170,26 +321,40 @@ pub fn run_bench_batch_rate(
             throughput,
         );
 
-        if verbose {
-            println!("平均胜率: {:.2}%  (对 {} 组靶子)", avg, target_groups.len());
-            println!("汇总胜率: {:.2}%  ({}/{})", aggregate_rate, accumulated_wins, accumulated_total);
-            println!(
-                "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
-                elapsed_secs,
-                elapsed.as_micros() as f64 / accumulated_total.max(1) as f64,
-                throughput
-            );
-        } else if out_file.is_none() {
-            println!(
-                "{}\t平均胜率: {:.2}%\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
-                label,
-                avg,
-                elapsed_secs,
-                elapsed.as_micros() as f64 / accumulated_total.max(1) as f64,
-                throughput
-            );
+        progress.complete_player(elapsed);
+
+        // 阈值过滤：avg 是百分比 (0-100), min_wr 是万分比 (0-10000)
+        let passes = min_wr.map_or(true, |t| avg * 100.0 >= t as f64);
+
+        if passes {
+            if verbose {
+                progress.clear();
+                print!("{verbose_buf}");
+                println!("平均胜率: {:.2}%  (对 {} 组靶子)", avg, target_groups.len());
+                println!(
+                    "汇总胜率: {:.2}%  ({}/{})",
+                    aggregate_rate, accumulated_wins, accumulated_total
+                );
+                println!(
+                    "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                    elapsed_secs,
+                    elapsed.as_micros() as f64 / accumulated_total.max(1) as f64,
+                    throughput
+                );
+            } else if out_file.is_none() {
+                progress.clear();
+                println!(
+                    "{}\t平均胜率: {:.2}%\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                    label,
+                    avg,
+                    elapsed_secs,
+                    elapsed.as_micros() as f64 / accumulated_total.max(1) as f64,
+                    throughput
+                );
+            }
         }
 
+        // 文件输出不受阈值影响，始终写入。
         if let Some(file) = out_file.as_mut()
             && let Err(err) = write_batch_rate_record(file, &summary_line)
         {
@@ -197,10 +362,15 @@ pub fn run_bench_batch_rate(
             std::process::exit(1);
         }
 
-        if perf {
+        if perf && passes {
+            progress.clear();
             print_perf_lines(elapsed, accumulated_timing, accumulated_total);
         }
+
+        progress.draw();
     }
+
+    progress.finish();
 }
 
 fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64) -> BenchSummary {
@@ -316,7 +486,7 @@ fn run_bench_score_inner(
     let workers = resolve_bench_workers(mode, threads, n);
     let started_at = Instant::now();
 
-    let mut summary = if workers <= 1 || n < 2000 {
+    let mut summary = if workers <= 1 || n < BENCH_PARALLEL_THRESHOLD {
         let (wins, total, timing) = run_bench_score_range(target_str, target_count, modifier, 0, n, show_progress);
         BenchSummary {
             wins,

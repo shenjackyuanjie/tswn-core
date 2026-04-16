@@ -5,6 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::{Runner, engine, win_rate::groups_win_rate};
 
+use crate::BENCH_PARALLEL_THRESHOLD;
+
 pub fn run(raw: String, out_raw: bool) {
     let (input_groups, _) = Runner::split_namerena_into_groups(raw.clone());
     let mut runner = match Runner::new_from_namerena_raw(raw) {
@@ -151,7 +153,7 @@ fn run_raw_score_inner(
 ) -> (usize, usize) {
     let workers = resolve_raw_workers(threads, n);
 
-    if workers <= 1 || n < 2000 {
+    if workers <= 1 || n < BENCH_PARALLEL_THRESHOLD {
         return run_raw_score_range(target_str, target_count, modifier, 0, n, true);
     }
 

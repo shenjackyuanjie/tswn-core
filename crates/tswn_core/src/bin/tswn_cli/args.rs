@@ -96,6 +96,8 @@ pub enum ParsedCommand {
         force: bool,
         /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
         keep_rq: bool,
+        /// 最低胜率阈值 (0-10000)；仅在终端显示平均胜率不低于此值的选手。
+        min_wr: Option<u16>,
     },
     IconShow {
         /// 要展示图标的玩家名字列表。
@@ -123,6 +125,7 @@ pub struct ParsedCli {
 #[command(
     name = "tswn-cli",
     about = "名竞 CLI 工具",
+    version = env!("CARGO_PKG_VERSION"),
     disable_help_subcommand = true,
     subcommand_required = true,
     arg_required_else_help = true
@@ -223,14 +226,18 @@ enum BenchSubcommand {
     ///   tswn-cli bench group-win-rate -l "mario" -a "luigi" -a "peach" -n 10000 --perf
     #[command(name = "group-win-rate", verbatim_doc_comment)]
     GroupWinRate(BenchGroupWinRateCommand),
-    /// 批量计算选手列表对靶子列表的平均胜率。
+    /// 批量计算选手列表对靶子列表的平均胜率 (cqp = 丛擎跑)。
+    ///
+    /// `cqp` 与 `batch-rate` 是同一个命令的两个名字，功能完全相同。
     ///
     /// 靶子文件和选手文件每行一组，组内用 + 分隔，跳过空行。
     /// `--out-file` 会输出 JSONL，每个选手组一行结果。
+    /// `--min-wr` 可设置最低胜率阈值 (0-10000)，仅在终端显示达标选手。
     ///
     /// 示例:
     ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -n 10000 -t 8
     ///   tswn-cli bench cqp -l targets.txt -p players.txt -n 10000 -t 8
+    ///   tswn-cli bench cqp -l targets.txt -p players.txt -n 10000 -m 5000
     ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -o result.jsonl
     #[command(
         name = "batch-rate",
@@ -321,6 +328,12 @@ struct BenchBatchRateCommand {
     /// 保持 rq=4，不模拟 JS win_rate 对 rq 的污染。
     #[arg(long)]
     keep_rq: bool,
+
+    /// 最低胜率阈值 (0-10000)，仅在终端显示平均胜率不低于此值的选手。
+    ///
+    /// 例如 5000 表示仅显示胜率 ≥ 50% 的选手。文件输出不受此参数影响。
+    #[arg(short = 'm', long = "min-wr", value_parser = parse_min_wr, value_name = "N")]
+    min_wr: Option<u16>,
 }
 
 #[derive(Debug, Args)]
@@ -480,6 +493,7 @@ impl ParsedCli {
                         out_file: cmd.out_file,
                         force: cmd.force,
                         keep_rq: cmd.keep_rq,
+                        min_wr: cmd.min_wr,
                     }
                 }
             },
@@ -544,6 +558,16 @@ fn parse_thread_count(raw: &str) -> Result<usize, String> {
     let value = raw.parse::<usize>().map_err(|_| "线程数必须是正整数".to_string())?;
     if value == 0 {
         Err("线程数必须大于 0".to_string())
+    } else {
+        Ok(value)
+    }
+}
+
+/// 解析并校验最低胜率阈值参数 (0-10000)。
+fn parse_min_wr(raw: &str) -> Result<u16, String> {
+    let value = raw.parse::<u16>().map_err(|_| "阈值必须是 0-10000 之间的整数".to_string())?;
+    if value > 10000 {
+        Err("阈值必须不超过 10000".to_string())
     } else {
         Ok(value)
     }

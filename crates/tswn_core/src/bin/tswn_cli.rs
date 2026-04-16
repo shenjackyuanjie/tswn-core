@@ -4,7 +4,8 @@
 //! - `fight`: 普通对战
 //! - `bench auto`: 自动选择评分或胜率 benchmark
 //! - `bench win-rate`: 显式双队胜率 benchmark
-//! - `bench group-win-rate|batch-rate`: 组胜率与批量胜率 benchmark
+//! - `bench group-win-rate`: 目标组对多个对手组的胜率 benchmark
+//! - `bench batch-rate` (别名 `bench cqp`): 批量选手对靶子列表的胜率 benchmark
 //! - `icon show|b64|save`: 图标预览与导出
 //!
 //! 示例：
@@ -13,6 +14,7 @@
 //! tswn-cli bench auto --raw "mario" -n 10000 --perf
 //! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
 //! tswn-cli bench batch-rate --target-list targets.txt --player-list players.txt -n 10000
+//! tswn-cli bench cqp -l targets.txt -p players.txt -n 10000 -m 5000
 //! tswn-cli icon show mario luigi
 //! ```
 
@@ -26,6 +28,8 @@ mod fight;
 mod icon;
 
 use args::ParsedCommand;
+
+pub(crate) const BENCH_PARALLEL_THRESHOLD: usize = 100;
 
 fn print_banner() {
     println!("欢迎来到 tswn - {}, 使用 --help/-h 获取帮助信息谢谢喵", tswn_core::version());
@@ -98,6 +102,7 @@ fn main() {
             verbose,
             out_file,
             force,
+            min_wr,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::player::eval_name::DEFAULT_EVAL_RQ
@@ -116,6 +121,7 @@ fn main() {
                 perf,
                 out_file.as_deref(),
                 force,
+                min_wr,
             );
         }
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
