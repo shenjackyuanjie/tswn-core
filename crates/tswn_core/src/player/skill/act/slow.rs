@@ -136,7 +136,12 @@ impl Default for SlowState {
 impl StateTrait for SlowState {
     fn meta_type(&self) -> i32 { -1 }
 
-    fn update_state_priority(&self) -> i32 { 110 }
+    // JS 在同层速度状态上会保留注册顺序：谁先挂上，谁先参与属性结算。
+    // 这里与 HasteState 共享同一优先级，再由 PlayerStateStore 的 order 打破平局，
+    // 才能同时覆盖：
+    // - 先 slow 后 haste（case62，需要 slow -> haste）
+    // - 先 haste 后 slow（当前 3v3v3 regression，需要 haste -> slow）
+    fn update_state_priority(&self) -> i32 { 100 }
 
     fn apply_update_state(&self, status: &mut crate::player::PlayerStatus) { status.speed /= 2; }
 

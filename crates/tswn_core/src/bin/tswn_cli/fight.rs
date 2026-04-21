@@ -82,6 +82,21 @@ pub fn run(raw: String, out_raw: bool) {
     }
 }
 
+pub fn run_diff(raw: String) {
+    let mut runner = match Runner::new_from_namerena_raw(raw) {
+        Ok(runner) => runner,
+        Err(err) => {
+            eprintln!("构建对局失败: {err}");
+            std::process::exit(1);
+        }
+    };
+
+    let (lines, _guard, _total_score) = collect_diff_lines(&mut runner, 20_000, true);
+    if !lines.is_empty() {
+        println!("{}", lines.join("\n"));
+    }
+}
+
 pub fn run_raw(raw: String, n: usize, threads: Option<usize>) {
     let trimmed = raw.trim().to_string();
     if trimmed.is_empty() {
@@ -487,6 +502,41 @@ fn fmt_update_with_mode(runner: &Runner, update: &RunUpdate, append_score: bool)
 
 fn fmt_update(runner: &Runner, update: &RunUpdate) -> String { fmt_update_with_mode(runner, update, true) }
 
+fn fmt_update_diff(runner: &Runner, update: &RunUpdate) -> String {
+    let caster = runner
+        .storage
+        .get_player(&update.caster)
+        .map(|plr| plr.display_name())
+        .unwrap_or_else(|| format!("#{}", update.caster));
+    let target = runner
+        .storage
+        .get_player(&update.target)
+        .map(|plr| plr.display_name())
+        .unwrap_or_else(|| format!("#{}", update.target));
+    let mut msg = update.message.to_string();
+    msg = msg.replace("[0]", &caster);
+    msg = msg.replace("[1]", &target);
+    let param = if let Some(p) = update.param {
+        p.to_string()
+    } else if update.targets.is_empty() {
+        update.score.to_string()
+    } else {
+        update
+            .targets
+            .iter()
+            .map(|id| {
+                runner
+                    .storage
+                    .get_player(id)
+                    .map(|plr| plr.display_name())
+                    .unwrap_or_else(|| format!("#{id}"))
+            })
+            .collect::<Vec<String>>()
+            .join(",")
+    };
+    msg.replace("[2]", &param)
+}
+
 fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) -> String {
     if let Some(name) = trace_names.assigned.get(&id) {
         return name.clone();
@@ -670,6 +720,51 @@ fn normalize_trace_line(line: String) -> String {
     }
 
     sanitize_output_line(&normalized)
+}
+
+fn normalize_diff_trace_line(line: String) -> String {
+    line.replace("[s_counter]", "")
+        .replace("[s_dmg160]", "")
+        .replace("[s_dmg120]", "")
+        .replace("[s_dmg0]", "")
+        .replace(['[', ']'], "")
+        .replace(' ', "")
+        .trim()
+        .to_string()
+}
+
+fn collect_diff_lines(runner: &mut Runner, max_rounds: usize, normalize: bool) -> (Vec<String>, usize, u64) {
+    let mut lines = Vec::new();
+    let mut guard = 0usize;
+    let mut total_score = 0u64;
+    while !runner.have_winner() && guard < max_rounds {
+        let updates = runner.main_round();
+        let mut parts = Vec::new();
+        for update in updates.updates {
+            if matches!(update.update_type, UpdateType::NextLine) {
+                if !parts.is_empty() {
+                    lines.push(parts.join(", "));
+                    parts.clear();
+                }
+                continue;
+            }
+            if update.score > 0 {
+                total_score += update.score as u64;
+            }
+            let mut msg = fmt_update_diff(runner, &update);
+            if normalize {
+                msg = normalize_diff_trace_line(msg);
+            }
+            if !msg.is_empty() {
+                parts.push(msg);
+            }
+        }
+        if !parts.is_empty() {
+            lines.push(parts.join(", "));
+        }
+        guard += 1;
+    }
+    (lines, guard, total_score)
 }
 
 fn is_action_line(line: &str) -> bool {

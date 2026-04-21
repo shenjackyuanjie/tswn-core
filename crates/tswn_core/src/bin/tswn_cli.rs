@@ -2,6 +2,7 @@
 //!
 //! 子命令：
 //! - `fight`: 普通对战
+//! - `diff`: 按 runner diff 格式输出普通对战
 //! - `bench auto`: 自动选择评分或胜率 benchmark
 //! - `bench win-rate`: 显式双队胜率 benchmark
 //! - `bench group-win-rate`: 目标组对多个对手组的胜率 benchmark
@@ -11,6 +12,7 @@
 //! 示例：
 //! ```bash
 //! tswn-cli fight --raw "mario\nluigi\n\npeach\nbowser"
+//! tswn-cli diff --raw "mario\nluigi\n\npeach\nbowser"
 //! tswn-cli bench auto --raw "mario" -n 10000 --perf
 //! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
 //! tswn-cli bench batch-rate --target-list targets.txt --player-list players.txt -n 10000
@@ -42,13 +44,14 @@ fn main() {
 
     if !matches!(
         cli.command,
-        ParsedCommand::Fight { out_raw: true, .. } | ParsedCommand::FightRaw { .. }
+        ParsedCommand::Fight { out_raw: true, .. } | ParsedCommand::FightRaw { .. } | ParsedCommand::FightDiff { .. }
     ) {
         print_banner();
     }
 
     match cli.command {
         ParsedCommand::Fight { raw, out_raw } => fight::run(raw, out_raw),
+        ParsedCommand::FightDiff { raw } => fight::run_diff(raw),
         ParsedCommand::FightRaw { raw, n, threads } => fight::run_raw(raw, n, threads),
         ParsedCommand::BenchAuto {
             raw,

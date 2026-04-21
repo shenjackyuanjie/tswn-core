@@ -21,6 +21,10 @@ pub enum ParsedCommand {
         /// 是否改为输出 raw 聚合战斗日志。
         out_raw: bool,
     },
+    FightDiff {
+        /// 普通对战输入，使用 namerena raw 格式，并按 runner diff 的格式输出。
+        raw: String,
+    },
     FightRaw {
         /// 原始 namerena 输入，可能是普通对战，也可能是 `!test!` benchmark 输入。
         raw: String,
@@ -154,6 +158,14 @@ enum CliCommand {
     ///   tswn-cli raw -f input.txt
     #[command(name = "raw", verbatim_doc_comment)]
     FightRaw(FightRawCommand),
+    /// 运行普通对战，并按 runner diff 的格式输出。
+    ///
+    /// 示例:
+    ///   tswn-cli diff
+    ///   tswn-cli diff -r "mario\nluigi\n\npeach\nbowser"
+    ///   tswn-cli diff -f input.txt
+    #[command(name = "diff", verbatim_doc_comment)]
+    FightDiff(FightDiffCommand),
     /// 运行 benchmark 相关功能。
     Bench(BenchCommand),
     /// 玩家图标相关功能。
@@ -189,6 +201,13 @@ struct FightRawCommand {
     /// 指定 benchmark 线程数。
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
+}
+
+#[derive(Debug, Args)]
+struct FightDiffCommand {
+    /// 原始对战输入来源参数。
+    #[command(flatten)]
+    input: InputArgs,
 }
 
 #[derive(Debug, Args)]
@@ -449,6 +468,9 @@ impl ParsedCli {
                 raw: cmd.input.read_or_stdin()?,
                 n: cmd.count.max(1),
                 threads: cmd.thread,
+            },
+            CliCommand::FightDiff(cmd) => ParsedCommand::FightDiff {
+                raw: cmd.input.read_or_stdin()?,
             },
             CliCommand::Bench(BenchCommand { command }) => match command {
                 BenchSubcommand::Auto(cmd) => ParsedCommand::BenchAuto {
