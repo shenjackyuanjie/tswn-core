@@ -8,7 +8,6 @@ use tswn_core::{Runner, engine, win_rate::groups_win_rate};
 use crate::BENCH_PARALLEL_THRESHOLD;
 
 pub fn run(raw: String, out_raw: bool) {
-    let (input_groups, _) = Runner::split_namerena_into_groups(raw.clone());
     let mut runner = match Runner::new_from_namerena_raw(raw) {
         Ok(runner) => runner,
         Err(err) => {
@@ -16,7 +15,7 @@ pub fn run(raw: String, out_raw: bool) {
             std::process::exit(1);
         }
     };
-    let input_player_ids = collect_input_player_ids(&runner, input_groups.len());
+    let input_player_ids = collect_input_player_ids(&runner);
 
     if out_raw {
         print_fight_raw(&mut runner, &input_player_ids);
@@ -105,7 +104,6 @@ pub fn run_raw(raw: String, n: usize, threads: Option<usize>) {
     }
 
     if !starts_with_raw_bench_header(&trimmed) {
-        let (input_groups, _) = Runner::split_namerena_into_groups(trimmed.clone());
         let mut runner = match Runner::new_from_namerena_raw(trimmed) {
             Ok(runner) => runner,
             Err(err) => {
@@ -113,7 +111,7 @@ pub fn run_raw(raw: String, n: usize, threads: Option<usize>) {
                 std::process::exit(1);
             }
         };
-        let input_player_ids = collect_input_player_ids(&runner, input_groups.len());
+        let input_player_ids = collect_input_player_ids(&runner);
         print_fight_raw(&mut runner, &input_player_ids);
         return;
     }
@@ -354,6 +352,27 @@ mod tests {
 
         assert_eq!(group_count, 2);
     }
+
+    #[test]
+    fn winner_input_indices_follow_original_input_order() {
+        let raw = "Italian_Love #5Agn8kVYl@Shabby_fish\n我会回来的 #yTneTj00J@Shabby_fish\n\nH6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha\nseed:33554434@!";
+        let mut runner = Runner::new_from_namerena_raw(raw.to_string()).expect("runner should build");
+        let input_player_ids = collect_input_player_ids(&runner);
+
+        runner.run_to_completion();
+
+        let win_idx = fmt_winner_input_indices(&runner, &input_player_ids).expect("winner indices should exist");
+        let indices = win_idx
+            .strip_prefix("win_idx=")
+            .expect("win_idx prefix should exist")
+            .split(',')
+            .filter(|part| !part.is_empty())
+            .map(|part| part.parse::<usize>().expect("winner index should be an integer"))
+            .collect::<Vec<_>>();
+
+        assert!(!indices.is_empty());
+        assert!(indices.iter().all(|idx| *idx < 2), "expected team0 winners, got {indices:?}");
+    }
 }
 
 fn run_raw_winrate(raw: String, n: usize, threads: Option<usize>) {
@@ -375,15 +394,7 @@ fn run_raw_winrate_inner(raw: &str, n: usize, threads: Option<usize>) -> (usize,
     }
 }
 
-fn collect_input_player_ids(runner: &Runner, group_count: usize) -> Vec<usize> {
-    let mut ids = Vec::new();
-    for group_idx in 0..group_count {
-        if let Some(group) = runner.storage.get_group(group_idx) {
-            ids.extend(group.iter().copied());
-        }
-    }
-    ids
-}
+fn collect_input_player_ids(runner: &Runner) -> Vec<usize> { runner.input_groups.iter().flat_map(|group| group.iter().copied()).collect() }
 
 fn fmt_winner_input_indices(runner: &Runner, input_player_ids: &[usize]) -> Option<String> {
     let winners = runner.world.winner.as_ref()?;
