@@ -1,5 +1,26 @@
 # 更新日志
 
+## [0.2.20] - 2026-04-22
+
+### 性能
+
+- 继续回收 `0.2.19` 在 `bench win-rate` 路径上的性能回退：
+  - 优化 `SkillStorage` 的 dynamic `pre_action` 热路径，去掉 `pre_action()` 内部 clone，减少重复 lookup / contains，并把 membership 独立成哈希集，降低动态启停时的线性检查成本。
+  - 优化 `Hide` 的 post_damage 热路径，改用借引用队伍视图、`pending_spawn` / `pending_revival` iterator 和 `SmallVec` 聚合，减少 group clone 与中间 `Vec` 分配。
+  - 在 `Storage` 新增 `alive_group_len_containing(...)`，并将 `Assassinate` / `Berserk` / `Charm` / `Curse` / `Disperse` / `Exchange` / `Half` / `Slow` 的目标打分从 `alive_group_containing(...).len()` 线性扫描改成基于 team index 的 O(1) 查询。
+- 按 `docs/performance.md` 的固定口径重跑当前工作树（`--release --features no_debug`，`tswn-cli bench win-rate ... --perf`）：
+  - `aaa` vs `bbb`：`100k` 单线程 `1.887s`，多线程 `0.291s`；`1M` 单线程 `18.438s`，多线程 `2.784s`
+  - `喘际瞬爆@昀澤` vs `蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall`：`100k` 单线程 `2.891s`，多线程 `0.471s`；`1M` 单线程 `28.488s`，多线程 `3.749s`
+- 相比 `0.2.14` 基线，当前回退已缩小到：
+  - 单线程慢约 `1.6%~2.3%`
+  - 多线程慢约 `7.9%~10.7%`
+
+### 验证
+
+- `cargo test -p tswn_core`
+- `python .\track_case_miner.py --library .\tests\sqp5900.txt --modes 3v3v3 --case-offset-per-mode 0 --max-cases-per-mode 4000 --keep-going`
+- 上述回归口径下，`failed case = 0`
+
 ## [0.2.19] - 2026-04-22
 
 ### 修复

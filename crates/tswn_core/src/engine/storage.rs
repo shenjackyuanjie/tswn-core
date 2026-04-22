@@ -253,6 +253,15 @@ impl Storage {
         self.alive_groups_ref().iter().find(|group| group.contains(&actor))
     }
 
+    /// 返回 actor 当前所在 alive 队伍的人数；若 actor 不在任何 alive_group 中则返回 0。
+    pub fn alive_group_len_containing(&self, actor: PlrId) -> usize {
+        self.player_group_ref()
+            .get(&actor)
+            .and_then(|&team_idx| self.alive_groups_ref().get(team_idx))
+            .filter(|group| group.contains(&actor))
+            .map_or(0, Vec::len)
+    }
+
     /// 通过 roster 找到 actor 所在队伍的索引，再返回该队伍的 alive 列表。
     /// 即使 actor 已死亡也能找到正确的 alive 列表（因为 roster 不移除死亡成员）。
     pub fn alive_group_at_team_of(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
@@ -377,12 +386,15 @@ impl Storage {
         self.pending_spawns_ref().iter().filter(|pending| pending.owner == owner).count()
     }
 
-    pub fn pending_spawn_ids_for_owner(&self, owner: PlrId) -> Vec<PlrId> {
+    pub fn iter_pending_spawn_ids_for_owner(&self, owner: PlrId) -> impl Iterator<Item = PlrId> + '_ {
         self.pending_spawns_ref()
             .iter()
-            .filter(|pending| pending.owner == owner)
+            .filter(move |pending| pending.owner == owner)
             .map(|pending| pending.player.as_ptr())
-            .collect()
+    }
+
+    pub fn pending_spawn_ids_for_owner(&self, owner: PlrId) -> Vec<PlrId> {
+        self.iter_pending_spawn_ids_for_owner(owner).collect()
     }
 
     /// 返回所有 owner 在指定队员集合内的 pending spawn 的 PlrId。
@@ -395,12 +407,16 @@ impl Storage {
     }
 
     /// 返回指定 roster 中已 queue_revival、但尚未 sync 回 alive_group 的成员。
+    pub fn iter_pending_revival_ids_for_group<'a>(
+        &'a self,
+        group_members: &'a [PlrId],
+    ) -> impl Iterator<Item = PlrId> + 'a {
+        self.pending_revivals_ref().iter().copied().filter(move |id| group_members.contains(id))
+    }
+
+    /// 返回指定 roster 中已 queue_revival、但尚未 sync 回 alive_group 的成员。
     pub fn pending_revival_ids_for_group(&self, group_members: &[PlrId]) -> Vec<PlrId> {
-        self.pending_revivals_ref()
-            .iter()
-            .copied()
-            .filter(|id| group_members.contains(id))
-            .collect()
+        self.iter_pending_revival_ids_for_group(group_members).collect()
     }
 
     pub fn get_pending_spawn_player(&self, ptr: PlrId) -> Option<&Player> {

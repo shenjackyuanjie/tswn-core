@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_core"
-version = "0.2.19"
+version = "0.2.20"
 dependencies = [
  "clap",
  "foldhash",

@@ -454,9 +454,16 @@ impl Player {
                     skill.target_domain() == SkillTargetDomain::SelfOnly || skill.allows_empty_targets()
                 };
                 if !selected_targets.is_empty() || allow_empty {
-                    let skill = self.skills.skill_by_id_mut(skill_key);
-                    skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
-                    self.skills.sync_dynamic_pre_action_key(skill_key);
+                    let (manages_dynamic_pre_action, dynamic_pre_action_enabled) = {
+                        let skill = self.skills.skill_by_id_mut(skill_key);
+                        skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
+                        (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled())
+                    };
+                    self.skills.sync_dynamic_pre_action_state(
+                        skill_key,
+                        manages_dynamic_pre_action,
+                        dynamic_pre_action_enabled,
+                    );
                     acted = true;
                 }
             }

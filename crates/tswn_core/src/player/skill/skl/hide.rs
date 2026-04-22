@@ -4,6 +4,7 @@ use crate::player::{
     skill::act::charm::CharmState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
+use smallvec::SmallVec;
 
 #[derive(Debug, Clone, Default)]
 pub struct HideSkill {
@@ -30,43 +31,30 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
-        let alive_group_snapshot = args.3.get_player(&args.0).and_then(|owner| {
-            owner
-                .get_state::<CharmState>()
-                .and_then(|charm| {
-                    charm
-                        .effective_team_idx
-                        .and_then(|team_idx| args.3.alive_group_at(team_idx).cloned())
-                        .or_else(|| args.3.alive_group_at_team_of(charm.group_id).cloned())
-                })
-                .or_else(|| args.3.alive_group_at_team_of(args.0).cloned())
-        });
-        let effective_group_snapshot = args.3.get_player(&args.0).and_then(|owner| {
-            owner
-                .get_state::<CharmState>()
-                .and_then(|charm| {
-                    charm
-                        .effective_team_idx
-                        .and_then(|team_idx| args.3.get_group(team_idx).cloned())
-                        .or_else(|| args.3.group_containing(charm.group_id).cloned())
-                })
-                .or_else(|| args.3.group_containing(args.0).cloned())
-        });
-        let pending_revival_ids = effective_group_snapshot
-            .as_deref()
-            .map(|group| args.3.pending_revival_ids_for_group(group))
-            .unwrap_or_default();
-        let pending_spawn_ids = args.3.pending_spawn_ids_for_owner(args.0);
-        let mut alive_candidates = alive_group_snapshot
-            .as_ref()
-            .map(|group| {
-                group
-                    .iter()
-                    .copied()
-                    .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let (alive_group_snapshot, effective_group_snapshot) =
+            args.3.get_player(&args.0).map_or((None, None), |owner| {
+                owner
+                    .get_state::<CharmState>()
+                    .map(|charm| {
+                        (
+                            charm
+                                .effective_team_idx
+                                .and_then(|team_idx| args.3.alive_group_at(team_idx))
+                                .or_else(|| args.3.alive_group_at_team_of(charm.group_id)),
+                            charm
+                                .effective_team_idx
+                                .and_then(|team_idx| args.3.get_group(team_idx))
+                                .or_else(|| args.3.group_containing(charm.group_id)),
+                        )
+                    })
+                    .unwrap_or_else(|| (args.3.alive_group_at_team_of(args.0), args.3.group_containing(args.0)))
+            });
+        let mut alive_candidates: SmallVec<[PlrId; 8]> = SmallVec::new();
+        if let Some(group) = alive_group_snapshot {
+            alive_candidates.extend(
+                group.iter().copied().filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false)),
+            );
+        }
         // JS 的同队 alive 视图会在同一 action 的后半段立刻看到：
         // 1. owner 当前 action 内刚 addNew 出来的 pending spawn
         // 2. 已经 queue_revival、但还没 sync 回 alive_group 的旧成员
@@ -75,12 +63,15 @@ impl SkillTrait for HideSkill {
         //
         // 这里不能直接把 roster 里所有 `alive()==true` 的成员都补进来；storage 里还可能
         // 暂留一些“状态已变但并非 JS 同拍可见”的实体，那会把 Hide 的触发窗口放大，反而引入新 diff。
-        for &id in &pending_revival_ids {
+        for id in effective_group_snapshot
+            .into_iter()
+            .flat_map(|group| args.3.iter_pending_revival_ids_for_group(group))
+        {
             if !alive_candidates.contains(&id) && args.3.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
                 alive_candidates.push(id);
             }
         }
-        for &id in &pending_spawn_ids {
+        for id in args.3.iter_pending_spawn_ids_for_owner(args.0) {
             if !alive_candidates.contains(&id)
                 && args.3.get_pending_spawn_player(id).map(|p| p.alive()).unwrap_or(false)
             {

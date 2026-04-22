@@ -85,6 +85,7 @@ pub struct SkillStorage {
     pub pre_step: Vec<SkillKey>,
     /// 动作之前
     pub pre_action: Vec<SkillKey>,
+    pre_action_membership: FoldHashSet<SkillKey>,
     /// 动作之后
     pub post_action: Vec<SkillKey>,
     /// 战斗中途新增的 early post_action。
@@ -116,6 +117,7 @@ impl SkillStorage {
             meta: FoldHashSet::new(),
             pre_step: Vec::new(),
             pre_action: Vec::new(),
+            pre_action_membership: FoldHashSet::new(),
             post_action: Vec::new(),
             post_action_after_states: Vec::new(),
             pre_defend: Vec::new(),
@@ -132,6 +134,7 @@ impl SkillStorage {
         self.meta.clear();
         self.pre_step.clear();
         self.pre_action.clear();
+        self.pre_action_membership.clear();
         self.post_action.clear();
         self.post_action_after_states.clear();
         self.pre_defend.clear();
@@ -154,7 +157,7 @@ impl SkillStorage {
                 }
             }
             ProcKind::PreAction => {
-                if !self.pre_action.contains(&key) {
+                if self.pre_action_membership.insert(key) {
                     self.pre_action.push(key);
                 }
             }
@@ -278,19 +281,38 @@ impl SkillStorage {
         self.skill.push(id);
     }
 
-    pub fn sync_dynamic_pre_action_key(&mut self, key: SkillKey) {
-        let manages = self.store.get(&key).map(|skill| skill.manages_dynamic_pre_action()).unwrap_or(false);
-        if !manages {
-            return;
-        }
-        let enabled = self.store.get(&key).map(|skill| skill.dynamic_pre_action_enabled()).unwrap_or(false);
-        if enabled {
-            if !self.pre_action.contains(&key) {
-                self.pre_action.push(key);
+    fn set_pre_action_membership(&mut self, key: SkillKey, enabled: bool) {
+        match enabled {
+            true => {
+                if self.pre_action_membership.insert(key) {
+                    self.pre_action.push(key);
+                }
             }
-        } else {
-            self.pre_action.retain(|existing| *existing != key);
+            false => {
+                if self.pre_action_membership.remove(&key)
+                    && let Some(pos) = self.pre_action.iter().position(|existing| *existing == key)
+                {
+                    self.pre_action.remove(pos);
+                }
+            }
         }
+    }
+
+    pub fn sync_dynamic_pre_action_state(&mut self, key: SkillKey, manages: bool, enabled: bool) {
+        if manages {
+            self.set_pre_action_membership(key, enabled);
+        }
+    }
+
+    pub fn sync_dynamic_pre_action_key(&mut self, key: SkillKey) {
+        let Some((manages, enabled)) = self
+            .store
+            .get(&key)
+            .map(|skill| (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled()))
+        else {
+            return;
+        };
+        self.sync_dynamic_pre_action_state(key, manages, enabled);
     }
 
     pub fn skill_by_idx(&self, idx: usize) -> &Skill { self.store.get(&self.skill[idx]).expect("skill not found in store") }
@@ -342,11 +364,9 @@ impl SkillStorage {
                 .get_player(&args.0)
                 .map(|player| crate::debug::debug_action_matches(&player.id_name()))
                 .unwrap_or(false);
-        let pre_action_keys = self.pre_action.clone();
-        for skill_key in pre_action_keys {
-            if !self.pre_action.contains(&skill_key) {
-                continue;
-            }
+        let mut idx = 0usize;
+        while idx < self.pre_action.len() {
+            let skill_key = self.pre_action[idx];
             let rc4_before = if debug_this { Some((args.1.i, args.1.j)) } else { None };
             let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             let clear_forced = skill.pre_action_clear_forced(smart, (args.0, args.1, args.2, args.3));
@@ -389,8 +409,11 @@ impl SkillStorage {
                 );
             }
             if manages_dynamic_pre_action && !dynamic_pre_action_enabled {
-                self.pre_action.retain(|existing| *existing != skill_key);
+                self.pre_action.remove(idx);
+                self.pre_action_membership.remove(&skill_key);
+                continue;
             }
+            idx += 1;
         }
         if debug_this {
             eprintln!(
@@ -552,25 +575,18 @@ impl SkillStorage {
         for idx in 0..self.post_damage.len() {
             let skill_key = self.post_damage[idx];
             let rc4_before = (args.1.i, args.1.j);
-            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
-            skill.post_damage(dmg, caster, (args.0, args.1, args.2, args.3));
-            let manages_dynamic_pre_action = skill.manages_dynamic_pre_action();
-            let dynamic_pre_action_enabled = skill.dynamic_pre_action_enabled();
+            let (manages_dynamic_pre_action, dynamic_pre_action_enabled) = {
+                let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
+                skill.post_damage(dmg, caster, (args.0, args.1, args.2, args.3));
+                (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled())
+            };
             if debug_this {
                 eprintln!(
                     "[post_damage_skill] key={} rc4 {}:{} -> {}:{}",
                     skill_key, rc4_before.0, rc4_before.1, args.1.i, args.1.j,
                 );
             }
-            if manages_dynamic_pre_action {
-                if dynamic_pre_action_enabled {
-                    if !self.pre_action.contains(&skill_key) {
-                        self.pre_action.push(skill_key);
-                    }
-                } else {
-                    self.pre_action.retain(|existing| *existing != skill_key);
-                }
-            }
+            self.sync_dynamic_pre_action_state(skill_key, manages_dynamic_pre_action, dynamic_pre_action_enabled);
         }
     }
 
