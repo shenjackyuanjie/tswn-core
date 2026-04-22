@@ -394,7 +394,9 @@ fn run_raw_winrate_inner(raw: &str, n: usize, threads: Option<usize>) -> (usize,
     }
 }
 
-fn collect_input_player_ids(runner: &Runner) -> Vec<usize> { runner.input_groups.iter().flat_map(|group| group.iter().copied()).collect() }
+fn collect_input_player_ids(runner: &Runner) -> Vec<usize> {
+    runner.input_groups.iter().flat_map(|group| group.iter().copied()).collect()
+}
 
 fn fmt_winner_input_indices(runner: &Runner, input_player_ids: &[usize]) -> Option<String> {
     let winners = runner.world.winner.as_ref()?;

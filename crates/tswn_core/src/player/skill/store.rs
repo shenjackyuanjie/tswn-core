@@ -60,6 +60,20 @@ pub struct PreActionOutcome {
 #[derive(Debug, Clone)]
 pub struct SkillStorage {
     pub store: FoldHashMap<SkillKey, Skill>,
+    /// JS `Player.k1` 的固定技能槽位视图。
+    ///
+    /// 这里表达的是“名字 build 之后，这个实体 16 个技能槽位各自装的是什么技能类型”。
+    /// 它不应该随着行动顺序洗牌而变化；像 summon 这种 JS 里会打乱 `k2/k4` 的实体，
+    /// 也仍然保留固定的 `k1=[fire, fire, explode]`，供 merge 按槽位继承。
+    pub slot_skill: Vec<SkillKey>,
+    /// JS `k4` / 主动技能遍历顺序视图。
+    ///
+    /// 大多数普通玩家这里与 `slot_skill` 相同；但 summon / 战斗中启用的新技能 /
+    /// 某些动态插入场景会只改这里，不改 `slot_skill`。
+    ///
+    /// 因此：
+    /// - `slot_skill` 负责“按固定槽位比较”的逻辑（典型是 merge）
+    /// - `skill` 负责 `action()` 里的主动技能扫描顺序
     pub skill: Vec<SkillKey>,
     pub disabled_action: FoldHashSet<SkillKey>,
     /// meta??
@@ -95,6 +109,7 @@ impl SkillStorage {
     pub fn new() -> Self {
         Self {
             store: FoldHashMap::new(),
+            slot_skill: Vec::new(),
             skill: Vec::new(),
             disabled_action: FoldHashSet::new(),
             update_states: Vec::new(),
@@ -253,7 +268,29 @@ impl SkillStorage {
     pub fn add_skill(&mut self, skill: Skill) {
         let id = self.skill.len();
         self.store.insert(id, skill);
+        // 默认情况下，手工 add 的技能同时进入固定槽位视图和行动顺序视图。
+        // 如果某个实体需要“固定槽位”和“行动顺序”分离（如 summon），调用方会在构造
+        // 完成后显式覆写 `slot_skill` / `skill`。
+        //
+        // 换句话说，`add_skill()` 提供的是“普通玩家 / 测试手工拼装技能”的默认语义，
+        // 不是 JS 所有实体都适用的最终排布。
+        self.slot_skill.push(id);
         self.skill.push(id);
+    }
+
+    pub fn sync_dynamic_pre_action_key(&mut self, key: SkillKey) {
+        let manages = self.store.get(&key).map(|skill| skill.manages_dynamic_pre_action()).unwrap_or(false);
+        if !manages {
+            return;
+        }
+        let enabled = self.store.get(&key).map(|skill| skill.dynamic_pre_action_enabled()).unwrap_or(false);
+        if enabled {
+            if !self.pre_action.contains(&key) {
+                self.pre_action.push(key);
+            }
+        } else {
+            self.pre_action.retain(|existing| *existing != key);
+        }
     }
 
     pub fn skill_by_idx(&self, idx: usize) -> &Skill { self.store.get(&self.skill[idx]).expect("skill not found in store") }
@@ -305,21 +342,23 @@ impl SkillStorage {
                 .get_player(&args.0)
                 .map(|player| crate::debug::debug_action_matches(&player.id_name()))
                 .unwrap_or(false);
-        for idx in 0..self.pre_action.len() {
-            let skill_key = self.pre_action[idx];
+        let pre_action_keys = self.pre_action.clone();
+        for skill_key in pre_action_keys {
+            if !self.pre_action.contains(&skill_key) {
+                continue;
+            }
             let rc4_before = if debug_this { Some((args.1.i, args.1.j)) } else { None };
             let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             let clear_forced = skill.pre_action_clear_forced(smart, (args.0, args.1, args.2, args.3));
+            let prev_forced_skill = forced_skill;
+            forced_skill = skill.pre_action_accumulate(forced_skill, skill_key, smart, (args.0, args.1, args.2, args.3));
+            let selected = forced_skill == Some(skill_key) && prev_forced_skill != Some(skill_key);
+            let manages_dynamic_pre_action = skill.manages_dynamic_pre_action();
+            let dynamic_pre_action_enabled = skill.dynamic_pre_action_enabled();
             if clear_forced {
-                // Only set clear_forced_action to block state-based forced attacks (berserk/charm).
-                // Do NOT clear forced_skill — it may have been set by Assassinate's pre_action_select,
-                // and in JS the assassinate entry is always processed after berserk/hide in x1.
                 clear_forced_action = true;
             }
-            skill.pre_action((args.0, args.1, args.2, args.3));
-            let selected = forced_skill.is_none() && skill.pre_action_select(smart, (args.0, args.1, args.2, args.3));
-            if selected {
-                forced_skill = Some(skill_key);
+            if forced_skill.is_some() {
                 clear_forced_action = false;
             }
             if debug_this {
@@ -348,6 +387,9 @@ impl SkillStorage {
                     rc4_after.0,
                     rc4_after.1,
                 );
+            }
+            if manages_dynamic_pre_action && !dynamic_pre_action_enabled {
+                self.pre_action.retain(|existing| *existing != skill_key);
             }
         }
         if debug_this {
@@ -512,11 +554,22 @@ impl SkillStorage {
             let rc4_before = (args.1.i, args.1.j);
             let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
             skill.post_damage(dmg, caster, (args.0, args.1, args.2, args.3));
+            let manages_dynamic_pre_action = skill.manages_dynamic_pre_action();
+            let dynamic_pre_action_enabled = skill.dynamic_pre_action_enabled();
             if debug_this {
                 eprintln!(
                     "[post_damage_skill] key={} rc4 {}:{} -> {}:{}",
                     skill_key, rc4_before.0, rc4_before.1, args.1.i, args.1.j,
                 );
+            }
+            if manages_dynamic_pre_action {
+                if dynamic_pre_action_enabled {
+                    if !self.pre_action.contains(&skill_key) {
+                        self.pre_action.push(skill_key);
+                    }
+                } else {
+                    self.pre_action.retain(|existing| *existing != skill_key);
+                }
             }
         }
     }

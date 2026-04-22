@@ -558,3 +558,41 @@ fn sync_runtime_entities_revives_before_death_removal_preserves_flat_alive_order
     assert_eq!(runner.world.team_alive(0).unwrap(), &[revived]);
     assert_eq!(runner.world.alives_flat(&runner.storage), vec![revived, enemy]);
 }
+
+#[test]
+fn sync_runtime_entities_applies_revivals_before_spawns_in_round_order() {
+    let raw_input = "anchor\nrevived\n\nenemy";
+    let mut runner = runners::Runner::new_from_namerena_raw(raw_input.to_string()).unwrap();
+    let anchor = runner.world.groups[0][0];
+    let revived = runner.world.groups[0][1];
+    let enemy = runner.world.groups[1][0];
+
+    runner.storage.just_get_player_mut(revived).unwrap().set_hp_raw(0);
+    runner.world.remove_player(revived);
+
+    let mut minion = crate::player::Player::new_from_namerena_raw("enemy?spawn".to_string(), runner.storage.clone()).unwrap();
+    minion.set_state(crate::player::skill::act::minion::MinionRuntimeState {
+        owner: Some(enemy),
+        kind: crate::player::skill::act::minion::MinionKind::Clone,
+    });
+
+    runner.storage.just_get_player_mut(revived).unwrap().revive_with_hp(1);
+    runner.storage.queue_revival(revived);
+    runner.storage.queue_spawn(enemy, minion);
+
+    crate::engine::engine_core::EngineCore::default().sync_runtime_entities(&mut runner.world, &runner.storage);
+
+    let spawned = runner
+        .world
+        .players
+        .iter()
+        .copied()
+        .find(|id| *id != anchor && *id != enemy && *id != revived)
+        .expect("spawned minion should be present");
+
+    assert_eq!(runner.world.players, vec![anchor, enemy, revived, spawned]);
+    assert_eq!(runner.world.team_alive(0).unwrap(), &[anchor, revived]);
+    assert_eq!(runner.world.team_alive(1).unwrap(), &[enemy, spawned]);
+    assert_eq!(runner.world.alives_flat(&runner.storage), vec![anchor, revived, enemy, spawned]);
+}
+

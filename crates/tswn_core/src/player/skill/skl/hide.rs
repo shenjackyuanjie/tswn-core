@@ -41,24 +41,53 @@ impl SkillTrait for HideSkill {
                 })
                 .or_else(|| args.3.alive_group_at_team_of(args.0).cloned())
         });
+        let effective_group_snapshot = args.3.get_player(&args.0).and_then(|owner| {
+            owner
+                .get_state::<CharmState>()
+                .and_then(|charm| {
+                    charm
+                        .effective_team_idx
+                        .and_then(|team_idx| args.3.get_group(team_idx).cloned())
+                        .or_else(|| args.3.group_containing(charm.group_id).cloned())
+                })
+                .or_else(|| args.3.group_containing(args.0).cloned())
+        });
+        let pending_revival_ids = effective_group_snapshot
+            .as_deref()
+            .map(|group| args.3.pending_revival_ids_for_group(group))
+            .unwrap_or_default();
         let pending_spawn_ids = args.3.pending_spawn_ids_for_owner(args.0);
-        let alive_allies = alive_group_snapshot
+        let mut alive_candidates = alive_group_snapshot
             .as_ref()
             .map(|group| {
-                // JS 的 Shadow.addNew 会让 owner 自己刚造出的新幻影在同一 action 的
-                // post_damage / post_action 链里立刻可见；Rust 这里至少要把 owner
-                // 当前 action 内的 pending spawn 算入，否则会少掉 Hide 的一次 r63 检定。
-                let alive_group_count = group
+                group
                     .iter()
+                    .copied()
                     .filter(|id| args.3.get_player(id).map(|p| p.alive()).unwrap_or(false))
-                    .count();
-                let pending_alive_count = pending_spawn_ids
-                    .iter()
-                    .filter(|id| args.3.get_pending_spawn_player(**id).map(|p| p.alive()).unwrap_or(false))
-                    .count();
-                alive_group_count + pending_alive_count
+                    .collect::<Vec<_>>()
             })
-            .unwrap_or(0);
+            .unwrap_or_default();
+        // JS 的同队 alive 视图会在同一 action 的后半段立刻看到：
+        // 1. owner 当前 action 内刚 addNew 出来的 pending spawn
+        // 2. 已经 queue_revival、但还没 sync 回 alive_group 的旧成员
+        // 否则像 f250 里 Mira 先复活 Light、随后 poison/post_damage 再打回自己时，
+        // Hide 的 r63 检定会少吃 1 byte。
+        //
+        // 这里不能直接把 roster 里所有 `alive()==true` 的成员都补进来；storage 里还可能
+        // 暂留一些“状态已变但并非 JS 同拍可见”的实体，那会把 Hide 的触发窗口放大，反而引入新 diff。
+        for &id in &pending_revival_ids {
+            if !alive_candidates.contains(&id) && args.3.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
+                alive_candidates.push(id);
+            }
+        }
+        for &id in &pending_spawn_ids {
+            if !alive_candidates.contains(&id)
+                && args.3.get_pending_spawn_player(id).map(|p| p.alive()).unwrap_or(false)
+            {
+                alive_candidates.push(id);
+            }
+        }
+        let alive_allies = alive_candidates.len();
         if owner_active && alive_allies > 1 && args.1.r63() < level {
             self.on_update_state = Some(());
             args.3
@@ -84,6 +113,18 @@ impl SkillTrait for HideSkill {
             .get_player(&args.0)
             .map(|owner| owner.has_state::<crate::player::skill::berserk::BerserkState>())
             .unwrap_or(false)
+    }
+
+    fn pre_action_accumulate_with_level(
+        &mut self,
+        _level: u32,
+        _current_forced: Option<usize>,
+        _self_key: usize,
+        _smart: bool,
+        args: SkillArgs,
+    ) -> Option<usize> {
+        self.pre_action(args);
+        None
     }
 
     fn update_state_with_level(&mut self, level: u32, args: SkillArgs) {

@@ -75,8 +75,7 @@ impl BatchProgress {
             return;
         }
 
-        let done_matchups =
-            self.completed_players * self.targets_per_player + self.completed_targets_in_current;
+        let done_matchups = self.completed_players * self.targets_per_player + self.completed_targets_in_current;
         let frac = done_matchups as f64 / total_matchups as f64;
         let filled = (frac * PROGRESS_BAR_WIDTH as f64) as usize;
         let empty = PROGRESS_BAR_WIDTH.saturating_sub(filled);
@@ -251,10 +250,7 @@ pub fn run_bench_batch_rate(
         target_groups.len()
     );
     if let Some(threshold) = min_wr {
-        println!(
-            "最低胜率阈值: {threshold}/10000 ({:.2}%)",
-            threshold as f64 / 100.0
-        );
+        println!("最低胜率阈值: {threshold}/10000 ({:.2}%)", threshold as f64 / 100.0);
     }
 
     let mut progress = BatchProgress::new(player_groups.len(), target_groups.len());
@@ -265,13 +261,7 @@ pub fn run_bench_batch_rate(
         let mut verbose_buf = String::new();
         if verbose {
             let _ = writeln!(&mut verbose_buf);
-            let _ = writeln!(
-                &mut verbose_buf,
-                "━━━ [{}/{}] {} ━━━",
-                pi + 1,
-                player_groups.len(),
-                label
-            );
+            let _ = writeln!(&mut verbose_buf, "━━━ [{}/{}] {} ━━━", pi + 1, player_groups.len(), label);
         }
 
         let overall_started = Instant::now();
@@ -331,10 +321,7 @@ pub fn run_bench_batch_rate(
                 progress.clear();
                 print!("{verbose_buf}");
                 println!("平均胜率: {:.2}%  (对 {} 组靶子)", avg, target_groups.len());
-                println!(
-                    "汇总胜率: {:.2}%  ({}/{})",
-                    aggregate_rate, accumulated_wins, accumulated_total
-                );
+                println!("汇总胜率: {:.2}%  ({}/{})", aggregate_rate, accumulated_wins, accumulated_total);
                 println!(
                     "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
                     elapsed_secs,

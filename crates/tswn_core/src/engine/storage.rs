@@ -394,6 +394,15 @@ impl Storage {
             .collect()
     }
 
+    /// 返回指定 roster 中已 queue_revival、但尚未 sync 回 alive_group 的成员。
+    pub fn pending_revival_ids_for_group(&self, group_members: &[PlrId]) -> Vec<PlrId> {
+        self.pending_revivals_ref()
+            .iter()
+            .copied()
+            .filter(|id| group_members.contains(id))
+            .collect()
+    }
+
     pub fn get_pending_spawn_player(&self, ptr: PlrId) -> Option<&Player> {
         self.pending_spawns_ref()
             .iter()

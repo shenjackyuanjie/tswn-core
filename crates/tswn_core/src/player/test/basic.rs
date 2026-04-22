@@ -202,3 +202,38 @@ fn build_generates_expected_attr_for_help_and_aaaaa() {
     assert_eq!(help.attr, [28, 51, 21, 32, 25, 43, 40, 261]);
     assert_eq!(aaaaa.attr, [31, 36, 17, 30, 50, 50, 47, 315]);
 }
+
+#[test]
+fn profile_case_d8c6_players() {
+    let storage = Storage::new_arc();
+    let mut attacker = Player::new_from_namerena_raw("最光辉的时刻 #8ftphKKCk@Shabby_fish".to_string(), storage.clone()).unwrap();
+    let mut defender = Player::new_from_namerena_raw("营救任务 #tmOaPuIoM@Shabby_fish".to_string(), storage.clone()).unwrap();
+
+    attacker.build();
+    defender.build();
+
+    for player in [&attacker, &defender] {
+        let active = player
+            .skills
+            .skill
+            .iter()
+            .filter_map(|key| {
+                let skill = player.skills.store.get(key)?;
+                (skill.level() > 0).then_some(format!(
+                    "{key}:{}:lvl{}",
+                    skill.debug_skill_type_name(),
+                    skill.level()
+                ))
+            })
+            .collect::<Vec<_>>();
+        eprintln!(
+            "[profile_case_d8c6] name={} slot_skill={:?} skill={:?} pre_action={:?} active={:?}",
+            player.id_name(),
+            player.skills.slot_skill,
+            player.skills.skill,
+            player.skills.pre_action,
+            active
+        );
+    }
+}
+

@@ -95,20 +95,12 @@ impl EngineCore {
         #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("pre_sync", world, storage);
 
-        let pending_spawns = storage.take_pending_spawns();
-        // JS `addNew` 会在当前行动尚未结束前把新召唤物挂进 roster/alive。
-        // 因此如果 owner 在同一 tick 后续死亡，linked minion 需要先进入 round roster，
-        // 再在同一轮 sync 中按 death/remove 顺序移除，才能让 round_pos 与 JS 对齐。
-        for pending in pending_spawns {
-            let owner = pending.owner;
-            let plr_id = storage.just_insert_player(pending.player);
-            world.add_new_player(plr_id, owner);
-        }
-
-        // 复活也要先于同一批死亡落地：JS Revive / Reraise / 复用召唤物都会立刻 aZ 回当前
-        // grp.f / all_alive 视图里；如果稍后同一 action 里 reviver/teammate 又死亡，应该是“先插入
-        // 再删除”，这样 revived target 会继承当时的队友相对位置，而不是在所有死亡清理完后被
-        // 追加到末尾。
+        // 复活需要先于 spawn / death 落地：
+        // - JS 中 revive 会立刻把旧实体重新挂回当前 roster / alive 视图；
+        // - 如果同一 tick 里稍后又发生了 spawn（例如尸体转亡灵），spawn 应该排在 revive 之后；
+        // - 如果同一 tick 里稍后又发生死亡移除，也必须保持“先 revive / spawn，再 remove”。
+        //
+        // 这里先处理显式 queue_revival，再处理 fallback 扫描出的已复活成员，最后才处理 pending spawn。
         let revivals = storage.take_pending_revivals();
         for id in revivals {
             if !world.contains_alive(id) && storage.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
@@ -133,6 +125,15 @@ impl EngineCore {
             world.revive_player(id, id);
             #[cfg(not(feature = "no_debug"))]
             Self::debug_world_state("after_revive_sync", world, storage);
+        }
+
+        let pending_spawns = storage.take_pending_spawns();
+        // JS `addNew` 会在当前行动尚未结束前把新召唤物挂进 roster/alive。
+        // 只要仍然保证 spawn 先于同一批 death/remove 落地，owner 稍后死亡时的 round_pos 语义就不会变。
+        for pending in pending_spawns {
+            let owner = pending.owner;
+            let plr_id = storage.just_insert_player(pending.player);
+            world.add_new_player(plr_id, owner);
         }
 
         let pending_remove_players = storage.take_pending_remove_players();

@@ -359,7 +359,8 @@ impl Player {
                                     None
                                 } else {
                                     let selected = self.select_skill_targets(skill, smart, randomer, updates, storage, targets);
-                                    let allow_empty = skill.target_domain() == SkillTargetDomain::SelfOnly;
+                                    let allow_empty =
+                                        skill.target_domain() == SkillTargetDomain::SelfOnly || skill.allows_empty_targets();
                                     #[cfg(not(feature = "no_debug"))]
                                     if debug_action_this {
                                         let empty_after_prob = selected.is_empty() && !allow_empty;
@@ -386,6 +387,18 @@ impl Player {
                                             );
                                         }
                                     }
+                                    // 这里要刻意保留“prob 已经消耗，但 targets 为空”的中间态。
+                                    //
+                                    // JS `action()` 在这种场景下不会回滚 prob，也不会把它当成
+                                    // “这个技能根本没检查过”；它只是继续往后看下一个技能。
+                                    //
+                                    // 典型例子是：
+                                    // - Assassinate prob 通过
+                                    // - 但 `selectTargets()` 对外返回 `[]/null`
+                                    // - 最终 fallback 到默认攻击
+                                    //
+                                    // 所以这里只返回 `None` 让外层继续扫描，不能补额外随机，
+                                    // 也不能把它提前当成 default attack 已选中。
                                     if selected.is_empty() && !allow_empty {
                                         None
                                     } else {
@@ -436,11 +449,14 @@ impl Player {
                 }
                 let allow_empty = {
                     let skill = self.skills.skill_by_id(skill_key);
-                    skill.target_domain() == SkillTargetDomain::SelfOnly
+                    // 这里的 allow_empty 对应 JS 里“skill 内部自己保存了真实目标”或
+                    // “SelfOnly 不需要额外选目标”的场景。
+                    skill.target_domain() == SkillTargetDomain::SelfOnly || skill.allows_empty_targets()
                 };
                 if !selected_targets.is_empty() || allow_empty {
                     let skill = self.skills.skill_by_id_mut(skill_key);
                     skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
+                    self.skills.sync_dynamic_pre_action_key(skill_key);
                     acted = true;
                 }
             }
@@ -649,6 +665,58 @@ impl Player {
         }
     }
 
+    fn select_attack_aa_targets(
+        &self,
+        skill: &crate::player::skill::Skill,
+        smart: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) -> Vec<PlrId> {
+        let select_count = skill.select_target_count(smart);
+        if select_count == 0 {
+            return Vec::new();
+        }
+
+        let mut selected: SmallVec<[PlrId; 4]> = SmallVec::new();
+        let mut dup = 0usize;
+        let mut invalid = -(select_count as i32);
+        while dup <= select_count && invalid <= select_count as i32 {
+            let Some(target_id) = Self::pick_enemy_target(targets, randomer) else {
+                return Vec::new();
+            };
+            let valid = skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
+            if !valid {
+                invalid += 1;
+                continue;
+            }
+            if selected.contains(&target_id) {
+                dup += 1;
+                continue;
+            }
+            selected.push(target_id);
+            if selected.len() >= select_count {
+                break;
+            }
+        }
+        if selected.is_empty() {
+            return Vec::new();
+        }
+
+        let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
+            .into_iter()
+            .map(|target_id| {
+                (
+                    target_id,
+                    skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
+                )
+            })
+            .collect();
+        scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.into_iter().map(|x| x.0).collect()
+    }
+
     /// NOTE:
     /// 这里不能直接退化成：
     ///   skill.select_targets(candidates, smart, ...)
@@ -683,6 +751,10 @@ impl Player {
         let select_count = skill.select_target_count(smart);
         if select_count == 0 {
             return Vec::new();
+        }
+
+        if domain == SkillTargetDomain::EnemyAlive && skill.uses_attack_aa_sampling() && !skill.allows_empty_targets() {
+            return self.select_attack_aa_targets(skill, smart, randomer, updates, storage, targets);
         }
 
         if skill.uses_custom_target_selection() {

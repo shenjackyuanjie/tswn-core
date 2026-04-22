@@ -199,6 +199,12 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn destroy(&self, plr: PlrId, args: SkillArgs);
     /// 用于实现 Clone
     fn clone_box(&self) -> Box<dyn SkillTrait>;
+    /// 运行时类型键。
+    ///
+    /// 这里不要对 `Box<dyn SkillTrait>` / `&dyn SkillTrait` 本身做 `type_name_of_val()`，
+    /// 那样拿到的是 trait object 名字，无法区分具体技能实现。
+    /// 必须让它经由 vtable 分发到具体实现，再在 concrete `Self` 上取类型名。
+    fn runtime_kind(&self) -> &'static str { type_name_of_val(self) }
 
     // ===== 可选实现的 =====
     /// 更新状态
@@ -229,6 +235,50 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn pre_action_clear_forced_with_level(&mut self, _level: u32, smart: bool, args: SkillArgs) -> bool {
         self.pre_action_clear_forced(smart, args)
     }
+    /// JS preAction 链按“上一项返回值”累积 forced skill。
+    /// 默认语义：先执行 pre_action，再按 clear/select 决定是清空、改成当前技能还是保留上一值。
+    fn pre_action_accumulate(
+        &mut self,
+        current_forced: Option<usize>,
+        self_key: usize,
+        smart: bool,
+        args: SkillArgs,
+    ) -> Option<usize> {
+        let (owner, randomer, updates, storage) = args;
+        self.pre_action((owner, &mut *randomer, &mut *updates, storage));
+        // JS 里多数普通 pre_action entry 的 `aN(prev, ...)` 只是：
+        // 1. 执行自己的 pre_action 副作用
+        // 2. 如果还没有前人选中的 forced skill，再决定要不要把自己设成 forced
+        // 3. 否则原样保留 `prev`
+        //
+        // 只有少数 hook（如 Hide / Assassinate）会显式“清空 prev”或“无视 prev 强行替换”。
+        // 这些需要各自覆写 `pre_action_accumulate_with_level()`，不能走这里的默认语义。
+        if current_forced.is_none() && self.pre_action_select(smart, (owner, &mut *randomer, &mut *updates, storage)) {
+            Some(self_key)
+        } else {
+            current_forced
+        }
+    }
+    fn pre_action_accumulate_with_level(
+        &mut self,
+        level: u32,
+        current_forced: Option<usize>,
+        self_key: usize,
+        smart: bool,
+        args: SkillArgs,
+    ) -> Option<usize> {
+        let (owner, randomer, updates, storage) = args;
+        self.pre_action_with_level(level, (owner, &mut *randomer, &mut *updates, storage));
+        if current_forced.is_none()
+            && self.pre_action_select_with_level(level, smart, (owner, &mut *randomer, &mut *updates, storage))
+        {
+            Some(self_key)
+        } else {
+            current_forced
+        }
+    }
+    fn dynamic_pre_action_enabled(&self) -> bool { false }
+    fn manages_dynamic_pre_action(&self) -> bool { false }
     /// 行动之后
     fn post_action(&mut self, args: SkillArgs) {}
     fn post_action_with_level(&mut self, _level: u32, args: SkillArgs) { self.post_action(args) }
@@ -294,6 +344,8 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 技能目标来源域。
     fn target_domain(&self) -> SkillTargetDomain { SkillTargetDomain::EnemyAlive }
     fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { self.target_domain() }
+    fn allows_empty_targets(&self) -> bool { false }
+    fn allows_empty_targets_with_level(&self, _level: u32) -> bool { self.allows_empty_targets() }
 
     /// 技能选目标数量（默认对齐 Dart）
     fn select_target_count(&self, smart: bool) -> usize { if smart { 3 } else { 2 } }
@@ -450,6 +502,13 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// Rust 目前的主动作路径为了稳定旧回放，默认仍保留手工按 domain 抽样；
     /// 只有显式声明的技能才走这里的自定义选目标实现，避免一次性放大回归面。
     fn uses_custom_target_selection(&self) -> bool { false }
+    /// 少数技能在 JS 里虽然有自己的 `aa()`，但“正常出手”时其实仍复用 ActionSkill 的
+    /// `attack_aa` 抽样路径（`all_alive + pickSkipRange`），只是在 valid/score 上覆写。
+    ///
+    /// Rust 侧如果直接走 `select_targets_with_level(candidates, ...)`，会把 `EnemyAlive`
+    /// 压缩成紧凑列表，导致 RC4 消费变轻。这里提供一个窄 opt-in，让入口继续掌握
+    /// `ActionTargets`，只把“候选抽样方式”切到 JS 的 `attack_aa`。
+    fn uses_attack_aa_sampling(&self) -> bool { false }
 
     /// 标记该技能的主动施放逻辑是否已接入当前运行链路。
     fn has_action_impl(&self) -> bool { false }
@@ -574,6 +633,21 @@ impl Skill {
         self.skill_type.pre_action_clear_forced_with_level(self.level, smart, args)
     }
 
+    pub fn pre_action_accumulate(
+        &mut self,
+        current_forced: Option<usize>,
+        self_key: usize,
+        smart: bool,
+        args: SkillArgs,
+    ) -> Option<usize> {
+        self.skill_type
+            .pre_action_accumulate_with_level(self.level, current_forced, self_key, smart, args)
+    }
+
+    pub fn dynamic_pre_action_enabled(&self) -> bool { self.level > 0 && self.skill_type.dynamic_pre_action_enabled() }
+
+    pub fn manages_dynamic_pre_action(&self) -> bool { self.skill_type.manages_dynamic_pre_action() }
+
     pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.post_action_with_level(self.level, args) }
 
     pub fn post_action_phase(&self) -> PostActionPhase { self.skill_type.post_action_phase() }
@@ -614,6 +688,8 @@ impl Skill {
 
     pub fn target_domain(&self) -> SkillTargetDomain { self.skill_type.target_domain_with_level(self.level) }
 
+    pub fn allows_empty_targets(&self) -> bool { self.skill_type.allows_empty_targets_with_level(self.level) }
+
     pub fn select_target_count(&self, smart: bool) -> usize { self.skill_type.select_target_count_with_level(self.level, smart) }
 
     pub fn valid_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> bool {
@@ -630,11 +706,29 @@ impl Skill {
 
     pub fn uses_custom_target_selection(&self) -> bool { self.skill_type.uses_custom_target_selection() }
 
+    pub fn uses_attack_aa_sampling(&self) -> bool { self.skill_type.uses_attack_aa_sampling() }
+
     pub fn has_action_impl(&self) -> bool { self.skill_type.has_action_impl() }
 
     pub fn clear_positive_runtime_priority(&self) -> i32 { self.skill_type.clear_positive_runtime_priority() }
 
     pub fn charge_runtime_active(&self) -> bool { self.skill_type.charge_runtime_active() }
 
-    pub fn debug_skill_type_name(&self) -> &'static str { type_name_of_val(self.skill_type.as_ref()) }
+    /// 调试/对齐 JS 时用的运行时技能类型名。
+    ///
+    /// `md5.js` 里的 merge 不是按“技能 key / 技能 id 是否相等”比较，而是按
+    /// `k1[slot]` 里的“技能对象类型”逐槽位比较；Rust 这边没有直接暴露 Dart/JS 的
+    /// `runtimeType`，因此需要一个稳定的“当前 SkillTrait 实现类型”视图来对照。
+    pub fn debug_skill_type_name(&self) -> &'static str { self.skill_type.runtime_kind() }
+
+    /// 是否与另一技能拥有相同的运行时实现类型。
+    ///
+    /// 这对应 `md5.js` 里 merge 的：
+    /// `q = J.uR(m); if (q.gcw(m) !== q.gcw(l)) break`
+    ///
+    /// 也就是说，merge 比较的是“同槽位 skill 的类型是否一致”，而不是 key / id
+    /// 是否相等。这个区别对 summon 尤其关键：JS summon 的固定槽位是
+    /// `[fire, fire, explode]`，两个 fire 在 Rust 里可能是不同 key，但 merge 仍应视为
+    /// “同类型、可继承”。
+    pub fn same_runtime_kind(&self, other: &Self) -> bool { self.debug_skill_type_name() == other.debug_skill_type_name() }
 }

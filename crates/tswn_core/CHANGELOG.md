@@ -1,5 +1,31 @@
 # 更新日志
 
+## [0.2.19] - 2026-04-22
+
+### 修复
+
+- 调整 runtime sync 顺序，使复活先于同批 spawn / death 落地；同时补上 `pending_revival_ids_for_group(...)`，让 `Hide` 在同一 action 后半段能看到“刚复活但尚未 sync”的旧队友，但不会把“已经死亡、只是暂时还残留在 alive_group 里的队友”误算进去。
+- 对齐 `Assassinate` / `Hide` 的 pre_action 语义：新增 forced-skill 累积接口、动态 pre_action 注册/撤销、`allows_empty_targets()` 与 `uses_attack_aa_sampling()`，修正“skill 内部已锁定目标但外部 targets 为空”这类 JS 常见路径下的 RC4 与出手行为。
+- 修正 `merge` / `summon` / `minion` 的固定槽位与运行时视图：`SkillStorage` 现在分离 `slot_skill` 与 `skill`，`merge` 改为按固定槽位继承等级，summon 保留稳定 `k1=[fire, fire, explode]` 语义；shadow / summon / zombie 生成体统一把 `name_factor` 归零，对齐 JS combat minion。
+- 修正一组近期定位到的多人对局分叉，包括 revive/spawn 可见性、Hide 在 post_damage 链里的活人计数、Assassinate 的 pending target 行为，以及相关的 merge / minion 继承细节；按 `tests\sqp5900.txt`、`3v3v3`、`max-cases-per-mode=4000` 口径复跑后，`diff_failures = 0`。
+
+### 测试
+
+- 新增 / 扩充回归测试，覆盖：
+  - revive 先于 spawn 的 sync 顺序
+  - `d8c6` 开场 trace 对齐
+  - `Hide` 对 pending revival / stale alive_group 的可见性
+  - `Assassinate` 与 `Hide` 的 pre_action / forced-skill 交互
+  - `merge` 的固定槽位继承与 `Fengshen` pre_action 注册
+  - combat minion 的 `name_factor=0`
+
+### 性能
+
+- 按 `docs/performance.md` 的口径补跑了当前工作树（`--release --features no_debug`，`tswn-cli bench win-rate ... --perf`）：
+  - `aaa` vs `bbb`：`100k` 单线程 `1.978s`，多线程 `0.309s`；`1M` 单线程 `19.246s`，多线程 `2.743s`
+  - `喘际瞬爆@昀澤` vs `蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall`：`100k` 单线程 `2.895s`，多线程 `0.394s`；`1M` 单线程 `28.692s`，多线程 `3.900s`
+- 相比 `docs/performance.md` 记录的 `0.2.14` 基线，这一轮 8 个口径都偏慢；目前结果一致性已经收口，但性能仍值得继续排查。
+
 ## [0.2.18] - 2026-04-21
 
 ### CLI

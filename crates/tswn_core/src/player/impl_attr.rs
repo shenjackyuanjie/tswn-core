@@ -113,6 +113,16 @@ impl Player {
         for skill_id in 0..40u8 {
             self.skills.add_skill(Skill::new_with_id(0, skill_id));
         }
+        // JS `k1` 是“固定技能对象数组”，普通玩家这里保持创建时的稳定顺序；
+        // 真正用于 action() 主动技能扫描的是 `k4`，它才会按名字解出的 `skil_id` 洗牌。
+        //
+        // 这个区别对 merge 很关键：
+        // - `k1` 负责“同一个固定槽位里的 skill 对象”逐位继承等级
+        // - `k4` 负责“本回合按什么顺序尝试主动技能”
+        //
+        // 如果把 `slot_skill` 也改成打乱后的 `skil_id`，merge 就会把本来应该同槽位的
+        // Shield / Defend / PassiveSkill 错位掉，导致吞噬后漏继承 pre_action / post_damage hook。
+        self.skills.slot_skill = (0..40usize).collect();
         self.skills.skill = self.skil_id.iter().map(|id| *id as usize).collect();
         let mut slot_skill_keys: [Option<usize>; 16] = [None; 16];
         // JS PlrBoss.dm() overrides initSkills: boss skills are all level 0.
@@ -149,7 +159,9 @@ impl Player {
             weapons::Weapon::post_upgrade(&ws, self);
         }
 
-        // Dart PlrClone.addSkillsToProc: clamp 发生在 boost 之前
+        // Dart / JS `PlrClone.addSkillsToProc`：这里只 clamp “固定槽位里已有的技能等级”，
+        // 不改槽位本身。也就是说 clone 继承 owner 时，`slot_skill` 仍然表示 clone build
+        // 出来的固定槽位类型，行动顺序也沿用该视图；只有等级会在这里被截到 owner 当前等级。
         if let Some(owner_skills) = clamp_source {
             let skill_keys = self.skills.skill.clone();
             for skill_key in skill_keys {

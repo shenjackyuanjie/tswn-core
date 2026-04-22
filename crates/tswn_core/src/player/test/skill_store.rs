@@ -93,3 +93,66 @@ fn protect_state_runs_before_late_registered_pre_defend_skills() {
     let observed: Vec<&str> = updates.updates.iter().map(|update| update.message.as_ref()).collect();
     assert_eq!(observed, vec![format!("pre_defend_skill_byte={second}")]);
 }
+
+#[test]
+fn assassinate_pre_action_is_preserved_by_shield() {
+    use crate::player::ActionTargets;
+    use crate::player::skill::Skill;
+
+    let storage = Storage::new_arc();
+    let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+    let attacker_id = storage.just_insert_player(attacker);
+    let target_id = storage.just_insert_player(target);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
+    attacker_mut.skills.add_skill(Skill::new_with_id(255, 21));
+    attacker_mut.skills.add_skill(Skill::new_with_id(255, 29));
+    attacker_mut.skills.update_proc();
+    attacker_mut.status.mp = 999;
+    attacker_mut.action(
+        &mut randomer,
+        &mut updates,
+        &storage,
+        &ActionTargets::from_enemy_alive(&[target_id]),
+    );
+    assert!(updates.updates.iter().any(|x| x.message.contains("潜行")));
+
+    let outcome = attacker_mut.skills.pre_action(true, (attacker_id, &mut randomer, &mut updates, &storage));
+    assert_eq!(outcome.forced_skill, Some(0));
+}
+
+#[test]
+fn late_gained_hide_clears_assassinate_forced_skill() {
+    use crate::player::ActionTargets;
+    use crate::player::skill::Skill;
+
+    let storage = Storage::new_arc();
+    let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+    let attacker_id = storage.just_insert_player(attacker);
+    let target_id = storage.just_insert_player(target);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
+    attacker_mut.skills.add_skill(Skill::new_with_id(255, 21));
+    attacker_mut.skills.update_proc();
+    attacker_mut.status.mp = 999;
+    attacker_mut.action(
+        &mut randomer,
+        &mut updates,
+        &storage,
+        &ActionTargets::from_enemy_alive(&[target_id]),
+    );
+    assert!(updates.updates.iter().any(|x| x.message.contains("潜行")));
+
+    let hide_key = attacker_mut.skills.skill.len();
+    attacker_mut.skills.add_skill(Skill::new_with_id(255, 34));
+    attacker_mut.skills.register_skill_proc(hide_key);
+
+    let outcome = attacker_mut.skills.pre_action(true, (attacker_id, &mut randomer, &mut updates, &storage));
+    assert_eq!(outcome.forced_skill, None);
+}

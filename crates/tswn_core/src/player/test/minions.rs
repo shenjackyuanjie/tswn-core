@@ -155,6 +155,7 @@ fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
     assert_eq!(pending[0].player.id_key_name(), "owner?0@same");
     assert_eq!(pending[0].player.base_name(), "owner?zombie");
     assert_eq!(pending[0].player.display_name(), "丧尸");
+    assert_eq!(pending[0].player.get_name_factor(), 0.0);
     assert!(updates.updates.iter().any(|x| x.message.contains("变成了")));
 }
 
@@ -194,6 +195,8 @@ fn summon_merge_uses_fixed_skill_slots() {
 
     {
         let owner_mut = storage.just_get_player_mut(merge_owner_id).unwrap();
+        // 这些 skill id 在旧实现里会被“按 id 继承”错误抬高；
+        // 现在固定槽位对齐后，应当保持不变。
         owner_mut.skills.skill_by_id_mut(0).set_level(0);
         owner_mut.skills.skill_by_id_mut(1).set_level(0);
         owner_mut.skills.skill_by_id_mut(3).set_level(0);
@@ -216,6 +219,7 @@ fn summon_merge_uses_fixed_skill_slots() {
     assert_eq!(summoned.id_key_name(), "地狱之轮 #mW88BamWo?0@Shabby_fish");
     assert_eq!(summoned.base_name(), "地狱之轮 #mW88BamWo?summon");
     assert_eq!(summoned.display_name(), "使魔");
+    assert_eq!(summoned.get_name_factor(), 0.0);
     assert!(summoned.skills.store.contains_key(&255));
     assert!(!summoned.skills.store.contains_key(&3));
     let summoned_id = storage.just_insert_player(summoned);
@@ -237,8 +241,7 @@ fn summon_merge_uses_fixed_skill_slots() {
 }
 
 #[test]
-#[ignore]
-fn merge_does_not_inherit_mismatched_slot_hide_skill() {
+fn merge_inherits_levels_by_fixed_slot_even_when_runtime_kind_differs() {
     let storage = Storage::new_arc();
     let mut owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
     owner.build();
@@ -250,6 +253,7 @@ fn merge_does_not_inherit_mismatched_slot_hide_skill() {
 
     {
         let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.skills.slot_skill = vec![0, 1, 2];
         owner_mut.skills.skill = vec![0, 1, 2];
         owner_mut.skills.skill_by_id_mut(0).set_level(1);
         owner_mut.skills.skill_by_id_mut(1).set_level(1);
@@ -259,6 +263,7 @@ fn merge_does_not_inherit_mismatched_slot_hide_skill() {
     }
     {
         let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.skills.slot_skill = vec![34, 1, 2];
         target_mut.skills.skill = vec![34, 1, 2];
         target_mut.skills.skill_by_id_mut(34).set_level(64);
         target_mut.skills.skill_by_id_mut(1).set_level(7);
@@ -279,10 +284,45 @@ fn merge_does_not_inherit_mismatched_slot_hide_skill() {
     );
 
     let owner_after = storage.get_player(&owner_id).unwrap();
-    assert_eq!(owner_after.skills.skill_by_id(0).level(), 1);
+    assert_eq!(owner_after.skills.skill_by_id(0).level(), 64);
     assert_eq!(owner_after.skills.skill_by_id(34).level(), 0);
     assert_eq!(owner_after.skills.skill_by_id(1).level(), 7);
     assert_eq!(owner_after.skills.skill_by_id(2).level(), 9);
+}
+
+#[test]
+fn merge_inherits_fengshen_shield_and_registers_pre_action() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw("测707640862046T，烦恼立刻消失@爱".to_string(), storage.clone()).unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+
+    let mut target = Player::new_from_namerena_raw("Fengshen ONVWTGMPNCKV@nan".to_string(), storage.clone()).unwrap();
+    target.build();
+    let target_id = storage.just_insert_player(target);
+
+    let owner_before = storage.get_player(&owner_id).unwrap();
+    assert_eq!(owner_before.skills.skill_by_id(29).level(), 0);
+    assert!(!owner_before.skills.pre_action.contains(&29));
+    let target_before = storage.get_player(&target_id).unwrap();
+    assert_eq!(target_before.skills.skill_by_id(29).level(), 4);
+    assert!(target_before.skills.pre_action.contains(&29));
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            target_id,
+            (owner_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let owner_after = storage.get_player(&owner_id).unwrap();
+    assert_eq!(owner_after.skills.skill_by_id(29).level(), 4);
+    assert!(owner_after.skills.pre_action.contains(&29));
 }
 
 #[test]
@@ -470,6 +510,7 @@ fn shadow_skill_queues_named_shadow_minion() {
     assert_eq!(shadow.id_key_name(), "owner?0@same");
     assert_eq!(shadow.base_name(), "owner?shadow");
     assert_eq!(shadow.display_name(), "幻影");
+    assert_eq!(shadow.get_name_factor(), 0.0);
     assert!(
         updates
             .updates

@@ -32,12 +32,15 @@ impl SkillTrait for AssassinateSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn uses_custom_target_selection(&self) -> bool { false }
+    fn uses_custom_target_selection(&self) -> bool { true }
+
+    fn uses_attack_aa_sampling(&self) -> bool { true }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
-        if self.on_pre_action.is_some() {
-            return true;
-        }
+        // 注意这里不能因为 “当前已经 pending 背刺” 就直接返回 true。
+        //
+        // JS 在 `forced=false` 但 skill 内部已经记住目标的那条线上，依然会先吃一发
+        // `r127()` 做 prob 判定；如果这里短路，后续整轮 RC4 都会错 1 byte。
         if smart && args.3.get_player(&args.0).map(|p| p.has_state::<PoisonState>()).unwrap_or(false) {
             return false;
         }
@@ -85,10 +88,17 @@ impl SkillTrait for AssassinateSkill {
 
     fn select_targets_with_level(&self, level: u32, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
         if self.on_pre_action.is_some() {
-            if let Some(target) = self.target
-                && args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false)
-            {
-                return vec![target];
+            // JS 的 pending 背刺在 normal action loop 里表现为：
+            // - prob 可能通过
+            // - `after targets = null/[]`
+            // - 但 act 阶段仍允许 skill 从自己内部的 locked target 出手
+            //
+            // 所以这里故意对外返回空 targets，让 `action()` 继续看到“选目标为空”的表象；
+            // 真正的目标保存在 `self.target`，由 act_with_level 第二段消费。
+            if let Some(target) = self.target {
+                if args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
+                    return Vec::new();
+                }
             }
             return Vec::new();
         }
@@ -133,11 +143,14 @@ impl SkillTrait for AssassinateSkill {
         scored.into_iter().map(|x| x.0).collect()
     }
 
+    fn allows_empty_targets(&self) -> bool { self.on_pre_action.is_some() }
+
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if self.target.is_none() && targets.is_empty() {
             return;
         }
         if self.target.is_none() {
+            // 第一次 act = 进入潜行并锁定目标。
             let target_id = targets[0];
             self.target = Some(target_id);
             self.on_pre_action = Some(());
@@ -161,6 +174,7 @@ impl SkillTrait for AssassinateSkill {
         }
 
         let target_id = self.target.expect("assassinate target should exist");
+        // 第二次 act = 消耗内部锁定目标，哪怕外部传进来的 `targets=[]` 也照常出手。
         self.clear_pending();
         if !args.3.get_player(&target_id).map(|x| x.alive()).unwrap_or(false) {
             return;
@@ -234,6 +248,29 @@ impl SkillTrait for AssassinateSkill {
         }
     }
 
+    fn pre_action_accumulate_with_level(
+        &mut self,
+        _level: u32,
+        _current_forced: Option<usize>,
+        self_key: usize,
+        _smart: bool,
+        args: SkillArgs,
+    ) -> Option<usize> {
+        // 对齐 JS `SklAssassinate.aN(prev, ...)`：
+        // - pending target 仍活着 -> 无视 `prev`，直接返回自己
+        // - 否则清掉 pending，并返回 null
+        let Some(target) = self.target else {
+            self.clear_pending();
+            return None;
+        };
+        if self.on_pre_action.is_some() && args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
+            Some(self_key)
+        } else {
+            self.clear_pending();
+            None
+        }
+    }
+
     fn post_damage(&mut self, _dmg: i32, _caster: PlrId, args: SkillArgs) {
         if self.on_post_damage.is_none() || self.target.is_none() {
             return;
@@ -247,7 +284,11 @@ impl SkillTrait for AssassinateSkill {
     // JS 中 PostDamageImpl.ga4() 返回 Infinity，表示最后执行
     fn post_damage_priority(&self) -> i32 { i32::MAX }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PreAction, ProcKind::PostDamage] }
+    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage] }
+
+    fn dynamic_pre_action_enabled(&self) -> bool { self.on_pre_action.is_some() }
+
+    fn manages_dynamic_pre_action(&self) -> bool { true }
 }
 
 impl AssassinateSkill {

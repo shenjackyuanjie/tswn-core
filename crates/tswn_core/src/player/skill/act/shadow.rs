@@ -5,7 +5,7 @@ use crate::player::{
     skill::{Skill, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
-use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name};
+use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, prepare_combat_minion};
 
 #[derive(Debug, Clone, Default)]
 pub struct ShadowSkill;
@@ -54,6 +54,7 @@ impl SkillTrait for ShadowSkill {
         let seed_name = format!("{owner_base_name}?shadow");
         let mut shadow =
             Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init shadow minion");
+        prepare_combat_minion(&mut shadow);
         shadow.build();
         shadow.attr[7] /= 2;
         shadow.init_values();

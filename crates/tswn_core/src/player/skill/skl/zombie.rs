@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
-    skill::act::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, is_combat_minion},
+    skill::act::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, is_combat_minion, prepare_combat_minion},
     skill::corpse::CorpseState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
 };
@@ -58,6 +58,7 @@ impl SkillTrait for ZombieSkill {
         );
         let mut zombie =
             Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init zombie minion");
+        prepare_combat_minion(&mut zombie);
         zombie.build();
         zombie.id = args.3.new_plr_id();
         zombie.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));

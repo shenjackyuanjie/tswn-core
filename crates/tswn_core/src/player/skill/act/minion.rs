@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     engine::storage::Storage,
-    player::{PlrId, StateTrait},
+    player::{Player, PlrId, StateTrait},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -69,6 +69,12 @@ pub fn is_combat_minion(player: &crate::player::Player) -> bool {
         .get_state::<MinionRuntimeState>()
         .map(MinionRuntimeState::is_combat_minion)
         .unwrap_or(false)
+}
+
+#[inline]
+pub fn prepare_combat_minion(player: &mut Player) {
+    // JS Minion.bf() forces x/name_factor to 0 for shadow/summon/zombie.
+    player.name_factor = 0.0;
 }
 
 impl StateTrait for MinionRuntimeState {

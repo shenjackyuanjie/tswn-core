@@ -43,16 +43,13 @@ impl SkillTrait for MergeSkill {
             return true;
         }
         let target_attr = args.3.get_player(&target).expect("cannot get merge target from storage").attr;
-        let target_skill_levels = {
+        let target_slot_skills = {
             let target_plr = args.3.get_player(&target).expect("cannot get merge target from storage");
-            let mut levels = target_plr
-                .skills
-                .store
-                .iter()
-                .map(|(skill_key, skill)| (*skill_key, skill.level()))
-                .collect::<Vec<(usize, u32)>>();
-            levels.sort_by_key(|(skill_key, _)| *skill_key);
-            levels
+            if target_plr.skills.slot_skill.is_empty() {
+                target_plr.skills.skill.clone()
+            } else {
+                target_plr.skills.slot_skill.clone()
+            }
         };
         let target_mp = args.3.get_player(&target).expect("cannot get merge target from storage").mp();
         let target_move_point = args.3.get_player(&target).expect("cannot get merge target from storage").move_point();
@@ -61,6 +58,11 @@ impl SkillTrait for MergeSkill {
         let (transfer_mp, transfer_move_point) = {
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get merge owner from storage");
             let mut newly_enabled_skills = Vec::new();
+            let owner_slot_skills = if owner.skills.slot_skill.is_empty() {
+                owner.skills.skill.clone()
+            } else {
+                owner.skills.slot_skill.clone()
+            };
             if debug_this {
                 eprintln!(
                     "[merge] owner={} target={} owner_spd={} target_spd={} owner_mp={} target_mp={} owner_mv={} target_mv={}",
@@ -80,25 +82,75 @@ impl SkillTrait for MergeSkill {
                     merged = true;
                 }
             }
-            for (skill_key, target_level) in target_skill_levels {
+            // JS `SklMerge.bS()` 实际对齐的是“按固定槽位逐位抬 level”：
+            //
+            //   m = owner.k1[s]
+            //   l = target.k1[s]
+            //   if (l.level > m.level) {
+            //     if (m.level === 0 && m instanceof ActionSkill) owner.k4.push(m)
+            //     m.level = l.level
+            //     m.W()
+            //   }
+            //
+            // `md5_debug.js` 当前保留下来的实现没有一个真正生效的 runtimeType 断路，
+            // 所以这里不能按“技能类型不一致就 break/continue”去推导，否则像
+            // `fight_multi_7` 里“吞 Possess 幻影后把 owner 第 0 槽 Fire 抬到 76”这种
+            // JS 真实行为就会丢失。
+            //
+            // 也就是说，merge 看的不是“同 skill id”也不是“同 runtime kind”，而是
+            // `k1` 固定槽位上的对象位置。
+            for (slot_idx, (owner_skill_key, target_skill_key)) in
+                owner_slot_skills.iter().copied().zip(target_slot_skills.iter().copied()).enumerate()
+            {
+                let owner_skill_ref = owner.skills.store.get(&owner_skill_key);
+                let target_skill_ref = args
+                    .3
+                    .get_player(&target)
+                    .and_then(|target_plr| target_plr.skills.store.get(&target_skill_key));
+                let owner_type_name = owner_skill_ref.map(|skill| skill.debug_skill_type_name()).unwrap_or("<missing>");
+                let target_type_name = target_skill_ref.map(|skill| skill.debug_skill_type_name()).unwrap_or("<missing>");
+                let Some(target_level) = args
+                    .3
+                    .get_player(&target)
+                    .and_then(|target_plr| target_plr.skills.store.get(&target_skill_key).map(|skill| skill.level()))
+                else {
+                    continue;
+                };
                 let mut should_enable_action = false;
-                if let Some(owner_skill) = owner.skills.store.get_mut(&skill_key)
+                if let Some(owner_skill) = owner.skills.store.get_mut(&owner_skill_key)
                     && target_level > owner_skill.level()
                 {
                     let was_zero = owner_skill.level() == 0;
                     should_enable_action = was_zero && owner_skill.has_action_impl();
                     owner_skill.set_level(target_level);
                     if was_zero {
-                        newly_enabled_skills.push(skill_key);
+                        newly_enabled_skills.push(owner_skill_key);
                     }
                     merged = true;
                 }
+                #[cfg(not(feature = "no_debug"))]
+                if debug_this {
+                    let owner_level = owner.skills.store.get(&owner_skill_key).map(|skill| skill.level()).unwrap_or(0);
+                    eprintln!(
+                        "[merge_slot] owner={} slot={} owner_skill={} target_skill={} owner_type={} target_type={} target_level={} owner_level_after={}",
+                        owner.id_name(),
+                        slot_idx,
+                        owner_skill_key,
+                        target_skill_key,
+                        owner_type_name,
+                        target_type_name,
+                        target_level,
+                        owner_level,
+                    );
+                }
                 if should_enable_action {
-                    owner.skills.enable_action_key(skill_key);
-                    if let Some(pos) = owner.skills.skill.iter().position(|key| *key == skill_key) {
+                    // JS 里 `p===0` 且是 ActionSkill 时，会把该 skill 重新放回动作队列；
+                    // Rust 这里等价为重新启用 action，并把 key 放回 `skills.skill` 尾部。
+                    owner.skills.enable_action_key(owner_skill_key);
+                    if let Some(pos) = owner.skills.skill.iter().position(|key| *key == owner_skill_key) {
                         owner.skills.skill.remove(pos);
                     }
-                    owner.skills.skill.push(skill_key);
+                    owner.skills.skill.push(owner_skill_key);
                 }
             }
             let post_action_state_cursor = owner.state.post_action_registration_cursor();

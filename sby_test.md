@@ -188,6 +188,67 @@ python ./track_case_miner.py -q \
 - `failed/<case-id>/diff.txt` 看 TS 和 Rust 的首个差异上下文
 - `case_miner_regression.json` 看当前记录是否相对上次有改进或退步
 
+## 已知大样本运行记录（2026-04-22）
+
+### `tests/sqp6000.txt` + `--max-cases-per-mode 4000`
+
+- 命令：
+
+```bash
+python ./track_case_miner.py -q \
+  --library ./tests/sqp6000.txt \
+  --modes 1v1,2v2,3v3v3,ffa \
+  --ffa-sizes 4,6,8 \
+  --case-offset-per-mode 0 \
+  --max-cases-per-mode 4000 \
+  --keep-going
+```
+
+- 实际生成量没有达到理论 `24000`，而是 `15792`（6 个模式各 `2632`）
+- 结果：
+  - `diff_failures = 0`
+  - `deduped_diff_failures = 0`
+  - `ts_empty_outputs = 1560`
+
+### `tests/sqp5900.txt` + `--max-cases-per-mode 4000`
+
+- 命令：
+
+```bash
+python ./track_case_miner.py -q \
+  --library ./tests/sqp5900.txt \
+  --modes 1v1,2v2,3v3v3,ffa \
+  --ffa-sizes 4,6,8 \
+  --case-offset-per-mode 0 \
+  --max-cases-per-mode 4000 \
+  --keep-going
+```
+
+- 这轮实际把 `24000` 跑满（6 个模式各 `4000`）
+- 结果：
+  - `diff_failures = 3`
+  - `deduped_diff_failures = 3`
+  - `ts_empty_outputs = 2064`
+  - `per_mode_failures = {"3v3v3": 3}`
+
+当前 3 个 failed case：
+
+1. `3v3v3-6c9aabe2aa79d92f`
+   - `first_mismatch_idx = 148`
+   - input: `target/ts_diff_cases/failed/3v3v3-6c9aabe2aa79d92f/input.txt`
+   - diff: `target/ts_diff_cases/failed/3v3v3-6c9aabe2aa79d92f/diff.txt`
+   - meta: `target/ts_diff_cases/failed/3v3v3-6c9aabe2aa79d92f/meta.json`
+2. `3v3v3-f2506ec63a25c5fa`
+   - `first_mismatch_idx = 172`
+   - input: `target/ts_diff_cases/failed/3v3v3-f2506ec63a25c5fa/input.txt`
+   - diff: `target/ts_diff_cases/failed/3v3v3-f2506ec63a25c5fa/diff.txt`
+   - meta: `target/ts_diff_cases/failed/3v3v3-f2506ec63a25c5fa/meta.json`
+3. `3v3v3-e74a295d9212e438`
+   - `first_mismatch_idx = 146`
+   - input: `target/ts_diff_cases/failed/3v3v3-e74a295d9212e438/input.txt`
+   - diff: `target/ts_diff_cases/failed/3v3v3-e74a295d9212e438/diff.txt`
+   - meta: `target/ts_diff_cases/failed/3v3v3-e74a295d9212e438/meta.json`
+
 ## `md5.js` 相关检查原则
 
 由于这组测试本质上是在逼近现有 JS 产物行为，因此分析失败 case 时，关于逻辑正确性的判断应遵循下面顺序：

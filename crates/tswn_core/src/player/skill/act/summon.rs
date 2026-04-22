@@ -9,7 +9,7 @@ use crate::player::{
 };
 use crate::rc4::RC4;
 
-use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name};
+use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, prepare_combat_minion};
 
 const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 
@@ -97,6 +97,7 @@ impl SkillTrait for SummonSkill {
         let mut summoned =
             crate::player::Player::new_and_init(Some(summon_team.clone()), summon_name.clone(), None, args.3.clone())
                 .expect("cannot init summon minion");
+        prepare_combat_minion(&mut summoned);
         summoned.build();
         summoned.attr[7] = (summoned.attr[7] / 3).max(1);
         summoned.attr[0] = 0;
@@ -138,9 +139,17 @@ impl SkillTrait for SummonSkill {
         skills.add_skill(Skill::new_with_id(0, 0));
         skills.add_skill(Skill::new_with_id(0, 0));
         skills.add_skill(Skill::new(0, Box::new(SummonExplodeSkill::new())));
-        // JS PlrSummon keeps k1 fixed as [fire, fire, explode] and only shuffles k2.
-        // Merge compares the fixed k1 slots, so we must preserve the stable slot keys here
-        // and only use `skills.skill` to model the shuffled action order.
+        // JS `PlrSummon.ac()/dm()/bs()` 的关键点：
+        //
+        // 1. 固定槽位 `k1` 永远是 `[fire, fire, explode]`
+        // 2. 只会打乱“哪个对象先行动/哪个对象拿到第几个等级”的遍历顺序视图
+        // 3. merge 读取的是固定槽位 `k1`，不是打乱后的主动顺序
+        //
+        // 所以 Rust 必须把这两层分开表达：
+        // - `slot_skill = [0, 1, 2]` 保留稳定的固定槽位语义
+        // - `skill = skill_order` 表达当前主动技能扫描顺序
+        //
+        // 否则后面一旦有人吞 summon，merge 就会按错误的顺序继承等级。
         for (slot, skill_key) in skill_order.iter().copied().enumerate() {
             let level = skill_level_from_slot(slot);
             let skill = skills.skill_by_id_mut(skill_key);
@@ -157,6 +166,8 @@ impl SkillTrait for SummonSkill {
                 }
             }
         }
+        // 固定槽位始终不洗牌；这里只记录 JS `k1` 的稳定视图。
+        skills.slot_skill = vec![0, 1, 2];
         skills.skill = skill_order.to_vec();
         ensure_summon_share_damage_skill(&mut skills, !charge_active);
         skills.boost_last();

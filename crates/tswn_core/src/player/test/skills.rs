@@ -236,6 +236,118 @@ fn hide_counts_pending_shadow_as_alive_ally_before_sync() {
 }
 
 #[test]
+fn hide_counts_revived_ally_as_alive_before_sync() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@same".to_string(), storage.clone()).unwrap();
+    let ally = Player::new_from_namerena_raw("ally@same".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker@other".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let ally_id = storage.just_insert_player(ally);
+    let attacker_id = storage.just_insert_player(attacker);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.status.hp = 120;
+        owner_mut.status.max_hp = 120;
+        owner_mut.skills.add_skill(Skill::new_with_id(64, 34));
+        owner_mut.skills.update_proc();
+    }
+    {
+        let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
+        ally_mut.status.hp = 0;
+        ally_mut.status.set_alive(false);
+        ally_mut.revive_with_hp(1);
+    }
+
+    storage.sync_groups(&[vec![owner_id, ally_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![attacker_id]]);
+    storage.queue_revival(ally_id);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .damage(8, attacker_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert!(updates.updates.iter().any(|x| x.message.contains("[隐匿]")));
+}
+
+#[test]
+fn hide_ignores_unsynced_alive_ally_without_pending_revival() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@same".to_string(), storage.clone()).unwrap();
+    let ally = Player::new_from_namerena_raw("ally@same".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker@other".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let ally_id = storage.just_insert_player(ally);
+    let attacker_id = storage.just_insert_player(attacker);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.status.hp = 120;
+        owner_mut.status.max_hp = 120;
+        owner_mut.skills.add_skill(Skill::new_with_id(64, 34));
+        owner_mut.skills.update_proc();
+    }
+    {
+        let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
+        ally_mut.status.hp = 0;
+        ally_mut.status.set_alive(false);
+        ally_mut.revive_with_hp(1);
+    }
+
+    storage.sync_groups(&[vec![owner_id, ally_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![attacker_id]]);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .damage(8, attacker_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert!(!updates.updates.iter().any(|x| x.message.contains("[隐匿]")));
+}
+
+#[test]
+fn hide_ignores_dead_ally_left_in_alive_group_until_sync() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@same".to_string(), storage.clone()).unwrap();
+    let ally = Player::new_from_namerena_raw("ally@same".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker@other".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let ally_id = storage.just_insert_player(ally);
+    let attacker_id = storage.just_insert_player(attacker);
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.status.hp = 120;
+        owner_mut.status.max_hp = 120;
+        owner_mut.skills.add_skill(Skill::new_with_id(64, 34));
+        owner_mut.skills.update_proc();
+    }
+
+    storage.sync_groups(&[vec![owner_id, ally_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![owner_id, ally_id], vec![attacker_id]]);
+
+    {
+        let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
+        ally_mut.status.hp = 0;
+        ally_mut.status.set_alive(false);
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .damage(8, attacker_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert!(!updates.updates.iter().any(|x| x.message.contains("[隐匿]")));
+}
+
+#[test]
 fn action_expires_berserk_and_charm_states() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();

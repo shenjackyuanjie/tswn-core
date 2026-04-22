@@ -278,6 +278,22 @@ fn small_seed_scores() {
 }
 
 #[test]
+fn case_d8c6_opening_matches_js_trace() {
+    let raw_input = "最光辉的时刻 #8ftphKKCk@Shabby_fish\n营救任务 #tmOaPuIoM@Shabby_fish".to_string();
+    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 10_000, true);
+    assert!(guard < 10_000, "case_d8c6 combat did not finish");
+    assert_eq!(
+        actual_lines[..3],
+        [
+            "最光辉的时刻潜行到营救任务身后".to_string(),
+            "营救任务潜行到最光辉的时刻身后".to_string(),
+            "营救任务发动背刺, 最光辉的时刻受到242点伤害".to_string(),
+        ]
+    );
+}
+
+#[test]
 fn prepared_runner_matches_raw_runner_across_modes_and_cases() {
     let library = prepared_parity_library();
     let modes = [
