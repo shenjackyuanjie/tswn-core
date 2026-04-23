@@ -2,18 +2,33 @@
 
 ## [0.2.20] - 2026-04-22
 
+### 修复
+
+- 修复 UTF-8 BOM (`U+FEFF`) 导致的首行解析异常，覆盖三条输入路径：
+  - `tswn_case_miner`：`load_library()` 与 `read_first_line()` 在读取后 strip BOM 前缀。
+  - `tswn-cli`：`read_stdin()` 与 `read_file()` 同理处理 BOM。
+  - `tswn_ds3`：`Config::load_from_path()` 在解析 JSON/YAML 前 strip BOM。
+  - 三者分别覆盖了号库输入、CLI 原始 namerena 输入、以及 DS3 配置文件的入口。
+
 ### 性能
 
 - 继续回收 `0.2.19` 在 `bench win-rate` 路径上的性能回退：
   - 优化 `SkillStorage` 的 dynamic `pre_action` 热路径，去掉 `pre_action()` 内部 clone，减少重复 lookup / contains，并把 membership 独立成哈希集，降低动态启停时的线性检查成本。
   - 优化 `Hide` 的 post_damage 热路径，改用借引用队伍视图、`pending_spawn` / `pending_revival` iterator 和 `SmallVec` 聚合，减少 group clone 与中间 `Vec` 分配。
   - 在 `Storage` 新增 `alive_group_len_containing(...)`，并将 `Assassinate` / `Berserk` / `Charm` / `Curse` / `Disperse` / `Exchange` / `Half` / `Slow` 的目标打分从 `alive_group_containing(...).len()` 线性扫描改成基于 team index 的 O(1) 查询。
+  - 在 `pick_smart_target()` / `pick_smart_target_with_level()`（`skill.rs` trait）和 `pick_targets()` / `pick_forced_attack_target()`（`impl_runtime.rs`）中增加 `selected.len() == 1` 提前返回，跳过完整的 scoring + ranking 流水线，降低单候选时的函数调用与 Vec 分配开销。
+  - 在 `tick.rs` 的 `select_targets()` 中将 `ally_dead` 构造从 `!ally_alive.contains(id)` 改为 `!is_alive_now(id)`，消除 `contains` 对 `ally_alive` 的线性扫描。
 - 按 `docs/performance.md` 的固定口径重跑当前工作树（`--release --features no_debug`，`tswn-cli bench win-rate ... --perf`）：
   - `aaa` vs `bbb`：`100k` 单线程 `1.887s`，多线程 `0.291s`；`1M` 单线程 `18.438s`，多线程 `2.784s`
   - `喘际瞬爆@昀澤` vs `蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall`：`100k` 单线程 `2.891s`，多线程 `0.471s`；`1M` 单线程 `28.488s`，多线程 `3.749s`
 - 相比 `0.2.14` 基线，当前回退已缩小到：
   - 单线程慢约 `1.6%~2.3%`
   - 多线程慢约 `7.9%~10.7%`
+
+### 文档
+
+- `docs/build_all.md`：全面迁移至 `uv run` 驱动的构建流程，新增 WSL/Linux 纯环境构建指南、uv 用户的 WSL 增强方案、快捷命令清单与版本对照表。
+- `scripts/README.md`：统一将命令示例从 `python scripts/...` 更新为 `uv run scripts/...`，补充 uv 环境说明。
 
 ### 验证
 

@@ -446,6 +446,11 @@ pub trait SkillTrait: Debug + Send + Sync {
         if selected.is_empty() {
             return Vec::new();
         }
+        if selected.len() == 1 {
+            let target = selected[0];
+            let _ = self.score_target(target, smart, (args.0, args.1, args.2, args.3));
+            return vec![target];
+        }
 
         let mut scored = selected
             .into_iter()
@@ -483,6 +488,11 @@ pub trait SkillTrait: Debug + Send + Sync {
         }
         if selected.is_empty() {
             return Vec::new();
+        }
+        if selected.len() == 1 {
+            let target = selected[0];
+            let _ = self.score_target_with_level(level, target, smart, (args.0, args.1, args.2, args.3));
+            return vec![target];
         }
 
         let mut scored = selected

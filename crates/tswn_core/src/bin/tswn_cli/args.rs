@@ -561,6 +561,7 @@ fn read_stdin() -> Result<String, clap::Error> {
     io::stdin()
         .read_to_string(&mut raw)
         .map_err(|err| cli_error(format!("读取 stdin 失败: {err}")))?;
+    let raw = strip_utf8_bom(&raw).to_string();
     if raw.trim().is_empty() {
         return Err(cli_error("未提供 raw_namerena 输入"));
     }
@@ -569,7 +570,8 @@ fn read_stdin() -> Result<String, clap::Error> {
 
 /// 从指定文件读取完整文本输入。
 fn read_file(path: &Path) -> Result<String, clap::Error> {
-    fs::read_to_string(path).map_err(|err| cli_error(format!("读取文件失败: {err}")))
+    let content = fs::read_to_string(path).map_err(|err| cli_error(format!("读取文件失败: {err}")))?;
+    Ok(strip_utf8_bom(&content).to_string())
 }
 
 /// 将命令行里的字面量 `\n` 还原成真实换行。
@@ -597,6 +599,11 @@ fn parse_min_wr(raw: &str) -> Result<u16, String> {
 
 /// 构造统一风格的 CLI 参数校验错误。
 fn cli_error(message: impl Into<String>) -> clap::Error { Cli::command().error(ErrorKind::ValueValidation, message.into()) }
+
+/// 去除 UTF-8 BOM (U+FEFF) 前缀。
+fn strip_utf8_bom(s: &str) -> &str {
+    s.strip_prefix('\u{feff}').unwrap_or(s)
+}
 
 /// 解析“每个非空行都是一个 `+` 分隔组”的文件内容。
 /// 返回转换后的 namerena 组字符串列表，组内成员之间用 `\n` 分隔。

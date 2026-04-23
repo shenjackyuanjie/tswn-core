@@ -10,12 +10,14 @@
 
 ## 前提
 
-- Windows 侧可用：`python`、`cargo`
+- Windows 侧可用：`uv`、`cargo`
 - WSL 侧可用：`cargo`
 - WSL Python 构建请使用仓库根目录下的 `.venv-wsl`
 
 说明：
 
+- 仓库使用 `uv` 管理 Python 环境（`.venv` 由 `uv` 创建）
+- Windows 侧的 Python 构建/聚合脚本推荐用 `uv run scripts/...` 替代 `python scripts/...`
 - `scripts/build_all.py` 不会现场构建 Python wheel，只会收集 `crates/tswn_py/dist/` 中已经存在的产物
 - `scripts/build_all.py` 会现场构建当前平台的 `capi` / `cli`
 - 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `libtswn_capi.so`，聚合脚本也会一并收集
@@ -27,13 +29,14 @@
 ### 1. 构建 Windows Python wheel
 
 ```powershell
-python scripts/build_py.py --clean
+uv run scripts/build_py.py --clean
 ```
 
 说明：
 
 - 这一步会清空 `crates/tswn_py/dist/`
 - 所以通常只在第一步做一次 `--clean`
+- 使用 `uv run` 会自动使用 `.venv` 中的 Python 环境，无需手动激活
 
 ### 2. 构建 WSL Python wheel
 
@@ -46,6 +49,7 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && pyt
 - WSL 下不要直接用系统 Python 跑这个脚本
 - 需要先激活 `.venv-wsl`
 - 否则脚本内部可能会误走别的环境，导致 `uv` / `build` 检测失败
+- WSL 侧如果也安装了 `uv`，可以考虑改用 `uv run scripts/build_py.py`（但需要确保 `.venv-wsl` 也是 `uv` 管理的）
 
 ### 3. 构建 WSL CLI
 
@@ -61,7 +65,7 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && car
 ### 4. 执行聚合打包
 
 ```powershell
-python scripts/build_all.py --release --clean
+uv run scripts/build_all.py --release --clean
 ```
 
 这一步会：
@@ -115,15 +119,72 @@ dist/all/tswn_core_0_2_13_capi_0_1_2_py_0_1_10_bundle.zip
   - `examples/`
   - `CHANGELOG`
 
-## 一次跑完的命令清单
+## 一次跑完的命令清单（完整版）
 
 如果只是按当前推荐流程完整跑一遍，可以直接依次执行：
 
+### Windows 平台（使用 uv）
+
 ```powershell
-python scripts/build_py.py --clean
+uv run scripts/build_py.py --clean
 wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && python scripts/build_py.py"
 wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_core --bin tswn-cli --release --features no_debug"
+uv run scripts/build_all.py --release --clean
+```
+
+### WSL / Linux 纯环境（仅构建 Linux 产物）
+
+如果只在 WSL/Linux 下构建，不需要 Windows 侧的产物：
+
+```bash
+# 激活 WSL venv
+. .venv-wsl/bin/activate
+
+# 构建 Linux Python wheel
+python scripts/build_py.py --clean
+
+# 构建 Linux CLI
+cargo build -p tswn_core --bin tswn-cli --release --features no_debug
+
+# 构建 Linux capi
+cargo build -p tswn_capi --release
+
+# 聚合打包（Linux 下只构建 cli + 收集 py wheel；capi 需提前构建好）
 python scripts/build_all.py --release --clean
+```
+
+### uv 用户的 WSL 增强方案
+
+如果 WSL 侧也安装了 `uv`，可以用 `uv` 统一管理 WSL 环境：
+
+```powershell
+# 在 WSL 中安装 uv（如果未安装）
+wsl sh -lc "curl -LsSf https://astral.sh/uv/install.sh | sh"
+
+# 然后用 uv run 替代直接 python 调用
+wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && uv run scripts/build_py.py"
+```
+
+## 备选：单个步骤的 uv 快捷命令
+
+### 仅构建 Windows Python wheel
+
+```powershell
+uv run scripts/build_py.py
+```
+
+### 仅构建（或更新）聚合包
+
+如果 wheel 没变、只需要重新打包 capi + cli：
+
+```powershell
+uv run scripts/build_all.py --release --clean
+```
+
+### 仅构建 Windows capi
+
+```powershell
+uv run scripts/build_capi.py --release
 ```
 
 ## 备注
@@ -135,3 +196,13 @@ python scripts/build_all.py --release --clean
 ```powershell
 wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && cargo build -p tswn_capi --release"
 ```
+
+## 版本对照
+
+当前构建产出版本：
+
+| 组件 | 版本 |
+|------|------|
+| tswn_core | 0.2.20 |
+| tswn_capi | 0.2.1 |
+| tswn_py | 0.1.11 |

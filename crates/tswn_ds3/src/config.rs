@@ -116,6 +116,7 @@ impl Config {
 
     pub fn load_from_path(path: &Path) -> Ds3Result<Self> {
         let data = fs::read_to_string(path)?;
+        let data = data.strip_prefix('\u{feff}').unwrap_or(&data);
         if path
             .extension()
             .and_then(|ext| ext.to_str())

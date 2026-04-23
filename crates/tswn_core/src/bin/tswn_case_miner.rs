@@ -484,8 +484,13 @@ fn parse_usize_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
     Ok(values)
 }
 
+fn strip_utf8_bom(s: &str) -> &str {
+    s.strip_prefix('\u{feff}').unwrap_or(s)
+}
+
 fn load_library(path: &Path) -> Result<Vec<String>, String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("读取号库失败: {e}"))?;
+    let raw = strip_utf8_bom(&raw);
     let mut seen = HashSet::new();
     let mut names = Vec::new();
     for line in raw.lines() {
@@ -686,6 +691,7 @@ fn parse_gitdir_file(git_entry: &Path) -> Option<PathBuf> {
 
 fn read_first_line(path: &Path) -> Option<String> {
     let raw = fs::read_to_string(path).ok()?;
+    let raw = strip_utf8_bom(&raw);
     raw.lines().next().map(str::trim).map(str::to_string).filter(|line| !line.is_empty())
 }
 

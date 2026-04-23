@@ -2,7 +2,8 @@
 
 仓库根目录下原本分散的 Python 辅助脚本统一收纳到这里。
 
-从仓库根目录运行时，命令形式统一为 `python scripts/<name>.py ...`。
+从仓库根目录运行时，推荐命令形式为 `uv run scripts/<name>.py ...`（Windows 侧使用 `uv` 管理环境），
+也可用 `python scripts/<name>.py ...`（需确保已激活虚拟环境）。
 
 ## build_all.py
 
@@ -14,9 +15,9 @@
 
 典型用法：
 
-- `python scripts/build_all.py --release`
-- `python scripts/build_all.py --release --clean`
-- `python scripts/build_all.py --bundle-name tswn_core_x_y_z_capi_a_b_c_py_m_n_k_bundle`
+- `uv run scripts/build_all.py --release`
+- `uv run scripts/build_all.py --release --clean`
+- `uv run scripts/build_all.py --bundle-name tswn_core_x_y_z_capi_a_b_c_py_m_n_k_bundle`
 
 默认输出位置：
 
@@ -39,9 +40,9 @@
 
 典型用法：
 
-- `python scripts/build_capi.py --release`
-- `python scripts/build_capi.py --release --clean`
-- `python scripts/build_capi.py --release --with-example-build`
+- `uv run scripts/build_capi.py --release`
+- `uv run scripts/build_capi.py --release --clean`
+- `uv run scripts/build_capi.py --release --with-example-build`
 
 默认输出位置：
 
@@ -61,9 +62,9 @@
 
 典型用法：
 
-- `python scripts/build_py.py`
-- `python scripts/build_py.py --clean`
-- `python scripts/build_py.py --verify`
+- `uv run scripts/build_py.py`
+- `uv run scripts/build_py.py --clean`
+- `uv run scripts/build_py.py --verify`
 
 默认输出位置：
 
@@ -74,7 +75,16 @@
 - 该脚本用于构建 Python wheel
 - 多平台 / 多环境产物可以共同放在 `crates/tswn_py/dist/` 下
 - 聚合打包脚本会直接收集这里已有的内容
+- 脚本本身已内建 `uv` 支持（自动安装 `build` 包等）
 
 ## gen_test_case.py
 
 生成测试 case 的辅助脚本。
+
+## 关于 uv
+
+仓库使用 `uv` 管理 Python 虚拟环境：
+
+- `.venv`（Windows 侧）由 `uv` 创建，`uv run` 会自动使用该环境
+- `.venv-wsl`（WSL 侧）是独立的 Linux 虚拟环境
+- 所有 `python scripts/...` 命令均可替换为 `uv run scripts/...`（Windows 侧推荐）

@@ -710,6 +710,11 @@ impl Player {
         if selected.is_empty() {
             return Vec::new();
         }
+        if selected.len() == 1 {
+            let target_id = selected[0];
+            let _ = skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
+            return vec![target_id];
+        }
 
         let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
             .into_iter()
@@ -943,6 +948,44 @@ impl Player {
             }
 
             return None;
+        }
+        if selected.len() == 1 {
+            let target_id = selected[0];
+            let score = storage
+                .get_player(&target_id)
+                .map(|target| match config.score_mode {
+                    ForcedAttackScoreMode::Default => randomer.rFFFF() as f64 + target.get_status().attract,
+                    ForcedAttackScoreMode::RandomAttract => randomer.rFFFF() as f64 * target.get_status().attract,
+                })
+                .unwrap_or(f64::MIN);
+            #[cfg(not(feature = "no_debug"))]
+            if debug_action_this {
+                let target_name = storage
+                    .get_player(&target_id)
+                    .map(|target| target.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!(
+                    "[forced_score] actor={} id={} rc4=({}, {}) target={} target_name={} score={}",
+                    self.id_name(),
+                    self.as_ptr(),
+                    randomer.i,
+                    randomer.j,
+                    target_id,
+                    target_name,
+                    score,
+                );
+                let ranked = vec![format!("{target_id}:{target_name}:{score}")];
+                eprintln!(
+                    "[forced_choice] actor={} id={} rc4=({}, {}) ranked={:?} chosen={:?}",
+                    self.id_name(),
+                    self.as_ptr(),
+                    randomer.i,
+                    randomer.j,
+                    ranked,
+                    Some(target_id),
+                );
+            }
+            return Some(target_id);
         }
 
         let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
