@@ -2,6 +2,21 @@
 
 > 坏了, 我真开始技术封锁了
 
+- 即日起 tswn 源码开启 Early Access 活动! (不是)
+  - 要源码给我 github id 就行
+- 我宣布我与 Github Copilot 的缘分到此为止!
+  - 唉，GitHub 也烧不起钱了
+  - 先是砍 Github Edu
+  - 再是砍 Copilot Pro
+  - 战至最后一刻，自刎归天得了(不是)
+- DeepSeek V4 也是发了
+  - DeepSeek 牛逼!
+  - 50% 的 1M MRCR v2 啊
+  - 不过 V4 预览版后训练还是差点意思
+    - DeepSeek 大人拿着 800B 的 V3 都能吭哧吭哧后训练一年
+    - 1.6T 的 V4 pro 估计也能训个一年半载的
+  - 20260429
+
 - 高考后开源~
   - 20260322
 
