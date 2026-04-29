@@ -12,12 +12,13 @@
 - `capi`: 现场构建并整理分发目录
 - `cli`: 现场构建并整理可执行文件
 - `py`: 只收集当前已经存在的 Python wheel / 产物，不现场构建
+- `wasm`: 现场构建 `tswn_wasm`，并整理浏览器可直接消费的 `wasm-bindgen` 包
 
 典型用法：
 
 - `uv run scripts/build_all.py --release`
 - `uv run scripts/build_all.py --release --clean`
-- `uv run scripts/build_all.py --bundle-name tswn_core_x_y_z_capi_a_b_c_py_m_n_k_bundle`
+- `uv run scripts/build_all.py --bundle-name tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle`
 
 默认输出位置：
 
@@ -26,13 +27,39 @@
 
 其中 bundle 名默认会按版本自动生成，类似：
 
-- `tswn_core_x_y_z_capi_a_b_c_py_m_n_k_bundle`
+- `tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle`
 
 打包结果中通常包含：
 
 - `capi/`: 头文件、动态库、C examples
 - `cli/`: 带版本号的 `tswn-cli` 可执行文件
 - `py/`: 当前已有 wheel 与 Python examples
+- `wasm/`: `pkg/`、原始 `.wasm`、静态页面 examples 与 changelog
+
+## build_wasm.py
+
+构建 `tswn_wasm`，并整理出浏览器可直接消费的分发目录。
+
+典型用法：
+
+- `uv run scripts/build_wasm.py`
+- `uv run scripts/build_wasm.py --release`
+- `uv run scripts/build_wasm.py --release --clean`
+
+默认输出位置：
+
+- `crates/tswn_wasm/dist/wasm/`
+
+结果目录通常包含：
+
+- `pkg/`: `wasm-bindgen` 生成的 JS glue 与 `.wasm`
+- `raw/`: cargo 原始 `.wasm` 产物
+- `examples/`: demo 页面与 README
+
+说明：
+
+- 该脚本依赖本机已安装 `wasm-bindgen-cli`
+- 默认使用 `--target web`，方便直接服务静态页面 demo
 
 ## build_capi.py
 

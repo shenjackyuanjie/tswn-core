@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-聚合打包脚本：一次性整理并压缩 `tswn_capi`、`tswn-cli` 以及现有 `tswn_py` 产物。
+聚合打包脚本：一次性整理并压缩 `tswn_capi`、`tswn-cli`、现有 `tswn_py` 产物，以及浏览器侧 `tswn_wasm` 包。
 
 设计目标：
 1) `capi`：现场构建并打包
 2) `cli`：现场构建并打包
 3) `py`：不现场构建，只收集当前仓库里已存在的 Python 分发产物
+4) `wasm`：现场构建 `tswn_wasm`，并用 `wasm-bindgen` 生成浏览器可直接消费的包
 4) 最终输出一个 zip
 
 默认输出结构（示例）：
 
-dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_bundle/
+dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle/
   README.txt
   MANIFEST.txt
   capi/
@@ -37,19 +38,28 @@ dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_bundle/
       CHANGELOG.md
     README.txt
     MANIFEST.txt
+    wasm/
+        pkg/
+        raw/
+        examples/
+        changelog/
+            CHANGELOG.md
+        README.txt
+        MANIFEST.txt
 
 用法示例：
   python scripts/build_all.py
   python scripts/build_all.py --release
   python scripts/build_all.py --release --clean
   python scripts/build_all.py -o dist/all
-  python scripts/build_all.py --bundle-name tswn_core_x_y_z_capi_a_b_c_py_m_n_k_bundle_win_x64
+    python scripts/build_all.py --bundle-name tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle_win_x64
   python scripts/build_all.py --skip-capi
   python scripts/build_all.py --skip-cli
 
 说明：
 - `py` 部分只打包现有产物，不调用 Python wheel 构建流程。
 - `capi` 部分优先复用 `scripts/build_capi.py`，以保证目录结构一致。
+- `wasm` 部分优先复用 `scripts/build_wasm.py`，以保证目录结构一致。
 - `cli` 部分直接执行 cargo build，然后把可执行文件及说明文件整理到结果目录。
 """
 
@@ -69,12 +79,15 @@ SCRIPTS_DIR = ROOT / "scripts"
 
 CRATE_CAPI_DIR = ROOT / "crates" / "tswn_capi"
 CRATE_PY_DIR = ROOT / "crates" / "tswn_py"
+CRATE_WASM_DIR = ROOT / "crates" / "tswn_wasm"
 CRATE_CORE_CARGO_TOML = ROOT / "crates" / "tswn_core" / "Cargo.toml"
 CRATE_CAPI_CARGO_TOML = CRATE_CAPI_DIR / "Cargo.toml"
 CRATE_PY_CARGO_TOML = CRATE_PY_DIR / "Cargo.toml"
+CRATE_WASM_CARGO_TOML = CRATE_WASM_DIR / "Cargo.toml"
 CORE_CHANGELOG = ROOT / "crates" / "tswn_core" / "CHANGELOG.md"
 CAPI_CHANGELOG = CRATE_CAPI_DIR / "CHANGELOG.md"
 PY_CHANGELOG = CRATE_PY_DIR / "CHANGELOG.md"
+WASM_CHANGELOG = CRATE_WASM_DIR / "CHANGELOG.md"
 UPDATE_DOCS_DIR = ROOT / "docs" / "update"
 LINUX_CAPI_ARTIFACT = ROOT / "target" / "release" / "libtswn_capi.so"
 LINUX_CLI_ARTIFACT = ROOT / "target" / "release" / "tswn-cli"
@@ -82,6 +95,7 @@ LINUX_CLI_ARTIFACT = ROOT / "target" / "release" / "tswn-cli"
 DEFAULT_OUTPUT_DIR = ROOT / "dist" / "all"
 
 CAPI_BUILD_SCRIPT = SCRIPTS_DIR / "build_capi.py"
+WASM_BUILD_SCRIPT = SCRIPTS_DIR / "build_wasm.py"
 
 
 def run(cmd: Sequence[str | Path], cwd: Path = ROOT) -> None:
@@ -123,7 +137,7 @@ def copy_tree_files(src_dir: Path, dst_dir: Path) -> None:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="构建并聚合打包 capi / cli / 现有 py 产物",
+        description="构建并聚合打包 capi / cli / 现有 py 产物 / wasm 包",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
@@ -167,6 +181,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--skip-py",
         action="store_true",
         help="跳过 py 打包",
+    )
+    p.add_argument(
+        "--skip-wasm",
+        action="store_true",
+        help="跳过 wasm 打包",
     )
     p.add_argument(
         "--capi-with-example-build",
@@ -248,6 +267,10 @@ def tswn_py_version() -> str:
     return _cargo_package_version(CRATE_PY_CARGO_TOML)
 
 
+def tswn_wasm_version() -> str:
+    return _cargo_package_version(CRATE_WASM_CARGO_TOML)
+
+
 def _version_token(version: str) -> str:
     return version.replace(".", "_").replace("-", "_")
 
@@ -257,6 +280,7 @@ def default_bundle_name() -> str:
         f"tswn_core_{_version_token(tswn_core_version())}"
         f"_capi_{_version_token(tswn_capi_version())}"
         f"_py_{_version_token(tswn_py_version())}"
+        f"_wasm_{_version_token(tswn_wasm_version())}"
         "_bundle"
     )
 
@@ -431,6 +455,24 @@ def build_capi(dst_dir: Path, args: argparse.Namespace) -> None:
     collect_existing_linux_capi_artifacts(dst_dir)
 
 
+def build_wasm(dst_dir: Path, args: argparse.Namespace) -> None:
+    ensure_exists(WASM_BUILD_SCRIPT, "build_wasm.py")
+
+    cmd: list[str | Path] = [
+        sys.executable,
+        WASM_BUILD_SCRIPT,
+        "--output-dir",
+        str(dst_dir),
+    ]
+    if args.release:
+        cmd.append("--release")
+    if args.cargo:
+        cmd.append("--cargo")
+        cmd += args.cargo
+
+    run(cmd, cwd=ROOT)
+
+
 def collect_py_artifacts(dst_dir: Path) -> tuple[list[Path], list[Path], list[Path]]:
     """
     返回：
@@ -545,6 +587,7 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         f"- `tswn_core`: `{tswn_core_version()}`",
         f"- `tswn_capi`: `{tswn_capi_version()}`",
         f"- `tswn_py`: `{tswn_py_version()}`",
+        f"- `tswn_wasm`: `{tswn_wasm_version()}`",
         "",
         "## 包含内容",
         "",
@@ -574,12 +617,14 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         f"- CLI: `cli/bin/{bundled_cli_binary_name(Path('tswn-cli'))}`、可选的 Linux `cli/bin/tswn-cli`，以及 `cli/changelog/`",
         "- C-API: `capi/include/tswn_capi.h`、`capi/lib/`（包含 Windows DLL、Windows staticlib `.lib` 与现有 Linux `.so`）以及 `capi/changelog/`",
         "- Python: `py/dist/*.whl`、`py/examples/` 与 `py/changelog/`",
+        "- WASM: `wasm/pkg/tswn_wasm.js`、`wasm/pkg/tswn_wasm_bg.wasm`、`wasm/examples/` 与 `wasm/changelog/`",
         "",
         "## 说明",
         "",
-        "- `capi/` 与 `cli/` 可以现场构建。",
+        "- `capi/`、`cli/` 与 `wasm/` 可以现场构建。",
         "- 若仓库里已经存在 Linux `so` / `tswn-cli` 产物，聚合包也会一并收集。",
         "- `py/` 只收集现有产物，不现场构建。",
+        "- `wasm/` 依赖本机可用的 `wasm-bindgen-cli`。",
         "- 最终 zip 为整个 bundle 目录的压缩包。",
         "",
     ]
@@ -718,6 +763,14 @@ def main(argv: list[str]) -> int:
         write_py_readme(py_dir, copied_files=copied_files, copied_dirs=copied_dirs)
         write_py_manifest(py_dir, source_hits=source_hits)
         enabled.append("py")
+
+    if args.skip_wasm:
+        skipped.append("wasm")
+    else:
+        wasm_dir = bundle_dir / "wasm"
+        build_wasm(wasm_dir, args)
+        package_component_changelog(wasm_dir, changelog_src=WASM_CHANGELOG)
+        enabled.append("wasm")
 
     write_root_readme(bundle_dir, enabled=enabled, skipped=skipped)
     write_root_manifest(

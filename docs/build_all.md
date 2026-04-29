@@ -6,11 +6,13 @@
 - WSL / Linux `tswn_py` wheel
 - WSL / Linux `tswn-cli`
 - Windows `capi` / `cli`
+- 浏览器侧 `tswn_wasm` 包
 - 最终 `build_all` 聚合包
 
 ## 前提
 
 - Windows 侧可用：`uv`、`cargo`
+- Windows 侧建议额外安装：`wasm-bindgen-cli`
 - WSL 侧可用：`cargo`
 - WSL Python 构建请使用仓库根目录下的 `.venv-wsl`
 
@@ -19,8 +21,9 @@
 - 仓库使用 `uv` 管理 Python 环境（`.venv` 由 `uv` 创建）
 - Windows 侧的 Python 构建/聚合脚本推荐用 `uv run scripts/...` 替代 `python scripts/...`
 - `scripts/build_all.py` 不会现场构建 Python wheel，只会收集 `crates/tswn_py/dist/` 中已经存在的产物
-- `scripts/build_all.py` 会现场构建当前平台的 `capi` / `cli`
+- `scripts/build_all.py` 会现场构建当前平台的 `capi` / `cli`，并构建 `tswn_wasm` 浏览器包
 - 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `libtswn_capi.so`，聚合脚本也会一并收集
+- `tswn_wasm` 打包默认依赖 `wasm-bindgen-cli`，可通过 `cargo install wasm-bindgen-cli` 安装
 
 ## 推荐顺序
 
@@ -72,6 +75,7 @@ uv run scripts/build_all.py --release --clean
 
 - 现场构建 Windows `tswn_capi`
 - 现场构建 Windows `tswn-cli`
+- 现场构建 `tswn_wasm` 浏览器包
 - 收集 `crates/tswn_py/dist/` 下已有的 wheel
 - 若存在 Linux `target/release/tswn-cli`，也会一起打进 bundle
 
@@ -101,8 +105,8 @@ dist/all/
 当前 bundle 命名规则示例：
 
 ```text
-dist/all/tswn_core_0_2_13_capi_0_1_2_py_0_1_10_bundle/
-dist/all/tswn_core_0_2_13_capi_0_1_2_py_0_1_10_bundle.zip
+dist/all/tswn_core_0_2_13_capi_0_1_2_py_0_1_10_wasm_0_1_0_bundle/
+dist/all/tswn_core_0_2_13_capi_0_1_2_py_0_1_10_wasm_0_1_0_bundle.zip
 ```
 
 ### 聚合包内容
@@ -117,6 +121,12 @@ dist/all/tswn_core_0_2_13_capi_0_1_2_py_0_1_10_bundle.zip
 - `py/`
   - 已有的 Windows / Linux wheel
   - `examples/`
+  - `CHANGELOG`
+- `wasm/`
+  - `pkg/tswn_wasm.js`
+  - `pkg/tswn_wasm_bg.wasm`
+  - `raw/tswn_wasm.wasm`
+  - `examples/demo.html`
   - `CHANGELOG`
 
 ## 一次跑完的命令清单（完整版）
