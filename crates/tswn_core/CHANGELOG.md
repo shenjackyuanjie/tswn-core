@@ -1,5 +1,18 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- 为 `win_rate` 模块新增 wasm 平台兼容层：
+  - `platform_default_win_rate_workers()`：wasm 下固定返回 1（浏览器不暴露 `std::thread`），非 wasm 平台继续使用 `available_parallelism` 自动检测。
+  - `platform_limit_win_rate_workers()`：wasm 下强制钳制为 1，非 wasm 平台仅做 `max(1)` 保底。
+  - `resolve_win_rate_workers()` 改为调用上述平台函数，确保 wasm 目标下胜率路径保持单线程。
+
+### 修复
+
+- `bench.rs`：将 `Option::map_or` 替换为 `is_none_or`（clippy lint）。
+
 ## [0.2.20] - 2026-04-22
 
 ### 修复

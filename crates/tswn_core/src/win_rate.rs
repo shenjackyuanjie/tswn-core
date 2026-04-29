@@ -7,6 +7,25 @@ use crate::{PreparedRunner, Runner};
 
 const PREPARED_WIN_RATE_PARALLEL_THRESHOLD: usize = 100;
 
+#[cfg(target_family = "wasm")]
+fn platform_default_win_rate_workers() -> usize { 1 }
+
+#[cfg(not(target_family = "wasm"))]
+fn platform_default_win_rate_workers() -> usize {
+    std::thread::available_parallelism()
+        .map(|x| x.get().saturating_mul(5).div_ceil(4))
+        .unwrap_or(1)
+}
+
+#[cfg(target_family = "wasm")]
+fn platform_limit_win_rate_workers(_workers: usize) -> usize {
+    // Browser wasm does not expose std thread spawning by default.
+    1
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn platform_limit_win_rate_workers(workers: usize) -> usize { workers.max(1) }
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WinRateTiming {
     pub init_nanos: u128,
@@ -35,13 +54,11 @@ pub fn use_js_profile_seed_schedule(eval_rq: f64) -> bool { eval_rq == crate::pl
 
 pub fn resolve_win_rate_workers(thread: u32, total: usize) -> usize {
     let workers = match thread {
-        0 => std::thread::available_parallelism()
-            .map(|x| x.get().saturating_mul(5).div_ceil(4))
-            .unwrap_or(1),
+        0 => platform_default_win_rate_workers(),
         1 => 1,
         n => n as usize,
     };
-    workers.min(total.max(1))
+    platform_limit_win_rate_workers(workers).min(total.max(1))
 }
 
 pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> RunnerResult<WinRateSummary> {

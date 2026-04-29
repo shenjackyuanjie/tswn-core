@@ -314,7 +314,7 @@ pub fn run_bench_batch_rate(
         progress.complete_player(elapsed);
 
         // 阈值过滤：avg 是百分比 (0-100), min_wr 是万分比 (0-10000)
-        let passes = min_wr.map_or(true, |t| avg * 100.0 >= t as f64);
+        let passes = min_wr.is_none_or(|t| avg * 100.0 >= t as f64);
 
         if passes {
             if verbose {
