@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>tswn_wasm Show Demo</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --sidebar-width: 344px;
+            --sky-0: #c8eefc;
+            --sky-1: #6cc4ec;
+            --sky-2: #2aa2d6;
+            --sky-3: #1277ae;
+            --paper: #fbfdff;
+            --paper-2: #f1f8fc;
+            --ink: #214052;
+            --line: #c6e1ef;
+            --shadow: rgba(36, 86, 112, 0.2);
+            --damage: #d84d45;
+            --recover: #17985a;
+            --skill: #1877c7;
+            --knockout: #b06a0e;
+            --hp: #49c267;
+            --oldhp: #ef7f79;
+            --healhp: #3ca9ff;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            overflow: hidden;
+            font-family: "Microsoft YaHei", Consolas, Menlo, Monaco, "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace, serif;
+            font-size: 15px;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(108, 196, 236, 0.45), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(42, 162, 214, 0.28), transparent 36%),
+                linear-gradient(180deg, #eaf8ff 0%, #f8fcfe 60%, #edf7fb 100%);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        button,
+        textarea,
+        input {
+            font: inherit;
+        }
+
+        button {
+            background: #888;
+            border: solid white 1px;
+            color: #fff;
+            cursor: pointer;
+            box-shadow: 0 0 3px 0 rgba(0, 0, 0, 0.25);
+            outline: none;
+        }
+
+        button:hover {
+            background: linear-gradient(0deg, #888 0%, #999 100%);
+            box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .main {
+            position: absolute;
+            inset: 0;
+        }
+
+        .battle-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hlist {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: var(--sidebar-width);
+            padding: 0;
+            overflow: auto;
+            border-right: 1px solid #6cc4ec;
+            background: rgba(251, 253, 255, 0.92);
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.8);
+        }
+
+        .hbody {
+            position: absolute;
+            inset: 0 0 0 var(--sidebar-width);
+            overflow: auto;
+            background: rgba(255, 255, 255, 0.76);
+            backdrop-filter: blur(12px);
+        }
+
+        .plist-header {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            display: grid;
+            gap: 4px;
+            padding: 10px 12px 9px;
+            background: linear-gradient(180deg, rgba(108, 196, 236, 0.98) 0%, rgba(42, 162, 214, 0.98) 100%);
+            color: white;
+            box-shadow: 0 8px 20px rgba(18, 119, 174, 0.2);
+        }
+
+        .plist-title {
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .plist-subtitle,
+        .plist-meta,
+        .version-note,
+        .input-note,
+        .winner-note,
+        .winner-subnote {
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .plist-subtitle,
+        .winner-subnote {
+            opacity: 0.9;
+        }
+
+        .plist-meta {
+            opacity: 0.95;
+        }
+
+        .player-groups {
+            display: grid;
+            gap: 4px;
+            padding: 6px;
+        }
+
+        .team-block {
+            display: grid;
+            gap: 2px;
+        }
+
+        .team-label {
+            font-size: 11px;
+            line-height: 1.2;
+            color: var(--sky-3);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .player-table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 1px solid rgba(198, 225, 239, 0.95);
+            border-radius: 10px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: 0 6px 14px rgba(18, 119, 174, 0.06);
+        }
+
+        .player-table th,
+        .player-table td {
+            padding: 2px 3px;
+            vertical-align: middle;
+            font-size: 10px;
+            line-height: 1.15;
+        }
+
+        .player-table th {
+            background: rgba(24, 119, 199, 0.08);
+            color: var(--sky-3);
+            font-weight: 700;
+            white-space: nowrap;
+            text-align: center;
+        }
+
+        .player-table td {
+            border-top: 1px solid rgba(198, 225, 239, 0.75);
+        }
+
+        .player-name-head {
+            width: 118px;
+            text-align: left;
+        }
+
+        .player-hp-head {
+            width: 60px;
+        }
+
+        .player-mix-head {
+            width: 48px;
+        }
+
+        .player-state-head {
+            width: 50px;
+        }
+
+        .player-row.is-dead {
+            opacity: 0.68;
+        }
+
+        .player-name-cell {
+            text-align: left;
+            padding-left: 4px;
+        }
+
+        .player-name-wrap {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .plr_list {
+            display: block;
+            position: relative;
+            padding: 10px;
+            border-radius: 14px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 248, 252, 0.92) 100%);
+            border: 1px solid rgba(198, 225, 239, 0.95);
+            box-shadow: 0 10px 20px rgba(18, 119, 174, 0.08);
+        }
+
+        .plr_list.is-dead {
+            background: linear-gradient(180deg, rgba(236, 240, 243, 0.98) 0%, rgba(226, 232, 237, 0.92) 100%);
+            opacity: 0.82;
+        }
+
+        .plr_body {
+            display: grid;
+            gap: 6px;
+        }
+
+        .name-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sgl {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            image-rendering: pixelated;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+            flex: 0 0 auto;
+        }
+
+        .name {
+            display: inline-block;
+            margin: 0;
+            padding: 1px 4px;
+            border-radius: 4px;
+            background: #f3f8fb;
+            text-shadow: 1px 1px rgba(255, 255, 255, 0.9);
+            font-weight: 700;
+            line-height: 1.2;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .name.namedie {
+            background: #dfe5ea;
+        }
+
+        .small {
+            font-size: 11px;
+            line-height: 1.45;
+            color: #0077bb;
+        }
+
+        .small.dim {
+            color: var(--muted);
+        }
+
+        .player-stat-cell,
+        .player-state-cell {
+            text-align: center;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            color: var(--ink);
+        }
+
+        .player-hp-cell {
+            color: var(--sky-3);
+            font-weight: 700;
+        }
+
+        .detail-line {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 8px;
+        }
+
+        .detail-pill,
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 1px 6px;
+            border-radius: 999px;
+            background: rgba(24, 119, 199, 0.08);
+            color: #0f74b9;
+        }
+
+        .status-pill.dead {
+            background: rgba(176, 106, 14, 0.15);
+            color: var(--knockout);
+        }
+
+        .status-pill.frozen {
+            background: rgba(58, 169, 255, 0.16);
+            color: #1277ae;
+        }
+
+        .player-table .status-pill {
+            padding: 0 4px;
+            border-radius: 4px;
+            font-size: 10px;
+            justify-content: center;
+        }
+
+        .hpwrap {
+            position: relative;
+            height: 8px;
+            margin-top: 2px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(198, 225, 239, 0.5);
+        }
+
+        .hpwrap.compact {
+            height: 4px;
+            margin-top: 2px;
+        }
+
+        .maxhp,
+        .oldhp,
+        .healhp,
+        .hp {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            transition: width 260ms ease;
+        }
+
+        .maxhp {
+            width: 100%;
+            background: rgba(221, 221, 208, 0.58);
+        }
+
+        .oldhp {
+            background: var(--oldhp);
+            opacity: 0.75;
+        }
+
+        .healhp {
+            background: var(--healhp);
+            opacity: 0.4;
+        }
+
+        .hp {
+            background: linear-gradient(90deg, #4cce69 0%, var(--hp) 100%);
+        }
+
+        .pbody-shell {
+            min-height: 100%;
+            display: grid;
+            grid-template-rows: auto 1fr;
+        }
+
+        .pbody-header {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(198, 225, 239, 0.95);
+            background: rgba(251, 253, 255, 0.92);
+            backdrop-filter: blur(12px);
+        }
+
+        .header-copy {
+            display: grid;
+            gap: 2px;
+        }
+
+        .header-title {
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .battleRows {
+            display: block;
+            padding: 8px 10px 20px;
+        }
+
+        .welcome {
+            display: grid;
+            gap: 6px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 248, 252, 0.94) 100%);
+            border: 1px solid rgba(198, 225, 239, 0.95);
+            box-shadow: 0 10px 20px rgba(18, 119, 174, 0.08);
+            line-height: 1.4;
+        }
+
+        .welcome strong {
+            color: var(--sky-3);
+        }
+
+        .round-block {
+            display: block;
+            margin-bottom: 1px;
+            padding: 1px 0 3px;
+            border-bottom: 1px solid rgba(198, 225, 239, 0.95);
+        }
+
+        .round-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: rgba(42, 162, 214, 0.1);
+            color: var(--sky-3);
+            font-size: 11px;
+            line-height: 1.2;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .row {
+            display: block;
+            line-height: 1.28;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        .row + .row {
+            margin-top: 0;
+        }
+
+        .winner-line {
+            margin-top: 1px;
+        }
+
+        .msg {
+            display: inline;
+        }
+
+        .msg-sep {
+            margin: 0 1px 0 0;
+            color: var(--ink);
+        }
+
+        .frame-chip {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 6px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: rgba(42, 162, 214, 0.1);
+            color: var(--sky-3);
+            font-size: 10px;
+            line-height: 1.1;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            vertical-align: baseline;
+        }
+
+        .msg.damage {
+            color: var(--damage);
+        }
+
+        .msg.recover {
+            color: var(--recover);
+        }
+
+        .msg.knockout {
+            color: var(--knockout);
+            font-weight: 700;
+        }
+
+        .row.separator {
+            height: 4px;
+        }
+
+        .message-number {
+            font-weight: 700;
+        }
+
+        .actor-token {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-right: 2px;
+            vertical-align: baseline;
+        }
+
+        .msg-avatar {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            image-rendering: pixelated;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+            flex: 0 0 auto;
+        }
+
+        .actor-name {
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .damage .message-number {
+            color: var(--damage);
+        }
+
+        .recover .message-number {
+            color: var(--recover);
+        }
+
+        .skill-token {
+            color: var(--skill);
+            font-weight: 700;
+        }
+
+        .winner-row {
+            display: inline-flex;
+            margin-top: 10px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(176, 106, 14, 0.12);
+            color: var(--knockout);
+            font-size: 12px;
+            line-height: 1.4;
+            font-weight: 700;
+        }
+
+        .panels {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .panel {
+            position: absolute;
+            inset: 0;
+            width: min(340px, calc(100vw - 24px));
+            min-height: 340px;
+            max-height: min(540px, calc(100vh - 24px));
+            margin: auto;
+            padding: 8px;
+            padding-top: 0;
+            border-radius: 14px;
+            background: linear-gradient(100deg, #6cc4ec 0%, #2aa2d6 100%);
+            box-shadow: 0 20px 40px var(--shadow);
+            pointer-events: auto;
+            color: white;
+        }
+
+        .panel[hidden] {
+            display: none;
+        }
+
+        .panel > * {
+            margin-top: 8px;
+        }
+
+        .vertical {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .horizontal {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+
+        .spacer {
+            flex: 1 1 auto;
+        }
+
+        .paneltitle {
+            width: 100%;
+            padding-top: 10px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        #textdiv {
+            position: relative;
+            width: 100%;
+            height: 324px;
+            flex: 1 1 324px;
+        }
+
+        textarea {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            resize: none;
+            border: none;
+            border-radius: 8px;
+            padding: 8px;
+            box-shadow: inset 0 0 3px 0 rgba(50, 50, 50, 0.5);
+            color: var(--ink);
+            background: rgba(255, 255, 255, 0.98);
+        }
+
+        .goBar {
+            position: relative;
+            width: 100%;
+            height: 34px;
+        }
+
+        .goBtn {
+            position: absolute;
+            left: 0;
+            right: 0;
+            width: 112px;
+            margin: auto;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: 700;
+            padding: 5px 8px;
+        }
+
+        .goBtn:disabled {
+            cursor: progress;
+            opacity: 0.8;
+        }
+
+        .picon,
+        .micon {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: #888;
+        }
+
+        .picon {
+            width: 28px;
+            height: 28px;
+        }
+
+        .micon {
+            width: 34px;
+            height: 34px;
+        }
+
+        .svgicon {
+            width: 24px;
+            height: 24px;
+            position: absolute;
+            left: 2px;
+            top: 2px;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 24px 24px;
+        }
+
+        .closeBtn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            margin: 0;
+        }
+
+        .sampleBtn {
+            position: absolute;
+            right: 4px;
+            top: 2px;
+        }
+
+        .fastforward {
+            background-image: url("data:image/svg+xml;utf8,%3Csvg fill='white' height='24' width='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z'/%3E%3C/svg%3E");
+        }
+
+        .refresh {
+            background-image: url("data:image/svg+xml;utf8,%3Csvg fill='white' height='24' width='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z'/%3E%3C/svg%3E");
+        }
+
+        .edit {
+            background-image: url("data:image/svg+xml;utf8,%3Csvg fill='white' height='24' width='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 17.25V21h3.75l11-11.03-3.75-3.75L3 17.25zm14.71-9.04a.996.996 0 0 0 0-1.41l-2.5-2.5a.996.996 0 1 0-1.41 1.41l2.5 2.5c.39.38 1.03.39 1.41 0z'/%3E%3C/svg%3E");
+        }
+
+        .add {
+            background-image: url("data:image/svg+xml;utf8,%3Csvg fill='white' height='24' width='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z'/%3E%3C/svg%3E");
+        }
+
+        .close {
+            background-image: url("data:image/svg+xml;utf8,%3Csvg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'/%3E%3C/svg%3E");
+        }
+
+        .panelstatus {
+            width: 100%;
+            min-height: 20px;
+            text-align: center;
+            font-size: 12px;
+            line-height: 1.45;
+            opacity: 0.95;
+        }
+
+        .panelstatus.error {
+            color: #ffedeb;
+        }
+
+        .panelfooter {
+            width: 100%;
+            display: grid;
+            gap: 2px;
+            text-align: center;
+            opacity: 0.95;
+        }
+
+        .endcard {
+            width: 100%;
+            flex: 1 1 auto;
+            display: grid;
+            place-items: center;
+            padding: 16px 18px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.18);
+            text-align: center;
+        }
+
+        .winner-note {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .winner-names {
+            font-size: 20px;
+            line-height: 1.4;
+            font-weight: 700;
+        }
+
+        .controlbar {
+            position: absolute;
+            right: 16px;
+            bottom: 16px;
+            display: flex;
+            gap: 10px;
+            z-index: 4;
+        }
+
+        .controlbar .micon.is-active {
+            background: linear-gradient(180deg, #1277ae 0%, #0b5f8c 100%);
+        }
+
+        .version-marker {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            z-index: 4;
+            display: inline-flex;
+            gap: 10px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.82);
+            border: 1px solid rgba(198, 225, 239, 0.95);
+            box-shadow: 0 8px 18px rgba(18, 119, 174, 0.08);
+        }
+
+        @media (max-width: 900px) {
+            .hlist {
+                position: relative;
+                width: 100%;
+                max-height: 42vh;
+                border-right: none;
+                border-bottom: 1px solid #6cc4ec;
+            }
+
+            .hbody {
+                position: relative;
+                inset: auto;
+                width: 100%;
+                min-height: 58vh;
+            }
+
+            .battle-stage {
+                overflow: auto;
+            }
+
+            .controlbar {
+                right: 12px;
+                bottom: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="version-marker small">
+        <span id="versionInfo">wrapper: -</span>
+        <span id="coreVersionInfo">core: -</span>
+        <span id="modulePathInfo">module: -</span>
+    </div>
+
+    <div class="main" id="showApp">
+        <div class="battle-stage">
+            <aside class="hlist plist">
+                <div class="plist-header">
+                    <div class="plist-title">名字竞技场</div>
+                    <div class="plist-subtitle">tswn_wasm show demo，尽量复刻原版与 fast-namerena 的观感。</div>
+                    <div id="plistMeta" class="plist-meta">输入名字后点击开始，左侧会显示角色状态，右侧自动播放整场战斗。</div>
+                </div>
+                <div id="playerList" class="player-groups">
+                    <div class="welcome">
+                        <div><strong>战斗还没开始。</strong></div>
+                        <div>这个页面是 Fight-only 的 show 风格演示，不再混合胜率功能。</div>
+                        <div>点击右侧输入面板里的 <strong>开始</strong>，会按回放顺序自动推进整场战斗。</div>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="hbody pbody">
+                <div class="pbody-shell">
+                    <div class="pbody-header">
+                        <div class="header-copy">
+                            <div class="header-title">战斗过程</div>
+                            <div id="headerMeta" class="small dim">目前显示的是 show 风格回放视图。</div>
+                        </div>
+                        <div class="version-note small dim">自动使用 FightSession 捕获 replay，并按帧播放。</div>
+                    </div>
+                    <div id="battleRows" class="battleRows">
+                        <div class="welcome">
+                            <div><strong>原始网页风格的 show 页面</strong></div>
+                            <div>这里会按回合追加战斗记录，数字伤害、回复、技能标签都会保留。</div>
+                            <div>你可以用右下角按钮切换快进、重新播放，或重新打开输入面板。</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="panels">
+            <div id="inputPanel" class="panel vertical">
+                <div class="paneltitle">名字竞技场</div>
+                <div id="textdiv">
+                    <textarea id="input_name" placeholder="每行输入一个名字&#10;&#10;组队对战时用空行隔开组队"></textarea>
+                </div>
+                <div id="inputStatus" class="panelstatus">会使用 show 风格自动播放整场战斗。</div>
+                <div class="panelfooter">
+                    <div class="input-note">每行输入一个名字。</div>
+                    <div class="input-note">组队战时用空行分组，效果与原站一致。</div>
+                </div>
+                <div class="goBar">
+                    <button id="startBtn" class="goBtn">开 始</button>
+                    <button id="sampleBtn" class="picon sampleBtn" title="填入示例输入" aria-label="填入示例输入">
+                        <div class="svgicon add"></div>
+                    </button>
+                </div>
+                <button id="closeInputBtn" class="picon closeBtn" title="关闭输入面板" aria-label="关闭输入面板">
+                    <div class="svgicon close"></div>
+                </button>
+            </div>
+
+            <div id="endPanel" class="panel vertical" hidden>
+                <div class="paneltitle">战斗结束</div>
+                <div class="endcard">
+                    <div class="winner-note">胜者</div>
+                    <div id="winnerNames" class="winner-names">-</div>
+                    <div id="winnerNote" class="winner-subnote">你可以重新播放当前回放，或者重新打开输入面板换一组名字。</div>
+                </div>
+                <div class="goBar">
+                    <button id="playAgainBtn" class="goBtn">再播一次</button>
+                    <button id="editNamesBtn" class="goBtn secondary">重新输入</button>
+                </div>
+                <button id="closeEndBtn" class="picon closeBtn" title="关闭结束面板" aria-label="关闭结束面板">
+                    <div class="svgicon close"></div>
+                </button>
+            </div>
+        </div>
+
+        <div class="controlbar">
+            <button id="inputBtn" class="micon" title="打开输入面板" aria-label="打开输入面板">
+                <div class="svgicon edit"></div>
+            </button>
+            <button id="fastBtn" class="micon" title="切换快进" aria-label="切换快进">
+                <div class="svgicon fastforward"></div>
+            </button>
+            <button id="refreshBtn" class="micon" title="重新播放" aria-label="重新播放">
+                <div class="svgicon refresh"></div>
+            </button>
+        </div>
+
+    </div>
+
+    <script type="module" src="./show.js?v=20260429d"></script>
+</body>
+</html>
