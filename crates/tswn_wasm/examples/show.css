@@ -369,6 +369,24 @@ button:hover {
     background: linear-gradient(90deg, #4cce69 0%, var(--hp) 100%);
 }
 
+.mpwrap {
+    position: relative;
+    height: 3px;
+    margin-top: 1px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(198, 225, 239, 0.5);
+}
+
+.mp {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    transition: width 260ms ease;
+    background: linear-gradient(90deg, #3ca9ff 0%, #1877c7 100%);
+}
+
 .pbody-shell {
     min-height: 100%;
     display: grid;

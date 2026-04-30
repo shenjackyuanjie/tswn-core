@@ -228,9 +228,25 @@ function renderIdleState() {
 function renderPlayers(players, states, previousStates = states) {
     const stateMap = buildStateMap(states);
     const previousStateMap = buildStateMap(previousStates);
-    const teams = new Map();
 
-    for (const player of players) {
+    // 补上 states 里有但初始 players 里没有的召唤单位
+    const knownIds = new Set(players.map((p) => p.id));
+    const allPlayers = [...players];
+    for (const state of states) {
+        if (!knownIds.has(state.id)) {
+            knownIds.add(state.id);
+            allPlayers.push({
+                id: state.id,
+                teamIndex: 0,
+                idName: `player_${state.id}`,
+                displayName: `#${state.id}`,
+                iconPngBase64: null,
+            });
+        }
+    }
+
+    const teams = new Map();
+    for (const player of allPlayers) {
         const items = teams.get(player.teamIndex) ?? [];
         items.push(player);
         teams.set(player.teamIndex, items);
@@ -255,6 +271,10 @@ function renderPlayers(players, states, previousStates = states) {
                     const nameClass = state.alive ? "name" : "name namedie";
                     const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
 
+                    // MP 蓝条：用 magic 作为 max 参考
+                    const maxMp = state.magic > 0 ? state.magic : (state.mp > 0 ? state.mp : 1);
+                    const mpPercent = Math.max(0, Math.min(100, (state.mp / maxMp) * 100));
+
                     return `
                         <tr class="player-row${deadClass}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
                             <td class="player-name-cell">
@@ -268,9 +288,12 @@ function renderPlayers(players, states, previousStates = states) {
                                     <div class="healhp" style="left:${healStart.toFixed(2)}%;width:${healWidth.toFixed(2)}%"></div>
                                     <div class="hp" style="width:${hpPercent.toFixed(2)}%"></div>
                                 </div>
+                                <div class="mpwrap">
+                                    <div class="mp" style="width:${mpPercent.toFixed(2)}%"></div>
+                                </div>
                             </td>
                             <td class="player-stat-cell player-hp-cell">${state.hp}/${state.maxHp}</td>
-                            <td class="player-stat-cell">${state.mp}/${state.speed}</td>
+                            <td class="player-stat-cell">${state.mp}/${state.magic}</td>
                             <td class="player-stat-cell">${state.attack}/${state.defense}</td>
                             <td class="player-state-cell"><span class="${stateClass}">${statusText(state)}</span></td>
                         </tr>
@@ -286,7 +309,7 @@ function renderPlayers(players, states, previousStates = states) {
                             <tr>
                                 <th class="player-name-head">角色</th>
                                 <th class="player-hp-head">HP</th>
-                                <th class="player-mix-head">MP/速</th>
+                                <th class="player-mix-head">MP/魔</th>
                                 <th class="player-mix-head">攻/防</th>
                                 <th class="player-state-head">状态</th>
                             </tr>
