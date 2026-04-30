@@ -172,7 +172,7 @@ function actorHpMetrics(state, previousState = state) {
     const maxHp = Math.max(1, state.maxHp, previousState?.maxHp ?? 0);
     const hp = Math.max(0, Math.min(maxHp, state.hp));
     const previousHp = Math.max(0, Math.min(maxHp, previousState?.hp ?? hp));
-    const totalWidth = Math.max(20, Math.min(56, 16 + Math.round(Math.sqrt(maxHp) * 2.8)));
+    const totalWidth = Math.max(20, Math.min(56, 16 + Math.round(Math.sqrt(maxHp) * 2.8))) * 1.5;
     const fillWidth = hp > 0 ? Math.max(1, Math.round((hp / maxHp) * totalWidth)) : 0;
     const previousWidth = previousHp > 0 ? Math.max(1, Math.round((previousHp / maxHp) * totalWidth)) : 0;
     const deltaWidth = previousHp > hp ? Math.max(1, previousWidth - fillWidth) : 0;
@@ -435,8 +435,9 @@ function renderPlayers(players, states, previousStates = states) {
 }
 
 function appendFrame(frame, roundIndex, previousStates = frame.states) {
-    const stateMap = buildStateMap(frame.states);
     const previousStateMap = buildStateMap(previousStates);
+    // 帧内逐次扣血：running 为每次 hit 前的 HP，初始为上一帧末
+    const running = new Map(previousStateMap);
     const rows = [];
     let segments = [];
 
@@ -460,7 +461,26 @@ function appendFrame(frame, roundIndex, previousStates = frame.states) {
         }
 
         const tone = classifyMessage(message);
-        segments.push(`<span class="msg ${tone}">${highlightMessage(update, tone, stateMap, previousStateMap)}</span>`);
+        // 构建当次 hit 后的临时 state，让血条反映当次伤害后的 HP
+        const hitState = new Map(running);
+        const value = update.param ?? update.score ?? 0;
+        if (value > 0) {
+            const applyDelta = (id) => {
+                const cur = hitState.get(id);
+                if (!cur || cur.maxHp <= 0) return;
+                if (tone === 'damage') {
+                    hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
+                } else if (tone === 'recover') {
+                    hitState.set(id, { ...cur, hp: Math.min(cur.maxHp, cur.hp + value) });
+                }
+            };
+            if (update.targetId != null) applyDelta(update.targetId);
+            if (Array.isArray(update.targetIds)) update.targetIds.forEach(applyDelta);
+        }
+        segments.push(`<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running)}</span>`);
+        // 更新 running 为 hit 后状态，供同一帧后续 hit 使用
+        running.clear();
+        for (const [k, v] of hitState) running.set(k, v);
     }
 
     flushRow();
