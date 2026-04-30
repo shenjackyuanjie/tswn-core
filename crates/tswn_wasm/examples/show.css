@@ -225,6 +225,18 @@ button:hover {
     opacity: 0.68;
 }
 
+.player-row.is-caster {
+    background: rgba(232, 168, 56, 0.14);
+}
+
+.player-row.is-target {
+    background: rgba(216, 77, 69, 0.14);
+}
+
+.player-row.is-caster.is-target {
+    background: rgba(192, 96, 160, 0.16);
+}
+
 .player-name-cell {
     text-align: left;
     padding-left: 4px;

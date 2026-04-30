@@ -289,7 +289,7 @@ function renderIdleState() {
     headerMeta.textContent = "目前显示的是 show 风格回放视图。";
 }
 
-function renderPlayers(players, states, previousStates = states) {
+function renderPlayers(players, states, previousStates = states, involved = null) {
     const stateMap = buildStateMap(states);
     const previousStateMap = buildStateMap(previousStates);
 
@@ -344,6 +344,12 @@ function renderPlayers(players, states, previousStates = states) {
                     const healStart = Math.min(previousPercent, hpPercent);
                     const healWidth = Math.max(0, hpPercent - previousPercent);
                     const deadClass = state.alive ? "" : " is-dead";
+                    const involvedClass = involved
+                        ? (involved.casters.has(player.id) && involved.targets.has(player.id) ? " is-caster is-target"
+                            : involved.casters.has(player.id) ? " is-caster"
+                            : involved.targets.has(player.id) ? " is-target"
+                            : "")
+                        : "";
                     const nameClass = state.alive ? "name" : "name namedie";
                     const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
 
@@ -354,7 +360,7 @@ function renderPlayers(players, states, previousStates = states) {
                         : 0;
 
                     return `
-                        <tr class="player-row${deadClass}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
+                        <tr class="player-row${deadClass}${involvedClass}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
                             <td class="player-name-cell">
                                 <div class="player-name-wrap">
                                     <img class="sgl" src="${iconSrc(player.iconPngBase64)}" alt="${escapeHtml(player.displayName)}">
@@ -564,7 +570,13 @@ async function playReplay(replay) {
             return;
         }
         appendFrame(frame, index, previousStates);
-        renderPlayers(replay.players, frame.states, previousStates);
+        const involved = { casters: new Set(), targets: new Set() };
+        for (const update of frame.updates) {
+            if (update.casterId != null) involved.casters.add(update.casterId);
+            if (update.targetId != null) involved.targets.add(update.targetId);
+            if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => involved.targets.add(id));
+        }
+        renderPlayers(replay.players, frame.states, previousStates, involved);
         previousStates = frame.states;
         await sleep(playbackDelay(frame));
     }
@@ -573,7 +585,7 @@ async function playReplay(replay) {
         return;
     }
 
-    renderPlayers(replay.players, replay.finalStates, previousStates);
+    renderPlayers(replay.players, replay.finalStates, previousStates, null);
     winnerNames.textContent = winnerNamesText(replay);
     winnerNote.textContent = `共播放 ${replay.frames.length} 帧，winnerIds=${JSON.stringify(replay.winnerIds)}。`;
     openPanel(endPanel);
