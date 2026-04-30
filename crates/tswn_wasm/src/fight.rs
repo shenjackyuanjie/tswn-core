@@ -50,6 +50,30 @@ fn collect_players(
     Ok((players, names))
 }
 
+/// 追溯幻影/分身/使魔的根本体 ID。如果玩家本身不是 minion，返回 None。
+fn root_owner_id(storage: &tswn_core::engine::storage::Storage, start_id: PlrId) -> Option<PlrId> {
+    use tswn_core::player::skill::act::minion::MinionRuntimeState;
+    let mut current = start_id;
+    // 先检查自己是不是 minion
+    let first = storage.get_player_or_pending(&current)?;
+    if first.get_state::<MinionRuntimeState>().is_none() {
+        return None;
+    }
+    // 追溯 owner 链直到非 minion
+    loop {
+        let Some(plr) = storage.get_player_or_pending(&current) else {
+            return None;
+        };
+        let Some(minion) = plr.get_state::<MinionRuntimeState>() else {
+            return Some(current);
+        };
+        let Some(owner) = minion.owner else {
+            return None;
+        };
+        current = owner;
+    }
+}
+
 fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<PlayerState>> {
     // 收集所有当前玩家（含召唤单位），保持初始顺序 + 新单位追加
     let mut seen: std::collections::HashSet<PlrId> = std::collections::HashSet::new();
@@ -70,10 +94,12 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
         let Some(player) = runner.storage.get_player(player_id) else {
             continue;
         };
+        let owner_id = root_owner_id(&runner.storage, *player_id);
         let status = player.get_status();
         states.push(PlayerState {
             id: *player_id,
             team_index: runner.world.team_index_of(*player_id).unwrap_or(0),
+            owner_id,
             hp: status.hp,
             max_hp: status.max_hp,
             mp: status.mp,

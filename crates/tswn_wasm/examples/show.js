@@ -299,13 +299,23 @@ function renderPlayers(players, states, previousStates = states) {
     for (const state of states) {
         if (!knownIds.has(state.id)) {
             knownIds.add(state.id);
-            allPlayers.push({
+            // 幻影/分身使用本体头像
+            let icon = null;
+            if (state.ownerId != null) {
+                const ownerPlayer = playersById.get(state.ownerId);
+                if (ownerPlayer) {
+                    icon = ownerPlayer.iconPngBase64;
+                }
+            }
+            const phantomPlayer = {
                 id: state.id,
                 teamIndex: state.teamIndex ?? 0,
                 idName: `player_${state.id}`,
                 displayName: phantomDisplayName(state.id),
-                iconPngBase64: null,
-            });
+                iconPngBase64: icon,
+            };
+            allPlayers.push(phantomPlayer);
+            playersById.set(state.id, phantomPlayer);
         }
     }
 

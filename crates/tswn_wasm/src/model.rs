@@ -55,6 +55,8 @@ pub struct PlayerMeta {
 pub struct PlayerState {
     pub id: usize,
     pub team_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_id: Option<usize>,
     pub hp: i32,
     pub max_hp: i32,
     pub mp: i32,
