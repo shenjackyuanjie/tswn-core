@@ -179,22 +179,31 @@ function classifyMessage(message) {
     return "normal";
 }
 
-function actorToken(player) {
-    return `<span class="actor-token"><img class="msg-avatar" src="${iconSrc(player.iconPngBase64)}" alt="" aria-hidden="true"><span class="actor-name">${escapeHtml(player.displayName)}</span></span>`;
+function actorToken(player, state) {
+    let hpBar = "";
+    if (state && state.maxHp > 0) {
+        const pct = Math.max(0, Math.min(100, (state.hp / state.maxHp) * 100));
+        hpBar = `<span class="actor-hp"><span class="actor-hp-fill" style="width:${pct.toFixed(0)}%"></span></span>`;
+    }
+    return `<span class="actor-token"><img class="msg-avatar" src="${iconSrc(player.iconPngBase64)}" alt="" aria-hidden="true"><span class="actor-name">${escapeHtml(player.displayName)}</span>${hpBar}</span>`;
 }
 
-function injectActorIcons(html) {
+function injectActorIconsWithStates(html, stateMap) {
     if (!playerNamePattern) {
         return html;
     }
 
     return html.replace(playerNamePattern, (matched) => {
         const player = playersByEscapedName.get(matched);
-        return player ? actorToken(player) : matched;
+        if (!player) {
+            return matched;
+        }
+        const state = stateMap.get(player.id);
+        return actorToken(player, state);
     });
 }
 
-function highlightMessage(message, tone) {
+function highlightMessage(message, tone, stateMap) {
     let html = escapeHtml(message);
     html = html.replace(/(\[[^\]]+\])/g, '<span class="skill-token">$1</span>');
 
@@ -204,7 +213,7 @@ function highlightMessage(message, tone) {
     if (tone === "recover") {
         html = html.replace(/(\d+)(?=点)/g, '<span class="message-number">$1</span>');
     }
-    return injectActorIcons(html);
+    return injectActorIconsWithStates(html, stateMap);
 }
 
 function renderIdleState() {
@@ -279,10 +288,7 @@ function renderPlayers(players, states, previousStates = states) {
                         <tr class="player-row${deadClass}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
                             <td class="player-name-cell">
                                 <div class="player-name-wrap">
-                                    <span class="sgl-wrap">
-                                        <img class="sgl" src="${iconSrc(player.iconPngBase64)}" alt="${escapeHtml(player.displayName)}">
-                                        <span class="sgl-hp"><span class="sgl-hp-fill" style="width:${hpPercent.toFixed(0)}%"></span></span>
-                                    </span>
+                                    <img class="sgl" src="${iconSrc(player.iconPngBase64)}" alt="${escapeHtml(player.displayName)}">
                                     <span class="${nameClass}">${escapeHtml(player.displayName)}</span>
                                 </div>
                                 <div class="hpwrap compact">
@@ -330,6 +336,7 @@ function renderPlayers(players, states, previousStates = states) {
 }
 
 function appendFrame(frame, roundIndex) {
+    const stateMap = buildStateMap(frame.states);
     const rows = [];
     let segments = [];
 
@@ -353,7 +360,7 @@ function appendFrame(frame, roundIndex) {
         }
 
         const tone = classifyMessage(message);
-        segments.push(`<span class="msg ${tone}">${highlightMessage(message, tone)}</span>`);
+        segments.push(`<span class="msg ${tone}">${highlightMessage(message, tone, stateMap)}</span>`);
     }
 
     flushRow();
