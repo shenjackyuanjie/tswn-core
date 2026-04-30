@@ -185,7 +185,7 @@ function actorToken(player, state) {
         const pct = Math.max(0, Math.min(100, (state.hp / state.maxHp) * 100));
         hpBar = `<span class="actor-hp"><span class="actor-hp-fill" style="width:${pct.toFixed(0)}%"></span></span>`;
     }
-    return `<span class="actor-token"><img class="msg-avatar" src="${iconSrc(player.iconPngBase64)}" alt="" aria-hidden="true"><span class="actor-name">${escapeHtml(player.displayName)}</span>${hpBar}</span>`;
+    return `<span class="actor-token"><span class="actor-avatar-wrap"><img class="msg-avatar" src="${iconSrc(player.iconPngBase64)}" alt="" aria-hidden="true">${hpBar}</span><span class="actor-name">${escapeHtml(player.displayName)}</span></span>`;
 }
 
 function injectActorIconsWithStates(html, stateMap) {
