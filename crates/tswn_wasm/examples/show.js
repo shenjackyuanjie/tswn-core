@@ -489,7 +489,7 @@ function updateFastButton() {
 
 function playbackDelay(frame) {
     if (fastMode) {
-        return 60;
+        return 20;
     }
     const maxDelay = frame.updates.reduce((value, update) => Math.max(value, update.delay1 ?? update.delay0 ?? 0), 0);
     return Math.max(180, Math.min(520, Math.round(maxDelay / 4) + 120));

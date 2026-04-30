@@ -742,9 +742,6 @@ textarea {
 .svgicon {
     width: 24px;
     height: 24px;
-    position: absolute;
-    left: 2px;
-    top: 2px;
 }
 
 .closeBtn {
