@@ -180,6 +180,7 @@ function actorHpMetrics(state, previousState = state) {
     return {
         totalWidth,
         fillWidth,
+        previousWidth,
         deltaLeft: fillWidth,
         deltaWidth,
     };
@@ -319,58 +320,62 @@ function renderPlayers(players, states, previousStates = states, involved = null
         }
     }
 
-    const teams = new Map();
-    for (const player of allPlayers) {
-        const items = teams.get(player.teamIndex) ?? [];
-        items.push(player);
-        teams.set(player.teamIndex, items);
-    }
+    const existingRows = playerList.querySelectorAll('tr[data-player-id]');
+    if (existingRows.length !== allPlayers.length) {
+        // 全量渲染（首次或玩家数量变化时）
+        const teams = new Map();
+        for (const player of allPlayers) {
+            const items = teams.get(player.teamIndex) ?? [];
+            items.push(player);
+            teams.set(player.teamIndex, items);
+        }
 
-    const sortedTeams = [...teams.entries()].sort((left, right) => left[0] - right[0]);
-    const firstTeamIsSingle = sortedTeams.length > 0 && sortedTeams[0][1].length === 1;
+        const sortedTeams = [...teams.entries()].sort((left, right) => left[0] - right[0]);
+        const firstTeamIsSingle = sortedTeams.length > 0 && sortedTeams[0][1].length === 1;
 
-    const teamHtml = sortedTeams
-        .map(([teamIndex, teamPlayers]) => {
-            const members = teamPlayers
-                .map((player) => {
-                    const state = stateMap.get(player.id);
-                    const previous = previousStateMap.get(player.id) ?? state;
-                    if (!state) {
-                        return "";
-                    }
+        const teamHtml = sortedTeams
+            .map(([teamIndex, teamPlayers]) => {
+                const members = teamPlayers
+                    .map((player) => {
+                        const state = stateMap.get(player.id);
+                        const previous = previousStateMap.get(player.id) ?? state;
+                        if (!state) {
+                            return "";
+                        }
 
-                    const hpPercent = state.maxHp > 0 ? Math.max(0, Math.min(100, (state.hp / state.maxHp) * 100)) : 0;
-                    const previousPercent = previous.maxHp > 0 ? Math.max(0, Math.min(100, (previous.hp / previous.maxHp) * 100)) : hpPercent;
-                    const healStart = Math.min(previousPercent, hpPercent);
-                    const healWidth = Math.max(0, hpPercent - previousPercent);
-                    const deadClass = state.alive ? "" : " is-dead";
-                    const involvedClass = involved
-                        ? (involved.casters.has(player.id) && involved.targets.has(player.id) ? " is-caster is-target"
-                            : involved.casters.has(player.id) ? " is-caster"
-                            : involved.targets.has(player.id) ? " is-target"
-                            : "")
-                        : "";
-                    const nameClass = state.alive ? "name" : "name namedie";
-                    const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
+                        const hpMetrics = actorHpMetrics(state, previous);
+                        const totalWidth = hpMetrics?.totalWidth ?? 0;
+                        const fillWidth = hpMetrics?.fillWidth ?? 0;
+                        const previousWidth = hpMetrics?.previousWidth ?? 0;
+                        const healStart = Math.min(previousWidth, fillWidth);
+                        const healWidth = Math.max(0, fillWidth - previousWidth);
+                        const deadClass = state.alive ? "" : " is-dead";
+                        const involvedClass = involved
+                            ? (involved.casters.has(player.id) && involved.targets.has(player.id) ? " is-caster is-target"
+                                : involved.casters.has(player.id) ? " is-caster"
+                                : involved.targets.has(player.id) ? " is-target"
+                                : "")
+                            : "";
+                        const nameClass = state.alive ? "name" : "name namedie";
+                        const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
 
-                    // MP 蓝条：用 magic 作为 max 参考
-                    const maxMp = state.magic > 0 ? state.magic : (state.mp > 0 ? state.mp : 1);
-                    const mpPercent = state.alive
-                        ? Math.max(0, Math.min(100, (state.mp / maxMp) * 100))
-                        : 0;
+                        const maxMp = state.magic > 0 ? state.magic : (state.mp > 0 ? state.mp : 1);
+                        const mpPercent = state.alive
+                            ? Math.max(0, Math.min(100, (state.mp / maxMp) * 100))
+                            : 0;
 
-                    return `
-                        <tr class="player-row${deadClass}${involvedClass}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
+                        return `
+                        <tr class="player-row${deadClass}${involvedClass}" data-player-id="${player.id}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
                             <td class="player-name-cell">
                                 <div class="player-name-wrap">
                                     <img class="sgl" src="${iconSrc(player.iconPngBase64)}" alt="${escapeHtml(player.displayName)}">
                                     <span class="${nameClass}">${escapeHtml(player.displayName)}</span>
                                 </div>
-                                <div class="hpwrap compact">
-                                    <div class="maxhp"></div>
-                                    <div class="oldhp" style="width:${previousPercent.toFixed(2)}%"></div>
-                                    <div class="healhp" style="left:${healStart.toFixed(2)}%;width:${healWidth.toFixed(2)}%"></div>
-                                    <div class="hp" style="width:${hpPercent.toFixed(2)}%"></div>
+                                <div class="hpwrap compact" style="width:${totalWidth}px">
+                                    <div class="maxhp" style="width:${totalWidth}px"></div>
+                                    <div class="oldhp" style="width:${previousWidth}px"></div>
+                                    <div class="healhp" style="left:${healStart}px;width:${healWidth}px"></div>
+                                    <div class="hp" style="width:${fillWidth}px"></div>
                                 </div>
                                 <div class="mpwrap">
                                     <div class="mp" style="width:${mpPercent.toFixed(2)}%"></div>
@@ -382,12 +387,12 @@ function renderPlayers(players, states, previousStates = states, involved = null
                             <td class="player-state-cell"><span class="${stateClass}">${statusText(state)}</span></td>
                         </tr>
                     `;
-                })
-                .join("");
+                    })
+                    .join("");
 
-            const isSingle = teamPlayers.length === 1;
-            const labelHtml = !isSingle ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
-            const theadHtml = !isSingle ? `
+                const isSingle = teamPlayers.length === 1;
+                const labelHtml = !isSingle ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
+                const theadHtml = !isSingle ? `
                         <thead>
                             <tr>
                                 <th class="player-name-head">角色</th>
@@ -397,7 +402,7 @@ function renderPlayers(players, states, previousStates = states, involved = null
                                 <th class="player-state-head">状态</th>
                             </tr>
                         </thead>` : "";
-            return `
+                return `
                 <section class="team-block">
                     ${labelHtml}
                     <table class="player-table">
@@ -415,10 +420,10 @@ function renderPlayers(players, states, previousStates = states, involved = null
                     </table>
                 </section>
             `;
-        })
-        .join("");
+            })
+            .join("");
 
-    const columnHeader = firstTeamIsSingle ? `
+        const columnHeader = firstTeamIsSingle ? `
         <table class="player-table column-headers">
             <colgroup>
                 <col class="player-name-head">
@@ -437,13 +442,79 @@ function renderPlayers(players, states, previousStates = states, involved = null
                 </tr>
             </thead>
         </table>` : "";
-    playerList.innerHTML = columnHeader + teamHtml;
+        playerList.innerHTML = columnHeader + teamHtml;
+    } else {
+        // 增量更新：直接修改现有 DOM，避免 innerHTML 全量替换
+        for (const player of allPlayers) {
+            const state = stateMap.get(player.id);
+            const previous = previousStateMap.get(player.id) ?? state;
+            if (!state) continue;
+
+            const row = playerList.querySelector(`tr[data-player-id="${player.id}"]`);
+            if (!row) continue;
+
+            const hpMetrics = actorHpMetrics(state, previous);
+            const totalWidth = hpMetrics?.totalWidth ?? 0;
+            const fillWidth = hpMetrics?.fillWidth ?? 0;
+            const previousWidth = hpMetrics?.previousWidth ?? 0;
+            const healStart = Math.min(previousWidth, fillWidth);
+            const healWidth = Math.max(0, fillWidth - previousWidth);
+            const deadClass = state.alive ? "" : " is-dead";
+            const involvedClass = involved
+                ? (involved.casters.has(player.id) && involved.targets.has(player.id) ? " is-caster is-target"
+                    : involved.casters.has(player.id) ? " is-caster"
+                    : involved.targets.has(player.id) ? " is-target"
+                    : "")
+                : "";
+            const nameClass = state.alive ? "name" : "name namedie";
+            const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
+            const maxMp = state.magic > 0 ? state.magic : (state.mp > 0 ? state.mp : 1);
+            const mpPercent = state.alive
+                ? Math.max(0, Math.min(100, (state.mp / maxMp) * 100))
+                : 0;
+
+            row.className = `player-row${deadClass}${involvedClass}`;
+
+            const nameEl = row.querySelector('.player-name-wrap .name, .player-name-wrap .namedie');
+            if (nameEl) nameEl.className = nameClass;
+
+            const hpwrapEl = row.querySelector('.hpwrap');
+            if (hpwrapEl) hpwrapEl.style.width = totalWidth + 'px';
+            const maxhpEl = row.querySelector('.maxhp');
+            if (maxhpEl) maxhpEl.style.width = totalWidth + 'px';
+            const hpEl = row.querySelector('.hp');
+            if (hpEl) hpEl.style.width = fillWidth + 'px';
+            const oldhpEl = row.querySelector('.oldhp');
+            if (oldhpEl) oldhpEl.style.width = previousWidth + 'px';
+            const healhpEl = row.querySelector('.healhp');
+            if (healhpEl) {
+                healhpEl.style.left = healStart + 'px';
+                healhpEl.style.width = healWidth + 'px';
+            }
+
+            const mpEl = row.querySelector('.mp');
+            if (mpEl) mpEl.style.width = mpPercent.toFixed(2) + '%';
+
+            const statCells = row.querySelectorAll('.player-stat-cell');
+            if (statCells.length >= 3) {
+                statCells[0].textContent = `${state.hp}/${state.maxHp}`;
+                statCells[1].textContent = `${state.mp}/${state.magic}`;
+                statCells[2].textContent = `${state.attack}/${state.defense}`;
+            }
+
+            const stateEl = row.querySelector('.player-state-cell span');
+            if (stateEl) {
+                stateEl.className = stateClass;
+                stateEl.textContent = statusText(state);
+            }
+        }
+    }
 }
 
 function appendFrame(frame, roundIndex, previousStates = frame.states) {
     const previousStateMap = buildStateMap(previousStates);
     // 帧内逐次扣血：running 为每次 hit 前的 HP，初始为上一帧末
-    const running = new Map(previousStateMap);
+    let running = new Map(previousStateMap);
     const rows = [];
     let segments = [];
 
@@ -453,6 +524,16 @@ function appendFrame(frame, roundIndex, previousStates = frame.states) {
         }
         rows.push(`<div class="row">${segments.join('<span class="msg-sep">，</span>')}</div>`);
         segments = [];
+    }
+
+    function applyDelta(id, hitState, tone, value) {
+        const cur = hitState.get(id);
+        if (!cur || cur.maxHp <= 0) return;
+        if (tone === 'damage') {
+            hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
+        } else if (tone === 'recover') {
+            hitState.set(id, { ...cur, hp: Math.min(cur.maxHp, cur.hp + value) });
+        }
     }
 
     for (const update of frame.updates) {
@@ -471,22 +552,11 @@ function appendFrame(frame, roundIndex, previousStates = frame.states) {
         const hitState = new Map(running);
         const value = update.param ?? update.score ?? 0;
         if (value > 0) {
-            const applyDelta = (id) => {
-                const cur = hitState.get(id);
-                if (!cur || cur.maxHp <= 0) return;
-                if (tone === 'damage') {
-                    hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
-                } else if (tone === 'recover') {
-                    hitState.set(id, { ...cur, hp: Math.min(cur.maxHp, cur.hp + value) });
-                }
-            };
-            if (update.targetId != null) applyDelta(update.targetId);
-            if (Array.isArray(update.targetIds)) update.targetIds.forEach(applyDelta);
+            if (update.targetId != null) applyDelta(update.targetId, hitState, tone, value);
+            if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => applyDelta(id, hitState, tone, value));
         }
         segments.push(`<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running)}</span>`);
-        // 更新 running 为 hit 后状态，供同一帧后续 hit 使用
-        running.clear();
-        for (const [k, v] of hitState) running.set(k, v);
+        running = hitState;
     }
 
     flushRow();
@@ -547,9 +617,9 @@ function playbackDelay(frame) {
         return 0;
     }
     if (speedMode === 'fast') {
-        return 20;
+        return 40;
     }
-    return frame.updates.reduce((value, update) => Math.max(value, update.delay1 ?? update.delay0 ?? 0), 0);
+    return frame.updates.reduce((value, update) => Math.max(value, update.delay1 || update.delay0 || 0), 0);
 }
 
 function winnerNamesText(replay) {
@@ -560,6 +630,7 @@ function winnerNamesText(replay) {
 
 async function playReplay(replay) {
     const token = ++playbackToken;
+    const frontendStart = performance.now();
     closePanel(endPanel);
     renderReplayIntro(replay);
     let previousStates = replay.initialStates;
@@ -569,13 +640,15 @@ async function playReplay(replay) {
             return;
         }
         appendFrame(frame, index, previousStates);
-        const involved = { casters: new Set(), targets: new Set() };
-        for (const update of frame.updates) {
-            if (update.casterId != null) involved.casters.add(update.casterId);
-            if (update.targetId != null) involved.targets.add(update.targetId);
-            if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => involved.targets.add(id));
+        if (speedMode !== 'turbo') {
+            const involved = { casters: new Set(), targets: new Set() };
+            for (const update of frame.updates) {
+                if (update.casterId != null) involved.casters.add(update.casterId);
+                if (update.targetId != null) involved.targets.add(update.targetId);
+                if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => involved.targets.add(id));
+            }
+            renderPlayers(replay.players, frame.states, previousStates, involved);
         }
-        renderPlayers(replay.players, frame.states, previousStates, involved);
         previousStates = frame.states;
         await sleep(playbackDelay(frame));
     }
@@ -585,8 +658,13 @@ async function playReplay(replay) {
     }
 
     renderPlayers(replay.players, replay.finalStates, previousStates, null);
+    const frontendDurationMs = performance.now() - frontendStart;
     winnerNames.textContent = winnerNamesText(replay);
-    winnerNote.textContent = `共播放 ${replay.frames.length} 帧，winnerIds=${JSON.stringify(replay.winnerIds)}。`;
+    winnerNote.innerHTML = [
+        `共播放 ${replay.frames.length} 帧，winnerIds=${JSON.stringify(replay.winnerIds)}。`,
+        `WASM 战斗计算: ${replay.wasmDurationMs?.toFixed(1) ?? '?'} ms`,
+        `前端展示耗时: ${frontendDurationMs.toFixed(1)} ms（含等待）`,
+    ].join('<br>');
     openPanel(endPanel);
 }
 
@@ -626,7 +704,9 @@ async function buildReplay(rawInput) {
     const session = new api.FightSession(rawInput, { includeIcons: true, captureReplay: true });
     const players = session.players();
     const initialStates = session.state();
+    const wasmStart = performance.now();
     const replay = session.run_to_end();
+    const wasmDurationMs = performance.now() - wasmStart;
     return {
         rawInput,
         players,
@@ -634,6 +714,7 @@ async function buildReplay(rawInput) {
         frames: replay.frames,
         winnerIds: replay.winnerIds,
         finalStates: replay.finalStates,
+        wasmDurationMs,
     };
 }
 
