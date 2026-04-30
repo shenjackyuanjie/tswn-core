@@ -1,8 +1,47 @@
 /**
  * @fileoverview tswn_wasm 战斗回放展示页 — 渲染函数
  *
- * 包含消息行内的角色 token、模板消息渲染、玩家状态面板渲染、战斗帧 HTML 构建。
- * 所有函数通过参数接收 DOM 引用和全局状态（playersById），不直接依赖模块级变量。
+ * 本模块负责将战斗数据（FightPlayer、FightState、FrameUpdate）转换为 HTML
+ * 字符串，供 show.html 页面直接插入 DOM。所有渲染函数均为纯函数，通过参数
+ * 接收 DOM 引用和全局状态（playersById），不直接依赖模块级变量。
+ *
+ * ## 导出函数一览
+ *
+ * ### 消息行角色 Token 渲染
+ * - {@link actorToken} — 渲染单个角色的小头像 + HP mini bar + 名字，用于
+ *   消息行中内联插入角色标识。HP mini bar 支持显示当前血量（fill）以及
+ *   与上一帧相比的变化量（delta），变化方向由 CSS 类控制。
+ * - {@link renderActorById} — 根据 playerId 调用 actorToken：先去 playersById
+ *   查找对应 FightPlayer，找不到则降级为幻影/未知角色的纯文本名称。
+ *
+ * ### 模板消息渲染
+ * - {@link renderMessageParam} — 渲染 messageTemplate 中的 [2] 占位参数。
+ *   若 update.targetIds 非空，将其渲染为逗号分隔的 actorToken 列表；否则
+ *   渲染 param/score 数值，damage/recover 类型包裹 .message-number 样式。
+ * - {@link renderTemplateMessage} — 解析含 [0][1][2] 占位符的 messageTemplate
+ *   字符串：[0] 渲染为施法者 token（不显示 HP），[1] 渲染为目标 token（显示
+ *   HP），[2] 委托给 renderMessageParam。其余普通文本通过 formatMessageText
+ *   应用 tone 对应的着色/样式。占位符不存在时走 messageRendered 降级路径。
+ * - {@link highlightMessage} — renderTemplateMessage 的别名，语义上强调
+ *   "高亮渲染一条消息"，便于调用侧阅读。
+ *
+ * ### 空闲状态
+ * - {@link renderIdleState} — 战斗未开始时的占位欢迎内容。向 playerList、
+ *   battleRows、plistMeta、headerMeta 四个 DOM 节点写入引导文案。
+ *
+ * ### 玩家状态面板
+ * - {@link renderPlayers} — 渲染左侧玩家状态面板，是页面最核心的渲染入口
+ *   之一。首次调用或玩家数量变化时执行全量 innerHTML 渲染（按 teamIndex
+ *   分组输出 <table>，每行含头像、名字、HP/MP 条、状态标签）；后续调用
+ *   则增量更新已有 DOM 元素的 className 和 textContent，避免重绘闪烁。
+ *   同时会自动补全 states 中存在但初始 players 中缺失的召唤单位（幻影/分身）。
+ *
+ * ### 战斗帧 HTML
+ * - {@link buildFrameHtml} — 构建右侧单帧的战斗记录 HTML。逐条处理
+ *   frame.updates，将多条消息用"，"拼接为一行，遇到 next_line 类型的
+ *   update 则换行。帧内会维护一份模拟 HP 状态（running Map），每次
+ *   damage/recover 消息都会更新该状态，使后续消息中角色 HP 条反映帧内
+ *   累计效果。帧结束时若 finished 为 true，追加 winnerIds 行。
  */
 
 import {
