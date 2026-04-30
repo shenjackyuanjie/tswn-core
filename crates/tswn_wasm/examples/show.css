@@ -78,6 +78,29 @@ button:hover {
     overflow: auto;
     border-right: 1px solid #6cc4ec;
     background: rgba(251, 253, 255, 0.92);
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+
+.hlist:hover {
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.hlist::-webkit-scrollbar {
+    width: 5px;
+}
+
+.hlist::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+}
+
+.hlist:hover::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.22);
+}
+
+.hlist::-webkit-scrollbar-track {
+    background: transparent;
 }
 
 .hbody {
