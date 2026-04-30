@@ -2,7 +2,7 @@
  * @fileoverview tswn_wasm 战斗回放展示页 — 入口模块
  *
  * 这是一个独立的 Fight 展示页，专门模仿原始名字竞技场与 fast-namerena 的战斗观感。
- * 左侧按队伍显示角色状态（HP/MP/攻防），右侧按帧逐段追加战斗记录。
+ * 左侧按队伍显示角色状态（HP/速度/体力），右侧按帧逐段追加战斗记录。
  *
  * 典型的 State 结构（来自 WASM）：
  * @typedef {{
@@ -10,6 +10,9 @@
  *   hp: number,
  *   maxHp: number,
  *   mp: number,
+ *   movePoint: number,
+ *   speed: number,
+ *   agility: number,
  *   magic: number,
  *   attack: number,
  *   defense: number,
@@ -299,7 +302,7 @@ async function playReplay(replay) {
         if (token !== playbackToken) {
             return;
         }
-        
+
         const frameHtml = buildFrameHtml(frame, index, previousStates, playersById);
 
         if (speedMode !== 'turbo') {
@@ -320,7 +323,7 @@ async function playReplay(replay) {
             renderPlayers(replay.players, frame.states, previousStates, involved, playerList, playersById);
             previousStates = frame.states;
             await sleep(playbackDelay(frame, speedMode));
-            
+
         } else {
             // Turbo 模式：批量缓冲 HTML，取消帧间 sleep
             if (frameHtml) htmlBuffer += frameHtml;
@@ -337,7 +340,7 @@ async function playReplay(replay) {
                 }
                 // 左侧面板也只在这个切片点进行增量更新（turbo 下不高亮具体角色）
                 renderPlayers(replay.players, frame.states, previousStates, null, playerList, playersById);
-                
+
                 await sleep(0); // 短暂让出执行权，让浏览器绘制画面
                 lastRenderTime = performance.now();
             }

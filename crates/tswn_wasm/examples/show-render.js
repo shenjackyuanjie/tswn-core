@@ -276,8 +276,8 @@ export function renderPlayers(players, states, previousStates = states, involved
                                 </div>
                             </td>
                             <td class="player-stat-cell player-hp-cell">${state.hp}/${state.maxHp}</td>
-                            <td class="player-stat-cell">${state.mp}/${state.magic}</td>
-                            <td class="player-stat-cell">${state.attack}/${state.defense}</td>
+                            <td class="player-stat-cell">${state.speed}</td>
+                            <td class="player-stat-cell">${state.mp}</td>
                             <td class="player-state-cell"><span class="${stateClass}">${statusText(state)}</span></td>
                         </tr>
                     `;
@@ -291,8 +291,8 @@ export function renderPlayers(players, states, previousStates = states, involved
                             <tr>
                                 <th class="player-name-head">角色</th>
                                 <th class="player-hp-head">HP</th>
-                                <th class="player-mix-head">MP/魔</th>
-                                <th class="player-mix-head">攻/防</th>
+                                <th class="player-mix-head">速度</th>
+                                <th class="player-mix-head">体力</th>
                                 <th class="player-state-head">状态</th>
                             </tr>
                         </thead>` : "";
@@ -331,8 +331,8 @@ export function renderPlayers(players, states, previousStates = states, involved
                 <tr>
                     <th class="player-name-head">角色</th>
                     <th class="player-hp-head">HP</th>
-                    <th class="player-mix-head">MP/魔</th>
-                    <th class="player-mix-head">攻/防</th>
+                    <th class="player-mix-head">速度</th>
+                    <th class="player-mix-head">体力</th>
                     <th class="player-state-head">状态</th>
                 </tr>
             </thead>
@@ -393,8 +393,8 @@ export function renderPlayers(players, states, previousStates = states, involved
             const statCells = row.querySelectorAll('.player-stat-cell');
             if (statCells.length >= 3) {
                 statCells[0].textContent = `${state.hp}/${state.maxHp}`;
-                statCells[1].textContent = `${state.mp}/${state.magic}`;
-                statCells[2].textContent = `${state.attack}/${state.defense}`;
+                statCells[1].textContent = `${state.speed}`;
+                statCells[2].textContent = `${state.mp}`;
             }
 
             const stateEl = row.querySelector('.player-state-cell span');
