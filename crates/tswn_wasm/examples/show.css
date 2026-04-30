@@ -176,6 +176,14 @@ button:hover {
     background: rgba(255, 255, 255, 0.94);
 }
 
+.column-headers {
+    margin-bottom: 4px;
+}
+
+.column-headers th {
+    background: rgba(24, 119, 199, 0.12);
+}
+
 .player-table th,
 .player-table td {
     padding: 2px 3px;

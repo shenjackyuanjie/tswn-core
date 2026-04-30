@@ -368,7 +368,8 @@ function renderPlayers(players, states, previousStates = states) {
                 .join("");
 
             const isSingle = teamPlayers.length === 1;
-            const labelHtml = isSingle ? "" : `<div class="team-label">Team ${teamIndex + 1}</div>`;
+            const showLabel = !isSingle && teamIndex !== 0;
+            const labelHtml = showLabel ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
             const theadHtml = isSingle ? "" : `
                         <thead>
                             <tr>
@@ -400,7 +401,26 @@ function renderPlayers(players, states, previousStates = states) {
         })
         .join("");
 
-    playerList.innerHTML = teamHtml;
+    const columnHeader = `
+        <table class="player-table column-headers">
+            <colgroup>
+                <col class="player-name-head">
+                <col class="player-hp-head">
+                <col class="player-mix-head">
+                <col class="player-mix-head">
+                <col class="player-state-head">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th class="player-name-head">角色</th>
+                    <th class="player-hp-head">HP</th>
+                    <th class="player-mix-head">MP/魔</th>
+                    <th class="player-mix-head">攻/防</th>
+                    <th class="player-state-head">状态</th>
+                </tr>
+            </thead>
+        </table>`;
+    playerList.innerHTML = columnHeader + teamHtml;
 }
 
 function appendFrame(frame, roundIndex, previousStates = frame.states) {
