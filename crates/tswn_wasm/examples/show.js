@@ -390,7 +390,7 @@ function renderPlayers(players, states, previousStates = states) {
                                 <th class="player-mix-head">攻/防</th>
                                 <th class="player-state-head">状态</th>
                             </tr>
-                        </thead>`;
+                        </thead>` : "";
             return `
                 <section class="team-block">
                     ${labelHtml}
