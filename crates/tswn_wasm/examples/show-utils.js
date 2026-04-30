@@ -112,24 +112,6 @@ export function statusText(state) {
     return "存活";
 }
 
-/**
- * 根据消息文本关键词分类消息色调。
- * @param {string} message — 消息文本（可能含中文关键词）
- * @returns {MessageTone}
- */
-export function classifyMessage(message) {
-    if (message.includes("回复体力")) {
-        return "recover";
-    }
-    if (message.includes("被击倒")) {
-        return "knockout";
-    }
-    if (message.includes("点伤害")) {
-        return "damage";
-    }
-    return "normal";
-}
-
 // ============================================================================
 // HP 条计算
 // ============================================================================

@@ -13,7 +13,6 @@ import {
     statusText,
     buildStateMap,
     phantomDisplayName,
-    classifyMessage,
 } from './show-utils.js';
 
 // ============================================================================
@@ -468,7 +467,7 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
             continue;
         }
 
-        const tone = classifyMessage(message);
+        const tone = update.tone ?? "normal";
         const hitState = new Map(running);
         const value = update.param ?? update.score ?? 0;
         if (value > 0) {

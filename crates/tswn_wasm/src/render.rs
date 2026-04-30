@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use tswn_core::RunUpdate;
 use tswn_core::player::PlrId;
 
+use crate::model::MessageTone;
+
 fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> String {
     names.get(&id).cloned().unwrap_or_else(|| id.to_string())
 }
@@ -26,6 +28,19 @@ pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>)
     };
 
     message.replace("[2]", &param)
+}
+
+/// 根据消息模板中的中文关键词判定消息色调，避免 JS 侧重复实现字符串匹配。
+pub fn classify_message_tone(template: &str) -> MessageTone {
+    if template.contains("回复体力") {
+        MessageTone::Recover
+    } else if template.contains("被击倒") {
+        MessageTone::Knockout
+    } else if template.contains("点伤害") {
+        MessageTone::Damage
+    } else {
+        MessageTone::Normal
+    }
 }
 
 #[cfg(test)]

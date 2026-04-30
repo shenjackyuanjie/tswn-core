@@ -95,6 +95,19 @@ impl From<UpdateType> for UpdateTypeView {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MessageTone {
+    /// 普通消息（无特殊视觉效果）
+    Normal,
+    /// 伤害消息
+    Damage,
+    /// 回复消息
+    Recover,
+    /// 击倒消息
+    Knockout,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateView {
@@ -109,6 +122,8 @@ pub struct UpdateView {
     pub message_rendered: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub param: Option<u32>,
+    /// 消息色调，由 WASM 根据模板内容判定，JS 无需再通过关键词反推。
+    pub tone: MessageTone,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,6 +133,8 @@ pub struct RoundFrame {
     pub winner_ids: Vec<usize>,
     pub updates: Vec<UpdateView>,
     pub states: Vec<PlayerState>,
+    /// 帧内所有 update 的 delay 累加值（毫秒），供 JS 正常速度播放使用。
+    pub total_delay: i32,
 }
 
 #[derive(Debug, Clone, Serialize)]

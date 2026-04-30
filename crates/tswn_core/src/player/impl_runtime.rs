@@ -951,6 +951,7 @@ impl Player {
         }
         if selected.len() == 1 {
             let target_id = selected[0];
+            #[cfg(not(feature = "no_debug"))]
             let score = storage
                 .get_player(&target_id)
                 .map(|target| match config.score_mode {

@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, internal_error, invalid_input, parse_options, runner_init_failed, to_js_value};
 use crate::model::{FightOptions, FightReplay, FightSummary, PlayerMeta, PlayerState, RoundFrame, UpdateView};
-use crate::render::render_update_message;
+use crate::render::{classify_message_tone, render_update_message};
 
 fn build_runner(raw_input: String, eval_rq: f64) -> WasmResult<Runner> {
     if raw_input.trim().is_empty() {
@@ -122,6 +122,7 @@ fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -
         .updates
         .into_iter()
         .map(|update| {
+            let tone = classify_message_tone(&update.message);
             let message_rendered = render_update_message(&update, player_names);
             UpdateView {
                 score: update.score,
@@ -134,6 +135,7 @@ fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -
                 message_template: update.message.to_string(),
                 message_rendered,
                 param: update.param,
+                tone,
             }
         })
         .collect()
@@ -165,11 +167,17 @@ impl FightSession {
     }
 
     fn build_frame(&self, updates: RunUpdates) -> WasmResult<RoundFrame> {
+        let converted = convert_updates(updates, &self.player_names);
+        let total_delay: i32 = converted
+            .iter()
+            .map(|u| if u.delay1 != 0 { u.delay1 } else { u.delay0 })
+            .sum();
         Ok(RoundFrame {
             finished: self.runner.have_winner(),
             winner_ids: winner_ids(&self.runner),
-            updates: convert_updates(updates, &self.player_names),
+            updates: converted,
             states: collect_states(&self.runner, &self.player_order)?,
+            total_delay,
         })
     }
 

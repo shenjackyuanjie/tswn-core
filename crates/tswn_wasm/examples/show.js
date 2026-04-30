@@ -44,7 +44,8 @@
  *   updates: FrameMessage[],
  *   states: FightState[],
  *   finished: boolean,
- *   winnerIds: number[]
+ *   winnerIds: number[],
+ *   totalDelay: number
  * }} FrameUpdate
  *
  * 单条消息的结构：
@@ -58,7 +59,8 @@
  *   param?: number,
  *   score?: number,
  *   delay1?: number,
- *   delay0?: number
+ *   delay0?: number,
+ *   tone?: MessageTone
  * }} FrameMessage
  *
  * HP 条的布局度量：

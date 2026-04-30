@@ -99,16 +99,9 @@ impl SkillTrait for MergeSkill {
             //
             // 也就是说，merge 看的不是“同 skill id”也不是“同 runtime kind”，而是
             // `k1` 固定槽位上的对象位置。
-            for (slot_idx, (owner_skill_key, target_skill_key)) in
+            for (_slot_idx, (owner_skill_key, target_skill_key)) in
                 owner_slot_skills.iter().copied().zip(target_slot_skills.iter().copied()).enumerate()
             {
-                let owner_skill_ref = owner.skills.store.get(&owner_skill_key);
-                let target_skill_ref = args
-                    .3
-                    .get_player(&target)
-                    .and_then(|target_plr| target_plr.skills.store.get(&target_skill_key));
-                let owner_type_name = owner_skill_ref.map(|skill| skill.debug_skill_type_name()).unwrap_or("<missing>");
-                let target_type_name = target_skill_ref.map(|skill| skill.debug_skill_type_name()).unwrap_or("<missing>");
                 let Some(target_level) = args
                     .3
                     .get_player(&target)
@@ -130,11 +123,18 @@ impl SkillTrait for MergeSkill {
                 }
                 #[cfg(not(feature = "no_debug"))]
                 if debug_this {
+                    let owner_skill_ref = owner.skills.store.get(&owner_skill_key);
+                    let target_skill_ref = args
+                        .3
+                        .get_player(&target)
+                        .and_then(|target_plr| target_plr.skills.store.get(&target_skill_key));
+                    let owner_type_name = owner_skill_ref.map(|skill| skill.debug_skill_type_name()).unwrap_or("<missing>");
+                    let target_type_name = target_skill_ref.map(|skill| skill.debug_skill_type_name()).unwrap_or("<missing>");
                     let owner_level = owner.skills.store.get(&owner_skill_key).map(|skill| skill.level()).unwrap_or(0);
                     eprintln!(
                         "[merge_slot] owner={} slot={} owner_skill={} target_skill={} owner_type={} target_type={} target_level={} owner_level_after={}",
                         owner.id_name(),
-                        slot_idx,
+                        _slot_idx,
                         owner_skill_key,
                         target_skill_key,
                         owner_type_name,

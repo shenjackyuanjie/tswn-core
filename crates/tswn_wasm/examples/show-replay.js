@@ -59,7 +59,7 @@ export function updateSpeedButtons(fastBtn, turboBtn, speedMode, currentReplay, 
 
 /**
  * 根据当前速度模式和帧的延迟配置，计算本帧应等待的毫秒数。
- * turbo 模式返回 0；fast 模式固定 40ms；normal 取帧内所有 update 的 delay 累加。
+ * turbo 模式返回 0；fast 模式固定 40ms；normal 使用 WASM 预计算的 totalDelay。
  *
  * @param {FrameUpdate} frame
  * @param {SpeedMode} speedMode
@@ -72,7 +72,7 @@ export function playbackDelay(frame, speedMode) {
     if (speedMode === 'fast') {
         return 40;
     }
-    return frame.updates.reduce((value, update) => value + (update.delay1 || update.delay0 || 0), 0);
+    return frame.totalDelay ?? 0;
 }
 
 /**
