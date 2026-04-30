@@ -648,6 +648,8 @@ async function playReplay(replay) {
                 if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => involved.targets.add(id));
             }
             renderPlayers(replay.players, frame.states, previousStates, involved);
+        } else {
+            renderPlayers(replay.players, frame.states, previousStates, null);
         }
         previousStates = frame.states;
         await sleep(playbackDelay(frame));
