@@ -366,10 +366,9 @@ function renderPlayers(players, states, previousStates = states) {
                 })
                 .join("");
 
-            return `
-                <section class="team-block">
-                    <div class="team-label">Team ${teamIndex + 1}</div>
-                    <table class="player-table">
+            const isSingle = teamPlayers.length === 1;
+            const labelHtml = isSingle ? "" : `<div class="team-label">Team ${teamIndex + 1}</div>`;
+            const theadHtml = isSingle ? "" : `
                         <thead>
                             <tr>
                                 <th class="player-name-head">角色</th>
@@ -378,7 +377,19 @@ function renderPlayers(players, states, previousStates = states) {
                                 <th class="player-mix-head">攻/防</th>
                                 <th class="player-state-head">状态</th>
                             </tr>
-                        </thead>
+                        </thead>`;
+            return `
+                <section class="team-block">
+                    ${labelHtml}
+                    <table class="player-table">
+                        <colgroup>
+                            <col class="player-name-head">
+                            <col class="player-hp-head">
+                            <col class="player-mix-head">
+                            <col class="player-mix-head">
+                            <col class="player-state-head">
+                        </colgroup>
+                        ${theadHtml}
                         <tbody>
                             ${members}
                         </tbody>
