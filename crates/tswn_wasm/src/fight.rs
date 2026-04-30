@@ -73,6 +73,7 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
         let status = player.get_status();
         states.push(PlayerState {
             id: *player_id,
+            team_index: runner.world.team_index_of(*player_id).unwrap_or(0),
             hp: status.hp,
             max_hp: status.max_hp,
             mp: status.mp,

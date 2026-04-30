@@ -37,8 +37,7 @@ let wasmApi = null;
 let currentReplay = null;
 let playbackToken = 0;
 let fastMode = false;
-let playersByEscapedName = new Map();
-let playerNamePattern = null;
+let playersById = new Map();
 
 restoreInputValue();
 
@@ -49,10 +48,6 @@ function escapeHtml(text) {
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
-}
-
-function escapeRegExp(text) {
-    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function iconSrc(iconPngBase64) {
@@ -85,22 +80,7 @@ function formatError(error) {
 }
 
 function rememberPlayers(players) {
-    const names = [];
-    playersByEscapedName = new Map();
-
-    for (const player of players) {
-        const escapedName = escapeHtml(player.displayName);
-        if (!escapedName || playersByEscapedName.has(escapedName)) {
-            continue;
-        }
-        playersByEscapedName.set(escapedName, player);
-        names.push(escapedName);
-    }
-
-    names.sort((left, right) => right.length - left.length);
-    playerNamePattern = names.length
-        ? new RegExp(names.map((name) => escapeRegExp(name)).join("|"), "g")
-        : null;
+    playersById = new Map(players.map((player) => [player.id, player]));
 }
 
 function setInputStatus(message, isError = false) {
@@ -156,6 +136,10 @@ function buildStateMap(states) {
     return new Map(states.map((state) => [state.id, state]));
 }
 
+function phantomDisplayName(playerId) {
+    return `幻影 #${playerId}`;
+}
+
 function statusText(state) {
     if (!state.alive) {
         return "死亡";
@@ -179,32 +163,29 @@ function classifyMessage(message) {
     return "normal";
 }
 
-function actorToken(player, state) {
-    let hpBar = "";
-    if (state && state.maxHp > 0) {
-        const pct = Math.max(0, Math.min(100, (state.hp / state.maxHp) * 100));
-        hpBar = `<span class="actor-hp"><span class="actor-hp-fill" style="width:${pct.toFixed(0)}%"></span></span>`;
-    }
-    return `<span class="actor-token"><span class="actor-avatar-wrap"><img class="msg-avatar" src="${iconSrc(player.iconPngBase64)}" alt="" aria-hidden="true">${hpBar}</span><span class="actor-name">${escapeHtml(player.displayName)}</span></span>`;
-}
-
-function injectActorIconsWithStates(html, stateMap) {
-    if (!playerNamePattern) {
-        return html;
+function actorHpMetrics(state, previousState = state) {
+    if (!state || state.maxHp <= 0) {
+        return null;
     }
 
-    return html.replace(playerNamePattern, (matched) => {
-        const player = playersByEscapedName.get(matched);
-        if (!player) {
-            return matched;
-        }
-        const state = stateMap.get(player.id);
-        return actorToken(player, state);
-    });
+    const maxHp = Math.max(1, state.maxHp, previousState?.maxHp ?? 0);
+    const hp = Math.max(0, Math.min(maxHp, state.hp));
+    const previousHp = Math.max(0, Math.min(maxHp, previousState?.hp ?? hp));
+    const totalWidth = Math.max(20, Math.min(56, 16 + Math.round(Math.sqrt(maxHp) * 2.8)));
+    const fillWidth = hp > 0 ? Math.max(1, Math.round((hp / maxHp) * totalWidth)) : 0;
+    const previousWidth = previousHp > 0 ? Math.max(1, Math.round((previousHp / maxHp) * totalWidth)) : 0;
+    const deltaWidth = previousHp > hp ? Math.max(1, previousWidth - fillWidth) : 0;
+
+    return {
+        totalWidth,
+        fillWidth,
+        deltaLeft: fillWidth,
+        deltaWidth,
+    };
 }
 
-function highlightMessage(message, tone, stateMap) {
-    let html = escapeHtml(message);
+function formatMessageText(text, tone) {
+    let html = escapeHtml(text);
     html = html.replace(/(\[[^\]]+\])/g, '<span class="skill-token">$1</span>');
 
     if (tone === "damage") {
@@ -213,7 +194,80 @@ function highlightMessage(message, tone, stateMap) {
     if (tone === "recover") {
         html = html.replace(/(\d+)(?=点)/g, '<span class="message-number">$1</span>');
     }
-    return injectActorIconsWithStates(html, stateMap);
+    return html;
+}
+
+function actorToken(player, state, previousState, { showHp = true } = {}) {
+    const hpMetrics = showHp ? actorHpMetrics(state, previousState) : null;
+    const hpBar = hpMetrics
+        ? `
+            <span class="actor-hp" style="width:${hpMetrics.totalWidth}px">
+                <span class="actor-hp-fill" style="width:${hpMetrics.fillWidth}px"></span>
+                ${hpMetrics.deltaWidth > 0 ? `<span class="actor-hp-delta" style="left:${hpMetrics.deltaLeft}px;width:${hpMetrics.deltaWidth}px"></span>` : ""}
+            </span>
+        `
+        : "";
+    const hpClass = hpMetrics ? " has-hp" : "";
+
+    return `<span class="actor-token${hpClass}"><span class="actor-avatar-wrap"><img class="msg-avatar" src="${iconSrc(player.iconPngBase64)}" alt="" aria-hidden="true">${hpBar}</span><span class="actor-name">${escapeHtml(player.displayName)}</span></span>`;
+}
+
+function renderActorById(playerId, stateMap, previousStateMap, options) {
+    const player = playersById.get(playerId);
+    if (!player) {
+        return escapeHtml(phantomDisplayName(playerId));
+    }
+
+    const state = stateMap.get(player.id);
+    const previousState = previousStateMap?.get(player.id) ?? state;
+    return actorToken(player, state, previousState, options);
+}
+
+function renderMessageParam(update, tone, stateMap, previousStateMap) {
+    if (Array.isArray(update.targetIds) && update.targetIds.length) {
+        return update.targetIds
+            .map((playerId) => renderActorById(playerId, stateMap, previousStateMap, { showHp: true }))
+            .join(",");
+    }
+
+    const value = update.param ?? update.score;
+    if (value == null) {
+        return "";
+    }
+
+    const html = escapeHtml(String(value));
+    if (tone === "damage" || tone === "recover") {
+        return `<span class="message-number">${html}</span>`;
+    }
+    return html;
+}
+
+function renderTemplateMessage(update, tone, stateMap, previousStateMap) {
+    const template = `${update.messageTemplate ?? ""}`;
+    if (!template) {
+        return formatMessageText(`${update.messageRendered ?? ""}`, tone);
+    }
+
+    return template
+        .split(/(\[[012]\])/g)
+        .filter((part) => part.length > 0)
+        .map((part) => {
+            if (part === "[0]") {
+                return renderActorById(update.casterId, stateMap, previousStateMap, { showHp: false });
+            }
+            if (part === "[1]") {
+                return renderActorById(update.targetId, stateMap, previousStateMap, { showHp: true });
+            }
+            if (part === "[2]") {
+                return renderMessageParam(update, tone, stateMap, previousStateMap);
+            }
+            return formatMessageText(part, tone);
+        })
+        .join("");
+}
+
+function highlightMessage(update, tone, stateMap, previousStateMap) {
+    return renderTemplateMessage(update, tone, stateMap, previousStateMap);
 }
 
 function renderIdleState() {
@@ -246,9 +300,9 @@ function renderPlayers(players, states, previousStates = states) {
             knownIds.add(state.id);
             allPlayers.push({
                 id: state.id,
-                teamIndex: 0,
+                teamIndex: state.teamIndex ?? 0,
                 idName: `player_${state.id}`,
-                displayName: `#${state.id}`,
+                displayName: phantomDisplayName(state.id),
                 iconPngBase64: null,
             });
         }
@@ -282,7 +336,9 @@ function renderPlayers(players, states, previousStates = states) {
 
                     // MP 蓝条：用 magic 作为 max 参考
                     const maxMp = state.magic > 0 ? state.magic : (state.mp > 0 ? state.mp : 1);
-                    const mpPercent = Math.max(0, Math.min(100, (state.mp / maxMp) * 100));
+                    const mpPercent = state.alive
+                        ? Math.max(0, Math.min(100, (state.mp / maxMp) * 100))
+                        : 0;
 
                     return `
                         <tr class="player-row${deadClass}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
@@ -335,8 +391,9 @@ function renderPlayers(players, states, previousStates = states) {
     playerList.innerHTML = teamHtml;
 }
 
-function appendFrame(frame, roundIndex) {
+function appendFrame(frame, roundIndex, previousStates = frame.states) {
     const stateMap = buildStateMap(frame.states);
+    const previousStateMap = buildStateMap(previousStates);
     const rows = [];
     let segments = [];
 
@@ -360,7 +417,7 @@ function appendFrame(frame, roundIndex) {
         }
 
         const tone = classifyMessage(message);
-        segments.push(`<span class="msg ${tone}">${highlightMessage(message, tone, stateMap)}</span>`);
+        segments.push(`<span class="msg ${tone}">${highlightMessage(update, tone, stateMap, previousStateMap)}</span>`);
     }
 
     flushRow();
@@ -443,7 +500,7 @@ async function playReplay(replay) {
         if (token !== playbackToken) {
             return;
         }
-        appendFrame(frame, index);
+        appendFrame(frame, index, previousStates);
         renderPlayers(replay.players, frame.states, previousStates);
         previousStates = frame.states;
         await sleep(playbackDelay(frame));
