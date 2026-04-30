@@ -306,17 +306,13 @@ function renderPlayers(players, states, previousStates = states) {
 function appendFrame(frame, roundIndex) {
     const rows = [];
     let segments = [];
-    let hasFrameChip = false;
 
     function flushRow() {
         if (!segments.length) {
             return;
         }
-
-        const frameChip = hasFrameChip ? "" : `<span class="frame-chip">frame ${roundIndex}</span>`;
-        rows.push(`<div class="row">${frameChip}${segments.join('<span class="msg-sep">，</span>')}</div>`);
+        rows.push(`<div class="row">${segments.join('<span class="msg-sep">，</span>')}</div>`);
         segments = [];
-        hasFrameChip = true;
     }
 
     for (const update of frame.updates) {
@@ -341,15 +337,18 @@ function appendFrame(frame, roundIndex) {
     }
 
     const winnerLine = frame.finished
-        ? `<div class="row winner-line">${hasFrameChip ? "" : `<span class="frame-chip">frame ${roundIndex}</span>`}<span class="winner-row">winnerIds=${escapeHtml(JSON.stringify(frame.winnerIds))}</span></div>`
+        ? `<div class="row winner-line"><span class="winner-row">winnerIds=${escapeHtml(JSON.stringify(frame.winnerIds))}</span></div>`
         : "";
 
     battleRows.insertAdjacentHTML(
         "beforeend",
         `
             <section class="round-block">
-                ${rows.join("")}
-                ${winnerLine}
+                <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
+                <div class="frame-body">
+                    ${rows.join("")}
+                    ${winnerLine}
+                </div>
             </section>
         `,
     );

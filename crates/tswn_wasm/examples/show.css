@@ -421,10 +421,21 @@ button:hover {
 }
 
 .round-block {
-    display: block;
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 6px;
+    align-items: start;
     margin-bottom: 1px;
     padding: 1px 0 3px;
     border-bottom: 1px solid rgba(198, 225, 239, 0.95);
+}
+
+.frame-sidebar {
+    padding-top: 1px;
+}
+
+.frame-body {
+    min-width: 0;
 }
 
 .round-title {
@@ -467,18 +478,17 @@ button:hover {
 }
 
 .frame-chip {
-    display: inline-flex;
-    align-items: center;
-    margin-right: 6px;
-    padding: 1px 7px;
+    display: inline-block;
+    padding: 1px 6px;
     border-radius: 999px;
     background: rgba(42, 162, 214, 0.1);
     color: var(--sky-3);
     font-size: 10px;
-    line-height: 1.1;
+    line-height: 1.5;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    vertical-align: baseline;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .msg.damage {
