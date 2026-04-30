@@ -511,9 +511,9 @@ function renderPlayers(players, states, previousStates = states, involved = null
     }
 }
 
-function appendFrame(frame, roundIndex, previousStates = frame.states) {
+// 将原本的 appendFrame 替换为 buildFrameHtml
+function buildFrameHtml(frame, roundIndex, previousStates = frame.states) {
     const previousStateMap = buildStateMap(previousStates);
-    // 帧内逐次扣血：running 为每次 hit 前的 HP，初始为上一帧末
     let running = new Map(previousStateMap);
     const rows = [];
     let segments = [];
@@ -548,7 +548,6 @@ function appendFrame(frame, roundIndex, previousStates = frame.states) {
         }
 
         const tone = classifyMessage(message);
-        // 构建当次 hit 后的临时 state，让血条反映当次伤害后的 HP
         const hitState = new Map(running);
         const value = update.param ?? update.score ?? 0;
         if (value > 0) {
@@ -562,29 +561,23 @@ function appendFrame(frame, roundIndex, previousStates = frame.states) {
     flushRow();
 
     if (!rows.length && !frame.finished) {
-        return;
+        return ""; // 返回空字符串而不是直接 return
     }
 
     const winnerLine = frame.finished
         ? `<div class="row winner-line"><span class="winner-row">winnerIds=${escapeHtml(JSON.stringify(frame.winnerIds))}</span></div>`
         : "";
 
-    battleRows.insertAdjacentHTML(
-        "beforeend",
-        `
-            <section class="round-block">
-                <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
-                <div class="frame-body">
-                    ${rows.join("")}
-                    ${winnerLine}
-                </div>
-            </section>
-        `,
-    );
-    const hbody = battleRows.closest(".hbody");
-    if (hbody) {
-        hbody.scrollTop = hbody.scrollHeight;
-    }
+    // 返回构建好的 HTML 字符串
+    return `
+        <section class="round-block">
+            <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
+            <div class="frame-body">
+                ${rows.join("")}
+                ${winnerLine}
+            </div>
+        </section>
+    `;
 }
 
 function renderReplayIntro(replay) {
@@ -635,12 +628,24 @@ async function playReplay(replay) {
     renderReplayIntro(replay);
     let previousStates = replay.initialStates;
 
+    let htmlBuffer = "";
+    let lastRenderTime = performance.now();
+
     for (const [index, frame] of replay.frames.entries()) {
         if (token !== playbackToken) {
             return;
         }
-        appendFrame(frame, index, previousStates);
+        
+        const frameHtml = buildFrameHtml(frame, index, previousStates);
+
         if (speedMode !== 'turbo') {
+            // 正常/快进模式：逐帧渲染 DOM 并等待
+            if (frameHtml) {
+                battleRows.insertAdjacentHTML("beforeend", frameHtml);
+                const hbody = battleRows.closest(".hbody");
+                if (hbody) hbody.scrollTop = hbody.scrollHeight;
+            }
+
             const involved = { casters: new Set(), targets: new Set() };
             for (const update of frame.updates) {
                 if (update.casterId != null) involved.casters.add(update.casterId);
@@ -648,15 +653,41 @@ async function playReplay(replay) {
                 if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => involved.targets.add(id));
             }
             renderPlayers(replay.players, frame.states, previousStates, involved);
+            previousStates = frame.states;
+            await sleep(playbackDelay(frame));
+            
         } else {
-            renderPlayers(replay.players, frame.states, previousStates, null);
+            // Turbo 模式：批量缓冲 HTML，取消帧间 sleep
+            if (frameHtml) htmlBuffer += frameHtml;
+            previousStates = frame.states;
+
+            const now = performance.now();
+            // 每 ~16ms（约 60FPS 的间隔）才进行一次 DOM 实际写入和 UI 释放，防止页面卡死
+            if (now - lastRenderTime > 16) {
+                if (htmlBuffer) {
+                    battleRows.insertAdjacentHTML("beforeend", htmlBuffer);
+                    htmlBuffer = "";
+                    const hbody = battleRows.closest(".hbody");
+                    if (hbody) hbody.scrollTop = hbody.scrollHeight;
+                }
+                // 左侧面板也只在这个切片点进行增量更新
+                renderPlayers(replay.players, frame.states, previousStates, null);
+                
+                await sleep(0); // 短暂让出执行权，让浏览器绘制画面
+                lastRenderTime = performance.now();
+            }
         }
-        previousStates = frame.states;
-        await sleep(playbackDelay(frame));
     }
 
     if (token !== playbackToken) {
         return;
+    }
+
+    // 循环结束后，清空可能残余的 buffer
+    if (speedMode === 'turbo' && htmlBuffer) {
+        battleRows.insertAdjacentHTML("beforeend", htmlBuffer);
+        const hbody = battleRows.closest(".hbody");
+        if (hbody) hbody.scrollTop = hbody.scrollHeight;
     }
 
     renderPlayers(replay.players, replay.finalStates, previousStates, null);
