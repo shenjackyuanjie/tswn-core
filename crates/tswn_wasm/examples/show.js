@@ -31,12 +31,13 @@ const playAgainBtn = document.querySelector("#playAgainBtn");
 const editNamesBtn = document.querySelector("#editNamesBtn");
 const inputBtn = document.querySelector("#inputBtn");
 const fastBtn = document.querySelector("#fastBtn");
+const turboBtn = document.querySelector("#turboBtn");
 const refreshBtn = document.querySelector("#refreshBtn");
 
 let wasmApi = null;
 let currentReplay = null;
 let playbackToken = 0;
-let fastMode = false;
+let speedMode = 'normal'; // 'normal' | 'fast' | 'turbo'
 let playersById = new Map();
 
 restoreInputValue();
@@ -463,32 +464,32 @@ function renderReplayIntro(replay) {
     const teamCount = new Set(replay.players.map((player) => player.teamIndex)).size;
     rememberPlayers(replay.players);
     plistMeta.textContent = `${replay.players.length} 名角色 · ${teamCount} 支队伍 · ${replay.frames.length} 帧回放。`;
-    headerMeta.textContent = fastMode
-        ? `当前是快进模式，会更快推进 ${replay.frames.length} 帧。`
-        : `当前是正常播放模式，会自动推进 ${replay.frames.length} 帧。`;
+    const labels = { normal: '正常速度', fast: '快进模式', turbo: '极速模式（无延时）' };
+    headerMeta.textContent = `当前是${labels[speedMode]}，会自动推进 ${replay.frames.length} 帧。`;
     battleRows.innerHTML = `
         <div class="welcome">
             <div><strong>战斗已经开始。</strong></div>
             <div>下面会按回合逐段追加战斗事件，左侧状态栏会同步刷新 HP、MP 与存活状态。</div>
-            <div>右下角的快进按钮可以在播放中途切换速度。</div>
+            <div>右下角两个速度按钮可切换快进或极速模式。</div>
         </div>
     `;
     renderPlayers(replay.players, replay.initialStates, replay.initialStates);
 }
 
-function updateFastButton() {
-    fastBtn.classList.toggle("is-active", fastMode);
-    fastBtn.title = fastMode ? "切回正常速度" : "切换快进";
-    fastBtn.setAttribute("aria-label", fastBtn.title);
+function updateSpeedButtons() {
+    fastBtn.classList.toggle("is-active", speedMode === 'fast');
+    turboBtn.classList.toggle("is-active", speedMode === 'turbo');
     if (currentReplay) {
-        headerMeta.textContent = fastMode
-            ? `当前是快进模式，会更快推进 ${currentReplay.frames.length} 帧。`
-            : `当前是正常播放模式，会自动推进 ${currentReplay.frames.length} 帧。`;
+        const labels = { normal: '正常速度', fast: '快进模式', turbo: '极速模式（无延时）' };
+        headerMeta.textContent = `当前是${labels[speedMode]}，会自动推进 ${currentReplay.frames.length} 帧。`;
     }
 }
 
 function playbackDelay(frame) {
-    if (fastMode) {
+    if (speedMode === 'turbo') {
+        return 0;
+    }
+    if (speedMode === 'fast') {
         return 20;
     }
     const maxDelay = frame.updates.reduce((value, update) => Math.max(value, update.delay1 ?? update.delay0 ?? 0), 0);
@@ -639,8 +640,13 @@ editNamesBtn.addEventListener("click", () => {
 });
 
 fastBtn.addEventListener("click", () => {
-    fastMode = !fastMode;
-    updateFastButton();
+    speedMode = speedMode === 'fast' ? 'normal' : 'fast';
+    updateSpeedButtons();
+});
+
+turboBtn.addEventListener("click", () => {
+    speedMode = speedMode === 'turbo' ? 'normal' : 'turbo';
+    updateSpeedButtons();
 });
 
 closeInputBtn.addEventListener("click", () => {
@@ -666,7 +672,7 @@ inputName.addEventListener("keydown", (event) => {
 
 async function main() {
     renderIdleState();
-    updateFastButton();
+    updateSpeedButtons();
     setInputStatus("会使用 show 风格自动播放整场战斗。");
     openInputEditor();
 
