@@ -56,20 +56,14 @@ fn root_owner_id(storage: &tswn_core::engine::storage::Storage, start_id: PlrId)
     let mut current = start_id;
     // 先检查自己是不是 minion
     let first = storage.get_player_or_pending(&current)?;
-    if first.get_state::<MinionRuntimeState>().is_none() {
-        return None;
-    }
+    first.get_state::<MinionRuntimeState>()?;
     // 追溯 owner 链直到非 minion
     loop {
-        let Some(plr) = storage.get_player_or_pending(&current) else {
-            return None;
-        };
+        let plr = storage.get_player_or_pending(&current)?;
         let Some(minion) = plr.get_state::<MinionRuntimeState>() else {
             return Some(current);
         };
-        let Some(owner) = minion.owner else {
-            return None;
-        };
+        let owner = minion.owner?;
         current = owner;
     }
 }
