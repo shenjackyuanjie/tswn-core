@@ -380,7 +380,8 @@ function renderPlayers(players, states, previousStates = states) {
             const isSingle = teamPlayers.length === 1;
             const showLabel = !isSingle && teamIndex !== 0;
             const labelHtml = showLabel ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
-            const theadHtml = isSingle ? "" : `
+            const showThead = !isSingle && teamIndex !== 0;
+            const theadHtml = showThead ? `
                         <thead>
                             <tr>
                                 <th class="player-name-head">角色</th>
