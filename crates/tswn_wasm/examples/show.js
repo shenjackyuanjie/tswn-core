@@ -375,7 +375,10 @@ function appendFrame(frame, roundIndex) {
             </section>
         `,
     );
-    battleRows.scrollTop = battleRows.scrollHeight;
+    const hbody = battleRows.closest(".hbody");
+    if (hbody) {
+        hbody.scrollTop = hbody.scrollHeight;
+    }
 }
 
 function renderReplayIntro(replay) {
