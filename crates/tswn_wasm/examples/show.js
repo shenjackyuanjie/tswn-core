@@ -279,7 +279,10 @@ function renderPlayers(players, states, previousStates = states) {
                         <tr class="player-row${deadClass}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
                             <td class="player-name-cell">
                                 <div class="player-name-wrap">
-                                    <img class="sgl" src="${iconSrc(player.iconPngBase64)}" alt="${escapeHtml(player.displayName)}">
+                                    <span class="sgl-wrap">
+                                        <img class="sgl" src="${iconSrc(player.iconPngBase64)}" alt="${escapeHtml(player.displayName)}">
+                                        <span class="sgl-hp"><span class="sgl-hp-fill" style="width:${hpPercent.toFixed(0)}%"></span></span>
+                                    </span>
                                     <span class="${nameClass}">${escapeHtml(player.displayName)}</span>
                                 </div>
                                 <div class="hpwrap compact">

@@ -51,10 +51,24 @@ fn collect_players(
 }
 
 fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<PlayerState>> {
-    let mut states = Vec::with_capacity(player_order.len());
-    for player_id in player_order {
+    // 收集所有当前玩家（含召唤单位），保持初始顺序 + 新单位追加
+    let mut seen: std::collections::HashSet<PlrId> = std::collections::HashSet::new();
+    let mut all_ids: Vec<PlrId> = Vec::new();
+    for id in player_order {
+        if seen.insert(*id) {
+            all_ids.push(*id);
+        }
+    }
+    for id in runner.storage.all_player_ids() {
+        if seen.insert(id) {
+            all_ids.push(id);
+        }
+    }
+
+    let mut states = Vec::with_capacity(all_ids.len());
+    for player_id in &all_ids {
         let Some(player) = runner.storage.get_player(player_id) else {
-            return Err(internal_error(format!("player {player_id} missing from storage")));
+            continue;
         };
         let status = player.get_status();
         states.push(PlayerState {
