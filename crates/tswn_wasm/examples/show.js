@@ -326,8 +326,10 @@ function renderPlayers(players, states, previousStates = states) {
         teams.set(player.teamIndex, items);
     }
 
-    const teamHtml = [...teams.entries()]
-        .sort((left, right) => left[0] - right[0])
+    const sortedTeams = [...teams.entries()].sort((left, right) => left[0] - right[0]);
+    const firstTeamIsSingle = sortedTeams.length > 0 && sortedTeams[0][1].length === 1;
+
+    const teamHtml = sortedTeams
         .map(([teamIndex, teamPlayers]) => {
             const members = teamPlayers
                 .map((player) => {
@@ -378,10 +380,8 @@ function renderPlayers(players, states, previousStates = states) {
                 .join("");
 
             const isSingle = teamPlayers.length === 1;
-            const showLabel = !isSingle && teamIndex !== 0;
-            const labelHtml = showLabel ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
-            const showThead = !isSingle && teamIndex !== 0;
-            const theadHtml = showThead ? `
+            const labelHtml = !isSingle ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
+            const theadHtml = !isSingle ? `
                         <thead>
                             <tr>
                                 <th class="player-name-head">角色</th>
@@ -412,7 +412,7 @@ function renderPlayers(players, states, previousStates = states) {
         })
         .join("");
 
-    const columnHeader = `
+    const columnHeader = firstTeamIsSingle ? `
         <table class="player-table column-headers">
             <colgroup>
                 <col class="player-name-head">
@@ -430,7 +430,7 @@ function renderPlayers(players, states, previousStates = states) {
                     <th class="player-state-head">状态</th>
                 </tr>
             </thead>
-        </table>`;
+        </table>` : "";
     playerList.innerHTML = columnHeader + teamHtml;
 }
 
