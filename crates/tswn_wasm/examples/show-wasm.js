@@ -1,0 +1,97 @@
+/**
+ * @fileoverview tswn_wasm 战斗回放展示页 — WASM 模块加载与回放生成
+ *
+ * 负责动态加载 tswn_wasm WASM 模块（懒加载 + 缓存），
+ * 以及根据用户输入调用 FightSession 生成完整回放数据。
+ */
+
+// ============================================================================
+// 模块级缓存
+// ============================================================================
+
+/** @type {object|null} WASM 模块的 API 句柄，仅在首次 ensureApi() 时初始化 */
+let wasmApi = null;
+
+// ============================================================================
+// 模块加载
+// ============================================================================
+
+/**
+ * 尝试从多个候选路径加载 tswn_wasm WASM 模块。
+ * 依次尝试 ../pkg/ 和 ../dist/wasm/pkg/ 两个路径。
+ *
+ * @param {HTMLElement} modulePathInfo — 用于展示加载路径的 DOM 元素
+ * @returns {Promise<object>} WASM 模块的导出对象
+ * @throws {Error} 若所有候选路径均加载失败
+ */
+export async function loadModule(modulePathInfo) {
+    const candidates = [
+        { label: "../pkg/tswn_wasm.js", path: "../pkg/tswn_wasm.js" },
+        { label: "../dist/wasm/pkg/tswn_wasm.js", path: "../dist/wasm/pkg/tswn_wasm.js" },
+    ];
+
+    let lastError = null;
+    for (const candidate of candidates) {
+        try {
+            const mod = await import(candidate.path);
+            modulePathInfo.textContent = `module: ${candidate.label}`;
+            return mod;
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError;
+}
+
+/**
+ * 确保 WASM API 已初始化（懒加载 + 缓存）。
+ * 首次调用时会加载模块、调用 default() 初始化、记录版本信息。
+ *
+ * @param {HTMLElement} versionInfo — wrapper 版本展示 DOM
+ * @param {HTMLElement} coreVersionInfo — core 版本展示 DOM
+ * @param {HTMLElement} modulePathInfo — 模块路径展示 DOM
+ * @returns {Promise<object>} WASM API 对象
+ */
+export async function ensureApi(versionInfo, coreVersionInfo, modulePathInfo) {
+    if (wasmApi) {
+        return wasmApi;
+    }
+    const mod = await loadModule(modulePathInfo);
+    await mod.default();
+    versionInfo.textContent = `wrapper: ${mod.version()}`;
+    coreVersionInfo.textContent = `core: ${mod.core_version()}`;
+    wasmApi = mod;
+    return wasmApi;
+}
+
+// ============================================================================
+// 回放生成
+// ============================================================================
+
+/**
+ * 根据原始输入文本生成完整回放数据。
+ *
+ * @param {string} rawInput — 原始输入文本（每行一个名字，空行分隔队伍）
+ * @param {HTMLElement} versionInfo
+ * @param {HTMLElement} coreVersionInfo
+ * @param {HTMLElement} modulePathInfo
+ * @returns {Promise<FightReplay>}
+ */
+export async function buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo) {
+    const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    const session = new api.FightSession(rawInput, { includeIcons: true, captureReplay: true });
+    const players = session.players();
+    const initialStates = session.state();
+    const wasmStart = performance.now();
+    const replay = session.run_to_end();
+    const wasmDurationMs = performance.now() - wasmStart;
+    return {
+        rawInput,
+        players,
+        initialStates,
+        frames: replay.frames,
+        winnerIds: replay.winnerIds,
+        finalStates: replay.finalStates,
+        wasmDurationMs,
+    };
+}

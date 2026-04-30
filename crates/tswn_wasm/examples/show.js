@@ -1,3 +1,103 @@
+/**
+ * @fileoverview tswn_wasm 战斗回放展示页 — 入口模块
+ *
+ * 这是一个独立的 Fight 展示页，专门模仿原始名字竞技场与 fast-namerena 的战斗观感。
+ * 左侧按队伍显示角色状态（HP/MP/攻防），右侧按帧逐段追加战斗记录。
+ *
+ * 典型的 State 结构（来自 WASM）：
+ * @typedef {{
+ *   id: number,
+ *   hp: number,
+ *   maxHp: number,
+ *   mp: number,
+ *   magic: number,
+ *   attack: number,
+ *   defense: number,
+ *   alive: boolean,
+ *   frozen: boolean,
+ *   teamIndex: number,
+ *   ownerId?: number
+ * }} FightState
+ *
+ * 典型的 Player 结构（来自 WASM）：
+ * @typedef {{
+ *   id: number,
+ *   teamIndex: number,
+ *   idName: string,
+ *   displayName: string,
+ *   iconPngBase64: string|null
+ * }} FightPlayer
+ *
+ * 一次 Replay 的结构：
+ * @typedef {{
+ *   rawInput: string,
+ *   players: FightPlayer[],
+ *   initialStates: FightState[],
+ *   frames: FrameUpdate[],
+ *   winnerIds: number[],
+ *   finalStates: FightState[],
+ *   wasmDurationMs: number
+ * }} FightReplay
+ *
+ * 单帧更新的结构：
+ * @typedef {{
+ *   updates: FrameMessage[],
+ *   states: FightState[],
+ *   finished: boolean,
+ *   winnerIds: number[]
+ * }} FrameUpdate
+ *
+ * 单条消息的结构：
+ * @typedef {{
+ *   updateType?: string,
+ *   messageRendered?: string,
+ *   messageTemplate?: string,
+ *   casterId?: number,
+ *   targetId?: number,
+ *   targetIds?: number[],
+ *   param?: number,
+ *   score?: number,
+ *   delay1?: number,
+ *   delay0?: number
+ * }} FrameMessage
+ *
+ * HP 条的布局度量：
+ * @typedef {{
+ *   totalWidth: number,
+ *   fillWidth: number,
+ *   previousWidth: number,
+ *   deltaLeft: number,
+ *   deltaWidth: number
+ * }} HpMetrics
+ *
+ * 涉及高亮的角色集合（用于 renderPlayers 的 involved 参数）：
+ * @typedef {{
+ *   casters: Set<number>,
+ *   targets: Set<number>
+ * }} InvolvedSet
+ *
+ * 消息色调：
+ * @typedef {'normal' | 'damage' | 'recover' | 'knockout'} MessageTone
+ *
+ * 播放速度模式：
+ * @typedef {'normal' | 'fast' | 'turbo'} SpeedMode
+ */
+
+import { formatError, sleep } from './show-utils.js';
+import { renderIdleState, renderPlayers, buildFrameHtml } from './show-render.js';
+import {
+    renderReplayIntro,
+    updateSpeedButtons,
+    playbackDelay,
+    winnerNamesText,
+} from './show-replay.js';
+import { ensureApi, buildReplay } from './show-wasm.js';
+
+// ============================================================================
+// 默认示例输入 — 可在页面中直接点击"示例"按钮填入
+// ============================================================================
+
+/** @type {string} */
 const DEFAULT_RAW = `
 云剑狄卡敢
 白胡子
@@ -6,94 +106,118 @@ const DEFAULT_RAW = `
 田一人
 `.trim();
 
+/** @type {string} localStorage 键名，用于跨会话记住用户输入 */
 const INPUT_STORAGE_KEY = "tswn_wasm_show_input";
 
+// ============================================================================
+// DOM 元素引用
+// ============================================================================
+
+/** @type {HTMLElement} */
 const playerList = document.querySelector("#playerList");
+/** @type {HTMLElement} */
 const battleRows = document.querySelector("#battleRows");
+/** @type {HTMLInputElement} */
 const inputName = document.querySelector("#input_name");
+/** @type {HTMLElement} */
 const inputPanel = document.querySelector("#inputPanel");
+/** @type {HTMLElement} */
 const endPanel = document.querySelector("#endPanel");
+/** @type {HTMLElement} */
 const inputStatus = document.querySelector("#inputStatus");
+/** @type {HTMLElement} */
 const plistMeta = document.querySelector("#plistMeta");
+/** @type {HTMLElement} */
 const headerMeta = document.querySelector("#headerMeta");
+/** @type {HTMLElement} */
 const winnerNames = document.querySelector("#winnerNames");
+/** @type {HTMLElement} */
 const winnerNote = document.querySelector("#winnerNote");
 
+/** @type {HTMLElement} */
 const versionInfo = document.querySelector("#versionInfo");
+/** @type {HTMLElement} */
 const coreVersionInfo = document.querySelector("#coreVersionInfo");
+/** @type {HTMLElement} */
 const modulePathInfo = document.querySelector("#modulePathInfo");
 
+/** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
+/** @type {HTMLButtonElement} */
 const sampleBtn = document.querySelector("#sampleBtn");
+/** @type {HTMLButtonElement} */
 const closeInputBtn = document.querySelector("#closeInputBtn");
+/** @type {HTMLButtonElement} */
 const closeEndBtn = document.querySelector("#closeEndBtn");
+/** @type {HTMLButtonElement} */
 const playAgainBtn = document.querySelector("#playAgainBtn");
+/** @type {HTMLButtonElement} */
 const editNamesBtn = document.querySelector("#editNamesBtn");
+/** @type {HTMLButtonElement} */
 const inputBtn = document.querySelector("#inputBtn");
+/** @type {HTMLButtonElement} */
 const fastBtn = document.querySelector("#fastBtn");
+/** @type {HTMLButtonElement} */
 const turboBtn = document.querySelector("#turboBtn");
+/** @type {HTMLButtonElement} */
 const refreshBtn = document.querySelector("#refreshBtn");
 
-let wasmApi = null;
+// ============================================================================
+// 全局状态
+// ============================================================================
+
+/** @type {FightReplay|null} 当前已生成的回放数据 */
 let currentReplay = null;
+/** @type {number} 每次播放会话递增的 token，用于中断旧的播放循环 */
 let playbackToken = 0;
-let speedMode = 'normal'; // 'normal' | 'fast' | 'turbo'
+/** @type {SpeedMode} 当前播放速度模式 */
+let speedMode = 'normal';
+/** @type {Map<number, FightPlayer>} playerId → 玩家对象的快速索引 */
 let playersById = new Map();
 
+// 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
 
-function escapeHtml(text) {
-    return String(text)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-}
+// ============================================================================
+// 胶水函数（直接操作 DOM 或全局状态）
+// ============================================================================
 
-function iconSrc(iconPngBase64) {
-    if (!iconPngBase64) {
-        return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
-    }
-    return iconPngBase64.startsWith("data:")
-        ? iconPngBase64
-        : `data:image/png;base64,${iconPngBase64}`;
-}
-
-function formatError(error) {
-    if (!error) {
-        return "未知错误";
-    }
-    if (typeof error === "string") {
-        return error;
-    }
-    if (error.code || error.message) {
-        return `${error.code ?? "ERROR"}: ${error.message ?? ""}`.trim();
-    }
-    if (error instanceof Error) {
-        return error.message;
-    }
-    try {
-        return JSON.stringify(error, null, 2);
-    } catch {
-        return String(error);
-    }
-}
-
+/**
+ * 记住玩家列表，建立 id→player 的快速查找表。
+ * 原地更新 Map（不替换引用），确保所有持有该 Map 引用的调用方都能看到最新数据。
+ * @param {FightPlayer[]} players
+ */
 function rememberPlayers(players) {
-    playersById = new Map(players.map((player) => [player.id, player]));
+    playersById.clear();
+    for (const player of players) {
+        playersById.set(player.id, player);
+    }
 }
 
+/**
+ * 设置输入面板下方的状态提示文本。
+ * @param {string} message — 提示消息
+ * @param {boolean} [isError=false] — 是否标记为错误样式
+ */
 function setInputStatus(message, isError = false) {
     inputStatus.textContent = message;
     inputStatus.classList.toggle("error", isError);
 }
 
+/**
+ * 切换开始/示例按钮的 loading 态。
+ * @param {boolean} loading
+ */
 function setLoading(loading) {
     startBtn.disabled = loading;
     sampleBtn.disabled = loading;
 }
 
+// ============================================================================
+// localStorage 持久化
+// ============================================================================
+
+/** 从 localStorage 恢复上次输入，若无则使用默认示例 */
 function restoreInputValue() {
     try {
         const savedValue = window.localStorage.getItem(INPUT_STORAGE_KEY)?.trim();
@@ -103,22 +227,39 @@ function restoreInputValue() {
     }
 }
 
+/** 将当前输入框内容持久化到 localStorage */
 function persistInputValue() {
     try {
         window.localStorage.setItem(INPUT_STORAGE_KEY, inputName.value);
     } catch {
-        // Keep the in-memory input usable even if storage is unavailable.
+        // 即使存储不可用，内存中的输入仍然可用。
     }
 }
 
+// ============================================================================
+// 面板开关
+// ============================================================================
+
+/**
+ * 打开指定面板（设置 hidden=false）。
+ * @param {HTMLElement} panel
+ */
 function openPanel(panel) {
     panel.hidden = false;
 }
 
+/**
+ * 关闭指定面板（设置 hidden=true）。
+ * @param {HTMLElement} panel
+ */
 function closePanel(panel) {
     panel.hidden = true;
 }
 
+/**
+ * 打开输入编辑面板，可选是否全选文本。
+ * @param {boolean} [selectAll=false] — 是否自动全选输入框内容
+ */
 function openInputEditor(selectAll = false) {
     openPanel(inputPanel);
     window.requestAnimationFrame(() => {
@@ -129,514 +270,35 @@ function openInputEditor(selectAll = false) {
     });
 }
 
-function sleep(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
+// ============================================================================
+// 回放播放主循环
+// ============================================================================
 
-function buildStateMap(states) {
-    return new Map(states.map((state) => [state.id, state]));
-}
-
-function phantomDisplayName(playerId) {
-    return `幻影 #${playerId}`;
-}
-
-function statusText(state) {
-    if (!state.alive) {
-        return "死亡";
-    }
-    if (state.frozen) {
-        return "冻结";
-    }
-    return "存活";
-}
-
-function classifyMessage(message) {
-    if (message.includes("回复体力")) {
-        return "recover";
-    }
-    if (message.includes("被击倒")) {
-        return "knockout";
-    }
-    if (message.includes("点伤害")) {
-        return "damage";
-    }
-    return "normal";
-}
-
-function actorHpMetrics(state, previousState = state) {
-    if (!state || state.maxHp <= 0) {
-        return null;
-    }
-
-    const maxHp = Math.max(1, state.maxHp, previousState?.maxHp ?? 0);
-    const hp = Math.max(0, Math.min(maxHp, state.hp));
-    const previousHp = Math.max(0, Math.min(maxHp, previousState?.hp ?? hp));
-    const totalWidth = Math.max(20, Math.min(56, 16 + Math.round(Math.sqrt(maxHp) * 2.8))) * 1.5;
-    const fillWidth = hp > 0 ? Math.max(1, Math.round((hp / maxHp) * totalWidth)) : 0;
-    const previousWidth = previousHp > 0 ? Math.max(1, Math.round((previousHp / maxHp) * totalWidth)) : 0;
-    const deltaWidth = previousHp > hp ? Math.max(1, previousWidth - fillWidth) : 0;
-
-    return {
-        totalWidth,
-        fillWidth,
-        previousWidth,
-        deltaLeft: fillWidth,
-        deltaWidth,
-    };
-}
-
-function formatMessageText(text, tone) {
-    let html = escapeHtml(text);
-    html = html.replace(/(\[[^\]]+\])/g, '<span class="skill-token">$1</span>');
-
-    if (tone === "damage") {
-        html = html.replace(/(\d+)(?=点伤害)/g, '<span class="message-number">$1</span>');
-    }
-    if (tone === "recover") {
-        html = html.replace(/(\d+)(?=点)/g, '<span class="message-number">$1</span>');
-    }
-    return html;
-}
-
-function actorToken(player, state, previousState, { showHp = true } = {}) {
-    const hpMetrics = showHp ? actorHpMetrics(state, previousState) : null;
-    const hpBar = hpMetrics
-        ? `
-            <span class="actor-hp" style="width:${hpMetrics.totalWidth}px">
-                <span class="actor-hp-fill" style="width:${hpMetrics.fillWidth}px"></span>
-                ${hpMetrics.deltaWidth > 0 ? `<span class="actor-hp-delta" style="left:${hpMetrics.deltaLeft}px;width:${hpMetrics.deltaWidth}px"></span>` : ""}
-            </span>
-        `
-        : "";
-    const hpClass = hpMetrics ? " has-hp" : "";
-
-    return `<span class="actor-token${hpClass}"><span class="actor-avatar-wrap"><img class="msg-avatar" src="${iconSrc(player.iconPngBase64)}" alt="" aria-hidden="true">${hpBar}</span><span class="actor-name">${escapeHtml(player.displayName)}</span></span>`;
-}
-
-function renderActorById(playerId, stateMap, previousStateMap, options) {
-    const player = playersById.get(playerId);
-    if (!player) {
-        return escapeHtml(phantomDisplayName(playerId));
-    }
-
-    const state = stateMap.get(player.id);
-    const previousState = previousStateMap?.get(player.id) ?? state;
-    return actorToken(player, state, previousState, options);
-}
-
-function renderMessageParam(update, tone, stateMap, previousStateMap) {
-    if (Array.isArray(update.targetIds) && update.targetIds.length) {
-        return update.targetIds
-            .map((playerId) => renderActorById(playerId, stateMap, previousStateMap, { showHp: true }))
-            .join(",");
-    }
-
-    const value = update.param ?? update.score;
-    if (value == null) {
-        return "";
-    }
-
-    const html = escapeHtml(String(value));
-    if (tone === "damage" || tone === "recover") {
-        return `<span class="message-number">${html}</span>`;
-    }
-    return html;
-}
-
-function renderTemplateMessage(update, tone, stateMap, previousStateMap) {
-    const template = `${update.messageTemplate ?? ""}`;
-    if (!template) {
-        return formatMessageText(`${update.messageRendered ?? ""}`, tone);
-    }
-
-    return template
-        .split(/(\[[012]\])/g)
-        .filter((part) => part.length > 0)
-        .map((part) => {
-            if (part === "[0]") {
-                return renderActorById(update.casterId, stateMap, previousStateMap, { showHp: false });
-            }
-            if (part === "[1]") {
-                return renderActorById(update.targetId, stateMap, previousStateMap, { showHp: true });
-            }
-            if (part === "[2]") {
-                return renderMessageParam(update, tone, stateMap, previousStateMap);
-            }
-            return formatMessageText(part, tone);
-        })
-        .join("");
-}
-
-function highlightMessage(update, tone, stateMap, previousStateMap) {
-    return renderTemplateMessage(update, tone, stateMap, previousStateMap);
-}
-
-function renderIdleState() {
-    playerList.innerHTML = `
-        <div class="welcome">
-            <div><strong>战斗还没开始。</strong></div>
-            <div>左侧会按队伍显示角色状态，右侧则按原版风格逐段追加战斗记录。</div>
-            <div>你可以直接用默认示例点击开始，也可以改成自己的输入。</div>
-        </div>
-    `;
-    battleRows.innerHTML = `
-        <div class="welcome">
-            <div><strong>show.html 是单独的 Fight 展示页。</strong></div>
-            <div>它不再混合胜率功能，而是专门模仿原始名字竞技场与 fast-namerena 的战斗观感。</div>
-        </div>
-    `;
-    plistMeta.textContent = "输入名字后点击开始，左侧会显示角色状态，右侧自动播放整场战斗。";
-    headerMeta.textContent = "目前显示的是 show 风格回放视图。";
-}
-
-function renderPlayers(players, states, previousStates = states, involved = null) {
-    const stateMap = buildStateMap(states);
-    const previousStateMap = buildStateMap(previousStates);
-
-    // 补上 states 里有但初始 players 里没有的召唤单位
-    const knownIds = new Set(players.map((p) => p.id));
-    const allPlayers = [...players];
-    for (const state of states) {
-        if (!knownIds.has(state.id)) {
-            knownIds.add(state.id);
-            // 幻影/分身使用本体头像
-            let icon = null;
-            if (state.ownerId != null) {
-                const ownerPlayer = playersById.get(state.ownerId);
-                if (ownerPlayer) {
-                    icon = ownerPlayer.iconPngBase64;
-                }
-            }
-            const phantomPlayer = {
-                id: state.id,
-                teamIndex: state.teamIndex ?? 0,
-                idName: `player_${state.id}`,
-                displayName: phantomDisplayName(state.id),
-                iconPngBase64: icon,
-            };
-            allPlayers.push(phantomPlayer);
-            playersById.set(state.id, phantomPlayer);
-        }
-    }
-
-    const existingRows = playerList.querySelectorAll('tr[data-player-id]');
-    if (existingRows.length !== allPlayers.length) {
-        // 全量渲染（首次或玩家数量变化时）
-        const teams = new Map();
-        for (const player of allPlayers) {
-            const items = teams.get(player.teamIndex) ?? [];
-            items.push(player);
-            teams.set(player.teamIndex, items);
-        }
-
-        const sortedTeams = [...teams.entries()].sort((left, right) => left[0] - right[0]);
-        const firstTeamIsSingle = sortedTeams.length > 0 && sortedTeams[0][1].length === 1;
-
-        const teamHtml = sortedTeams
-            .map(([teamIndex, teamPlayers]) => {
-                const members = teamPlayers
-                    .map((player) => {
-                        const state = stateMap.get(player.id);
-                        const previous = previousStateMap.get(player.id) ?? state;
-                        if (!state) {
-                            return "";
-                        }
-
-                        const hpMetrics = actorHpMetrics(state, previous);
-                        const totalWidth = hpMetrics?.totalWidth ?? 0;
-                        const fillWidth = hpMetrics?.fillWidth ?? 0;
-                        const previousWidth = hpMetrics?.previousWidth ?? 0;
-                        const healStart = Math.min(previousWidth, fillWidth);
-                        const healWidth = Math.max(0, fillWidth - previousWidth);
-                        const deadClass = state.alive ? "" : " is-dead";
-                        const involvedClass = involved
-                            ? (involved.casters.has(player.id) && involved.targets.has(player.id) ? " is-caster is-target"
-                                : involved.casters.has(player.id) ? " is-caster"
-                                : involved.targets.has(player.id) ? " is-target"
-                                : "")
-                            : "";
-                        const nameClass = state.alive ? "name" : "name namedie";
-                        const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
-
-                        const maxMp = state.magic > 0 ? state.magic : (state.mp > 0 ? state.mp : 1);
-                        const mpPercent = state.alive
-                            ? Math.max(0, Math.min(100, (state.mp / maxMp) * 100))
-                            : 0;
-
-                        return `
-                        <tr class="player-row${deadClass}${involvedClass}" data-player-id="${player.id}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
-                            <td class="player-name-cell">
-                                <div class="player-name-wrap">
-                                    <img class="sgl" src="${iconSrc(player.iconPngBase64)}" alt="${escapeHtml(player.displayName)}">
-                                    <span class="${nameClass}">${escapeHtml(player.displayName)}</span>
-                                </div>
-                                <div class="hpwrap compact" style="width:${totalWidth}px">
-                                    <div class="maxhp" style="width:${totalWidth}px"></div>
-                                    <div class="oldhp" style="width:${previousWidth}px"></div>
-                                    <div class="healhp" style="left:${healStart}px;width:${healWidth}px"></div>
-                                    <div class="hp" style="width:${fillWidth}px"></div>
-                                </div>
-                                <div class="mpwrap">
-                                    <div class="mp" style="width:${mpPercent.toFixed(2)}%"></div>
-                                </div>
-                            </td>
-                            <td class="player-stat-cell player-hp-cell">${state.hp}/${state.maxHp}</td>
-                            <td class="player-stat-cell">${state.mp}/${state.magic}</td>
-                            <td class="player-stat-cell">${state.attack}/${state.defense}</td>
-                            <td class="player-state-cell"><span class="${stateClass}">${statusText(state)}</span></td>
-                        </tr>
-                    `;
-                    })
-                    .join("");
-
-                const isSingle = teamPlayers.length === 1;
-                const labelHtml = !isSingle ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
-                const theadHtml = !isSingle ? `
-                        <thead>
-                            <tr>
-                                <th class="player-name-head">角色</th>
-                                <th class="player-hp-head">HP</th>
-                                <th class="player-mix-head">MP/魔</th>
-                                <th class="player-mix-head">攻/防</th>
-                                <th class="player-state-head">状态</th>
-                            </tr>
-                        </thead>` : "";
-                return `
-                <section class="team-block">
-                    ${labelHtml}
-                    <table class="player-table">
-                        <colgroup>
-                            <col class="player-name-head">
-                            <col class="player-hp-head">
-                            <col class="player-mix-head">
-                            <col class="player-mix-head">
-                            <col class="player-state-head">
-                        </colgroup>
-                        ${theadHtml}
-                        <tbody>
-                            ${members}
-                        </tbody>
-                    </table>
-                </section>
-            `;
-            })
-            .join("");
-
-        const columnHeader = firstTeamIsSingle ? `
-        <table class="player-table column-headers">
-            <colgroup>
-                <col class="player-name-head">
-                <col class="player-hp-head">
-                <col class="player-mix-head">
-                <col class="player-mix-head">
-                <col class="player-state-head">
-            </colgroup>
-            <thead>
-                <tr>
-                    <th class="player-name-head">角色</th>
-                    <th class="player-hp-head">HP</th>
-                    <th class="player-mix-head">MP/魔</th>
-                    <th class="player-mix-head">攻/防</th>
-                    <th class="player-state-head">状态</th>
-                </tr>
-            </thead>
-        </table>` : "";
-        playerList.innerHTML = columnHeader + teamHtml;
-    } else {
-        // 增量更新：直接修改现有 DOM，避免 innerHTML 全量替换
-        for (const player of allPlayers) {
-            const state = stateMap.get(player.id);
-            const previous = previousStateMap.get(player.id) ?? state;
-            if (!state) continue;
-
-            const row = playerList.querySelector(`tr[data-player-id="${player.id}"]`);
-            if (!row) continue;
-
-            const hpMetrics = actorHpMetrics(state, previous);
-            const totalWidth = hpMetrics?.totalWidth ?? 0;
-            const fillWidth = hpMetrics?.fillWidth ?? 0;
-            const previousWidth = hpMetrics?.previousWidth ?? 0;
-            const healStart = Math.min(previousWidth, fillWidth);
-            const healWidth = Math.max(0, fillWidth - previousWidth);
-            const deadClass = state.alive ? "" : " is-dead";
-            const involvedClass = involved
-                ? (involved.casters.has(player.id) && involved.targets.has(player.id) ? " is-caster is-target"
-                    : involved.casters.has(player.id) ? " is-caster"
-                    : involved.targets.has(player.id) ? " is-target"
-                    : "")
-                : "";
-            const nameClass = state.alive ? "name" : "name namedie";
-            const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
-            const maxMp = state.magic > 0 ? state.magic : (state.mp > 0 ? state.mp : 1);
-            const mpPercent = state.alive
-                ? Math.max(0, Math.min(100, (state.mp / maxMp) * 100))
-                : 0;
-
-            row.className = `player-row${deadClass}${involvedClass}`;
-
-            const nameEl = row.querySelector('.player-name-wrap .name, .player-name-wrap .namedie');
-            if (nameEl) nameEl.className = nameClass;
-
-            const hpwrapEl = row.querySelector('.hpwrap');
-            if (hpwrapEl) hpwrapEl.style.width = totalWidth + 'px';
-            const maxhpEl = row.querySelector('.maxhp');
-            if (maxhpEl) maxhpEl.style.width = totalWidth + 'px';
-            const hpEl = row.querySelector('.hp');
-            if (hpEl) hpEl.style.width = fillWidth + 'px';
-            const oldhpEl = row.querySelector('.oldhp');
-            if (oldhpEl) oldhpEl.style.width = previousWidth + 'px';
-            const healhpEl = row.querySelector('.healhp');
-            if (healhpEl) {
-                healhpEl.style.left = healStart + 'px';
-                healhpEl.style.width = healWidth + 'px';
-            }
-
-            const mpEl = row.querySelector('.mp');
-            if (mpEl) mpEl.style.width = mpPercent.toFixed(2) + '%';
-
-            const statCells = row.querySelectorAll('.player-stat-cell');
-            if (statCells.length >= 3) {
-                statCells[0].textContent = `${state.hp}/${state.maxHp}`;
-                statCells[1].textContent = `${state.mp}/${state.magic}`;
-                statCells[2].textContent = `${state.attack}/${state.defense}`;
-            }
-
-            const stateEl = row.querySelector('.player-state-cell span');
-            if (stateEl) {
-                stateEl.className = stateClass;
-                stateEl.textContent = statusText(state);
-            }
-        }
-    }
-}
-
-// 将原本的 appendFrame 替换为 buildFrameHtml
-function buildFrameHtml(frame, roundIndex, previousStates = frame.states) {
-    const previousStateMap = buildStateMap(previousStates);
-    let running = new Map(previousStateMap);
-    const rows = [];
-    let segments = [];
-
-    function flushRow() {
-        if (!segments.length) {
-            return;
-        }
-        rows.push(`<div class="row">${segments.join('<span class="msg-sep">，</span>')}</div>`);
-        segments = [];
-    }
-
-    function applyDelta(id, hitState, tone, value) {
-        const cur = hitState.get(id);
-        if (!cur || cur.maxHp <= 0) return;
-        if (tone === 'damage') {
-            hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
-        } else if (tone === 'recover') {
-            hitState.set(id, { ...cur, hp: Math.min(cur.maxHp, cur.hp + value) });
-        }
-    }
-
-    for (const update of frame.updates) {
-        if (update.updateType === "next_line") {
-            flushRow();
-            continue;
-        }
-
-        const message = `${update.messageRendered ?? ""}`.trim();
-        if (!message) {
-            continue;
-        }
-
-        const tone = classifyMessage(message);
-        const hitState = new Map(running);
-        const value = update.param ?? update.score ?? 0;
-        if (value > 0) {
-            if (update.targetId != null) applyDelta(update.targetId, hitState, tone, value);
-            if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => applyDelta(id, hitState, tone, value));
-        }
-        segments.push(`<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running)}</span>`);
-        running = hitState;
-    }
-
-    flushRow();
-
-    if (!rows.length && !frame.finished) {
-        return ""; // 返回空字符串而不是直接 return
-    }
-
-    const winnerLine = frame.finished
-        ? `<div class="row winner-line"><span class="winner-row">winnerIds=${escapeHtml(JSON.stringify(frame.winnerIds))}</span></div>`
-        : "";
-
-    // 返回构建好的 HTML 字符串
-    return `
-        <section class="round-block">
-            <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
-            <div class="frame-body">
-                ${rows.join("")}
-                ${winnerLine}
-            </div>
-        </section>
-    `;
-}
-
-function renderReplayIntro(replay) {
-    const teamCount = new Set(replay.players.map((player) => player.teamIndex)).size;
-    rememberPlayers(replay.players);
-    plistMeta.textContent = `${replay.players.length} 名角色 · ${teamCount} 支队伍 · ${replay.frames.length} 帧回放。`;
-    const labels = { normal: '正常速度', fast: '快进模式', turbo: '极速模式（无延时）' };
-    headerMeta.textContent = `当前是${labels[speedMode]}，会自动推进 ${replay.frames.length} 帧。`;
-    battleRows.innerHTML = `
-        <div class="welcome">
-            <div><strong>战斗已经开始。</strong></div>
-            <div>下面会按回合逐段追加战斗事件，左侧状态栏会同步刷新 HP、MP 与存活状态。</div>
-            <div>右下角两个速度按钮可切换快进或极速模式。</div>
-        </div>
-    `;
-    renderPlayers(replay.players, replay.initialStates, replay.initialStates);
-}
-
-function updateSpeedButtons() {
-    fastBtn.classList.toggle("is-active", speedMode === 'fast');
-    turboBtn.classList.toggle("is-active", speedMode === 'turbo');
-    if (currentReplay) {
-        const labels = { normal: '正常速度', fast: '快进模式', turbo: '极速模式（无延时）' };
-        headerMeta.textContent = `当前是${labels[speedMode]}，会自动推进 ${currentReplay.frames.length} 帧。`;
-    }
-}
-
-function playbackDelay(frame) {
-    if (speedMode === 'turbo') {
-        return 0;
-    }
-    if (speedMode === 'fast') {
-        return 40;
-    }
-    return frame.updates.reduce((value, update) => Math.max(value, update.delay1 || update.delay0 || 0), 0);
-}
-
-function winnerNamesText(replay) {
-    const playersById = new Map(replay.players.map((player) => [player.id, player]));
-    const names = replay.winnerIds.map((winnerId) => playersById.get(winnerId)?.displayName ?? `#${winnerId}`);
-    return names.length ? names.join("、") : "未分出胜负";
-}
-
+/**
+ * 自动播放整场回放。
+ * — normal/fast 模式：逐帧渲染 DOM 并等待 delay
+ * — turbo 模式：批量缓冲 HTML，约每 16ms 写入一次 DOM 并让出主线程
+ *
+ * @param {FightReplay} replay
+ * @returns {Promise<void>}
+ */
 async function playReplay(replay) {
     const token = ++playbackToken;
     const frontendStart = performance.now();
     closePanel(endPanel);
-    renderReplayIntro(replay);
+    renderReplayIntro(replay, speedMode, playerList, battleRows, plistMeta, headerMeta, playersById, rememberPlayers);
     let previousStates = replay.initialStates;
 
     let htmlBuffer = "";
     let lastRenderTime = performance.now();
 
     for (const [index, frame] of replay.frames.entries()) {
+        // 如果播放 token 已变更（用户触发了新的播放），中止当前循环
         if (token !== playbackToken) {
             return;
         }
         
-        const frameHtml = buildFrameHtml(frame, index, previousStates);
+        const frameHtml = buildFrameHtml(frame, index, previousStates, playersById);
 
         if (speedMode !== 'turbo') {
             // 正常/快进模式：逐帧渲染 DOM 并等待
@@ -646,15 +308,16 @@ async function playReplay(replay) {
                 if (hbody) hbody.scrollTop = hbody.scrollHeight;
             }
 
+            // 构建当前帧涉及的角色集合，用于左侧高亮
             const involved = { casters: new Set(), targets: new Set() };
             for (const update of frame.updates) {
                 if (update.casterId != null) involved.casters.add(update.casterId);
                 if (update.targetId != null) involved.targets.add(update.targetId);
                 if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => involved.targets.add(id));
             }
-            renderPlayers(replay.players, frame.states, previousStates, involved);
+            renderPlayers(replay.players, frame.states, previousStates, involved, playerList, playersById);
             previousStates = frame.states;
-            await sleep(playbackDelay(frame));
+            await sleep(playbackDelay(frame, speedMode));
             
         } else {
             // Turbo 模式：批量缓冲 HTML，取消帧间 sleep
@@ -670,8 +333,8 @@ async function playReplay(replay) {
                     const hbody = battleRows.closest(".hbody");
                     if (hbody) hbody.scrollTop = hbody.scrollHeight;
                 }
-                // 左侧面板也只在这个切片点进行增量更新
-                renderPlayers(replay.players, frame.states, previousStates, null);
+                // 左侧面板也只在这个切片点进行增量更新（turbo 下不高亮具体角色）
+                renderPlayers(replay.players, frame.states, previousStates, null, playerList, playersById);
                 
                 await sleep(0); // 短暂让出执行权，让浏览器绘制画面
                 lastRenderTime = performance.now();
@@ -690,7 +353,8 @@ async function playReplay(replay) {
         if (hbody) hbody.scrollTop = hbody.scrollHeight;
     }
 
-    renderPlayers(replay.players, replay.finalStates, previousStates, null);
+    // 最后刷新一次左侧面板（使用最终状态）
+    renderPlayers(replay.players, replay.finalStates, previousStates, null, playerList, playersById);
     const frontendDurationMs = performance.now() - frontendStart;
     winnerNames.textContent = winnerNamesText(replay);
     winnerNote.innerHTML = [
@@ -701,56 +365,14 @@ async function playReplay(replay) {
     openPanel(endPanel);
 }
 
-async function loadModule() {
-    const candidates = [
-        { label: "../pkg/tswn_wasm.js", path: "../pkg/tswn_wasm.js" },
-        { label: "../dist/wasm/pkg/tswn_wasm.js", path: "../dist/wasm/pkg/tswn_wasm.js" },
-    ];
+// ============================================================================
+// 用户操作入口
+// ============================================================================
 
-    let lastError = null;
-    for (const candidate of candidates) {
-        try {
-            const mod = await import(candidate.path);
-            modulePathInfo.textContent = `module: ${candidate.label}`;
-            return mod;
-        } catch (error) {
-            lastError = error;
-        }
-    }
-    throw lastError;
-}
-
-async function ensureApi() {
-    if (wasmApi) {
-        return wasmApi;
-    }
-    const mod = await loadModule();
-    await mod.default();
-    versionInfo.textContent = `wrapper: ${mod.version()}`;
-    coreVersionInfo.textContent = `core: ${mod.core_version()}`;
-    wasmApi = mod;
-    return wasmApi;
-}
-
-async function buildReplay(rawInput) {
-    const api = await ensureApi();
-    const session = new api.FightSession(rawInput, { includeIcons: true, captureReplay: true });
-    const players = session.players();
-    const initialStates = session.state();
-    const wasmStart = performance.now();
-    const replay = session.run_to_end();
-    const wasmDurationMs = performance.now() - wasmStart;
-    return {
-        rawInput,
-        players,
-        initialStates,
-        frames: replay.frames,
-        winnerIds: replay.winnerIds,
-        finalStates: replay.finalStates,
-        wasmDurationMs,
-    };
-}
-
+/**
+ * 开始一场新战斗：校验输入 → 生成回放 → 自动播放。
+ * @returns {Promise<void>}
+ */
 async function startBattle() {
     const rawInput = inputName.value.trim();
     if (!rawInput) {
@@ -766,7 +388,7 @@ async function startBattle() {
     closePanel(endPanel);
 
     try {
-        currentReplay = await buildReplay(rawInput);
+        currentReplay = await buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
         setInputStatus("回放已生成，开始自动播放。");
         closePanel(inputPanel);
         await playReplay(currentReplay);
@@ -778,6 +400,10 @@ async function startBattle() {
     }
 }
 
+/**
+ * 重播当前回放（不重新生成）。
+ * @returns {Promise<void>}
+ */
 async function replayCurrent() {
     if (!currentReplay) {
         openInputEditor();
@@ -786,6 +412,11 @@ async function replayCurrent() {
     await playReplay(currentReplay);
 }
 
+// ============================================================================
+// 事件绑定
+// ============================================================================
+
+// 示例按钮：填入默认示例输入
 sampleBtn.addEventListener("click", () => {
     inputName.value = DEFAULT_RAW;
     persistInputValue();
@@ -793,52 +424,63 @@ sampleBtn.addEventListener("click", () => {
     openInputEditor(true);
 });
 
+// 开始按钮：启动战斗
 startBtn.addEventListener("click", () => {
     void startBattle();
 });
 
+// 再来一局：关闭结束面板，重播当前回放
 playAgainBtn.addEventListener("click", () => {
     closePanel(endPanel);
     void replayCurrent();
 });
 
+// 刷新按钮：重播当前回放
 refreshBtn.addEventListener("click", () => {
     void replayCurrent();
 });
 
+// 输入按钮：打开输入编辑面板
 inputBtn.addEventListener("click", () => {
     openInputEditor();
 });
 
+// 编辑名字按钮：关闭结束面板并打开输入编辑
 editNamesBtn.addEventListener("click", () => {
     closePanel(endPanel);
     openInputEditor(true);
 });
 
+// 快进按钮：切换 normal ↔ fast
 fastBtn.addEventListener("click", () => {
     speedMode = speedMode === 'fast' ? 'normal' : 'fast';
-    updateSpeedButtons();
+    updateSpeedButtons(fastBtn, turboBtn, speedMode, currentReplay, headerMeta);
 });
 
+// 极速按钮：切换 normal ↔ turbo
 turboBtn.addEventListener("click", () => {
     speedMode = speedMode === 'turbo' ? 'normal' : 'turbo';
-    updateSpeedButtons();
+    updateSpeedButtons(fastBtn, turboBtn, speedMode, currentReplay, headerMeta);
 });
 
+// 关闭输入面板（仅在已有回放时允许关闭）
 closeInputBtn.addEventListener("click", () => {
     if (currentReplay) {
         closePanel(inputPanel);
     }
 });
 
+// 关闭结束面板
 closeEndBtn.addEventListener("click", () => {
     closePanel(endPanel);
 });
 
+// 输入框内容变化时自动持久化
 inputName.addEventListener("input", () => {
     persistInputValue();
 });
 
+// Ctrl+Enter / Cmd+Enter 快捷开始
 inputName.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
@@ -846,14 +488,22 @@ inputName.addEventListener("keydown", (event) => {
     }
 });
 
+// ============================================================================
+// 入口
+// ============================================================================
+
+/**
+ * 页面入口：渲染空闲 UI，初始化 WASM 模块。
+ * @returns {Promise<void>}
+ */
 async function main() {
-    renderIdleState();
-    updateSpeedButtons();
+    renderIdleState(playerList, battleRows, plistMeta, headerMeta);
+    updateSpeedButtons(fastBtn, turboBtn, speedMode, currentReplay, headerMeta);
     setInputStatus("会使用 show 风格自动播放整场战斗。");
     openInputEditor();
 
     try {
-        await ensureApi();
+        await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
         setInputStatus("tswn_wasm 已初始化，可以开始。");
     } catch (error) {
         setInputStatus(`模块加载失败: ${formatError(error)}`, true);
