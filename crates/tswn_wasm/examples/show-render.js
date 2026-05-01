@@ -92,12 +92,28 @@ export function actorToken(player, state, previousState, { showHp = true } = {})
  */
 export function renderActorById(playerId, stateMap, previousStateMap, playersById, options) {
     const player = playersById.get(playerId);
+    const state = stateMap.get(playerId);
+    const previousState = previousStateMap?.get(playerId) ?? state;
     if (!player) {
-        return escapeHtml(phantomDisplayName(playerId));
+        let icon = null;
+        if (state?.ownerId != null) {
+            const ownerPlayer = playersById.get(state.ownerId);
+            if (ownerPlayer) {
+                icon = ownerPlayer.iconPngBase64;
+            }
+        }
+        return actorToken(
+            {
+                id: playerId,
+                displayName: phantomDisplayName(playerId),
+                iconPngBase64: icon,
+            },
+            state,
+            previousState,
+            options,
+        );
     }
 
-    const state = stateMap.get(player.id);
-    const previousState = previousStateMap?.get(player.id) ?? state;
     return actorToken(player, state, previousState, options);
 }
 
@@ -461,6 +477,28 @@ export function renderPlayers(players, states, previousStates = states, involved
  * @returns {string} 帧的 HTML 字符串，无有效行时返回空字符串
  */
 export function buildFrameHtml(frame, roundIndex, previousStates = frame.states, playersById) {
+    for (const state of frame.states) {
+        if (playersById.has(state.id)) {
+            continue;
+        }
+
+        let icon = null;
+        if (state.ownerId != null) {
+            const ownerPlayer = playersById.get(state.ownerId);
+            if (ownerPlayer) {
+                icon = ownerPlayer.iconPngBase64;
+            }
+        }
+
+        playersById.set(state.id, {
+            id: state.id,
+            teamIndex: state.teamIndex ?? 0,
+            idName: `player_${state.id}`,
+            displayName: phantomDisplayName(state.id),
+            iconPngBase64: icon,
+        });
+    }
+
     const previousStateMap = buildStateMap(previousStates);
     /** @type {Map<number, FightState>} 帧内逐步更新的模拟 HP 状态 */
     let running = new Map(previousStateMap);

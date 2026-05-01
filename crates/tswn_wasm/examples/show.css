@@ -279,6 +279,8 @@ button:hover {
     image-rendering: pixelated;
     background: rgba(255, 255, 255, 0.92);
     flex: 0 0 auto;
+    position: relative;
+    top: -2px;
 }
 
 .name {
@@ -466,14 +468,17 @@ button:hover {
 .round-block {
     display: grid;
     grid-template-columns: 64px 1fr;
-    gap: 6px;
-    align-items: start;
+    gap: 10px;
+    align-items: stretch;
     margin-bottom: 1px;
     padding: 1px 0 3px;
     border-bottom: 1px solid rgba(198, 225, 239, 0.95);
 }
 
 .frame-sidebar {
+    display: flex;
+    align-self: stretch;
+    align-items: flex-start;
     padding-top: 1px;
 }
 
@@ -501,6 +506,10 @@ button:hover {
     line-height: 1.28;
     white-space: normal;
     word-break: break-word;
+}
+
+.frame-body .row:not(.separator) + .row:not(.separator) {
+    margin-top: 4px;
 }
 
 .msg {
@@ -548,12 +557,15 @@ button:hover {
 
 .actor-token {
     display: inline-flex;
+    align-items: flex-end;
+    gap: 3px;
     margin-right: 2px;
     vertical-align: bottom;
 }
 
 .actor-avatar-wrap {
     position: relative;
+    top: -2px;
     display: block;
     flex: 0 0 auto;
     overflow: visible;
@@ -572,14 +584,13 @@ button:hover {
     white-space: nowrap;
     background: #f3f3f8;
     color: #2d4454;
-    line-height: 1.05;
 }
 
 
 .actor-hp {
     position: absolute;
     display: block;
-    top: 0px;
+    top: -2px;
     left: calc(100% + 2px);
     height: 2px;
     overflow: hidden;
@@ -619,7 +630,7 @@ button:hover {
 
 .winner-row {
     display: inline-flex;
-    margin-top: 10px;
+    margin-top: 0;
     padding: 4px 10px;
     background: rgba(176, 106, 14, 0.12);
     color: var(--knockout);
@@ -852,4 +863,3 @@ textarea {
         bottom: 12px;
     }
 }
-
