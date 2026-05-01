@@ -25,7 +25,9 @@ from psycopg.rows import dict_row
 BUN_RATE_RE = re.compile(r"最终胜率:\|(?P<rate>\d+\.\d+)%\|")
 TSWN_RATE_RE = re.compile(r"tswn: 胜率: (?P<rate>\d+\.\d+)%")
 BUN_BUCKET_RE = re.compile(r"^(?P<rate>\d+\.\d+)%\((?P<rounds>\d+)\)$", re.MULTILINE)
-TSWN_OUTPUT_RATE_RE = re.compile(r"胜率:\s*(?P<rate>\d+\.\d+)%")
+TSWN_OUTPUT_SUMMARY_RE = re.compile(
+    r"胜率:\s*(?P<rate>\d+\.\d+)%\s+\((?P<wins>\d+)/(?P<total>\d+)\)"
+)
 TSWN_BUCKET_RE = re.compile(
     r"胜率\(分段\):\s*(?P<rate>\d+\.\d+)%\s+\((?P<wins>\d+)/(?P<total>\d+)\)"
 )
@@ -63,7 +65,9 @@ class MismatchRow:
 @dataclass(slots=True)
 class TswnWinRateResult:
     rate: Decimal
-    buckets: list[tuple[int, Decimal]]  # (cumulative_total, cumulative_rate)
+    wins: int
+    total: int
+    buckets: list[tuple[int, int, Decimal]]  # (cumulative_total, cumulative_wins, cumulative_rate)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -527,7 +531,7 @@ def run_tswn_win_rate(
         )
         return None
 
-    match = TSWN_OUTPUT_RATE_RE.search(stdout)
+    match = TSWN_OUTPUT_SUMMARY_RE.search(stdout)
     if not match:
         # 可能是单组评分输出，没有 "胜率:"
         if "实力评分测试" in stdout:
@@ -539,27 +543,139 @@ def run_tswn_win_rate(
         return None
 
     rate = Decimal(match.group("rate"))
-    buckets: list[tuple[int, Decimal]] = []
+    wins = int(match.group("wins"))
+    total = int(match.group("total"))
+    buckets: list[tuple[int, int, Decimal]] = []
     for bucket_match in TSWN_BUCKET_RE.finditer(stdout):
         buckets.append(
-            (int(bucket_match.group("total")), Decimal(bucket_match.group("rate")))
+            (
+                int(bucket_match.group("total")),
+                int(bucket_match.group("wins")),
+                Decimal(bucket_match.group("rate")),
+            )
         )
 
-    return TswnWinRateResult(rate=rate, buckets=buckets)
+    return TswnWinRateResult(rate=rate, wins=wins, total=total, buckets=buckets)
+
+
+def infer_exact_wins_from_displayed_rate(rate: Decimal, total: int) -> int | None:
+    """从显示到两位小数的百分比反推唯一胜场数。"""
+    if total <= 0:
+        return 0
+
+    nominal = int(
+        (rate * Decimal(total) / Decimal("100")).to_integral_value(
+            rounding=ROUND_HALF_UP
+        )
+    )
+    matches: list[int] = []
+    lower = max(0, nominal - 3)
+    upper = min(total, nominal + 3)
+    for wins in range(lower, upper + 1):
+        displayed = (
+            Decimal(wins) * Decimal("100") / Decimal(total)
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if displayed == rate:
+            matches.append(wins)
+
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def exact_rate_percent(wins: int, total: int) -> Decimal:
+    if total <= 0:
+        return Decimal("0")
+    return Decimal(wins) * Decimal("100") / Decimal(total)
+
+
+def format_exact_rate(rate: Decimal) -> str:
+    return f"{rate.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP):.4f}%"
+
+
+def format_signed_exact_rate(rate: Decimal) -> str:
+    return f"{rate.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP):+.4f}%"
+
+
+def _print_exact_summary_comparison(bun_rate: Decimal, result: TswnWinRateResult) -> None:
+    bun_wins = infer_exact_wins_from_displayed_rate(bun_rate, result.total)
+    if bun_wins is None:
+        print("  实际汇总: <无法从 bun 显示值唯一反推胜场>")
+        return
+
+    bun_exact = exact_rate_percent(bun_wins, result.total)
+    tswn_exact = exact_rate_percent(result.wins, result.total)
+    delta_wins = result.wins - bun_wins
+    delta_rate = tswn_exact - bun_exact
+    print(
+        "  实际汇总: "
+        f"bun={bun_wins}/{result.total} ({format_exact_rate(bun_exact)}) → "
+        f"tswn={result.wins}/{result.total} ({format_exact_rate(tswn_exact)}) "
+        f"Δwins={delta_wins:+d} Δrate={format_signed_exact_rate(delta_rate)}"
+    )
+
+
+def _print_exact_bucket_comparison(
+    bun_buckets: list[tuple[int, Decimal]],
+    tswn_buckets: list[tuple[int, int, Decimal]],
+) -> None:
+    """输出按累计场数对齐后的真实胜场差。"""
+    all_rounds = sorted({rounds for rounds, _rate in bun_buckets} | {total for total, _wins, _rate in tswn_buckets})
+    if not all_rounds:
+        return
+
+    bun_map = {rounds: rate for rounds, rate in bun_buckets}
+    tswn_map = {total: (wins, rate) for total, wins, rate in tswn_buckets}
+
+    print("  实际分段差 (bun → tswn):")
+    printed = False
+    for rounds in all_rounds:
+        bun_rate = bun_map.get(rounds)
+        tswn_bucket = tswn_map.get(rounds)
+        if bun_rate is None or tswn_bucket is None:
+            continue
+
+        bun_wins = infer_exact_wins_from_displayed_rate(bun_rate, rounds)
+        if bun_wins is None:
+            print(f"    {rounds:>6}场: <无法从 bun {bun_rate}% 唯一反推胜场>")
+            printed = True
+            continue
+
+        tswn_wins, tswn_rate = tswn_bucket
+        delta_wins = tswn_wins - bun_wins
+        if delta_wins == 0:
+            continue
+
+        bun_exact = exact_rate_percent(bun_wins, rounds)
+        tswn_exact = exact_rate_percent(tswn_wins, rounds)
+        delta_rate = tswn_exact - bun_exact
+        print(
+            f"    {rounds:>6}场: "
+            f"bun={bun_wins}/{rounds} ({format_exact_rate(bun_exact)}) → "
+            f"tswn={tswn_wins}/{rounds} ({format_exact_rate(tswn_exact)}) "
+            f"Δwins={delta_wins:+d} Δrate={format_signed_exact_rate(delta_rate)}"
+        )
+        printed = True
+
+    if not printed:
+        print("    <全部分段胜场一致>")
 
 
 def _print_bucket_comparison(
     bun_buckets: list[tuple[int, Decimal]],
-    tswn_buckets: list[tuple[int, Decimal]],
+    tswn_buckets: list[tuple[int, int, Decimal]],
 ) -> None:
     """并排输出 bun / tswn 的分段累积胜率对比。"""
     # 对齐同一个累积场数进行比较
-    all_rounds = sorted({r for r, _ in bun_buckets} | {r for r, _ in tswn_buckets})
+    all_rounds = sorted(
+        {rounds for rounds, _rate in bun_buckets}
+        | {total for total, _wins, _rate in tswn_buckets}
+    )
     if not all_rounds:
         return
 
     bun_map = {r: rate for r, rate in bun_buckets}
-    tswn_map = {r: rate for r, rate in tswn_buckets}
+    tswn_map = {total: rate for total, _wins, rate in tswn_buckets}
 
     print("  分段对比 (bun → tswn):")
     for rounds in all_rounds:
@@ -665,8 +781,10 @@ def run_retest(
             now_match += 1
             if not args.retest_only_diff:
                 print(f"  新: tswn(now)={result.rate}%  diff(now)={new_diff:+.2f}  ✓ 已修复")
+                _print_exact_summary_comparison(item.bun_2dp, result)
                 if result.buckets:
                     _print_bucket_comparison(item.bun_buckets, result.buckets)
+                    _print_exact_bucket_comparison(item.bun_buckets, result.buckets)
                 print()
         else:
             still_diff += 1
@@ -683,8 +801,10 @@ def run_retest(
             print(
                 f"  新: tswn(now)={result.rate}%  diff(now)={new_diff:+.2f}  {diff_symbol} 仍不一致"
             )
+            _print_exact_summary_comparison(item.bun_2dp, result)
             if result.buckets:
                 _print_bucket_comparison(item.bun_buckets, result.buckets)
+                _print_exact_bucket_comparison(item.bun_buckets, result.buckets)
             print()
 
     # 汇总
