@@ -1,6 +1,6 @@
 # 更新日志
 
-## [Unreleased]
+## [0.2.21] - 2026-05-01
 
 ### 新增
 
@@ -8,20 +8,15 @@
   - `platform_default_win_rate_workers()`：wasm 下固定返回 1（浏览器不暴露 `std::thread`），非 wasm 平台继续使用 `available_parallelism` 自动检测。
   - `platform_limit_win_rate_workers()`：wasm 下强制钳制为 1，非 wasm 平台仅做 `max(1)` 保底。
   - `resolve_win_rate_workers()` 改为调用上述平台函数，确保 wasm 目标下胜率路径保持单线程。
-
-### 修复
-
-- `bench.rs`：将 `Option::map_or` 替换为 `is_none_or`（clippy lint）。
-
-## [0.2.21] - 2026-05-01
-
-### 新增
-
 - `player::impl_runtime`: 暴露 `skill_storage()` 公开方法，返回 `&SkillStorage`，允许外部遍历玩家技能存储（如 WASM 层的状态标签收集）
 - `player::skill::SkillTrait`: 新增 `dynamic_update_state_enabled()` trait 方法，默认返回 `false`，供"一段时间内持续生效"的技能标识其短时运行时态
 - `player::skill::Skill`: 新增 `dynamic_update_state_enabled()` 方法，结合 `level > 0` 判断技能是否激活
 - `player::skill::act::AccumulateSkill`: 实现 `dynamic_update_state_enabled()`，当技能配置了 `on_update_state` 时返回 `true`
 - `player::skill::skl::HideSkill`: 实现 `dynamic_update_state_enabled()`，当技能配置了 `on_update_state` 时返回 `true`
+
+### 修复
+
+- `bench.rs`：将 `Option::map_or` 替换为 `is_none_or`（clippy lint）。
 
 ### 技术细节
 
