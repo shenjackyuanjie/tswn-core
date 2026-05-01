@@ -75,6 +75,8 @@ pub struct PlayerState {
     pub attract: f64,
     pub frozen: bool,
     pub alive: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub status_labels: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

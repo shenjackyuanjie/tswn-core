@@ -1324,6 +1324,9 @@ impl Player {
         messages
     }
 
+    #[inline]
+    pub fn skill_storage(&self) -> &crate::player::skill::store::SkillStorage { &self.skills }
+
     pub(super) fn apply_update_state_effects(&mut self) { self.state.apply_update_state_effects(&mut self.status); }
 
     pub(super) fn apply_pre_step_states(&mut self, mut step: i32, updates: &mut RunUpdates) -> i32 {

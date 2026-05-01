@@ -145,5 +145,7 @@ impl SkillTrait for HideSkill {
         }
     }
 
+    fn dynamic_update_state_enabled(&self) -> bool { self.on_update_state.is_some() }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage, ProcKind::PreAction, ProcKind::UpdateState] }
 }

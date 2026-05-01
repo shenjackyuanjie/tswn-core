@@ -13,6 +13,22 @@
 
 - `bench.rs`：将 `Option::map_or` 替换为 `is_none_or`（clippy lint）。
 
+## [0.2.21] - 2026-05-01
+
+### 新增
+
+- `player::impl_runtime`: 暴露 `skill_storage()` 公开方法，返回 `&SkillStorage`，允许外部遍历玩家技能存储（如 WASM 层的状态标签收集）
+- `player::skill::SkillTrait`: 新增 `dynamic_update_state_enabled()` trait 方法，默认返回 `false`，供"一段时间内持续生效"的技能标识其短时运行时态
+- `player::skill::Skill`: 新增 `dynamic_update_state_enabled()` 方法，结合 `level > 0` 判断技能是否激活
+- `player::skill::act::AccumulateSkill`: 实现 `dynamic_update_state_enabled()`，当技能配置了 `on_update_state` 时返回 `true`
+- `player::skill::skl::HideSkill`: 实现 `dynamic_update_state_enabled()`，当技能配置了 `on_update_state` 时返回 `true`
+
+### 技术细节
+
+- `skill_storage()` 使用 `#[inline]` 标注，零开销暴露内部技能存储引用
+- `dynamic_update_state_enabled()` 在 `Skill` 层级已有 `level > 0` 守卫，确保未学习技能不会误判为启用状态
+- `AccumulateSkill` 和 `HideSkill` 的 `dynamic_update_state_enabled()` 受 `on_update_state.is_some()` 约束，仅在配置了短时持续效果时启用
+
 ## [0.2.20] - 2026-04-22
 
 ### 修复

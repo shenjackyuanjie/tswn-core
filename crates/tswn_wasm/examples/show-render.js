@@ -223,6 +223,35 @@ export function renderIdleState(playerList, battleRows, plistMeta, headerMeta) {
     headerMeta.textContent = "目前显示的是 show 风格回放视图。";
 }
 
+function sidebarStatusLabels(state) {
+    return Array.isArray(state?.statusLabels) ? state.statusLabels : [];
+}
+
+const POSITIVE_STATUS_LABELS = new Set(["聚气", "蓄力", "隐匿", "潜行", "狂暴", "疾走", "铁壁", "守护"]);
+const NEGATIVE_STATUS_LABELS = new Set(["魅惑", "诅咒", "冰冻", "中毒", "迟缓", "垂死"]);
+
+function statusPillTone(label) {
+    if (POSITIVE_STATUS_LABELS.has(label)) {
+        return 'positive';
+    }
+    if (NEGATIVE_STATUS_LABELS.has(label)) {
+        return 'negative';
+    }
+    return '';
+}
+
+function renderStatusPill(label) {
+    const tone = statusPillTone(label);
+    const className = tone ? `status-pill ${tone}` : 'status-pill';
+    return `<span class="${className}">${escapeHtml(label)}</span>`;
+}
+
+function renderPlayerStatusPills(state) {
+    const labels = sidebarStatusLabels(state);
+    const chips = labels.map(renderStatusPill).join('');
+    return `<div class="detail-line player-effects"${labels.length ? '' : ' hidden'}>${chips}</div>`;
+}
+
 // ============================================================================
 // 玩家状态面板渲染
 // ============================================================================
@@ -329,6 +358,7 @@ export function renderPlayers(players, states, previousStates = states, involved
                                 <div class="mpwrap">
                                     <div class="mp" style="width:${mpPercent.toFixed(2)}%"></div>
                                 </div>
+                                ${renderPlayerStatusPills(state)}
                             </td>
                             <td class="player-stat-cell player-hp-cell">${state.hp}/${state.maxHp}</td>
                             <td class="player-stat-cell">${state.speed}</td>
@@ -444,6 +474,13 @@ export function renderPlayers(players, states, previousStates = states, involved
 
             const mpEl = row.querySelector('.mp');
             if (mpEl) mpEl.style.width = mpPercent.toFixed(2) + '%';
+
+            const effectsEl = row.querySelector('.player-effects');
+            if (effectsEl) {
+                const labels = sidebarStatusLabels(state);
+                effectsEl.hidden = labels.length === 0;
+                effectsEl.innerHTML = labels.map(renderStatusPill).join('');
+            }
 
             const statCells = row.querySelectorAll('.player-stat-cell');
             if (statCells.length >= 3) {
@@ -574,4 +611,178 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
             </div>
         </section>
     `;
+}
+
+/**
+ * 构建单帧的渲染 chunk 数组，用于 normal/fast 模式逐段渲染。
+ * next_line 只负责切到新行，不再把整行消息聚合成一个大 chunk；每条可见消息
+ * 都会成为独立 chunk，并直接携带该 update 的 delay1||delay0。
+ *
+ * @param {FrameUpdate} frame
+ * @param {number} roundIndex
+ * @param {FightState[]} [previousStates=frame.states]
+ * @param {Map<number, FightPlayer>} playersById
+ * @returns {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>}
+ */
+export function buildFrameRows(frame, roundIndex, previousStates = frame.states, playersById) {
+    for (const state of frame.states) {
+        if (playersById.has(state.id)) {
+            continue;
+        }
+
+        let icon = null;
+        if (state.ownerId != null) {
+            const ownerPlayer = playersById.get(state.ownerId);
+            if (ownerPlayer) {
+                icon = ownerPlayer.iconPngBase64;
+            }
+        }
+
+        playersById.set(state.id, {
+            id: state.id,
+            teamIndex: state.teamIndex ?? 0,
+            idName: `player_${state.id}`,
+            displayName: phantomDisplayName(state.id),
+            iconPngBase64: icon,
+        });
+    }
+
+    const previousStateMap = buildStateMap(previousStates);
+    /** @type {Map<number, FightState>} */
+    let running = new Map(previousStateMap);
+    /** @type {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>} */
+    const chunks = [];
+    let frameStarted = false;
+    let rowStarted = false;
+    let leadingDelay = 0;
+    let lastVisibleChunk = null;
+
+    function pushVisibleChunk(target, html, delay) {
+        const chunk = { target, html, delay };
+        chunks.push(chunk);
+        lastVisibleChunk = chunk;
+    }
+
+    function recordHiddenDelay(delay) {
+        if (delay <= 0) {
+            return;
+        }
+        if (lastVisibleChunk) {
+            lastVisibleChunk.delay += delay;
+        } else {
+            leadingDelay += delay;
+        }
+    }
+
+    function pushLeadingDelayChunk() {
+        if (leadingDelay <= 0) {
+            return;
+        }
+        chunks.push({ target: 'delay', html: '', delay: leadingDelay });
+        leadingDelay = 0;
+    }
+
+    function pushMessageChunk(messageHtml, delay) {
+        if (!frameStarted) {
+            pushVisibleChunk(
+                'battleRows',
+                `
+                    <section class="round-block">
+                        <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
+                        <div class="frame-body">
+                            <div class="row">${messageHtml}</div>
+                        </div>
+                    </section>
+                `,
+                delay,
+            );
+            frameStarted = true;
+            rowStarted = true;
+            return;
+        }
+
+        if (!rowStarted) {
+            pushVisibleChunk('frameBody', `<div class="row">${messageHtml}</div>`, delay);
+            rowStarted = true;
+            return;
+        }
+
+        pushVisibleChunk('row', `<span class="msg-sep">，</span>${messageHtml}`, delay);
+    }
+
+    function applyDelta(id, hitState, tone, value) {
+        const cur = hitState.get(id);
+        if (!cur || cur.maxHp <= 0) return;
+        if (tone === 'damage') {
+            hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
+        } else if (tone === 'recover') {
+            hitState.set(id, { ...cur, hp: Math.min(cur.maxHp, cur.hp + value) });
+        }
+    }
+
+    for (const update of frame.updates) {
+        const delay = update.delay1 || update.delay0 || 0;
+
+        if (update.updateType === "next_line") {
+            rowStarted = false;
+            recordHiddenDelay(delay);
+            continue;
+        }
+
+        const message = `${update.messageRendered ?? ""}`.trim();
+        if (!message) {
+            recordHiddenDelay(delay);
+            continue;
+        }
+
+        pushLeadingDelayChunk();
+
+        const tone = update.tone ?? "normal";
+        const hitState = new Map(running);
+        const value = update.param ?? update.score ?? 0;
+        if (value > 0) {
+            if (update.targetId != null) applyDelta(update.targetId, hitState, tone, value);
+            if (Array.isArray(update.targetIds)) update.targetIds.forEach((id) => applyDelta(id, hitState, tone, value));
+        }
+
+        pushMessageChunk(
+            `<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`,
+            delay,
+        );
+        running = hitState;
+    }
+
+    if (!chunks.length) {
+        pushLeadingDelayChunk();
+        if (!frame.finished) {
+            return chunks;
+        }
+    }
+
+    const winnerHtml = `<div class="row winner-line"><span class="winner-row">winnerIds=${escapeHtml(JSON.stringify(frame.winnerIds))}</span></div>`;
+    if (frame.finished) {
+        if (!frameStarted) {
+            pushLeadingDelayChunk();
+            chunks.push({
+                target: 'battleRows',
+                html: `
+                    <section class="round-block">
+                        <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
+                        <div class="frame-body">
+                            ${winnerHtml}
+                        </div>
+                    </section>
+                `,
+                delay: 0,
+            });
+        } else {
+            chunks.push({
+                target: 'frameBody',
+                html: winnerHtml,
+                delay: 0,
+            });
+        }
+    }
+
+    return chunks;
 }

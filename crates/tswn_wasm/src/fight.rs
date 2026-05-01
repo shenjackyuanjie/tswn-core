@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
 use tswn_core::player::PlrId;
+use tswn_core::player::skill::{
+    act::{berserk::BerserkState, charm::CharmState, curse::CurseState, haste::HasteState, ice::IceState, iron::IronState, poison::PoisonState, slow::SlowState},
+    skl::{protect::ProtectState, upgrade::UpgradeState},
+};
 use tswn_core::{RunUpdates, Runner};
 use wasm_bindgen::prelude::*;
 
@@ -68,6 +72,24 @@ fn root_owner_id(storage: &tswn_core::engine::storage::Storage, start_id: PlrId)
     }
 }
 
+fn push_status_label(labels: &mut Vec<String>, label: &str) {
+    if labels.iter().any(|existing| existing == label) {
+        return;
+    }
+    labels.push(label.to_string());
+}
+
+fn has_active_skill<F>(player: &tswn_core::player::Player, runtime_kind_suffix: &str, active: F) -> bool
+where
+    F: Fn(&tswn_core::player::skill::Skill) -> bool,
+{
+    player
+        .skill_storage()
+        .store
+        .values()
+        .any(|skill| skill.debug_skill_type_name().ends_with(runtime_kind_suffix) && active(skill))
+}
+
 fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<PlayerState>> {
     // 收集所有当前玩家（含召唤单位），保持初始顺序 + 新单位追加
     let mut seen: std::collections::HashSet<PlrId> = std::collections::HashSet::new();
@@ -90,6 +112,54 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
         };
         let owner_id = root_owner_id(&runner.storage, *player_id);
         let status = player.get_status();
+        let mut status_labels = Vec::new();
+
+        if has_active_skill(player, "::AccumulateSkill", |skill| skill.dynamic_update_state_enabled()) {
+            push_status_label(&mut status_labels, "聚气");
+        }
+        if has_active_skill(player, "::ChargeSkill", |skill| skill.charge_runtime_active()) {
+            push_status_label(&mut status_labels, "蓄力");
+        }
+        if has_active_skill(player, "::HideSkill", |skill| skill.dynamic_update_state_enabled()) {
+            push_status_label(&mut status_labels, "隐匿");
+        }
+        if has_active_skill(player, "::AssassinateSkill", |skill| skill.dynamic_pre_action_enabled()) {
+            push_status_label(&mut status_labels, "潜行");
+        }
+
+        if player.get_state::<BerserkState>().is_some() {
+            push_status_label(&mut status_labels, "狂暴");
+        }
+        if player.get_state::<CharmState>().is_some() {
+            push_status_label(&mut status_labels, "魅惑");
+        }
+        if player.get_state::<CurseState>().is_some() {
+            push_status_label(&mut status_labels, "诅咒");
+        }
+        if player.get_state::<HasteState>().is_some() {
+            push_status_label(&mut status_labels, "疾走");
+        }
+        if player.get_state::<IceState>().is_some() {
+            push_status_label(&mut status_labels, "冰冻");
+        }
+        if player.get_state::<IronState>().is_some() {
+            push_status_label(&mut status_labels, "铁壁");
+        }
+        if player.get_state::<PoisonState>().is_some() {
+            push_status_label(&mut status_labels, "中毒");
+        }
+        if player.get_state::<ProtectState>().is_some() {
+            push_status_label(&mut status_labels, "守护");
+        }
+        if player.get_state::<SlowState>().is_some() {
+            push_status_label(&mut status_labels, "迟缓");
+        }
+        if player.get_state::<UpgradeState>().is_some() {
+            push_status_label(&mut status_labels, "垂死");
+        }
+        if status.frozen {
+            push_status_label(&mut status_labels, "冰冻");
+        }
         states.push(PlayerState {
             id: *player_id,
             team_index: runner.world.team_index_of(*player_id).unwrap_or(0),
@@ -112,6 +182,7 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             attract: status.attract,
             frozen: status.frozen,
             alive: player.alive(),
+            status_labels,
         });
     }
     Ok(states)

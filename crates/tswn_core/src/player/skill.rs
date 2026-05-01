@@ -332,6 +332,10 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 默认关闭，只有 ChargeSkill 会在其运行时生效期间返回 true。
     fn charge_runtime_active(&self) -> bool { false }
 
+    /// 仅供读取短时 update_state 运行时态使用。
+    /// 默认关闭，只有少数带“一段时间内持续生效”的技能会在激活时返回 true。
+    fn dynamic_update_state_enabled(&self) -> bool { false }
+
     /// 声明该技能注册到哪些流程
     fn proc_kinds(&self) -> &[ProcKind] { &[] }
 
@@ -723,6 +727,10 @@ impl Skill {
     pub fn clear_positive_runtime_priority(&self) -> i32 { self.skill_type.clear_positive_runtime_priority() }
 
     pub fn charge_runtime_active(&self) -> bool { self.skill_type.charge_runtime_active() }
+
+    pub fn dynamic_update_state_enabled(&self) -> bool {
+        self.level > 0 && self.skill_type.dynamic_update_state_enabled()
+    }
 
     /// 调试/对齐 JS 时用的运行时技能类型名。
     ///

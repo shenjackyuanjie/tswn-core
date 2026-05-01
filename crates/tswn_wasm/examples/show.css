@@ -330,6 +330,11 @@ button:hover {
     gap: 4px 8px;
 }
 
+.player-effects {
+    margin-top: 3px;
+    gap: 3px 4px;
+}
+
 .detail-pill,
 .status-pill {
     display: inline-flex;
@@ -338,6 +343,16 @@ button:hover {
     padding: 1px 6px;
     background: rgba(24, 119, 199, 0.08);
     color: #0f74b9;
+}
+
+.status-pill.positive {
+    background: rgba(41, 144, 80, 0.14);
+    color: #17753c;
+}
+
+.status-pill.negative {
+    background: rgba(183, 57, 57, 0.14);
+    color: #a12a2a;
 }
 
 .status-pill.dead {
@@ -354,6 +369,10 @@ button:hover {
     padding: 0 4px;
     font-size: 10px;
     justify-content: center;
+}
+
+.player-effects .status-pill {
+    line-height: 1.35;
 }
 
 .hpwrap {

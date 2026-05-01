@@ -16,10 +16,18 @@
  *   magic: number,
  *   attack: number,
  *   defense: number,
+ *   resistance: number,
+ *   wisdom: number,
+ *   point: number,
+ *   allSum: number,
+ *   nameFactor: number,
+ *   atBoost: number,
+ *   attract: number,
  *   alive: boolean,
  *   frozen: boolean,
  *   teamIndex: number,
- *   ownerId?: number
+ *   ownerId?: number,
+ *   statusLabels?: string[]
  * }} FightState
  *
  * 典型的 Player 结构（来自 WASM）：
@@ -89,7 +97,7 @@
  */
 
 import { formatError, sleep } from './show-utils.js';
-import { renderIdleState, renderPlayers, buildFrameHtml } from './show-render.js';
+import { renderIdleState, renderPlayers, buildFrameHtml, buildFrameRows } from './show-render.js';
 import {
     renderReplayIntro,
     updateSpeedButtons,
@@ -281,7 +289,7 @@ function openInputEditor(selectAll = false) {
 
 /**
  * 自动播放整场回放。
- * — normal/fast 模式：逐帧渲染 DOM 并等待 delay
+ * — normal/fast 模式：逐段渲染 DOM 并等待逐段 delay
  * — turbo 模式：批量缓冲 HTML，约每 16ms 写入一次 DOM 并让出主线程
  *
  * @param {FightReplay} replay
@@ -303,14 +311,42 @@ async function playReplay(replay) {
             return;
         }
 
-        const frameHtml = buildFrameHtml(frame, index, previousStates, playersById);
-
         if (speedMode !== 'turbo') {
-            // 正常/快进模式：逐帧渲染 DOM 并等待
-            if (frameHtml) {
-                battleRows.insertAdjacentHTML("beforeend", frameHtml);
-                const hbody = battleRows.closest(".hbody");
-                if (hbody) hbody.scrollTop = hbody.scrollHeight;
+            // 正常/快进模式：逐段渲染 DOM，并按 chunk delay 推进播放
+            const chunks = buildFrameRows(frame, index, previousStates, playersById);
+            const totalFrameDelay = frame.totalDelay ?? 0;
+            const targetFrameDelay = playbackDelay(frame, speedMode);
+            let frameBody = null;
+            let currentRow = null;
+
+            for (const chunk of chunks) {
+                if (token !== playbackToken) return;
+
+                if (chunk.target === 'battleRows') {
+                    battleRows.insertAdjacentHTML("beforeend", chunk.html);
+                    const frameBlock = battleRows.lastElementChild;
+                    frameBody = frameBlock.querySelector('.frame-body');
+                    currentRow = frameBody.lastElementChild;
+                } else if (chunk.target === 'frameBody') {
+                    frameBody.insertAdjacentHTML("beforeend", chunk.html);
+                    currentRow = frameBody.lastElementChild;
+                } else if (chunk.target === 'row') {
+                    currentRow.insertAdjacentHTML("beforeend", chunk.html);
+                }
+
+                if (chunk.target !== 'delay') {
+                    const hbody = battleRows.closest(".hbody");
+                    if (hbody) hbody.scrollTop = hbody.scrollHeight;
+                }
+
+                const chunkDelay = totalFrameDelay > 0
+                    ? Math.round((targetFrameDelay * chunk.delay) / totalFrameDelay)
+                    : 0;
+                if (chunkDelay > 0) {
+                    await sleep(chunkDelay);
+                } else {
+                    await sleep(0);
+                }
             }
 
             // 构建当前帧涉及的角色集合，用于左侧高亮
@@ -322,9 +358,9 @@ async function playReplay(replay) {
             }
             renderPlayers(replay.players, frame.states, previousStates, involved, playerList, playersById);
             previousStates = frame.states;
-            await sleep(playbackDelay(frame, speedMode));
 
         } else {
+            const frameHtml = buildFrameHtml(frame, index, previousStates, playersById);
             // Turbo 模式：批量缓冲 HTML，取消帧间 sleep
             if (frameHtml) htmlBuffer += frameHtml;
             previousStates = frame.states;

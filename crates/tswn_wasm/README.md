@@ -61,7 +61,7 @@ session.result();  // WinRateResult — 含 timing（initNanos, fightNanos）
 | 类型 | 说明 |
 |------|------|
 | `PlayerMeta` | 玩家元数据：`id`, `teamIndex`, `idName`, `displayName`, `iconPngBase64?` |
-| `PlayerState` | 玩家状态：`hp`, `maxHp`, `mp`, `attack`, `defense`, …, `ownerId?`, `alive` |
+| `PlayerState` | 玩家状态：`hp`, `maxHp`, `mp`, `attack`, `defense`, …, `ownerId?`, `alive`, `statusLabels?`（实时状态标签，如 `"聚气"`/`"隐匿"`/`"狂暴"`） |
 | `RoundFrame` | 回合帧：`finished`, `winnerIds`, `updates[]`, `states[]`, `totalDelay` |
 | `UpdateView` | 单条更新消息：`casterId`, `targetId`, `messageRendered`, `messageTemplate`, `tone`, … |
 | `MessageTone` | 消息色调：`"normal"` / `"damage"` / `"recover"` / `"knockout"` |
@@ -82,7 +82,17 @@ session.result();  // WinRateResult — 含 timing（initNanos, fightNanos）
 - `WIN_RATE_INVALID_GROUPS` — 胜率统计要求至少两个非空分组
 - `INTERNAL_ERROR` — 内部异常
 
-## 示例
+### 实时状态标签
+
+`PlayerState.statusLabels` 会在每个回合帧中收集玩家当前生效的技能运行时态和状态效果，前端可直接用于渲染状态提示 pill。
+
+正面状态（绿色）：`聚气`、`蓄力`、`隐匿`、`潜行`、`狂暴`、`疾走`、`铁壁`、`守护`
+
+负面状态（红色）：`魅惑`、`诅咒`、`冰冻`、`中毒`、`迟缓`、`垂死`
+
+`show.html` 演示页面已内置状态标签渲染，在玩家面板中显示彩色 pill。
+
+### 示例
 
 `examples/` 目录包含两套静态页面：
 

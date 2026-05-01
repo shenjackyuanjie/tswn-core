@@ -113,5 +113,7 @@ impl SkillTrait for AccumulateSkill {
 
     fn clear_positive_runtime_priority(&self) -> i32 { 100 }
 
+    fn dynamic_update_state_enabled(&self) -> bool { self.on_update_state.is_some() }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::UpdateState] }
 }

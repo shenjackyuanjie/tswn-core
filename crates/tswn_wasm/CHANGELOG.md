@@ -55,6 +55,35 @@
 - 战斗日志在 wasm 层额外做显示名渲染（`message_rendered`），同时保留原始模板（`message_template`），不再直接暴露 `RunUpdate::msg()` 的数字 `PlrId` 替换结果。
 - wasm32 目标下不测量耗时（`WinRateTiming` 中各 nanos 字段为 0），非 wasm 目标正常记录。
 
+### 状态标签系统（本次追加）
+
+- `PlayerState` 新增 `status_labels: Vec<String>` 字段，序列化时为空则跳过，前端可直接用于渲染玩家状态标签
+- 在 `collect_states()` 中为每个玩家收集实时状态标签：
+  - **技能运行时态**：`聚气`（Accumulate 激活时）、`蓄力`（Charge 激活时）、`隐匿`（Hide 激活时）、`潜行`（Assassinate 激活时）
+  - **状态效果**：`狂暴`、`魅惑`、`诅咒`、`疾走`、`冰冻`、`铁壁`、`中毒`、`守护`、`迟缓`、`垂死`
+  - `冰冻` 同时覆盖 `IceState` 与 `status.frozen` 两种来源，去重显示
+- 新增 `push_status_label()` 去重辅助函数，避免同一标签被多次添加
+- 新增 `has_active_skill()` 泛型辅助函数，通过 `skill_storage()` 遍历玩家技能，按 `debug_skill_type_name()` 后缀匹配及自定义条件筛选
+
+### 逐段渲染系统（本次追加）
+
+- `show-render.js` 新增 `buildFrameRows()` 函数，将一帧拆分为多个渲染 chunk（`battleRows`/`frameBody`/`row`/`delay`），支持 normal/fast 模式按 chunk delay 逐段推进播放
+- `show.js` 播放逻辑从逐帧渲染改为逐段渲染：
+  - normal/fast 模式按 `chunk.delay / totalFrameDelay * targetFrameDelay` 比例分配每段等待时间
+  - turbo 模式保持原有批量缓冲 HTML 逻辑不变
+- `show-render.js` 新增状态标签 UI 渲染：
+  - `renderStatusPill()` 渲染单个标签 pill
+  - `renderPlayerStatusPills()` 渲染玩家所有标签
+  - `sidebarStatusLabels()` 安全读取 `state.statusLabels`
+  - `statusPillTone()` 根据标签内容分类正/负面色调
+- `show.js` 的 `FightState` JSDoc 类型标注同步更新，新增字段：`resistance`, `wisdom`, `point`, `allSum`, `nameFactor`, `atBoost`, `attract`, `statusLabels`
+
+### 样式
+
+- `show.css` 新增 `.player-effects` 布局与间距
+- 新增 `.status-pill.positive`（绿色调，用于正面状态）和 `.status-pill.negative`（红色调，用于负面状态）
+- 优化 `.player-effects .status-pill` 行高，适配在玩家面板中的紧凑显示
+
 ### 示例
 
 - 新增 `examples/` 目录，提供两套静态页面 demo：
