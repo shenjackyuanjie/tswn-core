@@ -8,7 +8,10 @@ use std::time::{Duration, Instant};
 
 use tswn_core::{
     Runner,
-    win_rate::{WinRateTiming, prepared_win_rate, resolve_win_rate_workers},
+    win_rate::{
+        WinRateTiming, prepared_win_rate, resolve_win_rate_workers,
+        run_prepared_win_rate_range, use_js_profile_seed_schedule,
+    },
 };
 
 use crate::{BENCH_PARALLEL_THRESHOLD, args::BenchThreadMode};
@@ -155,21 +158,27 @@ impl BenchSummary {
     fn win_rate_percent(self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 }
 
-pub fn run_benchmark(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, perf: bool) {
+pub fn run_benchmark(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, perf: bool, buckets_step: Option<usize>) {
     let raw = raw.trim();
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     match group_count {
         0 => eprintln!("benchmark: 输入为空或无有效玩家"),
         1 => run_bench_score(raw, n, mode, threads, perf),
-        _ => run_bench_winrate(raw, n, mode, threads, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ, perf),
+        _ => run_bench_winrate(raw, n, mode, threads, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ, perf, buckets_step),
     }
 }
 
-pub fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64, perf: bool) {
+pub fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64, perf: bool, buckets_step: Option<usize>) {
     println!("=== 对战胜率测试 ({n} 场) ===");
-    let summary = bench_winrate_summary(raw, n, mode, threads, eval_rq);
-    print_bench_winrate_summary(summary, perf);
+
+    if let Some(step) = buckets_step {
+        let summary = bench_winrate_with_buckets(raw, n, step, eval_rq);
+        print_bench_winrate_summary(summary, perf);
+    } else {
+        let summary = bench_winrate_summary(raw, n, mode, threads, eval_rq);
+        print_bench_winrate_summary(summary, perf);
+    }
 }
 
 pub fn run_bench_group_win_rate(
@@ -400,6 +409,62 @@ fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Op
         elapsed: Duration::default(),
     };
 
+    summary.elapsed = started_at.elapsed();
+    summary
+}
+
+/// 分段累积胜率测试。按 `step` 将 `n` 场分块，每块结束后输出一次累积胜率。
+/// 强制单线程以保证顺序正确。
+fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) -> BenchSummary {
+    let step = step.max(1);
+    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let prepared = match Runner::prepare_groups_with_eval_rq(&groups, eval_rq) {
+        Ok(prepared) => prepared,
+        Err(err) => {
+            eprintln!("构建胜率模板失败: {err}");
+            return BenchSummary {
+                wins: 0,
+                total: 0,
+                timing: WinRateTiming::default(),
+                elapsed: Duration::default(),
+            };
+        }
+    };
+
+    let started_at = Instant::now();
+    let use_profile_seed = use_js_profile_seed_schedule(eval_rq);
+    let mut cumulative_wins = 0usize;
+    let mut cumulative_total = 0usize;
+    let mut cumulative_timing = WinRateTiming::default();
+
+    let mut offset = 0usize;
+    while offset < n {
+        let chunk_end = (offset + step).min(n);
+        let chunk = match run_prepared_win_rate_range(&prepared, offset, chunk_end, use_profile_seed) {
+            Ok(chunk) => chunk,
+            Err(err) => {
+                eprintln!("分段 [{offset}, {chunk_end}) 胜率测试失败: {err}");
+                break;
+            }
+        };
+        cumulative_wins += chunk.wins;
+        cumulative_total += chunk.total;
+        cumulative_timing.merge(chunk.timing);
+        println!(
+            "胜率(分段): {:.2}%  ({}/{})",
+            cumulative_wins as f64 * 100.0 / cumulative_total.max(1) as f64,
+            cumulative_wins,
+            cumulative_total,
+        );
+        offset = chunk_end;
+    }
+
+    let mut summary = BenchSummary {
+        wins: cumulative_wins,
+        total: cumulative_total,
+        timing: cumulative_timing,
+        elapsed: Duration::default(),
+    };
     summary.elapsed = started_at.elapsed();
     summary
 }

@@ -99,7 +99,7 @@ fn should_parallelize_prepared_win_rate(workers: usize, n: usize) -> bool {
     workers > 1 && n >= PREPARED_WIN_RATE_PARALLEL_THRESHOLD
 }
 
-fn run_prepared_win_rate_range(
+pub fn run_prepared_win_rate_range(
     prepared: &PreparedRunner,
     start: usize,
     end: usize,

@@ -44,6 +44,8 @@ pub enum ParsedCommand {
         threads: Option<usize>,
         /// 是否输出 total/init/fight 耗时统计。
         perf: bool,
+        /// 分段输出步长（每 N 场输出一次累积胜率）。
+        buckets_step: Option<usize>,
     },
     BenchWinRate {
         /// 第一队输入，格式与普通输入中的单组相同。
@@ -60,6 +62,8 @@ pub enum ParsedCommand {
         perf: bool,
         /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
         keep_rq: bool,
+        /// 分段输出步长（每 N 场输出一次累积胜率）。
+        buckets_step: Option<usize>,
     },
     BenchGroupWinRate {
         /// 靶子组输入，格式与普通输入中的单组相同。
@@ -377,6 +381,11 @@ struct BenchOptions {
     /// 输出 total/init/fight 耗时统计。
     #[arg(long)]
     perf: bool,
+
+    /// 分段输出累积胜率，每隔 N 场输出一次（如 --buckets-step 1000）。
+    /// 分段模式下强制单线程以保证顺序正确。
+    #[arg(long = "buckets-step", value_name = "N")]
+    buckets_step: Option<usize>,
 }
 
 #[derive(Debug, Args)]
@@ -479,6 +488,7 @@ impl ParsedCli {
                     mode: cmd.options.mode(),
                     threads: cmd.options.thread,
                     perf: cmd.options.perf,
+                    buckets_step: cmd.options.buckets_step,
                 },
                 BenchSubcommand::WinRate(cmd) => ParsedCommand::BenchWinRate {
                     team1: cmd.team1,
@@ -488,6 +498,7 @@ impl ParsedCli {
                     threads: cmd.options.thread,
                     perf: cmd.options.perf,
                     keep_rq: cmd.keep_rq,
+                    buckets_step: cmd.options.buckets_step,
                 },
                 BenchSubcommand::GroupWinRate(cmd) => ParsedCommand::BenchGroupWinRate {
                     target: decode_raw(&cmd.target),

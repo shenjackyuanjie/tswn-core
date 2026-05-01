@@ -59,7 +59,8 @@ fn main() {
             mode,
             threads,
             perf,
-        } => bench::run_benchmark(&raw, n, mode, threads, perf),
+            buckets_step,
+        } => bench::run_benchmark(&raw, n, mode, threads, perf, buckets_step),
         ParsedCommand::BenchWinRate {
             team1,
             team2,
@@ -68,6 +69,7 @@ fn main() {
             threads,
             perf,
             keep_rq,
+            buckets_step,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::player::eval_name::DEFAULT_EVAL_RQ
@@ -75,7 +77,7 @@ fn main() {
                 tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
             };
             let raw = format!("{team1}\n\n{team2}");
-            bench::run_bench_winrate(&raw, n, mode, threads, eval_rq, perf);
+            bench::run_bench_winrate(&raw, n, mode, threads, eval_rq, perf, buckets_step);
         }
         ParsedCommand::BenchGroupWinRate {
             target,
