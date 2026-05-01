@@ -497,17 +497,10 @@ button:hover {
 
 .row {
     display: block;
+    align-items: flex-end;
     line-height: 1.28;
     white-space: normal;
     word-break: break-word;
-}
-
-.row + .row {
-    margin-top: 0;
-}
-
-.winner-line {
-    margin-top: 1px;
 }
 
 .msg {
@@ -555,19 +548,14 @@ button:hover {
 
 .actor-token {
     display: inline-flex;
-    align-items: flex-start;
-    gap: 2px;
     margin-right: 2px;
-    vertical-align: middle;
-    overflow: visible;
-    padding-top: 3px;
+    vertical-align: bottom;
 }
 
 .actor-avatar-wrap {
     position: relative;
-    display: inline-block;
+    display: block;
     flex: 0 0 auto;
-    line-height: 0;
     overflow: visible;
 }
 
@@ -582,16 +570,11 @@ button:hover {
 .actor-name {
     display: inline-block;
     white-space: nowrap;
-    margin-top: 1px;
-    padding: 0 3px;
     background: #f3f3f8;
     color: #2d4454;
     line-height: 1.05;
 }
 
-.actor-token.has-hp .actor-name {
-    margin-top: 2px;
-}
 
 .actor-hp {
     position: absolute;
