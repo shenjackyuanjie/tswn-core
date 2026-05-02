@@ -893,10 +893,10 @@ textarea {
 
 .result-table th,
 .result-table td {
-    padding: 6px 8px;
+    padding: 2px 6px;
     border-bottom: 1px solid rgba(198, 225, 239, 0.95);
-    font-size: 13px;
-    line-height: 1.35;
+    font-size: 15px;
+    line-height: 16px;
 }
 
 .result-table tbody tr:last-child td {
@@ -920,13 +920,13 @@ textarea {
 .result-kill-cell {
     text-align: center;
     font-variant-numeric: tabular-nums;
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
 .result-killer-cell {
     text-align: left;
-    padding-left: 24px;
+    padding-left: 10px;
 }
 
 .result-row.is-loser {
@@ -958,6 +958,7 @@ textarea {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 20px;
 }
 
 .right-controls {

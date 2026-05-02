@@ -245,11 +245,19 @@ export function buildReplayResultSummary(replay) {
         aliveById = nextAliveById;
     }
 
+    const winnerIdSet = new Set(replay.winnerIds);
     const rows = [...rowsById.values()].map((row) => ({
         ...row,
         killedBy: actorSummaryMeta(row.killedById, replayPlayersById, statesById),
     }));
     const sortRows = (left, right) => (right.score - left.score) || (left.order - right.order);
+
+    if (winnerIdSet.size > 0) {
+        return {
+            winners: rows.filter((row) => winnerIdSet.has(row.id)).sort(sortRows),
+            losers: rows.filter((row) => !winnerIdSet.has(row.id)).sort(sortRows),
+        };
+    }
 
     return {
         winners: rows.filter((row) => row.alive).sort(sortRows),

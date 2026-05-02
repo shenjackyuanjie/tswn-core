@@ -49,6 +49,9 @@
 
 ### 修复
 
+- 修复结算表格行高过高的问题：缩减 `.result-table th/td` 的 `padding` 为 `2px 6px`，同时保持字号 `15px`、行高 `16px`，使表格更紧凑。
+- 修复结算表格中胜者只显示最后存活玩家的问题：`buildReplayResultSummary()` 改为使用 `replay.winnerIds`（获胜队伍全员 roster）区分胜者/败者，而非仅依赖 `alive` 状态。
+- 修复结算表格中人名下划线被截断的问题：`.summary-actor-name` 单独设置 `line-height: 20px`，避免受 `td` 紧凑行高和 `overflow: hidden` 影响。
 - 修复死亡角色在后续帧中反复播放 `oldhp` 清空动画的问题：`.player-row.is-dead .oldhp, .player-row.is-dead .healhp` 禁用 CSS 过渡，死亡帧的 HP 归零动画正常播放，后续帧不再重复。
 
 ### 示例
