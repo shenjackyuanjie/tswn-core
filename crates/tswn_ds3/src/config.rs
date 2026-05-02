@@ -122,13 +122,13 @@ impl Config {
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
         {
-            return parse_toml_like(&data);
+            return parse_toml_like(data);
         }
 
         if data.contains('=') || data.contains("[single.") || data.contains("[pair.") {
-            return parse_toml_like(&data);
+            return parse_toml_like(data);
         }
-        parse_legacy_config(&data)
+        parse_legacy_config(data)
     }
 }
 

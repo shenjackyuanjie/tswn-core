@@ -95,10 +95,10 @@ impl SkillTrait for AssassinateSkill {
             //
             // 所以这里故意对外返回空 targets，让 `action()` 继续看到“选目标为空”的表象；
             // 真正的目标保存在 `self.target`，由 act_with_level 第二段消费。
-            if let Some(target) = self.target {
-                if args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false) {
-                    return Vec::new();
-                }
+            if let Some(target) = self.target
+                && args.3.get_player(&target).map(|x| x.alive()).unwrap_or(false)
+            {
+                return Vec::new();
             }
             return Vec::new();
         }
