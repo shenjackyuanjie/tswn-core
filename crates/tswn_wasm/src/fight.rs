@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use tswn_core::player::PlrId;
 use tswn_core::player::skill::{
-    act::{berserk::BerserkState, charm::CharmState, curse::CurseState, haste::HasteState, ice::IceState, iron::IronState, poison::PoisonState, slow::SlowState},
+    act::{
+        berserk::BerserkState, charm::CharmState, curse::CurseState, haste::HasteState, ice::IceState, iron::IronState,
+        poison::PoisonState, slow::SlowState,
+    },
     skl::{protect::ProtectState, upgrade::UpgradeState},
 };
 use tswn_core::{RunUpdates, Runner};
@@ -18,8 +21,7 @@ fn build_runner(raw_input: String, eval_rq: f64) -> WasmResult<Runner> {
     }
 
     let (groups, seed) = Runner::split_namerena_into_groups(raw_input);
-    Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq)
-        .map_err(|err| runner_init_failed(err.to_string()))
+    Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq).map_err(|err| runner_init_failed(err.to_string()))
 }
 
 fn collect_players(
@@ -130,32 +132,72 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             push_status_label(&mut status_labels, "潜行");
         }
 
-        if player.get_state::<BerserkState>().is_some() {
-            push_status_label(&mut status_labels, "狂暴");
+        if let Some(state) = player.get_state::<BerserkState>() {
+            let suffix = if state.step > 0 {
+                format!(" ({})", state.step)
+            } else {
+                String::new()
+            };
+            push_status_label(&mut status_labels, &format!("狂暴{}", suffix));
         }
-        if player.get_state::<CharmState>().is_some() {
-            push_status_label(&mut status_labels, "魅惑");
+        if let Some(state) = player.get_state::<CharmState>() {
+            let suffix = if state.step > 0 {
+                format!(" ({})", state.step)
+            } else {
+                String::new()
+            };
+            push_status_label(&mut status_labels, &format!("魅惑{}", suffix));
         }
-        if player.get_state::<CurseState>().is_some() {
-            push_status_label(&mut status_labels, "诅咒");
+        if let Some(state) = player.get_state::<CurseState>() {
+            let suffix = if state.multiply > 0 {
+                format!(" x{}", state.multiply)
+            } else {
+                String::new()
+            };
+            push_status_label(&mut status_labels, &format!("诅咒{}", suffix));
         }
-        if player.get_state::<HasteState>().is_some() {
-            push_status_label(&mut status_labels, "疾走");
+        if let Some(state) = player.get_state::<HasteState>() {
+            let suffix = if state.faster > 0 {
+                format!(" +{}", state.faster)
+            } else {
+                String::new()
+            };
+            push_status_label(&mut status_labels, &format!("疾走{}", suffix));
         }
         if player.get_state::<IceState>().is_some() {
             push_status_label(&mut status_labels, "冰冻");
         }
-        if player.get_state::<IronState>().is_some() {
-            push_status_label(&mut status_labels, "铁壁");
+        if let Some(state) = player.get_state::<IronState>() {
+            let suffix = if state.protect > 0 {
+                format!(" +{}", state.protect)
+            } else {
+                String::new()
+            };
+            push_status_label(&mut status_labels, &format!("铁壁{}", suffix));
         }
-        if player.get_state::<PoisonState>().is_some() {
-            push_status_label(&mut status_labels, "中毒");
+        if let Some(state) = player.get_state::<PoisonState>() {
+            push_status_label(&mut status_labels, &format!("中毒 {}层", state.count));
         }
-        if player.get_state::<ProtectState>().is_some() {
-            push_status_label(&mut status_labels, "守护");
+        if let Some(protect_state) = player.get_state::<ProtectState>()
+            && let Some(link) = protect_state.protect_from.first()
+        {
+            let protector_id = link.owner;
+            push_status_label(&mut status_labels, &format!("被 #{} 守护", protector_id));
         }
-        if player.get_state::<SlowState>().is_some() {
-            push_status_label(&mut status_labels, "迟缓");
+        // 检查当前玩家是否正在守护他人（拥有 ProtectSkill 且 protect_to 有值）
+        let protect_target = player.skill_storage().store.values().find_map(|s| s.protect_to_id());
+        if let Some(target_id) = protect_target
+            && target_id != *player_id
+        {
+            push_status_label(&mut status_labels, &format!("守护 #{} 中", target_id));
+        }
+        if let Some(state) = player.get_state::<SlowState>() {
+            let suffix = if state.step > 0 {
+                format!(" ({})", state.step)
+            } else {
+                String::new()
+            };
+            push_status_label(&mut status_labels, &format!("迟缓{}", suffix));
         }
         if player.get_state::<UpgradeState>().is_some() {
             push_status_label(&mut status_labels, "垂死");
@@ -195,10 +237,7 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
 }
 
 fn player_names_from_states(states: &[PlayerState]) -> HashMap<PlrId, String> {
-    states
-        .iter()
-        .map(|state| (state.id, state.display_name.clone()))
-        .collect()
+    states.iter().map(|state| (state.id, state.display_name.clone())).collect()
 }
 
 fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -> Vec<UpdateView> {
@@ -251,10 +290,7 @@ impl FightSession {
     fn build_frame(&self, updates: RunUpdates) -> WasmResult<RoundFrame> {
         let states = collect_states(&self.runner, &self.player_order)?;
         let converted = convert_updates(updates, &player_names_from_states(&states));
-        let total_delay: i32 = converted
-            .iter()
-            .map(|u| if u.delay1 != 0 { u.delay1 } else { u.delay0 })
-            .sum();
+        let total_delay: i32 = converted.iter().map(|u| if u.delay1 != 0 { u.delay1 } else { u.delay0 }).sum();
         Ok(RoundFrame {
             finished: self.runner.have_winner(),
             winner_ids: winner_ids(&self.runner),
