@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2024"
 
 [dependencies]
-pyo3 = { version = "0.28.2", features = ["smallvec"] }
+pyo3 = { version = "0.28.3", features = ["smallvec"] }
 smallvec = "1.15.1"
 tswn_core = { path = "../tswn_core", features = ["no_debug"] }
 
