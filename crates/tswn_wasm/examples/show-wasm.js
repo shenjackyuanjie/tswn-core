@@ -69,6 +69,21 @@ export async function ensureApi(versionInfo, coreVersionInfo, modulePathInfo) {
 // ============================================================================
 
 /**
+ * 从原始输入里提取显式指定的 seed 行。
+ * @param {string} rawInput
+ * @returns {string|null}
+ */
+function extractSpecifiedSeedLine(rawInput) {
+    for (const line of rawInput.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (/^seed:/i.test(trimmed)) {
+            return trimmed;
+        }
+    }
+    return null;
+}
+
+/**
  * 根据原始输入文本生成完整回放数据。
  *
  * @param {string} rawInput — 原始输入文本（每行一个名字，空行分隔队伍）
@@ -87,6 +102,7 @@ export async function buildReplay(rawInput, versionInfo, coreVersionInfo, module
     const wasmDurationMs = performance.now() - wasmStart;
     return {
         rawInput,
+        seedLine: extractSpecifiedSeedLine(rawInput),
         players,
         initialStates,
         frames: replay.frames,

@@ -1,5 +1,29 @@
 # 更新日志
 
+## [0.1.1] - 2026-05-04
+
+### 新增
+
+- `PlayerState` 新增 `idName` / `displayName` 字段，WASM 层直接暴露玩家的真实 id_name 与 display_name，前端不再对召唤单位一律退化为“幻影 #id”。
+- `PlayerState` 新增 `minionKind` 字段（`clone` / `summon` / `shadow` / `zombie`），前端可根据 minion 种类定制显示名。
+- 新增 `MinionKindView` 枚举及从 `tswn_core::MinionKind` 的转换实现。
+- 新增 `replayDisplayName()` 统一格式化回放中的显示名：clone 追加 `#playerId`，summon/shadow/zombie 分别使用“使魔”/“幻影”/“丧尸”基底名并追加 `#playerId`。
+- 新增 `syntheticPlayerFromState()` 辅助函数，基于 state 数据生成可渲染的玩家对象（含 minion 显示名逻辑）。
+- 新增 seed 行展示：前端从原始输入中提取 `seed:` 行并渲染到玩家列表顶部（`show-wasm.js` `extractSpecifiedSeedLine()` + `show-render.js` `seedRowHtml()`）。
+- 新增 `.seed-row` / `.seed-label` / `.seed-value` CSS 样式。
+- `FightReplay` 类型新增 `seedLine` 字段。
+
+### 优化
+
+- 重构 `show-render.js`：消除 4 处重复的幻影/分身玩家对象创建逻辑，统一使用 `syntheticPlayerFromState()`。
+- `FightSession::build_frame()` 改为每帧从state实时提取玩家名，去掉缓存字段 `player_names`，避免各帧间名字不一致。
+- `winnerNamesText()` 改为优先从 `replay.finalStates` 中解析胜者名，支持 minion 胜者的正确显示。
+
+### 示例
+
+- `show-replay.js`：`renderReplayIntro()` 将 `seedLine` 写入 `playerList.dataset`，支持增量更新时保留 seed。
+- `show.js`：`FightState` JSDoc 类型标注新增 `idName`、`displayName`、`minionKind`。
+
 ## [0.1.0] - 2026-04-29
 
 ### 新增

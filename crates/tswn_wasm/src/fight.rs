@@ -111,6 +111,9 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             continue;
         };
         let owner_id = root_owner_id(&runner.storage, *player_id);
+        let minion_kind = player
+            .get_state::<tswn_core::player::skill::act::minion::MinionRuntimeState>()
+            .map(|state| state.kind.into());
         let status = player.get_status();
         let mut status_labels = Vec::new();
 
@@ -163,7 +166,10 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
         states.push(PlayerState {
             id: *player_id,
             team_index: runner.world.team_index_of(*player_id).unwrap_or(0),
+            id_name: player.id_name(),
+            display_name: player.display_name(),
             owner_id,
+            minion_kind,
             hp: status.hp,
             max_hp: status.max_hp,
             mp: status.mp,
@@ -186,6 +192,13 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
         });
     }
     Ok(states)
+}
+
+fn player_names_from_states(states: &[PlayerState]) -> HashMap<PlrId, String> {
+    states
+        .iter()
+        .map(|state| (state.id, state.display_name.clone()))
+        .collect()
 }
 
 fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -> Vec<UpdateView> {
@@ -218,7 +231,6 @@ fn winner_ids(runner: &Runner) -> Vec<usize> { runner.world.winner.clone().unwra
 pub struct FightSession {
     runner: Runner,
     player_order: Vec<PlrId>,
-    player_names: HashMap<PlrId, String>,
     players: Vec<PlayerMeta>,
     capture_replay: bool,
 }
@@ -227,18 +239,18 @@ impl FightSession {
     pub(crate) fn new_internal(raw_input: String, options: FightOptions) -> WasmResult<Self> {
         let runner = build_runner(raw_input, options.resolved_eval_rq())?;
         let player_order = runner.all_plrs();
-        let (players, player_names) = collect_players(&runner, &player_order, options.include_icons())?;
+        let (players, _player_names) = collect_players(&runner, &player_order, options.include_icons())?;
         Ok(Self {
             runner,
             player_order,
-            player_names,
             players,
             capture_replay: options.capture_replay(),
         })
     }
 
     fn build_frame(&self, updates: RunUpdates) -> WasmResult<RoundFrame> {
-        let converted = convert_updates(updates, &self.player_names);
+        let states = collect_states(&self.runner, &self.player_order)?;
+        let converted = convert_updates(updates, &player_names_from_states(&states));
         let total_delay: i32 = converted
             .iter()
             .map(|u| if u.delay1 != 0 { u.delay1 } else { u.delay0 })
@@ -247,7 +259,7 @@ impl FightSession {
             finished: self.runner.have_winner(),
             winner_ids: winner_ids(&self.runner),
             updates: converted,
-            states: collect_states(&self.runner, &self.player_order)?,
+            states,
             total_delay,
         })
     }

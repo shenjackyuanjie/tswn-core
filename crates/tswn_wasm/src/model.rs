@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use tswn_core::engine::update::UpdateType;
+use tswn_core::player::skill::act::minion::MinionKind;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,8 +56,12 @@ pub struct PlayerMeta {
 pub struct PlayerState {
     pub id: usize,
     pub team_index: usize,
+    pub id_name: String,
+    pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minion_kind: Option<MinionKindView>,
     pub hp: i32,
     pub max_hp: i32,
     pub mp: i32,
@@ -77,6 +82,26 @@ pub struct PlayerState {
     pub alive: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub status_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MinionKindView {
+    Clone,
+    Summon,
+    Shadow,
+    Zombie,
+}
+
+impl From<MinionKind> for MinionKindView {
+    fn from(value: MinionKind) -> Self {
+        match value {
+            MinionKind::Clone => Self::Clone,
+            MinionKind::Summon => Self::Summon,
+            MinionKind::Shadow => Self::Shadow,
+            MinionKind::Zombie => Self::Zombie,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

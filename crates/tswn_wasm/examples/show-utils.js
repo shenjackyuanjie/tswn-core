@@ -98,6 +98,33 @@ export function phantomDisplayName(playerId) {
 }
 
 /**
+ * 统一格式化回放状态里的显示名。
+ * minion 会追加 #playerId，用来和其他同类单位区分。
+ * @param {FightState|undefined} state
+ * @param {number} [fallbackPlayerId]
+ * @returns {string}
+ */
+export function replayDisplayName(state, fallbackPlayerId) {
+    const playerId = fallbackPlayerId ?? state?.id;
+    if (!state) {
+        return playerId == null ? "未知角色" : phantomDisplayName(playerId);
+    }
+    if (state.minionKind === 'clone') {
+        return playerId == null ? state.displayName : `${state.displayName} #${playerId}`;
+    }
+    if (state.minionKind === 'summon' || state.minionKind === 'shadow' || state.minionKind === 'zombie') {
+        const baseName = state.displayName
+            ?? (state.minionKind === 'shadow'
+                ? '幻影'
+                : state.minionKind === 'zombie'
+                    ? '丧尸'
+                    : '使魔');
+        return playerId == null ? baseName : `${baseName} #${playerId}`;
+    }
+    return state.displayName ?? phantomDisplayName(playerId ?? 0);
+}
+
+/**
  * 将存活状态映射为中文标签。
  * @param {FightState} state
  * @returns {string} "死亡" | "冻结" | "存活"

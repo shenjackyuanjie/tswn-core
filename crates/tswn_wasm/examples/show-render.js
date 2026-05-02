@@ -52,6 +52,7 @@ import {
     statusText,
     buildStateMap,
     phantomDisplayName,
+    replayDisplayName,
 } from './show-utils.js';
 
 // ============================================================================
@@ -82,6 +83,32 @@ export function actorToken(player, state, previousState, { showHp = true } = {})
 }
 
 /**
+ * 从状态里补出一个可渲染的玩家对象。
+ * 优先使用 WASM 提供的真实名字，避免把 clone/shadow/summon 一律退化成“幻影 #id”。
+ * @param {number} playerId
+ * @param {FightState|undefined} state
+ * @param {Map<number, FightPlayer>} playersById
+ * @returns {FightPlayer}
+ */
+function syntheticPlayerFromState(playerId, state, playersById) {
+    let icon = null;
+    if (state?.ownerId != null) {
+        const ownerPlayer = playersById.get(state.ownerId);
+        if (ownerPlayer) {
+            icon = ownerPlayer.iconPngBase64;
+        }
+    }
+
+    return {
+        id: playerId,
+        teamIndex: state?.teamIndex ?? 0,
+        idName: state?.idName ?? `player_${playerId}`,
+        displayName: replayDisplayName(state, playerId),
+        iconPngBase64: icon,
+    };
+}
+
+/**
  * 根据 playerId 渲染一个角色 token，自动处理幻影/未知角色。
  * @param {number} playerId
  * @param {Map<number, FightState>} stateMap — 当前状态 Map
@@ -95,23 +122,7 @@ export function renderActorById(playerId, stateMap, previousStateMap, playersByI
     const state = stateMap.get(playerId);
     const previousState = previousStateMap?.get(playerId) ?? state;
     if (!player) {
-        let icon = null;
-        if (state?.ownerId != null) {
-            const ownerPlayer = playersById.get(state.ownerId);
-            if (ownerPlayer) {
-                icon = ownerPlayer.iconPngBase64;
-            }
-        }
-        return actorToken(
-            {
-                id: playerId,
-                displayName: phantomDisplayName(playerId),
-                iconPngBase64: icon,
-            },
-            state,
-            previousState,
-            options,
-        );
+        return actorToken(syntheticPlayerFromState(playerId, state, playersById), state, previousState, options);
     }
 
     return actorToken(player, state, previousState, options);
@@ -252,6 +263,18 @@ function renderPlayerStatusPills(state) {
     return `<div class="detail-line player-effects"${labels.length ? '' : ' hidden'}>${chips}</div>`;
 }
 
+function seedRowHtml(seedLine) {
+    if (!seedLine) {
+        return "";
+    }
+    return `
+        <div class="seed-row">
+            <span class="seed-label">Seed</span>
+            <span class="seed-value">${escapeHtml(seedLine)}</span>
+        </div>
+    `;
+}
+
 // ============================================================================
 // 玩家状态面板渲染
 // ============================================================================
@@ -271,6 +294,7 @@ function renderPlayerStatusPills(state) {
 export function renderPlayers(players, states, previousStates = states, involved = null, playerList, playersById) {
     const stateMap = buildStateMap(states);
     const previousStateMap = buildStateMap(previousStates);
+    const seedLine = playerList.dataset.seedLine ?? "";
 
     // 补上 states 里有但初始 players 里没有的召唤单位（幻影/分身）
     const knownIds = new Set(players.map((p) => p.id));
@@ -278,21 +302,7 @@ export function renderPlayers(players, states, previousStates = states, involved
     for (const state of states) {
         if (!knownIds.has(state.id)) {
             knownIds.add(state.id);
-            // 幻影/分身使用本体头像
-            let icon = null;
-            if (state.ownerId != null) {
-                const ownerPlayer = playersById.get(state.ownerId);
-                if (ownerPlayer) {
-                    icon = ownerPlayer.iconPngBase64;
-                }
-            }
-            const phantomPlayer = {
-                id: state.id,
-                teamIndex: state.teamIndex ?? 0,
-                idName: `player_${state.id}`,
-                displayName: phantomDisplayName(state.id),
-                iconPngBase64: icon,
-            };
+            const phantomPlayer = syntheticPlayerFromState(state.id, state, playersById);
             allPlayers.push(phantomPlayer);
             playersById.set(state.id, phantomPlayer);
         }
@@ -422,8 +432,22 @@ export function renderPlayers(players, states, previousStates = states, involved
                 </tr>
             </thead>
         </table>` : "";
-        playerList.innerHTML = columnHeader + teamHtml;
+        playerList.innerHTML = seedRowHtml(seedLine) + columnHeader + teamHtml;
     } else {
+        const seedRow = playerList.querySelector('.seed-row');
+        if (seedLine) {
+            if (seedRow) {
+                const valueEl = seedRow.querySelector('.seed-value');
+                if (valueEl) {
+                    valueEl.textContent = seedLine;
+                }
+            } else {
+                playerList.insertAdjacentHTML('afterbegin', seedRowHtml(seedLine));
+            }
+        } else if (seedRow) {
+            seedRow.remove();
+        }
+
         // —— 增量更新：直接修改现有 DOM，避免 innerHTML 全量替换造成闪烁 ——
         for (const player of allPlayers) {
             const state = stateMap.get(player.id);
@@ -519,21 +543,7 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
             continue;
         }
 
-        let icon = null;
-        if (state.ownerId != null) {
-            const ownerPlayer = playersById.get(state.ownerId);
-            if (ownerPlayer) {
-                icon = ownerPlayer.iconPngBase64;
-            }
-        }
-
-        playersById.set(state.id, {
-            id: state.id,
-            teamIndex: state.teamIndex ?? 0,
-            idName: `player_${state.id}`,
-            displayName: phantomDisplayName(state.id),
-            iconPngBase64: icon,
-        });
+        playersById.set(state.id, syntheticPlayerFromState(state.id, state, playersById));
     }
 
     const previousStateMap = buildStateMap(previousStates);
@@ -630,21 +640,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
             continue;
         }
 
-        let icon = null;
-        if (state.ownerId != null) {
-            const ownerPlayer = playersById.get(state.ownerId);
-            if (ownerPlayer) {
-                icon = ownerPlayer.iconPngBase64;
-            }
-        }
-
-        playersById.set(state.id, {
-            id: state.id,
-            teamIndex: state.teamIndex ?? 0,
-            idName: `player_${state.id}`,
-            displayName: phantomDisplayName(state.id),
-            iconPngBase64: icon,
-        });
+        playersById.set(state.id, syntheticPlayerFromState(state.id, state, playersById));
     }
 
     const previousStateMap = buildStateMap(previousStates);

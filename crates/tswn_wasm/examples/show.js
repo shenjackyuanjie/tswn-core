@@ -7,6 +7,9 @@
  * 典型的 State 结构（来自 WASM）：
  * @typedef {{
  *   id: number,
+ *   idName: string,
+ *   displayName: string,
+ *   minionKind?: 'clone' | 'summon' | 'shadow' | 'zombie',
  *   hp: number,
  *   maxHp: number,
  *   mp: number,
@@ -42,6 +45,7 @@
  * 一次 Replay 的结构：
  * @typedef {{
  *   rawInput: string,
+ *   seedLine?: string|null,
  *   players: FightPlayer[],
  *   initialStates: FightState[],
  *   frames: FrameUpdate[],

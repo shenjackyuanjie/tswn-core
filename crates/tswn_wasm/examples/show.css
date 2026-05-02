@@ -158,6 +158,31 @@ button:hover {
     gap: 2px;
 }
 
+.seed-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 6px;
+    border: 1px solid rgba(198, 225, 239, 0.95);
+    background: rgba(24, 119, 199, 0.08);
+    color: var(--sky-3);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.seed-label {
+    flex: none;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.seed-value {
+    min-width: 0;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+}
+
 .team-label {
     font-size: 11px;
     line-height: 1.2;

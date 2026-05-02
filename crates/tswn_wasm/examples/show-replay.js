@@ -6,6 +6,7 @@
  */
 
 import { renderPlayers } from './show-render.js';
+import { replayDisplayName } from './show-utils.js';
 
 // ============================================================================
 // 回放介绍与速度控制
@@ -26,6 +27,11 @@ import { renderPlayers } from './show-render.js';
 export function renderReplayIntro(replay, speedMode, playerList, battleRows, plistMeta, headerMeta, playersById, rememberPlayers) {
     const teamCount = new Set(replay.players.map((player) => player.teamIndex)).size;
     rememberPlayers(replay.players);
+    if (replay.seedLine) {
+        playerList.dataset.seedLine = replay.seedLine;
+    } else {
+        delete playerList.dataset.seedLine;
+    }
     plistMeta.textContent = `${replay.players.length} 名角色 · ${teamCount} 支队伍 · ${replay.frames.length} 帧回放。`;
     const labels = { normal: '正常速度', fast: '快进模式', turbo: '极速模式（无延时）' };
     headerMeta.textContent = `当前是${labels[speedMode]}，会自动推进 ${replay.frames.length} 帧。`;
@@ -83,6 +89,7 @@ export function playbackDelay(frame, speedMode) {
  */
 export function winnerNamesText(replay) {
     const playersById = new Map(replay.players.map((player) => [player.id, player]));
-    const names = replay.winnerIds.map((winnerId) => playersById.get(winnerId)?.displayName ?? `#${winnerId}`);
+    const finalStateNames = new Map(replay.finalStates.map((state) => [state.id, replayDisplayName(state)]));
+    const names = replay.winnerIds.map((winnerId) => playersById.get(winnerId)?.displayName ?? finalStateNames.get(winnerId) ?? `#${winnerId}`);
     return names.length ? names.join("、") : "未分出胜负";
 }
