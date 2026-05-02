@@ -98,7 +98,7 @@ impl SkillTrait for CloneSkill {
         cloned.status.move_point = args.1.r255() as i32 * 4 + 256;
         cloned.status.hp = owner_snapshot.get_status().hp.max(1);
         // JS clone 是重新 build 的实体，mp 取 itl/2，而不是 owner 当前 mp。
-        cloned.status.mp = (cloned.status.wisdom >> 1).max(0);
+        cloned.status.magic_point = (cloned.status.wisdom >> 1).max(0);
         cloned.status.set_alive(true);
         cloned.status.set_frozen(false);
 
@@ -120,7 +120,7 @@ impl SkillTrait for CloneSkill {
                 owner_snapshot.id_name(),
                 owner_snapshot.attr,
                 owner_snapshot.get_status().hp,
-                owner_snapshot.get_status().mp,
+                owner_snapshot.get_status().magic_point,
                 owner_snapshot.get_status().attack,
                 owner_snapshot.get_status().defense,
                 owner_snapshot.get_status().speed,
@@ -131,7 +131,7 @@ impl SkillTrait for CloneSkill {
                 cloned.id_name(),
                 cloned.attr,
                 cloned.get_status().hp,
-                cloned.get_status().mp,
+                cloned.get_status().magic_point,
                 cloned.get_status().attack,
                 cloned.get_status().defense,
                 cloned.get_status().speed,

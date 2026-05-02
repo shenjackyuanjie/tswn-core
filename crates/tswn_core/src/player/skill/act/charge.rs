@@ -56,7 +56,7 @@ impl SkillTrait for ChargeSkill {
         args.2.add(RunUpdate::new("[0]开始[蓄力]", args.0, args.0, 1));
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get charge owner from storage");
         owner.update_states();
-        owner.set_mp(owner.mp() + 32);
+        owner.set_magic_point(owner.magic_point() + 32);
     }
 
     fn post_action(&mut self, args: SkillArgs) {

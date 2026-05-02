@@ -111,7 +111,7 @@ fn assassinate_pre_action_is_preserved_by_shield() {
     attacker_mut.skills.add_skill(Skill::new_with_id(255, 21));
     attacker_mut.skills.add_skill(Skill::new_with_id(255, 29));
     attacker_mut.skills.update_proc();
-    attacker_mut.status.mp = 999;
+    attacker_mut.status.magic_point = 999;
     attacker_mut.action(
         &mut randomer,
         &mut updates,
@@ -140,7 +140,7 @@ fn late_gained_hide_clears_assassinate_forced_skill() {
     let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
     attacker_mut.skills.add_skill(Skill::new_with_id(255, 21));
     attacker_mut.skills.update_proc();
-    attacker_mut.status.mp = 999;
+    attacker_mut.status.magic_point = 999;
     attacker_mut.action(
         &mut randomer,
         &mut updates,

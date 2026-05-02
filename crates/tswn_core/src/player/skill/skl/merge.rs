@@ -51,7 +51,7 @@ impl SkillTrait for MergeSkill {
                 target_plr.skills.slot_skill.clone()
             }
         };
-        let target_mp = args.3.get_player(&target).expect("cannot get merge target from storage").mp();
+        let target_mp = args.3.get_player(&target).expect("cannot get merge target from storage").magic_point();
         let target_move_point = args.3.get_player(&target).expect("cannot get merge target from storage").move_point();
 
         let mut merged = false;
@@ -70,7 +70,7 @@ impl SkillTrait for MergeSkill {
                     args.3.get_player(&target).map(|p| p.id_name()).unwrap_or_else(|| format!("#{target}")),
                     owner.attr[5],
                     target_attr[5],
-                    owner.mp(),
+                    owner.magic_point(),
                     target_mp,
                     owner.move_point(),
                     target_move_point
@@ -155,9 +155,9 @@ impl SkillTrait for MergeSkill {
             for skill_key in newly_enabled_skills {
                 owner.skills.register_skill_proc_after_states(skill_key, post_action_state_cursor);
             }
-            let transfer_mp = target_mp > owner.mp();
+            let transfer_mp = target_mp > owner.magic_point();
             if transfer_mp {
-                owner.set_mp(target_mp);
+                owner.set_magic_point(target_mp);
             }
             let transfer_move_point = target_move_point > owner.move_point();
             if transfer_move_point {
@@ -176,14 +176,14 @@ impl SkillTrait for MergeSkill {
                 transfer_mp,
                 transfer_move_point,
                 owner.attr[5],
-                owner.mp(),
+                owner.magic_point(),
                 owner.move_point()
             );
         }
         {
             let target_plr = args.3.just_get_player_mut(target).expect("cannot get merge target from storage");
             if transfer_mp {
-                target_plr.set_mp(0);
+                target_plr.set_magic_point(0);
             }
             if transfer_move_point {
                 target_plr.set_move_point(0);

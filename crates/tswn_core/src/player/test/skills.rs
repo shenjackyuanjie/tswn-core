@@ -388,7 +388,7 @@ fn action_uses_fire_skill_when_available() {
     let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
     attacker_mut.status.hp = 100;
     attacker_mut.status.max_hp = 100;
-    attacker_mut.status.mp = 999;
+    attacker_mut.status.magic_point = 999;
     attacker_mut.skills.add_skill(Skill::new_with_id(255, 0));
     attacker_mut.skills.update_proc();
     let target_mut = storage.just_get_player_mut(target_id).unwrap();
@@ -417,7 +417,7 @@ fn heal_action_targets_injured_ally() {
     let mut updates = RunUpdates::new();
 
     let healer_mut = storage.just_get_player_mut(healer_id).unwrap();
-    healer_mut.status.mp = 999;
+    healer_mut.status.magic_point = 999;
     healer_mut.skills.add_skill(Skill::new_with_id(255, 15));
     healer_mut.skills.update_proc();
     let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
@@ -453,7 +453,7 @@ fn revive_action_targets_dead_ally() {
     let mut updates = RunUpdates::new();
 
     let healer_mut = storage.just_get_player_mut(healer_id).unwrap();
-    healer_mut.status.mp = 999;
+    healer_mut.status.magic_point = 999;
     healer_mut.skills.add_skill(Skill::new_with_id(255, 16));
     healer_mut.skills.update_proc();
     let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
@@ -490,7 +490,7 @@ fn protect_redirects_damage_to_protector() {
     let mut updates = RunUpdates::new();
 
     let protector_mut = storage.just_get_player_mut(protector_id).unwrap();
-    protector_mut.status.mp = 999;
+    protector_mut.status.magic_point = 999;
     protector_mut.status.hp = 300;
     protector_mut.status.max_hp = 300;
     protector_mut.skills.add_skill(Skill::new_with_id(255, 26));
@@ -556,7 +556,7 @@ fn reflect_penalty_runs_after_reflected_kill_merge_check() {
         owner_mut.skills = crate::player::skill::store::SkillStorage::new();
         owner_mut.status.hp = 300;
         owner_mut.status.max_hp = 300;
-        owner_mut.status.mp = 100;
+        owner_mut.status.magic_point = 100;
         owner_mut.status.move_point = 800;
         owner_mut.skills.add_skill(Skill::new_with_id(255, 27));
         owner_mut.skills.add_skill(Skill::new_with_id(255, 31));
@@ -570,7 +570,7 @@ fn reflect_penalty_runs_after_reflected_kill_merge_check() {
         attacker_mut.status.max_hp = 40;
         attacker_mut.status.defense = 0;
         attacker_mut.status.agility = 0;
-        attacker_mut.status.mp = 10;
+        attacker_mut.status.magic_point = 10;
         attacker_mut.status.move_point = 500;
         attacker_mut.status.set_frozen(true);
         attacker_mut.status.set_alive(true);
@@ -607,7 +607,7 @@ fn action_falls_back_to_default_attack() {
     let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
     attacker_mut.status.hp = 100;
     attacker_mut.status.max_hp = 100;
-    attacker_mut.status.mp = 999;
+    attacker_mut.status.magic_point = 999;
     let target_mut = storage.just_get_player_mut(target_id).unwrap();
     target_mut.status.hp = 100;
     target_mut.status.max_hp = 100;
@@ -666,7 +666,7 @@ fn curse_does_not_apply_to_reraise_survivor() {
     let mut updates = RunUpdates::new();
 
     let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
-    attacker_mut.status.mp = 999;
+    attacker_mut.status.magic_point = 999;
     attacker_mut.skills.add_skill(Skill::new_with_id(127, 14));
     attacker_mut.skills.update_proc();
 
@@ -703,7 +703,7 @@ fn assassinate_preaction_forces_backstab() {
     let attacker_mut = storage.just_get_player_mut(attacker_id).unwrap();
     attacker_mut.status.hp = 120;
     attacker_mut.status.max_hp = 120;
-    attacker_mut.status.mp = 999;
+    attacker_mut.status.magic_point = 999;
     attacker_mut.skills.add_skill(Skill::new_with_id(255, 21));
     attacker_mut.skills.update_proc();
 
@@ -849,7 +849,7 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
         owner_mut.skills.update_proc();
         owner_mut.update_states();
         owner_mut.status.move_point = 100;
-        owner_mut.status.mp = 100;
+        owner_mut.status.magic_point = 100;
     }
 
     {
@@ -913,7 +913,7 @@ fn accumulate_reuse_after_clear_uses_js_reset_multiplier() {
         owner_mut.skills.update_proc();
         owner_mut.update_states();
         owner_mut.status.move_point = 100;
-        owner_mut.status.mp = 100;
+        owner_mut.status.magic_point = 100;
     }
 
     {

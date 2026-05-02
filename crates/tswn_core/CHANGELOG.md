@@ -1,5 +1,26 @@
 # 更新日志
 
+## [0.3.0] - 2026-05-07
+
+### ⚠️ Breaking Changes
+
+- **`PlayerStatus.mp` 字段重命名为 `magic_point`**：直接访问 `status.mp` 的代码需要改为 `status.magic_point`。
+- **`Player::mp()` / `set_mp()` 方法已废弃**：请使用 `magic_point()` / `set_magic_point()`。废弃方法仍可通过 `#[allow(deprecated)]` 临时使用，但将在后续版本移除。
+- **`Display` 输出格式变更**：`mp|` 改为 `magic_point|`，如有 parse Display 输出依赖需要更新。
+
+### 变更
+
+- `PlayerStatus` 结构体字段 `mp: i32` → `magic_point: i32`
+- `Default` 实现同步更新为 `magic_point: 0`
+- 所有技能实现（Charge、Disperse、Merge）中的 `.mp()` / `.set_mp()` 调用改为 `.magic_point()` / `.set_magic_point()`
+- 调试日志中的 `self.status.mp` 访问改为 `self.status.magic_point`
+- `engine_core.rs` 调试日志格式修正：`mp=` 标签原实际输出的是 `move_point`，已改为 `mv=` 消除误导
+
+### 重构
+
+- 废弃方法 `mp()` / `set_mp()` 添加 `#[deprecated]` 注解，引导用户使用新命名
+- 新方法 `magic_point()` / `set_magic_point()` 作为正式 API
+
 ## [0.2.22] - 2026-05-02
 
 ### 新增

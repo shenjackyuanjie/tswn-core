@@ -430,7 +430,7 @@ fn print_all_players(runner: &Runner) {
                 status.speed,
                 status.agility,
                 status.magic,
-                status.mp,
+                status.magic_point,
                 status.resistance,
                 status.wisdom,
                 status.all_sum,

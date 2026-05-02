@@ -17,7 +17,7 @@
 //! | `speed`     | i32    | 速度                |
 //! | `agility`   | i32    | 敏捷                |
 //! | `magic`     | i32    | 魔法                |
-//! | `mp`        | i32    | 魔法值              |
+//! | `magic_point`| i32    | 魔法值              |
 //! | `resistance`| i32    | 抗性                |
 //! | `wisdom`    | i32    | 智力                |
 //! | `at_boost`  | f64    | 攻击加成倍率        |
@@ -46,7 +46,7 @@
 //! status.max_hp = 100;
 //! status.attack = 50;
 //! println!("{}", status);
-//! // 输出: PlayerStatus{正常,存活 分数: 0, hp: 100 移动点数: 0 sums:0,0,0 攻|50 防|0 速|0 敏|0 魔|0 mp|0 抗|0 智|0 }
+//! // 输出: PlayerStatus{正常,存活 分数: 0, hp: 100 移动点数: 0 sums:0,0,0 攻|50 防|0 速|0 敏|0 魔|0 magic_point|0 抗|0 智|0 }
 //! ```
 
 /// 玩家状态结构体，存储玩家的各种属性和状态。
@@ -75,7 +75,7 @@ pub struct PlayerStatus {
     /// 魔法
     pub magic: i32,
     /// 魔法值
-    pub mp: i32,
+    pub magic_point: i32,
     /// 抗性
     pub resistance: i32,
     /// 智力
@@ -140,7 +140,7 @@ impl Default for PlayerStatus {
             speed: 0,
             agility: 0,
             magic: 0,
-            mp: 0,
+            magic_point: 0,
             resistance: 0,
             wisdom: 0,
             at_boost: 1.0,
@@ -157,7 +157,7 @@ impl std::fmt::Display for PlayerStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "PlayerStatus{{{},{} 分数: {}, hp: {} 移动点数: {} sums:{},{},{} 攻|{} 防|{} 速|{} 敏|{} 魔|{} mp|{} 抗|{} 智|{} }}",
+            "PlayerStatus{{{},{} 分数: {}, hp: {} 移动点数: {} sums:{},{},{} 攻|{} 防|{} 速|{} 敏|{} 魔|{} magic_point|{} 抗|{} 智|{} }}",
             if self.frozen { "冻结" } else { "正常" },
             if self.alive { "存活" } else { "死亡" },
             self.point,
@@ -171,7 +171,7 @@ impl std::fmt::Display for PlayerStatus {
             self.speed,
             self.agility,
             self.magic,
-            self.mp,
+            self.magic_point,
             self.resistance,
             self.wisdom
         )

@@ -228,10 +228,18 @@ impl Player {
     pub fn get_weapon_name(&self) -> Option<&str> { self.weapon.as_deref() }
 
     #[inline]
-    pub fn mp(&self) -> i32 { self.status.mp }
+    #[deprecated(note = "请使用 magic_point()")]
+    pub fn mp(&self) -> i32 { self.status.magic_point }
 
     #[inline]
-    pub fn set_mp(&mut self, val: i32) { self.status.mp = val; }
+    pub fn magic_point(&self) -> i32 { self.status.magic_point }
+
+    #[inline]
+    #[deprecated(note = "请使用 set_magic_point()")]
+    pub fn set_mp(&mut self, val: i32) { self.status.magic_point = val; }
+
+    #[inline]
+    pub fn set_magic_point(&mut self, val: i32) { self.status.magic_point = val; }
 
     #[inline]
     pub fn set_hp_raw(&mut self, val: i32) -> bool {

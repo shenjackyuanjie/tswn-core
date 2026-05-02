@@ -20,7 +20,7 @@
 //! ### 📊 状态系统
 //! - [`state`] — [`StateTrait`]（可扩展的玩家状态 trait）及 [`PlayerStateStore`]（状态容器）。
 //!   技能效果（中毒、冰冻、魅惑等）通过实现 `StateTrait` 挂载到玩家。
-//! - [`status`] — [`PlayerStatus`]（运行期属性快照，含 hp/mp/attack 等）。
+//! - [`status`] — [`PlayerStatus`]（运行期属性快照，含 hp/magic_point/attack 等）。
 //!
 //! ### ⚔️ 技能系统
 //! - [`skill`] — 所有技能的基础 trait、技能分发、技能槽管理。

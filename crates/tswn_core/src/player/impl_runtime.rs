@@ -241,7 +241,7 @@ impl Player {
                 .get_state::<crate::player::skill::act::slow::SlowState>()
                 .map(|state| format!("owner={:?} target={:?} step={}", state.owner, state.target, state.step));
             eprintln!(
-                "[action] actor={} id={} rc4=({}, {}) smart_byte={} smart_roll={} wisdom={} smart={} mp={} forced_skill={:?} clear_forced={} enemy_alive={:?} ally_alive={:?} all_alive={:?} charm_state={:?} slow_state={:?}",
+                "[action] actor={} id={} rc4=({}, {}) smart_byte={} smart_roll={} wisdom={} smart={} magic_point={} forced_skill={:?} clear_forced={} enemy_alive={:?} ally_alive={:?} all_alive={:?} charm_state={:?} slow_state={:?}",
                 self.id_name(),
                 self.as_ptr(),
                 randomer.i,
@@ -250,7 +250,7 @@ impl Player {
                 smart_roll,
                 self.status.wisdom,
                 smart,
-                self.status.mp,
+                self.status.magic_point,
                 pre_action_outcome.forced_skill,
                 pre_action_outcome.clear_forced_action,
                 fmt_targets(&targets.enemy_alive),
@@ -268,7 +268,7 @@ impl Player {
         if state_hijacked {
             let recover_threshold = self.status.wisdom + 64;
             if (randomer.r127() as i32) < recover_threshold {
-                self.status.mp += 16;
+                self.status.magic_point += 16;
             }
             updates.emit(RunUpdate::new_newline);
             self.run_post_action_chain(randomer, updates, storage);
@@ -310,10 +310,10 @@ impl Player {
                         randomer.j,
                         req_mp_byte,
                         req_mp,
-                        self.status.mp,
+                        self.status.magic_point,
                     );
                 }
-                if self.status.mp >= req_mp {
+                if self.status.magic_point >= req_mp {
                     let is_boss = self.player_type == PlayerType::Boss;
                     if !is_boss {
                         for &key in &self.skills.skill {
@@ -418,7 +418,7 @@ impl Player {
                             let _ = randomer.r127();
                         }
                     }
-                    self.status.mp -= req_mp;
+                    self.status.magic_point -= req_mp;
                 }
             } else if let Some(skill_key) = selected_skill_key {
                 selected_targets = {
@@ -492,17 +492,17 @@ impl Player {
 
         let recover_threshold = self.status.wisdom + 64;
         if (randomer.r127() as i32) < recover_threshold {
-            self.status.mp += 16;
+            self.status.magic_point += 16;
         }
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
-                "[action_after_recover] actor={} id={} rc4=({}, {}) mp={} hp={}",
+                "[action_after_recover] actor={} id={} rc4=({}, {}) magic_point={} hp={}",
                 self.id_name(),
                 self.as_ptr(),
                 randomer.i,
                 randomer.j,
-                self.status.mp,
+                self.status.magic_point,
                 self.status.hp,
             );
         }
@@ -511,24 +511,24 @@ impl Player {
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
-                "[action_after_post_action] actor={} id={} rc4=({}, {}) mp={} hp={}",
+                "[action_after_post_action] actor={} id={} rc4=({}, {}) magic_point={} hp={}",
                 self.id_name(),
                 self.as_ptr(),
                 randomer.i,
                 randomer.j,
-                self.status.mp,
+                self.status.magic_point,
                 self.status.hp,
             );
         }
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
-                "[action_end] actor={} id={} rc4=({}, {}) mp={} hp={}",
+                "[action_end] actor={} id={} rc4=({}, {}) magic_point={} hp={}",
                 self.id_name(),
                 self.as_ptr(),
                 randomer.i,
                 randomer.j,
-                self.status.mp,
+                self.status.magic_point,
                 self.status.hp,
             );
         }
@@ -1207,8 +1207,8 @@ impl Player {
 
         if smart && self.status.magic > self.status.attack {
             let req_mp = (self.status.magic - self.status.attack) >> 2;
-            if self.status.mp >= req_mp {
-                self.status.mp -= req_mp;
+            if self.status.magic_point >= req_mp {
+                self.status.magic_point -= req_mp;
                 let atp = self.get_at(true, randomer);
                 updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
                 storage
@@ -1560,8 +1560,8 @@ impl Player {
             return false;
         }
         let require_mp = randomer.r3x3() as i32;
-        if self.status.mp >= require_mp {
-            self.status.mp -= require_mp;
+        if self.status.magic_point >= require_mp {
+            self.status.magic_point -= require_mp;
             return true;
         }
         false

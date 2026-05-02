@@ -106,7 +106,7 @@ impl SkillTrait for SummonSkill {
         summoned.attr[5] = owner.attr[5];
         summoned.update_states();
         summoned.status.hp = summoned.status.max_hp;
-        summoned.status.mp = summoned.status.wisdom >> 1;
+        summoned.status.magic_point = summoned.status.wisdom >> 1;
 
         summoned.id = args.3.new_plr_id();
         summoned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));

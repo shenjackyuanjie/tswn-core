@@ -81,7 +81,7 @@ fn merge_kill_applies_owner_growth() {
         target_mut.status.magic = 75;
         target_mut.status.resistance = 65;
         target_mut.status.wisdom = 60;
-        target_mut.status.mp = 64;
+        target_mut.status.magic_point = 64;
         target_mut.status.move_point = 512;
         target_mut.status.set_alive(true);
     }
@@ -122,7 +122,7 @@ fn zombie_kill_marks_corpse_and_queues_minion_spawn() {
         owner_mut.status.max_hp = 160;
         owner_mut.skills.add_skill(Skill::new_with_id(255, 32));
         owner_mut.skills.update_proc();
-        owner_mut.status.mp = 999;
+        owner_mut.status.magic_point = 999;
     }
 
     {

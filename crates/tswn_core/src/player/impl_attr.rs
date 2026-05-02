@@ -204,7 +204,7 @@ impl Player {
         self.update_states();
         self.status.hp = self.status.max_hp;
         // Dart: mp = itl ~/ 2
-        self.status.mp = self.status.wisdom >> 1;
+        self.status.magic_point = self.status.wisdom >> 1;
     }
 
     /// 更新状态

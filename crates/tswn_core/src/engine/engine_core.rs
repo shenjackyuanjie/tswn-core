@@ -190,7 +190,7 @@ impl EngineCore {
         #[cfg(not(feature = "no_debug"))]
         if debug_tick && let Some(plr) = storage.get_player(&actor) {
             eprintln!(
-                "[tick] actor={} id={} mp={} hp={} rc4=({}, {})",
+                "[tick] actor={} id={} mv={} hp={} rc4=({}, {})",
                 plr.id_name(),
                 actor,
                 plr.move_point(),

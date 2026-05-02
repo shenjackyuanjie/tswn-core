@@ -100,13 +100,13 @@ fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: 
     let mut clear_messages = target.skills.clear_positive_runtime_with_order((target_id, r, updates, storage));
     clear_messages.extend(target.clear_positive_states_with_ordered_messages());
     clear_messages.sort_unstable_by_key(|(priority, _)| *priority);
-    let mp = target.get_status().mp;
+    let mp = target.get_status().magic_point;
     if mp > 64 {
-        target.set_mp(mp - 64);
+        target.set_magic_point(mp - 64);
     } else if mp > 32 {
-        target.set_mp(0);
+        target.set_magic_point(0);
     } else {
-        target.set_mp(mp - 32);
+        target.set_magic_point(mp - 32);
     }
     for (_, message) in clear_messages {
         updates.emit(RunUpdate::new_newline);

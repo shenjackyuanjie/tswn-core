@@ -163,14 +163,14 @@ fn update_states_does_not_reset_hp_or_mp() {
     player.attr = [10, 20, 30, 40, 50, 60, 70, 80];
     player.init_values();
     assert_eq!(player.status.hp, player.status.max_hp);
-    assert_eq!(player.status.mp, player.status.wisdom >> 1);
+    assert_eq!(player.status.magic_point, player.status.wisdom >> 1);
 
     player.status.hp = 11;
-    player.status.mp = 22;
+    player.status.magic_point = 22;
     player.update_states();
 
     assert_eq!(player.status.hp, 11);
-    assert_eq!(player.status.mp, 22);
+    assert_eq!(player.status.magic_point, 22);
 }
 
 #[test]
