@@ -214,7 +214,7 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             minion_kind,
             hp: status.hp,
             max_hp: status.max_hp,
-            mp: status.mp,
+            magic_point: status.magic_point,
             move_point: status.move_point,
             attack: status.attack,
             defense: status.defense,

@@ -1,5 +1,36 @@
 # 更新日志
 
+## [0.2.0] - 2026-05-07
+
+### ⚠️ Breaking Changes
+
+- **所有 JSON 字段从 camelCase 切换为 snake_case**：移除所有 `#[serde(rename_all = "camelCase")]` 属性，字段名直接使用 Rust 侧原生命名。
+
+#### 影响到的数据模型
+
+| 结构体 | 变更字段示例 |
+|--------|-------------|
+| `PlayerMeta` | `idName` → `id_name`、`displayName` → `display_name`、`iconPngBase64` → `icon_png_base64`、`teamIndex` → `team_index` |
+| `PlayerState` | `maxHp` → `max_hp`、`mp` → `magic_point`、`movePoint` → `move_point`、`ownerId` → `owner_id`、`allSum` → `all_sum`、`nameFactor` → `name_factor`、`atBoost` → `at_boost`、`statusLabels` → `status_labels`、`teamIndex` → `team_index`、`idName` → `id_name`、`displayName` → `display_name`、`minionKind` → `minion_kind` |
+| `RoundFrame` | `totalDelay` → `total_delay`、`winnerIds` → `winner_ids` |
+| `FightReplay` | `winnerIds` → `winner_ids`、`finalStates` → `final_states` |
+| `FightSummary` | `winnerIds` → `winner_ids`、`finalStates` → `final_states` |
+| `UpdateView` | `casterId` → `caster_id`、`targetId` → `target_id`、`targetIds` → `target_ids`、`updateType` → `update_type`、`messageTemplate` → `message_template`、`messageRendered` → `message_rendered` |
+| `WinRateProgress` | `roundsDone` → `rounds_done`、`totalRounds` → `total_rounds` |
+| `WinRateTiming` | `initNanos` → `init_nanos`、`fightNanos` → `fight_nanos` |
+| `WinRateResult` | `roundsDone` → `rounds_done`、`totalRounds` → `total_rounds` |
+| `FightOptions`（输入） | `evalRq` → `eval_rq`、`includeIcons` → `include_icons`、`captureReplay` → `capture_replay` |
+| `WinRateOptions`（输入） | `evalRq` → `eval_rq` |
+
+#### JS 示例文件同步更新
+
+- `demo.js`、`show.js`、`show-render.js`、`show-replay.js`、`show-utils.js`、`show-wasm.js`：全部字段访问已改为 snake_case。
+
+### 变更
+
+- 依赖 `tswn_core` 从 `0.2.20` 更新为 `0.3`。
+- `PlayerState.mp` → `magic_point`（与 core 层同步）。
+
 ## [0.1.2] - 2026-05-06
 
 ### 新增

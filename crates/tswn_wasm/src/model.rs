@@ -3,7 +3,6 @@ use tswn_core::engine::update::UpdateType;
 use tswn_core::player::skill::act::minion::MinionKind;
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FightOptions {
     pub eval_rq: Option<f64>,
     pub include_icons: Option<bool>,
@@ -19,7 +18,6 @@ impl FightOptions {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WinRateOptions {
     pub eval_rq: Option<f64>,
     pub thread: Option<u32>,
@@ -35,7 +33,6 @@ impl WinRateOptions {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PlayerMeta {
     pub id: usize,
     pub team_index: usize,
@@ -46,7 +43,6 @@ pub struct PlayerMeta {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PlayerState {
     pub id: usize,
     pub team_index: usize,
@@ -58,7 +54,7 @@ pub struct PlayerState {
     pub minion_kind: Option<MinionKindView>,
     pub hp: i32,
     pub max_hp: i32,
-    pub mp: i32,
+    pub magic_point: i32,
     pub move_point: i32,
     pub attack: i32,
     pub defense: i32,
@@ -117,7 +113,6 @@ impl From<UpdateType> for UpdateTypeView {
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub enum MessageTone {
     /// 普通消息（无特殊视觉效果）
     Normal,
@@ -130,7 +125,6 @@ pub enum MessageTone {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct UpdateView {
     pub score: u32,
     pub delay0: i32,
@@ -148,7 +142,6 @@ pub struct UpdateView {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RoundFrame {
     pub finished: bool,
     pub winner_ids: Vec<usize>,
@@ -159,7 +152,6 @@ pub struct RoundFrame {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FightReplay {
     pub players: Vec<PlayerMeta>,
     pub frames: Vec<RoundFrame>,
@@ -168,7 +160,6 @@ pub struct FightReplay {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FightSummary {
     pub finished: bool,
     pub players: Vec<PlayerMeta>,
@@ -177,7 +168,6 @@ pub struct FightSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WinRateProgress {
     pub done: bool,
     pub rounds_done: usize,
@@ -187,14 +177,12 @@ pub struct WinRateProgress {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WinRateTiming {
     pub init_nanos: u64,
     pub fight_nanos: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WinRateResult {
     pub done: bool,
     pub rounds_done: usize,
