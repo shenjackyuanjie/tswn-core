@@ -4,7 +4,10 @@
 
 ### 新增
 
-- `PlayerState` 新增 `idName` / `displayName` 字段，WASM 层直接暴露玩家的真实 id_name 与 display_name，前端不再对召唤单位一律退化为“幻影 #id”。
+- 头像 CSS Sprite 系统：新增 `iconClassName()`、`buildIconClassCss()`、`withTeamIconClassIds()`、`renderIconSprite()`，头像从 `<img src="data:...">` 改为 `<span class="icon_N">` + background-image 方式渲染，减少 DOM 节点数，便于统一管理头像样式。
+- `withTeamIconClassIds()` 确保同队玩家使用该队首个玩家的头像编号，多对多场景下整队头像一致。
+- 新增 `playbackCheckpoints` 检查点缓存系统，每 `SEEK_CHECKPOINT_FRAME_INTERVAL`（20）帧保存一次 DOM 快照，回退渲染时优先从最近检查点恢复，大幅加速回退操作。
+- `PlayerState` 新增 `idName` / `displayName` 字段，WASM 层直接暴露玩家的真实 id_name 与 display_name，前端不再对召唤单位一律退化为"幻影 #id"。
 - `PlayerState` 新增 `minionKind` 字段（`clone` / `summon` / `shadow` / `zombie`），前端可根据 minion 种类定制显示名。
 - 新增 `MinionKindView` 枚举及从 `tswn_core::MinionKind` 的转换实现。
 - 新增 `replayDisplayName()` 统一格式化回放中的显示名：clone 追加 `#playerId`，summon/shadow/zombie 分别使用“使魔”/“幻影”/“丧尸”基底名并追加 `#playerId`。
@@ -15,6 +18,7 @@
 
 ### 优化
 
+- 暂停播放时自动切回 normal 速度模式，避免 fast/turbo 在暂停后产生突兀的播放体验。
 - 重构 `show-render.js`：消除 4 处重复的幻影/分身玩家对象创建逻辑，统一使用 `syntheticPlayerFromState()`。
 - `FightSession::build_frame()` 改为每帧从state实时提取玩家名，去掉缓存字段 `player_names`，避免各帧间名字不一致。
 - `winnerNamesText()` 改为优先从 `replay.finalStates` 中解析胜者名，支持 minion 胜者的正确显示。
@@ -22,6 +26,9 @@
 ### 播放引擎重构
 
 - `show.js` 重写播放架构：引入 `prepareReplayPlan()` 预计算渲染计划（`currentPlan` + `flatChunks`），替代旧的逐帧 `playReplay()` 循环。
+- `renderPlaybackToCursor()` 重写：支持增量追加 chunk、基于检查点的回退恢复、`forceReset` 选项，不再每次回退都全量重置。
+- 新增 `findNearestPlaybackCheckpointCursor()` / `restorePlaybackCheckpoint()` / `storePlaybackCheckpoint()` 检查点管理函数。
+- 新增 `appendChunksBetween()` 在任意区间（startCursor ~ targetCursor）追加 chunk，替代旧的全量重置式渲染。
 - 新增暂停/继续系统：`pauseBtn`、`playbackPaused` 状态、`autoplayFromCurrentCursor()` 支持被打断的延迟等待。
 - 新增单步控制：4 个按钮（后退/前进一个 event、后退/前进一帧）+ 键盘快捷键（←→ 步进 event，↑↓ 步进帧），仅暂停模式下有效。
 - 新增 `renderPlaybackToCursor()` 支持回退到任意位置重新渲染。
@@ -31,12 +38,16 @@
 ### 战斗结算
 
 - `show-replay.js` 新增 `buildReplayResultSummary()` 统计系统：按原版口径累加 score、归属 kills 到 root owner、记录致命一击。
+- `buildReplayResultSummary()` 中记录 `finalState` 和 `iconClassId`，结算表格每行显示最终 HP 条（`summaryHpBarHtml()`），直观展示存活角色剩余血量。
 - 新增 `buildReplayResultTableHtml()` 生成胜者/败者结算表格（得分/击杀/致命一击列）。
 - `show.js` `renderEndPanel()` 和 `appendReplayResultBlock()` 独立出结束逻辑，回放完成后自动展示结算表。
 
 ### UI 样式
 
+- 新增 `.icon-sprite` 统一样式类（16×16，background-image + background-size），替代原先分散在 `.sgl`、`.msg-avatar`、`.summary-actor-icon` 上的重复头像样式。
 - 新增结算表格样式体系：`.result-table*`（自适应宽度，不填满）、`.summary-actor*`（角色头像+名称）。
+- 新增 `.summary-actor-body` 网格布局容器，容纳角色名 + HP 条纵向排列。
+- 新增 `.summary-actor.has-hp` / `.summary-actor-hp` 样式，支持结算表格中 HP 条对齐。
 - 新增 `.step-controls` 网格布局（2×2 的 34px 按钮），通过 `.right-controls` 容器精确居中于暂停按钮上方。
 - 新增 `.micon.is-paused` 暂停按钮背景色切换。
 - 新增 `#endPanel` 宽度限制，响应式布局适配。
@@ -49,6 +60,9 @@
 
 ### 修复
 
+- 修复回放结束后反复按前进按钮不断重渲染玩家列表和重复追加结算表的问题：`renderPlaybackToCursor()` 中游标没动且完成状态没变时提前返回；`appendReplayResultBlock()` 追加前先移除已有 `.battle-result-block`。
+- 修复回放结束后暂停按钮被禁用的问题：`syncPlaybackUi()` 中 `pauseBtn.disabled` 不再依赖 `playbackFinished`，回放完成后仍可暂停/步进操作。
+- 修复 `renderPlaybackToCursor()` 早期返回守卫误拦截 `forceReset` 导致头像渲染失效的问题：将 `forceReset` 分支移到最前面，避免初始化渲染被跳过。
 - 修复结算表格行高过高的问题：缩减 `.result-table th/td` 的 `padding` 为 `2px 6px`，同时保持字号 `15px`、行高 `16px`，使表格更紧凑。
 - 修复结算表格中胜者只显示最后存活玩家的问题：`buildReplayResultSummary()` 改为使用 `replay.winnerIds`（获胜队伍全员 roster）区分胜者/败者，而非仅依赖 `alive` 状态。
 - 修复结算表格中人名下划线被截断的问题：`.summary-actor-name` 单独设置 `line-height: 20px`，避免受 `td` 紧凑行高和 `overflow: hidden` 影响。
@@ -56,6 +70,11 @@
 
 ### 示例
 
+- `show-utils.js`：新增 `iconClassName()`、`buildIconClassCss()`、`withTeamIconClassIds()`、`renderIconSprite()` 头像 Sprite 工具函数。
+- `show-render.js`：`actorToken()`、`renderPlayers()`、`syntheticPlayerFromState()` 头像渲染从 `<img>` 改为 `renderIconSprite()`。
+- `show.js`：引入 `normalizeReplayPlayers()` 在回放开始时为玩家补齐 `iconClassId`；新增 `ensureIconStyleTag()` / `syncIconStyles()` 动态注入 CSS 背景图规则；播放引擎新增 `playbackCheckpoints` 检查点缓存。
+- `show-replay.js`：`actorSummaryHtml()` 支持 `showHp` 选项显示 HP 条；`buildReplayResultSummary()` 中记录 `finalState` 和 `iconClassId`。
+- `show.css`：头像样式从分散的 `.sgl`/`.msg-avatar`/`.summary-actor-icon` 统一为 `.icon-sprite`。
 - `show-replay.js`：`renderReplayIntro()` 将 `seedLine` 写入 `playerList.dataset`，支持增量更新时保留 seed。
 - `show.js`：`FightState` JSDoc 类型标注新增 `idName`、`displayName`、`minionKind`。
 

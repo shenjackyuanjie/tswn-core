@@ -46,14 +46,18 @@
 
 import {
     escapeHtml,
-    iconSrc,
     actorHpMetrics,
     formatMessageText,
     statusText,
     buildStateMap,
     phantomDisplayName,
     replayDisplayName,
+    renderIconSprite,
 } from './show-utils.js';
+
+function playerIconClassId(player) {
+    return player?.iconClassId ?? player?.id;
+}
 
 // ============================================================================
 // 角色 Token 渲染（消息行里的小头像 + 名字 + HP 条）
@@ -79,7 +83,7 @@ export function actorToken(player, state, previousState, { showHp = true } = {})
         : "";
     const hpClass = hpMetrics ? " has-hp" : "";
 
-    return `<span class="actor-token${hpClass}"><span class="actor-avatar-wrap"><img class="msg-avatar" src="${iconSrc(player.iconPngBase64)}" alt="" aria-hidden="true">${hpBar}</span><span class="actor-name">${escapeHtml(player.displayName)}</span></span>`;
+    return `<span class="actor-token${hpClass}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), 'msg-avatar icon-sprite')}${hpBar}</span><span class="actor-name">${escapeHtml(player.displayName)}</span></span>`;
 }
 
 /**
@@ -92,10 +96,12 @@ export function actorToken(player, state, previousState, { showHp = true } = {})
  */
 function syntheticPlayerFromState(playerId, state, playersById) {
     let icon = null;
+    let iconClassId = state?.ownerId ?? playerId;
     if (state?.ownerId != null) {
         const ownerPlayer = playersById.get(state.ownerId);
         if (ownerPlayer) {
             icon = ownerPlayer.iconPngBase64;
+            iconClassId = ownerPlayer.iconClassId ?? ownerPlayer.id;
         }
     }
 
@@ -105,6 +111,7 @@ function syntheticPlayerFromState(playerId, state, playersById) {
         idName: state?.idName ?? `player_${playerId}`,
         displayName: replayDisplayName(state, playerId),
         iconPngBase64: icon,
+        iconClassId,
     };
 }
 
@@ -356,7 +363,7 @@ export function renderPlayers(players, states, previousStates = states, involved
                         <tr class="player-row${deadClass}${involvedClass}" data-player-id="${player.id}" title="id: ${escapeHtml(player.idName)} · playerId: ${player.id}">
                             <td class="player-name-cell">
                                 <div class="player-name-wrap">
-                                    <img class="sgl" src="${iconSrc(player.iconPngBase64)}" alt="${escapeHtml(player.displayName)}">
+                                    ${renderIconSprite(playerIconClassId(player), 'sgl icon-sprite')}
                                     <span class="${nameClass}">${escapeHtml(player.displayName)}</span>
                                 </div>
                                 <div class="hpwrap compact" style="width:${totalWidth}px">

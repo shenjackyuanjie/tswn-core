@@ -100,7 +100,7 @@
  * @typedef {'normal' | 'fast' | 'turbo'} SpeedMode
  */
 
-import { formatError, sleep } from './show-utils.js';
+import { buildIconClassCss, formatError, sleep, withTeamIconClassIds } from './show-utils.js';
 import { renderIdleState, renderPlayers, buildFrameRows } from './show-render.js';
 import {
     renderReplayIntro,
@@ -202,8 +202,12 @@ let currentReplay = null;
 let speedMode = 'normal';
 /** @type {Map<number, FightPlayer>} playerId → 玩家对象的快速索引 */
 let playersById = new Map();
+const ICON_STYLE_ID = 'tswn-show-icon-styles';
+const SEEK_CHECKPOINT_FRAME_INTERVAL = 20;
 /** @type {{ frames: Array<{ frameIndex: number, frame: FrameUpdate, previousStates: FightState[], involved: InvolvedSet, start: number, end: number }>, flatChunks: Array<{ target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number, frameIndex: number, visible: boolean }>, totalChunks: number }|null} */
 let currentPlan = null;
+/** @type {Map<number, { battleRowsHtml: string, playerListHtml: string, seedLine: string }>} */
+let playbackCheckpoints = new Map();
 /** @type {number} 当前已渲染到的 chunk 光标（指向“下一个要播放的 chunk”） */
 let playbackCursor = 0;
 /** @type {number} 用于打断旧播放循环的 token */
@@ -232,6 +236,28 @@ function rememberPlayers(players) {
     for (const player of players) {
         playersById.set(player.id, player);
     }
+    syncIconStyles(players);
+}
+
+function ensureIconStyleTag() {
+    let styleEl = document.getElementById(ICON_STYLE_ID);
+    if (!(styleEl instanceof HTMLStyleElement)) {
+        styleEl = document.createElement('style');
+        styleEl.id = ICON_STYLE_ID;
+        document.head.append(styleEl);
+    }
+    return styleEl;
+}
+
+function syncIconStyles(players) {
+    ensureIconStyleTag().textContent = buildIconClassCss(players);
+}
+
+function normalizeReplayPlayers(replay) {
+    return {
+        ...replay,
+        players: withTeamIconClassIds(replay.players),
+    };
 }
 
 /**
@@ -321,7 +347,7 @@ function currentFrameIndexFromCursor() {
 function syncPlaybackUi() {
     updateSpeedButtons(fastBtn, turboBtn, speedMode, currentReplay, headerMeta);
 
-    pauseBtn.disabled = !currentReplay || playbackFinished;
+    pauseBtn.disabled = !currentReplay;
     pauseBtn.classList.toggle('is-paused', playbackPaused);
 
     const showStepControls = playbackPaused && !!currentReplay;
@@ -390,6 +416,10 @@ function resetPlaybackView(replay) {
 }
 
 function appendReplayResultBlock(replay) {
+    const existing = battleRows.querySelector('.battle-result-block');
+    if (existing) {
+        existing.remove();
+    }
     battleRows.insertAdjacentHTML(
         'beforeend',
         `<section class="battle-result-block">${buildReplayResultTableHtml(replay)}</section>`,
@@ -397,37 +427,121 @@ function appendReplayResultBlock(replay) {
     scrollBattleToBottom();
 }
 
-function renderPlaybackToCursor(cursor) {
-    if (!currentReplay || !currentPlan) {
+function findNearestPlaybackCheckpointCursor(cursor) {
+    let bestCursor = 0;
+    for (const checkpointCursor of playbackCheckpoints.keys()) {
+        if (checkpointCursor <= cursor && checkpointCursor > bestCursor) {
+            bestCursor = checkpointCursor;
+        }
+    }
+    return bestCursor;
+}
+
+function restorePlaybackCheckpoint(cursor) {
+    const checkpoint = playbackCheckpoints.get(cursor);
+    if (!checkpoint) {
+        return false;
+    }
+
+    closePanel(endPanel);
+    battleRows.innerHTML = checkpoint.battleRowsHtml;
+    playerList.innerHTML = checkpoint.playerListHtml;
+    if (checkpoint.seedLine) {
+        playerList.dataset.seedLine = checkpoint.seedLine;
+    } else {
+        delete playerList.dataset.seedLine;
+    }
+    return true;
+}
+
+function storePlaybackCheckpoint(cursor) {
+    if (!currentPlan) {
         return;
     }
 
-    playbackCursor = Math.max(0, Math.min(cursor, currentPlan.totalChunks));
-    playbackFinished = playbackCursor >= currentPlan.totalChunks;
-    resetPlaybackView(currentReplay);
+    const clampedCursor = Math.max(0, Math.min(cursor, currentPlan.totalChunks));
+    playbackCheckpoints.set(clampedCursor, {
+        battleRowsHtml: battleRows.innerHTML,
+        playerListHtml: playerList.innerHTML,
+        seedLine: playerList.dataset.seedLine ?? '',
+    });
+}
+
+function maybeStoreFrameCheckpoint(framePlan) {
+    if ((framePlan.frameIndex + 1) % SEEK_CHECKPOINT_FRAME_INTERVAL === 0) {
+        storePlaybackCheckpoint(framePlan.end);
+    }
+}
+
+function appendChunksBetween(startCursor, targetCursor) {
+    if (!currentPlan || targetCursor <= startCursor) {
+        return;
+    }
 
     for (const framePlan of currentPlan.frames) {
-        if (playbackCursor <= framePlan.start) {
+        if (targetCursor <= framePlan.start) {
             break;
         }
+        if (startCursor >= framePlan.end) {
+            continue;
+        }
 
-        const limit = Math.min(playbackCursor, framePlan.end);
-        for (let chunkIndex = framePlan.start; chunkIndex < limit; chunkIndex += 1) {
+        const chunkStart = Math.max(startCursor, framePlan.start);
+        const limit = Math.min(targetCursor, framePlan.end);
+        for (let chunkIndex = chunkStart; chunkIndex < limit; chunkIndex += 1) {
             appendPlaybackChunk(currentPlan.flatChunks[chunkIndex]);
         }
 
-        if (playbackCursor >= framePlan.end) {
+        if (targetCursor >= framePlan.end) {
             renderFrameSidebar(framePlan);
+            maybeStoreFrameCheckpoint(framePlan);
             continue;
         }
 
         break;
+    }
+}
+
+function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
+    if (!currentReplay || !currentPlan) {
+        return;
+    }
+
+    const previousCursor = playbackCursor;
+    const wasFinished = playbackFinished;
+    const targetCursor = Math.max(0, Math.min(cursor, currentPlan.totalChunks));
+    playbackCursor = targetCursor;
+    playbackFinished = playbackCursor >= currentPlan.totalChunks;
+
+    if (forceReset) {
+        resetPlaybackView(currentReplay);
+        appendChunksBetween(0, targetCursor);
+    } else if (targetCursor === previousCursor && wasFinished === playbackFinished) {
+        // 游标没动且完成状态没变，无需重新渲染
+        return;
+    } else if (targetCursor !== previousCursor) {
+        if (!wasFinished && targetCursor > previousCursor) {
+            appendChunksBetween(previousCursor, targetCursor);
+        } else {
+            const checkpointCursor = findNearestPlaybackCheckpointCursor(targetCursor);
+            if (checkpointCursor > 0 && restorePlaybackCheckpoint(checkpointCursor)) {
+                appendChunksBetween(checkpointCursor, targetCursor);
+            } else {
+                resetPlaybackView(currentReplay);
+                appendChunksBetween(0, targetCursor);
+            }
+        }
     }
 
     if (playbackFinished) {
         renderPlayers(currentReplay.players, currentReplay.finalStates, currentReplay.finalStates, null, playerList, playersById);
         renderEndPanel(currentReplay);
         appendReplayResultBlock(currentReplay);
+        storePlaybackCheckpoint(playbackCursor);
+    }
+
+    if (playbackCursor === 0) {
+        storePlaybackCheckpoint(0);
     }
 
     scrollBattleToBottom();
@@ -480,6 +594,7 @@ async function autoplayFromCurrentCursor() {
 
         if (playbackCursor >= framePlan.end) {
             renderFrameSidebar(framePlan);
+            maybeStoreFrameCheckpoint(framePlan);
         }
 
         if (speedMode === 'turbo' && chunk.visible && playbackCursor % 24 === 0) {
@@ -506,18 +621,20 @@ async function autoplayFromCurrentCursor() {
     renderPlayers(currentReplay.players, currentReplay.finalStates, currentReplay.finalStates, null, playerList, playersById);
     renderEndPanel(currentReplay);
     appendReplayResultBlock(currentReplay);
+    storePlaybackCheckpoint(playbackCursor);
     syncPlaybackUi();
 }
 
 function beginReplayPlayback(replay) {
     currentReplay = replay;
     currentPlan = prepareReplayPlan(replay);
+    playbackCheckpoints = new Map();
     playbackCursor = 0;
     playbackPaused = false;
     playbackFinished = false;
     playbackStartedAt = performance.now();
     stopPlaybackLoop();
-    renderPlaybackToCursor(0);
+    renderPlaybackToCursor(0, { forceReset: true });
     void autoplayFromCurrentCursor();
 }
 
@@ -571,8 +688,11 @@ function previousFrameCursor(cursor) {
 }
 
 function pausePlayback() {
-    if (!currentReplay || playbackFinished) {
+    if (!currentReplay) {
         return;
+    }
+    if (speedMode !== 'normal') {
+        speedMode = 'normal';
     }
     playbackPaused = true;
     stopPlaybackLoop();
@@ -580,9 +700,16 @@ function pausePlayback() {
 }
 
 function resumePlayback() {
-    if (!currentReplay || playbackFinished) {
+    if (!currentReplay) {
         return;
     }
+
+    if (playbackFinished) {
+        playbackPaused = false;
+        syncPlaybackUi();
+        return;
+    }
+
     playbackPaused = false;
     syncPlaybackUi();
     void autoplayFromCurrentCursor();
@@ -707,7 +834,7 @@ async function startBattle() {
     closePanel(endPanel);
 
     try {
-        currentReplay = await buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
+        currentReplay = normalizeReplayPlayers(await buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo));
         setInputStatus("回放已生成，开始自动播放。");
         closePanel(inputPanel);
         beginReplayPlayback(currentReplay);

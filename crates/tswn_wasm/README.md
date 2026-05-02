@@ -92,6 +92,18 @@ session.result();  // WinRateResult — 含 timing（initNanos, fightNanos）
 
 `show.html` 演示页面已内置状态标签渲染，在玩家面板中显示彩色 pill。
 
+### 头像 Sprite 渲染
+
+`show.html` 演示页面使用 CSS Sprite 方式渲染玩家头像，不再生成大量 `<img src="data:...">` DOM 节点：
+
+- `show-utils.js` 提供 `iconClassName()` / `buildIconClassCss()` 工具函数，将玩家的 PNG Base64 头像编码为 `.icon_N { background-image: url(...) }` 样式规则。
+- `show.js` 在回放开始时调用 `normalizeReplayPlayers()` 为玩家补齐 `iconClassId`（同队统一使用队首个玩家头像编号），并通过 `syncIconStyles()` 动态注入 `<style>` 标签。
+- 渲染层（`show-render.js` `/` `show-replay.js`）统一使用 `renderIconSprite(iconId, className)` 生成 `<span class="icon-sprite icon_N">` 节点，头像图片由 CSS background-image 加载。
+
+#### 同队头像统一
+
+多对多对局中，`withTeamIconClassIds()` 确保同队所有玩家共用该队第一个玩家的头像编号，保证整队头像视觉一致性。
+
 ### 示例
 
 `examples/` 目录包含两套静态页面：
@@ -101,9 +113,9 @@ session.result();  // WinRateResult — 含 timing（initNanos, fightNanos）
 | `demo.html` / `demo.js` / `demo.css` | 快速功能验证（战斗 + 胜率） |
 | `show.html` / `show.js` / `show.css` | 完整对局动画展示 |
 | `show-wasm.js` | WASM 模块加载与初始化 |
-| `show-utils.js` | DOM 渲染工具函数 |
-| `show-render.js` | 玩家状态 / 头像渲染 |
-| `show-replay.js` | 逐帧回放逻辑 |
+| `show-utils.js` | DOM 渲染工具函数（含头像 Sprite 工具 `iconClassName()` / `buildIconClassCss()` / `withTeamIconClassIds()` / `renderIconSprite()`） |
+| `show-render.js` | 玩家状态 / 头像渲染（CSS Sprite 方式，`renderIconSprite()`） |
+| `show-replay.js` | 逐帧回放逻辑 + 结算表格（支持 HP 条显示） |
 
 ```bash
 # 构建 wasm 分发目录后启动静态服务器

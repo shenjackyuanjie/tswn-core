@@ -6,7 +6,7 @@
  */
 
 import { renderPlayers } from './show-render.js';
-import { escapeHtml, iconSrc, replayDisplayName } from './show-utils.js';
+import { actorHpMetrics, escapeHtml, replayDisplayName, renderIconSprite } from './show-utils.js';
 
 // ============================================================================
 // 回放介绍与速度控制
@@ -155,18 +155,47 @@ function actorSummaryMeta(actorId, replayPlayersById, statesById) {
         id: actorId,
         displayName,
         iconPngBase64,
+        iconClassId: player?.iconClassId
+            ?? replayPlayersById.get(state?.ownerId)?.iconClassId
+            ?? state?.ownerId
+            ?? actorId,
     };
 }
 
-function actorSummaryHtml(actor) {
-    if (!actor) {
+function summaryHpBarHtml(actor, showHp) {
+    if (!showHp || !actor?.finalState?.alive) {
+        return '';
+    }
+
+    const hpMetrics = actorHpMetrics(actor.finalState);
+    if (!hpMetrics) {
         return '';
     }
 
     return `
-        <span class="summary-actor" title="playerId: ${actor.id}">
-            <img class="summary-actor-icon" src="${iconSrc(actor.iconPngBase64)}" alt="${escapeHtml(actor.displayName)}">
-            <span class="summary-actor-name">${escapeHtml(actor.displayName)}</span>
+        <span class="summary-actor-hp hpwrap compact" style="width:${hpMetrics.totalWidth}px" aria-hidden="true">
+            <span class="maxhp"></span>
+            <span class="hp" style="width:${hpMetrics.fillWidth}px"></span>
+        </span>
+    `;
+}
+
+function actorSummaryHtml(actor, { showHp = false } = {}) {
+    if (!actor) {
+        return '';
+    }
+
+    const iconClassId = actor.iconClassId ?? actor.id;
+    const hpBar = summaryHpBarHtml(actor, showHp);
+    const hpClass = hpBar ? ' has-hp' : '';
+
+    return `
+        <span class="summary-actor${hpClass}" title="playerId: ${actor.id}">
+            ${renderIconSprite(iconClassId, 'summary-actor-icon icon-sprite')}
+            <span class="summary-actor-body">
+                <span class="summary-actor-name">${escapeHtml(actor.displayName)}</span>
+                ${hpBar}
+            </span>
         </span>
     `;
 }
@@ -183,6 +212,7 @@ function actorSummaryHtml(actor) {
 export function buildReplayResultSummary(replay) {
     const replayPlayersById = new Map(replay.players.map((player) => [player.id, player]));
     const statesById = collectKnownStates(replay);
+    const finalStatesById = new Map(replay.finalStates.map((state) => [state.id, state]));
     const rootOwnerById = buildRootOwnerMap(replay, statesById);
     const rowsById = new Map(
         replay.players.map((player, order) => [player.id, {
@@ -190,7 +220,9 @@ export function buildReplayResultSummary(replay) {
             order,
             displayName: player.displayName,
             iconPngBase64: player.iconPngBase64,
-            alive: statesById.get(player.id)?.alive ?? false,
+            iconClassId: player.iconClassId ?? player.id,
+            finalState: finalStatesById.get(player.id) ?? statesById.get(player.id) ?? null,
+            alive: finalStatesById.get(player.id)?.alive ?? statesById.get(player.id)?.alive ?? false,
             score: 0,
             kills: 0,
             killedById: null,
@@ -269,7 +301,7 @@ function resultSectionRows(title, rows) {
     const body = rows.length
         ? rows.map((row) => `
             <tr class="result-row${row.alive ? '' : ' is-loser'}">
-                <td class="result-name-cell">${actorSummaryHtml(row)}</td>
+                <td class="result-name-cell">${actorSummaryHtml(row, { showHp: true })}</td>
                 <td class="result-score-cell">${row.score}</td>
                 <td class="result-kill-cell">${row.kills}</td>
                 <td class="result-killer-cell">${row.killedBy ? actorSummaryHtml(row.killedBy) : ''}</td>

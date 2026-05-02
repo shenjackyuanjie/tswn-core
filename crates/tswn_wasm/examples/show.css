@@ -298,12 +298,20 @@ button:hover {
     gap: 8px;
 }
 
-.sgl {
+.icon-sprite {
     width: 16px;
     height: 16px;
-    image-rendering: pixelated;
-    background: rgba(255, 255, 255, 0.92);
+    display: block;
     flex: 0 0 auto;
+    background-color: rgba(255, 255, 255, 0.92);
+    background-image: none;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+    image-rendering: pixelated;
+}
+
+.sgl {
     position: relative;
     top: -2px;
 }
@@ -621,10 +629,6 @@ button:hover {
 }
 
 .msg-avatar {
-    width: 16px;
-    height: 16px;
-    image-rendering: pixelated;
-    background: rgba(255, 255, 255, 0.92);
     display: block;
 }
 
@@ -945,12 +949,18 @@ textarea {
     min-width: 0;
 }
 
+.summary-actor.has-hp {
+    align-items: flex-start;
+}
+
 .summary-actor-icon {
-    width: 16px;
-    height: 16px;
-    image-rendering: pixelated;
-    background: rgba(255, 255, 255, 0.92);
-    flex: 0 0 auto;
+    display: block;
+}
+
+.summary-actor-body {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
 }
 
 .summary-actor-name {
@@ -959,6 +969,10 @@ textarea {
     text-overflow: ellipsis;
     white-space: nowrap;
     line-height: 20px;
+}
+
+.summary-actor-hp {
+    margin-top: 0;
 }
 
 .right-controls {

@@ -26,7 +26,7 @@ export function escapeHtml(text) {
  * 将可能的 base64 字符串转为可用的 data URI。
  * 如果传入的是空值，返回一张 1x1 透明 GIF 占位图。
  * @param {string|null|undefined} iconPngBase64 — 原始 base64 或 data URI
- * @returns {string} 可直接用于 `<img src>` 的 data URI
+ * @returns {string} 可直接用于 background-image 的 data URI
  */
 export function iconSrc(iconPngBase64) {
     if (!iconPngBase64) {
@@ -35,6 +35,58 @@ export function iconSrc(iconPngBase64) {
     return iconPngBase64.startsWith("data:")
         ? iconPngBase64
         : `data:image/png;base64,${iconPngBase64}`;
+}
+
+/**
+ * 根据玩家/归属者 ID 生成 show 风格头像类名。
+ * @param {number|null|undefined} iconId
+ * @returns {string}
+ */
+export function iconClassName(iconId) {
+    return iconId == null ? "icon_missing" : `icon_${iconId}`;
+}
+
+/**
+ * 为当前回放中的玩家列表生成 `.icon_N { background-image: ... }` 样式规则。
+ * @param {FightPlayer[]} players
+ * @returns {string}
+ */
+export function buildIconClassCss(players) {
+    return players
+    .map((player) => `.${iconClassName(player.id)} { background-image: url("${iconSrc(player.iconPngBase64)}"); }`)
+        .join("\n");
+}
+
+/**
+ * 为 show 回放玩家列表补齐 iconClassId。
+ * 多对多时，整队统一使用输入顺序中该队第一个玩家的头像编号。
+ * @param {FightPlayer[]} players
+ * @returns {FightPlayer[]}
+ */
+export function withTeamIconClassIds(players) {
+    const firstPlayerIdByTeam = new Map();
+    return players.map((player) => {
+        const existing = firstPlayerIdByTeam.get(player.teamIndex);
+        const iconClassId = existing ?? player.id;
+        if (existing == null) {
+            firstPlayerIdByTeam.set(player.teamIndex, player.id);
+        }
+        return {
+            ...player,
+            iconClassId,
+        };
+    });
+}
+
+/**
+ * 渲染一个 show 风格头像节点。
+ * 头像图片由外部注入的 `.icon_N` 规则提供，这里只负责输出结构和类名。
+ * @param {number|null|undefined} iconId
+ * @param {string} className
+ * @returns {string}
+ */
+export function renderIconSprite(iconId, className) {
+    return `<span class="${className} ${iconClassName(iconId)}" aria-hidden="true"></span>`;
 }
 
 /**
