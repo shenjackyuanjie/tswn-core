@@ -77,6 +77,7 @@
 - `show.css`：头像样式从分散的 `.sgl`/`.msg-avatar`/`.summary-actor-icon` 统一为 `.icon-sprite`。
 - `show-replay.js`：`renderReplayIntro()` 将 `seedLine` 写入 `playerList.dataset`，支持增量更新时保留 seed。
 - `show.js`：`FightState` JSDoc 类型标注新增 `idName`、`displayName`、`minionKind`。
+- `show-wasm.js`：`loadModule()` 改用 `import.meta.url` 动态解析 `pkg/` 路径，同时尝试 `../pkg/` 和 `./pkg/` 两个候选，兼容 examples/ 子目录和扁平部署两种结构。
 
 ## [0.1.0] - 2026-04-29
 

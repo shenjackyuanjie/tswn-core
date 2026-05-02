@@ -17,23 +17,28 @@ let wasmApi = null;
 // ============================================================================
 
 /**
- * 尝试从多个候选路径加载 tswn_wasm WASM 模块。
- * 依次尝试 ../pkg/ 和 ../dist/wasm/pkg/ 两个路径。
+ * 尝试加载 tswn_wasm WASM 模块。
+ *
+ * 基于当前脚本自身的 URL（import.meta.url）枚举多个候选路径，
+ * 兼容 examples/ 子目录部署和扁平部署两种结构：
+ *   - show-wasm.js 在 examples/ 下 → 尝试 ../pkg/tswn_wasm.js
+ *   - show-wasm.js 与 pkg/ 同级    → 尝试 ./pkg/tswn_wasm.js
  *
  * @param {HTMLElement} modulePathInfo — 用于展示加载路径的 DOM 元素
  * @returns {Promise<object>} WASM 模块的导出对象
  * @throws {Error} 若所有候选路径均加载失败
  */
 export async function loadModule(modulePathInfo) {
+    const base = new URL('.', import.meta.url);
     const candidates = [
-        { label: "../pkg/tswn_wasm.js", path: "../pkg/tswn_wasm.js" },
-        { label: "../dist/wasm/pkg/tswn_wasm.js", path: "../dist/wasm/pkg/tswn_wasm.js" },
+        { label: '../pkg/tswn_wasm.js', url: new URL('../pkg/tswn_wasm.js', base) },
+        { label: './pkg/tswn_wasm.js', url: new URL('./pkg/tswn_wasm.js', base) },
     ];
 
     let lastError = null;
     for (const candidate of candidates) {
         try {
-            const mod = await import(candidate.path);
+            const mod = await import(candidate.url);
             modulePathInfo.textContent = `module: ${candidate.label}`;
             return mod;
         } catch (error) {
