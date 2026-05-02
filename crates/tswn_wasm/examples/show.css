@@ -840,10 +840,16 @@ textarea {
     width: 100%;
     flex: 1 1 auto;
     display: grid;
-    place-items: center;
+    align-content: start;
+    justify-items: stretch;
+    gap: 10px;
     padding: 16px 18px;
     background: rgba(255, 255, 255, 0.18);
     text-align: center;
+}
+
+#endPanel {
+    width: min(620px, calc(100vw - 24px));
 }
 
 .winner-note {
@@ -857,17 +863,138 @@ textarea {
     font-weight: 700;
 }
 
-.controlbar {
+.result-table-host {
+    width: 100%;
+}
+
+.result-table-wrap {
+    display: inline-block;
+    min-width: unset;
+    border: 1px solid rgba(255, 255, 255, 0.38);
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--ink);
+}
+
+.battle-result-block {
+    margin-top: 14px;
+    padding: 0;
+    text-align: left;
+}
+
+.result-table {
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+
+.result-table th,
+.result-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(198, 225, 239, 0.95);
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.result-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.result-section-row th {
+    background: rgba(24, 119, 199, 0.08);
+    color: var(--sky-3);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.result-section-title {
+    text-align: left;
+    padding-right: 24px;
+}
+
+.result-head,
+.result-score-cell,
+.result-kill-cell {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    padding-left: 16px;
+    padding-right: 16px;
+}
+
+.result-killer-cell {
+    text-align: left;
+    padding-left: 24px;
+}
+
+.result-row.is-loser {
+    color: #405864;
+}
+
+.result-empty {
+    text-align: center;
+    color: #6d8794;
+}
+
+.summary-actor {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.summary-actor-icon {
+    width: 16px;
+    height: 16px;
+    image-rendering: pixelated;
+    background: rgba(255, 255, 255, 0.92);
+    flex: 0 0 auto;
+}
+
+.summary-actor-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.right-controls {
     position: absolute;
     right: 16px;
     bottom: 16px;
+    z-index: 4;
+}
+
+.step-controls {
+    position: absolute;
+    /*
+     * 居中于暂停按钮上方。
+     * 暂停按钮是 controlbar 左起第 2 个 (34px)，共 5 个按钮 + 4 个间隙。
+     * controlbar 总宽: 34*5 + 10*4 = 210px
+     * 暂停按钮中心距右侧: 17 + 10 + 34 + 10 + 34 + 10 + 34 = 149px
+     * Step controls 网格 (34+10+34) = 78px 宽
+     * right = 149 - 78/2 = 110px
+     */
+    right: 110px;
+    bottom: calc(100% + 10px);
+    display: grid;
+    grid-template-columns: repeat(2, 34px);
+    grid-template-rows: repeat(2, 34px);
+    gap: 10px;
+}
+
+.step-controls[hidden] {
+    display: none;
+}
+
+.controlbar {
     display: flex;
     gap: 10px;
-    z-index: 4;
 }
 
 .controlbar .micon.is-active {
     background: linear-gradient(180deg, #1277ae 0%, #0b5f8c 100%);
+}
+
+.micon.is-paused {
+    background: linear-gradient(180deg, #0b5f8c 0%, #084765 100%);
 }
 
 .version-marker {
@@ -902,7 +1029,7 @@ textarea {
         overflow: auto;
     }
 
-    .controlbar {
+    .right-controls {
         right: 12px;
         bottom: 12px;
     }

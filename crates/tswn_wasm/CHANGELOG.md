@@ -19,6 +19,34 @@
 - `FightSession::build_frame()` 改为每帧从state实时提取玩家名，去掉缓存字段 `player_names`，避免各帧间名字不一致。
 - `winnerNamesText()` 改为优先从 `replay.finalStates` 中解析胜者名，支持 minion 胜者的正确显示。
 
+### 播放引擎重构
+
+- `show.js` 重写播放架构：引入 `prepareReplayPlan()` 预计算渲染计划（`currentPlan` + `flatChunks`），替代旧的逐帧 `playReplay()` 循环。
+- 新增暂停/继续系统：`pauseBtn`、`playbackPaused` 状态、`autoplayFromCurrentCursor()` 支持被打断的延迟等待。
+- 新增单步控制：4 个按钮（后退/前进一个 event、后退/前进一帧）+ 键盘快捷键（←→ 步进 event，↑↓ 步进帧），仅暂停模式下有效。
+- 新增 `renderPlaybackToCursor()` 支持回退到任意位置重新渲染。
+- 新增 `syncPlaybackUi()` 统一刷新所有按钮/文本的 UI 状态。
+- 速度切换（fast/turbo）在暂停态下自动恢复播放。
+
+### 战斗结算
+
+- `show-replay.js` 新增 `buildReplayResultSummary()` 统计系统：按原版口径累加 score、归属 kills 到 root owner、记录致命一击。
+- 新增 `buildReplayResultTableHtml()` 生成胜者/败者结算表格（得分/击杀/致命一击列）。
+- `show.js` `renderEndPanel()` 和 `appendReplayResultBlock()` 独立出结束逻辑，回放完成后自动展示结算表。
+
+### UI 样式
+
+- 新增结算表格样式体系：`.result-table*`（自适应宽度，不填满）、`.summary-actor*`（角色头像+名称）。
+- 新增 `.step-controls` 网格布局（2×2 的 34px 按钮），通过 `.right-controls` 容器精确居中于暂停按钮上方。
+- 新增 `.micon.is-paused` 暂停按钮背景色切换。
+- 新增 `#endPanel` 宽度限制，响应式布局适配。
+- 统一四个 step 按钮的 SVG 图标间距：bar 宽 2px、三角宽 8px、间距 3px。
+
+### 按钮与快捷键
+
+- 四个 step 按钮 title 标注对应快捷键（←→↑↓）。
+- 暂停按钮不再切换图标，保持暂停符号。
+
 ### 示例
 
 - `show-replay.js`：`renderReplayIntro()` 将 `seedLine` 写入 `playerList.dataset`，支持增量更新时保留 seed。

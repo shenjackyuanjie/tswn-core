@@ -6,7 +6,7 @@
  */
 
 import { renderPlayers } from './show-render.js';
-import { replayDisplayName } from './show-utils.js';
+import { escapeHtml, iconSrc, replayDisplayName } from './show-utils.js';
 
 // ============================================================================
 // 回放介绍与速度控制
@@ -92,4 +92,208 @@ export function winnerNamesText(replay) {
     const finalStateNames = new Map(replay.finalStates.map((state) => [state.id, replayDisplayName(state)]));
     const names = replay.winnerIds.map((winnerId) => playersById.get(winnerId)?.displayName ?? finalStateNames.get(winnerId) ?? `#${winnerId}`);
     return names.length ? names.join("、") : "未分出胜负";
+}
+
+function collectKnownStates(replay) {
+    const statesById = new Map();
+    for (const state of replay.initialStates) {
+        statesById.set(state.id, state);
+    }
+    for (const frame of replay.frames) {
+        for (const state of frame.states) {
+            statesById.set(state.id, state);
+        }
+    }
+    for (const state of replay.finalStates) {
+        statesById.set(state.id, state);
+    }
+    return statesById;
+}
+
+function buildRootOwnerMap(replay, statesById) {
+    const rootOwnerById = new Map(replay.players.map((player) => [player.id, player.id]));
+    for (const state of statesById.values()) {
+        rootOwnerById.set(state.id, state.ownerId ?? state.id);
+    }
+    return rootOwnerById;
+}
+
+function lastRelevantKillerId(frame, targetId) {
+    for (let index = frame.updates.length - 1; index >= 0; index -= 1) {
+        const update = frame.updates[index];
+        if (update.casterId == null) {
+            continue;
+        }
+        if (update.tone === 'recover') {
+            continue;
+        }
+        if (update.targetId === targetId) {
+            return update.casterId;
+        }
+        if (Array.isArray(update.targetIds) && update.targetIds.includes(targetId)) {
+            return update.casterId;
+        }
+    }
+    return null;
+}
+
+function actorSummaryMeta(actorId, replayPlayersById, statesById) {
+    if (actorId == null) {
+        return null;
+    }
+
+    const player = replayPlayersById.get(actorId);
+    const state = statesById.get(actorId);
+    const displayName = player?.displayName ?? replayDisplayName(state, actorId);
+    let iconPngBase64 = player?.iconPngBase64 ?? null;
+
+    if (!iconPngBase64 && state?.ownerId != null) {
+        iconPngBase64 = replayPlayersById.get(state.ownerId)?.iconPngBase64 ?? null;
+    }
+
+    return {
+        id: actorId,
+        displayName,
+        iconPngBase64,
+    };
+}
+
+function actorSummaryHtml(actor) {
+    if (!actor) {
+        return '';
+    }
+
+    return `
+        <span class="summary-actor" title="playerId: ${actor.id}">
+            <img class="summary-actor-icon" src="${iconSrc(actor.iconPngBase64)}" alt="${escapeHtml(actor.displayName)}">
+            <span class="summary-actor-name">${escapeHtml(actor.displayName)}</span>
+        </span>
+    `;
+}
+
+/**
+ * 按原版 renderer 口径统计战斗结算数据：
+ * - score：累加每条 update.score，召唤物/分身归属到 root owner
+ * - kills：统计真实死亡或消失的单位数，归属到造成最后一击的 root owner
+ * - killedBy：记录原始最后一击单位，用于“致命一击”列显示
+ *
+ * @param {FightReplay} replay
+ * @returns {{ winners: Array<object>, losers: Array<object> }}
+ */
+export function buildReplayResultSummary(replay) {
+    const replayPlayersById = new Map(replay.players.map((player) => [player.id, player]));
+    const statesById = collectKnownStates(replay);
+    const rootOwnerById = buildRootOwnerMap(replay, statesById);
+    const rowsById = new Map(
+        replay.players.map((player, order) => [player.id, {
+            id: player.id,
+            order,
+            displayName: player.displayName,
+            iconPngBase64: player.iconPngBase64,
+            alive: statesById.get(player.id)?.alive ?? false,
+            score: 0,
+            kills: 0,
+            killedById: null,
+        }]),
+    );
+
+    let aliveById = new Map(replay.initialStates.map((state) => [state.id, state.alive]));
+    for (const frame of replay.frames) {
+        const frameStateMap = new Map(frame.states.map((state) => [state.id, state]));
+
+        for (const update of frame.updates) {
+            if ((update.score ?? 0) <= 0 || update.casterId == null) {
+                continue;
+            }
+            const ownerId = rootOwnerById.get(update.casterId) ?? update.casterId;
+            const row = rowsById.get(ownerId);
+            if (row) {
+                row.score += update.score;
+            }
+        }
+
+        for (const [id, wasAlive] of aliveById) {
+            const isAliveNow = frameStateMap.get(id)?.alive ?? false;
+            if (!wasAlive || isAliveNow) {
+                continue;
+            }
+
+            const killerId = lastRelevantKillerId(frame, id);
+            if (killerId != null) {
+                const ownerId = rootOwnerById.get(killerId) ?? killerId;
+                const killerRow = rowsById.get(ownerId);
+                if (killerRow) {
+                    killerRow.kills += 1;
+                }
+
+                const targetRow = rowsById.get(id);
+                if (targetRow) {
+                    targetRow.killedById = killerId;
+                }
+            }
+        }
+
+        const nextAliveById = new Map(aliveById);
+        for (const [id] of aliveById) {
+            if (!frameStateMap.has(id)) {
+                nextAliveById.set(id, false);
+            }
+        }
+        for (const state of frame.states) {
+            nextAliveById.set(state.id, state.alive);
+        }
+        aliveById = nextAliveById;
+    }
+
+    const rows = [...rowsById.values()].map((row) => ({
+        ...row,
+        killedBy: actorSummaryMeta(row.killedById, replayPlayersById, statesById),
+    }));
+    const sortRows = (left, right) => (right.score - left.score) || (left.order - right.order);
+
+    return {
+        winners: rows.filter((row) => row.alive).sort(sortRows),
+        losers: rows.filter((row) => !row.alive).sort(sortRows),
+    };
+}
+
+function resultSectionRows(title, rows) {
+    const body = rows.length
+        ? rows.map((row) => `
+            <tr class="result-row${row.alive ? '' : ' is-loser'}">
+                <td class="result-name-cell">${actorSummaryHtml(row)}</td>
+                <td class="result-score-cell">${row.score}</td>
+                <td class="result-kill-cell">${row.kills}</td>
+                <td class="result-killer-cell">${row.killedBy ? actorSummaryHtml(row.killedBy) : ''}</td>
+            </tr>
+        `).join('')
+        : `
+            <tr class="result-row empty-row">
+                <td class="result-empty" colspan="4">-</td>
+            </tr>
+        `;
+
+    return `
+        <tr class="result-section-row">
+            <th class="result-section-title">${title}</th>
+            <th class="result-head">得分</th>
+            <th class="result-head">击杀</th>
+            <th class="result-head">致命一击</th>
+        </tr>
+        ${body}
+    `;
+}
+
+export function buildReplayResultTableHtml(replay) {
+    const summary = buildReplayResultSummary(replay);
+    return `
+        <div class="result-table-wrap">
+            <table class="result-table">
+                <tbody>
+                    ${resultSectionRows('胜者', summary.winners)}
+                    ${resultSectionRows('败者', summary.losers)}
+                </tbody>
+            </table>
+        </div>
+    `;
 }
