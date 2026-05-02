@@ -342,6 +342,9 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 清除 protect 目标（默认无操作，仅 ProtectSkill 实现）
     fn clear_protect_to(&mut self) {}
 
+    /// 获取 protect 目标 ID（默认返回 None，仅 ProtectSkill 实现）
+    fn protect_to_id(&self) -> Option<PlrId> { None }
+
     /// 技能触发概率（默认对齐 Dart: r127 < level）
     fn prob(&self, level: u32, _smart: bool, args: SkillArgs) -> bool { args.1.r127() < level }
 
@@ -698,6 +701,8 @@ impl Skill {
 
     pub fn clear_protect_to(&mut self) { self.skill_type.clear_protect_to() }
 
+    pub fn protect_to_id(&self) -> Option<PlrId> { self.skill_type.protect_to_id() }
+
     pub fn prob(&self, smart: bool, args: SkillArgs) -> bool { self.skill_type.prob(self.level, smart, args) }
 
     pub fn target_domain(&self) -> SkillTargetDomain { self.skill_type.target_domain_with_level(self.level) }
@@ -728,9 +733,7 @@ impl Skill {
 
     pub fn charge_runtime_active(&self) -> bool { self.skill_type.charge_runtime_active() }
 
-    pub fn dynamic_update_state_enabled(&self) -> bool {
-        self.level > 0 && self.skill_type.dynamic_update_state_enabled()
-    }
+    pub fn dynamic_update_state_enabled(&self) -> bool { self.level > 0 && self.skill_type.dynamic_update_state_enabled() }
 
     /// 调试/对齐 JS 时用的运行时技能类型名。
     ///

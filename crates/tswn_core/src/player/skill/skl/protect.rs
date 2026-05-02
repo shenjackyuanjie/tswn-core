@@ -420,6 +420,8 @@ impl SkillTrait for ProtectSkill {
 
     fn clear_protect_to(&mut self) { self.protect_to = None; }
 
+    fn protect_to_id(&self) -> Option<PlrId> { self.protect_to }
+
     fn post_action_with_level(&mut self, level: u32, args: SkillArgs) {
         let next_target = self.pick_target(level, (args.0, args.1, args.2, args.3));
         #[cfg(not(feature = "no_debug"))]
