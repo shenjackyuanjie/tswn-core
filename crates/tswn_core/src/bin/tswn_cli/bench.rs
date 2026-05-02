@@ -9,8 +9,7 @@ use std::time::{Duration, Instant};
 use tswn_core::{
     Runner,
     win_rate::{
-        WinRateTiming, prepared_win_rate, resolve_win_rate_workers,
-        run_prepared_win_rate_range, use_js_profile_seed_schedule,
+        WinRateTiming, prepared_win_rate, resolve_win_rate_workers, run_prepared_win_rate_range, use_js_profile_seed_schedule,
     },
 };
 
@@ -158,18 +157,41 @@ impl BenchSummary {
     fn win_rate_percent(self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 }
 
-pub fn run_benchmark(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, perf: bool, buckets_step: Option<usize>) {
+pub fn run_benchmark(
+    raw: &str,
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    perf: bool,
+    buckets_step: Option<usize>,
+) {
     let raw = raw.trim();
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     match group_count {
         0 => eprintln!("benchmark: 输入为空或无有效玩家"),
         1 => run_bench_score(raw, n, mode, threads, perf),
-        _ => run_bench_winrate(raw, n, mode, threads, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ, perf, buckets_step),
+        _ => run_bench_winrate(
+            raw,
+            n,
+            mode,
+            threads,
+            tswn_core::player::eval_name::WIN_RATE_EVAL_RQ,
+            perf,
+            buckets_step,
+        ),
     }
 }
 
-pub fn run_bench_winrate(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64, perf: bool, buckets_step: Option<usize>) {
+pub fn run_bench_winrate(
+    raw: &str,
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    eval_rq: f64,
+    perf: bool,
+    buckets_step: Option<usize>,
+) {
     println!("=== 对战胜率测试 ({n} 场) ===");
 
     if let Some(step) = buckets_step {

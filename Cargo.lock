@@ -492,7 +492,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_core"
-version = "0.2.21"
+version = "0.2.22"
 dependencies = [
  "clap",
  "foldhash",
@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_wasm"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",

@@ -459,11 +459,8 @@ impl Player {
                         skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
                         (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled())
                     };
-                    self.skills.sync_dynamic_pre_action_state(
-                        skill_key,
-                        manages_dynamic_pre_action,
-                        dynamic_pre_action_enabled,
-                    );
+                    self.skills
+                        .sync_dynamic_pre_action_state(skill_key, manages_dynamic_pre_action, dynamic_pre_action_enabled);
                     acted = true;
                 }
             }

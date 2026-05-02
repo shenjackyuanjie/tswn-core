@@ -484,9 +484,7 @@ fn parse_usize_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
     Ok(values)
 }
 
-fn strip_utf8_bom(s: &str) -> &str {
-    s.strip_prefix('\u{feff}').unwrap_or(s)
-}
+fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
 
 fn load_library(path: &Path) -> Result<Vec<String>, String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("读取号库失败: {e}"))?;

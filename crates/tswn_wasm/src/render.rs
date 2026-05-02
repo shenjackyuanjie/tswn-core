@@ -5,9 +5,7 @@ use tswn_core::player::PlrId;
 
 use crate::model::MessageTone;
 
-fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> String {
-    names.get(&id).cloned().unwrap_or_else(|| id.to_string())
-}
+fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> String { names.get(&id).cloned().unwrap_or_else(|| id.to_string()) }
 
 pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>) -> String {
     let mut message = update.message.to_string();

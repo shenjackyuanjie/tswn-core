@@ -407,10 +407,7 @@ impl Storage {
     }
 
     /// 返回指定 roster 中已 queue_revival、但尚未 sync 回 alive_group 的成员。
-    pub fn iter_pending_revival_ids_for_group<'a>(
-        &'a self,
-        group_members: &'a [PlrId],
-    ) -> impl Iterator<Item = PlrId> + 'a {
+    pub fn iter_pending_revival_ids_for_group<'a>(&'a self, group_members: &'a [PlrId]) -> impl Iterator<Item = PlrId> + 'a {
         self.pending_revivals_ref().iter().copied().filter(move |id| group_members.contains(id))
     }
 

@@ -595,4 +595,3 @@ fn sync_runtime_entities_applies_revivals_before_spawns_in_round_order() {
     assert_eq!(runner.world.team_alive(1).unwrap(), &[enemy, spawned]);
     assert_eq!(runner.world.alives_flat(&runner.storage), vec![anchor, revived, enemy, spawned]);
 }
-

@@ -17,8 +17,7 @@ fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<Prepared
         return Err(win_rate_invalid_groups());
     }
 
-    Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
-        .map_err(|err| runner_init_failed(err.to_string()))
+    Runner::prepare_groups_with_eval_rq(&groups, eval_rq).map_err(|err| runner_init_failed(err.to_string()))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -103,9 +102,8 @@ impl WinRateSession {
                 std::slice::from_ref(&seed)
             };
 
-            let (runner_result, init_nanos) = measure_elapsed_nanos(|| {
-                Runner::new_from_prepared_with_seed(&self.prepared, seed_ref)
-            });
+            let (runner_result, init_nanos) =
+                measure_elapsed_nanos(|| Runner::new_from_prepared_with_seed(&self.prepared, seed_ref));
             let mut runner = runner_result.map_err(|err| runner_init_failed(err.to_string()))?;
             self.init_nanos = self.init_nanos.saturating_add(init_nanos);
 

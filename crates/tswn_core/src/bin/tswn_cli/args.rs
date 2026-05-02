@@ -612,9 +612,7 @@ fn parse_min_wr(raw: &str) -> Result<u16, String> {
 fn cli_error(message: impl Into<String>) -> clap::Error { Cli::command().error(ErrorKind::ValueValidation, message.into()) }
 
 /// 去除 UTF-8 BOM (U+FEFF) 前缀。
-fn strip_utf8_bom(s: &str) -> &str {
-    s.strip_prefix('\u{feff}').unwrap_or(s)
-}
+fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
 
 /// 解析“每个非空行都是一个 `+` 分隔组”的文件内容。
 /// 返回转换后的 namerena 组字符串列表，组内成员之间用 `\n` 分隔。

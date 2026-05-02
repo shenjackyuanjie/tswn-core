@@ -219,11 +219,7 @@ fn profile_case_d8c6_players() {
             .iter()
             .filter_map(|key| {
                 let skill = player.skills.store.get(key)?;
-                (skill.level() > 0).then_some(format!(
-                    "{key}:{}:lvl{}",
-                    skill.debug_skill_type_name(),
-                    skill.level()
-                ))
+                (skill.level() > 0).then_some(format!("{key}:{}:lvl{}", skill.debug_skill_type_name(), skill.level()))
             })
             .collect::<Vec<_>>();
         eprintln!(
@@ -236,4 +232,3 @@ fn profile_case_d8c6_players() {
         );
     }
 }
-
