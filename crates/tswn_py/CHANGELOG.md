@@ -1,5 +1,15 @@
 # 更新日志
 
+## [0.2.0] - 2026-05-07
+
+### ⚠️ Breaking Changes
+
+- **`Player.mp` 属性重命名为 `magic_point`**：Python 绑定中的 `get_mp`（暴露为 `.mp` 属性）已重命名为 `get_magic_point`（暴露为 `.magic_point` 属性）。
+
+### 变更
+
+- `PyPlayer::get_mp` → `PyPlayer::get_magic_point`，内部调用从 `self.inner.mp()` 改为 `self.inner.magic_point()`。
+
 ## [0.1.11] - 2026-04-07
 
 ### 新增

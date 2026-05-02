@@ -46,7 +46,7 @@ impl PyPlayer {
     pub fn get_move_point(&self) -> i32 { self.inner.move_point() }
 
     #[getter]
-    pub fn get_mp(&self) -> i32 { self.inner.mp() }
+    pub fn get_magic_point(&self) -> i32 { self.inner.magic_point() }
 
     #[getter]
     pub fn get_hp(&self) -> i32 { self.inner.get_status().hp }
