@@ -1,5 +1,15 @@
 # 更新日志
 
+## [0.2.1] - 2026-05-07
+
+### 变更
+
+- 去掉 `tswn_core` 依赖的显式 `version` 字段，仅保留 `path` 引用。
+
+### 同步
+
+- JS 示例文件进一步对齐 snake_case 字段名（`iconClassId` → `icon_class_id` 等）。
+
 ## [0.2.0] - 2026-05-07
 
 ### ⚠️ Breaking Changes
