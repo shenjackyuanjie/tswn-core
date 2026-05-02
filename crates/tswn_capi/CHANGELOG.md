@@ -1,5 +1,17 @@
 # 更新日志
 
+## [0.3.0] - 2026-05-07
+
+### ⚠️ Breaking Changes
+
+- **`tswn_player_snapshot_t.mp` 字段重命名为 `magic_point`**：C API 结构体字段名变更，调用方需要重新编译并更新源码中的字段访问。
+- **ABI 版本号未变**（仍为 `2`）：本次只涉及字段名变更，布局/偏移未变，但源码级别仍需更新。
+
+### 变更
+
+- `tswn_player_snapshot_t` 结构体：`mp: i32` → `magic_point: i32`
+- `player_snapshot()` 构造函数：`mp: status.magic_point` → `magic_point: status.magic_point`
+
 ## [0.2.1] - 2026-04-08
 
 ### 重构
