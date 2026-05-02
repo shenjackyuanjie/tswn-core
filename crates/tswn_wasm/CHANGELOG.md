@@ -47,6 +47,10 @@
 - 四个 step 按钮 title 标注对应快捷键（←→↑↓）。
 - 暂停按钮不再切换图标，保持暂停符号。
 
+### 修复
+
+- 修复死亡角色在后续帧中反复播放 `oldhp` 清空动画的问题：`.player-row.is-dead .oldhp, .player-row.is-dead .healhp` 禁用 CSS 过渡，死亡帧的 HP 归零动画正常播放，后续帧不再重复。
+
 ### 示例
 
 - `show-replay.js`：`renderReplayIntro()` 将 `seedLine` 写入 `playerList.dataset`，支持增量更新时保留 seed。

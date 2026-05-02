@@ -434,6 +434,11 @@ button:hover {
     opacity: 0.75;
 }
 
+.player-row.is-dead .oldhp,
+.player-row.is-dead .healhp {
+    transition: none;
+}
+
 .healhp {
     background: var(--healhp);
     opacity: 0.4;
