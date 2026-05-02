@@ -1,0 +1,2182 @@
+[
+  {
+    "row_id": "QF9iBQK4HfUAE+Mmt0ZrdGnlpjwB",
+    "date": "2026/04/20",
+    "username": "shenjack的bot",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-42640-1777657298502.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-42640-1777657298502.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-42640-1777657298502.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-42640-1777657298502.js:10661:16)\n",
+    "group1": "三猴一体 vFz1cu21MCaW@TigerStar\n涵虚不等式 PFVKEUPBU@TigerStar",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "46.42",
+    "tswn_reported_rate": "46.33",
+    "bun_exact_wins": 4642,
+    "tswn_exact_wins": 4646,
+    "mismatch_rounds": [
+      476,
+      848,
+      1074,
+      2693,
+      3204,
+      3912,
+      4144,
+      4864,
+      5000,
+      6101,
+      6591,
+      6603,
+      7057,
+      7174,
+      8806,
+      9146,
+      9158,
+      9397,
+      9411,
+      9690,
+      9735,
+      9750
+    ],
+    "mismatch_seeds": [
+      "3355906",
+      "3356278",
+      "3356504",
+      "3358123",
+      "3358634",
+      "3359342",
+      "3359574",
+      "3360294",
+      "3360430",
+      "3361531",
+      "3362021",
+      "3362033",
+      "3362487",
+      "3362604",
+      "3364236",
+      "3364576",
+      "3364588",
+      "3364827",
+      "3364841",
+      "3365120",
+      "3365165",
+      "3365180"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 494,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 492,
+        "diff_before": 0,
+        "diff_after": -2,
+        "mismatch_rounds": [
+          476,
+          848
+        ]
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 494,
+        "bun_end_wins": 979,
+        "tswn_start_wins": 492,
+        "tswn_end_wins": 976,
+        "diff_before": -2,
+        "diff_after": -3,
+        "mismatch_rounds": [
+          1074
+        ]
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 979,
+        "bun_end_wins": 1441,
+        "tswn_start_wins": 976,
+        "tswn_end_wins": 1439,
+        "diff_before": -3,
+        "diff_after": -2,
+        "mismatch_rounds": [
+          2693
+        ]
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1441,
+        "bun_end_wins": 1897,
+        "tswn_start_wins": 1439,
+        "tswn_end_wins": 1895,
+        "diff_before": -2,
+        "diff_after": -2,
+        "mismatch_rounds": [
+          3204,
+          3912
+        ]
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1897,
+        "bun_end_wins": 2332,
+        "tswn_start_wins": 1895,
+        "tswn_end_wins": 2331,
+        "diff_before": -2,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          4144,
+          4864,
+          5000
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2332,
+        "bun_end_wins": 2786,
+        "tswn_start_wins": 2331,
+        "tswn_end_wins": 2785,
+        "diff_before": -1,
+        "diff_after": -1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2786,
+        "bun_end_wins": 3230,
+        "tswn_start_wins": 2785,
+        "tswn_end_wins": 3230,
+        "diff_before": -1,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          6101,
+          6591,
+          6603
+        ]
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3230,
+        "bun_end_wins": 3718,
+        "tswn_start_wins": 3230,
+        "tswn_end_wins": 3718,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          7057,
+          7174
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3718,
+        "bun_end_wins": 4193,
+        "tswn_start_wins": 3718,
+        "tswn_end_wins": 4194,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          8806
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 4193,
+        "bun_end_wins": 4642,
+        "tswn_start_wins": 4194,
+        "tswn_end_wins": 4646,
+        "diff_before": 1,
+        "diff_after": 4,
+        "mismatch_rounds": [
+          9146,
+          9158,
+          9397,
+          9411,
+          9690,
+          9735,
+          9750
+        ]
+      }
+    ]
+  },
+  {
+    "row_id": "QF9iBQK4HfUAE+MpsB4DH2nlptYB",
+    "date": "2026/04/20",
+    "username": "shenjack的bot",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-49996-1777657307143.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-49996-1777657307143.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-49996-1777657307143.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-49996-1777657307143.js:10661:16)\n",
+    "group1": "湖心 SHVPEMAPV@TigerStar\n涵伯发威 TGDPANBQM@TigerStar",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "47.85",
+    "tswn_reported_rate": "47.88",
+    "bun_exact_wins": 4785,
+    "tswn_exact_wins": 4783,
+    "mismatch_rounds": [
+      2115,
+      2273,
+      2878,
+      3535,
+      4662,
+      5097,
+      5833,
+      7257,
+      7747,
+      8139,
+      8215,
+      8343
+    ],
+    "mismatch_seeds": [
+      "3357545",
+      "3357703",
+      "3358308",
+      "3358965",
+      "3360092",
+      "3360527",
+      "3361263",
+      "3362687",
+      "3363177",
+      "3363569",
+      "3363645",
+      "3363773"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 468,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 468,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 468,
+        "bun_end_wins": 946,
+        "tswn_start_wins": 468,
+        "tswn_end_wins": 946,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 946,
+        "bun_end_wins": 1436,
+        "tswn_start_wins": 946,
+        "tswn_end_wins": 1433,
+        "diff_before": 0,
+        "diff_after": -3,
+        "mismatch_rounds": [
+          2115,
+          2273,
+          2878
+        ]
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1436,
+        "bun_end_wins": 1925,
+        "tswn_start_wins": 1433,
+        "tswn_end_wins": 1921,
+        "diff_before": -3,
+        "diff_after": -4,
+        "mismatch_rounds": [
+          3535
+        ]
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1925,
+        "bun_end_wins": 2406,
+        "tswn_start_wins": 1921,
+        "tswn_end_wins": 2403,
+        "diff_before": -4,
+        "diff_after": -3,
+        "mismatch_rounds": [
+          4662
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2406,
+        "bun_end_wins": 2872,
+        "tswn_start_wins": 2403,
+        "tswn_end_wins": 2869,
+        "diff_before": -3,
+        "diff_after": -3,
+        "mismatch_rounds": [
+          5097,
+          5833
+        ]
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2872,
+        "bun_end_wins": 3343,
+        "tswn_start_wins": 2869,
+        "tswn_end_wins": 3340,
+        "diff_before": -3,
+        "diff_after": -3,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3343,
+        "bun_end_wins": 3808,
+        "tswn_start_wins": 3340,
+        "tswn_end_wins": 3807,
+        "diff_before": -3,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          7257,
+          7747
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3808,
+        "bun_end_wins": 4289,
+        "tswn_start_wins": 3807,
+        "tswn_end_wins": 4287,
+        "diff_before": -1,
+        "diff_after": -2,
+        "mismatch_rounds": [
+          8139,
+          8215,
+          8343
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 4289,
+        "bun_end_wins": 4785,
+        "tswn_start_wins": 4287,
+        "tswn_end_wins": 4783,
+        "diff_before": -2,
+        "diff_after": -2,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "Jm0MGgK4HfUAAQ5u8M44wWnlpzQB",
+    "date": "2026/04/20",
+    "username": "rua！",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-42168-1777657312362.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-42168-1777657312362.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-42168-1777657312362.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-42168-1777657312362.js:10661:16)\n",
+    "group1": "Beijing_Beijing #buBfAkjNf@Shabby_fish\nluogu.com.cn/paste/q9h8sdzk@Shabby_fish",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "53.59",
+    "tswn_reported_rate": "53.61",
+    "bun_exact_wins": 5359,
+    "tswn_exact_wins": 5362,
+    "mismatch_rounds": [
+      3062,
+      4833,
+      6641,
+      7979,
+      8623
+    ],
+    "mismatch_seeds": [
+      "3358492",
+      "3360263",
+      "3362071",
+      "3363409",
+      "3364053"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 530,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 530,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 530,
+        "bun_end_wins": 1066,
+        "tswn_start_wins": 530,
+        "tswn_end_wins": 1066,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 1066,
+        "bun_end_wins": 1597,
+        "tswn_start_wins": 1066,
+        "tswn_end_wins": 1597,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1597,
+        "bun_end_wins": 2135,
+        "tswn_start_wins": 1597,
+        "tswn_end_wins": 2136,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          3062
+        ]
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 2135,
+        "bun_end_wins": 2692,
+        "tswn_start_wins": 2136,
+        "tswn_end_wins": 2694,
+        "diff_before": 1,
+        "diff_after": 2,
+        "mismatch_rounds": [
+          4833
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2692,
+        "bun_end_wins": 3203,
+        "tswn_start_wins": 2694,
+        "tswn_end_wins": 3205,
+        "diff_before": 2,
+        "diff_after": 2,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 3203,
+        "bun_end_wins": 3718,
+        "tswn_start_wins": 3205,
+        "tswn_end_wins": 3721,
+        "diff_before": 2,
+        "diff_after": 3,
+        "mismatch_rounds": [
+          6641
+        ]
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3718,
+        "bun_end_wins": 4288,
+        "tswn_start_wins": 3721,
+        "tswn_end_wins": 4290,
+        "diff_before": 3,
+        "diff_after": 2,
+        "mismatch_rounds": [
+          7979
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 4288,
+        "bun_end_wins": 4822,
+        "tswn_start_wins": 4290,
+        "tswn_end_wins": 4825,
+        "diff_before": 2,
+        "diff_after": 3,
+        "mismatch_rounds": [
+          8623
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 4822,
+        "bun_end_wins": 5359,
+        "tswn_start_wins": 4825,
+        "tswn_end_wins": 5362,
+        "diff_before": 3,
+        "diff_after": 3,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "Jm0MGgK4HfUAAQ5yKW59XGnlp0EB",
+    "date": "2026/04/20",
+    "username": "rua！",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-30444-1777657321453.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-30444-1777657321453.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-30444-1777657321453.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-30444-1777657321453.js:10661:16)\n",
+    "group1": "Tik_Tok #IBxWzGZtr@Shabby_fish\n青霉素 #gRybM8geD@Shabby_fish",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "41.53",
+    "tswn_reported_rate": "41.54",
+    "bun_exact_wins": 4153,
+    "tswn_exact_wins": 4153,
+    "mismatch_rounds": [
+      2128,
+      3120,
+      5769,
+      5922,
+      7238,
+      9691
+    ],
+    "mismatch_seeds": [
+      "3357558",
+      "3358550",
+      "3361199",
+      "3361352",
+      "3362668",
+      "3365121"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 410,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 410,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 410,
+        "bun_end_wins": 810,
+        "tswn_start_wins": 410,
+        "tswn_end_wins": 810,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 810,
+        "bun_end_wins": 1223,
+        "tswn_start_wins": 810,
+        "tswn_end_wins": 1224,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          2128
+        ]
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1223,
+        "bun_end_wins": 1650,
+        "tswn_start_wins": 1224,
+        "tswn_end_wins": 1650,
+        "diff_before": 1,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          3120
+        ]
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1650,
+        "bun_end_wins": 2082,
+        "tswn_start_wins": 1650,
+        "tswn_end_wins": 2082,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2082,
+        "bun_end_wins": 2470,
+        "tswn_start_wins": 2082,
+        "tswn_end_wins": 2470,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          5769,
+          5922
+        ]
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2470,
+        "bun_end_wins": 2895,
+        "tswn_start_wins": 2470,
+        "tswn_end_wins": 2895,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 2895,
+        "bun_end_wins": 3324,
+        "tswn_start_wins": 2895,
+        "tswn_end_wins": 3325,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          7238
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3324,
+        "bun_end_wins": 3732,
+        "tswn_start_wins": 3325,
+        "tswn_end_wins": 3733,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 3732,
+        "bun_end_wins": 4153,
+        "tswn_start_wins": 3733,
+        "tswn_end_wins": 4153,
+        "diff_before": 1,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          9691
+        ]
+      }
+    ]
+  },
+  {
+    "row_id": "Jm0MGgK4HfUAAQ565d9J3mnlp7UB",
+    "date": "2026/04/20",
+    "username": "rua！",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-27168-1777657326743.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-27168-1777657326743.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-27168-1777657326743.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-27168-1777657326743.js:10661:16)\n",
+    "group1": "Tik_Tok #IBxWzGZtr@Shabby_fish\nMythic YK!,o,dT@Shabby_fish",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "51.99",
+    "tswn_reported_rate": "52.00",
+    "bun_exact_wins": 5199,
+    "tswn_exact_wins": 5199,
+    "mismatch_rounds": [
+      4795,
+      4844,
+      5738,
+      7246
+    ],
+    "mismatch_seeds": [
+      "3360225",
+      "3360274",
+      "3361168",
+      "3362676"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 527,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 527,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 527,
+        "bun_end_wins": 1061,
+        "tswn_start_wins": 527,
+        "tswn_end_wins": 1061,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 1061,
+        "bun_end_wins": 1589,
+        "tswn_start_wins": 1061,
+        "tswn_end_wins": 1589,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1589,
+        "bun_end_wins": 2108,
+        "tswn_start_wins": 1589,
+        "tswn_end_wins": 2108,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 2108,
+        "bun_end_wins": 2627,
+        "tswn_start_wins": 2108,
+        "tswn_end_wins": 2625,
+        "diff_before": 0,
+        "diff_after": -2,
+        "mismatch_rounds": [
+          4795,
+          4844
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2627,
+        "bun_end_wins": 3136,
+        "tswn_start_wins": 2625,
+        "tswn_end_wins": 3135,
+        "diff_before": -2,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          5738
+        ]
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 3136,
+        "bun_end_wins": 3647,
+        "tswn_start_wins": 3135,
+        "tswn_end_wins": 3646,
+        "diff_before": -1,
+        "diff_after": -1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3647,
+        "bun_end_wins": 4173,
+        "tswn_start_wins": 3646,
+        "tswn_end_wins": 4173,
+        "diff_before": -1,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          7246
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 4173,
+        "bun_end_wins": 4683,
+        "tswn_start_wins": 4173,
+        "tswn_end_wins": 4683,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 4683,
+        "bun_end_wins": 5199,
+        "tswn_start_wins": 4683,
+        "tswn_end_wins": 5199,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "Jm0MGgK4HfUAAQ59YmDV0WnlqCcB",
+    "date": "2026/04/20",
+    "username": "rua！",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-19440-1777657331904.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-19440-1777657331904.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-19440-1777657331904.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-19440-1777657331904.js:10661:16)\n",
+    "group1": "Italian_Love #5Agn8kVYl@Shabby_fish\n我会回来的 #yTneTj00J@Shabby_fish",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "47.44",
+    "tswn_reported_rate": "47.45",
+    "bun_exact_wins": 4744,
+    "tswn_exact_wins": 4743,
+    "mismatch_rounds": [
+      641,
+      947,
+      4437,
+      5106,
+      7536,
+      8039,
+      9616
+    ],
+    "mismatch_seeds": [
+      "3356071",
+      "3356377",
+      "3359867",
+      "3360536",
+      "3362966",
+      "3363469",
+      "3365046"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 487,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 487,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          641,
+          947
+        ]
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 487,
+        "bun_end_wins": 951,
+        "tswn_start_wins": 487,
+        "tswn_end_wins": 951,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 951,
+        "bun_end_wins": 1447,
+        "tswn_start_wins": 951,
+        "tswn_end_wins": 1447,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1447,
+        "bun_end_wins": 1920,
+        "tswn_start_wins": 1447,
+        "tswn_end_wins": 1920,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1920,
+        "bun_end_wins": 2404,
+        "tswn_start_wins": 1920,
+        "tswn_end_wins": 2405,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          4437
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2404,
+        "bun_end_wins": 2865,
+        "tswn_start_wins": 2405,
+        "tswn_end_wins": 2865,
+        "diff_before": 1,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          5106
+        ]
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2865,
+        "bun_end_wins": 3351,
+        "tswn_start_wins": 2865,
+        "tswn_end_wins": 3351,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3351,
+        "bun_end_wins": 3791,
+        "tswn_start_wins": 3351,
+        "tswn_end_wins": 3790,
+        "diff_before": 0,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          7536
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3791,
+        "bun_end_wins": 4254,
+        "tswn_start_wins": 3790,
+        "tswn_end_wins": 4252,
+        "diff_before": -1,
+        "diff_after": -2,
+        "mismatch_rounds": [
+          8039
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 4254,
+        "bun_end_wins": 4744,
+        "tswn_start_wins": 4252,
+        "tswn_end_wins": 4743,
+        "diff_before": -2,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          9616
+        ]
+      }
+    ]
+  },
+  {
+    "row_id": "Jm0MGgK4HfUAAQ6FZnIJEGnlqR8B",
+    "date": "2026/04/20",
+    "username": "rua！",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-47936-1777657336896.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-47936-1777657336896.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-47936-1777657336896.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-47936-1777657336896.js:10661:16)\n",
+    "group1": "Instantaneous #LxiPNA8jV@Shabby_fish\nDiffindo #3WzDmhsqL@Shabby_fish",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "44.78",
+    "tswn_reported_rate": "44.77",
+    "bun_exact_wins": 4478,
+    "tswn_exact_wins": 4481,
+    "mismatch_rounds": [
+      3362,
+      7461,
+      8977
+    ],
+    "mismatch_seeds": [
+      "3358792",
+      "3362891",
+      "3364407"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 442,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 442,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 442,
+        "bun_end_wins": 894,
+        "tswn_start_wins": 442,
+        "tswn_end_wins": 894,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 894,
+        "bun_end_wins": 1340,
+        "tswn_start_wins": 894,
+        "tswn_end_wins": 1340,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1340,
+        "bun_end_wins": 1798,
+        "tswn_start_wins": 1340,
+        "tswn_end_wins": 1799,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          3362
+        ]
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1798,
+        "bun_end_wins": 2264,
+        "tswn_start_wins": 1799,
+        "tswn_end_wins": 2265,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2264,
+        "bun_end_wins": 2712,
+        "tswn_start_wins": 2265,
+        "tswn_end_wins": 2713,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2712,
+        "bun_end_wins": 3139,
+        "tswn_start_wins": 2713,
+        "tswn_end_wins": 3140,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3139,
+        "bun_end_wins": 3606,
+        "tswn_start_wins": 3140,
+        "tswn_end_wins": 3608,
+        "diff_before": 1,
+        "diff_after": 2,
+        "mismatch_rounds": [
+          7461
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3606,
+        "bun_end_wins": 4036,
+        "tswn_start_wins": 3608,
+        "tswn_end_wins": 4039,
+        "diff_before": 2,
+        "diff_after": 3,
+        "mismatch_rounds": [
+          8977
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 4036,
+        "bun_end_wins": 4478,
+        "tswn_start_wins": 4039,
+        "tswn_end_wins": 4481,
+        "diff_before": 3,
+        "diff_after": 3,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "QF9iBQK4HfUAE+M1GSOv6Wnlq/oB",
+    "date": "2026/04/20",
+    "username": "shenjack的bot",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-40844-1777657342686.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-40844-1777657342686.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-40844-1777657342686.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-40844-1777657342686.js:10661:16)\n",
+    "group1": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "group2": "Tachibana_akira #BydbIMidbs@🥒\n𝚐𝚒𝚛𝚕𝚜.𝚎𝚡𝚎 #JgLghHnHgP@🥒",
+    "bun_reported_rate": "49.34",
+    "tswn_reported_rate": "49.27",
+    "bun_exact_wins": 4934,
+    "tswn_exact_wins": 4941,
+    "mismatch_rounds": [
+      98,
+      2312,
+      2443,
+      3275,
+      4620,
+      6020,
+      8321,
+      8638,
+      8907
+    ],
+    "mismatch_seeds": [
+      "3355528",
+      "3357742",
+      "3357873",
+      "3358705",
+      "3360050",
+      "3361450",
+      "3363751",
+      "3364068",
+      "3364337"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 484,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 485,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          98
+        ]
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 484,
+        "bun_end_wins": 941,
+        "tswn_start_wins": 485,
+        "tswn_end_wins": 942,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 941,
+        "bun_end_wins": 1420,
+        "tswn_start_wins": 942,
+        "tswn_end_wins": 1421,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          2312,
+          2443
+        ]
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1420,
+        "bun_end_wins": 1938,
+        "tswn_start_wins": 1421,
+        "tswn_end_wins": 1940,
+        "diff_before": 1,
+        "diff_after": 2,
+        "mismatch_rounds": [
+          3275
+        ]
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1938,
+        "bun_end_wins": 2432,
+        "tswn_start_wins": 1940,
+        "tswn_end_wins": 2435,
+        "diff_before": 2,
+        "diff_after": 3,
+        "mismatch_rounds": [
+          4620
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2432,
+        "bun_end_wins": 2927,
+        "tswn_start_wins": 2435,
+        "tswn_end_wins": 2930,
+        "diff_before": 3,
+        "diff_after": 3,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2927,
+        "bun_end_wins": 3443,
+        "tswn_start_wins": 2930,
+        "tswn_end_wins": 3447,
+        "diff_before": 3,
+        "diff_after": 4,
+        "mismatch_rounds": [
+          6020
+        ]
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3443,
+        "bun_end_wins": 3959,
+        "tswn_start_wins": 3447,
+        "tswn_end_wins": 3963,
+        "diff_before": 4,
+        "diff_after": 4,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3959,
+        "bun_end_wins": 4443,
+        "tswn_start_wins": 3963,
+        "tswn_end_wins": 4450,
+        "diff_before": 4,
+        "diff_after": 7,
+        "mismatch_rounds": [
+          8321,
+          8638,
+          8907
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 4443,
+        "bun_end_wins": 4934,
+        "tswn_start_wins": 4450,
+        "tswn_end_wins": 4941,
+        "diff_before": 7,
+        "diff_after": 7,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "Jm0MGgK4HfUAAQ6MYo7rXGnlxeYB",
+    "date": "2026/04/20",
+    "username": "rua！",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-28512-1777657352160.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-28512-1777657352160.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-28512-1777657352160.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-28512-1777657352160.js:10661:16)\n",
+    "group1": "killer YFgziuYJGUOW93Ryni2X@czr2012\nhuk Fkua7Pj7AzG9CW4QZiGJ@czr2012",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "42.05",
+    "tswn_reported_rate": "42.08",
+    "bun_exact_wins": 4205,
+    "tswn_exact_wins": 4206,
+    "mismatch_rounds": [
+      4242,
+      7971,
+      8414
+    ],
+    "mismatch_seeds": [
+      "3359672",
+      "3363401",
+      "3363844"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 400,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 400,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 400,
+        "bun_end_wins": 825,
+        "tswn_start_wins": 400,
+        "tswn_end_wins": 825,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 825,
+        "bun_end_wins": 1215,
+        "tswn_start_wins": 825,
+        "tswn_end_wins": 1215,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1215,
+        "bun_end_wins": 1612,
+        "tswn_start_wins": 1215,
+        "tswn_end_wins": 1612,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1612,
+        "bun_end_wins": 2049,
+        "tswn_start_wins": 1612,
+        "tswn_end_wins": 2050,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          4242
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2049,
+        "bun_end_wins": 2504,
+        "tswn_start_wins": 2050,
+        "tswn_end_wins": 2505,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2504,
+        "bun_end_wins": 2908,
+        "tswn_start_wins": 2505,
+        "tswn_end_wins": 2909,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 2908,
+        "bun_end_wins": 3351,
+        "tswn_start_wins": 2909,
+        "tswn_end_wins": 3351,
+        "diff_before": 1,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          7971
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3351,
+        "bun_end_wins": 3767,
+        "tswn_start_wins": 3351,
+        "tswn_end_wins": 3768,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          8414
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 3767,
+        "bun_end_wins": 4205,
+        "tswn_start_wins": 3768,
+        "tswn_end_wins": 4206,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "Jm0MGgK4HfUAAQ6V8AOp8GnlxmkB",
+    "date": "2026/04/20",
+    "username": "rua！",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-24804-1777657359598.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-24804-1777657359598.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-24804-1777657359598.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-24804-1777657359598.js:10661:16)\n",
+    "group1": "killer YFgziuYJGUOW93Ryni2X@czr2012\ndust lmHylvLqY4hn0QIMnCia@czr2012",
+    "group2": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "bun_reported_rate": "39.71",
+    "tswn_reported_rate": "39.68",
+    "bun_exact_wins": 3971,
+    "tswn_exact_wins": 3975,
+    "mismatch_rounds": [
+      2476,
+      3805,
+      3816,
+      4299,
+      5080,
+      8825
+    ],
+    "mismatch_seeds": [
+      "3357906",
+      "3359235",
+      "3359246",
+      "3359729",
+      "3360510",
+      "3364255"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 398,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 398,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 398,
+        "bun_end_wins": 784,
+        "tswn_start_wins": 398,
+        "tswn_end_wins": 784,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 784,
+        "bun_end_wins": 1196,
+        "tswn_start_wins": 784,
+        "tswn_end_wins": 1197,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          2476
+        ]
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1196,
+        "bun_end_wins": 1596,
+        "tswn_start_wins": 1197,
+        "tswn_end_wins": 1599,
+        "diff_before": 1,
+        "diff_after": 3,
+        "mismatch_rounds": [
+          3805,
+          3816
+        ]
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1596,
+        "bun_end_wins": 2010,
+        "tswn_start_wins": 1599,
+        "tswn_end_wins": 2014,
+        "diff_before": 3,
+        "diff_after": 4,
+        "mismatch_rounds": [
+          4299
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2010,
+        "bun_end_wins": 2368,
+        "tswn_start_wins": 2014,
+        "tswn_end_wins": 2371,
+        "diff_before": 4,
+        "diff_after": 3,
+        "mismatch_rounds": [
+          5080
+        ]
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2368,
+        "bun_end_wins": 2782,
+        "tswn_start_wins": 2371,
+        "tswn_end_wins": 2785,
+        "diff_before": 3,
+        "diff_after": 3,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 2782,
+        "bun_end_wins": 3189,
+        "tswn_start_wins": 2785,
+        "tswn_end_wins": 3192,
+        "diff_before": 3,
+        "diff_after": 3,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3189,
+        "bun_end_wins": 3594,
+        "tswn_start_wins": 3192,
+        "tswn_end_wins": 3598,
+        "diff_before": 3,
+        "diff_after": 4,
+        "mismatch_rounds": [
+          8825
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 3594,
+        "bun_end_wins": 3971,
+        "tswn_start_wins": 3598,
+        "tswn_end_wins": 3975,
+        "diff_before": 4,
+        "diff_after": 4,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "QF9iBQK4HfUAE/HjYZR2WGnt5foB",
+    "date": "2026/04/26",
+    "username": "shenjack的bot",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js",
+    "md5_fallback_reason": null,
+    "group1": "随之任之 #kNPyDNhppy@🥒",
+    "group2": "Ⅹ q5H2HO5@新纪元",
+    "bun_reported_rate": "42.87",
+    "tswn_reported_rate": "42.88",
+    "bun_exact_wins": 4287,
+    "tswn_exact_wins": 4288,
+    "mismatch_rounds": [
+      913,
+      4405,
+      5478
+    ],
+    "mismatch_seeds": [
+      "3356343",
+      "3359835",
+      "3360908"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 408,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 409,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          913
+        ]
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 408,
+        "bun_end_wins": 854,
+        "tswn_start_wins": 409,
+        "tswn_end_wins": 855,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 854,
+        "bun_end_wins": 1295,
+        "tswn_start_wins": 855,
+        "tswn_end_wins": 1296,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1295,
+        "bun_end_wins": 1719,
+        "tswn_start_wins": 1296,
+        "tswn_end_wins": 1720,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1719,
+        "bun_end_wins": 2150,
+        "tswn_start_wins": 1720,
+        "tswn_end_wins": 2152,
+        "diff_before": 1,
+        "diff_after": 2,
+        "mismatch_rounds": [
+          4405
+        ]
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2150,
+        "bun_end_wins": 2565,
+        "tswn_start_wins": 2152,
+        "tswn_end_wins": 2566,
+        "diff_before": 2,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          5478
+        ]
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2565,
+        "bun_end_wins": 3014,
+        "tswn_start_wins": 2566,
+        "tswn_end_wins": 3015,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3014,
+        "bun_end_wins": 3445,
+        "tswn_start_wins": 3015,
+        "tswn_end_wins": 3446,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3445,
+        "bun_end_wins": 3868,
+        "tswn_start_wins": 3446,
+        "tswn_end_wins": 3869,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 3868,
+        "bun_end_wins": 4287,
+        "tswn_start_wins": 3869,
+        "tswn_end_wins": 4288,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "QF9iBQK4HfUAE/QeiKV6MGnu3OIB",
+    "date": "2026/04/27",
+    "username": "shenjack的bot",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-44972-1777657369600.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-44972-1777657369600.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-44972-1777657369600.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-44972-1777657369600.js:10661:16)\n",
+    "group1": "Cosmo #CLjFsRj@Arcadia\nWispy #6uttTRg@Arcadia",
+    "group2": "预言 yyDH8z1LkOOU@芒萁\n硫 xL8rdIlimAPy@芒萁",
+    "bun_reported_rate": "57.30",
+    "tswn_reported_rate": "57.31",
+    "bun_exact_wins": 5730,
+    "tswn_exact_wins": 5731,
+    "mismatch_rounds": [
+      2827
+    ],
+    "mismatch_seeds": [
+      "3358257"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 563,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 563,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 563,
+        "bun_end_wins": 1167,
+        "tswn_start_wins": 563,
+        "tswn_end_wins": 1167,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 1167,
+        "bun_end_wins": 1751,
+        "tswn_start_wins": 1167,
+        "tswn_end_wins": 1752,
+        "diff_before": 0,
+        "diff_after": 1,
+        "mismatch_rounds": [
+          2827
+        ]
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1751,
+        "bun_end_wins": 2330,
+        "tswn_start_wins": 1752,
+        "tswn_end_wins": 2331,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 2330,
+        "bun_end_wins": 2902,
+        "tswn_start_wins": 2331,
+        "tswn_end_wins": 2903,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2902,
+        "bun_end_wins": 3428,
+        "tswn_start_wins": 2903,
+        "tswn_end_wins": 3429,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 3428,
+        "bun_end_wins": 4001,
+        "tswn_start_wins": 3429,
+        "tswn_end_wins": 4002,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 4001,
+        "bun_end_wins": 4600,
+        "tswn_start_wins": 4002,
+        "tswn_end_wins": 4601,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 4600,
+        "bun_end_wins": 5177,
+        "tswn_start_wins": 4601,
+        "tswn_end_wins": 5178,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 5177,
+        "bun_end_wins": 5730,
+        "tswn_start_wins": 5178,
+        "tswn_end_wins": 5731,
+        "diff_before": 1,
+        "diff_after": 1,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "QF9iBQK4HfUAE/lWjx76DmnyAhYB",
+    "date": "2026/04/29",
+    "username": "shenjack的bot",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-55756-1777657374375.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-55756-1777657374375.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-55756-1777657374375.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-55756-1777657374375.js:10661:16)\n",
+    "group1": "Orbital #FdIt7oZLt@tyakasha\nOrbital #uToMNkhhZ@tyakasha",
+    "group2": "镜湖TVWAFPFHB@涵虚\n田柤钿坥畑租鉏组佃怚钿组@涵虚",
+    "bun_reported_rate": "62.82",
+    "tswn_reported_rate": "62.80",
+    "bun_exact_wins": 6282,
+    "tswn_exact_wins": 6279,
+    "mismatch_rounds": [
+      66,
+      168,
+      389,
+      3187,
+      3843,
+      5234,
+      8228
+    ],
+    "mismatch_seeds": [
+      "3355496",
+      "3355598",
+      "3355819",
+      "3358617",
+      "3359273",
+      "3360664",
+      "3363658"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 630,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 629,
+        "diff_before": 0,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          66,
+          168,
+          389
+        ]
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 630,
+        "bun_end_wins": 1260,
+        "tswn_start_wins": 629,
+        "tswn_end_wins": 1259,
+        "diff_before": -1,
+        "diff_after": -1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 1260,
+        "bun_end_wins": 1871,
+        "tswn_start_wins": 1259,
+        "tswn_end_wins": 1870,
+        "diff_before": -1,
+        "diff_after": -1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1871,
+        "bun_end_wins": 2503,
+        "tswn_start_wins": 1870,
+        "tswn_end_wins": 2502,
+        "diff_before": -1,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          3187,
+          3843
+        ]
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 2503,
+        "bun_end_wins": 3140,
+        "tswn_start_wins": 2502,
+        "tswn_end_wins": 3139,
+        "diff_before": -1,
+        "diff_after": -1,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 3140,
+        "bun_end_wins": 3746,
+        "tswn_start_wins": 3139,
+        "tswn_end_wins": 3744,
+        "diff_before": -1,
+        "diff_after": -2,
+        "mismatch_rounds": [
+          5234
+        ]
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 3746,
+        "bun_end_wins": 4374,
+        "tswn_start_wins": 3744,
+        "tswn_end_wins": 4372,
+        "diff_before": -2,
+        "diff_after": -2,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 4374,
+        "bun_end_wins": 4989,
+        "tswn_start_wins": 4372,
+        "tswn_end_wins": 4987,
+        "diff_before": -2,
+        "diff_after": -2,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 4989,
+        "bun_end_wins": 5630,
+        "tswn_start_wins": 4987,
+        "tswn_end_wins": 5627,
+        "diff_before": -2,
+        "diff_after": -3,
+        "mismatch_rounds": [
+          8228
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 5630,
+        "bun_end_wins": 6282,
+        "tswn_start_wins": 5627,
+        "tswn_end_wins": 6279,
+        "diff_before": -3,
+        "diff_after": -3,
+        "mismatch_rounds": []
+      }
+    ]
+  },
+  {
+    "row_id": "QF9iBQK4HfUAE/lZ+dgrkGnyAkAB",
+    "date": "2026/04/29",
+    "username": "shenjack的bot",
+    "rounds": 10000,
+    "md5_path_used": "D:\\githubs\\namer\\fast-namerena\\md5.js",
+    "md5_fallback_reason": "bun trace produced empty stdout for D:\\githubs\\namer\\fast-namerena\\branch\\latest\\md5.js: h\\latest\\.tswn-md5-trace-16676-1777657388192.js:10728:27)\n    at _Future__propagateToListeners (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-16676-1777657388192.js:4008:103)\n    at c2 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-16676-1777657388192.js:10586:11)\n    at $0 (D:\\githubs\\namer\\fast-namerena\\branch\\latest\\.tswn-md5-trace-16676-1777657388192.js:10661:16)\n",
+    "group1": "H6PeQOTNUlx@tyakasha\nOrbital #sfPTzSpZz@tyakasha",
+    "group2": "镜湖TVWAFPFHB@涵虚\n田柤钿坥畑租鉏组佃怚钿组@涵虚",
+    "bun_reported_rate": "45.63",
+    "tswn_reported_rate": "45.62",
+    "bun_exact_wins": 4563,
+    "tswn_exact_wins": 4559,
+    "mismatch_rounds": [
+      288,
+      1374,
+      5736,
+      6016,
+      7280,
+      7445,
+      7605,
+      8506,
+      8603,
+      9116
+    ],
+    "mismatch_seeds": [
+      "3355718",
+      "3356804",
+      "3361166",
+      "3361446",
+      "3362710",
+      "3362875",
+      "3363035",
+      "3363936",
+      "3364033",
+      "3364546"
+    ],
+    "buckets": [
+      {
+        "start_round": 1,
+        "end_round": 1000,
+        "bun_start_wins": 0,
+        "bun_end_wins": 434,
+        "tswn_start_wins": 0,
+        "tswn_end_wins": 433,
+        "diff_before": 0,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          288
+        ]
+      },
+      {
+        "start_round": 1001,
+        "end_round": 2000,
+        "bun_start_wins": 434,
+        "bun_end_wins": 897,
+        "tswn_start_wins": 433,
+        "tswn_end_wins": 897,
+        "diff_before": -1,
+        "diff_after": 0,
+        "mismatch_rounds": [
+          1374
+        ]
+      },
+      {
+        "start_round": 2001,
+        "end_round": 3000,
+        "bun_start_wins": 897,
+        "bun_end_wins": 1379,
+        "tswn_start_wins": 897,
+        "tswn_end_wins": 1379,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 3001,
+        "end_round": 4000,
+        "bun_start_wins": 1379,
+        "bun_end_wins": 1820,
+        "tswn_start_wins": 1379,
+        "tswn_end_wins": 1820,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 4001,
+        "end_round": 5000,
+        "bun_start_wins": 1820,
+        "bun_end_wins": 2278,
+        "tswn_start_wins": 1820,
+        "tswn_end_wins": 2278,
+        "diff_before": 0,
+        "diff_after": 0,
+        "mismatch_rounds": []
+      },
+      {
+        "start_round": 5001,
+        "end_round": 6000,
+        "bun_start_wins": 2278,
+        "bun_end_wins": 2742,
+        "tswn_start_wins": 2278,
+        "tswn_end_wins": 2741,
+        "diff_before": 0,
+        "diff_after": -1,
+        "mismatch_rounds": [
+          5736
+        ]
+      },
+      {
+        "start_round": 6001,
+        "end_round": 7000,
+        "bun_start_wins": 2742,
+        "bun_end_wins": 3202,
+        "tswn_start_wins": 2741,
+        "tswn_end_wins": 3200,
+        "diff_before": -1,
+        "diff_after": -2,
+        "mismatch_rounds": [
+          6016
+        ]
+      },
+      {
+        "start_round": 7001,
+        "end_round": 8000,
+        "bun_start_wins": 3202,
+        "bun_end_wins": 3659,
+        "tswn_start_wins": 3200,
+        "tswn_end_wins": 3656,
+        "diff_before": -2,
+        "diff_after": -3,
+        "mismatch_rounds": [
+          7280,
+          7445,
+          7605
+        ]
+      },
+      {
+        "start_round": 8001,
+        "end_round": 9000,
+        "bun_start_wins": 3659,
+        "bun_end_wins": 4122,
+        "tswn_start_wins": 3656,
+        "tswn_end_wins": 4119,
+        "diff_before": -3,
+        "diff_after": -3,
+        "mismatch_rounds": [
+          8506,
+          8603
+        ]
+      },
+      {
+        "start_round": 9001,
+        "end_round": 10000,
+        "bun_start_wins": 4122,
+        "bun_end_wins": 4563,
+        "tswn_start_wins": 4119,
+        "tswn_end_wins": 4559,
+        "diff_before": -3,
+        "diff_after": -4,
+        "mismatch_rounds": [
+          9116
+        ]
+      }
+    ]
+  }
+]
