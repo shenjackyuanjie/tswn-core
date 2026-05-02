@@ -9,9 +9,15 @@
   - `bench win-rate`：两队对决时每 N 场输出一次累积胜率
   - 分段模式下强制单线程以保证输出顺序正确
 
+### API
+
+- `SkillTrait` / `Skill` 新增 `protect_to_id()` 方法，返回 `Option<PlrId>`，让外部能查询 ProtectSkill 当前保护的目标角色 ID。默认返回 `None`，仅 `ProtectSkill` 覆写。
+  - 配套 `clear_protect_to()` 的反向查询，用于 WASM 层状态标签展示
+
 ### 内部
 
 - `win_rate::run_prepared_win_rate_range` 改为 `pub`，供 `bench` 模块的分段胜率逻辑复用。
+- 修复 clippy 警告：`assassinate.rs` collapsible_if、`merge.rs` unused_enumerate_index
 
 ## [0.2.21] - 2026-05-01
 
