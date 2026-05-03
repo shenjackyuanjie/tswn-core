@@ -113,6 +113,7 @@ impl From<UpdateType> for UpdateTypeView {
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MessageTone {
     /// 普通消息（无特殊视觉效果）
     Normal,

@@ -39,7 +39,7 @@ fn collect_players(
         let display_name = player.display_name();
         let team_index = runner.world.team_index_of(*player_id).unwrap_or(0);
         let icon_png_base64 = if include_icons {
-            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&display_name))
+            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&player.id_key_name()))
         } else {
             None
         };

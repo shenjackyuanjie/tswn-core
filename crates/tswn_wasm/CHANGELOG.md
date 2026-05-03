@@ -1,5 +1,27 @@
 # 更新日志
 
+## [0.2.2] - 2026-05-07
+
+### 新增
+
+- 玩家联动高亮：鼠标悬停角色时高亮页面中所有同名元素（show.js）。
+- 战斗回放展示种子信息（show-replay.js）。
+- `MessageTone` 枚举添加 `#[serde(rename_all = "snake_case")]` 序列化支持（model.rs）。
+
+### 优化
+
+- 渲染引擎重构：HP/MP 条改为固定像素宽度（`ceil(值/4)`），更直观紧凑（show-render.js / show-utils.js / show.css）。
+- 简化 body 背景、微调 HP/MP 条高度、移除冗余 font-weight 声明（show.css）。
+- 消息分隔符从中文逗号改为英文逗号，对齐 JSON 输出风格（show-render.js）。
+
+### 重构
+
+- 结算表逻辑重写：添加存活/死亡判断、HP 条绝对定位、完善 JSDoc 类型标注（show-replay.js）。
+
+### 修复
+
+- 修复图标渲染：使用 `player.id_key_name()` 替代 `display_name` 生成图标，确保召唤物/分身正确关联主人（fight.rs）。
+
 ## [0.2.1] - 2026-05-07
 
 ### 变更
