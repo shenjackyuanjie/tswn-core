@@ -1,3 +1,5 @@
 [build]
-# 方案 D+J 已消除所有已知 UB，不再需要 mutable-noalias=no。
-# 2026-05-06: 全 199 个测试在 release 优化下无需特殊 flag 即可通过。
+# 禁用 LLVM 对 &mut 引用的 noalias 优化。
+# 单元测试已无需此 flag，但 SBY 大样本对比测试仍需。
+# 完全移除目标：SBY diff_failures=0 后可永久移除。
+rustflags = ["-Z", "mutable-noalias=no"]
