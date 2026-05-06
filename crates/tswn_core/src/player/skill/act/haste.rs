@@ -2,7 +2,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId, StateTrait,
     skill::act::minion::is_combat_minion,
-    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -70,6 +70,44 @@ impl SkillTrait for HasteSkill {
         } else {
             args.1.rFFFF() as f64
         }
+    }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        ctx.updates.add(RunUpdate::new("[0]使用[加速术]", ctx.ptr, target_id, 60));
+        let charge_active = ctx
+            .storage
+            .get_player(&ctx.ptr)
+            .and_then(|owner| owner.skills.store.get(&19))
+            .map(|skill| skill.charge_runtime_active())
+            .unwrap_or(false);
+
+        ctx.status.move_point += ctx.status.speed;
+
+        if let Some(target) = ctx.storage.just_get_player_mut(target_id) {
+            if let Some(state) = target.get_state_mut::<HasteState>() {
+                state.step += 2;
+            } else {
+                target.set_state(HasteState {
+                    owner: Some(ctx.ptr),
+                    target: Some(target_id),
+                    on_post_action: None,
+                    faster: 2,
+                    step: 3,
+                });
+            }
+            if charge_active {
+                let state = target.get_state_mut::<HasteState>().expect("haste state should exist after apply");
+                state.faster += 2;
+                state.step += 2;
+            }
+        }
+        ctx.updates.add(RunUpdate::new("[1]进入[疾走]状态", ctx.ptr, target_id, 0));
     }
 
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {

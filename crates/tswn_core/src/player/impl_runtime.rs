@@ -56,6 +56,7 @@
 //! ```
 
 use super::*;
+use crate::player::skill::{Effect, InlineCtx};
 use smallvec::SmallVec;
 
 // JS addNew 之后的新单位会立刻参与“战斗是否结束”的判断，
@@ -481,9 +482,77 @@ impl Player {
                 };
                 if !selected_targets.is_empty() || allow_empty {
                     let (manages_dynamic_pre_action, dynamic_pre_action_enabled) = {
-                        let skill = self.skills.skill_by_id_mut(skill_key);
-                        skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
-                        (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled())
+                        let has_inline = self.skills.skill_by_id(skill_key).has_inline_act();
+                        if has_inline {
+                            let needs_update = {
+                                let status = &mut self.status;
+                                let state = &mut self.state;
+                                let mut ctx = InlineCtx {
+                                    ptr,
+                                    status,
+                                    state,
+                                    randomer,
+                                    updates,
+                                    storage,
+                                    effects: SmallVec::new(),
+                                    needs_update_states: false,
+                                };
+                                let skill = self.skills.skill_by_id_mut(skill_key);
+                                skill.act_inline(selected_targets, smart, &mut ctx);
+                                for effect in ctx.effects.drain(..) {
+                                    match effect {
+                                        Effect::Attack { target, atp, is_mag, on_damage } => {
+                                            let core = {
+                                                let target_plr =
+                                                    ctx.storage.just_get_player_mut(target).expect("attack target not found");
+                                                target_plr.attacked_core(atp, is_mag, ptr, on_damage, ctx.randomer, ctx.updates, ctx.storage)
+                                            };
+                                            if core.hit {
+                                                on_damage(ptr, core.target, core.dmg, ctx.randomer, ctx.updates, ctx.storage);
+                                                let target_plr =
+                                                    ctx.storage.just_get_player_mut(core.target).expect("attack target not found");
+                                                target_plr.finish_damage(
+                                                    core.dmg, core.old_hp, ptr, ctx.randomer, ctx.updates, ctx.storage,
+                                                );
+                                            }
+                                        }
+                                        Effect::Heal { target, amount } => {
+                                            if let Some(target_plr) = ctx.storage.just_get_player_mut(target) {
+                                                target_plr.heal(amount);
+                                            }
+                                        }
+                                        Effect::DamageRaw { target, dmg, on_damage } => {
+                                            let core = {
+                                                let target_plr =
+                                                    ctx.storage.just_get_player_mut(target).expect("damage target not found");
+                                                target_plr.damage_core(dmg, ptr, ctx.updates)
+                                            };
+                                            on_damage(ptr, target, core.actual_dmg, ctx.randomer, ctx.updates, ctx.storage);
+                                            let target_plr =
+                                                ctx.storage.just_get_player_mut(target).expect("damage target not found");
+                                            target_plr.finish_damage(
+                                                core.actual_dmg, core.old_hp, ptr, ctx.randomer, ctx.updates, ctx.storage,
+                                            );
+                                        }
+                                        Effect::AddMovePoint { target, delta } => {
+                                            if let Some(target_plr) = ctx.storage.just_get_player_mut(target) {
+                                                target_plr.add_move_point(delta);
+                                            }
+                                        }
+                                    }
+                                }
+                                ctx.needs_update_states
+                            };
+                            if needs_update {
+                                self.update_states();
+                            }
+                            let skill = self.skills.skill_by_id_mut(skill_key);
+                            (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled())
+                        } else {
+                            let skill = self.skills.skill_by_id_mut(skill_key);
+                            skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
+                            (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled())
+                        }
                     };
                     self.skills
                         .sync_dynamic_pre_action_state(skill_key, manages_dynamic_pre_action, dynamic_pre_action_enabled);

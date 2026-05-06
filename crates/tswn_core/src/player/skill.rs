@@ -190,6 +190,16 @@ pub struct InlineCtx<'a> {
     pub updates: &'a mut RunUpdates,
     pub storage: &'a Arc<Storage>,
     pub effects: SmallVec<[Effect; 4]>,
+    pub needs_update_states: bool,
+}
+
+impl<'a> InlineCtx<'a> {
+    /// 设置状态并标记需要 `update_states()`。
+    /// 等效于 `Player::set_state()` —— 先 `state.set()` 再在回调返回后调用 `update_states()`。
+    pub fn set_state(&mut self, state: impl super::StateTrait + 'static) {
+        self.state.set(state);
+        self.needs_update_states = true;
+    }
 }
 
 /// 技能注册的流程类型
@@ -243,8 +253,9 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 内联版更新状态 — 直接修改 PlayerStatus，不经过 Storage。
     /// 在 Player::update_states() 中调用，对齐 JS 的 F() 遍历 rx 回调。
     fn update_state_inline(&mut self, _level: u32, _status: &mut super::PlayerStatus) {}
+    /// 是否实现了内联行动 — 调度器据此选择 act_inline 或 act_with_level。
+    fn has_inline_act(&self) -> bool { false }
     /// 内联版行动 — 通过 InlineCtx 直接访问 owner 字段（方案 J）。
-    /// 仅 self-only 技能需要实现；默认回退到 act_with_level。
     fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, _ctx: &mut InlineCtx) {}
     /// 内联版 clear_positive_runtime — 通过 InlineCtx 直接访问（方案 J）。
     fn clear_positive_runtime_inline(&mut self, _ctx: &mut InlineCtx) -> Option<&'static str> { None }
@@ -662,6 +673,17 @@ impl Skill {
 
     pub fn update_state_inline(&mut self, status: &mut super::PlayerStatus) {
         self.skill_type.update_state_inline(self.level, status)
+    }
+
+    pub fn has_inline_act(&self) -> bool { self.skill_type.has_inline_act() }
+
+    pub fn act_inline(&mut self, targets: Vec<PlrId>, smart: bool, ctx: &mut InlineCtx) {
+        let current_level = self.level;
+        self.skill_type.act_inline(current_level, targets, smart, ctx);
+        let post_level = self.skill_type.post_act_level(current_level);
+        if self.level == current_level || post_level > self.level {
+            self.level = post_level;
+        }
     }
 
     pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {

@@ -1,5 +1,1 @@
-[build]
-# 禁用 LLVM 对 &mut 引用的 noalias 优化。
-# 单元测试已无需此 flag，但 SBY 大样本对比测试仍需。
-# 完全移除目标：SBY diff_failures=0 后可永久移除。
-rustflags = ["-Z", "mutable-noalias=no"]
+# mutable-noalias=no 已移除，通过方案 D+J 消除 aliasing UB

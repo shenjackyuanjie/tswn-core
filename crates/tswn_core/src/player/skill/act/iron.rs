@@ -4,7 +4,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, UpdateType};
 use crate::player::{
     PlrId, StateTrait,
-    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -45,6 +45,25 @@ impl SkillTrait for IronSkill {
 
     fn select_targets_with_level(&self, _level: u32, _candidates: &[PlrId], _smart: bool, args: SkillArgs) -> Vec<PlrId> {
         vec![args.0]
+    }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        let owner_magic = ctx.status.magic;
+        let charge_active = ctx.status.at_boost >= 3.0;
+
+        let mut step = 3;
+        let mut protect = 110 + owner_magic;
+        if charge_active {
+            step += 4;
+            protect += 240 + owner_magic * 4;
+        }
+
+        ctx.updates.add(RunUpdate::new("[0]发动[铁壁]", ctx.ptr, ctx.ptr, 60));
+        ctx.set_state(IronState { protect, step });
+        ctx.status.move_point -= 256;
+        ctx.updates.add(RunUpdate::new("[0]防御力大幅上升", ctx.ptr, ctx.ptr, 0));
     }
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
