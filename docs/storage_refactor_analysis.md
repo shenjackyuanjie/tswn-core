@@ -1,8 +1,8 @@
 # Storage 内部可变性方案对比分析（深入版）
 
 > 创建: 2026-03-28
-> 更新: 2026-03-29
-> 代码基线: 当前 HEAD + 历史原型 ../../tswn-core-old 与 ../../tswn-core-63b81dd
+> 更新: 2026-05-06
+> 代码基线: 当前 HEAD（仅引用当前仓库内可验证代码；历史原型只保留结论，不再直链仓库外目录）
 
 ---
 
@@ -13,13 +13,13 @@
 当前主线仍然是方案 C：
 
 - `Storage` 全字段 `UnsafeCell`
-- `post_kill` 通过 [run_post_kill](../crates/tswn_core/src/player/skill/store.rs#L439) 分阶段执行
+- `post_kill` 通过 [run_post_kill](../crates/tswn_core/src/player/skill/store.rs#L653) 分阶段执行
 - toolchain 依赖 [nightly](../rust-toolchain.toml#L2) 与 [mutable-noalias=no](../.cargo/config.toml#L7)
 
 但更深入地沿着当前调用链和 trait 签名向下看，会得到更准确的现状判断：
 
 1. 已经明确修掉的，是 provenance 问题和 `post_kill` 的同实体别名。
-2. `update_state` 主路径也已经局部去别名，因为 [update_states](../crates/tswn_core/src/player/impl_attr.rs#L197) 现在走的是 [update_state_inline](../crates/tswn_core/src/player/impl_attr.rs#L217)，而不是运行期再次从 `Storage` 把 owner 借出来。
+2. `update_state` 主路径也已经局部去别名，因为 [update_states](../crates/tswn_core/src/player/impl_attr.rs#L211) 现在走的是 [update_state_inline](../crates/tswn_core/src/player/skill.rs#L215)，而不是运行期再次从 `Storage` 把 owner 借出来。
 3. 仍然残留的别名面，不止 `on_damage`。当前至少还有两大类热路径会在持有 `&mut self` 时重新通过 `Storage` 取回同一个 `Player`：
    - owner/self phase：`act` / `pre_action` / `post_action` / `pre_defend` / `clear_positive_runtime`
    - target/caster phase：`on_damage`
@@ -42,12 +42,12 @@
 
 ### 2.1 `Storage` 是运行期内部可变性的总入口
 
-当前 `Storage` 的核心结构在 [storage.rs](../crates/tswn_core/src/engine/storage.rs#L64) 到 [storage.rs](../crates/tswn_core/src/engine/storage.rs#L91)，关键点是：
+当前 `Storage` 的核心结构在 [storage.rs](../crates/tswn_core/src/engine/storage.rs#L64) 到 [storage.rs](../crates/tswn_core/src/engine/storage.rs#L93)，关键点是：
 
 - 玩家表是 `UnsafeCell<FastHashMap<PlrId, UnsafeCell<Player>>>`
 - 运行期还有一个 `in_post_damage_player` 标记，专门用于使魔分摊伤害时校正死亡顺序
 
-摘自 [storage.rs](../crates/tswn_core/src/engine/storage.rs#L64-L91)：
+摘自 [storage.rs](../crates/tswn_core/src/engine/storage.rs#L64-L93)：
 
 ```rust
 pub struct Storage {
@@ -55,6 +55,7 @@ pub struct Storage {
     groups: UnsafeCell<FastHashMap<usize, Vec<PlrId>>>,
     alive_groups: UnsafeCell<Vec<Vec<PlrId>>>,
     players: UnsafeCell<FastHashMap<PlrId, UnsafeCell<Player>>>,
+    player_group: UnsafeCell<FastHashMap<PlrId, usize>>,
     pending_spawns: UnsafeCell<Vec<PendingSpawn>>,
     pending_remove_players: UnsafeCell<Vec<PlrId>>,
     death_queue: UnsafeCell<Vec<PlrId>>,
@@ -66,7 +67,7 @@ pub struct Storage {
 }
 ```
 
-摘自 [just_get_player_mut](../crates/tswn_core/src/engine/storage.rs#L310)：
+摘自 [just_get_player_mut](../crates/tswn_core/src/engine/storage.rs#L336)：
 
 ```rust
 pub fn just_get_player_mut(&self, ptr: PlrId) -> Option<&mut Player> {
@@ -106,15 +107,15 @@ pub type SkillArgs<'d> = (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Storag
 
 伤害主路径集中在以下几个入口：
 
-- [pre_defend](../crates/tswn_core/src/player/impl_runtime.rs#L896)
-- [post_defend](../crates/tswn_core/src/player/impl_runtime.rs#L923)
-- [attacked](../crates/tswn_core/src/player/impl_runtime.rs#L939)
-- [defned](../crates/tswn_core/src/player/impl_runtime.rs#L975)
-- [damage](../crates/tswn_core/src/player/impl_runtime.rs#L1001)
-- [on_damaged](../crates/tswn_core/src/player/impl_runtime.rs#L1051)
-- [on_die_impl](../crates/tswn_core/src/player/impl_runtime.rs#L1081)
+- [pre_defend](../crates/tswn_core/src/player/impl_runtime.rs#L1710)
+- [post_defend](../crates/tswn_core/src/player/impl_runtime.rs#L1845)
+- [attacked](../crates/tswn_core/src/player/impl_runtime.rs#L1900)
+- [defned](../crates/tswn_core/src/player/impl_runtime.rs#L1936)
+- [damage](../crates/tswn_core/src/player/impl_runtime.rs#L1962)
+- [on_damaged](../crates/tswn_core/src/player/impl_runtime.rs#L2040)
+- [on_die_impl](../crates/tswn_core/src/player/impl_runtime.rs#L2096)
 
-`damage()` 的关键片段如下，摘自 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L1001-L1048)：
+`damage()` 的关键片段如下，摘自 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L1962-L2017)：
 
 ```rust
 pub fn damage(
@@ -131,6 +132,12 @@ pub fn damage(
     self.status.hp -= dmg;
     if self.status.hp < 0 {
         self.status.hp = 0;
+    }
+    let mut msg = "[1]受到[2]点伤害".to_string();
+    if dmg >= 160 {
+        msg.push_str("[s_dmg160]");
+    } else if dmg >= 120 {
+        msg.push_str("[s_dmg120]");
     }
     updates.emit(|| {
         let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
@@ -180,7 +187,7 @@ UnsafeCell<FastHashMap<PlrId, UnsafeCell<Player>>>
 
 当前 `post_kill` 已经不是“拿着 `&mut killer` 直接递归调用 kill 回调”，而是先把技能实现取出来，释放 killer，再调用回调，最后放回。
 
-摘自 [run_post_kill](../crates/tswn_core/src/player/skill/store.rs#L439-L469)：
+摘自 [run_post_kill](../crates/tswn_core/src/player/skill/store.rs#L653)：
 
 ```rust
 pub fn run_post_kill(...) {
@@ -206,19 +213,19 @@ pub fn run_post_kill(...) {
 }
 ```
 
-主路径对它的调用在 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L1105) 与 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L1189)。
+主路径对它的调用在 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L2136) 与 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L2246)。
 
 这不是纸面修复，而是有行为锚点的：
 
 - [merge_kill_applies_owner_growth](../crates/tswn_core/src/player/test.rs#L910) 覆盖了 kill 后 owner 增长逻辑
-- [perf_report_ub_fix.md](perf_report_ub_fix.md#L17) 记录了 `330cd46` 后消除了 27 个 release-only diff failures
-- 同一文档的 [第 73-74 行](perf_report_ub_fix.md#L73-L74) 也说明 UB 导致的 release-only failure 在修复后全部消失
+- [perf/ub_fix_no_debug.md](perf/ub_fix_no_debug.md) 记录了 `330cd46` 后消除了 27 个 release-only diff failures
+- 同一文档也说明 UB 导致的 release-only failure 在修复后全部消失
 
 ### 3.3 `update_state` 主路径已经有一条成功的“内联化”先例
 
 这一点非常关键，因为它说明本项目并不是非得所有回调都拿 `Storage` 才能工作。
 
-当前 `Player::update_states()` 在 [impl_attr.rs](../crates/tswn_core/src/player/impl_attr.rs#L197-L217) 中已经改为：
+当前 `Player::update_states()` 在 [impl_attr.rs](../crates/tswn_core/src/player/impl_attr.rs#L211) 中已经改为：
 
 ```rust
 pub fn update_states(&mut self) {
@@ -228,7 +235,7 @@ pub fn update_states(&mut self) {
 }
 ```
 
-而 trait 本身也明确给了一个 inline 入口，见 [skill.rs](../crates/tswn_core/src/player/skill.rs#L202)：
+而 trait 本身也明确给了一个 inline 入口，见 [skill.rs](../crates/tswn_core/src/player/skill.rs#L215)：
 
 ```rust
 fn update_state_inline(&mut self, _level: u32, _status: &mut super::PlayerStatus) {}
@@ -239,21 +246,29 @@ fn update_state_inline(&mut self, _level: u32, _status: &mut super::PlayerStatus
 - 主循环里的 `update_state` 已经不再需要把 owner 重新从 `Storage` 里借出来
 - 也就是说，“把阶段内真正需要的最小能力直接传进回调”这件事，在当前代码里已经有成功落地案例
 
-需要注意的是，`SkillStorage::update_state()` 这个旧接口仍然还在，见 [skill/store.rs](../crates/tswn_core/src/player/skill/store.rs#L246)，测试里也仍有直接调用，例如 [player/test.rs](../crates/tswn_core/src/player/test.rs#L930-L931) 与 [player/test.rs](../crates/tswn_core/src/player/test.rs#L959-L960)。但它已经不再是战斗主循环的主通道。
+需要注意的是，`SkillStorage::update_state()` 这个旧接口仍然还在，见 [skill/store.rs](../crates/tswn_core/src/player/skill/store.rs#L332)，测试里也仍有直接调用，例如 [player/test.rs](../crates/tswn_core/src/player/test.rs#L930-L931) 与 [player/test.rs](../crates/tswn_core/src/player/test.rs#L959-L960)。但它已经不再是战斗主循环的主通道。
 
 ### 3.4 使魔分摊伤害已经使用“局部阶段标记”修顺序
 
-`Storage` 里的 [in_post_damage_player](../crates/tswn_core/src/engine/storage.rs#L91) 与辅助方法 [set_in_post_damage](../crates/tswn_core/src/engine/storage.rs#L221)、[clear_in_post_damage](../crates/tswn_core/src/engine/storage.rs#L224)、[is_in_post_damage](../crates/tswn_core/src/engine/storage.rs#L228) 是另一条很重要的先例：
+`Storage` 里的 [in_post_damage_player](../crates/tswn_core/src/engine/storage.rs#L93) 与辅助方法 [set_in_post_damage](../crates/tswn_core/src/engine/storage.rs#L231)、[clear_in_post_damage](../crates/tswn_core/src/engine/storage.rs#L234)、[is_in_post_damage](../crates/tswn_core/src/engine/storage.rs#L238) 是另一条很重要的先例：
 
 - 它不是全局 EventQueue
 - 但它已经承认“有些路径必须分阶段标记，否则死亡顺序会错”
 
-对应的使用点在 [summon.rs](../crates/tswn_core/src/player/skill/act/summon.rs#L186-L218)：
+对应的使用点在 [summon.rs](../crates/tswn_core/src/player/skill/act/summon.rs#L245-L268)：
 
 ```rust
 struct SummonShareDamageSkill;
 
 fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
+    let owner_id = args
+        .3
+        .get_player(&args.0)
+        .and_then(|player| player.get_state::<MinionRuntimeState>())
+        .and_then(|state| state.owner);
+    let Some(owner_id) = owner_id else {
+        return;
+    };
     args.3.set_in_post_damage(args.0);
     if let Some(owner) = args.3.just_get_player_mut(owner_id) {
         owner.damage(dmg / 2, caster, on_summon_share_damage as OnDamageFunc, args.1, args.2, args.3);
@@ -283,25 +298,25 @@ fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
 
 主路径入口见：
 
-- [self.skills.pre_action(...)](../crates/tswn_core/src/player/impl_runtime.rs#L86)
-- [skill.act(...)](../crates/tswn_core/src/player/impl_runtime.rs#L250)
-- [self.skills.post_action(...)](../crates/tswn_core/src/player/impl_runtime.rs#L113) 与 [impl_runtime.rs#L284](../crates/tswn_core/src/player/impl_runtime.rs#L284)
-- [self.skills.pre_defend(...)](../crates/tswn_core/src/player/impl_runtime.rs#L909)
-- [clear_positive_runtime(...)](../crates/tswn_core/src/player/skill/store.rs#L384)
+- [self.skills.pre_action(...)](../crates/tswn_core/src/player/impl_runtime.rs#L218)
+- [skill.act(...)](../crates/tswn_core/src/player/impl_runtime.rs#L459)
+- [run_post_action_chain(...)](../crates/tswn_core/src/player/impl_runtime.rs#L537) 与它的调用点 [impl_runtime.rs#L510](../crates/tswn_core/src/player/impl_runtime.rs#L510)
+- [self.skills.pre_defend(...)](../crates/tswn_core/src/player/impl_runtime.rs#L1710)
+- [clear_positive_runtime(...)](../crates/tswn_core/src/player/skill/store.rs#L593)
 
 代表性热点如下：
 
 | 阶段 | 外层持有的引用 | 代表实现 | 重新借回的是谁 | 说明 |
 | ------ | ---------------- | ---------- | ---------------- | ------ |
-| `act` | owner 的 `&mut self` | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L57) | owner | `skill.act(...)` 在 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L250) 期间执行，`charge` 又 `just_get_player_mut(args.0)` |
-| `act` | owner 的 `&mut self` | [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L77) | owner | 与 `charge` 同类，owner 仍存活时再次取 owner |
-| `pre_action` / `post_action` | owner 的 `&mut self` | [HideSkill](../crates/tswn_core/src/player/skill/skl/hide.rs#L124) / [hide.rs#L145](../crates/tswn_core/src/player/skill/skl/hide.rs#L145) | owner | `hide` 在 `pre_action` 与 `update_state` 路径都会再次借 owner |
-| `pre_defend` | target 的 `&mut self` | [ReflectSkill](../crates/tswn_core/src/player/skill/skl/reflect.rs#L46) | target/owner | `reflect` 的 owner 就是当前 defender，自借最明显 |
-| `clear_positive_runtime` | owner 的 `&mut self` | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L94) / [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L101) | owner | 清状态时又回头借 owner |
+| `act` | owner 的 `&mut self` | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L51) | owner | `skill.act(...)` 在 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L459) 期间执行，`charge` 又 `just_get_player_mut(args.0)` |
+| `act` | owner 的 `&mut self` | [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L62) | owner | 与 `charge` 同类，owner 仍存活时再次取 owner |
+| `pre_action` / `post_action` | owner 的 `&mut self` | [HideSkill](../crates/tswn_core/src/player/skill/skl/hide.rs#L92) / [hide.rs#L121-L135](../crates/tswn_core/src/player/skill/skl/hide.rs#L121-L135) | owner | `hide` 在 `pre_action` 与 `update_state` 路径都会再次借 owner |
+| `pre_defend` | target 的 `&mut self` | [ReflectSkill](../crates/tswn_core/src/player/skill/skl/reflect.rs#L23) | target/owner | `reflect` 的 owner 就是当前 defender，自借最明显 |
+| `clear_positive_runtime` | owner 的 `&mut self` | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L100) / [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L103) | owner | 清状态时又回头借 owner |
 
-仅做粗搜，在 `player/skill` 目录中就能找到至少 30 处 owner/target 级别的 `just_get_player_mut(...)` 命中；其中有一部分只是初始化或测试辅助，但上表这些都处在当前主循环的真实热路径内。
+以当前 HEAD 粗搜，光是 `player/skill` 目录里就能找到 49 处 owner/target 级别的 `just_get_player_mut(...)` 命中；其中有一部分只是初始化或测试辅助，但上表这些都处在当前主循环的真实热路径内。
 
-最直观的例子是 [ChargeSkill::act_with_level](../crates/tswn_core/src/player/skill/act/charge.rs#L46-L58)：
+最直观的例子是 [ChargeSkill::act_with_level](../crates/tswn_core/src/player/skill/act/charge.rs#L51-L59)：
 
 ```rust
 fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
@@ -311,11 +326,11 @@ fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ar
     args.2.add(RunUpdate::new("[0]开始[蓄力]", args.0, args.0, 1));
     let owner = args.3.just_get_player_mut(args.0).expect("cannot get charge owner from storage");
     owner.update_states();
-    owner.set_mp(owner.mp() + 32);
+    owner.set_magic_point(owner.magic_point() + 32);
 }
 ```
 
-而它的外层调用点正是 [Player::action](../crates/tswn_core/src/player/impl_runtime.rs#L250)。也就是说，这一类问题并不是“理论上 trait 太宽”，而是已经真正在主战斗路径里发生。
+而它的外层调用点正是 [Player::action](../crates/tswn_core/src/player/impl_runtime.rs#L213)。也就是说，这一类问题并不是“理论上 trait 太宽”，而是已经真正在主战斗路径里发生。
 
 ### 4.2 类别 B：`on_damage` 的 target/caster 重借
 
@@ -330,11 +345,11 @@ fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ar
 | `on_curse` | [curse.rs#L94](../crates/tswn_core/src/player/skill/act/curse.rs#L94) | [curse.rs#L166](../crates/tswn_core/src/player/skill/act/curse.rs#L166) | target | 给 target 叠诅咒状态 |
 | `on_disperse` | [disperse.rs#L84](../crates/tswn_core/src/player/skill/act/disperse.rs#L84) | [disperse.rs#L92](../crates/tswn_core/src/player/skill/act/disperse.rs#L92) | target | 清 positive runtime/state，并扣 MP |
 | `on_fire` | [fire.rs#L71](../crates/tswn_core/src/player/skill/act/fire.rs#L71) | [fire.rs#L75](../crates/tswn_core/src/player/skill/act/fire.rs#L75) | target | 给 target 增加火焰状态 |
-| `on_fire`（复用） | [summon.rs#L177](../crates/tswn_core/src/player/skill/act/summon.rs#L177) | [fire.rs#L75](../crates/tswn_core/src/player/skill/act/fire.rs#L75) | target | 召唤技能复用了火球的 on_damage |
+| `on_fire`（复用） | [summon.rs#L236](../crates/tswn_core/src/player/skill/act/summon.rs#L236) | [fire.rs#L75](../crates/tswn_core/src/player/skill/act/fire.rs#L75) | target | 召唤技能复用了火球的 on_damage |
 | `on_ice` | [ice.rs#L104](../crates/tswn_core/src/player/skill/act/ice.rs#L104) | [ice.rs#L163](../crates/tswn_core/src/player/skill/act/ice.rs#L163) | target | 冻结状态写入，且有二次重借 |
 | `on_poison` | [poison.rs#L44](../crates/tswn_core/src/player/skill/act/poison.rs#L44) | [poison.rs#L113](../crates/tswn_core/src/player/skill/act/poison.rs#L113) | target | 中毒状态写入，且有二次重借 |
-| `lazy_attack_on_damage -> lazy_infect` | [lazy.rs#L113](../crates/tswn_core/src/player/boss/lazy.rs#L113) | [lazy.rs#L132](../crates/tswn_core/src/player/boss/lazy.rs#L132) -> [lazy.rs#L186](../crates/tswn_core/src/player/boss/lazy.rs#L186) | target | 懒癌感染 |
-| `covid_spread_on_damage -> covid_infect` | [covid.rs#L335](../crates/tswn_core/src/player/boss/covid.rs#L335) | [covid.rs#L348](../crates/tswn_core/src/player/boss/covid.rs#L348) -> [covid.rs#L369](../crates/tswn_core/src/player/boss/covid.rs#L369) | target | 新冠感染，并对全场存活玩家调移动点 |
+| `lazy_attack_on_damage -> lazy_infect` | [lazy.rs#L118](../crates/tswn_core/src/player/boss/lazy.rs#L118) | [lazy.rs#L132](../crates/tswn_core/src/player/boss/lazy.rs#L132) -> [lazy.rs#L186](../crates/tswn_core/src/player/boss/lazy.rs#L186) | target | 懒癌感染 |
+| `covid_spread_on_damage -> covid_infect` | [covid.rs#L341](../crates/tswn_core/src/player/boss/covid.rs#L341) | [covid.rs#L349](../crates/tswn_core/src/player/boss/covid.rs#L349) -> [covid.rs#L370](../crates/tswn_core/src/player/boss/covid.rs#L370) | target | 新冠感染，并对全场存活玩家调移动点 |
 
 这里有两个值得强调的细节：
 
@@ -345,12 +360,12 @@ fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ar
 
 历史原型在方向上是对的，但没有走完。
 
-旧原型的关键接口如下：
+需要先说明一点：本文最早引用的 `../../tswn-core-old` / `../../tswn-core-63b81dd` 目录不在当前仓库里，已经不能作为当前仓库内可点击校验的证据。因此这一节只保留当时对原型的结论摘要，不再保留失效链接。
 
-- [../../tswn-core-old/src/engine.rs#L68](../../tswn-core-old/src/engine.rs#L68) 定义了 `Event`
-- [../../tswn-core-old/src/engine.rs#L104](../../tswn-core-old/src/engine.rs#L104) 定义了 `EventQueue`
-- [../../tswn-core-old/src/player/skill/mod.rs#L21](../../tswn-core-old/src/player/skill/mod.rs#L21) 把 `SkillArgs` 改成了 `&mut EventQueue`
-- [../../tswn-core-old/src/player.rs#L31-L33](../../tswn-core-old/src/player.rs#L31-L33) 的 `OnDamageFunc` 也不再带 `Storage`
+原型当时已经做了两件关键尝试：
+
+- 引入 `Event` / `EventQueue` 一类显式事件层
+- 把 `SkillArgs` 与 `OnDamageFunc` 从直接携带 `Storage` 改成携带事件队列或更窄的上下文
 
 这说明 old 原型已经意识到：
 
@@ -359,7 +374,7 @@ fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ar
 
 但是，它没有彻底完成两件事：
 
-1. `damage()` 仍然是同步栈，见 [../../tswn-core-old/src/player.rs#L973-L1029](../../tswn-core-old/src/player.rs#L973-L1029)
+1. `damage()` 当时仍然是同步栈，没有真正把伤害链彻底阶段化
 2. 当前主线里需要的那批真实跨实体副作用（吸血、冰冻、中毒、净化、boss 感染、使魔分摊）并没有被完整重写成事件语义
 
 因此，EventQueue 原型更像是“方向性证明”，而不是一个可以直接 cherry-pick 回主线的完整解法。
@@ -370,16 +385,16 @@ fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ar
 
 下表把“当前代码真正修了什么、还剩什么”拆开比较：
 
-| 方案 | 核心思想 | provenance | `post_kill` 同实体别名 | `on_damage` 别名 | owner-phase 别名 | 是否仍依赖 nightly/noalias | 改造规模 |
-| ------ | ---------- | ------------ | ------------------------ | ------------------ | ------------------ | ---------------------------- | ---------- |
+| 方案 | 核心思想 | provenance | `post_kill` 同实体别名 | `on_damage` 别名 | owner-phase 别名 | 能否脱离 nightly/noalias | 改造规模 |
+| ------ | ---------- | ------------ | ------------------------ | ------------------ | ------------------ | -------------------------- | ---------- |
 | **A** | 裸 `unsafe` 强转 | ❌ | ❌ | ❌ | ❌ | ❌ | 最小 |
 | **B** | `UnsafeCell` + `run_post_kill` | ✅ | ✅ | ❌ | ❌ | ❌ | 中等 |
-| **C** | B + `mutable-noalias=no` | ✅ | ✅ | ⚠️ 被掩盖 | ⚠️ 被掩盖 | ✅ | 中等 |
+| **C** | B + `mutable-noalias=no` | ✅ | ✅ | ⚠️ 被掩盖 | ⚠️ 被掩盖 | ❌ | 中等 |
 | **D** | staged damage / delayed `on_damage` | ✅ | ✅ | ✅ | ❌ | ❌ | 中等 |
-| **J** | 阶段化上下文 + 局部 effect buffer | ✅ | ✅ | ✅ | ✅ | ❌ | 中大 |
-| **I** | split components / split field | ✅ | ✅ | ✅ | ✅ | ❌ | 大 |
-| **G** | 全局 EventQueue | ✅ | ✅ | ✅ | ✅ | ❌ | 很大 |
-| **E** | Arena + token | ✅ | ✅ | ✅ | ✅ | ❌ | 很大 |
+| **J** | 阶段化上下文 + 局部 effect buffer | ✅ | ✅ | ✅ | ✅ | ✅ | 中大 |
+| **I** | split components / split field | ✅ | ✅ | ✅ | ✅ | ✅ | 大 |
+| **G** | 全局 EventQueue | ✅ | ✅ | ✅ | ✅ | ✅ | 很大 |
+| **E** | Arena + token | ✅ | ✅ | ✅ | ✅ | ✅ | 很大 |
 
 这里最重要的修正是：
 
@@ -414,7 +429,7 @@ rustflags = ["-Z", "mutable-noalias=no"]
 
 性能数据也支持“短期保留 C”这个判断：
 
-- [perf_report_ub_fix.md#L28-L50](perf_report_ub_fix.md#L28-L50) 记录了 `330cd46` 后 UB 修复本身没有可测量性能退化
+- [perf/ub_fix_no_debug.md](perf/ub_fix_no_debug.md) 记录了 `330cd46` 后 UB 修复本身没有可测量性能退化
 - 当前文档旧版中的 `mario vs luigi` 数据也显示 `mutable-noalias=no` 的 fight 部分差异接近噪声
 
 但它的缺点同样明确：
@@ -430,8 +445,8 @@ rustflags = ["-Z", "mutable-noalias=no"]
 
 因为 `damage()` 的结构太明确了，拆开收益很高，风险也低：
 
-- 现在的 `damage()` 在 [impl_runtime.rs#L1001-L1048](../crates/tswn_core/src/player/impl_runtime.rs#L1001-L1048)
-- `on_damage` 之后的后续逻辑基本都在 [on_damaged](../crates/tswn_core/src/player/impl_runtime.rs#L1051)
+- 现在的 `damage()` 在 [impl_runtime.rs#L1962-L2017](../crates/tswn_core/src/player/impl_runtime.rs#L1962-L2017)
+- `on_damage` 之后的后续逻辑基本都在 [on_damaged](../crates/tswn_core/src/player/impl_runtime.rs#L2040)
 - 也就是说，天然就有一个“core damage / callback / after damage”三段式边界
 
 更重要的是，当前代码里已经存在“先改 HP，再独立调用 `on_damaged()`”的先例：
@@ -564,10 +579,10 @@ pub enum Effect {
 
 这样一来，像下面这些当前很别扭的代码就都可以消失：
 
-- [ChargeSkill::act_with_level](../crates/tswn_core/src/player/skill/act/charge.rs#L57)
-- [AccumulateSkill::act_with_level](../crates/tswn_core/src/player/skill/act/accumulate.rs#L77)
-- [HideSkill::pre_action / update_state](../crates/tswn_core/src/player/skill/skl/hide.rs#L124-L145)
-- [ReflectSkill::pre_defend_with_level](../crates/tswn_core/src/player/skill/skl/reflect.rs#L29-L79)
+- [ChargeSkill::act_with_level](../crates/tswn_core/src/player/skill/act/charge.rs#L51)
+- [AccumulateSkill::act_with_level](../crates/tswn_core/src/player/skill/act/accumulate.rs#L62)
+- [HideSkill::pre_action / update_state](../crates/tswn_core/src/player/skill/skl/hide.rs#L92-L135)
+- [ReflectSkill::pre_defend_with_level](../crates/tswn_core/src/player/skill/skl/reflect.rs#L23-L80)
 
 因为这些实现里，大量 `just_get_player_mut(args.0)` 的真实目的都只是“我想改 owner 自己”，那就应该把 owner 直接传进去，而不是让它绕一圈 `Storage`。
 
@@ -632,7 +647,7 @@ pub struct Storage {
 
 已经有两个现成先例支撑它：
 
-1. [update_state_inline](../crates/tswn_core/src/player/impl_attr.rs#L217) 说明把技能作用直接投到 `PlayerStatus` 是可行的
+1. [update_state_inline](../crates/tswn_core/src/player/skill.rs#L215) 说明把技能作用直接投到 `PlayerStatus` 是可行的
 2. [IceSkill::score_target](../crates/tswn_core/src/player/skill/act/ice.rs#L29) 说明一大类只读逻辑本来就更适合基于“拆开的数据视图”表达
 
 #### 6.4.3 成本与收益
@@ -745,7 +760,7 @@ pub fn just_get_player_mut_checked(&self, ptr: PlrId) -> BorrowGuard<'_> {
 
 这里保留两个结论，不再重复展开所有表格：
 
-1. [perf_report_ub_fix.md#L28-L50](perf_report_ub_fix.md#L28-L50) 已经说明 `330cd46` 引入的 `run_post_kill` 没有可测量性能退化。
+1. [perf/ub_fix_no_debug.md](perf/ub_fix_no_debug.md) 已经说明 `330cd46` 引入的 `run_post_kill` 没有可测量性能退化。
 2. 当前主线下 `mutable-noalias=no` 的额外性能影响，在已有基准里接近噪声。
 
 因此，当前路线选择不应该被“会不会慢很多”主导，而应该主要由：
@@ -784,7 +799,7 @@ pub fn just_get_player_mut_checked(&self, ptr: PlrId) -> BorrowGuard<'_> {
 这是我现在最推荐的后续方向，因为它：
 
 - 正中当前根因：trait 上下文能力过宽
-- 有 [update_state_inline](../crates/tswn_core/src/player/impl_attr.rs#L217) 作为现成成功范式
+- 有 [update_state_inline](../crates/tswn_core/src/player/skill.rs#L215) 作为现成成功范式
 - 不需要立刻做全局 EventQueue 或 Arena 重写
 
 如果 D + J 都落地，再考虑去掉 `mutable-noalias=no`、回到 stable，路径就会比“直接冲 G/E”清晰很多。
