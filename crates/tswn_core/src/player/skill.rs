@@ -272,6 +272,8 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn post_action_inline(&mut self, _ctx: &mut InlineCtx) {}
     /// 内联版 post_damage（方案 J）。
     fn post_damage_inline(&mut self, _ctx: &mut InlineCtx) {}
+    /// 是否实现了内联版 pre_defend。
+    fn has_inline_pre_defend(&self) -> bool { false }
     /// 内联版 pre_defend（方案 J）。
     fn pre_defend_inline(&mut self, _level: u32, _ctx: &mut InlineCtx, atp: f64, _is_mag: bool, _caster: PlrId, _on_damage: &OnDamageFunc) -> f64 { atp }
     /// 行动!
@@ -784,6 +786,8 @@ impl Skill {
     pub fn post_damage_inline(&mut self, ctx: &mut InlineCtx) {
         self.skill_type.post_damage_inline(ctx)
     }
+
+    pub fn has_inline_pre_defend(&self) -> bool { self.skill_type.has_inline_pre_defend() }
 
     pub fn pre_defend_inline(&mut self, ctx: &mut InlineCtx, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc) -> f64 {
         self.skill_type.pre_defend_inline(self.level, ctx, atp, is_mag, caster, on_damage)

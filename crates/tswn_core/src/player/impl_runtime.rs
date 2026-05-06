@@ -1826,20 +1826,30 @@ impl Player {
         let protect_split = self.get_state::<ProtectState>().map(|state| state.pre_defend_skill_count);
         if let Some(split) = protect_split {
             let split = split.min(self.skills.pre_defend.len());
-            atp = self.skills.pre_defend_range(
+            let self_ptr: *mut Player = self;
+            let mut ctx = InlineCtx {
+                ptr: self.as_ptr(),
+                owner: unsafe { &mut *self_ptr },
+                randomer,
+                updates,
+                storage,
+                effects: SmallVec::new(),
+                needs_update_states: false,
+            };
+            atp = self.skills.pre_defend_range_inline(
                 0,
                 split,
                 atp,
                 is_mag,
                 caster,
                 on_damage,
-                (self.as_ptr(), randomer, updates, storage),
+                &mut ctx,
             );
             if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
                 eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
             }
             // JS 的 y1/pre_defend 混合链即便在入参 atp 已经为 0 时，仍会继续跑到当前顺序里的状态 entry。
-            // 这里只在“前面的 skill entry 把 atp 打成 0”时提前返回；若是一开始就为 0，需要继续让 protect/state entry 消耗 RC4。
+            // 这里只在"前面的 skill entry 把 atp 打成 0"时提前返回；若是一开始就为 0，需要继续让 protect/state entry 消耗 RC4。
             if atp == 0.0 && !started_zero {
                 return 0.0;
             }
@@ -1870,14 +1880,24 @@ impl Player {
             }
 
             let atp_after_protect = atp;
-            atp = self.skills.pre_defend_range(
+            let self_ptr2: *mut Player = self;
+            let mut ctx2 = InlineCtx {
+                ptr: self.as_ptr(),
+                owner: unsafe { &mut *self_ptr2 },
+                randomer,
+                updates,
+                storage,
+                effects: SmallVec::new(),
+                needs_update_states: false,
+            };
+            atp = self.skills.pre_defend_range_inline(
                 split,
                 self.skills.pre_defend.len(),
                 atp,
                 is_mag,
                 caster,
                 on_damage,
-                (self.as_ptr(), randomer, updates, storage),
+                &mut ctx2,
             );
             if crate::debug::debug_damage() && (atp - atp_after_protect).abs() > 0.001 {
                 eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_after_protect, atp);
@@ -1927,9 +1947,27 @@ impl Player {
             return atp;
         }
 
-        atp = self
-            .skills
-            .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
+        {
+            let self_ptr: *mut Player = self;
+            let mut ctx = InlineCtx {
+                ptr: self.as_ptr(),
+                owner: unsafe { &mut *self_ptr },
+                randomer,
+                updates,
+                storage,
+                effects: SmallVec::new(),
+                needs_update_states: false,
+            };
+            atp = self.skills.pre_defend_range_inline(
+                0,
+                self.skills.pre_defend.len(),
+                atp,
+                is_mag,
+                caster,
+                on_damage,
+                &mut ctx,
+            );
+        }
         if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
             eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
         }

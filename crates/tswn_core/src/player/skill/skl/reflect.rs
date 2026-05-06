@@ -108,6 +108,8 @@ impl SkillTrait for ReflectSkill {
         0.0
     }
 
+    fn has_inline_pre_defend(&self) -> bool { true }
+
     fn pre_defend_inline(&mut self, level: u32, ctx: &mut InlineCtx, atp: f64, _is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc) -> f64 {
         if ctx.storage.get_player(&caster).map(|p| p.get_status().hp <= 0).unwrap_or(true) {
             return atp;
