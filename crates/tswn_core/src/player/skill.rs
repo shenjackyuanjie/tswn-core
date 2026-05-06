@@ -180,24 +180,31 @@ pub enum Effect {
 
 /// owner-centric 技能回调的上下文（方案 J）。
 ///
-/// 将 `&mut Player` 的字段拆分为独立引用，在调用点通过 split-borrow 构造。
-/// 技能通过此上下文直接修改 owner 字段，无需经过 `Storage::just_get_player_mut`。
+/// 持有 `&mut Player` 完整引用，技能通过 `ctx.owner` 直接访问 owner 的全部能力，
+/// 无需经过 `Storage::just_get_player_mut`。
+///
+/// 注意：构造 InlineCtx 时 owner 的 `skills` 被临时移出（避免 `&mut Skill` 与
+/// `&mut Player` 别名），因此 **不要在回调中调用 `ctx.owner.update_states()`**。
+/// 需要更新状态时请用 `ctx.mark_update_states()`，调度器会在恢复 skills 后统一调用。
 pub struct InlineCtx<'a> {
     pub ptr: PlrId,
-    pub status: &'a mut super::PlayerStatus,
-    pub state: &'a mut super::PlayerStateStore,
+    pub owner: &'a mut super::Player,
     pub randomer: &'a mut RC4,
     pub updates: &'a mut RunUpdates,
     pub storage: &'a Arc<Storage>,
     pub effects: SmallVec<[Effect; 4]>,
-    pub needs_update_states: bool,
+    pub(super) needs_update_states: bool,
 }
 
 impl<'a> InlineCtx<'a> {
-    /// 设置状态并标记需要 `update_states()`。
-    /// 等效于 `Player::set_state()` —— 先 `state.set()` 再在回调返回后调用 `update_states()`。
+    /// 设置状态（通过 `set_state_no_update`，调度器在回调返回后统一调用 `update_states()`）。
     pub fn set_state(&mut self, state: impl super::StateTrait + 'static) {
-        self.state.set(state);
+        self.owner.set_state_no_update(state);
+        self.needs_update_states = true;
+    }
+
+    /// 标记需要在回调返回后调用 `update_states()`。
+    pub fn mark_update_states(&mut self) {
         self.needs_update_states = true;
     }
 }

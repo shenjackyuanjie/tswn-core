@@ -484,20 +484,21 @@ impl Player {
                     let (manages_dynamic_pre_action, dynamic_pre_action_enabled) = {
                         let has_inline = self.skills.skill_by_id(skill_key).has_inline_act();
                         if has_inline {
-                            let needs_update = {
-                                let status = &mut self.status;
-                                let state = &mut self.state;
+                            let mut skills = std::mem::take(&mut self.skills);
+                            let needs_update;
+                            let manages_dynamic_pre_action;
+                            let dynamic_pre_action_enabled;
+                            {
+                                let skill = skills.skill_by_id_mut(skill_key);
                                 let mut ctx = InlineCtx {
                                     ptr,
-                                    status,
-                                    state,
+                                    owner: self,
                                     randomer,
                                     updates,
                                     storage,
                                     effects: SmallVec::new(),
                                     needs_update_states: false,
                                 };
-                                let skill = self.skills.skill_by_id_mut(skill_key);
                                 skill.act_inline(selected_targets, smart, &mut ctx);
                                 for effect in ctx.effects.drain(..) {
                                     match effect {
@@ -541,13 +542,15 @@ impl Player {
                                         }
                                     }
                                 }
-                                ctx.needs_update_states
-                            };
+                                needs_update = ctx.needs_update_states;
+                                manages_dynamic_pre_action = skill.manages_dynamic_pre_action();
+                                dynamic_pre_action_enabled = skill.dynamic_pre_action_enabled();
+                            }
+                            self.skills = skills;
                             if needs_update {
                                 self.update_states();
                             }
-                            let skill = self.skills.skill_by_id_mut(skill_key);
-                            (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled())
+                            (manages_dynamic_pre_action, dynamic_pre_action_enabled)
                         } else {
                             let skill = self.skills.skill_by_id_mut(skill_key);
                             skill.act(selected_targets, smart, (ptr, randomer, updates, storage));

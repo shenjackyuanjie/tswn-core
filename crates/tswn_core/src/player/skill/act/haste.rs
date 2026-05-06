@@ -87,7 +87,7 @@ impl SkillTrait for HasteSkill {
             .map(|skill| skill.charge_runtime_active())
             .unwrap_or(false);
 
-        ctx.status.move_point += ctx.status.speed;
+        ctx.owner.status.move_point += ctx.owner.status.speed;
 
         if let Some(target) = ctx.storage.just_get_player_mut(target_id) {
             if let Some(state) = target.get_state_mut::<HasteState>() {

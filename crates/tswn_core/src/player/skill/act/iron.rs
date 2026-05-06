@@ -50,8 +50,8 @@ impl SkillTrait for IronSkill {
     fn has_inline_act(&self) -> bool { true }
 
     fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
-        let owner_magic = ctx.status.magic;
-        let charge_active = ctx.status.at_boost >= 3.0;
+        let owner_magic = ctx.owner.status.magic;
+        let charge_active = ctx.owner.status.at_boost >= 3.0;
 
         let mut step = 3;
         let mut protect = 110 + owner_magic;
@@ -62,7 +62,7 @@ impl SkillTrait for IronSkill {
 
         ctx.updates.add(RunUpdate::new("[0]发动[铁壁]", ctx.ptr, ctx.ptr, 60));
         ctx.set_state(IronState { protect, step });
-        ctx.status.move_point -= 256;
+        ctx.owner.status.move_point -= 256;
         ctx.updates.add(RunUpdate::new("[0]防御力大幅上升", ctx.ptr, ctx.ptr, 0));
     }
 
