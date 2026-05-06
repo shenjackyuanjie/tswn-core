@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -67,6 +67,74 @@ impl SkillTrait for ExchangeSkill {
             score * target_plr.get_status().hp as f64
         } else {
             score
+        }
+    }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        ctx.updates.add(RunUpdate::new("[0]使用[生命之轮]", ctx.ptr, target_id, 1));
+
+        let owner_magic = ctx.owner.status.magic;
+        let charge_active = ctx.owner.status.at_boost >= 3.0;
+        let owner_hp = ctx.owner.status.hp;
+        let owner_max_hp = ctx.owner.status.max_hp;
+
+        let (target_res, target_def, target_agl, target_hp, target_immune, target_active) = ctx
+            .storage
+            .get_player(&target_id)
+            .map(|target| {
+                (
+                    target.get_status().resistance,
+                    target.get_status().defense,
+                    target.get_status().agility,
+                    target.get_status().hp,
+                    target.check_immune("exchange", ctx.randomer),
+                    target.active(),
+                )
+            })
+            .expect("cannot get exchange target from storage");
+        if target_immune
+            || (target_active && !charge_active && Player::dodge(owner_magic, target_res + target_def + target_agl, ctx.randomer))
+        {
+            ctx.updates.add(RunUpdate::new("[0][回避]了攻击", target_id, ctx.ptr, 20));
+            return;
+        }
+
+        if charge_active {
+            let target_move_point = ctx
+                .storage
+                .get_player(&target_id)
+                .expect("cannot get exchange target from storage")
+                .move_point();
+            ctx.owner.set_move_point(ctx.owner.move_point() + target_move_point);
+            if let Some(target) = ctx.storage.just_get_player_mut(target_id) {
+                target.set_move_point(0);
+            }
+        }
+
+        let owner_new_hp = target_hp.min(owner_max_hp);
+        let target_new_hp = owner_hp;
+        ctx.owner.set_hp_raw(owner_new_hp);
+        if let Some(target) = ctx.storage.just_get_player_mut(target_id) {
+            target.set_hp_raw(target_new_hp);
+        }
+
+        ctx.updates.add(RunUpdate::new(
+            "[1]的体力值与[0]互换",
+            ctx.ptr,
+            target_id,
+            ((target_hp - owner_hp) * 2).max(0) as u32,
+        ));
+
+        if target_hp > target_new_hp {
+            if let Some(target) = ctx.storage.just_get_player_mut(target_id) {
+                target.on_damaged(target_hp - target_new_hp, target_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
+            }
         }
     }
 

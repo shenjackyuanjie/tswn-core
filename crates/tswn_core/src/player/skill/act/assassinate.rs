@@ -6,7 +6,7 @@ use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
     skill::poison::PoisonState,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -144,6 +144,76 @@ impl SkillTrait for AssassinateSkill {
     }
 
     fn allows_empty_targets(&self) -> bool { self.on_pre_action.is_some() }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if self.target.is_none() && targets.is_empty() {
+            return;
+        }
+        if self.target.is_none() {
+            let target_id = targets[0];
+            self.target = Some(target_id);
+            self.on_pre_action = Some(());
+            let current_move = ctx.owner.move_point();
+            let owner_magic = ctx.owner.status.magic;
+            let charge_active = ctx
+                .storage
+                .get_player(&ctx.ptr)
+                .and_then(|owner| owner.skills.store.get(&19))
+                .map(|skill| skill.charge_runtime_active())
+                .unwrap_or(false);
+            if !charge_active {
+                self.on_post_damage = Some(());
+            }
+            ctx.owner.set_move_point(current_move + owner_magic * 3 + if charge_active { 1600 } else { 0 });
+            ctx.updates.add(RunUpdate::new("[0][潜行]到[1]身后", ctx.ptr, target_id, 1));
+            return;
+        }
+
+        let target_id = self.target.expect("assassinate target should exist");
+        self.clear_pending();
+        if !ctx.storage.get_player(&target_id).map(|x| x.alive()).unwrap_or(false) {
+            return;
+        }
+        ctx.updates.add(RunUpdate::new("[0]发动[背刺]", ctx.ptr, target_id, 1));
+        let at1 = ctx.owner.get_at(true, ctx.randomer);
+        let at2 = ctx.owner.get_at(true, ctx.randomer);
+        let at3 = ctx.owner.get_at(true, ctx.randomer);
+        let atp = at1.max(at2).max(at3) * 4.0;
+        #[cfg(not(feature = "no_debug"))]
+        if crate::debug::debug_action_matches(&ctx.owner.id_name()) {
+            let target_name = ctx
+                .storage
+                .get_player(&target_id)
+                .map(|p| p.id_name())
+                .unwrap_or_else(|| format!("#{target_id}"));
+            eprintln!(
+                "[assassinate_atp] actor={} target={} at1={} at2={} at3={} atp={} rc4=({}, {})",
+                ctx.owner.id_name(),
+                target_name,
+                at1,
+                at2,
+                at3,
+                atp,
+                ctx.randomer.i,
+                ctx.randomer.j,
+            );
+        }
+        let dodged = ctx
+            .storage
+            .get_player(&target_id)
+            .map(|target| target.check_immune("assassinate", ctx.randomer))
+            .unwrap_or(false);
+        if dodged {
+            ctx.updates.add(RunUpdate::new("[0][回避]了攻击", target_id, ctx.ptr, 0));
+            return;
+        }
+        ctx.storage
+            .just_get_player_mut(target_id)
+            .expect("cannot get assassinate target from storage")
+            .defned(atp, true, ctx.ptr, on_assassinate as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage);
+    }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if self.target.is_none() && targets.is_empty() {

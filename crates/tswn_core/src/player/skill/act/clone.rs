@@ -2,7 +2,7 @@ use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, root_mini
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlayerStateStore, PlayerType, PlrId,
-    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -42,6 +42,103 @@ impl SkillTrait for CloneSkill {
 
     fn select_targets_with_level(&self, _level: u32, _candidates: &[PlrId], _smart: bool, args: SkillArgs) -> Vec<PlrId> {
         vec![args.0]
+    }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        let random_factor = (ctx.randomer.next_u8() as u32 & 63) + 64;
+        let mut decayed_level = ((level as f64) * random_factor as f64 / 128.0).ceil() as u32;
+
+        let charge_active = ctx.owner.status.at_boost >= 3.0;
+        if !charge_active {
+            for i in 0..7 {
+                ctx.owner.attr[i] = ((ctx.owner.attr[i] as f64) * 0.78).ceil() as u32;
+            }
+            ctx.owner.attr[7] = ((ctx.owner.attr[7] as f64) * 0.5).ceil() as u32;
+            ctx.owner.status.hp = ((ctx.owner.status.hp as f64) * 0.5).ceil() as i32;
+            ctx.owner.status.hp = ctx.owner.status.hp.clamp(1, ctx.owner.status.max_hp.max(1));
+            ctx.owner.calc_attr_sum();
+            // Recalculate derived stats inline (can't call update_states due to &mut Skill aliasing)
+            ctx.owner.status.max_hp = ctx.owner.attr[7] as i32;
+            ctx.owner.status.magic = ctx.owner.scale_by_name_factor_i(ctx.owner.attr[4] as i32, 128);
+            ctx.mark_update_states();
+        }
+
+        let root_owner_id = root_minion_name_owner_id(ctx.storage, ctx.ptr);
+        let owner_snapshot = ctx.storage.get_player(&ctx.ptr).expect("cannot get clone owner from storage").clone();
+        let mut cloned = owner_snapshot.clone();
+        cloned.set_id_name_override(Some(alloc_minion_name(ctx.storage, ctx.ptr)));
+        cloned.set_display_name_override(Some(owner_snapshot.display_name()));
+        cloned.reset_minion_name_counter();
+        cloned.id = ctx.storage.new_plr_id();
+        cloned.player_type = PlayerType::Clone;
+        cloned.sort_int = 0;
+        cloned.state = PlayerStateStore::default();
+        cloned.build_for_clone(&owner_snapshot.skills);
+        cloned.attr = owner_snapshot.attr;
+        if let Some(ref ws) = cloned.weapon_state {
+            for i in 0..8 {
+                cloned.attr[i] = (cloned.attr[i] as i32 + ws.attr_bonus[i]) as u32;
+            }
+        }
+        cloned.state = PlayerStateStore::default();
+        cloned.set_state(MinionRuntimeState {
+            owner: Some(root_owner_id),
+            kind: MinionKind::Clone,
+        });
+        cloned.update_states();
+        cloned.status.move_point = ctx.randomer.r255() as i32 * 4 + 256;
+        cloned.status.hp = owner_snapshot.get_status().hp.max(1);
+        cloned.status.magic_point = (cloned.status.wisdom >> 1).max(0);
+        cloned.status.set_alive(true);
+        cloned.status.set_frozen(false);
+
+        if owner_snapshot.get_status().hp + owner_snapshot.get_status().magic < ctx.randomer.r255() as i32 {
+            decayed_level = (decayed_level >> 1) + 1;
+        }
+        let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
+        let clone_skill_was_zero = cloned.skills.skill_by_id(23).level() == 0;
+        cloned.skills.skill_by_id_mut(23).set_level(cloned_clone_level.max(1));
+        if clone_skill_was_zero {
+            cloned.skills.disable_action_key(23);
+        }
+        cloned.skills.update_proc();
+        if crate::debug::debug_stats() {
+            eprintln!(
+                "[CLONE_FINAL] owner={} owner_attr={:?} owner_hp={} owner_mp={} owner_atk={} owner_def={} owner_spd={} owner_agl={} owner_mag={} owner_mdf={} owner_wis={} | clone_base={} clone_attr={:?} clone_hp={} clone_mp={} clone_atk={} clone_def={} clone_spd={} clone_agl={} clone_mag={} clone_mdf={} clone_wis={} clone_move={} clone_clone_lvl={}",
+                owner_snapshot.id_name(),
+                owner_snapshot.attr,
+                owner_snapshot.get_status().hp,
+                owner_snapshot.get_status().magic_point,
+                owner_snapshot.get_status().attack,
+                owner_snapshot.get_status().defense,
+                owner_snapshot.get_status().speed,
+                owner_snapshot.get_status().agility,
+                owner_snapshot.get_status().magic,
+                owner_snapshot.get_status().resistance,
+                owner_snapshot.get_status().wisdom,
+                cloned.id_name(),
+                cloned.attr,
+                cloned.get_status().hp,
+                cloned.get_status().magic_point,
+                cloned.get_status().attack,
+                cloned.get_status().defense,
+                cloned.get_status().speed,
+                cloned.get_status().agility,
+                cloned.get_status().magic,
+                cloned.get_status().resistance,
+                cloned.get_status().wisdom,
+                cloned.get_status().move_point,
+                cloned.skills.skill_by_id(23).level(),
+            );
+        }
+
+        let cloned_id = cloned.as_ptr();
+        ctx.updates.add(RunUpdate::new("[0]使用[分身]", ctx.ptr, ctx.ptr, 60));
+        ctx.storage.queue_spawn(ctx.ptr, cloned);
+        ctx.updates.add(RunUpdate::new("出现一个新的[1]", ctx.ptr, cloned_id, 0));
+        self.final_level = Some(decayed_level);
     }
 
     fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {

@@ -52,7 +52,7 @@ impl Player {
         (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as u32
     }
 
-    fn scale_by_name_factor_i(&self, val: i32, factor2: i32) -> i32 {
+    pub(super) fn scale_by_name_factor_i(&self, val: i32, factor2: i32) -> i32 {
         (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as i32
     }
 

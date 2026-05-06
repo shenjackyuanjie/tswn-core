@@ -2,7 +2,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,
     skill::berserk::BerserkState,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -22,6 +22,45 @@ impl SkillTrait for PossessSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     fn has_action_impl(&self) -> bool { true }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        let Some(&target_id) = targets.first() else {
+            return;
+        };
+        ctx.updates.add(RunUpdate::new("[0]使用[附体]", ctx.ptr, target_id, 0));
+
+        let dodged = if let Some(target) = ctx.storage.get_player(&target_id) {
+            if target.check_immune("berserk", ctx.randomer) {
+                true
+            } else {
+                target.alive()
+                    && !target.get_status().frozed()
+                    && Player::dodge(ctx.owner.status.magic, target.get_status().resistance, ctx.randomer)
+            }
+        } else {
+            return;
+        };
+        if dodged {
+            ctx.updates.add(RunUpdate::new("[0][回避]了攻击", target_id, ctx.ptr, 20));
+            return;
+        }
+
+        {
+            let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get possess target from storage");
+            if let Some(state) = target.get_state_mut::<BerserkState>() {
+                state.step += 4;
+            } else {
+                target.state.set(BerserkState { step: 4 });
+            }
+        }
+        ctx.updates.add(RunUpdate::new("[1]进入[狂暴]状态", ctx.ptr, target_id, 0));
+
+        let old_hp = ctx.owner.status.hp;
+        ctx.owner.status.hp = 0;
+        ctx.owner.on_die(old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
+    }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         let Some(&target_id) = targets.first() else {
