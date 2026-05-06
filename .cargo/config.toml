@@ -1,7 +1,6 @@
 [build]
 # 禁用 LLVM 对 &mut 引用的 noalias 优化。
-# 本项目中 Storage（共享 Arc<Storage>）的设计允许多个 &mut Player 引用同时存在
-# （通过 UnsafeCell），技能回调经常通过 storage.just_get_player_mut(owner_id)
-# 访问与调用者 &mut self 相同的 Player，违反 Rust 的 noalias 约束。
-# 在 release 优化下，LLVM 基于 noalias 进行的值缓存/重排会产生错误结果。
+# TODO: 方案 D 已消除除 1 个测试外的所有 release UB（199 测试中 198 通过）。
+#       剩余 1 个失败: skill_act_preserves_level_upgrades_happening_mid_act
+#       属于 owner-phase alias，待方案 J 完成后可永久移除此 flag。
 rustflags = ["-Z", "mutable-noalias=no"]
