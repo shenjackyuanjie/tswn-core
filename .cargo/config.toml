@@ -1,6 +1,3 @@
 [build]
-# 禁用 LLVM 对 &mut 引用的 noalias 优化。
-# TODO: 方案 D 已消除除 1 个测试外的所有 release UB（199 测试中 198 通过）。
-#       剩余 1 个失败: skill_act_preserves_level_upgrades_happening_mid_act
-#       属于 owner-phase alias，待方案 J 完成后可永久移除此 flag。
-rustflags = ["-Z", "mutable-noalias=no"]
+# 方案 D+J 已消除所有已知 UB，不再需要 mutable-noalias=no。
+# 2026-05-06: 全 199 个测试在 release 优化下无需特殊 flag 即可通过。

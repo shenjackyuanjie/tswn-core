@@ -751,7 +751,6 @@ fn damage_marks_high_damage_thresholds() {
 fn skill_act_preserves_level_upgrades_happening_mid_act() {
     #[derive(Debug, Clone)]
     struct MidActUpgradeSkill {
-        skill_key: usize,
         upgraded_level: u32,
     }
 
@@ -760,13 +759,13 @@ fn skill_act_preserves_level_upgrades_happening_mid_act() {
 
         fn clone_box(&self) -> Box<dyn crate::player::skill::SkillTrait> { Box::new(self.clone()) }
 
-        fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: crate::player::skill::SkillArgs) {
-            args.3
-                .just_get_player_mut(args.0)
-                .unwrap()
-                .skills
-                .skill_by_id_mut(self.skill_key)
-                .set_level(self.upgraded_level);
+        fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, _args: crate::player::skill::SkillArgs) {
+            // 标记需要在 act 结束后升级 level；由 post_act_level 完成。
+            // 不通过 just_get_player_mut 重借 owner，避免 &mut Skill 别名。
+        }
+
+        fn post_act_level(&self, level: u32) -> u32 {
+            if self.upgraded_level > level { self.upgraded_level } else { level }
         }
     }
 
@@ -781,10 +780,7 @@ fn skill_act_preserves_level_upgrades_happening_mid_act() {
         let skill_key = owner_mut.skills.skill.len();
         owner_mut.skills.add_skill(crate::player::skill::Skill::new(
             76,
-            Box::new(MidActUpgradeSkill {
-                skill_key,
-                upgraded_level: 100,
-            }),
+            Box::new(MidActUpgradeSkill { upgraded_level: 100 }),
         ));
         skill_key
     };
