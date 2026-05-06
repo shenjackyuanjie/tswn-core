@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone)]
@@ -59,6 +59,33 @@ impl SkillTrait for AccumulateSkill {
         vec![args.0]
     }
 
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if self.on_update_state.is_some() {
+            return;
+        }
+        self.on_update_state = Some(());
+        self.charge_bonus = 0.0;
+        ctx.updates.add(RunUpdate::new("[0]开始[聚气]", ctx.ptr, ctx.ptr, 1));
+
+        let charge_active = ctx
+            .storage
+            .get_player(&ctx.ptr)
+            .map(|owner| owner.get_status().at_boost >= 3.0)
+            .unwrap_or(false);
+        if charge_active {
+            self.charge_bonus = 1.0;
+        }
+
+        if charge_active {
+            ctx.owner.set_move_point(ctx.owner.move_point() + 500);
+        }
+        ctx.mark_update_states();
+        ctx.owner.set_move_point(ctx.owner.move_point() + 400);
+        ctx.updates.add(RunUpdate::new("[0]攻击力上升", ctx.ptr, ctx.ptr, 0));
+    }
+
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if self.on_update_state.is_some() {
             return;
@@ -108,6 +135,14 @@ impl SkillTrait for AccumulateSkill {
             .just_get_player_mut(args.0)
             .expect("cannot get accumulate owner from storage")
             .update_states();
+        Some("[1]的[聚气]被打消了")
+    }
+
+    fn clear_positive_runtime_inline(&mut self, ctx: &mut InlineCtx) -> Option<&'static str> {
+        self.on_update_state.take()?;
+        self.acc = 1.600000023841858;
+        self.charge_bonus = 0.0;
+        ctx.mark_update_states();
         Some("[1]的[聚气]被打消了")
     }
 

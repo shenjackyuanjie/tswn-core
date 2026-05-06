@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::{PostActionPhase, ProcKind, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{InlineCtx, PostActionPhase, ProcKind, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -46,6 +46,17 @@ impl SkillTrait for ChargeSkill {
 
     fn select_targets_with_level(&self, _level: u32, _candidates: &[PlrId], _smart: bool, args: SkillArgs) -> Vec<PlrId> {
         vec![args.0]
+    }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        self.step += 2;
+        self.on_post_action = Some(());
+        self.on_update_state = Some(());
+        ctx.updates.add(RunUpdate::new("[0]开始[蓄力]", ctx.ptr, ctx.ptr, 1));
+        ctx.mark_update_states();
+        ctx.owner.set_magic_point(ctx.owner.magic_point() + 32);
     }
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
@@ -105,6 +116,13 @@ impl SkillTrait for ChargeSkill {
             .just_get_player_mut(args.0)
             .expect("cannot get charge owner from storage")
             .update_states();
+        Some("[1]的[蓄力]被中止了")
+    }
+
+    fn clear_positive_runtime_inline(&mut self, ctx: &mut InlineCtx) -> Option<&'static str> {
+        self.on_update_state.take()?;
+        self.on_post_action = None;
+        ctx.mark_update_states();
         Some("[1]的[蓄力]被中止了")
     }
 
