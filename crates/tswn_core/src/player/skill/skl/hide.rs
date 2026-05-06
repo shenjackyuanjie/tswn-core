@@ -2,7 +2,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
     skill::act::charm::CharmState,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 use smallvec::SmallVec;
 
@@ -116,6 +116,19 @@ impl SkillTrait for HideSkill {
     ) -> Option<usize> {
         self.pre_action(args);
         None
+    }
+
+    fn pre_action_inline(&mut self, ctx: &mut InlineCtx) {
+        if self.on_update_state.is_some() {
+            self.on_update_state = None;
+            ctx.mark_update_states();
+        }
+    }
+
+    fn post_damage_inline(&mut self, ctx: &mut InlineCtx) {
+        if self.on_update_state.is_some() {
+            ctx.mark_update_states();
+        }
     }
 
     fn update_state_with_level(&mut self, level: u32, args: SkillArgs) {

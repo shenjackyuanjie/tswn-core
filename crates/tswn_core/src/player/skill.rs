@@ -266,6 +266,14 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, _ctx: &mut InlineCtx) {}
     /// 内联版 clear_positive_runtime — 通过 InlineCtx 直接访问（方案 J）。
     fn clear_positive_runtime_inline(&mut self, _ctx: &mut InlineCtx) -> Option<&'static str> { None }
+    /// 内联版 pre_action（方案 J）。
+    fn pre_action_inline(&mut self, _ctx: &mut InlineCtx) {}
+    /// 内联版 post_action（方案 J）。
+    fn post_action_inline(&mut self, _ctx: &mut InlineCtx) {}
+    /// 内联版 post_damage（方案 J）。
+    fn post_damage_inline(&mut self, _ctx: &mut InlineCtx) {}
+    /// 内联版 pre_defend（方案 J）。
+    fn pre_defend_inline(&mut self, _level: u32, _ctx: &mut InlineCtx, atp: f64, _is_mag: bool, _caster: PlrId, _on_damage: &OnDamageFunc) -> f64 { atp }
     /// 行动!
     fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
@@ -763,6 +771,22 @@ impl Skill {
 
     pub fn clear_positive_runtime_inline(&mut self, ctx: &mut InlineCtx) -> Option<&'static str> {
         self.skill_type.clear_positive_runtime_inline(ctx)
+    }
+
+    pub fn pre_action_inline(&mut self, ctx: &mut InlineCtx) {
+        self.skill_type.pre_action_inline(ctx)
+    }
+
+    pub fn post_action_inline(&mut self, ctx: &mut InlineCtx) {
+        self.skill_type.post_action_inline(ctx)
+    }
+
+    pub fn post_damage_inline(&mut self, ctx: &mut InlineCtx) {
+        self.skill_type.post_damage_inline(ctx)
+    }
+
+    pub fn pre_defend_inline(&mut self, ctx: &mut InlineCtx, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc) -> f64 {
+        self.skill_type.pre_defend_inline(self.level, ctx, atp, is_mag, caster, on_damage)
     }
 
     pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }

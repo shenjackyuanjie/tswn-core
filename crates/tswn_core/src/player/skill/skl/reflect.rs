@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -105,6 +105,37 @@ impl SkillTrait for ReflectSkill {
                 args.1.i, args.1.j
             );
         }
+        0.0
+    }
+
+    fn pre_defend_inline(&mut self, level: u32, ctx: &mut InlineCtx, atp: f64, _is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc) -> f64 {
+        if ctx.storage.get_player(&caster).map(|p| p.get_status().hp <= 0).unwrap_or(true) {
+            return atp;
+        }
+        if ctx.randomer.r255() >= level || !ctx.randomer.c50() || !ctx.owner.mp_ready(ctx.randomer) {
+            return atp;
+        }
+        let mut reflect_atp = ctx.owner.get_at(true, ctx.randomer) * 0.5;
+        if reflect_atp > atp {
+            reflect_atp = atp;
+        }
+        ctx.updates.add(RunUpdate::new("[0]使用[伤害反弹]", ctx.ptr, caster, 20));
+        let core = {
+            let caster_plr = ctx
+                .storage
+                .just_get_player_mut(caster)
+                .expect("cannot get reflect caster from storage");
+            caster_plr.attacked_core(reflect_atp, true, ctx.ptr, *on_damage, ctx.randomer, ctx.updates, ctx.storage)
+        };
+        if core.hit {
+            on_damage(ctx.ptr, core.target, core.dmg, ctx.randomer, ctx.updates, ctx.storage);
+            let caster_plr = ctx
+                .storage
+                .just_get_player_mut(core.target)
+                .expect("cannot get reflect caster from storage");
+            caster_plr.finish_damage(core.dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
+        }
+        ctx.owner.set_move_point(ctx.owner.move_point() - 480);
         0.0
     }
 
