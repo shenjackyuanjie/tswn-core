@@ -86,7 +86,7 @@ pub fn just_get_player_mut(&self, ptr: PlrId) -> Option<&mut Player> {
 
 - `OnDamageFunc`：见 [player/mod.rs](../crates/tswn_core/src/player/mod.rs#L109)
 - `SkillArgs`：见 [player/skill.rs](../crates/tswn_core/src/player/skill.rs#L163)
-- `StateTrait::on_pre_defend` / `on_post_damage`：见 [state.rs](../crates/tswn_core/src/player/state.rs#L79) 与 [state.rs](../crates/tswn_core/src/player/state.rs#L119)
+- `StateTrait::on_pre_defend` / `on_post_damage`：见 [state.rs](../crates/tswn_core/src/player/state.rs#L80) 与 [state.rs](../crates/tswn_core/src/player/state.rs#L120)
 
 摘自 [player/mod.rs](../crates/tswn_core/src/player/mod.rs#L109) 与 [player/skill.rs](../crates/tswn_core/src/player/skill.rs#L163)：
 
@@ -115,7 +115,7 @@ pub type SkillArgs<'d> = (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Storag
 - [on_damaged](../crates/tswn_core/src/player/impl_runtime.rs#L2040)
 - [on_die_impl](../crates/tswn_core/src/player/impl_runtime.rs#L2096)
 
-`damage()` 的关键片段如下，摘自 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L1962-L2017)：
+`damage()` 的关键片段如下，摘自 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L1962-L2023)：
 
 ```rust
 pub fn damage(
@@ -217,7 +217,7 @@ pub fn run_post_kill(...) {
 
 这不是纸面修复，而是有行为锚点的：
 
-- [merge_kill_applies_owner_growth](../crates/tswn_core/src/player/test.rs#L910) 覆盖了 kill 后 owner 增长逻辑
+- [merge_kill_applies_owner_growth](../crates/tswn_core/src/player/test/minions.rs#L46) 覆盖了 kill 后 owner 增长逻辑
 - [perf/ub_fix_no_debug.md](perf/ub_fix_no_debug.md) 记录了 `330cd46` 后消除了 27 个 release-only diff failures
 - 同一文档也说明 UB 导致的 release-only failure 在修复后全部消失
 
@@ -246,7 +246,7 @@ fn update_state_inline(&mut self, _level: u32, _status: &mut super::PlayerStatus
 - 主循环里的 `update_state` 已经不再需要把 owner 重新从 `Storage` 里借出来
 - 也就是说，“把阶段内真正需要的最小能力直接传进回调”这件事，在当前代码里已经有成功落地案例
 
-需要注意的是，`SkillStorage::update_state()` 这个旧接口仍然还在，见 [skill/store.rs](../crates/tswn_core/src/player/skill/store.rs#L332)，测试里也仍有直接调用，例如 [player/test.rs](../crates/tswn_core/src/player/test.rs#L930-L931) 与 [player/test.rs](../crates/tswn_core/src/player/test.rs#L959-L960)。但它已经不再是战斗主循环的主通道。
+需要注意的是，`SkillStorage::update_state()` 这个旧接口仍然还在，见 [skill/store.rs](../crates/tswn_core/src/player/skill/store.rs#L332)，测试里也仍有直接调用，例如 [merge_kill_applies_owner_growth](../crates/tswn_core/src/player/test/minions.rs#L68) 与 [同函数后续的 update_state 调用](../crates/tswn_core/src/player/test/minions.rs#L97)。但它已经不再是战斗主循环的主通道。
 
 ### 3.4 使魔分摊伤害已经使用“局部阶段标记”修顺序
 
@@ -255,7 +255,7 @@ fn update_state_inline(&mut self, _level: u32, _status: &mut super::PlayerStatus
 - 它不是全局 EventQueue
 - 但它已经承认“有些路径必须分阶段标记，否则死亡顺序会错”
 
-对应的使用点在 [summon.rs](../crates/tswn_core/src/player/skill/act/summon.rs#L245-L268)：
+对应的使用点在 [summon.rs](../crates/tswn_core/src/player/skill/act/summon.rs#L244-L272)：
 
 ```rust
 struct SummonShareDamageSkill;
@@ -314,7 +314,7 @@ fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
 | `pre_defend` | target 的 `&mut self` | [ReflectSkill](../crates/tswn_core/src/player/skill/skl/reflect.rs#L23) | target/owner | `reflect` 的 owner 就是当前 defender，自借最明显 |
 | `clear_positive_runtime` | owner 的 `&mut self` | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L100) / [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L103) | owner | 清状态时又回头借 owner |
 
-以当前 HEAD 粗搜，光是 `player/skill` 目录里就能找到 49 处 owner/target 级别的 `just_get_player_mut(...)` 命中；其中有一部分只是初始化或测试辅助，但上表这些都处在当前主循环的真实热路径内。
+以当前 HEAD 粗搜，光是 `player/skill` 目录里就能找到 84 处（分布在 36 个文件中）owner/target 级别的 `just_get_player_mut(...)` 命中；其中有一部分只是初始化或测试辅助，但上表这些都处在当前主循环的真实热路径内。
 
 最直观的例子是 [ChargeSkill::act_with_level](../crates/tswn_core/src/player/skill/act/charge.rs#L51-L59)：
 
@@ -445,7 +445,7 @@ rustflags = ["-Z", "mutable-noalias=no"]
 
 因为 `damage()` 的结构太明确了，拆开收益很高，风险也低：
 
-- 现在的 `damage()` 在 [impl_runtime.rs#L1962-L2017](../crates/tswn_core/src/player/impl_runtime.rs#L1962-L2017)
+- 现在的 `damage()` 在 [impl_runtime.rs#L1962-L2023](../crates/tswn_core/src/player/impl_runtime.rs#L1962-L2023)
 - `on_damage` 之后的后续逻辑基本都在 [on_damaged](../crates/tswn_core/src/player/impl_runtime.rs#L2040)
 - 也就是说，天然就有一个“core damage / callback / after damage”三段式边界
 
@@ -727,13 +727,13 @@ pub fn just_get_player_mut_checked(&self, ptr: PlrId) -> BorrowGuard<'_> {
 
 当前和本文主题直接相关的测试锚点包括：
 
-- [on_damaged_triggers_on_die](../crates/tswn_core/src/player/test.rs#L299)
-- [merge_and_zombie_kill_write_target_states](../crates/tswn_core/src/player/test.rs#L522)
-- [merge_kill_applies_owner_growth](../crates/tswn_core/src/player/test.rs#L910)
-- [zombie_kill_marks_corpse_and_queues_minion_spawn](../crates/tswn_core/src/player/test.rs#L1215)
-- [owner_death_marks_linked_minion_for_cleanup](../crates/tswn_core/src/player/test.rs#L1268)
-- [owner_death_removes_linked_minions_in_roster_order](../crates/tswn_core/src/player/test.rs#L1302)
-- [ice_score_halves_already_frozen_targets](../crates/tswn_core/src/player/test.rs#L1356)
+- [on_damaged_triggers_on_die](../crates/tswn_core/src/player/test/skills.rs#L99)
+- [merge_and_zombie_kill_write_target_states](../crates/tswn_core/src/player/test/minions.rs#L4)
+- [merge_kill_applies_owner_growth](../crates/tswn_core/src/player/test/minions.rs#L46)
+- [zombie_kill_marks_corpse_and_queues_minion_spawn](../crates/tswn_core/src/player/test/minions.rs#L104)
+- [owner_death_marks_linked_minion_for_cleanup](../crates/tswn_core/src/player/test/minions.rs#L575)
+- [owner_death_removes_linked_minions_in_roster_order](../crates/tswn_core/src/player/test/minions.rs#L701)
+- [ice_score_halves_already_frozen_targets](../crates/tswn_core/src/player/test/skills.rs#L1105)
 
 这些测试已经很好地覆盖了：
 
