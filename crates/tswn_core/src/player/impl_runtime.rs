@@ -484,15 +484,19 @@ impl Player {
                     let (manages_dynamic_pre_action, dynamic_pre_action_enabled) = {
                         let has_inline = self.skills.skill_by_id(skill_key).has_inline_act();
                         if has_inline {
-                            let mut skills = std::mem::take(&mut self.skills);
                             let needs_update;
                             let manages_dynamic_pre_action;
                             let dynamic_pre_action_enabled;
                             {
-                                let skill = skills.skill_by_id_mut(skill_key);
+                                let self_ptr: *mut Player = self;
+                                let skill = self.skills.skill_by_id_mut(skill_key);
+                                // SAFETY: self_ptr aliases with skill's borrow of self.skills.
+                                // act_inline must not access ctx.owner.skills —
+                                // use ctx.mark_update_states() instead of ctx.owner.update_states().
+                                let owner = unsafe { &mut *self_ptr };
                                 let mut ctx = InlineCtx {
                                     ptr,
-                                    owner: self,
+                                    owner,
                                     randomer,
                                     updates,
                                     storage,
@@ -546,7 +550,6 @@ impl Player {
                                 manages_dynamic_pre_action = skill.manages_dynamic_pre_action();
                                 dynamic_pre_action_enabled = skill.dynamic_pre_action_enabled();
                             }
-                            self.skills = skills;
                             if needs_update {
                                 self.update_states();
                             }

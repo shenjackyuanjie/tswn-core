@@ -183,9 +183,9 @@ pub enum Effect {
 /// 持有 `&mut Player` 完整引用，技能通过 `ctx.owner` 直接访问 owner 的全部能力，
 /// 无需经过 `Storage::just_get_player_mut`。
 ///
-/// 注意：构造 InlineCtx 时 owner 的 `skills` 被临时移出（避免 `&mut Skill` 与
-/// `&mut Player` 别名），因此 **不要在回调中调用 `ctx.owner.update_states()`**。
-/// 需要更新状态时请用 `ctx.mark_update_states()`，调度器会在恢复 skills 后统一调用。
+/// **安全约定**：构造时 `ctx.owner` 与 dispatcher 持有的 `&mut Skill` 存在内部别名，
+/// 因此回调中 **不要调用 `ctx.owner.update_states()`**（会重入 skills 迭代）。
+/// 需要更新状态时请用 `ctx.mark_update_states()`，调度器会在回调返回后统一调用。
 pub struct InlineCtx<'a> {
     pub ptr: PlrId,
     pub owner: &'a mut super::Player,
