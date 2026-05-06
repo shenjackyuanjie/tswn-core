@@ -111,15 +111,19 @@ pub fn lazy_boss_action(
     updates.add(RunUpdate::new("[0]发起攻击", boss_id, target_id, 0));
 
     LAZY_ON_DAMAGE_CTX.set(Some(boss_id));
-    let actual_dmg = storage.just_get_player_mut(target_id).expect("lazy_boss_action target").attacked(
-        atp,
-        false,
-        boss_id,
-        lazy_attack_on_damage,
-        randomer,
-        updates,
-        storage,
-    );
+    let actual_dmg = {
+        let core = {
+            let target = storage.just_get_player_mut(target_id).expect("lazy_boss_action target");
+            target.attacked_core(atp, false, boss_id, lazy_attack_on_damage, randomer, updates, storage)
+        };
+        if core.hit {
+            lazy_attack_on_damage(boss_id, core.target, core.dmg, randomer, updates, storage);
+            let target = storage.just_get_player_mut(core.target).expect("lazy_boss_action target");
+            target.finish_damage(core.dmg, core.old_hp, boss_id, randomer, updates, storage)
+        } else {
+            0
+        }
+    };
     LAZY_ON_DAMAGE_CTX.set(None);
 
     if actual_dmg > 0

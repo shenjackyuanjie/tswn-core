@@ -43,6 +43,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering as AtomicOrdering},
 };
 
+use smallvec::SmallVec;
+
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::player::{OnDamageFunc, PlrId};
@@ -162,6 +164,34 @@ fn create_skill_from_registry(id: u8) -> Box<dyn SkillTrait> {
 /// &'d `Arc<Storage>`: game storage
 pub type SkillArgs<'d> = (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Storage>);
 
+/// 跨实体副作用（方案 J）。
+///
+/// 在 owner-centric 回调中缓冲，回调返回后由调度器统一 flush。
+pub enum Effect {
+    /// 攻击目标
+    Attack { target: PlrId, atp: f64, is_mag: bool, on_damage: OnDamageFunc },
+    /// 回血目标
+    Heal { target: PlrId, amount: i32 },
+    /// 直接伤害（不走攻防计算）
+    DamageRaw { target: PlrId, dmg: i32, on_damage: OnDamageFunc },
+    /// 位移点增减
+    AddMovePoint { target: PlrId, delta: i32 },
+}
+
+/// owner-centric 技能回调的上下文（方案 J）。
+///
+/// 将 `&mut Player` 的字段拆分为独立引用，在调用点通过 split-borrow 构造。
+/// 技能通过此上下文直接修改 owner 字段，无需经过 `Storage::just_get_player_mut`。
+pub struct InlineCtx<'a> {
+    pub ptr: PlrId,
+    pub status: &'a mut super::PlayerStatus,
+    pub state: &'a mut super::PlayerStateStore,
+    pub randomer: &'a mut RC4,
+    pub updates: &'a mut RunUpdates,
+    pub storage: &'a Arc<Storage>,
+    pub effects: SmallVec<[Effect; 4]>,
+}
+
 /// 技能注册的流程类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProcKind {
@@ -213,6 +243,11 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 内联版更新状态 — 直接修改 PlayerStatus，不经过 Storage。
     /// 在 Player::update_states() 中调用，对齐 JS 的 F() 遍历 rx 回调。
     fn update_state_inline(&mut self, _level: u32, _status: &mut super::PlayerStatus) {}
+    /// 内联版行动 — 通过 InlineCtx 直接访问 owner 字段（方案 J）。
+    /// 仅 self-only 技能需要实现；默认回退到 act_with_level。
+    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, _ctx: &mut InlineCtx) {}
+    /// 内联版 clear_positive_runtime — 通过 InlineCtx 直接访问（方案 J）。
+    fn clear_positive_runtime_inline(&mut self, _ctx: &mut InlineCtx) -> Option<&'static str> { None }
     /// 行动!
     fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
@@ -695,6 +730,10 @@ impl Skill {
 
     pub fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
         self.skill_type.clear_positive_runtime_with_level(self.level, args)
+    }
+
+    pub fn clear_positive_runtime_inline(&mut self, ctx: &mut InlineCtx) -> Option<&'static str> {
+        self.skill_type.clear_positive_runtime_inline(ctx)
     }
 
     pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }

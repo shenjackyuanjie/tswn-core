@@ -74,10 +74,12 @@ impl SkillTrait for DisperseSkill {
         // Note: Dart source has 'Dt.shield'/'Dt.iron' (string literal) instead of Dt.shield/Dt.iron (variable)
         // so these checks NEVER match in Dart/JS. Shield/Iron are NOT pre-cleared before damage.
 
-        args.3
-            .just_get_player_mut(target_id)
-            .expect("cannot get disperse target from storage")
-            .defned(
+        let core = {
+            let target = args
+                .3
+                .just_get_player_mut(target_id)
+                .expect("cannot get disperse target from storage");
+            let (_, core) = target.defned_core(
                 if target_is_minion { atp * 2.0 } else { atp },
                 true,
                 args.0,
@@ -86,6 +88,16 @@ impl SkillTrait for DisperseSkill {
                 args.2,
                 args.3,
             );
+            core
+        };
+        if !core.is_heal && !core.is_zero {
+            on_disperse(args.0, target_id, core.actual_dmg, args.1, args.2, args.3);
+            let target = args
+                .3
+                .just_get_player_mut(target_id)
+                .expect("cannot get disperse target from storage");
+            target.finish_damage(core.actual_dmg, core.old_hp, args.0, args.1, args.2, args.3);
+        }
     }
 }
 

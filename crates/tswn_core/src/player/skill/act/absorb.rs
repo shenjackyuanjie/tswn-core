@@ -48,10 +48,21 @@ impl SkillTrait for AbsorbSkill {
             .get_at(true, args.1)
             * 1.3;
         args.2.add(RunUpdate::new("[0]发起[吸血攻击]", args.0, target_id, 1));
-        args.3
-            .just_get_player_mut(target_id)
-            .expect("cannot get absorb target from storage")
-            .attacked(atp, true, args.0, on_absorb as OnDamageFunc, args.1, args.2, args.3);
+        let core = {
+            let target = args
+                .3
+                .just_get_player_mut(target_id)
+                .expect("cannot get absorb target from storage");
+            target.attacked_core(atp, true, args.0, on_absorb as OnDamageFunc, args.1, args.2, args.3)
+        };
+        if core.hit {
+            on_absorb(args.0, core.target, core.dmg, args.1, args.2, args.3);
+            let target = args
+                .3
+                .just_get_player_mut(core.target)
+                .expect("cannot get absorb target from storage");
+            target.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3);
+        }
     }
 }
 

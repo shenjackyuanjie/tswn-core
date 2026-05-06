@@ -610,6 +610,31 @@ impl SkillStorage {
         messages
     }
 
+    /// 内联版 clear_positive_runtime（方案 J）。
+    ///
+    /// 通过 `InlineCtx` 将 owner 字段直接传给技能，避免技能通过 `Storage::just_get_player_mut` 重借 owner。
+    pub fn clear_positive_runtime_with_order_inline(
+        &mut self,
+        ctx: &mut crate::player::skill::InlineCtx,
+    ) -> Vec<(i32, &'static str)> {
+        let mut messages = Vec::new();
+        for idx in 0..self.skill.len() {
+            let skill_key = self.skill[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
+            let message = skill.clear_positive_runtime_inline(ctx);
+            if message.is_none() {
+                // fallback: try old SkillArgs-based method
+                if let Some(msg) = skill.clear_positive_runtime((ctx.ptr, ctx.randomer, ctx.updates, ctx.storage)) {
+                    messages.push((skill.clear_positive_runtime_priority(), msg));
+                }
+            } else if let Some(msg) = message {
+                messages.push((skill.clear_positive_runtime_priority(), msg));
+            }
+        }
+        messages.sort_unstable_by_key(|(priority, _)| *priority);
+        messages
+    }
+
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) {
         let debug_action = crate::debug::debug_die();
         let debug_this = args

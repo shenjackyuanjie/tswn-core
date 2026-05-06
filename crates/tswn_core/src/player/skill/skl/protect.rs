@@ -147,10 +147,19 @@ impl StateTrait for ProtectState {
                     let protector = storage.just_get_player_mut(link.owner).expect("cannot get protect owner from storage");
                     protector.post_defend(redirected_dmg, caster, on_damage, randomer, updates, storage)
                 };
-                storage
-                    .just_get_player_mut(link.owner)
-                    .expect("cannot get protect owner from storage")
-                    .damage(redirected_dmg, caster, on_damage, randomer, updates, storage);
+                let core = {
+                    let protector = storage
+                        .just_get_player_mut(link.owner)
+                        .expect("cannot get protect owner from storage");
+                    protector.damage_core(redirected_dmg, caster, updates)
+                };
+                if !core.is_heal && !core.is_zero {
+                    on_damage(caster, link.owner, core.actual_dmg, randomer, updates, storage);
+                    let protector = storage
+                        .just_get_player_mut(link.owner)
+                        .expect("cannot get protect owner from storage");
+                    protector.finish_damage(core.actual_dmg, core.old_hp, caster, randomer, updates, storage);
+                }
                 *atp = 0.0;
                 return false;
             }

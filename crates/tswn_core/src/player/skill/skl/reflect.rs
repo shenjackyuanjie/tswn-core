@@ -72,10 +72,22 @@ impl SkillTrait for ReflectSkill {
                 args.1.i, args.1.j
             );
         }
-        args.3
-            .just_get_player_mut(caster)
-            .expect("cannot get reflect caster from storage")
-            .attacked(reflect_atp, true, args.0, *on_damage, args.1, args.2, args.3);
+        let on_dmg = *on_damage;
+        let core = {
+            let caster_plr = args
+                .3
+                .just_get_player_mut(caster)
+                .expect("cannot get reflect caster from storage");
+            caster_plr.attacked_core(reflect_atp, true, args.0, on_dmg, args.1, args.2, args.3)
+        };
+        if core.hit {
+            on_dmg(args.0, core.target, core.dmg, args.1, args.2, args.3);
+            let caster_plr = args
+                .3
+                .just_get_player_mut(core.target)
+                .expect("cannot get reflect caster from storage");
+            caster_plr.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3);
+        }
         args.3
             .just_get_player_mut(args.0)
             .expect("cannot get reflect owner from storage after reflected attack")

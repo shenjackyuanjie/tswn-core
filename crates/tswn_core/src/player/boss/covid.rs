@@ -334,15 +334,17 @@ pub fn covid_boss_action(
     updates.add(RunUpdate::new("[0]发起攻击", boss_id, target_id, 0));
 
     COVID_ON_DAMAGE_CTX.set(Some((boss_id, mutation)));
-    storage.just_get_player_mut(target_id).expect("covid_boss_action target").attacked(
-        atp,
-        false,
-        boss_id,
-        covid_spread_on_damage,
-        randomer,
-        updates,
-        storage,
-    );
+    {
+        let core = {
+            let target = storage.just_get_player_mut(target_id).expect("covid_boss_action target");
+            target.attacked_core(atp, false, boss_id, covid_spread_on_damage, randomer, updates, storage)
+        };
+        if core.hit {
+            covid_spread_on_damage(boss_id, core.target, core.dmg, randomer, updates, storage);
+            let target = storage.just_get_player_mut(core.target).expect("covid_boss_action target");
+            target.finish_damage(core.dmg, core.old_hp, boss_id, randomer, updates, storage);
+        }
+    }
     COVID_ON_DAMAGE_CTX.set(None);
 }
 
@@ -485,15 +487,17 @@ fn covid_attack_spread(
     updates.add(RunUpdate::new("[0]发起攻击", owner, candidate, 0));
 
     COVID_ON_DAMAGE_CTX.set(Some((boss_id, mutation)));
-    storage.just_get_player_mut(candidate).expect("covid_attack_spread candidate").attacked(
-        atp,
-        false,
-        owner,
-        covid_spread_on_damage,
-        randomer,
-        updates,
-        storage,
-    );
+    {
+        let core = {
+            let target = storage.just_get_player_mut(candidate).expect("covid_attack_spread candidate");
+            target.attacked_core(atp, false, owner, covid_spread_on_damage, randomer, updates, storage)
+        };
+        if core.hit {
+            covid_spread_on_damage(owner, core.target, core.dmg, randomer, updates, storage);
+            let target = storage.just_get_player_mut(core.target).expect("covid_attack_spread candidate");
+            target.finish_damage(core.dmg, core.old_hp, owner, randomer, updates, storage);
+        }
+    }
     COVID_ON_DAMAGE_CTX.set(None);
 }
 

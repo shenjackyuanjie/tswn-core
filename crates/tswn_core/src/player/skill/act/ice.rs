@@ -100,8 +100,15 @@ impl SkillTrait for IceSkill {
             .get_at(true, args.1)
             * 0.7;
         args.2.add(RunUpdate::new("[0]使用[冰冻术]", args.0, target_id, 1));
-        let target = args.3.just_get_player_mut(target_id).expect("cannot get ice target from storage");
-        let _ = target.attacked(atp, true, args.0, on_ice as OnDamageFunc, args.1, args.2, args.3);
+        let core = {
+            let target = args.3.just_get_player_mut(target_id).expect("cannot get ice target from storage");
+            target.attacked_core(atp, true, args.0, on_ice as OnDamageFunc, args.1, args.2, args.3)
+        };
+        if core.hit {
+            on_ice(args.0, core.target, core.dmg, args.1, args.2, args.3);
+            let target = args.3.just_get_player_mut(core.target).expect("cannot get ice target from storage");
+            target.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3);
+        }
     }
 }
 

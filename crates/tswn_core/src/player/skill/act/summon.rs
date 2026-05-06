@@ -229,11 +229,21 @@ impl SkillTrait for SummonExplodeSkill {
             owner.status.hp = 0;
             old_hp
         };
-        let _dmg = args
-            .3
-            .just_get_player_mut(target_id)
-            .expect("cannot get mutable summon explode target from storage")
-            .attacked(atp, true, args.0, super::fire::on_fire as OnDamageFunc, args.1, args.2, args.3);
+        let core = {
+            let target = args
+                .3
+                .just_get_player_mut(target_id)
+                .expect("cannot get mutable summon explode target from storage");
+            target.attacked_core(atp, true, args.0, super::fire::on_fire as OnDamageFunc, args.1, args.2, args.3)
+        };
+        if core.hit {
+            super::fire::on_fire(args.0, core.target, core.dmg, args.1, args.2, args.3);
+            let target = args
+                .3
+                .just_get_player_mut(core.target)
+                .expect("cannot get mutable summon explode target from storage");
+            target.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3);
+        }
         args.3
             .just_get_player_mut(args.0)
             .expect("cannot get mutable summon explode owner from storage")

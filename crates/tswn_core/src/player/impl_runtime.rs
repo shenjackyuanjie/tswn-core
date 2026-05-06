@@ -103,6 +103,32 @@ fn is_battle_over(storage: &Arc<Storage>) -> bool {
     true
 }
 
+/// `damage_core()` 的返回结果：HP 扣减阶段完成后的状态。
+///
+/// 方案 D 分阶段伤害流程：
+/// 1. `damage_core()` → `DamageCoreResult`
+/// 2. `on_damage()` 回调（`&mut target` 已释放）
+/// 3. `finish_damage()` → post_damage + 死亡判定
+pub struct DamageCoreResult {
+    pub actual_dmg: i32,
+    pub old_hp: i32,
+    pub is_heal: bool,
+    pub is_zero: bool,
+}
+
+/// `attacked_core()` 的返回结果：攻击前段完成后的状态。
+///
+/// 方案 D 分阶段攻击流程：
+/// 1. `attacked_core()` → `AttackedCoreResult`（pre_defend + dodge + defned + damage_core）
+/// 2. `on_damage()` 回调
+/// 3. `finish_damage()` → 完成伤害链
+pub struct AttackedCoreResult {
+    pub dmg: i32,
+    pub old_hp: i32,
+    pub target: PlrId,
+    pub hit: bool,
+}
+
 impl Player {
     pub fn update_player(&mut self) {
         self.init_skills();
@@ -1932,6 +1958,53 @@ impl Player {
         self.defned(atp, is_mag, caster, on_damage, randomer, updates, storage)
     }
 
+    /// 攻击前段（不直接调用 on_damage，但会转发给 pre_defend/post_defend）。
+    ///
+    /// 方案 D 阶段一+：执行 pre_defend → dodge check → defned_core → damage_core，
+    /// 将 `on_damage` 转发给 pre_defend / post_defend 处理器（Reflect 等需要），
+    /// 但自身不调用 `on_damage`。调用方在释放 `&mut self` 后自行调用 `on_damage`
+    /// 和 `finish_damage`。
+    #[allow(clippy::too_many_arguments)]
+    pub fn attacked_core(
+        &mut self,
+        mut atp: f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> AttackedCoreResult {
+        let target = self.as_ptr();
+        atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        if atp == 0.0 {
+            return AttackedCoreResult { dmg: 0, old_hp: 0, target, hit: false };
+        }
+        let (accure, dodgeval) = {
+            let caster_plr = storage.get_player(&caster).expect("faild to get caster player");
+            if is_mag {
+                (
+                    caster_plr.status.magic + caster_plr.status.agility,
+                    self.status.resistance + self.status.agility,
+                )
+            } else {
+                (
+                    caster_plr.status.attack + caster_plr.status.agility,
+                    self.status.defense + self.status.agility,
+                )
+            }
+        };
+        if self.active() && Self::dodge(accure, dodgeval, randomer) {
+            updates.emit(|| RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20));
+            return AttackedCoreResult { dmg: 0, old_hp: 0, target, hit: false };
+        }
+        let (_dmg, core) = self.defned_core(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        if core.is_heal || core.is_zero {
+            return AttackedCoreResult { dmg: 0, old_hp: 0, target, hit: false };
+        }
+        AttackedCoreResult { dmg: core.actual_dmg, old_hp: core.old_hp, target, hit: true }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn defned(
         &mut self,
@@ -1959,26 +2032,52 @@ impl Player {
         self.damage(dmg, caster, on_damage, randomer, updates, storage)
     }
 
-    pub fn damage(
+    /// 防御前段（不含 on_damage / finish_damage）。
+    ///
+    /// 方案 D 阶段：执行 post_defend + damage_core，返回 (dmg, DamageCoreResult)。
+    /// `on_damage` 转发给 post_defend 处理器但不直接调用。
+    #[allow(clippy::too_many_arguments)]
+    pub fn defned_core(
         &mut self,
-        dmg: i32,
+        atp: f64,
+        is_mag: bool,
         caster: PlrId,
         on_damage: OnDamageFunc,
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
-    ) -> i32 {
+    ) -> (i32, DamageCoreResult) {
+        let dfp = self.get_df(is_mag);
+        let mut dmg = (atp / dfp as f64).ceil() as i32;
+        if crate::debug::debug_damage() {
+            eprintln!(
+                "[DEFNED] target={} dfp={} atp={:.4} raw_dmg={} is_mag={}",
+                self.id_name(),
+                dfp,
+                atp,
+                dmg,
+                is_mag
+            );
+        }
+        dmg = self.post_defend(dmg, caster, on_damage, randomer, updates, storage);
+        let core = self.damage_core(dmg, caster, updates);
+        (dmg, core)
+    }
+
+    /// HP 扣减阶段（不含 on_damage / on_damaged 回调）。
+    ///
+    /// 方案 D 阶段一：仅做数值更新和消息发送，返回 `DamageCoreResult` 供调用方
+    /// 在释放 `&mut self` 后自行调用 `on_damage` 和 `finish_damage`。
+    pub fn damage_core(&mut self, dmg: i32, caster: PlrId, updates: &mut RunUpdates) -> DamageCoreResult {
         #[cfg(not(feature = "no_debug"))]
         let debug_this = crate::debug::debug_action_matches(&self.id_name());
         #[cfg(not(feature = "no_debug"))]
         if debug_this {
             eprintln!(
-                "[damage] target={} caster={} dmg={} rc4=({}, {}) hp_before={}",
+                "[damage] target={} caster={} dmg={} hp_before={}",
                 self.id_name(),
                 caster,
                 dmg,
-                randomer.i,
-                randomer.j,
                 self.status.hp,
             );
         }
@@ -1993,7 +2092,7 @@ impl Player {
                 update.param = Some(dmg.unsigned_abs());
                 update
             });
-            return 0;
+            return DamageCoreResult { actual_dmg: dmg, old_hp: 0, is_heal: true, is_zero: false };
         }
         if dmg == 0 {
             updates.emit(|| {
@@ -2001,7 +2100,7 @@ impl Player {
                 update.param = Some(0);
                 update
             });
-            return 0;
+            return DamageCoreResult { actual_dmg: 0, old_hp: 0, is_heal: false, is_zero: true };
         }
         let old_hp = self.status.hp;
         self.status.hp -= dmg;
@@ -2019,7 +2118,24 @@ impl Player {
             update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
             update
         });
-        on_damage(caster, self.as_ptr(), dmg, randomer, updates, storage);
+        DamageCoreResult { actual_dmg: dmg, old_hp, is_heal: false, is_zero: false }
+    }
+
+    /// 完成伤害链：post_damage 钩子 + 状态回调 + 死亡判定。
+    ///
+    /// 方案 D 阶段三：在 `on_damage` 回调之后调用，完成 `on_damaged` 中的
+    /// post_damage 技能钩子、状态钩子和死亡检查。
+    pub fn finish_damage(
+        &mut self,
+        dmg: i32,
+        old_hp: i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> i32 {
+        #[cfg(not(feature = "no_debug"))]
+        let debug_this = crate::debug::debug_action_matches(&self.id_name());
         let result = self.on_damaged(dmg, old_hp, caster, randomer, updates, storage);
         #[cfg(not(feature = "no_debug"))]
         if debug_this {
@@ -2035,6 +2151,27 @@ impl Player {
             );
         }
         result
+    }
+
+    /// 便捷封装：damage_core + on_damage + finish_damage 一次性完成。
+    ///
+    /// 仅在 `on_damage` 为 no-op（不通过 Storage 重借 target/caster）时安全。
+    /// 有别名风险的调用方应使用 `damage_core()` + `finish_damage()` 分阶段调用。
+    pub fn damage(
+        &mut self,
+        dmg: i32,
+        caster: PlrId,
+        on_damage: OnDamageFunc,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> i32 {
+        let core = self.damage_core(dmg, caster, updates);
+        if core.is_heal || core.is_zero {
+            return 0;
+        }
+        on_damage(caster, self.as_ptr(), core.actual_dmg, randomer, updates, storage);
+        self.finish_damage(core.actual_dmg, core.old_hp, caster, randomer, updates, storage)
     }
 
     pub fn on_damaged(
