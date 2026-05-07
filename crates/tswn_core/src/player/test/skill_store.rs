@@ -22,6 +22,26 @@ fn register_skill_proc_appends_late_post_damage_skill() {
 }
 
 #[test]
+fn register_skill_proc_respects_cached_priority_when_existing_skill_is_detached() {
+    use crate::player::skill::{Skill, store::SkillStorage};
+
+    let mut skills = SkillStorage::new();
+    skills.add_skill(Skill::new_with_id(1, 33)); // Upgrade
+    skills.add_skill(Skill::new_with_id(1, 21)); // Assassinate
+    skills.add_skill(Skill::new_with_id(0, 34)); // Hide, gained later
+
+    skills.update_proc();
+    assert_eq!(skills.post_damage, vec![0, 1]);
+
+    let detached = skills.skill_by_id_mut(1).take_skill_type();
+    skills.skill_by_id_mut(2).set_level(1);
+    skills.register_skill_proc(2);
+    skills.skill_by_id_mut(1).put_skill_type(detached);
+
+    assert_eq!(skills.post_damage, vec![0, 2, 1]);
+}
+
+#[test]
 fn protect_state_runs_after_existing_pre_defend_skills() {
     let storage = Storage::new_arc();
     let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();

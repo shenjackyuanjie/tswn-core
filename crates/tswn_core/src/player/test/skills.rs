@@ -954,6 +954,59 @@ fn assassinate_preaction_forces_backstab() {
 }
 
 #[test]
+fn hide_post_damage_triggers_before_assassinate_reveal_message() {
+    use crate::player::skill::Skill;
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@red".to_string(), storage.clone()).unwrap();
+    let ally = Player::new_from_namerena_raw("ally@red".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let ally_id = storage.just_insert_player(ally);
+    let attacker_id = storage.just_insert_player(attacker);
+    storage.sync_groups(&[vec![owner_id, ally_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![owner_id, ally_id], vec![attacker_id]]);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.status.hp = 120;
+        owner_mut.status.max_hp = 120;
+        owner_mut.status.magic_point = 999;
+        owner_mut.skills.add_skill(Skill::new_with_id(255, 21));
+        owner_mut.skills.add_skill(Skill::new_with_id(255, 34));
+        owner_mut.skills.update_proc();
+        owner_mut.action(
+            &mut randomer,
+            &mut updates,
+            &storage,
+            &ActionTargets::from_enemy_alive(&[attacker_id]),
+        );
+    }
+
+    assert!(updates.updates.iter().any(|x| x.message.contains("潜行")));
+
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .damage(8, attacker_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    let messages = updates.updates.iter().map(|x| x.message.as_ref()).collect::<Vec<_>>();
+    let hide_idx = messages
+        .iter()
+        .position(|message| message.contains("[隐匿]"))
+        .expect("hide trigger message missing");
+    let reveal_idx = messages
+        .iter()
+        .position(|message| message.contains("[潜行]被识破"))
+        .expect("assassinate reveal message missing");
+    assert!(hide_idx < reveal_idx, "messages={messages:?}");
+}
+
+#[test]
 fn damage_marks_high_damage_thresholds() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();

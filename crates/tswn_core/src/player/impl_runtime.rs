@@ -2485,23 +2485,30 @@ impl Player {
             let has_inline = self.skills.skill_by_id(skill_idx).has_inline_post_damage();
             let (manages_dynamic_pre_action, dynamic_pre_action_enabled, needs_update_states) = if has_inline {
                 let self_ptr: *mut Player = self;
-                let skill = self.skills.skill_by_id_mut(skill_idx);
-                let mut ctx = InlineCtx {
-                    ptr,
-                    owner: unsafe { &mut *self_ptr },
-                    randomer,
-                    updates,
-                    storage,
-                    post_damage: Some(PostDamageCtx { dmg, caster }),
-                    effects: SmallVec::new(),
-                    needs_update_states: false,
+                let (mut skill_type, current_level) = {
+                    let skill = self.skills.skill_by_id_mut(skill_idx);
+                    (skill.take_skill_type(), skill.level())
                 };
-                skill.post_damage_inline(&mut ctx);
-                (
-                    skill.manages_dynamic_pre_action(),
-                    skill.dynamic_pre_action_enabled(),
-                    ctx.needs_update_states,
-                )
+                let result = {
+                    let mut ctx = InlineCtx {
+                        ptr,
+                        owner: unsafe { &mut *self_ptr },
+                        randomer,
+                        updates,
+                        storage,
+                        post_damage: Some(PostDamageCtx { dmg, caster }),
+                        effects: SmallVec::new(),
+                        needs_update_states: false,
+                    };
+                    skill_type.post_damage_inline(current_level, &mut ctx);
+                    (
+                        skill_type.manages_dynamic_pre_action(),
+                        skill_type.dynamic_pre_action_enabled(),
+                        ctx.needs_update_states,
+                    )
+                };
+                self.skills.skill_by_id_mut(skill_idx).put_skill_type(skill_type);
+                result
             } else {
                 let skill = self.skills.skill_by_id_mut(skill_idx);
                 skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));

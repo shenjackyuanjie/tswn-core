@@ -633,6 +633,9 @@ pub struct Skill {
     pub boosted: bool,
     /// 等级
     level: u32,
+    /// `post_damage` 优先级在运行时是静态元数据；即使 skill_type 被临时 detatch 成 NoneSkill，
+    /// 也必须保留原值，避免战中 register_skill_proc 用占位符优先级把顺序排错。
+    post_damage_priority: i32,
     /// 类型
     skill_type: Box<dyn SkillTrait>,
     /// 目标
@@ -641,9 +644,11 @@ pub struct Skill {
 
 impl Skill {
     pub fn new(level: u32, skill_type: Box<dyn SkillTrait>) -> Self {
+        let post_damage_priority = skill_type.post_damage_priority();
         Self {
             boosted: false,
             level,
+            post_damage_priority,
             skill_type,
             target: None,
         }
@@ -651,9 +656,11 @@ impl Skill {
 
     pub fn new_with_id(level: u32, id: u8) -> Self {
         let skill_type = create_skill_from_registry(id);
+        let post_damage_priority = skill_type.post_damage_priority();
         Self {
             boosted: false,
             level,
+            post_damage_priority,
             skill_type,
             target: None,
         }
@@ -778,7 +785,7 @@ impl Skill {
         self.skill_type.post_damage_with_level(self.level, dmg, caster, args)
     }
 
-    pub fn post_damage_priority(&self) -> i32 { self.skill_type.post_damage_priority() }
+    pub fn post_damage_priority(&self) -> i32 { self.post_damage_priority }
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
         self.skill_type.die_with_level(&mut self.level, oldhp, caster, args)
