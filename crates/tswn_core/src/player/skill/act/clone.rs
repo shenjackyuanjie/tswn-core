@@ -59,10 +59,9 @@ impl SkillTrait for CloneSkill {
             ctx.owner.status.hp = ((ctx.owner.status.hp as f64) * 0.5).ceil() as i32;
             ctx.owner.status.hp = ctx.owner.status.hp.clamp(1, ctx.owner.status.max_hp.max(1));
             ctx.owner.calc_attr_sum();
-            // Recalculate derived stats inline (can't call update_states due to &mut Skill aliasing)
-            ctx.owner.status.max_hp = ctx.owner.attr[7] as i32;
-            ctx.owner.status.magic = ctx.owner.scale_by_name_factor_i(ctx.owner.attr[4] as i32, 128);
-            ctx.mark_update_states();
+            // Clone needs the same fully refreshed owner snapshot as the legacy act path
+            // before building the minion and computing the extra level decay roll.
+            ctx.owner.update_states();
         }
 
         let root_owner_id = root_minion_name_owner_id(ctx.storage, ctx.ptr);
