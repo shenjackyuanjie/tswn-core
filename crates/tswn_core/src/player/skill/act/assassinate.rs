@@ -288,6 +288,8 @@ impl SkillTrait for AssassinateSkill {
 
     fn dynamic_pre_action_enabled(&self) -> bool { self.on_pre_action.is_some() }
 
+    fn assassinate_target(&self) -> Option<PlrId> { self.target }
+
     fn manages_dynamic_pre_action(&self) -> bool { true }
 }
 

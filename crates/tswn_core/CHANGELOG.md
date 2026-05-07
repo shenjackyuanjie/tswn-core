@@ -1,5 +1,12 @@
 # 更新日志
 
+## [0.3.1] - 2026-05-07
+
+### API
+
+- `SkillTrait` / `Skill` 新增 `charge_step()` 方法，返回 `i32`，让外部能查询 ChargeSkill 当前的蓄力 step 数值。默认返回 `0`，仅 `ChargeSkill` 覆写。
+- `SkillTrait` / `Skill` 新增 `assassinate_target()` 方法，返回 `Option<PlrId>`，让外部能查询 AssassinateSkill 当前锁定的潜行目标 ID。默认返回 `None`，仅 `AssassinateSkill` 覆写。
+
 ## [0.3.0] - 2026-05-07
 
 ### ⚠️ Breaking Changes
