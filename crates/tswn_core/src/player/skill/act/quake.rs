@@ -4,7 +4,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -36,9 +36,42 @@ impl SkillTrait for QuakeSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn has_inline_act(&self) -> bool { true }
+
     fn has_action_impl(&self) -> bool { true }
 
     fn select_target_count(&self, smart: bool) -> usize { if smart { self.sel_count_smart } else { self.sel_count } }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let round = if ctx.randomer.c50() { 5 } else { 4 };
+        let mut picked = targets;
+        picked.truncate(round.min(picked.len()));
+        if picked.is_empty() {
+            return;
+        }
+        ctx.updates.add(RunUpdate::new("[0]使用[地裂术]", ctx.ptr, picked[0], 1));
+        let divisor = picked.len() as f64 + 0.6000000238418579;
+        for target_id in picked {
+            let atp = ctx.owner.get_at(true, ctx.randomer) * 2.440000057220459 / divisor;
+            let target_alive = ctx.storage.get_player(&target_id).map(|p| p.get_status().hp > 0).unwrap_or(false);
+            if !target_alive {
+                continue;
+            }
+            ctx.updates.add(RunUpdate::new_newline());
+            let core = {
+                let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get quake target from storage");
+                target.attacked_core(atp, true, ctx.ptr, on_quake as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage)
+            };
+            if core.hit {
+                on_quake(ctx.ptr, core.target, core.dmg, ctx.randomer, ctx.updates, ctx.storage);
+                let target = ctx.storage.just_get_player_mut(core.target).expect("cannot get quake target from storage");
+                target.finish_damage(core.dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
+            }
+        }
+    }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {

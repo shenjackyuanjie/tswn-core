@@ -180,6 +180,12 @@ pub enum Effect {
     OwnerDie { old_hp: i32 },
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PostDamageCtx {
+    pub dmg: i32,
+    pub caster: PlrId,
+}
+
 /// owner-centric 技能回调的上下文（方案 J）。
 ///
 /// 持有 `&mut Player` 完整引用，技能通过 `ctx.owner` 直接访问 owner 的全部能力，
@@ -194,6 +200,7 @@ pub struct InlineCtx<'a> {
     pub randomer: &'a mut RC4,
     pub updates: &'a mut RunUpdates,
     pub storage: &'a Arc<Storage>,
+    pub post_damage: Option<PostDamageCtx>,
     pub effects: SmallVec<[Effect; 4]>,
     pub(super) needs_update_states: bool,
 }
@@ -208,6 +215,10 @@ impl<'a> InlineCtx<'a> {
     /// 标记需要在回调返回后调用 `update_states()`。
     pub fn mark_update_states(&mut self) {
         self.needs_update_states = true;
+    }
+
+    pub fn post_damage_meta(&self) -> PostDamageCtx {
+        self.post_damage.expect("post_damage metadata is only available during post_damage_inline")
     }
 }
 

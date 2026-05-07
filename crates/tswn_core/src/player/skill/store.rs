@@ -469,10 +469,6 @@ impl SkillStorage {
         }
     }
 
-    pub fn post_action_early(&mut self, args: SkillArgs) { self.post_action_with_phase(PostActionPhase::Early, args) }
-
-    pub fn post_action_late(&mut self, args: SkillArgs) { self.post_action_with_phase(PostActionPhase::Late, args) }
-
     pub fn run_post_action_key(&mut self, skill_key: SkillKey, args: SkillArgs) {
         let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
         skill.post_action((args.0, args.1, args.2, args.3));
@@ -519,9 +515,9 @@ impl SkillStorage {
 
     pub fn post_action(&mut self, args: SkillArgs) {
         let (owner, randomer, updates, storage) = args;
-        self.post_action_early((owner, randomer, updates, storage));
+        self.post_action_with_phase(PostActionPhase::Early, (owner, randomer, updates, storage));
         self.post_action_after_states((owner, randomer, updates, storage));
-        self.post_action_late((owner, randomer, updates, storage));
+        self.post_action_with_phase(PostActionPhase::Late, (owner, randomer, updates, storage));
     }
 
     pub fn on_update_end(&mut self, args: SkillArgs) -> bool {
@@ -572,37 +568,6 @@ impl SkillStorage {
                     args.1.i,
                     args.1.j,
                 );
-            }
-            if atp == 0.0 {
-                return 0.0;
-            }
-        }
-        atp
-    }
-
-    /// 内联版 pre_defend_range（方案 J），通过 InlineCtx 直接访问 owner 字段。
-    /// skills that have `has_inline_pre_defend() == true` use the inline path;
-    /// others fall back to the old SkillArgs-based `pre_defend`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn pre_defend_range_inline(
-        &mut self,
-        start: usize,
-        end: usize,
-        mut atp: f64,
-        is_mag: bool,
-        caster: PlrId,
-        on_damage: OnDamageFunc,
-        ctx: &mut InlineCtx,
-    ) -> f64 {
-        let end = end.min(self.pre_defend.len());
-        let start = start.min(end);
-        for idx in start..end {
-            let skill_key = self.pre_defend[idx];
-            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
-            if skill.has_inline_pre_defend() {
-                atp = skill.pre_defend_inline(ctx, atp, is_mag, caster, &on_damage);
-            } else {
-                atp = skill.pre_defend(atp, is_mag, caster, &on_damage, (ctx.ptr, ctx.randomer, ctx.updates, ctx.storage));
             }
             if atp == 0.0 {
                 return 0.0;

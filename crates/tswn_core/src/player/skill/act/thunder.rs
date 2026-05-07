@@ -4,7 +4,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, Player, PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -24,7 +24,67 @@ impl SkillTrait for ThunderSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn has_inline_act(&self) -> bool { true }
+
     fn has_action_impl(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        ctx.updates.add(RunUpdate::new("[0]使用[雷击术]", ctx.ptr, target_id, 1));
+
+        let mut agl = 100 + ctx.owner.get_status().agility;
+        let mut _hit = false;
+        let count = 3 + ctx.randomer.r3() as usize;
+        for _ in 0..count {
+            let caster_active = ctx.owner.active();
+            let target_alive = ctx.storage.get_player(&target_id).map(|x| x.alive()).unwrap_or(false);
+            if !caster_active || !target_alive {
+                continue;
+            }
+            ctx.updates.add(RunUpdate::new_newline());
+            let target_active = ctx.storage.get_player(&target_id).map(|x| x.active()).unwrap_or(false);
+            if target_active {
+                let target_dodge = ctx
+                    .storage
+                    .get_player(&target_id)
+                    .expect("cannot get thunder target from storage")
+                    .get_status()
+                    .agility
+                    + ctx
+                        .storage
+                        .get_player(&target_id)
+                        .expect("cannot get thunder target from storage")
+                        .get_status()
+                        .resistance;
+                if Player::dodge(agl, target_dodge, ctx.randomer) {
+                    ctx.updates.add(RunUpdate::new("[0][回避]了攻击", target_id, ctx.ptr, 0));
+                    return;
+                }
+            }
+            agl -= 10;
+            let atp = ctx.owner.get_at(true, ctx.randomer) * 0.36000001430511475;
+            let dmg = {
+                let (dmg, core) = {
+                    let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get thunder target from storage");
+                    target.defned_core(atp, true, ctx.ptr, on_thunder as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage)
+                };
+                if core.is_heal || core.is_zero {
+                    0
+                } else {
+                    on_thunder(ctx.ptr, target_id, core.actual_dmg, ctx.randomer, ctx.updates, ctx.storage);
+                    let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get thunder target from storage");
+                    target.finish_damage(core.actual_dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
+                    dmg
+                }
+            };
+            if dmg > 0 {
+                _hit = true;
+            }
+        }
+    }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {

@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use smallvec::SmallVec;
+
 use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
     skill::act::minion::is_combat_minion,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -24,6 +26,8 @@ impl SkillTrait for DisperseSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn has_inline_act(&self) -> bool { true }
 
     fn has_action_impl(&self) -> bool { true }
 
@@ -99,6 +103,35 @@ impl SkillTrait for DisperseSkill {
             target.finish_damage(core.actual_dmg, core.old_hp, args.0, args.1, args.2, args.3);
         }
     }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        let atp = ctx.owner.get_at(true, ctx.randomer);
+        let target_is_minion = ctx.storage.get_player(&target_id).map(is_combat_minion).unwrap_or(false);
+        ctx.updates.add(RunUpdate::new("[0]使用[净化]", ctx.ptr, target_id, 20));
+
+        let core = {
+            let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
+            let (_, core) = target.defned_core(
+                if target_is_minion { atp * 2.0 } else { atp },
+                true,
+                ctx.ptr,
+                on_disperse as OnDamageFunc,
+                ctx.randomer,
+                ctx.updates,
+                ctx.storage,
+            );
+            core
+        };
+        if !core.is_heal && !core.is_zero {
+            on_disperse(ctx.ptr, target_id, core.actual_dmg, ctx.randomer, ctx.updates, ctx.storage);
+            let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
+            target.finish_damage(core.actual_dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
+        }
+    }
 }
 
 fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
@@ -109,7 +142,25 @@ fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: 
     // Rust stores positive skill/runtime meta and state meta separately, so we collect both with
     // their stable type-name tags, then sort once before emitting cancel messages.
     let target = storage.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
-    let mut clear_messages = target.skills.clear_positive_runtime_with_order((target_id, r, updates, storage));
+    let target_ptr: *mut crate::player::Player = target;
+    let mut clear_messages = {
+        let mut ctx = InlineCtx {
+            ptr: target_id,
+            owner: unsafe { &mut *target_ptr },
+            randomer: r,
+            updates,
+            storage,
+            post_damage: None,
+            effects: SmallVec::new(),
+            needs_update_states: false,
+        };
+        let messages = unsafe { &mut (*target_ptr).skills }.clear_positive_runtime_with_order_inline(&mut ctx);
+        if ctx.needs_update_states {
+            unsafe { &mut *target_ptr }.update_states();
+        }
+        messages
+    };
+    let target = unsafe { &mut *target_ptr };
     clear_messages.extend(target.clear_positive_states_with_ordered_messages());
     clear_messages.sort_unstable_by_key(|(priority, _)| *priority);
     let mp = target.get_status().magic_point;

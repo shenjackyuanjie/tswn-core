@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId, StateTrait,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -19,6 +19,64 @@ impl SkillTrait for UpgradeSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn has_inline_post_damage(&self) -> bool { true }
+
+    fn post_damage_inline(&mut self, level: u32, ctx: &mut InlineCtx) {
+        let debug_target = crate::debug::debug_upgrade();
+        let debug_this = debug_target.as_deref().map(|name| ctx.owner.id_name() == name).unwrap_or(false);
+        if level == 0 || ctx.owner.has_state::<UpgradeState>() {
+            return;
+        }
+        let owner_alive = ctx.owner.alive();
+        let owner_hp = ctx.owner.get_status().hp;
+        let move_point = ctx.owner.move_point();
+        let mut minhp = 16;
+        if level > 63 {
+            minhp += (level - 63) as i32;
+        }
+        if !owner_alive {
+            return;
+        }
+        if owner_hp <= 0 {
+            return;
+        }
+        let roll_hp = ctx.randomer.r63() as i32;
+        let hp_gate = owner_hp < minhp + roll_hp;
+        if debug_this {
+            eprintln!(
+                "[upgrade_post_damage] owner={} hp={} minhp={} level={} roll_hp={} hp_gate={} rc4=({}, {})",
+                ctx.owner.id_name(),
+                owner_hp,
+                minhp,
+                level,
+                roll_hp,
+                hp_gate,
+                ctx.randomer.i,
+                ctx.randomer.j
+            );
+        }
+        if !hp_gate {
+            return;
+        }
+        let roll_level = ctx.randomer.r63();
+        if debug_this {
+            eprintln!(
+                "[upgrade_post_damage] owner={} roll_level={} rc4=({}, {})",
+                ctx.owner.id_name(),
+                roll_level,
+                ctx.randomer.i,
+                ctx.randomer.j
+            );
+        }
+        if roll_level < level {
+            ctx.updates.add(RunUpdate::new_newline());
+            ctx.updates.add(RunUpdate::new("[0]做出[垂死]抗争", ctx.ptr, ctx.ptr, 60));
+            ctx.updates.add(RunUpdate::new("[0]所有属性上升", ctx.ptr, ctx.ptr, 0));
+            ctx.set_state(UpgradeState { target: Some(ctx.ptr) });
+            ctx.owner.set_move_point(move_point + 400);
+        }
+    }
 
     fn post_damage_with_level(&mut self, level: u32, _dmg: i32, _caster: PlrId, args: SkillArgs) {
         let owner = args.3.get_player(&args.0).expect("cannot get upgrade owner from storage");

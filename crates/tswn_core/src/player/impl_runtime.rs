@@ -56,7 +56,7 @@
 //! ```
 
 use super::*;
-use crate::player::skill::{Effect, InlineCtx};
+use crate::player::skill::{Effect, InlineCtx, PostDamageCtx};
 use smallvec::SmallVec;
 
 // JS addNew 之后的新单位会立刻参与"战斗是否结束"的判断，
@@ -250,6 +250,7 @@ impl Player {
             let owner = unsafe { &mut *self_ptr };
             let mut ctx = InlineCtx {
                 ptr, owner, randomer, updates, storage,
+                post_damage: None,
                 effects: SmallVec::new(),
                 needs_update_states: false,
             };
@@ -515,6 +516,7 @@ impl Player {
                                     randomer,
                                     updates,
                                     storage,
+                                    post_damage: None,
                                     effects: SmallVec::new(),
                                     needs_update_states: false,
                                 };
@@ -687,6 +689,7 @@ impl Player {
             let owner = unsafe { &mut *self_ptr };
             let mut ctx = InlineCtx {
                 ptr, owner, randomer, updates, storage,
+                post_damage: None,
                 effects: SmallVec::new(),
                 needs_update_states: false,
             };
@@ -751,6 +754,7 @@ impl Player {
             let owner = unsafe { &mut *self_ptr };
             let mut ctx = InlineCtx {
                 ptr, owner, randomer, updates, storage,
+                post_damage: None,
                 effects: SmallVec::new(),
                 needs_update_states: false,
             };
@@ -1554,6 +1558,7 @@ impl Player {
                     let owner = unsafe { &mut *self_ptr };
                     let mut ctx = InlineCtx {
                         ptr: owner_id, owner, randomer, updates, storage,
+                        post_damage: None,
                         effects: SmallVec::new(),
                         needs_update_states: false,
                     };
@@ -1657,6 +1662,7 @@ impl Player {
                 let owner = unsafe { &mut *self_ptr };
                 let mut ctx = InlineCtx {
                     ptr: owner_id, owner, randomer, updates, storage,
+                    post_damage: None,
                     effects: SmallVec::new(),
                     needs_update_states: false,
                 };
@@ -2081,6 +2087,7 @@ impl Player {
                         randomer,
                         updates,
                         storage,
+                        post_damage: None,
                         effects: SmallVec::new(),
                         needs_update_states: false,
                     };
@@ -2466,6 +2473,7 @@ impl Player {
                     randomer,
                     updates,
                     storage,
+                    post_damage: Some(PostDamageCtx { dmg, caster }),
                     effects: SmallVec::new(),
                     needs_update_states: false,
                 };

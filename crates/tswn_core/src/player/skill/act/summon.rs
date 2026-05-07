@@ -5,7 +5,7 @@ use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlayerStateStore, PlayerType, PlrId,
     skill::store::SkillStorage,
-    skill::{Skill, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{InlineCtx, Skill, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -43,6 +43,8 @@ impl SkillTrait for SummonSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn has_inline_act(&self) -> bool { true }
+
     fn has_action_impl(&self) -> bool { true }
 
     fn target_domain(&self) -> SkillTargetDomain { SkillTargetDomain::SelfOnly }
@@ -66,6 +68,103 @@ impl SkillTrait for SummonSkill {
 
     fn select_targets_with_level(&self, _level: u32, _candidates: &[PlrId], _smart: bool, args: SkillArgs) -> Vec<PlrId> {
         vec![args.0]
+    }
+
+    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        ctx.updates.add(RunUpdate::new("[0]使用[血祭]", ctx.ptr, ctx.ptr, 60));
+        let owner = ctx.owner.clone();
+        let charge_active = owner.get_status().at_boost >= 3.0;
+        if let Some(summoned_id) = self.summoned
+            && let Some(summoned) = ctx.storage.just_get_player_mut(summoned_id)
+            && !summoned.alive()
+        {
+            ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
+            summoned.skills.boost_last();
+            summoned.skills.update_proc();
+            summoned.init_values();
+            summoned.status.set_alive(true);
+            summoned.status.move_point = ctx.randomer.r255() as i32 * 4;
+            if charge_active {
+                summoned.status.move_point = 2048;
+            }
+            ctx.storage.queue_revival(summoned_id);
+            ctx.updates.add(RunUpdate::new("召唤出[1]", ctx.ptr, summoned_id, 0));
+            return;
+        }
+        let summon_team = owner.clan_name();
+        let summon_name = format!("{}?summon", owner.base_name());
+        let mut summoned = crate::player::Player::new_and_init(Some(summon_team.clone()), summon_name.clone(), None, ctx.storage.clone())
+            .expect("cannot init summon minion");
+        prepare_combat_minion(&mut summoned);
+        summoned.build();
+        summoned.attr[7] = (summoned.attr[7] / 3).max(1);
+        summoned.attr[0] = 0;
+        summoned.attr[1] = owner.attr[1];
+        summoned.attr[4] = 0;
+        summoned.attr[5] = owner.attr[5];
+        summoned.update_states();
+        summoned.status.hp = summoned.status.max_hp;
+        summoned.status.magic_point = summoned.status.wisdom >> 1;
+
+        summoned.id = ctx.storage.new_plr_id();
+        summoned.set_id_name_override(Some(alloc_minion_name(ctx.storage, ctx.ptr)));
+        summoned.set_display_name_override(Some("使魔".to_string()));
+        summoned.player_type = PlayerType::Clone;
+        summoned.sort_int = 0;
+        summoned.state = PlayerStateStore::default();
+        summoned.set_state(MinionRuntimeState {
+            owner: Some(ctx.ptr),
+            kind: MinionKind::Summon,
+        });
+        summoned.status.set_alive(true);
+        summoned.status.set_frozen(false);
+
+        let skill_level_from_slot = |slot: usize| -> u32 {
+            let base = 64 + slot * 4;
+            if base + 3 >= summoned.name_base.len() {
+                return 0;
+            }
+            let minv = summoned.name_base[base..base + 4].iter().copied().min().unwrap_or(0);
+            minv.saturating_sub(10) as u32
+        };
+        let mut skill_order = [0usize, 1, 2];
+        let team_bytes = [0_u8].iter().chain(summon_team.as_bytes()).copied().collect::<Vec<u8>>();
+        let name_bytes = [0_u8].iter().chain(summon_name.as_bytes()).copied().collect::<Vec<u8>>();
+        let mut skill_rand = RC4::new(&team_bytes, 1);
+        skill_rand.update(&name_bytes, 2);
+        skill_rand.sort_list(&mut skill_order);
+        let mut skills = SkillStorage::new();
+        skills.add_skill(Skill::new_with_id(0, 0));
+        skills.add_skill(Skill::new_with_id(0, 0));
+        skills.add_skill(Skill::new(0, Box::new(SummonExplodeSkill::new())));
+        for (slot, skill_key) in skill_order.iter().copied().enumerate() {
+            let level = skill_level_from_slot(slot);
+            let skill = skills.skill_by_id_mut(skill_key);
+            skill.set_level(level);
+            if level > 0 {
+                let raw_base = 64 + slot * 4;
+                if raw_base + 3 < summoned.raw_name_base.len() {
+                    let raw_min = summoned.raw_name_base[raw_base..raw_base + 4].iter().copied().min().unwrap_or(0);
+                    if raw_min <= 10 {
+                        skill.boosted = true;
+                    }
+                }
+            }
+        }
+        skills.slot_skill = vec![0, 1, 2];
+        skills.skill = skill_order.to_vec();
+        ensure_summon_share_damage_skill(&mut skills, !charge_active);
+        skills.boost_last();
+        summoned.skills = skills;
+        summoned.skills.update_proc();
+        summoned.status.move_point = ctx.randomer.r255() as i32 * 4;
+        if charge_active {
+            summoned.status.move_point = 2048;
+        }
+        let summoned_id = summoned.as_ptr();
+        self.summoned = Some(summoned_id);
+        ctx.storage.queue_spawn(ctx.ptr, summoned);
+        ctx.updates.add(RunUpdate::new("召唤出[1]", ctx.ptr, summoned_id, 0));
     }
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
@@ -262,6 +361,23 @@ impl SkillTrait for SummonShareDamageSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn has_inline_post_damage(&self) -> bool { true }
+
+    fn post_damage_inline(&mut self, _level: u32, ctx: &mut InlineCtx) {
+        let owner_id = ctx.owner.get_state::<MinionRuntimeState>().and_then(|state| state.owner);
+        let Some(owner_id) = owner_id else {
+            return;
+        };
+        let meta = ctx.post_damage_meta();
+        // JS PlrSummon.aR: 在伤害分摊期间标记使魔，
+        // 防止 owner 死亡时通过 linked minion 路径立即处理使魔的死亡。
+        ctx.storage.set_in_post_damage(ctx.ptr);
+        if let Some(owner) = ctx.storage.just_get_player_mut(owner_id) {
+            owner.damage(meta.dmg / 2, meta.caster, on_summon_share_damage as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage);
+        }
+        ctx.storage.clear_in_post_damage();
+    }
 
     fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
         let owner_id = args

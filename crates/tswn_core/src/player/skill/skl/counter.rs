@@ -5,7 +5,7 @@ use crate::engine::update::RunUpdates;
 use crate::player::{
     OnDamageFunc, PlrId,
     skill::act::charm::CharmState,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -28,6 +28,43 @@ impl SkillTrait for CounterSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn has_inline_post_damage(&self) -> bool { true }
+
+    fn post_damage_inline(&mut self, level: u32, ctx: &mut InlineCtx) {
+        let meta = ctx.post_damage_meta();
+        let owner_wisdom = ctx.owner.get_status().wisdom.clamp(0, 127) as u32;
+        let owner_ally_group = ctx
+            .owner
+            .get_state::<CharmState>()
+            .and_then(|charm| {
+                charm
+                    .effective_team_idx
+                    .and_then(|team_idx| ctx.storage.get_group(team_idx).cloned())
+                    .or_else(|| ctx.storage.group_containing(charm.group_id).cloned())
+            })
+            .or_else(|| ctx.storage.group_containing(ctx.ptr).cloned());
+        let caster_group = ctx.storage.group_containing(meta.caster).cloned();
+        if owner_ally_group == caster_group && ctx.randomer.r63() < owner_wisdom {
+            return;
+        }
+        let updates_id = ctx.updates.id;
+        if self.last_updates_id == Some(updates_id) {
+            if self.pending && Some(meta.caster) != self.last_target && ctx.randomer.r127() < level {
+                self.last_target = Some(meta.caster);
+            }
+            return;
+        }
+        self.last_updates_id = Some(updates_id);
+        if ctx.randomer.r255() < level {
+            self.last_target = Some(meta.caster);
+            self.pending = true;
+            ctx.updates.on_update_end.push(ctx.ptr);
+        } else {
+            self.pending = false;
+            self.last_target = None;
+        }
+    }
 
     fn post_damage_with_level(&mut self, level: u32, dmg: i32, caster: PlrId, args: SkillArgs) {
         let _ = dmg;

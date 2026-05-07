@@ -96,6 +96,45 @@ fn counter_treats_reused_updates_as_new_batch_after_reset() {
 }
 
 #[test]
+fn summon_minion_shares_half_damage_to_owner_via_inline_post_damage() {
+    let storage = Storage::new_arc();
+    let mut summoner = Player::new_from_namerena_raw("地狱之轮 #mW88BamWo@Shabby_fish".to_string(), storage.clone()).unwrap();
+    let attacker = Player::new_from_namerena_raw("attacker".to_string(), storage.clone()).unwrap();
+    summoner.build();
+    let summoner_id = storage.just_insert_player(summoner);
+    let attacker_id = storage.just_insert_player(attacker);
+    storage.sync_groups(&[vec![summoner_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![summoner_id], vec![attacker_id]]);
+
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        127,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = pending.into_iter().next().unwrap().player;
+    let summoned_id = storage.just_insert_player(summoned);
+    storage.sync_groups(&[vec![summoner_id, summoned_id], vec![attacker_id]]);
+    storage.sync_alive_groups(&[vec![summoner_id, summoned_id], vec![attacker_id]]);
+
+    let owner_hp_before = storage.get_player(&summoner_id).unwrap().get_status().hp;
+    storage
+        .just_get_player_mut(summoned_id)
+        .unwrap()
+        .damage(10, attacker_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+    let owner_hp_after = storage.get_player(&summoner_id).unwrap().get_status().hp;
+
+    assert_eq!(owner_hp_before - owner_hp_after, 5);
+}
+
+#[test]
 fn on_damaged_triggers_on_die() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
@@ -475,6 +514,195 @@ fn revive_action_targets_dead_ally() {
     assert!(revived.alive());
     assert!(revived.get_status().hp > 0);
     assert!(updates.updates.iter().any(|u| u.message.contains("苏生术") && u.target == ally_id));
+}
+
+#[test]
+fn half_action_reduces_target_hp_via_inline_dispatch() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("half@red".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let target_id = storage.just_insert_player(target);
+    storage.sync_groups(&[vec![owner_id], vec![target_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![target_id]]);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+    owner_mut.status.magic_point = 999;
+    owner_mut.status.magic = 90;
+    owner_mut.status.wisdom = 120;
+    owner_mut.status.at_boost = 3.0;
+    owner_mut.skills.add_skill(Skill::new_with_id(255, 8));
+    owner_mut.skills.update_proc();
+
+    let target_mut = storage.just_get_player_mut(target_id).unwrap();
+    target_mut.status.hp = 200;
+    target_mut.status.max_hp = 200;
+    target_mut.status.resistance = 0;
+    target_mut.status.agility = 0;
+
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .action(&mut randomer, &mut updates, &storage, &ActionTargets::from_enemy_alive(&[target_id]));
+
+    let target_after = storage.get_player(&target_id).unwrap();
+    assert!(target_after.get_status().hp < 200);
+    assert!(updates.updates.iter().any(|u| u.message.contains("瘟疫") && u.target == target_id));
+}
+
+#[test]
+fn quake_action_damages_enemy_via_inline_dispatch() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("quake@red".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let target_id = storage.just_insert_player(target);
+    storage.sync_groups(&[vec![owner_id], vec![target_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![target_id]]);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+    owner_mut.status.magic_point = 999;
+    owner_mut.status.magic = 120;
+    owner_mut.status.attack = 120;
+    owner_mut.skills.add_skill(Skill::new_with_id(255, 3));
+    owner_mut.skills.update_proc();
+
+    let target_mut = storage.just_get_player_mut(target_id).unwrap();
+    target_mut.status.hp = 240;
+    target_mut.status.max_hp = 240;
+    target_mut.status.agility = 0;
+    target_mut.status.resistance = 0;
+    target_mut.status.set_frozen(true);
+
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .action(&mut randomer, &mut updates, &storage, &ActionTargets::from_enemy_alive(&[target_id]));
+
+    let target_after = storage.get_player(&target_id).unwrap();
+    assert!(target_after.get_status().hp < 240);
+    assert!(updates.updates.iter().any(|u| u.message.contains("地裂术") && u.target == target_id));
+}
+
+#[test]
+fn rapid_action_damages_enemy_via_inline_dispatch() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("rapid@red".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let target_id = storage.just_insert_player(target);
+    storage.sync_groups(&[vec![owner_id], vec![target_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![target_id]]);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+    owner_mut.status.hp = 220;
+    owner_mut.status.max_hp = 220;
+    owner_mut.status.set_alive(true);
+    owner_mut.status.magic_point = 999;
+    owner_mut.status.attack = 150;
+    owner_mut.status.agility = 120;
+    owner_mut.skills.add_skill(Skill::new_with_id(255, 6));
+    owner_mut.skills.update_proc();
+
+    let target_mut = storage.just_get_player_mut(target_id).unwrap();
+    target_mut.status.hp = 220;
+    target_mut.status.max_hp = 220;
+    target_mut.status.set_alive(true);
+    target_mut.status.defense = 1;
+    target_mut.status.agility = 0;
+    target_mut.status.set_frozen(true);
+
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .action(&mut randomer, &mut updates, &storage, &ActionTargets::from_enemy_alive(&[target_id]));
+
+    let target_after = storage.get_player(&target_id).unwrap();
+    assert!(target_after.get_status().hp < 220);
+    assert!(updates.updates.iter().any(|u| (u.message.contains("发起攻击") || u.message.contains("连击")) && u.target == target_id));
+}
+
+#[test]
+fn thunder_action_damages_enemy_via_inline_dispatch() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("thunder@red".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let target_id = storage.just_insert_player(target);
+    storage.sync_groups(&[vec![owner_id], vec![target_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![target_id]]);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+    owner_mut.status.hp = 220;
+    owner_mut.status.max_hp = 220;
+    owner_mut.status.set_alive(true);
+    owner_mut.status.magic_point = 999;
+    owner_mut.status.magic = 120;
+    owner_mut.status.agility = 120;
+    owner_mut.skills.add_skill(Skill::new_with_id(255, 2));
+    owner_mut.skills.update_proc();
+
+    let target_mut = storage.just_get_player_mut(target_id).unwrap();
+    target_mut.status.hp = 220;
+    target_mut.status.max_hp = 220;
+    target_mut.status.set_alive(true);
+    target_mut.status.resistance = 0;
+    target_mut.status.agility = 0;
+    target_mut.status.set_frozen(true);
+
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .action(&mut randomer, &mut updates, &storage, &ActionTargets::from_enemy_alive(&[target_id]));
+
+    let target_after = storage.get_player(&target_id).unwrap();
+    assert!(target_after.get_status().hp < 220);
+    assert!(updates.updates.iter().any(|u| u.message.contains("雷击术") && u.target == target_id));
+}
+
+#[test]
+fn disperse_action_damages_enemy_via_inline_dispatch() {
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("disperse@red".to_string(), storage.clone()).unwrap();
+    let target = Player::new_from_namerena_raw("target@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let target_id = storage.just_insert_player(target);
+    storage.sync_groups(&[vec![owner_id], vec![target_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![target_id]]);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+    owner_mut.status.hp = 220;
+    owner_mut.status.max_hp = 220;
+    owner_mut.status.set_alive(true);
+    owner_mut.status.magic_point = 999;
+    owner_mut.status.magic = 120;
+    owner_mut.skills.add_skill(Skill::new_with_id(255, 17));
+    owner_mut.skills.update_proc();
+
+    let target_mut = storage.just_get_player_mut(target_id).unwrap();
+    target_mut.status.hp = 220;
+    target_mut.status.max_hp = 220;
+    target_mut.status.set_alive(true);
+    target_mut.status.resistance = 0;
+
+    storage
+        .just_get_player_mut(owner_id)
+        .unwrap()
+        .action(&mut randomer, &mut updates, &storage, &ActionTargets::from_enemy_alive(&[target_id]));
+
+    let target_after = storage.get_player(&target_id).unwrap();
+    assert!(target_after.get_status().hp < 220);
+    assert!(updates.updates.iter().any(|u| u.message.contains("净化") && u.target == target_id));
 }
 
 #[test]

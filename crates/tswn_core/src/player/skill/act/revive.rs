@@ -3,7 +3,7 @@ use crate::player::{
     PlrId,
     skill::act::minion::is_combat_minion,
     skill::corpse::CorpseState,
-    skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
+    skill::{InlineCtx, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -23,6 +23,8 @@ impl SkillTrait for ReviveSkill {
     fn destroy(&self, _plr: PlrId, _args: SkillArgs) {}
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
+
+    fn has_inline_act(&self) -> bool { true }
 
     fn post_act_level(&self, level: u32) -> u32 { (level + 1) >> 1 }
 
@@ -68,6 +70,32 @@ impl SkillTrait for ReviveSkill {
         } else {
             args.1.rFFFF() as f64
         }
+    }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        let atp = ctx.owner.get_at(true, ctx.randomer);
+        let max_hp = ctx
+            .storage
+            .get_player(&target_id)
+            .expect("cannot get revive target from storage")
+            .get_status()
+            .max_hp;
+        let heal = ((atp / 75.0).ceil() as i32).clamp(1, max_hp.max(1));
+        ctx.updates.add(RunUpdate::new("[0]使用[苏生术]", ctx.ptr, target_id, 1));
+        let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get revive target from storage");
+        if target.alive() {
+            return;
+        }
+        target.revive_with_hp(heal);
+        ctx.storage.queue_revival(target_id);
+        ctx.updates.add(RunUpdate::new("[1][复活]了", ctx.ptr, target_id, (heal + 60) as u32));
+        let mut recover_update = RunUpdate::new("[1]回复体力[2]点", ctx.ptr, target_id, 0);
+        recover_update.param = Some(heal as u32);
+        ctx.updates.add(recover_update);
     }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
