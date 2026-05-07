@@ -1,7 +1,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{Effect, InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -121,23 +121,19 @@ impl SkillTrait for ReflectSkill {
         if reflect_atp > atp {
             reflect_atp = atp;
         }
+        // Defer the reflected strike until after the inline callback returns so the
+        // dispatcher can release ctx.owner before any recursive attacked_core call.
         ctx.updates.add(RunUpdate::new("[0]使用[伤害反弹]", ctx.ptr, caster, 20));
-        let core = {
-            let caster_plr = ctx
-                .storage
-                .just_get_player_mut(caster)
-                .expect("cannot get reflect caster from storage");
-            caster_plr.attacked_core(reflect_atp, true, ctx.ptr, *on_damage, ctx.randomer, ctx.updates, ctx.storage)
-        };
-        if core.hit {
-            on_damage(ctx.ptr, core.target, core.dmg, ctx.randomer, ctx.updates, ctx.storage);
-            let caster_plr = ctx
-                .storage
-                .just_get_player_mut(core.target)
-                .expect("cannot get reflect caster from storage");
-            caster_plr.finish_damage(core.dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
-        }
-        ctx.owner.set_move_point(ctx.owner.move_point() - 480);
+        ctx.effects.push(Effect::Attack {
+            target: caster,
+            atp: reflect_atp,
+            is_mag: true,
+            on_damage: *on_damage,
+        });
+        ctx.effects.push(Effect::AddMovePoint {
+            target: ctx.ptr,
+            delta: -480,
+        });
         0.0
     }
 

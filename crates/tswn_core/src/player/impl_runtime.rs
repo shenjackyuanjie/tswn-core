@@ -534,43 +534,7 @@ impl Player {
                                 }
                                 skill.put_skill_type(skill_type);
                             }
-                            for effect in deferred_effects {
-                                match effect {
-                                    Effect::Attack { target, atp, is_mag, on_damage } => {
-                                        let core = {
-                                            let target_plr = storage.just_get_player_mut(target).expect("attack target not found");
-                                            target_plr.attacked_core(atp, is_mag, ptr, on_damage, randomer, updates, storage)
-                                        };
-                                        if core.hit {
-                                            on_damage(ptr, core.target, core.dmg, randomer, updates, storage);
-                                            let target_plr = storage.just_get_player_mut(core.target).expect("attack target not found");
-                                            target_plr.finish_damage(core.dmg, core.old_hp, ptr, randomer, updates, storage);
-                                        }
-                                    }
-                                    Effect::Heal { target, amount } => {
-                                        if let Some(target_plr) = storage.just_get_player_mut(target) {
-                                            target_plr.heal(amount);
-                                        }
-                                    }
-                                    Effect::DamageRaw { target, dmg, on_damage } => {
-                                        let core = {
-                                            let target_plr = storage.just_get_player_mut(target).expect("damage target not found");
-                                            target_plr.damage_core(dmg, ptr, updates)
-                                        };
-                                        on_damage(ptr, target, core.actual_dmg, randomer, updates, storage);
-                                        let target_plr = storage.just_get_player_mut(target).expect("damage target not found");
-                                        target_plr.finish_damage(core.actual_dmg, core.old_hp, ptr, randomer, updates, storage);
-                                    }
-                                    Effect::AddMovePoint { target, delta } => {
-                                        if let Some(target_plr) = storage.just_get_player_mut(target) {
-                                            target_plr.add_move_point(delta);
-                                        }
-                                    }
-                                    Effect::OwnerDie { old_hp } => {
-                                        self.on_die(old_hp, ptr, randomer, updates, storage);
-                                    }
-                                }
-                            }
+                            self.apply_deferred_effects(ptr, deferred_effects, randomer, updates, storage);
                             if needs_update {
                                 self.update_states();
                             }
@@ -1508,6 +1472,53 @@ impl Player {
 
     pub(super) fn apply_update_state_effects(&mut self) { self.state.apply_update_state_effects(&mut self.status); }
 
+    fn apply_deferred_effects(
+        &mut self,
+        ptr: PlrId,
+        deferred_effects: SmallVec<[Effect; 4]>,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) {
+        for effect in deferred_effects {
+            match effect {
+                Effect::Attack { target, atp, is_mag, on_damage } => {
+                    let core = {
+                        let target_plr = storage.just_get_player_mut(target).expect("attack target not found");
+                        target_plr.attacked_core(atp, is_mag, ptr, on_damage, randomer, updates, storage)
+                    };
+                    if core.hit {
+                        on_damage(ptr, core.target, core.dmg, randomer, updates, storage);
+                        let target_plr = storage.just_get_player_mut(core.target).expect("attack target not found");
+                        target_plr.finish_damage(core.dmg, core.old_hp, ptr, randomer, updates, storage);
+                    }
+                }
+                Effect::Heal { target, amount } => {
+                    if let Some(target_plr) = storage.just_get_player_mut(target) {
+                        target_plr.heal(amount);
+                    }
+                }
+                Effect::DamageRaw { target, dmg, on_damage } => {
+                    let core = {
+                        let target_plr = storage.just_get_player_mut(target).expect("damage target not found");
+                        target_plr.damage_core(dmg, ptr, updates)
+                    };
+                    on_damage(ptr, target, core.actual_dmg, randomer, updates, storage);
+                    let target_plr = storage.just_get_player_mut(target).expect("damage target not found");
+                    target_plr.finish_damage(core.actual_dmg, core.old_hp, ptr, randomer, updates, storage);
+                }
+                Effect::AddMovePoint { target, delta } => {
+                    if let Some(target_plr) = storage.just_get_player_mut(target) {
+                        target_plr.add_move_point(delta);
+                    }
+                }
+                Effect::OwnerDie { old_hp } => {
+                    self.on_die(old_hp, ptr, randomer, updates, storage);
+                }
+            }
+        }
+    }
+
     pub(super) fn apply_pre_step_states(&mut self, mut step: i32, updates: &mut RunUpdates) -> i32 {
         let status_snapshot = self.status;
         let clear_tags = self.state.on_pre_step_states(self.as_ptr(), &status_snapshot, &mut step, updates);
@@ -2076,6 +2087,8 @@ impl Player {
         for skill_key in skill_keys {
             let has_inline = self.skills.skill_by_id(skill_key).has_inline_pre_defend();
             if has_inline {
+                let needs_update;
+                let deferred_effects;
                 let (mut skill_type, level) = {
                     let skill = self.skills.skill_by_id_mut(skill_key);
                     (skill.take_skill_type(), skill.level())
@@ -2092,8 +2105,14 @@ impl Player {
                         needs_update_states: false,
                     };
                     atp = skill_type.pre_defend_inline(level, &mut ctx, atp, is_mag, caster, &on_damage);
+                    needs_update = ctx.needs_update_states;
+                    deferred_effects = std::mem::take(&mut ctx.effects);
                 }
                 self.skills.skill_by_id_mut(skill_key).put_skill_type(skill_type);
+                self.apply_deferred_effects(owner_id, deferred_effects, randomer, updates, storage);
+                if needs_update {
+                    self.update_states();
+                }
             } else {
                 atp = self.skills.skill_by_id_mut(skill_key).pre_defend(
                     atp,
