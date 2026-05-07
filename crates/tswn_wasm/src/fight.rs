@@ -123,13 +123,45 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             push_status_label(&mut status_labels, "聚气");
         }
         if has_active_skill(player, "::ChargeSkill", |skill| skill.charge_runtime_active()) {
-            push_status_label(&mut status_labels, "蓄力");
+            let step = player
+                .skill_storage()
+                .store
+                .values()
+                .find_map(|s| {
+                    if s.debug_skill_type_name().ends_with("::ChargeSkill") {
+                        Some(s.charge_step())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            let suffix = if step > 0 {
+                format!(" ({})", step)
+            } else {
+                String::new()
+            };
+            push_status_label(&mut status_labels, &format!("蓄力{}", suffix));
         }
         if has_active_skill(player, "::HideSkill", |skill| skill.dynamic_update_state_enabled()) {
             push_status_label(&mut status_labels, "隐匿");
         }
         if has_active_skill(player, "::AssassinateSkill", |skill| skill.dynamic_pre_action_enabled()) {
-            push_status_label(&mut status_labels, "潜行");
+            let target = player
+                .skill_storage()
+                .store
+                .values()
+                .find_map(|s| {
+                    if s.debug_skill_type_name().ends_with("::AssassinateSkill") {
+                        s.assassinate_target()
+                    } else {
+                        None
+                    }
+                });
+            if let Some(target_id) = target {
+                push_status_label(&mut status_labels, &format!("潜行至 #{}", target_id));
+            } else {
+                push_status_label(&mut status_labels, "潜行");
+            }
         }
 
         if let Some(state) = player.get_state::<BerserkState>() {
