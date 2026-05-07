@@ -9,8 +9,8 @@
 
 ## 汇总
 
-- case 数: 14
-- 总分叉 round 数: 98
+- case 数: 16
+- 总分叉 round 数: 118
 
 ## QF9iBQK4HfUAE+Mmt0ZrdGnlpjwB
 
@@ -18,10 +18,10 @@
 - 旧消息显示: bun=46.42% / tswn(old)=46.33% / diff=-0.09
 - 本次精确结果: bun=4642/10000 / tswn=4646/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-42640-1777657298502.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42640-1777657298502.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42640-1777657298502.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42640-1777657298502.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-33048-1778161909880.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-33048-1778161909880.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-33048-1778161909880.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-33048-1778161909880.js:10661:16)
 
 - 队 1:
 
@@ -67,10 +67,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=47.85% / tswn(old)=47.88% / diff=+0.03
 - 本次精确结果: bun=4785/10000 / tswn=4783/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-49996-1777657307143.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-49996-1777657307143.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-49996-1777657307143.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-49996-1777657307143.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-47860-1778161918360.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-47860-1778161918360.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-47860-1778161918360.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-47860-1778161918360.js:10661:16)
 
 - 队 1:
 
@@ -113,10 +113,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=53.59% / tswn(old)=53.61% / diff=+0.02
 - 本次精确结果: bun=5359/10000 / tswn=5362/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-42168-1777657312362.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42168-1777657312362.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42168-1777657312362.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42168-1777657312362.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-38568-1778161923304.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-38568-1778161923304.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-38568-1778161923304.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-38568-1778161923304.js:10661:16)
 
 - 队 1:
 
@@ -158,10 +158,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=41.53% / tswn(old)=41.54% / diff=+0.01
 - 本次精确结果: bun=4153/10000 / tswn=4153/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-30444-1777657321453.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-30444-1777657321453.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-30444-1777657321453.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-30444-1777657321453.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-55724-1778161932048.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55724-1778161932048.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55724-1778161932048.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55724-1778161932048.js:10661:16)
 
 - 队 1:
 
@@ -203,10 +203,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=51.99% / tswn(old)=52.00% / diff=+0.01
 - 本次精确结果: bun=5199/10000 / tswn=5199/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-27168-1777657326743.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-27168-1777657326743.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-27168-1777657326743.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-27168-1777657326743.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-53612-1778161936808.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-53612-1778161936808.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-53612-1778161936808.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-53612-1778161936808.js:10661:16)
 
 - 队 1:
 
@@ -246,10 +246,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=47.44% / tswn(old)=47.45% / diff=+0.01
 - 本次精确结果: bun=4744/10000 / tswn=4743/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-19440-1777657331904.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-19440-1777657331904.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-19440-1777657331904.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-19440-1777657331904.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-26844-1778161941499.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-26844-1778161941499.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-26844-1778161941499.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-26844-1778161941499.js:10661:16)
 
 - 队 1:
 
@@ -292,10 +292,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=44.78% / tswn(old)=44.77% / diff=-0.01
 - 本次精确结果: bun=4478/10000 / tswn=4481/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-47936-1777657336896.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-47936-1777657336896.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-47936-1777657336896.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-47936-1777657336896.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-40812-1778161946158.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-40812-1778161946158.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-40812-1778161946158.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-40812-1778161946158.js:10661:16)
 
 - 队 1:
 
@@ -335,10 +335,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=49.34% / tswn(old)=49.27% / diff=-0.07
 - 本次精确结果: bun=4934/10000 / tswn=4941/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-40844-1777657342686.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-40844-1777657342686.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-40844-1777657342686.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-40844-1777657342686.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-36236-1778161951491.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36236-1778161951491.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36236-1778161951491.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36236-1778161951491.js:10661:16)
 
 - 队 1:
 
@@ -381,10 +381,10 @@ Tachibana_akira #BydbIMidbs@🥒
 - 旧消息显示: bun=42.05% / tswn(old)=42.08% / diff=+0.03
 - 本次精确结果: bun=4205/10000 / tswn=4206/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-28512-1777657352160.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-28512-1777657352160.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-28512-1777657352160.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-28512-1777657352160.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-55244-1778161960418.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55244-1778161960418.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55244-1778161960418.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55244-1778161960418.js:10661:16)
 
 - 队 1:
 
@@ -424,10 +424,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=39.71% / tswn(old)=39.68% / diff=-0.03
 - 本次精确结果: bun=3971/10000 / tswn=3975/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-24804-1777657359598.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-24804-1777657359598.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-24804-1777657359598.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-24804-1777657359598.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-21748-1778161967676.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-21748-1778161967676.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-21748-1778161967676.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-21748-1778161967676.js:10661:16)
 
 - 队 1:
 
@@ -505,10 +505,10 @@ Orbital #sfPTzSpZz@tyakasha
 - 旧消息显示: bun=57.30% / tswn(old)=57.31% / diff=+0.01
 - 本次精确结果: bun=5730/10000 / tswn=5731/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-44972-1777657369600.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-44972-1777657369600.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-44972-1777657369600.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-44972-1777657369600.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-39704-1778161977260.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-39704-1778161977260.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-39704-1778161977260.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-39704-1778161977260.js:10661:16)
 
 - 队 1:
 
@@ -546,10 +546,10 @@ Wispy #6uttTRg@Arcadia
 - 旧消息显示: bun=62.82% / tswn(old)=62.80% / diff=-0.02
 - 本次精确结果: bun=6282/10000 / tswn=6279/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-55756-1777657374375.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55756-1777657374375.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55756-1777657374375.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-55756-1777657374375.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-36196-1778161981785.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36196-1778161981785.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36196-1778161981785.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36196-1778161981785.js:10661:16)
 
 - 队 1:
 
@@ -590,10 +590,10 @@ Orbital #uToMNkhhZ@tyakasha
 - 旧消息显示: bun=45.63% / tswn(old)=45.62% / diff=-0.01
 - 本次精确结果: bun=4563/10000 / tswn=4559/10000
 - bun md5.js: D:\githubs\namer\fast-namerena\md5.js
-- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-16676-1777657388192.js:10728:27)
-    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-16676-1777657388192.js:4008:103)
-    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-16676-1777657388192.js:10586:11)
-    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-16676-1777657388192.js:10661:16)
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-33528-1778161994636.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-33528-1778161994636.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-33528-1778161994636.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-33528-1778161994636.js:10661:16)
 
 - 队 1:
 
@@ -630,3 +630,92 @@ Orbital #sfPTzSpZz@tyakasha
   rounds: 8506, 8603
 - 9001-10000: bun 4122->4563, tswn 4119->4559, 累计差 -3->-4, 净变化 -1, 分叉 1 场
   rounds: 9116
+
+## QF9iBQK4HfUAFA97RnwMbmn8gEQB
+
+- 时间: 2026/05/07 1778155588000 / shenjack的bot
+- 旧消息显示: bun=59.36% / tswn(old)=59.35% / diff=-0.01
+- 本次精确结果: bun=5936/10000 / tswn=5935/10000
+- bun md5.js: D:\githubs\namer\fast-namerena\md5.js
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-42828-1778162003002.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42828-1778162003002.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42828-1778162003002.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-42828-1778162003002.js:10661:16)
+
+- 队 1:
+
+```text
+冥河 WyO8MUZPPtKH@Afterglow
+光 jKLA6V5mirfs@Afterglow
+```
+- 队 2:
+
+```text
+樱井光 #CQMQFHIEV@无惨
+朝雾和梦 KIJKUMJIA@无惨
+```
+- 真实分叉 round 数: 1
+- 真实分叉 round: 190
+- 对应 seed: r190=3355620
+
+### 1000 场分段
+
+- 1-1000: bun 0->584, tswn 0->583, 累计差 +0->-1, 净变化 -1, 分叉 1 场
+  rounds: 190
+- 1001-2000: bun 584->1184, tswn 583->1183, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 2001-3000: bun 1184->1759, tswn 1183->1758, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 3001-4000: bun 1759->2382, tswn 1758->2381, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 4001-5000: bun 2382->2964, tswn 2381->2963, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 5001-6000: bun 2964->3545, tswn 2963->3544, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 6001-7000: bun 3545->4131, tswn 3544->4130, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 7001-8000: bun 4131->4730, tswn 4130->4729, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 8001-9000: bun 4730->5360, tswn 4729->5359, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 9001-10000: bun 5360->5936, tswn 5359->5935, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+
+## QF9iBQK4HfUAFBCcvlX8Emn8khwB
+
+- 时间: 2026/05/07 1778160156000 / shenjack的bot
+- 旧消息显示: bun=61.09% / tswn(old)=61.08% / diff=-0.01
+- 本次精确结果: bun=6109/10000 / tswn=6108/10000
+- bun md5.js: D:\githubs\namer\fast-namerena\md5.js
+- branch/latest 失败后 fallback: bun trace produced empty stdout for D:\githubs\namer\fast-namerena\branch\latest\md5.js: h\latest\.tswn-md5-trace-36336-1778162010640.js:10728:27)
+    at _Future__propagateToListeners (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36336-1778162010640.js:4008:103)
+    at c2 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36336-1778162010640.js:10586:11)
+    at $0 (D:\githubs\namer\fast-namerena\branch\latest\.tswn-md5-trace-36336-1778162010640.js:10661:16)
+
+- 队 1:
+
+```text
+syVS:et@Hell
+'Yz|AS}@Hell
+```
+- 队 2:
+
+```text
+004TO9kah@仲夏夜梦
+oCDFIl@仲夏夜梦
+```
+- 真实分叉 round 数: 19
+- 真实分叉 round: 397, 670, 1004, 1616, 1706, 2284, 2540, 2643, 3339, 4385, 4866, 5071, 5109, 5288, 5783, 6220, 6813, 9089, 9102
+- 对应 seed: r397=3355827, r670=3356100, r1004=3356434, r1616=3357046, r1706=3357136, r2284=3357714, r2540=3357970, r2643=3358073, r3339=3358769, r4385=3359815, r4866=3360296, r5071=3360501, r5109=3360539, r5288=3360718, r5783=3361213, r6220=3361650, r6813=3362243, r9089=3364519, r9102=3364532
+
+### 1000 场分段
+
+- 1-1000: bun 0->609, tswn 0->607, 累计差 +0->-2, 净变化 -2, 分叉 2 场
+  rounds: 397, 670
+- 1001-2000: bun 609->1219, tswn 607->1214, 累计差 -2->-5, 净变化 -3, 分叉 3 场
+  rounds: 1004, 1616, 1706
+- 2001-3000: bun 1219->1826, tswn 1214->1824, 累计差 -5->-2, 净变化 +3, 分叉 3 场
+  rounds: 2284, 2540, 2643
+- 3001-4000: bun 1826->2437, tswn 1824->2434, 累计差 -2->-3, 净变化 -1, 分叉 1 场
+  rounds: 3339
+- 4001-5000: bun 2437->3047, tswn 2434->3044, 累计差 -3->-3, 净变化 +0, 分叉 2 场
+  rounds: 4385, 4866
+- 5001-6000: bun 3047->3667, tswn 3044->3666, 累计差 -3->-1, 净变化 +2, 分叉 4 场
+  rounds: 5071, 5109, 5288, 5783
+- 6001-7000: bun 3667->4273, tswn 3666->4272, 累计差 -1->-1, 净变化 +0, 分叉 2 场
+  rounds: 6220, 6813
+- 7001-8000: bun 4273->4873, tswn 4272->4872, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 8001-9000: bun 4873->5466, tswn 4872->5465, 累计差 -1->-1, 净变化 +0, 分叉 0 场
+- 9001-10000: bun 5466->6109, tswn 5465->6108, 累计差 -1->-1, 净变化 +0, 分叉 2 场
+  rounds: 9089, 9102
