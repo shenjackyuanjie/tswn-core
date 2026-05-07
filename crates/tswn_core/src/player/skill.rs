@@ -176,6 +176,8 @@ pub enum Effect {
     DamageRaw { target: PlrId, dmg: i32, on_damage: OnDamageFunc },
     /// 位移点增减
     AddMovePoint { target: PlrId, delta: i32 },
+    /// owner 自身死亡结算（如附体自灭），需要在 skill 借用释放后执行
+    OwnerDie { old_hp: i32 },
 }
 
 /// owner-centric 技能回调的上下文（方案 J）。
@@ -266,12 +268,18 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, _ctx: &mut InlineCtx) {}
     /// 内联版 clear_positive_runtime — 通过 InlineCtx 直接访问（方案 J）。
     fn clear_positive_runtime_inline(&mut self, _ctx: &mut InlineCtx) -> Option<&'static str> { None }
+    /// 是否实现了内联版 pre_action。
+    fn has_inline_pre_action(&self) -> bool { false }
     /// 内联版 pre_action（方案 J）。
     fn pre_action_inline(&mut self, _ctx: &mut InlineCtx) {}
+    /// 是否实现了内联版 post_action。
+    fn has_inline_post_action(&self) -> bool { false }
     /// 内联版 post_action（方案 J）。
     fn post_action_inline(&mut self, _ctx: &mut InlineCtx) {}
+    /// 是否实现了内联版 post_damage。
+    fn has_inline_post_damage(&self) -> bool { false }
     /// 内联版 post_damage（方案 J）。
-    fn post_damage_inline(&mut self, _ctx: &mut InlineCtx) {}
+    fn post_damage_inline(&mut self, _level: u32, _ctx: &mut InlineCtx) {}
     /// 是否实现了内联版 pre_defend。
     fn has_inline_pre_defend(&self) -> bool { false }
     /// 内联版 pre_defend（方案 J）。
@@ -775,16 +783,22 @@ impl Skill {
         self.skill_type.clear_positive_runtime_inline(ctx)
     }
 
+    pub fn has_inline_pre_action(&self) -> bool { self.skill_type.has_inline_pre_action() }
+
     pub fn pre_action_inline(&mut self, ctx: &mut InlineCtx) {
         self.skill_type.pre_action_inline(ctx)
     }
+
+    pub fn has_inline_post_action(&self) -> bool { self.skill_type.has_inline_post_action() }
 
     pub fn post_action_inline(&mut self, ctx: &mut InlineCtx) {
         self.skill_type.post_action_inline(ctx)
     }
 
+    pub fn has_inline_post_damage(&self) -> bool { self.skill_type.has_inline_post_damage() }
+
     pub fn post_damage_inline(&mut self, ctx: &mut InlineCtx) {
-        self.skill_type.post_damage_inline(ctx)
+        self.skill_type.post_damage_inline(self.level, ctx)
     }
 
     pub fn has_inline_pre_defend(&self) -> bool { self.skill_type.has_inline_pre_defend() }

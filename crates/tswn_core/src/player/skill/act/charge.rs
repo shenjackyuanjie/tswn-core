@@ -87,6 +87,20 @@ impl SkillTrait for ChargeSkill {
         }
     }
 
+    fn has_inline_post_action(&self) -> bool { true }
+
+    fn post_action_inline(&mut self, ctx: &mut InlineCtx) {
+        if self.on_post_action.is_none() {
+            return;
+        }
+        self.step -= 1;
+        if self.step <= 0 {
+            self.on_post_action = None;
+            self.on_update_state = None;
+            ctx.mark_update_states();
+        }
+    }
+
     fn post_action_phase(&self) -> PostActionPhase {
         // JS 把 Charge 的 PostActionImpl 以 ga4()=Infinity 追加到 x2 尾部，
         // 所以要晚于普通的 Poison/Protect/state post_action 收尾。

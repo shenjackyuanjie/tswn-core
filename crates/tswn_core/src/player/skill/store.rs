@@ -354,6 +354,20 @@ impl SkillStorage {
         step
     }
 
+    /// 内联版 pre_action dispatch（方案 J）。
+    /// 在常规 pre_action 链之前调用，处理技能的 pre_action 副作用。
+    /// 对 HideSkill 等技能，此调用会将 on_update_state 置空，
+    /// 使后续 accumulate 链中的旧路径 pre_action 变为空操作。
+    pub fn pre_action_inline_dispatch(&mut self, ctx: &mut InlineCtx) {
+        for idx in 0..self.pre_action.len() {
+            let skill_key = self.pre_action[idx];
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
+            if skill.has_inline_pre_action() {
+                skill.pre_action_inline(ctx);
+            }
+        }
+    }
+
     pub fn pre_action(&mut self, smart: bool, args: SkillArgs) -> PreActionOutcome {
         let mut forced_skill = None;
         let mut clear_forced_action = false;
@@ -462,6 +476,38 @@ impl SkillStorage {
     pub fn run_post_action_key(&mut self, skill_key: SkillKey, args: SkillArgs) {
         let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
         skill.post_action((args.0, args.1, args.2, args.3));
+    }
+
+    pub fn run_post_action_key_inline(&mut self, skill_key: SkillKey, ctx: &mut InlineCtx) {
+        let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
+        if skill.has_inline_post_action() {
+            skill.post_action_inline(ctx);
+        } else {
+            skill.post_action((ctx.ptr, ctx.randomer, ctx.updates, ctx.storage));
+        }
+    }
+
+    fn post_action_with_phase_inline(&mut self, phase: PostActionPhase, ctx: &mut InlineCtx) {
+        for idx in 0..self.post_action.len() {
+            let skill_key = self.post_action[idx];
+            if self.store.get(&skill_key).map(|skill| skill.post_action_phase()) != Some(phase) {
+                continue;
+            }
+            let skill = self.store.get_mut(&skill_key).expect("skill not found in store");
+            if skill.has_inline_post_action() {
+                skill.post_action_inline(ctx);
+            } else {
+                skill.post_action((ctx.ptr, ctx.randomer, ctx.updates, ctx.storage));
+            }
+        }
+    }
+
+    pub fn post_action_early_inline(&mut self, ctx: &mut InlineCtx) {
+        self.post_action_with_phase_inline(PostActionPhase::Early, ctx)
+    }
+
+    pub fn post_action_late_inline(&mut self, ctx: &mut InlineCtx) {
+        self.post_action_with_phase_inline(PostActionPhase::Late, ctx)
     }
 
     pub fn post_action_after_states(&mut self, args: SkillArgs) {

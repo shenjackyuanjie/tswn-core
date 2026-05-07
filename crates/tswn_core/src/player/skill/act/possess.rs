@@ -2,7 +2,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,
     skill::berserk::BerserkState,
-    skill::{InlineCtx, SkillArgs, SkillExt, SkillTrait},
+    skill::{Effect, InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -59,7 +59,7 @@ impl SkillTrait for PossessSkill {
 
         let old_hp = ctx.owner.status.hp;
         ctx.owner.status.hp = 0;
-        ctx.owner.on_die(old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
+        ctx.effects.push(Effect::OwnerDie { old_hp });
     }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
