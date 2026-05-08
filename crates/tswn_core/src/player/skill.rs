@@ -728,42 +728,58 @@ impl Skill {
     // 以下是技能 call pre/post 之类的东西
     // ==========
 
-    pub fn update_state(&mut self, args: SkillArgs) { self.skill_type.as_mut().unwrap().update_state_with_level(self.level, args) }
+    // ==========
+    // 以下访问器在 skill_type 为 None 时返回安全默认值。
+    // skill_type 在 take_skill_type 后短暂为 None，此时重入访问应等效于 NoneSkill。
+    // ==========
 
-    pub fn update_state_inline(&mut self, status: &mut super::PlayerStatus) {
-        self.skill_type.as_mut().unwrap().update_state_inline(self.level, status)
+    pub fn update_state(&mut self, args: SkillArgs) {
+        if let Some(st) = &mut self.skill_type { st.update_state_with_level(self.level, args); }
     }
 
-    pub fn has_inline_act(&self) -> bool { self.skill_type.as_ref().unwrap().has_inline_act() }
+    pub fn update_state_inline(&mut self, status: &mut super::PlayerStatus) {
+        if let Some(st) = &mut self.skill_type { st.update_state_inline(self.level, status); }
+    }
+
+    pub fn has_inline_act(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_inline_act()) }
 
     pub fn act_inline(&mut self, targets: Vec<PlrId>, smart: bool, ctx: &mut InlineCtx) {
+        let Some(st) = &mut self.skill_type else { return; };
         let current_level = self.level;
-        self.skill_type.as_mut().unwrap().act_inline(current_level, targets, smart, ctx);
-        let post_level = self.skill_type.as_mut().unwrap().post_act_level(current_level);
+        st.act_inline(current_level, targets, smart, ctx);
+        let post_level = st.post_act_level(current_level);
         if self.level == current_level || post_level > self.level {
             self.level = post_level;
         }
     }
 
     pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
+        let Some(st) = &mut self.skill_type else { return; };
         let current_level = self.level;
-        self.skill_type.as_mut().unwrap().act_with_level(current_level, targets, smart, args);
-        let post_level = self.skill_type.as_mut().unwrap().post_act_level(current_level);
+        st.act_with_level(current_level, targets, smart, args);
+        let post_level = st.post_act_level(current_level);
         if self.level == current_level || post_level > self.level {
             self.level = post_level;
         }
     }
 
-    pub fn pre_step(&mut self, step: i32, args: SkillArgs) -> i32 { self.skill_type.as_mut().unwrap().pre_step_with_level(self.level, step, args) }
+    pub fn pre_step(&mut self, step: i32, args: SkillArgs) -> i32 {
+        match &mut self.skill_type {
+            Some(st) => st.pre_step_with_level(self.level, step, args),
+            None => step,
+        }
+    }
 
-    pub fn pre_action(&mut self, args: SkillArgs) { self.skill_type.as_mut().unwrap().pre_action_with_level(self.level, args) }
+    pub fn pre_action(&mut self, args: SkillArgs) {
+        if let Some(st) = &mut self.skill_type { st.pre_action_with_level(self.level, args); }
+    }
 
     pub fn pre_action_select(&mut self, smart: bool, args: SkillArgs) -> bool {
-        self.skill_type.as_mut().unwrap().pre_action_select_with_level(self.level, smart, args)
+        self.skill_type.as_mut().is_some_and(|st| st.pre_action_select_with_level(self.level, smart, args))
     }
 
     pub fn pre_action_clear_forced(&mut self, smart: bool, args: SkillArgs) -> bool {
-        self.skill_type.as_mut().unwrap().pre_action_clear_forced_with_level(self.level, smart, args)
+        self.skill_type.as_mut().is_some_and(|st| st.pre_action_clear_forced_with_level(self.level, smart, args))
     }
 
     pub fn pre_action_accumulate(
@@ -773,118 +789,191 @@ impl Skill {
         smart: bool,
         args: SkillArgs,
     ) -> Option<usize> {
-        self.skill_type.as_mut().unwrap()
-            .pre_action_accumulate_with_level(self.level, current_forced, self_key, smart, args)
+        match &mut self.skill_type {
+            Some(st) => st.pre_action_accumulate_with_level(self.level, current_forced, self_key, smart, args),
+            None => current_forced,
+        }
     }
 
-    pub fn dynamic_pre_action_enabled(&self) -> bool { self.level > 0 && self.skill_type.as_ref().unwrap().dynamic_pre_action_enabled() }
+    pub fn dynamic_pre_action_enabled(&self) -> bool {
+        self.level > 0 && self.skill_type.as_ref().is_some_and(|st| st.dynamic_pre_action_enabled())
+    }
 
-    pub fn manages_dynamic_pre_action(&self) -> bool { self.skill_type.as_ref().unwrap().manages_dynamic_pre_action() }
+    pub fn manages_dynamic_pre_action(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.manages_dynamic_pre_action())
+    }
 
-    pub fn post_action(&mut self, args: SkillArgs) { self.skill_type.as_mut().unwrap().post_action_with_level(self.level, args) }
+    pub fn post_action(&mut self, args: SkillArgs) {
+        if let Some(st) = &mut self.skill_type { st.post_action_with_level(self.level, args); }
+    }
 
-    pub fn post_action_phase(&self) -> PostActionPhase { self.skill_type.as_ref().unwrap().post_action_phase() }
+    pub fn post_action_phase(&self) -> PostActionPhase {
+        self.skill_type.as_ref().map_or(PostActionPhase::Early, |st| st.post_action_phase())
+    }
 
-    pub fn on_update_end(&mut self, args: SkillArgs) -> bool { self.skill_type.as_mut().unwrap().on_update_end_with_level(self.level, args) }
+    pub fn on_update_end(&mut self, args: SkillArgs) -> bool {
+        self.skill_type.as_mut().is_some_and(|st| st.on_update_end_with_level(self.level, args))
+    }
 
     pub fn pre_defend(&mut self, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> f64 {
-        self.skill_type.as_mut().unwrap().pre_defend_with_level(self.level, atp, caster, is_mag, on_damage, args)
+        match &mut self.skill_type {
+            Some(st) => st.pre_defend_with_level(self.level, atp, caster, is_mag, on_damage, args),
+            None => atp,
+        }
     }
 
     pub fn post_defend(&mut self, dmg: i32, caster: PlrId, on_damage: &OnDamageFunc, args: SkillArgs) -> i32 {
-        self.skill_type.as_mut().unwrap().post_defend_with_level(self.level, dmg, caster, on_damage, args)
+        match &mut self.skill_type {
+            Some(st) => st.post_defend_with_level(self.level, dmg, caster, on_damage, args),
+            None => dmg,
+        }
     }
 
-    pub fn post_defend_priority(&self) -> i32 { self.skill_type.as_ref().unwrap().post_defend_priority() }
+    pub fn post_defend_priority(&self) -> i32 {
+        self.skill_type.as_ref().map_or(0, |st| st.post_defend_priority())
+    }
 
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
-        self.skill_type.as_mut().unwrap().post_damage_with_level(self.level, dmg, caster, args)
+        if let Some(st) = &mut self.skill_type { st.post_damage_with_level(self.level, dmg, caster, args); }
     }
 
     pub fn post_damage_priority(&self) -> i32 { self.post_damage_priority }
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
-        self.skill_type.as_mut().unwrap().die_with_level(&mut self.level, oldhp, caster, args)
+        self.skill_type.as_mut().is_some_and(|st| st.die_with_level(&mut self.level, oldhp, caster, args))
     }
 
-    pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool { self.skill_type.as_mut().unwrap().kill_with_level(self.level, target, args) }
+    pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool {
+        self.skill_type.as_mut().is_some_and(|st| st.kill_with_level(self.level, target, args))
+    }
 
     pub fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
-        self.skill_type.as_mut().unwrap().clear_positive_runtime_with_level(self.level, args)
+        match &mut self.skill_type {
+            Some(st) => st.clear_positive_runtime_with_level(self.level, args),
+            None => None,
+        }
     }
 
     pub fn clear_positive_runtime_inline(&mut self, ctx: &mut InlineCtx) -> Option<&'static str> {
-        self.skill_type.as_mut().unwrap().clear_positive_runtime_inline(ctx)
+        match &mut self.skill_type {
+            Some(st) => st.clear_positive_runtime_inline(ctx),
+            None => None,
+        }
     }
 
-    pub fn has_inline_pre_action(&self) -> bool { self.skill_type.as_ref().unwrap().has_inline_pre_action() }
+    pub fn has_inline_pre_action(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.has_inline_pre_action())
+    }
 
     pub fn pre_action_inline(&mut self, ctx: &mut InlineCtx) {
-        self.skill_type.as_mut().unwrap().pre_action_inline(ctx)
+        if let Some(st) = &mut self.skill_type { st.pre_action_inline(ctx); }
     }
 
-    pub fn has_inline_post_action(&self) -> bool { self.skill_type.as_ref().unwrap().has_inline_post_action() }
+    pub fn has_inline_post_action(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_action())
+    }
 
     pub fn post_action_inline(&mut self, ctx: &mut InlineCtx) {
-        self.skill_type.as_mut().unwrap().post_action_inline(ctx)
+        if let Some(st) = &mut self.skill_type { st.post_action_inline(ctx); }
     }
 
-    pub fn has_inline_post_damage(&self) -> bool { self.skill_type.as_ref().unwrap().has_inline_post_damage() }
+    pub fn has_inline_post_damage(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_damage())
+    }
 
     pub fn post_damage_inline(&mut self, ctx: &mut InlineCtx) {
-        self.skill_type.as_mut().unwrap().post_damage_inline(self.level, ctx)
+        if let Some(st) = &mut self.skill_type { st.post_damage_inline(self.level, ctx); }
     }
 
-    pub fn has_inline_pre_defend(&self) -> bool { self.skill_type.as_ref().unwrap().has_inline_pre_defend() }
+    pub fn has_inline_pre_defend(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.has_inline_pre_defend())
+    }
 
     pub fn pre_defend_inline(&mut self, ctx: &mut InlineCtx, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc) -> f64 {
-        self.skill_type.as_mut().unwrap().pre_defend_inline(self.level, ctx, atp, is_mag, caster, on_damage)
+        match &mut self.skill_type {
+            Some(st) => st.pre_defend_inline(self.level, ctx, atp, is_mag, caster, on_damage),
+            None => atp,
+        }
     }
 
-    pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.as_ref().unwrap().proc_kinds() }
+    pub fn proc_kinds(&self) -> &[ProcKind] {
+        match &self.skill_type {
+            Some(st) => st.proc_kinds(),
+            None => &[],
+        }
+    }
 
-    pub fn clear_protect_to(&mut self) { self.skill_type.as_mut().unwrap().clear_protect_to() }
+    pub fn clear_protect_to(&mut self) {
+        if let Some(st) = &mut self.skill_type { st.clear_protect_to(); }
+    }
 
-    pub fn protect_to_id(&self) -> Option<PlrId> { self.skill_type.as_ref().unwrap().protect_to_id() }
+    pub fn protect_to_id(&self) -> Option<PlrId> {
+        self.skill_type.as_ref().and_then(|st| st.protect_to_id())
+    }
 
-    pub fn prob(&self, smart: bool, args: SkillArgs) -> bool { self.skill_type.as_ref().unwrap().prob(self.level, smart, args) }
+    pub fn prob(&self, smart: bool, args: SkillArgs) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.prob(self.level, smart, args))
+    }
 
-    pub fn target_domain(&self) -> SkillTargetDomain { self.skill_type.as_ref().unwrap().target_domain_with_level(self.level) }
+    pub fn target_domain(&self) -> SkillTargetDomain {
+        self.skill_type.as_ref().map_or(SkillTargetDomain::EnemyAlive, |st| st.target_domain_with_level(self.level))
+    }
 
-    pub fn allows_empty_targets(&self) -> bool { self.skill_type.as_ref().unwrap().allows_empty_targets_with_level(self.level) }
+    pub fn allows_empty_targets(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.allows_empty_targets_with_level(self.level))
+    }
 
-    pub fn select_target_count(&self, smart: bool) -> usize { self.skill_type.as_ref().unwrap().select_target_count_with_level(self.level, smart) }
+    pub fn select_target_count(&self, smart: bool) -> usize {
+        self.skill_type.as_ref().map_or(1, |st| st.select_target_count_with_level(self.level, smart))
+    }
 
     pub fn valid_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> bool {
-        self.skill_type.as_ref().unwrap().valid_target_with_level(self.level, target, smart, args)
+        self.skill_type.as_ref().is_some_and(|st| st.valid_target_with_level(self.level, target, smart, args))
     }
 
     pub fn score_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
-        self.skill_type.as_ref().unwrap().score_target_with_level(self.level, target, smart, args)
+        self.skill_type.as_ref().map_or(f64::MIN, |st| st.score_target_with_level(self.level, target, smart, args))
     }
 
     pub fn select_targets(&self, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
-        self.skill_type.as_ref().unwrap().select_targets_with_level(self.level, candidates, smart, args)
+        match &self.skill_type {
+            Some(st) => st.select_targets_with_level(self.level, candidates, smart, args),
+            None => Vec::new(),
+        }
     }
 
-    pub fn uses_custom_target_selection(&self) -> bool { self.skill_type.as_ref().unwrap().uses_custom_target_selection() }
+    pub fn uses_custom_target_selection(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.uses_custom_target_selection())
+    }
 
-    pub fn uses_attack_aa_sampling(&self) -> bool { self.skill_type.as_ref().unwrap().uses_attack_aa_sampling() }
+    pub fn uses_attack_aa_sampling(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.uses_attack_aa_sampling())
+    }
 
-    pub fn has_action_impl(&self) -> bool { self.skill_type.as_ref().unwrap().has_action_impl() }
+    pub fn has_action_impl(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.has_action_impl())
+    }
 
-    pub fn clear_positive_runtime_priority(&self) -> i32 { self.skill_type.as_ref().unwrap().clear_positive_runtime_priority() }
+    pub fn clear_positive_runtime_priority(&self) -> i32 {
+        self.skill_type.as_ref().map_or(i32::MAX, |st| st.clear_positive_runtime_priority())
+    }
 
-    pub fn charge_runtime_active(&self) -> bool { self.skill_type.as_ref().unwrap().charge_runtime_active() }
+    pub fn charge_runtime_active(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.charge_runtime_active())
+    }
 
-    pub fn dynamic_update_state_enabled(&self) -> bool { self.level > 0 && self.skill_type.as_ref().unwrap().dynamic_update_state_enabled() }
+    pub fn dynamic_update_state_enabled(&self) -> bool {
+        self.level > 0 && self.skill_type.as_ref().is_some_and(|st| st.dynamic_update_state_enabled())
+    }
 
     /// 调试/对齐 JS 时用的运行时技能类型名。
     ///
     /// `md5.js` 里的 merge 不是按“技能 key / 技能 id 是否相等”比较，而是按
     /// `k1[slot]` 里的“技能对象类型”逐槽位比较；Rust 这边没有直接暴露 Dart/JS 的
     /// `runtimeType`，因此需要一个稳定的“当前 SkillTrait 实现类型”视图来对照。
-    pub fn debug_skill_type_name(&self) -> &'static str { self.skill_type.as_ref().unwrap().runtime_kind() }
+    pub fn debug_skill_type_name(&self) -> &'static str {
+        self.skill_type.as_ref().map_or("<None>", |st| st.runtime_kind())
+    }
 
     /// 是否与另一技能拥有相同的运行时实现类型。
     ///
