@@ -6,37 +6,37 @@ fn large_71() {
 反袭 #YN785ClJ3@Shabby_fish
 
 
-反袭 #YN785ClJ3@Shabby_fish使用幻术, 召唤出反袭 #YN785ClJ3?0@Shabby_fish
+反袭使用幻术, 召唤出幻影
 
-南峰 }bRMSYZX@Shabby_fish潜行到反袭 #YN785ClJ3@Shabby_fish身后
+南峰潜行到反袭身后
 
-南峰 }bRMSYZX@Shabby_fish发动背刺, 反袭 #YN785ClJ3@Shabby_fish受到329点伤害
+南峰发动背刺, 反袭受到329点伤害
 
-反袭 #YN785ClJ3@Shabby_fish发起攻击, 南峰 }bRMSYZX@Shabby_fish受到87点伤害
+反袭发起攻击, 南峰受到87点伤害
 
-反袭 #YN785ClJ3@Shabby_fish使用火球术, 南峰 }bRMSYZX@Shabby_fish回避了攻击
+反袭使用火球术, 南峰回避了攻击
 
-南峰 }bRMSYZX@Shabby_fish发起攻击, 反袭 #YN785ClJ3?0@Shabby_fish受到61点伤害
+南峰发起攻击, 幻影受到61点伤害
 
-反袭 #YN785ClJ3?0@Shabby_fish使用附体, 南峰 }bRMSYZX@Shabby_fish进入狂暴状态
+幻影使用附体, 南峰进入狂暴状态
 
-反袭 #YN785ClJ3?0@Shabby_fish消失了
+ 幻影消失了
 
-南峰 }bRMSYZX@Shabby_fish发起狂暴攻击, 反袭 #YN785ClJ3@Shabby_fish受到23点伤害
+南峰发起狂暴攻击, 反袭受到23点伤害
 
-反袭 #YN785ClJ3@Shabby_fish发起攻击, 南峰 }bRMSYZX@Shabby_fish受到0点伤害
+反袭发起攻击, 南峰受到0点伤害
 
-反袭 #YN785ClJ3@Shabby_fish发起攻击, 南峰 }bRMSYZX@Shabby_fish受到58点伤害
+反袭发起攻击, 南峰受到58点伤害
 
-反袭 #YN785ClJ3@Shabby_fish发起攻击, 南峰 }bRMSYZX@Shabby_fish回避了攻击
+反袭发起攻击, 南峰回避了攻击
 
-南峰 }bRMSYZX@Shabby_fish发起狂暴攻击, 南峰 }bRMSYZX@Shabby_fish回避了攻击
+南峰发起狂暴攻击, 南峰回避了攻击
 
-反袭 #YN785ClJ3@Shabby_fish发起攻击, 南峰 }bRMSYZX@Shabby_fish受到39点伤害
+反袭发起攻击, 南峰受到39点伤害
 
-南峰 }bRMSYZX@Shabby_fish发起狂暴攻击, 反袭 #YN785ClJ3@Shabby_fish受到65点伤害
+南峰发起狂暴攻击, 反袭受到65点伤害
 
-反袭 #YN785ClJ3@Shabby_fish被击倒了
+ 反袭被击倒了
 "#;
     let (raw_input, expected_lines) = parse_embedded_fight_case(
         CASE,
@@ -57,77 +57,77 @@ fn large_72() {
 与神对话 #PQMhRNLYO@Shabby_fish
 
 
-Parallel #yVjONa74t@Shabby_fish发动铁壁, Parallel #yVjONa74t@Shabby_fish防御力大幅上升
+Parallel发动铁壁, Parallel防御力大幅上升
 
-合成机油 #ofkyO9UxU@Shabby_fish发起攻击, Parallel #yVjONa74t@Shabby_fish受到0点伤害
+合成机油发起攻击, Parallel受到0点伤害
 
-极寒陷阱 #46fdemQ6i@Shabby_fish潜行到与神对话 #PQMhRNLYO@Shabby_fish身后
+极寒陷阱潜行到与神对话身后
 
-Parallel #yVjONa74t@Shabby_fish发起攻击, 与神对话 #PQMhRNLYO@Shabby_fish受到55点伤害
+Parallel发起攻击, 与神对话受到55点伤害
 
-与神对话 #PQMhRNLYO@Shabby_fish发起攻击, Parallel #yVjONa74t@Shabby_fish受到0点伤害
+与神对话发起攻击, Parallel受到0点伤害
 
-极寒陷阱 #46fdemQ6i@Shabby_fish发动背刺, 与神对话 #PQMhRNLYO@Shabby_fish受到280点伤害
+极寒陷阱发动背刺, 与神对话受到280点伤害
 
-合成机油 #ofkyO9UxU@Shabby_fish使用幻术, 召唤出合成机油 #ofkyO9UxU?0@Shabby_fish
+合成机油使用幻术, 召唤出幻影
 
-与神对话 #PQMhRNLYO@Shabby_fish潜行到合成机油 #ofkyO9UxU@Shabby_fish身后
+与神对话潜行到合成机油身后
 
-Parallel #yVjONa74t@Shabby_fish发起攻击, 合成机油 #ofkyO9UxU@Shabby_fish受到57点伤害
+Parallel发起攻击, 合成机油受到57点伤害
 
-Parallel #yVjONa74t@Shabby_fish从铁壁中解除
+ Parallel从铁壁中解除
 
-极寒陷阱 #46fdemQ6i@Shabby_fish使用诅咒, 合成机油 #ofkyO9UxU@Shabby_fish受到51点伤害, 合成机油 #ofkyO9UxU@Shabby_fish被诅咒了
+极寒陷阱使用诅咒, 合成机油受到51点伤害, 合成机油被诅咒了
 
-与神对话 #PQMhRNLYO@Shabby_fish发动背刺, 诅咒使伤害加倍, 合成机油 #ofkyO9UxU@Shabby_fish受到482点伤害
+与神对话发动背刺, 诅咒使伤害加倍, 合成机油受到482点伤害
 
-合成机油 #ofkyO9UxU@Shabby_fish被击倒了
+ 合成机油被击倒了
 
-合成机油 #ofkyO9UxU?0@Shabby_fish消失了
+ 幻影消失了
 
-与神对话 #PQMhRNLYO@Shabby_fish吞噬了合成机油 #ofkyO9UxU@Shabby_fish, 与神对话 #PQMhRNLYO@Shabby_fish属性上升
+ 与神对话吞噬了合成机油, 与神对话属性上升
 
-与神对话 #PQMhRNLYO@Shabby_fish潜行到Parallel #yVjONa74t@Shabby_fish身后
+与神对话潜行到Parallel身后
 
-极寒陷阱 #46fdemQ6i@Shabby_fish使用雷击术
+极寒陷阱使用雷击术
 
-Parallel #yVjONa74t@Shabby_fish受到19点伤害
+ Parallel受到19点伤害
 
-Parallel #yVjONa74t@Shabby_fish受到16点伤害
+ Parallel受到16点伤害
 
-Parallel #yVjONa74t@Shabby_fish受到12点伤害
+ Parallel受到12点伤害
 
-Parallel #yVjONa74t@Shabby_fish受到35点伤害
+ Parallel受到35点伤害
 
-Parallel #yVjONa74t@Shabby_fish发起攻击, 极寒陷阱 #46fdemQ6i@Shabby_fish受到57点伤害
+Parallel发起攻击, 极寒陷阱受到57点伤害
 
-与神对话 #PQMhRNLYO@Shabby_fish发动背刺, Parallel #yVjONa74t@Shabby_fish受到298点伤害
+与神对话发动背刺, Parallel受到298点伤害
 
-Parallel #yVjONa74t@Shabby_fish被击倒了
+ Parallel被击倒了
 
-与神对话 #PQMhRNLYO@Shabby_fish吞噬了Parallel #yVjONa74t@Shabby_fish, 与神对话 #PQMhRNLYO@Shabby_fish属性上升
+ 与神对话吞噬了Parallel, 与神对话属性上升
 
-极寒陷阱 #46fdemQ6i@Shabby_fish发起攻击, 与神对话 #PQMhRNLYO@Shabby_fish回避了攻击
+极寒陷阱发起攻击, 与神对话回避了攻击
 
-与神对话 #PQMhRNLYO@Shabby_fish使用幻术, 召唤出与神对话 #PQMhRNLYO?0@Shabby_fish
+与神对话使用幻术, 召唤出幻影
 
-极寒陷阱 #46fdemQ6i@Shabby_fish发起攻击, 与神对话 #PQMhRNLYO@Shabby_fish回避了攻击
+极寒陷阱发起攻击, 与神对话回避了攻击
 
-与神对话 #PQMhRNLYO@Shabby_fish发动铁壁, 与神对话 #PQMhRNLYO@Shabby_fish防御力大幅上升
+与神对话发动铁壁, 与神对话防御力大幅上升
 
-与神对话 #PQMhRNLYO?0@Shabby_fish使用附体, 极寒陷阱 #46fdemQ6i@Shabby_fish进入狂暴状态
+幻影使用附体, 极寒陷阱进入狂暴状态
 
-与神对话 #PQMhRNLYO?0@Shabby_fish消失了
+ 幻影消失了
 
-极寒陷阱 #46fdemQ6i@Shabby_fish发起狂暴攻击, 极寒陷阱 #46fdemQ6i@Shabby_fish受到63点伤害
+极寒陷阱发起狂暴攻击, 极寒陷阱受到63点伤害
 
-与神对话 #PQMhRNLYO@Shabby_fish潜行到极寒陷阱 #46fdemQ6i@Shabby_fish身后
+与神对话潜行到极寒陷阱身后
 
-极寒陷阱 #46fdemQ6i@Shabby_fish发起狂暴攻击, 极寒陷阱 #46fdemQ6i@Shabby_fish回避了攻击
+极寒陷阱发起狂暴攻击, 极寒陷阱回避了攻击
 
-与神对话 #PQMhRNLYO@Shabby_fish发动背刺, 极寒陷阱 #46fdemQ6i@Shabby_fish受到325点伤害
+与神对话发动背刺, 极寒陷阱受到325点伤害
 
-极寒陷阱 #46fdemQ6i@Shabby_fish被击倒了"#;
+ 极寒陷阱被击倒了"#;
     let (raw_input, expected_lines) = parse_embedded_fight_case(
         CASE,
         "sampled case-72 must contain a blank separator between input and trace",
