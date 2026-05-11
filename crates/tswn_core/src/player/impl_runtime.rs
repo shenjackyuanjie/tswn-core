@@ -1170,6 +1170,7 @@ impl Player {
             return;
         };
         let atp = self.get_at(config.use_mag, randomer) * config.attack_scale;
+        #[cfg(not(feature = "no_debug"))]
         if config.message == "[0]发起[狂暴攻击]" && std::env::var_os("TSWN_TRACE_BERSERK").is_some() {
             let all_alive = targets
                 .all_alive
@@ -1923,6 +1924,7 @@ impl Player {
             }
         };
         let roll = randomer.next_u8() as i32;
+        #[cfg(not(feature = "no_debug"))]
         if std::env::var_os("TSWN_TRACE_BERSERK").is_some() {
             eprintln!("[trace_berserk_dodge] al_a={} al_d={} roll={} threshold={}", al_a, al_d, roll, ch);
         }
@@ -2214,6 +2216,7 @@ impl Player {
         };
         let active = self.active();
         let dodged = active && Self::dodge(accure, dodgeval, randomer);
+        #[cfg(not(feature = "no_debug"))]
         if std::env::var_os("TSWN_TRACE_BERSERK").is_some()
             && storage
                 .get_player(&caster)
