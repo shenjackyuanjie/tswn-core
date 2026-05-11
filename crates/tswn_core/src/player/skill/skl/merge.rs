@@ -99,7 +99,12 @@ impl SkillTrait for MergeSkill {
             //
             // 也就是说，merge 看的不是“同 skill id”也不是“同 runtime kind”，而是
             // `k1` 固定槽位上的对象位置。
-            for (owner_skill_key, target_skill_key) in owner_slot_skills.iter().copied().zip(target_slot_skills.iter().copied()) {
+            for (_slot_idx, (owner_skill_key, target_skill_key)) in owner_slot_skills
+                .iter()
+                .copied()
+                .zip(target_slot_skills.iter().copied())
+                .enumerate()
+            {
                 let Some(target_level) = args
                     .3
                     .get_player(&target)

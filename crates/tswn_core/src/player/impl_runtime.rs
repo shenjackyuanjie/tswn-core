@@ -708,6 +708,8 @@ impl Player {
             return Vec::new();
         }
         if selected.len() == 1 {
+            // 与 forced_attack 的单候选分支保持同一约束：
+            // 单候选不代表可以跳过 score_target()，因为 JS 侧仍会执行 a9()。
             let target_id = selected[0];
             let _ = skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
             return vec![target_id];
@@ -946,10 +948,16 @@ impl Player {
 
             return None;
         }
+        // md5.js ActionSkill.aa() 即使只筛出 1 个唯一候选，也会继续调用 a9()：
+        // - 先抽出唯一候选 m=[target]
+        // - 再执行 r.push(new T.bG(s, o.a9(s, b, c)))
+        // - 也就是说即便不需要比较/排序，a9() 本身也必须发生
+        // 对 BerserkState 而言，这里等价为一次 rFFFF * attract / rFFFF + attract。
+        // 如果直接 return Some(target)，后面的 getAt / dodge / 伤害链都会读到错位的 RC4。
+        // 但单候选场景也没必要走整条 scored/sort 路径，直接补齐这次 score 计算即可。
         if selected.len() == 1 {
             let target_id = selected[0];
-            #[cfg(not(feature = "no_debug"))]
-            let score = storage
+            let _score = storage
                 .get_player(&target_id)
                 .map(|target| match config.score_mode {
                     ForcedAttackScoreMode::Default => randomer.rFFFF() as f64 + target.get_status().attract,
@@ -970,9 +978,9 @@ impl Player {
                     randomer.j,
                     target_id,
                     target_name,
-                    score,
+                    _score,
                 );
-                let ranked = vec![format!("{target_id}:{target_name}:{score}")];
+                let ranked = vec![format!("{target_id}:{target_name}:{_score}")];
                 eprintln!(
                     "[forced_choice] actor={} id={} rc4=({}, {}) ranked={:?} chosen={:?}",
                     self.id_name(),
