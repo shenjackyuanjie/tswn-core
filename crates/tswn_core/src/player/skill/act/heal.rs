@@ -28,7 +28,12 @@ impl SkillTrait for HealSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn post_act_level(&self, level: u32) -> u32 { if level > 8 { level - 1 } else { level } }
+    fn post_act_level(&self, level: u32) -> u32 {
+        // `治愈魔法` 只有在 9 级及以上时才会衰减；每次施放后 -1，8 级及以下不变。
+        // 例如：`9 -> 8`、`10 -> 9`。
+        // 这同样作用于战斗中的当前熟练度，所以 clone build 后必须 clamp。
+        if level > 8 { level - 1 } else { level }
+    }
 
     fn target_domain_with_level(&self, _level: u32) -> SkillTargetDomain { SkillTargetDomain::AllyAlive }
 

@@ -7,9 +7,11 @@ use crate::player::{
 
 #[derive(Debug, Clone, Default)]
 pub struct CloneSkill {
-    /// JS 中 this_.f 在 v() 内部被直接修改，
-    /// Rust 需要在 act_with_level 中记录最终 level，
-    /// 然后在 post_act_level 中返回它。
+    /// `分身` 在 `act_with_level()` 内就会算出 owner 这次用完技能后的“当前熟练度”。
+    ///
+    /// 这里缓存的是 owner 自己的 `分身` 当前等级，供 `post_act_level()` 回写；
+    /// 它不是新 clone 身上的 `分身` 等级。后者会在下面按
+    /// `ceil(sqrt(decayed_level))` 单独计算。
     final_level: Option<u32>,
 }
 
@@ -33,8 +35,12 @@ impl SkillTrait for CloneSkill {
     fn select_target_count(&self, _smart: bool) -> usize { 1 }
 
     fn post_act_level(&self, level: u32) -> u32 {
-        // JS 中 level 的修改全部在 v() 内部完成，没有单独的 post_act_level。
-        // 所以这里返回 act_with_level 中记录的最终 level。
+        // `分身` 的熟练度衰减不是固定公式，而是以 `act_with_level()` 中算出的
+        // `decayed_level` 为准。这里回写的是 owner 当前 `分身` 熟练度。
+        //
+        // 不要和下面的新 clone 等级混淆：
+        // - `decayed_level`：owner 用完 `分身` 后自己的当前熟练度
+        // - `cloned_clone_level`：新 clone 身上的 `分身` 初始等级
         self.final_level.unwrap_or(((level as f64) * 0.75).ceil().max(1.0) as u32)
     }
 
@@ -45,6 +51,9 @@ impl SkillTrait for CloneSkill {
     }
 
     fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+        // `分身` 出手时会先衰减 owner 自己当前的 `分身` 熟练度。
+        // 第一段衰减公式是：`ceil(level * random_factor / 128)`，其中
+        // `random_factor ∈ [64, 127]`。
         let random_factor = (args.1.next_u8() as u32 & 63) + 64;
         let mut decayed_level = ((level as f64) * random_factor as f64 / 128.0).ceil() as u32;
 
@@ -76,14 +85,16 @@ impl SkillTrait for CloneSkill {
         cloned.sort_int = 0;
         cloned.state = PlayerStateStore::default();
 
-        // JS: PlrClone 先重新 build，重置技能内部运行时状态；
-        // PlrClone.addSkillsToProc 先 clamp 等级到 owner 当前等级，然后再 boost。
+        // `PlrClone` 会先重新 `build` 一次，把技能内部运行时态重置干净；
+        // 但 clone build 后必须再把技能等级 clamp 到 owner 当前等级，
+        // 否则像 `生命之轮` / `治愈魔法` / `苏生术` / `分身` / `幻术` 这类
+        // 已在战斗中衰减过的技能，会被错误地恢复成名字初始值。
         cloned.build_for_clone(&owner_snapshot.skills);
 
-        // JS PlrClone.aU: 克隆体八围直接拷贝 owner 当前八围。
+        // `PlrClone.aU`：克隆体八围直接拷贝 owner 当前八围。
         cloned.attr = owner_snapshot.attr;
-        // JS: 之后 weapon.cs() (postUpgrade) 再次叠加武器 attr_bonus，
-        // 导致武器属性加成被二次计入。
+        // 随后 `weapon.cs()`（postUpgrade）会再次叠加武器属性加成，
+        // 因而武器的 `attr_bonus` 会被二次计入。
         if let Some(ref ws) = cloned.weapon_state {
             for i in 0..8 {
                 cloned.attr[i] = (cloned.attr[i] as i32 + ws.attr_bonus[i]) as u32;
@@ -97,17 +108,22 @@ impl SkillTrait for CloneSkill {
         cloned.update_states();
         cloned.status.move_point = args.1.r255() as i32 * 4 + 256;
         cloned.status.hp = owner_snapshot.get_status().hp.max(1);
-        // JS clone 是重新 build 的实体，mp 取 itl/2，而不是 owner 当前 mp。
+        // clone 是重新 `build` 出来的实体，所以 mp 取 `itl / 2`，
+        // 而不是直接继承 owner 当前 mp。
         cloned.status.magic_point = (cloned.status.wisdom >> 1).max(0);
         cloned.status.set_alive(true);
         cloned.status.set_frozen(false);
 
         if owner_snapshot.get_status().hp + owner_snapshot.get_status().magic < args.1.r255() as i32 {
+            // 资源偏低时，owner 当前 `分身` 熟练度还会再追加一次衰减：
+            // `(decayed_level >> 1) + 1`。
             decayed_level = (decayed_level >> 1) + 1;
         }
         let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
-        // JS 在 p.az() 之后才把 clone skill 改成 sqrt(level)。
-        // 这会更新共享技能对象的等级，但不会让一个 build 时为 0 的 clone skill retroactively 进入 k4。
+        // 新 clone 自己的 `分身` 等级不是直接等于 owner 的 `decayed_level`，
+        // 而是 `ceil(sqrt(decayed_level))`。
+        // 这只影响“新 clone 之后还能不能继续分身”，不要和 owner 当前熟练度的
+        // 回写语义混淆。
         let clone_skill_was_zero = cloned.skills.skill_by_id(23).level() == 0;
         cloned.skills.skill_by_id_mut(23).set_level(cloned_clone_level.max(1));
         if clone_skill_was_zero {
@@ -153,7 +169,7 @@ impl SkillTrait for CloneSkill {
         // 最后输出"出现一个新的"消息
         args.2.add(RunUpdate::new("出现一个新的[1]", args.0, cloned_id, 0));
 
-        // 记录最终 level，供 post_act_level 使用
+        // 记录 owner 这次用完 `分身` 后的最终当前熟练度，供 `post_act_level()` 回写。
         self.final_level = Some(decayed_level);
     }
 }

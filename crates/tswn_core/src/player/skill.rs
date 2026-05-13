@@ -318,6 +318,19 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
         self.act(targets, smart, args)
     }
+    /// 技能出手后的等级回写钩子。
+    ///
+    /// 默认返回原等级，表示这次使用不会改变当前熟练度。
+    /// 少数主动技能会覆写这里，让“当前熟练度”在出手后衰减；
+    /// 当前仓库中确认会降低熟练度的只有：
+    /// - `生命之轮`
+    /// - `治愈魔法`
+    /// - `苏生术`
+    /// - `分身`
+    /// - `幻术`
+    ///
+    /// 注意这里作用的是“本场战斗中的当前技能等级”，不是重新 `build()` 时
+    /// 根据名字推导出来的原始熟练度。
     fn post_act_level(&self, level: u32) -> u32 { level }
 
     fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 { step }
@@ -735,6 +748,12 @@ impl Skill {
         self.skill_type.update_state_inline(self.level, status)
     }
 
+    /// 执行主动技能，并在动作结束后按 `post_act_level()` 回写当前熟练度。
+    ///
+    /// 这一步是 clone 必须做 clamp 的根源：
+    /// 某些技能在战斗中用过后，会把“当前熟练度”降到低于名字 `build()` 出来的初始值；
+    /// 如果 clone 重新 `build()` 后不再以上限裁到 owner 当前等级，这些技能就会被错误地
+    /// “刷新回满”，从而改变概率判定、行动顺序和整场回放。
     pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
         let current_level = self.level;
         self.skill_type.act_with_level(current_level, targets, smart, args);

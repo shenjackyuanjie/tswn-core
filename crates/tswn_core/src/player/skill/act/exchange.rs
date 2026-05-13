@@ -22,7 +22,13 @@ impl SkillTrait for ExchangeSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn post_act_level(&self, level: u32) -> u32 { (level + 1) >> 1 }
+    fn post_act_level(&self, level: u32) -> u32 {
+        // `生命之轮` 每次施放后，当前熟练度按 JS 规则折半（向上取整）。
+        // 这里回写的是“本场战斗中的当前等级”，不是名字 `build()` 出来的原始熟练度。
+        // 因此 clone 重新 build 时必须以上一层 owner 当前等级做 clamp，
+        // 否则这个技能会被错误地恢复到初始值。
+        (level + 1) >> 1
+    }
 
     fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
         let Some(owner) = args.3.get_player(&args.0) else {

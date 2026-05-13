@@ -62,9 +62,21 @@ impl Player {
     /// - 技能熟练度
     pub fn build(&mut self) { self.build_inner(None, true); }
 
-    /// Dart PlrClone 在 addSkillsToProc 中先 clamp 技能等级到 owner 的当前等级，
-    /// 然后再执行 boost（super.addSkillsToProc）。
-    /// 普通 build 不做 clamp，clone 通过传入 owner 的 skill store 来执行 clamp。
+    /// clone 不是直接复用 owner 的技能对象，而是会重新 `build` 一次。
+    ///
+    /// 因此如果 owner 某些技能已经在战斗中因为 `post_act_level()` 衰减，
+    /// clone build 后就必须把这些技能 clamp 到 owner 的“当前等级”，
+    /// 否则会把已经消耗过的熟练度刷新回名字 `build()` 的初始值。
+    ///
+    /// 当前仓库中已确认会在出手后降低当前熟练度的主动技能有：
+    /// - `生命之轮`：`(level + 1) >> 1`
+    /// - `治愈魔法`：`level > 8` 时每次 `-1`
+    /// - `苏生术`：`(level + 1) >> 1`
+    /// - `分身`：随机衰减，见 `CloneSkill::act_with_level()`
+    /// - `幻术`：`ceil(level * 0.75)`
+    ///
+    /// Dart `PlrClone.addSkillsToProc` 也是先 clamp 到 owner 当前等级，
+    /// 然后再执行 boost（`super.addSkillsToProc`）。
     pub fn build_for_clone(&mut self, owner_skills: &crate::player::skill::store::SkillStorage) {
         self.build_inner(Some(owner_skills), false);
     }
@@ -183,7 +195,7 @@ impl Player {
             }
         }
 
-        // post_upgrade: 加八围 + boost skill (JS: weapon.cs)
+        // post_upgrade：加八围并处理技能 boost（JS: `weapon.cs`）
         if let Some(ref ws) = self.weapon_state {
             let ws = ws.clone();
             weapons::Weapon::post_upgrade(&ws, self);
@@ -192,6 +204,11 @@ impl Player {
         // Dart / JS `PlrClone.addSkillsToProc`：这里只 clamp “固定槽位里已有的技能等级”，
         // 不改槽位本身。也就是说 clone 继承 owner 时，`slot_skill` 仍然表示 clone build
         // 出来的固定槽位类型，行动顺序也沿用该视图；只有等级会在这里被截到 owner 当前等级。
+        //
+        // 这里截的是“当前战斗中的技能等级”，不是重新 build 出来的原始熟练度。
+        // 例如 owner 已经把 `幻术 10` 用成 `8`，或者把 `生命之轮 9` 用成 `5` 后，
+        // clone 如果不在此处截断，就会把这些已衰减技能恢复成名字 build 的初始值，
+        // 进而改变后续的概率判定、行动顺序和整场回放。
         if let Some(owner_skills) = clamp_source {
             let skill_keys = self.skills.skill.clone();
             for skill_key in skill_keys {
@@ -204,9 +221,9 @@ impl Player {
         }
 
         if diy_skill_levels.is_none() {
-            // boost skills（对应 JS addSkillsToProc）：
+            // 处理技能 boost（对应 JS `addSkillsToProc`）：
             // 先 boost 最后一个技能，再 boost 被动技能。
-            // overlay 模式跳过 boost，因为等级由用户显式指定。
+            // `overlay` 模式跳过 boost，因为等级由用户显式指定。
             self.skills.boost_last();
             // 然后 boost 被动技能
             if let Some(skill_key) = slot_skill_keys[14] {

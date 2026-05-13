@@ -24,7 +24,12 @@ impl SkillTrait for ReviveSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
-    fn post_act_level(&self, level: u32) -> u32 { (level + 1) >> 1 }
+    fn post_act_level(&self, level: u32) -> u32 {
+        // `苏生术` 和 `生命之轮` 一样，使用后当前熟练度按半衰减回写。
+        // 这里采用 `(level + 1) >> 1`，即向上取整的“除以 2”。
+        // 例如：`1 -> 1`、`2 -> 1`、`3 -> 2`、`4 -> 2`。
+        (level + 1) >> 1
+    }
 
     fn has_action_impl(&self) -> bool { true }
 

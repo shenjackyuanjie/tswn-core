@@ -29,7 +29,13 @@ impl SkillTrait for ShadowSkill {
 
     fn select_target_count(&self, _smart: bool) -> usize { 1 }
 
-    fn post_act_level(&self, level: u32) -> u32 { ((level as f64) * 0.75).ceil().max(1.0) as u32 }
+    fn post_act_level(&self, level: u32) -> u32 {
+        // `幻术` 每次施放后，当前熟练度衰减为 `ceil(level * 0.75)`，最低保留 1。
+        // 例如：`4 -> 3`、`5 -> 4`、`10 -> 8`。
+        // `case 66` 的分叉就是这里导致的：owner 先把 `幻术 10` 用成 `8`，
+        // clone 若不 clamp，就会把它错误地恢复回 `10`。
+        ((level as f64) * 0.75).ceil().max(1.0) as u32
+    }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
         if smart {
