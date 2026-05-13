@@ -50,6 +50,51 @@ fn player_raw_new() {
 }
 
 #[test]
+/// 测试 overlay 解析：compact DIY 格式和 JSON object 格式。
+///
+/// 验证：
+/// - `diy[attrs]{skills}` 解析后属性值正确减 36；
+/// - `ol:{...}` 解析后属性值原样保留；
+/// - build 后八围和技能等级与 overlay 一致；
+/// - overlay 中 weapon 字段生效。
+fn player_raw_new_parses_diy_overlay() {
+    let storage = Storage::new_arc();
+
+    let mut player = Player::new_from_namerena_raw(
+        "mario+diy[72,39,69,76,67,66,0,84]{\"sklfire\":5,\"reflect\":2}".to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    assert_eq!(player.name, "mario");
+    assert_eq!(player.weapon, None);
+    let overlay = player.overlay.as_ref().expect("应解析出 overlay");
+    assert_eq!(overlay.attrs, Some([36, 3, 33, 40, 31, 30, 0, 48]));
+    assert_eq!(overlay.skills.as_ref().unwrap().get("sklfire"), Some(&5));
+    assert_eq!(overlay.skills.as_ref().unwrap().get("reflect"), Some(&2));
+
+    player.build();
+    // build 后八围应使用 overlay 覆盖值
+    assert_eq!(player.attr, [36, 3, 33, 40, 31, 30, 0, 48]);
+    // 技能等级应与 overlay 指定一致
+    assert_eq!(player.skills.skill_by_id(0).level(), 5);
+    assert_eq!(player.skills.skill_by_id(27).level(), 2);
+    // 技能槽顺序应为 DIY 固定布局
+    assert_eq!(player.skills.skill[0], 0);
+    assert_eq!(player.skills.skill[25], 25);
+
+    // 测试 ol: JSON 格式 + weapon 字段
+    let player = Player::new_from_namerena_raw(
+        "luigi+ol:{\"attrs\":[1,2,3,4,5,6,7,8],\"skills\":{\"fire\":4},\"weapon\":\"剁手刀\"}".to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    assert_eq!(player.weapon, Some("剁手刀".to_string()));
+    let overlay = player.overlay.as_ref().expect("应解析出 overlay");
+    assert_eq!(overlay.attrs, Some([1, 2, 3, 4, 5, 6, 7, 8]));
+    assert_eq!(overlay.skills.as_ref().unwrap().get("fire"), Some(&4));
+}
+
+#[test]
 fn player_raw_keeps_internal_js_trim_chars_in_name_and_team() {
     let storage = Storage::new_arc();
 

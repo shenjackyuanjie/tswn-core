@@ -60,16 +60,16 @@ impl Player {
     /// 计算:
     /// - 具体属性 ( 8围 )
     /// - 技能熟练度
-    pub fn build(&mut self) { self.build_inner(None); }
+    pub fn build(&mut self) { self.build_inner(None, true); }
 
     /// Dart PlrClone 在 addSkillsToProc 中先 clamp 技能等级到 owner 的当前等级，
     /// 然后再执行 boost（super.addSkillsToProc）。
     /// 普通 build 不做 clamp，clone 通过传入 owner 的 skill store 来执行 clamp。
     pub fn build_for_clone(&mut self, owner_skills: &crate::player::skill::store::SkillStorage) {
-        self.build_inner(Some(owner_skills));
+        self.build_inner(Some(owner_skills), false);
     }
 
-    fn build_inner(&mut self, clamp_source: Option<&crate::player::skill::store::SkillStorage>) {
+    fn build_inner(&mut self, clamp_source: Option<&crate::player::skill::store::SkillStorage>, apply_overlay: bool) {
         // pre_upgrade: 修改 name_base (JS: weapon.bn)
         if let Some(mut ws) = self.weapon_state.take() {
             weapons::Weapon::pre_upgrade(&mut ws, self);
@@ -84,7 +84,6 @@ impl Player {
         let mut attr = [0, 0, 0, 0, 0, 0, 0, 0];
         // 10 - 31
         // rand_vals 10~12 midle value
-        // DIY TODO
         attr[0] = median(rand_vals[10], rand_vals[11], rand_vals[12]) as u32;
         attr[1] = median(rand_vals[13], rand_vals[14], rand_vals[15]) as u32;
         attr[2] = median(rand_vals[16], rand_vals[17], rand_vals[18]) as u32;
@@ -94,61 +93,92 @@ impl Player {
         attr[6] = median(rand_vals[28], rand_vals[29], rand_vals[30]) as u32;
         // 7 -> rand 3 + 4 + 5 + 6
         attr[7] = 154 + rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
-        self.attr = attr;
 
-        // Boss appendAttr: 在基础八围之上加成
-        if self.player_type == PlayerType::Boss {
-            let bonus = boss_append_attr(&self.name);
-            for (a, b) in self.attr.iter_mut().zip(bonus.iter()) {
-                *a = (*a as i32 + *b).max(0) as u32;
+        // 如果 overlay 提供了八围属性，直接使用覆盖值（已剪裁到非负）；
+        // 否则走正常的随机生成 + Boss 加成流程。
+        let overlay_attrs = if apply_overlay {
+            self.overlay.as_ref().and_then(|overlay| overlay.attrs)
+        } else {
+            None
+        };
+        if let Some(attrs) = overlay_attrs {
+            self.attr = attrs.map(|value| value.max(0) as u32);
+        } else {
+            self.attr = attr;
+
+            // Boss appendAttr: 在基础八围之上加成
+            if self.player_type == PlayerType::Boss {
+                let bonus = boss_append_attr(&self.name);
+                for (a, b) in self.attr.iter_mut().zip(bonus.iter()) {
+                    *a = (*a as i32 + *b).max(0) as u32;
+                }
             }
         }
         // println!("attr: {:?} {:?}", self.attr, self.name_base);
 
-        // init skills
         // 技能熟练度计算
-        // 计算 skl_id 的已经在初始化做完了
-        // DIY TODO
+        // skil_id 的映射已在 init 阶段完成
+        // 如果 overlay 携带技能等级映射，之后会走 apply_diy_skill_levels 直接覆盖；
+        // 否则走正常的名字推导 + boost 流程。
+        let diy_skill_levels = if apply_overlay {
+            self.overlay.as_ref().and_then(|overlay| overlay.skills.clone())
+        } else {
+            None
+        };
         self.skills = crate::player::skill::store::SkillStorage::new();
         for skill_id in 0..40u8 {
             self.skills.add_skill(Skill::new_with_id(0, skill_id));
         }
-        // JS `k1` 是“固定技能对象数组”，普通玩家这里保持创建时的稳定顺序；
-        // 真正用于 action() 主动技能扫描的是 `k4`，它才会按名字解出的 `skil_id` 洗牌。
-        //
-        // 这个区别对 merge 很关键：
-        // - `k1` 负责“同一个固定槽位里的 skill 对象”逐位继承等级
-        // - `k4` 负责“本回合按什么顺序尝试主动技能”
-        //
-        // 如果把 `slot_skill` 也改成打乱后的 `skil_id`，merge 就会把本来应该同槽位的
-        // Shield / Defend / PassiveSkill 错位掉，导致吞噬后漏继承 pre_action / post_damage hook。
-        self.skills.slot_skill = (0..40usize).collect();
-        self.skills.skill = self.skil_id.iter().map(|id| *id as usize).collect();
+        if diy_skill_levels.is_some() {
+            // overlay 模式：使用固定技能槽顺序 (主动→被动→空槽)，
+            // 实际等级在下面 apply_diy_skill_levels 中写入。
+            let order = crate::player::skill::diy_skill_order();
+            self.skills.slot_skill = order.clone();
+            self.skills.skill = order;
+        } else {
+            // 正常模式：slot_skill 保持创建时的稳定顺序 (0..40)
+            // JS `k1` 是”固定技能对象数组”，普通玩家这里保持创建时的稳定顺序；
+            // 真正用于 action() 主动技能扫描的是 `k4`，它才会按名字解出的 `skil_id` 洗牌。
+            //
+            // 这个区别对 merge 很关键：
+            // - `k1` 负责”同一个固定槽位里的 skill 对象”逐位继承等级
+            // - `k4` 负责”本回合按什么顺序尝试主动技能”
+            //
+            // 如果把 `slot_skill` 也改成打乱后的 `skil_id`，merge 就会把本来应该同槽位的
+            // Shield / Defend / PassiveSkill 错位掉，导致吞噬后漏继承 pre_action / post_damage hook。
+            self.skills.slot_skill = (0..40usize).collect();
+            self.skills.skill = self.skil_id.iter().map(|id| *id as usize).collect();
+        }
         let mut slot_skill_keys: [Option<usize>; 16] = [None; 16];
-        // JS PlrBoss.dm() overrides initSkills: boss skills are all level 0.
-        // All 40 skills are created (for k4 prob byte consumption in action loop)
-        // but no levels are set. This prevents boss from using normal skills.
-        let is_boss = self.player_type == PlayerType::Boss;
-        if !is_boss {
-            for (j, i) in (64..128).step_by(4).enumerate() {
-                // 取 val index ~ val index + 3 的最小值
-                let small = min(
-                    min(self.name_base[i], self.name_base[i + 1]),
-                    min(self.name_base[i + 2], self.name_base[i + 3]),
-                );
-                if small > 10 && self.skil_id[j] < 35 {
-                    let skill_id = self.skil_id[j] as usize;
-                    let skill = self.skills.skill_by_id_mut(skill_id);
-                    skill.set_level((small - 10) as u32);
-                    let raw_small = min(
-                        min(self.raw_name_base[i], self.raw_name_base[i + 1]),
-                        min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
+        if let Some(skill_levels) = diy_skill_levels.as_ref() {
+            // overlay 模式：直接用指定的等级覆盖技能，不走名字推导和 boost
+            crate::player::skill::apply_diy_skill_levels(&mut self.skills, skill_levels);
+        } else {
+            // JS PlrBoss.dm() 覆写了 initSkills：Boss 的全部 40 个技能等级为 0。
+            // 创建 40 个技能仅为了 action 循环中 k4 的 prob 字节消费，
+            // 不设等级，从而阻止 Boss 使用普通技能。
+            let is_boss = self.player_type == PlayerType::Boss;
+            if !is_boss {
+                for (j, i) in (64..128).step_by(4).enumerate() {
+                    // 取 val index ~ val index + 3 的最小值
+                    let small = min(
+                        min(self.name_base[i], self.name_base[i + 1]),
+                        min(self.name_base[i + 2], self.name_base[i + 3]),
                     );
-                    // 其实是懒得读取原始的last skill, 就直接按照原始代码来了
-                    if raw_small <= 10 {
-                        skill.boosted = true;
+                    if small > 10 && self.skil_id[j] < 35 {
+                        let skill_id = self.skil_id[j] as usize;
+                        let skill = self.skills.skill_by_id_mut(skill_id);
+                        skill.set_level((small - 10) as u32);
+                        let raw_small = min(
+                            min(self.raw_name_base[i], self.raw_name_base[i + 1]),
+                            min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
+                        );
+                        // 其实是懒得读取原始的last skill, 就直接按照原始代码来了
+                        if raw_small <= 10 {
+                            skill.boosted = true;
+                        }
+                        slot_skill_keys[j] = Some(skill_id);
                     }
-                    slot_skill_keys[j] = Some(skill_id);
                 }
             }
         }
@@ -173,32 +203,32 @@ impl Player {
             }
         }
 
-        // boost skills(addSkillsToProc)
-        // boost最后一个
-        self.skills.boost_last();
-        // 然后是 boost passive
-        if let Some(skill_key) = slot_skill_keys[14] {
-            let skill_14 = self.skills.skill_by_id_mut(skill_key);
-            if skill_14.level() > 0 && !skill_14.boosted {
-                let boost_level = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
-                skill_14.boost_level(boost_level);
+        if diy_skill_levels.is_none() {
+            // boost skills（对应 JS addSkillsToProc）：
+            // 先 boost 最后一个技能，再 boost 被动技能。
+            // overlay 模式跳过 boost，因为等级由用户显式指定。
+            self.skills.boost_last();
+            // 然后 boost 被动技能
+            if let Some(skill_key) = slot_skill_keys[14] {
+                let skill_14 = self.skills.skill_by_id_mut(skill_key);
+                if skill_14.level() > 0 && !skill_14.boosted {
+                    let boost_level = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
+                    skill_14.boost_level(boost_level);
+                }
             }
-        }
-        if let Some(skill_key) = slot_skill_keys[15] {
-            let skill_15 = self.skills.skill_by_id_mut(skill_key);
-            if skill_15.level() > 0 && !skill_15.boosted {
-                let boost_level = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
-                skill_15.boost_level(boost_level);
+            if let Some(skill_key) = slot_skill_keys[15] {
+                let skill_15 = self.skills.skill_by_id_mut(skill_key);
+                if skill_15.level() > 0 && !skill_15.boosted {
+                    let boost_level = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
+                    skill_15.boost_level(boost_level);
+                }
             }
         }
         // 更新 proc(其实就是缓存)
         self.skills.update_proc();
 
         self.init_values();
-
-        // DIY TODO
     }
-
     /// 初始化生命/蓝条（只在 build 阶段调用一次）
     pub fn init_values(&mut self) {
         self.update_states();
@@ -304,56 +334,89 @@ impl Player {
     /// 检查输入的名字是否是种子玩家
     pub fn check_is_seed(name: &str) -> bool { name.starts_with(SEED_PREFIX) }
 
-    /// 直接从一个名竞的原始输入创建一个 Player
+    /// 从名竞原始输入字符串创建 Player。
     ///
     /// # 要求
-    /// 不许有 `\n`
+    /// 输入中不得包含 `\n`。
     ///
-    /// 可能的输入格式:
-    /// - \<name>
-    /// - \<name>@\<team>
-    /// - \<name>+\<weapon>
-    /// - \<name>+\<weapon>+diy{xxxxx}
-    /// - \<name>@\<team>+\<weapon>
-    /// - \<name>@\<team>+\<weapon>+diy{xxxxx}
+    /// # 支持的输入格式
+    ///
+    /// | 格式 | 含义 |
+    /// |------|------|
+    /// | `<name>` | 纯名字，无队伍无武器 |
+    /// | `<name>@<team>` | 名字 + 队伍 |
+    /// | `<name>+<weapon>` | 名字 + 武器 |
+    /// | `<name>+diy[attrs]{skills}` | 名字 + DIY 紧凑格式 overlay（无武器） |
+    /// | `<name>+ol:{...}` | 名字 + JSON 对象格式 overlay |
+    /// | `<name>@<team>+<weapon>+diy[...]{...}` | 名字 + 队伍 + 武器 + overlay |
+    ///
+    /// overlay 段（`diy[...]{...}` 或 `ol:{...}`）通过 `+` 与武器名分隔，
+    /// 最多出现一次；多个 `+` 段会拼接为复合武器名。
     pub fn new_from_namerena_raw(raw_name: String, storage: Arc<Storage>) -> PlayerResult<Self> {
         let raw_name = trim_js_line_end(&raw_name);
         // 先判断是否有 + 和 @
         if !raw_name.contains("@") && !raw_name.contains("+") {
             return Player::new_and_init(None, raw_name.to_string(), None, storage);
         }
-        // 区分队伍名
+        // 第一步：按 @ 分离名字和队伍（队伍段可能进一步包含武器/overlay）
         let name: &str;
         let mut team: &str;
-        let weapon: Option<&str>;
+        let weapon: Option<String>;
+        let mut overlay: Option<PlayerOverlay> = None;
         if raw_name.contains("@") {
             (name, team) = raw_name.split_once("@").unwrap();
-            // 判定武器
+            // 队伍段中再按 + 分离队伍名和武器/overlay
             if team.contains("+") {
                 let tmp;
                 (team, tmp) = team.split_once("+").unwrap();
                 team = trim_js_line_end(team);
-                weapon = Some(trim_js_name_like(tmp));
+                let (parsed_weapon, parsed_overlay) = Self::split_weapon_overlay(tmp);
+                weapon = parsed_weapon;
+                overlay = parsed_overlay;
             } else {
                 weapon = None;
             }
-            Player::new_and_init(Some(team.to_string()), name.to_string(), weapon.map(|s| s.to_string()), storage)
+            Player::new_and_init_with_overlay(Some(team.to_string()), name.to_string(), weapon, overlay, storage)
         } else {
-            // 没有队伍名, 直接是武器
+            // 无队伍名：按 + 分离名字和武器/overlay
             if raw_name.contains("+") {
-                let (name, weapon) = raw_name.split_once("+").unwrap();
-                Player::new_and_init(
-                    None,
-                    trim_js_line_end(name).to_string(),
-                    Some(trim_js_name_like(weapon).to_string()),
-                    storage,
-                )
+                let (name, rest) = raw_name.split_once("+").unwrap();
+                let (parsed_weapon, parsed_overlay) = Self::split_weapon_overlay(rest);
+                weapon = parsed_weapon;
+                overlay = parsed_overlay;
+                Player::new_and_init_with_overlay(None, trim_js_line_end(name).to_string(), weapon, overlay, storage)
             } else {
                 Player::new_and_init(None, raw_name.to_string(), None, storage)
             }
         }
     }
 
+    /// 按 `+` 分割后缀段，从中分离武器名和 overlay。
+    ///
+    /// 遍历每个 `+` 分隔的段：
+    /// - 如果能解析为 `PlayerOverlay`（以 `diy[` 或 `ol:` 开头），记录为 overlay；
+    /// - 否则拼接到武器名中（多个非 overlay 段通过 `+` 连接）。
+    ///
+    /// 注意：overlay 最多只有一个，后续匹配到的 overlay 段会覆盖前者。
+    fn split_weapon_overlay(raw: &str) -> (Option<String>, Option<PlayerOverlay>) {
+        let mut weapon: Option<String> = None;
+        let mut overlay: Option<PlayerOverlay> = None;
+        for segment in raw.split('+') {
+            let segment = trim_js_name_like(segment);
+            if segment.is_empty() {
+                continue;
+            }
+            if let Some(parsed) = PlayerOverlay::parse_inline(segment) {
+                overlay = Some(parsed);
+                continue;
+            }
+            weapon = Some(match weapon {
+                Some(existing) => format!("{existing}+{segment}"),
+                None => segment.to_string(),
+            });
+        }
+        (weapon, overlay)
+    }
     /// 把原始的 namerena 名字转换为 id name
     #[inline]
     pub fn raw_namerena_to_idname(raw_name: &str) -> String {

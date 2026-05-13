@@ -37,6 +37,7 @@
 
 use std::any::type_name_of_val;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{
     Arc, OnceLock, RwLock,
@@ -98,6 +99,105 @@ const BUILTIN_SKILL_FACTORIES: [SkillFactory; 35] = [
     upgrade::UpgradeSkill::box_new,
     hide::HideSkill::box_new,
 ];
+/// DIY / overlay 模式下的主动技能 ID 列表（按槽位顺序）。
+///
+/// 共 25 个主动技能，从 Fire(0) 到 Shadow(24)。
+/// 这些 ID 对应 `BUILTIN_SKILL_FACTORIES` 中前 25 个工厂函数。
+const DIY_ACTIVE_SKILL_IDS: [usize; 25] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+];
+
+/// DIY / overlay 模式下的被动技能 ID 列表（按槽位顺序）。
+///
+/// 共 10 个被动技能，从 Defend(25) 到 Hide(34)。
+const DIY_PASSIVE_SKILL_IDS: [usize; 10] = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34];
+
+/// 将 overlay 中的技能名映射到 Rust 技能 ID。
+///
+/// 兼容多种输入格式：`sklfire` / `FireSkill` / `fire` / `sklFire` 均可识别。
+/// 匹配逻辑：
+/// 1. 转小写后去掉前导的 `skl` 或 `skill` 前缀；
+/// 2. 剩余部分与内置技能英文名做精确匹配（大小写不敏感）。
+///
+/// 返回对应的技能 ID（0~35），未识别时返回 `None`。
+pub fn skill_name_to_id(name: &str) -> Option<usize> {
+    let lower = name.trim().to_ascii_lowercase();
+    let normalized = lower
+        .strip_prefix("skl")
+        .or_else(|| lower.strip_prefix("skill"))
+        .unwrap_or(lower.as_str());
+    match normalized {
+        "fire" => Some(0),
+        "ice" => Some(1),
+        "thunder" => Some(2),
+        "quake" => Some(3),
+        "absorb" => Some(4),
+        "poison" => Some(5),
+        "rapid" => Some(6),
+        "critical" => Some(7),
+        "half" => Some(8),
+        "exchange" => Some(9),
+        "berserk" => Some(10),
+        "charm" => Some(11),
+        "haste" => Some(12),
+        "slow" => Some(13),
+        "curse" => Some(14),
+        "heal" => Some(15),
+        "revive" => Some(16),
+        "disperse" => Some(17),
+        "iron" => Some(18),
+        "charge" => Some(19),
+        "accumulate" => Some(20),
+        "assassinate" => Some(21),
+        "summon" => Some(22),
+        "clone" => Some(23),
+        "shadow" => Some(24),
+        "defend" => Some(25),
+        "protect" => Some(26),
+        "reflect" => Some(27),
+        "reraise" => Some(28),
+        "shield" => Some(29),
+        "counter" => Some(30),
+        "merge" => Some(31),
+        "zombie" => Some(32),
+        "upgrade" => Some(33),
+        "hide" => Some(34),
+        "none" => Some(35),
+        _ => None,
+    }
+}
+
+/// DIY / overlay 模式下的技能槽顺序。
+///
+/// 固定顺序：25 个主动技能 → 10 个被动技能 → 5 个未使用槽位（35~39）。
+/// 这对应 JS 侧 `k1` 的固定布局，与普通玩家的随机排序不同。
+/// 使用固定顺序是为了让 overlay 技能在 merge（吞噬）时槽位类型一致，
+/// 确保 Shield / Defend / PassiveSkill 不会被错位。
+pub fn diy_skill_order() -> Vec<usize> { DIY_ACTIVE_SKILL_IDS.into_iter().chain(DIY_PASSIVE_SKILL_IDS).chain(35..40).collect() }
+
+/// 将 overlay 中指定的技能等级写入 SkillStorage。
+///
+/// 流程：
+/// 1. 遍历 `skill_levels` 映射，将每个技能名解析为技能 ID；
+/// 2. 设置对应技能的等级；
+/// 3. 重新设定技能槽顺序为 `diy_skill_order()` 固定顺序；
+/// 4. 调用 `update_proc()` 刷新流程缓存。
+///
+/// 注意：此函数不处理 boost，overlay 模式跳过整个 boost 流程。
+pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &HashMap<String, u32>) {
+    for (skill_name, level) in skill_levels {
+        let Some(skill_id) = skill_name_to_id(skill_name) else {
+            continue;
+        };
+        if let Some(skill) = storage.store.get_mut(&skill_id) {
+            skill.set_level(*level);
+        }
+    }
+    let order = diy_skill_order();
+    storage.slot_skill = order.clone();
+    storage.skill = order;
+    storage.update_proc();
+}
 
 #[derive(Default)]
 struct SkillRegistry {

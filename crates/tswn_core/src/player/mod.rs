@@ -77,6 +77,7 @@ pub mod boss;
 pub mod eval_name;
 pub mod icon;
 pub mod icon_render;
+pub mod overlay;
 pub mod skill;
 pub mod state;
 pub mod status;
@@ -88,6 +89,7 @@ pub mod impl_ctor;
 pub mod impl_runtime;
 
 pub use action_targets::*;
+pub use overlay::PlayerOverlay;
 pub use state::*;
 pub use status::*;
 
@@ -223,6 +225,11 @@ pub struct Player {
     minion_name_next_index: usize,
     // 玩家装备的武器名称，None 表示无武器
     weapon: Option<String>,
+    /// DIY / overlay 覆盖数据（八围属性、技能等级、武器名）。
+    ///
+    /// `None` 表示无覆盖，走正常随机生成流程。
+    /// `Box` 包装以减少 `Player` 结构体在无 overlay 时的内存占用。
+    pub overlay: Option<Box<PlayerOverlay>>,
     // 玩家类型（普通玩家、Boss、种子等）
     player_type: PlayerType,
     // 技能ID列表

@@ -51,8 +51,23 @@ impl Player {
     // /// 按照 namerena 的原始 new
     // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
-    /// 创建一个新的玩家
+    /// 创建一个新的玩家（便捷入口，委托给 [`new_and_init_with_overlay`]）。
     pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>, storage: Arc<Storage>) -> PlayerResult<Self> {
+        Self::new_and_init_with_overlay(team, name, weapon, None, storage)
+    }
+
+    /// 创建一个新的玩家，支持传入 overlay 覆盖数据。
+    ///
+    /// overlay 可以覆盖八围属性、技能等级和武器名。
+    /// 如果 overlay 提供了武器名，会覆盖 `weapon` 参数。
+    /// 如果 overlay 提供了技能映射，skill_id 顺序会使用固定布局而非随机洗牌。
+    pub fn new_and_init_with_overlay(
+        team: Option<String>,
+        name: String,
+        weapon: Option<String>,
+        overlay: Option<PlayerOverlay>,
+        storage: Arc<Storage>,
+    ) -> PlayerResult<Self> {
         // 先校验长度
         if let Some(t) = team.as_ref()
             && t.len() > TEAM_MAX_LEN
@@ -154,9 +169,19 @@ impl Player {
             _ => {}
         }
 
-        // 技能顺序
-        let mut skills = (0..40).collect::<Vec<u32>>();
-        rand.sort_list(&mut skills);
+        // 技能 ID 顺序（skil_id）：
+        // - overlay 有技能映射时：使用固定顺序（主动→被动），保证槽位稳定；
+        // - 否则：正常随机洗牌。
+        let skills = if overlay.as_ref().and_then(|ov| ov.skills.as_ref()).is_some() {
+            crate::player::skill::diy_skill_order()
+                .into_iter()
+                .map(|id| id as u32)
+                .collect::<Vec<u32>>()
+        } else {
+            let mut skills = (0..40).collect::<Vec<u32>>();
+            rand.sort_list(&mut skills);
+            skills
+        };
 
         // JS bf(): Test1/Test2/TestEx 的 name_factor 强制为 0
         let name_factor = match player_type {
@@ -179,7 +204,12 @@ impl Player {
 
         let id = storage.new_plr_id();
 
-        // 创建武器状态 (JS: new T.Weapon + b3)
+        // overlay 装箱（从栈上移到堆上，减少 Player 结构体大小）
+        let overlay = overlay.map(Box::new);
+        // 武器名解析优先级：名字中的 weapon 段 > overlay 中的 weapon 字段
+        let weapon = weapon.or_else(|| overlay.as_ref().and_then(|overlay| overlay.weapon.clone()));
+
+        // 创建武器运行时状态（对应 JS: new T.Weapon + b3）
         let weapon_state = weapon.as_deref().and_then(weapons::Weapon::create_state);
 
         Ok(Player {
@@ -189,6 +219,7 @@ impl Player {
             display_name_override: None,
             minion_name_next_index: 0,
             weapon,
+            overlay,
             player_type,
             sort_int: 0,
             rand,
@@ -205,7 +236,6 @@ impl Player {
             id,
         })
     }
-
     /// 获取当前的 spsum(步数)
     #[inline]
     #[deprecated(note = "请使用 move_point()")]
