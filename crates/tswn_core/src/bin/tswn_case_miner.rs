@@ -169,7 +169,7 @@ fn try_main() -> Result<(), String> {
     fs::create_dir_all(&ts_cache_dir).map_err(|e| format!("创建 TS 缓存目录失败: {e}"))?;
     let bun_cache_dir = detect_default_bun_cache_dir(&config.out_dir);
     fs::create_dir_all(&bun_cache_dir).map_err(|e| format!("创建 bun 缓存目录失败: {e}"))?;
-    let md5_tool_signature = file_signature(&config.md5_tool)?;
+    let md5_tool_signature = md5_tool_signature(&config.md5_tool)?;
 
     let mut summary = Summary::default();
     let mut seen_inputs = HashSet::new();
@@ -741,6 +741,24 @@ mod tests {
 
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn md5_tool_signature_tracks_md5_js_dependency() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("tswn_case_miner_sig_test_{nonce}"));
+        fs::create_dir_all(&root).unwrap();
+        let tool = root.join("out_md5.ts");
+        let md5_js = root.join("md5.js");
+        fs::write(&tool, "require('./md5.js');\n").unwrap();
+        fs::write(&md5_js, "module.exports = 1;\n").unwrap();
+
+        let before = md5_tool_signature(&tool).unwrap();
+        fs::write(&md5_js, "module.exports = 2;\n").unwrap();
+        let after = md5_tool_signature(&tool).unwrap();
+
+        let _ = fs::remove_dir_all(&root);
+        assert_ne!(before, after);
+    }
 }
 
 fn run_ts_trace(md5_tool: &Path, bun_cache_dir: &Path, temp_root: &Path, case: &GeneratedCase) -> Result<String, String> {
@@ -860,11 +878,51 @@ fn load_or_run_ts_trace(
     (Ok(output), false)
 }
 
-fn file_signature(path: &Path) -> Result<u64, String> {
-    let bytes = fs::read(path).map_err(|e| format!("读取文件失败({}): {e}", path.display()))?;
+fn md5_tool_signature(path: &Path) -> Result<u64, String> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    bytes.hash(&mut hasher);
+    hash_file_for_signature(&mut hasher, "tool", path)?;
+
+    if let Some(parent) = path.parent() {
+        let md5_js = parent.join("md5.js");
+        md5_js.is_file().hash(&mut hasher);
+        if md5_js.is_file() {
+            hash_file_for_signature(&mut hasher, "md5.js", &md5_js)?;
+        }
+
+        let assets_dir = parent.join("assets");
+        assets_dir.is_dir().hash(&mut hasher);
+        if assets_dir.is_dir() {
+            let mut files = Vec::new();
+            collect_signature_files(&assets_dir, &mut files)?;
+            files.sort();
+            for file in files {
+                let label = file.strip_prefix(parent).unwrap_or(&file).to_string_lossy().replace('\\', "/");
+                hash_file_for_signature(&mut hasher, &label, &file)?;
+            }
+        }
+    }
+
     Ok(hasher.finish())
+}
+
+fn collect_signature_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|e| format!("读取目录失败({}): {e}", dir.display()))? {
+        let entry = entry.map_err(|e| format!("读取目录项失败({}): {e}", dir.display()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_signature_files(&path, files)?;
+        } else if path.is_file() {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn hash_file_for_signature(hasher: &mut impl Hasher, label: &str, path: &Path) -> Result<(), String> {
+    label.hash(hasher);
+    let bytes = fs::read(path).map_err(|e| format!("读取文件失败({}): {e}", path.display()))?;
+    bytes.hash(hasher);
+    Ok(())
 }
 
 fn run_rust_trace(input: &str) -> Result<String, String> {
