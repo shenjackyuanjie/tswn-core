@@ -388,7 +388,7 @@ impl Runner {
         let mut world = WorldState::new(inited_plrs);
         world.players = sorted_for_move_point;
         storage.sync_groups(&world.groups);
-        storage.sync_alive_groups_owned(world.alives_by_group(&storage));
+        storage.sync_alive_groups_owned_with_count(world.alives_by_group(&storage), world.alive_group_count());
 
         // 对初始即为死亡状态的玩家（如 Seed 类型）补充 record_death，
         // 保证 sync_runtime_entities 快速路径不会遗漏它们，第一次 tick 就能正常清除。

@@ -15,6 +15,7 @@
 //! | `skills`               | `HashMap<usize, Skill>`  | 所有技能实例，以内存地址为 key      |
 //! | `groups`               | `HashMap<usize, Vec<PlrId>>` | 队伍分组 roster            |
 //! | `alive_groups`         | `Vec<Vec<PlrId>>`      | 存活分组，由 WorldState 同步维护 |
+//! | `alive_group_count`    | `usize`                | JS Engine.y.a.Q 兼容队伍计数     |
 //! | `pending_spawns`       | `Vec<PendingSpawn>`    | 待 tick 同步的新在1实体（召唤物等）   |
 //! | `pending_remove_players` | `Vec<PlrId>`         | 待 tick 同步的当回转移除              |
 //! | `death_queue`          | `Vec<PlrId>`           | 实际斶序的死亡记录，对齐 Dart 死亡顺序 |
@@ -68,6 +69,8 @@ pub struct Storage {
     groups: UnsafeCell<FastHashMap<usize, Vec<PlrId>>>,
     /// 运行期每队存活视图，由 world 同步。
     alive_groups: UnsafeCell<Vec<Vec<PlrId>>>,
+    /// JS Engine.y.a.Q 兼容的 alive group 计数。
+    alive_group_count: UnsafeCell<usize>,
     /// 存玩家实体。
     players: UnsafeCell<FastHashMap<PlrId, UnsafeCell<Player>>>,
     /// 玩家 -> 所属分组索引的反向映射，由 `sync_groups` 维护。
@@ -109,6 +112,7 @@ impl Storage {
             skills: UnsafeCell::new(FastHashMap::new()),
             groups: UnsafeCell::new(FastHashMap::new()),
             alive_groups: UnsafeCell::new(Vec::new()),
+            alive_group_count: UnsafeCell::new(0),
             players: UnsafeCell::new(FastHashMap::new()),
             player_group: UnsafeCell::new(FastHashMap::new()),
             pending_spawns: UnsafeCell::new(Vec::new()),
@@ -130,6 +134,7 @@ impl Storage {
         self.skills_mut().clear();
         self.groups_mut().clear();
         self.alive_groups_mut().clear();
+        *self.alive_group_count_mut() = 0;
         self.players_mut().clear();
         self.player_group_mut().clear();
         self.pending_spawns_mut().clear();
@@ -157,6 +162,12 @@ impl Storage {
 
     #[inline]
     fn alive_groups_mut(&self) -> &mut Vec<Vec<PlrId>> { unsafe { &mut *self.alive_groups.get() } }
+
+    #[inline]
+    fn alive_group_count_ref(&self) -> &usize { unsafe { &*self.alive_group_count.get() } }
+
+    #[inline]
+    fn alive_group_count_mut(&self) -> &mut usize { unsafe { &mut *self.alive_group_count.get() } }
 
     #[inline]
     fn players_ref(&self) -> &FastHashMap<PlrId, UnsafeCell<Player>> { unsafe { &*self.players.get() } }
@@ -269,7 +280,7 @@ impl Storage {
         self.alive_groups_ref().get(team_idx)
     }
 
-    pub fn alive_group_count(&self) -> usize { self.alive_groups_ref().iter().filter(|group| !group.is_empty()).count() }
+    pub fn alive_group_count(&self) -> usize { *self.alive_group_count_ref() }
 
     pub fn all_alive_ids(&self) -> Vec<PlrId> { self.alive_groups_ref().iter().flat_map(|group| group.iter().copied()).collect() }
 
@@ -292,10 +303,22 @@ impl Storage {
         }
     }
 
-    pub fn sync_alive_groups(&self, groups: &[Vec<PlrId>]) { *self.alive_groups_mut() = groups.to_vec(); }
+    pub fn sync_alive_groups(&self, groups: &[Vec<PlrId>]) {
+        *self.alive_group_count_mut() = groups.iter().filter(|group| !group.is_empty()).count();
+        *self.alive_groups_mut() = groups.to_vec();
+    }
 
     /// 接收 owned 数据直接存入，避免再次 clone。
-    pub fn sync_alive_groups_owned(&self, groups: Vec<Vec<PlrId>>) { *self.alive_groups_mut() = groups; }
+    pub fn sync_alive_groups_owned(&self, groups: Vec<Vec<PlrId>>) {
+        *self.alive_group_count_mut() = groups.iter().filter(|group| !group.is_empty()).count();
+        *self.alive_groups_mut() = groups;
+    }
+
+    /// 接收 WorldState 中按 JS `Engine.y.a.Q` 语义维护的计数。
+    pub fn sync_alive_groups_owned_with_count(&self, groups: Vec<Vec<PlrId>>, alive_group_count: usize) {
+        *self.alive_group_count_mut() = alive_group_count;
+        *self.alive_groups_mut() = groups;
+    }
 
     /// 获取技能。
     pub fn get_skill(&self, id: SkillId) -> Option<&Skill> { self.skills_ref().get(&id.0) }
