@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tswn_core::engine::update::{RunUpdate, UpdateType};
+use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::{Runner, engine, win_rate::groups_win_rate};
 
 use crate::BENCH_PARALLEL_THRESHOLD;
@@ -186,7 +187,10 @@ fn build_js_score_match_input(target_group: &[String], modifier: &str, round: us
         bench_input.push('\n');
         let _ = std::fmt::Write::write_fmt(bench_input, format_args!("{}@{modifier}", profile_base));
         bench_input.push_str("\n\n");
-        let _ = std::fmt::Write::write_fmt(bench_input, format_args!("{}@{modifier}\n{}@{modifier}", profile_base + 1, profile_base + 2));
+        let _ = std::fmt::Write::write_fmt(
+            bench_input,
+            format_args!("{}@{modifier}\n{}@{modifier}", profile_base + 1, profile_base + 2),
+        );
         return;
     }
 
@@ -205,12 +209,7 @@ fn build_js_score_match_input(target_group: &[String], modifier: &str, round: us
     }
 }
 
-fn run_raw_score_inner(
-    target_group: &[String],
-    modifier: &str,
-    n: usize,
-    threads: Option<usize>,
-) -> (usize, usize) {
+fn run_raw_score_inner(target_group: &[String], modifier: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
     let workers = resolve_raw_workers(threads, n);
 
     if workers <= 1 || n < BENCH_PARALLEL_THRESHOLD {
@@ -238,13 +237,7 @@ fn run_raw_score_inner(
     (wins, total)
 }
 
-fn run_raw_score_range(
-    target_group: &[String],
-    modifier: &str,
-    start: usize,
-    end: usize,
-    show_progress: bool,
-) -> (usize, usize) {
+fn run_raw_score_range(target_group: &[String], modifier: &str, start: usize, end: usize, show_progress: bool) -> (usize, usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut progress_printed = false;
@@ -254,7 +247,8 @@ fn run_raw_score_range(
     for i in start..end {
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
-        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+        let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -296,7 +290,8 @@ fn run_raw_score_worker(target_group: &[String], modifier: &str, next: &AtomicUs
 
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
-        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+        let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };

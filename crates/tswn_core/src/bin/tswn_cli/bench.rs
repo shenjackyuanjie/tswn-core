@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use tswn_core::{
     Runner,
+    player::eval_name::WIN_RATE_EVAL_RQ,
     win_rate::{
         WinRateTiming, prepared_win_rate, resolve_win_rate_workers, run_prepared_win_rate_range, use_js_profile_seed_schedule,
     },
@@ -729,7 +730,8 @@ fn run_bench_score_range(
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
         let t_init = Instant::now();
-        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+        let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -780,7 +782,8 @@ fn run_bench_score_worker(
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
         let t_init = Instant::now();
-        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+        let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };

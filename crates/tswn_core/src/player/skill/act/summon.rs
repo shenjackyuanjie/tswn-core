@@ -94,13 +94,9 @@ impl SkillTrait for SummonSkill {
         }
         let summon_team = owner.clan_name();
         let summon_name = format!("{}?summon", owner.base_name());
-        let mut summoned = crate::player::Player::new_minion_and_init(
-            Some(summon_team.clone()),
-            summon_name.clone(),
-            None,
-            args.3.clone(),
-        )
-        .expect("cannot init summon minion");
+        let mut summoned =
+            crate::player::Player::new_minion_and_init(Some(summon_team.clone()), summon_name.clone(), None, args.3.clone())
+                .expect("cannot init summon minion");
         prepare_combat_minion(&mut summoned);
         summoned.build();
         summoned.attr[7] = (summoned.attr[7] / 3).max(1);

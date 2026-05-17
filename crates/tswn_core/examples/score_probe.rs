@@ -11,10 +11,7 @@ fn build_input(target: &str, modifier: &str, round: usize) -> String {
 
 fn main() {
     let modifier = std::env::args().nth(1).unwrap_or_else(|| "\u{0002}".to_string());
-    let rounds = std::env::args()
-        .nth(2)
-        .and_then(|arg| arg.parse::<usize>().ok())
-        .unwrap_or(1000);
+    let rounds = std::env::args().nth(2).and_then(|arg| arg.parse::<usize>().ok()).unwrap_or(1000);
     let list = std::env::args().any(|arg| arg == "--list");
 
     let mut team0_wins = 0usize;
@@ -28,13 +25,7 @@ fn main() {
         let target_ids = runner
             .all_plrs()
             .into_iter()
-            .filter(|id| {
-                runner
-                    .storage
-                    .get_player(id)
-                    .map(|player| player.id_name() == "aaaaaa")
-                    .unwrap_or(false)
-            })
+            .filter(|id| runner.storage.get_player(id).map(|player| player.id_name() == "aaaaaa").unwrap_or(false))
             .collect::<Vec<_>>();
         let team0_ids = runner.input_groups.first().cloned().unwrap_or_default();
 
