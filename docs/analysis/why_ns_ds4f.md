@@ -1,4 +1,3 @@
-
 ## `why_ns` 在 `tswn-core` 里的实际情况
 
 ### 一句话结论
@@ -50,8 +49,8 @@
 
 三个 runtime minion 的创建入口：
 
-| minion | 代码路径 | 构造入口 |
-|--------|----------|----------|
+| minion        | 代码路径                                          | 构造入口                        |
+| ------------- | ------------------------------------------------- | ------------------------------- |
 | 幻影 (shadow) | `crates/tswn_core/src/player/skill/act/shadow.rs` | `Player::new_minion_and_init()` |
 | 使魔 (summon) | `crates/tswn_core/src/player/skill/act/summon.rs` | `Player::new_minion_and_init()` |
 | 丧尸 (zombie) | `crates/tswn_core/src/player/skill/skl/zombie.rs` | `Player::new_minion_and_init()` |
@@ -109,6 +108,7 @@ rand.update(&name_bytes, 2);
 ```
 
 要求：
+
 - 太早不行（还没拿到 team 初始化的 RC4 状态）
 - 太晚不行（`name_base` 已经算完了）
 - 不能复用 `player_id_counter`（语义不对，时机也不对）

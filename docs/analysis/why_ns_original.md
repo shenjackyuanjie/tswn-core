@@ -50,17 +50,17 @@ let why_ns = 0;
 在 `T.Plr.prototype.a1()` 内，玩家个人 RC4 用 team 初始化后，代码会读取 `why_ns` 并递增：
 
 ```js
-q = why_ns
-why_ns += 1
-q = C.JsInt.P(Math.abs(q), 2048)
-q = Math.abs(q) / 2048
+q = why_ns;
+why_ns += 1;
+q = C.JsInt.P(Math.abs(q), 2048);
+q = Math.abs(q) / 2048;
 if (q > 0) {
-    q = rc4.c
-    m = q[0]
-    q[0] = q[1]
-    q[1] = m
+  q = rc4.c;
+  m = q[0];
+  q[0] = q[1];
+  q[1] = m;
 }
-rc4.dB(0, LangData.fZ(name), 2)
+rc4.dB(0, LangData.fZ(name), 2);
 ```
 
 关键点：
@@ -75,7 +75,7 @@ rc4.dB(0, LangData.fZ(name), 2)
 Engine 输出胜利 update 时会执行：
 
 ```js
-why_ns = 0
+why_ns = 0;
 ```
 
 这意味着正常一场 fight 结束后，下一场 fight 的初始 `why_ns` 会回到 0。
@@ -85,7 +85,7 @@ why_ns = 0
 `T.Grp.prototype.aZ()` 把新成员加入 engine 的全局玩家列表时，如果该成员之前不在列表内，会执行：
 
 ```js
-why_ns -= 1
+why_ns -= 1;
 ```
 
 这主要影响 shadow / summon / zombie 这类运行期实体。它们构造时同样会让 `why_ns += 1`；随后 `aZ()` 再 `-= 1`，使全局计数不会因为运行期 minion 无限增长。
