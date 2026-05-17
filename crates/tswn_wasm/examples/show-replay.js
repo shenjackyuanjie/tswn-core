@@ -77,7 +77,7 @@ export function updateSpeedButtons(normalBtn, fastBtn, pauseBtn, playbackPaused,
 
 /**
  * 根据当前速度模式和帧的延迟配置，计算本帧应等待的毫秒数。
- * turbo 模式返回 0；fast 模式固定 40ms；normal 使用 WASM 预计算的 total_delay。
+ * turbo 模式返回 0；fast 模式固定 40ms；normal 使用 WASM 预计算的原始 total_delay。
  *
  * @param {FrameUpdate} frame
  * @param {SpeedMode} speedMode

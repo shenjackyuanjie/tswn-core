@@ -1,5 +1,18 @@
 # 更新日志
 
+## [0.2.4] - 2026-05-17
+
+### 对齐
+
+- `RoundFrame.total_delay` 改为按混淆版 `md5.js` 的可见 update 等待规则计算：每条可见消息等待 `max(update.delay0, 上一条可见 update.delay1)`，每帧初始上一条 delay 为 `1800`。
+- 回放 chunk 构建不再使用 `delay1 || delay0`，改为携带混淆版 `md5.js` 的原始未缩放等待时间。
+- normal 播放改为先等待再渲染当前 chunk，并按混淆版 `md5.js` 的 `sqrt(角色数 / 2)` 规则缩放等待时间。
+- 结束帧补齐混淆版 `RunUpdateWin` 的 `3000ms` 等待。
+
+### 文档
+
+- 更新 show 示例中的中文注释，明确 delay 逻辑以混淆版 `md5.js` 为准。
+
 ## [0.2.3] - 2026-05-07
 
 ### 变更

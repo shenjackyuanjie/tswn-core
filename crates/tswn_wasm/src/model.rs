@@ -148,7 +148,7 @@ pub struct RoundFrame {
     pub winner_ids: Vec<usize>,
     pub updates: Vec<UpdateView>,
     pub states: Vec<PlayerState>,
-    /// 帧内所有 update 的 delay 累加值（毫秒），供 JS 正常速度播放使用。
+    /// 帧内所有可见 update 的原始等待总和（毫秒），按混淆版 md5.js 的 delay 规则计算，未按角色数量缩放。
     pub total_delay: i32,
 }
 

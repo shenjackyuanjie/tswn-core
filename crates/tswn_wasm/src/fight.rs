@@ -12,8 +12,10 @@ use tswn_core::{RunUpdates, Runner};
 use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, internal_error, invalid_input, parse_options, runner_init_failed, to_js_value};
-use crate::model::{FightOptions, FightReplay, FightSummary, PlayerMeta, PlayerState, RoundFrame, UpdateView};
+use crate::model::{FightOptions, FightReplay, FightSummary, PlayerMeta, PlayerState, RoundFrame, UpdateTypeView, UpdateView};
 use crate::render::{classify_message_tone, render_update_message};
+
+const WIN_UPDATE_DELAY0_MS: i32 = 3000;
 
 fn build_runner(raw_input: String, eval_rq: f64) -> WasmResult<Runner> {
     if raw_input.trim().is_empty() {
@@ -288,6 +290,21 @@ fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -
         .collect()
 }
 
+fn playback_total_delay(updates: &[UpdateView]) -> i32 {
+    let mut total_delay = 0;
+    let mut next_wait = 1800;
+    for update in updates {
+        if matches!(update.update_type, UpdateTypeView::NextLine) || update.message_rendered.trim().is_empty() {
+            continue;
+        }
+        // 混淆版 md5.js 会在渲染当前可见 update 前等待 max(delay0, 上一条可见 update 的 delay1)。
+        let wait = update.delay0.max(next_wait);
+        total_delay += wait;
+        next_wait = update.delay1;
+    }
+    total_delay
+}
+
 fn winner_ids(runner: &Runner) -> Vec<usize> { runner.world.winner.clone().unwrap_or_default() }
 
 #[wasm_bindgen]
@@ -314,7 +331,11 @@ impl FightSession {
     fn build_frame(&self, updates: RunUpdates) -> WasmResult<RoundFrame> {
         let states = collect_states(&self.runner, &self.player_order)?;
         let converted = convert_updates(updates, &player_names_from_states(&states));
-        let total_delay: i32 = converted.iter().map(|u| if u.delay1 != 0 { u.delay1 } else { u.delay0 }).sum();
+        let mut total_delay = playback_total_delay(&converted);
+        if self.runner.have_winner() {
+            // 混淆版 md5.js 的 RunUpdateWin 使用 3000ms delay0，再进入胜利渲染。
+            total_delay += WIN_UPDATE_DELAY0_MS;
+        }
         Ok(RoundFrame {
             finished: self.runner.have_winner(),
             winner_ids: winner_ids(&self.runner),
