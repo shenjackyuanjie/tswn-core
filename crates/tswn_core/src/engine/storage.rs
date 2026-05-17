@@ -9,16 +9,22 @@
 //!
 //! ### 内容概览
 //!
-//! | 字段                   | 类型                    | 说明                              |
-//! |------------------------|------------------------|-------------------------------------|
-//! | `players`              | `HashMap<PlrId, Player>` | 所有玩家实体（含已死/待展开+存活）   |
-//! | `skills`               | `HashMap<usize, Skill>`  | 所有技能实例，以内存地址为 key      |
-//! | `groups`               | `HashMap<usize, Vec<PlrId>>` | 队伍分组 roster            |
-//! | `alive_groups`         | `Vec<Vec<PlrId>>`      | 存活分组，由 WorldState 同步维护 |
-//! | `alive_group_count`    | `usize`                | JS Engine.y.a.Q 兼容队伍计数     |
-//! | `pending_spawns`       | `Vec<PendingSpawn>`    | 待 tick 同步的新在1实体（召唤物等）   |
-//! | `pending_remove_players` | `Vec<PlrId>`         | 待 tick 同步的当回转移除              |
-//! | `death_queue`          | `Vec<PlrId>`           | 实际斶序的死亡记录，对齐 Dart 死亡顺序 |
+//! | 字段                     | 类型                                | 说明                                  |
+//! |--------------------------|-------------------------------------|-----------------------------------------|
+//! | `players`                | `FastHashMap<PlrId, UnsafeCell<Player>>` | 所有玩家实体（含已死+存活）         |
+//! | `skills`                 | `FastHashMap<usize, Skill>`         | 所有技能实例，以内存地址为 key        |
+//! | `groups`                 | `FastHashMap<usize, Vec<PlrId>>`    | 队伍分组 roster                       |
+//! | `player_group`           | `FastHashMap<PlrId, usize>`         | 玩家→所属分组索引的反向映射           |
+//! | `alive_groups`           | `Vec<Vec<PlrId>>`                   | 存活分组，由 WorldState 同步维护       |
+//! | `alive_group_count`      | `AtomicUsize`                       | JS Engine.y.a.Q 兼容队伍计数           |
+//! | `pending_spawns`         | `Vec<PendingSpawn>`                 | 待 tick 同步的新实体（召唤物等）       |
+//! | `pending_remove_players` | `Vec<PlrId>`                        | 待 tick 同步的移除实体                 |
+//! | `death_queue`            | `Vec<PlrId>`                        | 按发生顺序的死亡记录，对齐 Dart 死亡顺序 |
+//! | `pending_revivals`       | `Vec<PlrId>`                        | 待 tick 同步回 WorldState 的复活队列   |
+//! | `needs_sync`             | `AtomicBool`                        | 脏标记，有死亡/移除/复活/召唤时置 true |
+//! | `player_id_counter`      | `AtomicU64`                         | 玩家 ID 自增计数器                     |
+//! | `eval_rq`                | `f64`                               | 名字强度评估使用的 `$.rq()` 等价值     |
+//! | `in_post_damage_player`  | `UnsafeCell<Option<PlrId>>`         | 正在执行 post_damage 回调的使魔 ID     |
 //!
 //! ### 不安全访问说明
 //!
@@ -28,7 +34,7 @@
 
 use std::cell::UnsafeCell;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 
 use crate::player::skill::Skill;
 use crate::player::{Player, PlrId};
@@ -70,7 +76,7 @@ pub struct Storage {
     /// 运行期每队存活视图，由 world 同步。
     alive_groups: UnsafeCell<Vec<Vec<PlrId>>>,
     /// JS Engine.y.a.Q 兼容的 alive group 计数。
-    alive_group_count: UnsafeCell<usize>,
+    alive_group_count: AtomicUsize,
     /// 存玩家实体。
     players: UnsafeCell<FastHashMap<PlrId, UnsafeCell<Player>>>,
     /// 玩家 -> 所属分组索引的反向映射，由 `sync_groups` 维护。
@@ -112,7 +118,7 @@ impl Storage {
             skills: UnsafeCell::new(FastHashMap::new()),
             groups: UnsafeCell::new(FastHashMap::new()),
             alive_groups: UnsafeCell::new(Vec::new()),
-            alive_group_count: UnsafeCell::new(0),
+            alive_group_count: AtomicUsize::new(0),
             players: UnsafeCell::new(FastHashMap::new()),
             player_group: UnsafeCell::new(FastHashMap::new()),
             pending_spawns: UnsafeCell::new(Vec::new()),
@@ -134,7 +140,7 @@ impl Storage {
         self.skills_mut().clear();
         self.groups_mut().clear();
         self.alive_groups_mut().clear();
-        *self.alive_group_count_mut() = 0;
+        self.alive_group_count.store(0, std::sync::atomic::Ordering::Relaxed);
         self.players_mut().clear();
         self.player_group_mut().clear();
         self.pending_spawns_mut().clear();
@@ -162,12 +168,6 @@ impl Storage {
 
     #[inline]
     fn alive_groups_mut(&self) -> &mut Vec<Vec<PlrId>> { unsafe { &mut *self.alive_groups.get() } }
-
-    #[inline]
-    fn alive_group_count_ref(&self) -> &usize { unsafe { &*self.alive_group_count.get() } }
-
-    #[inline]
-    fn alive_group_count_mut(&self) -> &mut usize { unsafe { &mut *self.alive_group_count.get() } }
 
     #[inline]
     fn players_ref(&self) -> &FastHashMap<PlrId, UnsafeCell<Player>> { unsafe { &*self.players.get() } }
@@ -280,7 +280,7 @@ impl Storage {
         self.alive_groups_ref().get(team_idx)
     }
 
-    pub fn alive_group_count(&self) -> usize { *self.alive_group_count_ref() }
+    pub fn alive_group_count(&self) -> usize { self.alive_group_count.load(std::sync::atomic::Ordering::Relaxed) }
 
     pub fn all_alive_ids(&self) -> Vec<PlrId> { self.alive_groups_ref().iter().flat_map(|group| group.iter().copied()).collect() }
 
@@ -304,19 +304,25 @@ impl Storage {
     }
 
     pub fn sync_alive_groups(&self, groups: &[Vec<PlrId>]) {
-        *self.alive_group_count_mut() = groups.iter().filter(|group| !group.is_empty()).count();
+        self.alive_group_count.store(
+            groups.iter().filter(|group| !group.is_empty()).count(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         *self.alive_groups_mut() = groups.to_vec();
     }
 
     /// 接收 owned 数据直接存入，避免再次 clone。
     pub fn sync_alive_groups_owned(&self, groups: Vec<Vec<PlrId>>) {
-        *self.alive_group_count_mut() = groups.iter().filter(|group| !group.is_empty()).count();
+        self.alive_group_count.store(
+            groups.iter().filter(|group| !group.is_empty()).count(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         *self.alive_groups_mut() = groups;
     }
 
     /// 接收 WorldState 中按 JS `Engine.y.a.Q` 语义维护的计数。
     pub fn sync_alive_groups_owned_with_count(&self, groups: Vec<Vec<PlrId>>, alive_group_count: usize) {
-        *self.alive_group_count_mut() = alive_group_count;
+        self.alive_group_count.store(alive_group_count, std::sync::atomic::Ordering::Relaxed);
         *self.alive_groups_mut() = groups;
     }
 
