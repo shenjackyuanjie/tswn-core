@@ -211,9 +211,9 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && cargo build -p tswn_capi --rele
 
 当前构建产出版本：
 
-| 组件 | 版本 |
-|------|------|
+| 组件      | 版本  |
+| --------- | ----- |
 | tswn_core | 0.3.3 |
 | tswn_capi | 0.3.0 |
-| tswn_py | 0.2.0 |
+| tswn_py   | 0.2.0 |
 | tswn_wasm | 0.2.3 |

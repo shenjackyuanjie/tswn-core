@@ -20,18 +20,18 @@
 
 ### 2. Rust 侧结构分析 (`tswn-core`)
 
-| 文件 | 职责 | 与 DIY 的关系 |
-|------|------|--------------|
-| `player/mod.rs` | `Player` 结构体、`PlayerType` | 需加 `overlay` 字段 |
-| `player/impl_ctor.rs` | `new_and_init`、`new_from_namerena_raw` | 需接收/解析 overlay |
-| `player/impl_attr.rs` | `build_inner` 构建流程 | 需插入 DIY 覆盖逻辑 |
-| `player/skill.rs` | `Skill`、`SkillNames`、注册表 | 需加 `skill_name_to_id` 映射 |
-| `player/skill/store.rs` | `SkillStorage`、`slot_skill`/`skill` 顺序管理 | DIY 技能需操作排序 |
-| `player/skill/act/mod.rs` | 27 种主动技能 | 为名称映射提供源 |
-| `player/skill/skl/mod.rs` | 13 种被动技能 | 同上 |
-| `player/weapons.rs` | 武器系统 | DIY 模式 weapon_state = None |
-| `player/status.rs` | `PlayerStatus` | build 最终状态更新 |
-| `engine/runners.rs` | `Runner` 对局构造 | 需感知 overlay 以构建玩家 |
+| 文件                      | 职责                                          | 与 DIY 的关系                |
+| ------------------------- | --------------------------------------------- | ---------------------------- |
+| `player/mod.rs`           | `Player` 结构体、`PlayerType`                 | 需加 `overlay` 字段          |
+| `player/impl_ctor.rs`     | `new_and_init`、`new_from_namerena_raw`       | 需接收/解析 overlay          |
+| `player/impl_attr.rs`     | `build_inner` 构建流程                        | 需插入 DIY 覆盖逻辑          |
+| `player/skill.rs`         | `Skill`、`SkillNames`、注册表                 | 需加 `skill_name_to_id` 映射 |
+| `player/skill/store.rs`   | `SkillStorage`、`slot_skill`/`skill` 顺序管理 | DIY 技能需操作排序           |
+| `player/skill/act/mod.rs` | 27 种主动技能                                 | 为名称映射提供源             |
+| `player/skill/skl/mod.rs` | 13 种被动技能                                 | 同上                         |
+| `player/weapons.rs`       | 武器系统                                      | DIY 模式 weapon_state = None |
+| `player/status.rs`        | `PlayerStatus`                                | build 最终状态更新           |
+| `engine/runners.rs`       | `Runner` 对局构造                             | 需感知 overlay 以构建玩家    |
 
 ### 3. 构建流程比对
 
@@ -50,14 +50,14 @@ JS:                          Rust (build_inner):
 
 ### 4. 方案对比
 
-| | Plan A (字符串扩展) | Plan B (serde 数据驱动) |
-|---|---|---|
-| 数据存储 | 名字字符串中编码 | `Option<Box<PlayerOverlay>>` 结构体 |
-| 解析时机 | build 时再解析 | 构造时解析一次 |
-| normal 玩家开销 | 无 (skip) | 1 次 `is_none()` |
-| 扩展性 | 字符串编码 → 难扩展 | serde JSON → 任意字段 |
-| API 友好度 | 差 (需字符串拼接) | 好 (直接传结构体/JSON) |
-| C/Python FFI | 需字符串编解码 | JSON 字符串透明传递 |
+|                 | Plan A (字符串扩展) | Plan B (serde 数据驱动)             |
+| --------------- | ------------------- | ----------------------------------- |
+| 数据存储        | 名字字符串中编码    | `Option<Box<PlayerOverlay>>` 结构体 |
+| 解析时机        | build 时再解析      | 构造时解析一次                      |
+| normal 玩家开销 | 无 (skip)           | 1 次 `is_none()`                    |
+| 扩展性          | 字符串编码 → 难扩展 | serde JSON → 任意字段               |
+| API 友好度      | 差 (需字符串拼接)   | 好 (直接传结构体/JSON)              |
+| C/Python FFI    | 需字符串编解码      | JSON 字符串透明传递                 |
 
 **选定方案: Plan B**
 
@@ -89,6 +89,7 @@ pub struct Player {
 ### 输入方式（3 种，从优到劣）
 
 **1. API 模式 (推荐 — 结构化)**
+
 ```rust
 let overlay = PlayerOverlay {
     attrs: Some([72, 39, 69, 76, 67, 66, 0, 84]),
@@ -99,68 +100,80 @@ Player::new_and_init(team, name, weapon, Some(overlay), storage)?;
 ```
 
 **2. 内联格式 (兼容 — 名字中编码)**
+
 ```
 PlayerName+ol:{"attrs":[72,39,69,76,67,66,0,84],"skills":{"fire":5}}
 ```
+
 `new_from_namerena_raw` 在解析 weapon 时检测 `diy[...]{...}` 和 `ol:{json}` 格式。
 
 **3. 批量配置 (大数据场景)**
+
 ```json
 {
   "overlays": {
-    "Bob":  {"attrs": [72,39,69,76,67,66,0,84], "skills": {"fire": 5}},
-    "Alice": {"attrs": [50,50,50,50,50,50,50,200]}
+    "Bob": { "attrs": [72, 39, 69, 76, 67, 66, 0, 84], "skills": { "fire": 5 } },
+    "Alice": { "attrs": [50, 50, 50, 50, 50, 50, 50, 200] }
   },
   "groups": [["Bob", "Alice"]]
 }
 ```
+
 Runner 接受外部 overlay 映射，按 name 匹配。
 
 ### API 变更清单
 
-| 函数 | 当前 | 变更 |
-|------|------|------|
-| `Player::new_and_init` | `(team, name, weapon, storage)` | `(team, name, weapon, overlay, storage)` |
-| `Player::new_from_namerena_raw` | `(raw_name, storage)` | 不变；内部解析 `diy`/`ol:` 为 overlay |
-| `Runner::new_from_groups_with_seed` | `(groups, seed)` | 不变；但允许 group 字符串含 `ol:` |
-| `Runner::prepare_groups` | `(players)` | 新增 overlay 参数？或拆为两步 |
+| 函数                                | 当前                            | 变更                                     |
+| ----------------------------------- | ------------------------------- | ---------------------------------------- |
+| `Player::new_and_init`              | `(team, name, weapon, storage)` | `(team, name, weapon, overlay, storage)` |
+| `Player::new_from_namerena_raw`     | `(raw_name, storage)`           | 不变；内部解析 `diy`/`ol:` 为 overlay    |
+| `Runner::new_from_groups_with_seed` | `(groups, seed)`                | 不变；但允许 group 字符串含 `ol:`        |
+| `Runner::prepare_groups`            | `(players)`                     | 新增 overlay 参数？或拆为两步            |
 
 ## 实施步骤
 
 ### Step 1: 定义 PlayerOverlay 结构体
+
 - 文件: `player/overlay.rs` (新建)
 - 内容: `PlayerOverlay` 结构体 + serde 派生 + 工具方法
 
 ### Step 2: Player 结构体加 overlay 字段
+
 - 文件: `player/mod.rs`
 - 加 `pub overlay: Option<Box<PlayerOverlay>>`
 - 确保 `Default`, `Clone` 等 trait 正确派生
 
 ### Step 3: 修改构造函数
+
 - 文件: `player/impl_ctor.rs`
 - `new_and_init`: 加 `overlay: Option<PlayerOverlay>` 参数
 - `new_from_namerena_raw`: 解析 `diy[...]{...}` / `ol:{json}` → `PlayerOverlay`
 
 ### Step 4: 修改 build_inner
+
 - 文件: `player/impl_attr.rs`
 - 在 `init_raw_attr` 后，若 `overlay.attrs.is_some()`，覆盖 base_attr
 - 在 init skills 阶段，若 `overlay.skills.is_some()`，跳原有 `dm()`，执行 DIY 技能设置
 
 ### Step 5: 技能名称映射
+
 - 文件: `player/skill.rs`
 - 加 `skill_name_to_id(name: &str) -> Option<usize>`
 - 大小写不敏感匹配 `constructor.name`（JS 语义）
 - 映射表: act 0–26 + skl 0–12 = 共计 40 技能
 
 ### Step 6: DIY 技能应用逻辑
+
 - 在 `skill.rs` 或 `impl_attr.rs` 实现 `apply_diy_skills`
 - 对每个 overlay skill: `find_id → set_level → 重排 slot_skill` 使 1–3 为主动、4+ 为被动
 
 ### Step 7: C/Python API 更新
+
 - C API: 新增 `PlayerOverlay` 参数，通过 JSON 字符串透传
 - Python: `new_and_init` 接受 `overlay: Optional[Dict]`
 
 ### Step 8: 测试
+
 - normal player: overlay = None, 零额外开销 (build 路径 trace)
 - DIY 玩家: 八围覆盖正确 (自动减 36)
 - DIY 技能: 等级设置 + 顺序重排 (主动在前)

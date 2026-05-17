@@ -349,6 +349,7 @@ g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 
 在 Windows 下，推荐优先级如下：
 
 ### 推荐 1：`clang++` 动态链接
+
 优点：
 
 - 命令最简单
@@ -356,6 +357,7 @@ g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 
 - 兼容当前 `tswn_capi.dll.lib` 打包产物
 
 ### 推荐 2：`clang++` 静态链接
+
 优点：
 
 - 最终 exe 不依赖 `tswn_capi.dll`
@@ -366,6 +368,7 @@ g++ openbox_capi_prepare.cpp libtswn_capi.dll.a -o openbox_capi_prepare.exe -O3 
 - 系统库问题更容易暴露
 
 ### 推荐 3：`g++`
+
 只有在你明确使用 MinGW / `g++` 时再考虑。  
 若 `g++` 不能直接吃 `.dll.lib`，则需要自行转 `.dll.a`。
 
@@ -397,11 +400,13 @@ input.txt
 ## 12. 已确认的结论
 
 ### 12.1 `PreparedRunner` seed 规则
+
 - `NULL`：不传 seed
 - `seed:33554431@!`：正确
 - `33554431@!`：错误，不应这样传
 
 ### 12.2 无 seed 一致性
+
 已通过 Rust 测试确认：
 
 - `raw` 不给 seed
@@ -410,6 +415,7 @@ input.txt
 二者一致。
 
 ### 12.3 有 seed 一致性
+
 已通过实际对战验证：
 
 - `prepared` 若传完整 `seed:...`
