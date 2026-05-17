@@ -1,5 +1,30 @@
 # 更新日志
 
+## [0.3.3] - 2026-05-17
+
+### API
+
+- `WorldState` 新增 `alive_group_count()` 访问器，暴露按 JS `Engine.y.a.Q` 语义维护的存活队伍计数。
+- `Storage` 新增 `sync_alive_groups_owned_with_count(groups, alive_group_count)`，用于把 `WorldState` 中维护的 JS 兼容计数与 `alive_groups` 一起同步。
+- `Storage::alive_group_count()` 语义调整为返回同步后的 JS 兼容计数，不再每次按 `alive_groups` 动态重算“当前非空队伍数”。
+
+### 修复
+
+- 修复多队伍战斗中默认攻击 / 技能智能选目标对存活队伍数的判断漂移：目标打分路径改为直接使用 `alive_group_count()`，不再临时扫描全体玩家去推导队伍数。
+- `FireSkill` 初次附加 `FireState` 时改用 `set_state_no_update()`，避免额外状态刷新导致的运行时分叉。
+- `EngineCore` / `Runner` 在同步 `alive_groups` 时显式携带 `WorldState` 维护的 `alive_group_count`，避免 `Storage` 侧重新按当前列表计数而偏离 JS 语义。
+- `Storage` 内部将 `alive_group_count` 收敛为独立存储字段（当前实现为 `AtomicUsize`），保持 `&self` 读取简单的同时保留同步后的计数语义。
+
+### 工具
+
+- `tswn_case_miner` 的 TS trace 缓存签名现在同时包含 `out_md5.ts`、同目录 `md5.js` 和 `assets/**`；修改 JS 依赖或资源后会自动失效旧缓存。
+- `tswn_case_miner` 默认共享缓存目录从 `<repo>/target/tswn_case_miner_cache` 调整为 `<repo>/tests/tswn_case_miner_cache`；`TSWN_CASE_MINER_TS_CACHE_DIR` / `TSWN_CASE_MINER_BUN_CACHE_DIR` 覆盖方式保持不变。
+
+### 测试
+
+- 新增大样本回放回归 `case 66`、`case 67`、`case 68`，覆盖 clone 熟练度 clamp、多队伍目标打分 / 复活 / 召唤链路等近期分叉样例。
+- 为 `tswn_case_miner` 新增 `md5_tool_signature_tracks_md5_js_dependency()`，确认 `md5.js` 修改会触发缓存签名变化。
+
 ## [0.3.1] - 2026-05-07
 
 ### API

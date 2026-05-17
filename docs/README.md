@@ -66,5 +66,5 @@ docs/
 │   ├── benchmark_tracking.md       # 性能追踪表
 │   ├── opt_target_selection.md     # 目标选择优化报告
 │   └── ub_fix_no_debug.md          # UB 修复报告
-└── update/                         # 22 个版本日志（历史存档）
+└── update/                         # 27 个版本日志（历史存档）
 ```
