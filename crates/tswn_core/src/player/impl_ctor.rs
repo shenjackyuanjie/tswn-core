@@ -56,6 +56,20 @@ impl Player {
         Self::new_and_init_with_overlay(team, name, weapon, None, storage)
     }
 
+    /// 创建战斗中生成的 minion（shadow / summon / zombie）。
+    ///
+    /// md5.js 对这些实体直接构造对应的 `PlrShadow` / `PlrSummon` / `PlrZombie`，
+    /// 不会因为 owner 的队名是 `!` 或 `\u{0002}` 而走 `PlrEx` / `PlrBossTest` 的
+    /// name_base 变换。输入 roster 中的同名玩家仍应使用普通入口。
+    pub(crate) fn new_minion_and_init(
+        team: Option<String>,
+        name: String,
+        weapon: Option<String>,
+        storage: Arc<Storage>,
+    ) -> PlayerResult<Self> {
+        Self::new_and_init_inner(team, name, weapon, None, storage, true)
+    }
+
     /// 创建一个新的玩家，支持传入 overlay 覆盖数据。
     ///
     /// overlay 可以覆盖八围属性、技能等级和武器名。
@@ -68,6 +82,17 @@ impl Player {
         overlay: Option<PlayerOverlay>,
         storage: Arc<Storage>,
     ) -> PlayerResult<Self> {
+        Self::new_and_init_inner(team, name, weapon, overlay, storage, false)
+    }
+
+    fn new_and_init_inner(
+        team: Option<String>,
+        name: String,
+        weapon: Option<String>,
+        overlay: Option<PlayerOverlay>,
+        storage: Arc<Storage>,
+        force_normal_type: bool,
+    ) -> PlayerResult<Self> {
         // 先校验长度
         if let Some(t) = team.as_ref()
             && t.len() > TEAM_MAX_LEN
@@ -78,7 +103,9 @@ impl Player {
             return Err(PlayerError::NameTooLong(name.len(), name.len()));
         }
         let player_type = {
-            if let Some(t) = team.as_ref() {
+            if force_normal_type {
+                PlayerType::Normal
+            } else if let Some(t) = team.as_ref() {
                 match t.as_str() {
                     "!" => {
                         if BOSS_NAMES.contains(&name.as_str()) {

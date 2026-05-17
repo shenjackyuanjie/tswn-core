@@ -58,8 +58,8 @@ impl SkillTrait for ShadowSkill {
             (owner.base_name(), owner.clan_name(), owner.get_status().at_boost >= 3.0)
         };
         let seed_name = format!("{owner_base_name}?shadow");
-        let mut shadow =
-            Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init shadow minion");
+        let mut shadow = Player::new_minion_and_init(Some(owner_clan), seed_name, None, args.3.clone())
+            .expect("cannot init shadow minion");
         prepare_combat_minion(&mut shadow);
         shadow.build();
         shadow.attr[7] /= 2;

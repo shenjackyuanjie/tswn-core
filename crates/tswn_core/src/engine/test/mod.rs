@@ -111,6 +111,42 @@ mod split_namerena_groups {
         let groups = runners::Runner::split_namerena_into_groups(raw_input);
         assert_eq!(groups, (vec![plr!("seed: a@!", "aaaa", "bbbb")], plr!["seed: a@!"]))
     }
+
+    #[test]
+    fn benchmark_marker_default_score_shape_matches_js() {
+        let raw_input = "!test!\n\naaaa\nbbbb".to_string();
+        let groups = runners::Runner::split_namerena_into_groups(raw_input);
+        assert_eq!(groups, (vec![plr!("!test!"), plr!("aaaa", "bbbb")], plr!()));
+    }
+
+    #[test]
+    fn benchmark_marker_bang_score_shape_matches_js() {
+        let raw_input = "!test!\n!\n\naaaa\nbbbb".to_string();
+        let groups = runners::Runner::split_namerena_into_groups(raw_input);
+        assert_eq!(groups, (vec![plr!("!test!", "!"), plr!("aaaa", "bbbb")], plr!()));
+    }
+
+    #[test]
+    fn bang_team_player_stays_in_roster_not_seed() {
+        let raw_input = "xxxx@!\n\nnormal".to_string();
+        let groups = runners::Runner::split_namerena_into_groups(raw_input);
+        assert_eq!(groups, (vec![plr!("xxxx@!"), plr!("normal")], plr!()));
+    }
+
+    #[test]
+    fn bang_team_player_builds_as_testex() {
+        let runner = runners::Runner::new_from_namerena_raw("xxxx@!\n\nnormal".to_string()).unwrap();
+        let testex = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find_map(|id| {
+                let player = runner.storage.get_player(&id)?;
+                (player.id_name() == "xxxx").then_some(player.player_type())
+            })
+            .expect("xxxx@! player should exist");
+        assert_eq!(testex, crate::player::PlayerType::TestEx);
+    }
 }
 
 mod prepared_raw_consistency {

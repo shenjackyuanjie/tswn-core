@@ -157,6 +157,37 @@ impl BenchSummary {
     fn win_rate_percent(self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 }
 
+#[derive(Debug)]
+struct BenchmarkInput {
+    groups: Vec<Vec<String>>,
+    score_modifier: Option<&'static str>,
+}
+
+fn parse_benchmark_input(raw: &str) -> BenchmarkInput {
+    let (mut groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let mut score_modifier = None;
+
+    if groups.first().and_then(|group| group.first()).is_some_and(|name| name == "!test!") {
+        let marker_group = groups.remove(0);
+        score_modifier = Some(if marker_group.get(1).is_some_and(|name| name == "!") {
+            "!"
+        } else {
+            "\u{0002}"
+        });
+    }
+
+    BenchmarkInput { groups, score_modifier }
+}
+
+fn groups_to_raw(groups: &[Vec<String>]) -> String {
+    groups
+        .iter()
+        .filter(|group| !group.is_empty())
+        .map(|group| group.join("\n"))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 pub fn run_benchmark(
     raw: &str,
     n: usize,
@@ -166,13 +197,19 @@ pub fn run_benchmark(
     buckets_step: Option<usize>,
 ) {
     let raw = raw.trim();
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let BenchmarkInput { groups, score_modifier } = parse_benchmark_input(raw);
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     match group_count {
         0 => eprintln!("benchmark: 输入为空或无有效玩家"),
-        1 => run_bench_score(raw, n, mode, threads, perf),
+        1 => {
+            if let Some(modifier) = score_modifier {
+                run_bench_score_with_modifier(&groups, modifier, n, mode, threads, perf);
+            } else {
+                run_bench_score(&groups_to_raw(&groups), n, mode, threads, perf);
+            }
+        }
         _ => run_bench_winrate(
-            raw,
+            &groups_to_raw(&groups),
             n,
             mode,
             threads,
@@ -517,6 +554,83 @@ fn resolve_bench_workers(mode: BenchThreadMode, threads: Option<usize>, total: u
     }
 }
 
+fn js_score_targets_per_round(target_group: &[String]) -> usize {
+    if target_group.len() == 2 && target_group[0] == target_group[1] {
+        1
+    } else {
+        target_group.len()
+    }
+}
+
+fn js_score_profiles_per_round(target_group: &[String]) -> usize {
+    if target_group.len() == 2 && target_group[0] == target_group[1] {
+        1
+    } else if target_group.len() == 1 {
+        3
+    } else {
+        target_group.len()
+    }
+}
+
+fn build_js_score_match_input(target_group: &[String], modifier: &str, round: usize, bench_input: &mut String) {
+    bench_input.clear();
+
+    let tracked_targets = js_score_targets_per_round(target_group);
+    let profile_count = js_score_profiles_per_round(target_group);
+    let profile_base = tswn_core::engine::PROFILE_START as usize + round * profile_count;
+
+    if target_group.len() == 1 {
+        bench_input.push_str(&target_group[0]);
+        bench_input.push('\n');
+        let _ = write!(bench_input, "{}@{modifier}", profile_base);
+        bench_input.push_str("\n\n");
+        let _ = write!(bench_input, "{}@{modifier}\n{}@{modifier}", profile_base + 1, profile_base + 2);
+        return;
+    }
+
+    for (idx, name) in target_group.iter().take(tracked_targets).enumerate() {
+        if idx > 0 {
+            bench_input.push('\n');
+        }
+        bench_input.push_str(name);
+    }
+    bench_input.push_str("\n\n");
+    for offset in 0..profile_count {
+        if offset > 0 {
+            bench_input.push('\n');
+        }
+        let _ = write!(bench_input, "{}@{modifier}", profile_base + offset);
+    }
+}
+
+fn run_bench_score_with_modifier(
+    groups: &[Vec<String>],
+    modifier: &'static str,
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    perf: bool,
+) {
+    let target_group = groups.first().cloned().unwrap_or_default();
+    let target_count = target_group.len();
+    if target_count == 0 {
+        eprintln!("评分: 无目标玩家");
+        return;
+    }
+    let label = if modifier == "!" { "!评分" } else { "普通评分" };
+
+    println!("=== 实力评分测试 ({n} 场) ===");
+    println!("目标: {}", target_group.join(", "));
+    println!("info: {target_count}");
+
+    let summary = run_bench_score_inner(&target_group, modifier, n, mode, threads, true);
+    let score = summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64;
+    println!("{label}: {:.0} / 10000  ({}/{})", score, summary.wins, summary.total);
+    if perf {
+        print_perf_lines(summary.elapsed, summary.timing, summary.total);
+    }
+}
+
 fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, perf: bool) {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let target_group = groups.into_iter().next().unwrap_or_default();
@@ -525,14 +639,13 @@ fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<u
         eprintln!("评分: 无目标玩家");
         return;
     }
-    let target_str = target_group.join("\n");
 
     println!("=== 实力评分测试 ({n} 场) ===");
     println!("目标: {}", target_group.join(", "));
     println!("info: {target_count}");
 
     print!("[普通评分] ");
-    let normal = run_bench_score_inner(&target_str, target_count, "\u{0002}", n, mode, threads, true);
+    let normal = run_bench_score_inner(&target_group, "\u{0002}", n, mode, threads, true);
     let ns = normal.wins as f64 * 10_000.0 / normal.total.max(1) as f64;
     println!("普通评分: {:.0} / 10000  ({}/{})", ns, normal.wins, normal.total);
     if perf {
@@ -540,7 +653,7 @@ fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<u
     }
 
     print!("[!评分]    ");
-    let bang = run_bench_score_inner(&target_str, target_count, "!", n, mode, threads, true);
+    let bang = run_bench_score_inner(&target_group, "!", n, mode, threads, true);
     let bs = bang.wins as f64 * 10_000.0 / bang.total.max(1) as f64;
     println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.wins, bang.total);
     if perf {
@@ -549,8 +662,7 @@ fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<u
 }
 
 fn run_bench_score_inner(
-    target_str: &str,
-    target_count: usize,
+    target_group: &[String],
     modifier: &str,
     n: usize,
     mode: BenchThreadMode,
@@ -561,7 +673,7 @@ fn run_bench_score_inner(
     let started_at = Instant::now();
 
     let mut summary = if workers <= 1 || n < BENCH_PARALLEL_THRESHOLD {
-        let (wins, total, timing) = run_bench_score_range(target_str, target_count, modifier, 0, n, show_progress);
+        let (wins, total, timing) = run_bench_score_range(target_group, modifier, 0, n, show_progress);
         BenchSummary {
             wins,
             total,
@@ -572,11 +684,11 @@ fn run_bench_score_inner(
         let next = Arc::new(AtomicUsize::new(0));
         let mut handles = Vec::with_capacity(workers);
         for _ in 0..workers {
-            let target_str = target_str.to_string();
+            let target_group = target_group.to_vec();
             let modifier = modifier.to_string();
             let next = Arc::clone(&next);
             handles.push(std::thread::spawn(move || {
-                run_bench_score_worker(target_str.as_str(), target_count, modifier.as_str(), next.as_ref(), n)
+                run_bench_score_worker(&target_group, modifier.as_str(), next.as_ref(), n)
             }));
         }
 
@@ -600,8 +712,7 @@ fn run_bench_score_inner(
 }
 
 fn run_bench_score_range(
-    target_str: &str,
-    target_count: usize,
+    target_group: &[String],
     modifier: &str,
     start: usize,
     end: usize,
@@ -611,30 +722,22 @@ fn run_bench_score_range(
     let mut total = 0usize;
     let mut timing = WinRateTiming::default();
     let mut progress_printed = false;
-    let mut targets = String::with_capacity(target_count.saturating_mul(24));
-    let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
+    let tracked_targets = js_score_targets_per_round(target_group);
+    let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     for i in start..end {
-        targets.clear();
-        let base = tswn_core::engine::PROFILE_START as usize + i * target_count;
-        for offset in 0..target_count {
-            if offset > 0 {
-                targets.push('\n');
-            }
-            let _ = write!(&mut targets, "{}@{modifier}", base + offset);
-        }
-
-        bench_input.clear();
-        bench_input.push_str(target_str);
-        bench_input.push_str("\n\n");
-        bench_input.push_str(&targets);
+        build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
         let t_init = Instant::now();
         let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
+        let team0_targets: Vec<usize> = runner
+            .input_groups
+            .first()
+            .map(|group| group.iter().take(tracked_targets).copied().collect())
+            .unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = Instant::now();
@@ -642,7 +745,7 @@ fn run_bench_score_range(
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|w| team0_roster.contains(w))
+            && winners.first().is_some_and(|winner| team0_targets.contains(winner))
         {
             wins += 1;
         }
@@ -658,8 +761,7 @@ fn run_bench_score_range(
 }
 
 fn run_bench_score_worker(
-    target_str: &str,
-    target_count: usize,
+    target_group: &[String],
     modifier: &str,
     next: &AtomicUsize,
     end: usize,
@@ -667,34 +769,26 @@ fn run_bench_score_worker(
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut timing = WinRateTiming::default();
-    let mut targets = String::with_capacity(target_count.saturating_mul(24));
-    let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
+    let tracked_targets = js_score_targets_per_round(target_group);
+    let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     loop {
         let i = next.fetch_add(1, Ordering::Relaxed);
         if i >= end {
             break;
         }
-        targets.clear();
-        let base = tswn_core::engine::PROFILE_START as usize + i * target_count;
-        for offset in 0..target_count {
-            if offset > 0 {
-                targets.push('\n');
-            }
-            let _ = write!(&mut targets, "{}@{modifier}", base + offset);
-        }
-
-        bench_input.clear();
-        bench_input.push_str(target_str);
-        bench_input.push_str("\n\n");
-        bench_input.push_str(&targets);
+        build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
         let t_init = Instant::now();
         let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
+        let team0_targets: Vec<usize> = runner
+            .input_groups
+            .first()
+            .map(|group| group.iter().take(tracked_targets).copied().collect())
+            .unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = Instant::now();
@@ -702,7 +796,7 @@ fn run_bench_score_worker(
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|w| team0_roster.contains(w))
+            && winners.first().is_some_and(|winner| team0_targets.contains(winner))
         {
             wins += 1;
         }
@@ -735,6 +829,60 @@ fn print_perf_lines(total_elapsed: Duration, timing: WinRateTiming, total: usize
 
 fn display_group(raw: &str) -> String {
     raw.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_js_default_score_marker() {
+        let parsed = parse_benchmark_input("!test!\n\naaaa\nbbbb");
+        assert_eq!(parsed.score_modifier, Some("\u{0002}"));
+        assert_eq!(parsed.groups, vec![vec!["aaaa".to_string(), "bbbb".to_string()]]);
+    }
+
+    #[test]
+    fn parses_js_bang_score_marker() {
+        let parsed = parse_benchmark_input("!test!\n!\n\naaaa\nbbbb");
+        assert_eq!(parsed.score_modifier, Some("!"));
+        assert_eq!(parsed.groups, vec![vec!["aaaa".to_string(), "bbbb".to_string()]]);
+    }
+
+    #[test]
+    fn parses_js_win_rate_marker() {
+        let parsed = parse_benchmark_input("!test!\n\naaaa\n\nbbbb@!");
+        assert_eq!(parsed.score_modifier, Some("\u{0002}"));
+        assert_eq!(parsed.groups, vec![vec!["aaaa".to_string()], vec!["bbbb@!".to_string()]]);
+        assert_eq!(groups_to_raw(&parsed.groups), "aaaa\n\nbbbb@!");
+    }
+
+    #[test]
+    fn leaves_non_marker_input_unchanged() {
+        let parsed = parse_benchmark_input("aaaa\n\nbbbb@!");
+        assert_eq!(parsed.score_modifier, None);
+        assert_eq!(parsed.groups, vec![vec!["aaaa".to_string()], vec!["bbbb@!".to_string()]]);
+    }
+
+    #[test]
+    fn builds_single_target_score_match_like_js() {
+        let single = ["aaaaa".to_string()];
+        let mut bench_input = String::new();
+        build_js_score_match_input(&single, "!", 0, &mut bench_input);
+        assert_eq!(js_score_targets_per_round(&single), 1);
+        assert_eq!(js_score_profiles_per_round(&single), 3);
+        assert_eq!(bench_input, "aaaaa\n33554431@!\n\n33554432@!\n33554433@!");
+    }
+
+    #[test]
+    fn collapses_duplicate_single_target_like_js() {
+        let duplicate = ["aaaaa".to_string(), "aaaaa".to_string()];
+        let mut bench_input = String::new();
+        build_js_score_match_input(&duplicate, "!", 0, &mut bench_input);
+        assert_eq!(js_score_targets_per_round(&duplicate), 1);
+        assert_eq!(js_score_profiles_per_round(&duplicate), 1);
+        assert_eq!(bench_input, "aaaaa\n\n33554431@!");
+    }
 }
 
 enum ExistingFileAction {

@@ -57,7 +57,7 @@ impl SkillTrait for ZombieSkill {
             args.3.get_player(&args.0).expect("cannot get zombie owner").base_name()
         );
         let mut zombie =
-            Player::new_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init zombie minion");
+            Player::new_minion_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init zombie minion");
         prepare_combat_minion(&mut zombie);
         zombie.build();
         zombie.id = args.3.new_plr_id();
