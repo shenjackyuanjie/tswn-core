@@ -128,7 +128,7 @@ python ./track_case_miner.py -q \
 - 当前 worktree 下的脚本路径与输出路径统一按 `./` 相对路径使用
 - 号库默认取共享主仓库中的 `tests/sqp6000.txt`
 - `out_md5.ts` 默认自动推导到共享 `fast-namerena/branch/latest/out_md5.ts`
-- bun 与 TS trace 缓存默认指向主 worktree 的 `target/tswn_case_miner_cache/`
+- bun 与 TS trace 缓存默认指向主 worktree 的 `tests/tswn_case_miner_cache/`
 
 如果默认推导不适用，再显式传入固定路径，例如：
 

@@ -234,7 +234,7 @@ worktree 模式下的默认规则：
 
 - 当前 worktree 内的脚本、输出、测试相关路径统一按 `./` 解析
 - 默认号库优先指向共享主仓库中的 `tests/sqp6000.txt`
-- bun/TS 结果缓存默认落到主 worktree 的 `target/tswn_case_miner_cache/`
+- bun/TS 结果缓存默认落到主 worktree 的 `tests/tswn_case_miner_cache/`
 
 ### 统一入口
 
