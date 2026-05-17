@@ -65,7 +65,9 @@ impl SkillTrait for ReflectSkill {
             }
             reflect_atp
         };
-        args.2.add(RunUpdate::new("[0]使用[伤害反弹]", args.0, caster, 20));
+        let mut update = RunUpdate::new("[0]使用[伤害反弹]", args.0, caster, 20);
+        update.delay0 = 1500;
+        args.2.add(update);
         if debug_reflect {
             eprintln!(
                 "[reflect] before reflected_attacked reflect_atp={reflect_atp} rc4=({}, {})",

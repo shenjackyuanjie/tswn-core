@@ -33,7 +33,9 @@ impl SkillTrait for ReraiseSkill {
         // Dart: level = (level+1) ~/ 2
         *level = (*level).div_ceil(2);
         let hp = args.1.r16() as i32;
-        args.2.add(RunUpdate::new("[0]使用[护身符]抵挡了一次死亡", args.0, args.0, 80));
+        let mut reraise_update = RunUpdate::new("[0]使用[护身符]抵挡了一次死亡", args.0, args.0, 80);
+        reraise_update.delay0 = 1500;
+        args.2.add(reraise_update);
         args.3
             .just_get_player_mut(args.0)
             .expect("cannot get reraise owner from storage")

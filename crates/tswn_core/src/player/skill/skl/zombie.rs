@@ -83,7 +83,9 @@ impl SkillTrait for ZombieSkill {
         args.3.queue_spawn(args.0, zombie);
 
         args.2.add(RunUpdate::new_newline());
-        args.2.add(RunUpdate::new("[0][召唤亡灵]", args.0, target, 60));
+        let mut summon_update = RunUpdate::new("[0][召唤亡灵]", args.0, target, 60);
+        summon_update.delay0 = 1500;
+        args.2.add(summon_update);
         let mut zombied = RunUpdate::new("[2]变成了[1]", args.0, zombie_id, 0);
         zombied.targets.push(target);
         args.2.add(zombied);

@@ -28,6 +28,11 @@ use crate::player::PlrId;
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// 可见 update 渲染前的默认等待时间，对齐混淆版 `md5.js` 的 `RunUpdate`。
+pub const DEFAULT_DELAY0_MS: i32 = 1000;
+/// 传递给下一条可见 update 的默认最小等待时间，对齐混淆版 `md5.js` 的 `RunUpdate`。
+pub const DEFAULT_DELAY1_MS: i32 = 100;
+
 /// 全局自增 ID，用于为每批 [`RunUpdates`] 分配唯一标识。
 /// 主要用于调试时区分不同回合的更新批次。
 static RUN_UPDATES_ID: AtomicU64 = AtomicU64::new(1);
@@ -116,8 +121,8 @@ impl RunUpdate {
         RunUpdate {
             score,
             param: None,
-            delay0: 0,
-            delay1: 0,
+            delay0: DEFAULT_DELAY0_MS,
+            delay1: DEFAULT_DELAY1_MS,
             message: msg.into(),
             caster,
             target,
