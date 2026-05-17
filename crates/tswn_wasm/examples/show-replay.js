@@ -203,7 +203,7 @@ function actorSummaryMeta(actorId, replayPlayersById, statesById) {
     const state = statesById.get(actorId);
     // 优先取玩家名，其次取状态展示名，最后兜底
     const displayName = player?.display_name ?? replayDisplayName(state, actorId);
-    let iconPngBase64 = player?.icon_png_base64 ?? null;
+    let iconPngBase64 = player?.icon_png_base64 ?? state?.icon_png_base64 ?? null;
 
     // 如果自身没有图标，尝试从主人继承
     if (!iconPngBase64 && state?.owner_id != null) {
@@ -216,8 +216,9 @@ function actorSummaryMeta(actorId, replayPlayersById, statesById) {
         icon_png_base64: iconPngBase64,
         // 存活状态：有状态则用状态的 alive，否则默认存活
         alive: state?.alive ?? true,
-        // icon_class_id 优先级：玩家 > 主人 > 状态的 owner > 自身 id
+        // icon_class_id 优先级：玩家 > 状态自身 > 主人 > 状态的 owner > 自身 id
         icon_class_id: player?.icon_class_id
+            ?? state?.icon_class_id
             ?? replayPlayersById.get(state?.owner_id)?.icon_class_id
             ?? state?.owner_id
             ?? actorId,

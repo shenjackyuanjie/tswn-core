@@ -37,6 +37,7 @@ pub struct PlayerMeta {
     pub id: usize,
     pub team_index: usize,
     pub id_name: String,
+    pub icon_key: String,
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_png_base64: Option<String>,
@@ -47,7 +48,10 @@ pub struct PlayerState {
     pub id: usize,
     pub team_index: usize,
     pub id_name: String,
+    pub icon_key: String,
     pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_png_base64: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]

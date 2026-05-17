@@ -102,12 +102,14 @@ export function actorToken(player, state, previousState, update, { showHp = true
  * @returns {FightPlayer}
  */
 function syntheticPlayerFromState(playerId, state, playersById) {
-    let icon = null;
-    let icon_class_id = state?.owner_id ?? playerId;
+    let icon = state?.icon_png_base64 ?? null;
+    let icon_class_id = state?.icon_class_id ?? state?.owner_id ?? playerId;
     if (state?.owner_id != null) {
         const ownerPlayer = playersById.get(state.owner_id);
-        if (ownerPlayer) {
+        if (ownerPlayer && !icon) {
             icon = ownerPlayer.icon_png_base64;
+        }
+        if (ownerPlayer && state?.icon_class_id == null) {
             icon_class_id = ownerPlayer.icon_class_id ?? ownerPlayer.id;
         }
     }
@@ -116,6 +118,7 @@ function syntheticPlayerFromState(playerId, state, playersById) {
         id: playerId,
         team_index: state?.team_index ?? 0,
         id_name: state?.id_name ?? `player_${playerId}`,
+        icon_key: state?.icon_key ?? state?.id_name ?? `player_${playerId}`,
         display_name: replayDisplayName(state, playerId),
         icon_png_base64: icon,
         icon_class_id,

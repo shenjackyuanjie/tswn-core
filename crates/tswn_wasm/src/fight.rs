@@ -40,8 +40,9 @@ fn collect_players(
         };
         let display_name = player.display_name();
         let team_index = runner.world.team_index_of(*player_id).unwrap_or(0);
+        let icon_key = player.id_key_name();
         let icon_png_base64 = if include_icons {
-            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&player.id_key_name()))
+            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&icon_key))
         } else {
             None
         };
@@ -50,6 +51,7 @@ fn collect_players(
             id: *player_id,
             team_index,
             id_name: player.id_name(),
+            icon_key,
             display_name,
             icon_png_base64,
         });
@@ -94,7 +96,7 @@ where
         .any(|skill| skill.debug_skill_type_name().ends_with(runtime_kind_suffix) && active(skill))
 }
 
-fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<PlayerState>> {
+fn collect_states(runner: &Runner, player_order: &[PlrId], include_icons: bool) -> WasmResult<Vec<PlayerState>> {
     // 收集所有当前玩家（含召唤单位），保持初始顺序 + 新单位追加
     let mut seen: std::collections::HashSet<PlrId> = std::collections::HashSet::new();
     let mut all_ids: Vec<PlrId> = Vec::new();
@@ -115,6 +117,14 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             continue;
         };
         let owner_id = root_owner_id(&runner.storage, *player_id);
+        let icon_key = player.id_key_name();
+        // 混淆版 md5.js 会在运行期对新出现的 fy 调用 Sgls.o6。
+        // 初始玩家的头像已经在 players 中携带，这里只给召唤/分身等运行期单位补图，避免每帧重复传输玩家头像。
+        let icon_png_base64 = if include_icons && owner_id.is_some() {
+            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&icon_key))
+        } else {
+            None
+        };
         let minion_kind = player
             .get_state::<tswn_core::player::skill::act::minion::MinionRuntimeState>()
             .map(|state| state.kind.into());
@@ -235,7 +245,9 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             id: *player_id,
             team_index: runner.world.team_index_of(*player_id).unwrap_or(0),
             id_name: player.id_name(),
+            icon_key,
             display_name: player.display_name(),
+            icon_png_base64,
             owner_id,
             minion_kind,
             hp: status.hp,
@@ -312,6 +324,7 @@ pub struct FightSession {
     runner: Runner,
     player_order: Vec<PlrId>,
     players: Vec<PlayerMeta>,
+    include_icons: bool,
     capture_replay: bool,
 }
 
@@ -324,12 +337,13 @@ impl FightSession {
             runner,
             player_order,
             players,
+            include_icons: options.include_icons(),
             capture_replay: options.capture_replay(),
         })
     }
 
     fn build_frame(&self, updates: RunUpdates) -> WasmResult<RoundFrame> {
-        let states = collect_states(&self.runner, &self.player_order)?;
+        let states = collect_states(&self.runner, &self.player_order, self.include_icons)?;
         let converted = convert_updates(updates, &player_names_from_states(&states));
         let mut total_delay = playback_total_delay(&converted);
         if self.runner.have_winner() {
@@ -370,7 +384,7 @@ impl FightSession {
             players: self.players.clone(),
             frames,
             winner_ids: winner_ids(&self.runner),
-            final_states: collect_states(&self.runner, &self.player_order)?,
+            final_states: collect_states(&self.runner, &self.player_order, self.include_icons)?,
         })
     }
 }
@@ -387,7 +401,7 @@ impl FightSession {
     pub fn players(&self) -> WasmResult<JsValue> { to_js_value(&self.players) }
 
     pub fn state(&self) -> WasmResult<JsValue> {
-        let states = collect_states(&self.runner, &self.player_order)?;
+        let states = collect_states(&self.runner, &self.player_order, self.include_icons)?;
         to_js_value(&states)
     }
 

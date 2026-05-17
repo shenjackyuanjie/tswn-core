@@ -1,5 +1,20 @@
 # 更新日志
 
+## [0.2.5] - 2026-05-17
+
+### 对齐
+
+- 玩家头像机制对齐混淆版 `md5.js` 的 `Sgls.o6(fy)` 行为：按 `icon_key` 缓存头像，并按首次出现顺序分配 `icon_N` 类名。
+- `PlayerMeta` / `PlayerState` 新增 `icon_key`，用于保留原版 renderer 的头像缓存 key。
+- 运行期单位（分身、使魔、幻影、丧尸）在 `include_icons` 启用时会随状态携带自身头像数据，show 回放优先渲染自身头像，不再默认继承主人头像。
+- show 示例的 CSS 注入改为使用回放归一化后的 `icon_styles` 表，避免同队多名玩家或运行期单位头像 class 与原版不一致。
+
+### 验证
+
+- `cargo check -p tswn_wasm`
+- `cargo test -p tswn_wasm`
+- `bun build crates\tswn_wasm\examples\show.js --target=browser --outdir target\codex-js-check\show`
+
 ## [0.2.4] - 2026-05-17
 
 ### 对齐

@@ -8,7 +8,10 @@
  * @typedef {{
  *   id: number,
  *   id_name: string,
+ *   icon_key: string,
  *   display_name: string,
+ *   icon_png_base64?: string|null,
+ *   icon_class_id?: number,
  *   minion_kind?: 'clone' | 'summon' | 'shadow' | 'zombie',
  *   hp: number,
  *   max_hp: number,
@@ -38,8 +41,10 @@
  *   id: number,
  *   team_index: number,
  *   id_name: string,
+ *   icon_key: string,
  *   display_name: string,
- *   icon_png_base64: string|null
+ *   icon_png_base64: string|null,
+ *   icon_class_id?: number
  * }} FightPlayer
  *
  * 一次 Replay 的结构：
@@ -51,6 +56,7 @@
  *   frames: FrameUpdate[],
  *   winner_ids: number[],
  *   final_states: FightState[],
+ *   icon_styles?: Array<{ icon_class_id: number, icon_png_base64: string }>,
  *   wasm_duration_ms: number
  * }} FightReplay
  *
@@ -100,7 +106,7 @@
  * @typedef {'normal' | 'fast' | 'turbo'} SpeedMode
  */
 
-import { buildIconClassCss, formatError, sleep, withTeamIconClassIds } from './show-utils.js';
+import { buildIconClassCss, formatError, normalizeReplayIconClasses, sleep } from './show-utils.js';
 import { renderIdleState, renderPlayers, buildFrameRows } from './show-render.js';
 import {
     renderReplayIntro,
@@ -238,7 +244,7 @@ function rememberPlayers(players) {
     for (const player of players) {
         playersById.set(player.id, player);
     }
-    syncIconStyles(players);
+    syncIconStyles(currentReplay?.icon_styles ?? players);
 }
 
 function ensureIconStyleTag() {
@@ -251,15 +257,12 @@ function ensureIconStyleTag() {
     return styleEl;
 }
 
-function syncIconStyles(players) {
-    ensureIconStyleTag().textContent = buildIconClassCss(players);
+function syncIconStyles(iconEntries) {
+    ensureIconStyleTag().textContent = buildIconClassCss(iconEntries);
 }
 
 function normalizeReplayPlayers(replay) {
-    return {
-        ...replay,
-        players: withTeamIconClassIds(replay.players),
-    };
+    return normalizeReplayIconClasses(replay);
 }
 
 /**
