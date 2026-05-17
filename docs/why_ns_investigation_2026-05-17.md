@@ -12,7 +12,9 @@ abs(why_ns_before_ctor) >= 2048
 
 只有达到这个阈值时，`why_ns` 才会改变玩家个人 RC4 的初始排列，进而影响 `name_base`、技能顺序和属性。常规对战、`ProfileMain` 评分局、`!test!` benchmark 的单局玩家数量远小于 2048，所以在这些场景里 `why_ns` 通常只是计数，不会改变属性。
 
-因此，当前 `!test!\n\n` / `!test!\n!\n\n` 分数不一致问题，不能简单归因于 `why_ns` 起始值不同。已有 probe 显示，发生分歧的第 31 局在 ProfileMain 与普通 raw fight 中的初始化排序、sortInt、战斗 RC4、move_point 都一致；分歧发生在后续战斗推进过程。
+因此，当前 `!test!\n\n` / `!test!\n!\n\n` 分数不一致问题，不能简单归因于 `why_ns` 起始值不同。已有 probe 显示，ProfileMain 第一轮确实会因为预览目标而让真实对战玩家的构造序号后移，但这些序号仍远小于 2048，不会触发玩家 RC4 的交换分支。
+
+换句话说，`why_ns` 能解释“为什么 benchmark 路径和普通 fight 路径的构造序号看起来不同”，但它不能解释常规 `!test!` 分数偏差。后续排查应优先确认 score 路径是否使用了 md5.js ProfileMain 的评分参数，例如 `$.vr = 6` / `WIN_RATE_EVAL_RQ = 6.0`，而不是把 `why_ns != 0` 当成属性差异根因。
 
 ## 相关代码位置
 
@@ -179,6 +181,22 @@ round2 profile C    q=3
 - `33554431@\u0002` 的 Test1 属性与 md5.js 对齐。
 - `33554431@!` 的 TestEx 属性与 md5.js 对齐。
 
+### 与 `textEx` / `type` 的关系
+
+`textEx` 更接近“玩家文本被解析出来后属于哪一种特殊类型”的结果，不是 `why_ns` 本身控制的状态。两者的先后关系可以理解为：
+
+```text
+raw name/team/weapon text
+    -> 解析出普通玩家、TestEx、Test1、Test2 等类型
+    -> 用 team 初始化玩家个人 RC4
+    -> 读取 why_ns，并在达到 2048 阈值时扰动 RC4
+    -> 用 name 混入 RC4，生成基础 name_base
+    -> 按 textEx / Test1 / Test2 规则改写 name_base
+    -> 由最终 name_base 派生属性、技能和部分技能参数
+```
+
+所以如果 `player.textEx`、特殊 team 标记或 TestEx/Test1 分支本身和 md5.js 对不上，属性当然会错；但那是类型解析或特殊变换的问题，不是 `why_ns` 的问题。`why_ns` 只在 `name_base` 生成前提供一个极低频的 RC4 扰动入口。
+
 ## 对 minion 的影响
 
 shadow / summon / zombie 的构造有两层容易混在一起的问题：
@@ -201,8 +219,20 @@ shadow / summon / zombie 的构造有两层容易混在一起的问题：
 但在当前 `!test!` benchmark 的规模里，这些序号差异没有达到 2048，不会改变属性。因此：
 
 - `why_ns` 可以解释“构造序号为什么不同”。
-- `why_ns` 不能解释“为什么第 31 局 ProfileMain 和 raw fight 初始化相同但最终胜者不同”。
-- 当前分数差异更可能来自 ProfileMain 批量 `engine.O()` 推进与普通 renderer / fight_log 逐条消费 update 的行为差异，或者某个运行期状态/回调在这两条路径上的落点差异。
+- `why_ns` 不能解释“为什么常规 `!test!` score 和 md5.js ProfileMain score 不同”。
+- 对 score benchmark 来说，更关键的是复刻 ProfileMain 的 score 构造语义，包括目标玩家预览、profile 种子生成、以及评分参数 `WIN_RATE_EVAL_RQ = 6.0`。
+
+这里要特别区分两种现象：
+
+```text
+现象 A：ProfileMain 第一轮真实玩家 q 从 1 开始
+原因：预览目标先构造了一次，why_ns 被加到 1
+影响：q < 2048，不改属性
+
+现象 B：score benchmark 中同名玩家属性和普通 raw fight 不同
+原因：更可能是 eval_rq / ProfileMain score 参数不同
+影响：会真实改变属性，进而改变胜负和总分
+```
 
 ## 对 tswn-core 的实现建议
 
@@ -217,4 +247,3 @@ shadow / summon / zombie 的构造有两层容易混在一起的问题：
 5. prepared runner 缓存如果要覆盖 `why_ns >= 2048` 的边界场景，需要把构造序号纳入 cache key，或者只缓存不受 `why_ns` 影响的场景。
 
 当前更现实的判断是：在 namerena 常规人数限制和 `ProfileMain` 评分逻辑下，`why_ns` 基本是一个兼容边界行为的计数器，而不是这次分数偏差的根因。
-
