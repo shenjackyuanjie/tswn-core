@@ -68,7 +68,7 @@ RECORD_FILE = PROJECT_TARGET_DIR / "case_miner_regression.json"
 LOG_FILE = PROJECT_TARGET_DIR / "case_miner_regression.log"
 CHECKPOINT_DIR = PROJECT_TARGET_DIR / "case_miner_checkpoints"
 DEFAULT_LIBRARY = SHARED_REPO_ROOT / "tests" / "sqp6000.txt"
-DEFAULT_SHARED_CACHE_DIR = SHARED_REPO_ROOT / "target" / "tswn_case_miner_cache"
+DEFAULT_SHARED_CACHE_DIR = SHARED_REPO_ROOT / "tests" / "tswn_case_miner_cache"
 
 
 def _detect_default_md5_tool():

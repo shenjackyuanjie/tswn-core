@@ -631,7 +631,7 @@ fn path_from_env(name: &str) -> Option<PathBuf> { std::env::var_os(name).map(Pat
 
 fn detect_shared_cache_root() -> Option<PathBuf> {
     let shared_repo_root = detect_shared_repo_root()?;
-    Some(shared_repo_root.join("target").join("tswn_case_miner_cache"))
+    Some(shared_repo_root.join("tests").join("tswn_case_miner_cache"))
 }
 
 fn detect_shared_repo_root() -> Option<PathBuf> {
