@@ -31,23 +31,25 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
-        let (alive_group_snapshot, effective_group_snapshot) = args.3.get_player(&args.0).map_or((None, None), |owner| {
-            owner
-                .get_state::<CharmState>()
-                .map(|charm| {
-                    (
-                        charm
-                            .effective_team_idx
-                            .and_then(|team_idx| args.3.alive_group_at(team_idx))
-                            .or_else(|| args.3.alive_group_at_team_of(charm.group_id)),
-                        charm
-                            .effective_team_idx
-                            .and_then(|team_idx| args.3.get_group(team_idx))
-                            .or_else(|| args.3.group_containing(charm.group_id)),
-                    )
-                })
-                .unwrap_or_else(|| (args.3.alive_group_at_team_of(args.0), args.3.group_containing(args.0)))
-        });
+        let (alive_group_snapshot, effective_group_snapshot, owner_charmed) =
+            args.3.get_player(&args.0).map_or((None, None, false), |owner| {
+                owner
+                    .get_state::<CharmState>()
+                    .map(|charm| {
+                        (
+                            charm
+                                .effective_team_idx
+                                .and_then(|team_idx| args.3.alive_group_at(team_idx))
+                                .or_else(|| args.3.alive_group_at_team_of(charm.group_id)),
+                            charm
+                                .effective_team_idx
+                                .and_then(|team_idx| args.3.get_group(team_idx))
+                                .or_else(|| args.3.group_containing(charm.group_id)),
+                            true,
+                        )
+                    })
+                    .unwrap_or_else(|| (args.3.alive_group_at_team_of(args.0), args.3.group_containing(args.0), false))
+            });
         let mut alive_candidates: SmallVec<[PlrId; 8]> = SmallVec::new();
         if let Some(group) = alive_group_snapshot {
             alive_candidates.extend(
@@ -73,9 +75,11 @@ impl SkillTrait for HideSkill {
                 alive_candidates.push(id);
             }
         }
-        for id in args.3.iter_pending_spawn_ids_for_owner(args.0) {
-            if !alive_candidates.contains(&id) && args.3.get_pending_spawn_player(id).map(|p| p.alive()).unwrap_or(false) {
-                alive_candidates.push(id);
+        if !owner_charmed {
+            for id in args.3.iter_pending_spawn_ids_for_owner(args.0) {
+                if !alive_candidates.contains(&id) && args.3.get_pending_spawn_player(id).map(|p| p.alive()).unwrap_or(false) {
+                    alive_candidates.push(id);
+                }
             }
         }
         let alive_allies = alive_candidates.len();

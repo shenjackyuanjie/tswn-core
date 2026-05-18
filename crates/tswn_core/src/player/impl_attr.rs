@@ -649,7 +649,7 @@ impl Player {
             raw_name
         };
         if let Some((name, team)) = no_weapon.split_once("@") {
-            if team.is_empty() || team.contains(":") {
+            if team.is_empty() || team == name || team.contains(":") {
                 name.to_string()
             } else {
                 format!("{name}@{team}")
