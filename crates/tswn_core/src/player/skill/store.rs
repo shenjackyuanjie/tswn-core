@@ -104,6 +104,10 @@ pub struct SkillStorage {
     pub post_kill: Vec<SkillKey>,
     // 别的什么东西
     pub pending_clear_states: bool,
+    /// 标记此 SkillStorage 是否由 DIY overlay 构建。
+    ///
+    /// 用于 clone 重建时判断是否需要走 DIY 衰减下限逻辑。
+    pub is_diy: bool,
 }
 
 impl SkillStorage {
@@ -126,6 +130,7 @@ impl SkillStorage {
             post_death: Vec::new(),
             post_kill: Vec::new(),
             pending_clear_states: false,
+            is_diy: false,
         }
     }
 

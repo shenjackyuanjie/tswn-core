@@ -41,6 +41,40 @@
 use super::utils::{trim_js_line_end, trim_js_name_like};
 use super::*;
 
+/// 按 `+` 分割字符串，但跳过双引号字符串内的 `+`。
+///
+/// 例如 `diy[...]{"sklfire":"40+30"}` 不会被切分，
+/// 而 `fire+diy[...]` 会被切为 `["fire", "diy[...]"]`。
+fn split_by_plus_outside_quotes(raw: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut escaped = false;
+    for ch in raw.chars() {
+        if in_string {
+            current.push(ch);
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+        } else if ch == '+' {
+            segments.push(std::mem::take(&mut current));
+        } else {
+            current.push(ch);
+            if ch == '"' {
+                in_string = true;
+            }
+        }
+    }
+    segments.push(current);
+    segments
+}
+
 impl Player {
     /// 根据名字系数调整数值
     ///
@@ -77,8 +111,25 @@ impl Player {
     ///
     /// Dart `PlrClone.addSkillsToProc` 也是先 clamp 到 owner 当前等级，
     /// 然后再执行 boost（`super.addSkillsToProc`）。
+    ///
+    /// ## DIY 模式下的 clone 行为
+    ///
+    /// 当 owner 是 DIY 玩家（`owner_skills.is_diy == true`）时，clone 构建分三步：
+    ///
+    /// 1. **应用 overlay**：与 owner 相同的 overlay 技能配置被写入 clone，
+    ///    包含 [`SkillBoost`] 元数据（`diy_boost`）。
+    /// 2. **clamp 到 owner**：将 clone 的技能等级截断到 owner 当前（已衰减）等级。
+    /// 3. **重新执行 SkillBoost 加成**（不依赖 name_base）：
+    ///    - [`SkillBoost::Normal`]：不处理
+    ///    - [`SkillBoost::LastBoost`]：衰减后等级 × 2（翻倍）
+    ///    - [`SkillBoost::SlotBoost`]：衰减后等级 + boost（执行 +b）
+    ///
+    /// 这模拟了 JS "先 clamp 再 boost" 的衰减下限语义：
+    /// - 普通玩家：owner Shadow 92 → 衰减到 40 → clone clamp=40 → boost_last 翻倍 → 80
+    /// - DIY 玩家：owner Shadow 92(2*46) → 衰减到 40 → clone clamp=40 → LastBoost 翻倍 → 80
     pub fn build_for_clone(&mut self, owner_skills: &crate::player::skill::store::SkillStorage) {
-        self.build_inner(Some(owner_skills), false);
+        let apply_overlay = owner_skills.is_diy;
+        self.build_inner(Some(owner_skills), apply_overlay);
     }
 
     fn build_inner(&mut self, clamp_source: Option<&crate::player::skill::store::SkillStorage>, apply_overlay: bool) {
@@ -216,8 +267,16 @@ impl Player {
                 let skill = self.skills.skill_by_id_mut(skill_key);
                 if skill.level() > owner_level {
                     skill.set_level(owner_level);
-                }
-            }
+                }                // DIY clone：从 owner 继承 diy_boost 信息，确保衰减下限可预测。
+                // 注意：owner 的技能可能已经在战斗中衰减，
+                // clone 拿到的是 overlay 初始等级 clamp 到 owner 当前等级后的值。
+                // diy_boost 信息已在 apply_diy_skill_levels 阶段写入 clone 的 skill，
+                // 这里额外确保它也同步自 owner（处理 owner 运行时可能修改过的 boost 元数据）。
+                if let Some(ref owner_diy_boost) = owner_skills.skill_by_id(skill_key).diy_boost {
+                    if skill.diy_boost.is_none() {
+                        skill.diy_boost = Some(owner_diy_boost.clone());
+                    }
+                }            }
         }
 
         if diy_skill_levels.is_none() {
@@ -240,6 +299,39 @@ impl Player {
                     skill_15.boost_level(boost_level);
                 }
             }
+        } else if clamp_source.is_some() {
+            // DIY clone：clamp 之后重新执行 SkillBoost 加成，模拟 JS
+            // "先 clamp 再 boost" 的衰减下限语义。
+            //
+            // - Normal: 不处理（等级已由 clamp 确定）
+            // - LastBoost(base): 对衰减后等级执行翻倍（level *= 2）
+            // - SlotBoost { boost, .. }: 对衰减后等级执行 +boost
+            //
+            // 不依赖 name_base，加成金额直接从 SkillBoost 元数据读取。
+            let skill_keys = self.skills.skill.clone();
+            for skill_key in &skill_keys {
+                let Some(boost_info) = self.skills.skill_by_id(*skill_key).diy_boost.clone() else {
+                    continue;
+                };
+                let skill = self.skills.skill_by_id_mut(*skill_key);
+                match boost_info {
+                    SkillBoost::Normal(_) => {
+                        // 普通技能无加成，保持 clamp 后的等级
+                    }
+                    SkillBoost::LastBoost(_) => {
+                        // 翻倍：衰减后等级 × 2
+                        let current = skill.level();
+                        skill.set_level(current.saturating_mul(2));
+                        skill.boosted = true;
+                    }
+                    SkillBoost::SlotBoost { boost, .. } => {
+                        // 加固定值：衰减后等级 + boost
+                        let current = skill.level();
+                        skill.set_level(current.saturating_add(boost));
+                        skill.boosted = true;
+                    }
+                }
+            }
         }
         // 更新 proc(其实就是缓存)
         self.skills.update_proc();
@@ -252,6 +344,111 @@ impl Player {
         self.status.hp = self.status.max_hp;
         // Dart: mp = itl ~/ 2
         self.status.magic_point = self.status.wisdom >> 1;
+    }
+
+    /// 导出时使用的队伍名片段：`@Team` 或空字符串。
+    fn team_name_for_export(&self) -> String {
+        let team = self.clan_name();
+        let name = self.base_name();
+        if team != name {
+            format!("@{}", team)
+        } else {
+            String::new()
+        }
+    }
+
+    /// 将已 build 的玩家导出为紧凑 DIY 格式字符串。
+    ///
+    /// 格式：`Name@Team+diy[atk,def,spd,agi,mag,res,wis,maxhp]{"sklFire":lv,...}`
+    ///
+    /// 前七围值会自动 +36 以匹配 JS 侧编码（解析时 -36），HP 保持不变。
+    /// 技能等级按当前实际等级输出，加成类型（LastBoost/SlotBoost）
+    /// 通过 `diy_boost` 元数据反推。
+    pub fn to_diy_compact(&self) -> String {
+        // 前七围 +36，HP 不变（JS 仅对索引 0~6 做 -=36）
+        let attrs: Vec<String> = self.attr
+            .iter()
+            .enumerate()
+            .map(|(i, v)| if i < 7 { (v + 36).to_string() } else { v.to_string() })
+            .collect();
+        let mut skills = String::from('{');
+        let mut first = true;
+        for skill_key in &self.skills.skill {
+            let skill = self.skills.skill_by_id(*skill_key);
+            if skill.level() == 0 {
+                continue;
+            }
+            let name = skill_name_for_export(*skill_key);
+            if !first {
+                skills.push(',');
+            }
+            first = false;
+            match &skill.diy_boost {
+                Some(SkillBoost::SlotBoost { boost, .. }) => {
+                    let base = skill.level().saturating_sub(*boost);
+                    skills.push_str(&format!("\"{}\":\"{}+{}\"", name, base, boost));
+                }
+                Some(SkillBoost::LastBoost(_)) => {
+                    let base = skill.level() / 2;
+                    skills.push_str(&format!("\"{}\":\"2*{}\"", name, base));
+                }
+                _ => {
+                    skills.push_str(&format!("\"{}\":{}", name, skill.level()));
+                }
+            }
+        }
+        skills.push('}');
+        let team_part = self.team_name_for_export();
+        format!("{}{}+diy[{}]{}", self.id_name(), team_part, attrs.join(","), skills)
+    }
+
+    /// 将已 build 的玩家导出为 ol: JSON 格式字符串。
+    ///
+    /// 格式：`Name@Team+ol:{"attrs":[...],"skills":{...},"name_factor_enabled":bool}`
+    ///
+    /// 前七围 +36，HP 不变（与紧凑 `diy` 格式一致，兼容 JS 编码范围）。
+    pub fn to_ol_json(&self) -> String {
+        let attrs: Vec<String> = self.attr
+            .iter()
+            .enumerate()
+            .map(|(i, v)| if i < 7 { (v + 36).to_string() } else { v.to_string() })
+            .collect();
+        let mut skills = String::from('{');
+        let mut first = true;
+        for skill_key in &self.skills.skill {
+            let skill = self.skills.skill_by_id(*skill_key);
+            if skill.level() == 0 {
+                continue;
+            }
+            let name = skill_name_for_export(*skill_key);
+            if !first {
+                skills.push(',');
+            }
+            first = false;
+            match &skill.diy_boost {
+                Some(SkillBoost::SlotBoost { boost, .. }) => {
+                    let base = skill.level().saturating_sub(*boost);
+                    skills.push_str(&format!("\"{}\":\"{}+{}\"", name, base, boost));
+                }
+                Some(SkillBoost::LastBoost(_)) => {
+                    let base = skill.level() / 2;
+                    skills.push_str(&format!("\"{}\":\"2*{}\"", name, base));
+                }
+                _ => {
+                    skills.push_str(&format!("\"{}\":{}", name, skill.level()));
+                }
+            }
+        }
+        skills.push('}');
+        let team_part = self.team_name_for_export();
+        format!(
+            "{}{}+ol:{{\"attrs\":[{}],\"skills\":{},\"name_factor_enabled\":{}}}",
+            self.id_name(),
+            team_part,
+            attrs.join(","),
+            skills,
+            self.overlay.as_ref().map_or(true, |ov| ov.name_factor_enabled)
+        )
     }
 
     /// 更新状态
@@ -421,21 +618,24 @@ impl Player {
     /// - 否则拼接到武器名中（多个非 overlay 段通过 `+` 连接）。
     ///
     /// 注意：overlay 最多只有一个，后续匹配到的 overlay 段会覆盖前者。
+    ///
+    /// 分割时会跳过双引号字符串内的 `+`，避免把
+    /// `"40+30"` 这类 SkillBoost 格式的值错误切分。
     fn split_weapon_overlay(raw: &str) -> (Option<String>, Option<PlayerOverlay>) {
         let mut weapon: Option<String> = None;
         let mut overlay: Option<PlayerOverlay> = None;
-        for segment in raw.split('+') {
-            let segment = trim_js_name_like(segment);
-            if segment.is_empty() {
+        for segment in split_by_plus_outside_quotes(raw) {
+            let trimmed = trim_js_name_like(&segment);
+            if trimmed.is_empty() {
                 continue;
             }
-            if let Some(parsed) = PlayerOverlay::parse_inline(segment) {
+            if let Some(parsed) = PlayerOverlay::parse_inline(trimmed) {
                 overlay = Some(parsed);
                 continue;
             }
             weapon = Some(match weapon {
-                Some(existing) => format!("{existing}+{segment}"),
-                None => segment.to_string(),
+                Some(existing) => format!("{existing}+{trimmed}"),
+                None => trimmed.to_string(),
             });
         }
         (weapon, overlay)

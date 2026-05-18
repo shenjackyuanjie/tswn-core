@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::player::skill::SkillBoost;
+
 /// 玩家 DIY / overlay 覆盖数据。
 ///
 /// 允许通过名字后缀直接指定八围属性、技能等级和武器，
@@ -8,17 +10,41 @@ use std::collections::HashMap;
 /// 支持两种输入格式：
 /// - `diy[72,39,69,76,67,66,0,84]{"sklfire":5}` — 紧凑格式，属性值 -36 后取非负
 /// - `ol:{"attrs":[...],"skills":{...},"weapon":"..."}` — JSON 对象格式，属性值原样使用
-#[derive(Debug, Clone, Default)]
+///
+/// 技能等级支持三种 SkillBoost 格式：
+/// - 纯数字 `5` → [`SkillBoost::Normal`]
+/// - 字符串 `"40+30"` → [`SkillBoost::SlotBoost`]（末尾座位加成）
+/// - 字符串 `"2*40"` → [`SkillBoost::LastBoost`]（末尾主动技翻倍）
+#[derive(Debug, Clone)]
 pub struct PlayerOverlay {
     /// 八围属性覆盖值（`[atk, def, spd, agi, mag, res, wis, maxhp]`）。
     /// `None` 表示不覆盖，走正常随机生成。
     pub attrs: Option<[i32; 8]>,
-    /// 技能名 → 等级 的映射。
+    /// 技能名 → 加成类型和等级 的映射。
     /// `None` 表示不覆盖，走正常名字推导技能等级。
-    pub skills: Option<HashMap<String, u32>>,
+    pub skills: Option<HashMap<String, SkillBoost>>,
     /// 武器名覆盖。
     /// `None` 表示不覆盖，取名字中 `+` 后面的武器名。
+    ///
+    /// **注意**：DIY 模式下（`attrs` 或 `skills` 不为 `None` 时），武器**不计入**。
+    /// 该字段仅在没有八围/技能覆盖时生效。
     pub weapon: Option<String>,
+    /// 是否启用 name_factor 缩放。
+    ///
+    /// - `true`（默认）：八围属性按 name_factor 缩放（正常行为）。
+    /// - `false`：强制 name_factor = 0，八围使用原始值不缩放。
+    pub name_factor_enabled: bool,
+}
+
+impl Default for PlayerOverlay {
+    fn default() -> Self {
+        Self {
+            attrs: None,
+            skills: None,
+            weapon: None,
+            name_factor_enabled: true,
+        }
+    }
 }
 
 impl PlayerOverlay {
@@ -40,14 +66,25 @@ impl PlayerOverlay {
 
     /// 解析紧凑 DIY 格式：`72,39,69,76,67,66,0,84]{"sklfire":5,"reflect":2}`
     ///
-    /// 八围属性值会减去 36 后取非负（`(value - 36).max(0)`），
-    /// 这样 JS 侧的 36~127 属性范围映射为 Rust 侧的 0~91。
+    /// 前七围属性值会减去 36 后取非负（`(value - 36).max(0)`），
+    /// 与 JS 侧只对索引 0~6 做 `-= 36` 的行为一致。
+    /// HP（第 8 项）保持不变。
     fn parse_diy(rest: &str) -> Option<Self> {
         let (attrs_raw, suffix) = rest.split_once(']')?;
         let attrs = parse_attrs(attrs_raw)?;
         let mut overlay = Self {
-            // JS 侧的 rand 值范围是 36~127，减 36 得到 0~91 的实际属性值
-            attrs: Some(attrs.map(|value| (value - 36).max(0))),
+            // JS 侧的 rand 值范围是 36~127（仅前七围），减 36 得到 0~91 的实际属性值。
+            // HP 不减 36，原样保留。
+            attrs: Some([
+                (attrs[0] - 36).max(0),
+                (attrs[1] - 36).max(0),
+                (attrs[2] - 36).max(0),
+                (attrs[3] - 36).max(0),
+                (attrs[4] - 36).max(0),
+                (attrs[5] - 36).max(0),
+                (attrs[6] - 36).max(0),
+                attrs[7], // HP 不减 36
+            ]),
             ..Default::default()
         };
         let suffix = suffix.trim();
@@ -82,7 +119,20 @@ impl PlayerOverlay {
             skip_ws(raw, &mut idx);
             let (value, next_idx) = extract_json_value(raw, idx)?;
             match key.as_str() {
-                "attrs" => overlay.attrs = Some(parse_attrs(value)?),
+                "attrs" => {
+                    let raw = parse_attrs(value)?;
+                    // 前七围 -36（兼容 JS 编码范围），HP 不变
+                    overlay.attrs = Some([
+                        (raw[0] - 36).max(0),
+                        (raw[1] - 36).max(0),
+                        (raw[2] - 36).max(0),
+                        (raw[3] - 36).max(0),
+                        (raw[4] - 36).max(0),
+                        (raw[5] - 36).max(0),
+                        (raw[6] - 36).max(0),
+                        raw[7],
+                    ]);
+                }
                 "skills" => overlay.skills = Some(parse_skill_map(value)?),
                 "weapon" => overlay.weapon = Some(parse_scalar_string(value)?),
                 _ => {}
@@ -114,11 +164,17 @@ fn parse_attrs(raw: &str) -> Option<[i32; 8]> {
     (count == values.len()).then_some(values)
 }
 
-/// 解析技能名 → 等级 的 JSON 对象映射。
+/// 解析技能名 → SkillBoost 的 JSON 对象映射。
 ///
-/// 输入如 `{"sklfire":5,"reflect":2}`，返回 `HashMap<String, u32>`。
-/// 键必须是双引号字符串，值必须是整数。
-fn parse_skill_map(raw: &str) -> Option<HashMap<String, u32>> {
+/// 输入如 `{"sklfire":5,"reflect":"40+30","shadow":"2*46"}`，
+/// 返回 `HashMap<String, SkillBoost>`。
+/// 键必须是双引号字符串，值可以是整数或双引号字符串。
+///
+/// 值的解析规则：
+/// - 纯数字 `5` → `SkillBoost::Normal(5)`
+/// - 字符串 `"40+30"` → `SkillBoost::SlotBoost { base: 40, boost: 30 }`
+/// - 字符串 `"2*40"` → `SkillBoost::LastBoost(40)`
+fn parse_skill_map(raw: &str) -> Option<HashMap<String, SkillBoost>> {
     let raw = raw.trim();
     let raw = raw.strip_prefix('{')?.strip_suffix('}')?;
     let mut map = HashMap::new();
@@ -137,11 +193,21 @@ fn parse_skill_map(raw: &str) -> Option<HashMap<String, u32>> {
         }
         idx += 1;
         skip_ws(raw, &mut idx);
-        let start = idx;
-        while idx < bytes.len() && bytes[idx] != b',' {
-            idx += 1;
-        }
-        let value = raw[start..idx].trim().parse().ok()?;
+        // 值可以是整数或双引号字符串
+        let value = if bytes.get(idx).copied() == Some(b'"') {
+            // 字符串值：解析为 SkillBoost（支持 "40+30"、"2*40" 等格式）
+            let (str_val, next_idx) = parse_quoted_string(raw, idx)?;
+            idx = next_idx;
+            SkillBoost::parse(&str_val)?
+        } else {
+            // 整数值：直接作为 Normal 等级
+            let start = idx;
+            while idx < bytes.len() && bytes[idx] != b',' && bytes[idx] != b'}' {
+                idx += 1;
+            }
+            let int_val: u32 = raw[start..idx].trim().parse().ok()?;
+            SkillBoost::Normal(int_val)
+        };
         map.insert(key, value);
     }
     Some(map)

@@ -29,6 +29,8 @@ mod bench;
 mod fight;
 #[path = "tswn_cli/icon.rs"]
 mod icon;
+#[path = "tswn_cli/to_diy.rs"]
+mod to_diy;
 
 use args::ParsedCommand;
 
@@ -147,5 +149,6 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        ParsedCommand::ToDiy { raw } => to_diy::run(&raw),
     }
 }

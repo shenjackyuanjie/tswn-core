@@ -61,21 +61,94 @@ JS:                          Rust (build_inner):
 
 **选定方案: Plan B**
 
-## 设计方案
+---
+
+## 设计方案（当前实现）
 
 ### 数据模型
 
+#### PlayerOverlay
+
 ```rust
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone)]
 pub struct PlayerOverlay {
+    /// 八围覆盖值（`[atk, def, spd, agi, mag, res, wis, maxhp]`）。
+    /// `None` 表示不覆盖。
     pub attrs: Option<[i32; 8]>,
-    pub skills: Option<HashMap<String, u32>>,
+
+    /// 技能名 → SkillBoost 映射。
+    /// `None` 表示不覆盖。
+    pub skills: Option<HashMap<String, SkillBoost>>,
+
+    /// 武器名（DIY 模式下 weapon_state 强制为 None，此字段仅记录）。
     pub weapon: Option<String>,
+
+    /// 是否启用 name_factor 缩放（默认 true）。
+    /// 设为 false 时强制 name_factor = 0，八围不缩放。
+    pub name_factor_enabled: bool,
 }
 ```
 
-### Player 结构体变更
+#### SkillBoost（技能加成类型）
+
+用于精确描述技能最终等级的内部构成，在分身后克隆体重建时正确计算衰减下限。
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SkillBoost {
+    /// 普通技能：最终等级 = 指定值。
+    Normal(u32),
+
+    /// 末尾座位加成：最终等级 = base + boost。
+    SlotBoost { base: u32, boost: u32 },
+
+    /// 末尾主动技翻倍：最终等级 = base × 2。
+    LastBoost(u32),
+}
+```
+
+| 变体 | 内联格式示例 | 最终等级 | 说明 |
+|------|-------------|---------|------|
+| `Normal(lv)` | `"sklfire":5` | `lv` | 无特殊加成 |
+| `SlotBoost { base, boost }` | `"sklfire":"40+30"` | `base + boost` | 末尾座位 passive boost |
+| `LastBoost(base)` | `"sklshadow":"2*46"` | `base × 2` | 末尾主动技 boost_last 翻倍 |
+
+**辅助方法**：
+
+| 方法 | 说明 |
+|------|------|
+| `final_level()` | 加成后的最终展示等级 |
+| `base_level()` | 加成前的原始基础等级 |
+| `decayed_base_from_level(current_level)` | 由衰减后最终等级反推衰减后基础 |
+| `final_level_from_decayed_base(decayed_base)` | 由衰减后基础重新计算加成后等级 |
+| `parse(raw: &str)` | 从字符串解析（`"5"` / `"40+30"` / `"2*46"`） |
+
+#### Skill 结构体扩展
+
+```rust
+pub struct Skill {
+    pub boosted: bool,
+    level: u32,
+    skill_type: Box<dyn SkillTrait>,
+    pub target: Option<PlrId>,
+    /// DIY 技能加成信息，None 表示非 DIY 技能。
+    /// clone 重建时用于计算衰减下限。
+    pub diy_boost: Option<SkillBoost>,
+}
+```
+
+#### SkillStorage 扩展
+
+```rust
+pub struct SkillStorage {
+    // ... 原有字段 ...
+    /// 标记此 SkillStorage 是否由 DIY overlay 构建。
+    /// clone 重建时用于判断是否走 DIY 衰减下限逻辑。
+    pub is_diy: bool,
+}
+```
+
+### Player 结构体
 
 ```rust
 pub struct Player {
@@ -86,34 +159,93 @@ pub struct Player {
 
 `Option<Box<T>>` 在 64 位平台占 8 字节，`None` 时利用 niche 优化不额外分配。
 
-### 输入方式（3 种，从优到劣）
+### 输入方式（3 种）
 
-**1. API 模式 (推荐 — 结构化)**
+#### 1. API 模式（推荐 — 结构化）
 
 ```rust
+use std::collections::HashMap;
+use tswn_core::player::{PlayerOverlay, SkillBoost};
+
+// 普通技能
 let overlay = PlayerOverlay {
     attrs: Some([72, 39, 69, 76, 67, 66, 0, 84]),
-    skills: Some(HashMap::from([("fire".into(), 5)])),
+    skills: Some(HashMap::from([
+        ("fire".into(), SkillBoost::Normal(5)),
+    ])),
     ..Default::default()
 };
-Player::new_and_init(team, name, weapon, Some(overlay), storage)?;
+
+// 末尾座位加成：基础 40 + 加成 30 = 70
+let overlay = PlayerOverlay {
+    attrs: Some([50, 50, 50, 50, 50, 50, 50, 200]),
+    skills: Some(HashMap::from([
+        ("heal".into(), SkillBoost::SlotBoost { base: 40, boost: 30 }),
+    ])),
+    ..Default::default()
+};
+
+// 末尾主动技翻倍：基础 46 × 2 = 92
+let overlay = PlayerOverlay {
+    skills: Some(HashMap::from([
+        ("shadow".into(), SkillBoost::LastBoost(46)),
+    ])),
+    ..Default::default()
+};
+
+// name_factor 不缩放
+let overlay = PlayerOverlay {
+    attrs: Some([50, 50, 50, 50, 50, 50, 50, 200]),
+    name_factor_enabled: false,
+    ..Default::default()
+};
+
+Player::new_and_init_with_overlay(team, name, weapon, Some(overlay), storage)?;
 ```
 
-**2. 内联格式 (兼容 — 名字中编码)**
+#### 2. 内联格式（兼容 — 名字中编码）
+
+**紧凑格式** (`diy[...]{...}`)：
 
 ```
-PlayerName+ol:{"attrs":[72,39,69,76,67,66,0,84],"skills":{"fire":5}}
+# 普通技能
+PlayerName+diy[72,39,69,76,67,66,0,84]{"sklfire":5}
+
+# 末尾座位加成
+PlayerName+diy[72,39,69,76,67,66,0,84]{"sklheal":"40+30"}
+
+# 末尾主动技翻倍
+PlayerName+diy[72,39,69,76,67,66,0,84]{"sklshadow":"2*46"}
+
+# 混合使用
+PlayerName+diy[72,39,69,76,67,66,0,84]{"sklfire":5,"sklheal":"40+30","sklshadow":"2*46"}
 ```
 
-`new_from_namerena_raw` 在解析 weapon 时检测 `diy[...]{...}` 和 `ol:{json}` 格式。
+属性值会自动 `-36` 后取非负（兼容 JS 侧 36~127 范围）。
 
-**3. 批量配置 (大数据场景)**
+**JSON 对象格式** (`ol:{...}`)：
+
+```
+# 普通技能（属性值原样使用，不 -36）
+PlayerName+ol:{"attrs":[1,2,3,4,5,6,7,8],"skills":{"fire":4}}
+
+# 带加成类型
+PlayerName+ol:{"attrs":[50,50,50,50,50,50,50,200],"skills":{"heal":"40+30","shadow":"2*46"},"weapon":"火剑"}
+
+# 禁用 name_factor
+PlayerName+ol:{"attrs":[50,50,50,50,50,50,50,200],"name_factor_enabled":false}
+```
+
+`new_from_namerena_raw` 自动解析 `diy[...]{...}` 和 `ol:{json}` 格式。
+
+#### 3. 批量配置（大数据场景）
 
 ```json
 {
   "overlays": {
     "Bob": { "attrs": [72, 39, 69, 76, 67, 66, 0, 84], "skills": { "fire": 5 } },
-    "Alice": { "attrs": [50, 50, 50, 50, 50, 50, 50, 200] }
+    "Alice": { "attrs": [50, 50, 50, 50, 50, 50, 50, 200],
+               "skills": { "shadow": "2*46", "heal": "40+30" } }
   },
   "groups": [["Bob", "Alice"]]
 }
@@ -121,69 +253,124 @@ PlayerName+ol:{"attrs":[72,39,69,76,67,66,0,84],"skills":{"fire":5}}
 
 Runner 接受外部 overlay 映射，按 name 匹配。
 
-### API 变更清单
+### 武器行为
 
-| 函数                                | 当前                            | 变更                                     |
-| ----------------------------------- | ------------------------------- | ---------------------------------------- |
-| `Player::new_and_init`              | `(team, name, weapon, storage)` | `(team, name, weapon, overlay, storage)` |
-| `Player::new_from_namerena_raw`     | `(raw_name, storage)`           | 不变；内部解析 `diy`/`ol:` 为 overlay    |
-| `Runner::new_from_groups_with_seed` | `(groups, seed)`                | 不变；但允许 group 字符串含 `ol:`        |
-| `Runner::prepare_groups`            | `(players)`                     | 新增 overlay 参数？或拆为两步            |
+DIY 模式下（`attrs` 或 `skills` 不为 `None` 时），`weapon_state` 强制为 `None`。即**武器不计入**。
 
-## 实施步骤
+`PlayerOverlay.weapon` 字段仅记录武器名，不会实际生效。
 
-### Step 1: 定义 PlayerOverlay 结构体
+### name_factor 覆盖
 
-- 文件: `player/overlay.rs` (新建)
-- 内容: `PlayerOverlay` 结构体 + serde 派生 + 工具方法
+| `name_factor_enabled` | 行为 |
+|----------------------|------|
+| `true`（默认） | 八围按正常 name_factor 缩放 |
+| `false` | `name_factor` 强制为 0，八围使用原始值 |
 
-### Step 2: Player 结构体加 overlay 字段
+### DIY 分身后 clone 行为
 
-- 文件: `player/mod.rs`
-- 加 `pub overlay: Option<Box<PlayerOverlay>>`
-- 确保 `Default`, `Clone` 等 trait 正确派生
+当 DIY 角色使用分身技能时，clone 构建分三步（不依赖 name_base）：
 
-### Step 3: 修改构造函数
+1. **应用 overlay**：与 owner 相同的 overlay 技能配置被写入 clone，包含 `SkillBoost` 元数据
+2. **clamp 到 owner**：将 clone 的技能等级截断到 owner 当前（已衰减）等级
+3. **重新执行 SkillBoost 加成**（不依赖 name_base，加成金额直接从 `diy_boost` 读取）：
+   - `Normal`：不处理，保持 clamp 后等级
+   - `LastBoost`：衰减后等级 × 2（翻倍）
+   - `SlotBoost`：衰减后等级 + boost（执行 +b）
 
-- 文件: `player/impl_ctor.rs`
-- `new_and_init`: 加 `overlay: Option<PlayerOverlay>` 参数
-- `new_from_namerena_raw`: 解析 `diy[...]{...}` / `ol:{json}` → `PlayerOverlay`
+这模拟了 JS "先 clamp 再 boost" 的衰减下限语义：
 
-### Step 4: 修改 build_inner
+| 加成类型 | owner 初始 | owner 衰减后 | clone clamp 后 | clone 加成后 |
+|---------|-----------|-------------|---------------|-------------|
+| `LastBoost(46)` | 92 | 40 | 40 | 80 (40×2) |
+| `SlotBoost{40,30}` | 70 | 35 | 35 | 65 (35+30) |
+| `Normal(5)` | 5 | 5 | 5 | 5 (不变) |
 
-- 文件: `player/impl_attr.rs`
-- 在 `init_raw_attr` 后，若 `overlay.attrs.is_some()`，覆盖 base_attr
-- 在 init skills 阶段，若 `overlay.skills.is_some()`，跳原有 `dm()`，执行 DIY 技能设置
+### 名字 → DIY/OL 转换
 
-### Step 5: 技能名称映射
+使用 CLI 子命令 `to-diy` 将任意名字转换为 DIY overlay 格式：
 
-- 文件: `player/skill.rs`
-- 加 `skill_name_to_id(name: &str) -> Option<usize>`
-- 大小写不敏感匹配 `constructor.name`（JS 语义）
-- 映射表: act 0–26 + skl 0–12 = 共计 40 技能
+```bash
+# 基本用法
+tswn-cli to-diy help
+tswn-cli to-diy "mario@team+fire"
 
-### Step 6: DIY 技能应用逻辑
+# 输出示例（紧凑格式）
+help+diy[64,87,57,68,61,79,76,297]{"sklthunder":21,"skliron":7,...}
 
-- 在 `skill.rs` 或 `impl_attr.rs` 实现 `apply_diy_skills`
-- 对每个 overlay skill: `find_id → set_level → 重排 slot_skill` 使 1–3 为主动、4+ 为被动
+# 输出示例（JSON 格式）
+help+ol:{"attrs":[28,51,21,32,25,43,40,261],"skills":{...},"name_factor_enabled":true}
+```
 
-### Step 7: C/Python API 更新
+也可以通过 Rust API 直接调用：
 
-- C API: 新增 `PlayerOverlay` 参数，通过 JSON 字符串透传
-- Python: `new_and_init` 接受 `overlay: Optional[Dict]`
+```rust
+let mut player = Player::new_from_namerena_raw("help".to_string(), storage)?;
+player.build();
 
-### Step 8: 测试
+// 紧凑格式（attrs +36，兼容 JS）
+let diy_str = player.to_diy_compact();
 
-- normal player: overlay = None, 零额外开销 (build 路径 trace)
-- DIY 玩家: 八围覆盖正确 (自动减 36)
-- DIY 技能: 等级设置 + 顺序重排 (主动在前)
-- 旧格式兼容: `diy[72,...,84]{"sklfire":5}` 解析正确
-- Clone 不应用 overlay
-- 边界: 技能名不存在时静默忽略
+// JSON 格式（attrs 原样）
+let ol_str = player.to_ol_json();
+```
 
-## 未完成/待确认
+### API 一览
 
-- CI 跑通 — 需先有可编译的 Rust 代码
+| 函数 / 类型 | 说明 |
+|------------|------|
+| `PlayerOverlay` | overlay 数据结构 |
+| `PlayerOverlay::parse_inline(segment)` | 解析 `diy[...]` / `ol:{...}` 段 |
+| `PlayerOverlay::default()` | 默认值（`name_factor_enabled = true`） |
+| `SkillBoost` | 技能加成类型枚举 |
+| `SkillBoost::parse(raw)` | 从字符串解析（`"5"` / `"40+30"` / `"2*46"`） |
+| `SkillBoost::final_level()` | 计算最终等级 |
+| `SkillBoost::base_level()` | 计算基础等级 |
+| `skill_name_to_id(name)` | 技能名 → Rust 技能 ID（大小写不敏感） |
+| `skill_name_for_export(id)` | 技能 ID → overlay 技能名（如 `sklfire`） |
+| `diy_skill_order()` | DIY 模式固定技能槽顺序 |
+| `apply_diy_skill_levels(storage, skill_levels)` | 将 SkillBoost 映射写入 SkillStorage |
+| `Player::new_and_init_with_overlay(...)` | 带 overlay 的构造函数 |
+| `Player::new_from_namerena_raw(...)` | 从名字字符串解析（含 overlay 检测） |
+| `Player::to_diy_compact()` | 导出为紧凑 DIY 格式字符串 |
+| `Player::to_ol_json()` | 导出为 ol: JSON 格式字符串 |
+| `Skill::diy_boost` | 技能上存储的 SkillBoost 信息 |
+| `SkillStorage::is_diy` | 标记是否为 DIY 构建的技能集 |
+
+---
+
+## 实施状态
+
+### 已完成 ✅
+
+| 步骤 | 内容 | 状态 |
+|------|------|:---:|
+| Step 1 | 定义 `PlayerOverlay` + `SkillBoost` | ✅ |
+| Step 2 | `Player` 结构体加 `overlay` 字段 | ✅ |
+| Step 3 | 修改构造函数（API + 内联解析） | ✅ |
+| Step 4 | `build_inner` DIY 覆盖逻辑 | ✅ |
+| Step 5 | `skill_name_to_id` 技能名映射 | ✅ |
+| Step 6 | `apply_diy_skill_levels` + 技能排序 | ✅ |
+| Step 7 | C/Python API 更新 | ⬜ |
+| Step 8 | 测试（基本覆盖 + 回归） | ✅ |
+| — | `name_factor_enabled` 覆盖 | ✅ |
+| — | DIY 模式武器不计入 | ✅ |
+| — | `SkillBoost` 三种格式解析 | ✅ |
+| — | DIY clone 衰减下限 + 加成重新执行 | ✅ |
+| — | `split_by_plus_outside_quotes` 修复 JSON 内 `+` | ✅ |
+| — | `to_diy_compact()` / `to_ol_json()` 导出方法 | ✅ |
+| — | `tswn-cli to-diy` 子命令 | ✅ |
+| — | 测试（基本覆盖 + 回归） | ✅ |
+
+### 待完成 ⬜
+
+- C API: 新增 `PlayerOverlay` 参数透传（JSON 字符串）
+- Python API: `new_and_init_with_overlay` 接受 `Optional[Dict]`
 - 和 JS 输出做 diff 验证数值一致性
-- 确认八围第 8 项（幸运）是否也在 JS 中 `-= 36`（第 8 项索引为 7，JS 只循环了 0–6，需确认）
-- `PlayerOverlay.weapon` 的语义：覆盖武器还是追加武器？
+- 衰减下限的完整对局级验证（DIY 玩家分身对局 trace）
+
+---
+
+## 相关文档
+
+- [技能衰减机制](./analysis/skill_decay.md) — 5 种衰减技能的详细公式
+- [分身机制详解](./analysis/clone_mechanism.md) — clone 重建与衰减下限分析

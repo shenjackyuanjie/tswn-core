@@ -90,6 +90,8 @@ pub mod impl_runtime;
 
 pub use action_targets::*;
 pub use overlay::PlayerOverlay;
+pub use skill::SkillBoost;
+pub use skill::skill_name_for_export;
 pub use state::*;
 pub use status::*;
 

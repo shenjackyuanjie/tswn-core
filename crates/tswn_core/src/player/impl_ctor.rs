@@ -232,16 +232,21 @@ impl Player {
         };
 
         // JS bf(): Test1/Test2/TestEx 的 name_factor 强制为 0
+        // overlay.name_factor_enabled = false 时也强制为 0（八围不缩放）
         let name_factor = match player_type {
             PlayerType::Test1 | PlayerType::Test2 | PlayerType::TestEx => 0.0,
             _ => {
-                let eval_rq = storage.eval_rq();
-                let factor_name = eval_name::eval_str_common_with_rq(name.as_str(), true, eval_rq);
-                let factor_team = match team.as_ref() {
-                    Some(team) => eval_name::eval_str_common_with_rq(team.as_str(), true, eval_rq),
-                    None => factor_name,
-                };
-                factor_name.max(factor_team - 6.0)
+                if overlay.as_ref().map(|ov| !ov.name_factor_enabled).unwrap_or(false) {
+                    0.0
+                } else {
+                    let eval_rq = storage.eval_rq();
+                    let factor_name = eval_name::eval_str_common_with_rq(name.as_str(), true, eval_rq);
+                    let factor_team = match team.as_ref() {
+                        Some(team) => eval_name::eval_str_common_with_rq(team.as_str(), true, eval_rq),
+                        None => factor_name,
+                    };
+                    factor_name.max(factor_team - 6.0)
+                }
             }
         };
 
@@ -254,11 +259,22 @@ impl Player {
 
         // overlay 装箱（从栈上移到堆上，减少 Player 结构体大小）
         let overlay = overlay.map(Box::new);
+
+        // DIY 模式下武器不计入：当 overlay 包含八围或技能覆盖时，武器状态置空。
+        let has_diy_attrs_or_skills = overlay
+            .as_ref()
+            .map(|ov| ov.attrs.is_some() || ov.skills.is_some())
+            .unwrap_or(false);
         // 武器名解析优先级：名字中的 weapon 段 > overlay 中的 weapon 字段
         let weapon = weapon.or_else(|| overlay.as_ref().and_then(|overlay| overlay.weapon.clone()));
 
         // 创建武器运行时状态（对应 JS: new T.Weapon + b3）
-        let weapon_state = weapon.as_deref().and_then(weapons::Weapon::create_state);
+        // DIY 模式下武器不计入，weapon_state 强制为 None。
+        let weapon_state = if has_diy_attrs_or_skills {
+            None
+        } else {
+            weapon.as_deref().and_then(weapons::Weapon::create_state)
+        };
 
         Ok(Player {
             team,

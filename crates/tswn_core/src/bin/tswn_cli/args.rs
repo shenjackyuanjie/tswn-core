@@ -129,6 +129,10 @@ pub enum ParsedCommand {
         /// 要保存图标的玩家名字列表。
         names: Vec<String>,
     },
+    ToDiy {
+        /// 玩家名字（namerena raw 格式）。
+        raw: String,
+    },
 }
 
 #[derive(Debug)]
@@ -185,6 +189,13 @@ enum CliCommand {
     NamerPf(NamerPfCommand),
     /// 玩家图标相关功能。
     Icon(IconCommand),
+    /// 将名字转换为 DIY/OL overlay 格式。
+    ///
+    /// 示例:
+    ///   tswn-cli to-diy help
+    ///   tswn-cli to-diy "mario@team+fire"
+    #[command(name = "to-diy", verbatim_doc_comment)]
+    ToDiy(ToDiyCommand),
 }
 
 #[derive(Debug, Args)]
@@ -490,6 +501,15 @@ struct IconSaveCommand {
     names: Vec<String>,
 }
 
+#[derive(Debug, Args)]
+struct ToDiyCommand {
+    /// 玩家名字（namerena raw 格式）。
+    ///
+    /// 支持 @ 队伍名和 + 武器名，但 overlay 输出中武器不计入。
+    #[arg(required = true, value_name = "NAME")]
+    name: String,
+}
+
 /// 解析命令行参数，并转换成内部使用的结构化命令。
 pub fn parse() -> Result<ParsedCli, clap::Error> {
     let cli = Cli::try_parse()?;
@@ -574,6 +594,7 @@ impl ParsedCli {
                     names: cmd.names,
                 },
             },
+            CliCommand::ToDiy(cmd) => ParsedCommand::ToDiy { raw: cmd.name },
         };
         Ok(Self { command })
     }

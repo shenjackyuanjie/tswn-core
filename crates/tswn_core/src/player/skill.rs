@@ -62,6 +62,112 @@ pub use skl::{corpse, counter, defend, hide, merge, none, protect, reflect, rera
 
 pub type SkillFactory = fn() -> Box<dyn SkillTrait>;
 
+/// DIY 技能加成类型。
+///
+/// 用于精确描述一个技能的最终等级是如何构成的，
+/// 在分身后克隆体重建时能够正确计算衰减下限。
+///
+/// # 变体
+///
+/// | 变体 | 内联格式示例 | 说明 |
+/// |------|-------------|------|
+/// | `Normal(lv)` | `"sklfire":5` | 普通技能，无特殊加成 |
+/// | `SlotBoost { base, boost }` | `"sklfire":"40+30"` | 末尾座位加成，最终 = base + boost |
+/// | `LastBoost(base)` | `"sklfire":"2*40"` | 末尾主动技翻倍，最终 = base × 2 |
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SkillBoost {
+    /// 普通技能，无特殊加成。最终等级 = 指定值。
+    Normal(u32),
+    /// 末尾座位加成：最终等级 = base + boost。
+    SlotBoost {
+        /// 基础熟练度
+        base: u32,
+        /// 座位加成值
+        boost: u32,
+    },
+    /// 末尾主动技翻倍：最终等级 = base × 2。
+    LastBoost(u32),
+}
+
+impl SkillBoost {
+    /// 计算最终等级（加成后的展示等级）。
+    pub fn final_level(&self) -> u32 {
+        match self {
+            Self::Normal(lv) => *lv,
+            Self::SlotBoost { base, boost } => base + boost,
+            Self::LastBoost(base) => base * 2,
+        }
+    }
+
+    /// 计算基础等级（加成前的原始熟练度）。
+    pub fn base_level(&self) -> u32 {
+        match self {
+            Self::Normal(lv) => *lv,
+            Self::SlotBoost { base, .. } => *base,
+            Self::LastBoost(base) => *base,
+        }
+    }
+
+    /// 根据当前衰减后的最终等级，反推衰减后的基础等级。
+    ///
+    /// - `Normal`: 基础 = 最终（无分离）
+    /// - `SlotBoost`: 基础 = max(最终 - boost, 1)
+    /// - `LastBoost`: 基础 = 最终 / 2
+    ///
+    /// 用于 clone 重建时计算衰减下限。
+    pub fn decayed_base_from_level(&self, current_level: u32) -> u32 {
+        match self {
+            Self::Normal(_) => current_level,
+            Self::SlotBoost { boost, .. } => current_level.saturating_sub(*boost).max(1),
+            Self::LastBoost(_) => current_level / 2,
+        }
+    }
+
+    /// 根据衰减后的基础等级，重新计算加成后的最终等级。
+    ///
+    /// 用于 clone 重建时恢复 boost。
+    pub fn final_level_from_decayed_base(&self, decayed_base: u32) -> u32 {
+        match self {
+            Self::Normal(_) => decayed_base,
+            Self::SlotBoost { boost, .. } => decayed_base.saturating_add(*boost),
+            Self::LastBoost(_) => decayed_base.saturating_mul(2),
+        }
+    }
+
+    /// 从字符串解析 `SkillBoost`。
+    ///
+    /// 支持格式：
+    /// - `"5"` → `Normal(5)`
+    /// - `"40+30"` → `SlotBoost { base: 40, boost: 30 }`
+    /// - `"2*40"` → `LastBoost(40)`
+    ///
+    /// 解析失败时返回 `None`。
+    pub fn parse(raw: &str) -> Option<Self> {
+        let raw = raw.trim();
+        // 尝试解析为纯数字
+        if let Ok(val) = raw.parse::<u32>() {
+            return Some(Self::Normal(val));
+        }
+        // 尝试 "base+boost" 格式
+        if let Some((base_str, boost_str)) = raw.split_once('+') {
+            let base = base_str.trim().parse::<u32>().ok()?;
+            let boost = boost_str.trim().parse::<u32>().ok()?;
+            return Some(Self::SlotBoost { base, boost });
+        }
+        // 尝试 "2*base" 格式
+        if let Some((mul_str, base_str)) = raw.split_once('*') {
+            let multiplier = mul_str.trim().parse::<u32>().ok()?;
+            let base = base_str.trim().parse::<u32>().ok()?;
+            if multiplier == 2 {
+                return Some(Self::LastBoost(base));
+            }
+            // 其他倍数暂不支持
+            return None;
+        }
+        None
+    }
+}
+
 const BUILTIN_SKILL_FACTORIES: [SkillFactory; 35] = [
     fire::FireSkill::box_new,
     ice::IceSkill::box_new,
@@ -175,27 +281,92 @@ pub fn skill_name_to_id(name: &str) -> Option<usize> {
 /// 确保 Shield / Defend / PassiveSkill 不会被错位。
 pub fn diy_skill_order() -> Vec<usize> { DIY_ACTIVE_SKILL_IDS.into_iter().chain(DIY_PASSIVE_SKILL_IDS).chain(35..40).collect() }
 
+/// 将技能 ID 转换为 overlay 兼容的技能名（如 `sklFire`、`sklHeal`）。
+///
+/// 用于 `to_diy_compact()` / `to_ol_json()` 导出时生成 key。
+/// 返回格式与 [`skill_name_to_id`] 接受的格式兼容。
+pub fn skill_name_for_export(skill_id: usize) -> String {
+    let name = match skill_id {
+        0 => "fire",
+        1 => "ice",
+        2 => "thunder",
+        3 => "quake",
+        4 => "absorb",
+        5 => "poison",
+        6 => "rapid",
+        7 => "critical",
+        8 => "half",
+        9 => "exchange",
+        10 => "berserk",
+        11 => "charm",
+        12 => "haste",
+        13 => "slow",
+        14 => "curse",
+        15 => "heal",
+        16 => "revive",
+        17 => "disperse",
+        18 => "iron",
+        19 => "charge",
+        20 => "accumulate",
+        21 => "assassinate",
+        22 => "summon",
+        23 => "clone",
+        24 => "shadow",
+        25 => "defend",
+        26 => "protect",
+        27 => "reflect",
+        28 => "reraise",
+        29 => "shield",
+        30 => "counter",
+        31 => "merge",
+        32 => "zombie",
+        33 => "upgrade",
+        34 => "hide",
+        35 => "none",
+        _ => return format!("skill{}", skill_id),
+    };
+    format!("skl{}", name)
+}
+
 /// 将 overlay 中指定的技能等级写入 SkillStorage。
 ///
 /// 流程：
 /// 1. 遍历 `skill_levels` 映射，将每个技能名解析为技能 ID；
-/// 2. 设置对应技能的等级；
-/// 3. 重新设定技能槽顺序为 `diy_skill_order()` 固定顺序；
+/// 2. 根据 [`SkillBoost`] 类型设置技能等级和加成信息：
+///    - `Normal(lv)`: 直接 `set_level(lv)`
+///    - `SlotBoost { base, boost }`: `set_level(base + boost)`, 标记 `boosted = true`, 存储 boost 信息
+///    - `LastBoost(base)`: `set_level(base * 2)`, 标记 `boosted = true`, 存储 boost 信息
+/// 3. 重新设定技能槽顺序为 [`diy_skill_order()`] 固定顺序；
 /// 4. 调用 `update_proc()` 刷新流程缓存。
 ///
-/// 注意：此函数不处理 boost，overlay 模式跳过整个 boost 流程。
-pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &HashMap<String, u32>) {
-    for (skill_name, level) in skill_levels {
+/// 注意：此函数替代了正常的 boost 流程，overlay 模式不调用 `boost_last()` / `boost_level()`。
+pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &HashMap<String, SkillBoost>) {
+    for (skill_name, skill_boost) in skill_levels {
         let Some(skill_id) = skill_name_to_id(skill_name) else {
             continue;
         };
         if let Some(skill) = storage.store.get_mut(&skill_id) {
-            skill.set_level(*level);
+            let final_lv = skill_boost.final_level();
+            skill.set_level(final_lv);
+            match skill_boost {
+                SkillBoost::Normal(_) => {
+                    // 普通技能：无 boost 标记，diy_boost 置为 None
+                    skill.boosted = false;
+                    skill.diy_boost = None;
+                }
+                SkillBoost::SlotBoost { .. } | SkillBoost::LastBoost(_) => {
+                    // 有加成的技能：标记 boosted = true 防止后续误 boost，
+                    // 并存储 boost 信息供 clone 重建时使用。
+                    skill.boosted = true;
+                    skill.diy_boost = Some(skill_boost.clone());
+                }
+            }
         }
     }
     let order = diy_skill_order();
     storage.slot_skill = order.clone();
     storage.skill = order;
+    storage.is_diy = true;
     storage.update_proc();
 }
 
@@ -647,6 +818,11 @@ pub struct Skill {
     skill_type: Box<dyn SkillTrait>,
     /// 目标
     pub target: Option<PlrId>,
+    /// DIY 技能加成信息（`None` 表示非 DIY 技能）。
+    ///
+    /// 存储原始的 [`SkillBoost`] 配置，用于在 clone 重建时
+    /// 正确计算衰减下限（decay floor）。
+    pub diy_boost: Option<SkillBoost>,
 }
 
 impl Skill {
@@ -656,6 +832,7 @@ impl Skill {
             level,
             skill_type,
             target: None,
+            diy_boost: None,
         }
     }
 
@@ -666,6 +843,7 @@ impl Skill {
             level,
             skill_type,
             target: None,
+            diy_boost: None,
         }
     }
 
