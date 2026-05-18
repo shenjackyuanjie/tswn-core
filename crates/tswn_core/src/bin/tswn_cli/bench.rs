@@ -785,7 +785,7 @@ fn run_bench_score_range(
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|winner| target_team.contains(winner))
+            && winners.first().is_some_and(|winner| target_team.contains(winner))
         {
             wins += 1;
         }
@@ -832,7 +832,7 @@ fn run_bench_score_worker(
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|winner| target_team.contains(winner))
+            && winners.first().is_some_and(|winner| target_team.contains(winner))
         {
             wins += 1;
         }
