@@ -1,5 +1,59 @@
 # 更新日志
 
+## [0.3.7] - 2026-05-18
+
+### DIY / Overlay
+
+- 新增 `SkillBoost` 枚举，用于更精确表达技能加成类型，支持普通等级、末位加成和末位翻倍三种语义。
+- `PlayerOverlay.skills` 从单纯等级映射扩展为支持 `SkillBoost` 结构，DIY / Overlay 表达能力更完整。
+- 新增 `name_factor_enabled` 开关，可按需禁用 `name_factor` 对属性的缩放影响。
+- DIY 模式下，若显式提供属性或技能覆盖，武器效果将不再参与构造，避免混入非 DIY 因素。
+
+### 格式与导出
+
+- 扩展紧凑 DIY 格式与 `ol:` JSON 格式，支持技能值写法如 `5`、`40+30`、`2*46`。
+- 新增 `Player::to_diy_compact()`，可将已构造玩家导出为紧凑 DIY 字符串。
+- 新增 `Player::to_ol_json()`，可将玩家导出为 `ol:` JSON 格式。
+- 新增 CLI 子命令 `tswn-cli to-diy <name>`，可直接把名字转换为 DIY / OL 输出。
+
+### 修复
+
+- 修复 DIY clone 重建时的技能衰减下限处理，重新应用 `SkillBoost` 规则，避免分身后的技能等级下限失真。
+- 修复紧凑 DIY 格式中 HP 处理不一致的问题：仅前七围做 `+-36` 换算，HP 保持原值。
+- 修复 `split_weapon_overlay` 对 JSON 字符串内 `+` 的误切分问题，避免如 `"40+30"` 这类技能值被错误解析。
+
+### 文档
+
+- 更新 `docs/DIY.md`，补充 SkillBoost、DIY clone、导出与 CLI 用法。
+- 新增 `docs/analysis/skill_decay.md` 与 `docs/analysis/clone_mechanism.md`。
+
+## [0.3.6] - 2026-05-18
+
+### CLI
+
+- 新增 `namer-pf` 命令：支持按行输入玩家组、组内用 `+` 分隔成员，输出 `pp|pd|qp|qd` 四项评分及总分，便于快速做名字评分对比。
+- bench 相关评分路径补充了解析与执行辅助逻辑，方便复用同一套评分入口。
+
+### 修复
+
+- 修复玩家升级中的 `TestEx` 特殊路径，避免同队升级时出现额外污染。
+- 补充 `Player::normal_raw_name_base`，使普通玩家构造时的底板语义更接近原始实现。
+- 修复召唤物 / 分身复用时的运行时状态残留问题：复用对象时会重置状态并恢复 owner 标记。
+- 调整 `post_defend` 状态清理流程：状态在命中清除条件后立即移除，并按需刷新状态，减少状态滞留带来的运行时偏差。
+- 修复 clone 的 `name_factor` 继承计算，使分身构造时的属性缩放更接近当前对齐语义。
+- 修复 raw score / bench score 路径中的构造方式，使评分对局统一走带 seed 与 `eval_rq` 的构造入口。
+- 修正评分统计中的一处回退问题，最终保持赢家判定逻辑与既有语义一致。
+
+### 行为调整
+
+- raw score / bench score 的内部对局构造改为复用 split 后的 group + seed 初始化路径，减少和普通对战构造分叉。
+- `post_defend` 的 skill / state 执行后状态更新更及时，状态链行为更稳定。
+
+### 测试与文档
+
+- 补充 `namer-pf` 输入解析测试。
+- 更新多份分析文档，重写 `why_ns` 相关说明，补齐当前实现细节。
+
 ## [0.3.5] - 2026-05-18
 
 ### DIY / Overlay 系统增强
