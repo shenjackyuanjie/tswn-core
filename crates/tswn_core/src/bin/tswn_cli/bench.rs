@@ -712,6 +712,49 @@ fn run_bench_score_inner(
     summary
 }
 
+pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>) {
+    let groups = parse_plus_separated_groups(raw);
+    if groups.is_empty() {
+        eprintln!("namer-pf: 输入为空或无有效玩家");
+        return;
+    }
+
+    println!("pp|pd|qp|qd");
+    for group in groups {
+        let pp = namer_pf_score(&group, "\u{0002}", false, n, threads);
+        let pd = namer_pf_score(&group, "\u{0002}", true, n, threads);
+        let qp = namer_pf_score(&group, "!", false, n, threads);
+        let qd = namer_pf_score(&group, "!", true, n, threads);
+        let sum = pp + pd + qp + qd;
+        println!("{pp}|{pd}|{qp}|{qd}|{sum}");
+    }
+}
+
+fn parse_plus_separated_groups(raw: &str) -> Vec<Vec<String>> {
+    raw.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            line.split('+')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .filter(|group| !group.is_empty())
+        .collect()
+}
+
+fn namer_pf_score(base_group: &[String], modifier: &str, duplicate: bool, n: usize, threads: Option<usize>) -> u64 {
+    let mut target_group = base_group.to_vec();
+    if duplicate {
+        target_group.extend(base_group.iter().cloned());
+    }
+
+    let summary = run_bench_score_inner(&target_group, modifier, n, BenchThreadMode::Parallel, threads, false);
+    (summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64).round() as u64
+}
+
 fn run_bench_score_range(
     target_group: &[String],
     modifier: &str,
@@ -723,7 +766,6 @@ fn run_bench_score_range(
     let mut total = 0usize;
     let mut timing = WinRateTiming::default();
     let mut progress_printed = false;
-    let tracked_targets = js_score_targets_per_round(target_group);
     let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     for i in start..end {
@@ -735,11 +777,7 @@ fn run_bench_score_range(
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_targets: Vec<usize> = runner
-            .input_groups
-            .first()
-            .map(|group| group.iter().take(tracked_targets).copied().collect())
-            .unwrap_or_default();
+        let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = Instant::now();
@@ -747,7 +785,7 @@ fn run_bench_score_range(
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.first().is_some_and(|winner| team0_targets.contains(winner))
+            && winners.iter().any(|winner| target_team.contains(winner))
         {
             wins += 1;
         }
@@ -771,7 +809,6 @@ fn run_bench_score_worker(
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut timing = WinRateTiming::default();
-    let tracked_targets = js_score_targets_per_round(target_group);
     let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     loop {
@@ -787,11 +824,7 @@ fn run_bench_score_worker(
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_targets: Vec<usize> = runner
-            .input_groups
-            .first()
-            .map(|group| group.iter().take(tracked_targets).copied().collect())
-            .unwrap_or_default();
+        let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
 
         let t_fight = Instant::now();
@@ -799,7 +832,7 @@ fn run_bench_score_worker(
         timing.fight_nanos += t_fight.elapsed().as_nanos();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.first().is_some_and(|winner| team0_targets.contains(winner))
+            && winners.iter().any(|winner| target_team.contains(winner))
         {
             wins += 1;
         }
@@ -885,6 +918,14 @@ mod tests {
         assert_eq!(js_score_targets_per_round(&duplicate), 1);
         assert_eq!(js_score_profiles_per_round(&duplicate), 1);
         assert_eq!(bench_input, "aaaaa\n\n33554431@!");
+    }
+
+    #[test]
+    fn namer_pf_parser_accepts_plus_groups() {
+        assert_eq!(
+            parse_plus_separated_groups("aaaaa+bbbbb\nccccc\n\n"),
+            vec![vec!["aaaaa".to_string(), "bbbbb".to_string()], vec!["ccccc".to_string()],]
+        );
     }
 }
 

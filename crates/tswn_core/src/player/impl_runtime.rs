@@ -1554,11 +1554,17 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        if self
+        let clear_tags = self
             .state
-            .on_post_defend_states(self.as_ptr(), &mut dmg, caster, randomer, updates, storage)
-        {
-            self.update_states();
+            .on_post_defend_states(self.as_ptr(), &mut dmg, caster, randomer, updates, storage);
+        if !clear_tags.is_empty() {
+            let should_update_states = clear_tags.iter().any(|tag| self.state.tag_clear_updates_status(tag));
+            for tag in clear_tags {
+                self.state.clear_tag(tag);
+            }
+            if should_update_states {
+                self.update_states();
+            }
         }
         dmg
     }
@@ -1879,7 +1885,6 @@ impl Player {
         }
         merged.sort_by_key(|&(p, _)| p);
 
-        let mut status_dirty = false;
         for (_, entry) in merged {
             match entry {
                 PostDefendEntry::Skill(key) => {
@@ -1892,14 +1897,18 @@ impl Player {
                     );
                 }
                 PostDefendEntry::State(tag) => {
-                    status_dirty |=
-                        self.state
-                            .run_one_post_defend(tag, self.as_ptr(), &mut dmg, caster, randomer, updates, storage);
+                    if self
+                        .state
+                        .run_one_post_defend(tag, self.as_ptr(), &mut dmg, caster, randomer, updates, storage)
+                    {
+                        let should_update_states = self.state.tag_clear_updates_status(&tag);
+                        self.state.clear_tag(tag);
+                        if should_update_states {
+                            self.update_states();
+                        }
+                    }
                 }
             }
-        }
-        if status_dirty {
-            self.update_states();
         }
         dmg
     }

@@ -1,7 +1,7 @@
 use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, root_minion_name_owner_id};
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlayerStateStore, PlayerType, PlrId, eval_name,
+    Player, PlayerStateStore, PlayerType, PlrId, eval_name,
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
@@ -84,12 +84,18 @@ impl SkillTrait for CloneSkill {
         cloned.player_type = PlayerType::Clone;
         cloned.sort_int = 0;
         cloned.state = PlayerStateStore::default();
+        let owner_base_name = owner_snapshot.base_name();
+        let owner_clan_name = owner_snapshot.clan_name();
+        // JS `init_PlrClone()` first runs the plain `PlrClone` constructor,
+        // then overwrites `t/name_base` with the owner's transformed base.
+        // `E/raw_name_base` therefore stays as the plain constructor output.
+        cloned.raw_name_base = Player::normal_raw_name_base(Some(owner_clan_name.as_str()), owner_base_name.as_str());
         let factor_name = args
             .3
             .get_player(&root_owner_id)
             .map(|root_owner| eval_name::eval_str_common_with_rq(root_owner.base_name().as_str(), true, args.3.eval_rq()))
-            .unwrap_or_else(|| eval_name::eval_str_common_with_rq(owner_snapshot.base_name().as_str(), true, args.3.eval_rq()));
-        let factor_team = eval_name::eval_str_common_with_rq(owner_snapshot.clan_name().as_str(), true, args.3.eval_rq());
+            .unwrap_or_else(|| eval_name::eval_str_common_with_rq(owner_base_name.as_str(), true, args.3.eval_rq()));
+        let factor_team = eval_name::eval_str_common_with_rq(owner_clan_name.as_str(), true, args.3.eval_rq());
         cloned.name_factor = factor_name.max(factor_team - 6.0);
 
         // `PlrClone` 会先重新 `build` 一次，把技能内部运行时态重置干净；

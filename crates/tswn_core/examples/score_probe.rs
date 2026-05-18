@@ -43,24 +43,20 @@ fn format_update(runner: &Runner, update: &tswn_core::engine::update::RunUpdate)
 
 fn main() {
     let modifier = std::env::args().nth(1).unwrap_or_else(|| "\u{0002}".to_string());
-    let count = std::env::args()
-        .nth(2)
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(1000);
+    let count = std::env::args().nth(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1000);
     let detail_round = std::env::args().nth(3).and_then(|s| s.parse::<usize>().ok());
-    let start_round = std::env::args()
-        .nth(4)
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(1);
+    let start_round = std::env::args().nth(4).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+    let target = std::env::args().nth(5).unwrap_or_else(|| "aaaaaa".to_string());
 
     let mut input = String::new();
     let mut wins = 0usize;
     print!("[");
     for offset in 0..count {
         let round_number = start_round + offset;
-        build_score_match_input("aaaaaa", &modifier, round_number - 1, &mut input);
+        build_score_match_input(&target, &modifier, round_number - 1, &mut input);
         let (groups, seed) = Runner::split_namerena_into_groups(input.clone());
-        let mut runner = Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ).expect("runner should build");
+        let mut runner =
+            Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ).expect("runner should build");
         let team0_targets: Vec<usize> = runner
             .input_groups
             .first()

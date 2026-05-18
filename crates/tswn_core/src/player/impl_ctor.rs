@@ -51,6 +51,27 @@ impl Player {
     // /// 按照 namerena 的原始 new
     // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
+    pub(crate) fn normal_raw_name_base(team: Option<&str>, name: &str) -> [u8; 128] {
+        let name_bytes = [0_u8].iter().chain(name.as_bytes()).copied().collect::<Vec<u8>>();
+        let team_bytes = [0_u8].iter().chain(team.unwrap_or(name).as_bytes()).copied().collect::<Vec<u8>>();
+
+        let mut rand = RC4::new(&team_bytes, 1);
+        rand.update(&name_bytes, 2);
+
+        let mut name_base: Vec<u8> = Vec::with_capacity(128);
+        for i in 0..=255 {
+            let m = ((unsafe { rand.get_val_unchecked(i) } as u32 * 181) + 160) % 256;
+            if (89..217).contains(&m) {
+                name_base.push((m & 63) as u8);
+            }
+        }
+
+        name_base
+            .as_slice()
+            .try_into()
+            .unwrap_or_else(|_| unreachable!("normal raw name base must contain 128 entries"))
+    }
+
     /// 创建一个新的玩家（便捷入口，委托给 [`new_and_init_with_overlay`]）。
     pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>, storage: Arc<Storage>) -> PlayerResult<Self> {
         Self::new_and_init_with_overlay(team, name, weapon, None, storage)

@@ -147,6 +147,67 @@ mod split_namerena_groups {
             .expect("xxxx@! player should exist");
         assert_eq!(testex, crate::player::PlayerType::TestEx);
     }
+
+    #[test]
+    fn bang_testex_same_team_does_not_upgrade() {
+        let raw_input = "aaaaaa\n33554632@!\n\n33554633@!\n33554634@!".to_string();
+        let (groups, seed) = runners::Runner::split_namerena_into_groups(raw_input);
+        let runner =
+            runners::Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, crate::player::eval_name::WIN_RATE_EVAL_RQ)
+                .unwrap();
+        let magic = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find_map(|id| {
+                let player = runner.storage.get_player(&id)?;
+                (player.id_name() == "33554634").then_some(player.get_status().magic)
+            })
+            .expect("33554634@! player should exist");
+        assert_eq!(magic, 46);
+    }
+
+    #[test]
+    fn bang_score_round_235_clone_raw_base_matches_md5_winner() {
+        let raw_input = "aaaaaa\n33555133@!\n\n33555134@!\n33555135@!".to_string();
+        let (groups, seed) = runners::Runner::split_namerena_into_groups(raw_input);
+        let mut runner =
+            runners::Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, crate::player::eval_name::WIN_RATE_EVAL_RQ)
+                .unwrap();
+        runner.run_to_completion();
+
+        let mut winners = winner_names(&runner);
+        winners.sort();
+        assert_eq!(winners, vec!["33555133", "33555133?0", "aaaaaa", "aaaaaa?0", "aaaaaa?1"]);
+    }
+
+    #[test]
+    fn score_round_4950_reused_summon_clears_runtime_states_matches_md5_winner() {
+        let raw_input = "aaaa@aaaaa\n33569278@\u{0002}\n\n33569279@\u{0002}\n33569280@\u{0002}".to_string();
+        let (groups, seed) = runners::Runner::split_namerena_into_groups(raw_input);
+        let mut runner =
+            runners::Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, crate::player::eval_name::WIN_RATE_EVAL_RQ)
+                .unwrap();
+        runner.run_to_completion();
+
+        let mut winners = winner_names(&runner);
+        winners.sort();
+        assert_eq!(winners, vec!["33569278", "aaaa"]);
+    }
+
+    #[test]
+    fn bang_score_round_8662_broken_iron_clears_immediately_matches_md5_winner() {
+        let raw_input = "aaaa@aaaaa\n33580414@!\n\n33580415@!\n33580416@!".to_string();
+        let (groups, seed) = runners::Runner::split_namerena_into_groups(raw_input);
+        let mut runner =
+            runners::Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, crate::player::eval_name::WIN_RATE_EVAL_RQ)
+                .unwrap();
+        runner.run_to_completion();
+
+        let mut winners = winner_names(&runner);
+        winners.sort();
+        assert_eq!(winners, vec!["33580415", "33580416", "33580416?0"]);
+    }
 }
 
 mod prepared_raw_consistency {

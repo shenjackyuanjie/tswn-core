@@ -613,14 +613,16 @@ impl PlayerStateStore {
         randomer: &mut RC4,
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
-    ) -> bool {
-        let mut status_dirty = false;
+    ) -> Vec<StateTag> {
+        let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
         for tag in self.ordered_tags_by(|state| state.post_defend_priority()) {
             if let Some(entry) = self.entries.get_mut(&tag) {
-                status_dirty |= entry.state.on_post_defend(owner, dmg, caster, randomer, updates, storage);
+                if entry.state.on_post_defend(owner, dmg, caster, randomer, updates, storage) {
+                    clear_tags.push(tag);
+                }
             }
         }
-        status_dirty
+        clear_tags.into_vec()
     }
 
     /// 返回 post_defend 状态的 (tag, priority) 列表，用于和 skill 统一排序。

@@ -241,7 +241,6 @@ fn run_raw_score_range(target_group: &[String], modifier: &str, start: usize, en
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut progress_printed = false;
-    let tracked_targets = js_score_targets_per_round(target_group);
     let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     for i in start..end {
@@ -252,16 +251,12 @@ fn run_raw_score_range(target_group: &[String], modifier: &str, start: usize, en
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_targets: Vec<usize> = runner
-            .input_groups
-            .first()
-            .map(|group| group.iter().take(tracked_targets).copied().collect())
-            .unwrap_or_default();
+        let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
 
         runner.run_to_completion();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.first().is_some_and(|winner| team0_targets.contains(winner))
+            && winners.iter().any(|winner| target_team.contains(winner))
         {
             wins += 1;
         }
@@ -279,7 +274,6 @@ fn run_raw_score_range(target_group: &[String], modifier: &str, start: usize, en
 fn run_raw_score_worker(target_group: &[String], modifier: &str, next: &AtomicUsize, end: usize) -> (usize, usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
-    let tracked_targets = js_score_targets_per_round(target_group);
     let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     loop {
@@ -295,16 +289,12 @@ fn run_raw_score_worker(target_group: &[String], modifier: &str, next: &AtomicUs
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_targets: Vec<usize> = runner
-            .input_groups
-            .first()
-            .map(|group| group.iter().take(tracked_targets).copied().collect())
-            .unwrap_or_default();
+        let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
 
         runner.run_to_completion();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.first().is_some_and(|winner| team0_targets.contains(winner))
+            && winners.iter().any(|winner| target_team.contains(winner))
         {
             wins += 1;
         }

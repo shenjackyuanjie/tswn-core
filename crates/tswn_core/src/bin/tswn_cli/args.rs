@@ -107,6 +107,14 @@ pub enum ParsedCommand {
         /// 最低胜率阈值 (0-10000)；仅在终端显示平均胜率不低于此值的选手。
         min_wr: Option<u16>,
     },
+    NamerPf {
+        /// 每行一个名字组，组内可用 `+` 分隔。
+        raw: String,
+        /// 每个评分项的模拟场数。
+        n: usize,
+        /// 显式指定的 benchmark 线程数。
+        threads: Option<usize>,
+    },
     IconShow {
         /// 要展示图标的玩家名字列表。
         names: Vec<String>,
@@ -172,6 +180,9 @@ enum CliCommand {
     FightDiff(FightDiffCommand),
     /// 运行 benchmark 相关功能。
     Bench(BenchCommand),
+    /// 运行与 ica-plugin `/namer-pf` 相同的四项评分。
+    #[command(name = "namer-pf", verbatim_doc_comment)]
+    NamerPf(NamerPfCommand),
     /// 玩家图标相关功能。
     Icon(IconCommand),
 }
@@ -360,6 +371,26 @@ struct BenchBatchRateCommand {
 }
 
 #[derive(Debug, Args)]
+struct NamerPfCommand {
+    /// 输入来源参数；每行一个名字组，组内可用 `+` 分隔。
+    #[command(flatten)]
+    input: InputArgs,
+
+    /// 每个评分项的运行场数。
+    #[arg(
+        short = 'n',
+        long = "count",
+        default_value_t = 10000,
+        value_name = "N"
+    )]
+    count: usize,
+
+    /// 指定 benchmark 线程数。
+    #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
+    thread: Option<usize>,
+}
+
+#[derive(Debug, Args)]
 struct BenchOptions {
     /// 运行场数。
     #[arg(
@@ -529,6 +560,11 @@ impl ParsedCli {
                         min_wr: cmd.min_wr,
                     }
                 }
+            },
+            CliCommand::NamerPf(cmd) => ParsedCommand::NamerPf {
+                raw: cmd.input.read_or_stdin()?,
+                n: cmd.count.max(1),
+                threads: cmd.thread,
             },
             CliCommand::Icon(IconCommand { command }) => match command {
                 IconSubcommand::Show(cmd) => ParsedCommand::IconShow { names: cmd.names },

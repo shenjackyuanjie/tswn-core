@@ -1,249 +1,509 @@
-# md5.js `why_ns` 变量分析（2026-05-17）
+# `why_ns` 复盘：修复完成后的当前结论（2026-05-18）
 
-## 结论摘要
+这版文档直接基于**当前仓库代码**重写，不再沿用上一版“`tswn-core` 还没修到这里”的判断。
 
-`why_ns` 是 `fast-namerena/md5.js` 顶层的一个全局玩家构造计数器。它会在每次 `Plr.a1()` 构造玩家时递增，在战斗胜利输出时归零，并在运行期把召唤物加入战斗列表时做一次回退。
+## TL;DR
 
-最容易误判的一点是：`why_ns` 不是“只要非 0 就影响属性”。`md5.js` 中的 `C.JsInt.P(a, b)` 是整除，不是取余。因此当前代码的实际触发条件是：
+先说结论：
+
+1. **`md5.js` 里的 `why_ns` 机制本身没有变。**
+   它仍然是：
+   - `Plr.a1()` 构造时读取并 `+= 1`
+   - `Grp.aZ()` 首次把成员挂进 roster 时 `-= 1`
+   - 胜利输出时 reset 为 `0`
+   - `ProfileMain.dZ()` / `ProfileWinChance.dY()` 的预构造会先吃掉一轮 `a1()`
+
+2. **但检查当前 `tswn-core` 后，这次 profile / `namer-pf` 对齐并不是通过“在 Rust 里显式实现一个 `why_ns` 计数器”完成的。**
+   `crates/tswn_core/src/player/impl_ctor.rs` 当前仍然是：
+
+   ```rust
+   let mut rand = RC4::new(&team_bytes, 1);
+   rand.update(&name_bytes, 2);
+   ```
+
+   也就是说：**现在 Rust 里仍然没有显式的 `why_ns` / `constructor_slot` 建模。**
+
+3. **当前真正修掉的，是几处之前很容易被误判成 `why_ns` 的 JS 语义差异。**
+   这次对齐主要落在下面几块：
+
+   - `score` / `raw score` / `namer-pf` 的**计分语义**：按“目标队任一赢家”计胜，不是只看 `winner[0]`
+   - JS `ProfileMain` 的**输入形状**：单目标时是 `1 vs 3`，重复双名时会 collapse 成 `1 vs 1`
+   - JS `PlrEx.cA()` 是 **no-op**：`@!` TestEx 不应做同队 upgrade
+   - JS `init_PlrClone()` 的 `raw_name_base` 保持**普通构造底板**，不能直接沿用 owner 的变换后底板
+   - JS `SklSummon.v()` 重复施放会复用旧 summon，并重新跑 `bP()/bs()/cn()`
+   - `Iron` 在 merged `post_defend` 链里被击破时，状态必须**当场清掉**，不能拖到链路结束后一起清
+
+4. **所以当前更准确的判断是：`why_ns` 仍然是 md5.js 里的真实机制，也确实会在 profile 路径里碰到；但这次剩余 diff 的根因，已经被证明主要不是“Rust 还缺一个 why_ns 计数器”。**
+
+5. **如果以后又出现新的 profile 边角 case，再考虑显式实现 `why_ns`。**
+   但应该把它当成“边界兼容层”，而不是继续把所有 profile 分歧先归罪给它。
+
+---
+
+## 1. 仍然成立的 `md5.js` 侧结论
+
+这一部分和旧文档相比，核心判断没变，只是现在要更明确地说：
+
+> `why_ns` 是真的存在，也真的会被 profile 路径碰到；只是它不是这次最终修复的主战场。
+
+### 1.1 `why_ns` 的生命周期
+
+`md5.js` 里和 `why_ns` 直接相关的点仍然是：
+
+- 顶层定义：`md5.js`
+- `T.Plr.prototype.a1()`：读取当前值并递增
+- `T.Grp.prototype.aZ()`：首次挂进 roster 时减回去
+- `T.Engine.prototype.O()` / `bE()`：winner 输出时 reset
+- `V.ProfileMain.prototype.dZ()` / `L.ProfileWinChance.prototype.dY()`：profile 开打前先 `choose_boss()` 预构造
+
+### 1.2 `why_ns` 在 `Plr.a1()` 里怎么参与
+
+当前 `md5.js` 的逻辑仍然等价于：
 
 ```text
-abs(why_ns_before_ctor) >= 2048
+slot = why_ns
+why_ns += 1
+if abs(slot) >= 2048:
+    swap(player_rc4.state[0], player_rc4.state[1])
+rc4.mix(name)
 ```
 
-只有达到这个阈值时，`why_ns` 才会改变玩家个人 RC4 的初始排列，进而影响 `name_base`、技能顺序和属性。常规对战、`ProfileMain` 评分局、`!test!` benchmark 的单局玩家数量远小于 2048，所以在这些场景里 `why_ns` 通常只是计数，不会改变属性。
+也就是说：
 
-因此，当前 `!test!\n\n` / `!test!\n!\n\n` 分数不一致问题，不能简单归因于 `why_ns` 起始值不同。已有 probe 显示，ProfileMain 第一轮确实会因为预览目标而让真实对战玩家的构造序号后移，但这些序号仍远小于 2048，不会触发玩家 RC4 的交换分支。
+- `why_ns` **不是**“非 0 就生效”
+- 当前门控仍然是：
 
-换句话说，`why_ns` 能解释“为什么 benchmark 路径和普通 fight 路径的构造序号看起来不同”，但它不能解释常规 `!test!` 分数偏差。后续排查应优先确认 score 路径是否使用了 md5.js ProfileMain 的评分参数，例如 `$.vr = 6` / `WIN_RATE_EVAL_RQ = 6.0`，而不是把 `why_ns != 0` 当成属性差异根因。
+```text
+abs(slot_before_ctor) >= 2048
+```
 
-## 相关代码位置
+### 1.3 为什么 profile 确实会碰到 `why_ns`
 
-`md5.js` 中和 `why_ns` 直接相关的位置：
+因为：
 
-- 顶层定义：`fast-namerena/md5.js:669`
-- 胜利 / reset：`fast-namerena/md5.js:17421`、`fast-namerena/md5.js:17549`
-- 运行期加入成员时回退：`fast-namerena/md5.js:17712`
-- 玩家构造时读取并递增：`fast-namerena/md5.js:17961`、`fast-namerena/md5.js:17962`
-- 玩家构造时可能扰动 RC4：`fast-namerena/md5.js:17969`
-- `C.JsInt.P` 是整除：`fast-namerena/md5.js:9218`
+- `ProfileMain.dZ()` 会先 `choose_boss()` 预构造展示/计分用玩家
+- `ProfileWinChance.dY()` 也会做同类预构造
+- 这些预构造会走 `Plr.a1()`
+- 但它们**不会**立刻走 `Grp.aZ()` 退款
 
-`tswn-core` 当前相关位置：
+所以 profile 路径确实会改动第一场真实 fight 的构造起点。
 
-- 玩家构造与 `name_base`：`crates/tswn_core/src/player/impl_ctor.rs`
-- Test1/Test2/TestEx 的 `name_base` 变换：`crates/tswn_core/src/player/impl_ctor.rs`
-- runtime minion 构造入口：`Player::new_minion_and_init`
+### 1.4 但这次修复并没有在 Rust 里显式复刻它
 
-## 变量生命周期
+这是这版文档最重要的更新点。
 
-### 1. 初始化
+虽然 `md5.js` 有 `why_ns`，但当前 `tswn-core` 里：
 
-`why_ns` 在模块顶层初始化为 0：
+- 没有 `why_ns` 字段
+- 没有 `constructor_slot` 字段
+- 没有在 `RC4::new(team, 1)` 与 `update(name, 2)` 之间插任何 slot 扰动
+
+所以现在不能再写成：
+
+> “当前 tswn 的对齐修复 = 已经把 why_ns 实现进 Rust。”
+
+这不符合当前代码。
+
+---
+
+## 2. 当前代码真正修掉了什么
+
+如果把当前改动按“真正影响 profile / `namer-pf` 结果”的角度梳理，重点是下面 5 类。
+
+---
+
+### 2.1 `score` / `raw score` / `namer-pf` 的胜负统计语义修正了
+
+这次一个很关键的改动在：
+
+- `crates/tswn_core/src/bin/tswn_cli/bench.rs`
+- `crates/tswn_core/src/bin/tswn_cli/fight.rs`
+
+当前逻辑已经从：
+
+```rust
+winners.first().is_some_and(|winner| team0_targets.contains(winner))
+```
+
+改成：
+
+```rust
+winners.iter().any(|winner| target_team.contains(winner))
+```
+
+这意味着：
+
+> 只要目标队中有任一成员属于赢家集合，这一场就算目标队赢。
+
+这是更符合 JS / profile 语义的做法。
+
+#### 为什么它重要
+
+在多人组、多人同胜、召唤物/克隆也在 winner 集合里的场景里：
+
+- 只看 `winner[0]` 会把一些本应算胜的局错算成负
+- 症状会表现成“某一场翻转”，非常像 profile 内部构造序号差一位导致的结果偏移
+
+但现在代码已经说明：
+
+> 这类分歧的根因之一，其实是**计分语义**，不是 `why_ns`。
+
+#### 对应到 `namer-pf`
+
+当前还新增了：
+
+- `crates/tswn_core/src/bin/tswn_cli.rs`
+- `crates/tswn_core/src/bin/tswn_cli/args.rs`
+- `crates/tswn_core/src/bin/tswn_cli/bench.rs`
+
+里的 `namer-pf` 命令，直接按 plugin 的四项评分语义跑：
+
+- `pp`
+- `pd`
+- `qp`
+- `qd`
+
+并且支持每行一个组、组内 `+` 分隔的输入形式。
+
+---
+
+### 2.2 JS `ProfileMain` 的 score 输入形状已经明确对齐
+
+这部分在：
+
+- `crates/tswn_core/src/bin/tswn_cli/bench.rs`
+- `crates/tswn_core/src/bin/tswn_cli/fight.rs`
+
+的 `build_js_score_match_input()` 里。
+
+当前逻辑明确对齐了 JS 的两条关键规则：
+
+#### 单目标：`1 vs 3`
+
+单目标组时，输入会构造成：
+
+```text
+target
+profile_base@modifier
+
+profile_base+1@modifier
+profile_base+2@modifier
+```
+
+也就是：
+
+```text
+1 个目标 vs 3 个 profile 靶子
+```
+
+#### 重复双名：collapse 成 `1 vs 1`
+
+当目标组是：
+
+```text
+[name, name]
+```
+
+时，JS 会把它 collapse 成单目标语义。Rust 当前也已经显式复刻。
+
+#### 为什么这块也曾经像 `why_ns`
+
+因为 profile 的输入 shape 一旦错：
+
+- 每轮参与 fight 的人数会错
+- `PROFILE_START + round * profile_count` 的推进也会错
+- 最终会表现成 profile 某一场结果翻转
+
+这类症状表面上也很像“某个 constructor slot 偏了一点”，但当前代码表明：
+
+> 输入 shape 本身也是一类真实根因，而且现在已经被单测钉住了。
+
+---
+
+### 2.3 `PlrEx.cA()` 在 JS 是 no-op，`@!` TestEx 不应做同队 upgrade
+
+这部分当前修在：
+
+- `crates/tswn_core/src/player/impl_attr.rs`
+
+`upgrade()` 现在会对 `PlayerType::TestEx` 直接 return。
+
+这对应的是 `md5.js` 里：
+
+- `T.PlrEx.prototype.cA(a) { }`
+
+也就是：
+
+> JS 的 `@!` TestEx 玩家不会参与普通同队 upgrade 逻辑。
+
+#### 为什么它会和 `why_ns` 混淆
+
+因为 `upgrade()` 会改 `name_base` 的后半段，继而影响：
+
+- 属性
+- 技能等级
+- 后续战斗结果
+
+而这些又正好是很多人直觉上会先归因给 `why_ns` 的部分。
+
+但这次代码已经说明：
+
+> 至少有一部分过去看起来像“构造阶段随机底板偏了”的现象，实际是 TestEx 错误吃了同队 upgrade。
+
+---
+
+### 2.4 `init_PlrClone()` 的 `raw_name_base` 语义补对了
+
+这部分当前修在：
+
+- `crates/tswn_core/src/player/impl_ctor.rs`
+  - `Player::normal_raw_name_base()`
+- `crates/tswn_core/src/player/skill/act/clone.rs`
+
+当前 clone 逻辑会显式做：
+
+```rust
+cloned.raw_name_base = Player::normal_raw_name_base(Some(owner_clan_name.as_str()), owner_base_name.as_str());
+```
+
+这对应 JS 的 `init_PlrClone()` 语义：
+
+- 先跑一遍普通 `PlrClone` 构造
+- 再把 clone 的 `name_base` / 变换底板改成 owner 的那套
+- 但 `raw_name_base` 保留普通构造出来的原始底板
+
+#### 为什么它重要
+
+`raw_name_base` 会继续影响：
+
+- upgrade / merge 等后续逻辑
+- boost 判定
+- 某些技能等级与 proc 行为
+
+所以 clone 这一层如果错了，也会表现成“某一局 profile 特别像 constructor order 出了偏差”。
+
+但当前代码已经把它单独补齐了。
+
+---
+
+### 2.5 `SklSummon.v()` 的 reuse 语义补对了
+
+这部分当前修在：
+
+- `crates/tswn_core/src/player/skill/act/summon.rs`
+
+当前代码在 summon 再次施放、复用旧 summon 且该 summon 已死亡时，会：
+
+- `summoned.state = PlayerStateStore::default()`
+- 重新挂回 `MinionRuntimeState { owner, kind: Summon }`
+- 重新处理 share-damage skill / proc 队列
+- `init_values()`
+- `queue_revival(summoned_id)`
+
+这正对应 JS `T.SklSummon.v()` 的 reuse 分支：
 
 ```js
-let why_ns = 0;
+s.bP()
+s.bs()
+s.cn()
 ```
 
-它不是每个 Engine 的字段，而是 `md5.js` 模块级全局变量。
+Rust 里的注释也已经写明了：
 
-### 2. 玩家构造时递增
+> JS 首次构造之后，后续重复施放复用的是同一个死掉的 summon 对象，并重新跑 `bP()/bs()/cn()`。
 
-在 `T.Plr.prototype.a1()` 内，玩家个人 RC4 用 team 初始化后，代码会读取 `why_ns` 并递增：
+#### 为什么它会被误判成 `why_ns`
 
-```js
-q = why_ns;
-why_ns += 1;
-q = C.JsInt.P(Math.abs(q), 2048);
-q = Math.abs(q) / 2048;
-if (q > 0) {
-  q = rc4.c;
-  m = q[0];
-  q[0] = q[1];
-  q[1] = m;
-}
-rc4.dB(0, LangData.fZ(name), 2);
-```
+因为 summon reuse 同时具备两种“很像 why_ns”的特征：
 
-关键点：
+1. JS 这条路径**不新构造对象**
+2. 但它又会把旧对象重新挂回场上
 
-- `why_ns` 读取发生在 `rc4.bd(team, 1)` 之后。
-- 可能的 RC4 扰动发生在 `rc4.dB(name, 2)` 之前。
-- 所以如果真的触发，它会影响后续 name 参与初始化后生成的 `name_base` 和技能洗牌。
-- 但因为 `C.JsInt.P` 是整除，`why_ns = 1..2047` 时 `q` 会变成 0，不会触发交换。
+这和 `Grp.aZ()` 的“只退款、不重新构造”的生命周期非常像，所以很容易让人把结果偏差直接联想到 `why_ns`。
 
-### 3. 胜利时归零
+但当前代码表明：
 
-Engine 输出胜利 update 时会执行：
+> 这里真正需要补的是**对象复用后的 runtime 状态重置**，不是在 Rust 里平地加一个 `why_ns` 计数器。
 
-```js
-why_ns = 0;
-```
+---
 
-这意味着正常一场 fight 结束后，下一场 fight 的初始 `why_ns` 会回到 0。
+### 2.6 `Iron` 在 merged `post_defend` 链里要立即清状态
 
-### 4. 运行期加入成员时回退
+这部分当前修在：
 
-`T.Grp.prototype.aZ()` 把新成员加入 engine 的全局玩家列表时，如果该成员之前不在列表内，会执行：
+- `crates/tswn_core/src/player/impl_runtime.rs`
+- `crates/tswn_core/src/player/state.rs`
+- 相关状态定义：`crates/tswn_core/src/player/skill/act/iron.rs`
 
-```js
-why_ns -= 1;
-```
+当前 `post_defend` 已经明确按 JS 的共享 `y2` 链模型做：
 
-这主要影响 shadow / summon / zombie 这类运行期实体。它们构造时同样会让 `why_ns += 1`；随后 `aZ()` 再 `-= 1`，使全局计数不会因为运行期 minion 无限增长。
+- skill 和 state 统一 merge 到一条优先级链里
+- 某个 state 在 `run_one_post_defend(...)` 返回需要清除后，**立即清 tag**
+- 若该 tag 会改状态面板，就**立即 `update_states()`**
 
-这个回退不会改变已经构造好的 minion 本身。它只是在 minion 加入 world 后，把全局计数退回构造前的水平。
+而不是像旧逻辑那样：
 
-## 实际算法
+- 先把整条链跑完
+- 最后统一清理
 
-把 `md5.js` 的逻辑翻成伪代码，大致是：
+#### 为什么它会影响 profile 胜负
+
+`Iron` 被击破时：
+
+- 防御状态是否还“残留半拍”
+- 后续同一链上的其它 skill/state 是否看到它还存在
+
+都可能直接改变该次 damage resolve 的结果。
+
+所以它也会表现成：
+
+> “某一场 benchmark fight 的胜负翻转了。”
+
+这类现象和之前用户描述的 profile/namer-pf 差 1 的症状完全同型，因此也很容易被先怀疑成 `why_ns`。
+
+但当前代码已经说明：
+
+> 这里真正的根因是 `post_defend` 清理时机，而不是 `why_ns`。
+
+---
+
+## 3. 为什么这些问题之前会被看成 `why_ns`
+
+这是这次复盘里最值得记住的一点。
+
+`why_ns` 容易成为“兜底背锅位”，是因为它确实满足 3 个条件：
+
+1. 它只在 `md5.js` 里有，Rust 之前没显式实现
+2. 它确实和 profile 预构造、spawn/reuse 生命周期有关
+3. 它理论上又会影响 `name_base` 这种非常底层的随机底板
+
+所以一旦出现下面这些症状：
+
+- `profile` 某一轮翻转
+- `namer-pf` 总分差 1
+- clone / summon / TestEx / state clear 的边缘场景不对
+
+很自然就会先怀疑：
 
 ```text
-global why_ns = 0
-
-function construct_player(name, team):
-    rc4 = SuperRC4()
-    rc4.seed(team, round = 1)
-
-    slot = why_ns
-    why_ns += 1
-
-    gate = floor(abs(slot) / 2048)
-    gate = abs(gate) / 2048
-
-    if gate > 0:
-        swap(rc4.state[0], rc4.state[1])
-
-    rc4.mix(name, round = 2)
-    build name_base / skills / attrs from rc4
+是不是 why_ns 起点不对？
 ```
 
-由于 `gate > 0` 等价于 `abs(slot) >= 2048`，常见输入下不会进入 `swap` 分支。
-
-## 已观测到的构造序号
-
-对普通 raw 输入：
+但当前代码修完后，实际给出的答案更接近：
 
 ```text
-aaaaaa
-33554464@\u0002
-
-33554465@\u0002
-33554466@\u0002
+这些症状很多都发生在“构造 / 复用 / 计分 / 后处理”边界上；
+它们看起来像 why_ns，但真正缺的是更具体的 JS 语义。
 ```
 
-probe 到的构造序号是：
+换句话说：
 
-```text
-aaaaaa              q=0
-33554464@\u0002     q=1
-33554465@\u0002     q=2
-33554466@\u0002     q=3
-33554466?shadow     q=4
-33554466?shadow     q=4
-```
+> `why_ns` 是一个正确的怀疑方向，但不是一个足够具体的 root cause。
 
-注意：这些 `q=1..4` 仍然不会触发 RC4 交换，因为没有达到 2048。
+---
 
-对 `ProfileMain` 评分输入 `!test!\n\naaaaaa`，第一轮前会先为了展示目标构造一次 `aaaaaa`：
+## 4. 现在应该怎么理解 `why_ns`
 
-```text
-preview aaaaaa      q=0
-round1 aaaaaa       q=1
-round1 profile A    q=2
-round1 profile B    q=3
-round1 profile C    q=4
-```
+### 4.1 还要不要继续研究它？
 
-第一轮结束输出 winner 后 `why_ns = 0`，所以第二轮开始又会变成：
+要，但定位要变。
 
-```text
-round2 aaaaaa       q=0
-round2 profile A    q=1
-round2 profile B    q=2
-round2 profile C    q=3
-```
+当前更合理的定位是：
 
-这解释了为什么 `ProfileMain` 路径的 `why_ns` 序号确实和普通 raw 首轮不同，但也解释了为什么这通常不改变属性：序号没有达到 2048。
+> `why_ns` 是 md5.js 里一个真实存在、需要理解的 profile/runtime 生命周期机制；
+> 但在当前仓库已经补完的这些分歧里，它更像“帮助解释为什么当初会怀疑到这里”，而不是“这次最终修复直接落下去的代码点”。
 
-## 对属性和 TestEx/Test1 的影响
+### 4.2 当前还不能说“Rust 已实现 why_ns”
 
-如果 `why_ns` 触发了 RC4 交换，它发生在 `name_base` 生成之前。因此它会间接影响：
+因为从当前代码看，Rust 里仍然没有：
 
-- `name_base`
-- `raw_name_base`
-- 技能顺序 / 技能等级来源
-- 八围属性
-- 依赖 `name_base` 的技能参数
+- `why_ns`
+- `constructor_slot`
+- `profile preview constructor offset`
+- `aZ()` 退款计数器
 
-对 `@!` / `@\u0002` / `@\u0003` 这类特殊玩家也一样：先生成基础 `name_base`，再做 TestEx/Test1/Test2 的特殊变换。因此只有当 `why_ns` 已经触发 RC4 交换时，特殊玩家最终属性才会跟着变化。
+所以文档里不能再写成：
 
-在当前 benchmark 的常规规模下，`why_ns` 没达到阈值，所以它不是 `@!` 或 `@\u0002` 属性不一致的主要嫌疑点。已经单独验证过：
+> “现在 `tswn-core` 已经完整实现了 `why_ns`。”
 
-- `33554431@\u0002` 的 Test1 属性与 md5.js 对齐。
-- `33554431@!` 的 TestEx 属性与 md5.js 对齐。
+这和当前代码不符。
 
-### 与 `textEx` / `type` 的关系
+### 4.3 当前更准确的说法
 
-`textEx` 更接近“玩家文本被解析出来后属于哪一种特殊类型”的结果，不是 `why_ns` 本身控制的状态。两者的先后关系可以理解为：
+当前更准确的说法应该是：
 
-```text
-raw name/team/weapon text
-    -> 解析出普通玩家、TestEx、Test1、Test2 等类型
-    -> 用 team 初始化玩家个人 RC4
-    -> 读取 why_ns，并在达到 2048 阈值时扰动 RC4
-    -> 用 name 混入 RC4，生成基础 name_base
-    -> 按 textEx / Test1 / Test2 规则改写 name_base
-    -> 由最终 name_base 派生属性、技能和部分技能参数
-```
+- `md5.js` 的 `why_ns` 机制仍然存在
+- `ProfileMain` / `ProfileWinChance` 仍然会在预构造阶段碰到它
+- 但当前 `tswn-core` 之所以已经能把这批 profile / `namer-pf` 分歧修掉，主要靠的是：
+  - score 输入形状对齐
+  - 计分语义对齐
+  - TestEx upgrade 对齐
+  - clone 原始底板对齐
+  - summon reuse 生命周期对齐
+  - post_defend 状态清理时机对齐
 
-所以如果 `player.textEx`、特殊 team 标记或 TestEx/Test1 分支本身和 md5.js 对不上，属性当然会错；但那是类型解析或特殊变换的问题，不是 `why_ns` 的问题。`why_ns` 只在 `name_base` 生成前提供一个极低频的 RC4 扰动入口。
+### 4.4 什么时候才需要真的在 Rust 里补它？
 
-## 对 minion 的影响
+只有当后面还剩下这种 case 时，才应该重新把它提到最高优先级：
 
-shadow / summon / zombie 的构造有两层容易混在一起的问题：
+- profile 预构造 + 真实 fight 起点偏移仍能稳定复现 diff
+- 上述修复都已经对齐，但某些局仍只在“constructor lifecycle”层面解释得通
+- 明确出现和 `ProfileMain.dZ()` / `Grp.aZ()` / winner reset 有关、而无法被现有 score/clone/summon/state 逻辑解释的边界场景
 
-1. 它们会走 `Plr.a1()`，所以也会读取并递增 `why_ns`。
-2. 它们不是 roster 里的普通 `@!` / `@\u0002` 玩家，不应该因为 owner 的 team 是 `!` 或 `\u0002` 就套用 TestEx/Test1 的 `name_base` 变换。
+如果真的要补，正确方向仍然是：
 
-第二点是 tswn-core 已经修过的 minion 构造问题：`Player::new_minion_and_init()` 强制 minion 走普通类型，避免 shadow/summon/zombie 被误当成 TestEx/Test1。
+- 不要复用 `player_id_counter`
+- 要同时建模：
+  - `ProfileMain.dZ()` / `ProfileWinChance.dY()` 的预构造
+  - `Grp.aZ()` 的 fresh-spawn / re-add 退款
+  - winner reset
+  - `PreparedRunner` 缓存上下文
 
-第一点则是 `why_ns` 问题。按 md5.js 的现有代码，minion 构造序号通常等于初始 roster 的构造数量，例如 4 人局里 minion 常见 `q=4`。但因为 `q=4` 不到 2048，所以仍然不会触发 RC4 交换。`Grp.aZ()` 的 `why_ns -= 1` 主要是防止长局里 minion 反复生成导致全局计数持续增长。
+但这是**以后可能需要的兼容层**，不是这次已经落地的修复点。
 
-## 对 benchmark 的影响
+---
 
-`why_ns` 会让 ProfileMain 与普通 raw 路径在“构造序号”上出现差异，特别是：
+## 5. 当前仓库中最值得看的文件
 
-- ProfileMain 会先调用 `dZ()` 构造展示用目标。
-- 第一轮评分局的真实玩家构造序号会因此后移。
-- 每场战斗胜利输出后又会 reset 到 0。
+如果要理解“现在到底是怎么修好的”，推荐按这个顺序读：
 
-但在当前 `!test!` benchmark 的规模里，这些序号差异没有达到 2048，不会改变属性。因此：
+1. `crates/tswn_core/src/bin/tswn_cli/bench.rs`
+   - `build_js_score_match_input()`
+   - `run_bench_score_range()`
+   - `run_bench_score_worker()`
+   - `run_namer_pf()`
+2. `crates/tswn_core/src/bin/tswn_cli/fight.rs`
+   - `build_js_score_match_input()`
+   - `run_raw_score_range()`
+   - `run_raw_score_worker()`
+3. `crates/tswn_core/src/player/impl_attr.rs`
+   - `upgrade()` 里 `TestEx` 的 early return
+4. `crates/tswn_core/src/player/skill/act/clone.rs`
+   - `raw_name_base = Player::normal_raw_name_base(...)`
+5. `crates/tswn_core/src/player/impl_ctor.rs`
+   - `normal_raw_name_base()`
+   - 顺手确认：当前依然没有显式 `why_ns` 注入
+6. `crates/tswn_core/src/player/skill/act/summon.rs`
+   - reuse dead summon 的 `queue_revival()` 分支
+7. `crates/tswn_core/src/player/impl_runtime.rs`
+   - merged `post_defend` 链里的即时 clear
+8. `crates/tswn_core/src/player/state.rs`
+   - `on_post_defend_states()` 改成返回待清 tag 列表
+9. `crates/tswn_core/src/player/skill/act/iron.rs`
+   - `IronState::on_post_defend()`
 
-- `why_ns` 可以解释“构造序号为什么不同”。
-- `why_ns` 不能解释“为什么常规 `!test!` score 和 md5.js ProfileMain score 不同”。
-- 对 score benchmark 来说，更关键的是复刻 ProfileMain 的 score 构造语义，包括目标玩家预览、profile 种子生成、以及评分参数 `WIN_RATE_EVAL_RQ = 6.0`。
+---
 
-这里要特别区分两种现象：
+## 6. 这版文档替代旧版后的新结论
 
-```text
-现象 A：ProfileMain 第一轮真实玩家 q 从 1 开始
-原因：预览目标先构造了一次，why_ns 被加到 1
-影响：q < 2048，不改属性
+把旧版一句话浓缩成最新版，可以写成：
 
-现象 B：score benchmark 中同名玩家属性和普通 raw fight 不同
-原因：更可能是 eval_rq / ProfileMain score 参数不同
-影响：会真实改变属性，进而改变胜负和总分
-```
+> `why_ns` 在 md5.js/profile 里当然是真实存在的，但当前 tswn/profile/namer-pf 对齐的关键，不是“Rust 终于也有了 why_ns”，而是把几处原先看起来像 why_ns 的 JS 生命周期语义逐个补齐了。
 
-## 对 tswn-core 的实现建议
+如果只想记最短版，就记下面这 5 句：
 
-如果只是修当前常规 `!test!` benchmark，不应该把 `why_ns != 0` 简化成“交换 RC4”。这是错误的，会把绝大多数玩家属性改坏。
-
-如果要完整兼容 md5.js 的边界行为，建议这样建模：
-
-1. 引入一个 Engine / Runner 级别的构造计数器，避免全局 static，保证并行 benchmark 线程安全。
-2. 玩家构造接口接收 `constructor_slot`，按 md5.js 的阈值逻辑判断是否交换玩家个人 RC4 的 `state[0]` / `state[1]`。
-3. 胜利输出时把计数器 reset 为 0。
-4. runtime minion 构造后，在加入 world 时回退一次计数器，复刻 `Grp.aZ()`。
-5. prepared runner 缓存如果要覆盖 `why_ns >= 2048` 的边界场景，需要把构造序号纳入 cache key，或者只缓存不受 `why_ns` 影响的场景。
-
-当前更现实的判断是：在 namerena 常规人数限制和 `ProfileMain` 评分逻辑下，`why_ns` 基本是一个兼容边界行为的计数器，而不是这次分数偏差的根因。
+1. `why_ns` 仍然是 md5.js 真机制，profile 也确实会碰到它。  
+2. 当前 Rust 里**仍没有显式 `why_ns` 实现**。  
+3. 这次真正修好的，是 score 计分、TestEx upgrade、clone 原始底板、summon reuse、Iron 清理时机。  
+4. 这些问题之所以难排，是因为它们全都长得很像 `why_ns`。  
+5. 所以现在别再把“profile 还差一点”自动翻译成“肯定是 why_ns 没实现”。

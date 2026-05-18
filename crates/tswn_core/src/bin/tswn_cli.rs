@@ -7,6 +7,7 @@
 //! - `bench win-rate`: 显式双队胜率 benchmark
 //! - `bench group-win-rate`: 目标组对多个对手组的胜率 benchmark
 //! - `bench batch-rate` (别名 `bench cqp`): 批量选手对靶子列表的胜率 benchmark
+//! - `namer-pf`: 与 ica-plugin `/namer-pf` 相同的四项评分
 //! - `icon show|b64|save`: 图标预览与导出
 //!
 //! 示例：
@@ -44,7 +45,10 @@ fn main() {
 
     if !matches!(
         cli.command,
-        ParsedCommand::Fight { out_raw: true, .. } | ParsedCommand::FightRaw { .. } | ParsedCommand::FightDiff { .. }
+        ParsedCommand::Fight { out_raw: true, .. }
+            | ParsedCommand::FightRaw { .. }
+            | ParsedCommand::FightDiff { .. }
+            | ParsedCommand::NamerPf { .. }
     ) {
         print_banner();
     }
@@ -129,6 +133,7 @@ fn main() {
                 min_wr,
             );
         }
+        ParsedCommand::NamerPf { raw, n, threads } => bench::run_namer_pf(&raw, n, threads),
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
         ParsedCommand::IconB64 { names } => {
             if let Err(err) = icon::print_icon_b64(&names) {

@@ -77,8 +77,14 @@ impl SkillTrait for SummonSkill {
             && !summoned.alive()
         {
             // JS SklSummon.v(): after the first creation, recasts reuse the same dead summon
-            // object and only rerun bP()/bs()/cn(). That means action boosted flags persist
-            // across recasts, so the second cast boosts the next still-unboosted action.
+            // object and rerun bP()/bs()/cn(). bP() clears runtime states/proc queues
+            // without resetting skill boost flags; Rust stores the owner linkage as a
+            // runtime state, so restore that marker after clearing the state store.
+            summoned.state = PlayerStateStore::default();
+            summoned.set_state(MinionRuntimeState {
+                owner: Some(args.0),
+                kind: MinionKind::Summon,
+            });
             ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
             summoned.skills.boost_last();
             summoned.skills.update_proc();

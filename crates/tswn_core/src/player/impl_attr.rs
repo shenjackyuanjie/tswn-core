@@ -327,6 +327,12 @@ impl Player {
 
     /// 同队升级
     pub fn upgrade(&mut self, other: &Self) {
+        // JS `PlrEx.cA()` is a no-op. `@!` TestEx players keep their own
+        // transformed name base and do not receive same-team upgrade.
+        if self.player_type == PlayerType::TestEx {
+            return;
+        }
+
         for i in 7..128 {
             if other.raw_name_base[i - 1] == self.raw_name_base[i] && other.raw_name_base[i] > self.name_base[i] {
                 self.name_base[i] = other.raw_name_base[i];
