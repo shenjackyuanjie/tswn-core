@@ -64,7 +64,6 @@
 
 use crate::player::icon::{IconResult, icon_from_raw_name};
 
-#[path = "sprite_data.rs"]
 mod sprite_data;
 use sprite_data::{BORDERS_DARK, BORDERS_OPACITY, SHAPES};
 
