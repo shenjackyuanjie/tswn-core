@@ -44,7 +44,7 @@ impl SkillTrait for ThunderSkill {
         let count = 3 + args.1.r3() as usize;
         for _ in 0..count {
             // JS: if (n.fx > p && !n.A && h.fx > p)
-            // caster must be alive+not frozen, target must be alive
+            // 施法者必须处于 active（存活且未冻结），目标必须仍然存活
             let caster_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
             let target_alive = args.3.get_player(&target_id).map(|x| x.alive()).unwrap_or(false);
             if !caster_active || !target_alive {
@@ -52,7 +52,7 @@ impl SkillTrait for ThunderSkill {
             }
             args.2.add(RunUpdate::new_newline());
             // JS: if (h.fx > 0 && !h.A && T.dodge(...))
-            // target must be active (alive+not frozen) for dodge to trigger
+            // 只有目标处于 active（存活且未冻结）时，才会触发闪避判定
             let target_active = args.3.get_player(&target_id).map(|x| x.active()).unwrap_or(false);
             if target_active {
                 let target_dodge = args

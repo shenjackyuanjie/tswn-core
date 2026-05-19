@@ -2,7 +2,7 @@ use pyo3::{PyResult, exceptions::PyValueError, pyclass, pymethods};
 
 use tswn_core::rc4::{RC4, VAL_LEN};
 
-/// Python Wrapper for RC4
+/// RC4 的 Python 封装
 ///
 /// 很多麻烦事都是从这里来的
 #[pyclass]

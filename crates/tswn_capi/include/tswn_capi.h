@@ -94,7 +94,7 @@ typedef struct tswn_runner_t tswn_runner_t;
 typedef struct tswn_prepared_runner_t tswn_prepared_runner_t;
 typedef struct tswn_updates_t tswn_updates_t;
 
-/* ABI / version / error */
+/* ABI / 版本 / 错误 */
 
 /* 返回当前 C-API ABI 版本号。 */
 uint32_t tswn_capi_abi_version(void);
@@ -129,7 +129,7 @@ void tswn_prepared_runner_free(tswn_prepared_runner_t* ptr);
 /* 释放 RunUpdates 句柄。 */
 void tswn_updates_free(tswn_updates_t* ptr);
 
-/* Runner / PreparedRunner lifecycle */
+/* Runner / PreparedRunner 生命周期 */
 
 /* 从名竞原始输入构造 Runner，使用普通对局默认 eval_rq。 */
 tswn_status_t tswn_runner_new_from_raw(const char* raw_text_utf8, tswn_runner_t** out_runner);
@@ -146,7 +146,7 @@ tswn_status_t tswn_prepared_runner_new_from_raw_with_eval_rq(const char* raw_tex
 /* 通过 PreparedRunner 和可选 seed 构造 Runner。传入 NULL 表示不带 seed。 */
 tswn_status_t tswn_runner_new_from_prepared(const tswn_prepared_runner_t* prepared, const char* seed_utf8, tswn_runner_t** out_runner);
 
-/* Runner execution / state */
+/* Runner 执行 / 状态 */
 
 /* 返回当前是否已经分出胜负。 */
 uint8_t tswn_runner_have_winner(const tswn_runner_t* runner);
@@ -184,7 +184,7 @@ tswn_status_t tswn_runner_all_player_ids_copy(const tswn_runner_t* runner, uint6
 /* 获取指定玩家的只读快照。 */
 tswn_status_t tswn_runner_player_snapshot(const tswn_runner_t* runner, uint64_t player_id, tswn_player_snapshot_t* out_snapshot);
 
-/* RunUpdates access */
+/* RunUpdates 访问 */
 
 /* 返回更新帧数量。 */
 size_t tswn_updates_len(const tswn_updates_t* updates);
@@ -201,7 +201,7 @@ tswn_str_t tswn_updates_message(const tswn_updates_t* updates, size_t index);
 /* 返回更新帧的占位符展开结果。结果需用 `tswn_str_free` 释放。 */
 tswn_str_t tswn_updates_message_rendered(const tswn_updates_t* updates, size_t index);
 
-/* High-level win-rate helpers */
+/* 高层胜率辅助接口 */
 
 /*
  * 按默认 win-rate 语义计算第一组对其余组的胜率统计。
@@ -260,7 +260,7 @@ tswn_status_t tswn_prepared_win_rate_with_eval_rq(
     tswn_win_rate_result_t* out_result
 );
 
-/* Icon helpers */
+/* 图标辅助接口 */
 
 /* 将名字渲染为 16x16 RGBA 原始像素。结果需用 `tswn_bytes_free` 释放。 */
 tswn_status_t tswn_name_to_icon_rgba(const char* name_utf8, tswn_bytes_t* out_bytes);

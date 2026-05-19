@@ -169,7 +169,7 @@ impl Player {
         } else {
             self.attr = attr;
 
-            // Boss appendAttr: 在基础八围之上加成
+            // Boss 的 appendAttr：在基础八围之上叠加额外属性
             if self.player_type == PlayerType::Boss {
                 let bonus = boss_append_attr(&self.name);
                 for (a, b) in self.attr.iter_mut().zip(bonus.iter()) {
@@ -342,7 +342,7 @@ impl Player {
     pub fn init_values(&mut self) {
         self.update_states();
         self.status.hp = self.status.max_hp;
-        // Dart: mp = itl ~/ 2
+        // 对齐 Dart：mp = itl ~/ 2
         self.status.magic_point = self.status.wisdom >> 1;
     }
 

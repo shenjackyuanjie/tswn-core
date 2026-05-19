@@ -426,11 +426,11 @@ fn create_skill_from_registry(id: u8) -> Box<dyn SkillTrait> {
         .unwrap_or_else(none::NoneSkill::box_new)
 }
 
-/// SkillArgs:
-/// PlrId: player handle（稳定 ID，不是内存指针）
-/// &'d mut RC4: random number generator
-/// &'d mut RunUpdates: updates to be applied
-/// &'d `Arc<Storage>`: game storage
+/// SkillArgs 参数说明：
+/// - `PlrId`：玩家句柄（稳定 ID，不是内存指针）
+/// - `&'d mut RC4`：随机数生成器
+/// - `&'d mut RunUpdates`：待写入的更新帧集合
+/// - `&'d Arc<Storage>`：对局存储
 pub type SkillArgs<'d> = (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Storage>);
 
 /// 技能注册的流程类型
@@ -851,9 +851,9 @@ impl Skill {
 
     pub fn get_target(&self) -> Option<PlrId> { self.target }
 
-    /// 如果没 boost, 那就 boost 一下
-    /// true: boost 成功
-    /// false: 已经 boost 过了
+    /// 如果还没 boost，就执行一次 boost。
+    /// 返回 `true` 表示 boost 成功。
+    /// 返回 `false` 表示此前已经 boost 过。
     pub fn boost_if_not(&mut self) -> bool {
         if self.boosted {
             false
