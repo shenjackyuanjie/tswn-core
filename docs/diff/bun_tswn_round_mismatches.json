@@ -1547,21 +1547,9 @@
     "bun_reported_rate": "62.82",
     "tswn_reported_rate": "62.80",
     "bun_exact_wins": 6282,
-    "tswn_exact_wins": 6281,
-    "mismatch_rounds": [
-      168,
-      389,
-      3843,
-      5234,
-      8228
-    ],
-    "mismatch_seeds": [
-      "33554598",
-      "33554819",
-      "33558273",
-      "33559664",
-      "33562658"
-    ],
+    "tswn_exact_wins": 6282,
+    "mismatch_rounds": [],
+    "mismatch_seeds": [],
     "buckets": [
       {
         "start_round": 1,
@@ -1572,10 +1560,7 @@
         "tswn_end_wins": 630,
         "diff_before": 0,
         "diff_after": 0,
-        "mismatch_rounds": [
-          168,
-          389
-        ]
+        "mismatch_rounds": []
       },
       {
         "start_round": 1001,
@@ -1605,22 +1590,20 @@
         "bun_start_wins": 1871,
         "bun_end_wins": 2503,
         "tswn_start_wins": 1871,
-        "tswn_end_wins": 2504,
+        "tswn_end_wins": 2503,
         "diff_before": 0,
-        "diff_after": 1,
-        "mismatch_rounds": [
-          3843
-        ]
+        "diff_after": 0,
+        "mismatch_rounds": []
       },
       {
         "start_round": 4001,
         "end_round": 5000,
         "bun_start_wins": 2503,
         "bun_end_wins": 3140,
-        "tswn_start_wins": 2504,
-        "tswn_end_wins": 3141,
-        "diff_before": 1,
-        "diff_after": 1,
+        "tswn_start_wins": 2503,
+        "tswn_end_wins": 3140,
+        "diff_before": 0,
+        "diff_after": 0,
         "mismatch_rounds": []
       },
       {
@@ -1628,13 +1611,11 @@
         "end_round": 6000,
         "bun_start_wins": 3140,
         "bun_end_wins": 3746,
-        "tswn_start_wins": 3141,
+        "tswn_start_wins": 3140,
         "tswn_end_wins": 3746,
-        "diff_before": 1,
+        "diff_before": 0,
         "diff_after": 0,
-        "mismatch_rounds": [
-          5234
-        ]
+        "mismatch_rounds": []
       },
       {
         "start_round": 6001,
@@ -1664,22 +1645,20 @@
         "bun_start_wins": 4989,
         "bun_end_wins": 5630,
         "tswn_start_wins": 4989,
-        "tswn_end_wins": 5629,
+        "tswn_end_wins": 5630,
         "diff_before": 0,
-        "diff_after": -1,
-        "mismatch_rounds": [
-          8228
-        ]
+        "diff_after": 0,
+        "mismatch_rounds": []
       },
       {
         "start_round": 9001,
         "end_round": 10000,
         "bun_start_wins": 5630,
         "bun_end_wins": 6282,
-        "tswn_start_wins": 5629,
-        "tswn_end_wins": 6281,
-        "diff_before": -1,
-        "diff_after": -1,
+        "tswn_start_wins": 5630,
+        "tswn_end_wins": 6282,
+        "diff_before": 0,
+        "diff_after": 0,
         "mismatch_rounds": []
       }
     ]
@@ -1696,21 +1675,9 @@
     "bun_reported_rate": "45.63",
     "tswn_reported_rate": "45.62",
     "bun_exact_wins": 4563,
-    "tswn_exact_wins": 4562,
-    "mismatch_rounds": [
-      1374,
-      6016,
-      7280,
-      7445,
-      8603
-    ],
-    "mismatch_seeds": [
-      "33555804",
-      "33560446",
-      "33561710",
-      "33561875",
-      "33563033"
-    ],
+    "tswn_exact_wins": 4563,
+    "mismatch_rounds": [],
+    "mismatch_seeds": [],
     "buckets": [
       {
         "start_round": 1,
@@ -1729,22 +1696,20 @@
         "bun_start_wins": 434,
         "bun_end_wins": 897,
         "tswn_start_wins": 434,
-        "tswn_end_wins": 898,
+        "tswn_end_wins": 897,
         "diff_before": 0,
-        "diff_after": 1,
-        "mismatch_rounds": [
-          1374
-        ]
+        "diff_after": 0,
+        "mismatch_rounds": []
       },
       {
         "start_round": 2001,
         "end_round": 3000,
         "bun_start_wins": 897,
         "bun_end_wins": 1379,
-        "tswn_start_wins": 898,
-        "tswn_end_wins": 1380,
-        "diff_before": 1,
-        "diff_after": 1,
+        "tswn_start_wins": 897,
+        "tswn_end_wins": 1379,
+        "diff_before": 0,
+        "diff_after": 0,
         "mismatch_rounds": []
       },
       {
@@ -1752,10 +1717,10 @@
         "end_round": 4000,
         "bun_start_wins": 1379,
         "bun_end_wins": 1820,
-        "tswn_start_wins": 1380,
-        "tswn_end_wins": 1821,
-        "diff_before": 1,
-        "diff_after": 1,
+        "tswn_start_wins": 1379,
+        "tswn_end_wins": 1820,
+        "diff_before": 0,
+        "diff_after": 0,
         "mismatch_rounds": []
       },
       {
@@ -1763,10 +1728,10 @@
         "end_round": 5000,
         "bun_start_wins": 1820,
         "bun_end_wins": 2278,
-        "tswn_start_wins": 1821,
-        "tswn_end_wins": 2279,
-        "diff_before": 1,
-        "diff_after": 1,
+        "tswn_start_wins": 1820,
+        "tswn_end_wins": 2278,
+        "diff_before": 0,
+        "diff_after": 0,
         "mismatch_rounds": []
       },
       {
@@ -1774,10 +1739,10 @@
         "end_round": 6000,
         "bun_start_wins": 2278,
         "bun_end_wins": 2742,
-        "tswn_start_wins": 2279,
-        "tswn_end_wins": 2743,
-        "diff_before": 1,
-        "diff_after": 1,
+        "tswn_start_wins": 2278,
+        "tswn_end_wins": 2742,
+        "diff_before": 0,
+        "diff_after": 0,
         "mismatch_rounds": []
       },
       {
@@ -1785,13 +1750,11 @@
         "end_round": 7000,
         "bun_start_wins": 2742,
         "bun_end_wins": 3202,
-        "tswn_start_wins": 2743,
+        "tswn_start_wins": 2742,
         "tswn_end_wins": 3202,
-        "diff_before": 1,
+        "diff_before": 0,
         "diff_after": 0,
-        "mismatch_rounds": [
-          6016
-        ]
+        "mismatch_rounds": []
       },
       {
         "start_round": 7001,
@@ -1802,10 +1765,7 @@
         "tswn_end_wins": 3659,
         "diff_before": 0,
         "diff_after": 0,
-        "mismatch_rounds": [
-          7280,
-          7445
-        ]
+        "mismatch_rounds": []
       },
       {
         "start_round": 8001,
@@ -1813,22 +1773,20 @@
         "bun_start_wins": 3659,
         "bun_end_wins": 4122,
         "tswn_start_wins": 3659,
-        "tswn_end_wins": 4121,
+        "tswn_end_wins": 4122,
         "diff_before": 0,
-        "diff_after": -1,
-        "mismatch_rounds": [
-          8603
-        ]
+        "diff_after": 0,
+        "mismatch_rounds": []
       },
       {
         "start_round": 9001,
         "end_round": 10000,
         "bun_start_wins": 4122,
         "bun_end_wins": 4563,
-        "tswn_start_wins": 4121,
-        "tswn_end_wins": 4562,
-        "diff_before": -1,
-        "diff_after": -1,
+        "tswn_start_wins": 4122,
+        "tswn_end_wins": 4563,
+        "diff_before": 0,
+        "diff_after": 0,
         "mismatch_rounds": []
       }
     ]

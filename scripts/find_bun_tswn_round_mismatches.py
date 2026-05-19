@@ -17,7 +17,7 @@ from typing import Any
 import find_bun_tswn_reply_mismatches as base
 
 
-PROFILE_START = 33_554_31
+PROFILE_START = 33_554_431
 DEFAULT_SKIP_ROW_ID = "Jm0MGgK4HfUAAQ4TRaxmg2ne69wB"
 
 
@@ -177,8 +177,13 @@ def build_bun_profile_input(group1: str, group2: str) -> str:
 
 
 def cleanup_trace_temp_modules(md5_path: Path) -> None:
-    for temp_module in md5_path.parent.glob(".tswn-md5-trace-*.js"):
-        temp_module.unlink(missing_ok=True)
+    for pattern in (".tswn-md5-trace-*.js", "tswn-md5-trace-*.js"):
+        temp_modules = md5_path.parent.glob(pattern)
+        for temp_module in temp_modules:
+            try:
+                temp_module.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def run_bun_profile_trace(

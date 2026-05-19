@@ -104,7 +104,7 @@ function createTempModule(md5Path) {
     const md5Dir = path.dirname(resolvedMd5Path);
     const tempModulePath = path.resolve(
         md5Dir,
-        `.tswn-md5-trace-${process.pid}-${Date.now()}.js`,
+        `tswn-md5-trace-${process.pid}-${Date.now()}.js`,
     );
     fs.writeFileSync(tempModulePath, patched, "utf8");
     currentTempModulePath = tempModulePath;

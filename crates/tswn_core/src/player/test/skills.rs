@@ -828,9 +828,7 @@ fn iron_break_refreshes_attract_immediately() {
     }
 
     let owner_after = storage.get_player(&owner_id).unwrap();
-    let iron = owner_after.get_state::<crate::player::skill::act::iron::IronState>().unwrap();
-    assert_eq!(iron.protect, 0);
-    assert_eq!(iron.step, 0);
+    assert!(owner_after.get_state::<crate::player::skill::act::iron::IronState>().is_none());
     assert_eq!(owner_after.get_status().attract, 32768.0);
 }
 
