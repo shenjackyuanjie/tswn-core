@@ -197,3 +197,9 @@ pub struct WinRateResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timing: Option<WinRateTiming>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GroupWinRateResult {
+    pub opponent: String,
+    pub result: WinRateResult,
+}

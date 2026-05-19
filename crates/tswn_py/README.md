@@ -20,15 +20,20 @@ pip install crates/tswn_py/dist/tswn_py-*.whl
 import tswn_py
 
 # 版本查询
-print(tswn_py.core_version_str())
+print(tswn_py.wrapper_version_str(), tswn_py.core_version_str())
 
 # 图标渲染
 b64 = tswn_py.name_to_png_base64("某个玩家名")
 
 # 创建对局
-runner = tswn_py.Runner.new_from_namerena_raw(raw_input, eval_rq=0.0)
+runner = tswn_py.Runner.new_from_namerena_raw(raw_input)
 runner.run_to_completion()
-winner = runner.winner()
+winner = runner.world_state.winner
+
+# PreparedRunner 复用胜率
+groups, _ = tswn_py.Runner.split_namerena_into_groups(raw_input)
+prepared = tswn_py.Runner.prepare_groups(groups)
+rate = prepared.win_rate(1000)
 ```
 
 ## 主要 API
@@ -44,13 +49,14 @@ winner = runner.winner()
 | `name_to_icon_rgba(name)` | 名称 → 16×16 RGBA |
 | `win_rate(raw, n, eval_rq, thread)` | 胜率统计 |
 | `group_win_rate(target, against, n, eval_rq, thread)` | 分组胜率 |
+| `prepared_win_rate(prepared, n, eval_rq, thread)` | 基于 PreparedRunner 的胜率统计 |
 
 ### 类
 
 | 类 | 说明 |
 |----|------|
 | `Runner` | 对战运行器，支持逐步推进或一次跑完 |
-| `PreparedRunner` | 预处理后的复用模板 |
+| `PreparedRunner` | 预处理后的复用模板，支持 `win_rate(...)` |
 | `RunUpdates` | 回合更新容器 |
 | `Storage` | 玩家数据存储 |
 | `WorldState` | 世界状态 |

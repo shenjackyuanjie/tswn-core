@@ -6,7 +6,7 @@
 pub mod wrapper;
 
 use pyo3::{
-    Bound, PyResult,
+    Bound, PyRef, PyResult,
     exceptions::PyValueError,
     pyfunction, pymodule,
     types::{PyModule, PyModuleMethods},
@@ -23,7 +23,7 @@ fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     }
 }
 
-fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> PyResult<f64> {
+pub(crate) fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> PyResult<f64> {
     let summary =
         tswn_core::win_rate::prepared_win_rate(prepared, n, eval_rq, thread).map_err(wrapper::error::PyRunnerError::new)?;
     Ok(summary.win_rate_percent())
@@ -78,6 +78,13 @@ fn group_win_rate(
     Ok(results)
 }
 
+/// 基于 PreparedRunner 以 CLI 默认语义计算第一组对其余组的胜率（百分比）
+#[pyfunction(signature = (prepared, n, eval_rq=None, thread=0))]
+fn prepared_win_rate(prepared: PyRef<'_, wrapper::PyPreparedRunner>, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
+    let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
+    run_prepared_win_rate(&prepared.inner, n, eval_rq, thread)
+}
+
 /// tswn-py
 #[pymodule]
 #[pyo3(name = "tswn_py")]
@@ -91,6 +98,7 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(name_to_png_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(win_rate, m)?)?;
     m.add_function(wrap_pyfunction!(group_win_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(prepared_win_rate, m)?)?;
     m.add_class::<wrapper::PyRunner>()?;
     m.add_class::<wrapper::PyPreparedRunner>()?;
     m.add_class::<wrapper::PyWorldState>()?;

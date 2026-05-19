@@ -54,7 +54,7 @@ typedef struct tswn_player_snapshot_t {
     uint64_t ptr;
     int32_t hp;
     int32_t max_hp;
-    int32_t mp;
+    int32_t magic_point;
     int32_t move_point;
     int32_t attack;
     int32_t defense;
@@ -99,8 +99,11 @@ typedef struct tswn_updates_t tswn_updates_t;
 /* 返回当前 C-API ABI 版本号。 */
 uint32_t tswn_capi_abi_version(void);
 
+/* 返回 `tswn_capi` 包装层版本字符串。结果需用 `tswn_str_free` 释放。 */
+tswn_str_t tswn_capi_version(void);
+
 /* 返回 `tswn_core` 版本字符串。结果需用 `tswn_str_free` 释放。 */
-tswn_str_t tswn_version(void);
+tswn_str_t tswn_core_version(void);
 
 /* 返回普通对局默认使用的 eval_rq。 */
 double tswn_default_eval_rq(void);

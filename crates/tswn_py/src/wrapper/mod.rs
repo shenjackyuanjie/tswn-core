@@ -21,7 +21,13 @@ pub struct PyPreparedRunner {
 }
 
 #[pymethods]
-impl PyPreparedRunner {}
+impl PyPreparedRunner {
+    #[pyo3(signature = (n, eval_rq=None, thread=0))]
+    pub fn win_rate(&self, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
+        let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
+        crate::run_prepared_win_rate(&self.inner, n, eval_rq, thread)
+    }
+}
 
 impl From<CorePreparedRunner> for PyPreparedRunner {
     fn from(value: CorePreparedRunner) -> Self { Self { inner: value } }

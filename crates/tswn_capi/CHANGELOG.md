@@ -1,5 +1,26 @@
 # 更新日志
 
+## [0.4.0] - 2026-05-19
+
+### ⚠️ Breaking Changes
+
+- 移除 `tswn_version()` 兼容导出；版本查询现在明确拆分为：
+  - `tswn_capi_version()`：返回 `tswn_capi` 包装层版本
+  - `tswn_core_version()`：返回 `tswn_core` 版本
+- `tswn_player_snapshot_t` 头文件不再提供 `mp` 字段别名，调用方应统一改用 `magic_point`。
+- `tswn_capi_abi_version()` 返回值从 `2` 升为 `3`，用于标记这次 ABI 不兼容变更。
+
+### 新增
+
+- 新增版本查询接口：
+  - `tswn_capi_version()`：返回 `tswn_capi` 包装层版本
+  - `tswn_core_version()`：返回 `tswn_core` 版本
+
+### 修复
+
+- 修复 `tswn_capi.h` / `dist/capi/include/tswn_capi.h` 中 `tswn_player_snapshot_t` 字段名与实现不一致的问题：头文件字段名现在与实现统一为 `magic_point`。
+- 同步更新 C 示例与 dist 示例，统一改用 `magic_point` 和新的版本查询接口。
+
 ## [0.3.0] - 2026-05-07
 
 ### ⚠️ Breaking Changes

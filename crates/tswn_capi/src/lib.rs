@@ -9,7 +9,7 @@ use tswn_core::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use tswn_core::player::PlrId;
 use tswn_core::{PreparedRunner, Runner};
 
-const TSWN_CAPI_ABI_VERSION: u32 = 2;
+const TSWN_CAPI_ABI_VERSION: u32 = 3;
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -277,7 +277,10 @@ fn copy_ids(ids: &[PlrId], out: *mut u64, cap: usize, name: &str) -> FfiResult<(
 pub extern "C" fn tswn_capi_abi_version() -> u32 { TSWN_CAPI_ABI_VERSION }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn tswn_version() -> tswn_str_t { into_tswn_str(tswn_core::version().to_owned()) }
+pub extern "C" fn tswn_capi_version() -> tswn_str_t { into_tswn_str(env!("CARGO_PKG_VERSION").to_owned()) }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn tswn_core_version() -> tswn_str_t { into_tswn_str(tswn_core::version().to_owned()) }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn tswn_default_eval_rq() -> f64 { tswn_core::player::eval_name::DEFAULT_EVAL_RQ }

@@ -67,7 +67,7 @@ impl WinRateSession {
         }
     }
 
-    fn result_value(&self) -> WinRateResult {
+    pub(crate) fn result_value(&self) -> WinRateResult {
         let progress = self.progress_value();
         WinRateResult {
             done: progress.done,
@@ -121,14 +121,8 @@ impl WinRateSession {
         self.next_round = batch_end;
         Ok(self.progress_value())
     }
-}
 
-#[wasm_bindgen]
-impl WinRateSession {
-    #[wasm_bindgen(constructor)]
-    pub fn new(raw_input: String, total_rounds: usize, options: Option<JsValue>) -> WasmResult<WinRateSession> {
-        crate::install_panic_hook();
-        let options: WinRateOptions = parse_options(options)?;
+    pub(crate) fn new_internal(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<Self> {
         let eval_rq = options.resolved_eval_rq();
         let _thread = options.resolved_thread();
         let prepared = build_prepared_runner(raw_input, eval_rq)?;
@@ -142,6 +136,22 @@ impl WinRateSession {
             init_nanos: 0,
             fight_nanos: 0,
         })
+    }
+}
+
+pub(crate) fn run_win_rate_sync(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<WinRateResult> {
+    let mut session = WinRateSession::new_internal(raw_input, total_rounds, options)?;
+    let _ = session.step_internal(total_rounds.max(1))?;
+    Ok(session.result_value())
+}
+
+#[wasm_bindgen]
+impl WinRateSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new(raw_input: String, total_rounds: usize, options: Option<JsValue>) -> WasmResult<WinRateSession> {
+        crate::install_panic_hook();
+        let options: WinRateOptions = parse_options(options)?;
+        Self::new_internal(raw_input, total_rounds, options)
     }
 
     pub fn is_finished(&self) -> bool { self.next_round >= self.total_rounds }

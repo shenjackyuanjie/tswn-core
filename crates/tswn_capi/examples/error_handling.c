@@ -82,11 +82,11 @@ int main(void) {
     status = tswn_runner_player_snapshot(runner, player_ids[0], &snapshot);
     tswn_example_print_status("case3/real player", status);
     if (status == TSWN_OK) {
-        printf("case3/snapshot: id=%llu hp=%d/%d mp=%d all_sum=%d\n",
+         printf("case3/snapshot: id=%llu hp=%d/%d magic_point=%d all_sum=%d\n",
                (unsigned long long)snapshot.id,
                snapshot.hp,
                snapshot.max_hp,
-               snapshot.mp,
+             snapshot.magic_point,
                snapshot.all_sum);
     }
     tswn_example_dump_last_error("case3/last_error_after_success");

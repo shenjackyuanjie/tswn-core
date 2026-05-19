@@ -1,5 +1,22 @@
 # 更新日志
 
+## [0.2.6] - 2026-05-19
+
+### 新增
+
+- 补齐跨语言通用顶层接口：
+  - `default_eval_rq()`
+  - `win_rate_eval_rq()`
+  - `name_to_png_bytes(name)`
+  - `name_to_icon_rgba(name)`
+  - `group_win_rate(target, against, total_rounds, options?)`
+- `group_win_rate(...)` 返回 `GroupWinRateResult[]`，每项包含 `opponent` 和完整 `WinRateResult`。
+
+### 变更
+
+- `win_rate_sync(...)` 现在复用统一的同步胜率执行路径，避免单局 / 批量接口各自维护一套逻辑。
+- README 示例与字段说明统一改为真实的 snake_case 导出名。
+
 ## [0.2.5] - 2026-05-17
 
 ### 对齐
