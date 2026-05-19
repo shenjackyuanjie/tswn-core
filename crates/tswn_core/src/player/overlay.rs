@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::player::skill::SkillBoost;
 
 /// 玩家 DIY / overlay 覆盖数据。
@@ -15,14 +13,19 @@ use crate::player::skill::SkillBoost;
 /// - 纯数字 `5` → [`SkillBoost::Normal`]
 /// - 字符串 `"40+30"` → [`SkillBoost::SlotBoost`]（末尾座位加成）
 /// - 字符串 `"2*40"` → [`SkillBoost::LastBoost`]（末尾主动技翻倍）
+///
+/// `skills` 为有序列表，技能在列表中的顺序决定行动时的尝试顺序。
 #[derive(Debug, Clone)]
 pub struct PlayerOverlay {
     /// 八围属性覆盖值（`[atk, def, spd, agi, mag, res, wis, maxhp]`）。
     /// `None` 表示不覆盖，走正常随机生成。
     pub attrs: Option<[i32; 8]>,
-    /// 技能名 → 加成类型和等级 的映射。
+    /// 有序的技能列表：`(技能名, 加成类型和等级)`。
+    ///
+    /// 列表中的顺序决定行动时的技能尝试顺序（排在前面的先尝试）。
+    /// 未列出的技能按默认固定顺序排在末尾。
     /// `None` 表示不覆盖，走正常名字推导技能等级。
-    pub skills: Option<HashMap<String, SkillBoost>>,
+    pub skills: Option<Vec<(String, SkillBoost)>>,
     /// 武器名覆盖。
     /// `None` 表示不覆盖，取名字中 `+` 后面的武器名。
     ///
@@ -97,7 +100,8 @@ impl PlayerOverlay {
     /// 解析 JSON 对象格式：`{"attrs":[1,2,3,4,5,6,7,8],"skills":{"fire":4},"weapon":"剁手刀"}`
     ///
     /// 使用简易手写解析器而非 `serde_json`，避免引入额外依赖。
-    /// 支持 `attrs`（八属数组）、`skills`（技能名→等级映射）、`weapon`（武器名字符串）三个字段。
+    /// 支持 `attrs`（八属数组）、`skills`（有序技能列表，顺序决定行动时的尝试顺序）、
+    /// `weapon`（武器名字符串）字段。
     fn parse_object(raw: &str) -> Option<Self> {
         let raw = raw.trim();
         let raw = raw.strip_prefix('{')?.strip_suffix('}')?;
@@ -164,20 +168,20 @@ fn parse_attrs(raw: &str) -> Option<[i32; 8]> {
     (count == values.len()).then_some(values)
 }
 
-/// 解析技能名 → SkillBoost 的 JSON 对象映射。
+/// 解析技能名 → SkillBoost 的有序列表。
 ///
 /// 输入如 `{"sklfire":5,"reflect":"40+30","shadow":"2*46"}`，
-/// 返回 `HashMap<String, SkillBoost>`。
+/// 返回 `Vec<(String, SkillBoost)>`，保持输入顺序。
 /// 键必须是双引号字符串，值可以是整数或双引号字符串。
 ///
 /// 值的解析规则：
 /// - 纯数字 `5` → `SkillBoost::Normal(5)`
 /// - 字符串 `"40+30"` → `SkillBoost::SlotBoost { base: 40, boost: 30 }`
 /// - 字符串 `"2*40"` → `SkillBoost::LastBoost(40)`
-fn parse_skill_map(raw: &str) -> Option<HashMap<String, SkillBoost>> {
+fn parse_skill_map(raw: &str) -> Option<Vec<(String, SkillBoost)>> {
     let raw = raw.trim();
     let raw = raw.strip_prefix('{')?.strip_suffix('}')?;
-    let mut map = HashMap::new();
+    let mut list = Vec::new();
     let mut idx = 0usize;
     let bytes = raw.as_bytes();
     while idx < bytes.len() {
@@ -208,9 +212,9 @@ fn parse_skill_map(raw: &str) -> Option<HashMap<String, SkillBoost>> {
             let int_val: u32 = raw[start..idx].trim().parse().ok()?;
             SkillBoost::Normal(int_val)
         };
-        map.insert(key, value);
+        list.push((key, value));
     }
-    Some(map)
+    Some(list)
 }
 
 /// 解析标量字符串值（用于 ol: 格式中的 weapon 字段）。

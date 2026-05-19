@@ -192,13 +192,7 @@ impl Player {
         for skill_id in 0..40u8 {
             self.skills.add_skill(Skill::new_with_id(0, skill_id));
         }
-        if diy_skill_levels.is_some() {
-            // overlay 模式：使用固定技能槽顺序 (主动→被动→空槽)，
-            // 实际等级在下面 apply_diy_skill_levels 中写入。
-            let order = crate::player::skill::diy_skill_order();
-            self.skills.slot_skill = order.clone();
-            self.skills.skill = order;
-        } else {
+        if diy_skill_levels.is_none() {
             // 正常模式：slot_skill 保持创建时的稳定顺序 (0..40)
             // JS `k1` 是”固定技能对象数组”，普通玩家这里保持创建时的稳定顺序；
             // 真正用于 action() 主动技能扫描的是 `k4`，它才会按名字解出的 `skil_id` 洗牌。
@@ -267,7 +261,7 @@ impl Player {
                 let skill = self.skills.skill_by_id_mut(skill_key);
                 if skill.level() > owner_level {
                     skill.set_level(owner_level);
-                }                // DIY clone：从 owner 继承 diy_boost 信息，确保衰减下限可预测。
+                } // DIY clone：从 owner 继承 diy_boost 信息，确保衰减下限可预测。
                 // 注意：owner 的技能可能已经在战斗中衰减，
                 // clone 拿到的是 overlay 初始等级 clamp 到 owner 当前等级后的值。
                 // diy_boost 信息已在 apply_diy_skill_levels 阶段写入 clone 的 skill，
@@ -276,38 +270,70 @@ impl Player {
                     if skill.diy_boost.is_none() {
                         skill.diy_boost = Some(owner_diy_boost.clone());
                     }
-                }            }
+                }
+            }
         }
 
         if diy_skill_levels.is_none() {
-            // 处理技能 boost（对应 JS `addSkillsToProc`）：
-            // 先 boost 最后一个技能，再 boost 被动技能。
-            // `overlay` 模式跳过 boost，因为等级由用户显式指定。
-            self.skills.boost_last();
-            // 然后 boost 被动技能
+            // 检测 boost 候选并记录到 diy_boost。
+            // - 非 clone：直接执行 boost。
+            // - clone：先 clamp 再通过统一 re-boost 路径应用，保证衰减下限语义一致。
+
+            // LastBoost 候选（raw_name_base 已 boost 的跳过）
+            let last_boost_key: Option<usize> = self
+                .skills
+                .skill
+                .iter()
+                .rev()
+                .find(|key| {
+                    let skill = self.skills.skill_by_id(**key);
+                    skill.level() > 0 && skill.has_action_impl() && !skill.boosted
+                })
+                .copied();
+
+            // SlotBoost 候选
+            let mut slot_boost_keys: Vec<(usize, u32)> = Vec::new();
             if let Some(skill_key) = slot_skill_keys[14] {
-                let skill_14 = self.skills.skill_by_id_mut(skill_key);
+                let skill_14 = self.skills.skill_by_id(skill_key);
                 if skill_14.level() > 0 && !skill_14.boosted {
-                    let boost_level = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
-                    skill_14.boost_level(boost_level);
+                    let amount = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
+                    slot_boost_keys.push((skill_key, amount));
                 }
             }
             if let Some(skill_key) = slot_skill_keys[15] {
-                let skill_15 = self.skills.skill_by_id_mut(skill_key);
+                let skill_15 = self.skills.skill_by_id(skill_key);
                 if skill_15.level() > 0 && !skill_15.boosted {
-                    let boost_level = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
-                    skill_15.boost_level(boost_level);
+                    let amount = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
+                    slot_boost_keys.push((skill_key, amount));
                 }
             }
-        } else if clamp_source.is_some() {
-            // DIY clone：clamp 之后重新执行 SkillBoost 加成，模拟 JS
-            // "先 clamp 再 boost" 的衰减下限语义。
-            //
-            // - Normal: 不处理（等级已由 clamp 确定）
-            // - LastBoost(base): 对衰减后等级执行翻倍（level *= 2）
-            // - SlotBoost { boost, .. }: 对衰减后等级执行 +boost
-            //
-            // 不依赖 name_base，加成金额直接从 SkillBoost 元数据读取。
+
+            // 记录 boost 元数据
+            if let Some(key) = last_boost_key {
+                let skill = self.skills.skill_by_id_mut(key);
+                skill.diy_boost = Some(SkillBoost::LastBoost(skill.level()));
+            }
+            for (key, amount) in &slot_boost_keys {
+                let skill = self.skills.skill_by_id_mut(*key);
+                skill.diy_boost = Some(SkillBoost::SlotBoost {
+                    base: skill.level(),
+                    boost: *amount,
+                });
+            }
+
+            if clamp_source.is_none() {
+                // 非 clone：直接执行 boost
+                if let Some(key) = last_boost_key {
+                    self.skills.skill_by_id_mut(key).boost_if_not();
+                }
+                for (key, amount) in &slot_boost_keys {
+                    self.skills.skill_by_id_mut(*key).boost_level(*amount);
+                }
+            }
+        }
+
+        // 统一 re-boost（normal clone 和 DIY clone 共用）
+        if clamp_source.is_some() {
             let skill_keys = self.skills.skill.clone();
             for skill_key in &skill_keys {
                 let Some(boost_info) = self.skills.skill_by_id(*skill_key).diy_boost.clone() else {
@@ -315,17 +341,13 @@ impl Player {
                 };
                 let skill = self.skills.skill_by_id_mut(*skill_key);
                 match boost_info {
-                    SkillBoost::Normal(_) => {
-                        // 普通技能无加成，保持 clamp 后的等级
-                    }
+                    SkillBoost::Normal(_) => {}
                     SkillBoost::LastBoost(_) => {
-                        // 翻倍：衰减后等级 × 2
                         let current = skill.level();
                         skill.set_level(current.saturating_mul(2));
                         skill.boosted = true;
                     }
                     SkillBoost::SlotBoost { boost, .. } => {
-                        // 加固定值：衰减后等级 + boost
                         let current = skill.level();
                         skill.set_level(current.saturating_add(boost));
                         skill.boosted = true;
@@ -350,11 +372,7 @@ impl Player {
     fn team_name_for_export(&self) -> String {
         let team = self.clan_name();
         let name = self.base_name();
-        if team != name {
-            format!("@{}", team)
-        } else {
-            String::new()
-        }
+        if team != name { format!("@{}", team) } else { String::new() }
     }
 
     /// 将已 build 的玩家导出为紧凑 DIY 格式字符串。
@@ -366,7 +384,8 @@ impl Player {
     /// 通过 `diy_boost` 元数据反推。
     pub fn to_diy_compact(&self) -> String {
         // 前七围 +36，HP 不变（JS 仅对索引 0~6 做 -=36）
-        let attrs: Vec<String> = self.attr
+        let attrs: Vec<String> = self
+            .attr
             .iter()
             .enumerate()
             .map(|(i, v)| if i < 7 { (v + 36).to_string() } else { v.to_string() })
@@ -375,14 +394,15 @@ impl Player {
         let mut first = true;
         for skill_key in &self.skills.skill {
             let skill = self.skills.skill_by_id(*skill_key);
-            if skill.level() == 0 {
-                continue;
-            }
             let name = skill_name_for_export(*skill_key);
             if !first {
                 skills.push(',');
             }
             first = false;
+            if skill.level() == 0 {
+                skills.push_str(&format!("\"{}\":0", name));
+                continue;
+            }
             match &skill.diy_boost {
                 Some(SkillBoost::SlotBoost { boost, .. }) => {
                     let base = skill.level().saturating_sub(*boost);
@@ -406,9 +426,11 @@ impl Player {
     ///
     /// 格式：`Name@Team+ol:{"attrs":[...],"skills":{...},"name_factor_enabled":bool}`
     ///
-    /// 前七围 +36，HP 不变（与紧凑 `diy` 格式一致，兼容 JS 编码范围）。
+    /// 技能按行动顺序输出（先列出的先尝试），包含全部 40 个技能槽位。
+    /// 前七围 +36，HP 不变。
     pub fn to_ol_json(&self) -> String {
-        let attrs: Vec<String> = self.attr
+        let attrs: Vec<String> = self
+            .attr
             .iter()
             .enumerate()
             .map(|(i, v)| if i < 7 { (v + 36).to_string() } else { v.to_string() })
@@ -417,14 +439,15 @@ impl Player {
         let mut first = true;
         for skill_key in &self.skills.skill {
             let skill = self.skills.skill_by_id(*skill_key);
-            if skill.level() == 0 {
-                continue;
-            }
             let name = skill_name_for_export(*skill_key);
             if !first {
                 skills.push(',');
             }
             first = false;
+            if skill.level() == 0 {
+                skills.push_str(&format!("\"{}\":0", name));
+                continue;
+            }
             match &skill.diy_boost {
                 Some(SkillBoost::SlotBoost { boost, .. }) => {
                     let base = skill.level().saturating_sub(*boost);

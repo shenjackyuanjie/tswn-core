@@ -26,9 +26,14 @@ pub fn run(raw: &str) {
     let status = player.get_status();
     println!(
         "八围 (计算后): atk={} def={} spd={} agi={} mag={} res={} wis={} maxhp={}",
-        status.attack, status.defense, status.speed,
-        status.agility, status.magic, status.resistance,
-        status.wisdom, status.max_hp,
+        status.attack,
+        status.defense,
+        status.speed,
+        status.agility,
+        status.magic,
+        status.resistance,
+        status.wisdom,
+        status.max_hp,
     );
     println!("name_factor: {:.6}", player.get_name_factor());
 }
