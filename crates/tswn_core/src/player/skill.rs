@@ -344,15 +344,17 @@ pub fn skill_name_for_export(skill_id: usize) -> String {
 /// 5. 调用 `update_proc()` 刷新流程缓存。
 ///
 /// 注意：此函数替代了正常的 boost 流程，overlay 模式不调用 `boost_last()` / `boost_level()`。
-pub fn apply_diy_skill_levels(
-    storage: &mut store::SkillStorage,
-    skill_levels: &[(String, SkillBoost)],
-) {
-    let mut ordered_ids: Vec<usize> = Vec::new();
+pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &[(String, SkillBoost)]) {
+    let mut ordered_ids: Vec<usize> = Vec::with_capacity(40);
+    let mut seen = [false; 40];
     for (skill_name, skill_boost) in skill_levels {
         let Some(skill_id) = skill_name_to_id(skill_name) else {
             continue;
         };
+        if seen[skill_id] {
+            continue;
+        }
+        seen[skill_id] = true;
         ordered_ids.push(skill_id);
         if let Some(skill) = storage.store.get_mut(&skill_id) {
             let final_lv = skill_boost.final_level();
@@ -374,7 +376,8 @@ pub fn apply_diy_skill_levels(
     }
     // 未在 overlay 中列出的技能，按默认固定顺序追加
     for id in diy_skill_order() {
-        if !ordered_ids.contains(&id) {
+        if !seen[id] {
+            seen[id] = true;
             ordered_ids.push(id);
         }
     }

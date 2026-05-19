@@ -261,10 +261,7 @@ impl Player {
         let overlay = overlay.map(Box::new);
 
         // DIY 模式下武器不计入：当 overlay 包含八围或技能覆盖时，武器状态置空。
-        let has_diy_attrs_or_skills = overlay
-            .as_ref()
-            .map(|ov| ov.attrs.is_some() || ov.skills.is_some())
-            .unwrap_or(false);
+        let has_diy_attrs_or_skills = overlay.as_ref().map(|ov| ov.attrs.is_some() || ov.skills.is_some()).unwrap_or(false);
         // 武器名解析优先级：名字中的 weapon 段 > overlay 中的 weapon 字段
         let weapon = weapon.or_else(|| overlay.as_ref().and_then(|overlay| overlay.weapon.clone()));
 

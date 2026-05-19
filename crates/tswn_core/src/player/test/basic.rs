@@ -72,8 +72,14 @@ fn player_raw_new_parses_diy_overlay() {
     let overlay = player.overlay.as_ref().expect("应解析出 overlay");
     assert_eq!(overlay.attrs, Some([36, 3, 33, 40, 31, 30, 0, 84]));
     let skills = overlay.skills.as_ref().unwrap();
-    assert_eq!(skills.iter().find(|(k, _)| k == "sklfire").map(|(_, v)| v), Some(&SkillBoost::Normal(5)));
-    assert_eq!(skills.iter().find(|(k, _)| k == "reflect").map(|(_, v)| v), Some(&SkillBoost::Normal(2)));
+    assert_eq!(
+        skills.iter().find(|(k, _)| k == "sklfire").map(|(_, v)| v),
+        Some(&SkillBoost::Normal(5))
+    );
+    assert_eq!(
+        skills.iter().find(|(k, _)| k == "reflect").map(|(_, v)| v),
+        Some(&SkillBoost::Normal(2))
+    );
 
     player.build();
     // build 后八围应使用 overlay 覆盖值（HP 不减 36，原样 84）
@@ -84,8 +90,8 @@ fn player_raw_new_parses_diy_overlay() {
     // DIY 模式下武器不计入
     assert!(player.weapon_state.is_none());
     // 技能槽顺序：overlay 中列出的技能排在前，其余按 DIY 固定布局填充
-    assert_eq!(player.skills.skill[0], 0);   // fire（overlay 第一项）
-    assert_eq!(player.skills.skill[1], 27);  // reflect（overlay 第二项）
+    assert_eq!(player.skills.skill[0], 0); // fire（overlay 第一项）
+    assert_eq!(player.skills.skill[1], 27); // reflect（overlay 第二项）
     // SkillStorage 标记为 DIY
     assert!(player.skills.is_diy);
 
@@ -97,10 +103,7 @@ fn player_raw_new_parses_diy_overlay() {
     .unwrap();
     let overlay = player.overlay.as_ref().expect("应解析出 overlay");
     let slot_boost = overlay.skills.as_ref().unwrap().iter().find(|(k, _)| k == "sklfire").map(|(_, v)| v);
-    assert_eq!(
-        slot_boost,
-        Some(&SkillBoost::SlotBoost { base: 40, boost: 30 })
-    );
+    assert_eq!(slot_boost, Some(&SkillBoost::SlotBoost { base: 40, boost: 30 }));
     assert_eq!(slot_boost.unwrap().final_level(), 70);
 
     // === compact DIY 格式：LastBoost 末尾主动技翻倍 ===
@@ -111,10 +114,7 @@ fn player_raw_new_parses_diy_overlay() {
     .unwrap();
     let overlay = player.overlay.as_ref().expect("应解析出 overlay");
     let last_boost = overlay.skills.as_ref().unwrap().iter().find(|(k, _)| k == "sklshadow").map(|(_, v)| v);
-    assert_eq!(
-        last_boost,
-        Some(&SkillBoost::LastBoost(46))
-    );
+    assert_eq!(last_boost, Some(&SkillBoost::LastBoost(46)));
     assert_eq!(last_boost.unwrap().final_level(), 92);
 
     // === ol: JSON 格式 + weapon 字段 ===
@@ -131,7 +131,10 @@ fn player_raw_new_parses_diy_overlay() {
     let overlay = player.overlay.as_ref().expect("应解析出 overlay");
     // 前七围 -36: 37→1, 38→2, 39→3, 40→4, 41→5, 42→6, 43→7, HP=300 不变
     assert_eq!(overlay.attrs, Some([1, 2, 3, 4, 5, 6, 7, 300]));
-    assert_eq!(overlay.skills.as_ref().unwrap().iter().find(|(k, _)| k == "fire").map(|(_, v)| v), Some(&SkillBoost::Normal(4)));
+    assert_eq!(
+        overlay.skills.as_ref().unwrap().iter().find(|(k, _)| k == "fire").map(|(_, v)| v),
+        Some(&SkillBoost::Normal(4))
+    );
 }
 
 #[test]
@@ -331,14 +334,7 @@ fn diy_overlay_name_factor_disabled_forces_zero() {
         name_factor_enabled: false,
         ..Default::default()
     };
-    let player = Player::new_and_init_with_overlay(
-        None,
-        "aaaaa".to_string(),
-        None,
-        Some(overlay),
-        storage.clone(),
-    )
-    .unwrap();
+    let player = Player::new_and_init_with_overlay(None, "aaaaa".to_string(), None, Some(overlay), storage.clone()).unwrap();
     assert!((player.name_factor - 0.0).abs() < f64::EPSILON);
 }
 
@@ -355,14 +351,7 @@ fn diy_overlay_name_factor_defaults_to_enabled() {
         ..Default::default()
     };
     assert!(overlay.name_factor_enabled);
-    let diy = Player::new_and_init_with_overlay(
-        None,
-        "aaaaa".to_string(),
-        None,
-        Some(overlay),
-        storage.clone(),
-    )
-    .unwrap();
+    let diy = Player::new_and_init_with_overlay(None, "aaaaa".to_string(), None, Some(overlay), storage.clone()).unwrap();
     // 两个玩家的 name_factor 应相等（overlay 不影响 name_factor 计算）
     assert!((diy.name_factor - normal.name_factor).abs() < f64::EPSILON);
 }

@@ -209,10 +209,7 @@ impl Player {
         let mut slot_skill_keys: [Option<usize>; 16] = [None; 16];
         if let Some(skill_levels) = diy_skill_levels.as_ref() {
             // overlay 模式：直接用指定的等级覆盖技能，不走名字推导和 boost
-            crate::player::skill::apply_diy_skill_levels(
-                &mut self.skills,
-                skill_levels,
-            );
+            crate::player::skill::apply_diy_skill_levels(&mut self.skills, skill_levels);
         } else {
             // JS PlrBoss.dm() 覆写了 initSkills：Boss 的全部 40 个技能等级为 0。
             // 创建 40 个技能仅为了 action 循环中 k4 的 prob 字节消费，
@@ -264,7 +261,7 @@ impl Player {
                 let skill = self.skills.skill_by_id_mut(skill_key);
                 if skill.level() > owner_level {
                     skill.set_level(owner_level);
-                }                // DIY clone：从 owner 继承 diy_boost 信息，确保衰减下限可预测。
+                } // DIY clone：从 owner 继承 diy_boost 信息，确保衰减下限可预测。
                 // 注意：owner 的技能可能已经在战斗中衰减，
                 // clone 拿到的是 overlay 初始等级 clamp 到 owner 当前等级后的值。
                 // diy_boost 信息已在 apply_diy_skill_levels 阶段写入 clone 的 skill，
@@ -273,7 +270,8 @@ impl Player {
                     if skill.diy_boost.is_none() {
                         skill.diy_boost = Some(owner_diy_boost.clone());
                     }
-                }            }
+                }
+            }
         }
 
         if diy_skill_levels.is_none() {
@@ -317,7 +315,10 @@ impl Player {
             }
             for (key, amount) in &slot_boost_keys {
                 let skill = self.skills.skill_by_id_mut(*key);
-                skill.diy_boost = Some(SkillBoost::SlotBoost { base: skill.level(), boost: *amount });
+                skill.diy_boost = Some(SkillBoost::SlotBoost {
+                    base: skill.level(),
+                    boost: *amount,
+                });
             }
 
             if clamp_source.is_none() {
@@ -371,11 +372,7 @@ impl Player {
     fn team_name_for_export(&self) -> String {
         let team = self.clan_name();
         let name = self.base_name();
-        if team != name {
-            format!("@{}", team)
-        } else {
-            String::new()
-        }
+        if team != name { format!("@{}", team) } else { String::new() }
     }
 
     /// 将已 build 的玩家导出为紧凑 DIY 格式字符串。
@@ -387,7 +384,8 @@ impl Player {
     /// 通过 `diy_boost` 元数据反推。
     pub fn to_diy_compact(&self) -> String {
         // 前七围 +36，HP 不变（JS 仅对索引 0~6 做 -=36）
-        let attrs: Vec<String> = self.attr
+        let attrs: Vec<String> = self
+            .attr
             .iter()
             .enumerate()
             .map(|(i, v)| if i < 7 { (v + 36).to_string() } else { v.to_string() })
@@ -431,7 +429,8 @@ impl Player {
     /// 技能按行动顺序输出（先列出的先尝试），包含全部 40 个技能槽位。
     /// 前七围 +36，HP 不变。
     pub fn to_ol_json(&self) -> String {
-        let attrs: Vec<String> = self.attr
+        let attrs: Vec<String> = self
+            .attr
             .iter()
             .enumerate()
             .map(|(i, v)| if i < 7 { (v + 36).to_string() } else { v.to_string() })
