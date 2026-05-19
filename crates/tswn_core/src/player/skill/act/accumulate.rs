@@ -15,8 +15,8 @@ impl Default for AccumulateSkill {
     fn default() -> Self {
         Self {
             on_update_state: None,
-            // JS constructs SklAccumulate with 1.7000000476837158, but clear/cancel
-            // paths later reset it to 1.600000023841858 for subsequent uses.
+            // JS 构造 SklAccumulate 时使用 1.7000000476837158，
+            // 但后续 clear/cancel 路径会把它重置为 1.600000023841858，供后续再次使用。
             acc: 1.7000000476837158,
             charge_bonus: 0.0,
         }

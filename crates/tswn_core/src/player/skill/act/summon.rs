@@ -76,10 +76,10 @@ impl SkillTrait for SummonSkill {
             && let Some(summoned) = args.3.just_get_player_mut(summoned_id)
             && !summoned.alive()
         {
-            // JS SklSummon.v(): after the first creation, recasts reuse the same dead summon
-            // object and rerun bP()/bs()/cn(). bP() clears runtime states/proc queues
-            // without resetting skill boost flags; Rust stores the owner linkage as a
-            // runtime state, so restore that marker after clearing the state store.
+            // JS SklSummon.v()：首次创建后，后续重施会复用同一个已死亡的召唤物对象，
+            // 并重新执行 bP()/bs()/cn()。bP() 会清空运行时状态和 proc 队列，
+            // 但不会重置技能 boost 标记；Rust 把 owner 关联存成运行时状态，
+            // 所以清空状态仓库后需要把这个标记补回去。
             summoned.state = PlayerStateStore::default();
             summoned.set_state(MinionRuntimeState {
                 owner: Some(args.0),
@@ -160,8 +160,8 @@ impl SkillTrait for SummonSkill {
             let level = skill_level_from_slot(slot);
             let skill = skills.skill_by_id_mut(skill_key);
             skill.set_level(level);
-            // JS Plr.dm(): if computed level > 0, check the *original* (raw) hash;
-            // if raw min - 10 <= 0, mark skill as already boosted so boost_last skips it.
+            // JS `Plr.dm()`：如果算出的 level > 0，就检查*原始*（raw）hash；
+            // 若 raw min - 10 <= 0，则把技能标记为已 boost，让 boost_last 跳过它。
             if level > 0 {
                 let raw_base = 64 + slot * 4;
                 if raw_base + 3 < summoned.raw_name_base.len() {

@@ -19,7 +19,7 @@ macro_rules! val {
 /// 我是不是应该用宏来写这个玩意
 const VAL_INIT: [u8; 256] = val!();
 
-/// VAL_LEN
+/// 状态数组长度。
 pub const VAL_LEN: usize = 256;
 
 /// RC4 类
@@ -186,7 +186,7 @@ impl RC4 {
 
     /// 加密字节
     /// ```dart
-    /// custom encryption
+    /// 自定义加密流程
     /// void encryptBytes(List<int> bytes) {
     ///   int t, len = bytes.length;
     ///   for (int x = 0; x < len; ++x) {
@@ -227,7 +227,7 @@ impl RC4 {
 
     /// 解密字节
     /// ```dart
-    /// custom decryption
+    /// 自定义解密流程
     /// void decryptBytes(List<int> bytes) {
     ///   int t, len = bytes.length;
     ///   for (int x = 0; x < len; ++x) {
@@ -340,7 +340,7 @@ impl RC4 {
         v
     }
 
-    /// round?
+    /// 重新执行一轮或多轮密钥调度。
     ///
     /// ```dart
     /// void round(List<int> key, [int round = 1]) {
@@ -647,7 +647,7 @@ impl RC4 {
     #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn r3(&mut self) -> u32 { self.next_u8() as u32 & 3 }
 
-    /// used by req mp
+    /// 用于 `req mp` 判定。
     /// ```dart
     /// int get r3x3 {
     ///   int b = nextByte();

@@ -31,7 +31,8 @@ impl SkillTrait for ChargeSkill {
     fn select_target_count(&self, _smart: bool) -> usize { 1 }
 
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
-        // JS checks meta map (cleared by K()), not step. After interrupt, step > 0 but meta is gone.
+        // JS 检查的是 meta map（由 K() 清空），不是 step。
+        // 因此技能被中断后即便 step > 0，只要 meta 消失也应视为未蓄力。
         if self.on_update_state.is_some() {
             return false;
         }
@@ -49,7 +50,7 @@ impl SkillTrait for ChargeSkill {
     }
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
-        // JS: s.fy = s.fy + 2 — ADDS to step, does not reset.
+        // JS: s.fy = s.fy + 2，会在现有 step 上累加，不会重置。
         self.step += 2;
         self.on_post_action = Some(());
         self.on_update_state = Some(());
@@ -60,8 +61,8 @@ impl SkillTrait for ChargeSkill {
     }
 
     fn post_action(&mut self, args: SkillArgs) {
-        // JS: fx is only in x2 when charge is active (added in v(), removed in K()).
-        // In Rust, proc_kinds always includes PostAction, so guard with on_post_action flag.
+        // JS: 只有蓄力生效时，fx 才会出现在 x2 中（在 v() 加入，在 K() 移除）。
+        // Rust 的 proc_kinds 总是包含 PostAction，因此需要额外用 on_post_action 标记守卫。
         if self.on_post_action.is_none() {
             return;
         }
@@ -99,7 +100,7 @@ impl SkillTrait for ChargeSkill {
 
     fn clear_positive_runtime(&mut self, args: SkillArgs) -> Option<&'static str> {
         self.on_update_state.take()?;
-        // JS K() does NOT reset fy (step). Leave step as-is so next activation accumulates.
+        // JS 的 K() 不会重置 fy（step），这里也保持原值，让下次激活继续累加。
         self.on_post_action = None;
         args.3
             .just_get_player_mut(args.0)

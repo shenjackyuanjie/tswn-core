@@ -139,14 +139,14 @@ impl Player {
             self.weapon_state = Some(ws);
         }
 
-        // init raw attr
+        // 初始化原始八围
         let mut rand_vals = [0_u8; 32];
         rand_vals.copy_from_slice(&self.name_base[0..32]);
         rand_vals.get_mut(0..10).unwrap().sort_unstable();
 
         let mut attr = [0, 0, 0, 0, 0, 0, 0, 0];
-        // 10 - 31
-        // rand_vals 10~12 midle value
+        // 10 ~ 31
+        // rand_vals 10~12 的中位数
         attr[0] = median(rand_vals[10], rand_vals[11], rand_vals[12]) as u32;
         attr[1] = median(rand_vals[13], rand_vals[14], rand_vals[15]) as u32;
         attr[2] = median(rand_vals[16], rand_vals[17], rand_vals[18]) as u32;
@@ -154,7 +154,7 @@ impl Player {
         attr[4] = median(rand_vals[22], rand_vals[23], rand_vals[24]) as u32;
         attr[5] = median(rand_vals[25], rand_vals[26], rand_vals[27]) as u32;
         attr[6] = median(rand_vals[28], rand_vals[29], rand_vals[30]) as u32;
-        // 7 -> rand 3 + 4 + 5 + 6
+        // 第 7 项 = rand 3 + 4 + 5 + 6
         attr[7] = 154 + rand_vals[3] as u32 + rand_vals[4] as u32 + rand_vals[5] as u32 + rand_vals[6] as u32;
 
         // 如果 overlay 提供了八围属性，直接使用覆盖值（已剪裁到非负）；
@@ -236,7 +236,7 @@ impl Player {
                             min(self.raw_name_base[i], self.raw_name_base[i + 1]),
                             min(self.raw_name_base[i + 2], self.raw_name_base[i + 3]),
                         );
-                        // 其实是懒得读取原始的last skill, 就直接按照原始代码来了
+                        // 这里懒得回头读取原始的最后一个技能，直接按原始代码逻辑处理
                         if raw_small <= 10 {
                             skill.boosted = true;
                         }
@@ -467,7 +467,7 @@ impl Player {
         } else {
             None
         };
-        // init values
+        // 初始化运行时数值
         self.status.attack = self.scale_by_name_factor_i(self.attr[0] as i32, 128);
         self.status.defense = self.scale_by_name_factor_i(self.attr[1] as i32, 128);
         self.status.speed = self.scale_by_name_factor_i(self.attr[2] as i32, 128) + 160;
@@ -524,8 +524,8 @@ impl Player {
 
     /// 同队升级
     pub fn upgrade(&mut self, other: &Self) {
-        // JS `PlrEx.cA()` is a no-op. `@!` TestEx players keep their own
-        // transformed name base and do not receive same-team upgrade.
+        // JS `PlrEx.cA()` 是空操作。`@!` TestEx 玩家会保留自己的
+        // 变换后 `name_base`，不会接受同队升级。
         if self.player_type == PlayerType::TestEx {
             return;
         }

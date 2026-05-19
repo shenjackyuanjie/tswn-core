@@ -71,8 +71,9 @@ impl SkillTrait for DisperseSkill {
         let target_is_minion = args.3.get_player(&target_id).map(is_combat_minion).unwrap_or(false);
         args.2.add(RunUpdate::new("[0]使用[净化]", args.0, target_id, 20));
 
-        // Note: Dart source has 'Dt.shield'/'Dt.iron' (string literal) instead of Dt.shield/Dt.iron (variable)
-        // so these checks NEVER match in Dart/JS. Shield/Iron are NOT pre-cleared before damage.
+        // 注意：Dart 源码写的是 'Dt.shield'/'Dt.iron'（字符串字面量），
+        // 不是 Dt.shield/Dt.iron（变量），所以这些检查在 Dart/JS 中永远不会命中。
+        // 也就是说 Shield/Iron 不会在伤害前被提前清掉。
 
         args.3
             .just_get_player_mut(target_id)
@@ -93,9 +94,9 @@ fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: 
     if dmg <= 0 {
         return;
     }
-    // JS/Dart clears positive meta in sorted meta-key order.
-    // Rust stores positive skill/runtime meta and state meta separately, so we collect both with
-    // their stable type-name tags, then sort once before emitting cancel messages.
+    // JS/Dart 会按排好序的 meta-key 顺序清除正面 meta。
+    // Rust 把正面技能/运行时 meta 与 state meta 分开存储，所以这里先统一收集
+    // 它们稳定的类型名标签，再排序一次后输出取消消息。
     let target = storage.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
     let mut clear_messages = target.skills.clear_positive_runtime_with_order((target_id, r, updates, storage));
     clear_messages.extend(target.clear_positive_states_with_ordered_messages());

@@ -113,7 +113,7 @@ impl SkillTrait for HealSkill {
             target.clear_negative_states();
             (had_slow, had_poison, had_ice, had_berserk, had_charm, had_curse)
         };
-        // Dart clearStates iterates meta.keys sorted alphabetically:
+        // Dart 的 clearStates 会按字母序遍历 meta.keys：
         // berserk → charm → curse → ice → poison → slow
         if had_berserk {
             args.2.add(RunUpdate::new_newline());

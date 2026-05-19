@@ -78,9 +78,9 @@ impl SkillTrait for CharmSkill {
             let owner = args.3.get_player(&args.0).expect("cannot get charm owner from storage");
             (owner.get_status().magic, owner.get_status().at_boost >= 3.0)
         };
-        // Dart compares owner.allyGroup (group object) vs charmState.grp (group object).
-        // Rust keeps the charm source player id in group_id, but also needs the already-resolved
-        // effective team so chained charm does not collapse back to the source player's original team.
+        // Dart 比较的是 owner.allyGroup（队伍对象）与 charmState.grp（队伍对象）。
+        // Rust 在 group_id 中保留魅惑来源玩家 ID，但还需要记录已解析出的
+        // 有效队伍，避免连锁魅惑时又坍缩回来源玩家的原始队伍。
         let caster_effective_team_idx = {
             let owner = args.3.get_player(&args.0).expect("cannot get charm owner from storage");
             if let Some(caster_charm) = owner.get_state::<CharmState>() {

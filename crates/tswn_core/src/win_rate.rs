@@ -19,7 +19,7 @@ fn platform_default_win_rate_workers() -> usize {
 
 #[cfg(target_family = "wasm")]
 fn platform_limit_win_rate_workers(_workers: usize) -> usize {
-    // Browser wasm does not expose std thread spawning by default.
+    // 浏览器环境下的 wasm 默认不暴露标准线程创建能力。
     1
 }
 

@@ -174,7 +174,7 @@ impl Player {
                 name_base.push((m & 63) as u8);
             }
         }
-        // UNWRAP SAFE: name_base.len() == 128
+        // 这里可以安全 unwrap：name_base.len() 恒为 128。
         let mut raw_name_base: [u8; 128] = name_base
             .as_slice()
             .try_into()

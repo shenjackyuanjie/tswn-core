@@ -89,8 +89,8 @@ impl StateTrait for ProtectState {
                 break;
             };
             let link = self.protect_from[idx];
-            // Dart: pskl.owner.allyGroup == target.group
-            // protector uses allyGroup (affected by charm), target uses original group
+            // Dart：pskl.owner.allyGroup == target.group
+            // 保护者使用 allyGroup（会受到 charm 影响），目标使用原始 group
             let protector_group = effective_group(storage, link.owner);
             let target_group = storage.group_containing(owner).cloned();
             let same_group = protector_group == target_group;

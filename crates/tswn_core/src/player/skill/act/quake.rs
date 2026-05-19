@@ -53,9 +53,9 @@ impl SkillTrait for QuakeSkill {
         args.2.add(RunUpdate::new("[0]使用[地裂术]", args.0, picked[0], 1));
         let divisor = picked.len() as f64 + 0.6000000238418579;
         for target_id in picked {
-            // JS: getAt is called BEFORE the hp > 0 check, so RC4 is consumed even for dead targets
+            // JS 会在检查 hp > 0 之前先调用 getAt，因此即使目标已死也会消耗 RC4。
             let owner = args.3.get_player(&args.0).expect("cannot get quake owner from storage");
-            // Keep the decompiled JS float literal exactly. 2.44 shifts some cases across ceil() boundaries.
+            // 这里必须保留反编译出来的 JS 浮点字面量；2.44 会让部分 case 跨过 ceil() 边界。
             let atp = owner.get_at(true, args.1) * 2.440000057220459 / divisor;
             let target_alive = args.3.get_player(&target_id).map(|p| p.get_status().hp > 0).unwrap_or(false);
             if !target_alive {

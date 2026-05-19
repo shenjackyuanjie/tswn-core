@@ -86,9 +86,9 @@ impl SkillTrait for CloneSkill {
         cloned.state = PlayerStateStore::default();
         let owner_base_name = owner_snapshot.base_name();
         let owner_clan_name = owner_snapshot.clan_name();
-        // JS `init_PlrClone()` first runs the plain `PlrClone` constructor,
-        // then overwrites `t/name_base` with the owner's transformed base.
-        // `E/raw_name_base` therefore stays as the plain constructor output.
+        // JS `init_PlrClone()` 会先运行普通的 `PlrClone` 构造函数，
+        // 然后再用 owner 变换后的 base 覆盖 `t/name_base`。
+        // 因此 `E/raw_name_base` 仍保留普通构造函数的输出。
         cloned.raw_name_base = Player::normal_raw_name_base(Some(owner_clan_name.as_str()), owner_base_name.as_str());
         let factor_name = args
             .3

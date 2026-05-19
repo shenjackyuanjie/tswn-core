@@ -190,35 +190,35 @@ fn player_raw_types() {
     let player = player.unwrap();
     assert_eq!(player.player_type, PlayerType::Normal);
 
-    // seed
+    // seed 玩家
     let player = Player::new_from_namerena_raw("seed:just seed@!".to_string(), storage.clone());
     let player = player.unwrap();
     assert_eq!(player.name, "seed:just seed");
     assert_eq!(player.player_type, PlayerType::Seed);
 
-    // testEx
+    // testEx 玩家
     let player = Player::new_from_namerena_raw("testEx@!".to_string(), storage.clone());
     let player = player.unwrap();
     assert_eq!(player.player_type, PlayerType::TestEx);
 
-    // test1
+    // test1 玩家
     let player = Player::new_from_namerena_raw("test1@\u{0002}".to_string(), storage.clone());
     let player = player.unwrap();
     assert_eq!(player.team, Some("\u{0002}".to_string()));
     assert_eq!(player.player_type, PlayerType::Test1);
 
-    // test2
+    // test2 玩家
     let player = Player::new_from_namerena_raw("test2@\u{0003}".to_string(), storage.clone());
     let player = player.unwrap();
     assert_eq!(player.team, Some("\u{0003}".to_string()));
     assert_eq!(player.player_type, PlayerType::Test2);
 
-    // boss
+    // boss 玩家
     let player = Player::new_from_namerena_raw("mario@!".to_string(), storage.clone());
     let player = player.unwrap();
     assert_eq!(player.player_type, PlayerType::Boss);
 
-    // boosted
+    // boost 玩家
     let player = Player::new_from_namerena_raw("云剑狄卡敢@!".to_string(), storage.clone());
     let player = player.unwrap();
     assert_eq!(player.player_type, PlayerType::Boost);
@@ -410,19 +410,19 @@ fn diy_skill_boost_info_stored_on_skill() {
     .unwrap();
     player.build();
 
-    // Normal: level=5, diy_boost=None, boosted=false
+    // 普通加成：level=5, diy_boost=None, boosted=false
     let fire = player.skills.skill_by_id(0);
     assert_eq!(fire.level(), 5);
     assert!(fire.diy_boost.is_none());
     assert!(!fire.boosted);
 
-    // SlotBoost: level=70, diy_boost=Some(SlotBoost{40,30}), boosted=true
+    // 槽位加成：level=70, diy_boost=Some(SlotBoost{40,30}), boosted=true
     let ice = player.skills.skill_by_id(1);
     assert_eq!(ice.level(), 70);
     assert_eq!(ice.diy_boost, Some(SkillBoost::SlotBoost { base: 40, boost: 30 }));
     assert!(ice.boosted);
 
-    // LastBoost: level=92, diy_boost=Some(LastBoost(46)), boosted=true
+    // 末位翻倍：level=92, diy_boost=Some(LastBoost(46)), boosted=true
     let shadow = player.skills.skill_by_id(24);
     assert_eq!(shadow.level(), 92);
     assert_eq!(shadow.diy_boost, Some(SkillBoost::LastBoost(46)));
@@ -453,21 +453,21 @@ fn skill_boost_parse_formats() {
 #[test]
 /// 测试 SkillBoost::final_level / base_level / decayed_base_from_level / final_level_from_decayed_base
 fn skill_boost_level_methods() {
-    // Normal
+    // 普通加成
     let n = SkillBoost::Normal(5);
     assert_eq!(n.final_level(), 5);
     assert_eq!(n.base_level(), 5);
     assert_eq!(n.decayed_base_from_level(3), 3); // 衰减后基础=当前
     assert_eq!(n.final_level_from_decayed_base(3), 3);
 
-    // SlotBoost
+    // 槽位加成
     let s = SkillBoost::SlotBoost { base: 40, boost: 30 };
     assert_eq!(s.final_level(), 70);
     assert_eq!(s.base_level(), 40);
     assert_eq!(s.decayed_base_from_level(35), 5); // 衰减后: 35-30=5
     assert_eq!(s.final_level_from_decayed_base(5), 35);
 
-    // LastBoost
+    // 末位翻倍
     let l = SkillBoost::LastBoost(46);
     assert_eq!(l.final_level(), 92);
     assert_eq!(l.base_level(), 46);

@@ -27,9 +27,9 @@ impl SkillTrait for ShieldSkill {
         let state = if let Some(state) = owner.get_state_mut::<ShieldState>() {
             state
         } else {
-            // JS registers ShieldStat_ in y2/post_defend only; it does not run F()
-            // here. Recalculating would make delayed haste charge bonuses take
-            // effect too early during pre_action.
+            // JS 只会把 ShieldStat_ 注册到 y2/post_defend，不会在这里运行 F()。
+            // 如果此处重新计算状态，会让延后生效的 haste 蓄力加成
+            // 在 pre_action 阶段过早生效。
             owner.set_state_no_update(ShieldState {
                 sort_id: 6000.0,
                 target: Some(args.0),

@@ -262,7 +262,7 @@ fn simple_fight_scores() {
     for (name, score) in &entries {
         eprintln!("  {name}={score}");
     }
-    // Snapshot: verified against JS (branch/latest/md5.js) score hook
+    // 快照结果已与 JS（branch/latest/md5.js）的 score hook 对齐验证。
     assert_eq!(total, 2521, "total battle score mismatch");
 }
 
@@ -271,7 +271,7 @@ fn small_seed_scores() {
     let input = "aaaaa\nbbbbb\nseed:tester@!";
     let mut runner = runners::Runner::new_from_namerena_raw(input.to_string()).unwrap();
     let (total, by_name) = collect_battle_scores(&mut runner, 10_000);
-    // Snapshot: verified against JS (branch/latest/md5.js) score hook
+    // 快照结果已与 JS（branch/latest/md5.js）的 score hook 对齐验证。
     assert_eq!(total, 635, "total battle score mismatch");
     assert_eq!(by_name["aaaaa"], 463);
     assert_eq!(by_name["bbbbb"], 172);

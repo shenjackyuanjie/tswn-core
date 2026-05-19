@@ -164,7 +164,7 @@ pub fn collect_replay_lines(runner: &mut runners::Runner, max_rounds: usize, nor
     (lines, guard, total_score)
 }
 
-/// Run a fight and return (total_score, per-caster scores keyed by display name).
+/// 运行一场对局，并返回 `(total_score, 按显示名聚合的施法者得分)`。
 fn collect_battle_scores(runner: &mut runners::Runner, max_rounds: usize) -> (u64, HashMap<String, u64>) {
     let mut total_score = 0u64;
     let mut score_by_name: HashMap<String, u64> = HashMap::new();
@@ -239,9 +239,9 @@ fn assert_trace_with_context(case_name: &str, actual_lines: &[String], expected_
     if actual_lines == expected_lines {
         return;
     }
-    // Full trace dumps are extremely noisy, so keep them behind an opt-in env var.
-    // Accept either `TSWN_DUMP_TRACE=1` for every failing case or a substring such as
-    // `TSWN_DUMP_TRACE=fight_multi_4` to only dump the trace that is currently under investigation.
+    // 完整 trace 输出非常吵，所以默认关闭，只在显式环境变量下开启。
+    // 既可以设置 `TSWN_DUMP_TRACE=1` 输出所有失败用例，也可以传入诸如
+    // `TSWN_DUMP_TRACE=fight_multi_4` 的子串，只导出当前排查的那一组 trace。
     if should_dump_full_trace(case_name) {
         dump_full_trace(&format!("{case_name} actual"), actual_lines);
         dump_full_trace(&format!("{case_name} expected"), expected_lines);

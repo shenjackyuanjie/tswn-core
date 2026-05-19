@@ -73,7 +73,7 @@ pub fn is_combat_minion(player: &crate::player::Player) -> bool {
 
 #[inline]
 pub fn prepare_combat_minion(player: &mut Player) {
-    // JS Minion.bf() forces x/name_factor to 0 for shadow/summon/zombie.
+    // JS 的 Minion.bf() 会把 shadow/summon/zombie 的 x/name_factor 强制设为 0。
     player.name_factor = 0.0;
 }
 

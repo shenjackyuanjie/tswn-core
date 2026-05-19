@@ -79,7 +79,7 @@ const Q8: i32 = 999; // $.q8() - cB delta 常量
 /// 武器计算状态 (JS: T.Weapon instance fields d/r/e/f)
 #[derive(Debug, Clone)]
 pub struct WeaponState {
-    /// RC4 state & 63, 256 bytes (JS: this.d)
+    /// `RC4 state & 63` 得到的 256 字节结果（JS: `this.d`）。
     pub seed: Vec<u8>,
     /// 八围加成 (JS: this.r)
     pub attr_bonus: [i32; AV],
@@ -356,7 +356,7 @@ impl Weapon {
     }
 }
 
-/// BossWeapon preUpgrade (JS: BossWeapon.prototype.bn → cB + dW)
+/// BossWeapon 的 preUpgrade 流程（JS: `BossWeapon.prototype.bn -> cB + dW`）。
 fn boss_weapon_pre_upgrade(state: &mut WeaponState, player: &mut Player) {
     // BossWeapon.bn 调用 this.cB(r.E, r.t, this.d, $.ap()) 一次
     // 然后调用 this.dW() (= base bn)
@@ -388,7 +388,7 @@ fn boss_weapon_cb(_raw_name_base: &[u8; 128], name_base: &mut [u8], weapon_seed:
     }
 }
 
-/// RinickModifier postUpgrade
+/// RinickModifier 的 postUpgrade 流程。
 fn rinick_modifier_post_upgrade(state: &WeaponState, player: &mut Player) {
     // RinickModifier.cs: r = q.map(x => 63 - x) 对前7围
     // r[7]: if q[7] < 324 then 324 - q[7] else 0

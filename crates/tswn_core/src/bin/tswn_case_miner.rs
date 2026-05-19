@@ -1342,8 +1342,8 @@ fn json_btreemap(values: &BTreeMap<String, usize>) -> String {
 struct TraceNameState {
     assigned: std::collections::HashMap<usize, String>,
     next_index: std::collections::HashMap<usize, usize>,
-    /// Blood sacrifice summon name cache, keyed by direct caster entity ID (owner_id).
-    /// When the same caster recasts blood sacrifice, the summon reuses the same trace name.
+    /// 血祭召唤物的名称缓存，按直接施法者实体 ID（owner_id）索引。
+    /// 同一施法者再次释放血祭时，召唤物会复用同一个追踪名称。
     summon_name: std::collections::HashMap<usize, String>,
 }
 
@@ -1401,9 +1401,9 @@ fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) ->
             let root_owner_id = root_trace_owner_id(&runner.storage, owner_id);
             if let Some(owner) = runner.storage.get_player_or_pending(&root_owner_id) {
                 if minion.kind == MinionKind::Summon {
-                    // Blood sacrifice summon: cache by direct caster (owner_id).
-                    // Same caster recasting reuses the same trace name;
-                    // a different caster under the same root owner allocates a new name.
+                    // 血祭召唤物按直接施法者（owner_id）做缓存。
+                    // 同一施法者再次施放时复用同一个追踪名称；
+                    // 若根所有者相同但施法者不同，则分配新的名称。
                     if let Some(name) = trace_names.summon_name.get(&owner_id) {
                         name.clone()
                     } else {
