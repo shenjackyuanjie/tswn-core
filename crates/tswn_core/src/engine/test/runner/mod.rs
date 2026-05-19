@@ -1,3 +1,14 @@
+//! # Runner 回放测试模块 (engine::test::runner)
+//!
+//! 本模块按回放规模拆分 runner 测试用例，覆盖：
+//!
+//! - 小规模与简单输入的基础对局
+//! - 多队混战与边界回合推进
+//! - 大样本回放数据的逐条消息比对
+//!
+//! 核心辅助函数会把 [`RunUpdate`](crate::engine::update::RunUpdate) 格式化为可比对文本，
+//! 以便直接对齐历史基线与外部参考实现。
+
 use super::*;
 use crate::engine::update::{RunUpdate, UpdateType};
 use std::collections::HashMap;
