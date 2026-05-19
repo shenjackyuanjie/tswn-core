@@ -37,7 +37,6 @@
 
 use std::any::type_name_of_val;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{
     Arc, OnceLock, RwLock,
@@ -269,13 +268,16 @@ pub fn skill_name_to_id(name: &str) -> Option<usize> {
         "upgrade" => Some(33),
         "hide" => Some(34),
         "none" => Some(35),
-        _ => None,
+        // 兜底：纯数字格式 "36" → id=36（对应 skill_name_for_export 的 "skill36" 等）
+        _ => normalized.parse::<usize>().ok().filter(|id| *id < 40),
     }
 }
 
-/// DIY / overlay 模式下的技能槽顺序。
+/// DIY / overlay 模式下未在 overlay 中列出技能的默认顺序。
 ///
 /// 固定顺序：25 个主动技能 → 10 个被动技能 → 5 个未使用槽位（35~39）。
+/// overlay 中显式列出的技能按其出现顺序排在前面，
+/// 未列出的技能按此固定顺序追加到末尾。
 /// 这对应 JS 侧 `k1` 的固定布局，与普通玩家的随机排序不同。
 /// 使用固定顺序是为了让 overlay 技能在 merge（吞噬）时槽位类型一致，
 /// 确保 Shield / Defend / PassiveSkill 不会被错位。
@@ -331,20 +333,27 @@ pub fn skill_name_for_export(skill_id: usize) -> String {
 /// 将 overlay 中指定的技能等级写入 SkillStorage。
 ///
 /// 流程：
-/// 1. 遍历 `skill_levels` 映射，将每个技能名解析为技能 ID；
+/// 1. 按 `skill_levels` 的有序顺序，将每个技能名解析为技能 ID；
 /// 2. 根据 [`SkillBoost`] 类型设置技能等级和加成信息：
 ///    - `Normal(lv)`: 直接 `set_level(lv)`
 ///    - `SlotBoost { base, boost }`: `set_level(base + boost)`, 标记 `boosted = true`, 存储 boost 信息
 ///    - `LastBoost(base)`: `set_level(base * 2)`, 标记 `boosted = true`, 存储 boost 信息
-/// 3. 重新设定技能槽顺序为 [`diy_skill_order()`] 固定顺序；
-/// 4. 调用 `update_proc()` 刷新流程缓存。
+/// 3. 行动顺序由 `skill_levels` 中的顺序决定（先列出的先尝试），
+///    未列出的技能按 [`diy_skill_order()`] 固定顺序追加到末尾；
+/// 4. 技能槽顺序固定为 `0..40`；
+/// 5. 调用 `update_proc()` 刷新流程缓存。
 ///
 /// 注意：此函数替代了正常的 boost 流程，overlay 模式不调用 `boost_last()` / `boost_level()`。
-pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &HashMap<String, SkillBoost>) {
+pub fn apply_diy_skill_levels(
+    storage: &mut store::SkillStorage,
+    skill_levels: &[(String, SkillBoost)],
+) {
+    let mut ordered_ids: Vec<usize> = Vec::new();
     for (skill_name, skill_boost) in skill_levels {
         let Some(skill_id) = skill_name_to_id(skill_name) else {
             continue;
         };
+        ordered_ids.push(skill_id);
         if let Some(skill) = storage.store.get_mut(&skill_id) {
             let final_lv = skill_boost.final_level();
             skill.set_level(final_lv);
@@ -363,9 +372,14 @@ pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &
             }
         }
     }
-    let order = diy_skill_order();
-    storage.slot_skill = order.clone();
-    storage.skill = order;
+    // 未在 overlay 中列出的技能，按默认固定顺序追加
+    for id in diy_skill_order() {
+        if !ordered_ids.contains(&id) {
+            ordered_ids.push(id);
+        }
+    }
+    storage.slot_skill = (0..40usize).collect();
+    storage.skill = ordered_ids;
     storage.is_diy = true;
     storage.update_proc();
 }
@@ -851,26 +865,32 @@ impl Skill {
 
     pub fn get_target(&self) -> Option<PlrId> { self.target }
 
-    /// 如果没 boost, 那就 boost 一下
+    /// 如果没 boost, 那就 boost 一下（翻倍）。
     /// true: boost 成功
     /// false: 已经 boost 过了
     pub fn boost_if_not(&mut self) -> bool {
         if self.boosted {
             false
         } else {
+            let base = self.level;
             self.boosted = true;
             self.level *= 2;
+            self.diy_boost = Some(SkillBoost::LastBoost(base));
             true
         }
     }
 
+    /// 如果没 boost，增加 `level` 并标记 boosted。
+    /// 首次 boost 时记录 SlotBoost 信息供 to-diy 导出。
     pub fn boost_level(&mut self, level: u32) -> bool {
         if self.boosted {
             self.level += level;
             false
         } else {
+            let base = self.level;
             self.level += level;
             self.boosted = true;
+            self.diy_boost = Some(SkillBoost::SlotBoost { base, boost: level });
             true
         }
     }
