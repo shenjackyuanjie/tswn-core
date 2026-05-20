@@ -90,6 +90,7 @@ cargo run --release --features no_debug --bin track_diy_roundtrip -- `
 - [`docs/howto/diy_validation.md`](docs/howto/diy_validation.md): DIY 验证流程。
 - [`docs/build_all.md`](docs/build_all.md): 多产物构建说明。
 - [`docs/perf/benchmark_tracking.md`](docs/perf/benchmark_tracking.md): 性能追踪。
+- [`docs/perf/fixed_cases_30_benchmark.md`](docs/perf/fixed_cases_30_benchmark.md): 固定 30-case 性能回归口径。
 - [`crates/tswn_core/README.md`](crates/tswn_core/README.md): core crate 说明。
 - [`crates/tswn_py/README.md`](crates/tswn_py/README.md): Python 绑定说明。
 - [`crates/tswn_wasm/README.md`](crates/tswn_wasm/README.md): WASM 绑定说明。

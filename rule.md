@@ -57,8 +57,8 @@
 
 ```powershell
 cargo run --release --features no_debug --bin track_perf_cases -- `
-  --case-dir docs/perf/fixed_cases_20 `
-  --out-dir docs/perf/fixed_cases_20_results `
-  --bench-runs 8000 `
+  --case-dir docs/perf/fixed_cases_30 `
+  --out-dir docs/perf/fixed_cases_30_results `
+  --bench-runs 13000 `
   --thread 1
 ```

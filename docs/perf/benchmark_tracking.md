@@ -41,9 +41,21 @@
 
 ---
 
-## 2. 20-case 阶梯 benchmark
+## 2. 30-case 固定 benchmark
 
-两个固定样本适合做历史横向比较，但覆盖面太窄。新增 `track_perf_cases` 用于从号库里自动生成候选 case，再按实测复杂度从简单到困难抽取 20 个阶梯样本，每个样本默认正式跑 `500k` 场。
+两个固定样本适合做历史横向比较，但覆盖面太窄。当前长期固定性能回归集合统一使用 `docs/perf/fixed_cases_30`，共 30 个输入：覆盖原先多人、队伍、FFA 和复杂战斗路径，并额外强化 1v1 / 2v2 核心场景。
+
+`track_perf_cases` 仍可从号库自动生成候选 case，再按实测复杂度抽取阶梯样本；固定 30-case 则直接通过 `--case-dir docs/perf/fixed_cases_30` 运行，不再依赖重新生成 case。固定目录报告会额外输出 `overall`、`core_1v1_2v2`、`one_v_one`、`two_v_two`、`stress_multi` 分组汇总，便于优先观察 1v1/2v2 主指标。运行口径见 `docs/perf/fixed_cases_30_benchmark.md`。
+
+固定 30-case 推荐运行：
+
+```powershell
+cargo run --release --features no_debug --bin track_perf_cases -- `
+  --case-dir docs/perf/fixed_cases_30 `
+  --out-dir docs/perf/fixed_cases_30_results `
+  --bench-runs 13000 `
+  --thread 1
+```
 
 生成逻辑复用 `tswn_core::case_gen`，和 `tswn_case_miner` 的 case 枚举保持同一套规则：
 
@@ -51,10 +63,10 @@
 - 模式默认覆盖 `1v1,2v2,3v3v3,ffa_4,ffa_6,ffa_8`；
 - 每个模式默认生成 `4000` 个候选；
 - 先用 `64` 场/候选做复杂度采样，按 `µs/场` 排序；
-- 从排序结果中均匀抽取 `20` 个 case；
-- 对选中 case 各跑 `500000` 场，输出 markdown/json 和原始输入文件。
+- 从排序结果中均匀抽取指定数量的 case；
+- 对选中 case 各跑正式 benchmark，输出 markdown/json 和原始输入文件。
 
-推荐单线程稳定口径：
+如需重新生成候选阶梯，可用：
 
 ```powershell
 cargo run --release --features no_debug --bin track_perf_cases -- `
@@ -64,12 +76,12 @@ cargo run --release --features no_debug --bin track_perf_cases -- `
   --ffa-sizes '4,6,8' `
   --case-offset-per-mode 0 `
   --max-cases-per-mode 4000 `
-  --select-count 20 `
+  --select-count 30 `
   --bench-runs 500000 `
   --thread 1
 ```
 
-如果只想先固定 20 个输入，不跑正式 `500k`：
+如果只想先固定一批输入，不跑正式 benchmark：
 
 ```powershell
 cargo run --release --features no_debug --bin track_perf_cases -- `
@@ -82,14 +94,14 @@ cargo run --release --features no_debug --bin track_perf_cases -- `
 
 - `target/perf_cases/perf_cases.md`：可直接贴回本文的结果表；
 - `target/perf_cases/perf_cases.json`：结构化结果，适合脚本比较版本；
-- `target/perf_cases/cases/*.txt`：20 个被选中的原始输入。
+- `target/perf_cases/cases/*.txt`：被选中的原始输入。
 
 建议长期记录时保留两组数据：
 
 - **固定 2 样本**：继续用于和旧版本表格对齐；
-- **20-case 阶梯样本**：用于发现只在多人、召唤、复活、状态链等复杂路径中出现的性能回退。
+- **30-case 固定样本**：用于发现核心 1v1/2v2 以及多人、召唤、复活、状态链等复杂路径中出现的性能回退。
 
-固定 20-case 的版本化结果记录见 `docs/perf/fixed_cases_20_benchmark.md`。该口径使用 `docs/perf/fixed_cases_20` 中已经固化的输入，不再依赖重新生成 case。
+固定 30-case 的版本化结果记录和运行命令见 `docs/perf/fixed_cases_30_benchmark.md`。
 
 ---
 
