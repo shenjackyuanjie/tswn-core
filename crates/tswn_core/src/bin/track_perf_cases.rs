@@ -68,6 +68,19 @@ struct CaseReport {
     benchmark: Option<BenchRun>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct SummaryReport {
+    group: String,
+    cases: usize,
+    runs: usize,
+    wins: usize,
+    elapsed_ms: f64,
+    us_per_battle: f64,
+    battles_per_s: f64,
+    init_us_per_battle: f64,
+    fight_us_per_battle: f64,
+}
+
 #[derive(Debug, Serialize)]
 struct JsonReport {
     generated_at_unix: u64,
@@ -84,6 +97,7 @@ struct JsonReport {
     shuffle_seed: u64,
     thread: u32,
     selected: Vec<CaseReport>,
+    summaries: Vec<SummaryReport>,
 }
 
 fn main() {
@@ -393,6 +407,7 @@ fn bench_run_from_summary(summary: WinRateSummary, elapsed: Duration) -> BenchRu
 }
 
 fn write_reports(config: &Config, reports: &[CaseReport]) -> Result<(), String> {
+    let summaries = build_summary_reports(reports);
     let json = JsonReport {
         generated_at_unix: unix_now(),
         version: tswn_core::version().to_string(),
@@ -412,6 +427,7 @@ fn write_reports(config: &Config, reports: &[CaseReport]) -> Result<(), String> 
         shuffle_seed: config.shuffle_seed,
         thread: config.thread,
         selected: reports.to_vec(),
+        summaries,
     };
 
     let raw_json = serde_json::to_string_pretty(&json).map_err(|e| format!("序列化 JSON 失败: {e}"))?;
@@ -428,6 +444,60 @@ fn write_reports(config: &Config, reports: &[CaseReport]) -> Result<(), String> 
     fs::write(config.out_dir.join(format!("perf_cases_{version}.md")), markdown)
         .map_err(|e| format!("写入 perf_cases_{version}.md 失败: {e}"))?;
     Ok(())
+}
+
+fn build_summary_reports(reports: &[CaseReport]) -> Vec<SummaryReport> {
+    let groups: [(&str, fn(&CaseReport) -> bool); 5] = [
+        ("overall", |_| true),
+        ("core_1v1_2v2", |case| matches!(case.mode.as_str(), "1v1" | "2v2")),
+        ("one_v_one", |case| case.mode == "1v1"),
+        ("two_v_two", |case| case.mode == "2v2"),
+        ("stress_multi", |case| matches!(case.mode.as_str(), "ffa_6" | "ffa_8" | "3v3v3")),
+    ];
+
+    groups
+        .into_iter()
+        .filter_map(|(group, predicate)| summarize_group(group, reports.iter().filter(|case| predicate(case))))
+        .collect()
+}
+
+fn summarize_group<'a>(group: &str, cases: impl Iterator<Item = &'a CaseReport>) -> Option<SummaryReport> {
+    let mut case_count = 0usize;
+    let mut runs = 0usize;
+    let mut wins = 0usize;
+    let mut elapsed_ms = 0.0f64;
+    let mut init_us_total = 0.0f64;
+    let mut fight_us_total = 0.0f64;
+
+    for case in cases {
+        let Some(bench) = &case.benchmark else {
+            continue;
+        };
+        case_count += 1;
+        runs += bench.runs;
+        wins += bench.wins;
+        elapsed_ms += bench.elapsed_ms;
+        init_us_total += bench.init_us_per_battle * bench.runs as f64;
+        fight_us_total += bench.fight_us_per_battle * bench.runs as f64;
+    }
+
+    if case_count == 0 || runs == 0 {
+        return None;
+    }
+
+    let elapsed_s = elapsed_ms / 1000.0;
+    let runs_f = runs as f64;
+    Some(SummaryReport {
+        group: group.to_string(),
+        cases: case_count,
+        runs,
+        wins,
+        elapsed_ms,
+        us_per_battle: elapsed_ms * 1000.0 / runs_f,
+        battles_per_s: if elapsed_s > 0.0 { runs_f / elapsed_s } else { 0.0 },
+        init_us_per_battle: init_us_total / runs_f,
+        fight_us_per_battle: fight_us_total / runs_f,
+    })
 }
 
 fn sanitize_filename_part(raw: &str) -> String {
@@ -481,6 +551,34 @@ fn build_markdown_report(config: &Config, reports: &[CaseReport]) -> String {
     }
 
     if reports.iter().any(|item| item.benchmark.is_some()) {
+        let summaries = build_summary_reports(reports);
+        if !summaries.is_empty() {
+            let _ = writeln!(&mut out);
+            let _ = writeln!(&mut out, "## Summary Groups");
+            let _ = writeln!(&mut out);
+            let _ = writeln!(
+                &mut out,
+                "| group | cases | runs | win rate | elapsed | us/场 | 场/s | init us/场 | fight us/场 |"
+            );
+            let _ = writeln!(&mut out, "| -- | -: | -: | -: | -: | -: | -: | -: | -: |");
+            for summary in &summaries {
+                let win_rate = summary.wins as f64 * 100.0 / summary.runs.max(1) as f64;
+                let _ = writeln!(
+                    &mut out,
+                    "| `{}` | {} | {} | `{:.2}%` | `{:.3}s` | `{:.1}` | `{:.0}` | `{:.1}` | `{:.1}` |",
+                    summary.group,
+                    summary.cases,
+                    summary.runs,
+                    win_rate,
+                    summary.elapsed_ms / 1000.0,
+                    summary.us_per_battle,
+                    summary.battles_per_s,
+                    summary.init_us_per_battle,
+                    summary.fight_us_per_battle
+                );
+            }
+        }
+
         let _ = writeln!(&mut out);
         let _ = writeln!(&mut out, "## Benchmark Results");
         let _ = writeln!(&mut out);
