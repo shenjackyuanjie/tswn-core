@@ -66,6 +66,8 @@ pub struct WorldState {
     /// `select_targets` 应使用此列表（而非从 teams 重建）来构建 `all_alive`，
     /// 以确保 `pickSkipRange` 的索引映射与 JS 一致。
     pub flat_alive: Vec<PlrId>,
+    /// JS Engine.y.a.Q 兼容的存活队伍计数。
+    alive_group_count: usize,
 }
 
 impl WorldState {
@@ -87,6 +89,7 @@ impl WorldState {
         let players_set: FoldHashSet<PlrId> = players.iter().copied().collect();
         // 初始 flat_alive 按队伍顺序拼接，与 JS Engine 构造函数中 _.e 的初始顺序一致
         let flat_alive: Vec<PlrId> = teams.iter().flat_map(|team| team.alive.iter().copied()).collect();
+        let alive_group_count = teams.iter().filter(|team| !team.alive.is_empty()).count();
         Self {
             teams,
             groups,
@@ -97,6 +100,7 @@ impl WorldState {
             player_team,
             players_set,
             flat_alive,
+            alive_group_count,
         }
     }
 
@@ -117,6 +121,9 @@ impl WorldState {
 
     #[inline]
     pub fn team_alive(&self, team_idx: usize) -> Option<&[PlrId]> { self.teams.get(team_idx).map(|team| team.alive.as_slice()) }
+
+    #[inline]
+    pub fn alive_group_count(&self) -> usize { self.alive_group_count }
 
     #[inline]
     pub fn contains_alive(&self, plr: PlrId) -> bool { self.alive_set.contains(&plr) }
@@ -144,7 +151,11 @@ impl WorldState {
         if let Some(&team_idx) = self.player_team.get(&plr)
             && let Some(team) = self.teams.get_mut(team_idx)
         {
+            let was_alive = team.alive.contains(&plr);
             team.alive.retain(|id| *id != plr);
+            if was_alive && team.alive.is_empty() {
+                self.alive_group_count = self.alive_group_count.saturating_sub(1);
+            }
         }
         // JS Engine.e: dj 中 C.Array.U(r, a) 会 splice 移除，保持剩余元素顺序
         self.flat_alive.retain(|id| *id != plr);
@@ -253,6 +264,7 @@ impl WorldState {
             });
             self.player_team.insert(plr, new_idx);
             self.alive_set.insert(plr);
+            self.alive_group_count += 1;
             self.ensure_player_in_round(plr);
             self.sync_group_rosters();
             return;
@@ -278,6 +290,7 @@ impl WorldState {
             });
             self.player_team.insert(plr, new_idx);
             self.alive_set.insert(plr);
+            self.alive_group_count += 1;
             self.ensure_player_in_round(plr);
             self.sync_group_rosters();
         }

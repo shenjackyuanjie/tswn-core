@@ -166,7 +166,7 @@ impl EngineCore {
             Self::debug_world_state("after_dead_remove_fallback", world, storage);
         }
         storage.sync_groups(&world.groups);
-        storage.sync_alive_groups_owned(world.alives_by_group(storage));
+        storage.sync_alive_groups_owned_with_count(world.alives_by_group(storage), world.alive_group_count());
         storage.clear_sync_flag();
         #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("post_sync", world, storage);

@@ -2,7 +2,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
     skill::corpse::CorpseState,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
+    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -50,6 +50,28 @@ impl SkillTrait for MergeSkill {
             } else {
                 target_plr.skills.slot_skill.clone()
             }
+        };
+        let target_slot_levels = {
+            let target_plr = args.3.get_player(&target).expect("cannot get merge target from storage");
+            target_slot_skills
+                .iter()
+                .map(|target_skill_key| target_plr.skills.store.get(target_skill_key).map(|skill| skill.level()))
+                .collect::<Vec<_>>()
+        };
+        #[cfg(not(feature = "no_debug"))]
+        let target_slot_type_names = {
+            let target_plr = args.3.get_player(&target).expect("cannot get merge target from storage");
+            target_slot_skills
+                .iter()
+                .map(|target_skill_key| {
+                    target_plr
+                        .skills
+                        .store
+                        .get(target_skill_key)
+                        .map(|skill| skill.debug_skill_type_name())
+                        .unwrap_or("<missing>")
+                })
+                .collect::<Vec<_>>()
         };
         let target_mp = args.3.get_player(&target).expect("cannot get merge target from storage").magic_point();
         let target_move_point = args.3.get_player(&target).expect("cannot get merge target from storage").move_point();
@@ -99,12 +121,13 @@ impl SkillTrait for MergeSkill {
             //
             // 也就是说，merge 看的不是“同 skill id”也不是“同 runtime kind”，而是
             // `k1` 固定槽位上的对象位置。
-            for (_slot_idx, (owner_skill_key, target_skill_key)) in owner_slot_skills.iter().copied().zip(target_slot_skills.iter().copied()).enumerate() {
-                let Some(target_level) = args
-                    .3
-                    .get_player(&target)
-                    .and_then(|target_plr| target_plr.skills.store.get(&target_skill_key).map(|skill| skill.level()))
-                else {
+            for (_slot_idx, (owner_skill_key, (_target_skill_key, target_level))) in owner_slot_skills
+                .iter()
+                .copied()
+                .zip(target_slot_skills.iter().copied().zip(target_slot_levels.iter().copied()))
+                .enumerate()
+            {
+                let Some(target_level) = target_level else {
                     continue;
                 };
                 let mut should_enable_action = false;
@@ -122,19 +145,15 @@ impl SkillTrait for MergeSkill {
                 #[cfg(not(feature = "no_debug"))]
                 if debug_this {
                     let owner_skill_ref = owner.skills.store.get(&owner_skill_key);
-                    let target_skill_ref = args
-                        .3
-                        .get_player(&target)
-                        .and_then(|target_plr| target_plr.skills.store.get(&target_skill_key));
                     let owner_type_name = owner_skill_ref.map(|skill| skill.debug_skill_type_name()).unwrap_or("<missing>");
-                    let target_type_name = target_skill_ref.map(|skill| skill.debug_skill_type_name()).unwrap_or("<missing>");
+                    let target_type_name = target_slot_type_names.get(_slot_idx).copied().unwrap_or("<missing>");
                     let owner_level = owner.skills.store.get(&owner_skill_key).map(|skill| skill.level()).unwrap_or(0);
                     eprintln!(
                         "[merge_slot] owner={} slot={} owner_skill={} target_skill={} owner_type={} target_type={} target_level={} owner_level_after={}",
                         owner.id_name(),
                         _slot_idx,
                         owner_skill_key,
-                        target_skill_key,
+                        _target_skill_key,
                         owner_type_name,
                         target_type_name,
                         target_level,
@@ -199,6 +218,114 @@ impl SkillTrait for MergeSkill {
         args.2.add(RunUpdate::new_newline());
         args.2.add(RunUpdate::new("[0][吞噬]了[1]", args.0, target, 60));
         args.2.add(RunUpdate::new("[0]属性上升", args.0, target, 0));
+        true
+    }
+
+    fn has_inline_post_kill(&self) -> bool { true }
+
+    fn kill_inline(&mut self, level: u32, target: PlrId, ctx: &mut InlineCtx) -> bool {
+        let r63_val = ctx.randomer.r63();
+        if r63_val >= level {
+            return false;
+        }
+        let target_attr = ctx.storage.get_player(&target).expect("cannot get merge target from storage").attr;
+        let target_slot_skills = {
+            let target_plr = ctx.storage.get_player(&target).expect("cannot get merge target from storage");
+            if target_plr.skills.slot_skill.is_empty() {
+                target_plr.skills.skill.clone()
+            } else {
+                target_plr.skills.slot_skill.clone()
+            }
+        };
+        let target_slot_levels = {
+            let target_plr = ctx.storage.get_player(&target).expect("cannot get merge target from storage");
+            target_slot_skills
+                .iter()
+                .map(|target_skill_key| target_plr.skills.store.get(target_skill_key).map(|skill| skill.level()))
+                .collect::<Vec<_>>()
+        };
+        let target_mp = ctx.storage.get_player(&target).expect("cannot get merge target from storage").magic_point();
+        let target_move_point = ctx.storage.get_player(&target).expect("cannot get merge target from storage").move_point();
+
+        let mut merged = false;
+        let (transfer_mp, transfer_move_point) = {
+            let owner = &mut *ctx.owner;
+            let mut newly_enabled_skills = Vec::new();
+            let owner_slot_skills = if owner.skills.slot_skill.is_empty() {
+                owner.skills.skill.clone()
+            } else {
+                owner.skills.slot_skill.clone()
+            };
+            for (idx, val) in target_attr.iter().enumerate() {
+                if *val > owner.attr[idx] {
+                    owner.attr[idx] = *val;
+                    merged = true;
+                }
+            }
+            for (owner_skill_key, target_level) in owner_slot_skills
+                .iter()
+                .copied()
+                .zip(target_slot_levels.iter().copied())
+            {
+                let Some(target_level) = target_level else {
+                    continue;
+                };
+                let mut should_enable_action = false;
+                if let Some(owner_skill) = owner.skills.store.get_mut(&owner_skill_key)
+                    && target_level > owner_skill.level()
+                {
+                    let was_zero = owner_skill.level() == 0;
+                    should_enable_action = was_zero && owner_skill.has_action_impl();
+                    owner_skill.set_level(target_level);
+                    if was_zero {
+                        newly_enabled_skills.push(owner_skill_key);
+                    }
+                    merged = true;
+                }
+                if should_enable_action {
+                    owner.skills.enable_action_key(owner_skill_key);
+                    if let Some(pos) = owner.skills.skill.iter().position(|key| *key == owner_skill_key) {
+                        owner.skills.skill.remove(pos);
+                    }
+                    owner.skills.skill.push(owner_skill_key);
+                }
+            }
+            let post_action_state_cursor = owner.state.post_action_registration_cursor();
+            for skill_key in newly_enabled_skills {
+                owner.skills.register_skill_proc_after_states(skill_key, post_action_state_cursor);
+            }
+            let transfer_mp = target_mp > owner.magic_point();
+            if transfer_mp {
+                owner.set_magic_point(target_mp);
+            }
+            let transfer_move_point = target_move_point > owner.move_point();
+            if transfer_move_point {
+                owner.set_move_point(owner.move_point() + target_move_point);
+            }
+            if merged {
+                owner.update_states();
+            }
+            (transfer_mp, transfer_move_point)
+        };
+        {
+            let target_plr = ctx.storage.just_get_player_mut(target).expect("cannot get merge target from storage");
+            if transfer_mp {
+                target_plr.set_magic_point(0);
+            }
+            if transfer_move_point {
+                target_plr.set_move_point(0);
+            }
+        }
+        if !merged {
+            return false;
+        }
+        {
+            let target_plr = ctx.storage.just_get_player_mut(target).expect("cannot get merge target from storage");
+            target_plr.set_state(CorpseState::merge());
+        }
+        ctx.updates.add(RunUpdate::new_newline());
+        ctx.updates.add(RunUpdate::new("[0][吞噬]了[1]", ctx.ptr, target, 60));
+        ctx.updates.add(RunUpdate::new("[0]属性上升", ctx.ptr, target, 0));
         true
     }
 

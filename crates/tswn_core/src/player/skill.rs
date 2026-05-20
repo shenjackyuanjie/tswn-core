@@ -291,6 +291,12 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn has_inline_post_damage(&self) -> bool { false }
     /// 内联版 post_damage（方案 J）。
     fn post_damage_inline(&mut self, _level: u32, _ctx: &mut InlineCtx) {}
+    /// 是否实现了 owner-inline post_kill。
+    fn has_inline_post_kill(&self) -> bool { false }
+    /// owner-inline post_kill（方案 J）。
+    fn kill_inline(&mut self, level: u32, target: PlrId, ctx: &mut InlineCtx) -> bool {
+        self.kill_with_level(level, target, (ctx.ptr, ctx.randomer, ctx.updates, ctx.storage))
+    }
     /// 是否实现了内联版 pre_defend。
     fn has_inline_pre_defend(&self) -> bool { false }
     /// 内联版 pre_defend（方案 J）。
@@ -413,6 +419,12 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 仅供少数需要复用 JS meta("charge") 语义的技能查询。
     /// 默认关闭，只有 ChargeSkill 会在其运行时生效期间返回 true。
     fn charge_runtime_active(&self) -> bool { false }
+
+    /// 蓄力当前的 step 数值（默认 0，仅 ChargeSkill 实现）
+    fn charge_step(&self) -> i32 { 0 }
+
+    /// 潜行锁定的目标 ID（默认 None，仅 AssassinateSkill 实现）
+    fn assassinate_target(&self) -> Option<PlrId> { None }
 
     /// 仅供读取短时 update_state 运行时态使用。
     /// 默认关闭，只有少数带“一段时间内持续生效”的技能会在激活时返回 true。
@@ -960,6 +972,18 @@ impl Skill {
 
     pub fn charge_runtime_active(&self) -> bool {
         self.skill_type.as_ref().is_some_and(|st| st.charge_runtime_active())
+    }
+
+    pub fn charge_step(&self) -> i32 {
+        self.skill_type.as_ref().map_or(0, |st| st.charge_step())
+    }
+
+    pub fn assassinate_target(&self) -> Option<PlrId> {
+        self.skill_type.as_ref().and_then(|st| st.assassinate_target())
+    }
+
+    pub fn has_inline_post_kill(&self) -> bool {
+        self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_kill())
     }
 
     pub fn dynamic_update_state_enabled(&self) -> bool {

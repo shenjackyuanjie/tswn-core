@@ -3,7 +3,7 @@ use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
     skill::act::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, is_combat_minion, prepare_combat_minion},
     skill::corpse::CorpseState,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
+    skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -87,6 +87,60 @@ impl SkillTrait for ZombieSkill {
         let mut zombied = RunUpdate::new("[2]变成了[1]", args.0, zombie_id, 0);
         zombied.targets.push(target);
         args.2.add(zombied);
+        true
+    }
+
+    fn has_inline_post_kill(&self) -> bool { true }
+
+    fn kill_inline(&mut self, level: u32, target: PlrId, ctx: &mut InlineCtx) -> bool {
+        if ctx.storage.get_player(&target).map(is_combat_minion).unwrap_or(false) {
+            return false;
+        }
+        if ctx.randomer.r63() >= level {
+            return false;
+        }
+        let owner_clan = ctx.owner.clan_name();
+        if !ctx.owner.mp_ready(ctx.randomer) {
+            return false;
+        }
+
+        ctx.storage
+            .just_get_player_mut(target)
+            .expect("cannot get zombie target from storage")
+            .set_state(CorpseState::zombie());
+
+        let seed_name = format!("{}?zombie", ctx.owner.base_name());
+        let mut zombie =
+            Player::new_and_init(Some(owner_clan), seed_name, None, ctx.storage.clone()).expect("cannot init zombie minion");
+        prepare_combat_minion(&mut zombie);
+        zombie.build();
+        zombie.id = ctx.storage.new_plr_id();
+        zombie.set_id_name_override(Some(alloc_minion_name(ctx.storage, ctx.ptr)));
+        zombie.set_display_name_override(Some("丧尸".to_string()));
+        zombie.attr[0] = 0;
+        zombie.attr[6] = 0;
+        zombie.attr[7] = (zombie.attr[7] >> 1).max(1);
+        zombie.init_values();
+        zombie.player_type = PlayerType::Clone;
+        zombie.sort_int = 0;
+        zombie.state = PlayerStateStore::default();
+        zombie.set_state(MinionRuntimeState {
+            owner: Some(ctx.ptr),
+            kind: MinionKind::Zombie,
+        });
+        zombie.status.set_alive(true);
+        zombie.status.set_frozen(false);
+        zombie.status.move_point = ctx.randomer.r255() as i32 * 4;
+        zombie.skills = SkillStorage::new();
+        zombie.skills.update_proc();
+        let zombie_id = zombie.as_ptr();
+        ctx.storage.queue_spawn(ctx.ptr, zombie);
+
+        ctx.updates.add(RunUpdate::new_newline());
+        ctx.updates.add(RunUpdate::new("[0][召唤亡灵]", ctx.ptr, target, 60));
+        let mut zombied = RunUpdate::new("[2]变成了[1]", ctx.ptr, zombie_id, 0);
+        zombied.targets.push(target);
+        ctx.updates.add(zombied);
         true
     }
 

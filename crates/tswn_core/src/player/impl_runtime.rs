@@ -56,7 +56,8 @@
 //! ```
 
 use super::*;
-use crate::player::skill::{Effect, InlineCtx, PostDamageCtx};
+use crate::player::skill::store::{PreActionOutcome, SkillKey};
+use crate::player::skill::{Effect, InlineCtx, PostActionPhase, PostDamageCtx};
 use smallvec::SmallVec;
 
 // JS addNew 之后的新单位会立刻参与"战斗是否结束"的判断，
@@ -245,21 +246,8 @@ impl Player {
         // 方案 J: 先跑 inline pre_action（HideSkill 等），将 update_states 副作用
         // 标记为 deferred，避免在 accumulate 链中的旧路径 pre_action 再次触发
         // just_get_player_mut(args.0) 造成 aliasing。
-        {
-            let self_ptr: *mut Player = self;
-            let owner = unsafe { &mut *self_ptr };
-            let mut ctx = InlineCtx {
-                ptr, owner, randomer, updates, storage,
-                post_damage: None,
-                effects: SmallVec::new(),
-                needs_update_states: false,
-            };
-            self.skills.pre_action_inline_dispatch(&mut ctx);
-            if ctx.needs_update_states {
-                self.update_states();
-            }
-        }
-        let pre_action_outcome = self.skills.pre_action(smart, (ptr, randomer, updates, storage));
+        self.run_pre_action_inline_dispatch(randomer, updates, storage);
+        let pre_action_outcome = self.run_pre_action_noalias(smart, randomer, updates, storage);
         #[cfg(not(feature = "no_debug"))]
         let debug_action_this = crate::debug::debug_action_matches(&self.id_name());
         #[cfg(not(feature = "no_debug"))]
@@ -621,8 +609,6 @@ impl Player {
     }
 
     pub(super) fn run_post_action_chain(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        let ptr = self.as_ptr();
-        let self_ptr: *mut Player = self;
         #[cfg(not(feature = "no_debug"))]
         let debug_post_action_this = crate::debug::debug_post_action() && crate::debug::debug_action_matches(&self.id_name());
         #[cfg(not(feature = "no_debug"))]
@@ -649,20 +635,7 @@ impl Player {
                 randomer.j,
             );
         }
-        {
-            let owner = unsafe { &mut *self_ptr };
-            let mut ctx = InlineCtx {
-                ptr, owner, randomer, updates, storage,
-                post_damage: None,
-                effects: SmallVec::new(),
-                needs_update_states: false,
-            };
-            self.skills.post_action_early_inline(&mut ctx);
-            if ctx.needs_update_states {
-                drop(ctx);
-                self.update_states();
-            }
-        }
+        self.run_post_action_phase_noalias(PostActionPhase::Early, randomer, updates, storage);
         #[cfg(not(feature = "no_debug"))]
         if debug_post_action_this {
             eprintln!(
@@ -714,20 +687,7 @@ impl Player {
                 randomer.j,
             );
         }
-        {
-            let owner = unsafe { &mut *self_ptr };
-            let mut ctx = InlineCtx {
-                ptr, owner, randomer, updates, storage,
-                post_damage: None,
-                effects: SmallVec::new(),
-                needs_update_states: false,
-            };
-            self.skills.post_action_late_inline(&mut ctx);
-            if ctx.needs_update_states {
-                drop(ctx);
-                self.update_states();
-            }
-        }
+        self.run_post_action_phase_noalias(PostActionPhase::Late, randomer, updates, storage);
         #[cfg(not(feature = "no_debug"))]
         if debug_post_action_this {
             eprintln!(
@@ -749,6 +709,195 @@ impl Player {
     pub fn on_update_end(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
         let ptr = self.as_ptr();
         self.skills.on_update_end((ptr, randomer, updates, storage))
+    }
+
+    fn run_pre_action_inline_dispatch(
+        &mut self,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) {
+        let ptr = self.as_ptr();
+        let keys = self.skills.pre_action.clone();
+        for skill_key in keys {
+            if !self.skills.skill_by_id(skill_key).has_inline_pre_action() {
+                continue;
+            }
+            let mut skill_type = self.skills.skill_by_id_mut(skill_key).take_skill_type();
+            let needs_update_states;
+            let effects;
+            {
+                let mut ctx = InlineCtx {
+                    ptr,
+                    owner: self,
+                    randomer,
+                    updates,
+                    storage,
+                    post_damage: None,
+                    effects: SmallVec::new(),
+                    needs_update_states: false,
+                };
+                skill_type.pre_action_inline(&mut ctx);
+                needs_update_states = ctx.needs_update_states;
+                effects = std::mem::take(&mut ctx.effects);
+            }
+            self.skills.skill_by_id_mut(skill_key).put_skill_type(skill_type);
+            self.apply_deferred_effects(ptr, effects, randomer, updates, storage);
+            if needs_update_states {
+                self.update_states();
+            }
+        }
+    }
+
+    fn run_pre_action_noalias(
+        &mut self,
+        smart: bool,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> PreActionOutcome {
+        let ptr = self.as_ptr();
+        let mut forced_skill = None;
+        let mut clear_forced_action = false;
+        let mut idx = 0usize;
+        while idx < self.skills.pre_action.len() {
+            let skill_key = self.skills.pre_action[idx];
+            let (mut skill_type, level) = {
+                let skill = self.skills.skill_by_id_mut(skill_key);
+                (skill.take_skill_type(), skill.level())
+            };
+            let clear_forced =
+                skill_type.pre_action_clear_forced_with_level(level, smart, (ptr, randomer, updates, storage));
+            let prev_forced_skill = forced_skill;
+            forced_skill =
+                skill_type.pre_action_accumulate_with_level(level, forced_skill, skill_key, smart, (ptr, randomer, updates, storage));
+            let selected = forced_skill == Some(skill_key) && prev_forced_skill != Some(skill_key);
+            let manages_dynamic_pre_action = skill_type.manages_dynamic_pre_action();
+            let dynamic_pre_action_enabled = level > 0 && skill_type.dynamic_pre_action_enabled();
+            self.skills.skill_by_id_mut(skill_key).put_skill_type(skill_type);
+
+            if clear_forced {
+                clear_forced_action = true;
+            }
+            if forced_skill.is_some() {
+                clear_forced_action = false;
+            }
+
+            let before_len = self.skills.pre_action.len();
+            self.skills
+                .sync_dynamic_pre_action_state(skill_key, manages_dynamic_pre_action, dynamic_pre_action_enabled);
+            if manages_dynamic_pre_action && !dynamic_pre_action_enabled && self.skills.pre_action.len() < before_len {
+                continue;
+            }
+            let _ = selected;
+            idx += 1;
+        }
+        PreActionOutcome {
+            forced_skill,
+            clear_forced_action,
+        }
+    }
+
+    fn run_post_action_key_noalias(
+        &mut self,
+        skill_key: SkillKey,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) {
+        let ptr = self.as_ptr();
+        if self.skills.skill_by_id(skill_key).has_inline_post_action() {
+            let mut skill_type = self.skills.skill_by_id_mut(skill_key).take_skill_type();
+            let needs_update_states;
+            let effects;
+            {
+                let mut ctx = InlineCtx {
+                    ptr,
+                    owner: self,
+                    randomer,
+                    updates,
+                    storage,
+                    post_damage: None,
+                    effects: SmallVec::new(),
+                    needs_update_states: false,
+                };
+                skill_type.post_action_inline(&mut ctx);
+                needs_update_states = ctx.needs_update_states;
+                effects = std::mem::take(&mut ctx.effects);
+            }
+            self.skills.skill_by_id_mut(skill_key).put_skill_type(skill_type);
+            self.apply_deferred_effects(ptr, effects, randomer, updates, storage);
+            if needs_update_states {
+                self.update_states();
+            }
+        } else {
+            self.skills.run_post_action_key(skill_key, (ptr, randomer, updates, storage));
+        }
+    }
+
+    fn run_post_action_phase_noalias(
+        &mut self,
+        phase: PostActionPhase,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) {
+        let keys = self.skills.post_action.clone();
+        for skill_key in keys {
+            if self.skills.skill_by_id(skill_key).post_action_phase() == phase {
+                self.run_post_action_key_noalias(skill_key, randomer, updates, storage);
+            }
+        }
+    }
+
+    fn run_post_kill_owner_inline(
+        &mut self,
+        target: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) {
+        if self.get_status().hp <= 0 {
+            return;
+        }
+        let ptr = self.as_ptr();
+        let keys = self.skills.post_kill.clone();
+        for skill_key in keys {
+            let (mut skill_type, level) = {
+                let skill = self.skills.skill_by_id_mut(skill_key);
+                (skill.take_skill_type(), skill.level())
+            };
+            let triggered;
+            let needs_update_states;
+            let effects;
+            {
+                let mut ctx = InlineCtx {
+                    ptr,
+                    owner: self,
+                    randomer,
+                    updates,
+                    storage,
+                    post_damage: None,
+                    effects: SmallVec::new(),
+                    needs_update_states: false,
+                };
+                triggered = if skill_type.has_inline_post_kill() {
+                    skill_type.kill_inline(level, target, &mut ctx)
+                } else {
+                    skill_type.kill_with_level(level, target, (ptr, ctx.randomer, ctx.updates, ctx.storage))
+                };
+                needs_update_states = ctx.needs_update_states;
+                effects = std::mem::take(&mut ctx.effects);
+            }
+            self.skills.skill_by_id_mut(skill_key).put_skill_type(skill_type);
+            self.apply_deferred_effects(ptr, effects, randomer, updates, storage);
+            if needs_update_states {
+                self.update_states();
+            }
+            if triggered {
+                break;
+            }
+        }
     }
 
     fn pick_enemy_target(targets: &ActionTargets, randomer: &mut RC4) -> Option<PlrId> {
@@ -1490,8 +1639,18 @@ impl Player {
                     };
                     if core.hit {
                         on_damage(ptr, core.target, core.dmg, randomer, updates, storage);
-                        let target_plr = storage.just_get_player_mut(core.target).expect("attack target not found");
-                        target_plr.finish_damage(core.dmg, core.old_hp, ptr, randomer, updates, storage);
+                        let target_died = {
+                            let target_plr = storage.just_get_player_mut(core.target).expect("attack target not found");
+                            target_plr.finish_damage_skip_post_kill(core.dmg, core.old_hp, ptr, randomer, updates, storage);
+                            !target_plr.alive() || target_plr.get_status().hp <= 0
+                        };
+                        let has_enemy_alive = storage
+                            .group_containing(ptr)
+                            .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
+                            .unwrap_or(true);
+                        if target_died && has_enemy_alive {
+                            self.run_post_kill_owner_inline(core.target, randomer, updates, storage);
+                        }
                     }
                 }
                 Effect::Heal { target, amount } => {
@@ -1505,8 +1664,18 @@ impl Player {
                         target_plr.damage_core(dmg, ptr, updates)
                     };
                     on_damage(ptr, target, core.actual_dmg, randomer, updates, storage);
-                    let target_plr = storage.just_get_player_mut(target).expect("damage target not found");
-                    target_plr.finish_damage(core.actual_dmg, core.old_hp, ptr, randomer, updates, storage);
+                    let target_died = {
+                        let target_plr = storage.just_get_player_mut(target).expect("damage target not found");
+                        target_plr.finish_damage_skip_post_kill(core.actual_dmg, core.old_hp, ptr, randomer, updates, storage);
+                        !target_plr.alive() || target_plr.get_status().hp <= 0
+                    };
+                    let has_enemy_alive = storage
+                        .group_containing(ptr)
+                        .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
+                        .unwrap_or(true);
+                    if target_died && has_enemy_alive {
+                        self.run_post_kill_owner_inline(target, randomer, updates, storage);
+                    }
                 }
                 Effect::AddMovePoint { target, delta } => {
                     if let Some(target_plr) = storage.just_get_player_mut(target) {
@@ -1537,7 +1706,6 @@ impl Player {
 
     fn apply_post_action_states(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
         let owner_id = self.as_ptr();
-        let self_ptr: *mut Player = self;
         #[cfg(not(feature = "no_debug"))]
         let debug_post_action_this = crate::debug::debug_post_action()
             && storage
@@ -1566,20 +1734,7 @@ impl Player {
                         randomer.j,
                     );
                 }
-                {
-                    let owner = unsafe { &mut *self_ptr };
-                    let mut ctx = InlineCtx {
-                        ptr: owner_id, owner, randomer, updates, storage,
-                        post_damage: None,
-                        effects: SmallVec::new(),
-                        needs_update_states: false,
-                    };
-                    self.skills.run_post_action_key_inline(skill_key, &mut ctx);
-                    if ctx.needs_update_states {
-                        drop(ctx);
-                        self.update_states();
-                    }
-                }
+                self.run_post_action_key_noalias(skill_key, randomer, updates, storage);
                 #[cfg(not(feature = "no_debug"))]
                 if debug_post_action_this {
                     eprintln!(
@@ -1670,20 +1825,7 @@ impl Player {
                     randomer.j,
                 );
             }
-            {
-                let owner = unsafe { &mut *self_ptr };
-                let mut ctx = InlineCtx {
-                    ptr: owner_id, owner, randomer, updates, storage,
-                    post_damage: None,
-                    effects: SmallVec::new(),
-                    needs_update_states: false,
-                };
-                self.skills.run_post_action_key_inline(skill_key, &mut ctx);
-                if ctx.needs_update_states {
-                    drop(ctx);
-                    self.update_states();
-                }
-            }
+            self.run_post_action_key_noalias(skill_key, randomer, updates, storage);
             #[cfg(not(feature = "no_debug"))]
             if debug_post_action_this {
                 eprintln!(
@@ -2448,6 +2590,18 @@ impl Player {
         result
     }
 
+    pub fn finish_damage_skip_post_kill(
+        &mut self,
+        dmg: i32,
+        old_hp: i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) -> i32 {
+        self.on_damaged_impl(dmg, old_hp, caster, randomer, updates, storage, false)
+    }
+
     /// 便捷封装：damage_core + on_damage + finish_damage 一次性完成。
     ///
     /// 仅在 `on_damage` 为 no-op（不通过 Storage 重借 target/caster）时安全。
@@ -2478,6 +2632,19 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        self.on_damaged_impl(dmg, old_hp, caster, randomer, updates, storage, true)
+    }
+
+    fn on_damaged_impl(
+        &mut self,
+        dmg: i32,
+        old_hp: i32,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        run_post_kill: bool,
+    ) -> i32 {
         #[cfg(not(feature = "no_debug"))]
         let debug_this = crate::debug::debug_action_matches(&self.id_name());
         let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
@@ -2487,7 +2654,7 @@ impl Player {
             let rc4_before = (randomer.i, randomer.j);
             let has_inline = self.skills.skill_by_id(skill_idx).has_inline_post_damage();
             let (manages_dynamic_pre_action, dynamic_pre_action_enabled, needs_update_states) = if has_inline {
-                let self_ptr: *mut Player = self;
+                let deferred_effects;
                 let (mut skill_type, current_level) = {
                     let skill = self.skills.skill_by_id_mut(skill_idx);
                     (skill.take_skill_type(), skill.level())
@@ -2495,7 +2662,7 @@ impl Player {
                 let result = {
                     let mut ctx = InlineCtx {
                         ptr,
-                        owner: unsafe { &mut *self_ptr },
+                        owner: self,
                         randomer,
                         updates,
                         storage,
@@ -2504,6 +2671,7 @@ impl Player {
                         needs_update_states: false,
                     };
                     skill_type.post_damage_inline(current_level, &mut ctx);
+                    deferred_effects = std::mem::take(&mut ctx.effects);
                     (
                         skill_type.manages_dynamic_pre_action(),
                         skill_type.dynamic_pre_action_enabled(),
@@ -2511,6 +2679,7 @@ impl Player {
                     )
                 };
                 self.skills.skill_by_id_mut(skill_idx).put_skill_type(skill_type);
+                self.apply_deferred_effects(ptr, deferred_effects, randomer, updates, storage);
                 result
             } else {
                 let skill = self.skills.skill_by_id_mut(skill_idx);
@@ -2547,7 +2716,7 @@ impl Player {
                     randomer.j,
                 );
             }
-            self.on_die_impl(old_hp, caster, randomer, updates, storage, true);
+            self.on_die_impl(old_hp, caster, randomer, updates, storage, true, run_post_kill);
             old_hp
         } else {
             dmg
@@ -2557,7 +2726,7 @@ impl Player {
     fn get_die_message(&self) -> &'static str { self.state.die_message_override().unwrap_or("[1]被击倒了") }
 
     pub fn on_die(&mut self, old_hp: i32, caster: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
-        self.on_die_impl(old_hp, caster, randomer, updates, storage, false);
+        self.on_die_impl(old_hp, caster, randomer, updates, storage, false, true);
     }
 
     fn on_die_impl(
@@ -2568,6 +2737,7 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
         allow_dead_reentry: bool,
+        run_post_kill: bool,
     ) {
         #[cfg(not(feature = "no_debug"))]
         let debug_this = crate::debug::debug_action_matches(&self.id_name());
@@ -2593,7 +2763,7 @@ impl Player {
             if !allow_dead_reentry {
                 return;
             }
-            if caster != self.as_ptr() {
+            if run_post_kill && caster != self.as_ptr() {
                 let kill_keys = storage
                     .get_player(&caster)
                     .filter(|k| k.get_status().hp > 0)
@@ -2700,7 +2870,7 @@ impl Player {
         let has_enemy_alive = storage
             .group_containing(caster)
             .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group));
-        if has_enemy_alive.unwrap_or(true) && caster != self.as_ptr() {
+        if run_post_kill && has_enemy_alive.unwrap_or(true) && caster != self.as_ptr() {
             // 避免在 kill 回调（如吞噬）中产生 &mut Player 别名：
             // 先获取 post_kill 键列表并检查 HP，然后释放 killer 引用，
             // 再逐个通过 storage 重新获取 &mut 来调用回调。

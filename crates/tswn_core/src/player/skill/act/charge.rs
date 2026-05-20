@@ -144,5 +144,7 @@ impl SkillTrait for ChargeSkill {
 
     fn charge_runtime_active(&self) -> bool { self.on_update_state.is_some() }
 
+    fn charge_step(&self) -> i32 { self.step }
+
     fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
 }

@@ -4,7 +4,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{Effect, InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -37,6 +37,31 @@ impl SkillTrait for FireSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     fn has_action_impl(&self) -> bool { true }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        let fire_mag = ctx
+            .storage
+            .get_player(&target_id)
+            .expect("cannot get target from storage")
+            .get_state::<FireState>()
+            .map(|state| state.fire_mag)
+            .unwrap_or(0.0);
+        let get_at_val = ctx.owner.get_at(true, ctx.randomer);
+        let atp = get_at_val * (1.5 + fire_mag);
+        ctx.updates.add(RunUpdate::new("[0]使用[火球术]", ctx.ptr, target_id, 1));
+        ctx.effects.push(Effect::Attack {
+            target: target_id,
+            atp,
+            is_mag: true,
+            on_damage: on_fire as OnDamageFunc,
+        });
+    }
 
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {

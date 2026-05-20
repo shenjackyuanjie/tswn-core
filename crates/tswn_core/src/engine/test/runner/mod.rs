@@ -499,7 +499,9 @@ fn select_targets_ignores_dead_enemy_shadow_left_in_world_alive_view() {
 
     runner.world.add_new_player(shadow_id, enemy);
     runner.storage.sync_groups(&runner.world.groups);
-    runner.storage.sync_alive_groups_owned(runner.world.alives_by_group(&runner.storage));
+    runner
+        .storage
+        .sync_alive_groups_owned_with_count(runner.world.alives_by_group(&runner.storage), runner.world.alive_group_count());
 
     assert!(runner.world.team_alive(1).unwrap().contains(&shadow_id));
     assert!(runner.storage.get_player(&shadow_id).unwrap().alive());
