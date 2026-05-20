@@ -119,6 +119,32 @@ impl SkillTrait for CloneSkill {
             kind: MinionKind::Clone,
         });
         cloned.update_states();
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_DEBUG_CLONE").is_some() {
+            let owner_name = owner_snapshot.id_name();
+            let clone_name = cloned.id_name();
+            let is_diy = owner_snapshot.skills.is_diy;
+            eprintln!(
+                "[clone_debug] owner={} diy={} clone={} attrs={:?} hp={} atk={} def={} spd={} agi={} mag={}",
+                owner_name, is_diy, clone_name,
+                &cloned.attr, cloned.status.hp,
+                cloned.status.attack, cloned.status.defense,
+                cloned.status.speed, cloned.status.agility,
+                cloned.status.magic,
+            );
+            for skill_key in &cloned.skills.skill {
+                let skill = cloned.skills.skill_by_id(*skill_key);
+                if skill.level() > 0 {
+                    let boost_info = skill.diy_boost.as_ref()
+                        .map(|b| format!("{:?}", b))
+                        .unwrap_or_else(|| "none".to_string());
+                    eprintln!(
+                        "[clone_debug]   skill id={} level={} boosted={} diy_boost={}",
+                        skill_key, skill.level(), skill.boosted, boost_info,
+                    );
+                }
+            }
+        }
         cloned.status.move_point = args.1.r255() as i32 * 4 + 256;
         cloned.status.hp = owner_snapshot.get_status().hp.max(1);
         // clone 是重新 `build` 出来的实体，所以 mp 取 `itl / 2`，

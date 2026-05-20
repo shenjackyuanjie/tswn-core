@@ -139,12 +139,11 @@ target/diy_roundtrip/
 | 项目 | 状态 |
 |------|:---:|
 | 初始八围、技能等级、name_factor 一致 | ✅ 64/64 通过 |
-| 对战过程一致（含 clone、boost 等） | ✅ 61/64 通过 (95.3%) |
+| 对战过程一致（含 clone、boost 等） | ✅ 64/64 通过 |
 | 完整 action order 往返（40 槽位） | ✅ 已实现 |
 | Boost 类型编码（LastBoost/SlotBoost） | ✅ 已实现 |
 | Clone 衰减下限统一（普通=DIY） | ✅ 已实现 |
-
-剩余 3 个 case 涉及分身+加成技能的复杂交互，正在排查中。
+| Clone re-boost 重复触发修复 | ✅ 已修复 |
 
 ## 已知限制
 

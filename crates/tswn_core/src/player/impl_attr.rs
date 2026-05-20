@@ -332,23 +332,27 @@ impl Player {
             }
         }
 
-        // 统一 re-boost（normal clone 和 DIY clone 共用）
+        // 统一 re-boost（normal clone 和 DIY clone 共用）。
+        // 仅在 clamp 降低了等级（当前等级 < 原始加成后等级）时才执行。
         if clamp_source.is_some() {
             let skill_keys = self.skills.skill.clone();
             for skill_key in &skill_keys {
                 let Some(boost_info) = self.skills.skill_by_id(*skill_key).diy_boost.clone() else {
                     continue;
                 };
+                let original_final = boost_info.final_level();
                 let skill = self.skills.skill_by_id_mut(*skill_key);
+                let current = skill.level();
+                if current >= original_final {
+                    continue;
+                }
                 match boost_info {
                     SkillBoost::Normal(_) => {}
                     SkillBoost::LastBoost(_) => {
-                        let current = skill.level();
                         skill.set_level(current.saturating_mul(2));
                         skill.boosted = true;
                     }
                     SkillBoost::SlotBoost { boost, .. } => {
-                        let current = skill.level();
                         skill.set_level(current.saturating_add(boost));
                         skill.boosted = true;
                     }
