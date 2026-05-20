@@ -356,14 +356,14 @@ impl Player {
         let mut first = true;
         for skill_key in &self.skills.skill {
             let skill = self.skills.skill_by_id(*skill_key);
+            if skill.level() == 0 {
+                continue;
+            }
             let name = skill_name_for_export(*skill_key);
             if !first {
                 skills.push(',');
             }
             first = false;
-            if skill.level() == 0 {
-                continue;
-            }
             match &skill.diy_boost {
                 Some(SkillBoost::SlotBoost { boost, .. }) => {
                     let base = skill.level().saturating_sub(*boost);
@@ -400,14 +400,14 @@ impl Player {
         let mut first = true;
         for skill_key in &self.skills.skill {
             let skill = self.skills.skill_by_id(*skill_key);
+            if skill.level() == 0 {
+                continue;
+            }
             let name = skill_name_for_export(*skill_key);
             if !first {
                 skills.push(',');
             }
             first = false;
-            if skill.level() == 0 {
-                continue;
-            }
             match &skill.diy_boost {
                 Some(SkillBoost::SlotBoost { boost, .. }) => {
                     let base = skill.level().saturating_sub(*boost);
