@@ -266,74 +266,36 @@ impl Player {
                 // clone 拿到的是 overlay 初始等级 clamp 到 owner 当前等级后的值。
                 // diy_boost 信息已在 apply_diy_skill_levels 阶段写入 clone 的 skill，
                 // 这里额外确保它也同步自 owner（处理 owner 运行时可能修改过的 boost 元数据）。
-                if let Some(ref owner_diy_boost) = owner_skills.skill_by_id(skill_key).diy_boost {
-                    if skill.diy_boost.is_none() {
-                        skill.diy_boost = Some(owner_diy_boost.clone());
+                if owner_skills.is_diy {
+                    if let Some(ref owner_diy_boost) = owner_skills.skill_by_id(skill_key).diy_boost {
+                        if skill.diy_boost.is_none() {
+                            skill.diy_boost = Some(owner_diy_boost.clone());
+                        }
                     }
                 }
             }
         }
 
         if diy_skill_levels.is_none() {
-            // 检测 boost 候选并记录到 diy_boost。
-            // - 非 clone：直接执行 boost。
-            // - clone：先 clamp 再通过统一 re-boost 路径应用，保证衰减下限语义一致。
-
-            // LastBoost 候选（raw_name_base 已 boost 的跳过）
-            let last_boost_key: Option<usize> = self
-                .skills
-                .skill
-                .iter()
-                .rev()
-                .find(|key| {
-                    let skill = self.skills.skill_by_id(**key);
-                    skill.level() > 0 && skill.has_action_impl() && !skill.boosted
-                })
-                .copied();
-
-            // SlotBoost 候选
-            let mut slot_boost_keys: Vec<(usize, u32)> = Vec::new();
+            // 普通玩家和普通 clone 都走 JS `super.addSkillsToProc` 语义：
+            // clamp 之后按当前实体自己的行动顺序执行 boost。
+            self.skills.boost_last();
             if let Some(skill_key) = slot_skill_keys[14] {
-                let skill_14 = self.skills.skill_by_id(skill_key);
+                let skill_14 = self.skills.skill_by_id_mut(skill_key);
                 if skill_14.level() > 0 && !skill_14.boosted {
-                    let amount = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
-                    slot_boost_keys.push((skill_key, amount));
+                    let boost_level = min(min(self.name_base[60], self.name_base[61]) as u32, skill_14.level());
+                    skill_14.boost_level(boost_level);
                 }
             }
             if let Some(skill_key) = slot_skill_keys[15] {
-                let skill_15 = self.skills.skill_by_id(skill_key);
+                let skill_15 = self.skills.skill_by_id_mut(skill_key);
                 if skill_15.level() > 0 && !skill_15.boosted {
-                    let amount = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
-                    slot_boost_keys.push((skill_key, amount));
+                    let boost_level = min(min(self.name_base[62], self.name_base[63]) as u32, skill_15.level());
+                    skill_15.boost_level(boost_level);
                 }
             }
-
-            // 记录 boost 元数据
-            if let Some(key) = last_boost_key {
-                let skill = self.skills.skill_by_id_mut(key);
-                skill.diy_boost = Some(SkillBoost::LastBoost(skill.level()));
-            }
-            for (key, amount) in &slot_boost_keys {
-                let skill = self.skills.skill_by_id_mut(*key);
-                skill.diy_boost = Some(SkillBoost::SlotBoost {
-                    base: skill.level(),
-                    boost: *amount,
-                });
-            }
-
-            if clamp_source.is_none() {
-                // 非 clone：直接执行 boost
-                if let Some(key) = last_boost_key {
-                    self.skills.skill_by_id_mut(key).boost_if_not();
-                }
-                for (key, amount) in &slot_boost_keys {
-                    self.skills.skill_by_id_mut(*key).boost_level(*amount);
-                }
-            }
-        }
-
-        // 统一 re-boost（normal clone 和 DIY clone 共用）
-        if clamp_source.is_some() {
+        } else if clamp_source.is_some() {
+            // DIY clone：clamp 之后按 overlay 的 SkillBoost 元数据重放加成。
             let skill_keys = self.skills.skill.clone();
             for skill_key in &skill_keys {
                 let Some(boost_info) = self.skills.skill_by_id(*skill_key).diy_boost.clone() else {
