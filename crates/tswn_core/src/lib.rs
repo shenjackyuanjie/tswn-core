@@ -49,6 +49,7 @@ pub mod debug {
     pub(crate) use debug_println;
 }
 
+pub mod case_gen;
 pub mod engine;
 pub mod error;
 pub mod player;

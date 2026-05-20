@@ -11,48 +11,10 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tswn_core::Runner;
+use tswn_core::case_gen::{
+    CaseMode, GeneratedCase, case_id, deterministic_shuffle, generate_cases_for_mode, load_library, stable_hash,
+};
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-enum CaseMode {
-    OneVsOne,
-    TwoVsTwo,
-    ThreeVsThreeVsThree,
-    FreeForAll(usize),
-}
-
-impl CaseMode {
-    fn label(self) -> String {
-        match self {
-            Self::OneVsOne => "1v1".to_string(),
-            Self::TwoVsTwo => "2v2".to_string(),
-            Self::ThreeVsThreeVsThree => "3v3v3".to_string(),
-            Self::FreeForAll(size) => format!("ffa_{size}"),
-        }
-    }
-
-    fn total_players(self) -> usize {
-        match self {
-            Self::OneVsOne => 2,
-            Self::TwoVsTwo => 4,
-            Self::ThreeVsThreeVsThree => 9,
-            Self::FreeForAll(size) => size,
-        }
-    }
-
-    fn build_input(self, players: &[String]) -> String {
-        match self {
-            Self::OneVsOne | Self::FreeForAll(_) => players.join("\n"),
-            Self::TwoVsTwo => format!("{}\n\n{}", players[..2].join("\n"), players[2..4].join("\n")),
-            Self::ThreeVsThreeVsThree => format!(
-                "{}\n\n{}\n\n{}",
-                players[..3].join("\n"),
-                players[3..6].join("\n"),
-                players[6..9].join("\n")
-            ),
-        }
-    }
-}
 
 #[derive(Debug)]
 struct Config {
@@ -65,14 +27,6 @@ struct Config {
     shuffle_seed: u64,
     keep_going: bool,
     save_all: bool,
-}
-
-#[derive(Clone, Debug)]
-struct GeneratedCase {
-    mode: CaseMode,
-    players: Vec<String>,
-    input: String,
-    input_hash: u64,
 }
 
 #[derive(Debug)]
@@ -179,13 +133,10 @@ fn try_main() -> Result<(), String> {
     let mut unique_cases = Vec::new();
 
     for mode in &config.modes {
-        let generated = generate_cases_for_mode(
-            &names,
-            *mode,
-            config.case_offset_per_mode,
-            config.max_cases_per_mode,
-            &mut summary,
-        );
+        let generated = generate_cases_for_mode(&names, *mode, config.case_offset_per_mode, config.max_cases_per_mode);
+        if generated.is_empty() && names.len() < mode.total_players() {
+            summary.skipped_insufficient_library += 1;
+        }
         for case in generated {
             summary.total_generated += 1;
             *summary.per_mode_generated.entry(case.mode.label()).or_insert(0) += 1;
@@ -484,115 +435,6 @@ fn parse_usize_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
     Ok(values)
 }
 
-fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
-
-fn load_library(path: &Path) -> Result<Vec<String>, String> {
-    let raw = fs::read_to_string(path).map_err(|e| format!("读取号库失败: {e}"))?;
-    let raw = strip_utf8_bom(&raw);
-    let mut seen = HashSet::new();
-    let mut names = Vec::new();
-    for line in raw.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if seen.insert(trimmed.to_string()) {
-            names.push(trimmed.to_string());
-        }
-    }
-    Ok(names)
-}
-
-fn deterministic_shuffle(values: &mut [String], seed: u64) {
-    if values.len() < 2 {
-        return;
-    }
-    let mut state = seed ^ 0x9E37_79B9_7F4A_7C15;
-    for idx in (1..values.len()).rev() {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let swap_idx = (state % ((idx + 1) as u64)) as usize;
-        values.swap(idx, swap_idx);
-    }
-}
-
-fn generate_cases_for_mode(
-    names: &[String],
-    mode: CaseMode,
-    case_offset: usize,
-    max_cases: usize,
-    summary: &mut Summary,
-) -> Vec<GeneratedCase> {
-    let total = mode.total_players();
-    if names.len() < total {
-        summary.skipped_insufficient_library += 1;
-        return Vec::new();
-    }
-
-    let mut cases = Vec::new();
-    let mut seen_hashes = HashSet::new();
-    let mut skipped = 0usize;
-
-    // 单一连续窗口最多只能产出 names.len() 个唯一 case。
-    // 这里改成“多组互质步长 + 滚动起点”，在保持确定性的前提下，
-    // 能从同一份号库中稳定扩出更多唯一输入，满足 500-case 基线。
-    for step in candidate_steps(names.len()) {
-        for offset_idx in 0..names.len() {
-            if cases.len() >= max_cases {
-                return cases;
-            }
-            let start = (offset_idx * step) % names.len();
-            let players = sample_unique_window(names, start, total, step);
-            let input = mode.build_input(&players);
-            let input_hash = stable_hash(&input);
-            if !seen_hashes.insert(input_hash) {
-                continue;
-            }
-            if skipped < case_offset {
-                skipped += 1;
-                continue;
-            }
-            cases.push(GeneratedCase {
-                mode,
-                players,
-                input,
-                input_hash,
-            });
-        }
-    }
-
-    cases
-}
-
-fn candidate_steps(len: usize) -> Vec<usize> {
-    let mut steps = Vec::new();
-    for candidate in [1usize, 7, 11, 13, 17, 19, 23, 29, 31] {
-        if candidate < len && gcd(candidate, len) == 1 {
-            steps.push(candidate);
-        }
-    }
-    if steps.is_empty() {
-        steps.push(1);
-    }
-    steps
-}
-
-fn gcd(mut lhs: usize, mut rhs: usize) -> usize {
-    while rhs != 0 {
-        let rem = lhs % rhs;
-        lhs = rhs;
-        rhs = rem;
-    }
-    lhs
-}
-
-fn sample_unique_window(names: &[String], start: usize, total: usize, step: usize) -> Vec<String> {
-    let mut players = Vec::with_capacity(total);
-    for idx in 0..total {
-        players.push(names[(start + idx * step) % names.len()].clone());
-    }
-    players
-}
-
 fn detect_default_library() -> Option<PathBuf> {
     let shared_repo_root = detect_shared_repo_root()?;
     let candidate = shared_repo_root.join("tests").join("sqp6000.txt");
@@ -693,54 +535,13 @@ fn read_first_line(path: &Path) -> Option<String> {
     raw.lines().next().map(str::trim).map(str::to_string).filter(|line| !line.is_empty())
 }
 
+fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
+
 fn normalize_existing_path(path: PathBuf) -> PathBuf { path.canonicalize().unwrap_or(path) }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn sample_names(count: usize) -> Vec<String> { (0..count).map(|idx| format!("name_{idx}")).collect() }
-
-    #[test]
-    fn generate_cases_for_mode_can_expand_beyond_library_len() {
-        let names = sample_names(329);
-        let mut summary = Summary::default();
-
-        let cases = generate_cases_for_mode(&names, CaseMode::OneVsOne, 0, 500, &mut summary);
-        let unique = cases.iter().map(|case| case.input_hash).collect::<HashSet<_>>();
-
-        assert_eq!(cases.len(), 500);
-        assert_eq!(unique.len(), 500);
-    }
-
-    #[test]
-    fn generated_cases_keep_players_unique_within_case() {
-        let names = sample_names(64);
-        let mut summary = Summary::default();
-
-        let cases = generate_cases_for_mode(&names, CaseMode::FreeForAll(8), 0, 128, &mut summary);
-
-        assert_eq!(cases.len(), 128);
-        for case in cases {
-            let unique = case.players.iter().collect::<HashSet<_>>();
-            assert_eq!(unique.len(), case.players.len());
-        }
-    }
-
-    #[test]
-    fn generate_cases_for_mode_offset_matches_stable_slice() {
-        let names = sample_names(329);
-        let mut full_summary = Summary::default();
-        let mut offset_summary = Summary::default();
-
-        let full = generate_cases_for_mode(&names, CaseMode::TwoVsTwo, 0, 40, &mut full_summary);
-        let offset = generate_cases_for_mode(&names, CaseMode::TwoVsTwo, 12, 10, &mut offset_summary);
-
-        let expected = full[12..22].iter().map(|case| case.input_hash).collect::<Vec<_>>();
-        let actual = offset.iter().map(|case| case.input_hash).collect::<Vec<_>>();
-
-        assert_eq!(actual, expected);
-    }
 
     #[test]
     fn md5_tool_signature_tracks_md5_js_dependency() {
@@ -962,14 +763,6 @@ fn diff_signature(ts_lines: &[String], rust_lines: &[String], mismatch_idx: usiz
     }
     format!("{:016x}", stable_hash(&buf))
 }
-
-fn stable_hash<T: Hash>(value: &T) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn case_id(mode: CaseMode, input_hash: u64) -> String { format!("{}-{:016x}", mode.label(), input_hash) }
 
 fn reset_run_output(out_dir: &Path) -> Result<(), String> {
     for name in ["failed", "passed", "ts_empty", ".tmp"] {

@@ -80,7 +80,12 @@ fn group_win_rate(
 
 /// 基于 PreparedRunner 以 CLI 默认语义计算第一组对其余组的胜率（百分比）
 #[pyfunction(signature = (prepared, n, eval_rq=None, thread=0))]
-fn prepared_win_rate(prepared: PyRef<'_, wrapper::PyPreparedRunner>, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
+fn prepared_win_rate(
+    prepared: PyRef<'_, wrapper::PyPreparedRunner>,
+    n: usize,
+    eval_rq: Option<f64>,
+    thread: u32,
+) -> PyResult<f64> {
     let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
     run_prepared_win_rate(&prepared.inner, n, eval_rq, thread)
 }
