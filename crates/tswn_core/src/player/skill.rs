@@ -357,18 +357,14 @@ pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &
         seen[skill_id] = true;
         ordered_ids.push(skill_id);
         if let Some(skill) = storage.store.get_mut(&skill_id) {
-            let final_lv = skill_boost.final_level();
-            skill.set_level(final_lv);
+            let base_lv = skill_boost.base_level();
+            skill.set_level(base_lv);
+            skill.boosted = false;
             match skill_boost {
                 SkillBoost::Normal(_) => {
-                    // 普通技能：无 boost 标记，diy_boost 置为 None
-                    skill.boosted = false;
                     skill.diy_boost = None;
                 }
                 SkillBoost::SlotBoost { .. } | SkillBoost::LastBoost(_) => {
-                    // 有加成的技能：标记 boosted = true 防止后续误 boost，
-                    // 并存储 boost 信息供 clone 重建时使用。
-                    skill.boosted = true;
                     skill.diy_boost = Some(skill_boost.clone());
                 }
             }

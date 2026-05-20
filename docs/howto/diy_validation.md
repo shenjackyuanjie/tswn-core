@@ -138,23 +138,24 @@ target/diy_roundtrip/
 
 | 项目 | 状态 |
 |------|:---:|
-| 初始八围、技能等级、name_factor 一致 | ✅ 64/64 通过 |
-| 对战过程一致（含 clone、boost 等） | ✅ 61/64 通过 (95.3%) |
+| 初始八围、技能等级、name_factor 一致 | ✅ 全部通过 |
+| sqp6000 对战过程一致（64 case） | ✅ 64/64 通过 |
+| sqp5900 对战过程一致（500 case） | ✅ 498/500 通过 (99.6%) |
 | 完整 action order 往返（40 槽位） | ✅ 已实现 |
 | Boost 类型编码（LastBoost/SlotBoost） | ✅ 已实现 |
-| Clone 衰减下限统一（普通=DIY） | ✅ 已实现 |
-
-剩余 3 个 case 涉及分身+加成技能的复杂交互，正在排查中。
+| skill_order 移除，skills 有序列表 | ✅ 已实现 |
+| boost 流程分离（普通 step A / DIY step B） | ✅ 已实现 |
 
 ## 已知限制
 
 1. **武器不支持**：DIY 模式下武器不计入（weapon_state = None）。
-2. **大型回归测试**：clone 行为修正（clamp→boost）影响了 45 个 large 测试，需逐一更新基线。
+2. **双 boost 技能**：同一技能同时被 LastBoost + SlotBoost 命中时（约占 0.4% case），diy_boost 元数据会丢失一个加成类型，导致往返不一致。
+3. **大型回归测试**：40 个 large 测试因 clone 行为变化需要更新基线。
 
 ## 最终目标
 
 - 初始状态一致（八围、技能等级、name_factor）。
-- 对战过程一致（64/64 通过）。
+- 对战过程一致（sqp5900 500/500 通过）。
 
 ## 与 sby_test.md 的关系
 

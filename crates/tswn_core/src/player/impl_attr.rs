@@ -294,23 +294,23 @@ impl Player {
                     skill_15.boost_level(boost_level);
                 }
             }
-        } else if clamp_source.is_some() {
-            // DIY clone：clamp 之后按 overlay 的 SkillBoost 元数据重放加成。
+        } else {
+            // DIY overlay：apply_diy_skill_levels 写入的是 base_level；
+            // 这里按 overlay 的 SkillBoost 元数据重放加成。clone 场景会先 clamp 再执行本段。
             let skill_keys = self.skills.skill.clone();
             for skill_key in &skill_keys {
                 let Some(boost_info) = self.skills.skill_by_id(*skill_key).diy_boost.clone() else {
                     continue;
                 };
                 let skill = self.skills.skill_by_id_mut(*skill_key);
+                let current = skill.level();
                 match boost_info {
                     SkillBoost::Normal(_) => {}
                     SkillBoost::LastBoost(_) => {
-                        let current = skill.level();
                         skill.set_level(current.saturating_mul(2));
                         skill.boosted = true;
                     }
                     SkillBoost::SlotBoost { boost, .. } => {
-                        let current = skill.level();
                         skill.set_level(current.saturating_add(boost));
                         skill.boosted = true;
                     }
@@ -362,7 +362,6 @@ impl Player {
             }
             first = false;
             if skill.level() == 0 {
-                skills.push_str(&format!("\"{}\":0", name));
                 continue;
             }
             match &skill.diy_boost {
@@ -407,7 +406,6 @@ impl Player {
             }
             first = false;
             if skill.level() == 0 {
-                skills.push_str(&format!("\"{}\":0", name));
                 continue;
             }
             match &skill.diy_boost {
