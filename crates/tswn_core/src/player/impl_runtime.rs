@@ -63,6 +63,9 @@ use smallvec::SmallVec;
 // JS addNew 之后的新单位会立刻参与"战斗是否结束"的判断，
 // Rust 侧这里也要把敌方 pending spawn 视为仍然存活的敌人。
 fn has_alive_enemy_or_pending(storage: &Arc<Storage>, ally_group: &[PlrId]) -> bool {
+    if storage.alive_group_count() > 2 {
+        return true;
+    }
     if storage
         .iter_player_ids()
         .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
@@ -717,6 +720,9 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) {
+        if !self.skills.has_inline_pre_action || self.skills.pre_action.is_empty() {
+            return;
+        }
         let ptr = self.as_ptr();
         let keys = self.skills.pre_action.clone();
         for skill_key in keys {
@@ -806,7 +812,7 @@ impl Player {
         storage: &Arc<Storage>,
     ) {
         let ptr = self.as_ptr();
-        if self.skills.skill_by_id(skill_key).has_inline_post_action() {
+        if self.skills.has_inline_post_action && self.skills.skill_by_id(skill_key).has_inline_post_action() {
             let mut skill_type = self.skills.skill_by_id_mut(skill_key).take_skill_type();
             let needs_update_states;
             let effects;
@@ -842,6 +848,9 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) {
+        if self.skills.post_action.is_empty() {
+            return;
+        }
         let keys = self.skills.post_action.clone();
         for skill_key in keys {
             if self.skills.skill_by_id(skill_key).post_action_phase() == phase {
@@ -860,42 +869,55 @@ impl Player {
         if self.get_status().hp <= 0 {
             return;
         }
+        if self.skills.post_kill.is_empty() {
+            return;
+        }
         let ptr = self.as_ptr();
-        let keys = self.skills.post_kill.clone();
-        for skill_key in keys {
-            let (mut skill_type, level) = {
-                let skill = self.skills.skill_by_id_mut(skill_key);
-                (skill.take_skill_type(), skill.level())
-            };
-            let triggered;
-            let needs_update_states;
-            let effects;
-            {
-                let mut ctx = InlineCtx {
-                    ptr,
-                    owner: self,
-                    randomer,
-                    updates,
-                    storage,
-                    post_damage: None,
-                    effects: SmallVec::new(),
-                    needs_update_states: false,
+        if self.skills.has_inline_post_kill {
+            let keys = self.skills.post_kill.clone();
+            for skill_key in keys {
+                let (mut skill_type, level) = {
+                    let skill = self.skills.skill_by_id_mut(skill_key);
+                    (skill.take_skill_type(), skill.level())
                 };
-                triggered = if skill_type.has_inline_post_kill() {
-                    skill_type.kill_inline(level, target, &mut ctx)
-                } else {
-                    skill_type.kill_with_level(level, target, (ptr, ctx.randomer, ctx.updates, ctx.storage))
-                };
-                needs_update_states = ctx.needs_update_states;
-                effects = std::mem::take(&mut ctx.effects);
+                let triggered;
+                let needs_update_states;
+                let effects;
+                {
+                    let mut ctx = InlineCtx {
+                        ptr,
+                        owner: self,
+                        randomer,
+                        updates,
+                        storage,
+                        post_damage: None,
+                        effects: SmallVec::new(),
+                        needs_update_states: false,
+                    };
+                    triggered = if skill_type.has_inline_post_kill() {
+                        skill_type.kill_inline(level, target, &mut ctx)
+                    } else {
+                        skill_type.kill_with_level(level, target, (ptr, ctx.randomer, ctx.updates, ctx.storage))
+                    };
+                    needs_update_states = ctx.needs_update_states;
+                    effects = std::mem::take(&mut ctx.effects);
+                }
+                self.skills.skill_by_id_mut(skill_key).put_skill_type(skill_type);
+                self.apply_deferred_effects(ptr, effects, randomer, updates, storage);
+                if needs_update_states {
+                    self.update_states();
+                }
+                if triggered {
+                    break;
+                }
             }
-            self.skills.skill_by_id_mut(skill_key).put_skill_type(skill_type);
-            self.apply_deferred_effects(ptr, effects, randomer, updates, storage);
-            if needs_update_states {
-                self.update_states();
-            }
-            if triggered {
-                break;
+        } else {
+            let keys = self.skills.post_kill.clone();
+            for skill_key in keys {
+                let triggered = self.skills.skill_by_id_mut(skill_key).kill(target, (ptr, randomer, updates, storage));
+                if triggered {
+                    break;
+                }
             }
         }
     }
@@ -1630,6 +1652,9 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) {
+        if deferred_effects.is_empty() {
+            return;
+        }
         for effect in deferred_effects {
             match effect {
                 Effect::Attack { target, atp, is_mag, on_damage } => {
@@ -1644,10 +1669,11 @@ impl Player {
                             target_plr.finish_damage_skip_post_kill(core.dmg, core.old_hp, ptr, randomer, updates, storage);
                             !target_plr.alive() || target_plr.get_status().hp <= 0
                         };
-                        let has_enemy_alive = storage
-                            .group_containing(ptr)
-                            .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
-                            .unwrap_or(true);
+                        let has_enemy_alive = storage.alive_group_count() > 2
+                            || storage
+                                .group_containing(ptr)
+                                .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
+                                .unwrap_or(true);
                         if target_died && has_enemy_alive {
                             self.run_post_kill_owner_inline(core.target, randomer, updates, storage);
                         }
@@ -1669,10 +1695,11 @@ impl Player {
                         target_plr.finish_damage_skip_post_kill(core.actual_dmg, core.old_hp, ptr, randomer, updates, storage);
                         !target_plr.alive() || target_plr.get_status().hp <= 0
                     };
-                    let has_enemy_alive = storage
-                        .group_containing(ptr)
-                        .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
-                        .unwrap_or(true);
+                    let has_enemy_alive = storage.alive_group_count() > 2
+                        || storage
+                            .group_containing(ptr)
+                            .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
+                            .unwrap_or(true);
                     if target_died && has_enemy_alive {
                         self.run_post_kill_owner_inline(target, randomer, updates, storage);
                     }
@@ -2647,12 +2674,20 @@ impl Player {
     ) -> i32 {
         #[cfg(not(feature = "no_debug"))]
         let debug_this = crate::debug::debug_action_matches(&self.id_name());
+        if self.skills.post_damage.is_empty() {
+            self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
+            if self.status.hp <= 0 {
+                self.on_die_impl(old_hp, caster, randomer, updates, storage, true, run_post_kill);
+                return old_hp;
+            }
+            return dmg;
+        }
         let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
         for skill_idx in post_damaged_indices {
             let ptr = self.as_ptr();
             #[cfg(not(feature = "no_debug"))]
             let rc4_before = (randomer.i, randomer.j);
-            let has_inline = self.skills.skill_by_id(skill_idx).has_inline_post_damage();
+            let has_inline = self.skills.has_inline_post_damage && self.skills.skill_by_id(skill_idx).has_inline_post_damage();
             let (manages_dynamic_pre_action, dynamic_pre_action_enabled, needs_update_states) = if has_inline {
                 let deferred_effects;
                 let (mut skill_type, current_level) = {

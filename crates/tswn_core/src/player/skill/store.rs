@@ -104,6 +104,13 @@ pub struct SkillStorage {
     pub post_kill: Vec<SkillKey>,
     // 别的什么东西
     pub pending_clear_states: bool,
+
+    // 快速路径：是否有任意技能注册了内联版本。
+    // 仅在 register_skill_proc / clear_proc 中更新
+    pub has_inline_pre_action: bool,
+    pub has_inline_post_action: bool,
+    pub has_inline_post_kill: bool,
+    pub has_inline_post_damage: bool,
 }
 
 impl SkillStorage {
@@ -126,6 +133,10 @@ impl SkillStorage {
             post_death: Vec::new(),
             post_kill: Vec::new(),
             pending_clear_states: false,
+            has_inline_pre_action: false,
+            has_inline_post_action: false,
+            has_inline_post_kill: false,
+            has_inline_post_damage: false,
         }
     }
 
@@ -142,9 +153,14 @@ impl SkillStorage {
         self.post_damage.clear();
         self.post_death.clear();
         self.post_kill.clear();
+        self.has_inline_pre_action = false;
+        self.has_inline_post_action = false;
+        self.has_inline_post_kill = false;
+        self.has_inline_post_damage = false;
     }
 
     fn push_proc_key(&mut self, kind: ProcKind, key: SkillKey) {
+        let skill = self.store.get(&key);
         match kind {
             ProcKind::UpdateState => {
                 if !self.update_states.contains(&key) {
@@ -159,11 +175,13 @@ impl SkillStorage {
             ProcKind::PreAction => {
                 if self.pre_action_membership.insert(key) {
                     self.pre_action.push(key);
+                    if skill.is_some_and(|s| s.has_inline_pre_action()) { self.has_inline_pre_action = true; }
                 }
             }
             ProcKind::PostAction => {
                 if !self.post_action.contains(&key) {
                     self.post_action.push(key);
+                    if skill.is_some_and(|s| s.has_inline_post_action()) { self.has_inline_post_action = true; }
                 }
             }
             ProcKind::PreDefend => {
@@ -189,6 +207,7 @@ impl SkillStorage {
                 } else {
                     self.post_damage.push(key);
                 }
+                if skill.is_some_and(|s| s.has_inline_post_damage()) { self.has_inline_post_damage = true; }
             }
             ProcKind::PostDeath => {
                 if !self.post_death.contains(&key) {
@@ -198,6 +217,7 @@ impl SkillStorage {
             ProcKind::PostKill => {
                 if !self.post_kill.contains(&key) {
                     self.post_kill.push(key);
+                    if skill.is_some_and(|s| s.has_inline_post_kill()) { self.has_inline_post_kill = true; }
                 }
             }
         }
