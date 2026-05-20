@@ -275,9 +275,9 @@ impl Player {
         }
 
         if diy_skill_levels.is_none() {
-            // 检测 boost 候选并记录到 diy_boost。
-            // - 非 clone：直接执行 boost。
-            // - clone：先 clamp 再通过统一 re-boost 路径应用，保证衰减下限语义一致。
+            // === Step A: 普通号 ===
+            // 检测 boost 候选 → 记录 diy_boost 元数据 → 直接执行 boost
+            // boost 在 clamp 之前执行（clamp 在阶段 4 已完成）
 
             // LastBoost 候选（raw_name_base 已 boost 的跳过）
             let last_boost_key: Option<usize> = self
@@ -321,31 +321,24 @@ impl Player {
                 });
             }
 
-            if clamp_source.is_none() {
-                // 非 clone：直接执行 boost
-                if let Some(key) = last_boost_key {
-                    self.skills.skill_by_id_mut(key).boost_if_not();
-                }
-                for (key, amount) in &slot_boost_keys {
-                    self.skills.skill_by_id_mut(*key).boost_level(*amount);
-                }
+            // 直接执行 boost（clamp 已在阶段 4 完成，不影响 boost）
+            if let Some(key) = last_boost_key {
+                self.skills.skill_by_id_mut(key).boost_if_not();
             }
-        }
-
-        // 统一 re-boost（normal clone 和 DIY clone 共用）。
-        // 仅在 clamp 降低了等级（当前等级 < 原始加成后等级）时才执行。
-        if clamp_source.is_some() {
+            for (key, amount) in &slot_boost_keys {
+                self.skills.skill_by_id_mut(*key).boost_level(*amount);
+            }
+        } else {
+            // === Step B: DIY 号 ===
+            // diy_boost 元数据已在 apply_diy_skill_levels 中写入
+            // 等级当前为 base_level，此处基于当前等级执行 boost
             let skill_keys = self.skills.skill.clone();
             for skill_key in &skill_keys {
                 let Some(boost_info) = self.skills.skill_by_id(*skill_key).diy_boost.clone() else {
                     continue;
                 };
-                let original_final = boost_info.final_level();
                 let skill = self.skills.skill_by_id_mut(*skill_key);
                 let current = skill.level();
-                if current >= original_final {
-                    continue;
-                }
                 match boost_info {
                     SkillBoost::Normal(_) => {}
                     SkillBoost::LastBoost(_) => {
