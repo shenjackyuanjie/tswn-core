@@ -39,7 +39,7 @@ export function iconSrc(iconPngBase64) {
 
 /**
  * 根据玩家/归属者 ID 生成 show 风格头像类名。
- * @param {number|null|undefined} iconId
+ * @param {number|string|null|undefined} iconId
  * @returns {string}
  */
 export function iconClassName(iconId) {
@@ -47,41 +47,100 @@ export function iconClassName(iconId) {
 }
 
 /**
- * 为当前回放中的玩家列表生成 `.icon_N { background-image: ... }` 样式规则。
- * @param {FightPlayer[]} players
+ * 为当前回放中的头像表生成 `.icon_N { background-image: ... }` 样式规则。
+ * @param {Array<{ icon_class_id?: number|string, id?: number|string, icon_png_base64?: string|null }>} iconEntries
  * @returns {string}
  */
-export function buildIconClassCss(players) {
-    return players
-    .map((player) => `.${iconClassName(player.id)} { background-image: url("${iconSrc(player.icon_png_base64)}"); }`)
+export function buildIconClassCss(iconEntries) {
+    const seen = new Set();
+    return iconEntries
+        .map((entry) => {
+            const iconId = entry.icon_class_id ?? entry.id;
+            if (iconId == null || seen.has(iconId)) {
+                return "";
+            }
+            seen.add(iconId);
+            return `.${iconClassName(iconId)} { background-image: url("${iconSrc(entry.icon_png_base64)}"); }`;
+        })
+        .filter(Boolean)
         .join("\n");
 }
 
 /**
- * 为 show 回放玩家列表补齐 icon_class_id。
- * 多对多时，整队统一使用输入顺序中该队第一个玩家的头像编号。
+ * 取混淆版 md5.js 中 Sgls.o6 使用的头像缓存 key。
+ * @param {{ icon_key?: string, id_name?: string, id?: number|string }|null|undefined} actor
+ * @returns {string}
+ */
+function iconCacheKey(actor) {
+    return actor?.icon_key ?? actor?.id_name ?? `#${actor?.id ?? "missing"}`;
+}
+
+/**
+ * 为完整回放补齐 icon_class_id，并收集需要注入的 CSS 背景图规则。
+ * 混淆版 md5.js 的 Sgls.o6 是按 fy/icon_key 缓存，再按出现顺序分配 icon_N。
+ * @param {FightReplay} replay
+ * @returns {FightReplay}
+ */
+export function normalizeReplayIconClasses(replay) {
+    const iconIdByKey = new Map();
+    const iconStyleById = new Map();
+    let nextIconId = 0;
+
+    const register = (actor) => {
+        if (!actor) {
+            return actor;
+        }
+        const key = iconCacheKey(actor);
+        let icon_class_id = iconIdByKey.get(key);
+        if (icon_class_id == null) {
+            icon_class_id = nextIconId;
+            nextIconId += 1;
+            iconIdByKey.set(key, icon_class_id);
+        }
+        if (actor.icon_png_base64 && !iconStyleById.has(icon_class_id)) {
+            iconStyleById.set(icon_class_id, {
+                icon_class_id,
+                icon_png_base64: actor.icon_png_base64,
+            });
+        }
+        return {
+            ...actor,
+            icon_class_id,
+        };
+    };
+
+    const normalizeStates = (states) => (states ?? []).map(register);
+    const players = (replay.players ?? []).map(register);
+    const initial_states = normalizeStates(replay.initial_states);
+    const frames = (replay.frames ?? []).map((frame) => ({
+        ...frame,
+        states: normalizeStates(frame.states),
+    }));
+    const final_states = normalizeStates(replay.final_states);
+
+    return {
+        ...replay,
+        players,
+        initial_states,
+        frames,
+        final_states,
+        icon_styles: Array.from(iconStyleById.values()),
+    };
+}
+
+/**
+ * @deprecated 使用 normalizeReplayIconClasses；保留导出避免旧页面直接引用时报错。
  * @param {FightPlayer[]} players
  * @returns {FightPlayer[]}
  */
 export function withTeamIconClassIds(players) {
-    const firstPlayerIdByTeam = new Map();
-    return players.map((player) => {
-        const existing = firstPlayerIdByTeam.get(player.team_index);
-        const icon_class_id = existing ?? player.id;
-        if (existing == null) {
-            firstPlayerIdByTeam.set(player.team_index, player.id);
-        }
-        return {
-            ...player,
-            icon_class_id,
-        };
-    });
+    return normalizeReplayIconClasses({ players }).players;
 }
 
 /**
  * 渲染一个 show 风格头像节点。
  * 头像图片由外部注入的 `.icon_N` 规则提供，这里只负责输出结构和类名。
- * @param {number|null|undefined} iconId
+ * @param {number|string|null|undefined} iconId
  * @param {string} className
  * @returns {string}
  */
@@ -203,14 +262,16 @@ export function statusText(state) {
  * @param {FightState} [previousState=state] — 上一帧状态（默认同当前，表示无变化）
  * @returns {HpMetrics|null} 若 state 无效或 maxHp≤0 返回 null
  */
-export function actorHpMetrics(state, previousState = state) {
+export function actorHpMetrics(state, previousState) {
     if (!state || state.max_hp <= 0) {
         return null;
     }
 
     const maxHp = Math.max(1, state.max_hp, previousState?.max_hp ?? 0);
     const hp = Math.max(0, Math.min(maxHp, state.hp));
-    const previousHp = Math.max(0, Math.min(maxHp, previousState?.hp ?? hp));
+    // 新对象（无 previousState 或本帧刚出现）当作 hp 从 0 开始变化
+    const isNew = state?._is_new_in_frame || previousState?._is_new_in_frame;
+    const previousHp = (previousState && !isNew) ? Math.max(0, Math.min(maxHp, previousState.hp)) : 0;
     // 血条长度调整为 血量 / 4 向上取整
     const totalWidth = Math.max(20, Math.ceil(maxHp / 4));
     const fillWidth = hp > 0 ? Math.max(1, Math.ceil(hp / 4)) : 0;
@@ -239,16 +300,25 @@ export function actorHpMetrics(state, previousState = state) {
  */
 export function formatMessageText(text, tone) {
     let html = escapeHtml(text);
-    // [技能名] 包裹为 span
-    html = html.replace(/(\[[^\]]+\])/g, '<span class="skill-token">$1</span>');
+
+    // 解除/中止/打消所在句：从[xxx]中解除 → [xxx] 标橙色
+    html = html.replace(/从\[([^\]]+)\]中解除/g, '从<span class="status-change-token">$1</span>中解除');
+    // 独立 [解除]/[中止]/[打消] 标橙色
+    html = html.replace(/\[(解除|中止|打消)\]/g, '<span class="status-change-token">$1</span>');
+
+    // 其他技能或状态（包括回避、反击、识破、反弹、吸收等普通技能） → 去掉 []，蓝色
+    html = html.replace(/\[([^\]]+)\]/g, '<span class="skill-token">$1</span>');
 
     if (tone === "damage") {
-        // "XX点伤害" 中的数字高亮
+        // "XX点伤害" 中的数字标红
         html = html.replace(/(\d+)(?=点伤害)/g, '<span class="message-number">$1</span>');
     }
     if (tone === "recover") {
-        // "回复XX点" 中的数字高亮
+        // "回复XX点" 中的数字标绿
         html = html.replace(/(\d+)(?=点)/g, '<span class="message-number">$1</span>');
     }
+    // 瘟疫/体力减少等也标红（数字后跟%或"减少"）
+    html = html.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
+
     return html;
 }

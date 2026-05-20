@@ -38,6 +38,10 @@ def group_win_rate(
     """按 CLI 默认语义批量计算 target 对多个 opponent 的胜率百分比。thread: 0=自动, 1=单线程, n=指定线程数。"""
     ...
 
+def prepared_win_rate(prepared: PreparedRunner, n: int, eval_rq: float | None = None, thread: int = 0) -> float:
+    """基于 PreparedRunner 计算第一组对其余组的胜率百分比。thread: 0=自动, 1=单线程, n=指定线程数。"""
+    ...
+
 def name_to_png_base64(name: str) -> str:
     """将名字渲染为 PNG 并返回 Base64 字符串。"""
     ...
@@ -60,6 +64,7 @@ __all__ = [
     "WIN_RATE_EVAL_RQ",
     "core_version_str",
     "group_win_rate",
+    "prepared_win_rate",
     "name_to_icon_rgba",
     "name_to_png_base64",
     "name_to_png_bytes",

@@ -1,5 +1,56 @@
 # 更新日志
 
+## [0.2.6] - 2026-05-19
+
+### 新增
+
+- 补齐跨语言通用顶层接口：
+  - `default_eval_rq()`
+  - `win_rate_eval_rq()`
+  - `name_to_png_bytes(name)`
+  - `name_to_icon_rgba(name)`
+  - `group_win_rate(target, against, total_rounds, options?)`
+- `group_win_rate(...)` 返回 `GroupWinRateResult[]`，每项包含 `opponent` 和完整 `WinRateResult`。
+
+### 变更
+
+- `win_rate_sync(...)` 现在复用统一的同步胜率执行路径，避免单局 / 批量接口各自维护一套逻辑。
+- README 示例与字段说明统一改为真实的 snake_case 导出名。
+
+## [0.2.5] - 2026-05-17
+
+### 对齐
+
+- 玩家头像机制对齐混淆版 `md5.js` 的 `Sgls.o6(fy)` 行为：按 `icon_key` 缓存头像，并按首次出现顺序分配 `icon_N` 类名。
+- `PlayerMeta` / `PlayerState` 新增 `icon_key`，用于保留原版 renderer 的头像缓存 key。
+- 运行期单位（分身、使魔、幻影、丧尸）在 `include_icons` 启用时会随状态携带自身头像数据，show 回放优先渲染自身头像，不再默认继承主人头像。
+- show 示例的 CSS 注入改为使用回放归一化后的 `icon_styles` 表，避免同队多名玩家或运行期单位头像 class 与原版不一致。
+
+### 验证
+
+- `cargo check -p tswn_wasm`
+- `cargo test -p tswn_wasm`
+- `bun build crates\tswn_wasm\examples\show.js --target=browser --outdir target\codex-js-check\show`
+
+## [0.2.4] - 2026-05-17
+
+### 对齐
+
+- `RoundFrame.total_delay` 改为按混淆版 `md5.js` 的可见 update 等待规则计算：每条可见消息等待 `max(update.delay0, 上一条可见 update.delay1)`，每帧初始上一条 delay 为 `1800`。
+- 回放 chunk 构建不再使用 `delay1 || delay0`，改为携带混淆版 `md5.js` 的原始未缩放等待时间。
+- normal 播放改为先等待再渲染当前 chunk，并按混淆版 `md5.js` 的 `sqrt(角色数 / 2)` 规则缩放等待时间。
+- 结束帧补齐混淆版 `RunUpdateWin` 的 `3000ms` 等待。
+
+### 文档
+
+- 更新 show 示例中的中文注释，明确 delay 逻辑以混淆版 `md5.js` 为准。
+
+## [0.2.3] - 2026-05-07
+
+### 变更
+
+- 状态标签增强：蓄力显示 step 数值（如 `蓄力 (2)`），潜行显示锁定目标（如 `潜行至 #5`）。
+
 ## [0.2.2] - 2026-05-07
 
 ### 新增

@@ -222,9 +222,9 @@ Freddy发起攻击, 我力回避了攻击
     );
     let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
     let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
-    assert_eq!(total_score, 6177, "large_51 score mismatch");
     assert!(guard < 20_000, "sampled case-51 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-51", &actual_lines, &expected_lines);
+    assert_eq!(total_score, 6177, "large_51 score mismatch");
 }
 
 #[test]

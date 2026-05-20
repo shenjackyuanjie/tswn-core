@@ -8,7 +8,10 @@
  * @typedef {{
  *   id: number,
  *   id_name: string,
+ *   icon_key: string,
  *   display_name: string,
+ *   icon_png_base64?: string|null,
+ *   icon_class_id?: number,
  *   minion_kind?: 'clone' | 'summon' | 'shadow' | 'zombie',
  *   hp: number,
  *   max_hp: number,
@@ -38,8 +41,10 @@
  *   id: number,
  *   team_index: number,
  *   id_name: string,
+ *   icon_key: string,
  *   display_name: string,
- *   icon_png_base64: string|null
+ *   icon_png_base64: string|null,
+ *   icon_class_id?: number
  * }} FightPlayer
  *
  * 一次 Replay 的结构：
@@ -51,6 +56,7 @@
  *   frames: FrameUpdate[],
  *   winner_ids: number[],
  *   final_states: FightState[],
+ *   icon_styles?: Array<{ icon_class_id: number, icon_png_base64: string }>,
  *   wasm_duration_ms: number
  * }} FightReplay
  *
@@ -100,7 +106,7 @@
  * @typedef {'normal' | 'fast' | 'turbo'} SpeedMode
  */
 
-import { buildIconClassCss, formatError, sleep, withTeamIconClassIds } from './show-utils.js';
+import { buildIconClassCss, formatError, normalizeReplayIconClasses, sleep } from './show-utils.js';
 import { renderIdleState, renderPlayers, buildFrameRows } from './show-render.js';
 import {
     renderReplayIntro,
@@ -174,6 +180,8 @@ const editNamesBtn = document.querySelector("#editNamesBtn");
 /** @type {HTMLButtonElement} */
 const inputBtn = document.querySelector("#inputBtn");
 /** @type {HTMLButtonElement} */
+const normalBtn = document.querySelector("#normalBtn");
+/** @type {HTMLButtonElement} */
 const fastBtn = document.querySelector("#fastBtn");
 /** @type {HTMLButtonElement} */
 const turboBtn = document.querySelector("#turboBtn");
@@ -236,7 +244,7 @@ function rememberPlayers(players) {
     for (const player of players) {
         playersById.set(player.id, player);
     }
-    syncIconStyles(players);
+    syncIconStyles(currentReplay?.icon_styles ?? players);
 }
 
 function ensureIconStyleTag() {
@@ -249,15 +257,12 @@ function ensureIconStyleTag() {
     return styleEl;
 }
 
-function syncIconStyles(players) {
-    ensureIconStyleTag().textContent = buildIconClassCss(players);
+function syncIconStyles(iconEntries) {
+    ensureIconStyleTag().textContent = buildIconClassCss(iconEntries);
 }
 
 function normalizeReplayPlayers(replay) {
-    return {
-        ...replay,
-        players: withTeamIconClassIds(replay.players),
-    };
+    return normalizeReplayIconClasses(replay);
 }
 
 /**
@@ -310,6 +315,7 @@ function prepareReplayPlan(replay) {
             involved: buildInvolvedSet(frame),
             start: 0,
             end: 0,
+            frameVisibleCount: 0,
         };
         framePlan.chunks = buildFrameRows(frame, frameIndex, previousStates, workingPlayersById);
         previousStates = frame.states;
@@ -327,6 +333,7 @@ function prepareReplayPlan(replay) {
             });
         }
         framePlan.end = flatChunks.length;
+        framePlan.frameVisibleCount = framePlan.chunks.filter(c => c.target !== 'delay').length;
     }
 
     return {
@@ -345,7 +352,9 @@ function currentFrameIndexFromCursor() {
 }
 
 function syncPlaybackUi() {
-    updateSpeedButtons(fastBtn, turboBtn, speedMode, currentReplay, headerMeta);
+    updateSpeedButtons(normalBtn, fastBtn, pauseBtn, playbackPaused, speedMode, currentReplay, headerMeta);
+    // 极速是一次性按钮，仅在 turbo 播放中高亮
+    turboBtn.classList.toggle('is-active', speedMode === 'turbo' && !playbackPaused);
 
     pauseBtn.disabled = !currentReplay;
     pauseBtn.classList.toggle('is-paused', playbackPaused);
@@ -556,7 +565,10 @@ function resolveChunkDelay(frame, rawDelay) {
         const targetDelay = playbackDelay(frame, speedMode);
         return frame.total_delay > 0 ? Math.round((targetDelay * rawDelay) / frame.total_delay) : 0;
     }
-    return rawDelay;
+    // normal 模式：混淆版 md5.js 会先算原始等待，再按 sqrt(角色数 / 2) 缩放。
+    const playerCount = currentReplay?.players?.length ?? 0;
+    const divisor = Math.max(1, Math.round(Math.sqrt(playerCount / 2)));
+    return Math.trunc(rawDelay / divisor);
 }
 
 async function waitForPlaybackDelay(ms, token) {
@@ -589,6 +601,14 @@ async function autoplayFromCurrentCursor() {
 
         const chunk = currentPlan.flatChunks[playbackCursor];
         const framePlan = currentPlan.frames[chunk.frameIndex];
+        const delay = resolveChunkDelay(framePlan.frame, chunk.delay);
+        if (delay > 0) {
+            const completed = await waitForPlaybackDelay(delay, token);
+            if (!completed) {
+                return;
+            }
+        }
+
         appendPlaybackChunk(chunk);
         playbackCursor += 1;
 
@@ -603,14 +623,6 @@ async function autoplayFromCurrentCursor() {
                 return;
             }
         }
-
-        const delay = resolveChunkDelay(framePlan.frame, chunk.delay);
-        if (delay > 0) {
-            const completed = await waitForPlaybackDelay(delay, token);
-            if (!completed) {
-                return;
-            }
-        }
     }
 
     if (token !== playbackLoopToken) {
@@ -622,20 +634,27 @@ async function autoplayFromCurrentCursor() {
     renderEndPanel(currentReplay);
     appendReplayResultBlock(currentReplay);
     storePlaybackCheckpoint(playbackCursor);
+    // 极速是一次性按钮：播完后自动回到暂停态
+    if (speedMode === 'turbo') {
+        playbackPaused = true;
+        speedMode = 'normal';
+    }
     syncPlaybackUi();
 }
 
-function beginReplayPlayback(replay) {
+function beginReplayPlayback(replay, { autoPlay = true } = {}) {
     currentReplay = replay;
     currentPlan = prepareReplayPlan(replay);
     playbackCheckpoints = new Map();
     playbackCursor = 0;
-    playbackPaused = false;
+    playbackPaused = !autoPlay;
     playbackFinished = false;
     playbackStartedAt = performance.now();
     stopPlaybackLoop();
     renderPlaybackToCursor(0, { forceReset: true });
-    void autoplayFromCurrentCursor();
+    if (autoPlay) {
+        void autoplayFromCurrentCursor();
+    }
 }
 
 function nextVisibleCursor(cursor) {
@@ -691,9 +710,6 @@ function pausePlayback() {
     if (!currentReplay) {
         return;
     }
-    if (speedMode !== 'normal') {
-        speedMode = 'normal';
-    }
     playbackPaused = true;
     stopPlaybackLoop();
     syncPlaybackUi();
@@ -733,15 +749,6 @@ function stepPlaybackTo(cursor) {
     playbackPaused = true;
     stopPlaybackLoop();
     renderPlaybackToCursor(cursor);
-}
-
-function resumeWithSpeed(nextSpeedMode) {
-    speedMode = nextSpeedMode;
-    if (playbackPaused && currentReplay && !playbackFinished) {
-        resumePlayback();
-    } else {
-        syncPlaybackUi();
-    }
 }
 
 // ============================================================================
@@ -855,7 +862,7 @@ async function replayCurrent() {
         openInputEditor();
         return;
     }
-    beginReplayPlayback(currentReplay);
+    beginReplayPlayback(currentReplay, { autoPlay: false });
 }
 
 // ============================================================================
@@ -901,24 +908,37 @@ editNamesBtn.addEventListener("click", () => {
     openInputEditor(true);
 });
 
-// 快进按钮：切换 normal ↔ fast
-fastBtn.addEventListener("click", () => {
+// 播放按钮：normal 速度播放
+normalBtn.addEventListener("click", () => {
+    speedMode = 'normal';
     if (playbackPaused && currentReplay && !playbackFinished) {
-        resumeWithSpeed('fast');
+        resumePlayback();
         return;
     }
-    speedMode = speedMode === 'fast' ? 'normal' : 'fast';
     syncPlaybackUi();
 });
 
-// 极速按钮：切换 normal ↔ turbo
-turboBtn.addEventListener("click", () => {
+// 快进按钮：fast 速度播放
+fastBtn.addEventListener("click", () => {
+    speedMode = 'fast';
     if (playbackPaused && currentReplay && !playbackFinished) {
-        resumeWithSpeed('turbo');
+        resumePlayback();
         return;
     }
-    speedMode = speedMode === 'turbo' ? 'normal' : 'turbo';
     syncPlaybackUi();
+});
+
+// 极速按钮：一次性快进至结束，完成后自动暂停
+turboBtn.addEventListener("click", () => {
+    if (!currentReplay || playbackFinished) {
+        return;
+    }
+    speedMode = 'turbo';
+    if (playbackPaused) {
+        resumePlayback();
+    } else {
+        syncPlaybackUi();
+    }
 });
 
 stepBackEventBtn.addEventListener('click', () => {

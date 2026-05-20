@@ -1,4 +1,4 @@
-//! 类型 wrapper
+//! 类型封装
 
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ pub mod error;
 pub mod player;
 pub mod rc4;
 
-/// Python Wrapper for PreparedRunner
+/// PreparedRunner 的 Python 封装
 #[pyclass]
 #[pyo3(name = "PreparedRunner")]
 pub struct PyPreparedRunner {
@@ -21,13 +21,19 @@ pub struct PyPreparedRunner {
 }
 
 #[pymethods]
-impl PyPreparedRunner {}
+impl PyPreparedRunner {
+    #[pyo3(signature = (n, eval_rq=None, thread=0))]
+    pub fn win_rate(&self, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
+        let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
+        crate::run_prepared_win_rate(&self.inner, n, eval_rq, thread)
+    }
+}
 
 impl From<CorePreparedRunner> for PyPreparedRunner {
     fn from(value: CorePreparedRunner) -> Self { Self { inner: value } }
 }
 
-/// Python Wrapper for Runner
+/// Runner 的 Python 封装
 #[pyclass]
 #[pyo3(name = "Runner")]
 pub struct PyRunner {
@@ -145,7 +151,7 @@ impl PyRunner {
     pub fn all_plr_len(&self) -> usize { self.inner.all_plr_len() }
 }
 
-/// World State 的 Python Wrapper
+/// WorldState 的 Python 封装
 #[pyclass]
 #[pyo3(name = "WorldState")]
 pub struct PyWorldState {
@@ -198,7 +204,7 @@ impl From<WorldState> for PyWorldState {
     fn from(value: WorldState) -> Self { Self { inner: value } }
 }
 
-/// Python wrapper for Storage
+/// Storage 的 Python 封装
 ///
 /// 用来获取世界状态/获取玩家信息等
 #[pyclass]
@@ -279,7 +285,7 @@ impl From<Arc<Storage>> for PyStorage {
     fn from(value: Arc<Storage>) -> Self { Self { inner: value } }
 }
 
-/// Python wrapper for RunUpdates
+/// RunUpdates 的 Python 封装
 #[pyclass]
 #[pyo3(name = "RunUpdates")]
 #[derive(Default)]
@@ -330,7 +336,7 @@ impl From<PyRunUpdates> for RunUpdates {
     fn from(value: PyRunUpdates) -> Self { value.inner }
 }
 
-/// Python wrapper for RunUpdate
+/// RunUpdate 的 Python 封装
 ///
 /// 你可以从这里获取到每一轮的更新内容
 #[pyclass]

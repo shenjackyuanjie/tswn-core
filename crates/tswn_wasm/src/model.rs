@@ -37,6 +37,7 @@ pub struct PlayerMeta {
     pub id: usize,
     pub team_index: usize,
     pub id_name: String,
+    pub icon_key: String,
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_png_base64: Option<String>,
@@ -47,7 +48,10 @@ pub struct PlayerState {
     pub id: usize,
     pub team_index: usize,
     pub id_name: String,
+    pub icon_key: String,
     pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_png_base64: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -148,7 +152,7 @@ pub struct RoundFrame {
     pub winner_ids: Vec<usize>,
     pub updates: Vec<UpdateView>,
     pub states: Vec<PlayerState>,
-    /// 帧内所有 update 的 delay 累加值（毫秒），供 JS 正常速度播放使用。
+    /// 帧内所有可见 update 的原始等待总和（毫秒），按混淆版 md5.js 的 delay 规则计算，未按角色数量缩放。
     pub total_delay: i32,
 }
 
@@ -192,4 +196,10 @@ pub struct WinRateResult {
     pub percent: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timing: Option<WinRateTiming>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GroupWinRateResult {
+    pub opponent: String,
+    pub result: WinRateResult,
 }

@@ -71,8 +71,13 @@ function playerIconClassId(player) {
  * @param {{ showHp?: boolean }} [options] — 是否显示 HP mini bar
  * @returns {string} HTML 字符串
  */
-export function actorToken(player, state, previousState, { showHp = true } = {}) {
-    const hpMetrics = showHp ? actorHpMetrics(state, previousState) : null;
+export function actorToken(player, state, previousState, update, { showHp = true } = {}) {
+    // 仅在血量变化时（或新对象首次出现时）显现血条。
+    // 被减速等 debuff 状态不会改变血量，因此不展示血条。
+    const isNew = state?._is_new_in_frame;
+    const hpChanged = isNew || previousState == null || Number(state.hp) !== Number(previousState.hp);
+    const shouldShowHp = showHp && hpChanged;
+    const hpMetrics = shouldShowHp ? actorHpMetrics(state, previousState) : null;
     const hpBar = hpMetrics
         ? `
             <span class="actor-hp" style="width:${hpMetrics.totalWidth}px">
@@ -82,8 +87,10 @@ export function actorToken(player, state, previousState, { showHp = true } = {})
         `
         : "";
     const hpClass = hpMetrics ? " has-hp" : "";
+    const isKnockout = update?.tone === "knockout" || (state && !state.alive);
+    const nameClass = `actor-name${isKnockout ? " namedie" : ""}`;
 
-    return `<span class="actor-token${hpClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), 'msg-avatar icon-sprite')}${hpBar}</span><span class="actor-name">${escapeHtml(player.display_name)}</span></span>`;
+    return `<span class="actor-token${hpClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), 'msg-avatar icon-sprite')}</span><span class="${nameClass}">${hpBar}${escapeHtml(player.display_name)}</span></span>`;
 }
 
 /**
@@ -95,12 +102,14 @@ export function actorToken(player, state, previousState, { showHp = true } = {})
  * @returns {FightPlayer}
  */
 function syntheticPlayerFromState(playerId, state, playersById) {
-    let icon = null;
-    let icon_class_id = state?.owner_id ?? playerId;
+    let icon = state?.icon_png_base64 ?? null;
+    let icon_class_id = state?.icon_class_id ?? state?.owner_id ?? playerId;
     if (state?.owner_id != null) {
         const ownerPlayer = playersById.get(state.owner_id);
-        if (ownerPlayer) {
+        if (ownerPlayer && !icon) {
             icon = ownerPlayer.icon_png_base64;
+        }
+        if (ownerPlayer && state?.icon_class_id == null) {
             icon_class_id = ownerPlayer.icon_class_id ?? ownerPlayer.id;
         }
     }
@@ -109,6 +118,7 @@ function syntheticPlayerFromState(playerId, state, playersById) {
         id: playerId,
         team_index: state?.team_index ?? 0,
         id_name: state?.id_name ?? `player_${playerId}`,
+        icon_key: state?.icon_key ?? state?.id_name ?? `player_${playerId}`,
         display_name: replayDisplayName(state, playerId),
         icon_png_base64: icon,
         icon_class_id,
@@ -124,15 +134,16 @@ function syntheticPlayerFromState(playerId, state, playersById) {
  * @param {{ showHp?: boolean }} [options]
  * @returns {string} HTML 字符串
  */
-export function renderActorById(playerId, stateMap, previousStateMap, playersById, options) {
+export function renderActorById(playerId, stateMap, previousStateMap, playersById, update, options) {
     const player = playersById.get(playerId);
     const state = stateMap.get(playerId);
-    const previousState = previousStateMap?.get(playerId) ?? state;
+    // 若上一帧不存在该对象则传 null，供 actorToken 识别为"新对象"以展示血条
+    const previousState = previousStateMap?.get(playerId) ?? null;
     if (!player) {
-        return actorToken(syntheticPlayerFromState(playerId, state, playersById), state, previousState, options);
+        return actorToken(syntheticPlayerFromState(playerId, state, playersById), state, previousState, update, options);
     }
 
-    return actorToken(player, state, previousState, options);
+    return actorToken(player, state, previousState, update, options);
 }
 
 /**
@@ -147,7 +158,7 @@ export function renderActorById(playerId, stateMap, previousStateMap, playersByI
 export function renderMessageParam(update, tone, stateMap, previousStateMap, playersById) {
     if (Array.isArray(update.target_ids) && update.target_ids.length) {
         return update.target_ids
-            .map((playerId) => renderActorById(playerId, stateMap, previousStateMap, playersById, { showHp: true }))
+            .map((playerId) => renderActorById(playerId, stateMap, previousStateMap, playersById, update, { showHp: true }))
             .join(",");
     }
 
@@ -178,17 +189,17 @@ export function renderTemplateMessage(update, tone, stateMap, previousStateMap, 
         return formatMessageText(`${update.message_rendered ?? ""}`, tone);
     }
 
-    return template
+    let result = template
         .split(/(\[[012]\])/g)
         .filter((part) => part.length > 0)
         .map((part) => {
             if (part === "[0]") {
-                // 施法者 — 不显示 HP
-                return renderActorById(update.caster_id, stateMap, previousStateMap, playersById, { showHp: false });
+                // 施法者 — 仅在血量变化时显示 HP
+                return renderActorById(update.caster_id, stateMap, previousStateMap, playersById, update, { showHp: true });
             }
             if (part === "[1]") {
                 // 目标 — 显示 HP
-                return renderActorById(update.target_id, stateMap, previousStateMap, playersById, { showHp: true });
+                return renderActorById(update.target_id, stateMap, previousStateMap, playersById, update, { showHp: true });
             }
             if (part === "[2]") {
                 // 参数（目标列表或数值）
@@ -197,6 +208,13 @@ export function renderTemplateMessage(update, tone, stateMap, previousStateMap, 
             return formatMessageText(part, tone);
         })
         .join("");
+
+    // 瘟疫/体力减少等场景：数字后跟 % 或"减少"时标红（即使 tone 不是 damage）
+    if (tone !== "damage" && tone !== "recover") {
+        result = result.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
+    }
+
+    return result;
 }
 
 /**
@@ -247,6 +265,7 @@ function sidebarStatusLabels(state) {
 
 const POSITIVE_STATUS_LABELS = new Set(["聚气", "蓄力", "隐匿", "潜行", "狂暴", "疾走", "铁壁", "守护"]);
 const NEGATIVE_STATUS_LABELS = new Set(["魅惑", "诅咒", "冰冻", "中毒", "迟缓", "垂死"]);
+const WIN_UPDATE_DELAY0_MS = 3000;
 
 function statusPillTone(label) {
     if (POSITIVE_STATUS_LABELS.has(label)) {
@@ -571,6 +590,11 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
     const previousStateMap = buildStateMap(previousStates);
     /** @type {Map<number, FightState>} 帧内逐步更新的模拟 HP 状态 */
     let running = new Map(previousStateMap);
+    for (const state of frame.states) {
+        if (!running.has(state.id)) {
+            running.set(state.id, { ...state, _is_new_in_frame: true });
+        }
+    }
     const rows = [];
     let segments = [];
 
@@ -624,6 +648,13 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
         running = hitState;
     }
 
+    // 帧内所有消息处理完后才清除 _is_new_in_frame，确保同一帧中的多条消息都能识别新对象
+    for (const [k, v] of running.entries()) {
+        if (v._is_new_in_frame) {
+            running.set(k, { ...v, _is_new_in_frame: false });
+        }
+    }
+
     flushRow();
 
     if (!rows.length && !frame.finished) {
@@ -647,8 +678,9 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
 
 /**
  * 构建单帧的渲染 chunk 数组，用于 normal/fast 模式逐段渲染。
- * next_line 只负责切到新行，不再把整行消息聚合成一个大 chunk；每条可见消息
- * 都会成为独立 chunk，并直接携带该 update 的 delay1||delay0。
+ * next_line 只负责切到新行，不再把整行消息聚合成一个大 chunk。
+ * 每条可见消息都会成为独立 chunk，并携带混淆版 md5.js 原始渲染器的未缩放等待时间：
+ * 等待时间 = max(update.delay0, 上一条可见 update 的 delay1)，每帧起始上一条 delay1 为 1800。
  *
  * @param {FrameUpdate} frame
  * @param {number} roundIndex
@@ -668,36 +700,31 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     const previousStateMap = buildStateMap(previousStates);
     /** @type {Map<number, FightState>} */
     let running = new Map(previousStateMap);
+    for (const state of frame.states) {
+        if (!running.has(state.id)) {
+            running.set(state.id, { ...state, _is_new_in_frame: true });
+        }
+    }
     /** @type {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>} */
     const chunks = [];
     let frameStarted = false;
     let rowStarted = false;
-    let leadingDelay = 0;
-    let lastVisibleChunk = null;
+    let nextWait = 1800;
 
     function pushVisibleChunk(target, html, delay) {
-        const chunk = { target, html, delay };
-        chunks.push(chunk);
-        lastVisibleChunk = chunk;
+        chunks.push({ target, html, delay });
     }
 
-    function recordHiddenDelay(delay) {
-        if (delay <= 0) {
-            return;
-        }
-        if (lastVisibleChunk) {
-            lastVisibleChunk.delay += delay;
-        } else {
-            leadingDelay += delay;
-        }
+    function visibleWait(update) {
+        const delay0 = Number.isFinite(update.delay0) ? update.delay0 : 0;
+        const delay1 = Number.isFinite(update.delay1) ? update.delay1 : 0;
+        const wait = Math.max(delay0, nextWait);
+        nextWait = delay1;
+        return wait;
     }
 
     function pushLeadingDelayChunk() {
-        if (leadingDelay <= 0) {
-            return;
-        }
-        chunks.push({ target: 'delay', html: '', delay: leadingDelay });
-        leadingDelay = 0;
+        // 混淆版 md5.js 的换行和空消息不会单独等待；保留函数让后续流程不需要分支。
     }
 
     function pushMessageChunk(messageHtml, delay) {
@@ -739,21 +766,18 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     }
 
     for (const update of frame.updates) {
-        const delay = update.delay1 || update.delay0 || 0;
-
         if (update.update_type === "next_line") {
             rowStarted = false;
-            recordHiddenDelay(delay);
             continue;
         }
 
         const message = `${update.message_rendered ?? ""}`.trim();
         if (!message) {
-            recordHiddenDelay(delay);
             continue;
         }
 
         pushLeadingDelayChunk();
+        const delay = visibleWait(update);
 
         const tone = update.tone ?? "normal";
         const hitState = new Map(running);
@@ -768,6 +792,13 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
             delay,
         );
         running = hitState;
+    }
+
+    // 帧内所有消息处理完后才清除 _is_new_in_frame，确保同一帧中的多条消息都能识别新对象
+    for (const [k, v] of running.entries()) {
+        if (v._is_new_in_frame) {
+            running.set(k, { ...v, _is_new_in_frame: false });
+        }
     }
 
     if (!chunks.length) {
@@ -791,13 +822,13 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
                         </div>
                     </section>
                 `,
-                delay: 0,
+                delay: WIN_UPDATE_DELAY0_MS,
             });
         } else {
             chunks.push({
                 target: 'frameBody',
                 html: winnerHtml,
-                delay: 0,
+                delay: WIN_UPDATE_DELAY0_MS,
             });
         }
     }

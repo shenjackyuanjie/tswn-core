@@ -9,7 +9,9 @@ from ._types_update import RunUpdates
 class PreparedRunner:
     """预处理后的分组输入，可重复用于构造 Runner。"""
 
-    ...
+    def win_rate(self, n: int, eval_rq: float | None = None, thread: int = 0) -> float:
+        """基于当前 prepared 模板计算第一组对其余组的胜率百分比。"""
+        ...
 
 class Runner:
     """战斗引擎的主要 Python 入口。"""

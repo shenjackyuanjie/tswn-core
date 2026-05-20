@@ -1,5 +1,14 @@
 # 更新日志
 
+## [0.2.1] - 2026-05-19
+
+### 新增
+
+- 补齐 PreparedRunner 胜率接口：
+  - 顶层新增 `prepared_win_rate(prepared, n, eval_rq=None, thread=0)`
+  - `PreparedRunner` 新增实例方法 `win_rate(n, eval_rq=None, thread=0)`
+- 更新类型存根与 README，使 prepared 路径的公开 API 与 Rust 实现对齐。
+
 ## [0.2.0] - 2026-05-07
 
 ### ⚠️ Breaking Changes

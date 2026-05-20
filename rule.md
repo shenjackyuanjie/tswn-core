@@ -31,7 +31,6 @@ dart 项目 有一个 dart compile js 产物
 
 ## 测试说明
 
-目前在 tswn-core/test 文件夹有 01.md ~ 10.md 十个中型测试和 large.md 一个大型测试
 这些测试都是为了 tswn-core 的实现细节是否与 js 产物一致
 修改过程中很难通过一次修改就让某个测试从在中间失败变成完全通过
 但是只要测试失败的 idx 增加，那就说明修改是正确的
@@ -62,6 +61,7 @@ python track_test.py -r
 ```
 
 注意：脚本的默认过滤器已更新，默认会运行并追踪以下测试关键词组合（可作为 cargo test 的 filter 参数）：
+
 - `large`（所有 large 测试）
 - `large_full`（相当于 fight_large / 完整 large 测试）
 - `small_seed`（小样例的 seed 测试）
@@ -75,12 +75,12 @@ python track_test.py -r
 
 **参数说明：**
 
-| 参数 | 说明 |
-| ------ | ------ |
+| 参数           | 说明                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------- |
 | `-f, --filter` | 测试过滤表达式（默认见上方 DEFAULT_FILTER）。可传入任意关键词或具体测试名以控制运行的测试集。 |
-| `-s, --show` | 只显示当前失败状态，不运行测试 |
-| `-q, --quiet` | 安静模式，只输出关键信息 |
-| `-r, --reset` | 重置历史记录 |
+| `-s, --show`   | 只显示当前失败状态，不运行测试                                                                |
+| `-q, --quiet`  | 安静模式，只输出关键信息                                                                      |
+| `-r, --reset`  | 重置历史记录                                                                                  |
 
 解析与比对行为说明（重要）：
 
@@ -192,20 +192,20 @@ python ./track_case_miner.py --library D:/shared/tswn-core/tests/sqp6000.txt
 
 **常用参数：**
 
-| 参数 | 说明 |
-| ------ | ------ |
-| `--library` | 号库文件路径；默认优先使用共享主仓库的 `tests/sqp6000.txt` |
-| `--md5-tool` | `out_md5.ts` 路径；默认自动推导 `fast-namerena/branch/latest/out_md5.ts` |
-| `--out-dir` | miner 输出目录，默认 `target/ts_diff_cases` |
-| `--shared-cache-dir` | 共享 bun/TS 缓存目录，默认在主 worktree 的 `target` 下 |
-| `--modes` | 对战模式，默认 `1v1,2v2,3v3v3,ffa` |
-| `--ffa-sizes` | ffa 人数列表，默认 `4,6,8` |
-| `--case-offset-per-mode` | 每种模式按稳定顺序跳过前 N 个唯一 case |
-| `--max-cases-per-mode` | 每种模式的 case 上限 |
-| `--keep-going` | 单个 case 失败时继续 |
-| `-s, --show` | 只显示当前失败状态，不运行 miner |
-| `-q, --quiet` | 安静模式，只输出关键结论 |
-| `-r, --reset` | 重置历史记录 |
+| 参数                     | 说明                                                                     |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `--library`              | 号库文件路径；默认优先使用共享主仓库的 `tests/sqp6000.txt`               |
+| `--md5-tool`             | `out_md5.ts` 路径；默认自动推导 `fast-namerena/branch/latest/out_md5.ts` |
+| `--out-dir`              | miner 输出目录，默认 `target/ts_diff_cases`                              |
+| `--shared-cache-dir`     | 共享 bun/TS 缓存目录，默认在主 worktree 的 `target` 下                   |
+| `--modes`                | 对战模式，默认 `1v1,2v2,3v3v3,ffa`                                       |
+| `--ffa-sizes`            | ffa 人数列表，默认 `4,6,8`                                               |
+| `--case-offset-per-mode` | 每种模式按稳定顺序跳过前 N 个唯一 case                                   |
+| `--max-cases-per-mode`   | 每种模式的 case 上限                                                     |
+| `--keep-going`           | 单个 case 失败时继续                                                     |
+| `-s, --show`             | 只显示当前失败状态，不运行 miner                                         |
+| `-q, --quiet`            | 安静模式，只输出关键结论                                                 |
+| `-r, --reset`            | 重置历史记录                                                             |
 
 如果前面一段 case 已经修完，可以配合使用：
 

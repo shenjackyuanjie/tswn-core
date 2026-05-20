@@ -16,8 +16,15 @@
 
 - `Runner` / `PreparedRunner` 生命周期
 - `RunUpdates` 基本读取
-- `win_rate` / `group_win_rate`
+- `win_rate` / `group_win_rate` / `prepared_win_rate`
 - icon RGBA / PNG / Base64
+
+## 版本与快照字段
+
+- 版本查询：
+  - `tswn_capi_version()`：返回 `tswn_capi` 包装层版本
+  - `tswn_core_version()`：返回 `tswn_core` 版本
+- `tswn_player_snapshot_t` 的蓝量字段统一使用 `magic_point`；不再提供 `mp` 别名。
 
 ## 胜率接口线程参数
 

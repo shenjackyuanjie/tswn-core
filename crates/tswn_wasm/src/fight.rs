@@ -12,8 +12,10 @@ use tswn_core::{RunUpdates, Runner};
 use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, internal_error, invalid_input, parse_options, runner_init_failed, to_js_value};
-use crate::model::{FightOptions, FightReplay, FightSummary, PlayerMeta, PlayerState, RoundFrame, UpdateView};
+use crate::model::{FightOptions, FightReplay, FightSummary, PlayerMeta, PlayerState, RoundFrame, UpdateTypeView, UpdateView};
 use crate::render::{classify_message_tone, render_update_message};
+
+const WIN_UPDATE_DELAY0_MS: i32 = 3000;
 
 fn build_runner(raw_input: String, eval_rq: f64) -> WasmResult<Runner> {
     if raw_input.trim().is_empty() {
@@ -38,8 +40,9 @@ fn collect_players(
         };
         let display_name = player.display_name();
         let team_index = runner.world.team_index_of(*player_id).unwrap_or(0);
+        let icon_key = player.id_key_name();
         let icon_png_base64 = if include_icons {
-            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&player.id_key_name()))
+            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&icon_key))
         } else {
             None
         };
@@ -48,6 +51,7 @@ fn collect_players(
             id: *player_id,
             team_index,
             id_name: player.id_name(),
+            icon_key,
             display_name,
             icon_png_base64,
         });
@@ -92,7 +96,7 @@ where
         .any(|skill| skill.debug_skill_type_name().ends_with(runtime_kind_suffix) && active(skill))
 }
 
-fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<PlayerState>> {
+fn collect_states(runner: &Runner, player_order: &[PlrId], include_icons: bool) -> WasmResult<Vec<PlayerState>> {
     // 收集所有当前玩家（含召唤单位），保持初始顺序 + 新单位追加
     let mut seen: std::collections::HashSet<PlrId> = std::collections::HashSet::new();
     let mut all_ids: Vec<PlrId> = Vec::new();
@@ -113,6 +117,14 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             continue;
         };
         let owner_id = root_owner_id(&runner.storage, *player_id);
+        let icon_key = player.id_key_name();
+        // 混淆版 md5.js 会在运行期对新出现的 fy 调用 Sgls.o6。
+        // 初始玩家的头像已经在 players 中携带，这里只给召唤/分身等运行期单位补图，避免每帧重复传输玩家头像。
+        let icon_png_base64 = if include_icons && owner_id.is_some() {
+            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&icon_key))
+        } else {
+            None
+        };
         let minion_kind = player
             .get_state::<tswn_core::player::skill::act::minion::MinionRuntimeState>()
             .map(|state| state.kind.into());
@@ -123,13 +135,37 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             push_status_label(&mut status_labels, "聚气");
         }
         if has_active_skill(player, "::ChargeSkill", |skill| skill.charge_runtime_active()) {
-            push_status_label(&mut status_labels, "蓄力");
+            let step = player
+                .skill_storage()
+                .store
+                .values()
+                .find_map(|s| {
+                    if s.debug_skill_type_name().ends_with("::ChargeSkill") {
+                        Some(s.charge_step())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            let suffix = if step > 0 { format!(" ({})", step) } else { String::new() };
+            push_status_label(&mut status_labels, &format!("蓄力{}", suffix));
         }
         if has_active_skill(player, "::HideSkill", |skill| skill.dynamic_update_state_enabled()) {
             push_status_label(&mut status_labels, "隐匿");
         }
         if has_active_skill(player, "::AssassinateSkill", |skill| skill.dynamic_pre_action_enabled()) {
-            push_status_label(&mut status_labels, "潜行");
+            let target = player.skill_storage().store.values().find_map(|s| {
+                if s.debug_skill_type_name().ends_with("::AssassinateSkill") {
+                    s.assassinate_target()
+                } else {
+                    None
+                }
+            });
+            if let Some(target_id) = target {
+                push_status_label(&mut status_labels, &format!("潜行至 #{}", target_id));
+            } else {
+                push_status_label(&mut status_labels, "潜行");
+            }
         }
 
         if let Some(state) = player.get_state::<BerserkState>() {
@@ -209,7 +245,9 @@ fn collect_states(runner: &Runner, player_order: &[PlrId]) -> WasmResult<Vec<Pla
             id: *player_id,
             team_index: runner.world.team_index_of(*player_id).unwrap_or(0),
             id_name: player.id_name(),
+            icon_key,
             display_name: player.display_name(),
+            icon_png_base64,
             owner_id,
             minion_kind,
             hp: status.hp,
@@ -264,6 +302,21 @@ fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -
         .collect()
 }
 
+fn playback_total_delay(updates: &[UpdateView]) -> i32 {
+    let mut total_delay = 0;
+    let mut next_wait = 1800;
+    for update in updates {
+        if matches!(update.update_type, UpdateTypeView::NextLine) || update.message_rendered.trim().is_empty() {
+            continue;
+        }
+        // 混淆版 md5.js 会在渲染当前可见 update 前等待 max(delay0, 上一条可见 update 的 delay1)。
+        let wait = update.delay0.max(next_wait);
+        total_delay += wait;
+        next_wait = update.delay1;
+    }
+    total_delay
+}
+
 fn winner_ids(runner: &Runner) -> Vec<usize> { runner.world.winner.clone().unwrap_or_default() }
 
 #[wasm_bindgen]
@@ -271,6 +324,7 @@ pub struct FightSession {
     runner: Runner,
     player_order: Vec<PlrId>,
     players: Vec<PlayerMeta>,
+    include_icons: bool,
     capture_replay: bool,
 }
 
@@ -283,14 +337,19 @@ impl FightSession {
             runner,
             player_order,
             players,
+            include_icons: options.include_icons(),
             capture_replay: options.capture_replay(),
         })
     }
 
     fn build_frame(&self, updates: RunUpdates) -> WasmResult<RoundFrame> {
-        let states = collect_states(&self.runner, &self.player_order)?;
+        let states = collect_states(&self.runner, &self.player_order, self.include_icons)?;
         let converted = convert_updates(updates, &player_names_from_states(&states));
-        let total_delay: i32 = converted.iter().map(|u| if u.delay1 != 0 { u.delay1 } else { u.delay0 }).sum();
+        let mut total_delay = playback_total_delay(&converted);
+        if self.runner.have_winner() {
+            // 混淆版 md5.js 的 RunUpdateWin 使用 3000ms delay0，再进入胜利渲染。
+            total_delay += WIN_UPDATE_DELAY0_MS;
+        }
         Ok(RoundFrame {
             finished: self.runner.have_winner(),
             winner_ids: winner_ids(&self.runner),
@@ -325,7 +384,7 @@ impl FightSession {
             players: self.players.clone(),
             frames,
             winner_ids: winner_ids(&self.runner),
-            final_states: collect_states(&self.runner, &self.player_order)?,
+            final_states: collect_states(&self.runner, &self.player_order, self.include_icons)?,
         })
     }
 }
@@ -342,7 +401,7 @@ impl FightSession {
     pub fn players(&self) -> WasmResult<JsValue> { to_js_value(&self.players) }
 
     pub fn state(&self) -> WasmResult<JsValue> {
-        let states = collect_states(&self.runner, &self.player_order)?;
+        let states = collect_states(&self.runner, &self.player_order, self.include_icons)?;
         to_js_value(&states)
     }
 

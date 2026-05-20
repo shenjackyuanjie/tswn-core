@@ -306,13 +306,13 @@ fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
 
 代表性热点如下：
 
-| 阶段 | 外层持有的引用 | 代表实现 | 重新借回的是谁 | 说明 |
-| ------ | ---------------- | ---------- | ---------------- | ------ |
-| `act` | owner 的 `&mut self` | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L51) | owner | `skill.act(...)` 在 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L459) 期间执行，`charge` 又 `just_get_player_mut(args.0)` |
-| `act` | owner 的 `&mut self` | [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L62) | owner | 与 `charge` 同类，owner 仍存活时再次取 owner |
-| `pre_action` / `post_action` | owner 的 `&mut self` | [HideSkill](../crates/tswn_core/src/player/skill/skl/hide.rs#L92) / [hide.rs#L121-L135](../crates/tswn_core/src/player/skill/skl/hide.rs#L121-L135) | owner | `hide` 在 `pre_action` 与 `update_state` 路径都会再次借 owner |
-| `pre_defend` | target 的 `&mut self` | [ReflectSkill](../crates/tswn_core/src/player/skill/skl/reflect.rs#L23) | target/owner | `reflect` 的 owner 就是当前 defender，自借最明显 |
-| `clear_positive_runtime` | owner 的 `&mut self` | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L100) / [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L103) | owner | 清状态时又回头借 owner |
+| 阶段                         | 外层持有的引用        | 代表实现                                                                                                                                                | 重新借回的是谁 | 说明                                                                                                                                           |
+| ---------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `act`                        | owner 的 `&mut self`  | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L51)                                                                                   | owner          | `skill.act(...)` 在 [impl_runtime.rs](../crates/tswn_core/src/player/impl_runtime.rs#L459) 期间执行，`charge` 又 `just_get_player_mut(args.0)` |
+| `act`                        | owner 的 `&mut self`  | [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L62)                                                                           | owner          | 与 `charge` 同类，owner 仍存活时再次取 owner                                                                                                   |
+| `pre_action` / `post_action` | owner 的 `&mut self`  | [HideSkill](../crates/tswn_core/src/player/skill/skl/hide.rs#L92) / [hide.rs#L121-L135](../crates/tswn_core/src/player/skill/skl/hide.rs#L121-L135)     | owner          | `hide` 在 `pre_action` 与 `update_state` 路径都会再次借 owner                                                                                  |
+| `pre_defend`                 | target 的 `&mut self` | [ReflectSkill](../crates/tswn_core/src/player/skill/skl/reflect.rs#L23)                                                                                 | target/owner   | `reflect` 的 owner 就是当前 defender，自借最明显                                                                                               |
+| `clear_positive_runtime`     | owner 的 `&mut self`  | [ChargeSkill](../crates/tswn_core/src/player/skill/act/charge.rs#L100) / [AccumulateSkill](../crates/tswn_core/src/player/skill/act/accumulate.rs#L103) | owner          | 清状态时又回头借 owner                                                                                                                         |
 
 以当前 HEAD 粗搜，光是 `player/skill` 目录里就能找到 84 处（分布在 36 个文件中）owner/target 级别的 `just_get_player_mut(...)` 命中；其中有一部分只是初始化或测试辅助，但上表这些都处在当前主循环的真实热路径内。
 
@@ -338,18 +338,18 @@ fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ar
 
 当前把 `OnDamageFunc` 传进 `attacked/defned/damage` 的调用点很多，但真正危险的 `on_damage` 实现并不是全部。下面这张表只列**会在回调内部重新取回 target/caster 可变引用**的实现：
 
-| 回调 | 入口调用点 | 回调位置 | 重借对象 | 当前副作用 |
-| ------ | ------------ | ---------- | ---------- | ------------ |
-| `on_absorb` | [absorb.rs#L54](../crates/tswn_core/src/player/skill/act/absorb.rs#L54) | [absorb.rs#L58](../crates/tswn_core/src/player/skill/act/absorb.rs#L58) | caster | 吸血后给 caster 回血 |
-| `on_berserk` | [berserk.rs#L86](../crates/tswn_core/src/player/skill/act/berserk.rs#L86) | [berserk.rs#L137](../crates/tswn_core/src/player/skill/act/berserk.rs#L137) | target | 给 target 叠狂暴状态 |
-| `on_curse` | [curse.rs#L94](../crates/tswn_core/src/player/skill/act/curse.rs#L94) | [curse.rs#L166](../crates/tswn_core/src/player/skill/act/curse.rs#L166) | target | 给 target 叠诅咒状态 |
-| `on_disperse` | [disperse.rs#L84](../crates/tswn_core/src/player/skill/act/disperse.rs#L84) | [disperse.rs#L92](../crates/tswn_core/src/player/skill/act/disperse.rs#L92) | target | 清 positive runtime/state，并扣 MP |
-| `on_fire` | [fire.rs#L71](../crates/tswn_core/src/player/skill/act/fire.rs#L71) | [fire.rs#L75](../crates/tswn_core/src/player/skill/act/fire.rs#L75) | target | 给 target 增加火焰状态 |
-| `on_fire`（复用） | [summon.rs#L236](../crates/tswn_core/src/player/skill/act/summon.rs#L236) | [fire.rs#L75](../crates/tswn_core/src/player/skill/act/fire.rs#L75) | target | 召唤技能复用了火球的 on_damage |
-| `on_ice` | [ice.rs#L104](../crates/tswn_core/src/player/skill/act/ice.rs#L104) | [ice.rs#L163](../crates/tswn_core/src/player/skill/act/ice.rs#L163) | target | 冻结状态写入，且有二次重借 |
-| `on_poison` | [poison.rs#L44](../crates/tswn_core/src/player/skill/act/poison.rs#L44) | [poison.rs#L113](../crates/tswn_core/src/player/skill/act/poison.rs#L113) | target | 中毒状态写入，且有二次重借 |
-| `lazy_attack_on_damage -> lazy_infect` | [lazy.rs#L118](../crates/tswn_core/src/player/boss/lazy.rs#L118) | [lazy.rs#L132](../crates/tswn_core/src/player/boss/lazy.rs#L132) -> [lazy.rs#L186](../crates/tswn_core/src/player/boss/lazy.rs#L186) | target | 懒癌感染 |
-| `covid_spread_on_damage -> covid_infect` | [covid.rs#L341](../crates/tswn_core/src/player/boss/covid.rs#L341) | [covid.rs#L349](../crates/tswn_core/src/player/boss/covid.rs#L349) -> [covid.rs#L370](../crates/tswn_core/src/player/boss/covid.rs#L370) | target | 新冠感染，并对全场存活玩家调移动点 |
+| 回调                                     | 入口调用点                                                                  | 回调位置                                                                                                                                 | 重借对象 | 当前副作用                         |
+| ---------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------- |
+| `on_absorb`                              | [absorb.rs#L54](../crates/tswn_core/src/player/skill/act/absorb.rs#L54)     | [absorb.rs#L58](../crates/tswn_core/src/player/skill/act/absorb.rs#L58)                                                                  | caster   | 吸血后给 caster 回血               |
+| `on_berserk`                             | [berserk.rs#L86](../crates/tswn_core/src/player/skill/act/berserk.rs#L86)   | [berserk.rs#L137](../crates/tswn_core/src/player/skill/act/berserk.rs#L137)                                                              | target   | 给 target 叠狂暴状态               |
+| `on_curse`                               | [curse.rs#L94](../crates/tswn_core/src/player/skill/act/curse.rs#L94)       | [curse.rs#L166](../crates/tswn_core/src/player/skill/act/curse.rs#L166)                                                                  | target   | 给 target 叠诅咒状态               |
+| `on_disperse`                            | [disperse.rs#L84](../crates/tswn_core/src/player/skill/act/disperse.rs#L84) | [disperse.rs#L92](../crates/tswn_core/src/player/skill/act/disperse.rs#L92)                                                              | target   | 清 positive runtime/state，并扣 MP |
+| `on_fire`                                | [fire.rs#L71](../crates/tswn_core/src/player/skill/act/fire.rs#L71)         | [fire.rs#L75](../crates/tswn_core/src/player/skill/act/fire.rs#L75)                                                                      | target   | 给 target 增加火焰状态             |
+| `on_fire`（复用）                        | [summon.rs#L236](../crates/tswn_core/src/player/skill/act/summon.rs#L236)   | [fire.rs#L75](../crates/tswn_core/src/player/skill/act/fire.rs#L75)                                                                      | target   | 召唤技能复用了火球的 on_damage     |
+| `on_ice`                                 | [ice.rs#L104](../crates/tswn_core/src/player/skill/act/ice.rs#L104)         | [ice.rs#L163](../crates/tswn_core/src/player/skill/act/ice.rs#L163)                                                                      | target   | 冻结状态写入，且有二次重借         |
+| `on_poison`                              | [poison.rs#L44](../crates/tswn_core/src/player/skill/act/poison.rs#L44)     | [poison.rs#L113](../crates/tswn_core/src/player/skill/act/poison.rs#L113)                                                                | target   | 中毒状态写入，且有二次重借         |
+| `lazy_attack_on_damage -> lazy_infect`   | [lazy.rs#L118](../crates/tswn_core/src/player/boss/lazy.rs#L118)            | [lazy.rs#L132](../crates/tswn_core/src/player/boss/lazy.rs#L132) -> [lazy.rs#L186](../crates/tswn_core/src/player/boss/lazy.rs#L186)     | target   | 懒癌感染                           |
+| `covid_spread_on_damage -> covid_infect` | [covid.rs#L341](../crates/tswn_core/src/player/boss/covid.rs#L341)          | [covid.rs#L349](../crates/tswn_core/src/player/boss/covid.rs#L349) -> [covid.rs#L370](../crates/tswn_core/src/player/boss/covid.rs#L370) | target   | 新冠感染，并对全场存活玩家调移动点 |
 
 这里有两个值得强调的细节：
 
@@ -385,16 +385,16 @@ fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ar
 
 下表把“当前代码真正修了什么、还剩什么”拆开比较：
 
-| 方案 | 核心思想 | provenance | `post_kill` 同实体别名 | `on_damage` 别名 | owner-phase 别名 | 能否脱离 nightly/noalias | 改造规模 |
-| ------ | ---------- | ------------ | ------------------------ | ------------------ | ------------------ | -------------------------- | ---------- |
-| **A** | 裸 `unsafe` 强转 | ❌ | ❌ | ❌ | ❌ | ❌ | 最小 |
-| **B** | `UnsafeCell` + `run_post_kill` | ✅ | ✅ | ❌ | ❌ | ❌ | 中等 |
-| **C** | B + `mutable-noalias=no` | ✅ | ✅ | ⚠️ 被掩盖 | ⚠️ 被掩盖 | ❌ | 中等 |
-| **D** | staged damage / delayed `on_damage` | ✅ | ✅ | ✅ | ❌ | ❌ | 中等 |
-| **J** | 阶段化上下文 + 局部 effect buffer | ✅ | ✅ | ✅ | ✅ | ✅ | 中大 |
-| **I** | split components / split field | ✅ | ✅ | ✅ | ✅ | ✅ | 大 |
-| **G** | 全局 EventQueue | ✅ | ✅ | ✅ | ✅ | ✅ | 很大 |
-| **E** | Arena + token | ✅ | ✅ | ✅ | ✅ | ✅ | 很大 |
+| 方案  | 核心思想                            | provenance | `post_kill` 同实体别名 | `on_damage` 别名 | owner-phase 别名 | 能否脱离 nightly/noalias | 改造规模 |
+| ----- | ----------------------------------- | ---------- | ---------------------- | ---------------- | ---------------- | ------------------------ | -------- |
+| **A** | 裸 `unsafe` 强转                    | ❌         | ❌                     | ❌               | ❌               | ❌                       | 最小     |
+| **B** | `UnsafeCell` + `run_post_kill`      | ✅         | ✅                     | ❌               | ❌               | ❌                       | 中等     |
+| **C** | B + `mutable-noalias=no`            | ✅         | ✅                     | ⚠️ 被掩盖        | ⚠️ 被掩盖        | ❌                       | 中等     |
+| **D** | staged damage / delayed `on_damage` | ✅         | ✅                     | ✅               | ❌               | ❌                       | 中等     |
+| **J** | 阶段化上下文 + 局部 effect buffer   | ✅         | ✅                     | ✅               | ✅               | ✅                       | 中大     |
+| **I** | split components / split field      | ✅         | ✅                     | ✅               | ✅               | ✅                       | 大       |
+| **G** | 全局 EventQueue                     | ✅         | ✅                     | ✅               | ✅               | ✅                       | 很大     |
+| **E** | Arena + token                       | ✅         | ✅                     | ✅               | ✅               | ✅                       | 很大     |
 
 这里最重要的修正是：
 
