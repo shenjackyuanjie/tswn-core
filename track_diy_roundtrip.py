@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,7 @@ if not CLI_EXE.exists():
 DEFAULT_OUT_DIR = PROJECT_ROOT / "target" / "diy_roundtrip"
 DEFAULT_LIBRARY = PROJECT_ROOT / "tests" / "sqp6000.txt"
 DEFAULT_FIGHT_TIMEOUT = 60
+TMP_DIR = Path(tempfile.gettempdir()) / "tswn_diy_tmp"
 
 
 def run_cli(*args, timeout=30):
@@ -81,8 +83,8 @@ def parse_player_status(line: str) -> dict | None:
 
 def get_player_statuses(input_text: str) -> list[dict]:
     """通过运行 fight 获取每个玩家的初始状态。"""
-    tmp = DEFAULT_OUT_DIR / "_tmp_status_input.txt"
-    tmp.parent.mkdir(parents=True, exist_ok=True)
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = TMP_DIR / "_status_input.txt"
     tmp.write_text(input_text, encoding="utf-8")
     stdout, _ = run_cli("fight", "-f", str(tmp), timeout=30)
     if not stdout:
@@ -97,8 +99,8 @@ def get_player_statuses(input_text: str) -> list[dict]:
 
 def get_fight_lines(input_text: str, timeout: int) -> tuple[list[str], str | None]:
     """运行对战并返回日志行列表。"""
-    tmp = DEFAULT_OUT_DIR / "_tmp_fight_input.txt"
-    tmp.parent.mkdir(parents=True, exist_ok=True)
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = TMP_DIR / "_fight_input.txt"
     tmp.write_text(input_text, encoding="utf-8")
     stdout, stderr = run_cli("fight", "--out-raw", "-f", str(tmp), timeout=timeout)
     if not stdout:
@@ -259,18 +261,14 @@ def compare_fight_lines(orig_lines: list[str], diy_lines: list[str], context: in
 # ---- 主流程 ----
 
 def run_case(orig_input: str, case_id: str, out_dir: Path, compare_fight: bool, fight_timeout: int) -> dict:
-    """处理单个 case。"""
+    """处理单个 case。通过时不写任何文件，失败时才写 case 目录。"""
     result = {
         "case_id": case_id,
         "success": False,
         "diffs": [],
     }
 
-    case_dir = out_dir / case_id
-    case_dir.mkdir(parents=True, exist_ok=True)
-
     # 1. 生成 DIY 输入
-    print(f"  [{case_id}] 生成 DIY 输入...")
     diy_input, name_map, errors = build_diy_input(orig_input)
     if errors:
         result["warnings"] = errors
@@ -278,35 +276,23 @@ def run_case(orig_input: str, case_id: str, out_dir: Path, compare_fight: bool, 
         result["error"] = "无法生成任何 DIY 名字"
         return result
 
-    (case_dir / "input_orig.txt").write_text(orig_input, encoding="utf-8")
-    (case_dir / "input_diy.txt").write_text(diy_input, encoding="utf-8")
-
     # 2. 获取原始玩家状态
-    print(f"  [{case_id}] 获取原始状态...")
     orig_statuses = get_player_statuses(orig_input)
     if not orig_statuses:
         result["error"] = "原始对局无 status 输出"
         return result
-    with open(case_dir / "status_orig.json", "w", encoding="utf-8") as f:
-        json.dump(orig_statuses, f, ensure_ascii=False, indent=2)
 
     # 3. 获取 DIY 玩家状态
-    print(f"  [{case_id}] 获取 DIY 状态...")
     diy_statuses = get_player_statuses(diy_input)
     if not diy_statuses:
         result["error"] = "DIY 对局无 status 输出"
         return result
-    with open(case_dir / "status_diy.json", "w", encoding="utf-8") as f:
-        json.dump(diy_statuses, f, ensure_ascii=False, indent=2)
 
-    # 4. 比对
+    # 4. 比对状态
     diffs = compare_statuses(orig_statuses, diy_statuses)
-    result["diffs"] = diffs
-    result["success"] = len(diffs) == 0
 
     # 5. 对战过程比对
     if compare_fight:
-        print(f"  [{case_id}] 比对对战过程...")
         fight_orig, err_orig = get_fight_lines(orig_input, fight_timeout)
         if err_orig:
             result["error"] = f"原始对战输出失败: {err_orig}"
@@ -316,21 +302,42 @@ def run_case(orig_input: str, case_id: str, out_dir: Path, compare_fight: bool, 
             result["error"] = f"DIY 对战输出失败: {err_diy}"
             return result
 
-        (case_dir / "fight_orig.txt").write_text("\n".join(fight_orig), encoding="utf-8")
-        (case_dir / "fight_diy.txt").write_text("\n".join(fight_diy), encoding="utf-8")
-
         fight_diffs, fight_detail = compare_fight_lines(fight_orig, fight_diy)
-        if fight_detail:
-            (case_dir / "fight_diff.txt").write_text("\n".join(fight_detail), encoding="utf-8")
         if fight_diffs:
             diffs.extend(fight_diffs)
-            result["success"] = False
 
-    if diffs:
-        (case_dir / "diff.txt").write_text("\n".join(diffs), encoding="utf-8")
+    # 仅失败时写 case 目录
+    if diffs or result.get("error"):
+        _write_failure_files(out_dir, case_id, orig_input, diy_input,
+                             orig_statuses, diy_statuses, diffs,
+                             None, None, None)
 
+    result["diffs"] = diffs
+    result["success"] = len(diffs) == 0 and result.get("error") is None
     result["player_count"] = len(orig_statuses)
     return result
+
+
+def _write_failure_files(out_dir, case_id, orig_input, diy_input,
+                         orig_statuses, diy_statuses, diffs,
+                         fight_orig, fight_diy, fight_detail):
+    """仅失败时写文件，减少磁盘占用。"""
+    case_dir = out_dir / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    (case_dir / "input_orig.txt").write_text(orig_input, encoding="utf-8")
+    (case_dir / "input_diy.txt").write_text(diy_input, encoding="utf-8")
+    with open(case_dir / "status_orig.json", "w", encoding="utf-8") as f:
+        json.dump(orig_statuses, f, ensure_ascii=False, indent=2)
+    with open(case_dir / "status_diy.json", "w", encoding="utf-8") as f:
+        json.dump(diy_statuses, f, ensure_ascii=False, indent=2)
+    if diffs:
+        (case_dir / "diff.txt").write_text("\n".join(diffs), encoding="utf-8")
+    if fight_orig:
+        (case_dir / "fight_orig.txt").write_text("\n".join(fight_orig), encoding="utf-8")
+    if fight_diy:
+        (case_dir / "fight_diy.txt").write_text("\n".join(fight_diy), encoding="utf-8")
+    if fight_detail:
+        (case_dir / "fight_diff.txt").write_text("\n".join(fight_detail), encoding="utf-8")
 
 
 def main():
@@ -343,6 +350,8 @@ def main():
     parser.add_argument("--skip-fight", action="store_true", help="跳过对战过程比对（仅比初始状态）")
     parser.add_argument("--fight-timeout", type=int, default=DEFAULT_FIGHT_TIMEOUT, help="单场对战超时（秒）")
     parser.add_argument("-q", "--quiet", action="store_true", help="安静模式")
+    parser.add_argument("--mode", choices=["1v1", "2v2", "3v3v3", "ffa"], default="1v1",
+                        help="对局模式: 1v1=两个单人组, 2v2=两个双人组, 3v3v3=三个三人组, ffa=多人混战")
     args = parser.parse_args()
 
     out_dir = args.out_dir
@@ -357,24 +366,62 @@ def main():
             if input_file.exists():
                 cases.append((case_dir.name, input_file.read_text(encoding="utf-8")))
     else:
-        # 从号库生成简单 case
+        # 从号库生成 case
         if not args.library.exists():
             print(f"错误: 号库文件不存在: {args.library}")
             sys.exit(1)
-        # 直接从号库读取名字，生成 1v1 case
         names = []
         with open(args.library, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):
                     names.append(line)
-        # 生成简单 1v1 case
-        for i in range(0, min(len(names) - 1, args.max_cases * 2), 2):
-            if i + 1 >= len(names):
-                break
-            case_id = f"case_{i//2:04d}"
-            input_text = f"{names[i]}\n\n{names[i+1]}"
+
+        mode = args.mode
+        if mode == "1v1":
+            players_per_case = 2
+            groups_per_case = 2
+            group_size = 1
+        elif mode == "2v2":
+            players_per_case = 4
+            groups_per_case = 2
+            group_size = 2
+        elif mode == "3v3v3":
+            players_per_case = 9
+            groups_per_case = 3
+            group_size = 3
+        elif mode == "ffa":
+            players_per_case = 6
+            groups_per_case = 1
+            group_size = 6
+        else:
+            print(f"未知模式: {mode}")
+            sys.exit(1)
+
+        max_available = len(names) // players_per_case
+        actual_cases = min(args.max_cases, max_available)
+        if actual_cases == 0:
+            print(f"错误: 号库名字不足 (需要 {players_per_case} 个/case，仅有 {len(names)} 个)")
+            sys.exit(1)
+
+        for case_idx in range(actual_cases):
+            case_id = f"case_{case_idx:04d}"
+            start = case_idx * players_per_case
+            case_names = names[start:start + players_per_case]
+
+            if mode == "ffa":
+                # 多人混战：所有人在同一组
+                input_text = "\n".join(case_names)
+            else:
+                # 分组：每组 group_size 人，组间用空行分隔
+                groups = []
+                for g in range(groups_per_case):
+                    g_start = g * group_size
+                    groups.append("\n".join(case_names[g_start:g_start + group_size]))
+                input_text = "\n\n".join(groups)
             cases.append((case_id, input_text))
+
+        print(f"模式: {mode}, 每组 {group_size} 人, {groups_per_case} 组/case")
 
     if not cases:
         print("错误: 没有可用的 case")
