@@ -101,9 +101,11 @@ impl EngineCore {
         // - 如果同一 tick 里稍后又发生死亡移除，也必须保持“先 revive / spawn，再 remove”。
         //
         // 这里先处理显式 queue_revival，再处理 fallback 扫描出的已复活成员，最后才处理 pending spawn。
+        let mut groups_changed = false;
         let revivals = storage.take_pending_revivals();
         for id in revivals {
             if !world.contains_alive(id) && storage.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
+                groups_changed |= world.team_index_of(id).is_none();
                 world.revive_player(id, id);
                 #[cfg(not(feature = "no_debug"))]
                 Self::debug_world_state("after_revive_sync", world, storage);
@@ -122,12 +124,14 @@ impl EngineCore {
             }
         }
         for id in revived_ids {
+            groups_changed |= world.team_index_of(id).is_none();
             world.revive_player(id, id);
             #[cfg(not(feature = "no_debug"))]
             Self::debug_world_state("after_revive_sync", world, storage);
         }
 
         let pending_spawns = storage.take_pending_spawns();
+        groups_changed |= !pending_spawns.is_empty();
         // JS `addNew` 会在当前行动尚未结束前把新召唤物挂进 roster/alive。
         // 只要仍然保证 spawn 先于同一批 death/remove 落地，owner 稍后死亡时的 round_pos 语义就不会变。
         for pending in pending_spawns {
@@ -165,7 +169,9 @@ impl EngineCore {
             #[cfg(not(feature = "no_debug"))]
             Self::debug_world_state("after_dead_remove_fallback", world, storage);
         }
-        storage.sync_groups(&world.groups);
+        if groups_changed {
+            storage.sync_groups(&world.groups);
+        }
         storage.sync_alive_groups_owned_with_count(world.alives_by_group(storage), world.alive_group_count());
         storage.clear_sync_flag();
         #[cfg(not(feature = "no_debug"))]

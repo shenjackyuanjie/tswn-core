@@ -75,17 +75,25 @@ impl SkillTrait for CloneSkill {
         }
 
         let root_owner_id = root_minion_name_owner_id(args.3, args.0);
-        let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage").clone();
-        let mut cloned = owner_snapshot.clone();
+        let (mut cloned, owner_display_name, owner_base_name, owner_clan_name, owner_attr, owner_hp, owner_magic) = {
+            let owner = args.3.get_player(&args.0).expect("cannot get clone owner from storage");
+            (
+                owner.clone(),
+                owner.display_name(),
+                owner.base_name(),
+                owner.clan_name(),
+                owner.attr,
+                owner.get_status().hp,
+                owner.get_status().magic,
+            )
+        };
         cloned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
-        cloned.set_display_name_override(Some(owner_snapshot.display_name()));
+        cloned.set_display_name_override(Some(owner_display_name));
         cloned.reset_minion_name_counter();
         cloned.id = args.3.new_plr_id();
         cloned.player_type = PlayerType::Clone;
         cloned.sort_int = 0;
         cloned.state = PlayerStateStore::default();
-        let owner_base_name = owner_snapshot.base_name();
-        let owner_clan_name = owner_snapshot.clan_name();
         // JS `init_PlrClone()` 会先运行普通的 `PlrClone` 构造函数，
         // 然后再用 owner 变换后的 base 覆盖 `t/name_base`。
         // 因此 `E/raw_name_base` 仍保留普通构造函数的输出。
@@ -102,10 +110,13 @@ impl SkillTrait for CloneSkill {
         // 但 clone build 后必须再把技能等级 clamp 到 owner 当前等级，
         // 否则像 `生命之轮` / `治愈魔法` / `苏生术` / `分身` / `幻术` 这类
         // 已在战斗中衰减过的技能，会被错误地恢复成名字初始值。
-        cloned.build_for_clone(&owner_snapshot.skills);
+        {
+            let owner = args.3.get_player(&args.0).expect("cannot get clone owner from storage");
+            cloned.build_for_clone(&owner.skills);
+        }
 
         // `PlrClone.aU`：克隆体八围直接拷贝 owner 当前八围。
-        cloned.attr = owner_snapshot.attr;
+        cloned.attr = owner_attr;
         // 随后 `weapon.cs()`（postUpgrade）会再次叠加武器属性加成，
         // 因而武器的 `attr_bonus` 会被二次计入。
         if let Some(ref ws) = cloned.weapon_state {
@@ -121,6 +132,7 @@ impl SkillTrait for CloneSkill {
         cloned.update_states();
         #[cfg(not(feature = "no_debug"))]
         if std::env::var_os("TSWN_DEBUG_CLONE").is_some() {
+            let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage");
             let owner_name = owner_snapshot.id_name();
             let clone_name = cloned.id_name();
             let is_diy = owner_snapshot.skills.is_diy;
@@ -152,14 +164,14 @@ impl SkillTrait for CloneSkill {
             }
         }
         cloned.status.move_point = args.1.r255() as i32 * 4 + 256;
-        cloned.status.hp = owner_snapshot.get_status().hp.max(1);
+        cloned.status.hp = owner_hp.max(1);
         // clone 是重新 `build` 出来的实体，所以 mp 取 `itl / 2`，
         // 而不是直接继承 owner 当前 mp。
         cloned.status.magic_point = (cloned.status.wisdom >> 1).max(0);
         cloned.status.set_alive(true);
         cloned.status.set_frozen(false);
 
-        if owner_snapshot.get_status().hp + owner_snapshot.get_status().magic < args.1.r255() as i32 {
+        if owner_hp + owner_magic < args.1.r255() as i32 {
             // 资源偏低时，owner 当前 `分身` 熟练度还会再追加一次衰减：
             // `(decayed_level >> 1) + 1`。
             decayed_level = (decayed_level >> 1) + 1;
@@ -176,6 +188,7 @@ impl SkillTrait for CloneSkill {
         }
         cloned.skills.update_proc();
         if crate::debug::debug_stats() {
+            let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage");
             eprintln!(
                 "[CLONE_FINAL] owner={} owner_attr={:?} owner_hp={} owner_mp={} owner_atk={} owner_def={} owner_spd={} owner_agl={} owner_mag={} owner_mdf={} owner_wis={} | clone_base={} clone_attr={:?} clone_hp={} clone_mp={} clone_atk={} clone_def={} clone_spd={} clone_agl={} clone_mag={} clone_mdf={} clone_wis={} clone_move={} clone_clone_lvl={}",
                 owner_snapshot.id_name(),

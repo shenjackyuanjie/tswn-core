@@ -18,7 +18,7 @@
 use crate::player::PlrId;
 use smallvec::SmallVec;
 
-pub type PlrVec = SmallVec<[PlrId; 4]>;
+pub type PlrVec = SmallVec<[PlrId; 9]>;
 
 #[derive(Clone, Debug, Default)]
 pub struct ActionTargets {

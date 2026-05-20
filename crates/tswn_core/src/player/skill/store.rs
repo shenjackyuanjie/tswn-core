@@ -46,10 +46,55 @@ use crate::player::{
     OnDamageFunc, PlrId,
     skill::{PostActionPhase, ProcKind, Skill, SkillArgs},
 };
-use foldhash::{HashMap as FoldHashMap, HashMapExt, HashSet as FoldHashSet, HashSetExt};
+use foldhash::{HashSet as FoldHashSet, HashSetExt};
 
 /// SkillStorage 内部使用的稳定技能键。
 pub type SkillKey = usize;
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillStore {
+    entries: Vec<Option<Skill>>,
+}
+
+impl SkillStore {
+    pub fn new() -> Self { Self { entries: Vec::new() } }
+
+    #[inline]
+    pub fn get(&self, key: &SkillKey) -> Option<&Skill> { self.entries.get(*key).and_then(Option::as_ref) }
+
+    #[inline]
+    pub fn get_mut(&mut self, key: &SkillKey) -> Option<&mut Skill> { self.entries.get_mut(*key).and_then(Option::as_mut) }
+
+    pub fn insert(&mut self, key: SkillKey, skill: Skill) {
+        if key >= self.entries.len() {
+            self.entries.resize_with(key + 1, || None);
+        }
+        self.entries[key] = Some(skill);
+    }
+
+    pub fn get_or_insert_with<F>(&mut self, key: SkillKey, build: F) -> &mut Skill
+    where
+        F: FnOnce() -> Skill,
+    {
+        if key >= self.entries.len() {
+            self.entries.resize_with(key + 1, || None);
+        }
+        if self.entries[key].is_none() {
+            self.entries[key] = Some(build());
+        }
+        self.entries[key].as_mut().expect("skill inserted")
+    }
+
+    #[inline]
+    pub fn contains_key(&self, key: &SkillKey) -> bool { self.get(key).is_some() }
+
+    pub fn keys(&self) -> impl Iterator<Item = SkillKey> + '_ {
+        self.entries.iter().enumerate().filter_map(|(key, skill)| skill.is_some().then_some(key))
+    }
+
+    #[inline]
+    pub fn values(&self) -> impl Iterator<Item = &Skill> + '_ { self.entries.iter().filter_map(Option::as_ref) }
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PreActionOutcome {
@@ -59,7 +104,7 @@ pub struct PreActionOutcome {
 
 #[derive(Debug, Clone)]
 pub struct SkillStorage {
-    pub store: FoldHashMap<SkillKey, Skill>,
+    pub store: SkillStore,
     /// JS `Player.k1` 的固定技能槽位视图。
     ///
     /// 这里表达的是“名字 build 之后，这个实体 16 个技能槽位各自装的是什么技能类型”。
@@ -113,7 +158,7 @@ pub struct SkillStorage {
 impl SkillStorage {
     pub fn new() -> Self {
         Self {
-            store: FoldHashMap::new(),
+            store: SkillStore::new(),
             slot_skill: Vec::new(),
             skill: Vec::new(),
             disabled_action: FoldHashSet::new(),
@@ -244,7 +289,7 @@ impl SkillStorage {
 
     pub fn update_proc(&mut self) {
         self.clear_proc();
-        let mut keys: Vec<SkillKey> = self.store.keys().copied().collect();
+        let mut keys: Vec<SkillKey> = self.store.keys().collect();
         keys.sort_unstable();
         for key in keys {
             self.register_skill_proc(key);

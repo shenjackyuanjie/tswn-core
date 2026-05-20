@@ -11,10 +11,10 @@
 //!
 //! | 字段                     | 类型                                | 说明                                  |
 //! |--------------------------|-------------------------------------|-----------------------------------------|
-//! | `players`                | `FastHashMap<PlrId, UnsafeCell<Player>>` | 所有玩家实体（含已死+存活）         |
+//! | `players`                | `Vec<Option<UnsafeCell<Player>>>` | 所有玩家实体（含已死+存活），按 PlrId 稠密下标存储 |
 //! | `skills`                 | `FastHashMap<usize, Skill>`         | 所有技能实例，以内存地址为 key        |
-//! | `groups`                 | `FastHashMap<usize, Vec<PlrId>>`    | 队伍分组 roster                       |
-//! | `player_group`           | `FastHashMap<PlrId, usize>`         | 玩家→所属分组索引的反向映射           |
+//! | `groups`                 | `Vec<Vec<PlrId>>`                   | 队伍分组 roster                       |
+//! | `player_group`           | `Vec<Option<usize>>`                | 玩家→所属分组索引的反向映射           |
 //! | `alive_groups`           | `Vec<Vec<PlrId>>`                   | 存活分组，由 WorldState 同步维护       |
 //! | `alive_group_count`      | `AtomicUsize`                       | JS Engine.y.a.Q 兼容队伍计数           |
 //! | `pending_spawns`         | `Vec<PendingSpawn>`                 | 待 tick 同步的新实体（召唤物等）       |
@@ -34,7 +34,6 @@
 
 use std::cell::UnsafeCell;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 
 use crate::player::skill::Skill;
 use crate::player::{Player, PlrId};
@@ -72,15 +71,15 @@ pub struct Storage {
     /// 存技能（`usize` 为 SkillId 的原始值）。
     skills: UnsafeCell<FastHashMap<usize, Skill>>,
     /// 存队伍分组。
-    groups: UnsafeCell<FastHashMap<usize, Vec<PlrId>>>,
+    groups: UnsafeCell<Vec<Vec<PlrId>>>,
     /// 运行期每队存活视图，由 world 同步。
     alive_groups: UnsafeCell<Vec<Vec<PlrId>>>,
     /// JS Engine.y.a.Q 兼容的 alive group 计数。
-    alive_group_count: AtomicUsize,
+    alive_group_count: UnsafeCell<usize>,
     /// 存玩家实体。
-    players: UnsafeCell<FastHashMap<PlrId, UnsafeCell<Player>>>,
+    players: UnsafeCell<Vec<Option<UnsafeCell<Player>>>>,
     /// 玩家 -> 所属分组索引的反向映射，由 `sync_groups` 维护。
-    player_group: UnsafeCell<FastHashMap<PlrId, usize>>,
+    player_group: UnsafeCell<Vec<Option<usize>>>,
     /// 延迟到引擎 tick 同步的新增实体。
     pending_spawns: UnsafeCell<Vec<PendingSpawn>>,
     /// 延迟到引擎 tick 同步的移除实体。
@@ -90,9 +89,9 @@ pub struct Storage {
     /// 技能/触发器复活已有玩家后，延迟到 tick 同步回 WorldState 的复活队列。
     pending_revivals: UnsafeCell<Vec<PlrId>>,
     /// 脏标记：当有死亡/移除/复活/召唤入队时置 true，sync_runtime_entities 据此跳过无用同步。
-    needs_sync: AtomicBool,
+    needs_sync: UnsafeCell<bool>,
     /// 玩家 ID 自增计数器。
-    player_id_counter: AtomicU64,
+    player_id_counter: UnsafeCell<u64>,
     /// 名字强度评估时使用的 `$.rq()` 等价值。
     eval_rq: f64,
     /// JS `aR` flag: 正在执行 post_damage 回调的使魔 ID。
@@ -116,17 +115,17 @@ impl Storage {
     pub fn new_with_eval_rq(eval_rq: f64) -> Storage {
         Storage {
             skills: UnsafeCell::new(FastHashMap::new()),
-            groups: UnsafeCell::new(FastHashMap::new()),
+            groups: UnsafeCell::new(Vec::new()),
             alive_groups: UnsafeCell::new(Vec::new()),
-            alive_group_count: AtomicUsize::new(0),
-            players: UnsafeCell::new(FastHashMap::new()),
-            player_group: UnsafeCell::new(FastHashMap::new()),
+            alive_group_count: UnsafeCell::new(0),
+            players: UnsafeCell::new(Vec::new()),
+            player_group: UnsafeCell::new(Vec::new()),
             pending_spawns: UnsafeCell::new(Vec::new()),
             pending_remove_players: UnsafeCell::new(Vec::new()),
             death_queue: UnsafeCell::new(Vec::new()),
             pending_revivals: UnsafeCell::new(Vec::new()),
-            needs_sync: AtomicBool::new(false),
-            player_id_counter: AtomicU64::new(0),
+            needs_sync: UnsafeCell::new(false),
+            player_id_counter: UnsafeCell::new(0),
             eval_rq,
             in_post_damage_player: UnsafeCell::new(None),
         }
@@ -140,14 +139,14 @@ impl Storage {
         self.skills_mut().clear();
         self.groups_mut().clear();
         self.alive_groups_mut().clear();
-        self.alive_group_count.store(0, std::sync::atomic::Ordering::Relaxed);
+        *self.alive_group_count_mut() = 0;
         self.players_mut().clear();
         self.player_group_mut().clear();
         self.pending_spawns_mut().clear();
         self.pending_remove_players_mut().clear();
         self.death_queue_mut().clear();
         self.pending_revivals_mut().clear();
-        self.needs_sync.store(false, std::sync::atomic::Ordering::Relaxed);
+        *self.needs_sync_mut() = false;
         self.set_in_post_damage_player(None);
     }
 
@@ -158,10 +157,10 @@ impl Storage {
     fn skills_mut(&self) -> &mut FastHashMap<usize, Skill> { unsafe { &mut *self.skills.get() } }
 
     #[inline]
-    fn groups_ref(&self) -> &FastHashMap<usize, Vec<PlrId>> { unsafe { &*self.groups.get() } }
+    fn groups_ref(&self) -> &Vec<Vec<PlrId>> { unsafe { &*self.groups.get() } }
 
     #[inline]
-    fn groups_mut(&self) -> &mut FastHashMap<usize, Vec<PlrId>> { unsafe { &mut *self.groups.get() } }
+    fn groups_mut(&self) -> &mut Vec<Vec<PlrId>> { unsafe { &mut *self.groups.get() } }
 
     #[inline]
     fn alive_groups_ref(&self) -> &Vec<Vec<PlrId>> { unsafe { &*self.alive_groups.get() } }
@@ -170,16 +169,22 @@ impl Storage {
     fn alive_groups_mut(&self) -> &mut Vec<Vec<PlrId>> { unsafe { &mut *self.alive_groups.get() } }
 
     #[inline]
-    fn players_ref(&self) -> &FastHashMap<PlrId, UnsafeCell<Player>> { unsafe { &*self.players.get() } }
+    fn alive_group_count_ref(&self) -> &usize { unsafe { &*self.alive_group_count.get() } }
 
     #[inline]
-    fn players_mut(&self) -> &mut FastHashMap<PlrId, UnsafeCell<Player>> { unsafe { &mut *self.players.get() } }
+    fn alive_group_count_mut(&self) -> &mut usize { unsafe { &mut *self.alive_group_count.get() } }
 
     #[inline]
-    fn player_group_ref(&self) -> &FastHashMap<PlrId, usize> { unsafe { &*self.player_group.get() } }
+    fn players_ref(&self) -> &Vec<Option<UnsafeCell<Player>>> { unsafe { &*self.players.get() } }
 
     #[inline]
-    fn player_group_mut(&self) -> &mut FastHashMap<PlrId, usize> { unsafe { &mut *self.player_group.get() } }
+    fn players_mut(&self) -> &mut Vec<Option<UnsafeCell<Player>>> { unsafe { &mut *self.players.get() } }
+
+    #[inline]
+    fn player_group_ref(&self) -> &Vec<Option<usize>> { unsafe { &*self.player_group.get() } }
+
+    #[inline]
+    fn player_group_mut(&self) -> &mut Vec<Option<usize>> { unsafe { &mut *self.player_group.get() } }
 
     #[inline]
     fn pending_spawns_ref(&self) -> &Vec<PendingSpawn> { unsafe { &*self.pending_spawns.get() } }
@@ -209,6 +214,18 @@ impl Storage {
     fn in_post_damage_player_ref(&self) -> Option<PlrId> { unsafe { *self.in_post_damage_player.get() } }
 
     #[inline]
+    fn needs_sync_ref(&self) -> &bool { unsafe { &*self.needs_sync.get() } }
+
+    #[inline]
+    fn needs_sync_mut(&self) -> &mut bool { unsafe { &mut *self.needs_sync.get() } }
+
+    #[inline]
+    fn player_id_counter_ref(&self) -> &u64 { unsafe { &*self.player_id_counter.get() } }
+
+    #[inline]
+    fn player_id_counter_mut(&self) -> &mut u64 { unsafe { &mut *self.player_id_counter.get() } }
+
+    #[inline]
     fn set_in_post_damage_player(&self, value: Option<PlrId>) {
         unsafe {
             *self.in_post_damage_player.get() = value;
@@ -216,26 +233,31 @@ impl Storage {
     }
 
     /// 获取当前玩家 ID 计数器的值（不增加）。
-    pub fn current_plr_id(&self) -> u64 { self.player_id_counter.load(std::sync::atomic::Ordering::Relaxed) }
+    pub fn current_plr_id(&self) -> u64 { *self.player_id_counter_ref() }
 
     /// 获取当前 Storage 使用的名字强度评估 `rq`。
     #[inline]
     pub fn eval_rq(&self) -> f64 { self.eval_rq }
 
     /// 生成一个新的玩家 ID。
-    pub fn new_plr_id(&self) -> u64 { self.player_id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
+    pub fn new_plr_id(&self) -> u64 {
+        let counter = self.player_id_counter_mut();
+        let id = *counter;
+        *counter += 1;
+        id
+    }
 
     /// 标记需要同步（有死亡/移除/复活/召唤入队时调用）。
     #[inline]
-    fn mark_dirty(&self) { self.needs_sync.store(true, std::sync::atomic::Ordering::Relaxed); }
+    fn mark_dirty(&self) { *self.needs_sync_mut() = true; }
 
     /// 检查是否需要同步。
     #[inline]
-    pub fn needs_sync(&self) -> bool { self.needs_sync.load(std::sync::atomic::Ordering::Relaxed) }
+    pub fn needs_sync(&self) -> bool { *self.needs_sync_ref() }
 
     /// 清除同步标记（sync_runtime_entities 完成后调用）。
     #[inline]
-    pub fn clear_sync_flag(&self) { self.needs_sync.store(false, std::sync::atomic::Ordering::Relaxed); }
+    pub fn clear_sync_flag(&self) { *self.needs_sync_mut() = false; }
 
     /// 标记某个使魔正在执行 post_damage 回调（对应 JS PlrSummon.aR 标志）。
     /// 在 SummonShareDamageSkill::post_damage 中设置，防止 owner 死亡时立即处理该使魔的死亡。
@@ -248,17 +270,26 @@ impl Storage {
     #[inline]
     pub fn is_in_post_damage(&self, plr: PlrId) -> bool { self.in_post_damage_player_ref() == Some(plr) }
 
-    pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) { self.groups_mut().insert(id, plrs); }
+    pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) {
+        let groups = self.groups_mut();
+        if id >= groups.len() {
+            groups.resize_with(id + 1, Vec::new);
+        }
+        groups[id] = plrs;
+    }
 
-    pub fn get_group(&self, id: usize) -> Option<&Vec<PlrId>> { self.groups_ref().get(&id) }
+    pub fn get_group(&self, id: usize) -> Option<&Vec<PlrId>> { self.groups_ref().get(id) }
 
     pub fn alive_group_at(&self, team_idx: usize) -> Option<&Vec<PlrId>> { self.alive_groups_ref().get(team_idx) }
 
     pub fn group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
-        self.player_group_ref().get(&actor).and_then(|&idx| self.groups_ref().get(&idx))
+        self.player_group_ref()
+            .get(actor)
+            .and_then(|idx| *idx)
+            .and_then(|idx| self.groups_ref().get(idx))
     }
 
-    pub fn group_index_of(&self, actor: PlrId) -> Option<usize> { self.player_group_ref().get(&actor).copied() }
+    pub fn group_index_of(&self, actor: PlrId) -> Option<usize> { self.player_group_ref().get(actor).and_then(|idx| *idx) }
 
     pub fn alive_group_containing(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
         self.alive_groups_ref().iter().find(|group| group.contains(&actor))
@@ -267,8 +298,9 @@ impl Storage {
     /// 返回 actor 当前所在 alive 队伍的人数；若 actor 不在任何 alive_group 中则返回 0。
     pub fn alive_group_len_containing(&self, actor: PlrId) -> usize {
         self.player_group_ref()
-            .get(&actor)
-            .and_then(|&team_idx| self.alive_groups_ref().get(team_idx))
+            .get(actor)
+            .and_then(|idx| *idx)
+            .and_then(|team_idx| self.alive_groups_ref().get(team_idx))
             .filter(|group| group.contains(&actor))
             .map_or(0, Vec::len)
     }
@@ -276,17 +308,28 @@ impl Storage {
     /// 通过 roster 找到 actor 所在队伍的索引，再返回该队伍的 alive 列表。
     /// 即使 actor 已死亡也能找到正确的 alive 列表（因为 roster 不移除死亡成员）。
     pub fn alive_group_at_team_of(&self, actor: PlrId) -> Option<&Vec<PlrId>> {
-        let team_idx = self.player_group_ref().get(&actor).copied()?;
+        let team_idx = self.player_group_ref().get(actor).and_then(|idx| *idx)?;
         self.alive_groups_ref().get(team_idx)
     }
 
-    pub fn alive_group_count(&self) -> usize { self.alive_group_count.load(std::sync::atomic::Ordering::Relaxed) }
+    pub fn alive_group_count(&self) -> usize { *self.alive_group_count_ref() }
 
     pub fn all_alive_ids(&self) -> Vec<PlrId> { self.alive_groups_ref().iter().flat_map(|group| group.iter().copied()).collect() }
 
-    pub fn all_player_ids(&self) -> Vec<PlrId> { self.players_ref().keys().copied().collect() }
+    pub fn all_player_ids(&self) -> Vec<PlrId> {
+        self.players_ref()
+            .iter()
+            .enumerate()
+            .filter_map(|(id, player)| player.is_some().then_some(id))
+            .collect()
+    }
 
-    pub fn iter_player_ids(&self) -> impl Iterator<Item = PlrId> + '_ { self.players_ref().keys().copied() }
+    pub fn iter_player_ids(&self) -> impl Iterator<Item = PlrId> + '_ {
+        self.players_ref()
+            .iter()
+            .enumerate()
+            .filter_map(|(id, player)| player.is_some().then_some(id))
+    }
 
     pub fn iter_pending_spawns(&self) -> impl Iterator<Item = &PendingSpawn> + '_ { self.pending_spawns_ref().iter() }
 
@@ -297,32 +340,29 @@ impl Storage {
         player_group.clear();
         for (idx, group) in groups.iter().enumerate() {
             for &id in group {
-                player_group.insert(id, idx);
+                if id >= player_group.len() {
+                    player_group.resize(id + 1, None);
+                }
+                player_group[id] = Some(idx);
             }
-            storage_groups.insert(idx, group.clone());
+            storage_groups.push(group.clone());
         }
     }
 
     pub fn sync_alive_groups(&self, groups: &[Vec<PlrId>]) {
-        self.alive_group_count.store(
-            groups.iter().filter(|group| !group.is_empty()).count(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        *self.alive_group_count_mut() = groups.iter().filter(|group| !group.is_empty()).count();
         *self.alive_groups_mut() = groups.to_vec();
     }
 
     /// 接收 owned 数据直接存入，避免再次 clone。
     pub fn sync_alive_groups_owned(&self, groups: Vec<Vec<PlrId>>) {
-        self.alive_group_count.store(
-            groups.iter().filter(|group| !group.is_empty()).count(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        *self.alive_group_count_mut() = groups.iter().filter(|group| !group.is_empty()).count();
         *self.alive_groups_mut() = groups;
     }
 
     /// 接收 WorldState 中按 JS `Engine.y.a.Q` 语义维护的计数。
     pub fn sync_alive_groups_owned_with_count(&self, groups: Vec<Vec<PlrId>>, alive_group_count: usize) {
-        self.alive_group_count.store(alive_group_count, std::sync::atomic::Ordering::Relaxed);
+        *self.alive_group_count_mut() = alive_group_count;
         *self.alive_groups_mut() = groups;
     }
 
@@ -331,11 +371,14 @@ impl Storage {
 
     /// 获取玩家。
     pub fn get_player(&self, ptr: &PlrId) -> Option<&Player> {
-        self.players_ref().get(ptr).map(|player| unsafe { &*player.get() })
+        self.players_ref()
+            .get(*ptr)
+            .and_then(Option::as_ref)
+            .map(|player| unsafe { &*player.get() })
     }
 
     pub fn get_player_or_pending(&self, ptr: &PlrId) -> Option<&Player> {
-        self.players_ref().get(ptr).map(|player| unsafe { &*player.get() }).or_else(|| {
+        self.get_player(ptr).or_else(|| {
             self.pending_spawns_ref()
                 .iter()
                 .find(|pending| pending.player.as_ptr() == *ptr)
@@ -344,12 +387,7 @@ impl Storage {
     }
 
     /// 获取玩家（不做 Option 检查）。
-    pub fn get_player_unchecked(&self, ptr: &PlrId) -> &Player {
-        self.players_ref()
-            .get(ptr)
-            .map(|player| unsafe { &*player.get() })
-            .expect("cannot get player from storage")
-    }
+    pub fn get_player_unchecked(&self, ptr: &PlrId) -> &Player { self.get_player(ptr).expect("cannot get player from storage") }
 
     /// 获取技能的可变引用（安全版本）。
     pub fn get_skill_mut(&mut self, id: SkillId) -> Option<&mut Skill> { self.skills_mut().get_mut(&id.0) }
@@ -363,7 +401,10 @@ impl Storage {
     /// 这个方法依赖 `unsafe`，需要调用方保证不会违反别名规则。
     #[allow(clippy::mut_from_ref)]
     pub fn just_get_player_mut(&self, ptr: PlrId) -> Option<&mut Player> {
-        self.players_ref().get(&ptr).map(|player| unsafe { &mut *player.get() })
+        self.players_ref()
+            .get(ptr)
+            .and_then(Option::as_ref)
+            .map(|player| unsafe { &mut *player.get() })
     }
 
     #[allow(clippy::mut_from_ref)]
@@ -394,14 +435,21 @@ impl Storage {
 
     pub fn insert_player(&mut self, player: Player) -> PlrId {
         let id: PlrId = player.id().try_into().expect("player id overflow usize");
-        self.players_mut().insert(id, UnsafeCell::new(player));
+        Self::insert_player_slot(self.players_mut(), id, player);
         id
     }
 
     pub fn just_insert_player(&self, player: Player) -> PlrId {
         let id: PlrId = player.id().try_into().expect("player id overflow usize");
-        self.players_mut().insert(id, UnsafeCell::new(player));
+        Self::insert_player_slot(self.players_mut(), id, player);
         id
+    }
+
+    fn insert_player_slot(players: &mut Vec<Option<UnsafeCell<Player>>>, id: PlrId, player: Player) {
+        if id >= players.len() {
+            players.resize_with(id + 1, || None);
+        }
+        players[id] = Some(UnsafeCell::new(player));
     }
 
     pub fn queue_spawn(&self, owner: PlrId, player: Player) {
@@ -491,7 +539,9 @@ impl Storage {
 
     pub fn just_remove_skill(&self, id: SkillId) -> Option<Skill> { self.skills_mut().remove(&id.0) }
 
-    pub fn just_remove_player(&self, ptr: PlrId) -> Option<Player> { self.players_mut().remove(&ptr).map(UnsafeCell::into_inner) }
+    pub fn just_remove_player(&self, ptr: PlrId) -> Option<Player> {
+        self.players_mut().get_mut(ptr).and_then(Option::take).map(UnsafeCell::into_inner)
+    }
 }
 
 impl std::default::Default for Storage {

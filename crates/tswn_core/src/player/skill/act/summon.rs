@@ -16,12 +16,9 @@ const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 fn ensure_summon_share_damage_skill(skills: &mut SkillStorage, enabled: bool) {
     skills
         .store
-        .entry(SUMMON_SHARE_DAMAGE_SKILL_KEY)
-        .or_insert_with(|| Skill::new(1, Box::new(SummonShareDamageSkill::new())));
-    skills
-        .store
-        .get_mut(&SUMMON_SHARE_DAMAGE_SKILL_KEY)
-        .expect("summon share-damage skill missing")
+        .get_or_insert_with(SUMMON_SHARE_DAMAGE_SKILL_KEY, || {
+            Skill::new(1, Box::new(SummonShareDamageSkill::new()))
+        })
         .set_level(if enabled { 1 } else { 0 });
 }
 

@@ -26,6 +26,9 @@
 
 use crate::player::PlrId;
 use std::borrow::Cow;
+#[cfg(feature = "no_debug")]
+use std::cell::Cell;
+#[cfg(not(feature = "no_debug"))]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 可见 update 渲染前的默认等待时间，对齐混淆版 `md5.js` 的 `RunUpdate`。
@@ -35,7 +38,30 @@ pub const DEFAULT_DELAY1_MS: i32 = 100;
 
 /// 全局自增 ID，用于为每批 [`RunUpdates`] 分配唯一标识。
 /// 主要用于调试时区分不同回合的更新批次。
+#[cfg(not(feature = "no_debug"))]
 static RUN_UPDATES_ID: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(feature = "no_debug")]
+thread_local! {
+    static RUN_UPDATES_ID: Cell<u64> = const { Cell::new(1) };
+}
+
+#[inline]
+fn next_run_updates_id() -> u64 {
+    #[cfg(feature = "no_debug")]
+    {
+        RUN_UPDATES_ID.with(|counter| {
+            let id = counter.get();
+            counter.set(id.wrapping_add(1));
+            id
+        })
+    }
+
+    #[cfg(not(feature = "no_debug"))]
+    {
+        RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed)
+    }
+}
 
 /// 战斗事件类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -201,7 +227,7 @@ pub struct RunUpdates {
 impl RunUpdates {
     fn new_with_capture(capture_updates: bool) -> RunUpdates {
         RunUpdates {
-            id: RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed),
+            id: next_run_updates_id(),
             updates: smallvec::SmallVec::new(),
             on_update_end: smallvec::SmallVec::new(),
             capture_updates,
@@ -217,7 +243,7 @@ impl RunUpdates {
 
     /// 清理批次内容，复用分配。
     pub fn reset(&mut self) {
-        self.id = RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed);
+        self.id = next_run_updates_id();
         self.updates.clear();
         self.on_update_end.clear();
         self.has_activity = false;

@@ -2025,13 +2025,14 @@ impl Player {
         if self.status.hp < 0 {
             self.status.hp = 0;
         }
-        let mut msg = "[1]受到[2]点伤害".to_string();
-        if dmg >= 160 {
-            msg.push_str("[s_dmg160]");
-        } else if dmg >= 120 {
-            msg.push_str("[s_dmg120]");
-        }
         updates.emit(|| {
+            let msg = if dmg >= 160 {
+                "[1]受到[2]点伤害[s_dmg160]"
+            } else if dmg >= 120 {
+                "[1]受到[2]点伤害[s_dmg120]"
+            } else {
+                "[1]受到[2]点伤害"
+            };
             let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
             update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
             update

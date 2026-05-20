@@ -61,8 +61,6 @@ pub fn choose_action(
 pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
     use crate::player::skill::charm::CharmState;
 
-    let is_alive_now = |id: &PlrId| storage.get_player(id).map(|player| player.alive()).unwrap_or(false);
-
     let Some(team_idx) = world.team_index_of(actor) else {
         return ActionTargets::default();
     };
@@ -75,12 +73,9 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
         return ActionTargets::default();
     };
 
-    let ally_alive: PlrVec = world
-        .team_alive(effective_team)
-        .map(|team| team.iter().copied().filter(is_alive_now).collect())
-        .unwrap_or_default();
+    let ally_alive: PlrVec = world.team_alive(effective_team).map(PlrVec::from_slice).unwrap_or_default();
     let ally_all = team_roster.clone();
-    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !is_alive_now(id)).collect();
+    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !world.contains_alive(*id)).collect();
     // 使用 world.flat_alive 而非从 teams 重建，以保持与 JS Engine.e 相同的全局存活顺序。
     // JS 的 pickSkipRange 依赖 all_alive 中各实体的精确位置，当复活/召唤导致
     // 实体追加到末尾时，按 team 迭代重建会把它们放回 team 槽位，与 JS 顺序不同。
@@ -88,9 +83,6 @@ pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Sto
     let mut enemy_alive: PlrVec = PlrVec::new();
     let mut enemy_skip_indices = smallvec::SmallVec::<[usize; 4]>::new();
     for id in world.flat_alive.iter().copied() {
-        if !is_alive_now(&id) {
-            continue;
-        }
         let idx = all_alive.len();
         all_alive.push(id);
         if ally_alive.contains(&id) {
