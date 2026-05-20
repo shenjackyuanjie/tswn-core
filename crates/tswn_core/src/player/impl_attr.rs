@@ -276,8 +276,9 @@ impl Player {
 
         if diy_skill_levels.is_none() {
             // === Step A: 普通号 ===
-            // 检测 boost 候选 → 记录 diy_boost 元数据 → 直接执行 boost
-            // boost 在 clamp 之前执行（clamp 在阶段 4 已完成）
+            // 先执行 LastBoost（设置 boosted=true），
+            // 再检测 SlotBoost（此时已 boosted 的技能会被跳过）。
+            // 这对应 JS: boost_last() → boost_level() 的顺序语义。
 
             // LastBoost 候选（raw_name_base 已 boost 的跳过）
             let last_boost_key: Option<usize> = self
@@ -291,7 +292,14 @@ impl Player {
                 })
                 .copied();
 
-            // SlotBoost 候选
+            // 执行 LastBoost 并记录 diy_boost
+            if let Some(key) = last_boost_key {
+                let skill = self.skills.skill_by_id_mut(key);
+                skill.diy_boost = Some(SkillBoost::LastBoost(skill.level()));
+                skill.boost_if_not();
+            }
+
+            // SlotBoost 候选（检测时 boosted 已包含 LastBoost 的效果）
             let mut slot_boost_keys: Vec<(usize, u32)> = Vec::new();
             if let Some(skill_key) = slot_skill_keys[14] {
                 let skill_14 = self.skills.skill_by_id(skill_key);
@@ -308,25 +316,14 @@ impl Player {
                 }
             }
 
-            // 记录 boost 元数据
-            if let Some(key) = last_boost_key {
-                let skill = self.skills.skill_by_id_mut(key);
-                skill.diy_boost = Some(SkillBoost::LastBoost(skill.level()));
-            }
+            // 执行 SlotBoost 并记录 diy_boost
             for (key, amount) in &slot_boost_keys {
                 let skill = self.skills.skill_by_id_mut(*key);
                 skill.diy_boost = Some(SkillBoost::SlotBoost {
                     base: skill.level(),
                     boost: *amount,
                 });
-            }
-
-            // 直接执行 boost（clamp 已在阶段 4 完成，不影响 boost）
-            if let Some(key) = last_boost_key {
-                self.skills.skill_by_id_mut(key).boost_if_not();
-            }
-            for (key, amount) in &slot_boost_keys {
-                self.skills.skill_by_id_mut(*key).boost_level(*amount);
+                skill.boost_level(*amount);
             }
         } else {
             // === Step B: DIY 号 ===

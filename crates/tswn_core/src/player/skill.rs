@@ -359,8 +359,15 @@ pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &
         if let Some(skill) = storage.store.get_mut(&skill_id) {
             let base_lv = skill_boost.base_level();
             skill.set_level(base_lv);
-            skill.diy_boost = Some(skill_boost.clone());
             skill.boosted = false;
+            match skill_boost {
+                SkillBoost::Normal(_) => {
+                    skill.diy_boost = None;
+                }
+                SkillBoost::SlotBoost { .. } | SkillBoost::LastBoost(_) => {
+                    skill.diy_boost = Some(skill_boost.clone());
+                }
+            }
         }
     }
     // 未在 overlay 中列出的技能，按默认固定顺序追加
