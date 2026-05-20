@@ -394,7 +394,6 @@ impl Player {
             }
             first = false;
             if skill.level() == 0 {
-                skills.push_str(&format!("\"{}\":0", name));
                 continue;
             }
             match &skill.diy_boost {
@@ -439,7 +438,6 @@ impl Player {
             }
             first = false;
             if skill.level() == 0 {
-                skills.push_str(&format!("\"{}\":0", name));
                 continue;
             }
             match &skill.diy_boost {
