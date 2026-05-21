@@ -114,6 +114,6 @@ pub(crate) fn on_fire(_caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, _upd
     if let Some(fire) = target_plr.get_state_mut::<FireState>() {
         fire.fire_mag += 0.5;
     } else {
-        target_plr.set_state(FireState { fire_mag: 0.5 });
+        target_plr.set_state_no_update(FireState { fire_mag: 0.5 });
     }
 }
