@@ -63,9 +63,6 @@ use smallvec::SmallVec;
 // JS addNew 之后的新单位会立刻参与"战斗是否结束"的判断，
 // Rust 侧这里也要把敌方 pending spawn 视为仍然存活的敌人。
 fn has_alive_enemy_or_pending(storage: &Arc<Storage>, ally_group: &[PlrId]) -> bool {
-    if storage.alive_group_count() > 2 {
-        return true;
-    }
     if storage
         .iter_player_ids()
         .any(|id| !ally_group.contains(&id) && storage.get_player(&id).map(|plr| plr.alive()).unwrap_or(false))
@@ -141,6 +138,18 @@ impl Player {
     }
 
     pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
+        self.step_with_targets_provider(randomer, updates, storage, |_| targets.clone());
+    }
+
+    pub fn step_with_targets_provider<F>(
+        &mut self,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        mut targets_for_action: F,
+    ) where
+        F: FnMut(&Self) -> ActionTargets,
+    {
         if !self.status.alive() {
             return;
         }
@@ -228,7 +237,8 @@ impl Player {
                     self.move_point(),
                 );
             }
-            self.action(randomer, updates, storage, targets);
+            let targets = targets_for_action(self);
+            self.action(randomer, updates, storage, &targets);
             #[cfg(not(feature = "no_debug"))]
             if debug_action_this {
                 eprintln!(
@@ -917,6 +927,84 @@ impl Player {
                 if triggered {
                     break;
                 }
+            }
+        }
+    }
+
+    fn run_post_kill_dead_target_noalias(
+        &mut self,
+        caster: PlrId,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+    ) {
+        let target_id = self.as_ptr();
+        if caster == target_id {
+            return;
+        }
+        let Some(keys) = storage
+            .get_player(&caster)
+            .filter(|killer| killer.get_status().hp > 0)
+            .map(|killer| killer.skills.post_kill.clone())
+        else {
+            return;
+        };
+        let debug_action = crate::debug::debug_action();
+        let debug_this = debug_action
+            .as_deref()
+            .map(|name| storage.get_player(&caster).map(|p| p.id_name() == name).unwrap_or(false))
+            .unwrap_or(false);
+        for skill_key in keys {
+            let rc4_before = (randomer.i, randomer.j);
+            let (mut skill_type, level) = {
+                let killer = storage.just_get_player_mut(caster).expect("killer not found in storage");
+                let skill = killer.skills.store.get_mut(&skill_key).expect("skill not found in store");
+                (skill.take_skill_type(), skill.level())
+            };
+            let triggered;
+            let needs_update_states;
+            let effects;
+            {
+                let owner = storage.just_get_player_mut(caster).expect("killer not found in storage");
+                let mut ctx = InlineCtx {
+                    ptr: caster,
+                    owner,
+                    randomer,
+                    updates,
+                    storage,
+                    post_damage: None,
+                    effects: SmallVec::new(),
+                    needs_update_states: false,
+                };
+                triggered = if skill_type.has_dead_target_post_kill_inline() {
+                    skill_type.kill_dead_target_inline(level, target_id, self, &mut ctx)
+                } else {
+                    skill_type.kill_with_level(level, target_id, (caster, ctx.randomer, ctx.updates, ctx.storage))
+                };
+                needs_update_states = ctx.needs_update_states;
+                effects = std::mem::take(&mut ctx.effects);
+            }
+            {
+                let killer = storage.just_get_player_mut(caster).expect("killer not found in storage");
+                let skill = killer.skills.store.get_mut(&skill_key).expect("skill not found in store");
+                skill.put_skill_type(skill_type);
+                if needs_update_states {
+                    killer.update_states();
+                }
+            }
+            if !effects.is_empty() {
+                if let Some(killer) = storage.just_get_player_mut(caster) {
+                    killer.apply_deferred_effects(caster, effects, randomer, updates, storage);
+                }
+            }
+            if debug_this {
+                eprintln!(
+                    "[post_kill_skill] key={} triggered={} rc4 {}:{} -> {}:{}",
+                    skill_key, triggered, rc4_before.0, rc4_before.1, randomer.i, randomer.j
+                );
+            }
+            if triggered {
+                break;
             }
         }
     }
@@ -1668,11 +1756,10 @@ impl Player {
                             target_plr.finish_damage_skip_post_kill(core.dmg, core.old_hp, ptr, randomer, updates, storage);
                             !target_plr.alive() || target_plr.get_status().hp <= 0
                         };
-                        let has_enemy_alive = storage.alive_group_count() > 2
-                            || storage
-                                .group_containing(ptr)
-                                .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
-                                .unwrap_or(true);
+                        let has_enemy_alive = storage
+                            .group_containing(ptr)
+                            .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
+                            .unwrap_or(true);
                         if target_died && has_enemy_alive {
                             self.run_post_kill_owner_inline(core.target, randomer, updates, storage);
                         }
@@ -1694,11 +1781,10 @@ impl Player {
                         target_plr.finish_damage_skip_post_kill(core.actual_dmg, core.old_hp, ptr, randomer, updates, storage);
                         !target_plr.alive() || target_plr.get_status().hp <= 0
                     };
-                    let has_enemy_alive = storage.alive_group_count() > 2
-                        || storage
-                            .group_containing(ptr)
-                            .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
-                            .unwrap_or(true);
+                    let has_enemy_alive = storage
+                        .group_containing(ptr)
+                        .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group))
+                        .unwrap_or(true);
                     if target_died && has_enemy_alive {
                         self.run_post_kill_owner_inline(target, randomer, updates, storage);
                     }
@@ -2839,14 +2925,7 @@ impl Player {
                 return;
             }
             if run_post_kill && caster != self.as_ptr() {
-                let kill_keys = storage
-                    .get_player(&caster)
-                    .filter(|k| k.get_status().hp > 0)
-                    .map(|k| k.skills.post_kill.clone());
-                if let Some(keys) = kill_keys {
-                    let target_id = self.as_ptr();
-                    crate::player::skill::store::run_post_kill(keys, caster, target_id, randomer, updates, storage);
-                }
+                self.run_post_kill_dead_target_noalias(caster, randomer, updates, storage);
             }
             return;
         }
@@ -2946,17 +3025,7 @@ impl Player {
             .group_containing(caster)
             .map(|ally_group| has_alive_enemy_or_pending(storage, ally_group));
         if run_post_kill && has_enemy_alive.unwrap_or(true) && caster != self.as_ptr() {
-            // 避免在 kill 回调（如吞噬）中产生 &mut Player 别名：
-            // 先获取 post_kill 键列表并检查 HP，然后释放 killer 引用，
-            // 再逐个通过 storage 重新获取 &mut 来调用回调。
-            let kill_keys = storage
-                .get_player(&caster)
-                .filter(|k| k.get_status().hp > 0)
-                .map(|k| k.skills.post_kill.clone());
-            if let Some(keys) = kill_keys {
-                let target_id = self.as_ptr();
-                crate::player::skill::store::run_post_kill(keys, caster, target_id, randomer, updates, storage);
-            }
+            self.run_post_kill_dead_target_noalias(caster, randomer, updates, storage);
         }
     }
 }

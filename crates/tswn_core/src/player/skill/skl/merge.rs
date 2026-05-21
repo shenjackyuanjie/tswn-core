@@ -1,6 +1,6 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlrId,
+    Player, PlrId,
     skill::corpse::CorpseState,
     skill::{InlineCtx, ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
@@ -222,6 +222,104 @@ impl SkillTrait for MergeSkill {
     }
 
     fn has_inline_post_kill(&self) -> bool { true }
+
+    fn has_dead_target_post_kill_inline(&self) -> bool { true }
+
+    fn kill_dead_target_inline(
+        &mut self,
+        level: u32,
+        target: PlrId,
+        target_plr: &mut Player,
+        ctx: &mut InlineCtx,
+    ) -> bool {
+        let r63_val = ctx.randomer.r63();
+        if r63_val >= level {
+            return false;
+        }
+        let target_attr = target_plr.attr;
+        let target_slot_skills = if target_plr.skills.slot_skill.is_empty() {
+            target_plr.skills.skill.clone()
+        } else {
+            target_plr.skills.slot_skill.clone()
+        };
+        let target_slot_levels = target_slot_skills
+            .iter()
+            .map(|target_skill_key| target_plr.skills.store.get(target_skill_key).map(|skill| skill.level()))
+            .collect::<Vec<_>>();
+        let target_mp = target_plr.magic_point();
+        let target_move_point = target_plr.move_point();
+
+        let mut merged = false;
+        let (transfer_mp, transfer_move_point) = {
+            let owner = &mut *ctx.owner;
+            let mut newly_enabled_skills = Vec::new();
+            let owner_slot_skills = if owner.skills.slot_skill.is_empty() {
+                owner.skills.skill.clone()
+            } else {
+                owner.skills.slot_skill.clone()
+            };
+            for (idx, val) in target_attr.iter().enumerate() {
+                if *val > owner.attr[idx] {
+                    owner.attr[idx] = *val;
+                    merged = true;
+                }
+            }
+            for (owner_skill_key, target_level) in owner_slot_skills.iter().copied().zip(target_slot_levels.iter().copied()) {
+                let Some(target_level) = target_level else {
+                    continue;
+                };
+                let mut should_enable_action = false;
+                if let Some(owner_skill) = owner.skills.store.get_mut(&owner_skill_key)
+                    && target_level > owner_skill.level()
+                {
+                    let was_zero = owner_skill.level() == 0;
+                    should_enable_action = was_zero && owner_skill.has_action_impl();
+                    owner_skill.set_level(target_level);
+                    if was_zero {
+                        newly_enabled_skills.push(owner_skill_key);
+                    }
+                    merged = true;
+                }
+                if should_enable_action {
+                    owner.skills.enable_action_key(owner_skill_key);
+                    if let Some(pos) = owner.skills.skill.iter().position(|key| *key == owner_skill_key) {
+                        owner.skills.skill.remove(pos);
+                    }
+                    owner.skills.skill.push(owner_skill_key);
+                }
+            }
+            let post_action_state_cursor = owner.state.post_action_registration_cursor();
+            for skill_key in newly_enabled_skills {
+                owner.skills.register_skill_proc_after_states(skill_key, post_action_state_cursor);
+            }
+            let transfer_mp = target_mp > owner.magic_point();
+            if transfer_mp {
+                owner.set_magic_point(target_mp);
+            }
+            let transfer_move_point = target_move_point > owner.move_point();
+            if transfer_move_point {
+                owner.set_move_point(owner.move_point() + target_move_point);
+            }
+            if merged {
+                owner.update_states();
+            }
+            (transfer_mp, transfer_move_point)
+        };
+        if transfer_mp {
+            target_plr.set_magic_point(0);
+        }
+        if transfer_move_point {
+            target_plr.set_move_point(0);
+        }
+        if !merged {
+            return false;
+        }
+        target_plr.set_state(CorpseState::merge());
+        ctx.updates.add(RunUpdate::new_newline());
+        ctx.updates.add(RunUpdate::new("[0][吞噬]了[1]", ctx.ptr, target, 60));
+        ctx.updates.add(RunUpdate::new("[0]属性上升", ctx.ptr, target, 0));
+        true
+    }
 
     fn kill_inline(&mut self, level: u32, target: PlrId, ctx: &mut InlineCtx) -> bool {
         let r63_val = ctx.randomer.r63();

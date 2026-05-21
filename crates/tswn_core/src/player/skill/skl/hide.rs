@@ -51,11 +51,13 @@ impl HideSkill {
                 alive_candidates.push(id);
             }
         }
-        for id in storage.iter_pending_spawn_ids_for_owner(owner_id) {
-            if !alive_candidates.contains(&id)
-                && storage.get_pending_spawn_player(id).map(|player| player.alive()).unwrap_or(false)
-            {
-                alive_candidates.push(id);
+        if owner_charm.is_none() {
+            for id in storage.iter_pending_spawn_ids_for_owner(owner_id) {
+                if !alive_candidates.contains(&id)
+                    && storage.get_pending_spawn_player(id).map(|player| player.alive()).unwrap_or(false)
+                {
+                    alive_candidates.push(id);
+                }
             }
         }
         alive_candidates.len()

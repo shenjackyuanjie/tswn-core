@@ -23,7 +23,7 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::engine::{hooks::HookPipeline, rules::RuleRegistry, world_state::WorldState};
-use crate::player::{ActionTargets, PlrId, action_targets::PlrVec};
+use crate::player::{ActionTargets, Player, PlrId, action_targets::PlrVec};
 use crate::rc4::RC4;
 
 /// Tick 行动决策枚举，由 [`choose_action`] 返回。
@@ -59,38 +59,54 @@ pub fn choose_action(
 }
 
 pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
-    use crate::player::skill::charm::CharmState;
+    let Some(actor_player) = storage.get_player(&actor) else {
+        return ActionTargets::default();
+    };
+    select_targets_for_player(actor, actor_player, world, storage)
+}
 
-    let is_alive_now = |id: &PlrId| storage.get_player(id).map(|player| player.alive()).unwrap_or(false);
+pub(super) fn select_targets_for_player(
+    actor: PlrId,
+    actor_player: &Player,
+    world: &WorldState,
+    storage: &Arc<Storage>,
+) -> ActionTargets {
+    use crate::player::skill::charm::CharmState;
 
     let Some(team_idx) = world.team_index_of(actor) else {
         return ActionTargets::default();
     };
-    let effective_team = storage
-        .get_player(&actor)
-        .and_then(|player| player.get_state::<CharmState>())
+    let effective_team = actor_player
+        .get_state::<CharmState>()
         .and_then(|charm| charm.effective_team_idx.or_else(|| world.team_index_of(charm.group_id)))
         .unwrap_or(team_idx);
     let Some(team_roster) = world.team_roster(effective_team).map(PlrVec::from_slice) else {
         return ActionTargets::default();
     };
 
+    let is_storage_alive = |id: PlrId| {
+        if id == actor {
+            actor_player.alive()
+        } else {
+            storage.get_player(&id).map(|player| player.alive()).unwrap_or(false)
+        }
+    };
     let ally_alive: PlrVec = world
         .team_alive(effective_team)
-        .map(|team| team.iter().copied().filter(is_alive_now).collect())
-        .unwrap_or_default();
+        .into_iter()
+        .flatten()
+        .copied()
+        .filter(|id| is_storage_alive(*id))
+        .collect();
     let ally_all = team_roster.clone();
-    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !is_alive_now(id)).collect();
+    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !is_storage_alive(*id)).collect();
     // 使用 world.flat_alive 而非从 teams 重建，以保持与 JS Engine.e 相同的全局存活顺序。
     // JS 的 pickSkipRange 依赖 all_alive 中各实体的精确位置，当复活/召唤导致
     // 实体追加到末尾时，按 team 迭代重建会把它们放回 team 槽位，与 JS 顺序不同。
     let mut all_alive: PlrVec = PlrVec::new();
     let mut enemy_alive: PlrVec = PlrVec::new();
     let mut enemy_skip_indices = smallvec::SmallVec::<[usize; 4]>::new();
-    for id in world.flat_alive.iter().copied() {
-        if !is_alive_now(&id) {
-            continue;
-        }
+    for id in world.flat_alive.iter().copied().filter(|id| is_storage_alive(*id)) {
         let idx = all_alive.len();
         all_alive.push(id);
         if ally_alive.contains(&id) {
@@ -119,7 +135,8 @@ pub struct TickContext<'a> {
 pub fn resolve_combat(
     actor: PlrId,
     decision: ActionDecision,
-    targets: &ActionTargets,
+    preselected_targets: Option<&ActionTargets>,
+    world: &WorldState,
     ctx: &mut TickContext<'_>,
     hooks: &HookPipeline,
 ) {
@@ -127,7 +144,13 @@ pub fn resolve_combat(
         ActionDecision::StepDriver => {
             hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
             if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
-                plr.step(ctx.randomer, ctx.updates, ctx.storage, targets);
+                if let Some(targets) = preselected_targets {
+                    plr.step(ctx.randomer, ctx.updates, ctx.storage, targets);
+                } else {
+                    plr.step_with_targets_provider(ctx.randomer, ctx.updates, ctx.storage, |actor_player| {
+                        select_targets_for_player(actor, actor_player, world, ctx.storage)
+                    });
+                }
             }
             hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
         }

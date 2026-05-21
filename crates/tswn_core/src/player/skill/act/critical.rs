@@ -4,7 +4,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{Effect, InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -25,6 +25,26 @@ impl SkillTrait for CriticalSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     fn has_action_impl(&self) -> bool { true }
+
+    fn has_inline_act(&self) -> bool { true }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        let atp0 = ctx.owner.get_at(false, ctx.randomer) * 1.149999976158142;
+        let atp1 = ctx.owner.get_at(false, ctx.randomer) * 1.2000000476837158;
+        let atp2 = ctx.owner.get_at(false, ctx.randomer) * 1.25;
+        let atp = atp0.max(atp1).max(atp2);
+        ctx.updates.add(RunUpdate::new("[0]发动[会心一击]", ctx.ptr, target_id, 1));
+        ctx.effects.push(Effect::Attack {
+            target: target_id,
+            atp,
+            is_mag: false,
+            on_damage: on_critical as OnDamageFunc,
+        });
+    }
 
     fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         if targets.is_empty() {

@@ -73,6 +73,9 @@ impl HookPipeline {
 
     pub fn register_post_damage_dyn<H: ActorHookDyn + 'static>(&mut self, hook: H) { self.post_damage_dyn.push(Box::new(hook)); }
 
+    #[inline]
+    pub fn has_pre_damage_hooks(&self) -> bool { !self.pre_damage.is_empty() || !self.pre_damage_dyn.is_empty() }
+
     pub fn run_pre_action(&self, actor: PlrId, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
         for hook in &self.pre_action {
             hook(actor, storage, randomer, updates);
