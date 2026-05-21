@@ -98,8 +98,7 @@ pub(super) fn select_targets_for_player(
         .copied()
         .filter(|id| is_storage_alive(*id))
         .collect();
-    let ally_all = team_roster.clone();
-    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !is_storage_alive(*id)).collect();
+    let ally_all = team_roster;
     // 使用 world.flat_alive 而非从 teams 重建，以保持与 JS Engine.e 相同的全局存活顺序。
     // JS 的 pickSkipRange 依赖 all_alive 中各实体的精确位置，当复活/召唤导致
     // 实体追加到末尾时，按 team 迭代重建会把它们放回 team 槽位，与 JS 顺序不同。
@@ -120,7 +119,7 @@ pub(super) fn select_targets_for_player(
         enemy_alive,
         ally_alive,
         ally_all,
-        ally_dead,
+        ally_dead: PlrVec::new(),
         all_alive,
         enemy_skip_indices,
     }
