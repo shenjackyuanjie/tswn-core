@@ -128,10 +128,40 @@ name_base 解析:
 
 分身后:
   本体护符: 25（衰减保留）
-  克隆体护符: 25 + 30 = 55（不是 66！）
+  克隆体护符: 25 + 32 = 57（不是 66！）
 ```
 
 克隆体重新 build 时：slot 15 的被动 boost 仍然生效，但基础值变了，且 `name_base[62]`/`name_base[63]` 也可能因衰减而变化。
+
+### 3.4 末端座位加成的上限机制
+
+`boost_level()` 的实际公式并非简单的 `level + boost`，而是：
+
+```
+boost_amount = min( name_base[src], name_base[src+1] )  // 原始加成量
+actual_boost = min( boost_amount, skill.level() )        // 受当前等级上限
+new_level    = skill.level() + actual_boost
+```
+
+即 **加成金额不能超过当前技能等级**。这个上限在普通 build 中通常不可见（原始加成量 ≤ 基础等级），但在 clone 构建时变得关键：
+
+**实测例**：`以剑之名 #eEV76fMOX@Shabby_fish` 的护符
+
+```
+原始护符: base=41, boost=min(name_base[62],name_base[63])=41 → 41+41=82
+衰减到: 21
+
+分身后 (普通 clone):
+  clamp: 41 → 21（截到 owner 当前值）
+  boost: min(41, 21) = 21  ← 上限生效！
+  → 21 + 21 = 42
+
+分身后 (DIY clone):
+  若不加上限: 21 + 41 = 62  ← 错误，多了 20
+  加上限后:    21 + 21 = 42  ← 正确
+```
+
+**对 DIY 拟合的影响**：DIY clone 在应用 SlotBoost 时必须同样遵守 `boost.min(current)` 上限，否则会高估 clone 的衰减下限，导致普通 clone 和 DIY clone 的实际强度不同。
 
 ---
 
