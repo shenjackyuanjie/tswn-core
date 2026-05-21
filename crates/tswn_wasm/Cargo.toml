@@ -11,5 +11,5 @@ console_error_panic_hook = "0.1.7"
 js-sys = "0.3.98"
 serde = { version = "1.0.228", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"
-tswn_core = { path = "../tswn_core", features = ["no_debug", "mimalloc_alloc"] }
+tswn_core = { path = "../tswn_core", features = ["no_debug"] }
 wasm-bindgen = "0.2.121"
