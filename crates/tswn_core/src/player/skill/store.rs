@@ -168,6 +168,12 @@ impl SkillStorage {
     #[inline]
     pub fn has_pre_step(&self) -> bool { !self.pre_step.is_empty() }
 
+    #[inline]
+    pub fn has_post_action(&self) -> bool { !self.post_action.is_empty() }
+
+    #[inline]
+    pub fn has_deferred_post_action(&self) -> bool { !self.post_action_after_states.is_empty() }
+
     pub fn with_skill_capacity(skill_capacity: usize) -> Self {
         Self {
             store: SkillStore::with_capacity(skill_capacity),

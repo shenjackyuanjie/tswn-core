@@ -281,7 +281,9 @@ impl Player {
             return;
         }
 
-        let state_hijacked = self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
+        let has_states = !self.state.is_empty();
+        let state_hijacked =
+            has_states && self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
         if state_hijacked {
             let recover_threshold = self.status.wisdom + 64;
             if (randomer.r127() as i32) < recover_threshold {
@@ -297,6 +299,8 @@ impl Player {
         let mut selected_targets: Vec<PlrId> = Vec::new();
         let selected_from_forced_pre_action = pre_action_outcome.forced_skill.is_some();
         let forced_attack = if pre_action_outcome.clear_forced_action || pre_action_outcome.forced_skill.is_some() {
+            None
+        } else if !has_states {
             None
         } else {
             self.state.resolve_action_mode(smart)
@@ -579,7 +583,10 @@ impl Player {
                 randomer.j,
             );
         }
-        self.skills.post_action_early((ptr, randomer, updates, storage));
+        let has_post_action = self.skills.has_post_action();
+        if has_post_action {
+            self.skills.post_action_early((ptr, randomer, updates, storage));
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_post_action_this {
             eprintln!(
@@ -615,7 +622,9 @@ impl Player {
                 deferred,
             );
         }
-        self.apply_post_action_states(randomer, updates, storage);
+        if !self.state.is_empty() || self.skills.has_deferred_post_action() {
+            self.apply_post_action_states(randomer, updates, storage);
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_post_action_this {
             eprintln!(
@@ -631,7 +640,9 @@ impl Player {
                 randomer.j,
             );
         }
-        self.skills.post_action_late((ptr, randomer, updates, storage));
+        if has_post_action {
+            self.skills.post_action_late((ptr, randomer, updates, storage));
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_post_action_this {
             eprintln!(
