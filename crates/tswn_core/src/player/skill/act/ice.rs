@@ -4,7 +4,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     MOVE_POINT_THRESHOLD, OnDamageFunc, PlrId, StateTrait,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{Effect, InlineCtx, SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
 
@@ -25,6 +25,8 @@ impl SkillTrait for IceSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     fn has_action_impl(&self) -> bool { true }
+
+    fn has_inline_act(&self) -> bool { true }
 
     fn score_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
         let Some(target_plr) = args.3.get_player(&target) else {
@@ -86,6 +88,21 @@ impl SkillTrait for IceSkill {
             let target = args.3.just_get_player_mut(core.target).expect("cannot get ice target from storage");
             target.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3);
         }
+    }
+
+    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+        if targets.is_empty() {
+            return;
+        }
+        let target_id = targets[0];
+        let atp = ctx.owner.get_at(true, ctx.randomer) * 0.7;
+        ctx.updates.add(RunUpdate::new("[0]使用[冰冻术]", ctx.ptr, target_id, 1));
+        ctx.effects.push(Effect::Attack {
+            target: target_id,
+            atp,
+            is_mag: true,
+            on_damage: on_ice as OnDamageFunc,
+        });
     }
 }
 
