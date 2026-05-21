@@ -135,6 +135,8 @@ pub struct SkillStorage {
     pre_action_membership: FoldHashSet<SkillKey>,
     /// 动作之后
     pub post_action: Vec<SkillKey>,
+    pub post_action_early: Vec<SkillKey>,
+    pub post_action_late: Vec<SkillKey>,
     /// 战斗中途新增的 early post_action。
     /// tuple.0 是注册当时的 state 插入游标：它应当在所有 order < cursor 的 state 之后、
     /// 所有 order >= cursor 的 state 之前执行，贴近 JS 统一 x2 队列的插入语义。
@@ -197,6 +199,8 @@ impl SkillStorage {
             pre_action: Vec::new(),
             pre_action_membership: FoldHashSet::new(),
             post_action: Vec::new(),
+            post_action_early: Vec::new(),
+            post_action_late: Vec::new(),
             post_action_after_states: Vec::new(),
             pre_defend: Vec::new(),
             post_defend: Vec::new(),
@@ -219,6 +223,8 @@ impl SkillStorage {
         self.pre_action.clear();
         self.pre_action_membership.clear();
         self.post_action.clear();
+        self.post_action_early.clear();
+        self.post_action_late.clear();
         self.post_action_after_states.clear();
         self.pre_defend.clear();
         self.post_defend.clear();
@@ -255,6 +261,10 @@ impl SkillStorage {
             ProcKind::PostAction => {
                 if !self.post_action.contains(&key) {
                     self.post_action.push(key);
+                    match skill.map(|s| s.post_action_phase()).unwrap_or(PostActionPhase::Early) {
+                        PostActionPhase::Early => self.post_action_early.push(key),
+                        PostActionPhase::Late => self.post_action_late.push(key),
+                    }
                     if skill.is_some_and(|s| s.has_inline_post_action()) {
                         self.has_inline_post_action = true;
                     }

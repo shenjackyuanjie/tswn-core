@@ -874,14 +874,16 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) {
-        if self.skills.post_action.is_empty() {
+        let source = match phase {
+            PostActionPhase::Early => &self.skills.post_action_early,
+            PostActionPhase::Late => &self.skills.post_action_late,
+        };
+        if source.is_empty() {
             return;
         }
-        let keys: SkillKeyVec = SmallVec::from_slice(&self.skills.post_action);
+        let keys: SkillKeyVec = SmallVec::from_slice(source);
         for skill_key in keys {
-            if self.skills.skill_by_id(skill_key).post_action_phase() == phase {
-                self.run_post_action_key_noalias(skill_key, randomer, updates, storage);
-            }
+            self.run_post_action_key_noalias(skill_key, randomer, updates, storage);
         }
     }
 
