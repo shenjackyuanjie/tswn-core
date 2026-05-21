@@ -995,7 +995,7 @@ fn late_registered_post_action_skill_respects_state_insertion_cursor() {
             args.2.add(RunUpdate::new("observe_late_registered_post_action", args.0, args.0, 0));
         }
 
-        fn proc_kinds(&self) -> &[crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PostAction] }
+        fn proc_kinds(&self) -> &'static [crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PostAction] }
     }
 
     #[derive(Debug, Clone, Copy)]

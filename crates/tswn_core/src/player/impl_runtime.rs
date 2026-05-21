@@ -110,6 +110,18 @@ impl Player {
     }
 
     pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
+        self.step_with_targets_provider(randomer, updates, storage, |_| targets.clone());
+    }
+
+    pub fn step_with_targets_provider<F>(
+        &mut self,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        mut targets_for_action: F,
+    ) where
+        F: FnMut(&Self) -> ActionTargets,
+    {
         if !self.status.alive() {
             return;
         }
@@ -197,7 +209,8 @@ impl Player {
                     self.move_point(),
                 );
             }
-            self.action(randomer, updates, storage, targets);
+            let targets = targets_for_action(self);
+            self.action(randomer, updates, storage, &targets);
             #[cfg(not(feature = "no_debug"))]
             if debug_action_this {
                 eprintln!(
@@ -715,15 +728,13 @@ impl Player {
             return vec![target_id];
         }
 
-        let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
-            .into_iter()
-            .map(|target_id| {
-                (
-                    target_id,
-                    skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
-                )
-            })
-            .collect();
+        let mut scored: SmallVec<[(PlrId, f64); 4]> = SmallVec::new();
+        for target_id in selected {
+            scored.push((
+                target_id,
+                skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
+            ));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|x| x.0).collect()
     }
@@ -805,15 +816,13 @@ impl Player {
             return Vec::new();
         }
 
-        let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
-            .into_iter()
-            .map(|target_id| {
-                (
-                    target_id,
-                    skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
-                )
-            })
-            .collect();
+        let mut scored: SmallVec<[(PlrId, f64); 4]> = SmallVec::new();
+        for target_id in selected {
+            scored.push((
+                target_id,
+                skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
+            ));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|x| x.0).collect()
     }
@@ -994,37 +1003,35 @@ impl Player {
             return Some(target_id);
         }
 
-        let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
-            .into_iter()
-            .map(|target_id| {
-                let score = storage
+        let mut scored: SmallVec<[(PlrId, f64); 4]> = SmallVec::new();
+        for target_id in selected {
+            let score = storage
+                .get_player(&target_id)
+                .map(|target| match config.score_mode {
+                    ForcedAttackScoreMode::Default => randomer.rFFFF() as f64 + target.get_status().attract,
+                    ForcedAttackScoreMode::RandomAttract => randomer.rFFFF() as f64 * target.get_status().attract,
+                })
+                .unwrap_or(f64::MIN);
+            #[cfg(not(feature = "no_debug"))]
+            if debug_action_this {
+                let target_name = storage
                     .get_player(&target_id)
-                    .map(|target| match config.score_mode {
-                        ForcedAttackScoreMode::Default => randomer.rFFFF() as f64 + target.get_status().attract,
-                        ForcedAttackScoreMode::RandomAttract => randomer.rFFFF() as f64 * target.get_status().attract,
-                    })
-                    .unwrap_or(f64::MIN);
-                #[cfg(not(feature = "no_debug"))]
-                if debug_action_this {
-                    let target_name = storage
-                        .get_player(&target_id)
-                        .map(|target| target.id_name())
-                        .unwrap_or_else(|| format!("#{target_id}"));
-                    eprintln!(
-                        "[forced_score] actor={} id={} rc4=({}, {}) target={} target_name={} score={}",
-                        self.id_name(),
-                        self.as_ptr(),
-                        randomer.i,
-                        randomer.j,
-                        target_id,
-                        target_name,
-                        score,
-                    );
-                }
+                    .map(|target| target.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!(
+                    "[forced_score] actor={} id={} rc4=({}, {}) target={} target_name={} score={}",
+                    self.id_name(),
+                    self.as_ptr(),
+                    randomer.i,
+                    randomer.j,
+                    target_id,
+                    target_name,
+                    score,
+                );
+            }
 
-                (target_id, score)
-            })
-            .collect();
+            scored.push((target_id, score));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
@@ -1123,56 +1130,54 @@ impl Player {
             return None;
         }
 
-        let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
-            .into_iter()
-            .map(|target_id| {
-                let score = storage
-                    .get_player(&target_id)
-                    .map(|target| {
-                        if smart {
-                            let rate_hi_hp = |hp: i32| -> f64 {
-                                if hp < 20 {
-                                    30.0
-                                } else if hp > 300 {
-                                    300.0
-                                } else {
-                                    hp as f64
-                                }
-                            };
-                            let alive_group_count = storage.alive_group_count();
-                            let target_alive_group_len = storage
-                                .alive_group_at_team_of(target_id)
-                                .map(|alive_group| alive_group.len())
-                                .unwrap_or(0);
-                            let status = target.get_status();
-                            if alive_group_count > 2 {
-                                rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract
+        let mut scored: SmallVec<[(PlrId, f64); 4]> = SmallVec::new();
+        for target_id in selected {
+            let score = storage
+                .get_player(&target_id)
+                .map(|target| {
+                    if smart {
+                        let rate_hi_hp = |hp: i32| -> f64 {
+                            if hp < 20 {
+                                30.0
+                            } else if hp > 300 {
+                                300.0
                             } else {
-                                (1.0 / rate_hi_hp(status.hp)) * status.atk_sum as f64 * status.attract
+                                hp as f64
                             }
+                        };
+                        let alive_group_count = storage.alive_group_count();
+                        let target_alive_group_len = storage
+                            .alive_group_at_team_of(target_id)
+                            .map(|alive_group| alive_group.len())
+                            .unwrap_or(0);
+                        let status = target.get_status();
+                        if alive_group_count > 2 {
+                            rate_hi_hp(status.hp) * target_alive_group_len as f64 * status.attract
                         } else {
-                            randomer.rFFFF() as f64 + target.get_status().attract
+                            (1.0 / rate_hi_hp(status.hp)) * status.atk_sum as f64 * status.attract
                         }
-                    })
-                    .unwrap_or(f64::MIN);
-                #[cfg(not(feature = "no_debug"))]
-                if debug_action_this {
-                    let target_name = storage
-                        .get_player(&target_id)
-                        .map(|t| t.id_name())
-                        .unwrap_or_else(|| format!("#{target_id}"));
-                    eprintln!(
-                        "[default_score] actor={} rc4=({}, {}) target={} score={}",
-                        self.id_name(),
-                        randomer.i,
-                        randomer.j,
-                        target_name,
-                        score,
-                    );
-                }
-                (target_id, score)
-            })
-            .collect();
+                    } else {
+                        randomer.rFFFF() as f64 + target.get_status().attract
+                    }
+                })
+                .unwrap_or(f64::MIN);
+            #[cfg(not(feature = "no_debug"))]
+            if debug_action_this {
+                let target_name = storage
+                    .get_player(&target_id)
+                    .map(|t| t.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!(
+                    "[default_score] actor={} rc4=({}, {}) target={} score={}",
+                    self.id_name(),
+                    randomer.i,
+                    randomer.j,
+                    target_name,
+                    score,
+                );
+            }
+            scored.push((target_id, score));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {

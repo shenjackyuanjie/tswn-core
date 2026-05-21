@@ -640,7 +640,7 @@ pub trait SkillTrait: Debug + Send + Sync {
     fn dynamic_update_state_enabled(&self) -> bool { false }
 
     /// 声明该技能注册到哪些流程
-    fn proc_kinds(&self) -> &[ProcKind] { &[] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[] }
 
     /// 清除 protect 目标（默认无操作，仅 ProtectSkill 实现）
     fn clear_protect_to(&mut self) {}
@@ -992,7 +992,7 @@ impl Skill {
         self.skill_type.clear_positive_runtime_with_level(self.level, args)
     }
 
-    pub fn proc_kinds(&self) -> &[ProcKind] { self.skill_type.proc_kinds() }
+    pub fn proc_kinds(&self) -> &'static [ProcKind] { self.skill_type.proc_kinds() }
 
     pub fn clear_protect_to(&mut self) { self.skill_type.clear_protect_to() }
 

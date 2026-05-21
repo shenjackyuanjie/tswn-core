@@ -43,7 +43,7 @@ impl SkillTrait for ShieldSkill {
         }
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PreAction] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PreAction] }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

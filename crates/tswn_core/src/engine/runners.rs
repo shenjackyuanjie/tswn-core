@@ -282,12 +282,10 @@ impl Runner {
         key
     }
 
-    fn cmp_prepared_player_for_sort(storage: &Arc<Storage>, id_key_names: &[String], a: PlrId, b: PlrId) -> std::cmp::Ordering {
-        let plr_a = storage.get_player(&a).expect("plr not found when sort prepared player");
-        let plr_b = storage.get_player(&b).expect("plr not found when sort prepared player");
-        match plr_a.sort_int.cmp(&plr_b.sort_int) {
+    fn cmp_prepared_player_keys(sort_ints: &[i32], id_key_names: &[String], a: PlrId, b: PlrId) -> std::cmp::Ordering {
+        match sort_ints[a].cmp(&sort_ints[b]) {
             std::cmp::Ordering::Equal => match id_key_names[a].cmp(&id_key_names[b]) {
-                std::cmp::Ordering::Equal => plr_a.id().cmp(&plr_b.id()),
+                std::cmp::Ordering::Equal => a.cmp(&b),
                 ord => ord,
             },
             ord => ord,
@@ -421,13 +419,15 @@ impl Runner {
         }
 
         // 与 Dart 对齐：按 id_name 排序后初始化 sort_int（依赖 seed）。
+        let mut sort_ints = vec![0i32; prepared.id_key_names.len()];
         for &ptr in &prepared.sorted_by_id_name {
             let plr = storage.just_get_player_mut(ptr).expect("plr not found when set sort_int");
             plr.sort_int = randomer.rFFFFFF() as i32;
+            sort_ints[ptr] = plr.sort_int;
         }
 
         for group in &mut inited_plrs {
-            group.sort_by(|a, b| Self::cmp_prepared_player_for_sort(&storage, &prepared.id_key_names, *a, *b));
+            group.sort_by(|a, b| Self::cmp_prepared_player_keys(&sort_ints, &prepared.id_key_names, *a, *b));
         }
 
         let input_groups = inited_plrs.clone();
@@ -439,7 +439,7 @@ impl Runner {
             let Some(first_b) = b.first() else {
                 return std::cmp::Ordering::Greater;
             };
-            Self::cmp_prepared_player_for_sort(&storage, &prepared.id_key_names, *first_a, *first_b)
+            Self::cmp_prepared_player_keys(&sort_ints, &prepared.id_key_names, *first_a, *first_b)
         });
 
         // 保持旧版随机流消费顺序，避免战斗回放偏移。
@@ -451,7 +451,7 @@ impl Runner {
         }
 
         let mut sorted_for_move_point = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();
-        sorted_for_move_point.sort_by(|a, b| Self::cmp_prepared_player_for_sort(&storage, &prepared.id_key_names, *a, *b));
+        sorted_for_move_point.sort_by(|a, b| Self::cmp_prepared_player_keys(&sort_ints, &prepared.id_key_names, *a, *b));
         for ptr in &sorted_for_move_point {
             let plr = storage.just_get_player_mut(*ptr).expect("plr not found when set move point");
             plr.set_move_point(randomer.r255() as i32);
@@ -582,17 +582,22 @@ impl Runner {
     pub fn run_to_completion(&mut self) -> bool {
         let mut idle = 0usize;
         let mut rounds = 0usize;
+        let mut ticks_in_round = 0usize;
+        let max_ticks = self.world.all_plr_len().max(1) * 4;
         let mut updates = RunUpdates::new_no_capture();
         while !self.world.have_winner() && idle <= 16 && rounds < 100_000 {
             updates.reset();
-            self.core
-                .main_round_into(&mut self.world, &self.storage, &mut self.randomer, &mut updates);
-            if !updates.had_updates() {
-                idle += 1;
-            } else {
+            self.core.tick(&mut self.world, &self.storage, &mut self.randomer, &mut updates);
+            ticks_in_round += 1;
+            if updates.had_updates() {
                 idle = 0;
+                ticks_in_round = 0;
+                rounds += 1;
+            } else if ticks_in_round >= max_ticks {
+                idle += 1;
+                ticks_in_round = 0;
+                rounds += 1;
             }
-            rounds += 1;
         }
         self.world.have_winner()
     }

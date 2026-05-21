@@ -23,7 +23,7 @@ use std::sync::Arc;
 use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdates;
 use crate::engine::{hooks::HookPipeline, rules::RuleRegistry, world_state::WorldState};
-use crate::player::{ActionTargets, PlrId, action_targets::PlrVec};
+use crate::player::{ActionTargets, Player, PlrId, action_targets::PlrVec};
 use crate::rc4::RC4;
 
 /// Tick 行动决策枚举，由 [`choose_action`] 返回。
@@ -59,21 +59,38 @@ pub fn choose_action(
 }
 
 pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
+    let Some(actor_player) = storage.get_player(&actor) else {
+        return ActionTargets::default();
+    };
+    select_targets_for_player(actor, actor_player, world, storage)
+}
+
+pub(super) fn select_targets_for_player(
+    actor: PlrId,
+    actor_player: &Player,
+    world: &WorldState,
+    storage: &Arc<Storage>,
+) -> ActionTargets {
     use crate::player::skill::charm::CharmState;
 
     let Some(team_idx) = world.team_index_of(actor) else {
         return ActionTargets::default();
     };
-    let effective_team = storage
-        .get_player(&actor)
-        .and_then(|player| player.get_state::<CharmState>())
+    let effective_team = actor_player
+        .get_state::<CharmState>()
         .and_then(|charm| charm.effective_team_idx.or_else(|| world.team_index_of(charm.group_id)))
         .unwrap_or(team_idx);
     let Some(team_roster) = world.team_roster(effective_team).map(PlrVec::from_slice) else {
         return ActionTargets::default();
     };
 
-    let is_storage_alive = |id: PlrId| storage.get_player(&id).map(|player| player.alive()).unwrap_or(false);
+    let is_storage_alive = |id: PlrId| {
+        if id == actor {
+            actor_player.alive()
+        } else {
+            storage.get_player(&id).map(|player| player.alive()).unwrap_or(false)
+        }
+    };
     let ally_alive: PlrVec = world
         .team_alive(effective_team)
         .into_iter()
@@ -118,7 +135,8 @@ pub struct TickContext<'a> {
 pub fn resolve_combat(
     actor: PlrId,
     decision: ActionDecision,
-    targets: &ActionTargets,
+    preselected_targets: Option<&ActionTargets>,
+    world: &WorldState,
     ctx: &mut TickContext<'_>,
     hooks: &HookPipeline,
 ) {
@@ -126,7 +144,13 @@ pub fn resolve_combat(
         ActionDecision::StepDriver => {
             hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
             if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
-                plr.step(ctx.randomer, ctx.updates, ctx.storage, targets);
+                if let Some(targets) = preselected_targets {
+                    plr.step(ctx.randomer, ctx.updates, ctx.storage, targets);
+                } else {
+                    plr.step_with_targets_provider(ctx.randomer, ctx.updates, ctx.storage, |actor_player| {
+                        select_targets_for_player(actor, actor_player, world, ctx.storage)
+                    });
+                }
             }
             hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
         }

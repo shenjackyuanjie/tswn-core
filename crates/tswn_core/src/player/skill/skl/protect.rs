@@ -473,5 +473,5 @@ impl SkillTrait for ProtectSkill {
         }
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostAction] }
 }

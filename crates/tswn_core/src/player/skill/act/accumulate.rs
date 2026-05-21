@@ -115,5 +115,5 @@ impl SkillTrait for AccumulateSkill {
 
     fn dynamic_update_state_enabled(&self) -> bool { self.on_update_state.is_some() }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::UpdateState] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::UpdateState] }
 }

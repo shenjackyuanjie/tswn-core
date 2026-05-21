@@ -98,5 +98,5 @@ impl SkillTrait for ReflectSkill {
         0.0
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PreDefend] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PreDefend] }
 }

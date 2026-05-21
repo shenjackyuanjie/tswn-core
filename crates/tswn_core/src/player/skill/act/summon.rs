@@ -274,7 +274,7 @@ impl SkillTrait for SummonShareDamageSkill {
         args.3.clear_in_post_damage();
     }
 
-    fn proc_kinds(&self) -> &[crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PostDamage] }
+    fn proc_kinds(&self) -> &'static [crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PostDamage] }
 }
 
 fn on_summon_share_damage(

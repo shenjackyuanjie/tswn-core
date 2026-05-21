@@ -188,7 +188,7 @@ impl Player {
         } else {
             None
         };
-        self.skills = crate::player::skill::store::SkillStorage::new();
+        self.skills = crate::player::skill::store::SkillStorage::with_skill_capacity(40);
         for skill_id in 0..40u8 {
             self.skills.add_skill(Skill::new_with_id(0, skill_id));
         }

@@ -208,13 +208,16 @@ impl EngineCore {
 
         self.hooks.run_pre_action(actor, storage, randomer, updates);
         let decision = crate::engine::tick::choose_action(actor, world, storage, randomer, &self.rules);
-        let targets = crate::engine::tick::select_targets(actor, world, storage);
+        let preselected_targets = self
+            .hooks
+            .has_pre_damage_hooks()
+            .then(|| crate::engine::tick::select_targets(actor, world, storage));
         let mut ctx = crate::engine::tick::TickContext {
             storage,
             randomer,
             updates,
         };
-        crate::engine::tick::resolve_combat(actor, decision, &targets, &mut ctx, &self.hooks);
+        crate::engine::tick::resolve_combat(actor, decision, preselected_targets.as_ref(), world, &mut ctx, &self.hooks);
         crate::engine::tick::run_update_end(storage, ctx.randomer, ctx.updates);
         #[cfg(not(feature = "no_debug"))]
         if debug_tick

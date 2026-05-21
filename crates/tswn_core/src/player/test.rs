@@ -33,7 +33,7 @@ impl crate::player::skill::SkillTrait for ObservePreDefendByteSkill {
         atp
     }
 
-    fn proc_kinds(&self) -> &[crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PreDefend] }
+    fn proc_kinds(&self) -> &'static [crate::player::skill::ProcKind] { &[crate::player::skill::ProcKind::PreDefend] }
 }
 
 #[derive(Debug, Clone, Default)]

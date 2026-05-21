@@ -92,5 +92,5 @@ impl SkillTrait for ZombieSkill {
         true
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostKill] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostKill] }
 }

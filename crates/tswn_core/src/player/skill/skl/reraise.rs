@@ -52,5 +52,5 @@ impl SkillTrait for ReraiseSkill {
         true
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDeath] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostDeath] }
 }

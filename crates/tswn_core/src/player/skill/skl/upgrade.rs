@@ -92,7 +92,7 @@ impl SkillTrait for UpgradeSkill {
         owner.add_wisdom(20);
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage, ProcKind::UpdateState] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostDamage, ProcKind::UpdateState] }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
