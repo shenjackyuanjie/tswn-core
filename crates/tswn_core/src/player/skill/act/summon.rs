@@ -78,6 +78,11 @@ impl SkillTrait for SummonSkill {
             && let Some(summoned) = ctx.storage.just_get_player_mut(summoned_id)
             && !summoned.alive()
         {
+            summoned.state = PlayerStateStore::default();
+            summoned.set_state(MinionRuntimeState {
+                owner: Some(ctx.ptr),
+                kind: MinionKind::Summon,
+            });
             ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
             summoned.skills.boost_last();
             summoned.skills.update_proc();
@@ -94,7 +99,7 @@ impl SkillTrait for SummonSkill {
         let summon_team = owner.clan_name();
         let summon_name = format!("{}?summon", owner.base_name());
         let mut summoned =
-            crate::player::Player::new_and_init(Some(summon_team.clone()), summon_name.clone(), None, ctx.storage.clone())
+            crate::player::Player::new_minion_and_init(Some(summon_team.clone()), summon_name.clone(), None, ctx.storage.clone())
                 .expect("cannot init summon minion");
         prepare_combat_minion(&mut summoned);
         summoned.build();
@@ -176,9 +181,13 @@ impl SkillTrait for SummonSkill {
             && let Some(summoned) = args.3.just_get_player_mut(summoned_id)
             && !summoned.alive()
         {
-            // JS SklSummon.v(): after the first creation, recasts reuse the same dead summon
-            // object and only rerun bP()/bs()/cn(). That means action boosted flags persist
-            // across recasts, so the second cast boosts the next still-unboosted action.
+            // JS SklSummon.v(): 复用死亡 summon 时会清空运行时状态和 proc 队列，
+            // 但保留技能 boost 标记，再重新执行 bP()/bs()/cn()。
+            summoned.state = PlayerStateStore::default();
+            summoned.set_state(MinionRuntimeState {
+                owner: Some(args.0),
+                kind: MinionKind::Summon,
+            });
             ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
             summoned.skills.boost_last();
             summoned.skills.update_proc();
@@ -195,7 +204,7 @@ impl SkillTrait for SummonSkill {
         let summon_team = owner.clan_name();
         let summon_name = format!("{}?summon", owner.base_name());
         let mut summoned =
-            crate::player::Player::new_and_init(Some(summon_team.clone()), summon_name.clone(), None, args.3.clone())
+            crate::player::Player::new_minion_and_init(Some(summon_team.clone()), summon_name.clone(), None, args.3.clone())
                 .expect("cannot init summon minion");
         prepare_combat_minion(&mut summoned);
         summoned.build();

@@ -2331,7 +2331,6 @@ impl Player {
         }
         merged.sort_by_key(|&(p, _)| p);
 
-        let mut status_dirty = false;
         for (_, entry) in merged {
             match entry {
                 PostDefendEntry::Skill(key) => {
@@ -2344,14 +2343,18 @@ impl Player {
                     );
                 }
                 PostDefendEntry::State(tag) => {
-                    status_dirty |=
-                        self.state
-                            .run_one_post_defend(tag, self.as_ptr(), &mut dmg, caster, randomer, updates, storage);
+                    if self
+                        .state
+                        .run_one_post_defend(tag, self.as_ptr(), &mut dmg, caster, randomer, updates, storage)
+                    {
+                        let should_update_states = self.state.tag_clear_updates_status(&tag);
+                        self.state.clear_tag(tag);
+                        if should_update_states {
+                            self.update_states();
+                        }
+                    }
                 }
             }
-        }
-        if status_dirty {
-            self.update_states();
         }
         dmg
     }

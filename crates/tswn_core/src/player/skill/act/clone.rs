@@ -1,7 +1,7 @@
 use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, root_minion_name_owner_id};
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlayerStateStore, PlayerType, PlrId,
+    Player, PlayerStateStore, PlayerType, PlrId, eval_name,
     skill::{InlineCtx, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
@@ -65,17 +65,36 @@ impl SkillTrait for CloneSkill {
         }
 
         let root_owner_id = root_minion_name_owner_id(ctx.storage, ctx.ptr);
-        let owner_snapshot = ctx.storage.get_player(&ctx.ptr).expect("cannot get clone owner from storage").clone();
-        let mut cloned = owner_snapshot.clone();
+        let (owner_display_name, owner_base_name, owner_clan_name, owner_attr, owner_hp, owner_magic, owner_skills) = {
+            let owner = ctx.storage.get_player(&ctx.ptr).expect("cannot get clone owner from storage");
+            (
+                owner.display_name(),
+                owner.base_name(),
+                owner.clan_name(),
+                owner.attr,
+                owner.get_status().hp,
+                owner.get_status().magic,
+                owner.skills.clone(),
+            )
+        };
+        let mut cloned = ctx.owner.clone();
         cloned.set_id_name_override(Some(alloc_minion_name(ctx.storage, ctx.ptr)));
-        cloned.set_display_name_override(Some(owner_snapshot.display_name()));
+        cloned.set_display_name_override(Some(owner_display_name));
         cloned.reset_minion_name_counter();
         cloned.id = ctx.storage.new_plr_id();
         cloned.player_type = PlayerType::Clone;
         cloned.sort_int = 0;
         cloned.state = PlayerStateStore::default();
-        cloned.build_for_clone(&owner_snapshot.skills);
-        cloned.attr = owner_snapshot.attr;
+        cloned.raw_name_base = Player::normal_raw_name_base(Some(owner_clan_name.as_str()), owner_base_name.as_str());
+        let factor_name = ctx
+            .storage
+            .get_player(&root_owner_id)
+            .map(|root_owner| eval_name::eval_str_common_with_rq(root_owner.base_name().as_str(), true, ctx.storage.eval_rq()))
+            .unwrap_or_else(|| eval_name::eval_str_common_with_rq(owner_base_name.as_str(), true, ctx.storage.eval_rq()));
+        let factor_team = eval_name::eval_str_common_with_rq(owner_clan_name.as_str(), true, ctx.storage.eval_rq());
+        cloned.name_factor = factor_name.max(factor_team - 6.0);
+        cloned.build_for_clone(&owner_skills);
+        cloned.attr = owner_attr;
         if let Some(ref ws) = cloned.weapon_state {
             for i in 0..8 {
                 cloned.attr[i] = (cloned.attr[i] as i32 + ws.attr_bonus[i]) as u32;
@@ -88,12 +107,12 @@ impl SkillTrait for CloneSkill {
         });
         cloned.update_states();
         cloned.status.move_point = ctx.randomer.r255() as i32 * 4 + 256;
-        cloned.status.hp = owner_snapshot.get_status().hp.max(1);
+        cloned.status.hp = owner_hp.max(1);
         cloned.status.magic_point = (cloned.status.wisdom >> 1).max(0);
         cloned.status.set_alive(true);
         cloned.status.set_frozen(false);
 
-        if owner_snapshot.get_status().hp + owner_snapshot.get_status().magic < ctx.randomer.r255() as i32 {
+        if owner_hp + owner_magic < ctx.randomer.r255() as i32 {
             decayed_level = (decayed_level >> 1) + 1;
         }
         let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
@@ -104,6 +123,7 @@ impl SkillTrait for CloneSkill {
         }
         cloned.skills.update_proc();
         if crate::debug::debug_stats() {
+            let owner_snapshot = ctx.storage.get_player(&ctx.ptr).expect("cannot get clone owner from storage");
             eprintln!(
                 "[CLONE_FINAL] owner={} owner_attr={:?} owner_hp={} owner_mp={} owner_atk={} owner_def={} owner_spd={} owner_agl={} owner_mag={} owner_mdf={} owner_wis={} | clone_base={} clone_attr={:?} clone_hp={} clone_mp={} clone_atk={} clone_def={} clone_spd={} clone_agl={} clone_mag={} clone_mdf={} clone_wis={} clone_move={} clone_clone_lvl={}",
                 owner_snapshot.id_name(),
@@ -162,22 +182,41 @@ impl SkillTrait for CloneSkill {
         }
 
         let root_owner_id = root_minion_name_owner_id(args.3, args.0);
-        let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage").clone();
-        let mut cloned = owner_snapshot.clone();
+        let (mut cloned, owner_display_name, owner_base_name, owner_clan_name, owner_attr, owner_hp, owner_magic, owner_skills) = {
+            let owner = args.3.get_player(&args.0).expect("cannot get clone owner from storage");
+            (
+                owner.clone(),
+                owner.display_name(),
+                owner.base_name(),
+                owner.clan_name(),
+                owner.attr,
+                owner.get_status().hp,
+                owner.get_status().magic,
+                owner.skills.clone(),
+            )
+        };
         cloned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
-        cloned.set_display_name_override(Some(owner_snapshot.display_name()));
+        cloned.set_display_name_override(Some(owner_display_name));
         cloned.reset_minion_name_counter();
         cloned.id = args.3.new_plr_id();
         cloned.player_type = PlayerType::Clone;
         cloned.sort_int = 0;
         cloned.state = PlayerStateStore::default();
+        cloned.raw_name_base = Player::normal_raw_name_base(Some(owner_clan_name.as_str()), owner_base_name.as_str());
+        let factor_name = args
+            .3
+            .get_player(&root_owner_id)
+            .map(|root_owner| eval_name::eval_str_common_with_rq(root_owner.base_name().as_str(), true, args.3.eval_rq()))
+            .unwrap_or_else(|| eval_name::eval_str_common_with_rq(owner_base_name.as_str(), true, args.3.eval_rq()));
+        let factor_team = eval_name::eval_str_common_with_rq(owner_clan_name.as_str(), true, args.3.eval_rq());
+        cloned.name_factor = factor_name.max(factor_team - 6.0);
 
         // JS: PlrClone 先重新 build，重置技能内部运行时状态；
         // PlrClone.addSkillsToProc 先 clamp 等级到 owner 当前等级，然后再 boost。
-        cloned.build_for_clone(&owner_snapshot.skills);
+        cloned.build_for_clone(&owner_skills);
 
         // JS PlrClone.aU: 克隆体八围直接拷贝 owner 当前八围。
-        cloned.attr = owner_snapshot.attr;
+        cloned.attr = owner_attr;
         // JS: 之后 weapon.cs() (postUpgrade) 再次叠加武器 attr_bonus，
         // 导致武器属性加成被二次计入。
         if let Some(ref ws) = cloned.weapon_state {
@@ -192,13 +231,13 @@ impl SkillTrait for CloneSkill {
         });
         cloned.update_states();
         cloned.status.move_point = args.1.r255() as i32 * 4 + 256;
-        cloned.status.hp = owner_snapshot.get_status().hp.max(1);
+        cloned.status.hp = owner_hp.max(1);
         // JS clone 是重新 build 的实体，mp 取 itl/2，而不是 owner 当前 mp。
         cloned.status.magic_point = (cloned.status.wisdom >> 1).max(0);
         cloned.status.set_alive(true);
         cloned.status.set_frozen(false);
 
-        if owner_snapshot.get_status().hp + owner_snapshot.get_status().magic < args.1.r255() as i32 {
+        if owner_hp + owner_magic < args.1.r255() as i32 {
             decayed_level = (decayed_level >> 1) + 1;
         }
         let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
@@ -211,6 +250,7 @@ impl SkillTrait for CloneSkill {
         }
         cloned.skills.update_proc();
         if crate::debug::debug_stats() {
+            let owner_snapshot = args.3.get_player(&args.0).expect("cannot get clone owner from storage");
             eprintln!(
                 "[CLONE_FINAL] owner={} owner_attr={:?} owner_hp={} owner_mp={} owner_atk={} owner_def={} owner_spd={} owner_agl={} owner_mag={} owner_mdf={} owner_wis={} | clone_base={} clone_attr={:?} clone_hp={} clone_mp={} clone_atk={} clone_def={} clone_spd={} clone_agl={} clone_mag={} clone_mdf={} clone_wis={} clone_move={} clone_clone_lvl={}",
                 owner_snapshot.id_name(),
