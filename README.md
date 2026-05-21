@@ -37,8 +37,11 @@ target/        Cargo 输出和本地差分产物
 cargo check
 cargo build
 cargo test -p tswn_core
-cargo build --release --features no_debug
+cargo build --release --features no_debug,mimalloc_alloc
+cargo build --profile release-fast --features no_debug
 ```
+
+说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。benchmark 不启用 `mimalloc_alloc`，最终 release 构建再启用。
 
 运行主 CLI：
 
@@ -102,5 +105,6 @@ cargo run --release --features no_debug --bin track_diy_roundtrip -- `
 - `no_debug` feature 用于 release/绑定场景，避免调试路径影响性能和输出。
 - `png_render` 是 `tswn_core` 默认 feature，用于图标 PNG/base64 输出。
 - 差分工具会大量写入 `target/`，这些产物通常不应提交。
+- 修改 Markdown 文档后，记得使用 `oxfmt docs` 格式化文档。
 - 回归追踪入口已迁移到 Rust bin：`track`、`track_test`、`track_case_miner`、`track_diy_roundtrip`。
 - 当前工作区可能有本地调试文件和未提交产物，提交前需要用 `git status` 明确区分源码改动与生成输出。

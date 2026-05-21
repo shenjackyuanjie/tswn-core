@@ -4,14 +4,7 @@
   "source": "fixed-case-dir",
   "library": "D:\\githubs\\namer\\tswn-core\\tests/sqp6000.txt",
   "case_dir": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30",
-  "modes": [
-    "1v1",
-    "2v2",
-    "3v3v3",
-    "ffa_4",
-    "ffa_6",
-    "ffa_8"
-  ],
+  "modes": ["1v1", "2v2", "3v3v3", "ffa_4", "ffa_6", "ffa_8"],
   "case_offset_per_mode": 0,
   "max_cases_per_mode": 4000,
   "sample_runs": 64,
@@ -27,10 +20,7 @@
       "player_count": 2,
       "input_hash": "6a2ace7473581042",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\01_1v1-6a2ace7473581042.txt",
-      "players": [
-        "Serpensortia EPD)sJjd@Shabby_fish",
-        "叠加宇宙 #Lvc5kphcU@Shabby_fish"
-      ],
+      "players": ["Serpensortia EPD)sJjd@Shabby_fish", "叠加宇宙 #Lvc5kphcU@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -49,10 +39,7 @@
       "player_count": 2,
       "input_hash": "e7c53243721e6551",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\02_1v1-e7c53243721e6551.txt",
-      "players": [
-        "Misc #NfvZQay71@Shabby_fish",
-        "Serpensortia EPD)sJjd@Shabby_fish"
-      ],
+      "players": ["Misc #NfvZQay71@Shabby_fish", "Serpensortia EPD)sJjd@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -71,10 +58,7 @@
       "player_count": 2,
       "input_hash": "54ab99b39babdf0f",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\03_1v1-54ab99b39babdf0f.txt",
-      "players": [
-        "Woke #Iakt0mOca@Shabby_fish",
-        "Fish Hc='^hxt@Shabby_fish"
-      ],
+      "players": ["Woke #Iakt0mOca@Shabby_fish", "Fish Hc='^hxt@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -141,10 +125,7 @@
       "player_count": 2,
       "input_hash": "496bdc41e43ca13d",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\06_1v1-496bdc41e43ca13d.txt",
-      "players": [
-        "Selfless #agSikY6zg@Shabby_fish",
-        "FIND_YOU #Y4PY40Pa3@Shabby_fish"
-      ],
+      "players": ["Selfless #agSikY6zg@Shabby_fish", "FIND_YOU #Y4PY40Pa3@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -533,10 +514,7 @@
       "player_count": 2,
       "input_hash": "2cf20e674201187f",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\21_1v1-2cf20e674201187f.txt",
-      "players": [
-        "a",
-        "b"
-      ],
+      "players": ["a", "b"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -555,10 +533,7 @@
       "player_count": 2,
       "input_hash": "e6497125749fa0a3",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\22_1v1-e6497125749fa0a3.txt",
-      "players": [
-        "涝避吻戳背@Shabby_fish",
-        "luogu.com.cn/paste/1uzzsagy@Shabby_fish"
-      ],
+      "players": ["涝避吻戳背@Shabby_fish", "luogu.com.cn/paste/1uzzsagy@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -577,10 +552,7 @@
       "player_count": 2,
       "input_hash": "d985a03666ef702e",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\23_1v1-d985a03666ef702e.txt",
-      "players": [
-        "Selfless #agSikY6zg@Shabby_fish",
-        "FIND_YOU #Y4PY40Pa3@Shabby_fish"
-      ],
+      "players": ["Selfless #agSikY6zg@Shabby_fish", "FIND_YOU #Y4PY40Pa3@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -599,10 +571,7 @@
       "player_count": 2,
       "input_hash": "fb453d38e6c4cf02",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\24_1v1-fb453d38e6c4cf02.txt",
-      "players": [
-        "Woke #Iakt0mOca@Shabby_fish",
-        "Fish Hc='^hxt@Shabby_fish"
-      ],
+      "players": ["Woke #Iakt0mOca@Shabby_fish", "Fish Hc='^hxt@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -621,10 +590,7 @@
       "player_count": 2,
       "input_hash": "d9ead8dd53251df2",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\25_1v1-d9ead8dd53251df2.txt",
-      "players": [
-        "Deletrius #IaqKFJMD@Shabby_fish",
-        "可畏号 #AnokZ2in4@Shabby_fish"
-      ],
+      "players": ["Deletrius #IaqKFJMD@Shabby_fish", "可畏号 #AnokZ2in4@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -643,10 +609,7 @@
       "player_count": 2,
       "input_hash": "7822d33f277cc830",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\26_1v1-7822d33f277cc830.txt",
-      "players": [
-        "Double_Me #8JgQwuzxg@Shabby_fish",
-        "Wingardium_Leviosa `f]qqlMN@Shabby_fish"
-      ],
+      "players": ["Double_Me #8JgQwuzxg@Shabby_fish", "Wingardium_Leviosa `f]qqlMN@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,
@@ -665,10 +628,7 @@
       "player_count": 2,
       "input_hash": "e4d73d1d7ae3ebe9",
       "input_path": "D:\\githubs\\namer\\tswn-core\\docs/perf/fixed_cases_30\\27_1v1-e4d73d1d7ae3ebe9.txt",
-      "players": [
-        "Riddikulus K=DEXV_&@Shabby_fish",
-        "Superpower #yWBFbBGZl@Shabby_fish"
-      ],
+      "players": ["Riddikulus K=DEXV_&@Shabby_fish", "Superpower #yWBFbBGZl@Shabby_fish"],
       "sample": null,
       "benchmark": {
         "runs": 13000,

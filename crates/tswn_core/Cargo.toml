@@ -8,10 +8,11 @@ edition = "2024"
 clap = { version = "4.6.1", features = ["derive"] }
 # 用于 fast hashmap
 foldhash = "0.2.0"
+mimalloc = { version = "0.1.48", optional = true }
 # 用来渲染 png + base 64 编码
 png = { version = "0.18", optional = true }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
+serde = { version = "1.0.228", features = ["derive"], optional = true }
+serde_json = { version = "1.0.145", optional = true }
 # 用来优化性能
 smallvec = "1.15.1"
 
@@ -21,8 +22,25 @@ png = "0.18"
 [features]
 default = ["png_render"]
 png_render = ["dep:png"]
+aux_bins = ["dep:serde", "dep:serde_json"]
+mimalloc_alloc = ["dep:mimalloc"]
 no_debug = []
 
 [[bin]]
 name = "tswn-cli"
 path = "src/bin/tswn_cli.rs"
+
+[[bin]]
+name = "track_case_miner"
+path = "src/bin/track_case_miner.rs"
+required-features = ["aux_bins"]
+
+[[bin]]
+name = "track_perf_cases"
+path = "src/bin/track_perf_cases.rs"
+required-features = ["aux_bins"]
+
+[[bin]]
+name = "track_test"
+path = "src/bin/track_test.rs"
+required-features = ["aux_bins"]

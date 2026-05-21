@@ -21,7 +21,7 @@
 
 ## 1. 口径
 
-- 编译参数：`--release --features no_debug`
+- 编译参数：正式留档使用 `--release --features no_debug`；日常快速试跑可用 `--profile release-fast --features no_debug`，但不要和长期表格混用。benchmark 口径不启用 `mimalloc_alloc`。
 - CLI：`tswn-cli bench win-rate ... --perf`
 - 单线程：追加 `--single-thread`
 - 多线程：直接使用 CLI 默认线程策略
@@ -50,7 +50,7 @@
 固定 30-case 推荐运行：
 
 ```powershell
-cargo run --release --features no_debug --bin track_perf_cases -- `
+cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
   --case-dir docs/perf/fixed_cases_30 `
   --out-dir docs/perf/fixed_cases_30_results `
   --bench-runs 13000 `
@@ -69,7 +69,7 @@ cargo run --release --features no_debug --bin track_perf_cases -- `
 如需重新生成候选阶梯，可用：
 
 ```powershell
-cargo run --release --features no_debug --bin track_perf_cases -- `
+cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
   --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' `
   --out-dir '.\target\perf_cases' `
   --modes '1v1,2v2,3v3v3,ffa' `
@@ -84,7 +84,7 @@ cargo run --release --features no_debug --bin track_perf_cases -- `
 如果只想先固定一批输入，不跑正式 benchmark：
 
 ```powershell
-cargo run --release --features no_debug --bin track_perf_cases -- `
+cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
   --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' `
   --out-dir '.\target\perf_cases' `
   --select-only
@@ -101,7 +101,7 @@ cargo run --release --features no_debug --bin track_perf_cases -- `
 - **固定 2 样本**：继续用于和旧版本表格对齐；
 - **30-case 固定样本**：用于发现核心 1v1/2v2 以及多人、召唤、复活、状态链等复杂路径中出现的性能回退。
 
-固定 30-case 的版本化结果记录和运行命令见 `docs/perf/fixed_cases_30_benchmark.md`。
+固定 30-case 的版本化结果记录和运行命令见 `docs/perf/fixed_cases_30_benchmark.md`。如果只是本地检查改动趋势，可以把命令中的 `--release` 换成 `--profile release-fast`；正式写入本文或对比历史结果时仍使用 `--release`。
 
 ---
 

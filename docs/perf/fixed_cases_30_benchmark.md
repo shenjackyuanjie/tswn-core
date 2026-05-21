@@ -17,22 +17,22 @@
 
 ## 2. 新增 case 覆盖
 
-| # | id | 类型 | 主要覆盖热点 |
-| -: | -- | -- | -- |
-| 21 | `1v1-2cf20e674201187f` | 1v1 短局爆发 | 极轻量 1v1，低回合基础开销；使用 `a` vs `b`，方便长期复现。 |
-| 22 | `1v1-e6497125749fa0a3` | 1v1 中等长度常规 | 普通 1v1 baseline，攻防相对均衡。 |
-| 23 | `1v1-d985a03666ef702e` | 1v1 长回合消耗 | 生存/回复/拖回合路径，观察长期回合循环与状态更新成本。 |
-| 24 | `1v1-fb453d38e6c4cf02` | 1v1 高频技能触发 | 技能 act/fire、追加行动和条件触发路径。 |
-| 25 | `1v1-d9ead8dd53251df2` | 1v1 高频 buff/debuff | 状态添加、刷新、过期、检查和叠层相关路径。 |
-| 26 | `1v1-7822d33f277cc830` | 1v1 高频随机/目标选择 | RNG、命中/概率触发、目标/条件筛选路径。 |
-| 27 | `1v1-e4d73d1d7ae3ebe9` | 1v1 极端边界 | 特殊规则/边界机制，防止非普通路径退化。 |
-| 28 | `2v2-f5743e32254e64e5` | 2v2 常规 baseline | 普通 2v2 主指标，基础队友交互。 |
-| 29 | `2v2-b1e08a4b5faf6712` | 2v2 群体技能/多目标 | AoE、全体效果、队伍遍历和多目标 effect application。 |
-| 30 | `2v2-a2fa863c153307e2` | 2v2 队友交互/连锁触发 | 保护、协作、反击、死亡/连锁触发等 2v2 额外交互路径。 |
+|   # | id                     | 类型                  | 主要覆盖热点                                                |
+| --: | ---------------------- | --------------------- | ----------------------------------------------------------- |
+|  21 | `1v1-2cf20e674201187f` | 1v1 短局爆发          | 极轻量 1v1，低回合基础开销；使用 `a` vs `b`，方便长期复现。 |
+|  22 | `1v1-e6497125749fa0a3` | 1v1 中等长度常规      | 普通 1v1 baseline，攻防相对均衡。                           |
+|  23 | `1v1-d985a03666ef702e` | 1v1 长回合消耗        | 生存/回复/拖回合路径，观察长期回合循环与状态更新成本。      |
+|  24 | `1v1-fb453d38e6c4cf02` | 1v1 高频技能触发      | 技能 act/fire、追加行动和条件触发路径。                     |
+|  25 | `1v1-d9ead8dd53251df2` | 1v1 高频 buff/debuff  | 状态添加、刷新、过期、检查和叠层相关路径。                  |
+|  26 | `1v1-7822d33f277cc830` | 1v1 高频随机/目标选择 | RNG、命中/概率触发、目标/条件筛选路径。                     |
+|  27 | `1v1-e4d73d1d7ae3ebe9` | 1v1 极端边界          | 特殊规则/边界机制，防止非普通路径退化。                     |
+|  28 | `2v2-f5743e32254e64e5` | 2v2 常规 baseline     | 普通 2v2 主指标，基础队友交互。                             |
+|  29 | `2v2-b1e08a4b5faf6712` | 2v2 群体技能/多目标   | AoE、全体效果、队伍遍历和多目标 effect application。        |
+|  30 | `2v2-a2fa863c153307e2` | 2v2 队友交互/连锁触发 | 保护、协作、反击、死亡/连锁触发等 2v2 额外交互路径。        |
 
 ## 3. 运行口径
 
-- 编译参数：`--release --features no_debug`
+- 编译参数：正式留档使用 `--release --features aux_bins,no_debug`；日常快速试跑可用 `--profile release-fast --features aux_bins,no_debug`。
 - 工具：`track_perf_cases`
 - 输入：`--case-dir docs/perf/fixed_cases_30`
 - 单线程：`--thread 1`
@@ -40,10 +40,12 @@
 - 总量：`30 * 13000 = 390000` 场
 - 当前机器实测目标耗时：约 `40s`（`0.3.7` / 单线程 / `--features no_debug` 下为 `40.507s`）
 
+说明：`release-fast` profile 用于日常快速验证，编译更快；它的性能结果不要和本文长期 `--release` 留档数据混用。benchmark 口径不启用 `mimalloc_alloc`，最终 release 构建再启用。
+
 推荐命令：
 
 ```powershell
-cargo run --release --features no_debug --bin track_perf_cases -- `
+cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
   --case-dir docs/perf/fixed_cases_30 `
   --out-dir docs/perf/fixed_cases_30_results `
   --bench-runs 13000 `

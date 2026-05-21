@@ -1,3 +1,7 @@
+#[cfg(feature = "mimalloc_alloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[cfg(not(feature = "no_debug"))]
 pub mod debug;
 
