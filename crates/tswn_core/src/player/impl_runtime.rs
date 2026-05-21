@@ -1756,7 +1756,14 @@ impl Player {
 
         let atp_before = atp;
         let started_zero = atp == 0.0;
-        let protect_split = self.get_state::<ProtectState>().map(|state| state.pre_defend_skill_count);
+        let has_states = !self.state.is_empty();
+        let has_pre_defend_skills = self.skills.has_pre_defend();
+        if !has_states && !has_pre_defend_skills {
+            return atp;
+        }
+        let protect_split = has_states
+            .then(|| self.get_state::<ProtectState>().map(|state| state.pre_defend_skill_count))
+            .flatten();
         if let Some(split) = protect_split {
             let split = split.min(self.skills.pre_defend.len());
             atp = self.skills.pre_defend_range(
@@ -1860,16 +1867,22 @@ impl Player {
             return atp;
         }
 
-        atp = self
-            .skills
-            .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
+        if has_pre_defend_skills {
+            atp = self
+                .skills
+                .pre_defend(atp, is_mag, caster, on_damage, (self.as_ptr(), randomer, updates, storage));
+        }
         if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
             eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
         }
         if atp == 0.0 && !started_zero {
             return 0.0;
         }
-        let atp2 = self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        let atp2 = if has_states {
+            self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage)
+        } else {
+            atp
+        };
         if crate::debug::debug_damage() && (atp2 - atp).abs() > 0.001 {
             eprintln!("[PRE_DEFEND_STATE] {} atp: {:.4} -> {:.4}", self.id_name(), atp, atp2);
         }
@@ -1885,6 +1898,9 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        if !self.skills.has_post_defend() && self.state.is_empty() {
+            return dmg;
+        }
         // JS 中 skill 和 state 的 post_defend 共享同一个 y2 链表，按 ga4() (sortId) 升序执行。
         // 这里将 skill 和 state 的 post_defend entry 合并到统一优先级链中执行。
         #[derive(Clone, Copy)]
@@ -2086,27 +2102,31 @@ impl Player {
     ) -> i32 {
         #[cfg(not(feature = "no_debug"))]
         let debug_this = crate::debug::debug_action_matches(&self.id_name());
-        let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
-        for skill_idx in post_damaged_indices {
-            let ptr = self.as_ptr();
-            #[cfg(not(feature = "no_debug"))]
-            let rc4_before = (randomer.i, randomer.j);
-            let skill = self.skills.skill_by_id_mut(skill_idx);
-            skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
-            #[cfg(not(feature = "no_debug"))]
-            if debug_this {
-                eprintln!(
-                    "[post_damage_skill] target={} key={} rc4 {}:{} -> {}:{}",
-                    self.id_name(),
-                    skill_idx,
-                    rc4_before.0,
-                    rc4_before.1,
-                    randomer.i,
-                    randomer.j,
-                );
+        if self.skills.has_post_damage() {
+            let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
+            for skill_idx in post_damaged_indices {
+                let ptr = self.as_ptr();
+                #[cfg(not(feature = "no_debug"))]
+                let rc4_before = (randomer.i, randomer.j);
+                let skill = self.skills.skill_by_id_mut(skill_idx);
+                skill.post_damage(dmg, caster, (ptr, randomer, updates, storage));
+                #[cfg(not(feature = "no_debug"))]
+                if debug_this {
+                    eprintln!(
+                        "[post_damage_skill] target={} key={} rc4 {}:{} -> {}:{}",
+                        self.id_name(),
+                        skill_idx,
+                        rc4_before.0,
+                        rc4_before.1,
+                        randomer.i,
+                        randomer.j,
+                    );
+                }
             }
         }
-        self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
+        if !self.state.is_empty() {
+            self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
+        }
         if self.status.hp <= 0 {
             #[cfg(not(feature = "no_debug"))]
             if debug_this {
