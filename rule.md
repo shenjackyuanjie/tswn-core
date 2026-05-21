@@ -62,3 +62,14 @@ cargo run --release --features no_debug --bin track_perf_cases -- `
   --bench-runs 13000 `
   --thread 1
 ```
+
+在Windows上如果有 samply，可以参考以下命令进行采样
+```powershell
+samply record --save-only --unstable-presymbolicate `
+  --windows-symbol-server https://msdl.microsoft.com/download/symbols `
+  -o target\samply_track_perf_cases_symbols.json.gz `
+  -- target\release\track_perf_cases.exe `
+  --case-dir docs/perf/fixed_cases_30 `
+  --out-dir target\samply_perf_cases_symbols `
+  --bench-runs 13000 --thread 1 -q
+```
