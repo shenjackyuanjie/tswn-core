@@ -846,6 +846,9 @@ pub struct Skill {
     /// `post_damage` 优先级在运行时是静态元数据；即使 skill_type 被临时 detach 成 NoneSkill，
     /// 也必须保留原值，避免战中 register_skill_proc 用占位符优先级把顺序排错。
     post_damage_priority: i32,
+    has_action_impl: bool,
+    uses_custom_target_selection: bool,
+    uses_attack_aa_sampling: bool,
     /// 类型；`take_skill_type` 取出后会短暂为 `None`，调用方须通过 `put_skill_type` 放回。
     skill_type: Option<Box<dyn SkillTrait>>,
     /// 目标
@@ -860,6 +863,9 @@ impl Clone for Skill {
             boosted: self.boosted,
             level: self.level,
             post_damage_priority: self.post_damage_priority,
+            has_action_impl: self.has_action_impl,
+            uses_custom_target_selection: self.uses_custom_target_selection,
+            uses_attack_aa_sampling: self.uses_attack_aa_sampling,
             skill_type: self.skill_type.as_ref().map(|st| st.clone_box()),
             target: self.target,
             diy_boost: self.diy_boost.clone(),
@@ -870,10 +876,16 @@ impl Clone for Skill {
 impl Skill {
     pub fn new(level: u32, skill_type: Box<dyn SkillTrait>) -> Self {
         let post_damage_priority = skill_type.post_damage_priority();
+        let has_action_impl = skill_type.has_action_impl();
+        let uses_custom_target_selection = skill_type.uses_custom_target_selection();
+        let uses_attack_aa_sampling = skill_type.uses_attack_aa_sampling();
         Self {
             boosted: false,
             level,
             post_damage_priority,
+            has_action_impl,
+            uses_custom_target_selection,
+            uses_attack_aa_sampling,
             skill_type: Some(skill_type),
             target: None,
             diy_boost: None,
@@ -883,10 +895,16 @@ impl Skill {
     pub fn new_with_id(level: u32, id: u8) -> Self {
         let skill_type = create_skill_from_registry(id);
         let post_damage_priority = skill_type.post_damage_priority();
+        let has_action_impl = skill_type.has_action_impl();
+        let uses_custom_target_selection = skill_type.uses_custom_target_selection();
+        let uses_attack_aa_sampling = skill_type.uses_attack_aa_sampling();
         Self {
             boosted: false,
             level,
             post_damage_priority,
+            has_action_impl,
+            uses_custom_target_selection,
+            uses_attack_aa_sampling,
             skill_type: Some(skill_type),
             target: None,
             diy_boost: None,
@@ -1195,13 +1213,11 @@ impl Skill {
         }
     }
 
-    pub fn uses_custom_target_selection(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.uses_custom_target_selection())
-    }
+    pub fn uses_custom_target_selection(&self) -> bool { self.uses_custom_target_selection }
 
-    pub fn uses_attack_aa_sampling(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.uses_attack_aa_sampling()) }
+    pub fn uses_attack_aa_sampling(&self) -> bool { self.uses_attack_aa_sampling }
 
-    pub fn has_action_impl(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_action_impl()) }
+    pub fn has_action_impl(&self) -> bool { self.has_action_impl }
 
     pub fn clear_positive_runtime_priority(&self) -> i32 {
         self.skill_type.as_ref().map_or(i32::MAX, |st| st.clear_positive_runtime_priority())
