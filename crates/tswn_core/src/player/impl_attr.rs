@@ -311,7 +311,8 @@ impl Player {
                         skill.boosted = true;
                     }
                     SkillBoost::SlotBoost { boost, .. } => {
-                        skill.set_level(current.saturating_add(boost));
+                        let amount = boost.min(current);
+                        skill.set_level(current.saturating_add(amount));
                         skill.boosted = true;
                     }
                 }
