@@ -174,6 +174,9 @@ type OrderedTagWithOrder = SmallVec<[(StateTag, u64); 8]>;
 
 impl PlayerStateStore {
     #[inline]
+    pub fn is_empty(&self) -> bool { self.entries.is_empty() }
+
+    #[inline]
     fn cast_ref<T: StateTrait + 'static>(state: &dyn StateTrait) -> Option<&T> {
         if state.state_type_id() != TypeId::of::<T>() {
             return None;

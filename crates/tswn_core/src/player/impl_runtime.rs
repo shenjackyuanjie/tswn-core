@@ -154,7 +154,9 @@ impl Player {
         let mut step = self.status.speed * step_roll as i32;
         #[cfg(not(feature = "no_debug"))]
         let raw_step = step;
-        step = self.apply_pre_step_states(step, updates);
+        if !self.state.is_empty() {
+            step = self.apply_pre_step_states(step, updates);
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
@@ -166,7 +168,9 @@ impl Player {
                 self.move_point(),
             );
         }
-        step = self.skills.pre_step(step, (self.as_ptr(), randomer, updates, storage));
+        if self.skills.has_pre_step() {
+            step = self.skills.pre_step(step, (self.as_ptr(), randomer, updates, storage));
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(

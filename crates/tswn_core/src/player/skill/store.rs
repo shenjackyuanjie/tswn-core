@@ -165,6 +165,9 @@ pub struct SkillStorage {
 impl SkillStorage {
     pub fn new() -> Self { Self::with_skill_capacity(0) }
 
+    #[inline]
+    pub fn has_pre_step(&self) -> bool { !self.pre_step.is_empty() }
+
     pub fn with_skill_capacity(skill_capacity: usize) -> Self {
         Self {
             store: SkillStore::with_capacity(skill_capacity),
