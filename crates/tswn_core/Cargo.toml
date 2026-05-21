@@ -1,7 +1,7 @@
 [package]
 name = "tswn_core"
 description = "甚至是rust版名字竞技场"
-version = "0.3.7"
+version = "0.3.8"
 edition = "2024"
 
 [dependencies]
