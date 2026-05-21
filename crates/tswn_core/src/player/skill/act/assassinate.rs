@@ -166,7 +166,8 @@ impl SkillTrait for AssassinateSkill {
             if !charge_active {
                 self.on_post_damage = Some(());
             }
-            ctx.owner.set_move_point(current_move + owner_magic * 3 + if charge_active { 1600 } else { 0 });
+            ctx.owner
+                .set_move_point(current_move + owner_magic * 3 + if charge_active { 1600 } else { 0 });
             ctx.updates.add(RunUpdate::new("[0][潜行]到[1]身后", ctx.ptr, target_id, 1));
             return;
         }
@@ -212,7 +213,15 @@ impl SkillTrait for AssassinateSkill {
         ctx.storage
             .just_get_player_mut(target_id)
             .expect("cannot get assassinate target from storage")
-            .defned(atp, true, ctx.ptr, on_assassinate as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage);
+            .defned(
+                atp,
+                true,
+                ctx.ptr,
+                on_assassinate as OnDamageFunc,
+                ctx.randomer,
+                ctx.updates,
+                ctx.storage,
+            );
     }
 
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {

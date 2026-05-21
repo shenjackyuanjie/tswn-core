@@ -74,18 +74,12 @@ impl SkillTrait for ReflectSkill {
         }
         let on_dmg = *on_damage;
         let core = {
-            let caster_plr = args
-                .3
-                .just_get_player_mut(caster)
-                .expect("cannot get reflect caster from storage");
+            let caster_plr = args.3.just_get_player_mut(caster).expect("cannot get reflect caster from storage");
             caster_plr.attacked_core(reflect_atp, true, args.0, on_dmg, args.1, args.2, args.3)
         };
         if core.hit {
             on_dmg(args.0, core.target, core.dmg, args.1, args.2, args.3);
-            let caster_plr = args
-                .3
-                .just_get_player_mut(core.target)
-                .expect("cannot get reflect caster from storage");
+            let caster_plr = args.3.just_get_player_mut(core.target).expect("cannot get reflect caster from storage");
             caster_plr.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3);
         }
         args.3
@@ -110,7 +104,15 @@ impl SkillTrait for ReflectSkill {
 
     fn has_inline_pre_defend(&self) -> bool { true }
 
-    fn pre_defend_inline(&mut self, level: u32, ctx: &mut InlineCtx, atp: f64, _is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc) -> f64 {
+    fn pre_defend_inline(
+        &mut self,
+        level: u32,
+        ctx: &mut InlineCtx,
+        atp: f64,
+        _is_mag: bool,
+        caster: PlrId,
+        on_damage: &OnDamageFunc,
+    ) -> f64 {
         if ctx.storage.get_player(&caster).map(|p| p.get_status().hp <= 0).unwrap_or(true) {
             return atp;
         }

@@ -133,7 +133,14 @@ impl SkillTrait for ExchangeSkill {
 
         if target_hp > target_new_hp {
             if let Some(target) = ctx.storage.just_get_player_mut(target_id) {
-                target.on_damaged(target_hp - target_new_hp, target_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
+                target.on_damaged(
+                    target_hp - target_new_hp,
+                    target_hp,
+                    ctx.ptr,
+                    ctx.randomer,
+                    ctx.updates,
+                    ctx.storage,
+                );
             }
         }
     }

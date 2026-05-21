@@ -244,8 +244,16 @@ impl SkillTrait for MergeSkill {
                 .map(|target_skill_key| target_plr.skills.store.get(target_skill_key).map(|skill| skill.level()))
                 .collect::<Vec<_>>()
         };
-        let target_mp = ctx.storage.get_player(&target).expect("cannot get merge target from storage").magic_point();
-        let target_move_point = ctx.storage.get_player(&target).expect("cannot get merge target from storage").move_point();
+        let target_mp = ctx
+            .storage
+            .get_player(&target)
+            .expect("cannot get merge target from storage")
+            .magic_point();
+        let target_move_point = ctx
+            .storage
+            .get_player(&target)
+            .expect("cannot get merge target from storage")
+            .move_point();
 
         let mut merged = false;
         let (transfer_mp, transfer_move_point) = {
@@ -262,11 +270,7 @@ impl SkillTrait for MergeSkill {
                     merged = true;
                 }
             }
-            for (owner_skill_key, target_level) in owner_slot_skills
-                .iter()
-                .copied()
-                .zip(target_slot_levels.iter().copied())
-            {
+            for (owner_skill_key, target_level) in owner_slot_skills.iter().copied().zip(target_slot_levels.iter().copied()) {
                 let Some(target_level) = target_level else {
                     continue;
                 };

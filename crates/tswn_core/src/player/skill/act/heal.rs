@@ -3,8 +3,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
     skill::{
-        InlineCtx, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait, berserk::BerserkState, charm::CharmState,
-        ice::IceState,
+        InlineCtx, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait, berserk::BerserkState, charm::CharmState, ice::IceState,
         poison::PoisonState, slow::SlowState,
     },
 };
@@ -81,10 +80,7 @@ impl SkillTrait for HealSkill {
             let target_name = if target_id == ctx.ptr {
                 ctx.owner.id_name()
             } else {
-                ctx.storage
-                    .get_player(&target_id)
-                    .expect("cannot get heal target from storage")
-                    .id_name()
+                ctx.storage.get_player(&target_id).expect("cannot get heal target from storage").id_name()
             };
             eprintln!(
                 "[heal] owner={} target={} owner_hp={}/{} target_hp={}/{} at_boost={} atp={:.2} missing={} heal={} rc4=({}, {})",
@@ -92,8 +88,24 @@ impl SkillTrait for HealSkill {
                 target_name,
                 ctx.owner.get_status().hp,
                 ctx.owner.get_status().max_hp,
-                if target_id == ctx.ptr { ctx.owner.get_status().hp } else { ctx.storage.get_player(&target_id).expect("cannot get heal target from storage").get_status().hp },
-                if target_id == ctx.ptr { ctx.owner.get_status().max_hp } else { ctx.storage.get_player(&target_id).expect("cannot get heal target from storage").get_status().max_hp },
+                if target_id == ctx.ptr {
+                    ctx.owner.get_status().hp
+                } else {
+                    ctx.storage
+                        .get_player(&target_id)
+                        .expect("cannot get heal target from storage")
+                        .get_status()
+                        .hp
+                },
+                if target_id == ctx.ptr {
+                    ctx.owner.get_status().max_hp
+                } else {
+                    ctx.storage
+                        .get_player(&target_id)
+                        .expect("cannot get heal target from storage")
+                        .get_status()
+                        .max_hp
+                },
                 ctx.owner.get_status().at_boost,
                 atp,
                 missing_hp,

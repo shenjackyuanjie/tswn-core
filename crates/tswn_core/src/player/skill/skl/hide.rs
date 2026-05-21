@@ -52,7 +52,8 @@ impl HideSkill {
             }
         }
         for id in storage.iter_pending_spawn_ids_for_owner(owner_id) {
-            if !alive_candidates.contains(&id) && storage.get_pending_spawn_player(id).map(|player| player.alive()).unwrap_or(false)
+            if !alive_candidates.contains(&id)
+                && storage.get_pending_spawn_player(id).map(|player| player.alive()).unwrap_or(false)
             {
                 alive_candidates.push(id);
             }
@@ -105,11 +106,8 @@ impl SkillTrait for HideSkill {
         // 暂留一些“状态已变但并非 JS 同拍可见”的实体，那会把 Hide 的触发窗口放大，反而引入新 diff。
         let owner = args.3.get_player(&args.0);
         let owner_active = owner.map(|player| player.active()).unwrap_or(false);
-        let owner_charm = owner.and_then(|player| {
-            player
-                .get_state::<CharmState>()
-                .map(|charm| (charm.group_id, charm.effective_team_idx))
-        });
+        let owner_charm =
+            owner.and_then(|player| player.get_state::<CharmState>().map(|charm| (charm.group_id, charm.effective_team_idx)));
         if self.trigger_from_damage(level, args.0, owner_active, owner_charm, args.1, args.2, args.3) {
             args.3
                 .just_get_player_mut(args.0)
@@ -163,8 +161,15 @@ impl SkillTrait for HideSkill {
             .owner
             .get_state::<CharmState>()
             .map(|charm| (charm.group_id, charm.effective_team_idx));
-        if self.trigger_from_damage(level, ctx.ptr, ctx.owner.active(), owner_charm, ctx.randomer, ctx.updates, ctx.storage)
-            || self.on_update_state.is_some()
+        if self.trigger_from_damage(
+            level,
+            ctx.ptr,
+            ctx.owner.active(),
+            owner_charm,
+            ctx.randomer,
+            ctx.updates,
+            ctx.storage,
+        ) || self.on_update_state.is_some()
         {
             ctx.mark_update_states();
         }

@@ -63,11 +63,22 @@ impl SkillTrait for QuakeSkill {
             ctx.updates.add(RunUpdate::new_newline());
             let core = {
                 let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get quake target from storage");
-                target.attacked_core(atp, true, ctx.ptr, on_quake as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage)
+                target.attacked_core(
+                    atp,
+                    true,
+                    ctx.ptr,
+                    on_quake as OnDamageFunc,
+                    ctx.randomer,
+                    ctx.updates,
+                    ctx.storage,
+                )
             };
             if core.hit {
                 on_quake(ctx.ptr, core.target, core.dmg, ctx.randomer, ctx.updates, ctx.storage);
-                let target = ctx.storage.just_get_player_mut(core.target).expect("cannot get quake target from storage");
+                let target = ctx
+                    .storage
+                    .just_get_player_mut(core.target)
+                    .expect("cannot get quake target from storage");
                 target.finish_damage(core.dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
             }
         }
@@ -96,18 +107,12 @@ impl SkillTrait for QuakeSkill {
             }
             args.2.add(RunUpdate::new_newline());
             let core = {
-                let target = args
-                    .3
-                    .just_get_player_mut(target_id)
-                    .expect("cannot get quake target from storage");
+                let target = args.3.just_get_player_mut(target_id).expect("cannot get quake target from storage");
                 target.attacked_core(atp, true, args.0, on_quake as OnDamageFunc, args.1, args.2, args.3)
             };
             if core.hit {
                 on_quake(args.0, core.target, core.dmg, args.1, args.2, args.3);
-                let target = args
-                    .3
-                    .just_get_player_mut(core.target)
-                    .expect("cannot get quake target from storage");
+                let target = args.3.just_get_player_mut(core.target).expect("cannot get quake target from storage");
                 target.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3);
             }
         }

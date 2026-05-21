@@ -93,8 +93,9 @@ impl SkillTrait for SummonSkill {
         }
         let summon_team = owner.clan_name();
         let summon_name = format!("{}?summon", owner.base_name());
-        let mut summoned = crate::player::Player::new_and_init(Some(summon_team.clone()), summon_name.clone(), None, ctx.storage.clone())
-            .expect("cannot init summon minion");
+        let mut summoned =
+            crate::player::Player::new_and_init(Some(summon_team.clone()), summon_name.clone(), None, ctx.storage.clone())
+                .expect("cannot init summon minion");
         prepare_combat_minion(&mut summoned);
         summoned.build();
         summoned.attr[7] = (summoned.attr[7] / 3).max(1);
@@ -374,7 +375,14 @@ impl SkillTrait for SummonShareDamageSkill {
         // 防止 owner 死亡时通过 linked minion 路径立即处理使魔的死亡。
         ctx.storage.set_in_post_damage(ctx.ptr);
         if let Some(owner) = ctx.storage.just_get_player_mut(owner_id) {
-            owner.damage(meta.dmg / 2, meta.caster, on_summon_share_damage as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage);
+            owner.damage(
+                meta.dmg / 2,
+                meta.caster,
+                on_summon_share_damage as OnDamageFunc,
+                ctx.randomer,
+                ctx.updates,
+                ctx.storage,
+            );
         }
         ctx.storage.clear_in_post_damage();
     }

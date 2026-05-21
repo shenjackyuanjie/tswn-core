@@ -68,14 +68,28 @@ impl SkillTrait for ThunderSkill {
             let atp = ctx.owner.get_at(true, ctx.randomer) * 0.36000001430511475;
             let dmg = {
                 let (dmg, core) = {
-                    let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get thunder target from storage");
-                    target.defned_core(atp, true, ctx.ptr, on_thunder as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage)
+                    let target = ctx
+                        .storage
+                        .just_get_player_mut(target_id)
+                        .expect("cannot get thunder target from storage");
+                    target.defned_core(
+                        atp,
+                        true,
+                        ctx.ptr,
+                        on_thunder as OnDamageFunc,
+                        ctx.randomer,
+                        ctx.updates,
+                        ctx.storage,
+                    )
                 };
                 if core.is_heal || core.is_zero {
                     0
                 } else {
                     on_thunder(ctx.ptr, target_id, core.actual_dmg, ctx.randomer, ctx.updates, ctx.storage);
-                    let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get thunder target from storage");
+                    let target = ctx
+                        .storage
+                        .just_get_player_mut(target_id)
+                        .expect("cannot get thunder target from storage");
                     target.finish_damage(core.actual_dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
                     dmg
                 }

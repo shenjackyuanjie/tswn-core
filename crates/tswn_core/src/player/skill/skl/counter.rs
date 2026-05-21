@@ -132,18 +132,12 @@ impl SkillTrait for CounterSkill {
             1,
         ));
         let core = {
-            let target_plr = args
-                .3
-                .just_get_player_mut(target)
-                .expect("cannot get counter target from storage");
+            let target_plr = args.3.just_get_player_mut(target).expect("cannot get counter target from storage");
             target_plr.attacked_core(atp, false, args.0, on_counter as OnDamageFunc, args.1, args.2, args.3)
         };
         if core.hit {
             on_counter(args.0, core.target, core.dmg, args.1, args.2, args.3);
-            let target_plr = args
-                .3
-                .just_get_player_mut(core.target)
-                .expect("cannot get counter target from storage");
+            let target_plr = args.3.just_get_player_mut(core.target).expect("cannot get counter target from storage");
             target_plr.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3);
         }
         true

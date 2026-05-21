@@ -714,12 +714,7 @@ impl Player {
         self.skills.on_update_end((ptr, randomer, updates, storage))
     }
 
-    fn run_pre_action_inline_dispatch(
-        &mut self,
-        randomer: &mut RC4,
-        updates: &mut RunUpdates,
-        storage: &Arc<Storage>,
-    ) {
+    fn run_pre_action_inline_dispatch(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
         if !self.skills.has_inline_pre_action || self.skills.pre_action.is_empty() {
             return;
         }
@@ -772,11 +767,15 @@ impl Player {
                 let skill = self.skills.skill_by_id_mut(skill_key);
                 (skill.take_skill_type(), skill.level())
             };
-            let clear_forced =
-                skill_type.pre_action_clear_forced_with_level(level, smart, (ptr, randomer, updates, storage));
+            let clear_forced = skill_type.pre_action_clear_forced_with_level(level, smart, (ptr, randomer, updates, storage));
             let prev_forced_skill = forced_skill;
-            forced_skill =
-                skill_type.pre_action_accumulate_with_level(level, forced_skill, skill_key, smart, (ptr, randomer, updates, storage));
+            forced_skill = skill_type.pre_action_accumulate_with_level(
+                level,
+                forced_skill,
+                skill_key,
+                smart,
+                (ptr, randomer, updates, storage),
+            );
             let selected = forced_skill == Some(skill_key) && prev_forced_skill != Some(skill_key);
             let manages_dynamic_pre_action = skill_type.manages_dynamic_pre_action();
             let dynamic_pre_action_enabled = level > 0 && skill_type.dynamic_pre_action_enabled();
@@ -1346,12 +1345,7 @@ impl Player {
             let all_alive = targets
                 .all_alive
                 .iter()
-                .map(|id| {
-                    storage
-                        .get_player(id)
-                        .map(|plr| plr.id_name())
-                        .unwrap_or_else(|| format!("#{id}"))
-                })
+                .map(|id| storage.get_player(id).map(|plr| plr.id_name()).unwrap_or_else(|| format!("#{id}")))
                 .collect::<Vec<String>>();
             let target_name = storage
                 .get_player(&target_id)
@@ -1657,7 +1651,12 @@ impl Player {
         }
         for effect in deferred_effects {
             match effect {
-                Effect::Attack { target, atp, is_mag, on_damage } => {
+                Effect::Attack {
+                    target,
+                    atp,
+                    is_mag,
+                    on_damage,
+                } => {
                     let core = {
                         let target_plr = storage.just_get_player_mut(target).expect("attack target not found");
                         target_plr.attacked_core(atp, is_mag, ptr, on_damage, randomer, updates, storage)
@@ -2095,7 +2094,10 @@ impl Player {
         let roll = randomer.next_u8() as i32;
         #[cfg(not(feature = "no_debug"))]
         if std::env::var_os("TSWN_TRACE_BERSERK").is_some() {
-            eprintln!("[trace_berserk_dodge] al_a={} al_d={} roll={} threshold={}", al_a, al_d, roll, ch);
+            eprintln!(
+                "[trace_berserk_dodge] al_a={} al_d={} roll={} threshold={}",
+                al_a, al_d, roll, ch
+            );
         }
         roll <= ch
     }
@@ -2119,17 +2121,7 @@ impl Player {
         let protect_split = self.get_state::<ProtectState>().map(|state| state.pre_defend_skill_count);
         if let Some(split) = protect_split {
             let split = split.min(self.skills.pre_defend.len());
-            atp = self.run_pre_defend_skill_range(
-                0,
-                split,
-                atp,
-                is_mag,
-                caster,
-                on_damage,
-                randomer,
-                updates,
-                storage,
-            );
+            atp = self.run_pre_defend_skill_range(0, split, atp, is_mag, caster, on_damage, randomer, updates, storage);
             if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
                 eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
             }
@@ -2224,7 +2216,17 @@ impl Player {
             return atp;
         }
 
-        atp = self.run_pre_defend_skill_range(0, self.skills.pre_defend.len(), atp, is_mag, caster, on_damage, randomer, updates, storage);
+        atp = self.run_pre_defend_skill_range(
+            0,
+            self.skills.pre_defend.len(),
+            atp,
+            is_mag,
+            caster,
+            on_damage,
+            randomer,
+            updates,
+            storage,
+        );
         if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
             eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
         }
@@ -2442,7 +2444,12 @@ impl Player {
         let target = self.as_ptr();
         atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
         if atp == 0.0 {
-            return AttackedCoreResult { dmg: 0, old_hp: 0, target, hit: false };
+            return AttackedCoreResult {
+                dmg: 0,
+                old_hp: 0,
+                target,
+                hit: false,
+            };
         }
         let (accure, dodgeval) = {
             let caster_plr = storage.get_player(&caster).expect("faild to get caster player");
@@ -2460,13 +2467,28 @@ impl Player {
         };
         if self.active() && Self::dodge(accure, dodgeval, randomer) {
             updates.emit(|| RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20));
-            return AttackedCoreResult { dmg: 0, old_hp: 0, target, hit: false };
+            return AttackedCoreResult {
+                dmg: 0,
+                old_hp: 0,
+                target,
+                hit: false,
+            };
         }
         let (_dmg, core) = self.defned_core(atp, is_mag, caster, on_damage, randomer, updates, storage);
         if core.is_heal || core.is_zero {
-            return AttackedCoreResult { dmg: 0, old_hp: 0, target, hit: false };
+            return AttackedCoreResult {
+                dmg: 0,
+                old_hp: 0,
+                target,
+                hit: false,
+            };
         }
-        AttackedCoreResult { dmg: core.actual_dmg, old_hp: core.old_hp, target, hit: true }
+        AttackedCoreResult {
+            dmg: core.actual_dmg,
+            old_hp: core.old_hp,
+            target,
+            hit: true,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2556,7 +2578,12 @@ impl Player {
                 update.param = Some(dmg.unsigned_abs());
                 update
             });
-            return DamageCoreResult { actual_dmg: dmg, old_hp: 0, is_heal: true, is_zero: false };
+            return DamageCoreResult {
+                actual_dmg: dmg,
+                old_hp: 0,
+                is_heal: true,
+                is_zero: false,
+            };
         }
         if dmg == 0 {
             updates.emit(|| {
@@ -2564,7 +2591,12 @@ impl Player {
                 update.param = Some(0);
                 update
             });
-            return DamageCoreResult { actual_dmg: 0, old_hp: 0, is_heal: false, is_zero: true };
+            return DamageCoreResult {
+                actual_dmg: 0,
+                old_hp: 0,
+                is_heal: false,
+                is_zero: true,
+            };
         }
         let old_hp = self.status.hp;
         self.status.hp -= dmg;
@@ -2582,7 +2614,12 @@ impl Player {
             update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
             update
         });
-        DamageCoreResult { actual_dmg: dmg, old_hp, is_heal: false, is_zero: false }
+        DamageCoreResult {
+            actual_dmg: dmg,
+            old_hp,
+            is_heal: false,
+            is_zero: false,
+        }
     }
 
     /// 完成伤害链：post_damage 钩子 + 状态回调 + 死亡判定。

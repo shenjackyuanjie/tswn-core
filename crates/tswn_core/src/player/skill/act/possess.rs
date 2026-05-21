@@ -48,7 +48,10 @@ impl SkillTrait for PossessSkill {
         }
 
         {
-            let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get possess target from storage");
+            let target = ctx
+                .storage
+                .just_get_player_mut(target_id)
+                .expect("cannot get possess target from storage");
             if let Some(state) = target.get_state_mut::<BerserkState>() {
                 state.step += 4;
             } else {

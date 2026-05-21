@@ -315,8 +315,7 @@ impl Storage {
 
     /// 接收 WorldState 中按 JS `Engine.y.a.Q` 语义维护的计数。
     pub fn sync_alive_groups_owned_with_count(&self, groups: Vec<Vec<PlrId>>, alive_group_count: usize) {
-        self.alive_group_count
-            .store(alive_group_count, std::sync::atomic::Ordering::Relaxed);
+        self.alive_group_count.store(alive_group_count, std::sync::atomic::Ordering::Relaxed);
         *self.alive_groups_mut() = groups;
     }
 

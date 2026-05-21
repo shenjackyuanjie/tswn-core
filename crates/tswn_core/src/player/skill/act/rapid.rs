@@ -74,13 +74,24 @@ impl SkillTrait for RapidSkill {
                 let dmg = {
                     let core = {
                         let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get rapid target from storage");
-                        target.attacked_core(atp, false, ctx.ptr, on_rapid as OnDamageFunc, ctx.randomer, ctx.updates, ctx.storage)
+                        target.attacked_core(
+                            atp,
+                            false,
+                            ctx.ptr,
+                            on_rapid as OnDamageFunc,
+                            ctx.randomer,
+                            ctx.updates,
+                            ctx.storage,
+                        )
                     };
                     if !core.hit {
                         0
                     } else {
                         on_rapid(ctx.ptr, core.target, core.dmg, ctx.randomer, ctx.updates, ctx.storage);
-                        let target = ctx.storage.just_get_player_mut(core.target).expect("cannot get rapid target from storage");
+                        let target = ctx
+                            .storage
+                            .just_get_player_mut(core.target)
+                            .expect("cannot get rapid target from storage");
                         target.finish_damage(core.dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage)
                     }
                 };
@@ -129,20 +140,14 @@ impl SkillTrait for RapidSkill {
                 }
                 let dmg = {
                     let core = {
-                        let target = args
-                            .3
-                            .just_get_player_mut(target_id)
-                            .expect("cannot get rapid target from storage");
+                        let target = args.3.just_get_player_mut(target_id).expect("cannot get rapid target from storage");
                         target.attacked_core(atp, false, args.0, on_rapid as OnDamageFunc, args.1, args.2, args.3)
                     };
                     if !core.hit {
                         0
                     } else {
                         on_rapid(args.0, core.target, core.dmg, args.1, args.2, args.3);
-                        let target = args
-                            .3
-                            .just_get_player_mut(core.target)
-                            .expect("cannot get rapid target from storage");
+                        let target = args.3.just_get_player_mut(core.target).expect("cannot get rapid target from storage");
                         target.finish_damage(core.dmg, core.old_hp, args.0, args.1, args.2, args.3)
                     }
                 };

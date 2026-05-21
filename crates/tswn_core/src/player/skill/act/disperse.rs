@@ -79,10 +79,7 @@ impl SkillTrait for DisperseSkill {
         // so these checks NEVER match in Dart/JS. Shield/Iron are NOT pre-cleared before damage.
 
         let core = {
-            let target = args
-                .3
-                .just_get_player_mut(target_id)
-                .expect("cannot get disperse target from storage");
+            let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
             let (_, core) = target.defned_core(
                 if target_is_minion { atp * 2.0 } else { atp },
                 true,
@@ -96,10 +93,7 @@ impl SkillTrait for DisperseSkill {
         };
         if !core.is_heal && !core.is_zero {
             on_disperse(args.0, target_id, core.actual_dmg, args.1, args.2, args.3);
-            let target = args
-                .3
-                .just_get_player_mut(target_id)
-                .expect("cannot get disperse target from storage");
+            let target = args.3.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
             target.finish_damage(core.actual_dmg, core.old_hp, args.0, args.1, args.2, args.3);
         }
     }
@@ -114,7 +108,10 @@ impl SkillTrait for DisperseSkill {
         ctx.updates.add(RunUpdate::new("[0]使用[净化]", ctx.ptr, target_id, 20));
 
         let core = {
-            let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
+            let target = ctx
+                .storage
+                .just_get_player_mut(target_id)
+                .expect("cannot get disperse target from storage");
             let (_, core) = target.defned_core(
                 if target_is_minion { atp * 2.0 } else { atp },
                 true,
@@ -128,7 +125,10 @@ impl SkillTrait for DisperseSkill {
         };
         if !core.is_heal && !core.is_zero {
             on_disperse(ctx.ptr, target_id, core.actual_dmg, ctx.randomer, ctx.updates, ctx.storage);
-            let target = ctx.storage.just_get_player_mut(target_id).expect("cannot get disperse target from storage");
+            let target = ctx
+                .storage
+                .just_get_player_mut(target_id)
+                .expect("cannot get disperse target from storage");
             target.finish_damage(core.actual_dmg, core.old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
         }
     }
