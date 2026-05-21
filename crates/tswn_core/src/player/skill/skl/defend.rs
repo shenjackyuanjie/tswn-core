@@ -73,7 +73,7 @@ impl SkillTrait for DefendSkill {
         dmg
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDefend] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostDefend] }
 
     fn post_defend_priority(&self) -> i32 { self.sort_id as i32 }
 }

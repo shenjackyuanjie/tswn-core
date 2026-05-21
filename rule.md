@@ -6,7 +6,7 @@
 
 ## Release profile 选择
 
-- `--release`：正式 benchmark 口径，使用 `lto = "fat"` 和 `codegen-units = 1`，编译慢但运行性能更稳定；benchmark 不启用 `mimalloc_alloc`，最终 release 构建再启用。
+- `--release`：正式 benchmark 口径，使用 `lto = "fat"` 和 `codegen-units = 16`；benchmark 不启用 `mimalloc_alloc`，最终 release 构建再启用。
 - `--profile release-fast`：日常快速验证口径，使用 `lto = "thin"` 和更多 codegen units，编译更快；性能结果只能作本地参考，不建议写入长期性能表。
 
 ## 行为验证方法
@@ -16,7 +16,7 @@
 
 - 基本要求
 - ```bash
-  cargo run --release --features no_debug --bin tswn_case_miner -- \
+cargo run -p tswn_core --release --features no_debug --bin tswn_case_miner -- \
     --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' \
     --md5-tool 'D:\githubs\namer\fast-namerena\branch\latest\out_md5.ts' \
     --out-dir '.\target\ts_diff_cases' \
@@ -28,7 +28,7 @@
 
 - 高级要求
 - ```bash
-  cargo run --release --features no_debug --bin tswn_case_miner -- \
+cargo run -p tswn_core --release --features no_debug --bin tswn_case_miner -- \
     --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' \
     --md5-tool 'D:\githubs\namer\fast-namerena\branch\latest\out_md5.ts' \
     --out-dir '.\target\ts_diff_cases' \
@@ -40,7 +40,7 @@
 
 - 完整要求
 - ```bash
-  cargo run --release --features no_debug --bin tswn_case_miner -- \
+cargo run -p tswn_core --release --features no_debug --bin tswn_case_miner -- \
     --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' \
     --md5-tool 'D:\githubs\namer\fast-namerena\branch\latest\out_md5.ts' \
     --out-dir '.\target\ts_diff_cases' \
@@ -48,7 +48,7 @@
     --ffa-sizes '4,6,8' \
     --case-offset-per-mode 0 \
     --max-cases-per-mode 4000
-  cargo run --release --features no_debug --bin tswn_case_miner -- \
+  cargo run -p tswn_core --release --features no_debug --bin tswn_case_miner -- \
     --library 'D:\githubs\namer\tswn-core\tests\sqp5900.txt' \
     --md5-tool 'D:\githubs\namer\fast-namerena\branch\latest\out_md5.ts' \
     --out-dir '.\target\ts_diff_cases' \
@@ -61,7 +61,7 @@
 ## benchmark 方法
 
 ```powershell
-cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
+cargo run -p tswn_core --release --features aux_bins,no_debug --bin track_perf_cases -- `
   --case-dir docs/perf/fixed_cases_30 `
   --out-dir docs/perf/fixed_cases_30_results `
   --bench-runs 13000 `
@@ -71,7 +71,7 @@ cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
 也可以用 `release-fast` 做日常快速试跑（不要作为正式留档数据）：
 
 ```powershell
-cargo run --profile release-fast --features aux_bins,no_debug --bin track_perf_cases -- `
+cargo run -p tswn_core --profile release-fast --features aux_bins,no_debug --bin track_perf_cases -- `
   --case-dir docs/perf/fixed_cases_30 `
   --out-dir target/perf_cases_fast `
   --bench-runs 13000 `

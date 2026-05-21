@@ -49,7 +49,6 @@ fn large_71() {
     assert_trace_with_context("sampled case-71", &actual_lines, &expected_lines);
 }
 
-
 #[test]
 fn large_72() {
     const CASE: &str = r#"来日再会 #ysKNqZlKC@Shabby_fish

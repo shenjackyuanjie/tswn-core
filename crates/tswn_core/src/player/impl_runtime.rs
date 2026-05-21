@@ -182,7 +182,9 @@ impl Player {
         let mut step = self.status.speed * step_roll as i32;
         #[cfg(not(feature = "no_debug"))]
         let raw_step = step;
-        step = self.apply_pre_step_states(step, updates);
+        if !self.state.is_empty() {
+            step = self.apply_pre_step_states(step, updates);
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
@@ -194,7 +196,9 @@ impl Player {
                 self.move_point(),
             );
         }
-        step = self.skills.pre_step(step, (self.as_ptr(), randomer, updates, storage));
+        if self.skills.has_pre_step() {
+            step = self.skills.pre_step(step, (self.as_ptr(), randomer, updates, storage));
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             eprintln!(
@@ -308,7 +312,9 @@ impl Player {
             return;
         }
 
-        let state_hijacked = self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
+        let has_states = !self.state.is_empty();
+        let state_hijacked =
+            has_states && self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
         if state_hijacked {
             let recover_threshold = self.status.wisdom + 64;
             if (randomer.r127() as i32) < recover_threshold {
@@ -324,6 +330,8 @@ impl Player {
         let mut selected_targets: Vec<PlrId> = Vec::new();
         let selected_from_forced_pre_action = pre_action_outcome.forced_skill.is_some();
         let forced_attack = if pre_action_outcome.clear_forced_action || pre_action_outcome.forced_skill.is_some() {
+            None
+        } else if !has_states {
             None
         } else {
             self.state.resolve_action_mode(smart)
@@ -648,7 +656,10 @@ impl Player {
                 randomer.j,
             );
         }
-        self.run_post_action_phase_noalias(PostActionPhase::Early, randomer, updates, storage);
+        let has_post_action = self.skills.has_post_action();
+        if has_post_action {
+            self.run_post_action_phase_noalias(PostActionPhase::Early, randomer, updates, storage);
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_post_action_this {
             eprintln!(
@@ -684,7 +695,9 @@ impl Player {
                 deferred,
             );
         }
-        self.apply_post_action_states(randomer, updates, storage);
+        if !self.state.is_empty() || self.skills.has_deferred_post_action() {
+            self.apply_post_action_states(randomer, updates, storage);
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_post_action_this {
             eprintln!(
@@ -700,7 +713,9 @@ impl Player {
                 randomer.j,
             );
         }
-        self.run_post_action_phase_noalias(PostActionPhase::Late, randomer, updates, storage);
+        if has_post_action {
+            self.run_post_action_phase_noalias(PostActionPhase::Late, randomer, updates, storage);
+        }
         #[cfg(not(feature = "no_debug"))]
         if debug_post_action_this {
             eprintln!(
@@ -2204,7 +2219,14 @@ impl Player {
 
         let atp_before = atp;
         let started_zero = atp == 0.0;
-        let protect_split = self.get_state::<ProtectState>().map(|state| state.pre_defend_skill_count);
+        let has_states = !self.state.is_empty();
+        let has_pre_defend_skills = self.skills.has_pre_defend();
+        if !has_states && !has_pre_defend_skills {
+            return atp;
+        }
+        let protect_split = has_states
+            .then(|| self.get_state::<ProtectState>().map(|state| state.pre_defend_skill_count))
+            .flatten();
         if let Some(split) = protect_split {
             let split = split.min(self.skills.pre_defend.len());
             atp = self.run_pre_defend_skill_range(0, split, atp, is_mag, caster, on_damage, randomer, updates, storage);
@@ -2302,24 +2324,30 @@ impl Player {
             return atp;
         }
 
-        atp = self.run_pre_defend_skill_range(
-            0,
-            self.skills.pre_defend.len(),
-            atp,
-            is_mag,
-            caster,
-            on_damage,
-            randomer,
-            updates,
-            storage,
-        );
+        if has_pre_defend_skills {
+            atp = self.run_pre_defend_skill_range(
+                0,
+                self.skills.pre_defend.len(),
+                atp,
+                is_mag,
+                caster,
+                on_damage,
+                randomer,
+                updates,
+                storage,
+            );
+        }
         if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
             eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
         }
         if atp == 0.0 && !started_zero {
             return 0.0;
         }
-        let atp2 = self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage);
+        let atp2 = if has_states {
+            self.apply_pre_defend_states(atp, is_mag, caster, on_damage, randomer, updates, storage)
+        } else {
+            atp
+        };
         if crate::debug::debug_damage() && (atp2 - atp).abs() > 0.001 {
             eprintln!("[PRE_DEFEND_STATE] {} atp: {:.4} -> {:.4}", self.id_name(), atp, atp2);
         }
@@ -2397,6 +2425,9 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        if !self.skills.has_post_defend() && self.state.is_empty() {
+            return dmg;
+        }
         // JS 中 skill 和 state 的 post_defend 共享同一个 y2 链表，按 ga4() (sortId) 升序执行。
         // 这里将 skill 和 state 的 post_defend entry 合并到统一优先级链中执行。
         #[derive(Clone, Copy)]
@@ -2692,13 +2723,14 @@ impl Player {
         if self.status.hp < 0 {
             self.status.hp = 0;
         }
-        let mut msg = "[1]受到[2]点伤害".to_string();
-        if dmg >= 160 {
-            msg.push_str("[s_dmg160]");
-        } else if dmg >= 120 {
-            msg.push_str("[s_dmg120]");
-        }
         updates.emit(|| {
+            let msg = if dmg >= 160 {
+                "[1]受到[2]点伤害[s_dmg160]"
+            } else if dmg >= 120 {
+                "[1]受到[2]点伤害[s_dmg120]"
+            } else {
+                "[1]受到[2]点伤害"
+            };
             let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
             update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
             update
@@ -2800,8 +2832,10 @@ impl Player {
     ) -> i32 {
         #[cfg(not(feature = "no_debug"))]
         let debug_this = crate::debug::debug_action_matches(&self.id_name());
-        if self.skills.post_damage.is_empty() {
-            self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
+        if !self.skills.has_post_damage() {
+            if !self.state.is_empty() {
+                self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
+            }
             if self.status.hp <= 0 {
                 self.on_die_impl(old_hp, caster, randomer, updates, storage, true, run_post_kill);
                 return old_hp;
@@ -2865,7 +2899,9 @@ impl Player {
                 );
             }
         }
-        self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
+        if !self.state.is_empty() {
+            self.state.on_post_damage_states(self.as_ptr(), dmg, caster, randomer, updates, storage);
+        }
         if self.status.hp <= 0 {
             #[cfg(not(feature = "no_debug"))]
             if debug_this {

@@ -109,7 +109,7 @@ pub(super) fn select_targets_for_player(
     for id in world.flat_alive.iter().copied().filter(|id| is_storage_alive(*id)) {
         let idx = all_alive.len();
         all_alive.push(id);
-        if ally_alive.contains(&id) {
+        if world.team_index_of(id) == Some(effective_team) {
             enemy_skip_indices.push(idx);
         } else {
             enemy_alive.push(id);
@@ -159,6 +159,9 @@ pub fn resolve_combat(
 }
 
 pub fn check_winner(world: &mut WorldState, _storage: &Arc<Storage>) {
+    if world.have_winner() {
+        return;
+    }
     let mut alive_count = 0u32;
     let mut last_alive_idx = 0usize;
     for (idx, team) in world.teams.iter().enumerate() {

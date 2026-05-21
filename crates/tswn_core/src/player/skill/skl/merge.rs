@@ -225,13 +225,7 @@ impl SkillTrait for MergeSkill {
 
     fn has_dead_target_post_kill_inline(&self) -> bool { true }
 
-    fn kill_dead_target_inline(
-        &mut self,
-        level: u32,
-        target: PlrId,
-        target_plr: &mut Player,
-        ctx: &mut InlineCtx,
-    ) -> bool {
+    fn kill_dead_target_inline(&mut self, level: u32, target: PlrId, target_plr: &mut Player, ctx: &mut InlineCtx) -> bool {
         let r63_val = ctx.randomer.r63();
         if r63_val >= level {
             return false;
@@ -431,5 +425,5 @@ impl SkillTrait for MergeSkill {
         true
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostKill] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostKill] }
 }

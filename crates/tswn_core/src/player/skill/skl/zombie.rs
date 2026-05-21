@@ -94,13 +94,7 @@ impl SkillTrait for ZombieSkill {
 
     fn has_dead_target_post_kill_inline(&self) -> bool { true }
 
-    fn kill_dead_target_inline(
-        &mut self,
-        level: u32,
-        target: PlrId,
-        target_plr: &mut Player,
-        ctx: &mut InlineCtx,
-    ) -> bool {
+    fn kill_dead_target_inline(&mut self, level: u32, target: PlrId, target_plr: &mut Player, ctx: &mut InlineCtx) -> bool {
         if is_combat_minion(target_plr) {
             return false;
         }
@@ -115,8 +109,8 @@ impl SkillTrait for ZombieSkill {
         target_plr.set_state(CorpseState::zombie());
 
         let seed_name = format!("{}?zombie", ctx.owner.base_name());
-        let mut zombie =
-            Player::new_minion_and_init(Some(owner_clan), seed_name, None, ctx.storage.clone()).expect("cannot init zombie minion");
+        let mut zombie = Player::new_minion_and_init(Some(owner_clan), seed_name, None, ctx.storage.clone())
+            .expect("cannot init zombie minion");
         prepare_combat_minion(&mut zombie);
         zombie.build();
         zombie.id = ctx.storage.new_plr_id();
@@ -167,8 +161,8 @@ impl SkillTrait for ZombieSkill {
             .set_state(CorpseState::zombie());
 
         let seed_name = format!("{}?zombie", ctx.owner.base_name());
-        let mut zombie =
-            Player::new_minion_and_init(Some(owner_clan), seed_name, None, ctx.storage.clone()).expect("cannot init zombie minion");
+        let mut zombie = Player::new_minion_and_init(Some(owner_clan), seed_name, None, ctx.storage.clone())
+            .expect("cannot init zombie minion");
         prepare_combat_minion(&mut zombie);
         zombie.build();
         zombie.id = ctx.storage.new_plr_id();
@@ -201,5 +195,5 @@ impl SkillTrait for ZombieSkill {
         true
     }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostKill] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostKill] }
 }

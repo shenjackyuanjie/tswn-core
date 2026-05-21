@@ -11,7 +11,7 @@ members = [
 [profile.release]
 lto = "fat"
 debug = 1
-codegen-units = 1
+codegen-units = 16
 
 [profile.release-fast]
 inherits = "release"

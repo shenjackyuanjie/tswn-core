@@ -363,7 +363,7 @@ impl SkillTrait for AssassinateSkill {
     // JS 中 PostDamageImpl.ga4() 返回 Infinity，表示最后执行
     fn post_damage_priority(&self) -> i32 { i32::MAX }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostDamage] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostDamage] }
 
     fn dynamic_pre_action_enabled(&self) -> bool { self.on_pre_action.is_some() }
 

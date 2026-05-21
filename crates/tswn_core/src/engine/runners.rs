@@ -53,6 +53,9 @@ type PreparedGroups = Vec<Vec<Player>>;
 struct PreparedRunnerTemplate {
     groups: PreparedGroups,
     base_names_sorted: Vec<String>,
+    base_key: String,
+    id_key_names: Vec<String>,
+    sorted_by_id_name: Vec<PlrId>,
     eval_rq: f64,
 }
 
@@ -211,6 +214,85 @@ impl Runner {
         Self::new_from_prepared_groups_with_seed(prepared.template.as_ref(), seed)
     }
 
+    #[inline]
+    fn push_rc4_key_part(out: &mut String, part: &str) {
+        if !out.is_empty() {
+            out.push('\r');
+        }
+        out.push_str(part);
+    }
+
+    fn rc4_key_with_seed(prepared: &PreparedRunnerTemplate, seed: &[String]) -> String {
+        if seed.is_empty() {
+            return prepared.base_key.clone();
+        }
+
+        if seed.len() == 1 {
+            let seed_item = &seed[0];
+            let Err(insert_at) = prepared.base_names_sorted.binary_search(seed_item) else {
+                return prepared.base_key.clone();
+            };
+            let mut key = String::with_capacity(prepared.base_key.len() + seed_item.len() + 1);
+            for name in &prepared.base_names_sorted[..insert_at] {
+                Self::push_rc4_key_part(&mut key, name);
+            }
+            Self::push_rc4_key_part(&mut key, seed_item);
+            for name in &prepared.base_names_sorted[insert_at..] {
+                Self::push_rc4_key_part(&mut key, name);
+            }
+            return key;
+        }
+
+        let mut seed_items = seed.iter().collect::<Vec<_>>();
+        seed_items.sort_unstable();
+        seed_items.dedup();
+
+        let mut key =
+            String::with_capacity(prepared.base_key.len() + seed_items.iter().map(|item| item.len() + 1).sum::<usize>());
+        let mut base_idx = 0usize;
+        let mut seed_idx = 0usize;
+        while base_idx < prepared.base_names_sorted.len() || seed_idx < seed_items.len() {
+            match (prepared.base_names_sorted.get(base_idx), seed_items.get(seed_idx)) {
+                (Some(base), Some(seed_item)) => match base.cmp(seed_item) {
+                    std::cmp::Ordering::Less => {
+                        Self::push_rc4_key_part(&mut key, base);
+                        base_idx += 1;
+                    }
+                    std::cmp::Ordering::Equal => {
+                        Self::push_rc4_key_part(&mut key, base);
+                        base_idx += 1;
+                        seed_idx += 1;
+                    }
+                    std::cmp::Ordering::Greater => {
+                        Self::push_rc4_key_part(&mut key, seed_item);
+                        seed_idx += 1;
+                    }
+                },
+                (Some(base), None) => {
+                    Self::push_rc4_key_part(&mut key, base);
+                    base_idx += 1;
+                }
+                (None, Some(seed_item)) => {
+                    Self::push_rc4_key_part(&mut key, seed_item);
+                    seed_idx += 1;
+                }
+                (None, None) => break,
+            }
+        }
+        key
+    }
+
+    #[inline]
+    fn cmp_prepared_player_keys(sort_ints: &[i32], id_key_names: &[String], a: PlrId, b: PlrId) -> std::cmp::Ordering {
+        match sort_ints[a].cmp(&sort_ints[b]) {
+            std::cmp::Ordering::Equal => match id_key_names[a].cmp(&id_key_names[b]) {
+                std::cmp::Ordering::Equal => a.cmp(&b),
+                ord => ord,
+            },
+            ord => ord,
+        }
+    }
+
     fn build_prepared_groups(players: &[Vec<String>], eval_rq: f64) -> RunnerResult<PreparedRunnerTemplate> {
         let mut base_names_sorted = players
             .iter()
@@ -284,32 +366,38 @@ impl Runner {
 
         // 固化成可复用模板（深拷贝 Player）。
         let mut prepared_groups = Vec::with_capacity(inited_plrs.len());
+        let total_players = inited_plrs.iter().map(Vec::len).sum::<usize>();
+        let mut id_key_names = vec![String::new(); total_players];
         for group in inited_plrs {
             let mut prepared_group = Vec::with_capacity(group.len());
             for ptr in group {
                 let plr = storage.get_player(&ptr).expect("prepared player not found");
+                id_key_names[ptr] = plr.id_key_name();
                 prepared_group.push(plr.clone());
             }
             prepared_groups.push(prepared_group);
         }
+        let mut sorted_by_id_name = id_key_names
+            .iter()
+            .enumerate()
+            .filter_map(|(id, name)| (!name.is_empty()).then_some(id))
+            .collect::<Vec<PlrId>>();
+        sorted_by_id_name.sort_by(|a, b| id_key_names[*a].cmp(&id_key_names[*b]));
+        let base_key = base_names_sorted.join("\r");
         Ok(PreparedRunnerTemplate {
             groups: prepared_groups,
             base_names_sorted,
+            base_key,
+            id_key_names,
+            sorted_by_id_name,
             eval_rq,
         })
     }
 
     fn new_from_prepared_groups_with_seed(prepared: &PreparedRunnerTemplate, seed: &[String]) -> RunnerResult<Runner> {
-        let mut names = prepared.base_names_sorted.clone();
-        for seed_item in seed {
-            if let Err(pos) = names.binary_search(seed_item) {
-                names.insert(pos, seed_item.clone());
-            }
-        }
-
         // 原始逻辑：
         // 把名称排序去重后 join "\r"，再作为 RC4 key。
-        let keys = names.join("\r");
+        let keys = Self::rc4_key_with_seed(prepared, seed);
         let mut randomer = RC4::new(keys.as_bytes(), 1);
         randomer.js_xor_str(&keys);
 
@@ -332,23 +420,15 @@ impl Runner {
         }
 
         // 与 Dart 对齐：按 id_name 排序后初始化 sort_int（依赖 seed）。
-        let mut sorted_plrs = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();
-        sorted_plrs.sort_by(|a, b| {
-            let plr_a = storage.get_player(a).expect("plr not found when sorted sort_int");
-            let plr_b = storage.get_player(b).expect("plr not found when sorted sort_int");
-            plr_a.cmp_by_id_name(plr_b)
-        });
-        for ptr in sorted_plrs {
+        let mut sort_ints = vec![0i32; prepared.id_key_names.len()];
+        for &ptr in &prepared.sorted_by_id_name {
             let plr = storage.just_get_player_mut(ptr).expect("plr not found when set sort_int");
             plr.sort_int = randomer.rFFFFFF() as i32;
+            sort_ints[ptr] = plr.sort_int;
         }
 
         for group in &mut inited_plrs {
-            group.sort_by(|a, b| {
-                let plr_a = storage.get_player(a).expect("plr not found when sort group member");
-                let plr_b = storage.get_player(b).expect("plr not found when sort group member");
-                plr_a.cmp_for_sort(plr_b)
-            });
+            group.sort_by(|a, b| Self::cmp_prepared_player_keys(&sort_ints, &prepared.id_key_names, *a, *b));
         }
 
         let input_groups = inited_plrs.clone();
@@ -360,26 +440,19 @@ impl Runner {
             let Some(first_b) = b.first() else {
                 return std::cmp::Ordering::Greater;
             };
-            let plr_a = storage.get_player(first_a).expect("plr not found when sort group");
-            let plr_b = storage.get_player(first_b).expect("plr not found when sort group");
-            plr_a.cmp_for_sort(plr_b)
+            Self::cmp_prepared_player_keys(&sort_ints, &prepared.id_key_names, *first_a, *first_b)
         });
 
         // 保持旧版随机流消费顺序，避免战斗回放偏移。
         for group in &inited_plrs {
             for plr in group {
-                let plr = storage.just_get_player_mut(*plr).expect("plr not found when encrypt");
-                randomer.encrypt_bytes_no_change(&plr.id_key_name());
+                randomer.encrypt_bytes_no_change(&prepared.id_key_names[*plr]);
             }
             randomer.encrypt_bytes(&mut [0]);
         }
 
         let mut sorted_for_move_point = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();
-        sorted_for_move_point.sort_by(|a, b| {
-            let plr_a = storage.get_player(a).expect("plr not found when sort move point");
-            let plr_b = storage.get_player(b).expect("plr not found when sort move point");
-            plr_a.cmp_for_sort(plr_b)
-        });
+        sorted_for_move_point.sort_by(|a, b| Self::cmp_prepared_player_keys(&sort_ints, &prepared.id_key_names, *a, *b));
         for ptr in &sorted_for_move_point {
             let plr = storage.just_get_player_mut(*ptr).expect("plr not found when set move point");
             plr.set_move_point(randomer.r255() as i32);

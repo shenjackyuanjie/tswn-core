@@ -26,11 +26,25 @@
 
 use crate::player::PlrId;
 use std::borrow::Cow;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::cell::Cell;
 
-/// 全局自增 ID，用于为每批 [`RunUpdates`] 分配唯一标识。
-/// 主要用于调试时区分不同回合的更新批次。
-static RUN_UPDATES_ID: AtomicU64 = AtomicU64::new(1);
+thread_local! {
+    /// 每线程自增 ID，用于为每批 [`RunUpdates`] 分配标识。
+    ///
+    /// 对战推进本身是单线程持有一份 `RunUpdates`；胜率并行时每个 worker
+    /// 也只在本线程内比较批次 ID。使用线程本地计数可以避免 benchmark 热路径
+    /// 在每个可见事件批次上做跨线程原子自增。
+    static RUN_UPDATES_ID: Cell<u64> = const { Cell::new(1) };
+}
+
+#[inline]
+fn next_run_updates_id() -> u64 {
+    RUN_UPDATES_ID.with(|counter| {
+        let id = counter.get();
+        counter.set(id.wrapping_add(1));
+        id
+    })
+}
 
 /// 战斗事件类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,7 +210,7 @@ pub struct RunUpdates {
 impl RunUpdates {
     fn new_with_capture(capture_updates: bool) -> RunUpdates {
         RunUpdates {
-            id: RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed),
+            id: next_run_updates_id(),
             updates: smallvec::SmallVec::new(),
             on_update_end: smallvec::SmallVec::new(),
             capture_updates,
@@ -212,7 +226,7 @@ impl RunUpdates {
 
     /// 清理批次内容，复用分配。
     pub fn reset(&mut self) {
-        self.id = RUN_UPDATES_ID.fetch_add(1, Ordering::Relaxed);
+        self.id = next_run_updates_id();
         self.updates.clear();
         self.on_update_end.clear();
         self.has_activity = false;

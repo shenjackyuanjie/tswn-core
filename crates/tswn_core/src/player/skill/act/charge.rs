@@ -146,5 +146,5 @@ impl SkillTrait for ChargeSkill {
 
     fn charge_step(&self) -> i32 { self.step }
 
-    fn proc_kinds(&self) -> &[ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
+    fn proc_kinds(&self) -> &'static [ProcKind] { &[ProcKind::PostAction, ProcKind::UpdateState] }
 }

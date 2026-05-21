@@ -47,6 +47,7 @@ use crate::player::{
     skill::{InlineCtx, PostActionPhase, ProcKind, Skill, SkillArgs},
 };
 use foldhash::{HashMap as FoldHashMap, HashMapExt, HashSet as FoldHashSet, HashSetExt};
+use smallvec::SmallVec;
 
 /// SkillStorage 内部使用的稳定技能键。
 pub type SkillKey = usize;
@@ -119,6 +120,24 @@ pub struct SkillStorage {
 
 impl SkillStorage {
     pub fn new() -> Self { Self::with_skill_capacity(0) }
+
+    #[inline]
+    pub fn has_pre_step(&self) -> bool { !self.pre_step.is_empty() }
+
+    #[inline]
+    pub fn has_post_action(&self) -> bool { !self.post_action.is_empty() }
+
+    #[inline]
+    pub fn has_deferred_post_action(&self) -> bool { !self.post_action_after_states.is_empty() }
+
+    #[inline]
+    pub fn has_pre_defend(&self) -> bool { !self.pre_defend.is_empty() }
+
+    #[inline]
+    pub fn has_post_defend(&self) -> bool { !self.post_defend.is_empty() }
+
+    #[inline]
+    pub fn has_post_damage(&self) -> bool { !self.post_damage.is_empty() }
 
     pub fn with_skill_capacity(skill_capacity: usize) -> Self {
         Self {
@@ -245,8 +264,7 @@ impl SkillStorage {
         if skill.level() == 0 {
             return;
         }
-        let kinds: Vec<ProcKind> = skill.proc_kinds().to_vec();
-        for kind in kinds {
+        for &kind in skill.proc_kinds() {
             self.push_proc_key(kind, key);
         }
     }
@@ -259,8 +277,7 @@ impl SkillStorage {
             return;
         }
         let post_action_phase = skill.post_action_phase();
-        let kinds: Vec<ProcKind> = skill.proc_kinds().to_vec();
-        for kind in kinds {
+        for &kind in skill.proc_kinds() {
             if kind == ProcKind::PostAction && post_action_phase == PostActionPhase::Early {
                 if !self.post_action_after_states.iter().any(|(_, queued_key)| *queued_key == key) {
                     self.post_action_after_states.push((state_order_cursor, key));
@@ -274,9 +291,16 @@ impl SkillStorage {
 
     pub fn update_proc(&mut self) {
         self.clear_proc();
-        let mut keys: Vec<SkillKey> = self.store.keys().copied().collect();
-        keys.sort_unstable();
-        for key in keys {
+        let mut keys = [0usize; 256];
+        let mut len = 0usize;
+        for key in self.store.keys().copied() {
+            if len < keys.len() {
+                keys[len] = key;
+                len += 1;
+            }
+        }
+        keys[..len].sort_unstable();
+        for &key in &keys[..len] {
             self.register_skill_proc(key);
         }
     }
@@ -621,14 +645,13 @@ impl SkillStorage {
     }
 
     /// 返回 post_defend 技能的 (key, priority) 列表，用于和 state 统一排序。
-    pub fn post_defend_keys_with_priority(&self) -> Vec<(SkillKey, i32)> {
-        self.post_defend
-            .iter()
-            .map(|key| {
-                let priority = self.store.get(key).map(|s| s.post_defend_priority()).unwrap_or(1000);
-                (*key, priority)
-            })
-            .collect()
+    pub fn post_defend_keys_with_priority(&self) -> SmallVec<[(SkillKey, i32); 8]> {
+        let mut result = SmallVec::new();
+        result.extend(self.post_defend.iter().map(|key| {
+            let priority = self.store.get(key).map(|s| s.post_defend_priority()).unwrap_or(1000);
+            (*key, priority)
+        }));
+        result
     }
 
     pub fn post_defend_run_one(

@@ -25,28 +25,49 @@
 //! | `TSWN_DEBUG_DAMAGE` | 调试伤害计算 |
 //! | `TSWN_TRACE_RC4` | 追踪 RC4 随机数状态 |
 
+#[cfg(not(feature = "no_debug"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_ACTION: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_STATS: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_WORLD: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_TICK: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_PICK: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_DODGE: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_DODGE_ALL: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_DIE: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_STATE: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_POST_ACTION: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_FORCED_SKILL: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_COVID: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_FIRE: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_HEAL: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_UPGRADE: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_REFLECT: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static DEBUG_DAMAGE: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static TRACE_RC4: AtomicBool = AtomicBool::new(false);
+#[cfg(not(feature = "no_debug"))]
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
+#[cfg(not(feature = "no_debug"))]
 fn init_once() {
     if INITIALIZED.load(Ordering::Relaxed) {
         return;
@@ -73,7 +94,12 @@ fn init_once() {
     TRACE_RC4.store(std::env::var_os("TSWN_TRACE_RC4").is_some(), Ordering::Relaxed);
 }
 
+#[cfg(feature = "no_debug")]
 #[inline]
+fn init_once() {}
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_action() -> Option<String> {
     init_once();
     if DEBUG_ACTION.load(Ordering::Relaxed) {
@@ -84,6 +110,11 @@ pub fn debug_action() -> Option<String> {
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_action() -> Option<String> { None }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_action_matches(name: &str) -> bool {
     init_once();
     if DEBUG_ACTION.load(Ordering::Relaxed) {
@@ -96,42 +127,77 @@ pub fn debug_action_matches(name: &str) -> bool {
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_action_matches(_name: &str) -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_stats() -> bool {
     init_once();
     DEBUG_STATS.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_stats() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_world() -> bool {
     init_once();
     DEBUG_WORLD.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_world() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_tick() -> bool {
     init_once();
     DEBUG_TICK.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_tick() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_pick() -> bool {
     init_once();
     DEBUG_PICK.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_pick() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_dodge() -> bool {
     init_once();
     DEBUG_DODGE.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_dodge() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_dodge_all() -> bool {
     init_once();
     DEBUG_DODGE_ALL.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_dodge_all() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_die() -> Option<String> {
     init_once();
     if DEBUG_DIE.load(Ordering::Relaxed) {
@@ -142,42 +208,77 @@ pub fn debug_die() -> Option<String> {
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_die() -> Option<String> { None }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_state() -> bool {
     init_once();
     DEBUG_STATE.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_state() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_post_action() -> bool {
     init_once();
     DEBUG_POST_ACTION.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_post_action() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_forced_skill() -> bool {
     init_once();
     DEBUG_FORCED_SKILL.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_forced_skill() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_covid() -> bool {
     init_once();
     DEBUG_COVID.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_covid() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_fire() -> bool {
     init_once();
     DEBUG_FIRE.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_fire() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_heal() -> bool {
     init_once();
     DEBUG_HEAL.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_heal() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_upgrade() -> Option<String> {
     init_once();
     if DEBUG_UPGRADE.load(Ordering::Relaxed) {
@@ -188,22 +289,41 @@ pub fn debug_upgrade() -> Option<String> {
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_upgrade() -> Option<String> { None }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_reflect() -> bool {
     init_once();
     DEBUG_REFLECT.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_reflect() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn debug_damage() -> bool {
     init_once();
     DEBUG_DAMAGE.load(Ordering::Relaxed)
 }
 
 #[inline]
+#[cfg(feature = "no_debug")]
+pub fn debug_damage() -> bool { false }
+
+#[inline]
+#[cfg(not(feature = "no_debug"))]
 pub fn trace_rc4() -> bool {
     init_once();
     TRACE_RC4.load(Ordering::Relaxed)
 }
+
+#[inline]
+#[cfg(feature = "no_debug")]
+pub fn trace_rc4() -> bool { false }
 
 macro_rules! debug_println {
     ($condition:expr, $($arg:tt)*) => {
