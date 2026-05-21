@@ -42,19 +42,18 @@ impl SkillTrait for QuakeSkill {
 
     fn select_target_count(&self, smart: bool) -> usize { if smart { self.sel_count_smart } else { self.sel_count } }
 
-    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         if targets.is_empty() {
             return;
         }
         let round = if ctx.randomer.c50() { 5 } else { 4 };
-        let mut picked = targets;
-        picked.truncate(round.min(picked.len()));
+        let picked = &targets[..targets.len().min(round)];
         if picked.is_empty() {
             return;
         }
         ctx.updates.add(RunUpdate::new("[0]使用[地裂术]", ctx.ptr, picked[0], 1));
         let divisor = picked.len() as f64 + 0.6000000238418579;
-        for target_id in picked {
+        for &target_id in picked {
             let atp = ctx.owner.get_at(true, ctx.randomer) * 2.440000057220459 / divisor;
             let target_alive = ctx.storage.get_player(&target_id).map(|p| p.get_status().hp > 0).unwrap_or(false);
             if !target_alive {
@@ -84,19 +83,18 @@ impl SkillTrait for QuakeSkill {
         }
     }
 
-    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }
         let round = if args.1.c50() { 5 } else { 4 };
-        let mut picked = targets;
-        picked.truncate(round.min(picked.len()));
+        let picked = &targets[..targets.len().min(round)];
         if picked.is_empty() {
             return;
         }
         args.2.add(RunUpdate::new("[0]使用[地裂术]", args.0, picked[0], 1));
         let divisor = picked.len() as f64 + 0.6000000238418579;
-        for target_id in picked {
+        for &target_id in picked {
             // JS: getAt is called BEFORE the hp > 0 check, so RC4 is consumed even for dead targets
             let owner = args.3.get_player(&args.0).expect("cannot get quake owner from storage");
             // Keep the decompiled JS float literal exactly. 2.44 shifts some cases across ceil() boundaries.

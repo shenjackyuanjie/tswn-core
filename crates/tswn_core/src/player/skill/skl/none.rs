@@ -21,7 +21,7 @@ impl SkillTrait for NoneSkill {
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
     /// 对齐 Dart `SklVoid`: act 直接 return。
-    fn act(&mut self, _targets: Vec<PlrId>, _smart: bool, _args: SkillArgs) {}
+    fn act(&mut self, _targets: &[PlrId], _smart: bool, _args: SkillArgs) {}
 
     /// 占位技能，不应被当作正常技能参与流程。
     fn is_normal_skill(&self) -> bool { false }
@@ -52,7 +52,7 @@ mod tests {
         let mut updates = RunUpdates::new();
         let mut skill = NoneSkill::new();
 
-        skill.act(vec![1], true, (0, &mut randomer, &mut updates, &storage));
+        skill.act(&[1], true, (0, &mut randomer, &mut updates, &storage));
         assert!(updates.updates.is_empty());
 
         let atp = skill.pre_defend(

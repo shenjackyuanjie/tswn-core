@@ -60,7 +60,7 @@ impl SkillTrait for HealSkill {
         }
     }
 
-    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         if targets.is_empty() {
             return;
         }
@@ -163,7 +163,7 @@ impl SkillTrait for HealSkill {
         }
     }
 
-    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }

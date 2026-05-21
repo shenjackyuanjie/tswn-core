@@ -208,7 +208,7 @@ fn summon_merge_uses_fixed_skill_slots() {
     <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
         &mut summon,
         255,
-        vec![summoner_id],
+        &[summoner_id],
         false,
         (summoner_id, &mut randomer, &mut updates, &storage),
     );
@@ -395,7 +395,7 @@ fn summon_recast_reuses_dead_minion_and_advances_boost_progress() {
     <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
         &mut summon,
         255,
-        vec![summoner_id],
+        &[summoner_id],
         false,
         (summoner_id, &mut randomer, &mut updates, &storage),
     );
@@ -439,7 +439,7 @@ fn summon_recast_reuses_dead_minion_and_advances_boost_progress() {
     <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
         &mut summon,
         255,
-        vec![summoner_id],
+        &[summoner_id],
         false,
         (summoner_id, &mut randomer, &mut updates, &storage),
     );
@@ -498,7 +498,7 @@ fn shadow_skill_queues_named_shadow_minion() {
     <crate::player::skill::act::shadow::ShadowSkill as crate::player::skill::SkillTrait>::act_with_level(
         &mut shadow,
         255,
-        Vec::new(),
+        &[],
         false,
         (owner_id, &mut randomer, &mut updates, &storage),
     );
@@ -533,7 +533,7 @@ fn summon_recast_refreshes_charge_dependent_state_on_reused_minion() {
     <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
         &mut summon,
         255,
-        vec![summoner_id],
+        &[summoner_id],
         false,
         (summoner_id, &mut randomer, &mut updates, &storage),
     );
@@ -557,7 +557,7 @@ fn summon_recast_refreshes_charge_dependent_state_on_reused_minion() {
     <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
         &mut summon,
         255,
-        vec![summoner_id],
+        &[summoner_id],
         false,
         (summoner_id, &mut randomer, &mut updates, &storage),
     );

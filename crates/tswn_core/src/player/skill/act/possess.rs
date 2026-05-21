@@ -25,7 +25,7 @@ impl SkillTrait for PossessSkill {
 
     fn has_inline_act(&self) -> bool { true }
 
-    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         let Some(&target_id) = targets.first() else {
             return;
         };
@@ -65,7 +65,7 @@ impl SkillTrait for PossessSkill {
         ctx.effects.push(Effect::OwnerDie { old_hp });
     }
 
-    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         let Some(&target_id) = targets.first() else {
             return;
         };

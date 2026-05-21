@@ -63,7 +63,7 @@ impl SkillTrait for IceSkill {
         score
     }
 
-    fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act(&mut self, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }
@@ -86,7 +86,7 @@ impl SkillTrait for IceSkill {
         }
     }
 
-    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         if targets.is_empty() {
             return;
         }

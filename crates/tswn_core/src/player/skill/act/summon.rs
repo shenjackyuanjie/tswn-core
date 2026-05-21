@@ -67,7 +67,7 @@ impl SkillTrait for SummonSkill {
         vec![args.0]
     }
 
-    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         ctx.updates.add(RunUpdate::new("[0]使用[血祭]", ctx.ptr, ctx.ptr, 60));
         let owner = ctx.owner.clone();
         let charge_active = owner.get_status().at_boost >= 3.0;
@@ -170,7 +170,7 @@ impl SkillTrait for SummonSkill {
         ctx.updates.add(RunUpdate::new("召唤出[1]", ctx.ptr, summoned_id, 0));
     }
 
-    fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[血祭]", args.0, args.0, 60));
         let owner = args.3.get_player(&args.0).expect("cannot get summon owner from storage").clone();
         let charge_active = owner.get_status().at_boost >= 3.0;
@@ -307,7 +307,7 @@ impl SkillTrait for SummonExplodeSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
-    fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act(&mut self, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }

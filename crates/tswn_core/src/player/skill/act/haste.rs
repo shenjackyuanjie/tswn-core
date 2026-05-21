@@ -74,7 +74,7 @@ impl SkillTrait for HasteSkill {
 
     fn has_inline_act(&self) -> bool { true }
 
-    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         if targets.is_empty() {
             return;
         }
@@ -110,7 +110,7 @@ impl SkillTrait for HasteSkill {
         ctx.updates.add(RunUpdate::new("[1]进入[疾走]状态", ctx.ptr, target_id, 0));
     }
 
-    fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act(&mut self, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }

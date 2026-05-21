@@ -99,7 +99,7 @@ fn possess_shadow_self_death_removes_shadow_from_storage_and_world_alive_views()
     let mut updates = RunUpdates::new();
 
     let mut shadow_skill = crate::player::skill::act::shadow::ShadowSkill::new();
-    shadow_skill.act_with_level(255, Vec::new(), false, (owner_id, &mut randomer, &mut updates, &storage));
+    shadow_skill.act_with_level(255, &[], false, (owner_id, &mut randomer, &mut updates, &storage));
 
     let shadow_id = storage
         .pending_spawn_ids_for_owner(owner_id)
@@ -115,7 +115,7 @@ fn possess_shadow_self_death_removes_shadow_from_storage_and_world_alive_views()
     }
 
     let mut possess = crate::player::skill::act::possess::PossessSkill::new();
-    possess.act_with_level(1, vec![target_id], false, (shadow_id, &mut randomer, &mut updates, &storage));
+    possess.act_with_level(1, &[target_id], false, (shadow_id, &mut randomer, &mut updates, &storage));
 
     let shadow_after_possess = storage.get_player(&shadow_id).expect("shadow should exist in storage");
     assert!(

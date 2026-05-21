@@ -61,7 +61,7 @@ impl SkillTrait for AccumulateSkill {
 
     fn has_inline_act(&self) -> bool { true }
 
-    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         if self.on_update_state.is_some() {
             return;
         }
@@ -86,7 +86,7 @@ impl SkillTrait for AccumulateSkill {
         ctx.updates.add(RunUpdate::new("[0]攻击力上升", ctx.ptr, ctx.ptr, 0));
     }
 
-    fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if self.on_update_state.is_some() {
             return;
         }

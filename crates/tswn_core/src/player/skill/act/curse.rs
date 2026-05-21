@@ -76,7 +76,7 @@ impl SkillTrait for CurseSkill {
         }
     }
 
-    fn act(&mut self, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act(&mut self, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }

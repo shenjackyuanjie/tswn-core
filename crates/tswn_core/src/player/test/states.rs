@@ -135,12 +135,12 @@ fn clear_positive_runtime_orders_messages_by_meta_key() {
         owner_mut
             .skills
             .skill_by_id_mut(0)
-            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+            .act(&[owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
         owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
         owner_mut
             .skills
             .skill_by_id_mut(1)
-            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+            .act(&[owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
     }
 
     let cleared = {

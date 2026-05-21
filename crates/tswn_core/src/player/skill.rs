@@ -62,6 +62,7 @@ pub use act::{
 pub use skl::{corpse, counter, defend, hide, merge, none, protect, reflect, reraise, shield, upgrade, zombie};
 
 pub type SkillFactory = fn() -> Box<dyn SkillTrait>;
+pub type TargetVec = SmallVec<[PlrId; 4]>;
 
 /// DIY / overlay 技能加成信息。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -480,7 +481,7 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 是否实现了内联行动 — 调度器据此选择 act_inline 或 act_with_level。
     fn has_inline_act(&self) -> bool { false }
     /// 内联版行动 — 通过 InlineCtx 直接访问 owner 字段（方案 J）。
-    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, _ctx: &mut InlineCtx) {}
+    fn act_inline(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, _ctx: &mut InlineCtx) {}
     /// 内联版 clear_positive_runtime — 通过 InlineCtx 直接访问（方案 J）。
     fn clear_positive_runtime_inline(&mut self, _ctx: &mut InlineCtx) -> Option<&'static str> { None }
     /// 是否实现了内联版 pre_action。
@@ -528,10 +529,8 @@ pub trait SkillTrait: Debug + Send + Sync {
         atp
     }
     /// 行动!
-    fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
-    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
-        self.act(targets, smart, args)
-    }
+    fn act(&mut self, targets: &[PlrId], smart: bool, args: SkillArgs) {}
+    fn act_with_level(&mut self, _level: u32, targets: &[PlrId], smart: bool, args: SkillArgs) { self.act(targets, smart, args) }
     fn post_act_level(&self, level: u32) -> u32 { level }
 
     fn pre_step(&mut self, mut step: i32, args: SkillArgs) -> i32 { step }
@@ -970,7 +969,7 @@ impl Skill {
 
     pub fn has_inline_act(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_inline_act()) }
 
-    pub fn act_inline(&mut self, targets: Vec<PlrId>, smart: bool, ctx: &mut InlineCtx) {
+    pub fn act_inline(&mut self, targets: &[PlrId], smart: bool, ctx: &mut InlineCtx) {
         let Some(st) = &mut self.skill_type else {
             return;
         };
@@ -982,7 +981,7 @@ impl Skill {
         }
     }
 
-    pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
+    pub fn act(&mut self, targets: &[PlrId], smart: bool, args: SkillArgs) {
         let Some(st) = &mut self.skill_type else {
             return;
         };

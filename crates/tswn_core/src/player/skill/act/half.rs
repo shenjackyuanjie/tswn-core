@@ -62,7 +62,7 @@ impl SkillTrait for HalfSkill {
         base * target_plr.get_status().hp as f64
     }
 
-    fn act_inline(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         if targets.is_empty() {
             return;
         }
@@ -118,7 +118,7 @@ impl SkillTrait for HalfSkill {
         target.on_damaged(dmg, old_hp, ctx.ptr, ctx.randomer, ctx.updates, ctx.storage);
     }
 
-    fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }

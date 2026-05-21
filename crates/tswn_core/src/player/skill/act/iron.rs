@@ -49,7 +49,7 @@ impl SkillTrait for IronSkill {
 
     fn has_inline_act(&self) -> bool { true }
 
-    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         let owner_magic = ctx.owner.status.magic;
         let charge_active = ctx.owner.status.at_boost >= 3.0;
 
@@ -66,7 +66,7 @@ impl SkillTrait for IronSkill {
         ctx.updates.add(RunUpdate::new("[0]防御力大幅上升", ctx.ptr, ctx.ptr, 0));
     }
 
-    fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, args: SkillArgs) {
         let owner = args.3.get_player(&args.0).expect("cannot get iron owner from storage");
         let owner_magic = owner.get_status().magic;
         let charge_active = owner.get_status().at_boost >= 3.0;

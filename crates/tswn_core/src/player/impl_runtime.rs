@@ -57,7 +57,7 @@
 
 use super::*;
 use crate::player::skill::store::{PreActionOutcome, SkillKey};
-use crate::player::skill::{Effect, InlineCtx, PostActionPhase, PostDamageCtx};
+use crate::player::skill::{Effect, InlineCtx, PostActionPhase, PostDamageCtx, TargetVec};
 use smallvec::SmallVec;
 
 // JS addNew 之后的新单位会立刻参与"战斗是否结束"的判断，
@@ -327,7 +327,7 @@ impl Player {
 
         let mut acted = false;
         let mut selected_skill_key: Option<usize> = pre_action_outcome.forced_skill;
-        let mut selected_targets: Vec<PlrId> = Vec::new();
+        let mut selected_targets: TargetVec = SmallVec::new();
         let selected_from_forced_pre_action = pre_action_outcome.forced_skill.is_some();
         let forced_attack = if pre_action_outcome.clear_forced_action || pre_action_outcome.forced_skill.is_some() {
             None
@@ -529,7 +529,7 @@ impl Player {
                                     effects: SmallVec::new(),
                                     needs_update_states: false,
                                 };
-                                skill_type.act_inline(current_level, selected_targets, smart, &mut ctx);
+                                skill_type.act_inline(current_level, &selected_targets, smart, &mut ctx);
                                 needs_update = ctx.needs_update_states;
                                 deferred_effects = std::mem::take(&mut ctx.effects);
                                 manages_dynamic_pre_action = skill_type.manages_dynamic_pre_action();
@@ -550,7 +550,7 @@ impl Player {
                             (manages_dynamic_pre_action, dynamic_pre_action_enabled)
                         } else {
                             let skill = self.skills.skill_by_id_mut(skill_key);
-                            skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
+                            skill.act(&selected_targets, smart, (ptr, randomer, updates, storage));
                             (skill.manages_dynamic_pre_action(), skill.dynamic_pre_action_enabled())
                         }
                     };
@@ -1063,10 +1063,10 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
         targets: &ActionTargets,
-    ) -> Vec<PlrId> {
+    ) -> TargetVec {
         let select_count = skill.select_target_count(smart);
         if select_count == 0 {
-            return Vec::new();
+            return SmallVec::new();
         }
 
         let mut selected: SmallVec<[PlrId; 4]> = SmallVec::new();
@@ -1074,7 +1074,7 @@ impl Player {
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
             let Some(target_id) = Self::pick_enemy_target(targets, randomer) else {
-                return Vec::new();
+                return SmallVec::new();
             };
             let valid = skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
             if !valid {
@@ -1091,12 +1091,12 @@ impl Player {
             }
         }
         if selected.is_empty() {
-            return Vec::new();
+            return SmallVec::new();
         }
         if selected.len() == 1 {
             let target_id = selected[0];
             let _ = skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
-            return vec![target_id];
+            return SmallVec::from_slice(&[target_id]);
         }
 
         let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
@@ -1138,14 +1138,14 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
         targets: &ActionTargets,
-    ) -> Vec<PlrId> {
+    ) -> TargetVec {
         let domain = skill.target_domain();
         if domain == SkillTargetDomain::SelfOnly {
-            return vec![self.as_ptr()];
+            return SmallVec::from_slice(&[self.as_ptr()]);
         }
         let select_count = skill.select_target_count(smart);
         if select_count == 0 {
-            return Vec::new();
+            return SmallVec::new();
         }
 
         if domain == SkillTargetDomain::EnemyAlive && skill.uses_attack_aa_sampling() && !skill.allows_empty_targets() {
@@ -1161,7 +1161,7 @@ impl Player {
                 SkillTargetDomain::AllAlive => &targets.all_alive,
                 SkillTargetDomain::SelfOnly => &[],
             };
-            return skill.select_targets(candidates, smart, (self.as_ptr(), randomer, updates, storage));
+            return SmallVec::from_vec(skill.select_targets(candidates, smart, (self.as_ptr(), randomer, updates, storage)));
         }
 
         let mut selected: SmallVec<[PlrId; 4]> = SmallVec::new();
@@ -1169,7 +1169,7 @@ impl Player {
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
             let Some(target_id) = self.pick_target_by_domain(domain, targets, randomer) else {
-                return Vec::new();
+                return SmallVec::new();
             };
             let valid = skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
             if !valid {
@@ -1186,7 +1186,7 @@ impl Player {
             }
         }
         if selected.is_empty() {
-            return Vec::new();
+            return SmallVec::new();
         }
 
         let mut scored: SmallVec<[(PlrId, f64); 4]> = selected
@@ -1210,10 +1210,10 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
         targets: &ActionTargets,
-    ) -> Vec<PlrId> {
+    ) -> TargetVec {
         let domain = skill.target_domain();
         if domain == SkillTargetDomain::SelfOnly {
-            return vec![self.as_ptr()];
+            return SmallVec::from_slice(&[self.as_ptr()]);
         }
         let candidates: &[PlrId] = match domain {
             SkillTargetDomain::EnemyAlive => &targets.enemy_alive,
@@ -1224,9 +1224,9 @@ impl Player {
             SkillTargetDomain::SelfOnly => &[],
         };
         if candidates.is_empty() {
-            return Vec::new();
+            return SmallVec::new();
         }
-        skill.select_targets(candidates, smart, (self.as_ptr(), randomer, updates, storage))
+        SmallVec::from_vec(skill.select_targets(candidates, smart, (self.as_ptr(), randomer, updates, storage)))
     }
 
     fn select_forced_attack_target(

@@ -50,7 +50,7 @@ impl SkillTrait for ChargeSkill {
 
     fn has_inline_act(&self) -> bool { true }
 
-    fn act_inline(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         self.step += 2;
         self.on_post_action = Some(());
         self.on_update_state = Some(());
@@ -59,7 +59,7 @@ impl SkillTrait for ChargeSkill {
         ctx.owner.set_magic_point(ctx.owner.magic_point() + 32);
     }
 
-    fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, args: SkillArgs) {
         // JS: s.fy = s.fy + 2 — ADDS to step, does not reset.
         self.step += 2;
         self.on_post_action = Some(());

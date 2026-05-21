@@ -760,7 +760,7 @@ fn skill_act_preserves_level_upgrades_happening_mid_act() {
 
         fn clone_box(&self) -> Box<dyn crate::player::skill::SkillTrait> { Box::new(self.clone()) }
 
-        fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: crate::player::skill::SkillArgs) {
+        fn act_with_level(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, args: crate::player::skill::SkillArgs) {
             args.3
                 .just_get_player_mut(args.0)
                 .unwrap()
@@ -794,7 +794,7 @@ fn skill_act_preserves_level_upgrades_happening_mid_act() {
         owner_mut
             .skills
             .skill_by_id_mut(skill_key)
-            .act(Vec::new(), true, (owner_id, &mut randomer, &mut updates, &storage));
+            .act(&[], true, (owner_id, &mut randomer, &mut updates, &storage));
     }
 
     let owner_after = storage.get_player(&owner_id).unwrap();
@@ -855,7 +855,7 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
         owner_mut
             .skills
             .skill_by_id_mut(0)
-            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+            .act(&[owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
         owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
     }
 
@@ -867,7 +867,7 @@ fn accumulate_with_charge_gains_bonus_move_point_and_boost() {
         owner_mut
             .skills
             .skill_by_id_mut(1)
-            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+            .act(&[owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
     }
 
     assert_eq!(
@@ -919,7 +919,7 @@ fn accumulate_reuse_after_clear_uses_js_reset_multiplier() {
         owner_mut
             .skills
             .skill_by_id_mut(0)
-            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+            .act(&[owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
     }
 
     let first_boost = storage.get_player(&owner_id).unwrap().get_status().at_boost;
@@ -940,7 +940,7 @@ fn accumulate_reuse_after_clear_uses_js_reset_multiplier() {
         owner_mut
             .skills
             .skill_by_id_mut(0)
-            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+            .act(&[owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
     }
 
     let second_boost = storage.get_player(&owner_id).unwrap().get_status().at_boost;
@@ -963,7 +963,7 @@ fn charge_post_action_tail_runs_after_state_ticks() {
         owner_mut
             .skills
             .skill_by_id_mut(0)
-            .act(vec![owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
+            .act(&[owner_id], true, (owner_id, &mut randomer, &mut updates, &storage));
         owner_mut.skills.post_action((owner_id, &mut randomer, &mut updates, &storage));
         owner_mut.set_state(ObserveChargeBoostState);
     }

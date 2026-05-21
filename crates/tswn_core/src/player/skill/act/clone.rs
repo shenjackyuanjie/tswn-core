@@ -46,7 +46,7 @@ impl SkillTrait for CloneSkill {
 
     fn has_inline_act(&self) -> bool { true }
 
-    fn act_inline(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, level: u32, _targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         let random_factor = (ctx.randomer.next_u8() as u32 & 63) + 64;
         let mut decayed_level = ((level as f64) * random_factor as f64 / 128.0).ceil() as u32;
 
@@ -160,7 +160,7 @@ impl SkillTrait for CloneSkill {
         self.final_level = Some(decayed_level);
     }
 
-    fn act_with_level(&mut self, level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, level: u32, _targets: &[PlrId], _smart: bool, args: SkillArgs) {
         let random_factor = (args.1.next_u8() as u32 & 63) + 64;
         let mut decayed_level = ((level as f64) * random_factor as f64 / 128.0).ceil() as u32;
 

@@ -42,16 +42,13 @@ impl SkillTrait for RapidSkill {
 
     fn select_target_count(&self, smart: bool) -> usize { if smart { self.sel_count_smart } else { self.sel_count } }
 
-    fn act_inline(&mut self, level: u32, targets: Vec<PlrId>, _smart: bool, ctx: &mut InlineCtx) {
+    fn act_inline(&mut self, level: u32, targets: &[PlrId], _smart: bool, ctx: &mut InlineCtx) {
         if targets.is_empty() {
             return;
         }
         let _ = level;
         let round = if ctx.randomer.c50() { 3.0 } else { 2.0 };
-        let mut targets = targets;
-        if targets.len() > 3 {
-            targets.truncate(3);
-        }
+        let targets = &targets[..targets.len().min(3)];
         let mut hit_scores = vec![0.0f64; targets.len()];
         let mut pos = 0usize;
         let mut i = 0.0f64;
@@ -105,16 +102,13 @@ impl SkillTrait for RapidSkill {
         }
     }
 
-    fn act_with_level(&mut self, level: u32, targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, level: u32, targets: &[PlrId], _smart: bool, args: SkillArgs) {
         if targets.is_empty() {
             return;
         }
         let _ = level;
         let round = if args.1.c50() { 3.0 } else { 2.0 };
-        let mut targets = targets;
-        if targets.len() > 3 {
-            targets.truncate(3);
-        }
+        let targets = &targets[..targets.len().min(3)];
         let mut hit_scores = vec![0.0f64; targets.len()];
         let mut pos = 0usize;
         let mut i = 0.0f64;

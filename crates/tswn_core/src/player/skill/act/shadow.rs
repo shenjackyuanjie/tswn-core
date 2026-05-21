@@ -45,7 +45,7 @@ impl SkillTrait for ShadowSkill {
         Vec::new()
     }
 
-    fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
+    fn act_with_level(&mut self, _level: u32, _targets: &[PlrId], _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[幻术]", args.0, args.0, 60));
         let (owner_base_name, owner_clan, charge_active) = {
             let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage");

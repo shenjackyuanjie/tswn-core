@@ -94,10 +94,7 @@ impl SkillStore {
     pub fn contains_key(&self, key: &SkillKey) -> bool { self.get(key).is_some() }
 
     pub fn keys(&self) -> impl Iterator<Item = SkillKey> + '_ {
-        self.entries
-            .iter()
-            .enumerate()
-            .filter_map(|(key, skill)| skill.is_some().then_some(key))
+        self.entries.iter().enumerate().filter_map(|(key, skill)| skill.is_some().then_some(key))
     }
 }
 
