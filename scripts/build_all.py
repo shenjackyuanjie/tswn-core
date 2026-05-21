@@ -194,8 +194,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     p.add_argument(
         "--cli-features",
-        default="no_debug",
-        help="CLI 构建 features，逗号分隔；传空字符串表示不追加 features（默认：no_debug）",
+        default="no_debug,mimalloc_alloc",
+        help="CLI 构建 features，逗号分隔；传空字符串表示不追加 features（默认：no_debug,mimalloc_alloc）",
     )
     p.add_argument(
         "--cargo",

@@ -1,89 +1,110 @@
-# namerena 但是 rust 版
+# tswn-core
 
-> 坏了, 我真开始技术封锁了
+`tswn-core` 是名字竞技场的 Rust 实现仓库。当前重点是把核心战斗逻辑、名字解析、技能系统、评分/胜率模拟、图标渲染和跨语言绑定集中维护在一个 Cargo workspace 里，并用差分工具持续对齐旧实现行为。
 
-- 即日起 tswn 源码开启 Early Access 活动! (不是)
-  - 要源码给我 github id 就行
-- 我宣布我与 Github Copilot 的缘分到此为止!
-  - 唉，GitHub 也烧不起钱了
-  - 先是砍 Github Edu
-  - 再是砍 Copilot Pro
-  - 战至最后一刻，自刎归天得了(不是)
-- DeepSeek V4 也是发了
-  - DeepSeek 牛逼!
-  - 50% 的 1M MRCR v2 啊
-  - 不过 V4 预览版后训练还是差点意思
-    - DeepSeek 大人拿着 800B 的 V3 都能吭哧吭哧后训练一年
-    - 1.6T 的 V4 pro 估计也能训个一年半载的
-  - 20260429
+旧 README 已保留为 [`README.old.md`](README.old.md)。
 
-- 高考后开源~
-  - 20260322
+## 当前状态
 
-- Claude Sonnet 4.6 也挺好用的
-  - 完成了 icon 部分
-- 20260308
+- 核心 crate `tswn_core` 已经是当前主要实现，包含玩家构建、技能系统、战斗 runner、评分/胜率、RC4、图标渲染和 CLI。
+- CLI 已覆盖普通对战、raw 对战日志、diff 输出、benchmark、图标导出、DIY/OL overlay 导出等常用入口。
+- 仓库内同时维护 Python、WASM、C ABI、以及 `ds3` 相关实验/工具 crate。
+- 当前仍处在“行为兼容 + 差分追踪 + 性能整理”的开发状态，不是只提供稳定 SDK 的纯发布仓库。
+- `tests/`、`docs/diff/`、`tests/diff/`、`target/ts_diff_cases*` 一类目录主要服务于与旧 JS/TS 行为的差分定位。
 
-- 项目最大赞助商: Github Copilot Pro ( 甚至是 Github Edu 送的 )
-  - 我敲，你懂什么叫 Claude Opus 4.6 跑了快一整天还只消耗了一次额度的震撼吗.png
-  - 这太TM震撼了
-  - 甚至它会自动 compat
-    - 还是免费的 ( 不消耗额度 )
-  - 此处稍微 cue 一下 GPT 5.4, 他在 context 快用完的时候会自己停下来
-    - 倒不是说不好吧，但是在这种项目里自己停下 == 消耗另一次额度
-  - 所以 Claude Opus 4.6 就是超级大救星.png
-- 20260307
+## Workspace 结构
 
-- 感谢 GPT 5.3-Codex Xhigh & Cluade Opus 4.6 两位大哥
-- 成功的把项目推进到了 debug 抠细节阶段
-- 感谢 minimax m2.5, 写了个 `track_test.py`
-  - 非常好的测试工具
-  - 当然有个小 bug, 如果 `cargo test` 没跑起来 (比如网炸了) 他也会认为是 pass
-    - 当然这种情况属于酒吧点炒饭，也没什么好追究的
-  - 然后感谢 Claude Opus 4.6
-  - 改进了测试工具, 添加了存档点功能
-- 现在也有 `track_case_miner.py`
-  - 专门追踪 `tswn_case_miner` 产出的 failed case 集合和 `first_mismatch_idx`
-  - 还有个统一薄封装 `track.py`
-- 感谢 DouBao Seed 2.0-code
-  - 成功把 case 07+10 推进了几个 idx
-  - 还是免费的!
-- 非常不感谢 qwen3.5-plus-2026-02-15
-  - 烧了我 `当月未结清 ¥ 152.74` 块钱还一点进度没有
-- 项目已经成 AI benchmark 了捏
-  - 无敌的DeepSeek V4大人
-  - 快带着你无敌的定价
-  - 无敌的1M上下文注意力
-  - 还有无敌的SOTA成绩
-  - 创翻这个沟槽的项目
-  - 也顺手把无能的 GPT 5.3-codex xhigh & Claude Opus 4.6 创飞吧😭
-- 目前用过的 AI (按照我自己爱怎么排怎么排):
-  - GPT 5.3-Codex Xhigh
-  - Claude Opus 4.6
-  - MiniMax M 2.5
-  - DouBao Seed 2.0-code
-  - qwen3.5-plus-2026-02-15
-  - GPT 5 mini (好哦，是免费模型)
-  - GPT 5.2
-  - GPT 5.2-Codex
-  - DeepSeek V3.2 (好哦，是DeepSeek)
-- 目前花销：
-  - Qwen3.5-plus-2026-02-15: 152.74 RMB
-  - Claude Opus 4.6: 50 RMB (在中转站充的)
-  - GPT 5.3-Codex Xhigh: 50 RMB (让哥们帮忙所以在中转站充的)
-- 20260228
+```text
+crates/
+  tswn_core/   核心库和主要 CLI/binary
+  tswn_py/     Python 扩展绑定，基于 PyO3
+  tswn_wasm/   WebAssembly 绑定和浏览器示例
+  tswn_capi/   C ABI 动态库/静态库导出
+  tswn_ds3/    ds3 相关数据处理和兼容实验
 
-- SortInt 结束, 可以开始哐哐写逻辑了
-  - 2025 04 16 00:52
+docs/          架构、DIY、差分、性能、构建和更新记录
+scripts/       构建脚本、差分辅助脚本、case 生成脚本
+tests/         测试输入、差分记录和样例数据
+assets/        资源文件
+target/        Cargo 输出和本地差分产物
+```
 
-- 我也不知道这个库啥时候会公开
-- 但是我尽快吧
-  - 20240521 ( 00:13 )
-- 不过我估计不会公开, 毕竟名竞这玩意的活力也不大
-- 我这玩意要是公开了，直接就是一个灭顶之灾
-- 当然，在各位名竞 oier 骂我之前, 我先忏悔, 我太狂妄了(笑)
+## 主要命令
 
-> shenjack
-> @夜冴 啊？
+构建和检查：
 
-> @shenjack 隐匿的判定在狂暴效果生效之后，在没有return的情况下顶掉了狂暴效果，此时本体仍处于狙暴效果中，但可以正常行动，所以需要在此添增加一次对狂暴效果的判定
+```powershell
+cargo check
+cargo build
+cargo test -p tswn_core
+cargo build --release --features no_debug,mimalloc_alloc
+cargo build --profile release-fast --features no_debug
+```
+
+说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。benchmark 不启用 `mimalloc_alloc`，最终 release 构建再启用。
+
+运行主 CLI：
+
+```powershell
+cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- fight --out-raw -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- raw -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- to-diy "mario@team+fire"
+```
+
+常用差分 case miner：
+
+```powershell
+cargo run --release --features no_debug --bin tswn_case_miner -- `
+  --library .\tests\sqp6000.txt `
+  --md5-tool .\md5.js `
+  --out-dir .\target\ts_diff_cases `
+  --modes 1v1,2v2,3v3v3,ffa `
+  --ffa-sizes 4,6,8 `
+  --case-offset-per-mode 0 `
+  --max-cases-per-mode 4000 `
+  --keep-going
+```
+
+DIY 往返验证：
+
+```powershell
+cargo run --release --features no_debug --bin track_diy_roundtrip -- `
+  --library .\tests\sqp6000.txt `
+  --out-dir .\target\diy_roundtrip `
+  --modes 1v1,2v2,3v3v3,ffa `
+  --ffa-sizes 4,6,8 `
+  --case-offset-per-mode 0 `
+  --max-cases-per-mode 4000 `
+  --keep-going
+```
+
+## 重要 binary
+
+- `tswn-cli`: 日常调试和用户入口。
+- `tswn_case_miner`: 批量生成 case，运行 TS/JS 基准输出并与 Rust trace 对比。
+- `track_diy_roundtrip`: 生成或读取 case，把玩家转成 DIY/OL overlay，再验证初始状态和可选战斗日志一致性。
+
+## 文档入口
+
+- [`docs/architecture.md`](docs/architecture.md): 当前架构说明。
+- [`docs/DIY.md`](docs/DIY.md): DIY/OL overlay 相关说明。
+- [`docs/howto/1-start.md`](docs/howto/1-start.md): 入门操作记录。
+- [`docs/howto/diy_validation.md`](docs/howto/diy_validation.md): DIY 验证流程。
+- [`docs/build_all.md`](docs/build_all.md): 多产物构建说明。
+- [`docs/perf/benchmark_tracking.md`](docs/perf/benchmark_tracking.md): 性能追踪。
+- [`docs/perf/fixed_cases_30_benchmark.md`](docs/perf/fixed_cases_30_benchmark.md): 固定 30-case 性能回归口径。
+- [`crates/tswn_core/README.md`](crates/tswn_core/README.md): core crate 说明。
+- [`crates/tswn_py/README.md`](crates/tswn_py/README.md): Python 绑定说明。
+- [`crates/tswn_wasm/README.md`](crates/tswn_wasm/README.md): WASM 绑定说明。
+- [`crates/tswn_capi/README.md`](crates/tswn_capi/README.md): C API 说明。
+
+## 开发注意事项
+
+- Rust edition 使用 2024，工具链由 [`rust-toolchain.toml`](rust-toolchain.toml) 固定。
+- `no_debug` feature 用于 release/绑定场景，避免调试路径影响性能和输出。
+- `png_render` 是 `tswn_core` 默认 feature，用于图标 PNG/base64 输出。
+- 差分工具会大量写入 `target/`，这些产物通常不应提交。
+- 修改 Markdown 文档后，记得使用 `oxfmt docs` 格式化文档。
+- 回归追踪入口已迁移到 Rust bin：`track`、`track_test`、`track_case_miner`、`track_diy_roundtrip`。
+- 当前工作区可能有本地调试文件和未提交产物，提交前需要用 `git status` 明确区分源码改动与生成输出。

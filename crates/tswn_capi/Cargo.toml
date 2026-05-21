@@ -4,7 +4,7 @@ version = "0.4.0"
 edition = "2024"
 
 [dependencies]
-tswn_core = { path = "../tswn_core", features = ["no_debug"] }
+tswn_core = { path = "../tswn_core", features = ["no_debug", "mimalloc_alloc"] }
 
 [lib]
 name = "tswn_capi"

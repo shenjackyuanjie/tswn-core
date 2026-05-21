@@ -10,4 +10,10 @@ members = [
 
 [profile.release]
 lto = "fat"
-# codegen-units = 1
+debug = 1
+codegen-units = 1
+
+[profile.release-fast]
+inherits = "release"
+lto = "thin"
+codegen-units = 16

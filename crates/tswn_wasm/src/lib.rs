@@ -75,8 +75,8 @@ pub fn win_rate_sync(raw_input: String, total_rounds: usize, options: Option<JsV
 pub fn group_win_rate(target: String, against: JsValue, total_rounds: usize, options: Option<JsValue>) -> WasmResult<JsValue> {
     install_panic_hook();
     let options: WinRateOptions = parse_options(options)?;
-    let against: Vec<String> = serde_wasm_bindgen::from_value(against)
-        .map_err(|err| invalid_options(format!("failed to parse against: {err}")))?;
+    let against: Vec<String> =
+        serde_wasm_bindgen::from_value(against).map_err(|err| invalid_options(format!("failed to parse against: {err}")))?;
 
     let mut results = Vec::with_capacity(against.len());
     for opponent in against {

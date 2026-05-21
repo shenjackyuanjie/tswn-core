@@ -3,6 +3,8 @@ vendor
 .lh
 __pycache__
 *.txt
+!docs/perf/fixed_cases_30/
+!docs/perf/fixed_cases_30/*.txt
 tests
 .claude
 dist
