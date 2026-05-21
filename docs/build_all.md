@@ -22,6 +22,7 @@
 - Windows 侧的 Python 构建/聚合脚本推荐用 `uv run scripts/...` 替代 `python scripts/...`
 - `scripts/build_all.py` 不会现场构建 Python wheel，只会收集 `crates/tswn_py/dist/` 中已经存在的产物
 - `scripts/build_all.py` 会现场构建当前平台的 `capi` / `cli`，并构建 `tswn_wasm` 浏览器包
+- `scripts/build_all.py` 的 Windows CLI 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--cli-features`
 - 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `libtswn_capi.so`，聚合脚本也会一并收集
 - `tswn_wasm` 打包默认依赖 `wasm-bindgen-cli`，可通过 `cargo install wasm-bindgen-cli` 安装
 
@@ -57,13 +58,14 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && pyt
 ### 3. 构建 WSL CLI
 
 ```powershell
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_core --bin tswn-cli --release --features no_debug"
+wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc"
 ```
 
 说明：
 
 - 这里激活 `.venv-wsl` 主要是为了统一 WSL 环境入口
 - 真正参与 CLI 构建的是 WSL 里的 Rust 工具链
+- 最终发布 CLI 默认启用 `mimalloc_alloc`；benchmark 口径仍不要带这个 feature
 
 ### 4. 执行聚合打包
 
@@ -138,7 +140,7 @@ dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_bundle.zip
 ```powershell
 uv run scripts/build_py.py --clean
 wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && python scripts/build_py.py"
-wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_core --bin tswn-cli --release --features no_debug"
+wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc"
 uv run scripts/build_all.py --release --clean
 ```
 
@@ -154,7 +156,7 @@ uv run scripts/build_all.py --release --clean
 python scripts/build_py.py --clean
 
 # 构建 Linux CLI
-cargo build -p tswn_core --bin tswn-cli --release --features no_debug
+cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc
 
 # 构建 Linux capi
 cargo build -p tswn_capi --release
