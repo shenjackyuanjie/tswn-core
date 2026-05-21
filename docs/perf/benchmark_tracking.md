@@ -21,7 +21,7 @@
 
 ## 1. 口径
 
-- 编译参数：`--release --features no_debug`
+- 编译参数：正式留档使用 `--release --features no_debug`；日常快速试跑可用 `--profile release-fast --features no_debug`，但不要和长期表格混用。benchmark 口径不启用 `mimalloc_alloc`。
 - CLI：`tswn-cli bench win-rate ... --perf`
 - 单线程：追加 `--single-thread`
 - 多线程：直接使用 CLI 默认线程策略
@@ -41,16 +41,80 @@
 
 ---
 
-## 2. 100k 参考总表
+## 2. 30-case 固定 benchmark
 
-### 2.1 单线程
+两个固定样本适合做历史横向比较，但覆盖面太窄。当前长期固定性能回归集合统一使用 `docs/perf/fixed_cases_30`，共 30 个输入：覆盖原先多人、队伍、FFA 和复杂战斗路径，并额外强化 1v1 / 2v2 核心场景。
+
+`track_perf_cases` 仍可从号库自动生成候选 case，再按实测复杂度抽取阶梯样本；固定 30-case 则直接通过 `--case-dir docs/perf/fixed_cases_30` 运行，不再依赖重新生成 case。固定目录报告会额外输出 `overall`、`core_1v1_2v2`、`one_v_one`、`two_v_two`、`stress_multi` 分组汇总，便于优先观察 1v1/2v2 主指标。运行口径见 `docs/perf/fixed_cases_30_benchmark.md`。
+
+固定 30-case 推荐运行：
+
+```powershell
+cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
+  --case-dir docs/perf/fixed_cases_30 `
+  --out-dir docs/perf/fixed_cases_30_results `
+  --bench-runs 13000 `
+  --thread 1
+```
+
+生成逻辑复用 `tswn_core::case_gen`，和 `tswn_case_miner` 的 case 枚举保持同一套规则：
+
+- 号库读取、去重、固定 seed shuffle；
+- 模式默认覆盖 `1v1,2v2,3v3v3,ffa_4,ffa_6,ffa_8`；
+- 每个模式默认生成 `4000` 个候选；
+- 先用 `64` 场/候选做复杂度采样，按 `µs/场` 排序；
+- 从排序结果中均匀抽取指定数量的 case；
+- 对选中 case 各跑正式 benchmark，输出 markdown/json 和原始输入文件。
+
+如需重新生成候选阶梯，可用：
+
+```powershell
+cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
+  --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' `
+  --out-dir '.\target\perf_cases' `
+  --modes '1v1,2v2,3v3v3,ffa' `
+  --ffa-sizes '4,6,8' `
+  --case-offset-per-mode 0 `
+  --max-cases-per-mode 4000 `
+  --select-count 30 `
+  --bench-runs 500000 `
+  --thread 1
+```
+
+如果只想先固定一批输入，不跑正式 benchmark：
+
+```powershell
+cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
+  --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' `
+  --out-dir '.\target\perf_cases' `
+  --select-only
+```
+
+输出文件：
+
+- `target/perf_cases/perf_cases.md`：可直接贴回本文的结果表；
+- `target/perf_cases/perf_cases.json`：结构化结果，适合脚本比较版本；
+- `target/perf_cases/cases/*.txt`：被选中的原始输入。
+
+建议长期记录时保留两组数据：
+
+- **固定 2 样本**：继续用于和旧版本表格对齐；
+- **30-case 固定样本**：用于发现核心 1v1/2v2 以及多人、召唤、复活、状态链等复杂路径中出现的性能回退。
+
+固定 30-case 的版本化结果记录和运行命令见 `docs/perf/fixed_cases_30_benchmark.md`。如果只是本地检查改动趋势，可以把命令中的 `--release` 换成 `--profile release-fast`；正式写入本文或对比历史结果时仍使用 `--release`。
+
+---
+
+## 3. 100k 参考总表
+
+### 3.1 单线程
 
 | 样本           |          Bun 参考 |         `0.2.12` |         `0.2.13` |         `0.2.14` |         `0.2.20` |          `0.3.1` |          `0.3.2` |
 | -------------- | ----------------: | ---------------: | ---------------: | ---------------: | ---------------: | ---------------: | ---------------: |
 | `aaa` vs `bbb` | `12.674s (1.00x)` | `1.981s (6.40x)` | `1.992s (6.36x)` | `1.825s (6.94x)` | `1.887s (6.72x)` | `1.922s (6.59x)` | `1.901s (6.67x)` |
 | `复杂样本`     | `15.524s (1.00x)` | `3.014s (5.15x)` | `3.077s (5.05x)` | `2.792s (5.56x)` | `2.891s (5.37x)` | `2.985s (5.20x)` | `2.951s (5.26x)` |
 
-### 2.2 CLI 多线程
+### 3.2 CLI 多线程
 
 | 样本           |          Bun 参考 |          `0.2.12` |          `0.2.13` |          `0.2.14` |          `0.2.20` |           `0.3.1` |           `0.3.2` |
 | -------------- | ----------------: | ----------------: | ----------------: | ----------------: | ----------------: | ----------------: | ----------------: |
@@ -61,16 +125,16 @@
 
 ---
 
-## 3. 1M 长跑表
+## 4. 1M 长跑表
 
-### 3.1 单线程
+### 4.1 单线程
 
 | 样本           |  `0.2.13` |  `0.2.14` |  `0.2.20` |   `0.3.1` |   `0.3.2` | `0.3.2` vs `0.3.1` | `0.3.2` vs `0.2.20` |
 | -------------- | --------: | --------: | --------: | --------: | --------: | -----------------: | ------------------: |
 | `aaa` vs `bbb` | `19.636s` | `18.144s` | `18.438s` | `19.339s` | `19.333s` |              ~持平 |           慢 `4.9%` |
 | `复杂样本`     | `30.239s` | `27.851s` | `28.488s` | `30.181s` | `29.437s` |          快 `2.5%` |           慢 `3.3%` |
 
-### 3.2 CLI 多线程
+### 4.2 CLI 多线程
 
 | 样本           | `0.2.13` | `0.2.14` | `0.2.20` |  `0.3.1` |  `0.3.2` | `0.3.2` vs `0.3.1` | `0.3.2` vs `0.2.20` |
 | -------------- | -------: | -------: | -------: | -------: | -------: | -----------------: | ------------------: |
@@ -79,7 +143,7 @@
 
 ---
 
-## 4. 当前 `0.3.2` 快速查看
+## 5. 当前 `0.3.2` 快速查看
 
 | 样本           | 单线程 `100k` | 多线程 `100k` | 单线程 `1M` | 多线程 `1M` |
 | -------------- | ------------: | ------------: | ----------: | ----------: |
@@ -88,7 +152,7 @@
 
 ---
 
-## 5. 结论
+## 6. 结论
 
 - **`0.3.2` vs `0.3.1`**：四项 1M 偏差均在 ±3% 以内，属于同机重跑的正常波动。DIY overlay 的修改**没有造成非 DIY 通路的性能回退** —— 所有新增判断都是对 `Option<PlayerOverlay>`（`None`）的指针判空，分支预测器稳定命中，热路径无变化。
 - 相较 `0.2.20`，`0.3.2` 在 1M 口径下：

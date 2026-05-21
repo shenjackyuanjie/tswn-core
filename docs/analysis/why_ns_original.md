@@ -25,7 +25,6 @@
 
 3. **当前真正修掉的，是几处之前很容易被误判成 `why_ns` 的 JS 语义差异。**
    这次对齐主要落在下面几块：
-
    - `score` / `raw score` / `namer-pf` 的**计分语义**：按“目标队任一赢家”计胜，不是只看 `winner[0]`
    - JS `ProfileMain` 的**输入形状**：单目标时是 `1 vs 3`，重复双名时会 collapse 成 `1 vs 1`
    - JS `PlrEx.cA()` 是 **no-op**：`@!` TestEx 不应做同队 upgrade
@@ -303,9 +302,9 @@ cloned.raw_name_base = Player::normal_raw_name_base(Some(owner_clan_name.as_str(
 这正对应 JS `T.SklSummon.v()` 的 reuse 分支：
 
 ```js
-s.bP()
-s.bs()
-s.cn()
+s.bP();
+s.bs();
+s.cn();
 ```
 
 Rust 里的注释也已经写明了：
@@ -502,8 +501,8 @@ Rust 里的注释也已经写明了：
 
 如果只想记最短版，就记下面这 5 句：
 
-1. `why_ns` 仍然是 md5.js 真机制，profile 也确实会碰到它。  
-2. 当前 Rust 里**仍没有显式 `why_ns` 实现**。  
-3. 这次真正修好的，是 score 计分、TestEx upgrade、clone 原始底板、summon reuse、Iron 清理时机。  
-4. 这些问题之所以难排，是因为它们全都长得很像 `why_ns`。  
+1. `why_ns` 仍然是 md5.js 真机制，profile 也确实会碰到它。
+2. 当前 Rust 里**仍没有显式 `why_ns` 实现**。
+3. 这次真正修好的，是 score 计分、TestEx upgrade、clone 原始底板、summon reuse、Iron 清理时机。
+4. 这些问题之所以难排，是因为它们全都长得很像 `why_ns`。
 5. 所以现在别再把“profile 还差一点”自动翻译成“肯定是 why_ns 没实现”。
