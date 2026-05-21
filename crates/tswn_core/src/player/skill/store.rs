@@ -810,7 +810,7 @@ impl SkillStorage {
     }
 
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) {
-        let keys = self.post_kill.clone();
+        let keys = SmallVec::from_slice(&self.post_kill);
         run_post_kill(keys, args.0, target, args.1, args.2, args.3);
     }
 }
@@ -822,7 +822,7 @@ impl SkillStorage {
 /// 实现放回。这确保 kill 回调（如吞噬）中通过 `just_get_player_mut` 获取的
 /// `&mut Player` 不会与此处的引用重叠。
 pub fn run_post_kill(
-    keys: Vec<usize>,
+    keys: SmallVec<[SkillKey; 8]>,
     caster: PlrId,
     target: PlrId,
     randomer: &mut crate::rc4::RC4,

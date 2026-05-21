@@ -60,6 +60,8 @@ use crate::player::skill::store::{PreActionOutcome, SkillKey};
 use crate::player::skill::{Effect, InlineCtx, PostActionPhase, PostDamageCtx, TargetVec};
 use smallvec::SmallVec;
 
+type SkillKeyVec = SmallVec<[SkillKey; 8]>;
+
 // JS addNew 之后的新单位会立刻参与"战斗是否结束"的判断，
 // Rust 侧这里也要把敌方 pending spawn 视为仍然存活的敌人。
 fn has_alive_enemy_or_pending(storage: &Arc<Storage>, ally_group: &[PlrId]) -> bool {
@@ -744,7 +746,7 @@ impl Player {
             return;
         }
         let ptr = self.as_ptr();
-        let keys = self.skills.pre_action.clone();
+        let keys: SkillKeyVec = SmallVec::from_slice(&self.skills.pre_action);
         for skill_key in keys {
             if !self.skills.skill_by_id(skill_key).has_inline_pre_action() {
                 continue;
@@ -875,7 +877,7 @@ impl Player {
         if self.skills.post_action.is_empty() {
             return;
         }
-        let keys = self.skills.post_action.clone();
+        let keys: SkillKeyVec = SmallVec::from_slice(&self.skills.post_action);
         for skill_key in keys {
             if self.skills.skill_by_id(skill_key).post_action_phase() == phase {
                 self.run_post_action_key_noalias(skill_key, randomer, updates, storage);
@@ -897,8 +899,8 @@ impl Player {
             return;
         }
         let ptr = self.as_ptr();
+        let keys: SkillKeyVec = SmallVec::from_slice(&self.skills.post_kill);
         if self.skills.has_inline_post_kill {
-            let keys = self.skills.post_kill.clone();
             for skill_key in keys {
                 let (mut skill_type, level) = {
                     let skill = self.skills.skill_by_id_mut(skill_key);
@@ -936,7 +938,6 @@ impl Player {
                 }
             }
         } else {
-            let keys = self.skills.post_kill.clone();
             for skill_key in keys {
                 let triggered = self.skills.skill_by_id_mut(skill_key).kill(target, (ptr, randomer, updates, storage));
                 if triggered {
@@ -960,7 +961,7 @@ impl Player {
         let Some(keys) = storage
             .get_player(&caster)
             .filter(|killer| killer.get_status().hp > 0)
-            .map(|killer| killer.skills.post_kill.clone())
+            .map(|killer| SkillKeyVec::from_slice(&killer.skills.post_kill))
         else {
             return;
         };
@@ -2370,7 +2371,7 @@ impl Player {
         let end = end.min(self.skills.pre_defend.len());
         let start = start.min(end);
         let owner_id = self.as_ptr();
-        let skill_keys = self.skills.pre_defend[start..end].to_vec();
+        let skill_keys: SkillKeyVec = SmallVec::from_slice(&self.skills.pre_defend[start..end]);
         for skill_key in skill_keys {
             let has_inline = self.skills.skill_by_id(skill_key).has_inline_pre_defend();
             if has_inline {
@@ -2842,7 +2843,7 @@ impl Player {
             }
             return dmg;
         }
-        let post_damaged_indices: Vec<_> = self.skills.post_damage.to_vec();
+        let post_damaged_indices: SkillKeyVec = SmallVec::from_slice(&self.skills.post_damage);
         for skill_idx in post_damaged_indices {
             let ptr = self.as_ptr();
             #[cfg(not(feature = "no_debug"))]
