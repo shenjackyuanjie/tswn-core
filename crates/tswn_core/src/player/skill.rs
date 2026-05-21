@@ -63,6 +63,66 @@ pub use skl::{corpse, counter, defend, hide, merge, none, protect, reflect, rera
 
 pub type SkillFactory = fn() -> Box<dyn SkillTrait>;
 
+/// DIY / overlay 技能加成信息。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SkillBoost {
+    Normal(u32),
+    SlotBoost { base: u32, boost: u32 },
+    LastBoost(u32),
+}
+
+impl SkillBoost {
+    pub fn final_level(&self) -> u32 {
+        match self {
+            Self::Normal(lv) => *lv,
+            Self::SlotBoost { base, boost } => base + boost,
+            Self::LastBoost(base) => base * 2,
+        }
+    }
+
+    pub fn base_level(&self) -> u32 {
+        match self {
+            Self::Normal(lv) => *lv,
+            Self::SlotBoost { base, .. } => *base,
+            Self::LastBoost(base) => *base,
+        }
+    }
+
+    pub fn decayed_base_from_level(&self, current_level: u32) -> u32 {
+        match self {
+            Self::Normal(_) => current_level,
+            Self::SlotBoost { boost, .. } => current_level.saturating_sub(*boost).max(1),
+            Self::LastBoost(_) => current_level / 2,
+        }
+    }
+
+    pub fn final_level_from_decayed_base(&self, decayed_base: u32) -> u32 {
+        match self {
+            Self::Normal(_) => decayed_base,
+            Self::SlotBoost { boost, .. } => decayed_base.saturating_add(*boost),
+            Self::LastBoost(_) => decayed_base.saturating_mul(2),
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        let raw = raw.trim();
+        if let Ok(val) = raw.parse::<u32>() {
+            return Some(Self::Normal(val));
+        }
+        if let Some((base_str, boost_str)) = raw.split_once('+') {
+            let base = base_str.trim().parse::<u32>().ok()?;
+            let boost = boost_str.trim().parse::<u32>().ok()?;
+            return Some(Self::SlotBoost { base, boost });
+        }
+        if let Some((mul_str, base_str)) = raw.split_once('*') {
+            let multiplier = mul_str.trim().parse::<u32>().ok()?;
+            let base = base_str.trim().parse::<u32>().ok()?;
+            return (multiplier == 2).then_some(Self::LastBoost(base));
+        }
+        None
+    }
+}
+
 const BUILTIN_SKILL_FACTORIES: [SkillFactory; 35] = [
     fire::FireSkill::box_new,
     ice::IceSkill::box_new,
@@ -100,6 +160,142 @@ const BUILTIN_SKILL_FACTORIES: [SkillFactory; 35] = [
     upgrade::UpgradeSkill::box_new,
     hide::HideSkill::box_new,
 ];
+
+const DIY_ACTIVE_SKILL_IDS: [usize; 25] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+];
+
+const DIY_PASSIVE_SKILL_IDS: [usize; 10] = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34];
+
+pub fn skill_name_to_id(name: &str) -> Option<usize> {
+    let lower = name.trim().to_ascii_lowercase();
+    let normalized = lower
+        .strip_prefix("skl")
+        .or_else(|| lower.strip_prefix("skill"))
+        .unwrap_or(lower.as_str());
+    match normalized {
+        "fire" => Some(0),
+        "ice" => Some(1),
+        "thunder" => Some(2),
+        "quake" => Some(3),
+        "absorb" => Some(4),
+        "poison" => Some(5),
+        "rapid" => Some(6),
+        "critical" => Some(7),
+        "half" => Some(8),
+        "exchange" => Some(9),
+        "berserk" => Some(10),
+        "charm" => Some(11),
+        "haste" => Some(12),
+        "slow" => Some(13),
+        "curse" => Some(14),
+        "heal" => Some(15),
+        "revive" => Some(16),
+        "disperse" => Some(17),
+        "iron" => Some(18),
+        "charge" => Some(19),
+        "accumulate" => Some(20),
+        "assassinate" => Some(21),
+        "summon" => Some(22),
+        "clone" => Some(23),
+        "shadow" => Some(24),
+        "defend" => Some(25),
+        "protect" => Some(26),
+        "reflect" => Some(27),
+        "reraise" => Some(28),
+        "shield" => Some(29),
+        "counter" => Some(30),
+        "merge" => Some(31),
+        "zombie" => Some(32),
+        "upgrade" => Some(33),
+        "hide" => Some(34),
+        "none" => Some(35),
+        _ => normalized.parse::<usize>().ok().filter(|id| *id < 40),
+    }
+}
+
+pub fn diy_skill_order() -> Vec<usize> { DIY_ACTIVE_SKILL_IDS.into_iter().chain(DIY_PASSIVE_SKILL_IDS).chain(35..40).collect() }
+
+pub fn skill_name_for_export(skill_id: usize) -> String {
+    let name = match skill_id {
+        0 => "fire",
+        1 => "ice",
+        2 => "thunder",
+        3 => "quake",
+        4 => "absorb",
+        5 => "poison",
+        6 => "rapid",
+        7 => "critical",
+        8 => "half",
+        9 => "exchange",
+        10 => "berserk",
+        11 => "charm",
+        12 => "haste",
+        13 => "slow",
+        14 => "curse",
+        15 => "heal",
+        16 => "revive",
+        17 => "disperse",
+        18 => "iron",
+        19 => "charge",
+        20 => "accumulate",
+        21 => "assassinate",
+        22 => "summon",
+        23 => "clone",
+        24 => "shadow",
+        25 => "defend",
+        26 => "protect",
+        27 => "reflect",
+        28 => "reraise",
+        29 => "shield",
+        30 => "counter",
+        31 => "merge",
+        32 => "zombie",
+        33 => "upgrade",
+        34 => "hide",
+        35 => "none",
+        _ => return format!("skill{}", skill_id),
+    };
+    format!("skl{}", name)
+}
+
+pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &[(String, SkillBoost)]) {
+    let mut ordered_ids: Vec<usize> = Vec::with_capacity(40);
+    let mut seen = [false; 40];
+    for (skill_name, skill_boost) in skill_levels {
+        let Some(skill_id) = skill_name_to_id(skill_name) else {
+            continue;
+        };
+        if seen[skill_id] {
+            continue;
+        }
+        seen[skill_id] = true;
+        ordered_ids.push(skill_id);
+        if let Some(skill) = storage.store.get_mut(&skill_id) {
+            let base_lv = skill_boost.base_level();
+            skill.set_level(base_lv);
+            skill.boosted = false;
+            match skill_boost {
+                SkillBoost::Normal(_) => {
+                    skill.diy_boost = None;
+                }
+                SkillBoost::SlotBoost { .. } | SkillBoost::LastBoost(_) => {
+                    skill.diy_boost = Some(skill_boost.clone());
+                }
+            }
+        }
+    }
+    for id in diy_skill_order() {
+        if !seen[id] {
+            seen[id] = true;
+            ordered_ids.push(id);
+        }
+    }
+    storage.slot_skill = (0..40usize).collect();
+    storage.skill = ordered_ids;
+    storage.is_diy = true;
+    storage.update_proc();
+}
 
 #[derive(Default)]
 struct SkillRegistry {
@@ -169,11 +365,20 @@ pub type SkillArgs<'d> = (PlrId, &'d mut RC4, &'d mut RunUpdates, &'d Arc<Storag
 /// 在 owner-centric 回调中缓冲，回调返回后由调度器统一 flush。
 pub enum Effect {
     /// 攻击目标
-    Attack { target: PlrId, atp: f64, is_mag: bool, on_damage: OnDamageFunc },
+    Attack {
+        target: PlrId,
+        atp: f64,
+        is_mag: bool,
+        on_damage: OnDamageFunc,
+    },
     /// 回血目标
     Heal { target: PlrId, amount: i32 },
     /// 直接伤害（不走攻防计算）
-    DamageRaw { target: PlrId, dmg: i32, on_damage: OnDamageFunc },
+    DamageRaw {
+        target: PlrId,
+        dmg: i32,
+        on_damage: OnDamageFunc,
+    },
     /// 位移点增减
     AddMovePoint { target: PlrId, delta: i32 },
     /// owner 自身死亡结算（如附体自灭），需要在 skill 借用释放后执行
@@ -213,12 +418,11 @@ impl<'a> InlineCtx<'a> {
     }
 
     /// 标记需要在回调返回后调用 `update_states()`。
-    pub fn mark_update_states(&mut self) {
-        self.needs_update_states = true;
-    }
+    pub fn mark_update_states(&mut self) { self.needs_update_states = true; }
 
     pub fn post_damage_meta(&self) -> PostDamageCtx {
-        self.post_damage.expect("post_damage metadata is only available during post_damage_inline")
+        self.post_damage
+            .expect("post_damage metadata is only available during post_damage_inline")
     }
 }
 
@@ -300,7 +504,17 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 是否实现了内联版 pre_defend。
     fn has_inline_pre_defend(&self) -> bool { false }
     /// 内联版 pre_defend（方案 J）。
-    fn pre_defend_inline(&mut self, _level: u32, _ctx: &mut InlineCtx, atp: f64, _is_mag: bool, _caster: PlrId, _on_damage: &OnDamageFunc) -> f64 { atp }
+    fn pre_defend_inline(
+        &mut self,
+        _level: u32,
+        _ctx: &mut InlineCtx,
+        atp: f64,
+        _is_mag: bool,
+        _caster: PlrId,
+        _on_damage: &OnDamageFunc,
+    ) -> f64 {
+        atp
+    }
     /// 行动!
     fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {}
     fn act_with_level(&mut self, _level: u32, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
@@ -652,6 +866,8 @@ pub struct Skill {
     skill_type: Option<Box<dyn SkillTrait>>,
     /// 目标
     pub target: Option<PlrId>,
+    /// DIY 技能加成信息（`None` 表示非 DIY 技能）。
+    pub diy_boost: Option<SkillBoost>,
 }
 
 impl Clone for Skill {
@@ -662,6 +878,7 @@ impl Clone for Skill {
             post_damage_priority: self.post_damage_priority,
             skill_type: self.skill_type.as_ref().map(|st| st.clone_box()),
             target: self.target,
+            diy_boost: self.diy_boost.clone(),
         }
     }
 }
@@ -675,6 +892,7 @@ impl Skill {
             post_damage_priority,
             skill_type: Some(skill_type),
             target: None,
+            diy_boost: None,
         }
     }
 
@@ -687,6 +905,7 @@ impl Skill {
             post_damage_priority,
             skill_type: Some(skill_type),
             target: None,
+            diy_boost: None,
         }
     }
 
@@ -701,8 +920,10 @@ impl Skill {
         if self.boosted {
             false
         } else {
+            let base = self.level;
             self.boosted = true;
             self.level *= 2;
+            self.diy_boost = Some(SkillBoost::LastBoost(base));
             true
         }
     }
@@ -712,8 +933,10 @@ impl Skill {
             self.level += level;
             false
         } else {
+            let base = self.level;
             self.level += level;
             self.boosted = true;
+            self.diy_boost = Some(SkillBoost::SlotBoost { base, boost: level });
             true
         }
     }
@@ -732,7 +955,10 @@ impl Skill {
 
     /// 将之前取出的技能实现放回。
     pub fn put_skill_type(&mut self, skill_type: Box<dyn SkillTrait>) {
-        debug_assert!(self.skill_type.is_none(), "skill_type already present - take_skill_type not called?");
+        debug_assert!(
+            self.skill_type.is_none(),
+            "skill_type already present - take_skill_type not called?"
+        );
         self.skill_type = Some(skill_type);
     }
 
@@ -746,17 +972,23 @@ impl Skill {
     // ==========
 
     pub fn update_state(&mut self, args: SkillArgs) {
-        if let Some(st) = &mut self.skill_type { st.update_state_with_level(self.level, args); }
+        if let Some(st) = &mut self.skill_type {
+            st.update_state_with_level(self.level, args);
+        }
     }
 
     pub fn update_state_inline(&mut self, status: &mut super::PlayerStatus) {
-        if let Some(st) = &mut self.skill_type { st.update_state_inline(self.level, status); }
+        if let Some(st) = &mut self.skill_type {
+            st.update_state_inline(self.level, status);
+        }
     }
 
     pub fn has_inline_act(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_inline_act()) }
 
     pub fn act_inline(&mut self, targets: Vec<PlrId>, smart: bool, ctx: &mut InlineCtx) {
-        let Some(st) = &mut self.skill_type else { return; };
+        let Some(st) = &mut self.skill_type else {
+            return;
+        };
         let current_level = self.level;
         st.act_inline(current_level, targets, smart, ctx);
         let post_level = st.post_act_level(current_level);
@@ -766,7 +998,9 @@ impl Skill {
     }
 
     pub fn act(&mut self, targets: Vec<PlrId>, smart: bool, args: SkillArgs) {
-        let Some(st) = &mut self.skill_type else { return; };
+        let Some(st) = &mut self.skill_type else {
+            return;
+        };
         let current_level = self.level;
         st.act_with_level(current_level, targets, smart, args);
         let post_level = st.post_act_level(current_level);
@@ -783,15 +1017,21 @@ impl Skill {
     }
 
     pub fn pre_action(&mut self, args: SkillArgs) {
-        if let Some(st) = &mut self.skill_type { st.pre_action_with_level(self.level, args); }
+        if let Some(st) = &mut self.skill_type {
+            st.pre_action_with_level(self.level, args);
+        }
     }
 
     pub fn pre_action_select(&mut self, smart: bool, args: SkillArgs) -> bool {
-        self.skill_type.as_mut().is_some_and(|st| st.pre_action_select_with_level(self.level, smart, args))
+        self.skill_type
+            .as_mut()
+            .is_some_and(|st| st.pre_action_select_with_level(self.level, smart, args))
     }
 
     pub fn pre_action_clear_forced(&mut self, smart: bool, args: SkillArgs) -> bool {
-        self.skill_type.as_mut().is_some_and(|st| st.pre_action_clear_forced_with_level(self.level, smart, args))
+        self.skill_type
+            .as_mut()
+            .is_some_and(|st| st.pre_action_clear_forced_with_level(self.level, smart, args))
     }
 
     pub fn pre_action_accumulate(
@@ -816,7 +1056,9 @@ impl Skill {
     }
 
     pub fn post_action(&mut self, args: SkillArgs) {
-        if let Some(st) = &mut self.skill_type { st.post_action_with_level(self.level, args); }
+        if let Some(st) = &mut self.skill_type {
+            st.post_action_with_level(self.level, args);
+        }
     }
 
     pub fn post_action_phase(&self) -> PostActionPhase {
@@ -841,18 +1083,20 @@ impl Skill {
         }
     }
 
-    pub fn post_defend_priority(&self) -> i32 {
-        self.skill_type.as_ref().map_or(0, |st| st.post_defend_priority())
-    }
+    pub fn post_defend_priority(&self) -> i32 { self.skill_type.as_ref().map_or(0, |st| st.post_defend_priority()) }
 
     pub fn post_damage(&mut self, dmg: i32, caster: PlrId, args: SkillArgs) {
-        if let Some(st) = &mut self.skill_type { st.post_damage_with_level(self.level, dmg, caster, args); }
+        if let Some(st) = &mut self.skill_type {
+            st.post_damage_with_level(self.level, dmg, caster, args);
+        }
     }
 
     pub fn post_damage_priority(&self) -> i32 { self.post_damage_priority }
 
     pub fn die(&mut self, oldhp: i32, caster: PlrId, args: SkillArgs) -> bool {
-        self.skill_type.as_mut().is_some_and(|st| st.die_with_level(&mut self.level, oldhp, caster, args))
+        self.skill_type
+            .as_mut()
+            .is_some_and(|st| st.die_with_level(&mut self.level, oldhp, caster, args))
     }
 
     pub fn kill(&mut self, target: PlrId, args: SkillArgs) -> bool {
@@ -873,35 +1117,40 @@ impl Skill {
         }
     }
 
-    pub fn has_inline_pre_action(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.has_inline_pre_action())
-    }
+    pub fn has_inline_pre_action(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_inline_pre_action()) }
 
     pub fn pre_action_inline(&mut self, ctx: &mut InlineCtx) {
-        if let Some(st) = &mut self.skill_type { st.pre_action_inline(ctx); }
+        if let Some(st) = &mut self.skill_type {
+            st.pre_action_inline(ctx);
+        }
     }
 
-    pub fn has_inline_post_action(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_action())
-    }
+    pub fn has_inline_post_action(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_action()) }
 
     pub fn post_action_inline(&mut self, ctx: &mut InlineCtx) {
-        if let Some(st) = &mut self.skill_type { st.post_action_inline(ctx); }
+        if let Some(st) = &mut self.skill_type {
+            st.post_action_inline(ctx);
+        }
     }
 
-    pub fn has_inline_post_damage(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_damage())
-    }
+    pub fn has_inline_post_damage(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_damage()) }
 
     pub fn post_damage_inline(&mut self, ctx: &mut InlineCtx) {
-        if let Some(st) = &mut self.skill_type { st.post_damage_inline(self.level, ctx); }
+        if let Some(st) = &mut self.skill_type {
+            st.post_damage_inline(self.level, ctx);
+        }
     }
 
-    pub fn has_inline_pre_defend(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.has_inline_pre_defend())
-    }
+    pub fn has_inline_pre_defend(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_inline_pre_defend()) }
 
-    pub fn pre_defend_inline(&mut self, ctx: &mut InlineCtx, atp: f64, is_mag: bool, caster: PlrId, on_damage: &OnDamageFunc) -> f64 {
+    pub fn pre_defend_inline(
+        &mut self,
+        ctx: &mut InlineCtx,
+        atp: f64,
+        is_mag: bool,
+        caster: PlrId,
+        on_damage: &OnDamageFunc,
+    ) -> f64 {
         match &mut self.skill_type {
             Some(st) => st.pre_defend_inline(self.level, ctx, atp, is_mag, caster, on_damage),
             None => atp,
@@ -916,19 +1165,21 @@ impl Skill {
     }
 
     pub fn clear_protect_to(&mut self) {
-        if let Some(st) = &mut self.skill_type { st.clear_protect_to(); }
+        if let Some(st) = &mut self.skill_type {
+            st.clear_protect_to();
+        }
     }
 
-    pub fn protect_to_id(&self) -> Option<PlrId> {
-        self.skill_type.as_ref().and_then(|st| st.protect_to_id())
-    }
+    pub fn protect_to_id(&self) -> Option<PlrId> { self.skill_type.as_ref().and_then(|st| st.protect_to_id()) }
 
     pub fn prob(&self, smart: bool, args: SkillArgs) -> bool {
         self.skill_type.as_ref().is_some_and(|st| st.prob(self.level, smart, args))
     }
 
     pub fn target_domain(&self) -> SkillTargetDomain {
-        self.skill_type.as_ref().map_or(SkillTargetDomain::EnemyAlive, |st| st.target_domain_with_level(self.level))
+        self.skill_type
+            .as_ref()
+            .map_or(SkillTargetDomain::EnemyAlive, |st| st.target_domain_with_level(self.level))
     }
 
     pub fn allows_empty_targets(&self) -> bool {
@@ -936,15 +1187,21 @@ impl Skill {
     }
 
     pub fn select_target_count(&self, smart: bool) -> usize {
-        self.skill_type.as_ref().map_or(1, |st| st.select_target_count_with_level(self.level, smart))
+        self.skill_type
+            .as_ref()
+            .map_or(1, |st| st.select_target_count_with_level(self.level, smart))
     }
 
     pub fn valid_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.valid_target_with_level(self.level, target, smart, args))
+        self.skill_type
+            .as_ref()
+            .is_some_and(|st| st.valid_target_with_level(self.level, target, smart, args))
     }
 
     pub fn score_target(&self, target: PlrId, smart: bool, args: SkillArgs) -> f64 {
-        self.skill_type.as_ref().map_or(f64::MIN, |st| st.score_target_with_level(self.level, target, smart, args))
+        self.skill_type
+            .as_ref()
+            .map_or(f64::MIN, |st| st.score_target_with_level(self.level, target, smart, args))
     }
 
     pub fn select_targets(&self, candidates: &[PlrId], smart: bool, args: SkillArgs) -> Vec<PlrId> {
@@ -958,33 +1215,21 @@ impl Skill {
         self.skill_type.as_ref().is_some_and(|st| st.uses_custom_target_selection())
     }
 
-    pub fn uses_attack_aa_sampling(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.uses_attack_aa_sampling())
-    }
+    pub fn uses_attack_aa_sampling(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.uses_attack_aa_sampling()) }
 
-    pub fn has_action_impl(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.has_action_impl())
-    }
+    pub fn has_action_impl(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_action_impl()) }
 
     pub fn clear_positive_runtime_priority(&self) -> i32 {
         self.skill_type.as_ref().map_or(i32::MAX, |st| st.clear_positive_runtime_priority())
     }
 
-    pub fn charge_runtime_active(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.charge_runtime_active())
-    }
+    pub fn charge_runtime_active(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.charge_runtime_active()) }
 
-    pub fn charge_step(&self) -> i32 {
-        self.skill_type.as_ref().map_or(0, |st| st.charge_step())
-    }
+    pub fn charge_step(&self) -> i32 { self.skill_type.as_ref().map_or(0, |st| st.charge_step()) }
 
-    pub fn assassinate_target(&self) -> Option<PlrId> {
-        self.skill_type.as_ref().and_then(|st| st.assassinate_target())
-    }
+    pub fn assassinate_target(&self) -> Option<PlrId> { self.skill_type.as_ref().and_then(|st| st.assassinate_target()) }
 
-    pub fn has_inline_post_kill(&self) -> bool {
-        self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_kill())
-    }
+    pub fn has_inline_post_kill(&self) -> bool { self.skill_type.as_ref().is_some_and(|st| st.has_inline_post_kill()) }
 
     pub fn dynamic_update_state_enabled(&self) -> bool {
         self.level > 0 && self.skill_type.as_ref().is_some_and(|st| st.dynamic_update_state_enabled())
@@ -995,9 +1240,7 @@ impl Skill {
     /// `md5.js` 里的 merge 不是按“技能 key / 技能 id 是否相等”比较，而是按
     /// `k1[slot]` 里的“技能对象类型”逐槽位比较；Rust 这边没有直接暴露 Dart/JS 的
     /// `runtimeType`，因此需要一个稳定的“当前 SkillTrait 实现类型”视图来对照。
-    pub fn debug_skill_type_name(&self) -> &'static str {
-        self.skill_type.as_ref().map_or("<None>", |st| st.runtime_kind())
-    }
+    pub fn debug_skill_type_name(&self) -> &'static str { self.skill_type.as_ref().map_or("<None>", |st| st.runtime_kind()) }
 
     /// 是否与另一技能拥有相同的运行时实现类型。
     ///

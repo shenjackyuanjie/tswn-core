@@ -107,6 +107,14 @@ pub enum ParsedCommand {
         /// 最低胜率阈值 (0-10000)；仅在终端显示平均胜率不低于此值的选手。
         min_wr: Option<u16>,
     },
+    NamerPf {
+        /// 每行一个名字组，组内可用 `+` 分隔。
+        raw: String,
+        /// 每个评分项的模拟场数。
+        n: usize,
+        /// 显式指定的 benchmark 线程数。
+        threads: Option<usize>,
+    },
     IconShow {
         /// 要展示图标的玩家名字列表。
         names: Vec<String>,
@@ -120,6 +128,10 @@ pub enum ParsedCommand {
         dir: PathBuf,
         /// 要保存图标的玩家名字列表。
         names: Vec<String>,
+    },
+    ToDiy {
+        /// 玩家名字（namerena raw 格式）。
+        raw: String,
     },
 }
 
@@ -172,8 +184,18 @@ enum CliCommand {
     FightDiff(FightDiffCommand),
     /// 运行 benchmark 相关功能。
     Bench(BenchCommand),
+    /// 运行与 ica-plugin `/namer-pf` 相同的四项评分。
+    #[command(name = "namer-pf", verbatim_doc_comment)]
+    NamerPf(NamerPfCommand),
     /// 玩家图标相关功能。
     Icon(IconCommand),
+    /// 将名字转换为 DIY/OL overlay 格式。
+    ///
+    /// 示例:
+    ///   tswn-cli to-diy help
+    ///   tswn-cli to-diy "mario@team+fire"
+    #[command(name = "to-diy", verbatim_doc_comment)]
+    ToDiy(ToDiyCommand),
 }
 
 #[derive(Debug, Args)]
@@ -360,6 +382,26 @@ struct BenchBatchRateCommand {
 }
 
 #[derive(Debug, Args)]
+struct NamerPfCommand {
+    /// 输入来源参数；每行一个名字组，组内可用 `+` 分隔。
+    #[command(flatten)]
+    input: InputArgs,
+
+    /// 每个评分项的运行场数。
+    #[arg(
+        short = 'n',
+        long = "count",
+        default_value_t = 10000,
+        value_name = "N"
+    )]
+    count: usize,
+
+    /// 指定 benchmark 线程数。
+    #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
+    thread: Option<usize>,
+}
+
+#[derive(Debug, Args)]
 struct BenchOptions {
     /// 运行场数。
     #[arg(
@@ -459,6 +501,15 @@ struct IconSaveCommand {
     names: Vec<String>,
 }
 
+#[derive(Debug, Args)]
+struct ToDiyCommand {
+    /// 玩家名字（namerena raw 格式）。
+    ///
+    /// 支持 @ 队伍名和 + 武器名，但 overlay 输出中武器不计入。
+    #[arg(required = true, value_name = "NAME")]
+    name: String,
+}
+
 /// 解析命令行参数，并转换成内部使用的结构化命令。
 pub fn parse() -> Result<ParsedCli, clap::Error> {
     let cli = Cli::try_parse()?;
@@ -530,6 +581,11 @@ impl ParsedCli {
                     }
                 }
             },
+            CliCommand::NamerPf(cmd) => ParsedCommand::NamerPf {
+                raw: cmd.input.read_or_stdin()?,
+                n: cmd.count.max(1),
+                threads: cmd.thread,
+            },
             CliCommand::Icon(IconCommand { command }) => match command {
                 IconSubcommand::Show(cmd) => ParsedCommand::IconShow { names: cmd.names },
                 IconSubcommand::B64(cmd) => ParsedCommand::IconB64 { names: cmd.names },
@@ -538,6 +594,7 @@ impl ParsedCli {
                     names: cmd.names,
                 },
             },
+            CliCommand::ToDiy(cmd) => ParsedCommand::ToDiy { raw: cmd.name },
         };
         Ok(Self { command })
     }

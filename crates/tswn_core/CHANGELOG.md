@@ -1,5 +1,181 @@
 # 更新日志
 
+## [0.3.8] - 2026-05-21
+
+### DIY / Overlay
+
+- 重构 DIY 技能存储结构：技能覆盖从按名称映射调整为保持顺序的 `Vec`，移除额外的 `skill_order` 字段，降低构造与导出路径中的查找和维护成本。
+- 修复普通构造与 DIY 构造中 `LastBoost` / `SlotBoost` 的应用顺序，使末位翻倍、末位加成和基础等级覆盖的语义更稳定。
+- 修复 DIY 分身技能重建时的重复加成问题，避免 clone 技能在衰减下限和 overlay 加成之间被二次放大。
+- 优化 `to-diy` 导出：跳过 0 级技能并移除由此产生的多余逗号，输出更紧凑且更接近实际有效配置。
+- 更新 DIY 文档，补充 ordered skill slots、clone 继承和验证状态相关说明。
+
+### 性能优化
+
+- 针对引擎热路径做了一轮较大规模优化，减少回合推进、玩家状态访问和技能槽处理中的额外开销。
+- 跳过空的 `pre-step`、action 状态、defend / damage hook 路径，降低无效果回调在大量对局中的基础成本。
+- 优化 DIY 技能槽去重与导出路径，减少重复技能槽和字符串构造带来的额外分配。
+- 调整 release benchmark 配置，启用单 codegen unit，便于获得更稳定的性能采样结果。
+- 降低 benchmark runner 自身开销，使固定样本性能数据更能反映核心引擎消耗。
+
+### 跟踪与验证工具
+
+- 新增 / 扩展 Rust 侧 track 工具，用于 case generation、DIY roundtrip、性能样本跟踪和固定样本对比。
+- 固定性能样本从 20 个扩展到 30 个，并新增分组汇总，便于观察 1v1、多人混战、组队等不同类型对局的优化收益。
+- 更新性能跟踪文档与固定样本结果，记录 `0.3.7` 基线及本轮优化目标。
+
+### 兼容性说明
+
+- 本次以 DIY 行为修复和性能优化为主，不刻意引入新的公开玩法语义。
+- DIY / Overlay 内部结构有所调整，直接依赖 `PlayerOverlay.skills` 具体类型的调用方需要按新的 ordered skill slots 表达方式适配。
+
+## [0.3.7] - 2026-05-18
+
+### DIY / Overlay
+
+- 新增 `SkillBoost` 枚举，用于更精确表达技能加成类型，支持普通等级、末位加成和末位翻倍三种语义。
+- `PlayerOverlay.skills` 从单纯等级映射扩展为支持 `SkillBoost` 结构，DIY / Overlay 表达能力更完整。
+- 新增 `name_factor_enabled` 开关，可按需禁用 `name_factor` 对属性的缩放影响。
+- DIY 模式下，若显式提供属性或技能覆盖，武器效果将不再参与构造，避免混入非 DIY 因素。
+
+### 格式与导出
+
+- 扩展紧凑 DIY 格式与 `ol:` JSON 格式，支持技能值写法如 `5`、`40+30`、`2*46`。
+- 新增 `Player::to_diy_compact()`，可将已构造玩家导出为紧凑 DIY 字符串。
+- 新增 `Player::to_ol_json()`，可将玩家导出为 `ol:` JSON 格式。
+- 新增 CLI 子命令 `tswn-cli to-diy <name>`，可直接把名字转换为 DIY / OL 输出。
+
+### 修复
+
+- 修复 DIY clone 重建时的技能衰减下限处理，重新应用 `SkillBoost` 规则，避免分身后的技能等级下限失真。
+- 修复紧凑 DIY 格式中 HP 处理不一致的问题：仅前七围做 `+-36` 换算，HP 保持原值。
+- 修复 `split_weapon_overlay` 对 JSON 字符串内 `+` 的误切分问题，避免如 `"40+30"` 这类技能值被错误解析。
+
+### 文档
+
+- 更新 `docs/DIY.md`，补充 SkillBoost、DIY clone、导出与 CLI 用法。
+- 新增 `docs/analysis/skill_decay.md` 与 `docs/analysis/clone_mechanism.md`。
+
+## [0.3.6] - 2026-05-18
+
+### CLI
+
+- 新增 `namer-pf` 命令：支持按行输入玩家组、组内用 `+` 分隔成员，输出 `pp|pd|qp|qd` 四项评分及总分，便于快速做名字评分对比。
+- bench 相关评分路径补充了解析与执行辅助逻辑，方便复用同一套评分入口。
+
+### 修复
+
+- 修复玩家升级中的 `TestEx` 特殊路径，避免同队升级时出现额外污染。
+- 补充 `Player::normal_raw_name_base`，使普通玩家构造时的底板语义更接近原始实现。
+- 修复召唤物 / 分身复用时的运行时状态残留问题：复用对象时会重置状态并恢复 owner 标记。
+- 调整 `post_defend` 状态清理流程：状态在命中清除条件后立即移除，并按需刷新状态，减少状态滞留带来的运行时偏差。
+- 修复 clone 的 `name_factor` 继承计算，使分身构造时的属性缩放更接近当前对齐语义。
+- 修复 raw score / bench score 路径中的构造方式，使评分对局统一走带 seed 与 `eval_rq` 的构造入口。
+- 修正评分统计中的一处回退问题，最终保持赢家判定逻辑与既有语义一致。
+
+### 行为调整
+
+- raw score / bench score 的内部对局构造改为复用 split 后的 group + seed 初始化路径，减少和普通对战构造分叉。
+- `post_defend` 的 skill / state 执行后状态更新更及时，状态链行为更稳定。
+
+### 测试与文档
+
+- 补充 `namer-pf` 输入解析测试。
+- 更新多份分析文档，重写 `why_ns` 相关说明，补齐当前实现细节。
+
+## [0.3.5] - 2026-05-18
+
+### DIY / Overlay 系统增强
+
+- **新增 `SkillBoost` 枚举**：支持三种技能加成类型以精确建模衰减下限。
+  - `Normal(lv)` — 普通技能，无特殊加成
+  - `SlotBoost { base, boost }` — 末尾座位加成（`base + boost`）
+  - `LastBoost(base)` — 末尾主动技翻倍（`base × 2`）
+- **`PlayerOverlay.skills` 类型变更**：从 `HashMap<String, u32>` 改为 `HashMap<String, SkillBoost>`。
+- **新增 `name_factor_enabled` 字段**（默认 `true`）：设为 `false` 时强制 `name_factor = 0`，八围不缩放。
+- **DIY 模式武器不计入**：当 overlay 包含 `attrs` 或 `skills` 时，`weapon_state` 强制为 `None`。
+- **紧凑 DIY 格式兼容 JS**：前七围 `±36`，HP 不变（与 JS 仅对索引 0~6 做 `-= 36` 的行为一致）。
+
+### 内联格式扩展
+
+- 紧凑格式 `diy[...]` 新增 `SkillBoost` 字符串值支持：
+  - `"sklfire":5` → `Normal(5)`
+  - `"sklheal":"40+30"` → `SlotBoost { base: 40, boost: 30 }`
+  - `"sklshadow":"2*46"` → `LastBoost(46)`
+- JSON 对象格式 `ol:{...}` 同步支持上述 SkillBoost 格式，且前七围同样 `±36`。
+
+### DIY 分身后 clone 衰减下限
+
+- **`Skill` 新增 `diy_boost` 字段**：存储 `SkillBoost` 元数据，clone 重建时用于计算衰减下限。
+- **`SkillStorage` 新增 `is_diy` 标记**：clone 重建时检测 owner 是否为 DIY 构建。
+- **DIY clone 加成重新执行**：clamp 到 owner 当前等级后，对 `LastBoost` 执行翻倍（`level *= 2`）、对 `SlotBoost` 执行加 boost（`level += boost`），不依赖 name_base。
+- **`build_for_clone` 增强**：当 owner 为 DIY 时，clone 也应用 overlay 技能配置。
+
+### 名字 → DIY/OL 转换
+
+- **新增 `Player::to_diy_compact()`**：将已 build 的玩家导出为紧凑 DIY 格式字符串（含 `@Team`）。
+- **新增 `Player::to_ol_json()`**：将已 build 的玩家导出为 `ol:` JSON 格式字符串。
+- **新增 `skill_name_for_export(id)`**：技能 ID → overlay 兼容名（如 `sklfire`）。
+- **新增 CLI 子命令 `tswn-cli to-diy <name>`**：一键将任意名字转换为 DIY 和 OL 格式输出。
+
+### 修复
+
+- **`split_weapon_overlay` 修复**：新增 `split_by_plus_outside_quotes`，正确处理 JSON 字符串值内的 `+`（如 `"40+30"` 不再被误切分）。
+- **紧凑格式 HP 处理修正**：`parse_diy` 和 `to_diy_compact` 仅对前七围 `±36`，HP 原样保留。
+
+### 文档
+
+- 更新 `docs/DIY.md`，补充 SkillBoost、clone 衰减下限、to-diy CLI 等完整文档。
+- 新增 `docs/analysis/skill_decay.md` — 5 种衰减技能机制详解。
+- 新增 `docs/analysis/clone_mechanism.md` — 分身机制与衰减下限分析。
+
+## [0.3.4] - 2026-05-17
+
+### 对齐
+
+- `RunUpdate::new()` 默认 delay 改为 `delay0=1000`、`delay1=100`，对齐混淆版 `fast-namerena/branch/original/md5.js` 的 `RunUpdate` 构造行为。
+- 补齐混淆版 `md5.js` 中的特殊 delay：
+  - 反弹、护身符、召唤亡灵使用 `delay0=1500`
+  - 雷击每段伤害 update 使用 `delay0=300`
+  - 埼玉“觉得有点饿”使用 `delay1=2000`
+
+### 说明
+
+- 本次只同步战斗日志 / 播放节奏相关字段，不改变战斗判定顺序、目标选择或伤害结算语义。
+- delay 行为以混淆版 `md5.js` 为准，未混淆 Dart 源仅作为辅助参考。
+
+## [0.3.3] - 2026-05-17
+
+### API
+
+- `WorldState` 新增 `alive_group_count()` 访问器，暴露按 JS `Engine.y.a.Q` 语义维护的存活队伍计数。
+- `Storage` 新增 `sync_alive_groups_owned_with_count(groups, alive_group_count)`，用于把 `WorldState` 中维护的 JS 兼容计数与 `alive_groups` 一起同步。
+- `Storage::alive_group_count()` 语义调整为返回同步后的 JS 兼容计数，不再每次按 `alive_groups` 动态重算“当前非空队伍数”。
+
+### 修复
+
+- 修复多队伍战斗中默认攻击 / 技能智能选目标对存活队伍数的判断漂移：目标打分路径改为直接使用 `alive_group_count()`，不再临时扫描全体玩家去推导队伍数。
+- `FireSkill` 初次附加 `FireState` 时改用 `set_state_no_update()`，避免额外状态刷新导致的运行时分叉。
+- `EngineCore` / `Runner` 在同步 `alive_groups` 时显式携带 `WorldState` 维护的 `alive_group_count`，避免 `Storage` 侧重新按当前列表计数而偏离 JS 语义。
+- `Storage` 内部将 `alive_group_count` 收敛为独立存储字段（当前实现为 `AtomicUsize`），保持 `&self` 读取简单的同时保留同步后的计数语义。
+
+### 工具
+
+- `tswn_case_miner` 的 TS trace 缓存签名现在同时包含 `out_md5.ts`、同目录 `md5.js` 和 `assets/**`；修改 JS 依赖或资源后会自动失效旧缓存。
+- `tswn_case_miner` 默认共享缓存目录从 `<repo>/target/tswn_case_miner_cache` 调整为 `<repo>/tests/tswn_case_miner_cache`；`TSWN_CASE_MINER_TS_CACHE_DIR` / `TSWN_CASE_MINER_BUN_CACHE_DIR` 覆盖方式保持不变。
+
+### 测试
+
+- 新增大样本回放回归 `case 66`、`case 67`、`case 68`，覆盖 clone 熟练度 clamp、多队伍目标打分 / 复活 / 召唤链路等近期分叉样例。
+- 为 `tswn_case_miner` 新增 `md5_tool_signature_tracks_md5_js_dependency()`，确认 `md5.js` 修改会触发缓存签名变化。
+
+## [0.3.1] - 2026-05-07
+
+### API
+
+- `SkillTrait` / `Skill` 新增 `charge_step()` 方法，返回 `i32`，让外部能查询 ChargeSkill 当前的蓄力 step 数值。默认返回 `0`，仅 `ChargeSkill` 覆写。
+- `SkillTrait` / `Skill` 新增 `assassinate_target()` 方法，返回 `Option<PlrId>`，让外部能查询 AssassinateSkill 当前锁定的潜行目标 ID。默认返回 `None`，仅 `AssassinateSkill` 覆写。
+
 ## [0.3.0] - 2026-05-07
 
 ### ⚠️ Breaking Changes

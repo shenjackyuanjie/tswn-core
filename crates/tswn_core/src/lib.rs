@@ -1,3 +1,7 @@
+#[cfg(feature = "mimalloc_alloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[cfg(not(feature = "no_debug"))]
 pub mod debug;
 
@@ -49,6 +53,7 @@ pub mod debug {
     pub(crate) use debug_println;
 }
 
+pub mod case_gen;
 pub mod engine;
 pub mod error;
 pub mod player;

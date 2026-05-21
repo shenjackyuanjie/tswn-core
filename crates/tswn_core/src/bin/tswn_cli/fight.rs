@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tswn_core::engine::update::{RunUpdate, UpdateType};
+use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::{Runner, engine, win_rate::groups_win_rate};
 
 use crate::BENCH_PARALLEL_THRESHOLD;
@@ -141,43 +142,88 @@ fn run_raw_score(raw: String, n: usize, threads: Option<usize>) {
         return;
     }
 
-    let target_str = target_group.join("\n");
     println!("=== 原始 namerena 评分测试 ({n} 场) ===");
     println!("目标: {}", target_group.join(", "));
     println!("info: {target_count}");
 
     print!("[普通评分] ");
-    let normal = run_raw_score_inner(&target_str, target_count, "\u{0002}", n, threads);
+    let normal = run_raw_score_inner(&target_group, "\u{0002}", n, threads);
     let ns = normal.0 as f64 * 10_000.0 / normal.1.max(1) as f64;
     println!("普通评分: {:.0} / 10000  ({}/{})", ns, normal.0, normal.1);
 
     print!("[!评分]    ");
-    let bang = run_raw_score_inner(&target_str, target_count, "!", n, threads);
+    let bang = run_raw_score_inner(&target_group, "!", n, threads);
     let bs = bang.0 as f64 * 10_000.0 / bang.1.max(1) as f64;
     println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.0, bang.1);
 }
 
-fn run_raw_score_inner(
-    target_str: &str,
-    target_count: usize,
-    modifier: &str,
-    n: usize,
-    threads: Option<usize>,
-) -> (usize, usize) {
+fn js_score_targets_per_round(target_group: &[String]) -> usize {
+    if target_group.len() == 2 && target_group[0] == target_group[1] {
+        1
+    } else {
+        target_group.len()
+    }
+}
+
+fn js_score_profiles_per_round(target_group: &[String]) -> usize {
+    if target_group.len() == 2 && target_group[0] == target_group[1] {
+        1
+    } else if target_group.len() == 1 {
+        3
+    } else {
+        target_group.len()
+    }
+}
+
+fn build_js_score_match_input(target_group: &[String], modifier: &str, round: usize, bench_input: &mut String) {
+    bench_input.clear();
+
+    let tracked_targets = js_score_targets_per_round(target_group);
+    let profile_count = js_score_profiles_per_round(target_group);
+    let profile_base = engine::PROFILE_START as usize + round * profile_count;
+
+    if target_group.len() == 1 {
+        bench_input.push_str(&target_group[0]);
+        bench_input.push('\n');
+        let _ = std::fmt::Write::write_fmt(bench_input, format_args!("{}@{modifier}", profile_base));
+        bench_input.push_str("\n\n");
+        let _ = std::fmt::Write::write_fmt(
+            bench_input,
+            format_args!("{}@{modifier}\n{}@{modifier}", profile_base + 1, profile_base + 2),
+        );
+        return;
+    }
+
+    for (idx, name) in target_group.iter().take(tracked_targets).enumerate() {
+        if idx > 0 {
+            bench_input.push('\n');
+        }
+        bench_input.push_str(name);
+    }
+    bench_input.push_str("\n\n");
+    for offset in 0..profile_count {
+        if offset > 0 {
+            bench_input.push('\n');
+        }
+        let _ = std::fmt::Write::write_fmt(bench_input, format_args!("{}@{modifier}", profile_base + offset));
+    }
+}
+
+fn run_raw_score_inner(target_group: &[String], modifier: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
     let workers = resolve_raw_workers(threads, n);
 
     if workers <= 1 || n < BENCH_PARALLEL_THRESHOLD {
-        return run_raw_score_range(target_str, target_count, modifier, 0, n, true);
+        return run_raw_score_range(target_group, modifier, 0, n, true);
     }
 
     let next = Arc::new(AtomicUsize::new(0));
     let mut handles = Vec::with_capacity(workers);
     for _ in 0..workers {
-        let target_str = target_str.to_string();
+        let target_group = target_group.to_vec();
         let modifier = modifier.to_string();
         let next = Arc::clone(&next);
         handles.push(std::thread::spawn(move || {
-            run_raw_score_worker(target_str.as_str(), target_count, modifier.as_str(), next.as_ref(), n)
+            run_raw_score_worker(&target_group, modifier.as_str(), next.as_ref(), n)
         }));
     }
 
@@ -191,45 +237,26 @@ fn run_raw_score_inner(
     (wins, total)
 }
 
-fn run_raw_score_range(
-    target_str: &str,
-    target_count: usize,
-    modifier: &str,
-    start: usize,
-    end: usize,
-    show_progress: bool,
-) -> (usize, usize) {
+fn run_raw_score_range(target_group: &[String], modifier: &str, start: usize, end: usize, show_progress: bool) -> (usize, usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut progress_printed = false;
-    let mut targets = String::with_capacity(target_count.saturating_mul(24));
-    let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
+    let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     for i in start..end {
-        targets.clear();
-        let base = tswn_core::engine::PROFILE_START as usize + i * target_count;
-        for offset in 0..target_count {
-            if offset > 0 {
-                targets.push('\n');
-            }
-            let _ = std::fmt::Write::write_fmt(&mut targets, format_args!("{}@{modifier}", base + offset));
-        }
+        build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
-        bench_input.clear();
-        bench_input.push_str(target_str);
-        bench_input.push_str("\n\n");
-        bench_input.push_str(&targets);
-
-        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+        let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
+        let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
 
         runner.run_to_completion();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|w| team0_roster.contains(w))
+            && winners.iter().any(|winner| target_team.contains(winner))
         {
             wins += 1;
         }
@@ -244,11 +271,10 @@ fn run_raw_score_range(
     (wins, total)
 }
 
-fn run_raw_score_worker(target_str: &str, target_count: usize, modifier: &str, next: &AtomicUsize, end: usize) -> (usize, usize) {
+fn run_raw_score_worker(target_group: &[String], modifier: &str, next: &AtomicUsize, end: usize) -> (usize, usize) {
     let mut wins = 0usize;
     let mut total = 0usize;
-    let mut targets = String::with_capacity(target_count.saturating_mul(24));
-    let mut bench_input = String::with_capacity(target_str.len() + target_count.saturating_mul(24) + 3);
+    let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     loop {
         let i = next.fetch_add(1, Ordering::Relaxed);
@@ -256,30 +282,19 @@ fn run_raw_score_worker(target_str: &str, target_count: usize, modifier: &str, n
             break;
         }
 
-        targets.clear();
-        let base = tswn_core::engine::PROFILE_START as usize + i * target_count;
-        for offset in 0..target_count {
-            if offset > 0 {
-                targets.push('\n');
-            }
-            let _ = std::fmt::Write::write_fmt(&mut targets, format_args!("{}@{modifier}", base + offset));
-        }
+        build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
-        bench_input.clear();
-        bench_input.push_str(target_str);
-        bench_input.push_str("\n\n");
-        bench_input.push_str(&targets);
-
-        let mut runner = match Runner::new_from_namerena_raw(bench_input.clone()) {
+        let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };
-        let team0_roster: Vec<usize> = runner.input_groups.first().cloned().unwrap_or_default();
+        let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
 
         runner.run_to_completion();
         total += 1;
         if let Some(ref winners) = runner.world.winner
-            && winners.iter().any(|w| team0_roster.contains(w))
+            && winners.iter().any(|winner| target_team.contains(winner))
         {
             wins += 1;
         }
@@ -351,6 +366,16 @@ mod tests {
         let group_count = groups.iter().filter(|g| !g.is_empty()).count();
 
         assert_eq!(group_count, 2);
+    }
+
+    #[test]
+    fn raw_score_single_target_builds_js_match_shape() {
+        let single = ["aaaaa".to_string()];
+        let mut bench_input = String::new();
+        build_js_score_match_input(&single, "!", 0, &mut bench_input);
+        assert_eq!(js_score_targets_per_round(&single), 1);
+        assert_eq!(js_score_profiles_per_round(&single), 3);
+        assert_eq!(bench_input, "aaaaa\n33554431@!\n\n33554432@!\n33554433@!");
     }
 
     #[test]

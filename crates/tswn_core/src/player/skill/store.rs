@@ -104,6 +104,10 @@ pub struct SkillStorage {
     pub post_kill: Vec<SkillKey>,
     // 别的什么东西
     pub pending_clear_states: bool,
+    /// 标记此 SkillStorage 是否由 DIY overlay 构建。
+    ///
+    /// 用于 clone 重建时判断是否需要走 DIY 衰减下限逻辑。
+    pub is_diy: bool,
 
     // 快速路径：是否有任意技能注册了内联版本。
     // 仅在 register_skill_proc / clear_proc 中更新
@@ -114,11 +118,13 @@ pub struct SkillStorage {
 }
 
 impl SkillStorage {
-    pub fn new() -> Self {
+    pub fn new() -> Self { Self::with_skill_capacity(0) }
+
+    pub fn with_skill_capacity(skill_capacity: usize) -> Self {
         Self {
-            store: FoldHashMap::new(),
-            slot_skill: Vec::new(),
-            skill: Vec::new(),
+            store: FoldHashMap::with_capacity(skill_capacity),
+            slot_skill: Vec::with_capacity(skill_capacity),
+            skill: Vec::with_capacity(skill_capacity),
             disabled_action: FoldHashSet::new(),
             update_states: Vec::new(),
             meta: FoldHashSet::new(),
@@ -133,6 +139,7 @@ impl SkillStorage {
             post_death: Vec::new(),
             post_kill: Vec::new(),
             pending_clear_states: false,
+            is_diy: false,
             has_inline_pre_action: false,
             has_inline_post_action: false,
             has_inline_post_kill: false,
@@ -175,13 +182,17 @@ impl SkillStorage {
             ProcKind::PreAction => {
                 if self.pre_action_membership.insert(key) {
                     self.pre_action.push(key);
-                    if skill.is_some_and(|s| s.has_inline_pre_action()) { self.has_inline_pre_action = true; }
+                    if skill.is_some_and(|s| s.has_inline_pre_action()) {
+                        self.has_inline_pre_action = true;
+                    }
                 }
             }
             ProcKind::PostAction => {
                 if !self.post_action.contains(&key) {
                     self.post_action.push(key);
-                    if skill.is_some_and(|s| s.has_inline_post_action()) { self.has_inline_post_action = true; }
+                    if skill.is_some_and(|s| s.has_inline_post_action()) {
+                        self.has_inline_post_action = true;
+                    }
                 }
             }
             ProcKind::PreDefend => {
@@ -207,7 +218,9 @@ impl SkillStorage {
                 } else {
                     self.post_damage.push(key);
                 }
-                if skill.is_some_and(|s| s.has_inline_post_damage()) { self.has_inline_post_damage = true; }
+                if skill.is_some_and(|s| s.has_inline_post_damage()) {
+                    self.has_inline_post_damage = true;
+                }
             }
             ProcKind::PostDeath => {
                 if !self.post_death.contains(&key) {
@@ -217,7 +230,9 @@ impl SkillStorage {
             ProcKind::PostKill => {
                 if !self.post_kill.contains(&key) {
                     self.post_kill.push(key);
-                    if skill.is_some_and(|s| s.has_inline_post_kill()) { self.has_inline_post_kill = true; }
+                    if skill.is_some_and(|s| s.has_inline_post_kill()) {
+                        self.has_inline_post_kill = true;
+                    }
                 }
             }
         }

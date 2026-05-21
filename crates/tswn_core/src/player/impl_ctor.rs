@@ -51,8 +51,34 @@ impl Player {
     // /// 按照 namerena 的原始 new
     // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
-    /// 创建一个新的玩家
+    /// 创建一个新的玩家（便捷入口，委托给 [`new_and_init_with_overlay`]）。
     pub fn new_and_init(team: Option<String>, name: String, weapon: Option<String>, storage: Arc<Storage>) -> PlayerResult<Self> {
+        Self::new_and_init_with_overlay(team, name, weapon, None, storage)
+    }
+
+    /// 创建一个新的玩家，支持传入 overlay 覆盖数据。
+    ///
+    /// overlay 可以覆盖八围属性、技能等级和武器名。
+    /// 如果 overlay 提供了武器名，会覆盖 `weapon` 参数。
+    /// 如果 overlay 提供了技能映射，skill_id 顺序会使用固定布局而非随机洗牌。
+    pub fn new_and_init_with_overlay(
+        team: Option<String>,
+        name: String,
+        weapon: Option<String>,
+        overlay: Option<PlayerOverlay>,
+        storage: Arc<Storage>,
+    ) -> PlayerResult<Self> {
+        Self::new_and_init_inner(team, name, weapon, overlay, storage, false)
+    }
+
+    fn new_and_init_inner(
+        team: Option<String>,
+        name: String,
+        weapon: Option<String>,
+        overlay: Option<PlayerOverlay>,
+        storage: Arc<Storage>,
+        force_normal_type: bool,
+    ) -> PlayerResult<Self> {
         // 先校验长度
         if let Some(t) = team.as_ref()
             && t.len() > TEAM_MAX_LEN
@@ -63,7 +89,9 @@ impl Player {
             return Err(PlayerError::NameTooLong(name.len(), name.len()));
         }
         let player_type = {
-            if let Some(t) = team.as_ref() {
+            if force_normal_type {
+                PlayerType::Normal
+            } else if let Some(t) = team.as_ref() {
                 match t.as_str() {
                     "!" => {
                         if BOSS_NAMES.contains(&name.as_str()) {
@@ -111,7 +139,7 @@ impl Player {
                 name_base.push((m & 63) as u8);
             }
         }
-        // UNWRAP SAFE: name_base.len() == 128
+        // 这里可以安全 unwrap：name_base.len() 恒为 128。
         let mut raw_name_base: [u8; 128] = name_base
             .as_slice()
             .try_into()
@@ -154,21 +182,36 @@ impl Player {
             _ => {}
         }
 
-        // 技能顺序
-        let mut skills = (0..40).collect::<Vec<u32>>();
-        rand.sort_list(&mut skills);
+        // 技能 ID 顺序（skil_id）：
+        // - overlay 有技能映射时：使用固定顺序（主动→被动），保证槽位稳定；
+        // - 否则：正常随机洗牌。
+        let skills = if overlay.as_ref().and_then(|ov| ov.skills.as_ref()).is_some() {
+            crate::player::skill::diy_skill_order()
+                .into_iter()
+                .map(|id| id as u32)
+                .collect::<Vec<u32>>()
+        } else {
+            let mut skills = (0..40).collect::<Vec<u32>>();
+            rand.sort_list(&mut skills);
+            skills
+        };
 
         // JS bf(): Test1/Test2/TestEx 的 name_factor 强制为 0
+        // overlay.name_factor_enabled = false 时也强制为 0（八围不缩放）
         let name_factor = match player_type {
             PlayerType::Test1 | PlayerType::Test2 | PlayerType::TestEx => 0.0,
             _ => {
-                let eval_rq = storage.eval_rq();
-                let factor_name = eval_name::eval_str_common_with_rq(name.as_str(), true, eval_rq);
-                let factor_team = match team.as_ref() {
-                    Some(team) => eval_name::eval_str_common_with_rq(team.as_str(), true, eval_rq),
-                    None => factor_name,
-                };
-                factor_name.max(factor_team - 6.0)
+                if overlay.as_ref().map(|ov| !ov.name_factor_enabled).unwrap_or(false) {
+                    0.0
+                } else {
+                    let eval_rq = storage.eval_rq();
+                    let factor_name = eval_name::eval_str_common_with_rq(name.as_str(), true, eval_rq);
+                    let factor_team = match team.as_ref() {
+                        Some(team) => eval_name::eval_str_common_with_rq(team.as_str(), true, eval_rq),
+                        None => factor_name,
+                    };
+                    factor_name.max(factor_team - 6.0)
+                }
             }
         };
 
@@ -179,8 +222,21 @@ impl Player {
 
         let id = storage.new_plr_id();
 
-        // 创建武器状态 (JS: new T.Weapon + b3)
-        let weapon_state = weapon.as_deref().and_then(weapons::Weapon::create_state);
+        // overlay 装箱（从栈上移到堆上，减少 Player 结构体大小）
+        let overlay = overlay.map(Box::new);
+
+        // DIY 模式下武器不计入：当 overlay 包含八围或技能覆盖时，武器状态置空。
+        let has_diy_attrs_or_skills = overlay.as_ref().map(|ov| ov.attrs.is_some() || ov.skills.is_some()).unwrap_or(false);
+        // 武器名解析优先级：名字中的 weapon 段 > overlay 中的 weapon 字段
+        let weapon = weapon.or_else(|| overlay.as_ref().and_then(|overlay| overlay.weapon.clone()));
+
+        // 创建武器运行时状态（对应 JS: new T.Weapon + b3）
+        // DIY 模式下武器不计入，weapon_state 强制为 None。
+        let weapon_state = if has_diy_attrs_or_skills {
+            None
+        } else {
+            weapon.as_deref().and_then(weapons::Weapon::create_state)
+        };
 
         Ok(Player {
             team,
@@ -189,6 +245,7 @@ impl Player {
             display_name_override: None,
             minion_name_next_index: 0,
             weapon,
+            overlay,
             player_type,
             sort_int: 0,
             rand,
@@ -205,7 +262,6 @@ impl Player {
             id,
         })
     }
-
     /// 获取当前的 spsum(步数)
     #[inline]
     #[deprecated(note = "请使用 move_point()")]

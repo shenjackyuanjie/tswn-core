@@ -24,8 +24,8 @@
 //!
 //! ### ⚔️ 技能系统
 //! - [`skill`] — 所有技能的基础 trait、技能分发、技能槽管理。
-//!   - [`skill::act`] — 主动技能（吸血、火球、冰冻等共计 ~27 种）。
-//!   - [`skill::skl`] — 被动/防御技能（反击、防御、隐匿等共计 ~13 种）。
+//!   - [`skill::act`] — 主动技能（吸血、火球、冰冻等共 27 种）。
+//!   - [`skill::skl`] — 被动/防御技能（反击、防御、隐匿等共 12 种）。
 //!   - [`skill::store`] — [`SkillStorage`]，管理玩家当前装备的技能列表
 //!     及各阶段触发器（pre_step / pre_action / post_action 等）。
 //!
@@ -77,6 +77,7 @@ pub mod boss;
 pub mod eval_name;
 pub mod icon;
 pub mod icon_render;
+pub mod overlay;
 pub mod skill;
 pub mod state;
 pub mod status;
@@ -88,6 +89,9 @@ pub mod impl_ctor;
 pub mod impl_runtime;
 
 pub use action_targets::*;
+pub use overlay::PlayerOverlay;
+pub use skill::SkillBoost;
+pub use skill::skill_name_for_export;
 pub use state::*;
 pub use status::*;
 
@@ -223,6 +227,11 @@ pub struct Player {
     minion_name_next_index: usize,
     // 玩家装备的武器名称，None 表示无武器
     weapon: Option<String>,
+    /// DIY / overlay 覆盖数据（八围属性、技能等级、武器名）。
+    ///
+    /// `None` 表示无覆盖，走正常随机生成流程。
+    /// `Box` 包装以减少 `Player` 结构体在无 overlay 时的内存占用。
+    pub overlay: Option<Box<PlayerOverlay>>,
     // 玩家类型（普通玩家、Boss、种子等）
     player_type: PlayerType,
     // 技能ID列表
