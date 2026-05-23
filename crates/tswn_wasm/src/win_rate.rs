@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use tswn_core::{PreparedRunner, Runner};
 use wasm_bindgen::prelude::*;
 
-use crate::error::{WasmResult, invalid_input, parse_options, runner_init_failed, to_js_value, win_rate_invalid_groups};
+use crate::error::{WasmResult, invalid_input, runner_init_failed, win_rate_invalid_groups};
 use crate::model::{WinRateOptions, WinRateProgress, WinRateResult, WinRateTiming};
 
 fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<PreparedRunner> {
@@ -148,22 +148,21 @@ pub(crate) fn run_win_rate_sync(raw_input: String, total_rounds: usize, options:
 #[wasm_bindgen]
 impl WinRateSession {
     #[wasm_bindgen(constructor)]
-    pub fn new(raw_input: String, total_rounds: usize, options: Option<JsValue>) -> WasmResult<WinRateSession> {
+    pub fn new(raw_input: String, total_rounds: usize, options: Option<WinRateOptions>) -> WasmResult<WinRateSession> {
         crate::install_panic_hook();
-        let options: WinRateOptions = parse_options(options)?;
+        let options = options.unwrap_or_default();
         Self::new_internal(raw_input, total_rounds, options)
     }
 
     pub fn is_finished(&self) -> bool { self.next_round >= self.total_rounds }
 
-    pub fn progress(&self) -> WasmResult<JsValue> { to_js_value(&self.progress_value()) }
+    pub fn progress(&self) -> WinRateProgress { self.progress_value() }
 
-    pub fn step(&mut self, batch_size: Option<usize>) -> WasmResult<JsValue> {
-        let progress = self.step_internal(batch_size.unwrap_or(100))?;
-        to_js_value(&progress)
+    pub fn step(&mut self, batch_size: Option<usize>) -> WasmResult<WinRateProgress> {
+        self.step_internal(batch_size.unwrap_or(100))
     }
 
-    pub fn result(&self) -> WasmResult<JsValue> { to_js_value(&self.result_value()) }
+    pub fn result(&self) -> WinRateResult { self.result_value() }
 
     pub fn eval_rq(&self) -> f64 { self.eval_rq }
 }

@@ -6,9 +6,9 @@ mod win_rate;
 
 use std::sync::Once;
 
-use error::{WasmResult, invalid_options, parse_options, to_js_value};
+use error::WasmResult;
 pub use fight::FightSession;
-use model::{FightOptions, GroupWinRateResult, WinRateOptions};
+use model::{FightOptions, FightReplay, FightSummary, GroupWinRateResult, WinRateOptions, WinRateResult};
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
 
@@ -50,33 +50,36 @@ pub fn name_to_icon_rgba(name: String) -> Vec<u8> {
 }
 
 #[wasm_bindgen]
-pub fn fight(raw_input: String, options: Option<JsValue>) -> WasmResult<JsValue> {
+pub fn fight(raw_input: String, options: Option<FightOptions>) -> WasmResult<FightReplay> {
     install_panic_hook();
-    let options: FightOptions = parse_options(options)?;
+    let options = options.unwrap_or_default();
     fight::fight_impl(raw_input, options)
 }
 
 #[wasm_bindgen]
-pub fn fight_summary(raw_input: String, options: Option<JsValue>) -> WasmResult<JsValue> {
+pub fn fight_summary(raw_input: String, options: Option<FightOptions>) -> WasmResult<FightSummary> {
     install_panic_hook();
-    let options: FightOptions = parse_options(options)?;
+    let options = options.unwrap_or_default();
     fight::fight_summary_impl(raw_input, options)
 }
 
 #[wasm_bindgen]
-pub fn win_rate_sync(raw_input: String, total_rounds: usize, options: Option<JsValue>) -> WasmResult<JsValue> {
+pub fn win_rate_sync(raw_input: String, total_rounds: usize, options: Option<WinRateOptions>) -> WasmResult<WinRateResult> {
     install_panic_hook();
-    let options: WinRateOptions = parse_options(options)?;
+    let options = options.unwrap_or_default();
     let result = win_rate::run_win_rate_sync(raw_input, total_rounds, options)?;
-    to_js_value(&result)
+    Ok(result)
 }
 
 #[wasm_bindgen]
-pub fn group_win_rate(target: String, against: JsValue, total_rounds: usize, options: Option<JsValue>) -> WasmResult<JsValue> {
+pub fn group_win_rate(
+    target: String,
+    against: Vec<String>,
+    total_rounds: usize,
+    options: Option<WinRateOptions>,
+) -> WasmResult<Vec<GroupWinRateResult>> {
     install_panic_hook();
-    let options: WinRateOptions = parse_options(options)?;
-    let against: Vec<String> =
-        serde_wasm_bindgen::from_value(against).map_err(|err| invalid_options(format!("failed to parse against: {err}")))?;
+    let options = options.unwrap_or_default();
 
     let mut results = Vec::with_capacity(against.len());
     for opponent in against {
@@ -85,5 +88,5 @@ pub fn group_win_rate(target: String, against: JsValue, total_rounds: usize, opt
         results.push(GroupWinRateResult { opponent, result });
     }
 
-    to_js_value(&results)
+    Ok(results)
 }

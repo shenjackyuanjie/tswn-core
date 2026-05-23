@@ -1,6 +1,6 @@
 [package]
 name = "tswn_wasm"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2024"
 
 [lib]
@@ -11,5 +11,6 @@ console_error_panic_hook = "0.1.7"
 js-sys = "0.3.98"
 serde = { version = "1.0.228", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"
+tsify = { version = "0.5.6", default-features = false, features = ["js"] }
 tswn_core = { path = "../tswn_core", features = ["no_debug"] }
 wasm-bindgen = "0.2.121"

@@ -1,5 +1,18 @@
 # 更新日志
 
+## [0.2.8] - 2026-05-24
+
+### 新增
+
+- 为 WASM 数据模型引入 `tsify`，自动生成 `FightReplay`、`PlayerState`、`RoundFrame`、`WinRateResult` 等 TypeScript 领域类型。
+- `FightOptions` / `WinRateOptions` 现在在生成的 `.d.ts` 中暴露为可选字段接口，适合 JS/TS 调用方直接传入配置对象。
+
+### 变更
+
+- `fight(...)`、`fight_summary(...)`、`win_rate_sync(...)`、`group_win_rate(...)` 改为强类型 WASM 边界签名，生成的 TypeScript 声明不再退化为用户级 `any`。
+- `FightSession.players()` / `state()` / `step()` / `run_to_end()` / `winner_ids()` 和 `WinRateSession.progress()` / `step()` / `result()` 改为强类型返回。
+- 清理旧的 `JsValue` 手写序列化 / options 解析辅助路径，统一交给 `tsify` + `serde-wasm-bindgen` 的边界转换处理。
+
 ## [0.2.7] - 2026-05-21
 
 ### 变更

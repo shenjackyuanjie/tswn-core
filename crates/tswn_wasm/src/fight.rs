@@ -11,8 +11,10 @@ use tswn_core::player::skill::{
 use tswn_core::{RunUpdates, Runner};
 use wasm_bindgen::prelude::*;
 
-use crate::error::{WasmResult, internal_error, invalid_input, parse_options, runner_init_failed, to_js_value};
-use crate::model::{FightOptions, FightReplay, FightSummary, PlayerMeta, PlayerState, RoundFrame, UpdateTypeView, UpdateView};
+use crate::error::{WasmResult, internal_error, invalid_input, runner_init_failed};
+use crate::model::{
+    FightOptions, FightReplay, FightSummary, PlayerMeta, PlayerState, RoundFrame, UpdateTypeView, UpdateView, WinnerIds,
+};
 use crate::render::{classify_message_tone, render_update_message};
 
 const WIN_UPDATE_DELAY0_MS: i32 = 3000;
@@ -392,53 +394,45 @@ impl FightSession {
 #[wasm_bindgen]
 impl FightSession {
     #[wasm_bindgen(constructor)]
-    pub fn new(raw_input: String, options: Option<JsValue>) -> WasmResult<FightSession> {
+    pub fn new(raw_input: String, options: Option<FightOptions>) -> WasmResult<FightSession> {
         crate::install_panic_hook();
-        let options = parse_options(options)?;
+        let options = options.unwrap_or_default();
         Self::new_internal(raw_input, options)
     }
 
-    pub fn players(&self) -> WasmResult<JsValue> { to_js_value(&self.players) }
+    pub fn players(&self) -> Vec<PlayerMeta> { self.players.clone() }
 
-    pub fn state(&self) -> WasmResult<JsValue> {
-        let states = collect_states(&self.runner, &self.player_order, self.include_icons)?;
-        to_js_value(&states)
-    }
+    pub fn state(&self) -> WasmResult<Vec<PlayerState>> { collect_states(&self.runner, &self.player_order, self.include_icons) }
 
     pub fn is_finished(&self) -> bool { self.runner.have_winner() }
 
-    pub fn winner_ids(&self) -> WasmResult<JsValue> { to_js_value(&winner_ids(&self.runner)) }
+    pub fn winner_ids(&self) -> WinnerIds { WinnerIds(winner_ids(&self.runner)) }
 
-    pub fn step(&mut self) -> WasmResult<JsValue> {
+    pub fn step(&mut self) -> WasmResult<RoundFrame> {
         let frame = if self.runner.have_winner() {
             self.build_frame(RunUpdates::new())?
         } else {
             let updates = self.runner.main_round();
             self.build_frame(updates)?
         };
-        to_js_value(&frame)
+        Ok(frame)
     }
 
-    pub fn run_to_end(&mut self, limit: Option<usize>) -> WasmResult<JsValue> {
-        let replay = self.run_to_end_internal(limit)?;
-        to_js_value(&replay)
-    }
+    pub fn run_to_end(&mut self, limit: Option<usize>) -> WasmResult<FightReplay> { self.run_to_end_internal(limit) }
 }
 
-pub(crate) fn fight_impl(raw_input: String, options: FightOptions) -> WasmResult<JsValue> {
+pub(crate) fn fight_impl(raw_input: String, options: FightOptions) -> WasmResult<FightReplay> {
     let mut session = FightSession::new_internal(raw_input, options)?;
-    let replay = session.run_to_end_internal(None)?;
-    to_js_value(&replay)
+    session.run_to_end_internal(None)
 }
 
-pub(crate) fn fight_summary_impl(raw_input: String, options: FightOptions) -> WasmResult<JsValue> {
+pub(crate) fn fight_summary_impl(raw_input: String, options: FightOptions) -> WasmResult<FightSummary> {
     let mut session = FightSession::new_internal(raw_input, options)?;
     let replay = session.run_to_end_internal(None)?;
-    let summary = FightSummary {
+    Ok(FightSummary {
         finished: session.runner.have_winner(),
         players: replay.players,
         winner_ids: replay.winner_ids,
         final_states: replay.final_states,
-    };
-    to_js_value(&summary)
+    })
 }

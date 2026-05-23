@@ -1,11 +1,16 @@
 use serde::{Deserialize, Serialize};
+use tsify::Tsify;
 use tswn_core::engine::update::UpdateType;
 use tswn_core::player::skill::act::minion::MinionKind;
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Tsify)]
+#[tsify(from_wasm_abi)]
 pub struct FightOptions {
+    #[tsify(optional)]
     pub eval_rq: Option<f64>,
+    #[tsify(optional)]
     pub include_icons: Option<bool>,
+    #[tsify(optional)]
     pub capture_replay: Option<bool>,
 }
 
@@ -17,9 +22,12 @@ impl FightOptions {
     pub fn capture_replay(&self) -> bool { self.capture_replay.unwrap_or(true) }
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, Tsify)]
+#[tsify(from_wasm_abi)]
 pub struct WinRateOptions {
+    #[tsify(optional)]
     pub eval_rq: Option<f64>,
+    #[tsify(optional)]
     pub thread: Option<u32>,
 }
 
@@ -32,7 +40,8 @@ impl WinRateOptions {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct PlayerMeta {
     pub id: usize,
     pub team_index: usize,
@@ -43,7 +52,8 @@ pub struct PlayerMeta {
     pub icon_png_base64: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct PlayerState {
     pub id: usize,
     pub team_index: usize,
@@ -78,7 +88,8 @@ pub struct PlayerState {
     pub status_labels: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum MinionKindView {
     Clone,
@@ -98,7 +109,8 @@ impl From<MinionKind> for MinionKindView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateTypeView {
     Win,
@@ -116,7 +128,8 @@ impl From<UpdateType> for UpdateTypeView {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageTone {
     /// 普通消息（无特殊视觉效果）
@@ -129,7 +142,8 @@ pub enum MessageTone {
     Knockout,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct UpdateView {
     pub score: u32,
     pub delay0: i32,
@@ -146,7 +160,8 @@ pub struct UpdateView {
     pub tone: MessageTone,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct RoundFrame {
     pub finished: bool,
     pub winner_ids: Vec<usize>,
@@ -156,7 +171,8 @@ pub struct RoundFrame {
     pub total_delay: i32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct FightReplay {
     pub players: Vec<PlayerMeta>,
     pub frames: Vec<RoundFrame>,
@@ -164,7 +180,8 @@ pub struct FightReplay {
     pub final_states: Vec<PlayerState>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct FightSummary {
     pub finished: bool,
     pub players: Vec<PlayerMeta>,
@@ -172,7 +189,13 @@ pub struct FightSummary {
     pub final_states: Vec<PlayerState>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[serde(transparent)]
+#[tsify(into_wasm_abi)]
+pub struct WinnerIds(pub Vec<usize>);
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct WinRateProgress {
     pub done: bool,
     pub rounds_done: usize,
@@ -181,13 +204,15 @@ pub struct WinRateProgress {
     pub percent: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct WinRateTiming {
     pub init_nanos: u64,
     pub fight_nanos: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct WinRateResult {
     pub done: bool,
     pub rounds_done: usize,
@@ -198,7 +223,8 @@ pub struct WinRateResult {
     pub timing: Option<WinRateTiming>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct GroupWinRateResult {
     pub opponent: String,
     pub result: WinRateResult,
