@@ -4,6 +4,9 @@
 默认只读取同时包含 `pp|pd|qp|qd` 和 `tswn:` 的新版 bot 输出，并从
 输出里的 bun 段与 tswn 段重新计算 diff；不依赖消息里已有的 `diff:`
 文本。
+
+`--mode old` 会读取老版只有 bun 分数的 `/namer-pf` 回复，重测时用当前
+tswn-cli 与历史 bun 分数对比。
 """
 
 from __future__ import annotations
@@ -31,6 +34,20 @@ TSWN_SECTION_RE = re.compile(r"(?im)^\s*tswn:\s*$")
 NAMER_PF_COMMAND_RE = re.compile(r"^\s*/namer-pf(?:\s+(?P<rest>.*))?\s*$")
 SCORE_FIELDS = ("pp", "pd", "qp", "qd", "total")
 RETEST_TIMEOUT = 60
+DEFAULT_CONTENT_LIKE_BY_MODE = {
+    "new": "%pp|pd|qp|qd%tswn:%diff%",
+    "old": "%|%|%|%|%",
+    "all": "%|%|%|%|%",
+}
+OLD_LABEL_VALUE_RE = re.compile(
+    r"(?im)"
+    r"(?P<label>"
+    r"pp|pd|qp|qd|sum|total|"
+    r"总分|总计|合计|"
+    r"普通评分|普通双评|普通双|普评|普双|"
+    r"强评分|强双评|强评|强双"
+    r")\s*[:：=]\s*(?P<value>\d+)"
+)
 
 
 @dataclass(slots=True)
@@ -76,9 +93,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--table", default="messages")
     parser.add_argument("--sender-id", default="45620725")
     parser.add_argument(
+        "--mode",
+        choices=("new", "old", "all"),
+        default="new",
+        help=(
+            "解析模式：new 只读新版 bun/tswn 对照输出；"
+            "old 只读老版 bun-only 输出；all 同时兼容两者。"
+        ),
+    )
+    parser.add_argument(
         "--content-like",
-        default="%pp|pd|qp|qd%tswn:%diff%",
-        help="content LIKE 条件；默认只扫新版 `/namer-pf` 对照输出。",
+        default=None,
+        help="content LIKE 条件；不传时按 --mode 选择默认筛选条件。",
     )
     parser.add_argument(
         "--case-id",
@@ -132,7 +158,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="重测时只显示当前仍和 bun 不一致的 case。",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.content_like is None:
+        args.content_like = DEFAULT_CONTENT_LIKE_BY_MODE[args.mode]
+    return args
 
 
 def ensure_utf8_stdio() -> None:
@@ -162,12 +191,82 @@ def parse_score_lines(text: str) -> list[PfScore]:
     return scores
 
 
+def normalize_old_score_label(label: str) -> str | None:
+    key = label.lower()
+    if key in {"pp", "普通评分", "普评"}:
+        return "pp"
+    if key in {"pd", "普通双评", "普通双", "普双"}:
+        return "pd"
+    if key in {"qp", "强评分", "强评"}:
+        return "qp"
+    if key in {"qd", "强双评", "强双"}:
+        return "qd"
+    if key in {"sum", "total", "总分", "总计", "合计"}:
+        return "total"
+    return None
+
+
+def score_from_old_label_values(values: dict[str, int]) -> PfScore | None:
+    if not all(field in values for field in ("pp", "pd", "qp", "qd")):
+        return None
+    return PfScore(
+        pp=values["pp"],
+        pd=values["pd"],
+        qp=values["qp"],
+        qd=values["qd"],
+        total=values.get("total", values["pp"] + values["pd"] + values["qp"] + values["qd"]),
+    )
+
+
+def parse_old_label_scores(text: str) -> list[PfScore]:
+    scores: list[PfScore] = []
+    values: dict[str, int] = {}
+    for match in OLD_LABEL_VALUE_RE.finditer(text):
+        field = normalize_old_score_label(match.group("label"))
+        if field is None:
+            continue
+
+        # 老格式可能一次回复多行输入；遇到重复字段时，先把上一组完整分数收口。
+        if field in values:
+            score = score_from_old_label_values(values)
+            if score is not None:
+                scores.append(score)
+                values = {}
+        values[field] = int(match.group("value"))
+
+    score = score_from_old_label_values(values)
+    if score is not None:
+        scores.append(score)
+    return scores
+
+
+def parse_old_namer_pf_scores(content: str) -> list[PfScore]:
+    # 先支持最常见的管道分数行，再兼容更早的 label: value 文字格式。
+    scores = parse_score_lines(content)
+    if scores:
+        return scores
+    return parse_old_label_scores(content)
+
+
 def parse_namer_pf_sections(content: str) -> tuple[list[PfScore], list[PfScore]]:
     parts = TSWN_SECTION_RE.split(content, maxsplit=1)
     if len(parts) != 2:
         return [], []
     bun_text, tswn_text = parts
     return parse_score_lines(bun_text), parse_score_lines(tswn_text)
+
+
+def parse_namer_pf_content(content: str, mode: str) -> tuple[list[PfScore], list[PfScore]]:
+    if mode == "new":
+        return parse_namer_pf_sections(content)
+
+    bun_scores, tswn_scores = parse_namer_pf_sections(content)
+    if mode == "all" and (bun_scores or tswn_scores):
+        return bun_scores, tswn_scores
+    if mode == "old" and (bun_scores or tswn_scores):
+        return [], []
+
+    return parse_old_namer_pf_scores(content), []
 
 
 def score_to_dict(score: PfScore | None) -> dict[str, Any] | None:
@@ -232,6 +331,15 @@ def extract_namer_pf_raw(raw_content: str) -> str:
     return "\n".join(result_lines)
 
 
+def looks_like_namer_pf_command(raw_content: str) -> bool:
+    for line in raw_content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        return NAMER_PF_COMMAND_RE.match(stripped) is not None
+    return False
+
+
 def input_lines_from_raw(raw: str) -> list[str]:
     return [line.strip() for line in raw.splitlines() if line.strip()]
 
@@ -275,10 +383,11 @@ def build_diff_rows(
 def build_cases(
     messages: list[base.MessageRow],
     replied_messages: dict[str, base.MessageRow],
+    mode: str,
 ) -> list[PfCase]:
     cases: list[PfCase] = []
     for message in messages:
-        bun_scores, tswn_scores = parse_namer_pf_sections(message.content)
+        bun_scores, tswn_scores = parse_namer_pf_content(message.content, mode)
         if not bun_scores and not tswn_scores:
             continue
 
@@ -291,9 +400,10 @@ def build_cases(
             reply_ids=reply_ids,
             inline_reply_contents=inline_reply_contents,
         )
-        raw_input = extract_namer_pf_raw(
-            resolve_primary_reply_content(placeholder, replied_messages)
-        )
+        primary_reply_content = resolve_primary_reply_content(placeholder, replied_messages)
+        if mode in {"old", "all"} and not looks_like_namer_pf_command(primary_reply_content):
+            continue
+        raw_input = extract_namer_pf_raw(primary_reply_content)
         diff_rows = build_diff_rows(
             bun_scores=bun_scores,
             tswn_scores=tswn_scores,
@@ -466,7 +576,8 @@ def resolve_tswn_bin(args: argparse.Namespace, repo_root: Path) -> list[str]:
     if release_bin.exists():
         return [str(release_bin)]
 
-    return ["cargo", "run", "--release", "--bin", "tswn-cli", "--"]
+    # 重测默认必须走 `no_debug`，否则临时调试分支会参与编译并污染性能判断。
+    return ["cargo", "run", "--release", "--features", "no_debug", "--bin", "tswn-cli", "--"]
 
 
 def run_tswn_namer_pf(
@@ -514,6 +625,12 @@ def run_retest(
     args: argparse.Namespace,
     repo_root: Path,
 ) -> None:
+    report_lines: list[str] = []
+
+    def emit(line: str = "") -> None:
+        report_lines.append(line)
+        print(line)
+
     tswn_bin = resolve_tswn_bin(args, repo_root)
     try:
         probe = subprocess.run(
@@ -527,9 +644,9 @@ def run_retest(
         print(f"无法启动 tswn-cli: {' '.join(tswn_bin)} ({error})", file=sys.stderr)
         return
 
-    print(f"tswn-cli: {probe.stdout.strip() or probe.stderr.strip()}")
-    print(f"case 总数: {len(cases)}")
-    print()
+    emit(f"tswn-cli: {probe.stdout.strip() or probe.stderr.strip()}")
+    emit(f"case 总数: {len(cases)}")
+    emit()
 
     tested = 0
     still_diff = 0
@@ -540,7 +657,7 @@ def run_retest(
         raw_input = extract_namer_pf_raw(resolve_primary_reply_content(case, replied_messages))
         if not raw_input:
             errors += 1
-            print(f"[{index}/{len(cases)}] id={case.message.row_id} 跳过: 找不到 /namer-pf 输入")
+            emit(f"[{index}/{len(cases)}] id={case.message.row_id} 跳过: 找不到 /namer-pf 输入")
             continue
 
         scores = run_tswn_namer_pf(
@@ -569,26 +686,31 @@ def run_retest(
         if args.retest_only_diff and not is_diff:
             continue
 
-        print(
+        emit(
             f"[{index}/{len(cases)}] {case.message.date} {case.message.username} "
             f"id={case.message.row_id}"
         )
-        print(f"  当前重测: {'仍不一致' if is_diff else '已一致'}")
+        emit(f"  当前重测: {'仍不一致' if is_diff else '已一致'}")
         for row in retest_rows:
             if not has_nonzero_diff(row) and args.retest_only_diff:
                 continue
             label = f"row[{row.index}]"
             if row.input_line:
                 label += f" {row.input_line}"
-            print(f"  {label}")
-            print(f"    bun     : {format_score(row.bun)}")
-            print(f"    tswn_now: {format_score(row.tswn)}")
-            print(f"    signed(tswn-bun): {compact_diff(row.signed, signed=True)}")
-            print(f"    abs: {compact_diff(row.absolute, signed=False)}")
-        print()
+            emit(f"  {label}")
+            emit(f"    bun     : {format_score(row.bun)}")
+            emit(f"    tswn_now: {format_score(row.tswn)}")
+            emit(f"    signed(tswn-bun): {compact_diff(row.signed, signed=True)}")
+            emit(f"    abs: {compact_diff(row.absolute, signed=False)}")
+        emit()
 
-    print("=" * 50)
-    print(f"测试: {tested}  仍不一致: {still_diff}  已一致: {now_match}  错误: {errors}")
+    emit("=" * 50)
+    emit(f"测试: {tested}  仍不一致: {still_diff}  已一致: {now_match}  错误: {errors}")
+
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str]) -> int:
@@ -624,7 +746,7 @@ def main(argv: list[str]) -> int:
         message_ids=sorted(set(reply_ids)),
     )
 
-    cases = build_cases(candidate_messages, replied_messages)
+    cases = build_cases(candidate_messages, replied_messages, args.mode)
     if args.dedup:
         cases = dedup_cases(cases, replied_messages)
     parsed_count = len(cases)

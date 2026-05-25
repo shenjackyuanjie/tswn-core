@@ -204,9 +204,9 @@ pub fn run_benchmark(
         0 => eprintln!("benchmark: 输入为空或无有效玩家"),
         1 => {
             if let Some(modifier) = score_modifier {
-                run_bench_score_with_modifier(&groups, modifier, n, mode, threads, perf);
+                run_bench_score_with_modifier(&groups, modifier, n, mode, threads, perf, buckets_step);
             } else {
-                run_bench_score(&groups_to_raw(&groups), n, mode, threads, perf);
+                run_bench_score(&groups_to_raw(&groups), n, mode, threads, perf, buckets_step);
             }
         }
         _ => run_bench_winrate(
@@ -611,6 +611,7 @@ fn run_bench_score_with_modifier(
     mode: BenchThreadMode,
     threads: Option<usize>,
     perf: bool,
+    buckets_step: Option<usize>,
 ) {
     let target_group = groups.first().cloned().unwrap_or_default();
     let target_count = target_group.len();
@@ -624,7 +625,11 @@ fn run_bench_score_with_modifier(
     println!("目标: {}", target_group.join(", "));
     println!("info: {target_count}");
 
-    let summary = run_bench_score_inner(&target_group, modifier, n, mode, threads, true);
+    let summary = if let Some(step) = buckets_step.filter(|step| *step > 0) {
+        run_bench_score_with_bucket_output(&target_group, modifier, n, step)
+    } else {
+        run_bench_score_inner(&target_group, modifier, n, mode, threads, true)
+    };
     let score = summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64;
     println!("{label}: {:.0} / 10000  ({}/{})", score, summary.wins, summary.total);
     if perf {
@@ -632,7 +637,7 @@ fn run_bench_score_with_modifier(
     }
 }
 
-fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, perf: bool) {
+fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, perf: bool, buckets_step: Option<usize>) {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let target_group = groups.into_iter().next().unwrap_or_default();
     let target_count = target_group.len();
@@ -646,7 +651,11 @@ fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<u
     println!("info: {target_count}");
 
     print!("[普通评分] ");
-    let normal = run_bench_score_inner(&target_group, "\u{0002}", n, mode, threads, true);
+    let normal = if let Some(step) = buckets_step.filter(|step| *step > 0) {
+        run_bench_score_with_bucket_output(&target_group, "\u{0002}", n, step)
+    } else {
+        run_bench_score_inner(&target_group, "\u{0002}", n, mode, threads, true)
+    };
     let ns = normal.wins as f64 * 10_000.0 / normal.total.max(1) as f64;
     println!("普通评分: {:.0} / 10000  ({}/{})", ns, normal.wins, normal.total);
     if perf {
@@ -654,12 +663,70 @@ fn run_bench_score(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<u
     }
 
     print!("[!评分]    ");
-    let bang = run_bench_score_inner(&target_group, "!", n, mode, threads, true);
+    let bang = if let Some(step) = buckets_step.filter(|step| *step > 0) {
+        run_bench_score_with_bucket_output(&target_group, "!", n, step)
+    } else {
+        run_bench_score_inner(&target_group, "!", n, mode, threads, true)
+    };
     let bs = bang.wins as f64 * 10_000.0 / bang.total.max(1) as f64;
     println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.wins, bang.total);
     if perf {
         print_perf_lines(bang.elapsed, bang.timing, bang.total);
     }
+}
+
+fn run_bench_score_with_bucket_output(target_group: &[String], modifier: &str, n: usize, step: usize) -> BenchSummary {
+    let started_at = Instant::now();
+    let (wins, total, timing) = run_bench_score_range_with_bucket_output(target_group, modifier, 0, n, step);
+    BenchSummary {
+        wins,
+        total,
+        timing,
+        elapsed: started_at.elapsed(),
+    }
+}
+
+fn run_bench_score_range_with_bucket_output(
+    target_group: &[String],
+    modifier: &str,
+    start: usize,
+    end: usize,
+    step: usize,
+) -> (usize, usize, WinRateTiming) {
+    let mut wins = 0usize;
+    let mut total = 0usize;
+    let mut timing = WinRateTiming::default();
+    let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
+
+    for i in start..end {
+        build_js_score_match_input(target_group, modifier, i, &mut bench_input);
+
+        let t_init = Instant::now();
+        let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
+        timing.init_nanos += t_init.elapsed().as_nanos();
+
+        let t_fight = Instant::now();
+        runner.run_to_completion();
+        timing.fight_nanos += t_fight.elapsed().as_nanos();
+        total += 1;
+        if let Some(ref winners) = runner.world.winner
+            && winners.first().is_some_and(|winner| target_team.contains(winner))
+        {
+            wins += 1;
+        }
+
+        if total % step == 0 || i + 1 == end {
+            let score = wins as f64 * 10_000.0 / total.max(1) as f64;
+            println!("评分(分段): {:.0} / 10000  ({wins}/{total})", score);
+        }
+    }
+
+    (wins, total, timing)
 }
 
 fn run_bench_score_inner(

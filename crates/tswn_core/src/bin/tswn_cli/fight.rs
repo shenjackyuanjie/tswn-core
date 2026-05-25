@@ -3,13 +3,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tswn_core::engine::update::{RunUpdate, UpdateType};
+use tswn_core::error::runner::RunnerResult;
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::{Runner, engine, win_rate::groups_win_rate};
 
 use crate::BENCH_PARALLEL_THRESHOLD;
 
 pub fn run(raw: String, out_raw: bool) {
-    let mut runner = match Runner::new_from_namerena_raw(raw) {
+    let mut runner = match new_runner_from_raw_for_cli(raw) {
         Ok(runner) => runner,
         Err(err) => {
             eprintln!("构建对局失败: {err}");
@@ -83,7 +84,7 @@ pub fn run(raw: String, out_raw: bool) {
 }
 
 pub fn run_diff(raw: String) {
-    let mut runner = match Runner::new_from_namerena_raw(raw) {
+    let mut runner = match new_runner_from_raw_for_cli(raw) {
         Ok(runner) => runner,
         Err(err) => {
             eprintln!("构建对局失败: {err}");
@@ -105,7 +106,7 @@ pub fn run_raw(raw: String, n: usize, threads: Option<usize>) {
     }
 
     if !starts_with_raw_bench_header(&trimmed) {
-        let mut runner = match Runner::new_from_namerena_raw(trimmed) {
+        let mut runner = match new_runner_from_raw_for_cli(trimmed) {
             Ok(runner) => runner,
             Err(err) => {
                 eprintln!("构建对局失败: {err}");
@@ -131,6 +132,20 @@ pub fn run_raw(raw: String, n: usize, threads: Option<usize>) {
         2 => run_raw_winrate(body, n, threads),
         _ => eprintln!("raw: !test! 模式只支持 1 组（评分）或 2 组（胜率）输入"),
     }
+}
+
+fn new_runner_from_raw_for_cli(raw: String) -> RunnerResult<Runner> {
+    #[cfg(not(feature = "no_debug"))]
+    {
+        // 评分路径会把 JS 的全局 `rq` 污染为 6。这个环境变量只给单局复盘用，
+        // 方便 raw/fight/diff 用同一套名字强度口径复现评分分叉；`no_debug` 会整段编译掉。
+        if std::env::var_os("TSWN_DEBUG_FORCE_WIN_RATE_RQ").is_some() {
+            let (groups, seed) = Runner::split_namerena_into_groups(raw.clone());
+            return Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ);
+        }
+    }
+
+    Runner::new_from_namerena_raw(raw)
 }
 
 fn run_raw_score(raw: String, n: usize, threads: Option<usize>) {
