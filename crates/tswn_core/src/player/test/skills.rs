@@ -569,6 +569,61 @@ fn protect_redirects_damage_to_protector() {
 }
 
 #[test]
+fn ice_protect_uses_js_float_boundary_before_floor() {
+    let storage = Storage::new_arc();
+    let protector = Player::new_from_namerena_raw("protector@red".to_string(), storage.clone()).unwrap();
+    let ally = Player::new_from_namerena_raw("ally@red".to_string(), storage.clone()).unwrap();
+    let enemy = Player::new_from_namerena_raw("enemy@blue".to_string(), storage.clone()).unwrap();
+    let protector_id = storage.just_insert_player(protector);
+    let ally_id = storage.just_insert_player(ally);
+    let enemy_id = storage.just_insert_player(enemy);
+    storage.sync_groups(&[vec![protector_id, ally_id], vec![enemy_id]]);
+
+    {
+        let protector_mut = storage.just_get_player_mut(protector_id).unwrap();
+        protector_mut.status.hp = 300;
+        protector_mut.status.max_hp = 300;
+        protector_mut.status.magic_point = 999;
+        protector_mut.status.resistance = 62; // df = 126，刚好卡住 27/28 的 floor 边界。
+
+        let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
+        ally_mut.status.hp = 280;
+        ally_mut.status.max_hp = 280;
+        ally_mut.set_state_no_update(crate::player::skill::protect::ProtectState {
+            target: Some(ally_id),
+            protect_from: vec![crate::player::skill::protect::ProtectLink {
+                owner: protector_id,
+                level: 128,
+            }],
+            pre_defend_skill_count: ally_mut.skills.pre_defend.len(),
+        });
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let protector_hp_before = storage.get_player(&protector_id).unwrap().get_status().hp;
+    let ally_hp_before = storage.get_player(&ally_id).unwrap().get_status().hp;
+
+    // 10080 * 0.699999988079071 * 0.5 / 126 = 27.9999995...
+    // JS 的守护链随后 floor 为 27；如果误写成 0.7，这里会变成精确 28。
+    storage.just_get_player_mut(ally_id).unwrap().attacked(
+        10080.0 * crate::player::skill::act::ice::ICE_DAMAGE_MULTIPLIER,
+        true,
+        enemy_id,
+        noop_on_damage,
+        &mut randomer,
+        &mut updates,
+        &storage,
+    );
+
+    let protector_hp_after = storage.get_player(&protector_id).unwrap().get_status().hp;
+    let ally_hp_after = storage.get_player(&ally_id).unwrap().get_status().hp;
+    assert_eq!(protector_hp_before - protector_hp_after, 27);
+    assert_eq!(ally_hp_after, ally_hp_before);
+    assert!(updates.updates.iter().any(|u| u.message.contains("[守护]")));
+}
+
+#[test]
 fn reflect_penalty_runs_after_reflected_kill_merge_check() {
     let storage = Storage::new_arc();
     let owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();

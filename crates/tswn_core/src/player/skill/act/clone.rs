@@ -5,6 +5,10 @@ use crate::player::{
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
+// JS 产物里 Dart 的 0.78f 会落成这个精确值；分身衰减后会立刻 ceil，
+// 用 0.78 会在少数整数边界把八围多保留 1 点。
+const CLONE_ATTR_DECAY: f64 = 0.7799999713897705;
+
 #[derive(Debug, Clone, Default)]
 pub struct CloneSkill {
     /// `分身` 在 `act_with_level()` 内就会算出 owner 这次用完技能后的“当前熟练度”。
@@ -65,7 +69,7 @@ impl SkillTrait for CloneSkill {
         if !charge_active {
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get clone owner from storage");
             for i in 0..7 {
-                owner.attr[i] = ((owner.attr[i] as f64) * 0.78).ceil() as u32;
+                owner.attr[i] = ((owner.attr[i] as f64) * CLONE_ATTR_DECAY).ceil() as u32;
             }
             owner.attr[7] = ((owner.attr[7] as f64) * 0.5).ceil() as u32;
             owner.status.hp = ((owner.status.hp as f64) * 0.5).ceil() as i32;

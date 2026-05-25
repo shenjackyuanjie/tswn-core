@@ -11,6 +11,10 @@ use crate::rc4::RC4;
 #[derive(Debug, Clone, Default)]
 pub struct IceSkill;
 
+// JS 产物里 Dart 的 0.7f 会落成这个精确值。
+// 这里不能写成 0.7：守护链会先乘 0.5 再 floor，精确 0.7 会在整数边界多 1 点伤害。
+pub(crate) const ICE_DAMAGE_MULTIPLIER: f64 = 0.699999988079071;
+
 impl IceSkill {
     pub fn new() -> Self { Self }
 }
@@ -98,7 +102,7 @@ impl SkillTrait for IceSkill {
             .get_player(&args.0)
             .expect("cannot get ice caster from storage")
             .get_at(true, args.1)
-            * 0.7;
+            * ICE_DAMAGE_MULTIPLIER;
         args.2.add(RunUpdate::new("[0]使用[冰冻术]", args.0, target_id, 1));
         let target = args.3.just_get_player_mut(target_id).expect("cannot get ice target from storage");
         let _ = target.attacked(atp, true, args.0, on_ice as OnDamageFunc, args.1, args.2, args.3);
