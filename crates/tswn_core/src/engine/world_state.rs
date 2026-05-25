@@ -243,6 +243,16 @@ impl WorldState {
     fn ensure_player_in_round(&mut self, plr: PlrId) {
         if !self.players_set.get(plr).copied().unwrap_or(false) {
             self.set_players_index(plr, true);
+            #[cfg(not(feature = "no_debug"))]
+            if std::env::var_os("TSWN_DEBUG_TICK_ORDER").is_some() {
+                // 这里是 round roster 追加点的调试日志，只在非 `no_debug` 构建里保留。
+                eprintln!(
+                    "[round_add] plr={} round_pos={} players_len_before={}",
+                    plr,
+                    self.round_pos,
+                    self.players.len()
+                );
+            }
             self.players.push(plr);
         }
     }

@@ -95,16 +95,20 @@ impl EngineCore {
         #[cfg(not(feature = "no_debug"))]
         Self::debug_world_state("pre_sync", world, storage);
 
-        // 复活需要先于 spawn / death 落地：
-        // - JS 中 revive 会立刻把旧实体重新挂回当前 roster / alive 视图；
-        // - 如果同一 tick 里稍后又发生了 spawn（例如尸体转亡灵），spawn 应该排在 revive 之后；
-        // - 如果同一 tick 里稍后又发生死亡移除，也必须保持“先 revive / spawn，再 remove”。
+        // 复活必须先于 spawn / death 落地：
+        // - JS 里 revive 会立刻把旧实体重新挂回当前 roster / alive 视图；
+        // - 如果同一 tick 里后面又发生了 spawn（例如尸体转亡灵），spawn 要排在 revive 之后；
+        // - 如果同一 tick 里后面又发生死亡移除，也必须保持“先 revive / spawn，再 remove”。
         //
-        // 这里先处理显式 queue_revival，再处理 fallback 扫描出的已复活成员，最后才处理 pending spawn。
+        // 这里的顺序要和 JS 对齐：
+        // 1. 先处理显式 queue_revival；
+        // 2. 再扫描 roster 里已经恢复生命值、但 world 里还没回来的成员；
+        // 3. 最后才处理 pending spawn。
+        // 这样才能避免 round_pos 在“先死后活 / 先活后生”场景里走出不同步序。
         let mut groups_changed = false;
         let revivals = storage.take_pending_revivals();
         for id in revivals {
-            if !world.contains_alive(id) && storage.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
+            if !world.contains_alive(id) {
                 groups_changed |= world.team_index_of(id).is_none();
                 world.revive_player(id, id);
                 #[cfg(not(feature = "no_debug"))]

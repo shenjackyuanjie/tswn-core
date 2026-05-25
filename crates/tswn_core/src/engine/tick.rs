@@ -38,6 +38,22 @@ pub fn next_actor(world: &mut WorldState, _storage: &Arc<Storage>) -> Option<Plr
         return None;
     }
     let idx = world.next_round_index(world.players.len());
+    #[cfg(not(feature = "no_debug"))]
+    if std::env::var_os("TSWN_DEBUG_TICK_ORDER").is_some() {
+        // 这段只给定位 round 顺序问题用，`no_debug` 下会整段编译掉。
+        let actor = world.players[idx];
+        let name = _storage.get_player(&actor).map(|p| p.id_name()).unwrap_or_else(|| format!("#{actor}"));
+        let players = world
+            .players
+            .iter()
+            .map(|id| _storage.get_player(id).map(|p| p.id_name()).unwrap_or_else(|| format!("#{id}")))
+            .collect::<Vec<_>>()
+            .join(",");
+        eprintln!(
+            "[tick_order] idx={} round_pos={} actor={} players={}",
+            idx, world.round_pos, name, players
+        );
+    }
     Some(world.players[idx])
 }
 

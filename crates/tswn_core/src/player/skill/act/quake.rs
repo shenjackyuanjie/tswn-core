@@ -66,8 +66,42 @@ impl SkillTrait for QuakeSkill {
                 .just_get_player_mut(target_id)
                 .expect("cannot get quake target from storage")
                 .attacked(atp, true, args.0, on_quake as OnDamageFunc, args.1, args.2, args.3);
+            if quake_should_stop(args.3) {
+                break;
+            }
         }
     }
+}
+
+fn quake_should_stop(storage: &Arc<Storage>) -> bool { quake_battle_over(storage) }
+
+fn quake_battle_over(storage: &Arc<Storage>) -> bool {
+    let mut first_group: Option<usize> = None;
+    for id in storage.iter_player_ids() {
+        if storage.get_player(&id).map(|player| player.alive()).unwrap_or(false)
+            && let Some(group_idx) = storage.group_index_of(id)
+        {
+            match first_group {
+                None => first_group = Some(group_idx),
+                Some(existing) if existing != group_idx => return false,
+                _ => {}
+            }
+        }
+    }
+
+    for pending in storage.iter_pending_spawns() {
+        if pending.player.alive()
+            && let Some(group_idx) = storage.group_index_of(pending.owner)
+        {
+            match first_group {
+                None => first_group = Some(group_idx),
+                Some(existing) if existing != group_idx => return false,
+                _ => {}
+            }
+        }
+    }
+
+    true
 }
 
 fn on_quake(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}
