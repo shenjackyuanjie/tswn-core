@@ -67,6 +67,12 @@ impl Default for PoisonState {
 impl StateTrait for PoisonState {
     fn meta_type(&self) -> i32 { -1 }
 
+    fn clear_updates_status(&self) -> bool {
+        // JS 的 PoisonState.K() 只从 r2/x2 里移除中毒状态，不调用 F()/updateStates。
+        // 解除中毒时不能顺手刷新疾走等状态，否则行动顺序会比 md5.js 提前。
+        false
+    }
+
     fn post_action_priority(&self) -> i32 { 150 }
 
     fn on_post_action(
@@ -194,5 +200,41 @@ mod tests {
         let target = storage.get_player(&target_id).unwrap();
         assert!(target.has_state::<PoisonState>());
         assert_eq!(target.get_status().speed, speed_before_poison);
+    }
+
+    #[test]
+    fn poison_clear_does_not_refresh_runtime_status() {
+        let storage = Storage::new_arc();
+        let mut target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        target.attr = [10, 10, 10, 10, 10, 10, 10, 100];
+        target.init_values();
+        target.update_states();
+        let target_id = storage.just_insert_player(target);
+        let caster_id = storage.just_insert_player(Player::new_from_namerena_raw("caster".to_string(), storage.clone()).unwrap());
+
+        let target = storage.just_get_player_mut(target_id).unwrap();
+        target.set_state(HasteState {
+            owner: Some(caster_id),
+            target: Some(target_id),
+            on_post_action: None,
+            faster: 2,
+            step: 3,
+        });
+        target.get_state_mut::<HasteState>().unwrap().faster = 4;
+        target.set_state_no_update(PoisonState {
+            caster: Some(caster_id),
+            target: Some(target_id),
+            atp: 10.0,
+            count: 1,
+        });
+        target.status.speed = 1234;
+
+        // JS 的 PoisonState.K() 只注销中毒状态，不调用 F()/updateStates。
+        // 如果清理时刷新属性，疾走的 pending faster 会提前生效，行动顺序会偏。
+        target.clear_negative_states();
+
+        assert!(!target.has_state::<PoisonState>());
+        assert!(target.has_state::<HasteState>());
+        assert_eq!(target.get_status().speed, 1234);
     }
 }
