@@ -354,6 +354,10 @@ struct BenchBatchRateCommand {
     #[arg(short = 'p', long = "player-list", value_name = "FILE")]
     player_list: PathBuf,
 
+    /// 使用 ++ 分隔 player-list 中的组内成员，避免拆开名字里的 +diy[...] / +ol:...。
+    #[arg(long = "player-list-double-plus")]
+    player_list_double_plus: bool,
+
     /// 批量胜率测试的公共 benchmark 参数。
     #[command(flatten)]
     options: BenchOptions,
@@ -564,7 +568,8 @@ impl ParsedCli {
                     let target_content = read_file(&cmd.target_list)?;
                     let target_groups = parse_plus_separated_groups(&target_content);
                     let player_content = read_file(&cmd.player_list)?;
-                    let (player_groups, player_labels) = parse_plus_separated_groups_with_labels(&player_content);
+                    let (player_groups, player_labels) =
+                        parse_player_groups_with_labels(&player_content, cmd.player_list_double_plus);
                     ParsedCommand::BenchBatchRate {
                         target_groups,
                         player_groups,
@@ -683,12 +688,35 @@ fn parse_plus_separated_groups(content: &str) -> Vec<String> {
 }
 
 /// 与 `parse_plus_separated_groups` 相同，但会额外保留每行原始文本作为展示标签。
-fn parse_plus_separated_groups_with_labels(content: &str) -> (Vec<String>, Vec<String>) {
+fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
     let mut groups = Vec::new();
     let mut labels = Vec::new();
     for line in content.lines().map(str::trim).filter(|line| !line.is_empty()) {
         labels.push(line.to_string());
-        groups.push(line.split('+').map(str::trim).collect::<Vec<_>>().join("\n"));
+        let separator = if double_plus { "++" } else { "+" };
+        groups.push(line.split(separator).map(str::trim).collect::<Vec<_>>().join("\n"));
     }
     (groups, labels)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn player_groups_default_split_uses_single_plus() {
+        let (groups, labels) = parse_player_groups_with_labels("aaaa+bbbb", false);
+        assert_eq!(groups, vec!["aaaa\nbbbb".to_string()]);
+        assert_eq!(labels, vec!["aaaa+bbbb".to_string()]);
+    }
+
+    #[test]
+    fn player_groups_double_plus_keeps_diy_plus_inside_player() {
+        let diy = r#"aaaa+diy[58,87,82,78,89,93,99,343]{"skldefend":13}"#;
+        let raw = format!("{diy}++bbbb");
+        let (groups, labels) = parse_player_groups_with_labels(&raw, true);
+
+        assert_eq!(groups, vec![format!("{diy}\nbbbb")]);
+        assert_eq!(labels, vec![raw]);
+    }
 }

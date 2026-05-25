@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, IsTerminal, Write as _};
@@ -8,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use tswn_core::{
     Runner,
-    player::{eval_name::WIN_RATE_EVAL_RQ, overlay::PlayerOverlay},
+    player::{Player, eval_name::WIN_RATE_EVAL_RQ, overlay::PlayerOverlay},
     win_rate::{
         WinRateTiming, prepared_win_rate, resolve_win_rate_workers, run_prepared_win_rate_range, use_js_profile_seed_schedule,
     },
@@ -338,8 +339,26 @@ pub fn run_bench_batch_rate(
         let mut accumulated_wins = 0usize;
         let mut accumulated_total = 0usize;
         let mut accumulated_timing = WinRateTiming::default();
+        let mut valid_matchups = 0usize;
+        let mut skipped_matchups = 0usize;
 
         for (ti, target) in target_groups.iter().enumerate() {
+            if let Some(duplicate) = first_duplicate_name_in_matchup(&[player.as_str(), target.as_str()]) {
+                skipped_matchups += 1;
+                if verbose {
+                    let _ = writeln!(
+                        &mut verbose_buf,
+                        "  [{}/{}] vs {}  =>  SKIP duplicate name: {}",
+                        ti + 1,
+                        target_groups.len(),
+                        display_group(target),
+                        duplicate
+                    );
+                }
+                progress.tick_target();
+                continue;
+            }
+
             let raw = format!("{player}\n\n{target}");
             let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq);
             if verbose {
@@ -358,10 +377,15 @@ pub fn run_bench_batch_rate(
             accumulated_wins += summary.wins;
             accumulated_total += summary.total;
             accumulated_timing.merge(summary.timing);
+            valid_matchups += 1;
             progress.tick_target();
         }
 
-        let avg = accumulated_rate / target_groups.len().max(1) as f64;
+        let avg = if valid_matchups > 0 {
+            accumulated_rate / valid_matchups as f64
+        } else {
+            0.0
+        };
         let elapsed = overall_started.elapsed();
         let elapsed_secs = elapsed.as_secs_f64();
         let throughput = if elapsed_secs > 0.0 {
@@ -378,6 +402,8 @@ pub fn run_bench_batch_rate(
             accumulated_total,
             elapsed,
             throughput,
+            valid_matchups,
+            skipped_matchups,
         );
 
         progress.complete_player(elapsed);
@@ -389,7 +415,10 @@ pub fn run_bench_batch_rate(
             if verbose {
                 progress.clear();
                 print!("{verbose_buf}");
-                println!("平均胜率: {:.2}%  (对 {} 组靶子)", avg, target_groups.len());
+                println!(
+                    "平均胜率: {:.2}%  (有效 {} 组靶子，跳过 {} 场重复号)",
+                    avg, valid_matchups, skipped_matchups
+                );
                 println!("汇总胜率: {:.2}%  ({}/{})", aggregate_rate, accumulated_wins, accumulated_total);
                 println!(
                     "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
@@ -400,9 +429,11 @@ pub fn run_bench_batch_rate(
             } else if out_file.is_none() {
                 progress.clear();
                 println!(
-                    "{}\t平均胜率: {:.2}%\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                    "{}\t平均胜率: {:.2}%\t有效: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
                     label,
                     avg,
+                    valid_matchups,
+                    skipped_matchups,
                     elapsed_secs,
                     elapsed.as_micros() as f64 / accumulated_total.max(1) as f64,
                     throughput
@@ -977,6 +1008,19 @@ fn display_group(raw: &str) -> String {
     raw.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(", ")
 }
 
+fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
+    let mut seen = HashSet::new();
+    for group in groups {
+        for name in group.lines().map(str::trim).filter(|line| !line.is_empty()) {
+            let id_name = Player::raw_namerena_to_idname(name);
+            if !seen.insert(id_name.clone()) {
+                return Some(id_name);
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1008,6 +1052,26 @@ mod tests {
         let parsed = parse_benchmark_input("aaaa\n\nbbbb@!");
         assert_eq!(parsed.score_modifier, None);
         assert_eq!(parsed.groups, vec![vec!["aaaa".to_string()], vec!["bbbb@!".to_string()]]);
+    }
+
+    #[test]
+    fn duplicate_name_check_detects_cross_group_duplicate() {
+        assert_eq!(
+            first_duplicate_name_in_matchup(&["alice\nbob", "carol\nalice"]),
+            Some("alice".to_string())
+        );
+    }
+
+    #[test]
+    fn duplicate_name_check_ignores_overlay_suffix() {
+        let base = "涵虚不等式 PFVKEUPBU@TigerStar";
+        let overlay = r#"涵虚不等式 PFVKEUPBU@TigerStar+ol:{"attrs":[89,85,88,77,48,96,97,327]}"#;
+        assert_eq!(first_duplicate_name_in_matchup(&[base, overlay]), Some(base.to_string()));
+    }
+
+    #[test]
+    fn duplicate_name_check_allows_distinct_names() {
+        assert_eq!(first_duplicate_name_in_matchup(&["alice\nbob", "carol\ndave"]), None);
     }
 
     #[test]
@@ -1043,7 +1107,10 @@ mod tests {
         let diy = r#"aaaaa+diy[58,87,82,78,89,93,99,343]{"skldefend":13,"sklassassinate":"2*46","sklheal":"40+30"}"#;
         let raw = format!("{diy}+bbbbb");
 
-        assert_eq!(parse_plus_separated_groups(&raw), vec![vec![diy.to_string(), "bbbbb".to_string(),]]);
+        assert_eq!(
+            parse_plus_separated_groups(&raw),
+            vec![vec![diy.to_string(), "bbbbb".to_string(),]]
+        );
     }
 
     #[test]
@@ -1051,7 +1118,10 @@ mod tests {
         let ol = r#"aaaaa+ol:{"attrs":[58,87,82,78,89,93,99,343],"skills":{"skldefend":13,"sklheal":"40+30"},"name_factor_enabled":true}"#;
         let raw = format!("{ol}+bbbbb");
 
-        assert_eq!(parse_plus_separated_groups(&raw), vec![vec![ol.to_string(), "bbbbb".to_string(),]]);
+        assert_eq!(
+            parse_plus_separated_groups(&raw),
+            vec![vec![ol.to_string(), "bbbbb".to_string(),]]
+        );
     }
 }
 
@@ -1162,9 +1232,11 @@ fn format_batch_rate_record(
     total: usize,
     elapsed: Duration,
     throughput: f64,
+    valid_matchups: usize,
+    skipped_matchups: usize,
 ) -> String {
     format!(
-        "{{\"label\":\"{}\",\"avg_win_rate\":{avg_rate:.2},\"aggregate_win_rate\":{aggregate_rate:.2},\"wins\":{wins},\"total\":{total},\"elapsed_s\":{:.3},\"us_per_battle\":{:.1},\"battles_per_s\":{throughput:.0}}}",
+        "{{\"label\":\"{}\",\"avg_win_rate\":{avg_rate:.2},\"aggregate_win_rate\":{aggregate_rate:.2},\"wins\":{wins},\"total\":{total},\"valid_matchups\":{valid_matchups},\"skipped_matchups\":{skipped_matchups},\"elapsed_s\":{:.3},\"us_per_battle\":{:.1},\"battles_per_s\":{throughput:.0}}}",
         escape_json_string(label),
         elapsed.as_secs_f64(),
         elapsed.as_micros() as f64 / total.max(1) as f64,
