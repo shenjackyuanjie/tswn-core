@@ -18,6 +18,10 @@ impl StateTrait for FireState {
     fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 
     fn meta_type(&self) -> i32 { -1 }
+
+    // JS 的 FireState 只是记录火球增伤层数，清理时没有 K()/F() 刷新属性。
+    // 治疗清掉它时不能重算 speed/boost，否则会把疾走等状态的即时速度提前刷新。
+    fn clear_updates_status(&self) -> bool { false }
 }
 
 #[derive(Debug, Clone, Default)]

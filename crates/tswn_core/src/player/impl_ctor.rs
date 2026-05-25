@@ -350,6 +350,9 @@ impl Player {
     pub fn mul_attract(&mut self, scale: f64) { self.status.attract *= scale; }
 
     #[inline]
+    pub fn div_attract(&mut self, scale: f64) { self.status.attract /= scale; }
+
+    #[inline]
     pub fn add_agility(&mut self, val: i32) { self.status.agility += val; }
 
     #[inline]

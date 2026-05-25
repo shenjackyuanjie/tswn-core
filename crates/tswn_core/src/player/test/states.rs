@@ -71,6 +71,31 @@ fn clear_negative_states_keeps_positive_states() {
 }
 
 #[test]
+fn clearing_fire_state_does_not_refresh_runtime_status() {
+    let storage = Storage::new_arc();
+    let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+    let ptr = player.as_ptr();
+
+    player.set_state(crate::player::skill::haste::HasteState {
+        owner: Some(ptr),
+        target: Some(ptr),
+        on_post_action: None,
+        faster: 4,
+        step: 3,
+    });
+    player.set_state(crate::player::skill::fire::FireState { fire_mag: 0.5 });
+    player.status.speed = 412;
+
+    // JS 的 FireState 清理只移除火焰层数，不会触发 F()/updateStates。
+    // 如果这里刷新属性，speed 会按 HasteState 重新计算，导致行动节奏提前。
+    player.clear_negative_states();
+
+    assert!(!player.has_state::<crate::player::skill::fire::FireState>());
+    assert!(player.has_state::<crate::player::skill::haste::HasteState>());
+    assert_eq!(player.get_status().speed, 412);
+}
+
+#[test]
 fn ice_state_pre_step_expires_with_threshold_check() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();

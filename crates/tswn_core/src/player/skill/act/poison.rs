@@ -138,7 +138,10 @@ fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut 
         state.count = 4;
         state.caster = Some(caster);
     } else {
-        target_plr.set_state(PoisonState {
+        // JS 里 PoisonState 是直接挂到 r2/x2 链上，不会调用 F() 重新计算属性。
+        // 中毒本身不会立刻改变 status；如果这里用 set_state()，会顺手刷新已经改过字段但
+        // 还没生效的状态（例如蓄力后的 HasteState.faster），导致速度比 JS 提前变化。
+        target_plr.set_state_no_update(PoisonState {
             caster: Some(caster),
             target: Some(target),
             atp: poison_atp,
@@ -149,3 +152,47 @@ fn on_poison(caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, updates: &mut 
 }
 
 fn on_poison_tick(_caster: PlrId, _target: PlrId, _dmg: i32, _r: &mut RC4, _updates: &mut RunUpdates, _storage: &Arc<Storage>) {}
+
+#[cfg(test)]
+mod tests {
+    use crate::player::{
+        Player,
+        skill::{act::haste::HasteState, poison::PoisonState},
+    };
+
+    use super::*;
+
+    #[test]
+    fn poison_application_does_not_flush_pending_haste_change() {
+        // 这个测试模拟“疾走已经被蓄力改成 faster=4，但 JS 还没调用 F()”的窗口。
+        // 首次中毒只应注册 PoisonState，不能让 faster=4 提前写入当前 speed。
+        let storage = Storage::new_arc();
+        let mut target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+        target.attr = [10, 10, 10, 10, 10, 10, 10, 100];
+        target.init_values();
+        target.update_states();
+        let target_id = storage.just_insert_player(target);
+        let caster_id = storage.just_insert_player(Player::new_from_namerena_raw("caster".to_string(), storage.clone()).unwrap());
+
+        {
+            let target = storage.just_get_player_mut(target_id).unwrap();
+            target.set_state(HasteState {
+                owner: Some(caster_id),
+                target: Some(target_id),
+                on_post_action: None,
+                faster: 2,
+                step: 3,
+            });
+            target.get_state_mut::<HasteState>().unwrap().faster = 4;
+        }
+        let speed_before_poison = storage.get_player(&target_id).unwrap().get_status().speed;
+
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+        on_poison(caster_id, target_id, 5, &mut randomer, &mut updates, &storage);
+
+        let target = storage.get_player(&target_id).unwrap();
+        assert!(target.has_state::<PoisonState>());
+        assert_eq!(target.get_status().speed, speed_before_poison);
+    }
+}

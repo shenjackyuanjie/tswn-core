@@ -26,6 +26,9 @@ impl SkillTrait for AbsorbSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
+    // JS 的 SklAbsorb 没有覆写 aa()，选敌人时沿用 ActionSkill 的 all_alive + pickSkipRange。
+    fn uses_attack_aa_sampling(&self) -> bool { true }
+
     fn prob(&self, level: u32, smart: bool, args: SkillArgs) -> bool {
         if smart {
             let owner = args.3.get_player(&args.0).expect("cannot get absorb owner from storage");
@@ -46,7 +49,8 @@ impl SkillTrait for AbsorbSkill {
             .get_player(&args.0)
             .expect("cannot get absorb owner from storage")
             .get_at(true, args.1)
-            * 1.3;
+            // JS 产物里 Dart 的 1.3f 常量会落成这个精确值；用 1.3 会在守护/吸血的取整边界多 1 点。
+            * 1.2999999523162842;
         args.2.add(RunUpdate::new("[0]发起[吸血攻击]", args.0, target_id, 1));
         args.3
             .just_get_player_mut(target_id)

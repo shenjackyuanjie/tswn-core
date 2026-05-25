@@ -216,7 +216,7 @@ impl PlayerStateStore {
             .map(|(tag, entry)| (*tag, priority(entry.state.as_ref()), entry.order))
             .collect();
         // JS 的 postAction 在同优先级下保持注册顺序；这里不能再退化成 tag 字典序，
-        // 否则像 Slow/Iron 这类同层 timer 状态会在 Rust 侧固定成错误的结束顺序。
+        // 否则像 Slow / Iron 这类同层 timer 状态会在 Rust 侧固定成错误的结束顺序。
         ordered.sort_unstable_by(|(tag_a, priority_a, order_a), (tag_b, priority_b, order_b)| {
             priority_a
                 .cmp(priority_b)
@@ -340,22 +340,25 @@ impl PlayerStateStore {
     #[inline]
     pub fn meta_type(&self, tag: StateTag) -> Option<i32> { self.entries.get(&tag).map(|entry| entry.state.meta_type()) }
 
-    pub fn clear_negative_states(&mut self) {
+    pub fn clear_negative_states(&mut self) -> bool {
         #[cfg(not(feature = "no_debug"))]
         let debug_state = crate::debug::debug_state();
         let mut to_remove = Vec::new();
+        let mut should_update_states = false;
         for (tag, entry) in self.entries.iter() {
             if entry.state.meta_type() < 0 {
                 #[cfg(not(feature = "no_debug"))]
                 if debug_state {
                     eprintln!("[CLEAR_NEG] removing tag={:?} meta_type={}", tag, entry.state.meta_type());
                 }
+                should_update_states |= entry.state.clear_updates_status();
                 to_remove.push(*tag);
             }
         }
         for tag in to_remove {
             self.remove_tag_internal(tag);
         }
+        should_update_states
     }
 
     pub fn clear_positive_states(&mut self) {
@@ -382,7 +385,7 @@ impl PlayerStateStore {
             }
         }
         // JS 中同优先级的正面状态清除消息按注册顺序排列，
-        // 这里必须使用 registration_order 作为 tiebreaker 而非仅靠 tag 字典序。
+        // 这里必须使用 registration_order 作为 tiebreaker，而不是只靠 tag 字典序。
         messages.sort_unstable_by(|(priority_a, order_a, tag_a, _), (priority_b, order_b, tag_b, _)| {
             priority_a
                 .cmp(priority_b)

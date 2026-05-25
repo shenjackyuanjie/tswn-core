@@ -710,6 +710,8 @@ impl Player {
         if select_count == 0 {
             return Vec::new();
         }
+        #[cfg(not(feature = "no_debug"))]
+        let debug_action_this = crate::debug::debug_action_matches(&self.id_name());
 
         let mut selected: SmallVec<[PlrId; 4]> = SmallVec::new();
         let mut dup = 0usize;
@@ -745,12 +747,46 @@ impl Player {
 
         let mut scored: SmallVec<[(PlrId, f64); 4]> = SmallVec::new();
         for target_id in selected {
-            scored.push((
-                target_id,
-                skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
-            ));
+            let score = skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
+            #[cfg(not(feature = "no_debug"))]
+            if debug_action_this {
+                let target_name = storage
+                    .get_player(&target_id)
+                    .map(|target| target.id_name())
+                    .unwrap_or_else(|| format!("#{target_id}"));
+                eprintln!(
+                    "[attack_aa_score] actor={} target={} target_name={} score={} rc4=({}, {})",
+                    self.id_name(),
+                    target_id,
+                    target_name,
+                    score,
+                    randomer.i,
+                    randomer.j,
+                );
+            }
+            scored.push((target_id, score));
         }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        #[cfg(not(feature = "no_debug"))]
+        if debug_action_this {
+            let ranked = scored
+                .iter()
+                .map(|(target_id, score)| {
+                    let target_name = storage
+                        .get_player(target_id)
+                        .map(|target| target.id_name())
+                        .unwrap_or_else(|| format!("#{target_id}"));
+                    format!("{target_id}:{target_name}:{score}")
+                })
+                .collect::<Vec<String>>();
+            eprintln!(
+                "[attack_aa_choice] actor={} ranked={:?} rc4=({}, {})",
+                self.id_name(),
+                ranked,
+                randomer.i,
+                randomer.j,
+            );
+        }
         scored.into_iter().map(|x| x.0).collect()
     }
 
@@ -1321,8 +1357,9 @@ impl Player {
 
     #[inline]
     pub fn clear_negative_states(&mut self) {
-        self.state.clear_negative_states();
-        self.update_states();
+        if self.state.clear_negative_states() {
+            self.update_states();
+        }
     }
 
     #[inline]
@@ -1778,9 +1815,10 @@ impl Player {
             if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
                 eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
             }
-            // JS 的 y1/pre_defend 混合链即便在入参 atp 已经为 0 时，仍会继续跑到当前顺序里的状态 entry。
-            // 这里只在“前面的 skill entry 把 atp 打成 0”时提前返回；若是一开始就为 0，需要继续让 protect/state entry 消耗 RC4。
-            if atp == 0.0 && !started_zero {
+            // JS 的 y1/pre_defend 是一条混合链：entry 返回 0 后会立刻停，不会继续执行后面的 entry。
+            // 因此只要 split 前已经跑过 skill entry 并得到 0，就不能再跑后面的 ProtectState；
+            // 只有“ProtectState 本身就是链上第一个 entry”时，初始 0 才需要继续交给它处理。
+            if atp == 0.0 && (!started_zero || split > 0) {
                 return 0.0;
             }
 
@@ -1875,7 +1913,9 @@ impl Player {
         if crate::debug::debug_damage() && (atp - atp_before).abs() > 0.001 {
             eprintln!("[PRE_DEFEND] {} atp: {:.4} -> {:.4}", self.id_name(), atp_before, atp);
         }
-        if atp == 0.0 && !started_zero {
+        // 无 ProtectState 的路径同理：只要已经执行过 pre_defend skill 并返回 0，
+        // 就要模拟 JS 的 du() 早停，不能再落到后续 state entry。
+        if atp == 0.0 && (!started_zero || has_pre_defend_skills) {
             return 0.0;
         }
         let atp2 = if has_states {
@@ -2219,9 +2259,9 @@ impl Player {
         self.status.set_alive(false);
 
         let owner_id = self.as_ptr();
-        // JS 按队伍 roster 顺序处理 linked minion（也就是召唤/分身出现顺序），
-        // 这样 owner 死亡时会先清理 `?0` 再清理 `?1`。
-        // Rust 之前走 HashMap keys 顺序，会导致顺序不稳定并出现反序日志。
+        // JS 按队伍 roster 顺序处理 linked minion（也就是召唤 / 分身的生成顺序），
+        // 这样 owner 死亡时会先清理 `?0` 再清理 `?1`，日志和 round 推进都稳定。
+        // Rust 之前走 HashMap keys 顺序，会导致清理顺序不稳定，进而把 round_pos 推到不同位置。
         let linked_group_members = storage.group_containing(owner_id).cloned().unwrap_or_else(|| {
             let mut ids = storage.all_player_ids();
             ids.sort_unstable();
@@ -2231,8 +2271,10 @@ impl Player {
         // JS 中如果 owner 在同一回合先生成 pending minion，随后自己立即死亡，
         // 这些 pending minion 仍会先经过 addNew 进入 round roster，
         // 然后在同一轮 sync 中随 owner 一起移除并推进 round_pos。
-        // 所以这里仍要把 pending minion 标成死亡，交给后续 sync 落地并移除。
+        // 所以这里要同时把“刚出生还没落地”的 pending spawn 和 pending revival 都标成死亡，
+        // 交给后续 sync 统一清理。
         linked_minions_src.extend(storage.pending_spawn_ids_for_group(&linked_group_members));
+        linked_minions_src.extend(storage.pending_revival_ids_for_group(&linked_group_members));
         let linked_minions = linked_minions_src
             .into_iter()
             .filter(|id| *id != owner_id)

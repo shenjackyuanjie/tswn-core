@@ -127,7 +127,9 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner = args.3.just_get_player_mut(args.0).expect("cannot get hide owner from storage");
-        owner.mul_attract(0.10000000149011612);
+        // JS 产物是 `p.H = p.H / 10`，不是乘以 float32 风格的 0.10000000149011612。
+        // 这里的吸引值会参与同分目标排序，微小误差也会改变后续随机流。
+        owner.div_attract(10.0);
         if level > 63 {
             let boost = (level - 63) as i32;
             owner.add_agility(boost);
@@ -140,7 +142,8 @@ impl SkillTrait for HideSkill {
         if self.on_update_state.is_none() {
             return;
         }
-        status.attract *= 0.10000000149011612;
+        // 和上面的实体更新保持一致：JS 直接除以 10。
+        status.attract /= 10.0;
         if level > 63 {
             let boost = (level - 63) as i32;
             status.agility += boost;
