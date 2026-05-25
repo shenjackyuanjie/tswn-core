@@ -483,6 +483,21 @@ impl Storage {
             .collect()
     }
 
+    /// 返回 owner 仍存活的 pending spawn。
+    ///
+    /// JS 中 owner 在当前 action 内死亡时，linked pending minion 会被死亡流程同步清掉，
+    /// 后续同一个 dead owner 的 post_action 选目标不再把这些 pending minion 视作 alive。
+    pub fn pending_spawn_ids_for_group_with_alive_owner(&self, group_members: &[PlrId]) -> Vec<PlrId> {
+        self.pending_spawns_ref()
+            .iter()
+            .filter(|pending| {
+                group_members.contains(&pending.owner)
+                    && self.get_player(&pending.owner).map(|owner| owner.alive()).unwrap_or(false)
+            })
+            .map(|pending| pending.player.as_ptr())
+            .collect()
+    }
+
     /// 返回指定 roster 中已 queue_revival、但尚未 sync 回 alive_group 的成员。
     pub fn iter_pending_revival_ids_for_group<'a>(&'a self, group_members: &'a [PlrId]) -> impl Iterator<Item = PlrId> + 'a {
         self.pending_revivals_ref().iter().copied().filter(move |id| group_members.contains(id))

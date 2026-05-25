@@ -217,6 +217,20 @@ mod split_namerena_groups {
         winners.sort();
         assert_eq!(winners, vec!["33580415", "33580416", "33580416?0"]);
     }
+
+    #[test]
+    fn bang_score_round_6024_dead_owner_minion_not_protect_candidate_matches_md5_winner() {
+        let raw_input = "[Face: 212]@!\n33572500@!\n\n33572501@!\n33572502@!".to_string();
+        let (groups, seed) = runners::Runner::split_namerena_into_groups(raw_input);
+        let mut runner =
+            runners::Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, crate::player::eval_name::WIN_RATE_EVAL_RQ)
+                .unwrap();
+        runner.run_to_completion();
+
+        let mut winners = winner_names(&runner);
+        winners.sort();
+        assert_eq!(winners, vec!["33572500", "[Face: 212]", "[Face: 212]?0"]);
+    }
 }
 
 mod prepared_raw_consistency {

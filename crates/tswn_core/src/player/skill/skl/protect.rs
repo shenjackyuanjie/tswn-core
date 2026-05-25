@@ -222,8 +222,10 @@ impl ProtectSkill {
                 candidates.push(*id);
             }
         }
-        // 追加整个队伍的 pending spawn（Dart 中 addNew 立刻加入 alives）
-        candidates.extend(args.3.pending_spawn_ids_for_group(&roster));
+        // 追加整个队伍的 pending spawn（Dart 中 addNew 立刻加入 alives）。
+        // 但如果 pending spawn 的 owner 已在当前 action 内死亡，JS 的 linked-minion
+        // 清理会让它不再进入后续 post_action 的 alive 候选；否则护佑会多抽无效目标。
+        candidates.extend(args.3.pending_spawn_ids_for_group_with_alive_owner(&roster));
         let owner_wisdom = args
             .3
             .get_player(&args.0)
