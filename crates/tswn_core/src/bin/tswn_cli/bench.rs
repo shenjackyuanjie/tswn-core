@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use tswn_core::{
     Runner,
-    player::eval_name::WIN_RATE_EVAL_RQ,
+    player::{eval_name::WIN_RATE_EVAL_RQ, overlay::PlayerOverlay},
     win_rate::{
         WinRateTiming, prepared_win_rate, resolve_win_rate_workers, run_prepared_win_rate_range, use_js_profile_seed_schedule,
     },
@@ -801,15 +801,58 @@ fn parse_plus_separated_groups(raw: &str) -> Vec<Vec<String>> {
     raw.lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .map(|line| {
-            line.split('+')
-                .map(str::trim)
-                .filter(|name| !name.is_empty())
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        })
+        .map(parse_namer_pf_group_line)
         .filter(|group| !group.is_empty())
         .collect()
+}
+
+fn parse_namer_pf_group_line(line: &str) -> Vec<String> {
+    let mut group: Vec<String> = Vec::new();
+    for segment in split_plus_outside_quotes(line) {
+        let segment = segment.trim();
+        if segment.is_empty() {
+            continue;
+        }
+        if PlayerOverlay::parse_inline(segment).is_some()
+            && let Some(previous) = group.last_mut()
+        {
+            previous.push('+');
+            previous.push_str(segment);
+            continue;
+        }
+        group.push(segment.to_string());
+    }
+    group
+}
+
+fn split_plus_outside_quotes(raw: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    let mut in_string = false;
+    let mut escaped = false;
+    for ch in raw.chars() {
+        if in_string {
+            current.push(ch);
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+        } else if ch == '+' {
+            segments.push(std::mem::take(&mut current));
+        } else {
+            current.push(ch);
+            if ch == '"' {
+                in_string = true;
+            }
+        }
+    }
+    segments.push(current);
+    segments
 }
 
 fn namer_pf_score(base_group: &[String], modifier: &str, duplicate: bool, n: usize, threads: Option<usize>) -> u64 {
@@ -993,6 +1036,22 @@ mod tests {
             parse_plus_separated_groups("aaaaa+bbbbb\nccccc\n\n"),
             vec![vec!["aaaaa".to_string(), "bbbbb".to_string()], vec!["ccccc".to_string()],]
         );
+    }
+
+    #[test]
+    fn namer_pf_parser_keeps_diy_overlay_with_player() {
+        let diy = r#"aaaaa+diy[58,87,82,78,89,93,99,343]{"skldefend":13,"sklassassinate":"2*46","sklheal":"40+30"}"#;
+        let raw = format!("{diy}+bbbbb");
+
+        assert_eq!(parse_plus_separated_groups(&raw), vec![vec![diy.to_string(), "bbbbb".to_string(),]]);
+    }
+
+    #[test]
+    fn namer_pf_parser_keeps_ol_overlay_with_player() {
+        let ol = r#"aaaaa+ol:{"attrs":[58,87,82,78,89,93,99,343],"skills":{"skldefend":13,"sklheal":"40+30"},"name_factor_enabled":true}"#;
+        let raw = format!("{ol}+bbbbb");
+
+        assert_eq!(parse_plus_separated_groups(&raw), vec![vec![ol.to_string(), "bbbbb".to_string(),]]);
     }
 }
 
