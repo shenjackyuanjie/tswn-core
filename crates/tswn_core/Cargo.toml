@@ -28,7 +28,7 @@ no_debug = []
 
 [[bin]]
 name = "tswn-cli"
-path = "src/bin/tswn_cli.rs"
+path = "src/bin/tswn_cli/main.rs"
 
 [[bin]]
 name = "track_case_miner"
