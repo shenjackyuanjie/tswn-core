@@ -135,6 +135,15 @@ fn player_raw_new_parses_diy_overlay() {
         overlay.skills.as_ref().unwrap().iter().find(|(k, _)| k == "fire").map(|(_, v)| v),
         Some(&SkillBoost::Normal(4))
     );
+
+    let player = Player::new_from_namerena_raw(
+        "aaaaa+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"name_factor_enabled\":false}".to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    let overlay = player.overlay.as_ref().expect("should parse overlay");
+    assert!(!overlay.name_factor_enabled);
+    assert_eq!(player.get_name_factor(), 0.0);
 }
 
 #[test]

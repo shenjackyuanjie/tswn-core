@@ -139,6 +139,7 @@ impl PlayerOverlay {
                 }
                 "skills" => overlay.skills = Some(parse_skill_map(value)?),
                 "weapon" => overlay.weapon = Some(parse_scalar_string(value)?),
+                "name_factor_enabled" => overlay.name_factor_enabled = parse_bool(value)?,
                 _ => {}
             }
             idx = next_idx;
@@ -229,6 +230,14 @@ fn parse_scalar_string(raw: &str) -> Option<String> {
         Some(String::new())
     } else {
         Some(raw.to_string())
+    }
+}
+
+fn parse_bool(raw: &str) -> Option<bool> {
+    match raw.trim() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
     }
 }
 
