@@ -104,8 +104,14 @@ pub enum ParsedCommand {
         force: bool,
         /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
         keep_rq: bool,
-        /// 最低胜率阈值 (0-10000)；仅在终端显示平均胜率不低于此值的选手。
-        min_wr: Option<u16>,
+        /// 仅在输出到文件时生效：每行输出 `winrate<space>name`。
+        log: bool,
+        /// 仅在输出到文件时生效：每行只输出 `name`。
+        pure: bool,
+        /// 仅在终端显示平均胜率不低于此值的选手（0~100）。
+        min_screen: Option<f64>,
+        /// 仅在输出到文件时生效：只写入平均胜率不低于此值的选手（0~100）。
+        min_file: Option<f64>,
     },
     NamerPf {
         /// 每行一个名字组，组内可用 `+` 分隔。
@@ -290,14 +296,15 @@ enum BenchSubcommand {
     /// `cqp` 与 `batch-rate` 是同一个命令的两个名字，功能完全相同。
     ///
     /// 靶子文件和选手文件每行一组，组内用 + 分隔，跳过空行。
-    /// `--out-file` 会输出 JSONL，每个选手组一行结果。
-    /// `--min-wr` 可设置最低胜率阈值 (0-10000)，仅在终端显示达标选手。
+    /// `--out-file` 默认输出 `winrate<space>name`；`--log` 切到 JSONL，`--pure` 切到仅名字。
+    /// `--min-screen` 控制终端显示阈值；`--min-file` 控制文件写入阈值（均为 0~100）。
     ///
     /// 示例:
     ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -n 10000 -t 8
     ///   tswn-cli bench cqp -l targets.txt -p players.txt -n 10000 -t 8
-    ///   tswn-cli bench cqp -l targets.txt -p players.txt -n 10000 -m 5000
-    ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -o result.jsonl
+    ///   tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
+    ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -o result.txt --min-file 65
+    ///   tswn-cli bench batch-rate -l targets.txt -p players.txt -o result.jsonl --log
     #[command(
         name = "batch-rate",
         visible_alias = "cqp",
@@ -380,7 +387,7 @@ struct BenchBatchRateCommand {
     #[arg(short = 'v', long = "verbose")]
     verbose: bool,
 
-    /// 将批量结果写入指定文件；格式为 JSONL，每个选手组输出一行结果。
+    /// 将批量结果写入指定文件。
     #[arg(short = 'o', long = "out-file", value_name = "FILE")]
     out_file: Option<PathBuf>,
 
@@ -392,11 +399,21 @@ struct BenchBatchRateCommand {
     #[arg(long)]
     keep_rq: bool,
 
-    /// 最低胜率阈值 (0-10000)，仅在终端显示平均胜率不低于此值的选手。
-    ///
-    /// 例如 5000 表示仅显示胜率 ≥ 50% 的选手。文件输出不受此参数影响。
-    #[arg(short = 'm', long = "min-wr", value_parser = parse_min_wr, value_name = "N")]
-    min_wr: Option<u16>,
+    /// 仅在输出到文件时生效：输出 JSONL。
+    #[arg(long = "log", requires = "out_file", conflicts_with = "pure")]
+    log: bool,
+
+    /// 仅在输出到文件时生效：每行只输出 `name`。
+    #[arg(long = "pure", requires = "out_file", conflicts_with = "log")]
+    pure: bool,
+
+    /// 仅在终端显示平均胜率不低于此值的选手（0~100）。
+    #[arg(long = "min-screen", value_parser = parse_percent_0_100, value_name = "N")]
+    min_screen: Option<f64>,
+
+    /// 仅在输出到文件时生效：只写入平均胜率不低于此值的选手（0~100）。
+    #[arg(long = "min-file", requires = "out_file", value_parser = parse_percent_0_100, value_name = "N")]
+    min_file: Option<f64>,
 }
 
 #[derive(Debug, Args)]
@@ -619,7 +636,10 @@ impl ParsedCli {
                         out_file: cmd.out_file,
                         force: cmd.force,
                         keep_rq: cmd.keep_rq,
-                        min_wr: cmd.min_wr,
+                        log: cmd.log,
+                        pure: cmd.pure,
+                        min_screen: cmd.min_screen,
+                        min_file: cmd.min_file,
                     }
                 }
             },
@@ -709,11 +729,11 @@ fn parse_thread_count(raw: &str) -> Result<usize, String> {
     }
 }
 
-/// 解析并校验最低胜率阈值参数 (0-10000)。
-fn parse_min_wr(raw: &str) -> Result<u16, String> {
-    let value = raw.parse::<u16>().map_err(|_| "阈值必须是 0-10000 之间的整数".to_string())?;
-    if value > 10000 {
-        Err("阈值必须不超过 10000".to_string())
+/// 解析并校验百分比阈值参数 (0~100)。
+fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
+    let value = raw.parse::<f64>().map_err(|_| "阈值必须是 0~100 之间的数字".to_string())?;
+    if !(0.0..=100.0).contains(&value) {
+        Err("阈值必须在 0~100 之间".to_string())
     } else {
         Ok(value)
     }
@@ -805,6 +825,54 @@ mod tests {
                 assert_eq!(cmd.file, None);
                 assert_eq!(cmd.out_file.as_deref(), Some(Path::new("out.txt")));
                 assert!(cmd.old);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn batch_rate_rejects_log_and_pure_together() {
+        let err = Cli::try_parse_from([
+            "tswn-cli",
+            "bench",
+            "batch-rate",
+            "-l",
+            "targets.txt",
+            "-p",
+            "players.txt",
+            "-o",
+            "out.txt",
+            "--log",
+            "--pure",
+        ])
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn batch_rate_accepts_min_screen_and_min_file() {
+        let cli = Cli::try_parse_from([
+            "tswn-cli",
+            "bench",
+            "batch-rate",
+            "-l",
+            "targets.txt",
+            "-p",
+            "players.txt",
+            "--min-screen",
+            "66.5",
+            "-o",
+            "out.txt",
+            "--min-file",
+            "70",
+        ])
+        .unwrap();
+        match cli.command {
+            CliCommand::Bench(BenchCommand {
+                command: BenchSubcommand::BatchRate(cmd),
+            }) => {
+                assert_eq!(cmd.min_screen, Some(66.5));
+                assert_eq!(cmd.min_file, Some(70.0));
             }
             _ => panic!("unexpected command"),
         }

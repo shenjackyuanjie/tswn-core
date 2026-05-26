@@ -20,6 +20,13 @@ use crate::{BENCH_PARALLEL_THRESHOLD, args::BenchThreadMode};
 const PROGRESS_BAR_WIDTH: usize = 30;
 const SLIDING_WINDOW: usize = 5;
 
+#[derive(Debug, Clone, Copy)]
+pub enum BatchFileOutputMode {
+    Log,
+    Json,
+    Pure,
+}
+
 /// 批量胜率测试的终端进度条。
 ///
 /// 以「对局」(matchup = 选手×靶子) 粒度推进进度条动画，
@@ -301,8 +308,19 @@ pub fn run_bench_batch_rate(
     perf: bool,
     out_file: Option<&Path>,
     force: bool,
-    min_wr: Option<u16>,
+    log: bool,
+    pure: bool,
+    min_screen: Option<f64>,
+    min_file: Option<f64>,
 ) {
+    let file_mode = if pure {
+        BatchFileOutputMode::Pure
+    } else if log {
+        BatchFileOutputMode::Json
+    } else {
+        BatchFileOutputMode::Log
+    };
+
     let mut out_file = match out_file {
         Some(path) => match open_batch_rate_output(path, force) {
             Ok(file) => Some(file),
@@ -319,8 +337,13 @@ pub fn run_bench_batch_rate(
         player_groups.len(),
         target_groups.len()
     );
-    if let Some(threshold) = min_wr {
-        println!("最低胜率阈值: {threshold}/10000 ({:.2}%)", threshold as f64 / 100.0);
+    if let Some(threshold) = min_screen {
+        println!("终端最低胜率阈值: {:.2}%", threshold);
+    }
+    if out_file.is_some()
+        && let Some(threshold) = min_file
+    {
+        println!("文件最低胜率阈值: {:.2}%", threshold);
     }
 
     let mut progress = BatchProgress::new(player_groups.len(), target_groups.len());
@@ -394,7 +417,7 @@ pub fn run_bench_batch_rate(
             0.0
         };
         let aggregate_rate = accumulated_wins as f64 * 100.0 / accumulated_total.max(1) as f64;
-        let summary_line = format_batch_rate_record(
+        let summary_json = format_batch_rate_record(
             label,
             avg,
             aggregate_rate,
@@ -405,13 +428,17 @@ pub fn run_bench_batch_rate(
             valid_matchups,
             skipped_matchups,
         );
+        let summary_log = format_batch_rate_log_record(label, avg);
+        let summary_pure = format_batch_rate_pure_record(label);
 
         progress.complete_player(elapsed);
 
-        // 阈值过滤：avg 是百分比 (0-100), min_wr 是万分比 (0-10000)
-        let passes = min_wr.is_none_or(|t| avg * 100.0 >= t as f64);
+        // 终端阈值过滤：avg 是百分比 (0-100)。
+        let passes_screen = min_screen.is_none_or(|t| avg >= t);
+        // 文件阈值过滤：avg 是百分比 (0-100)。
+        let passes_file = min_file.is_none_or(|t| avg >= t);
 
-        if passes {
+        if passes_screen {
             if verbose {
                 progress.clear();
                 print!("{verbose_buf}");
@@ -426,7 +453,7 @@ pub fn run_bench_batch_rate(
                     elapsed.as_micros() as f64 / accumulated_total.max(1) as f64,
                     throughput
                 );
-            } else if out_file.is_none() {
+            } else {
                 progress.clear();
                 println!(
                     "{}\t平均胜率: {:.2}%\t有效: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
@@ -441,15 +468,19 @@ pub fn run_bench_batch_rate(
             }
         }
 
-        // 文件输出不受阈值影响，始终写入。
-        if let Some(file) = out_file.as_mut()
-            && let Err(err) = write_batch_rate_record(file, &summary_line)
-        {
-            eprintln!("写入批量结果输出文件失败: {err}");
-            std::process::exit(1);
+        if passes_file && let Some(file) = out_file.as_mut() {
+            let line = match file_mode {
+                BatchFileOutputMode::Log => &summary_log,
+                BatchFileOutputMode::Json => &summary_json,
+                BatchFileOutputMode::Pure => &summary_pure,
+            };
+            if let Err(err) = write_batch_rate_record(file, line) {
+                eprintln!("写入批量结果输出文件失败: {err}");
+                std::process::exit(1);
+            }
         }
 
-        if perf && passes {
+        if perf && passes_screen {
             progress.clear();
             print_perf_lines(elapsed, accumulated_timing, accumulated_total);
         }
@@ -1242,6 +1273,10 @@ fn format_batch_rate_record(
         elapsed.as_micros() as f64 / total.max(1) as f64,
     )
 }
+
+fn format_batch_rate_log_record(label: &str, avg_rate: f64) -> String { format!("{avg_rate:.2} {label}") }
+
+fn format_batch_rate_pure_record(label: &str) -> String { label.to_string() }
 
 fn escape_json_string(raw: &str) -> String {
     let mut escaped = String::with_capacity(raw.len());

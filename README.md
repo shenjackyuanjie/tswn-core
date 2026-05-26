@@ -52,6 +52,10 @@ cargo run -p tswn_core --bin tswn-cli -- raw -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire" --old
 cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt -o diy.txt
+cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt --min-screen 60
+cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.txt --min-file 65
+cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.jsonl --log
+cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o names.txt --pure
 ```
 
 常用差分 case miner：
