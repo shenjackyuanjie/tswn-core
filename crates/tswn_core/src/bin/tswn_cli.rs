@@ -1,26 +1,50 @@
-//! 名竞 CLI 工具。
+//! tswn-cli 的主入口与命令分发。
 //!
-//! 子命令：
-//! - `fight`: 普通对战
-//! - `diff`: 按 runner diff 格式输出普通对战
-//! - `bench auto`: 自动选择评分或胜率 benchmark
-//! - `bench win-rate`: 显式双队胜率 benchmark
-//! - `bench group-win-rate`: 目标组对多个对手组的胜率 benchmark
-//! - `bench batch-rate` (别名 `bench cqp`): 批量选手对靶子列表的胜率 benchmark
-//! - `bench pair`: 批量评估选手与队友二人组的 top-head 胜率和
-//! - `namer-pf`: 与 ica-plugin `/namer-pf` 相同的四项评分
-//! - `icon show|b64|save`: 图标预览与导出
-//! - `to-diy`: 将名字转成 DIY/OL overlay 格式
+//! 这个文件本身只负责三件事：
+//! - 调用 `args::parse()` 解析并归一化命令行输入；
+//! - 为交互式命令打印欢迎 banner；
+//! - 把解析结果分发到 `fight`、`bench`、`icon`、`to_diy` 等实现模块。
+//!
+//! 相关模块：
+//! - `tswn_cli/args.rs`: `clap` 参数定义、输入来源统一、子命令映射。
+//! - `tswn_cli/fight.rs`: 普通对战、raw 输出、diff 输出。
+//! - `tswn_cli/bench.rs`: 评分/胜率 benchmark、批量评估、`namer-pf`。
+//! - `tswn_cli/icon.rs`: 图标预览、base64 导出、文件保存。
+//! - `tswn_cli/to_diy.rs`: DIY/OL overlay 文本导出。
+//!
+//! 顶层命令概览：
+//! - `fight`: 运行普通对战，可选 `--out-raw` 输出聚合战斗日志。
+//! - `raw`: 直接运行 namerena 原始输入，兼容普通对战和 `!test!` benchmark 输入。
+//! - `diff`: 运行普通对战，并按 runner diff 格式输出。
+//! - `bench auto`: 按输入组数自动切换评分 benchmark 或胜率 benchmark。
+//! - `bench win-rate`: 显式比较两队胜率。
+//! - `bench group-win-rate`: 目标组对多个对手组逐个统计并汇总平均胜率。
+//! - `bench batch-rate` / `bench cqp`: 批量计算选手组对靶子组列表的平均胜率。
+//! - `bench pair`: 评估选手与队友二人组的 top-head 胜率和。
+//! - `namer-pf`: 输出与 ica-plugin `/namer-pf` 对齐的四项评分。
+//! - `icon show|b64|save`: 预览、导出或保存玩家图标。
+//! - `to-diy`: 将名字导出为 DIY/OL overlay 格式。
+//!
+//! 输出约定：
+//! - 默认会打印欢迎 banner，便于交互式使用。
+//! - `fight --out-raw`、`raw`、`diff`、`namer-pf` 会跳过 banner，避免污染机器可读输出。
+//!
+//! 输入约定：
+//! - 原始对战/benchmark 输入使用 namerena raw 文本，组与组之间用空行分隔。
+//! - `bench batch-rate` / `bench cqp` 使用文件列表时，每行一组，组内用 `+` 分隔多个名字。
+//! - `to-diy` 单号模式接收一个名字，文件模式按行批量处理。
 //!
 //! 示例：
 //! ```bash
-//! tswn-cli fight --raw "mario\nluigi\n\npeach\nbowser"
-//! tswn-cli diff --raw "mario\nluigi\n\npeach\nbowser"
-//! tswn-cli bench auto --raw "mario" -n 10000 --perf
+//! tswn-cli fight -r "mario\nluigi\n\npeach\nbowser"
+//! tswn-cli raw -r "mario\nluigi\n\npeach\nbowser"
+//! tswn-cli diff -r "mario\nluigi\n\npeach\nbowser"
+//! tswn-cli bench auto -r "mario" -n 10000 --perf
 //! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
-//! tswn-cli bench batch-rate --target-list targets.txt --player-list players.txt -n 10000
+//! tswn-cli bench group-win-rate -l "mario" -a "luigi" -a "peach" -n 10000
 //! tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
 //! tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
+//! tswn-cli namer-pf -r "mario\nluigi"
 //! tswn-cli to-diy -r "mario@team+fire" -o diy.txt
 //! tswn-cli icon show mario luigi
 //! ```
@@ -38,7 +62,8 @@ mod to_diy;
 
 use args::ParsedCommand;
 
-pub(crate) const BENCH_PARALLEL_THRESHOLD: usize = 100;
+/// 小批量 benchmark 不值得承担线程调度开销，超过该阈值后再考虑并行路径。
+pub(crate) const BENCH_PARALLEL_THRESHOLD: usize = 64;
 
 fn print_banner() {
     println!("欢迎来到 tswn - {}, 使用 --help/-h 获取帮助信息谢谢喵", tswn_core::version());
