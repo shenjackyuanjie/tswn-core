@@ -223,9 +223,23 @@ impl ProtectSkill {
             }
         }
         // 追加整个队伍的 pending spawn（Dart 中 addNew 立刻加入 alives）。
-        // 但如果 pending spawn 的 owner 已在当前 action 内死亡，JS 的 linked-minion
-        // 清理会让它不再进入后续 post_action 的 alive 候选；否则护佑会多抽无效目标。
-        candidates.extend(args.3.pending_spawn_ids_for_group_with_alive_owner(&roster));
+        //
+        // owner 在当前 action 内死亡时，JS 会同步清掉与 owner 生死绑定的 combat minion；
+        // 但普通分身（Clone）不是 linked minion，即使 owner 随后被毒死，同一个 post_action
+        // 的守护选目标仍能看到刚生成的 pending clone。
+        for pending in args.3.iter_pending_spawns() {
+            if !roster.contains(&pending.owner) || !pending.player.alive() {
+                continue;
+            }
+            let owner_alive = args.3.get_player(&pending.owner).map(|owner| owner.alive()).unwrap_or(false);
+            if !owner_alive && is_combat_minion(&pending.player) {
+                continue;
+            }
+            let pending_id = pending.player.as_ptr();
+            if !candidates.contains(&pending_id) {
+                candidates.push(pending_id);
+            }
+        }
         let owner_wisdom = args
             .3
             .get_player(&args.0)

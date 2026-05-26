@@ -1184,7 +1184,7 @@ impl Player {
         let mut scored: SmallVec<[(PlrId, f64); 4]> = SmallVec::new();
         for target_id in selected {
             let score = storage
-                .get_player(&target_id)
+                .get_player_or_pending(&target_id)
                 .map(|target| {
                     if smart {
                         let rate_hi_hp = |hp: i32| -> f64 {
@@ -1215,7 +1215,7 @@ impl Player {
             #[cfg(not(feature = "no_debug"))]
             if debug_action_this {
                 let target_name = storage
-                    .get_player(&target_id)
+                    .get_player_or_pending(&target_id)
                     .map(|t| t.id_name())
                     .unwrap_or_else(|| format!("#{target_id}"));
                 eprintln!(
@@ -1231,12 +1231,40 @@ impl Player {
         }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(Ordering::Equal));
         #[cfg(not(feature = "no_debug"))]
+        if std::env::var("TSWN_PROBE_DEFAULT_ATTACK")
+            .map(|needle| self.id_key_name().contains(&needle) || self.id_name().contains(&needle))
+            .unwrap_or(false)
+        {
+            let names = |ids: &[PlrId]| {
+                ids.iter()
+                    .map(|id| storage.get_player(id).map(|p| p.id_key_name()).unwrap_or_else(|| format!("#{id}")))
+                    .collect::<Vec<_>>()
+            };
+            let ranked = scored
+                .iter()
+                .map(|(id, score)| {
+                    let name = storage.get_player(id).map(|p| p.id_key_name()).unwrap_or_else(|| format!("#{id}"));
+                    format!("{name}:{score}")
+                })
+                .collect::<Vec<_>>();
+            eprintln!(
+                "[probe_default_attack] actor={} smart={} rc4=({}, {}) all_alive={:?} ally_alive={:?} ranked={:?}",
+                self.id_key_name(),
+                smart,
+                randomer.i,
+                randomer.j,
+                names(&targets.all_alive),
+                names(&targets.ally_alive),
+                ranked,
+            );
+        }
+        #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
             let ranked = scored
                 .iter()
                 .map(|(target_id, score)| {
                     let target_name = storage
-                        .get_player(target_id)
+                        .get_player_or_pending(target_id)
                         .map(|t| t.id_name())
                         .unwrap_or_else(|| format!("#{target_id}"));
                     format!("{target_name}:{score}")
@@ -1276,7 +1304,7 @@ impl Player {
                 let atp = self.get_at(true, randomer);
                 updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
                 storage
-                    .just_get_player_mut(target_id)
+                    .just_get_player_or_pending_mut(target_id)
                     .expect("cannot get default-attack target from storage")
                     .attacked(atp, true, self.as_ptr(), noop_on_damage, randomer, updates, storage);
                 return;
@@ -1286,7 +1314,7 @@ impl Player {
         let atp = self.get_at(false, randomer);
         updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
         storage
-            .just_get_player_mut(target_id)
+            .just_get_player_or_pending_mut(target_id)
             .expect("cannot get default-attack target from storage")
             .attacked(atp, false, self.as_ptr(), noop_on_damage, randomer, updates, storage);
     }

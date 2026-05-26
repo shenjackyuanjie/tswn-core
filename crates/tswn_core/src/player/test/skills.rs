@@ -46,6 +46,55 @@ fn protect_post_action_consumes_smart_roll_for_empty_charm_alive_group() {
 }
 
 #[test]
+fn protect_post_action_keeps_pending_clone_from_dead_owner() {
+    use crate::player::skill::Skill;
+    use crate::player::skill::act::minion::{MinionKind, MinionRuntimeState};
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@red".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    storage.sync_groups(&[vec![owner_id]]);
+    storage.sync_alive_groups(&[Vec::new()]);
+
+    let mut pending_clone = Player::new_from_namerena_raw("owner?0@red".to_string(), storage.clone()).unwrap();
+    let pending_clone_id = pending_clone.as_ptr();
+    pending_clone.set_state_no_update(MinionRuntimeState {
+        owner: Some(owner_id),
+        kind: MinionKind::Clone,
+    });
+    storage.queue_spawn(owner_id, pending_clone);
+
+    let protect_key;
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut.status.hp = 0;
+        owner_mut.status.set_alive(false);
+        owner_mut.status.wisdom = 255;
+        protect_key = owner_mut.skills.skill.len();
+        owner_mut.skills.add_skill(Skill::new_with_id(7, 26));
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    {
+        let owner_mut = storage.just_get_player_mut(owner_id).unwrap();
+        owner_mut
+            .skills
+            .skill_by_id_mut(protect_key)
+            .post_action((owner_id, &mut randomer, &mut updates, &storage));
+    }
+
+    let owner = storage.get_player(&owner_id).unwrap();
+    assert_eq!(owner.skills.skill_by_id(protect_key).protect_to_id(), Some(pending_clone_id));
+    assert!(
+        storage
+            .get_pending_spawn_player(pending_clone_id)
+            .unwrap()
+            .has_state::<crate::player::skill::protect::ProtectState>()
+    );
+}
+
+#[test]
 fn damage_update_uses_caster_as_actor() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();

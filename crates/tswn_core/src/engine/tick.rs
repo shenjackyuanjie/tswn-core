@@ -107,7 +107,7 @@ pub(super) fn select_targets_for_player(
             storage.get_player(&id).map(|player| player.alive()).unwrap_or(false)
         }
     };
-    let ally_alive: PlrVec = world
+    let mut ally_alive: PlrVec = world
         .team_alive(effective_team)
         .into_iter()
         .flatten()
@@ -127,6 +127,50 @@ pub(super) fn select_targets_for_player(
         all_alive.push(id);
         if ally_alive.contains(&id) {
             enemy_skip_indices.push(idx);
+        } else {
+            enemy_alive.push(id);
+        }
+    }
+    // JS addNew 会立即把新单位插入 Engine.e / team.alive；Rust 的实体落地延后到
+    // sync_runtime_entities，这里先把 pending spawn 暴露给当前行动的选目标视图。
+    let mut pending_team_indices: Vec<(PlrId, usize)> = Vec::new();
+    for pending in storage.iter_pending_spawns() {
+        if !pending.player.alive() {
+            continue;
+        }
+        let pending_id = pending.player.as_ptr();
+        if all_alive.contains(&pending_id) {
+            continue;
+        }
+        let Some(pending_team_idx) = world.team_index_of(pending.owner) else {
+            continue;
+        };
+        let last_teammate_pos = all_alive.iter().enumerate().rev().find_map(|(idx, id)| {
+            let team_idx = world.team_index_of(*id).or_else(|| {
+                pending_team_indices
+                    .iter()
+                    .find_map(|(pending_id, team_idx)| (*pending_id == *id).then_some(*team_idx))
+            });
+            (team_idx == Some(pending_team_idx)).then_some(idx)
+        });
+        let insert_at = last_teammate_pos.map_or(all_alive.len(), |idx| idx + 1);
+        all_alive.insert(insert_at, pending_id);
+        pending_team_indices.push((pending_id, pending_team_idx));
+    }
+
+    enemy_alive.clear();
+    enemy_skip_indices.clear();
+    for (idx, id) in all_alive.iter().copied().enumerate() {
+        let team_idx = world.team_index_of(id).or_else(|| {
+            pending_team_indices
+                .iter()
+                .find_map(|(pending_id, team_idx)| (*pending_id == id).then_some(*team_idx))
+        });
+        if team_idx == Some(effective_team) {
+            enemy_skip_indices.push(idx);
+            if !ally_alive.contains(&id) {
+                ally_alive.push(id);
+            }
         } else {
             enemy_alive.push(id);
         }
