@@ -4,10 +4,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     ActionTargets, OnDamageFunc, Player, PlrId, StateTrait, noop_on_damage,
-    skill::act::{
-        fire,
-        slow::SlowState,
-    },
+    skill::act::{fire, slow::SlowState},
 };
 use crate::rc4::RC4;
 
@@ -28,20 +25,14 @@ pub struct TestSubjectState {
 
 impl TestSubjectState {
     #[inline]
-    pub fn phase(&self) -> i32 {
-        self.revives_used + 1
-    }
+    pub fn phase(&self) -> i32 { self.revives_used + 1 }
 }
 
 impl StateTrait for TestSubjectState {
-    fn meta_type(&self) -> i32 {
-        0
-    }
+    fn meta_type(&self) -> i32 { 0 }
 
     /// 尽量让复活逻辑在死亡记录前执行。
-    fn post_damage_priority(&self) -> i32 {
-        i32::MIN
-    }
+    fn post_damage_priority(&self) -> i32 { i32::MIN }
 
     fn on_post_damage(
         &mut self,
@@ -88,9 +79,7 @@ impl StateTrait for TestSubjectState {
         }
     }
 
-    fn clone_box(&self) -> Box<dyn StateTrait> {
-        Box::new(self.clone())
-    }
+    fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(self.clone()) }
 }
 
 /// 「颅骨重击」附加状态：易伤。
@@ -108,13 +97,9 @@ pub struct SkullFractureState {
 }
 
 impl StateTrait for SkullFractureState {
-    fn meta_type(&self) -> i32 {
-        -1
-    }
+    fn meta_type(&self) -> i32 { -1 }
 
-    fn post_defend_priority(&self) -> i32 {
-        10000
-    }
+    fn post_defend_priority(&self) -> i32 { 10000 }
 
     fn on_post_defend(
         &mut self,
@@ -135,9 +120,7 @@ impl StateTrait for SkullFractureState {
         false
     }
 
-    fn post_action_priority(&self) -> i32 {
-        1000
-    }
+    fn post_action_priority(&self) -> i32 { 1000 }
 
     fn on_post_action(
         &mut self,
@@ -163,9 +146,7 @@ impl StateTrait for SkullFractureState {
         }
     }
 
-    fn clone_box(&self) -> Box<dyn StateTrait> {
-        Box::new(*self)
-    }
+    fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
 /// 第三阶段的无实体状态。
@@ -181,13 +162,9 @@ impl StateTrait for SkullFractureState {
 pub struct TestSubjectNoEntityState;
 
 impl StateTrait for TestSubjectNoEntityState {
-    fn meta_type(&self) -> i32 {
-        0
-    }
+    fn meta_type(&self) -> i32 { 0 }
 
-    fn post_defend_priority(&self) -> i32 {
-        10
-    }
+    fn post_defend_priority(&self) -> i32 { 10 }
 
     fn on_post_defend(
         &mut self,
@@ -205,9 +182,7 @@ impl StateTrait for TestSubjectNoEntityState {
         false
     }
 
-    fn clone_box(&self) -> Box<dyn StateTrait> {
-        Box::new(*self)
-    }
+    fn clone_box(&self) -> Box<dyn StateTrait> { Box::new(*self) }
 }
 
 pub fn init_test_subject_state(player: &mut Player) {
@@ -228,10 +203,7 @@ pub fn test_subject_boss_action(
     storage: &Arc<Storage>,
     targets: &ActionTargets,
 ) {
-    let phase = player
-        .get_state::<TestSubjectState>()
-        .map(|state| state.phase())
-        .unwrap_or(1);
+    let phase = player.get_state::<TestSubjectState>().map(|state| state.phase()).unwrap_or(1);
 
     match phase {
         1 => phase_one_action(player, smart, randomer, updates, storage, targets),
@@ -348,10 +320,7 @@ fn multi_claw(
 
     let boss_id = player.as_ptr();
 
-    let used_count = player
-        .get_state::<TestSubjectState>()
-        .map(|state| state.multi_claw_used)
-        .unwrap_or(0);
+    let used_count = player.get_state::<TestSubjectState>().map(|state| state.multi_claw_used).unwrap_or(0);
 
     let hit_count = used_count + 3;
 
@@ -364,17 +333,7 @@ fn multi_claw(
             break;
         }
 
-        let dmg = attack_target(
-            player,
-            target_id,
-            0.6,
-            false,
-            "",
-            noop_on_damage,
-            randomer,
-            updates,
-            storage,
-        );
+        let dmg = attack_target(player, target_id, 0.6, false, "", noop_on_damage, randomer, updates, storage);
 
         total_damage += dmg.max(0);
     }
@@ -412,17 +371,7 @@ fn rupture(
             break;
         }
 
-        attack_target(
-            player,
-            target_id,
-            0.6,
-            false,
-            "",
-            noop_on_damage,
-            randomer,
-            updates,
-            storage,
-        );
+        attack_target(player, target_id, 0.6, false, "", noop_on_damage, randomer, updates, storage);
     }
 }
 
@@ -445,17 +394,7 @@ fn great_pounce(
 
     updates.add(RunUpdate::new("[0]使用[大猛扑]", boss_id, target_id, 1));
 
-    attack_target(
-        player,
-        target_id,
-        2.25,
-        false,
-        "",
-        noop_on_damage,
-        randomer,
-        updates,
-        storage,
-    );
+    attack_target(player, target_id, 2.25, false, "", noop_on_damage, randomer, updates, storage);
 }
 
 /// 三阶段：燃烧咆哮。
@@ -587,13 +526,7 @@ fn on_skull_smash_damage(
     updates.emit(|| RunUpdate::new("[1]进入[易伤]状态", caster, target, 60));
 }
 
-fn apply_slow_layer(
-    caster: PlrId,
-    target_id: PlrId,
-    randomer: &mut RC4,
-    updates: &mut RunUpdates,
-    storage: &Arc<Storage>,
-) {
+fn apply_slow_layer(caster: PlrId, target_id: PlrId, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
     let Some(target) = storage.just_get_player_mut(target_id) else {
         return;
     };
@@ -646,15 +579,7 @@ fn attack_target(
         return 0;
     };
 
-    target.attacked(
-        atp,
-        use_mag,
-        boss_id,
-        on_damage,
-        randomer,
-        updates,
-        storage,
-    )
+    target.attacked(atp, use_mag, boss_id, on_damage, randomer, updates, storage)
 }
 
 /// 按阶段强制设置实验体属性。
@@ -692,25 +617,15 @@ fn apply_test_subject_phase_attrs(player: &mut Player, revives_used: i32) {
     player.status.set_alive(true);
 }
 
-fn current_phase(player: &Player) -> i32 {
-    player
-        .get_state::<TestSubjectState>()
-        .map(|state| state.phase())
-        .unwrap_or(1)
-}
+fn current_phase(player: &Player) -> i32 { player.get_state::<TestSubjectState>().map(|state| state.phase()).unwrap_or(1) }
 
 fn phase_one_damage_scale(player: &Player) -> f64 {
-    let action_count = player
-        .get_state::<TestSubjectState>()
-        .map(|state| state.phase_action_count)
-        .unwrap_or(0);
+    let action_count = player.get_state::<TestSubjectState>().map(|state| state.phase_action_count).unwrap_or(0);
 
     1.0 + action_count as f64 * 0.1
 }
 
-fn roll_skill(level: u32, randomer: &mut RC4) -> bool {
-    randomer.r127() < level
-}
+fn roll_skill(level: u32, randomer: &mut RC4) -> bool { randomer.r127() < level }
 
 fn target_is_alive(storage: &Arc<Storage>, target_id: PlrId) -> bool {
     storage
