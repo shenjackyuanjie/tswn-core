@@ -130,8 +130,14 @@ pub enum ParsedCommand {
         names: Vec<String>,
     },
     ToDiy {
-        /// 玩家名字（namerena raw 格式）。
-        raw: String,
+        /// 玩家名字列表（namerena raw 格式）。
+        names: Vec<String>,
+        /// 是否为文件批量模式。
+        from_file: bool,
+        /// 输出文件；未指定时输出到标准输出。
+        out_file: Option<PathBuf>,
+        /// 是否输出旧版 `+diy` 形式；默认输出 `+ol` 形式。
+        old: bool,
     },
 }
 
@@ -191,9 +197,17 @@ enum CliCommand {
     Icon(IconCommand),
     /// 将名字转换为 DIY/OL overlay 格式。
     ///
+    /// 默认接收一个名字并输出详细信息；单号用 `-r/--raw NAME`，文件批量用 `-f/--file FILE`。
+    /// 文件模式会按行读取多个名字，跳过空行，并按输入顺序逐行输出导出结果。
+    /// 默认输出 `+ol` 形式；`--old` 切换为旧版 `+diy` 形式。
+    /// `-o/--out-file FILE` 可将输出写入文件。
+    ///
     /// 示例:
-    ///   tswn-cli to-diy help
-    ///   tswn-cli to-diy "mario@team+fire"
+    ///   tswn-cli to-diy -r "mario@team+fire"
+    ///   tswn-cli to-diy -f names.txt
+    ///   tswn-cli to-diy -r "mario@team+fire" --old
+    ///   tswn-cli to-diy -r "mario@team+fire" -o diy.txt
+    ///   tswn-cli to-diy --file names.txt --out-file diy.txt
     #[command(name = "to-diy", verbatim_doc_comment)]
     ToDiy(ToDiyCommand),
 }
@@ -509,9 +523,32 @@ struct IconSaveCommand {
 struct ToDiyCommand {
     /// 玩家名字（namerena raw 格式）。
     ///
-    /// 支持 @ 队伍名和 + 武器名，但 overlay 输出中武器不计入。
-    #[arg(required = true, value_name = "NAME")]
-    name: String,
+    /// 支持 @ 队伍名和 + 武器名。使用 --file 时不可同时传 RAW。
+    #[arg(
+        short = 'r',
+        long = "raw",
+        value_name = "NAME",
+        required_unless_present = "file",
+        conflicts_with = "file"
+    )]
+    raw: Option<String>,
+
+    /// 从文件按行读取多个玩家名字；空行会被跳过，输出也按行对应。
+    #[arg(
+        short = 'f',
+        long = "file",
+        value_name = "FILE",
+        conflicts_with = "raw"
+    )]
+    file: Option<PathBuf>,
+
+    /// 将结果写入指定文件；未指定时输出到标准输出。
+    #[arg(short = 'o', long = "out-file", value_name = "FILE")]
+    out_file: Option<PathBuf>,
+
+    /// 输出旧版 `+diy` 形式；默认输出 `+ol` 形式。
+    #[arg(long = "old")]
+    old: bool,
 }
 
 /// 解析命令行参数，并转换成内部使用的结构化命令。
@@ -599,7 +636,19 @@ impl ParsedCli {
                     names: cmd.names,
                 },
             },
-            CliCommand::ToDiy(cmd) => ParsedCommand::ToDiy { raw: cmd.name },
+            CliCommand::ToDiy(cmd) => {
+                let (names, from_file) = match (cmd.raw, cmd.file) {
+                    (Some(name), None) => (vec![name], false),
+                    (None, Some(path)) => (parse_to_diy_file_names(&read_file(&path)?)?, true),
+                    _ => return Err(cli_error("to-diy 只能使用 --raw/NAME 或 --file 其中一种输入")),
+                };
+                ParsedCommand::ToDiy {
+                    names,
+                    from_file,
+                    out_file: cmd.out_file,
+                    old: cmd.old,
+                }
+            }
         };
         Ok(Self { command })
     }
@@ -676,6 +725,20 @@ fn cli_error(message: impl Into<String>) -> clap::Error { Cli::command().error(E
 /// 去除 UTF-8 BOM (U+FEFF) 前缀。
 fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
 
+fn parse_to_diy_file_names(content: &str) -> Result<Vec<String>, clap::Error> {
+    let names = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        Err(cli_error("to-diy 文件中没有有效名字"))
+    } else {
+        Ok(names)
+    }
+}
+
 /// 解析“每个非空行都是一个 `+` 分隔组”的文件内容。
 /// 返回转换后的 namerena 组字符串列表，组内成员之间用 `\n` 分隔。
 fn parse_plus_separated_groups(content: &str) -> Vec<String> {
@@ -718,5 +781,32 @@ mod tests {
 
         assert_eq!(groups, vec![format!("{diy}\nbbbb")]);
         assert_eq!(labels, vec![raw]);
+    }
+
+    #[test]
+    fn to_diy_file_names_skip_blank_lines() {
+        assert_eq!(
+            parse_to_diy_file_names("aaaa\n\n bbbb@team \r\n").unwrap(),
+            vec!["aaaa".to_string(), "bbbb@team".to_string()]
+        );
+    }
+
+    #[test]
+    fn to_diy_file_names_reject_empty_file() {
+        assert!(parse_to_diy_file_names("\n \r\n").is_err());
+    }
+
+    #[test]
+    fn to_diy_command_accepts_raw_out_file_and_old_flag() {
+        let cli = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario@team", "-o", "out.txt", "--old"]).unwrap();
+        match cli.command {
+            CliCommand::ToDiy(cmd) => {
+                assert_eq!(cmd.raw.as_deref(), Some("mario@team"));
+                assert_eq!(cmd.file, None);
+                assert_eq!(cmd.out_file.as_deref(), Some(Path::new("out.txt")));
+                assert!(cmd.old);
+            }
+            _ => panic!("unexpected command"),
+        }
     }
 }

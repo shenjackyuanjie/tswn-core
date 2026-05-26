@@ -49,7 +49,9 @@ cargo build --profile release-fast --features no_debug
 cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- fight --out-raw -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- raw -f input.txt
-cargo run -p tswn_core --bin tswn-cli -- to-diy "mario@team+fire"
+cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
+cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire" --old
+cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt -o diy.txt
 ```
 
 常用差分 case miner：

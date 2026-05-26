@@ -9,6 +9,7 @@
 //! - `bench batch-rate` (别名 `bench cqp`): 批量选手对靶子列表的胜率 benchmark
 //! - `namer-pf`: 与 ica-plugin `/namer-pf` 相同的四项评分
 //! - `icon show|b64|save`: 图标预览与导出
+//! - `to-diy`: 将名字转成 DIY/OL overlay 格式
 //!
 //! 示例：
 //! ```bash
@@ -18,6 +19,7 @@
 //! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
 //! tswn-cli bench batch-rate --target-list targets.txt --player-list players.txt -n 10000
 //! tswn-cli bench cqp -l targets.txt -p players.txt -n 10000 -m 5000
+//! tswn-cli to-diy -r "mario@team+fire" -o diy.txt
 //! tswn-cli icon show mario luigi
 //! ```
 
@@ -149,6 +151,11 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        ParsedCommand::ToDiy { raw } => to_diy::run(&raw),
+        ParsedCommand::ToDiy {
+            names,
+            from_file,
+            out_file,
+            old,
+        } => to_diy::run(&names, from_file, out_file.as_deref(), old),
     }
 }
