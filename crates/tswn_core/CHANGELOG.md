@@ -1,5 +1,45 @@
 # 更新日志
 
+## [0.3.9] - 2026-05-26
+
+### 行为对齐修复
+
+- 修复回合同步边界：对齐复活、召唤、关联召唤物清理和地震终止在回合内的执行顺序，减少 namer-pf 评分的 pp/pd/qp/qd 分叉。
+- 修复玩家状态评分行为：对齐中毒挂载、负面状态清理、pre_defend 零伤害早停、吸血浮点边界和隐匿状态边界，整体减少与 md5.js 的评分差异。
+- 修复解除中毒不刷新运行时属性：按 md5.js 的 `PoisonState.K()` 语义，中毒解除只移除状态和注销 `post_action`，不触发 `updateStates`，避免疾走等 pending 状态提前生效。
+- 修复浮点常量边界：对齐 `clone` 和 `ice` 技能中浮点常量与 JS 实现的边界差异。
+- 修复死亡召唤物护佑候选：已死亡召唤物不再出现在护佑候选列表中，与 md5.js 语义一致。
+- 修复 DIY SlotBoost cap：DIY 构造路径中 `SlotBoost` 加成量增加 `boost.min(current)` 封顶，与普通构造行为保持一致。
+
+### CLI
+
+- 新增 `bench pair` 子命令：计算玩家与队友的组合胜率，输出最高的 `--head <N>` 个 batch rate 之和作为最终分数。
+- `batch-rate` 新增 `--pure`（纯名字列表）、`--log`（JSONL）输出模式，并通过 `-o` 指定文件。
+- `batch-rate` 新增 `--wr-precision <N>` 胜率精度控制。
+- `batch-rate` 新增输入名字自动去重，避免重复计算和输出。
+- `to-diy` 新增 `--old` 标志，可输出旧版 DIY 格式。
+- 修复 `namer-pf` 对 `diy[...]` / `ol:{...}` 内联 overlay 格式的解析。
+
+### WASM
+
+- 发布 `tswn_wasm 0.2.8`：引入 `tsify` 生成 TypeScript 领域类型，wasm 导出接口从 `JsValue` 改为强类型签名。
+- 调整 replay viewer 控制面板 UI，改善桌面和移动端浏览器操作体验。
+
+### 工具
+
+- 新增 `scripts/find_bun_tswn_namer_pf_mismatches.py`：批量对比 Bun 和 Rust 的 namer-pf 评分输出，按 pp/pd/qp/qd 四项分别定位差异。
+- 新增 `scripts/bun_score_trace.js`：在 Bun 环境下按步骤输出评分中间结果，辅助定位评分分叉。
+- `find_bun_tswn_namer_pf_mismatches.py` 新增重测模式、missing 处理和分段输出辅助。
+
+### 文档
+
+- `docs/analysis/clone_mechanism.md` 补充 SlotBoost cap（`boost.min(current)`）机制说明。
+
+### 测试
+
+- 为浮点边界修复和中毒解除修复补充回归测试。
+- 新增 `large 72` 测试用例，覆盖本轮修复涉及的复杂对战场景。
+
 ## [0.3.8] - 2026-05-21
 
 ### DIY / Overlay
