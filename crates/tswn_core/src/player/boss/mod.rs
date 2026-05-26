@@ -64,11 +64,7 @@ mod testsubject;
 pub use covid::{CovidBossState, CovidEntry, CovidInfection};
 pub use lazy::{LazyBossState, LazyInfection};
 pub use saitama::SaitamaState;
-pub use testsubject::{
-    SkullFractureState,
-    TestSubjectNoEntityState,
-    TestSubjectState,
-};
+pub use testsubject::{SkullFractureState, TestSubjectNoEntityState, TestSubjectState};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BossKind {
@@ -242,9 +238,7 @@ fn init_saitama_state(player: &mut Player) {
 }
 
 #[inline]
-fn init_test_subject_state(player: &mut Player) {
-    testsubject::init_test_subject_state(player);
-}
+fn init_test_subject_state(player: &mut Player) { testsubject::init_test_subject_state(player); }
 
 #[inline]
 fn init_generic_state(_player: &mut Player) {}
