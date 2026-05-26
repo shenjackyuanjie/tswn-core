@@ -304,6 +304,26 @@ def has_nonzero_diff(row: PfDiffRow) -> bool:
     return row.bun is None or row.tswn is None or any(row.absolute.values())
 
 
+def row_status(row: PfDiffRow) -> str:
+    if row.bun is None and row.tswn is None:
+        return "missing_both"
+    if row.bun is None:
+        return "missing_bun"
+    if row.tswn is None:
+        return "missing_tswn"
+    if any(row.absolute.values()):
+        return "diff"
+    return "match"
+
+
+def row_has_score_diff(row: PfDiffRow) -> bool:
+    return row_status(row) == "diff"
+
+
+def rows_have_missing(rows: list[PfDiffRow]) -> bool:
+    return any(row_status(row).startswith("missing_") for row in rows)
+
+
 def extract_namer_pf_raw(raw_content: str) -> str:
     if not raw_content:
         return ""
@@ -495,6 +515,7 @@ def case_to_record(
                     for key, value in row.absolute.items()
                 },
                 "diff": has_nonzero_diff(row),
+                "status": row_status(row),
             }
             for row in case.diff_rows
         ],
@@ -523,10 +544,12 @@ def case_to_record(
                     for key, value in row.absolute.items()
                 },
                 "diff": has_nonzero_diff(row),
+                "status": row_status(row),
             }
             for row in retest_rows
         ]
-        record["retest_diff"] = any(has_nonzero_diff(row) for row in retest_rows)
+        record["retest_diff"] = any(row_has_score_diff(row) for row in retest_rows)
+        record["retest_missing"] = rows_have_missing(retest_rows)
 
     return record
 
@@ -651,6 +674,7 @@ def run_retest(
     tested = 0
     still_diff = 0
     now_match = 0
+    missing = 0
     errors = 0
 
     for index, case in enumerate(cases, start=1):
@@ -677,20 +701,29 @@ def run_retest(
             tswn_scores=scores,
             input_lines=input_lines_from_raw(raw_input),
         )
-        is_diff = any(has_nonzero_diff(row) for row in retest_rows)
-        if is_diff:
+        has_score_diff = any(row_has_score_diff(row) for row in retest_rows)
+        has_missing = rows_have_missing(retest_rows)
+        if has_score_diff:
             still_diff += 1
+        elif has_missing:
+            missing += 1
         else:
             now_match += 1
 
-        if args.retest_only_diff and not is_diff:
+        if args.retest_only_diff and not has_score_diff and not has_missing:
             continue
 
         emit(
             f"[{index}/{len(cases)}] {case.message.date} {case.message.username} "
             f"id={case.message.row_id}"
         )
-        emit(f"  当前重测: {'仍不一致' if is_diff else '已一致'}")
+        if has_score_diff:
+            status_text = "仍不一致"
+        elif has_missing:
+            status_text = "缺历史 bun/tswn 分数"
+        else:
+            status_text = "已一致"
+        emit(f"  当前重测: {status_text}")
         for row in retest_rows:
             if not has_nonzero_diff(row) and args.retest_only_diff:
                 continue
@@ -700,12 +733,13 @@ def run_retest(
             emit(f"  {label}")
             emit(f"    bun     : {format_score(row.bun)}")
             emit(f"    tswn_now: {format_score(row.tswn)}")
+            emit(f"    status: {row_status(row)}")
             emit(f"    signed(tswn-bun): {compact_diff(row.signed, signed=True)}")
             emit(f"    abs: {compact_diff(row.absolute, signed=False)}")
         emit()
 
     emit("=" * 50)
-    emit(f"测试: {tested}  仍不一致: {still_diff}  已一致: {now_match}  错误: {errors}")
+    emit(f"测试: {tested}  仍不一致: {still_diff}  缺分数: {missing}  已一致: {now_match}  错误: {errors}")
 
     if args.output:
         output_path = Path(args.output)
