@@ -1,0 +1,15 @@
+[package]
+name = "tswn_openbox"
+description = "A simple interactive panel for common tswn tools"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.34.2"
+rfd = "0.17.2"
+tswn_core = { path = "../tswn_core" }
+
+[features]
+default = []
+no_debug = ["tswn_core/no_debug"]
+mimalloc_alloc = ["tswn_core/mimalloc_alloc"]
