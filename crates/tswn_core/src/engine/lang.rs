@@ -193,6 +193,8 @@ const LANG_DATA: &[(&str, &str)] = &[
     // ── Boss：尤里 ────────────────────────────────────────────────────────
     ("bossName_yuri", "尤里"),
     ("sklYuriControl", "[0]使用[心灵控制]"),
+    // ── Boss：实验体 #C8 ────────────────────────────────────────────────────────
+    ("bossName_testsubject", "实验体 #C8"),
     // ── 武器 ─────────────────────────────────────────────────────────────
     ("weaponDeathNoteAtk", "[0]在[死亡笔记]写下[1]的名字"),
     ("weaponRModifierUse", "[0]使用[属性修改器]"),
@@ -404,6 +406,7 @@ pub mod keys {
     pub const BOSS_NAME_SLIME: &str = "bossName_slime";
     pub const BOSS_NAME_SONIC: &str = "bossName_sonic";
     pub const BOSS_NAME_YURI: &str = "bossName_yuri";
+    pub const BOSS_NAME_TESTSUBJECT: &str = "bossName_testsubject";
 
     // ── Boss：柯南 ────────────────────────────────────────────────────────
     pub const SKL_CONAN_KILL: &str = "sklConanKill";

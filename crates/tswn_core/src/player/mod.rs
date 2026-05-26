@@ -126,8 +126,19 @@ pub fn player_id_as_mut_plr(ptr: PlrId, storage: &Arc<Storage>) -> &mut Player {
     storage.just_get_player_mut(ptr).expect("cannot get mutable player by player handle")
 }
 
-pub const BOSS_NAMES: [&str; 11] = [
-    "mario", "sonic", "mosquito", "yuri", "slime", "ikaruga", "conan", "aokiji", "lazy", "covid", "saitama",
+pub const BOSS_NAMES: [&str; 12] = [
+    "mario",
+    "sonic",
+    "mosquito",
+    "yuri",
+    "slime",
+    "ikaruga",
+    "conan",
+    "aokiji",
+    "lazy",
+    "covid",
+    "saitama",
+    "testsubject",
 ];
 
 pub fn boss_display_name(name: &str) -> &str {
@@ -143,6 +154,7 @@ pub fn boss_display_name(name: &str) -> &str {
         "lazy" => "懒癌",
         "covid" => "新冠病毒",
         "saitama" => "一拳超人",
+        "testsubject" => "实验体 #C8",
         _ => name,
     }
 }
@@ -160,6 +172,7 @@ pub fn boss_append_attr(name: &str) -> [i32; 8] {
         "ikaruga" => [15, 15, 10, 10, 15, 15, 0, 50],
         "conan" => [10, 10, 15, 15, 10, 10, 0, 50],
         "aokiji" => [30, 30, 10, 10, 30, 30, 0, 50],
+        "testsubject" => [0; 8],
         _ => [0; 8],
     }
 }
