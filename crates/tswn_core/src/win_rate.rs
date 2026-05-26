@@ -91,7 +91,10 @@ pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thre
 }
 
 pub fn groups_win_rate(groups: &[Vec<String>], n: usize, eval_rq: f64, thread: u32) -> RunnerResult<WinRateSummary> {
-    let prepared = Runner::prepare_groups_with_eval_rq(groups, eval_rq)?;
+    // 这是一个“即调即用”的封装：prepare 完当前 groups 后马上完成整轮胜率计算，
+    // 不会把 `PreparedRunner` 返还给上层长期复用。默认走 uncached 可以避免外层批量调用
+    // `groups_win_rate()` 时把不同 matchup 的模板都残留在全局缓存里。
+    let prepared = Runner::prepare_groups_with_eval_rq_uncached(groups, eval_rq)?;
     prepared_win_rate(&prepared, n, eval_rq, thread)
 }
 

@@ -142,6 +142,38 @@ impl Runner {
         Self::new_from_prepared_with_seed(&prepared, seed)
     }
 
+    /// 从已解析队伍和 seed 列表构建 Runner，但跳过全局 prepare 缓存。
+    ///
+    /// 适用于输入高频变化、几乎不会复用的批量场景，避免一次性模板把缓存撑大。
+    pub fn new_from_groups_with_seed_and_eval_rq_uncached(
+        players: &[Vec<String>],
+        seed: &[String],
+        eval_rq: f64,
+    ) -> RunnerResult<Runner> {
+        // cached prepare 会把模板登记到全局 `prebuilt_groups_cache`。
+        // 对 `namer-pf` / `bench score` 这类每轮都会生成新 profile 名字的路径来说，
+        // 这些 `players` 基本只会出现一次；若继续走 cached 路径，就会把一次性模板
+        // 长期留在进程级缓存里，形成高内存占用。
+        let prepared = Self::prepare_groups_with_eval_rq_uncached(players, eval_rq)?;
+        Self::new_from_prepared_with_seed(&prepared, seed)
+    }
+
+    /// 预构建一份可复用的对局模板，但跳过全局 prepare 缓存。
+    ///
+    /// 适用于调用方只会短暂消费当前模板、几乎不会复用同一组输入的场景。
+    pub fn prepare_groups_uncached(players: &[Vec<String>]) -> RunnerResult<PreparedRunner> {
+        Self::prepare_groups_with_eval_rq_uncached(players, crate::player::eval_name::DEFAULT_EVAL_RQ)
+    }
+
+    /// 预构建一份可复用的对局模板，并显式指定 `eval_rq`，但跳过全局 prepare 缓存。
+    pub fn prepare_groups_with_eval_rq_uncached(players: &[Vec<String>], eval_rq: f64) -> RunnerResult<PreparedRunner> {
+        // 这里仍然返回 `PreparedRunner`，是为了让调用方继续复用后面的 prepared 路径；
+        // 只是把模板的生命周期收缩到当前调用方手里，而不是无条件提升为全局缓存项。
+        // 适合“prepare 一次，立刻跑完，然后整体释放”的内部批处理场景。
+        let template = Arc::new(Self::build_prepared_groups(players, eval_rq)?);
+        Ok(PreparedRunner { template })
+    }
+
     /// 预构建一份可复用的对局模板，后续可多次按不同 seed 构造 [`Runner`]。
     ///
     /// 这个接口会把与 seed 无关的初始化工作提前做掉，例如：
@@ -604,5 +636,32 @@ impl Runner {
 
     pub fn round_tick(&mut self, updates: &mut RunUpdates) {
         self.core.tick(&mut self.world, &self.storage, &mut self.randomer, updates);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Runner, prebuilt_groups_cache};
+
+    #[test]
+    fn uncached_prepare_and_runner_construction_do_not_fill_prebuilt_cache() {
+        let players = vec![vec!["aaa".to_string()], vec!["bbb".to_string()]];
+        let seed: Vec<String> = Vec::new();
+
+        prebuilt_groups_cache().write().expect("prebuilt cache poisoned").clear();
+
+        Runner::prepare_groups_with_eval_rq_uncached(&players, crate::player::eval_name::DEFAULT_EVAL_RQ)
+            .expect("uncached prepare should build");
+        assert!(prebuilt_groups_cache().read().expect("prebuilt cache poisoned").is_empty());
+
+        Runner::new_from_groups_with_seed_and_eval_rq_uncached(&players, &seed, crate::player::eval_name::DEFAULT_EVAL_RQ)
+            .expect("uncached runner should build");
+        assert!(prebuilt_groups_cache().read().expect("prebuilt cache poisoned").is_empty());
+
+        Runner::prepare_groups_with_eval_rq(&players, crate::player::eval_name::DEFAULT_EVAL_RQ)
+            .expect("cached prepare should build");
+        assert_eq!(prebuilt_groups_cache().read().expect("prebuilt cache poisoned").len(), 1);
+
+        prebuilt_groups_cache().write().expect("prebuilt cache poisoned").clear();
     }
 }

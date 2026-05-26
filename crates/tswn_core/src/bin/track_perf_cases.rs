@@ -383,7 +383,9 @@ fn run_fixed_cases(cases: Vec<(PathBuf, GeneratedCase)>, config: &Config) -> Res
 
 fn bench_generated_case(case: &GeneratedCase, runs: usize, thread: u32) -> Result<BenchRun, String> {
     let (groups, _) = Runner::split_namerena_into_groups(case.input.clone());
-    let prepared = Runner::prepare_groups_with_eval_rq(&groups, WIN_RATE_EVAL_RQ)
+    // 这里遍历的是大量自动生成 case。每个 case 通常只 benchmark 一次，
+    // 没有把模板留在全局缓存里的收益；改走 uncached 后，离线批量分析时常驻内存更稳定。
+    let prepared = Runner::prepare_groups_with_eval_rq_uncached(&groups, WIN_RATE_EVAL_RQ)
         .map_err(|e| format!("prepare 失败({}): {e}", case_id(case.mode, case.input_hash)))?;
 
     let started = Instant::now();

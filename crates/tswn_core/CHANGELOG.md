@@ -19,6 +19,7 @@
 - `batch-rate` 新增输入名字自动去重，避免重复计算和输出。
 - `to-diy` 新增 `--old` 标志，可输出旧版 DIY 格式。
 - 修复 `namer-pf` 对 `diy[...]` / `ol:{...}` 内联 overlay 格式的解析。
+- 修复 `namer-pf` / `bench score` / `batch-rate` / `bench pair` 等批量评分路径的模板缓存膨胀：对单次消费的 prepare/Runner 构造改走 uncached 路径，避免 profile 名字持续变化时把临时模板堆进全局 `prebuilt_groups_cache`。
 
 ### WASM
 

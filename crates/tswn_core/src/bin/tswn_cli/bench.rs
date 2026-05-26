@@ -769,7 +769,10 @@ pub fn run_bench_pair(
 
 fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64) -> BenchSummary {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    let prepared = match Runner::prepare_groups_with_eval_rq(&groups, eval_rq) {
+    // 这里的模板只服务当前这一个 matchup；`batch-rate` / `bench pair` 的外层循环
+    // 会不断传入新的 `raw`，几乎没有缓存复用价值。改走 uncached 后，当前 matchup
+    // 跑完即可释放模板，不会把大量一次性对阵长期压在全局缓存里。
+    let prepared = match Runner::prepare_groups_with_eval_rq_uncached(&groups, eval_rq) {
         Ok(prepared) => prepared,
         Err(err) => {
             eprintln!("构建胜率模板失败: {err}");
@@ -816,7 +819,9 @@ fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Op
 fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) -> BenchSummary {
     let step = step.max(1);
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    let prepared = match Runner::prepare_groups_with_eval_rq(&groups, eval_rq) {
+    // 分段输出和普通 win-rate 一样，只消费当前这一份模板；这里没有必要把模板写入
+    // 全局缓存，否则批量分析多个输入时缓存会只增不减。
+    let prepared = match Runner::prepare_groups_with_eval_rq_uncached(&groups, eval_rq) {
         Ok(prepared) => prepared,
         Err(err) => {
             eprintln!("构建胜率模板失败: {err}");
@@ -1041,7 +1046,10 @@ fn run_bench_score_range_with_bucket_output(
 
         let t_init = Instant::now();
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
+        // score 路径每轮都会把 round 编进 profile 名字里；从缓存视角看，这几乎等价于
+        // “每一局都是一组全新的 players key”。继续走 cached 构造只会不断制造新缓存项，
+        // 命中率极低，却会让内存随场数线性增长。
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -1221,7 +1229,9 @@ fn run_bench_score_range(
 
         let t_init = Instant::now();
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
+        // 并行 worker 与单线程路径是同一个问题：profile 名字持续变化，缓存几乎不会命中。
+        // 这里必须走 uncached，避免多个 worker 一起向全局缓存灌入只用一次的模板。
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -1268,7 +1278,7 @@ fn run_bench_score_worker(
 
         let t_init = Instant::now();
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };

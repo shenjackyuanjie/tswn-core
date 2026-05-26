@@ -262,7 +262,9 @@ fn run_raw_score_range(target_group: &[String], modifier: &str, start: usize, en
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
+        // `raw score` 的 profile 调度方式与 `bench score` 相同：每轮输入都会变化。
+        // 若继续使用 cached Runner 构造，批量复盘时同样会把一次性模板堆进全局缓存。
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -300,7 +302,8 @@ fn run_raw_score_worker(target_group: &[String], modifier: &str, next: &AtomicUs
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
 
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, WIN_RATE_EVAL_RQ) {
+        // 并行 raw score 也必须跳过全局缓存；否则线程越多，只会越快把缓存填满。
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, WIN_RATE_EVAL_RQ) {
             Ok(r) => r,
             Err(_) => continue,
         };
