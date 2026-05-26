@@ -115,6 +115,42 @@ pub enum ParsedCommand {
         /// 胜率小数位数。
         wr_precision: usize,
     },
+    BenchPair {
+        /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
+        target_groups: Vec<String>,
+        /// player-list 中的选手；每行一个名字。
+        players: Vec<String>,
+        /// teammate-list 中的队友；每行一个名字。
+        teammates: Vec<String>,
+        /// 每名选手取最高的 head 个二人组 batch rate 求和。
+        head: usize,
+        /// 每组对局的模拟场数。
+        n: usize,
+        /// benchmark 线程模式。
+        mode: BenchThreadMode,
+        /// 显式指定的 benchmark 线程数。
+        threads: Option<usize>,
+        /// 是否输出 total/init/fight 耗时统计。
+        perf: bool,
+        /// 是否输出逐个靶子的明细胜率。
+        verbose: bool,
+        /// 批量结果输出文件；未指定时只输出到终端。
+        out_file: Option<PathBuf>,
+        /// 若输出文件已存在，是否直接覆盖而不再确认。
+        force: bool,
+        /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
+        keep_rq: bool,
+        /// 仅在输出到文件时生效：输出 JSONL。
+        log: bool,
+        /// 仅在输出到文件时生效：每行只输出 `name`。
+        pure: bool,
+        /// 仅在终端显示最终分数不低于此值的选手。
+        min_screen: Option<f64>,
+        /// 仅在输出到文件时生效：只写入最终分数不低于此值的选手。
+        min_file: Option<f64>,
+        /// 胜率小数位数。
+        wr_precision: usize,
+    },
     NamerPf {
         /// 每行一个名字组，组内可用 `+` 分隔。
         raw: String,
@@ -313,6 +349,15 @@ enum BenchSubcommand {
         verbatim_doc_comment
     )]
     BatchRate(BenchBatchRateCommand),
+    /// 为每个选手和 teammate-list 中的每个队友组成二人组，计算各组合 batch rate 后取最高 head 个求和。
+    ///
+    /// player-list 和 teammate-list 均为每行一个名字；player-list 不支持 `--player-list-double-plus`。
+    ///
+    /// 示例:
+    ///   tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3 -n 10000
+    ///   tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o result.txt
+    #[command(name = "pair", verbatim_doc_comment)]
+    Pair(BenchPairCommand),
 }
 
 #[derive(Debug, Args)]
@@ -415,6 +460,65 @@ struct BenchBatchRateCommand {
 
     /// 仅在输出到文件时生效：只写入平均胜率不低于此值的选手（0~100）。
     #[arg(long = "min-file", requires = "out_file", value_parser = parse_percent_0_100, value_name = "N")]
+    min_file: Option<f64>,
+
+    /// 胜率保留小数位数（默认 3）。
+    #[arg(long = "wr-precision", default_value_t = 3, value_parser = parse_wr_precision, value_name = "N")]
+    wr_precision: usize,
+}
+
+#[derive(Debug, Args)]
+struct BenchPairCommand {
+    /// 靶子列表文件，每行一组，组内用 + 分隔，跳过空行；支持 `-l/--target-list`。
+    #[arg(short = 'l', long = "target-list", value_name = "FILE")]
+    target_list: PathBuf,
+
+    /// 选手列表文件，每行一个名字，跳过空行；支持 `-p/--player-list`。
+    #[arg(short = 'p', long = "player-list", value_name = "FILE")]
+    player_list: PathBuf,
+
+    /// 队友列表文件，每行一个名字，跳过空行。
+    #[arg(long = "teammate-list", value_name = "FILE")]
+    teammate_list: PathBuf,
+
+    /// 每名选手取最高的 N 个二人组 batch rate 求和。
+    #[arg(long = "head", value_parser = parse_positive_usize, value_name = "N")]
+    head: usize,
+
+    /// pair 测试的公共 benchmark 参数。
+    #[command(flatten)]
+    options: BenchOptions,
+
+    /// 显示逐个队友和靶子的明细胜率。
+    #[arg(short = 'v', long = "verbose")]
+    verbose: bool,
+
+    /// 将结果写入指定文件。
+    #[arg(short = 'o', long = "out-file", value_name = "FILE")]
+    out_file: Option<PathBuf>,
+
+    /// 若输出文件已存在，则直接覆盖，不再交互确认。
+    #[arg(short = 'f', long = "force", requires = "out_file")]
+    force: bool,
+
+    /// 保持 rq=4，不模拟 JS win_rate 对 rq 的污染。
+    #[arg(long)]
+    keep_rq: bool,
+
+    /// 仅在输出到文件时生效：输出 JSONL。
+    #[arg(long = "log", requires = "out_file", conflicts_with = "pure")]
+    log: bool,
+
+    /// 仅在输出到文件时生效：每行只输出 `name`。
+    #[arg(long = "pure", requires = "out_file", conflicts_with = "log")]
+    pure: bool,
+
+    /// 仅在终端显示最终分数不低于此值的选手。
+    #[arg(long = "min-screen", value_parser = parse_non_negative_f64, value_name = "N")]
+    min_screen: Option<f64>,
+
+    /// 仅在输出到文件时生效：只写入最终分数不低于此值的选手。
+    #[arg(long = "min-file", requires = "out_file", value_parser = parse_non_negative_f64, value_name = "N")]
     min_file: Option<f64>,
 
     /// 胜率保留小数位数（默认 3）。
@@ -649,6 +753,31 @@ impl ParsedCli {
                         wr_precision: cmd.wr_precision,
                     }
                 }
+                BenchSubcommand::Pair(cmd) => {
+                    let target_content = read_file(&cmd.target_list)?;
+                    let target_groups = parse_plus_separated_groups(&target_content);
+                    let player_content = read_file(&cmd.player_list)?;
+                    let teammate_content = read_file(&cmd.teammate_list)?;
+                    ParsedCommand::BenchPair {
+                        target_groups,
+                        players: parse_line_list(&player_content),
+                        teammates: parse_line_list(&teammate_content),
+                        head: cmd.head,
+                        n: cmd.options.count.max(1),
+                        mode: cmd.options.mode(),
+                        threads: cmd.options.thread,
+                        perf: cmd.options.perf,
+                        verbose: cmd.verbose,
+                        out_file: cmd.out_file,
+                        force: cmd.force,
+                        keep_rq: cmd.keep_rq,
+                        log: cmd.log,
+                        pure: cmd.pure,
+                        min_screen: cmd.min_screen,
+                        min_file: cmd.min_file,
+                        wr_precision: cmd.wr_precision,
+                    }
+                }
             },
             CliCommand::NamerPf(cmd) => ParsedCommand::NamerPf {
                 raw: cmd.input.read_or_stdin()?,
@@ -736,11 +865,29 @@ fn parse_thread_count(raw: &str) -> Result<usize, String> {
     }
 }
 
+fn parse_positive_usize(raw: &str) -> Result<usize, String> {
+    let value = raw.parse::<usize>().map_err(|_| "参数必须是正整数".to_string())?;
+    if value == 0 {
+        Err("参数必须大于 0".to_string())
+    } else {
+        Ok(value)
+    }
+}
+
 /// 解析并校验百分比阈值参数 (0~100)。
 fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
     let value = raw.parse::<f64>().map_err(|_| "阈值必须是 0~100 之间的数字".to_string())?;
     if !(0.0..=100.0).contains(&value) {
         Err("阈值必须在 0~100 之间".to_string())
+    } else {
+        Ok(value)
+    }
+}
+
+fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
+    let value = raw.parse::<f64>().map_err(|_| "阈值必须是非负数字".to_string())?;
+    if value < 0.0 {
+        Err("阈值必须不小于 0".to_string())
     } else {
         Ok(value)
     }
@@ -762,17 +909,21 @@ fn cli_error(message: impl Into<String>) -> clap::Error { Cli::command().error(E
 fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
 
 fn parse_to_diy_file_names(content: &str) -> Result<Vec<String>, clap::Error> {
-    let names = content
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
+    let names = parse_line_list(content);
     if names.is_empty() {
         Err(cli_error("to-diy 文件中没有有效名字"))
     } else {
         Ok(names)
     }
+}
+
+fn parse_line_list(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 /// 解析“每个非空行都是一个 `+` 分隔组”的文件内容。
@@ -915,5 +1066,58 @@ mod tests {
             }) => assert_eq!(cmd.wr_precision, 5),
             _ => panic!("unexpected command"),
         }
+    }
+
+    #[test]
+    fn pair_accepts_required_args_and_wr_precision() {
+        let cli = Cli::try_parse_from([
+            "tswn-cli",
+            "bench",
+            "pair",
+            "-l",
+            "targets.txt",
+            "-p",
+            "players.txt",
+            "--teammate-list",
+            "teammates.txt",
+            "--head",
+            "3",
+            "--wr-precision",
+            "4",
+        ])
+        .unwrap();
+        match cli.command {
+            CliCommand::Bench(BenchCommand {
+                command: BenchSubcommand::Pair(cmd),
+            }) => {
+                assert_eq!(cmd.head, 3);
+                assert_eq!(cmd.wr_precision, 4);
+                assert_eq!(cmd.teammate_list, PathBuf::from("teammates.txt"));
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn pair_rejects_log_and_pure_together() {
+        let err = Cli::try_parse_from([
+            "tswn-cli",
+            "bench",
+            "pair",
+            "-l",
+            "targets.txt",
+            "-p",
+            "players.txt",
+            "--teammate-list",
+            "teammates.txt",
+            "--head",
+            "3",
+            "-o",
+            "out.txt",
+            "--log",
+            "--pure",
+        ])
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
     }
 }

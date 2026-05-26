@@ -7,6 +7,7 @@
 //! - `bench win-rate`: 显式双队胜率 benchmark
 //! - `bench group-win-rate`: 目标组对多个对手组的胜率 benchmark
 //! - `bench batch-rate` (别名 `bench cqp`): 批量选手对靶子列表的胜率 benchmark
+//! - `bench pair`: 批量评估选手与队友二人组的 top-head 胜率和
 //! - `namer-pf`: 与 ica-plugin `/namer-pf` 相同的四项评分
 //! - `icon show|b64|save`: 图标预览与导出
 //! - `to-diy`: 将名字转成 DIY/OL overlay 格式
@@ -19,6 +20,7 @@
 //! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
 //! tswn-cli bench batch-rate --target-list targets.txt --player-list players.txt -n 10000
 //! tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
+//! tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 //! tswn-cli to-diy -r "mario@team+fire" -o diy.txt
 //! tswn-cli icon show mario luigi
 //! ```
@@ -130,6 +132,50 @@ fn main() {
                 &target_groups,
                 &player_groups,
                 &player_labels,
+                n,
+                mode,
+                threads,
+                eval_rq,
+                verbose,
+                perf,
+                out_file.as_deref(),
+                force,
+                log,
+                pure,
+                min_screen,
+                min_file,
+                wr_precision,
+            );
+        }
+        ParsedCommand::BenchPair {
+            target_groups,
+            players,
+            teammates,
+            head,
+            n,
+            mode,
+            threads,
+            perf,
+            keep_rq,
+            verbose,
+            out_file,
+            force,
+            log,
+            pure,
+            min_screen,
+            min_file,
+            wr_precision,
+        } => {
+            let eval_rq = if keep_rq {
+                tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+            } else {
+                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
+            };
+            bench::run_bench_pair(
+                &target_groups,
+                &players,
+                &teammates,
+                head,
                 n,
                 mode,
                 threads,

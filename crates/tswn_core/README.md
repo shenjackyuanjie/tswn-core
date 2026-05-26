@@ -35,7 +35,14 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt -o out.txt --min-file 65
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt -o out.jsonl --log
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt -o names.txt --pure
+./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt --wr-precision 5
+
+# 二人组队友筛选；player-list 和 teammate-list 都是每行一个名字
+./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
+./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ```
+
+`bench pair` 会为每个 player 与每个 teammate 组成二人组，分别计算 batch rate，并取最高的 `--head <N>` 个 batch rate 求和作为最终分数。player-list 中非 DIY/OL 名字会自动转为默认 `+ol` 格式。
 
 ### 作为库使用
 

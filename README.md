@@ -56,7 +56,12 @@ cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p play
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.txt --min-file 65
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.jsonl --log
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o names.txt --pure
+cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt --wr-precision 5
+cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
+cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ```
+
+`bench pair` 会先把 `player-list` 中非 DIY/OL 的名字转换为默认 `+ol` 格式，再与 `teammate-list` 中每个队友组成二人组。它会对每个二人组计算一次 batch rate，并把最高的 `--head <N>` 个 batch rate 求和作为该选手的最终分数；`player-list` 和 `teammate-list` 都是每行一个名字。
 
 常用差分 case miner：
 
