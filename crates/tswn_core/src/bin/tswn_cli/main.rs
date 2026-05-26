@@ -5,12 +5,15 @@
 //! - 为交互式命令打印欢迎 banner；
 //! - 把解析结果分发到 `fight`、`bench`、`icon`、`to_diy` 等实现模块。
 //!
-//! 相关模块：
-//! - `tswn_cli/args.rs`: `clap` 参数定义、输入来源统一、子命令映射。
-//! - `tswn_cli/fight.rs`: 普通对战、raw 输出、diff 输出。
-//! - `tswn_cli/bench.rs`: 评分/胜率 benchmark、批量评估、`namer-pf`。
+//! 相关模块概览：
+//! - `tswn_cli/args/`: `clap` 参数定义、输入来源统一、子命令映射。
+//! - `tswn_cli/fight/`: 普通对战、raw 输出、diff 输出。
+//! - `tswn_cli/bench/`: 评分/胜率 benchmark、批量评估、`namer-pf`。
 //! - `tswn_cli/icon.rs`: 图标预览、base64 导出、文件保存。
 //! - `tswn_cli/to_diy.rs`: DIY/OL overlay 文本导出。
+//!
+//! 现在入口改成目录下的 `main.rs`，门面模块改成各自目录里的 `mod.rs`，
+//! 编译器会按 Rust 默认模块规则自动解析子模块，因此不再需要 `#[path = ...]`。
 //!
 //! 顶层命令概览：
 //! - `fight`: 运行普通对战，可选 `--out-raw` 输出聚合战斗日志。
@@ -49,15 +52,10 @@
 //! tswn-cli icon show mario luigi
 //! ```
 
-#[path = "tswn_cli/args.rs"]
 mod args;
-#[path = "tswn_cli/bench.rs"]
 mod bench;
-#[path = "tswn_cli/fight.rs"]
 mod fight;
-#[path = "tswn_cli/icon.rs"]
 mod icon;
-#[path = "tswn_cli/to_diy.rs"]
 mod to_diy;
 
 use args::ParsedCommand;

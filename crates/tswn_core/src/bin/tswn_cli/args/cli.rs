@@ -1,195 +1,30 @@
-use std::fs;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+//! `clap` 命令树与“从 `clap` 到内部命令”的转换层。
+//!
+//! 这个文件保留两类内容：
+//! - 命令树本身，也就是用户在终端里能看到的 CLI 形状；
+//! - 把 `clap` 解析结果收口成 `ParsedCommand` 的归一化逻辑。
+//!
+//! 这样做的重点是把“外部交互形状”和“执行阶段的内部模型”分开：
+//! `clap` 结构体需要围绕帮助文案、别名、冲突参数、默认值来设计；执行阶段则更关心
+//! 输入是否已经读好、文件是否已经展开、线程模式是否已经统一。
 
-use clap::error::ErrorKind;
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BenchThreadMode {
-    /// 自动或显式并行运行 benchmark。
-    Parallel,
-    /// 强制使用单线程运行 benchmark。
-    SingleThread,
-}
+#[cfg(test)]
+use std::path::Path;
 
-#[derive(Debug)]
-pub enum ParsedCommand {
-    Fight {
-        /// 普通对战输入，使用 namerena raw 格式。
-        raw: String,
-        /// 是否改为输出 raw 聚合战斗日志。
-        out_raw: bool,
-    },
-    FightDiff {
-        /// 普通对战输入，使用 namerena raw 格式，并按 runner diff 的格式输出。
-        raw: String,
-    },
-    FightRaw {
-        /// 原始 namerena 输入，可能是普通对战，也可能是 `!test!` benchmark 输入。
-        raw: String,
-        /// 评分或胜率测试的模拟场数。
-        n: usize,
-        /// 显式指定的 benchmark 线程数。
-        threads: Option<usize>,
-    },
-    BenchAuto {
-        /// benchmark 原始输入，按组数自动分流到评分或胜率测试。
-        raw: String,
-        /// benchmark 模拟场数。
-        n: usize,
-        /// benchmark 线程模式。
-        mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
-        threads: Option<usize>,
-        /// 是否输出 total/init/fight 耗时统计。
-        perf: bool,
-        /// 分段输出步长（每 N 场输出一次累积胜率）。
-        buckets_step: Option<usize>,
-    },
-    BenchWinRate {
-        /// 第一队输入，格式与普通输入中的单组相同。
-        team1: String,
-        /// 第二队输入，格式与普通输入中的单组相同。
-        team2: String,
-        /// 每组对局的模拟场数。
-        n: usize,
-        /// benchmark 线程模式。
-        mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
-        threads: Option<usize>,
-        /// 是否输出 total/init/fight 耗时统计。
-        perf: bool,
-        /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
-        keep_rq: bool,
-        /// 分段输出步长（每 N 场输出一次累积胜率）。
-        buckets_step: Option<usize>,
-    },
-    BenchGroupWinRate {
-        /// 靶子组输入，格式与普通输入中的单组相同。
-        target: String,
-        /// 对手组列表，每项都支持单人或整组输入。
-        against: Vec<String>,
-        /// 每组对局的模拟场数。
-        n: usize,
-        /// benchmark 线程模式。
-        mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
-        threads: Option<usize>,
-        /// 是否输出 total/init/fight 耗时统计。
-        perf: bool,
-        /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
-        keep_rq: bool,
-    },
-    BenchBatchRate {
-        /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
-        target_groups: Vec<String>,
-        /// 选手组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
-        player_groups: Vec<String>,
-        /// 选手组展示标签，保留文件中的原始行文本。
-        player_labels: Vec<String>,
-        /// 每组对局的模拟场数。
-        n: usize,
-        /// benchmark 线程模式。
-        mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
-        threads: Option<usize>,
-        /// 是否输出 total/init/fight 耗时统计。
-        perf: bool,
-        /// 是否输出逐个靶子的明细胜率。
-        verbose: bool,
-        /// 批量结果输出文件；未指定时输出到标准输出。
-        out_file: Option<PathBuf>,
-        /// 若输出文件已存在，是否直接覆盖而不再确认。
-        force: bool,
-        /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
-        keep_rq: bool,
-        /// 仅在输出到文件时生效：每行输出 `winrate<space>name`。
-        log: bool,
-        /// 仅在输出到文件时生效：每行只输出 `name`。
-        pure: bool,
-        /// 仅在终端显示平均胜率不低于此值的选手（0~100）。
-        min_screen: Option<f64>,
-        /// 仅在输出到文件时生效：只写入平均胜率不低于此值的选手（0~100）。
-        min_file: Option<f64>,
-        /// 胜率小数位数。
-        wr_precision: usize,
-    },
-    BenchPair {
-        /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
-        target_groups: Vec<String>,
-        /// player-list 中的选手；每行一个名字。
-        players: Vec<String>,
-        /// teammate-list 中的队友；每行一个名字。
-        teammates: Vec<String>,
-        /// 每名选手取最高的 head 个二人组 batch rate 求和。
-        head: usize,
-        /// 每组对局的模拟场数。
-        n: usize,
-        /// benchmark 线程模式。
-        mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
-        threads: Option<usize>,
-        /// 是否输出 total/init/fight 耗时统计。
-        perf: bool,
-        /// 是否输出逐个靶子的明细胜率。
-        verbose: bool,
-        /// 批量结果输出文件；未指定时只输出到终端。
-        out_file: Option<PathBuf>,
-        /// 若输出文件已存在，是否直接覆盖而不再确认。
-        force: bool,
-        /// 是否保持 `rq=4`，不模拟 JS `win_rate` 对 `rq` 的污染。
-        keep_rq: bool,
-        /// 仅在输出到文件时生效：输出 JSONL。
-        log: bool,
-        /// 仅在输出到文件时生效：每行只输出 `name`。
-        pure: bool,
-        /// 仅在终端显示最终分数不低于此值的选手。
-        min_screen: Option<f64>,
-        /// 仅在输出到文件时生效：只写入最终分数不低于此值的选手。
-        min_file: Option<f64>,
-        /// 胜率小数位数。
-        wr_precision: usize,
-    },
-    NamerPf {
-        /// 每行一个名字组，组内可用 `+` 分隔。
-        raw: String,
-        /// 每个评分项的模拟场数。
-        n: usize,
-        /// 显式指定的 benchmark 线程数。
-        threads: Option<usize>,
-    },
-    IconShow {
-        /// 要展示图标的玩家名字列表。
-        names: Vec<String>,
-    },
-    IconB64 {
-        /// 要导出 base64 PNG 的玩家名字列表。
-        names: Vec<String>,
-    },
-    IconSave {
-        /// 图标输出目录。
-        dir: PathBuf,
-        /// 要保存图标的玩家名字列表。
-        names: Vec<String>,
-    },
-    ToDiy {
-        /// 玩家名字列表（namerena raw 格式）。
-        names: Vec<String>,
-        /// 是否为文件批量模式。
-        from_file: bool,
-        /// 输出文件；未指定时输出到标准输出。
-        out_file: Option<PathBuf>,
-        /// 是否输出旧版 `+diy` 形式；默认输出 `+ol` 形式。
-        old: bool,
-    },
-}
+use clap::{Args, Parser, Subcommand};
 
-#[derive(Debug)]
-pub struct ParsedCli {
-    /// 解析完成后的 CLI 命令。
-    pub command: ParsedCommand,
-}
+use super::input::{
+    cli_error, decode_raw, parse_line_list, parse_non_negative_f64, parse_percent_0_100, parse_player_groups_with_labels,
+    parse_plus_separated_groups, parse_positive_usize, parse_thread_count, parse_to_diy_file_names, parse_wr_precision,
+    read_file, read_stdin,
+};
+use super::parsed::{BenchThreadMode, ParsedCli, ParsedCommand};
+
+// ----------------------------------------------------------------------------
+// 顶层 CLI 结构。
+// ----------------------------------------------------------------------------
 
 #[derive(Debug, Parser)]
 #[command(
@@ -200,7 +35,7 @@ pub struct ParsedCli {
     subcommand_required = true,
     arg_required_else_help = true
 )]
-struct Cli {
+pub(super) struct Cli {
     /// 顶层 CLI 子命令。
     #[command(subcommand)]
     command: CliCommand,
@@ -575,6 +410,10 @@ struct BenchOptions {
     buckets_step: Option<usize>,
 }
 
+/// 通用输入来源。
+///
+/// 这层只描述“原始输入从哪里来”，并不负责决定最终业务含义。
+/// 真正的读取优先级在 `read_or_stdin()` 里统一收口。
 #[derive(Debug, Args)]
 struct InputArgs {
     /// 使用提供的原始字符串作为输入，支持 `\n` 换行；支持 `-r/--raw`。
@@ -686,6 +525,10 @@ pub fn parse() -> Result<ParsedCli, clap::Error> {
 
 impl ParsedCli {
     /// 将 `clap` 解析结果转换成更适合执行阶段使用的内部命令结构。
+    ///
+    /// 这一层是 CLI 的“边界层”：
+    /// - 外部世界仍然是 `clap` 风格的多个可选字段；
+    /// - 进入执行层之后，就全部变成已经归一化、可直接消费的结构。
     fn from_cli(cli: Cli) -> Result<Self, clap::Error> {
         let command = match cli.command {
             CliCommand::Fight(cmd) => ParsedCommand::Fight {
@@ -823,6 +666,8 @@ impl BenchOptions {
 
 impl InputArgs {
     /// 按 `--raw`、`--file` 或 stdin 的优先级读取输入内容。
+    ///
+    /// 这里把三种来源统一成一个字符串，执行阶段完全不必感知输入来自哪里。
     fn read_or_stdin(&self) -> Result<String, clap::Error> {
         match (&self.raw, &self.file) {
             (Some(raw), None) => Ok(decode_raw(raw)),
@@ -833,155 +678,9 @@ impl InputArgs {
     }
 }
 
-/// 从标准输入读取完整的 namerena 原始输入。
-fn read_stdin() -> Result<String, clap::Error> {
-    let mut raw = String::new();
-    io::stdin()
-        .read_to_string(&mut raw)
-        .map_err(|err| cli_error(format!("读取 stdin 失败: {err}")))?;
-    let raw = strip_utf8_bom(&raw).to_string();
-    if raw.trim().is_empty() {
-        return Err(cli_error("未提供 raw_namerena 输入"));
-    }
-    Ok(raw)
-}
-
-/// 从指定文件读取完整文本输入。
-fn read_file(path: &Path) -> Result<String, clap::Error> {
-    let content = fs::read_to_string(path).map_err(|err| cli_error(format!("读取文件失败: {err}")))?;
-    Ok(strip_utf8_bom(&content).to_string())
-}
-
-/// 将命令行里的字面量 `\n` 还原成真实换行。
-fn decode_raw(raw: &str) -> String { raw.replace("\\n", "\n") }
-
-/// 解析并校验 benchmark 线程数参数。
-fn parse_thread_count(raw: &str) -> Result<usize, String> {
-    let value = raw.parse::<usize>().map_err(|_| "线程数必须是正整数".to_string())?;
-    if value == 0 {
-        Err("线程数必须大于 0".to_string())
-    } else {
-        Ok(value)
-    }
-}
-
-fn parse_positive_usize(raw: &str) -> Result<usize, String> {
-    let value = raw.parse::<usize>().map_err(|_| "参数必须是正整数".to_string())?;
-    if value == 0 {
-        Err("参数必须大于 0".to_string())
-    } else {
-        Ok(value)
-    }
-}
-
-/// 解析并校验百分比阈值参数 (0~100)。
-fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
-    let value = raw.parse::<f64>().map_err(|_| "阈值必须是 0~100 之间的数字".to_string())?;
-    if !(0.0..=100.0).contains(&value) {
-        Err("阈值必须在 0~100 之间".to_string())
-    } else {
-        Ok(value)
-    }
-}
-
-fn parse_non_negative_f64(raw: &str) -> Result<f64, String> {
-    let value = raw.parse::<f64>().map_err(|_| "阈值必须是非负数字".to_string())?;
-    if value < 0.0 {
-        Err("阈值必须不小于 0".to_string())
-    } else {
-        Ok(value)
-    }
-}
-
-fn parse_wr_precision(raw: &str) -> Result<usize, String> {
-    let value = raw.parse::<usize>().map_err(|_| "小数位数必须是 0~9 之间的整数".to_string())?;
-    if value > 9 {
-        Err("小数位数必须在 0~9 之间".to_string())
-    } else {
-        Ok(value)
-    }
-}
-
-/// 构造统一风格的 CLI 参数校验错误。
-fn cli_error(message: impl Into<String>) -> clap::Error { Cli::command().error(ErrorKind::ValueValidation, message.into()) }
-
-/// 去除 UTF-8 BOM (U+FEFF) 前缀。
-fn strip_utf8_bom(s: &str) -> &str { s.strip_prefix('\u{feff}').unwrap_or(s) }
-
-fn parse_to_diy_file_names(content: &str) -> Result<Vec<String>, clap::Error> {
-    let names = parse_line_list(content);
-    if names.is_empty() {
-        Err(cli_error("to-diy 文件中没有有效名字"))
-    } else {
-        Ok(names)
-    }
-}
-
-fn parse_line_list(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
-}
-
-/// 解析“每个非空行都是一个 `+` 分隔组”的文件内容。
-/// 返回转换后的 namerena 组字符串列表，组内成员之间用 `\n` 分隔。
-fn parse_plus_separated_groups(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(|line| line.split('+').map(str::trim).collect::<Vec<_>>().join("\n"))
-        .collect()
-}
-
-/// 与 `parse_plus_separated_groups` 相同，但会额外保留每行原始文本作为展示标签。
-fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
-    let mut groups = Vec::new();
-    let mut labels = Vec::new();
-    for line in content.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        labels.push(line.to_string());
-        let separator = if double_plus { "++" } else { "+" };
-        groups.push(line.split(separator).map(str::trim).collect::<Vec<_>>().join("\n"));
-    }
-    (groups, labels)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn player_groups_default_split_uses_single_plus() {
-        let (groups, labels) = parse_player_groups_with_labels("aaaa+bbbb", false);
-        assert_eq!(groups, vec!["aaaa\nbbbb".to_string()]);
-        assert_eq!(labels, vec!["aaaa+bbbb".to_string()]);
-    }
-
-    #[test]
-    fn player_groups_double_plus_keeps_diy_plus_inside_player() {
-        let diy = r#"aaaa+diy[58,87,82,78,89,93,99,343]{"skldefend":13}"#;
-        let raw = format!("{diy}++bbbb");
-        let (groups, labels) = parse_player_groups_with_labels(&raw, true);
-
-        assert_eq!(groups, vec![format!("{diy}\nbbbb")]);
-        assert_eq!(labels, vec![raw]);
-    }
-
-    #[test]
-    fn to_diy_file_names_skip_blank_lines() {
-        assert_eq!(
-            parse_to_diy_file_names("aaaa\n\n bbbb@team \r\n").unwrap(),
-            vec!["aaaa".to_string(), "bbbb@team".to_string()]
-        );
-    }
-
-    #[test]
-    fn to_diy_file_names_reject_empty_file() {
-        assert!(parse_to_diy_file_names("\n \r\n").is_err());
-    }
 
     #[test]
     fn to_diy_command_accepts_raw_out_file_and_old_flag() {
@@ -1013,7 +712,7 @@ mod tests {
             "--pure",
         ])
         .unwrap_err();
-        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
@@ -1096,28 +795,5 @@ mod tests {
             }
             _ => panic!("unexpected command"),
         }
-    }
-
-    #[test]
-    fn pair_rejects_log_and_pure_together() {
-        let err = Cli::try_parse_from([
-            "tswn-cli",
-            "bench",
-            "pair",
-            "-l",
-            "targets.txt",
-            "-p",
-            "players.txt",
-            "--teammate-list",
-            "teammates.txt",
-            "--head",
-            "3",
-            "-o",
-            "out.txt",
-            "--log",
-            "--pure",
-        ])
-        .unwrap_err();
-        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
     }
 }
