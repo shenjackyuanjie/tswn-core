@@ -1,7 +1,10 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
-    skill::act::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, is_combat_minion, prepare_combat_minion},
+    skill::act::minion::{
+        MinionKind, MinionRuntimeState, alloc_minion_name, apply_minion_attrs, apply_minion_skill_overlay, is_combat_minion,
+        owner_minion_overlay, prepare_combat_minion,
+    },
     skill::corpse::CorpseState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
 };
@@ -52,6 +55,7 @@ impl SkillTrait for ZombieSkill {
             .expect("cannot get zombie target from storage")
             .set_state(CorpseState::zombie());
 
+        let minion_overlay = owner_minion_overlay(args.3, args.0, MinionKind::Zombie);
         let seed_name = format!(
             "{}?zombie",
             args.3.get_player(&args.0).expect("cannot get zombie owner").base_name()
@@ -63,9 +67,11 @@ impl SkillTrait for ZombieSkill {
         zombie.id = args.3.new_plr_id();
         zombie.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
         zombie.set_display_name_override(Some("丧尸".to_string()));
-        zombie.attr[0] = 0;
-        zombie.attr[6] = 0;
-        zombie.attr[7] = (zombie.attr[7] >> 1).max(1);
+        if !apply_minion_attrs(&mut zombie, minion_overlay.as_ref()) {
+            zombie.attr[0] = 0;
+            zombie.attr[6] = 0;
+            zombie.attr[7] = (zombie.attr[7] >> 1).max(1);
+        }
         zombie.init_values();
         zombie.player_type = PlayerType::Clone;
         zombie.sort_int = 0;
@@ -77,8 +83,10 @@ impl SkillTrait for ZombieSkill {
         zombie.status.set_alive(true);
         zombie.status.set_frozen(false);
         zombie.status.move_point = args.1.r255() as i32 * 4;
-        zombie.skills = SkillStorage::new();
-        zombie.skills.update_proc();
+        if !apply_minion_skill_overlay(&mut zombie, minion_overlay.as_ref()) {
+            zombie.skills = SkillStorage::new();
+            zombie.skills.update_proc();
+        }
         let zombie_id = zombie.as_ptr();
         args.3.queue_spawn(args.0, zombie);
 

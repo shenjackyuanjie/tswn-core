@@ -520,6 +520,101 @@ fn shadow_skill_queues_named_shadow_minion() {
 }
 
 #[test]
+fn ol_overlay_customizes_shadow_minion_attrs_and_skills() {
+    let storage = Storage::new_arc();
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"shadow":{"attrs":[46,47,48,49,50,51,52,200],"skills":{"sklpossess":9}}}"#;
+    let mut owner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut shadow = crate::player::skill::act::shadow::ShadowSkill::new();
+
+    <crate::player::skill::act::shadow::ShadowSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut shadow,
+        255,
+        Vec::new(),
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let shadow = &pending[0].player;
+    assert_eq!(shadow.attr, [10, 11, 12, 13, 14, 15, 16, 200]);
+    assert_eq!(shadow.skills.skill_by_id(0).level(), 9);
+    assert_eq!(shadow.skills.skill[0], 0);
+    assert!(shadow.skills.is_diy);
+}
+
+#[test]
+fn ol_overlay_customizes_summon_minion_attrs_and_skills() {
+    let storage = Storage::new_arc();
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire":12,"sklexplode":3}}}"#;
+    let mut owner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = &pending[0].player;
+    assert_eq!(summoned.attr, [14, 15, 16, 17, 18, 19, 20, 180]);
+    assert_eq!(summoned.skills.skill_by_id(0).level(), 12);
+    assert_eq!(summoned.skills.skill_by_id(1).level(), 3);
+    assert_eq!(summoned.skills.skill, vec![0, 1]);
+    assert!(summoned.skills.store.contains_key(&255));
+    assert!(summoned.skills.is_diy);
+}
+
+#[test]
+fn ol_overlay_customizes_zombie_minion_attrs_and_skills() {
+    let storage = Storage::new_arc();
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklzombie":255},"zombie":{"attrs":[40,41,42,43,44,45,46,90],"skills":{"sklrapid":7}}}"#;
+    let mut owner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let target = Player::new_from_namerena_raw("target".to_string(), storage.clone()).unwrap();
+    let target_id = storage.just_insert_player(target);
+    let mut randomer = RC4 {
+        i: 0,
+        j: 0,
+        main_val: [0u8; 256],
+        #[cfg(not(feature = "no_debug"))]
+        byte_count: 0,
+    };
+    let mut updates = RunUpdates::new();
+    let mut zombie_skill = crate::player::skill::zombie::ZombieSkill::new();
+
+    assert!(
+        <crate::player::skill::zombie::ZombieSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut zombie_skill,
+            255,
+            target_id,
+            (owner_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let zombie = &pending[0].player;
+    assert_eq!(zombie.attr, [4, 5, 6, 7, 8, 9, 10, 90]);
+    assert_eq!(zombie.skills.skill_by_id(0).level(), 7);
+    assert_eq!(zombie.skills.skill, vec![0]);
+    assert!(zombie.skills.is_diy);
+}
+
+#[test]
 fn summon_recast_refreshes_charge_dependent_state_on_reused_minion() {
     let storage = Storage::new_arc();
     let mut summoner = Player::new_from_namerena_raw("昊寵 #9fzRs7Z1l@Shabby_fish".to_string(), storage.clone()).unwrap();

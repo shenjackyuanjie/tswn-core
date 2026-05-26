@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use crate::{
     engine::storage::Storage,
-    player::{Player, PlrId, StateTrait},
+    player::{
+        Player, PlrId, StateTrait,
+        overlay::MinionOverlay,
+        skill::{Skill, SkillBoost, SkillExt, skill_name_to_id, store::SkillStorage},
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -75,6 +79,83 @@ pub fn is_combat_minion(player: &crate::player::Player) -> bool {
 pub fn prepare_combat_minion(player: &mut Player) {
     // JS 的 Minion.bf() 会把 shadow/summon/zombie 的 x/name_factor 强制设为 0。
     player.name_factor = 0.0;
+}
+
+pub fn owner_minion_overlay(storage: &Arc<Storage>, owner_id: PlrId, kind: MinionKind) -> Option<MinionOverlay> {
+    let owner = storage.get_player(&owner_id)?;
+    let overlay = owner.overlay.as_ref()?;
+    match kind {
+        MinionKind::Shadow => overlay.shadow.clone(),
+        MinionKind::Summon => overlay.summon.clone(),
+        MinionKind::Zombie => overlay.zombie.clone(),
+        MinionKind::Clone => None,
+    }
+}
+
+pub fn apply_minion_attrs(player: &mut Player, overlay: Option<&MinionOverlay>) -> bool {
+    let Some(attrs) = overlay.and_then(|overlay| overlay.attrs) else {
+        return false;
+    };
+    player.attr = attrs.map(|value| value.max(0) as u32);
+    true
+}
+
+pub fn apply_minion_skill_overlay(player: &mut Player, overlay: Option<&MinionOverlay>) -> bool {
+    let Some(skill_levels) = overlay.and_then(|overlay| overlay.skills.as_ref()) else {
+        return false;
+    };
+    let mut skills = SkillStorage::new();
+    for (name, boost) in skill_levels {
+        let Some(mut skill) = minion_skill_from_overlay(name, boost) else {
+            continue;
+        };
+        apply_overlay_boost(&mut skill, boost);
+        skills.add_skill(skill);
+    }
+    skills.is_diy = true;
+    skills.update_proc();
+    player.skills = skills;
+    true
+}
+
+fn minion_skill_from_overlay(name: &str, boost: &SkillBoost) -> Option<Skill> {
+    let level = boost.base_level();
+    match normalize_minion_skill_name(name).as_str() {
+        "possess" | "possession" | "附体" => Some(Skill::new(level, super::possess::PossessSkill::box_new())),
+        "explode" | "selfdestruct" | "self_destruct" | "summonexplode" | "自爆" => {
+            Some(Skill::new(level, super::summon::SummonExplodeSkill::box_new()))
+        }
+        _ => skill_name_to_id(name).map(|id| Skill::new_with_id(level, id as u8)),
+    }
+}
+
+fn normalize_minion_skill_name(name: &str) -> String {
+    let lower = name.trim().to_ascii_lowercase();
+    lower
+        .strip_prefix("skl")
+        .or_else(|| lower.strip_prefix("skill"))
+        .unwrap_or(lower.as_str())
+        .to_string()
+}
+
+fn apply_overlay_boost(skill: &mut Skill, boost: &SkillBoost) {
+    skill.set_level(boost.base_level());
+    skill.boosted = false;
+    skill.diy_boost = None;
+    match boost {
+        SkillBoost::Normal(_) => {}
+        SkillBoost::LastBoost(_) => {
+            skill.set_level(skill.level().saturating_mul(2));
+            skill.boosted = true;
+            skill.diy_boost = Some(boost.clone());
+        }
+        SkillBoost::SlotBoost { boost: amount, .. } => {
+            let amount = (*amount).min(skill.level());
+            skill.set_level(skill.level().saturating_add(amount));
+            skill.boosted = true;
+            skill.diy_boost = Some(boost.clone());
+        }
+    }
 }
 
 impl StateTrait for MinionRuntimeState {

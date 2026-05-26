@@ -144,6 +144,26 @@ fn player_raw_new_parses_diy_overlay() {
     let overlay = player.overlay.as_ref().expect("should parse overlay");
     assert!(!overlay.name_factor_enabled);
     assert_eq!(player.get_name_factor(), 0.0);
+
+    let player = Player::new_from_namerena_raw(
+        "minion+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"shadow\":{\"attrs\":[46,47,48,49,50,51,52,200],\"skills\":{\"sklpossess\":9}},\"summon\":{\"skills\":{\"sklfire\":12,\"sklexplode\":3}},\"zombie\":{\"attrs\":[40,41,42,43,44,45,46,90],\"skills\":{\"sklrapid\":7}}}".to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    let overlay = player.overlay.as_ref().expect("should parse overlay");
+    let shadow = overlay.shadow.as_ref().expect("should parse shadow overlay");
+    assert_eq!(shadow.attrs, Some([10, 11, 12, 13, 14, 15, 16, 200]));
+    assert_eq!(
+        shadow.skills.as_ref().unwrap().iter().find(|(k, _)| k == "sklpossess").map(|(_, v)| v),
+        Some(&SkillBoost::Normal(9))
+    );
+    let summon = overlay.summon.as_ref().expect("should parse summon overlay");
+    assert_eq!(
+        summon.skills.as_ref().unwrap().iter().find(|(k, _)| k == "sklexplode").map(|(_, v)| v),
+        Some(&SkillBoost::Normal(3))
+    );
+    let zombie = overlay.zombie.as_ref().expect("should parse zombie overlay");
+    assert_eq!(zombie.attrs, Some([4, 5, 6, 7, 8, 9, 10, 90]));
 }
 
 #[test]
@@ -430,6 +450,38 @@ fn diy_skill_boost_info_stored_on_skill() {
 
     // SkillStorage 标记为 DIY
     assert!(player.skills.is_diy);
+}
+
+#[test]
+fn ol_export_with_minions_includes_spawn_templates() {
+    let storage = Storage::new_arc();
+    let overlay = PlayerOverlay {
+        skills: Some(vec![
+            ("shadow".to_string(), SkillBoost::Normal(10)),
+            ("summon".to_string(), SkillBoost::Normal(10)),
+            ("zombie".to_string(), SkillBoost::Normal(10)),
+        ]),
+        ..Default::default()
+    };
+    let mut player =
+        Player::new_and_init_with_overlay(Some("team".to_string()), "mario".to_string(), None, Some(overlay), storage).unwrap();
+    player.build();
+
+    let exported = player.to_ol_json_with_minions();
+
+    assert!(exported.contains("\"shadow\":{\"attrs\":"));
+    assert!(exported.contains("\"skills\":{\"sklpossess\":\"2*"));
+    assert!(exported.contains("\"summon\":{\"attrs\":"));
+    assert!(exported.contains("\"sklexplode\":"));
+    assert!(exported.contains("\"zombie\":{\"attrs\":"));
+    assert!(exported.contains("\"zombie\":{\"attrs\":") && exported.contains("\"skills\":{}"));
+    assert_eq!(exported.matches("\"sklfire\"").count(), 1);
+
+    let reparsed = Player::new_from_namerena_raw(exported, Storage::new_arc()).unwrap();
+    let reparsed_overlay = reparsed.overlay.as_ref().expect("exported ol should parse overlay");
+    assert!(reparsed_overlay.shadow.is_some());
+    assert!(reparsed_overlay.summon.is_some());
+    assert!(reparsed_overlay.zombie.is_some());
 }
 
 #[test]

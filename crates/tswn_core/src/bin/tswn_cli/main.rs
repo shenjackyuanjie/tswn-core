@@ -234,6 +234,7 @@ fn main() {
             from_file,
             out_file,
             old,
-        } => to_diy::run(&names, from_file, out_file.as_deref(), old),
+            minions,
+        } => to_diy::run(&names, from_file, out_file.as_deref(), old, minions),
     }
 }

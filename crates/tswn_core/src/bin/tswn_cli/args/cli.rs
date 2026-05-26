@@ -79,12 +79,14 @@ enum CliCommand {
     /// 默认接收一个名字并输出详细信息；单号用 `-r/--raw NAME`，文件批量用 `-f/--file FILE`。
     /// 文件模式会按行读取多个名字，跳过空行，并按输入顺序逐行输出导出结果。
     /// 默认输出 `+ol` 形式；`--old` 切换为旧版 `+diy` 形式。
+    /// `--minions` 会在 `+ol` 中附带幻影/使魔/丧尸模板，方便继续 DIY 它们的属性和技能。
     /// `-o/--out-file FILE` 可将输出写入文件。
     ///
     /// 示例:
     ///   tswn-cli to-diy -r "mario@team+fire"
     ///   tswn-cli to-diy -f names.txt
     ///   tswn-cli to-diy -r "mario@team+fire" --old
+    ///   tswn-cli to-diy -r "地狱之轮 #mW88BamWo@Shabby_fish" --minions
     ///   tswn-cli to-diy -r "mario@team+fire" -o diy.txt
     ///   tswn-cli to-diy --file names.txt --out-file diy.txt
     #[command(name = "to-diy", verbatim_doc_comment)]
@@ -538,6 +540,14 @@ struct ToDiyCommand {
     /// 输出旧版 `+diy` 形式；默认输出 `+ol` 形式。
     #[arg(long = "old")]
     old: bool,
+
+    /// 在 `+ol` 中附带幻影/使魔/丧尸模板；旧版 `+diy` 无法表达这些字段。
+    #[arg(
+        long = "minions",
+        alias = "with-minions",
+        conflicts_with = "old"
+    )]
+    minions: bool,
 }
 
 /// 解析命令行参数，并转换成内部使用的结构化命令。
@@ -670,6 +680,7 @@ impl ParsedCli {
                     from_file,
                     out_file: cmd.out_file,
                     old: cmd.old,
+                    minions: cmd.minions,
                 }
             }
         };
@@ -726,9 +737,29 @@ mod tests {
                 assert_eq!(cmd.file, None);
                 assert_eq!(cmd.out_file.as_deref(), Some(Path::new("out.txt")));
                 assert!(cmd.old);
+                assert!(!cmd.minions);
             }
             _ => panic!("unexpected command"),
         }
+    }
+
+    #[test]
+    fn to_diy_command_accepts_minions_flag() {
+        let cli = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario@team+shadow", "--minions"]).unwrap();
+        match cli.command {
+            CliCommand::ToDiy(cmd) => {
+                assert_eq!(cmd.raw.as_deref(), Some("mario@team+shadow"));
+                assert!(cmd.minions);
+                assert!(!cmd.old);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn to_diy_command_rejects_old_with_minions() {
+        let err = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario", "--old", "--minions"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]

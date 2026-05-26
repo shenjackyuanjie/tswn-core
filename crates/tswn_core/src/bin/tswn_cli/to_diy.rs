@@ -7,15 +7,15 @@ use std::path::Path;
 use tswn_core::engine::storage::Storage;
 use tswn_core::player::Player;
 
-pub fn run(names: &[String], batch: bool, out_file: Option<&Path>, old: bool) {
+pub fn run(names: &[String], batch: bool, out_file: Option<&Path>, old: bool, minions: bool) {
     if batch {
-        run_batch(names, out_file, old);
+        run_batch(names, out_file, old, minions);
     } else if let Some(raw) = names.first() {
-        run_single(raw, out_file, old);
+        run_single(raw, out_file, old, minions);
     }
 }
 
-fn run_single(raw: &str, out_file: Option<&Path>, old: bool) {
+fn run_single(raw: &str, out_file: Option<&Path>, old: bool, minions: bool) {
     let storage = Storage::new_arc();
     let mut player = build_player_or_exit(raw, storage);
     player.build();
@@ -28,7 +28,7 @@ fn run_single(raw: &str, out_file: Option<&Path>, old: bool) {
         }
     };
 
-    let export = export_line(&player, old);
+    let export = export_line(&player, old, minions);
     let _ = writeln!(out, "{export}");
 
     if out_file.is_none() {
@@ -53,7 +53,7 @@ fn run_single(raw: &str, out_file: Option<&Path>, old: bool) {
     }
 }
 
-fn run_batch(names: &[String], out_file: Option<&Path>, old: bool) {
+fn run_batch(names: &[String], out_file: Option<&Path>, old: bool, minions: bool) {
     let storage = Storage::new_arc();
     let mut out = match open_output(out_file) {
         Ok(out) => out,
@@ -66,11 +66,19 @@ fn run_batch(names: &[String], out_file: Option<&Path>, old: bool) {
     for raw in names {
         let mut player = build_player_or_exit(raw, storage.clone());
         player.build();
-        let _ = writeln!(out, "{}", export_line(&player, old));
+        let _ = writeln!(out, "{}", export_line(&player, old, minions));
     }
 }
 
-fn export_line(player: &Player, old: bool) -> String { if old { player.to_diy_compact() } else { player.to_ol_json() } }
+fn export_line(player: &Player, old: bool, minions: bool) -> String {
+    if old {
+        player.to_diy_compact()
+    } else if minions {
+        player.to_ol_json_with_minions()
+    } else {
+        player.to_ol_json()
+    }
+}
 
 fn open_output(path: Option<&Path>) -> io::Result<Box<dyn io::Write>> {
     match path {
@@ -100,5 +108,38 @@ fn build_player_or_exit(raw: &str, storage: std::sync::Arc<Storage>) -> Player {
             eprintln!("构建玩家失败: {raw}: {err}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_line_with_minions_includes_reparseable_skl_prefixed_minion_templates() {
+        let storage = Storage::new_arc();
+        let mut player = Player::new_from_namerena_raw(
+            "mario@team+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklshadow\":10,\"sklsummon\":10,\"sklzombie\":10}}"
+                .to_string(),
+            storage,
+        )
+        .unwrap();
+        player.build();
+
+        let exported = export_line(&player, false, true);
+
+        assert!(exported.contains("\"shadow\":{\"attrs\":"));
+        assert!(exported.contains("\"summon\":{\"attrs\":"));
+        assert!(exported.contains("\"zombie\":{\"attrs\":"));
+        assert!(exported.contains("\"sklpossess\":\"2*"));
+        assert!(exported.contains("\"sklexplode\":"));
+        assert!(!exported.contains("\"possess\":"));
+        assert!(!exported.contains("\"explode\":"));
+
+        let reparsed = Player::new_from_namerena_raw(exported, Storage::new_arc()).unwrap();
+        let overlay = reparsed.overlay.as_ref().expect("exported --minions ol should parse");
+        assert!(overlay.shadow.is_some());
+        assert!(overlay.summon.is_some());
+        assert!(overlay.zombie.is_some());
     }
 }

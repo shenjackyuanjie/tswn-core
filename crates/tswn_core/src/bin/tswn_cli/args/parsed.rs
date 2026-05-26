@@ -225,6 +225,8 @@ pub enum ParsedCommand {
         out_file: Option<PathBuf>,
         /// 是否输出旧版 `+diy` 形式；默认输出 `+ol` 形式。
         old: bool,
+        /// 是否在 `+ol` 中附带 shadow/summon/zombie 模板。
+        minions: bool,
     },
 }
 

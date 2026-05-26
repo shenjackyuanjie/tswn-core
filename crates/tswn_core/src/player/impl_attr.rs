@@ -41,6 +41,61 @@
 use super::utils::{trim_js_line_end, trim_js_name_like};
 use super::*;
 
+fn minion_skill_name_for_export(skill_key: usize, skill: &Skill) -> String {
+    let runtime_kind = skill.debug_skill_type_name();
+    if runtime_kind.ends_with("possess::PossessSkill") {
+        return "sklpossess".to_string();
+    }
+    if runtime_kind.ends_with("summon::SummonExplodeSkill") {
+        return "sklexplode".to_string();
+    }
+    builtin_skill_id_for_runtime_kind(runtime_kind)
+        .map(skill_name_for_export)
+        .unwrap_or_else(|| skill_name_for_export(skill_key))
+}
+
+fn builtin_skill_id_for_runtime_kind(runtime_kind: &str) -> Option<usize> {
+    match runtime_kind.rsplit("::").next()? {
+        "FireSkill" => Some(0),
+        "IceSkill" => Some(1),
+        "ThunderSkill" => Some(2),
+        "QuakeSkill" => Some(3),
+        "AbsorbSkill" => Some(4),
+        "PoisonSkill" => Some(5),
+        "RapidSkill" => Some(6),
+        "CriticalSkill" => Some(7),
+        "HalfSkill" => Some(8),
+        "ExchangeSkill" => Some(9),
+        "BerserkSkill" => Some(10),
+        "CharmSkill" => Some(11),
+        "HasteSkill" => Some(12),
+        "SlowSkill" => Some(13),
+        "CurseSkill" => Some(14),
+        "HealSkill" => Some(15),
+        "ReviveSkill" => Some(16),
+        "DisperseSkill" => Some(17),
+        "IronSkill" => Some(18),
+        "ChargeSkill" => Some(19),
+        "AccumulateSkill" => Some(20),
+        "AssassinateSkill" => Some(21),
+        "SummonSkill" => Some(22),
+        "CloneSkill" => Some(23),
+        "ShadowSkill" => Some(24),
+        "DefendSkill" => Some(25),
+        "ProtectSkill" => Some(26),
+        "ReflectSkill" => Some(27),
+        "ReraiseSkill" => Some(28),
+        "ShieldSkill" => Some(29),
+        "CounterSkill" => Some(30),
+        "MergeSkill" => Some(31),
+        "ZombieSkill" => Some(32),
+        "UpgradeSkill" => Some(33),
+        "HideSkill" => Some(34),
+        "NoneSkill" => Some(35),
+        _ => None,
+    }
+}
+
 /// 按 `+` 分割字符串，但跳过双引号字符串内的 `+`。
 ///
 /// 例如 `diy[...]{"sklfire":"40+30"}` 不会被切分，
@@ -433,6 +488,230 @@ impl Player {
             skills,
             self.overlay.as_ref().map_or(true, |ov| ov.name_factor_enabled)
         )
+    }
+
+    /// 导出 `+ol`，并在玩家可生成 shadow/summon/zombie 时附带对应 minion 模板。
+    pub fn to_ol_json_with_minions(&self) -> String {
+        let entries = self.ol_minion_export_entries();
+        if entries.is_empty() {
+            return self.to_ol_json();
+        }
+
+        let mut export = self.to_ol_json();
+        let Some(insert_at) = export.rfind('}') else {
+            return export;
+        };
+        export.insert_str(insert_at, &format!(",{}", entries.join(",")));
+        export
+    }
+
+    fn ol_minion_export_entries(&self) -> Vec<String> {
+        let overlay = self.overlay.as_deref();
+        let mut entries = Vec::new();
+        let storage = Storage::new_arc();
+
+        let shadow_overlay = overlay.and_then(|overlay| overlay.shadow.as_ref());
+        if self.should_export_minion(24, shadow_overlay)
+            && let Some(shadow) = self.build_shadow_export_minion(shadow_overlay, storage.clone())
+        {
+            entries.push(format!("\"shadow\":{}", shadow.to_ol_minion_json()));
+        }
+
+        let summon_overlay = overlay.and_then(|overlay| overlay.summon.as_ref());
+        if self.should_export_minion(22, summon_overlay)
+            && let Some(summon) = self.build_summon_export_minion(summon_overlay, storage.clone())
+        {
+            entries.push(format!("\"summon\":{}", summon.to_ol_minion_json()));
+        }
+
+        let zombie_overlay = overlay.and_then(|overlay| overlay.zombie.as_ref());
+        if self.should_export_minion(32, zombie_overlay)
+            && let Some(zombie) = self.build_zombie_export_minion(zombie_overlay, storage)
+        {
+            entries.push(format!("\"zombie\":{}", zombie.to_ol_minion_json()));
+        }
+
+        entries
+    }
+
+    fn should_export_minion(&self, skill_id: usize, overlay: Option<&crate::player::overlay::MinionOverlay>) -> bool {
+        overlay.is_some() || self.skills.store.get(&skill_id).map(|skill| skill.level() > 0).unwrap_or(false)
+    }
+
+    fn build_shadow_export_minion(
+        &self,
+        overlay: Option<&crate::player::overlay::MinionOverlay>,
+        storage: std::sync::Arc<Storage>,
+    ) -> Option<Player> {
+        let seed_name = format!("{}?shadow", self.base_name());
+        let mut shadow = Player::new_minion_and_init(Some(self.clan_name()), seed_name, None, storage).ok()?;
+        crate::player::skill::act::minion::prepare_combat_minion(&mut shadow);
+        shadow.build();
+        if !crate::player::skill::act::minion::apply_minion_attrs(&mut shadow, overlay) {
+            shadow.attr[7] /= 2;
+        }
+        shadow.init_values();
+
+        if !crate::player::skill::act::minion::apply_minion_skill_overlay(&mut shadow, overlay) {
+            let possess_level =
+                ((shadow.name_base[64..68].iter().copied().min().unwrap_or(0) as i32 - 10) / 2 + 36).max(0) as u32;
+            let mut skills = crate::player::skill::store::SkillStorage::new();
+            skills.add_skill(Skill::new(
+                possess_level,
+                Box::new(crate::player::skill::act::possess::PossessSkill::new()),
+            ));
+            skills.boost_last();
+            shadow.skills = skills;
+            shadow.skills.update_proc();
+        }
+
+        Some(shadow)
+    }
+
+    fn build_summon_export_minion(
+        &self,
+        overlay: Option<&crate::player::overlay::MinionOverlay>,
+        storage: std::sync::Arc<Storage>,
+    ) -> Option<Player> {
+        let summon_team = self.clan_name();
+        let summon_name = format!("{}?summon", self.base_name());
+        let mut summoned = Player::new_minion_and_init(Some(summon_team.clone()), summon_name.clone(), None, storage).ok()?;
+        crate::player::skill::act::minion::prepare_combat_minion(&mut summoned);
+        summoned.build();
+        if !crate::player::skill::act::minion::apply_minion_attrs(&mut summoned, overlay) {
+            summoned.attr[7] = (summoned.attr[7] / 3).max(1);
+            summoned.attr[0] = 0;
+            summoned.attr[1] = self.attr[1];
+            summoned.attr[4] = 0;
+            summoned.attr[5] = self.attr[5];
+        }
+        summoned.update_states();
+        summoned.status.hp = summoned.status.max_hp;
+        summoned.status.magic_point = summoned.status.wisdom >> 1;
+
+        if !crate::player::skill::act::minion::apply_minion_skill_overlay(&mut summoned, overlay) {
+            let skill_level_from_slot = |slot: usize| -> u32 {
+                let base = 64 + slot * 4;
+                if base + 3 >= summoned.name_base.len() {
+                    return 0;
+                }
+                let minv = summoned.name_base[base..base + 4].iter().copied().min().unwrap_or(0);
+                minv.saturating_sub(10) as u32
+            };
+            let mut skill_order = [0usize, 1, 2];
+            let team_bytes = [0_u8].iter().chain(summon_team.as_bytes()).copied().collect::<Vec<u8>>();
+            let name_bytes = [0_u8].iter().chain(summon_name.as_bytes()).copied().collect::<Vec<u8>>();
+            let mut skill_rand = RC4::new(&team_bytes, 1);
+            skill_rand.update(&name_bytes, 2);
+            skill_rand.sort_list(&mut skill_order);
+
+            let mut skills = crate::player::skill::store::SkillStorage::new();
+            skills.add_skill(Skill::new_with_id(0, 0));
+            skills.add_skill(Skill::new_with_id(0, 0));
+            skills.add_skill(Skill::new(
+                0,
+                Box::new(crate::player::skill::act::summon::SummonExplodeSkill::new()),
+            ));
+            for (slot, skill_key) in skill_order.iter().copied().enumerate() {
+                let level = skill_level_from_slot(slot);
+                let skill = skills.skill_by_id_mut(skill_key);
+                skill.set_level(level);
+                if level > 0 {
+                    let raw_base = 64 + slot * 4;
+                    if raw_base + 3 < summoned.raw_name_base.len() {
+                        let raw_min = summoned.raw_name_base[raw_base..raw_base + 4].iter().copied().min().unwrap_or(0);
+                        if raw_min <= 10 {
+                            skill.boosted = true;
+                        }
+                    }
+                }
+            }
+            skills.slot_skill = vec![0, 1, 2];
+            skills.skill = skill_order.to_vec();
+            skills.boost_last();
+            summoned.skills = skills;
+            summoned.skills.update_proc();
+        }
+
+        Some(summoned)
+    }
+
+    fn build_zombie_export_minion(
+        &self,
+        overlay: Option<&crate::player::overlay::MinionOverlay>,
+        storage: std::sync::Arc<Storage>,
+    ) -> Option<Player> {
+        let seed_name = format!("{}?zombie", self.base_name());
+        let mut zombie = Player::new_minion_and_init(Some(self.clan_name()), seed_name, None, storage).ok()?;
+        crate::player::skill::act::minion::prepare_combat_minion(&mut zombie);
+        zombie.build();
+        if !crate::player::skill::act::minion::apply_minion_attrs(&mut zombie, overlay) {
+            zombie.attr[0] = 0;
+            zombie.attr[6] = 0;
+            zombie.attr[7] = (zombie.attr[7] >> 1).max(1);
+        }
+        zombie.init_values();
+        if !crate::player::skill::act::minion::apply_minion_skill_overlay(&mut zombie, overlay) {
+            zombie.skills = crate::player::skill::store::SkillStorage::new();
+            zombie.skills.update_proc();
+        }
+
+        Some(zombie)
+    }
+
+    fn to_ol_minion_json(&self) -> String {
+        format!(
+            "{{\"attrs\":[{}],\"skills\":{}}}",
+            Self::attrs_to_ol_json(&self.attr),
+            self.minion_skills_to_ol_json()
+        )
+    }
+
+    fn attrs_to_ol_json(attrs: &[u32; 8]) -> String {
+        attrs
+            .iter()
+            .enumerate()
+            .map(|(i, v)| if i < 7 { (v + 36).to_string() } else { v.to_string() })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn minion_skills_to_ol_json(&self) -> String {
+        let mut skills = String::from('{');
+        let mut first = true;
+        let mut seen_names: Vec<String> = Vec::new();
+        for skill_key in &self.skills.skill {
+            let Some(skill) = self.skills.store.get(skill_key) else {
+                continue;
+            };
+            if skill.level() == 0 {
+                continue;
+            }
+            let name = minion_skill_name_for_export(*skill_key, skill);
+            if seen_names.iter().any(|seen| seen == &name) {
+                continue;
+            }
+            seen_names.push(name.clone());
+            if !first {
+                skills.push(',');
+            }
+            first = false;
+            match &skill.diy_boost {
+                Some(SkillBoost::SlotBoost { boost, .. }) => {
+                    let base = skill.level().saturating_sub(*boost);
+                    skills.push_str(&format!("\"{}\":\"{}+{}\"", name, base, boost));
+                }
+                Some(SkillBoost::LastBoost(_)) => {
+                    let base = skill.level() / 2;
+                    skills.push_str(&format!("\"{}\":\"2*{}\"", name, base));
+                }
+                _ => {
+                    skills.push_str(&format!("\"{}\":{}", name, skill.level()));
+                }
+            }
+        }
+        skills.push('}');
+        skills
     }
 
     /// 更新状态

@@ -5,7 +5,10 @@ use crate::player::{
     skill::{Skill, SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
 
-use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, prepare_combat_minion};
+use super::minion::{
+    MinionKind, MinionRuntimeState, alloc_minion_name, apply_minion_attrs, apply_minion_skill_overlay, owner_minion_overlay,
+    prepare_combat_minion,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct ShadowSkill;
@@ -57,12 +60,15 @@ impl SkillTrait for ShadowSkill {
             let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage");
             (owner.base_name(), owner.clan_name(), owner.get_status().at_boost >= 3.0)
         };
+        let minion_overlay = owner_minion_overlay(args.3, args.0, MinionKind::Shadow);
         let seed_name = format!("{owner_base_name}?shadow");
         let mut shadow =
             Player::new_minion_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init shadow minion");
         prepare_combat_minion(&mut shadow);
         shadow.build();
-        shadow.attr[7] /= 2;
+        if !apply_minion_attrs(&mut shadow, minion_overlay.as_ref()) {
+            shadow.attr[7] /= 2;
+        }
         shadow.init_values();
         shadow.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
         shadow.set_display_name_override(Some("幻影".to_string()));
@@ -76,12 +82,15 @@ impl SkillTrait for ShadowSkill {
         shadow.status.set_alive(true);
         shadow.status.set_frozen(false);
 
-        let possess_level = ((shadow.name_base[64..68].iter().copied().min().unwrap_or(0) as i32 - 10) / 2 + 36).max(0) as u32;
-        let mut skills = SkillStorage::new();
-        skills.add_skill(Skill::new(possess_level, super::possess::PossessSkill::box_new()));
-        skills.boost_last();
-        shadow.skills = skills;
-        shadow.skills.update_proc();
+        if !apply_minion_skill_overlay(&mut shadow, minion_overlay.as_ref()) {
+            let possess_level =
+                ((shadow.name_base[64..68].iter().copied().min().unwrap_or(0) as i32 - 10) / 2 + 36).max(0) as u32;
+            let mut skills = SkillStorage::new();
+            skills.add_skill(Skill::new(possess_level, super::possess::PossessSkill::box_new()));
+            skills.boost_last();
+            shadow.skills = skills;
+            shadow.skills.update_proc();
+        }
 
         shadow.status.move_point = if charge_active { 2048 } else { -2048 };
         let shadow_id = shadow.as_ptr();
