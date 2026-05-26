@@ -15,7 +15,10 @@ use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::player::overlay::PlayerOverlay;
 use tswn_core::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
-use crate::{BENCH_PARALLEL_THRESHOLD, args::BenchThreadMode};
+use crate::{
+    BENCH_PARALLEL_THRESHOLD,
+    args::{BenchThreadMode, NamerPfMode},
+};
 
 use super::common::BenchSummary;
 use super::output::print_perf_lines;
@@ -271,21 +274,38 @@ fn run_bench_score_inner(
 }
 
 /// `namer-pf` 入口。
-pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>) {
+pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, modes: &[NamerPfMode]) {
     let groups = parse_plus_separated_groups(raw);
     if groups.is_empty() {
         eprintln!("namer-pf: 输入为空或无有效玩家");
         return;
     }
+    let default_modes;
+    let modes = if modes.is_empty() {
+        default_modes = NamerPfMode::ALL;
+        &default_modes[..]
+    } else {
+        modes
+    };
 
-    println!("pp|pd|qp|qd");
+    println!("{}", modes.iter().map(|mode| mode.label()).collect::<Vec<_>>().join("|"));
     for group in groups {
-        let pp = namer_pf_score(&group, "\u{0002}", false, n, threads);
-        let pd = namer_pf_score(&group, "\u{0002}", true, n, threads);
-        let qp = namer_pf_score(&group, "!", false, n, threads);
-        let qd = namer_pf_score(&group, "!", true, n, threads);
-        let sum = pp + pd + qp + qd;
-        println!("{pp}|{pd}|{qp}|{qd}|{sum}");
+        let scores = modes
+            .iter()
+            .map(|mode| {
+                let (modifier, duplicate) = mode.score_params();
+                namer_pf_score(&group, modifier, duplicate, n, threads)
+            })
+            .collect::<Vec<_>>();
+        let sum = scores.iter().sum::<u64>();
+        let line = scores
+            .iter()
+            .copied()
+            .chain(std::iter::once(sum))
+            .map(|score| score.to_string())
+            .collect::<Vec<_>>()
+            .join("|");
+        println!("{line}");
     }
 }
 

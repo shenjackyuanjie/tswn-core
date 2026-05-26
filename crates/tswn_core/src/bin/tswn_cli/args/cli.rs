@@ -13,14 +13,14 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::path::Path;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use super::input::{
     cli_error, decode_raw, parse_line_list, parse_non_negative_f64, parse_percent_0_100, parse_player_groups_with_labels,
     parse_plus_separated_groups, parse_positive_usize, parse_thread_count, parse_to_diy_file_names, parse_wr_precision,
     read_file, read_stdin,
 };
-use super::parsed::{BenchThreadMode, ParsedCli, ParsedCommand};
+use super::parsed::{BenchThreadMode, NamerPfMode, ParsedCli, ParsedCommand};
 
 // ----------------------------------------------------------------------------
 // 顶层 CLI 结构。
@@ -379,6 +379,29 @@ struct NamerPfCommand {
     /// 指定 benchmark 线程数。
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
+
+    /// 只运行指定评分项；可重复传入或一次传多个，不传则运行 pp/pd/qp/qd 全部四项。
+    #[arg(long = "mode", value_enum, value_name = "MODE", num_args = 1.., value_delimiter = ',', action = ArgAction::Append)]
+    mode: Vec<NamerPfModeArg>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum NamerPfModeArg {
+    Pp,
+    Pd,
+    Qp,
+    Qd,
+}
+
+impl From<NamerPfModeArg> for NamerPfMode {
+    fn from(value: NamerPfModeArg) -> Self {
+        match value {
+            NamerPfModeArg::Pp => Self::Pp,
+            NamerPfModeArg::Pd => Self::Pd,
+            NamerPfModeArg::Qp => Self::Qp,
+            NamerPfModeArg::Qd => Self::Qd,
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -626,6 +649,7 @@ impl ParsedCli {
                 raw: cmd.input.read_or_stdin()?,
                 n: cmd.count.max(1),
                 threads: cmd.thread,
+                modes: normalize_namer_pf_modes(&cmd.mode),
             },
             CliCommand::Icon(IconCommand { command }) => match command {
                 IconSubcommand::Show(cmd) => ParsedCommand::IconShow { names: cmd.names },
@@ -651,6 +675,17 @@ impl ParsedCli {
         };
         Ok(Self { command })
     }
+}
+
+fn normalize_namer_pf_modes(modes: &[NamerPfModeArg]) -> Vec<NamerPfMode> {
+    if modes.is_empty() {
+        return NamerPfMode::ALL.to_vec();
+    }
+
+    NamerPfMode::ALL
+        .into_iter()
+        .filter(|mode| modes.iter().any(|arg| NamerPfMode::from(*arg) == *mode))
+        .collect()
 }
 
 impl BenchOptions {
@@ -691,6 +726,29 @@ mod tests {
                 assert_eq!(cmd.file, None);
                 assert_eq!(cmd.out_file.as_deref(), Some(Path::new("out.txt")));
                 assert!(cmd.old);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn namer_pf_accepts_multiple_modes() {
+        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--mode", "pp", "qd"]).unwrap();
+        match cli.command {
+            CliCommand::NamerPf(cmd) => {
+                assert_eq!(cmd.mode, vec![NamerPfModeArg::Pp, NamerPfModeArg::Qd]);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn namer_pf_defaults_to_all_modes() {
+        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario"]).unwrap();
+        let parsed = ParsedCli::from_cli(cli).unwrap();
+        match parsed.command {
+            ParsedCommand::NamerPf { modes, .. } => {
+                assert_eq!(modes, NamerPfMode::ALL.to_vec());
             }
             _ => panic!("unexpected command"),
         }

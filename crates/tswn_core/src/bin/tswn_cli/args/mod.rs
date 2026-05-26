@@ -16,4 +16,4 @@ mod input;
 mod parsed;
 
 pub use cli::parse;
-pub use parsed::{BenchThreadMode, ParsedCommand};
+pub use parsed::{BenchThreadMode, NamerPfMode, ParsedCommand};

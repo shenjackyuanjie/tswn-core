@@ -17,6 +17,37 @@ pub enum BenchThreadMode {
     SingleThread,
 }
 
+/// `namer-pf` 可单独运行的评分项。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NamerPfMode {
+    Pp,
+    Pd,
+    Qp,
+    Qd,
+}
+
+impl NamerPfMode {
+    pub const ALL: [Self; 4] = [Self::Pp, Self::Pd, Self::Qp, Self::Qd];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pp => "pp",
+            Self::Pd => "pd",
+            Self::Qp => "qp",
+            Self::Qd => "qd",
+        }
+    }
+
+    pub fn score_params(self) -> (&'static str, bool) {
+        match self {
+            Self::Pp => ("\u{0002}", false),
+            Self::Pd => ("\u{0002}", true),
+            Self::Qp => ("!", false),
+            Self::Qd => ("!", true),
+        }
+    }
+}
+
 /// 归一化后的 CLI 命令。
 ///
 /// 这里的每个字段都已经过输入来源统一、基础校验和必要的文本转换：
@@ -168,6 +199,8 @@ pub enum ParsedCommand {
         n: usize,
         /// 显式指定的 benchmark 线程数。
         threads: Option<usize>,
+        /// 需要运行的评分项；未显式传入时已归一化为四项全测。
+        modes: Vec<NamerPfMode>,
     },
     IconShow {
         /// 要展示图标的玩家名字列表。

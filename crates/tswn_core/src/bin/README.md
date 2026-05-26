@@ -49,7 +49,7 @@ cargo build -p tswn_core --bins --features aux_bins
 
 - fight / raw / diff：普通对战、raw 输出、runner diff 输出。
 - bench auto / win-rate / group-win-rate / batch-rate(cqp) / pair：评分与胜率相关 benchmark。
-- namer-pf：与 ica-plugin /namer-pf 对齐的四项评分。
+- namer-pf：与 ica-plugin /namer-pf 对齐的四项评分；可用 `--mode pp pd` 只跑指定项。
 - icon show / b64 / save：图标预览与导出。
 - to-diy：导出 DIY/OL overlay 文本。
 

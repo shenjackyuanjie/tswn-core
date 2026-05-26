@@ -24,7 +24,7 @@
 //! - `bench group-win-rate`: 目标组对多个对手组逐个统计并汇总平均胜率。
 //! - `bench batch-rate` / `bench cqp`: 批量计算选手组对靶子组列表的平均胜率。
 //! - `bench pair`: 评估选手与队友二人组的 top-head 胜率和。
-//! - `namer-pf`: 输出与 ica-plugin `/namer-pf` 对齐的四项评分。
+//! - `namer-pf`: 输出与 ica-plugin `/namer-pf` 对齐的四项评分，可用 `--mode` 只跑指定项。
 //! - `icon show|b64|save`: 预览、导出或保存玩家图标。
 //! - `to-diy`: 将名字导出为 DIY/OL overlay 格式。
 //!
@@ -48,6 +48,7 @@
 //! tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
 //! tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 //! tswn-cli namer-pf -r "mario\nluigi"
+//! tswn-cli namer-pf -r "mario\nluigi" --mode pp qd
 //! tswn-cli to-diy -r "mario@team+fire" -o diy.txt
 //! tswn-cli icon show mario luigi
 //! ```
@@ -214,7 +215,7 @@ fn main() {
                 wr_precision,
             );
         }
-        ParsedCommand::NamerPf { raw, n, threads } => bench::run_namer_pf(&raw, n, threads),
+        ParsedCommand::NamerPf { raw, n, threads, modes } => bench::run_namer_pf(&raw, n, threads, &modes),
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
         ParsedCommand::IconB64 { names } => {
             if let Err(err) = icon::print_icon_b64(&names) {
