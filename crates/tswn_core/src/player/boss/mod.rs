@@ -59,16 +59,23 @@ use foldhash::HashMap as FastHashMap;
 mod covid;
 mod lazy;
 mod saitama;
+mod testsubject;
 
 pub use covid::{CovidBossState, CovidEntry, CovidInfection};
 pub use lazy::{LazyBossState, LazyInfection};
 pub use saitama::SaitamaState;
+pub use testsubject::{
+    SkullFractureState,
+    TestSubjectNoEntityState,
+    TestSubjectState,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BossKind {
     Covid,
     Lazy,
     Saitama,
+    TestSubject,
     Generic,
 }
 
@@ -142,6 +149,15 @@ impl BossRegistry {
                 saitama::saitama_boss_action,
             ),
         );
+        handlers.insert(
+            "testsubject",
+            BossHandler::new(
+                init_test_subject_state,
+                test_subject_action_prob_count,
+                test_subject_immune_threshold,
+                testsubject::test_subject_boss_action,
+            ),
+        );
         Self { handlers, fallback }
     }
 
@@ -171,6 +187,7 @@ pub fn boss_kind(name: &str) -> BossKind {
         "covid" => BossKind::Covid,
         "lazy" => BossKind::Lazy,
         "saitama" => BossKind::Saitama,
+        "testsubject" => BossKind::TestSubject,
         _ => BossKind::Generic,
     }
 }
@@ -225,6 +242,11 @@ fn init_saitama_state(player: &mut Player) {
 }
 
 #[inline]
+fn init_test_subject_state(player: &mut Player) {
+    testsubject::init_test_subject_state(player);
+}
+
+#[inline]
 fn init_generic_state(_player: &mut Player) {}
 
 #[inline]
@@ -238,6 +260,9 @@ fn saitama_action_prob_count() -> usize { 1 }
 
 #[inline]
 fn generic_action_prob_count() -> usize { 1 }
+
+#[inline]
+fn test_subject_action_prob_count() -> usize { 0 }
 
 #[inline]
 fn saitama_immune_threshold(key: &str) -> i32 {
@@ -268,6 +293,14 @@ fn lazy_immune_threshold(key: &str) -> i32 {
 fn generic_immune_threshold(key: &str) -> i32 {
     match key {
         "assassinate" | "charm" | "berserk" | "half" | "curse" | "exchange" | "slow" | "ice" => 192,
+        _ => 84,
+    }
+}
+
+#[inline]
+fn test_subject_immune_threshold(key: &str) -> i32 {
+    match key {
+        "berserk" => 256,
         _ => 84,
     }
 }
