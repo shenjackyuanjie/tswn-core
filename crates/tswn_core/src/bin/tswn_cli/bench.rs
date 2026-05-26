@@ -312,6 +312,7 @@ pub fn run_bench_batch_rate(
     pure: bool,
     min_screen: Option<f64>,
     min_file: Option<f64>,
+    wr_precision: usize,
 ) {
     let file_mode = if pure {
         BatchFileOutputMode::Pure
@@ -427,8 +428,9 @@ pub fn run_bench_batch_rate(
             throughput,
             valid_matchups,
             skipped_matchups,
+            wr_precision,
         );
-        let summary_log = format_batch_rate_log_record(label, avg);
+        let summary_log = format_batch_rate_log_record(label, avg, wr_precision);
         let summary_pure = format_batch_rate_pure_record(label);
 
         progress.complete_player(elapsed);
@@ -443,10 +445,17 @@ pub fn run_bench_batch_rate(
                 progress.clear();
                 print!("{verbose_buf}");
                 println!(
-                    "平均胜率: {:.2}%  (有效 {} 组靶子，跳过 {} 场重复号)",
-                    avg, valid_matchups, skipped_matchups
+                    "平均胜率: {}%  (有效 {} 组靶子，跳过 {} 场重复号)",
+                    format_rate(avg, wr_precision),
+                    valid_matchups,
+                    skipped_matchups
                 );
-                println!("汇总胜率: {:.2}%  ({}/{})", aggregate_rate, accumulated_wins, accumulated_total);
+                println!(
+                    "汇总胜率: {}%  ({}/{})",
+                    format_rate(aggregate_rate, wr_precision),
+                    accumulated_wins,
+                    accumulated_total
+                );
                 println!(
                     "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
                     elapsed_secs,
@@ -456,9 +465,9 @@ pub fn run_bench_batch_rate(
             } else {
                 progress.clear();
                 println!(
-                    "{}\t平均胜率: {:.2}%\t有效: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                    "{}\t平均胜率: {}%\t有效: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
                     label,
-                    avg,
+                    format_rate(avg, wr_precision),
                     valid_matchups,
                     skipped_matchups,
                     elapsed_secs,
@@ -1265,18 +1274,25 @@ fn format_batch_rate_record(
     throughput: f64,
     valid_matchups: usize,
     skipped_matchups: usize,
+    wr_precision: usize,
 ) -> String {
     format!(
-        "{{\"label\":\"{}\",\"avg_win_rate\":{avg_rate:.2},\"aggregate_win_rate\":{aggregate_rate:.2},\"wins\":{wins},\"total\":{total},\"valid_matchups\":{valid_matchups},\"skipped_matchups\":{skipped_matchups},\"elapsed_s\":{:.3},\"us_per_battle\":{:.1},\"battles_per_s\":{throughput:.0}}}",
+        "{{\"label\":\"{}\",\"avg_win_rate\":{},\"aggregate_win_rate\":{},\"wins\":{wins},\"total\":{total},\"valid_matchups\":{valid_matchups},\"skipped_matchups\":{skipped_matchups},\"elapsed_s\":{:.3},\"us_per_battle\":{:.1},\"battles_per_s\":{throughput:.0}}}",
         escape_json_string(label),
+        format_rate(avg_rate, wr_precision),
+        format_rate(aggregate_rate, wr_precision),
         elapsed.as_secs_f64(),
         elapsed.as_micros() as f64 / total.max(1) as f64,
     )
 }
 
-fn format_batch_rate_log_record(label: &str, avg_rate: f64) -> String { format!("{avg_rate:.2} {label}") }
+fn format_batch_rate_log_record(label: &str, avg_rate: f64, wr_precision: usize) -> String {
+    format!("{} {label}", format_rate(avg_rate, wr_precision))
+}
 
 fn format_batch_rate_pure_record(label: &str) -> String { label.to_string() }
+
+fn format_rate(value: f64, precision: usize) -> String { format!("{value:.precision$}") }
 
 fn escape_json_string(raw: &str) -> String {
     let mut escaped = String::with_capacity(raw.len());

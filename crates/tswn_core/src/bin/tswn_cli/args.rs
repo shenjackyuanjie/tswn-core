@@ -112,6 +112,8 @@ pub enum ParsedCommand {
         min_screen: Option<f64>,
         /// 仅在输出到文件时生效：只写入平均胜率不低于此值的选手（0~100）。
         min_file: Option<f64>,
+        /// 胜率小数位数。
+        wr_precision: usize,
     },
     NamerPf {
         /// 每行一个名字组，组内可用 `+` 分隔。
@@ -414,6 +416,10 @@ struct BenchBatchRateCommand {
     /// 仅在输出到文件时生效：只写入平均胜率不低于此值的选手（0~100）。
     #[arg(long = "min-file", requires = "out_file", value_parser = parse_percent_0_100, value_name = "N")]
     min_file: Option<f64>,
+
+    /// 胜率保留小数位数（默认 3）。
+    #[arg(long = "wr-precision", default_value_t = 3, value_parser = parse_wr_precision, value_name = "N")]
+    wr_precision: usize,
 }
 
 #[derive(Debug, Args)]
@@ -640,6 +646,7 @@ impl ParsedCli {
                         pure: cmd.pure,
                         min_screen: cmd.min_screen,
                         min_file: cmd.min_file,
+                        wr_precision: cmd.wr_precision,
                     }
                 }
             },
@@ -734,6 +741,15 @@ fn parse_percent_0_100(raw: &str) -> Result<f64, String> {
     let value = raw.parse::<f64>().map_err(|_| "阈值必须是 0~100 之间的数字".to_string())?;
     if !(0.0..=100.0).contains(&value) {
         Err("阈值必须在 0~100 之间".to_string())
+    } else {
+        Ok(value)
+    }
+}
+
+fn parse_wr_precision(raw: &str) -> Result<usize, String> {
+    let value = raw.parse::<usize>().map_err(|_| "小数位数必须是 0~9 之间的整数".to_string())?;
+    if value > 9 {
+        Err("小数位数必须在 0~9 之间".to_string())
     } else {
         Ok(value)
     }
@@ -873,7 +889,30 @@ mod tests {
             }) => {
                 assert_eq!(cmd.min_screen, Some(66.5));
                 assert_eq!(cmd.min_file, Some(70.0));
+                assert_eq!(cmd.wr_precision, 3);
             }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn batch_rate_accepts_wr_precision() {
+        let cli = Cli::try_parse_from([
+            "tswn-cli",
+            "bench",
+            "batch-rate",
+            "-l",
+            "targets.txt",
+            "-p",
+            "players.txt",
+            "--wr-precision",
+            "5",
+        ])
+        .unwrap();
+        match cli.command {
+            CliCommand::Bench(BenchCommand {
+                command: BenchSubcommand::BatchRate(cmd),
+            }) => assert_eq!(cmd.wr_precision, 5),
             _ => panic!("unexpected command"),
         }
     }

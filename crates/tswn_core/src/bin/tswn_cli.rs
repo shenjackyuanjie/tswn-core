@@ -119,6 +119,7 @@ fn main() {
             pure,
             min_screen,
             min_file,
+            wr_precision,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::player::eval_name::DEFAULT_EVAL_RQ
@@ -141,6 +142,7 @@ fn main() {
                 pure,
                 min_screen,
                 min_file,
+                wr_precision,
             );
         }
         ParsedCommand::NamerPf { raw, n, threads } => bench::run_namer_pf(&raw, n, threads),
