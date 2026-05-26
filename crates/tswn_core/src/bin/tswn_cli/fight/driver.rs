@@ -9,9 +9,9 @@
 
 use std::collections::HashMap;
 
+use tswn_core::Runner;
 use tswn_core::engine::update::UpdateType;
 use tswn_core::error::runner::RunnerResult;
-use tswn_core::Runner;
 
 use super::trace::{collect_diff_lines, fmt_update, print_fight_raw};
 
@@ -121,11 +121,7 @@ pub(super) fn new_runner_from_raw_for_cli(raw: String) -> RunnerResult<Runner> {
         // 方便 raw/fight/diff 用同一套名字强度口径复现评分分叉；`no_debug` 会整段编译掉。
         if std::env::var_os("TSWN_DEBUG_FORCE_WIN_RATE_RQ").is_some() {
             let (groups, seed) = Runner::split_namerena_into_groups(raw.clone());
-            return Runner::new_from_groups_with_seed_and_eval_rq(
-                &groups,
-                &seed,
-                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ,
-            );
+            return Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
         }
     }
 

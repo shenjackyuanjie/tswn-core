@@ -72,11 +72,7 @@ fn install_cjk_fonts(ctx: &egui::Context) {
         std::sync::Arc::new(egui::FontData::from_static(SARASA_MONO_SC)),
     );
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-        fonts
-            .families
-            .entry(family)
-            .or_default()
-            .insert(0, "SarasaMonoSC".to_string());
+        fonts.families.entry(family).or_default().insert(0, "SarasaMonoSC".to_string());
     }
     ctx.set_fonts(fonts);
 }

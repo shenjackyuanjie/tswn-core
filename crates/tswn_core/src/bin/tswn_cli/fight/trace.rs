@@ -10,9 +10,9 @@
 
 use std::collections::HashMap;
 
+use tswn_core::Runner;
 use tswn_core::engine;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::Runner;
 
 use super::driver::fmt_winner_input_indices;
 

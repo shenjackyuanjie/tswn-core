@@ -11,13 +11,7 @@ pub(crate) struct OptionalFileOutput {
 }
 
 impl OptionalFileOutput {
-    pub(crate) fn selected_path(&self) -> Option<PathBuf> {
-        if self.enabled {
-            self.path.clone()
-        } else {
-            None
-        }
-    }
+    pub(crate) fn selected_path(&self) -> Option<PathBuf> { if self.enabled { self.path.clone() } else { None } }
 
     pub(crate) fn path(&self) -> Option<PathBuf> { self.path.clone() }
 }
@@ -31,11 +25,7 @@ pub(crate) struct BenchOutputConfig {
     pub(crate) precision: usize,
 }
 
-pub(crate) fn optional_file_output_controls(
-    ui: &mut egui::Ui,
-    output: &mut OptionalFileOutput,
-    default_name: &str,
-) {
+pub(crate) fn optional_file_output_controls(ui: &mut egui::Ui, output: &mut OptionalFileOutput, default_name: &str) {
     ui.horizontal(|ui| {
         ui.checkbox(&mut output.enabled, "写入文件");
         if output.enabled {
@@ -60,11 +50,7 @@ pub(crate) fn optional_file_output_controls(
     }
 }
 
-pub(crate) fn bench_output_controls(
-    ui: &mut egui::Ui,
-    output: &mut BenchOutputConfig,
-    default_name: &str,
-) {
+pub(crate) fn bench_output_controls(ui: &mut egui::Ui, output: &mut BenchOutputConfig, default_name: &str) {
     ui.horizontal(|ui| {
         ui.label("输出文件");
         if ui.button("选择输出文件").clicked()
@@ -113,19 +99,14 @@ pub(crate) fn bench_controls(ui: &mut egui::Ui, count: &mut usize, threads: &mut
 }
 
 pub(crate) fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, rows: usize) {
-    egui::ScrollArea::vertical()
-        .id_salt(id)
-        .max_height(rows as f32 * 22.0)
-        .show(ui, |ui| {
-            ui.add(
-                egui::TextEdit::multiline(text)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(rows),
-            );
-        });
+    egui::ScrollArea::vertical().id_salt(id).max_height(rows as f32 * 22.0).show(ui, |ui| {
+        ui.add(
+            egui::TextEdit::multiline(text)
+                .font(egui::TextStyle::Monospace)
+                .desired_width(f32::INFINITY)
+                .desired_rows(rows),
+        );
+    });
 }
 
-fn pick_output_file(default_name: &str) -> Option<PathBuf> {
-    rfd::FileDialog::new().set_file_name(default_name).save_file()
-}
+fn pick_output_file(default_name: &str) -> Option<PathBuf> { rfd::FileDialog::new().set_file_name(default_name).save_file() }

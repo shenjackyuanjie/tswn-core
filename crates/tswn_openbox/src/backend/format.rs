@@ -198,11 +198,7 @@ pub(crate) fn format_rate(value: f64, precision: usize) -> String {
 
 fn throughput(total: usize, elapsed: Duration) -> f64 {
     let secs = elapsed.as_secs_f64();
-    if secs > 0.0 {
-        total as f64 / secs
-    } else {
-        0.0
-    }
+    if secs > 0.0 { total as f64 / secs } else { 0.0 }
 }
 
 fn escape_json_string(raw: &str) -> String {

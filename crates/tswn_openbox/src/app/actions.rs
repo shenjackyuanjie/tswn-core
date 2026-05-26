@@ -302,19 +302,9 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
     }
 }
 
-fn non_zero(value: usize) -> Option<usize> {
-    if value == 0 {
-        None
-    } else {
-        Some(value)
-    }
-}
+fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(value) } }
 
-fn parse_optional_f64_in_range(
-    raw: &str,
-    field_name: &str,
-    range: RangeInclusive<f64>,
-) -> Result<Option<f64>, String> {
+fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusive<f64>) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -341,9 +331,7 @@ fn parse_optional_f64_at_least(raw: &str, field_name: &str, min: f64) -> Result<
 }
 
 fn parse_f64(raw: &str, field_name: &str) -> Result<f64, String> {
-    let value = raw
-        .parse::<f64>()
-        .map_err(|_| format!("{field_name} 需要是数字。"))?;
+    let value = raw.parse::<f64>().map_err(|_| format!("{field_name} 需要是数字。"))?;
     if !value.is_finite() {
         return Err(format!("{field_name} 需要是有限数字。"));
     }
@@ -360,11 +348,6 @@ fn format_duration(secs: f64) -> String {
     } else if seconds < 3600 {
         format!("{}m{}s", seconds / 60, seconds % 60)
     } else {
-        format!(
-            "{}h{}m{}s",
-            seconds / 3600,
-            (seconds % 3600) / 60,
-            seconds % 60
-        )
+        format!("{}h{}m{}s", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
     }
 }

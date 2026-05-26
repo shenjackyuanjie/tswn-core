@@ -60,18 +60,15 @@ impl TextSource {
                 ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
             }
             let mut preview = self.preview.clone();
-            egui::ScrollArea::vertical()
-                .id_salt(id)
-                .max_height(rows as f32 * 22.0)
-                .show(ui, |ui| {
-                    ui.add(
-                        egui::TextEdit::multiline(&mut preview)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(rows)
-                            .interactive(false),
-                    );
-                });
+            egui::ScrollArea::vertical().id_salt(id).max_height(rows as f32 * 22.0).show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut preview)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(rows)
+                        .interactive(false),
+                );
+            });
         } else {
             multiline(ui, id, &mut self.inline, rows);
         }
@@ -81,10 +78,7 @@ impl TextSource {
         if !self.from_file {
             return Ok(self.inline.clone());
         }
-        let path = self
-            .file_path
-            .as_ref()
-            .ok_or_else(|| "请选择输入文件。".to_string())?;
+        let path = self.file_path.as_ref().ok_or_else(|| "请选择输入文件。".to_string())?;
         read_text_file(path)
     }
 

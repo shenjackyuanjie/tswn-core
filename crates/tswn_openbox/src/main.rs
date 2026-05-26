@@ -3,6 +3,4 @@
 mod app;
 mod backend;
 
-fn main() -> eframe::Result<()> {
-    app::run()
-}
+fn main() -> eframe::Result<()> { app::run() }

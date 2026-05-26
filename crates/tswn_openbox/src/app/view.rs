@@ -73,11 +73,7 @@ impl OpenboxApp {
             ui.label(&self.status);
             if self.total > 0 {
                 let progress = self.done as f32 / self.total.max(1) as f32;
-                ui.add(
-                    egui::ProgressBar::new(progress)
-                        .show_percentage()
-                        .desired_width(180.0),
-                );
+                ui.add(egui::ProgressBar::new(progress).show_percentage().desired_width(180.0));
                 ui.label(format!("{}/{}", self.done, self.total));
                 ui.separator();
                 ui.label(format!("速度: {}", self.rate_text));
@@ -93,15 +89,13 @@ impl OpenboxApp {
             });
         });
         ui.separator();
-        egui::ScrollArea::both()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.log)
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(30),
-                );
-            });
+        egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut self.log)
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(30),
+            );
+        });
     }
 }

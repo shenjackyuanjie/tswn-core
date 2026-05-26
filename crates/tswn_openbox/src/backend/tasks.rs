@@ -8,21 +8,12 @@ use tswn_core::engine::storage::Storage;
 use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
 use tswn_core::win_rate::WinRateTiming;
 
-use super::format::{
-    format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log,
-};
-use super::parse::{
-    parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups,
-};
+use super::format::{format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log};
+use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
 use super::score::{bench_batch_rate_for_group, namer_pf_score};
 use super::types::{BatchRateInput, PairInput, ProgressEvent};
 
-pub fn run_to_diy(
-    raw: &str,
-    old: bool,
-    details: bool,
-    output_file: Option<PathBuf>,
-) -> Result<String, String> {
+pub fn run_to_diy(raw: &str, old: bool, details: bool, output_file: Option<PathBuf>) -> Result<String, String> {
     let names = parse_line_list(raw);
     if names.is_empty() {
         return Err("请输入至少一个名字。".to_string());
@@ -31,8 +22,8 @@ pub fn run_to_diy(
     let storage = Storage::new_arc();
     let mut out = String::new();
     for name in &names {
-        let mut player = Player::new_from_namerena_raw(name.clone(), storage.clone())
-            .map_err(|err| format!("构建玩家失败: {name}: {err}"))?;
+        let mut player =
+            Player::new_from_namerena_raw(name.clone(), storage.clone()).map_err(|err| format!("构建玩家失败: {name}: {err}"))?;
         player.build();
         let export = if old { player.to_diy_compact() } else { player.to_ol_json() };
         let _ = writeln!(out, "{export}");
@@ -62,13 +53,7 @@ pub fn run_to_diy(
     finish_output(output_file.as_deref(), out)
 }
 
-pub fn run_namer_pf(
-    raw: &str,
-    n: usize,
-    threads: Option<usize>,
-    output_file: Option<PathBuf>,
-    send: impl Fn(ProgressEvent),
-) {
+pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, output_file: Option<PathBuf>, send: impl Fn(ProgressEvent)) {
     let groups = parse_namer_pf_groups(raw);
     if groups.is_empty() {
         send(ProgressEvent::Done(Err("namer-pf: 输入为空或无有效玩家。".to_string())));
@@ -268,11 +253,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
 
         pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
         let selected_count = head.min(pair_rates.len());
-        let final_score = pair_rates
-            .iter()
-            .take(selected_count)
-            .map(|(rate, _)| *rate)
-            .sum::<f64>();
+        let final_score = pair_rates.iter().take(selected_count).map(|(rate, _)| *rate).sum::<f64>();
         let elapsed = started.elapsed();
         let aggregate_rate = total_wins as f64 * 100.0 / total_battles.max(1) as f64;
 
@@ -356,8 +337,7 @@ fn create_output_file(path: &Path) -> Result<File, String> {
     if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty())
         && !parent.exists()
     {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("创建输出目录失败: {}: {err}", parent.display()))?;
+        fs::create_dir_all(parent).map_err(|err| format!("创建输出目录失败: {}: {err}", parent.display()))?;
     }
     File::create(path).map_err(|err| format!("打开输出文件失败: {}: {err}", path.display()))
 }
