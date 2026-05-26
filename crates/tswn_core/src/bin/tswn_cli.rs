@@ -18,7 +18,7 @@
 //! tswn-cli bench auto --raw "mario" -n 10000 --perf
 //! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
 //! tswn-cli bench batch-rate --target-list targets.txt --player-list players.txt -n 10000
-//! tswn-cli bench cqp -l targets.txt -p players.txt -n 10000 -m 5000
+//! tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
 //! tswn-cli to-diy -r "mario@team+fire" -o diy.txt
 //! tswn-cli icon show mario luigi
 //! ```
@@ -115,7 +115,11 @@ fn main() {
             verbose,
             out_file,
             force,
-            min_wr,
+            log,
+            pure,
+            min_screen,
+            min_file,
+            wr_precision,
         } => {
             let eval_rq = if keep_rq {
                 tswn_core::player::eval_name::DEFAULT_EVAL_RQ
@@ -134,7 +138,11 @@ fn main() {
                 perf,
                 out_file.as_deref(),
                 force,
-                min_wr,
+                log,
+                pure,
+                min_screen,
+                min_file,
+                wr_precision,
             );
         }
         ParsedCommand::NamerPf { raw, n, threads } => bench::run_namer_pf(&raw, n, threads),
