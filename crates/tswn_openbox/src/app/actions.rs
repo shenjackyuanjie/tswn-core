@@ -80,10 +80,10 @@ impl OpenboxApp {
                 return;
             }
         };
-        let output_file = match resolve_output_path(&self.batch_rate.output.file_output) {
-            Ok(path) => path,
-            Err(err) => {
-                self.fail_before_start(err);
+        let output_file = match self.batch_rate.output.file_output.path() {
+            Some(path) => Some(path),
+            None => {
+                self.fail_before_start("请先选择输出文件。".to_string());
                 return;
             }
         };
@@ -151,10 +151,10 @@ impl OpenboxApp {
                 return;
             }
         };
-        let output_file = match resolve_output_path(&self.pair.output.file_output) {
-            Ok(path) => path,
-            Err(err) => {
-                self.fail_before_start(err);
+        let output_file = match self.pair.output.file_output.path() {
+            Some(path) => Some(path),
+            None => {
+                self.fail_before_start("请先选择输出文件。".to_string());
                 return;
             }
         };

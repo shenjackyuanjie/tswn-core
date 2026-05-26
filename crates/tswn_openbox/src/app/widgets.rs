@@ -18,6 +18,8 @@ impl OptionalFileOutput {
             None
         }
     }
+
+    pub(crate) fn path(&self) -> Option<PathBuf> { self.path.clone() }
 }
 
 #[derive(Debug, Clone)]
@@ -63,24 +65,39 @@ pub(crate) fn bench_output_controls(
     output: &mut BenchOutputConfig,
     default_name: &str,
 ) {
-    optional_file_output_controls(ui, &mut output.file_output, default_name);
+    ui.horizontal(|ui| {
+        ui.label("输出文件");
+        if ui.button("选择输出文件").clicked()
+            && let Some(path) = pick_output_file(default_name)
+        {
+            output.file_output.enabled = true;
+            output.file_output.path = Some(path);
+        }
+        if output.file_output.path.is_some() && ui.button("清空").clicked() {
+            output.file_output.path = None;
+        }
+    });
 
-    ui.add_enabled_ui(output.file_output.enabled, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("文件格式");
-            ui.radio_value(&mut output.mode, OutputMode::Log, "分数 名字");
-            ui.radio_value(&mut output.mode, OutputMode::Jsonl, "JSONL (--log)");
-            ui.radio_value(&mut output.mode, OutputMode::Pure, "名字 (--pure)");
-        });
+    let label = output
+        .file_output
+        .path
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "未选择输出文件".to_string());
+    ui.label(label);
+
+    ui.horizontal(|ui| {
+        ui.label("文件格式");
+        ui.radio_value(&mut output.mode, OutputMode::Log, "分数 名字");
+        ui.radio_value(&mut output.mode, OutputMode::Jsonl, "JSONL (--log)");
+        ui.radio_value(&mut output.mode, OutputMode::Pure, "名字 (--pure)");
     });
 
     ui.horizontal(|ui| {
         ui.label("日志阈值");
         ui.add(egui::TextEdit::singleline(&mut output.min_screen).desired_width(72.0));
-        ui.add_enabled_ui(output.file_output.enabled, |ui| {
-            ui.label("文件阈值");
-            ui.add(egui::TextEdit::singleline(&mut output.min_file).desired_width(72.0));
-        });
+        ui.label("文件阈值");
+        ui.add(egui::TextEdit::singleline(&mut output.min_file).desired_width(72.0));
         ui.label("小数");
         ui.add(egui::DragValue::new(&mut output.precision).range(0..=9).speed(1));
     });
