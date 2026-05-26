@@ -1,5 +1,19 @@
 # 更新日志
 
+## [0.3.10] - unreleased
+
+### CLI
+
+- `namer-pf` 新增 `--mode` 参数，支持按 pp/pd/qp/qd 选择评分项，可重复传入或逗号分隔，不传则默认运行全部四项。
+
+### 修复
+
+- 修复 `ol` overlay 中 `name_factor_enabled` 字段未被解析的问题：JSON 格式的 `ol:{...}` overlay 现在能正确识别 `name_factor_enabled` 开关。
+
+### 重构
+
+- `tswn_cli` 内部模块化大重构：将原先堆在单文件的 `bench.rs` / `fight.rs` / `args.rs` 按职责拆分为 `bench/`（batch / score / winrate / common / output）、`fight/`（driver / trace / raw_bench）和 `args/`（cli / input / parsed）子模块，降低后续维护 CLI 的耦合度。
+
 ## [0.3.9] - 2026-05-26
 
 ### 行为对齐修复
