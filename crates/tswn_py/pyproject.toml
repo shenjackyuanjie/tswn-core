@@ -1,9 +1,5 @@
 [build-system]
-requires = [
-  "setuptools>=68",
-  "wheel",
-  "setuptools-rust>=1.8",
-]
+requires = ["setuptools>=68", "wheel", "setuptools-rust>=1.8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -29,7 +25,7 @@ where = ["."]
 include = ["tswn_py*"]
 
 [tool.setuptools.dynamic]
-version = {attr = "tswn_py._version.__version__"}
+version = { attr = "tswn_py._version.__version__" }
 
 [tool.setuptools.package-data]
 tswn_py = ["__init__.py", "*.pyi", "py.typed"]

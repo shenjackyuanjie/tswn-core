@@ -1,3 +1,8 @@
+//! 后端任务实现。
+//!
+//! 实现各工具的核心计算逻辑（`run_to_diy`、`run_namer_pf`、`run_batch_rate`、`run_pair`），
+//! 通过 `Sender<ProgressEvent>` 向 GUI 线程实时推送进度日志和最终结果。
+
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write as _;

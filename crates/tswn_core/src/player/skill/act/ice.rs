@@ -1,3 +1,8 @@
+//! 冰冻主动技能实现。
+//!
+//! 维护 `IceState`，对目标施加冰冻效果，使其无法行动若干回合，
+//! 并在冰冻期间提升该目标受到的伤害。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

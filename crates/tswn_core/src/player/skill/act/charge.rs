@@ -1,3 +1,7 @@
+//! 蓄力主动技能实现。
+//!
+//! 连续蓄力若干回合后释放高倍率伤害，蓄力期间暂停普通攻击。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,

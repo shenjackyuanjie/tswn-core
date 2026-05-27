@@ -1,3 +1,8 @@
+//! `tswn-cli icon` 子命令实现。
+//!
+//! 提供三类图标输出：终端预览、PNG Base64 文本和 PNG 文件保存。
+//! PNG 相关路径受 `png_render` feature 控制，未启用时只保留可在终端中查看的像素预览。
+
 use std::fs;
 use std::path::Path;
 

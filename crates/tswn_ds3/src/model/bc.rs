@@ -1,3 +1,8 @@
+//! BC 单字评分入口。
+//!
+//! 使用 `MODEL_BC` 对输入文件逐行评分，并按基础分/潜力分阈值过滤后写出。
+//! 本文件只绑定模型常量与评分模式，具体特征和文件处理逻辑位于 `model::common`。
+
 use std::path::Path;
 
 use crate::error::Ds3Result;

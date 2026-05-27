@@ -1,3 +1,7 @@
+//! 暴击主动技能实现。
+//!
+//! 攻击时有概率造成高倍率暴击伤害；维护 `CriticalState` 跟踪暴击状态。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

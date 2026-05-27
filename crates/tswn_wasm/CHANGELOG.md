@@ -112,19 +112,19 @@
 
 #### 影响到的数据模型
 
-| 结构体 | 变更字段示例 |
-|--------|-------------|
-| `PlayerMeta` | `idName` → `id_name`、`displayName` → `display_name`、`iconPngBase64` → `icon_png_base64`、`teamIndex` → `team_index` |
-| `PlayerState` | `maxHp` → `max_hp`、`mp` → `magic_point`、`movePoint` → `move_point`、`ownerId` → `owner_id`、`allSum` → `all_sum`、`nameFactor` → `name_factor`、`atBoost` → `at_boost`、`statusLabels` → `status_labels`、`teamIndex` → `team_index`、`idName` → `id_name`、`displayName` → `display_name`、`minionKind` → `minion_kind` |
-| `RoundFrame` | `totalDelay` → `total_delay`、`winnerIds` → `winner_ids` |
-| `FightReplay` | `winnerIds` → `winner_ids`、`finalStates` → `final_states` |
-| `FightSummary` | `winnerIds` → `winner_ids`、`finalStates` → `final_states` |
-| `UpdateView` | `casterId` → `caster_id`、`targetId` → `target_id`、`targetIds` → `target_ids`、`updateType` → `update_type`、`messageTemplate` → `message_template`、`messageRendered` → `message_rendered` |
-| `WinRateProgress` | `roundsDone` → `rounds_done`、`totalRounds` → `total_rounds` |
-| `WinRateTiming` | `initNanos` → `init_nanos`、`fightNanos` → `fight_nanos` |
-| `WinRateResult` | `roundsDone` → `rounds_done`、`totalRounds` → `total_rounds` |
-| `FightOptions`（输入） | `evalRq` → `eval_rq`、`includeIcons` → `include_icons`、`captureReplay` → `capture_replay` |
-| `WinRateOptions`（输入） | `evalRq` → `eval_rq` |
+| 结构体                   | 变更字段示例                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PlayerMeta`             | `idName` → `id_name`、`displayName` → `display_name`、`iconPngBase64` → `icon_png_base64`、`teamIndex` → `team_index`                                                                                                                                                                                                      |
+| `PlayerState`            | `maxHp` → `max_hp`、`mp` → `magic_point`、`movePoint` → `move_point`、`ownerId` → `owner_id`、`allSum` → `all_sum`、`nameFactor` → `name_factor`、`atBoost` → `at_boost`、`statusLabels` → `status_labels`、`teamIndex` → `team_index`、`idName` → `id_name`、`displayName` → `display_name`、`minionKind` → `minion_kind` |
+| `RoundFrame`             | `totalDelay` → `total_delay`、`winnerIds` → `winner_ids`                                                                                                                                                                                                                                                                   |
+| `FightReplay`            | `winnerIds` → `winner_ids`、`finalStates` → `final_states`                                                                                                                                                                                                                                                                 |
+| `FightSummary`           | `winnerIds` → `winner_ids`、`finalStates` → `final_states`                                                                                                                                                                                                                                                                 |
+| `UpdateView`             | `casterId` → `caster_id`、`targetId` → `target_id`、`targetIds` → `target_ids`、`updateType` → `update_type`、`messageTemplate` → `message_template`、`messageRendered` → `message_rendered`                                                                                                                               |
+| `WinRateProgress`        | `roundsDone` → `rounds_done`、`totalRounds` → `total_rounds`                                                                                                                                                                                                                                                               |
+| `WinRateTiming`          | `initNanos` → `init_nanos`、`fightNanos` → `fight_nanos`                                                                                                                                                                                                                                                                   |
+| `WinRateResult`          | `roundsDone` → `rounds_done`、`totalRounds` → `total_rounds`                                                                                                                                                                                                                                                               |
+| `FightOptions`（输入）   | `evalRq` → `eval_rq`、`includeIcons` → `include_icons`、`captureReplay` → `capture_replay`                                                                                                                                                                                                                                 |
+| `WinRateOptions`（输入） | `evalRq` → `eval_rq`                                                                                                                                                                                                                                                                                                       |
 
 #### JS 示例文件同步更新
 

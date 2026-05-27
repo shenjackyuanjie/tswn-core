@@ -1,3 +1,7 @@
+//! 地震主动技能实现。
+//!
+//! 对全体敌方造成随机范围伤害，伤害量由 RC4 随机数决定，适合清场。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

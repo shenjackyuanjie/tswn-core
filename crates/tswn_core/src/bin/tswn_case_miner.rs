@@ -1,3 +1,8 @@
+//! JS 产物与 Rust 引擎的对局差异挖掘器。
+//!
+//! 基于样本库生成不同规模的输入，分别调用 JS `md5.js` 与 Rust `Runner` 生成 trace，
+//! 对比首个分歧位置并把输入、双方输出、diff 和元数据落盘。用于 debug 阶段批量发现行为不一致。
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;

@@ -1,3 +1,8 @@
+//! DIY / OL 覆盖配置 roundtrip 追踪工具。
+//!
+//! 从样本库生成覆盖配置测试输入，验证解析、导出、再解析之后的玩家属性和状态是否保持一致。
+//! 输出按 case 归档的 diff，帮助定位名字覆盖语法与导出格式之间的不兼容。
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;

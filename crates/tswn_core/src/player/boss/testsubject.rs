@@ -1,3 +1,7 @@
+//! 测试专用 Boss（TestSubject）实现。
+//!
+//! 提供行为可配置的测试目标 Boss，用于引擎内部单元测试，不作为正式 Boss 参与排行。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

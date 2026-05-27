@@ -1,3 +1,8 @@
+//! 回归追踪工具的统一入口。
+//!
+//! 将 `track test`、`track miner`、`track diy` 分发到相邻的专用二进制；
+//! 如果当前目录下没有已构建的 sibling executable，则回退到 `cargo run` 启动。
+
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;

@@ -1,3 +1,9 @@
+//! 引擎错误类型定义。
+//!
+//! 包含两类错误：
+//! - `player` 子模块：[`PlayerError`]，玩家属性校验错误；
+//! - `runner` 子模块：[`RunnerError`]，战斗执行器解析/运行错误。
+
 pub mod player {
     use std::fmt::Display;
 

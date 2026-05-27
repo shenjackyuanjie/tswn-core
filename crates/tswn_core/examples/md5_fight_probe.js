@@ -13,8 +13,8 @@ code = code.replace(
   "reset_fight_log_data()\n            $.vr = 6\n            run_env.capture_fight_log = true",
 );
 code = code.replace(
-  "finish_trigger.once(\"done_fight\", (data) => {\n                resolve(fmt_RunUpdate(data));",
-  "$.vr = 6\n            finish_trigger.once(\"done_fight\", (data) => {\n                resolve(fmt_RunUpdate(data));",
+  'finish_trigger.once("done_fight", (data) => {\n                resolve(fmt_RunUpdate(data));',
+  '$.vr = 6\n            finish_trigger.once("done_fight", (data) => {\n                resolve(fmt_RunUpdate(data));',
 );
 code = code.replace(
   "p.fx = q.fx",

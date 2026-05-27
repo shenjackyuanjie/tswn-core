@@ -1,3 +1,8 @@
+//! 文本输入源抽象。
+//!
+//! [`TextSource`] 支持内联文本与从文件读取两种模式，
+//! 提供统一的 `read_all()`接口供后端调用，以及带预览的 egui 控件渲染（`ui()`）。
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

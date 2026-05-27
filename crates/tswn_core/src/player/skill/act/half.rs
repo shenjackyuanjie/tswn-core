@@ -1,3 +1,7 @@
+//! 半血主动技能实现。
+//!
+//! 将目标生命值直接削减至一半，无视防御计算，适合对抗高血量目标。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,

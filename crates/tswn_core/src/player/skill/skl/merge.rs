@@ -1,3 +1,7 @@
+//! 融合被动技能实现。
+//!
+//! 玩家死亡时吞并场上尸体，将其生命值并入自身，实现"融合复生"。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,

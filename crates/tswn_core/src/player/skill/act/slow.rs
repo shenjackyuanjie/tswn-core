@@ -1,3 +1,7 @@
+//! 减速（Slow）主动技能实现。
+//!
+//! 维护 `SlowState`，对目标施加减速效果，降低其行动优先级，使其更晚行动。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId, StateTrait,

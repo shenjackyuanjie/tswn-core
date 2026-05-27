@@ -1,3 +1,7 @@
+//! 连击主动技能实现。
+//!
+//! 在单回合内对同一目标发动多次连续攻击，每次攻击独立计算伤害与触发概率。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

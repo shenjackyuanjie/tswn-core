@@ -1,3 +1,7 @@
+//! 雷击主动技能实现。
+//!
+//! 对目标造成高额闪电伤害，并以一定概率对相邻目标造成链式伤害（导电传递）。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

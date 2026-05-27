@@ -1,3 +1,7 @@
+//! 治疗主动技能实现。
+//!
+//! 为己方目标（或自身）恢复一定量生命值；在施放时同时驱散目标身上的诅咒/冰冻/魅惑状态。
+
 use super::curse::CurseState;
 use crate::engine::update::RunUpdate;
 use crate::player::{

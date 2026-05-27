@@ -1,3 +1,8 @@
+//! 图标精灵像素数据（自动生成，勿手动修改）。
+//!
+//! 包含从 `icon_sprites.png` 提取的 38 个前景形状 alpha 映射，
+//! 每个形状为 16×16 像素（256 字节），用于运行时图标渲染。
+
 // Auto-generated sprite data - DO NOT EDIT
 // Generated from icon_sprites.png
 

@@ -1,3 +1,9 @@
+//! WASM 消息渲染与色调分类。
+//!
+//! 将 [`RunUpdate`](tswn_core::RunUpdate) 消息模板中的占位符（`[0]`/`[1]`/`[2]`）
+//! 替换为实际玩家名称，并根据消息关键词判定 `MessageTone`（普通/伤害/回复/击倒），
+//! 避免 JavaScript 侧重复实现字符串匹配。
+
 use std::collections::HashMap;
 
 use tswn_core::RunUpdate;

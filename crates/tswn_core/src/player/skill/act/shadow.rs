@@ -1,3 +1,8 @@
+//! `幻术` 主动技能实现。
+//!
+//! 本模块负责生成幻影召唤物，并保持其熟练度衰减、覆盖模板应用、
+//! 以及运行时初始化行为与原版逻辑一致。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
@@ -35,8 +40,8 @@ impl SkillTrait for ShadowSkill {
     fn post_act_level(&self, level: u32) -> u32 {
         // `幻术` 每次施放后，当前熟练度衰减为 `ceil(level * 0.75)`，最低保留 1。
         // 例如：`4 -> 3`、`5 -> 4`、`10 -> 8`。
-        // `case 66` 的分叉就是这里导致的：owner 先把 `幻术 10` 用成 `8`，
-        // clone 若不 clamp，就会把它错误地恢复回 `10`。
+        // `case 66` 的分叉就是这里导致的：本体先把 `幻术 10` 用成 `8`，
+        // 分身若不截断，就会把它错误地恢复回 `10`。
         ((level as f64) * 0.75).ceil().max(1.0) as u32
     }
 

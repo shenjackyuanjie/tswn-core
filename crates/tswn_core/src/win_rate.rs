@@ -1,3 +1,8 @@
+//! 胜率批量计算模块。
+//!
+//! 提供 [`WinRateTiming`]（计时统计）及 `prepared_win_rate()`（多线程批量对战计算），
+//! 支持指定场数、线程数和计时粒度，供 CLI / WASM / GUI 等上层使用。
+
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

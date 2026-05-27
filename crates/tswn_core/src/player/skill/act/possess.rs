@@ -1,3 +1,7 @@
+//! 附身主动技能实现。
+//!
+//! 接管目标玩家的行动，在本回合内以目标身份进行攻击，同时解除目标的狂暴状态。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,

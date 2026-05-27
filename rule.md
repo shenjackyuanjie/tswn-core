@@ -79,6 +79,7 @@ cargo run --profile release-fast --features aux_bins,no_debug --bin track_perf_c
 ```
 
 在Windows上如果有 samply，可以参考以下命令进行采样
+
 ```powershell
 samply record --save-only --unstable-presymbolicate `
   --windows-symbol-server https://msdl.microsoft.com/download/symbols `

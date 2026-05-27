@@ -1,3 +1,8 @@
+//! Runner 基础语义测试。
+//!
+//! 覆盖分组解析、种子处理、预构建 runner 与普通 runner 的一致性，
+//! 以及小规模对局中外部 API 应保持稳定的行为。
+
 use super::*;
 
 #[derive(Clone, Copy)]

@@ -1,3 +1,8 @@
+//! 评分 profile 对局探针示例。
+//!
+//! 按 `namer-pf` 使用的 profile 种子规则批量构造对局，输出每轮第一队是否获胜，
+//! 并可选择打印某一轮的玩家状态和战斗日志。主要用于定位评分 benchmark 与战斗引擎之间的差异。
+
 use std::fmt::Write as _;
 
 use tswn_core::{Runner, engine::PROFILE_START, engine::update::UpdateType, player::eval_name::WIN_RATE_EVAL_RQ};

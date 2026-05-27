@@ -1,3 +1,7 @@
+//! 无技能（None）占位实现。
+//!
+//! 作为技能槽为空时的默认值，所有技能接口均为空操作。
+
 use crate::player::{
     PlrId,
     skill::{SkillArgs, SkillExt, SkillTrait},

@@ -1,3 +1,7 @@
+//! 护盾（Shield）被动技能实现。
+//!
+//! 维护 `ShieldState`，在受到伤害时优先消耗护盾值，护盾耗尽后才扣除生命值。
+
 use crate::player::{
     PlrId, StateTrait,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},

@@ -1,3 +1,8 @@
+//! 应用全局状态定义。
+//!
+//! 定义工具枚举 [`Tool`] 及各工具的独立状态结构体（`ToDiyState`、`NamerPfState` 等），
+//! 以及聚合所有状态的顶层 [`OpenboxApp`] 结构体。
+
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 

@@ -1,3 +1,8 @@
+//! tswn-core — 星际战争命名器核心战斗引擎库。
+//!
+//! 提供 [`Runner`]（一次性战斗执行器）、[`PreparedRunner`]（预解析的批量执行器）
+//! 及底层 RC4 随机数、玩家/技能/Boss 模型等全部核心类型。
+
 #[cfg(feature = "mimalloc_alloc")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;

@@ -1,3 +1,8 @@
+//! 各工具的 egui 界面渲染。
+//!
+//! 实现 `OpenboxApp` 对应各工具（to-diy、namer-pf、batch-rate、pair）的输入区 UI，
+//! 以及底部日志区的渲染与"复制日志"/"清空日志"交互。
+
 use eframe::egui;
 
 use super::state::OpenboxApp;

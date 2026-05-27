@@ -1,3 +1,7 @@
+//! 复活（Reraise）被动技能实现。
+//!
+//! 玩家死亡时触发，以一定比例恢复生命值并原地复活，仅能触发一次。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,

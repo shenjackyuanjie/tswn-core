@@ -1,4 +1,7 @@
-//! 类型封装
+//! Python 可见类型封装。
+//!
+//! 本模块把 `tswn_core` 的核心类型包成 `pyclass`：`Runner` 用于逐场对局，
+//! `PreparedRunner` 用于复用解析结果跑批量胜率，子模块则分别封装玩家、RC4 和错误类型。
 
 use std::sync::Arc;
 

@@ -1,3 +1,8 @@
+//! WC 字对配对入口。
+//!
+//! 左右两侧都使用 WC 模型，适用于同模式字对组合筛选。
+//! 具体候选读取、评分与多线程输出排序由 `pairing::common` 实现。
+
 use std::path::Path;
 
 use crate::error::Ds3Result;

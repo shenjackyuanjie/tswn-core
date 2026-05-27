@@ -1,3 +1,8 @@
+//! WASM 层数据模型定义。
+//!
+//! 定义从 Rust 向 JavaScript 暴露的所有数据结构，包括战斗选项、玩家元数据、
+//! 每帧状态快照、战斗回放、胜率结果等，均通过 `tsify` 生成对应的 TypeScript 类型声明。
+
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use tswn_core::engine::update::UpdateType;

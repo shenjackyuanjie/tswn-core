@@ -1,3 +1,7 @@
+//! 懒惰 Boss（LazyBoss）实现。
+//!
+//! 维护 `LazyBossState`，在特定条件下跳过自身行动，实现"偷懒"的 Boss 行为模式。
+
 use std::cell::Cell;
 use std::sync::Arc;
 

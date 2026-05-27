@@ -1,4 +1,7 @@
-//! `to-diy` 子命令：将名字转换为 DIY/OL overlay 格式。
+//! `to-diy` 子命令实现。
+//!
+//! 本模块负责把单个或批量名字导出为 DIY / OL 覆盖文本，
+//! 并处理标准输出 / 文件输出以及可选的召唤物模板导出。
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write as _};

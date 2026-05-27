@@ -1,3 +1,8 @@
+//! 工具全局配置与模式定义。
+//!
+//! 定义 [`Config`] 结构体（从文件加载的运行时配置）、单字评分模式枚举
+//! [`SingleMode`]（Bc/Fz/Wc/Fs/Pj）及字对评分模式枚举 [`PairMode`]（Fc/Wc/Rh）。
+
 #![allow(dead_code)]
 
 use std::fmt::{Display, Formatter};

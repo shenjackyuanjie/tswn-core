@@ -40,28 +40,28 @@ rate = prepared.win_rate(1000)
 
 ### 顶层函数
 
-| 函数 | 说明 |
-|------|------|
-| `core_version_str()` | tswn_core 版本 |
-| `wrapper_version_str()` | tswn_py 版本 |
-| `name_to_png_base64(name)` | 名称 → PNG Base64 |
-| `name_to_png_bytes(name)` | 名称 → PNG 字节 |
-| `name_to_icon_rgba(name)` | 名称 → 16×16 RGBA |
-| `win_rate(raw, n, eval_rq, thread)` | 胜率统计 |
-| `group_win_rate(target, against, n, eval_rq, thread)` | 分组胜率 |
-| `prepared_win_rate(prepared, n, eval_rq, thread)` | 基于 PreparedRunner 的胜率统计 |
+| 函数                                                  | 说明                           |
+| ----------------------------------------------------- | ------------------------------ |
+| `core_version_str()`                                  | tswn_core 版本                 |
+| `wrapper_version_str()`                               | tswn_py 版本                   |
+| `name_to_png_base64(name)`                            | 名称 → PNG Base64              |
+| `name_to_png_bytes(name)`                             | 名称 → PNG 字节                |
+| `name_to_icon_rgba(name)`                             | 名称 → 16×16 RGBA              |
+| `win_rate(raw, n, eval_rq, thread)`                   | 胜率统计                       |
+| `group_win_rate(target, against, n, eval_rq, thread)` | 分组胜率                       |
+| `prepared_win_rate(prepared, n, eval_rq, thread)`     | 基于 PreparedRunner 的胜率统计 |
 
 ### 类
 
-| 类 | 说明 |
-|----|------|
-| `Runner` | 对战运行器，支持逐步推进或一次跑完 |
+| 类               | 说明                                     |
+| ---------------- | ---------------------------------------- |
+| `Runner`         | 对战运行器，支持逐步推进或一次跑完       |
 | `PreparedRunner` | 预处理后的复用模板，支持 `win_rate(...)` |
-| `RunUpdates` | 回合更新容器 |
-| `Storage` | 玩家数据存储 |
-| `WorldState` | 世界状态 |
-| `Player` | 玩家状态只读视图 |
-| `RC4` | RC4 加密算法 |
+| `RunUpdates`     | 回合更新容器                             |
+| `Storage`        | 玩家数据存储                             |
+| `WorldState`     | 世界状态                                 |
+| `Player`         | 玩家状态只读视图                         |
+| `RC4`            | RC4 加密算法                             |
 
 ## 构建
 

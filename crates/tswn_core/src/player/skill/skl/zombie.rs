@@ -1,3 +1,7 @@
+//! `召唤亡灵` 被动技能实现。
+//!
+//! 本模块负责在击杀后把目标标记为丧尸尸体，并按需要生成可作战的丧尸召唤物。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,

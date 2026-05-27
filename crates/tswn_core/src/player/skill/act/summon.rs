@@ -1,3 +1,8 @@
+//! `血祭` / 使魔召唤技能实现。
+//!
+//! 本模块负责创建、复用和刷新使魔召唤物，并处理固定槽位技能继承、
+//! 伤害分摊技能以及覆盖模板应用等细节。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
@@ -77,9 +82,9 @@ impl SkillTrait for SummonSkill {
             && let Some(summoned) = args.3.just_get_player_mut(summoned_id)
             && !summoned.alive()
         {
-            // JS SklSummon.v()：首次创建后，后续重施会复用同一个已死亡的召唤物对象，
-            // 并重新执行 bP()/bs()/cn()。bP() 会清空运行时状态和 proc 队列，
-            // 但不会重置技能 boost 标记；Rust 把 owner 关联存成运行时状态，
+            // JS `SklSummon.v()`：首次创建后，后续重施会复用同一个已死亡的召唤物对象，
+            // 并重新执行 `bP()` / `bs()` / `cn()`。`bP()` 会清空运行时状态和 `proc` 队列，
+            // 但不会重置技能 boost 标记；Rust 把所有者关联存成运行时状态，
             // 所以清空状态仓库后需要把这个标记补回去。
             summoned.state = PlayerStateStore::default();
             summoned.set_state(MinionRuntimeState {

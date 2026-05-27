@@ -31,15 +31,15 @@ cargo build -p tswn_core --bins --features aux_bins
 
 ## Bin 一览
 
-| bin | 主要用途 | 典型场景 | 额外 feature |
-| --- | --- | --- | --- |
-| tswn-cli | 统一的用户侧命令行入口 | 对战、benchmark、图标导出、DIY/OL 导出 | 无 |
-| track | 对常用追踪工具的薄封装 | 用更短命令启动 test/miner/diy 追踪 | 无 |
-| track_test | 记录并比较 cargo test 失败集 | 回归追踪、失败集 checkpoint 管理 | aux_bins |
-| track_case_miner | 带历史记录和 checkpoint 的 case miner 包装器 | 持续跟踪 TS/Rust diff 失败变化 | aux_bins |
-| track_diy_roundtrip | 校验 DIY/OL 导出后的回读和战斗一致性 | 导出链路回归验证 | 无 |
-| track_perf_cases | 选择复杂度阶梯 case 并输出 benchmark 报告 | 构造/维护性能基准集 | aux_bins |
-| tswn_case_miner | 直接生成 TS vs Rust trace diff case 与 summary | 对拍、收集失败样例、缓存 TS trace | 无 |
+| bin                 | 主要用途                                       | 典型场景                               | 额外 feature |
+| ------------------- | ---------------------------------------------- | -------------------------------------- | ------------ |
+| tswn-cli            | 统一的用户侧命令行入口                         | 对战、benchmark、图标导出、DIY/OL 导出 | 无           |
+| track               | 对常用追踪工具的薄封装                         | 用更短命令启动 test/miner/diy 追踪     | 无           |
+| track_test          | 记录并比较 cargo test 失败集                   | 回归追踪、失败集 checkpoint 管理       | aux_bins     |
+| track_case_miner    | 带历史记录和 checkpoint 的 case miner 包装器   | 持续跟踪 TS/Rust diff 失败变化         | aux_bins     |
+| track_diy_roundtrip | 校验 DIY/OL 导出后的回读和战斗一致性           | 导出链路回归验证                       | 无           |
+| track_perf_cases    | 选择复杂度阶梯 case 并输出 benchmark 报告      | 构造/维护性能基准集                    | aux_bins     |
+| tswn_case_miner     | 直接生成 TS vs Rust trace diff case 与 summary | 对拍、收集失败样例、缓存 TS trace      | 无           |
 
 ## 各 bin 说明
 

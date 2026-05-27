@@ -1,3 +1,8 @@
+//! 火焰主动技能实现。
+//!
+//! 维护 `FireState`（`fire_mag` 火焰强度），对目标施加持续燃烧伤害，
+//! 火焰强度随叠加次数递增。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

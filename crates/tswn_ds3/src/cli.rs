@@ -1,3 +1,8 @@
+//! 命令行参数定义。
+//!
+//! 使用 `clap` 定义 [`Cli`] 结构体及 [`Command`] 枚举（Run/ShowConfig/Merge/Dedup/Sort/Score/Pair），
+//! 以及各子命令所需的选项结构体（[`ScoreCliOptions`]、[`PairCliOptions`]）。
+
 use std::path::PathBuf;
 
 use crate::config::SingleMode;

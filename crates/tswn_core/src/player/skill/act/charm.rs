@@ -1,3 +1,7 @@
+//! 魅惑主动技能实现。
+//!
+//! 维护 `CharmState`，对目标施加魅惑效果，使其在下一行动时攻击己方队友。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId, StateTrait,

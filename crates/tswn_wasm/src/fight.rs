@@ -1,3 +1,9 @@
+//! WASM 战斗驱动逻辑。
+//!
+//! 提供 `FightSession`（逐帧驱动）及 `fight`/`fight_summary` 一次性函数，
+//! 将引擎每个主回合的输出整理为 `RoundFrame`（含玩家状态、消息更新、延迟信息），
+//! 供 JavaScript 侧逐帧播放或一次性取得完整回放。
+
 use std::collections::HashMap;
 
 use tswn_core::player::PlrId;
