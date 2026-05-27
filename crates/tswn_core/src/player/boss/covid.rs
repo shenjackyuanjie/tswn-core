@@ -1,3 +1,8 @@
+//! 新冠 Boss（CovidBoss）实现。
+//!
+//! 维护感染状态（`CovidBossState`），模拟病毒传播与变异机制：
+//! 每轮有概率感染场上其余玩家，感染层数累积达阈值时触发高额伤害。
+
 use std::cell::Cell;
 use std::sync::Arc;
 

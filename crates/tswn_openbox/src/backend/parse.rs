@@ -1,3 +1,8 @@
+//! 输入文本解析工具。
+//!
+//! 将多行文本解析为玩家列表（`parse_line_list`）、加号分组（`parse_plus_separated_groups`）、
+//! 带标签的玩家分组（`parse_player_groups_with_labels`）等格式，供各工具后端调用。
+
 use std::collections::HashSet;
 
 use tswn_core::player::{Player, overlay::PlayerOverlay};

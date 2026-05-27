@@ -1,3 +1,8 @@
+//! 测试用例生成工具。
+//!
+//! [`CaseMode`] 枚举描述测试用例的来源方式（文件/内联/随机生成），
+//! 以及从各来源加载玩家列表的辅助函数，供 `track_*` 二进制工具使用。
+
 use std::collections::HashSet;
 use std::fs;
 use std::hash::{Hash, Hasher};

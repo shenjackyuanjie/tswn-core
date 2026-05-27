@@ -1,3 +1,8 @@
+//! 通用 egui 控件封装。
+//!
+//! 提供文件输出选择控件（`optional_file_output_controls`、`bench_output_controls`）、
+//! 场数/线程控件（`bench_controls`）及带滚动的多行文本编辑框（`multiline`）。
+
 use std::path::PathBuf;
 
 use eframe::egui;

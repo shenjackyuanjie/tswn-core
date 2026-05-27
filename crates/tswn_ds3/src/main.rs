@@ -1,3 +1,8 @@
+//! tswn-ds3 — 基于机器学习的命名评分与配对 CLI 工具。
+//!
+//! 支持五种单字评分模式（BC/FZ/WC/FS/PJ）和三种字对评分模式（FC/RH/WC），
+//! 提供输入合并、去重、排序、评分、配对等全流程管道操作。
+
 mod cli;
 mod compat;
 mod config;

@@ -1,3 +1,8 @@
+//! WASM 胜率计算逻辑。
+//!
+//! 提供 `WinRateSession`（分批次步进执行，支持进度轮询）及 `run_win_rate_sync`
+//! 一次性同步函数，计算第一组玩家对其余组的胜率百分比。
+
 use std::fmt::Write as _;
 
 use tswn_core::{PreparedRunner, Runner};

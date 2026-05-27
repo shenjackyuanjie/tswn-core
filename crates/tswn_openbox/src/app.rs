@@ -1,3 +1,8 @@
+//! GUI 应用模块。
+//!
+//! 定义 `OpenboxApp`（`eframe::App` 实现）的顶层布局，负责安装字体、
+//! 组织工具栏与左侧输入面板、中央日志面板，并将各工具 UI 分发给子模块渲染。
+
 mod actions;
 mod source;
 mod state;

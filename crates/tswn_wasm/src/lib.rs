@@ -1,3 +1,8 @@
+//! tswn-wasm — tswn-core 的 WebAssembly 绑定。
+//!
+//! 通过 `wasm-bindgen` 将战斗引擎的核心功能导出为 JavaScript 可调用的 API，
+//! 包括单次战斗回放、胜率统计及玩家图标生成。
+
 mod error;
 mod fight;
 mod model;

@@ -1,3 +1,7 @@
+//! 错误类型定义。
+//!
+//! 定义 [`Ds3Error`] 枚举（覆盖 IO/JSON/配置/解析等错误来源）及 [`Ds3Result<T>`] 类型别名。
+
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;

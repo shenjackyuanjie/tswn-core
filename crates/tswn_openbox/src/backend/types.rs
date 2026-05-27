@@ -1,3 +1,9 @@
+//! 后端公共数据类型。
+//!
+//! 定义跨线程传递的事件类型（[`ProgressEvent`]）、输出模式（[`OutputMode`]）、
+//! 公共基准选项（[`CommonBenchOptions`]）及各工具输入结构体
+//! （[`BatchRateInput`]、[`PairInput`]）。
+
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]

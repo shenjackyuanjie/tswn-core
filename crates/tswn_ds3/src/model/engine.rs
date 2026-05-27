@@ -1,3 +1,8 @@
+//! 评分引擎核心类型与算法。
+//!
+//! 定义 [`ScoreMode`]、[`NameFeature`]（汉字特征提取）、[`ScoreContext`]（评分上下文），
+//! 以及基础分 `base_score()` 与梯度函数 `gradient()` 实现。
+
 use crate::error::{Ds3Error, Ds3Result};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

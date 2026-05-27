@@ -1,3 +1,8 @@
+//! RC4 伪随机数生成器的 Python 封装。
+//!
+//! 将 [`RC4`](tswn_core::rc4::RC4) 的完整接口暴露给 Python，
+//! 包括状态读写、字节加解密、各种概率判断方法（c94/c75/c50 等）及范围随机方法（r256/r64 等）。
+
 use pyo3::{PyResult, exceptions::PyValueError, pyclass, pymethods};
 
 use tswn_core::rc4::{RC4, VAL_LEN};

@@ -1,3 +1,7 @@
+//! 去重操作。
+//!
+//! `remove_duplicates` 读取已排序的评分文件并去除重复名条目，返回 [`DedupStats`] 统计信息。
+
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;

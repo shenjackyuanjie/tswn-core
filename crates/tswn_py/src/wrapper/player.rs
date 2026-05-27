@@ -1,3 +1,8 @@
+//! Player 结构体的 Python 封装。
+//!
+//! 将 [`Player`](tswn_core::player::Player) 的只读属性及常用方法
+//! 以 `@getter` 形式暴露给 Python，命名遵循 Python 命名习惯（snake_case）。
+
 use pyo3::{pyclass, pymethods};
 use tswn_core::player::Player;
 

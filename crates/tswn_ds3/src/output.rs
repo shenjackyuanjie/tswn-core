@@ -1,3 +1,8 @@
+//! 原子化文件写入工具。
+//!
+//! [`AtomicFileWriter`] 先写入临时文件再原子性重命名为目标文件，防止写入中断导致数据损坏；
+//! `append_file` 提供对现有文件的追加写入功能。
+
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};

@@ -1,3 +1,9 @@
+//! 字符串与空白字符工具函数。
+//!
+//! 提供与 JavaScript 正则表达式 `\s` 语义兼容的空白字符判断（`is_js_regex_space`），
+//! 以及对应的字符串裁剪函数（`js_trim`/`js_trim_start`/`js_trim_end`），
+//! 确保 Rust 侧与 JS 侧的名称处理行为一致。
+
 pub(crate) fn is_js_regex_space(ch: char) -> bool {
     matches!(
         ch as u32,

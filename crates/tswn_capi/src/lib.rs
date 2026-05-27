@@ -1,3 +1,8 @@
+//! tswn-capi — tswn-core 的 C ABI 动态库绑定。
+//!
+//! 提供稳定的 C 语言接口，供 FFI 调用方（C/C++/其他语言）调用战斗引擎。
+//! 所有公开函数均以 `tswn_` 前缀命名，并遵循 `tswn_status_t` 约定返回状态码。
+
 #![allow(non_camel_case_types, non_snake_case)]
 
 use std::cell::RefCell;

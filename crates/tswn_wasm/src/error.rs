@@ -1,3 +1,8 @@
+//! WASM 层错误类型与辅助函数。
+//!
+//! 定义 `TswnError` 结构体（含 `code`/`message` 字段）及各类错误构造函数，
+//! 统一将错误序列化为 `JsValue` 以便 JavaScript 层处理。
+
 use serde::Serialize;
 use wasm_bindgen::JsValue;
 

@@ -1,3 +1,7 @@
+//! 带分数的输入记录。
+//!
+//! [`InputRecord`] 解析来自评分文件的每行记录，包含原始分数、归一化分数及原始文本。
+
 #![allow(dead_code)]
 
 #[derive(Debug, Clone)]

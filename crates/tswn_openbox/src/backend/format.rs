@@ -1,3 +1,8 @@
+//! 批量结果文本格式化。
+//!
+//! 将战斗统计结果格式化为文件写入格式（`format_batch_file_record`）、
+//! 屏幕日志格式（`format_batch_screen_log`）等可读字符串。
+
 use std::fmt::Write as _;
 use std::time::Duration;
 

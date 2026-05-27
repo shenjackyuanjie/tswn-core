@@ -1,8 +1,8 @@
-use std::sync::Arc;
+//! 埼玉 Boss（SaitamaBoss）实现。
+//!
+//! 维护 `SaitamaState`，模拟"一拳超人"机制：存活若干轮后必定一击秒杀当前目标。
 
-use crate::engine::storage::Storage;
-use crate::engine::update::{RunUpdate, RunUpdates};
-use crate::player::{ActionTargets, Player, PlrId, StateTrait, noop_on_damage};
+use std::sync::Arc;
 use crate::rc4::RC4;
 
 #[derive(Clone, Debug)]

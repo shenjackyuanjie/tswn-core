@@ -1,3 +1,8 @@
+//! 各工具的启动与事件轮询逻辑。
+//!
+//! 实现 `OpenboxApp` 的任务启动方法（`start_to_diy`、`start_batch_rate` 等），
+//! 在独立线程中调用后端函数，并通过 `poll_events` 处理进度/日志/完成事件。
+
 use std::ops::RangeInclusive;
 use std::sync::mpsc;
 use std::time::Instant;

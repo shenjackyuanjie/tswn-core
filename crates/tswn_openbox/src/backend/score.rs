@@ -1,3 +1,8 @@
+//! 基准测试摘要与胜率汇总。
+//!
+//! 提供 [`BenchSummary`]（单组基准测试结果汇总）及 [`BatchRateSummary`]（多组胜率统计），
+//! 封装批量对战计算、结果汇总与文本格式化。
+
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

@@ -1,3 +1,8 @@
+//! 单字评分 ML 模型系数。
+//!
+//! 包含五个模型的系数常量数组（`MODEL_BC`/`MODEL_FZ`/`MODEL_WC`/`MODEL_FS`/`MODEL_PJ`），
+//! 每个数组长度均为 `MODEL_SIZE`（1124）。
+
 pub const MODEL_SIZE: usize = 1124;
 
 pub const MODEL_BC: [f64; MODEL_SIZE] = [

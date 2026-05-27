@@ -1,3 +1,7 @@
+//! 字对配对 ML 模型系数。
+//!
+//! 包含三个配对模型的系数常量数组（`MODEL_WC`/`MODEL_BC`/`MODEL_FZ`/`MODEL_FS`/`MODEL_PJ`）。
+
 pub const MODEL_SIZE: usize = 1124;
 
 pub const MODEL_WC: [f64; MODEL_SIZE] = [

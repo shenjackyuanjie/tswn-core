@@ -1,3 +1,8 @@
+//! 工作目录与文件路径管理。
+//!
+//! [`Store`] 封装各类文件目录（输入、新增、临时、输出）的路径构造逻辑，
+//! 以及各模式对应的文件命名约定。
+
 use std::path::{Path, PathBuf};
 
 use crate::config::{PairMode, SingleMode};
