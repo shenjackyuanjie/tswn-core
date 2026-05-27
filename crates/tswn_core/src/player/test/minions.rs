@@ -578,6 +578,33 @@ fn ol_overlay_customizes_summon_minion_attrs_and_skills() {
 }
 
 #[test]
+fn exported_summon_overlay_can_inherit_owner_def_res() {
+    let storage = Storage::new_arc();
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"inherit_owner_def_res":true,"skills":{"sklfire":12,"sklexplode":3}}}"#;
+    let mut owner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
+    owner.build();
+    owner.attr[1] = 7;
+    owner.attr[5] = 11;
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = &pending[0].player;
+    assert_eq!(summoned.attr, [14, 7, 16, 17, 18, 11, 20, 180]);
+}
+
+#[test]
 fn ol_overlay_customizes_zombie_minion_attrs_and_skills() {
     let storage = Storage::new_arc();
     let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklzombie":255},"zombie":{"attrs":[40,41,42,43,44,45,46,90],"skills":{"sklrapid":7}}}"#;

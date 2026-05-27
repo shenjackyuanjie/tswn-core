@@ -167,6 +167,25 @@ fn player_raw_new_parses_diy_overlay() {
 }
 
 #[test]
+fn ol_overlay_with_summon_skill_list_keeps_main_attrs() {
+    let storage = Storage::new_arc();
+    let mut player = Player::new_from_namerena_raw(
+        "milkΙлЯωΦПΞΣъЭ@lzk+ol:{\"attrs\":[95,86,94,89,85,89,87,343],\"skills\":{\"sklexchange\":14,\"sklclone\":22,\"sklsummon\":10,\"sklcounter\":6,\"sklslow\":\"2*23\",\"sklreraise\":\"41+36\"},\"name_factor_enabled\":true,\"summon\":{\"attrs\":[36,86,56,55,36,89,88,89],\"skills\":[{\"name\":\"sklfire\",\"level\":\"2*14\"},{\"name\":\"sklfire\",\"level\":4},{\"name\":\"sklexplode\",\"level\":0}],\"skill_order\":[2,1,0],\"reuse_skills_on_recast\":true}}".to_string(),
+        storage,
+    )
+    .unwrap();
+
+    let overlay = player.overlay.as_ref().expect("ol overlay should parse");
+    assert_eq!(overlay.attrs, Some([59, 50, 58, 53, 49, 53, 51, 343]));
+    assert!(player.weapon_state.is_none());
+
+    player.build();
+    assert_eq!(player.attr, [59, 50, 58, 53, 49, 53, 51, 343]);
+    assert_eq!(player.get_status().attack, 59);
+    assert_eq!(player.get_status().agility, 53);
+}
+
+#[test]
 fn player_raw_keeps_internal_js_trim_chars_in_name_and_team() {
     let storage = Storage::new_arc();
 
@@ -472,16 +491,29 @@ fn ol_export_with_minions_includes_spawn_templates() {
     assert!(exported.contains("\"shadow\":{\"attrs\":"));
     assert!(exported.contains("\"skills\":{\"sklpossess\":\"2*"));
     assert!(exported.contains("\"summon\":{\"attrs\":"));
-    assert!(exported.contains("\"sklexplode\":"));
+    assert!(exported.contains("\"skills\":["));
+    assert!(exported.contains("\"name\":\"sklexplode\""));
     assert!(exported.contains("\"zombie\":{\"attrs\":"));
     assert!(exported.contains("\"zombie\":{\"attrs\":") && exported.contains("\"skills\":{}"));
-    assert_eq!(exported.matches("\"sklfire\"").count(), 1);
+    assert_eq!(exported.matches("\"name\":\"sklfire\"").count(), 2);
 
     let reparsed = Player::new_from_namerena_raw(exported, Storage::new_arc()).unwrap();
     let reparsed_overlay = reparsed.overlay.as_ref().expect("exported ol should parse overlay");
     assert!(reparsed_overlay.shadow.is_some());
     assert!(reparsed_overlay.summon.is_some());
     assert!(reparsed_overlay.zombie.is_some());
+}
+
+#[test]
+fn ol_export_preserves_fixed_summon_overlay_attrs() {
+    let storage = Storage::new_arc();
+    let raw = r#"owner@team+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklsummon":20},"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire":12}}}"#;
+    let mut player = Player::new_from_namerena_raw(raw.to_string(), storage).unwrap();
+    player.build();
+
+    let exported = player.to_ol_json_with_minions();
+    assert!(exported.contains("\"summon\":{\"attrs\""));
+    assert!(!exported.contains("\"inherit_owner_def_res\""));
 }
 
 #[test]

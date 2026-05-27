@@ -12,7 +12,6 @@ use std::time::Instant;
 
 use tswn_core::Runner;
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::player::overlay::PlayerOverlay;
 use tswn_core::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
 use crate::{
@@ -322,52 +321,110 @@ fn parse_plus_separated_groups(raw: &str) -> Vec<Vec<String>> {
 /// 解析 `namer-pf` 的单行组输入，并保留 overlay 后缀。
 fn parse_namer_pf_group_line(line: &str) -> Vec<String> {
     let mut group: Vec<String> = Vec::new();
-    for segment in split_plus_outside_quotes(line) {
-        let segment = segment.trim();
-        if segment.is_empty() {
+    let mut current = String::new();
+    let mut idx = 0usize;
+
+    while idx < line.len() {
+        let rest = &line[idx..];
+        if rest.starts_with('+') {
+            let after_plus = &line[idx + 1..];
+            if let Some(overlay_end) = overlay_suffix_end(after_plus) {
+                current.push('+');
+                current.push_str(&after_plus[..overlay_end]);
+                idx += 1 + overlay_end;
+                continue;
+            }
+
+            push_namer_pf_segment(&mut group, &mut current);
+            idx += 1;
             continue;
         }
-        if PlayerOverlay::parse_inline(segment).is_some()
-            && let Some(previous) = group.last_mut()
-        {
-            previous.push('+');
-            previous.push_str(segment);
-            continue;
-        }
-        group.push(segment.to_string());
+
+        let ch = rest.chars().next().expect("rest should contain a char");
+        current.push(ch);
+        idx += ch.len_utf8();
     }
+    push_namer_pf_segment(&mut group, &mut current);
+
     group
 }
 
-/// 在引号外按 `+` 分割字符串，用于保留 overlay JSON 内部的 `+`。
-fn split_plus_outside_quotes(raw: &str) -> Vec<String> {
-    let mut segments = Vec::new();
-    let mut current = String::new();
+fn push_namer_pf_segment(group: &mut Vec<String>, current: &mut String) {
+    let segment = current.trim();
+    if !segment.is_empty() {
+        group.push(segment.to_string());
+    }
+    current.clear();
+}
+
+/// 如果 `raw` 是紧跟在 `+` 后面的 overlay 后缀，返回该 overlay 的结束 byte index。
+fn overlay_suffix_end(raw: &str) -> Option<usize> {
+    if raw.starts_with("ol:") {
+        let mut idx = 3usize;
+        skip_ascii_ws(raw, &mut idx);
+        return consume_balanced_ascii(raw, idx, b'{', b'}');
+    }
+
+    if raw.starts_with("diy[") {
+        let mut idx = consume_balanced_ascii(raw, 3, b'[', b']')?;
+        skip_ascii_ws(raw, &mut idx);
+        if raw.as_bytes().get(idx).copied() == Some(b'{') {
+            idx = consume_balanced_ascii(raw, idx, b'{', b'}')?;
+        }
+        return Some(idx);
+    }
+
+    None
+}
+
+fn skip_ascii_ws(raw: &str, idx: &mut usize) {
+    let bytes = raw.as_bytes();
+    while *idx < bytes.len() && bytes[*idx].is_ascii_whitespace() {
+        *idx += 1;
+    }
+}
+
+fn consume_balanced_ascii(raw: &str, start: usize, open: u8, close: u8) -> Option<usize> {
+    let bytes = raw.as_bytes();
+    if bytes.get(start).copied() != Some(open) {
+        return None;
+    }
+
+    let mut depth = 0usize;
     let mut in_string = false;
     let mut escaped = false;
-    for ch in raw.chars() {
+    let mut idx = start;
+
+    while idx < bytes.len() {
+        let byte = bytes[idx];
         if in_string {
-            current.push(ch);
             if escaped {
                 escaped = false;
-                continue;
+            } else {
+                match byte {
+                    b'\\' => escaped = true,
+                    b'"' => in_string = false,
+                    _ => {}
+                }
             }
-            match ch {
-                '\\' => escaped = true,
-                '"' => in_string = false,
+        } else {
+            match byte {
+                b'"' => in_string = true,
+                b if b == open => depth += 1,
+                b if b == close => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return Some(idx + 1);
+                    }
+                }
                 _ => {}
             }
-        } else if ch == '+' {
-            segments.push(std::mem::take(&mut current));
-        } else {
-            current.push(ch);
-            if ch == '"' {
-                in_string = true;
-            }
         }
+
+        idx += 1;
     }
-    segments.push(current);
-    segments
+
+    None
 }
 
 /// 计算 `namer-pf` 四项中的一个分数。
@@ -521,6 +578,17 @@ mod tests {
         assert_eq!(
             parse_plus_separated_groups(&raw),
             vec![vec![ol.to_string(), "bbbbb".to_string(),]]
+        );
+    }
+
+    #[test]
+    fn namer_pf_parser_ignores_quotes_in_plain_player_name() {
+        let diy = r#"J"*)uEx@Hell+ol:{"attrs":[98,88,97,89,92,93,93,351],"skills":{"skliron":"7+7","sklslow":"2*22"}}"#;
+        let raw = format!("{diy}+bbbbb");
+
+        assert_eq!(
+            parse_plus_separated_groups(&raw),
+            vec![vec![diy.to_string(), "bbbbb".to_string(),]]
         );
     }
 }

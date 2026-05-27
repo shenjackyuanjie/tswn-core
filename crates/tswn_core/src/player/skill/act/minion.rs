@@ -100,6 +100,17 @@ pub fn apply_minion_attrs(player: &mut Player, overlay: Option<&MinionOverlay>) 
     true
 }
 
+pub fn apply_summon_attrs(player: &mut Player, owner: &Player, overlay: Option<&MinionOverlay>) -> bool {
+    if !apply_minion_attrs(player, overlay) {
+        return false;
+    }
+    if overlay.map(|overlay| overlay.inherit_owner_def_res).unwrap_or(false) {
+        player.attr[1] = owner.attr[1];
+        player.attr[5] = owner.attr[5];
+    }
+    true
+}
+
 pub fn apply_minion_skill_overlay(player: &mut Player, overlay: Option<&MinionOverlay>) -> bool {
     let Some(skill_levels) = overlay.and_then(|overlay| overlay.skills.as_ref()) else {
         return false;
@@ -113,6 +124,19 @@ pub fn apply_minion_skill_overlay(player: &mut Player, overlay: Option<&MinionOv
         skills.add_skill(skill);
     }
     skills.is_diy = true;
+    if player
+        .get_state::<MinionRuntimeState>()
+        .map(|state| state.kind == MinionKind::Summon)
+        .unwrap_or(false)
+        && !skills.skill.is_empty()
+    {
+        skills.slot_skill = (0..skills.skill.len()).collect();
+        if let Some(order) = overlay.and_then(|overlay| overlay.skill_order.as_ref())
+            && order.iter().all(|key| *key < skills.skill.len())
+        {
+            skills.skill = order.clone();
+        }
+    }
     skills.update_proc();
     player.skills = skills;
     true

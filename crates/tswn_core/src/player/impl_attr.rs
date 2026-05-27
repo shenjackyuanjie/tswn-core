@@ -96,15 +96,17 @@ fn builtin_skill_id_for_runtime_kind(runtime_kind: &str) -> Option<usize> {
     }
 }
 
-/// 按 `+` 分割字符串，但跳过双引号字符串内的 `+`。
+/// 按 `+` 分割字符串，但跳过双引号字符串和 JSON 容器内的 `+`。
 ///
-/// 例如 `diy[...]{"sklfire":"40+30"}` 不会被切分，
+/// 例如 `diy[...]{"sklfire":"40+30"}` / `ol:{"skills":{"skliron":"7+7"}}` 不会被切分，
 /// 而 `fire+diy[...]` 会被切为 `["fire", "diy[...]"]`。
 fn split_by_plus_outside_quotes(raw: &str) -> Vec<String> {
     let mut segments = Vec::new();
     let mut current = String::new();
     let mut in_string = false;
     let mut escaped = false;
+    let mut brace_depth = 0usize;
+    let mut bracket_depth = 0usize;
     for ch in raw.chars() {
         if in_string {
             current.push(ch);
@@ -117,12 +119,17 @@ fn split_by_plus_outside_quotes(raw: &str) -> Vec<String> {
                 '"' => in_string = false,
                 _ => {}
             }
-        } else if ch == '+' {
+        } else if ch == '+' && brace_depth == 0 && bracket_depth == 0 {
             segments.push(std::mem::take(&mut current));
         } else {
             current.push(ch);
-            if ch == '"' {
-                in_string = true;
+            match ch {
+                '"' => in_string = true,
+                '{' => brace_depth += 1,
+                '}' => brace_depth = brace_depth.saturating_sub(1),
+                '[' => bracket_depth += 1,
+                ']' => bracket_depth = bracket_depth.saturating_sub(1),
+                _ => {}
             }
         }
     }
@@ -521,7 +528,8 @@ impl Player {
         if self.should_export_minion(22, summon_overlay)
             && let Some(summon) = self.build_summon_export_minion(summon_overlay, storage.clone())
         {
-            entries.push(format!("\"summon\":{}", summon.to_ol_minion_json()));
+            let inherit_owner_def_res = summon_overlay.map(|overlay| overlay.inherit_owner_def_res).unwrap_or(true);
+            entries.push(format!("\"summon\":{}", summon.to_ol_summon_minion_json(inherit_owner_def_res)));
         }
 
         let zombie_overlay = overlay.and_then(|overlay| overlay.zombie.as_ref());
@@ -667,6 +675,20 @@ impl Player {
         )
     }
 
+    fn to_ol_summon_minion_json(&self, inherit_owner_def_res: bool) -> String {
+        let inherit = if inherit_owner_def_res {
+            ",\"inherit_owner_def_res\":true"
+        } else {
+            ""
+        };
+        format!(
+            "{{\"attrs\":[{}],\"skills\":{},\"skill_order\":[{}],\"reuse_skills_on_recast\":true{inherit}}}",
+            Self::attrs_to_ol_json(&self.attr),
+            self.summon_slot_skills_to_ol_json(),
+            self.skills.skill.iter().map(|key| key.to_string()).collect::<Vec<_>>().join(",")
+        )
+    }
+
     fn attrs_to_ol_json(attrs: &[u32; 8]) -> String {
         attrs
             .iter()
@@ -711,6 +733,40 @@ impl Player {
             }
         }
         skills.push('}');
+        skills
+    }
+
+    fn summon_slot_skills_to_ol_json(&self) -> String {
+        let mut skills = String::from('[');
+        let mut first = true;
+        for skill_key in &self.skills.slot_skill {
+            let Some(skill) = self.skills.store.get(skill_key) else {
+                continue;
+            };
+            let name = minion_skill_name_for_export(*skill_key, skill);
+            if !first {
+                skills.push(',');
+            }
+            first = false;
+            skills.push_str("{\"name\":\"");
+            skills.push_str(&name);
+            skills.push_str("\",\"level\":");
+            match &skill.diy_boost {
+                Some(SkillBoost::SlotBoost { boost, .. }) => {
+                    let base = skill.level().saturating_sub(*boost);
+                    skills.push_str(&format!("\"{}+{}\"", base, boost));
+                }
+                Some(SkillBoost::LastBoost(_)) => {
+                    let base = skill.level() / 2;
+                    skills.push_str(&format!("\"2*{}\"", base));
+                }
+                _ => {
+                    skills.push_str(&skill.level().to_string());
+                }
+            }
+            skills.push('}');
+        }
+        skills.push(']');
         skills
     }
 

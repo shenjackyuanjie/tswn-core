@@ -519,7 +519,7 @@ fn build_diy_input(original_input: &str) -> (String, HashMap<String, String>, Ve
 fn get_diy_name(player_raw: &str, storage: std::sync::Arc<Storage>) -> Result<String, String> {
     let mut player = Player::new_from_namerena_raw(player_raw.to_string(), storage).map_err(|e| e.to_string())?;
     player.build();
-    Ok(player.to_ol_json())
+    Ok(player.to_ol_json_with_minions())
 }
 
 fn get_player_statuses(input_text: &str) -> Result<Vec<PlayerStatus>, String> {

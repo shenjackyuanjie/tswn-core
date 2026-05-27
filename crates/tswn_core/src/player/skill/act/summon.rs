@@ -10,7 +10,7 @@ use crate::player::{
 use crate::rc4::RC4;
 
 use super::minion::{
-    MinionKind, MinionRuntimeState, alloc_minion_name, apply_minion_attrs, apply_minion_skill_overlay, owner_minion_overlay,
+    MinionKind, MinionRuntimeState, alloc_minion_name, apply_minion_skill_overlay, apply_summon_attrs, owner_minion_overlay,
     prepare_combat_minion,
 };
 
@@ -86,7 +86,12 @@ impl SkillTrait for SummonSkill {
                 owner: Some(args.0),
                 kind: MinionKind::Summon,
             });
-            if !apply_minion_skill_overlay(summoned, minion_overlay.as_ref()) {
+            let reuse_overlay_skills = minion_overlay.as_ref().map(|overlay| overlay.reuse_skills_on_recast).unwrap_or(false);
+            if reuse_overlay_skills {
+                ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
+                summoned.skills.boost_last();
+                summoned.skills.update_proc();
+            } else if !apply_minion_skill_overlay(summoned, minion_overlay.as_ref()) {
                 ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
                 summoned.skills.boost_last();
                 summoned.skills.update_proc();
@@ -94,7 +99,7 @@ impl SkillTrait for SummonSkill {
                 ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
                 summoned.skills.update_proc();
             }
-            if apply_minion_attrs(summoned, minion_overlay.as_ref()) {
+            if apply_summon_attrs(summoned, &owner, minion_overlay.as_ref()) {
                 summoned.update_states();
             }
             summoned.init_values();
@@ -114,7 +119,7 @@ impl SkillTrait for SummonSkill {
                 .expect("cannot init summon minion");
         prepare_combat_minion(&mut summoned);
         summoned.build();
-        if !apply_minion_attrs(&mut summoned, minion_overlay.as_ref()) {
+        if !apply_summon_attrs(&mut summoned, &owner, minion_overlay.as_ref()) {
             summoned.attr[7] = (summoned.attr[7] / 3).max(1);
             summoned.attr[0] = 0;
             summoned.attr[1] = owner.attr[1];
