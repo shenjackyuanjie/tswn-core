@@ -1,3 +1,8 @@
+//! 玩家基础构建与覆盖配置测试。
+//!
+//! 本模块覆盖玩家解析、八围构建、名字系数、DIY / OL 覆盖配置、
+//! 导出格式以及若干基础状态更新语义。
+
 use super::*;
 
 #[test]
@@ -351,7 +356,7 @@ fn profile_case_d8c6_players() {
 }
 
 // ==============
-// DIY overlay 新增功能测试
+// DIY 覆盖配置新增功能测试
 // ==============
 
 #[test]
@@ -368,20 +373,20 @@ fn diy_overlay_name_factor_disabled_forces_zero() {
 }
 
 #[test]
-/// 测试 name_factor_enabled 默认为 true 时 name_factor 正常计算。
-/// 对比：同一个名字的 overlay 玩家和普通玩家应有相同的 name_factor。
+/// 测试 `name_factor_enabled` 默认为 `true` 时 `name_factor` 正常计算。
+/// 对比：同一个名字的覆盖配置玩家和普通玩家应有相同的 `name_factor`。
 fn diy_overlay_name_factor_defaults_to_enabled() {
     let storage = Storage::new_arc();
     // 普通玩家
     let normal = Player::new_and_init(None, "aaaaa".to_string(), None, storage.clone()).unwrap();
-    // overlay 玩家（name_factor_enabled 默认为 true）
+    // 覆盖配置玩家（`name_factor_enabled` 默认为 `true`）
     let overlay = PlayerOverlay {
         attrs: Some([50, 50, 50, 50, 50, 50, 50, 300]),
         ..Default::default()
     };
     assert!(overlay.name_factor_enabled);
     let diy = Player::new_and_init_with_overlay(None, "aaaaa".to_string(), None, Some(overlay), storage.clone()).unwrap();
-    // 两个玩家的 name_factor 应相等（overlay 不影响 name_factor 计算）
+    // 两个玩家的 `name_factor` 应相等（覆盖配置不影响 `name_factor` 计算）
     assert!((diy.name_factor - normal.name_factor).abs() < f64::EPSILON);
 }
 
@@ -403,13 +408,13 @@ fn diy_overlay_disables_weapon() {
         storage.clone(),
     )
     .unwrap();
-    // weapon 名保留但 weapon_state 为空
+    // 武器名保留，但 `weapon_state` 为空
     assert!(player.get_weapon_name().is_some());
     assert!(player.weapon_state.is_none());
 }
 
 #[test]
-/// 测试 DIY 技能 build 后 diy_boost 信息正确存储在 Skill 上
+/// 测试 DIY 技能在构建后会把 `diy_boost` 信息正确存储到技能对象上
 fn diy_skill_boost_info_stored_on_skill() {
     let storage = Storage::new_arc();
     let overlay = PlayerOverlay {

@@ -5,15 +5,15 @@
 
 use std::path::PathBuf;
 
-/// benchmark 线程策略。
+/// 基准测试线程策略。
 ///
 /// 这里保留一个非常薄的枚举，而不是直接把 `thread: Option<usize>` 暴露给执行层，
 /// 是因为“显式单线程”和“未指定线程但允许并行”是两个不同的语义。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BenchThreadMode {
-    /// 自动或显式并行运行 benchmark。
+    /// 自动或显式并行运行基准测试。
     Parallel,
-    /// 强制使用单线程运行 benchmark。
+    /// 强制使用单线程运行基准测试。
     SingleThread,
 }
 
@@ -67,21 +67,21 @@ pub enum ParsedCommand {
         raw: String,
     },
     FightRaw {
-        /// 原始 namerena 输入，可能是普通对战，也可能是 `!test!` benchmark 输入。
+        /// 原始 namerena 输入，可能是普通对战，也可能是 `!test!` 基准测试输入。
         raw: String,
         /// 评分或胜率测试的模拟场数。
         n: usize,
-        /// 显式指定的 benchmark 线程数。
+        /// 显式指定的基准测试线程数。
         threads: Option<usize>,
     },
     BenchAuto {
-        /// benchmark 原始输入，按组数自动分流到评分或胜率测试。
+        /// 基准测试原始输入，按组数自动分流到评分或胜率测试。
         raw: String,
-        /// benchmark 模拟场数。
+        /// 基准测试模拟场数。
         n: usize,
-        /// benchmark 线程模式。
+        /// 基准测试线程模式。
         mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
+        /// 显式指定的基准测试线程数。
         threads: Option<usize>,
         /// 是否输出 total/init/fight 耗时统计。
         perf: bool,
@@ -95,9 +95,9 @@ pub enum ParsedCommand {
         team2: String,
         /// 每组对局的模拟场数。
         n: usize,
-        /// benchmark 线程模式。
+        /// 基准测试线程模式。
         mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
+        /// 显式指定的基准测试线程数。
         threads: Option<usize>,
         /// 是否输出 total/init/fight 耗时统计。
         perf: bool,
@@ -113,9 +113,9 @@ pub enum ParsedCommand {
         against: Vec<String>,
         /// 每组对局的模拟场数。
         n: usize,
-        /// benchmark 线程模式。
+        /// 基准测试线程模式。
         mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
+        /// 显式指定的基准测试线程数。
         threads: Option<usize>,
         /// 是否输出 total/init/fight 耗时统计。
         perf: bool,
@@ -131,9 +131,9 @@ pub enum ParsedCommand {
         player_labels: Vec<String>,
         /// 每组对局的模拟场数。
         n: usize,
-        /// benchmark 线程模式。
+        /// 基准测试线程模式。
         mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
+        /// 显式指定的基准测试线程数。
         threads: Option<usize>,
         /// 是否输出 total/init/fight 耗时统计。
         perf: bool,
@@ -159,17 +159,17 @@ pub enum ParsedCommand {
     BenchPair {
         /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         target_groups: Vec<String>,
-        /// player-list 中的选手；每行一个名字。
+        /// `player-list` 文件中的选手；每行一个名字。
         players: Vec<String>,
-        /// teammate-list 中的队友；每行一个名字。
+        /// `teammate-list` 文件中的队友；每行一个名字。
         teammates: Vec<String>,
-        /// 每名选手取最高的 head 个二人组 batch rate 求和。
+        /// 每名选手取最高的 `head` 个二人组 `batch-rate` 结果求和。
         head: usize,
         /// 每组对局的模拟场数。
         n: usize,
-        /// benchmark 线程模式。
+        /// 基准测试线程模式。
         mode: BenchThreadMode,
-        /// 显式指定的 benchmark 线程数。
+        /// 显式指定的基准测试线程数。
         threads: Option<usize>,
         /// 是否输出 total/init/fight 耗时统计。
         perf: bool,
@@ -197,7 +197,7 @@ pub enum ParsedCommand {
         raw: String,
         /// 每个评分项的模拟场数。
         n: usize,
-        /// 显式指定的 benchmark 线程数。
+        /// 显式指定的基准测试线程数。
         threads: Option<usize>,
         /// 需要运行的评分项；未显式传入时已归一化为四项全测。
         modes: Vec<NamerPfMode>,
@@ -225,7 +225,7 @@ pub enum ParsedCommand {
         out_file: Option<PathBuf>,
         /// 是否输出旧版 `+diy` 形式；默认输出 `+ol` 形式。
         old: bool,
-        /// 是否在 `+ol` 中附带 shadow/summon/zombie 模板。
+        /// 是否在 `+ol` 中附带幻影 / 使魔 / 丧尸模板。
         minions: bool,
     },
 }

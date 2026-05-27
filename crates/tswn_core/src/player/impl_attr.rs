@@ -145,16 +145,16 @@ impl Player {
         (val as f64 * (1.0 - self.name_factor / factor2 as f64)).round() as i32
     }
 
-    /// upgrade 之后
+    /// 升级之后
     /// 计算:
     /// - 具体属性 ( 8围 )
     /// - 技能熟练度
     pub fn build(&mut self) { self.build_inner(None, true); }
 
-    /// clone 不是直接复用 owner 的技能对象，而是会重新 `build` 一次。
+    /// 分身不是直接复用本体的技能对象，而是会重新 `build` 一次。
     ///
-    /// 因此如果 owner 某些技能已经在战斗中因为 `post_act_level()` 衰减，
-    /// clone build 后就必须把这些技能 clamp 到 owner 的“当前等级”，
+    /// 因此如果本体某些技能已经在战斗中因为 `post_act_level()` 衰减，
+    /// 分身构建后就必须把这些技能截断到本体的“当前等级”，
     /// 否则会把已经消耗过的熟练度刷新回名字 `build()` 的初始值。
     ///
     /// 当前仓库中已确认会在出手后降低当前熟练度的主动技能有：
@@ -164,24 +164,24 @@ impl Player {
     /// - `分身`：随机衰减，见 `CloneSkill::act_with_level()`
     /// - `幻术`：`ceil(level * 0.75)`
     ///
-    /// Dart `PlrClone.addSkillsToProc` 也是先 clamp 到 owner 当前等级，
+    /// Dart `PlrClone.addSkillsToProc` 也是先截断到本体当前等级，
     /// 然后再执行 boost（`super.addSkillsToProc`）。
     ///
-    /// ## DIY 模式下的 clone 行为
+    /// ## DIY 模式下的分身行为
     ///
-    /// 当 owner 是 DIY 玩家（`owner_skills.is_diy == true`）时，clone 构建分三步：
+    /// 当本体是 DIY 玩家（`owner_skills.is_diy == true`）时，分身构建分三步：
     ///
-    /// 1. **应用 overlay**：与 owner 相同的 overlay 技能配置被写入 clone，
+    /// 1. **应用覆盖配置**：与本体相同的覆盖技能配置被写入分身，
     ///    包含 [`SkillBoost`] 元数据（`diy_boost`）。
-    /// 2. **clamp 到 owner**：将 clone 的技能等级截断到 owner 当前（已衰减）等级。
+    /// 2. **截断到本体当前等级**：将分身的技能等级截断到本体当前（已衰减）等级。
     /// 3. **重新执行 SkillBoost 加成**（不依赖 name_base）：
     ///    - [`SkillBoost::Normal`]：不处理
     ///    - [`SkillBoost::LastBoost`]：衰减后等级 × 2（翻倍）
     ///    - [`SkillBoost::SlotBoost`]：衰减后等级 + boost（执行 +b）
     ///
-    /// 这模拟了 JS "先 clamp 再 boost" 的衰减下限语义：
-    /// - 普通玩家：owner Shadow 92 → 衰减到 40 → clone clamp=40 → boost_last 翻倍 → 80
-    /// - DIY 玩家：owner Shadow 92(2*46) → 衰减到 40 → clone clamp=40 → LastBoost 翻倍 → 80
+    /// 这模拟了 JS “先截断再加成”的衰减下限语义：
+    /// - 普通玩家：本体 `幻术 92` → 衰减到 40 → 分身截断为 40 → `boost_last` 翻倍 → 80
+    /// - DIY 玩家：本体 `幻术 92(2*46)` → 衰减到 40 → 分身截断为 40 → `LastBoost` 翻倍 → 80
     pub fn build_for_clone(&mut self, owner_skills: &crate::player::skill::store::SkillStorage) {
         let apply_overlay = owner_skills.is_diy;
         self.build_inner(Some(owner_skills), apply_overlay);
@@ -248,26 +248,27 @@ impl Player {
             self.skills.add_skill(Skill::new_with_id(0, skill_id));
         }
         if diy_skill_levels.is_none() {
-            // 正常模式：slot_skill 保持创建时的稳定顺序 (0..40)
+            // 正常模式：`slot_skill` 保持创建时的稳定顺序 (0..40)。
             // JS `k1` 是”固定技能对象数组”，普通玩家这里保持创建时的稳定顺序；
-            // 真正用于 action() 主动技能扫描的是 `k4`，它才会按名字解出的 `skil_id` 洗牌。
+            // 真正用于 `action()` 主动技能扫描的是 `k4`，它才会按名字解出的 `skil_id` 洗牌。
             //
             // 这个区别对 merge 很关键：
-            // - `k1` 负责”同一个固定槽位里的 skill 对象”逐位继承等级
+            // - `k1` 负责“同一个固定槽位里的技能对象”逐位继承等级
             // - `k4` 负责”本回合按什么顺序尝试主动技能”
             //
             // 如果把 `slot_skill` 也改成打乱后的 `skil_id`，merge 就会把本来应该同槽位的
-            // Shield / Defend / PassiveSkill 错位掉，导致吞噬后漏继承 pre_action / post_damage hook。
+            // `Shield` / `Defend` / `PassiveSkill` 错位掉，导致吞噬后漏继承
+            // `pre_action` / `post_damage` 钩子。
             self.skills.slot_skill = (0..40usize).collect();
             self.skills.skill = self.skil_id.iter().map(|id| *id as usize).collect();
         }
         let mut slot_skill_keys: [Option<usize>; 16] = [None; 16];
         if let Some(skill_levels) = diy_skill_levels.as_ref() {
-            // overlay 模式：直接用指定的等级覆盖技能，不走名字推导和 boost
+            // 覆盖配置模式：直接用指定的等级覆盖技能，不走名字推导和 boost。
             crate::player::skill::apply_diy_skill_levels(&mut self.skills, skill_levels);
         } else {
             // JS PlrBoss.dm() 覆写了 initSkills：Boss 的全部 40 个技能等级为 0。
-            // 创建 40 个技能仅为了 action 循环中 k4 的 prob 字节消费，
+            // 创建 40 个技能仅为了 `action` 循环中 `k4` 的概率字节消费，
             // 不设等级，从而阻止 Boss 使用普通技能。
             let is_boss = self.player_type == PlayerType::Boss;
             if !is_boss {
@@ -301,13 +302,13 @@ impl Player {
             weapons::Weapon::post_upgrade(&ws, self);
         }
 
-        // Dart / JS `PlrClone.addSkillsToProc`：这里只 clamp “固定槽位里已有的技能等级”，
-        // 不改槽位本身。也就是说 clone 继承 owner 时，`slot_skill` 仍然表示 clone build
-        // 出来的固定槽位类型，行动顺序也沿用该视图；只有等级会在这里被截到 owner 当前等级。
+        // Dart / JS `PlrClone.addSkillsToProc`：这里只截断“固定槽位里已有的技能等级”，
+        // 不改槽位本身。也就是说分身继承本体时，`slot_skill` 仍然表示分身 `build`
+        // 出来的固定槽位类型，行动顺序也沿用该视图；只有等级会在这里被截到本体当前等级。
         //
-        // 这里截的是“当前战斗中的技能等级”，不是重新 build 出来的原始熟练度。
-        // 例如 owner 已经把 `幻术 10` 用成 `8`，或者把 `生命之轮 9` 用成 `5` 后，
-        // clone 如果不在此处截断，就会把这些已衰减技能恢复成名字 build 的初始值，
+        // 这里截的是“当前战斗中的技能等级”，不是重新 `build` 出来的原始熟练度。
+        // 例如本体已经把 `幻术 10` 用成 `8`，或者把 `生命之轮 9` 用成 `5` 后，
+        // 分身如果不在此处截断，就会把这些已衰减技能恢复成名字 `build` 的初始值，
         // 进而改变后续的概率判定、行动顺序和整场回放。
         if let Some(owner_skills) = clamp_source {
             let skill_keys = self.skills.skill.clone();
@@ -316,11 +317,11 @@ impl Player {
                 let skill = self.skills.skill_by_id_mut(skill_key);
                 if skill.level() > owner_level {
                     skill.set_level(owner_level);
-                } // DIY clone：从 owner 继承 diy_boost 信息，确保衰减下限可预测。
-                // 注意：owner 的技能可能已经在战斗中衰减，
-                // clone 拿到的是 overlay 初始等级 clamp 到 owner 当前等级后的值。
-                // diy_boost 信息已在 apply_diy_skill_levels 阶段写入 clone 的 skill，
-                // 这里额外确保它也同步自 owner（处理 owner 运行时可能修改过的 boost 元数据）。
+                } // DIY 分身：从本体继承 `diy_boost` 信息，确保衰减下限可预测。
+                // 注意：本体的技能可能已经在战斗中衰减，
+                // 分身拿到的是覆盖配置初始等级截断到本体当前等级后的值。
+                // `diy_boost` 信息已在 `apply_diy_skill_levels` 阶段写入分身技能，
+                // 这里额外确保它也同步自本体（处理本体运行时可能修改过的 boost 元数据）。
                 if owner_skills.is_diy {
                     if let Some(ref owner_diy_boost) = owner_skills.skill_by_id(skill_key).diy_boost {
                         if skill.diy_boost.is_none() {
@@ -332,8 +333,8 @@ impl Player {
         }
 
         if diy_skill_levels.is_none() {
-            // 普通玩家和普通 clone 都走 JS `super.addSkillsToProc` 语义：
-            // clamp 之后按当前实体自己的行动顺序执行 boost。
+            // 普通玩家和普通分身都走 JS `super.addSkillsToProc` 语义：
+            // 截断之后按当前实体自己的行动顺序执行 boost。
             self.skills.boost_last();
             if let Some(skill_key) = slot_skill_keys[14] {
                 let skill_14 = self.skills.skill_by_id_mut(skill_key);
@@ -350,8 +351,8 @@ impl Player {
                 }
             }
         } else {
-            // DIY overlay：apply_diy_skill_levels 写入的是 base_level；
-            // 这里按 overlay 的 SkillBoost 元数据重放加成。clone 场景会先 clamp 再执行本段。
+            // DIY 覆盖配置：`apply_diy_skill_levels` 写入的是基础等级；
+            // 这里按覆盖配置里的 `SkillBoost` 元数据重放加成。分身场景会先截断再执行本段。
             let skill_keys = self.skills.skill.clone();
             for skill_key in &skill_keys {
                 let Some(boost_info) = self.skills.skill_by_id(*skill_key).diy_boost.clone() else {
@@ -490,7 +491,7 @@ impl Player {
         )
     }
 
-    /// 导出 `+ol`，并在玩家可生成 shadow/summon/zombie 时附带对应 minion 模板。
+    /// 导出 `+ol`，并在玩家可生成幻影 / 使魔 / 丧尸时附带对应召唤物模板。
     pub fn to_ol_json_with_minions(&self) -> String {
         let entries = self.ol_minion_export_entries();
         if entries.is_empty() {

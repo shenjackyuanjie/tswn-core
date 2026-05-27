@@ -1,3 +1,8 @@
+//! 战斗召唤物公共辅助逻辑。
+//!
+//! 本模块收敛幻影、使魔、丧尸等战斗召唤物共享的运行时状态、
+//! 命名规则，以及覆盖模板应用逻辑。
+
 use std::sync::Arc;
 
 use crate::{
@@ -62,7 +67,7 @@ pub fn alloc_minion_name(storage: &Arc<Storage>, owner_id: PlrId) -> String {
             .expect("cannot get mutable minion root owner from storage");
         owner.take_next_minion_name_index()
     };
-    // JS getMinionName 返回的是 name?N@team；Rust 把 team 单独存放，
+    // JS `getMinionName` 返回的是 `name?N@team`；Rust 把队伍单独存放，
     // 所以这里只写入 name?N，最终显示时再由 id_key_name()/格式化补上 @team。
     format!("{owner_name}?{index}")
 }
@@ -77,7 +82,7 @@ pub fn is_combat_minion(player: &crate::player::Player) -> bool {
 
 #[inline]
 pub fn prepare_combat_minion(player: &mut Player) {
-    // JS 的 Minion.bf() 会把 shadow/summon/zombie 的 x/name_factor 强制设为 0。
+    // JS 的 `Minion.bf()` 会把幻影 / 使魔 / 丧尸的 `x` / `name_factor` 强制设为 0。
     player.name_factor = 0.0;
 }
 

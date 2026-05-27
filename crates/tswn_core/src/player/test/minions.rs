@@ -1,3 +1,8 @@
+//! 战斗召唤物与相关技能测试。
+//!
+//! 本模块覆盖幻影、使魔、丧尸、吞噬等召唤物相关行为，
+//! 包括命名、继承、覆盖配置、同步顺序和尸体状态写入。
+
 use super::*;
 
 #[test]
@@ -195,7 +200,7 @@ fn summon_merge_uses_fixed_skill_slots() {
 
     {
         let owner_mut = storage.just_get_player_mut(merge_owner_id).unwrap();
-        // 这些 skill id 在旧实现里会被“按 id 继承”错误抬高；
+        // 这些技能编号在旧实现里会被“按编号继承”错误抬高；
         // 现在固定槽位对齐后，应当保持不变。
         owner_mut.skills.skill_by_id_mut(0).set_level(0);
         owner_mut.skills.skill_by_id_mut(1).set_level(0);
@@ -800,7 +805,7 @@ fn owner_death_removes_linked_minions_in_roster_order() {
     let owner = Player::new_from_namerena_raw("owner@team".to_string(), storage.clone()).unwrap();
     let owner_id = storage.just_insert_player(owner);
 
-    // 按 ?0 -> ?1 的顺序插入，同一队伍 roster 顺序应保持该顺序。
+    // 按 ?0 -> ?1 的顺序插入，同一队伍名册顺序应保持该顺序。
     let mut minion0 = storage.get_player(&owner_id).expect("cannot get owner").clone();
     minion0.id = storage.new_plr_id();
     minion0.name = "owner?0".to_string();
@@ -825,7 +830,7 @@ fn owner_death_removes_linked_minions_in_roster_order() {
     });
     let minion1_id = storage.just_insert_player(minion1);
 
-    // 构造与实际运行一致的分组（owner, ?0, ?1）。
+    // 构造与实际运行一致的分组（本体、?0、?1）。
     storage.sync_groups(&[vec![owner_id, minion0_id, minion1_id]]);
     storage.sync_alive_groups(&[vec![owner_id, minion0_id, minion1_id]]);
 

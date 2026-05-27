@@ -67,14 +67,14 @@ enum CliCommand {
     ///   tswn-cli diff -f input.txt
     #[command(name = "diff", verbatim_doc_comment)]
     FightDiff(FightDiffCommand),
-    /// 运行 benchmark 相关功能。
+    /// 运行基准测试相关功能。
     Bench(BenchCommand),
     /// 运行与 ica-plugin `/namer-pf` 相同的四项评分。
     #[command(name = "namer-pf", verbatim_doc_comment)]
     NamerPf(NamerPfCommand),
     /// 玩家图标相关功能。
     Icon(IconCommand),
-    /// 将名字转换为 DIY/OL overlay 格式。
+    /// 将名字转换为 DIY / OL 覆盖格式。
     ///
     /// 默认接收一个名字并输出详细信息；单号用 `-r/--raw NAME`，文件批量用 `-f/--file FILE`。
     /// 文件模式会按行读取多个名字，跳过空行，并按输入顺序逐行输出导出结果。
@@ -119,7 +119,7 @@ struct FightRawCommand {
     )]
     count: usize,
 
-    /// 指定 benchmark 线程数。
+    /// 指定基准测试线程数。
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
 }
@@ -133,7 +133,7 @@ struct FightDiffCommand {
 
 #[derive(Debug, Args)]
 struct BenchCommand {
-    /// benchmark 子命令。
+    /// 基准测试子命令。
     #[command(subcommand)]
     command: BenchSubcommand,
 }
@@ -199,11 +199,11 @@ enum BenchSubcommand {
 
 #[derive(Debug, Args)]
 struct BenchAutoCommand {
-    /// benchmark 输入来源参数。
+    /// 基准测试输入来源参数。
     #[command(flatten)]
     input: InputArgs,
 
-    /// benchmark 公共参数。
+    /// 基准测试公共参数。
     #[command(flatten)]
     options: BenchOptions,
 }
@@ -216,7 +216,7 @@ struct BenchWinRateCommand {
     /// 队伍 2，格式与普通输入中的单组相同。
     team2: String,
 
-    /// 胜率 benchmark 公共参数。
+    /// 胜率测试公共参数。
     #[command(flatten)]
     options: BenchOptions,
 
@@ -240,7 +240,7 @@ struct BenchGroupWinRateCommand {
     )]
     against: Vec<String>,
 
-    /// 组胜率 benchmark 公共参数。
+    /// 组胜率测试公共参数。
     #[command(flatten)]
     options: BenchOptions,
 
@@ -263,7 +263,7 @@ struct BenchBatchRateCommand {
     #[arg(long = "player-list-double-plus")]
     player_list_double_plus: bool,
 
-    /// 批量胜率测试的公共 benchmark 参数。
+    /// 批量胜率测试的公共基准测试参数。
     #[command(flatten)]
     options: BenchOptions,
 
@@ -322,7 +322,7 @@ struct BenchPairCommand {
     #[arg(long = "head", value_parser = parse_positive_usize, value_name = "N")]
     head: usize,
 
-    /// pair 测试的公共 benchmark 参数。
+    /// `pair` 测试的公共基准测试参数。
     #[command(flatten)]
     options: BenchOptions,
 

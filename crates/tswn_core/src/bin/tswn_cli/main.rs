@@ -8,18 +8,18 @@
 //! 相关模块概览：
 //! - `tswn_cli/args/`: `clap` 参数定义、输入来源统一、子命令映射。
 //! - `tswn_cli/fight/`: 普通对战、raw 输出、diff 输出。
-//! - `tswn_cli/bench/`: 评分/胜率 benchmark、批量评估、`namer-pf`。
+//! - `tswn_cli/bench/`: 评分 / 胜率基准测试、批量评估、`namer-pf`。
 //! - `tswn_cli/icon.rs`: 图标预览、base64 导出、文件保存。
-//! - `tswn_cli/to_diy.rs`: DIY/OL overlay 文本导出。
+//! - `tswn_cli/to_diy.rs`: DIY / OL 覆盖文本导出。
 //!
 //! 现在入口改成目录下的 `main.rs`，门面模块改成各自目录里的 `mod.rs`，
 //! 编译器会按 Rust 默认模块规则自动解析子模块，因此不再需要 `#[path = ...]`。
 //!
 //! 顶层命令概览：
 //! - `fight`: 运行普通对战，可选 `--out-raw` 输出聚合战斗日志。
-//! - `raw`: 直接运行 namerena 原始输入，兼容普通对战和 `!test!` benchmark 输入。
+//! - `raw`: 直接运行 namerena 原始输入，兼容普通对战和 `!test!` 基准测试输入。
 //! - `diff`: 运行普通对战，并按 runner diff 格式输出。
-//! - `bench auto`: 按输入组数自动切换评分 benchmark 或胜率 benchmark。
+//! - `bench auto`: 按输入组数自动切换评分基准测试或胜率基准测试。
 //! - `bench win-rate`: 显式比较两队胜率。
 //! - `bench group-win-rate`: 目标组对多个对手组逐个统计并汇总平均胜率。
 //! - `bench batch-rate` / `bench cqp`: 批量计算选手组对靶子组列表的平均胜率。
