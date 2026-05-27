@@ -1,3 +1,8 @@
+//! 幻影属性探针示例。
+//!
+//! 直接构造一个带 `?shadow` 后缀的战斗召唤物，执行召唤物运行时初始化后
+//! 打印名字系数、名字字节与八围结果。用于排查幻影/克隆继承规则是否与原版一致。
+
 use tswn_core::engine::storage::Storage;
 use tswn_core::player::Player;
 use tswn_core::player::skill::act::minion::prepare_combat_minion;

@@ -1,3 +1,8 @@
+//! WC 单字评分入口。
+//!
+//! 使用 `MODEL_WC` 对输入文件逐行评分，并按基础分/潜力分阈值过滤后写出。
+//! WC 同时也被字对配对模块复用为左右两侧模型。
+
 use std::path::Path;
 
 use crate::error::Ds3Result;

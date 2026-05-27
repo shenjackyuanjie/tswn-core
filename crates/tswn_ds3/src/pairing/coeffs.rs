@@ -1,6 +1,7 @@
 //! 字对配对 ML 模型系数。
 //!
-//! 包含三个配对模型的系数常量数组（`MODEL_WC`/`MODEL_BC`/`MODEL_FZ`/`MODEL_FS`/`MODEL_PJ`）。
+//! 包含字对配对所需的五套单侧模型系数（`MODEL_WC`/`MODEL_BC`/`MODEL_FZ`/`MODEL_FS`/`MODEL_PJ`）。
+//! FC/RH/WC 三种配对模式会在这些系数之间选择左右组合。
 
 pub const MODEL_SIZE: usize = 1124;
 

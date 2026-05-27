@@ -1,3 +1,8 @@
+//! FZ 单字评分入口。
+//!
+//! 使用 `MODEL_FZ` 对输入文件逐行评分，并按基础分/潜力分阈值过滤后写出。
+//! 作为模式适配层，它只负责传入正确的模型系数和 `ScoreMode::Fz`。
+
 use std::path::Path;
 
 use crate::error::Ds3Result;

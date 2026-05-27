@@ -1,3 +1,9 @@
+//! 测试回归点追踪工具。
+//!
+//! 运行指定过滤条件的 Rust 测试，解析失败输出中的 case / idx 信息，并把结果保存到
+//! `target/test_regression.json`。支持保存、列出、对比、删除 checkpoint，方便长期跟踪
+//! “失败点是否后移”这类兼容性调试进度。
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};

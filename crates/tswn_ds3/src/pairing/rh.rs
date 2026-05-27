@@ -1,3 +1,8 @@
+//! RH 字对配对入口。
+//!
+//! 使用 FS 模型作为左侧、PJ 模型作为右侧，调用通用配对流程筛选高分组合。
+//! 该层只绑定模型组合和配对模式，输出格式由 `pairing::common` 保持一致。
+
 use std::path::Path;
 
 use crate::error::Ds3Result;

@@ -1,3 +1,8 @@
+//! FS 单字评分入口。
+//!
+//! 使用 `MODEL_FS` 对输入文件逐行评分，并按基础分/潜力分阈值过滤后写出。
+//! 本文件保留单线程和指定线程数两种接口，供 CLI pipeline 按配置选择。
+
 use std::path::Path;
 
 use crate::error::Ds3Result;

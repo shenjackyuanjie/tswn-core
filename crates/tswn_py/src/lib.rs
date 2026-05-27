@@ -1,6 +1,8 @@
-//! tswn-py
+//! tswn-py — tswn-core 的 Python 绑定。
 //!
-//! 某个满是怨念的人向你问好
+//! 通过 `pyo3` 暴露战斗引擎、预构建胜率计算、玩家/RC4 包装类型以及图标渲染函数。
+//! Python 侧接口尽量保持直接：复杂对局仍由 `Runner` / `PreparedRunner` 承担，
+//! 批量胜率和图标输出则提供便于脚本调用的顶层函数。
 
 /// 类型 wrapper
 pub mod wrapper;

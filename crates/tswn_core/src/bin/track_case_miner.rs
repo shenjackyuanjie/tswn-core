@@ -1,3 +1,8 @@
+//! JS/Rust 对局差异挖掘结果追踪工具。
+//!
+//! 负责驱动 `tswn_case_miner`，读取其生成的失败案例摘要，并像 `track_test`
+//! 一样维护当前记录与 checkpoint 对比。用于把大量随机/采样输入中的真实行为分歧沉淀为可复查记录。
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;

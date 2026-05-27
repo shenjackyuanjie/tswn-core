@@ -1,3 +1,8 @@
+//! 性能样本筛选与 benchmark 工具。
+//!
+//! 从 case 库中抽样生成多种对局模式，先用少量运行做筛选，再对代表性慢 case 执行高次数胜率 benchmark。
+//! 结果写入 `target/perf_cases`，用于稳定复现性能退化和比较优化前后的耗时。
+
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;

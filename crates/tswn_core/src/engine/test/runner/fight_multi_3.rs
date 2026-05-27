@@ -1,3 +1,7 @@
+//! 多队混战回放测试分片 3。
+//!
+//! 分片文件只保存大型 fixture，执行逻辑由 runner 测试公共 helper 负责。
+
 use super::*;
 
 #[test]
