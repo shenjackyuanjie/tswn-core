@@ -54,6 +54,15 @@ fn minion_skill_name_for_export(skill_key: usize, skill: &Skill) -> String {
         .unwrap_or_else(|| skill_name_for_export(skill_key))
 }
 
+fn summon_skill_name_for_export(skill_key: usize, skill: &Skill) -> String {
+    match skill_key {
+        0 => "sklfire1".to_string(),
+        1 => "sklfire2".to_string(),
+        2 => "sklexplode".to_string(),
+        _ => minion_skill_name_for_export(skill_key, skill),
+    }
+}
+
 fn builtin_skill_id_for_runtime_kind(runtime_kind: &str) -> Option<usize> {
     match runtime_kind.rsplit("::").next()? {
         "FireSkill" => Some(0),
@@ -682,10 +691,9 @@ impl Player {
             ""
         };
         format!(
-            "{{\"attrs\":[{}],\"skills\":{},\"skill_order\":[{}],\"reuse_skills_on_recast\":true{inherit}}}",
+            "{{\"attrs\":[{}],\"skills\":{},\"reuse_skills_on_recast\":true{inherit}}}",
             Self::attrs_to_ol_json(&self.attr),
-            self.summon_slot_skills_to_ol_json(),
-            self.skills.skill.iter().map(|key| key.to_string()).collect::<Vec<_>>().join(",")
+            self.summon_skills_to_ol_json()
         )
     }
 
@@ -736,21 +744,21 @@ impl Player {
         skills
     }
 
-    fn summon_slot_skills_to_ol_json(&self) -> String {
-        let mut skills = String::from('[');
+    fn summon_skills_to_ol_json(&self) -> String {
+        let mut skills = String::from('{');
         let mut first = true;
-        for skill_key in &self.skills.slot_skill {
+        for skill_key in &self.skills.skill {
             let Some(skill) = self.skills.store.get(skill_key) else {
                 continue;
             };
-            let name = minion_skill_name_for_export(*skill_key, skill);
+            let name = summon_skill_name_for_export(*skill_key, skill);
             if !first {
                 skills.push(',');
             }
             first = false;
-            skills.push_str("{\"name\":\"");
+            skills.push('"');
             skills.push_str(&name);
-            skills.push_str("\",\"level\":");
+            skills.push_str("\":");
             match &skill.diy_boost {
                 Some(SkillBoost::SlotBoost { boost, .. }) => {
                     let base = skill.level().saturating_sub(*boost);
@@ -764,9 +772,8 @@ impl Player {
                     skills.push_str(&skill.level().to_string());
                 }
             }
-            skills.push('}');
         }
-        skills.push(']');
+        skills.push('}');
         skills
     }
 

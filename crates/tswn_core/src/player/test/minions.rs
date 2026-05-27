@@ -550,7 +550,7 @@ fn ol_overlay_customizes_shadow_minion_attrs_and_skills() {
 #[test]
 fn ol_overlay_customizes_summon_minion_attrs_and_skills() {
     let storage = Storage::new_arc();
-    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire":12,"sklexplode":3}}}"#;
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire2":12,"sklexplode":3,"sklfire1":"2*4"}}}"#;
     let mut owner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
     owner.build();
     let owner_id = storage.just_insert_player(owner);
@@ -570,9 +570,11 @@ fn ol_overlay_customizes_summon_minion_attrs_and_skills() {
     assert_eq!(pending.len(), 1);
     let summoned = &pending[0].player;
     assert_eq!(summoned.attr, [14, 15, 16, 17, 18, 19, 20, 180]);
-    assert_eq!(summoned.skills.skill_by_id(0).level(), 12);
-    assert_eq!(summoned.skills.skill_by_id(1).level(), 3);
-    assert_eq!(summoned.skills.skill, vec![0, 1]);
+    assert_eq!(summoned.skills.skill_by_id(0).level(), 8);
+    assert_eq!(summoned.skills.skill_by_id(1).level(), 12);
+    assert_eq!(summoned.skills.skill_by_id(2).level(), 3);
+    assert_eq!(summoned.skills.slot_skill, vec![0, 1, 2]);
+    assert_eq!(summoned.skills.skill, vec![1, 2, 0]);
     assert!(summoned.skills.store.contains_key(&255));
     assert!(summoned.skills.is_diy);
 }
@@ -580,7 +582,7 @@ fn ol_overlay_customizes_summon_minion_attrs_and_skills() {
 #[test]
 fn exported_summon_overlay_can_inherit_owner_def_res() {
     let storage = Storage::new_arc();
-    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"inherit_owner_def_res":true,"skills":{"sklfire":12,"sklexplode":3}}}"#;
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"inherit_owner_def_res":true,"skills":{"sklfire1":12,"sklexplode":3}}}"#;
     let mut owner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
     owner.build();
     owner.attr[1] = 7;

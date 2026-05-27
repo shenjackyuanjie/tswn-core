@@ -4,7 +4,6 @@ use crate::player::skill::SkillBoost;
 pub struct MinionOverlay {
     pub attrs: Option<[i32; 8]>,
     pub skills: Option<Vec<(String, SkillBoost)>>,
-    pub skill_order: Option<Vec<usize>>,
     pub reuse_skills_on_recast: bool,
     pub inherit_owner_def_res: bool,
 }
@@ -91,7 +90,7 @@ impl PlayerOverlay {
 
             match key.as_str() {
                 "attrs" => overlay.attrs = Some(decode_overlay_attrs(parse_attrs(value)?)),
-                "skills" => overlay.skills = Some(parse_skill_entries(value)?),
+                "skills" => overlay.skills = Some(parse_skill_map(value)?),
                 "weapon" => overlay.weapon = Some(parse_scalar_string(value)?),
                 "name_factor_enabled" => overlay.name_factor_enabled = parse_bool(value)?,
                 "shadow" | "phantom" | "幻影" => overlay.shadow = Some(parse_minion_overlay(value)?),
@@ -143,8 +142,7 @@ fn parse_minion_overlay(raw: &str) -> Option<MinionOverlay> {
 
         match key.as_str() {
             "attrs" => overlay.attrs = Some(decode_overlay_attrs(parse_attrs(value)?)),
-            "skills" => overlay.skills = Some(parse_skill_entries(value)?),
-            "skill_order" | "order" => overlay.skill_order = Some(parse_usize_array(value)?),
+            "skills" => overlay.skills = Some(parse_skill_map(value)?),
             "reuse_skills_on_recast" => overlay.reuse_skills_on_recast = parse_bool(value)?,
             "inherit_owner_def_res" => overlay.inherit_owner_def_res = parse_bool(value)?,
             _ => {}
@@ -170,24 +168,6 @@ fn parse_attrs(raw: &str) -> Option<[i32; 8]> {
         count += 1;
     }
     (count == values.len()).then_some(values)
-}
-
-fn parse_usize_array(raw: &str) -> Option<Vec<usize>> {
-    let raw = raw.trim().strip_prefix('[')?.strip_suffix(']')?;
-    let mut values = Vec::new();
-    for part in raw.split(',').map(str::trim).filter(|part| !part.is_empty()) {
-        values.push(part.parse().ok()?);
-    }
-    Some(values)
-}
-
-fn parse_skill_entries(raw: &str) -> Option<Vec<(String, SkillBoost)>> {
-    let raw = raw.trim();
-    if raw.starts_with('[') {
-        parse_skill_list(raw)
-    } else {
-        parse_skill_map(raw)
-    }
 }
 
 fn parse_skill_map(raw: &str) -> Option<Vec<(String, SkillBoost)>> {
@@ -226,62 +206,6 @@ fn parse_skill_map(raw: &str) -> Option<Vec<(String, SkillBoost)>> {
     }
 
     Some(list)
-}
-
-fn parse_skill_list(raw: &str) -> Option<Vec<(String, SkillBoost)>> {
-    let raw = raw.trim();
-    let raw = raw.strip_prefix('[')?.strip_suffix(']')?;
-    let mut list = Vec::new();
-    let mut idx = 0usize;
-    let bytes = raw.as_bytes();
-
-    while idx < bytes.len() {
-        skip_ws_and_commas(raw, &mut idx);
-        if idx >= bytes.len() {
-            break;
-        }
-        let (entry, next_idx) = extract_json_value(raw, idx)?;
-        let entry = entry.trim().strip_prefix('{')?.strip_suffix('}')?;
-        let mut entry_idx = 0usize;
-        let mut name = None;
-        let mut boost = None;
-
-        while entry_idx < entry.len() {
-            skip_ws_and_commas(entry, &mut entry_idx);
-            if entry_idx >= entry.len() {
-                break;
-            }
-            let (key, next_key_idx) = parse_quoted_string(entry, entry_idx)?;
-            entry_idx = next_key_idx;
-            skip_ws(entry, &mut entry_idx);
-            if entry.as_bytes().get(entry_idx).copied() != Some(b':') {
-                return None;
-            }
-            entry_idx += 1;
-            skip_ws(entry, &mut entry_idx);
-            let (value, next_value_idx) = extract_json_value(entry, entry_idx)?;
-            match key.as_str() {
-                "name" | "skill" => name = Some(parse_scalar_string(value)?),
-                "level" | "value" => boost = Some(parse_skill_boost_value(value)?),
-                _ => {}
-            }
-            entry_idx = next_value_idx;
-        }
-
-        list.push((name?, boost?));
-        idx = next_idx;
-    }
-
-    Some(list)
-}
-
-fn parse_skill_boost_value(raw: &str) -> Option<SkillBoost> {
-    let raw = raw.trim();
-    if raw.starts_with('"') {
-        SkillBoost::parse(&parse_scalar_string(raw)?)
-    } else {
-        SkillBoost::parse(raw)
-    }
 }
 
 fn parse_scalar_string(raw: &str) -> Option<String> {

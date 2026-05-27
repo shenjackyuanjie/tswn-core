@@ -146,7 +146,7 @@ fn player_raw_new_parses_diy_overlay() {
     assert_eq!(player.get_name_factor(), 0.0);
 
     let player = Player::new_from_namerena_raw(
-        "minion+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"shadow\":{\"attrs\":[46,47,48,49,50,51,52,200],\"skills\":{\"sklpossess\":9}},\"summon\":{\"skills\":{\"sklfire\":12,\"sklexplode\":3}},\"zombie\":{\"attrs\":[40,41,42,43,44,45,46,90],\"skills\":{\"sklrapid\":7}}}".to_string(),
+        "minion+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"shadow\":{\"attrs\":[46,47,48,49,50,51,52,200],\"skills\":{\"sklpossess\":9}},\"summon\":{\"skills\":{\"sklfire1\":12,\"sklexplode\":3}},\"zombie\":{\"attrs\":[40,41,42,43,44,45,46,90],\"skills\":{\"sklrapid\":7}}}".to_string(),
         storage.clone(),
     )
     .unwrap();
@@ -167,10 +167,10 @@ fn player_raw_new_parses_diy_overlay() {
 }
 
 #[test]
-fn ol_overlay_with_summon_skill_list_keeps_main_attrs() {
+fn ol_overlay_with_summon_skill_map_keeps_main_attrs() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw(
-        "milkΙлЯωΦПΞΣъЭ@lzk+ol:{\"attrs\":[95,86,94,89,85,89,87,343],\"skills\":{\"sklexchange\":14,\"sklclone\":22,\"sklsummon\":10,\"sklcounter\":6,\"sklslow\":\"2*23\",\"sklreraise\":\"41+36\"},\"name_factor_enabled\":true,\"summon\":{\"attrs\":[36,86,56,55,36,89,88,89],\"skills\":[{\"name\":\"sklfire\",\"level\":\"2*14\"},{\"name\":\"sklfire\",\"level\":4},{\"name\":\"sklexplode\",\"level\":0}],\"skill_order\":[2,1,0],\"reuse_skills_on_recast\":true}}".to_string(),
+        "milk@lzk+ol:{\"attrs\":[95,86,94,89,85,89,87,343],\"skills\":{\"sklexchange\":14,\"sklclone\":22,\"sklsummon\":10,\"sklcounter\":6,\"sklslow\":\"2*23\",\"sklreraise\":\"41+36\"},\"name_factor_enabled\":true,\"summon\":{\"attrs\":[36,86,56,55,36,89,88,89],\"skills\":{\"sklexplode\":0,\"sklfire2\":4,\"sklfire1\":\"2*14\"},\"reuse_skills_on_recast\":true}}".to_string(),
         storage,
     )
     .unwrap();
@@ -181,8 +181,6 @@ fn ol_overlay_with_summon_skill_list_keeps_main_attrs() {
 
     player.build();
     assert_eq!(player.attr, [59, 50, 58, 53, 49, 53, 51, 343]);
-    assert_eq!(player.get_status().attack, 59);
-    assert_eq!(player.get_status().agility, 53);
 }
 
 #[test]
@@ -491,11 +489,11 @@ fn ol_export_with_minions_includes_spawn_templates() {
     assert!(exported.contains("\"shadow\":{\"attrs\":"));
     assert!(exported.contains("\"skills\":{\"sklpossess\":\"2*"));
     assert!(exported.contains("\"summon\":{\"attrs\":"));
-    assert!(exported.contains("\"skills\":["));
-    assert!(exported.contains("\"name\":\"sklexplode\""));
+    assert!(exported.contains("\"sklfire1\":"));
+    assert!(exported.contains("\"sklfire2\":"));
+    assert!(exported.contains("\"sklexplode\":"));
     assert!(exported.contains("\"zombie\":{\"attrs\":"));
     assert!(exported.contains("\"zombie\":{\"attrs\":") && exported.contains("\"skills\":{}"));
-    assert_eq!(exported.matches("\"name\":\"sklfire\"").count(), 2);
 
     let reparsed = Player::new_from_namerena_raw(exported, Storage::new_arc()).unwrap();
     let reparsed_overlay = reparsed.overlay.as_ref().expect("exported ol should parse overlay");

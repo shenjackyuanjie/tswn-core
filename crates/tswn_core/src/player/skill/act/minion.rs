@@ -115,6 +115,14 @@ pub fn apply_minion_skill_overlay(player: &mut Player, overlay: Option<&MinionOv
     let Some(skill_levels) = overlay.and_then(|overlay| overlay.skills.as_ref()) else {
         return false;
     };
+    if player
+        .get_state::<MinionRuntimeState>()
+        .map(|state| state.kind == MinionKind::Summon)
+        .unwrap_or(false)
+    {
+        return apply_summon_skill_overlay(player, skill_levels);
+    }
+
     let mut skills = SkillStorage::new();
     for (name, boost) in skill_levels {
         let Some(mut skill) = minion_skill_from_overlay(name, boost) else {
@@ -124,22 +132,42 @@ pub fn apply_minion_skill_overlay(player: &mut Player, overlay: Option<&MinionOv
         skills.add_skill(skill);
     }
     skills.is_diy = true;
-    if player
-        .get_state::<MinionRuntimeState>()
-        .map(|state| state.kind == MinionKind::Summon)
-        .unwrap_or(false)
-        && !skills.skill.is_empty()
-    {
-        skills.slot_skill = (0..skills.skill.len()).collect();
-        if let Some(order) = overlay.and_then(|overlay| overlay.skill_order.as_ref())
-            && order.iter().all(|key| *key < skills.skill.len())
-        {
-            skills.skill = order.clone();
-        }
-    }
     skills.update_proc();
     player.skills = skills;
     true
+}
+
+fn apply_summon_skill_overlay(player: &mut Player, skill_levels: &[(String, SkillBoost)]) -> bool {
+    let mut skills = SkillStorage::new();
+    skills.add_skill(Skill::new_with_id(0, 0));
+    skills.add_skill(Skill::new_with_id(0, 0));
+    skills.add_skill(Skill::new(0, Box::new(super::summon::SummonExplodeSkill::new())));
+    skills.slot_skill = vec![0, 1, 2];
+    skills.skill.clear();
+
+    for (name, boost) in skill_levels {
+        let Some(skill_key) = summon_skill_key_from_overlay(name) else {
+            continue;
+        };
+        apply_overlay_boost(skills.skill_by_id_mut(skill_key), boost);
+        if !skills.skill.contains(&skill_key) {
+            skills.skill.push(skill_key);
+        }
+    }
+
+    skills.is_diy = true;
+    skills.update_proc();
+    player.skills = skills;
+    true
+}
+
+fn summon_skill_key_from_overlay(name: &str) -> Option<usize> {
+    match normalize_minion_skill_name(name).as_str() {
+        "fire1" => Some(0),
+        "fire2" => Some(1),
+        "explode" | "selfdestruct" | "self_destruct" | "summonexplode" | "鑷垎" => Some(2),
+        _ => None,
+    }
 }
 
 fn minion_skill_from_overlay(name: &str, boost: &SkillBoost) -> Option<Skill> {

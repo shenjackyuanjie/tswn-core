@@ -243,6 +243,41 @@ PlayerName+ol:{"attrs":[50,50,50,50,50,50,50,200],"name_factor_enabled":false}
 
 `new_from_namerena_raw` 自动解析 `diy[...]{...}` 和 `ol:{json}` 格式。
 
+#### 召唤物模板（`to-diy --minions`）
+
+`to-diy --minions` 会在 `ol:{...}` 中附带当前玩家可生成的战斗衍生体模板：
+
+- `shadow`：幻影模板，默认导出 `attrs` 与 `skills`，技能名使用 `sklpossess`。
+- `summon`：使魔模板，默认导出 `attrs`、`skills`、`reuse_skills_on_recast`，必要时带 `inherit_owner_def_res`。
+- `zombie`：丧尸模板，默认导出 `attrs` 与 `skills`。
+
+模板内的 `attrs` 仍使用 OL 表示法：前七围导出时 `+36`，解析后 `-36`，HP 原样保存。模板内的 `skills` 和普通玩家一样是有序 JSON object，字段顺序决定行动时的尝试顺序，值支持普通等级、`"base+boost"` 和 `"2*base"`。
+
+使魔有三个固定技能槽：火球 1、火球 2、自爆。由于两个火球都是 FireSkill，导出和配置时需要用槽位名区分：
+
+| 槽位名       | 含义                |
+| ------------ | ------------------- |
+| `sklfire1`   | 第一个固定火球槽位  |
+| `sklfire2`   | 第二个固定火球槽位  |
+| `sklexplode` | 使魔自爆技能槽位    |
+
+示例：
+
+```text
+ol:{
+  "attrs":[86,86,86,86,86,86,86,300],
+  "skills":{"sklsummon":10},
+  "summon":{
+    "attrs":[36,86,56,55,36,89,88,89],
+    "skills":{"sklexplode":0,"sklfire2":4,"sklfire1":"2*14"},
+    "reuse_skills_on_recast":true,
+    "inherit_owner_def_res":true
+  }
+}
+```
+
+`summon.skills` 不再支持旧数组格式，也不再使用 `skill_order` 字段；如果需要调整行动顺序，直接调整 object 中 `sklfire1` / `sklfire2` / `sklexplode` 的排列顺序。
+
 #### 3. 批量配置（大数据场景）
 
 ```json
@@ -303,6 +338,9 @@ help+diy[64,87,57,68,61,79,76,297]{"sklthunder":21,"skliron":7,...}
 
 # 输出示例（JSON 格式，不再包含 skill_order 字段）
 help+ol:{"attrs":[28,51,21,32,25,43,40,261],"skills":{...},"name_factor_enabled":true}
+
+# 带召唤物模板输出
+tswn-cli to-diy -f names.txt --minions -o diy.txt
 ```
 
 也可以通过 Rust API 直接调用：

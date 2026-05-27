@@ -132,8 +132,9 @@ mod tests {
         assert!(exported.contains("\"summon\":{\"attrs\":"));
         assert!(exported.contains("\"zombie\":{\"attrs\":"));
         assert!(exported.contains("\"sklpossess\":\"2*"));
-        assert!(exported.contains("\"skills\":["));
-        assert!(exported.contains("\"name\":\"sklexplode\""));
+        assert!(exported.contains("\"sklfire1\":"));
+        assert!(exported.contains("\"sklfire2\":"));
+        assert!(exported.contains("\"sklexplode\":"));
         assert!(!exported.contains("\"possess\":"));
         assert!(!exported.contains("\"explode\":"));
 
