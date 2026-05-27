@@ -1,3 +1,7 @@
+//! 狂暴主动技能实现。
+//!
+//! 维护 `BerserkState`，激活后大幅提升攻击力并强制持续攻击，代价是防御大幅下降。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

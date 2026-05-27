@@ -1,3 +1,7 @@
+//! 保护被动技能实现。
+//!
+//! 当队友受到致命伤害时，按概率代为承受并抵消部分伤害，保护友方存活。
+
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId, StateTrait,

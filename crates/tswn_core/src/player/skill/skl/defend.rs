@@ -1,3 +1,7 @@
+//! 防御被动技能实现。
+//!
+//! 在受到攻击时触发，减少受到的伤害量，提供基础防御能力。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,

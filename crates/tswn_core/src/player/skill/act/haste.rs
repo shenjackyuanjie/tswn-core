@@ -1,3 +1,7 @@
+//! 急速（Haste）主动技能实现。
+//!
+//! 维护 `HasteState`，激活后增加本回合行动次数，使玩家能连续攻击多次。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId, StateTrait,

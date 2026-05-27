@@ -1,3 +1,7 @@
+//! 升级（垂死强化）被动技能实现。
+//!
+//! 玩家生命值首次降至阈值以下时触发，永久提升自身攻防属性，模拟"垂死觉醒"效果。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId, StateTrait,

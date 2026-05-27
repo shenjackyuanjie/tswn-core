@@ -1,3 +1,7 @@
+//! 铁壁（Iron）主动技能实现。
+//!
+//! 维护 `IronState`，激活后大幅提升防御力，同时降低行动速度，适合以防待攻。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

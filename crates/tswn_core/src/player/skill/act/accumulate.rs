@@ -1,3 +1,7 @@
+//! 聚气主动技能实现。
+//!
+//! 蓄积能量逐渐提升自身攻击力，到达阈值后对目标发动高倍率强力攻击。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,

@@ -1,3 +1,7 @@
+//! 诅咒主动技能实现。
+//!
+//! 维护 `CurseState`，对目标施加诅咒，使其每回合持续受到伤害并降低治疗效果。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

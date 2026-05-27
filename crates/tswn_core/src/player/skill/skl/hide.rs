@@ -1,3 +1,7 @@
+//! 隐匿被动技能实现。
+//!
+//! 使玩家在特定条件下进入隐身状态，躲避敌方的目标选取，并在反击时解除隐匿。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,

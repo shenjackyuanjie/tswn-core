@@ -1,3 +1,7 @@
+//! 反射被动技能实现。
+//!
+//! 受到伤害时按概率将伤害反弹给攻击者，反弹量与受到伤害量挂钩。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     OnDamageFunc, PlrId,

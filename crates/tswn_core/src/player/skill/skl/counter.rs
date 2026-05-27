@@ -1,3 +1,7 @@
+//! 反击被动技能实现。
+//!
+//! 受到攻击时按概率对攻击者发动反击，造成一定比例的回击伤害。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

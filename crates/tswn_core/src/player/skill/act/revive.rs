@@ -1,3 +1,7 @@
+//! 复活（主动）技能实现。
+//!
+//! 在目标死亡后主动将其复活，恢复一定量生命值并清除尸体状态，可作用于召唤物。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,

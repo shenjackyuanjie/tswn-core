@@ -1,3 +1,8 @@
+//! 中毒主动技能实现。
+//!
+//! 维护 `PoisonState`，对目标施加中毒效果，使其每回合持续流失生命值，
+//! 毒素强度可叠加。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

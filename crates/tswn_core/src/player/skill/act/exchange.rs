@@ -1,3 +1,7 @@
+//! 交换主动技能实现。
+//!
+//! 与目标互换当前生命值，可将己方垂危局面转化为优势。
+
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlrId,

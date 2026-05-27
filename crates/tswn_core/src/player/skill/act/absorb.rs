@@ -1,3 +1,7 @@
+//! 吸血主动技能实现。
+//!
+//! 攻击时将造成的部分伤害转化为自身的生命值回复。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;

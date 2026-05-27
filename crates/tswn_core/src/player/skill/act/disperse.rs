@@ -1,3 +1,7 @@
+//! 驱散主动技能实现。
+//!
+//! 清除目标身上的所有负面（或正面）状态效果，使其恢复原始状态。
+
 use std::sync::Arc;
 
 use crate::engine::storage::Storage;
