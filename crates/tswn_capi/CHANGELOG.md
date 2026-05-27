@@ -71,7 +71,7 @@
 - 新增基于 `PreparedRunner` 的高层胜率接口：
   - `tswn_prepared_win_rate(...)`
   - `tswn_prepared_win_rate_with_eval_rq(...)`
-  便于调用方在已经持有 prepared 模板时，直接复用同一份预处理结果批量统计第一组对其余组的胜率，而不必每次重新从 raw 输入计算。
+    便于调用方在已经持有 prepared 模板时，直接复用同一份预处理结果批量统计第一组对其余组的胜率，而不必每次重新从 raw 输入计算。
 - Windows 构建现在同时产出 `tswn_capi.lib`（`staticlib`），便于 C / C++ 调用方在需要时将 `tswn_capi` 静态链接进最终可执行文件，而不只依赖 `tswn_capi.dll` / `tswn_capi.dll.lib` 的动态链接形式。
 - 补充了 `PreparedRunner` 的 seed 使用说明：`tswn_runner_new_from_prepared(...)` 的 seed 参数应传入与 raw 文本一致的完整 `seed:...` 行，而不是只传裸 seed 值。
 - 补充了 Windows C++ 编译与链接说明文档，覆盖 `clang++` 动态/静态链接、`g++` 动态链接兼容性、以及运行时 DLL 查找方式等常见问题。

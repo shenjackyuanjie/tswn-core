@@ -60,10 +60,10 @@ let runner = Runner::new_from_namerena_raw(raw_input, eval_rq).unwrap();
 
 ## 构建配置
 
-| feature | 默认 | 说明 |
-|---------|------|------|
-| `png_render` | ✅ | PNG 图标渲染支持 |
-| `no_debug` | ❌ | 关闭调试输出，用于 release 分发 |
+| feature      | 默认 | 说明                            |
+| ------------ | ---- | ------------------------------- |
+| `png_render` | ✅   | PNG 图标渲染支持                |
+| `no_debug`   | ❌   | 关闭调试输出，用于 release 分发 |
 
 ## 测试
 

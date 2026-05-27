@@ -488,18 +488,18 @@
   - `ffa_4`
   - `ffa_6`
   - `ffa_8`
-  并为每种模式固定生成 10 个 deterministic case。
+    并为每种模式固定生成 10 个 deterministic case。
 - **一致性测试比较维度扩展到完整 replay**：除 `winner` 外，还同时比较：
   - `input_groups`
   - battle score
   - full replay trace
-  以便尽早发现 `prepare` 路径在排序、构造顺序、初始状态或随机流上的潜在分叉。
+    以便尽早发现 `prepare` 路径在排序、构造顺序、初始状态或随机流上的潜在分叉。
 - **补充无 seed 情况下的 prepare/raw 一致性测试**：新增单测，直接比较“raw 输入不带 seed”与“PreparedRunner 构造 runner 时不传 seed”两条路径在同一输入下的：
   - `winner`
   - battle score
   - round count
   - replay trace
-  以确认 no-seed 语义同样保持一致。
+    以确认 no-seed 语义同样保持一致。
 
 ### 修复
 
@@ -514,7 +514,7 @@
 - **补充调用方按输入队伍归属判断胜者的辅助接口**：
   - `tswn_capi` 新增 `tswn_runner_player_input_group_index(...)`
   - `tswn_py.Runner` 新增 `player_input_group_index(player_id)`
-  便于直接按原始输入 `group_index` 判断玩家归属，而不必调用方自行扫描 `input_groups` roster 构造映射。
+    便于直接按原始输入 `group_index` 判断玩家归属，而不必调用方自行扫描 `input_groups` roster 构造映射。
 - **`tswn_capi` 现在同时产出 `cdylib` 与 `staticlib`**：Windows 打包结果中除 `tswn_capi.dll` / `tswn_capi.dll.lib` 外，还会包含 `tswn_capi.lib`，便于 C/C++ 调用方按需选择动态链接或静态链接。
 - **`tswn_capi` / `tswn_py` 默认依赖 `tswn_core/no_debug`**：减少外部分发产物在默认构建路径中的调试噪音，也使 `capi` / `py` 与当前 release 打包配置更一致。
 
@@ -725,9 +725,11 @@
 ## [0.2.3] - 2026-03-22
 
 ### 新增
+
 - `tswn-cli` 新增 `--out-raw` 选项（仅普通对战模式生效），输出聚合战斗日志格式。
 
 ### 调整
+
 - `--out-raw` 模式下，输出对齐 `fast-namerena/branch/latest/out_md5.ts`：
   - 按回合分段聚合日志
   - 动作行追加同段后续事件
@@ -742,6 +744,7 @@
 ## [0.2.1] - 2026-03-16
 
 ### 新增
+
 - CLI 新增单线程 benchmark 命令：
   - `--bench-st` / `--bench-raw-st` / `--bench-file-st`
   - `--win_rate_st`
@@ -750,58 +753,69 @@
   - `TSWN_WINRATE_WORKERS`（兼容旧变量，行为同上）
 
 ### 优化
+
 - `--bench` 默认走并行优化路径（含评分模式与胜率模式）
 - `Runner::new_from_groups_with_seed` 增加预构建玩家模板缓存，减少重复构造/升级/build 成本
 - `SkillStorage` 多处热路径移除临时 `Vec` clone，改为按索引遍历，降低分配与拷贝开销
 - `--win_rate_st` 单线程路径进一步优化，尽量缩小与多线程模式差距
 
 ### Python 绑定
+
 - `tswn_py` 同步新增接口：
   - `Runner.new_from_groups_with_seed`
   - `Runner.round_tick_new_update_no_capture`
   - `RunUpdates.new_no_capture` / `RunUpdates.reset` / `RunUpdates.capture_updates` / `RunUpdates.had_updates`
 
 ### 性能
+
 - 在 `target\release\tswn-cli.exe --win_rate aaa bbb 10000` 场景：
   - 多线程典型耗时约 `0.059s`
   - 单线程典型耗时约 `0.214s`（较此前约 `0.344s` 明显下降）
 
 ### 验证
+
 - `cargo test --workspace --quiet` 全量通过
 
 ## [0.2.0] - 2026-03-15
 
 ### ⚠️ Breaking Changes
+
 - 状态系统不再依赖 `Any/downcast`：`StateTrait` 移除 `as_any/as_any_mut`，改为稳定 `StateTag` + `state_type_id` 校验路径
 - `SkillExt` 不再要求实现 `Any`
 - `RunUpdates` 引入可选帧采集开关，`run_to_completion` 默认走无帧采集高速路径
 
 ### 新增
+
 - 技能注册中心：新增 `register_skill_factory`，支持外部注册/覆盖技能工厂
 - Boss 注册中心：新增 `register_boss_handler`，统一 Boss 初始化/行动/免疫策略扩展入口
 - Hook 动态扩展通道：新增 `ActorHookDyn` 与 `EngineCore` 的 `*_hook_dyn` 注册 API
 - Runner 新增 `new_from_groups_with_seed`，支持复用已解析分组输入
 
 ### 优化
+
 - `--win_rate` 改为并行模拟，并支持 `TSWN_WINRATE_WORKERS` 覆盖并发 worker 数
 - 胜率热点路径改为低分配实现（延迟构建 `RunUpdate`、`SmallVec` 小集合优化、动态负载均衡）
 - 玩家目标选择热路径减少临时分配与排序开销
 - Release 配置优化：`lto = "fat"`、`codegen-units = 1`
 
 ### 性能
+
 - 在 `target\release\tswn-cli.exe --win_rate aaa bbb 10000` 场景下，典型耗时由约 `0.422s` 降至约 `0.064s`（机器/负载相关）
 
 ### 验证
+
 - `cargo test --workspace --quiet` 全量通过
 
 ## [0.1.9] - 2026-03-15
 
 ### 新增
+
 - 将根目录的 `CHANGELOG.md` 迁移到 `crates/tswn_core/CHANGELOG.md`，统一管理核心库更新日志
 - 给 `RC4` 新增了 `peek_u8` 方法，可以在不修改状态的情况下查看下一个随机字节
 - 加了不少注释
 
 ### 优化
+
 - 优化存储系统 (`storage.rs`) 和世界状态同步 (`world_state.rs`)
 - 完善玩家系统 (`player/mod.rs`)，增强可维护性
 - 改进 RC4 算法实现 (`rc4.rs`)，提升随机数生成效率
@@ -822,23 +836,23 @@
 
 ### 调试环境变量
 
-| 环境变量 | 说明 |
-|----------|------|
-| `TSWN_DEBUG_ACTION=<名字>` | 调试特定玩家的行动 |
-| `TSWN_DEBUG_STATS` | 调试玩家属性计算 |
-| `TSWN_DEBUG_WORLD` | 调试世界状态同步 |
-| `TSWN_DEBUG_TICK` | 调试每个 tick 的执行 |
-| `TSWN_DEBUG_PICK` | 调试目标选择逻辑 |
-| `TSWN_DEBUG_DODGE` | 调试闪避逻辑 |
-| `TSWN_DEBUG_DODGE_ALL` | 调试所有玩家的闪避 |
-| `TSWN_DEBUG_DIE` | 调试死亡处理 |
-| `TSWN_DEBUG_STATE` | 调试状态系统（状态设置/清除/追踪） |
-| `TSWN_DEBUG_COVID` | 调试 COVID Boss 相关逻辑 |
-| `TSWN_DEBUG_FIRE` | 调试火焰技能 |
-| `TSWN_DEBUG_HEAL` | 调试治疗技能 |
-| `TSWN_DEBUG_UPGRADE=<名字>` | 调试升级技能 |
-| `TSWN_DEBUG_REFLECT` | 调试反射技能 |
-| `TSWN_TRACE_RC4` | 追踪 RC4 随机数状态 |
+| 环境变量                    | 说明                               |
+| --------------------------- | ---------------------------------- |
+| `TSWN_DEBUG_ACTION=<名字>`  | 调试特定玩家的行动                 |
+| `TSWN_DEBUG_STATS`          | 调试玩家属性计算                   |
+| `TSWN_DEBUG_WORLD`          | 调试世界状态同步                   |
+| `TSWN_DEBUG_TICK`           | 调试每个 tick 的执行               |
+| `TSWN_DEBUG_PICK`           | 调试目标选择逻辑                   |
+| `TSWN_DEBUG_DODGE`          | 调试闪避逻辑                       |
+| `TSWN_DEBUG_DODGE_ALL`      | 调试所有玩家的闪避                 |
+| `TSWN_DEBUG_DIE`            | 调试死亡处理                       |
+| `TSWN_DEBUG_STATE`          | 调试状态系统（状态设置/清除/追踪） |
+| `TSWN_DEBUG_COVID`          | 调试 COVID Boss 相关逻辑           |
+| `TSWN_DEBUG_FIRE`           | 调试火焰技能                       |
+| `TSWN_DEBUG_HEAL`           | 调试治疗技能                       |
+| `TSWN_DEBUG_UPGRADE=<名字>` | 调试升级技能                       |
+| `TSWN_DEBUG_REFLECT`        | 调试反射技能                       |
+| `TSWN_TRACE_RC4`            | 追踪 RC4 随机数状态                |
 
 ---
 
@@ -893,13 +907,13 @@
 
 ### 统计
 
-| 指标 | 数值 |
-|------|------|
-| 提交数 | 4 |
-| 文件修改 | 23 |
+| 指标     | 数值  |
+| -------- | ----- |
+| 提交数   | 4     |
+| 文件修改 | 23    |
 | 新增行数 | +2083 |
-| 删除行数 | -705 |
-| 新增文件 | 12 |
+| 删除行数 | -705  |
+| 新增文件 | 12    |
 
 ### 新增文件列表
 

@@ -42,6 +42,8 @@ const input = process.argv[2] || "!test!\n\naaaaaa";
 const count = Number(process.argv[3] || 1000);
 runner.run_env.probe_round = Number(process.argv[4] || 0);
 
-runner.score_callback(input, (round) => round < count).then((result) => {
-  console.log(JSON.stringify(result.raw_data));
-});
+runner
+  .score_callback(input, (round) => round < count)
+  .then((result) => {
+    console.log(JSON.stringify(result.raw_data));
+  });
