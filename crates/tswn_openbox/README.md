@@ -1,61 +1,170 @@
 # tswn_openbox
 
-`tswn_openbox` 是一个简洁的原生交互面板，用来把常用的 `tswn-cli` 工作流做成点击即用的界面。
+`tswn_openbox` 是一个带 GUI 的本地交互面板，用来把常用的 `tswn-cli` 工作流做成点击即用的界面。目标是能跑、无使用门槛、界面简洁。
 
 当前支持：
 
 - `to-diy`
 - `namer-pf`
-- `bench batch-rate`
-- `bench pair`
+- `cqd/cqp`（对应原 `bench batch-rate`）
+- `pair`
 
 ## 运行
 
 在 workspace 根目录运行：
 
-```bash
+```powershell
 cargo run -p tswn_openbox
 ```
 
 推荐的 release 构建命令：
 
-```bash
+```powershell
 cargo build -p tswn_openbox --release --features "no_debug,mimalloc_alloc"
 ```
 
-构建完成后，可直接双击：
+构建完成后可直接双击：
 
 ```text
 target\release\tswn_openbox.exe
 ```
 
-Windows 下可执行文件默认使用 `windows_subsystem = "windows"`，双击启动时不会额外挂出控制台窗口。
+Windows 下 GUI 程序启用 `windows_subsystem = "windows"`，双击启动时不会额外挂出控制台窗口。
+
+## 界面
+
+左侧是设置区，右侧只显示运行日志。常用设置直接展示，低频设置放在“更多设置”弹窗中。
+
+普通设置包含：
+
+- 精确度：`1%` / `10%` / `100%`，分别对应 `100` / `1000` / `10000` 场。
+- `cqd/cqp` 的“每组胜率”。
+- `pair` 的“每组cqp”和“有效cqp”。
+- 输出文件、输出格式和日志阈值。
+
+更多设置包含：
+
+- 场数和精确度二选一。
+- 线程数；默认“系统线程 * 1.5”，显示上等价线程 `0`。
+- `不低估短号`（对应 `--keep-rq`）。
+- `JSONL (--log)`、输出小数位、手动靶子、手动队友等高级选项。
+- `高亮超强名字`，用于把超过阈值的结果行标红。
+
+运行时进度条会显示进度、速度和预计剩余时间。正在运行的任务可以点击“停止”取消。
 
 ## 输入
 
-面板支持直接粘贴文本，也支持勾选“从文件中读取”。从文件读取时，界面只预览前 10 行，运行时会读取完整文件。
+文本输入支持两种方式：
 
-已选择输入文件时，可以在界面里直接点“刷新预览”重新读取文件内容，适合边改边跑。
+- 直接在面板中输入。
+- 勾选“从文件中读取”后选择文件。
 
-`batch-rate` 列表格式与 CLI 保持一致：每行一组，组内名字用 `+` 分隔。`pair` 的选手列表和队友列表为每行一个名字。
+从文件读取时，界面只预览前 10 行，运行时会读取完整文件。所有多行显示框不自动换行，内容过长时使用横向滚动。
 
 ## 输出
 
-`to-diy`、`namer-pf`、`batch-rate`、`pair` 现在都支持可选写入文件；不勾选“写入文件”时只在右侧日志区显示结果。
+`cqd/cqp` 和 `pair` 需要先选择输出文件。输出格式与 CLI 选项对应：
 
-文件输出格式对应 CLI 选项：
+- `分数 名字`：默认格式。
+- `JSONL (--log)`：对应 `--log`，在更多设置中展示。
+- `名字 (--pure)`：对应 `--pure`。
 
-- `分数 名字`：默认输出格式。
-- `JSONL (--log)`：对应 CLI 的 `--log`。
-- `名字 (--pure)`：对应 CLI 的 `--pure`。
+阈值对应关系：
 
-`文件阈值` 对应 `--min-file`，控制哪些结果写入文件。`日志阈值` 对应 `--min-screen`，控制右侧日志显示。
+- `日志阈值` 对应 `--min-screen`，控制右侧日志显示。
+- `文件阈值` 对应 `--min-file`，控制写入输出文件的结果。
 
-`batch-rate` / `pair` 新增 `perf` 开关，用于把 total/init/fight 的耗时拆分输出到日志，便于对照 CLI 的 `--perf`。
+## 功能说明
 
-`to-diy` 在未写入文件时仍支持单名详情输出；勾选“写入文件”后会只写导出结果，和 CLI 的 `-o/--out-file` 语义一致。
+### to-diy
 
-`batch-rate` 的日志阈值和文件阈值会校验为 `0~100`；`pair` 的阈值会校验为非负数，避免误填后静默回退。
+支持普通导出、旧 `+diy` 导出和“召唤物diy”（对应 `--minions`）。单名详情只在更多设置中展示。
+
+### namer-pf
+
+支持 `pp`、`pd`、`qp`、`qd`、`sum` 五项输出。每项可以分别配置：
+
+- 是否输出到屏幕。
+- 屏幕阈值。
+- 是否输出到文件。
+- 文件阈值。
+- 高亮超强名字阈值。
+
+`不低估短号` 默认关闭，对应 `--keep-rq`。
+
+### cqd/cqp
+
+对应原 `bench batch-rate`。普通设置中只保留常用选项，更多设置中可以切换手动靶子、`DIYcqp（++分割名字）`、线程数、场数和输出细节。
+
+不勾选“每组胜率”时输出：
+
+```text
+平均胜率 名字
+```
+
+勾选“每组胜率”时输出：
+
+```text
+平均胜率 名字
+  胜率 名字
+```
+
+### pair
+
+普通设置里不显示靶子选择；默认使用 `setting.json` 中 `id = 2` 的靶子。靶子选择和手动靶子只在更多设置中展示。
+
+队友默认从 `setting.json` 的 `teammate` 字段导入。普通设置只显示导入的队友选项，不显示预览；手动输入和从文件读取队友只在更多设置中展示。
+
+`pair` 的 cqp 详情有三个模式：
+
+- 不显示 cqp。
+- 每组 cqp：可设置 `cqp阈值`，只显示超过阈值的队友组合。
+- 有效 cqp：只显示该名字最高 `head` 个队友组合后的 cqp。
+
+勾选 cqp 详情时输出形如：
+
+```text
+最终分数 名字
+  cqp 队友名字
+```
+
+## setting.json
+
+面板会从当前目录的 `setting\setting.json` 读取预设。路径相对于 `setting` 目录解析。
+
+可选结构：
+
+```json
+{
+  "targets": [
+    {
+      "id": 1,
+      "name": "默认靶子",
+      "file": "targets/default.txt"
+    },
+    {
+      "id": 2,
+      "name": "pair默认靶子",
+      "file": "targets/pair-default.txt"
+    }
+  ],
+  "teammate": [
+    {
+      "head": 3,
+      "name": "默认队友",
+      "file": "teammates/default.txt"
+    }
+  ]
+}
+```
+
+说明：
+
+- `targets[].id` 期望是数字。
+- `targets[].file` 是靶子列表文件。
+- `teammate[].head` 是 `pair` 的保留前几。
+- `teammate[].file` 是队友列表文件。
+- `pair` 默认优先选择 `targets` 中 `id = 2` 的靶子；如果不存在，则退回第一个靶子。
 
 ## 字体
 
@@ -67,9 +176,9 @@ crates\tswn_openbox\src\SarasaMonoSC-Regular.ttf
 
 ## 实现说明
 
-源码现在按职责拆分为：
+源码按职责拆分：
 
-- `src/app.rs` + `src/app/`：GUI 状态、控件与任务启动。
-- `src/backend.rs` + `src/backend/`：解析、执行、输出格式化与文件落盘。
+- `src/app.rs` 和 `src/app/`：UI 状态、控件和任务启动。
+- `src/backend.rs` 和 `src/backend/`：解析、执行、输出格式化和文件写入。
 
-这样后续继续补齐 `tswn-cli` 的能力时，不需要再在单个超长文件里来回改 UI 和业务逻辑。
+这样后续继续对齐 `tswn-cli` 能力时，可以把 UI 和业务逻辑分开维护。
