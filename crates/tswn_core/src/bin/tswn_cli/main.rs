@@ -215,7 +215,20 @@ fn main() {
                 wr_precision,
             );
         }
-        ParsedCommand::NamerPf { raw, n, threads, modes } => bench::run_namer_pf(&raw, n, threads, &modes),
+        ParsedCommand::NamerPf {
+            raw,
+            n,
+            threads,
+            keep_rq,
+            modes,
+        } => {
+            let eval_rq = if keep_rq {
+                tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+            } else {
+                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
+            };
+            bench::run_namer_pf(&raw, n, threads, eval_rq, &modes);
+        }
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
         ParsedCommand::IconB64 { names } => {
             if let Err(err) = icon::print_icon_b64(&names) {

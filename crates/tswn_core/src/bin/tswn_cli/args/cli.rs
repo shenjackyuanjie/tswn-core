@@ -382,6 +382,10 @@ struct NamerPfCommand {
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
 
+    /// Keep rq=4 instead of using the win-rate/profile rq.
+    #[arg(long)]
+    keep_rq: bool,
+
     /// 只运行指定评分项；可重复传入或一次传多个，不传则运行 pp/pd/qp/qd 全部四项。
     #[arg(long = "mode", value_enum, value_name = "MODE", num_args = 1.., value_delimiter = ',', action = ArgAction::Append)]
     mode: Vec<NamerPfModeArg>,
@@ -659,6 +663,7 @@ impl ParsedCli {
                 raw: cmd.input.read_or_stdin()?,
                 n: cmd.count.max(1),
                 threads: cmd.thread,
+                keep_rq: cmd.keep_rq,
                 modes: normalize_namer_pf_modes(&cmd.mode),
             },
             CliCommand::Icon(IconCommand { command }) => match command {
@@ -768,6 +773,17 @@ mod tests {
         match cli.command {
             CliCommand::NamerPf(cmd) => {
                 assert_eq!(cmd.mode, vec![NamerPfModeArg::Pp, NamerPfModeArg::Qd]);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn namer_pf_accepts_keep_rq() {
+        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--keep-rq"]).unwrap();
+        match cli.command {
+            CliCommand::NamerPf(cmd) => {
+                assert!(cmd.keep_rq);
             }
             _ => panic!("unexpected command"),
         }

@@ -107,7 +107,7 @@ pub(super) fn run_bench_score_with_modifier(
     let summary = if let Some(step) = buckets_step.filter(|step| *step > 0) {
         run_bench_score_with_bucket_output(&target_group, modifier, n, step)
     } else {
-        run_bench_score_inner(&target_group, modifier, n, mode, threads, true)
+        run_bench_score_inner(&target_group, modifier, n, mode, threads, WIN_RATE_EVAL_RQ, true)
     };
     let score = summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64;
     println!("{label}: {:.0} / 10000  ({}/{})", score, summary.wins, summary.total);
@@ -141,7 +141,7 @@ pub(super) fn run_bench_score(
     let normal = if let Some(step) = buckets_step.filter(|step| *step > 0) {
         run_bench_score_with_bucket_output(&target_group, "\u{0002}", n, step)
     } else {
-        run_bench_score_inner(&target_group, "\u{0002}", n, mode, threads, true)
+        run_bench_score_inner(&target_group, "\u{0002}", n, mode, threads, WIN_RATE_EVAL_RQ, true)
     };
     let ns = normal.wins as f64 * 10_000.0 / normal.total.max(1) as f64;
     println!("普通评分: {:.0} / 10000  ({}/{})", ns, normal.wins, normal.total);
@@ -153,7 +153,7 @@ pub(super) fn run_bench_score(
     let bang = if let Some(step) = buckets_step.filter(|step| *step > 0) {
         run_bench_score_with_bucket_output(&target_group, "!", n, step)
     } else {
-        run_bench_score_inner(&target_group, "!", n, mode, threads, true)
+        run_bench_score_inner(&target_group, "!", n, mode, threads, WIN_RATE_EVAL_RQ, true)
     };
     let bs = bang.wins as f64 * 10_000.0 / bang.total.max(1) as f64;
     println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.wins, bang.total);
@@ -228,13 +228,14 @@ fn run_bench_score_inner(
     n: usize,
     mode: BenchThreadMode,
     threads: Option<usize>,
+    eval_rq: f64,
     show_progress: bool,
 ) -> BenchSummary {
     let workers = resolve_bench_workers(mode, threads, n);
     let started_at = Instant::now();
 
     let mut summary = if workers <= 1 || n < BENCH_PARALLEL_THRESHOLD {
-        let (wins, total, timing) = run_bench_score_range(target_group, modifier, 0, n, show_progress);
+        let (wins, total, timing) = run_bench_score_range(target_group, modifier, 0, n, eval_rq, show_progress);
         BenchSummary {
             wins,
             total,
@@ -249,7 +250,7 @@ fn run_bench_score_inner(
             let modifier = modifier.to_string();
             let next = Arc::clone(&next);
             handles.push(std::thread::spawn(move || {
-                run_bench_score_worker(&target_group, modifier.as_str(), next.as_ref(), n)
+                run_bench_score_worker(&target_group, modifier.as_str(), next.as_ref(), n, eval_rq)
             }));
         }
 
@@ -273,7 +274,7 @@ fn run_bench_score_inner(
 }
 
 /// `namer-pf` 入口。
-pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, modes: &[NamerPfMode]) {
+pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64, modes: &[NamerPfMode]) {
     let groups = parse_plus_separated_groups(raw);
     if groups.is_empty() {
         eprintln!("namer-pf: 输入为空或无有效玩家");
@@ -293,7 +294,7 @@ pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, modes: &[NamerP
             .iter()
             .map(|mode| {
                 let (modifier, duplicate) = mode.score_params();
-                namer_pf_score(&group, modifier, duplicate, n, threads)
+                namer_pf_score(&group, modifier, duplicate, n, threads, eval_rq)
             })
             .collect::<Vec<_>>();
         let sum = scores.iter().sum::<u64>();
@@ -428,13 +429,13 @@ fn consume_balanced_ascii(raw: &str, start: usize, open: u8, close: u8) -> Optio
 }
 
 /// 计算 `namer-pf` 四项中的一个分数。
-fn namer_pf_score(base_group: &[String], modifier: &str, duplicate: bool, n: usize, threads: Option<usize>) -> u64 {
+fn namer_pf_score(base_group: &[String], modifier: &str, duplicate: bool, n: usize, threads: Option<usize>, eval_rq: f64) -> u64 {
     let mut target_group = base_group.to_vec();
     if duplicate {
         target_group.extend(base_group.iter().cloned());
     }
 
-    let summary = run_bench_score_inner(&target_group, modifier, n, BenchThreadMode::Parallel, threads, false);
+    let summary = run_bench_score_inner(&target_group, modifier, n, BenchThreadMode::Parallel, threads, eval_rq, false);
     (summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64).round() as u64
 }
 
@@ -444,6 +445,7 @@ fn run_bench_score_range(
     modifier: &str,
     start: usize,
     end: usize,
+    eval_rq: f64,
     show_progress: bool,
 ) -> (usize, usize, WinRateTiming) {
     let mut wins = 0usize;
@@ -459,7 +461,7 @@ fn run_bench_score_range(
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
         // 并行 worker 与单线程路径是同一个问题：profile 名字持续变化，缓存几乎不会命中。
         // 这里必须走 uncached，避免多个 worker 一起向全局缓存灌入只用一次的模板。
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, WIN_RATE_EVAL_RQ) {
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, eval_rq) {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -492,6 +494,7 @@ fn run_bench_score_worker(
     modifier: &str,
     next: &AtomicUsize,
     end: usize,
+    eval_rq: f64,
 ) -> (usize, usize, WinRateTiming) {
     let mut wins = 0usize;
     let mut total = 0usize;
@@ -507,7 +510,7 @@ fn run_bench_score_worker(
 
         let t_init = Instant::now();
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, WIN_RATE_EVAL_RQ) {
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, eval_rq) {
             Ok(r) => r,
             Err(_) => continue,
         };

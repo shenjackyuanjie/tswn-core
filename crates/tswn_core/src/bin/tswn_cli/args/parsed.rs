@@ -200,6 +200,7 @@ pub enum ParsedCommand {
         /// 显式指定的基准测试线程数。
         threads: Option<usize>,
         /// 需要运行的评分项；未显式传入时已归一化为四项全测。
+        keep_rq: bool,
         modes: Vec<NamerPfMode>,
     },
     IconShow {
