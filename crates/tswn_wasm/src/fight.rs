@@ -337,7 +337,7 @@ pub struct FightSession {
 }
 
 impl FightSession {
-    pub(crate) fn new_internal(raw_input: String, options: FightOptions) -> WasmResult<Self> {
+    pub fn new_internal(raw_input: String, options: FightOptions) -> WasmResult<Self> {
         let runner = build_runner(raw_input, options.resolved_eval_rq())?;
         let player_order = runner.all_plrs();
         let (players, _player_names) = collect_players(&runner, &player_order, options.include_icons())?;
@@ -367,7 +367,7 @@ impl FightSession {
         })
     }
 
-    pub(crate) fn run_to_end_internal(&mut self, limit: Option<usize>) -> WasmResult<FightReplay> {
+    pub fn run_to_end_internal(&mut self, limit: Option<usize>) -> WasmResult<FightReplay> {
         let max_frames = limit.unwrap_or(usize::MAX);
         let mut frames = Vec::new();
         let mut idle_rounds = 0usize;
@@ -427,12 +427,12 @@ impl FightSession {
     pub fn run_to_end(&mut self, limit: Option<usize>) -> WasmResult<FightReplay> { self.run_to_end_internal(limit) }
 }
 
-pub(crate) fn fight_impl(raw_input: String, options: FightOptions) -> WasmResult<FightReplay> {
+pub fn fight_impl(raw_input: String, options: FightOptions) -> WasmResult<FightReplay> {
     let mut session = FightSession::new_internal(raw_input, options)?;
     session.run_to_end_internal(None)
 }
 
-pub(crate) fn fight_summary_impl(raw_input: String, options: FightOptions) -> WasmResult<FightSummary> {
+pub fn fight_summary_impl(raw_input: String, options: FightOptions) -> WasmResult<FightSummary> {
     let mut session = FightSession::new_internal(raw_input, options)?;
     let replay = session.run_to_end_internal(None)?;
     Ok(FightSummary {

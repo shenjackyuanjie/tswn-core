@@ -12,7 +12,7 @@ mod widgets;
 
 use eframe::egui;
 
-pub(crate) use state::{OpenboxApp, Tool};
+pub use state::{OpenboxApp, Tool};
 
 const SARASA_MONO_SC: &[u8] = include_bytes!("SarasaMonoSC-Regular.ttf");
 

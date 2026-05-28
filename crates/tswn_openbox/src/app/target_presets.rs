@@ -36,37 +36,37 @@ const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
 ];
 
 #[derive(Debug, Clone)]
-pub(crate) struct TargetPreset {
-    pub(crate) id: u64,
-    pub(crate) name: String,
-    pub(crate) path: PathBuf,
+pub struct TargetPreset {
+    pub id: u64,
+    pub name: String,
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TargetPresetState {
-    pub(crate) items: Vec<TargetPreset>,
-    pub(crate) selected_id: Option<u64>,
-    pub(crate) error: Option<String>,
+pub struct TargetPresetState {
+    pub items: Vec<TargetPreset>,
+    pub selected_id: Option<u64>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TeammatePreset {
-    pub(crate) head: usize,
-    pub(crate) name: String,
-    pub(crate) path: PathBuf,
+pub struct TeammatePreset {
+    pub head: usize,
+    pub name: String,
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TeammatePresetState {
-    pub(crate) items: Vec<TeammatePreset>,
-    pub(crate) selected_index: Option<usize>,
-    pub(crate) error: Option<String>,
+pub struct TeammatePresetState {
+    pub items: Vec<TeammatePreset>,
+    pub selected_index: Option<usize>,
+    pub error: Option<String>,
 }
 
 impl TargetPresetState {
-    pub(crate) fn load() -> Self { Self::load_with_preferred_id(None) }
+    pub fn load() -> Self { Self::load_with_preferred_id(None) }
 
-    pub(crate) fn load_with_preferred_id(preferred_id: Option<u64>) -> Self {
+    pub fn load_with_preferred_id(preferred_id: Option<u64>) -> Self {
         match load_setting_file().map(load_target_presets) {
             Ok(items) => {
                 let selected_id = preferred_id
@@ -86,7 +86,7 @@ impl TargetPresetState {
         }
     }
 
-    pub(crate) fn reload(&mut self) {
+    pub fn reload(&mut self) {
         let next = Self::load();
         let previous_id = self.selected_id;
         self.items = next.items;
@@ -98,14 +98,14 @@ impl TargetPresetState {
         }
     }
 
-    pub(crate) fn selected(&self) -> Option<&TargetPreset> {
+    pub fn selected(&self) -> Option<&TargetPreset> {
         let selected_id = self.selected_id?;
         self.items.iter().find(|item| item.id == selected_id)
     }
 }
 
 impl TeammatePresetState {
-    pub(crate) fn load() -> Self {
+    pub fn load() -> Self {
         match load_setting_file().map(load_teammate_presets) {
             Ok(items) => Self {
                 selected_index: (!items.is_empty()).then_some(0),
@@ -120,7 +120,7 @@ impl TeammatePresetState {
         }
     }
 
-    pub(crate) fn reload(&mut self) {
+    pub fn reload(&mut self) {
         let next = Self::load();
         let previous_index = self.selected_index;
         self.items = next.items;
@@ -130,7 +130,7 @@ impl TeammatePresetState {
             .or_else(|| (!self.items.is_empty()).then_some(0));
     }
 
-    pub(crate) fn selected(&self) -> Option<&TeammatePreset> {
+    pub fn selected(&self) -> Option<&TeammatePreset> {
         let selected_index = self.selected_index?;
         self.items.get(selected_index)
     }
@@ -164,14 +164,14 @@ struct TeammatePresetEntry {
     file: PathBuf,
 }
 
-pub(crate) fn load_selected_target_text(state: &TargetPresetState) -> Result<String, String> {
+pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, String> {
     let preset = state.selected().ok_or_else(|| "请先选择靶子预设。".to_string())?;
     fs::read_to_string(&preset.path)
         .map(|content| content.trim_start_matches('\u{feff}').to_string())
         .map_err(|err| format!("读取靶子预设失败: {}: {err}", preset.path.display()))
 }
 
-pub(crate) fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String, String> {
+pub fn load_selected_teammate_text(state: &TeammatePresetState) -> Result<String, String> {
     let preset = state.selected().ok_or_else(|| "请先选择队友预设。".to_string())?;
     fs::read_to_string(&preset.path)
         .map(|content| content.trim_start_matches('\u{feff}').to_string())

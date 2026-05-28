@@ -16,7 +16,7 @@ use super::target_presets::{TargetPresetState, TeammatePresetState};
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Tool {
+pub enum Tool {
     ToDiy,
     NamerPf,
     BatchRate,
@@ -24,9 +24,9 @@ pub(crate) enum Tool {
 }
 
 impl Tool {
-    pub(crate) const ALL: [Self; 4] = [Self::ToDiy, Self::NamerPf, Self::BatchRate, Self::Pair];
+    pub const ALL: [Self; 4] = [Self::ToDiy, Self::NamerPf, Self::BatchRate, Self::Pair];
 
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::ToDiy => "to-diy",
             Self::NamerPf => "namer-pf",
@@ -37,22 +37,22 @@ impl Tool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CountMode {
+pub enum CountMode {
     Accuracy,
     Manual,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AccuracyPreset {
+pub enum AccuracyPreset {
     One,
     Ten,
     Hundred,
 }
 
 impl AccuracyPreset {
-    pub(crate) const ALL: [Self; 3] = [Self::One, Self::Ten, Self::Hundred];
+    pub const ALL: [Self; 3] = [Self::One, Self::Ten, Self::Hundred];
 
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::One => "1%",
             Self::Ten => "10%",
@@ -60,7 +60,7 @@ impl AccuracyPreset {
         }
     }
 
-    pub(crate) fn count(self) -> usize {
+    pub fn count(self) -> usize {
         match self {
             Self::One => 100,
             Self::Ten => 1000,
@@ -69,12 +69,12 @@ impl AccuracyPreset {
     }
 }
 
-pub(crate) struct ToDiyState {
-    pub(crate) names: TextSource,
-    pub(crate) old: bool,
-    pub(crate) minions: bool,
-    pub(crate) details: bool,
-    pub(crate) output: OptionalFileOutput,
+pub struct ToDiyState {
+    pub names: TextSource,
+    pub old: bool,
+    pub minions: bool,
+    pub details: bool,
+    pub output: OptionalFileOutput,
 }
 
 impl Default for ToDiyState {
@@ -89,24 +89,24 @@ impl Default for ToDiyState {
     }
 }
 
-pub(crate) struct NamerPfState {
-    pub(crate) names: TextSource,
-    pub(crate) count_mode: CountMode,
-    pub(crate) accuracy: AccuracyPreset,
-    pub(crate) count: usize,
-    pub(crate) auto_threads: bool,
-    pub(crate) threads: usize,
-    pub(crate) keep_rq: bool,
-    pub(crate) metrics: Vec<NamerPfMetricState>,
+pub struct NamerPfState {
+    pub names: TextSource,
+    pub count_mode: CountMode,
+    pub accuracy: AccuracyPreset,
+    pub count: usize,
+    pub auto_threads: bool,
+    pub threads: usize,
+    pub keep_rq: bool,
+    pub metrics: Vec<NamerPfMetricState>,
 }
 
-pub(crate) struct NamerPfMetricState {
-    pub(crate) metric: NamerPfMetric,
-    pub(crate) screen: bool,
-    pub(crate) min_screen: String,
-    pub(crate) highlight_delta: String,
-    pub(crate) file_output: OptionalFileOutput,
-    pub(crate) min_file: String,
+pub struct NamerPfMetricState {
+    pub metric: NamerPfMetric,
+    pub screen: bool,
+    pub min_screen: String,
+    pub highlight_delta: String,
+    pub file_output: OptionalFileOutput,
+    pub min_file: String,
 }
 
 impl Default for NamerPfState {
@@ -134,21 +134,21 @@ impl Default for NamerPfState {
     }
 }
 
-pub(crate) struct BatchRateState {
-    pub(crate) targets: TextSource,
-    pub(crate) target_presets: TargetPresetState,
-    pub(crate) manual_targets: bool,
-    pub(crate) players: TextSource,
-    pub(crate) count_mode: CountMode,
-    pub(crate) accuracy: AccuracyPreset,
-    pub(crate) count: usize,
-    pub(crate) auto_threads: bool,
-    pub(crate) threads: usize,
-    pub(crate) keep_rq: bool,
-    pub(crate) double_plus: bool,
-    pub(crate) show_matchups: bool,
-    pub(crate) highlight_delta: String,
-    pub(crate) output: BenchOutputConfig,
+pub struct BatchRateState {
+    pub targets: TextSource,
+    pub target_presets: TargetPresetState,
+    pub manual_targets: bool,
+    pub players: TextSource,
+    pub count_mode: CountMode,
+    pub accuracy: AccuracyPreset,
+    pub count: usize,
+    pub auto_threads: bool,
+    pub threads: usize,
+    pub keep_rq: bool,
+    pub double_plus: bool,
+    pub show_matchups: bool,
+    pub highlight_delta: String,
+    pub output: BenchOutputConfig,
 }
 
 impl Default for BatchRateState {
@@ -178,25 +178,25 @@ impl Default for BatchRateState {
     }
 }
 
-pub(crate) struct PairState {
-    pub(crate) targets: TextSource,
-    pub(crate) target_presets: TargetPresetState,
-    pub(crate) manual_targets: bool,
-    pub(crate) players: TextSource,
-    pub(crate) teammates: TextSource,
-    pub(crate) teammate_presets: TeammatePresetState,
-    pub(crate) manual_teammates: bool,
-    pub(crate) head: usize,
-    pub(crate) count_mode: CountMode,
-    pub(crate) accuracy: AccuracyPreset,
-    pub(crate) count: usize,
-    pub(crate) auto_threads: bool,
-    pub(crate) threads: usize,
-    pub(crate) keep_rq: bool,
-    pub(crate) detail_mode: PairDetailMode,
-    pub(crate) detail_min: String,
-    pub(crate) highlight_delta: String,
-    pub(crate) output: BenchOutputConfig,
+pub struct PairState {
+    pub targets: TextSource,
+    pub target_presets: TargetPresetState,
+    pub manual_targets: bool,
+    pub players: TextSource,
+    pub teammates: TextSource,
+    pub teammate_presets: TeammatePresetState,
+    pub manual_teammates: bool,
+    pub head: usize,
+    pub count_mode: CountMode,
+    pub accuracy: AccuracyPreset,
+    pub count: usize,
+    pub auto_threads: bool,
+    pub threads: usize,
+    pub keep_rq: bool,
+    pub detail_mode: PairDetailMode,
+    pub detail_min: String,
+    pub highlight_delta: String,
+    pub output: BenchOutputConfig,
 }
 
 impl Default for PairState {
@@ -232,26 +232,26 @@ impl Default for PairState {
 
 fn default_namer_pf_highlight_delta(metric: NamerPfMetric) -> u64 { if metric == NamerPfMetric::Sum { 300 } else { 100 } }
 
-pub(crate) struct OpenboxApp {
-    pub(crate) theme_preference: egui::ThemePreference,
-    pub(crate) tool: Tool,
-    pub(crate) more_settings_open: bool,
-    pub(crate) log: String,
-    pub(crate) highlight_lines: HashSet<usize>,
-    pub(crate) status: String,
-    pub(crate) running: bool,
-    pub(crate) cancel_requested: bool,
-    pub(crate) cancel_token: Option<Arc<AtomicBool>>,
-    pub(crate) done: usize,
-    pub(crate) total: usize,
-    pub(crate) started_at: Option<Instant>,
-    pub(crate) rate_text: String,
-    pub(crate) eta_text: String,
-    pub(crate) rx: Option<Receiver<ProgressEvent>>,
-    pub(crate) to_diy: ToDiyState,
-    pub(crate) namer_pf: NamerPfState,
-    pub(crate) batch_rate: BatchRateState,
-    pub(crate) pair: PairState,
+pub struct OpenboxApp {
+    pub theme_preference: egui::ThemePreference,
+    pub tool: Tool,
+    pub more_settings_open: bool,
+    pub log: String,
+    pub highlight_lines: HashSet<usize>,
+    pub status: String,
+    pub running: bool,
+    pub cancel_requested: bool,
+    pub cancel_token: Option<Arc<AtomicBool>>,
+    pub done: usize,
+    pub total: usize,
+    pub started_at: Option<Instant>,
+    pub rate_text: String,
+    pub eta_text: String,
+    pub rx: Option<Receiver<ProgressEvent>>,
+    pub to_diy: ToDiyState,
+    pub namer_pf: NamerPfState,
+    pub batch_rate: BatchRateState,
+    pub pair: PairState,
 }
 
 impl Default for OpenboxApp {

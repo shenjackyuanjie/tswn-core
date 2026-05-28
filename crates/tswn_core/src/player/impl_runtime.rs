@@ -1702,14 +1702,14 @@ impl Player {
     pub fn set_display_name_override(&mut self, display_name: Option<String>) { self.display_name_override = display_name; }
 
     #[inline]
-    pub(crate) fn take_next_minion_name_index(&mut self) -> usize {
+    pub fn take_next_minion_name_index(&mut self) -> usize {
         let index = self.minion_name_next_index;
         self.minion_name_next_index += 1;
         index
     }
 
     #[inline]
-    pub(crate) fn reset_minion_name_counter(&mut self) { self.minion_name_next_index = 0; }
+    pub fn reset_minion_name_counter(&mut self) { self.minion_name_next_index = 0; }
 
     #[inline]
     pub fn clan_name(&self) -> String { self.team.clone().unwrap_or(self.name.clone()) }

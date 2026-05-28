@@ -11,7 +11,7 @@ use eframe::egui;
 use super::widgets::multiline;
 
 #[derive(Debug, Clone)]
-pub(crate) struct TextSource {
+pub struct TextSource {
     inline: String,
     from_file: bool,
     file_path: Option<PathBuf>,
@@ -20,7 +20,7 @@ pub(crate) struct TextSource {
 }
 
 impl TextSource {
-    pub(crate) fn inline(text: impl Into<String>) -> Self {
+    pub fn inline(text: impl Into<String>) -> Self {
         Self {
             inline: text.into(),
             from_file: false,
@@ -30,7 +30,7 @@ impl TextSource {
         }
     }
 
-    pub(crate) fn ui(&mut self, ui: &mut egui::Ui, label: &str, id: &'static str, rows: usize) {
+    pub fn ui(&mut self, ui: &mut egui::Ui, label: &str, id: &'static str, rows: usize) {
         ui.horizontal(|ui| {
             ui.label(label);
             let was_from_file = self.from_file;
@@ -80,7 +80,7 @@ impl TextSource {
         }
     }
 
-    pub(crate) fn read_all(&self) -> Result<String, String> {
+    pub fn read_all(&self) -> Result<String, String> {
         if !self.from_file {
             return Ok(self.inline.clone());
         }

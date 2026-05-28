@@ -4,23 +4,23 @@
 //! 以及对应的字符串裁剪函数（`js_trim`/`js_trim_start`/`js_trim_end`），
 //! 确保 Rust 侧与 JS 侧的名称处理行为一致。
 
-pub(crate) fn is_js_regex_space(ch: char) -> bool {
+pub fn is_js_regex_space(ch: char) -> bool {
     matches!(
         ch as u32,
         9..=13 | 32 | 160 | 5760 | 8192..=8202 | 8232..=8233 | 8239 | 8287 | 12288 | 65279
     )
 }
 
-pub(crate) fn is_js_trim_name_char(ch: char) -> bool {
+pub fn is_js_trim_name_char(ch: char) -> bool {
     matches!(
         ch as u32,
         9..=13 | 32 | 133 | 160 | 5760 | 8192..=8202 | 8232..=8233 | 8239 | 8287 | 12288 | 65279
     )
 }
 
-pub(crate) fn trim_js_line_end(s: &str) -> &str { s.trim_end_matches(is_js_regex_space) }
+pub fn trim_js_line_end(s: &str) -> &str { s.trim_end_matches(is_js_regex_space) }
 
-pub(crate) fn trim_js_name_like(s: &str) -> &str {
+pub fn trim_js_name_like(s: &str) -> &str {
     let trimmed = s.trim_matches(is_js_regex_space);
     let Some(first) = trimmed.chars().next() else {
         return trimmed;

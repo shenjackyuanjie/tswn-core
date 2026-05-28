@@ -81,7 +81,7 @@ impl SkillTrait for FireSkill {
     }
 }
 
-pub(crate) fn on_fire(_caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, _updates: &mut RunUpdates, storage: &Arc<Storage>) {
+pub fn on_fire(_caster: PlrId, target: PlrId, dmg: i32, r: &mut RC4, _updates: &mut RunUpdates, storage: &Arc<Storage>) {
     if dmg <= 0 {
         return;
     }

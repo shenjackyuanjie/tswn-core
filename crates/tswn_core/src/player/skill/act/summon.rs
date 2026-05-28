@@ -220,10 +220,10 @@ impl SkillTrait for SummonSkill {
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct SummonExplodeSkill;
+pub struct SummonExplodeSkill;
 
 impl SummonExplodeSkill {
-    pub(crate) fn new() -> Self { Self }
+    pub fn new() -> Self { Self }
 }
 
 impl SkillExt for SummonExplodeSkill {

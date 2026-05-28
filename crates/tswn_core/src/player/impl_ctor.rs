@@ -51,7 +51,7 @@ impl Player {
     // /// 按照 namerena 的原始 new
     // pub fn namer_new(base_name: String, team_name: String, sgl_name: String, weapon: String) -> Self { todo!() }
 
-    pub(crate) fn normal_raw_name_base(team: Option<&str>, name: &str) -> [u8; 128] {
+    pub fn normal_raw_name_base(team: Option<&str>, name: &str) -> [u8; 128] {
         let name_bytes = [0_u8].iter().chain(name.as_bytes()).copied().collect::<Vec<u8>>();
         let team_bytes = [0_u8].iter().chain(team.unwrap_or(name).as_bytes()).copied().collect::<Vec<u8>>();
 
@@ -82,7 +82,7 @@ impl Player {
     /// md5.js 对这些实体直接构造对应的 `PlrShadow` / `PlrSummon` / `PlrZombie`，
     /// 不会因为 owner 的队名是 `!` 或 `\u{0002}` 而走 `PlrEx` / `PlrBossTest` 的
     /// name_base 变换。输入 roster 中的同名玩家仍应使用普通入口。
-    pub(crate) fn new_minion_and_init(
+    pub fn new_minion_and_init(
         team: Option<String>,
         name: String,
         weapon: Option<String>,

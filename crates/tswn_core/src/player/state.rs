@@ -158,14 +158,14 @@ impl Clone for Box<dyn StateTrait> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct StateEntry {
-    pub(crate) state: Box<dyn StateTrait>,
-    pub(crate) order: u64,
+pub struct StateEntry {
+    pub state: Box<dyn StateTrait>,
+    pub order: u64,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct PlayerStateStore {
-    pub(crate) entries: FastHashMap<StateTag, StateEntry>,
+    pub entries: FastHashMap<StateTag, StateEntry>,
     next_state_order: u64,
 }
 
@@ -236,7 +236,7 @@ impl PlayerStateStore {
     }
 
     #[inline]
-    pub(crate) fn ordered_post_action_tags_with_order(&self) -> OrderedTagWithOrder {
+    pub fn ordered_post_action_tags_with_order(&self) -> OrderedTagWithOrder {
         self.ordered_pairs_by(|state| state.post_action_priority())
             .into_iter()
             .map(|(tag, _, order)| (tag, order))
@@ -244,7 +244,7 @@ impl PlayerStateStore {
     }
 
     #[inline]
-    pub(crate) fn post_action_registration_cursor(&self) -> u64 { self.next_state_order }
+    pub fn post_action_registration_cursor(&self) -> u64 { self.next_state_order }
 
     #[inline]
     pub fn set<T: StateTrait + 'static>(&mut self, state: T) {

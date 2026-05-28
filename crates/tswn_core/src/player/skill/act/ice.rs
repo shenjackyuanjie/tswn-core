@@ -18,7 +18,7 @@ pub struct IceSkill;
 
 // JS 产物里 Dart 的 0.7f 会落成这个精确值。
 // 这里不能写成 0.7：守护链会先乘 0.5 再 floor，精确 0.7 会在整数边界多 1 点伤害。
-pub(crate) const ICE_DAMAGE_MULTIPLIER: f64 = 0.699999988079071;
+pub const ICE_DAMAGE_MULTIPLIER: f64 = 0.699999988079071;
 
 impl IceSkill {
     pub fn new() -> Self { Self }

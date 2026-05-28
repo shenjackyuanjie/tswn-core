@@ -9,27 +9,27 @@ use crate::backend::OutputMode;
 use super::state::{AccuracyPreset, CountMode};
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct OptionalFileOutput {
-    pub(crate) enabled: bool,
-    pub(crate) path: Option<PathBuf>,
+pub struct OptionalFileOutput {
+    pub enabled: bool,
+    pub path: Option<PathBuf>,
 }
 
 impl OptionalFileOutput {
-    pub(crate) fn selected_path(&self) -> Option<PathBuf> { if self.enabled { self.path.clone() } else { None } }
+    pub fn selected_path(&self) -> Option<PathBuf> { if self.enabled { self.path.clone() } else { None } }
 
-    pub(crate) fn path(&self) -> Option<PathBuf> { self.path.clone() }
+    pub fn path(&self) -> Option<PathBuf> { self.path.clone() }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BenchOutputConfig {
-    pub(crate) file_output: OptionalFileOutput,
-    pub(crate) mode: OutputMode,
-    pub(crate) min_screen: String,
-    pub(crate) min_file: String,
-    pub(crate) precision: usize,
+pub struct BenchOutputConfig {
+    pub file_output: OptionalFileOutput,
+    pub mode: OutputMode,
+    pub min_screen: String,
+    pub min_file: String,
+    pub precision: usize,
 }
 
-pub(crate) fn optional_file_output_controls(ui: &mut egui::Ui, output: &mut OptionalFileOutput, default_name: &str) {
+pub fn optional_file_output_controls(ui: &mut egui::Ui, output: &mut OptionalFileOutput, default_name: &str) {
     ui.horizontal(|ui| {
         ui.checkbox(&mut output.enabled, "写入文件");
         if output.enabled {
@@ -54,7 +54,7 @@ pub(crate) fn optional_file_output_controls(ui: &mut egui::Ui, output: &mut Opti
     }
 }
 
-pub(crate) fn bench_output_controls(
+pub fn bench_output_controls(
     ui: &mut egui::Ui,
     output: &mut BenchOutputConfig,
     default_name: &str,
@@ -103,7 +103,7 @@ pub(crate) fn bench_output_controls(
     });
 }
 
-pub(crate) fn accuracy_controls(ui: &mut egui::Ui, accuracy: &mut AccuracyPreset) {
+pub fn accuracy_controls(ui: &mut egui::Ui, accuracy: &mut AccuracyPreset) {
     ui.horizontal(|ui| {
         ui.label("精确度");
         for preset in AccuracyPreset::ALL {
@@ -112,7 +112,7 @@ pub(crate) fn accuracy_controls(ui: &mut egui::Ui, accuracy: &mut AccuracyPreset
     });
 }
 
-pub(crate) fn count_mode_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &mut AccuracyPreset, count: &mut usize) {
+pub fn count_mode_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &mut AccuracyPreset, count: &mut usize) {
     ui.horizontal(|ui| {
         ui.radio_value(mode, CountMode::Accuracy, "精确度");
         ui.radio_value(mode, CountMode::Manual, "场数");
@@ -128,7 +128,7 @@ pub(crate) fn count_mode_controls(ui: &mut egui::Ui, mode: &mut CountMode, accur
     }
 }
 
-pub(crate) fn thread_controls(ui: &mut egui::Ui, auto_threads: &mut bool, threads: &mut usize) {
+pub fn thread_controls(ui: &mut egui::Ui, auto_threads: &mut bool, threads: &mut usize) {
     ui.horizontal(|ui| {
         ui.checkbox(auto_threads, "系统线程 * 1.5");
         ui.label("线程");
@@ -136,7 +136,7 @@ pub(crate) fn thread_controls(ui: &mut egui::Ui, auto_threads: &mut bool, thread
     });
 }
 
-pub(crate) fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, rows: usize) {
+pub fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, rows: usize) {
     egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 22.0).show(ui, |ui| {
         ui.add(
             egui::TextEdit::multiline(text)
@@ -155,7 +155,7 @@ fn pick_output_file(default_name: &str) -> Option<PathBuf> {
         .save_file()
 }
 
-pub(crate) fn pick_named_output_file(default_name: &str) -> Option<PathBuf> { pick_output_file(default_name) }
+pub fn pick_named_output_file(default_name: &str) -> Option<PathBuf> { pick_output_file(default_name) }
 
 fn current_dir() -> PathBuf {
     std::env::current_dir()

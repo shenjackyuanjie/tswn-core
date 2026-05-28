@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use super::types::{OutputMode, PairDetailMode};
 
-pub(crate) fn clean_name_label(raw: &str) -> String {
+pub fn clean_name_label(raw: &str) -> String {
     raw.split('+')
         .map(str::trim)
         .filter(|part| !part.is_empty() && !part.starts_with("ol:") && !part.starts_with("diy["))
@@ -13,7 +13,7 @@ pub(crate) fn clean_name_label(raw: &str) -> String {
         .join("+")
 }
 
-pub(crate) fn clean_group_label(raw: &str) -> String {
+pub fn clean_group_label(raw: &str) -> String {
     raw.lines()
         .map(clean_name_label)
         .filter(|part| !part.is_empty())
@@ -21,7 +21,7 @@ pub(crate) fn clean_group_label(raw: &str) -> String {
         .join("+")
 }
 
-pub(crate) fn format_batch_file_record(mode: OutputMode, label: &str, avg: f64, precision: usize) -> String {
+pub fn format_batch_file_record(mode: OutputMode, label: &str, avg: f64, precision: usize) -> String {
     let label = clean_name_label(label);
     match mode {
         OutputMode::Log => format!("{} {label}", format_rate(avg, precision)),
@@ -34,7 +34,7 @@ pub(crate) fn format_batch_file_record(mode: OutputMode, label: &str, avg: f64, 
     }
 }
 
-pub(crate) fn format_batch_screen_log(
+pub fn format_batch_screen_log(
     label: &str,
     avg: f64,
     matchup_rates: &[(f64, String)],
@@ -51,7 +51,7 @@ pub(crate) fn format_batch_screen_log(
     out
 }
 
-pub(crate) fn format_pair_file_record(
+pub fn format_pair_file_record(
     mode: OutputMode,
     label: &str,
     final_score: f64,
@@ -89,7 +89,7 @@ pub(crate) fn format_pair_file_record(
     }
 }
 
-pub(crate) fn format_pair_screen_log(
+pub fn format_pair_screen_log(
     label: &str,
     final_score: f64,
     selected_count: usize,
@@ -118,11 +118,11 @@ pub(crate) fn format_pair_screen_log(
     out
 }
 
-pub(crate) fn display_group(raw: &str) -> String {
+pub fn display_group(raw: &str) -> String {
     raw.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(", ")
 }
 
-pub(crate) fn format_rate(value: f64, precision: usize) -> String {
+pub fn format_rate(value: f64, precision: usize) -> String {
     let value = if value.abs() < 0.5_f64 * 10_f64.powi(-(precision as i32)) {
         0.0
     } else {
@@ -131,7 +131,7 @@ pub(crate) fn format_rate(value: f64, precision: usize) -> String {
     format!("{value:.precision$}")
 }
 
-pub(crate) fn _throughput(total: usize, elapsed: Duration) -> f64 {
+pub fn _throughput(total: usize, elapsed: Duration) -> f64 {
     let secs = elapsed.as_secs_f64();
     if secs > 0.0 { total as f64 / secs } else { 0.0 }
 }

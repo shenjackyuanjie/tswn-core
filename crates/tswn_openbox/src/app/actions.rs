@@ -21,7 +21,7 @@ use super::target_presets::{load_selected_target_text, load_selected_teammate_te
 use super::widgets::OptionalFileOutput;
 
 impl OpenboxApp {
-    pub(crate) fn stop_current_task(&mut self) {
+    pub fn stop_current_task(&mut self) {
         if let Some(token) = &self.cancel_token {
             token.store(true, Ordering::Relaxed);
             self.cancel_requested = true;
@@ -29,7 +29,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn start_to_diy(&mut self) {
+    pub fn start_to_diy(&mut self) {
         let raw = match self.to_diy.names.read_all() {
             Ok(raw) => raw,
             Err(err) => {
@@ -63,7 +63,7 @@ impl OpenboxApp {
         });
     }
 
-    pub(crate) fn start_namer_pf(&mut self) {
+    pub fn start_namer_pf(&mut self) {
         let raw = match self.namer_pf.names.read_all() {
             Ok(raw) => raw,
             Err(err) => {
@@ -146,7 +146,7 @@ impl OpenboxApp {
         });
     }
 
-    pub(crate) fn start_batch_rate(&mut self) {
+    pub fn start_batch_rate(&mut self) {
         let target_text = match read_target_text(
             &self.batch_rate.targets,
             &self.batch_rate.target_presets,
@@ -224,7 +224,7 @@ impl OpenboxApp {
         });
     }
 
-    pub(crate) fn start_pair(&mut self) {
+    pub fn start_pair(&mut self) {
         let target_text = match read_target_text(&self.pair.targets, &self.pair.target_presets, self.pair.manual_targets) {
             Ok(raw) => raw,
             Err(err) => {
@@ -324,7 +324,7 @@ impl OpenboxApp {
         });
     }
 
-    pub(crate) fn begin_task(&mut self) {
+    pub fn begin_task(&mut self) {
         self.running = true;
         self.cancel_requested = false;
         self.cancel_token = Some(Arc::new(AtomicBool::new(false)));
@@ -338,7 +338,7 @@ impl OpenboxApp {
         self.status = "运行中".to_string();
     }
 
-    pub(crate) fn fail_before_start(&mut self, err: String) {
+    pub fn fail_before_start(&mut self, err: String) {
         self.running = false;
         self.cancel_requested = false;
         self.cancel_token = None;
@@ -354,7 +354,7 @@ impl OpenboxApp {
         self.append_log(&err);
     }
 
-    pub(crate) fn poll_events(&mut self, ctx: &egui::Context) {
+    pub fn poll_events(&mut self, ctx: &egui::Context) {
         if let Some(rx) = self.rx.take() {
             let mut keep_rx = true;
             while let Ok(event) = rx.try_recv() {
@@ -395,7 +395,7 @@ impl OpenboxApp {
         }
     }
 
-    pub(crate) fn update_progress_stats(&mut self) {
+    pub fn update_progress_stats(&mut self) {
         let Some(started_at) = self.started_at else {
             return;
         };
@@ -415,9 +415,9 @@ impl OpenboxApp {
         };
     }
 
-    pub(crate) fn append_log(&mut self, text: &str) { self.append_log_inner(text, false); }
+    pub fn append_log(&mut self, text: &str) { self.append_log_inner(text, false); }
 
-    pub(crate) fn append_highlight_log(&mut self, text: &str) { self.append_log_inner(text, true); }
+    pub fn append_highlight_log(&mut self, text: &str) { self.append_log_inner(text, true); }
 
     fn append_log_inner(&mut self, text: &str, highlight_first_line: bool) {
         let trimmed = text.trim_end_matches('\n');

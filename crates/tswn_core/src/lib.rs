@@ -55,7 +55,7 @@ pub mod debug {
         ($condition:expr, $($arg:tt)*) => {{}};
     }
 
-    pub(crate) use debug_println;
+    pub use debug_println;
 }
 
 pub mod case_gen;

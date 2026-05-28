@@ -19,7 +19,7 @@ pub use win_rate::WinRateSession;
 
 static PANIC_HOOK: Once = Once::new();
 
-pub(crate) fn install_panic_hook() { PANIC_HOOK.call_once(console_error_panic_hook::set_once); }
+pub fn install_panic_hook() { PANIC_HOOK.call_once(console_error_panic_hook::set_once); }
 
 #[wasm_bindgen(start)]
 pub fn wasm_start() { install_panic_hook(); }

@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use tswn_core::player::{Player, overlay::PlayerOverlay};
 
-pub(crate) fn parse_line_list(content: &str) -> Vec<String> {
+pub fn parse_line_list(content: &str) -> Vec<String> {
     content
         .lines()
         .map(str::trim)
@@ -16,7 +16,7 @@ pub(crate) fn parse_line_list(content: &str) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn parse_plus_separated_groups(content: &str) -> Vec<String> {
+pub fn parse_plus_separated_groups(content: &str) -> Vec<String> {
     content
         .lines()
         .map(str::trim)
@@ -25,7 +25,7 @@ pub(crate) fn parse_plus_separated_groups(content: &str) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
+pub fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
     let mut groups = Vec::new();
     let mut labels = Vec::new();
     for line in content.lines().map(str::trim).filter(|line| !line.is_empty()) {
@@ -36,7 +36,7 @@ pub(crate) fn parse_player_groups_with_labels(content: &str, double_plus: bool) 
     (groups, labels)
 }
 
-pub(crate) fn parse_namer_pf_groups(raw: &str) -> Vec<Vec<String>> {
+pub fn parse_namer_pf_groups(raw: &str) -> Vec<Vec<String>> {
     raw.lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
@@ -45,7 +45,7 @@ pub(crate) fn parse_namer_pf_groups(raw: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
-pub(crate) fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
+pub fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     let mut seen = HashSet::new();
     for group in groups {
         for name in group.lines().map(str::trim).filter(|line| !line.is_empty()) {

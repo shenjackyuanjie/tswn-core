@@ -72,7 +72,7 @@ impl WinRateSession {
         }
     }
 
-    pub(crate) fn result_value(&self) -> WinRateResult {
+    pub fn result_value(&self) -> WinRateResult {
         let progress = self.progress_value();
         WinRateResult {
             done: progress.done,
@@ -127,7 +127,7 @@ impl WinRateSession {
         Ok(self.progress_value())
     }
 
-    pub(crate) fn new_internal(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<Self> {
+    pub fn new_internal(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<Self> {
         let eval_rq = options.resolved_eval_rq();
         let _thread = options.resolved_thread();
         let prepared = build_prepared_runner(raw_input, eval_rq)?;
@@ -144,7 +144,7 @@ impl WinRateSession {
     }
 }
 
-pub(crate) fn run_win_rate_sync(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<WinRateResult> {
+pub fn run_win_rate_sync(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<WinRateResult> {
     let mut session = WinRateSession::new_internal(raw_input, total_rounds, options)?;
     let _ = session.step_internal(total_rounds.max(1))?;
     Ok(session.result_value())
