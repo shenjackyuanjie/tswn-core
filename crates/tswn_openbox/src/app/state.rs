@@ -6,7 +6,7 @@
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
-use crate::backend::{OutputMode, ProgressEvent};
+use crate::backend::{NamerPfMetric, OutputMode, ProgressEvent};
 
 use super::source::TextSource;
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
@@ -35,6 +35,7 @@ impl Tool {
 pub(crate) struct ToDiyState {
     pub(crate) names: TextSource,
     pub(crate) old: bool,
+    pub(crate) minions: bool,
     pub(crate) details: bool,
     pub(crate) output: OptionalFileOutput,
 }
@@ -44,6 +45,7 @@ impl Default for ToDiyState {
         Self {
             names: TextSource::inline("mario@team+fire"),
             old: false,
+            minions: false,
             details: true,
             output: OptionalFileOutput::default(),
         }
@@ -54,7 +56,16 @@ pub(crate) struct NamerPfState {
     pub(crate) names: TextSource,
     pub(crate) count: usize,
     pub(crate) threads: usize,
-    pub(crate) output: OptionalFileOutput,
+    pub(crate) keep_rq: bool,
+    pub(crate) metrics: Vec<NamerPfMetricState>,
+}
+
+pub(crate) struct NamerPfMetricState {
+    pub(crate) metric: NamerPfMetric,
+    pub(crate) screen: bool,
+    pub(crate) min_screen: String,
+    pub(crate) file_output: OptionalFileOutput,
+    pub(crate) min_file: String,
 }
 
 impl Default for NamerPfState {
@@ -63,7 +74,17 @@ impl Default for NamerPfState {
             names: TextSource::inline("mario\nluigi+peach"),
             count: 1000,
             threads: 0,
-            output: OptionalFileOutput::default(),
+            keep_rq: false,
+            metrics: NamerPfMetric::ALL
+                .into_iter()
+                .map(|metric| NamerPfMetricState {
+                    metric,
+                    screen: true,
+                    min_screen: String::new(),
+                    file_output: OptionalFileOutput::default(),
+                    min_file: String::new(),
+                })
+                .collect(),
         }
     }
 }

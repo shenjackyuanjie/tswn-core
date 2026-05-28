@@ -115,3 +115,5 @@ pub(crate) fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, 
 }
 
 fn pick_output_file(default_name: &str) -> Option<PathBuf> { rfd::FileDialog::new().set_file_name(default_name).save_file() }
+
+pub(crate) fn pick_named_output_file(default_name: &str) -> Option<PathBuf> { pick_output_file(default_name) }

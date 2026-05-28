@@ -6,13 +6,18 @@
 use eframe::egui;
 
 use super::state::OpenboxApp;
-use super::widgets::{bench_controls, bench_output_controls, optional_file_output_controls};
+use super::widgets::{bench_controls, bench_output_controls, optional_file_output_controls, pick_named_output_file};
 
 impl OpenboxApp {
     pub(crate) fn to_diy_ui(&mut self, ui: &mut egui::Ui) {
         ui.heading("to-diy");
         ui.horizontal(|ui| {
-            ui.checkbox(&mut self.to_diy.old, "旧 +diy");
+            if ui.checkbox(&mut self.to_diy.old, "旧 +diy").changed() && self.to_diy.old {
+                self.to_diy.minions = false;
+            }
+            if ui.checkbox(&mut self.to_diy.minions, "minions").changed() && self.to_diy.minions {
+                self.to_diy.old = false;
+            }
             ui.checkbox(&mut self.to_diy.details, "单名详情（仅日志输出）");
         });
         self.to_diy.names.ui(ui, "名字", "to_diy_names", 16);
@@ -25,8 +30,64 @@ impl OpenboxApp {
     pub(crate) fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
         ui.heading("namer-pf");
         bench_controls(ui, &mut self.namer_pf.count, &mut self.namer_pf.threads);
+        ui.checkbox(&mut self.namer_pf.keep_rq, "keep rq");
+        let all_selected = self.namer_pf.metrics.iter().all(|metric| metric.screen && metric.file_output.enabled);
+        let mut select_all = all_selected;
+        if ui.checkbox(&mut select_all, "全选").changed() {
+            for metric in &mut self.namer_pf.metrics {
+                metric.screen = select_all;
+                metric.file_output.enabled = select_all;
+            }
+        }
+        egui::Grid::new("namer_pf_metrics")
+            .num_columns(6)
+            .striped(true)
+            .spacing([10.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("");
+                ui.label("屏幕");
+                ui.label("屏幕阈值");
+                ui.label("输出文件");
+                ui.label("文件阈值");
+                ui.label("路径");
+                ui.end_row();
+
+                for metric in &mut self.namer_pf.metrics {
+                    let label = metric.metric.label();
+                    ui.label(label);
+                    ui.checkbox(&mut metric.screen, "");
+                    ui.add(egui::TextEdit::singleline(&mut metric.min_screen).desired_width(72.0));
+                    ui.checkbox(&mut metric.file_output.enabled, "");
+                    ui.add(egui::TextEdit::singleline(&mut metric.min_file).desired_width(72.0));
+                    ui.horizontal(|ui| {
+                        if ui.button("选择").clicked()
+                            && let Some(path) = pick_named_output_file(&format!("tswn-openbox-namer-pf-{label}.txt"))
+                        {
+                            metric.file_output.enabled = true;
+                            metric.file_output.path = Some(path);
+                        }
+                        if metric.file_output.path.is_some() && ui.button("清空").clicked() {
+                            metric.file_output.path = None;
+                        }
+                    });
+                    ui.end_row();
+
+                    ui.label("");
+                    ui.label("");
+                    ui.label("");
+                    ui.label("");
+                    ui.label("");
+                    let path_label = metric
+                        .file_output
+                        .path
+                        .as_ref()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|| "未选择输出文件".to_string());
+                    ui.label(path_label);
+                    ui.end_row();
+                }
+            });
         self.namer_pf.names.ui(ui, "名字", "namer_pf_names", 14);
-        optional_file_output_controls(ui, &mut self.namer_pf.output, "tswn-openbox-namer-pf.txt");
         if ui.button("运行").clicked() {
             self.start_namer_pf();
         }

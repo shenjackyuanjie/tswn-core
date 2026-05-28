@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use eframe::egui;
 
-use crate::backend::{self, BatchRateInput, CommonBenchOptions, PairInput, ProgressEvent};
+use crate::backend::{self, BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetricOptions, PairInput, ProgressEvent};
 
 use super::state::OpenboxApp;
 use super::widgets::OptionalFileOutput;
@@ -31,13 +31,19 @@ impl OpenboxApp {
             }
         };
 
+        if self.to_diy.old && self.to_diy.minions {
+            self.fail_before_start("to-diy: --old 与 --minions 不能同时使用。".to_string());
+            return;
+        }
+
         self.begin_task();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         let old = self.to_diy.old;
+        let minions = self.to_diy.minions;
         let details = self.to_diy.details && output_file.is_none();
         std::thread::spawn(move || {
-            let result = backend::run_to_diy(&raw, old, details, output_file);
+            let result = backend::run_to_diy(&raw, old, minions, details, output_file);
             let _ = tx.send(ProgressEvent::Done(result));
         });
     }
@@ -50,21 +56,58 @@ impl OpenboxApp {
                 return;
             }
         };
-        let output_file = match resolve_output_path(&self.namer_pf.output) {
-            Ok(path) => path,
-            Err(err) => {
-                self.fail_before_start(err);
-                return;
-            }
-        };
+        let mut metrics = Vec::with_capacity(self.namer_pf.metrics.len());
+        for metric in &self.namer_pf.metrics {
+            let min_screen = if metric.screen {
+                match parse_optional_f64_at_least(&metric.min_screen, &format!("{} 屏幕阈值", metric.metric.label()), 0.0) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        self.fail_before_start(err);
+                        return;
+                    }
+                }
+            } else {
+                None
+            };
+            let min_file = if metric.file_output.enabled {
+                match parse_optional_f64_at_least(&metric.min_file, &format!("{} 文件阈值", metric.metric.label()), 0.0) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        self.fail_before_start(err);
+                        return;
+                    }
+                }
+            } else {
+                None
+            };
+            let output_file = match resolve_output_path(&metric.file_output) {
+                Ok(path) => path,
+                Err(err) => {
+                    self.fail_before_start(format!("{}: {err}", metric.metric.label()));
+                    return;
+                }
+            };
+            metrics.push(NamerPfMetricOptions {
+                metric: metric.metric,
+                screen: metric.screen,
+                min_screen,
+                output_file,
+                min_file,
+            });
+        }
 
         self.begin_task();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
-        let count = self.namer_pf.count.max(1);
-        let threads = non_zero(self.namer_pf.threads);
+        let input = NamerPfInput {
+            raw,
+            count: self.namer_pf.count.max(1),
+            threads: non_zero(self.namer_pf.threads),
+            keep_rq: self.namer_pf.keep_rq,
+            metrics,
+        };
         std::thread::spawn(move || {
-            backend::run_namer_pf(&raw, count, threads, output_file, |event| {
+            backend::run_namer_pf(input, |event| {
                 let _ = tx.send(event);
             });
         });

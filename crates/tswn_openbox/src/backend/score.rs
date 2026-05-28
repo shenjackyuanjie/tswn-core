@@ -131,12 +131,19 @@ pub(crate) fn bench_batch_rate_for_group(
     }
 }
 
-pub(crate) fn namer_pf_score(base_group: &[String], modifier: &str, duplicate: bool, n: usize, threads: Option<usize>) -> u64 {
+pub(crate) fn namer_pf_score(
+    base_group: &[String],
+    modifier: &str,
+    duplicate: bool,
+    n: usize,
+    threads: Option<usize>,
+    eval_rq: f64,
+) -> u64 {
     let mut target_group = base_group.to_vec();
     if duplicate {
         target_group.extend(base_group.iter().cloned());
     }
-    let summary = run_bench_score_inner(&target_group, modifier, n, threads);
+    let summary = run_bench_score_inner(&target_group, modifier, n, threads, eval_rq);
     (summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64).round() as u64
 }
 
@@ -161,10 +168,16 @@ fn bench_prepared_summary(
     })
 }
 
-fn run_bench_score_inner(target_group: &[String], modifier: &str, n: usize, threads: Option<usize>) -> BenchSummary {
+fn run_bench_score_inner(
+    target_group: &[String],
+    modifier: &str,
+    n: usize,
+    threads: Option<usize>,
+    eval_rq: f64,
+) -> BenchSummary {
     let workers = resolve_win_rate_workers(threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0), n);
     let (wins, total, timing) = if workers <= 1 || n < BENCH_PARALLEL_THRESHOLD {
-        run_bench_score_range(target_group, modifier, 0, n)
+        run_bench_score_range(target_group, modifier, 0, n, eval_rq)
     } else {
         let next = Arc::new(AtomicUsize::new(0));
         let mut handles = Vec::with_capacity(workers);
@@ -173,7 +186,7 @@ fn run_bench_score_inner(target_group: &[String], modifier: &str, n: usize, thre
             let modifier = modifier.to_string();
             let next = Arc::clone(&next);
             handles.push(std::thread::spawn(move || {
-                run_bench_score_worker(&target_group, &modifier, &next, n)
+                run_bench_score_worker(&target_group, &modifier, &next, n, eval_rq)
             }));
         }
         let mut wins = 0usize;
@@ -190,7 +203,13 @@ fn run_bench_score_inner(target_group: &[String], modifier: &str, n: usize, thre
     BenchSummary { wins, total, timing }
 }
 
-fn run_bench_score_range(target_group: &[String], modifier: &str, start: usize, end: usize) -> (usize, usize, WinRateTiming) {
+fn run_bench_score_range(
+    target_group: &[String],
+    modifier: &str,
+    start: usize,
+    end: usize,
+    eval_rq: f64,
+) -> (usize, usize, WinRateTiming) {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut timing = WinRateTiming::default();
@@ -200,11 +219,10 @@ fn run_bench_score_range(target_group: &[String], modifier: &str, start: usize, 
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
         let t_init = Instant::now();
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner =
-            match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ) {
-                Ok(runner) => runner,
-                Err(_) => continue,
-            };
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq) {
+            Ok(runner) => runner,
+            Err(_) => continue,
+        };
         let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
         let t_fight = Instant::now();
@@ -225,6 +243,7 @@ fn run_bench_score_worker(
     modifier: &str,
     next: &AtomicUsize,
     end: usize,
+    eval_rq: f64,
 ) -> (usize, usize, WinRateTiming) {
     let mut wins = 0usize;
     let mut total = 0usize;
@@ -239,11 +258,10 @@ fn run_bench_score_worker(
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
         let t_init = Instant::now();
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner =
-            match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ) {
-                Ok(runner) => runner,
-                Err(_) => continue,
-            };
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq) {
+            Ok(runner) => runner,
+            Err(_) => continue,
+        };
         let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
         timing.init_nanos += t_init.elapsed().as_nanos();
         let t_fight = Instant::now();

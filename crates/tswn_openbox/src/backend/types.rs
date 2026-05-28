@@ -20,6 +20,29 @@ pub enum OutputMode {
     Pure,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NamerPfMetric {
+    Pp,
+    Pd,
+    Qp,
+    Qd,
+    Sum,
+}
+
+impl NamerPfMetric {
+    pub const ALL: [Self; 5] = [Self::Pp, Self::Pd, Self::Qp, Self::Qd, Self::Sum];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pp => "pp",
+            Self::Pd => "pd",
+            Self::Qp => "qp",
+            Self::Qd => "qd",
+            Self::Sum => "sum",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CommonBenchOptions {
     pub count: usize,
@@ -30,6 +53,24 @@ pub struct CommonBenchOptions {
     pub min_screen: Option<f64>,
     pub min_file: Option<f64>,
     pub wr_precision: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct NamerPfMetricOptions {
+    pub metric: NamerPfMetric,
+    pub screen: bool,
+    pub min_screen: Option<f64>,
+    pub output_file: Option<PathBuf>,
+    pub min_file: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NamerPfInput {
+    pub raw: String,
+    pub count: usize,
+    pub threads: Option<usize>,
+    pub keep_rq: bool,
+    pub metrics: Vec<NamerPfMetricOptions>,
 }
 
 #[derive(Debug, Clone)]

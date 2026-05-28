@@ -16,9 +16,9 @@ use tswn_core::win_rate::WinRateTiming;
 use super::format::{format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log};
 use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
 use super::score::{bench_batch_rate_for_group, namer_pf_score};
-use super::types::{BatchRateInput, PairInput, ProgressEvent};
+use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, PairInput, ProgressEvent};
 
-pub fn run_to_diy(raw: &str, old: bool, details: bool, output_file: Option<PathBuf>) -> Result<String, String> {
+pub fn run_to_diy(raw: &str, old: bool, minions: bool, details: bool, output_file: Option<PathBuf>) -> Result<String, String> {
     let names = parse_line_list(raw);
     if names.is_empty() {
         return Err("请输入至少一个名字。".to_string());
@@ -30,7 +30,13 @@ pub fn run_to_diy(raw: &str, old: bool, details: bool, output_file: Option<PathB
         let mut player =
             Player::new_from_namerena_raw(name.clone(), storage.clone()).map_err(|err| format!("构建玩家失败: {name}: {err}"))?;
         player.build();
-        let export = if old { player.to_diy_compact() } else { player.to_ol_json() };
+        let export = if old {
+            player.to_diy_compact()
+        } else if minions {
+            player.to_ol_json_with_minions()
+        } else {
+            player.to_ol_json()
+        };
         let _ = writeln!(out, "{export}");
 
         if details && names.len() == 1 {
@@ -58,26 +64,103 @@ pub fn run_to_diy(raw: &str, old: bool, details: bool, output_file: Option<PathB
     finish_output(output_file.as_deref(), out)
 }
 
-pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, output_file: Option<PathBuf>, send: impl Fn(ProgressEvent)) {
-    let groups = parse_namer_pf_groups(raw);
+pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
+    let groups = parse_namer_pf_groups(&input.raw);
     if groups.is_empty() {
         send(ProgressEvent::Done(Err("namer-pf: 输入为空或无有效玩家。".to_string())));
         return;
     }
+    if input.metrics.iter().all(|metric| !metric.screen && metric.output_file.is_none()) {
+        send(ProgressEvent::Done(Err(
+            "namer-pf: 请至少选择一个屏幕输出或输出文件。".to_string()
+        )));
+        return;
+    }
 
-    let mut out = String::from("pp|pd|qp|qd|sum\n");
+    let mut outputs = Vec::with_capacity(input.metrics.len());
+    for metric in &input.metrics {
+        let output = match metric.output_file.as_deref() {
+            Some(path) => match create_output_file(path) {
+                Ok(file) => Some(file),
+                Err(err) => {
+                    send(ProgressEvent::Done(Err(err)));
+                    return;
+                }
+            },
+            None => None,
+        };
+        outputs.push(output);
+    }
+
+    let n = input.count.max(1);
+    let eval_rq = eval_rq(input.keep_rq);
     let total = groups.len();
     for (index, group) in groups.iter().enumerate() {
-        let pp = namer_pf_score(group, "\u{0002}", false, n, threads);
-        let pd = namer_pf_score(group, "\u{0002}", true, n, threads);
-        let qp = namer_pf_score(group, "!", false, n, threads);
-        let qd = namer_pf_score(group, "!", true, n, threads);
-        let sum = pp + pd + qp + qd;
-        let _ = writeln!(out, "{pp}|{pd}|{qp}|{qd}|{sum}");
+        let pp = namer_pf_score(group, "\u{0002}", false, n, input.threads, eval_rq);
+        let pd = namer_pf_score(group, "\u{0002}", true, n, input.threads, eval_rq);
+        let qp = namer_pf_score(group, "!", false, n, input.threads, eval_rq);
+        let qd = namer_pf_score(group, "!", true, n, input.threads, eval_rq);
+        let scores = NamerPfScores {
+            pp,
+            pd,
+            qp,
+            qd,
+            sum: pp + pd + qp + qd,
+        };
+        let label = group.join("+");
+
+        for (metric, output) in input.metrics.iter().zip(outputs.iter_mut()) {
+            let score = scores.get(metric.metric);
+            if metric.min_screen.is_none_or(|limit| score as f64 >= limit) && metric.screen {
+                send(ProgressEvent::Log(format!("{} {}:{}", label, metric.metric.label(), score)));
+            }
+            if metric.min_file.is_none_or(|limit| score as f64 >= limit)
+                && let Some(output) = output.as_mut()
+                && let Err(err) = writeln!(output, "{} {}", score, label)
+            {
+                send(ProgressEvent::Done(Err(format!("写入输出文件失败: {err}"))));
+                return;
+            }
+        }
         send(ProgressEvent::Progress { done: index + 1, total });
     }
 
-    send(ProgressEvent::Done(finish_output(output_file.as_deref(), out)));
+    let written = input
+        .metrics
+        .iter()
+        .filter_map(|metric| {
+            metric
+                .output_file
+                .as_ref()
+                .map(|path| format!("{} -> {}", metric.metric.label(), path.display()))
+        })
+        .collect::<Vec<_>>();
+    let message = if written.is_empty() {
+        "完成。".to_string()
+    } else {
+        format!("完成，结果已写入: {}", written.join("; "))
+    };
+    send(ProgressEvent::Done(Ok(message)));
+}
+
+struct NamerPfScores {
+    pp: u64,
+    pd: u64,
+    qp: u64,
+    qd: u64,
+    sum: u64,
+}
+
+impl NamerPfScores {
+    fn get(&self, metric: NamerPfMetric) -> u64 {
+        match metric {
+            NamerPfMetric::Pp => self.pp,
+            NamerPfMetric::Pd => self.pd,
+            NamerPfMetric::Qp => self.qp,
+            NamerPfMetric::Qd => self.qd,
+            NamerPfMetric::Sum => self.sum,
+        }
+    }
 }
 
 pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {

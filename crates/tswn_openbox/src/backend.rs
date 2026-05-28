@@ -10,4 +10,6 @@ mod tasks;
 mod types;
 
 pub use tasks::{run_batch_rate, run_namer_pf, run_pair, run_to_diy};
-pub use types::{BatchRateInput, CommonBenchOptions, OutputMode, PairInput, ProgressEvent};
+pub use types::{
+    BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairInput, ProgressEvent,
+};
