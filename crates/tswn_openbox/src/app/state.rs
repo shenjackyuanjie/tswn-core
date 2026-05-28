@@ -7,6 +7,8 @@ use std::collections::HashSet;
 use std::sync::{Arc, atomic::AtomicBool, mpsc::Receiver};
 use std::time::Instant;
 
+use eframe::egui;
+
 use crate::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressEvent};
 
 use super::source::TextSource;
@@ -231,6 +233,7 @@ impl Default for PairState {
 fn default_namer_pf_highlight_delta(metric: NamerPfMetric) -> u64 { if metric == NamerPfMetric::Sum { 300 } else { 100 } }
 
 pub(crate) struct OpenboxApp {
+    pub(crate) theme_preference: egui::ThemePreference,
     pub(crate) tool: Tool,
     pub(crate) more_settings_open: bool,
     pub(crate) log: String,
@@ -254,6 +257,7 @@ pub(crate) struct OpenboxApp {
 impl Default for OpenboxApp {
     fn default() -> Self {
         Self {
+            theme_preference: egui::ThemePreference::System,
             tool: Tool::ToDiy,
             more_settings_open: false,
             log: String::new(),

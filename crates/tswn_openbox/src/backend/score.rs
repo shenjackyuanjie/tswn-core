@@ -17,28 +17,28 @@ use super::parse::first_duplicate_name_in_matchup;
 const BENCH_PARALLEL_THRESHOLD: usize = 100;
 
 #[derive(Debug, Clone)]
-pub(crate) struct BenchSummary {
-    pub(crate) wins: usize,
-    pub(crate) total: usize,
-    pub(crate) timing: WinRateTiming,
+pub struct BenchSummary {
+    pub wins: usize,
+    pub total: usize,
+    pub timing: WinRateTiming,
 }
 
 impl BenchSummary {
-    pub(crate) fn win_rate_percent(&self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
+    pub fn win_rate_percent(&self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BatchRateSummary {
-    pub(crate) avg: f64,
-    pub(crate) wins: usize,
-    pub(crate) total: usize,
-    pub(crate) valid_matchups: usize,
-    pub(crate) skipped_matchups: usize,
+pub struct BatchRateSummary {
+    pub avg: f64,
+    pub wins: usize,
+    pub total: usize,
+    pub valid_matchups: usize,
+    pub skipped_matchups: usize,
 }
 
 impl BatchRateSummary {}
 
-pub(crate) fn bench_batch_rate_for_group(
+pub fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],
     n: usize,
@@ -127,7 +127,7 @@ pub(crate) fn bench_batch_rate_for_group(
     }
 }
 
-pub(crate) fn namer_pf_score(
+pub fn namer_pf_score(
     base_group: &[String],
     modifier: &str,
     duplicate: bool,

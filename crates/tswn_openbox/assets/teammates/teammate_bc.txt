@@ -1,0 +1,14 @@
+^o^ Fm$UD2EM@KODU大好人+diy[61,88,97,94,91,94,80,344]{"SklPoison":19,"SklAbsorb":1,"SklUpgrade":21,"SklClone":1,"SklAssassinate":92,"SklMerge":56}
+⑨-MXgoCOds6Glu@新纪元+diy[62,93,95,85,98,92,94,327]{"SklCounter":8,"SklZombie":5,"SklAssassinate":90,"SklHide":10,"SklMerge":49}
+1^GNC.%F@Hell+diy[54,91,93,90,90,94,89,342]{"SklHide":1,"SklPoison":6,"SklDefend":12,"SklClone":2,"SklMerge":15,"SklAssassinate":96,"SklZombie":26}
+Wispy #6uttTRg@Arcadia+diy[78,92,93,55,97,92,84,354]{"SklUpgrade":13,"SklHeal":8,"SklCharm":5,"SklAssassinate":94,"SklHide":6,"SklZombie":46,"SklShield":26}
+永劫回归#118486227619108@TigerStar+diy[63,87,97,54,81,91,84,360]{"sklHalf": 6,"SklSlow": 9,"SklAccumulate": 3,"SklAssassinate": 100,"SklMerge": 72}
+伊甸 en5QiIQ?shadow@魔+diy[55,88,91,82,85,93,85,350]{"SklCounter":8,"SklAssassinate":100,"SklReraise":3,"SklZombie":16,"SklMerge":52}
+Hell 迚昫餅@名字竞技场+diy[54,82,92,60,94,89,90,321]{"SklQuake":1,"SklShield":10,"SklDefend":5,"SklCounter":2,"SklAssassinate":100,"SklReraise":3,"SklMerge":52,"SklUpgrade":30}
+镜华 CWXJVQRP@公主连结+diy[61,80,98,95,90,93,89,318]{"SklQuake":4,"SklShadow":3,"SklAccumulate":10,"SklRevive":26,"SklMerge":60,"SklAssassinate":90}
+Tirn y_[yNJ#jq"9r@流浪冒险者+diy[71,83,98,69,93,96,92,351]{"SklCharm":2,"SklShadow":16,"SklAssassinate":88,"SklDefend":14,"SklZombie":40}
+Kuouji_alice fEhChpbSwh@🥒+diy[68,72,98,83,86,94,82,353]{"SklZombie": 10,"SklMerge": 13,"SklAbsorb": 3,"SklAssassinate": 98,"SklShield": 55}
+00000040k0wLBzO@aaa+diy[81,93,84,73,86,97,84,314]{"SklZombie":11,"SklRevive":14,"SklAssassinate":90,"SklDefend":30,"SklShield":78}
+🍊🍑🍆🥕🥑🥬🥜🍆🥕🍆🍅🍇🥒🍌🍒@🥒+diy[46,86,98,68,93,83,92,343]{"SklHide": 2,"SklDefend": 10,"SklShield": 13,"SklHeal": 2,"SklAssassinate": 88,"SklDisperse": 66}
+糍粑姐 #06fJFRN2@爱+diy[42,94,98,60,90,95,92,328]{"SklMerge":16,"SklCharm":8,"SklCounter":9,"SklExchange":2,"SklAbsorb":3,"SklDisperse":19,"SklAssassinate":64,"SklClone":80}
+Wakaba_mutsumi #ELilDYtGbU@🥒+diy[53,92,97,83,95,93,94,340]{"SklRevive":10,"SklUpgrade":21,"SklCharge":1,"SklDefend":26,"SklAssassinate":88,"SklCounter":14}

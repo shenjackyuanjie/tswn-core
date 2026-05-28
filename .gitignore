@@ -10,3 +10,5 @@ tests
 dist
 md5.js
 assets
+!crates/tswn_openbox/assets/
+!crates/tswn_openbox/assets/**

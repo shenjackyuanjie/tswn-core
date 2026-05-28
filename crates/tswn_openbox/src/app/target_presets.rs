@@ -1,9 +1,39 @@
-//! Preset loading from `setting/setting.json`.
+//! Preset loading from `setting/settings.toml`.
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+
+const SETTING_DIR_NAME: &str = "setting";
+const SETTINGS_FILE_NAME: &str = "settings.toml";
+const DEFAULT_SETTINGS_TOML: &str = include_str!("../../assets/settings.toml");
+const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
+    ("targets/target1.txt", include_str!("../../assets/targets/target1.txt")),
+    ("targets/target2.txt", include_str!("../../assets/targets/target2.txt")),
+    ("targets/target3.txt", include_str!("../../assets/targets/target3.txt")),
+    (
+        "teammates/teammate_fz.txt",
+        include_str!("../../assets/teammates/teammate_fz.txt"),
+    ),
+    (
+        "teammates/teammate_bc.txt",
+        include_str!("../../assets/teammates/teammate_bc.txt"),
+    ),
+    (
+        "teammates/teammate_wc.txt",
+        include_str!("../../assets/teammates/teammate_wc.txt"),
+    ),
+    (
+        "teammates/teammate_pj.txt",
+        include_str!("../../assets/teammates/teammate_pj.txt"),
+    ),
+    (
+        "teammates/teammate_fs.txt",
+        include_str!("../../assets/teammates/teammate_fs.txt"),
+    ),
+];
 
 #[derive(Debug, Clone)]
 pub(crate) struct TargetPreset {
@@ -179,11 +209,37 @@ fn load_teammate_presets(loaded: LoadedSettingFile) -> Vec<TeammatePreset> {
 }
 
 fn load_setting_file() -> Result<LoadedSettingFile, String> {
-    let setting_dir = current_dir()?.join("setting");
-    let config_path = setting_dir.join("setting.json");
-    let raw = fs::read_to_string(&config_path).map_err(|err| format!("读取设置配置失败: {}: {err}", config_path.display()))?;
-    let config = serde_json::from_str(&raw).map_err(|err| format!("解析设置配置失败: {}: {err}", config_path.display()))?;
+    let setting_dir = current_dir()?.join(SETTING_DIR_NAME);
+    let config_path = setting_dir.join(SETTINGS_FILE_NAME);
+    let raw = read_or_create_setting_file(&setting_dir, &config_path)?;
+    let config = toml::from_str(&raw).map_err(|err| format!("解析设置配置失败: {}: {err}", config_path.display()))?;
     Ok(LoadedSettingFile { setting_dir, config })
+}
+
+fn read_or_create_setting_file(setting_dir: &Path, config_path: &Path) -> Result<String, String> {
+    match fs::read_to_string(config_path) {
+        Ok(raw) => Ok(raw),
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            write_default_setting_tree(setting_dir, config_path)?;
+            fs::read_to_string(config_path).map_err(|err| format!("读取设置配置失败: {}: {err}", config_path.display()))
+        }
+        Err(err) => Err(format!("读取设置配置失败: {}: {err}", config_path.display())),
+    }
+}
+
+fn write_default_setting_tree(setting_dir: &Path, config_path: &Path) -> Result<(), String> {
+    fs::create_dir_all(setting_dir).map_err(|err| format!("创建设置目录失败: {}: {err}", setting_dir.display()))?;
+    for (relative_path, content) in DEFAULT_SETTING_FILES {
+        let path = setting_dir.join(relative_path);
+        if path.exists() {
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|err| format!("创建设置目录失败: {}: {err}", parent.display()))?;
+        }
+        fs::write(&path, content).map_err(|err| format!("写入默认预设失败: {}: {err}", path.display()))?;
+    }
+    fs::write(config_path, DEFAULT_SETTINGS_TOML).map_err(|err| format!("写入默认设置配置失败: {}: {err}", config_path.display()))
 }
 
 fn current_dir() -> Result<PathBuf, String> { std::env::current_dir().map_err(|err| format!("读取当前目录失败: {err}")) }

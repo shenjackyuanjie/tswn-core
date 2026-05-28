@@ -1,0 +1,39 @@
+[[targets]]
+id = 1
+name = "单人组"
+file = "targets/target1.txt"
+
+[[targets]]
+id = 2
+name = "双人组"
+file = "targets/target2.txt"
+
+[[targets]]
+id = 3
+name = "三人组"
+file = "targets/target3.txt"
+
+[[teammate]]
+head = 5
+name = "刺评"
+file = "teammates/teammate_fz.txt"
+
+[[teammate]]
+head = 5
+name = "辅评"
+file = "teammates/teammate_bc.txt"
+
+[[teammate]]
+head = 5
+name = "无刺评"
+file = "teammates/teammate_wc.txt"
+
+[[teammate]]
+head = 3
+name = "分身评"
+file = "teammates/teammate_pj.txt"
+
+[[teammate]]
+head = 3
+name = "配件评"
+file = "teammates/teammate_fs.txt"

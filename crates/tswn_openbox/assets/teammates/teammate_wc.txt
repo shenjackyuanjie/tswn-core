@@ -1,0 +1,24 @@
+0000006NTVJWbvH@aaa+diy[95,83,92,90,99,97,88,360]{"SklSummon": 2,"SklBerserk": 1,"SklUpgrade": 4,"SklReraise": 19,"SklDefend": 15,"SklDisperse": 82,"SklCounter": 16}
+秋菊 mcrP7gX?shadow@魔+diy[91,92,95,88,95,97,76,354]{"SklProtect": 17,"SklRapid": 5,"SklZombie": 26,"SklCounter": 27,"SklDisperse": 86,"SklUpgrade": 6}
+0000003FzAO7HhL@aaa+diy[46,72,93,81,92,95,97,355]{"SklCharge": 3,"sklHalf": 22,"SklReraise": 8,"SklHide": 2,"SklClone": 22,"SklIce": 12,"SklQuake": 90,"SklUpgrade": 16,"SklMerge": 34}
+莉莉霍瓦特 H9UEBBVD@Squall+diy[71,84,97,62,94,93,92,343]{"SklMerge": 14,"SklUpgrade": 25,"SklHide": 3,"SklSummon": 2,"SklProtect": 22,"SklClone": 30,"sklHalf": 56,"SklQuake": 82}
+00000052qRHvFoy@aaa+diy[80,85,90,99,95,92,91,357]{"SklThunder": 4,"SklIce": 9,"SklReraise": 20,"SklCharge": 16,"sklHalf": 52,"SklCounter": 77}
+九十九八桥 6G6GIGLI@Squall+diy[59,84,92,88,95,98,89,342]{"SklCharm": 6,"SklAssassinate": 17,"SklThunder": 2,"SklExchange": 1,"SklPoison": 7,"SklHide": 8,"SklShadow": 6,"SklProtect": 7,"SklQuake": 94,"SklZombie": 44}
+雾山惟助 BAAOVADZ@TigerStar+diy[72,95,94,81,98,85,92,353]{"SklDefend": 18,"SklSlow": 1,"SklReraise": 10,"SklCharge": 9,"SklQuake": 68,"SklDisperse": 80}
+仙尊 $WVFmI7B@powerful+diy[83,97,95,92,98,87,96,351]{"SklDefend": 4,"SklAccumulate": 13,"SklUpgrade": 10,"SklIron": 7,"SklMerge": 16,"SklDisperse": 19,"SklQuake": 72}
+牙四 xX4hHzW@fx+diy[68,92,91,81,97,97,91,352]{"SklAssassinate": 36,"SklDefend": 25,"SklPoison": 1,"SklZombie": 13,"SklCurse": 5,"SklBerserk": 29,"SklClone": 16,"SklQuake": 78}
+刷屏托腮 FXLNIBHI@TigerStar+diy[76,88,88,92,90,98,98,354]{"SklFire": 2,"SklMerge": 19,"SklAccumulate": 10,"SklIce": 11,"SklQuake": 78,"SklDefend": 44}
+0000000Pf9A4Rkz@aaa+diy[60,85,93,92,94,93,89,326]{"SklHide": 9,"SklUpgrade": 5,"SklClone": 11,"SklProtect": 2,"SklQuake": 98,"SklMerge": 50}
+ⅱ 3ze5v8h@新纪元+diy[85,86,97,88,95,99,90,333]{"SklExchange": 10,"sklHalf": 92,"SklReraise": 13,"SklMerge": 17}
+opWS>O76kKbeyzp@XJ联队+diy[73,85,97,91,95,98,90,335]{"SklBerserk": 5,"SklSummon": 2,"SklZombie": 5,"SklQuake": 88,"SklMerge": 28}
+0000004oLzv1Inq@aaa+diy[97,81,94,91,89,95,90,347]{"sklHalf": 29,"SklThunder": 9,"SklIron": 8,"SklPoison": 7,"SklQuake": 82,"SklCounter": 21}
+Mira_Hacia_El_Cielo #gJEftkUaX@Shabby_fish+diy[98,73,94,93,66,96,87,303]{"SklReflect": 17,"SklUpgrade": 12,"SklShadow": 2,"SklReraise": 3,"SklAccumulate": 13,"SklHide": 9,"SklBerserk": 5,"SklRapid": 88,"SklMerge": 64}
+媳瞒己深@昀澤+diy[94,90,98,83,93,89,91,335]{"SklCritical": 20,"SklIce": 4,"SklDefend": 29,"SklHide": 11,"SklProtect": 17,"sklHalf": 96}
+碧落-錈薅眯暯@涵虚+diy[88,91,96,91,99,94,97,332]{"SklCharm": 4,"SklDisperse": 6,"SklExchange": 8,"sklHalf": 82,"SklZombie": 26}
+gaDUGvcLjf3adAl@XJ联队+diy[89,90,97,93,95,89,87,342]{"SklHeal": 12,"SklCharge": 11,"SklCurse": 18,"SklShield": 8,"SklIron": 80,"SklReraise": 52}
+蔚黄鸟.狼刃 yJ0Ne*1js@四象柯+diy[98,92,95,96,90,90,88,360]{"SklHide": 6,"SklIron": 5,"SklZombie": 11,"SklSlow": 13,"SklDisperse": 7,"SklCharge": 25,"SklBerserk": 7,"SklRapid": 76}
+u75hvWl7-ryx6EL@新纪元+diy[71,78,94,98,93,96,91,345]{"SklCurse": 8,"SklAccumulate": 19,"SklQuake": 80,"SklMerge": 11,"SklHide": 6,"SklZombie": 25,"SklProtect": 2,"SklReflect": 8}
+珠洲岛有栖 SZZUXUIISDDH@Asunder+diy[81,87,95,95,94,84,86,351]{"SklRevive": 17,"SklZombie": 4,"SklUpgrade": 10,"SklAccumulate": 15,"SklHide": 19,"SklQuake": 92}
+虚境-4xtrv36e@涵虚+diy[86,96,92,81,97,89,98,346]{"SklBerserk": 11,"sklHalf": 31,"SklRevive": 8,"SklFire": 6,"SklDisperse": 88,"SklMerge": 28}
+0000001Ki24AVw0@aaa+diy[96,88,84,92,95,97,87,345]{"sklHalf": 70,"SklReflect": 7,"SklReraise": 48,"SklProtect": 48}
+0000005HETaH4tB@aaa+diy[98,88,94,94,83,99,87,327]{"SklReraise": 7,"SklExchange": 3,"SklHide": 8,"SklCritical": 3,"SklMerge": 4,"SklHaste": 8,"sklHalf": 64,"SklCounter": 68}

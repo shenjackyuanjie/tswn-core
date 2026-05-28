@@ -20,16 +20,17 @@ pub fn run() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("tswn openbox")
-            .with_inner_size([1120.0, 760.0])
-            .with_min_inner_size([900.0, 600.0]),
+            .with_inner_size([1180.0, 780.0])
+            .with_min_inner_size([960.0, 620.0]),
         ..Default::default()
     };
     eframe::run_native(
         "tswn openbox",
         options,
         Box::new(|cc| {
-            cc.egui_ctx.set_theme(egui::Theme::Light);
+            cc.egui_ctx.set_theme(egui::ThemePreference::System);
             install_cjk_fonts(&cc.egui_ctx);
+            configure_ui_style(&cc.egui_ctx);
             Ok(Box::<OpenboxApp>::default())
         }),
     )
@@ -38,37 +39,106 @@ pub fn run() -> eframe::Result<()> {
 impl eframe::App for OpenboxApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        ctx.set_theme(self.theme_preference);
         self.poll_events(&ctx);
 
         egui::Panel::top("top_bar").show_inside(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading(egui::RichText::new("tswn openbox").size(24.0));
-                ui.separator();
-                for tool in Tool::ALL {
-                    let label = egui::RichText::new(tool.label()).size(20.0);
-                    if ui.selectable_label(self.tool == tool, label).clicked() && !self.running {
-                        self.tool = tool;
-                    }
-                }
-            });
+            top_bar_ui(ui, self, &ctx);
         });
 
         egui::Panel::left("inputs")
             .resizable(true)
-            .min_size(360.0)
-            .default_size(430.0)
-            .show_inside(ui, |ui| match self.tool {
-                Tool::ToDiy => self.to_diy_ui(ui),
-                Tool::NamerPf => self.namer_pf_ui(ui),
-                Tool::BatchRate => self.batch_rate_ui(ui),
-                Tool::Pair => self.pair_ui(ui),
+            .min_size(380.0)
+            .default_size(460.0)
+            .show_inside(ui, |ui| {
+                egui::Frame::side_top_panel(ui.style())
+                    .inner_margin(egui::Margin::same(12))
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match self.tool {
+                            Tool::ToDiy => self.to_diy_ui(ui),
+                            Tool::NamerPf => self.namer_pf_ui(ui),
+                            Tool::BatchRate => self.batch_rate_ui(ui),
+                            Tool::Pair => self.pair_ui(ui),
+                        });
+                    });
             });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            self.log_ui(ui, &ctx);
+            egui::Frame::central_panel(ui.style())
+                .inner_margin(egui::Margin::same(12))
+                .show(ui, |ui| {
+                    self.log_ui(ui, &ctx);
+                });
         });
 
         self.more_settings_window(&ctx);
+    }
+}
+
+fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
+    ui.add_space(3.0);
+    ui.horizontal(|ui| {
+        ui.heading(egui::RichText::new("tswn openbox").size(25.0));
+        ui.label(egui::RichText::new("本地工具箱").weak());
+        ui.separator();
+
+        for tool in Tool::ALL {
+            let selected = app.tool == tool;
+            let label = egui::RichText::new(tool.label()).size(18.0);
+            if ui.selectable_label(selected, label).clicked() && !app.running {
+                app.tool = tool;
+            }
+        }
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if theme_switcher(ui, &mut app.theme_preference) {
+                ctx.set_theme(app.theme_preference);
+            }
+            ui.separator();
+            status_pill(ui, app);
+        });
+    });
+    ui.add_space(3.0);
+}
+
+fn status_pill(ui: &mut egui::Ui, app: &OpenboxApp) {
+    let color = if app.running {
+        egui::Color32::from_rgb(35, 130, 220)
+    } else if app.status == "失败" {
+        egui::Color32::from_rgb(190, 50, 50)
+    } else if app.status == "完成" {
+        egui::Color32::from_rgb(40, 150, 90)
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    ui.label(egui::RichText::new(&app.status).color(color).strong());
+}
+
+fn theme_switcher(ui: &mut egui::Ui, theme_preference: &mut egui::ThemePreference) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label("主题");
+        changed |= theme_button(ui, theme_preference, egui::ThemePreference::Light, "☀", "浅色模式");
+        changed |= theme_button(ui, theme_preference, egui::ThemePreference::Dark, "☾", "深色模式");
+        changed |= theme_button(ui, theme_preference, egui::ThemePreference::System, "▣", "跟随系统");
+    });
+    changed
+}
+
+fn theme_button(
+    ui: &mut egui::Ui,
+    theme_preference: &mut egui::ThemePreference,
+    value: egui::ThemePreference,
+    icon: &str,
+    tooltip: &str,
+) -> bool {
+    let selected = *theme_preference == value;
+    let response = ui.selectable_label(selected, egui::RichText::new(icon).size(16.0)).on_hover_text(tooltip);
+    if response.clicked() {
+        *theme_preference = value;
+        true
+    } else {
+        false
     }
 }
 
@@ -82,4 +152,30 @@ fn install_cjk_fonts(ctx: &egui::Context) {
         fonts.families.entry(family).or_default().insert(0, "SarasaMonoSC".to_string());
     }
     ctx.set_fonts(fonts);
+}
+
+fn configure_ui_style(ctx: &egui::Context) {
+    ctx.all_styles_mut(|style| {
+        style.spacing.item_spacing = egui::vec2(10.0, 8.0);
+        style.spacing.button_padding = egui::vec2(10.0, 6.0);
+        style.spacing.window_margin = egui::Margin::same(14);
+        style.spacing.menu_margin = egui::Margin::same(10);
+        style.spacing.interact_size = egui::vec2(34.0, 30.0);
+        style.spacing.combo_width = 180.0;
+        style.spacing.text_edit_width = 180.0;
+        style.spacing.slider_width = 180.0;
+        style.text_styles.insert(
+            egui::TextStyle::Heading,
+            egui::FontId::new(22.0, egui::FontFamily::Proportional),
+        );
+        style
+            .text_styles
+            .insert(egui::TextStyle::Body, egui::FontId::new(15.0, egui::FontFamily::Proportional));
+        style
+            .text_styles
+            .insert(egui::TextStyle::Button, egui::FontId::new(15.0, egui::FontFamily::Proportional));
+        style
+            .text_styles
+            .insert(egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Monospace));
+    });
 }
