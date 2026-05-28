@@ -41,10 +41,11 @@ impl eframe::App for OpenboxApp {
 
         egui::Panel::top("top_bar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("tswn openbox");
+                ui.heading(egui::RichText::new("tswn openbox").size(24.0));
                 ui.separator();
                 for tool in Tool::ALL {
-                    if ui.selectable_label(self.tool == tool, tool.label()).clicked() && !self.running {
+                    let label = egui::RichText::new(tool.label()).size(20.0);
+                    if ui.selectable_label(self.tool == tool, label).clicked() && !self.running {
                         self.tool = tool;
                     }
                 }
@@ -55,18 +56,18 @@ impl eframe::App for OpenboxApp {
             .resizable(true)
             .min_size(360.0)
             .default_size(430.0)
-            .show_inside(ui, |ui| {
-                ui.add_enabled_ui(!self.running, |ui| match self.tool {
-                    Tool::ToDiy => self.to_diy_ui(ui),
-                    Tool::NamerPf => self.namer_pf_ui(ui),
-                    Tool::BatchRate => self.batch_rate_ui(ui),
-                    Tool::Pair => self.pair_ui(ui),
-                });
+            .show_inside(ui, |ui| match self.tool {
+                Tool::ToDiy => self.to_diy_ui(ui),
+                Tool::NamerPf => self.namer_pf_ui(ui),
+                Tool::BatchRate => self.batch_rate_ui(ui),
+                Tool::Pair => self.pair_ui(ui),
             });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
             self.log_ui(ui, &ctx);
         });
+
+        self.more_settings_window(&ctx);
     }
 }
 

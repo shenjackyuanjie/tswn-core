@@ -4,17 +4,29 @@
 //! 在独立线程中调用后端函数，并通过 `poll_events` 处理进度/日志/完成事件。
 
 use std::ops::RangeInclusive;
-use std::sync::mpsc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 use std::time::Instant;
 
 use eframe::egui;
 
 use crate::backend::{self, BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetricOptions, PairInput, ProgressEvent};
 
-use super::state::OpenboxApp;
+use super::state::{CountMode, OpenboxApp};
 use super::widgets::OptionalFileOutput;
 
 impl OpenboxApp {
+    pub(crate) fn stop_current_task(&mut self) {
+        if let Some(token) = &self.cancel_token {
+            token.store(true, Ordering::Relaxed);
+            self.cancel_requested = true;
+            self.status = "停止中".to_string();
+        }
+    }
+
     pub(crate) fn start_to_diy(&mut self) {
         let raw = match self.to_diy.names.read_all() {
             Ok(raw) => raw,
@@ -42,8 +54,9 @@ impl OpenboxApp {
         let old = self.to_diy.old;
         let minions = self.to_diy.minions;
         let details = self.to_diy.details && output_file.is_none();
+        let cancel = self.cancel_token();
         std::thread::spawn(move || {
-            let result = backend::run_to_diy(&raw, old, minions, details, output_file);
+            let result = backend::run_to_diy(&raw, old, minions, details, output_file, &cancel);
             let _ = tx.send(ProgressEvent::Done(result));
         });
     }
@@ -99,12 +112,14 @@ impl OpenboxApp {
         self.begin_task();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
+        let cancel = self.cancel_token();
         let input = NamerPfInput {
             raw,
-            count: self.namer_pf.count.max(1),
-            threads: non_zero(self.namer_pf.threads),
+            count: bench_count(self.namer_pf.count_mode, self.namer_pf.accuracy, self.namer_pf.count),
+            threads: bench_threads(self.namer_pf.auto_threads, self.namer_pf.threads),
             keep_rq: self.namer_pf.keep_rq,
             metrics,
+            cancel,
         };
         std::thread::spawn(move || {
             backend::run_namer_pf(input, |event| {
@@ -153,6 +168,7 @@ impl OpenboxApp {
         self.begin_task();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
+        let cancel = self.cancel_token();
         let input = BatchRateInput {
             target_text,
             player_text,
@@ -160,15 +176,16 @@ impl OpenboxApp {
             output_mode: self.batch_rate.output.mode,
             output_file,
             options: CommonBenchOptions {
-                count: self.batch_rate.count.max(1),
-                threads: non_zero(self.batch_rate.threads),
+                count: bench_count(self.batch_rate.count_mode, self.batch_rate.accuracy, self.batch_rate.count),
+                threads: bench_threads(self.batch_rate.auto_threads, self.batch_rate.threads),
                 keep_rq: self.batch_rate.keep_rq,
-                verbose: self.batch_rate.verbose,
-                perf: self.batch_rate.perf,
+                verbose: false,
+                perf: false,
                 min_screen,
                 min_file,
                 wr_precision: self.batch_rate.output.precision.min(9),
             },
+            cancel,
         };
         std::thread::spawn(move || {
             backend::run_batch_rate(input, |event| {
@@ -224,6 +241,7 @@ impl OpenboxApp {
         self.begin_task();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
+        let cancel = self.cancel_token();
         let input = PairInput {
             target_text,
             player_text,
@@ -232,15 +250,16 @@ impl OpenboxApp {
             output_mode: self.pair.output.mode,
             output_file,
             options: CommonBenchOptions {
-                count: self.pair.count.max(1),
-                threads: non_zero(self.pair.threads),
+                count: bench_count(self.pair.count_mode, self.pair.accuracy, self.pair.count),
+                threads: bench_threads(self.pair.auto_threads, self.pair.threads),
                 keep_rq: self.pair.keep_rq,
-                verbose: self.pair.verbose,
-                perf: self.pair.perf,
+                verbose: false,
+                perf: false,
                 min_screen,
                 min_file,
                 wr_precision: self.pair.output.precision.min(9),
             },
+            cancel,
         };
         std::thread::spawn(move || {
             backend::run_pair(input, |event| {
@@ -251,6 +270,8 @@ impl OpenboxApp {
 
     pub(crate) fn begin_task(&mut self) {
         self.running = true;
+        self.cancel_requested = false;
+        self.cancel_token = Some(Arc::new(AtomicBool::new(false)));
         self.done = 0;
         self.total = 0;
         self.started_at = Some(Instant::now());
@@ -262,6 +283,8 @@ impl OpenboxApp {
 
     pub(crate) fn fail_before_start(&mut self, err: String) {
         self.running = false;
+        self.cancel_requested = false;
+        self.cancel_token = None;
         self.done = 0;
         self.total = 0;
         self.started_at = None;
@@ -289,6 +312,8 @@ impl OpenboxApp {
                     }
                     ProgressEvent::Done(result) => {
                         self.running = false;
+                        self.cancel_requested = false;
+                        self.cancel_token = None;
                         self.status = match &result {
                             Ok(_) => "完成".to_string(),
                             Err(_) => "失败".to_string(),
@@ -342,6 +367,12 @@ impl OpenboxApp {
     }
 }
 
+impl OpenboxApp {
+    fn cancel_token(&self) -> Arc<AtomicBool> {
+        self.cancel_token.as_ref().expect("cancel token should be set after begin_task").clone()
+    }
+}
+
 fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::PathBuf>, String> {
     match output.selected_path() {
         Some(path) => Ok(Some(path)),
@@ -349,6 +380,15 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
         None => Ok(None),
     }
 }
+
+fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_count: usize) -> usize {
+    match mode {
+        CountMode::Accuracy => accuracy.count(),
+        CountMode::Manual => manual_count.max(1),
+    }
+}
+
+fn bench_threads(auto_threads: bool, threads: usize) -> Option<usize> { if auto_threads { None } else { non_zero(threads) } }
 
 fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(value) } }
 

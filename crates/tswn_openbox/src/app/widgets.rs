@@ -1,13 +1,12 @@
 //! 通用 egui 控件封装。
-//!
-//! 提供文件输出选择控件（`optional_file_output_controls`、`bench_output_controls`）、
-//! 场数/线程控件（`bench_controls`）及带滚动的多行文本编辑框（`multiline`）。
 
-use std::path::PathBuf;
+use std::path::{PathBuf, absolute};
 
 use eframe::egui;
 
 use crate::backend::OutputMode;
+
+use super::state::{AccuracyPreset, CountMode};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct OptionalFileOutput {
@@ -55,7 +54,13 @@ pub(crate) fn optional_file_output_controls(ui: &mut egui::Ui, output: &mut Opti
     }
 }
 
-pub(crate) fn bench_output_controls(ui: &mut egui::Ui, output: &mut BenchOutputConfig, default_name: &str) {
+pub(crate) fn bench_output_controls(
+    ui: &mut egui::Ui,
+    output: &mut BenchOutputConfig,
+    default_name: &str,
+    show_jsonl: bool,
+    show_precision: bool,
+) {
     ui.horizontal(|ui| {
         ui.label("输出文件");
         if ui.button("选择输出文件").clicked()
@@ -80,7 +85,9 @@ pub(crate) fn bench_output_controls(ui: &mut egui::Ui, output: &mut BenchOutputC
     ui.horizontal(|ui| {
         ui.label("文件格式");
         ui.radio_value(&mut output.mode, OutputMode::Log, "分数 名字");
-        ui.radio_value(&mut output.mode, OutputMode::Jsonl, "JSONL (--log)");
+        if show_jsonl {
+            ui.radio_value(&mut output.mode, OutputMode::Jsonl, "JSONL (--log)");
+        }
         ui.radio_value(&mut output.mode, OutputMode::Pure, "名字 (--pure)");
     });
 
@@ -89,17 +96,43 @@ pub(crate) fn bench_output_controls(ui: &mut egui::Ui, output: &mut BenchOutputC
         ui.add(egui::TextEdit::singleline(&mut output.min_screen).desired_width(72.0));
         ui.label("文件阈值");
         ui.add(egui::TextEdit::singleline(&mut output.min_file).desired_width(72.0));
-        ui.label("小数");
-        ui.add(egui::DragValue::new(&mut output.precision).range(0..=9).speed(1));
+        if show_precision {
+            ui.label("保留小数点后 X 位");
+            ui.add(egui::DragValue::new(&mut output.precision).range(0..=9).speed(1));
+        }
     });
 }
 
-pub(crate) fn bench_controls(ui: &mut egui::Ui, count: &mut usize, threads: &mut usize) {
+pub(crate) fn accuracy_controls(ui: &mut egui::Ui, accuracy: &mut AccuracyPreset) {
     ui.horizontal(|ui| {
-        ui.label("场数");
-        ui.add(egui::DragValue::new(count).range(1..=10_000_000).speed(100));
+        ui.label("精确度");
+        for preset in AccuracyPreset::ALL {
+            ui.radio_value(accuracy, preset, preset.label());
+        }
+    });
+}
+
+pub(crate) fn count_mode_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &mut AccuracyPreset, count: &mut usize) {
+    ui.horizontal(|ui| {
+        ui.radio_value(mode, CountMode::Accuracy, "精确度");
+        ui.radio_value(mode, CountMode::Manual, "场数");
+    });
+    match mode {
+        CountMode::Accuracy => accuracy_controls(ui, accuracy),
+        CountMode::Manual => {
+            ui.horizontal(|ui| {
+                ui.label("场数");
+                ui.add(egui::DragValue::new(count).range(1..=10_000_000).speed(100));
+            });
+        }
+    }
+}
+
+pub(crate) fn thread_controls(ui: &mut egui::Ui, auto_threads: &mut bool, threads: &mut usize) {
+    ui.horizontal(|ui| {
+        ui.checkbox(auto_threads, "系统线程 * 1.5");
         ui.label("线程");
-        ui.add(egui::DragValue::new(threads).range(0..=256).speed(1));
+        ui.add_enabled(!*auto_threads, egui::DragValue::new(threads).range(0..=256).speed(1));
     });
 }
 
@@ -114,6 +147,18 @@ pub(crate) fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, 
     });
 }
 
-fn pick_output_file(default_name: &str) -> Option<PathBuf> { rfd::FileDialog::new().set_file_name(default_name).save_file() }
+fn pick_output_file(default_name: &str) -> Option<PathBuf> {
+    rfd::FileDialog::new()
+        .set_directory(current_dir())
+        .set_file_name(default_name)
+        .save_file()
+}
 
 pub(crate) fn pick_named_output_file(default_name: &str) -> Option<PathBuf> { pick_output_file(default_name) }
+
+fn current_dir() -> PathBuf {
+    std::env::current_dir()
+        .ok()
+        .and_then(|path| absolute(path).ok())
+        .unwrap_or_else(|| PathBuf::from("."))
+}

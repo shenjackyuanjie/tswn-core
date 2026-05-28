@@ -5,7 +5,7 @@
 
 use std::fmt::Write as _;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use tswn_core::win_rate::{WinRateTiming, prepared_win_rate, resolve_win_rate_workers};
@@ -49,6 +49,7 @@ pub(crate) fn bench_batch_rate_for_group(
     eval_rq: f64,
     verbose: bool,
     verbose_buf: &mut String,
+    cancel: &AtomicBool,
     mut tick_target: impl FnMut(usize, &str),
 ) -> BatchRateSummary {
     let started = Instant::now();
@@ -60,6 +61,9 @@ pub(crate) fn bench_batch_rate_for_group(
     let mut skipped_matchups = 0usize;
 
     for (index, target) in target_groups.iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
         if let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target.as_str()]) {
             skipped_matchups += 1;
             if verbose {

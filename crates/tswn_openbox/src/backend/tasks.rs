@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use tswn_core::engine::storage::Storage;
@@ -18,7 +19,14 @@ use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_w
 use super::score::{bench_batch_rate_for_group, namer_pf_score};
 use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, PairInput, ProgressEvent};
 
-pub fn run_to_diy(raw: &str, old: bool, minions: bool, details: bool, output_file: Option<PathBuf>) -> Result<String, String> {
+pub fn run_to_diy(
+    raw: &str,
+    old: bool,
+    minions: bool,
+    details: bool,
+    output_file: Option<PathBuf>,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<String, String> {
     let names = parse_line_list(raw);
     if names.is_empty() {
         return Err("请输入至少一个名字。".to_string());
@@ -27,6 +35,9 @@ pub fn run_to_diy(raw: &str, old: bool, minions: bool, details: bool, output_fil
     let storage = Storage::new_arc();
     let mut out = String::new();
     for name in &names {
+        if cancel.load(Ordering::Relaxed) {
+            return Ok("已停止。".to_string());
+        }
         let mut player =
             Player::new_from_namerena_raw(name.clone(), storage.clone()).map_err(|err| format!("构建玩家失败: {name}: {err}"))?;
         player.build();
@@ -96,6 +107,10 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
     let eval_rq = eval_rq(input.keep_rq);
     let total = groups.len();
     for (index, group) in groups.iter().enumerate() {
+        if input.cancel.load(Ordering::Relaxed) {
+            send(ProgressEvent::Done(Ok("已停止。".to_string())));
+            return;
+        }
         let pp = namer_pf_score(group, "\u{0002}", false, n, input.threads, eval_rq);
         let pd = namer_pf_score(group, "\u{0002}", true, n, input.threads, eval_rq);
         let qp = namer_pf_score(group, "!", false, n, input.threads, eval_rq);
@@ -202,6 +217,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
             eval_rq,
             input.options.verbose,
             &mut verbose,
+            &input.cancel,
             |_, _| {
                 done += 1;
                 send(ProgressEvent::Progress { done, total });
@@ -248,6 +264,10 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
                 input.options.perf,
             );
             send(ProgressEvent::Log(log));
+        }
+        if input.cancel.load(Ordering::Relaxed) {
+            send(ProgressEvent::Done(Ok("已停止。".to_string())));
+            return;
         }
     }
 
@@ -324,6 +344,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
                 eval_rq,
                 input.options.verbose,
                 &mut verbose,
+                &input.cancel,
                 |_, _| {
                     done += 1;
                     send(ProgressEvent::Progress { done, total });
@@ -337,6 +358,9 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
             total_valid_matchups += summary.valid_matchups;
             total_skipped_matchups += summary.skipped_matchups;
             total_timing.merge(summary.timing);
+            if input.cancel.load(Ordering::Relaxed) {
+                break;
+            }
         }
 
         pair_rates.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -391,6 +415,10 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
                 input.options.perf,
             );
             send(ProgressEvent::Log(log));
+        }
+        if input.cancel.load(Ordering::Relaxed) {
+            send(ProgressEvent::Done(Ok("已停止。".to_string())));
+            return;
         }
     }
 

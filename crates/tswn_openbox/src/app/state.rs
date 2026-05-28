@@ -3,7 +3,7 @@
 //! 定义工具枚举 [`Tool`] 及各工具的独立状态结构体（`ToDiyState`、`NamerPfState` 等），
 //! 以及聚合所有状态的顶层 [`OpenboxApp`] 结构体。
 
-use std::sync::mpsc::Receiver;
+use std::sync::{Arc, atomic::AtomicBool, mpsc::Receiver};
 use std::time::Instant;
 
 use crate::backend::{NamerPfMetric, OutputMode, ProgressEvent};
@@ -26,8 +26,41 @@ impl Tool {
         match self {
             Self::ToDiy => "to-diy",
             Self::NamerPf => "namer-pf",
-            Self::BatchRate => "batch-rate",
+            Self::BatchRate => "cqd/cqp",
             Self::Pair => "pair",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CountMode {
+    Accuracy,
+    Manual,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AccuracyPreset {
+    One,
+    Ten,
+    Hundred,
+}
+
+impl AccuracyPreset {
+    pub(crate) const ALL: [Self; 3] = [Self::One, Self::Ten, Self::Hundred];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::One => "1%",
+            Self::Ten => "10%",
+            Self::Hundred => "100%",
+        }
+    }
+
+    pub(crate) fn count(self) -> usize {
+        match self {
+            Self::One => 100,
+            Self::Ten => 1000,
+            Self::Hundred => 10000,
         }
     }
 }
@@ -54,7 +87,10 @@ impl Default for ToDiyState {
 
 pub(crate) struct NamerPfState {
     pub(crate) names: TextSource,
+    pub(crate) count_mode: CountMode,
+    pub(crate) accuracy: AccuracyPreset,
     pub(crate) count: usize,
+    pub(crate) auto_threads: bool,
     pub(crate) threads: usize,
     pub(crate) keep_rq: bool,
     pub(crate) metrics: Vec<NamerPfMetricState>,
@@ -72,7 +108,10 @@ impl Default for NamerPfState {
     fn default() -> Self {
         Self {
             names: TextSource::inline("mario\nluigi+peach"),
-            count: 1000,
+            count_mode: CountMode::Accuracy,
+            accuracy: AccuracyPreset::Hundred,
+            count: AccuracyPreset::Hundred.count(),
+            auto_threads: true,
             threads: 0,
             keep_rq: false,
             metrics: NamerPfMetric::ALL
@@ -92,11 +131,12 @@ impl Default for NamerPfState {
 pub(crate) struct BatchRateState {
     pub(crate) targets: TextSource,
     pub(crate) players: TextSource,
+    pub(crate) count_mode: CountMode,
+    pub(crate) accuracy: AccuracyPreset,
     pub(crate) count: usize,
+    pub(crate) auto_threads: bool,
     pub(crate) threads: usize,
     pub(crate) keep_rq: bool,
-    pub(crate) verbose: bool,
-    pub(crate) perf: bool,
     pub(crate) double_plus: bool,
     pub(crate) output: BenchOutputConfig,
 }
@@ -106,11 +146,12 @@ impl Default for BatchRateState {
         Self {
             targets: TextSource::inline("luigi\npeach"),
             players: TextSource::inline("mario\nbowser"),
-            count: 1000,
+            count_mode: CountMode::Accuracy,
+            accuracy: AccuracyPreset::Hundred,
+            count: AccuracyPreset::Hundred.count(),
+            auto_threads: true,
             threads: 0,
             keep_rq: false,
-            verbose: false,
-            perf: false,
             double_plus: false,
             output: BenchOutputConfig {
                 file_output: OptionalFileOutput::default(),
@@ -128,11 +169,12 @@ pub(crate) struct PairState {
     pub(crate) players: TextSource,
     pub(crate) teammates: TextSource,
     pub(crate) head: usize,
+    pub(crate) count_mode: CountMode,
+    pub(crate) accuracy: AccuracyPreset,
     pub(crate) count: usize,
+    pub(crate) auto_threads: bool,
     pub(crate) threads: usize,
     pub(crate) keep_rq: bool,
-    pub(crate) verbose: bool,
-    pub(crate) perf: bool,
     pub(crate) output: BenchOutputConfig,
 }
 
@@ -143,11 +185,12 @@ impl Default for PairState {
             players: TextSource::inline("mario\nbowser"),
             teammates: TextSource::inline("yoshi\ntoad"),
             head: 3,
-            count: 1000,
+            count_mode: CountMode::Accuracy,
+            accuracy: AccuracyPreset::Ten,
+            count: AccuracyPreset::Ten.count(),
+            auto_threads: true,
             threads: 0,
             keep_rq: false,
-            verbose: false,
-            perf: false,
             output: BenchOutputConfig {
                 file_output: OptionalFileOutput::default(),
                 mode: OutputMode::Log,
@@ -161,9 +204,12 @@ impl Default for PairState {
 
 pub(crate) struct OpenboxApp {
     pub(crate) tool: Tool,
+    pub(crate) more_settings_open: bool,
     pub(crate) log: String,
     pub(crate) status: String,
     pub(crate) running: bool,
+    pub(crate) cancel_requested: bool,
+    pub(crate) cancel_token: Option<Arc<AtomicBool>>,
     pub(crate) done: usize,
     pub(crate) total: usize,
     pub(crate) started_at: Option<Instant>,
@@ -180,9 +226,12 @@ impl Default for OpenboxApp {
     fn default() -> Self {
         Self {
             tool: Tool::ToDiy,
+            more_settings_open: false,
             log: String::new(),
             status: "就绪".to_string(),
             running: false,
+            cancel_requested: false,
+            cancel_token: None,
             done: 0,
             total: 0,
             started_at: None,

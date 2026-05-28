@@ -5,6 +5,7 @@
 //! （[`BatchRateInput`]、[`PairInput`]）。
 
 use std::path::PathBuf;
+use std::sync::{Arc, atomic::AtomicBool};
 
 #[derive(Debug, Clone)]
 pub enum ProgressEvent {
@@ -71,6 +72,7 @@ pub struct NamerPfInput {
     pub threads: Option<usize>,
     pub keep_rq: bool,
     pub metrics: Vec<NamerPfMetricOptions>,
+    pub cancel: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +83,7 @@ pub struct BatchRateInput {
     pub output_mode: OutputMode,
     pub output_file: Option<PathBuf>,
     pub options: CommonBenchOptions,
+    pub cancel: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,4 +95,5 @@ pub struct PairInput {
     pub output_mode: OutputMode,
     pub output_file: Option<PathBuf>,
     pub options: CommonBenchOptions,
+    pub cancel: Arc<AtomicBool>,
 }
