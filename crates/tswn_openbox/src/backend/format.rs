@@ -1,82 +1,56 @@
 //! 批量结果文本格式化。
-//!
-//! 将战斗统计结果格式化为文件写入格式（`format_batch_file_record`）、
-//! 屏幕日志格式（`format_batch_screen_log`）等可读字符串。
 
 use std::fmt::Write as _;
 use std::time::Duration;
 
-use tswn_core::win_rate::WinRateTiming;
+use super::types::{OutputMode, PairDetailMode};
 
-use super::types::OutputMode;
+pub(crate) fn clean_name_label(raw: &str) -> String {
+    raw.split('+')
+        .map(str::trim)
+        .filter(|part| !part.is_empty() && !part.starts_with("ol:") && !part.starts_with("diy["))
+        .collect::<Vec<_>>()
+        .join("+")
+}
 
-pub(crate) fn format_batch_file_record(
-    mode: OutputMode,
-    label: &str,
-    avg: f64,
-    aggregate_rate: f64,
-    wins: usize,
-    total: usize,
-    valid_matchups: usize,
-    skipped_matchups: usize,
-    elapsed: Duration,
-    precision: usize,
-) -> String {
+pub(crate) fn clean_group_label(raw: &str) -> String {
+    raw.lines()
+        .map(clean_name_label)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+pub(crate) fn format_batch_file_record(mode: OutputMode, label: &str, avg: f64, precision: usize) -> String {
+    let label = clean_name_label(label);
     match mode {
         OutputMode::Log => format!("{} {label}", format_rate(avg, precision)),
-        OutputMode::Pure => label.to_string(),
+        OutputMode::Pure => label,
         OutputMode::Jsonl => format!(
-            "{{\"label\":\"{}\",\"avg_win_rate\":{},\"aggregate_win_rate\":{},\"wins\":{},\"total\":{},\"valid_matchups\":{},\"skipped_matchups\":{},\"elapsed_s\":{:.3},\"us_per_battle\":{:.1},\"battles_per_s\":{:.0}}}",
-            escape_json_string(label),
+            "{{\"label\":\"{}\",\"avg_win_rate\":{}}}",
+            escape_json_string(&label),
             format_rate(avg, precision),
-            format_rate(aggregate_rate, precision),
-            wins,
-            total,
-            valid_matchups,
-            skipped_matchups,
-            elapsed.as_secs_f64(),
-            elapsed.as_micros() as f64 / total.max(1) as f64,
-            throughput(total, elapsed)
         ),
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn format_batch_screen_log(
-    index: usize,
-    total_players: usize,
     label: &str,
     avg: f64,
-    aggregate_rate: f64,
-    wins: usize,
-    total: usize,
-    valid_matchups: usize,
-    skipped_matchups: usize,
-    elapsed: Duration,
-    timing: WinRateTiming,
+    matchup_rates: &[(f64, String)],
+    show_matchups: bool,
     precision: usize,
-    verbose: bool,
-    verbose_text: &str,
-    perf: bool,
 ) -> String {
     let mut out = String::new();
-    if verbose && !verbose_text.trim().is_empty() {
-        let _ = writeln!(out, "{verbose_text}");
-    }
-    let _ = writeln!(
-        out,
-        "[{index}/{total_players}] {label}\t平均胜率: {}%\t汇总: {}% ({wins}/{total})\t有效: {valid_matchups}\t跳过重复: {skipped_matchups}\t用时: {:.3}s",
-        format_rate(avg, precision),
-        format_rate(aggregate_rate, precision),
-        elapsed.as_secs_f64()
-    );
-    if perf {
-        out.push_str(&format_perf_lines(elapsed, timing, total));
+    let _ = writeln!(out, "{} {}", format_rate(avg, precision), clean_name_label(label));
+    if show_matchups {
+        for (rate, target) in matchup_rates {
+            let _ = writeln!(out, "  {} {}", format_rate(*rate, precision), clean_group_label(target));
+        }
     }
     out
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn format_pair_file_record(
     mode: OutputMode,
     label: &str,
@@ -84,108 +58,64 @@ pub(crate) fn format_pair_file_record(
     selected_count: usize,
     head: usize,
     pair_rates: &[(f64, String)],
-    aggregate_rate: f64,
-    total_wins: usize,
-    total_battles: usize,
-    valid_matchups: usize,
-    skipped_matchups: usize,
-    elapsed: Duration,
     precision: usize,
 ) -> String {
+    let label = clean_name_label(label);
     match mode {
         OutputMode::Log => format!("{} {label}", format_rate(final_score, precision)),
-        OutputMode::Pure => label.to_string(),
+        OutputMode::Pure => label,
         OutputMode::Jsonl => {
             let top_pairs = pair_rates
                 .iter()
                 .take(selected_count)
                 .map(|(rate, teammate)| {
                     format!(
-                        "{{\"teammate\":\"{}\",\"batch_rate\":{}}}",
-                        escape_json_string(teammate),
+                        "{{\"teammate\":\"{}\",\"cqp\":{}}}",
+                        escape_json_string(&clean_name_label(teammate)),
                         format_rate(*rate, precision)
                     )
                 })
                 .collect::<Vec<_>>()
                 .join(",");
             format!(
-                "{{\"label\":\"{}\",\"score\":{},\"head\":{},\"selected\":{},\"top_pairs\":[{}],\"aggregate_win_rate\":{},\"wins\":{},\"total\":{},\"valid_matchups\":{},\"skipped_matchups\":{},\"elapsed_s\":{:.3},\"battles_per_s\":{:.0}}}",
-                escape_json_string(label),
+                "{{\"label\":\"{}\",\"score\":{},\"head\":{},\"selected\":{},\"top_pairs\":[{}]}}",
+                escape_json_string(&label),
                 format_rate(final_score, precision),
                 head,
                 selected_count,
                 top_pairs,
-                format_rate(aggregate_rate, precision),
-                total_wins,
-                total_battles,
-                valid_matchups,
-                skipped_matchups,
-                elapsed.as_secs_f64(),
-                throughput(total_battles, elapsed)
             )
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn format_pair_screen_log(
-    index: usize,
-    total_players: usize,
     label: &str,
     final_score: f64,
     selected_count: usize,
-    head: usize,
     pair_rates: &[(f64, String)],
-    aggregate_rate: f64,
-    total_wins: usize,
-    total_battles: usize,
-    valid_matchups: usize,
-    skipped_matchups: usize,
-    elapsed: Duration,
-    timing: WinRateTiming,
+    detail_mode: PairDetailMode,
+    detail_min: Option<f64>,
     precision: usize,
-    verbose: bool,
-    verbose_text: &str,
-    perf: bool,
 ) -> String {
     let mut out = String::new();
-    if verbose && !verbose_text.trim().is_empty() {
-        let _ = writeln!(out, "{verbose_text}");
-    }
-    let _ = writeln!(
-        out,
-        "[{index}/{total_players}] {label}\t最终分数: {}\ttop: {selected_count}/{head}",
-        format_rate(final_score, precision)
-    );
-    for (rank, (rate, teammate)) in pair_rates.iter().take(selected_count).enumerate() {
-        let _ = writeln!(out, "  #{} {}% {}", rank + 1, format_rate(*rate, precision), teammate);
-    }
-    let _ = writeln!(
-        out,
-        "  汇总胜率: {}% ({total_wins}/{total_battles})  有效靶子: {valid_matchups}  跳过重复: {skipped_matchups}  用时: {:.3}s",
-        format_rate(aggregate_rate, precision),
-        elapsed.as_secs_f64()
-    );
-    if perf {
-        out.push_str(&format_perf_lines(elapsed, timing, total_battles));
+    let _ = writeln!(out, "{} {}", format_rate(final_score, precision), clean_name_label(label));
+    match detail_mode {
+        PairDetailMode::None => {}
+        PairDetailMode::Top => {
+            for (rate, teammate) in pair_rates.iter().take(selected_count) {
+                let _ = writeln!(out, "  {} {}", format_rate(*rate, precision), clean_name_label(teammate));
+            }
+        }
+        PairDetailMode::Every => {
+            for (rate, teammate) in pair_rates {
+                if detail_min.is_none_or(|limit| *rate >= limit) {
+                    let _ = writeln!(out, "  {} {}", format_rate(*rate, precision), clean_name_label(teammate));
+                }
+            }
+        }
     }
     out
-}
-
-pub(crate) fn format_perf_lines(total_elapsed: Duration, timing: WinRateTiming, total: usize) -> String {
-    let total_f = total.max(1) as f64;
-    let total_secs = total_elapsed.as_secs_f64();
-    let throughput = if total_secs > 0.0 { total_f / total_secs } else { 0.0 };
-    format!(
-        "─────────────────────────────────\ntotal :  {:.3}s  ({:.1}µs/场, {:.0} 场/s)\ninit  :  {:.3}s  ({:.1}µs/场)\nfight :  {:.3}s  ({:.1}µs/场)",
-        total_secs,
-        total_elapsed.as_micros() as f64 / total_f,
-        throughput,
-        timing.init_nanos as f64 / 1e9,
-        timing.init_nanos as f64 / 1e3 / total_f,
-        timing.fight_nanos as f64 / 1e9,
-        timing.fight_nanos as f64 / 1e3 / total_f,
-    )
 }
 
 pub(crate) fn display_group(raw: &str) -> String {
@@ -201,7 +131,7 @@ pub(crate) fn format_rate(value: f64, precision: usize) -> String {
     format!("{value:.precision$}")
 }
 
-fn throughput(total: usize, elapsed: Duration) -> f64 {
+pub(crate) fn _throughput(total: usize, elapsed: Duration) -> f64 {
     let secs = elapsed.as_secs_f64();
     if secs > 0.0 { total as f64 / secs } else { 0.0 }
 }

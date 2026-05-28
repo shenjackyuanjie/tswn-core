@@ -1,6 +1,8 @@
-//! 各工具的 egui 界面渲染。
+//! egui rendering for every Openbox tool.
 
 use eframe::egui;
+
+use crate::backend::PairDetailMode;
 
 use super::state::{AccuracyPreset, CountMode, OpenboxApp, Tool};
 use super::widgets::{
@@ -21,7 +23,7 @@ impl OpenboxApp {
     pub(crate) fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
         tool_header(ui, "namer-pf", &mut self.more_settings_open);
         main_accuracy_controls(ui, &mut self.namer_pf.count_mode, &mut self.namer_pf.accuracy);
-        namer_pf_metric_controls(ui, self);
+        namer_pf_metric_controls(ui, self, false);
         self.namer_pf.names.ui(ui, "名字", "namer_pf_names", 14);
         if run_or_stop_button(ui, self) {
             self.start_namer_pf();
@@ -31,9 +33,9 @@ impl OpenboxApp {
     pub(crate) fn batch_rate_ui(&mut self, ui: &mut egui::Ui) {
         tool_header(ui, "cqd/cqp", &mut self.more_settings_open);
         main_accuracy_controls(ui, &mut self.batch_rate.count_mode, &mut self.batch_rate.accuracy);
+        target_preset_controls(ui, &mut self.batch_rate.target_presets);
+        ui.checkbox(&mut self.batch_rate.show_matchups, "每组胜率");
         bench_output_controls(ui, &mut self.batch_rate.output, "tswn-openbox-cqd-cqp.txt", false, false);
-        ui.separator();
-        self.batch_rate.targets.ui(ui, "靶子列表", "batch_targets", 8);
         ui.separator();
         self.batch_rate.players.ui(ui, "选手列表", "batch_players", 8);
         if run_or_stop_button(ui, self) {
@@ -44,17 +46,11 @@ impl OpenboxApp {
     pub(crate) fn pair_ui(&mut self, ui: &mut egui::Ui) {
         tool_header(ui, "pair", &mut self.more_settings_open);
         main_accuracy_controls(ui, &mut self.pair.count_mode, &mut self.pair.accuracy);
-        ui.horizontal(|ui| {
-            ui.label("head");
-            ui.add(egui::DragValue::new(&mut self.pair.head).range(1..=999).speed(1));
-        });
+        teammate_preset_controls(ui, &mut self.pair.teammate_presets);
+        pair_detail_controls(ui, self);
         bench_output_controls(ui, &mut self.pair.output, "tswn-openbox-pair.txt", false, false);
         ui.separator();
-        self.pair.targets.ui(ui, "靶子列表", "pair_targets", 6);
-        ui.separator();
         self.pair.players.ui(ui, "选手列表", "pair_players", 6);
-        ui.separator();
-        self.pair.teammates.ui(ui, "队友列表", "pair_teammates", 6);
         if run_or_stop_button(ui, self) {
             self.start_pair();
         }
@@ -70,7 +66,7 @@ impl OpenboxApp {
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
-            .default_width(560.0)
+            .default_width(600.0)
             .show(ctx, |ui| {
                 ui.add_enabled_ui(!self.running, |ui| match self.tool {
                     Tool::ToDiy => self.to_diy_more_settings(ui),
@@ -96,8 +92,8 @@ impl OpenboxApp {
             &mut self.namer_pf.count,
         );
         thread_controls(ui, &mut self.namer_pf.auto_threads, &mut self.namer_pf.threads);
-        ui.checkbox(&mut self.namer_pf.keep_rq, "keep rq");
-        namer_pf_metric_controls(ui, self);
+        ui.checkbox(&mut self.namer_pf.keep_rq, "不低估短号");
+        namer_pf_metric_controls(ui, self, true);
     }
 
     fn batch_rate_more_settings(&mut self, ui: &mut egui::Ui) {
@@ -109,20 +105,44 @@ impl OpenboxApp {
         );
         thread_controls(ui, &mut self.batch_rate.auto_threads, &mut self.batch_rate.threads);
         ui.horizontal(|ui| {
-            ui.checkbox(&mut self.batch_rate.keep_rq, "keep rq");
+            ui.checkbox(&mut self.batch_rate.keep_rq, "不低估短号");
             ui.checkbox(&mut self.batch_rate.double_plus, "DIYcqp（++分割名字）");
         });
+        ui.checkbox(&mut self.batch_rate.manual_targets, "使用手动靶子");
+        if self.batch_rate.manual_targets {
+            self.batch_rate.targets.ui(ui, "靶子列表", "batch_targets_more", 8);
+        }
+        highlight_delta_control(ui, &mut self.batch_rate.highlight_delta);
         bench_output_controls(ui, &mut self.batch_rate.output, "tswn-openbox-cqd-cqp.txt", true, true);
     }
 
     fn pair_more_settings(&mut self, ui: &mut egui::Ui) {
         count_mode_controls(ui, &mut self.pair.count_mode, &mut self.pair.accuracy, &mut self.pair.count);
         thread_controls(ui, &mut self.pair.auto_threads, &mut self.pair.threads);
-        ui.horizontal(|ui| {
-            ui.label("head");
-            ui.add(egui::DragValue::new(&mut self.pair.head).range(1..=999).speed(1));
-            ui.checkbox(&mut self.pair.keep_rq, "keep rq");
-        });
+        ui.checkbox(&mut self.pair.keep_rq, "不低估短号");
+        pair_detail_controls(ui, self);
+
+        ui.separator();
+        ui.checkbox(&mut self.pair.manual_targets, "使用手动靶子");
+        if self.pair.manual_targets {
+            self.pair.targets.ui(ui, "靶子列表", "pair_targets_more", 6);
+        } else {
+            target_preset_controls(ui, &mut self.pair.target_presets);
+        }
+
+        ui.separator();
+        ui.checkbox(&mut self.pair.manual_teammates, "使用手动队友");
+        if self.pair.manual_teammates {
+            ui.horizontal(|ui| {
+                ui.label("保留前几");
+                ui.add(egui::DragValue::new(&mut self.pair.head).range(1..=999).speed(1));
+            });
+            self.pair.teammates.ui(ui, "队友列表", "pair_teammates_more", 6);
+        } else {
+            teammate_preset_controls(ui, &mut self.pair.teammate_presets);
+        }
+
+        highlight_delta_control(ui, &mut self.pair.highlight_delta);
         bench_output_controls(ui, &mut self.pair.output, "tswn-openbox-pair.txt", true, true);
     }
 
@@ -146,6 +166,7 @@ impl OpenboxApp {
                     }
                     if ui.button("清空日志").clicked() {
                         self.log.clear();
+                        self.highlight_lines.clear();
                     }
                 });
             });
@@ -159,12 +180,17 @@ impl OpenboxApp {
         });
         ui.separator();
         egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-            ui.add(
-                egui::TextEdit::multiline(&mut self.log)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(30),
-            );
+            ui.vertical(|ui| {
+                for (index, line) in self.log.lines().enumerate() {
+                    let mut text = egui::RichText::new(line).monospace();
+                    if line.starts_with("  ") {
+                        text = text.color(egui::Color32::GRAY);
+                    } else if self.highlight_lines.contains(&index) {
+                        text = text.color(egui::Color32::from_rgb(210, 40, 40)).strong();
+                    }
+                    ui.add(egui::Label::new(text).extend());
+                }
+            });
         });
     }
 }
@@ -192,14 +218,85 @@ fn to_diy_basic_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
 }
 
 fn run_or_stop_button(ui: &mut egui::Ui, app: &mut OpenboxApp) -> bool {
+    ui.add_space(8.0);
     if app.running {
         let label = if app.cancel_requested { "停止中..." } else { "停止" };
-        if ui.add_enabled(!app.cancel_requested, egui::Button::new(label)).clicked() {
+        let button = egui::Button::new(egui::RichText::new(label).size(18.0)).min_size(egui::vec2(ui.available_width(), 44.0));
+        if ui.add_enabled(!app.cancel_requested, button).clicked() {
             app.stop_current_task();
         }
         false
     } else {
-        ui.button("运行").clicked()
+        ui.add(egui::Button::new(egui::RichText::new("运行").size(18.0)).min_size(egui::vec2(ui.available_width(), 44.0)))
+            .clicked()
+    }
+}
+
+fn highlight_delta_control(ui: &mut egui::Ui, value: &mut String) {
+    ui.horizontal(|ui| {
+        ui.label("高亮超强名字");
+        ui.add(egui::TextEdit::singleline(value).desired_width(72.0));
+    });
+}
+
+fn target_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets::TargetPresetState) {
+    ui.horizontal(|ui| {
+        ui.label("靶子");
+        egui::ComboBox::from_id_salt(ui.next_auto_id())
+            .selected_text(state.selected().map(|item| item.name.clone()).unwrap_or_else(|| "未配置靶子".to_string()))
+            .show_ui(ui, |ui| {
+                for item in &state.items {
+                    ui.selectable_value(&mut state.selected_id, Some(item.id), &item.name);
+                }
+            });
+        if ui.button("刷新").clicked() {
+            state.reload();
+        }
+    });
+    if let Some(error) = &state.error {
+        ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
+    }
+}
+
+fn teammate_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets::TeammatePresetState) {
+    ui.horizontal(|ui| {
+        ui.label("队友");
+        egui::ComboBox::from_id_salt(ui.next_auto_id())
+            .selected_text(
+                state
+                    .selected()
+                    .map(|item| format!("{}（保留前{}）", item.name, item.head))
+                    .unwrap_or_else(|| "未配置队友".to_string()),
+            )
+            .show_ui(ui, |ui| {
+                for (index, item) in state.items.iter().enumerate() {
+                    ui.selectable_value(
+                        &mut state.selected_index,
+                        Some(index),
+                        format!("{}（保留前{}）", item.name, item.head),
+                    );
+                }
+            });
+        if ui.button("刷新").clicked() {
+            state.reload();
+        }
+    });
+    if let Some(error) = &state.error {
+        ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
+    }
+}
+
+fn pair_detail_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
+    ui.horizontal(|ui| {
+        ui.radio_value(&mut app.pair.detail_mode, PairDetailMode::None, "不显示cqp");
+        ui.radio_value(&mut app.pair.detail_mode, PairDetailMode::Every, "每组cqp");
+        ui.radio_value(&mut app.pair.detail_mode, PairDetailMode::Top, "有效cqp");
+    });
+    if app.pair.detail_mode == PairDetailMode::Every {
+        ui.horizontal(|ui| {
+            ui.label("cqp阈值");
+            ui.add(egui::TextEdit::singleline(&mut app.pair.detail_min).desired_width(72.0));
+        });
     }
 }
 
@@ -214,7 +311,7 @@ fn main_accuracy_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &mu
     });
 }
 
-fn namer_pf_metric_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
+fn namer_pf_metric_controls(ui: &mut egui::Ui, app: &mut OpenboxApp, show_highlight: bool) {
     let all_selected = app.namer_pf.metrics.iter().all(|metric| metric.screen && metric.file_output.enabled);
     let mut select_all = all_selected;
     if ui.checkbox(&mut select_all, "全选").changed() {
@@ -223,52 +320,65 @@ fn namer_pf_metric_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
             metric.file_output.enabled = select_all;
         }
     }
-    egui::Grid::new("namer_pf_metrics")
-        .num_columns(6)
-        .striped(true)
-        .spacing([10.0, 6.0])
-        .show(ui, |ui| {
-            ui.label("");
-            ui.label("屏幕");
-            ui.label("屏幕阈值");
-            ui.label("输出文件");
-            ui.label("文件阈值");
-            ui.label("路径");
+    egui::Grid::new(if show_highlight {
+        "namer_pf_metrics_more"
+    } else {
+        "namer_pf_metrics"
+    })
+    .num_columns(if show_highlight { 7 } else { 6 })
+    .striped(true)
+    .spacing([10.0, 6.0])
+    .show(ui, |ui| {
+        ui.label("");
+        ui.label("屏幕");
+        ui.label("屏幕阈值");
+        if show_highlight {
+            ui.label("高亮超强名字");
+        }
+        ui.label("输出文件");
+        ui.label("文件阈值");
+        ui.label("路径");
+        ui.end_row();
+
+        for metric in &mut app.namer_pf.metrics {
+            let label = metric.metric.label();
+            ui.label(label);
+            ui.checkbox(&mut metric.screen, "");
+            ui.add(egui::TextEdit::singleline(&mut metric.min_screen).desired_width(72.0));
+            if show_highlight {
+                ui.add(egui::TextEdit::singleline(&mut metric.highlight_delta).desired_width(72.0));
+            }
+            ui.checkbox(&mut metric.file_output.enabled, "");
+            ui.add(egui::TextEdit::singleline(&mut metric.min_file).desired_width(72.0));
+            ui.horizontal(|ui| {
+                if ui.button("选择").clicked()
+                    && let Some(path) = pick_named_output_file(&format!("tswn-openbox-namer-pf-{label}.txt"))
+                {
+                    metric.file_output.enabled = true;
+                    metric.file_output.path = Some(path);
+                }
+                if metric.file_output.path.is_some() && ui.button("清空").clicked() {
+                    metric.file_output.path = None;
+                }
+            });
             ui.end_row();
 
-            for metric in &mut app.namer_pf.metrics {
-                let label = metric.metric.label();
-                ui.label(label);
-                ui.checkbox(&mut metric.screen, "");
-                ui.add(egui::TextEdit::singleline(&mut metric.min_screen).desired_width(72.0));
-                ui.checkbox(&mut metric.file_output.enabled, "");
-                ui.add(egui::TextEdit::singleline(&mut metric.min_file).desired_width(72.0));
-                ui.horizontal(|ui| {
-                    if ui.button("选择").clicked()
-                        && let Some(path) = pick_named_output_file(&format!("tswn-openbox-namer-pf-{label}.txt"))
-                    {
-                        metric.file_output.enabled = true;
-                        metric.file_output.path = Some(path);
-                    }
-                    if metric.file_output.path.is_some() && ui.button("清空").clicked() {
-                        metric.file_output.path = None;
-                    }
-                });
-                ui.end_row();
-
+            ui.label("");
+            ui.label("");
+            ui.label("");
+            if show_highlight {
                 ui.label("");
-                ui.label("");
-                ui.label("");
-                ui.label("");
-                ui.label("");
-                let path_label = metric
-                    .file_output
-                    .path
-                    .as_ref()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|| "未选择输出文件".to_string());
-                ui.label(path_label);
-                ui.end_row();
             }
-        });
+            ui.label("");
+            ui.label("");
+            let path_label = metric
+                .file_output
+                .path
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "未选择输出文件".to_string());
+            ui.label(path_label);
+            ui.end_row();
+        }
+    });
 }

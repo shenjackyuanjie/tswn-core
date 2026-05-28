@@ -13,9 +13,11 @@ use std::time::Instant;
 
 use eframe::egui;
 
+use crate::backend::PairDetailMode;
 use crate::backend::{self, BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetricOptions, PairInput, ProgressEvent};
 
 use super::state::{CountMode, OpenboxApp};
+use super::target_presets::{load_selected_target_text, load_selected_teammate_text};
 use super::widgets::OptionalFileOutput;
 
 impl OpenboxApp {
@@ -93,6 +95,21 @@ impl OpenboxApp {
             } else {
                 None
             };
+            let highlight_delta = if metric.screen {
+                match parse_optional_f64_at_least(
+                    &metric.highlight_delta,
+                    &format!("{} 高亮超强名字", metric.metric.label()),
+                    0.0,
+                ) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        self.fail_before_start(err);
+                        return;
+                    }
+                }
+            } else {
+                None
+            };
             let output_file = match resolve_output_path(&metric.file_output) {
                 Ok(path) => path,
                 Err(err) => {
@@ -104,6 +121,7 @@ impl OpenboxApp {
                 metric: metric.metric,
                 screen: metric.screen,
                 min_screen,
+                highlight_delta,
                 output_file,
                 min_file,
             });
@@ -129,7 +147,11 @@ impl OpenboxApp {
     }
 
     pub(crate) fn start_batch_rate(&mut self) {
-        let target_text = match self.batch_rate.targets.read_all() {
+        let target_text = match read_target_text(
+            &self.batch_rate.targets,
+            &self.batch_rate.target_presets,
+            self.batch_rate.manual_targets,
+        ) {
             Ok(raw) => raw,
             Err(err) => {
                 self.fail_before_start(err);
@@ -164,6 +186,13 @@ impl OpenboxApp {
                 return;
             }
         };
+        let highlight_delta = match parse_optional_f64_at_least(&self.batch_rate.highlight_delta, "高亮超强名字", 0.0) {
+            Ok(value) => value,
+            Err(err) => {
+                self.fail_before_start(err);
+                return;
+            }
+        };
 
         self.begin_task();
         let (tx, rx) = mpsc::channel();
@@ -173,6 +202,8 @@ impl OpenboxApp {
             target_text,
             player_text,
             player_double_plus: self.batch_rate.double_plus,
+            show_matchups: self.batch_rate.show_matchups,
+            highlight_delta,
             output_mode: self.batch_rate.output.mode,
             output_file,
             options: CommonBenchOptions {
@@ -180,7 +211,6 @@ impl OpenboxApp {
                 threads: bench_threads(self.batch_rate.auto_threads, self.batch_rate.threads),
                 keep_rq: self.batch_rate.keep_rq,
                 verbose: false,
-                perf: false,
                 min_screen,
                 min_file,
                 wr_precision: self.batch_rate.output.precision.min(9),
@@ -195,7 +225,7 @@ impl OpenboxApp {
     }
 
     pub(crate) fn start_pair(&mut self) {
-        let target_text = match self.pair.targets.read_all() {
+        let target_text = match read_target_text(&self.pair.targets, &self.pair.target_presets, self.pair.manual_targets) {
             Ok(raw) => raw,
             Err(err) => {
                 self.fail_before_start(err);
@@ -209,12 +239,18 @@ impl OpenboxApp {
                 return;
             }
         };
-        let teammate_text = match self.pair.teammates.read_all() {
-            Ok(raw) => raw,
-            Err(err) => {
-                self.fail_before_start(err);
-                return;
-            }
+        let teammate_text =
+            match read_teammate_text(&self.pair.teammates, &self.pair.teammate_presets, self.pair.manual_teammates) {
+                Ok(raw) => raw,
+                Err(err) => {
+                    self.fail_before_start(err);
+                    return;
+                }
+            };
+        let head = if self.pair.manual_teammates {
+            self.pair.head
+        } else {
+            self.pair.teammate_presets.selected().map(|preset| preset.head).unwrap_or(self.pair.head)
         };
         let output_file = match self.pair.output.file_output.path() {
             Some(path) => Some(path),
@@ -237,6 +273,24 @@ impl OpenboxApp {
                 return;
             }
         };
+        let detail_min = if self.pair.detail_mode == PairDetailMode::Every {
+            match parse_optional_f64_in_range(&self.pair.detail_min, "cqp阈值", 0.0..=100.0) {
+                Ok(value) => value,
+                Err(err) => {
+                    self.fail_before_start(err);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+        let highlight_delta = match parse_optional_f64_at_least(&self.pair.highlight_delta, "高亮超强名字", 0.0) {
+            Ok(value) => value,
+            Err(err) => {
+                self.fail_before_start(err);
+                return;
+            }
+        };
 
         self.begin_task();
         let (tx, rx) = mpsc::channel();
@@ -246,7 +300,10 @@ impl OpenboxApp {
             target_text,
             player_text,
             teammate_text,
-            head: self.pair.head.max(1),
+            head: head.max(1),
+            detail_mode: self.pair.detail_mode,
+            detail_min,
+            highlight_delta,
             output_mode: self.pair.output.mode,
             output_file,
             options: CommonBenchOptions {
@@ -254,7 +311,6 @@ impl OpenboxApp {
                 threads: bench_threads(self.pair.auto_threads, self.pair.threads),
                 keep_rq: self.pair.keep_rq,
                 verbose: false,
-                perf: false,
                 min_screen,
                 min_file,
                 wr_precision: self.pair.output.precision.min(9),
@@ -278,6 +334,7 @@ impl OpenboxApp {
         self.rate_text = "--".to_string();
         self.eta_text = "--".to_string();
         self.log.clear();
+        self.highlight_lines.clear();
         self.status = "运行中".to_string();
     }
 
@@ -293,6 +350,7 @@ impl OpenboxApp {
         self.rx = None;
         self.status = "失败".to_string();
         self.log.clear();
+        self.highlight_lines.clear();
         self.append_log(&err);
     }
 
@@ -303,6 +361,9 @@ impl OpenboxApp {
                 match event {
                     ProgressEvent::Log(line) => {
                         self.append_log(&line);
+                    }
+                    ProgressEvent::HighlightLog(line) => {
+                        self.append_highlight_log(&line);
                     }
                     ProgressEvent::Progress { done, total } => {
                         self.done = done;
@@ -354,13 +415,21 @@ impl OpenboxApp {
         };
     }
 
-    pub(crate) fn append_log(&mut self, text: &str) {
+    pub(crate) fn append_log(&mut self, text: &str) { self.append_log_inner(text, false); }
+
+    pub(crate) fn append_highlight_log(&mut self, text: &str) { self.append_log_inner(text, true); }
+
+    fn append_log_inner(&mut self, text: &str, highlight_first_line: bool) {
         let trimmed = text.trim_end_matches('\n');
         if trimmed.is_empty() {
             return;
         }
         if !self.log.is_empty() && !self.log.ends_with('\n') {
             self.log.push('\n');
+        }
+        let first_line_index = self.log.lines().count();
+        if highlight_first_line {
+            self.highlight_lines.insert(first_line_index);
         }
         self.log.push_str(trimmed);
         self.log.push('\n');
@@ -378,6 +447,30 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
         Some(path) => Ok(Some(path)),
         None if output.enabled => Err("请先选择输出文件。".to_string()),
         None => Ok(None),
+    }
+}
+
+fn read_target_text(
+    manual_source: &super::source::TextSource,
+    presets: &super::target_presets::TargetPresetState,
+    manual_targets: bool,
+) -> Result<String, String> {
+    if manual_targets {
+        manual_source.read_all()
+    } else {
+        load_selected_target_text(presets)
+    }
+}
+
+fn read_teammate_text(
+    manual_source: &super::source::TextSource,
+    presets: &super::target_presets::TeammatePresetState,
+    manual_teammates: bool,
+) -> Result<String, String> {
+    if manual_teammates {
+        manual_source.read_all()
+    } else {
+        load_selected_teammate_text(presets)
     }
 }
 

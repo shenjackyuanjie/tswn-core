@@ -137,10 +137,11 @@ pub(crate) fn thread_controls(ui: &mut egui::Ui, auto_threads: &mut bool, thread
 }
 
 pub(crate) fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, rows: usize) {
-    egui::ScrollArea::vertical().id_salt(id).max_height(rows as f32 * 22.0).show(ui, |ui| {
+    egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 22.0).show(ui, |ui| {
         ui.add(
             egui::TextEdit::multiline(text)
                 .font(egui::TextStyle::Monospace)
+                .code_editor()
                 .desired_width(f32::INFINITY)
                 .desired_rows(rows),
         );

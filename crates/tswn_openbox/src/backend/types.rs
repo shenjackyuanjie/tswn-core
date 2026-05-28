@@ -10,6 +10,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 #[derive(Debug, Clone)]
 pub enum ProgressEvent {
     Log(String),
+    HighlightLog(String),
     Progress { done: usize, total: usize },
     Done(Result<String, String>),
 }
@@ -50,7 +51,6 @@ pub struct CommonBenchOptions {
     pub threads: Option<usize>,
     pub keep_rq: bool,
     pub verbose: bool,
-    pub perf: bool,
     pub min_screen: Option<f64>,
     pub min_file: Option<f64>,
     pub wr_precision: usize,
@@ -61,6 +61,7 @@ pub struct NamerPfMetricOptions {
     pub metric: NamerPfMetric,
     pub screen: bool,
     pub min_screen: Option<f64>,
+    pub highlight_delta: Option<f64>,
     pub output_file: Option<PathBuf>,
     pub min_file: Option<f64>,
 }
@@ -80,6 +81,8 @@ pub struct BatchRateInput {
     pub target_text: String,
     pub player_text: String,
     pub player_double_plus: bool,
+    pub show_matchups: bool,
+    pub highlight_delta: Option<f64>,
     pub output_mode: OutputMode,
     pub output_file: Option<PathBuf>,
     pub options: CommonBenchOptions,
@@ -92,8 +95,18 @@ pub struct PairInput {
     pub player_text: String,
     pub teammate_text: String,
     pub head: usize,
+    pub detail_mode: PairDetailMode,
+    pub detail_min: Option<f64>,
+    pub highlight_delta: Option<f64>,
     pub output_mode: OutputMode,
     pub output_file: Option<PathBuf>,
     pub options: CommonBenchOptions,
     pub cancel: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PairDetailMode {
+    None,
+    Every,
+    Top,
 }

@@ -6,7 +6,7 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tswn_core::win_rate::{WinRateTiming, prepared_win_rate, resolve_win_rate_workers};
 use tswn_core::{PreparedRunner, Runner};
@@ -30,11 +30,8 @@ impl BenchSummary {
 #[derive(Debug, Clone)]
 pub(crate) struct BatchRateSummary {
     pub(crate) avg: f64,
-    pub(crate) aggregate_rate: f64,
     pub(crate) wins: usize,
     pub(crate) total: usize,
-    pub(crate) timing: WinRateTiming,
-    pub(crate) elapsed: Duration,
     pub(crate) valid_matchups: usize,
     pub(crate) skipped_matchups: usize,
 }
@@ -52,11 +49,10 @@ pub(crate) fn bench_batch_rate_for_group(
     cancel: &AtomicBool,
     mut tick_target: impl FnMut(usize, &str),
 ) -> BatchRateSummary {
-    let started = Instant::now();
     let mut accumulated_rate = 0.0;
     let mut accumulated_wins = 0usize;
     let mut accumulated_total = 0usize;
-    let mut accumulated_timing = WinRateTiming::default();
+    let mut _accumulated_timing = WinRateTiming::default();
     let mut valid_matchups = 0usize;
     let mut skipped_matchups = 0usize;
 
@@ -98,7 +94,7 @@ pub(crate) fn bench_batch_rate_for_group(
                 accumulated_rate += summary.win_rate_percent();
                 accumulated_wins += summary.wins;
                 accumulated_total += summary.total;
-                accumulated_timing.merge(summary.timing);
+                _accumulated_timing.merge(summary.timing);
                 valid_matchups += 1;
             }
             Err(err) => {
@@ -122,14 +118,10 @@ pub(crate) fn bench_batch_rate_for_group(
     } else {
         0.0
     };
-    let aggregate_rate = accumulated_wins as f64 * 100.0 / accumulated_total.max(1) as f64;
     BatchRateSummary {
         avg,
-        aggregate_rate,
         wins: accumulated_wins,
         total: accumulated_total,
-        timing: accumulated_timing,
-        elapsed: started.elapsed(),
         valid_matchups,
         skipped_matchups,
     }

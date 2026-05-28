@@ -3457,6 +3457,8 @@ version = "0.2.0"
 dependencies = [
  "eframe",
  "rfd",
+ "serde",
+ "serde_json",
  "tswn_core",
 ]
 
