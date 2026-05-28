@@ -6,6 +6,7 @@
 - WSL / Linux `tswn_py` wheel
 - WSL / Linux `tswn-cli`
 - Windows `capi` / `cli`
+- Windows `tswn_openbox` GUI
 - 浏览器侧 `tswn_wasm` 包
 - 最终 `build_all` 聚合包
 
@@ -21,9 +22,10 @@
 - 仓库使用 `uv` 管理 Python 环境（`.venv` 由 `uv` 创建）
 - Windows 侧的 Python 构建/聚合脚本推荐用 `uv run scripts/...` 替代 `python scripts/...`
 - `scripts/build_all.py` 不会现场构建 Python wheel，只会收集 `crates/tswn_py/dist/` 中已经存在的产物
-- `scripts/build_all.py` 会现场构建当前平台的 `capi` / `cli`，并构建 `tswn_wasm` 浏览器包
+- `scripts/build_all.py` 会现场构建当前平台的 `capi` / `cli` / `tswn_openbox`，并构建 `tswn_wasm` 浏览器包
 - `scripts/build_all.py` 的 Windows CLI 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--cli-features`
-- 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `libtswn_capi.so`，聚合脚本也会一并收集
+- `scripts/build_all.py` 的 Windows Openbox 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--openbox-features`
+- 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `tswn_openbox` / `libtswn_capi.so`，聚合脚本也会一并收集
 - `tswn_wasm` 打包默认依赖 `wasm-bindgen-cli`，可通过 `cargo install wasm-bindgen-cli` 安装
 
 ## 推荐顺序
@@ -67,7 +69,19 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && car
 - 真正参与 CLI 构建的是 WSL 里的 Rust 工具链
 - 最终发布 CLI 默认启用 `mimalloc_alloc`；benchmark 口径仍不要带这个 feature
 
-### 4. 执行聚合打包
+### 4. 构建 WSL Openbox（如需 Linux GUI 产物）
+
+```powershell
+wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc"
+```
+
+说明：
+
+- `scripts/build_all.py` 会现场构建 Windows `tswn_openbox`
+- 这一步只用于提前准备 Linux `tswn_openbox`，存在时聚合脚本会一并收集
+- 如果只需要 Windows Openbox，可以跳过这一步
+
+### 5. 执行聚合打包
 
 ```powershell
 uv run scripts/build_all.py --release --clean
@@ -77,9 +91,10 @@ uv run scripts/build_all.py --release --clean
 
 - 现场构建 Windows `tswn_capi`
 - 现场构建 Windows `tswn-cli`
+- 现场构建 Windows `tswn_openbox`
 - 现场构建 `tswn_wasm` 浏览器包
 - 收集 `crates/tswn_py/dist/` 下已有的 wheel
-- 若存在 Linux `target/release/tswn-cli`，也会一起打进 bundle
+- 若存在 Linux `target/release/tswn-cli` / `target/release/tswn_openbox`，也会一起打进 bundle
 
 ## 产物位置
 
@@ -107,8 +122,8 @@ dist/all/
 当前 bundle 命名规则示例：
 
 ```text
-dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_bundle/
-dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_bundle.zip
+dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_openbox_0_3_0_bundle/
+dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_openbox_0_3_0_bundle.zip
 ```
 
 ### 聚合包内容
@@ -120,6 +135,11 @@ dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_bundle.zip
 - `cli/`
   - Windows `tswn-cli_alpha_*.exe`
   - 若已存在，也会额外收集 Linux `tswn-cli_alpha_*.bin`
+- `openbox/`
+  - Windows `tswn_openbox_alpha_*.exe`
+  - 若已存在，也会额外收集 Linux `tswn_openbox_alpha_*.bin`
+  - `changelog/`
+  - `tswn_openbox` 首次启动会在当前工作目录自动生成 `setting/` 默认预设目录
 - `py/`
   - 已有的 Windows / Linux wheel
   - `examples/`
@@ -141,8 +161,11 @@ dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_bundle.zip
 uv run scripts/build_py.py --clean
 wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && python scripts/build_py.py"
 wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc"
+wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc"
 uv run scripts/build_all.py --release --clean
 ```
+
+如果不需要 Linux Openbox GUI 产物，可以跳过第 4 条 `cargo build -p tswn_openbox` 的 WSL 命令。
 
 ### WSL / Linux 纯环境（仅构建 Linux 产物）
 
@@ -158,10 +181,13 @@ python scripts/build_py.py --clean
 # 构建 Linux CLI
 cargo build -p tswn_core --bin tswn-cli --release --features no_debug,mimalloc_alloc
 
+# 构建 Linux Openbox
+cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc
+
 # 构建 Linux capi
 cargo build -p tswn_capi --release
 
-# 聚合打包（Linux 下只构建 cli + 收集 py wheel；capi 需提前构建好）
+# 聚合打包（Linux 下会构建当前平台 cli/openbox/wasm，并收集 py wheel；capi 需提前构建好）
 python scripts/build_all.py --release --clean
 ```
 
@@ -187,7 +213,7 @@ uv run scripts/build_py.py
 
 ### 仅构建（或更新）聚合包
 
-如果 wheel 没变、只需要重新打包 capi + cli：
+如果 wheel 没变、只需要重新打包 capi + cli + openbox + wasm：
 
 ```powershell
 uv run scripts/build_all.py --release --clean
@@ -199,10 +225,17 @@ uv run scripts/build_all.py --release --clean
 uv run scripts/build_capi.py --release
 ```
 
+### 仅构建 Windows Openbox
+
+```powershell
+cargo build -p tswn_openbox --release --features no_debug,mimalloc_alloc
+```
+
 ## 备注
 
 - 如果只想更新聚合包，但 `py` wheel 没变，可以跳过前两步
-- 如果只想更新 Linux `cli` 被聚合收集的版本，可以只重跑第 3 步和第 4 步
+- 如果只想更新 Linux `cli` 被聚合收集的版本，可以只重跑第 3 步和第 5 步
+- 如果只想更新 Linux `openbox` 被聚合收集的版本，可以只重跑第 4 步和第 5 步
 - 若后续还需要把 Linux `capi` 一并放进聚合包，可以先在 WSL 中额外执行：
 
 ```powershell
@@ -213,9 +246,10 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && cargo build -p tswn_capi --rele
 
 当前构建产出版本：
 
-| 组件      | 版本  |
-| --------- | ----- |
-| tswn_core | 0.3.3 |
-| tswn_capi | 0.3.0 |
-| tswn_py   | 0.2.0 |
-| tswn_wasm | 0.2.3 |
+| 组件         | 版本  |
+| ------------ | ----- |
+| tswn_core    | 0.3.3 |
+| tswn_capi    | 0.3.0 |
+| tswn_py      | 0.2.0 |
+| tswn_wasm    | 0.2.3 |
+| tswn_openbox | 0.3.0 |

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-聚合打包脚本：一次性整理并压缩 `tswn_capi`、`tswn-cli`、现有 `tswn_py` 产物，以及浏览器侧 `tswn_wasm` 包。
+聚合打包脚本：一次性整理并压缩 `tswn_capi`、`tswn-cli`、`tswn_openbox`、现有 `tswn_py` 产物，以及浏览器侧 `tswn_wasm` 包。
 
 设计目标：
 1) `capi`：现场构建并打包
 2) `cli`：现场构建并打包
-3) `py`：不现场构建，只收集当前仓库里已存在的 Python 分发产物
-4) `wasm`：现场构建 `tswn_wasm`，并用 `wasm-bindgen` 生成浏览器可直接消费的包
-4) 最终输出一个 zip
+3) `openbox`：现场构建并打包
+4) `py`：不现场构建，只收集当前仓库里已存在的 Python 分发产物
+5) `wasm`：现场构建 `tswn_wasm`，并用 `wasm-bindgen` 生成浏览器可直接消费的包
+6) 最终输出一个 zip
 
 默认输出结构（示例）：
 
-dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle/
+dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_openbox_u_v_w_bundle/
   README.txt
   MANIFEST.txt
   capi/
@@ -26,6 +27,14 @@ dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle/
       tswn-cli
     README.txt
     MANIFEST.txt
+  openbox/
+    bin/
+      tswn_openbox_alpha_u_v_w.exe
+      tswn_openbox
+    changelog/
+      CHANGELOG.md
+    README.txt
+    MANIFEST.txt
   py/
     dist/
       *.whl
@@ -38,29 +47,31 @@ dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle/
       CHANGELOG.md
     README.txt
     MANIFEST.txt
-    wasm/
-        pkg/
-        raw/
-        examples/
-        changelog/
-            CHANGELOG.md
-        README.txt
-        MANIFEST.txt
+  wasm/
+    pkg/
+    raw/
+    examples/
+    changelog/
+      CHANGELOG.md
+    README.txt
+    MANIFEST.txt
 
 用法示例：
   python scripts/build_all.py
   python scripts/build_all.py --release
   python scripts/build_all.py --release --clean
   python scripts/build_all.py -o dist/all
-    python scripts/build_all.py --bundle-name tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_bundle_win_x64
+  python scripts/build_all.py --bundle-name tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_openbox_u_v_w_bundle_win_x64
   python scripts/build_all.py --skip-capi
   python scripts/build_all.py --skip-cli
+  python scripts/build_all.py --skip-openbox
 
 说明：
 - `py` 部分只打包现有产物，不调用 Python wheel 构建流程。
 - `capi` 部分优先复用 `scripts/build_capi.py`，以保证目录结构一致。
 - `wasm` 部分优先复用 `scripts/build_wasm.py`，以保证目录结构一致。
 - `cli` 部分直接执行 cargo build，然后把可执行文件及说明文件整理到结果目录。
+- `openbox` 部分直接执行 cargo build，然后把可执行文件及说明文件整理到结果目录。
 """
 
 from __future__ import annotations
@@ -80,17 +91,21 @@ SCRIPTS_DIR = ROOT / "scripts"
 CRATE_CAPI_DIR = ROOT / "crates" / "tswn_capi"
 CRATE_PY_DIR = ROOT / "crates" / "tswn_py"
 CRATE_WASM_DIR = ROOT / "crates" / "tswn_wasm"
+CRATE_OPENBOX_DIR = ROOT / "crates" / "tswn_openbox"
 CRATE_CORE_CARGO_TOML = ROOT / "crates" / "tswn_core" / "Cargo.toml"
 CRATE_CAPI_CARGO_TOML = CRATE_CAPI_DIR / "Cargo.toml"
 CRATE_PY_CARGO_TOML = CRATE_PY_DIR / "Cargo.toml"
 CRATE_WASM_CARGO_TOML = CRATE_WASM_DIR / "Cargo.toml"
+CRATE_OPENBOX_CARGO_TOML = CRATE_OPENBOX_DIR / "Cargo.toml"
 CORE_CHANGELOG = ROOT / "crates" / "tswn_core" / "CHANGELOG.md"
 CAPI_CHANGELOG = CRATE_CAPI_DIR / "CHANGELOG.md"
 PY_CHANGELOG = CRATE_PY_DIR / "CHANGELOG.md"
 WASM_CHANGELOG = CRATE_WASM_DIR / "CHANGELOG.md"
+OPENBOX_CHANGELOG = CRATE_OPENBOX_DIR / "CHANGELOG.md"
 UPDATE_DOCS_DIR = ROOT / "docs" / "update"
 LINUX_CAPI_ARTIFACT = ROOT / "target" / "release" / "libtswn_capi.so"
 LINUX_CLI_ARTIFACT = ROOT / "target" / "release" / "tswn-cli"
+LINUX_OPENBOX_ARTIFACT = ROOT / "target" / "release" / "tswn_openbox"
 
 DEFAULT_OUTPUT_DIR = ROOT / "dist" / "all"
 
@@ -137,7 +152,7 @@ def copy_tree_files(src_dir: Path, dst_dir: Path) -> None:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="构建并聚合打包 capi / cli / 现有 py 产物 / wasm 包",
+        description="构建并聚合打包 capi / cli / openbox / 现有 py 产物 / wasm 包",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
@@ -150,12 +165,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--bundle-name",
         default=None,
-        help="bundle 目录名与 zip 基名（默认：自动按 core/capi/py 版本生成）",
+        help="bundle 目录名与 zip 基名（默认：自动按 core/capi/py/wasm/openbox 版本生成）",
     )
     p.add_argument(
         "--release",
         action="store_true",
-        help="对 capi/cli 使用 release 构建（默认 debug）",
+        help="对 capi/cli/openbox/wasm 使用 release 构建（默认 debug）",
     )
     p.add_argument(
         "--clean",
@@ -178,6 +193,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="跳过 cli 打包",
     )
     p.add_argument(
+        "--skip-openbox",
+        action="store_true",
+        help="跳过 openbox 打包",
+    )
+    p.add_argument(
         "--skip-py",
         action="store_true",
         help="跳过 py 打包",
@@ -196,6 +216,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--cli-features",
         default="no_debug,mimalloc_alloc",
         help="CLI 构建 features，逗号分隔；传空字符串表示不追加 features（默认：no_debug,mimalloc_alloc）",
+    )
+    p.add_argument(
+        "--openbox-features",
+        default="no_debug,mimalloc_alloc",
+        help="Openbox 构建 features，逗号分隔；传空字符串表示不追加 features（默认：no_debug,mimalloc_alloc）",
     )
     p.add_argument(
         "--cargo",
@@ -219,6 +244,13 @@ def cli_binary_candidates() -> list[str]:
     return ["tswn-cli", "tswn_cli"]
 
 
+def openbox_binary_candidates() -> list[str]:
+    system = platform.system().lower()
+    if system == "windows":
+        return ["tswn_openbox.exe", "tswn-openbox.exe"]
+    return ["tswn_openbox", "tswn-openbox"]
+
+
 def find_cli_binary(out_dir: Path) -> Path:
     for name in cli_binary_candidates():
         candidate = out_dir / name
@@ -234,7 +266,32 @@ def find_cli_binary(out_dir: Path) -> Path:
     raise FileNotFoundError(f"未找到 tswn-cli 构建产物，已检查目录：{out_dir}")
 
 
+def find_openbox_binary(out_dir: Path) -> Path:
+    for name in openbox_binary_candidates():
+        candidate = out_dir / name
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+    patterns = ["*tswn_openbox*", "*tswn-openbox*"]
+    for pattern in patterns:
+        for candidate in sorted(out_dir.glob(pattern)):
+            if candidate.is_file():
+                return candidate
+
+    raise FileNotFoundError(f"未找到 tswn_openbox 构建产物，已检查目录：{out_dir}")
+
+
 def cli_support_artifacts(binary: Path) -> list[Path]:
+    system = platform.system().lower()
+    found: list[Path] = []
+    if system == "windows":
+        pdb = binary.with_suffix(".pdb")
+        if pdb.exists() and pdb.is_file():
+            found.append(pdb)
+    return found
+
+
+def openbox_support_artifacts(binary: Path) -> list[Path]:
     system = platform.system().lower()
     found: list[Path] = []
     if system == "windows":
@@ -271,6 +328,10 @@ def tswn_wasm_version() -> str:
     return _cargo_package_version(CRATE_WASM_CARGO_TOML)
 
 
+def tswn_openbox_version() -> str:
+    return _cargo_package_version(CRATE_OPENBOX_CARGO_TOML)
+
+
 def _version_token(version: str) -> str:
     return version.replace(".", "_").replace("-", "_")
 
@@ -281,6 +342,7 @@ def default_bundle_name() -> str:
         f"_capi_{_version_token(tswn_capi_version())}"
         f"_py_{_version_token(tswn_py_version())}"
         f"_wasm_{_version_token(tswn_wasm_version())}"
+        f"_openbox_{_version_token(tswn_openbox_version())}"
         "_bundle"
     )
 
@@ -289,6 +351,12 @@ def bundled_cli_binary_name(src_binary: Path) -> str:
     version = _version_token(tswn_core_version())
     suffix = ".exe" if src_binary.suffix.lower() == ".exe" else ".bin"
     return f"tswn-cli_alpha_{version}{suffix}"
+
+
+def bundled_openbox_binary_name(src_binary: Path) -> str:
+    version = _version_token(tswn_openbox_version())
+    suffix = ".exe" if src_binary.suffix.lower() == ".exe" else ".bin"
+    return f"tswn_openbox_alpha_{version}{suffix}"
 
 
 def package_component_changelog(dst_dir: Path, changelog_src: Path, update_doc_src: Path | None = None) -> list[Path]:
@@ -318,6 +386,18 @@ def collect_existing_linux_cli_artifacts(dst_dir: Path, copied_support: list[Pat
 
     dst = bin_dir / bundled_cli_binary_name(LINUX_CLI_ARTIFACT)
     copy_file(LINUX_CLI_ARTIFACT, dst)
+    copied_support.append(dst)
+
+
+def collect_existing_linux_openbox_artifacts(dst_dir: Path, copied_support: list[Path]) -> None:
+    if not LINUX_OPENBOX_ARTIFACT.exists():
+        return
+
+    bin_dir = dst_dir / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    dst = bin_dir / bundled_openbox_binary_name(LINUX_OPENBOX_ARTIFACT)
+    copy_file(LINUX_OPENBOX_ARTIFACT, dst)
     copied_support.append(dst)
 
 
@@ -370,6 +450,46 @@ def build_cli(
     return bundled_binary, copied_support
 
 
+def build_openbox(
+    dst_dir: Path,
+    release: bool,
+    target: str | None,
+    openbox_features: str,
+    extra_cargo: list[str],
+) -> tuple[Path, list[Path]]:
+    out_dir = cargo_profile_dir(release=release, target=target)
+
+    cmd: list[str] = ["cargo", "build", "-p", "tswn_openbox"]
+    if release:
+        cmd.append("--release")
+    if target:
+        cmd += ["--target", target]
+    if openbox_features.strip():
+        cmd += ["--features", openbox_features]
+    if extra_cargo:
+        cmd += extra_cargo
+
+    run(cmd, cwd=ROOT)
+
+    binary = find_openbox_binary(out_dir)
+    support = openbox_support_artifacts(binary)
+
+    bin_dir = dst_dir / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    bundled_binary = bin_dir / bundled_openbox_binary_name(binary)
+    copy_file(binary, bundled_binary)
+    copied_support: list[Path] = []
+    for item in support:
+        dst = bin_dir / item.name
+        copy_file(item, dst)
+        copied_support.append(dst)
+
+    collect_existing_linux_openbox_artifacts(dst_dir, copied_support)
+
+    return bundled_binary, copied_support
+
+
 def write_cli_readme(dst_dir: Path, binary_path: Path, support_files: list[Path]) -> None:
     lines = [
         "# tswn-cli package",
@@ -412,6 +532,68 @@ def write_cli_manifest(
 ) -> None:
     lines = [
         "# tswn-cli manifest",
+        "",
+        f"profile={'release' if release else 'debug'}",
+        f"target={target or ''}",
+        f"platform={platform.platform()}",
+        "",
+        "[bin]",
+        binary_path.name,
+        "",
+        "[support]",
+    ]
+    if support_files:
+        lines.extend(p.name for p in support_files)
+    else:
+        lines.append("(none)")
+
+    path = dst_dir / "MANIFEST.txt"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"[write] {path}")
+
+
+def write_openbox_readme(dst_dir: Path, binary_path: Path, support_files: list[Path]) -> None:
+    lines = [
+        "# tswn_openbox package",
+        "",
+        "本目录由 `scripts/build_all.py` 生成。",
+        "",
+        "## 内容",
+        "",
+        f"- 当前平台可执行文件：`bin/{binary_path.name}`",
+    ]
+    for item in support_files:
+        lines.append(f"- 附带产物：`bin/{item.name}`")
+
+    lines += [
+        "",
+        "## 运行",
+        "",
+        f"- 直接运行 `bin/{binary_path.name}`。",
+        "- `tswn_openbox` 是本地 GUI 面板，用来把常用 `tswn-cli` 工作流做成点击即用的界面。",
+        "- 首次启动时会在当前工作目录下自动创建 `setting/` 默认预设目录。",
+        "",
+        "## 说明",
+        "",
+        "- 聚合包会现场构建当前平台的 Openbox，并在存在时额外收集已有的 Linux `tswn_openbox` 二进制。",
+        "- Windows 与 Linux 产物会一起放在 `openbox/bin/` 下，便于统一分发。",
+        "",
+    ]
+
+    path = dst_dir / "README.txt"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"[write] {path}")
+
+
+def write_openbox_manifest(
+    dst_dir: Path,
+    release: bool,
+    target: str | None,
+    binary_path: Path,
+    support_files: list[Path],
+) -> None:
+    lines = [
+        "# tswn_openbox manifest",
         "",
         f"profile={'release' if release else 'debug'}",
         f"target={target or ''}",
@@ -577,6 +759,10 @@ def write_py_manifest(dst_dir: Path, source_hits: list[Path]) -> None:
 
 
 def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) -> None:
+    system = platform.system().lower()
+    cli_binary_name = bundled_cli_binary_name(Path("tswn-cli.exe" if system == "windows" else "tswn-cli"))
+    openbox_binary_name = bundled_openbox_binary_name(Path("tswn_openbox.exe" if system == "windows" else "tswn_openbox"))
+
     lines = [
         "# tswn bundle",
         "",
@@ -588,6 +774,7 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         f"- `tswn_capi`: `{tswn_capi_version()}`",
         f"- `tswn_py`: `{tswn_py_version()}`",
         f"- `tswn_wasm`: `{tswn_wasm_version()}`",
+        f"- `tswn_openbox`: `{tswn_openbox_version()}`",
         "",
         "## 包含内容",
         "",
@@ -614,15 +801,16 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         "",
         "## 主要产物",
         "",
-        f"- CLI: `cli/bin/{bundled_cli_binary_name(Path('tswn-cli'))}`、可选的 Linux `cli/bin/tswn-cli`，以及 `cli/changelog/`",
+        f"- CLI: `cli/bin/{cli_binary_name}`、可选的 Linux `cli/bin/tswn-cli_alpha_*.bin`，以及 `cli/changelog/`",
         "- C-API: `capi/include/tswn_capi.h`、`capi/lib/`（包含 Windows DLL、Windows staticlib `.lib` 与现有 Linux `.so`）以及 `capi/changelog/`",
+        f"- Openbox: `openbox/bin/{openbox_binary_name}`、可选的 Linux `openbox/bin/tswn_openbox_alpha_*.bin`，以及 `openbox/changelog/`",
         "- Python: `py/dist/*.whl`、`py/examples/` 与 `py/changelog/`",
         "- WASM: `wasm/pkg/tswn_wasm.js`、`wasm/pkg/tswn_wasm_bg.wasm`、`wasm/examples/` 与 `wasm/changelog/`",
         "",
         "## 说明",
         "",
-        "- `capi/`、`cli/` 与 `wasm/` 可以现场构建。",
-        "- 若仓库里已经存在 Linux `so` / `tswn-cli` 产物，聚合包也会一并收集。",
+        "- `capi/`、`cli/`、`openbox/` 与 `wasm/` 可以现场构建。",
+        "- 若仓库里已经存在 Linux `so` / `tswn-cli` / `tswn_openbox` 产物，聚合包也会一并收集。",
         "- `py/` 只收集现有产物，不现场构建。",
         "- `wasm/` 依赖本机可用的 `wasm-bindgen-cli`。",
         "- 最终 zip 为整个 bundle 目录的压缩包。",
@@ -754,6 +942,28 @@ def main(argv: list[str]) -> int:
             support_files=support_files,
         )
         enabled.append("cli")
+
+    if args.skip_openbox:
+        skipped.append("openbox")
+    else:
+        openbox_dir = bundle_dir / "openbox"
+        binary_path, support_files = build_openbox(
+            dst_dir=openbox_dir,
+            release=args.release,
+            target=args.target,
+            openbox_features=args.openbox_features,
+            extra_cargo=args.cargo,
+        )
+        package_component_changelog(openbox_dir, changelog_src=OPENBOX_CHANGELOG)
+        write_openbox_readme(openbox_dir, binary_path=binary_path, support_files=support_files)
+        write_openbox_manifest(
+            openbox_dir,
+            release=args.release,
+            target=args.target,
+            binary_path=binary_path,
+            support_files=support_files,
+        )
+        enabled.append("openbox")
 
     if args.skip_py:
         skipped.append("py")
