@@ -1,7 +1,7 @@
 [package]
 name = "tswn_openbox"
 description = "A simple interactive panel for common tswn tools"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [dependencies]
@@ -9,7 +9,7 @@ eframe = "0.34.2"
 rfd = "0.17.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tswn_core = { path = "../tswn_core" }
+tswn_core = { path = "../tswn_core", features = ["no_debug"] }
 
 [features]
 default = []
