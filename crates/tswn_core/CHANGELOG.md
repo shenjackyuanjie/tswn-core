@@ -7,6 +7,7 @@
 - `to-diy --minions` 完善 shadow / summon / zombie 模板导出，使 DIY/OL 输出能更完整地还原战斗衍生体属性和技能。
 - 调整 summon 模板技能格式：`summon.skills` 现在使用普通 JSON object，两个火球分别命名为 `sklfire1` / `sklfire2`，自爆为 `sklexplode`，字段顺序即行动顺序。
 - 移除旧 summon `skills` 数组格式与 `skill_order` 字段解析；直接使用 object 顺序表达行动顺序，降低重复状态和重复技能名带来的歧义。
+- 收紧 summon 模板技能名解析：`summon.skills` 只接受 `sklfire1` / `sklfire2` / `sklexplode` 三个 `skl` 槽位名，旧 `sklfire` / `fire1` / `explode` 等别名不再兼容；`to-diy --minions` 会省略 0 熟练度使魔技能，但内部固定槽位仍保留，吞噬使魔时继续按固定槽位继承等级。
 
 ### CLI
 

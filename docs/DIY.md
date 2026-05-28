@@ -269,14 +269,14 @@ ol:{
   "skills":{"sklsummon":10},
   "summon":{
     "attrs":[36,86,56,55,36,89,88,89],
-    "skills":{"sklexplode":0,"sklfire2":4,"sklfire1":"2*14"},
+    "skills":{"sklfire2":4,"sklfire1":"2*14"},
     "reuse_skills_on_recast":true,
     "inherit_owner_def_res":true
   }
 }
 ```
 
-`summon.skills` 不再支持旧数组格式，也不再使用 `skill_order` 字段；如果需要调整行动顺序，直接调整 object 中 `sklfire1` / `sklfire2` / `sklexplode` 的排列顺序。
+`summon.skills` 只接受 `sklfire1` / `sklfire2` / `sklexplode` 三个 `skl` 槽位名；旧的 `sklfire`、`fire1`、`explode` 等别名会被忽略。0 熟练度技能会在导出时省略；即使省略 `sklexplode`，内部固定槽位仍保留为 `[sklfire1, sklfire2, sklexplode]`，吞噬使魔时仍按固定槽位继承等级。`summon.skills` 不再支持旧数组格式，也不再使用 `skill_order` 字段；如果需要调整行动顺序，直接调整 object 中 `sklfire1` / `sklfire2` / `sklexplode` 的排列顺序。
 
 #### 3. 批量配置（大数据场景）
 

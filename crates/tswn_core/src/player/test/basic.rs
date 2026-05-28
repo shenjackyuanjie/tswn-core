@@ -494,9 +494,10 @@ fn ol_export_with_minions_includes_spawn_templates() {
     assert!(exported.contains("\"shadow\":{\"attrs\":"));
     assert!(exported.contains("\"skills\":{\"sklpossess\":\"2*"));
     assert!(exported.contains("\"summon\":{\"attrs\":"));
-    assert!(exported.contains("\"sklfire1\":"));
-    assert!(exported.contains("\"sklfire2\":"));
-    assert!(exported.contains("\"sklexplode\":"));
+    assert!(!exported.contains("\"sklexplode\":0"));
+    assert!(!exported.contains("\"sklfire\":"));
+    assert!(!exported.contains("\"fire1\":"));
+    assert!(!exported.contains("\"explode\":"));
     assert!(exported.contains("\"zombie\":{\"attrs\":"));
     assert!(exported.contains("\"zombie\":{\"attrs\":") && exported.contains("\"skills\":{}"));
 
@@ -510,7 +511,7 @@ fn ol_export_with_minions_includes_spawn_templates() {
 #[test]
 fn ol_export_preserves_fixed_summon_overlay_attrs() {
     let storage = Storage::new_arc();
-    let raw = r#"owner@team+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklsummon":20},"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire":12}}}"#;
+    let raw = r#"owner@team+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklsummon":20},"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire1":12}}}"#;
     let mut player = Player::new_from_namerena_raw(raw.to_string(), storage).unwrap();
     player.build();
 

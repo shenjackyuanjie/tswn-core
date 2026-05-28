@@ -752,6 +752,9 @@ impl Player {
             let Some(skill) = self.skills.store.get(skill_key) else {
                 continue;
             };
+            if skill.level() == 0 {
+                continue;
+            }
             let name = summon_skill_name_for_export(*skill_key, skill);
             if !first {
                 skills.push(',');

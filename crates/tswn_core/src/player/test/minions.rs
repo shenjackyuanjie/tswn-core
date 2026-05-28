@@ -246,6 +246,63 @@ fn summon_merge_uses_fixed_skill_slots() {
 }
 
 #[test]
+fn diy_summon_merge_keeps_fixed_slots_when_zero_skill_is_omitted() {
+    let storage = Storage::new_arc();
+    let raw = r#"summoner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire1":5,"sklfire2":7}}}"#;
+    let mut summoner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
+    summoner.build();
+    let summoner_id = storage.just_insert_player(summoner);
+
+    let mut merge_owner = Player::new_from_namerena_raw("merge-owner".to_string(), storage.clone()).unwrap();
+    merge_owner.build();
+    let merge_owner_id = storage.just_insert_player(merge_owner);
+
+    {
+        let owner_mut = storage.just_get_player_mut(merge_owner_id).unwrap();
+        owner_mut.skills.skill_by_id_mut(0).set_level(0);
+        owner_mut.skills.skill_by_id_mut(1).set_level(0);
+        owner_mut.skills.skill_by_id_mut(2).set_level(0);
+        owner_mut.skills.update_proc();
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = pending.into_iter().next().unwrap().player;
+    assert_eq!(summoned.skills.slot_skill, vec![0, 1, 2]);
+    assert_eq!(summoned.skills.skill, vec![0, 1]);
+    assert_eq!(summoned.skills.skill_by_id(0).level(), 5);
+    assert_eq!(summoned.skills.skill_by_id(1).level(), 7);
+    assert_eq!(summoned.skills.skill_by_id(2).level(), 0);
+    let summoned_id = storage.just_insert_player(summoned);
+
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            summoned_id,
+            (merge_owner_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let owner_after = storage.get_player(&merge_owner_id).unwrap();
+    assert_eq!(owner_after.skills.skill_by_id(0).level(), 5);
+    assert_eq!(owner_after.skills.skill_by_id(1).level(), 7);
+    assert_eq!(owner_after.skills.skill_by_id(2).level(), 0);
+}
+
+#[test]
 fn merge_inherits_levels_by_fixed_slot_even_when_runtime_kind_differs() {
     let storage = Storage::new_arc();
     let mut owner = Player::new_from_namerena_raw("owner".to_string(), storage.clone()).unwrap();
@@ -582,6 +639,35 @@ fn ol_overlay_customizes_summon_minion_attrs_and_skills() {
     assert_eq!(summoned.skills.skill, vec![1, 2, 0]);
     assert!(summoned.skills.store.contains_key(&255));
     assert!(summoned.skills.is_diy);
+}
+
+#[test]
+fn summon_overlay_rejects_legacy_skill_names() {
+    let storage = Storage::new_arc();
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire":12,"fire1":8,"explode":3}}}"#;
+    let mut owner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = &pending[0].player;
+    assert_eq!(summoned.skills.slot_skill, vec![0, 1, 2]);
+    assert!(summoned.skills.skill.is_empty());
+    assert_eq!(summoned.skills.skill_by_id(0).level(), 0);
+    assert_eq!(summoned.skills.skill_by_id(1).level(), 0);
+    assert_eq!(summoned.skills.skill_by_id(2).level(), 0);
 }
 
 #[test]

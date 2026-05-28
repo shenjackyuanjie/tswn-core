@@ -167,10 +167,11 @@ fn apply_summon_skill_overlay(player: &mut Player, skill_levels: &[(String, Skil
 }
 
 fn summon_skill_key_from_overlay(name: &str) -> Option<usize> {
-    match normalize_minion_skill_name(name).as_str() {
-        "fire1" => Some(0),
-        "fire2" => Some(1),
-        "explode" | "selfdestruct" | "self_destruct" | "summonexplode" | "鑷垎" => Some(2),
+    let name = name.trim().to_ascii_lowercase();
+    match name.as_str() {
+        "sklfire1" => Some(0),
+        "sklfire2" => Some(1),
+        "sklexplode" => Some(2),
         _ => None,
     }
 }
