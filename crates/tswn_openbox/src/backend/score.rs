@@ -134,13 +134,13 @@ pub fn namer_pf_score(
     n: usize,
     threads: Option<usize>,
     eval_rq: f64,
-) -> u64 {
+) -> f64 {
     let mut target_group = base_group.to_vec();
     if duplicate {
         target_group.extend(base_group.iter().cloned());
     }
     let summary = run_bench_score_inner(&target_group, modifier, n, threads, eval_rq);
-    (summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64).round() as u64
+    summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64
 }
 
 fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {

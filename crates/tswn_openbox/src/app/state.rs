@@ -97,6 +97,7 @@ pub struct NamerPfState {
     pub auto_threads: bool,
     pub threads: usize,
     pub keep_rq: bool,
+    pub precision: usize,
     pub metrics: Vec<NamerPfMetricState>,
     pub skill_board: NamerPfSkillBoardState,
 }
@@ -125,6 +126,7 @@ impl Default for NamerPfState {
             auto_threads: true,
             threads: 0,
             keep_rq: false,
+            precision: 0,
             metrics: NamerPfMetric::ALL
                 .into_iter()
                 .map(|metric| NamerPfMetricState {

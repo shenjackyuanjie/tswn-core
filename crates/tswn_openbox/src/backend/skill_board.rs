@@ -25,7 +25,7 @@ pub struct SkillBoardThreshold {
 #[derive(Debug, Clone)]
 pub struct SkillBoardLine {
     pub title: String,
-    pub score: u64,
+    pub score: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -78,10 +78,10 @@ fn push_metric_line(
     lines: &mut Vec<SkillBoardLine>,
     skill: &BuiltSkill,
     metric_label: &'static str,
-    score: u64,
+    score: f64,
     threshold: Option<u64>,
 ) {
-    if threshold.is_some_and(|limit| score >= limit) {
+    if threshold.is_some_and(|limit| score >= limit as f64) {
         lines.push(SkillBoardLine {
             title: format!("{}{}", skill.cn_name, metric_label),
             score,
@@ -91,7 +91,7 @@ fn push_metric_line(
 
 fn push_all_line(lines: &mut Vec<SkillBoardLine>, skill: &BuiltSkill, scores: &NamerPfScores, threshold: Option<u64>) {
     if threshold.is_some_and(|limit| {
-        scores.sum >= limit && scores.pp >= 8000 && scores.pd >= 9000 && scores.qp >= 6000 && scores.qd >= 7000
+        scores.sum >= limit as f64 && scores.pp >= 8000.0 && scores.pd >= 9000.0 && scores.qp >= 6000.0 && scores.qd >= 7000.0
     }) {
         lines.push(SkillBoardLine {
             title: format!("{}全能", skill.cn_name),

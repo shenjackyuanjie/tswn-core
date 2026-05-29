@@ -147,6 +147,7 @@ impl OpenboxApp {
             count: bench_count(self.namer_pf.count_mode, self.namer_pf.accuracy, self.namer_pf.count),
             threads: bench_threads(self.namer_pf.auto_threads, self.namer_pf.threads),
             keep_rq: self.namer_pf.keep_rq,
+            precision: self.namer_pf.precision.min(9),
             metrics,
             skill_board: NamerPfSkillBoardOptions {
                 screen: self.namer_pf.skill_board.screen,

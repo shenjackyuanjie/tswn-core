@@ -130,6 +130,10 @@ impl OpenboxApp {
             );
             thread_controls(ui, &mut self.namer_pf.auto_threads, &mut self.namer_pf.threads);
             ui.checkbox(&mut self.namer_pf.keep_rq, "不低估短号");
+            ui.horizontal(|ui| {
+                ui.label("保留小数点后 X 位");
+                ui.add(egui::DragValue::new(&mut self.namer_pf.precision).range(0..=9).speed(1));
+            });
         });
         section(ui, "评分项", |ui| {
             namer_pf_metric_controls_clean(ui, self, true);

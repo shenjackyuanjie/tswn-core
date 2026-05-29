@@ -13,7 +13,9 @@ use std::time::Instant;
 use tswn_core::engine::storage::Storage;
 use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
 
-use super::format::{format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log};
+use super::format::{
+    format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
+};
 use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
 use super::score::{bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
@@ -129,6 +131,7 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
 
     let n = input.count.max(1);
     let eval_rq = eval_rq(input.keep_rq);
+    let precision = input.precision.min(9);
     let total = groups.len();
     let needs_skill_board_scores = skill_board_config.is_some();
     let needs_sum = metric_enabled(&input.metrics, NamerPfMetric::Sum);
@@ -145,22 +148,22 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
         let pp = if needs_pp {
             namer_pf_score(group, "\u{0002}", false, n, input.threads, eval_rq)
         } else {
-            0
+            0.0
         };
         let pd = if needs_pd {
             namer_pf_score(group, "\u{0002}", true, n, input.threads, eval_rq)
         } else {
-            0
+            0.0
         };
         let qp = if needs_qp {
             namer_pf_score(group, "!", false, n, input.threads, eval_rq)
         } else {
-            0
+            0.0
         };
         let qd = if needs_qd {
             namer_pf_score(group, "!", true, n, input.threads, eval_rq)
         } else {
-            0
+            0.0
         };
         let scores = NamerPfScores {
             pp,
@@ -173,17 +176,18 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
 
         for (metric, output) in input.metrics.iter().zip(outputs.iter_mut()) {
             let score = scores.get(metric.metric);
-            if metric.min_screen.is_none_or(|limit| score as f64 >= limit) && metric.screen {
-                let line = format!("{} {}:{}", label, metric.metric.label(), score);
-                if should_highlight(score as f64, metric.min_screen, metric.highlight_delta) {
+            if metric.min_screen.is_none_or(|limit| score >= limit) && metric.screen {
+                let score_text = format_rate(score, precision);
+                let line = format!("{} {}:{}", label, metric.metric.label(), score_text);
+                if should_highlight(score, metric.min_screen, metric.highlight_delta) {
                     send(ProgressEvent::HighlightLog(line));
                 } else {
                     send(ProgressEvent::Log(line));
                 }
             }
-            if metric.min_file.is_none_or(|limit| score as f64 >= limit)
+            if metric.min_file.is_none_or(|limit| score >= limit)
                 && let Some(output) = output.as_mut()
-                && let Err(err) = writeln!(output, "{} {}", score, label)
+                && let Err(err) = writeln!(output, "{} {}", format_rate(score, precision), label)
             {
                 send(ProgressEvent::Done(Err(format!("写入输出文件失败: {err}"))));
                 return;
@@ -191,11 +195,12 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
         }
         if let Some(config) = &skill_board_config {
             for line in evaluate_skill_board(group, &scores, config) {
+                let score_text = format_rate(line.score, precision);
                 if input.skill_board.screen {
-                    send(ProgressEvent::SkillBoardLog(format!("{} {} {}", line.title, line.score, label)));
+                    send(ProgressEvent::SkillBoardLog(format!("{} {} {}", line.title, score_text, label)));
                 }
                 if let Some(output) = skill_board_output.as_mut()
-                    && let Err(err) = writeln!(output, "{} {} {}", line.title, line.score, label)
+                    && let Err(err) = writeln!(output, "{} {} {}", line.title, score_text, label)
                 {
                     send(ProgressEvent::Done(Err(format!("写入输出文件失败: {err}"))));
                     return;
@@ -233,15 +238,15 @@ fn metric_enabled(metrics: &[super::types::NamerPfMetricOptions], metric: NamerP
 }
 
 pub struct NamerPfScores {
-    pub pp: u64,
-    pub pd: u64,
-    pub qp: u64,
-    pub qd: u64,
-    pub sum: u64,
+    pub pp: f64,
+    pub pd: f64,
+    pub qp: f64,
+    pub qd: f64,
+    pub sum: f64,
 }
 
 impl NamerPfScores {
-    fn get(&self, metric: NamerPfMetric) -> u64 {
+    fn get(&self, metric: NamerPfMetric) -> f64 {
         match metric {
             NamerPfMetric::Pp => self.pp,
             NamerPfMetric::Pd => self.pd,

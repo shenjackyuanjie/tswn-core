@@ -79,6 +79,7 @@ pub struct NamerPfInput {
     pub count: usize,
     pub threads: Option<usize>,
     pub keep_rq: bool,
+    pub precision: usize,
     pub metrics: Vec<NamerPfMetricOptions>,
     pub skill_board: NamerPfSkillBoardOptions,
     pub cancel: Arc<AtomicBool>,
