@@ -1,0 +1,262 @@
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f5f5;
+  color: #222;
+}
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card, .lane-card {
+  background: white;
+  border-radius: 12px;
+  padding: 18px;
+  margin: 16px 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+
+.lane-card {
+  padding: 12px;
+}
+
+textarea, input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+button {
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #222;
+  color: white;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+button:hover {
+  opacity: 0.86;
+}
+
+pre {
+  white-space: pre-wrap;
+  background: #f1f1f1;
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 12px;
+}
+
+td, th {
+  border-bottom: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #ddd;
+  margin: 0 8px;
+}
+
+.badge.ready { background: #d6f5d6; }
+.badge.running, .badge.queued { background: #fff1b8; }
+.badge.waiting { background: #e8e8e8; }
+.badge.error { background: #ffd6d6; }
+
+.progress {
+  margin-top: 8px;
+  padding: 8px;
+  background: #f6f6f6;
+  border-radius: 8px;
+  font-size: 14px;
+}
+/* Result table: let Name width follow the longest name, and keep Score right next to it. */
+.score-table {
+  width: auto;
+  max-width: 100%;
+  table-layout: auto;
+  display: inline-table;
+}
+
+.score-table th,
+.score-table td {
+  white-space: nowrap;
+}
+
+.score-table .name-col,
+.score-table .name-cell {
+  width: auto;
+}
+
+.score-table .score-col,
+.score-table .score-cell {
+  width: 1%;
+  text-align: right;
+  padding-left: 24px;
+}
+
+#results {
+  overflow-x: auto;
+}
+
+
+.score-table .odds-col,
+.score-table .odds-cell {
+  width: 1%;
+  text-align: right;
+  padding-left: 18px;
+}
+
+
+/* v18 result order: Rank / Score / Odds / Name */
+.score-table {
+  width: auto;
+  max-width: 100%;
+  table-layout: auto;
+  display: inline-table;
+}
+
+.score-table th,
+.score-table td {
+  white-space: nowrap;
+}
+
+.score-table .score-col,
+.score-table .score-cell,
+.score-table .odds-col,
+.score-table .odds-cell {
+  width: 1%;
+  text-align: right;
+}
+
+.score-table .score-cell,
+.score-table .odds-cell {
+  padding-right: 18px;
+}
+
+.score-table .name-col,
+.score-table .name-cell {
+  width: auto;
+}
+
+#results {
+  overflow-x: auto;
+}
+
+
+/* v19 folded result UI */
+.folded-score-table .fold-toggle.has-children {
+  cursor: pointer;
+}
+
+.folded-score-table .fold-toggle.has-children:hover {
+  background: #f7f7f7;
+}
+
+.folded-score-table .fold-toggle.expanded {
+  background: #fafafa;
+}
+
+.fold-icon {
+  display: inline-block;
+  width: 18px;
+  color: #555;
+  font-weight: 700;
+}
+
+.fold-count {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eeeeee;
+  color: #555;
+  font-size: 12px;
+}
+
+.fold-child {
+  background: #fcfcfc;
+}
+
+.fold-child .child-name {
+  color: #444;
+}
+
+.fold-child-marker {
+  display: inline-block;
+  width: 18px;
+  color: #888;
+}
+
+.folded-score-table .name-cell {
+  max-width: none;
+}
+
+/* v22 recompute stickiness input */
+.lane-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stickiness-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #444;
+}
+
+.stickiness-input {
+  width: 110px;
+  margin: 0;
+  padding: 8px;
+}
+
+
+/* v24 browser worker controls */
+.worker-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.worker-controls label {
+  font-size: 14px;
+  color: #444;
+}
+
+.worker-controls input {
+  margin-bottom: 0;
+}
+
+
+/* v25 archived combination option */
+.archive-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.archive-option input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}

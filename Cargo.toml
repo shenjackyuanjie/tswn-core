@@ -4,9 +4,9 @@ members = [
   "crates/tswn_capi",
   "crates/tswn_core",
   "crates/tswn_ds3",
-  "crates/tswn_openbox",
   "crates/tswn_py",
   "crates/tswn_wasm",
+  "crates/tswn_lane_ranker",
 ]
 
 [profile.release]

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TSWN Lane Ranker</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main>
+    <h1>TSWN Lane Ranker</h1>
+
+    <section class="card">
+      <h2>线程参数</h2>
+      <p>Outer Worker 填 <code>0</code>：外层自动 worker + 动态队列；填非 0：外层指定 worker + 静态分块。Inner Worker 会直接传给 tswn-core，<code>0</code> 表示内层自动。</p>
+      <div class="worker-controls">
+        <label>Outer Worker
+          <input id="outerWorkersInput" type="number" min="0" step="1" value="0" />
+        </label>
+        <label>Inner Worker
+          <input id="innerWorkersInput" type="number" min="0" step="1" value="0" />
+        </label>
+        <label class="archive-option">
+          <input id="skipArchivedInput" type="checkbox" checked />
+          跑代码时不跑封存组合
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>加入组号</h2>
+      <p>每行一个组号。多人组用 <code>+</code> 连接，例如 <code>aaa@A+bbb@A</code>。</p>
+      <textarea id="groupsInput" rows="8" placeholder="aaa@A&#10;bbb@B+ccc@B"></textarea>
+      <button id="addBtn">加入并重算</button>
+      <pre id="addOutput"></pre>
+    </section>
+
+    <section class="card">
+      <h2>合并战队</h2>
+      <input id="teamX" placeholder="战队 x" />
+      <input id="teamY" placeholder="战队 y" />
+      <button id="mergeBtn">合并并重算</button>
+      <pre id="mergeOutput"></pre>
+    </section>
+
+    <section class="card">
+      <h2>赛道</h2>
+      <button id="refreshLanesBtn">刷新赛道</button>
+      <div id="lanes"></div>
+    </section>
+
+    <section class="card">
+      <h2>赛道结果</h2>
+      <input id="laneSize" type="number" min="1" value="1" />
+      <button id="loadResultsBtn">读取结果</button>
+      <button id="exportResultsBtn" type="button">导出结果</button>
+      <div id="results"></div>
+    </section>
+  </main>
+
+  <script src="./app.js?v=25-archive-combinations"></script>
+</body>
+</html>
