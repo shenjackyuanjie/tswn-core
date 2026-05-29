@@ -32,7 +32,7 @@ impl OpenboxApp {
             main_accuracy_controls(ui, &mut self.namer_pf.count_mode, &mut self.namer_pf.accuracy);
         });
         section(ui, "评分项", |ui| {
-            namer_pf_metric_controls(ui, self, false);
+            namer_pf_metric_controls_clean(ui, self, false);
         });
         section(ui, "名字", |ui| {
             self.namer_pf.names.ui(ui, "名字", "namer_pf_names", 14);
@@ -132,7 +132,7 @@ impl OpenboxApp {
             ui.checkbox(&mut self.namer_pf.keep_rq, "不低估短号");
         });
         section(ui, "评分项", |ui| {
-            namer_pf_metric_controls(ui, self, true);
+            namer_pf_metric_controls_clean(ui, self, true);
         });
     }
 
@@ -221,6 +221,7 @@ impl OpenboxApp {
                     if ui.button("清空日志").clicked() {
                         self.log.clear();
                         self.highlight_lines.clear();
+                        self.skill_board_lines.clear();
                     }
                 });
             });
@@ -247,7 +248,9 @@ impl OpenboxApp {
                     ui.vertical(|ui| {
                         for (index, line) in self.log.lines().enumerate() {
                             let mut text = egui::RichText::new(line).monospace();
-                            if line.starts_with("  ") {
+                            if self.skill_board_lines.contains(&index) {
+                                text = text.color(egui::Color32::from_rgb(45, 120, 220)).strong();
+                            } else if line.starts_with("  ") {
                                 text = text.color(egui::Color32::GRAY);
                             } else if self.highlight_lines.contains(&index) {
                                 text = text.color(egui::Color32::from_rgb(210, 40, 40)).strong();
@@ -394,14 +397,18 @@ fn main_accuracy_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &mu
     });
 }
 
-fn namer_pf_metric_controls(ui: &mut egui::Ui, app: &mut OpenboxApp, show_highlight: bool) {
-    let all_selected = app.namer_pf.metrics.iter().all(|metric| metric.screen && metric.file_output.enabled);
+fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_highlight: bool) {
+    let all_selected = app.namer_pf.metrics.iter().all(|metric| metric.screen && metric.file_output.enabled)
+        && app.namer_pf.skill_board.screen
+        && app.namer_pf.skill_board.file_output.enabled;
     let mut select_all = all_selected;
     if ui.checkbox(&mut select_all, "全选").changed() {
         for metric in &mut app.namer_pf.metrics {
             metric.screen = select_all;
             metric.file_output.enabled = select_all;
         }
+        app.namer_pf.skill_board.screen = select_all;
+        app.namer_pf.skill_board.file_output.enabled = select_all;
     }
     egui::Grid::new(if show_highlight {
         "namer_pf_metrics_more"
@@ -463,5 +470,45 @@ fn namer_pf_metric_controls(ui: &mut egui::Ui, app: &mut OpenboxApp, show_highli
             ui.label(path_label);
             ui.end_row();
         }
+
+        ui.label("技能榜");
+        ui.checkbox(&mut app.namer_pf.skill_board.screen, "");
+        ui.add_enabled(false, egui::Label::new("来自 score_now.toml"));
+        if show_highlight {
+            ui.label("");
+        }
+        ui.checkbox(&mut app.namer_pf.skill_board.file_output.enabled, "");
+        ui.add_enabled(false, egui::Label::new("来自 score_now.toml"));
+        ui.horizontal(|ui| {
+            if ui.button("选择").clicked()
+                && let Some(path) = pick_named_output_file("tswn-openbox-namer-pf-skill-board.txt")
+            {
+                app.namer_pf.skill_board.file_output.enabled = true;
+                app.namer_pf.skill_board.file_output.path = Some(path);
+            }
+            if app.namer_pf.skill_board.file_output.path.is_some() && ui.button("清空").clicked() {
+                app.namer_pf.skill_board.file_output.path = None;
+            }
+        });
+        ui.end_row();
+
+        ui.label("");
+        ui.label("");
+        ui.label("");
+        if show_highlight {
+            ui.label("");
+        }
+        ui.label("");
+        ui.label("");
+        let path_label = app
+            .namer_pf
+            .skill_board
+            .file_output
+            .path
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "未选择输出文件".to_string());
+        ui.label(path_label);
+        ui.end_row();
     });
 }

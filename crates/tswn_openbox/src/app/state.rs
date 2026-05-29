@@ -98,6 +98,7 @@ pub struct NamerPfState {
     pub threads: usize,
     pub keep_rq: bool,
     pub metrics: Vec<NamerPfMetricState>,
+    pub skill_board: NamerPfSkillBoardState,
 }
 
 pub struct NamerPfMetricState {
@@ -107,6 +108,11 @@ pub struct NamerPfMetricState {
     pub highlight_delta: String,
     pub file_output: OptionalFileOutput,
     pub min_file: String,
+}
+
+pub struct NamerPfSkillBoardState {
+    pub screen: bool,
+    pub file_output: OptionalFileOutput,
 }
 
 impl Default for NamerPfState {
@@ -130,6 +136,10 @@ impl Default for NamerPfState {
                     min_file: String::new(),
                 })
                 .collect(),
+            skill_board: NamerPfSkillBoardState {
+                screen: false,
+                file_output: OptionalFileOutput::default(),
+            },
         }
     }
 }
@@ -238,6 +248,7 @@ pub struct OpenboxApp {
     pub more_settings_open: bool,
     pub log: String,
     pub highlight_lines: HashSet<usize>,
+    pub skill_board_lines: HashSet<usize>,
     pub status: String,
     pub running: bool,
     pub cancel_requested: bool,
@@ -262,6 +273,7 @@ impl Default for OpenboxApp {
             more_settings_open: false,
             log: String::new(),
             highlight_lines: HashSet::new(),
+            skill_board_lines: HashSet::new(),
             status: "就绪".to_string(),
             running: false,
             cancel_requested: false,

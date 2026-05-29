@@ -16,6 +16,7 @@ use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
 use super::format::{format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log};
 use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
 use super::score::{bench_batch_rate_for_group, namer_pf_score};
+use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
 use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, PairInput, ProgressEvent};
 
 pub fn run_to_diy(
@@ -80,7 +81,10 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
         send(ProgressEvent::Done(Err("namer-pf: 输入为空或无有效玩家。".to_string())));
         return;
     }
-    if input.metrics.iter().all(|metric| !metric.screen && metric.output_file.is_none()) {
+    if input.metrics.iter().all(|metric| !metric.screen && metric.output_file.is_none())
+        && !input.skill_board.screen
+        && input.skill_board.output_file.is_none()
+    {
         send(ProgressEvent::Done(Err(
             "namer-pf: 请至少选择一个屏幕输出或输出文件。".to_string()
         )));
@@ -101,6 +105,27 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
         };
         outputs.push(output);
     }
+    let mut skill_board_output = match input.skill_board.output_file.as_deref() {
+        Some(path) => match create_output_file(path) {
+            Ok(file) => Some(file),
+            Err(err) => {
+                send(ProgressEvent::Done(Err(err)));
+                return;
+            }
+        },
+        None => None,
+    };
+    let skill_board_config = if input.skill_board.screen || skill_board_output.is_some() {
+        match SkillBoardConfig::load_default() {
+            Ok(config) => Some(config),
+            Err(err) => {
+                send(ProgressEvent::Done(Err(err)));
+                return;
+            }
+        }
+    } else {
+        None
+    };
 
     let n = input.count.max(1);
     let eval_rq = eval_rq(input.keep_rq);
@@ -141,10 +166,23 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                 return;
             }
         }
+        if let Some(config) = &skill_board_config {
+            for line in evaluate_skill_board(group, &scores, config) {
+                if input.skill_board.screen {
+                    send(ProgressEvent::SkillBoardLog(format!("{} {} {}", line.title, line.score, label)));
+                }
+                if let Some(output) = skill_board_output.as_mut()
+                    && let Err(err) = writeln!(output, "{} {} {}", line.title, line.score, label)
+                {
+                    send(ProgressEvent::Done(Err(format!("写入输出文件失败: {err}"))));
+                    return;
+                }
+            }
+        }
         send(ProgressEvent::Progress { done: index + 1, total });
     }
 
-    let written = input
+    let mut written = input
         .metrics
         .iter()
         .filter_map(|metric| {
@@ -154,6 +192,9 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                 .map(|path| format!("{} -> {}", metric.metric.label(), path.display()))
         })
         .collect::<Vec<_>>();
+    if let Some(path) = input.skill_board.output_file.as_ref() {
+        written.push(format!("技能榜 -> {}", path.display()));
+    }
     let message = if written.is_empty() {
         "完成。".to_string()
     } else {
@@ -162,12 +203,12 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
     send(ProgressEvent::Done(Ok(message)));
 }
 
-struct NamerPfScores {
-    pp: u64,
-    pd: u64,
-    qp: u64,
-    qd: u64,
-    sum: u64,
+pub struct NamerPfScores {
+    pub pp: u64,
+    pub pd: u64,
+    pub qp: u64,
+    pub qd: u64,
+    pub sum: u64,
 }
 
 impl NamerPfScores {

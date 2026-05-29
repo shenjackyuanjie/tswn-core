@@ -11,6 +11,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 pub enum ProgressEvent {
     Log(String),
     HighlightLog(String),
+    SkillBoardLog(String),
     Progress { done: usize, total: usize },
     Done(Result<String, String>),
 }
@@ -67,12 +68,19 @@ pub struct NamerPfMetricOptions {
 }
 
 #[derive(Debug, Clone)]
+pub struct NamerPfSkillBoardOptions {
+    pub screen: bool,
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
 pub struct NamerPfInput {
     pub raw: String,
     pub count: usize,
     pub threads: Option<usize>,
     pub keep_rq: bool,
     pub metrics: Vec<NamerPfMetricOptions>,
+    pub skill_board: NamerPfSkillBoardOptions,
     pub cancel: Arc<AtomicBool>,
 }
 

@@ -14,7 +14,10 @@ use std::time::Instant;
 use eframe::egui;
 
 use crate::backend::PairDetailMode;
-use crate::backend::{self, BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetricOptions, PairInput, ProgressEvent};
+use crate::backend::{
+    self, BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetricOptions, NamerPfSkillBoardOptions, PairInput,
+    ProgressEvent,
+};
 
 use super::state::{CountMode, OpenboxApp};
 use super::target_presets::{load_selected_target_text, load_selected_teammate_text};
@@ -127,6 +130,14 @@ impl OpenboxApp {
             });
         }
 
+        let skill_board_output_file = match resolve_output_path(&self.namer_pf.skill_board.file_output) {
+            Ok(path) => path,
+            Err(err) => {
+                self.fail_before_start(format!("技能榜: {err}"));
+                return;
+            }
+        };
+
         self.begin_task();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
@@ -137,6 +148,10 @@ impl OpenboxApp {
             threads: bench_threads(self.namer_pf.auto_threads, self.namer_pf.threads),
             keep_rq: self.namer_pf.keep_rq,
             metrics,
+            skill_board: NamerPfSkillBoardOptions {
+                screen: self.namer_pf.skill_board.screen,
+                output_file: skill_board_output_file,
+            },
             cancel,
         };
         std::thread::spawn(move || {
@@ -335,6 +350,7 @@ impl OpenboxApp {
         self.eta_text = "--".to_string();
         self.log.clear();
         self.highlight_lines.clear();
+        self.skill_board_lines.clear();
         self.status = "运行中".to_string();
     }
 
@@ -351,6 +367,7 @@ impl OpenboxApp {
         self.status = "失败".to_string();
         self.log.clear();
         self.highlight_lines.clear();
+        self.skill_board_lines.clear();
         self.append_log(&err);
     }
 
@@ -364,6 +381,9 @@ impl OpenboxApp {
                     }
                     ProgressEvent::HighlightLog(line) => {
                         self.append_highlight_log(&line);
+                    }
+                    ProgressEvent::SkillBoardLog(line) => {
+                        self.append_skill_board_log(&line);
                     }
                     ProgressEvent::Progress { done, total } => {
                         self.done = done;
@@ -419,10 +439,15 @@ impl OpenboxApp {
 
     pub fn append_highlight_log(&mut self, text: &str) { self.append_log_inner(text, true); }
 
-    fn append_log_inner(&mut self, text: &str, highlight_first_line: bool) {
+    pub fn append_skill_board_log(&mut self, text: &str) {
+        let first_line = self.append_log_inner(text, false);
+        self.skill_board_lines.insert(first_line);
+    }
+
+    fn append_log_inner(&mut self, text: &str, highlight_first_line: bool) -> usize {
         let trimmed = text.trim_end_matches('\n');
         if trimmed.is_empty() {
-            return;
+            return self.log.lines().count();
         }
         if !self.log.is_empty() && !self.log.ends_with('\n') {
             self.log.push('\n');
@@ -433,6 +458,7 @@ impl OpenboxApp {
         }
         self.log.push_str(trimmed);
         self.log.push('\n');
+        first_line_index
     }
 }
 

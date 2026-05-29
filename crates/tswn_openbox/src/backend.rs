@@ -6,11 +6,12 @@
 mod format;
 mod parse;
 mod score;
+mod skill_board;
 mod tasks;
 mod types;
 
 pub use tasks::{run_batch_rate, run_namer_pf, run_pair, run_to_diy};
 pub use types::{
-    BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairDetailMode, PairInput,
-    ProgressEvent,
+    BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, NamerPfSkillBoardOptions, OutputMode,
+    PairDetailMode, PairInput, ProgressEvent,
 };
