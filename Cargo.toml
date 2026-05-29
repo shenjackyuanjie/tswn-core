@@ -6,6 +6,7 @@ members = [
   "crates/tswn_ds3",
   "crates/tswn_py",
   "crates/tswn_wasm",
+  "crates/tswn_openbox",
   "crates/tswn_lane_ranker",
 ]
 
