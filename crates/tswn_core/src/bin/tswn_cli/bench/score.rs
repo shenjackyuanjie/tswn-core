@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::common::BenchSummary;
-use super::output::print_perf_lines;
+use super::output::{format_rate, print_perf_lines};
 
 /// 根据线程模式和总任务量计算评分 benchmark worker 数。
 fn resolve_bench_workers(mode: BenchThreadMode, threads: Option<usize>, total: usize) -> usize {
@@ -274,7 +274,7 @@ fn run_bench_score_inner(
 }
 
 /// `namer-pf` 入口。
-pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64, modes: &[NamerPfMode]) {
+pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64, precision: usize, modes: &[NamerPfMode]) {
     let groups = parse_plus_separated_groups(raw);
     if groups.is_empty() {
         eprintln!("namer-pf: 输入为空或无有效玩家");
@@ -297,12 +297,12 @@ pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64, m
                 namer_pf_score(&group, modifier, duplicate, n, threads, eval_rq)
             })
             .collect::<Vec<_>>();
-        let sum = scores.iter().sum::<u64>();
+        let sum = scores.iter().sum::<f64>();
         let line = scores
             .iter()
             .copied()
             .chain(std::iter::once(sum))
-            .map(|score| score.to_string())
+            .map(|score| format_rate(score, precision))
             .collect::<Vec<_>>()
             .join("|");
         println!("{line}");
@@ -429,14 +429,14 @@ fn consume_balanced_ascii(raw: &str, start: usize, open: u8, close: u8) -> Optio
 }
 
 /// 计算 `namer-pf` 四项中的一个分数。
-fn namer_pf_score(base_group: &[String], modifier: &str, duplicate: bool, n: usize, threads: Option<usize>, eval_rq: f64) -> u64 {
+fn namer_pf_score(base_group: &[String], modifier: &str, duplicate: bool, n: usize, threads: Option<usize>, eval_rq: f64) -> f64 {
     let mut target_group = base_group.to_vec();
     if duplicate {
         target_group.extend(base_group.iter().cloned());
     }
 
     let summary = run_bench_score_inner(&target_group, modifier, n, BenchThreadMode::Parallel, threads, eval_rq, false);
-    (summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64).round() as u64
+    summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64
 }
 
 /// 单线程区间 score 执行器。

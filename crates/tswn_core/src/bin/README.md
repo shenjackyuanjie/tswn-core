@@ -49,7 +49,7 @@ cargo build -p tswn_core --bins --features aux_bins
 
 - fight / raw / diff：普通对战、raw 输出、runner diff 输出。
 - bench auto / win-rate / group-win-rate / batch-rate(cqp) / pair：评分与胜率相关 benchmark。
-- namer-pf：与 ica-plugin /namer-pf 对齐的四项评分；可用 `--mode pp pd` 只跑指定项。
+- namer-pf：与 ica-plugin /namer-pf 对齐的四项评分；可用 `--mode pp pd` 只跑指定项，用 `--precision <N>` 控制输出小数位数，默认 0。
 - icon show / b64 / save：图标预览与导出。
 - to-diy：导出 DIY/OL overlay 文本。
 
@@ -58,6 +58,7 @@ cargo build -p tswn_core --bins --features aux_bins
 ```bash
 cargo run -p tswn_core --bin tswn-cli -- fight -r "mario\nluigi\n\npeach\nbowser"
 cargo run -p tswn_core --bin tswn-cli -- bench cqp -l targets.txt -p players.txt -n 10000
+cargo run -p tswn_core --bin tswn-cli -- namer-pf -r "mario\nluigi" --mode pp qd --precision 2
 cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt -o diy.txt
 ```
 

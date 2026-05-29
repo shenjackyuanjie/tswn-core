@@ -220,6 +220,7 @@ fn main() {
             n,
             threads,
             keep_rq,
+            precision,
             modes,
         } => {
             let eval_rq = if keep_rq {
@@ -227,7 +228,7 @@ fn main() {
             } else {
                 tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
             };
-            bench::run_namer_pf(&raw, n, threads, eval_rq, &modes);
+            bench::run_namer_pf(&raw, n, threads, eval_rq, precision, &modes);
         }
         ParsedCommand::IconShow { names } => icon::print_icons(&names),
         ParsedCommand::IconB64 { names } => {

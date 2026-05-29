@@ -201,6 +201,8 @@ pub enum ParsedCommand {
         threads: Option<usize>,
         /// 需要运行的评分项；未显式传入时已归一化为四项全测。
         keep_rq: bool,
+        /// 输出保留的小数位数。
+        precision: usize,
         modes: Vec<NamerPfMode>,
     },
     IconShow {

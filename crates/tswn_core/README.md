@@ -38,6 +38,9 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt -o names.txt --pure
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt --wr-precision 5
 
+# namer-pf 四项评分；--precision 默认 0，控制分数输出的小数位数
+./target/release/tswn-cli namer-pf -r "mario\nluigi" --mode pp qd --precision 2
+
 # 二人组队友筛选；player-list 和 teammate-list 都是每行一个名字
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250

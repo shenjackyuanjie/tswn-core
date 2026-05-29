@@ -386,6 +386,10 @@ struct NamerPfCommand {
     #[arg(long)]
     keep_rq: bool,
 
+    /// Score decimal places to keep (default: 0).
+    #[arg(long = "precision", default_value_t = 0, value_parser = parse_wr_precision, value_name = "N")]
+    precision: usize,
+
     /// 只运行指定评分项；可重复传入或一次传多个，不传则运行 pp/pd/qp/qd 全部四项。
     #[arg(long = "mode", value_enum, value_name = "MODE", num_args = 1.., value_delimiter = ',', action = ArgAction::Append)]
     mode: Vec<NamerPfModeArg>,
@@ -664,6 +668,7 @@ impl ParsedCli {
                 n: cmd.count.max(1),
                 threads: cmd.thread,
                 keep_rq: cmd.keep_rq,
+                precision: cmd.precision,
                 modes: normalize_namer_pf_modes(&cmd.mode),
             },
             CliCommand::Icon(IconCommand { command }) => match command {
@@ -784,6 +789,29 @@ mod tests {
         match cli.command {
             CliCommand::NamerPf(cmd) => {
                 assert!(cmd.keep_rq);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn namer_pf_accepts_precision() {
+        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--precision", "2"]).unwrap();
+        match cli.command {
+            CliCommand::NamerPf(cmd) => {
+                assert_eq!(cmd.precision, 2);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn namer_pf_default_precision_is_zero() {
+        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario"]).unwrap();
+        let parsed = ParsedCli::from_cli(cli).unwrap();
+        match parsed.command {
+            ParsedCommand::NamerPf { precision, .. } => {
+                assert_eq!(precision, 0);
             }
             _ => panic!("unexpected command"),
         }
