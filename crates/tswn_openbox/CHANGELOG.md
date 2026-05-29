@@ -1,5 +1,29 @@
 # 更新日志
 
+## [0.3.1] - 2026-05-29
+
+### 新增
+
+- `namer-pf` 新增“技能榜”输出。开启后会读取 `setting\score_now.toml`，根据名字的最高熟练度技能筛选 `pp`、`pd`、`qp`、`qd` 和“全能”结果。
+- 新增 `setting\score_now.toml` 示例/当前阈值文件，字段来源约定为：`pp` 来自普评，`qp` 来自强评，`qd` 来自强单，`all` 来自全能总分。
+- 技能榜屏幕日志使用蓝字显示，文件输出格式为 `技能项 分数 名字`。
+
+### 调整
+
+- 技能榜“全能”判定除满足 `score_now.toml` 中对应技能的 `all` 外，还要求 `pp >= 8000`、`pd >= 9000`、`qp >= 6000`、`qd >= 7000`。
+- `namer-pf` 只计算当前实际启用的评分项；只有选择 `sum` 或技能榜时才强制计算四项评分。
+
+### 修复
+
+- 修复 `namer-pf` 大批量运行时内存持续上涨的问题。临时 profile 对局改用 uncached Runner 构造，避免把每一局的一次性模板写入全局 prepared 缓存。
+- 修复技能榜相关按钮和输出文件提示的中文乱码。
+- 修复通用输出文件控件中的“选择输出文件”“未选择输出文件”等中文显示。
+
+### 验证
+
+- `cargo check -p tswn_openbox --features "no_debug,mimalloc_alloc"`
+- `cargo test -p tswn_core --features no_debug uncached_prepare_and_runner_construction_do_not_fill_prebuilt_cache`
+
 ## [0.3.0] - 2026-05-29
 
 ### 新增
@@ -23,13 +47,13 @@
 - `head` 在界面中改名为“保留前几”。
 - `++` 分组改名为 `DIYcqp（++分割名字）`，并移动到更多设置。
 - `pair` 普通设置不再显示靶子选择，默认优先使用 `settings.toml` 中 `id = 2` 的靶子。
-- `pair` 普通设置只显示从 `settings.toml` 导入的队友选项；手动输入和从文件读取移到更多设置。
-- 菜单栏、运行按钮、进度条和速度/剩余时间显示做了放大和卡片化整理。
+- `pair` 普通设置只显示从 `settings.toml` 导入的队友选项；手动输入和从文件读取移动到更多设置。
+- 菜单栏、运行按钮、进度条和速度/剩余时间显示做了放大和整理。
 
 ### 输出
 
 - `cqd/cqp` 仅保留“每组胜率”详情选项。
-- `pair` 新增“每组cqp”和“有效cqp”两个互斥详情选项。
+- `pair` 新增“每组 cqp”和“有效 cqp”两个互斥详情选项。
 - 右侧区域只显示日志，输出文件需要提前选择。
 - 输出格式对齐 CLI：默认格式、`JSONL (--log)`、`名字 (--pure)`。
 - `日志阈值` 对应 `--min-screen`，`文件阈值` 对应 `--min-file`。

@@ -3483,7 +3483,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_openbox"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "eframe",
  "rfd",

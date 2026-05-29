@@ -252,4 +252,4 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && cargo build -p tswn_capi --rele
 | tswn_capi    | 0.3.0 |
 | tswn_py      | 0.2.0 |
 | tswn_wasm    | 0.2.3 |
-| tswn_openbox | 0.3.0 |
+| tswn_openbox | 0.3.1 |

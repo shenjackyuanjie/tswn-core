@@ -215,7 +215,7 @@ fn run_bench_score_range(
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
         let t_init = Instant::now();
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq) {
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, eval_rq) {
             Ok(runner) => runner,
             Err(_) => continue,
         };
@@ -254,7 +254,7 @@ fn run_bench_score_worker(
         build_js_score_match_input(target_group, modifier, i, &mut bench_input);
         let t_init = Instant::now();
         let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
-        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq) {
+        let mut runner = match Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, eval_rq) {
             Ok(runner) => runner,
             Err(_) => continue,
         };

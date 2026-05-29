@@ -130,15 +130,38 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
     let n = input.count.max(1);
     let eval_rq = eval_rq(input.keep_rq);
     let total = groups.len();
+    let needs_skill_board_scores = skill_board_config.is_some();
+    let needs_sum = metric_enabled(&input.metrics, NamerPfMetric::Sum);
+    let needs_all_scores = needs_skill_board_scores || needs_sum;
+    let needs_pp = needs_all_scores || metric_enabled(&input.metrics, NamerPfMetric::Pp);
+    let needs_pd = needs_all_scores || metric_enabled(&input.metrics, NamerPfMetric::Pd);
+    let needs_qp = needs_all_scores || metric_enabled(&input.metrics, NamerPfMetric::Qp);
+    let needs_qd = needs_all_scores || metric_enabled(&input.metrics, NamerPfMetric::Qd);
     for (index, group) in groups.iter().enumerate() {
         if input.cancel.load(Ordering::Relaxed) {
             send(ProgressEvent::Done(Ok("已停止。".to_string())));
             return;
         }
-        let pp = namer_pf_score(group, "\u{0002}", false, n, input.threads, eval_rq);
-        let pd = namer_pf_score(group, "\u{0002}", true, n, input.threads, eval_rq);
-        let qp = namer_pf_score(group, "!", false, n, input.threads, eval_rq);
-        let qd = namer_pf_score(group, "!", true, n, input.threads, eval_rq);
+        let pp = if needs_pp {
+            namer_pf_score(group, "\u{0002}", false, n, input.threads, eval_rq)
+        } else {
+            0
+        };
+        let pd = if needs_pd {
+            namer_pf_score(group, "\u{0002}", true, n, input.threads, eval_rq)
+        } else {
+            0
+        };
+        let qp = if needs_qp {
+            namer_pf_score(group, "!", false, n, input.threads, eval_rq)
+        } else {
+            0
+        };
+        let qd = if needs_qd {
+            namer_pf_score(group, "!", true, n, input.threads, eval_rq)
+        } else {
+            0
+        };
         let scores = NamerPfScores {
             pp,
             pd,
@@ -201,6 +224,12 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
         format!("完成，结果已写入: {}", written.join("; "))
     };
     send(ProgressEvent::Done(Ok(message)));
+}
+
+fn metric_enabled(metrics: &[super::types::NamerPfMetricOptions], metric: NamerPfMetric) -> bool {
+    metrics
+        .iter()
+        .any(|options| options.metric == metric && (options.screen || options.output_file.is_some()))
 }
 
 pub struct NamerPfScores {
