@@ -10,7 +10,7 @@ use super::widgets::{
 };
 
 impl OpenboxApp {
-    pub(crate) fn to_diy_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
         tool_header(ui, "to-diy", "名字转 DIY / 召唤物 DIY", &mut self.more_settings_open);
         section(ui, "基础选项", |ui| {
             to_diy_basic_controls(ui, self);
@@ -99,7 +99,7 @@ impl OpenboxApp {
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
                         ui.add_enabled_ui(!self.running, |ui| match self.tool {
-                            Tool::ToDiy => self.to_diy_more_settings(ui),
+                            Tool::ToDiy => self.show_diy_more_settings(ui),
                             Tool::NamerPf => self.namer_pf_more_settings(ui),
                             Tool::BatchRate => self.batch_rate_more_settings(ui),
                             Tool::Pair => self.pair_more_settings(ui),
@@ -110,7 +110,7 @@ impl OpenboxApp {
         self.more_settings_open = open;
     }
 
-    fn to_diy_more_settings(&mut self, ui: &mut egui::Ui) {
+    fn show_diy_more_settings(&mut self, ui: &mut egui::Ui) {
         section(ui, "基础选项", |ui| {
             to_diy_basic_controls(ui, self);
             ui.checkbox(&mut self.to_diy.details, "单名详情（仅日志输出）");
