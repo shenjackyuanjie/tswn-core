@@ -59,6 +59,7 @@ pub mod debug {
 }
 
 pub mod case_gen;
+pub mod cli_api;
 pub mod engine;
 pub mod error;
 pub mod player;

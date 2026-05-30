@@ -14,6 +14,11 @@
 - `namer-pf` 新增 `--mode` 参数，支持按 pp/pd/qp/qd 选择评分项，可重复传入或逗号分隔，不传则默认运行全部四项。
 - `namer-pf` 新增 `--precision <N>` 输出精度控制，默认保留 0 位小数，显式传入时可输出小数分数。
 
+### Wrapper / FFI
+
+- 新增共享高层 `cli_api` 模块，集中提供与 `tswn-cli` 语义对齐的包装层辅助接口：`win_rate_summary`、`team_win_rate_summary`、`group_win_rate_summary`、`score`、`namer_pf`、`batch_rate`、`pair_rate`、`to_diy`、`to_diy_batch`、`icon_info`、`parse_group_lines`。
+- 新增一组纯 Rust 结构化结果类型，供 `tswn_py` / `tswn_wasm` / `tswn_capi` 复用同一套高层输出语义，减少多包装层重复实现。
+
 ### 修复
 
 - 修复 `ol` overlay 中 `name_factor_enabled` 字段未被解析的问题：JSON 格式的 `ol:{...}` overlay 现在能正确识别 `name_factor_enabled` 开关。

@@ -340,9 +340,10 @@ impl Player {
                 // 这里额外确保它也同步自本体（处理本体运行时可能修改过的 boost 元数据）。
                 if owner_skills.is_diy
                     && let Some(ref owner_diy_boost) = owner_skills.skill_by_id(skill_key).diy_boost
-                        && skill.diy_boost.is_none() {
-                            skill.diy_boost = Some(owner_diy_boost.clone());
-                        }
+                    && skill.diy_boost.is_none()
+                {
+                    skill.diy_boost = Some(owner_diy_boost.clone());
+                }
             }
         }
 
