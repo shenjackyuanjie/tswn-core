@@ -131,8 +131,8 @@ impl Db {
             )
             .optional()?;
 
-        if let Some(id) = existing {
-            return Ok(InsertGroupOutcome::Duplicated(id));
+        if existing.is_some() {
+            return Ok(InsertGroupOutcome::Duplicated);
         }
 
         tx.execute(
@@ -154,9 +154,10 @@ impl Db {
         )?;
 
         tx.commit()?;
-        Ok(InsertGroupOutcome::Added(group_id))
+        Ok(InsertGroupOutcome::Added)
     }
 
+    #[allow(dead_code)]
     pub fn load_groups_by_lane(&self, lane_size: usize) -> anyhow::Result<Vec<StoredGroup>> {
         self.load_groups_by_lane_for_run(lane_size, false)
     }
@@ -241,6 +242,7 @@ impl Db {
         Ok(rate)
     }
 
+    #[allow(dead_code)]
     pub fn save_rate_pair(&self, a: GroupId, b: GroupId, win_rate_a: f64, samples: usize) -> anyhow::Result<()> {
         if a == b {
             return Ok(());
@@ -292,6 +294,7 @@ impl Db {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn delete_group_and_rates(&self, group_id: GroupId) -> anyhow::Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
@@ -598,8 +601,8 @@ pub fn lane_top_score_group_ids(&self, lane_size: usize, limit: usize) -> anyhow
 
 #[derive(Debug, Clone, Copy)]
 pub enum InsertGroupOutcome {
-    Added(GroupId),
-    Duplicated(GroupId),
+    Added,
+    Duplicated,
 }
 
 fn load_members_locked(conn: &Connection, group_id: GroupId) -> rusqlite::Result<Vec<String>> {

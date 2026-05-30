@@ -21,6 +21,7 @@ pub fn compute_rate_without_db(
     Ok(summary.win_rate_percent())
 }
 
+#[allow(dead_code)]
 pub fn get_or_compute_rate(
     db: &Db,
     a: &StoredGroup,

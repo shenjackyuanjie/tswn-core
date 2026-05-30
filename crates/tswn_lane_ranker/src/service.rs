@@ -62,11 +62,11 @@ impl AppService {
             }
 
             match self.db.insert_group(&parsed)? {
-                InsertGroupOutcome::Added(_) => {
+                InsertGroupOutcome::Added => {
                     dirty_lanes.insert(parsed.lane_size);
                     added.push(parsed.canonical);
                 }
-                InsertGroupOutcome::Duplicated(_) => {
+                InsertGroupOutcome::Duplicated => {
                     // 重新导入已有组号时也触发该赛道重算，避免已有数据但结果/状态缺失时无法手动刷新。
                     dirty_lanes.insert(parsed.lane_size);
                     duplicated.push(parsed.canonical);
@@ -103,6 +103,7 @@ impl AppService {
         })
     }
 
+    #[allow(dead_code)]
     pub fn queue_recompute_lanes(&self, lanes: Vec<usize>) -> anyhow::Result<Vec<usize>> {
         self.queue_recompute_lanes_with_config(lanes, self.config.clone())
     }

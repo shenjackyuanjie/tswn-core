@@ -594,8 +594,8 @@ impl ParsedCli {
                     buckets_step: cmd.options.buckets_step,
                 },
                 BenchSubcommand::WinRate(cmd) => ParsedCommand::BenchWinRate {
-                    team1: cmd.team1,
-                    team2: cmd.team2,
+                    team1: decode_raw(&cmd.team1),
+                    team2: decode_raw(&cmd.team2),
                     n: cmd.options.count.max(1),
                     mode: cmd.options.mode(),
                     threads: cmd.options.thread,

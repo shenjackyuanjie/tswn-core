@@ -17,6 +17,7 @@
 ### 修复
 
 - 修复 `ol` overlay 中 `name_factor_enabled` 字段未被解析的问题：JSON 格式的 `ol:{...}` overlay 现在能正确识别 `name_factor_enabled` 开关。
+- 修复 `bench win-rate` 未对 `team1`/`team2` 调用 `decode_raw` 导致 `\n` 换行符不被解析的问题：现与 `bench group-win-rate` 一致，支持以 `\n` 分隔队内玩家。
 
 ### 重构
 

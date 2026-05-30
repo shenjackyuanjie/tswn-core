@@ -1083,6 +1083,7 @@ fn avg_cqd_rounded_unchanged(nodes: &[RankNode], last: &mut [i64]) -> bool {
     !changed
 }
 
+#[allow(dead_code)]
 fn round_to_3(value: f64) -> f64 {
     round_to_3_int(value) as f64 / 1000.0
 }
