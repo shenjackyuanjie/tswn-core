@@ -5,6 +5,7 @@
 //! 批量胜率和图标输出则提供便于脚本调用的顶层函数。
 
 /// 类型 wrapper
+pub mod cli_api;
 pub mod wrapper;
 
 use pyo3::{
@@ -106,6 +107,23 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(win_rate, m)?)?;
     m.add_function(wrap_pyfunction!(group_win_rate, m)?)?;
     m.add_function(wrap_pyfunction!(prepared_win_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::win_rate_summary, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::team_win_rate_summary, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::group_win_rate_summary, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::score, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::namer_pf, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::batch_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::pair_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::to_diy, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::to_diy_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::icon_info, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::parse_group_lines, m)?)?;
+    m.add_class::<cli_api::PyWinRateResult>()?;
+    m.add_class::<cli_api::PyScoreResult>()?;
+    m.add_class::<cli_api::PyNamerPfResult>()?;
+    m.add_class::<cli_api::PyBatchRateResult>()?;
+    m.add_class::<cli_api::PyPairRateResult>()?;
+    m.add_class::<cli_api::PyIconInfo>()?;
     m.add_class::<wrapper::PyRunner>()?;
     m.add_class::<wrapper::PyPreparedRunner>()?;
     m.add_class::<wrapper::PyWorldState>()?;

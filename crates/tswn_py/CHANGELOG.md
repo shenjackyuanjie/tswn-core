@@ -1,5 +1,29 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- 补齐一批与 `tswn-cli` 对齐的 Python 顶层 helper：
+  - 胜率摘要：`win_rate_summary()`、`team_win_rate_summary()`、`group_win_rate_summary()`
+  - 评分与 namer-pf：`score()`、`namer_pf()`
+  - 批量胜率与配队：`batch_rate()`、`pair_rate()`
+  - DIY/OL 导出：`to_diy()`、`to_diy_batch()`
+  - 图标元信息与列表解析：`icon_info()`、`parse_group_lines()`
+- 新增结构化返回类型：
+  - `WinRateResult`
+  - `ScoreResult`
+  - `NamerPfResult`
+  - `BatchRateResult`
+  - `PairRateResult`
+  - `IconInfo`
+- 新增 `scripts/verify_py_cli_api.py`，用于构建本地 `tswn_py` 扩展并验证 Python 接口与 CLI 语义对齐。
+
+### 变更
+
+- `to_diy(old=True, minions=True)` 现在与 CLI 的 `--old` / `--minions` 互斥约束一致，会抛出 `ValueError`。
+- 修正 `Player` 类型存根，将不存在的 `mp` 属性改为实际暴露的 `magic_point`。
+
 ## [0.2.1] - 2026-05-19
 
 ### 新增

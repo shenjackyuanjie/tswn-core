@@ -50,6 +50,48 @@ rate = prepared.win_rate(1000)
 | `win_rate(raw, n, eval_rq, thread)`                   | 胜率统计                       |
 | `group_win_rate(target, against, n, eval_rq, thread)` | 分组胜率                       |
 | `prepared_win_rate(prepared, n, eval_rq, thread)`     | 基于 PreparedRunner 的胜率统计 |
+| `win_rate_summary(raw, n, eval_rq, thread)`           | 胜率统计，返回胜场/总场次/耗时 |
+| `team_win_rate_summary(team1, team2, n, ...)`         | 对齐 `bench win-rate` 的两队胜率 |
+| `group_win_rate_summary(target, against, n, ...)`     | 对齐 `bench group-win-rate` 的多对手胜率 |
+| `score(raw, n, mode, eval_rq, thread)`                | 对齐 score benchmark 的普通/`!` 评分 |
+| `namer_pf(raw, n, modes, keep_rq, thread)`            | 对齐 `namer-pf` 的 pp/pd/qp/qd 评分 |
+| `batch_rate(target_groups, player_groups, n, ...)`    | 对齐 `bench batch-rate` 的批量平均胜率 |
+| `pair_rate(target_groups, players, teammates, ...)`   | 对齐 `bench pair` 的配队评分 |
+| `to_diy(name, old, minions)`                          | 对齐 `to-diy` 的 DIY/OL overlay 导出 |
+| `to_diy_batch(names, old, minions)`                   | 批量导出 DIY/OL overlay |
+| `icon_info(name)`                                     | 对齐 `icon show` 的图标结构信息 |
+| `parse_group_lines(content, double_plus)`             | 对齐 batch 列表文件的组解析 |
+
+CLI 对齐 helper 返回结构化对象，方便脚本继续处理：
+
+- `WinRateResult`: `wins`、`total`、`win_rate`、`init_nanos`、`fight_nanos`
+- `ScoreResult`: `score`、`wins`、`total`、`init_nanos`、`fight_nanos`
+- `NamerPfResult`: `group`、`modes`、`scores`、`total_score`，以及 `as_line(precision)`
+- `BatchRateResult`: `label`、`avg_win_rate`、`aggregate_win_rate`、`wins`、`total`、`valid_matchups`、`skipped_matchups`
+- `PairRateResult`: `label`、`final_score`、`head`、`selected`、`top_pairs`、`aggregate_win_rate`、`wins`、`total`
+- `IconInfo`: `border_style`、`shapes`、`bg_color`、`fg_colors` 等图标生成信息
+
+示例：
+
+```python
+import tswn_py
+
+wr = tswn_py.team_win_rate_summary("mario", "luigi", 1000, thread=1)
+print(wr.win_rate, wr.wins, wr.total)
+
+rows = tswn_py.namer_pf("mario+luigi\npeach", 1000, modes=["pp", "qd"], thread=1)
+for row in rows:
+    print(row.group, row.as_line(0))
+
+targets = ["peach", "bowser"]
+players = ["mario", "luigi"]
+for result in tswn_py.batch_rate(targets, players, 1000, thread=1):
+    print(result.label, result.avg_win_rate, result.skipped_matchups)
+
+overlay = tswn_py.to_diy("mario@red+fire", minions=True)
+```
+
+注意：`to_diy(old=True, minions=True)` 与 CLI 的 `--old` / `--minions` 一样互斥，会抛出 `ValueError`。
 
 ### 类
 
@@ -73,6 +115,9 @@ uv run scripts/build_py.py
 
 # 构建并验证
 uv run scripts/build_py.py --clean --verify
+
+# 验证 CLI 对齐的 Python helper
+python scripts/verify_py_cli_api.py
 ```
 
 ## 要求

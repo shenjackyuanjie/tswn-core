@@ -152,6 +152,31 @@
 
 生成随机文本用作测试 case 的辅助脚本。
 
+## verify_py_cli_api.py
+
+验证 `tswn_py` 中与 `tswn-cli` 对齐的 Python helper。
+
+典型用法：
+
+- `python scripts/verify_py_cli_api.py`
+- `python scripts/verify_py_cli_api.py --release`
+- `python scripts/verify_py_cli_api.py --skip-build`
+
+脚本会先构建本地 `tswn_py` 扩展，把扩展模块和 Python 包文件复制到 `target/py_cli_api_verify/import/`，再从该临时目录导入并运行验证，不会安装 wheel，也不会修改当前 Python 环境。
+
+覆盖内容：
+
+- `win_rate_summary` / `team_win_rate_summary` / `group_win_rate_summary` 与旧 `win_rate` / `group_win_rate` 的一致性
+- `score`、`namer_pf`、`batch_rate`、`pair_rate` 的可复算关系、重复名跳过和结果字段
+- `to_diy(..., minions=True)` 的 Runner roundtrip 初始状态一致性
+- `icon_info` 与 PNG/RGBA helper 的基础结构一致性
+- `parse_group_lines` 的 `+` / `++` 组解析行为
+
+参数：
+
+- `--release`: 构建并导入 release 产物
+- `--skip-build`: 复用上一次生成的 `target/py_cli_api_verify/import/`，用于快速重跑断言
+
 ## find_bun_tswn_reply_mismatches.py
 
 查找 bun / tswn 胜率不一致的消息，并回查回复的原始消息内容。

@@ -51,7 +51,7 @@ class Player:
         """当前移动点数。"""
         ...
     @property
-    def mp(self) -> int:
+    def magic_point(self) -> int:
         """当前 MP。"""
         ...
     @property
