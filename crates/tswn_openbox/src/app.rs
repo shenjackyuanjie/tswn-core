@@ -55,7 +55,7 @@ impl eframe::App for OpenboxApp {
                     .inner_margin(egui::Margin::same(12))
                     .show(ui, |ui| {
                         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match self.tool {
-                            Tool::ToDiy => self.to_diy_ui(ui),
+                            Tool::ToDiy => self.show_diy_ui(ui),
                             Tool::NamerPf => self.namer_pf_ui(ui),
                             Tool::BatchRate => self.batch_rate_ui(ui),
                             Tool::Pair => self.pair_ui(ui),

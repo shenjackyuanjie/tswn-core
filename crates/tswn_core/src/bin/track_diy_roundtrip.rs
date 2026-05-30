@@ -255,11 +255,7 @@ fn parse_args() -> Result<Config, String> {
     let mut modes = modes.unwrap_or_else(|| vec![CaseMode::OneVsOne, CaseMode::TwoVsTwo, CaseMode::ThreeVsThreeVsThree]);
     let include_ffa = if args.iter().any(|arg| arg == "--modes") {
         include_ffa_from_modes
-    } else if args.iter().any(|arg| arg == "--mode") {
-        false
-    } else {
-        true
-    };
+    } else { !args.iter().any(|arg| arg == "--mode") };
     if include_ffa {
         modes.extend(ffa_sizes.iter().copied().map(CaseMode::FreeForAll));
     }
