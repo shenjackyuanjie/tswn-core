@@ -69,9 +69,7 @@ impl RankerConfig {
     }
 
     pub fn effective_stickiness(&self, lane_size: usize) -> usize {
-        self.stickiness
-            .unwrap_or(DEFAULT_STICKINESS_PER_MEMBER * lane_size.max(1))
-            .max(1)
+        self.stickiness.unwrap_or(DEFAULT_STICKINESS_PER_MEMBER * lane_size.max(1)).max(1)
     }
 }
 
@@ -79,9 +77,7 @@ fn read_env_usize(name: &str, default: usize) -> usize {
     std::env::var(name).ok().and_then(|x| x.parse().ok()).unwrap_or(default)
 }
 
-fn read_env_u32(name: &str, default: u32) -> u32 {
-    std::env::var(name).ok().and_then(|x| x.parse().ok()).unwrap_or(default)
-}
+fn read_env_u32(name: &str, default: u32) -> u32 { std::env::var(name).ok().and_then(|x| x.parse().ok()).unwrap_or(default) }
 
 fn read_env_bool(name: &str, default: bool) -> bool {
     match std::env::var(name).ok().map(|x| x.to_ascii_lowercase()) {
@@ -92,10 +88,7 @@ fn read_env_bool(name: &str, default: bool) -> bool {
 }
 
 fn read_env_optional_usize(name: &str) -> Option<usize> {
-    std::env::var(name)
-        .ok()
-        .and_then(|x| x.parse::<usize>().ok())
-        .filter(|&x| x > 0)
+    std::env::var(name).ok().and_then(|x| x.parse::<usize>().ok()).filter(|&x| x > 0)
 }
 
 fn resolve_rate_pair_workers(requested_outer_workers: usize, total: usize) -> usize {
@@ -103,9 +96,7 @@ fn resolve_rate_pair_workers(requested_outer_workers: usize, total: usize) -> us
         return requested_outer_workers.max(1).min(total.max(1));
     }
 
-    let available = thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4);
+    let available = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
 
     available.max(1).min(total.max(1))
 }
@@ -197,23 +188,12 @@ pub fn recompute_lane_until_stable(db: &Db, lane_size: usize, config: &RankerCon
             let ready_message = if early_stopped {
                 format!(
                     "done: early stopped at round {} after avg cqd stayed unchanged for {} rounds at 3 decimals; skip_archived={}",
-                    final_round,
-                    EARLY_STOP_STABLE_ROUNDS,
-                    config.skip_archived
+                    final_round, EARLY_STOP_STABLE_ROUNDS, config.skip_archived
                 )
             } else {
                 format!("done; skip_archived={}", config.skip_archived)
             };
-            db.set_lane_progress(
-                lane_size,
-                "ready",
-                final_round,
-                config.total_rounds,
-                0,
-                0,
-                0,
-                &ready_message,
-            )?;
+            db.set_lane_progress(lane_size, "ready", final_round, config.total_rounds, 0, 0, 0, &ready_message)?;
             return Ok(());
         }
 
@@ -414,26 +394,25 @@ fn run_core_algorithm(
     let mut order: Vec<usize> = (0..nodes.len()).collect();
     order.sort_by(|&a, &b| nodes[b].cqds.total_cmp(&nodes[a].cqds));
 
-let rows: Vec<LaneResultRow> = order
-    .into_iter()
-    .enumerate()
-    .map(|(rank_idx, node_idx)| {
-        let node = &nodes[node_idx];
+    let rows: Vec<LaneResultRow> = order
+        .into_iter()
+        .enumerate()
+        .map(|(rank_idx, node_idx)| {
+            let node = &nodes[node_idx];
 
-        LaneResultRow {
-            lane_size,
-            group_id: node.group.id,
-            rank: rank_idx + 1,
-            canonical: node.group.canonical.clone(),
-            average_cqd: node.avg_cqd(),
-            min_cqd: if node.cqdmin.is_finite() { node.cqdmin } else { 0.0 },
-            max_cqd: if node.cqdmax.is_finite() { node.cqdmax } else { 0.0 },
-            variance_cqd: node.variance_cqd(),
-            golden_rate: node.golden_rate(),
-        }
-    })
-    .collect();
-
+            LaneResultRow {
+                lane_size,
+                group_id: node.group.id,
+                rank: rank_idx + 1,
+                canonical: node.group.canonical.clone(),
+                average_cqd: node.avg_cqd(),
+                min_cqd: if node.cqdmin.is_finite() { node.cqdmin } else { 0.0 },
+                max_cqd: if node.cqdmax.is_finite() { node.cqdmax } else { 0.0 },
+                variance_cqd: node.variance_cqd(),
+                golden_rate: node.golden_rate(),
+            }
+        })
+        .collect();
 
     let archive_candidates = find_archive_candidates(&rows, &nodes);
 
@@ -446,10 +425,8 @@ let rows: Vec<LaneResultRow> = order
 }
 
 fn find_archive_candidates(rows: &[LaneResultRow], nodes: &[RankNode]) -> Vec<ArchiveCandidate> {
-    let members_by_group_id: HashMap<GroupId, Vec<String>> = nodes
-        .iter()
-        .map(|node| (node.group.id, node.group.members.clone()))
-        .collect();
+    let members_by_group_id: HashMap<GroupId, Vec<String>> =
+        nodes.iter().map(|node| (node.group.id, node.group.members.clone())).collect();
 
     let mut by_group_id: HashMap<GroupId, ArchiveCandidate> = HashMap::new();
 
@@ -579,13 +556,9 @@ impl RateMatrix {
         }
     }
 
-    fn get(&self, i: usize, j: usize) -> f64 {
-        self.rates[i][j].expect("rate should be loaded before fight")
-    }
+    fn get(&self, i: usize, j: usize) -> f64 { self.rates[i][j].expect("rate should be loaded before fight") }
 
-    fn loaded_pair_count(&self) -> usize {
-        self.loaded_pairs
-    }
+    fn loaded_pair_count(&self) -> usize { self.loaded_pairs }
 
     fn set_pair(&mut self, i: usize, j: usize, rate_i_to_j: f64) {
         if i == j {
@@ -648,12 +621,7 @@ impl RateMatrix {
                     continue;
                 }
 
-                missing_pairs.push((
-                    i,
-                    std_idx,
-                    nodes[i].group.clone(),
-                    nodes[std_idx].group.clone(),
-                ));
+                missing_pairs.push((i, std_idx, nodes[i].group.clone(), nodes[std_idx].group.clone()));
             }
         }
 
@@ -685,7 +653,11 @@ impl RateMatrix {
         let workers = resolve_rate_pair_workers(requested_outer_workers, total);
         let outer_label = format_outer_workers(requested_outer_workers, workers);
         let inner_label = format_inner_workers(inner_workers);
-        let mode = if requested_outer_workers == 0 { "dynamic_queue" } else { "static_chunks" };
+        let mode = if requested_outer_workers == 0 {
+            "dynamic_queue"
+        } else {
+            "static_chunks"
+        };
         let done = Arc::new(AtomicUsize::new(0));
         let rate_started = Arc::new(Instant::now());
 
@@ -904,11 +876,7 @@ fn make_initial_standard_indices(
     // 2. 同一个 member 在靶子中只能出现一次
     let top_ids = db.lane_top_score_group_ids(lane_size, nodes.len())?;
 
-    let id_to_idx: HashMap<GroupId, usize> = nodes
-        .iter()
-        .enumerate()
-        .map(|(idx, node)| (node.group.id, idx))
-        .collect();
+    let id_to_idx: HashMap<GroupId, usize> = nodes.iter().enumerate().map(|(idx, node)| (node.group.id, idx)).collect();
 
     let mut selected = Vec::with_capacity(STANDARD_SIZE);
     let mut selected_set = HashSet::<usize>::new();
@@ -1028,13 +996,7 @@ fn try_select_standard_index(
 
     true
 }
-fn data(
-    nodes: &mut [RankNode],
-    round: usize,
-    warmup_rounds: usize,
-    stickiness: usize,
-    smooth_from_start: bool,
-) {
+fn data(nodes: &mut [RankNode], round: usize, warmup_rounds: usize, stickiness: usize, smooth_from_start: bool) {
     // 粘性就是神秘系数平滑分母：alpha = 1 / stickiness。
     // 默认情况下：单人组 stickiness=10，双人组 stickiness=20，x 人组 stickiness=10*x。
     //
@@ -1045,8 +1007,7 @@ fn data(
     // 最终 Score 的统计窗口不变，仍然只在 warmup_rounds 后累计。
     let alpha = 1.0 / stickiness.max(1) as f64;
     let should_smooth = smooth_from_start || round >= warmup_rounds;
-    let starts_smoothing_this_round =
-        (smooth_from_start && round == 1) || (!smooth_from_start && round == warmup_rounds);
+    let starts_smoothing_this_round = (smooth_from_start && round == 1) || (!smooth_from_start && round == warmup_rounds);
 
     for node in nodes.iter_mut() {
         if round >= warmup_rounds {
@@ -1084,25 +1045,15 @@ fn avg_cqd_rounded_unchanged(nodes: &[RankNode], last: &mut [i64]) -> bool {
 }
 
 #[allow(dead_code)]
-fn round_to_3(value: f64) -> f64 {
-    round_to_3_int(value) as f64 / 1000.0
-}
+fn round_to_3(value: f64) -> f64 { round_to_3_int(value) as f64 / 1000.0 }
 
-fn round_to_3_int(value: f64) -> i64 {
-    (value * 1000.0).round() as i64
-}
+fn round_to_3_int(value: f64) -> i64 { (value * 1000.0).round() as i64 }
 
-fn ordered_index_pair(a: usize, b: usize) -> (usize, usize) {
-    if a <= b { (a, b) } else { (b, a) }
-}
+fn ordered_index_pair(a: usize, b: usize) -> (usize, usize) { if a <= b { (a, b) } else { (b, a) } }
 
-fn should_report_rate_progress(done: usize, total: usize) -> bool {
-    done == total || done % 10 == 0
-}
+fn should_report_rate_progress(done: usize, total: usize) -> bool { done == total || done % 10 == 0 }
 
-fn should_report_round(round: usize, total_rounds: usize) -> bool {
-    round == 1 || round == total_rounds || round % 1000 == 0
-}
+fn should_report_round(round: usize, total_rounds: usize) -> bool { round == 1 || round == total_rounds || round % 1000 == 0 }
 
 fn format_duration(seconds: f64) -> String {
     if seconds < 60.0 {

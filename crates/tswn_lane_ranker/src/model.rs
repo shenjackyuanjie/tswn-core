@@ -43,9 +43,7 @@ impl RankNode {
         }
     }
 
-    pub fn avg_cqd(&self) -> f64 {
-        if self.n == 0 { self.cqd } else { self.cqds / self.n as f64 }
-    }
+    pub fn avg_cqd(&self) -> f64 { if self.n == 0 { self.cqd } else { self.cqds / self.n as f64 } }
 
     pub fn variance_cqd(&self) -> f64 {
         if self.n == 0 {
@@ -57,7 +55,11 @@ impl RankNode {
     }
 
     pub fn golden_rate(&self) -> f64 {
-        if self.odds_n == 0 { 0.0 } else { self.bz as f64 / self.odds_n as f64 }
+        if self.odds_n == 0 {
+            0.0
+        } else {
+            self.bz as f64 / self.odds_n as f64
+        }
     }
 }
 
