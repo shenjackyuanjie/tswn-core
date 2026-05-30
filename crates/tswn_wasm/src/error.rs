@@ -4,6 +4,7 @@
 //! 统一将错误序列化为 `JsValue` 以便 JavaScript 层处理。
 
 use serde::Serialize;
+use tswn_core::cli_api::CliApiError;
 use wasm_bindgen::JsValue;
 
 #[derive(Debug, Clone, Serialize)]
@@ -30,4 +31,11 @@ pub fn error_value(code: &'static str, message: impl Into<String>) -> JsValue {
         message: message.into(),
     };
     serde_wasm_bindgen::to_value(&error).unwrap_or_else(|_| JsValue::from_str(error.code))
+}
+
+pub fn cli_api_error(err: CliApiError) -> JsValue {
+    match err {
+        CliApiError::InvalidInput(message) => invalid_input(message),
+        CliApiError::Runner(err) => runner_init_failed(err.to_string()),
+    }
 }

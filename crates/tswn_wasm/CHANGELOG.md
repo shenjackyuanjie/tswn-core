@@ -1,5 +1,21 @@
 # 更新日志
 
+## [0.2.9] - unreleased
+
+### 新增
+
+- 补齐一批与 `tswn-cli` / `tswn_py` 对齐的高层 WASM 导出：
+  - 胜率摘要：`win_rate_summary()`、`team_win_rate_summary()`、`group_win_rate_summary()`
+  - 评分与 namer-pf：`score()`、`namer_pf()`
+  - 批量胜率与配队：`batch_rate()`、`pair_rate()`
+  - DIY / 图标 / 列表解析：`to_diy()`、`to_diy_batch()`、`icon_info()`、`parse_group_lines()`
+- 新增对应的强类型 `Cli*Result` / `CliIconInfo` 数据模型，供 JS / TS 调用方直接消费。
+
+### 变更
+
+- 新增导出统一复用 `tswn_core::cli_api` 的共享高层逻辑，避免 WASM 包装层单独维护一份 CLI helper 实现。
+- README 补充新的 CLI 对齐接口说明与返回值示例。
+
 ## [0.2.8] - 2026-05-24
 
 ### 新增

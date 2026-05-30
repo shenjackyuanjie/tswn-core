@@ -24,6 +24,12 @@
 | `fight_summary(raw_input, options?)`                      | 轻量摘要，返回 `FightSummary`（赢家、玩家列表、最终状态）           |
 | `win_rate_sync(raw_input, total_rounds, options?)`        | 同步跑完胜率统计，返回 `WinRateResult`                              |
 | `group_win_rate(target, against, total_rounds, options?)` | 批量计算 target 对多个 opponent 的胜率，返回 `GroupWinRateResult[]` |
+| `win_rate_summary(...)` / `team_win_rate_summary(...)`    | CLI 对齐的详细胜率摘要，返回 `CliWinRateResult`                     |
+| `group_win_rate_summary(...)`                             | CLI 对齐的批量详细胜率摘要，返回 `CliGroupWinRateResult[]`          |
+| `score(...)` / `namer_pf(...)`                            | CLI 对齐的评分 / 命配 helper                                        |
+| `batch_rate(...)` / `pair_rate(...)`                      | CLI 对齐的批量对抗 / 配对评分 helper                                |
+| `to_diy(...)` / `to_diy_batch(...)`                       | CLI 对齐的导出 helper                                               |
+| `icon_info(name)` / `parse_group_lines(...)`              | CLI 对齐的图标元信息 / 分组解析 helper                              |
 
 ### FightSession
 
@@ -81,6 +87,7 @@ session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
 | `WinRateResult`      | 最终结果：`done`, `rounds_done`, `total_rounds`, `wins`, `percent`, `timing?`                                                                          |
 | `WinRateTiming`      | 耗时统计：`init_nanos`, `fight_nanos`（wasm32 下均为 0）                                                                                               |
 | `GroupWinRateResult` | 批量胜率结果：`opponent`, `result`                                                                                                                     |
+| `Cli*Result`         | 与 `tswn-cli` / `tswn_py` 高层 helper 对齐的一组结果类型                                                                                                |
 
 ### 错误
 

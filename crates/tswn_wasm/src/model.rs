@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
+use tswn_core::cli_api as core_cli_api;
 use tswn_core::engine::update::UpdateType;
 use tswn_core::player::skill::act::minion::MinionKind;
 
@@ -233,4 +234,196 @@ pub struct WinRateResult {
 pub struct GroupWinRateResult {
     pub opponent: String,
     pub result: WinRateResult,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct CliWinRateResult {
+    pub wins: usize,
+    pub total: usize,
+    pub win_rate: f64,
+    pub init_nanos: u64,
+    pub fight_nanos: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct CliGroupWinRateResult {
+    pub opponent: String,
+    pub result: CliWinRateResult,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct CliScoreResult {
+    pub score: f64,
+    pub wins: usize,
+    pub total: usize,
+    pub errors: usize,
+    pub init_nanos: u64,
+    pub fight_nanos: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct CliNamerPfResult {
+    pub group: Vec<String>,
+    pub modes: Vec<String>,
+    pub scores: Vec<f64>,
+    pub total_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct CliBatchRateResult {
+    pub label: String,
+    pub avg_win_rate: f64,
+    pub aggregate_win_rate: f64,
+    pub wins: usize,
+    pub total: usize,
+    pub valid_matchups: usize,
+    pub skipped_matchups: usize,
+    pub init_nanos: u64,
+    pub fight_nanos: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct CliPairRateEntry {
+    pub name: String,
+    pub rate: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct CliPairRateResult {
+    pub label: String,
+    pub final_score: f64,
+    pub head: usize,
+    pub selected: usize,
+    pub top_pairs: Vec<CliPairRateEntry>,
+    pub aggregate_win_rate: f64,
+    pub wins: usize,
+    pub total: usize,
+    pub valid_matchups: usize,
+    pub skipped_matchups: usize,
+    pub init_nanos: u64,
+    pub fight_nanos: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct CliIconInfo {
+    pub border_style: usize,
+    pub shapes: Vec<usize>,
+    pub bg_color_idx: usize,
+    pub bg_color: [u8; 3],
+    pub fg_color_indices: Vec<usize>,
+    pub fg_colors: Vec<[u8; 3]>,
+    pub colors_consumed: usize,
+}
+
+fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
+
+impl From<core_cli_api::WinRateResult> for CliWinRateResult {
+    fn from(value: core_cli_api::WinRateResult) -> Self {
+        Self {
+            wins: value.wins,
+            total: value.total,
+            win_rate: value.win_rate,
+            init_nanos: nanos_to_u64(value.init_nanos),
+            fight_nanos: nanos_to_u64(value.fight_nanos),
+        }
+    }
+}
+
+impl From<core_cli_api::GroupWinRateResult> for CliGroupWinRateResult {
+    fn from(value: core_cli_api::GroupWinRateResult) -> Self {
+        Self {
+            opponent: value.opponent,
+            result: value.result.into(),
+        }
+    }
+}
+
+impl From<core_cli_api::ScoreResult> for CliScoreResult {
+    fn from(value: core_cli_api::ScoreResult) -> Self {
+        Self {
+            score: value.score,
+            wins: value.wins,
+            total: value.total,
+            errors: value.errors,
+            init_nanos: nanos_to_u64(value.init_nanos),
+            fight_nanos: nanos_to_u64(value.fight_nanos),
+        }
+    }
+}
+
+impl From<core_cli_api::NamerPfResult> for CliNamerPfResult {
+    fn from(value: core_cli_api::NamerPfResult) -> Self {
+        Self {
+            group: value.group,
+            modes: value.modes,
+            scores: value.scores,
+            total_score: value.total_score,
+        }
+    }
+}
+
+impl From<core_cli_api::BatchRateResult> for CliBatchRateResult {
+    fn from(value: core_cli_api::BatchRateResult) -> Self {
+        Self {
+            label: value.label,
+            avg_win_rate: value.avg_win_rate,
+            aggregate_win_rate: value.aggregate_win_rate,
+            wins: value.wins,
+            total: value.total,
+            valid_matchups: value.valid_matchups,
+            skipped_matchups: value.skipped_matchups,
+            init_nanos: nanos_to_u64(value.init_nanos),
+            fight_nanos: nanos_to_u64(value.fight_nanos),
+        }
+    }
+}
+
+impl From<core_cli_api::PairRateEntry> for CliPairRateEntry {
+    fn from(value: core_cli_api::PairRateEntry) -> Self {
+        Self {
+            name: value.name,
+            rate: value.rate,
+        }
+    }
+}
+
+impl From<core_cli_api::PairRateResult> for CliPairRateResult {
+    fn from(value: core_cli_api::PairRateResult) -> Self {
+        Self {
+            label: value.label,
+            final_score: value.final_score,
+            head: value.head,
+            selected: value.selected,
+            top_pairs: value.top_pairs.into_iter().map(Into::into).collect(),
+            aggregate_win_rate: value.aggregate_win_rate,
+            wins: value.wins,
+            total: value.total,
+            valid_matchups: value.valid_matchups,
+            skipped_matchups: value.skipped_matchups,
+            init_nanos: nanos_to_u64(value.init_nanos),
+            fight_nanos: nanos_to_u64(value.fight_nanos),
+        }
+    }
+}
+
+impl From<core_cli_api::IconInfo> for CliIconInfo {
+    fn from(value: core_cli_api::IconInfo) -> Self {
+        Self {
+            border_style: value.border_style,
+            shapes: value.shapes,
+            bg_color_idx: value.bg_color_idx,
+            bg_color: value.bg_color,
+            fg_color_indices: value.fg_color_indices,
+            fg_colors: value.fg_colors,
+            colors_consumed: value.colors_consumed,
+        }
+    }
 }
