@@ -338,13 +338,11 @@ impl Player {
                 // 分身拿到的是覆盖配置初始等级截断到本体当前等级后的值。
                 // `diy_boost` 信息已在 `apply_diy_skill_levels` 阶段写入分身技能，
                 // 这里额外确保它也同步自本体（处理本体运行时可能修改过的 boost 元数据）。
-                if owner_skills.is_diy {
-                    if let Some(ref owner_diy_boost) = owner_skills.skill_by_id(skill_key).diy_boost {
-                        if skill.diy_boost.is_none() {
+                if owner_skills.is_diy
+                    && let Some(ref owner_diy_boost) = owner_skills.skill_by_id(skill_key).diy_boost
+                        && skill.diy_boost.is_none() {
                             skill.diy_boost = Some(owner_diy_boost.clone());
                         }
-                    }
-                }
             }
         }
 
@@ -503,7 +501,7 @@ impl Player {
             team_part,
             attrs.join(","),
             skills,
-            self.overlay.as_ref().map_or(true, |ov| ov.name_factor_enabled)
+            self.overlay.as_ref().is_none_or(|ov| ov.name_factor_enabled)
         )
     }
 

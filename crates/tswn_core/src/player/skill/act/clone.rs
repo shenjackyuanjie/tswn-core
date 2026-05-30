@@ -149,7 +149,7 @@ impl SkillTrait for CloneSkill {
                 owner_name,
                 is_diy,
                 clone_name,
-                &cloned.attr,
+                cloned.attr,
                 cloned.status.hp,
                 cloned.status.attack,
                 cloned.status.defense,

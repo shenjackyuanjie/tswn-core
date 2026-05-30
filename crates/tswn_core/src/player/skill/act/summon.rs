@@ -92,11 +92,7 @@ impl SkillTrait for SummonSkill {
                 kind: MinionKind::Summon,
             });
             let reuse_overlay_skills = minion_overlay.as_ref().map(|overlay| overlay.reuse_skills_on_recast).unwrap_or(false);
-            if reuse_overlay_skills {
-                ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
-                summoned.skills.boost_last();
-                summoned.skills.update_proc();
-            } else if !apply_minion_skill_overlay(summoned, minion_overlay.as_ref()) {
+            if reuse_overlay_skills || !apply_minion_skill_overlay(summoned, minion_overlay.as_ref()) {
                 ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
                 summoned.skills.boost_last();
                 summoned.skills.update_proc();

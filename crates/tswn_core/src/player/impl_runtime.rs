@@ -298,9 +298,7 @@ impl Player {
         let mut selected_skill_key: Option<usize> = pre_action_outcome.forced_skill;
         let mut selected_targets: Vec<PlrId> = Vec::new();
         let selected_from_forced_pre_action = pre_action_outcome.forced_skill.is_some();
-        let forced_attack = if pre_action_outcome.clear_forced_action || pre_action_outcome.forced_skill.is_some() {
-            None
-        } else if !has_states {
+        let forced_attack = if pre_action_outcome.clear_forced_action || pre_action_outcome.forced_skill.is_some() || !has_states {
             None
         } else {
             self.state.resolve_action_mode(smart)
@@ -2005,7 +2003,7 @@ impl Player {
                         .state
                         .run_one_post_defend(tag, self.as_ptr(), &mut dmg, caster, randomer, updates, storage)
                     {
-                        let should_update_states = self.state.tag_clear_updates_status(&tag);
+                        let should_update_states = self.state.tag_clear_updates_status(tag);
                         self.state.clear_tag(tag);
                         if should_update_states {
                             self.update_states();
