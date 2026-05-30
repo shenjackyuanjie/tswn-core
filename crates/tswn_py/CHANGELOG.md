@@ -23,6 +23,7 @@
 
 - `to_diy(old=True, minions=True)` 现在与 CLI 的 `--old` / `--minions` 互斥约束一致，会抛出 `ValueError`。
 - 修正 `Player` 类型存根，将不存在的 `mp` 属性改为实际暴露的 `magic_point`。
+- 顶层高层 helper 的实现改为复用 `tswn_core::cli_api` 共享逻辑层，继续保持现有 Python API 与返回类型不变。
 
 ## [0.2.1] - 2026-05-19
 
