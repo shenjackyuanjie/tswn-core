@@ -263,6 +263,117 @@ tswn_status_t tswn_prepared_win_rate_with_eval_rq(
     tswn_win_rate_result_t* out_result
 );
 
+/*
+ * CLI 对齐的高层辅助接口。
+ * 复杂返回值统一编码为 JSON UTF-8 字符串，并由调用方使用 `tswn_str_free` 释放。
+ */
+tswn_status_t tswn_win_rate_summary_json(const char* raw_text_utf8, size_t n, uint32_t thread, tswn_str_t* out_json);
+tswn_status_t tswn_win_rate_summary_json_with_eval_rq(
+    const char* raw_text_utf8,
+    size_t n,
+    uint32_t thread,
+    double eval_rq,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_team_win_rate_summary_json(
+    const char* team1_utf8,
+    const char* team2_utf8,
+    size_t n,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
+tswn_status_t tswn_team_win_rate_summary_json_with_eval_rq(
+    const char* team1_utf8,
+    const char* team2_utf8,
+    size_t n,
+    uint32_t thread,
+    double eval_rq,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_group_win_rate_summary_json(
+    const char* target_utf8,
+    const char* const* against_utf8,
+    size_t against_len,
+    size_t n,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
+tswn_status_t tswn_group_win_rate_summary_json_with_eval_rq(
+    const char* target_utf8,
+    const char* const* against_utf8,
+    size_t against_len,
+    size_t n,
+    uint32_t thread,
+    double eval_rq,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_score_json(
+    const char* raw_text_utf8,
+    size_t n,
+    const char* mode_utf8,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
+tswn_status_t tswn_score_json_with_eval_rq(
+    const char* raw_text_utf8,
+    size_t n,
+    const char* mode_utf8,
+    uint32_t thread,
+    double eval_rq,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_namer_pf_json(
+    const char* raw_text_utf8,
+    size_t n,
+    const char* const* modes_utf8,
+    size_t modes_len,
+    uint8_t keep_rq,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_batch_rate_json(
+    const char* const* target_groups_utf8,
+    size_t target_groups_len,
+    const char* const* player_groups_utf8,
+    size_t player_groups_len,
+    size_t n,
+    const char* const* player_labels_utf8,
+    size_t player_labels_len,
+    uint8_t keep_rq,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_pair_rate_json(
+    const char* const* target_groups_utf8,
+    size_t target_groups_len,
+    const char* const* players_utf8,
+    size_t players_len,
+    const char* const* teammates_utf8,
+    size_t teammates_len,
+    size_t head,
+    size_t n,
+    uint8_t keep_rq,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_to_diy(const char* name_utf8, uint8_t old, uint8_t minions, tswn_str_t* out_result);
+tswn_status_t tswn_to_diy_batch_json(
+    const char* const* names_utf8,
+    size_t names_len,
+    uint8_t old,
+    uint8_t minions,
+    tswn_str_t* out_json
+);
+tswn_status_t tswn_icon_info_json(const char* name_utf8, tswn_str_t* out_json);
+tswn_status_t tswn_parse_group_lines_json(const char* content_utf8, uint8_t double_plus, tswn_str_t* out_json);
+
 /* 图标辅助接口 */
 
 /* 将名字渲染为 16x16 RGBA 原始像素。结果需用 `tswn_bytes_free` 释放。 */

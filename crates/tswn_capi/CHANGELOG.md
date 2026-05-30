@@ -1,5 +1,21 @@
 # 更新日志
 
+## [0.4.1] - unreleased
+
+### 新增
+
+- 补齐与 `tswn-cli` / `tswn_py` 对齐的高层 C API：
+  - 胜率摘要：`tswn_win_rate_summary_json()`、`tswn_team_win_rate_summary_json()`、`tswn_group_win_rate_summary_json()`
+  - 评分与 namer-pf：`tswn_score_json()`、`tswn_namer_pf_json()`
+  - 批量胜率与配队：`tswn_batch_rate_json()`、`tswn_pair_rate_json()`
+  - DIY / 图标 / 列表解析：`tswn_to_diy()`、`tswn_to_diy_batch_json()`、`tswn_icon_info_json()`、`tswn_parse_group_lines_json()`
+- 为上述高层导出补充 `*_with_eval_rq` 变体，保持与其他包装层一致的可配置胜率评估接口。
+
+### 变更
+
+- 高层 JSON / 字符串导出改为统一复用 `tswn_core::cli_api` 共享逻辑层，减少 C 包装层与 CLI / Python / WASM 之间的语义漂移。
+- 更新 `tswn_capi.h` 与 README，补充新高层导出的所有权与调用说明。
+
 ## [0.4.0] - 2026-05-19
 
 ### ⚠️ Breaking Changes
