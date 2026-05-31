@@ -87,6 +87,7 @@ pub fn run_bench_winrate(
     buckets_step: Option<usize>,
 ) {
     println!("=== 对战胜率测试 ({n} 场) ===");
+    print_bench_winrate_matchup(raw);
 
     if let Some(step) = buckets_step {
         let summary = bench_winrate_with_buckets(raw, n, step, eval_rq);
@@ -96,6 +97,25 @@ pub fn run_bench_winrate(
         print_bench_winrate_summary(summary, perf);
     }
 }
+
+fn print_bench_winrate_matchup(raw: &str) {
+    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let groups: Vec<_> = groups.into_iter().filter(|group| !group.is_empty()).collect();
+
+    match groups.as_slice() {
+        [team1, team2] => {
+            println!("队伍 1: {}", format_group(team1));
+            println!("队伍 2: {}", format_group(team2));
+        }
+        _ => {
+            for (index, group) in groups.iter().enumerate() {
+                println!("队伍 {}: {}", index + 1, format_group(group));
+            }
+        }
+    }
+}
+
+fn format_group(group: &[String]) -> String { display_group(&group.join("\n")) }
 
 /// 目标组对多个对手组的逐组胜率测试。
 pub fn run_bench_group_win_rate(
@@ -145,7 +165,7 @@ pub fn run_bench_group_win_rate(
 }
 
 /// 普通 win-rate 的实际执行器。
-pub(super) fn bench_winrate_summary(
+pub fn bench_winrate_summary(
     raw: &str,
     n: usize,
     mode: BenchThreadMode,
