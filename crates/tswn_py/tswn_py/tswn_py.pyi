@@ -3,6 +3,7 @@
 from ._types_engine import Storage, WorldState
 from ._types_player import Player
 from ._types_rc4 import RC4
+from ._types_replay import TimedEvent
 from ._types_runner import PreparedRunner, Runner
 from ._types_update import RunUpdate, RunUpdates, RunnerError
 
@@ -40,6 +41,10 @@ def group_win_rate(
 
 def prepared_win_rate(prepared: PreparedRunner, n: int, eval_rq: float | None = None, thread: int = 0) -> float:
     """基于 PreparedRunner 计算第一组对其余组的胜率百分比。thread: 0=自动, 1=单线程, n=指定线程数。"""
+    ...
+
+def compute_show_timeline(updates: list[RunUpdate], player_count: int, scale: bool = True) -> list[TimedEvent]:
+    """Compute show.html-compatible event delays for RunUpdate objects."""
     ...
 
 class WinRateResult:
@@ -210,6 +215,12 @@ def name_to_png_bytes(name: str) -> bytes:
 __all__ = [
     "RunnerError",
     "PreparedRunner",
+    "WinRateResult",
+    "ScoreResult",
+    "NamerPfResult",
+    "BatchRateResult",
+    "PairRateResult",
+    "IconInfo",
     "RunUpdate",
     "RunUpdates",
     "Runner",
@@ -222,12 +233,7 @@ __all__ = [
     "core_version_str",
     "group_win_rate",
     "prepared_win_rate",
-    "WinRateResult",
-    "ScoreResult",
-    "NamerPfResult",
-    "BatchRateResult",
-    "PairRateResult",
-    "IconInfo",
+    "compute_show_timeline",
     "win_rate_summary",
     "team_win_rate_summary",
     "group_win_rate_summary",

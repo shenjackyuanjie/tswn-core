@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use pyo3::{PyResult, pyclass, pymethods};
+use pyo3::{Py, PyAny, PyResult, Python, pyclass, pymethods};
 use tswn_core::{
     PreparedRunner as CorePreparedRunner, RunUpdate, RunUpdates, Runner,
     engine::{storage::Storage, update::UpdateType, world_state::WorldState},
@@ -15,6 +15,7 @@ use tswn_core::{
 pub mod error;
 pub mod player;
 pub mod rc4;
+pub mod replay;
 
 /// PreparedRunner 的 Python 封装
 #[pyclass]
@@ -141,6 +142,24 @@ impl PyRunner {
     /// 其实就是用的 world_state 的 have_winner 方法
     pub fn have_winner(&self) -> bool { self.inner.have_winner() }
 
+    /// 获取已经获胜的输入队伍索引。
+    pub fn winner_team_index(&self) -> Option<usize> { self.inner.winner_team_index() }
+
+    /// 获取所有已经获胜的输入队伍索引。
+    pub fn winner_team_indices(&self) -> Vec<usize> { self.inner.winner_team_indices() }
+
+    /// 获取当前所有运行时实体的标准快照。
+    pub fn snapshot_players(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let snapshots = replay::snapshot_players(&self.inner);
+        Ok(replay::snapshots_to_pylist(py, &snapshots)?.into_any().unbind())
+    }
+
+    /// 构建用于直播/回放的高层 timeline。
+    #[pyo3(signature = (limit=None))]
+    pub fn build_replay(&mut self, py: Python<'_>, limit: Option<usize>) -> PyResult<Py<PyAny>> {
+        replay::build_replay(py, &mut self.inner, limit)
+    }
+
     /// 获取所有存活玩家（扁平）
     pub fn alives_flat(&self) -> Vec<PlrId> { self.inner.alives_flat() }
 
@@ -177,6 +196,12 @@ impl PyWorldState {
 
     /// 是否有赢家
     pub fn have_winner(&self) -> bool { self.inner.have_winner() }
+
+    /// 获取已经获胜的输入队伍索引。
+    pub fn winner_team_index(&self) -> Option<usize> { self.inner.winner_team_index() }
+
+    /// 获取所有已经获胜的输入队伍索引。
+    pub fn winner_team_indices(&self) -> Vec<usize> { self.inner.winner_team_indices() }
 
     /// 全部玩家（包含已死亡）
     pub fn all_plrs(&self) -> Vec<PlrId> { self.inner.all_plrs() }
@@ -393,4 +418,14 @@ impl PyRunUpdate {
     pub fn is_next_line(&self) -> bool { self.inner.update_type == UpdateType::NextLine }
 
     pub fn msg(&self) -> String { self.inner.msg() }
+
+    #[pyo3(signature = (rendered=true))]
+    pub fn to_dict(&self, py: Python<'_>, rendered: bool) -> PyResult<Py<PyAny>> {
+        let names = std::collections::HashMap::new();
+        let mut event = replay::update_to_dto(&self.inner, &names);
+        if !rendered {
+            event.message_rendered.clear();
+        }
+        Ok(replay::event_to_pydict(py, &event)?.into_any().unbind())
+    }
 }

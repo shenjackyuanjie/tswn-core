@@ -18,12 +18,20 @@
   - `PairRateResult`
   - `IconInfo`
 - 新增 `scripts/verify_py_cli_api.py`，用于构建本地 `tswn_py` 扩展并验证 Python 接口与 CLI 语义对齐。
+- 新增服务端直播/回放高层接口：
+  - `Runner.winner_team_index()` / `Runner.winner_team_indices()`：直接返回胜利输入队伍索引。
+  - `Runner.snapshot_players()`：返回包含队伍归属、显示顺序、基础信息、属性和运行状态的标准玩家快照。
+  - `RunUpdate.to_dict(rendered=True)`：返回结构化事件 DTO，并可同时给出渲染后的消息文本。
+  - `Runner.build_replay(limit=None)`：生成包含初始状态、事件列表、tick 前后真实状态、播放延迟和胜者信息的 replay timeline。
+  - `compute_show_timeline(updates, player_count, scale=True)`：按 show.html 语义为已有事件计算播放延迟。
+- 新增 replay 相关类型存根，覆盖 `PlayerSnapshot`、`EventDto`、`TimedEvent`、`ReplayEvent` 与 `BattleReplay`。
 
 ### 变更
 
 - `to_diy(old=True, minions=True)` 现在与 CLI 的 `--old` / `--minions` 互斥约束一致，会抛出 `ValueError`。
 - 修正 `Player` 类型存根，将不存在的 `mp` 属性改为实际暴露的 `magic_point`。
 - 顶层高层 helper 的实现改为复用 `tswn_core::cli_api` 共享逻辑层，继续保持现有 Python API 与返回类型不变。
+- replay 事件快照使用每个引擎 tick 前后的真实状态（`state_granularity == "tick"`），服务端不再需要根据事件文本自行模拟逐条状态变化。
 
 ## [0.2.1] - 2026-05-19
 

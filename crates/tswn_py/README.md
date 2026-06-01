@@ -61,6 +61,7 @@ rate = prepared.win_rate(1000)
 | `to_diy_batch(names, old, minions)`                   | 批量导出 DIY/OL overlay |
 | `icon_info(name)`                                     | 对齐 `icon show` 的图标结构信息 |
 | `parse_group_lines(content, double_plus)`             | 对齐 batch 列表文件的组解析 |
+| `compute_show_timeline(updates, player_count, scale)` | 按 show.html 语义计算事件播放延迟 |
 
 CLI 对齐 helper 返回结构化对象，方便脚本继续处理：
 
@@ -92,6 +93,37 @@ overlay = tswn_py.to_diy("mario@red+fire", minions=True)
 ```
 
 注意：`to_diy(old=True, minions=True)` 与 CLI 的 `--old` / `--minions` 一样互斥，会抛出 `ValueError`。
+
+### 直播回放辅助
+
+`Runner` 提供面向服务端直播/回放的高层接口：
+
+```python
+runner = tswn_py.Runner.new_from_namerena_raw(raw_input)
+
+# 核心侧给出的胜利输入队伍，不需要从 winner player ids 反推。
+winner_team = runner.winner_team_index()
+
+# 标准玩家快照，包含原始玩家以及分身、召唤物等运行时实体。
+states = runner.snapshot_players()
+
+# 跑完整局并生成可直接广播给前端的 replay timeline。
+replay = runner.build_replay()
+for item in replay["events"]:
+    event = item["event"]
+    print(item["delay_ms"], event["tone"], event["message_rendered"])
+
+# 已有 RunUpdates 也可以单独计算 show.html 风格的延迟。
+timeline = tswn_py.compute_show_timeline(updates, player_count=len(states))
+```
+
+`RunUpdate.to_dict(rendered=True)` 会返回结构化事件字段，包括 `type`、`tone`、
+`message_template`、`message_rendered`、`caster_id`、`target_id`、`target_ids`、
+`param`、`score`、`delay0`、`delay1`、`is_win` 和 `is_next_line`。
+
+`build_replay()` 返回 `initial_states`、`events`、`final_states`、`winner_team_index`、
+`winner_team_indices`、`winner_ids` 和 `winner_names`。事件快照使用每个 tick 前后的真实引擎状态
+（`state_granularity == "tick"`），调用方无需再根据事件文本模拟扣血、召唤、复活或状态变化。
 
 ### 类
 

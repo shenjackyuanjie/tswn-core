@@ -9,10 +9,10 @@ pub mod cli_api;
 pub mod wrapper;
 
 use pyo3::{
-    Bound, PyRef, PyResult,
+    Bound, Py, PyAny, PyRef, PyResult, Python,
     exceptions::PyValueError,
     pyfunction, pymodule,
-    types::{PyModule, PyModuleMethods},
+    types::{PyDictMethods, PyList, PyListMethods, PyModule, PyModuleMethods},
     wrap_pyfunction,
 };
 use tswn_core::{PreparedRunner, Runner};
@@ -93,6 +93,33 @@ fn prepared_win_rate(
     run_prepared_win_rate(&prepared.inner, n, eval_rq, thread)
 }
 
+/// Compute show.html-compatible per-event delays for a list of RunUpdate objects.
+#[pyfunction(signature = (updates, player_count, scale=true))]
+fn compute_show_timeline(
+    py: Python<'_>,
+    updates: Vec<PyRef<'_, wrapper::PyRunUpdate>>,
+    player_count: usize,
+    scale: bool,
+) -> PyResult<Py<PyAny>> {
+    let names = std::collections::HashMap::new();
+    let events = updates
+        .iter()
+        .map(|update| wrapper::replay::update_to_dto(&update.inner, &names))
+        .collect::<Vec<_>>();
+    let delays = wrapper::replay::compute_event_delays(&events, scale, player_count, false);
+    let result = PyList::empty(py);
+
+    for (idx, event) in events.iter().enumerate() {
+        let item = pyo3::types::PyDict::new(py);
+        item.set_item("event", wrapper::replay::event_to_pydict(py, event)?)?;
+        item.set_item("delay_ms", *delays.get(idx).unwrap_or(&0))?;
+        item.set_item("row_break", event.is_next_line)?;
+        result.append(item)?;
+    }
+
+    Ok(result.into_any().unbind())
+}
+
 /// tswn-py
 #[pymodule]
 #[pyo3(name = "tswn_py")]
@@ -107,6 +134,7 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(win_rate, m)?)?;
     m.add_function(wrap_pyfunction!(group_win_rate, m)?)?;
     m.add_function(wrap_pyfunction!(prepared_win_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(compute_show_timeline, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::win_rate_summary, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::team_win_rate_summary, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::group_win_rate_summary, m)?)?;

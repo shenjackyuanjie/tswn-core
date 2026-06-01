@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ._types_engine import Storage, WorldState
 from ._types_rc4 import RC4
+from ._types_replay import BattleReplay, PlayerSnapshot
 from ._types_update import RunUpdates
 
 class PreparedRunner:
@@ -85,6 +86,18 @@ class Runner:
         ...
     def have_winner(self) -> bool:
         """当前是否已有赢家。"""
+        ...
+    def winner_team_index(self) -> int | None:
+        """Return the winning input team index, if the battle has a winner."""
+        ...
+    def winner_team_indices(self) -> list[int]:
+        """Return winning input team indices."""
+        ...
+    def snapshot_players(self) -> list[PlayerSnapshot]:
+        """Return authoritative snapshots for all current runtime entities."""
+        ...
+    def build_replay(self, limit: int | None = None) -> BattleReplay:
+        """Run the battle and return a high-level replay timeline."""
         ...
     def alives_flat(self) -> list[int]:
         """所有存活玩家 ID 的扁平列表。"""

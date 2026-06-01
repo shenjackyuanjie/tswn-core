@@ -482,6 +482,16 @@ impl Runner {
             randomer.encrypt_bytes(&mut [0]);
         }
 
+        let input_team_indices = inited_plrs
+            .iter()
+            .map(|group| {
+                input_groups
+                    .iter()
+                    .position(|input_group| input_group == group)
+                    .expect("sorted battle group must originate from input_groups")
+            })
+            .collect::<Vec<usize>>();
+
         let mut sorted_for_move_point = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();
         sorted_for_move_point.sort_by(|a, b| Self::cmp_prepared_player_keys(&sort_ints, &prepared.id_key_names, *a, *b));
         for ptr in &sorted_for_move_point {
@@ -490,6 +500,7 @@ impl Runner {
         }
 
         let mut world = WorldState::new(inited_plrs);
+        world.set_input_team_indices(input_team_indices);
         world.players = sorted_for_move_point;
         storage.sync_groups(&world.groups);
         storage.sync_alive_groups_owned_with_count(world.alives_by_group(&storage), world.alive_group_count());
@@ -598,6 +609,12 @@ impl Runner {
 
     #[inline]
     pub fn have_winner(&self) -> bool { self.world.have_winner() }
+
+    #[inline]
+    pub fn winner_team_index(&self) -> Option<usize> { self.world.winner_team_index() }
+
+    #[inline]
+    pub fn winner_team_indices(&self) -> Vec<usize> { self.world.winner_team_indices() }
 
     #[inline]
     pub fn all_plrs(&self) -> Vec<PlrId> { self.world.all_plrs() }

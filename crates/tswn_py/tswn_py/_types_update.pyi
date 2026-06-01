@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ._types_replay import EventDto
+
 class RunnerError(Exception):
     """Runner 初始化或运行时错误。"""
 
@@ -58,6 +60,10 @@ class RunUpdate:
         ...
     def msg(self) -> str:
         """返回占位符替换后的最终消息。"""
+        ...
+
+    def to_dict(self, rendered: bool = True) -> EventDto:
+        """Return a structured event dictionary."""
         ...
 
 class RunUpdates:

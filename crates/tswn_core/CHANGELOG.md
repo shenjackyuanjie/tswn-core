@@ -19,6 +19,7 @@
 
 - 新增共享高层 `cli_api` 模块，集中提供与 `tswn-cli` 语义对齐的包装层辅助接口：`win_rate_summary`、`team_win_rate_summary`、`group_win_rate_summary`、`score`、`namer_pf`、`batch_rate`、`pair_rate`、`to_diy`、`to_diy_batch`、`icon_info`、`parse_group_lines`。
 - 新增一组纯 Rust 结构化结果类型，供 `tswn_py` / `tswn_wasm` / `tswn_capi` 复用同一套高层输出语义，减少多包装层重复实现。
+- `WorldState` / `Runner` 现在记录内部战斗队伍到原始输入队伍的映射，并提供 `winner_team_index()` / `winner_team_indices()`，便于包装层直接获得权威胜利队伍，避免从胜者 player id 反推时受分身、召唤物等运行时实体影响。
 
 ### 修复
 

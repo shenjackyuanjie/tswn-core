@@ -52,6 +52,11 @@ pub struct WorldState {
     alive_set: Vec<bool>,
     /// 玩家 → 所属队伍索引映射，用 PlrId 稠密下标支持 O(1) team_index_of 查询
     player_team: Vec<Option<usize>>,
+    /// 内部队伍索引 → 原始输入队伍索引。
+    ///
+    /// `WorldState` 的 `teams` 会按战斗顺序重排，直播/计分侧通常需要的是输入顺序下的队伍编号。
+    /// 默认按 identity 初始化；`Runner` 构造完成后会写入真实映射。
+    input_team_indices: Vec<usize>,
     /// 已在行动轮次中的玩家集合，用 PlrId 稠密下标支持 O(1) ensure_player_in_round 去重检查
     players_set: Vec<bool>,
     /// JS Engine.e 兼容的全局存活列表。
@@ -94,6 +99,7 @@ impl WorldState {
                 player_team[id] = Some(idx);
             }
         }
+        let input_team_indices = (0..teams.len()).collect();
         let mut players_set = vec![false; max_id + 1];
         for &id in &players {
             players_set[id] = true;
@@ -109,6 +115,7 @@ impl WorldState {
             round_pos: -1,
             alive_set,
             player_team,
+            input_team_indices,
             players_set,
             flat_alive,
             alive_group_count,
@@ -126,6 +133,17 @@ impl WorldState {
 
     #[inline]
     pub fn team_index_of(&self, actor: PlrId) -> Option<usize> { self.player_team.get(actor).copied().flatten() }
+
+    #[inline]
+    pub fn input_team_index_of_team(&self, team_idx: usize) -> Option<usize> { self.input_team_indices.get(team_idx).copied() }
+
+    pub fn set_input_team_indices(&mut self, mut input_team_indices: Vec<usize>) {
+        if input_team_indices.len() < self.teams.len() {
+            input_team_indices.extend(input_team_indices.len()..self.teams.len());
+        }
+        input_team_indices.truncate(self.teams.len());
+        self.input_team_indices = input_team_indices;
+    }
 
     #[inline]
     pub fn team_roster(&self, team_idx: usize) -> Option<&[PlrId]> { self.teams.get(team_idx).map(|team| team.roster.as_slice()) }
@@ -308,6 +326,7 @@ impl WorldState {
                 roster: vec![plr],
                 alive: vec![plr],
             });
+            self.input_team_indices.push(new_idx);
             self.set_player_team_index(plr, Some(new_idx));
             self.set_alive_index(plr, true);
             self.alive_group_count += 1;
@@ -336,6 +355,7 @@ impl WorldState {
                 roster: vec![plr],
                 alive: vec![plr],
             });
+            self.input_team_indices.push(new_idx);
             self.set_player_team_index(plr, Some(new_idx));
             self.set_alive_index(plr, true);
             self.alive_group_count += 1;
@@ -349,5 +369,33 @@ impl WorldState {
 
     pub fn winner_roster(&self, team_idx: usize) -> Option<Vec<PlrId>> {
         self.teams.get(team_idx).map(|team| team.roster.clone())
+    }
+
+    pub fn winner_team_indices(&self) -> Vec<usize> {
+        let Some(winner) = self.winner.as_ref() else {
+            return Vec::new();
+        };
+        self.teams
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, team)| (team.roster == *winner).then_some(self.input_team_index_of_team(idx).unwrap_or(idx)))
+            .collect()
+    }
+
+    pub fn winner_team_index(&self) -> Option<usize> { self.winner_team_indices().into_iter().next() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WorldState;
+
+    #[test]
+    fn winner_team_indices_follow_input_team_mapping() {
+        let mut world = WorldState::new(vec![vec![10], vec![20]]);
+        world.set_input_team_indices(vec![1, 0]);
+        world.winner = world.winner_roster(0);
+
+        assert_eq!(world.winner_team_index(), Some(1));
+        assert_eq!(world.winner_team_indices(), vec![1]);
     }
 }
