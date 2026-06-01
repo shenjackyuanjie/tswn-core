@@ -35,7 +35,7 @@ pub fn get_or_compute_rate(
         return Ok(rate);
     }
 
-    let rate = compute_rate_without_db(a, b, samples, 0)?;
+    let rate = compute_rate_without_db(a, b, samples, 1)?;
     db.save_rate_pair(a.id, b.id, rate, samples)?;
     Ok(rate)
 }

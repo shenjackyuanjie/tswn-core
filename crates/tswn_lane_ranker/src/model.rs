@@ -4,6 +4,12 @@ pub type GroupId = i64;
 pub type JobId = i64;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct SkillValue {
+    pub name: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct StoredGroup {
     pub id: GroupId,
     pub canonical: String,
@@ -11,6 +17,8 @@ pub struct StoredGroup {
     pub lane_size: usize,
     pub team_name: String,
     pub members: Vec<String>,
+    /// 手动屏蔽：仍参与 CQD/Score 等计算，但禁止被选入靶子。
+    pub is_blocked: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -67,11 +75,19 @@ pub struct LaneResultRow {
     pub group_id: GroupId,
     pub rank: usize,
     pub canonical: String,
+    pub team_name: String,
+    pub root_team_name: String,
     pub average_cqd: f64,
+    /// 用 tswn_lane_ranker/src/skill_eq.rs 内置 Rust 等效熟练度算法计算出的类型。
+    pub type_label: String,
+    /// 该组合所有成员、所有技能的等效熟练度合计；导出技能总表时使用。
+    pub skill_totals: Vec<SkillValue>,
     pub min_cqd: f64,
     pub max_cqd: f64,
     pub variance_cqd: f64,
     pub golden_rate: f64,
+    /// 手动屏蔽：仍参与 CQD/Score 等计算，但禁止被选入靶子。
+    pub is_blocked: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,16 +119,56 @@ pub struct LaneJob {
     pub error: Option<String>,
 }
 
+
+#[derive(Debug, Deserialize)]
+pub struct BlockGroupRequest {
+    /// 外层 worker。0 或不填 = 自动 worker + 动态队列；>0 = 指定 worker 数 + 静态分块。
+    pub outer_workers: Option<usize>,
+    /// 兼容旧请求字段；服务端固定忽略，实际 inner worker 永远为 1。
+    pub inner_workers: Option<u32>,
+    /// 是否跳过已封存组合。默认 true。手动屏蔽组合本身不会被跳过；若同时已封存则仍按封存规则处理。
+    pub skip_archived: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BlockGroupResponse {
+    pub group_id: GroupId,
+    pub lane_size: usize,
+    pub canonical: String,
+    pub blocked: bool,
+    pub queued_lanes: Vec<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlockGroupsByTextRequest {
+    /// 每个元素是一个组合，例如 "aaa@A+bbb@A"。顺序会被 canonical 化。
+    pub groups: Vec<String>,
+    /// 外层 worker。0 或不填 = 自动 worker + 动态队列；>0 = 指定 worker 数 + 静态分块。
+    pub outer_workers: Option<usize>,
+    /// 兼容旧请求字段；服务端固定忽略，实际 inner worker 永远为 1。
+    pub inner_workers: Option<u32>,
+    /// 是否跳过已封存组合。默认 true。
+    pub skip_archived: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BlockGroupsByTextResponse {
+    pub blocked: Vec<String>,
+    pub unblocked: Vec<String>,
+    pub ignored: Vec<IgnoredGroup>,
+    pub queued_lanes: Vec<usize>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AddGroupsRequest {
-    /// 每个元素是一组号，例如 "aaa@A+bbb@A"。
+    /// 每个元素是一个组合，例如 "aaa@A+bbb@A"。
     /// 前端也可以按行拆分后传进来。
     pub groups: Vec<String>,
     /// 外层 worker。0 或不填 = 自动 worker + 动态队列；>0 = 指定 worker 数 + 静态分块。
     pub outer_workers: Option<usize>,
-    /// 内层 worker。0 或不填 = 传给 tswn_core 的 thread=0；>0 = 指定内层线程数。
+    /// 兼容旧请求字段；服务端固定忽略，实际 inner worker 永远为 1。
     pub inner_workers: Option<u32>,
-    /// 是否在跑代码时跳过已封存组合。默认 true。
+    /// 是否跳过已封存组合。默认 true。
     pub skip_archived: Option<bool>,
 }
 
@@ -136,9 +192,9 @@ pub struct MergeTeamsRequest {
     pub y: String,
     /// 外层 worker。0 或不填 = 自动 worker + 动态队列；>0 = 指定 worker 数 + 静态分块。
     pub outer_workers: Option<usize>,
-    /// 内层 worker。0 或不填 = 传给 tswn_core 的 thread=0；>0 = 指定内层线程数。
+    /// 兼容旧请求字段；服务端固定忽略，实际 inner worker 永远为 1。
     pub inner_workers: Option<u32>,
-    /// 是否在跑代码时跳过已封存组合。默认 true。
+    /// 是否跳过已封存组合。默认 true。
     pub skip_archived: Option<bool>,
 }
 
@@ -154,9 +210,9 @@ pub struct RecomputeLaneRequest {
     pub stickiness: Option<usize>,
     /// 外层 worker。0 或不填 = 自动 worker + 动态队列；>0 = 指定 worker 数 + 静态分块。
     pub outer_workers: Option<usize>,
-    /// 内层 worker。0 或不填 = 传给 tswn_core 的 thread=0；>0 = 指定内层线程数。
+    /// 兼容旧请求字段；服务端固定忽略，实际 inner worker 永远为 1。
     pub inner_workers: Option<u32>,
-    /// 是否在跑代码时跳过已封存组合。默认 true。
+    /// 是否跳过已封存组合。默认 true。
     pub skip_archived: Option<bool>,
 }
 
