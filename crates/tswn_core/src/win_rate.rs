@@ -55,8 +55,6 @@ impl WinRateSummary {
     pub fn win_rate_percent(self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 }
 
-pub fn use_js_profile_seed_schedule(eval_rq: f64) -> bool { eval_rq == crate::player::eval_name::WIN_RATE_EVAL_RQ }
-
 pub fn resolve_win_rate_workers(thread: u32, total: usize) -> usize {
     let workers = match thread {
         0 => platform_default_win_rate_workers(),
@@ -66,12 +64,11 @@ pub fn resolve_win_rate_workers(thread: u32, total: usize) -> usize {
     platform_limit_win_rate_workers(workers).min(total.max(1))
 }
 
-pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> RunnerResult<WinRateSummary> {
+pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, _eval_rq: f64, thread: u32) -> RunnerResult<WinRateSummary> {
     let workers = resolve_win_rate_workers(thread, n);
-    let use_profile_seed = use_js_profile_seed_schedule(eval_rq);
 
     if !should_parallelize_prepared_win_rate(workers, n) {
-        return run_prepared_win_rate_range(prepared, 0, n, use_profile_seed);
+        return run_prepared_win_rate_range(prepared, 0, n);
     }
 
     let prepared = Arc::new(prepared.clone());
@@ -81,7 +78,7 @@ pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thre
         let prepared = Arc::clone(&prepared);
         let next = Arc::clone(&next);
         handles.push(std::thread::spawn(move || {
-            run_prepared_win_rate_worker(prepared.as_ref(), next.as_ref(), n, use_profile_seed)
+            run_prepared_win_rate_worker(prepared.as_ref(), next.as_ref(), n)
         }));
     }
 
@@ -107,29 +104,18 @@ fn should_parallelize_prepared_win_rate(workers: usize, n: usize) -> bool {
     workers > 1 && n >= PREPARED_WIN_RATE_PARALLEL_THRESHOLD
 }
 
-pub fn run_prepared_win_rate_range(
-    prepared: &PreparedRunner,
-    start: usize,
-    end: usize,
-    use_profile_seed: bool,
-) -> RunnerResult<WinRateSummary> {
+pub fn run_prepared_win_rate_range(prepared: &PreparedRunner, start: usize, end: usize) -> RunnerResult<WinRateSummary> {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut seed = String::with_capacity(24);
     let mut timing = WinRateTiming::default();
 
     for i in start..end {
-        let seed_ref: &[String] = if use_profile_seed {
-            if i == 0 {
-                &[]
-            } else {
-                seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", crate::engine::PROFILE_START as usize + i);
-                std::slice::from_ref(&seed)
-            }
+        let seed_ref: &[String] = if i == 0 {
+            &[]
         } else {
             seed.clear();
-            let _ = write!(&mut seed, "seed:{i}@!");
+            let _ = write!(&mut seed, "seed:{}@!", crate::engine::PROFILE_START as usize + i);
             std::slice::from_ref(&seed)
         };
 
@@ -152,12 +138,7 @@ pub fn run_prepared_win_rate_range(
     Ok(WinRateSummary { wins, total, timing })
 }
 
-fn run_prepared_win_rate_worker(
-    prepared: &PreparedRunner,
-    next: &AtomicUsize,
-    end: usize,
-    use_profile_seed: bool,
-) -> RunnerResult<WinRateSummary> {
+fn run_prepared_win_rate_worker(prepared: &PreparedRunner, next: &AtomicUsize, end: usize) -> RunnerResult<WinRateSummary> {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut seed = String::with_capacity(24);
@@ -169,17 +150,11 @@ fn run_prepared_win_rate_worker(
             break;
         }
 
-        let seed_ref: &[String] = if use_profile_seed {
-            if i == 0 {
-                &[]
-            } else {
-                seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", crate::engine::PROFILE_START as usize + i);
-                std::slice::from_ref(&seed)
-            }
+        let seed_ref: &[String] = if i == 0 {
+            &[]
         } else {
             seed.clear();
-            let _ = write!(&mut seed, "seed:{i}@!");
+            let _ = write!(&mut seed, "seed:{}@!", crate::engine::PROFILE_START as usize + i);
             std::slice::from_ref(&seed)
         };
 

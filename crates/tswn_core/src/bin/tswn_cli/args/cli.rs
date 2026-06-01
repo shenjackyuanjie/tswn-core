@@ -17,8 +17,8 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use super::input::{
     cli_error, decode_raw, parse_line_list, parse_non_negative_f64, parse_percent_0_100, parse_player_groups_with_labels,
-    parse_plus_separated_groups, parse_positive_usize, parse_thread_count, parse_to_diy_file_names, parse_wr_precision,
-    read_file, read_stdin,
+    parse_plus_separated_groups, parse_positive_usize, parse_thread_count, parse_to_diy_file_names, parse_win_rate_teams,
+    parse_wr_precision, read_file, read_stdin,
 };
 use super::parsed::{BenchThreadMode, NamerPfMode, ParsedCli, ParsedCommand};
 
@@ -152,9 +152,11 @@ enum BenchSubcommand {
     Auto(BenchAutoCommand),
     /// 显式运行两队胜率测试。
     ///
+    /// 两队之间用换行分隔，队内默认用 `+` 分隔；传入 `--double-plus` 时队内改用 `++` 分隔。
+    ///
     /// 示例:
-    ///   tswn-cli bench win-rate "mario" "luigi" -n 10000
-    ///   tswn-cli bench win-rate "mario" "luigi" --keep-rq --perf
+    ///   tswn-cli bench win-rate -r "1@a+2@a\n3@b+4@b" -n 10000
+    ///   tswn-cli bench win-rate -f teams.txt --double-plus --keep-rq --perf
     #[command(name = "win-rate", verbatim_doc_comment)]
     WinRate(BenchWinRateCommand),
     /// 显式运行目标组对多个对手组的胜率测试，并汇总平均胜率。
@@ -210,11 +212,25 @@ struct BenchAutoCommand {
 
 #[derive(Debug, Args)]
 struct BenchWinRateCommand {
-    /// 队伍 1，格式与普通输入中的单组相同。
-    team1: String,
+    /// 使用提供的两队文本作为输入，支持 `\n` 换行；支持 `-r/--raw`。
+    #[arg(
+        short = 'r',
+        long,
+        required_unless_present = "file",
+        conflicts_with = "file",
+        value_name = "STRING"
+    )]
+    raw: Option<String>,
 
-    /// 队伍 2，格式与普通输入中的单组相同。
-    team2: String,
+    /// 从文件读取两队文本；支持 `-f/--file`。
+    #[arg(
+        short = 'f',
+        long,
+        required_unless_present = "raw",
+        conflicts_with = "raw",
+        value_name = "FILE"
+    )]
+    file: Option<PathBuf>,
 
     /// 胜率测试公共参数。
     #[command(flatten)]
@@ -223,6 +239,10 @@ struct BenchWinRateCommand {
     /// 保持 rq=4，不模拟 JS win_rate 对 rq 的污染。
     #[arg(long)]
     keep_rq: bool,
+
+    /// 队内使用 `++` 分隔，避免拆开名字里的 `+diy[...]` / `+ol:...`。
+    #[arg(long = "double-plus")]
+    double_plus: bool,
 }
 
 #[derive(Debug, Args)]
@@ -593,16 +613,24 @@ impl ParsedCli {
                     perf: cmd.options.perf,
                     buckets_step: cmd.options.buckets_step,
                 },
-                BenchSubcommand::WinRate(cmd) => ParsedCommand::BenchWinRate {
-                    team1: decode_raw(&cmd.team1),
-                    team2: decode_raw(&cmd.team2),
-                    n: cmd.options.count.max(1),
-                    mode: cmd.options.mode(),
-                    threads: cmd.options.thread,
-                    perf: cmd.options.perf,
-                    keep_rq: cmd.keep_rq,
-                    buckets_step: cmd.options.buckets_step,
-                },
+                BenchSubcommand::WinRate(cmd) => {
+                    let input = match (&cmd.raw, &cmd.file) {
+                        (Some(raw), None) => decode_raw(raw),
+                        (None, Some(path)) => read_file(path)?,
+                        _ => return Err(cli_error("bench win-rate 只能使用 --raw 或 --file 其中一种输入")),
+                    };
+                    let (team1, team2) = parse_win_rate_teams(&input, cmd.double_plus)?;
+                    ParsedCommand::BenchWinRate {
+                        team1,
+                        team2,
+                        n: cmd.options.count.max(1),
+                        mode: cmd.options.mode(),
+                        threads: cmd.options.thread,
+                        perf: cmd.options.perf,
+                        keep_rq: cmd.keep_rq,
+                        buckets_step: cmd.options.buckets_step,
+                    }
+                }
                 BenchSubcommand::GroupWinRate(cmd) => ParsedCommand::BenchGroupWinRate {
                     target: decode_raw(&cmd.target),
                     against: cmd.against.into_iter().map(|value| decode_raw(&value)).collect(),
@@ -827,6 +855,52 @@ mod tests {
             }
             _ => panic!("unexpected command"),
         }
+    }
+
+    #[test]
+    fn bench_win_rate_accepts_raw_two_line_plus_format() {
+        let cli = Cli::try_parse_from(["tswn-cli", "bench", "win-rate", "-r", "1@a+2@a\\n3@b+4@b"]).unwrap();
+        let parsed = ParsedCli::from_cli(cli).unwrap();
+        match parsed.command {
+            ParsedCommand::BenchWinRate { team1, team2, .. } => {
+                assert_eq!(team1, "1@a\n2@a");
+                assert_eq!(team2, "3@b\n4@b");
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn bench_win_rate_accepts_double_plus_format() {
+        let cli = Cli::try_parse_from([
+            "tswn-cli",
+            "bench",
+            "win-rate",
+            "-r",
+            "1@a+diy[x]++2@a\\n3@b++4@b",
+            "--double-plus",
+        ])
+        .unwrap();
+        let parsed = ParsedCli::from_cli(cli).unwrap();
+        match parsed.command {
+            ParsedCommand::BenchWinRate { team1, team2, .. } => {
+                assert_eq!(team1, "1@a+diy[x]\n2@a");
+                assert_eq!(team2, "3@b\n4@b");
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn bench_win_rate_rejects_positional_teams() {
+        let err = Cli::try_parse_from(["tswn-cli", "bench", "win-rate", "mario", "luigi"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
+    }
+
+    #[test]
+    fn bench_win_rate_rejects_missing_input() {
+        let err = Cli::try_parse_from(["tswn-cli", "bench", "win-rate"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
     }
 
     #[test]

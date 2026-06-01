@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use tswn_core::Runner;
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::win_rate::{WinRateTiming, prepared_win_rate, run_prepared_win_rate_range, use_js_profile_seed_schedule};
+use tswn_core::win_rate::{WinRateTiming, prepared_win_rate, run_prepared_win_rate_range};
 
 use crate::args::BenchThreadMode;
 
@@ -165,13 +165,7 @@ pub fn run_bench_group_win_rate(
 }
 
 /// 普通 win-rate 的实际执行器。
-pub fn bench_winrate_summary(
-    raw: &str,
-    n: usize,
-    mode: BenchThreadMode,
-    threads: Option<usize>,
-    eval_rq: f64,
-) -> BenchSummary {
+pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64) -> BenchSummary {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     // 这里的模板只服务当前这一个 matchup；`batch-rate` / `bench pair` 的外层循环
     // 会不断传入新的 `raw`，几乎没有缓存复用价值。改走 uncached 后，当前 matchup
@@ -239,7 +233,6 @@ fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) ->
     };
 
     let started_at = Instant::now();
-    let use_profile_seed = use_js_profile_seed_schedule(eval_rq);
     let mut cumulative_wins = 0usize;
     let mut cumulative_total = 0usize;
     let mut cumulative_timing = WinRateTiming::default();
@@ -247,7 +240,7 @@ fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) ->
     let mut offset = 0usize;
     while offset < n {
         let chunk_end = (offset + step).min(n);
-        let chunk = match run_prepared_win_rate_range(&prepared, offset, chunk_end, use_profile_seed) {
+        let chunk = match run_prepared_win_rate_range(&prepared, offset, chunk_end) {
             Ok(chunk) => chunk,
             Err(err) => {
                 eprintln!("分段 [{offset}, {chunk_end}) 胜率测试失败: {err}");

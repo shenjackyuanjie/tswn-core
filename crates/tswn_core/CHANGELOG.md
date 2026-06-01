@@ -13,6 +13,7 @@
 
 - `namer-pf` 新增 `--mode` 参数，支持按 pp/pd/qp/qd 选择评分项，可重复传入或逗号分隔，不传则默认运行全部四项。
 - `namer-pf` 新增 `--precision <N>` 输出精度控制，默认保留 0 位小数，显式传入时可输出小数分数。
+- `bench win-rate` 输入改为 `-r/--raw` 或 `-f/--file`：两队之间用换行分隔，队内默认用 `+` 分隔；新增 `--double-plus`，可改用 `++` 作为队内分隔符以保留名字里的 `+diy[...]` / `+ol:...`。
 - `bench win-rate` 细化终端输出：普通对战胜率测试现在会先打印对战双方（或各队伍）信息，便于直接确认当前 matchup。
 
 ### Wrapper / FFI
@@ -25,6 +26,7 @@
 
 - 修复 `ol` overlay 中 `name_factor_enabled` 字段未被解析的问题：JSON 格式的 `ol:{...}` overlay 现在能正确识别 `name_factor_enabled` 开关。
 - 修复 `bench win-rate` 未对 `team1`/`team2` 调用 `decode_raw` 导致 `\n` 换行符不被解析的问题：现与 `bench group-win-rate` 一致，支持以 `\n` 分隔队内玩家。
+- 修复 `bench win-rate --keep-rq` 会同时切换 seed 调度的问题：`--keep-rq` 现在只影响 rq，胜率模拟始终使用 JS ProfileWinChance seed 口径（首场无 seed，后续 `seed:(33554431 + i)@!`）。
 
 ### 重构
 

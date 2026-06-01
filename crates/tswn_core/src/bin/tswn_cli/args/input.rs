@@ -135,8 +135,29 @@ pub(super) fn parse_plus_separated_groups(content: &str) -> Vec<String> {
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .map(|line| line.split('+').map(str::trim).collect::<Vec<_>>().join("\n"))
+        .map(|line| parse_group_line(line, "+"))
         .collect()
+}
+
+/// 解析 `bench win-rate` 的两队输入。
+///
+/// 输入中每个非空行是一队；默认队内用 `+` 分隔，`double_plus=true` 时改用 `++` 分隔。
+pub(super) fn parse_win_rate_teams(content: &str, double_plus: bool) -> Result<(String, String), clap::Error> {
+    let separator = if double_plus { "++" } else { "+" };
+    let teams = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| parse_group_line(line, separator))
+        .collect::<Vec<_>>();
+
+    match teams.as_slice() {
+        [team1, team2] => Ok((team1.clone(), team2.clone())),
+        _ => Err(cli_error(format!(
+            "bench win-rate 需要恰好两队输入，当前解析到 {} 队；格式示例: -r \"1@a+2@a\\n3@b+4@b\"",
+            teams.len()
+        ))),
+    }
 }
 
 /// 与 `parse_plus_separated_groups` 相同，但会额外保留每行原始文本作为展示标签。
@@ -146,13 +167,15 @@ pub(super) fn parse_plus_separated_groups(content: &str) -> Vec<String> {
 pub(super) fn parse_player_groups_with_labels(content: &str, double_plus: bool) -> (Vec<String>, Vec<String>) {
     let mut groups = Vec::new();
     let mut labels = Vec::new();
+    let separator = if double_plus { "++" } else { "+" };
     for line in content.lines().map(str::trim).filter(|line| !line.is_empty()) {
         labels.push(line.to_string());
-        let separator = if double_plus { "++" } else { "+" };
-        groups.push(line.split(separator).map(str::trim).collect::<Vec<_>>().join("\n"));
+        groups.push(parse_group_line(line, separator));
     }
     (groups, labels)
 }
+
+fn parse_group_line(line: &str, separator: &str) -> String { line.split(separator).map(str::trim).collect::<Vec<_>>().join("\n") }
 
 #[cfg(test)]
 mod tests {
@@ -173,6 +196,29 @@ mod tests {
 
         assert_eq!(groups, vec![format!("{diy}\nbbbb")]);
         assert_eq!(labels, vec![raw]);
+    }
+
+    #[test]
+    fn win_rate_teams_default_split_uses_single_plus() {
+        let (team1, team2) = parse_win_rate_teams("1@a+2@a\n3@b+4@b", false).unwrap();
+        assert_eq!(team1, "1@a\n2@a");
+        assert_eq!(team2, "3@b\n4@b");
+    }
+
+    #[test]
+    fn win_rate_teams_double_plus_keeps_plus_inside_player() {
+        let diy = r#"aaaa+diy[58,87,82,78,89,93,99,343]{"skldefend":13}"#;
+        let raw = format!("{diy}++bbbb\ncccc++dddd");
+        let (team1, team2) = parse_win_rate_teams(&raw, true).unwrap();
+
+        assert_eq!(team1, format!("{diy}\nbbbb"));
+        assert_eq!(team2, "cccc\ndddd");
+    }
+
+    #[test]
+    fn win_rate_teams_rejects_wrong_team_count() {
+        assert!(parse_win_rate_teams("aaaa", false).is_err());
+        assert!(parse_win_rate_teams("aaaa\nbbbb\ncccc", false).is_err());
     }
 
     #[test]

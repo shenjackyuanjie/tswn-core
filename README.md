@@ -53,6 +53,8 @@ cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire" --old
 cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt -o diy.txt
 cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt --minions -o diy.txt
+cargo run -p tswn_core --bin tswn-cli -- bench win-rate -r "mario+luigi\npeach+bowser" -n 10000
+cargo run -p tswn_core --bin tswn-cli -- bench win-rate -f teams.txt --double-plus --keep-rq
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt --min-screen 60
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.txt --min-file 65
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.jsonl --log
@@ -63,6 +65,8 @@ cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.tx
 ```
 
 `to-diy --minions` 会在 `+ol` 输出中附带可生成的 shadow / summon / zombie 模板，用于更接近原始名字的评分与对战行为。使魔模板的 `skills` 使用普通 JSON object 格式；两个火球固定命名为 `sklfire1`、`sklfire2`，自爆命名为 `sklexplode`，字段顺序就是行动顺序。0 熟练度技能会省略输出；解析时 `summon.skills` 只接受这三个 `skl` 槽位名，不再支持旧数组格式、`skill_order` 字段或旧的 `sklfire` 别名。
+
+`bench win-rate` 使用两行文本输入两队：两队之间用 `\n` 分隔，队内默认用 `+` 分隔；传入 `--double-plus` 时队内分隔符改为 `++`，方便保留名字里的 `+diy[...]` / `+ol:...`。`--keep-rq` 只切换玩家构造用的 rq，胜率模拟的 seed 仍固定使用 JS ProfileWinChance 口径：第 0 场无 seed，后续为 `seed:(33554431 + i)@!`。
 
 `bench pair` 会先把 `player-list` 中非 DIY/OL 的名字转换为默认 `+ol` 格式，再与 `teammate-list` 中每个队友组成二人组。它会对每个二人组计算一次 batch rate，并把最高的 `--head <N>` 个 batch rate 求和作为该选手的最终分数；`player-list` 和 `teammate-list` 都是每行一个名字。
 

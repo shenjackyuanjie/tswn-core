@@ -43,7 +43,7 @@
 //! tswn-cli raw -r "mario\nluigi\n\npeach\nbowser"
 //! tswn-cli diff -r "mario\nluigi\n\npeach\nbowser"
 //! tswn-cli bench auto -r "mario" -n 10000 --perf
-//! tswn-cli bench win-rate "mario" "luigi" -n 10000 -t 4
+//! tswn-cli bench win-rate -r "mario\nluigi" -n 10000 -t 4
 //! tswn-cli bench group-win-rate -l "mario" -a "luigi" -a "peach" -n 10000
 //! tswn-cli bench cqp -l targets.txt -p players.txt --min-screen 60.5
 //! tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
