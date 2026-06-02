@@ -69,7 +69,7 @@ impl StateTrait for TestSubjectState {
 
         apply_test_subject_phase_attrs(player, self.revives_used);
 
-        updates.emit(RunUpdate::new_newline);
+        updates.add_newline();
         updates.emit(|| RunUpdate::new("[1]发生了异常再生", owner, owner, 80));
 
         match self.phase() {

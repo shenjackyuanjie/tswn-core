@@ -182,15 +182,15 @@ impl EngineCore {
         Self::debug_world_state("post_sync", world, storage);
     }
 
-    pub fn tick(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
+    pub fn tick(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) -> bool {
         self.sync_runtime_entities(world, storage);
         if world.have_winner() {
-            return;
+            return false;
         }
 
         let Some(actor) = crate::engine::tick::next_actor(world, storage) else {
             crate::engine::tick::check_winner(world, storage);
-            return;
+            return false;
         };
 
         #[cfg(not(feature = "no_debug"))]
@@ -221,7 +221,7 @@ impl EngineCore {
             randomer,
             updates,
         };
-        crate::engine::tick::resolve_combat(actor, decision, preselected_targets.as_ref(), world, &mut ctx, &self.hooks);
+        let _acted = crate::engine::tick::resolve_combat(actor, decision, preselected_targets.as_ref(), world, &mut ctx, &self.hooks);
         crate::engine::tick::run_update_end(storage, ctx.randomer, ctx.updates);
         #[cfg(not(feature = "no_debug"))]
         if debug_tick
@@ -247,10 +247,15 @@ impl EngineCore {
         // 不再继续执行当前 actor 的 post_action 链路（例如避免额外的“从铁壁中解除”尾日志）。
         crate::engine::tick::check_winner(world, storage);
         if world.have_winner() {
-            return;
+            return true;
         }
         self.hooks.run_post_action(actor, storage, ctx.randomer, ctx.updates);
         crate::engine::tick::check_winner(world, storage);
+        // `main_round()` 对外只应返回一批 JS 同拍可见的更新。
+        // 因此只要本 tick 已经产生任何可见 update，就必须结束当前 main_round；
+        // 否则像状态解除、毒性发作这类尾部事件会和下一名主体行动合到同一批里，
+        // 造成对账时帧边界、行动顺序以及随机数推进位置都和 JS 产物错开。
+        world.have_winner() || ctx.updates.had_updates()
     }
 
     pub fn main_round(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4) -> RunUpdates {
@@ -271,8 +276,11 @@ impl EngineCore {
         let max_ticks = world.all_plr_len().max(1) * 4;
         let mut ticks = 0;
 
-        while ticks < max_ticks && !world.have_winner() && !crate::engine::tick::has_updates(updates) {
-            self.tick(world, storage, randomer, updates);
+        // `tick()` 返回本轮是否已经产生可对外提交的更新；
+        // 用这个标记停止循环，避免继续推进到下一名行动者。
+        let mut round_done = false;
+        while ticks < max_ticks && !world.have_winner() && !round_done {
+            round_done = self.tick(world, storage, randomer, updates);
             ticks += 1;
         }
     }

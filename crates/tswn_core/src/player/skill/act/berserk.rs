@@ -103,6 +103,14 @@ impl Default for BerserkState {
 impl StateTrait for BerserkState {
     fn meta_type(&self) -> i32 { -1 }
 
+    fn clear_updates_status(&self) -> bool {
+        // 对齐 JS 产物里的 `BerserkState.K()`：
+        // 清除狂暴时只移除状态并输出解除消息，不会调用 `F()/updateStates` 重新计算属性。
+        // 这里如果刷新属性，已经蓄力但本应延迟生效的正面状态（例如 HasteState.faster）
+        // 会立刻写回 speed，导致后续行动顺序和随机数字节消耗都提前。
+        false
+    }
+
     fn action_mode_priority(&self) -> i32 { 100 }
 
     fn on_action_mode(&self, smart: bool, forced_attack: &mut Option<ForcedAttackConfig>) {
@@ -129,7 +137,7 @@ impl StateTrait for BerserkState {
             return false;
         }
         if alive {
-            updates.emit(RunUpdate::new_newline);
+            updates.add_newline();
             updates.emit(|| RunUpdate::new("[1]从[狂暴]中解除", owner, owner, 0));
         }
         true

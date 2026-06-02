@@ -35,8 +35,8 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
-        let (alive_group_snapshot, effective_group_snapshot, owner_charmed) =
-            args.3.get_player(&args.0).map_or((None, None, false), |owner| {
+        let (alive_group_snapshot, effective_group_snapshot) =
+            args.3.get_player(&args.0).map_or((None, None), |owner| {
                 owner
                     .get_state::<CharmState>()
                     .map(|charm| {
@@ -49,10 +49,9 @@ impl SkillTrait for HideSkill {
                                 .effective_team_idx
                                 .and_then(|team_idx| args.3.get_group(team_idx))
                                 .or_else(|| args.3.group_containing(charm.group_id)),
-                            true,
                         )
                     })
-                    .unwrap_or_else(|| (args.3.alive_group_at_team_of(args.0), args.3.group_containing(args.0), false))
+                    .unwrap_or_else(|| (args.3.alive_group_at_team_of(args.0), args.3.group_containing(args.0)))
             });
         let mut alive_candidates: SmallVec<[PlrId; 8]> = SmallVec::new();
         if let Some(group) = alive_group_snapshot {
@@ -71,16 +70,13 @@ impl SkillTrait for HideSkill {
         //
         // 这里不能直接把 roster 里所有 `alive()==true` 的成员都补进来；storage 里还可能
         // 暂留一些“状态已变但并非 JS 同拍可见”的实体，那会把 Hide 的触发窗口放大，反而引入新 diff。
-        for id in effective_group_snapshot
-            .into_iter()
-            .flat_map(|group| args.3.iter_pending_revival_ids_for_group(group))
-        {
-            if !alive_candidates.contains(&id) && args.3.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
-                alive_candidates.push(id);
+        if let Some(group) = effective_group_snapshot {
+            for id in args.3.iter_pending_revival_ids_for_group(group) {
+                if !alive_candidates.contains(&id) && args.3.get_player(&id).map(|p| p.alive()).unwrap_or(false) {
+                    alive_candidates.push(id);
+                }
             }
-        }
-        if !owner_charmed {
-            for id in args.3.iter_pending_spawn_ids_for_owner(args.0) {
+            for id in args.3.pending_spawn_ids_for_group_with_alive_owner(group) {
                 if !alive_candidates.contains(&id) && args.3.get_pending_spawn_player(id).map(|p| p.alive()).unwrap_or(false) {
                     alive_candidates.push(id);
                 }

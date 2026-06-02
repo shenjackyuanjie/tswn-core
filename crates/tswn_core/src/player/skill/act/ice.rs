@@ -158,7 +158,7 @@ impl StateTrait for IceState {
         if *step + status.move_point >= MOVE_POINT_THRESHOLD {
             *step = 0;
             if status.alive() {
-                updates.emit(RunUpdate::new_newline);
+                updates.add_newline();
                 updates.emit(|| RunUpdate::new("[1]从[冰冻]中解除", owner, owner, 0));
             }
             return true;

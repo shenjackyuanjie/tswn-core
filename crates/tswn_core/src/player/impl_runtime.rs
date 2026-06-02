@@ -109,8 +109,8 @@ impl Player {
         self.update_states();
     }
 
-    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
-        self.step_with_targets_provider(randomer, updates, storage, |_| targets.clone());
+    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) -> bool {
+        self.step_with_targets_provider(randomer, updates, storage, |_| targets.clone())
     }
 
     pub fn step_with_targets_provider<F>(
@@ -119,11 +119,12 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
         mut targets_for_action: F,
-    ) where
+    ) -> bool
+    where
         F: FnMut(&Self) -> ActionTargets,
     {
         if !self.status.alive() {
-            return;
+            return false;
         }
         let step_byte = randomer.next_u8();
         let step_roll = step_byte & 3;
@@ -214,7 +215,7 @@ impl Player {
                 );
             }
             let targets = targets_for_action(self);
-            self.action(randomer, updates, storage, &targets);
+            let acted = self.action(randomer, updates, storage, &targets);
             #[cfg(not(feature = "no_debug"))]
             if debug_action_this {
                 eprintln!(
@@ -224,10 +225,12 @@ impl Player {
                     self.move_point(),
                 );
             }
+            return acted;
         }
+        false
     }
 
-    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) {
+    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) -> bool {
         let smart_byte = randomer.next_u8();
         let smart_roll = (smart_byte & 63) as i32;
         let smart = self.status.wisdom > smart_roll;
@@ -278,7 +281,7 @@ impl Player {
             );
         }
         if self.status.frozed() {
-            return;
+            return false;
         }
 
         let has_states = !self.state.is_empty();
@@ -289,9 +292,9 @@ impl Player {
             if (randomer.r127() as i32) < recover_threshold {
                 self.status.magic_point += 16;
             }
-            updates.emit(RunUpdate::new_newline);
+            updates.add_newline();
             self.run_post_action_chain(randomer, updates, storage);
-            return;
+            return true;
         }
 
         let mut acted = false;
@@ -474,6 +477,7 @@ impl Player {
                     skill.target_domain() == SkillTargetDomain::SelfOnly || skill.allows_empty_targets()
                 };
                 if !selected_targets.is_empty() || allow_empty {
+                    updates.mark_primary_action();
                     let (manages_dynamic_pre_action, dynamic_pre_action_enabled) = {
                         let skill = self.skills.skill_by_id_mut(skill_key);
                         skill.act(selected_targets, smart, (ptr, randomer, updates, storage));
@@ -507,7 +511,7 @@ impl Player {
             .map(|ally_group| !has_alive_enemy_or_pending(storage, ally_group))
             .unwrap_or(false);
         if battle_ended {
-            return;
+            return true;
         }
 
         let recover_threshold = self.status.wisdom + 64;
@@ -526,7 +530,7 @@ impl Player {
                 self.status.hp,
             );
         }
-        updates.emit(RunUpdate::new_newline);
+        updates.add_newline();
         self.run_post_action_chain(randomer, updates, storage);
         #[cfg(not(feature = "no_debug"))]
         if debug_action_this {
@@ -552,6 +556,7 @@ impl Player {
                 self.status.hp,
             );
         }
+        true
     }
 
     pub(super) fn run_post_action_chain(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) {
@@ -1121,6 +1126,7 @@ impl Player {
             return;
         };
         let atp = self.get_at(config.use_mag, randomer) * config.attack_scale;
+        updates.mark_primary_action();
         updates.emit(|| RunUpdate::new(config.message, self.as_ptr(), target_id, 0));
         let Some(target) = storage.just_get_player_mut(target_id) else {
             return;
@@ -1289,6 +1295,7 @@ impl Player {
         targets: &ActionTargets,
     ) {
         if self.player_type == PlayerType::Boss {
+            updates.mark_primary_action();
             crate::player::boss::boss_default_action(self, smart, randomer, updates, storage, targets);
             return;
         }
@@ -1301,6 +1308,7 @@ impl Player {
             if self.status.magic_point >= req_mp {
                 self.status.magic_point -= req_mp;
                 let atp = self.get_at(true, randomer);
+                updates.mark_primary_action();
                 updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
                 storage
                     .just_get_player_or_pending_mut(target_id)
@@ -1311,6 +1319,7 @@ impl Player {
         }
 
         let atp = self.get_at(false, randomer);
+        updates.mark_primary_action();
         updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
         storage
             .just_get_player_or_pending_mut(target_id)
@@ -2273,7 +2282,7 @@ impl Player {
                 .map(|ally_group| !has_alive_enemy_or_pending(storage, ally_group))
                 .unwrap_or(false);
         if !suppress_combat_minion_die_log {
-            updates.emit(RunUpdate::new_newline);
+            updates.add_newline();
             updates.emit(|| RunUpdate::new(self.get_die_message(), caster, self.as_ptr(), 50));
         }
 

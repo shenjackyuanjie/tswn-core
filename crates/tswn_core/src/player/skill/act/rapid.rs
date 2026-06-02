@@ -85,7 +85,7 @@ impl SkillTrait for RapidSkill {
                 if dmg <= 0 {
                     return;
                 }
-                args.2.add(RunUpdate::new_newline());
+                args.2.add_newline();
             }
             pos = (pos + args.1.r3() as usize) % targets.len();
             i += 1.0;

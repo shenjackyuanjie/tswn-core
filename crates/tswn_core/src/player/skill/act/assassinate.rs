@@ -280,7 +280,7 @@ impl SkillTrait for AssassinateSkill {
             return;
         }
         let target = self.target.expect("assassinate target should exist");
-        args.2.add(RunUpdate::new_newline());
+        args.2.add_newline();
         args.2.add(RunUpdate::new("[0]的[潜行]被识破", args.0, target, 0));
         self.clear_pending();
     }

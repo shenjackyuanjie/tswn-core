@@ -658,27 +658,49 @@ impl Runner {
 
 #[cfg(test)]
 mod tests {
-    use super::{Runner, prebuilt_groups_cache};
+    use super::{Runner, groups_cache_key, prebuilt_groups_cache};
 
     #[test]
     fn uncached_prepare_and_runner_construction_do_not_fill_prebuilt_cache() {
         let players = vec![vec!["aaa".to_string()], vec!["bbb".to_string()]];
         let seed: Vec<String> = Vec::new();
+        let eval_rq = crate::player::eval_name::DEFAULT_EVAL_RQ;
+        let cache_key = groups_cache_key(&players, eval_rq);
 
-        prebuilt_groups_cache().write().expect("prebuilt cache poisoned").clear();
+        // 单测会并行共享全局 prebuilt cache；这里只清理和检查本测试自己的 key，
+        // 避免误删其他测试正在使用的缓存项，也避免被无关 key 干扰断言。
+        prebuilt_groups_cache()
+            .write()
+            .expect("prebuilt cache poisoned")
+            .remove(&cache_key);
 
-        Runner::prepare_groups_with_eval_rq_uncached(&players, crate::player::eval_name::DEFAULT_EVAL_RQ)
-            .expect("uncached prepare should build");
-        assert!(prebuilt_groups_cache().read().expect("prebuilt cache poisoned").is_empty());
+        Runner::prepare_groups_with_eval_rq_uncached(&players, eval_rq).expect("uncached prepare should build");
+        assert!(
+            !prebuilt_groups_cache()
+                .read()
+                .expect("prebuilt cache poisoned")
+                .contains_key(&cache_key)
+        );
 
-        Runner::new_from_groups_with_seed_and_eval_rq_uncached(&players, &seed, crate::player::eval_name::DEFAULT_EVAL_RQ)
-            .expect("uncached runner should build");
-        assert!(prebuilt_groups_cache().read().expect("prebuilt cache poisoned").is_empty());
+        Runner::new_from_groups_with_seed_and_eval_rq_uncached(&players, &seed, eval_rq).expect("uncached runner should build");
+        assert!(
+            !prebuilt_groups_cache()
+                .read()
+                .expect("prebuilt cache poisoned")
+                .contains_key(&cache_key)
+        );
 
-        Runner::prepare_groups_with_eval_rq(&players, crate::player::eval_name::DEFAULT_EVAL_RQ)
-            .expect("cached prepare should build");
-        assert_eq!(prebuilt_groups_cache().read().expect("prebuilt cache poisoned").len(), 1);
+        Runner::prepare_groups_with_eval_rq(&players, eval_rq).expect("cached prepare should build");
+        assert!(
+            prebuilt_groups_cache()
+                .read()
+                .expect("prebuilt cache poisoned")
+                .contains_key(&cache_key)
+        );
 
-        prebuilt_groups_cache().write().expect("prebuilt cache poisoned").clear();
+        prebuilt_groups_cache()
+            .write()
+            .expect("prebuilt cache poisoned")
+            .remove(&cache_key);
     }
 }

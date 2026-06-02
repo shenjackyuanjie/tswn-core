@@ -120,27 +120,27 @@ impl SkillTrait for HealSkill {
         // Dart 的 clearStates 会按字母序遍历 meta.keys：
         // berserk → charm → curse → ice → poison → slow
         if had_berserk {
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.2.add(RunUpdate::new("[1]从[狂暴]中解除", args.0, target_id, 0));
         }
         if had_charm {
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.2.add(RunUpdate::new("[1]从[魅惑]中解除", args.0, target_id, 0));
         }
         if had_curse {
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.2.add(RunUpdate::new("[1]从[诅咒]中解除", args.0, target_id, 0));
         }
         if had_ice {
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.2.add(RunUpdate::new("[1]从[冰冻]中解除", args.0, target_id, 0));
         }
         if had_poison {
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.2.add(RunUpdate::new("[1]从[中毒]中解除", args.0, target_id, 0));
         }
         if had_slow {
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.2.add(RunUpdate::new("[1]从[迟缓]中解除", args.0, target_id, 0));
         }
     }

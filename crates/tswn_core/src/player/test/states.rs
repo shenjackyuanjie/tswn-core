@@ -100,6 +100,33 @@ fn clearing_fire_state_does_not_refresh_runtime_status() {
 }
 
 #[test]
+fn clearing_berserk_state_does_not_refresh_pending_haste() {
+    let storage = Storage::new_arc();
+    let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();
+    let ptr = player.as_ptr();
+
+    // 先用 faster=2 建出当前 speed，再把 HasteState.faster 改成 4，
+    // 模拟“蓄力值已经变化，但 JS 尚未调用 updateStates 写回属性”的窗口。
+    player.set_state(crate::player::skill::haste::HasteState {
+        owner: Some(ptr),
+        target: Some(ptr),
+        on_post_action: None,
+        faster: 2,
+        step: 3,
+    });
+    let speed_before_pending = player.get_status().speed;
+    player.get_state_mut::<crate::player::skill::haste::HasteState>().unwrap().faster = 4;
+    player.set_state_no_update(crate::player::skill::berserk::BerserkState { step: 1 });
+
+    // 清除狂暴属于清负面状态流程；这里不应顺带刷新疾走的 pending 属性。
+    player.clear_negative_states();
+
+    assert!(!player.has_state::<crate::player::skill::berserk::BerserkState>());
+    assert!(player.has_state::<crate::player::skill::haste::HasteState>());
+    assert_eq!(player.get_status().speed, speed_before_pending);
+}
+
+#[test]
 fn ice_state_pre_step_expires_with_threshold_check() {
     let storage = Storage::new_arc();
     let mut player = Player::new_from_namerena_raw("aaa".to_string(), storage.clone()).unwrap();

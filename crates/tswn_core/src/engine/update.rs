@@ -222,6 +222,10 @@ pub struct RunUpdates {
     pub capture_updates: bool,
     /// 本批次是否出现过事件（无论是否缓存详细帧）。
     has_activity: bool,
+    /// 最后一个换行分隔帧之后是否出现过事件。
+    segment_has_activity: bool,
+    /// 最后一个换行分隔帧之后是否出现过玩家主体行动。
+    segment_has_primary_action: bool,
 }
 
 impl RunUpdates {
@@ -232,6 +236,8 @@ impl RunUpdates {
             on_update_end: smallvec::SmallVec::new(),
             capture_updates,
             has_activity: false,
+            segment_has_activity: false,
+            segment_has_primary_action: false,
         }
     }
 
@@ -247,14 +253,44 @@ impl RunUpdates {
         self.updates.clear();
         self.on_update_end.clear();
         self.has_activity = false;
+        self.segment_has_activity = false;
+        self.segment_has_primary_action = false;
     }
 
     /// 本批次是否发生过有效事件。
     pub fn had_updates(&self) -> bool { self.has_activity }
 
+    /// 当前段落（最后一个换行之后）是否发生过事件。
+    pub fn segment_had_updates(&self) -> bool { self.segment_has_activity }
+
+    /// 当前段落（最后一个换行之后）是否包含玩家主体行动。
+    pub fn segment_had_primary_action(&self) -> bool { self.segment_has_primary_action }
+
+    /// 标记当前段落开始了玩家主体行动。
+    pub fn mark_primary_action(&mut self) {
+        self.segment_has_activity = true;
+        self.segment_has_primary_action = true;
+    }
+
+    /// 追加一个换行分隔帧。
+    pub fn add_newline(&mut self) {
+        self.has_activity = true;
+        self.segment_has_activity = false;
+        self.segment_has_primary_action = false;
+        if self.capture_updates {
+            self.updates.push(RunUpdate::new_newline());
+        }
+    }
+
     /// 追加一条事件帧。
     pub fn add(&mut self, update: RunUpdate) {
         self.has_activity = true;
+        if update.update_type == UpdateType::NextLine {
+            self.segment_has_activity = false;
+            self.segment_has_primary_action = false;
+        } else {
+            self.segment_has_activity = true;
+        }
         if self.capture_updates {
             self.updates.push(update);
         }
@@ -266,6 +302,7 @@ impl RunUpdates {
         F: FnOnce() -> RunUpdate,
     {
         self.has_activity = true;
+        self.segment_has_activity = true;
         if self.capture_updates {
             self.updates.push(build());
         }

@@ -65,7 +65,7 @@ impl SkillTrait for QuakeSkill {
             if !target_alive {
                 continue;
             }
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.3
                 .just_get_player_mut(target_id)
                 .expect("cannot get quake target from storage")

@@ -114,7 +114,7 @@ fn on_disperse(caster: PlrId, target_id: PlrId, dmg: i32, r: &mut RC4, updates: 
         target.set_magic_point(mp - 32);
     }
     for (_, message) in clear_messages {
-        updates.emit(RunUpdate::new_newline);
+        updates.add_newline();
         updates.emit(|| RunUpdate::new(message, caster, target_id, 0));
     }
 }

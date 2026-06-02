@@ -50,6 +50,51 @@ fn protect_post_action_consumes_smart_roll_for_empty_charm_alive_group() {
 }
 
 #[test]
+fn hide_post_damage_counts_pending_spawn_in_charmed_effective_group() {
+    use crate::player::skill::SkillTrait;
+    use crate::player::skill::act::charm::CharmState;
+    use crate::player::skill::act::minion::{MinionKind, MinionRuntimeState};
+
+    let storage = Storage::new_arc();
+    let owner = Player::new_from_namerena_raw("owner@red".to_string(), storage.clone()).unwrap();
+    let ally = Player::new_from_namerena_raw("ally@blue".to_string(), storage.clone()).unwrap();
+    let owner_id = storage.just_insert_player(owner);
+    let ally_id = storage.just_insert_player(ally);
+    storage.sync_groups(&[vec![owner_id], vec![ally_id]]);
+    storage.sync_alive_groups(&[vec![owner_id], vec![ally_id]]);
+    for id in [owner_id, ally_id] {
+        let player = storage.just_get_player_mut(id).unwrap();
+        player.status.hp = 100;
+        player.status.max_hp = 100;
+        player.status.set_alive(true);
+    }
+
+    let mut pending = Player::new_from_namerena_raw("ally?0@blue".to_string(), storage.clone()).unwrap();
+    pending.status.set_alive(true);
+    pending.set_state_no_update(MinionRuntimeState {
+        owner: Some(ally_id),
+        kind: MinionKind::Zombie,
+    });
+    storage.queue_spawn(ally_id, pending);
+
+    storage.just_get_player_mut(owner_id).unwrap().set_state_no_update(CharmState {
+        group_id: ally_id,
+        effective_team_idx: Some(1),
+        source_team_idx: Some(0),
+        target: Some(owner_id),
+        on_post_action: None,
+        step: 1,
+    });
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut hide = crate::player::skill::hide::HideSkill::new();
+    hide.post_damage_with_level(9, 1, ally_id, (owner_id, &mut randomer, &mut updates, &storage));
+
+    assert_eq!(randomer.i, 1, "hide should run its r63 check when the effective charmed group has a pending spawn");
+}
+
+#[test]
 fn protect_post_action_keeps_pending_clone_from_dead_owner() {
     use crate::player::skill::Skill;
     use crate::player::skill::act::minion::{MinionKind, MinionRuntimeState};
@@ -619,6 +664,59 @@ fn protect_redirects_damage_to_protector() {
     assert!(protector_hp_after < protector_hp_before);
     assert_eq!(ally_hp_after, ally_hp_before);
     assert!(damage_updates.updates.iter().any(|u| u.message.contains("[守护]")));
+}
+
+#[test]
+fn protect_state_uses_current_protector_level_after_skill_merge() {
+    let storage = Storage::new_arc();
+    let protector = Player::new_from_namerena_raw("protector@red".to_string(), storage.clone()).unwrap();
+    let ally = Player::new_from_namerena_raw("ally@red".to_string(), storage.clone()).unwrap();
+    let enemy = Player::new_from_namerena_raw("enemy@blue".to_string(), storage.clone()).unwrap();
+    let protector_id = storage.just_insert_player(protector);
+    let ally_id = storage.just_insert_player(ally);
+    let enemy_id = storage.just_insert_player(enemy);
+    storage.sync_groups(&[vec![protector_id, ally_id], vec![enemy_id]]);
+    storage.sync_alive_groups(&[vec![protector_id, ally_id], vec![enemy_id]]);
+
+    {
+        let protector_mut = storage.just_get_player_mut(protector_id).unwrap();
+        protector_mut.status.hp = 300;
+        protector_mut.status.max_hp = 300;
+        protector_mut.status.magic_point = 999;
+        protector_mut.skills.add_skill(Skill::new_with_id(255, 26));
+
+        let ally_mut = storage.just_get_player_mut(ally_id).unwrap();
+        ally_mut.status.hp = 280;
+        ally_mut.status.max_hp = 280;
+        ally_mut.set_state_no_update(crate::player::skill::protect::ProtectState {
+            target: Some(ally_id),
+            protect_from: vec![crate::player::skill::protect::ProtectLink {
+                owner: protector_id,
+                level: 0,
+            }],
+            pre_defend_skill_count: ally_mut.skills.pre_defend.len(),
+        });
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let protector_hp_before = storage.get_player(&protector_id).unwrap().get_status().hp;
+    let ally_hp_before = storage.get_player(&ally_id).unwrap().get_status().hp;
+    storage.just_get_player_mut(ally_id).unwrap().attacked(
+        260.0,
+        false,
+        enemy_id,
+        noop_on_damage,
+        &mut randomer,
+        &mut updates,
+        &storage,
+    );
+
+    let protector_hp_after = storage.get_player(&protector_id).unwrap().get_status().hp;
+    let ally_hp_after = storage.get_player(&ally_id).unwrap().get_status().hp;
+    assert!(protector_hp_after < protector_hp_before);
+    assert_eq!(ally_hp_after, ally_hp_before);
+    assert!(updates.updates.iter().any(|u| u.message.contains("[守护]")));
 }
 
 #[test]

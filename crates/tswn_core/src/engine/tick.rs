@@ -199,22 +199,25 @@ pub fn resolve_combat(
     world: &WorldState,
     ctx: &mut TickContext<'_>,
     hooks: &HookPipeline,
-) {
+) -> bool {
     match decision {
         ActionDecision::StepDriver => {
             hooks.run_pre_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
-            if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
+            let acted = if let Some(plr) = ctx.storage.just_get_player_mut(actor) {
                 if let Some(targets) = preselected_targets {
-                    plr.step(ctx.randomer, ctx.updates, ctx.storage, targets);
+                    plr.step(ctx.randomer, ctx.updates, ctx.storage, targets)
                 } else {
                     plr.step_with_targets_provider(ctx.randomer, ctx.updates, ctx.storage, |actor_player| {
                         select_targets_for_player(actor, actor_player, world, ctx.storage)
-                    });
+                    })
                 }
-            }
+            } else {
+                false
+            };
             hooks.run_post_damage(actor, ctx.storage, ctx.randomer, ctx.updates);
+            acted
         }
-        ActionDecision::Skip => {}
+        ActionDecision::Skip => false,
     }
 }
 
@@ -236,8 +239,6 @@ pub fn check_winner(world: &mut WorldState, _storage: &Arc<Storage>) {
         None
     };
 }
-
-pub(super) fn has_updates(updates: &RunUpdates) -> bool { updates.had_updates() }
 
 pub(super) fn run_update_end(storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) {
     let mut guard = 0usize;

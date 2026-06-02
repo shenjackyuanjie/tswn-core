@@ -164,7 +164,7 @@ impl StateTrait for SlowState {
             return false;
         }
         if alive {
-            updates.emit(RunUpdate::new_newline);
+            updates.add_newline();
             updates.emit(|| RunUpdate::new("[1]从[迟缓]中解除", owner, owner, 0));
         }
         true
