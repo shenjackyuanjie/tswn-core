@@ -55,13 +55,29 @@
 
     <section class="card">
       <h2>赛道结果</h2>
-      <input id="laneSize" type="number" min="1" value="1" />
-      <button id="loadResultsBtn">读取结果</button>
-      <button id="exportResultsBtn" type="button">导出结果</button>
+      <div class="result-toolbar">
+        <input id="laneSize" type="number" min="1" value="1" />
+        <button id="loadResultsBtn">读取结果</button>
+        <button id="exportResultsBtn" type="button">导出 Raw 结果</button>
+        <button id="purgeLowScoreBtn" type="button" title="从数据库物理删除 R-Score < 45 的组合；45.000 不删。">物理删除 R&lt;45</button>
+      </div>
+      <div class="constrained-selection-panel">
+        <strong>手动修正</strong>
+        <label class="selection-threshold-option">环境阈值 ≥
+          <input id="selectionCqdThresholdInput" type="number" min="0" max="100" step="0.001" value="48.5" />
+        </label>
+        <button id="runConstrainedSelectionBtn" type="button">执行修正</button>
+        <label class="show-constrained-option">
+          <input id="showConstrainedResultsInput" type="checkbox" />
+          展示修正结果
+        </label>
+        <button id="exportConstrainedResultsBtn" type="button">导出修正结果</button>
+        <span id="constrainedSelectionOutput" class="inline-output"></span>
+      </div>
       <div id="results"></div>
     </section>
   </main>
 
-  <script src="./app.js?v=35-lane-specific-thresholds"></script>
+  <script src="./app.js?v=49-hard-delete-rlt45"></script>
 </body>
 </html>

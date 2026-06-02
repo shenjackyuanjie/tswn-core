@@ -338,3 +338,100 @@ td, th {
 .score-table .type-cell {
   color: #333;
 }
+
+/* v37 pairwise calibration columns */
+.score-table .raw-rank-col,
+.score-table .raw-rank-cell,
+.score-table .raw-col,
+.score-table .raw-cell,
+.score-table .delta-col,
+.score-table .delta-cell,
+.score-table .mv-col,
+.score-table .mv-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 18px;
+}
+
+.selected-row {
+  background: #eefaf0;
+}
+
+.selected-row.fold-child {
+  background: #f4fcf5;
+}
+
+.selected-badge,
+.threshold-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.selected-badge {
+  background: #d8f5d8;
+  color: #205d20;
+}
+
+.threshold-badge {
+  background: #eeeeee;
+  color: #666666;
+}
+
+/* v38 manual constrained selection controls */
+.result-toolbar,
+.constrained-selection-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 0;
+}
+
+.result-toolbar input,
+.constrained-selection-panel input[type="number"] {
+  width: 110px;
+}
+
+.constrained-selection-panel {
+  padding: 10px 12px;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  background: #fafafa;
+}
+
+.selection-threshold-option,
+.show-constrained-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.show-constrained-option input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.inline-output {
+  color: #555;
+  font-size: 13px;
+}
+
+.badge.selecting,
+.badge.constrained_selection_queued,
+.badge.constrained_selection_loading,
+.badge.constrained_selection_ready {
+  background: #dbeafe;
+}
+
+.score-table .constrained-rank-col,
+.score-table .constrained-rank-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 18px;
+}

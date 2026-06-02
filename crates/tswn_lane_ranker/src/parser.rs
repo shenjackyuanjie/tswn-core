@@ -37,7 +37,8 @@ pub fn parse_group(raw: &str) -> anyhow::Result<ParsedGroup> {
 
     let mut teams = Vec::with_capacity(members.len());
     for member in &members {
-        let (_, team) = parse_member_team(member).ok_or_else(|| anyhow!("member has no team suffix: {member}"))?;
+        let (_, team) = parse_member_team(member)
+            .ok_or_else(|| anyhow!("member has no team suffix: {member}"))?;
         teams.push(team.to_string());
     }
 
