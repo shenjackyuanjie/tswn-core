@@ -116,6 +116,19 @@ impl Db {
 
             CREATE INDEX IF NOT EXISTS idx_archived_groups_lane_size
                 ON archived_groups(lane_size);
+
+            CREATE TABLE IF NOT EXISTS blocked_groups (
+                group_id INTEGER PRIMARY KEY,
+                canonical TEXT NOT NULL UNIQUE,
+                lane_size INTEGER NOT NULL,
+                reason TEXT NOT NULL DEFAULT 'manual',
+                blocked_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_blocked_groups_lane_size
+                ON blocked_groups(lane_size);
             "#,
         )?;
         Ok(())
@@ -165,14 +178,18 @@ impl Db {
     pub fn load_groups_by_lane_for_run(&self, lane_size: usize, skip_archived: bool) -> anyhow::Result<Vec<StoredGroup>> {
         let conn = self.conn.lock().unwrap();
         let sql = if skip_archived {
-            "SELECT g.id, g.canonical, g.display_raw, g.lane_size, g.team_name
+            "SELECT g.id, g.canonical, g.display_raw, g.lane_size, g.team_name,
+                    CASE WHEN b.group_id IS NULL THEN 0 ELSE 1 END AS is_blocked
              FROM groups g
              LEFT JOIN archived_groups a ON a.group_id = g.id
+             LEFT JOIN blocked_groups b ON b.group_id = g.id
              WHERE g.lane_size = ?1 AND a.group_id IS NULL
              ORDER BY g.id ASC"
         } else {
-            "SELECT g.id, g.canonical, g.display_raw, g.lane_size, g.team_name
+            "SELECT g.id, g.canonical, g.display_raw, g.lane_size, g.team_name,
+                    CASE WHEN b.group_id IS NULL THEN 0 ELSE 1 END AS is_blocked
              FROM groups g
+             LEFT JOIN blocked_groups b ON b.group_id = g.id
              WHERE g.lane_size = ?1
              ORDER BY g.id ASC"
         };
@@ -187,6 +204,7 @@ impl Db {
                 lane_size: row.get::<_, i64>(3)? as usize,
                 team_name: row.get(4)?,
                 members: Vec::new(),
+                is_blocked: row.get::<_, i64>(5)? != 0,
             })
         })?;
 
@@ -210,6 +228,18 @@ impl Db {
             .optional()?
             .is_some();
         Ok(exists)
+    }
+
+    pub fn find_group_by_canonical(&self, canonical: &str) -> anyhow::Result<Option<(GroupId, usize, String)>> {
+        let conn = self.conn.lock().unwrap();
+        let group = conn
+            .query_row(
+                "SELECT id, lane_size, canonical FROM groups WHERE canonical = ?1",
+                params![canonical],
+                |row| Ok((row.get::<_, GroupId>(0)?, row.get::<_, i64>(1)? as usize, row.get::<_, String>(2)?)),
+            )
+            .optional()?;
+        Ok(group)
     }
 
     pub fn all_nonempty_lanes(&self) -> anyhow::Result<Vec<usize>> {
@@ -335,6 +365,43 @@ impl Db {
             }
         }
         Ok(archived)
+    }
+
+
+    pub fn set_group_blocked(&self, group_id: GroupId, blocked: bool) -> anyhow::Result<Option<(usize, String)>> {
+        let conn = self.conn.lock().unwrap();
+        let group: Option<(String, usize)> = conn
+            .query_row(
+                "SELECT canonical, lane_size FROM groups WHERE id = ?1",
+                params![group_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize)),
+            )
+            .optional()?;
+
+        let Some((canonical, lane_size)) = group else {
+            return Ok(None);
+        };
+
+        if blocked {
+            // 手动屏蔽的组合必须继续参与 Score/CQD 计算；如果它之前被自动封存，先从封存表恢复出来。
+            conn.execute("DELETE FROM archived_groups WHERE group_id = ?1", params![group_id])?;
+
+            conn.execute(
+                "INSERT INTO blocked_groups
+                 (group_id, canonical, lane_size, reason, blocked_at, updated_at)
+                 VALUES (?1, ?2, ?3, 'manual', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                 ON CONFLICT(group_id) DO UPDATE SET
+                   canonical = excluded.canonical,
+                   lane_size = excluded.lane_size,
+                   reason = 'manual',
+                   updated_at = CURRENT_TIMESTAMP",
+                params![group_id, canonical.as_str(), lane_size as i64],
+            )?;
+        } else {
+            conn.execute("DELETE FROM blocked_groups WHERE group_id = ?1", params![group_id])?;
+        }
+
+        Ok(Some((lane_size, canonical)))
     }
 
     pub fn set_lane_status(&self, lane_size: usize, status: &str, group_count: usize) -> anyhow::Result<()> {
@@ -486,31 +553,79 @@ impl Db {
 
     pub fn lane_results(&self, lane_size: usize) -> anyhow::Result<Vec<LaneResultRow>> {
         let conn = self.conn.lock().unwrap();
+
+        let mut team_stmt = conn.prepare("SELECT name, parent FROM teams")?;
+        let team_rows = team_stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut team_pairs = Vec::new();
+        for row in team_rows {
+            team_pairs.push(row?);
+        }
+        drop(team_stmt);
+        let dsu = TeamDsu::from_pairs(team_pairs);
+
         let mut stmt = conn.prepare(
-            "SELECT r.lane_size, r.group_id, r.rank, g.canonical,
-                    r.average_cqd, r.min_cqd, r.max_cqd, r.variance_cqd, r.golden_rate
+            "SELECT r.lane_size, r.group_id, r.rank, g.canonical, g.team_name,
+                    r.average_cqd, r.min_cqd, r.max_cqd, r.variance_cqd, r.golden_rate,
+                    CASE WHEN b.group_id IS NULL THEN 0 ELSE 1 END AS is_blocked
              FROM lane_results r
              JOIN groups g ON g.id = r.group_id
+             LEFT JOIN blocked_groups b ON b.group_id = r.group_id
              WHERE r.lane_size = ?1
              ORDER BY r.rank ASC",
         )?;
+
         let rows = stmt.query_map(params![lane_size as i64], |row| {
-            Ok(LaneResultRow {
-                lane_size: row.get::<_, i64>(0)? as usize,
-                group_id: row.get(1)?,
-                rank: row.get::<_, i64>(2)? as usize,
-                canonical: row.get(3)?,
-                average_cqd: row.get(4)?,
-                min_cqd: row.get(5)?,
-                max_cqd: row.get(6)?,
-                variance_cqd: row.get(7)?,
-                golden_rate: row.get(8)?,
-            })
+            Ok((
+                row.get::<_, i64>(0)? as usize,
+                row.get::<_, GroupId>(1)?,
+                row.get::<_, i64>(2)? as usize,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, f64>(5)?,
+                row.get::<_, f64>(6)?,
+                row.get::<_, f64>(7)?,
+                row.get::<_, f64>(8)?,
+                row.get::<_, f64>(9)?,
+                row.get::<_, i64>(10)? != 0,
+            ))
         })?;
 
         let mut out = Vec::new();
         for row in rows {
-            out.push(row?);
+            let (
+                lane_size,
+                group_id,
+                rank,
+                canonical,
+                team_name,
+                average_cqd,
+                min_cqd,
+                max_cqd,
+                variance_cqd,
+                golden_rate,
+                is_blocked,
+            ) = row?;
+            let root_team_name = dsu.find_readonly(&team_name);
+            let skill_summary = crate::skill_eq::compute_group_skill_summary_from_canonical(&canonical);
+
+            out.push(LaneResultRow {
+                lane_size,
+                group_id,
+                rank,
+                canonical: skill_summary.display_canonical,
+                team_name,
+                root_team_name,
+                average_cqd,
+                type_label: skill_summary.type_label,
+                skill_totals: skill_summary.skill_totals,
+                min_cqd,
+                max_cqd,
+                variance_cqd,
+                golden_rate,
+                is_blocked,
+            });
         }
         Ok(out)
     }

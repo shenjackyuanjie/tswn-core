@@ -11,7 +11,7 @@ use axum::{
 use serde_json::json;
 use tower_http::services::ServeDir;
 
-use crate::model::{AddGroupsRequest, MergeTeamsRequest, RecomputeLaneRequest};
+use crate::model::{AddGroupsRequest, BlockGroupRequest, BlockGroupsByTextRequest, MergeTeamsRequest, RecomputeLaneRequest};
 use crate::service::AppService;
 
 pub type SharedService = Arc<AppService>;
@@ -22,6 +22,10 @@ pub fn router(service: AppService) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/groups/add", post(add_groups))
+        .route("/api/groups/block", post(block_groups_by_text))
+        .route("/api/groups/unblock", post(unblock_groups_by_text))
+        .route("/api/groups/:group_id/block", post(block_group))
+        .route("/api/groups/:group_id/unblock", post(unblock_group))
         .route("/api/teams/merge", post(merge_teams))
         .route("/api/lanes", get(lanes))
         .route("/api/lanes/:lane_size/results", get(lane_results))
@@ -39,6 +43,41 @@ async fn add_groups(
     Json(req): Json<AddGroupsRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let response = service.add_groups(req)?;
+    Ok(Json(serde_json::to_value(response)?))
+}
+
+
+async fn block_groups_by_text(
+    State(service): State<SharedService>,
+    Json(req): Json<BlockGroupsByTextRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let response = service.set_groups_blocked_by_text(true, req)?;
+    Ok(Json(serde_json::to_value(response)?))
+}
+
+async fn unblock_groups_by_text(
+    State(service): State<SharedService>,
+    Json(req): Json<BlockGroupsByTextRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let response = service.set_groups_blocked_by_text(false, req)?;
+    Ok(Json(serde_json::to_value(response)?))
+}
+
+async fn block_group(
+    State(service): State<SharedService>,
+    Path(group_id): Path<i64>,
+    Json(req): Json<BlockGroupRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let response = service.set_group_blocked(group_id, true, req)?;
+    Ok(Json(serde_json::to_value(response)?))
+}
+
+async fn unblock_group(
+    State(service): State<SharedService>,
+    Path(group_id): Path<i64>,
+    Json(req): Json<BlockGroupRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let response = service.set_group_blocked(group_id, false, req)?;
     Ok(Json(serde_json::to_value(response)?))
 }
 

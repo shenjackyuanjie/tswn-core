@@ -19,19 +19,14 @@ function showJson(el, data) {
 
 function readWorkerSettings() {
   const outerRaw = document.getElementById("outerWorkersInput").value.trim();
-  const innerRaw = document.getElementById("innerWorkersInput").value.trim();
   const skipArchived = document.getElementById("skipArchivedInput").checked;
 
   if (outerRaw && !/^\d+$/.test(outerRaw)) {
-    throw new Error("Outer Worker 必须是 0 或正整数。0 表示动态分配。 ");
-  }
-  if (innerRaw && !/^\d+$/.test(innerRaw)) {
-    throw new Error("Inner Worker 必须是 0 或正整数。0 表示 tswn-core 自动。 ");
+    throw new Error("线程数必须是 0 或正整数。0 表示动态分配。");
   }
 
   return {
     outer_workers: outerRaw ? Number(outerRaw) : 0,
-    inner_workers: innerRaw ? Number(innerRaw) : 0,
     skip_archived: skipArchived,
   };
 }
@@ -52,6 +47,34 @@ document.getElementById("addBtn").addEventListener("click", async () => {
     out.textContent = String(err);
   }
 });
+
+async function submitBlockGroups(blocked) {
+  const out = document.getElementById("blockGroupsOutput");
+  try {
+    out.textContent = "queueing...";
+    const groups = document.getElementById("blockGroupsInput").value
+      .split(/\r?\n/)
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    if (!groups.length) {
+      out.textContent = "请先输入至少一个组合。";
+      return;
+    }
+
+    const workerSettings = readWorkerSettings();
+    const url = blocked ? "/api/groups/block" : "/api/groups/unblock";
+    const data = await postJson(url, { groups, ...workerSettings });
+    showJson(out, data);
+    await loadLanes();
+    await loadResults();
+  } catch (err) {
+    out.textContent = String(err);
+  }
+}
+
+document.getElementById("blockGroupsBtn").addEventListener("click", () => submitBlockGroups(true));
+document.getElementById("unblockGroupsBtn").addEventListener("click", () => submitBlockGroups(false));
 
 document.getElementById("mergeBtn").addEventListener("click", async () => {
   const out = document.getElementById("mergeOutput");
@@ -174,6 +197,7 @@ async function loadResults() {
         <tr>
           <th>Rank</th>
           <th class="score-col">Score</th>
+          <th class="type-col">Type</th>
           <th class="odds-col">Odds</th>
           <th class="name-col">Name</th>
         </tr>
@@ -213,6 +237,7 @@ async function loadResults() {
 
 function buildFoldedResultGroups(rows) {
   const consumed = new Array(rows.length).fill(false);
+  const pending = new Map();
   const parsed = rows.map(row => ({
     row,
     members: parseGroupMembers(row.canonical),
@@ -226,18 +251,43 @@ function buildFoldedResultGroups(rows) {
     }
 
     const parent = parsed[i];
-    consumed[i] = true;
 
-    const children = [];
+    // 新折叠规则：如果一个被屏蔽组合下面有未屏蔽且成员重复的组合，
+    // 它不再当父行，而是折叠到那个更低的未屏蔽组合下。
+    if (isBlockedRow(parent.row)) {
+      const targetIndex = findLowerUnblockedOverlap(parsed, consumed, i, parent.members);
+      if (targetIndex >= 0) {
+        addPendingChild(pending, targetIndex, parent.row);
+        consumed[i] = true;
+        continue;
+      }
+    }
+
+    consumed[i] = true;
+    const children = takePendingChildren(pending, i);
+
     for (let j = i + 1; j < rows.length; j++) {
       if (consumed[j]) {
         continue;
       }
 
-      if (hasMemberOverlap(parent.members, parsed[j].members)) {
-        consumed[j] = true;
-        children.push(parsed[j].row);
+      const child = parsed[j];
+      if (!hasMemberOverlap(parent.members, child.members)) {
+        continue;
       }
+
+      if (isBlockedRow(child.row)) {
+        const targetIndex = findLowerUnblockedOverlap(parsed, consumed, j, child.members);
+        if (targetIndex >= 0) {
+          addPendingChild(pending, targetIndex, child.row);
+          consumed[j] = true;
+          continue;
+        }
+      }
+
+      consumed[j] = true;
+      children.push(child.row);
+      children.push(...takePendingChildren(pending, j));
     }
 
     groups.push({
@@ -247,6 +297,35 @@ function buildFoldedResultGroups(rows) {
   }
 
   return groups;
+}
+
+function addPendingChild(pending, targetIndex, row) {
+  if (!pending.has(targetIndex)) {
+    pending.set(targetIndex, []);
+  }
+  pending.get(targetIndex).push(row);
+}
+
+function takePendingChildren(pending, targetIndex) {
+  const children = pending.get(targetIndex) || [];
+  pending.delete(targetIndex);
+  return children;
+}
+
+function findLowerUnblockedOverlap(parsed, consumed, startIndex, members) {
+  for (let i = startIndex + 1; i < parsed.length; i++) {
+    if (consumed[i] || isBlockedRow(parsed[i].row)) {
+      continue;
+    }
+    if (hasMemberOverlap(members, parsed[i].members)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function isBlockedRow(row) {
+  return Boolean(row && row.is_blocked);
 }
 
 function parseGroupMembers(canonical) {
@@ -276,6 +355,7 @@ function renderFoldedGroup(group, groupIndex) {
     <tr class="${clickableClass}" data-group-index="${groupIndex}" data-expanded="false">
       <td>${parent.rank}</td>
       <td class="score-cell">${parent.average_cqd.toFixed(3)}</td>
+      <td class="type-cell">${escapeHtml(parent.type_label || "无")}</td>
       <td class="odds-cell">${parent.golden_rate.toFixed(3)}</td>
       <td class="name-cell">
         <span class="fold-icon">${icon}</span>
@@ -289,6 +369,7 @@ function renderFoldedGroup(group, groupIndex) {
     <tr class="fold-child" data-parent-index="${groupIndex}" hidden>
       <td>${child.rank}</td>
       <td class="score-cell">${child.average_cqd.toFixed(3)}</td>
+      <td class="type-cell">${escapeHtml(child.type_label || "无")}</td>
       <td class="odds-cell">${child.golden_rate.toFixed(3)}</td>
       <td class="name-cell child-name">
         <span class="fold-child-marker">↳</span>
@@ -308,10 +389,24 @@ function exportResults() {
     return;
   }
 
-  // 导出格式：CQD 名字，一行一个。
-  const content = currentResults
-    .map(row => `${row.average_cqd.toFixed(3)} ${row.canonical}`)
-    .join("\n");
+  // 导出格式：先输出 CQD 名字，一行一个；
+  // 后面追加每个合并根队伍的 Odds 之和，以及满足条件的未折叠/未屏蔽组合技能总等效熟练度。
+  const resultLines = currentResults
+    .map(row => `${row.average_cqd.toFixed(3)} ${row.canonical}`);
+
+  const foldedGroups = buildFoldedResultGroups(currentResults);
+  const teamOddsLines = buildTeamOddsSummary(currentResults);
+  const skillThreshold = skillEquivalentThresholdForLane(laneSize);
+  const skillTotalLines = buildSkillEquivalentSummary(foldedGroups, skillThreshold);
+  const content = [
+    ...resultLines,
+    "",
+    "# Team Odds Sum",
+    ...teamOddsLines,
+    "",
+    `# Skill Equivalent Sum for unfolded, unblocked groups with avg_cqd >= ${formatThreshold(skillThreshold)}`,
+    ...skillTotalLines,
+  ].join("\n");
 
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -324,6 +419,70 @@ function exportResults() {
   a.remove();
 
   URL.revokeObjectURL(url);
+}
+
+function buildTeamOddsSummary(rows) {
+  const teamOdds = new Map();
+
+  for (const row of rows) {
+    const odds = Number(row.golden_rate || 0);
+    if (!Number.isFinite(odds) || odds <= 0) {
+      continue;
+    }
+
+    const team = String(row.root_team_name || row.team_name || extractTeamName(row.canonical) || "").trim();
+    if (!team) {
+      continue;
+    }
+
+    teamOdds.set(team, (teamOdds.get(team) || 0) + odds);
+  }
+
+  return Array.from(teamOdds.entries())
+    .filter(([, odds]) => odds > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([team, odds]) => `${odds.toFixed(3)} ${team}`);
+}
+
+function skillEquivalentThresholdForLane(laneSize) {
+  return Number(laneSize) === 1 ? 48.0 : 49.0;
+}
+
+function formatThreshold(value) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function buildSkillEquivalentSummary(foldedGroups, threshold) {
+  const totals = new Map();
+
+  for (const group of foldedGroups) {
+    const row = group.parent;
+    if (!row || isBlockedRow(row) || Number(row.average_cqd || 0) < threshold) {
+      continue;
+    }
+
+    for (const item of row.skill_totals || []) {
+      const name = String(item.name || "").trim();
+      const value = Number(item.value || 0);
+      if (!name || !Number.isFinite(value)) {
+        continue;
+      }
+      totals.set(name, (totals.get(name) || 0) + value);
+    }
+  }
+
+  return Array.from(totals.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([name, value]) => `${value.toFixed(2)} ${name}`);
+}
+
+function extractTeamName(canonical) {
+  const firstMember = String(canonical || "").split("+")[0] || "";
+  const at = firstMember.lastIndexOf("@");
+  if (at < 0 || at === firstMember.length - 1) {
+    return "";
+  }
+  return firstMember.slice(at + 1);
 }
 
 function escapeHtml(value) {

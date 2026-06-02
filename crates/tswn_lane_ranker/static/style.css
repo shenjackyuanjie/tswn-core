@@ -231,32 +231,110 @@ td, th {
 }
 
 
-/* v24 browser worker controls */
-.worker-controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+
+.lane-toolbar {
+  display: flex;
+  align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.lane-toolbar .worker-controls {
+  margin-top: 0;
+}
+
+/* run options beside refresh lanes */
+.worker-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: nowrap;
+  margin-top: 10px;
+  white-space: nowrap;
 }
 
 .worker-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   color: #444;
 }
 
 .worker-controls input {
-  margin-bottom: 0;
+  margin: 0;
 }
 
+.worker-controls input[type="number"] {
+  width: 90px;
+  padding: 8px;
+}
 
-/* v25 archived combination option */
+/* archived combination option */
 .archive-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  padding: 0;
 }
 
 .archive-option input[type="checkbox"] {
   width: auto;
   margin: 0;
+}
+
+
+/* v29 manual target blocking */
+.score-table .action-col,
+.score-table .action-cell {
+  width: 1%;
+  text-align: center;
+  padding-left: 12px;
+}
+
+.small-action-btn {
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  margin-right: 0;
+}
+
+.unblock-btn {
+  background: #666;
+}
+
+.blocked-row {
+  background: #fff7e6;
+}
+
+.blocked-row.fold-child {
+  background: #fffaf0;
+}
+
+.blocked-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #ffe0a3;
+  color: #6b4500;
+  font-size: 12px;
+}
+
+.hint {
+  color: #666;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+
+/* v31 skill type column */
+.score-table .type-col,
+.score-table .type-cell {
+  width: 1%;
+  white-space: nowrap;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+.score-table .type-cell {
+  color: #333;
 }

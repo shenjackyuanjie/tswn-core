@@ -5,7 +5,9 @@ use tokio::task;
 
 use crate::db::{Db, InsertGroupOutcome};
 use crate::model::{
-    AddGroupsRequest, AddGroupsResponse, IgnoredGroup, JobId, MergeTeamsRequest, MergeTeamsResponse, RecomputeLaneResponse,
+    AddGroupsRequest, AddGroupsResponse, BlockGroupRequest, BlockGroupResponse, BlockGroupsByTextRequest,
+    BlockGroupsByTextResponse, IgnoredGroup, JobId, MergeTeamsRequest, MergeTeamsResponse,
+    RecomputeLaneResponse,
 };
 use crate::parser::parse_group;
 use crate::ranker::{RankerConfig, recompute_lane_until_stable};
@@ -53,7 +55,7 @@ impl AppService {
             if config.skip_archived && self.db.is_group_archived_by_canonical(&parsed.canonical)? {
                 ignored.push(IgnoredGroup {
                     raw,
-                    reason: "archived combination skipped because 跑代码时不跑封存组合 is enabled".to_string(),
+                    reason: "archived combination skipped because 不跑封存组合 is enabled".to_string(),
                 });
                 continue;
             }
@@ -76,6 +78,91 @@ impl AppService {
         Ok(AddGroupsResponse {
             added,
             duplicated,
+            ignored,
+            queued_lanes,
+        })
+    }
+
+
+    pub fn set_group_blocked(&self, group_id: i64, blocked: bool, req: BlockGroupRequest) -> anyhow::Result<BlockGroupResponse> {
+        let config = self.config_with_run_options(req.outer_workers, req.inner_workers, req.skip_archived);
+        let Some((lane_size, canonical)) = self.db.set_group_blocked(group_id, blocked)? else {
+            anyhow::bail!("group id {group_id} not found");
+        };
+
+        let queued_lanes = self.queue_recompute_lanes_with_config(vec![lane_size], config)?;
+        Ok(BlockGroupResponse {
+            group_id,
+            lane_size,
+            canonical,
+            blocked,
+            queued_lanes,
+        })
+    }
+
+    pub fn set_groups_blocked_by_text(&self, blocked: bool, req: BlockGroupsByTextRequest) -> anyhow::Result<BlockGroupsByTextResponse> {
+        let BlockGroupsByTextRequest {
+            groups,
+            outer_workers,
+            inner_workers,
+            skip_archived,
+        } = req;
+        let config = self.config_with_run_options(outer_workers, inner_workers, skip_archived);
+
+        let mut blocked_groups = BTreeSet::new();
+        let mut unblocked_groups = BTreeSet::new();
+        let mut ignored = Vec::new();
+        let mut dirty_lanes = BTreeSet::new();
+
+        for raw in groups {
+            let raw = raw.trim().to_string();
+            if raw.is_empty() {
+                continue;
+            }
+
+            let parsed = match parse_group(&raw) {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    ignored.push(IgnoredGroup {
+                        raw,
+                        reason: err.to_string(),
+                    });
+                    continue;
+                }
+            };
+
+            let Some((group_id, _, _)) = self.db.find_group_by_canonical(&parsed.canonical)? else {
+                ignored.push(IgnoredGroup {
+                    raw,
+                    reason: "未找到这个组合，请先加入组合".to_string(),
+                });
+                continue;
+            };
+
+            let Some((changed_lane_size, changed_canonical)) = self.db.set_group_blocked(group_id, blocked)? else {
+                ignored.push(IgnoredGroup {
+                    raw,
+                    reason: "组合更新前已经不存在".to_string(),
+                });
+                continue;
+            };
+
+            dirty_lanes.insert(changed_lane_size);
+            if blocked {
+                blocked_groups.insert(changed_canonical);
+            } else {
+                unblocked_groups.insert(changed_canonical);
+            }
+        }
+
+        let queued_lanes = self.queue_recompute_lanes_with_config(
+            dirty_lanes.into_iter().collect(),
+            config,
+        )?;
+
+        Ok(BlockGroupsByTextResponse {
+            blocked: blocked_groups.into_iter().collect(),
+            unblocked: unblocked_groups.into_iter().collect(),
             ignored,
             queued_lanes,
         })
@@ -165,16 +252,15 @@ impl AppService {
     fn config_with_run_options(
         &self,
         outer_workers: Option<usize>,
-        inner_workers: Option<u32>,
+        _inner_workers: Option<u32>,
         skip_archived: Option<bool>,
     ) -> RankerConfig {
         let mut config = self.config.clone();
         if let Some(outer_workers) = outer_workers {
             config.outer_workers = outer_workers;
         }
-        if let Some(inner_workers) = inner_workers {
-            config.inner_workers = inner_workers;
-        }
+        // Inner worker 固定写死为 1；旧版请求里的 inner_workers 字段会被兼容但忽略。
+        config.inner_workers = 1;
         if let Some(skip_archived) = skip_archived {
             config.skip_archived = skip_archived;
         }

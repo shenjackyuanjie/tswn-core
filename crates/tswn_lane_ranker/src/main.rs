@@ -3,6 +3,7 @@ mod model;
 mod parser;
 mod ranker;
 mod service;
+mod skill_eq;
 mod team;
 mod web;
 mod winrate;
@@ -33,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
         outer_workers = config.outer_workers,
         inner_workers = config.inner_workers,
         skip_archived = config.skip_archived,
-        "ranker config: outer_workers=0 means dynamic auto, outer_workers>0 means static chunks; inner_workers=0 means tswn-core auto; skip_archived=true skips archived combinations"
+        "ranker config: outer_workers=0 means dynamic auto, outer_workers>0 means static chunks; inner_workers is fixed to 1; skip_archived=true skips archived combinations"
     );
 
     let app = web::router(AppService::new(db, config));

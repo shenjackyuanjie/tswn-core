@@ -10,29 +10,22 @@
   <main>
     <h1>TSWN Lane Ranker</h1>
 
-    <section class="card">
-      <h2>线程参数</h2>
-      <p>Outer Worker 填 <code>0</code>：外层自动 worker + 动态队列；填非 0：外层指定 worker + 静态分块。Inner Worker 会直接传给 tswn-core，<code>0</code> 表示内层自动。</p>
-      <div class="worker-controls">
-        <label>Outer Worker
-          <input id="outerWorkersInput" type="number" min="0" step="1" value="0" />
-        </label>
-        <label>Inner Worker
-          <input id="innerWorkersInput" type="number" min="0" step="1" value="0" />
-        </label>
-        <label class="archive-option">
-          <input id="skipArchivedInput" type="checkbox" checked />
-          跑代码时不跑封存组合
-        </label>
-      </div>
-    </section>
 
     <section class="card">
-      <h2>加入组号</h2>
-      <p>每行一个组号。多人组用 <code>+</code> 连接，例如 <code>aaa@A+bbb@A</code>。</p>
+      <h2>加入组合</h2>
+      <p>每行一个组合。多人组用 <code>+</code> 连接，例如 <code>aaa@A+bbb@A</code>。</p>
       <textarea id="groupsInput" rows="8" placeholder="aaa@A&#10;bbb@B+ccc@B"></textarea>
       <button id="addBtn">加入并重算</button>
       <pre id="addOutput"></pre>
+    </section>
+
+    <section class="card">
+      <h2>屏蔽组合</h2>
+      <p>屏蔽组合仍参与 Score 计算，但不会被选入靶子；屏蔽/解除后会自动重算该赛道。</p>
+      <textarea id="blockGroupsInput" rows="6" placeholder="aaa@A&#10;bbb@B+ccc@B"></textarea>
+      <button id="blockGroupsBtn" type="button">屏蔽并重算</button>
+      <button id="unblockGroupsBtn" type="button">解除屏蔽并重算</button>
+      <pre id="blockGroupsOutput"></pre>
     </section>
 
     <section class="card">
@@ -45,7 +38,18 @@
 
     <section class="card">
       <h2>赛道</h2>
-      <button id="refreshLanesBtn">刷新赛道</button>
+      <div class="lane-toolbar">
+        <button id="refreshLanesBtn">刷新赛道</button>
+        <div class="worker-controls" title="线程数填 0：自动 worker + 动态队列；填非 0：指定 worker + 静态分块。inner worker 固定为 1。">
+          <label class="outer-worker-option">线程数
+            <input id="outerWorkersInput" type="number" min="0" step="1" value="0" />
+          </label>
+          <label class="archive-option">
+            <input id="skipArchivedInput" type="checkbox" checked />
+            不跑封存组合
+          </label>
+        </div>
+      </div>
       <div id="lanes"></div>
     </section>
 
@@ -58,6 +62,6 @@
     </section>
   </main>
 
-  <script src="./app.js?v=25-archive-combinations"></script>
+  <script src="./app.js?v=35-lane-specific-thresholds"></script>
 </body>
 </html>
