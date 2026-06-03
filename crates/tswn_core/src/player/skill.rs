@@ -217,6 +217,173 @@ const DIY_ACTIVE_SKILL_IDS: [usize; 25] = [
 /// 共 10 个被动技能，从 Defend(25) 到 Hide(34)。
 const DIY_PASSIVE_SKILL_IDS: [usize; 10] = [25, 26, 27, 28, 29, 30, 31, 32, 33, 34];
 
+pub const CLASSIFIED_SKILL_SLOT_COUNT: usize = 44;
+pub const SUMMON_FIRE1_SKILL_KEY: usize = 40;
+pub const SUMMON_FIRE2_SKILL_KEY: usize = 41;
+pub const SUMMON_EXPLODE_SKILL_KEY: usize = 42;
+pub const PHANTOM_POSSESS_SKILL_KEY: usize = 43;
+pub const SUMMON_MINION_NORMAL_SKILL_KEY_BASE: usize = 80;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassifiedSkillRef {
+    Normal(usize),
+    SummonFire1,
+    SummonFire2,
+    SummonExplode,
+    PhantomPossess,
+}
+
+impl ClassifiedSkillRef {
+    pub fn player_key(self) -> usize {
+        match self {
+            Self::Normal(id) => id,
+            Self::SummonFire1 => SUMMON_FIRE1_SKILL_KEY,
+            Self::SummonFire2 => SUMMON_FIRE2_SKILL_KEY,
+            Self::SummonExplode => SUMMON_EXPLODE_SKILL_KEY,
+            Self::PhantomPossess => PHANTOM_POSSESS_SKILL_KEY,
+        }
+    }
+
+    pub fn summon_minion_key(self) -> usize {
+        match self {
+            Self::Normal(id) => SUMMON_MINION_NORMAL_SKILL_KEY_BASE + id,
+            Self::SummonFire1 => SUMMON_FIRE1_SKILL_KEY,
+            Self::SummonFire2 => SUMMON_FIRE2_SKILL_KEY,
+            Self::SummonExplode => SUMMON_EXPLODE_SKILL_KEY,
+            Self::PhantomPossess => PHANTOM_POSSESS_SKILL_KEY,
+        }
+    }
+
+    pub fn build_skill(self, level: u32) -> Skill {
+        match self {
+            Self::Normal(id) => Skill::new_with_id(level, id as u8),
+            Self::SummonFire1 | Self::SummonFire2 => Skill::new_with_id(level, 0),
+            Self::SummonExplode => Skill::new(level, Box::new(summon::SummonExplodeSkill::new())),
+            Self::PhantomPossess => Skill::new(level, Box::new(act::possess::PossessSkill::new())),
+        }
+    }
+}
+
+pub fn classified_player_skill_slot_order() -> Vec<usize> { (0..CLASSIFIED_SKILL_SLOT_COUNT).collect() }
+
+pub fn classified_summon_minion_skill_slot_order() -> Vec<usize> {
+    (0..40usize)
+        .map(|id| SUMMON_MINION_NORMAL_SKILL_KEY_BASE + id)
+        .chain([
+            SUMMON_FIRE1_SKILL_KEY,
+            SUMMON_FIRE2_SKILL_KEY,
+            SUMMON_EXPLODE_SKILL_KEY,
+            PHANTOM_POSSESS_SKILL_KEY,
+        ])
+        .collect()
+}
+
+pub fn ensure_classified_player_skill_slots(storage: &mut store::SkillStorage) {
+    for id in 0..40usize {
+        if !storage.store.contains_key(&id) {
+            storage.store.insert(id, Skill::new_with_id(0, id as u8));
+        }
+    }
+    ensure_classified_special_skill_slots(storage);
+}
+
+pub fn ensure_classified_summon_minion_skill_slots(storage: &mut store::SkillStorage) {
+    for id in 0..40usize {
+        let key = SUMMON_MINION_NORMAL_SKILL_KEY_BASE + id;
+        if !storage.store.contains_key(&key) {
+            storage.store.insert(key, Skill::new_with_id(0, id as u8));
+        }
+    }
+    ensure_classified_special_skill_slots(storage);
+}
+
+fn ensure_classified_special_skill_slots(storage: &mut store::SkillStorage) {
+    if !storage.store.contains_key(&SUMMON_FIRE1_SKILL_KEY) {
+        storage.store.insert(SUMMON_FIRE1_SKILL_KEY, Skill::new_with_id(0, 0));
+    }
+    if !storage.store.contains_key(&SUMMON_FIRE2_SKILL_KEY) {
+        storage.store.insert(SUMMON_FIRE2_SKILL_KEY, Skill::new_with_id(0, 0));
+    }
+    if !storage.store.contains_key(&SUMMON_EXPLODE_SKILL_KEY) {
+        storage.store.insert(
+            SUMMON_EXPLODE_SKILL_KEY,
+            Skill::new(0, Box::new(summon::SummonExplodeSkill::new())),
+        );
+    }
+    if !storage.store.contains_key(&PHANTOM_POSSESS_SKILL_KEY) {
+        storage.store.insert(
+            PHANTOM_POSSESS_SKILL_KEY,
+            Skill::new(0, Box::new(act::possess::PossessSkill::new())),
+        );
+    }
+}
+
+pub fn parse_prefixed_classified_skill_name(name: &str) -> Option<ClassifiedSkillRef> {
+    let (raw_prefix, raw_name) = name.trim().split_once(':')?;
+    let prefix = raw_prefix.trim().to_ascii_lowercase();
+    let skill_name = raw_name.trim();
+    match prefix.as_str() {
+        "normal" | "player" | "plr" | "玩家" => skill_name_to_id(skill_name).map(ClassifiedSkillRef::Normal),
+        "summon" | "familiar" | "使魔" => summon_slot_skill_ref_from_name(skill_name),
+        "phantom" | "shadow" | "幻影" => phantom_skill_ref_from_name(skill_name),
+        _ => None,
+    }
+}
+
+pub fn is_player_classified_skill_name(name: &str) -> bool {
+    parse_prefixed_classified_skill_name(name).is_some()
+        || summon_slot_skill_ref_from_name(name).is_some()
+        || phantom_skill_ref_from_name(name).is_some()
+}
+
+pub fn player_classified_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
+    parse_prefixed_classified_skill_name(name)
+        .or_else(|| summon_slot_skill_ref_from_name(name))
+        .or_else(|| phantom_skill_ref_from_name(name))
+        .or_else(|| skill_name_to_id(name).map(ClassifiedSkillRef::Normal))
+}
+
+pub fn summon_slot_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "sklfire1" => Some(ClassifiedSkillRef::SummonFire1),
+        "sklfire2" => Some(ClassifiedSkillRef::SummonFire2),
+        "sklexplode" => Some(ClassifiedSkillRef::SummonExplode),
+        _ => None,
+    }
+}
+
+pub fn phantom_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
+    let lower = name.trim().to_ascii_lowercase();
+    let normalized = lower
+        .strip_prefix("skl")
+        .or_else(|| lower.strip_prefix("skill"))
+        .unwrap_or(lower.as_str());
+    match normalized {
+        "possess" | "possession" | "附体" => Some(ClassifiedSkillRef::PhantomPossess),
+        _ => None,
+    }
+}
+
+pub fn classified_player_skill_name_for_export(skill_key: usize) -> Option<String> {
+    match skill_key {
+        SUMMON_FIRE1_SKILL_KEY => Some("summon:sklfire1".to_string()),
+        SUMMON_FIRE2_SKILL_KEY => Some("summon:sklfire2".to_string()),
+        SUMMON_EXPLODE_SKILL_KEY => Some("summon:sklexplode".to_string()),
+        PHANTOM_POSSESS_SKILL_KEY => Some("phantom:sklpossess".to_string()),
+        _ => None,
+    }
+}
+
+pub fn classified_summon_minion_skill_name_for_export(skill_key: usize) -> Option<String> {
+    if (SUMMON_MINION_NORMAL_SKILL_KEY_BASE..SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 40).contains(&skill_key) {
+        return Some(format!(
+            "normal:{}",
+            skill_name_for_export(skill_key - SUMMON_MINION_NORMAL_SKILL_KEY_BASE)
+        ));
+    }
+    classified_player_skill_name_for_export(skill_key)
+}
+
 /// 将 overlay 中的技能名映射到 Rust 技能 ID。
 ///
 /// 兼容多种输入格式：`sklfire` / `FireSkill` / `fire` / `sklFire` 均可识别。
@@ -345,6 +512,11 @@ pub fn skill_name_for_export(skill_id: usize) -> String {
 ///
 /// 注意：此函数替代了正常的 boost 流程，overlay 模式不调用 `boost_last()` / `boost_level()`。
 pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &[(String, SkillBoost)]) {
+    if skill_levels.iter().any(|(skill_name, _)| is_player_classified_skill_name(skill_name)) {
+        apply_classified_diy_skill_levels(storage, skill_levels);
+        return;
+    }
+
     let mut ordered_ids: Vec<usize> = Vec::with_capacity(40);
     let mut seen = [false; 40];
     for (skill_name, skill_boost) in skill_levels {
@@ -378,6 +550,48 @@ pub fn apply_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &
         }
     }
     storage.slot_skill = (0..40usize).collect();
+    storage.skill = ordered_ids;
+    storage.is_diy = true;
+    storage.update_proc();
+}
+
+fn apply_classified_diy_skill_levels(storage: &mut store::SkillStorage, skill_levels: &[(String, SkillBoost)]) {
+    ensure_classified_player_skill_slots(storage);
+
+    let mut ordered_ids: Vec<usize> = Vec::with_capacity(CLASSIFIED_SKILL_SLOT_COUNT);
+    let mut seen = vec![false; CLASSIFIED_SKILL_SLOT_COUNT];
+    for (skill_name, skill_boost) in skill_levels {
+        let Some(skill_ref) = player_classified_skill_ref_from_name(skill_name) else {
+            continue;
+        };
+        let skill_key = skill_ref.player_key();
+        if skill_key >= seen.len() || seen[skill_key] {
+            continue;
+        }
+        seen[skill_key] = true;
+        ordered_ids.push(skill_key);
+        if let Some(skill) = storage.store.get_mut(&skill_key) {
+            let base_lv = skill_boost.base_level();
+            skill.set_level(base_lv);
+            skill.boosted = false;
+            match skill_boost {
+                SkillBoost::Normal(_) => {
+                    skill.diy_boost = None;
+                }
+                SkillBoost::SlotBoost { .. } | SkillBoost::LastBoost(_) => {
+                    skill.diy_boost = Some(skill_boost.clone());
+                }
+            }
+        }
+    }
+
+    for id in classified_player_skill_slot_order() {
+        if !seen[id] {
+            seen[id] = true;
+            ordered_ids.push(id);
+        }
+    }
+    storage.slot_skill = classified_player_skill_slot_order();
     storage.skill = ordered_ids;
     storage.is_diy = true;
     storage.update_proc();

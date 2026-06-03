@@ -19,6 +19,9 @@ pub struct MinionOverlay {
     pub skills: Option<Vec<(String, SkillBoost)>>,
     pub reuse_skills_on_recast: bool,
     pub inherit_owner_def_res: bool,
+    pub shadow: Option<Box<MinionOverlay>>,
+    pub summon: Option<Box<MinionOverlay>>,
+    pub zombie: Option<Box<MinionOverlay>>,
 }
 
 /// 玩家 DIY / overlay 覆盖数据。
@@ -64,6 +67,23 @@ pub struct PlayerOverlay {
     pub summon: Option<MinionOverlay>,
     /// 丧尸模板覆盖配置。
     pub zombie: Option<MinionOverlay>,
+}
+
+impl MinionOverlay {
+    pub fn child_player_overlay(&self) -> Option<PlayerOverlay> {
+        if self.shadow.is_none() && self.summon.is_none() && self.zombie.is_none() {
+            return None;
+        }
+        Some(PlayerOverlay {
+            attrs: None,
+            skills: None,
+            weapon: None,
+            name_factor_enabled: true,
+            shadow: self.shadow.as_deref().cloned(),
+            summon: self.summon.as_deref().cloned(),
+            zombie: self.zombie.as_deref().cloned(),
+        })
+    }
 }
 
 impl Default for PlayerOverlay {
@@ -207,6 +227,9 @@ fn parse_minion_overlay(raw: &str) -> Option<MinionOverlay> {
             "skills" => overlay.skills = Some(parse_skill_map(value)?),
             "reuse_skills_on_recast" => overlay.reuse_skills_on_recast = parse_bool(value)?,
             "inherit_owner_def_res" => overlay.inherit_owner_def_res = parse_bool(value)?,
+            "shadow" | "phantom" | "幻影" => overlay.shadow = Some(Box::new(parse_minion_overlay(value)?)),
+            "summon" | "familiar" | "使魔" => overlay.summon = Some(Box::new(parse_minion_overlay(value)?)),
+            "zombie" | "丧尸" | "僵尸" => overlay.zombie = Some(Box::new(parse_minion_overlay(value)?)),
             _ => {}
         }
         idx = next_idx;

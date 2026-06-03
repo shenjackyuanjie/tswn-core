@@ -15,13 +15,13 @@ use crate::player::{
 use crate::rc4::RC4;
 
 use super::minion::{
-    MinionKind, MinionRuntimeState, alloc_minion_name, apply_minion_skill_overlay, apply_summon_attrs, owner_minion_overlay,
-    prepare_combat_minion,
+    MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_skill_overlay,
+    apply_summon_attrs, owner_minion_overlay, prepare_combat_minion,
 };
 
-const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
+pub(super) const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 
-fn ensure_summon_share_damage_skill(skills: &mut SkillStorage, enabled: bool) {
+pub(super) fn ensure_summon_share_damage_skill(skills: &mut SkillStorage, enabled: bool) {
     skills
         .store
         .get_or_insert_with(SUMMON_SHARE_DAMAGE_SKILL_KEY, || {
@@ -90,7 +90,9 @@ impl SkillTrait for SummonSkill {
             summoned.set_state(MinionRuntimeState {
                 owner: Some(args.0),
                 kind: MinionKind::Summon,
+                share_damage_owner: None,
             });
+            apply_child_minion_overlay(summoned, minion_overlay.as_ref());
             let reuse_overlay_skills = minion_overlay.as_ref().map(|overlay| overlay.reuse_skills_on_recast).unwrap_or(false);
             if reuse_overlay_skills || !apply_minion_skill_overlay(summoned, minion_overlay.as_ref()) {
                 ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
@@ -140,7 +142,9 @@ impl SkillTrait for SummonSkill {
         summoned.set_state(MinionRuntimeState {
             owner: Some(args.0),
             kind: MinionKind::Summon,
+            share_damage_owner: None,
         });
+        apply_child_minion_overlay(&mut summoned, minion_overlay.as_ref());
         summoned.status.set_alive(true);
         summoned.status.set_frozen(false);
 
@@ -290,7 +294,7 @@ impl SkillTrait for SummonShareDamageSkill {
             .3
             .get_player(&args.0)
             .and_then(|player| player.get_state::<MinionRuntimeState>())
-            .and_then(|state| state.owner);
+            .and_then(|state| state.share_damage_owner.or(state.owner));
         let Some(owner_id) = owner_id else {
             return;
         };

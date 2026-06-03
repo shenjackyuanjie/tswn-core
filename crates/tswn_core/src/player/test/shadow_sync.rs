@@ -24,6 +24,7 @@ fn sync_runtime_entities_adds_pending_linked_shadow_before_same_tick_owner_clean
     clone.set_state(MinionRuntimeState {
         owner: Some(owner_id),
         kind: MinionKind::Clone,
+        share_damage_owner: None,
     });
     let clone_id = storage.just_insert_player(clone);
 
@@ -42,6 +43,7 @@ fn sync_runtime_entities_adds_pending_linked_shadow_before_same_tick_owner_clean
     pending_shadow.set_state(MinionRuntimeState {
         owner: Some(clone_id),
         kind: MinionKind::Shadow,
+        share_damage_owner: None,
     });
     let pending_shadow_id = pending_shadow.as_ptr();
     storage.queue_spawn(clone_id, pending_shadow);

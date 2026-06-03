@@ -189,6 +189,42 @@ fn ol_overlay_with_summon_skill_map_keeps_main_attrs() {
 }
 
 #[test]
+fn ol_overlay_allows_player_diy_minion_skill_slots() {
+    let storage = Storage::new_arc();
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklfire":3,"sklfire1":5,"summon:sklfire2":7,"sklexplode":11,"sklpossess":13}}"#;
+    let mut player = Player::new_from_namerena_raw(raw.to_string(), storage).unwrap();
+    player.build();
+
+    assert_eq!(
+        player.skills.slot_skill,
+        crate::player::skill::classified_player_skill_slot_order()
+    );
+    assert_eq!(player.skills.skill_by_id(0).level(), 3);
+    assert_eq!(
+        player.skills.skill_by_id(crate::player::skill::SUMMON_FIRE1_SKILL_KEY).level(),
+        5
+    );
+    assert_eq!(
+        player.skills.skill_by_id(crate::player::skill::SUMMON_FIRE2_SKILL_KEY).level(),
+        7
+    );
+    assert_eq!(
+        player.skills.skill_by_id(crate::player::skill::SUMMON_EXPLODE_SKILL_KEY).level(),
+        11
+    );
+    assert_eq!(
+        player.skills.skill_by_id(crate::player::skill::PHANTOM_POSSESS_SKILL_KEY).level(),
+        13
+    );
+
+    let exported = player.to_ol_json();
+    assert!(exported.contains("\"summon:sklfire1\":5"));
+    assert!(exported.contains("\"summon:sklfire2\":7"));
+    assert!(exported.contains("\"summon:sklexplode\":11"));
+    assert!(exported.contains("\"phantom:sklpossess\":13"));
+}
+
+#[test]
 fn player_raw_keeps_internal_js_trim_chars_in_name_and_team() {
     let storage = Storage::new_arc();
 

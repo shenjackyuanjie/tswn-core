@@ -65,6 +65,7 @@ fn protect_post_action_keeps_pending_clone_from_dead_owner() {
     pending_clone.set_state_no_update(MinionRuntimeState {
         owner: Some(owner_id),
         kind: MinionKind::Clone,
+        share_damage_owner: None,
     });
     storage.queue_spawn(owner_id, pending_clone);
 
@@ -308,6 +309,7 @@ fn hide_counts_pending_shadow_as_alive_ally_before_sync() {
     pending_shadow.set_state(MinionRuntimeState {
         owner: Some(owner_id),
         kind: MinionKind::Shadow,
+        share_damage_owner: None,
     });
     storage.queue_spawn(owner_id, pending_shadow);
 

@@ -181,6 +181,7 @@ fn minion_name_counter_uses_root_clone_owner() {
     clone.set_state(MinionRuntimeState {
         owner: Some(owner_id),
         kind: MinionKind::Clone,
+        share_damage_owner: None,
     });
     let clone_id = storage.just_insert_player(clone);
 
@@ -642,6 +643,298 @@ fn ol_overlay_customizes_summon_minion_attrs_and_skills() {
 }
 
 #[test]
+fn ol_overlay_allows_summon_minion_diy_normal_skills_with_prefix() {
+    let storage = Storage::new_arc();
+    let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"normal:sklrapid":9,"sklfire1":5,"summon:sklexplode":3}}}"#;
+    let mut owner = Player::new_from_namerena_raw(raw.to_string(), storage.clone()).unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = &pending[0].player;
+    assert_eq!(
+        summoned.skills.slot_skill,
+        crate::player::skill::classified_summon_minion_skill_slot_order()
+    );
+    assert_eq!(
+        summoned
+            .skills
+            .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 6)
+            .level(),
+        9
+    );
+    assert_eq!(
+        summoned.skills.skill_by_id(crate::player::skill::SUMMON_FIRE1_SKILL_KEY).level(),
+        5
+    );
+    assert_eq!(
+        summoned.skills.skill_by_id(crate::player::skill::SUMMON_EXPLODE_SKILL_KEY).level(),
+        3
+    );
+    assert!(summoned.skills.is_diy);
+}
+
+#[test]
+fn classified_merge_keeps_normal_and_summon_skill_lanes_separate() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw(
+        r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklfire":1,"sklrapid":1,"sklfire1":1}}"#.to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+
+    let mut summoner = Player::new_from_namerena_raw(
+        r#"summoner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"normal:sklrapid":9,"sklfire1":5}}}"#
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    summoner.build();
+    let summoner_id = storage.just_insert_player(summoner);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            summoned_id,
+            (owner_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let owner_after = storage.get_player(&owner_id).unwrap();
+    assert_eq!(owner_after.skills.skill_by_id(0).level(), 1);
+    assert_eq!(owner_after.skills.skill_by_id(6).level(), 9);
+    assert_eq!(
+        owner_after.skills.skill_by_id(crate::player::skill::SUMMON_FIRE1_SKILL_KEY).level(),
+        5
+    );
+}
+
+#[test]
+fn summon_minion_can_summon_child_and_share_damage_by_direct_owner_chain() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw(
+        r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,400],"summon":{"attrs":[60,60,60,60,60,60,60,240],"skills":{"normal:sklsummon":255}}}"#
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let parent_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    {
+        let parent = storage.just_get_player_mut(parent_id).unwrap();
+        parent.status.hp = 240;
+        parent.status.max_hp = 240;
+        parent.status.magic_point = 999;
+        parent.status.set_alive(true);
+    }
+    let mut child_summon = crate::player::skill::summon::SummonSkill::new();
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut child_summon,
+        255,
+        vec![parent_id],
+        false,
+        (parent_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let child_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    {
+        let child = storage.just_get_player_mut(child_id).unwrap();
+        child.status.hp = 240;
+        child.status.max_hp = 240;
+        child.status.set_alive(true);
+    }
+
+    storage
+        .just_get_player_mut(child_id)
+        .unwrap()
+        .damage(80, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert_eq!(storage.get_player(&child_id).unwrap().get_status().hp, 160);
+    assert_eq!(storage.get_player(&parent_id).unwrap().get_status().hp, 200);
+    assert_eq!(storage.get_player(&owner_id).unwrap().get_status().hp, 380);
+}
+
+#[test]
+fn diy_summon_minion_can_customize_its_child_summon_template() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw(
+        r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,400],"summon":{"attrs":[60,60,60,60,60,60,60,240],"skills":{"normal:sklsummon":255},"summon":{"attrs":[70,71,72,73,74,75,76,333],"skills":{"normal:sklrapid":11,"sklfire1":9}}}}"#
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let parent = pending.into_iter().next().unwrap().player;
+    assert!(parent.overlay.as_ref().and_then(|overlay| overlay.summon.as_ref()).is_some());
+    let parent_id = storage.just_insert_player(parent);
+    {
+        let parent = storage.just_get_player_mut(parent_id).unwrap();
+        parent.status.hp = 240;
+        parent.status.max_hp = 240;
+        parent.status.magic_point = 999;
+        parent.status.set_alive(true);
+    }
+
+    let mut child_summon = crate::player::skill::summon::SummonSkill::new();
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut child_summon,
+        255,
+        vec![parent_id],
+        false,
+        (parent_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let child = &pending[0].player;
+    assert_eq!(child.attr, [34, 35, 36, 37, 38, 39, 40, 333]);
+    assert_eq!(
+        child.skills.slot_skill,
+        crate::player::skill::classified_summon_minion_skill_slot_order()
+    );
+    assert_eq!(
+        child
+            .skills
+            .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 6)
+            .level(),
+        11
+    );
+    assert_eq!(
+        child.skills.skill_by_id(crate::player::skill::SUMMON_FIRE1_SKILL_KEY).level(),
+        9
+    );
+}
+
+#[test]
+fn summon_minion_clone_shares_damage_with_direct_summon_owner() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw(
+        r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,400],"summon":{"attrs":[60,60,60,60,60,60,60,240],"skills":{"normal:sklclone":255}}}"#
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let parent_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    {
+        let parent = storage.just_get_player_mut(parent_id).unwrap();
+        parent.status.hp = 240;
+        parent.status.max_hp = 240;
+        parent.status.magic_point = 999;
+        parent.status.set_alive(true);
+    }
+    let mut clone = crate::player::skill::clone::CloneSkill::new();
+    <crate::player::skill::clone::CloneSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut clone,
+        255,
+        vec![parent_id],
+        false,
+        (parent_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let clone_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    {
+        let clone = storage.get_player(&clone_id).unwrap();
+        assert_eq!(clone.skills.skill_by_id(255).level(), 1);
+        assert_eq!(
+            clone
+                .get_state::<crate::player::skill::act::minion::MinionRuntimeState>()
+                .and_then(|state| state.share_damage_owner),
+            Some(parent_id)
+        );
+    }
+
+    storage
+        .just_get_player_mut(clone_id)
+        .unwrap()
+        .damage(80, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert_eq!(storage.get_player(&clone_id).unwrap().get_status().hp, 40);
+    assert_eq!(storage.get_player(&parent_id).unwrap().get_status().hp, 80);
+    assert_eq!(storage.get_player(&owner_id).unwrap().get_status().hp, 380);
+}
+
+#[test]
 fn summon_overlay_rejects_legacy_skill_names() {
     let storage = Storage::new_arc();
     let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire":12,"fire1":8,"explode":3}}}"#;
@@ -800,6 +1093,7 @@ fn owner_death_marks_linked_minion_for_cleanup() {
     minion.set_state(crate::player::skill::act::minion::MinionRuntimeState {
         owner: Some(owner_id),
         kind: crate::player::skill::act::minion::MinionKind::Summon,
+        share_damage_owner: None,
     });
     let minion_id = storage.just_insert_player(minion);
     let mut randomer = RC4 {
@@ -838,6 +1132,7 @@ fn owner_death_marks_pending_linked_minion_dead_before_sync() {
     clone.set_state(MinionRuntimeState {
         owner: Some(owner_id),
         kind: MinionKind::Clone,
+        share_damage_owner: None,
     });
     let clone_id = storage.just_insert_player(clone);
 
@@ -854,6 +1149,7 @@ fn owner_death_marks_pending_linked_minion_dead_before_sync() {
     pending_shadow.set_state(MinionRuntimeState {
         owner: Some(clone_id),
         kind: MinionKind::Shadow,
+        share_damage_owner: None,
     });
     let pending_shadow_id = pending_shadow.as_ptr();
     storage.queue_spawn(clone_id, pending_shadow);
@@ -902,6 +1198,7 @@ fn pending_shadow_uses_runtime_sort_int_zero() {
     shadow.set_state(MinionRuntimeState {
         owner: Some(owner_id),
         kind: MinionKind::Shadow,
+        share_damage_owner: None,
     });
     let shadow_id = shadow.as_ptr();
     storage.queue_spawn(owner_id, shadow);
@@ -930,6 +1227,7 @@ fn owner_death_removes_linked_minions_in_roster_order() {
     minion0.set_state(MinionRuntimeState {
         owner: Some(owner_id),
         kind: MinionKind::Summon,
+        share_damage_owner: None,
     });
     let minion0_id = storage.just_insert_player(minion0);
 
@@ -942,6 +1240,7 @@ fn owner_death_removes_linked_minions_in_roster_order() {
     minion1.set_state(MinionRuntimeState {
         owner: Some(owner_id),
         kind: MinionKind::Summon,
+        share_damage_owner: None,
     });
     let minion1_id = storage.just_insert_player(minion1);
 

@@ -11,8 +11,8 @@ use crate::player::{
 };
 
 use super::minion::{
-    MinionKind, MinionRuntimeState, alloc_minion_name, apply_minion_attrs, apply_minion_skill_overlay, owner_minion_overlay,
-    prepare_combat_minion,
+    MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_attrs,
+    apply_minion_skill_overlay, owner_minion_overlay, prepare_combat_minion,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -74,6 +74,7 @@ impl SkillTrait for ShadowSkill {
         if !apply_minion_attrs(&mut shadow, minion_overlay.as_ref()) {
             shadow.attr[7] /= 2;
         }
+        apply_child_minion_overlay(&mut shadow, minion_overlay.as_ref());
         shadow.init_values();
         shadow.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
         shadow.set_display_name_override(Some("幻影".to_string()));
@@ -83,6 +84,7 @@ impl SkillTrait for ShadowSkill {
         shadow.set_state(MinionRuntimeState {
             owner: Some(args.0),
             kind: MinionKind::Shadow,
+            share_damage_owner: None,
         });
         shadow.status.set_alive(true);
         shadow.status.set_frozen(false);

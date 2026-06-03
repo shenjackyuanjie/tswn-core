@@ -24,7 +24,7 @@
 //! | `needs_sync`             | `AtomicBool`                        | 脏标记，有死亡/移除/复活/召唤时置 true |
 //! | `player_id_counter`      | `AtomicU64`                         | 玩家 ID 自增计数器                     |
 //! | `eval_rq`                | `f64`                               | 名字强度评估使用的 `$.rq()` 等价值     |
-//! | `in_post_damage_player`  | `UnsafeCell<Option<PlrId>>`         | 正在执行 post_damage 回调的使魔 ID     |
+//! | `in_post_damage_players` | `UnsafeCell<Vec<PlrId>>`            | 正在执行 post_damage 回调的使魔 ID 栈  |
 //!
 //! ### 不安全访问说明
 //!
@@ -94,11 +94,11 @@ pub struct Storage {
     player_id_counter: UnsafeCell<u64>,
     /// 名字强度评估时使用的 `$.rq()` 等价值。
     eval_rq: f64,
-    /// JS `aR` flag: 正在执行 post_damage 回调的使魔 ID。
+    /// JS `aR` flag: 正在执行 post_damage 回调的使魔 ID 栈。
     /// 当使魔的 SummonShareDamageSkill 把伤害分摊给 owner 导致 owner 死亡时，
     /// owner 的 on_die_impl 不应立即处理该使魔的死亡（应由使魔自身的 on_damaged 路径处理），
     /// 以确保死亡顺序为 [owner, summon] 而非 [summon, owner]。
-    in_post_damage_player: UnsafeCell<Option<PlrId>>,
+    in_post_damage_players: UnsafeCell<Vec<PlrId>>,
 }
 
 // Storage 通过 UnsafeCell 实现运行期内部可变性。
@@ -127,7 +127,7 @@ impl Storage {
             needs_sync: UnsafeCell::new(false),
             player_id_counter: UnsafeCell::new(0),
             eval_rq,
-            in_post_damage_player: UnsafeCell::new(None),
+            in_post_damage_players: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -147,7 +147,7 @@ impl Storage {
         self.death_queue_mut().clear();
         self.pending_revivals_mut().clear();
         *self.needs_sync_mut() = false;
-        self.set_in_post_damage_player(None);
+        self.in_post_damage_players_mut().clear();
     }
 
     #[inline]
@@ -211,7 +211,10 @@ impl Storage {
     fn pending_revivals_mut(&self) -> &mut Vec<PlrId> { unsafe { &mut *self.pending_revivals.get() } }
 
     #[inline]
-    fn in_post_damage_player_ref(&self) -> Option<PlrId> { unsafe { *self.in_post_damage_player.get() } }
+    fn in_post_damage_players_ref(&self) -> &Vec<PlrId> { unsafe { &*self.in_post_damage_players.get() } }
+
+    #[inline]
+    fn in_post_damage_players_mut(&self) -> &mut Vec<PlrId> { unsafe { &mut *self.in_post_damage_players.get() } }
 
     #[inline]
     fn needs_sync_ref(&self) -> &bool { unsafe { &*self.needs_sync.get() } }
@@ -224,13 +227,6 @@ impl Storage {
 
     #[inline]
     fn player_id_counter_mut(&self) -> &mut u64 { unsafe { &mut *self.player_id_counter.get() } }
-
-    #[inline]
-    fn set_in_post_damage_player(&self, value: Option<PlrId>) {
-        unsafe {
-            *self.in_post_damage_player.get() = value;
-        }
-    }
 
     /// 获取当前玩家 ID 计数器的值（不增加）。
     pub fn current_plr_id(&self) -> u64 { *self.player_id_counter_ref() }
@@ -261,14 +257,14 @@ impl Storage {
 
     /// 标记某个使魔正在执行 post_damage 回调（对应 JS PlrSummon.aR 标志）。
     /// 在 SummonShareDamageSkill::post_damage 中设置，防止 owner 死亡时立即处理该使魔的死亡。
-    pub fn set_in_post_damage(&self, plr: PlrId) { self.set_in_post_damage_player(Some(plr)); }
+    pub fn set_in_post_damage(&self, plr: PlrId) { self.in_post_damage_players_mut().push(plr); }
 
     /// 清除 post_damage 标记。
-    pub fn clear_in_post_damage(&self) { self.set_in_post_damage_player(None); }
+    pub fn clear_in_post_damage(&self) { self.in_post_damage_players_mut().pop(); }
 
     /// 检查某个玩家是否正在执行 post_damage 回调。
     #[inline]
-    pub fn is_in_post_damage(&self, plr: PlrId) -> bool { self.in_post_damage_player_ref() == Some(plr) }
+    pub fn is_in_post_damage(&self, plr: PlrId) -> bool { self.in_post_damage_players_ref().contains(&plr) }
 
     pub fn insert_group(&mut self, id: usize, plrs: Vec<PlrId>) {
         let groups = self.groups_mut();

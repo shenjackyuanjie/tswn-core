@@ -10,7 +10,12 @@ use crate::{
     player::{
         Player, PlrId, StateTrait,
         overlay::MinionOverlay,
-        skill::{Skill, SkillBoost, SkillExt, skill_name_to_id, store::SkillStorage},
+        skill::{
+            Skill, SkillBoost, SkillExt, classified_player_skill_slot_order, classified_summon_minion_skill_slot_order,
+            ensure_classified_player_skill_slots, ensure_classified_summon_minion_skill_slots,
+            parse_prefixed_classified_skill_name, player_classified_skill_ref_from_name, skill_name_to_id, store::SkillStorage,
+            summon_slot_skill_ref_from_name,
+        },
     },
 };
 
@@ -27,6 +32,7 @@ pub enum MinionKind {
 pub struct MinionRuntimeState {
     pub owner: Option<PlrId>,
     pub kind: MinionKind,
+    pub share_damage_owner: Option<PlrId>,
 }
 
 impl MinionRuntimeState {
@@ -116,6 +122,10 @@ pub fn apply_summon_attrs(player: &mut Player, owner: &Player, overlay: Option<&
     true
 }
 
+pub fn apply_child_minion_overlay(player: &mut Player, overlay: Option<&MinionOverlay>) {
+    player.overlay = overlay.and_then(MinionOverlay::child_player_overlay).map(Box::new);
+}
+
 pub fn apply_minion_skill_overlay(player: &mut Player, overlay: Option<&MinionOverlay>) -> bool {
     let Some(skill_levels) = overlay.and_then(|overlay| overlay.skills.as_ref()) else {
         return false;
@@ -126,6 +136,10 @@ pub fn apply_minion_skill_overlay(player: &mut Player, overlay: Option<&MinionOv
         .unwrap_or(false)
     {
         return apply_summon_skill_overlay(player, skill_levels);
+    }
+
+    if skill_levels.iter().any(|(name, _)| parse_prefixed_classified_skill_name(name).is_some()) {
+        return apply_classified_minion_skill_overlay(player, skill_levels);
     }
 
     let mut skills = SkillStorage::new();
@@ -143,6 +157,10 @@ pub fn apply_minion_skill_overlay(player: &mut Player, overlay: Option<&MinionOv
 }
 
 fn apply_summon_skill_overlay(player: &mut Player, skill_levels: &[(String, SkillBoost)]) -> bool {
+    if skill_levels.iter().any(|(name, _)| parse_prefixed_classified_skill_name(name).is_some()) {
+        return apply_classified_summon_skill_overlay(player, skill_levels);
+    }
+
     let mut skills = SkillStorage::new();
     skills.add_skill(Skill::new_with_id(0, 0));
     skills.add_skill(Skill::new_with_id(0, 0));
@@ -174,6 +192,53 @@ fn summon_skill_key_from_overlay(name: &str) -> Option<usize> {
         "sklexplode" => Some(2),
         _ => None,
     }
+}
+
+fn apply_classified_minion_skill_overlay(player: &mut Player, skill_levels: &[(String, SkillBoost)]) -> bool {
+    let mut skills = SkillStorage::new();
+    ensure_classified_player_skill_slots(&mut skills);
+    skills.slot_skill = classified_player_skill_slot_order();
+    skills.skill.clear();
+
+    for (name, boost) in skill_levels {
+        let Some(skill_ref) = player_classified_skill_ref_from_name(name) else {
+            continue;
+        };
+        let skill_key = skill_ref.player_key();
+        apply_overlay_boost(skills.skill_by_id_mut(skill_key), boost);
+        if !skills.skill.contains(&skill_key) {
+            skills.skill.push(skill_key);
+        }
+    }
+
+    skills.is_diy = true;
+    skills.update_proc();
+    player.skills = skills;
+    true
+}
+
+fn apply_classified_summon_skill_overlay(player: &mut Player, skill_levels: &[(String, SkillBoost)]) -> bool {
+    let mut skills = SkillStorage::new();
+    ensure_classified_summon_minion_skill_slots(&mut skills);
+    skills.slot_skill = classified_summon_minion_skill_slot_order();
+    skills.skill.clear();
+
+    for (name, boost) in skill_levels {
+        let skill_ref = parse_prefixed_classified_skill_name(name).or_else(|| summon_slot_skill_ref_from_name(name));
+        let Some(skill_ref) = skill_ref else {
+            continue;
+        };
+        let skill_key = skill_ref.summon_minion_key();
+        apply_overlay_boost(skills.skill_by_id_mut(skill_key), boost);
+        if !skills.skill.contains(&skill_key) {
+            skills.skill.push(skill_key);
+        }
+    }
+
+    skills.is_diy = true;
+    skills.update_proc();
+    player.skills = skills;
+    true
 }
 
 fn minion_skill_from_overlay(name: &str, boost: &SkillBoost) -> Option<Skill> {

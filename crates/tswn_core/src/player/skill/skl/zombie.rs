@@ -6,8 +6,8 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
     skill::act::minion::{
-        MinionKind, MinionRuntimeState, alloc_minion_name, apply_minion_attrs, apply_minion_skill_overlay, is_combat_minion,
-        owner_minion_overlay, prepare_combat_minion,
+        MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_attrs,
+        apply_minion_skill_overlay, is_combat_minion, owner_minion_overlay, prepare_combat_minion,
     },
     skill::corpse::CorpseState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
@@ -76,6 +76,7 @@ impl SkillTrait for ZombieSkill {
             zombie.attr[6] = 0;
             zombie.attr[7] = (zombie.attr[7] >> 1).max(1);
         }
+        apply_child_minion_overlay(&mut zombie, minion_overlay.as_ref());
         zombie.init_values();
         zombie.player_type = PlayerType::Clone;
         zombie.sort_int = 0;
@@ -83,6 +84,7 @@ impl SkillTrait for ZombieSkill {
         zombie.set_state(MinionRuntimeState {
             owner: Some(args.0),
             kind: MinionKind::Zombie,
+            share_damage_owner: None,
         });
         zombie.status.set_alive(true);
         zombie.status.set_frozen(false);

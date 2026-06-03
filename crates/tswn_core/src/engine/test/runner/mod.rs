@@ -429,6 +429,7 @@ fn runtime_spawn_queue_syncs_into_world_group() {
     minion.set_state(crate::player::skill::act::minion::MinionRuntimeState {
         owner: Some(owner),
         kind: crate::player::skill::act::minion::MinionKind::Clone,
+        share_damage_owner: None,
     });
     let minion_id = minion.as_ptr();
     runner.storage.queue_spawn(owner, minion);
@@ -494,6 +495,7 @@ fn select_targets_ignores_dead_enemy_shadow_left_in_world_alive_view() {
     shadow.set_state(crate::player::skill::act::minion::MinionRuntimeState {
         owner: Some(enemy),
         kind: crate::player::skill::act::minion::MinionKind::Shadow,
+        share_damage_owner: None,
     });
     let shadow_id = runner.storage.just_insert_player(shadow);
 
@@ -587,6 +589,7 @@ fn sync_runtime_entities_applies_revivals_before_spawns_in_round_order() {
     minion.set_state(crate::player::skill::act::minion::MinionRuntimeState {
         owner: Some(enemy),
         kind: crate::player::skill::act::minion::MinionKind::Clone,
+        share_damage_owner: None,
     });
 
     runner.storage.just_get_player_mut(revived).unwrap().revive_with_hp(1);

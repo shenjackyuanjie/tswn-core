@@ -42,6 +42,9 @@ use super::utils::{trim_js_line_end, trim_js_name_like};
 use super::*;
 
 fn minion_skill_name_for_export(skill_key: usize, skill: &Skill) -> String {
+    if let Some(name) = crate::player::skill::classified_player_skill_name_for_export(skill_key) {
+        return name;
+    }
     let runtime_kind = skill.debug_skill_type_name();
     if runtime_kind.ends_with("possess::PossessSkill") {
         return "sklpossess".to_string();
@@ -55,6 +58,9 @@ fn minion_skill_name_for_export(skill_key: usize, skill: &Skill) -> String {
 }
 
 fn summon_skill_name_for_export(skill_key: usize, skill: &Skill) -> String {
+    if let Some(name) = crate::player::skill::classified_summon_minion_skill_name_for_export(skill_key) {
+        return name;
+    }
     match skill_key {
         0 => "sklfire1".to_string(),
         1 => "sklfire2".to_string(),
@@ -329,7 +335,15 @@ impl Player {
         if let Some(owner_skills) = clamp_source {
             let skill_keys = self.skills.skill.clone();
             for skill_key in skill_keys {
-                let owner_level = owner_skills.skill_by_id(skill_key).level();
+                let owner_skill_key = owner_skills.store.contains_key(&skill_key).then_some(skill_key).or_else(|| {
+                    (skill_key < 40)
+                        .then_some(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + skill_key)
+                        .filter(|mapped_key| owner_skills.store.contains_key(mapped_key))
+                });
+                let Some(owner_skill_key) = owner_skill_key else {
+                    continue;
+                };
+                let owner_level = owner_skills.skill_by_id(owner_skill_key).level();
                 let skill = self.skills.skill_by_id_mut(skill_key);
                 if skill.level() > owner_level {
                     skill.set_level(owner_level);
@@ -339,7 +353,7 @@ impl Player {
                 // `diy_boost` 信息已在 `apply_diy_skill_levels` 阶段写入分身技能，
                 // 这里额外确保它也同步自本体（处理本体运行时可能修改过的 boost 元数据）。
                 if owner_skills.is_diy
-                    && let Some(ref owner_diy_boost) = owner_skills.skill_by_id(skill_key).diy_boost
+                    && let Some(ref owner_diy_boost) = owner_skills.skill_by_id(owner_skill_key).diy_boost
                     && skill.diy_boost.is_none()
                 {
                     skill.diy_boost = Some(owner_diy_boost.clone());
@@ -431,7 +445,8 @@ impl Player {
             if skill.level() == 0 {
                 continue;
             }
-            let name = skill_name_for_export(*skill_key);
+            let name = crate::player::skill::classified_player_skill_name_for_export(*skill_key)
+                .unwrap_or_else(|| skill_name_for_export(*skill_key));
             if !first {
                 skills.push(',');
             }
@@ -475,7 +490,8 @@ impl Player {
             if skill.level() == 0 {
                 continue;
             }
-            let name = skill_name_for_export(*skill_key);
+            let name = crate::player::skill::classified_player_skill_name_for_export(*skill_key)
+                .unwrap_or_else(|| skill_name_for_export(*skill_key));
             if !first {
                 skills.push(',');
             }
@@ -710,6 +726,7 @@ impl Player {
         let mut skills = String::from('{');
         let mut first = true;
         let mut seen_names: Vec<String> = Vec::new();
+        let classified_slots = self.skills.slot_skill == crate::player::skill::classified_player_skill_slot_order();
         for skill_key in &self.skills.skill {
             let Some(skill) = self.skills.store.get(skill_key) else {
                 continue;
@@ -717,7 +734,11 @@ impl Player {
             if skill.level() == 0 {
                 continue;
             }
-            let name = minion_skill_name_for_export(*skill_key, skill);
+            let name = if classified_slots && *skill_key < 40 {
+                format!("normal:{}", skill_name_for_export(*skill_key))
+            } else {
+                minion_skill_name_for_export(*skill_key, skill)
+            };
             if seen_names.iter().any(|seen| seen == &name) {
                 continue;
             }

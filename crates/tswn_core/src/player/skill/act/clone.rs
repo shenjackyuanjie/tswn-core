@@ -2,7 +2,10 @@
 //!
 //! 以自身为模板创建克隆召唤物，克隆体继承宿主部分属性并以独立战斗单元参战。
 
-use super::minion::{MinionKind, MinionRuntimeState, alloc_minion_name, root_minion_name_owner_id};
+use super::{
+    minion::{MinionKind, MinionRuntimeState, alloc_minion_name, root_minion_name_owner_id},
+    summon::{SUMMON_SHARE_DAMAGE_SKILL_KEY, ensure_summon_share_damage_skill},
+};
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId, eval_name,
@@ -95,6 +98,18 @@ impl SkillTrait for CloneSkill {
                 owner.get_status().magic,
             )
         };
+        let share_damage_owner = args
+            .3
+            .get_player(&args.0)
+            .filter(|owner| {
+                owner
+                    .skills
+                    .store
+                    .get(&SUMMON_SHARE_DAMAGE_SKILL_KEY)
+                    .map(|skill| skill.level() > 0)
+                    .unwrap_or(false)
+            })
+            .map(|_| args.0);
         cloned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
         cloned.set_display_name_override(Some(owner_display_name));
         cloned.reset_minion_name_counter();
@@ -132,10 +147,14 @@ impl SkillTrait for CloneSkill {
                 cloned.attr[i] = (cloned.attr[i] as i32 + ws.attr_bonus[i]) as u32;
             }
         }
+        if share_damage_owner.is_some() {
+            ensure_summon_share_damage_skill(&mut cloned.skills, true);
+        }
         cloned.state = PlayerStateStore::default();
         cloned.set_state(MinionRuntimeState {
             owner: Some(root_owner_id),
             kind: MinionKind::Clone,
+            share_damage_owner,
         });
         cloned.update_states();
         #[cfg(not(feature = "no_debug"))]
