@@ -1,0 +1,18 @@
+[package]
+name = "tswn_ladder"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+cron = "0.12"
+fastrand = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt-multi-thread", "signal", "time"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+tswn_core = { path = "../tswn_core", features = ["no_debug", "mimalloc_alloc"] }
+
+[features]
+default = []
+no_debug = ["tswn_core/no_debug"]
+mimalloc_alloc = ["tswn_core/mimalloc_alloc"]
