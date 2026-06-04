@@ -19,7 +19,9 @@ const PAIRWISE_CANDIDATE_LIMIT: usize = 1_500;
 const EDGE_BAG_SEED_COUNT: usize = 8;
 const RANDOM_EXTRA_EDGE_BUDGET_PER_SEED: usize = 2_500;
 const LOCAL_OFFSETS: &[usize] = &[1, 2, 3, 5, 8, 13, 20, 35, 60, 100, 160];
-const BACKBONE_RANKS: &[usize] = &[1, 3, 5, 10, 20, 35, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 750, 1_000, 1_250, 1_500];
+const BACKBONE_RANKS: &[usize] = &[
+    1, 3, 5, 10, 20, 35, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 750, 1_000, 1_250, 1_500,
+];
 const BRIDGE_WINDOW: usize = 24;
 const MAX_TYPE_LABELS: usize = 32;
 const MAX_TYPE_REPRESENTATIVES: usize = 12;
@@ -60,7 +62,6 @@ const CONSTRAINED_SEARCH_RESTARTS: usize = 160;
 const CONSTRAINED_LOCAL_STEPS_PER_RESTART: usize = 60_000;
 const CONSTRAINED_NO_IMPROVE_LIMIT: usize = 15_000;
 const CONSTRAINED_SCORE_EPS: f64 = 1e-9;
-
 
 #[derive(Debug, Clone)]
 pub struct PairwiseCalibrationReport {
@@ -271,8 +272,6 @@ pub fn calibrate_lane_rows(
     })
 }
 
-
-
 pub fn calibrate_saved_lane_results(
     db: &Db,
     lane_size: usize,
@@ -308,16 +307,7 @@ pub fn calibrate_saved_lane_results(
         .collect();
 
     let dsu = db.load_team_dsu()?;
-    let report = calibrate_lane_rows(
-        db,
-        lane_size,
-        &nodes,
-        &mut rows,
-        &dsu,
-        config,
-        0,
-        threshold,
-    )?;
+    let report = calibrate_lane_rows(db, lane_size, &nodes, &mut rows, &dsu, config, 0, threshold)?;
 
     db.save_lane_results(lane_size, &rows)?;
     db.set_lane_status(lane_size, "ready", rows.len())?;
@@ -341,8 +331,6 @@ pub fn calibrate_saved_lane_results(
 
     Ok(report)
 }
-
-
 
 #[derive(Debug, Clone)]
 struct AggregateScores {
@@ -415,17 +403,9 @@ fn classify_stability(rank_std: f64, delta_std: f64, edge_count_mean: f64, seed_
     }
 }
 
-fn build_candidates(
-    nodes: &[RankNode],
-    rows: &[LaneResultRow],
-    dsu: &TeamDsu,
-    threshold: f64,
-) -> Vec<Candidate> {
-    let node_idx_by_group_id: HashMap<GroupId, usize> = nodes
-        .iter()
-        .enumerate()
-        .map(|(idx, node)| (node.group.id, idx))
-        .collect();
+fn build_candidates(nodes: &[RankNode], rows: &[LaneResultRow], dsu: &TeamDsu, threshold: f64) -> Vec<Candidate> {
+    let node_idx_by_group_id: HashMap<GroupId, usize> =
+        nodes.iter().enumerate().map(|(idx, node)| (node.group.id, idx)).collect();
 
     let mut candidates = Vec::new();
     for (row_idx, row) in rows.iter().enumerate() {
@@ -616,7 +596,6 @@ fn build_pair_keys(candidates: &[Candidate], nodes: &[RankNode], selection_size:
     out
 }
 
-
 fn representative_positions(bucket: &[usize], limit: usize) -> Vec<usize> {
     if bucket.is_empty() || limit == 0 {
         return Vec::new();
@@ -638,7 +617,6 @@ fn representative_positions(bucket: &[usize], limit: usize) -> Vec<usize> {
     out.dedup();
     out
 }
-
 
 fn member_buckets(candidates: &[Candidate], nodes: &[RankNode]) -> Vec<Vec<usize>> {
     let mut by_member: HashMap<String, Vec<usize>> = HashMap::new();
@@ -807,9 +785,7 @@ fn has_shared_legal_replacement_context(
     reserved_team_slots.insert(candidates[a].root_team.clone(), 1);
     reserved_team_slots.insert(candidates[b].root_team.clone(), 1);
 
-    let desired_context = selection_size
-        .saturating_sub(1)
-        .min(candidates.len().saturating_sub(2));
+    let desired_context = selection_size.saturating_sub(1).min(candidates.len().saturating_sub(2));
     if desired_context == 0 {
         return true;
     }
@@ -882,7 +858,11 @@ fn load_or_compute_pair_edges(
         }
 
         if let Some(reverse_rate) = db.get_rate(group_b.id, group_a.id)? {
-            edges.push(PairEdge { a, b, rate_a_to_b: 100.0 - reverse_rate });
+            edges.push(PairEdge {
+                a,
+                b,
+                rate_a_to_b: 100.0 - reverse_rate,
+            });
             continue;
         }
 
@@ -910,7 +890,11 @@ fn load_or_compute_pair_edges(
 
     let total = missing.len();
     let workers = resolve_pair_workers(config.outer_workers, total);
-    let mode = if config.outer_workers == 0 { "dynamic_queue" } else { "static_chunks" };
+    let mode = if config.outer_workers == 0 {
+        "dynamic_queue"
+    } else {
+        "static_chunks"
+    };
     let outer_label = if config.outer_workers == 0 {
         format!("auto({workers})")
     } else {
@@ -949,31 +933,33 @@ fn load_or_compute_pair_edges(
             let total_rounds = config.total_rounds;
             let outer_label = outer_label.clone();
 
-            handles.push(thread::spawn(move || -> anyhow::Result<Vec<(usize, usize, GroupId, GroupId, f64)>> {
-                let mut computed = Vec::new();
-                loop {
-                    let pair_idx = next_pair.fetch_add(1, Ordering::Relaxed);
-                    let Some(pair) = missing.get(pair_idx) else {
-                        break;
-                    };
+            handles.push(thread::spawn(
+                move || -> anyhow::Result<Vec<(usize, usize, GroupId, GroupId, f64)>> {
+                    let mut computed = Vec::new();
+                    loop {
+                        let pair_idx = next_pair.fetch_add(1, Ordering::Relaxed);
+                        let Some(pair) = missing.get(pair_idx) else {
+                            break;
+                        };
 
-                    let rate = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)?;
-                    computed.push((pair.a, pair.b, pair.group_a.id, pair.group_b.id, rate));
+                        let rate = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)?;
+                        computed.push((pair.a, pair.b, pair.group_a.id, pair.group_b.id, rate));
 
-                    report_pair_progress(
-                        &db,
-                        lane_size,
-                        total_rounds,
-                        &done,
-                        total,
-                        &started,
-                        &outer_label,
-                        inner_workers,
-                        "dynamic_queue",
-                    )?;
-                }
-                Ok(computed)
-            }));
+                        report_pair_progress(
+                            &db,
+                            lane_size,
+                            total_rounds,
+                            &done,
+                            total,
+                            &started,
+                            &outer_label,
+                            inner_workers,
+                            "dynamic_queue",
+                        )?;
+                    }
+                    Ok(computed)
+                },
+            ));
         }
     } else {
         for worker_id in 0..workers {
@@ -988,30 +974,32 @@ fn load_or_compute_pair_edges(
             let start = total * worker_id / workers;
             let end = total * (worker_id + 1) / workers;
 
-            handles.push(thread::spawn(move || -> anyhow::Result<Vec<(usize, usize, GroupId, GroupId, f64)>> {
-                let mut computed = Vec::with_capacity(end.saturating_sub(start));
-                for pair_idx in start..end {
-                    let Some(pair) = missing.get(pair_idx) else {
-                        break;
-                    };
+            handles.push(thread::spawn(
+                move || -> anyhow::Result<Vec<(usize, usize, GroupId, GroupId, f64)>> {
+                    let mut computed = Vec::with_capacity(end.saturating_sub(start));
+                    for pair_idx in start..end {
+                        let Some(pair) = missing.get(pair_idx) else {
+                            break;
+                        };
 
-                    let rate = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)?;
-                    computed.push((pair.a, pair.b, pair.group_a.id, pair.group_b.id, rate));
+                        let rate = compute_rate_without_db(&pair.group_a, &pair.group_b, samples, inner_workers)?;
+                        computed.push((pair.a, pair.b, pair.group_a.id, pair.group_b.id, rate));
 
-                    report_pair_progress(
-                        &db,
-                        lane_size,
-                        total_rounds,
-                        &done,
-                        total,
-                        &started,
-                        &outer_label,
-                        inner_workers,
-                        "static_chunks",
-                    )?;
-                }
-                Ok(computed)
-            }));
+                        report_pair_progress(
+                            &db,
+                            lane_size,
+                            total_rounds,
+                            &done,
+                            total,
+                            &started,
+                            &outer_label,
+                            inner_workers,
+                            "static_chunks",
+                        )?;
+                    }
+                    Ok(computed)
+                },
+            ));
         }
     }
 
@@ -1116,8 +1104,8 @@ fn fit_pair_scores(candidate_count: usize, edges: &[PairEdge], raw_scores: &[f64
             let a = edge.a;
             let b = edge.b;
             let target = target_sign * logit((edge.rate_a_to_b / 100.0).clamp(0.005, 0.995));
-            let raw_anchor = ((raw_scores[a] - raw_scores[b]) / V43_RAW_LOGIT_SCALE)
-                .clamp(-V43_RAW_ANCHOR_CLIP, V43_RAW_ANCHOR_CLIP);
+            let raw_anchor =
+                ((raw_scores[a] - raw_scores[b]) / V43_RAW_LOGIT_SCALE).clamp(-V43_RAW_ANCHOR_CLIP, V43_RAW_ANCHOR_CLIP);
             let matchup = v43_interaction(&attack[a], &defense[b]) - v43_interaction(&attack[b], &defense[a]);
             let pred = raw_anchor + bias[a] - bias[b] + matchup;
             let err = (pred - target).clamp(-V43_GRAD_CLIP, V43_GRAD_CLIP);
@@ -1152,8 +1140,7 @@ fn fit_pair_scores(candidate_count: usize, edges: &[PairEdge], raw_scores: &[f64
         let a = edge.a;
         let b = edge.b;
         let target = target_sign * logit((edge.rate_a_to_b / 100.0).clamp(0.005, 0.995));
-        let raw_anchor = ((raw_scores[a] - raw_scores[b]) / V43_RAW_LOGIT_SCALE)
-            .clamp(-V43_RAW_ANCHOR_CLIP, V43_RAW_ANCHOR_CLIP);
+        let raw_anchor = ((raw_scores[a] - raw_scores[b]) / V43_RAW_LOGIT_SCALE).clamp(-V43_RAW_ANCHOR_CLIP, V43_RAW_ANCHOR_CLIP);
         let matchup = v43_interaction(&attack[a], &defense[b]) - v43_interaction(&attack[b], &defense[a]);
         let pred = raw_anchor + bias[a] - bias[b] + matchup;
         let residual = (pred - target).abs();
@@ -1191,7 +1178,11 @@ fn fit_pair_scores(candidate_count: usize, edges: &[PairEdge], raw_scores: &[f64
     let pair_mean = mean(&slope_guarded_scores);
     let pair_std = stddev(&slope_guarded_scores, pair_mean).max(1e-6);
     let min_pair_std = raw_std * V43_MIN_OUTPUT_STD_GAIN;
-    let spread = if pair_std < min_pair_std { min_pair_std / pair_std } else { 1.0 };
+    let spread = if pair_std < min_pair_std {
+        min_pair_std / pair_std
+    } else {
+        1.0
+    };
     let pair_scores = slope_guarded_scores
         .iter()
         .map(|score| round_to_3(pair_mean + (score - pair_mean) * spread))
@@ -1274,15 +1265,11 @@ fn v43_enforce_min_raw_slope(scores: &[f64], raw_scores: &[f64], min_slope: f64)
         .collect()
 }
 
-fn v43_interaction(left: &[f64], right: &[f64]) -> f64 {
-    left.iter().zip(right.iter()).map(|(a, b)| a * b).sum()
-}
+fn v43_interaction(left: &[f64], right: &[f64]) -> f64 { left.iter().zip(right.iter()).map(|(a, b)| a * b).sum() }
 
 fn v43_deterministic_init(idx: usize, dim: usize, salt: u64) -> f64 {
-    let mut x = (idx as u64 + 1)
-        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-        ^ (dim as u64 + 1).wrapping_mul(0xBF58_476D_1CE4_E5B9)
-        ^ salt;
+    let mut x =
+        (idx as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (dim as u64 + 1).wrapping_mul(0xBF58_476D_1CE4_E5B9) ^ salt;
     x ^= x >> 30;
     x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
     x ^= x >> 27;
@@ -1304,7 +1291,6 @@ fn v43_clamp_matrix(values: &mut [Vec<f64>], low: f64, high: f64) {
     }
 }
 
-
 fn edge_degrees(candidate_count: usize, edges: &[PairEdge]) -> Vec<usize> {
     let mut degree = vec![0usize; candidate_count];
     for edge in edges {
@@ -1314,11 +1300,7 @@ fn edge_degrees(candidate_count: usize, edges: &[PairEdge]) -> Vec<usize> {
     degree
 }
 
-fn write_pair_stability(
-    rows: &mut [LaneResultRow],
-    candidates: &[Candidate],
-    aggregate: &AggregateScores,
-) {
+fn write_pair_stability(rows: &mut [LaneResultRow], candidates: &[Candidate], aggregate: &AggregateScores) {
     for (pos, candidate) in candidates.iter().enumerate() {
         let row = &mut rows[candidate.row_idx];
         row.raw_average_cqd = candidate.raw_score;
@@ -1336,12 +1318,7 @@ fn write_pair_stability(
     }
 }
 
-fn write_pair_scores(
-    rows: &mut [LaneResultRow],
-    candidates: &[Candidate],
-    pair_scores: &[f64],
-    uncertainties: &[f64],
-) {
+fn write_pair_scores(rows: &mut [LaneResultRow], candidates: &[Candidate], pair_scores: &[f64], uncertainties: &[f64]) {
     for (pos, candidate) in candidates.iter().enumerate() {
         let row = &mut rows[candidate.row_idx];
         row.raw_average_cqd = candidate.raw_score;
@@ -1371,12 +1348,7 @@ fn ranks_from_scores(pair_scores: &[f64]) -> Vec<usize> {
 // It rewrote row.rank after calibration, which made R-Rank mirror the P-Rank.
 // Keep row.rank as the raw/default rank; sort presentation views by pair_rank instead.
 
-fn constrained_selection_search(
-    candidates: &[Candidate],
-    nodes: &[RankNode],
-    pair_scores: &[f64],
-    limit: usize,
-) -> Vec<usize> {
+fn constrained_selection_search(candidates: &[Candidate], nodes: &[RankNode], pair_scores: &[f64], limit: usize) -> Vec<usize> {
     let base_order = sorted_candidate_order(pair_scores);
     let mut best = greedy_constrained_selection_from_order(candidates, nodes, limit, &base_order);
     let mut best_total = selection_total(&best, pair_scores);
@@ -1519,9 +1491,7 @@ fn restart_order(base_order: &[usize], pair_scores: &[f64], restart: usize) -> V
             order
         }
         2 => {
-            let mut state = (restart as u64 + 17)
-                .wrapping_mul(0xBF58_476D_1CE4_E5B9)
-                .wrapping_add(order.len() as u64);
+            let mut state = (restart as u64 + 17).wrapping_mul(0xBF58_476D_1CE4_E5B9).wrapping_add(order.len() as u64);
             for i in (1..order.len()).rev() {
                 let j = next_index(&mut state, i + 1);
                 order.swap(i, j);
@@ -1539,9 +1509,7 @@ fn restart_order(base_order: &[usize], pair_scores: &[f64], restart: usize) -> V
     }
 }
 
-fn selection_total(selected: &[usize], pair_scores: &[f64]) -> f64 {
-    selected.iter().map(|&pos| pair_scores[pos]).sum()
-}
+fn selection_total(selected: &[usize], pair_scores: &[f64]) -> f64 { selected.iter().map(|&pos| pair_scores[pos]).sum() }
 
 fn better_selection(
     candidate_total: f64,
@@ -1571,16 +1539,12 @@ fn better_selection(
 }
 
 fn next_index(state: &mut u64, upper: usize) -> usize {
-    *state = state
-        .wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407);
+    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
     ((*state >> 32) as usize) % upper.max(1)
 }
 
 fn deterministic_jitter(pos: usize, restart: usize) -> f64 {
-    let mut x = (pos as u64 + 1)
-        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-        ^ (restart as u64 + 11).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    let mut x = (pos as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (restart as u64 + 11).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     x ^= x >> 30;
     x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
     x ^= x >> 27;
@@ -1640,12 +1604,7 @@ fn compute_marginal_values(
     out
 }
 
-fn try_add_selected(
-    resources: &mut SelectionResources,
-    candidates: &[Candidate],
-    nodes: &[RankNode],
-    pos: usize,
-) -> bool {
+fn try_add_selected(resources: &mut SelectionResources, candidates: &[Candidate], nodes: &[RankNode], pos: usize) -> bool {
     let candidate = &candidates[pos];
     let group = &nodes[candidate.node_idx].group;
 
@@ -1669,7 +1628,8 @@ fn reorder_rows_by_constrained_value(rows: &mut Vec<LaneResultRow>) {
         let a_selected = a.constrained_rank.is_some();
         let b_selected = b.constrained_rank.is_some();
 
-        b_selected.cmp(&a_selected)
+        b_selected
+            .cmp(&a_selected)
             .then_with(|| match (a.constrained_rank, b.constrained_rank) {
                 (Some(ar), Some(br)) => ar.cmp(&br),
                 _ => std::cmp::Ordering::Equal,
@@ -1698,16 +1658,10 @@ fn resolve_pair_workers(requested_outer_workers: usize, total: usize) -> usize {
         return requested_outer_workers.max(1).min(total.max(1));
     }
 
-    thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
-        .max(1)
-        .min(total.max(1))
+    thread::available_parallelism().map(|n| n.get()).unwrap_or(4).max(1).min(total.max(1))
 }
 
-fn ordered_pair(a: usize, b: usize) -> (usize, usize) {
-    if a <= b { (a, b) } else { (b, a) }
-}
+fn ordered_pair(a: usize, b: usize) -> (usize, usize) { if a <= b { (a, b) } else { (b, a) } }
 
 fn mean(values: &[f64]) -> f64 {
     if values.is_empty() {
@@ -1720,10 +1674,14 @@ fn stddev(values: &[f64], mean: f64) -> f64 {
     if values.is_empty() {
         return 0.0;
     }
-    let var = values.iter().map(|v| {
-        let d = v - mean;
-        d * d
-    }).sum::<f64>() / values.len() as f64;
+    let var = values
+        .iter()
+        .map(|v| {
+            let d = v - mean;
+            d * d
+        })
+        .sum::<f64>()
+        / values.len() as f64;
     var.sqrt()
 }
 
@@ -1734,14 +1692,9 @@ fn center_scores(scores: &mut [f64]) {
     }
 }
 
-fn logit(p: f64) -> f64 {
-    (p / (1.0 - p)).ln()
-}
+fn logit(p: f64) -> f64 { (p / (1.0 - p)).ln() }
 
-fn round_to_3(value: f64) -> f64 {
-    (value * 1000.0).round() / 1000.0
-}
-
+fn round_to_3(value: f64) -> f64 { (value * 1000.0).round() / 1000.0 }
 
 fn make_bag_seed(lane_size: usize, final_round: usize, seed_idx: usize, candidate_count: usize, base_edges: usize) -> u64 {
     let mut x = 0x9E37_79B9_7F4A_7C15u64;
@@ -1759,9 +1712,7 @@ struct SplitMix64 {
 }
 
 impl SplitMix64 {
-    fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
+    fn new(seed: u64) -> Self { Self { state: seed } }
 
     fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);

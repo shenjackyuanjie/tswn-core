@@ -109,7 +109,13 @@ impl Player {
         self.update_states();
     }
 
-    pub fn step(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) -> bool {
+    pub fn step(
+        &mut self,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) -> bool {
         self.step_with_targets_provider(randomer, updates, storage, |_| targets.clone())
     }
 
@@ -230,7 +236,13 @@ impl Player {
         false
     }
 
-    pub fn action(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>, targets: &ActionTargets) -> bool {
+    pub fn action(
+        &mut self,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+        storage: &Arc<Storage>,
+        targets: &ActionTargets,
+    ) -> bool {
         let smart_byte = randomer.next_u8();
         let smart_roll = (smart_byte & 63) as i32;
         let smart = self.status.wisdom > smart_roll;

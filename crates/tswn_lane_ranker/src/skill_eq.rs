@@ -14,11 +14,9 @@ const SKILL_CNT: usize = 40;
 const TYPE_SKILL_THRESHOLD: f64 = 25.0;
 
 const SKILL_NAME_MAP: [&str; 35] = [
-    "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击",
-    "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速",
-    "诅咒", "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气",
-    "背刺", "血祭", "分身", "幻术", "防御", "守护", "反弹",
-    "护符", "护盾", "反击", "吞噬", "召灵", "垂死", "隐匿",
+    "火球", "冰冻", "雷击", "地裂", "吸血", "投毒", "连击", "会心", "瘟疫", "命轮", "狂暴", "魅惑", "加速", "减速", "诅咒",
+    "治愈", "苏生", "净化", "铁壁", "蓄力", "聚气", "背刺", "血祭", "分身", "幻术", "防御", "守护", "反弹", "护符", "护盾",
+    "反击", "吞噬", "召灵", "垂死", "隐匿",
 ];
 
 #[derive(Debug, Clone)]
@@ -49,10 +47,7 @@ pub fn compute_group_skill_summary(members: &[String]) -> GroupSkillSummary {
         .filter(|member| !member.is_empty())
         .collect();
 
-    let mut group: Vec<Name> = raw_members
-        .iter()
-        .map(|member| build_single_raw(member))
-        .collect();
+    let mut group: Vec<Name> = raw_members.iter().map(|member| build_single_raw(member)).collect();
 
     if group.len() >= 2 {
         group = apply_group_bonus(&group);
@@ -66,11 +61,7 @@ pub fn compute_group_skill_summary(members: &[String]) -> GroupSkillSummary {
     let display_canonical = if display_order.is_empty() {
         String::new()
     } else {
-        display_order
-            .iter()
-            .map(|&idx| raw_members[idx].as_str())
-            .collect::<Vec<_>>()
-            .join("+")
+        display_order.iter().map(|&idx| raw_members[idx].as_str()).collect::<Vec<_>>().join("+")
     };
 
     let mut totals = [0.0_f64; 35];
@@ -88,21 +79,12 @@ pub fn compute_group_skill_summary(members: &[String]) -> GroupSkillSummary {
             }
         }
 
-        major_skills.sort_by(|a, b| {
-            b.1.total_cmp(&a.1)
-                .then_with(|| a.0.cmp(&b.0))
-        });
+        major_skills.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
         if major_skills.is_empty() {
             member_type_labels.push("高八维".to_string());
         } else {
-            member_type_labels.push(
-                major_skills
-                    .iter()
-                    .map(|(idx, _)| SKILL_NAME_MAP[*idx])
-                    .collect::<Vec<_>>()
-                    .join(""),
-            );
+            member_type_labels.push(major_skills.iter().map(|(idx, _)| SKILL_NAME_MAP[*idx]).collect::<Vec<_>>().join(""));
         }
     }
 
@@ -131,12 +113,7 @@ fn member_display_order_by_cfz(raw_members: &[String], group: &[Name]) -> Vec<us
 
     // 只改双人组展示顺序：cfz 低的在前，cfz 高的在后；并列时按原组合名稳定排序。
     if group.len() == 2 {
-        order.sort_by(|&a, &b| {
-            group[a]
-                .cfz
-                .cmp(&group[b].cfz)
-                .then_with(|| raw_members[a].cmp(&raw_members[b]))
-        });
+        order.sort_by(|&a, &b| group[a].cfz.cmp(&group[b].cfz).then_with(|| raw_members[a].cmp(&raw_members[b])));
     }
 
     order
@@ -206,9 +183,7 @@ impl Name {
         let mut s = 0u8;
         let mut j = bytes.len();
         for i in 0..N {
-            s = s
-                .wrapping_add(byte_value(c_string_byte(bytes, j)) as u8)
-                .wrapping_add(self.val_base[i]);
+            s = s.wrapping_add(byte_value(c_string_byte(bytes, j)) as u8).wrapping_add(self.val_base[i]);
             self.val_base.swap(i, s as usize);
             j = next_c_string_index(bytes.len(), j);
         }
@@ -223,9 +198,7 @@ impl Name {
             let mut s = 0u8;
             let mut j = bytes.len();
             for i in 0..N {
-                s = s
-                    .wrapping_add(byte_value(c_string_byte(bytes, j)) as u8)
-                    .wrapping_add(self.val[i]);
+                s = s.wrapping_add(byte_value(c_string_byte(bytes, j)) as u8).wrapping_add(self.val[i]);
                 self.val.swap(i, s as usize);
                 j = next_c_string_index(bytes.len(), j);
             }
@@ -270,21 +243,14 @@ impl Name {
         let prop6 = med3(self.name_base[28] as i32, self.name_base[29] as i32, self.name_base[30] as i32);
 
         self.name_base[..10].sort();
-        let prop7 = 154
-            + self.name_base[3] as i32
-            + self.name_base[4] as i32
-            + self.name_base[5] as i32
-            + self.name_base[6] as i32;
+        let prop7 =
+            154 + self.name_base[3] as i32 + self.name_base[4] as i32 + self.name_base[5] as i32 + self.name_base[6] as i32;
 
         self.cfz = (prop0 - prop1 + prop2 + prop4 - prop5) * 2 + prop3 + prop6 + 144;
-        self.shadowi = prop0 as f64 * 2.8
-            + prop1 as f64 * 0.6
-            + prop2 as f64 * 2.5
-            + prop3 as f64 * 1.2
-            + prop4 as f64
-            + prop5 as f64
-            - 1.2 * prop6 as f64
-            + 0.8 * prop7 as f64;
+        self.shadowi =
+            prop0 as f64 * 2.8 + prop1 as f64 * 0.6 + prop2 as f64 * 2.5 + prop3 as f64 * 1.2 + prop4 as f64 + prop5 as f64
+                - 1.2 * prop6 as f64
+                + 0.8 * prop7 as f64;
     }
 
     fn load_name(&mut self, name: &str) {
@@ -297,9 +263,7 @@ impl Name {
             let mut s = 0u8;
             let mut j = bytes.len();
             for i in 0..N {
-                s = s
-                    .wrapping_add(byte_value(c_string_byte(bytes, j)) as u8)
-                    .wrapping_add(self.val[i]);
+                s = s.wrapping_add(byte_value(c_string_byte(bytes, j)) as u8).wrapping_add(self.val[i]);
                 self.val.swap(i, s as usize);
                 j = next_c_string_index(bytes.len(), j);
             }
@@ -369,11 +333,8 @@ impl Name {
         self.x = [0.0; 50];
         self.freq = [0; 16];
 
-        self.x[0] = 154.0
-            + self.name_base[3] as f64
-            + self.name_base[4] as f64
-            + self.name_base[5] as f64
-            + self.name_base[6] as f64;
+        self.x[0] =
+            154.0 + self.name_base[3] as f64 + self.name_base[4] as f64 + self.name_base[5] as f64 + self.name_base[6] as f64;
         self.x[1] = 36.0 + med3(self.name_base[10] as i32, self.name_base[11] as i32, self.name_base[12] as i32) as f64;
         self.x[2] = 36.0 + med3(self.name_base[13] as i32, self.name_base[14] as i32, self.name_base[15] as i32) as f64;
         self.x[3] = 36.0 + med3(self.name_base[16] as i32, self.name_base[17] as i32, self.name_base[18] as i32) as f64;
@@ -382,9 +343,7 @@ impl Name {
         self.x[6] = 36.0 + med3(self.name_base[25] as i32, self.name_base[26] as i32, self.name_base[27] as i32) as f64;
         self.x[7] = 36.0 + med3(self.name_base[28] as i32, self.name_base[29] as i32, self.name_base[30] as i32) as f64;
 
-        self.cfz = ((self.x[1] - self.x[2] + self.x[3] + self.x[5] - self.x[6]) * 2.0
-            + self.x[4]
-            + self.x[7]) as i32;
+        self.cfz = ((self.x[1] - self.x[2] + self.x[3] + self.x[5] - self.x[6]) * 2.0 + self.x[4] + self.x[7]) as i32;
 
         let a = K;
         for (j, i) in (0..K).step_by(4).enumerate() {
@@ -394,11 +353,7 @@ impl Name {
                 self.name_base[a + i + 2],
                 self.name_base[a + i + 3],
             );
-            self.freq[j] = if mn > 10 && self.skill[j] < 35 {
-                mn - 10
-            } else {
-                0
-            };
+            self.freq[j] = if mn > 10 && self.skill[j] < 35 { mn - 10 } else { 0 };
         }
 
         if self.last != -1 {
@@ -522,36 +477,18 @@ fn trim_line(s: &str) -> String {
 }
 
 #[inline]
-fn byte_value(b: u8) -> i32 {
-    (b as i8) as i32
-}
+fn byte_value(b: u8) -> i32 { (b as i8) as i32 }
 
 #[inline]
-fn c_string_byte(bytes: &[u8], index: usize) -> u8 {
-    if index == bytes.len() {
-        0
-    } else {
-        bytes[index]
-    }
-}
+fn c_string_byte(bytes: &[u8], index: usize) -> u8 { if index == bytes.len() { 0 } else { bytes[index] } }
 
 #[inline]
-fn next_c_string_index(len: usize, index: usize) -> usize {
-    if index == len {
-        0
-    } else {
-        index + 1
-    }
-}
+fn next_c_string_index(len: usize, index: usize) -> usize { if index == len { 0 } else { index + 1 } }
 
 #[inline]
 fn med3(x: i32, y: i32, z: i32) -> i32 {
     if x < y {
-        if x < z {
-            if y < z { y } else { z }
-        } else {
-            x
-        }
+        if x < z { if y < z { y } else { z } } else { x }
     } else if y < z {
         if x < z { x } else { z }
     } else {
@@ -560,11 +497,7 @@ fn med3(x: i32, y: i32, z: i32) -> i32 {
 }
 
 #[inline]
-fn min4(a: u8, b: u8, c: u8, d: u8) -> u8 {
-    a.min(b).min(c).min(d)
-}
+fn min4(a: u8, b: u8, c: u8, d: u8) -> u8 { a.min(b).min(c).min(d) }
 
 #[inline]
-fn min3_u8(a: u8, b: u8, c: u8) -> u8 {
-    a.min(b).min(c)
-}
+fn min3_u8(a: u8, b: u8, c: u8) -> u8 { a.min(b).min(c) }

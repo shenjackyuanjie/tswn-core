@@ -11,7 +11,10 @@ use axum::{
 use serde_json::json;
 use tower_http::services::ServeDir;
 
-use crate::model::{AddGroupsRequest, BlockGroupRequest, BlockGroupsByTextRequest, ConstrainedSelectionRequest, MergeTeamsRequest, PurgeLowScoreGroupsRequest, RecomputeLaneRequest};
+use crate::model::{
+    AddGroupsRequest, BlockGroupRequest, BlockGroupsByTextRequest, ConstrainedSelectionRequest, MergeTeamsRequest,
+    PurgeLowScoreGroupsRequest, RecomputeLaneRequest,
+};
 use crate::service::AppService;
 
 pub type SharedService = Arc<AppService>;
@@ -38,9 +41,7 @@ pub fn router(service: AppService) -> Router {
         .with_state(shared)
 }
 
-async fn health() -> Json<serde_json::Value> {
-    Json(json!({ "ok": true }))
-}
+async fn health() -> Json<serde_json::Value> { Json(json!({ "ok": true })) }
 
 async fn add_groups(
     State(service): State<SharedService>,
@@ -49,7 +50,6 @@ async fn add_groups(
     let response = service.add_groups(req)?;
     Ok(Json(serde_json::to_value(response)?))
 }
-
 
 async fn block_groups_by_text(
     State(service): State<SharedService>,
@@ -179,10 +179,7 @@ async fn lane_progress(
     Ok(Json(serde_json::to_value(service.db.lane_progress(lane_size)?)?))
 }
 
-async fn job(
-    State(service): State<SharedService>,
-    Path(job_id): Path<i64>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+async fn job(State(service): State<SharedService>, Path(job_id): Path<i64>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(service.db.job(job_id)?)?))
 }
 
@@ -193,9 +190,7 @@ impl<E> From<E> for ApiError
 where
     E: Into<anyhow::Error>,
 {
-    fn from(err: E) -> Self {
-        Self(err.into())
-    }
+    fn from(err: E) -> Self { Self(err.into()) }
 }
 
 impl IntoResponse for ApiError {

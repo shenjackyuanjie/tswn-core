@@ -20,10 +20,8 @@ use service::AppService;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let db_path = std::env::var("LANE_RANKER_DB")
-        .unwrap_or_else(|_| "lane_ranker.sqlite3".to_string());
-    let bind = std::env::var("LANE_RANKER_BIND")
-        .unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+    let db_path = std::env::var("LANE_RANKER_DB").unwrap_or_else(|_| "lane_ranker.sqlite3".to_string());
+    let bind = std::env::var("LANE_RANKER_BIND").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
 
     let db = Db::open(&db_path)?;
     let config = RankerConfig::from_env();

@@ -30,7 +30,9 @@ impl Db {
     pub fn open(path: &str) -> anyhow::Result<Self> {
         let conn = Connection::open(path).with_context(|| format!("open sqlite database: {path}"))?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        let db = Self { conn: Arc::new(Mutex::new(conn)) };
+        let db = Self {
+            conn: Arc::new(Mutex::new(conn)),
+        };
         db.init()?;
         Ok(db)
     }
@@ -179,11 +181,9 @@ impl Db {
         let tx = conn.transaction()?;
 
         let existing: Option<GroupId> = tx
-            .query_row(
-                "SELECT id FROM groups WHERE canonical = ?1",
-                params![parsed.canonical],
-                |row| row.get(0),
-            )
+            .query_row("SELECT id FROM groups WHERE canonical = ?1", params![parsed.canonical], |row| {
+                row.get(0)
+            })
             .optional()?;
 
         if let Some(id) = existing {
@@ -216,11 +216,7 @@ impl Db {
         self.load_groups_by_lane_for_run(lane_size, false)
     }
 
-    pub fn load_groups_by_lane_for_run(
-        &self,
-        lane_size: usize,
-        skip_archived: bool,
-    ) -> anyhow::Result<Vec<StoredGroup>> {
+    pub fn load_groups_by_lane_for_run(&self, lane_size: usize, skip_archived: bool) -> anyhow::Result<Vec<StoredGroup>> {
         let conn = self.conn.lock().unwrap();
         let sql = if skip_archived {
             "SELECT g.id, g.canonical, g.display_raw, g.lane_size, g.team_name,
@@ -281,7 +277,13 @@ impl Db {
             .query_row(
                 "SELECT id, lane_size, canonical FROM groups WHERE canonical = ?1",
                 params![canonical],
-                |row| Ok((row.get::<_, GroupId>(0)?, row.get::<_, i64>(1)? as usize, row.get::<_, String>(2)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, GroupId>(0)?,
+                        row.get::<_, i64>(1)? as usize,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
             )
             .optional()?;
         Ok(group)
@@ -331,11 +333,7 @@ impl Db {
         Ok(())
     }
 
-    pub fn save_rate_pairs_bulk(
-        &self,
-        rates: &[(GroupId, GroupId, f64)],
-        samples: usize,
-    ) -> anyhow::Result<()> {
+    pub fn save_rate_pairs_bulk(&self, rates: &[(GroupId, GroupId, f64)], samples: usize) -> anyhow::Result<()> {
         if rates.is_empty() {
             return Ok(());
         }
@@ -393,21 +391,14 @@ impl Db {
         Ok(deleted)
     }
 
-    pub fn hard_delete_group_combinations(
-        &self,
-        candidates: &[(GroupId, String, f64)],
-    ) -> anyhow::Result<usize> {
+    pub fn hard_delete_group_combinations(&self, candidates: &[(GroupId, String, f64)]) -> anyhow::Result<usize> {
         let ids: Vec<GroupId> = candidates.iter().map(|(group_id, _, _)| *group_id).collect();
         self.hard_delete_group_ids(&ids)
     }
 
     /// 按已有结果/封存记录物理删除 R-Score < threshold 的组合。
     /// 注意是严格小于：R-Score == 45.000 不会被这条规则删除。
-    pub fn hard_delete_groups_below_raw_score(
-        &self,
-        lane_size: usize,
-        threshold: f64,
-    ) -> anyhow::Result<usize> {
+    pub fn hard_delete_groups_below_raw_score(&self, lane_size: usize, threshold: f64) -> anyhow::Result<usize> {
         let group_ids = {
             let conn = self.conn.lock().unwrap();
             let mut stmt = conn.prepare(
@@ -435,12 +426,7 @@ impl Db {
         self.hard_delete_group_ids(&group_ids)
     }
 
-    pub fn archive_group_combination(
-        &self,
-        group_id: GroupId,
-        reason: &str,
-        average_cqd: f64,
-    ) -> anyhow::Result<bool> {
+    pub fn archive_group_combination(&self, group_id: GroupId, reason: &str, average_cqd: f64) -> anyhow::Result<bool> {
         let conn = self.conn.lock().unwrap();
         let group: Option<(String, usize)> = conn
             .query_row(
@@ -470,10 +456,7 @@ impl Db {
         Ok(true)
     }
 
-    pub fn archive_group_combinations(
-        &self,
-        candidates: &[(GroupId, String, f64)],
-    ) -> anyhow::Result<usize> {
+    pub fn archive_group_combinations(&self, candidates: &[(GroupId, String, f64)]) -> anyhow::Result<usize> {
         let mut archived = 0usize;
         for (group_id, reason, average_cqd) in candidates {
             if self.archive_group_combination(*group_id, reason, *average_cqd)? {
@@ -482,7 +465,6 @@ impl Db {
         }
         Ok(archived)
     }
-
 
     pub fn set_group_blocked(&self, group_id: GroupId, blocked: bool) -> anyhow::Result<Option<(usize, String)>> {
         let conn = self.conn.lock().unwrap();
@@ -631,9 +613,7 @@ impl Db {
     pub fn lane_statuses(&self) -> anyhow::Result<Vec<LaneStatus>> {
         let tuples = {
             let conn = self.conn.lock().unwrap();
-            let mut stmt = conn.prepare(
-                "SELECT lane_size, status, group_count FROM lane_status ORDER BY lane_size ASC",
-            )?;
+            let mut stmt = conn.prepare("SELECT lane_size, status, group_count FROM lane_status ORDER BY lane_size ASC")?;
             let rows = stmt.query_map([], |row| {
                 Ok((
                     row.get::<_, i64>(0)? as usize,
@@ -682,10 +662,7 @@ impl Db {
                  LIMIT ?3",
             )?;
 
-            let rows = stmt.query_map(
-                params![lane_size as i64, min_average_cqd, limit as i64],
-                |row| row.get(0),
-            )?;
+            let rows = stmt.query_map(params![lane_size as i64, min_average_cqd, limit as i64], |row| row.get(0))?;
 
             for row in rows {
                 ids.push(row?);
@@ -710,14 +687,11 @@ impl Db {
         Ok(ids)
     }
 
-
     pub fn lane_results(&self, lane_size: usize) -> anyhow::Result<Vec<LaneResultRow>> {
         let conn = self.conn.lock().unwrap();
 
         let mut team_stmt = conn.prepare("SELECT name, parent FROM teams")?;
-        let team_rows = team_stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
+        let team_rows = team_stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
         let mut team_pairs = Vec::new();
         for row in team_rows {
             team_pairs.push(row?);
@@ -834,7 +808,6 @@ impl Db {
         Ok(out)
     }
 
-
     pub fn create_job(&self, lane_size: usize, kind: &str) -> anyhow::Result<JobId> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -906,9 +879,7 @@ pub enum InsertGroupOutcome {
 }
 
 fn load_members_locked(conn: &Connection, group_id: GroupId) -> rusqlite::Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT member FROM group_members WHERE group_id = ?1 ORDER BY position ASC",
-    )?;
+    let mut stmt = conn.prepare("SELECT member FROM group_members WHERE group_id = ?1 ORDER BY position ASC")?;
     let rows = stmt.query_map(params![group_id], |row| row.get(0))?;
     let mut members = Vec::new();
     for row in rows {

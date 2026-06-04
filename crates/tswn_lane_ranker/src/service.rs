@@ -6,12 +6,11 @@ use tokio::task;
 use crate::db::{Db, InsertGroupOutcome};
 use crate::model::{
     AddGroupsRequest, AddGroupsResponse, BlockGroupRequest, BlockGroupResponse, BlockGroupsByTextRequest,
-    BlockGroupsByTextResponse, ConstrainedSelectionRequest, ConstrainedSelectionResponse, IgnoredGroup, JobId,
-    MergeTeamsRequest, MergeTeamsResponse, PurgeLowScoreGroupsRequest, PurgeLowScoreGroupsResponse,
-    RecomputeLaneResponse,
+    BlockGroupsByTextResponse, ConstrainedSelectionRequest, ConstrainedSelectionResponse, IgnoredGroup, JobId, MergeTeamsRequest,
+    MergeTeamsResponse, PurgeLowScoreGroupsRequest, PurgeLowScoreGroupsResponse, RecomputeLaneResponse,
 };
-use crate::parser::parse_group;
 use crate::pairwise::{DEFAULT_SELECTION_CQD_THRESHOLD, calibrate_saved_lane_results};
+use crate::parser::parse_group;
 use crate::ranker::{KICK_AVG_CQD_THRESHOLD, RankerConfig, recompute_lane_until_stable};
 
 #[derive(Clone)]
@@ -21,9 +20,7 @@ pub struct AppService {
 }
 
 impl AppService {
-    pub fn new(db: Db, config: RankerConfig) -> Self {
-        Self { db, config }
-    }
+    pub fn new(db: Db, config: RankerConfig) -> Self { Self { db, config } }
 
     pub fn add_groups(&self, req: AddGroupsRequest) -> anyhow::Result<AddGroupsResponse> {
         let AddGroupsRequest {
@@ -32,11 +29,7 @@ impl AppService {
             inner_workers,
             skip_archived,
         } = req;
-        let config = self.config_with_run_options(
-            outer_workers,
-            inner_workers,
-            skip_archived,
-        )?;
+        let config = self.config_with_run_options(outer_workers, inner_workers, skip_archived)?;
 
         let mut added = Vec::new();
         let mut duplicated = Vec::new();
@@ -81,10 +74,7 @@ impl AppService {
             }
         }
 
-        let queued_lanes = self.queue_recompute_lanes_with_config(
-            dirty_lanes.into_iter().collect(),
-            config,
-        )?;
+        let queued_lanes = self.queue_recompute_lanes_with_config(dirty_lanes.into_iter().collect(), config)?;
 
         Ok(AddGroupsResponse {
             added,
@@ -94,13 +84,8 @@ impl AppService {
         })
     }
 
-
     pub fn set_group_blocked(&self, group_id: i64, blocked: bool, req: BlockGroupRequest) -> anyhow::Result<BlockGroupResponse> {
-        let config = self.config_with_run_options(
-            req.outer_workers,
-            req.inner_workers,
-            req.skip_archived,
-        )?;
+        let config = self.config_with_run_options(req.outer_workers, req.inner_workers, req.skip_archived)?;
         let Some((lane_size, canonical)) = self.db.set_group_blocked(group_id, blocked)? else {
             anyhow::bail!("group id {group_id} not found");
         };
@@ -115,18 +100,18 @@ impl AppService {
         })
     }
 
-    pub fn set_groups_blocked_by_text(&self, blocked: bool, req: BlockGroupsByTextRequest) -> anyhow::Result<BlockGroupsByTextResponse> {
+    pub fn set_groups_blocked_by_text(
+        &self,
+        blocked: bool,
+        req: BlockGroupsByTextRequest,
+    ) -> anyhow::Result<BlockGroupsByTextResponse> {
         let BlockGroupsByTextRequest {
             groups,
             outer_workers,
             inner_workers,
             skip_archived,
         } = req;
-        let config = self.config_with_run_options(
-            outer_workers,
-            inner_workers,
-            skip_archived,
-        )?;
+        let config = self.config_with_run_options(outer_workers, inner_workers, skip_archived)?;
 
         let mut blocked_groups = BTreeSet::new();
         let mut unblocked_groups = BTreeSet::new();
@@ -174,10 +159,7 @@ impl AppService {
             }
         }
 
-        let queued_lanes = self.queue_recompute_lanes_with_config(
-            dirty_lanes.into_iter().collect(),
-            config,
-        )?;
+        let queued_lanes = self.queue_recompute_lanes_with_config(dirty_lanes.into_iter().collect(), config)?;
 
         Ok(BlockGroupsByTextResponse {
             blocked: blocked_groups.into_iter().collect(),
@@ -188,11 +170,7 @@ impl AppService {
     }
 
     pub fn merge_teams(&self, req: MergeTeamsRequest) -> anyhow::Result<MergeTeamsResponse> {
-        let config = self.config_with_run_options(
-            req.outer_workers,
-            req.inner_workers,
-            req.skip_archived,
-        )?;
+        let config = self.config_with_run_options(req.outer_workers, req.inner_workers, req.skip_archived)?;
 
         let mut dsu = self.db.load_team_dsu()?;
         let root = dsu.union(req.x.trim(), req.y.trim());
@@ -212,15 +190,9 @@ impl AppService {
         lane: usize,
         req: PurgeLowScoreGroupsRequest,
     ) -> anyhow::Result<PurgeLowScoreGroupsResponse> {
-        let config = self.config_with_run_options(
-            req.outer_workers,
-            req.inner_workers,
-            req.skip_archived,
-        )?;
+        let config = self.config_with_run_options(req.outer_workers, req.inner_workers, req.skip_archived)?;
 
-        let deleted_count = self
-            .db
-            .hard_delete_groups_below_raw_score(lane, KICK_AVG_CQD_THRESHOLD)?;
+        let deleted_count = self.db.hard_delete_groups_below_raw_score(lane, KICK_AVG_CQD_THRESHOLD)?;
 
         let queued_lanes = if deleted_count > 0 {
             self.queue_recompute_lanes_with_config(vec![lane], config)?
@@ -240,11 +212,7 @@ impl AppService {
         self.queue_recompute_lanes_with_config(lanes, self.config.clone())
     }
 
-    pub fn queue_recompute_lanes_with_config(
-        &self,
-        lanes: Vec<usize>,
-        config: RankerConfig,
-    ) -> anyhow::Result<Vec<usize>> {
+    pub fn queue_recompute_lanes_with_config(&self, lanes: Vec<usize>, config: RankerConfig) -> anyhow::Result<Vec<usize>> {
         let mut queued = Vec::new();
 
         for lane in lanes {
@@ -265,8 +233,16 @@ impl AppService {
                 &format!(
                     "queued job #{job_id}, stickiness={}, outer_workers={}, inner_threads={}, skip_archived={}",
                     config.effective_stickiness(lane),
-                    if config.outer_workers == 0 { "dynamic_auto".to_string() } else { format!("static({})", config.outer_workers) },
-                    if config.inner_workers == 0 { "auto(0)".to_string() } else { config.inner_workers.to_string() },
+                    if config.outer_workers == 0 {
+                        "dynamic_auto".to_string()
+                    } else {
+                        format!("static({})", config.outer_workers)
+                    },
+                    if config.inner_workers == 0 {
+                        "auto(0)".to_string()
+                    } else {
+                        config.inner_workers.to_string()
+                    },
                     config.skip_archived
                 ),
             )?;
@@ -290,11 +266,7 @@ impl AppService {
             anyhow::bail!("stickiness must be a positive integer");
         }
 
-        let mut config = self.config_with_run_options(
-            outer_workers,
-            inner_workers,
-            skip_archived,
-        )?;
+        let mut config = self.config_with_run_options(outer_workers, inner_workers, skip_archived)?;
         config.stickiness = stickiness;
         let queued_lanes = self.queue_recompute_lanes_with_config(vec![lane], config)?;
         Ok(RecomputeLaneResponse { queued_lanes })
@@ -305,18 +277,13 @@ impl AppService {
         lane: usize,
         req: ConstrainedSelectionRequest,
     ) -> anyhow::Result<ConstrainedSelectionResponse> {
-        let mut config = self.config_with_run_options(
-            req.outer_workers,
-            req.inner_workers,
-            None,
-        )?;
+        let mut config = self.config_with_run_options(req.outer_workers, req.inner_workers, None)?;
         config.inner_workers = 1;
 
         let threshold = req.cqd_threshold.unwrap_or(DEFAULT_SELECTION_CQD_THRESHOLD);
         if !threshold.is_finite() || !(0.0..=100.0).contains(&threshold) {
             anyhow::bail!("环境阈值必须是 0 到 100 之间的数字");
         }
-
 
         let group_count = self.db.lane_results(lane)?.len();
         if group_count == 0 {
@@ -335,7 +302,11 @@ impl AppService {
             0,
             &format!(
                 "queued v49 edge-bagging stability job #{job_id}, threshold={threshold:.3}, outer_workers={}, inner_threads=1",
-                if config.outer_workers == 0 { "dynamic_auto".to_string() } else { format!("static({})", config.outer_workers) },
+                if config.outer_workers == 0 {
+                    "dynamic_auto".to_string()
+                } else {
+                    format!("static({})", config.outer_workers)
+                },
             ),
         )?;
 
@@ -372,16 +343,7 @@ fn spawn_recompute_job(db: Db, config: RankerConfig, lane: usize, job_id: JobId)
             let _ = db.set_job_status(job_id, "failed", Some(&error));
             let group_count = db.load_groups_by_lane_for_run(lane, config.skip_archived).map(|x| x.len()).unwrap_or(0);
             let _ = db.set_lane_status(lane, "error", group_count);
-            let _ = db.set_lane_progress(
-                lane,
-                "error",
-                0,
-                config.total_rounds,
-                0,
-                0,
-                0,
-                &error,
-            );
+            let _ = db.set_lane_progress(lane, "error", 0, config.total_rounds, 0, 0, 0, &error);
         }
     });
 }
@@ -401,15 +363,12 @@ fn run_recompute_job(db: &Db, config: &RankerConfig, lane: usize, job_id: JobId)
             0,
             0,
             pre_deleted,
-            &format!(
-                "physically deleted {pre_deleted} groups with R-Score < {KICK_AVG_CQD_THRESHOLD:.3}; exact 45.000 is kept"
-            ),
+            &format!("physically deleted {pre_deleted} groups with R-Score < {KICK_AVG_CQD_THRESHOLD:.3}; exact 45.000 is kept"),
         )?;
         db.set_lane_status(lane, "purging", group_count)?;
     }
 
-    recompute_lane_until_stable(db, lane, config)
-        .with_context(|| format!("recompute lane {lane}, job #{job_id}"))?;
+    recompute_lane_until_stable(db, lane, config).with_context(|| format!("recompute lane {lane}, job #{job_id}"))?;
     db.set_job_status(job_id, "done", None)?;
     Ok(())
 }
@@ -421,16 +380,7 @@ fn spawn_constrained_selection_job(db: Db, config: RankerConfig, lane: usize, jo
             let _ = db.set_job_status(job_id, "failed", Some(&error));
             let group_count = db.lane_results(lane).map(|x| x.len()).unwrap_or(0);
             let _ = db.set_lane_status(lane, "error", group_count);
-            let _ = db.set_lane_progress(
-                lane,
-                "error",
-                0,
-                config.total_rounds,
-                0,
-                0,
-                0,
-                &error,
-            );
+            let _ = db.set_lane_progress(lane, "error", 0, config.total_rounds, 0, 0, 0, &error);
         }
     });
 }

@@ -221,7 +221,8 @@ impl EngineCore {
             randomer,
             updates,
         };
-        let _acted = crate::engine::tick::resolve_combat(actor, decision, preselected_targets.as_ref(), world, &mut ctx, &self.hooks);
+        let _acted =
+            crate::engine::tick::resolve_combat(actor, decision, preselected_targets.as_ref(), world, &mut ctx, &self.hooks);
         crate::engine::tick::run_update_end(storage, ctx.randomer, ctx.updates);
         #[cfg(not(feature = "no_debug"))]
         if debug_tick

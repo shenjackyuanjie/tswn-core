@@ -35,24 +35,23 @@ impl SkillTrait for HideSkill {
             return;
         }
         let owner_active = args.3.get_player(&args.0).map(|x| x.active()).unwrap_or(false);
-        let (alive_group_snapshot, effective_group_snapshot) =
-            args.3.get_player(&args.0).map_or((None, None), |owner| {
-                owner
-                    .get_state::<CharmState>()
-                    .map(|charm| {
-                        (
-                            charm
-                                .effective_team_idx
-                                .and_then(|team_idx| args.3.alive_group_at(team_idx))
-                                .or_else(|| args.3.alive_group_at_team_of(charm.group_id)),
-                            charm
-                                .effective_team_idx
-                                .and_then(|team_idx| args.3.get_group(team_idx))
-                                .or_else(|| args.3.group_containing(charm.group_id)),
-                        )
-                    })
-                    .unwrap_or_else(|| (args.3.alive_group_at_team_of(args.0), args.3.group_containing(args.0)))
-            });
+        let (alive_group_snapshot, effective_group_snapshot) = args.3.get_player(&args.0).map_or((None, None), |owner| {
+            owner
+                .get_state::<CharmState>()
+                .map(|charm| {
+                    (
+                        charm
+                            .effective_team_idx
+                            .and_then(|team_idx| args.3.alive_group_at(team_idx))
+                            .or_else(|| args.3.alive_group_at_team_of(charm.group_id)),
+                        charm
+                            .effective_team_idx
+                            .and_then(|team_idx| args.3.get_group(team_idx))
+                            .or_else(|| args.3.group_containing(charm.group_id)),
+                    )
+                })
+                .unwrap_or_else(|| (args.3.alive_group_at_team_of(args.0), args.3.group_containing(args.0)))
+        });
         let mut alive_candidates: SmallVec<[PlrId; 8]> = SmallVec::new();
         if let Some(group) = alive_group_snapshot {
             alive_candidates.extend(

@@ -669,38 +669,17 @@ mod tests {
 
         // 单测会并行共享全局 prebuilt cache；这里只清理和检查本测试自己的 key，
         // 避免误删其他测试正在使用的缓存项，也避免被无关 key 干扰断言。
-        prebuilt_groups_cache()
-            .write()
-            .expect("prebuilt cache poisoned")
-            .remove(&cache_key);
+        prebuilt_groups_cache().write().expect("prebuilt cache poisoned").remove(&cache_key);
 
         Runner::prepare_groups_with_eval_rq_uncached(&players, eval_rq).expect("uncached prepare should build");
-        assert!(
-            !prebuilt_groups_cache()
-                .read()
-                .expect("prebuilt cache poisoned")
-                .contains_key(&cache_key)
-        );
+        assert!(!prebuilt_groups_cache().read().expect("prebuilt cache poisoned").contains_key(&cache_key));
 
         Runner::new_from_groups_with_seed_and_eval_rq_uncached(&players, &seed, eval_rq).expect("uncached runner should build");
-        assert!(
-            !prebuilt_groups_cache()
-                .read()
-                .expect("prebuilt cache poisoned")
-                .contains_key(&cache_key)
-        );
+        assert!(!prebuilt_groups_cache().read().expect("prebuilt cache poisoned").contains_key(&cache_key));
 
         Runner::prepare_groups_with_eval_rq(&players, eval_rq).expect("cached prepare should build");
-        assert!(
-            prebuilt_groups_cache()
-                .read()
-                .expect("prebuilt cache poisoned")
-                .contains_key(&cache_key)
-        );
+        assert!(prebuilt_groups_cache().read().expect("prebuilt cache poisoned").contains_key(&cache_key));
 
-        prebuilt_groups_cache()
-            .write()
-            .expect("prebuilt cache poisoned")
-            .remove(&cache_key);
+        prebuilt_groups_cache().write().expect("prebuilt cache poisoned").remove(&cache_key);
     }
 }
