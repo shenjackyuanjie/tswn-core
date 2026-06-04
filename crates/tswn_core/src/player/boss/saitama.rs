@@ -75,7 +75,7 @@ pub fn saitama_boss_action(
         let mut hungry_update = RunUpdate::new(format!("{boss_display}觉得有点饿"), boss_id, boss_id, 0);
         hungry_update.delay1 = 2000;
         updates.add(hungry_update);
-        updates.add(RunUpdate::new_newline());
+        updates.add_newline();
         updates.add(RunUpdate::new(format!(" {boss_display}离开了战场"), boss_id, boss_id, 0));
         let old_hp = player.get_status().hp;
         player.apply_raw_damage(old_hp);

@@ -73,7 +73,7 @@ impl SkillTrait for UpgradeSkill {
             );
         }
         if roll_level < level {
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.2.add(RunUpdate::new("[0]做出[垂死]抗争", args.0, args.0, 60));
             args.2.add(RunUpdate::new("[0]所有属性上升", args.0, args.0, 0));
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get upgrade owner from storage");

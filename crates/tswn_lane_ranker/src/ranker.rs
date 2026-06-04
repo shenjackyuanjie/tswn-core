@@ -14,17 +14,16 @@ use crate::winrate::compute_rate_without_db;
 pub const STANDARD_SIZE: usize = 50;
 pub const TEAM_LIMIT: usize = 5;
 pub const DEFAULT_WARMUP_ROUNDS: usize = 10_000;
-pub const DEFAULT_TOTAL_ROUNDS: usize = 1_000_000;
+pub const DEFAULT_TOTAL_ROUNDS: usize = 10_000_000;
 
 /// 默认 1000% 精度，即 100000 场。
 pub const DEFAULT_WIN_RATE_SAMPLES: usize = 100_000;
 
-/// 胜率补算支持浏览器传入两层 worker：
+/// 胜率补算支持浏览器传入外层 worker：
 ///
 /// - outer_workers = 0：外层按系统可用并行度自动开 worker，并用动态队列分发 pair。
 /// - outer_workers > 0：外层使用指定 worker 数，并按静态区间分块。
-/// - inner_workers = 0：传给 tswn_core::win_rate::groups_win_rate 的 thread=0，让核心库自动决定线程策略。
-/// - inner_workers > 0：传给 tswn_core 指定内层线程数。
+/// - inner_workers 固定写死为 1，不再暴露给浏览器端。
 
 /// 默认粘性：单人组 10，双人组 20，x 人组 10 * x。
 pub const DEFAULT_STICKINESS_PER_MEMBER: usize = 10;
@@ -36,10 +35,20 @@ pub const ODDS_START_ROUND: usize = 10_000;
 pub const EARLY_STOP_START_ROUND: usize = 100_000;
 pub const EARLY_STOP_STABLE_ROUNDS: usize = 100;
 
+/// v49 hard delete cutoff. Strict comparison is used: avg CQD < 45.0 deletes; 45.000 is kept.
 pub const KICK_AVG_CQD_THRESHOLD: f64 = 45.0;
 
-/// 跑完后自动封存 avg cqd 未达到 48 的组合。
-pub const ARCHIVE_AVG_CQD_THRESHOLD: f64 = 48.0;
+/// 跑完后自动封存阈值：单人组 47.5；双人/多人组 48.0。
+pub const ARCHIVE_AVG_CQD_THRESHOLD_SINGLE: f64 = 47.5;
+pub const ARCHIVE_AVG_CQD_THRESHOLD_MULTI: f64 = 48.0;
+
+pub fn archive_avg_cqd_threshold(lane_size: usize) -> f64 {
+    if lane_size == 1 {
+        ARCHIVE_AVG_CQD_THRESHOLD_SINGLE
+    } else {
+        ARCHIVE_AVG_CQD_THRESHOLD_MULTI
+    }
+}
 
 /// 和浏览器折叠 UI 保持一致：每个主行的折叠内部只保留前 20 个子项；超出的子项会被封存。
 pub const FOLDED_CHILD_KEEP_LIMIT: usize = 20;
@@ -63,21 +72,21 @@ impl RankerConfig {
             win_rate_samples: read_env_usize("LANE_WIN_RATE_SAMPLES", DEFAULT_WIN_RATE_SAMPLES),
             stickiness: read_env_optional_usize("LANE_STICKINESS"),
             outer_workers: read_env_usize("LANE_OUTER_WORKERS", 0),
-            inner_workers: read_env_u32("LANE_INNER_WORKERS", 0),
+            inner_workers: 1,
             skip_archived: read_env_bool("LANE_SKIP_ARCHIVED", true),
         }
     }
 
     pub fn effective_stickiness(&self, lane_size: usize) -> usize {
-        self.stickiness.unwrap_or(DEFAULT_STICKINESS_PER_MEMBER * lane_size.max(1)).max(1)
+        self.stickiness
+            .unwrap_or(DEFAULT_STICKINESS_PER_MEMBER * lane_size.max(1))
+            .max(1)
     }
 }
 
 fn read_env_usize(name: &str, default: usize) -> usize {
     std::env::var(name).ok().and_then(|x| x.parse().ok()).unwrap_or(default)
 }
-
-fn read_env_u32(name: &str, default: u32) -> u32 { std::env::var(name).ok().and_then(|x| x.parse().ok()).unwrap_or(default) }
 
 fn read_env_bool(name: &str, default: bool) -> bool {
     match std::env::var(name).ok().map(|x| x.to_ascii_lowercase()) {
@@ -88,7 +97,10 @@ fn read_env_bool(name: &str, default: bool) -> bool {
 }
 
 fn read_env_optional_usize(name: &str) -> Option<usize> {
-    std::env::var(name).ok().and_then(|x| x.parse::<usize>().ok()).filter(|&x| x > 0)
+    std::env::var(name)
+        .ok()
+        .and_then(|x| x.parse::<usize>().ok())
+        .filter(|&x| x > 0)
 }
 
 fn resolve_rate_pair_workers(requested_outer_workers: usize, total: usize) -> usize {
@@ -96,7 +108,9 @@ fn resolve_rate_pair_workers(requested_outer_workers: usize, total: usize) -> us
         return requested_outer_workers.max(1).min(total.max(1));
     }
 
-    let available = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let available = thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
 
     available.max(1).min(total.max(1))
 }
@@ -188,20 +202,63 @@ pub fn recompute_lane_until_stable(db: &Db, lane_size: usize, config: &RankerCon
             let ready_message = if early_stopped {
                 format!(
                     "done: early stopped at round {} after avg cqd stayed unchanged for {} rounds at 3 decimals; skip_archived={}",
-                    final_round, EARLY_STOP_STABLE_ROUNDS, config.skip_archived
+                    final_round,
+                    EARLY_STOP_STABLE_ROUNDS,
+                    config.skip_archived
                 )
             } else {
-                format!("done; skip_archived={}", config.skip_archived)
+                format!(
+                    "done; skip_archived={}",
+                    config.skip_archived
+                )
             };
-            db.set_lane_progress(lane_size, "ready", final_round, config.total_rounds, 0, 0, 0, &ready_message)?;
+            db.set_lane_progress(
+                lane_size,
+                "ready",
+                final_round,
+                config.total_rounds,
+                0,
+                0,
+                0,
+                &ready_message,
+            )?;
             return Ok(());
         }
 
-        let archive_rows: Vec<(GroupId, String, f64)> = archive_candidates
+        let hard_delete_rows: Vec<(GroupId, String, f64)> = archive_candidates
             .iter()
+            .filter(|candidate| candidate.action == ArchiveAction::HardDelete)
             .map(|candidate| (candidate.group_id, candidate.reason.clone(), candidate.average_cqd))
             .collect();
+        let archive_rows: Vec<(GroupId, String, f64)> = archive_candidates
+            .iter()
+            .filter(|candidate| candidate.action == ArchiveAction::Archive)
+            .map(|candidate| (candidate.group_id, candidate.reason.clone(), candidate.average_cqd))
+            .collect();
+
+        let deleted_count = db.hard_delete_group_combinations(&hard_delete_rows)?;
         let archived_count = db.archive_group_combinations(&archive_rows)?;
+
+        // 物理删除会改变 groups 表本身；无论 skip_archived 是否开启，都必须重跑，
+        // 否则当前 result 里会引用刚删除的 group_id。
+        if deleted_count > 0 {
+            db.set_lane_progress(
+                lane_size,
+                "purging",
+                final_round,
+                config.total_rounds,
+                0,
+                0,
+                deleted_count + archived_count,
+                &format!(
+                    "physically deleted {} groups with avg cqd < {}; archived {} other weak/folded groups; exact 45.000 is kept; rerunning",
+                    deleted_count,
+                    KICK_AVG_CQD_THRESHOLD,
+                    archived_count
+                ),
+            )?;
+            continue;
+        }
 
         if !config.skip_archived {
             db.save_lane_results(lane_size, &result)?;
@@ -233,12 +290,12 @@ pub fn recompute_lane_until_stable(db: &Db, lane_size: usize, config: &RankerCon
             &format!(
                 "archived {} combinations: avg cqd < {} or folded child outside top {}; rerunning with archived combinations skipped",
                 archived_count,
-                ARCHIVE_AVG_CQD_THRESHOLD,
+                archive_avg_cqd_threshold(lane_size),
                 FOLDED_CHILD_KEEP_LIMIT
             ),
         )?;
 
-        // 封存后当前有效组、标准榜、胜率需求和平均 CQD 都可能变化；默认继续重算，直到不再产生新封存组合。
+        // 封存/物理删除后当前有效组、标准榜、胜率需求和平均 CQD 都可能变化；默认继续重算，直到不再产生新候选。
     }
 }
 
@@ -250,11 +307,20 @@ struct CoreAlgorithmResult {
     archive_candidates: Vec<ArchiveCandidate>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchiveAction {
+    /// 旧的低优先级移出运行池：只写 archived_groups。
+    Archive,
+    /// v49: R-Score < 45 必须从 groups 表物理删除，不做懒删除。
+    HardDelete,
+}
+
 #[derive(Debug, Clone)]
 struct ArchiveCandidate {
     group_id: GroupId,
     reason: String,
     average_cqd: f64,
+    action: ArchiveAction,
 }
 
 impl CoreAlgorithmResult {
@@ -278,10 +344,25 @@ fn run_core_algorithm(
     let mut nodes: Vec<RankNode> = groups.into_iter().map(RankNode::new).collect();
 
     // 初始靶子优先使用数据库中上一轮结果的 Score 前 50。
-    let (mut standard, smooth_from_start) = make_initial_standard_indices(db, lane_size, &nodes, &mut dsu)?;
+    let (mut standard, smooth_from_start) = make_initial_standard_indices(
+        db,
+        lane_size,
+        &nodes,
+        &mut dsu,
+    )?;
     if standard.len() < STANDARD_SIZE {
         return Ok(CoreAlgorithmResult::empty(0));
     }
+
+    let initial_target_message = if smooth_from_start {
+        format!(
+            "initial target selected from database Score order with standard constraints; smoothing from round 1"
+        )
+    } else {
+        format!(
+            "initial target selected by current make logic; warmup remains unsmoothed"
+        )
+    };
 
     db.set_lane_progress(
         lane_size,
@@ -291,11 +372,7 @@ fn run_core_algorithm(
         standard.len(),
         STANDARD_SIZE,
         0,
-        if smooth_from_start {
-            "initial target selected from database Score order with standard constraints; smoothing from round 1"
-        } else {
-            "initial target selected by current make logic; warmup remains unsmoothed"
-        },
+        &initial_target_message,
     )?;
 
     // v13 关键优化：
@@ -399,20 +476,39 @@ fn run_core_algorithm(
         .enumerate()
         .map(|(rank_idx, node_idx)| {
             let node = &nodes[node_idx];
-
+            let skill_summary = crate::skill_eq::compute_group_skill_summary(&node.group.members);
+            let raw_average_cqd = round_to_3(node.avg_cqd());
             LaneResultRow {
                 lane_size,
                 group_id: node.group.id,
                 rank: rank_idx + 1,
-                canonical: node.group.canonical.clone(),
-                average_cqd: node.avg_cqd(),
+                canonical: skill_summary.display_canonical,
+                team_name: node.group.team_name.clone(),
+                root_team_name: dsu.find_readonly(&node.group.team_name),
+                average_cqd: raw_average_cqd,
+                raw_average_cqd,
+                pair_score: None,
+                pair_rank: None,
+                uncertainty: None,
+                raw_delta: None,
+                pair_score_std: None,
+                pair_rank_std: None,
+                delta_std: None,
+                edge_count_mean: None,
+                stability_flag: if node.group.is_blocked { "blocked".to_string() } else { "calibration_skipped".to_string() },
+                marginal_value: None,
+                constrained_rank: None,
+                selection_status: if node.group.is_blocked { "blocked".to_string() } else { "calibration_skipped".to_string() },
+                type_label: skill_summary.type_label,
+                skill_totals: skill_summary.skill_totals,
                 min_cqd: if node.cqdmin.is_finite() { node.cqdmin } else { 0.0 },
                 max_cqd: if node.cqdmax.is_finite() { node.cqdmax } else { 0.0 },
                 variance_cqd: node.variance_cqd(),
                 golden_rate: node.golden_rate(),
+                is_blocked: node.group.is_blocked,
             }
         })
-        .collect();
+        .collect::<Vec<LaneResultRow>>();
 
     let archive_candidates = find_archive_candidates(&rows, &nodes);
 
@@ -425,26 +521,39 @@ fn run_core_algorithm(
 }
 
 fn find_archive_candidates(rows: &[LaneResultRow], nodes: &[RankNode]) -> Vec<ArchiveCandidate> {
-    let members_by_group_id: HashMap<GroupId, Vec<String>> =
-        nodes.iter().map(|node| (node.group.id, node.group.members.clone())).collect();
+    let members_by_group_id: HashMap<GroupId, Vec<String>> = nodes
+        .iter()
+        .map(|node| (node.group.id, node.group.members.clone()))
+        .collect();
 
     let mut by_group_id: HashMap<GroupId, ArchiveCandidate> = HashMap::new();
 
     for row in rows {
+        // 手动屏蔽的组合仍要长期参与 CQD/Score 计算；
+        // 自动封存会在“跳过封存组合”时把它从运行集合移除，所以这里不再自动封存手动屏蔽项。
+        if row.is_blocked {
+            continue;
+        }
+
         if row.average_cqd < KICK_AVG_CQD_THRESHOLD {
             push_archive_reason(
                 &mut by_group_id,
                 row.group_id,
                 row.average_cqd,
-                format!("avg_cqd_below_kick_threshold_{KICK_AVG_CQD_THRESHOLD:.3}"),
+                format!("avg_cqd_below_hard_delete_threshold_{KICK_AVG_CQD_THRESHOLD:.3}"),
+                ArchiveAction::HardDelete,
             );
-        } else if row.average_cqd < ARCHIVE_AVG_CQD_THRESHOLD {
-            push_archive_reason(
-                &mut by_group_id,
-                row.group_id,
-                row.average_cqd,
-                format!("avg_cqd_below_archive_threshold_{ARCHIVE_AVG_CQD_THRESHOLD:.3}"),
-            );
+        } else {
+            let archive_threshold = archive_avg_cqd_threshold(row.lane_size);
+            if row.average_cqd < archive_threshold {
+                push_archive_reason(
+                    &mut by_group_id,
+                    row.group_id,
+                    row.average_cqd,
+                    format!("avg_cqd_below_archive_threshold_{archive_threshold:.3}"),
+                    ArchiveAction::Archive,
+                );
+            }
         }
     }
 
@@ -455,6 +564,7 @@ fn find_archive_candidates(rows: &[LaneResultRow], nodes: &[RankNode]) -> Vec<Ar
                 row.group_id,
                 row.average_cqd,
                 format!("folded_child_outside_top_{FOLDED_CHILD_KEEP_LIMIT}"),
+                ArchiveAction::Archive,
             );
         }
     }
@@ -469,6 +579,7 @@ fn push_archive_reason(
     group_id: GroupId,
     average_cqd: f64,
     reason: String,
+    action: ArchiveAction,
 ) {
     by_group_id
         .entry(group_id)
@@ -478,11 +589,15 @@ fn push_archive_reason(
                 candidate.reason.push_str(&reason);
             }
             candidate.average_cqd = average_cqd;
+            if action == ArchiveAction::HardDelete {
+                candidate.action = ArchiveAction::HardDelete;
+            }
         })
         .or_insert(ArchiveCandidate {
             group_id,
             reason,
             average_cqd,
+            action,
         });
 }
 
@@ -491,20 +606,60 @@ fn folded_children_outside_keep_limit(
     members_by_group_id: &HashMap<GroupId, Vec<String>>,
     keep_limit: usize,
 ) -> Vec<GroupId> {
-    let mut consumed = vec![false; rows.len()];
+    let groups = folded_result_groups_for_archive(rows, members_by_group_id);
     let mut archived = Vec::new();
+
+    for (_parent_idx, child_indices) in groups {
+        let mut child_count = 0usize;
+        for child_idx in child_indices {
+            child_count += 1;
+            if child_count > keep_limit && !rows[child_idx].is_blocked {
+                archived.push(rows[child_idx].group_id);
+            }
+        }
+    }
+
+    archived
+}
+
+fn folded_result_groups_for_archive(
+    rows: &[LaneResultRow],
+    members_by_group_id: &HashMap<GroupId, Vec<String>>,
+) -> Vec<(usize, Vec<usize>)> {
+    let mut consumed = vec![false; rows.len()];
+    let mut pending: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut groups = Vec::new();
 
     for i in 0..rows.len() {
         if consumed[i] {
             continue;
         }
 
-        consumed[i] = true;
         let Some(parent_members) = members_by_group_id.get(&rows[i].group_id) else {
+            consumed[i] = true;
+            groups.push((i, pending.remove(&i).unwrap_or_default()));
             continue;
         };
 
-        let mut child_count = 0usize;
+        // 新折叠规则：如果一个被屏蔽组合下面有未屏蔽且成员重复的组合，
+        // 它不再当父行，而是折叠到那个更低的未屏蔽组合下。
+        if rows[i].is_blocked {
+            if let Some(target_idx) = find_lower_unblocked_overlap(
+                rows,
+                members_by_group_id,
+                &consumed,
+                i,
+                parent_members,
+            ) {
+                pending.entry(target_idx).or_default().push(i);
+                consumed[i] = true;
+                continue;
+            }
+        }
+
+        consumed[i] = true;
+        let mut children = pending.remove(&i).unwrap_or_default();
+
         for j in (i + 1)..rows.len() {
             if consumed[j] {
                 continue;
@@ -514,17 +669,60 @@ fn folded_children_outside_keep_limit(
                 continue;
             };
 
-            if has_member_overlap(parent_members, child_members) {
-                consumed[j] = true;
-                child_count += 1;
-                if child_count > keep_limit {
-                    archived.push(rows[j].group_id);
+            if !has_member_overlap(parent_members, child_members) {
+                continue;
+            }
+
+            if rows[j].is_blocked {
+                if let Some(target_idx) = find_lower_unblocked_overlap(
+                    rows,
+                    members_by_group_id,
+                    &consumed,
+                    j,
+                    child_members,
+                ) {
+                    pending.entry(target_idx).or_default().push(j);
+                    consumed[j] = true;
+                    continue;
                 }
             }
+
+            consumed[j] = true;
+            children.push(j);
+
+            if let Some(mut pending_for_child) = pending.remove(&j) {
+                children.append(&mut pending_for_child);
+            }
+        }
+
+        groups.push((i, children));
+    }
+
+    groups
+}
+
+fn find_lower_unblocked_overlap(
+    rows: &[LaneResultRow],
+    members_by_group_id: &HashMap<GroupId, Vec<String>>,
+    consumed: &[bool],
+    start_idx: usize,
+    members: &[String],
+) -> Option<usize> {
+    for target_idx in (start_idx + 1)..rows.len() {
+        if consumed[target_idx] || rows[target_idx].is_blocked {
+            continue;
+        }
+
+        let Some(target_members) = members_by_group_id.get(&rows[target_idx].group_id) else {
+            continue;
+        };
+
+        if has_member_overlap(members, target_members) {
+            return Some(target_idx);
         }
     }
 
-    archived
+    None
 }
 
 fn has_member_overlap(a: &[String], b: &[String]) -> bool {
@@ -556,9 +754,13 @@ impl RateMatrix {
         }
     }
 
-    fn get(&self, i: usize, j: usize) -> f64 { self.rates[i][j].expect("rate should be loaded before fight") }
+    fn get(&self, i: usize, j: usize) -> f64 {
+        self.rates[i][j].expect("rate should be loaded before fight")
+    }
 
-    fn loaded_pair_count(&self) -> usize { self.loaded_pairs }
+    fn loaded_pair_count(&self) -> usize {
+        self.loaded_pairs
+    }
 
     fn set_pair(&mut self, i: usize, j: usize, rate_i_to_j: f64) {
         if i == j {
@@ -621,7 +823,12 @@ impl RateMatrix {
                     continue;
                 }
 
-                missing_pairs.push((i, std_idx, nodes[i].group.clone(), nodes[std_idx].group.clone()));
+                missing_pairs.push((
+                    i,
+                    std_idx,
+                    nodes[i].group.clone(),
+                    nodes[std_idx].group.clone(),
+                ));
             }
         }
 
@@ -653,11 +860,7 @@ impl RateMatrix {
         let workers = resolve_rate_pair_workers(requested_outer_workers, total);
         let outer_label = format_outer_workers(requested_outer_workers, workers);
         let inner_label = format_inner_workers(inner_workers);
-        let mode = if requested_outer_workers == 0 {
-            "dynamic_queue"
-        } else {
-            "static_chunks"
-        };
+        let mode = if requested_outer_workers == 0 { "dynamic_queue" } else { "static_chunks" };
         let done = Arc::new(AtomicUsize::new(0));
         let rate_started = Arc::new(Instant::now());
 
@@ -874,9 +1077,13 @@ fn make_initial_standard_indices(
     // 初始靶子也必须满足 make 的基本条件：
     // 1. 同一个合并后战队最多 TEAM_LIMIT 个
     // 2. 同一个 member 在靶子中只能出现一次
-    let top_ids = db.lane_top_score_group_ids(lane_size, nodes.len())?;
+    let top_ids = db.lane_top_score_group_ids(lane_size, nodes.len(), None)?;
 
-    let id_to_idx: HashMap<GroupId, usize> = nodes.iter().enumerate().map(|(idx, node)| (node.group.id, idx)).collect();
+    let id_to_idx: HashMap<GroupId, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(idx, node)| (node.group.id, idx))
+        .collect();
 
     let mut selected = Vec::with_capacity(STANDARD_SIZE);
     let mut selected_set = HashSet::<usize>::new();
@@ -897,6 +1104,7 @@ fn make_initial_standard_indices(
             &mut selected_set,
             &mut team_count,
             &mut used_members,
+            None,
         ) {
             used_history_target = true;
         }
@@ -920,6 +1128,7 @@ fn make_initial_standard_indices(
             &mut selected_set,
             &mut team_count,
             &mut used_members,
+            None,
         );
 
         if selected.len() >= STANDARD_SIZE {
@@ -947,6 +1156,7 @@ fn make_standard_indices(nodes: &[RankNode], dsu: &mut TeamDsu) -> Vec<usize> {
             &mut selected_set,
             &mut team_count,
             &mut used_members,
+            None,
         );
 
         if selected.len() >= STANDARD_SIZE {
@@ -965,9 +1175,23 @@ fn try_select_standard_index(
     selected_set: &mut HashSet<usize>,
     team_count: &mut HashMap<String, usize>,
     used_members: &mut HashSet<String>,
+    min_current_cqd: Option<f64>,
 ) -> bool {
     if selected.len() >= STANDARD_SIZE {
         return false;
+    }
+
+    // 手动屏蔽的组合正常参与 CQD/Score 计算，但不能进入靶子。
+    if nodes[idx].group.is_blocked {
+        return false;
+    }
+
+    // CQD 48.5 只属于手动修正环境阈值；原靶子选择不使用这个门槛。
+    if let Some(min_cqd) = min_current_cqd {
+        let current_cqd = nodes[idx].cqd;
+        if current_cqd != 0.0 && current_cqd < min_cqd {
+            return false;
+        }
     }
 
     if !selected_set.insert(idx) {
@@ -996,7 +1220,13 @@ fn try_select_standard_index(
 
     true
 }
-fn data(nodes: &mut [RankNode], round: usize, warmup_rounds: usize, stickiness: usize, smooth_from_start: bool) {
+fn data(
+    nodes: &mut [RankNode],
+    round: usize,
+    warmup_rounds: usize,
+    stickiness: usize,
+    smooth_from_start: bool,
+) {
     // 粘性就是神秘系数平滑分母：alpha = 1 / stickiness。
     // 默认情况下：单人组 stickiness=10，双人组 stickiness=20，x 人组 stickiness=10*x。
     //
@@ -1007,7 +1237,8 @@ fn data(nodes: &mut [RankNode], round: usize, warmup_rounds: usize, stickiness: 
     // 最终 Score 的统计窗口不变，仍然只在 warmup_rounds 后累计。
     let alpha = 1.0 / stickiness.max(1) as f64;
     let should_smooth = smooth_from_start || round >= warmup_rounds;
-    let starts_smoothing_this_round = (smooth_from_start && round == 1) || (!smooth_from_start && round == warmup_rounds);
+    let starts_smoothing_this_round =
+        (smooth_from_start && round == 1) || (!smooth_from_start && round == warmup_rounds);
 
     for node in nodes.iter_mut() {
         if round >= warmup_rounds {
@@ -1044,16 +1275,25 @@ fn avg_cqd_rounded_unchanged(nodes: &[RankNode], last: &mut [i64]) -> bool {
     !changed
 }
 
-#[allow(dead_code)]
-fn round_to_3(value: f64) -> f64 { round_to_3_int(value) as f64 / 1000.0 }
+fn round_to_3(value: f64) -> f64 {
+    round_to_3_int(value) as f64 / 1000.0
+}
 
-fn round_to_3_int(value: f64) -> i64 { (value * 1000.0).round() as i64 }
+fn round_to_3_int(value: f64) -> i64 {
+    (value * 1000.0).round() as i64
+}
 
-fn ordered_index_pair(a: usize, b: usize) -> (usize, usize) { if a <= b { (a, b) } else { (b, a) } }
+fn ordered_index_pair(a: usize, b: usize) -> (usize, usize) {
+    if a <= b { (a, b) } else { (b, a) }
+}
 
-fn should_report_rate_progress(done: usize, total: usize) -> bool { done == total || done % 10 == 0 }
+fn should_report_rate_progress(done: usize, total: usize) -> bool {
+    done == total || done % 10 == 0
+}
 
-fn should_report_round(round: usize, total_rounds: usize) -> bool { round == 1 || round == total_rounds || round % 1000 == 0 }
+fn should_report_round(round: usize, total_rounds: usize) -> bool {
+    round == 1 || round == total_rounds || round % 1000 == 0
+}
 
 fn format_duration(seconds: f64) -> String {
     if seconds < 60.0 {

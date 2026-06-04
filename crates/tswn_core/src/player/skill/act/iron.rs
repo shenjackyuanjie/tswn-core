@@ -145,7 +145,7 @@ impl StateTrait for IronState {
             owner_plr.set_move_point(owner_plr.move_point() - 128);
         }
         // JS 的 SklIron.K(null, b) 不检查 alive，始终发出"从铁壁中解除"。
-        updates.emit(RunUpdate::new_newline);
+        updates.add_newline();
         updates.emit(|| RunUpdate::new("[1]从[铁壁]中解除", owner, owner, 0));
         #[cfg(not(feature = "no_debug"))]
         if crate::debug::debug_post_action()
@@ -199,7 +199,7 @@ impl StateTrait for IronState {
         *dmg -= self.protect;
         self.protect = 0;
         self.step = 0;
-        updates.emit(RunUpdate::new_newline);
+        updates.add_newline();
         // 铁壁被击破时应使用“被打消”文案；自然结束才是“从铁壁中解除”。
         updates.emit(|| RunUpdate::new("[1]的[铁壁]被打消了", caster, owner, 0));
         true

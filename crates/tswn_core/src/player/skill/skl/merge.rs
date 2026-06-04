@@ -42,7 +42,7 @@ impl SkillTrait for MergeSkill {
                 .just_get_player_mut(target)
                 .expect("cannot get merge target from storage")
                 .set_state(CorpseState::merge());
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             args.2.add(RunUpdate::new("[0][吞噬]了[1]", args.0, target, 60));
             return true;
         }
@@ -202,7 +202,7 @@ impl SkillTrait for MergeSkill {
             let target_plr = args.3.just_get_player_mut(target).expect("cannot get merge target from storage");
             target_plr.set_state(CorpseState::merge());
         }
-        args.2.add(RunUpdate::new_newline());
+        args.2.add_newline();
         args.2.add(RunUpdate::new("[0][吞噬]了[1]", args.0, target, 60));
         args.2.add(RunUpdate::new("[0]属性上升", args.0, target, 0));
         true

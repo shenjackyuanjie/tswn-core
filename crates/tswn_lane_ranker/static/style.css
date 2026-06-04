@@ -231,32 +231,207 @@ td, th {
 }
 
 
-/* v24 browser worker controls */
-.worker-controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+
+.lane-toolbar {
+  display: flex;
+  align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.lane-toolbar .worker-controls {
+  margin-top: 0;
+}
+
+/* run options beside refresh lanes */
+.worker-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: nowrap;
+  margin-top: 10px;
+  white-space: nowrap;
 }
 
 .worker-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   color: #444;
 }
 
 .worker-controls input {
-  margin-bottom: 0;
+  margin: 0;
 }
 
+.worker-controls input[type="number"] {
+  width: 90px;
+  padding: 8px;
+}
 
-/* v25 archived combination option */
+/* archived combination option */
 .archive-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  padding: 0;
 }
 
 .archive-option input[type="checkbox"] {
   width: auto;
   margin: 0;
+}
+
+
+/* v29 manual target blocking */
+.score-table .action-col,
+.score-table .action-cell {
+  width: 1%;
+  text-align: center;
+  padding-left: 12px;
+}
+
+.small-action-btn {
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  margin-right: 0;
+}
+
+.unblock-btn {
+  background: #666;
+}
+
+.blocked-row {
+  background: #fff7e6;
+}
+
+.blocked-row.fold-child {
+  background: #fffaf0;
+}
+
+.blocked-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #ffe0a3;
+  color: #6b4500;
+  font-size: 12px;
+}
+
+.hint {
+  color: #666;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+
+/* v31 skill type column */
+.score-table .type-col,
+.score-table .type-cell {
+  width: 1%;
+  white-space: nowrap;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+.score-table .type-cell {
+  color: #333;
+}
+
+/* v37 pairwise calibration columns */
+.score-table .raw-rank-col,
+.score-table .raw-rank-cell,
+.score-table .raw-col,
+.score-table .raw-cell,
+.score-table .delta-col,
+.score-table .delta-cell,
+.score-table .mv-col,
+.score-table .mv-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 18px;
+}
+
+.selected-row {
+  background: #eefaf0;
+}
+
+.selected-row.fold-child {
+  background: #f4fcf5;
+}
+
+.selected-badge,
+.threshold-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.selected-badge {
+  background: #d8f5d8;
+  color: #205d20;
+}
+
+.threshold-badge {
+  background: #eeeeee;
+  color: #666666;
+}
+
+/* v38 manual constrained selection controls */
+.result-toolbar,
+.constrained-selection-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 0;
+}
+
+.result-toolbar input,
+.constrained-selection-panel input[type="number"] {
+  width: 110px;
+}
+
+.constrained-selection-panel {
+  padding: 10px 12px;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  background: #fafafa;
+}
+
+.selection-threshold-option,
+.show-constrained-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.show-constrained-option input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.inline-output {
+  color: #555;
+  font-size: 13px;
+}
+
+.badge.selecting,
+.badge.constrained_selection_queued,
+.badge.constrained_selection_loading,
+.badge.constrained_selection_ready {
+  background: #dbeafe;
+}
+
+.score-table .constrained-rank-col,
+.score-table .constrained-rank-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 18px;
 }

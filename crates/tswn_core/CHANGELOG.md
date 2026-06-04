@@ -27,10 +27,17 @@
 - 修复 `ol` overlay 中 `name_factor_enabled` 字段未被解析的问题：JSON 格式的 `ol:{...}` overlay 现在能正确识别 `name_factor_enabled` 开关。
 - 修复 `bench win-rate` 未对 `team1`/`team2` 调用 `decode_raw` 导致 `\n` 换行符不被解析的问题：现与 `bench group-win-rate` 一致，支持以 `\n` 分隔队内玩家。
 - 修复 `bench win-rate --keep-rq` 会同时切换 seed 调度的问题：`--keep-rq` 现在只影响 rq，胜率模拟始终使用 JS ProfileWinChance seed 口径（首场无 seed，后续 `seed:(33554431 + i)@!`）。
+- 修复 namer-pf 小分差对账中的多处 JS 行为边界：`Hide` 对被 charm 后的同队 alive 视图会同时纳入 pending revival 与同队 pending spawn，避免隐匿检定少消耗随机字节。
+- 修复 `Protect` 在 merge/devour 后仍使用旧 level 的问题：守护触发时改为读取保护者当前 `ProtectSkill` 等级，使 `r127() < level` 判定与 JS 产物保持一致。
+- 修复清除 `BerserkState` 时误刷新 pending 正面状态的问题：狂暴解除只移除状态并输出消息，不触发 `updateStates`，避免蓄力中的 `HasteState.faster` 提前写回 speed。
+- 修复主回合更新边界：`main_round()` 在任意可见 update 产生后即停止继续推进，避免状态解除、毒性发作等尾部事件和下一名主体行动合并到同一批更新里。
+- 修复 `prepared_win_rate` 在非 JS profile rq 下仍套用 profile seed 计划的问题；公开切片复测 helper 继续保留旧 profile seed 语义，避免既有复测口径漂移。
 
 ### 重构
 
 - `tswn_cli` 内部模块化大重构：将原先堆在单文件的 `bench.rs` / `fight.rs` / `args.rs` 按职责拆分为 `bench/`（batch / score / winrate / common / output）、`fight/`（driver / trace / raw_bench）和 `args/`（cli / input / parsed）子模块，降低后续维护 CLI 的耦合度。
+- `RunUpdates` 内部新增段落级活动标记，并将换行 helper 命名为 `add_newline()`，让“追加分隔帧”的语义比原先的 `emit(RunUpdate::new_newline)` 更集中。
+- 调整 uncached prepare 回归测试的缓存断言粒度：并行测试共享全局 `prebuilt_groups_cache` 时只清理和检查当前 case 的 key，避免受无关测试缓存项影响。
 
 ## [0.3.9] - 2026-05-26
 

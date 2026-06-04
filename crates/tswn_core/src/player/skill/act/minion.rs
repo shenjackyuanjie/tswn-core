@@ -294,7 +294,7 @@ impl StateTrait for MinionRuntimeState {
         if !self.is_combat_minion() {
             return false;
         }
-        updates.emit(crate::engine::update::RunUpdate::new_newline);
+        updates.add_newline();
         updates.emit(|| crate::engine::update::RunUpdate::new("[1]消失了", owner, self_id, 50));
         true
     }

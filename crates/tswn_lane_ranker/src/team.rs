@@ -26,7 +26,11 @@ impl TeamDsu {
         dsu
     }
 
-    pub fn ensure(&mut self, name: &str) { self.parent.entry(name.to_string()).or_insert_with(|| name.to_string()); }
+    pub fn ensure(&mut self, name: &str) {
+        self.parent
+            .entry(name.to_string())
+            .or_insert_with(|| name.to_string());
+    }
 
     pub fn find(&mut self, name: &str) -> String {
         self.ensure(name);

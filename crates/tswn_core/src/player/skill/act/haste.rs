@@ -198,7 +198,7 @@ impl StateTrait for HasteState {
             return false;
         }
         if alive {
-            updates.emit(RunUpdate::new_newline);
+            updates.add_newline();
             updates.emit(|| RunUpdate::new("[1]从[疾走]中解除", owner, owner, 0));
         }
         true

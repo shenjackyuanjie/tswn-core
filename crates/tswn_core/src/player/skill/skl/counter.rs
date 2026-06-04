@@ -91,7 +91,7 @@ impl SkillTrait for CounterSkill {
             }
             owner.get_at(false, args.1)
         };
-        args.2.add(crate::engine::update::RunUpdate::new_newline());
+        args.2.add_newline();
         args.2.add(crate::engine::update::RunUpdate::new(
             "[0]发起[反击][s_counter]",
             args.0,

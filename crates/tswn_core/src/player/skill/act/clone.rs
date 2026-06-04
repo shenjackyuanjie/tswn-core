@@ -164,10 +164,11 @@ impl SkillTrait for CloneSkill {
             let clone_name = cloned.id_name();
             let is_diy = owner_snapshot.skills.is_diy;
             eprintln!(
-                "[clone_debug] owner={} diy={} clone={} attrs={:?} hp={} atk={} def={} spd={} agi={} mag={}",
+                "[clone_debug] owner={} diy={} clone={} factor={} attrs={:?} hp={} atk={} def={} spd={} agi={} mag={}",
                 owner_name,
                 is_diy,
                 clone_name,
+                cloned.name_factor,
                 cloned.attr,
                 cloned.status.hp,
                 cloned.status.attack,

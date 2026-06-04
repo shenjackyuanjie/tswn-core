@@ -56,6 +56,30 @@ fn effective_alive_group(storage: &Arc<crate::engine::storage::Storage>, plr: Pl
     })
 }
 
+// ProtectLink 注册时会保存当时的 level，但 JS 产物里 link 持有的是当前技能对象语义：
+// merge/devour 等效果可能在同一 action 内提升 ProtectSkill 等级，触发守护时应读保护者
+// 身上的最新技能等级。找不到技能时才回退到 link 里保存的旧 level。
+fn current_protect_level(storage: &Arc<crate::engine::storage::Storage>, link: ProtectLink) -> u32 {
+    storage
+        .get_player(&link.owner)
+        .and_then(|protector| {
+            protector
+                .skills
+                .store
+                .get(&26)
+                .filter(|skill| skill.debug_skill_type_name() == std::any::type_name::<ProtectSkill>())
+                .or_else(|| {
+                    protector
+                        .skills
+                        .store
+                        .values()
+                        .find(|skill| skill.debug_skill_type_name() == std::any::type_name::<ProtectSkill>())
+                })
+                .map(|skill| skill.level())
+        })
+        .unwrap_or(link.level)
+}
+
 impl StateTrait for ProtectState {
     fn meta_type(&self) -> i32 { 0 }
 
@@ -93,13 +117,14 @@ impl StateTrait for ProtectState {
                 break;
             };
             let link = self.protect_from[idx];
-            // Dart：pskl.owner.allyGroup == target.group
-            // 保护者使用 allyGroup（会受到 charm 影响），目标使用原始 group
+            // 对齐 Dart/JS：判定是否同组时，保护者侧使用 allyGroup（会受到 charm 影响），
+            // 目标侧使用原始 group，因此被魅惑的保护者不能继续替原队友挡刀。
             let protector_group = effective_group(storage, link.owner);
             let target_group = storage.group_containing(owner).cloned();
             let same_group = protector_group == target_group;
 
-            let trigger_ok = same_group && randomer.r127() < link.level;
+            let link_level = current_protect_level(storage, link);
+            let trigger_ok = same_group && randomer.r127() < link_level;
             let protector_ready = if trigger_ok {
                 storage
                     .just_get_player_mut(link.owner)
@@ -111,7 +136,7 @@ impl StateTrait for ProtectState {
 
             if debug_this {
                 eprintln!(
-                    "[protect_pre_defend] owner={} picked_link_owner={} same_group={} trigger_ok={} protector_ready={} rc4=({}, {})",
+                    "[protect_pre_defend] owner={} picked_link_owner={} same_group={} trigger_ok={} protector_ready={} link_level={} rc4=({}, {})",
                     storage.get_player(&owner).map(|p| p.id_name()).unwrap_or_else(|| format!("#{}", owner)),
                     storage
                         .get_player(&link.owner)
@@ -120,6 +145,7 @@ impl StateTrait for ProtectState {
                     same_group,
                     trigger_ok,
                     protector_ready,
+                    link_level,
                     randomer.i,
                     randomer.j,
                 );
@@ -160,7 +186,8 @@ impl StateTrait for ProtectState {
             }
 
             self.protect_from.remove(idx);
-            // JS: p.Q = null — protector 的 protectTo 在保护失败时被清除
+            // 对齐 JS 里的 `p.Q = null`：本次保护失败后，保护者的 protectTo 也要清掉，
+            // 否则下一次 post_action 会误以为旧 link 仍有效。
             if let Some(protector) = storage.just_get_player_mut(link.owner)
                 && let Some(protect_skill) = protector.skills.store.get_mut(&26)
             {
@@ -472,11 +499,11 @@ impl SkillTrait for ProtectSkill {
         if self.protect_to == next_target {
             if let Some(target_id) = next_target {
                 if Self::link_registered(args.0, target_id, (args.0, args.1, args.2, args.3)) {
-                    // 即使 link 已注册，也需要刷新 level：
-                    // merge/devour 可能在本次 action 中提升了 protect level，
-                    // 但 ProtectLink 中仍存储旧 level，导致 on_pre_defend
-                    // 的 r127() < level 检查使用过时的阈值。
-                    // JS 中 cI() 每次都会重新挂 entry，level 自然是最新值。
+                    // 即使 link 已经注册，也需要重挂一次来刷新 level：
+                    // merge/devour 可能在本次 action 中提升 ProtectSkill 等级，
+                    // 旧 ProtectLink 里仍是注册当刻的 level；如果不刷新，on_pre_defend
+                    // 的 `r127() < level` 会使用过时阈值。
+                    // JS 中 `cI()` 每次都会重新挂 entry，所以这里也保持同样的最新等级语义。
                     self.register_owner(args.0, level, target_id, (args.0, args.1, args.2, args.3));
                     return;
                 }

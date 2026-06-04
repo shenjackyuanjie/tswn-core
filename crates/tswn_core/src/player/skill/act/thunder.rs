@@ -54,7 +54,7 @@ impl SkillTrait for ThunderSkill {
             if !caster_active || !target_alive {
                 continue;
             }
-            args.2.add(RunUpdate::new_newline());
+            args.2.add_newline();
             // JS: if (h.fx > 0 && !h.A && T.dodge(...))
             // 只有目标处于 active（存活且未冻结）时，才会触发闪避判定
             let target_active = args.3.get_player(&target_id).map(|x| x.active()).unwrap_or(false);

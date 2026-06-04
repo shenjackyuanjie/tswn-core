@@ -8,6 +8,7 @@ members = [
   "crates/tswn_wasm",
   "crates/tswn_openbox",
   "crates/tswn_lane_ranker",
+  "crates/tswn_ladder",
 ]
 
 [profile.release]
