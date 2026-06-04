@@ -317,8 +317,8 @@ export function formatMessageText(text, tone) {
         // "回复XX点" 中的数字标绿
         html = html.replace(/(\d+)(?=点)/g, '<span class="message-number">$1</span>');
     }
-    // 瘟疫/体力减少等也标红（数字后跟%或"减少"）
-    html = html.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
+    // 瘟疫/体力减少/剩余血量等也标红
+    html = html.replace(/(\d+)(?=%|减少|点血)/g, '<span class="message-number">$1</span>');
 
     return html;
 }

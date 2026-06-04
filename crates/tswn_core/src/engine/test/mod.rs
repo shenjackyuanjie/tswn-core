@@ -496,7 +496,7 @@ mod bed2 {
             second_updates
                 .updates
                 .iter()
-                .any(|update| update.message == "bed还剩[2]点血" && update.param == Some(2877)),
+                .any(|update| update.message == "[0]还剩[2]点血" && update.param == Some(2877)),
             "blood sacrifice should report the bed2 body's remaining hp"
         );
     }

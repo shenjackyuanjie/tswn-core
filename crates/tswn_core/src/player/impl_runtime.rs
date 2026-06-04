@@ -146,7 +146,7 @@ impl Player {
             .skill_by_id_mut(skill_key)
             .act(vec![ptr], true, (ptr, randomer, updates, storage));
         updates.emit(|| {
-            let mut update = RunUpdate::new("bed还剩[2]点血", ptr, ptr, 0);
+            let mut update = RunUpdate::new("[0]还剩[2]点血", ptr, ptr, 0);
             update.param = Some(self.status.hp.max(0) as u32);
             update
         });

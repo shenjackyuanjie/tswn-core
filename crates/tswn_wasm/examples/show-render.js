@@ -68,15 +68,15 @@ function playerIconClassId(player) {
  * @param {FightPlayer} player — 玩家对象
  * @param {FightState} state — 当前状态
  * @param {FightState} previousState — 上一帧状态
- * @param {{ showHp?: boolean }} [options] — 是否显示 HP mini bar
+ * @param {{ showHp?: boolean, forceHp?: boolean }} [options] — 是否显示 HP mini bar
  * @returns {string} HTML 字符串
  */
-export function actorToken(player, state, previousState, update, { showHp = true } = {}) {
+export function actorToken(player, state, previousState, update, { showHp = true, forceHp = false } = {}) {
     // 仅在血量变化时（或新对象首次出现时）显现血条。
     // 被减速等 debuff 状态不会改变血量，因此不展示血条。
     const isNew = state?._is_new_in_frame;
-    const hpChanged = isNew || previousState == null || Number(state.hp) !== Number(previousState.hp);
-    const shouldShowHp = showHp && hpChanged;
+    const hpChanged = Boolean(state) && (isNew || previousState == null || Number(state.hp) !== Number(previousState.hp));
+    const shouldShowHp = showHp && Boolean(state) && (forceHp || hpChanged);
     const hpMetrics = shouldShowHp ? actorHpMetrics(state, previousState) : null;
     const hpBar = hpMetrics
         ? `
@@ -125,6 +125,10 @@ function syntheticPlayerFromState(playerId, state, playersById) {
     };
 }
 
+function isHpReportTemplate(template) {
+    return template.includes("还剩[2]点血");
+}
+
 /**
  * 根据 playerId 渲染一个角色 token，自动处理幻影/未知角色。
  * @param {number} playerId
@@ -168,7 +172,7 @@ export function renderMessageParam(update, tone, stateMap, previousStateMap, pla
     }
 
     const html = escapeHtml(String(value));
-    if (tone === "damage" || tone === "recover") {
+    if (tone === "damage" || tone === "recover" || isHpReportTemplate(`${update.message_template ?? ""}`)) {
         return `<span class="message-number">${html}</span>`;
     }
     return html;
@@ -188,6 +192,7 @@ export function renderTemplateMessage(update, tone, stateMap, previousStateMap, 
     if (!template) {
         return formatMessageText(`${update.message_rendered ?? ""}`, tone);
     }
+    const forceCasterHp = isHpReportTemplate(template);
 
     let result = template
         .split(/(\[[012]\])/g)
@@ -195,7 +200,7 @@ export function renderTemplateMessage(update, tone, stateMap, previousStateMap, 
         .map((part) => {
             if (part === "[0]") {
                 // 施法者 — 仅在血量变化时显示 HP
-                return renderActorById(update.caster_id, stateMap, previousStateMap, playersById, update, { showHp: true });
+                return renderActorById(update.caster_id, stateMap, previousStateMap, playersById, update, { showHp: true, forceHp: forceCasterHp });
             }
             if (part === "[1]") {
                 // 目标 — 显示 HP
@@ -211,7 +216,7 @@ export function renderTemplateMessage(update, tone, stateMap, previousStateMap, 
 
     // 瘟疫/体力减少等场景：数字后跟 % 或"减少"时标红（即使 tone 不是 damage）
     if (tone !== "damage" && tone !== "recover") {
-        result = result.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
+        result = result.replace(/(\d+)(?=%|减少|点血)/g, '<span class="message-number">$1</span>');
     }
 
     return result;
