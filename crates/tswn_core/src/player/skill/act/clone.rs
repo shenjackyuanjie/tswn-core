@@ -6,7 +6,9 @@ use super::{
     minion::{MinionKind, MinionRuntimeState, alloc_minion_name, root_minion_name_owner_id},
     summon::{SUMMON_SHARE_DAMAGE_SKILL_KEY, ensure_summon_share_damage_skill},
 };
-use crate::engine::update::RunUpdate;
+use std::sync::Arc;
+
+use crate::engine::{storage::Storage, update::RunUpdate};
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId, eval_name,
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
@@ -109,7 +111,7 @@ impl SkillTrait for CloneSkill {
                     .map(|skill| skill.level() > 0)
                     .unwrap_or(false)
             })
-            .map(|_| args.0);
+            .and_then(|_| root_share_damage_owner_id(args.3, args.0));
         cloned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
         cloned.set_display_name_override(Some(owner_display_name));
         cloned.reset_minion_name_counter();
@@ -258,4 +260,16 @@ impl SkillTrait for CloneSkill {
         // 记录 owner 这次用完 `分身` 后的最终当前熟练度，供 `post_act_level()` 回写。
         self.final_level = Some(decayed_level);
     }
+}
+
+fn root_share_damage_owner_id(storage: &Arc<Storage>, start_id: PlrId) -> Option<PlrId> {
+    let mut current = start_id;
+    for _ in 0..32 {
+        let player = storage.get_player(&current)?;
+        let Some(state) = player.get_state::<MinionRuntimeState>() else {
+            return Some(current);
+        };
+        current = state.share_damage_owner.or(state.owner)?;
+    }
+    Some(current)
 }
