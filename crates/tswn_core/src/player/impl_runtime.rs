@@ -109,6 +109,45 @@ impl Player {
         self.update_states();
     }
 
+    pub fn avoids_targeted_actions(&self) -> bool { self.player_type == PlayerType::Bed2 }
+
+    fn bed2_summon_skill_key(&self) -> Option<usize> {
+        let summon_id = crate::player::skill::skill_name_to_id("summon")?;
+        self.skills
+            .skill
+            .iter()
+            .copied()
+            .find(|key| *key == summon_id && self.skills.store.get(key).map(|skill| skill.level() > 0).unwrap_or(false))
+    }
+
+    fn bed2_has_alive_summon(&self, storage: &Arc<Storage>) -> bool {
+        let Some(skill_key) = self.bed2_summon_skill_key() else {
+            return false;
+        };
+        let Some(summoned_id) = self.skills.skill_by_id(skill_key).summon_minion_id() else {
+            return false;
+        };
+        storage
+            .get_player_or_pending(&summoned_id)
+            .map(|summoned| summoned.alive())
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn bed2_try_summon(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
+        if self.bed2_has_alive_summon(storage) {
+            return false;
+        }
+        let Some(skill_key) = self.bed2_summon_skill_key() else {
+            return false;
+        };
+        let ptr = self.as_ptr();
+        updates.mark_primary_action();
+        self.skills
+            .skill_by_id_mut(skill_key)
+            .act(vec![ptr], true, (ptr, randomer, updates, storage));
+        true
+    }
+
     pub fn step(
         &mut self,
         randomer: &mut RC4,
@@ -131,6 +170,9 @@ impl Player {
     {
         if !self.status.alive() {
             return false;
+        }
+        if self.player_type == PlayerType::Bed2 {
+            return self.bed2_try_summon(randomer, updates, storage);
         }
         let step_byte = randomer.next_u8();
         let step_roll = step_byte & 3;
@@ -1692,6 +1734,12 @@ impl Player {
     #[inline]
     pub fn id_key_name(&self) -> String {
         let id_name = self.id_name();
+        if self.player_type == PlayerType::Bed2 {
+            return match self.team.as_ref().filter(|team| !team.is_empty() && *team != &id_name) {
+                Some(team) => format!("{}@{}@bed2", id_name, team),
+                None => format!("{id_name}@bed2"),
+            };
+        }
         if let Some(team) = self.team.as_ref()
             && !team.is_empty()
             && team != &id_name
@@ -2048,6 +2096,10 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
+        if self.avoids_targeted_actions() && caster != self.as_ptr() {
+            updates.emit(|| RunUpdate::new("[0][回避]了攻击", self.as_ptr(), caster, 20));
+            return 0;
+        }
         atp = self.pre_defend(atp, is_mag, caster, on_damage, randomer, updates, storage);
         if atp == 0.0 {
             return 0;

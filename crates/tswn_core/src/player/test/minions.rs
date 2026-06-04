@@ -1265,3 +1265,59 @@ fn owner_death_removes_linked_minions_in_roster_order() {
     let pending_remove = storage.take_pending_remove_players();
     assert_eq!(pending_remove, vec![minion0_id, minion1_id]);
 }
+
+#[test]
+fn bed2_summon_uses_base_player_template() {
+    let storage = Storage::new_arc();
+    let mut normal =
+        Player::new_from_namerena_raw("alpha@red+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12,\"sklshadow\":8,\"sklsummon\":7}}".to_string(), storage.clone())
+            .unwrap();
+    normal.build();
+    let expected_attr = normal.attr;
+    let expected_rapid = normal.skills.skill_by_id(6).level();
+    let expected_critical = normal.skills.skill_by_id(7).level();
+
+    let mut bed2 =
+        Player::new_from_namerena_raw("alpha@red@bed2+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12,\"sklshadow\":8,\"sklsummon\":7}}".to_string(), storage.clone())
+            .unwrap();
+    bed2.build();
+    assert_eq!(bed2.attr, [0, 99, 0, 0, 0, 99, 0, 3000]);
+    assert_eq!(bed2.skills.skill, vec![22]);
+    let bed2_id = storage.just_insert_player(bed2);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    assert!(
+        storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage)
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned = &pending[0].player;
+    assert_eq!(summoned.attr, expected_attr);
+    assert_eq!(summoned.id_key_name(), "alpha?0@red");
+    assert_eq!(
+        summoned.skills.slot_skill,
+        crate::player::skill::classified_summon_minion_skill_slot_order()
+    );
+    assert_eq!(
+        summoned
+            .skills
+            .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 6)
+            .level(),
+        expected_rapid
+    );
+    assert_eq!(
+        summoned
+            .skills
+            .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 7)
+            .level(),
+        expected_critical
+    );
+    assert!(summoned.overlay.as_ref().and_then(|overlay| overlay.shadow.as_ref()).is_some());
+    assert!(summoned.overlay.as_ref().and_then(|overlay| overlay.summon.as_ref()).is_some());
+    assert!(updates.updates.iter().any(|update| update.caster == bed2_id && update.target == bed2_id));
+}

@@ -189,6 +189,26 @@ fn ol_overlay_with_summon_skill_map_keeps_main_attrs() {
 }
 
 #[test]
+fn bed2_marker_parses_as_type_and_body_overlay() {
+    let storage = Storage::new_arc();
+    let mut player = Player::new_from_namerena_raw("alpha@red@bed2".to_string(), storage).unwrap();
+
+    assert_eq!(player.name, "alpha");
+    assert_eq!(player.team, Some("red".to_string()));
+    assert_eq!(player.player_type(), PlayerType::Bed2);
+    assert_eq!(player.clan_name(), "red");
+    assert_eq!(player.id_key_name(), "alpha@red@bed2");
+    assert_eq!(Player::raw_namerena_to_idname("alpha@red@bed2"), "alpha@red@bed2");
+
+    player.build();
+    assert_eq!(player.attr, [0, 99, 0, 0, 0, 99, 0, 3000]);
+    assert_eq!(player.get_status().max_hp, 3000);
+    assert_eq!(player.skills.skill, vec![22]);
+    assert_eq!(player.skills.skill_by_id(22).level(), 255);
+    assert!(player.overlay.as_ref().and_then(|overlay| overlay.summon.as_ref()).is_some());
+}
+
+#[test]
 fn ol_overlay_allows_player_diy_minion_skill_slots() {
     let storage = Storage::new_arc();
     let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklfire":3,"sklfire1":5,"summon:sklfire2":7,"sklexplode":11,"sklpossess":13}}"#;

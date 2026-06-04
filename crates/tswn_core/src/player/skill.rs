@@ -849,6 +849,8 @@ pub trait SkillTrait: Debug + Send + Sync {
     /// 潜行锁定的目标 ID（默认 None，仅 AssassinateSkill 实现）
     fn assassinate_target(&self) -> Option<PlrId> { None }
 
+    fn summon_minion_id(&self) -> Option<PlrId> { None }
+
     /// 仅供读取短时 update_state 运行时态使用。
     /// 默认关闭，只有少数带“一段时间内持续生效”的技能会在激活时返回 true。
     fn dynamic_update_state_enabled(&self) -> bool { false }
@@ -1245,6 +1247,8 @@ impl Skill {
     pub fn charge_step(&self) -> i32 { self.skill_type.charge_step() }
 
     pub fn assassinate_target(&self) -> Option<PlrId> { self.skill_type.assassinate_target() }
+
+    pub fn summon_minion_id(&self) -> Option<PlrId> { self.skill_type.summon_minion_id() }
 
     pub fn dynamic_update_state_enabled(&self) -> bool { self.level > 0 && self.skill_type.dynamic_update_state_enabled() }
 

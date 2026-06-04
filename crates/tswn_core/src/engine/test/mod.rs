@@ -276,3 +276,132 @@ mod prepared_raw_consistency {
         );
     }
 }
+
+mod bed2 {
+    use super::*;
+    use crate::engine::update::RunUpdates;
+    use crate::rc4::RC4;
+
+    #[test]
+    fn opening_round_summons_and_body_is_not_targetable() {
+        let mut runner = runners::Runner::new_from_namerena_raw(
+            "alpha@red@bed2+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12}}\n\nbeta@blue"
+                .to_string(),
+        )
+        .unwrap();
+
+        let bed2_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.player_type() == crate::player::PlayerType::Bed2))
+            .expect("bed2 player should exist");
+        assert_eq!(runner.world.all_plr_len(), 2);
+
+        let first_updates = runner.main_round();
+        assert!(
+            first_updates
+                .updates
+                .iter()
+                .any(|update| update.caster == bed2_id && update.target == bed2_id && update.message.contains("血祭")),
+            "first main_round should contain the opening summon"
+        );
+        assert_eq!(
+            first_updates
+                .updates
+                .iter()
+                .filter(|update| update.caster != bed2_id || update.target != bed2_id)
+                .count(),
+            1,
+            "opening round should only include the summon announcement besides the skill cast"
+        );
+        assert_eq!(runner.world.all_plr_len(), 3);
+
+        let summon_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| *id != bed2_id && runner.storage.get_player(id).is_some_and(|player| player.id_name().starts_with("alpha?")))
+            .expect("bed2 summon should be synced into the world");
+        let enemy_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.id_name() == "beta"))
+            .expect("enemy should exist");
+
+        let targets = crate::engine::tick::select_targets(enemy_id, &runner.world, &runner.storage);
+        assert!(!targets.enemy_alive.contains(&bed2_id));
+        assert!(!targets.all_alive.contains(&bed2_id));
+        assert!(targets.enemy_alive.contains(&summon_id));
+        assert!(targets.all_alive.contains(&summon_id));
+
+        let before_hp = runner.storage.get_player(&bed2_id).unwrap().get_status().hp;
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+        let damage = runner.storage.just_get_player_mut(bed2_id).unwrap().attacked(
+            1_000_000.0,
+            false,
+            enemy_id,
+            crate::player::noop_on_damage,
+            &mut randomer,
+            &mut updates,
+            &runner.storage,
+        );
+        assert_eq!(damage, 0);
+        assert_eq!(runner.storage.get_player(&bed2_id).unwrap().get_status().hp, before_hp);
+        assert!(updates.updates.iter().any(|update| update.message.contains("回避")));
+    }
+
+    #[test]
+    fn resummons_after_own_summon_dies() {
+        let mut runner =
+            runners::Runner::new_from_namerena_raw("alpha@red@bed2\n\nbeta@blue".to_string()).unwrap();
+        let bed2_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.player_type() == crate::player::PlayerType::Bed2))
+            .expect("bed2 player should exist");
+        let enemy_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.id_name() == "beta"))
+            .expect("enemy should exist");
+
+        let first_updates = runner.main_round();
+        assert!(first_updates.updates.iter().any(|update| update.caster == bed2_id && update.target == bed2_id));
+        let summon_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| *id != bed2_id && runner.storage.get_player(id).is_some_and(|player| player.id_name().starts_with("alpha?")))
+            .expect("first summon should exist");
+
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+        let summon_hp = runner.storage.get_player(&summon_id).unwrap().get_status().hp;
+        runner.storage.just_get_player_mut(summon_id).unwrap().damage(
+            summon_hp,
+            enemy_id,
+            crate::player::noop_on_damage,
+            &mut randomer,
+            &mut updates,
+            &runner.storage,
+        );
+        assert!(!runner.storage.get_player(&summon_id).unwrap().alive());
+
+        let second_updates = runner.main_round();
+        assert!(
+            second_updates
+                .updates
+                .iter()
+                .any(|update| update.caster == bed2_id && update.target == bed2_id),
+            "next main_round should resummon after the previous summon died"
+        );
+        let revived_summon = runner.storage.get_player(&summon_id).expect("summon should be reused");
+        assert!(revived_summon.alive());
+        assert!(runner.world.all_plrs().contains(&summon_id));
+    }
+}

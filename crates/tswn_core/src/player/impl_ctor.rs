@@ -114,6 +114,27 @@ impl Player {
         storage: Arc<Storage>,
         force_normal_type: bool,
     ) -> PlayerResult<Self> {
+        Self::new_and_init_inner_with_type(team, name, weapon, overlay, storage, force_normal_type, None)
+    }
+
+    pub(super) fn new_and_init_as_bed2(
+        team: Option<String>,
+        name: String,
+        overlay: PlayerOverlay,
+        storage: Arc<Storage>,
+    ) -> PlayerResult<Self> {
+        Self::new_and_init_inner_with_type(team, name, None, Some(overlay), storage, false, Some(PlayerType::Bed2))
+    }
+
+    fn new_and_init_inner_with_type(
+        team: Option<String>,
+        name: String,
+        weapon: Option<String>,
+        overlay: Option<PlayerOverlay>,
+        storage: Arc<Storage>,
+        force_normal_type: bool,
+        forced_player_type: Option<PlayerType>,
+    ) -> PlayerResult<Self> {
         // 先校验长度
         if let Some(t) = team.as_ref()
             && t.len() > TEAM_MAX_LEN
@@ -124,7 +145,9 @@ impl Player {
             return Err(PlayerError::NameTooLong(name.len(), name.len()));
         }
         let player_type = {
-            if force_normal_type {
+            if let Some(player_type) = forced_player_type {
+                player_type
+            } else if force_normal_type {
                 PlayerType::Normal
             } else if let Some(t) = team.as_ref() {
                 match t.as_str() {

@@ -107,22 +107,41 @@ pub(super) fn select_targets_for_player(
             storage.get_player(&id).map(|player| player.alive()).unwrap_or(false)
         }
     };
+    let can_be_targeted = |id: PlrId| {
+        if id == actor {
+            !actor_player.avoids_targeted_actions()
+        } else {
+            !storage
+                .get_player(&id)
+                .map(|player| player.avoids_targeted_actions())
+                .unwrap_or(false)
+        }
+    };
     let mut ally_alive: PlrVec = world
         .team_alive(effective_team)
         .into_iter()
         .flatten()
         .copied()
-        .filter(|id| is_storage_alive(*id))
+        .filter(|id| is_storage_alive(*id) && can_be_targeted(*id))
         .collect();
-    let ally_all = team_roster.clone();
-    let ally_dead: PlrVec = team_roster.iter().copied().filter(|id| !is_storage_alive(*id)).collect();
+    let ally_all: PlrVec = team_roster.iter().copied().filter(|id| can_be_targeted(*id)).collect();
+    let ally_dead: PlrVec = team_roster
+        .iter()
+        .copied()
+        .filter(|id| !is_storage_alive(*id) && can_be_targeted(*id))
+        .collect();
     // 使用 world.flat_alive 而非从 teams 重建，以保持与 JS Engine.e 相同的全局存活顺序。
     // JS 的 pickSkipRange 依赖 all_alive 中各实体的精确位置，当复活/召唤导致
     // 实体追加到末尾时，按 team 迭代重建会把它们放回 team 槽位，与 JS 顺序不同。
     let mut all_alive: PlrVec = PlrVec::new();
     let mut enemy_alive: PlrVec = PlrVec::new();
     let mut enemy_skip_indices = smallvec::SmallVec::<[usize; 4]>::new();
-    for id in world.flat_alive.iter().copied().filter(|id| is_storage_alive(*id)) {
+    for id in world
+        .flat_alive
+        .iter()
+        .copied()
+        .filter(|id| is_storage_alive(*id) && can_be_targeted(*id))
+    {
         let idx = all_alive.len();
         all_alive.push(id);
         if ally_alive.contains(&id) {
@@ -135,7 +154,7 @@ pub(super) fn select_targets_for_player(
     // sync_runtime_entities，这里先把 pending spawn 暴露给当前行动的选目标视图。
     let mut pending_team_indices: Vec<(PlrId, usize)> = Vec::new();
     for pending in storage.iter_pending_spawns() {
-        if !pending.player.alive() {
+        if !pending.player.alive() || pending.player.avoids_targeted_actions() {
             continue;
         }
         let pending_id = pending.player.as_ptr();

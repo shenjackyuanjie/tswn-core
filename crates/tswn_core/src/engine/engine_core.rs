@@ -182,8 +182,41 @@ impl EngineCore {
         Self::debug_world_state("post_sync", world, storage);
     }
 
+    fn trigger_bed2_resummons(
+        &self,
+        world: &mut WorldState,
+        storage: &Arc<Storage>,
+        randomer: &mut RC4,
+        updates: &mut RunUpdates,
+    ) -> bool {
+        let mut summoned = false;
+        let mut ids = world.players.clone();
+        let roster_ids = world.all_plrs();
+        for id in roster_ids {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        for id in ids {
+            let Some(player) = storage.just_get_player_mut(id) else {
+                continue;
+            };
+            if player.player_type() != crate::player::PlayerType::Bed2 || !player.alive() {
+                continue;
+            }
+            summoned |= player.bed2_try_summon(randomer, updates, storage);
+        }
+        if storage.needs_sync() {
+            self.sync_runtime_entities(world, storage);
+        }
+        summoned
+    }
+
     pub fn tick(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) -> bool {
         self.sync_runtime_entities(world, storage);
+        if self.trigger_bed2_resummons(world, storage, randomer, updates) {
+            return true;
+        }
         if world.have_winner() {
             return false;
         }

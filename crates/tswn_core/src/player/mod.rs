@@ -217,6 +217,7 @@ pub enum PlayerType {
     Normal,
     Seed,
     Clone,
+    Bed2,
     Boss,
     Boost,
     Test1,

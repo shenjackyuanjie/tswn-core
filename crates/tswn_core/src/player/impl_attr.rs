@@ -38,6 +38,7 @@
 //! player.build(); // 计算属性
 //! ```
 
+use super::overlay::MinionOverlay;
 use super::utils::{trim_js_line_end, trim_js_name_like};
 use super::*;
 
@@ -153,6 +154,189 @@ fn split_by_plus_outside_quotes(raw: &str) -> Vec<String> {
 }
 
 impl Player {
+    fn skill_boost_for_overlay_export(skill: &Skill) -> SkillBoost {
+        match &skill.diy_boost {
+            Some(SkillBoost::SlotBoost { boost, .. }) => {
+                SkillBoost::SlotBoost {
+                    base: skill.level().saturating_sub(*boost),
+                    boost: *boost,
+                }
+            }
+            Some(SkillBoost::LastBoost(_)) => SkillBoost::LastBoost(skill.level() / 2),
+            _ => SkillBoost::Normal(skill.level()),
+        }
+    }
+
+    fn overlay_skill_levels_for_ol_export(&self, prefix_normal_skills: bool) -> Vec<(String, SkillBoost)> {
+        let mut skills = Vec::new();
+        for skill_key in &self.skills.skill {
+            let skill = self.skills.skill_by_id(*skill_key);
+            if skill.level() == 0 {
+                continue;
+            }
+            let name = crate::player::skill::classified_player_skill_name_for_export(*skill_key)
+                .unwrap_or_else(|| {
+                    let name = skill_name_for_export(*skill_key);
+                    if prefix_normal_skills {
+                        format!("normal:{name}")
+                    } else {
+                        name
+                    }
+                });
+            skills.push((name, Self::skill_boost_for_overlay_export(skill)));
+        }
+        skills
+    }
+
+    fn minion_overlay_skill_levels_for_ol_export(&self) -> Vec<(String, SkillBoost)> {
+        let mut skills = Vec::new();
+        let mut seen_names: Vec<String> = Vec::new();
+        let classified_slots = self.skills.slot_skill == crate::player::skill::classified_player_skill_slot_order();
+        for skill_key in &self.skills.skill {
+            let Some(skill) = self.skills.store.get(skill_key) else {
+                continue;
+            };
+            if skill.level() == 0 {
+                continue;
+            }
+            let name = if classified_slots && *skill_key < 40 {
+                format!("normal:{}", skill_name_for_export(*skill_key))
+            } else {
+                minion_skill_name_for_export(*skill_key, skill)
+            };
+            if seen_names.iter().any(|seen| seen == &name) {
+                continue;
+            }
+            seen_names.push(name.clone());
+            skills.push((name, Self::skill_boost_for_overlay_export(skill)));
+        }
+        skills
+    }
+
+    fn summon_minion_overlay_skill_levels_for_ol_export(&self) -> Vec<(String, SkillBoost)> {
+        let mut skills = Vec::new();
+        for skill_key in &self.skills.skill {
+            let Some(skill) = self.skills.store.get(skill_key) else {
+                continue;
+            };
+            if skill.level() == 0 {
+                continue;
+            }
+            skills.push((
+                summon_skill_name_for_export(*skill_key, skill),
+                Self::skill_boost_for_overlay_export(skill),
+            ));
+        }
+        skills
+    }
+
+    fn overlay_from_built_minion(minion: &Self, kind: crate::player::skill::act::minion::MinionKind) -> MinionOverlay {
+        let is_summon = kind == crate::player::skill::act::minion::MinionKind::Summon;
+        MinionOverlay {
+            attrs: Some(minion.attr.map(|value| value as i32)),
+            skills: Some(if is_summon {
+                minion.summon_minion_overlay_skill_levels_for_ol_export()
+            } else {
+                minion.minion_overlay_skill_levels_for_ol_export()
+            }),
+            reuse_skills_on_recast: is_summon,
+            inherit_owner_def_res: is_summon,
+            ..Default::default()
+        }
+    }
+
+    fn summon_overlay_from_player_template(template: &Self) -> MinionOverlay {
+        let storage = Storage::new_arc();
+        let shadow = if template.should_export_minion(24, None) {
+            template
+                .build_shadow_export_minion(None, storage.clone())
+                .map(|minion| Self::overlay_from_built_minion(&minion, crate::player::skill::act::minion::MinionKind::Shadow))
+                .map(Box::new)
+        } else {
+            None
+        };
+        let summon = if template.should_export_minion(22, None) {
+            template
+                .build_summon_export_minion(None, storage.clone())
+                .map(|minion| Self::overlay_from_built_minion(&minion, crate::player::skill::act::minion::MinionKind::Summon))
+                .map(Box::new)
+        } else {
+            None
+        };
+        let zombie = if template.should_export_minion(32, None) {
+            template
+                .build_zombie_export_minion(None, storage)
+                .map(|minion| Self::overlay_from_built_minion(&minion, crate::player::skill::act::minion::MinionKind::Zombie))
+                .map(Box::new)
+        } else {
+            None
+        };
+
+        MinionOverlay {
+            attrs: Some(template.attr.map(|value| value as i32)),
+            skills: Some(template.overlay_skill_levels_for_ol_export(true)),
+            reuse_skills_on_recast: true,
+            inherit_owner_def_res: false,
+            shadow,
+            summon,
+            zombie,
+        }
+    }
+
+    fn bed2_overlay_from_base_player(base: &Self) -> PlayerOverlay {
+        PlayerOverlay {
+            attrs: Some([0, 99, 0, 0, 0, 99, 0, 3000]),
+            skills: Some(vec![("sklsummon".to_string(), SkillBoost::Normal(255))]),
+            weapon: None,
+            name_factor_enabled: false,
+            shadow: None,
+            summon: Some(Self::summon_overlay_from_player_template(base)),
+            zombie: None,
+        }
+    }
+
+    fn bed2_overlay_from_parts(
+        name: &str,
+        team: Option<&str>,
+        user_overlay: Option<PlayerOverlay>,
+        storage: &Arc<Storage>,
+    ) -> PlayerResult<PlayerOverlay> {
+        let base_storage = Storage::new_arc_with_eval_rq(storage.eval_rq());
+        let mut base = Player::new_and_init_with_overlay(team.map(str::to_string), name.to_string(), None, user_overlay, base_storage)?;
+        base.build();
+        Ok(Self::bed2_overlay_from_base_player(&base))
+    }
+
+    fn new_bed2_from_parts(
+        name: &str,
+        team: Option<&str>,
+        user_overlay: Option<PlayerOverlay>,
+        storage: Arc<Storage>,
+    ) -> PlayerResult<Self> {
+        let overlay = Self::bed2_overlay_from_parts(name, team, user_overlay, &storage)?;
+        Player::new_and_init_as_bed2(team.map(str::to_string), name.to_string(), overlay, storage)
+    }
+
+    pub(crate) fn refresh_bed2_overlay(&mut self, storage: &Arc<Storage>) -> PlayerResult<()> {
+        if self.player_type != PlayerType::Bed2 {
+            return Ok(());
+        }
+        let base_storage = Storage::new_arc_with_eval_rq(storage.eval_rq());
+        let mut base = Player::new_and_init(self.team.clone(), self.name.clone(), None, base_storage)?;
+        base.name_base = self.name_base.clone();
+        base.raw_name_base = self.raw_name_base;
+        base.build();
+        self.overlay = Some(Box::new(Self::bed2_overlay_from_base_player(&base)));
+        Ok(())
+    }
+
+    fn split_bed2_team_marker(team: &str) -> (&str, bool) {
+        match team.rsplit_once('@') {
+            Some((team, "bed2")) if !team.is_empty() => (team, true),
+            _ => (team, false),
+        }
+    }
+
     /// 根据名字系数调整数值
     ///
     /// ```javascript
@@ -288,6 +472,12 @@ impl Player {
         if let Some(skill_levels) = diy_skill_levels.as_ref() {
             // 覆盖配置模式：直接用指定的等级覆盖技能，不走名字推导和 boost。
             crate::player::skill::apply_diy_skill_levels(&mut self.skills, skill_levels);
+            if self.player_type == PlayerType::Bed2
+                && let Some(summon_key) = crate::player::skill::skill_name_to_id("summon")
+            {
+                self.skills.slot_skill = vec![summon_key];
+                self.skills.skill = vec![summon_key];
+            }
         } else {
             // JS PlrBoss.dm() 覆写了 initSkills：Boss 的全部 40 个技能等级为 0。
             // 创建 40 个技能仅为了 `action` 循环中 `k4` 的概率字节消费，
@@ -946,7 +1136,12 @@ impl Player {
             } else {
                 weapon = None;
             }
-            Player::new_and_init_with_overlay(Some(team.to_string()), name.to_string(), weapon, overlay, storage)
+            let (team, is_bed2) = Self::split_bed2_team_marker(team);
+            if is_bed2 {
+                Player::new_bed2_from_parts(name, Some(team), overlay, storage)
+            } else {
+                Player::new_and_init_with_overlay(Some(team.to_string()), name.to_string(), weapon, overlay, storage)
+            }
         } else {
             // 无队伍名：按 + 分离名字和武器/overlay
             if raw_name.contains("+") {
@@ -999,8 +1194,11 @@ impl Player {
             raw_name
         };
         if let Some((name, team)) = no_weapon.split_once("@") {
+            let (team, is_bed2) = Self::split_bed2_team_marker(team);
             if team.is_empty() || team == name || team.contains(":") {
-                name.to_string()
+                if is_bed2 { format!("{name}@bed2") } else { name.to_string() }
+            } else if is_bed2 {
+                format!("{name}@{team}@bed2")
             } else {
                 format!("{name}@{team}")
             }

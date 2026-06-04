@@ -379,6 +379,14 @@ impl Runner {
                 }
             }
         }
+        drop(local_plrs);
+
+        for group in &inited_plrs {
+            for ptr in group {
+                let plr = storage.just_get_player_mut(*ptr).expect("plr not found when refreshing bed2 overlay");
+                plr.refresh_bed2_overlay(&storage)?;
+            }
+        }
 
         // 与 Dart 对齐：按 id_name 排序后逐个 build。
         let mut sorted_plrs = inited_plrs.iter().flatten().copied().collect::<Vec<PlrId>>();

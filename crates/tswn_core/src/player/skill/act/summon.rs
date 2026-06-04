@@ -48,6 +48,8 @@ impl SkillTrait for SummonSkill {
 
     fn clone_box(&self) -> Box<dyn SkillTrait> { Box::new(self.clone()) }
 
+    fn summon_minion_id(&self) -> Option<PlrId> { self.summoned }
+
     fn has_action_impl(&self) -> bool { true }
 
     fn target_domain(&self) -> SkillTargetDomain { SkillTargetDomain::SelfOnly }
