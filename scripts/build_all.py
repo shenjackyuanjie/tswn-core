@@ -77,6 +77,7 @@ dist/all/tswn_core_x_y_z_capi_a_b_c_py_m_n_k_wasm_p_q_r_openbox_u_v_w_bundle/
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import shutil
 import subprocess
@@ -113,9 +114,12 @@ CAPI_BUILD_SCRIPT = SCRIPTS_DIR / "build_capi.py"
 WASM_BUILD_SCRIPT = SCRIPTS_DIR / "build_wasm.py"
 
 
-def run(cmd: Sequence[str | Path], cwd: Path = ROOT) -> None:
+OHOS_DEFAULT_TARGET = "aarch64-unknown-linux-ohos"
+
+
+def run(cmd: Sequence[str | Path], cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
     print(f"$ {' '.join(str(x) for x in cmd)}", flush=True)
-    subprocess.run([str(x) for x in cmd], cwd=str(cwd), check=True)
+    subprocess.run([str(x) for x in cmd], cwd=str(cwd), env=env, check=True)
 
 
 def ensure_exists(path: Path, desc: str) -> None:
@@ -216,6 +220,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--cli-features",
         default="no_debug,mimalloc_alloc",
         help="CLI 构建 features，逗号分隔；传空字符串表示不追加 features（默认：no_debug,mimalloc_alloc）",
+    )
+    p.add_argument(
+        "--include-ohos-cli",
+        action="store_true",
+        help="额外构建 OpenHarmony/OHOS tswn-cli，并打包为未签名 .bin（默认关闭，需要 OHOS native SDK）",
+    )
+    p.add_argument(
+        "--ohos-target",
+        default=OHOS_DEFAULT_TARGET,
+        help=f"OHOS CLI cargo target triple（默认：{OHOS_DEFAULT_TARGET}）",
+    )
+    p.add_argument(
+        "--ohos-sdk",
+        default=None,
+        help="OpenHarmony native SDK 目录；默认读取 OHOS_NATIVE_SDK",
+    )
+    p.add_argument(
+        "--ohos-cli-features",
+        default="no_debug",
+        help="OHOS CLI 构建 features，逗号分隔；传空字符串表示不追加 features（默认：no_debug）",
     )
     p.add_argument(
         "--openbox-features",
@@ -353,6 +377,12 @@ def bundled_cli_binary_name(src_binary: Path) -> str:
     return f"tswn-cli_alpha_{version}{suffix}"
 
 
+def bundled_ohos_cli_binary_name(target: str) -> str:
+    version = _version_token(tswn_core_version())
+    target_token = target.replace("-", "_")
+    return f"tswn-cli_alpha_{version}_{target_token}_unsigned.bin"
+
+
 def bundled_openbox_binary_name(src_binary: Path) -> str:
     version = _version_token(tswn_openbox_version())
     suffix = ".exe" if src_binary.suffix.lower() == ".exe" else ".bin"
@@ -410,6 +440,73 @@ def collect_existing_linux_capi_artifacts(dst_dir: Path) -> None:
     copy_file(LINUX_CAPI_ARTIFACT, lib_dir / LINUX_CAPI_ARTIFACT.name)
 
 
+def ohos_env_key_suffix(target: str) -> str:
+    return target.replace("-", "_")
+
+
+def ohos_link_target(target: str) -> str:
+    mapping = {
+        "aarch64-unknown-linux-ohos": "aarch64-linux-ohos",
+        "armv7-unknown-linux-ohos": "arm-linux-ohos",
+        "x86_64-unknown-linux-ohos": "x86_64-linux-ohos",
+    }
+    try:
+        return mapping[target]
+    except KeyError as err:
+        raise ValueError(f"暂不支持的 OHOS target: {target}") from err
+
+
+def ohos_tool(native_sdk: Path, name: str) -> Path:
+    system = platform.system().lower()
+    suffix = ".exe" if system == "windows" else ""
+    return native_sdk / "llvm" / "bin" / f"{name}{suffix}"
+
+
+def build_ohos_env(native_sdk: Path, target: str) -> dict[str, str]:
+    sdk = native_sdk.resolve()
+    clang = ohos_tool(sdk, "clang")
+    clangxx = ohos_tool(sdk, "clang++")
+    ar = ohos_tool(sdk, "llvm-ar")
+    sysroot = sdk / "sysroot"
+    cmake_toolchain = sdk / "build" / "cmake" / "ohos.toolchain.cmake"
+
+    required_files = [clang, clangxx, ar, cmake_toolchain]
+    for path in required_files:
+        ensure_exists(path, "OpenHarmony SDK 文件")
+    if not sysroot.exists() or not sysroot.is_dir():
+        raise FileNotFoundError(f"找不到 OpenHarmony SDK sysroot: {sysroot}")
+
+    link_target = ohos_link_target(target)
+    suffix = ohos_env_key_suffix(target)
+    suffix_upper = suffix.upper()
+    common_flags = f'-target {link_target} --sysroot="{sysroot}" -D__MUSL__'
+
+    env = os.environ.copy()
+    env["OHOS_NATIVE_SDK"] = str(sdk)
+    env[f"CARGO_TARGET_{suffix_upper}_LINKER"] = str(clang)
+    env[f"AR_{suffix}"] = str(ar)
+    env[f"CC_{suffix}"] = str(clang)
+    env[f"CXX_{suffix}"] = str(clangxx)
+    env["CC_SHELL_ESCAPED_FLAGS"] = "1"
+    env[f"CFLAGS_{suffix}"] = common_flags
+    env[f"CXXFLAGS_{suffix}"] = common_flags
+    env[f"CMAKE_TOOLCHAIN_FILE_{suffix}"] = str(cmake_toolchain)
+
+    sep = "\x1f"
+    rustflags = [
+        "-Z",
+        "mutable-noalias=no",
+        "-Clink-arg=-target",
+        f"-Clink-arg={link_target}",
+        f"-Clink-arg=--sysroot={sysroot}",
+        "-Clink-arg=-D__MUSL__",
+    ]
+    if env.get("CARGO_ENCODED_RUSTFLAGS"):
+        rustflags.extend(env["CARGO_ENCODED_RUSTFLAGS"].split(sep))
+    env["CARGO_ENCODED_RUSTFLAGS"] = sep.join(rustflags)
+    return env
+
+
 def build_cli(
     dst_dir: Path,
     release: bool,
@@ -448,6 +545,43 @@ def build_cli(
     collect_existing_linux_cli_artifacts(dst_dir, copied_support)
 
     return bundled_binary, copied_support
+
+
+def build_ohos_cli(
+    dst_dir: Path,
+    target: str,
+    native_sdk: Path,
+    cli_features: str,
+    extra_cargo: list[str],
+) -> Path:
+    env = build_ohos_env(native_sdk=native_sdk, target=target)
+    out_dir = cargo_profile_dir(release=True, target=target)
+
+    cmd: list[str] = [
+        "cargo",
+        "build",
+        "-p",
+        "tswn_core",
+        "--bin",
+        "tswn-cli",
+        "--release",
+        "--target",
+        target,
+    ]
+    if cli_features.strip():
+        cmd += ["--features", cli_features]
+    if extra_cargo:
+        cmd += extra_cargo
+
+    run(cmd, cwd=ROOT, env=env)
+
+    binary = find_cli_binary(out_dir)
+    bin_dir = dst_dir / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    bundled_binary = bin_dir / bundled_ohos_cli_binary_name(target)
+    copy_file(binary, bundled_binary)
+    return bundled_binary
 
 
 def build_openbox(
@@ -490,7 +624,12 @@ def build_openbox(
     return bundled_binary, copied_support
 
 
-def write_cli_readme(dst_dir: Path, binary_path: Path, support_files: list[Path]) -> None:
+def write_cli_readme(
+    dst_dir: Path,
+    binary_path: Path,
+    support_files: list[Path],
+    ohos_binary_path: Path | None,
+) -> None:
     lines = [
         "# tswn-cli package",
         "",
@@ -502,6 +641,8 @@ def write_cli_readme(dst_dir: Path, binary_path: Path, support_files: list[Path]
     ]
     for item in support_files:
         lines.append(f"- 附带产物：`bin/{item.name}`")
+    if ohos_binary_path is not None:
+        lines.append(f"- OpenHarmony/OHOS 未签名二进制：`bin/{ohos_binary_path.name}`")
 
     lines += [
         "",
@@ -514,6 +655,7 @@ def write_cli_readme(dst_dir: Path, binary_path: Path, support_files: list[Path]
         "## 说明",
         "",
         "- 聚合包会现场构建当前平台的 CLI，并在存在时额外收集已有的 Linux `tswn-cli` 二进制。",
+        "- 使用 `--include-ohos-cli` 时会额外构建 OHOS CLI，并输出 `_unsigned.bin`；正式部署前如需签名请使用目标环境要求的签名流程。",
         "- Windows 与 Linux 产物会一起放在 `cli/bin/` 下，便于统一分发。",
         "",
     ]
@@ -529,12 +671,15 @@ def write_cli_manifest(
     target: str | None,
     binary_path: Path,
     support_files: list[Path],
+    ohos_binary_path: Path | None,
+    ohos_target: str | None,
 ) -> None:
     lines = [
         "# tswn-cli manifest",
         "",
         f"profile={'release' if release else 'debug'}",
         f"target={target or ''}",
+        f"ohos_target={ohos_target or ''}",
         f"platform={platform.platform()}",
         "",
         "[bin]",
@@ -544,6 +689,15 @@ def write_cli_manifest(
     ]
     if support_files:
         lines.extend(p.name for p in support_files)
+    else:
+        lines.append("(none)")
+
+    lines += [
+        "",
+        "[ohos_unsigned]",
+    ]
+    if ohos_binary_path is not None:
+        lines.append(ohos_binary_path.name)
     else:
         lines.append("(none)")
 
@@ -761,6 +915,7 @@ def write_py_manifest(dst_dir: Path, source_hits: list[Path]) -> None:
 def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) -> None:
     system = platform.system().lower()
     cli_binary_name = bundled_cli_binary_name(Path("tswn-cli.exe" if system == "windows" else "tswn-cli"))
+    ohos_cli_binary_name = bundled_ohos_cli_binary_name(OHOS_DEFAULT_TARGET)
     openbox_binary_name = bundled_openbox_binary_name(Path("tswn_openbox.exe" if system == "windows" else "tswn_openbox"))
 
     lines = [
@@ -801,7 +956,7 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         "",
         "## 主要产物",
         "",
-        f"- CLI: `cli/bin/{cli_binary_name}`、可选的 Linux `cli/bin/tswn-cli_alpha_*.bin`，以及 `cli/changelog/`",
+        f"- CLI: `cli/bin/{cli_binary_name}`、可选的 Linux `cli/bin/tswn-cli_alpha_*.bin`、可选的 OHOS `cli/bin/{ohos_cli_binary_name}`，以及 `cli/changelog/`",
         "- C-API: `capi/include/tswn_capi.h`、`capi/lib/`（包含 Windows DLL、Windows staticlib `.lib` 与现有 Linux `.so`）以及 `capi/changelog/`",
         f"- Openbox: `openbox/bin/{openbox_binary_name}`、可选的 Linux `openbox/bin/tswn_openbox_alpha_*.bin`，以及 `openbox/changelog/`",
         "- Python: `py/dist/*.whl`、`py/examples/` 与 `py/changelog/`",
@@ -811,6 +966,7 @@ def write_root_readme(bundle_dir: Path, enabled: list[str], skipped: list[str]) 
         "",
         "- `capi/`、`cli/`、`openbox/` 与 `wasm/` 可以现场构建。",
         "- 若仓库里已经存在 Linux `so` / `tswn-cli` / `tswn_openbox` 产物，聚合包也会一并收集。",
+        "- OHOS CLI 需要显式传 `--include-ohos-cli`，并通过 `--ohos-sdk` 或 `OHOS_NATIVE_SDK` 指定 OpenHarmony native SDK。",
         "- `py/` 只收集现有产物，不现场构建。",
         "- `wasm/` 依赖本机可用的 `wasm-bindgen-cli`。",
         "- 最终 zip 为整个 bundle 目录的压缩包。",
@@ -894,6 +1050,8 @@ def main(argv: list[str]) -> int:
     print(f"[build] zip      : {zip_path}")
     print(f"[build] profile  : {'release' if args.release else 'debug'}")
     print(f"[build] target   : {args.target or '(default)'}")
+    if args.include_ohos_cli:
+        print(f"[build] ohos     : {args.ohos_target}")
     print()
 
     if args.clean:
@@ -928,18 +1086,37 @@ def main(argv: list[str]) -> int:
             cli_features=args.cli_features,
             extra_cargo=args.cargo,
         )
+        ohos_binary_path: Path | None = None
+        if args.include_ohos_cli:
+            ohos_sdk_value = args.ohos_sdk or os.environ.get("OHOS_NATIVE_SDK")
+            if not ohos_sdk_value:
+                raise RuntimeError("构建 OHOS CLI 需要传 --ohos-sdk 或设置 OHOS_NATIVE_SDK")
+            ohos_binary_path = build_ohos_cli(
+                dst_dir=cli_dir,
+                target=args.ohos_target,
+                native_sdk=Path(ohos_sdk_value),
+                cli_features=args.ohos_cli_features,
+                extra_cargo=args.cargo,
+            )
         package_component_changelog(
             cli_dir,
             changelog_src=CORE_CHANGELOG,
             update_doc_src=UPDATE_DOCS_DIR / f"{tswn_core_version()}.md",
         )
-        write_cli_readme(cli_dir, binary_path=binary_path, support_files=support_files)
+        write_cli_readme(
+            cli_dir,
+            binary_path=binary_path,
+            support_files=support_files,
+            ohos_binary_path=ohos_binary_path,
+        )
         write_cli_manifest(
             cli_dir,
             release=args.release,
             target=args.target,
             binary_path=binary_path,
             support_files=support_files,
+            ohos_binary_path=ohos_binary_path,
+            ohos_target=args.ohos_target if args.include_ohos_cli else None,
         )
         enabled.append("cli")
 

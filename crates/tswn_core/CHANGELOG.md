@@ -39,6 +39,12 @@
 - `RunUpdates` 内部新增段落级活动标记，并将换行 helper 命名为 `add_newline()`，让“追加分隔帧”的语义比原先的 `emit(RunUpdate::new_newline)` 更集中。
 - 调整 uncached prepare 回归测试的缓存断言粒度：并行测试共享全局 `prebuilt_groups_cache` 时只清理和检查当前 case 的 key，避免受无关测试缓存项影响。
 
+### 构建 / OpenHarmony
+
+- 新增 OpenHarmony / OHOS 交叉编译辅助脚本与文档：通过 `OHOS_NATIVE_SDK` 配置 native SDK 后，可构建 `aarch64-unknown-linux-ohos` 目标的 `tswn-cli`。
+- 新增 `ohos-clang` / `ohos-clangxx` 包装器与 `scripts/ohos-env.*` 环境脚本，避免在仓库配置中提交本机 SDK 绝对路径。
+- `scripts/build_all.py` 新增可选 OHOS CLI 构建入口，可在聚合包中产出未签名的 `tswn-cli` OHOS 二进制。
+
 ## [0.3.9] - 2026-05-26
 
 ### 行为对齐修复

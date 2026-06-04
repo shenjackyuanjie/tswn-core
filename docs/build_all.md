@@ -5,6 +5,7 @@
 - Windows `tswn_py` wheel
 - WSL / Linux `tswn_py` wheel
 - WSL / Linux `tswn-cli`
+- OpenHarmony/OHOS `tswn-cli` 未签名二进制（可选）
 - Windows `capi` / `cli`
 - Windows `tswn_openbox` GUI
 - 浏览器侧 `tswn_wasm` 包
@@ -14,6 +15,7 @@
 
 - Windows 侧可用：`uv`、`cargo`
 - Windows 侧建议额外安装：`wasm-bindgen-cli`
+- 如需构建 OHOS CLI：设置 `OHOS_NATIVE_SDK` 指向 OpenHarmony native SDK，且已安装 Rust target `aarch64-unknown-linux-ohos`
 - WSL 侧可用：`cargo`
 - WSL Python 构建请使用仓库根目录下的 `.venv-wsl`
 
@@ -24,6 +26,7 @@
 - `scripts/build_all.py` 不会现场构建 Python wheel，只会收集 `crates/tswn_py/dist/` 中已经存在的产物
 - `scripts/build_all.py` 会现场构建当前平台的 `capi` / `cli` / `tswn_openbox`，并构建 `tswn_wasm` 浏览器包
 - `scripts/build_all.py` 的 Windows CLI 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--cli-features`
+- `scripts/build_all.py --include-ohos-cli` 会额外构建 OHOS CLI，默认 feature 为 `no_debug`，产物名为 `tswn-cli_alpha_<core版本>_aarch64_unknown_linux_ohos_unsigned.bin`
 - `scripts/build_all.py` 的 Windows Openbox 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--openbox-features`
 - 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `tswn_openbox` / `libtswn_capi.so`，聚合脚本也会一并收集
 - `tswn_wasm` 打包默认依赖 `wasm-bindgen-cli`，可通过 `cargo install wasm-bindgen-cli` 安装
@@ -96,6 +99,16 @@ uv run scripts/build_all.py --release --clean
 - 收集 `crates/tswn_py/dist/` 下已有的 wheel
 - 若存在 Linux `target/release/tswn-cli` / `target/release/tswn_openbox`，也会一起打进 bundle
 
+如果需要把 OHOS CLI 一并打入聚合包：
+
+```powershell
+$env:OHOS_NATIVE_SDK="<path-to-openharmony-native-sdk>"
+rustup target add aarch64-unknown-linux-ohos
+uv run scripts/build_all.py --release --clean --include-ohos-cli
+```
+
+也可以不用环境变量，直接传 `--ohos-sdk <path-to-openharmony-native-sdk>`。
+
 ## 产物位置
 
 ### Python wheel
@@ -122,8 +135,8 @@ dist/all/
 当前 bundle 命名规则示例：
 
 ```text
-dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_openbox_0_3_0_bundle/
-dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_openbox_0_3_0_bundle.zip
+dist/all/tswn_core_0_3_10_capi_0_4_0_py_0_2_1_wasm_0_2_8_openbox_0_3_1_bundle/
+dist/all/tswn_core_0_3_10_capi_0_4_0_py_0_2_1_wasm_0_2_8_openbox_0_3_1_bundle.zip
 ```
 
 ### 聚合包内容
@@ -135,6 +148,7 @@ dist/all/tswn_core_0_3_3_capi_0_3_0_py_0_2_0_wasm_0_2_3_openbox_0_3_0_bundle.zip
 - `cli/`
   - Windows `tswn-cli_alpha_*.exe`
   - 若已存在，也会额外收集 Linux `tswn-cli_alpha_*.bin`
+  - 传 `--include-ohos-cli` 时会额外构建 OHOS `tswn-cli_alpha_*_aarch64_unknown_linux_ohos_unsigned.bin`
 - `openbox/`
   - Windows `tswn_openbox_alpha_*.exe`
   - 若已存在，也会额外收集 Linux `tswn_openbox_alpha_*.bin`
@@ -219,6 +233,15 @@ uv run scripts/build_py.py
 uv run scripts/build_all.py --release --clean
 ```
 
+### 额外包含 OHOS CLI
+
+```powershell
+$env:OHOS_NATIVE_SDK="<path-to-openharmony-native-sdk>"
+uv run scripts/build_all.py --release --clean --include-ohos-cli
+```
+
+OHOS CLI 只会产出未签名 ELF 二进制；脚本不会做应用/系统签名。
+
 ### 仅构建 Windows capi
 
 ```powershell
@@ -248,8 +271,8 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && cargo build -p tswn_capi --rele
 
 | 组件         | 版本  |
 | ------------ | ----- |
-| tswn_core    | 0.3.3 |
-| tswn_capi    | 0.3.0 |
-| tswn_py      | 0.2.0 |
-| tswn_wasm    | 0.2.3 |
+| tswn_core    | 0.3.10 |
+| tswn_capi    | 0.4.0 |
+| tswn_py      | 0.2.1 |
+| tswn_wasm    | 0.2.8 |
 | tswn_openbox | 0.3.1 |

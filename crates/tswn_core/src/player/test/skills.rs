@@ -74,6 +74,7 @@ fn hide_post_damage_counts_pending_spawn_in_charmed_effective_group() {
     pending.set_state_no_update(MinionRuntimeState {
         owner: Some(ally_id),
         kind: MinionKind::Zombie,
+        share_damage_owner: None,
     });
     storage.queue_spawn(ally_id, pending);
 
@@ -91,7 +92,10 @@ fn hide_post_damage_counts_pending_spawn_in_charmed_effective_group() {
     let mut hide = crate::player::skill::hide::HideSkill::new();
     hide.post_damage_with_level(9, 1, ally_id, (owner_id, &mut randomer, &mut updates, &storage));
 
-    assert_eq!(randomer.i, 1, "hide should run its r63 check when the effective charmed group has a pending spawn");
+    assert_eq!(
+        randomer.i, 1,
+        "hide should run its r63 check when the effective charmed group has a pending spawn"
+    );
 }
 
 #[test]

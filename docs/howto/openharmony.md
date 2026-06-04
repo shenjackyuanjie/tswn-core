@@ -22,6 +22,21 @@ rustup target add aarch64-unknown-linux-ohos
 cargo build --target aarch64-unknown-linux-ohos -p tswn_core --bin tswn-cli --release --features no_debug
 ```
 
+聚合打包时也可以把 OHOS CLI 一起构建进去：
+
+```powershell
+$env:OHOS_NATIVE_SDK="<path-to-openharmony-native-sdk>"
+uv run scripts/build_all.py --release --clean --include-ohos-cli
+```
+
+输出文件位于聚合包的 `cli/bin/` 下，命名形如：
+
+```text
+tswn-cli_alpha_0_3_10_aarch64_unknown_linux_ohos_unsigned.bin
+```
+
+该文件是未签名 ELF 二进制；需要正式部署到受签名策略限制的位置时，仍需按目标环境要求另行签名。
+
 也可以构建 C-API：
 
 ```powershell
