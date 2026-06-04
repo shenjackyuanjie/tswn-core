@@ -5,3 +5,19 @@
 # 访问与调用者 &mut self 相同的 Player，违反 Rust 的 noalias 约束。
 # 在 release 优化下，LLVM 基于 noalias 进行的值缓存/重排会产生错误结果。
 rustflags = ["-Z", "mutable-noalias=no"]
+
+# HarmonyOS/OpenHarmony 交叉编译路径不要写在这里。
+# Cargo 不会在 target linker / CMake toolchain path 中展开环境变量，
+# 提交绝对 SDK 路径会让工作区绑定到某一台机器。
+#
+# 设置 OHOS_NATIVE_SDK 指向 OpenHarmony native SDK 目录后，加载：
+#
+#   PowerShell:
+#     . .\scripts\ohos-env.ps1
+#
+#   Linux/macOS:
+#     . ./scripts/ohos-env.sh
+#
+# 脚本会为 aarch64-unknown-linux-ohos 导出 target-specific linker、AR、
+# CC、CXX、CFLAGS、CXXFLAGS、CARGO_ENCODED_RUSTFLAGS、
+# CC_SHELL_ESCAPED_FLAGS 和 CMAKE_TOOLCHAIN_FILE。
