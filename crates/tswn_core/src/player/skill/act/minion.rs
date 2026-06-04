@@ -87,6 +87,26 @@ pub fn is_combat_minion(player: &crate::player::Player) -> bool {
 }
 
 #[inline]
+pub fn is_bed2_summon_minion(storage: &Arc<Storage>, player_id: PlrId) -> bool {
+    let Some(player) = storage.get_player_or_pending(&player_id) else {
+        return false;
+    };
+    let Some(state) = player.get_state::<MinionRuntimeState>() else {
+        return false;
+    };
+    if state.kind != MinionKind::Summon {
+        return false;
+    }
+    let Some(owner_id) = state.owner.or(state.share_damage_owner) else {
+        return false;
+    };
+    storage
+        .get_player_or_pending(&owner_id)
+        .map(|owner| owner.player_type() == crate::player::PlayerType::Bed2)
+        .unwrap_or(false)
+}
+
+#[inline]
 pub fn prepare_combat_minion(player: &mut Player) {
     // JS 的 `Minion.bf()` 会把幻影 / 使魔 / 丧尸的 `x` / `name_factor` 强制设为 0。
     player.name_factor = 0.0;

@@ -1322,3 +1322,65 @@ fn bed2_summon_uses_base_player_template() {
     assert!(summoned.overlay.as_ref().and_then(|overlay| overlay.summon.as_ref()).is_some());
     assert!(updates.updates.iter().any(|update| update.caster == bed2_id && update.target == bed2_id));
 }
+
+#[test]
+fn bed2_summon_is_not_double_damaged_by_disperse() {
+    fn summon_for(owner_raw: &str, storage: &std::sync::Arc<Storage>) -> (PlrId, PlrId) {
+        let mut owner = Player::new_from_namerena_raw(owner_raw.to_string(), storage.clone()).unwrap();
+        owner.build();
+        let owner_id = storage.just_insert_player(owner);
+
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+        let mut summon = crate::player::skill::summon::SummonSkill::new();
+        <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+            &mut summon,
+            255,
+            vec![owner_id],
+            false,
+            (owner_id, &mut randomer, &mut updates, storage),
+        );
+        let summoned = storage.take_pending_spawns().into_iter().next().expect("summon should spawn").player;
+        let summon_id = storage.just_insert_player(summoned);
+        (owner_id, summon_id)
+    }
+
+    fn disperse_damage(target_id: PlrId, storage: &std::sync::Arc<Storage>) -> i32 {
+        let mut caster = Player::new_from_namerena_raw(
+            "cleaner+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"skldisperse\":255}}".to_string(),
+            storage.clone(),
+        )
+        .unwrap();
+        caster.build();
+        let caster_id = storage.just_insert_player(caster);
+        let before = storage.get_player(&target_id).unwrap().get_status().hp;
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+        let mut disperse = crate::player::skill::disperse::DisperseSkill::new();
+        <crate::player::skill::disperse::DisperseSkill as crate::player::skill::SkillTrait>::act_with_level(
+            &mut disperse,
+            255,
+            vec![target_id],
+            false,
+            (caster_id, &mut randomer, &mut updates, storage),
+        );
+        before - storage.get_player(&target_id).unwrap().get_status().hp
+    }
+
+    let normal_storage = Storage::new_arc();
+    let (_, normal_summon_id) = summon_for(
+        "normal@red+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}",
+        &normal_storage,
+    );
+    let normal_damage = disperse_damage(normal_summon_id, &normal_storage);
+
+    let bed2_storage = Storage::new_arc();
+    let (_, bed2_summon_id) = summon_for(
+        "normal@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}",
+        &bed2_storage,
+    );
+    let bed2_damage = disperse_damage(bed2_summon_id, &bed2_storage);
+
+    assert!(bed2_damage > 0);
+    assert_eq!(normal_damage, bed2_damage * 2);
+}

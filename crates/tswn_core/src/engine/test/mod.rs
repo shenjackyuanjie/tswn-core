@@ -444,4 +444,60 @@ mod bed2 {
         assert_eq!(revived_summon.display_name(), "alpha");
         assert!(runner.world.all_plrs().contains(&summon_id));
     }
+
+    #[test]
+    fn body_damage_is_silent_until_blood_sacrifice_reports_hp() {
+        let mut runner = runners::Runner::new_from_namerena_raw("alpha@red@bed2\n\nbeta@blue".to_string()).unwrap();
+        let bed2_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| {
+                runner
+                    .storage
+                    .get_player(id)
+                    .is_some_and(|player| player.player_type() == crate::player::PlayerType::Bed2)
+            })
+            .expect("bed2 player should exist");
+        let enemy_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.id_name() == "beta"))
+            .expect("enemy should exist");
+
+        let _ = runner.main_round();
+        let summon_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| {
+                *id != bed2_id && runner.storage.get_player(id).is_some_and(|player| player.id_name().starts_with("alpha?"))
+            })
+            .expect("first summon should exist");
+
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+        let damage = runner.storage.just_get_player_mut(bed2_id).unwrap().damage(
+            123,
+            enemy_id,
+            crate::player::noop_on_damage,
+            &mut randomer,
+            &mut updates,
+            &runner.storage,
+        );
+        assert_eq!(damage, 123);
+        assert_eq!(runner.storage.get_player(&bed2_id).unwrap().get_status().hp, 2877);
+        assert!(updates.updates.is_empty(), "bed2 body damage should not emit a damage line");
+
+        runner.storage.just_get_player_mut(summon_id).unwrap().set_hp_raw(0);
+        let second_updates = runner.main_round();
+        assert!(
+            second_updates
+                .updates
+                .iter()
+                .any(|update| update.message == "bed还剩[2]点血" && update.param == Some(2877)),
+            "blood sacrifice should report the bed2 body's remaining hp"
+        );
+    }
 }

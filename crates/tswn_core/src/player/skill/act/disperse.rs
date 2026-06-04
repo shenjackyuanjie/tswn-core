@@ -8,7 +8,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::act::minion::is_combat_minion,
+    skill::act::minion::{is_bed2_summon_minion, is_combat_minion},
     skill::{SkillArgs, SkillExt, SkillTrait},
 };
 use crate::rc4::RC4;
@@ -73,6 +73,7 @@ impl SkillTrait for DisperseSkill {
             .expect("cannot get disperse owner from storage")
             .get_at(true, args.1);
         let target_is_minion = args.3.get_player(&target_id).map(is_combat_minion).unwrap_or(false);
+        let double_damage = target_is_minion && !is_bed2_summon_minion(args.3, target_id);
         args.2.add(RunUpdate::new("[0]使用[净化]", args.0, target_id, 20));
 
         // 注意：Dart 源码写的是 'Dt.shield'/'Dt.iron'（字符串字面量），
@@ -83,7 +84,7 @@ impl SkillTrait for DisperseSkill {
             .just_get_player_mut(target_id)
             .expect("cannot get disperse target from storage")
             .defned(
-                if target_is_minion { atp * 2.0 } else { atp },
+                if double_damage { atp * 2.0 } else { atp },
                 true,
                 args.0,
                 on_disperse as OnDamageFunc,

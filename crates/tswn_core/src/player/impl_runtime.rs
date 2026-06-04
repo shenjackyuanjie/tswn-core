@@ -145,6 +145,11 @@ impl Player {
         self.skills
             .skill_by_id_mut(skill_key)
             .act(vec![ptr], true, (ptr, randomer, updates, storage));
+        updates.emit(|| {
+            let mut update = RunUpdate::new("bed还剩[2]点血", ptr, ptr, 0);
+            update.param = Some(self.status.hp.max(0) as u32);
+            update
+        });
         true
     }
 
@@ -2189,11 +2194,13 @@ impl Player {
             return 0;
         }
         if dmg == 0 {
-            updates.emit(|| {
-                let mut update = RunUpdate::new("[0]受到[2]点伤害[s_dmg0]", self.as_ptr(), self.as_ptr(), 10);
-                update.param = Some(0);
-                update
-            });
+            if self.player_type != PlayerType::Bed2 {
+                updates.emit(|| {
+                    let mut update = RunUpdate::new("[0]受到[2]点伤害[s_dmg0]", self.as_ptr(), self.as_ptr(), 10);
+                    update.param = Some(0);
+                    update
+                });
+            }
             return 0;
         }
         let old_hp = self.status.hp;
@@ -2201,18 +2208,20 @@ impl Player {
         if self.status.hp < 0 {
             self.status.hp = 0;
         }
-        updates.emit(|| {
-            let msg = if dmg >= 160 {
-                "[1]受到[2]点伤害[s_dmg160]"
-            } else if dmg >= 120 {
-                "[1]受到[2]点伤害[s_dmg120]"
-            } else {
-                "[1]受到[2]点伤害"
-            };
-            let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
-            update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
-            update
-        });
+        if self.player_type != PlayerType::Bed2 {
+            updates.emit(|| {
+                let msg = if dmg >= 160 {
+                    "[1]受到[2]点伤害[s_dmg160]"
+                } else if dmg >= 120 {
+                    "[1]受到[2]点伤害[s_dmg120]"
+                } else {
+                    "[1]受到[2]点伤害"
+                };
+                let mut update = RunUpdate::new(msg, caster, self.as_ptr(), dmg as u32);
+                update.delay0 = if dmg > 250 { 1500 } else { 1000 + dmg * 2 };
+                update
+            });
+        }
         on_damage(caster, self.as_ptr(), dmg, randomer, updates, storage);
         let result = self.on_damaged(dmg, old_hp, caster, randomer, updates, storage);
         #[cfg(not(feature = "no_debug"))]
