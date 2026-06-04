@@ -1270,7 +1270,7 @@ fn owner_death_removes_linked_minions_in_roster_order() {
 fn bed2_summon_uses_base_player_template() {
     let storage = Storage::new_arc();
     let mut normal =
-        Player::new_from_namerena_raw("alpha@red+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12,\"sklshadow\":8,\"sklsummon\":7}}".to_string(), storage.clone())
+        Player::new_from_namerena_raw("alpha extra@red+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12,\"sklshadow\":8,\"sklsummon\":7}}".to_string(), storage.clone())
             .unwrap();
     normal.build();
     let expected_attr = normal.attr;
@@ -1278,7 +1278,7 @@ fn bed2_summon_uses_base_player_template() {
     let expected_critical = normal.skills.skill_by_id(7).level();
 
     let mut bed2 =
-        Player::new_from_namerena_raw("alpha@red@bed2+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12,\"sklshadow\":8,\"sklsummon\":7}}".to_string(), storage.clone())
+        Player::new_from_namerena_raw("alpha extra@red@bed2+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12,\"sklshadow\":8,\"sklsummon\":7}}".to_string(), storage.clone())
             .unwrap();
     bed2.build();
     assert_eq!(bed2.attr, [0, 99, 0, 0, 0, 99, 0, 3000]);
@@ -1298,7 +1298,8 @@ fn bed2_summon_uses_base_player_template() {
     assert_eq!(pending.len(), 1);
     let summoned = &pending[0].player;
     assert_eq!(summoned.attr, expected_attr);
-    assert_eq!(summoned.id_key_name(), "alpha?0@red");
+    assert_eq!(summoned.id_key_name(), "alpha extra?0@red");
+    assert_eq!(summoned.display_name(), "alpha");
     assert_eq!(
         summoned.skills.slot_skill,
         crate::player::skill::classified_summon_minion_skill_slot_order()

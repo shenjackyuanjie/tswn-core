@@ -285,7 +285,7 @@ mod bed2 {
     #[test]
     fn opening_round_summons_and_body_is_not_targetable() {
         let mut runner = runners::Runner::new_from_namerena_raw(
-            "alpha@red@bed2+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12}}\n\nbeta@blue"
+            "alpha extra@red@bed2+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12}}\n\nbeta@blue"
                 .to_string(),
         )
         .unwrap();
@@ -294,17 +294,51 @@ mod bed2 {
             .world
             .all_plrs()
             .into_iter()
-            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.player_type() == crate::player::PlayerType::Bed2))
+            .find(|id| {
+                runner
+                    .storage
+                    .get_player(id)
+                    .is_some_and(|player| player.player_type() == crate::player::PlayerType::Bed2)
+            })
             .expect("bed2 player should exist");
         assert_eq!(runner.world.all_plr_len(), 2);
 
         let first_updates = runner.main_round();
+        let render_update = |update: &crate::engine::update::RunUpdate| {
+            let caster = runner
+                .storage
+                .get_player(&update.caster)
+                .map(|player| player.display_name())
+                .unwrap_or_else(|| format!("#{}", update.caster));
+            let target = runner
+                .storage
+                .get_player(&update.target)
+                .map(|player| player.display_name())
+                .unwrap_or_else(|| format!("#{}", update.target));
+            update.message.replace("[0]", &caster).replace("[1]", &target)
+        };
         assert!(
             first_updates
                 .updates
                 .iter()
                 .any(|update| update.caster == bed2_id && update.target == bed2_id && update.message.contains("血祭")),
             "first main_round should contain the opening summon"
+        );
+        assert!(
+            first_updates
+                .updates
+                .iter()
+                .map(render_update)
+                .any(|message| message.contains("bed使用") && message.contains("血祭")),
+            "bed2 body should render as bed in battle messages"
+        );
+        assert!(
+            first_updates
+                .updates
+                .iter()
+                .map(render_update)
+                .any(|message| message.contains("召唤出alpha")),
+            "bed2 summon should render as the normal base name"
         );
         assert_eq!(
             first_updates
@@ -321,8 +355,15 @@ mod bed2 {
             .world
             .all_plrs()
             .into_iter()
-            .find(|id| *id != bed2_id && runner.storage.get_player(id).is_some_and(|player| player.id_name().starts_with("alpha?")))
+            .find(|id| {
+                *id != bed2_id
+                    && runner
+                        .storage
+                        .get_player(id)
+                        .is_some_and(|player| player.id_name().starts_with("alpha extra?"))
+            })
             .expect("bed2 summon should be synced into the world");
+        assert_eq!(runner.storage.get_player(&summon_id).unwrap().display_name(), "alpha");
         let enemy_id = runner
             .world
             .all_plrs()
@@ -355,41 +396,39 @@ mod bed2 {
 
     #[test]
     fn resummons_after_own_summon_dies() {
-        let mut runner =
-            runners::Runner::new_from_namerena_raw("alpha@red@bed2\n\nbeta@blue".to_string()).unwrap();
+        let mut runner = runners::Runner::new_from_namerena_raw("alpha extra@red@bed2\n\nbeta@blue".to_string()).unwrap();
         let bed2_id = runner
             .world
             .all_plrs()
             .into_iter()
-            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.player_type() == crate::player::PlayerType::Bed2))
+            .find(|id| {
+                runner
+                    .storage
+                    .get_player(id)
+                    .is_some_and(|player| player.player_type() == crate::player::PlayerType::Bed2)
+            })
             .expect("bed2 player should exist");
-        let enemy_id = runner
-            .world
-            .all_plrs()
-            .into_iter()
-            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.id_name() == "beta"))
-            .expect("enemy should exist");
-
         let first_updates = runner.main_round();
-        assert!(first_updates.updates.iter().any(|update| update.caster == bed2_id && update.target == bed2_id));
+        assert!(
+            first_updates
+                .updates
+                .iter()
+                .any(|update| update.caster == bed2_id && update.target == bed2_id)
+        );
         let summon_id = runner
             .world
             .all_plrs()
             .into_iter()
-            .find(|id| *id != bed2_id && runner.storage.get_player(id).is_some_and(|player| player.id_name().starts_with("alpha?")))
+            .find(|id| {
+                *id != bed2_id
+                    && runner
+                        .storage
+                        .get_player(id)
+                        .is_some_and(|player| player.id_name().starts_with("alpha extra?"))
+            })
             .expect("first summon should exist");
 
-        let mut randomer = RC4::default();
-        let mut updates = RunUpdates::new();
-        let summon_hp = runner.storage.get_player(&summon_id).unwrap().get_status().hp;
-        runner.storage.just_get_player_mut(summon_id).unwrap().damage(
-            summon_hp,
-            enemy_id,
-            crate::player::noop_on_damage,
-            &mut randomer,
-            &mut updates,
-            &runner.storage,
-        );
+        runner.storage.just_get_player_mut(summon_id).unwrap().set_hp_raw(0);
         assert!(!runner.storage.get_player(&summon_id).unwrap().alive());
 
         let second_updates = runner.main_round();
@@ -402,6 +441,7 @@ mod bed2 {
         );
         let revived_summon = runner.storage.get_player(&summon_id).expect("summon should be reused");
         assert!(revived_summon.alive());
+        assert_eq!(revived_summon.display_name(), "alpha");
         assert!(runner.world.all_plrs().contains(&summon_id));
     }
 }

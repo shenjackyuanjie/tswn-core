@@ -123,7 +123,10 @@ impl Player {
         overlay: PlayerOverlay,
         storage: Arc<Storage>,
     ) -> PlayerResult<Self> {
-        Self::new_and_init_inner_with_type(team, name, None, Some(overlay), storage, false, Some(PlayerType::Bed2))
+        let mut player =
+            Self::new_and_init_inner_with_type(team, name, None, Some(overlay), storage, false, Some(PlayerType::Bed2))?;
+        player.set_display_name_override(Some("bed".to_string()));
+        Ok(player)
     }
 
     fn new_and_init_inner_with_type(

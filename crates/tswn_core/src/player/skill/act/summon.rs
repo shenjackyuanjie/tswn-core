@@ -37,6 +37,13 @@ pub struct SummonSkill {
 
 impl SummonSkill {
     pub fn new() -> Self { Self::default() }
+
+    fn bed2_summon_display_name(owner: &crate::player::Player) -> Option<String> {
+        if owner.player_type() != PlayerType::Bed2 {
+            return None;
+        }
+        Some(owner.base_name().split(' ').next().unwrap_or_default().to_string())
+    }
 }
 
 impl SkillExt for SummonSkill {
@@ -107,6 +114,9 @@ impl SkillTrait for SummonSkill {
             if apply_summon_attrs(summoned, &owner, minion_overlay.as_ref()) {
                 summoned.update_states();
             }
+            if let Some(display_name) = Self::bed2_summon_display_name(&owner) {
+                summoned.set_display_name_override(Some(display_name));
+            }
             summoned.init_values();
             summoned.status.set_alive(true);
             summoned.status.move_point = args.1.r255() as i32 * 4;
@@ -137,7 +147,7 @@ impl SkillTrait for SummonSkill {
 
         summoned.id = args.3.new_plr_id();
         summoned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
-        summoned.set_display_name_override(Some("使魔".to_string()));
+        summoned.set_display_name_override(Self::bed2_summon_display_name(&owner).or_else(|| Some("使魔".to_string())));
         summoned.player_type = PlayerType::Clone;
         summoned.sort_int = 0;
         summoned.state = PlayerStateStore::default();
