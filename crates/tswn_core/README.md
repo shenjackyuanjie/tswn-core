@@ -48,7 +48,7 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 
 `to-diy --minions` 会额外导出 shadow / summon / zombie 模板。summon 的两个火球分别用 `sklfire1`、`sklfire2` 表示，自爆用 `sklexplode`；`skills` 保持普通 JSON object 形态，字段顺序就是行动顺序。0 熟练度技能会省略输出，解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名。
 
-OL 召唤物模板支持继续嵌套 `shadow` / `summon` / `zombie` 子模板，用于配置“召唤物的召唤物”。给使魔模板配置普通玩家技能时需要显式写 `normal:` 前缀，例如 `{"normal:sklsummon":255,"sklfire1":9}`；这样普通技能、使魔固定技能和幻影附体会保留在不同技能编号通道中，吞噬时也不会互相串槽。使魔召唤或分身出的单位会按直接来源链路传导伤害；使魔分身仍沿用 root owner 命名/清理规则，但伤害分摊目标是产生它的那只使魔。
+OL 召唤物模板支持继续嵌套 `shadow` / `summon` / `zombie` 子模板，用于配置“召唤物的召唤物”。给使魔模板配置普通玩家技能时需要显式写 `normal:` 前缀，例如 `{"normal:sklsummon":255,"sklfire1":9}`；这样普通技能、使魔固定技能和幻影附体会保留在不同技能编号通道中，吞噬时也不会互相串槽。使魔召唤出的子使魔会按直接来源链路传导伤害；使魔分身仍沿用 root owner 命名/清理规则，但伤害分摊会直接传到主名字。
 
 `bench pair` 会为每个 player 与每个 teammate 组成二人组，分别计算 batch rate，并取最高的 `--head <N>` 个 batch rate 求和作为最终分数。player-list 中非 DIY/OL 名字会自动转为默认 `+ol` 格式。
 

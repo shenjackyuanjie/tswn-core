@@ -869,7 +869,7 @@ fn diy_summon_minion_can_customize_its_child_summon_template() {
 }
 
 #[test]
-fn summon_minion_clone_shares_damage_with_direct_summon_owner() {
+fn summon_minion_clone_shares_damage_with_root_owner() {
     let storage = Storage::new_arc();
     let mut owner = Player::new_from_namerena_raw(
         r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,400],"summon":{"attrs":[60,60,60,60,60,60,60,240],"skills":{"normal:sklclone":255}}}"#
@@ -920,7 +920,7 @@ fn summon_minion_clone_shares_damage_with_direct_summon_owner() {
             clone
                 .get_state::<crate::player::skill::act::minion::MinionRuntimeState>()
                 .and_then(|state| state.share_damage_owner),
-            Some(parent_id)
+            Some(owner_id)
         );
     }
 
@@ -930,8 +930,8 @@ fn summon_minion_clone_shares_damage_with_direct_summon_owner() {
         .damage(80, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
 
     assert_eq!(storage.get_player(&clone_id).unwrap().get_status().hp, 40);
-    assert_eq!(storage.get_player(&parent_id).unwrap().get_status().hp, 80);
-    assert_eq!(storage.get_player(&owner_id).unwrap().get_status().hp, 380);
+    assert_eq!(storage.get_player(&parent_id).unwrap().get_status().hp, 120);
+    assert_eq!(storage.get_player(&owner_id).unwrap().get_status().hp, 360);
 }
 
 #[test]
