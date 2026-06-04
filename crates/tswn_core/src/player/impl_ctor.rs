@@ -125,7 +125,7 @@ impl Player {
     ) -> PlayerResult<Self> {
         let mut player =
             Self::new_and_init_inner_with_type(team, name, None, Some(overlay), storage, false, Some(PlayerType::Bed2))?;
-        player.set_display_name_override(Some("bed".to_string()));
+        player.set_display_name_override(Some("被子".to_string()));
         Ok(player)
     }
 

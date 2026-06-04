@@ -315,13 +315,18 @@ mod bed2 {
                 .get_player(&update.target)
                 .map(|player| player.display_name())
                 .unwrap_or_else(|| format!("#{}", update.target));
-            update.message.replace("[0]", &caster).replace("[1]", &target)
+            update
+                .message
+                .replace("[0]", &caster)
+                .replace("[1]", &target)
+                .replace("[2]", &update.param.map(|param| param.to_string()).unwrap_or_default())
         };
         assert!(
             first_updates
                 .updates
                 .iter()
-                .any(|update| update.caster == bed2_id && update.target == bed2_id && update.message.contains("血祭")),
+                .map(render_update)
+                .any(|message| message.contains("alpha从被子里钻出来了！")),
             "first main_round should contain the opening summon"
         );
         assert!(
@@ -329,25 +334,33 @@ mod bed2 {
                 .updates
                 .iter()
                 .map(render_update)
-                .any(|message| message.contains("bed使用") && message.contains("血祭")),
-            "bed2 body should render as bed in battle messages"
+                .any(|message| message.contains("被子还剩3000点血")),
+            "bed2 body should render as 被子 in battle messages"
         );
         assert!(
-            first_updates
+            !first_updates
                 .updates
                 .iter()
-                .map(render_update)
-                .any(|message| message.contains("召唤出alpha")),
-            "bed2 summon should render as the normal base name"
+                .any(|update| update.message.contains("血祭") || update.message.contains("召唤出")),
+            "bed2 summon should use the custom summon sentence"
         );
         assert_eq!(
             first_updates
                 .updates
                 .iter()
-                .filter(|update| update.caster != bed2_id || update.target != bed2_id)
+                .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+                .count(),
+            2,
+            "opening round should include summon announcement and hp report"
+        );
+        assert_eq!(
+            first_updates
+                .updates
+                .iter()
+                .filter(|update| matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
                 .count(),
             1,
-            "opening round should only include the summon announcement besides the skill cast"
+            "summon announcement and hp report should be split across lines"
         );
         assert_eq!(runner.world.all_plr_len(), 3);
 
@@ -392,6 +405,53 @@ mod bed2 {
         assert_eq!(damage, 0);
         assert_eq!(runner.storage.get_player(&bed2_id).unwrap().get_status().hp, before_hp);
         assert!(updates.updates.iter().any(|update| update.message.contains("回避")));
+    }
+
+    #[test]
+    fn opening_round_splits_multiple_bed2_summons_into_two_lines_each() {
+        let mut runner =
+            runners::Runner::new_from_namerena_raw("alpha@red@bed2\nomega@red@bed2\n\nbeta@blue".to_string()).unwrap();
+
+        let updates = runner.main_round();
+        let render_update = |update: &crate::engine::update::RunUpdate| {
+            let caster = runner
+                .storage
+                .get_player(&update.caster)
+                .map(|player| player.display_name())
+                .unwrap_or_else(|| format!("#{}", update.caster));
+            let target = runner
+                .storage
+                .get_player(&update.target)
+                .map(|player| player.display_name())
+                .unwrap_or_else(|| format!("#{}", update.target));
+            update
+                .message
+                .replace("[0]", &caster)
+                .replace("[1]", &target)
+                .replace("[2]", &update.param.map(|param| param.to_string()).unwrap_or_default())
+        };
+        let mut rows = Vec::new();
+        let mut row = Vec::new();
+        for update in updates.updates.iter() {
+            if matches!(update.update_type, crate::engine::update::UpdateType::NextLine) {
+                if !row.is_empty() {
+                    rows.push(row);
+                    row = Vec::new();
+                }
+            } else {
+                row.push(render_update(update));
+            }
+        }
+        if !row.is_empty() {
+            rows.push(row);
+        }
+
+        assert_eq!(rows.len(), 4, "two bed2 players should produce 2x visible rows");
+        assert!(rows.iter().all(|row| row.len() == 1), "each bed2 opening row should contain one message");
+        assert!(rows[0][0].contains("alpha从被子里钻出来了！"));
+        assert!(rows[1][0].contains("被子还剩3000点血"));
+        assert!(rows[2][0].contains("omega从被子里钻出来了！"));
+        assert!(rows[3][0].contains("被子还剩3000点血"));
     }
 
     #[test]

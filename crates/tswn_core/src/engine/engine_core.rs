@@ -204,6 +204,12 @@ impl EngineCore {
             if player.player_type() != crate::player::PlayerType::Bed2 || !player.alive() {
                 continue;
             }
+            if !player.bed2_can_summon(storage) {
+                continue;
+            }
+            if updates.segment_had_updates() {
+                updates.add_newline();
+            }
             summoned |= player.bed2_try_summon(randomer, updates, storage);
         }
         if storage.needs_sync() {

@@ -56,6 +56,7 @@
 //! ```
 
 use super::*;
+use crate::player::skill::act::minion::{MinionKind, MinionRuntimeState};
 use smallvec::SmallVec;
 
 // JS addNew 之后的新单位会立刻参与“战斗是否结束”的判断，
@@ -127,24 +128,46 @@ impl Player {
         let Some(summoned_id) = self.skills.skill_by_id(skill_key).summon_minion_id() else {
             return false;
         };
-        storage
+        if storage
             .get_player_or_pending(&summoned_id)
             .map(|summoned| summoned.alive())
             .unwrap_or(false)
+        {
+            return true;
+        }
+        let owner_id = self.as_ptr();
+        let is_alive_clone_of_summon = |player: &Player| {
+            player
+                .alive()
+                .then(|| player.get_state::<MinionRuntimeState>())
+                .flatten()
+                .is_some_and(|state| state.kind == MinionKind::Clone && state.owner == Some(summoned_id))
+        };
+        storage
+            .iter_player_ids()
+            .filter(|id| *id != owner_id)
+            .any(|id| storage.get_player(&id).is_some_and(is_alive_clone_of_summon))
+            || storage.iter_pending_spawns().any(|pending| is_alive_clone_of_summon(&pending.player))
+    }
+
+    pub(crate) fn bed2_can_summon(&self, storage: &Arc<Storage>) -> bool {
+        self.player_type == PlayerType::Bed2
+            && self.alive()
+            && self.bed2_summon_skill_key().is_some()
+            && !self.bed2_has_alive_summon(storage)
     }
 
     pub(crate) fn bed2_try_summon(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
-        if self.bed2_has_alive_summon(storage) {
+        if !self.bed2_can_summon(storage) {
             return false;
         }
-        let Some(skill_key) = self.bed2_summon_skill_key() else {
-            return false;
-        };
+        let skill_key = self.bed2_summon_skill_key().expect("bed2_can_summon checked summon skill");
         let ptr = self.as_ptr();
         updates.mark_primary_action();
         self.skills
             .skill_by_id_mut(skill_key)
             .act(vec![ptr], true, (ptr, randomer, updates, storage));
+        updates.add_newline();
         updates.emit(|| {
             let mut update = RunUpdate::new("[0]还剩[2]点血", ptr, ptr, 0);
             update.param = Some(self.status.hp.max(0) as u32);

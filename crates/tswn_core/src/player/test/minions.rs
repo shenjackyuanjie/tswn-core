@@ -1324,6 +1324,107 @@ fn bed2_summon_uses_base_player_template() {
 }
 
 #[test]
+fn bed2_waits_for_summon_clone_tree_to_die_before_resummon() {
+    let storage = Storage::new_arc();
+    let mut bed2 = Player::new_from_namerena_raw(
+        "alpha@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255},\"summon\":{\"attrs\":[60,60,60,60,60,60,60,240],\"skills\":{\"normal:sklclone\":255}}}"
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    bed2.build();
+    let bed2_id = storage.just_insert_player(bed2);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    assert!(
+        storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage)
+    );
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summon_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    {
+        let summon = storage.just_get_player_mut(summon_id).unwrap();
+        summon.status.hp = 240;
+        summon.status.max_hp = 240;
+        summon.status.magic_point = 999;
+        summon.status.set_alive(true);
+    }
+
+    let mut clone = crate::player::skill::clone::CloneSkill::new();
+    <crate::player::skill::clone::CloneSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut clone,
+        255,
+        vec![summon_id],
+        false,
+        (summon_id, &mut randomer, &mut updates, &storage),
+    );
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let clone_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    assert!(
+        storage
+            .get_player(&clone_id)
+            .unwrap()
+            .get_state::<crate::player::skill::act::minion::MinionRuntimeState>()
+            .is_some_and(|state| {
+                state.kind == crate::player::skill::act::minion::MinionKind::Clone && state.owner == Some(summon_id)
+            })
+    );
+
+    let mut grandclone_skill = crate::player::skill::clone::CloneSkill::new();
+    <crate::player::skill::clone::CloneSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut grandclone_skill,
+        255,
+        vec![clone_id],
+        false,
+        (clone_id, &mut randomer, &mut updates, &storage),
+    );
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let grandclone_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    assert!(
+        storage
+            .get_player(&grandclone_id)
+            .unwrap()
+            .get_state::<crate::player::skill::act::minion::MinionRuntimeState>()
+            .is_some_and(|state| {
+                state.kind == crate::player::skill::act::minion::MinionKind::Clone && state.owner == Some(summon_id)
+            })
+    );
+
+    storage.just_get_player_mut(summon_id).unwrap().set_hp_raw(0);
+    assert!(
+        !storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage),
+        "bed2 should wait while the summon clone is still alive"
+    );
+
+    storage.just_get_player_mut(clone_id).unwrap().set_hp_raw(0);
+    assert!(
+        !storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage),
+        "bed2 should wait while the summon grandclone is still alive"
+    );
+
+    storage.just_get_player_mut(grandclone_id).unwrap().set_hp_raw(0);
+    assert!(
+        storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage),
+        "bed2 should resummon after the summon clone tree dies"
+    );
+}
+
+#[test]
 fn bed2_summon_is_not_double_damaged_by_disperse() {
     fn summon_for(owner_raw: &str, storage: &std::sync::Arc<Storage>) -> (PlrId, PlrId) {
         let mut owner = Player::new_from_namerena_raw(owner_raw.to_string(), storage.clone()).unwrap();

@@ -44,6 +44,14 @@ impl SummonSkill {
         }
         Some(owner.base_name().split(' ').next().unwrap_or_default().to_string())
     }
+
+    fn add_summoned_update(updates: &mut RunUpdates, owner_id: PlrId, summoned_id: PlrId, is_bed2_owner: bool) {
+        if is_bed2_owner {
+            updates.add(RunUpdate::new("[1]从[0]里钻出来了！", owner_id, summoned_id, 60));
+        } else {
+            updates.add(RunUpdate::new("召唤出[1]", owner_id, summoned_id, 0));
+        }
+    }
 }
 
 impl SkillExt for SummonSkill {
@@ -83,8 +91,11 @@ impl SkillTrait for SummonSkill {
     }
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
-        args.2.add(RunUpdate::new("[0]使用[血祭]", args.0, args.0, 60));
         let owner = args.3.get_player(&args.0).expect("cannot get summon owner from storage").clone();
+        let is_bed2_owner = owner.player_type() == PlayerType::Bed2;
+        if !is_bed2_owner {
+            args.2.add(RunUpdate::new("[0]使用[血祭]", args.0, args.0, 60));
+        }
         let charge_active = owner.get_status().at_boost >= 3.0;
         let minion_overlay = owner_minion_overlay(args.3, args.0, MinionKind::Summon);
         if let Some(summoned_id) = self.summoned
@@ -124,7 +135,7 @@ impl SkillTrait for SummonSkill {
                 summoned.status.move_point = 2048;
             }
             args.3.queue_revival(summoned_id);
-            args.2.add(RunUpdate::new("召唤出[1]", args.0, summoned_id, 0));
+            Self::add_summoned_update(args.2, args.0, summoned_id, is_bed2_owner);
             return;
         }
         let summon_team = owner.clan_name();
@@ -227,7 +238,7 @@ impl SkillTrait for SummonSkill {
         let summoned_id = summoned.as_ptr();
         self.summoned = Some(summoned_id);
         args.3.queue_spawn(args.0, summoned);
-        args.2.add(RunUpdate::new("召唤出[1]", args.0, summoned_id, 0));
+        Self::add_summoned_update(args.2, args.0, summoned_id, is_bed2_owner);
     }
 }
 

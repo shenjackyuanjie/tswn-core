@@ -198,7 +198,7 @@ fn bed2_marker_parses_as_type_and_body_overlay() {
     assert_eq!(player.player_type(), PlayerType::Bed2);
     assert_eq!(player.clan_name(), "red");
     assert_eq!(player.id_key_name(), "alpha@red@bed2");
-    assert_eq!(player.display_name(), "bed");
+    assert_eq!(player.display_name(), "被子");
     assert_eq!(Player::raw_namerena_to_idname("alpha@red@bed2"), "alpha@red@bed2");
 
     player.build();
