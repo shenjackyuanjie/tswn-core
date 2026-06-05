@@ -37,7 +37,7 @@
 - 修复 `Protect` 在 merge/devour 后仍使用旧 level 的问题：守护触发时改为读取保护者当前 `ProtectSkill` 等级，使 `r127() < level` 判定与 JS 产物保持一致。
 - 修复清除 `BerserkState` 时误刷新 pending 正面状态的问题：狂暴解除只移除状态并输出消息，不触发 `updateStates`，避免蓄力中的 `HasteState.faster` 提前写回 speed。
 - 修复主回合更新边界：`main_round()` 在任意可见 update 产生后即停止继续推进，避免状态解除、毒性发作等尾部事件和下一名主体行动合并到同一批更新里。
-- 修复 `prepared_win_rate` 在非 JS profile rq 下仍套用 profile seed 计划的问题；公开切片复测 helper 继续保留旧 profile seed 语义，避免既有复测口径漂移。
+- 修复 `prepared_win_rate` / WASM 胜率 session 在非默认 rq 下误切换 seed 调度的问题：`eval_rq` 现在只影响名称评分，胜率模拟始终使用 JS ProfileWinChance seed 口径（首场无 seed，后续 `seed:(33554431 + i)@!`）。
 
 ### 重构
 

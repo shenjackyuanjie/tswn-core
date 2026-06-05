@@ -49,7 +49,6 @@ pub struct WinRateSession {
     next_round: usize,
     wins: usize,
     eval_rq: f64,
-    use_profile_seed: bool,
     init_nanos: u64,
     fight_nanos: u64,
 }
@@ -93,17 +92,11 @@ impl WinRateSession {
         let mut seed = String::with_capacity(24);
 
         for i in self.next_round..batch_end {
-            let seed_ref: &[String] = if self.use_profile_seed {
-                if i == 0 {
-                    &[]
-                } else {
-                    seed.clear();
-                    let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
-                    std::slice::from_ref(&seed)
-                }
+            let seed_ref: &[String] = if i == 0 {
+                &[]
             } else {
                 seed.clear();
-                let _ = write!(&mut seed, "seed:{i}@!");
+                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
                 std::slice::from_ref(&seed)
             };
 
@@ -137,7 +130,6 @@ impl WinRateSession {
             next_round: 0,
             wins: 0,
             eval_rq,
-            use_profile_seed: tswn_core::win_rate::use_js_profile_seed_schedule(eval_rq),
             init_nanos: 0,
             fight_nanos: 0,
         })
