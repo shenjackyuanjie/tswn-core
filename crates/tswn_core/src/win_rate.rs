@@ -11,7 +11,6 @@ use crate::error::runner::RunnerResult;
 use crate::{PreparedRunner, Runner};
 
 const PREPARED_WIN_RATE_PARALLEL_THRESHOLD: usize = 100;
-const EVAL_RQ_EPSILON: f64 = 1e-9;
 
 #[cfg(target_family = "wasm")]
 fn platform_default_win_rate_workers() -> usize { 1 }
@@ -65,38 +64,26 @@ pub fn resolve_win_rate_workers(thread: u32, total: usize) -> usize {
     platform_limit_win_rate_workers(workers).min(total.max(1))
 }
 
-// JS 的 profile 胜率路径不是从 `seed:0@!` 连续起跑：
-// 第 0 局不显式传 seed，之后从 `PROFILE_START + round` 开始。
-// 只有使用胜率专用的名字评估 rq 时才走这个计划；普通 eval_rq 路径仍按 round 本身给 seed。
-pub fn use_js_profile_seed_schedule(eval_rq: f64) -> bool {
-    (eval_rq - crate::player::eval_name::WIN_RATE_EVAL_RQ).abs() <= EVAL_RQ_EPSILON
-}
-
 // 复用调用方传入的 String，避免批量胜率计算时每局都重新分配 seed 行。
 // 返回切片是为了直接喂给 `Runner::new_from_prepared_with_seed()`，保持 raw 路径的
 // `seed:...` 整行语义，而不是只传裸 seed 值。
-fn seed_for_round(seed: &mut String, round: usize, use_profile_seed: bool) -> &[String] {
-    if use_profile_seed {
-        if round == 0 {
-            &[]
-        } else {
-            seed.clear();
-            let _ = write!(seed, "seed:{}@!", crate::engine::PROFILE_START as usize + round);
-            std::slice::from_ref(seed)
-        }
+// 胜率路径始终复刻 JS ProfileWinChance：第 0 局不显式传 seed，之后从
+// `PROFILE_START + round` 开始；eval_rq 只影响名称评分，不影响 seed 调度。
+fn seed_for_round(seed: &mut String, round: usize) -> &[String] {
+    if round == 0 {
+        &[]
     } else {
         seed.clear();
-        let _ = write!(seed, "seed:{round}@!");
+        let _ = write!(seed, "seed:{}@!", crate::engine::PROFILE_START as usize + round);
         std::slice::from_ref(seed)
     }
 }
 
-pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> RunnerResult<WinRateSummary> {
+pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, _eval_rq: f64, thread: u32) -> RunnerResult<WinRateSummary> {
     let workers = resolve_win_rate_workers(thread, n);
-    let use_profile_seed = use_js_profile_seed_schedule(eval_rq);
 
     if !should_parallelize_prepared_win_rate(workers, n) {
-        return run_prepared_win_rate_range_with_seed_schedule(prepared, 0, n, use_profile_seed);
+        return run_prepared_win_rate_range(prepared, 0, n);
     }
 
     let prepared = Arc::new(prepared.clone());
@@ -106,7 +93,7 @@ pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thre
         let prepared = Arc::clone(&prepared);
         let next = Arc::clone(&next);
         handles.push(std::thread::spawn(move || {
-            run_prepared_win_rate_worker(prepared.as_ref(), next.as_ref(), n, use_profile_seed)
+            run_prepared_win_rate_worker(prepared.as_ref(), next.as_ref(), n)
         }));
     }
 
@@ -133,24 +120,13 @@ fn should_parallelize_prepared_win_rate(workers: usize, n: usize) -> bool {
 }
 
 pub fn run_prepared_win_rate_range(prepared: &PreparedRunner, start: usize, end: usize) -> RunnerResult<WinRateSummary> {
-    // 这个公开 helper 供外部按旧 profile 语义切片复测；
-    // 保留默认的 JS profile seed 计划，避免已有调用方结果漂移。
-    run_prepared_win_rate_range_with_seed_schedule(prepared, start, end, true)
-}
-
-fn run_prepared_win_rate_range_with_seed_schedule(
-    prepared: &PreparedRunner,
-    start: usize,
-    end: usize,
-    use_profile_seed: bool,
-) -> RunnerResult<WinRateSummary> {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut seed = String::with_capacity(24);
     let mut timing = WinRateTiming::default();
 
     for i in start..end {
-        let seed_ref = seed_for_round(&mut seed, i, use_profile_seed);
+        let seed_ref = seed_for_round(&mut seed, i);
 
         let t_init = std::time::Instant::now();
         let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)?;
@@ -171,12 +147,7 @@ fn run_prepared_win_rate_range_with_seed_schedule(
     Ok(WinRateSummary { wins, total, timing })
 }
 
-fn run_prepared_win_rate_worker(
-    prepared: &PreparedRunner,
-    next: &AtomicUsize,
-    end: usize,
-    use_profile_seed: bool,
-) -> RunnerResult<WinRateSummary> {
+fn run_prepared_win_rate_worker(prepared: &PreparedRunner, next: &AtomicUsize, end: usize) -> RunnerResult<WinRateSummary> {
     let mut wins = 0usize;
     let mut total = 0usize;
     let mut seed = String::with_capacity(24);
@@ -188,7 +159,7 @@ fn run_prepared_win_rate_worker(
             break;
         }
 
-        let seed_ref = seed_for_round(&mut seed, i, use_profile_seed);
+        let seed_ref = seed_for_round(&mut seed, i);
 
         let t_init = std::time::Instant::now();
         let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)?;
