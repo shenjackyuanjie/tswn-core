@@ -275,7 +275,7 @@ impl Player {
         MinionOverlay {
             attrs: Some(template.attr.map(|value| value as i32)),
             skills: Some(template.overlay_skill_levels_for_ol_export(true)),
-            reuse_skills_on_recast: true,
+            reuse_skills_on_recast: false,
             inherit_owner_def_res: false,
             shadow,
             summon,

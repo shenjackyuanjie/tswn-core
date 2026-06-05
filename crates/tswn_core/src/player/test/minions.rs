@@ -1283,6 +1283,12 @@ fn bed2_summon_uses_base_player_template() {
     bed2.build();
     assert_eq!(bed2.attr, [0, 99, 0, 0, 0, 99, 0, 3000]);
     assert_eq!(bed2.skills.skill, vec![22]);
+    let bed2_summon_overlay = bed2.overlay.as_ref().unwrap().summon.as_ref().unwrap();
+    assert!(!bed2_summon_overlay.reuse_skills_on_recast);
+    assert!(!bed2_summon_overlay.inherit_owner_def_res);
+    let child_summon_overlay = bed2_summon_overlay.summon.as_ref().unwrap();
+    assert!(child_summon_overlay.reuse_skills_on_recast);
+    assert!(child_summon_overlay.inherit_owner_def_res);
     let bed2_id = storage.just_insert_player(bed2);
     let mut randomer = RC4::default();
     let mut updates = RunUpdates::new();
@@ -1320,6 +1326,9 @@ fn bed2_summon_uses_base_player_template() {
     );
     assert!(summoned.overlay.as_ref().and_then(|overlay| overlay.shadow.as_ref()).is_some());
     assert!(summoned.overlay.as_ref().and_then(|overlay| overlay.summon.as_ref()).is_some());
+    let child_summon_overlay = summoned.overlay.as_ref().unwrap().summon.as_ref().unwrap();
+    assert!(child_summon_overlay.reuse_skills_on_recast);
+    assert!(child_summon_overlay.inherit_owner_def_res);
     assert!(updates.updates.iter().any(|update| update.caster == bed2_id && update.target == bed2_id));
 }
 
@@ -1421,6 +1430,75 @@ fn bed2_waits_for_summon_clone_tree_to_die_before_resummon() {
             .unwrap()
             .bed2_try_summon(&mut randomer, &mut updates, &storage),
         "bed2 should resummon after the summon clone tree dies"
+    );
+}
+
+#[test]
+fn bed2_recast_resets_summon_skill_levels_and_attrs_after_clone_use() {
+    let storage = Storage::new_arc();
+    let mut bed2 = Player::new_from_namerena_raw(
+        "alpha@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255,\"sklclone\":255}}"
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    bed2.build();
+    let bed2_id = storage.just_insert_player(bed2);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+
+    assert!(
+        storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage)
+    );
+    let summoned = storage.take_pending_spawns().into_iter().next().expect("bed2 should summon").player;
+    let summon_id = storage.just_insert_player(summoned);
+    let initial_attrs = storage.get_player(&summon_id).unwrap().attr;
+    let clone_skill_key = crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 23;
+    let initial_clone_level = storage.get_player(&summon_id).unwrap().skills.skill_by_id(clone_skill_key).level();
+    assert_eq!(initial_clone_level, 255);
+
+    {
+        let summon = storage.just_get_player_mut(summon_id).unwrap();
+        summon.status.magic_point = 999;
+        summon.skills.skill_by_id_mut(clone_skill_key).act(
+            vec![summon_id],
+            false,
+            (summon_id, &mut randomer, &mut updates, &storage),
+        );
+    }
+    let decayed = storage.get_player(&summon_id).unwrap();
+    assert_ne!(decayed.attr, initial_attrs, "clone use should decay summon attrs before this test can verify reset");
+    assert_ne!(
+        decayed.skills.skill_by_id(clone_skill_key).level(),
+        initial_clone_level,
+        "clone use should decay current clone skill level before this test can verify reset"
+    );
+
+    let clone = storage
+        .take_pending_spawns()
+        .into_iter()
+        .next()
+        .expect("clone use should spawn a clone")
+        .player;
+    let clone_id = storage.just_insert_player(clone);
+    storage.just_get_player_mut(summon_id).unwrap().set_hp_raw(0);
+    storage.just_get_player_mut(clone_id).unwrap().set_hp_raw(0);
+
+    assert!(
+        storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage)
+    );
+    let recast = storage.get_player(&summon_id).unwrap();
+    assert_eq!(recast.attr, initial_attrs, "bed2 recast should restore summon attrs from the base template");
+    assert_eq!(
+        recast.skills.skill_by_id(clone_skill_key).level(),
+        initial_clone_level,
+        "bed2 recast should restore summon skill levels from the base template"
     );
 }
 
