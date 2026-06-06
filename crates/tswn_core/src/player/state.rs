@@ -104,6 +104,7 @@ pub trait StateTrait: std::fmt::Debug + Send + Sync + 'static {
     }
 
     fn post_defend_priority(&self) -> i32 { 1000 }
+    fn has_post_defend(&self) -> bool { false }
     fn on_post_defend(
         &mut self,
         _owner: PlrId,
@@ -339,6 +340,9 @@ impl PlayerStateStore {
 
     #[inline]
     pub fn meta_type(&self, tag: StateTag) -> Option<i32> { self.entries.get(&tag).map(|entry| entry.state.meta_type()) }
+
+    #[inline]
+    pub fn has_post_defend(&self) -> bool { self.entries.values().any(|entry| entry.state.has_post_defend()) }
 
     pub fn clear_negative_states(&mut self) -> bool {
         #[cfg(not(feature = "no_debug"))]
@@ -621,7 +625,7 @@ impl PlayerStateStore {
         storage: &Arc<Storage>,
     ) -> Vec<StateTag> {
         let mut clear_tags = SmallVec::<[StateTag; 8]>::new();
-        for tag in self.ordered_tags_by(|state| state.post_defend_priority()) {
+        for (tag, _) in self.post_defend_tags_with_priority() {
             if let Some(entry) = self.entries.get_mut(&tag)
                 && entry.state.on_post_defend(owner, dmg, caster, randomer, updates, storage)
             {
@@ -639,6 +643,9 @@ impl PlayerStateStore {
     pub fn post_defend_tags_with_priority(&self) -> SmallVec<[(StateTag, i32); 8]> {
         let mut result: SmallVec<[(StateTag, i32, u64); 8]> = SmallVec::new();
         for (&tag, entry) in &self.entries {
+            if !entry.state.has_post_defend() {
+                continue;
+            }
             result.push((tag, entry.state.post_defend_priority(), entry.order));
         }
         result.sort_unstable_by(|(tag_a, p_a, o_a), (tag_b, p_b, o_b)| {

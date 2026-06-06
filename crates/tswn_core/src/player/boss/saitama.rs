@@ -21,6 +21,7 @@ impl StateTrait for SaitamaState {
     fn meta_type(&self) -> i32 { 0 }
 
     fn post_defend_priority(&self) -> i32 { i32::MAX }
+    fn has_post_defend(&self) -> bool { true }
     fn on_post_defend(
         &mut self,
         _owner: PlrId,

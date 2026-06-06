@@ -130,6 +130,7 @@ impl StateTrait for CurseState {
     // JS 会把 CurseState 直接插入 y2（post_defend），并使用默认 ga4()=10000。
     // 这里保持默认顺序，让 Defend/Iron(ga4=4000)/Shield(ga4=6000) 先于 curse 运行。
     fn post_defend_priority(&self) -> i32 { 10000 }
+    fn has_post_defend(&self) -> bool { true }
 
     fn on_post_defend(
         &mut self,

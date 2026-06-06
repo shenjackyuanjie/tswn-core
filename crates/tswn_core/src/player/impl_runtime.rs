@@ -1986,8 +1986,14 @@ impl Player {
         updates: &mut RunUpdates,
         storage: &Arc<Storage>,
     ) -> i32 {
-        if !self.skills.has_post_defend() && self.state.is_empty() {
+        let has_post_defend_states = self.state.has_post_defend();
+        if !self.skills.has_post_defend() && !has_post_defend_states {
             return dmg;
+        }
+        if !has_post_defend_states {
+            return self
+                .skills
+                .post_defend(dmg, caster, &on_damage, (self.as_ptr(), randomer, updates, storage));
         }
         // JS 中 skill 和 state 的 post_defend 共享同一个 y2 链表，按 ga4() (sortId) 升序执行。
         // 这里将 skill 和 state 的 post_defend entry 合并到统一优先级链中执行。
