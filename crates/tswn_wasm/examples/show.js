@@ -138,6 +138,8 @@ const DEFAULT_RAW = `
 
 /** @type {string} localStorage 键名，用于跨会话记住用户输入 */
 const INPUT_STORAGE_KEY = "tswn_wasm_show_input";
+/** @type {SpeedMode} 新战斗默认播放速度 */
+const DEFAULT_SPEED_MODE = "normal";
 
 // ============================================================================
 // DOM 元素引用
@@ -213,7 +215,7 @@ const stepForwardFrameBtn = document.querySelector("#stepForwardFrameBtn");
 /** @type {FightReplay|null} 当前已生成的回放数据 */
 let currentReplay = null;
 /** @type {SpeedMode} 当前播放速度模式 */
-let speedMode = "normal";
+let speedMode = DEFAULT_SPEED_MODE;
 /** @type {Map<number, FightPlayer>} playerId → 玩家对象的快速索引 */
 let playersById = new Map();
 const ICON_STYLE_ID = "tswn-show-icon-styles";
@@ -895,6 +897,7 @@ async function startBattle() {
     return;
   }
 
+  speedMode = DEFAULT_SPEED_MODE;
   persistInputValue();
   stopPlaybackLoop();
   playbackPaused = false;
