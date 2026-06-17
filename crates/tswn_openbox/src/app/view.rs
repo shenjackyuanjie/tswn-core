@@ -223,24 +223,14 @@ impl OpenboxApp {
         });
         if !self.skill_board_lines.is_empty() {
             ui.add_space(10.0);
-            let mut skill_board_log = selected_log_lines(&self.log, &self.skill_board_lines);
+            let skill_board_log = selected_log_lines(&self.log, &self.skill_board_lines);
             let line_count = skill_board_log.lines().count();
             if line_count > 0 {
                 egui::CollapsingHeader::new(format!("技能榜 ({line_count})"))
                     .default_open(false)
                     .show(ui, |ui| {
-                        let text_width = log_text_width(&skill_board_log).max(ui.available_width());
                         let text_height = compact_log_text_height(line_count);
-                        egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-                            ui.add_sized(
-                                egui::vec2(text_width, text_height),
-                                egui::TextEdit::multiline(&mut skill_board_log)
-                                    .font(egui::TextStyle::Monospace)
-                                    .desired_width(text_width)
-                                    .desired_rows(line_count.clamp(4, 20))
-                                    .code_editor(),
-                            );
-                        });
+                        readonly_log_view(ui, "skill_board_log", &skill_board_log, text_height);
                     });
             }
         }
@@ -253,30 +243,23 @@ impl OpenboxApp {
                     ui.label(egui::RichText::new("选择工具、填好输入，然后点击运行。旧日志会在新任务开始时清空。").weak());
                 });
             } else {
-                let mut log_view = self.log.clone();
-                let text_width = log_text_width(&self.log).max(ui.available_width());
                 let text_height = ui.available_height().max(260.0);
-                egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-                    ui.add_sized(
-                        egui::vec2(text_width, text_height),
-                        egui::TextEdit::multiline(&mut log_view)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(text_width)
-                            .desired_rows(log_text_rows(&self.log))
-                            .code_editor(),
-                    );
-                });
+                readonly_log_view(ui, "main_log", &self.log, text_height);
             }
         });
     }
 }
 
-fn log_text_width(log: &str) -> f32 {
-    let longest = log.lines().map(str::chars).map(Iterator::count).max().unwrap_or(0);
-    (longest as f32 * 8.0 + 32.0).min(20_000.0)
+fn readonly_log_view(ui: &mut egui::Ui, id: &'static str, text: &str, viewport_height: f32) {
+    egui::ScrollArea::vertical()
+        .id_salt(id)
+        .auto_shrink([false, false])
+        .max_height(viewport_height)
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.add(egui::Label::new(egui::RichText::new(text).monospace()).selectable(true).wrap());
+        });
 }
-
-fn log_text_rows(log: &str) -> usize { log.lines().count().clamp(8, 2_000) }
 
 fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 19.0 + 20.0).min(420.0) }
 
