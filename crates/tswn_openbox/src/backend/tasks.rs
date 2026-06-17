@@ -72,11 +72,55 @@ pub fn run_to_diy(
                 status.wisdom,
                 status.max_hp,
             );
+            let _ = writeln!(out, "技能: {}", player_diy_skill_object(&player));
             let _ = writeln!(out, "name_factor: {:.6}", player.get_name_factor());
         }
     }
 
     finish_output(output_file.as_deref(), out)
+}
+
+fn player_diy_skill_object(player: &Player) -> String {
+    let diy = player.to_diy_compact();
+    extract_diy_skill_object(&diy).unwrap_or("{}").to_string()
+}
+
+fn extract_diy_skill_object(diy: &str) -> Option<&str> {
+    let attrs_start = diy.find("+diy[")? + "+diy[".len();
+    let attrs_end = attrs_start + diy[attrs_start..].find(']')?;
+    let object_start = attrs_end + 1;
+    if !diy[object_start..].starts_with('{') {
+        return None;
+    }
+
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (offset, ch) in diy[object_start..].char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let end = object_start + offset + ch.len_utf8();
+                    return Some(&diy[object_start..end]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
@@ -643,7 +687,9 @@ fn player_to_ol(raw: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{OutputMode, compare_score_output_lines, score_output_line_value};
+    use std::sync::atomic::AtomicBool;
+
+    use super::{OutputMode, compare_score_output_lines, run_to_diy, score_output_line_value};
 
     #[test]
     fn log_output_lines_sort_by_score_descending() {
@@ -662,5 +708,21 @@ mod tests {
             score_output_line_value(r#"{"label":"a","score":300.0}"#, OutputMode::Jsonl),
             Some(300.0)
         );
+    }
+
+    #[test]
+    fn to_diy_details_include_skill_object() {
+        let cancel = AtomicBool::new(false);
+        let output = run_to_diy(
+            r#"mario+diy[72,39,69,76,67,66,0,84]{"sklfire":5,"sklheal":"40+30"}"#,
+            true,
+            false,
+            true,
+            None,
+            &cancel,
+        )
+        .unwrap();
+
+        assert!(output.contains(r#"技能: {"sklfire":5,"sklheal":"40+30"}"#));
     }
 }
