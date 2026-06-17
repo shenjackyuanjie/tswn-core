@@ -24,7 +24,7 @@ use super::target_presets::{load_selected_target_text, load_selected_teammate_te
 use super::widgets::OptionalFileOutput;
 
 const MAX_EVENTS_PER_POLL: usize = 256;
-const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
+const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(33);
 
 impl OpenboxApp {
     pub fn stop_current_task(&mut self) {
