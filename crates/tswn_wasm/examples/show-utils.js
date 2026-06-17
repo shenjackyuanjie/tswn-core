@@ -14,12 +14,12 @@
  * @returns {string} 已转义的 HTML 安全字符串
  */
 export function escapeHtml(text) {
-    return String(text)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 /**
@@ -29,12 +29,12 @@ export function escapeHtml(text) {
  * @returns {string} 可直接用于 background-image 的 data URI
  */
 export function iconSrc(iconPngBase64) {
-    if (!iconPngBase64) {
-        return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
-    }
-    return iconPngBase64.startsWith("data:")
-        ? iconPngBase64
-        : `data:image/png;base64,${iconPngBase64}`;
+  if (!iconPngBase64) {
+    return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+  }
+  return iconPngBase64.startsWith("data:")
+    ? iconPngBase64
+    : `data:image/png;base64,${iconPngBase64}`;
 }
 
 /**
@@ -43,7 +43,7 @@ export function iconSrc(iconPngBase64) {
  * @returns {string}
  */
 export function iconClassName(iconId) {
-    return iconId == null ? "icon_missing" : `icon_${iconId}`;
+  return iconId == null ? "icon_missing" : `icon_${iconId}`;
 }
 
 /**
@@ -52,18 +52,18 @@ export function iconClassName(iconId) {
  * @returns {string}
  */
 export function buildIconClassCss(iconEntries) {
-    const seen = new Set();
-    return iconEntries
-        .map((entry) => {
-            const iconId = entry.icon_class_id ?? entry.id;
-            if (iconId == null || seen.has(iconId)) {
-                return "";
-            }
-            seen.add(iconId);
-            return `.${iconClassName(iconId)} { background-image: url("${iconSrc(entry.icon_png_base64)}"); }`;
-        })
-        .filter(Boolean)
-        .join("\n");
+  const seen = new Set();
+  return iconEntries
+    .map((entry) => {
+      const iconId = entry.icon_class_id ?? entry.id;
+      if (iconId == null || seen.has(iconId)) {
+        return "";
+      }
+      seen.add(iconId);
+      return `.${iconClassName(iconId)} { background-image: url("${iconSrc(entry.icon_png_base64)}"); }`;
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
@@ -72,7 +72,7 @@ export function buildIconClassCss(iconEntries) {
  * @returns {string}
  */
 function iconCacheKey(actor) {
-    return actor?.icon_key ?? actor?.id_name ?? `#${actor?.id ?? "missing"}`;
+  return actor?.icon_key ?? actor?.id_name ?? `#${actor?.id ?? "missing"}`;
 }
 
 /**
@@ -82,50 +82,50 @@ function iconCacheKey(actor) {
  * @returns {FightReplay}
  */
 export function normalizeReplayIconClasses(replay) {
-    const iconIdByKey = new Map();
-    const iconStyleById = new Map();
-    let nextIconId = 0;
+  const iconIdByKey = new Map();
+  const iconStyleById = new Map();
+  let nextIconId = 0;
 
-    const register = (actor) => {
-        if (!actor) {
-            return actor;
-        }
-        const key = iconCacheKey(actor);
-        let icon_class_id = iconIdByKey.get(key);
-        if (icon_class_id == null) {
-            icon_class_id = nextIconId;
-            nextIconId += 1;
-            iconIdByKey.set(key, icon_class_id);
-        }
-        if (actor.icon_png_base64 && !iconStyleById.has(icon_class_id)) {
-            iconStyleById.set(icon_class_id, {
-                icon_class_id,
-                icon_png_base64: actor.icon_png_base64,
-            });
-        }
-        return {
-            ...actor,
-            icon_class_id,
-        };
-    };
-
-    const normalizeStates = (states) => (states ?? []).map(register);
-    const players = (replay.players ?? []).map(register);
-    const initial_states = normalizeStates(replay.initial_states);
-    const frames = (replay.frames ?? []).map((frame) => ({
-        ...frame,
-        states: normalizeStates(frame.states),
-    }));
-    const final_states = normalizeStates(replay.final_states);
-
+  const register = (actor) => {
+    if (!actor) {
+      return actor;
+    }
+    const key = iconCacheKey(actor);
+    let icon_class_id = iconIdByKey.get(key);
+    if (icon_class_id == null) {
+      icon_class_id = nextIconId;
+      nextIconId += 1;
+      iconIdByKey.set(key, icon_class_id);
+    }
+    if (actor.icon_png_base64 && !iconStyleById.has(icon_class_id)) {
+      iconStyleById.set(icon_class_id, {
+        icon_class_id,
+        icon_png_base64: actor.icon_png_base64,
+      });
+    }
     return {
-        ...replay,
-        players,
-        initial_states,
-        frames,
-        final_states,
-        icon_styles: Array.from(iconStyleById.values()),
+      ...actor,
+      icon_class_id,
     };
+  };
+
+  const normalizeStates = (states) => (states ?? []).map(register);
+  const players = (replay.players ?? []).map(register);
+  const initial_states = normalizeStates(replay.initial_states);
+  const frames = (replay.frames ?? []).map((frame) => ({
+    ...frame,
+    states: normalizeStates(frame.states),
+  }));
+  const final_states = normalizeStates(replay.final_states);
+
+  return {
+    ...replay,
+    players,
+    initial_states,
+    frames,
+    final_states,
+    icon_styles: Array.from(iconStyleById.values()),
+  };
 }
 
 /**
@@ -134,7 +134,7 @@ export function normalizeReplayIconClasses(replay) {
  * @returns {FightPlayer[]}
  */
 export function withTeamIconClassIds(players) {
-    return normalizeReplayIconClasses({ players }).players;
+  return normalizeReplayIconClasses({ players }).players;
 }
 
 /**
@@ -145,7 +145,7 @@ export function withTeamIconClassIds(players) {
  * @returns {string}
  */
 export function renderIconSprite(iconId, className) {
-    return `<span class="${className} ${iconClassName(iconId)}" aria-hidden="true"></span>`;
+  return `<span class="${className} ${iconClassName(iconId)}" aria-hidden="true"></span>`;
 }
 
 /**
@@ -154,23 +154,23 @@ export function renderIconSprite(iconId, className) {
  * @returns {string}
  */
 export function formatError(error) {
-    if (!error) {
-        return "未知错误";
-    }
-    if (typeof error === "string") {
-        return error;
-    }
-    if (error.code || error.message) {
-        return `${error.code ?? "ERROR"}: ${error.message ?? ""}`.trim();
-    }
-    if (error instanceof Error) {
-        return error.message;
-    }
-    try {
-        return JSON.stringify(error, null, 2);
-    } catch {
-        return String(error);
-    }
+  if (!error) {
+    return "未知错误";
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error.code || error.message) {
+    return `${error.code ?? "ERROR"}: ${error.message ?? ""}`.trim();
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  try {
+    return JSON.stringify(error, null, 2);
+  } catch {
+    return String(error);
+  }
 }
 
 // ============================================================================
@@ -183,7 +183,7 @@ export function formatError(error) {
  * @returns {Promise<void>}
  */
 export function sleep(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 // ============================================================================
@@ -196,7 +196,7 @@ export function sleep(ms) {
  * @returns {Map<number, FightState>}
  */
 export function buildStateMap(states) {
-    return new Map(states.map((state) => [state.id, state]));
+  return new Map(states.map((state) => [state.id, state]));
 }
 
 /**
@@ -205,7 +205,7 @@ export function buildStateMap(states) {
  * @returns {string}
  */
 export function phantomDisplayName(playerId) {
-    return `幻影 #${playerId}`;
+  return `幻影 #${playerId}`;
 }
 
 /**
@@ -216,23 +216,24 @@ export function phantomDisplayName(playerId) {
  * @returns {string}
  */
 export function replayDisplayName(state, fallbackPlayerId) {
-    const playerId = fallbackPlayerId ?? state?.id;
-    if (!state) {
-        return playerId == null ? "未知角色" : phantomDisplayName(playerId);
-    }
-    if (state.minion_kind === 'clone') {
-        return playerId == null ? state.display_name : `${state.display_name} #${playerId}`;
-    }
-    if (state.minion_kind === 'summon' || state.minion_kind === 'shadow' || state.minion_kind === 'zombie') {
-        const baseName = state.display_name
-            ?? (state.minion_kind === 'shadow'
-                ? '幻影'
-                : state.minion_kind === 'zombie'
-                    ? '丧尸'
-                    : '使魔');
-        return playerId == null ? baseName : `${baseName} #${playerId}`;
-    }
-    return state.display_name ?? phantomDisplayName(playerId ?? 0);
+  const playerId = fallbackPlayerId ?? state?.id;
+  if (!state) {
+    return playerId == null ? "未知角色" : phantomDisplayName(playerId);
+  }
+  if (state.minion_kind === "clone") {
+    return playerId == null ? state.display_name : `${state.display_name} #${playerId}`;
+  }
+  if (
+    state.minion_kind === "summon" ||
+    state.minion_kind === "shadow" ||
+    state.minion_kind === "zombie"
+  ) {
+    const baseName =
+      state.display_name ??
+      (state.minion_kind === "shadow" ? "幻影" : state.minion_kind === "zombie" ? "丧尸" : "使魔");
+    return playerId == null ? baseName : `${baseName} #${playerId}`;
+  }
+  return state.display_name ?? phantomDisplayName(playerId ?? 0);
 }
 
 /**
@@ -241,13 +242,13 @@ export function replayDisplayName(state, fallbackPlayerId) {
  * @returns {string} "死亡" | "冻结" | "存活"
  */
 export function statusText(state) {
-    if (!state.alive) {
-        return "死亡";
-    }
-    if (state.frozen) {
-        return "冻结";
-    }
-    return "存活";
+  if (!state.alive) {
+    return "死亡";
+  }
+  if (state.frozen) {
+    return "冻结";
+  }
+  return "存活";
 }
 
 // ============================================================================
@@ -263,29 +264,29 @@ export function statusText(state) {
  * @returns {HpMetrics|null} 若 state 无效或 maxHp≤0 返回 null
  */
 export function actorHpMetrics(state, previousState) {
-    if (!state || state.max_hp <= 0) {
-        return null;
-    }
+  if (!state || state.max_hp <= 0) {
+    return null;
+  }
 
-    const maxHp = Math.max(1, state.max_hp, previousState?.max_hp ?? 0);
-    const hp = Math.max(0, Math.min(maxHp, state.hp));
-    // 新对象（无 previousState 或本帧刚出现）当作 hp 从 0 开始变化
-    const isNew = state?._is_new_in_frame || previousState?._is_new_in_frame;
-    const previousHp = (previousState && !isNew) ? Math.max(0, Math.min(maxHp, previousState.hp)) : 0;
-    // 血条长度调整为 血量 / 4 向上取整
-    const totalWidth = Math.max(20, Math.ceil(maxHp / 4));
-    const fillWidth = hp > 0 ? Math.max(1, Math.ceil(hp / 4)) : 0;
-    const previousWidth = previousHp > 0 ? Math.max(1, Math.ceil(previousHp / 4)) : 0;
-    // 受伤变化量（红条）：上一帧比当前宽多少
-    const deltaWidth = previousHp > hp ? Math.max(1, previousWidth - fillWidth) : 0;
+  const maxHp = Math.max(1, state.max_hp, previousState?.max_hp ?? 0);
+  const hp = Math.max(0, Math.min(maxHp, state.hp));
+  // 新对象（无 previousState 或本帧刚出现）当作 hp 从 0 开始变化
+  const isNew = state?._is_new_in_frame || previousState?._is_new_in_frame;
+  const previousHp = previousState && !isNew ? Math.max(0, Math.min(maxHp, previousState.hp)) : 0;
+  // 血条长度调整为 血量 / 4 向上取整
+  const totalWidth = Math.max(20, Math.ceil(maxHp / 4));
+  const fillWidth = hp > 0 ? Math.max(1, Math.ceil(hp / 4)) : 0;
+  const previousWidth = previousHp > 0 ? Math.max(1, Math.ceil(previousHp / 4)) : 0;
+  // 受伤变化量（红条）：上一帧比当前宽多少
+  const deltaWidth = previousHp > hp ? Math.max(1, previousWidth - fillWidth) : 0;
 
-    return {
-        totalWidth,
-        fillWidth,
-        previousWidth,
-        deltaLeft: fillWidth,
-        deltaWidth,
-    };
+  return {
+    totalWidth,
+    fillWidth,
+    previousWidth,
+    deltaLeft: fillWidth,
+    deltaWidth,
+  };
 }
 
 // ============================================================================
@@ -299,26 +300,29 @@ export function actorHpMetrics(state, previousState) {
  * @returns {string} HTML 字符串
  */
 export function formatMessageText(text, tone) {
-    let html = escapeHtml(text);
+  let html = escapeHtml(text);
 
-    // 解除/中止/打消所在句：从[xxx]中解除 → [xxx] 标橙色
-    html = html.replace(/从\[([^\]]+)\]中解除/g, '从<span class="status-change-token">$1</span>中解除');
-    // 独立 [解除]/[中止]/[打消] 标橙色
-    html = html.replace(/\[(解除|中止|打消)\]/g, '<span class="status-change-token">$1</span>');
+  // 解除/中止/打消所在句：从[xxx]中解除 → [xxx] 标橙色
+  html = html.replace(
+    /从\[([^\]]+)\]中解除/g,
+    '从<span class="status-change-token">$1</span>中解除',
+  );
+  // 独立 [解除]/[中止]/[打消] 标橙色
+  html = html.replace(/\[(解除|中止|打消)\]/g, '<span class="status-change-token">$1</span>');
 
-    // 其他技能或状态（包括回避、反击、识破、反弹、吸收等普通技能） → 去掉 []，蓝色
-    html = html.replace(/\[([^\]]+)\]/g, '<span class="skill-token">$1</span>');
+  // 其他技能或状态（包括回避、反击、识破、反弹、吸收等普通技能） → 去掉 []，蓝色
+  html = html.replace(/\[([^\]]+)\]/g, '<span class="skill-token">$1</span>');
 
-    if (tone === "damage") {
-        // "XX点伤害" 中的数字标红
-        html = html.replace(/(\d+)(?=点伤害)/g, '<span class="message-number">$1</span>');
-    }
-    if (tone === "recover") {
-        // "回复XX点" 中的数字标绿
-        html = html.replace(/(\d+)(?=点)/g, '<span class="message-number">$1</span>');
-    }
-    // 瘟疫/体力减少等也标红（数字后跟%或"减少"）
-    html = html.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
+  if (tone === "damage") {
+    // "XX点伤害" 中的数字标红
+    html = html.replace(/(\d+)(?=点伤害)/g, '<span class="message-number">$1</span>');
+  }
+  if (tone === "recover") {
+    // "回复XX点" 中的数字标绿
+    html = html.replace(/(\d+)(?=点)/g, '<span class="message-number">$1</span>');
+  }
+  // 瘟疫/体力减少等也标红（数字后跟%或"减少"）
+  html = html.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
 
-    return html;
+  return html;
 }

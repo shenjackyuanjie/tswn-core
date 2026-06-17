@@ -45,18 +45,18 @@
  */
 
 import {
-    escapeHtml,
-    actorHpMetrics,
-    formatMessageText,
-    statusText,
-    buildStateMap,
-    phantomDisplayName,
-    replayDisplayName,
-    renderIconSprite,
-} from './show-utils.js';
+  escapeHtml,
+  actorHpMetrics,
+  formatMessageText,
+  statusText,
+  buildStateMap,
+  phantomDisplayName,
+  replayDisplayName,
+  renderIconSprite,
+} from "./show-utils.js";
 
 function playerIconClassId(player) {
-    return player?.icon_class_id ?? player?.id;
+  return player?.icon_class_id ?? player?.id;
 }
 
 // ============================================================================
@@ -72,25 +72,25 @@ function playerIconClassId(player) {
  * @returns {string} HTML 字符串
  */
 export function actorToken(player, state, previousState, update, { showHp = true } = {}) {
-    // 仅在血量变化时（或新对象首次出现时）显现血条。
-    // 被减速等 debuff 状态不会改变血量，因此不展示血条。
-    const isNew = state?._is_new_in_frame;
-    const hpChanged = isNew || previousState == null || Number(state.hp) !== Number(previousState.hp);
-    const shouldShowHp = showHp && hpChanged;
-    const hpMetrics = shouldShowHp ? actorHpMetrics(state, previousState) : null;
-    const hpBar = hpMetrics
-        ? `
+  // 仅在血量变化时（或新对象首次出现时）显现血条。
+  // 被减速等 debuff 状态不会改变血量，因此不展示血条。
+  const isNew = state?._is_new_in_frame;
+  const hpChanged = isNew || previousState == null || Number(state.hp) !== Number(previousState.hp);
+  const shouldShowHp = showHp && hpChanged;
+  const hpMetrics = shouldShowHp ? actorHpMetrics(state, previousState) : null;
+  const hpBar = hpMetrics
+    ? `
             <span class="actor-hp" style="width:${hpMetrics.totalWidth}px">
                 <span class="actor-hp-fill" style="width:${hpMetrics.fillWidth}px"></span>
                 ${hpMetrics.deltaWidth > 0 ? `<span class="actor-hp-delta" style="left:${hpMetrics.deltaLeft}px;width:${hpMetrics.deltaWidth}px"></span>` : ""}
             </span>
         `
-        : "";
-    const hpClass = hpMetrics ? " has-hp" : "";
-    const isKnockout = update?.tone === "knockout" || (state && !state.alive);
-    const nameClass = `actor-name${isKnockout ? " namedie" : ""}`;
+    : "";
+  const hpClass = hpMetrics ? " has-hp" : "";
+  const isKnockout = update?.tone === "knockout" || (state && !state.alive);
+  const nameClass = `actor-name${isKnockout ? " namedie" : ""}`;
 
-    return `<span class="actor-token${hpClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), 'msg-avatar icon-sprite')}</span><span class="${nameClass}">${hpBar}${escapeHtml(player.display_name)}</span></span>`;
+  return `<span class="actor-token${hpClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}">${hpBar}${escapeHtml(player.display_name)}</span></span>`;
 }
 
 /**
@@ -102,27 +102,27 @@ export function actorToken(player, state, previousState, update, { showHp = true
  * @returns {FightPlayer}
  */
 function syntheticPlayerFromState(playerId, state, playersById) {
-    let icon = state?.icon_png_base64 ?? null;
-    let icon_class_id = state?.icon_class_id ?? state?.owner_id ?? playerId;
-    if (state?.owner_id != null) {
-        const ownerPlayer = playersById.get(state.owner_id);
-        if (ownerPlayer && !icon) {
-            icon = ownerPlayer.icon_png_base64;
-        }
-        if (ownerPlayer && state?.icon_class_id == null) {
-            icon_class_id = ownerPlayer.icon_class_id ?? ownerPlayer.id;
-        }
+  let icon = state?.icon_png_base64 ?? null;
+  let icon_class_id = state?.icon_class_id ?? state?.owner_id ?? playerId;
+  if (state?.owner_id != null) {
+    const ownerPlayer = playersById.get(state.owner_id);
+    if (ownerPlayer && !icon) {
+      icon = ownerPlayer.icon_png_base64;
     }
+    if (ownerPlayer && state?.icon_class_id == null) {
+      icon_class_id = ownerPlayer.icon_class_id ?? ownerPlayer.id;
+    }
+  }
 
-    return {
-        id: playerId,
-        team_index: state?.team_index ?? 0,
-        id_name: state?.id_name ?? `player_${playerId}`,
-        icon_key: state?.icon_key ?? state?.id_name ?? `player_${playerId}`,
-        display_name: replayDisplayName(state, playerId),
-        icon_png_base64: icon,
-        icon_class_id,
-    };
+  return {
+    id: playerId,
+    team_index: state?.team_index ?? 0,
+    id_name: state?.id_name ?? `player_${playerId}`,
+    icon_key: state?.icon_key ?? state?.id_name ?? `player_${playerId}`,
+    display_name: replayDisplayName(state, playerId),
+    icon_png_base64: icon,
+    icon_class_id,
+  };
 }
 
 /**
@@ -134,16 +134,29 @@ function syntheticPlayerFromState(playerId, state, playersById) {
  * @param {{ showHp?: boolean }} [options]
  * @returns {string} HTML 字符串
  */
-export function renderActorById(playerId, stateMap, previousStateMap, playersById, update, options) {
-    const player = playersById.get(playerId);
-    const state = stateMap.get(playerId);
-    // 若上一帧不存在该对象则传 null，供 actorToken 识别为"新对象"以展示血条
-    const previousState = previousStateMap?.get(playerId) ?? null;
-    if (!player) {
-        return actorToken(syntheticPlayerFromState(playerId, state, playersById), state, previousState, update, options);
-    }
+export function renderActorById(
+  playerId,
+  stateMap,
+  previousStateMap,
+  playersById,
+  update,
+  options,
+) {
+  const player = playersById.get(playerId);
+  const state = stateMap.get(playerId);
+  // 若上一帧不存在该对象则传 null，供 actorToken 识别为"新对象"以展示血条
+  const previousState = previousStateMap?.get(playerId) ?? null;
+  if (!player) {
+    return actorToken(
+      syntheticPlayerFromState(playerId, state, playersById),
+      state,
+      previousState,
+      update,
+      options,
+    );
+  }
 
-    return actorToken(player, state, previousState, update, options);
+  return actorToken(player, state, previousState, update, options);
 }
 
 /**
@@ -156,22 +169,26 @@ export function renderActorById(playerId, stateMap, previousStateMap, playersByI
  * @returns {string} HTML 字符串
  */
 export function renderMessageParam(update, tone, stateMap, previousStateMap, playersById) {
-    if (Array.isArray(update.target_ids) && update.target_ids.length) {
-        return update.target_ids
-            .map((playerId) => renderActorById(playerId, stateMap, previousStateMap, playersById, update, { showHp: true }))
-            .join(",");
-    }
+  if (Array.isArray(update.target_ids) && update.target_ids.length) {
+    return update.target_ids
+      .map((playerId) =>
+        renderActorById(playerId, stateMap, previousStateMap, playersById, update, {
+          showHp: true,
+        }),
+      )
+      .join(",");
+  }
 
-    const value = update.param ?? update.score;
-    if (value == null) {
-        return "";
-    }
+  const value = update.param ?? update.score;
+  if (value == null) {
+    return "";
+  }
 
-    const html = escapeHtml(String(value));
-    if (tone === "damage" || tone === "recover") {
-        return `<span class="message-number">${html}</span>`;
-    }
-    return html;
+  const html = escapeHtml(String(value));
+  if (tone === "damage" || tone === "recover") {
+    return `<span class="message-number">${html}</span>`;
+  }
+  return html;
 }
 
 /**
@@ -184,37 +201,41 @@ export function renderMessageParam(update, tone, stateMap, previousStateMap, pla
  * @returns {string} HTML 字符串
  */
 export function renderTemplateMessage(update, tone, stateMap, previousStateMap, playersById) {
-    const template = `${update.message_template ?? ""}`;
-    if (!template) {
-        return formatMessageText(`${update.message_rendered ?? ""}`, tone);
-    }
+  const template = `${update.message_template ?? ""}`;
+  if (!template) {
+    return formatMessageText(`${update.message_rendered ?? ""}`, tone);
+  }
 
-    let result = template
-        .split(/(\[[012]\])/g)
-        .filter((part) => part.length > 0)
-        .map((part) => {
-            if (part === "[0]") {
-                // 施法者 — 仅在血量变化时显示 HP
-                return renderActorById(update.caster_id, stateMap, previousStateMap, playersById, update, { showHp: true });
-            }
-            if (part === "[1]") {
-                // 目标 — 显示 HP
-                return renderActorById(update.target_id, stateMap, previousStateMap, playersById, update, { showHp: true });
-            }
-            if (part === "[2]") {
-                // 参数（目标列表或数值）
-                return renderMessageParam(update, tone, stateMap, previousStateMap, playersById);
-            }
-            return formatMessageText(part, tone);
-        })
-        .join("");
+  let result = template
+    .split(/(\[[012]\])/g)
+    .filter((part) => part.length > 0)
+    .map((part) => {
+      if (part === "[0]") {
+        // 施法者 — 仅在血量变化时显示 HP
+        return renderActorById(update.caster_id, stateMap, previousStateMap, playersById, update, {
+          showHp: true,
+        });
+      }
+      if (part === "[1]") {
+        // 目标 — 显示 HP
+        return renderActorById(update.target_id, stateMap, previousStateMap, playersById, update, {
+          showHp: true,
+        });
+      }
+      if (part === "[2]") {
+        // 参数（目标列表或数值）
+        return renderMessageParam(update, tone, stateMap, previousStateMap, playersById);
+      }
+      return formatMessageText(part, tone);
+    })
+    .join("");
 
-    // 瘟疫/体力减少等场景：数字后跟 % 或"减少"时标红（即使 tone 不是 damage）
-    if (tone !== "damage" && tone !== "recover") {
-        result = result.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
-    }
+  // 瘟疫/体力减少等场景：数字后跟 % 或"减少"时标红（即使 tone 不是 damage）
+  if (tone !== "damage" && tone !== "recover") {
+    result = result.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
+  }
 
-    return result;
+  return result;
 }
 
 /**
@@ -227,7 +248,7 @@ export function renderTemplateMessage(update, tone, stateMap, previousStateMap, 
  * @returns {string}
  */
 export function highlightMessage(update, tone, stateMap, previousStateMap, playersById) {
-    return renderTemplateMessage(update, tone, stateMap, previousStateMap, playersById);
+  return renderTemplateMessage(update, tone, stateMap, previousStateMap, playersById);
 }
 
 // ============================================================================
@@ -242,58 +263,67 @@ export function highlightMessage(update, tone, stateMap, previousStateMap, playe
  * @param {HTMLElement} headerMeta
  */
 export function renderIdleState(playerList, battleRows, plistMeta, headerMeta) {
-    playerList.innerHTML = `
+  playerList.innerHTML = `
         <div class="welcome">
             <div><strong>战斗还没开始。</strong></div>
             <div>左侧会按队伍显示角色状态，右侧则按原版风格逐段追加战斗记录。</div>
             <div>你可以直接用默认示例点击开始，也可以改成自己的输入。</div>
         </div>
     `;
-    battleRows.innerHTML = `
+  battleRows.innerHTML = `
         <div class="welcome">
             <div><strong>show.html 是单独的 Fight 展示页。</strong></div>
             <div>它不再混合胜率功能，而是专门模仿原始名字竞技场与 fast-namerena 的战斗观感。</div>
         </div>
     `;
-    plistMeta.textContent = "输入名字后点击开始，左侧会显示角色状态，右侧自动播放整场战斗。";
-    headerMeta.textContent = "目前显示的是 show 风格回放视图。";
+  plistMeta.textContent = "输入名字后点击开始，左侧会显示角色状态，右侧自动播放整场战斗。";
+  headerMeta.textContent = "目前显示的是 show 风格回放视图。";
 }
 
 function sidebarStatusLabels(state) {
-    return Array.isArray(state?.status_labels) ? state.status_labels : [];
+  return Array.isArray(state?.status_labels) ? state.status_labels : [];
 }
 
-const POSITIVE_STATUS_LABELS = new Set(["聚气", "蓄力", "隐匿", "潜行", "狂暴", "疾走", "铁壁", "守护"]);
+const POSITIVE_STATUS_LABELS = new Set([
+  "聚气",
+  "蓄力",
+  "隐匿",
+  "潜行",
+  "狂暴",
+  "疾走",
+  "铁壁",
+  "守护",
+]);
 const NEGATIVE_STATUS_LABELS = new Set(["魅惑", "诅咒", "冰冻", "中毒", "迟缓", "垂死"]);
 const WIN_UPDATE_DELAY0_MS = 3000;
 
 function statusPillTone(label) {
-    if (POSITIVE_STATUS_LABELS.has(label)) {
-        return 'positive';
-    }
-    if (NEGATIVE_STATUS_LABELS.has(label)) {
-        return 'negative';
-    }
-    return '';
+  if (POSITIVE_STATUS_LABELS.has(label)) {
+    return "positive";
+  }
+  if (NEGATIVE_STATUS_LABELS.has(label)) {
+    return "negative";
+  }
+  return "";
 }
 
 function renderStatusPill(label) {
-    const tone = statusPillTone(label);
-    const className = tone ? `status-pill ${tone}` : 'status-pill';
-    return `<span class="${className}">${escapeHtml(label)}</span>`;
+  const tone = statusPillTone(label);
+  const className = tone ? `status-pill ${tone}` : "status-pill";
+  return `<span class="${className}">${escapeHtml(label)}</span>`;
 }
 
 function renderPlayerStatusPills(state) {
-    const labels = sidebarStatusLabels(state);
-    const chips = labels.map(renderStatusPill).join('');
-    return `<div class="detail-line player-effects"${labels.length ? '' : ' hidden'}>${chips}</div>`;
+  const labels = sidebarStatusLabels(state);
+  const chips = labels.map(renderStatusPill).join("");
+  return `<div class="detail-line player-effects"${labels.length ? "" : " hidden"}>${chips}</div>`;
 }
 
 function seedRowHtml(seedLine) {
-    if (!seedLine) {
-        return "";
-    }
-    return `
+  if (!seedLine) {
+    return "";
+  }
+  return `
         <div class="seed-row">
             <span class="seed-label">Seed</span>
             <span class="seed-value">${escapeHtml(seedLine)}</span>
@@ -317,73 +347,89 @@ function seedRowHtml(seedLine) {
  * @param {HTMLElement} playerList — 左侧面板容器 DOM
  * @param {Map<number, FightPlayer>} playersById — playerId → 玩家对象索引（会被写入幻影/分身条目）
  */
-export function renderPlayers(players, states, previousStates = states, involved = null, playerList, playersById) {
-    const stateMap = buildStateMap(states);
-    const previousStateMap = buildStateMap(previousStates);
-    const seedLine = playerList.dataset.seedLine ?? "";
+export function renderPlayers(
+  players,
+  states,
+  previousStates = states,
+  involved = null,
+  playerList,
+  playersById,
+) {
+  const stateMap = buildStateMap(states);
+  const previousStateMap = buildStateMap(previousStates);
+  const seedLine = playerList.dataset.seedLine ?? "";
 
-    // 补上 states 里有但初始 players 里没有的召唤单位（幻影/分身）
-    const knownIds = new Set(players.map((p) => p.id));
-    const allPlayers = [...players];
-    for (const state of states) {
-        if (!knownIds.has(state.id)) {
-            knownIds.add(state.id);
-            const phantomPlayer = syntheticPlayerFromState(state.id, state, playersById);
-            allPlayers.push(phantomPlayer);
-            playersById.set(state.id, phantomPlayer);
-        }
+  // 补上 states 里有但初始 players 里没有的召唤单位（幻影/分身）
+  const knownIds = new Set(players.map((p) => p.id));
+  const allPlayers = [...players];
+  for (const state of states) {
+    if (!knownIds.has(state.id)) {
+      knownIds.add(state.id);
+      const phantomPlayer = syntheticPlayerFromState(state.id, state, playersById);
+      allPlayers.push(phantomPlayer);
+      playersById.set(state.id, phantomPlayer);
+    }
+  }
+
+  const existingRows = playerList.querySelectorAll("tr[data-player-id]");
+  if (existingRows.length !== allPlayers.length) {
+    // —— 全量渲染（首次或玩家数量变化时） ——
+    const teams = new Map();
+    for (const player of allPlayers) {
+      const items = teams.get(player.team_index) ?? [];
+      items.push(player);
+      teams.set(player.team_index, items);
     }
 
-    const existingRows = playerList.querySelectorAll('tr[data-player-id]');
-    if (existingRows.length !== allPlayers.length) {
-        // —— 全量渲染（首次或玩家数量变化时） ——
-        const teams = new Map();
-        for (const player of allPlayers) {
-            const items = teams.get(player.team_index) ?? [];
-            items.push(player);
-            teams.set(player.team_index, items);
-        }
+    const sortedTeams = [...teams.entries()].sort((left, right) => left[0] - right[0]);
+    const firstTeamIsSingle = sortedTeams.length > 0 && sortedTeams[0][1].length === 1;
 
-        const sortedTeams = [...teams.entries()].sort((left, right) => left[0] - right[0]);
-        const firstTeamIsSingle = sortedTeams.length > 0 && sortedTeams[0][1].length === 1;
+    const teamHtml = sortedTeams
+      .map(([teamIndex, teamPlayers]) => {
+        const members = teamPlayers
+          .map((player) => {
+            const state = stateMap.get(player.id);
+            const previous = previousStateMap.get(player.id) ?? state;
+            if (!state) {
+              return "";
+            }
 
-        const teamHtml = sortedTeams
-            .map(([teamIndex, teamPlayers]) => {
-                const members = teamPlayers
-                    .map((player) => {
-                        const state = stateMap.get(player.id);
-                        const previous = previousStateMap.get(player.id) ?? state;
-                        if (!state) {
-                            return "";
-                        }
+            const hpMetrics = actorHpMetrics(state, previous);
+            const totalWidth = hpMetrics?.totalWidth ?? 0;
+            const fillWidth = hpMetrics?.fillWidth ?? 0;
+            const previousWidth = hpMetrics?.previousWidth ?? 0;
+            const healStart = Math.min(previousWidth, fillWidth);
+            const healWidth = Math.max(0, fillWidth - previousWidth);
+            const deadClass = state.alive ? "" : " is-dead";
+            const involvedClass = involved
+              ? involved.casters.has(player.id) && involved.targets.has(player.id)
+                ? " is-caster is-target"
+                : involved.casters.has(player.id)
+                  ? " is-caster"
+                  : involved.targets.has(player.id)
+                    ? " is-target"
+                    : ""
+              : "";
+            const nameClass = state.alive ? "name" : "name namedie";
+            const stateClass = !state.alive
+              ? "status-pill dead"
+              : state.frozen
+                ? "status-pill frozen"
+                : "status-pill";
 
-                        const hpMetrics = actorHpMetrics(state, previous);
-                        const totalWidth = hpMetrics?.totalWidth ?? 0;
-                        const fillWidth = hpMetrics?.fillWidth ?? 0;
-                        const previousWidth = hpMetrics?.previousWidth ?? 0;
-                        const healStart = Math.min(previousWidth, fillWidth);
-                        const healWidth = Math.max(0, fillWidth - previousWidth);
-                        const deadClass = state.alive ? "" : " is-dead";
-                        const involvedClass = involved
-                            ? (involved.casters.has(player.id) && involved.targets.has(player.id) ? " is-caster is-target"
-                                : involved.casters.has(player.id) ? " is-caster"
-                                : involved.targets.has(player.id) ? " is-target"
-                                : "")
-                            : "";
-                        const nameClass = state.alive ? "name" : "name namedie";
-                        const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
+            const maxMp =
+              state.magic > 0 ? state.magic : state.magic_point > 0 ? state.magic_point : 1;
+            const mpTotalWidth = Math.max(20, Math.ceil(maxMp / 4));
+            const mpFillWidth =
+              state.alive && state.magic_point > 0
+                ? Math.max(1, Math.ceil(state.magic_point / 4))
+                : 0;
 
-                        const maxMp = state.magic > 0 ? state.magic : (state.magic_point > 0 ? state.magic_point : 1);
-                        const mpTotalWidth = Math.max(20, Math.ceil(maxMp / 4));
-                        const mpFillWidth = state.alive && state.magic_point > 0
-                            ? Math.max(1, Math.ceil(state.magic_point / 4))
-                            : 0;
-
-                        return `
+            return `
                         <tr class="player-row${deadClass}${involvedClass}" data-player-id="${player.id}" title="id: ${escapeHtml(player.id_name)} · playerId: ${player.id}">
                             <td class="player-name-cell">
                                 <div class="player-name-wrap">
-                                    ${renderIconSprite(playerIconClassId(player), 'sgl icon-sprite')}
+                                    ${renderIconSprite(playerIconClassId(player), "sgl icon-sprite")}
                                     <span class="${nameClass}">${escapeHtml(player.display_name)}</span>
                                     <span class="player-id"> #${player.id}</span>
                                 </div>
@@ -399,16 +445,17 @@ export function renderPlayers(players, states, previousStates = states, involved
                                 ${renderPlayerStatusPills(state)}
                             </td>
                             <td class="player-stat-cell player-hp-cell">${state.hp}/${state.max_hp}</td>
-                            <td class="player-stat-cell player-mp-move-cell"><span class="mp-val">${state.magic_point}</span> / <span class="move-val">${(state.move_point / 2048 * 100).toFixed(0)}%</span></td>
+                            <td class="player-stat-cell player-mp-move-cell"><span class="mp-val">${state.magic_point}</span> / <span class="move-val">${((state.move_point / 2048) * 100).toFixed(0)}%</span></td>
                             <td class="player-state-cell"><span class="${stateClass}">${statusText(state)}</span></td>
                         </tr>
                     `;
-                    })
-                    .join("");
+          })
+          .join("");
 
-                const isSingle = teamPlayers.length === 1;
-                const labelHtml = !isSingle ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
-                const theadHtml = !isSingle ? `
+        const isSingle = teamPlayers.length === 1;
+        const labelHtml = !isSingle ? `<div class="team-label">Team ${teamIndex + 1}</div>` : "";
+        const theadHtml = !isSingle
+          ? `
                         <thead>
                             <tr>
                                 <th class="player-name-head">角色</th>
@@ -416,8 +463,9 @@ export function renderPlayers(players, states, previousStates = states, involved
                                 <th class="player-mix-head">蓝量/体力</th>
                                 <th class="player-state-head">状态</th>
                             </tr>
-                        </thead>` : "";
-                return `
+                        </thead>`
+          : "";
+        return `
                 <section class="team-block">
                     ${labelHtml}
                     <table class="player-table">
@@ -434,11 +482,12 @@ export function renderPlayers(players, states, previousStates = states, involved
                     </table>
                 </section>
             `;
-            })
-            .join("");
+      })
+      .join("");
 
-        // 单队伍时在顶部渲染列头
-        const columnHeader = firstTeamIsSingle ? `
+    // 单队伍时在顶部渲染列头
+    const columnHeader = firstTeamIsSingle
+      ? `
         <table class="player-table column-headers">
             <colgroup>
                 <col class="player-name-head">
@@ -454,113 +503,120 @@ export function renderPlayers(players, states, previousStates = states, involved
                     <th class="player-state-head">状态</th>
                 </tr>
             </thead>
-        </table>` : "";
-        playerList.innerHTML = seedRowHtml(seedLine) + columnHeader + teamHtml;
-    } else {
-        const seedRow = playerList.querySelector('.seed-row');
-        if (seedLine) {
-            if (seedRow) {
-                const valueEl = seedRow.querySelector('.seed-value');
-                if (valueEl) {
-                    valueEl.textContent = seedLine;
-                }
-            } else {
-                playerList.insertAdjacentHTML('afterbegin', seedRowHtml(seedLine));
-            }
-        } else if (seedRow) {
-            seedRow.remove();
+        </table>`
+      : "";
+    playerList.innerHTML = seedRowHtml(seedLine) + columnHeader + teamHtml;
+  } else {
+    const seedRow = playerList.querySelector(".seed-row");
+    if (seedLine) {
+      if (seedRow) {
+        const valueEl = seedRow.querySelector(".seed-value");
+        if (valueEl) {
+          valueEl.textContent = seedLine;
         }
-
-        // —— 增量更新：直接修改现有 DOM，避免 innerHTML 全量替换造成闪烁 ——
-        for (const player of allPlayers) {
-            const state = stateMap.get(player.id);
-            const previous = previousStateMap.get(player.id) ?? state;
-            if (!state) continue;
-
-            const row = playerList.querySelector(`tr[data-player-id="${player.id}"]`);
-            if (!row) continue;
-
-            const hpMetrics = actorHpMetrics(state, previous);
-            const totalWidth = hpMetrics?.totalWidth ?? 0;
-            const fillWidth = hpMetrics?.fillWidth ?? 0;
-            const previousWidth = hpMetrics?.previousWidth ?? 0;
-            const healStart = Math.min(previousWidth, fillWidth);
-            const healWidth = Math.max(0, fillWidth - previousWidth);
-            const deadClass = state.alive ? "" : " is-dead";
-            const involvedClass = involved
-                ? (involved.casters.has(player.id) && involved.targets.has(player.id) ? " is-caster is-target"
-                    : involved.casters.has(player.id) ? " is-caster"
-                    : involved.targets.has(player.id) ? " is-target"
-                    : "")
-                : "";
-            const nameClass = state.alive ? "name" : "name namedie";
-            const stateClass = !state.alive ? "status-pill dead" : state.frozen ? "status-pill frozen" : "status-pill";
-            const maxMp = state.magic > 0 ? state.magic : (state.magic_point > 0 ? state.magic_point : 1);
-            const mpTotalWidth = Math.max(20, Math.ceil(maxMp / 4));
-            const mpFillWidth = state.alive && state.magic_point > 0
-                ? Math.max(1, Math.ceil(state.magic_point / 4))
-                : 0;
-
-            row.className = `player-row${deadClass}${involvedClass}`;
-
-            const nameEl = row.querySelector('.player-name-wrap .name, .player-name-wrap .namedie');
-            if (nameEl) nameEl.className = nameClass;
-
-            const hpwrapEl = row.querySelector('.hpwrap');
-            if (hpwrapEl) hpwrapEl.style.width = totalWidth + 'px';
-            const maxhpEl = row.querySelector('.maxhp');
-            if (maxhpEl) maxhpEl.style.width = totalWidth + 'px';
-            const hpEl = row.querySelector('.hp');
-            if (hpEl) hpEl.style.width = fillWidth + 'px';
-            const oldhpEl = row.querySelector('.oldhp');
-            if (oldhpEl) oldhpEl.style.width = previousWidth + 'px';
-            const healhpEl = row.querySelector('.healhp');
-            if (healhpEl) {
-                healhpEl.style.left = healStart + 'px';
-                healhpEl.style.width = healWidth + 'px';
-            }
-
-            const mpwrapEl = row.querySelector('.mpwrap');
-            if (mpwrapEl) mpwrapEl.style.width = mpTotalWidth + 'px';
-            const mpEl = row.querySelector('.mp');
-            if (mpEl) mpEl.style.width = mpFillWidth + 'px';
-
-            const nameWrap = row.querySelector('.player-name-wrap');
-            if (nameWrap) {
-                let idSpan = nameWrap.querySelector('.player-id');
-                if (!idSpan) {
-                    idSpan = document.createElement('span');
-                    idSpan.className = 'player-id';
-                    nameWrap.appendChild(idSpan);
-                }
-                idSpan.textContent = ' #' + player.id;
-            }
-
-            const effectsEl = row.querySelector('.player-effects');
-            if (effectsEl) {
-                const labels = sidebarStatusLabels(state);
-                effectsEl.hidden = labels.length === 0;
-                effectsEl.innerHTML = labels.map(renderStatusPill).join('');
-            }
-
-            const hpCell = row.querySelector('.player-hp-cell');
-            if (hpCell) hpCell.textContent = `${state.hp}/${state.max_hp}`;
-
-            const mpMoveCell = row.querySelector('.player-mp-move-cell');
-            if (mpMoveCell) {
-                const mpSpan = mpMoveCell.querySelector('.mp-val');
-                const moveSpan = mpMoveCell.querySelector('.move-val');
-                if (mpSpan) mpSpan.textContent = `${state.magic_point}`;
-                if (moveSpan) moveSpan.textContent = (state.move_point / 2048 * 100).toFixed(0) + '%';
-            }
-
-            const stateEl = row.querySelector('.player-state-cell span');
-            if (stateEl) {
-                stateEl.className = stateClass;
-                stateEl.textContent = statusText(state);
-            }
-        }
+      } else {
+        playerList.insertAdjacentHTML("afterbegin", seedRowHtml(seedLine));
+      }
+    } else if (seedRow) {
+      seedRow.remove();
     }
+
+    // —— 增量更新：直接修改现有 DOM，避免 innerHTML 全量替换造成闪烁 ——
+    for (const player of allPlayers) {
+      const state = stateMap.get(player.id);
+      const previous = previousStateMap.get(player.id) ?? state;
+      if (!state) continue;
+
+      const row = playerList.querySelector(`tr[data-player-id="${player.id}"]`);
+      if (!row) continue;
+
+      const hpMetrics = actorHpMetrics(state, previous);
+      const totalWidth = hpMetrics?.totalWidth ?? 0;
+      const fillWidth = hpMetrics?.fillWidth ?? 0;
+      const previousWidth = hpMetrics?.previousWidth ?? 0;
+      const healStart = Math.min(previousWidth, fillWidth);
+      const healWidth = Math.max(0, fillWidth - previousWidth);
+      const deadClass = state.alive ? "" : " is-dead";
+      const involvedClass = involved
+        ? involved.casters.has(player.id) && involved.targets.has(player.id)
+          ? " is-caster is-target"
+          : involved.casters.has(player.id)
+            ? " is-caster"
+            : involved.targets.has(player.id)
+              ? " is-target"
+              : ""
+        : "";
+      const nameClass = state.alive ? "name" : "name namedie";
+      const stateClass = !state.alive
+        ? "status-pill dead"
+        : state.frozen
+          ? "status-pill frozen"
+          : "status-pill";
+      const maxMp = state.magic > 0 ? state.magic : state.magic_point > 0 ? state.magic_point : 1;
+      const mpTotalWidth = Math.max(20, Math.ceil(maxMp / 4));
+      const mpFillWidth =
+        state.alive && state.magic_point > 0 ? Math.max(1, Math.ceil(state.magic_point / 4)) : 0;
+
+      row.className = `player-row${deadClass}${involvedClass}`;
+
+      const nameEl = row.querySelector(".player-name-wrap .name, .player-name-wrap .namedie");
+      if (nameEl) nameEl.className = nameClass;
+
+      const hpwrapEl = row.querySelector(".hpwrap");
+      if (hpwrapEl) hpwrapEl.style.width = totalWidth + "px";
+      const maxhpEl = row.querySelector(".maxhp");
+      if (maxhpEl) maxhpEl.style.width = totalWidth + "px";
+      const hpEl = row.querySelector(".hp");
+      if (hpEl) hpEl.style.width = fillWidth + "px";
+      const oldhpEl = row.querySelector(".oldhp");
+      if (oldhpEl) oldhpEl.style.width = previousWidth + "px";
+      const healhpEl = row.querySelector(".healhp");
+      if (healhpEl) {
+        healhpEl.style.left = healStart + "px";
+        healhpEl.style.width = healWidth + "px";
+      }
+
+      const mpwrapEl = row.querySelector(".mpwrap");
+      if (mpwrapEl) mpwrapEl.style.width = mpTotalWidth + "px";
+      const mpEl = row.querySelector(".mp");
+      if (mpEl) mpEl.style.width = mpFillWidth + "px";
+
+      const nameWrap = row.querySelector(".player-name-wrap");
+      if (nameWrap) {
+        let idSpan = nameWrap.querySelector(".player-id");
+        if (!idSpan) {
+          idSpan = document.createElement("span");
+          idSpan.className = "player-id";
+          nameWrap.appendChild(idSpan);
+        }
+        idSpan.textContent = " #" + player.id;
+      }
+
+      const effectsEl = row.querySelector(".player-effects");
+      if (effectsEl) {
+        const labels = sidebarStatusLabels(state);
+        effectsEl.hidden = labels.length === 0;
+        effectsEl.innerHTML = labels.map(renderStatusPill).join("");
+      }
+
+      const hpCell = row.querySelector(".player-hp-cell");
+      if (hpCell) hpCell.textContent = `${state.hp}/${state.max_hp}`;
+
+      const mpMoveCell = row.querySelector(".player-mp-move-cell");
+      if (mpMoveCell) {
+        const mpSpan = mpMoveCell.querySelector(".mp-val");
+        const moveSpan = mpMoveCell.querySelector(".move-val");
+        if (mpSpan) mpSpan.textContent = `${state.magic_point}`;
+        if (moveSpan) moveSpan.textContent = ((state.move_point / 2048) * 100).toFixed(0) + "%";
+      }
+
+      const stateEl = row.querySelector(".player-state-cell span");
+      if (stateEl) {
+        stateEl.className = stateClass;
+        stateEl.textContent = statusText(state);
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -579,93 +635,96 @@ export function renderPlayers(players, states, previousStates = states, involved
  * @returns {string} 帧的 HTML 字符串，无有效行时返回空字符串
  */
 export function buildFrameHtml(frame, roundIndex, previousStates = frame.states, playersById) {
-    for (const state of frame.states) {
-        if (playersById.has(state.id)) {
-            continue;
-        }
-
-        playersById.set(state.id, syntheticPlayerFromState(state.id, state, playersById));
+  for (const state of frame.states) {
+    if (playersById.has(state.id)) {
+      continue;
     }
 
-    const previousStateMap = buildStateMap(previousStates);
-    /** @type {Map<number, FightState>} 帧内逐步更新的模拟 HP 状态 */
-    let running = new Map(previousStateMap);
-    for (const state of frame.states) {
-        if (!running.has(state.id)) {
-            running.set(state.id, { ...state, _is_new_in_frame: true });
-        }
+    playersById.set(state.id, syntheticPlayerFromState(state.id, state, playersById));
+  }
+
+  const previousStateMap = buildStateMap(previousStates);
+  /** @type {Map<number, FightState>} 帧内逐步更新的模拟 HP 状态 */
+  let running = new Map(previousStateMap);
+  for (const state of frame.states) {
+    if (!running.has(state.id)) {
+      running.set(state.id, { ...state, _is_new_in_frame: true });
     }
-    const rows = [];
-    let segments = [];
+  }
+  const rows = [];
+  let segments = [];
 
-    /**
-     * 将当前累积的消息片段刷入一个新行。
-     */
-    function flushRow() {
-        if (!segments.length) {
-            return;
-        }
-        rows.push(`<div class="row">${segments.join('<span class="msg-sep">, </span>')}</div>`);
-        segments = [];
+  /**
+   * 将当前累积的消息片段刷入一个新行。
+   */
+  function flushRow() {
+    if (!segments.length) {
+      return;
     }
+    rows.push(`<div class="row">${segments.join('<span class="msg-sep">, </span>')}</div>`);
+    segments = [];
+  }
 
-    /**
-     * 对 running 中的某个角色施加 HP 变化（伤害或回复）。
-     * @param {number} id — 角色 id
-     * @param {Map<number, FightState>} hitState — 当前帧内模拟状态 Map
-     * @param {MessageTone} tone
-     * @param {number} value — 变化量
-     */
-    function applyDelta(id, hitState, tone, value) {
-        const cur = hitState.get(id);
-        if (!cur || cur.max_hp <= 0) return;
-        if (tone === 'damage') {
-            hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
-        } else if (tone === 'recover') {
-            hitState.set(id, { ...cur, hp: Math.min(cur.max_hp, cur.hp + value) });
-        }
+  /**
+   * 对 running 中的某个角色施加 HP 变化（伤害或回复）。
+   * @param {number} id — 角色 id
+   * @param {Map<number, FightState>} hitState — 当前帧内模拟状态 Map
+   * @param {MessageTone} tone
+   * @param {number} value — 变化量
+   */
+  function applyDelta(id, hitState, tone, value) {
+    const cur = hitState.get(id);
+    if (!cur || cur.max_hp <= 0) return;
+    if (tone === "damage") {
+      hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
+    } else if (tone === "recover") {
+      hitState.set(id, { ...cur, hp: Math.min(cur.max_hp, cur.hp + value) });
     }
+  }
 
-    for (const update of frame.updates) {
-        if (update.update_type === "next_line") {
-            flushRow();
-            continue;
-        }
-
-        const message = `${update.message_rendered ?? ""}`.trim();
-        if (!message) {
-            continue;
-        }
-
-        const tone = update.tone ?? "normal";
-        const hitState = new Map(running);
-        const value = update.param ?? update.score ?? 0;
-        if (value > 0) {
-            if (update.target_id != null) applyDelta(update.target_id, hitState, tone, value);
-            if (Array.isArray(update.target_ids)) update.target_ids.forEach((id) => applyDelta(id, hitState, tone, value));
-        }
-        segments.push(`<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`);
-        running = hitState;
+  for (const update of frame.updates) {
+    if (update.update_type === "next_line") {
+      flushRow();
+      continue;
     }
 
-    // 帧内所有消息处理完后才清除 _is_new_in_frame，确保同一帧中的多条消息都能识别新对象
-    for (const [k, v] of running.entries()) {
-        if (v._is_new_in_frame) {
-            running.set(k, { ...v, _is_new_in_frame: false });
-        }
+    const message = `${update.message_rendered ?? ""}`.trim();
+    if (!message) {
+      continue;
     }
 
-    flushRow();
-
-    if (!rows.length && !frame.finished) {
-        return "";
+    const tone = update.tone ?? "normal";
+    const hitState = new Map(running);
+    const value = update.param ?? update.score ?? 0;
+    if (value > 0) {
+      if (update.target_id != null) applyDelta(update.target_id, hitState, tone, value);
+      if (Array.isArray(update.target_ids))
+        update.target_ids.forEach((id) => applyDelta(id, hitState, tone, value));
     }
+    segments.push(
+      `<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`,
+    );
+    running = hitState;
+  }
 
-    const winnerLine = frame.finished
-        ? `<div class="row winner-line"><span class="winner-row">winner_ids=${escapeHtml(JSON.stringify(frame.winner_ids))}</span></div>`
-        : "";
+  // 帧内所有消息处理完后才清除 _is_new_in_frame，确保同一帧中的多条消息都能识别新对象
+  for (const [k, v] of running.entries()) {
+    if (v._is_new_in_frame) {
+      running.set(k, { ...v, _is_new_in_frame: false });
+    }
+  }
 
-    return `
+  flushRow();
+
+  if (!rows.length && !frame.finished) {
+    return "";
+  }
+
+  const winnerLine = frame.finished
+    ? `<div class="row winner-line"><span class="winner-row">winner_ids=${escapeHtml(JSON.stringify(frame.winner_ids))}</span></div>`
+    : "";
+
+  return `
         <section class="round-block">
             <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
             <div class="frame-body">
@@ -689,49 +748,49 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
  * @returns {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>}
  */
 export function buildFrameRows(frame, roundIndex, previousStates = frame.states, playersById) {
-    for (const state of frame.states) {
-        if (playersById.has(state.id)) {
-            continue;
-        }
-
-        playersById.set(state.id, syntheticPlayerFromState(state.id, state, playersById));
+  for (const state of frame.states) {
+    if (playersById.has(state.id)) {
+      continue;
     }
 
-    const previousStateMap = buildStateMap(previousStates);
-    /** @type {Map<number, FightState>} */
-    let running = new Map(previousStateMap);
-    for (const state of frame.states) {
-        if (!running.has(state.id)) {
-            running.set(state.id, { ...state, _is_new_in_frame: true });
-        }
-    }
-    /** @type {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>} */
-    const chunks = [];
-    let frameStarted = false;
-    let rowStarted = false;
-    let nextWait = 1800;
+    playersById.set(state.id, syntheticPlayerFromState(state.id, state, playersById));
+  }
 
-    function pushVisibleChunk(target, html, delay) {
-        chunks.push({ target, html, delay });
+  const previousStateMap = buildStateMap(previousStates);
+  /** @type {Map<number, FightState>} */
+  let running = new Map(previousStateMap);
+  for (const state of frame.states) {
+    if (!running.has(state.id)) {
+      running.set(state.id, { ...state, _is_new_in_frame: true });
     }
+  }
+  /** @type {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>} */
+  const chunks = [];
+  let frameStarted = false;
+  let rowStarted = false;
+  let nextWait = 1800;
 
-    function visibleWait(update) {
-        const delay0 = Number.isFinite(update.delay0) ? update.delay0 : 0;
-        const delay1 = Number.isFinite(update.delay1) ? update.delay1 : 0;
-        const wait = Math.max(delay0, nextWait);
-        nextWait = delay1;
-        return wait;
-    }
+  function pushVisibleChunk(target, html, delay) {
+    chunks.push({ target, html, delay });
+  }
 
-    function pushLeadingDelayChunk() {
-        // 混淆版 md5.js 的换行和空消息不会单独等待；保留函数让后续流程不需要分支。
-    }
+  function visibleWait(update) {
+    const delay0 = Number.isFinite(update.delay0) ? update.delay0 : 0;
+    const delay1 = Number.isFinite(update.delay1) ? update.delay1 : 0;
+    const wait = Math.max(delay0, nextWait);
+    nextWait = delay1;
+    return wait;
+  }
 
-    function pushMessageChunk(messageHtml, delay) {
-        if (!frameStarted) {
-            pushVisibleChunk(
-                'battleRows',
-                `
+  function pushLeadingDelayChunk() {
+    // 混淆版 md5.js 的换行和空消息不会单独等待；保留函数让后续流程不需要分支。
+  }
+
+  function pushMessageChunk(messageHtml, delay) {
+    if (!frameStarted) {
+      pushVisibleChunk(
+        "battleRows",
+        `
                     <section class="round-block">
                         <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
                         <div class="frame-body">
@@ -739,82 +798,83 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
                         </div>
                     </section>
                 `,
-                delay,
-            );
-            frameStarted = true;
-            rowStarted = true;
-            return;
-        }
-
-        if (!rowStarted) {
-            pushVisibleChunk('frameBody', `<div class="row">${messageHtml}</div>`, delay);
-            rowStarted = true;
-            return;
-        }
-
-        pushVisibleChunk('row', `<span class="msg-sep">, </span>${messageHtml}`, delay);
+        delay,
+      );
+      frameStarted = true;
+      rowStarted = true;
+      return;
     }
 
-    function applyDelta(id, hitState, tone, value) {
-        const cur = hitState.get(id);
-        if (!cur || cur.max_hp <= 0) return;
-        if (tone === 'damage') {
-            hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
-        } else if (tone === 'recover') {
-            hitState.set(id, { ...cur, hp: Math.min(cur.max_hp, cur.hp + value) });
-        }
+    if (!rowStarted) {
+      pushVisibleChunk("frameBody", `<div class="row">${messageHtml}</div>`, delay);
+      rowStarted = true;
+      return;
     }
 
-    for (const update of frame.updates) {
-        if (update.update_type === "next_line") {
-            rowStarted = false;
-            continue;
-        }
+    pushVisibleChunk("row", `<span class="msg-sep">, </span>${messageHtml}`, delay);
+  }
 
-        const message = `${update.message_rendered ?? ""}`.trim();
-        if (!message) {
-            continue;
-        }
+  function applyDelta(id, hitState, tone, value) {
+    const cur = hitState.get(id);
+    if (!cur || cur.max_hp <= 0) return;
+    if (tone === "damage") {
+      hitState.set(id, { ...cur, hp: Math.max(0, cur.hp - value) });
+    } else if (tone === "recover") {
+      hitState.set(id, { ...cur, hp: Math.min(cur.max_hp, cur.hp + value) });
+    }
+  }
 
-        pushLeadingDelayChunk();
-        const delay = visibleWait(update);
-
-        const tone = update.tone ?? "normal";
-        const hitState = new Map(running);
-        const value = update.param ?? update.score ?? 0;
-        if (value > 0) {
-            if (update.target_id != null) applyDelta(update.target_id, hitState, tone, value);
-            if (Array.isArray(update.target_ids)) update.target_ids.forEach((id) => applyDelta(id, hitState, tone, value));
-        }
-
-        pushMessageChunk(
-            `<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`,
-            delay,
-        );
-        running = hitState;
+  for (const update of frame.updates) {
+    if (update.update_type === "next_line") {
+      rowStarted = false;
+      continue;
     }
 
-    // 帧内所有消息处理完后才清除 _is_new_in_frame，确保同一帧中的多条消息都能识别新对象
-    for (const [k, v] of running.entries()) {
-        if (v._is_new_in_frame) {
-            running.set(k, { ...v, _is_new_in_frame: false });
-        }
+    const message = `${update.message_rendered ?? ""}`.trim();
+    if (!message) {
+      continue;
     }
 
-    if (!chunks.length) {
-        pushLeadingDelayChunk();
-        if (!frame.finished) {
-            return chunks;
-        }
+    pushLeadingDelayChunk();
+    const delay = visibleWait(update);
+
+    const tone = update.tone ?? "normal";
+    const hitState = new Map(running);
+    const value = update.param ?? update.score ?? 0;
+    if (value > 0) {
+      if (update.target_id != null) applyDelta(update.target_id, hitState, tone, value);
+      if (Array.isArray(update.target_ids))
+        update.target_ids.forEach((id) => applyDelta(id, hitState, tone, value));
     }
 
-    const winnerHtml = `<div class="row winner-line"><span class="winner-row">winner_ids=${escapeHtml(JSON.stringify(frame.winner_ids))}</span></div>`;
-    if (frame.finished) {
-        if (!frameStarted) {
-            pushLeadingDelayChunk();
-            chunks.push({
-                target: 'battleRows',
-                html: `
+    pushMessageChunk(
+      `<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`,
+      delay,
+    );
+    running = hitState;
+  }
+
+  // 帧内所有消息处理完后才清除 _is_new_in_frame，确保同一帧中的多条消息都能识别新对象
+  for (const [k, v] of running.entries()) {
+    if (v._is_new_in_frame) {
+      running.set(k, { ...v, _is_new_in_frame: false });
+    }
+  }
+
+  if (!chunks.length) {
+    pushLeadingDelayChunk();
+    if (!frame.finished) {
+      return chunks;
+    }
+  }
+
+  const winnerHtml = `<div class="row winner-line"><span class="winner-row">winner_ids=${escapeHtml(JSON.stringify(frame.winner_ids))}</span></div>`;
+  if (frame.finished) {
+    if (!frameStarted) {
+      pushLeadingDelayChunk();
+      chunks.push({
+        target: "battleRows",
+        html: `
                     <section class="round-block">
                         <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
                         <div class="frame-body">
@@ -822,16 +882,16 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
                         </div>
                     </section>
                 `,
-                delay: WIN_UPDATE_DELAY0_MS,
-            });
-        } else {
-            chunks.push({
-                target: 'frameBody',
-                html: winnerHtml,
-                delay: WIN_UPDATE_DELAY0_MS,
-            });
-        }
+        delay: WIN_UPDATE_DELAY0_MS,
+      });
+    } else {
+      chunks.push({
+        target: "frameBody",
+        html: winnerHtml,
+        delay: WIN_UPDATE_DELAY0_MS,
+      });
     }
+  }
 
-    return chunks;
+  return chunks;
 }
