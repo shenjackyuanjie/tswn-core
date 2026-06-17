@@ -205,7 +205,11 @@ export function renderMessageParam(update, tone, stateMap, previousStateMap, pla
 export function renderTemplateMessage(update, tone, stateMap, previousStateMap, playersById) {
   const template = `${update.message_template ?? ""}`;
   if (!template) {
-    return formatMessageText(`${update.message_rendered ?? ""}`, tone);
+    return formatMessageText(
+      `${update.message_rendered ?? ""}`,
+      tone,
+      update.status_change_tokens ?? [],
+    );
   }
 
   let result = template
@@ -228,7 +232,7 @@ export function renderTemplateMessage(update, tone, stateMap, previousStateMap, 
         // 参数（目标列表或数值）
         return renderMessageParam(update, tone, stateMap, previousStateMap, playersById);
       }
-      return formatMessageText(part, tone);
+      return formatMessageText(part, tone, update.status_change_tokens ?? []);
     })
     .join("");
 

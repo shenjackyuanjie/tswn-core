@@ -80,6 +80,7 @@
  *   param?: number,
  *   score?: number,
  *   hp_delta?: number,
+ *   status_change_tokens?: string[],
  *   delay1?: number,
  *   delay0?: number,
  *   tone?: MessageTone

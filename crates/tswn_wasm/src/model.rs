@@ -164,6 +164,8 @@ pub struct UpdateView {
     pub param: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hp_delta: Option<i32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub status_change_tokens: Vec<String>,
     /// 消息色调，由 WASM 根据模板内容判定，JS 无需再通过关键词反推。
     pub tone: MessageTone,
 }

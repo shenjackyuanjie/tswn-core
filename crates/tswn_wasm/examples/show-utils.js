@@ -586,23 +586,71 @@ export function actorHpMetrics(state, previousState) {
  * 格式化消息文本：HTML 转义 + 技能名高亮 + 数字高亮。
  * @param {string} text — 原始消息
  * @param {MessageTone} tone — 消息色调，决定数字是否高亮
+ * @param {string[]} [statusChangeTokens=[]] — 由 WASM 提供的状态变化词
  * @returns {string} HTML 字符串
  */
-export function formatMessageText(text, tone) {
+export function formatMessageText(text, tone, statusChangeTokens = []) {
   let html = escapeHtml(text);
 
-  // 解除/中止/打消所在句：从[xxx]中解除 → [xxx] 标橙色
-  html = html.replace(
-    /从\[([^\]]+)\]中解除/g,
-    '从<span class="status-change-token">$1</span>中解除',
-  );
-  // 独立 [解除]/[中止]/[打消] 标橙色
-  html = html.replace(/\[(解除|中止|打消)\]/g, '<span class="status-change-token">$1</span>');
-  // [潜行]被识破、[蓄力]被中止、[铁壁]被打消等同属状态变化，不走普通技能蓝色。
-  html = html.replace(
-    /的\[([^\]]+)\](被识破|被中止了?|被打消了?|属性被打消)/g,
-    '的<span class="status-change-token">$1</span>$2',
-  );
+  const uniqueStatusTokens = [
+    ...new Set((statusChangeTokens ?? []).map((token) => `${token}`.trim()).filter(Boolean)),
+  ];
+  if (uniqueStatusTokens.length > 0) {
+    for (const token of uniqueStatusTokens) {
+      const safeToken = escapeHtml(token);
+      html = html.replaceAll(
+        `从[${safeToken}]中解除`,
+        `从<span class="status-change-token">${safeToken}</span>中解除`,
+      );
+      html = html.replaceAll(
+        `从[${safeToken}]状态中解除`,
+        `从<span class="status-change-token">${safeToken}</span>状态中解除`,
+      );
+      html = html.replaceAll(
+        `的[${safeToken}]被识破`,
+        `的<span class="status-change-token">${safeToken}</span>被识破`,
+      );
+      html = html.replaceAll(
+        `的[${safeToken}]被中止了`,
+        `的<span class="status-change-token">${safeToken}</span>被中止了`,
+      );
+      html = html.replaceAll(
+        `的[${safeToken}]被中止`,
+        `的<span class="status-change-token">${safeToken}</span>被中止`,
+      );
+      html = html.replaceAll(
+        `的[${safeToken}]被打消了`,
+        `的<span class="status-change-token">${safeToken}</span>被打消了`,
+      );
+      html = html.replaceAll(
+        `的[${safeToken}]被打消`,
+        `的<span class="status-change-token">${safeToken}</span>被打消`,
+      );
+      html = html.replaceAll(
+        `的[${safeToken}]属性被打消`,
+        `的<span class="status-change-token">${safeToken}</span>属性被打消`,
+      );
+      html = html.replaceAll(
+        `[${safeToken}]`,
+        `<span class="status-change-token">${safeToken}</span>`,
+      );
+    }
+  } else {
+    // 兼容旧数据：从模板文本里猜测状态变化词。
+    html = html.replace(
+      /从\[([^\]]+)\]中解除/g,
+      '从<span class="status-change-token">$1</span>中解除',
+    );
+    html = html.replace(
+      /从\[([^\]]+)\]状态中解除/g,
+      '从<span class="status-change-token">$1</span>状态中解除',
+    );
+    html = html.replace(/\[(解除|中止|打消)\]/g, '<span class="status-change-token">$1</span>');
+    html = html.replace(
+      /的\[([^\]]+)\](被识破|被中止了?|被打消了?|属性被打消)/g,
+      '的<span class="status-change-token">$1</span>$2',
+    );
+  }
 
   // 其他技能或状态（包括回避、反击、识破、反弹、吸收等普通技能） → 去掉 []，蓝色
   html = html.replace(/\[([^\]]+)\]/g, '<span class="skill-token">$1</span>');

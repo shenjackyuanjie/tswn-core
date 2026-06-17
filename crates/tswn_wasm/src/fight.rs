@@ -22,7 +22,7 @@ use crate::model::{
     FightOptions, FightReplay, FightSummary, MessageTone, PlayerMeta, PlayerState, RoundFrame, UpdateTypeView, UpdateView,
     WinnerIds,
 };
-use crate::render::{classify_message_tone, render_update_message};
+use crate::render::{classify_message_tone, render_update_message, status_change_tokens};
 
 const WIN_UPDATE_DELAY0_MS: i32 = 3000;
 
@@ -304,6 +304,7 @@ fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -
         .map(|update| {
             let tone = classify_message_tone(&update.message);
             let hp_delta = update_hp_delta(tone, &update);
+            let status_change_tokens = status_change_tokens(&update.message);
             let message_rendered = render_update_message(&update, player_names);
             UpdateView {
                 score: update.score,
@@ -317,6 +318,7 @@ fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -
                 message_rendered,
                 param: update.param,
                 hp_delta,
+                status_change_tokens,
                 tone,
             }
         })
