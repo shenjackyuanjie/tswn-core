@@ -3,6 +3,7 @@
 //! 实现各工具的核心计算逻辑（`run_to_diy`、`run_namer_pf`、`run_batch_rate`、`run_pair`），
 //! 通过 `Sender<ProgressEvent>` 向 GUI 线程实时推送进度日志和最终结果。
 
+use std::cmp::Ordering as CmpOrdering;
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write as _;
@@ -20,7 +21,7 @@ use super::format::{
 use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
 use super::score::{BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
-use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, PairDetailMode, PairInput, ProgressEvent};
+use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, OutputMode, PairDetailMode, PairInput, ProgressEvent};
 
 pub fn run_to_diy(
     raw: &str,
@@ -346,6 +347,11 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         }
     }
 
+    if let Err(err) = finalize_sorted_output_file(output.take(), input.output_file.as_deref(), input.output_mode) {
+        send(ProgressEvent::Done(Err(err)));
+        return;
+    }
+
     let final_message = if let Some(path) = input.output_file.as_deref() {
         format!("完成，结果已写入: {}", path.display())
     } else {
@@ -497,6 +503,11 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         }
     }
 
+    if let Err(err) = finalize_sorted_output_file(output.take(), input.output_file.as_deref(), input.output_mode) {
+        send(ProgressEvent::Done(Err(err)));
+        return;
+    }
+
     let final_message = if let Some(path) = input.output_file.as_deref() {
         format!("完成，结果已写入: {}", path.display())
     } else {
@@ -563,6 +574,54 @@ fn create_output_file(path: &Path) -> Result<File, String> {
     File::create(path).map_err(|err| format!("打开输出文件失败: {}: {err}", path.display()))
 }
 
+fn finalize_sorted_output_file(mut output: Option<File>, path: Option<&Path>, mode: OutputMode) -> Result<(), String> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+    if let Some(file) = output.as_mut() {
+        file.flush().map_err(|err| format!("刷新输出文件失败: {}: {err}", path.display()))?;
+    }
+    drop(output);
+    sort_score_output_file(path, mode)
+}
+
+fn sort_score_output_file(path: &Path, mode: OutputMode) -> Result<(), String> {
+    if mode == OutputMode::Pure {
+        return Ok(());
+    }
+    let content = fs::read_to_string(path).map_err(|err| format!("读取输出文件失败: {}: {err}", path.display()))?;
+    let mut lines = content.lines().filter(|line| !line.trim().is_empty()).collect::<Vec<_>>();
+    lines.sort_by(|left, right| compare_score_output_lines(left, right, mode));
+    let mut sorted = lines.join("\n");
+    if !sorted.is_empty() {
+        sorted.push('\n');
+    }
+    fs::write(path, sorted).map_err(|err| format!("写入排序输出文件失败: {}: {err}", path.display()))
+}
+
+fn compare_score_output_lines(left: &&str, right: &&str, mode: OutputMode) -> CmpOrdering {
+    match (score_output_line_value(left, mode), score_output_line_value(right, mode)) {
+        (Some(left_score), Some(right_score)) => right_score.total_cmp(&left_score).then_with(|| left.cmp(right)),
+        (Some(_), None) => CmpOrdering::Less,
+        (None, Some(_)) => CmpOrdering::Greater,
+        (None, None) => left.cmp(right),
+    }
+}
+
+fn score_output_line_value(line: &str, mode: OutputMode) -> Option<f64> {
+    match mode {
+        OutputMode::Log => line.split_whitespace().next()?.parse().ok(),
+        OutputMode::Jsonl => {
+            let value: serde_json::Value = serde_json::from_str(line).ok()?;
+            value
+                .get("avg_win_rate")
+                .or_else(|| value.get("score"))
+                .and_then(serde_json::Value::as_f64)
+        }
+        OutputMode::Pure => None,
+    }
+}
+
 fn eval_rq(keep_rq: bool) -> f64 {
     if keep_rq {
         tswn_core::player::eval_name::DEFAULT_EVAL_RQ
@@ -580,4 +639,28 @@ fn player_to_ol(raw: &str) -> Result<String, String> {
         .map_err(|err| format!("转换 player-list 名字为 +ol 失败: {raw}: {err}"))?;
     player.build();
     Ok(player.to_ol_json())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OutputMode, compare_score_output_lines, score_output_line_value};
+
+    #[test]
+    fn log_output_lines_sort_by_score_descending() {
+        let mut lines = vec!["12.000 beta", "99.500 alpha", "bad line", "99.500 gamma"];
+        lines.sort_by(|left, right| compare_score_output_lines(left, right, OutputMode::Log));
+        assert_eq!(lines, vec!["99.500 alpha", "99.500 gamma", "12.000 beta", "bad line"]);
+    }
+
+    #[test]
+    fn jsonl_output_line_score_accepts_batch_and_pair_keys() {
+        assert_eq!(
+            score_output_line_value(r#"{"label":"a","avg_win_rate":64.25}"#, OutputMode::Jsonl),
+            Some(64.25)
+        );
+        assert_eq!(
+            score_output_line_value(r#"{"label":"a","score":300.0}"#, OutputMode::Jsonl),
+            Some(300.0)
+        );
+    }
 }
