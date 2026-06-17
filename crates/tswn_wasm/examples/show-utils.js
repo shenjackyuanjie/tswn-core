@@ -309,6 +309,11 @@ export function formatMessageText(text, tone) {
   );
   // 独立 [解除]/[中止]/[打消] 标橙色
   html = html.replace(/\[(解除|中止|打消)\]/g, '<span class="status-change-token">$1</span>');
+  // [潜行]被识破、[蓄力]被中止、[铁壁]被打消等同属状态变化，不走普通技能蓝色。
+  html = html.replace(
+    /的\[([^\]]+)\](被识破|被中止了?|被打消了?|属性被打消)/g,
+    '的<span class="status-change-token">$1</span>$2',
+  );
 
   // 其他技能或状态（包括回避、反击、识破、反弹、吸收等普通技能） → 去掉 []，蓝色
   html = html.replace(/\[([^\]]+)\]/g, '<span class="skill-token">$1</span>');
