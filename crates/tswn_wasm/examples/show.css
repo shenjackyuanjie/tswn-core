@@ -546,12 +546,12 @@ button:hover {
 
 .round-block {
     display: grid;
-    grid-template-columns: 64px 1fr;
-    gap: 10px;
+    grid-template-columns: 42px 1fr;
+    gap: 8px;
     align-items: stretch;
     margin-bottom: 1px;
     padding: 1px 0 3px;
-    border-bottom: 1px solid rgba(198, 225, 239, 0.95);
+    border-bottom: 1px solid rgba(198, 225, 239, 0.45);
 }
 
 .frame-sidebar {
@@ -589,6 +589,11 @@ button:hover {
 
 .frame-body .row:not(.separator)+.row:not(.separator) {
     margin-top: 4px;
+    padding-left: 14px;
+}
+
+.frame-body .row:not(.separator)+.row.winner-line {
+    padding-left: 0;
 }
 
 .msg {
@@ -602,14 +607,11 @@ button:hover {
 
 .frame-chip {
     display: inline-block;
-    padding: 1px 6px;
-    background: rgba(42, 162, 214, 0.1);
-    color: var(--sky-3);
+    min-width: 32px;
+    color: rgba(69, 104, 120, 0.72);
     font-size: 10px;
-    line-height: 1.5;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    text-align: center;
+    line-height: 1.4;
+    text-align: right;
     white-space: nowrap;
 }
 

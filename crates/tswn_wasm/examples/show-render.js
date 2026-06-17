@@ -782,7 +782,7 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
 
   return `
         <section class="round-block">
-            <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
+            <div class="frame-sidebar"><span class="frame-chip">#${roundIndex}</span></div>
             <div class="frame-body">
                 ${rows.join("")}
                 ${winnerLine}
@@ -848,7 +848,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
         "battleRows",
         `
                     <section class="round-block">
-                        <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
+                        <div class="frame-sidebar"><span class="frame-chip">#${roundIndex}</span></div>
                         <div class="frame-body">
                             <div class="row">${messageHtml}</div>
                         </div>
@@ -932,7 +932,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
         target: "battleRows",
         html: `
                     <section class="round-block">
-                        <div class="frame-sidebar"><span class="frame-chip">frame ${roundIndex}</span></div>
+                        <div class="frame-sidebar"><span class="frame-chip">#${roundIndex}</span></div>
                         <div class="frame-body">
                             ${winnerHtml}
                         </div>
