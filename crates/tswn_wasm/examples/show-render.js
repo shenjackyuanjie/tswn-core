@@ -413,6 +413,15 @@ function playerWithCurrentState(player, state) {
   };
 }
 
+function compareDisplayPlayers(left, right) {
+  const leftTeam = left.team_index ?? 0;
+  const rightTeam = right.team_index ?? 0;
+  if (leftTeam !== rightTeam) {
+    return leftTeam - rightTeam;
+  }
+  return left.id - right.id;
+}
+
 function orderedDisplayPlayers(players, states, stateMap, playersById) {
   const knownIds = new Set(players.map((player) => player.id));
   const allPlayers = players.map((player) => playerWithCurrentState(player, stateMap.get(player.id)));
@@ -438,6 +447,11 @@ function orderedDisplayPlayers(players, states, stateMap, playersById) {
     } else {
       roots.push(player);
     }
+  }
+
+  roots.sort(compareDisplayPlayers);
+  for (const children of childrenByOwner.values()) {
+    children.sort(compareDisplayPlayers);
   }
 
   const ordered = [];
