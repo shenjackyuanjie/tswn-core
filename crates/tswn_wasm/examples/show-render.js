@@ -117,6 +117,8 @@ function syntheticPlayerFromState(playerId, state, playersById) {
   return {
     id: playerId,
     team_index: state?.team_index ?? 0,
+    owner_id: state?.owner_id ?? null,
+    minion_kind: state?.minion_kind ?? null,
     id_name: state?.id_name ?? `player_${playerId}`,
     icon_key: state?.icon_key ?? state?.id_name ?? `player_${playerId}`,
     display_name: replayDisplayName(state, playerId),
@@ -331,6 +333,55 @@ function seedRowHtml(seedLine) {
     `;
 }
 
+function orderedDisplayPlayers(players, states, stateMap, playersById) {
+  const knownIds = new Set(players.map((player) => player.id));
+  const allPlayers = [...players];
+  for (const state of states) {
+    if (knownIds.has(state.id)) {
+      continue;
+    }
+    knownIds.add(state.id);
+    const phantomPlayer = syntheticPlayerFromState(state.id, state, playersById);
+    allPlayers.push(phantomPlayer);
+    playersById.set(state.id, phantomPlayer);
+  }
+
+  const playerById = new Map(allPlayers.map((player) => [player.id, player]));
+  const roots = [];
+  const childrenByOwner = new Map();
+  for (const player of allPlayers) {
+    const ownerId = stateMap.get(player.id)?.owner_id ?? player.owner_id ?? null;
+    if (ownerId != null && ownerId !== player.id && playerById.has(ownerId)) {
+      const children = childrenByOwner.get(ownerId) ?? [];
+      children.push(player);
+      childrenByOwner.set(ownerId, children);
+    } else {
+      roots.push(player);
+    }
+  }
+
+  const ordered = [];
+  const visited = new Set();
+  function appendWithChildren(player) {
+    if (visited.has(player.id)) {
+      return;
+    }
+    visited.add(player.id);
+    ordered.push(player);
+    for (const child of childrenByOwner.get(player.id) ?? []) {
+      appendWithChildren(child);
+    }
+  }
+
+  for (const root of roots) {
+    appendWithChildren(root);
+  }
+  for (const player of allPlayers) {
+    appendWithChildren(player);
+  }
+  return ordered;
+}
+
 // ============================================================================
 // 玩家状态面板渲染
 // ============================================================================
@@ -358,18 +409,7 @@ export function renderPlayers(
   const stateMap = buildStateMap(states);
   const previousStateMap = buildStateMap(previousStates);
   const seedLine = playerList.dataset.seedLine ?? "";
-
-  // 补上 states 里有但初始 players 里没有的召唤单位（幻影/分身）
-  const knownIds = new Set(players.map((p) => p.id));
-  const allPlayers = [...players];
-  for (const state of states) {
-    if (!knownIds.has(state.id)) {
-      knownIds.add(state.id);
-      const phantomPlayer = syntheticPlayerFromState(state.id, state, playersById);
-      allPlayers.push(phantomPlayer);
-      playersById.set(state.id, phantomPlayer);
-    }
-  }
+  const allPlayers = orderedDisplayPlayers(players, states, stateMap, playersById);
 
   const existingRows = playerList.querySelectorAll("tr[data-player-id]");
   if (existingRows.length !== allPlayers.length) {
