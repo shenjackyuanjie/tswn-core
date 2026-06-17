@@ -221,6 +221,29 @@ impl OpenboxApp {
                 ui.label(egui::RichText::new("运行结果会显示在这里").weak());
             }
         });
+        if !self.skill_board_lines.is_empty() {
+            ui.add_space(10.0);
+            let mut skill_board_log = selected_log_lines(&self.log, &self.skill_board_lines);
+            let line_count = skill_board_log.lines().count();
+            if line_count > 0 {
+                egui::CollapsingHeader::new(format!("技能榜 ({line_count})"))
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        let text_width = log_text_width(&skill_board_log).max(ui.available_width());
+                        let text_height = compact_log_text_height(line_count);
+                        egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
+                            ui.add_sized(
+                                egui::vec2(text_width, text_height),
+                                egui::TextEdit::multiline(&mut skill_board_log)
+                                    .font(egui::TextStyle::Monospace)
+                                    .desired_width(text_width)
+                                    .desired_rows(line_count.clamp(4, 20))
+                                    .code_editor(),
+                            );
+                        });
+                    });
+            }
+        }
         ui.add_space(10.0);
         egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
             if self.log.trim().is_empty() {
@@ -254,6 +277,21 @@ fn log_text_width(log: &str) -> f32 {
 }
 
 fn log_text_rows(log: &str) -> usize { log.lines().count().clamp(8, 2_000) }
+
+fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 19.0 + 20.0).min(420.0) }
+
+fn selected_log_lines(log: &str, line_indexes: &std::collections::HashSet<usize>) -> String {
+    let mut selected = log
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| line_indexes.contains(&index).then_some(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !selected.is_empty() {
+        selected.push('\n');
+    }
+    selected
+}
 
 fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {
     ui.horizontal(|ui| {
