@@ -1112,6 +1112,13 @@ async function main() {
 
 let highlightTimer = null;
 
+function clearHighlightTimer() {
+  if (highlightTimer) {
+    clearTimeout(highlightTimer);
+    highlightTimer = null;
+  }
+}
+
 /**
  * 高亮指定 playerId 对应的所有元素，其余淡化。
  * @param {string|number|null} playerId
@@ -1132,18 +1139,43 @@ function setPlayerHighlight(playerId) {
   }
 }
 
+function clearPlayerHighlight() {
+  clearHighlightTimer();
+  setPlayerHighlight(null);
+}
+
+function clearPlayerHighlightSoon() {
+  clearHighlightTimer();
+  highlightTimer = setTimeout(() => {
+    setPlayerHighlight(null);
+    highlightTimer = null;
+  }, 80);
+}
+
 document.addEventListener("mouseover", (event) => {
-  const el = event.target.closest("[data-player-id]");
+  const el = event.target instanceof Element ? event.target.closest("[data-player-id]") : null;
   if (el) {
-    if (highlightTimer) {
-      clearTimeout(highlightTimer);
-      highlightTimer = null;
-    }
+    clearHighlightTimer();
     setPlayerHighlight(el.dataset.playerId);
   } else if (!document.querySelector("[data-player-id]:hover")) {
-    highlightTimer = setTimeout(() => {
-      setPlayerHighlight(null);
-    }, 80);
+    clearPlayerHighlightSoon();
+  }
+});
+
+document.addEventListener("mouseout", (event) => {
+  if (event.relatedTarget instanceof Node && document.documentElement.contains(event.relatedTarget)) {
+    if (!document.querySelector("[data-player-id]:hover")) {
+      clearPlayerHighlightSoon();
+    }
+    return;
+  }
+  clearPlayerHighlight();
+});
+
+window.addEventListener("blur", clearPlayerHighlight);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    clearPlayerHighlight();
   }
 });
 
