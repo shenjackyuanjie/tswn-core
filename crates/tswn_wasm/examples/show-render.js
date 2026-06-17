@@ -41,7 +41,7 @@
  *   frame.updates，将多条消息用"，"拼接为一行，遇到 next_line 类型的
  *   update 则换行。帧内会维护一份模拟 HP 状态（running Map），每次
  *   damage/recover 消息都会更新该状态，使后续消息中角色 HP 条反映帧内
- *   累计效果。帧结束时若 finished 为 true，追加 winner_ids 行。
+ *   累计效果。帧结束时若 finished 为 true，追加可读的胜者行。
  */
 
 import {
@@ -380,6 +380,24 @@ function orderedDisplayPlayers(players, states, stateMap, playersById) {
     appendWithChildren(player);
   }
   return ordered;
+}
+
+function frameWinnerNames(frame, playersById) {
+  const winnerIds = Array.isArray(frame.winner_ids) ? frame.winner_ids : [];
+  if (!winnerIds.length) {
+    return "未分出胜负";
+  }
+  const stateMap = buildStateMap(frame.states);
+  return winnerIds
+    .map((winnerId) => {
+      const player = playersById.get(winnerId);
+      return player?.display_name ?? replayDisplayName(stateMap.get(winnerId), winnerId);
+    })
+    .join("、");
+}
+
+function frameWinnerLineHtml(frame, playersById) {
+  return `<div class="row winner-line"><span class="winner-row">胜者：${escapeHtml(frameWinnerNames(frame, playersById))}</span></div>`;
 }
 
 // ============================================================================
@@ -760,9 +778,7 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
     return "";
   }
 
-  const winnerLine = frame.finished
-    ? `<div class="row winner-line"><span class="winner-row">winner_ids=${escapeHtml(JSON.stringify(frame.winner_ids))}</span></div>`
-    : "";
+  const winnerLine = frame.finished ? frameWinnerLineHtml(frame, playersById) : "";
 
   return `
         <section class="round-block">
@@ -908,7 +924,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     }
   }
 
-  const winnerHtml = `<div class="row winner-line"><span class="winner-row">winner_ids=${escapeHtml(JSON.stringify(frame.winner_ids))}</span></div>`;
+  const winnerHtml = frameWinnerLineHtml(frame, playersById);
   if (frame.finished) {
     if (!frameStarted) {
       pushLeadingDelayChunk();
