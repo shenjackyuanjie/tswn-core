@@ -177,7 +177,7 @@ impl Default for BatchRateState {
             threads: 0,
             keep_rq: true,
             double_plus: false,
-            show_matchups: false,
+            show_matchups: true,
             highlight_delta: "1".to_string(),
             output: BenchOutputConfig {
                 file_output: OptionalFileOutput::default(),
@@ -228,7 +228,7 @@ impl Default for PairState {
             auto_threads: true,
             threads: 0,
             keep_rq: true,
-            detail_mode: PairDetailMode::None,
+            detail_mode: PairDetailMode::Every,
             detail_min: String::new(),
             highlight_delta: "4".to_string(),
             output: BenchOutputConfig {
