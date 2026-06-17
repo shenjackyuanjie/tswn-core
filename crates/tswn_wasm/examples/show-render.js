@@ -399,9 +399,23 @@ function seedRowHtml(seedLine) {
     `;
 }
 
+function playerWithCurrentState(player, state) {
+  return {
+    ...player,
+    team_index: state?.team_index ?? player.team_index ?? 0,
+    owner_id: state?.owner_id ?? player.owner_id ?? null,
+    minion_kind: state?.minion_kind ?? player.minion_kind ?? null,
+    id_name: state?.id_name ?? player.id_name,
+    icon_key: state?.icon_key ?? player.icon_key,
+    display_name: state?.display_name ?? player.display_name,
+    icon_png_base64: state?.icon_png_base64 ?? player.icon_png_base64,
+    icon_class_id: state?.icon_class_id ?? player.icon_class_id,
+  };
+}
+
 function orderedDisplayPlayers(players, states, stateMap, playersById) {
   const knownIds = new Set(players.map((player) => player.id));
-  const allPlayers = [...players];
+  const allPlayers = players.map((player) => playerWithCurrentState(player, stateMap.get(player.id)));
   for (const state of states) {
     if (knownIds.has(state.id)) {
       continue;
