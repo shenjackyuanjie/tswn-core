@@ -174,6 +174,295 @@ export function formatError(error) {
 }
 
 // ============================================================================
+// 输入校验
+// ============================================================================
+
+const INTEGER_PATTERN = /^[+-]?\d+$/;
+const UNSIGNED_INTEGER_PATTERN = /^\d+$/;
+const SKILL_BOOST_PATTERN = /^(?:\d+|\d+\s*\+\s*\d+|2\s*\*\s*\d+)$/;
+const MINION_OVERLAY_KEYS = new Set([
+  "shadow",
+  "phantom",
+  "幻影",
+  "summon",
+  "familiar",
+  "使魔",
+  "zombie",
+  "丧尸",
+  "僵尸",
+]);
+
+export function validateReplayInput(rawInput) {
+  const lines = rawInput.replace(/\r\n?/g, "\n").split("\n");
+  let playerLineCount = 0;
+  for (const [index, line] of lines.entries()) {
+    const lineNumber = index + 1;
+    const trimmed = line.trim();
+    if (!trimmed || /^seed:/i.test(trimmed)) {
+      continue;
+    }
+    playerLineCount += 1;
+    const error = validateInlineOverlay(trimmed, lineNumber);
+    if (error) {
+      return error;
+    }
+  }
+  if (playerLineCount === 0) {
+    return "输入中没有可参战名字：请至少输入一个非 seed 行。";
+  }
+  return null;
+}
+
+function validateInlineOverlay(line, lineNumber) {
+  const olIndex = line.indexOf("+ol:");
+  if (olIndex >= 0) {
+    const result = validateObjectAt(line, olIndex + "+ol:".length, lineNumber, "+ol", validateOverlayField);
+    if (result.error) {
+      return result.error;
+    }
+  }
+
+  const diyIndex = line.indexOf("+diy[");
+  if (diyIndex >= 0) {
+    const attrsStart = diyIndex + "+diy".length;
+    const attrsEnd = findBalancedEnd(line, attrsStart, "[", "]");
+    if (attrsEnd < 0) {
+      return `第 ${lineNumber} 行：+diy 缺少右方括号 ]。`;
+    }
+    const attrError = validateAttrList(line.slice(attrsStart + 1, attrsEnd - 1), lineNumber, "+diy");
+    if (attrError) {
+      return attrError;
+    }
+
+    const rest = line.slice(attrsEnd).trimStart();
+    if (rest.startsWith("{")) {
+      const result = validateSkillMapAt(rest, 0, lineNumber, "+diy 技能");
+      return result.error;
+    }
+    if (rest && !rest.startsWith("+")) {
+      return `第 ${lineNumber} 行：+diy 属性后应接技能对象或新的 + 后缀。`;
+    }
+  }
+  return null;
+}
+
+function validateObjectAt(raw, startIndex, lineNumber, label, fieldValidator) {
+  const first = raw.slice(startIndex).search(/\S/);
+  if (first < 0 || raw[startIndex + first] !== "{") {
+    return { error: `第 ${lineNumber} 行：${label} 后缺少对象。`, end: startIndex };
+  }
+  const objectStart = startIndex + first;
+  return validateObjectEntries(raw, objectStart, lineNumber, label, fieldValidator);
+}
+
+function validateObjectEntries(raw, startIndex, lineNumber, label, fieldValidator) {
+  if (raw[startIndex] !== "{") {
+    return { error: `第 ${lineNumber} 行：${label} 后缺少对象。`, end: startIndex };
+  }
+
+  let index = startIndex + 1;
+  while (index < raw.length) {
+    index = skipWsAndCommas(raw, index);
+    if (raw[index] === "}") {
+      return { error: null, end: index + 1 };
+    }
+    if (index >= raw.length) {
+      break;
+    }
+    if (raw[index] !== '"') {
+      return { error: `第 ${lineNumber} 行：${label} 对象字段名必须使用双引号。`, end: index };
+    }
+
+    const key = parseQuotedString(raw, index);
+    if (key.error) {
+      return { error: `第 ${lineNumber} 行：${label} 字段名缺少右引号。`, end: index };
+    }
+    index = skipWs(raw, key.end);
+    if (raw[index] !== ":") {
+      return { error: `第 ${lineNumber} 行：${label}.${key.value} 缺少冒号 :。`, end: index };
+    }
+
+    index = skipWs(raw, index + 1);
+    const value = readLooseValue(raw, index, lineNumber, `${label}.${key.value}`);
+    if (value.error) {
+      return value;
+    }
+
+    const fieldError = fieldValidator?.(key.value, raw.slice(index, value.end), lineNumber, label);
+    if (fieldError) {
+      return { error: fieldError, end: index };
+    }
+    index = value.end;
+  }
+
+  return { error: `第 ${lineNumber} 行：${label} 对象缺少右花括号 }。`, end: raw.length };
+}
+
+function validateOverlayField(key, valueRaw, lineNumber, label) {
+  if (key === "attrs") {
+    const value = valueRaw.trim();
+    if (!value.startsWith("[") || !value.endsWith("]")) {
+      return `第 ${lineNumber} 行：${label}.attrs 应为 8 个整数的数组。`;
+    }
+    return validateAttrList(value.slice(1, -1), lineNumber, `${label}.attrs`);
+  }
+  if (key === "skills") {
+    const result = validateSkillMapAt(valueRaw, 0, lineNumber, `${label}.skills`);
+    return result.error;
+  }
+  if (key === "name_factor_enabled" || key === "reuse_skills_on_recast" || key === "inherit_owner_def_res") {
+    const value = valueRaw.trim();
+    if (value !== "true" && value !== "false") {
+      return `第 ${lineNumber} 行：${label}.${key} 应为 true 或 false。`;
+    }
+  }
+  if (MINION_OVERLAY_KEYS.has(key)) {
+    const result = validateObjectAt(valueRaw, 0, lineNumber, `${label}.${key}`, validateOverlayField);
+    return result.error;
+  }
+  return null;
+}
+
+function validateSkillMapAt(raw, startIndex, lineNumber, label) {
+  return validateObjectAt(raw, startIndex, lineNumber, label, validateSkillField);
+}
+
+function validateSkillField(key, valueRaw, lineNumber, label) {
+  const value = valueRaw.trim();
+  if (value.startsWith('"')) {
+    const parsed = parseQuotedString(value, 0);
+    if (parsed.error || parsed.end !== value.length || !SKILL_BOOST_PATTERN.test(parsed.value.trim())) {
+      return `第 ${lineNumber} 行：${label}.${key} 应为非负整数或 "40+30" / "2*40" 字符串。`;
+    }
+    return null;
+  }
+  if (!UNSIGNED_INTEGER_PATTERN.test(value)) {
+    return `第 ${lineNumber} 行：${label}.${key} 应为非负整数或 "40+30" / "2*40" 字符串。`;
+  }
+  return null;
+}
+
+function validateAttrList(raw, lineNumber, label) {
+  const attrs = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (attrs.length !== 8) {
+    return `第 ${lineNumber} 行：${label} 需要 8 个属性值，当前是 ${attrs.length} 个。`;
+  }
+  const badAttrIndex = attrs.findIndex((part) => !INTEGER_PATTERN.test(part));
+  if (badAttrIndex >= 0) {
+    return `第 ${lineNumber} 行：${label} 第 ${badAttrIndex + 1} 个属性不是整数。`;
+  }
+  return null;
+}
+
+function readLooseValue(raw, startIndex, lineNumber, label) {
+  if (startIndex >= raw.length || raw[startIndex] === "," || raw[startIndex] === "}") {
+    return { error: `第 ${lineNumber} 行：${label} 缺少字段值。`, end: startIndex };
+  }
+  const ch = raw[startIndex];
+  if (ch === "{") {
+    const end = findBalancedEnd(raw, startIndex, "{", "}");
+    return end < 0
+      ? { error: `第 ${lineNumber} 行：${label} 对象缺少右花括号 }。`, end: startIndex }
+      : { error: null, end };
+  }
+  if (ch === "[") {
+    const end = findBalancedEnd(raw, startIndex, "[", "]");
+    return end < 0
+      ? { error: `第 ${lineNumber} 行：${label} 数组缺少右方括号 ]。`, end: startIndex }
+      : { error: null, end };
+  }
+  if (ch === '"') {
+    const result = parseQuotedString(raw, startIndex);
+    return result.error
+      ? { error: `第 ${lineNumber} 行：${label} 字符串缺少右引号。`, end: startIndex }
+      : { error: null, end: result.end };
+  }
+
+  let index = startIndex;
+  while (index < raw.length && raw[index] !== "," && raw[index] !== "}") {
+    index += 1;
+  }
+  if (raw.slice(startIndex, index).trim() === "") {
+    return { error: `第 ${lineNumber} 行：${label} 缺少字段值。`, end: startIndex };
+  }
+  return { error: null, end: index };
+}
+
+function parseQuotedString(raw, startIndex) {
+  if (raw[startIndex] !== '"') {
+    return { error: "missing quote", value: "", end: startIndex };
+  }
+  let value = "";
+  let escaped = false;
+  for (let index = startIndex + 1; index < raw.length; index += 1) {
+    const ch = raw[index];
+    if (escaped) {
+      value += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      return { error: null, value, end: index + 1 };
+    }
+    value += ch;
+  }
+  return { error: "missing quote", value: "", end: raw.length };
+}
+
+function findBalancedEnd(raw, startIndex, open, close) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = startIndex; index < raw.length; index += 1) {
+    const ch = raw[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === open) {
+      depth += 1;
+    } else if (ch === close) {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+  }
+  return -1;
+}
+
+function skipWs(raw, startIndex) {
+  let index = startIndex;
+  while (index < raw.length && /\s/.test(raw[index])) {
+    index += 1;
+  }
+  return index;
+}
+
+function skipWsAndCommas(raw, startIndex) {
+  let index = startIndex;
+  while (index < raw.length && (/\s/.test(raw[index]) || raw[index] === ",")) {
+    index += 1;
+  }
+  return index;
+}
+
+// ============================================================================
 // 异步工具
 // ============================================================================
 

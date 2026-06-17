@@ -106,7 +106,13 @@
  * @typedef {'normal' | 'fast' | 'turbo'} SpeedMode
  */
 
-import { buildIconClassCss, formatError, normalizeReplayIconClasses, sleep } from "./show-utils.js";
+import {
+  buildIconClassCss,
+  formatError,
+  normalizeReplayIconClasses,
+  sleep,
+  validateReplayInput,
+} from "./show-utils.js";
 import { renderIdleState, renderPlayers, buildFrameRows } from "./show-render.js";
 import {
   renderReplayIntro,
@@ -879,6 +885,12 @@ async function startBattle() {
   const rawInput = inputName.value.trim();
   if (!rawInput) {
     setInputStatus("请输入至少一个名字。", true);
+    openInputEditor();
+    return;
+  }
+  const inputError = validateReplayInput(rawInput);
+  if (inputError) {
+    setInputStatus(inputError, true);
     openInputEditor();
     return;
   }
