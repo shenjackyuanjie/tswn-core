@@ -177,10 +177,53 @@ fn install_cjk_fonts(ctx: &egui::Context) {
         "SarasaMonoSC".to_string(),
         std::sync::Arc::new(egui::FontData::from_static(SARASA_MONO_SC)),
     );
+    let emoji_fonts = install_system_emoji_fonts(&mut fonts);
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-        fonts.families.entry(family).or_default().insert(0, "SarasaMonoSC".to_string());
+        let entries = fonts.families.entry(family).or_default();
+        entries.retain(|name| name != "SarasaMonoSC" && !emoji_fonts.iter().any(|emoji| emoji == name));
+        entries.insert(0, "SarasaMonoSC".to_string());
+        for (offset, emoji_font) in emoji_fonts.iter().enumerate() {
+            entries.insert(offset + 1, emoji_font.clone());
+        }
     }
     ctx.set_fonts(fonts);
+}
+
+fn install_system_emoji_fonts(fonts: &mut egui::FontDefinitions) -> Vec<String> {
+    let candidates = [
+        (
+            "SegoeUIEmoji",
+            &[r"C:\Windows\Fonts\seguiemj.ttf", r"C:\Windows\Fonts\Segoe UI Emoji.ttf"][..],
+        ),
+        ("AppleColorEmoji", &["/System/Library/Fonts/Apple Color Emoji.ttc"][..]),
+        (
+            "NotoColorEmoji",
+            &[
+                "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+                "/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf",
+                "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+            ][..],
+        ),
+    ];
+    let mut installed = Vec::new();
+    for (name, paths) in candidates {
+        if install_first_existing_font(fonts, name, paths) {
+            installed.push(name.to_string());
+        }
+    }
+    installed
+}
+
+fn install_first_existing_font(fonts: &mut egui::FontDefinitions, name: &str, paths: &[&str]) -> bool {
+    for path in paths {
+        if let Ok(bytes) = std::fs::read(path) {
+            fonts
+                .font_data
+                .insert(name.to_string(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+            return true;
+        }
+    }
+    false
 }
 
 fn configure_ui_style(ctx: &egui::Context) {

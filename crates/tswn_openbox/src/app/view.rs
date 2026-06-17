@@ -223,32 +223,37 @@ impl OpenboxApp {
         });
         ui.add_space(10.0);
         egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
-            egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-                if self.log.trim().is_empty() {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(80.0);
-                        ui.label(egui::RichText::new("暂无日志").weak().size(18.0));
-                        ui.label(egui::RichText::new("选择工具、填好输入，然后点击运行。旧日志会在新任务开始时清空。").weak());
-                    });
-                } else {
-                    ui.vertical(|ui| {
-                        for (index, line) in self.log.lines().enumerate() {
-                            let mut text = egui::RichText::new(line).monospace();
-                            if self.skill_board_lines.contains(&index) {
-                                text = text.color(egui::Color32::from_rgb(45, 120, 220)).strong();
-                            } else if line.starts_with("  ") {
-                                text = text.color(egui::Color32::GRAY);
-                            } else if self.highlight_lines.contains(&index) {
-                                text = text.color(egui::Color32::from_rgb(210, 40, 40)).strong();
-                            }
-                            ui.add(egui::Label::new(text).extend());
-                        }
-                    });
-                }
-            });
+            if self.log.trim().is_empty() {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(80.0);
+                    ui.label(egui::RichText::new("暂无日志").weak().size(18.0));
+                    ui.label(egui::RichText::new("选择工具、填好输入，然后点击运行。旧日志会在新任务开始时清空。").weak());
+                });
+            } else {
+                let mut log_view = self.log.clone();
+                let text_width = log_text_width(&self.log).max(ui.available_width());
+                let text_height = ui.available_height().max(260.0);
+                egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
+                    ui.add_sized(
+                        egui::vec2(text_width, text_height),
+                        egui::TextEdit::multiline(&mut log_view)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(text_width)
+                            .desired_rows(log_text_rows(&self.log))
+                            .code_editor(),
+                    );
+                });
+            }
         });
     }
 }
+
+fn log_text_width(log: &str) -> f32 {
+    let longest = log.lines().map(str::chars).map(Iterator::count).max().unwrap_or(0);
+    (longest as f32 * 8.0 + 32.0).min(20_000.0)
+}
+
+fn log_text_rows(log: &str) -> usize { log.lines().count().clamp(8, 2_000) }
 
 fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {
     ui.horizontal(|ui| {

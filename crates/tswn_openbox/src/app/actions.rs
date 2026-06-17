@@ -7,9 +7,9 @@ use std::ops::RangeInclusive;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
-    mpsc,
+    mpsc::{self, TryRecvError},
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use eframe::egui;
 
@@ -22,6 +22,9 @@ use crate::backend::{
 use super::state::{CountMode, OpenboxApp};
 use super::target_presets::{load_selected_target_text, load_selected_teammate_text};
 use super::widgets::OptionalFileOutput;
+
+const MAX_EVENTS_PER_POLL: usize = 256;
+const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(100);
 
 impl OpenboxApp {
     pub fn stop_current_task(&mut self) {
@@ -361,46 +364,72 @@ impl OpenboxApp {
     }
 
     pub fn poll_events(&mut self, ctx: &egui::Context) {
+        let mut processed_any = false;
+        let mut hit_event_limit = false;
         if let Some(rx) = self.rx.take() {
             let mut keep_rx = true;
-            while let Ok(event) = rx.try_recv() {
-                match event {
-                    ProgressEvent::Log(line) => {
-                        self.append_log(&line);
+            for event_index in 0..MAX_EVENTS_PER_POLL {
+                match rx.try_recv() {
+                    Ok(event) => {
+                        processed_any = true;
+                        hit_event_limit = event_index + 1 == MAX_EVENTS_PER_POLL;
+                        match event {
+                            ProgressEvent::Log(line) => {
+                                self.append_log(&line);
+                            }
+                            ProgressEvent::HighlightLog(line) => {
+                                self.append_highlight_log(&line);
+                            }
+                            ProgressEvent::SkillBoardLog(line) => {
+                                self.append_skill_board_log(&line);
+                            }
+                            ProgressEvent::Progress { done, total } => {
+                                self.done = done;
+                                self.total = total;
+                                self.status = "运行中".to_string();
+                                self.update_progress_stats();
+                            }
+                            ProgressEvent::Done(result) => {
+                                self.running = false;
+                                self.cancel_requested = false;
+                                self.cancel_token = None;
+                                self.status = match &result {
+                                    Ok(_) => "完成".to_string(),
+                                    Err(_) => "失败".to_string(),
+                                };
+                                match result {
+                                    Ok(output) => self.append_log(&output),
+                                    Err(err) => self.append_log(&err),
+                                }
+                                self.update_progress_stats();
+                                keep_rx = false;
+                                break;
+                            }
+                        }
                     }
-                    ProgressEvent::HighlightLog(line) => {
-                        self.append_highlight_log(&line);
+                    Err(TryRecvError::Empty) => {
+                        hit_event_limit = false;
+                        break;
                     }
-                    ProgressEvent::SkillBoardLog(line) => {
-                        self.append_skill_board_log(&line);
-                    }
-                    ProgressEvent::Progress { done, total } => {
-                        self.done = done;
-                        self.total = total;
-                        self.status = "运行中".to_string();
-                        self.update_progress_stats();
-                    }
-                    ProgressEvent::Done(result) => {
+                    Err(TryRecvError::Disconnected) => {
                         self.running = false;
                         self.cancel_requested = false;
                         self.cancel_token = None;
-                        self.status = match &result {
-                            Ok(_) => "完成".to_string(),
-                            Err(_) => "失败".to_string(),
-                        };
-                        match result {
-                            Ok(output) => self.append_log(&output),
-                            Err(err) => self.append_log(&err),
-                        }
-                        self.update_progress_stats();
                         keep_rx = false;
+                        break;
                     }
                 }
-                ctx.request_repaint();
             }
             if keep_rx {
                 self.rx = Some(rx);
             }
+        }
+        if self.running {
+            self.update_progress_stats();
+            ctx.request_repaint_after(RUNNING_REPAINT_INTERVAL);
+        }
+        if processed_any || hit_event_limit {
+            ctx.request_repaint();
         }
     }
 
