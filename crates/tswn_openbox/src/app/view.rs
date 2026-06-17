@@ -18,11 +18,8 @@ impl OpenboxApp {
         section(ui, "名字", |ui| {
             self.to_diy.names.ui(ui, "名字", "to_diy_names", 16);
         });
-        section(ui, "输出与运行", |ui| {
+        section(ui, "输出", |ui| {
             optional_file_output_controls(ui, &mut self.to_diy.output, "tswn-openbox-diy.txt");
-            if run_or_stop_button(ui, self) {
-                self.start_to_diy();
-            }
         });
     }
 
@@ -36,11 +33,6 @@ impl OpenboxApp {
         });
         section(ui, "名字", |ui| {
             self.namer_pf.names.ui(ui, "名字", "namer_pf_names", 14);
-        });
-        section(ui, "运行", |ui| {
-            if run_or_stop_button(ui, self) {
-                self.start_namer_pf();
-            }
         });
     }
 
@@ -57,11 +49,6 @@ impl OpenboxApp {
         section(ui, "选手列表", |ui| {
             self.batch_rate.players.ui(ui, "选手", "batch_players", 8);
         });
-        section(ui, "运行", |ui| {
-            if run_or_stop_button(ui, self) {
-                self.start_batch_rate();
-            }
-        });
     }
 
     pub(crate) fn pair_ui(&mut self, ui: &mut egui::Ui) {
@@ -76,11 +63,6 @@ impl OpenboxApp {
         });
         section(ui, "选手列表", |ui| {
             self.pair.players.ui(ui, "选手", "pair_players", 6);
-        });
-        section(ui, "运行", |ui| {
-            if run_or_stop_button(ui, self) {
-                self.start_pair();
-            }
         });
     }
 
@@ -305,21 +287,6 @@ fn to_diy_basic_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
             app.to_diy.old = false;
         }
     });
-}
-
-fn run_or_stop_button(ui: &mut egui::Ui, app: &mut OpenboxApp) -> bool {
-    ui.add_space(4.0);
-    if app.running {
-        let label = if app.cancel_requested { "停止中..." } else { "停止" };
-        let button = egui::Button::new(egui::RichText::new(label).size(18.0)).min_size(egui::vec2(ui.available_width(), 44.0));
-        if ui.add_enabled(!app.cancel_requested, button).clicked() {
-            app.stop_current_task();
-        }
-        false
-    } else {
-        ui.add(egui::Button::new(egui::RichText::new("运行").size(18.0)).min_size(egui::vec2(ui.available_width(), 44.0)))
-            .clicked()
-    }
 }
 
 fn highlight_delta_control(ui: &mut egui::Ui, value: &mut String) {

@@ -54,11 +54,19 @@ impl eframe::App for OpenboxApp {
                 egui::Frame::side_top_panel(ui.style())
                     .inner_margin(egui::Margin::same(12))
                     .show(ui, |ui| {
-                        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match self.tool {
-                            Tool::ToDiy => self.show_diy_ui(ui),
-                            Tool::NamerPf => self.namer_pf_ui(ui),
-                            Tool::BatchRate => self.batch_rate_ui(ui),
-                            Tool::Pair => self.pair_ui(ui),
+                        ui.vertical(|ui| {
+                            let scroll_height = (ui.available_height() - 72.0).max(160.0);
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .max_height(scroll_height)
+                                .show(ui, |ui| match self.tool {
+                                    Tool::ToDiy => self.show_diy_ui(ui),
+                                    Tool::NamerPf => self.namer_pf_ui(ui),
+                                    Tool::BatchRate => self.batch_rate_ui(ui),
+                                    Tool::Pair => self.pair_ui(ui),
+                                });
+                            ui.separator();
+                            run_footer_ui(ui, self);
                         });
                     });
             });
@@ -72,6 +80,27 @@ impl eframe::App for OpenboxApp {
         });
 
         self.more_settings_window(&ctx);
+    }
+}
+
+fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
+    ui.add_space(4.0);
+    if app.running {
+        let label = if app.cancel_requested { "停止中..." } else { "停止" };
+        let button = egui::Button::new(egui::RichText::new(label).size(18.0)).min_size(egui::vec2(ui.available_width(), 44.0));
+        if ui.add_enabled(!app.cancel_requested, button).clicked() {
+            app.stop_current_task();
+        }
+    } else {
+        let button = egui::Button::new(egui::RichText::new("运行").size(18.0)).min_size(egui::vec2(ui.available_width(), 44.0));
+        if ui.add(button).clicked() {
+            match app.tool {
+                Tool::ToDiy => app.start_to_diy(),
+                Tool::NamerPf => app.start_namer_pf(),
+                Tool::BatchRate => app.start_batch_rate(),
+                Tool::Pair => app.start_pair(),
+            }
+        }
     }
 }
 
