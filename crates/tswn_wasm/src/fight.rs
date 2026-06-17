@@ -19,7 +19,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, internal_error, invalid_input, runner_init_failed};
 use crate::model::{
-    FightOptions, FightReplay, FightSummary, PlayerMeta, PlayerState, RoundFrame, UpdateTypeView, UpdateView, WinnerIds,
+    FightOptions, FightReplay, FightSummary, MessageTone, PlayerMeta, PlayerState, RoundFrame, UpdateTypeView, UpdateView,
+    WinnerIds,
 };
 use crate::render::{classify_message_tone, render_update_message};
 
@@ -286,12 +287,23 @@ fn player_names_from_states(states: &[PlayerState]) -> HashMap<PlrId, String> {
     states.iter().map(|state| (state.id, state.display_name.clone())).collect()
 }
 
+fn u32_to_i32_saturating(value: u32) -> i32 { value.min(i32::MAX as u32) as i32 }
+
+fn update_hp_delta(tone: MessageTone, update: &tswn_core::RunUpdate) -> Option<i32> {
+    match tone {
+        MessageTone::Damage => Some(-u32_to_i32_saturating(update.score)),
+        MessageTone::Recover => Some(u32_to_i32_saturating(update.param.unwrap_or(update.score))),
+        _ => None,
+    }
+}
+
 fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -> Vec<UpdateView> {
     updates
         .updates
         .into_iter()
         .map(|update| {
             let tone = classify_message_tone(&update.message);
+            let hp_delta = update_hp_delta(tone, &update);
             let message_rendered = render_update_message(&update, player_names);
             UpdateView {
                 score: update.score,
@@ -304,6 +316,7 @@ fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -
                 message_template: update.message.to_string(),
                 message_rendered,
                 param: update.param,
+                hp_delta,
                 tone,
             }
         })

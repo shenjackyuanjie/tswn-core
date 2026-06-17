@@ -40,7 +40,7 @@ pub fn classify_message_tone(template: &str) -> MessageTone {
         MessageTone::Recover
     } else if template.contains("被击倒") {
         MessageTone::Knockout
-    } else if template.contains("点伤害") {
+    } else if template.contains("点伤害") || template.contains("体力减少") {
         MessageTone::Damage
     } else {
         MessageTone::Normal
@@ -49,7 +49,7 @@ pub fn classify_message_tone(template: &str) -> MessageTone {
 
 #[cfg(test)]
 mod tests {
-    use super::render_update_message;
+    use super::{classify_message_tone, render_update_message};
     use std::collections::HashMap;
     use tswn_core::RunUpdate;
 
@@ -62,5 +62,10 @@ mod tests {
         let update = RunUpdate::new("[1]受到[2]点伤害", 0, 1, 42);
 
         assert_eq!(render_update_message(&update, &names), "目标受到42点伤害");
+    }
+
+    #[test]
+    fn half_damage_message_is_damage_tone() {
+        assert_eq!(classify_message_tone("[1]体力减少[2]%"), crate::model::MessageTone::Damage);
     }
 }

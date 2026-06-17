@@ -79,6 +79,7 @@
  *   target_ids?: number[],
  *   param?: number,
  *   score?: number,
+ *   hp_delta?: number,
  *   delay1?: number,
  *   delay0?: number,
  *   tone?: MessageTone
