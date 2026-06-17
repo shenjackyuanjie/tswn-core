@@ -339,6 +339,13 @@ function renderPlayerStatusPills(state) {
   return `<div class="detail-line player-effects"${labels.length ? "" : " hidden"}>${chips}</div>`;
 }
 
+function playerRowLifeClass(state, previous) {
+  if (state.alive) {
+    return "";
+  }
+  return previous?.alive ? " is-dead is-just-dead" : " is-dead";
+}
+
 function seedRowHtml(seedLine) {
   if (!seedLine) {
     return "";
@@ -479,7 +486,7 @@ export function renderPlayers(
             const previousWidth = hpMetrics?.previousWidth ?? 0;
             const healStart = Math.min(previousWidth, fillWidth);
             const healWidth = Math.max(0, fillWidth - previousWidth);
-            const deadClass = state.alive ? "" : " is-dead";
+            const deadClass = playerRowLifeClass(state, previous);
             const involvedClass = involved
               ? involved.casters.has(player.id) && involved.targets.has(player.id)
                 ? " is-caster is-target"
@@ -617,7 +624,7 @@ export function renderPlayers(
       const previousWidth = hpMetrics?.previousWidth ?? 0;
       const healStart = Math.min(previousWidth, fillWidth);
       const healWidth = Math.max(0, fillWidth - previousWidth);
-      const deadClass = state.alive ? "" : " is-dead";
+      const deadClass = playerRowLifeClass(state, previous);
       const involvedClass = involved
         ? involved.casters.has(player.id) && involved.targets.has(player.id)
           ? " is-caster is-target"
