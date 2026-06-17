@@ -494,6 +494,24 @@ function frameWinnerLineHtml(frame, playersById) {
   return `<div class="row winner-line"><span class="winner-row">胜者：${escapeHtml(frameWinnerNames(frame, playersById))}</span></div>`;
 }
 
+function involvedSetForUpdate(update) {
+  const involved = { casters: new Set(), targets: new Set() };
+  if (update.caster_id != null) {
+    involved.casters.add(update.caster_id);
+  }
+  if (update.target_id != null) {
+    involved.targets.add(update.target_id);
+  }
+  if (Array.isArray(update.target_ids)) {
+    update.target_ids.forEach((id) => involved.targets.add(id));
+  }
+  return involved;
+}
+
+function statesFromRunningMap(running) {
+  return Array.from(running.values());
+}
+
 // ============================================================================
 // 玩家状态面板渲染
 // ============================================================================
@@ -941,8 +959,8 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
   let nextWait = 1800;
   let quickAreaSkillActive = false;
 
-  function pushVisibleChunk(target, html, delay) {
-    chunks.push({ target, html, delay });
+  function pushVisibleChunk(target, html, delay, sidebar = null) {
+    chunks.push({ target, html, delay, ...(sidebar ?? {}) });
   }
 
   function visibleWait(update) {
@@ -957,7 +975,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     // 混淆版 md5.js 的换行和空消息不会单独等待；保留函数让后续流程不需要分支。
   }
 
-  function pushMessageChunk(messageHtml, delay) {
+  function pushMessageChunk(messageHtml, delay, sidebar) {
     if (!frameStarted) {
       pushVisibleChunk(
         "battleRows",
@@ -970,6 +988,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
                     </section>
                 `,
         delay,
+        sidebar,
       );
       frameStarted = true;
       rowStarted = true;
@@ -977,21 +996,23 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     }
 
     if (!rowStarted) {
-      pushVisibleChunk("frameBody", `<div class="row">${messageHtml}</div>`, delay);
+      pushVisibleChunk("frameBody", `<div class="row">${messageHtml}</div>`, delay, sidebar);
       rowStarted = true;
       return;
     }
 
-    pushVisibleChunk("row", `<span class="msg-sep">, </span>${messageHtml}`, delay);
+    pushVisibleChunk("row", `<span class="msg-sep">, </span>${messageHtml}`, delay, sidebar);
   }
 
   function applyDelta(id, hitState, hpDelta) {
     const cur = hitState.get(id);
     if (!cur || cur.max_hp <= 0) return;
     if (hpDelta < 0) {
-      hitState.set(id, { ...cur, hp: Math.max(0, cur.hp + hpDelta) });
+      const hp = Math.max(0, cur.hp + hpDelta);
+      hitState.set(id, { ...cur, hp, alive: hp > 0 });
     } else if (hpDelta > 0) {
-      hitState.set(id, { ...cur, hp: Math.min(cur.max_hp, cur.hp + hpDelta) });
+      const hp = Math.min(cur.max_hp, cur.hp + hpDelta);
+      hitState.set(id, { ...cur, hp, alive: hp > 0 });
     }
   }
 
@@ -1014,6 +1035,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     const delay = quickAreaSkillActive ? quickAreaSkillDelay(rawDelay) : rawDelay;
 
     const tone = update.tone ?? "normal";
+    const previousForMessage = new Map(running);
     const hitState = new Map(running);
     const hpDelta = Number.isFinite(update.hp_delta) ? update.hp_delta : 0;
     if (hpDelta !== 0) {
@@ -1025,6 +1047,11 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     pushMessageChunk(
       `<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`,
       delay,
+      {
+        sidebarStates: statesFromRunningMap(hitState),
+        sidebarPreviousStates: statesFromRunningMap(previousForMessage),
+        sidebarInvolved: involvedSetForUpdate(update),
+      },
     );
     running = hitState;
   }

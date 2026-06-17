@@ -243,7 +243,7 @@ let speedMode = DEFAULT_SPEED_MODE;
 let playersById = new Map();
 const ICON_STYLE_ID = "tswn-show-icon-styles";
 const SEEK_CHECKPOINT_FRAME_INTERVAL = 20;
-/** @type {{ frames: Array<{ frameIndex: number, frame: FrameUpdate, previousStates: FightState[], involved: InvolvedSet, start: number, end: number }>, flatChunks: Array<{ target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number, frameIndex: number, visible: boolean }>, totalChunks: number }|null} */
+/** @type {{ frames: Array<{ frameIndex: number, frame: FrameUpdate, previousStates: FightState[], involved: InvolvedSet, start: number, end: number }>, flatChunks: Array<{ target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number, frameIndex: number, visible: boolean, sidebarStates?: FightState[], sidebarPreviousStates?: FightState[], sidebarInvolved?: InvolvedSet }>, totalChunks: number }|null} */
 let currentPlan = null;
 /** @type {Map<number, { battle_rows_html: string, player_list_html: string, seed_line: string }>} */
 let playbackCheckpoints = new Map();
@@ -366,6 +366,15 @@ function visibleStatesForCursor(cursor) {
     if (cursor >= framePlan.end) {
       states = framePlan.frame.states;
       continue;
+    }
+    if (cursor > framePlan.start) {
+      const lastChunkIndex = Math.min(cursor, framePlan.end) - 1;
+      for (let index = lastChunkIndex; index >= framePlan.start; index -= 1) {
+        const chunk = currentPlan.flatChunks[index];
+        if (Array.isArray(chunk?.sidebarStates)) {
+          return chunk.sidebarStates;
+        }
+      }
     }
     break;
   }
@@ -517,17 +526,51 @@ function appendPlaybackChunk(chunk) {
   }
 
   scrollBattleToBottom();
+  renderChunkSidebar(chunk);
+}
+
+function renderSidebarSnapshot(states, previousStates, involved) {
+  currentVisibleStates = states;
+  renderPlayers(
+    currentReplay.players,
+    states,
+    previousStates,
+    involved,
+    playerList,
+    playersById,
+  );
+}
+
+function renderChunkSidebar(chunk) {
+  if (!currentReplay || !Array.isArray(chunk.sidebarStates)) {
+    return;
+  }
+  renderSidebarSnapshot(
+    chunk.sidebarStates,
+    chunk.sidebarPreviousStates ?? chunk.sidebarStates,
+    chunk.sidebarInvolved ?? null,
+  );
+}
+
+function lastSidebarChunkForFrame(framePlan) {
+  if (!currentPlan) {
+    return null;
+  }
+  for (let index = framePlan.end - 1; index >= framePlan.start; index -= 1) {
+    const chunk = currentPlan.flatChunks[index];
+    if (Array.isArray(chunk?.sidebarStates)) {
+      return chunk;
+    }
+  }
+  return null;
 }
 
 function renderFrameSidebar(framePlan) {
-  currentVisibleStates = framePlan.frame.states;
-  renderPlayers(
-    currentReplay.players,
+  const lastSidebarChunk = lastSidebarChunkForFrame(framePlan);
+  renderSidebarSnapshot(
     framePlan.frame.states,
-    framePlan.previousStates,
-    framePlan.involved,
-    playerList,
-    playersById,
+    lastSidebarChunk?.sidebarPreviousStates ?? framePlan.previousStates,
+    lastSidebarChunk?.sidebarInvolved ?? null,
   );
 }
 
