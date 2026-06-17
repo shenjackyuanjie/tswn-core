@@ -432,10 +432,13 @@ export function renderPlayers(
   const previousStateMap = buildStateMap(previousStates);
   const seedLine = playerList.dataset.seedLine ?? "";
   const allPlayers = orderedDisplayPlayers(players, states, stateMap, playersById);
+  const layoutKey = allPlayers.map((player) => `${player.team_index}:${player.id}`).join("|");
 
   const existingRows = playerList.querySelectorAll("tr[data-player-id]");
-  if (existingRows.length !== allPlayers.length) {
-    // —— 全量渲染（首次或玩家数量变化时） ——
+  const shouldRenderFullList =
+    existingRows.length !== allPlayers.length || playerList.dataset.playerLayoutKey !== layoutKey;
+  if (shouldRenderFullList) {
+    // —— 全量渲染（首次、玩家数量变化或展示顺序变化时） ——
     const teams = new Map();
     for (const player of allPlayers) {
       const items = teams.get(player.team_index) ?? [];
@@ -569,6 +572,7 @@ export function renderPlayers(
         </table>`
       : "";
     playerList.innerHTML = seedRowHtml(seedLine) + columnHeader + teamHtml;
+    playerList.dataset.playerLayoutKey = layoutKey;
   } else {
     const seedRow = playerList.querySelector(".seed-row");
     if (seedLine) {
