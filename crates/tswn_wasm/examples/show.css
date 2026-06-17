@@ -512,12 +512,32 @@ button:hover {
     background: rgba(198, 225, 239, 0.5);
 }
 
+.mp-prev,
+.mp-recover,
+.mp-cost,
 .mp {
     position: absolute;
     top: 0;
     left: 0;
     height: 100%;
-    transition: width 260ms ease;
+    transition:
+        left 260ms ease,
+        width 260ms ease;
+}
+
+.mp-prev {
+    background: rgba(60, 169, 255, 0.25);
+}
+
+.mp-recover {
+    background: rgba(23, 152, 90, 0.55);
+}
+
+.mp-cost {
+    background: rgba(239, 127, 121, 0.72);
+}
+
+.mp {
     background: linear-gradient(90deg, #3ca9ff 0%, #1877c7 100%);
 }
 

@@ -346,6 +346,47 @@ function playerRowLifeClass(state, previous) {
   return previous?.alive ? " is-dead is-just-dead" : " is-dead";
 }
 
+function nonNegativeFinite(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : 0;
+}
+
+function barValueWidth(value) {
+  return value > 0 ? Math.max(1, Math.ceil(value / 4)) : 0;
+}
+
+function playerMpMetrics(state, previousState) {
+  const currentMp = state?.alive ? nonNegativeFinite(state.magic_point) : 0;
+  const previousMp =
+    previousState && previousState.alive !== false
+      ? nonNegativeFinite(previousState.magic_point)
+      : currentMp;
+  const maxMp = Math.max(
+    1,
+    nonNegativeFinite(state?.magic),
+    nonNegativeFinite(previousState?.magic),
+    currentMp,
+    previousMp,
+  );
+  const totalWidth = Math.max(20, Math.ceil(maxMp / 4));
+  const fillWidth = barValueWidth(currentMp);
+  const previousWidth = barValueWidth(previousMp);
+  const recoverLeft = Math.min(previousWidth, fillWidth);
+  const recoverWidth = Math.max(0, fillWidth - previousWidth);
+  const costLeft = Math.min(previousWidth, fillWidth);
+  const costWidth = Math.max(0, previousWidth - fillWidth);
+
+  return {
+    totalWidth,
+    fillWidth,
+    previousWidth,
+    recoverLeft,
+    recoverWidth,
+    costLeft,
+    costWidth,
+  };
+}
+
 function seedRowHtml(seedLine) {
   if (!seedLine) {
     return "";
@@ -503,13 +544,7 @@ export function renderPlayers(
                 ? "status-pill frozen"
                 : "status-pill";
 
-            const maxMp =
-              state.magic > 0 ? state.magic : state.magic_point > 0 ? state.magic_point : 1;
-            const mpTotalWidth = Math.max(20, Math.ceil(maxMp / 4));
-            const mpFillWidth =
-              state.alive && state.magic_point > 0
-                ? Math.max(1, Math.ceil(state.magic_point / 4))
-                : 0;
+            const mpMetrics = playerMpMetrics(state, previous);
 
             return `
                         <tr class="player-row${deadClass}${involvedClass}" data-player-id="${player.id}" title="id: ${escapeHtml(player.id_name)} · playerId: ${player.id}">
@@ -526,8 +561,11 @@ export function renderPlayers(
                                     <div class="healhp" style="left:${healStart}px;width:${healWidth}px"></div>
                                     <div class="hp" style="width:${fillWidth}px"></div>
                                 </div>
-                                <div class="mpwrap" style="width:${mpTotalWidth}px">
-                                    <div class="mp" style="width:${mpFillWidth}px"></div>
+                                <div class="mpwrap" style="width:${mpMetrics.totalWidth}px">
+                                    <div class="mp-prev" style="width:${mpMetrics.previousWidth}px"></div>
+                                    <div class="mp-recover" style="left:${mpMetrics.recoverLeft}px;width:${mpMetrics.recoverWidth}px"></div>
+                                    <div class="mp-cost" style="left:${mpMetrics.costLeft}px;width:${mpMetrics.costWidth}px"></div>
+                                    <div class="mp" style="width:${mpMetrics.fillWidth}px"></div>
                                 </div>
                                 ${renderPlayerStatusPills(state)}
                             </td>
@@ -640,10 +678,7 @@ export function renderPlayers(
         : state.frozen
           ? "status-pill frozen"
           : "status-pill";
-      const maxMp = state.magic > 0 ? state.magic : state.magic_point > 0 ? state.magic_point : 1;
-      const mpTotalWidth = Math.max(20, Math.ceil(maxMp / 4));
-      const mpFillWidth =
-        state.alive && state.magic_point > 0 ? Math.max(1, Math.ceil(state.magic_point / 4)) : 0;
+      const mpMetrics = playerMpMetrics(state, previous);
 
       row.className = `player-row${deadClass}${involvedClass}`;
 
@@ -668,9 +703,21 @@ export function renderPlayers(
       }
 
       const mpwrapEl = row.querySelector(".mpwrap");
-      if (mpwrapEl) mpwrapEl.style.width = mpTotalWidth + "px";
+      if (mpwrapEl) mpwrapEl.style.width = mpMetrics.totalWidth + "px";
+      const mpPrevEl = row.querySelector(".mp-prev");
+      if (mpPrevEl) mpPrevEl.style.width = mpMetrics.previousWidth + "px";
+      const mpRecoverEl = row.querySelector(".mp-recover");
+      if (mpRecoverEl) {
+        mpRecoverEl.style.left = mpMetrics.recoverLeft + "px";
+        mpRecoverEl.style.width = mpMetrics.recoverWidth + "px";
+      }
+      const mpCostEl = row.querySelector(".mp-cost");
+      if (mpCostEl) {
+        mpCostEl.style.left = mpMetrics.costLeft + "px";
+        mpCostEl.style.width = mpMetrics.costWidth + "px";
+      }
       const mpEl = row.querySelector(".mp");
-      if (mpEl) mpEl.style.width = mpFillWidth + "px";
+      if (mpEl) mpEl.style.width = mpMetrics.fillWidth + "px";
 
       const nameWrap = row.querySelector(".player-name-wrap");
       if (nameWrap) {
