@@ -109,6 +109,7 @@
 
 import {
   buildIconClassCss,
+  escapeHtml,
   formatError,
   normalizeReplayIconClasses,
   sleep,
@@ -139,6 +140,8 @@ const DEFAULT_RAW = `
 
 /** @type {string} localStorage 键名，用于跨会话记住用户输入 */
 const INPUT_STORAGE_KEY = "tswn_wasm_show_input";
+/** @type {string} localStorage 键名，用于按原始 id_name 保存自定义昵称 */
+const NICKNAME_STORAGE_KEY = "tswn_wasm_show_nicknames";
 /** @type {SpeedMode} 新战斗默认播放速度 */
 const DEFAULT_SPEED_MODE = "normal";
 
@@ -157,6 +160,8 @@ const inputPanel = document.querySelector("#inputPanel");
 /** @type {HTMLElement} */
 const endPanel = document.querySelector("#endPanel");
 /** @type {HTMLElement} */
+const detailPanel = document.querySelector("#detailPanel");
+/** @type {HTMLElement} */
 const inputStatus = document.querySelector("#inputStatus");
 /** @type {HTMLElement} */
 const plistMeta = document.querySelector("#plistMeta");
@@ -166,6 +171,10 @@ const headerMeta = document.querySelector("#headerMeta");
 const winnerNames = document.querySelector("#winnerNames");
 /** @type {HTMLElement} */
 const winnerNote = document.querySelector("#winnerNote");
+/** @type {HTMLElement} */
+const detailContent = document.querySelector("#detailContent");
+/** @type {HTMLInputElement} */
+const nicknameInput = document.querySelector("#nicknameInput");
 
 /** @type {HTMLElement} */
 const versionInfo = document.querySelector("#versionInfo");
@@ -182,6 +191,12 @@ const sampleBtn = document.querySelector("#sampleBtn");
 const closeInputBtn = document.querySelector("#closeInputBtn");
 /** @type {HTMLButtonElement} */
 const closeEndBtn = document.querySelector("#closeEndBtn");
+/** @type {HTMLButtonElement} */
+const closeDetailBtn = document.querySelector("#closeDetailBtn");
+/** @type {HTMLButtonElement} */
+const saveNicknameBtn = document.querySelector("#saveNicknameBtn");
+/** @type {HTMLButtonElement} */
+const clearNicknameBtn = document.querySelector("#clearNicknameBtn");
 /** @type {HTMLButtonElement} */
 const playAgainBtn = document.querySelector("#playAgainBtn");
 /** @type {HTMLButtonElement} */
@@ -215,6 +230,12 @@ const stepForwardFrameBtn = document.querySelector("#stepForwardFrameBtn");
 
 /** @type {FightReplay|null} 当前已生成的回放数据 */
 let currentReplay = null;
+/** @type {FightState[]} 当前左侧面板对应的状态快照 */
+let currentVisibleStates = [];
+/** @type {number|null} 当前详情面板打开的 playerId */
+let currentDetailPlayerId = null;
+/** @type {Map<string, string>} id_name → 自定义昵称 */
+let nicknameByIdName = new Map();
 /** @type {SpeedMode} 当前播放速度模式 */
 let speedMode = DEFAULT_SPEED_MODE;
 /** @type {Map<number, FightPlayer>} playerId → 玩家对象的快速索引 */
@@ -238,6 +259,7 @@ let playbackFinished = false;
 
 // 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
+restoreNicknameMap();
 
 // ============================================================================
 // 胶水函数（直接操作 DOM 或全局状态）
@@ -272,6 +294,81 @@ function syncIconStyles(iconEntries) {
 
 function normalizeReplayPlayers(replay) {
   return normalizeReplayIconClasses(replay);
+}
+
+function actorNicknameKey(actor) {
+  return `${actor?.id_name ?? actor?._raw_display_name ?? actor?.display_name ?? ""}`.trim();
+}
+
+function ensureRawDisplayName(actor) {
+  if (!actor) {
+    return "";
+  }
+  if (actor._raw_display_name == null) {
+    actor._raw_display_name = actor.display_name ?? actor.id_name ?? "";
+  }
+  return actor._raw_display_name;
+}
+
+function applyNickname(actor, key) {
+  if (!actor || !key) {
+    return;
+  }
+  const rawDisplayName = ensureRawDisplayName(actor);
+  actor.display_name = nicknameByIdName.get(key) || rawDisplayName;
+}
+
+function applyNicknamesToReplay(replay) {
+  const inputKeysById = new Map();
+  for (const player of replay.players ?? []) {
+    const key = actorNicknameKey(player);
+    if (!key) {
+      continue;
+    }
+    inputKeysById.set(player.id, key);
+    applyNickname(player, key);
+  }
+
+  const applyStateNickname = (state) => {
+    const key = inputKeysById.get(state.id);
+    if (key) {
+      applyNickname(state, key);
+    }
+  };
+
+  (replay.initial_states ?? []).forEach(applyStateNickname);
+  for (const frame of replay.frames ?? []) {
+    (frame.states ?? []).forEach(applyStateNickname);
+  }
+  (replay.final_states ?? []).forEach(applyStateNickname);
+  return replay;
+}
+
+function currentStateById(playerId) {
+  return currentVisibleStates.find((state) => state.id === playerId) ?? null;
+}
+
+function inputPlayerById(playerId) {
+  return currentReplay?.players?.find((player) => player.id === playerId) ?? null;
+}
+
+function visibleStatesForCursor(cursor) {
+  if (!currentReplay || !currentPlan) {
+    return [];
+  }
+  if (cursor >= currentPlan.totalChunks) {
+    return currentReplay.final_states;
+  }
+
+  let states = currentReplay.initial_states;
+  for (const framePlan of currentPlan.frames) {
+    if (cursor >= framePlan.end) {
+      states = framePlan.frame.states;
+      continue;
+    }
+    break;
+  }
+  return states;
 }
 
 /**
@@ -422,6 +519,7 @@ function appendPlaybackChunk(chunk) {
 }
 
 function renderFrameSidebar(framePlan) {
+  currentVisibleStates = framePlan.frame.states;
   renderPlayers(
     currentReplay.players,
     framePlan.frame.states,
@@ -439,6 +537,7 @@ function renderEndPanel(replay) {
 
 function resetPlaybackView(replay) {
   closePanel(endPanel);
+  currentVisibleStates = replay.initial_states;
   renderReplayIntro(
     replay,
     speedMode,
@@ -570,6 +669,7 @@ function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
   }
 
   if (playbackFinished) {
+    currentVisibleStates = currentReplay.final_states;
     renderPlayers(
       currentReplay.players,
       currentReplay.final_states,
@@ -587,6 +687,9 @@ function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
     storePlaybackCheckpoint(0);
   }
 
+  if (!playbackFinished) {
+    currentVisibleStates = visibleStatesForCursor(playbackCursor);
+  }
   scrollBattleToBottom();
   syncPlaybackUi();
 }
@@ -668,6 +771,7 @@ async function autoplayFromCurrentCursor() {
 
   playbackFinished = true;
   playbackPaused = true;
+  currentVisibleStates = currentReplay.final_states;
   renderPlayers(
     currentReplay.players,
     currentReplay.final_states,
@@ -834,6 +938,81 @@ function persistInputValue() {
   }
 }
 
+function restoreNicknameMap() {
+  try {
+    const raw = window.localStorage.getItem(NICKNAME_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    nicknameByIdName = new Map(
+      Object.entries(parsed).filter(([, value]) => typeof value === "string" && value.trim()),
+    );
+  } catch {
+    nicknameByIdName = new Map();
+  }
+}
+
+function persistNicknameMap() {
+  try {
+    const data = Object.fromEntries([...nicknameByIdName.entries()].sort());
+    window.localStorage.setItem(NICKNAME_STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage 不可用时，当前页面内的昵称仍会生效。
+  }
+}
+
+function detailValue(value, fallback = "-") {
+  if (value == null || value === "") {
+    return fallback;
+  }
+  return escapeHtml(value);
+}
+
+function detailNumber(value, digits = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "-";
+  }
+  return Number.isInteger(number) ? String(number) : number.toFixed(digits);
+}
+
+function detailRow(label, value) {
+  return `<dt>${escapeHtml(label)}</dt><dd>${value}</dd>`;
+}
+
+function buildPlayerDetailHtml(player, state, canEditNickname) {
+  const displayName = player?.display_name ?? state?.display_name ?? "未知角色";
+  const rawName = player?._raw_display_name ?? state?._raw_display_name ?? displayName;
+  const idName = player?.id_name ?? state?.id_name ?? "";
+  const statusLabels = Array.isArray(state?.status_labels) ? state.status_labels.join("、") : "";
+  const rows = [
+    detailRow("原名", detailValue(rawName)),
+    detailRow("ID 名", detailValue(idName)),
+    detailRow("playerId", detailNumber(player?.id ?? state?.id)),
+    detailRow("队伍", detailNumber(player?.team_index ?? state?.team_index)),
+    detailRow("HP", state ? `${detailNumber(state.hp)} / ${detailNumber(state.max_hp)}` : "-"),
+    detailRow("蓝量", detailNumber(state?.magic_point)),
+    detailRow("体力", state ? `${detailNumber(((state.move_point ?? 0) / 2048) * 100, 0)}%` : "-"),
+    detailRow("攻击", detailNumber(state?.attack)),
+    detailRow("防御", detailNumber(state?.defense)),
+    detailRow("速度", detailNumber(state?.speed)),
+    detailRow("敏捷", detailNumber(state?.agility)),
+    detailRow("魔力", detailNumber(state?.magic)),
+    detailRow("抗性", detailNumber(state?.resistance)),
+    detailRow("智慧", detailNumber(state?.wisdom)),
+    detailRow("评价", detailNumber(state?.point)),
+    detailRow("总和", detailNumber(state?.all_sum)),
+    detailRow("短名系数", detailNumber(state?.name_factor)),
+    detailRow("攻击加成", detailNumber(state?.at_boost)),
+    detailRow("吸引", detailNumber(state?.attract)),
+    detailRow("状态", detailValue(statusLabels)),
+  ].join("");
+
+  return `
+    <div class="detail-name">${escapeHtml(displayName)}</div>
+    <div class="detail-subtitle">${canEditNickname ? "昵称会按 ID 名持久化，并应用到当前及后续回放。" : "召唤物或临时单位暂不支持保存昵称。"}</div>
+    <dl class="detail-grid">${rows}</dl>
+  `;
+}
+
 // ============================================================================
 // 面板开关
 // ============================================================================
@@ -866,6 +1045,68 @@ function openInputEditor(selectAll = false) {
       inputName.select();
     }
   });
+}
+
+function openPlayerDetail(playerId) {
+  if (!currentReplay) {
+    return;
+  }
+  pausePlayback();
+  currentDetailPlayerId = playerId;
+  const player = playersById.get(playerId) ?? inputPlayerById(playerId);
+  const state = currentStateById(playerId);
+  const inputPlayer = inputPlayerById(playerId);
+  const key = inputPlayer ? actorNicknameKey(inputPlayer) : "";
+  const canEditNickname = Boolean(inputPlayer && key);
+
+  detailContent.innerHTML = buildPlayerDetailHtml(player ?? inputPlayer, state, canEditNickname);
+  nicknameInput.disabled = !canEditNickname;
+  saveNicknameBtn.disabled = !canEditNickname;
+  clearNicknameBtn.disabled = !canEditNickname;
+  nicknameInput.value = canEditNickname ? (nicknameByIdName.get(key) ?? "") : "";
+  openPanel(detailPanel);
+  window.requestAnimationFrame(() => {
+    if (!nicknameInput.disabled) {
+      nicknameInput.focus();
+      nicknameInput.select();
+    }
+  });
+}
+
+function refreshCurrentReplayView() {
+  if (!currentReplay || !currentPlan) {
+    return;
+  }
+  applyNicknamesToReplay(currentReplay);
+  currentPlan = prepareReplayPlan(currentReplay);
+  playbackCheckpoints = new Map();
+  renderPlaybackToCursor(playbackCursor, { forceReset: true });
+}
+
+function saveCurrentNickname() {
+  if (currentDetailPlayerId == null || !currentReplay) {
+    return;
+  }
+  const player = inputPlayerById(currentDetailPlayerId);
+  const key = player ? actorNicknameKey(player) : "";
+  if (!key) {
+    return;
+  }
+  const nickname = nicknameInput.value.trim();
+  if (nickname) {
+    nicknameByIdName.set(key, nickname);
+  } else {
+    nicknameByIdName.delete(key);
+  }
+  persistNicknameMap();
+  refreshCurrentReplayView();
+  openPlayerDetail(currentDetailPlayerId);
+  setInputStatus(nickname ? "昵称已保存。" : "昵称已清除。");
+}
+
+function clearCurrentNickname() {
+  nicknameInput.value = "";
+  saveCurrentNickname();
 }
 
 // ============================================================================
@@ -906,10 +1147,11 @@ async function startBattle() {
   setLoading(true);
   setInputStatus("正在生成回放，请稍候...");
   closePanel(endPanel);
+  closePanel(detailPanel);
 
   try {
-    currentReplay = normalizeReplayPlayers(
-      await buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo),
+    currentReplay = applyNicknamesToReplay(
+      normalizeReplayPlayers(await buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo)),
     );
     setInputStatus("回放已生成，开始自动播放。");
     closePanel(inputPanel);
@@ -969,6 +1211,18 @@ pauseBtn.addEventListener("click", () => {
 // 输入按钮：打开输入编辑面板
 inputBtn.addEventListener("click", () => {
   openInputEditor();
+});
+
+playerList.addEventListener("click", (event) => {
+  const button =
+    event.target instanceof Element ? event.target.closest("[data-player-detail-id]") : null;
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  const playerId = Number(button.dataset.playerDetailId);
+  if (Number.isFinite(playerId)) {
+    openPlayerDetail(playerId);
+  }
 });
 
 // 编辑名字按钮：关闭结束面板并打开输入编辑
@@ -1072,6 +1326,18 @@ closeEndBtn.addEventListener("click", () => {
   closePanel(endPanel);
 });
 
+closeDetailBtn.addEventListener("click", () => {
+  closePanel(detailPanel);
+});
+
+saveNicknameBtn.addEventListener("click", () => {
+  saveCurrentNickname();
+});
+
+clearNicknameBtn.addEventListener("click", () => {
+  clearCurrentNickname();
+});
+
 // 输入框内容变化时自动持久化
 inputName.addEventListener("input", () => {
   persistInputValue();
@@ -1082,6 +1348,13 @@ inputName.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
     event.preventDefault();
     void startBattle();
+  }
+});
+
+nicknameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveCurrentNickname();
   }
 });
 

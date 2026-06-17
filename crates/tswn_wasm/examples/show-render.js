@@ -490,6 +490,7 @@ export function renderPlayers(
                                     ${renderIconSprite(playerIconClassId(player), "sgl icon-sprite")}
                                     <span class="${nameClass}">${escapeHtml(player.display_name)}</span>
                                     <span class="player-id"> #${player.id}</span>
+                                    <button type="button" class="detail-btn" data-player-detail-id="${player.id}" title="打开角色详情" aria-label="打开角色详情">i</button>
                                 </div>
                                 <div class="hpwrap compact" style="width:${totalWidth}px">
                                     <div class="maxhp" style="width:${totalWidth}px"></div>
@@ -618,7 +619,10 @@ export function renderPlayers(
       row.className = `player-row${deadClass}${involvedClass}`;
 
       const nameEl = row.querySelector(".player-name-wrap .name, .player-name-wrap .namedie");
-      if (nameEl) nameEl.className = nameClass;
+      if (nameEl) {
+        nameEl.className = nameClass;
+        nameEl.textContent = player.display_name;
+      }
 
       const hpwrapEl = row.querySelector(".hpwrap");
       if (hpwrapEl) hpwrapEl.style.width = totalWidth + "px";
@@ -648,6 +652,13 @@ export function renderPlayers(
           nameWrap.appendChild(idSpan);
         }
         idSpan.textContent = " #" + player.id;
+
+        if (!nameWrap.querySelector(".detail-btn")) {
+          nameWrap.insertAdjacentHTML(
+            "beforeend",
+            `<button type="button" class="detail-btn" data-player-detail-id="${player.id}" title="打开角色详情" aria-label="打开角色详情">i</button>`,
+          );
+        }
       }
 
       const effectsEl = row.querySelector(".player-effects");

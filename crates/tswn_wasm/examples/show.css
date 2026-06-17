@@ -277,6 +277,27 @@ button:hover {
     min-width: 0;
 }
 
+.detail-btn {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid rgba(18, 119, 174, 0.55);
+    border-radius: 50%;
+    background: rgba(24, 119, 199, 0.12);
+    color: var(--sky-3);
+    box-shadow: none;
+    font-size: 11px;
+    line-height: 14px;
+    font-weight: 700;
+}
+
+.detail-btn:hover {
+    background: rgba(24, 119, 199, 0.22);
+    box-shadow: none;
+    transform: none;
+}
+
 .plr_list {
     display: block;
     position: relative;
@@ -795,6 +816,14 @@ textarea {
     background: rgba(255, 255, 255, 0.98);
 }
 
+input {
+    width: 100%;
+    border: none;
+    padding: 6px 8px;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.98);
+}
+
 .goBar {
     position: relative;
     width: 100%;
@@ -815,6 +844,14 @@ textarea {
 .goBtn:disabled {
     cursor: progress;
     opacity: 0.8;
+}
+
+.goBtn.inline {
+    position: relative;
+    left: auto;
+    right: auto;
+    width: auto;
+    min-width: 84px;
 }
 
 .picon,
@@ -889,6 +926,74 @@ textarea {
 
 #endPanel {
     width: min(620px, calc(100vw - 24px));
+}
+
+.detail-panel {
+    width: min(460px, calc(100vw - 24px));
+    max-height: min(640px, calc(100vh - 24px));
+}
+
+.detail-card {
+    width: 100%;
+    max-height: min(360px, calc(100vh - 220px));
+    overflow: auto;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.detail-name {
+    margin-bottom: 8px;
+    font-size: 18px;
+    line-height: 1.35;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.detail-subtitle {
+    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: minmax(82px, auto) minmax(0, 1fr);
+    gap: 4px 10px;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.detail-grid dt {
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.detail-grid dd {
+    margin: 0;
+    color: white;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.nickname-field {
+    width: 100%;
+    display: grid;
+    gap: 5px;
+    color: white;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.nickname-field input:disabled {
+    opacity: 0.7;
+}
+
+.detail-actions {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
 }
 
 .winner-note {
