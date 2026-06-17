@@ -301,7 +301,21 @@ const POSITIVE_STATUS_LABELS = new Set([
   "守护",
 ]);
 const NEGATIVE_STATUS_LABELS = new Set(["魅惑", "诅咒", "冰冻", "中毒", "迟缓", "垂死"]);
+const QUICK_AREA_SKILL_MAX_DELAY_MS = 300;
+const QUICK_AREA_SKILL_TOKENS = ["[雷击术]", "[地裂术]", "使用雷击术", "使用地裂术"];
 const WIN_UPDATE_DELAY0_MS = 3000;
+
+function isQuickAreaSkillUpdate(update) {
+  const template = `${update.message_template ?? ""}`;
+  const rendered = `${update.message_rendered ?? ""}`;
+  return QUICK_AREA_SKILL_TOKENS.some(
+    (token) => template.includes(token) || rendered.includes(token),
+  );
+}
+
+function quickAreaSkillDelay(rawDelay) {
+  return Math.min(rawDelay, QUICK_AREA_SKILL_MAX_DELAY_MS);
+}
 
 function statusPillTone(label) {
   if (POSITIVE_STATUS_LABELS.has(label)) {
@@ -843,6 +857,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
   let frameStarted = false;
   let rowStarted = false;
   let nextWait = 1800;
+  let quickAreaSkillActive = false;
 
   function pushVisibleChunk(target, html, delay) {
     chunks.push({ target, html, delay });
@@ -910,7 +925,11 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     }
 
     pushLeadingDelayChunk();
-    const delay = visibleWait(update);
+    const rawDelay = visibleWait(update);
+    if (isQuickAreaSkillUpdate(update)) {
+      quickAreaSkillActive = true;
+    }
+    const delay = quickAreaSkillActive ? quickAreaSkillDelay(rawDelay) : rawDelay;
 
     const tone = update.tone ?? "normal";
     const hitState = new Map(running);
