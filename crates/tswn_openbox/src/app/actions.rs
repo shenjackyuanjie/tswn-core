@@ -181,13 +181,7 @@ impl OpenboxApp {
                 return;
             }
         };
-        let output_file = match self.batch_rate.output.file_output.path() {
-            Some(path) => Some(path),
-            None => {
-                self.fail_before_start("请先选择输出文件。".to_string());
-                return;
-            }
-        };
+        let output_file = self.batch_rate.output.file_output.path();
         let min_screen = match parse_optional_f64_in_range(&self.batch_rate.output.min_screen, "日志阈值", 0.0..=100.0) {
             Ok(value) => value,
             Err(err) => {
@@ -268,13 +262,7 @@ impl OpenboxApp {
         } else {
             self.pair.teammate_presets.selected().map(|preset| preset.head).unwrap_or(self.pair.head)
         };
-        let output_file = match self.pair.output.file_output.path() {
-            Some(path) => Some(path),
-            None => {
-                self.fail_before_start("请先选择输出文件。".to_string());
-                return;
-            }
-        };
+        let output_file = self.pair.output.file_output.path();
         let min_screen = match parse_optional_f64_at_least(&self.pair.output.min_screen, "日志阈值", 0.0) {
             Ok(value) => value,
             Err(err) => {

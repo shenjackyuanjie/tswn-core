@@ -14,12 +14,13 @@ use tswn_core::engine::storage::Storage;
 use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
 
 use super::format::{
-    format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
+    clean_name_label, display_group, format_batch_file_record, format_batch_screen_log, format_pair_file_record,
+    format_pair_screen_log, format_rate,
 };
 use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
-use super::score::{bench_batch_rate_for_group, namer_pf_score};
+use super::score::{BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
-use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, PairInput, ProgressEvent};
+use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, PairDetailMode, PairInput, ProgressEvent};
 
 pub fn run_to_diy(
     raw: &str,
@@ -279,15 +280,19 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         },
         None => None,
     };
+    if output.is_none() {
+        send(ProgressEvent::Log("未选择输出文件，本次只输出到日志。".to_string()));
+    }
 
     let n = input.options.count.max(1);
     let eval_rq = eval_rq(input.options.keep_rq);
     let precision = input.options.wr_precision.min(9);
-    let total = player_groups.len() * target_groups.len() * if input.show_matchups { 2 } else { 1 };
+    let total = player_groups.len() * target_groups.len();
     let mut done = 0usize;
 
     for (player, label) in player_groups.iter().zip(player_labels.iter()) {
         let mut verbose = String::new();
+        let mut matchup_rates = Vec::new();
         let summary = bench_batch_rate_for_group(
             player,
             &target_groups,
@@ -297,7 +302,20 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
             input.options.verbose,
             &mut verbose,
             &input.cancel,
-            |_, _| {
+            |target_index, target_total, target, outcome| {
+                if let BatchTargetOutcome::Rate { percent, .. } = &outcome {
+                    matchup_rates.push((*percent, target.to_string()));
+                }
+                if input.show_matchups {
+                    send(ProgressEvent::Log(format_batch_target_progress_log(
+                        label,
+                        target_index,
+                        target_total,
+                        target,
+                        &outcome,
+                        precision,
+                    )));
+                }
                 done += 1;
                 send(ProgressEvent::Progress { done, total });
             },
@@ -314,22 +332,8 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         }
 
         if input.options.min_screen.is_none_or(|limit| summary.avg >= limit) {
-            let matchup_rates = if input.show_matchups {
-                batch_matchup_rates(
-                    player,
-                    &target_groups,
-                    n,
-                    input.options.threads,
-                    eval_rq,
-                    &input.cancel,
-                    &mut done,
-                    total,
-                    &send,
-                )
-            } else {
-                Vec::new()
-            };
-            let log = format_batch_screen_log(label, summary.avg, &matchup_rates, input.show_matchups, precision);
+            let include_matchups = input.show_matchups && matchup_rates.is_empty();
+            let log = format_batch_screen_log(label, summary.avg, &matchup_rates, include_matchups, precision);
             if should_highlight(summary.avg, input.options.min_screen, input.highlight_delta) {
                 send(ProgressEvent::HighlightLog(log));
             } else {
@@ -377,6 +381,9 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         },
         None => None,
     };
+    if output.is_none() {
+        send(ProgressEvent::Log("未选择输出文件，本次只输出到日志。".to_string()));
+    }
 
     let n = input.options.count.max(1);
     let head = input.head.max(1);
@@ -415,13 +422,20 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
                 input.options.verbose,
                 &mut verbose,
                 &input.cancel,
-                |_, _| {
+                |_, _, _, _| {
                     done += 1;
                     send(ProgressEvent::Progress { done, total });
                 },
             );
             if summary.valid_matchups > 0 {
                 pair_rates.push((summary.avg, teammate.clone()));
+                if input.detail_mode == PairDetailMode::Every && input.detail_min.is_none_or(|limit| summary.avg >= limit) {
+                    send(ProgressEvent::Log(format!(
+                        "  {} {}",
+                        format_rate(summary.avg, precision),
+                        clean_name_label(teammate)
+                    )));
+                }
             }
             total_wins += summary.wins;
             total_battles += summary.total;
@@ -457,12 +471,17 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         }
 
         if input.options.min_screen.is_none_or(|limit| final_score >= limit) {
+            let detail_mode = if input.detail_mode == PairDetailMode::Every {
+                PairDetailMode::None
+            } else {
+                input.detail_mode
+            };
             let log = format_pair_screen_log(
                 player,
                 final_score,
                 selected_count,
                 &pair_rates,
-                input.detail_mode,
+                detail_mode,
                 input.detail_min,
                 precision,
             );
@@ -490,42 +509,30 @@ fn should_highlight(score: f64, min_screen: Option<f64>, highlight_delta: Option
     highlight_delta.is_some_and(|delta| score >= min_screen.unwrap_or(0.0) + delta)
 }
 
-fn batch_matchup_rates(
-    player: &str,
-    target_groups: &[String],
-    n: usize,
-    threads: Option<usize>,
-    eval_rq: f64,
-    cancel: &std::sync::atomic::AtomicBool,
-    done: &mut usize,
-    total: usize,
-    send: &impl Fn(ProgressEvent),
-) -> Vec<(f64, String)> {
-    let mut rates = Vec::new();
-    for target in target_groups {
-        if cancel.load(Ordering::Relaxed) {
-            break;
+fn format_batch_target_progress_log(
+    player_label: &str,
+    target_index: usize,
+    target_total: usize,
+    target: &str,
+    outcome: &BatchTargetOutcome,
+    precision: usize,
+) -> String {
+    let prefix = format!(
+        "  [{}/{}] {} vs {}",
+        target_index + 1,
+        target_total,
+        clean_name_label(player_label),
+        display_group(target)
+    );
+    match outcome {
+        BatchTargetOutcome::Rate { percent, wins, total } => {
+            format!("{prefix} => {}% ({wins}/{total})", format_rate(*percent, precision))
         }
-        let mut verbose = String::new();
-        let summary = bench_batch_rate_for_group(
-            player,
-            std::slice::from_ref(target),
-            n,
-            threads,
-            eval_rq,
-            false,
-            &mut verbose,
-            cancel,
-            |_, _| {
-                *done += 1;
-                send(ProgressEvent::Progress { done: *done, total });
-            },
-        );
-        if summary.valid_matchups > 0 {
-            rates.push((summary.avg, target.clone()));
+        BatchTargetOutcome::SkippedDuplicate { duplicate } => {
+            format!("{prefix} => SKIP duplicate name: {duplicate}")
         }
+        BatchTargetOutcome::Error { message } => format!("{prefix} => ERROR: {message}"),
     }
-    rates
 }
 
 fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, String> {
