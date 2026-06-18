@@ -643,12 +643,11 @@ button:hover {
 
 .round-block {
     display: grid;
-    grid-template-columns: 42px 1fr;
-    gap: 8px;
+    grid-template-columns: 28px 1fr;
+    gap: 6px;
     align-items: stretch;
-    margin-bottom: 1px;
-    padding: 1px 0 3px;
-    border-bottom: 1px solid rgba(198, 225, 239, 0.45);
+    margin-bottom: 2px;
+    padding: 1px 0 4px;
 }
 
 .frame-sidebar {
@@ -704,9 +703,10 @@ button:hover {
 
 .frame-chip {
     display: inline-block;
-    min-width: 32px;
-    color: rgba(69, 104, 120, 0.72);
-    font-size: 10px;
+    min-width: 22px;
+    color: rgba(69, 104, 120, 0.42);
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
     line-height: 1.4;
     text-align: right;
     white-space: nowrap;
