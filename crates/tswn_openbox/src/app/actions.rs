@@ -525,9 +525,7 @@ fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_c
     }
 }
 
-fn bench_threads(auto_threads: bool, threads: usize) -> Option<usize> { if auto_threads { None } else { non_zero(threads) } }
-
-fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(value) } }
+fn bench_threads(_auto_threads: bool, _threads: usize) -> Option<usize> { Some(1) }
 
 fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusive<f64>) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();
