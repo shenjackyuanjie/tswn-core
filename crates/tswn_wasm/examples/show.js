@@ -215,6 +215,10 @@ const pauseBtn = document.querySelector("#pauseBtn");
 /** @type {HTMLButtonElement} */
 const refreshBtn = document.querySelector("#refreshBtn");
 /** @type {HTMLElement} */
+const rightControls = document.querySelector("#rightControls");
+/** @type {HTMLButtonElement} */
+const toggleControlsBtn = document.querySelector("#toggleControlsBtn");
+/** @type {HTMLElement} */
 const stepControls = document.querySelector("#stepControls");
 /** @type {HTMLButtonElement} */
 const stepBackEventBtn = document.querySelector("#stepBackEventBtn");
@@ -257,6 +261,8 @@ let playbackStartedAt = 0;
 let playbackPaused = false;
 /** @type {boolean} 当前回放是否已完整结束 */
 let playbackFinished = false;
+/** @type {boolean} 右下角控制组是否收起 */
+let rightControlsCollapsed = window.matchMedia("(max-width: 640px)").matches;
 
 // 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
@@ -498,6 +504,19 @@ function syncPlaybackUi() {
       headerMeta.textContent = `回放已结束，共 ${currentReplay.frames.length} 帧。`;
     }
   }
+}
+
+function syncRightControlsUi() {
+  rightControls.classList.toggle("is-collapsed", rightControlsCollapsed);
+  toggleControlsBtn.setAttribute("aria-expanded", String(!rightControlsCollapsed));
+  const label = rightControlsCollapsed ? "展开控制按钮" : "收起控制按钮";
+  toggleControlsBtn.title = label;
+  toggleControlsBtn.setAttribute("aria-label", label);
+}
+
+function toggleRightControls() {
+  rightControlsCollapsed = !rightControlsCollapsed;
+  syncRightControlsUi();
 }
 
 function scrollBattleToBottom() {
@@ -824,6 +843,7 @@ async function autoplayFromCurrentCursor() {
     playersById,
   );
   renderEndPanel(currentReplay);
+  openPanel(endPanel);
   appendReplayResultBlock(currentReplay);
   storePlaybackCheckpoint(playbackCursor);
   // 极速是一次性按钮：播完后自动回到暂停态
@@ -1244,6 +1264,10 @@ refreshBtn.addEventListener("click", () => {
   void replayCurrent();
 });
 
+toggleControlsBtn.addEventListener("click", () => {
+  toggleRightControls();
+});
+
 pauseBtn.addEventListener("click", () => {
   togglePausePlayback();
 });
@@ -1409,6 +1433,7 @@ nicknameInput.addEventListener("keydown", (event) => {
 async function main() {
   renderIdleState(playerList, battleRows, plistMeta, headerMeta);
   syncPlaybackUi();
+  syncRightControlsUi();
   setInputStatus("会使用 show 风格自动播放整场战斗。");
   openInputEditor();
 

@@ -652,6 +652,8 @@ export function formatMessageText(text, tone, statusChangeTokens = []) {
     }
   }
 
+  html = html.replace(/\[s_dmg\d+\]/g, "");
+
   // 其他技能或状态（包括回避、反击、识破、反弹、吸收等普通技能） → 去掉 []，蓝色
   html = html.replace(/\[([^\]]+)\]/g, '<span class="skill-token">$1</span>');
 

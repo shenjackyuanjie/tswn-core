@@ -1004,6 +1004,22 @@ input {
     width: min(620px, calc(100vw - 24px));
 }
 
+#endPanel .goBar {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    height: auto;
+}
+
+#endPanel .goBtn {
+    position: relative;
+    left: auto;
+    right: auto;
+    width: auto;
+    min-width: 112px;
+    margin: 0;
+}
+
 .detail-panel {
     width: min(460px, calc(100vw - 24px));
     max-height: min(640px, calc(100vh - 24px));
@@ -1223,6 +1239,35 @@ input {
     display: grid;
     gap: 10px;
     justify-items: end;
+}
+
+.controls-toggle {
+    justify-self: end;
+}
+
+.controls-toggle .expand-icon {
+    display: none;
+}
+
+.right-controls.is-collapsed {
+    gap: 0;
+}
+
+.right-controls.is-collapsed .step-controls,
+.right-controls.is-collapsed .controlbar {
+    display: none;
+}
+
+.right-controls.is-collapsed .controls-toggle {
+    background: linear-gradient(180deg, #1277ae 0%, #0b5f8c 100%);
+}
+
+.right-controls.is-collapsed .controls-toggle .collapse-icon {
+    display: none;
+}
+
+.right-controls.is-collapsed .controls-toggle .expand-icon {
+    display: block;
 }
 
 .step-controls {
