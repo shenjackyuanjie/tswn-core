@@ -727,6 +727,7 @@ export function renderPlayers(
       const mpMetrics = playerMpMetrics(state, previous);
 
       row.className = `player-row${deadClass}${involvedClass}`;
+      row.title = `id: ${player.id_name} · playerId: ${player.id}`;
 
       const nameEl = row.querySelector(".player-name-wrap .name, .player-name-wrap .namedie");
       if (nameEl) {
@@ -767,6 +768,11 @@ export function renderPlayers(
 
       const nameWrap = row.querySelector(".player-name-wrap");
       if (nameWrap) {
+        const iconEl = nameWrap.querySelector(".icon-sprite");
+        if (iconEl) {
+          iconEl.outerHTML = renderIconSprite(playerIconClassId(player), "sgl icon-sprite");
+        }
+
         let idSpan = nameWrap.querySelector(".player-id");
         if (!idSpan) {
           idSpan = document.createElement("span");
@@ -775,11 +781,16 @@ export function renderPlayers(
         }
         idSpan.textContent = " #" + player.id;
 
-        if (!nameWrap.querySelector(".detail-btn")) {
+        let detailBtn = nameWrap.querySelector(".detail-btn");
+        if (!detailBtn) {
           nameWrap.insertAdjacentHTML(
             "beforeend",
             `<button type="button" class="detail-btn" data-player-detail-id="${player.id}" title="打开角色详情" aria-label="打开角色详情">i</button>`,
           );
+          detailBtn = nameWrap.querySelector(".detail-btn");
+        }
+        if (detailBtn) {
+          detailBtn.dataset.playerDetailId = String(player.id);
         }
       }
 
