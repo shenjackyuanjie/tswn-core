@@ -400,6 +400,20 @@ function setLoading(loading) {
   sampleBtn.disabled = loading;
 }
 
+function clearCurrentReplayView() {
+  currentReplay = null;
+  currentPlan = null;
+  playbackCheckpoints = new Map();
+  playbackCursor = 0;
+  playbackPaused = true;
+  playbackFinished = false;
+  currentVisibleStates = [];
+  closePanel(endPanel);
+  closePanel(detailPanel);
+  renderIdleState(playerList, battleRows, plistMeta, headerMeta);
+  syncPlaybackUi();
+}
+
 function stopPlaybackLoop() {
   playbackLoopToken += 1;
 }
@@ -1186,12 +1200,9 @@ async function startBattle() {
   speedMode = DEFAULT_SPEED_MODE;
   persistInputValue();
   stopPlaybackLoop();
-  playbackPaused = false;
-  playbackFinished = false;
+  clearCurrentReplayView();
   setLoading(true);
   setInputStatus("正在生成回放，请稍候...");
-  closePanel(endPanel);
-  closePanel(detailPanel);
 
   try {
     currentReplay = applyNicknamesToReplay(
