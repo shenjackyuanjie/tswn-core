@@ -635,21 +635,6 @@ export function formatMessageText(text, tone, statusChangeTokens = []) {
         `<span class="status-change-token">${safeToken}</span>`,
       );
     }
-  } else {
-    // 兼容旧数据：从模板文本里猜测状态变化词。
-    html = html.replace(
-      /从\[([^\]]+)\]中解除/g,
-      '从<span class="status-change-token">$1</span>中解除',
-    );
-    html = html.replace(
-      /从\[([^\]]+)\]状态中解除/g,
-      '从<span class="status-change-token">$1</span>状态中解除',
-    );
-    html = html.replace(/\[(解除|中止|打消)\]/g, '<span class="status-change-token">$1</span>');
-    html = html.replace(
-      /的\[([^\]]+)\](被识破|被中止了?|被打消了?|属性被打消)/g,
-      '的<span class="status-change-token">$1</span>$2',
-    );
   }
 
   // 其他技能或状态（包括回避、反击、识破、反弹、吸收等普通技能） → 去掉 []，蓝色
