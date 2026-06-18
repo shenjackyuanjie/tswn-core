@@ -215,9 +215,11 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                     &result,
                     &input.metrics,
                     &mut outputs,
-                    skill_board_config.as_ref(),
-                    &mut skill_board_output,
-                    input.skill_board.screen,
+                    SkillBoardEmitCfg {
+                        config: skill_board_config.as_ref(),
+                        output: &mut skill_board_output,
+                        screen: input.skill_board.screen,
+                    },
                     precision,
                     &send,
                 )
@@ -242,9 +244,11 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                 &result,
                 &input.metrics,
                 &mut outputs,
-                skill_board_config.as_ref(),
-                &mut skill_board_output,
-                input.skill_board.screen,
+                SkillBoardEmitCfg {
+                    config: skill_board_config.as_ref(),
+                    output: &mut skill_board_output,
+                    screen: input.skill_board.screen,
+                },
                 precision,
                 &send,
             ) {
@@ -347,13 +351,17 @@ fn compute_namer_pf_result(index: usize, group: &[String], settings: NamerPfScor
     }
 }
 
+struct SkillBoardEmitCfg<'a> {
+    config: Option<&'a SkillBoardConfig>,
+    output: &'a mut Option<File>,
+    screen: bool,
+}
+
 fn emit_namer_pf_result(
     result: &NamerPfJobResult,
     metrics: &[NamerPfMetricOptions],
     outputs: &mut [Option<File>],
-    skill_board_config: Option<&SkillBoardConfig>,
-    skill_board_output: &mut Option<File>,
-    skill_board_screen: bool,
+    skill_board: SkillBoardEmitCfg<'_>,
     precision: usize,
     send: &impl Fn(ProgressEvent),
 ) -> Result<(), String> {
@@ -375,16 +383,16 @@ fn emit_namer_pf_result(
             return Err(format!("写入输出文件失败: {err}"));
         }
     }
-    if let Some(config) = skill_board_config {
+    if let Some(config) = skill_board.config {
         for line in evaluate_skill_board(&result.group, &result.scores, config) {
             let score_text = format_rate(line.score, precision);
-            if skill_board_screen {
+            if skill_board.screen {
                 send(ProgressEvent::SkillBoardLog(format!(
                     "{} {} {}",
                     line.title, score_text, result.label
                 )));
             }
-            if let Some(output) = skill_board_output.as_mut()
+            if let Some(output) = skill_board.output.as_mut()
                 && let Err(err) = writeln!(output, "{} {} {}", line.title, score_text, result.label)
             {
                 return Err(format!("写入输出文件失败: {err}"));
@@ -700,6 +708,7 @@ fn emit_batch_rate_result(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_batch_rate_outer_parallel(
     player_groups: &[String],
     player_labels: &[String],
@@ -848,6 +857,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         let mut _total_valid_matchups = 0usize;
         let mut _total_skipped_matchups = 0usize;
         let mut verbose = String::new();
+        let mut pending_detail_lines = Vec::new();
 
         for teammate in &teammates {
             let pair_group = format!("{converted_player}\n{teammate}");
@@ -871,11 +881,11 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
             if summary.valid_matchups > 0 {
                 pair_rates.push((summary.avg, teammate.clone()));
                 if input.detail_mode == PairDetailMode::Every && input.detail_min.is_none_or(|limit| summary.avg >= limit) {
-                    send(ProgressEvent::Log(format!(
+                    pending_detail_lines.push(format!(
                         "  {} {}",
                         format_rate(summary.avg, precision),
                         clean_name_label(teammate)
-                    )));
+                    ));
                 }
             }
             total_wins += summary.wins;
@@ -912,6 +922,9 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         }
 
         if input.options.min_screen.is_none_or(|limit| final_score >= limit) {
+            for line in pending_detail_lines.drain(..) {
+                send(ProgressEvent::Log(line));
+            }
             let detail_mode = if input.detail_mode == PairDetailMode::Every {
                 PairDetailMode::None
             } else {

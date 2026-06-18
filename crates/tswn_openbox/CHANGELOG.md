@@ -1,5 +1,17 @@
 # 更新日志
 
+## [0.3.8] - 2026-06-19
+
+### 修复
+
+- 修复 pair 逐条详情（`PairDetailMode::Every`）绕过 `min_screen` 阈值，导致应被抑制的玩家残留孤儿 `<cqp> <teammate>` 日志行。
+- 修复新版日志视图丢失高亮超强名字的红色加粗样式：`HighlightLog` 事件正常填充但渲染不再读取 `highlight_lines`。
+
+### 代码质量
+
+- 重构 `emit_namer_pf_result` 参数：提取 `SkillBoardEmitCfg` 结构体打包 `skill_board` 相关参数。
+- suppress `bench_batch_rate_for_group` 与 `run_batch_rate_outer_parallel` 的 `too_many_arguments`。
+
 ## [0.3.7] - 2026-06-18
 
 ### 调整

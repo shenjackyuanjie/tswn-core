@@ -270,8 +270,28 @@ impl OpenboxApp {
                     });
                 } else {
                     let text_height = ui.available_height().max(220.0);
-                    let main_log = filtered_log_lines(&self.log, &self.batch_rate_detail_lines);
-                    readonly_log_view(ui, "main_log", &main_log, text_height);
+                    egui::ScrollArea::both()
+                        .id_salt("main_log")
+                        .auto_shrink([false, false])
+                        .max_height(text_height)
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                for (index, line) in self.log.lines().enumerate() {
+                                    if self.batch_rate_detail_lines.contains(&index) {
+                                        continue;
+                                    }
+                                    let mut text = egui::RichText::new(line).monospace();
+                                    if self.skill_board_lines.contains(&index) {
+                                        text = text.color(egui::Color32::from_rgb(45, 120, 220)).strong();
+                                    } else if line.starts_with("  ") {
+                                        text = text.color(egui::Color32::GRAY);
+                                    } else if self.highlight_lines.contains(&index) {
+                                        text = text.color(egui::Color32::from_rgb(210, 40, 40)).strong();
+                                    }
+                                    ui.add(egui::Label::new(text).extend());
+                                }
+                            });
+                        });
                 }
             });
     }
@@ -300,22 +320,6 @@ fn selected_log_lines(log: &str, line_indexes: &std::collections::HashSet<usize>
         selected.push('\n');
     }
     selected
-}
-
-fn filtered_log_lines(log: &str, hidden_line_indexes: &std::collections::HashSet<usize>) -> String {
-    if hidden_line_indexes.is_empty() {
-        return log.to_string();
-    }
-    let mut filtered = log
-        .lines()
-        .enumerate()
-        .filter_map(|(index, line)| (!hidden_line_indexes.contains(&index)).then_some(line))
-        .collect::<Vec<_>>()
-        .join("\n");
-    if !filtered.is_empty() {
-        filtered.push('\n');
-    }
-    filtered
 }
 
 fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {

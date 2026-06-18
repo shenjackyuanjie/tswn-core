@@ -45,6 +45,7 @@ pub enum BatchTargetOutcome {
     Error { message: String },
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],

@@ -291,7 +291,7 @@ fn u32_to_i32_saturating(value: u32) -> i32 { value.min(i32::MAX as u32) as i32 
 
 fn update_hp_delta(tone: MessageTone, update: &tswn_core::RunUpdate) -> Option<i32> {
     match tone {
-        MessageTone::Damage => Some(-u32_to_i32_saturating(update.score)),
+        MessageTone::Damage => Some(-u32_to_i32_saturating(update.param.unwrap_or(update.score))),
         MessageTone::Recover => Some(u32_to_i32_saturating(update.param.unwrap_or(update.score))),
         _ => None,
     }
