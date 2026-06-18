@@ -352,7 +352,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
                     matchup_rates.push((*percent, target.to_string()));
                 }
                 if input.show_matchups {
-                    send(ProgressEvent::Log(format_batch_target_progress_log(
+                    send(ProgressEvent::BatchRateDetailLog(format_batch_target_progress_log(
                         label,
                         target_index,
                         target_total,

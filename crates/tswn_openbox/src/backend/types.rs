@@ -11,6 +11,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 pub enum ProgressEvent {
     Log(String),
     HighlightLog(String),
+    BatchRateDetailLog(String),
     SkillBoardLog(String),
     Progress { done: usize, total: usize },
     Done(Result<String, String>),

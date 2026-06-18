@@ -342,6 +342,7 @@ impl OpenboxApp {
         self.eta_text = "--".to_string();
         self.log.clear();
         self.highlight_lines.clear();
+        self.batch_rate_detail_lines.clear();
         self.skill_board_lines.clear();
         self.status = "运行中".to_string();
     }
@@ -359,6 +360,7 @@ impl OpenboxApp {
         self.status = "失败".to_string();
         self.log.clear();
         self.highlight_lines.clear();
+        self.batch_rate_detail_lines.clear();
         self.skill_board_lines.clear();
         self.append_log(&err);
     }
@@ -379,6 +381,9 @@ impl OpenboxApp {
                             }
                             ProgressEvent::HighlightLog(line) => {
                                 self.append_highlight_log(&line);
+                            }
+                            ProgressEvent::BatchRateDetailLog(line) => {
+                                self.append_batch_rate_detail_log(&line);
                             }
                             ProgressEvent::SkillBoardLog(line) => {
                                 self.append_skill_board_log(&line);
@@ -457,6 +462,11 @@ impl OpenboxApp {
 
     pub fn append_highlight_log(&mut self, text: &str) { self.append_log_inner(text, true); }
 
+    pub fn append_batch_rate_detail_log(&mut self, text: &str) {
+        let first_line = self.append_log_inner(text, false);
+        self.batch_rate_detail_lines.insert(first_line);
+    }
+
     pub fn append_skill_board_log(&mut self, text: &str) {
         let first_line = self.append_log_inner(text, false);
         self.skill_board_lines.insert(first_line);
@@ -525,7 +535,9 @@ fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_c
     }
 }
 
-fn bench_threads(_auto_threads: bool, _threads: usize) -> Option<usize> { Some(1) }
+fn bench_threads(auto_threads: bool, threads: usize) -> Option<usize> { if auto_threads { None } else { non_zero(threads) } }
+
+fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(value) } }
 
 fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusive<f64>) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();

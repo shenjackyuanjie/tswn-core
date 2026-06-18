@@ -129,12 +129,10 @@ pub fn count_mode_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &m
 }
 
 pub fn thread_controls(ui: &mut egui::Ui, auto_threads: &mut bool, threads: &mut usize) {
-    *auto_threads = false;
-    *threads = 1;
     ui.horizontal(|ui| {
+        ui.checkbox(auto_threads, "系统线程 * 1.5");
         ui.label("线程");
-        ui.add_enabled(false, egui::DragValue::new(threads).range(1..=1).speed(1));
-        ui.label(egui::RichText::new("稳定单线程").weak());
+        ui.add_enabled(!*auto_threads, egui::DragValue::new(threads).range(0..=256).speed(1));
     });
 }
 

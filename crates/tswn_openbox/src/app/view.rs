@@ -207,6 +207,7 @@ impl OpenboxApp {
                     if ui.button("清空日志").clicked() {
                         self.log.clear();
                         self.highlight_lines.clear();
+                        self.batch_rate_detail_lines.clear();
                         self.skill_board_lines.clear();
                     }
                 });
@@ -221,6 +222,19 @@ impl OpenboxApp {
                 ui.label(egui::RichText::new("运行结果会显示在这里").weak());
             }
         });
+        if !self.batch_rate_detail_lines.is_empty() {
+            ui.add_space(10.0);
+            let detail_log = selected_log_lines(&self.log, &self.batch_rate_detail_lines);
+            let line_count = detail_log.lines().count();
+            if line_count > 0 {
+                egui::CollapsingHeader::new(format!("cqd 每组胜率 ({line_count})"))
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        let text_height = compact_log_text_height(line_count);
+                        readonly_log_view(ui, "batch_rate_detail_log", &detail_log, text_height);
+                    });
+            }
+        }
         if !self.skill_board_lines.is_empty() {
             ui.add_space(10.0);
             let skill_board_log = selected_log_lines(&self.log, &self.skill_board_lines);
@@ -244,20 +258,20 @@ impl OpenboxApp {
                 });
             } else {
                 let text_height = ui.available_height().max(260.0);
-                readonly_log_view(ui, "main_log", &self.log, text_height);
+                let main_log = filtered_log_lines(&self.log, &self.batch_rate_detail_lines);
+                readonly_log_view(ui, "main_log", &main_log, text_height);
             }
         });
     }
 }
 
 fn readonly_log_view(ui: &mut egui::Ui, id: &'static str, text: &str, viewport_height: f32) {
-    egui::ScrollArea::vertical()
+    egui::ScrollArea::both()
         .id_salt(id)
         .auto_shrink([false, false])
         .max_height(viewport_height)
         .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.add(egui::Label::new(egui::RichText::new(text).monospace()).selectable(true).wrap());
+            ui.add(egui::Label::new(egui::RichText::new(text).monospace()).selectable(true));
         });
 }
 
@@ -274,6 +288,22 @@ fn selected_log_lines(log: &str, line_indexes: &std::collections::HashSet<usize>
         selected.push('\n');
     }
     selected
+}
+
+fn filtered_log_lines(log: &str, hidden_line_indexes: &std::collections::HashSet<usize>) -> String {
+    if hidden_line_indexes.is_empty() {
+        return log.to_string();
+    }
+    let mut filtered = log
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| (!hidden_line_indexes.contains(&index)).then_some(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !filtered.is_empty() {
+        filtered.push('\n');
+    }
+    filtered
 }
 
 fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_open: &mut bool) {
