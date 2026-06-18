@@ -146,11 +146,16 @@ fn status_pill(ui: &mut egui::Ui, app: &OpenboxApp) {
 
 fn theme_switcher(ui: &mut egui::Ui, theme_preference: &mut egui::ThemePreference) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
-        ui.label("主题");
-        changed |= theme_button(ui, theme_preference, egui::ThemePreference::Light, "☀", "浅色模式");
-        changed |= theme_button(ui, theme_preference, egui::ThemePreference::Dark, "☾", "深色模式");
-        changed |= theme_button(ui, theme_preference, egui::ThemePreference::System, "▣", "跟随系统");
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(2.0, 0.0);
+        ui.spacing_mut().button_padding = egui::vec2(3.0, 1.0);
+        ui.horizontal(|ui| {
+            changed |= theme_button(ui, theme_preference, egui::ThemePreference::Light, "亮", "浅色模式");
+            changed |= theme_button(ui, theme_preference, egui::ThemePreference::Dark, "暗", "深色模式");
+            changed |= theme_button(ui, theme_preference, egui::ThemePreference::System, "自", "跟随系统主题");
+        })
+        .response
+        .on_hover_text("主题");
     });
     changed
 }
@@ -163,7 +168,27 @@ fn theme_button(
     tooltip: &str,
 ) -> bool {
     let selected = *theme_preference == value;
-    let response = ui.selectable_label(selected, egui::RichText::new(icon).size(16.0)).on_hover_text(tooltip);
+    let visuals = ui.visuals();
+    let fill = if selected {
+        visuals.selection.bg_fill
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    let stroke = if selected {
+        visuals.selection.stroke
+    } else {
+        egui::Stroke::new(1.0_f32, visuals.widgets.inactive.bg_stroke.color)
+    };
+    let text_color = if selected {
+        egui::Color32::WHITE
+    } else {
+        visuals.strong_text_color()
+    };
+    let button = egui::Button::new(egui::RichText::new(icon).size(13.0).strong().color(text_color))
+        .fill(fill)
+        .stroke(stroke)
+        .min_size(egui::vec2(22.0, 22.0));
+    let response = ui.add(button).on_hover_text(tooltip);
     if response.clicked() {
         *theme_preference = value;
         true
