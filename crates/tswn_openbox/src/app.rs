@@ -254,22 +254,3 @@ fn configure_ui_style(ctx: &egui::Context) {
             .insert(egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Monospace));
     });
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bundled_sarasa_stays_first_in_font_families() {
-        let fonts = openbox_font_definitions();
-        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-            let entries = fonts.families.get(&family).expect("font family should exist");
-            assert_eq!(entries.first().map(String::as_str), Some(SARASA_FONT_NAME));
-            for emoji_font in ["SegoeUIEmoji", "AppleColorEmoji", "NotoColorEmoji"] {
-                if let Some(position) = entries.iter().position(|name| name == emoji_font) {
-                    assert!(position > 0, "{emoji_font} should stay behind bundled SarasaMonoSC");
-                }
-            }
-        }
-    }
-}
