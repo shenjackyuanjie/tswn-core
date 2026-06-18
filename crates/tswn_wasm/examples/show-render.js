@@ -450,9 +450,6 @@ function orderedDisplayPlayers(players, states, stateMap, playersById) {
   }
 
   roots.sort(compareDisplayPlayers);
-  for (const children of childrenByOwner.values()) {
-    children.sort(compareDisplayPlayers);
-  }
 
   const ordered = [];
   const visited = new Set();
