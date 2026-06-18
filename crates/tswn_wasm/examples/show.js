@@ -243,7 +243,7 @@ let speedMode = DEFAULT_SPEED_MODE;
 let playersById = new Map();
 const ICON_STYLE_ID = "tswn-show-icon-styles";
 const SEEK_CHECKPOINT_FRAME_INTERVAL = 20;
-/** @type {{ frames: Array<{ frameIndex: number, frame: FrameUpdate, previousStates: FightState[], involved: InvolvedSet, start: number, end: number }>, flatChunks: Array<{ target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number, frameIndex: number, visible: boolean, sidebarStates?: FightState[], sidebarPreviousStates?: FightState[], sidebarInvolved?: InvolvedSet }>, totalChunks: number }|null} */
+/** @type {{ frames: Array<{ frameIndex: number, frame: FrameUpdate, previousStates: FightState[], start: number, end: number }>, flatChunks: Array<{ target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number, frameIndex: number, visible: boolean, sidebarStates?: FightState[], sidebarPreviousStates?: FightState[], sidebarInvolved?: InvolvedSet }>, totalChunks: number }|null} */
 let currentPlan = null;
 /** @type {Map<number, { battle_rows_html: string, player_list_html: string, seed_line: string }>} */
 let playbackCheckpoints = new Map();
@@ -419,22 +419,6 @@ function stopPlaybackLoop() {
   playbackLoopToken += 1;
 }
 
-function buildInvolvedSet(frame) {
-  const involved = { casters: new Set(), targets: new Set() };
-  for (const update of frame.updates) {
-    if (update.caster_id != null) {
-      involved.casters.add(update.caster_id);
-    }
-    if (update.target_id != null) {
-      involved.targets.add(update.target_id);
-    }
-    if (Array.isArray(update.target_ids)) {
-      update.target_ids.forEach((id) => involved.targets.add(id));
-    }
-  }
-  return involved;
-}
-
 function prepareReplayPlan(replay) {
   const workingPlayersById = new Map(replay.players.map((player) => [player.id, player]));
   let previousStates = replay.initial_states;
@@ -443,7 +427,6 @@ function prepareReplayPlan(replay) {
       frameIndex,
       frame,
       previousStates,
-      involved: buildInvolvedSet(frame),
       start: 0,
       end: 0,
       frameVisibleCount: 0,
@@ -585,7 +568,7 @@ function renderFrameSidebar(framePlan) {
   renderSidebarSnapshot(
     framePlan.frame.states,
     lastSidebarChunk?.sidebarPreviousStates ?? framePlan.previousStates,
-    lastSidebarChunk?.sidebarInvolved ?? null,
+    null,
   );
 }
 
