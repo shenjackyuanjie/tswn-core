@@ -28,6 +28,7 @@
 - 修复解析失败后仍残留上一场结果或继续展示不可信回放的问题；严重输入错误会明确提示行号并阻止生成。
 - 补强 `+ol:{...}` 和 `+diy[...] {...}` 输入对象校验，能发现对象尾部垃圾内容、缺字段值和属性数量错误。
 - 修复重播、重置和窗口失焦后左侧角色高亮残留的问题。
+- 修复手动跳帧或播完单帧后侧栏继续保留上一条消息 caster/target 高亮的问题；帧结束快照只同步最终状态。
 - 修复逐消息侧栏刷新时头像、详情按钮和行标题复用旧单位元数据的问题。
 - 修复上一帧已死亡的召唤物/临时单位在本帧重新存活时仍沿用死亡 UI 的问题，同时避免本帧才出现的单位在消息触达前提前显示。
 
@@ -37,7 +38,7 @@
 - `cargo check -p tswn_wasm`
 - `cargo test`
 - `bun build crates/tswn_wasm/examples/show.js --target=browser --outdir=target/codex-check/show --root=crates/tswn_wasm/examples`
-- `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js`
+- `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js crates/tswn_wasm/examples/show.js`
 
 ## [0.2.8] - 2026-05-24
 
