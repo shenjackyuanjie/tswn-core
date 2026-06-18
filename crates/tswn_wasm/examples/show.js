@@ -401,6 +401,7 @@ function setLoading(loading) {
 }
 
 function clearCurrentReplayView() {
+  clearPlayerHighlight();
   currentReplay = null;
   currentPlan = null;
   playbackCheckpoints = new Map();
@@ -594,6 +595,7 @@ function renderEndPanel(replay) {
 }
 
 function resetPlaybackView(replay) {
+  clearPlayerHighlight();
   closePanel(endPanel);
   currentVisibleStates = replay.initial_states;
   renderReplayIntro(
