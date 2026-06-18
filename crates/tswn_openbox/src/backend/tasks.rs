@@ -8,20 +8,26 @@ use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, mpsc};
 use std::time::Instant;
 
 use tswn_core::engine::storage::Storage;
 use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
+use tswn_core::win_rate::resolve_win_rate_workers;
 
 use super::format::{
     clean_name_label, display_group, format_batch_file_record, format_batch_screen_log, format_pair_file_record,
     format_pair_screen_log, format_rate,
 };
 use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
-use super::score::{BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
+use super::score::{BatchRateSummary, BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
-use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, OutputMode, PairDetailMode, PairInput, ProgressEvent};
+use super::types::{
+    BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairDetailMode, PairInput, ProgressEvent,
+};
+
+const LOW_ACCURACY_OUTER_PARALLEL_LIMIT: usize = 1000;
 
 pub fn run_to_diy(
     raw: &str,
@@ -186,74 +192,74 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
     let needs_pd = needs_all_scores || metric_enabled(&input.metrics, NamerPfMetric::Pd);
     let needs_qp = needs_all_scores || metric_enabled(&input.metrics, NamerPfMetric::Qp);
     let needs_qd = needs_all_scores || metric_enabled(&input.metrics, NamerPfMetric::Qd);
-    for (index, group) in groups.iter().enumerate() {
-        if input.cancel.load(Ordering::Relaxed) {
-            send(ProgressEvent::Done(Ok("已停止。".to_string())));
-            return;
-        }
-        let pp = if needs_pp {
-            namer_pf_score(group, "\u{0002}", false, n, input.threads, eval_rq)
-        } else {
-            0.0
-        };
-        let pd = if needs_pd {
-            namer_pf_score(group, "\u{0002}", true, n, input.threads, eval_rq)
-        } else {
-            0.0
-        };
-        let qp = if needs_qp {
-            namer_pf_score(group, "!", false, n, input.threads, eval_rq)
-        } else {
-            0.0
-        };
-        let qd = if needs_qd {
-            namer_pf_score(group, "!", true, n, input.threads, eval_rq)
-        } else {
-            0.0
-        };
-        let scores = NamerPfScores {
-            pp,
-            pd,
-            qp,
-            qd,
-            sum: pp + pd + qp + qd,
-        };
-        let label = group.join("+");
 
-        for (metric, output) in input.metrics.iter().zip(outputs.iter_mut()) {
-            let score = scores.get(metric.metric);
-            if metric.min_screen.is_none_or(|limit| score >= limit) && metric.screen {
-                let score_text = format_rate(score, precision);
-                let line = format!("{} {}:{}", label, metric.metric.label(), score_text);
-                if should_highlight(score, metric.min_screen, metric.highlight_delta) {
-                    send(ProgressEvent::HighlightLog(line));
-                } else {
-                    send(ProgressEvent::Log(line));
-                }
-            }
-            if metric.min_file.is_none_or(|limit| score >= limit)
-                && let Some(output) = output.as_mut()
-                && let Err(err) = writeln!(output, "{} {}", format_rate(score, precision), label)
-            {
-                send(ProgressEvent::Done(Err(format!("写入输出文件失败: {err}"))));
+    let score_settings = NamerPfScoreSettings {
+        n,
+        threads: input.threads,
+        eval_rq,
+        needs_pp,
+        needs_pd,
+        needs_qp,
+        needs_qd,
+    };
+    let outer_workers = low_accuracy_outer_workers(n, total, input.threads);
+    let completed = if outer_workers > 1 {
+        let score_settings = score_settings.with_threads(Some(1));
+        match run_namer_pf_outer_parallel(
+            &groups,
+            score_settings,
+            outer_workers,
+            Arc::clone(&input.cancel),
+            |result| {
+                emit_namer_pf_result(
+                    &result,
+                    &input.metrics,
+                    &mut outputs,
+                    skill_board_config.as_ref(),
+                    &mut skill_board_output,
+                    input.skill_board.screen,
+                    precision,
+                    &send,
+                )
+            },
+            |done| send(ProgressEvent::Progress { done, total }),
+        ) {
+            Ok(done) => done,
+            Err(err) => {
+                send(ProgressEvent::Done(Err(err)));
                 return;
             }
         }
-        if let Some(config) = &skill_board_config {
-            for line in evaluate_skill_board(group, &scores, config) {
-                let score_text = format_rate(line.score, precision);
-                if input.skill_board.screen {
-                    send(ProgressEvent::SkillBoardLog(format!("{} {} {}", line.title, score_text, label)));
-                }
-                if let Some(output) = skill_board_output.as_mut()
-                    && let Err(err) = writeln!(output, "{} {} {}", line.title, score_text, label)
-                {
-                    send(ProgressEvent::Done(Err(format!("写入输出文件失败: {err}"))));
-                    return;
-                }
+    } else {
+        let mut completed = 0usize;
+        for (index, group) in groups.iter().enumerate() {
+            if input.cancel.load(Ordering::Relaxed) {
+                send(ProgressEvent::Done(Ok("已停止。".to_string())));
+                return;
             }
+            let result = compute_namer_pf_result(index, group, score_settings);
+            if let Err(err) = emit_namer_pf_result(
+                &result,
+                &input.metrics,
+                &mut outputs,
+                skill_board_config.as_ref(),
+                &mut skill_board_output,
+                input.skill_board.screen,
+                precision,
+                &send,
+            ) {
+                send(ProgressEvent::Done(Err(err)));
+                return;
+            }
+            completed = index + 1;
+            send(ProgressEvent::Progress { done: completed, total });
         }
-        send(ProgressEvent::Progress { done: index + 1, total });
+        completed
+    };
+
+    if input.cancel.load(Ordering::Relaxed) && completed < total {
+        send(ProgressEvent::Done(Ok("已停止。".to_string())));
+        return;
     }
 
     let mut written = input
@@ -283,6 +289,190 @@ fn metric_enabled(metrics: &[super::types::NamerPfMetricOptions], metric: NamerP
         .any(|options| options.metric == metric && (options.screen || options.output_file.is_some()))
 }
 
+#[derive(Clone, Copy)]
+struct NamerPfScoreSettings {
+    n: usize,
+    threads: Option<usize>,
+    eval_rq: f64,
+    needs_pp: bool,
+    needs_pd: bool,
+    needs_qp: bool,
+    needs_qd: bool,
+}
+
+impl NamerPfScoreSettings {
+    fn with_threads(self, threads: Option<usize>) -> Self { Self { threads, ..self } }
+}
+
+struct NamerPfJobResult {
+    index: usize,
+    group: Vec<String>,
+    label: String,
+    scores: NamerPfScores,
+}
+
+fn compute_namer_pf_result(index: usize, group: &[String], settings: NamerPfScoreSettings) -> NamerPfJobResult {
+    let pp = if settings.needs_pp {
+        namer_pf_score(group, "\u{0002}", false, settings.n, settings.threads, settings.eval_rq)
+    } else {
+        0.0
+    };
+    let pd = if settings.needs_pd {
+        namer_pf_score(group, "\u{0002}", true, settings.n, settings.threads, settings.eval_rq)
+    } else {
+        0.0
+    };
+    let qp = if settings.needs_qp {
+        namer_pf_score(group, "!", false, settings.n, settings.threads, settings.eval_rq)
+    } else {
+        0.0
+    };
+    let qd = if settings.needs_qd {
+        namer_pf_score(group, "!", true, settings.n, settings.threads, settings.eval_rq)
+    } else {
+        0.0
+    };
+    let scores = NamerPfScores {
+        pp,
+        pd,
+        qp,
+        qd,
+        sum: pp + pd + qp + qd,
+    };
+    NamerPfJobResult {
+        index,
+        group: group.to_vec(),
+        label: group.join("+"),
+        scores,
+    }
+}
+
+fn emit_namer_pf_result(
+    result: &NamerPfJobResult,
+    metrics: &[NamerPfMetricOptions],
+    outputs: &mut [Option<File>],
+    skill_board_config: Option<&SkillBoardConfig>,
+    skill_board_output: &mut Option<File>,
+    skill_board_screen: bool,
+    precision: usize,
+    send: &impl Fn(ProgressEvent),
+) -> Result<(), String> {
+    for (metric, output) in metrics.iter().zip(outputs.iter_mut()) {
+        let score = result.scores.get(metric.metric);
+        if metric.min_screen.is_none_or(|limit| score >= limit) && metric.screen {
+            let score_text = format_rate(score, precision);
+            let line = format!("{} {}:{}", result.label, metric.metric.label(), score_text);
+            if should_highlight(score, metric.min_screen, metric.highlight_delta) {
+                send(ProgressEvent::HighlightLog(line));
+            } else {
+                send(ProgressEvent::Log(line));
+            }
+        }
+        if metric.min_file.is_none_or(|limit| score >= limit)
+            && let Some(output) = output.as_mut()
+            && let Err(err) = writeln!(output, "{} {}", format_rate(score, precision), result.label)
+        {
+            return Err(format!("写入输出文件失败: {err}"));
+        }
+    }
+    if let Some(config) = skill_board_config {
+        for line in evaluate_skill_board(&result.group, &result.scores, config) {
+            let score_text = format_rate(line.score, precision);
+            if skill_board_screen {
+                send(ProgressEvent::SkillBoardLog(format!(
+                    "{} {} {}",
+                    line.title, score_text, result.label
+                )));
+            }
+            if let Some(output) = skill_board_output.as_mut()
+                && let Err(err) = writeln!(output, "{} {} {}", line.title, score_text, result.label)
+            {
+                return Err(format!("写入输出文件失败: {err}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_namer_pf_outer_parallel(
+    groups: &[Vec<String>],
+    settings: NamerPfScoreSettings,
+    workers: usize,
+    cancel: Arc<AtomicBool>,
+    mut emit: impl FnMut(NamerPfJobResult) -> Result<(), String>,
+    mut report_progress: impl FnMut(usize),
+) -> Result<usize, String> {
+    let groups = Arc::new(groups.to_vec());
+    let next = Arc::new(AtomicUsize::new(0));
+    let (tx, rx) = mpsc::channel();
+    let worker_count = workers.min(groups.len()).max(1);
+    let mut handles = Vec::with_capacity(worker_count);
+
+    for _ in 0..worker_count {
+        let groups = Arc::clone(&groups);
+        let next = Arc::clone(&next);
+        let tx = tx.clone();
+        let cancel = Arc::clone(&cancel);
+        handles.push(std::thread::spawn(move || {
+            loop {
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                let index = next.fetch_add(1, Ordering::Relaxed);
+                if index >= groups.len() {
+                    break;
+                }
+                let result = compute_namer_pf_result(index, &groups[index], settings);
+                if tx.send(result).is_err() {
+                    break;
+                }
+            }
+        }));
+    }
+    drop(tx);
+
+    let mut pending = std::iter::repeat_with(|| None).take(groups.len()).collect::<Vec<_>>();
+    let mut next_emit = 0usize;
+    let mut completed = 0usize;
+    let mut first_error = None;
+    while let Ok(result) = rx.recv() {
+        completed += 1;
+        report_progress(completed);
+        let index = result.index;
+        if index < pending.len() {
+            pending[index] = Some(result);
+        }
+        while next_emit < pending.len() {
+            let Some(result) = pending[next_emit].take() else {
+                break;
+            };
+            if first_error.is_none()
+                && let Err(err) = emit(result)
+            {
+                first_error = Some(err);
+                cancel.store(true, Ordering::Relaxed);
+            }
+            next_emit += 1;
+        }
+    }
+
+    for handle in handles {
+        handle.join().map_err(|_| "namer-pf 并行任务线程异常退出。".to_string())?;
+    }
+    if let Some(err) = first_error {
+        return Err(err);
+    }
+    Ok(completed)
+}
+
+fn low_accuracy_outer_workers(n: usize, item_count: usize, threads: Option<usize>) -> usize {
+    if n > LOW_ACCURACY_OUTER_PARALLEL_LIMIT || item_count <= 1 {
+        return 1;
+    }
+    resolve_win_rate_workers(threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0), item_count)
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct NamerPfScores {
     pub pp: f64,
     pub pd: f64,
@@ -335,60 +525,67 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
     let total = player_groups.len() * target_groups.len();
     let mut done = 0usize;
 
-    for (player, label) in player_groups.iter().zip(player_labels.iter()) {
-        let mut verbose = String::new();
-        let mut matchup_rates = Vec::new();
-        let summary = bench_batch_rate_for_group(
-            player,
+    let job_settings = BatchRateJobSettings {
+        n,
+        threads: input.options.threads,
+        eval_rq,
+        verbose: input.options.verbose,
+        show_matchups: input.show_matchups,
+        precision,
+    };
+    let outer_workers = low_accuracy_outer_workers(n, player_groups.len(), input.options.threads);
+    if outer_workers > 1 {
+        let job_settings = job_settings.with_threads(Some(1));
+        if let Err(err) = run_batch_rate_outer_parallel(
+            &player_groups,
+            &player_labels,
             &target_groups,
-            n,
-            input.options.threads,
-            eval_rq,
-            input.options.verbose,
-            &mut verbose,
-            &input.cancel,
-            |target_index, target_total, target, outcome| {
-                if let BatchTargetOutcome::Rate { percent, .. } = &outcome {
-                    matchup_rates.push((*percent, target.to_string()));
-                }
-                if input.show_matchups {
-                    send(ProgressEvent::BatchRateDetailLog(format_batch_target_progress_log(
-                        label,
-                        target_index,
-                        target_total,
-                        target,
-                        &outcome,
-                        precision,
-                    )));
+            job_settings,
+            outer_workers,
+            Arc::clone(&input.cancel),
+            |detail_log| {
+                if let Some(detail_log) = detail_log {
+                    send(ProgressEvent::BatchRateDetailLog(detail_log));
                 }
                 done += 1;
                 send(ProgressEvent::Progress { done, total });
             },
-        );
-
-        if input.options.min_file.is_none_or(|limit| summary.avg >= limit)
-            && let Some(output) = output.as_mut()
-        {
-            let line = format_batch_file_record(input.output_mode, label, summary.avg, precision);
-            if let Err(err) = writeln!(output, "{line}") {
-                send(ProgressEvent::Done(Err(format!("写入输出文件失败: {err}"))));
+            |result| emit_batch_rate_result(&result, &input, &mut output, precision, &send),
+        ) {
+            send(ProgressEvent::Done(Err(err)));
+            return;
+        }
+    } else {
+        for (index, (player, label)) in player_groups.iter().zip(player_labels.iter()).enumerate() {
+            let result = compute_batch_rate_result(
+                index,
+                player,
+                label,
+                &target_groups,
+                job_settings,
+                &input.cancel,
+                |detail_log| {
+                    if let Some(detail_log) = detail_log {
+                        send(ProgressEvent::BatchRateDetailLog(detail_log));
+                    }
+                    done += 1;
+                    send(ProgressEvent::Progress { done, total });
+                },
+            );
+            if let Err(err) = emit_batch_rate_result(&result, &input, &mut output, precision, &send) {
+                send(ProgressEvent::Done(Err(err)));
+                return;
+            }
+            if input.cancel.load(Ordering::Relaxed) {
+                send(ProgressEvent::Done(Ok("已停止。".to_string())));
                 return;
             }
         }
+    }
 
-        if input.options.min_screen.is_none_or(|limit| summary.avg >= limit) {
-            let include_matchups = input.show_matchups && matchup_rates.is_empty();
-            let log = format_batch_screen_log(label, summary.avg, &matchup_rates, include_matchups, precision);
-            if should_highlight(summary.avg, input.options.min_screen, input.highlight_delta) {
-                send(ProgressEvent::HighlightLog(log));
-            } else {
-                send(ProgressEvent::Log(log));
-            }
-        }
-        if input.cancel.load(Ordering::Relaxed) {
-            send(ProgressEvent::Done(Ok("已停止。".to_string())));
-            return;
-        }
+    if input.cancel.load(Ordering::Relaxed) {
+        send(ProgressEvent::Done(Ok("已停止。".to_string())));
+        return;
     }
 
     if let Err(err) = finalize_sorted_output_file(output.take(), input.output_file.as_deref(), input.output_mode) {
@@ -402,6 +599,200 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         "完成。".to_string()
     };
     send(ProgressEvent::Done(Ok(final_message)));
+}
+
+#[derive(Clone, Copy)]
+struct BatchRateJobSettings {
+    n: usize,
+    threads: Option<usize>,
+    eval_rq: f64,
+    verbose: bool,
+    show_matchups: bool,
+    precision: usize,
+}
+
+impl BatchRateJobSettings {
+    fn with_threads(self, threads: Option<usize>) -> Self { Self { threads, ..self } }
+}
+
+struct BatchRateJobResult {
+    index: usize,
+    label: String,
+    summary: BatchRateSummary,
+    matchup_rates: Vec<(f64, String)>,
+}
+
+enum BatchRateWorkerEvent {
+    TargetDone { detail_log: Option<String> },
+    PlayerDone(BatchRateJobResult),
+}
+
+fn compute_batch_rate_result(
+    index: usize,
+    player: &str,
+    label: &str,
+    target_groups: &[String],
+    settings: BatchRateJobSettings,
+    cancel: &AtomicBool,
+    mut tick_target: impl FnMut(Option<String>),
+) -> BatchRateJobResult {
+    let mut verbose = String::new();
+    let mut matchup_rates = Vec::new();
+    let summary = bench_batch_rate_for_group(
+        player,
+        target_groups,
+        settings.n,
+        settings.threads,
+        settings.eval_rq,
+        settings.verbose,
+        &mut verbose,
+        cancel,
+        |target_index, target_total, target, outcome| {
+            if let BatchTargetOutcome::Rate { percent, .. } = &outcome {
+                matchup_rates.push((*percent, target.to_string()));
+            }
+            let detail_log = settings.show_matchups.then(|| {
+                format_batch_target_progress_log(label, target_index, target_total, target, &outcome, settings.precision)
+            });
+            tick_target(detail_log);
+        },
+    );
+
+    BatchRateJobResult {
+        index,
+        label: label.to_string(),
+        summary,
+        matchup_rates,
+    }
+}
+
+fn emit_batch_rate_result(
+    result: &BatchRateJobResult,
+    input: &BatchRateInput,
+    output: &mut Option<File>,
+    precision: usize,
+    send: &impl Fn(ProgressEvent),
+) -> Result<(), String> {
+    if input.options.min_file.is_none_or(|limit| result.summary.avg >= limit)
+        && let Some(output) = output.as_mut()
+    {
+        let line = format_batch_file_record(input.output_mode, &result.label, result.summary.avg, precision);
+        if let Err(err) = writeln!(output, "{line}") {
+            return Err(format!("写入输出文件失败: {err}"));
+        }
+    }
+
+    if input.options.min_screen.is_none_or(|limit| result.summary.avg >= limit) {
+        let include_matchups = input.show_matchups && result.matchup_rates.is_empty();
+        let log = format_batch_screen_log(
+            &result.label,
+            result.summary.avg,
+            &result.matchup_rates,
+            include_matchups,
+            precision,
+        );
+        if should_highlight(result.summary.avg, input.options.min_screen, input.highlight_delta) {
+            send(ProgressEvent::HighlightLog(log));
+        } else {
+            send(ProgressEvent::Log(log));
+        }
+    }
+    Ok(())
+}
+
+fn run_batch_rate_outer_parallel(
+    player_groups: &[String],
+    player_labels: &[String],
+    target_groups: &[String],
+    settings: BatchRateJobSettings,
+    workers: usize,
+    cancel: Arc<AtomicBool>,
+    mut tick_target: impl FnMut(Option<String>),
+    mut emit: impl FnMut(BatchRateJobResult) -> Result<(), String>,
+) -> Result<usize, String> {
+    let player_groups = Arc::new(player_groups.to_vec());
+    let player_labels = Arc::new(player_labels.to_vec());
+    let target_groups = Arc::new(target_groups.to_vec());
+    let next = Arc::new(AtomicUsize::new(0));
+    let (tx, rx) = mpsc::channel();
+    let worker_count = workers.min(player_groups.len()).max(1);
+    let mut handles = Vec::with_capacity(worker_count);
+
+    for _ in 0..worker_count {
+        let player_groups = Arc::clone(&player_groups);
+        let player_labels = Arc::clone(&player_labels);
+        let target_groups = Arc::clone(&target_groups);
+        let next = Arc::clone(&next);
+        let tx = tx.clone();
+        let cancel = Arc::clone(&cancel);
+        handles.push(std::thread::spawn(move || {
+            loop {
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                let index = next.fetch_add(1, Ordering::Relaxed);
+                if index >= player_groups.len() {
+                    break;
+                }
+                let result = compute_batch_rate_result(
+                    index,
+                    &player_groups[index],
+                    &player_labels[index],
+                    &target_groups,
+                    settings,
+                    &cancel,
+                    |detail_log| {
+                        let _ = tx.send(BatchRateWorkerEvent::TargetDone { detail_log });
+                    },
+                );
+                if tx.send(BatchRateWorkerEvent::PlayerDone(result)).is_err() {
+                    break;
+                }
+            }
+        }));
+    }
+    drop(tx);
+
+    let mut pending = std::iter::repeat_with(|| None).take(player_groups.len()).collect::<Vec<_>>();
+    let mut next_emit = 0usize;
+    let mut completed_players = 0usize;
+    let mut first_error = None;
+    while let Ok(event) = rx.recv() {
+        match event {
+            BatchRateWorkerEvent::TargetDone { detail_log } => {
+                if first_error.is_none() {
+                    tick_target(detail_log);
+                }
+            }
+            BatchRateWorkerEvent::PlayerDone(result) => {
+                completed_players += 1;
+                let index = result.index;
+                if index < pending.len() {
+                    pending[index] = Some(result);
+                }
+                while next_emit < pending.len() {
+                    let Some(result) = pending[next_emit].take() else {
+                        break;
+                    };
+                    if first_error.is_none()
+                        && let Err(err) = emit(result)
+                    {
+                        first_error = Some(err);
+                        cancel.store(true, Ordering::Relaxed);
+                    }
+                    next_emit += 1;
+                }
+            }
+        }
+    }
+
+    for handle in handles {
+        handle.join().map_err(|_| "cqd/cqp 并行任务线程异常退出。".to_string())?;
+    }
+    if let Some(err) = first_error {
+        return Err(err);
+    }
+    Ok(completed_players)
 }
 
 pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
