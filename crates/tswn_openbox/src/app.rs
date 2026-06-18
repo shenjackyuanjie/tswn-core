@@ -181,10 +181,10 @@ fn install_cjk_fonts(ctx: &egui::Context) {
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
         let entries = fonts.families.entry(family).or_default();
         entries.retain(|name| name != "SarasaMonoSC" && !emoji_fonts.iter().any(|emoji| emoji == name));
-        entries.insert(0, "SarasaMonoSC".to_string());
         for (offset, emoji_font) in emoji_fonts.iter().enumerate() {
-            entries.insert(offset + 1, emoji_font.clone());
+            entries.insert(offset, emoji_font.clone());
         }
+        entries.insert(emoji_fonts.len(), "SarasaMonoSC".to_string());
     }
     ctx.set_fonts(fonts);
 }
