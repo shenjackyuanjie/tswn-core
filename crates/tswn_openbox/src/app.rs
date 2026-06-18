@@ -14,6 +14,7 @@ use eframe::egui;
 
 pub use state::{OpenboxApp, Tool};
 
+const SARASA_FONT_NAME: &str = "SarasaMonoSC";
 const SARASA_MONO_SC: &[u8] = include_bytes!("SarasaMonoSC-Regular.ttf");
 
 pub fn run() -> eframe::Result<()> {
@@ -171,22 +172,24 @@ fn theme_button(
     }
 }
 
-fn install_cjk_fonts(ctx: &egui::Context) {
+fn install_cjk_fonts(ctx: &egui::Context) { ctx.set_fonts(openbox_font_definitions()); }
+
+fn openbox_font_definitions() -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
-        "SarasaMonoSC".to_string(),
+        SARASA_FONT_NAME.to_string(),
         std::sync::Arc::new(egui::FontData::from_static(SARASA_MONO_SC)),
     );
     let emoji_fonts = install_system_emoji_fonts(&mut fonts);
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
         let entries = fonts.families.entry(family).or_default();
-        entries.retain(|name| name != "SarasaMonoSC" && !emoji_fonts.iter().any(|emoji| emoji == name));
+        entries.retain(|name| name != SARASA_FONT_NAME && !emoji_fonts.iter().any(|emoji| emoji == name));
+        entries.insert(0, SARASA_FONT_NAME.to_string());
         for (offset, emoji_font) in emoji_fonts.iter().enumerate() {
-            entries.insert(offset, emoji_font.clone());
+            entries.insert(offset + 1, emoji_font.clone());
         }
-        entries.insert(emoji_fonts.len(), "SarasaMonoSC".to_string());
     }
-    ctx.set_fonts(fonts);
+    fonts
 }
 
 fn install_system_emoji_fonts(fonts: &mut egui::FontDefinitions) -> Vec<String> {
@@ -250,4 +253,23 @@ fn configure_ui_style(ctx: &egui::Context) {
             .text_styles
             .insert(egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Monospace));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bundled_sarasa_stays_first_in_font_families() {
+        let fonts = openbox_font_definitions();
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            let entries = fonts.families.get(&family).expect("font family should exist");
+            assert_eq!(entries.first().map(String::as_str), Some(SARASA_FONT_NAME));
+            for emoji_font in ["SegoeUIEmoji", "AppleColorEmoji", "NotoColorEmoji"] {
+                if let Some(position) = entries.iter().position(|name| name == emoji_font) {
+                    assert!(position > 0, "{emoji_font} should stay behind bundled SarasaMonoSC");
+                }
+            }
+        }
+    }
 }
