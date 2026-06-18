@@ -16,6 +16,10 @@ pub use state::{OpenboxApp, Tool};
 
 const SARASA_FONT_NAME: &str = "SarasaMonoSC";
 const SARASA_MONO_SC: &[u8] = include_bytes!("SarasaMonoSC-Regular.ttf");
+const PANEL_MARGIN: i8 = 8;
+const TOP_BAR_VERTICAL_SPACE: f32 = 2.0;
+const RUN_BUTTON_HEIGHT: f32 = 38.0;
+const INPUT_FOOTER_RESERVED_HEIGHT: f32 = 56.0;
 
 pub fn run() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
@@ -53,10 +57,10 @@ impl eframe::App for OpenboxApp {
             .default_size(460.0)
             .show_inside(ui, |ui| {
                 egui::Frame::side_top_panel(ui.style())
-                    .inner_margin(egui::Margin::same(12))
+                    .inner_margin(egui::Margin::same(PANEL_MARGIN))
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
-                            let scroll_height = (ui.available_height() - 72.0).max(160.0);
+                            let scroll_height = (ui.available_height() - INPUT_FOOTER_RESERVED_HEIGHT).max(160.0);
                             egui::ScrollArea::vertical()
                                 .auto_shrink([false, false])
                                 .max_height(scroll_height)
@@ -74,7 +78,7 @@ impl eframe::App for OpenboxApp {
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::Frame::central_panel(ui.style())
-                .inner_margin(egui::Margin::same(12))
+                .inner_margin(egui::Margin::same(PANEL_MARGIN))
                 .show(ui, |ui| {
                     self.log_ui(ui, &ctx);
                 });
@@ -85,15 +89,17 @@ impl eframe::App for OpenboxApp {
 }
 
 fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
-    ui.add_space(4.0);
+    ui.add_space(2.0);
     if app.running {
         let label = if app.cancel_requested { "停止中..." } else { "停止" };
-        let button = egui::Button::new(egui::RichText::new(label).size(18.0)).min_size(egui::vec2(ui.available_width(), 44.0));
+        let button = egui::Button::new(egui::RichText::new(label).size(17.0))
+            .min_size(egui::vec2(ui.available_width(), RUN_BUTTON_HEIGHT));
         if ui.add_enabled(!app.cancel_requested, button).clicked() {
             app.stop_current_task();
         }
     } else {
-        let button = egui::Button::new(egui::RichText::new("运行").size(18.0)).min_size(egui::vec2(ui.available_width(), 44.0));
+        let button = egui::Button::new(egui::RichText::new("运行").size(17.0))
+            .min_size(egui::vec2(ui.available_width(), RUN_BUTTON_HEIGHT));
         if ui.add(button).clicked() {
             match app.tool {
                 Tool::ToDiy => app.start_to_diy(),
@@ -106,15 +112,15 @@ fn run_footer_ui(ui: &mut egui::Ui, app: &mut OpenboxApp) {
 }
 
 fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
-    ui.add_space(3.0);
+    ui.add_space(TOP_BAR_VERTICAL_SPACE);
     ui.horizontal(|ui| {
-        ui.heading(egui::RichText::new("tswn openbox").size(25.0));
+        ui.heading(egui::RichText::new("tswn openbox").size(23.0));
         ui.label(egui::RichText::new("本地工具箱").weak());
         ui.separator();
 
         for tool in Tool::ALL {
             let selected = app.tool == tool;
-            let label = egui::RichText::new(tool.label()).size(18.0);
+            let label = egui::RichText::new(tool.label()).size(16.0);
             if ui.selectable_label(selected, label).clicked() && !app.running {
                 app.tool = tool;
             }
@@ -128,7 +134,7 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
             status_pill(ui, app);
         });
     });
-    ui.add_space(3.0);
+    ui.add_space(TOP_BAR_VERTICAL_SPACE);
 }
 
 fn status_pill(ui: &mut egui::Ui, app: &OpenboxApp) {
@@ -256,14 +262,14 @@ fn install_first_existing_font(fonts: &mut egui::FontDefinitions, name: &str, pa
 
 fn configure_ui_style(ctx: &egui::Context) {
     ctx.all_styles_mut(|style| {
-        style.spacing.item_spacing = egui::vec2(10.0, 8.0);
-        style.spacing.button_padding = egui::vec2(10.0, 6.0);
-        style.spacing.window_margin = egui::Margin::same(14);
-        style.spacing.menu_margin = egui::Margin::same(10);
-        style.spacing.interact_size = egui::vec2(34.0, 30.0);
-        style.spacing.combo_width = 180.0;
-        style.spacing.text_edit_width = 180.0;
-        style.spacing.slider_width = 180.0;
+        style.spacing.item_spacing = egui::vec2(6.0, 4.0);
+        style.spacing.button_padding = egui::vec2(7.0, 4.0);
+        style.spacing.window_margin = egui::Margin::same(8);
+        style.spacing.menu_margin = egui::Margin::same(6);
+        style.spacing.interact_size = egui::vec2(30.0, 26.0);
+        style.spacing.combo_width = 160.0;
+        style.spacing.text_edit_width = 160.0;
+        style.spacing.slider_width = 160.0;
         style.text_styles.insert(
             egui::TextStyle::Heading,
             egui::FontId::new(22.0, egui::FontFamily::Proportional),

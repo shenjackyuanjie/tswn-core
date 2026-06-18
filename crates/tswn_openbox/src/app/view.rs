@@ -9,6 +9,12 @@ use super::widgets::{
     bench_output_controls, count_mode_controls, optional_file_output_controls, pick_named_output_file, thread_controls,
 };
 
+const GROUP_MARGIN: i8 = 8;
+const SECTION_MARGIN_X: i8 = 8;
+const SECTION_MARGIN_Y: i8 = 6;
+const SECTION_GAP: f32 = 5.0;
+const LOG_SECTION_GAP: f32 = 6.0;
+
 impl OpenboxApp {
     pub(crate) fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
         tool_header(ui, "to-diy", "名字转 DIY / 召唤物 DIY", &mut self.more_settings_open);
@@ -79,14 +85,16 @@ impl OpenboxApp {
             .default_width(640.0)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
-                        ui.add_enabled_ui(!self.running, |ui| match self.tool {
-                            Tool::ToDiy => self.show_diy_more_settings(ui),
-                            Tool::NamerPf => self.namer_pf_more_settings(ui),
-                            Tool::BatchRate => self.batch_rate_more_settings(ui),
-                            Tool::Pair => self.pair_more_settings(ui),
+                    egui::Frame::group(ui.style())
+                        .inner_margin(egui::Margin::same(GROUP_MARGIN))
+                        .show(ui, |ui| {
+                            ui.add_enabled_ui(!self.running, |ui| match self.tool {
+                                Tool::ToDiy => self.show_diy_more_settings(ui),
+                                Tool::NamerPf => self.namer_pf_more_settings(ui),
+                                Tool::BatchRate => self.batch_rate_more_settings(ui),
+                                Tool::Pair => self.pair_more_settings(ui),
+                            });
                         });
-                    });
                 });
             });
         self.more_settings_open = open;
@@ -187,43 +195,45 @@ impl OpenboxApp {
     }
 
     pub(crate) fn log_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading(&self.status);
-                if self.total > 0 {
-                    let progress = self.done as f32 / self.total.max(1) as f32;
-                    ui.add(
-                        egui::ProgressBar::new(progress)
-                            .show_percentage()
-                            .desired_width(320.0)
-                            .desired_height(24.0),
-                    );
-                    ui.heading(format!("{}/{}", self.done, self.total));
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("复制日志").clicked() {
-                        ctx.copy_text(self.log.clone());
-                    }
-                    if ui.button("清空日志").clicked() {
-                        self.log.clear();
-                        self.highlight_lines.clear();
-                        self.batch_rate_detail_lines.clear();
-                        self.skill_board_lines.clear();
-                    }
-                });
-            });
-            if self.total > 0 {
+        egui::Frame::group(ui.style())
+            .inner_margin(egui::Margin::same(GROUP_MARGIN))
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("速度: {}", self.rate_text)).size(16.0));
-                    ui.separator();
-                    ui.label(egui::RichText::new(format!("剩余: {}", self.eta_text)).size(16.0));
+                    ui.heading(&self.status);
+                    if self.total > 0 {
+                        let progress = self.done as f32 / self.total.max(1) as f32;
+                        ui.add(
+                            egui::ProgressBar::new(progress)
+                                .show_percentage()
+                                .desired_width(320.0)
+                                .desired_height(24.0),
+                        );
+                        ui.heading(format!("{}/{}", self.done, self.total));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("复制日志").clicked() {
+                            ctx.copy_text(self.log.clone());
+                        }
+                        if ui.button("清空日志").clicked() {
+                            self.log.clear();
+                            self.highlight_lines.clear();
+                            self.batch_rate_detail_lines.clear();
+                            self.skill_board_lines.clear();
+                        }
+                    });
                 });
-            } else {
-                ui.label(egui::RichText::new("运行结果会显示在这里").weak());
-            }
-        });
+                if self.total > 0 {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("速度: {}", self.rate_text)).size(16.0));
+                        ui.separator();
+                        ui.label(egui::RichText::new(format!("剩余: {}", self.eta_text)).size(16.0));
+                    });
+                } else {
+                    ui.label(egui::RichText::new("运行结果会显示在这里").weak());
+                }
+            });
         if !self.batch_rate_detail_lines.is_empty() {
-            ui.add_space(10.0);
+            ui.add_space(LOG_SECTION_GAP);
             let detail_log = selected_log_lines(&self.log, &self.batch_rate_detail_lines);
             let line_count = detail_log.lines().count();
             if line_count > 0 {
@@ -236,7 +246,7 @@ impl OpenboxApp {
             }
         }
         if !self.skill_board_lines.is_empty() {
-            ui.add_space(10.0);
+            ui.add_space(LOG_SECTION_GAP);
             let skill_board_log = selected_log_lines(&self.log, &self.skill_board_lines);
             let line_count = skill_board_log.lines().count();
             if line_count > 0 {
@@ -248,20 +258,22 @@ impl OpenboxApp {
                     });
             }
         }
-        ui.add_space(10.0);
-        egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
-            if self.log.trim().is_empty() {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(80.0);
-                    ui.label(egui::RichText::new("暂无日志").weak().size(18.0));
-                    ui.label(egui::RichText::new("选择工具、填好输入，然后点击运行。旧日志会在新任务开始时清空。").weak());
-                });
-            } else {
-                let text_height = ui.available_height().max(260.0);
-                let main_log = filtered_log_lines(&self.log, &self.batch_rate_detail_lines);
-                readonly_log_view(ui, "main_log", &main_log, text_height);
-            }
-        });
+        ui.add_space(LOG_SECTION_GAP);
+        egui::Frame::group(ui.style())
+            .inner_margin(egui::Margin::same(GROUP_MARGIN))
+            .show(ui, |ui| {
+                if self.log.trim().is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(48.0);
+                        ui.label(egui::RichText::new("暂无日志").weak().size(18.0));
+                        ui.label(egui::RichText::new("选择工具、填好输入，然后点击运行。旧日志会在新任务开始时清空。").weak());
+                    });
+                } else {
+                    let text_height = ui.available_height().max(220.0);
+                    let main_log = filtered_log_lines(&self.log, &self.batch_rate_detail_lines);
+                    readonly_log_view(ui, "main_log", &main_log, text_height);
+                }
+            });
     }
 }
 
@@ -275,7 +287,7 @@ fn readonly_log_view(ui: &mut egui::Ui, id: &'static str, text: &str, viewport_h
         });
 }
 
-fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 19.0 + 20.0).min(420.0) }
+fn compact_log_text_height(line_count: usize) -> f32 { (line_count.clamp(4, 20) as f32 * 17.0 + 12.0).min(360.0) }
 
 fn selected_log_lines(log: &str, line_indexes: &std::collections::HashSet<usize>) -> String {
     let mut selected = log
@@ -318,19 +330,19 @@ fn tool_header(ui: &mut egui::Ui, title: &str, subtitle: &str, more_settings_ope
             }
         });
     });
-    ui.add_space(8.0);
+    ui.add_space(4.0);
 }
 
 fn section<R>(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let inner = egui::Frame::group(ui.style())
-        .inner_margin(egui::Margin::symmetric(12, 10))
+        .inner_margin(egui::Margin::symmetric(SECTION_MARGIN_X, SECTION_MARGIN_Y))
         .show(ui, |ui| {
-            ui.label(egui::RichText::new(title).strong().size(16.0));
+            ui.label(egui::RichText::new(title).strong().size(15.0));
             ui.separator();
             add_contents(ui)
         })
         .inner;
-    ui.add_space(8.0);
+    ui.add_space(SECTION_GAP);
     inner
 }
 
@@ -444,7 +456,7 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
     })
     .num_columns(if show_highlight { 7 } else { 6 })
     .striped(true)
-    .spacing([10.0, 6.0])
+    .spacing([6.0, 3.0])
     .show(ui, |ui| {
         ui.label("");
         ui.label("屏幕");

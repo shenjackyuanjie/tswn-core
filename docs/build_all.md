@@ -135,8 +135,8 @@ dist/all/
 当前 bundle 命名规则示例：
 
 ```text
-dist/all/tswn_core_0_3_11_capi_0_4_0_py_0_2_1_wasm_0_2_9_openbox_0_3_5_bundle/
-dist/all/tswn_core_0_3_11_capi_0_4_0_py_0_2_1_wasm_0_2_9_openbox_0_3_5_bundle.zip
+dist/all/tswn_core_0_3_11_capi_0_4_0_py_0_2_1_wasm_0_2_9_openbox_0_3_6_bundle/
+dist/all/tswn_core_0_3_11_capi_0_4_0_py_0_2_1_wasm_0_2_9_openbox_0_3_6_bundle.zip
 ```
 
 ### 聚合包内容
@@ -275,4 +275,4 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && cargo build -p tswn_capi --rele
 | tswn_capi    | 0.4.0 |
 | tswn_py      | 0.2.1 |
 | tswn_wasm    | 0.2.9 |
-| tswn_openbox | 0.3.5 |
+| tswn_openbox | 0.3.6 |

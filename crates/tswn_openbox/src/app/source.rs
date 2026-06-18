@@ -65,7 +65,7 @@ impl TextSource {
                 ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
             }
             let mut preview = self.preview.clone();
-            egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 22.0).show(ui, |ui| {
+            egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 20.0).show(ui, |ui| {
                 ui.add(
                     egui::TextEdit::multiline(&mut preview)
                         .font(egui::TextStyle::Monospace)
