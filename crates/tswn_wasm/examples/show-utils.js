@@ -220,6 +220,10 @@ function validateInlineOverlay(line, lineNumber) {
     if (result.error) {
       return result.error;
     }
+    const suffixError = validateInlineObjectSuffix(line, result.end, lineNumber, "+ol");
+    if (suffixError) {
+      return suffixError;
+    }
   }
 
   const diyIndex = line.indexOf("+diy[");
@@ -237,11 +241,22 @@ function validateInlineOverlay(line, lineNumber) {
     const rest = line.slice(attrsEnd).trimStart();
     if (rest.startsWith("{")) {
       const result = validateSkillMapAt(rest, 0, lineNumber, "+diy 技能");
-      return result.error;
+      if (result.error) {
+        return result.error;
+      }
+      return validateInlineObjectSuffix(rest, result.end, lineNumber, "+diy 技能");
     }
     if (rest && !rest.startsWith("+")) {
       return `第 ${lineNumber} 行：+diy 属性后应接技能对象或新的 + 后缀。`;
     }
+  }
+  return null;
+}
+
+function validateInlineObjectSuffix(raw, endIndex, lineNumber, label) {
+  const rest = raw.slice(endIndex).trimStart();
+  if (rest && !rest.startsWith("+")) {
+    return `第 ${lineNumber} 行：${label} 对象后应结束或接新的 + 后缀。`;
   }
   return null;
 }
