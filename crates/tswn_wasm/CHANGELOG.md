@@ -1,6 +1,6 @@
 # 更新日志
 
-## [0.2.9] - unreleased
+## [0.2.9] - 2026-06-18
 
 ### 新增
 
@@ -10,11 +10,34 @@
   - 批量胜率与配队：`batch_rate()`、`pair_rate()`
   - DIY / 图标 / 列表解析：`to_diy()`、`to_diy_batch()`、`icon_info()`、`parse_group_lines()`
 - 新增对应的强类型 `Cli*Result` / `CliIconInfo` 数据模型，供 JS / TS 调用方直接消费。
+- show 示例新增事件/帧级单步控制、暂停态前后移动、结束结算表和角色详情小窗。
+- 角色详情支持按输入 `id_name` 保存自定义昵称，并通过 `localStorage` 应用到后续回放。
 
 ### 变更
 
 - 新增导出统一复用 `tswn_core::cli_api` 的共享高层逻辑，避免 WASM 包装层单独维护一份 CLI helper 实现。
 - README 补充新的 CLI 对齐接口说明与返回值示例。
+- show 示例整理为独立 Fight 展示页：移除胜率混杂入口，弱化帧分隔视觉，使用单独结算表替代调试 winner 行。
+- 左侧角色面板按输入顺序和真实队伍分组；召唤物、分身和临时单位挂在 owner 下方，并在逐消息播放时同步侧栏元数据。
+- show 播放速度改为新战斗默认恢复正常速度；雷击、地裂等大范围技能使用更短延迟，避免正常速度下拖慢回放。
+- 左侧 HP/MP 展示改为逐消息刷新，补齐蓝量恢复/消耗、瘟疫和体力减少等血条变化，并细化死亡血条消失动画。
+- 状态变更着色改为依赖 WASM 提供的结构化 `status_change_tokens`，不再只靠前端正则猜测潜行识破、中止和打消等状态。
+
+### 修复
+
+- 修复解析失败后仍残留上一场结果或继续展示不可信回放的问题；严重输入错误会明确提示行号并阻止生成。
+- 补强 `+ol:{...}` 和 `+diy[...] {...}` 输入对象校验，能发现对象尾部垃圾内容、缺字段值和属性数量错误。
+- 修复重播、重置和窗口失焦后左侧角色高亮残留的问题。
+- 修复逐消息侧栏刷新时头像、详情按钮和行标题复用旧单位元数据的问题。
+- 修复上一帧已死亡的召唤物/临时单位在本帧重新存活时仍沿用死亡 UI 的问题，同时避免本帧才出现的单位在消息触达前提前显示。
+
+### 验证
+
+- `cargo fmt --check`
+- `cargo check -p tswn_wasm`
+- `cargo test`
+- `bun build crates/tswn_wasm/examples/show.js --target=browser --outdir=target/codex-check/show --root=crates/tswn_wasm/examples`
+- `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js`
 
 ## [0.2.8] - 2026-05-24
 
