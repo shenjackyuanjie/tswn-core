@@ -253,6 +253,11 @@ button:hover {
     opacity: 0.68;
 }
 
+.player-row.is-just-dead {
+    opacity: 1;
+    animation: player-death-tint 620ms cubic-bezier(0.45, 0, 0.18, 1) forwards;
+}
+
 .player-row.is-caster {
     background: rgba(232, 168, 56, 0.14);
 }
@@ -491,8 +496,18 @@ button:hover {
 }
 
 .player-row.is-just-dead .oldhp {
-    animation: death-hp-drain 520ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation: death-hp-drain 620ms cubic-bezier(0.45, 0, 0.18, 1) forwards;
     transform-origin: left center;
+    opacity: 0.95;
+}
+
+.player-row.is-just-dead .hpwrap {
+    background: rgba(216, 77, 69, 0.18);
+}
+
+.player-row.is-just-dead .name.namedie,
+.player-row.is-just-dead .player-hp-cell {
+    animation: player-death-text-tint 620ms cubic-bezier(0.45, 0, 0.18, 1) forwards;
 }
 
 .healhp {
@@ -546,8 +561,34 @@ button:hover {
         transform: scaleX(1);
     }
 
+    42% {
+        transform: scaleX(0.44);
+    }
+
     100% {
         transform: scaleX(0);
+    }
+}
+
+@keyframes player-death-tint {
+    0% {
+        background: rgba(216, 77, 69, 0.26);
+    }
+
+    100% {
+        background: rgba(216, 77, 69, 0);
+    }
+}
+
+@keyframes player-death-text-tint {
+    0% {
+        color: #d84d45;
+        background: rgba(216, 77, 69, 0.14);
+    }
+
+    100% {
+        color: #80919b;
+        background: #ddd;
     }
 }
 
