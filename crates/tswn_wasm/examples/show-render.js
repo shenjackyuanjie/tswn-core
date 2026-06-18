@@ -512,6 +512,39 @@ function statesFromRunningMap(running) {
   return Array.from(running.values());
 }
 
+function updateParticipantIds(update) {
+  const ids = [];
+  const add = (id) => {
+    if (id == null || ids.includes(id)) {
+      return;
+    }
+    ids.push(id);
+  };
+
+  add(update.caster_id);
+  add(update.target_id);
+  if (Array.isArray(update.target_ids)) {
+    update.target_ids.forEach(add);
+  }
+  return ids;
+}
+
+function syncReappearedParticipants(update, hitState, frameStateMap) {
+  for (const id of updateParticipantIds(update)) {
+    const frameState = frameStateMap.get(id);
+    if (!frameState?.alive) {
+      continue;
+    }
+
+    const currentState = hitState.get(id);
+    if (currentState?.alive) {
+      continue;
+    }
+
+    hitState.set(id, { ...frameState, _is_new_in_frame: true });
+  }
+}
+
 // ============================================================================
 // 玩家状态面板渲染
 // ============================================================================
@@ -846,13 +879,9 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
   }
 
   const previousStateMap = buildStateMap(previousStates);
+  const frameStateMap = buildStateMap(frame.states);
   /** @type {Map<number, FightState>} 帧内逐步更新的模拟 HP 状态 */
   let running = new Map(previousStateMap);
-  for (const state of frame.states) {
-    if (!running.has(state.id)) {
-      running.set(state.id, { ...state, _is_new_in_frame: true });
-    }
-  }
   const rows = [];
   let segments = [];
 
@@ -896,6 +925,7 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
 
     const tone = update.tone ?? "normal";
     const hitState = new Map(running);
+    syncReappearedParticipants(update, hitState, frameStateMap);
     const hpDelta = Number.isFinite(update.hp_delta) ? update.hp_delta : 0;
     if (hpDelta !== 0) {
       if (update.target_id != null) applyDelta(update.target_id, hitState, hpDelta);
@@ -956,13 +986,9 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
   }
 
   const previousStateMap = buildStateMap(previousStates);
+  const frameStateMap = buildStateMap(frame.states);
   /** @type {Map<number, FightState>} */
   let running = new Map(previousStateMap);
-  for (const state of frame.states) {
-    if (!running.has(state.id)) {
-      running.set(state.id, { ...state, _is_new_in_frame: true });
-    }
-  }
   /** @type {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>} */
   const chunks = [];
   let frameStarted = false;
@@ -1048,6 +1074,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     const tone = update.tone ?? "normal";
     const previousForMessage = new Map(running);
     const hitState = new Map(running);
+    syncReappearedParticipants(update, hitState, frameStateMap);
     const hpDelta = Number.isFinite(update.hp_delta) ? update.hp_delta : 0;
     if (hpDelta !== 0) {
       if (update.target_id != null) applyDelta(update.target_id, hitState, hpDelta);
