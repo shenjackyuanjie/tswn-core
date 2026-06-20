@@ -4,7 +4,7 @@ use std::path::{PathBuf, absolute};
 
 use eframe::egui;
 
-use crate::backend::OutputMode;
+use tswn_openbox::backend::OutputMode;
 
 use super::state::{AccuracyPreset, CountMode};
 

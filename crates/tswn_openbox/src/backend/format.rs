@@ -34,19 +34,11 @@ pub fn format_batch_file_record(mode: OutputMode, label: &str, avg: f64, precisi
     }
 }
 
-pub fn format_batch_screen_log(
-    label: &str,
-    avg: f64,
-    matchup_rates: &[(f64, String)],
-    show_matchups: bool,
-    precision: usize,
-) -> String {
+pub fn format_batch_screen_log(label: &str, avg: f64, detail_rates: &[(f64, String)], precision: usize) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{} {}", format_rate(avg, precision), clean_name_label(label));
-    if show_matchups {
-        for (rate, target) in matchup_rates {
-            let _ = writeln!(out, "  {} {}", format_rate(*rate, precision), clean_group_label(target));
-        }
+    for (rate, target) in detail_rates {
+        let _ = writeln!(out, "  {} {}", format_rate(*rate, precision), clean_group_label(target));
     }
     out
 }

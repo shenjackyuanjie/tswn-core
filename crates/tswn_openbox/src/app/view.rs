@@ -2,7 +2,7 @@
 
 use eframe::egui;
 
-use crate::backend::PairDetailMode;
+use tswn_openbox::backend::PairDetailMode;
 
 use super::state::{AccuracyPreset, CountMode, OpenboxApp, Tool};
 use super::widgets::{
@@ -216,8 +216,8 @@ impl OpenboxApp {
                         }
                         if ui.button("清空日志").clicked() {
                             self.log.clear();
+                            self.log_line_count = 0;
                             self.highlight_lines.clear();
-                            self.batch_rate_detail_lines.clear();
                             self.skill_board_lines.clear();
                         }
                     });
@@ -232,19 +232,6 @@ impl OpenboxApp {
                     ui.label(egui::RichText::new("运行结果会显示在这里").weak());
                 }
             });
-        if !self.batch_rate_detail_lines.is_empty() {
-            ui.add_space(LOG_SECTION_GAP);
-            let detail_log = selected_log_lines(&self.log, &self.batch_rate_detail_lines);
-            let line_count = detail_log.lines().count();
-            if line_count > 0 {
-                egui::CollapsingHeader::new(format!("cqd 每组胜率 ({line_count})"))
-                    .default_open(false)
-                    .show(ui, |ui| {
-                        let text_height = compact_log_text_height(line_count);
-                        readonly_log_view(ui, "batch_rate_detail_log", &detail_log, text_height);
-                    });
-            }
-        }
         if !self.skill_board_lines.is_empty() {
             ui.add_space(LOG_SECTION_GAP);
             let skill_board_log = selected_log_lines(&self.log, &self.skill_board_lines);
@@ -277,9 +264,6 @@ impl OpenboxApp {
                         .show(ui, |ui| {
                             ui.vertical(|ui| {
                                 for (index, line) in self.log.lines().enumerate() {
-                                    if self.batch_rate_detail_lines.contains(&index) {
-                                        continue;
-                                    }
                                     let mut text = egui::RichText::new(line).monospace();
                                     if self.skill_board_lines.contains(&index) {
                                         text = text.color(egui::Color32::from_rgb(45, 120, 220)).strong();

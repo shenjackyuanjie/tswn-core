@@ -40,9 +40,8 @@ impl BatchRateSummary {}
 
 #[derive(Debug, Clone)]
 pub enum BatchTargetOutcome {
-    Rate { percent: f64, wins: usize, total: usize },
-    SkippedDuplicate { duplicate: String },
-    Error { message: String },
+    Rate { percent: f64 },
+    Skipped,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -81,7 +80,7 @@ pub fn bench_batch_rate_for_group(
                     duplicate
                 );
             }
-            tick_target(index, target_total, target, BatchTargetOutcome::SkippedDuplicate { duplicate });
+            tick_target(index, target_total, target, BatchTargetOutcome::Skipped);
             continue;
         }
 
@@ -111,8 +110,6 @@ pub fn bench_batch_rate_for_group(
                     target,
                     BatchTargetOutcome::Rate {
                         percent: summary.win_rate_percent(),
-                        wins: summary.wins,
-                        total: summary.total,
                     },
                 );
             }
@@ -127,7 +124,7 @@ pub fn bench_batch_rate_for_group(
                         display_group(target)
                     );
                 }
-                tick_target(index, target_total, target, BatchTargetOutcome::Error { message: err });
+                tick_target(index, target_total, target, BatchTargetOutcome::Skipped);
             }
         }
     }
@@ -164,7 +161,7 @@ pub fn namer_pf_score(
 
 fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq).map_err(|err| format!("{err}"))?;
+    let prepared = Runner::prepare_groups_with_eval_rq_uncached(&groups, eval_rq).map_err(|err| format!("{err}"))?;
     bench_prepared_summary(&prepared, n, threads, eval_rq)
 }
 

@@ -1,5 +1,33 @@
 # 更新日志
 
+## [0.3.9] - 2026-06-20
+
+### 修复
+
+- 修复 `cqd/cqp` 大批量双人组运行时内存持续上涨的问题。Openbox 后端的批量胜率路径改用 uncached prepared runner，避免把 `tests\allCO3pure.txt` 这类几乎全是唯一组合的 matchup 写入全局 prepared 缓存。
+- 修复 `cqd/cqp` 低精度外层并行时可能因按输入顺序等待结果而堆积大量已完成结果的问题；现在完成一个选手组就输出一个选手组，输出文件仍会在收尾阶段按分数排序。
+- 将 GUI 与后端 worker 的进度事件通道改为有界通道，避免 UI 消费慢于计算线程时无界积压事件。
+- 为主日志增加内存上限并同步维护高亮/技能榜行号，长时间任务不会无限保留旧日志。
+
+### 调整
+
+- `cqd/cqp` 不再单独维护“每组胜率”折叠日志；勾选“每组胜率”后，主日志直接按 `分数 名字` 加缩进子项显示。
+- `pair` 的“每组 cqp”和“有效 cqp”屏幕输出统一为同样的块状格式：总分行在前，子项行缩进显示。
+- 新增 `openbox_mem_probe` 调试入口，用于复现和采样 Openbox 后端任务内存占用。
+
+### 验证
+
+- `cargo check -p tswn_openbox`
+- `cargo check -p tswn_openbox --bin openbox_mem_probe`
+- `cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox/assets/targets/target2.txt --limit 2000 --target-limit 8 --count 1 --threads 8 --report-ms 1000`
+- `cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox/assets/targets/target2.txt --limit 10000 --target-limit all --count 1 --threads 8 --report-ms 2000`
+
+### 实测
+
+- 修复前：`allCO3pure.txt` 取 2000 组、`target2.txt` 取 8 个靶子、`count=1` 时，RSS 从约 `5.7 MB` 上涨到约 `372 MB`。
+- 修复后：同参数峰值约 `10.8 MB`，结束约 `8.5 MB`。
+- 放大验证：`allCO3pure.txt` 取 10000 组、`target2.txt` 全 41 个靶子、共 `410000` 个 matchup，RSS 运行中稳定在约 `15-16 MB`，结束约 `9.1 MB`。
+
 ## [0.3.8] - 2026-06-19
 
 ### 修复

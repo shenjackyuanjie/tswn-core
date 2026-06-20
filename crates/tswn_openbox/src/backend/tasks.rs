@@ -17,17 +17,15 @@ use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
 use tswn_core::win_rate::resolve_win_rate_workers;
 
 use super::format::{
-    clean_name_label, display_group, format_batch_file_record, format_batch_screen_log, format_pair_file_record,
-    format_pair_screen_log, format_rate,
+    format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
 };
 use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
 use super::score::{BatchRateSummary, BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
-use super::types::{
-    BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairDetailMode, PairInput, ProgressEvent,
-};
+use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairInput, ProgressEvent};
 
 const LOW_ACCURACY_OUTER_PARALLEL_LIMIT: usize = 1000;
+const WORKER_EVENT_CHANNEL_CAPACITY: usize = 4096;
 
 pub fn run_to_diy(
     raw: &str,
@@ -412,7 +410,7 @@ fn run_namer_pf_outer_parallel(
 ) -> Result<usize, String> {
     let groups = Arc::new(groups.to_vec());
     let next = Arc::new(AtomicUsize::new(0));
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::sync_channel(WORKER_EVENT_CHANNEL_CAPACITY);
     let worker_count = workers.min(groups.len()).max(1);
     let mut handles = Vec::with_capacity(worker_count);
 
@@ -538,8 +536,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         threads: input.options.threads,
         eval_rq,
         verbose: input.options.verbose,
-        show_matchups: input.show_matchups,
-        precision,
+        collect_details: input.show_matchups,
     };
     let outer_workers = low_accuracy_outer_workers(n, player_groups.len(), input.options.threads);
     if outer_workers > 1 {
@@ -551,10 +548,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
             job_settings,
             outer_workers,
             Arc::clone(&input.cancel),
-            |detail_log| {
-                if let Some(detail_log) = detail_log {
-                    send(ProgressEvent::BatchRateDetailLog(detail_log));
-                }
+            || {
                 done += 1;
                 send(ProgressEvent::Progress { done, total });
             },
@@ -564,22 +558,11 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
             return;
         }
     } else {
-        for (index, (player, label)) in player_groups.iter().zip(player_labels.iter()).enumerate() {
-            let result = compute_batch_rate_result(
-                index,
-                player,
-                label,
-                &target_groups,
-                job_settings,
-                &input.cancel,
-                |detail_log| {
-                    if let Some(detail_log) = detail_log {
-                        send(ProgressEvent::BatchRateDetailLog(detail_log));
-                    }
-                    done += 1;
-                    send(ProgressEvent::Progress { done, total });
-                },
-            );
+        for (player, label) in player_groups.iter().zip(player_labels.iter()) {
+            let result = compute_batch_rate_result(player, label, &target_groups, job_settings, &input.cancel, || {
+                done += 1;
+                send(ProgressEvent::Progress { done, total });
+            });
             if let Err(err) = emit_batch_rate_result(&result, &input, &mut output, precision, &send) {
                 send(ProgressEvent::Done(Err(err)));
                 return;
@@ -615,8 +598,7 @@ struct BatchRateJobSettings {
     threads: Option<usize>,
     eval_rq: f64,
     verbose: bool,
-    show_matchups: bool,
-    precision: usize,
+    collect_details: bool,
 }
 
 impl BatchRateJobSettings {
@@ -624,28 +606,26 @@ impl BatchRateJobSettings {
 }
 
 struct BatchRateJobResult {
-    index: usize,
     label: String,
     summary: BatchRateSummary,
-    matchup_rates: Vec<(f64, String)>,
+    detail_rates: Vec<(f64, String)>,
 }
 
 enum BatchRateWorkerEvent {
-    TargetDone { detail_log: Option<String> },
+    TargetDone,
     PlayerDone(BatchRateJobResult),
 }
 
 fn compute_batch_rate_result(
-    index: usize,
     player: &str,
     label: &str,
     target_groups: &[String],
     settings: BatchRateJobSettings,
     cancel: &AtomicBool,
-    mut tick_target: impl FnMut(Option<String>),
+    mut tick_target: impl FnMut(),
 ) -> BatchRateJobResult {
     let mut verbose = String::new();
-    let mut matchup_rates = Vec::new();
+    let mut detail_rates = Vec::new();
     let summary = bench_batch_rate_for_group(
         player,
         target_groups,
@@ -655,22 +635,20 @@ fn compute_batch_rate_result(
         settings.verbose,
         &mut verbose,
         cancel,
-        |target_index, target_total, target, outcome| {
-            if let BatchTargetOutcome::Rate { percent, .. } = &outcome {
-                matchup_rates.push((*percent, target.to_string()));
+        |_, _, target, outcome| {
+            if settings.collect_details
+                && let BatchTargetOutcome::Rate { percent, .. } = &outcome
+            {
+                detail_rates.push((*percent, target.to_string()));
             }
-            let detail_log = settings.show_matchups.then(|| {
-                format_batch_target_progress_log(label, target_index, target_total, target, &outcome, settings.precision)
-            });
-            tick_target(detail_log);
+            tick_target();
         },
     );
 
     BatchRateJobResult {
-        index,
         label: label.to_string(),
         summary,
-        matchup_rates,
+        detail_rates,
     }
 }
 
@@ -691,14 +669,12 @@ fn emit_batch_rate_result(
     }
 
     if input.options.min_screen.is_none_or(|limit| result.summary.avg >= limit) {
-        let include_matchups = input.show_matchups && result.matchup_rates.is_empty();
-        let log = format_batch_screen_log(
-            &result.label,
-            result.summary.avg,
-            &result.matchup_rates,
-            include_matchups,
-            precision,
-        );
+        let detail_rates = if input.show_matchups {
+            result.detail_rates.as_slice()
+        } else {
+            &[]
+        };
+        let log = format_batch_screen_log(&result.label, result.summary.avg, detail_rates, precision);
         if should_highlight(result.summary.avg, input.options.min_screen, input.highlight_delta) {
             send(ProgressEvent::HighlightLog(log));
         } else {
@@ -716,14 +692,14 @@ fn run_batch_rate_outer_parallel(
     settings: BatchRateJobSettings,
     workers: usize,
     cancel: Arc<AtomicBool>,
-    mut tick_target: impl FnMut(Option<String>),
+    mut tick_target: impl FnMut(),
     mut emit: impl FnMut(BatchRateJobResult) -> Result<(), String>,
 ) -> Result<usize, String> {
     let player_groups = Arc::new(player_groups.to_vec());
     let player_labels = Arc::new(player_labels.to_vec());
     let target_groups = Arc::new(target_groups.to_vec());
     let next = Arc::new(AtomicUsize::new(0));
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::sync_channel(WORKER_EVENT_CHANNEL_CAPACITY);
     let worker_count = workers.min(player_groups.len()).max(1);
     let mut handles = Vec::with_capacity(worker_count);
 
@@ -744,14 +720,13 @@ fn run_batch_rate_outer_parallel(
                     break;
                 }
                 let result = compute_batch_rate_result(
-                    index,
                     &player_groups[index],
                     &player_labels[index],
                     &target_groups,
                     settings,
                     &cancel,
-                    |detail_log| {
-                        let _ = tx.send(BatchRateWorkerEvent::TargetDone { detail_log });
+                    || {
+                        let _ = tx.send(BatchRateWorkerEvent::TargetDone);
                     },
                 );
                 if tx.send(BatchRateWorkerEvent::PlayerDone(result)).is_err() {
@@ -762,34 +737,22 @@ fn run_batch_rate_outer_parallel(
     }
     drop(tx);
 
-    let mut pending = std::iter::repeat_with(|| None).take(player_groups.len()).collect::<Vec<_>>();
-    let mut next_emit = 0usize;
     let mut completed_players = 0usize;
     let mut first_error = None;
     while let Ok(event) = rx.recv() {
         match event {
-            BatchRateWorkerEvent::TargetDone { detail_log } => {
+            BatchRateWorkerEvent::TargetDone => {
                 if first_error.is_none() {
-                    tick_target(detail_log);
+                    tick_target();
                 }
             }
             BatchRateWorkerEvent::PlayerDone(result) => {
                 completed_players += 1;
-                let index = result.index;
-                if index < pending.len() {
-                    pending[index] = Some(result);
-                }
-                while next_emit < pending.len() {
-                    let Some(result) = pending[next_emit].take() else {
-                        break;
-                    };
-                    if first_error.is_none()
-                        && let Err(err) = emit(result)
-                    {
-                        first_error = Some(err);
-                        cancel.store(true, Ordering::Relaxed);
-                    }
-                    next_emit += 1;
+                if first_error.is_none()
+                    && let Err(err) = emit(result)
+                {
+                    first_error = Some(err);
+                    cancel.store(true, Ordering::Relaxed);
                 }
             }
         }
@@ -857,7 +820,6 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         let mut _total_valid_matchups = 0usize;
         let mut _total_skipped_matchups = 0usize;
         let mut verbose = String::new();
-        let mut pending_detail_lines = Vec::new();
 
         for teammate in &teammates {
             let pair_group = format!("{converted_player}\n{teammate}");
@@ -880,13 +842,6 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
             );
             if summary.valid_matchups > 0 {
                 pair_rates.push((summary.avg, teammate.clone()));
-                if input.detail_mode == PairDetailMode::Every && input.detail_min.is_none_or(|limit| summary.avg >= limit) {
-                    pending_detail_lines.push(format!(
-                        "  {} {}",
-                        format_rate(summary.avg, precision),
-                        clean_name_label(teammate)
-                    ));
-                }
             }
             total_wins += summary.wins;
             total_battles += summary.total;
@@ -922,20 +877,12 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         }
 
         if input.options.min_screen.is_none_or(|limit| final_score >= limit) {
-            for line in pending_detail_lines.drain(..) {
-                send(ProgressEvent::Log(line));
-            }
-            let detail_mode = if input.detail_mode == PairDetailMode::Every {
-                PairDetailMode::None
-            } else {
-                input.detail_mode
-            };
             let log = format_pair_screen_log(
                 player,
                 final_score,
                 selected_count,
                 &pair_rates,
-                detail_mode,
+                input.detail_mode,
                 input.detail_min,
                 precision,
             );
@@ -966,32 +913,6 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
 
 fn should_highlight(score: f64, min_screen: Option<f64>, highlight_delta: Option<f64>) -> bool {
     highlight_delta.is_some_and(|delta| score >= min_screen.unwrap_or(0.0) + delta)
-}
-
-fn format_batch_target_progress_log(
-    player_label: &str,
-    target_index: usize,
-    target_total: usize,
-    target: &str,
-    outcome: &BatchTargetOutcome,
-    precision: usize,
-) -> String {
-    let prefix = format!(
-        "  [{}/{}] {} vs {}",
-        target_index + 1,
-        target_total,
-        clean_name_label(player_label),
-        display_group(target)
-    );
-    match outcome {
-        BatchTargetOutcome::Rate { percent, wins, total } => {
-            format!("{prefix} => {}% ({wins}/{total})", format_rate(*percent, precision))
-        }
-        BatchTargetOutcome::SkippedDuplicate { duplicate } => {
-            format!("{prefix} => SKIP duplicate name: {duplicate}")
-        }
-        BatchTargetOutcome::Error { message } => format!("{prefix} => ERROR: {message}"),
-    }
 }
 
 fn finish_output(output_file: Option<&Path>, out: String) -> Result<String, String> {
