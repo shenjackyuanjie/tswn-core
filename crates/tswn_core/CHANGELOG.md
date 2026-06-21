@@ -1,6 +1,13 @@
 # 更新日志
 
-## [0.3.11] - unreleased
+## [0.3.12] - 2026-06-19
+
+### 代码质量
+
+- 重构 `run_score_round` 参数：提取 `RoundAccum` 结构体打包可变累加器，精简函数签名。
+- 修复 `unused_enumerate_index` 与 `useless_vec` clippy 建议（`merge.rs`、`skill.rs`）。
+
+## [0.3.11] - 2026-06-19
 
 ### 性能优化
 

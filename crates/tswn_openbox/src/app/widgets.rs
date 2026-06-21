@@ -4,7 +4,7 @@ use std::path::{PathBuf, absolute};
 
 use eframe::egui;
 
-use crate::backend::OutputMode;
+use tswn_openbox::backend::OutputMode;
 
 use super::state::{AccuracyPreset, CountMode};
 
@@ -137,7 +137,7 @@ pub fn thread_controls(ui: &mut egui::Ui, auto_threads: &mut bool, threads: &mut
 }
 
 pub fn multiline(ui: &mut egui::Ui, id: &'static str, text: &mut String, rows: usize) {
-    egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 22.0).show(ui, |ui| {
+    egui::ScrollArea::both().id_salt(id).max_height(rows as f32 * 20.0).show(ui, |ui| {
         ui.add(
             egui::TextEdit::multiline(text)
                 .font(egui::TextStyle::Monospace)

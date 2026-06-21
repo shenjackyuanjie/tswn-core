@@ -7,14 +7,14 @@ use std::ops::RangeInclusive;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
-    mpsc,
+    mpsc::{self, TryRecvError},
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::backend::PairDetailMode;
-use crate::backend::{
+use tswn_openbox::backend::PairDetailMode;
+use tswn_openbox::backend::{
     self, BatchRateInput, CommonBenchOptions, NamerPfInput, NamerPfMetricOptions, NamerPfSkillBoardOptions, PairInput,
     ProgressEvent,
 };
@@ -22,6 +22,11 @@ use crate::backend::{
 use super::state::{CountMode, OpenboxApp};
 use super::target_presets::{load_selected_target_text, load_selected_teammate_text};
 use super::widgets::OptionalFileOutput;
+
+const MAX_EVENTS_PER_POLL: usize = 256;
+const EVENT_CHANNEL_CAPACITY: usize = MAX_EVENTS_PER_POLL * 16;
+const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
+const RUNNING_REPAINT_INTERVAL: Duration = Duration::from_millis(33);
 
 impl OpenboxApp {
     pub fn stop_current_task(&mut self) {
@@ -54,7 +59,7 @@ impl OpenboxApp {
         }
 
         self.begin_task();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = progress_channel();
         self.rx = Some(rx);
         let old = self.to_diy.old;
         let minions = self.to_diy.minions;
@@ -139,7 +144,7 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = progress_channel();
         self.rx = Some(rx);
         let cancel = self.cancel_token();
         let input = NamerPfInput {
@@ -181,13 +186,7 @@ impl OpenboxApp {
                 return;
             }
         };
-        let output_file = match self.batch_rate.output.file_output.path() {
-            Some(path) => Some(path),
-            None => {
-                self.fail_before_start("请先选择输出文件。".to_string());
-                return;
-            }
-        };
+        let output_file = self.batch_rate.output.file_output.path();
         let min_screen = match parse_optional_f64_in_range(&self.batch_rate.output.min_screen, "日志阈值", 0.0..=100.0) {
             Ok(value) => value,
             Err(err) => {
@@ -211,7 +210,7 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = progress_channel();
         self.rx = Some(rx);
         let cancel = self.cancel_token();
         let input = BatchRateInput {
@@ -268,13 +267,7 @@ impl OpenboxApp {
         } else {
             self.pair.teammate_presets.selected().map(|preset| preset.head).unwrap_or(self.pair.head)
         };
-        let output_file = match self.pair.output.file_output.path() {
-            Some(path) => Some(path),
-            None => {
-                self.fail_before_start("请先选择输出文件。".to_string());
-                return;
-            }
-        };
+        let output_file = self.pair.output.file_output.path();
         let min_screen = match parse_optional_f64_at_least(&self.pair.output.min_screen, "日志阈值", 0.0) {
             Ok(value) => value,
             Err(err) => {
@@ -309,7 +302,7 @@ impl OpenboxApp {
         };
 
         self.begin_task();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = progress_channel();
         self.rx = Some(rx);
         let cancel = self.cancel_token();
         let input = PairInput {
@@ -350,6 +343,7 @@ impl OpenboxApp {
         self.rate_text = "--".to_string();
         self.eta_text = "--".to_string();
         self.log.clear();
+        self.log_line_count = 0;
         self.highlight_lines.clear();
         self.skill_board_lines.clear();
         self.status = "运行中".to_string();
@@ -367,52 +361,79 @@ impl OpenboxApp {
         self.rx = None;
         self.status = "失败".to_string();
         self.log.clear();
+        self.log_line_count = 0;
         self.highlight_lines.clear();
         self.skill_board_lines.clear();
         self.append_log(&err);
     }
 
     pub fn poll_events(&mut self, ctx: &egui::Context) {
+        let mut processed_any = false;
+        let mut hit_event_limit = false;
         if let Some(rx) = self.rx.take() {
             let mut keep_rx = true;
-            while let Ok(event) = rx.try_recv() {
-                match event {
-                    ProgressEvent::Log(line) => {
-                        self.append_log(&line);
+            for event_index in 0..MAX_EVENTS_PER_POLL {
+                match rx.try_recv() {
+                    Ok(event) => {
+                        processed_any = true;
+                        hit_event_limit = event_index + 1 == MAX_EVENTS_PER_POLL;
+                        match event {
+                            ProgressEvent::Log(line) => {
+                                self.append_log(&line);
+                            }
+                            ProgressEvent::HighlightLog(line) => {
+                                self.append_highlight_log(&line);
+                            }
+                            ProgressEvent::SkillBoardLog(line) => {
+                                self.append_skill_board_log(&line);
+                            }
+                            ProgressEvent::Progress { done, total } => {
+                                self.done = done;
+                                self.total = total;
+                                self.status = "运行中".to_string();
+                                self.update_progress_stats();
+                            }
+                            ProgressEvent::Done(result) => {
+                                self.running = false;
+                                self.cancel_requested = false;
+                                self.cancel_token = None;
+                                self.status = match &result {
+                                    Ok(_) => "完成".to_string(),
+                                    Err(_) => "失败".to_string(),
+                                };
+                                match result {
+                                    Ok(output) => self.append_log(&output),
+                                    Err(err) => self.append_log(&err),
+                                }
+                                self.update_progress_stats();
+                                keep_rx = false;
+                                break;
+                            }
+                        }
                     }
-                    ProgressEvent::HighlightLog(line) => {
-                        self.append_highlight_log(&line);
+                    Err(TryRecvError::Empty) => {
+                        hit_event_limit = false;
+                        break;
                     }
-                    ProgressEvent::SkillBoardLog(line) => {
-                        self.append_skill_board_log(&line);
-                    }
-                    ProgressEvent::Progress { done, total } => {
-                        self.done = done;
-                        self.total = total;
-                        self.status = "运行中".to_string();
-                        self.update_progress_stats();
-                    }
-                    ProgressEvent::Done(result) => {
+                    Err(TryRecvError::Disconnected) => {
                         self.running = false;
                         self.cancel_requested = false;
                         self.cancel_token = None;
-                        self.status = match &result {
-                            Ok(_) => "完成".to_string(),
-                            Err(_) => "失败".to_string(),
-                        };
-                        match result {
-                            Ok(output) => self.append_log(&output),
-                            Err(err) => self.append_log(&err),
-                        }
-                        self.update_progress_stats();
                         keep_rx = false;
+                        break;
                     }
                 }
-                ctx.request_repaint();
             }
             if keep_rx {
                 self.rx = Some(rx);
             }
+        }
+        if self.running {
+            self.update_progress_stats();
+            ctx.request_repaint_after(RUNNING_REPAINT_INTERVAL);
+        }
+        if processed_any || hit_event_limit {
+            ctx.request_repaint();
         }
     }
 
@@ -448,18 +469,28 @@ impl OpenboxApp {
     fn append_log_inner(&mut self, text: &str, highlight_first_line: bool) -> usize {
         let trimmed = text.trim_end_matches('\n');
         if trimmed.is_empty() {
-            return self.log.lines().count();
+            return self.log_line_count;
         }
         if !self.log.is_empty() && !self.log.ends_with('\n') {
             self.log.push('\n');
         }
-        let first_line_index = self.log.lines().count();
+        if !self.log.is_empty() && trimmed.lines().nth(1).is_some() && !self.log.ends_with("\n\n") {
+            self.log.push('\n');
+        }
+        let first_line_index = self.log_line_count;
         if highlight_first_line {
             self.highlight_lines.insert(first_line_index);
         }
         self.log.push_str(trimmed);
         self.log.push('\n');
-        first_line_index
+        self.log_line_count += trimmed.lines().count();
+        let removed_lines = trim_log_to_limit(&mut self.log);
+        if removed_lines > 0 {
+            self.log_line_count = self.log_line_count.saturating_sub(removed_lines);
+            shift_line_indexes(&mut self.highlight_lines, removed_lines);
+            shift_line_indexes(&mut self.skill_board_lines, removed_lines);
+        }
+        first_line_index.saturating_sub(removed_lines)
     }
 }
 
@@ -511,6 +542,32 @@ fn bench_count(mode: CountMode, accuracy: super::state::AccuracyPreset, manual_c
 fn bench_threads(auto_threads: bool, threads: usize) -> Option<usize> { if auto_threads { None } else { non_zero(threads) } }
 
 fn non_zero(value: usize) -> Option<usize> { if value == 0 { None } else { Some(value) } }
+
+fn progress_channel() -> (mpsc::SyncSender<ProgressEvent>, mpsc::Receiver<ProgressEvent>) {
+    mpsc::sync_channel(EVENT_CHANNEL_CAPACITY)
+}
+
+fn trim_log_to_limit(log: &mut String) -> usize {
+    if log.len() <= MAX_LOG_BYTES {
+        return 0;
+    }
+    let mut min_cut = log.len() - MAX_LOG_BYTES;
+    while min_cut < log.len() && !log.is_char_boundary(min_cut) {
+        min_cut += 1;
+    }
+    let Some(newline_offset) = log[min_cut..].find('\n') else {
+        return 0;
+    };
+    let cut = min_cut + newline_offset + 1;
+    let removed_lines = log[..cut].lines().count();
+    log.drain(..cut);
+    removed_lines
+}
+
+fn shift_line_indexes(indexes: &mut std::collections::HashSet<usize>, removed_lines: usize) {
+    indexes.retain(|index| *index >= removed_lines);
+    *indexes = indexes.iter().map(|index| index - removed_lines).collect();
+}
 
 fn parse_optional_f64_in_range(raw: &str, field_name: &str, range: RangeInclusive<f64>) -> Result<Option<f64>, String> {
     let trimmed = raw.trim();

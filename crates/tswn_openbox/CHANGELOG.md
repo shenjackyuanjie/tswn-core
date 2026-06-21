@@ -1,5 +1,138 @@
 # 更新日志
 
+## [0.3.9] - 2026-06-20
+
+### 修复
+
+- 修复 `cqd/cqp` 大批量双人组运行时内存持续上涨的问题。Openbox 后端的批量胜率路径改用 uncached prepared runner，避免把 `tests\allCO3pure.txt` 这类几乎全是唯一组合的 matchup 写入全局 prepared 缓存。
+- 修复 `cqd/cqp` 低精度外层并行时可能因按输入顺序等待结果而堆积大量已完成结果的问题；现在完成一个选手组就输出一个选手组，输出文件仍会在收尾阶段按分数排序。
+- 将 GUI 与后端 worker 的进度事件通道改为有界通道，避免 UI 消费慢于计算线程时无界积压事件。
+- 为主日志增加内存上限并同步维护高亮/技能榜行号，长时间任务不会无限保留旧日志。
+
+### 调整
+
+- `cqd/cqp` 不再单独维护“每组胜率”折叠日志；勾选“每组胜率”后，主日志直接按 `分数 名字` 加缩进子项显示。
+- `pair` 的“每组 cqp”和“有效 cqp”屏幕输出统一为同样的块状格式：总分行在前，子项行缩进显示。
+- 新增 `openbox_mem_probe` 调试入口，用于复现和采样 Openbox 后端任务内存占用。
+
+### 验证
+
+- `cargo check -p tswn_openbox`
+- `cargo check -p tswn_openbox --bin openbox_mem_probe`
+- `cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox/assets/targets/target2.txt --limit 2000 --target-limit 8 --count 1 --threads 8 --report-ms 1000`
+- `cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox/assets/targets/target2.txt --limit 10000 --target-limit all --count 1 --threads 8 --report-ms 2000`
+
+### 实测
+
+- 修复前：`allCO3pure.txt` 取 2000 组、`target2.txt` 取 8 个靶子、`count=1` 时，RSS 从约 `5.7 MB` 上涨到约 `372 MB`。
+- 修复后：同参数峰值约 `10.8 MB`，结束约 `8.5 MB`。
+- 放大验证：`allCO3pure.txt` 取 10000 组、`target2.txt` 全 41 个靶子、共 `410000` 个 matchup，RSS 运行中稳定在约 `15-16 MB`，结束约 `9.1 MB`。
+
+## [0.3.8] - 2026-06-19
+
+### 修复
+
+- 修复 pair 逐条详情（`PairDetailMode::Every`）绕过 `min_screen` 阈值，导致应被抑制的玩家残留孤儿 `<cqp> <teammate>` 日志行。
+- 修复新版日志视图丢失高亮超强名字的红色加粗样式：`HighlightLog` 事件正常填充但渲染不再读取 `highlight_lines`。
+
+### 代码质量
+
+- 重构 `emit_namer_pf_result` 参数：提取 `SkillBoardEmitCfg` 结构体打包 `skill_board` 相关参数。
+- suppress `bench_batch_rate_for_group` 与 `run_batch_rate_outer_parallel` 的 `too_many_arguments`。
+
+## [0.3.7] - 2026-06-18
+
+### 调整
+
+- 补充 target1.txt 的靶子数据
+
+## [0.3.6] - 2026-06-18
+
+### 调整
+
+- 收紧 Openbox 全局控件间距、按钮内边距、窗口边距和左右主面板内边距，减少界面空白占用。
+- 收紧工具配置分区、更多设置窗口、日志区域、折叠日志区和 `namer-pf` 表格的内部间距。
+- 文本输入和文件预览区域按更紧凑的行高计算高度，让同屏能显示更多内容。
+
+### 验证
+
+- `cargo fmt --check`
+- `cargo check -p tswn_openbox`
+- `cargo test -p tswn_openbox`
+- `cargo test`
+- `git diff --check`
+
+## [0.3.5] - 2026-06-18
+
+### 调整
+
+- `namer-pf` 在精度为 `1%` 或 `10%`（场数不超过 `1000`）且线程数大于 1 时，改为跨多个名字组并行计算；每个子任务内部固定单线程，避免低场次下把线程全部压在单个名字组上。
+- `cqd/cqp` 在精度为 `1%` 或 `10%`（场数不超过 `1000`）且线程数大于 1 时，改为跨多个玩家并行计算，同时保留每个靶子的实时进度和每组胜率日志。
+- 低精度并行路径仍按原输入顺序写入屏幕汇总和输出文件；输出文件排序仍由原有收尾逻辑处理。
+
+### 验证
+
+- `cargo fmt --check`
+- `cargo check -p tswn_openbox`
+- `cargo test -p tswn_openbox`
+- `cargo test`
+- `git diff --check`
+
+## [0.3.4] - 2026-06-18
+
+### 调整
+
+- 右上角主题切换改为紧凑的单字按钮，去掉额外“主题”文字占位，减少顶栏占用宽度。
+- 主题按钮增加明确的选中底色、描边和文字对比度，避免当前主题状态看不出来。
+
+### 验证
+
+- `cargo fmt --check`
+- `cargo check -p tswn_openbox`
+- `cargo test`
+
+## [0.3.3] - 2026-06-18
+
+### 调整
+
+- 恢复 `namer-pf`、`cqd/cqp` 和 `pair` 更多设置中的线程选择；“系统线程 * 1.5”继续走自动线程数，关闭后可手动指定线程数。
+- `cqd/cqp` 的每组胜率明细改为进入可展开/收回的“cqd 每组胜率”区域，主日志只保留汇总、警告和完成信息。
+- 运行结果日志改为双向滚动的等宽文本视图，长 CQP 行可以横向滚动并选择。
+
+### 验证
+
+- `cargo fmt --check`
+- `cargo check -p tswn_openbox`
+- `cargo test`
+
+## [0.3.2] - 2026-06-18
+
+### 新增
+
+- `cqd/cqp`、`namer-pf` 和 `pair` 支持不选择输出文件时只输出到日志，并在界面上明确提示当前没有文件产物。
+- `cqd/cqp` 支持运行结束后按分数重新读取并排序输出文件。
+- `to-diy` 原始信息补充技能字段，便于直接检查导出的技能配置。
+- `namer-pf` 技能榜日志支持折叠，长技能榜不会持续挤占主日志区域。
+
+### 调整
+
+- 固定底部运行按钮区域并取消运行按钮分栏，长内容场景下关键操作不会被滚动内容遮住。
+- 右侧日志区改为适合长行输出的横向滚动与文本选择行为，减少长 CQP 行拖选困难。
+- 默认开启每组 CQP 实时日志，并提升运行期日志刷新频率，让长时间任务能持续看到进度。
+- 内嵌 SarasaMonoSC 始终作为界面首选字体，系统 emoji 字体仅作为后续 fallback，避免 emoji 字体抢占中文和普通文本渲染。
+
+### 修复
+
+- 修复无输出文件运行时的日志输出和完成状态提示。
+- 修复长日志输出一卡一卡、不流畅的问题。
+- 修复输出文件选择、未选择提示和相关字体 fallback 的显示问题。
+
+### 验证
+
+- `cargo fmt --check`
+- `cargo check -p tswn_openbox`
+- `cargo test`
+
 ## [0.3.1] - 2026-05-29
 
 ### 新增
