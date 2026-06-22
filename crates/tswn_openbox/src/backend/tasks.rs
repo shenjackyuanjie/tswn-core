@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Instant;
 
+use tswn_core::cli_api;
 use tswn_core::engine::storage::Storage;
 use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
 use tswn_core::win_rate::resolve_win_rate_workers;
@@ -40,25 +41,22 @@ pub fn run_to_diy(
         return Err("请输入至少一个名字。".to_string());
     }
 
-    let storage = Storage::new_arc();
     let mut out = String::new();
     for name in &names {
         if cancel.load(Ordering::Relaxed) {
             return Ok("已停止。".to_string());
         }
-        let mut player =
-            Player::new_from_namerena_raw(name.clone(), storage.clone()).map_err(|err| format!("构建玩家失败: {name}: {err}"))?;
-        player.build();
-        let export = if old {
-            player.to_diy_compact()
-        } else if minions {
-            player.to_ol_json_with_minions()
-        } else {
-            player.to_ol_json()
-        };
+        let export = cli_api::to_diy(name, old, minions).map_err(|err| format!("导出 DIY 失败: {name}: {err}"))?;
         let _ = writeln!(out, "{export}");
 
-        if details && names.len() == 1 {
+        if details
+            && names.len() == 1
+            && let Some(detail_name) = single_to_diy_detail_name(name)
+        {
+            let storage = Storage::new_arc();
+            let mut player = Player::new_from_namerena_raw(detail_name.to_string(), storage)
+                .map_err(|err| format!("构建玩家失败: {detail_name}: {err}"))?;
+            player.build();
             let status = player.get_status();
             let _ = writeln!(out);
             let _ = writeln!(out, "=== 原始信息 ===");
@@ -84,6 +82,13 @@ pub fn run_to_diy(
     finish_output(output_file.as_deref(), out)
 }
 
+fn single_to_diy_detail_name(raw: &str) -> Option<String> {
+    let groups = parse_namer_pf_groups(raw);
+    match groups.as_slice() {
+        [group] if group.len() == 1 => group.first().cloned(),
+        _ => None,
+    }
+}
 fn player_diy_skill_object(player: &Player) -> String {
     let diy = player.to_diy_compact();
     extract_diy_skill_object(&diy).unwrap_or("{}").to_string()
@@ -1049,5 +1054,18 @@ mod tests {
         .unwrap();
 
         assert!(output.contains(r#"技能: {"sklfire":5,"sklheal":"40+30"}"#));
+    }
+
+    #[test]
+    fn to_diy_plus_line_exports_team_group() {
+        let cancel = AtomicBool::new(false);
+        let output = run_to_diy("1@a\n2@a\n1@a+2@a", true, false, false, None, &cancel).unwrap();
+        let lines = output.lines().collect::<Vec<_>>();
+
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].starts_with("1@a+diy["));
+        assert!(lines[1].starts_with("2@a+diy["));
+        assert!(lines[2].starts_with("1@a+diy["));
+        assert!(lines[2].contains("+2@a+diy["));
     }
 }

@@ -7,6 +7,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Write as _};
 use std::path::Path;
 
+use tswn_core::cli_api;
 use tswn_core::engine::storage::Storage;
 use tswn_core::player::Player;
 
@@ -19,10 +20,6 @@ pub fn run(names: &[String], batch: bool, out_file: Option<&Path>, old: bool, mi
 }
 
 fn run_single(raw: &str, out_file: Option<&Path>, old: bool, minions: bool) {
-    let storage = Storage::new_arc();
-    let mut player = build_player_or_exit(raw, storage);
-    player.build();
-
     let mut out = match open_output(out_file) {
         Ok(out) => out,
         Err(err) => {
@@ -31,10 +28,13 @@ fn run_single(raw: &str, out_file: Option<&Path>, old: bool, minions: bool) {
         }
     };
 
-    let export = export_line(&player, old, minions);
+    let export = export_or_exit(raw, old, minions);
     let _ = writeln!(out, "{export}");
 
-    if out_file.is_none() {
+    if out_file.is_none() && !raw.contains('+') {
+        let storage = Storage::new_arc();
+        let mut player = build_player_or_exit(raw, storage);
+        player.build();
         let _ = writeln!(out);
         let _ = writeln!(out, "=== 原始信息 ===");
         let _ = writeln!(out, "名字: {}", player.id_name());
@@ -57,7 +57,6 @@ fn run_single(raw: &str, out_file: Option<&Path>, old: bool, minions: bool) {
 }
 
 fn run_batch(names: &[String], out_file: Option<&Path>, old: bool, minions: bool) {
-    let storage = Storage::new_arc();
     let mut out = match open_output(out_file) {
         Ok(out) => out,
         Err(err) => {
@@ -67,12 +66,11 @@ fn run_batch(names: &[String], out_file: Option<&Path>, old: bool, minions: bool
     };
 
     for raw in names {
-        let mut player = build_player_or_exit(raw, storage.clone());
-        player.build();
-        let _ = writeln!(out, "{}", export_line(&player, old, minions));
+        let _ = writeln!(out, "{}", export_or_exit(raw, old, minions));
     }
 }
 
+#[cfg(test)]
 fn export_line(player: &Player, old: bool, minions: bool) -> String {
     if old {
         player.to_diy_compact()
@@ -109,6 +107,16 @@ fn build_player_or_exit(raw: &str, storage: std::sync::Arc<Storage>) -> Player {
         Ok(player) => player,
         Err(err) => {
             eprintln!("构建玩家失败: {raw}: {err}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn export_or_exit(raw: &str, old: bool, minions: bool) -> String {
+    match cli_api::to_diy(raw, old, minions) {
+        Ok(export) => export,
+        Err(err) => {
+            eprintln!("瀵煎嚭 DIY 澶辫触: {raw}: {err}");
             std::process::exit(1);
         }
     }
