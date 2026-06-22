@@ -480,14 +480,6 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
             });
             ui.end_row();
 
-            ui.label("");
-            ui.label("");
-            ui.label("");
-            if show_highlight {
-                ui.label("");
-            }
-            ui.label("");
-            ui.label("");
             let path_label = metric
                 .file_output
                 .path
@@ -495,6 +487,14 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "未选择输出文件".to_string());
             ui.label(path_label);
+            ui.label("");
+            ui.label("");
+            if show_highlight {
+                ui.label("");
+            }
+            ui.label("");
+            ui.label("");
+            ui.label("");
             ui.end_row();
         }
 
@@ -519,14 +519,6 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
         });
         ui.end_row();
 
-        ui.label("");
-        ui.label("");
-        ui.label("");
-        if show_highlight {
-            ui.label("");
-        }
-        ui.label("");
-        ui.label("");
         let path_label = app
             .namer_pf
             .skill_board
@@ -536,6 +528,14 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "未选择输出文件".to_string());
         ui.label(path_label);
+        ui.label("");
+        ui.label("");
+        if show_highlight {
+            ui.label("");
+        }
+        ui.label("");
+        ui.label("");
+        ui.label("");
         ui.end_row();
     });
 }
