@@ -15,10 +15,10 @@ const SECTION_MARGIN_Y: i8 = 6;
 const SECTION_GAP: f32 = 5.0;
 const LOG_SECTION_GAP: f32 = 6.0;
 const NAMER_PF_METRIC_LABEL_WIDTH: f32 = 48.0;
-const NAMER_PF_TOGGLE_WIDTH: f32 = 42.0;
-const NAMER_PF_VALUE_WIDTH: f32 = 88.0;
-const NAMER_PF_HIGHLIGHT_WIDTH: f32 = 98.0;
-const NAMER_PF_ACTION_WIDTH: f32 = 92.0;
+const NAMER_PF_TOGGLE_WIDTH: f32 = 58.0;
+const NAMER_PF_VALUE_WIDTH: f32 = 132.0;
+const NAMER_PF_HIGHLIGHT_WIDTH: f32 = 116.0;
+const NAMER_PF_ACTION_WIDTH: f32 = 112.0;
 
 impl OpenboxApp {
     pub(crate) fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
@@ -455,21 +455,17 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
             }
             namer_pf_checkbox_cell(ui, &mut metric.file_output.enabled);
             namer_pf_text_cell(ui, &mut metric.min_file);
-            ui.allocate_ui_with_layout(
-                egui::vec2(NAMER_PF_ACTION_WIDTH, ui.spacing().interact_size.y),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| {
-                    if ui.button("选择").clicked()
-                        && let Some(path) = pick_named_output_file(&format!("tswn-openbox-namer-pf-{label}.txt"))
-                    {
-                        metric.file_output.enabled = true;
-                        metric.file_output.path = Some(path);
-                    }
-                    if metric.file_output.path.is_some() && ui.button("清空").clicked() {
-                        metric.file_output.path = None;
-                    }
-                },
-            );
+            namer_pf_action_cell(ui, |ui| {
+                if ui.button("选择").clicked()
+                    && let Some(path) = pick_named_output_file(&format!("tswn-openbox-namer-pf-{label}.txt"))
+                {
+                    metric.file_output.enabled = true;
+                    metric.file_output.path = Some(path);
+                }
+                if metric.file_output.path.is_some() && ui.button("清空").clicked() {
+                    metric.file_output.path = None;
+                }
+            });
         });
 
         let path_label = metric
@@ -490,21 +486,17 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
         }
         namer_pf_checkbox_cell(ui, &mut app.namer_pf.skill_board.file_output.enabled);
         namer_pf_fixed_label_cell(ui, "来自 score_now.toml", NAMER_PF_VALUE_WIDTH);
-        ui.allocate_ui_with_layout(
-            egui::vec2(NAMER_PF_ACTION_WIDTH, ui.spacing().interact_size.y),
-            egui::Layout::left_to_right(egui::Align::Center),
-            |ui| {
-                if ui.button("选择").clicked()
-                    && let Some(path) = pick_named_output_file("tswn-openbox-namer-pf-skill-board.txt")
-                {
-                    app.namer_pf.skill_board.file_output.enabled = true;
-                    app.namer_pf.skill_board.file_output.path = Some(path);
-                }
-                if app.namer_pf.skill_board.file_output.path.is_some() && ui.button("清空").clicked() {
-                    app.namer_pf.skill_board.file_output.path = None;
-                }
-            },
-        );
+        namer_pf_action_cell(ui, |ui| {
+            if ui.button("选择").clicked()
+                && let Some(path) = pick_named_output_file("tswn-openbox-namer-pf-skill-board.txt")
+            {
+                app.namer_pf.skill_board.file_output.enabled = true;
+                app.namer_pf.skill_board.file_output.path = Some(path);
+            }
+            if app.namer_pf.skill_board.file_output.path.is_some() && ui.button("清空").clicked() {
+                app.namer_pf.skill_board.file_output.path = None;
+            }
+        });
     });
     let path_label = app
         .namer_pf
@@ -548,6 +540,14 @@ fn namer_pf_text_cell(ui: &mut egui::Ui, text: &mut String) { namer_pf_text_cell
 
 fn namer_pf_text_cell_width(ui: &mut egui::Ui, text: &mut String, width: f32) {
     ui.add_sized([width, ui.spacing().interact_size.y], egui::TextEdit::singleline(text));
+}
+
+fn namer_pf_action_cell(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(NAMER_PF_ACTION_WIDTH, ui.spacing().interact_size.y),
+        egui::Layout::left_to_right(egui::Align::Center),
+        add_contents,
+    );
 }
 
 fn namer_pf_path_row(ui: &mut egui::Ui, text: String) {
