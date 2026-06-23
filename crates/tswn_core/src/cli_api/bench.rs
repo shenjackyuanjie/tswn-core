@@ -176,17 +176,12 @@ fn run_score_worker(
         if i >= end {
             break;
         }
-        run_score_round(
-            target_group,
-            modifier,
-            i,
-            eval_rq,
-            &mut bench_input,
-            &mut wins,
-            &mut total,
-            &mut errors,
-            &mut timing,
-        );
+        run_score_round(target_group, modifier, i, eval_rq, &mut bench_input, &mut RoundAccum {
+            wins: &mut wins,
+            total: &mut total,
+            errors: &mut errors,
+            timing: &mut timing,
+        });
     }
 
     (wins, total, errors, timing)
@@ -206,20 +201,22 @@ fn run_score_range(
     let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     for i in start..end {
-        run_score_round(
-            target_group,
-            modifier,
-            i,
-            eval_rq,
-            &mut bench_input,
-            &mut wins,
-            &mut total,
-            &mut errors,
-            &mut timing,
-        );
+        run_score_round(target_group, modifier, i, eval_rq, &mut bench_input, &mut RoundAccum {
+            wins: &mut wins,
+            total: &mut total,
+            errors: &mut errors,
+            timing: &mut timing,
+        });
     }
 
     (wins, total, errors, timing)
+}
+
+struct RoundAccum<'a> {
+    wins: &'a mut usize,
+    total: &'a mut usize,
+    errors: &'a mut usize,
+    timing: &'a mut WinRateTiming,
 }
 
 fn run_score_round(
@@ -228,30 +225,27 @@ fn run_score_round(
     round: usize,
     eval_rq: f64,
     bench_input: &mut String,
-    wins: &mut usize,
-    total: &mut usize,
-    errors: &mut usize,
-    timing: &mut WinRateTiming,
+    accum: &mut RoundAccum<'_>,
 ) {
     build_js_score_match_input(target_group, modifier, round, bench_input);
 
     let t_init = Instant::now();
     let (groups, seed) = Runner::split_namerena_into_groups(bench_input.clone());
     let Ok(mut runner) = Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, eval_rq) else {
-        *errors += 1;
+        *accum.errors += 1;
         return;
     };
     let target_team: Vec<usize> = runner.input_groups.first().map(|group| group.to_vec()).unwrap_or_default();
-    timing.init_nanos += t_init.elapsed().as_nanos();
+    accum.timing.init_nanos += t_init.elapsed().as_nanos();
 
     let t_fight = Instant::now();
     runner.run_to_completion();
-    timing.fight_nanos += t_fight.elapsed().as_nanos();
-    *total += 1;
+    accum.timing.fight_nanos += t_fight.elapsed().as_nanos();
+    *accum.total += 1;
     if let Some(ref winners) = runner.world.winner
         && winners.first().is_some_and(|winner| target_team.contains(winner))
     {
-        *wins += 1;
+        *accum.wins += 1;
     }
 }
 

@@ -112,14 +112,16 @@ impl Storage {
     pub fn new() -> Storage { Self::new_with_eval_rq(crate::player::eval_name::DEFAULT_EVAL_RQ) }
 
     /// 创建一个新的 Storage，并显式指定名字强度评估使用的 `$.rq()` 等价值。
-    pub fn new_with_eval_rq(eval_rq: f64) -> Storage {
+    pub fn new_with_eval_rq(eval_rq: f64) -> Storage { Self::new_with_eval_rq_and_capacities(eval_rq, 0, 0) }
+
+    pub fn new_with_eval_rq_and_capacities(eval_rq: f64, player_capacity: usize, group_capacity: usize) -> Storage {
         Storage {
             skills: UnsafeCell::new(FastHashMap::new()),
-            groups: UnsafeCell::new(Vec::new()),
-            alive_groups: UnsafeCell::new(Vec::new()),
+            groups: UnsafeCell::new(Vec::with_capacity(group_capacity)),
+            alive_groups: UnsafeCell::new(Vec::with_capacity(group_capacity)),
             alive_group_count: UnsafeCell::new(0),
-            players: UnsafeCell::new(Vec::new()),
-            player_group: UnsafeCell::new(Vec::new()),
+            players: UnsafeCell::new(Vec::with_capacity(player_capacity)),
+            player_group: UnsafeCell::new(Vec::with_capacity(player_capacity)),
             pending_spawns: UnsafeCell::new(Vec::new()),
             pending_remove_players: UnsafeCell::new(Vec::new()),
             death_queue: UnsafeCell::new(Vec::new()),
@@ -134,6 +136,10 @@ impl Storage {
     pub fn new_arc() -> Arc<Self> { Arc::new(Self::new()) }
 
     pub fn new_arc_with_eval_rq(eval_rq: f64) -> Arc<Self> { Arc::new(Self::new_with_eval_rq(eval_rq)) }
+
+    pub fn new_arc_with_eval_rq_and_capacities(eval_rq: f64, player_capacity: usize, group_capacity: usize) -> Arc<Self> {
+        Arc::new(Self::new_with_eval_rq_and_capacities(eval_rq, player_capacity, group_capacity))
+    }
 
     pub fn clear(&mut self) {
         self.skills_mut().clear();
@@ -241,6 +247,11 @@ impl Storage {
         let id = *counter;
         *counter += 1;
         id
+    }
+
+    pub fn reserve_initial_player_ids(&self, count: usize) {
+        *self.player_id_counter_mut() = count as u64;
+        self.players_mut().resize_with(count, || None);
     }
 
     /// 标记需要同步（有死亡/移除/复活/召唤入队时调用）。

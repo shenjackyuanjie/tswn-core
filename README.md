@@ -64,7 +64,7 @@ cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.tx
 cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ```
 
-`to-diy --minions` 会在 `+ol` 输出中附带可生成的 shadow / summon / zombie 模板，用于更接近原始名字的评分与对战行为。使魔模板的 `skills` 使用普通 JSON object 格式；两个火球固定命名为 `sklfire1`、`sklfire2`，自爆命名为 `sklexplode`，字段顺序就是行动顺序。0 熟练度技能会省略输出；解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名，不再支持旧数组格式、`skill_order` 字段或旧的 `sklfire` 别名。
+`to-diy --minions` 会在 `+ol` 输出中附带可生成的 shadow / summon / zombie 模板，用于更接近原始名字的评分与对战行为。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；使魔模板的 `skills` 使用普通 JSON object 格式，两个火球固定命名为 `sklfire1`、`sklfire2`，自爆命名为 `sklexplode`，字段顺序就是行动顺序。0 熟练度技能会省略输出；解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名，不再支持旧数组格式、`skill_order` 字段或旧的 `sklfire` 别名。
 
 OL 召唤物模板可以继续嵌套 `shadow` / `summon` / `zombie` 子模板，用来配置“召唤物的召唤物”。如果要给使魔模板配置普通玩家技能，需要写 `normal:` 前缀，例如 `{"normal:sklsummon":255,"sklfire1":9}`；普通玩家技能、使魔固定技能和幻影附体会分别保留独立编号通道，吞噬时不会互相串槽。使魔召唤出的子使魔会按直接来源链路传导伤害；使魔分身仍按 root owner 命名/随主人清理，但伤害分摊会直接传到主名字。
 

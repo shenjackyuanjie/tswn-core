@@ -1,0 +1,199 @@
+[sklfire]
+pp = 8674
+qp = 6461
+qd = 7464
+all = 31881
+
+[sklice]
+pp = 8619
+qp = 6438
+qd = 7259
+all = 31562
+
+[sklthunder]
+pp = 8633
+qp = 6469
+qd = 7025
+all = 30681
+
+[sklquake]
+pp = 8630
+qp = 6445
+qd = 7084
+all = 30971
+
+[sklabsorb]
+pp = 8806
+qp = 6415
+qd = 7198
+all = 31509
+
+[sklpoison]
+pp = 8643
+qp = 6384
+qd = 7297
+all = 31106
+
+[sklrapid]
+pp = 8607
+qp = 6292
+qd = 7030
+all = 30239
+
+[sklcritical]
+pp = 8772
+qp = 6640
+qd = 7187
+all = 31978
+
+[sklhalf]
+pp = 8572
+qp = 6491
+qd = 7199
+all = 31446
+
+[sklexchange]
+pp = 8434
+qp = 6310
+qd = 7119
+
+[sklberserk]
+pp = 8627
+qp = 6395
+qd = 7225
+all = 31248
+
+[sklcharm]
+pp = 8365
+qp = 6458
+qd = 7037
+
+[sklhaste]
+pp = 8439
+qp = 6561
+qd = 7014
+all = 30873
+
+[sklslow]
+pp = 8526
+qp = 6505
+qd = 7414
+all = 31655
+
+[sklcurse]
+pp = 8613
+qp = 6309
+qd = 7140
+all = 30820
+
+[sklheal]
+pp = 8788
+qp = 6359
+qd = 7074
+all = 31328
+
+[sklrevive]
+pp = 8448
+qp = 6026
+qd = 6599
+
+[skldisperse]
+pp = 8650
+qp = 6647
+qd = 8210
+all = 32721
+
+[skliron]
+pp = 8761
+qp = 6552
+qd = 7241
+all = 31073
+
+[sklcharge]
+pp = 8495
+qp = 6278
+qd = 7093
+
+[sklaccumulate]
+pp = 8762
+qp = 6408
+qd = 7182
+all = 31788
+
+[sklassassinate]
+pp = 8479
+qp = 6724
+qd = 7101
+all = 31185
+
+[sklsummon]
+pp = 8491
+qp = 6099
+qd = 6891
+
+[sklclone]
+pp = 8274
+qp = 6378
+qd = 6701
+
+[sklshadow]
+pp = 8855
+qp = 6844
+qd = 7371
+all = 32166
+
+[skldefend]
+pp = 8640
+qp = 6324
+qd = 7163
+all = 31098
+
+[sklprotect]
+pp = 8427
+qp = 6490
+qd = 6415
+
+[sklreflect]
+pp = 8564
+qp = 6294
+qd = 7161
+all = 30964
+
+[sklreraise]
+pp = 8561
+qp = 6444
+qd = 7184
+all = 30625
+
+[sklshield]
+pp = 8683
+qp = 6501
+qd = 7362
+all = 31364
+
+[sklcounter]
+pp = 8589
+qp = 6340
+qd = 7256
+all = 30820
+
+[sklmerge]
+pp = 8653
+qp = 6402
+qd = 6734
+
+[sklzombie]
+pp = 8414
+qp = 6330
+qd = 6575
+
+[sklupgrade]
+pp = 8686
+qp = 6566
+qd = 7286
+all = 31920
+
+[sklhide]
+pp = 8491
+qp = 6200
+qd = 6599

@@ -56,6 +56,8 @@ struct PreparedRunnerTemplate {
     base_key: String,
     id_key_names: Vec<String>,
     sorted_by_id_name: Vec<PlrId>,
+    initial_dead: Vec<PlrId>,
+    total_players: usize,
     eval_rq: f64,
 }
 
@@ -407,10 +409,14 @@ impl Runner {
         let mut prepared_groups = Vec::with_capacity(inited_plrs.len());
         let total_players = inited_plrs.iter().map(Vec::len).sum::<usize>();
         let mut id_key_names = vec![String::new(); total_players];
+        let mut initial_dead = Vec::new();
         for group in inited_plrs {
             let mut prepared_group = Vec::with_capacity(group.len());
             for ptr in group {
                 let plr = storage.get_player(&ptr).expect("prepared player not found");
+                if !plr.alive() {
+                    initial_dead.push(ptr);
+                }
                 id_key_names[ptr] = plr.id_key_name();
                 prepared_group.push(plr.clone());
             }
@@ -429,6 +435,8 @@ impl Runner {
             base_key,
             id_key_names,
             sorted_by_id_name,
+            initial_dead,
+            total_players,
             eval_rq,
         })
     }
@@ -440,11 +448,9 @@ impl Runner {
         let mut randomer = RC4::new(keys.as_bytes(), 1);
         randomer.js_xor_str(&keys);
 
-        let storage = Storage::new_arc_with_eval_rq(prepared.eval_rq);
-        let total_players = prepared.groups.iter().map(|group| group.len()).sum::<usize>();
-        for _ in 0..total_players {
-            let _ = storage.new_plr_id();
-        }
+        let storage =
+            Storage::new_arc_with_eval_rq_and_capacities(prepared.eval_rq, prepared.total_players, prepared.groups.len());
+        storage.reserve_initial_player_ids(prepared.total_players);
 
         let mut inited_plrs: Vec<Vec<PlrId>> = Vec::with_capacity(prepared.groups.len());
         for group in &prepared.groups {
@@ -515,10 +521,8 @@ impl Runner {
 
         // 对初始即为死亡状态的玩家（如 Seed 类型）补充 record_death，
         // 保证 sync_runtime_entities 快速路径不会遗漏它们，第一次 tick 就能正常清除。
-        for id in world.all_plrs() {
-            if !storage.get_player(&id).map(|p| p.alive()).unwrap_or(true) {
-                storage.record_death(id);
-            }
+        for &id in &prepared.initial_dead {
+            storage.record_death(id);
         }
 
         if world.roster_count() == 1 {

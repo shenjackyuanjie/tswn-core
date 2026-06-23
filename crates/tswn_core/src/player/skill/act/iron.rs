@@ -166,6 +166,7 @@ impl StateTrait for IronState {
     }
 
     fn post_defend_priority(&self) -> i32 { 10 }
+    fn has_post_defend(&self) -> bool { true }
 
     #[allow(clippy::too_many_arguments)]
     fn on_post_defend(

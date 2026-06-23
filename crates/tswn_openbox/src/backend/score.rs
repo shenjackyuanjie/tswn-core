@@ -38,6 +38,13 @@ pub struct BatchRateSummary {
 
 impl BatchRateSummary {}
 
+#[derive(Debug, Clone)]
+pub enum BatchTargetOutcome {
+    Rate { percent: f64 },
+    Skipped,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],
@@ -47,7 +54,7 @@ pub fn bench_batch_rate_for_group(
     verbose: bool,
     verbose_buf: &mut String,
     cancel: &AtomicBool,
-    mut tick_target: impl FnMut(usize, &str),
+    mut tick_target: impl FnMut(usize, usize, &str, BatchTargetOutcome),
 ) -> BatchRateSummary {
     let mut accumulated_rate = 0.0;
     let mut accumulated_wins = 0usize;
@@ -57,6 +64,7 @@ pub fn bench_batch_rate_for_group(
     let mut skipped_matchups = 0usize;
 
     for (index, target) in target_groups.iter().enumerate() {
+        let target_total = target_groups.len();
         if cancel.load(Ordering::Relaxed) {
             break;
         }
@@ -72,7 +80,7 @@ pub fn bench_batch_rate_for_group(
                     duplicate
                 );
             }
-            tick_target(index, target);
+            tick_target(index, target_total, target, BatchTargetOutcome::Skipped);
             continue;
         }
 
@@ -96,6 +104,14 @@ pub fn bench_batch_rate_for_group(
                 accumulated_total += summary.total;
                 _accumulated_timing.merge(summary.timing);
                 valid_matchups += 1;
+                tick_target(
+                    index,
+                    target_total,
+                    target,
+                    BatchTargetOutcome::Rate {
+                        percent: summary.win_rate_percent(),
+                    },
+                );
             }
             Err(err) => {
                 skipped_matchups += 1;
@@ -108,9 +124,9 @@ pub fn bench_batch_rate_for_group(
                         display_group(target)
                     );
                 }
+                tick_target(index, target_total, target, BatchTargetOutcome::Skipped);
             }
         }
-        tick_target(index, target);
     }
 
     let avg = if valid_matchups > 0 {
@@ -145,7 +161,7 @@ pub fn namer_pf_score(
 
 fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq).map_err(|err| format!("{err}"))?;
+    let prepared = Runner::prepare_groups_with_eval_rq_uncached(&groups, eval_rq).map_err(|err| format!("{err}"))?;
     bench_prepared_summary(&prepared, n, threads, eval_rq)
 }
 

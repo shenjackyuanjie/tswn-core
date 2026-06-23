@@ -13,7 +13,7 @@
 | `perf/opt_target_selection.md` | 目标选择优化移植报告            | 已完成并合入主线的优化报告                                                     |
 | `perf/ub_fix_no_debug.md`      | UB 修复 + no_debug 泄漏修复报告 | 已完成并合入主线的修复报告                                                     |
 | `storage_refactor_analysis.md` | Storage 内部可变性方案分析      | 当前架构的内部可变性方案分析，与实际代码一致                                   |
-| `DIY.md`                       | DIY 捏人系统移植分析            | 设计方案已落地，当前代码通过 `PlayerOverlay` 支持 `diy[...]` / `ol:{...}` 覆盖 |
+| `DIY.md`                       | DIY / OL overlay 使用说明       | 当前代码通过 `PlayerOverlay` 支持玩家与召唤物的 `diy[...]` / `ol:{...}` 覆盖   |
 | `howto/README.md`              | 项目概况                        | 简要说明项目目标和起源                                                         |
 | `howto/capi_cpp_windows.md`    | C API C++ Windows 使用指南      | C++ 编译/链接指南，与当前 bundle 产物一致                                      |
 
@@ -57,7 +57,7 @@
 docs/
 ├── README.md                       # ← 本文档
 ├── build_all.md                    # 构建流程
-├── DIY.md                          # DIY / overlay 覆盖系统移植分析
+├── DIY.md                          # DIY / OL overlay 使用说明
 ├── storage_refactor_analysis.md    # 内部可变性分析
 ├── howto/
 │   ├── README.md                   # 项目概况

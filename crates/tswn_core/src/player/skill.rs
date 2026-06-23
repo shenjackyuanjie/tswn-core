@@ -559,7 +559,7 @@ fn apply_classified_diy_skill_levels(storage: &mut store::SkillStorage, skill_le
     ensure_classified_player_skill_slots(storage);
 
     let mut ordered_ids: Vec<usize> = Vec::with_capacity(CLASSIFIED_SKILL_SLOT_COUNT);
-    let mut seen = vec![false; CLASSIFIED_SKILL_SLOT_COUNT];
+    let mut seen = [false; CLASSIFIED_SKILL_SLOT_COUNT];
     for (skill_name, skill_boost) in skill_levels {
         let Some(skill_ref) = player_classified_skill_ref_from_name(skill_name) else {
             continue;

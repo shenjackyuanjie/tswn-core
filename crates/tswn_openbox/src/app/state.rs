@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use eframe::egui;
 
-use crate::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressEvent};
+use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressEvent};
 
 use super::source::TextSource;
 use super::target_presets::{TargetPresetState, TeammatePresetState};
@@ -177,7 +177,7 @@ impl Default for BatchRateState {
             threads: 0,
             keep_rq: true,
             double_plus: false,
-            show_matchups: false,
+            show_matchups: true,
             highlight_delta: "1".to_string(),
             output: BenchOutputConfig {
                 file_output: OptionalFileOutput::default(),
@@ -228,7 +228,7 @@ impl Default for PairState {
             auto_threads: true,
             threads: 0,
             keep_rq: true,
-            detail_mode: PairDetailMode::None,
+            detail_mode: PairDetailMode::Every,
             detail_min: String::new(),
             highlight_delta: "4".to_string(),
             output: BenchOutputConfig {
@@ -249,6 +249,7 @@ pub struct OpenboxApp {
     pub tool: Tool,
     pub more_settings_open: bool,
     pub log: String,
+    pub log_line_count: usize,
     pub highlight_lines: HashSet<usize>,
     pub skill_board_lines: HashSet<usize>,
     pub status: String,
@@ -274,6 +275,7 @@ impl Default for OpenboxApp {
             tool: Tool::ToDiy,
             more_settings_open: false,
             log: String::new(),
+            log_line_count: 0,
             highlight_lines: HashSet::new(),
             skill_board_lines: HashSet::new(),
             status: "就绪".to_string(),

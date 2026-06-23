@@ -1,5 +1,7 @@
 # tswn_openbox
 
+当前版本：`0.3.10`
+
 `tswn_openbox` 是一个带 GUI 的本地交互面板，把常用 `tswn-cli` 工作流做成点击即用的界面。目标是能跑、无使用门槛、界面简洁。
 
 当前支持：
@@ -215,3 +217,33 @@ crates\tswn_openbox\src\SarasaMonoSC-Regular.ttf
 - `src/backend.rs` 和 `src/backend/`：解析、执行、输出格式化和文件写入。
 
 这样后续继续对齐 `tswn-cli` 能力时，可以把 UI 和业务逻辑分开维护。
+
+## 0.3.9 说明
+
+`0.3.9` 重点修复 `cqd/cqp` 大批量双人组运行时的内存增长问题。Openbox 后端的批量胜率路径现在使用 uncached prepared runner，不再把 `tests\allCO3pure.txt` 这类高唯一度 matchup 写入全局 prepared 缓存。
+
+同时，`cqd/cqp` 的“每组胜率”和 `pair` 的“每组 cqp / 有效 cqp”屏幕输出统一为块状格式：
+
+```text
+分数 名字
+  分数 名字
+  分数 名字
+  分数 名字
+
+分数 名字
+  分数 名字
+  分数 名字
+  分数 名字
+```
+
+为了避免长任务继续积压内存，GUI 事件通道和后端 worker 事件通道都改为有界队列，主日志也会保留最近一段内容而不是无限增长。输出文件不受日志裁剪影响。
+
+## 内存排查
+
+仓库提供 `openbox_mem_probe` 调试入口，用于复现 Openbox 后端 `cqd/cqp` 路径并采样 RSS：
+
+```powershell
+cargo run -p tswn_openbox --bin openbox_mem_probe -- --players tests/allCO3pure.txt --targets crates/tswn_openbox/assets/targets/target2.txt --limit 10000 --target-limit all --count 1 --threads 8 --report-ms 2000
+```
+
+`0.3.9` 修复后，`allCO3pure.txt` 取 10000 组、`target2.txt` 全 41 个靶子、共 410000 个 matchup 的测试中，RSS 运行中稳定在约 `15-16 MB`，结束约 `9.1 MB`。

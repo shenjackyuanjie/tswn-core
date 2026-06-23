@@ -4208,7 +4208,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_core"
-version = "0.3.11"
+version = "0.3.12"
 dependencies = [
  "clap",
  "foldhash 0.2.0",
@@ -4257,7 +4257,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_openbox"
-version = "0.3.1"
+version = "0.3.10"
 dependencies = [
  "eframe",
  "rfd",
@@ -4278,7 +4278,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_wasm"
-version = "0.2.8"
+version = "0.2.10"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
