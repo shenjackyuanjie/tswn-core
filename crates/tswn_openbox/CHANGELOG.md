@@ -9,6 +9,7 @@
 
 ### 修复
 
+- 修复 release 包首次启动或已有 `setting\settings.toml` 但缺少 `setting\score_now.toml` 时，`namer-pf` 技能榜找不到默认阈值文件的问题；现在默认 `score_now.toml` 会作为内嵌资源随 exe 编译，并在缺失时自动写入。
 - 修复 `namer-pf` 评分项表格中输出文件路径提示的对齐：`未选择输出文件` 或已选择的输出文件路径现在从提示行行首开始显示，不再对齐到“选择”按钮列。
 - 同步调整 `namer-pf` 技能榜输出文件路径提示，使其与普通评分项保持一致。
 
@@ -16,6 +17,7 @@
 
 - `cargo fmt -p tswn_openbox`
 - `cargo check -p tswn_openbox`
+- `cargo test -p tswn_openbox writes_default_score_now_file_when_missing`
 - `cargo test -p tswn_openbox to_diy --lib`
 
 ## [0.3.9] - 2026-06-20

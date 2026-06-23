@@ -8,8 +8,11 @@ use serde::Deserialize;
 
 const SETTING_DIR_NAME: &str = "setting";
 const SETTINGS_FILE_NAME: &str = "settings.toml";
+const SCORE_NOW_FILE_NAME: &str = "score_now.toml";
 const DEFAULT_SETTINGS_TOML: &str = include_str!("../../assets/settings.toml");
+const DEFAULT_SCORE_NOW_TOML: &str = include_str!("../../assets/score_now.toml");
 const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
+    (SCORE_NOW_FILE_NAME, DEFAULT_SCORE_NOW_TOML),
     ("targets/target1.txt", include_str!("../../assets/targets/target1.txt")),
     ("targets/target2.txt", include_str!("../../assets/targets/target2.txt")),
     ("targets/target3.txt", include_str!("../../assets/targets/target3.txt")),
@@ -218,7 +221,10 @@ fn load_setting_file() -> Result<LoadedSettingFile, String> {
 
 fn read_or_create_setting_file(setting_dir: &Path, config_path: &Path) -> Result<String, String> {
     match fs::read_to_string(config_path) {
-        Ok(raw) => Ok(raw),
+        Ok(raw) => {
+            write_default_score_now_file(setting_dir)?;
+            Ok(raw)
+        }
         Err(err) if err.kind() == ErrorKind::NotFound => {
             write_default_setting_tree(setting_dir, config_path)?;
             fs::read_to_string(config_path).map_err(|err| format!("读取设置配置失败: {}: {err}", config_path.display()))
@@ -242,6 +248,15 @@ fn write_default_setting_tree(setting_dir: &Path, config_path: &Path) -> Result<
     fs::write(config_path, DEFAULT_SETTINGS_TOML).map_err(|err| format!("写入默认设置配置失败: {}: {err}", config_path.display()))
 }
 
+fn write_default_score_now_file(setting_dir: &Path) -> Result<(), String> {
+    let path = setting_dir.join(SCORE_NOW_FILE_NAME);
+    if path.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(setting_dir).map_err(|err| format!("创建设置目录失败: {}: {err}", setting_dir.display()))?;
+    fs::write(&path, DEFAULT_SCORE_NOW_TOML).map_err(|err| format!("写入默认技能榜配置失败: {}: {err}", path.display()))
+}
+
 fn current_dir() -> Result<PathBuf, String> { std::env::current_dir().map_err(|err| format!("读取当前目录失败: {err}")) }
 
 fn normalize_relative_path(base: &Path, file: &Path) -> PathBuf {
@@ -249,5 +264,31 @@ fn normalize_relative_path(base: &Path, file: &Path) -> PathBuf {
         file.to_path_buf()
     } else {
         base.join(file)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{DEFAULT_SCORE_NOW_TOML, SCORE_NOW_FILE_NAME, write_default_score_now_file};
+
+    #[test]
+    fn writes_default_score_now_file_when_missing() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("tswn_openbox_score_now_test_{stamp}"));
+        fs::create_dir_all(&dir).expect("create temp dir");
+
+        write_default_score_now_file(&dir).expect("write default score_now.toml");
+
+        let path = dir.join(SCORE_NOW_FILE_NAME);
+        let content = fs::read_to_string(&path).expect("read generated score_now.toml");
+        assert_eq!(content, DEFAULT_SCORE_NOW_TOML);
+
+        fs::remove_dir_all(&dir).expect("remove temp dir");
     }
 }
