@@ -866,6 +866,134 @@ export function renderPlayers(
  * @param {Map<number, FightPlayer>} playersById — playerId → 玩家对象索引
  * @returns {string} 帧的 HTML 字符串，无有效行时返回空字符串
  */
+function structuredPlayerToken(part, clip, stateMap, previousStateMap, playersById) {
+  const playerId = part.player_id;
+  const stateBase = stateMap.get(playerId) ?? previousStateMap.get(playerId) ?? null;
+  const maxHp = Math.max(
+    1,
+    Number(stateBase?.max_hp ?? 0),
+    Number(part.hp_before ?? 0),
+    Number(part.hp_after ?? 0),
+  );
+  const nextHp = Number(part.hp_after ?? stateBase?.hp ?? 0);
+  const previousHp = Number(part.hp_before ?? stateBase?.hp ?? nextHp);
+  const nextState = {
+    ...(stateBase ?? {
+      id: playerId,
+      team_index: 0,
+      id_name: `player_${playerId}`,
+      icon_key: `player_${playerId}`,
+      display_name: part.text ?? `#${playerId}`,
+      max_hp: maxHp,
+      hp: nextHp,
+      alive: nextHp > 0,
+    }),
+    hp: nextHp,
+    max_hp: maxHp,
+    alive: nextHp > 0,
+  };
+  const previousBase = previousStateMap.get(playerId) ?? stateBase ?? nextState;
+  const previousState = {
+    ...previousBase,
+    hp: previousHp,
+    max_hp: maxHp,
+    alive: previousHp > 0,
+  };
+  const player = playersById.get(playerId) ?? syntheticPlayerFromState(playerId, nextState, playersById);
+  return actorToken(player, nextState, previousState, { tone: clip.color }, { showHp: Boolean(part.show_hp) });
+}
+
+function renderStructuredPart(part, clip, stateMap, previousStateMap, playersById) {
+  if (part.kind === "player") {
+    return structuredPlayerToken(part, clip, stateMap, previousStateMap, playersById);
+  }
+  if (part.kind === "data") {
+    return `<span class="message-number">${escapeHtml(part.text ?? "")}</span>`;
+  }
+  if (part.kind === "highlight") {
+    return `<span class="skill-token">${escapeHtml(part.text ?? "")}</span>`;
+  }
+  return escapeHtml(part.text ?? "");
+}
+
+function structuredClipHtml(clip, playersById) {
+  if (clip.winner) {
+    const text = (clip.parts ?? []).map((part) => escapeHtml(part.text ?? "")).join("");
+    return `<span class="winner-row">${text}</span>`;
+  }
+  const stateMap = buildStateMap(clip.sidebar_states ?? []);
+  const previousStateMap = buildStateMap(clip.sidebar_previous_states ?? clip.sidebar_states ?? []);
+  const body = (clip.parts ?? [])
+    .map((part) => renderStructuredPart(part, clip, stateMap, previousStateMap, playersById))
+    .join("");
+  return `<span class="msg ${clip.color ?? "normal"}">${body}</span>`;
+}
+
+function structuredClipSidebar(clip) {
+  if (!Array.isArray(clip.sidebar_states) || !clip.sidebar_states.length) {
+    return null;
+  }
+  return {
+    sidebarStates: clip.sidebar_states,
+    sidebarPreviousStates: clip.sidebar_previous_states ?? clip.sidebar_states,
+    sidebarInvolved: {
+      casters: new Set(clip.caster_ids ?? []),
+      targets: new Set(clip.target_ids ?? []),
+    },
+  };
+}
+
+function buildStructuredFrameRows(frame, roundIndex, playersById) {
+  const chunks = [];
+  let frameStarted = false;
+  let rowStarted = false;
+
+  for (const row of frame.rows ?? []) {
+    rowStarted = false;
+    for (const clip of row.clips ?? []) {
+      const messageHtml = structuredClipHtml(clip, playersById);
+      const delay = Number.isFinite(clip.delay) ? clip.delay : 0;
+      const sidebar = structuredClipSidebar(clip);
+      if (!frameStarted) {
+        chunks.push({
+          target: "battleRows",
+          html: `
+                    <section class="round-block">
+                        <div class="frame-sidebar"><span class="frame-chip">#${roundIndex}</span></div>
+                        <div class="frame-body">
+                            <div class="row${clip.winner ? " winner-line" : ""}">${messageHtml}</div>
+                        </div>
+                    </section>
+                `,
+          delay,
+          ...(sidebar ?? {}),
+        });
+        frameStarted = true;
+        rowStarted = true;
+        continue;
+      }
+      if (!rowStarted) {
+        chunks.push({
+          target: "frameBody",
+          html: `<div class="row${clip.winner ? " winner-line" : ""}">${messageHtml}</div>`,
+          delay,
+          ...(sidebar ?? {}),
+        });
+        rowStarted = true;
+        continue;
+      }
+      chunks.push({
+        target: "row",
+        html: `<span class="msg-sep">, </span>${messageHtml}`,
+        delay,
+        ...(sidebar ?? {}),
+      });
+    }
+  }
+
+  return chunks;
+}
+
 export function buildFrameHtml(frame, roundIndex, previousStates = frame.states, playersById) {
   for (const state of frame.states) {
     if (playersById.has(state.id)) {
@@ -974,6 +1102,10 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
  * @returns {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>}
  */
 export function buildFrameRows(frame, roundIndex, previousStates = frame.states, playersById) {
+  if (Array.isArray(frame.rows) && frame.rows.length) {
+    return buildStructuredFrameRows(frame, roundIndex, playersById);
+  }
+
   for (const state of frame.states) {
     if (playersById.has(state.id)) {
       continue;

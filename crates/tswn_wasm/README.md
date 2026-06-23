@@ -44,7 +44,7 @@ const session = new wasm.FightSession(rawInput, {
 session.players(); // PlayerMeta[] — 玩家元数据列表
 session.state(); // PlayerState[] — 当前全量状态快照
 session.step(); // RoundFrame — 推进一步
-//   { finished, winner_ids, updates, states, total_delay }
+//   { finished, winner_ids, updates, rows, states, total_delay }
 session.is_finished(); // bool — 是否已产生胜者
 session.winner_ids(); // number[] — 获胜方 ID 列表
 session.run_to_end(limit); // FightReplay — 跳过动画直接结算，可限制最大帧数
@@ -78,8 +78,11 @@ session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `PlayerMeta`         | 玩家元数据：`id`, `team_index`, `id_name`, `display_name`, `icon_png_base64?`                                                                          |
 | `PlayerState`        | 玩家状态：`hp`, `max_hp`, `magic_point`, `attack`, `defense`, …, `owner_id?`, `alive`, `status_labels?`（实时状态标签，如 `"聚气"`/`"隐匿"`/`"狂暴"`） |
-| `RoundFrame`         | 回合帧：`finished`, `winner_ids`, `updates[]`, `states[]`, `total_delay`                                                                               |
+| `RoundFrame`         | 回合帧：`finished`, `winner_ids`, `updates[]`, `rows[]`, `states[]`, `total_delay`                                                                     |
 | `UpdateView`         | 单条更新消息：`caster_id`, `target_id`, `message_rendered`, `message_template`, `tone`, …                                                              |
+| `ReplayRow`          | 回放行：`indent`, `clips[]`；一般首行不缩进，后续行缩进                                                                                                 |
+| `ReplayClip`         | 回放片段：`delay`, `text_template`, `parts[]`, `color`, `player_id`, `show_hp`, `hp_before`, `hp_after`, `death_effect`, `sidebar_states[]` 等        |
+| `ReplayTextPart`     | 文本片段：`kind`, `text`, `player_id?`, `show_hp`, `hp_before`, `hp_after`, `death_effect`, `emoji?`；`kind` 为 `text` / `highlight` / `player` / `data` |
 | `MessageTone`        | 消息色调：`"normal"` / `"damage"` / `"recover"` / `"knockout"`                                                                                         |
 | `FightReplay`        | 完整回放：`players`, `frames[]`, `winner_ids`, `final_states`                                                                                          |
 | `FightSummary`       | 轻量摘要：`finished`, `players`, `winner_ids`, `final_states`                                                                                          |

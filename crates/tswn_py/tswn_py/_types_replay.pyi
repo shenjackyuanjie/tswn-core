@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Literal, TypedDict
 
 UpdateTone = Literal["damage", "recover", "status", "action", "dodge", "knockout", "win", "line", "normal"]
+ReplayTone = Literal["normal", "damage", "recover", "knockout"]
+ReplayTextPartKind = Literal["text", "highlight", "player", "data"]
 UpdateType = Literal["win", "none", "next_line"]
 StateGranularity = Literal["tick"]
 
@@ -62,9 +64,50 @@ class ReplayEvent(TypedDict):
     row_break: bool
     state_granularity: StateGranularity
 
+class ReplayTextPart(TypedDict):
+    kind: ReplayTextPartKind
+    text: str
+    player_id: int | None
+    show_hp: bool
+    hp_before: int
+    hp_after: int
+    death_effect: bool
+    emoji: str | None
+
+class ReplayClip(TypedDict):
+    delay: int
+    text_template: str
+    color: ReplayTone
+    player_id: int | None
+    data: str | None
+    show_hp: bool
+    hp_before: int
+    hp_after: int
+    death_effect: bool
+    emoji: str | None
+    parts: list[ReplayTextPart]
+    caster_ids: list[int]
+    target_ids: list[int]
+    sidebar_states: list[PlayerSnapshot]
+    sidebar_previous_states: list[PlayerSnapshot]
+    winner: bool
+
+class ReplayRow(TypedDict):
+    indent: bool
+    clips: list[ReplayClip]
+
+class ReplayFrame(TypedDict):
+    finished: bool
+    winner_ids: list[int]
+    events: list[EventDto]
+    rows: list[ReplayRow]
+    states: list[PlayerSnapshot]
+    total_delay: int
+
 class BattleReplay(TypedDict):
     initial_states: list[PlayerSnapshot]
     events: list[ReplayEvent]
+    frames: list[ReplayFrame]
     final_states: list[PlayerSnapshot]
     winner_team_index: int | None
     winner_team_indices: list[int]

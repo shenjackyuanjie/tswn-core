@@ -1,5 +1,22 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- `RoundFrame` 新增 `rows[]` replay view 结构：按行组织 `ReplayClip`，每个片段包含展示前延迟、文本模板、结构化文本片段、色调、关联玩家、血条前后值、死亡特效标记、emoji 占位字段和侧栏状态快照。
+- show 示例优先消费 `RoundFrame.rows[].clips[]`，前端不再需要通过正则从消息文本反推玩家、数值、血条变化和死亡特效。
+
+### 变更
+
+- replay view 构建下沉到 `tswn_core::replay_view`，WASM 包装层只负责把 core 结构转换为 `tsify` 暴露类型，后续 Python/C 等接口可复用同一套分行、延迟和血条推演逻辑。
+- README 和 examples 文档补充 `ReplayRow`、`ReplayClip`、`ReplayTextPart` 字段说明。
+
+### 验证
+
+- `cargo check -p tswn_wasm`
+- `cargo check -p tswn_py`
+
 ## [0.2.10] - 2026-06-19
 
 ### 修复
