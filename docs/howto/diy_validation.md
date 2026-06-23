@@ -23,7 +23,7 @@ DIY 玩家:   PlayerA+diy[83,96,84,...]{...} @Team  --build-->  attrs=[47,60,48,
 - 通过 `tswn-cli fight --out-raw` 输出标准化日志
 - 比较原始对战与 DIY 对战日志是否一致
 - 脚本默认使用 `ol:` 格式，技能按顺序排列（顺序即行动顺序），不再使用独立的 `skill_order` 字段
-- to-diy 输出包含全部 40 个技能槽位（含零级技能），完整保留行动顺序，同时编码 boost 类型（`"2*base"` / `"base+boost"`）
+- to-diy 输出会省略 0 熟练度技能，保留非零技能行动顺序，同时编码 boost 类型（`"2*base"` / `"base+boost"`）
 
 如果你只关心 build 后的初始状态，或预期存在已知差异（如武器禁用），可使用 `--skip-fight` 跳过对战过程比对。
 
@@ -100,23 +100,27 @@ target/diy_roundtrip/
 
 **现象**：DIY 玩家初始八围与原始玩家不同。
 
-**原因**：`parse_diy` 或 `to_diy_compact` 的前七围 ±36 逻辑有误，或 HP 被错误处理。
+**原因**：`parse_diy` / `parse ol` 或导出逻辑的前七围 ±36 逻辑有误，或 HP 被错误处理。
 
 **排查**：对比 `diff.txt` 中的 `attr` 字段，检查是否恰好差 36 或差某个固定偏移。
 
-### 3. 武器差异
+### 3. OL 属性编码
 
-**现象**：原始玩家有武器，DIY 版本 weapon_state=None。
+`ol.attrs` 和紧凑 `diy[...]` 一样使用前七围 +36 编码，解析时前七围会 `-36`，HP 原样保留。手写 `ol:{...}` 时不要把内部八围原样写入 `attrs`。
+
+### 4. 武器差异
+
+**现象**：原始玩家有武器，DIY 版本 `weapon_state=None`。
 
 **原因**：当前 DIY 模式禁用了武器。`to_diy_compact` 不导出武器信息。
 
 **这是已知限制**：暂不支持武器还原。
 
-### 4. 技能 boost 信息丢失 —— ✅ 已修复
+### 5. 技能 boost 信息丢失 —— ✅ 已修复
 
 技能 boost 类型现已通过 `Skill.diy_boost` 在 build 阶段自动记录（`boost_if_not()` → `LastBoost`，`boost_level()` → `SlotBoost`）。to-diy 导出时正确编码为 `"2*base"` / `"base+boost"` 格式。
 
-### 5. name_factor 差异
+### 6. name_factor 差异
 
 **现象**：DIY 玩家的 name_factor 与原始不同。
 
@@ -145,12 +149,13 @@ target/diy_roundtrip/
 | Boost 类型编码（LastBoost/SlotBoost）      |        ✅ 已实现        |
 | skill_order 移除，skills 有序列表          |        ✅ 已实现        |
 | boost 流程分离（普通 step A / DIY step B） |        ✅ 已实现        |
+| OL 召唤物模板与技能分类通道                |        ✅ 已实现        |
 
 ## 已知限制
 
 1. **武器不支持**：DIY 模式下武器不计入（weapon_state = None）。
 2. **双 boost 技能**：同一技能同时被 LastBoost + SlotBoost 命中时（约占 0.4% case），diy_boost 元数据会丢失一个加成类型，导致往返不一致。
-3. **大型回归测试**：40 个 large 测试因 clone 行为变化需要更新基线。
+3. **召唤物模板导出**：`to-diy --minions` 只导出当前可生成或已显式配置的 shadow/summon/zombie 模板，且省略 0 熟练度技能。
 
 ## 最终目标
 

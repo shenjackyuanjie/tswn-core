@@ -1,270 +1,225 @@
-# DIY 捏人系统 — 移植分析与设计方案
+# DIY / OL Overlay 说明
 
-## 目标
+本文档描述当前 `tswn-core` 中已经落地的 DIY/OL overlay 行为。它面向两类使用场景：
 
-将 JS `md5.js` 中的 DIY 捏人功能移植到 Rust `tswn-core`，支持自定义八围属性和技能等级，同时为未来扩展（自定义状态、AI 配置等）提供数据驱动的可扩展架构。
+- 手写 `+diy[...]` / `+ol:{...}` 覆盖玩家、幻影、使魔、丧尸的属性和技能。
+- 使用 `tswn-cli to-diy` 把普通名字导出为可回读的 overlay，再继续调整。
 
-## 已完成分析
+实现入口主要在：
 
-### 1. JS 侧 DIY 解析流程 (`md5.js`)
+- `crates/tswn_core/src/player/overlay.rs`
+- `crates/tswn_core/src/player/impl_ctor.rs`
+- `crates/tswn_core/src/player/impl_attr.rs`
+- `crates/tswn_core/src/player/skill.rs`
+- `crates/tswn_core/src/player/skill/act/minion.rs`
+- `crates/tswn_core/src/player/skill/act/summon.rs`
+- `crates/tswn_core/src/player/skill/act/clone.rs`
 
-- **格式**: `PlayerName+diy[72,39,69,76,67,66,0,84]{"sklfire":5}`
-  - `+` 之后是 weapon/DIY 字段
-  - `diy[...]` — 前 8 个数字为八围覆盖值（解析后每一项 `-= 36`）
-  - `{...}` — JSON 对象，key 为技能名（不区分大小写），value 为等级
-- **关键函数**:
-  - `d(b, P)` (constructor): 检测 `b[0]==='diy'`，初始化 `this.q = attrs`，设置 `state=0`
-  - `az(c, P)` (build): 若 `state===0` 走 DIY 分支 → 跳过武器/职业，直接设 `this.q = cappedAttrs`，调用 `diy_skills`
-  - `diy_skills(c)`: 按 `constructor.name` 大小写不敏感匹配技能名 → `set_level(lv)` → 交换技能顺序确保 1–3 为主动、4 起为被动
-  - `bP()`: 初始化技能列表时，如果 `state===0`（DIY）则 `return` 跳过
+## 基本格式
 
-### 2. Rust 侧结构分析 (`tswn-core`)
+### 紧凑 DIY 格式
 
-| 文件                      | 职责                                          | 与 DIY 的关系                |
-| ------------------------- | --------------------------------------------- | ---------------------------- |
-| `player/mod.rs`           | `Player` 结构体、`PlayerType`                 | 需加 `overlay` 字段          |
-| `player/impl_ctor.rs`     | `new_and_init`、`new_from_namerena_raw`       | 需接收/解析 overlay          |
-| `player/impl_attr.rs`     | `build_inner` 构建流程                        | 需插入 DIY 覆盖逻辑          |
-| `player/skill.rs`         | `Skill`、`SkillNames`、注册表                 | 需加 `skill_name_to_id` 映射 |
-| `player/skill/store.rs`   | `SkillStorage`、`slot_skill`/`skill` 顺序管理 | DIY 技能需操作排序           |
-| `player/skill/act/mod.rs` | 27 种主动技能                                 | 为名称映射提供源             |
-| `player/skill/skl/mod.rs` | 13 种被动技能                                 | 同上                         |
-| `player/weapons.rs`       | 武器系统                                      | DIY 模式 weapon_state = None |
-| `player/status.rs`        | `PlayerStatus`                                | build 最终状态更新           |
-| `engine/runners.rs`       | `Runner` 对局构造                             | 需感知 overlay 以构建玩家    |
-
-### 3. 构建流程比对
-
-```
-JS:                          Rust (build_inner):
-  bP() [init lists]          pre_upgrade_input
-  d() [constructor]          init_raw_attr (calc_base_attr)
-    → parse diy              boss_additions
-    → set this.q             upgrade (同队)
-  az() [build]               init skills (dm)
-    → if state===0:          post_upgrade_clamp
-      cap attrs              attr_boost
-      diy_skills             init_values
-    → else: normal path
-```
-
-### 4. 方案对比
-
-|                 | Plan A (字符串扩展) | Plan B (serde 数据驱动)             |
-| --------------- | ------------------- | ----------------------------------- |
-| 数据存储        | 名字字符串中编码    | `Option<Box<PlayerOverlay>>` 结构体 |
-| 解析时机        | build 时再解析      | 构造时解析一次                      |
-| normal 玩家开销 | 无 (skip)           | 1 次 `is_none()`                    |
-| 扩展性          | 字符串编码 → 难扩展 | serde JSON → 任意字段               |
-| API 友好度      | 差 (需字符串拼接)   | 好 (直接传结构体/JSON)              |
-| C/Python FFI    | 需字符串编解码      | JSON 字符串透明传递                 |
-
-**选定方案: Plan B**
-
----
-
-## 设计方案（当前实现）
-
-### 数据模型
-
-#### PlayerOverlay
-
-```rust
-#[derive(Debug, Clone)]
-pub struct PlayerOverlay {
-    /// 八围覆盖值（`[atk, def, spd, agi, mag, res, wis, maxhp]`）。
-    /// `None` 表示不覆盖。
-    pub attrs: Option<[i32; 8]>,
-
-    /// 有序技能列表：`(技能名, 加成类型和等级)`。
-    ///
-    /// 列表中的顺序决定行动时的技能尝试顺序（排在前面的先尝试）。
-    /// 未列出的技能按默认固定顺序排在末尾。
-    /// `None` 表示不覆盖。
-    pub skills: Option<Vec<(String, SkillBoost)>>,
-
-    /// 武器名（DIY 模式下 weapon_state 强制为 None，此字段仅记录）。
-    pub weapon: Option<String>,
-
-    /// 是否启用 name_factor 缩放（默认 true）。
-    /// 设为 false 时强制 name_factor = 0，八围不缩放。
-    pub name_factor_enabled: bool,
-}
-```
-
-#### SkillBoost（技能加成类型）
-
-用于精确描述技能最终等级的内部构成，在分身后克隆体重建时正确计算衰减下限。
-
-```rust
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SkillBoost {
-    /// 普通技能：最终等级 = 指定值。
-    Normal(u32),
-
-    /// 末尾座位加成：最终等级 = base + boost。
-    SlotBoost { base: u32, boost: u32 },
-
-    /// 末尾主动技翻倍：最终等级 = base × 2。
-    LastBoost(u32),
-}
-```
-
-| 变体                        | 内联格式示例         | 最终等级       | 说明                       |
-| --------------------------- | -------------------- | -------------- | -------------------------- |
-| `Normal(lv)`                | `"sklfire":5`        | `lv`           | 无特殊加成                 |
-| `SlotBoost { base, boost }` | `"sklfire":"40+30"`  | `base + boost` | 末尾座位 passive boost     |
-| `LastBoost(base)`           | `"sklshadow":"2*46"` | `base × 2`     | 末尾主动技 boost_last 翻倍 |
-
-**辅助方法**：
-
-| 方法                                          | 说明                                         |
-| --------------------------------------------- | -------------------------------------------- |
-| `final_level()`                               | 加成后的最终展示等级                         |
-| `base_level()`                                | 加成前的原始基础等级                         |
-| `decayed_base_from_level(current_level)`      | 由衰减后最终等级反推衰减后基础               |
-| `final_level_from_decayed_base(decayed_base)` | 由衰减后基础重新计算加成后等级               |
-| `parse(raw: &str)`                            | 从字符串解析（`"5"` / `"40+30"` / `"2*46"`） |
-
-#### Skill 结构体扩展
-
-```rust
-pub struct Skill {
-    pub boosted: bool,
-    level: u32,
-    skill_type: Box<dyn SkillTrait>,
-    pub target: Option<PlrId>,
-    /// DIY 技能加成信息，None 表示非 DIY 技能。
-    /// clone 重建时用于计算衰减下限。
-    pub diy_boost: Option<SkillBoost>,
-}
-```
-
-#### SkillStorage 扩展
-
-```rust
-pub struct SkillStorage {
-    // ... 原有字段 ...
-    /// 标记此 SkillStorage 是否由 DIY overlay 构建。
-    /// clone 重建时用于判断是否走 DIY 衰减下限逻辑。
-    pub is_diy: bool,
-}
-```
-
-### Player 结构体
-
-```rust
-pub struct Player {
-    // ... 现有字段不变 ...
-    pub overlay: Option<Box<PlayerOverlay>>,  // None == 普通玩家，零额外内存
-}
-```
-
-`Option<Box<T>>` 在 64 位平台占 8 字节，`None` 时利用 niche 优化不额外分配。
-
-### 输入方式（3 种）
-
-#### 1. API 模式（推荐 — 结构化）
-
-```rust
-use std::collections::HashMap;
-use tswn_core::player::{PlayerOverlay, SkillBoost};
-
-// 普通技能
-let overlay = PlayerOverlay {
-    attrs: Some([72, 39, 69, 76, 67, 66, 0, 84]),
-    skills: Some(vec![
-        ("fire".into(), SkillBoost::Normal(5)),
-    ]),
-    ..Default::default()
-};
-
-// 末尾座位加成：基础 40 + 加成 30 = 70
-let overlay = PlayerOverlay {
-    attrs: Some([50, 50, 50, 50, 50, 50, 50, 200]),
-    skills: Some(vec![
-        ("heal".into(), SkillBoost::SlotBoost { base: 40, boost: 30 }),
-    ]),
-    ..Default::default()
-};
-
-// 末尾主动技翻倍：基础 46 × 2 = 92
-let overlay = PlayerOverlay {
-    skills: Some(vec![
-        ("shadow".into(), SkillBoost::LastBoost(46)),
-    ]),
-    ..Default::default()
-};
-
-// name_factor 不缩放
-let overlay = PlayerOverlay {
-    attrs: Some([50, 50, 50, 50, 50, 50, 50, 200]),
-    name_factor_enabled: false,
-    ..Default::default()
-};
-
-Player::new_and_init_with_overlay(team, name, weapon, Some(overlay), storage)?;
-```
-
-#### 2. 内联格式（兼容 — 名字中编码）
-
-**紧凑格式** (`diy[...]{...}`)：
-
-```
-# 普通技能
+```text
 PlayerName+diy[72,39,69,76,67,66,0,84]{"sklfire":5}
-
-# 末尾座位加成
-PlayerName+diy[72,39,69,76,67,66,0,84]{"sklheal":"40+30"}
-
-# 末尾主动技翻倍
-PlayerName+diy[72,39,69,76,67,66,0,84]{"sklshadow":"2*46"}
-
-# 混合使用
-PlayerName+diy[72,39,69,76,67,66,0,84]{"sklfire":5,"sklheal":"40+30","sklshadow":"2*46"}
 ```
 
-属性值会自动 `-36` 后取非负（兼容 JS 侧 36~127 范围）。
+`diy[...]` 中必须有 8 个整数，顺序为：
 
-**JSON 对象格式** (`ol:{...}`)：
-
-技能按顺序排列，顺序决定行动时的尝试顺序。不再使用 `skill_order` 字段。
-
-```
-# 普通技能（属性值原样使用，不 -36）
-PlayerName+ol:{"attrs":[1,2,3,4,5,6,7,8],"skills":{"fire":4},"name_factor_enabled":true}
-
-# 带加成类型
-PlayerName+ol:{"attrs":[50,50,50,50,50,50,50,200],"skills":{"heal":"40+30","shadow":"2*46"},"name_factor_enabled":true}
-
-# 禁用 name_factor
-PlayerName+ol:{"attrs":[50,50,50,50,50,50,50,200],"name_factor_enabled":false}
+```text
+[atk, def, spd, agi, mag, res, wis, maxhp]
 ```
 
-`new_from_namerena_raw` 自动解析 `diy[...]{...}` 和 `ol:{json}` 格式。
+前七围使用 JS 兼容编码：文本中的值会在解析时 `-36` 后取非负；HP 原样保留。因此上例解析后的内部属性为：
 
-#### 召唤物模板（`to-diy --minions`）
+```text
+[36, 3, 33, 40, 31, 30, 0, 84]
+```
 
-`to-diy --minions` 会在 `ol:{...}` 中附带当前玩家可生成的战斗衍生体模板：
+### OL JSON 格式
 
-- `shadow`：幻影模板，默认导出 `attrs` 与 `skills`，技能名使用 `sklpossess`。
-- `summon`：使魔模板，默认导出 `attrs`、`skills`、`reuse_skills_on_recast`，必要时带 `inherit_owner_def_res`。
-- `zombie`：丧尸模板，默认导出 `attrs` 与 `skills`。
+```text
+PlayerName+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklfire":5},"name_factor_enabled":true}
+```
 
-模板内的 `attrs` 仍使用 OL 表示法：前七围导出时 `+36`，解析后 `-36`，HP 原样保存。模板内的 `skills` 和普通玩家一样是有序 JSON object，字段顺序决定行动时的尝试顺序，值支持普通等级、`"base+boost"` 和 `"2*base"`。
+`ol.attrs` 也使用同一套属性编码：前七围解析时 `-36`，HP 原样保留。也就是说：
 
-使魔有三个固定技能槽：火球 1、火球 2、自爆。由于两个火球都是 FireSkill，导出和配置时需要用槽位名区分：
+```json
+"attrs":[86,86,86,86,86,86,86,300]
+```
 
-| 槽位名       | 含义               |
-| ------------ | ------------------ |
-| `sklfire1`   | 第一个固定火球槽位 |
-| `sklfire2`   | 第二个固定火球槽位 |
-| `sklexplode` | 使魔自爆技能槽位   |
+代表内部属性：
+
+```text
+[50, 50, 50, 50, 50, 50, 50, 300]
+```
+
+`ol:{...}` 支持的顶层字段：
+
+| 字段 | 含义 |
+| ---- | ---- |
+| `attrs` | 玩家八围覆盖，使用前七围 +36 编码 |
+| `skills` | 玩家技能覆盖，有序 object，顺序就是行动尝试顺序 |
+| `weapon` | 记录武器名；当玩家级 `attrs` 或 `skills` 存在时不计入武器效果 |
+| `name_factor_enabled` | 是否启用名字系数，默认 `true` |
+| `shadow` / `phantom` / `幻影` | 幻影模板 |
+| `summon` / `familiar` / `使魔` | 使魔模板 |
+| `zombie` / `丧尸` / `僵尸` | 丧尸模板 |
+
+解析时如果同一个名字里同时有武器段和 overlay 段，overlay 通过 `+` 分隔：
+
+```text
+PlayerName@Team+weapon+ol:{"attrs":[86,86,86,86,86,86,86,300]}
+```
+
+当 overlay 提供玩家级 `attrs` 或 `skills` 时，`weapon_state` 强制为 `None`，武器不参与属性和技能构建。只有纯召唤物模板 overlay 不会单独禁用武器。
+
+## 技能值格式
+
+`skills` 是有序 JSON object。字段顺序会保留为行动时的技能尝试顺序；未列出的技能按固定槽位顺序追加到末尾。
+
+技能值支持三种写法：
+
+| 写法 | 内部含义 | 最终等级 |
+| ---- | -------- | -------- |
+| `5` | `SkillBoost::Normal(5)` | `5` |
+| `"40+30"` | `SkillBoost::SlotBoost { base: 40, boost: 30 }` | `70` |
+| `"2*46"` | `SkillBoost::LastBoost(46)` | `92` |
 
 示例：
 
 ```text
-ol:{
+PlayerName+ol:{
+  "attrs":[86,86,86,86,86,86,86,300],
+  "skills":{
+    "sklfire":5,
+    "sklheal":"40+30",
+    "sklshadow":"2*46"
+  }
+}
+```
+
+## 普通玩家技能
+
+普通玩家实际技能 ID 为 `0..34`；`35` 是 `NoneSkill` 占位，`36..39` 是保留槽位。技能名大小写不敏感，可写 `fire`、`sklfire` 或 `skillfire`。
+
+| ID | 名称 | ID | 名称 | ID | 名称 |
+| -- | ---- | -- | ---- | -- | ---- |
+| 0 | `sklfire` | 1 | `sklice` | 2 | `sklthunder` |
+| 3 | `sklquake` | 4 | `sklabsorb` | 5 | `sklpoison` |
+| 6 | `sklrapid` | 7 | `sklcritical` | 8 | `sklhalf` |
+| 9 | `sklexchange` | 10 | `sklberserk` | 11 | `sklcharm` |
+| 12 | `sklhaste` | 13 | `sklslow` | 14 | `sklcurse` |
+| 15 | `sklheal` | 16 | `sklrevive` | 17 | `skldisperse` |
+| 18 | `skliron` | 19 | `sklcharge` | 20 | `sklaccumulate` |
+| 21 | `sklassassinate` | 22 | `sklsummon` | 23 | `sklclone` |
+| 24 | `sklshadow` | 25 | `skldefend` | 26 | `sklprotect` |
+| 27 | `sklreflect` | 28 | `sklreraise` | 29 | `sklshield` |
+| 30 | `sklcounter` | 31 | `sklmerge` | 32 | `sklzombie` |
+| 33 | `sklupgrade` | 34 | `sklhide` | 35 | `sklnone` |
+
+普通玩家 overlay 中如果只出现普通技能名，技能槽顺序固定为 `0..39`，行动顺序按 `skills` 字段顺序优先。
+
+## 分类技能通道
+
+DIY/OL 里有三类技能需要分开存放：
+
+1. 普通玩家技能：`sklfire`、`sklsummon`、`sklclone` 等。
+2. 使魔固定技能：火球 1、火球 2、自爆。
+3. 幻影技能：附体。
+
+为了避免吞噬时把不同类别按同一编号串槽，当前实现会在需要时进入“分类技能通道”：
+
+| 类别 | 玩家 overlay key | 玩家内部 key | 使魔模板内部 key |
+| ---- | ---------------- | ------------ | ---------------- |
+| 普通技能 | `sklfire` 或 `normal:sklfire` | `0..39` | `80..119` |
+| 使魔火球 1 | `summon:sklfire1` 或 `sklfire1` | `40` | `40` |
+| 使魔火球 2 | `summon:sklfire2` 或 `sklfire2` | `41` | `41` |
+| 使魔自爆 | `summon:sklexplode` 或 `sklexplode` | `42` | `42` |
+| 幻影附体 | `phantom:sklpossess` 或 `sklpossess` | `43` | `43` |
+
+例子：
+
+```text
+owner+ol:{
+  "attrs":[86,86,86,86,86,86,86,300],
+  "skills":{
+    "sklfire":3,
+    "summon:sklfire1":5,
+    "summon:sklfire2":7,
+    "summon:sklexplode":11,
+    "phantom:sklpossess":13
+  }
+}
+```
+
+吞噬仍按固定槽位逐位抬等级，这是 JS 行为；区别是这些特殊技能会占用独立槽位，因此普通 `sklfire` 不会和使魔火球 1 互相覆盖。
+
+## 召唤物模板
+
+`shadow`、`summon`、`zombie` 都使用 `MinionOverlay`：
+
+```json
+{
+  "attrs": [86,86,86,86,86,86,86,300],
+  "skills": {"sklrapid":7},
+  "reuse_skills_on_recast": true,
+  "inherit_owner_def_res": true,
+  "shadow": {...},
+  "summon": {...},
+  "zombie": {...}
+}
+```
+
+字段说明：
+
+| 字段 | 适用对象 | 含义 |
+| ---- | -------- | ---- |
+| `attrs` | 全部召唤物 | 召唤物八围覆盖，仍使用前七围 +36 编码 |
+| `skills` | 全部召唤物 | 召唤物技能覆盖，有序 object |
+| `reuse_skills_on_recast` | 使魔 | 血祭重施复用已死亡使魔时，是否复用现有技能对象 |
+| `inherit_owner_def_res` | 使魔 | 在 `attrs` 覆盖后，是否把防御和魔抗替换为施法者当前值 |
+| `shadow` / `summon` / `zombie` | 全部召唤物 | 传给该召唤物未来生成的子召唤物模板 |
+
+`reuse_skills_on_recast` 默认 `false`。`to-diy --minions` 导出的使魔模板会写 `true`，用于贴近原始血祭重施时复用同一个使魔对象的行为。手写模板时，如果希望每次重施都重新套用 `summon.skills`，可以省略或设为 `false`。
+
+`inherit_owner_def_res` 默认 `false`。普通血祭派生的默认属性本来就继承施法者防御和魔抗；当你手写 `summon.attrs` 后，只有显式设为 `true` 才会在覆盖属性后再次继承这两项。`to-diy --minions` 在需要保持原始行为时会导出该字段。
+
+### 幻影模板
+
+幻影默认只有附体技能。手写时可以直接写：
+
+```text
+owner+ol:{
+  "attrs":[86,86,86,86,86,86,86,300],
+  "shadow":{
+    "attrs":[46,47,48,49,50,51,52,200],
+    "skills":{"sklpossess":9}
+  }
+}
+```
+
+如果给幻影模板写普通技能，未加前缀的普通技能名也可以识别：
+
+```json
+"shadow":{"skills":{"sklrapid":7,"sklpossess":9}}
+```
+
+当模板中出现 `normal:` / `summon:` / `phantom:` 等前缀时，幻影也会进入分类技能通道。
+
+### 使魔模板
+
+未使用分类前缀时，`summon.skills` 只接受三个固定槽位名：
+
+| 槽位名 | 含义 |
+| ------ | ---- |
+| `sklfire1` | 第一个固定火球槽位 |
+| `sklfire2` | 第二个固定火球槽位 |
+| `sklexplode` | 自爆槽位 |
+
+旧别名如 `sklfire`、`fire1`、`explode` 会被忽略。0 熟练度技能导出时会省略，但内部固定槽位仍保留为 `[sklfire1, sklfire2, sklexplode]`，吞噬使魔时仍按固定槽位继承等级。
+
+```text
+owner+ol:{
   "attrs":[86,86,86,86,86,86,86,300],
   "skills":{"sklsummon":10},
   "summon":{
@@ -276,143 +231,161 @@ ol:{
 }
 ```
 
-`summon.skills` 只接受 `sklfire1` / `sklfire2` / `sklexplode` 三个 `skl` 槽位名；旧的 `sklfire`、`fire1`、`explode` 等别名会被忽略。0 熟练度技能会在导出时省略；即使省略 `sklexplode`，内部固定槽位仍保留为 `[sklfire1, sklfire2, sklexplode]`，吞噬使魔时仍按固定槽位继承等级。`summon.skills` 不再支持旧数组格式，也不再使用 `skill_order` 字段；如果需要调整行动顺序，直接调整 object 中 `sklfire1` / `sklfire2` / `sklexplode` 的排列顺序。
+要给使魔配置普通玩家技能，必须给普通技能加 `normal:` 前缀。只要 `summon.skills` 中出现分类前缀，就会使用分类使魔通道：
 
-#### 3. 批量配置（大数据场景）
-
-```json
-{
-  "overlays": {
-    "Bob": { "attrs": [72, 39, 69, 76, 67, 66, 0, 84], "skills": { "fire": 5 } },
-    "Alice": {
-      "attrs": [50, 50, 50, 50, 50, 50, 50, 200],
-      "skills": { "shadow": "2*46", "heal": "40+30" }
+```text
+owner+ol:{
+  "attrs":[86,86,86,86,86,86,86,400],
+  "summon":{
+    "attrs":[60,60,60,60,60,60,60,240],
+    "skills":{
+      "normal:sklsummon":255,
+      "normal:sklclone":120,
+      "normal:sklrapid":9,
+      "sklfire1":5,
+      "summon:sklexplode":3,
+      "phantom:sklpossess":13
     }
-  },
-  "groups": [["Bob", "Alice"]]
+  }
 }
 ```
 
-Runner 接受外部 overlay 映射，按 name 匹配。
+上例中：
 
-### 武器行为
+- `normal:sklsummon` 让使魔可以继续血祭生成子使魔。
+- `normal:sklclone` 让使魔可以分身。
+- `sklfire1` 和 `summon:sklexplode` 仍是使魔固定技能槽。
+- `phantom:sklpossess` 是独立的幻影附体槽，不会和普通技能串槽。
 
-DIY 模式下（`attrs` 或 `skills` 不为 `None` 时），`weapon_state` 强制为 `None`。即**武器不计入**。
+### 丧尸模板
 
-`PlayerOverlay.weapon` 字段仅记录武器名，不会实际生效。
+丧尸模板和幻影模板一样，未加前缀时可直接写普通技能：
 
-### name_factor 覆盖
+```text
+owner+ol:{
+  "attrs":[86,86,86,86,86,86,86,300],
+  "skills":{"sklzombie":255},
+  "zombie":{
+    "attrs":[40,41,42,43,44,45,46,90],
+    "skills":{"sklrapid":7}
+  }
+}
+```
 
-| `name_factor_enabled` | 行为                                   |
-| --------------------- | -------------------------------------- |
-| `true`（默认）        | 八围按正常 name_factor 缩放            |
-| `false`               | `name_factor` 强制为 0，八围使用原始值 |
+## 召唤物的召唤物
 
-### 分身后 clone 行为
+召唤物模板可以继续嵌套 `shadow` / `summon` / `zombie`，用于配置“召唤物的召唤物”。
 
-Clone 构建过程按 boost 来源分为两条路径：
+```text
+owner+ol:{
+  "attrs":[86,86,86,86,86,86,86,400],
+  "summon":{
+    "attrs":[60,60,60,60,60,60,60,240],
+    "skills":{"normal:sklsummon":255},
+    "summon":{
+      "attrs":[70,71,72,73,74,75,76,333],
+      "skills":{"normal:sklrapid":11,"sklfire1":9}
+    }
+  }
+}
+```
 
-**Step A — 普通号**：从 `name_base` 检测 boost 候选 → 记录 `diy_boost` 元数据 → 执行 boost（翻倍/加值）。boost 在 clamp 之前执行。
+行为要点：
 
-**Step B — DIY 号**：`apply_diy_skill_levels` 将等级初始化为 `base_level`（未加成），存储 `diy_boost` 元数据。随后在 build 流程中基于当前等级执行 boost（`current * 2` 或 `current + boost`）。
+- 父使魔生成时应用外层 `summon.attrs` / `summon.skills`。
+- 父使魔获得的运行时 overlay 只保留外层模板里的子模板字段。
+- 父使魔之后再释放血祭时，子使魔会应用内层 `summon` 模板。
 
-两条路径的 `diy_boost` 元数据均用于 `to-diy` 导出，保证往返时 boost 类型不丢失。
+## 伤害传导与分身
 
-| 加成类型           | overlay 中的 base | Step B 执行 | 最终等级 |
-| ------------------ | ----------------- | ----------- | -------- |
-| `LastBoost(46)`    | 46 (`"2*46"`)     | 46 × 2      | 92       |
-| `SlotBoost{40,30}` | 40 (`"40+30"`)    | 40 + 30     | 70       |
-| `Normal(5)`        | 5 (`"5"`)         | 不变        | 5        |
+血祭生成的使魔在未处于蓄力状态时，会带一个内部伤害分摊技能：
 
-### 名字 → DIY/OL 转换
+- 使魔受到伤害后，会把本次伤害的一半传给 `MinionRuntimeState.owner`。
+- 使魔召唤出的子使魔按直接来源链路传导：子使魔传给父使魔，父使魔再传给主名字。
+- 处于蓄力状态时，血祭使魔的伤害分摊技能会被关闭。
 
-使用 CLI 子命令 `to-diy` 将任意名字转换为 DIY overlay 格式：
+使魔分身有一条特殊规则：
+
+- 使魔的克隆体仍按 root owner 命名，并随 root owner 体系清理。
+- 如果来源使魔拥有伤害分摊技能，克隆体受到伤害时会直接把一半伤害传给主名字，而不是先传给使魔本体。
+
+也就是说，血祭使魔分身后：
+
+```text
+使魔克隆受伤 -> 主名字受一半伤害
+```
+
+而不是：
+
+```text
+使魔克隆受伤 -> 使魔本体受一半伤害 -> 主名字再受四分之一伤害
+```
+
+## 分身与 DIY 技能加成
+
+DIY 玩家分身时，克隆体不会简单复制初始 overlay 等级。当前流程是：
+
+1. 按克隆体自己的名字重新 build。
+2. 应用本体 overlay 技能配置。
+3. 将克隆体技能截断到本体当前战斗中的技能等级。
+4. 根据 `SkillBoost` 元数据重新执行 `"2*base"` 或 `"base+boost"` 加成。
+
+这保证了 `sklshadow`、`sklclone`、`sklheal`、`sklrevive` 等会在战斗中衰减的技能，不会因为分身而刷新回初始熟练度。
+
+## Boss 与特殊玩家
+
+Overlay 不会改变玩家类型：
+
+- `name@!` 中的已知 Boss 仍是 `PlayerType::Boss`，Boss 免疫和专属运行时逻辑仍按 Boss 类型判断。
+- 如果 Boss overlay 提供 `attrs`，这些属性会直接覆盖普通构建结果，不再额外叠加 Boss `appendAttr`。
+- 如果 Boss overlay 提供 `skills`，会走 DIY 技能覆盖；这会绕过 Boss 默认“普通技能等级全为 0”的构建分支。
+- `Test1` / `Test2` / `TestEx` 的 `name_factor` 仍强制为 0；`name_factor_enabled:false` 也会强制为 0。
+
+## 导出命令
+
+默认导出 `+ol:{...}`：
 
 ```bash
-# 基本用法
-tswn-cli to-diy help
-tswn-cli to-diy "mario@team+fire"
-
-# 输出示例（紧凑格式）
-help+diy[64,87,57,68,61,79,76,297]{"sklthunder":21,"skliron":7,...}
-
-# 输出示例（JSON 格式，不再包含 skill_order 字段）
-help+ol:{"attrs":[28,51,21,32,25,43,40,261],"skills":{...},"name_factor_enabled":true}
-
-# 带召唤物模板输出
-tswn-cli to-diy -f names.txt --minions -o diy.txt
+cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
 ```
 
-也可以通过 Rust API 直接调用：
+导出旧紧凑格式：
 
-```rust
-let mut player = Player::new_from_namerena_raw("help".to_string(), storage)?;
-player.build();
-
-// 紧凑格式（attrs +36，兼容 JS）
-let diy_str = player.to_diy_compact();
-
-// JSON 格式（attrs 原样）
-let ol_str = player.to_ol_json();
+```bash
+cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire" --old
 ```
 
-### API 一览
+批量导出：
 
-| 函数 / 类型                                     | 说明                                              |
-| ----------------------------------------------- | ------------------------------------------------- |
-| `PlayerOverlay`                                 | overlay 数据结构                                  |
-| `PlayerOverlay::parse_inline(segment)`          | 解析 `diy[...]` / `ol:{...}` 段                   |
-| `PlayerOverlay::default()`                      | 默认值（`name_factor_enabled = true`）            |
-| `SkillBoost`                                    | 技能加成类型枚举                                  |
-| `SkillBoost::parse(raw)`                        | 从字符串解析（`"5"` / `"40+30"` / `"2*46"`）      |
-| `SkillBoost::final_level()`                     | 计算最终等级                                      |
-| `SkillBoost::base_level()`                      | 计算基础等级                                      |
-| `skill_name_to_id(name)`                        | 技能名 → Rust 技能 ID（大小写不敏感）             |
-| `skill_name_for_export(id)`                     | 技能 ID → overlay 技能名（如 `sklfire`）          |
-| `diy_skill_order()`                             | DIY 模式固定技能槽顺序                            |
-| `apply_diy_skill_levels(storage, skill_levels)` | 将有序技能列表写入 SkillStorage，顺序决定行动顺序 |
-| `Player::new_and_init_with_overlay(...)`        | 带 overlay 的构造函数                             |
-| `Player::new_from_namerena_raw(...)`            | 从名字字符串解析（含 overlay 检测）               |
-| `Player::to_diy_compact()`                      | 导出为紧凑 DIY 格式字符串                         |
-| `Player::to_ol_json()`                          | 导出为 ol: JSON 格式字符串                        |
-| `Skill::diy_boost`                              | 技能上存储的 SkillBoost 信息                      |
-| `SkillStorage::is_diy`                          | 标记是否为 DIY 构建的技能集                       |
+```bash
+cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt -o diy.txt
+```
 
----
+连同召唤物模板一起导出：
 
-## 实施状态
+```bash
+cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt --minions -o diy.txt
+```
 
-### 已完成 ✅
+`--minions` 只支持 `+ol` 输出，不能和 `--old` 同时使用。生成的模板会省略 0 熟练度技能；回读时缺失技能会按固定槽位补齐为 0。
 
-| 步骤   | 内容                                            | 状态 |
-| ------ | ----------------------------------------------- | :--: |
-| Step 1 | 定义 `PlayerOverlay` + `SkillBoost`             |  ✅  |
-| Step 2 | `Player` 结构体加 `overlay` 字段                |  ✅  |
-| Step 3 | 修改构造函数（API + 内联解析）                  |  ✅  |
-| Step 4 | `build_inner` DIY 覆盖逻辑                      |  ✅  |
-| Step 5 | `skill_name_to_id` 技能名映射                   |  ✅  |
-| Step 6 | `apply_diy_skill_levels` + 技能排序             |  ✅  |
-| Step 7 | C/Python API 更新                               |  ⬜  |
-| Step 8 | 测试（基本覆盖 + 回归）                         |  ✅  |
-| —      | `name_factor_enabled` 覆盖                      |  ✅  |
-| —      | DIY 模式武器不计入                              |  ✅  |
-| —      | `SkillBoost` 三种格式解析                       |  ✅  |
-| —      | DIY clone 衰减下限 + 加成重新执行               |  ✅  |
-| —      | `split_by_plus_outside_quotes` 修复 JSON 内 `+` |  ✅  |
-| —      | `to_diy_compact()` / `to_ol_json()` 导出方法    |  ✅  |
-| —      | `tswn-cli to-diy` 子命令                        |  ✅  |
-| —      | 测试（基本覆盖 + 回归）                         |  ✅  |
+## 验证
 
-### 待完成 ⬜
+相关测试集中在：
 
-- C API: 新增 `PlayerOverlay` 参数透传（JSON 字符串）
-- Python API: `new_and_init_with_overlay` 接受 `Optional[Dict]`
-- 和 JS 输出做 diff 验证数值一致性
-- 衰减下限的完整对局级验证（DIY 玩家分身对局 trace）
+- `crates/tswn_core/src/player/test/basic.rs`
+- `crates/tswn_core/src/player/test/minions.rs`
 
----
+常用验证命令：
 
-## 相关文档
+```bash
+cargo test -p tswn_core player::test::basic::player_raw_new_parses_diy_overlay --lib -- --test-threads=1
+cargo test -p tswn_core player::test::minions --lib -- --test-threads=1
+cargo test -p tswn_core --lib -- --test-threads=1
+```
 
-- [技能衰减机制](./analysis/skill_decay.md) — 5 种衰减技能的详细公式
-- [分身机制详解](./analysis/clone_mechanism.md) — clone 重建与衰减下限分析
+往返和对战过程验证见：
+
+- `docs/howto/diy_validation.md`
+- `track_diy_roundtrip.py`
+- `crates/tswn_core/src/bin/track_diy_roundtrip.rs`
