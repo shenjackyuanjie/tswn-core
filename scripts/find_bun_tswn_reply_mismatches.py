@@ -175,7 +175,7 @@ def fetch_candidate_messages(
         from {}.{}
         where "senderId" = %s
           and content like %s
-        order by time
+        order by time desc
         """
     ).format(sql.Identifier(schema_name), sql.Identifier(table_name))
 
