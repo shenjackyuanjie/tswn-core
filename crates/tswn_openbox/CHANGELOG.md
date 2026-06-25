@@ -1,5 +1,18 @@
 # 更新日志
 
+## [0.3.11] - 2026-06-25
+
+### 调整
+
+- 后端 `namer-pf` / `cqd-cqp` 的低精度外层并行改为复用 `tswn_core::bench_sched::run_outer_parallel_ordered`，删除 `tasks.rs` 内两份本地 work-stealing 调度器及相关常量，行为与 CLI 共用同一套实现。
+- `cqd/cqp` 低精度并行的屏幕日志输出顺序由「选手完成顺序」改为「选手原始输入顺序」（更确定，数据不变）；输出文件收尾排序行为不受影响。
+
+### 验证
+
+- `cargo build -p tswn_openbox`
+- `cargo test -p tswn_openbox --lib`
+- `cargo clippy -p tswn_openbox --bins --lib`
+
 ## [0.3.10] - 2026-06-23
 
 ### 调整

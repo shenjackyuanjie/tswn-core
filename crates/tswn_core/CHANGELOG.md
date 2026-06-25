@@ -1,5 +1,25 @@
 # 更新日志
 
+## [0.3.13] - 2026-06-25
+
+### 性能优化
+
+- 新增 `bench_sched` 模块，下沉「低精度档位外层并行」通用调度器：`low_accuracy_outer_workers` 决定是否走外层并行及 worker 数，`run_outer_parallel_ordered` 把多个 item 派发给持久 worker 并行计算（内层单线程），并按 item 原始顺序回调输出、支持细粒度进度 tick 与取消。此前这套 work-stealing + 有序回传逻辑仅存在于 openbox，现统一供 CLI / GUI 复用。
+- `namer-pf`（CLI）在 1%/10% 低精度且输入多组时改走外层并行：按组并行、每组内层单线程，避免每组 4 个评分项各自反复 `spawn` win-rate 线程；高精度（>1000 场）或单组时维持原有内层并行。
+- `bench batch-rate` / `cqp`（CLI）在低精度且选手多于一组时改走外层并行：按选手并行、内层单线程；`--single-thread` 仍强制串行。结果按选手原始顺序落地，与串行版逐字节一致。
+
+### 代码质量
+
+- 抽出 `namer_pf_line`，让 CLI namer-pf 的串行与并行两条路径共用同一套评分/格式化逻辑；`namer_pf_score` 增加线程模式参数。
+- 抽出 `emit_batch_rate_player`，让 batch-rate 的串行与并行路径共用同一套阈值判断、屏幕/文件排版与 perf 输出，避免两边格式漂移；`thread_spec` 线程参数转换提取到 `bench::common` 复用。
+
+### 验证
+
+- `cargo test -p tswn_core --lib`（259 通过，含 `bench_sched` 3 项新单测）
+- `cargo test -p tswn_core --bin tswn-cli`（45 通过）
+- `cargo clippy -p tswn_core --bins --lib`
+- namer-pf / cqp 低精度并行输出与单线程 `-t1` / `-s` 逐字节一致；namer-pf 高精度回退路径同样一致。
+
 ## [0.3.12] - 2026-06-19
 
 ### DIY / Overlay

@@ -58,6 +58,7 @@ pub mod debug {
     pub(crate) use debug_println;
 }
 
+pub mod bench_sched;
 pub mod case_gen;
 pub mod cli_api;
 pub mod engine;
