@@ -1,5 +1,21 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- 新增公共 `replay_view` 回放视图构建层，提供 `ReplayViewFrame`、`ReplayRow`、`ReplayClip`、`ReplayTextPart` 与 `ReplayState`，统一生成分行、分帧、文本片段、血条、死亡特效和侧栏快照信息，供 WASM / Python / C 等包装层复用。
+- 新增 `minion_display_index`，由核心层根据运行期分身命名计算同一名字下的展示序号：本体为 `0`，后续分身为 `1`、`2`……
+
+### 变更
+
+- replay view 的句子级 delay 统一为固定优先级规则：frame 首句 `900ms`、雷击/地裂行首句 `150ms`、展示血条的句子 `600ms`、其他句子 `500ms`。
+- replay view 只在帧前后 HP 不同时展示血条，只在帧前后 HP 均为 `0` 时渲染死亡特效。
+
+### 验证
+
+- `cargo test -p tswn_core replay_view`
+
 ## [0.3.13] - 2026-06-25
 
 ### 性能优化

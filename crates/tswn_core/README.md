@@ -9,6 +9,7 @@
 - **CLI 工具**：`tswn-cli` 提供 bench、win-rate、fight 等子命令
 - **DIY 转换**：`tswn-cli to-diy -r NAME` 默认输出 `+ol`，加 `--old` 输出 `+diy`，也支持 `-f/--file` 和 `-o/--out-file`
 - **图标渲染**：玩家名称 → 16×16 像素头像（PNG / Base64 / RGBA）
+- **结构化回放视图**：`replay_view` 提供跨 WASM / Python / C 等包装层复用的分行、分帧、延迟、文本片段、血条和死亡特效规则
 - **DS3 兼容**：通过 `tswn_ds3` crate 提供 DS3_demo3 流程兼容
 
 ## 快速开始
@@ -65,6 +66,16 @@ use tswn_core::{Runner, PreparedRunner};
 let runner = Runner::new_from_namerena_raw(raw_input, eval_rq).unwrap();
 // 逐回合推进或直接 run_to_completion()
 ```
+
+`tswn_core::replay_view` 暴露公共的 replay view 构建结构：一个 frame 包含多行 `ReplayRow`，
+一行包含多个 `ReplayClip`，clip 内提供展示前 `delay`、结构化文本 `parts`、颜色 `tone`、
+关联玩家、HP 前后值、是否展示血条、是否渲染死亡特效以及 emoji 占位字段。包装层只需要把
+自己的玩家快照类型实现 `ReplayState`，即可复用同一套回放推演规则。
+
+当前 delay 规则按优先级依次为：frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子
+`600ms`，其他句子 `500ms`。血条只在帧前后 HP 不同时展示；死亡特效只在帧前后 HP 均为 `0`
+时渲染。分身展示序号由 `player::skill::act::minion::minion_display_index` 提供：本体为 `0`，
+后续同名分身为 `1`、`2`……，供上层在名字内展示；唯一对象编号仍使用玩家 id。
 
 ## 构建配置
 
