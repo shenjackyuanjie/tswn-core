@@ -343,9 +343,25 @@ function applyNicknamesToReplay(replay) {
     }
   };
 
+  const applyPartNickname = (part) => {
+    if (part?.kind !== "player" || part.player_id == null) {
+      return;
+    }
+    const key = inputKeysById.get(part.player_id);
+    const nickname = key ? nicknameByIdName.get(key) : "";
+    if (nickname) {
+      part.text = nickname;
+    }
+  };
+
   (replay.initial_states ?? []).forEach(applyStateNickname);
   for (const frame of replay.frames ?? []) {
     (frame.states ?? []).forEach(applyStateNickname);
+    for (const row of frame.rows ?? []) {
+      for (const clip of row.clips ?? []) {
+        (clip.parts ?? []).forEach(applyPartNickname);
+      }
+    }
   }
   (replay.final_states ?? []).forEach(applyStateNickname);
   return replay;

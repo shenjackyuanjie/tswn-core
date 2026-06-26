@@ -58,12 +58,14 @@ pub mod debug {
     pub(crate) use debug_println;
 }
 
+pub mod bench_sched;
 pub mod case_gen;
 pub mod cli_api;
 pub mod engine;
 pub mod error;
 pub mod player;
 pub mod rc4;
+pub mod replay_view;
 pub mod win_rate;
 
 /// 核心对局入口。

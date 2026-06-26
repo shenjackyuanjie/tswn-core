@@ -7,16 +7,20 @@
 //!
 //! 因此这里把批量控制流、进度条和文件输出调度集中在一起，避免和底层单场 benchmark 细节混杂。
 
+use std::cell::Cell;
 use std::fmt::Write as _;
+use std::fs::File;
 use std::io::{self, IsTerminal, Write as _};
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
+use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 use tswn_core::win_rate::WinRateTiming;
 
 use crate::args::BenchThreadMode;
 
-use super::common::format_duration;
+use super::common::{format_duration, thread_spec};
 use super::output::{
     display_group, first_duplicate_name_in_matchup, format_batch_rate_log_record, format_batch_rate_pure_record,
     format_batch_rate_record, format_pair_rate_record, format_rate, open_batch_rate_output, player_to_ol_or_exit,
@@ -223,6 +227,35 @@ pub fn run_bench_batch_rate(
         println!("文件最低胜率阈值: {:.2}%", threshold);
     }
 
+    // 低精度（1%/10%）档位且选手不止一组时：外层按选手并行、内层单线程，
+    // 避免每个 matchup 都重新 spawn 一批 win-rate worker。显式 --single-thread 仍保持串行。
+    let outer_workers = if mode == BenchThreadMode::SingleThread {
+        1
+    } else {
+        low_accuracy_outer_workers(n, player_groups.len(), thread_spec(threads))
+    };
+
+    if outer_workers > 1 {
+        run_bench_batch_rate_parallel(
+            target_groups,
+            player_groups,
+            player_labels,
+            n,
+            threads,
+            eval_rq,
+            verbose,
+            perf,
+            &mut out_file,
+            file_mode,
+            min_screen,
+            min_file,
+            wr_precision,
+            outer_workers,
+        );
+        return;
+    }
+
+    // 串行路径：选手数很少或高精度档位，保留逐选手 ETA + 滑动窗口的细粒度进度条。
     let mut progress = BatchProgress::new(player_groups.len(), target_groups.len());
     progress.draw();
 
@@ -245,89 +278,263 @@ pub fn run_bench_batch_rate(
             &mut verbose_buf,
             |_, _| progress.tick_target(),
         );
-        let avg = summary.avg;
-        let aggregate_rate = summary.aggregate_rate;
-        let elapsed = summary.elapsed;
-        let elapsed_secs = elapsed.as_secs_f64();
-        let throughput = summary.throughput();
-        let summary_json = format_batch_rate_record(
+
+        // complete_player 必须在打印前结算，这样滑动 ETA 能把刚跑完的选手算进去；
+        // 真正的排版/落盘交给 emit_batch_rate_player，确保和并行路径完全一致。
+        progress.complete_player(summary.elapsed);
+        emit_batch_rate_player(
             label,
-            avg,
-            aggregate_rate,
-            summary.wins,
-            summary.total,
-            elapsed,
-            throughput,
-            summary.valid_matchups,
-            summary.skipped_matchups,
+            &summary,
+            &verbose_buf,
+            file_mode,
+            min_screen,
+            min_file,
             wr_precision,
+            verbose,
+            perf,
+            &mut out_file,
+            &|| progress.clear(),
         );
-        let summary_log = format_batch_rate_log_record(label, avg, wr_precision);
-        let summary_pure = format_batch_rate_pure_record(label);
-
-        progress.complete_player(elapsed);
-
-        let passes_screen = min_screen.is_none_or(|t| avg >= t);
-        let passes_file = min_file.is_none_or(|t| avg >= t);
-
-        if passes_screen {
-            if verbose {
-                progress.clear();
-                print!("{verbose_buf}");
-                println!(
-                    "平均胜率: {}%  (有效 {} 组靶子，跳过 {} 场重复号)",
-                    format_rate(avg, wr_precision),
-                    summary.valid_matchups,
-                    summary.skipped_matchups
-                );
-                println!(
-                    "汇总胜率: {}%  ({}/{})",
-                    format_rate(aggregate_rate, wr_precision),
-                    summary.wins,
-                    summary.total
-                );
-                println!(
-                    "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
-                    elapsed_secs,
-                    elapsed.as_micros() as f64 / summary.total.max(1) as f64,
-                    throughput
-                );
-            } else {
-                progress.clear();
-                println!(
-                    "{}\t平均胜率: {}%\t有效: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
-                    label,
-                    format_rate(avg, wr_precision),
-                    summary.valid_matchups,
-                    summary.skipped_matchups,
-                    elapsed_secs,
-                    elapsed.as_micros() as f64 / summary.total.max(1) as f64,
-                    throughput
-                );
-            }
-        }
-
-        if passes_file && let Some(file) = out_file.as_mut() {
-            let line = match file_mode {
-                BatchFileOutputMode::Log => &summary_log,
-                BatchFileOutputMode::Json => &summary_json,
-                BatchFileOutputMode::Pure => &summary_pure,
-            };
-            if let Err(err) = write_batch_rate_record(file, line) {
-                eprintln!("写入批量结果输出文件失败: {err}");
-                std::process::exit(1);
-            }
-        }
-
-        if perf && passes_screen {
-            progress.clear();
-            print_perf_lines(elapsed, summary.timing, summary.total);
-        }
-
         progress.draw();
     }
 
     progress.finish();
+}
+
+/// 外层并行下，单个选手算完后需要回传主线程的全部信息。
+struct BatchPlayerOutcome {
+    label: String,
+    summary: BatchRateSummary,
+    verbose_buf: String,
+}
+
+/// cqd/cqp 的外层并行执行路径。
+///
+/// 把“一个选手 vs 全部靶子”当作一个并行单元派发给多个 worker，每个 worker 内层单线程跑完。
+/// 选手之间乱序完成，因此串行版那套“逐选手耗时 + 滑动窗口 ETA”不再成立——这里按需求只展示
+/// 总体 matchup 进度。最终结果仍由调度器按选手原始顺序回调，落盘/打印顺序与串行版一致。
+#[allow(clippy::too_many_arguments)]
+fn run_bench_batch_rate_parallel(
+    target_groups: &[String],
+    player_groups: &[String],
+    player_labels: &[String],
+    n: usize,
+    threads: Option<usize>,
+    eval_rq: f64,
+    verbose: bool,
+    perf: bool,
+    out_file: &mut Option<File>,
+    file_mode: BatchFileOutputMode,
+    min_screen: Option<f64>,
+    min_file: Option<f64>,
+    wr_precision: usize,
+    workers: usize,
+) {
+    let player_count = player_groups.len();
+    let total_matchups = player_count * target_groups.len();
+    let progress_enabled = io::stderr().is_terminal();
+    let started = Instant::now();
+    let cancel = AtomicBool::new(false);
+    // done_cell 同时被 on_tick（matchup 完成时自增）和 emit（打印后重绘时读取）访问；
+    // 主线程单线程，用 Cell 做内部可变性比把它拆成两个互斥的可变借用更顺手。
+    let done_cell = Cell::new(0usize);
+
+    let clear = || {
+        if progress_enabled {
+            eprint!("\r\x1b[K");
+            let _ = io::stderr().flush();
+        }
+    };
+    let draw = || {
+        if progress_enabled {
+            draw_overall_progress(done_cell.get(), total_matchups, started);
+        }
+    };
+    draw();
+
+    let _ = run_outer_parallel_ordered(
+        player_groups,
+        workers,
+        &cancel,
+        // worker 线程：内层强制单线程，把每完成一个 matchup 通过 tick 报给主线程推进进度。
+        |index, player, tick| {
+            let label = &player_labels[index];
+            let mut verbose_buf = String::new();
+            if verbose {
+                let _ = writeln!(&mut verbose_buf);
+                let _ = writeln!(&mut verbose_buf, "━━━ [{}/{}] {} ━━━", index + 1, player_count, label);
+            }
+            let summary = bench_batch_rate_for_group(
+                player,
+                target_groups,
+                n,
+                BenchThreadMode::SingleThread,
+                threads,
+                eval_rq,
+                verbose,
+                &mut verbose_buf,
+                |_, _| tick(),
+            );
+            BatchPlayerOutcome {
+                label: label.clone(),
+                summary,
+                verbose_buf,
+            }
+        },
+        || {
+            done_cell.set(done_cell.get() + 1);
+            draw();
+        },
+        // emit 在主线程按选手顺序执行；打印会冲掉进度条那一行，故打印完立即重绘。
+        |outcome| {
+            emit_batch_rate_player(
+                &outcome.label,
+                &outcome.summary,
+                &outcome.verbose_buf,
+                file_mode,
+                min_screen,
+                min_file,
+                wr_precision,
+                verbose,
+                perf,
+                out_file,
+                &clear,
+            );
+            draw();
+            Ok(())
+        },
+    );
+
+    if progress_enabled {
+        clear();
+        eprintln!(
+            "完成: {player_count}/{player_count} 组选手, 总用时: {}",
+            format_duration(started.elapsed().as_secs_f64())
+        );
+    }
+}
+
+/// 把单个选手的批量胜率结果落地（屏幕日志 + 输出文件 + perf 拆分）。
+///
+/// 串行与外层并行两条路径共用同一套阈值判断和排版，避免两边各写一份导致格式漂移。
+/// 进度条的推进/结算由各自调用方负责（串行用带 ETA 的 [`BatchProgress`]，并行只数 matchup），
+/// 这里只通过 `clear` 回调在打印正文前擦掉进度行。
+#[allow(clippy::too_many_arguments)]
+fn emit_batch_rate_player(
+    label: &str,
+    summary: &BatchRateSummary,
+    verbose_buf: &str,
+    file_mode: BatchFileOutputMode,
+    min_screen: Option<f64>,
+    min_file: Option<f64>,
+    wr_precision: usize,
+    verbose: bool,
+    perf: bool,
+    out_file: &mut Option<File>,
+    clear: &dyn Fn(),
+) {
+    let avg = summary.avg;
+    let aggregate_rate = summary.aggregate_rate;
+    let elapsed = summary.elapsed;
+    let elapsed_secs = elapsed.as_secs_f64();
+    let throughput = summary.throughput();
+    let summary_json = format_batch_rate_record(
+        label,
+        avg,
+        aggregate_rate,
+        summary.wins,
+        summary.total,
+        elapsed,
+        throughput,
+        summary.valid_matchups,
+        summary.skipped_matchups,
+        wr_precision,
+    );
+    let summary_log = format_batch_rate_log_record(label, avg, wr_precision);
+    let summary_pure = format_batch_rate_pure_record(label);
+
+    let passes_screen = min_screen.is_none_or(|t| avg >= t);
+    let passes_file = min_file.is_none_or(|t| avg >= t);
+
+    if passes_screen {
+        // 打印前先擦掉进度条所在行，避免进度条和正文串到同一行。
+        clear();
+        if verbose {
+            print!("{verbose_buf}");
+            println!(
+                "平均胜率: {}%  (有效 {} 组靶子，跳过 {} 场重复号)",
+                format_rate(avg, wr_precision),
+                summary.valid_matchups,
+                summary.skipped_matchups
+            );
+            println!(
+                "汇总胜率: {}%  ({}/{})",
+                format_rate(aggregate_rate, wr_precision),
+                summary.wins,
+                summary.total
+            );
+            println!(
+                "用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                elapsed_secs,
+                elapsed.as_micros() as f64 / summary.total.max(1) as f64,
+                throughput
+            );
+        } else {
+            println!(
+                "{}\t平均胜率: {}%\t有效: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
+                label,
+                format_rate(avg, wr_precision),
+                summary.valid_matchups,
+                summary.skipped_matchups,
+                elapsed_secs,
+                elapsed.as_micros() as f64 / summary.total.max(1) as f64,
+                throughput
+            );
+        }
+    }
+
+    if passes_file && let Some(file) = out_file.as_mut() {
+        let line = match file_mode {
+            BatchFileOutputMode::Log => &summary_log,
+            BatchFileOutputMode::Json => &summary_json,
+            BatchFileOutputMode::Pure => &summary_pure,
+        };
+        if let Err(err) = write_batch_rate_record(file, line) {
+            eprintln!("写入批量结果输出文件失败: {err}");
+            std::process::exit(1);
+        }
+    }
+
+    if perf && passes_screen {
+        clear();
+        print_perf_lines(elapsed, summary.timing, summary.total);
+    }
+}
+
+/// 外层并行路径的“总体进度条”。
+///
+/// 串行版 [`BatchProgress`] 的 ETA 依赖逐选手耗时，但并行下选手乱序完成、墙钟相互重叠，
+/// 那套估算不再成立。这里退化成按 matchup 计数的总体进度，ETA 用整体已耗时线性外推。
+fn draw_overall_progress(done: usize, total: usize, started: Instant) {
+    if total == 0 {
+        return;
+    }
+    let frac = done as f64 / total as f64;
+    let filled = (frac * PROGRESS_BAR_WIDTH as f64) as usize;
+    let empty = PROGRESS_BAR_WIDTH.saturating_sub(filled);
+    let eta = if frac > 0.0 {
+        let elapsed = started.elapsed().as_secs_f64();
+        format_duration(elapsed / frac * (1.0 - frac))
+    } else {
+        "--".to_string()
+    };
+    let bar_filled: String = "█".repeat(filled);
+    let bar_empty: String = "░".repeat(empty);
+    eprint!(
+        "\r进度 [{bar_filled}{bar_empty}] {done}/{total} ({pct:.1}%) | 预计: {eta}\x1b[K",
+        pct = frac * 100.0,
+    );
+    let _ = io::stderr().flush();
 }
 
 /// 计算单个 player group 对整个 target 列表的平均胜率。

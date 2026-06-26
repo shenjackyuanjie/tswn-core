@@ -7,10 +7,11 @@
 
 use std::fmt::Write as _;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use tswn_core::Runner;
+use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
@@ -19,14 +20,14 @@ use crate::{
     args::{BenchThreadMode, NamerPfMode},
 };
 
-use super::common::BenchSummary;
+use super::common::{BenchSummary, thread_spec};
 use super::output::{format_rate, print_perf_lines};
 
 /// 根据线程模式和总任务量计算评分 benchmark worker 数。
 fn resolve_bench_workers(mode: BenchThreadMode, threads: Option<usize>, total: usize) -> usize {
     match mode {
         BenchThreadMode::SingleThread => 1,
-        BenchThreadMode::Parallel => resolve_win_rate_workers(threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0), total),
+        BenchThreadMode::Parallel => resolve_win_rate_workers(thread_spec(threads), total),
     }
 }
 
@@ -289,24 +290,56 @@ pub fn run_namer_pf(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64, p
     };
 
     println!("{}", modes.iter().map(|mode| mode.label()).collect::<Vec<_>>().join("|"));
-    for group in groups {
-        let scores = modes
-            .iter()
-            .map(|mode| {
-                let (modifier, duplicate) = mode.score_params();
-                namer_pf_score(&group, modifier, duplicate, n, threads, eval_rq)
-            })
-            .collect::<Vec<_>>();
-        let sum = scores.iter().sum::<f64>();
-        let line = scores
-            .iter()
-            .copied()
-            .chain(std::iter::once(sum))
-            .map(|score| format_rate(score, precision))
-            .collect::<Vec<_>>()
-            .join("|");
-        println!("{line}");
+
+    // 低精度（1%/10%）档位且有多组输入时，外层按组并行、内层单线程，
+    // 比让每组的 4 个 score 各自反复起线程更划算；其余情况维持原有内层并行。
+    let outer_workers = low_accuracy_outer_workers(n, groups.len(), thread_spec(threads));
+    if outer_workers > 1 {
+        let cancel = AtomicBool::new(false);
+        let _ = run_outer_parallel_ordered(
+            &groups,
+            outer_workers,
+            &cancel,
+            |_, group, _| namer_pf_line(group, modes, n, BenchThreadMode::SingleThread, threads, eval_rq, precision),
+            || {},
+            |line| {
+                println!("{line}");
+                Ok(())
+            },
+        );
+    } else {
+        for group in &groups {
+            let line = namer_pf_line(group, modes, n, BenchThreadMode::Parallel, threads, eval_rq, precision);
+            println!("{line}");
+        }
     }
+}
+
+/// 计算并格式化单组 `namer-pf` 输出行（含末尾 sum）。
+fn namer_pf_line(
+    group: &[String],
+    modes: &[NamerPfMode],
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    eval_rq: f64,
+    precision: usize,
+) -> String {
+    let scores = modes
+        .iter()
+        .map(|m| {
+            let (modifier, duplicate) = m.score_params();
+            namer_pf_score(group, modifier, duplicate, n, mode, threads, eval_rq)
+        })
+        .collect::<Vec<_>>();
+    let sum = scores.iter().sum::<f64>();
+    scores
+        .iter()
+        .copied()
+        .chain(std::iter::once(sum))
+        .map(|score| format_rate(score, precision))
+        .collect::<Vec<_>>()
+        .join("|")
 }
 
 /// 解析 `namer-pf` 每行一组、组内 `+` 分隔的输入。
@@ -429,13 +462,21 @@ fn consume_balanced_ascii(raw: &str, start: usize, open: u8, close: u8) -> Optio
 }
 
 /// 计算 `namer-pf` 四项中的一个分数。
-fn namer_pf_score(base_group: &[String], modifier: &str, duplicate: bool, n: usize, threads: Option<usize>, eval_rq: f64) -> f64 {
+fn namer_pf_score(
+    base_group: &[String],
+    modifier: &str,
+    duplicate: bool,
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    eval_rq: f64,
+) -> f64 {
     let mut target_group = base_group.to_vec();
     if duplicate {
         target_group.extend(base_group.iter().cloned());
     }
 
-    let summary = run_bench_score_inner(&target_group, modifier, n, BenchThreadMode::Parallel, threads, eval_rq, false);
+    let summary = run_bench_score_inner(&target_group, modifier, n, mode, threads, eval_rq, false);
     summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64
 }
 

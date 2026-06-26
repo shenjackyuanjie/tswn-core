@@ -14,6 +14,11 @@ const SECTION_MARGIN_X: i8 = 8;
 const SECTION_MARGIN_Y: i8 = 6;
 const SECTION_GAP: f32 = 5.0;
 const LOG_SECTION_GAP: f32 = 6.0;
+const NAMER_PF_METRIC_LABEL_WIDTH: f32 = 48.0;
+const NAMER_PF_TOGGLE_WIDTH: f32 = 58.0;
+const NAMER_PF_VALUE_WIDTH: f32 = 132.0;
+const NAMER_PF_HIGHLIGHT_WIDTH: f32 = 116.0;
+const NAMER_PF_ACTION_WIDTH: f32 = 112.0;
 
 impl OpenboxApp {
     pub(crate) fn show_diy_ui(&mut self, ui: &mut egui::Ui) {
@@ -437,37 +442,20 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
         app.namer_pf.skill_board.screen = select_all;
         app.namer_pf.skill_board.file_output.enabled = select_all;
     }
-    egui::Grid::new(if show_highlight {
-        "namer_pf_metrics_more"
-    } else {
-        "namer_pf_metrics"
-    })
-    .num_columns(if show_highlight { 7 } else { 6 })
-    .striped(true)
-    .spacing([6.0, 3.0])
-    .show(ui, |ui| {
-        ui.label("");
-        ui.label("屏幕");
-        ui.label("屏幕阈值");
-        if show_highlight {
-            ui.label("高亮超强名字");
-        }
-        ui.label("输出文件");
-        ui.label("文件阈值");
-        ui.label("路径");
-        ui.end_row();
+    namer_pf_metric_header(ui, show_highlight);
 
-        for metric in &mut app.namer_pf.metrics {
-            let label = metric.metric.label();
-            ui.label(label);
-            ui.checkbox(&mut metric.screen, "");
-            ui.add(egui::TextEdit::singleline(&mut metric.min_screen).desired_width(72.0));
+    for metric in &mut app.namer_pf.metrics {
+        let label = metric.metric.label();
+        ui.horizontal(|ui| {
+            namer_pf_label_cell(ui, label);
+            namer_pf_checkbox_cell(ui, &mut metric.screen);
+            namer_pf_text_cell(ui, &mut metric.min_screen);
             if show_highlight {
-                ui.add(egui::TextEdit::singleline(&mut metric.highlight_delta).desired_width(72.0));
+                namer_pf_text_cell_width(ui, &mut metric.highlight_delta, NAMER_PF_HIGHLIGHT_WIDTH);
             }
-            ui.checkbox(&mut metric.file_output.enabled, "");
-            ui.add(egui::TextEdit::singleline(&mut metric.min_file).desired_width(72.0));
-            ui.horizontal(|ui| {
+            namer_pf_checkbox_cell(ui, &mut metric.file_output.enabled);
+            namer_pf_text_cell(ui, &mut metric.min_file);
+            namer_pf_action_cell(ui, |ui| {
                 if ui.button("选择").clicked()
                     && let Some(path) = pick_named_output_file(&format!("tswn-openbox-namer-pf-{label}.txt"))
                 {
@@ -478,35 +466,27 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
                     metric.file_output.path = None;
                 }
             });
-            ui.end_row();
+        });
 
-            let path_label = metric
-                .file_output
-                .path
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "未选择输出文件".to_string());
-            ui.label(path_label);
-            ui.label("");
-            ui.label("");
-            if show_highlight {
-                ui.label("");
-            }
-            ui.label("");
-            ui.label("");
-            ui.label("");
-            ui.end_row();
-        }
+        let path_label = metric
+            .file_output
+            .path
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "未选择输出文件".to_string());
+        namer_pf_path_row(ui, path_label);
+    }
 
-        ui.label("技能榜");
-        ui.checkbox(&mut app.namer_pf.skill_board.screen, "");
-        ui.add_enabled(false, egui::Label::new("来自 score_now.toml"));
+    ui.horizontal(|ui| {
+        namer_pf_label_cell(ui, "技能榜");
+        namer_pf_checkbox_cell(ui, &mut app.namer_pf.skill_board.screen);
+        namer_pf_fixed_label_cell(ui, "来自 score_now.toml", NAMER_PF_VALUE_WIDTH);
         if show_highlight {
-            ui.label("");
+            namer_pf_fixed_label_cell(ui, "", NAMER_PF_HIGHLIGHT_WIDTH);
         }
-        ui.checkbox(&mut app.namer_pf.skill_board.file_output.enabled, "");
-        ui.add_enabled(false, egui::Label::new("来自 score_now.toml"));
-        ui.horizontal(|ui| {
+        namer_pf_checkbox_cell(ui, &mut app.namer_pf.skill_board.file_output.enabled);
+        namer_pf_fixed_label_cell(ui, "来自 score_now.toml", NAMER_PF_VALUE_WIDTH);
+        namer_pf_action_cell(ui, |ui| {
             if ui.button("选择").clicked()
                 && let Some(path) = pick_named_output_file("tswn-openbox-namer-pf-skill-board.txt")
             {
@@ -517,25 +497,62 @@ fn namer_pf_metric_controls_clean(ui: &mut egui::Ui, app: &mut OpenboxApp, show_
                 app.namer_pf.skill_board.file_output.path = None;
             }
         });
-        ui.end_row();
+    });
+    let path_label = app
+        .namer_pf
+        .skill_board
+        .file_output
+        .path
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "未选择输出文件".to_string());
+    namer_pf_path_row(ui, path_label);
+}
 
-        let path_label = app
-            .namer_pf
-            .skill_board
-            .file_output
-            .path
-            .as_ref()
-            .map(|path| path.display().to_string())
-            .unwrap_or_else(|| "未选择输出文件".to_string());
-        ui.label(path_label);
-        ui.label("");
-        ui.label("");
+fn namer_pf_metric_header(ui: &mut egui::Ui, show_highlight: bool) {
+    ui.horizontal(|ui| {
+        namer_pf_fixed_label_cell(ui, "", NAMER_PF_METRIC_LABEL_WIDTH);
+        namer_pf_fixed_label_cell(ui, "屏幕", NAMER_PF_TOGGLE_WIDTH);
+        namer_pf_fixed_label_cell(ui, "屏幕阈值", NAMER_PF_VALUE_WIDTH);
         if show_highlight {
-            ui.label("");
+            namer_pf_fixed_label_cell(ui, "高亮超强名字", NAMER_PF_HIGHLIGHT_WIDTH);
         }
-        ui.label("");
-        ui.label("");
-        ui.label("");
-        ui.end_row();
+        namer_pf_fixed_label_cell(ui, "输出文件", NAMER_PF_TOGGLE_WIDTH);
+        namer_pf_fixed_label_cell(ui, "文件阈值", NAMER_PF_VALUE_WIDTH);
+        namer_pf_fixed_label_cell(ui, "操作", NAMER_PF_ACTION_WIDTH);
+    });
+}
+
+fn namer_pf_label_cell(ui: &mut egui::Ui, text: &str) { namer_pf_fixed_label_cell(ui, text, NAMER_PF_METRIC_LABEL_WIDTH); }
+
+fn namer_pf_fixed_label_cell(ui: &mut egui::Ui, text: &str, width: f32) {
+    ui.add_sized([width, ui.spacing().interact_size.y], egui::Label::new(text));
+}
+
+fn namer_pf_checkbox_cell(ui: &mut egui::Ui, value: &mut bool) {
+    ui.add_sized(
+        [NAMER_PF_TOGGLE_WIDTH, ui.spacing().interact_size.y],
+        egui::Checkbox::without_text(value),
+    );
+}
+
+fn namer_pf_text_cell(ui: &mut egui::Ui, text: &mut String) { namer_pf_text_cell_width(ui, text, NAMER_PF_VALUE_WIDTH); }
+
+fn namer_pf_text_cell_width(ui: &mut egui::Ui, text: &mut String, width: f32) {
+    ui.add_sized([width, ui.spacing().interact_size.y], egui::TextEdit::singleline(text));
+}
+
+fn namer_pf_action_cell(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(NAMER_PF_ACTION_WIDTH, ui.spacing().interact_size.y),
+        egui::Layout::left_to_right(egui::Align::Center),
+        add_contents,
+    );
+}
+
+fn namer_pf_path_row(ui: &mut egui::Ui, text: String) {
+    ui.scope(|ui| {
+        ui.set_width(ui.available_width());
+        ui.add(egui::Label::new(text).wrap());
     });
 }

@@ -10,6 +10,9 @@ use std::time::Duration;
 
 use tswn_core::win_rate::WinRateTiming;
 
+/// 把 `Option<usize>` 线程设置转换成 win-rate / 调度器使用的 `thread` 语义（`0` = 自动）。
+pub(super) fn thread_spec(threads: Option<usize>) -> u32 { threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0) }
+
 /// 将秒数格式化成人类可读的时间字符串。
 pub(super) fn format_duration(secs: f64) -> String {
     if secs < 0.0 || secs.is_nan() || secs.is_infinite() {

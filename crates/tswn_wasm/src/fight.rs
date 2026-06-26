@@ -14,17 +14,19 @@ use tswn_core::player::skill::{
     },
     skl::{protect::ProtectState, upgrade::UpgradeState},
 };
+use tswn_core::replay_view::{
+    ReplayEventView, ReplayState, ReplayTextPart as CoreReplayTextPart, ReplayTextPartKind as CoreReplayTextPartKind, ReplayTone,
+    ReplayViewFrame, build_replay_view_frame,
+};
 use tswn_core::{RunUpdates, Runner};
 use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, internal_error, invalid_input, runner_init_failed};
 use crate::model::{
-    FightOptions, FightReplay, FightSummary, MessageTone, PlayerMeta, PlayerState, RoundFrame, UpdateTypeView, UpdateView,
-    WinnerIds,
+    FightOptions, FightReplay, FightSummary, MessageTone, PlayerMeta, PlayerState, ReplayClip, ReplayRow, ReplayTextPart,
+    ReplayTextPartKind, RoundFrame, UpdateView, WinnerIds,
 };
 use crate::render::{classify_message_tone, render_update_message, status_change_tokens};
-
-const WIN_UPDATE_DELAY0_MS: i32 = 3000;
 
 fn build_runner(raw_input: String, eval_rq: f64) -> WasmResult<Runner> {
     if raw_input.trim().is_empty() {
@@ -297,15 +299,106 @@ fn update_hp_delta(tone: MessageTone, update: &tswn_core::RunUpdate) -> Option<i
     }
 }
 
-fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -> Vec<UpdateView> {
+impl ReplayState for PlayerState {
+    fn id(&self) -> PlrId { self.id }
+
+    fn hp(&self) -> i32 { self.hp }
+
+    fn max_hp(&self) -> i32 { self.max_hp }
+
+    fn alive(&self) -> bool { self.alive }
+
+    fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
+        Self {
+            hp,
+            alive,
+            ..self.clone()
+        }
+    }
+}
+
+fn tone_to_core(tone: MessageTone) -> ReplayTone {
+    match tone {
+        MessageTone::Normal => ReplayTone::Normal,
+        MessageTone::Damage => ReplayTone::Damage,
+        MessageTone::Recover => ReplayTone::Recover,
+        MessageTone::Knockout => ReplayTone::Knockout,
+    }
+}
+
+fn tone_from_core(tone: ReplayTone) -> MessageTone {
+    match tone {
+        ReplayTone::Normal => MessageTone::Normal,
+        ReplayTone::Damage => MessageTone::Damage,
+        ReplayTone::Recover => MessageTone::Recover,
+        ReplayTone::Knockout => MessageTone::Knockout,
+    }
+}
+
+fn part_kind_from_core(kind: CoreReplayTextPartKind) -> ReplayTextPartKind {
+    match kind {
+        CoreReplayTextPartKind::Text => ReplayTextPartKind::Text,
+        CoreReplayTextPartKind::Highlight => ReplayTextPartKind::Highlight,
+        CoreReplayTextPartKind::Player => ReplayTextPartKind::Player,
+        CoreReplayTextPartKind::Data => ReplayTextPartKind::Data,
+    }
+}
+
+fn part_from_core(part: CoreReplayTextPart) -> ReplayTextPart {
+    ReplayTextPart {
+        kind: part_kind_from_core(part.kind),
+        text: part.text,
+        player_id: part.player_id,
+        show_hp: part.show_hp,
+        hp_before: part.hp_before,
+        hp_after: part.hp_after,
+        death_effect: part.death_effect,
+        emoji: part.emoji,
+    }
+}
+
+fn rows_from_core(view: ReplayViewFrame<PlayerState>) -> (Vec<ReplayRow>, i32) {
+    let rows = view
+        .rows
+        .into_iter()
+        .map(|row| ReplayRow {
+            indent: row.indent,
+            clips: row
+                .clips
+                .into_iter()
+                .map(|clip| ReplayClip {
+                    delay: clip.delay,
+                    text_template: clip.text_template,
+                    color: tone_from_core(clip.color),
+                    player_id: clip.player_id,
+                    data: clip.data,
+                    show_hp: clip.show_hp,
+                    hp_before: clip.hp_before,
+                    hp_after: clip.hp_after,
+                    death_effect: clip.death_effect,
+                    emoji: clip.emoji,
+                    parts: clip.parts.into_iter().map(part_from_core).collect(),
+                    caster_ids: clip.caster_ids,
+                    target_ids: clip.target_ids,
+                    sidebar_states: clip.sidebar_states,
+                    sidebar_previous_states: clip.sidebar_previous_states,
+                    winner: clip.winner,
+                })
+                .collect(),
+        })
+        .collect();
+    (rows, view.total_delay)
+}
+
+fn convert_updates(updates: &RunUpdates, player_names: &HashMap<PlrId, String>) -> Vec<UpdateView> {
     updates
         .updates
-        .into_iter()
+        .iter()
         .map(|update| {
             let tone = classify_message_tone(&update.message);
-            let hp_delta = update_hp_delta(tone, &update);
+            let hp_delta = update_hp_delta(tone, update);
             let status_change_tokens = status_change_tokens(&update.message);
-            let message_rendered = render_update_message(&update, player_names);
+            let message_rendered = render_update_message(update, player_names);
             UpdateView {
                 score: update.score,
                 delay0: update.delay0,
@@ -325,21 +418,6 @@ fn convert_updates(updates: RunUpdates, player_names: &HashMap<PlrId, String>) -
         .collect()
 }
 
-fn playback_total_delay(updates: &[UpdateView]) -> i32 {
-    let mut total_delay = 0;
-    let mut next_wait = 1800;
-    for update in updates {
-        if matches!(update.update_type, UpdateTypeView::NextLine) || update.message_rendered.trim().is_empty() {
-            continue;
-        }
-        // 混淆版 md5.js 会在渲染当前可见 update 前等待 max(delay0, 上一条可见 update 的 delay1)。
-        let wait = update.delay0.max(next_wait);
-        total_delay += wait;
-        next_wait = update.delay1;
-    }
-    total_delay
-}
-
 fn winner_ids(runner: &Runner) -> Vec<usize> { runner.world.winner.clone().unwrap_or_default() }
 
 #[wasm_bindgen]
@@ -347,6 +425,7 @@ pub struct FightSession {
     runner: Runner,
     player_order: Vec<PlrId>,
     players: Vec<PlayerMeta>,
+    last_states: Vec<PlayerState>,
     include_icons: bool,
     capture_replay: bool,
 }
@@ -356,27 +435,45 @@ impl FightSession {
         let runner = build_runner(raw_input, options.resolved_eval_rq())?;
         let player_order = runner.all_plrs();
         let (players, _player_names) = collect_players(&runner, &player_order, options.include_icons())?;
+        let last_states = collect_states(&runner, &player_order, options.include_icons())?;
         Ok(Self {
             runner,
             player_order,
             players,
+            last_states,
             include_icons: options.include_icons(),
             capture_replay: options.capture_replay(),
         })
     }
 
-    fn build_frame(&self, updates: RunUpdates) -> WasmResult<RoundFrame> {
+    fn build_frame(&mut self, updates: RunUpdates) -> WasmResult<RoundFrame> {
         let states = collect_states(&self.runner, &self.player_order, self.include_icons)?;
-        let converted = convert_updates(updates, &player_names_from_states(&states));
-        let mut total_delay = playback_total_delay(&converted);
-        if self.runner.have_winner() {
-            // 混淆版 md5.js 的 RunUpdateWin 使用 3000ms delay0，再进入胜利渲染。
-            total_delay += WIN_UPDATE_DELAY0_MS;
-        }
+        let converted = convert_updates(&updates, &player_names_from_states(&states));
+        let winner_ids = winner_ids(&self.runner);
+        let player_names = player_names_from_states(&states);
+        let replay_events = converted
+            .iter()
+            .zip(updates.updates.iter())
+            .map(|(view, update)| ReplayEventView {
+                update,
+                tone: tone_to_core(view.tone),
+                message_rendered: view.message_rendered.as_str(),
+            })
+            .collect::<Vec<_>>();
+        let (rows, total_delay) = rows_from_core(build_replay_view_frame(
+            &replay_events,
+            &self.last_states,
+            &states,
+            &player_names,
+            self.runner.have_winner(),
+            &winner_ids,
+        ));
+        self.last_states = states.clone();
         Ok(RoundFrame {
             finished: self.runner.have_winner(),
-            winner_ids: winner_ids(&self.runner),
+            winner_ids,
             updates: converted,
+            rows,
             states,
             total_delay,
         })

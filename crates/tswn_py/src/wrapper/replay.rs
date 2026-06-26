@@ -11,9 +11,12 @@ use tswn_core::{
         PlrId,
         skill::act::minion::{MinionKind, MinionRuntimeState},
     },
+    replay_view::{
+        ReplayEventView, ReplayRow as CoreReplayRow, ReplayState, ReplayTextPart as CoreReplayTextPart,
+        ReplayTextPartKind as CoreReplayTextPartKind, ReplayTone, ReplayViewFrame, WIN_UPDATE_DELAY0_MS, build_replay_view_frame,
+        render_update_message as core_render_update_message,
+    },
 };
-
-const WIN_UPDATE_DELAY0_MS: i32 = 3000;
 
 #[derive(Clone)]
 pub struct PlayerSnapshot {
@@ -44,6 +47,24 @@ pub struct PlayerSnapshot {
     pub alive: bool,
     pub active: bool,
     pub frozen: bool,
+}
+
+impl ReplayState for PlayerSnapshot {
+    fn id(&self) -> PlrId { self.id }
+
+    fn hp(&self) -> i32 { self.hp }
+
+    fn max_hp(&self) -> i32 { self.max_hp }
+
+    fn alive(&self) -> bool { self.alive }
+
+    fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
+        Self {
+            hp,
+            alive,
+            ..self.clone()
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -196,31 +217,12 @@ fn update_type_str(update_type: UpdateType) -> &'static str {
     }
 }
 
-fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> String { names.get(&id).cloned().unwrap_or_else(|| id.to_string()) }
-
 pub fn player_names_from_snapshots(states: &[PlayerSnapshot]) -> HashMap<PlrId, String> {
     states.iter().map(|state| (state.id, state.display_name.clone())).collect()
 }
 
 pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>) -> String {
-    let mut message = update.message.to_string();
-    message = message.replace("[0]", &render_name(update.caster, names));
-    message = message.replace("[1]", &render_name(update.target, names));
-
-    let param = if let Some(value) = update.param {
-        value.to_string()
-    } else if update.targets.is_empty() {
-        update.score.to_string()
-    } else {
-        update
-            .targets
-            .iter()
-            .map(|target| render_name(*target, names))
-            .collect::<Vec<String>>()
-            .join(",")
-    };
-
-    message.replace("[2]", &param)
+    core_render_update_message(update, names)
 }
 
 fn classify_message_tone(update: &RunUpdate, rendered: &str) -> &'static str {
@@ -268,6 +270,33 @@ fn classify_message_tone(update: &RunUpdate, rendered: &str) -> &'static str {
         "action"
     } else {
         "normal"
+    }
+}
+
+fn replay_tone_from_event_tone(tone: &str) -> ReplayTone {
+    match tone {
+        "damage" => ReplayTone::Damage,
+        "recover" => ReplayTone::Recover,
+        "knockout" | "win" => ReplayTone::Knockout,
+        _ => ReplayTone::Normal,
+    }
+}
+
+fn replay_tone_to_str(tone: ReplayTone) -> &'static str {
+    match tone {
+        ReplayTone::Normal => "normal",
+        ReplayTone::Damage => "damage",
+        ReplayTone::Recover => "recover",
+        ReplayTone::Knockout => "knockout",
+    }
+}
+
+fn replay_text_part_kind_to_str(kind: CoreReplayTextPartKind) -> &'static str {
+    match kind {
+        CoreReplayTextPartKind::Text => "text",
+        CoreReplayTextPartKind::Highlight => "highlight",
+        CoreReplayTextPartKind::Player => "player",
+        CoreReplayTextPartKind::Data => "data",
     }
 }
 
@@ -419,6 +448,84 @@ pub fn event_to_pydict<'py>(py: pyo3::Python<'py>, event: &EventDto) -> PyResult
     Ok(dict)
 }
 
+pub fn replay_text_part_to_pydict<'py>(py: pyo3::Python<'py>, part: &CoreReplayTextPart) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("kind", replay_text_part_kind_to_str(part.kind))?;
+    dict.set_item("text", &part.text)?;
+    set_optional_usize(&dict, "player_id", part.player_id)?;
+    dict.set_item("show_hp", part.show_hp)?;
+    dict.set_item("hp_before", part.hp_before)?;
+    dict.set_item("hp_after", part.hp_after)?;
+    dict.set_item("death_effect", part.death_effect)?;
+    if let Some(emoji) = &part.emoji {
+        dict.set_item("emoji", emoji)?;
+    } else {
+        dict.set_item("emoji", py_none(py)?)?;
+    }
+    Ok(dict)
+}
+
+pub fn replay_row_to_pydict<'py>(
+    py: pyo3::Python<'py>,
+    row: &CoreReplayRow<PlayerSnapshot>,
+) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    let clips = PyList::empty(py);
+    for clip in &row.clips {
+        let clip_dict = PyDict::new(py);
+        clip_dict.set_item("delay", clip.delay)?;
+        clip_dict.set_item("text_template", &clip.text_template)?;
+        clip_dict.set_item("color", replay_tone_to_str(clip.color))?;
+        set_optional_usize(&clip_dict, "player_id", clip.player_id)?;
+        if let Some(data) = &clip.data {
+            clip_dict.set_item("data", data)?;
+        } else {
+            clip_dict.set_item("data", py_none(py)?)?;
+        }
+        clip_dict.set_item("show_hp", clip.show_hp)?;
+        clip_dict.set_item("hp_before", clip.hp_before)?;
+        clip_dict.set_item("hp_after", clip.hp_after)?;
+        clip_dict.set_item("death_effect", clip.death_effect)?;
+        if let Some(emoji) = &clip.emoji {
+            clip_dict.set_item("emoji", emoji)?;
+        } else {
+            clip_dict.set_item("emoji", py_none(py)?)?;
+        }
+
+        let parts = PyList::empty(py);
+        for part in &clip.parts {
+            parts.append(replay_text_part_to_pydict(py, part)?)?;
+        }
+        clip_dict.set_item("parts", parts)?;
+        clip_dict.set_item("caster_ids", &clip.caster_ids)?;
+        clip_dict.set_item("target_ids", &clip.target_ids)?;
+        clip_dict.set_item("sidebar_states", snapshots_to_pylist(py, &clip.sidebar_states)?)?;
+        clip_dict.set_item(
+            "sidebar_previous_states",
+            snapshots_to_pylist(py, &clip.sidebar_previous_states)?,
+        )?;
+        clip_dict.set_item("winner", clip.winner)?;
+        clips.append(clip_dict)?;
+    }
+    dict.set_item("indent", row.indent)?;
+    dict.set_item("clips", clips)?;
+    Ok(dict)
+}
+
+pub fn replay_view_frame_to_pydict<'py>(
+    py: pyo3::Python<'py>,
+    view: &ReplayViewFrame<PlayerSnapshot>,
+) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    let rows = PyList::empty(py);
+    for row in &view.rows {
+        rows.append(replay_row_to_pydict(py, row)?)?;
+    }
+    dict.set_item("rows", rows)?;
+    dict.set_item("total_delay", view.total_delay)?;
+    Ok(dict)
+}
+
 pub fn updates_to_event_dtos(updates: &RunUpdates, names: &HashMap<PlrId, String>) -> Vec<EventDto> {
     updates.updates.iter().map(|update| update_to_dto(update, names)).collect()
 }
@@ -429,6 +536,7 @@ pub fn build_replay(py: pyo3::Python<'_>, runner: &mut Runner, limit: Option<usi
     let mut previous_states = initial_states.clone();
     let player_count = initial_states.len();
     let mut events_out = Vec::new();
+    let mut frames_out = Vec::new();
     let mut idle_rounds = 0usize;
     let mut total_visible_events = 0usize;
     let mut any_visible_event_emitted = false;
@@ -451,6 +559,34 @@ pub fn build_replay(py: pyo3::Python<'_>, runner: &mut Runner, limit: Option<usi
         let after_states = snapshot_players(runner);
         let names = player_names_from_snapshots(&after_states);
         let event_dtos = updates_to_event_dtos(&updates, &names);
+        let replay_events = event_dtos
+            .iter()
+            .zip(updates.updates.iter())
+            .map(|(event, update)| ReplayEventView {
+                update,
+                tone: replay_tone_from_event_tone(event.tone),
+                message_rendered: event.message_rendered.as_str(),
+            })
+            .collect::<Vec<_>>();
+        let replay_view = build_replay_view_frame(
+            &replay_events,
+            &before_states,
+            &after_states,
+            &names,
+            runner.have_winner(),
+            &runner.world.winner.clone().unwrap_or_default(),
+        );
+        let frame = replay_view_frame_to_pydict(py, &replay_view)?;
+        frame.set_item("finished", runner.have_winner())?;
+        frame.set_item("winner_ids", runner.world.winner.clone().unwrap_or_default())?;
+        let frame_events = PyList::empty(py);
+        for event in &event_dtos {
+            frame_events.append(event_to_pydict(py, event)?)?;
+        }
+        frame.set_item("events", frame_events)?;
+        frame.set_item("states", snapshots_to_pylist(py, &after_states)?)?;
+        frames_out.push(frame);
+
         let first_visible_immediate = !any_visible_event_emitted;
         let delays = compute_event_delays(&event_dtos, true, player_count, first_visible_immediate);
         let raw_delays = compute_event_delays(&event_dtos, false, player_count, first_visible_immediate);
@@ -485,6 +621,7 @@ pub fn build_replay(py: pyo3::Python<'_>, runner: &mut Runner, limit: Option<usi
     let result = PyDict::new(py);
     result.set_item("initial_states", snapshots_to_pylist(py, &initial_states)?)?;
     result.set_item("events", PyList::new(py, events_out)?)?;
+    result.set_item("frames", PyList::new(py, frames_out)?)?;
     result.set_item("final_states", snapshots_to_pylist(py, &final_states)?)?;
     set_optional_usize(&result, "winner_team_index", runner.winner_team_index())?;
     result.set_item("winner_team_indices", runner.winner_team_indices())?;

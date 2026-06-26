@@ -172,10 +172,71 @@ pub struct UpdateView {
 
 #[derive(Debug, Clone, Serialize, Tsify)]
 #[tsify(into_wasm_abi)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplayTextPartKind {
+    Text,
+    Highlight,
+    Player,
+    Data,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct ReplayTextPart {
+    pub kind: ReplayTextPartKind,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_id: Option<usize>,
+    pub show_hp: bool,
+    pub hp_before: i32,
+    pub hp_after: i32,
+    pub death_effect: bool,
+    pub emoji: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct ReplayClip {
+    pub delay: i32,
+    pub text_template: String,
+    pub color: MessageTone,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_id: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    pub show_hp: bool,
+    pub hp_before: i32,
+    pub hp_after: i32,
+    pub death_effect: bool,
+    pub emoji: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<ReplayTextPart>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caster_ids: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_ids: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sidebar_states: Vec<PlayerState>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sidebar_previous_states: Vec<PlayerState>,
+    pub winner: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct ReplayRow {
+    pub indent: bool,
+    pub clips: Vec<ReplayClip>,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
 pub struct RoundFrame {
     pub finished: bool,
     pub winner_ids: Vec<usize>,
     pub updates: Vec<UpdateView>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rows: Vec<ReplayRow>,
     pub states: Vec<PlayerState>,
     /// 帧内所有可见 update 的原始等待总和（毫秒），按混淆版 md5.js 的 delay 规则计算，未按角色数量缩放。
     pub total_delay: i32,

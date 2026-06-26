@@ -113,6 +113,12 @@ for item in replay["events"]:
     event = item["event"]
     print(item["delay_ms"], event["tone"], event["message_rendered"])
 
+# 新的 frames[].rows 可直接用于前端 replay view 渲染。
+for frame in replay["frames"]:
+    for row in frame["rows"]:
+        for clip in row["clips"]:
+            print(clip["delay"], clip["text_template"], clip["parts"])
+
 # 已有 RunUpdates 也可以单独计算 show.html 风格的延迟。
 timeline = tswn_py.compute_show_timeline(updates, player_count=len(states))
 ```
@@ -121,9 +127,12 @@ timeline = tswn_py.compute_show_timeline(updates, player_count=len(states))
 `message_template`、`message_rendered`、`caster_id`、`target_id`、`target_ids`、
 `param`、`score`、`delay0`、`delay1`、`is_win` 和 `is_next_line`。
 
-`build_replay()` 返回 `initial_states`、`events`、`final_states`、`winner_team_index`、
-`winner_team_indices`、`winner_ids` 和 `winner_names`。事件快照使用每个 tick 前后的真实引擎状态
-（`state_granularity == "tick"`），调用方无需再根据事件文本模拟扣血、召唤、复活或状态变化。
+`build_replay()` 返回 `initial_states`、`events`、`frames`、`final_states`、`winner_team_index`、
+`winner_team_indices`、`winner_ids` 和 `winner_names`。`events` 保留兼容旧 timeline 消费方式；
+`frames[].rows[].clips[]` 是与 WASM 共用的 replay view 结构，包含 `delay`、`text_template`、
+`parts`、`color`、`player_id`、血条前后值、死亡特效标记和侧栏状态快照。调用方可以直接渲染这些结构化字段，
+无需再根据事件文本模拟扣血、召唤、复活或状态变化。事件快照仍使用每个 tick 前后的真实引擎状态
+（`state_granularity == "tick"`）。
 
 ### 类
 

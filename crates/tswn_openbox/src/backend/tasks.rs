@@ -8,14 +8,13 @@ use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 use tswn_core::cli_api;
 use tswn_core::engine::storage::Storage;
 use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
-use tswn_core::win_rate::resolve_win_rate_workers;
 
 use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
@@ -24,9 +23,6 @@ use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_w
 use super::score::{BatchRateSummary, BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
 use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairInput, ProgressEvent};
-
-const LOW_ACCURACY_OUTER_PARALLEL_LIMIT: usize = 1000;
-const WORKER_EVENT_CHANNEL_CAPACITY: usize = 4096;
 
 pub fn run_to_diy(
     raw: &str,
@@ -205,14 +201,23 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
         needs_qp,
         needs_qd,
     };
-    let outer_workers = low_accuracy_outer_workers(n, total, input.threads);
+    let outer_workers = low_accuracy_outer_workers(n, total, outer_thread_spec(input.threads));
     let completed = if outer_workers > 1 {
         let score_settings = score_settings.with_threads(Some(1));
-        match run_namer_pf_outer_parallel(
+        let mut progress_done = 0usize;
+        match run_outer_parallel_ordered(
             &groups,
-            score_settings,
             outer_workers,
-            Arc::clone(&input.cancel),
+            &input.cancel,
+            |_, group, tick| {
+                let result = compute_namer_pf_result(group, score_settings);
+                tick();
+                result
+            },
+            || {
+                progress_done += 1;
+                send(ProgressEvent::Progress { done: progress_done, total });
+            },
             |result| {
                 emit_namer_pf_result(
                     &result,
@@ -227,7 +232,6 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                     &send,
                 )
             },
-            |done| send(ProgressEvent::Progress { done, total }),
         ) {
             Ok(done) => done,
             Err(err) => {
@@ -242,7 +246,7 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
                 send(ProgressEvent::Done(Ok("已停止。".to_string())));
                 return;
             }
-            let result = compute_namer_pf_result(index, group, score_settings);
+            let result = compute_namer_pf_result(group, score_settings);
             if let Err(err) = emit_namer_pf_result(
                 &result,
                 &input.metrics,
@@ -312,13 +316,12 @@ impl NamerPfScoreSettings {
 }
 
 struct NamerPfJobResult {
-    index: usize,
     group: Vec<String>,
     label: String,
     scores: NamerPfScores,
 }
 
-fn compute_namer_pf_result(index: usize, group: &[String], settings: NamerPfScoreSettings) -> NamerPfJobResult {
+fn compute_namer_pf_result(group: &[String], settings: NamerPfScoreSettings) -> NamerPfJobResult {
     let pp = if settings.needs_pp {
         namer_pf_score(group, "\u{0002}", false, settings.n, settings.threads, settings.eval_rq)
     } else {
@@ -347,7 +350,6 @@ fn compute_namer_pf_result(index: usize, group: &[String], settings: NamerPfScor
         sum: pp + pd + qp + qd,
     };
     NamerPfJobResult {
-        index,
         group: group.to_vec(),
         label: group.join("+"),
         scores,
@@ -405,83 +407,8 @@ fn emit_namer_pf_result(
     Ok(())
 }
 
-fn run_namer_pf_outer_parallel(
-    groups: &[Vec<String>],
-    settings: NamerPfScoreSettings,
-    workers: usize,
-    cancel: Arc<AtomicBool>,
-    mut emit: impl FnMut(NamerPfJobResult) -> Result<(), String>,
-    mut report_progress: impl FnMut(usize),
-) -> Result<usize, String> {
-    let groups = Arc::new(groups.to_vec());
-    let next = Arc::new(AtomicUsize::new(0));
-    let (tx, rx) = mpsc::sync_channel(WORKER_EVENT_CHANNEL_CAPACITY);
-    let worker_count = workers.min(groups.len()).max(1);
-    let mut handles = Vec::with_capacity(worker_count);
-
-    for _ in 0..worker_count {
-        let groups = Arc::clone(&groups);
-        let next = Arc::clone(&next);
-        let tx = tx.clone();
-        let cancel = Arc::clone(&cancel);
-        handles.push(std::thread::spawn(move || {
-            loop {
-                if cancel.load(Ordering::Relaxed) {
-                    break;
-                }
-                let index = next.fetch_add(1, Ordering::Relaxed);
-                if index >= groups.len() {
-                    break;
-                }
-                let result = compute_namer_pf_result(index, &groups[index], settings);
-                if tx.send(result).is_err() {
-                    break;
-                }
-            }
-        }));
-    }
-    drop(tx);
-
-    let mut pending = std::iter::repeat_with(|| None).take(groups.len()).collect::<Vec<_>>();
-    let mut next_emit = 0usize;
-    let mut completed = 0usize;
-    let mut first_error = None;
-    while let Ok(result) = rx.recv() {
-        completed += 1;
-        report_progress(completed);
-        let index = result.index;
-        if index < pending.len() {
-            pending[index] = Some(result);
-        }
-        while next_emit < pending.len() {
-            let Some(result) = pending[next_emit].take() else {
-                break;
-            };
-            if first_error.is_none()
-                && let Err(err) = emit(result)
-            {
-                first_error = Some(err);
-                cancel.store(true, Ordering::Relaxed);
-            }
-            next_emit += 1;
-        }
-    }
-
-    for handle in handles {
-        handle.join().map_err(|_| "namer-pf 并行任务线程异常退出。".to_string())?;
-    }
-    if let Some(err) = first_error {
-        return Err(err);
-    }
-    Ok(completed)
-}
-
-fn low_accuracy_outer_workers(n: usize, item_count: usize, threads: Option<usize>) -> usize {
-    if n > LOW_ACCURACY_OUTER_PARALLEL_LIMIT || item_count <= 1 {
-        return 1;
-    }
-    resolve_win_rate_workers(threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0), item_count)
-}
+/// 把 GUI 侧的 `Option<usize>` 线程设置转换成 [`low_accuracy_outer_workers`] 需要的 `thread` 语义。
+fn outer_thread_spec(threads: Option<usize>) -> u32 { threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0) }
 
 #[derive(Debug, Clone, Copy)]
 pub struct NamerPfScores {
@@ -543,16 +470,23 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         verbose: input.options.verbose,
         collect_details: input.show_matchups,
     };
-    let outer_workers = low_accuracy_outer_workers(n, player_groups.len(), input.options.threads);
+    let outer_workers = low_accuracy_outer_workers(n, player_groups.len(), outer_thread_spec(input.options.threads));
     if outer_workers > 1 {
         let job_settings = job_settings.with_threads(Some(1));
-        if let Err(err) = run_batch_rate_outer_parallel(
+        if let Err(err) = run_outer_parallel_ordered(
             &player_groups,
-            &player_labels,
-            &target_groups,
-            job_settings,
             outer_workers,
-            Arc::clone(&input.cancel),
+            &input.cancel,
+            |index, player, tick| {
+                compute_batch_rate_result(
+                    player,
+                    &player_labels[index],
+                    &target_groups,
+                    job_settings,
+                    &input.cancel,
+                    tick,
+                )
+            },
             || {
                 done += 1;
                 send(ProgressEvent::Progress { done, total });
@@ -614,11 +548,6 @@ struct BatchRateJobResult {
     label: String,
     summary: BatchRateSummary,
     detail_rates: Vec<(f64, String)>,
-}
-
-enum BatchRateWorkerEvent {
-    TargetDone,
-    PlayerDone(BatchRateJobResult),
 }
 
 fn compute_batch_rate_result(
@@ -687,89 +616,6 @@ fn emit_batch_rate_result(
         }
     }
     Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_batch_rate_outer_parallel(
-    player_groups: &[String],
-    player_labels: &[String],
-    target_groups: &[String],
-    settings: BatchRateJobSettings,
-    workers: usize,
-    cancel: Arc<AtomicBool>,
-    mut tick_target: impl FnMut(),
-    mut emit: impl FnMut(BatchRateJobResult) -> Result<(), String>,
-) -> Result<usize, String> {
-    let player_groups = Arc::new(player_groups.to_vec());
-    let player_labels = Arc::new(player_labels.to_vec());
-    let target_groups = Arc::new(target_groups.to_vec());
-    let next = Arc::new(AtomicUsize::new(0));
-    let (tx, rx) = mpsc::sync_channel(WORKER_EVENT_CHANNEL_CAPACITY);
-    let worker_count = workers.min(player_groups.len()).max(1);
-    let mut handles = Vec::with_capacity(worker_count);
-
-    for _ in 0..worker_count {
-        let player_groups = Arc::clone(&player_groups);
-        let player_labels = Arc::clone(&player_labels);
-        let target_groups = Arc::clone(&target_groups);
-        let next = Arc::clone(&next);
-        let tx = tx.clone();
-        let cancel = Arc::clone(&cancel);
-        handles.push(std::thread::spawn(move || {
-            loop {
-                if cancel.load(Ordering::Relaxed) {
-                    break;
-                }
-                let index = next.fetch_add(1, Ordering::Relaxed);
-                if index >= player_groups.len() {
-                    break;
-                }
-                let result = compute_batch_rate_result(
-                    &player_groups[index],
-                    &player_labels[index],
-                    &target_groups,
-                    settings,
-                    &cancel,
-                    || {
-                        let _ = tx.send(BatchRateWorkerEvent::TargetDone);
-                    },
-                );
-                if tx.send(BatchRateWorkerEvent::PlayerDone(result)).is_err() {
-                    break;
-                }
-            }
-        }));
-    }
-    drop(tx);
-
-    let mut completed_players = 0usize;
-    let mut first_error = None;
-    while let Ok(event) = rx.recv() {
-        match event {
-            BatchRateWorkerEvent::TargetDone => {
-                if first_error.is_none() {
-                    tick_target();
-                }
-            }
-            BatchRateWorkerEvent::PlayerDone(result) => {
-                completed_players += 1;
-                if first_error.is_none()
-                    && let Err(err) = emit(result)
-                {
-                    first_error = Some(err);
-                    cancel.store(true, Ordering::Relaxed);
-                }
-            }
-        }
-    }
-
-    for handle in handles {
-        handle.join().map_err(|_| "cqd/cqp 并行任务线程异常退出。".to_string())?;
-    }
-    if let Some(err) = first_error {
-        return Err(err);
-    }
-    Ok(completed_players)
 }
 
 pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
