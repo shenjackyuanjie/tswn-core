@@ -110,6 +110,7 @@
  */
 
 import {
+  buildStateMap,
   buildIconClassCss,
   escapeHtml,
   formatError,
@@ -304,6 +305,21 @@ function actorNicknameKey(actor) {
   return `${actor?.id_name ?? actor?._raw_display_name ?? actor?.display_name ?? ""}`.trim();
 }
 
+function baseNicknameKey(key) {
+  return `${key ?? ""}`
+    .trim()
+    .replace(/\s+#\d+$/, "")
+    .replace(/\?\d+(?=@|$)/, "");
+}
+
+function nicknameForKey(key) {
+  const normalizedKey = `${key ?? ""}`.trim();
+  if (!normalizedKey) {
+    return "";
+  }
+  return nicknameByIdName.get(normalizedKey) ?? nicknameByIdName.get(baseNicknameKey(normalizedKey)) ?? "";
+}
+
 function ensureRawDisplayName(actor) {
   if (!actor) {
     return "";
@@ -319,7 +335,7 @@ function applyNickname(actor, key) {
     return;
   }
   const rawDisplayName = ensureRawDisplayName(actor);
-  actor.display_name = nicknameByIdName.get(key) || rawDisplayName;
+  actor.display_name = nicknameForKey(key) || rawDisplayName;
 }
 
 function applyNicknamesToReplay(replay) {
@@ -333,19 +349,31 @@ function applyNicknamesToReplay(replay) {
     applyNickname(player, key);
   }
 
+  const nicknameKeyForState = (state) => {
+    if (!state) {
+      return "";
+    }
+    return (
+      inputKeysById.get(state.id) ??
+      inputKeysById.get(state.owner_id) ??
+      actorNicknameKey(state)
+    );
+  };
+
   const applyStateNickname = (state) => {
-    const key = inputKeysById.get(state.id);
+    const key = nicknameKeyForState(state);
     if (key) {
       applyNickname(state, key);
     }
   };
 
-  const applyPartNickname = (part) => {
+  const applyPartNickname = (part, stateById) => {
     if (part?.kind !== "player" || part.player_id == null) {
       return;
     }
-    const key = inputKeysById.get(part.player_id);
-    const nickname = key ? nicknameByIdName.get(key) : "";
+    const state = stateById.get(part.player_id);
+    const key = inputKeysById.get(part.player_id) || nicknameKeyForState(state) || part.text;
+    const nickname = nicknameForKey(key);
     if (nickname) {
       part.text = nickname;
     }
@@ -356,7 +384,10 @@ function applyNicknamesToReplay(replay) {
     (frame.states ?? []).forEach(applyStateNickname);
     for (const row of frame.rows ?? []) {
       for (const clip of row.clips ?? []) {
-        (clip.parts ?? []).forEach(applyPartNickname);
+        (clip.sidebar_states ?? []).forEach(applyStateNickname);
+        (clip.sidebar_previous_states ?? []).forEach(applyStateNickname);
+        const stateById = buildStateMap(clip.sidebar_states ?? frame.states ?? []);
+        (clip.parts ?? []).forEach((part) => applyPartNickname(part, stateById));
       }
     }
   }

@@ -128,6 +128,12 @@ function syntheticPlayerFromState(playerId, state, playersById) {
   };
 }
 
+function syncSyntheticPlayerFromState(playerId, state, playersById) {
+  const player = syntheticPlayerFromState(playerId, state, playersById);
+  playersById.set(playerId, player);
+  return player;
+}
+
 /**
  * 根据 playerId 渲染一个角色 token，自动处理幻影/未知角色。
  * @param {number} playerId
@@ -151,7 +157,7 @@ export function renderActorById(
   const previousState = previousStateMap?.get(playerId) ?? null;
   if (!player) {
     return actorToken(
-      syntheticPlayerFromState(playerId, state, playersById),
+      syncSyntheticPlayerFromState(playerId, state, playersById),
       state,
       previousState,
       update,
@@ -444,9 +450,8 @@ function orderedDisplayPlayers(players, states, stateMap, playersById) {
       continue;
     }
     knownIds.add(state.id);
-    const phantomPlayer = syntheticPlayerFromState(state.id, state, playersById);
+    const phantomPlayer = syncSyntheticPlayerFromState(state.id, state, playersById);
     allPlayers.push(phantomPlayer);
-    playersById.set(state.id, phantomPlayer);
   }
 
   const playerById = new Map(allPlayers.map((player) => [player.id, player]));
@@ -913,7 +918,10 @@ function structuredPlayerToken(part, clip, stateMap, previousStateMap, playersBy
     max_hp: maxHp,
     alive: previousHp > 0,
   };
-  const player = playersById.get(playerId) ?? syntheticPlayerFromState(playerId, nextState, playersById);
+  const player =
+    stateBase != null
+      ? syncSyntheticPlayerFromState(playerId, nextState, playersById)
+      : (playersById.get(playerId) ?? syncSyntheticPlayerFromState(playerId, nextState, playersById));
   return actorToken(player, nextState, previousState, { tone: clip.color }, { showHp: Boolean(part.show_hp) });
 }
 
@@ -1010,11 +1018,9 @@ function buildStructuredFrameRows(frame, roundIndex, playersById) {
 
 export function buildFrameHtml(frame, roundIndex, previousStates = frame.states, playersById) {
   for (const state of frame.states) {
-    if (playersById.has(state.id)) {
-      continue;
+    if (!playersById.has(state.id) || state.owner_id != null) {
+      syncSyntheticPlayerFromState(state.id, state, playersById);
     }
-
-    playersById.set(state.id, syntheticPlayerFromState(state.id, state, playersById));
   }
 
   const previousStateMap = buildStateMap(previousStates);
@@ -1120,11 +1126,9 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
   }
 
   for (const state of frame.states) {
-    if (playersById.has(state.id)) {
-      continue;
+    if (!playersById.has(state.id) || state.owner_id != null) {
+      syncSyntheticPlayerFromState(state.id, state, playersById);
     }
-
-    playersById.set(state.id, syntheticPlayerFromState(state.id, state, playersById));
   }
 
   const previousStateMap = buildStateMap(previousStates);
