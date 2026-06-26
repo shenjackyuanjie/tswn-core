@@ -10,7 +10,7 @@ use tswn_core::player::PlrId;
 use tswn_core::player::skill::{
     act::{
         berserk::BerserkState, charm::CharmState, curse::CurseState, haste::HasteState, ice::IceState, iron::IronState,
-        poison::PoisonState, slow::SlowState,
+        minion::minion_display_index, poison::PoisonState, slow::SlowState,
     },
     skl::{protect::ProtectState, upgrade::UpgradeState},
 };
@@ -23,8 +23,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, internal_error, invalid_input, runner_init_failed};
 use crate::model::{
-    FightOptions, FightReplay, FightSummary, MessageTone, PlayerMeta, PlayerState, ReplayClip, ReplayRow, ReplayTextPart,
-    ReplayTextPartKind, RoundFrame, UpdateView, WinnerIds,
+    FightOptions, FightReplay, FightSummary, MessageTone, MinionKindView, PlayerMeta, PlayerState, ReplayClip, ReplayRow,
+    ReplayTextPart, ReplayTextPartKind, RoundFrame, UpdateView, WinnerIds,
 };
 use crate::render::{classify_message_tone, render_update_message, status_change_tokens};
 
@@ -258,6 +258,7 @@ fn collect_states(runner: &Runner, player_order: &[PlrId], include_icons: bool) 
             id_name: player.id_name(),
             icon_key,
             display_name: player.display_name(),
+            display_index: minion_display_index(&runner.storage, *player_id),
             icon_png_base64,
             owner_id,
             minion_kind,
@@ -285,8 +286,16 @@ fn collect_states(runner: &Runner, player_order: &[PlrId], include_icons: bool) 
     Ok(states)
 }
 
+fn display_name_for_state(state: &PlayerState) -> String {
+    if matches!(state.minion_kind, Some(MinionKindView::Clone)) && state.display_index > 0 {
+        format!("{} #{}", state.display_name, state.display_index)
+    } else {
+        state.display_name.clone()
+    }
+}
+
 fn player_names_from_states(states: &[PlayerState]) -> HashMap<PlrId, String> {
-    states.iter().map(|state| (state.id, state.display_name.clone())).collect()
+    states.iter().map(|state| (state.id, display_name_for_state(state))).collect()
 }
 
 fn u32_to_i32_saturating(value: u32) -> i32 { value.min(i32::MAX as u32) as i32 }

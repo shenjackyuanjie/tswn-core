@@ -115,6 +115,14 @@ export function normalizeReplayIconClasses(replay) {
   const frames = (replay.frames ?? []).map((frame) => ({
     ...frame,
     states: normalizeStates(frame.states),
+    rows: (frame.rows ?? []).map((row) => ({
+      ...row,
+      clips: (row.clips ?? []).map((clip) => ({
+        ...clip,
+        sidebar_states: normalizeStates(clip.sidebar_states),
+        sidebar_previous_states: normalizeStates(clip.sidebar_previous_states),
+      })),
+    })),
   }));
   const final_states = normalizeStates(replay.final_states);
 
@@ -514,7 +522,7 @@ export function phantomDisplayName(playerId) {
 
 /**
  * 统一格式化回放状态里的显示名。
- * minion 会追加 #playerId，用来和其他同类单位区分。
+ * clone 使用底层给出的 display_index 表示同一名字下的第几个分身；左侧 playerId 另行显示。
  * @param {FightState|undefined} state
  * @param {number} [fallbackPlayerId]
  * @returns {string}
@@ -525,7 +533,8 @@ export function replayDisplayName(state, fallbackPlayerId) {
     return playerId == null ? "未知角色" : phantomDisplayName(playerId);
   }
   if (state.minion_kind === "clone") {
-    return playerId == null ? state.display_name : `${state.display_name} #${playerId}`;
+    const displayIndex = Number(state.display_index);
+    return Number.isFinite(displayIndex) && displayIndex > 0 ? `${state.display_name} #${displayIndex}` : state.display_name;
   }
   if (
     state.minion_kind === "summon" ||
@@ -535,7 +544,7 @@ export function replayDisplayName(state, fallbackPlayerId) {
     const baseName =
       state.display_name ??
       (state.minion_kind === "shadow" ? "幻影" : state.minion_kind === "zombie" ? "丧尸" : "使魔");
-    return playerId == null ? baseName : `${baseName} #${playerId}`;
+    return baseName;
   }
   return state.display_name ?? phantomDisplayName(playerId ?? 0);
 }

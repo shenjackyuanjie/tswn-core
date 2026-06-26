@@ -9,7 +9,7 @@ use tswn_core::{
     engine::update::{RunUpdates, UpdateType},
     player::{
         PlrId,
-        skill::act::minion::{MinionKind, MinionRuntimeState},
+        skill::act::minion::{MinionKind, MinionRuntimeState, minion_display_index},
     },
     replay_view::{
         ReplayEventView, ReplayRow as CoreReplayRow, ReplayState, ReplayTextPart as CoreReplayTextPart,
@@ -30,6 +30,7 @@ pub struct PlayerSnapshot {
     pub id_key_name: String,
     pub icon_key: String,
     pub display_name: String,
+    pub display_index: usize,
     pub base_name: String,
     pub player_type: String,
     pub minion_kind: Option<&'static str>,
@@ -163,6 +164,7 @@ pub fn snapshot_one(runner: &Runner, id: PlrId, display_order: usize) -> Option<
         icon_key: id_key_name.clone(),
         id_key_name,
         display_name: player.display_name(),
+        display_index: minion_display_index(&runner.storage, id),
         base_name: player.base_name(),
         player_type: format!("{:?}", player.player_type()),
         minion_kind: minion.map(|state| minion_kind_str(state.kind)),
@@ -217,8 +219,16 @@ fn update_type_str(update_type: UpdateType) -> &'static str {
     }
 }
 
+fn display_name_for_snapshot(state: &PlayerSnapshot) -> String {
+    if state.minion_kind == Some("clone") && state.display_index > 0 {
+        format!("{} #{}", state.display_name, state.display_index)
+    } else {
+        state.display_name.clone()
+    }
+}
+
 pub fn player_names_from_snapshots(states: &[PlayerSnapshot]) -> HashMap<PlrId, String> {
-    states.iter().map(|state| (state.id, state.display_name.clone())).collect()
+    states.iter().map(|state| (state.id, display_name_for_snapshot(state))).collect()
 }
 
 pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>) -> String {
@@ -397,6 +407,7 @@ pub fn snapshot_to_pydict<'py>(py: pyo3::Python<'py>, snapshot: &PlayerSnapshot)
     dict.set_item("id_key_name", &snapshot.id_key_name)?;
     dict.set_item("icon_key", &snapshot.icon_key)?;
     dict.set_item("display_name", &snapshot.display_name)?;
+    dict.set_item("display_index", snapshot.display_index)?;
     dict.set_item("base_name", &snapshot.base_name)?;
     dict.set_item("player_type", &snapshot.player_type)?;
     if let Some(minion_kind) = snapshot.minion_kind {

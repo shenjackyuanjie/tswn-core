@@ -119,6 +119,7 @@ function syntheticPlayerFromState(playerId, state, playersById) {
     team_index: state?.team_index ?? 0,
     owner_id: state?.owner_id ?? null,
     minion_kind: state?.minion_kind ?? null,
+    display_index: state?.display_index ?? 0,
     id_name: state?.id_name ?? `player_${playerId}`,
     icon_key: state?.icon_key ?? state?.id_name ?? `player_${playerId}`,
     display_name: replayDisplayName(state, playerId),
@@ -301,9 +302,12 @@ const POSITIVE_STATUS_LABELS = new Set([
   "守护",
 ]);
 const NEGATIVE_STATUS_LABELS = new Set(["魅惑", "诅咒", "冰冻", "中毒", "迟缓", "垂死"]);
-const QUICK_AREA_SKILL_MAX_DELAY_MS = 300;
 const QUICK_AREA_SKILL_TOKENS = ["[雷击术]", "[地裂术]", "使用雷击术", "使用地裂术"];
 const WIN_UPDATE_DELAY0_MS = 3000;
+const FRAME_FIRST_DELAY_MS = 900;
+const QUICK_AREA_ROW_FIRST_DELAY_MS = 150;
+const HP_CHANGE_DELAY_MS = 600;
+const DEFAULT_CLIP_DELAY_MS = 500;
 
 function isQuickAreaSkillUpdate(update) {
   const template = `${update.message_template ?? ""}`;
@@ -313,8 +317,17 @@ function isQuickAreaSkillUpdate(update) {
   );
 }
 
-function quickAreaSkillDelay(rawDelay) {
-  return Math.min(rawDelay, QUICK_AREA_SKILL_MAX_DELAY_MS);
+function clipDelay(frameStarted, rowStarted, quickAreaSkillActive, showHp) {
+  if (!frameStarted) {
+    return FRAME_FIRST_DELAY_MS;
+  }
+  if (!rowStarted && quickAreaSkillActive) {
+    return QUICK_AREA_ROW_FIRST_DELAY_MS;
+  }
+  if (showHp) {
+    return HP_CHANGE_DELAY_MS;
+  }
+  return DEFAULT_CLIP_DELAY_MS;
 }
 
 function statusPillTone(label) {
@@ -405,9 +418,10 @@ function playerWithCurrentState(player, state) {
     team_index: state?.team_index ?? player.team_index ?? 0,
     owner_id: state?.owner_id ?? player.owner_id ?? null,
     minion_kind: state?.minion_kind ?? player.minion_kind ?? null,
+    display_index: state?.display_index ?? player.display_index ?? 0,
     id_name: state?.id_name ?? player.id_name,
     icon_key: state?.icon_key ?? player.icon_key,
-    display_name: state?.display_name ?? player.display_name,
+    display_name: state ? replayDisplayName(state, state.id ?? player.id) : player.display_name,
     icon_png_base64: state?.icon_png_base64 ?? player.icon_png_base64,
     icon_class_id: state?.icon_class_id ?? player.icon_class_id,
   };
@@ -627,7 +641,7 @@ export function renderPlayers(
                             <td class="player-name-cell">
                                 <div class="player-name-wrap">
                                     ${renderIconSprite(playerIconClassId(player), "sgl icon-sprite")}
-                                    <span class="${nameClass}">${escapeHtml(player.display_name)}</span>
+                                    <span class="${nameClass}">${escapeHtml(replayDisplayName(state, player.id))}</span>
                                     <span class="player-id"> #${player.id}</span>
                                     <button type="button" class="detail-btn" data-player-detail-id="${player.id}" title="打开角色详情" aria-label="打开角色详情">i</button>
                                 </div>
@@ -762,7 +776,7 @@ export function renderPlayers(
       const nameEl = row.querySelector(".player-name-wrap .name, .player-name-wrap .namedie");
       if (nameEl) {
         nameEl.className = nameClass;
-        nameEl.textContent = player.display_name;
+        nameEl.textContent = replayDisplayName(state, player.id);
       }
 
       const hpwrapEl = row.querySelector(".hpwrap");
@@ -1092,8 +1106,7 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
 /**
  * 构建单帧的渲染 chunk 数组，用于 normal/fast 模式逐段渲染。
  * next_line 只负责切到新行，不再把整行消息聚合成一个大 chunk。
- * 每条可见消息都会成为独立 chunk，并携带混淆版 md5.js 原始渲染器的未缩放等待时间：
- * 等待时间 = max(update.delay0, 上一条可见 update 的 delay1)，每帧起始上一条 delay1 为 1800。
+ * 每条可见消息都会成为独立 chunk，并携带 WASM/core replay view 使用的未缩放等待时间。
  *
  * @param {FrameUpdate} frame
  * @param {number} roundIndex
@@ -1122,19 +1135,10 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
   const chunks = [];
   let frameStarted = false;
   let rowStarted = false;
-  let nextWait = 1800;
   let quickAreaSkillActive = false;
 
   function pushVisibleChunk(target, html, delay, sidebar = null) {
     chunks.push({ target, html, delay, ...(sidebar ?? {}) });
-  }
-
-  function visibleWait(update) {
-    const delay0 = Number.isFinite(update.delay0) ? update.delay0 : 0;
-    const delay1 = Number.isFinite(update.delay1) ? update.delay1 : 0;
-    const wait = Math.max(delay0, nextWait);
-    nextWait = delay1;
-    return wait;
   }
 
   function pushLeadingDelayChunk() {
@@ -1194,11 +1198,9 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     }
 
     pushLeadingDelayChunk();
-    const rawDelay = visibleWait(update);
     if (isQuickAreaSkillUpdate(update)) {
       quickAreaSkillActive = true;
     }
-    const delay = quickAreaSkillActive ? quickAreaSkillDelay(rawDelay) : rawDelay;
 
     const tone = update.tone ?? "normal";
     const previousForMessage = new Map(running);
@@ -1210,6 +1212,8 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
       if (Array.isArray(update.target_ids))
         update.target_ids.forEach((id) => applyDelta(id, hitState, hpDelta));
     }
+    const showHp = hpDelta !== 0;
+    const delay = clipDelay(frameStarted, rowStarted, quickAreaSkillActive, showHp);
 
     pushMessageChunk(
       `<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`,

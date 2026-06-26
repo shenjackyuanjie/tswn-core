@@ -134,6 +134,9 @@ timeline = tswn_py.compute_show_timeline(updates, player_count=len(states))
 无需再根据事件文本模拟扣血、召唤、复活或状态变化。事件快照仍使用每个 tick 前后的真实引擎状态
 （`state_granularity == "tick"`）。
 
+玩家快照中的 `display_index` 用于展示同名分身序号：本体为 `0`，后续分身为 `1`、`2`……。
+replay view 中的玩家文本会使用该序号，而唯一对象编号仍保留在 `id` 字段中。
+
 ### 类
 
 | 类               | 说明                                     |

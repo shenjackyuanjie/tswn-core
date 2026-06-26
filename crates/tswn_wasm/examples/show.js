@@ -10,6 +10,7 @@
  *   id_name: string,
  *   icon_key: string,
  *   display_name: string,
+ *   display_index: number,
  *   icon_png_base64?: string|null,
  *   icon_class_id?: number,
  *   minion_kind?: 'clone' | 'summon' | 'shadow' | 'zombie',
@@ -113,6 +114,7 @@ import {
   escapeHtml,
   formatError,
   normalizeReplayIconClasses,
+  replayDisplayName,
   sleep,
   validateReplayInput,
 } from "./show-utils.js";
@@ -121,7 +123,6 @@ import {
   renderReplayIntro,
   updateSpeedButtons,
   playbackDelay,
-  winnerNamesText,
   buildReplayResultTableHtml,
 } from "./show-replay.js";
 import { ensureApi, buildReplay } from "./show-wasm.js";
@@ -168,10 +169,6 @@ const inputStatus = document.querySelector("#inputStatus");
 const plistMeta = document.querySelector("#plistMeta");
 /** @type {HTMLElement} */
 const headerMeta = document.querySelector("#headerMeta");
-/** @type {HTMLElement} */
-const winnerNames = document.querySelector("#winnerNames");
-/** @type {HTMLElement} */
-const winnerNote = document.querySelector("#winnerNote");
 /** @type {HTMLElement} */
 const detailContent = document.querySelector("#detailContent");
 /** @type {HTMLInputElement} */
@@ -607,11 +604,6 @@ function renderFrameSidebar(framePlan) {
   );
 }
 
-function renderEndPanel(replay) {
-  winnerNames.textContent = winnerNamesText(replay);
-  winnerNote.textContent = "你可以重新播放当前回放，或者重新打开输入面板换一组名字。";
-}
-
 function resetPlaybackView(replay) {
   clearPlayerHighlight();
   closePanel(endPanel);
@@ -756,7 +748,6 @@ function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
       playerList,
       playersById,
     );
-    renderEndPanel(currentReplay);
     appendReplayResultBlock(currentReplay);
     storePlaybackCheckpoint(playbackCursor);
   }
@@ -780,10 +771,8 @@ function resolveChunkDelay(frame, rawDelay) {
     const targetDelay = playbackDelay(frame, speedMode);
     return frame.total_delay > 0 ? Math.round((targetDelay * rawDelay) / frame.total_delay) : 0;
   }
-  // normal 模式：混淆版 md5.js 会先算原始等待，再按 sqrt(角色数 / 2) 缩放。
-  const playerCount = currentReplay?.players?.length ?? 0;
-  const divisor = Math.max(1, Math.round(Math.sqrt(playerCount / 2)));
-  return Math.trunc(rawDelay / divisor);
+  // normal 模式直接使用 core replay view 给出的句子级 delay。
+  return rawDelay;
 }
 
 async function waitForPlaybackDelay(ms, token) {
@@ -858,8 +847,6 @@ async function autoplayFromCurrentCursor() {
     playerList,
     playersById,
   );
-  renderEndPanel(currentReplay);
-  openPanel(endPanel);
   appendReplayResultBlock(currentReplay);
   storePlaybackCheckpoint(playbackCursor);
   // 极速是一次性按钮：播完后自动回到暂停态
@@ -1058,7 +1045,7 @@ function detailRow(label, value) {
 }
 
 function buildPlayerDetailHtml(player, state, canEditNickname) {
-  const displayName = player?.display_name ?? state?.display_name ?? "未知角色";
+  const displayName = state ? replayDisplayName(state, state.id) : (player?.display_name ?? "未知角色");
   const rawName = player?._raw_display_name ?? state?._raw_display_name ?? displayName;
   const idName = player?.id_name ?? state?.id_name ?? "";
   const statusLabels = Array.isArray(state?.status_labels) ? state.status_labels.join("、") : "";

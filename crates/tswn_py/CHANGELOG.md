@@ -27,6 +27,7 @@
 - 新增 replay 相关类型存根，覆盖 `PlayerSnapshot`、`EventDto`、`TimedEvent`、`ReplayEvent` 与 `BattleReplay`。
 - `Runner.build_replay(limit=None)` 新增 `frames[].rows[].clips[]` replay view 结构，与 WASM 共用 `tswn_core::replay_view` 的分行、分帧、文本片段、血条和死亡特效信息，前端可直接按结构渲染。
 - 新增 replay view 类型存根：`ReplayFrame`、`ReplayRow`、`ReplayClip` 与 `ReplayTextPart`。
+- `PlayerSnapshot` 新增 `display_index`，用于区分同一名字下的运行期分身展示序号；本体为 `0`，后续分身为 `1`、`2`……
 
 ### 变更
 
@@ -35,6 +36,7 @@
 - 顶层高层 helper 的实现改为复用 `tswn_core::cli_api` 共享逻辑层，继续保持现有 Python API 与返回类型不变。
 - replay 事件快照使用每个引擎 tick 前后的真实状态（`state_granularity == "tick"`），服务端不再需要根据事件文本自行模拟逐条状态变化。
 - replay 文本渲染与回放视图构建下沉到 `tswn_core::replay_view`，Python 包装层只负责转换为 dict，避免与 WASM 重复维护分行、延迟和血条推演逻辑。
+- replay view 的玩家文本对分身使用底层 `display_index`，并同步句子级 delay、血条展示和死亡特效规则。
 
 ## [0.2.1] - 2026-05-19
 

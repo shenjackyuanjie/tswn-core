@@ -6,16 +6,24 @@
 
 - `RoundFrame` 新增 `rows[]` replay view 结构：按行组织 `ReplayClip`，每个片段包含展示前延迟、文本模板、结构化文本片段、色调、关联玩家、血条前后值、死亡特效标记、emoji 占位字段和侧栏状态快照。
 - show 示例优先消费 `RoundFrame.rows[].clips[]`，前端不再需要通过正则从消息文本反推玩家、数值、血条变化和死亡特效。
+- `PlayerState` 新增 `display_index`，由底层根据运行期分身命名分配展示序号：本体为 `0` 且不在名字中显示，分身按同一名字下的出现顺序显示为 `#1`、`#2`……
 
 ### 变更
 
 - replay view 构建下沉到 `tswn_core::replay_view`，WASM 包装层只负责把 core 结构转换为 `tsify` 暴露类型，后续 Python/C 等接口可复用同一套分行、延迟和血条推演逻辑。
+- replay view 的句子级 delay 改为固定规则：frame 首句 `900ms`、雷击/地裂行首句 `150ms`、展示血条的句子 `600ms`、其他句子 `500ms`，按前述顺序优先匹配。
+- replay view 只在帧前后 HP 不同时展示血条，只在帧前后 HP 均为 `0` 时渲染死亡特效。
+- show 示例播完对局后不再弹出结束面板，只在战斗记录底部保留结算表。
+- show 示例保留左侧独立 `#playerId` 编号，同时把名字内的分身编号改为底层 `display_index`，不再用对象 id 作为名字后缀。
 - README 和 examples 文档补充 `ReplayRow`、`ReplayClip`、`ReplayTextPart` 字段说明。
 
 ### 验证
 
+- `cargo test -p tswn_core replay_view`
 - `cargo check -p tswn_wasm`
 - `cargo check -p tswn_py`
+- `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show.js`
+- `uv run scripts/build_wasm.py --release`
 
 ## [0.2.10] - 2026-06-19
 

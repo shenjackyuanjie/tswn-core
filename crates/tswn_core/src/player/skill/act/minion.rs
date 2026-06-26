@@ -79,6 +79,22 @@ pub fn alloc_minion_name(storage: &Arc<Storage>, owner_id: PlrId) -> String {
 }
 
 #[inline]
+pub fn minion_display_index(storage: &Storage, player_id: PlrId) -> usize {
+    let Some(player) = storage.get_player_or_pending(&player_id) else {
+        return 0;
+    };
+    if player.get_state::<MinionRuntimeState>().is_none() {
+        return 0;
+    }
+    player
+        .id_name()
+        .rsplit_once('?')
+        .and_then(|(_, index)| index.parse::<usize>().ok())
+        .map(|index| index + 1)
+        .unwrap_or(1)
+}
+
+#[inline]
 pub fn is_combat_minion(player: &crate::player::Player) -> bool {
     player
         .get_state::<MinionRuntimeState>()
