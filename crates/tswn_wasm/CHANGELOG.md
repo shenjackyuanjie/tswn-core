@@ -13,6 +13,7 @@
 - replay view 构建下沉到 `tswn_core::replay_view`，WASM 包装层只负责把 core 结构转换为 `tsify` 暴露类型，后续 Python/C 等接口可复用同一套分行、延迟和血条推演逻辑。
 - replay view 的句子级 delay 改为固定规则：frame 首句 `900ms`、雷击/地裂行首句 `150ms`、展示血条的句子 `600ms`、其他句子 `500ms`，按前述顺序优先匹配。
 - replay view 只在帧前后 HP 不同时展示血条，只在帧前后 HP 均为 `0` 时渲染死亡特效。
+- replay view 的 `color` 改为 `[]` 高亮文字色号；默认高亮为 `0077BB`，解除、识破、中止、打消等状态离开高亮为 `bb7700`，普通文本保持默认正文色。
 - show 示例播完对局后不再弹出结束面板，只在战斗记录底部保留结算表。
 - show 示例保留左侧独立 `#playerId` 编号，同时把名字内的分身编号改为底层 `display_index`，不再用对象 id 作为名字后缀。
 - README 和 examples 文档补充 `ReplayRow`、`ReplayClip`、`ReplayTextPart` 字段说明。

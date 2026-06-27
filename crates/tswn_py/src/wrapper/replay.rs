@@ -256,6 +256,8 @@ fn classify_message_tone(update: &RunUpdate, rendered: &str) -> &'static str {
         "dodge"
     } else if template.contains("点伤害") || rendered.contains("点伤害") {
         "damage"
+    } else if is_status_exit_message(template) || is_status_exit_message(rendered) {
+        "status_exit"
     } else if template.contains("状态")
         || rendered.contains("状态")
         || template.contains("解除")
@@ -288,6 +290,7 @@ fn replay_tone_from_event_tone(tone: &str) -> ReplayTone {
         "damage" => ReplayTone::Damage,
         "recover" => ReplayTone::Recover,
         "knockout" | "win" => ReplayTone::Knockout,
+        "status_exit" => ReplayTone::StatusExit,
         _ => ReplayTone::Normal,
     }
 }
@@ -298,7 +301,34 @@ fn replay_tone_to_str(tone: ReplayTone) -> &'static str {
         ReplayTone::Damage => "damage",
         ReplayTone::Recover => "recover",
         ReplayTone::Knockout => "knockout",
+        ReplayTone::StatusExit => "status_exit",
     }
+}
+
+fn is_status_exit_message(message: &str) -> bool {
+    has_between(message, "从[", "]中解除")
+        || has_between(message, "从[", "]状态中解除")
+        || has_between(message, "的[", "]被识破")
+        || has_between(message, "的[", "]被中止了")
+        || has_between(message, "的[", "]被中止")
+        || has_between(message, "的[", "]被打消了")
+        || has_between(message, "的[", "]被打消")
+        || has_between(message, "的[", "]属性被打消")
+}
+
+fn has_between(text: &str, prefix: &str, suffix: &str) -> bool {
+    let mut rest = text;
+    while let Some(start) = rest.find(prefix) {
+        let after_prefix = &rest[start + prefix.len()..];
+        let Some(end) = after_prefix.find(suffix) else {
+            return false;
+        };
+        if !after_prefix[..end].is_empty() {
+            return true;
+        }
+        rest = &after_prefix[end + suffix.len()..];
+    }
+    false
 }
 
 fn replay_text_part_kind_to_str(kind: CoreReplayTextPartKind) -> &'static str {
@@ -486,7 +516,8 @@ pub fn replay_row_to_pydict<'py>(
         let clip_dict = PyDict::new(py);
         clip_dict.set_item("delay", clip.delay)?;
         clip_dict.set_item("text_template", &clip.text_template)?;
-        clip_dict.set_item("color", replay_tone_to_str(clip.color))?;
+        clip_dict.set_item("color", &clip.color)?;
+        clip_dict.set_item("tone", replay_tone_to_str(clip.tone))?;
         set_optional_usize(&clip_dict, "player_id", clip.player_id)?;
         if let Some(data) = &clip.data {
             clip_dict.set_item("data", data)?;

@@ -68,7 +68,7 @@ let runner = Runner::new_from_namerena_raw(raw_input, eval_rq).unwrap();
 ```
 
 `tswn_core::replay_view` 暴露公共的 replay view 构建结构：一个 frame 包含多行 `ReplayRow`，
-一行包含多个 `ReplayClip`，clip 内提供展示前 `delay`、结构化文本 `parts`、颜色 `tone`、
+一行包含多个 `ReplayClip`，clip 内提供展示前 `delay`、结构化文本 `parts`、`[]` 高亮文字颜色码 `color`、语义分类 `tone`、
 关联玩家、HP 前后值、是否展示血条、是否渲染死亡特效以及 emoji 占位字段。包装层只需要把
 自己的玩家快照类型实现 `ReplayState`，即可复用同一套回放推演规则。
 
@@ -76,6 +76,7 @@ let runner = Runner::new_from_namerena_raw(raw_input, eval_rq).unwrap();
 `600ms`，其他句子 `500ms`。血条只在帧前后 HP 不同时展示；死亡特效只在帧前后 HP 均为 `0`
 时渲染。分身展示序号由 `player::skill::act::minion::minion_display_index` 提供：本体为 `0`，
 后续同名分身为 `1`、`2`……，供上层在名字内展示；唯一对象编号仍使用玩家 id。
+默认 `[]` 高亮文字颜色为 `0077BB`；解除、识破、中止、打消等状态离开消息使用 `bb7700`。普通文本不使用该颜色码。
 
 ## 构建配置
 

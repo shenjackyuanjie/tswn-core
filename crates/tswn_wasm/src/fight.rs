@@ -332,6 +332,7 @@ fn tone_to_core(tone: MessageTone) -> ReplayTone {
         MessageTone::Damage => ReplayTone::Damage,
         MessageTone::Recover => ReplayTone::Recover,
         MessageTone::Knockout => ReplayTone::Knockout,
+        MessageTone::StatusExit => ReplayTone::StatusExit,
     }
 }
 
@@ -341,6 +342,7 @@ fn tone_from_core(tone: ReplayTone) -> MessageTone {
         ReplayTone::Damage => MessageTone::Damage,
         ReplayTone::Recover => MessageTone::Recover,
         ReplayTone::Knockout => MessageTone::Knockout,
+        ReplayTone::StatusExit => MessageTone::StatusExit,
     }
 }
 
@@ -378,7 +380,8 @@ fn rows_from_core(view: ReplayViewFrame<PlayerState>) -> (Vec<ReplayRow>, i32) {
                 .map(|clip| ReplayClip {
                     delay: clip.delay,
                     text_template: clip.text_template,
-                    color: tone_from_core(clip.color),
+                    color: clip.color,
+                    tone: tone_from_core(clip.tone),
                     player_id: clip.player_id,
                     data: clip.data,
                     show_hp: clip.show_hp,

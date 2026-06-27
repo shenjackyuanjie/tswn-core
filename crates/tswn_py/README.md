@@ -130,7 +130,7 @@ timeline = tswn_py.compute_show_timeline(updates, player_count=len(states))
 `build_replay()` 返回 `initial_states`、`events`、`frames`、`final_states`、`winner_team_index`、
 `winner_team_indices`、`winner_ids` 和 `winner_names`。`events` 保留兼容旧 timeline 消费方式；
 `frames[].rows[].clips[]` 是与 WASM 共用的 replay view 结构，包含 `delay`、`text_template`、
-`parts`、`color`、`player_id`、血条前后值、死亡特效标记和侧栏状态快照。调用方可以直接渲染这些结构化字段，
+`parts`、`color`（`[]` 高亮文字色号）、`player_id`、血条前后值、死亡特效标记和侧栏状态快照。调用方可以直接渲染这些结构化字段，
 无需再根据事件文本模拟扣血、召唤、复活或状态变化。事件快照仍使用每个 tick 前后的真实引擎状态
 （`state_granularity == "tick"`）。
 

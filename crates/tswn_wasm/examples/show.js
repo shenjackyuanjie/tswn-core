@@ -94,6 +94,7 @@
  *   previousWidth: number,
  *   deltaLeft: number,
  *   deltaWidth: number
+ *   deltaKind: 'damage' | 'recover' | 'none'
  * }} HpMetrics
  *
  * 涉及高亮的角色集合（用于 renderPlayers 的 involved 参数）：
@@ -103,7 +104,7 @@
  * }} InvolvedSet
  *
  * 消息色调：
- * @typedef {'normal' | 'damage' | 'recover' | 'knockout'} MessageTone
+ * @typedef {'normal' | 'damage' | 'recover' | 'knockout' | 'status_exit'} MessageTone
  *
  * 播放速度模式：
  * @typedef {'normal' | 'fast' | 'turbo'} SpeedMode

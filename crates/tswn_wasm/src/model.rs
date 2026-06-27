@@ -147,6 +147,8 @@ pub enum MessageTone {
     Recover,
     /// 击倒消息
     Knockout,
+    /// 状态离开消息
+    StatusExit,
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
@@ -200,7 +202,8 @@ pub struct ReplayTextPart {
 pub struct ReplayClip {
     pub delay: i32,
     pub text_template: String,
-    pub color: MessageTone,
+    pub color: String,
+    pub tone: MessageTone,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub player_id: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]

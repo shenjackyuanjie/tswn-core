@@ -59,6 +59,11 @@ function playerIconClassId(player) {
   return player?.icon_class_id ?? player?.id;
 }
 
+function replayHighlightColorStyle(color) {
+  const value = `${color ?? ""}`.trim();
+  return /^[0-9a-fA-F]{6}$/.test(value) ? ` style="color:#${value}"` : "";
+}
+
 // ============================================================================
 // 角色 Token 渲染（消息行里的小头像 + 名字 + HP 条）
 // ============================================================================
@@ -68,26 +73,26 @@ function playerIconClassId(player) {
  * @param {FightPlayer} player — 玩家对象
  * @param {FightState} state — 当前状态
  * @param {FightState} previousState — 上一帧状态
- * @param {{ showHp?: boolean }} [options] — 是否显示 HP mini bar
+ * @param {{ showHp?: boolean, forceHp?: boolean, deathEffect?: boolean }} [options] — 是否显示 HP mini bar / 死亡效果
  * @returns {string} HTML 字符串
  */
-export function actorToken(player, state, previousState, update, { showHp = true } = {}) {
-  // 仅在血量变化时（或新对象首次出现时）显现血条。
+export function actorToken(player, state, previousState, update, { showHp = true, forceHp = false, deathEffect = null } = {}) {
+  // 仅在血量变化时或新实体首次出现时显现血条。
   // 被减速等 debuff 状态不会改变血量，因此不展示血条。
   const isNew = state?._is_new_in_frame;
-  const hpChanged = isNew || previousState == null || Number(state.hp) !== Number(previousState.hp);
-  const shouldShowHp = showHp && hpChanged;
+  const hpChanged = isNew || (previousState != null && Number(state.hp) !== Number(previousState.hp));
+  const shouldShowHp = showHp && (forceHp || hpChanged);
   const hpMetrics = shouldShowHp ? actorHpMetrics(state, previousState) : null;
   const hpBar = hpMetrics
     ? `
             <span class="actor-hp" style="width:${hpMetrics.totalWidth}px">
                 <span class="actor-hp-fill" style="width:${hpMetrics.fillWidth}px"></span>
-                ${hpMetrics.deltaWidth > 0 ? `<span class="actor-hp-delta" style="left:${hpMetrics.deltaLeft}px;width:${hpMetrics.deltaWidth}px"></span>` : ""}
+                ${hpMetrics.deltaWidth > 0 ? `<span class="actor-hp-delta is-${hpMetrics.deltaKind}" style="left:${hpMetrics.deltaLeft}px;width:${hpMetrics.deltaWidth}px"></span>` : ""}
             </span>
         `
     : "";
   const hpClass = hpMetrics ? " has-hp" : "";
-  const isKnockout = update?.tone === "knockout" || (state && !state.alive);
+  const isKnockout = deathEffect ?? (update?.tone === "knockout" || (state && !state.alive));
   const nameClass = `actor-name${isKnockout ? " namedie" : ""}`;
 
   return `<span class="actor-token${hpClass}" data-player-id="${player.id}"><span class="actor-avatar-wrap">${renderIconSprite(playerIconClassId(player), "msg-avatar icon-sprite")}</span><span class="${nameClass}">${hpBar}${escapeHtml(player.display_name)}</span></span>`;
@@ -168,6 +173,12 @@ export function renderActorById(
   return actorToken(player, state, previousState, update, options);
 }
 
+function playerDeathEffect(playerId, stateMap, previousStateMap) {
+  const state = stateMap?.get(playerId);
+  const previousState = previousStateMap?.get(playerId);
+  return Number(previousState?.hp ?? state?.hp ?? 0) === 0 && Number(state?.hp ?? previousState?.hp ?? 0) === 0;
+}
+
 /**
  * 渲染消息模板中的 [2] 参数（目标列表或数值）。
  * @param {FrameMessage} update — 当前消息
@@ -183,6 +194,7 @@ export function renderMessageParam(update, tone, stateMap, previousStateMap, pla
       .map((playerId) =>
         renderActorById(playerId, stateMap, previousStateMap, playersById, update, {
           showHp: true,
+          deathEffect: playerDeathEffect(playerId, stateMap, previousStateMap),
         }),
       )
       .join(",");
@@ -227,12 +239,14 @@ export function renderTemplateMessage(update, tone, stateMap, previousStateMap, 
         // 施法者 — 仅在血量变化时显示 HP
         return renderActorById(update.caster_id, stateMap, previousStateMap, playersById, update, {
           showHp: true,
+          deathEffect: playerDeathEffect(update.caster_id, stateMap, previousStateMap),
         });
       }
       if (part === "[1]") {
         // 目标 — 显示 HP
         return renderActorById(update.target_id, stateMap, previousStateMap, playersById, update, {
           showHp: true,
+          deathEffect: playerDeathEffect(update.target_id, stateMap, previousStateMap),
         });
       }
       if (part === "[2]") {
@@ -545,7 +559,18 @@ function updateParticipantIds(update) {
   return ids;
 }
 
-function syncReappearedParticipants(update, hitState, frameStateMap) {
+function isReraiseUpdate(update) {
+  return `${update?.message_template ?? update?.message_rendered ?? ""}`.includes("护身符");
+}
+
+function shouldSyncReappearedParticipants(update, tone) {
+  return tone !== "knockout" && tone !== "recover" && !isReraiseUpdate(update);
+}
+
+function syncReappearedParticipants(update, tone, hitState, frameStateMap) {
+  if (!shouldSyncReappearedParticipants(update, tone)) {
+    return;
+  }
   for (const id of updateParticipantIds(update)) {
     const frameState = frameStateMap.get(id);
     if (!frameState?.alive) {
@@ -922,7 +947,11 @@ function structuredPlayerToken(part, clip, stateMap, previousStateMap, playersBy
     stateBase != null
       ? syncSyntheticPlayerFromState(playerId, nextState, playersById)
       : (playersById.get(playerId) ?? syncSyntheticPlayerFromState(playerId, nextState, playersById));
-  return actorToken(player, nextState, previousState, { tone: clip.color }, { showHp: Boolean(part.show_hp) });
+  return actorToken(player, nextState, previousState, { tone: clip.tone ?? "normal" }, {
+    showHp: Boolean(part.show_hp),
+    forceHp: Boolean(part.show_hp),
+    deathEffect: Boolean(part.death_effect),
+  });
 }
 
 function renderStructuredPart(part, clip, stateMap, previousStateMap, playersById) {
@@ -933,7 +962,7 @@ function renderStructuredPart(part, clip, stateMap, previousStateMap, playersByI
     return `<span class="message-number">${escapeHtml(part.text ?? "")}</span>`;
   }
   if (part.kind === "highlight") {
-    return `<span class="skill-token">${escapeHtml(part.text ?? "")}</span>`;
+    return `<span class="skill-token"${replayHighlightColorStyle(clip.color)}>${escapeHtml(part.text ?? "")}</span>`;
   }
   return escapeHtml(part.text ?? "");
 }
@@ -948,7 +977,8 @@ function structuredClipHtml(clip, playersById) {
   const body = (clip.parts ?? [])
     .map((part) => renderStructuredPart(part, clip, stateMap, previousStateMap, playersById))
     .join("");
-  return `<span class="msg ${clip.color ?? "normal"}">${body}</span>`;
+  const tone = clip.tone ?? "normal";
+  return `<span class="msg ${tone}">${body}</span>`;
 }
 
 function structuredClipSidebar(clip) {
@@ -1070,7 +1100,7 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
 
     const tone = update.tone ?? "normal";
     const hitState = new Map(running);
-    syncReappearedParticipants(update, hitState, frameStateMap);
+    syncReappearedParticipants(update, tone, hitState, frameStateMap);
     const hpDelta = Number.isFinite(update.hp_delta) ? update.hp_delta : 0;
     if (hpDelta !== 0) {
       if (update.target_id != null) applyDelta(update.target_id, hitState, hpDelta);
@@ -1209,7 +1239,7 @@ export function buildFrameRows(frame, roundIndex, previousStates = frame.states,
     const tone = update.tone ?? "normal";
     const previousForMessage = new Map(running);
     const hitState = new Map(running);
-    syncReappearedParticipants(update, hitState, frameStateMap);
+    syncReappearedParticipants(update, tone, hitState, frameStateMap);
     const hpDelta = Number.isFinite(update.hp_delta) ? update.hp_delta : 0;
     if (hpDelta !== 0) {
       if (update.target_id != null) applyDelta(update.target_id, hitState, hpDelta);

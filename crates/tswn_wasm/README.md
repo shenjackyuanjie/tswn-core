@@ -81,9 +81,9 @@ session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
 | `RoundFrame`         | 回合帧：`finished`, `winner_ids`, `updates[]`, `rows[]`, `states[]`, `total_delay`                                                                     |
 | `UpdateView`         | 单条更新消息：`caster_id`, `target_id`, `message_rendered`, `message_template`, `tone`, …                                                              |
 | `ReplayRow`          | 回放行：`indent`, `clips[]`；一般首行不缩进，后续行缩进                                                                                                 |
-| `ReplayClip`         | 回放片段：`delay`, `text_template`, `parts[]`, `color`, `player_id`, `show_hp`, `hp_before`, `hp_after`, `death_effect`, `sidebar_states[]` 等        |
+| `ReplayClip`         | 回放片段：`delay`, `text_template`, `parts[]`, `color`（`[]` 高亮文字 6 位色号）, `tone`, `player_id`, `show_hp`, `hp_before`, `hp_after`, `death_effect`, `sidebar_states[]` 等 |
 | `ReplayTextPart`     | 文本片段：`kind`, `text`, `player_id?`, `show_hp`, `hp_before`, `hp_after`, `death_effect`, `emoji?`；`kind` 为 `text` / `highlight` / `player` / `data` |
-| `MessageTone`        | 消息色调：`"normal"` / `"damage"` / `"recover"` / `"knockout"`                                                                                         |
+| `MessageTone`        | 消息色调：`"normal"` / `"damage"` / `"recover"` / `"knockout"` / `"status_exit"`                                                                        |
 | `FightReplay`        | 完整回放：`players`, `frames[]`, `winner_ids`, `final_states`                                                                                          |
 | `FightSummary`       | 轻量摘要：`finished`, `players`, `winner_ids`, `final_states`                                                                                          |
 | `WinRateProgress`    | 增量进度：`done`, `rounds_done`, `total_rounds`, `wins`, `percent`                                                                                     |
