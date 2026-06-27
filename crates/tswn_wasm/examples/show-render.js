@@ -11,19 +11,11 @@
  * - {@link actorToken} — 渲染单个角色的小头像 + HP mini bar + 名字，用于
  *   消息行中内联插入角色标识。HP mini bar 支持显示当前血量（fill）以及
  *   与上一帧相比的变化量（delta），变化方向由 CSS 类控制。
- * - {@link renderActorById} — 根据 playerId 调用 actorToken：先去 playersById
- *   查找对应 FightPlayer，找不到则降级为幻影/未知角色的纯文本名称。
  *
- * ### 模板消息渲染
- * - {@link renderMessageParam} — 渲染 message_template 中的 [2] 占位参数。
- *   若 update.target_ids 非空，将其渲染为逗号分隔的 actorToken 列表；否则
- *   渲染 param/score 数值，damage/recover 类型包裹 .message-number 样式。
- * - {@link renderTemplateMessage} — 解析含 [0][1][2] 占位符的 message_template
- *   字符串：[0] 渲染为施法者 token（不显示 HP），[1] 渲染为目标 token（显示
- *   HP），[2] 委托给 renderMessageParam。其余普通文本通过 formatMessageText
- *   应用 tone 对应的着色/样式。占位符不存在时走 message_rendered 降级路径。
- * - {@link highlightMessage} — renderTemplateMessage 的别名，语义上强调
- *   "高亮渲染一条消息"，便于调用侧阅读。
+ * ### 结构化回放渲染
+ * - {@link buildFrameRows} — 只消费 core/WASM 提供的 frame.rows[].clips[]。
+ *   delay、分行、文本片段、高亮色、HP 条和死亡效果均来自 replay view 字段；
+ *   前端不再从 message_template/message_rendered/hp_delta 反推展示语义。
  *
  * ### 空闲状态
  * - {@link renderIdleState} — 战斗未开始时的占位欢迎内容。向 playerList、
@@ -36,21 +28,13 @@
  *   则增量更新已有 DOM 元素的 className 和 textContent，避免重绘闪烁。
  *   同时会自动补全 states 中存在但初始 players 中缺失的召唤单位（幻影/分身）。
  *
- * ### 战斗帧 HTML
- * - {@link buildFrameHtml} — 构建右侧单帧的战斗记录 HTML。逐条处理
- *   frame.updates，将多条消息用"，"拼接为一行，遇到 next_line 类型的
- *   update 则换行。帧内会维护一份模拟 HP 状态（running Map），每次
- *   damage/recover 消息都会更新该状态，使后续消息中角色 HP 条反映帧内
- *   累计效果。帧结束时若 finished 为 true，追加可读的胜者行。
  */
 
 import {
   escapeHtml,
   actorHpMetrics,
-  formatMessageText,
   statusText,
   buildStateMap,
-  phantomDisplayName,
   replayDisplayName,
   renderIconSprite,
 } from "./show-utils.js";
@@ -139,145 +123,6 @@ function syncSyntheticPlayerFromState(playerId, state, playersById) {
   return player;
 }
 
-/**
- * 根据 playerId 渲染一个角色 token，自动处理幻影/未知角色。
- * @param {number} playerId
- * @param {Map<number, FightState>} stateMap — 当前状态 Map
- * @param {Map<number, FightState>} [previousStateMap] — 上一帧状态 Map
- * @param {Map<number, FightPlayer>} playersById — playerId → 玩家对象索引
- * @param {{ showHp?: boolean }} [options]
- * @returns {string} HTML 字符串
- */
-export function renderActorById(
-  playerId,
-  stateMap,
-  previousStateMap,
-  playersById,
-  update,
-  options,
-) {
-  const player = playersById.get(playerId);
-  const state = stateMap.get(playerId);
-  // 若上一帧不存在该对象则传 null，供 actorToken 识别为"新对象"以展示血条
-  const previousState = previousStateMap?.get(playerId) ?? null;
-  if (!player) {
-    return actorToken(
-      syncSyntheticPlayerFromState(playerId, state, playersById),
-      state,
-      previousState,
-      update,
-      options,
-    );
-  }
-
-  return actorToken(player, state, previousState, update, options);
-}
-
-function playerDeathEffect(playerId, stateMap, previousStateMap) {
-  const state = stateMap?.get(playerId);
-  const previousState = previousStateMap?.get(playerId);
-  return Number(previousState?.hp ?? state?.hp ?? 0) === 0 && Number(state?.hp ?? previousState?.hp ?? 0) === 0;
-}
-
-/**
- * 渲染消息模板中的 [2] 参数（目标列表或数值）。
- * @param {FrameMessage} update — 当前消息
- * @param {MessageTone} tone
- * @param {Map<number, FightState>} stateMap
- * @param {Map<number, FightState>} previousStateMap
- * @param {Map<number, FightPlayer>} playersById
- * @returns {string} HTML 字符串
- */
-export function renderMessageParam(update, tone, stateMap, previousStateMap, playersById) {
-  if (Array.isArray(update.target_ids) && update.target_ids.length) {
-    return update.target_ids
-      .map((playerId) =>
-        renderActorById(playerId, stateMap, previousStateMap, playersById, update, {
-          showHp: true,
-          deathEffect: playerDeathEffect(playerId, stateMap, previousStateMap),
-        }),
-      )
-      .join(",");
-  }
-
-  const value = update.param ?? update.score;
-  if (value == null) {
-    return "";
-  }
-
-  const html = escapeHtml(String(value));
-  if (tone === "damage" || tone === "recover") {
-    return `<span class="message-number">${html}</span>`;
-  }
-  return html;
-}
-
-/**
- * 渲染带模板占位符的消息：[0]=caster, [1]=target, [2]=param。
- * @param {FrameMessage} update
- * @param {MessageTone} tone
- * @param {Map<number, FightState>} stateMap
- * @param {Map<number, FightState>} previousStateMap
- * @param {Map<number, FightPlayer>} playersById
- * @returns {string} HTML 字符串
- */
-export function renderTemplateMessage(update, tone, stateMap, previousStateMap, playersById) {
-  const template = `${update.message_template ?? ""}`;
-  if (!template) {
-    return formatMessageText(
-      `${update.message_rendered ?? ""}`,
-      tone,
-      update.status_change_tokens ?? [],
-    );
-  }
-
-  let result = template
-    .split(/(\[[012]\])/g)
-    .filter((part) => part.length > 0)
-    .map((part) => {
-      if (part === "[0]") {
-        // 施法者 — 仅在血量变化时显示 HP
-        return renderActorById(update.caster_id, stateMap, previousStateMap, playersById, update, {
-          showHp: true,
-          deathEffect: playerDeathEffect(update.caster_id, stateMap, previousStateMap),
-        });
-      }
-      if (part === "[1]") {
-        // 目标 — 显示 HP
-        return renderActorById(update.target_id, stateMap, previousStateMap, playersById, update, {
-          showHp: true,
-          deathEffect: playerDeathEffect(update.target_id, stateMap, previousStateMap),
-        });
-      }
-      if (part === "[2]") {
-        // 参数（目标列表或数值）
-        return renderMessageParam(update, tone, stateMap, previousStateMap, playersById);
-      }
-      return formatMessageText(part, tone, update.status_change_tokens ?? []);
-    })
-    .join("");
-
-  // 瘟疫/体力减少等场景：数字后跟 % 或"减少"时标红（即使 tone 不是 damage）
-  if (tone !== "damage" && tone !== "recover") {
-    result = result.replace(/(\d+)(?=%|减少)/g, '<span class="message-number">$1</span>');
-  }
-
-  return result;
-}
-
-/**
- * 高亮渲染一条消息（模板或纯文本），是 renderTemplateMessage 的别名。
- * @param {FrameMessage} update
- * @param {MessageTone} tone
- * @param {Map<number, FightState>} stateMap
- * @param {Map<number, FightState>} previousStateMap
- * @param {Map<number, FightPlayer>} playersById
- * @returns {string}
- */
-export function highlightMessage(update, tone, stateMap, previousStateMap, playersById) {
-  return renderTemplateMessage(update, tone, stateMap, previousStateMap, playersById);
-}
-
 // ============================================================================
 // 初始 / 空闲状态渲染
 // ============================================================================
@@ -322,33 +167,6 @@ const POSITIVE_STATUS_LABELS = new Set([
   "守护",
 ]);
 const NEGATIVE_STATUS_LABELS = new Set(["魅惑", "诅咒", "冰冻", "中毒", "迟缓", "垂死"]);
-const QUICK_AREA_SKILL_TOKENS = ["[雷击术]", "[地裂术]", "使用雷击术", "使用地裂术"];
-const WIN_UPDATE_DELAY0_MS = 3000;
-const FRAME_FIRST_DELAY_MS = 900;
-const QUICK_AREA_ROW_FIRST_DELAY_MS = 150;
-const HP_CHANGE_DELAY_MS = 600;
-const DEFAULT_CLIP_DELAY_MS = 500;
-
-function isQuickAreaSkillUpdate(update) {
-  const template = `${update.message_template ?? ""}`;
-  const rendered = `${update.message_rendered ?? ""}`;
-  return QUICK_AREA_SKILL_TOKENS.some(
-    (token) => template.includes(token) || rendered.includes(token),
-  );
-}
-
-function clipDelay(frameStarted, rowStarted, quickAreaSkillActive, showHp) {
-  if (!frameStarted) {
-    return FRAME_FIRST_DELAY_MS;
-  }
-  if (!rowStarted && quickAreaSkillActive) {
-    return QUICK_AREA_ROW_FIRST_DELAY_MS;
-  }
-  if (showHp) {
-    return HP_CHANGE_DELAY_MS;
-  }
-  return DEFAULT_CLIP_DELAY_MS;
-}
 
 function statusPillTone(label) {
   if (POSITIVE_STATUS_LABELS.has(label)) {
@@ -504,86 +322,6 @@ function orderedDisplayPlayers(players, states, stateMap, playersById) {
     appendWithChildren(player);
   }
   return ordered;
-}
-
-function frameWinnerNames(frame, playersById) {
-  const winnerIds = Array.isArray(frame.winner_ids) ? frame.winner_ids : [];
-  if (!winnerIds.length) {
-    return "未分出胜负";
-  }
-  const stateMap = buildStateMap(frame.states);
-  return winnerIds
-    .map((winnerId) => {
-      const player = playersById.get(winnerId);
-      return player?.display_name ?? replayDisplayName(stateMap.get(winnerId), winnerId);
-    })
-    .join("、");
-}
-
-function frameWinnerLineHtml(frame, playersById) {
-  return `<div class="row winner-line"><span class="winner-row">胜者：${escapeHtml(frameWinnerNames(frame, playersById))}</span></div>`;
-}
-
-function involvedSetForUpdate(update) {
-  const involved = { casters: new Set(), targets: new Set() };
-  if (update.caster_id != null) {
-    involved.casters.add(update.caster_id);
-  }
-  if (update.target_id != null) {
-    involved.targets.add(update.target_id);
-  }
-  if (Array.isArray(update.target_ids)) {
-    update.target_ids.forEach((id) => involved.targets.add(id));
-  }
-  return involved;
-}
-
-function statesFromRunningMap(running) {
-  return Array.from(running.values());
-}
-
-function updateParticipantIds(update) {
-  const ids = [];
-  const add = (id) => {
-    if (id == null || ids.includes(id)) {
-      return;
-    }
-    ids.push(id);
-  };
-
-  add(update.caster_id);
-  add(update.target_id);
-  if (Array.isArray(update.target_ids)) {
-    update.target_ids.forEach(add);
-  }
-  return ids;
-}
-
-function isReraiseUpdate(update) {
-  return `${update?.message_template ?? update?.message_rendered ?? ""}`.includes("护身符");
-}
-
-function shouldSyncReappearedParticipants(update, tone) {
-  return tone !== "knockout" && tone !== "recover" && !isReraiseUpdate(update);
-}
-
-function syncReappearedParticipants(update, tone, hitState, frameStateMap) {
-  if (!shouldSyncReappearedParticipants(update, tone)) {
-    return;
-  }
-  for (const id of updateParticipantIds(update)) {
-    const frameState = frameStateMap.get(id);
-    if (!frameState?.alive) {
-      continue;
-    }
-
-    const currentState = hitState.get(id);
-    if (currentState?.alive) {
-      continue;
-    }
-
-    hitState.set(id, { ...frameState, _is_new_in_frame: true });
-  }
 }
 
 // ============================================================================
@@ -1046,99 +784,6 @@ function buildStructuredFrameRows(frame, roundIndex, playersById) {
   return chunks;
 }
 
-export function buildFrameHtml(frame, roundIndex, previousStates = frame.states, playersById) {
-  for (const state of frame.states) {
-    if (!playersById.has(state.id) || state.owner_id != null) {
-      syncSyntheticPlayerFromState(state.id, state, playersById);
-    }
-  }
-
-  const previousStateMap = buildStateMap(previousStates);
-  const frameStateMap = buildStateMap(frame.states);
-  /** @type {Map<number, FightState>} 帧内逐步更新的模拟 HP 状态 */
-  let running = new Map(previousStateMap);
-  const rows = [];
-  let segments = [];
-
-  /**
-   * 将当前累积的消息片段刷入一个新行。
-   */
-  function flushRow() {
-    if (!segments.length) {
-      return;
-    }
-    rows.push(`<div class="row">${segments.join('<span class="msg-sep">, </span>')}</div>`);
-    segments = [];
-  }
-
-  /**
-   * 对 running 中的某个角色施加 HP 变化。
-   * @param {number} id — 角色 id
-   * @param {Map<number, FightState>} hitState — 当前帧内模拟状态 Map
-   * @param {number} hpDelta — 正数为回复，负数为伤害
-   */
-  function applyDelta(id, hitState, hpDelta) {
-    const cur = hitState.get(id);
-    if (!cur || cur.max_hp <= 0) return;
-    if (hpDelta < 0) {
-      hitState.set(id, { ...cur, hp: Math.max(0, cur.hp + hpDelta) });
-    } else if (hpDelta > 0) {
-      hitState.set(id, { ...cur, hp: Math.min(cur.max_hp, cur.hp + hpDelta) });
-    }
-  }
-
-  for (const update of frame.updates) {
-    if (update.update_type === "next_line") {
-      flushRow();
-      continue;
-    }
-
-    const message = `${update.message_rendered ?? ""}`.trim();
-    if (!message) {
-      continue;
-    }
-
-    const tone = update.tone ?? "normal";
-    const hitState = new Map(running);
-    syncReappearedParticipants(update, tone, hitState, frameStateMap);
-    const hpDelta = Number.isFinite(update.hp_delta) ? update.hp_delta : 0;
-    if (hpDelta !== 0) {
-      if (update.target_id != null) applyDelta(update.target_id, hitState, hpDelta);
-      if (Array.isArray(update.target_ids))
-        update.target_ids.forEach((id) => applyDelta(id, hitState, hpDelta));
-    }
-    segments.push(
-      `<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`,
-    );
-    running = hitState;
-  }
-
-  // 帧内所有消息处理完后才清除 _is_new_in_frame，确保同一帧中的多条消息都能识别新对象
-  for (const [k, v] of running.entries()) {
-    if (v._is_new_in_frame) {
-      running.set(k, { ...v, _is_new_in_frame: false });
-    }
-  }
-
-  flushRow();
-
-  if (!rows.length && !frame.finished) {
-    return "";
-  }
-
-  const winnerLine = frame.finished ? frameWinnerLineHtml(frame, playersById) : "";
-
-  return `
-        <section class="round-block">
-            <div class="frame-sidebar"><span class="frame-chip">#${roundIndex}</span></div>
-            <div class="frame-body">
-                ${rows.join("")}
-                ${winnerLine}
-            </div>
-        </section>
-    `;
-}
-
 /**
  * 构建单帧的渲染 chunk 数组，用于 normal/fast 模式逐段渲染。
  * next_line 只负责切到新行，不再把整行消息聚合成一个大 chunk。
@@ -1151,154 +796,9 @@ export function buildFrameHtml(frame, roundIndex, previousStates = frame.states,
  * @returns {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>}
  */
 export function buildFrameRows(frame, roundIndex, previousStates = frame.states, playersById) {
-  if (Array.isArray(frame.rows) && frame.rows.length) {
-    return buildStructuredFrameRows(frame, roundIndex, playersById);
+  void previousStates;
+  if (!Array.isArray(frame.rows) || !frame.rows.length) {
+    return [];
   }
-
-  for (const state of frame.states) {
-    if (!playersById.has(state.id) || state.owner_id != null) {
-      syncSyntheticPlayerFromState(state.id, state, playersById);
-    }
-  }
-
-  const previousStateMap = buildStateMap(previousStates);
-  const frameStateMap = buildStateMap(frame.states);
-  /** @type {Map<number, FightState>} */
-  let running = new Map(previousStateMap);
-  /** @type {Array<{target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number}>} */
-  const chunks = [];
-  let frameStarted = false;
-  let rowStarted = false;
-  let quickAreaSkillActive = false;
-
-  function pushVisibleChunk(target, html, delay, sidebar = null) {
-    chunks.push({ target, html, delay, ...(sidebar ?? {}) });
-  }
-
-  function pushLeadingDelayChunk() {
-    // 混淆版 md5.js 的换行和空消息不会单独等待；保留函数让后续流程不需要分支。
-  }
-
-  function pushMessageChunk(messageHtml, delay, sidebar) {
-    if (!frameStarted) {
-      pushVisibleChunk(
-        "battleRows",
-        `
-                    <section class="round-block">
-                        <div class="frame-sidebar"><span class="frame-chip">#${roundIndex}</span></div>
-                        <div class="frame-body">
-                            <div class="row">${messageHtml}</div>
-                        </div>
-                    </section>
-                `,
-        delay,
-        sidebar,
-      );
-      frameStarted = true;
-      rowStarted = true;
-      return;
-    }
-
-    if (!rowStarted) {
-      pushVisibleChunk("frameBody", `<div class="row">${messageHtml}</div>`, delay, sidebar);
-      rowStarted = true;
-      return;
-    }
-
-    pushVisibleChunk("row", `<span class="msg-sep">, </span>${messageHtml}`, delay, sidebar);
-  }
-
-  function applyDelta(id, hitState, hpDelta) {
-    const cur = hitState.get(id);
-    if (!cur || cur.max_hp <= 0) return;
-    if (hpDelta < 0) {
-      const hp = Math.max(0, cur.hp + hpDelta);
-      hitState.set(id, { ...cur, hp, alive: hp > 0 });
-    } else if (hpDelta > 0) {
-      const hp = Math.min(cur.max_hp, cur.hp + hpDelta);
-      hitState.set(id, { ...cur, hp, alive: hp > 0 });
-    }
-  }
-
-  for (const update of frame.updates) {
-    if (update.update_type === "next_line") {
-      rowStarted = false;
-      continue;
-    }
-
-    const message = `${update.message_rendered ?? ""}`.trim();
-    if (!message) {
-      continue;
-    }
-
-    pushLeadingDelayChunk();
-    if (isQuickAreaSkillUpdate(update)) {
-      quickAreaSkillActive = true;
-    }
-
-    const tone = update.tone ?? "normal";
-    const previousForMessage = new Map(running);
-    const hitState = new Map(running);
-    syncReappearedParticipants(update, tone, hitState, frameStateMap);
-    const hpDelta = Number.isFinite(update.hp_delta) ? update.hp_delta : 0;
-    if (hpDelta !== 0) {
-      if (update.target_id != null) applyDelta(update.target_id, hitState, hpDelta);
-      if (Array.isArray(update.target_ids))
-        update.target_ids.forEach((id) => applyDelta(id, hitState, hpDelta));
-    }
-    const showHp = hpDelta !== 0;
-    const delay = clipDelay(frameStarted, rowStarted, quickAreaSkillActive, showHp);
-
-    pushMessageChunk(
-      `<span class="msg ${tone}">${highlightMessage(update, tone, hitState, running, playersById)}</span>`,
-      delay,
-      {
-        sidebarStates: statesFromRunningMap(hitState),
-        sidebarPreviousStates: statesFromRunningMap(previousForMessage),
-        sidebarInvolved: involvedSetForUpdate(update),
-      },
-    );
-    running = hitState;
-  }
-
-  // 帧内所有消息处理完后才清除 _is_new_in_frame，确保同一帧中的多条消息都能识别新对象
-  for (const [k, v] of running.entries()) {
-    if (v._is_new_in_frame) {
-      running.set(k, { ...v, _is_new_in_frame: false });
-    }
-  }
-
-  if (!chunks.length) {
-    pushLeadingDelayChunk();
-    if (!frame.finished) {
-      return chunks;
-    }
-  }
-
-  const winnerHtml = frameWinnerLineHtml(frame, playersById);
-  if (frame.finished) {
-    if (!frameStarted) {
-      pushLeadingDelayChunk();
-      chunks.push({
-        target: "battleRows",
-        html: `
-                    <section class="round-block">
-                        <div class="frame-sidebar"><span class="frame-chip">#${roundIndex}</span></div>
-                        <div class="frame-body">
-                            ${winnerHtml}
-                        </div>
-                    </section>
-                `,
-        delay: WIN_UPDATE_DELAY0_MS,
-      });
-    } else {
-      chunks.push({
-        target: "frameBody",
-        html: winnerHtml,
-        delay: WIN_UPDATE_DELAY0_MS,
-      });
-    }
-  }
-
-  return chunks;
+  return buildStructuredFrameRows(frame, roundIndex, playersById);
 }

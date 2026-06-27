@@ -481,6 +481,15 @@ button:hover {
     transition: width 260ms ease;
 }
 
+.player-row .maxhp,
+.player-row .oldhp,
+.player-row .healhp,
+.player-row .hp {
+    transition:
+        left 520ms ease,
+        width 520ms ease;
+}
+
 .maxhp {
     width: 100%;
     background: rgba(221, 221, 208, 0.58);

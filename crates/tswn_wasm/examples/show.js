@@ -246,6 +246,7 @@ let speedMode = DEFAULT_SPEED_MODE;
 let playersById = new Map();
 const ICON_STYLE_ID = "tswn-show-icon-styles";
 const SEEK_CHECKPOINT_FRAME_INTERVAL = 20;
+const NORMAL_RESULT_REVEAL_DELAY_MS = 1500;
 /** @type {{ frames: Array<{ frameIndex: number, frame: FrameUpdate, previousStates: FightState[], start: number, end: number }>, flatChunks: Array<{ target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number, frameIndex: number, visible: boolean, sidebarStates?: FightState[], sidebarPreviousStates?: FightState[], sidebarInvolved?: InvolvedSet }>, totalChunks: number }|null} */
 let currentPlan = null;
 /** @type {Map<number, { battle_rows_html: string, player_list_html: string, seed_line: string }>} */
@@ -869,7 +870,6 @@ async function autoplayFromCurrentCursor() {
   }
 
   playbackFinished = true;
-  playbackPaused = true;
   currentVisibleStates = currentReplay.final_states;
   renderPlayers(
     currentReplay.players,
@@ -879,8 +879,15 @@ async function autoplayFromCurrentCursor() {
     playerList,
     playersById,
   );
+  if (speedMode === "normal") {
+    const completed = await waitForPlaybackDelay(NORMAL_RESULT_REVEAL_DELAY_MS, token);
+    if (!completed) {
+      return;
+    }
+  }
   appendReplayResultBlock(currentReplay);
   storePlaybackCheckpoint(playbackCursor);
+  playbackPaused = true;
   // 极速是一次性按钮：播完后自动回到暂停态
   if (speedMode === "turbo") {
     playbackPaused = true;
