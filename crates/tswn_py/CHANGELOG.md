@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-27
+
 ### 新增
 
 - 补齐一批与 `tswn-cli` 对齐的 Python 顶层 helper：

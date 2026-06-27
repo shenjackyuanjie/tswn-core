@@ -4208,7 +4208,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_core"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "clap",
  "foldhash 0.2.0",
@@ -4269,7 +4269,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_py"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "pyo3",
  "smallvec",

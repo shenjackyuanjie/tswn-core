@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-06-27
+
 ### 新增
 
 - 新增公共 `replay_view` 回放视图构建层，提供 `ReplayViewFrame`、`ReplayRow`、`ReplayClip`、`ReplayTextPart` 与 `ReplayState`，统一生成分行、分帧、文本片段、血条、死亡特效和侧栏快照信息，供 WASM / Python / C 等包装层复用。
