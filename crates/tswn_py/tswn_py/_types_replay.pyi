@@ -21,6 +21,7 @@ class PlayerSnapshot(TypedDict):
     id_key_name: str
     icon_key: str
     display_name: str
+    display_index: int
     base_name: str
     player_type: str
     minion_kind: str | None

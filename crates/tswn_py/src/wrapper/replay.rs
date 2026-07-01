@@ -9,7 +9,7 @@ use tswn_core::{
     engine::update::{RunUpdates, UpdateType},
     player::{
         PlrId,
-        skill::act::minion::{MinionKind, MinionRuntimeState},
+        skill::act::minion::{MinionKind, MinionRuntimeState, minion_display_index},
     },
     replay_view::{
         ReplayEventView, ReplayRow as CoreReplayRow, ReplayState, ReplayTextPart as CoreReplayTextPart,
@@ -30,6 +30,7 @@ pub struct PlayerSnapshot {
     pub id_key_name: String,
     pub icon_key: String,
     pub display_name: String,
+    pub display_index: usize,
     pub base_name: String,
     pub player_type: String,
     pub minion_kind: Option<&'static str>,
@@ -163,6 +164,7 @@ pub fn snapshot_one(runner: &Runner, id: PlrId, display_order: usize) -> Option<
         icon_key: id_key_name.clone(),
         id_key_name,
         display_name: player.display_name(),
+        display_index: minion_display_index(&runner.storage, id),
         base_name: player.base_name(),
         player_type: format!("{:?}", player.player_type()),
         minion_kind: minion.map(|state| minion_kind_str(state.kind)),
@@ -217,8 +219,16 @@ fn update_type_str(update_type: UpdateType) -> &'static str {
     }
 }
 
+fn display_name_for_snapshot(state: &PlayerSnapshot) -> String {
+    if state.minion_kind == Some("clone") && state.display_index > 0 {
+        format!("{} #{}", state.display_name, state.display_index)
+    } else {
+        state.display_name.clone()
+    }
+}
+
 pub fn player_names_from_snapshots(states: &[PlayerSnapshot]) -> HashMap<PlrId, String> {
-    states.iter().map(|state| (state.id, state.display_name.clone())).collect()
+    states.iter().map(|state| (state.id, display_name_for_snapshot(state))).collect()
 }
 
 pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>) -> String {
@@ -246,6 +256,8 @@ fn classify_message_tone(update: &RunUpdate, rendered: &str) -> &'static str {
         "dodge"
     } else if template.contains("点伤害") || rendered.contains("点伤害") {
         "damage"
+    } else if is_status_exit_message(template) || is_status_exit_message(rendered) {
+        "status_exit"
     } else if template.contains("状态")
         || rendered.contains("状态")
         || template.contains("解除")
@@ -278,6 +290,7 @@ fn replay_tone_from_event_tone(tone: &str) -> ReplayTone {
         "damage" => ReplayTone::Damage,
         "recover" => ReplayTone::Recover,
         "knockout" | "win" => ReplayTone::Knockout,
+        "status_exit" => ReplayTone::StatusExit,
         _ => ReplayTone::Normal,
     }
 }
@@ -288,7 +301,34 @@ fn replay_tone_to_str(tone: ReplayTone) -> &'static str {
         ReplayTone::Damage => "damage",
         ReplayTone::Recover => "recover",
         ReplayTone::Knockout => "knockout",
+        ReplayTone::StatusExit => "status_exit",
     }
+}
+
+fn is_status_exit_message(message: &str) -> bool {
+    has_between(message, "从[", "]中解除")
+        || has_between(message, "从[", "]状态中解除")
+        || has_between(message, "的[", "]被识破")
+        || has_between(message, "的[", "]被中止了")
+        || has_between(message, "的[", "]被中止")
+        || has_between(message, "的[", "]被打消了")
+        || has_between(message, "的[", "]被打消")
+        || has_between(message, "的[", "]属性被打消")
+}
+
+fn has_between(text: &str, prefix: &str, suffix: &str) -> bool {
+    let mut rest = text;
+    while let Some(start) = rest.find(prefix) {
+        let after_prefix = &rest[start + prefix.len()..];
+        let Some(end) = after_prefix.find(suffix) else {
+            return false;
+        };
+        if !after_prefix[..end].is_empty() {
+            return true;
+        }
+        rest = &after_prefix[end + suffix.len()..];
+    }
+    false
 }
 
 fn replay_text_part_kind_to_str(kind: CoreReplayTextPartKind) -> &'static str {
@@ -397,6 +437,7 @@ pub fn snapshot_to_pydict<'py>(py: pyo3::Python<'py>, snapshot: &PlayerSnapshot)
     dict.set_item("id_key_name", &snapshot.id_key_name)?;
     dict.set_item("icon_key", &snapshot.icon_key)?;
     dict.set_item("display_name", &snapshot.display_name)?;
+    dict.set_item("display_index", snapshot.display_index)?;
     dict.set_item("base_name", &snapshot.base_name)?;
     dict.set_item("player_type", &snapshot.player_type)?;
     if let Some(minion_kind) = snapshot.minion_kind {
@@ -475,7 +516,8 @@ pub fn replay_row_to_pydict<'py>(
         let clip_dict = PyDict::new(py);
         clip_dict.set_item("delay", clip.delay)?;
         clip_dict.set_item("text_template", &clip.text_template)?;
-        clip_dict.set_item("color", replay_tone_to_str(clip.color))?;
+        clip_dict.set_item("color", &clip.color)?;
+        clip_dict.set_item("tone", replay_tone_to_str(clip.tone))?;
         set_optional_usize(&clip_dict, "player_id", clip.player_id)?;
         if let Some(data) = &clip.data {
             clip_dict.set_item("data", data)?;

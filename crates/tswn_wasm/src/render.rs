@@ -42,9 +42,37 @@ pub fn classify_message_tone(template: &str) -> MessageTone {
         MessageTone::Knockout
     } else if template.contains("点伤害") || template.contains("体力减少") {
         MessageTone::Damage
+    } else if is_status_exit_message(template) {
+        MessageTone::StatusExit
     } else {
         MessageTone::Normal
     }
+}
+
+pub fn is_status_exit_message(template: &str) -> bool {
+    has_between(template, "从[", "]中解除")
+        || has_between(template, "从[", "]状态中解除")
+        || has_between(template, "的[", "]被识破")
+        || has_between(template, "的[", "]被中止了")
+        || has_between(template, "的[", "]被中止")
+        || has_between(template, "的[", "]被打消了")
+        || has_between(template, "的[", "]被打消")
+        || has_between(template, "的[", "]属性被打消")
+}
+
+fn has_between(text: &str, prefix: &str, suffix: &str) -> bool {
+    let mut rest = text;
+    while let Some(start) = rest.find(prefix) {
+        let after_prefix = &rest[start + prefix.len()..];
+        let Some(end) = after_prefix.find(suffix) else {
+            return false;
+        };
+        if !after_prefix[..end].is_empty() {
+            return true;
+        }
+        rest = &after_prefix[end + suffix.len()..];
+    }
+    false
 }
 
 fn push_unique_token(tokens: &mut Vec<String>, token: &str) {
@@ -105,6 +133,16 @@ mod tests {
     #[test]
     fn half_damage_message_is_damage_tone() {
         assert_eq!(classify_message_tone("[1]体力减少[2]%"), crate::model::MessageTone::Damage);
+    }
+
+    #[test]
+    fn status_exit_message_has_status_exit_tone() {
+        assert_eq!(classify_message_tone("[1]从[狂暴]中解除"), crate::model::MessageTone::StatusExit);
+        assert_eq!(classify_message_tone("[1]从[无实体]状态中解除"), crate::model::MessageTone::StatusExit);
+        assert_eq!(classify_message_tone("[0]的[潜行]被识破"), crate::model::MessageTone::StatusExit);
+        assert_eq!(classify_message_tone("[1]的[蓄力]被中止了"), crate::model::MessageTone::StatusExit);
+        assert_eq!(classify_message_tone("[1]的[铁壁]被打消了"), crate::model::MessageTone::StatusExit);
+        assert_eq!(classify_message_tone("[1]的[垂死]属性被打消"), crate::model::MessageTone::StatusExit);
     }
 
     #[test]

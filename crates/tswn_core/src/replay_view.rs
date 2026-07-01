@@ -4,6 +4,12 @@ use crate::engine::update::{RunUpdate, UpdateType};
 use crate::player::PlrId;
 
 pub const WIN_UPDATE_DELAY0_MS: i32 = 3000;
+pub const DEFAULT_TEXT_COLOR: &str = "0077BB";
+pub const STATUS_EXIT_TEXT_COLOR: &str = "bb7700";
+const FRAME_FIRST_DELAY_MS: i32 = 900;
+const QUICK_AREA_ROW_FIRST_DELAY_MS: i32 = 150;
+const HP_CHANGE_DELAY_MS: i32 = 600;
+const DEFAULT_CLIP_DELAY_MS: i32 = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplayTone {
@@ -11,6 +17,7 @@ pub enum ReplayTone {
     Damage,
     Recover,
     Knockout,
+    StatusExit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +44,8 @@ pub struct ReplayTextPart {
 pub struct ReplayClip<S> {
     pub delay: i32,
     pub text_template: String,
-    pub color: ReplayTone,
+    pub color: String,
+    pub tone: ReplayTone,
     pub player_id: Option<PlrId>,
     pub data: Option<String>,
     pub show_hp: bool,
@@ -111,6 +119,13 @@ pub fn hp_delta_for_tone(tone: ReplayTone, update: &RunUpdate) -> Option<i32> {
     }
 }
 
+pub fn replay_tone_color(tone: ReplayTone) -> &'static str {
+    match tone {
+        ReplayTone::StatusExit => STATUS_EXIT_TEXT_COLOR,
+        _ => DEFAULT_TEXT_COLOR,
+    }
+}
+
 pub fn build_replay_view_frame<S: ReplayState>(
     events: &[ReplayEventView<'_>],
     previous_states: &[S],
@@ -127,9 +142,10 @@ pub fn build_replay_view_frame<S: ReplayState>(
     let mut running = state_map(previous_states);
     let frame_state_map = state_map(frame_states);
     let state_order = frame_states.iter().map(ReplayState::id).collect::<Vec<_>>();
-    let mut next_wait = 1800;
     let mut total_delay = 0;
     let mut quick_area_skill_active = false;
+    let mut frame_has_visible_clip = false;
+    let mut current_row_has_visible_clip = false;
 
     for event in events {
         let update = event.update;
@@ -141,26 +157,21 @@ pub fn build_replay_view_frame<S: ReplayState>(
                 indent: !rows.is_empty(),
                 clips: Vec::new(),
             };
+            current_row_has_visible_clip = false;
             continue;
         }
         if event.message_rendered.trim().is_empty() {
             continue;
         }
 
-        let raw_delay = update.delay0.max(next_wait);
-        next_wait = update.delay1;
         if is_quick_area_skill_update(update, event.message_rendered) {
             quick_area_skill_active = true;
         }
-        let delay = if quick_area_skill_active {
-            raw_delay.min(300)
-        } else {
-            raw_delay
-        };
-        total_delay += delay;
 
         let before = running.clone();
-        sync_reappeared_participants(update, &mut running, &frame_state_map);
+        if should_sync_reappeared_participants(update, event.tone) {
+            sync_reappeared_participants(update, &mut running, &frame_state_map);
+        }
         if let Some(hp_delta) = hp_delta_for_tone(event.tone, update) {
             apply_hp_delta(&mut running, update.target, hp_delta);
             for target_id in &update.targets {
@@ -170,11 +181,21 @@ pub fn build_replay_view_frame<S: ReplayState>(
         let after = running.clone();
         let (text_template, parts, data, hp_before, hp_after, show_hp, death_effect) =
             build_clip_parts(update, event.tone, &before, &after, player_names);
+        let delay = clip_delay(
+            frame_has_visible_clip,
+            current_row_has_visible_clip,
+            quick_area_skill_active,
+            show_hp,
+        );
+        total_delay += delay;
+        frame_has_visible_clip = true;
+        current_row_has_visible_clip = true;
 
         current_row.clips.push(ReplayClip {
             delay,
             text_template,
-            color: event.tone,
+            color: replay_tone_color(event.tone).to_string(),
+            tone: event.tone,
             player_id: Some(update_player_id_hint(update, event.tone)),
             data,
             show_hp,
@@ -207,7 +228,8 @@ pub fn build_replay_view_frame<S: ReplayState>(
             clips: vec![ReplayClip {
                 delay: WIN_UPDATE_DELAY0_MS,
                 text_template: "胜者：<data>".to_string(),
-                color: ReplayTone::Knockout,
+                color: replay_tone_color(ReplayTone::Knockout).to_string(),
+                tone: ReplayTone::Knockout,
                 player_id: None,
                 data: None,
                 show_hp: false,
@@ -289,6 +311,14 @@ fn sync_reappeared_participants<S: ReplayState>(
     }
 }
 
+fn should_sync_reappeared_participants(update: &RunUpdate, tone: ReplayTone) -> bool {
+    !matches!(tone, ReplayTone::Knockout | ReplayTone::Recover) && !is_reraise_update(update)
+}
+
+fn is_reraise_update(update: &RunUpdate) -> bool {
+    update.message.contains("[护身符]") && update.message.contains("抵挡了一次死亡")
+}
+
 fn apply_hp_delta<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId, hp_delta: i32) {
     let Some(state) = running.get(&id) else {
         return;
@@ -307,9 +337,11 @@ fn apply_hp_delta<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId, hp
 }
 
 fn hp_pair<S: ReplayState>(player_id: PlrId, before: &HashMap<PlrId, S>, after: &HashMap<PlrId, S>) -> (i32, i32, bool) {
-    let hp_before = before.get(&player_id).map(ReplayState::hp).unwrap_or(0);
-    let hp_after = after.get(&player_id).map(ReplayState::hp).unwrap_or(hp_before);
-    (hp_before, hp_after, hp_before != hp_after)
+    let hp_after = after.get(&player_id).map(ReplayState::hp);
+    let is_new_entity = !before.contains_key(&player_id) && hp_after.is_some();
+    let hp_before = before.get(&player_id).map(ReplayState::hp).or(hp_after).unwrap_or(0);
+    let hp_after = hp_after.unwrap_or(hp_before);
+    (hp_before, hp_after, is_new_entity || hp_before != hp_after)
 }
 
 fn data_for_update(update: &RunUpdate, player_names: &HashMap<PlrId, String>) -> String {
@@ -374,10 +406,9 @@ fn push_player_part<S: ReplayState>(
     before: &HashMap<PlrId, S>,
     after: &HashMap<PlrId, S>,
     player_names: &HashMap<PlrId, String>,
-    tone: ReplayTone,
 ) -> (i32, i32, bool, bool) {
     let (hp_before, hp_after, show_hp) = hp_pair(player_id, before, after);
-    let death_effect = matches!(tone, ReplayTone::Knockout) || (hp_before > 0 && hp_after == 0);
+    let death_effect = hp_before == 0 && hp_after == 0;
     template.push_str("<player>");
     parts.push(ReplayTextPart {
         kind: ReplayTextPartKind::Player,
@@ -398,12 +429,17 @@ fn push_data_part(parts: &mut Vec<ReplayTextPart>, template: &mut String, value:
 }
 
 fn update_player_id_hint(update: &RunUpdate, tone: ReplayTone) -> PlrId {
-    if matches!(tone, ReplayTone::Damage | ReplayTone::Recover | ReplayTone::Knockout) {
+    if matches!(
+        tone,
+        ReplayTone::Damage | ReplayTone::Recover | ReplayTone::Knockout | ReplayTone::StatusExit
+    ) {
         update.target
     } else {
         update.caster
     }
 }
+
+fn is_hp_report_update(update: &RunUpdate) -> bool { update.message == "[0]\u{8fd8}\u{5269}[2]\u{70b9}\u{8840}" }
 
 fn build_clip_parts<S: ReplayState>(
     update: &RunUpdate,
@@ -419,6 +455,7 @@ fn build_clip_parts<S: ReplayState>(
     let mut primary_hp_after = 0;
     let mut primary_show_hp = false;
     let mut primary_death_effect = false;
+    let primary_player_id = update_player_id_hint(update, tone);
 
     let mut rest = update.message.as_ref();
     while let Some(start) = rest.find('[') {
@@ -433,23 +470,27 @@ fn build_clip_parts<S: ReplayState>(
         match token {
             "0" => {
                 let (hp_before, hp_after, show_hp, death_effect) =
-                    push_player_part(&mut parts, &mut template, update.caster, before, after, player_names, tone);
+                    push_player_part(&mut parts, &mut template, update.caster, before, after, player_names);
                 if !primary_show_hp && show_hp {
                     primary_hp_before = hp_before;
                     primary_hp_after = hp_after;
                     primary_show_hp = true;
                 }
-                primary_death_effect |= death_effect;
+                if primary_player_id == update.caster {
+                    primary_death_effect = death_effect;
+                }
             }
             "1" => {
                 let (hp_before, hp_after, show_hp, death_effect) =
-                    push_player_part(&mut parts, &mut template, update.target, before, after, player_names, tone);
+                    push_player_part(&mut parts, &mut template, update.target, before, after, player_names);
                 if !primary_show_hp || update_player_id_hint(update, tone) == update.target {
                     primary_hp_before = hp_before;
                     primary_hp_after = hp_after;
                     primary_show_hp = show_hp;
                 }
-                primary_death_effect |= death_effect;
+                if primary_player_id == update.target {
+                    primary_death_effect = death_effect;
+                }
             }
             "2" => push_data_part(&mut parts, &mut template, &data),
             _ => {
@@ -462,6 +503,19 @@ fn build_clip_parts<S: ReplayState>(
         rest = &after_open[end + 1..];
     }
     push_plain_and_highlight_parts(&mut parts, &mut template, rest);
+
+    if is_hp_report_update(update) {
+        if let Some(part) = parts
+            .iter_mut()
+            .find(|part| part.kind == ReplayTextPartKind::Player && part.player_id == Some(update.caster))
+        {
+            part.show_hp = true;
+            primary_hp_before = part.hp_before;
+            primary_hp_after = part.hp_after;
+            primary_show_hp = true;
+            primary_death_effect = part.death_effect;
+        }
+    }
 
     (
         template,
@@ -478,4 +532,294 @@ fn is_quick_area_skill_update(update: &RunUpdate, rendered: &str) -> bool {
     ["[雷击术]", "[地裂术]", "使用雷击术", "使用地裂术"]
         .iter()
         .any(|token| update.message.contains(token) || rendered.contains(token))
+}
+
+fn clip_delay(
+    frame_has_visible_clip: bool,
+    current_row_has_visible_clip: bool,
+    quick_area_skill_active: bool,
+    show_hp: bool,
+) -> i32 {
+    if !frame_has_visible_clip {
+        FRAME_FIRST_DELAY_MS
+    } else if !current_row_has_visible_clip && quick_area_skill_active {
+        QUICK_AREA_ROW_FIRST_DELAY_MS
+    } else if show_hp {
+        HP_CHANGE_DELAY_MS
+    } else {
+        DEFAULT_CLIP_DELAY_MS
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ReplayEventView, ReplayState, ReplayTextPartKind, ReplayTone, STATUS_EXIT_TEXT_COLOR, build_replay_view_frame,
+    };
+    use crate::engine::update::RunUpdate;
+    use crate::player::PlrId;
+    use std::collections::HashMap;
+
+    #[derive(Clone)]
+    struct TestState {
+        id: PlrId,
+        hp: i32,
+        max_hp: i32,
+        alive: bool,
+    }
+
+    impl ReplayState for TestState {
+        fn id(&self) -> PlrId { self.id }
+
+        fn hp(&self) -> i32 { self.hp }
+
+        fn max_hp(&self) -> i32 { self.max_hp }
+
+        fn alive(&self) -> bool { self.alive }
+
+        fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
+            Self {
+                hp,
+                alive,
+                ..self.clone()
+            }
+        }
+    }
+
+    fn names() -> HashMap<PlrId, String> { [(0, "caster".to_string()), (1, "target".to_string())].into() }
+
+    fn state(id: PlrId, hp: i32) -> TestState {
+        TestState {
+            id,
+            hp,
+            max_hp: 100,
+            alive: hp > 0,
+        }
+    }
+
+    #[test]
+    fn hp_bar_only_shows_when_hp_changes() {
+        let update = RunUpdate::new("[1]受到[2]点伤害", 0, 1, 30);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Damage,
+            message_rendered: "target受到30点伤害",
+        }];
+        let previous = vec![state(0, 100), state(1, 50)];
+        let frame = vec![state(0, 100), state(1, 20)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        assert!(clip.show_hp);
+        assert_eq!((clip.hp_before, clip.hp_after), (50, 20));
+        assert!(!clip.death_effect);
+        let player_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap();
+        assert!(player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (50, 20));
+        assert!(!player_part.death_effect);
+    }
+
+    #[test]
+    fn damage_to_zero_shows_hp_without_death_effect() {
+        let update = RunUpdate::new("[1] took [2] damage", 0, 1, 50);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Damage,
+            message_rendered: "target took 50 damage",
+        }];
+        let previous = vec![state(0, 100), state(1, 50)];
+        let frame = vec![state(0, 100), state(1, 0)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        assert!(clip.show_hp);
+        assert_eq!((clip.hp_before, clip.hp_after), (50, 0));
+        assert!(!clip.death_effect);
+        let player_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap();
+        assert!(player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (50, 0));
+        assert!(!player_part.death_effect);
+    }
+
+    #[test]
+    fn status_exit_clip_uses_status_exit_highlight_color() {
+        let update = RunUpdate::new("[1]从[狂暴]中解除", 0, 1, 0);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::StatusExit,
+            message_rendered: "target从狂暴中解除",
+        }];
+        let previous = vec![state(0, 100), state(1, 50)];
+        let frame = vec![state(0, 100), state(1, 50)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        assert_eq!(clip.color, STATUS_EXIT_TEXT_COLOR);
+        assert_eq!(clip.tone, ReplayTone::StatusExit);
+        assert!(clip.parts.iter().any(|part| {
+            part.kind == ReplayTextPartKind::Highlight && part.text == "狂暴"
+        }));
+    }
+
+    #[test]
+    fn new_entity_uses_current_hp_as_before_hp() {
+        let update = RunUpdate::new("[1]出现了", 0, 2, 0);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Normal,
+            message_rendered: "summon出现了",
+        }];
+        let previous = vec![state(0, 100)];
+        let frame = vec![state(0, 100), state(2, 60)];
+        let mut names = names();
+        names.insert(2, "summon".to_string());
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names, false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        assert!(clip.show_hp);
+        assert_eq!((clip.hp_before, clip.hp_after), (60, 60));
+        assert!(!clip.death_effect);
+        let player_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap();
+        assert!(player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (60, 60));
+        assert!(!player_part.death_effect);
+    }
+
+    #[test]
+    fn hp_report_forces_player_hp_bar_and_marks_param_as_data() {
+        let mut update = RunUpdate::new("[0]\u{8fd8}\u{5269}[2]\u{70b9}\u{8840}", 0, 0, 0);
+        update.param = Some(87);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Normal,
+            message_rendered: "caster\u{8fd8}\u{5269}87\u{70b9}\u{8840}",
+        }];
+        let previous = vec![state(0, 87)];
+        let frame = vec![state(0, 87)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        assert!(clip.show_hp);
+        assert_eq!((clip.hp_before, clip.hp_after), (87, 87));
+        let player_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap();
+        assert!(player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (87, 87));
+        assert!(clip.parts.iter().any(|part| part.kind == ReplayTextPartKind::Data && part.text == "87"));
+    }
+
+    #[test]
+    fn death_effect_only_renders_when_hp_stays_zero() {
+        let update = RunUpdate::new("[1]被击倒", 0, 1, 50);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Knockout,
+            message_rendered: "target被击倒",
+        }];
+        let previous = vec![state(0, 100), state(1, 0)];
+        let frame = vec![state(0, 100), state(1, 0)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        assert!(!clip.show_hp);
+        assert_eq!((clip.hp_before, clip.hp_after), (0, 0));
+        assert!(clip.death_effect);
+        let player_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap();
+        assert!(!player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (0, 0));
+        assert!(player_part.death_effect);
+    }
+
+    #[test]
+    fn reraise_knockout_does_not_show_hp_until_recover() {
+        let knockout = RunUpdate::new("[1]被击倒了", 0, 1, 50);
+        let reraise = RunUpdate::new("[0]使用[护身符]抵挡了一次死亡", 1, 1, 80);
+        let mut recover = RunUpdate::new("[1]回复体力[2]点", 1, 1, 0);
+        recover.param = Some(8);
+        let events = [
+            ReplayEventView {
+                update: &knockout,
+                tone: ReplayTone::Knockout,
+                message_rendered: "target被击倒了",
+            },
+            ReplayEventView {
+                update: &reraise,
+                tone: ReplayTone::Normal,
+                message_rendered: "target使用护身符抵挡了一次死亡",
+            },
+            ReplayEventView {
+                update: &recover,
+                tone: ReplayTone::Recover,
+                message_rendered: "target回复体力8点",
+            },
+        ];
+        let previous = vec![state(0, 100), state(1, 0)];
+        let frame = vec![state(0, 100), state(1, 8)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let knockout_clip = &view.rows[0].clips[0];
+        let reraise_clip = &view.rows[0].clips[1];
+        let recover_clip = &view.rows[0].clips[2];
+
+        assert!(!knockout_clip.show_hp);
+        assert_eq!((knockout_clip.hp_before, knockout_clip.hp_after), (0, 0));
+        assert!(knockout_clip.death_effect);
+        assert!(!reraise_clip.show_hp);
+        assert_eq!((reraise_clip.hp_before, reraise_clip.hp_after), (0, 0));
+        assert!(reraise_clip.death_effect);
+        assert!(recover_clip.show_hp);
+        assert_eq!((recover_clip.hp_before, recover_clip.hp_after), (0, 8));
+        assert!(!recover_clip.death_effect);
+    }
+
+    #[test]
+    fn clip_delay_uses_priority_rules() {
+        let attack = RunUpdate::new("[1]受到[2]点伤害", 0, 1, 30);
+        let thunder = RunUpdate::new("[0]使用[雷击术]", 0, 1, 1);
+        let thunder_damage = RunUpdate::new("[1]受到[2]点伤害", 0, 1, 20);
+        let normal = RunUpdate::new("[0]发起攻击", 0, 1, 0);
+        let newline = RunUpdate::new_newline();
+        let events = [
+            ReplayEventView {
+                update: &attack,
+                tone: ReplayTone::Damage,
+                message_rendered: "target受到30点伤害",
+            },
+            ReplayEventView {
+                update: &thunder,
+                tone: ReplayTone::Normal,
+                message_rendered: "caster使用雷击术",
+            },
+            ReplayEventView {
+                update: &newline,
+                tone: ReplayTone::Normal,
+                message_rendered: "",
+            },
+            ReplayEventView {
+                update: &thunder_damage,
+                tone: ReplayTone::Damage,
+                message_rendered: "target受到20点伤害",
+            },
+            ReplayEventView {
+                update: &normal,
+                tone: ReplayTone::Normal,
+                message_rendered: "caster发起攻击",
+            },
+        ];
+        let previous = vec![state(0, 100), state(1, 80)];
+        let frame = vec![state(0, 100), state(1, 30)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+
+        assert_eq!(view.rows[0].clips[0].delay, 900);
+        assert_eq!(view.rows[0].clips[1].delay, 500);
+        assert_eq!(view.rows[1].clips[0].delay, 150);
+        assert_eq!(view.rows[1].clips[1].delay, 500);
+        assert_eq!(view.total_delay, 2050);
+    }
 }
