@@ -54,18 +54,17 @@ fn copy_skill_if_stronger(owner: &mut crate::player::Player, from: usize, to: us
 fn migrate_summon_skill_axis(owner: &mut crate::player::Player) -> Vec<usize> {
     let already_classified = owner.skills.slot_skill == classified_summon_minion_skill_slot_order();
     ensure_classified_summon_minion_skill_slots(&mut owner.skills);
-    if already_classified {
-        return owner.skills.slot_skill.clone();
+    if !already_classified {
+        copy_skill_if_stronger(owner, 0, SUMMON_FIRE1_SKILL_KEY);
+        copy_skill_if_stronger(owner, 1, SUMMON_FIRE2_SKILL_KEY);
+        copy_skill_if_stronger(owner, 2, SUMMON_EXPLODE_SKILL_KEY);
+        replace_action_key(&mut owner.skills.skill, 0, SUMMON_FIRE1_SKILL_KEY);
+        replace_action_key(&mut owner.skills.skill, 1, SUMMON_FIRE2_SKILL_KEY);
+        replace_action_key(&mut owner.skills.skill, 2, SUMMON_EXPLODE_SKILL_KEY);
+        dedup_action_keys(&mut owner.skills.skill);
+        owner.skills.slot_skill = vec![SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY];
     }
-    copy_skill_if_stronger(owner, 0, SUMMON_FIRE1_SKILL_KEY);
-    copy_skill_if_stronger(owner, 1, SUMMON_FIRE2_SKILL_KEY);
-    copy_skill_if_stronger(owner, 2, SUMMON_EXPLODE_SKILL_KEY);
-    replace_action_key(&mut owner.skills.skill, 0, SUMMON_FIRE1_SKILL_KEY);
-    replace_action_key(&mut owner.skills.skill, 1, SUMMON_FIRE2_SKILL_KEY);
-    replace_action_key(&mut owner.skills.skill, 2, SUMMON_EXPLODE_SKILL_KEY);
-    dedup_action_keys(&mut owner.skills.skill);
-    owner.skills.slot_skill = vec![SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY];
-    owner.skills.slot_skill.clone()
+    vec![SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY]
 }
 
 fn migrate_shadow_skill_axis(owner: &mut crate::player::Player) -> Vec<usize> {

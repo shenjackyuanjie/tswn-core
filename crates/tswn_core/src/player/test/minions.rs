@@ -741,7 +741,7 @@ fn classified_merge_keeps_normal_and_summon_skill_lanes_separate() {
 }
 
 #[test]
-fn classified_summon_merge_maps_normal_skills_to_summon_minion_axis() {
+fn classified_summon_merge_drops_normal_skills_without_summon_axis_slot() {
     let storage = Storage::new_arc();
     let mut summoner = Player::new_from_namerena_raw(
         r#"summoner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"normal:sklrapid":1}}}"#
@@ -792,9 +792,9 @@ fn classified_summon_merge_maps_normal_skills_to_summon_minion_axis() {
             .skills
             .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 6)
             .level(),
-        77
+        1
     );
-    assert!(!summoned_after.skills.store.contains_key(&6));
+    assert!(!summoned_after.skills.skill.contains(&6));
 }
 
 #[test]
@@ -1530,6 +1530,103 @@ fn bed2_summon_uses_base_player_template() {
     assert!(child_summon_overlay.reuse_skills_on_recast);
     assert!(child_summon_overlay.inherit_owner_def_res);
     assert!(updates.updates.iter().any(|update| update.caster == bed2_id && update.target == bed2_id));
+}
+
+#[test]
+fn bed2_summon_merge_drops_player_skills_without_summon_axis_slot() {
+    let storage = Storage::new_arc();
+    let mut bed2 =
+        Player::new_from_namerena_raw("alpha@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}".to_string(), storage.clone())
+            .unwrap();
+    bed2.build();
+    let bed2_id = storage.just_insert_player(bed2);
+
+    let mut target = Player::new_from_namerena_raw("target@blue".to_string(), storage.clone()).unwrap();
+    target.build();
+    let target_id = storage.just_insert_player(target);
+    {
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.skills.skill_by_id_mut(17).set_level(87);
+        target_mut.attr[0] = 255;
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    assert!(
+        storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage)
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            target_id,
+            (summoned_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let summoned_after = storage.get_player(&summoned_id).unwrap();
+    assert_eq!(summoned_after.attr[0], 255);
+    assert_eq!(summoned_after.skills.skill_by_id(crate::player::skill::SUMMON_FIRE1_SKILL_KEY).level(), 0);
+    assert!(!summoned_after.skills.store.contains_key(&17));
+    assert!(!summoned_after.skills.skill.contains(&17));
+    assert!(!summoned_after.skills.skill.contains(&(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 17)));
+}
+
+#[test]
+fn bed2_summon_merge_drops_devoured_disperse_from_real_names() {
+    let storage = Storage::new_arc();
+    let mut bed2 =
+        Player::new_from_namerena_raw("同盟国 #eFJnEcgk3@Shabby_fish@bed2".to_string(), storage.clone()).unwrap();
+    bed2.build();
+    let bed2_id = storage.just_insert_player(bed2);
+
+    let mut target =
+        Player::new_from_namerena_raw("歌莉雅 #OCjrzqJPP@Shabby_fish@bed2".to_string(), storage.clone()).unwrap();
+    target.build();
+    let target_id = storage.just_insert_player(target);
+    {
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.skills.skill_by_id_mut(17).set_level(255);
+        target_mut.attr[0] = 255;
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    assert!(
+        storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage)
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            target_id,
+            (summoned_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let summoned_after = storage.get_player(&summoned_id).unwrap();
+    assert_eq!(summoned_after.attr[0], 255);
+    assert!(!summoned_after.skills.store.contains_key(&17));
+    assert!(!summoned_after.skills.skill.contains(&17));
+    assert!(!summoned_after.skills.skill.contains(&(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 17)));
 }
 
 #[test]
