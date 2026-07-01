@@ -741,6 +741,206 @@ fn classified_merge_keeps_normal_and_summon_skill_lanes_separate() {
 }
 
 #[test]
+fn classified_summon_merge_maps_normal_skills_to_summon_minion_axis() {
+    let storage = Storage::new_arc();
+    let mut summoner = Player::new_from_namerena_raw(
+        r#"summoner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"normal:sklrapid":1}}}"#
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    summoner.build();
+    let summoner_id = storage.just_insert_player(summoner);
+
+    let mut target = Player::new_from_namerena_raw("target@enemy".to_string(), storage.clone()).unwrap();
+    target.build();
+    let target_id = storage.just_insert_player(target);
+    {
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.skills.skill_by_id_mut(6).set_level(77);
+        target_mut.attr[0] = 99;
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            target_id,
+            (summoned_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let summoned_after = storage.get_player(&summoned_id).unwrap();
+    assert_eq!(
+        summoned_after
+            .skills
+            .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 6)
+            .level(),
+        77
+    );
+    assert!(!summoned_after.skills.store.contains_key(&6));
+}
+
+#[test]
+fn legacy_summon_merge_maps_fixed_slots_to_summon_skill_axis() {
+    let storage = Storage::new_arc();
+    let mut summoner = Player::new_from_namerena_raw("summoner@same".to_string(), storage.clone()).unwrap();
+    summoner.build();
+    let summoner_id = storage.just_insert_player(summoner);
+
+    let mut target = Player::new_from_namerena_raw("target@enemy".to_string(), storage.clone()).unwrap();
+    target.build();
+    let target_id = storage.just_insert_player(target);
+    {
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.skills.skill_by_id_mut(0).set_level(88);
+        target_mut.skills.skill_by_id_mut(1).set_level(66);
+        target_mut.attr[0] = 99;
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![summoner_id],
+        false,
+        (summoner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            target_id,
+            (summoned_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let summoned_after = storage.get_player(&summoned_id).unwrap();
+    assert_eq!(
+        summoned_after.skills.skill_by_id(crate::player::skill::SUMMON_FIRE1_SKILL_KEY).level(),
+        88
+    );
+    assert_eq!(
+        summoned_after.skills.skill_by_id(crate::player::skill::SUMMON_FIRE2_SKILL_KEY).level(),
+        66
+    );
+}
+
+#[test]
+fn shadow_merge_maps_legacy_possess_slot_to_phantom_axis() {
+    let storage = Storage::new_arc();
+    let mut shadow_owner = Player::new_from_namerena_raw("shadow-owner@same".to_string(), storage.clone()).unwrap();
+    shadow_owner.build();
+    let shadow_owner_id = storage.just_insert_player(shadow_owner);
+
+    let mut target = Player::new_from_namerena_raw("target@enemy".to_string(), storage.clone()).unwrap();
+    target.build();
+    let target_id = storage.just_insert_player(target);
+    {
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.skills.skill_by_id_mut(0).set_level(92);
+        target_mut.attr[0] = 99;
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut shadow = crate::player::skill::shadow::ShadowSkill::new();
+    <crate::player::skill::shadow::ShadowSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut shadow,
+        255,
+        vec![shadow_owner_id],
+        false,
+        (shadow_owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let shadow_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            target_id,
+            (shadow_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let shadow_after = storage.get_player(&shadow_id).unwrap();
+    assert_eq!(
+        shadow_after
+            .skills
+            .skill_by_id(crate::player::skill::PHANTOM_POSSESS_SKILL_KEY)
+            .level(),
+        92
+    );
+    assert_eq!(shadow_after.skills.skill_by_id(0).level(), 0);
+}
+
+#[test]
+fn zombie_merge_does_not_inherit_skills() {
+    let storage = Storage::new_arc();
+    let mut zombie = Player::new_from_namerena_raw("zombie@same".to_string(), storage.clone()).unwrap();
+    zombie.build();
+    zombie.set_state(crate::player::skill::act::minion::MinionRuntimeState {
+        owner: None,
+        kind: crate::player::skill::act::minion::MinionKind::Zombie,
+        share_damage_owner: None,
+    });
+    let zombie_id = storage.just_insert_player(zombie);
+
+    let mut target = Player::new_from_namerena_raw("target@enemy".to_string(), storage.clone()).unwrap();
+    target.build();
+    let target_id = storage.just_insert_player(target);
+    {
+        let target_mut = storage.just_get_player_mut(target_id).unwrap();
+        target_mut.skills.skill_by_id_mut(0).set_level(99);
+        target_mut.attr[0] = 255;
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut merge = crate::player::skill::merge::MergeSkill::new();
+    assert!(
+        <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
+            &mut merge,
+            255,
+            target_id,
+            (zombie_id, &mut randomer, &mut updates, &storage),
+        )
+    );
+
+    let zombie_after = storage.get_player(&zombie_id).unwrap();
+    assert_eq!(zombie_after.attr[0], 255);
+    assert!(zombie_after.skills.skill_by_id(0).level() < 99);
+}
+
+#[test]
 fn summon_minion_can_summon_child_and_share_damage_by_direct_owner_chain() {
     let storage = Storage::new_arc();
     let mut owner = Player::new_from_namerena_raw(
