@@ -5,7 +5,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, act::minion::share_minion_heal_with_owner},
+    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone)]
@@ -44,7 +44,6 @@ impl SkillTrait for ReraiseSkill {
             .just_get_player_mut(args.0)
             .expect("cannot get reraise owner from storage")
             .revive_with_hp(hp);
-        share_minion_heal_with_owner(args.0, hp, args.0, args.2, args.3);
         // JS 的 SklReraise.b1() 只会在当前死亡链里直接回 hp，不会再额外排一次 revive/sync。
         // 这里按这个语义保持不调用 queue_revival，并且已经重新跑过全量 1w2 case
         // (1v1, 2v2, 3v3v3, ffa)：没有引入回归，但也没有额外修掉剩余 failed case。

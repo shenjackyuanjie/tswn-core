@@ -2224,13 +2224,6 @@ impl Player {
                 update.param = Some(dmg.unsigned_abs());
                 update
             });
-            crate::player::skill::act::minion::share_minion_heal_with_owner(
-                self.as_ptr(),
-                dmg.unsigned_abs() as i32,
-                caster,
-                updates,
-                storage,
-            );
             return 0;
         }
         if dmg == 0 {

@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use crate::{
-    engine::{storage::Storage, update::RunUpdate},
+    engine::storage::Storage,
     player::{
         Player, PlrId, StateTrait,
         overlay::MinionOverlay,
@@ -18,8 +18,6 @@ use crate::{
         },
     },
 };
-
-use super::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MinionKind {
@@ -122,44 +120,6 @@ pub fn is_bed2_summon_minion(storage: &Arc<Storage>, player_id: PlrId) -> bool {
         .get_player_or_pending(&owner_id)
         .map(|owner| owner.player_type() == crate::player::PlayerType::Bed2)
         .unwrap_or(false)
-}
-
-pub fn share_minion_heal_with_owner(
-    minion_id: PlrId,
-    heal_amount: i32,
-    caster: PlrId,
-    updates: &mut crate::engine::update::RunUpdates,
-    storage: &Arc<Storage>,
-) {
-    if heal_amount <= 1 {
-        return;
-    }
-    let owner_id = storage
-        .get_player(&minion_id)
-        .filter(|player| {
-            player
-                .skills
-                .store
-                .get(&SUMMON_SHARE_DAMAGE_SKILL_KEY)
-                .is_some_and(|skill| skill.level() > 0)
-        })
-        .and_then(|player| player.get_state::<MinionRuntimeState>())
-        .and_then(|state| state.share_damage_owner.or(state.owner));
-    let Some(owner_id) = owner_id else {
-        return;
-    };
-    if owner_id == minion_id {
-        return;
-    }
-    if let Some(owner) = storage.just_get_player_mut(owner_id) {
-        let amount = heal_amount / 2;
-        owner.heal(amount);
-        updates.emit(|| {
-            let mut update = RunUpdate::new("[1]回复体力[2]点", caster, owner_id, 0);
-            update.param = Some(amount.max(0) as u32);
-            update
-        });
-    }
 }
 
 #[inline]

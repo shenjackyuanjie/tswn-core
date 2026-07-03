@@ -19,7 +19,7 @@ use super::minion::{
     apply_summon_attrs, owner_minion_overlay, prepare_combat_minion,
 };
 
-pub(in crate::player::skill::act) const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
+pub(super) const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 
 pub(super) fn ensure_summon_share_damage_skill(skills: &mut SkillStorage, enabled: bool) {
     skills
