@@ -1470,7 +1470,7 @@ fn bed2_summon_uses_base_player_template() {
     let expected_critical = normal.skills.skill_by_id(7).level();
 
     let mut bed2 =
-        Player::new_from_namerena_raw("alpha extra@red@bed2+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12,\"sklshadow\":8,\"sklsummon\":7}}".to_string(), storage.clone())
+        Player::new_from_namerena_raw("alpha extra@red+bed2[3000]+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12,\"sklshadow\":8,\"sklsummon\":7}}".to_string(), storage.clone())
             .unwrap();
     bed2.build();
     assert_eq!(bed2.attr, [0, 99, 0, 0, 0, 99, 0, 3000]);
@@ -1528,7 +1528,7 @@ fn bed2_summon_uses_base_player_template() {
 fn bed2_summon_merge_inherits_normal_lane_skills() {
     let storage = Storage::new_arc();
     let mut bed2 =
-        Player::new_from_namerena_raw("alpha@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}".to_string(), storage.clone())
+        Player::new_from_namerena_raw("alpha@red+bed2[3000]+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}".to_string(), storage.clone())
             .unwrap();
     bed2.build();
     let bed2_id = storage.just_insert_player(bed2);
@@ -1589,12 +1589,12 @@ fn bed2_summon_merge_inherits_normal_lane_skills() {
 fn bed2_summon_merge_inherits_devoured_disperse_from_real_summons() {
     let storage = Storage::new_arc();
     let mut bed2 =
-        Player::new_from_namerena_raw("同盟国 #eFJnEcgk3@Shabby_fish@bed2".to_string(), storage.clone()).unwrap();
+        Player::new_from_namerena_raw("同盟国 #eFJnEcgk3@Shabby_fish+bed2[3000]".to_string(), storage.clone()).unwrap();
     bed2.build();
     let bed2_id = storage.just_insert_player(bed2);
 
     let mut target =
-        Player::new_from_namerena_raw("歌莉雅 #OCjrzqJPP@Shabby_fish@bed2".to_string(), storage.clone()).unwrap();
+        Player::new_from_namerena_raw("歌莉雅 #OCjrzqJPP@Shabby_fish+bed2[3000]".to_string(), storage.clone()).unwrap();
     target.build();
     let target_id = storage.just_insert_player(target);
 
@@ -1658,7 +1658,7 @@ fn bed2_summon_merge_inherits_devoured_disperse_from_real_summons() {
 fn bed2_waits_for_summon_clone_tree_to_die_before_resummon() {
     let storage = Storage::new_arc();
     let mut bed2 = Player::new_from_namerena_raw(
-        "alpha@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255},\"summon\":{\"attrs\":[60,60,60,60,60,60,60,240],\"skills\":{\"normal:sklclone\":255}}}"
+        "alpha@red+bed2[3000]+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255},\"summon\":{\"attrs\":[60,60,60,60,60,60,60,240],\"skills\":{\"normal:sklclone\":255}}}"
             .to_string(),
         storage.clone(),
     )
@@ -1759,7 +1759,7 @@ fn bed2_waits_for_summon_clone_tree_to_die_before_resummon() {
 fn bed2_recast_resets_summon_skill_levels_and_attrs_after_clone_use() {
     let storage = Storage::new_arc();
     let mut bed2 = Player::new_from_namerena_raw(
-        "alpha@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255,\"sklclone\":255}}"
+        "alpha@red+bed2[3000]+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255,\"sklclone\":255}}"
             .to_string(),
         storage.clone(),
     )
@@ -1877,7 +1877,7 @@ fn bed2_summon_is_not_double_damaged_by_disperse() {
 
     let bed2_storage = Storage::new_arc();
     let (_, bed2_summon_id) = summon_for(
-        "normal@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}",
+        "normal@red+bed2[3000]+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}",
         &bed2_storage,
     );
     let bed2_damage = disperse_damage(bed2_summon_id, &bed2_storage);

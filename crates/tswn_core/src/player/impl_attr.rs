@@ -42,6 +42,8 @@ use super::overlay::MinionOverlay;
 use super::utils::{trim_js_line_end, trim_js_name_like};
 use super::*;
 
+const DEFAULT_BED2_HP: i32 = 3000;
+
 fn minion_skill_name_for_export(skill_key: usize, skill: &Skill) -> String {
     if let Some(name) = crate::player::skill::classified_player_skill_name_for_export(skill_key) {
         return name;
@@ -283,9 +285,9 @@ impl Player {
         }
     }
 
-    fn bed2_overlay_from_base_player(base: &Self) -> PlayerOverlay {
+    fn bed2_overlay_from_base_player(base: &Self, bed2_hp: i32) -> PlayerOverlay {
         PlayerOverlay {
-            attrs: Some([0, 99, 0, 0, 0, 99, 0, 3000]),
+            attrs: Some([0, 99, 0, 0, 0, 99, 0, bed2_hp]),
             skills: Some(vec![("sklsummon".to_string(), SkillBoost::Normal(255))]),
             weapon: None,
             name_factor_enabled: false,
@@ -299,21 +301,23 @@ impl Player {
         name: &str,
         team: Option<&str>,
         user_overlay: Option<PlayerOverlay>,
+        bed2_hp: i32,
         storage: &Arc<Storage>,
     ) -> PlayerResult<PlayerOverlay> {
         let base_storage = Storage::new_arc_with_eval_rq(storage.eval_rq());
         let mut base = Player::new_and_init_with_overlay(team.map(str::to_string), name.to_string(), None, user_overlay, base_storage)?;
         base.build();
-        Ok(Self::bed2_overlay_from_base_player(&base))
+        Ok(Self::bed2_overlay_from_base_player(&base, bed2_hp))
     }
 
     fn new_bed2_from_parts(
         name: &str,
         team: Option<&str>,
         user_overlay: Option<PlayerOverlay>,
+        bed2_hp: i32,
         storage: Arc<Storage>,
     ) -> PlayerResult<Self> {
-        let overlay = Self::bed2_overlay_from_parts(name, team, user_overlay, &storage)?;
+        let overlay = Self::bed2_overlay_from_parts(name, team, user_overlay, bed2_hp, &storage)?;
         Player::new_and_init_as_bed2(team.map(str::to_string), name.to_string(), overlay, storage)
     }
 
@@ -326,15 +330,27 @@ impl Player {
         base.name_base = self.name_base.clone();
         base.raw_name_base = self.raw_name_base;
         base.build();
-        self.overlay = Some(Box::new(Self::bed2_overlay_from_base_player(&base)));
+        let bed2_hp = self
+            .overlay
+            .as_ref()
+            .and_then(|overlay| overlay.attrs.map(|attrs| attrs[7]))
+            .filter(|hp| *hp > 0)
+            .unwrap_or_else(|| if self.attr[7] > 0 { self.attr[7] as i32 } else { DEFAULT_BED2_HP });
+        self.overlay = Some(Box::new(Self::bed2_overlay_from_base_player(&base, bed2_hp)));
         Ok(())
     }
 
-    fn split_bed2_team_marker(team: &str) -> (&str, bool) {
+    fn split_bed2_team_marker(team: &str) -> (&str, Option<i32>) {
         match team.rsplit_once('@') {
-            Some((team, "bed2")) if !team.is_empty() => (team, true),
-            _ => (team, false),
+            Some((team, "bed2")) if !team.is_empty() => (team, Some(DEFAULT_BED2_HP)),
+            _ => (team, None),
         }
+    }
+
+    fn parse_bed2_plus_marker(segment: &str) -> Option<i32> {
+        let rest = segment.strip_prefix("bed2[")?;
+        let hp = rest.strip_suffix(']')?.trim().parse::<i32>().ok()?;
+        (hp > 0).then_some(hp)
     }
 
     /// 根据名字系数调整数值
@@ -1123,6 +1139,7 @@ impl Player {
         let mut team: &str;
         let weapon: Option<String>;
         let mut overlay: Option<PlayerOverlay> = None;
+        let mut bed2_hp: Option<i32> = None;
         if raw_name.contains("@") {
             (name, team) = raw_name.split_once("@").unwrap();
             // 队伍段中再按 + 分离队伍名和武器/overlay
@@ -1130,15 +1147,17 @@ impl Player {
                 let tmp;
                 (team, tmp) = team.split_once("+").unwrap();
                 team = trim_js_line_end(team);
-                let (parsed_weapon, parsed_overlay) = Self::split_weapon_overlay(tmp);
+                let (parsed_weapon, parsed_overlay, parsed_bed2_hp) = Self::split_weapon_overlay(tmp);
                 weapon = parsed_weapon;
                 overlay = parsed_overlay;
+                bed2_hp = parsed_bed2_hp;
             } else {
                 weapon = None;
             }
-            let (team, is_bed2) = Self::split_bed2_team_marker(team);
-            if is_bed2 {
-                Player::new_bed2_from_parts(name, Some(team), overlay, storage)
+            let (team, legacy_bed2_hp) = Self::split_bed2_team_marker(team);
+            bed2_hp = bed2_hp.or(legacy_bed2_hp);
+            if let Some(bed2_hp) = bed2_hp {
+                Player::new_bed2_from_parts(name, Some(team), overlay, bed2_hp, storage)
             } else {
                 Player::new_and_init_with_overlay(Some(team.to_string()), name.to_string(), weapon, overlay, storage)
             }
@@ -1146,10 +1165,14 @@ impl Player {
             // 无队伍名：按 + 分离名字和武器/overlay
             if raw_name.contains("+") {
                 let (name, rest) = raw_name.split_once("+").unwrap();
-                let (parsed_weapon, parsed_overlay) = Self::split_weapon_overlay(rest);
+                let (parsed_weapon, parsed_overlay, parsed_bed2_hp) = Self::split_weapon_overlay(rest);
                 weapon = parsed_weapon;
                 overlay = parsed_overlay;
-                Player::new_and_init_with_overlay(None, trim_js_line_end(name).to_string(), weapon, overlay, storage)
+                if let Some(bed2_hp) = parsed_bed2_hp {
+                    Player::new_bed2_from_parts(trim_js_line_end(name), None, overlay, bed2_hp, storage)
+                } else {
+                    Player::new_and_init_with_overlay(None, trim_js_line_end(name).to_string(), weapon, overlay, storage)
+                }
             } else {
                 Player::new_and_init(None, raw_name.to_string(), None, storage)
             }
@@ -1166,12 +1189,17 @@ impl Player {
     ///
     /// 分割时会跳过双引号字符串内的 `+`，避免把
     /// `"40+30"` 这类 SkillBoost 格式的值错误切分。
-    fn split_weapon_overlay(raw: &str) -> (Option<String>, Option<PlayerOverlay>) {
+    fn split_weapon_overlay(raw: &str) -> (Option<String>, Option<PlayerOverlay>, Option<i32>) {
         let mut weapon: Option<String> = None;
         let mut overlay: Option<PlayerOverlay> = None;
+        let mut bed2_hp: Option<i32> = None;
         for segment in split_by_plus_outside_quotes(raw) {
             let trimmed = trim_js_name_like(&segment);
             if trimmed.is_empty() {
+                continue;
+            }
+            if let Some(hp) = Self::parse_bed2_plus_marker(trimmed) {
+                bed2_hp = Some(hp);
                 continue;
             }
             if let Some(parsed) = PlayerOverlay::parse_inline(trimmed) {
@@ -1183,27 +1211,42 @@ impl Player {
                 None => trimmed.to_string(),
             });
         }
-        (weapon, overlay)
+        (weapon, overlay, bed2_hp)
     }
     /// 把原始的 namerena 名字转换为 id name
     #[inline]
     pub fn raw_namerena_to_idname(raw_name: &str) -> String {
-        let no_weapon = if let Some((left, _)) = raw_name.split_once("+") {
-            left
-        } else {
-            raw_name
-        };
-        if let Some((name, team)) = no_weapon.split_once("@") {
-            let (team, is_bed2) = Self::split_bed2_team_marker(team);
-            if team.is_empty() || team == name || team.contains(":") {
-                if is_bed2 { format!("{name}@bed2") } else { name.to_string() }
-            } else if is_bed2 {
-                format!("{name}@{team}@bed2")
+        let raw_name = trim_js_line_end(raw_name);
+        if let Some((name, team_and_rest)) = raw_name.split_once("@") {
+            let mut team = team_and_rest;
+            let mut bed2_hp = None;
+            if let Some((parsed_team, rest)) = team_and_rest.split_once("+") {
+                team = trim_js_line_end(parsed_team);
+                let (_, _, parsed_bed2_hp) = Self::split_weapon_overlay(rest);
+                bed2_hp = parsed_bed2_hp;
+            }
+            let (team, legacy_bed2_hp) = Self::split_bed2_team_marker(team);
+            bed2_hp = bed2_hp.or(legacy_bed2_hp);
+            let base = if team.is_empty() || team == name || team.contains(":") {
+                name.to_string()
             } else {
                 format!("{name}@{team}")
+            };
+            if let Some(hp) = bed2_hp {
+                format!("{base}+bed2[{hp}]")
+            } else {
+                base
+            }
+        } else if let Some((name, rest)) = raw_name.split_once("+") {
+            let (_, _, bed2_hp) = Self::split_weapon_overlay(rest);
+            let name = trim_js_line_end(name);
+            if let Some(hp) = bed2_hp {
+                format!("{name}+bed2[{hp}]")
+            } else {
+                name.to_string()
             }
         } else {
-            no_weapon.to_string()
+            raw_name.to_string()
         }
     }
 }

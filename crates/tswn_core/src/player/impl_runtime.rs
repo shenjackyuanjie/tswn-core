@@ -1768,9 +1768,15 @@ impl Player {
     pub fn id_key_name(&self) -> String {
         let id_name = self.id_name();
         if self.player_type == PlayerType::Bed2 {
+            let bed2_hp = self
+                .overlay
+                .as_ref()
+                .and_then(|overlay| overlay.attrs.map(|attrs| attrs[7]))
+                .filter(|hp| *hp > 0)
+                .unwrap_or_else(|| if self.attr[7] > 0 { self.attr[7] as i32 } else { 3000 });
             return match self.team.as_ref().filter(|team| !team.is_empty() && *team != &id_name) {
-                Some(team) => format!("{}@{}@bed2", id_name, team),
-                None => format!("{id_name}@bed2"),
+                Some(team) => format!("{}@{}+bed2[{}]", id_name, team, bed2_hp),
+                None => format!("{id_name}+bed2[{bed2_hp}]"),
             };
         }
         if let Some(team) = self.team.as_ref()

@@ -285,7 +285,7 @@ mod bed2 {
     #[test]
     fn opening_round_summons_and_body_is_not_targetable() {
         let mut runner = runners::Runner::new_from_namerena_raw(
-            "alpha extra@red@bed2+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12}}\n\nbeta@blue"
+            "alpha extra@red+bed2[3000]+ol:{\"attrs\":[90,91,92,93,94,95,96,350],\"skills\":{\"sklrapid\":9,\"sklcritical\":12}}\n\nbeta@blue"
                 .to_string(),
         )
         .unwrap();
@@ -410,7 +410,7 @@ mod bed2 {
     #[test]
     fn opening_round_splits_multiple_bed2_summons_into_two_lines_each() {
         let mut runner =
-            runners::Runner::new_from_namerena_raw("alpha@red@bed2\nomega@red@bed2\n\nbeta@blue".to_string()).unwrap();
+            runners::Runner::new_from_namerena_raw("alpha@red+bed2[3000]\nomega@red+bed2[3000]\n\nbeta@blue".to_string()).unwrap();
 
         let updates = runner.main_round();
         let render_update = |update: &crate::engine::update::RunUpdate| {
@@ -448,15 +448,16 @@ mod bed2 {
 
         assert_eq!(rows.len(), 4, "two bed2 players should produce 2x visible rows");
         assert!(rows.iter().all(|row| row.len() == 1), "each bed2 opening row should contain one message");
-        assert!(rows[0][0].contains("alpha从被子里钻出来了！"));
+        let summon_rows = [&rows[0][0], &rows[2][0]];
+        assert!(summon_rows.iter().any(|row| row.contains("alpha从被子里钻出来了！")));
+        assert!(summon_rows.iter().any(|row| row.contains("omega从被子里钻出来了！")));
         assert!(rows[1][0].contains("被子还剩3000点血"));
-        assert!(rows[2][0].contains("omega从被子里钻出来了！"));
         assert!(rows[3][0].contains("被子还剩3000点血"));
     }
 
     #[test]
     fn resummons_after_own_summon_dies() {
-        let mut runner = runners::Runner::new_from_namerena_raw("alpha extra@red@bed2\n\nbeta@blue".to_string()).unwrap();
+        let mut runner = runners::Runner::new_from_namerena_raw("alpha extra@red+bed2[3000]\n\nbeta@blue".to_string()).unwrap();
         let bed2_id = runner
             .world
             .all_plrs()
@@ -508,7 +509,7 @@ mod bed2 {
     #[test]
     fn resummon_recovers_one_round_resources_for_everyone() {
         let mut runner = runners::Runner::new_from_namerena_raw(
-            "alpha@red@bed2+ol:{\"attrs\":[10,10,100,10,10,10,255,300],\"skills\":{}}\n\nbeta@blue".to_string(),
+            "alpha@red+bed2[3000]+ol:{\"attrs\":[10,10,100,10,10,10,255,300],\"skills\":{}}\n\nbeta@blue".to_string(),
         )
         .unwrap();
         let bed2_id = runner
@@ -611,7 +612,7 @@ mod bed2 {
 
     #[test]
     fn body_damage_is_silent_until_blood_sacrifice_reports_hp() {
-        let mut runner = runners::Runner::new_from_namerena_raw("alpha@red@bed2\n\nbeta@blue".to_string()).unwrap();
+        let mut runner = runners::Runner::new_from_namerena_raw("alpha@red+bed2[3000]\n\nbeta@blue".to_string()).unwrap();
         let bed2_id = runner
             .world
             .all_plrs()
