@@ -157,6 +157,11 @@ impl Player {
             && !self.bed2_has_alive_summon(storage)
     }
 
+    pub(crate) fn bed2_summoned_minion_id(&self) -> Option<PlrId> {
+        let skill_key = self.bed2_summon_skill_key()?;
+        self.skills.skill_by_id(skill_key).summon_minion_id()
+    }
+
     pub(crate) fn bed2_try_summon(&mut self, randomer: &mut RC4, updates: &mut RunUpdates, storage: &Arc<Storage>) -> bool {
         if !self.bed2_can_summon(storage) {
             return false;
@@ -2210,7 +2215,6 @@ impl Player {
             );
         }
         if dmg < 0 {
-            let _old_hp = self.status.hp;
             self.status.hp -= dmg;
             if self.status.hp > self.status.max_hp {
                 self.status.hp = self.status.max_hp;
@@ -2220,6 +2224,13 @@ impl Player {
                 update.param = Some(dmg.unsigned_abs());
                 update
             });
+            crate::player::skill::act::minion::share_minion_heal_with_owner(
+                self.as_ptr(),
+                dmg.unsigned_abs() as i32,
+                caster,
+                updates,
+                storage,
+            );
             return 0;
         }
         if dmg == 0 {

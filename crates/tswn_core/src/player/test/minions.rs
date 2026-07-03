@@ -741,7 +741,7 @@ fn classified_merge_keeps_normal_and_summon_skill_lanes_separate() {
 }
 
 #[test]
-fn classified_summon_merge_drops_normal_skills_without_summon_axis_slot() {
+fn classified_summon_merge_inherits_normal_lane_skills() {
     let storage = Storage::new_arc();
     let mut summoner = Player::new_from_namerena_raw(
         r#"summoner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"normal:sklrapid":1}}}"#
@@ -775,6 +775,7 @@ fn classified_summon_merge_drops_normal_skills_without_summon_axis_slot() {
     let pending = storage.take_pending_spawns();
     assert_eq!(pending.len(), 1);
     let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    let summoned_attrs_before = storage.get_player(&summoned_id).unwrap().attr;
 
     let mut merge = crate::player::skill::merge::MergeSkill::new();
     assert!(
@@ -787,18 +788,19 @@ fn classified_summon_merge_drops_normal_skills_without_summon_axis_slot() {
     );
 
     let summoned_after = storage.get_player(&summoned_id).unwrap();
+    assert_eq!(summoned_after.attr, summoned_attrs_before);
     assert_eq!(
         summoned_after
             .skills
             .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 6)
             .level(),
-        1
+        77
     );
     assert!(!summoned_after.skills.skill.contains(&6));
 }
 
 #[test]
-fn legacy_summon_merge_maps_fixed_slots_to_summon_skill_axis() {
+fn legacy_summon_merge_maps_fixed_slots_to_normal_skill_axis() {
     let storage = Storage::new_arc();
     let mut summoner = Player::new_from_namerena_raw("summoner@same".to_string(), storage.clone()).unwrap();
     summoner.build();
@@ -828,6 +830,7 @@ fn legacy_summon_merge_maps_fixed_slots_to_summon_skill_axis() {
     let pending = storage.take_pending_spawns();
     assert_eq!(pending.len(), 1);
     let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    let summoned_attrs_before = storage.get_player(&summoned_id).unwrap().attr;
 
     let mut merge = crate::player::skill::merge::MergeSkill::new();
     assert!(
@@ -840,18 +843,13 @@ fn legacy_summon_merge_maps_fixed_slots_to_summon_skill_axis() {
     );
 
     let summoned_after = storage.get_player(&summoned_id).unwrap();
-    assert_eq!(
-        summoned_after.skills.skill_by_id(crate::player::skill::SUMMON_FIRE1_SKILL_KEY).level(),
-        88
-    );
-    assert_eq!(
-        summoned_after.skills.skill_by_id(crate::player::skill::SUMMON_FIRE2_SKILL_KEY).level(),
-        66
-    );
+    assert_eq!(summoned_after.attr, summoned_attrs_before);
+    assert_eq!(summoned_after.skills.skill_by_id(0).level(), 88);
+    assert_eq!(summoned_after.skills.skill_by_id(1).level(), 66);
 }
 
 #[test]
-fn shadow_merge_maps_legacy_possess_slot_to_phantom_axis() {
+fn shadow_merge_maps_legacy_possess_slot_to_normal_skill_axis() {
     let storage = Storage::new_arc();
     let mut shadow_owner = Player::new_from_namerena_raw("shadow-owner@same".to_string(), storage.clone()).unwrap();
     shadow_owner.build();
@@ -892,18 +890,12 @@ fn shadow_merge_maps_legacy_possess_slot_to_phantom_axis() {
     );
 
     let shadow_after = storage.get_player(&shadow_id).unwrap();
-    assert_eq!(
-        shadow_after
-            .skills
-            .skill_by_id(crate::player::skill::PHANTOM_POSSESS_SKILL_KEY)
-            .level(),
-        92
-    );
-    assert_eq!(shadow_after.skills.skill_by_id(0).level(), 0);
+    assert_eq!(shadow_after.skills.skill_by_id(0).level(), 92);
+    assert!(!shadow_after.skills.store.contains_key(&crate::player::skill::PHANTOM_POSSESS_SKILL_KEY));
 }
 
 #[test]
-fn zombie_merge_does_not_inherit_skills() {
+fn zombie_merge_inherits_skills_on_normal_axis() {
     let storage = Storage::new_arc();
     let mut zombie = Player::new_from_namerena_raw("zombie@same".to_string(), storage.clone()).unwrap();
     zombie.build();
@@ -937,7 +929,7 @@ fn zombie_merge_does_not_inherit_skills() {
 
     let zombie_after = storage.get_player(&zombie_id).unwrap();
     assert_eq!(zombie_after.attr[0], 255);
-    assert!(zombie_after.skills.skill_by_id(0).level() < 99);
+    assert_eq!(zombie_after.skills.skill_by_id(0).level(), 99);
 }
 
 #[test]
@@ -1533,7 +1525,7 @@ fn bed2_summon_uses_base_player_template() {
 }
 
 #[test]
-fn bed2_summon_merge_drops_player_skills_without_summon_axis_slot() {
+fn bed2_summon_merge_inherits_normal_lane_skills() {
     let storage = Storage::new_arc();
     let mut bed2 =
         Player::new_from_namerena_raw("alpha@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}".to_string(), storage.clone())
@@ -1562,6 +1554,7 @@ fn bed2_summon_merge_drops_player_skills_without_summon_axis_slot() {
     let pending = storage.take_pending_spawns();
     assert_eq!(pending.len(), 1);
     let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    let summoned_attrs_before = storage.get_player(&summoned_id).unwrap().attr;
 
     let mut merge = crate::player::skill::merge::MergeSkill::new();
     assert!(
@@ -1574,15 +1567,26 @@ fn bed2_summon_merge_drops_player_skills_without_summon_axis_slot() {
     );
 
     let summoned_after = storage.get_player(&summoned_id).unwrap();
-    assert_eq!(summoned_after.attr[0], 255);
-    assert_eq!(summoned_after.skills.skill_by_id(crate::player::skill::SUMMON_FIRE1_SKILL_KEY).level(), 0);
+    assert_eq!(summoned_after.attr, summoned_attrs_before);
     assert!(!summoned_after.skills.store.contains_key(&17));
     assert!(!summoned_after.skills.skill.contains(&17));
-    assert!(!summoned_after.skills.skill.contains(&(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 17)));
+    assert_eq!(
+        summoned_after
+            .skills
+            .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 17)
+            .level(),
+        87
+    );
+    assert!(
+        summoned_after
+            .skills
+            .skill
+            .contains(&(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 17))
+    );
 }
 
 #[test]
-fn bed2_summon_merge_drops_devoured_disperse_from_real_names() {
+fn bed2_summon_merge_inherits_devoured_disperse_from_real_summons() {
     let storage = Storage::new_arc();
     let mut bed2 =
         Player::new_from_namerena_raw("同盟国 #eFJnEcgk3@Shabby_fish@bed2".to_string(), storage.clone()).unwrap();
@@ -1593,11 +1597,6 @@ fn bed2_summon_merge_drops_devoured_disperse_from_real_names() {
         Player::new_from_namerena_raw("歌莉雅 #OCjrzqJPP@Shabby_fish@bed2".to_string(), storage.clone()).unwrap();
     target.build();
     let target_id = storage.just_insert_player(target);
-    {
-        let target_mut = storage.just_get_player_mut(target_id).unwrap();
-        target_mut.skills.skill_by_id_mut(17).set_level(255);
-        target_mut.attr[0] = 255;
-    }
 
     let mut randomer = RC4::default();
     let mut updates = RunUpdates::new();
@@ -1611,22 +1610,48 @@ fn bed2_summon_merge_drops_devoured_disperse_from_real_names() {
     let pending = storage.take_pending_spawns();
     assert_eq!(pending.len(), 1);
     let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    let summoned_attrs_before = storage.get_player(&summoned_id).unwrap().attr;
+    assert!(
+        storage
+            .just_get_player_mut(target_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage)
+    );
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let target_summon_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    {
+        let target_summon = storage.just_get_player_mut(target_summon_id).unwrap();
+        target_summon.attr[0] = 255;
+    }
 
     let mut merge = crate::player::skill::merge::MergeSkill::new();
     assert!(
         <crate::player::skill::merge::MergeSkill as crate::player::skill::SkillTrait>::kill_with_level(
             &mut merge,
             255,
-            target_id,
+            target_summon_id,
             (summoned_id, &mut randomer, &mut updates, &storage),
         )
     );
 
     let summoned_after = storage.get_player(&summoned_id).unwrap();
-    assert_eq!(summoned_after.attr[0], 255);
+    assert_eq!(summoned_after.attr, summoned_attrs_before);
     assert!(!summoned_after.skills.store.contains_key(&17));
     assert!(!summoned_after.skills.skill.contains(&17));
-    assert!(!summoned_after.skills.skill.contains(&(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 17)));
+    assert!(
+        summoned_after
+            .skills
+            .skill
+            .contains(&(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 17))
+    );
+    assert_eq!(
+        summoned_after
+            .skills
+            .skill_by_id(crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 17)
+            .level(),
+        82
+    );
 }
 
 #[test]
@@ -1859,4 +1884,100 @@ fn bed2_summon_is_not_double_damaged_by_disperse() {
 
     assert!(bed2_damage > 0);
     assert_eq!(normal_damage, bed2_damage * 2);
+}
+
+#[test]
+fn summon_heal_shares_half_requested_gain_with_owner() {
+    fn summon_for(owner_raw: &str, storage: &std::sync::Arc<Storage>) -> (PlrId, PlrId) {
+        let mut owner = Player::new_from_namerena_raw(owner_raw.to_string(), storage.clone()).unwrap();
+        owner.build();
+        let owner_id = storage.just_insert_player(owner);
+
+        let mut randomer = RC4::default();
+        let mut updates = RunUpdates::new();
+        let mut summon = crate::player::skill::summon::SummonSkill::new();
+        <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+            &mut summon,
+            255,
+            vec![owner_id],
+            false,
+            (owner_id, &mut randomer, &mut updates, storage),
+        );
+        let summoned = storage.take_pending_spawns().into_iter().next().expect("summon should spawn").player;
+        let summon_id = storage.just_insert_player(summoned);
+        (owner_id, summon_id)
+    }
+
+    let storage = Storage::new_arc();
+    let (owner_id, summon_id) = summon_for(
+        "owner@red+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}",
+        &storage,
+    );
+    {
+        let owner = storage.just_get_player_mut(owner_id).unwrap();
+        owner.set_hp_raw(100);
+    }
+    {
+        let summon = storage.just_get_player_mut(summon_id).unwrap();
+        summon.set_hp_raw(10);
+    }
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(summon_id)
+        .unwrap()
+        .damage(-80, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+    assert_eq!(storage.get_player(&summon_id).unwrap().get_status().hp, 90);
+    assert_eq!(storage.get_player(&owner_id).unwrap().get_status().hp, 140);
+
+    storage.just_get_player_mut(owner_id).unwrap().set_hp_raw(100);
+    let summon_max_hp = storage.get_player(&summon_id).unwrap().get_status().max_hp;
+    storage.just_get_player_mut(summon_id).unwrap().set_hp_raw(summon_max_hp - 10);
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(summon_id)
+        .unwrap()
+        .damage(-80, owner_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+    assert_eq!(storage.get_player(&summon_id).unwrap().get_status().hp, summon_max_hp);
+    assert_eq!(storage.get_player(&owner_id).unwrap().get_status().hp, 140);
+}
+
+#[test]
+fn bed2_summon_heal_shares_half_with_body() {
+    let storage = Storage::new_arc();
+    let mut bed2 = Player::new_from_namerena_raw(
+        "alpha@red@bed2+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}".to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    bed2.build();
+    let bed2_id = storage.just_insert_player(bed2);
+
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    assert!(
+        storage
+            .just_get_player_mut(bed2_id)
+            .unwrap()
+            .bed2_try_summon(&mut randomer, &mut updates, &storage)
+    );
+    let summoned = storage
+        .take_pending_spawns()
+        .into_iter()
+        .next()
+        .expect("bed2 should summon")
+        .player;
+    let summon_id = storage.just_insert_player(summoned);
+
+    storage.just_get_player_mut(bed2_id).unwrap().set_hp_raw(1000);
+    storage.just_get_player_mut(summon_id).unwrap().set_hp_raw(100);
+    let mut updates = RunUpdates::new();
+    storage
+        .just_get_player_mut(summon_id)
+        .unwrap()
+        .damage(-80, bed2_id, noop_on_damage, &mut randomer, &mut updates, &storage);
+
+    assert_eq!(storage.get_player(&summon_id).unwrap().get_status().hp, 180);
+    assert_eq!(storage.get_player(&bed2_id).unwrap().get_status().hp, 1040);
 }

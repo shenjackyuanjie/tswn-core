@@ -506,6 +506,110 @@ mod bed2 {
     }
 
     #[test]
+    fn resummon_recovers_one_round_resources_for_everyone() {
+        let mut runner = runners::Runner::new_from_namerena_raw(
+            "alpha@red@bed2+ol:{\"attrs\":[10,10,100,10,10,10,255,300],\"skills\":{}}\n\nbeta@blue".to_string(),
+        )
+        .unwrap();
+        let bed2_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| {
+                runner
+                    .storage
+                    .get_player(id)
+                    .is_some_and(|player| player.player_type() == crate::player::PlayerType::Bed2)
+            })
+            .expect("bed2 player should exist");
+        let enemy_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| runner.storage.get_player(id).is_some_and(|player| player.id_name() == "beta"))
+            .expect("enemy should exist");
+
+        for id in [bed2_id, enemy_id] {
+            let player = runner.storage.just_get_player_mut(id).unwrap();
+            let speed_delta = 100 - player.get_status().speed;
+            let wisdom_delta = 255 - player.get_status().wisdom;
+            player.add_speed(speed_delta);
+            player.add_wisdom(wisdom_delta);
+            player.set_move_point(10);
+            player.set_magic_point(0);
+        }
+
+        let _ = runner.main_round();
+        assert_eq!(runner.storage.get_player(&bed2_id).unwrap().move_point(), 10);
+        assert_eq!(runner.storage.get_player(&bed2_id).unwrap().magic_point(), 0);
+        assert_eq!(runner.storage.get_player(&enemy_id).unwrap().move_point(), 10);
+        assert_eq!(runner.storage.get_player(&enemy_id).unwrap().magic_point(), 0);
+
+        let summon_id = runner
+            .world
+            .all_plrs()
+            .into_iter()
+            .find(|id| {
+                *id != bed2_id && runner.storage.get_player(id).is_some_and(|player| player.id_name().starts_with("alpha?"))
+            })
+            .expect("first summon should exist");
+        for id in [bed2_id, enemy_id, summon_id] {
+            let player = runner.storage.just_get_player_mut(id).unwrap();
+            let speed_delta = 100 - player.get_status().speed;
+            let wisdom_delta = 255 - player.get_status().wisdom;
+            player.add_speed(speed_delta);
+            player.add_wisdom(wisdom_delta);
+            player.set_move_point(10);
+            player.set_magic_point(0);
+        }
+        runner.storage.just_get_player_mut(summon_id).unwrap().set_hp_raw(0);
+
+        runner.randomer = RC4::default();
+        let mut expected_randomer = runner.randomer.clone();
+        let recast_summon_move_point = expected_randomer.r255() as i32 * 4;
+
+        let _ = runner.main_round();
+
+        let alive_ids = runner.storage.all_alive_ids();
+        assert!(alive_ids.contains(&bed2_id));
+        assert!(alive_ids.contains(&enemy_id));
+        assert!(alive_ids.contains(&summon_id));
+        for id in alive_ids {
+            if id == summon_id {
+                let player = runner.storage.get_player(&id).unwrap();
+                assert_eq!(
+                    player.move_point(),
+                    recast_summon_move_point,
+                    "revived summon should not recover extra move point"
+                );
+                assert_eq!(
+                    player.magic_point(),
+                    player.get_status().wisdom >> 1,
+                    "revived summon should not recover extra magic point"
+                );
+                continue;
+            }
+            let step_roll = expected_randomer.next_u8() & 3;
+            let recovered_move_point = 10 + 100 * step_roll as i32;
+            let recovered_magic_point = if (expected_randomer.r127() as i32) < 255 + 64 { 16 } else { 0 };
+
+            let player = runner.storage.get_player(&id).unwrap();
+            assert_eq!(
+                player.move_point(),
+                recovered_move_point,
+                "{} should recover one round of move point",
+                id
+            );
+            assert_eq!(
+                player.magic_point(),
+                recovered_magic_point,
+                "{} should recover one round of magic point",
+                id
+            );
+        }
+    }
+
+    #[test]
     fn body_damage_is_silent_until_blood_sacrifice_reports_hp() {
         let mut runner = runners::Runner::new_from_namerena_raw("alpha@red@bed2\n\nbeta@blue".to_string()).unwrap();
         let bed2_id = runner

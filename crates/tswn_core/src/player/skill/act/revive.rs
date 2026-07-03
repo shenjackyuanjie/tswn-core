@@ -5,7 +5,7 @@
 use crate::engine::update::RunUpdate;
 use crate::player::{
     PlrId,
-    skill::act::minion::is_combat_minion,
+    skill::act::minion::{is_combat_minion, share_minion_heal_with_owner},
     skill::corpse::CorpseState,
     skill::{SkillArgs, SkillExt, SkillTargetDomain, SkillTrait},
 };
@@ -104,6 +104,7 @@ impl SkillTrait for ReviveSkill {
         }
         target.revive_with_hp(heal);
         args.3.queue_revival(target_id);
+        share_minion_heal_with_owner(target_id, heal, args.0, args.2, args.3);
         args.2.add(RunUpdate::new("[1][复活]了", args.0, target_id, (heal + 60) as u32));
         let mut recover_update = RunUpdate::new("[1]回复体力[2]点", args.0, target_id, 0);
         recover_update.param = Some(heal as u32);

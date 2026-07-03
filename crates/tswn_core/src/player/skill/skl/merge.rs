@@ -7,11 +7,7 @@ use crate::player::{
     PlrId,
     skill::act::minion::{MinionKind, MinionRuntimeState},
     skill::corpse::CorpseState,
-    skill::{
-        PHANTOM_POSSESS_SKILL_KEY, ProcKind, SUMMON_EXPLODE_SKILL_KEY, SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, Skill,
-        SkillArgs, SkillExt, SkillTrait, classified_player_skill_slot_order, classified_summon_minion_skill_slot_order,
-        ensure_classified_player_skill_slots, ensure_classified_summon_minion_skill_slots,
-    },
+    skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -21,95 +17,11 @@ impl MergeSkill {
     pub fn new() -> Self { Self }
 }
 
-fn replace_action_key(keys: &mut [usize], from: usize, to: usize) {
-    for key in keys {
-        if *key == from {
-            *key = to;
-        }
-    }
-}
-
-fn dedup_action_keys(keys: &mut Vec<usize>) {
-    let mut seen = Vec::with_capacity(keys.len());
-    keys.retain(|key| {
-        if seen.contains(key) {
-            false
-        } else {
-            seen.push(*key);
-            true
-        }
-    });
-}
-
-fn copy_skill_if_stronger(owner: &mut crate::player::Player, from: usize, to: usize) {
-    let Some(source) = owner.skills.store.get(&from).cloned() else {
-        return;
-    };
-    let target_level = owner.skills.store.get(&to).map(|skill| skill.level()).unwrap_or(0);
-    if source.level() >= target_level {
-        owner.skills.store.insert(to, source);
-    }
-}
-
-fn migrate_summon_skill_axis(owner: &mut crate::player::Player) -> Vec<usize> {
-    let already_classified = owner.skills.slot_skill == classified_summon_minion_skill_slot_order();
-    ensure_classified_summon_minion_skill_slots(&mut owner.skills);
-    if !already_classified {
-        copy_skill_if_stronger(owner, 0, SUMMON_FIRE1_SKILL_KEY);
-        copy_skill_if_stronger(owner, 1, SUMMON_FIRE2_SKILL_KEY);
-        copy_skill_if_stronger(owner, 2, SUMMON_EXPLODE_SKILL_KEY);
-        replace_action_key(&mut owner.skills.skill, 0, SUMMON_FIRE1_SKILL_KEY);
-        replace_action_key(&mut owner.skills.skill, 1, SUMMON_FIRE2_SKILL_KEY);
-        replace_action_key(&mut owner.skills.skill, 2, SUMMON_EXPLODE_SKILL_KEY);
-        dedup_action_keys(&mut owner.skills.skill);
-        owner.skills.slot_skill = vec![SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY];
-    }
-    vec![SUMMON_FIRE1_SKILL_KEY, SUMMON_FIRE2_SKILL_KEY, SUMMON_EXPLODE_SKILL_KEY]
-}
-
-fn migrate_shadow_skill_axis(owner: &mut crate::player::Player) -> Vec<usize> {
-    let already_classified = owner.skills.slot_skill == classified_player_skill_slot_order();
-    let legacy_possess = owner
-        .skills
-        .store
-        .get(&0)
-        .filter(|skill| skill.debug_skill_type_name().contains("possess::PossessSkill"))
-        .cloned();
-    ensure_classified_player_skill_slots(&mut owner.skills);
-    if already_classified {
-        return owner.skills.slot_skill.clone();
-    }
-    if let Some(possess) = legacy_possess {
-        let target_level = owner.skills.store.get(&PHANTOM_POSSESS_SKILL_KEY).map(|skill| skill.level()).unwrap_or(0);
-        if possess.level() >= target_level {
-            owner.skills.store.insert(PHANTOM_POSSESS_SKILL_KEY, possess);
-        }
-        owner.skills.store.insert(0, Skill::new_with_id(0, 0));
-        replace_action_key(&mut owner.skills.skill, 0, PHANTOM_POSSESS_SKILL_KEY);
-        dedup_action_keys(&mut owner.skills.skill);
-        owner.skills.slot_skill = vec![PHANTOM_POSSESS_SKILL_KEY];
-        return owner.skills.slot_skill.clone();
-    }
-    owner.skills.slot_skill = classified_player_skill_slot_order();
-    owner.skills.slot_skill.clone()
-}
-
-fn prepare_merge_skill_slots(owner: &mut crate::player::Player) -> Option<Vec<usize>> {
-    match owner.get_state::<MinionRuntimeState>().map(|state| state.kind) {
-        Some(MinionKind::Zombie) => None,
-        Some(MinionKind::Summon) => {
-            let slot_skills = migrate_summon_skill_axis(owner);
-            Some(slot_skills)
-        }
-        Some(MinionKind::Shadow) => {
-            let slot_skills = migrate_shadow_skill_axis(owner);
-            Some(slot_skills)
-        }
-        _ => Some(if owner.skills.slot_skill.is_empty() {
-            owner.skills.skill.clone()
-        } else {
-            owner.skills.slot_skill.clone()
-        }),
+fn prepare_merge_skill_slots(owner: &crate::player::Player) -> Vec<usize> {
+    if owner.skills.slot_skill.is_empty() {
+        owner.skills.skill.clone()
+    } else {
+        owner.skills.slot_skill.clone()
     }
 }
 
@@ -160,6 +72,10 @@ impl SkillTrait for MergeSkill {
             let owner = args.3.just_get_player_mut(args.0).expect("cannot get merge owner from storage");
             let mut newly_enabled_skills = Vec::new();
             let owner_slot_skills = prepare_merge_skill_slots(owner);
+            let merge_attrs = owner
+                .get_state::<MinionRuntimeState>()
+                .map(|state| state.kind != MinionKind::Summon)
+                .unwrap_or(true);
             if debug_this {
                 eprintln!(
                     "[merge] owner={} target={} owner_spd={} target_spd={} owner_mp={} target_mp={} owner_mv={} target_mv={}",
@@ -173,10 +89,12 @@ impl SkillTrait for MergeSkill {
                     target_move_point
                 );
             }
-            for (idx, val) in target_attr.iter().enumerate() {
-                if *val > owner.attr[idx] {
-                    owner.attr[idx] = *val;
-                    merged = true;
+            if merge_attrs {
+                for (idx, val) in target_attr.iter().enumerate() {
+                    if *val > owner.attr[idx] {
+                        owner.attr[idx] = *val;
+                        merged = true;
+                    }
                 }
             }
             // JS `SklMerge.bS()` 实际对齐的是“按固定槽位逐位抬 level”：
@@ -198,7 +116,6 @@ impl SkillTrait for MergeSkill {
             // `k1` 固定槽位上的对象位置。
             #[allow(clippy::unused_enumerate_index)]
             for (_slot_idx, (owner_skill_key, target_skill_key)) in owner_slot_skills
-                .unwrap_or_default()
                 .iter()
                 .copied()
                 .zip(target_slot_skills.iter().copied())

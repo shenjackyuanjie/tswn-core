@@ -190,6 +190,7 @@ impl EngineCore {
         updates: &mut RunUpdates,
     ) -> bool {
         let mut summoned = false;
+        let mut resummoned_minions: Vec<PlrId> = Vec::new();
         let mut ids = world.players.clone();
         let roster_ids = world.all_plrs();
         for id in roster_ids {
@@ -207,15 +208,44 @@ impl EngineCore {
             if !player.bed2_can_summon(storage) {
                 continue;
             }
+            let previous_summon_id = player.bed2_summoned_minion_id();
             if updates.segment_had_updates() {
                 updates.add_newline();
             }
-            summoned |= player.bed2_try_summon(randomer, updates, storage);
+            let did_summon = player.bed2_try_summon(randomer, updates, storage);
+            if did_summon && let Some(summon_id) = previous_summon_id {
+                resummoned_minions.push(summon_id);
+            }
+            summoned |= did_summon;
         }
         if storage.needs_sync() {
             self.sync_runtime_entities(world, storage);
         }
+        for _ in &resummoned_minions {
+            self.recover_one_round_resources_for_all_alive(storage, randomer, &resummoned_minions);
+        }
         summoned
+    }
+
+    fn recover_one_round_resources_for_all_alive(&self, storage: &Arc<Storage>, randomer: &mut RC4, skip_ids: &[PlrId]) {
+        for id in storage.all_alive_ids() {
+            if skip_ids.contains(&id) {
+                continue;
+            }
+            let Some(player) = storage.just_get_player_mut(id) else {
+                continue;
+            };
+            if !player.alive() {
+                continue;
+            }
+            let step_roll = randomer.next_u8() & 3;
+            player.add_move_point(player.get_status().speed * step_roll as i32);
+
+            let recover_threshold = player.get_status().wisdom + 64;
+            if (randomer.r127() as i32) < recover_threshold {
+                player.set_magic_point(player.magic_point() + 16);
+            }
+        }
     }
 
     pub fn tick(&mut self, world: &mut WorldState, storage: &Arc<Storage>, randomer: &mut RC4, updates: &mut RunUpdates) -> bool {

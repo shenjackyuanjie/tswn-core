@@ -8,7 +8,7 @@ use crate::engine::storage::Storage;
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::player::{
     OnDamageFunc, PlrId,
-    skill::{SkillArgs, SkillExt, SkillTrait},
+    skill::{SkillArgs, SkillExt, SkillTrait, act::minion::share_minion_heal_with_owner},
 };
 use crate::rc4::RC4;
 
@@ -82,6 +82,7 @@ fn on_absorb(caster: PlrId, _target: PlrId, dmg: i32, _r: &mut RC4, updates: &mu
     let healed = ((dmg + 1) / 2).min(max_hp - hp);
     if healed > 0 {
         owner.set_hp_raw((hp + healed).min(max_hp));
+        share_minion_heal_with_owner(caster, healed, caster, updates, storage);
     }
     updates.emit(|| RunUpdate::new("[1]回复体力[2]点", caster, caster, healed as u32));
 }
