@@ -19,7 +19,9 @@ use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
 use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
 };
-use super::parse::{parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups};
+use super::parse::{
+    parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups, parse_target_groups,
+};
 use super::score::{BatchRateSummary, BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
 use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairInput, ProgressEvent};
@@ -432,7 +434,7 @@ impl NamerPfScores {
 }
 
 pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
-    let target_groups = parse_plus_separated_groups(&input.target_text);
+    let target_groups = parse_target_groups(&input.target_text, input.target_double_plus);
     let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
     if target_groups.is_empty() {
         send(ProgressEvent::Done(Err("batch-rate: 靶子列表为空。".to_string())));

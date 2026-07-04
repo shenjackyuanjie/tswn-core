@@ -152,6 +152,7 @@ impl OpenboxApp {
         section(ui, "靶子", |ui| {
             ui.checkbox(&mut self.batch_rate.manual_targets, "使用手动靶子");
             if self.batch_rate.manual_targets {
+                ui.checkbox(&mut self.batch_rate.manual_target_double_plus, "DIY靶子（++分割名字）");
                 self.batch_rate.targets.ui(ui, "靶子", "batch_targets_more", 8);
             } else {
                 target_preset_controls(ui, &mut self.batch_rate.target_presets);

@@ -43,6 +43,7 @@ pub struct TargetPreset {
     pub id: u64,
     pub name: String,
     pub path: PathBuf,
+    pub diy: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -158,6 +159,8 @@ struct TargetPresetEntry {
     id: u64,
     name: String,
     file: PathBuf,
+    #[serde(default)]
+    diy: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -191,6 +194,7 @@ fn load_target_presets(loaded: LoadedSettingFile) -> Vec<TargetPreset> {
             id: entry.id,
             name: entry.name,
             path: normalize_relative_path(&loaded.setting_dir, &entry.file),
+            diy: entry.diy,
         });
     }
     items
