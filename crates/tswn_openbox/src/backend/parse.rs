@@ -16,12 +16,19 @@ pub fn parse_line_list(content: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn parse_plus_separated_groups(content: &str) -> Vec<String> {
+pub fn parse_plus_separated_groups(content: &str) -> Vec<String> { parse_separated_groups(content, "+") }
+
+pub fn parse_target_groups(content: &str, double_plus: bool) -> Vec<String> {
+    let separator = if double_plus { "++" } else { "+" };
+    parse_separated_groups(content, separator)
+}
+
+fn parse_separated_groups(content: &str, separator: &str) -> Vec<String> {
     content
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .map(|line| line.split('+').map(str::trim).collect::<Vec<_>>().join("\n"))
+        .map(|line| line.split(separator).map(str::trim).collect::<Vec<_>>().join("\n"))
         .collect()
 }
 
@@ -111,7 +118,7 @@ fn split_plus_outside_quotes(raw: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_namer_pf_groups, parse_player_groups_with_labels};
+    use super::{parse_namer_pf_groups, parse_player_groups_with_labels, parse_target_groups};
 
     #[test]
     fn namer_pf_keeps_overlay_suffix() {
@@ -125,5 +132,17 @@ mod tests {
         let (groups, labels) = parse_player_groups_with_labels("mario++ol:{\"skills\":\"40+30\"}", true);
         assert_eq!(labels, vec!["mario++ol:{\"skills\":\"40+30\"}".to_string()]);
         assert_eq!(groups, vec!["mario\nol:{\"skills\":\"40+30\"}".to_string()]);
+    }
+
+    #[test]
+    fn double_plus_target_list_preserves_overlay_plus() {
+        let groups = parse_target_groups("mario++ol:{\"skills\":\"40+30\"}", true);
+        assert_eq!(groups, vec!["mario\nol:{\"skills\":\"40+30\"}".to_string()]);
+    }
+
+    #[test]
+    fn normal_target_list_still_splits_single_plus() {
+        let groups = parse_target_groups("mario+luigi", false);
+        assert_eq!(groups, vec!["mario\nluigi".to_string()]);
     }
 }

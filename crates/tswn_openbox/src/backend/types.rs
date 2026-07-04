@@ -89,6 +89,7 @@ pub struct NamerPfInput {
 pub struct BatchRateInput {
     pub target_text: String,
     pub player_text: String,
+    pub target_double_plus: bool,
     pub player_double_plus: bool,
     pub show_matchups: bool,
     pub highlight_delta: Option<f64>,

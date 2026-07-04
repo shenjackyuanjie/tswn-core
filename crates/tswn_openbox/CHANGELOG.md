@@ -2,6 +2,11 @@
 
 ## [0.3.11] - 2026-06-25
 
+### 新增
+
+- `cqd/cqp` 的靶子预设支持在 `setting/settings.toml` 的 `[[targets]]` 中配置可选字段 `diy = true/false`；为 `true` 时该靶子文件按 `++` 分割名字，为 `false` 或省略时保持原有 `+` 分组逻辑。
+- `cqd/cqp` 的更多设置中，勾选“使用手动靶子”后新增“DIY靶子（++分割名字）”，用于手动靶子列表启用同样的 `++` 分组语义。
+
 ### 调整
 
 - 后端 `namer-pf` / `cqd-cqp` 的低精度外层并行改为复用 `tswn_core::bench_sched::run_outer_parallel_ordered`，删除 `tasks.rs` 内两份本地 work-stealing 调度器及相关常量，行为与 CLI 共用同一套实现。

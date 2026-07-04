@@ -168,15 +168,22 @@ impl OpenboxApp {
     }
 
     pub fn start_batch_rate(&mut self) {
-        let target_text = match read_target_text(
-            &self.batch_rate.targets,
-            &self.batch_rate.target_presets,
-            self.batch_rate.manual_targets,
-        ) {
-            Ok(raw) => raw,
-            Err(err) => {
-                self.fail_before_start(err);
-                return;
+        let (target_text, target_double_plus) = if self.batch_rate.manual_targets {
+            match self.batch_rate.targets.read_all() {
+                Ok(raw) => (raw, self.batch_rate.manual_target_double_plus),
+                Err(err) => {
+                    self.fail_before_start(err);
+                    return;
+                }
+            }
+        } else {
+            let target_double_plus = self.batch_rate.target_presets.selected().is_some_and(|preset| preset.diy);
+            match load_selected_target_text(&self.batch_rate.target_presets) {
+                Ok(raw) => (raw, target_double_plus),
+                Err(err) => {
+                    self.fail_before_start(err);
+                    return;
+                }
             }
         };
         let player_text = match self.batch_rate.players.read_all() {
@@ -216,6 +223,7 @@ impl OpenboxApp {
         let input = BatchRateInput {
             target_text,
             player_text,
+            target_double_plus,
             player_double_plus: self.batch_rate.double_plus,
             show_matchups: self.batch_rate.show_matchups,
             highlight_delta,
