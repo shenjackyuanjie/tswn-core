@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-06
+
+### 新增
+
+- show 示例支持通过 `?input=<url-safe-base64>` 传入 UTF-8 对局输入并自动播放；兼容 `replay` / `data` 参数别名，解码失败时会停留在输入面板并显示错误。
+- show 示例右下角控制栏新增分享按钮，可复制当前对局对应的 `input` 链接；复制成功时会在控制栏上方显示短暂提示。
+
 ### 变更
 
 - show 示例右侧战斗正文只消费 `RoundFrame.rows[].clips[]` 结构化 replay view；移除基于 `message_template` / `message_rendered` / `hp_delta` 的旧 fallback，避免前端继续从文本和数值反推分行、delay、血条和死亡效果。
@@ -10,17 +17,6 @@
 ### 修复
 
 - 修复 show 示例自定义昵称会通过 `owner_id` 误应用到幻影、使魔、丧尸等固定显示名召唤物的问题；昵称仍应用于本体和分身。
-
-### 验证
-
-- `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js crates/tswn_wasm/examples/show.js`
-
-## [0.3.12] - 2026-07-06
-
-### 新增
-
-- show 示例支持通过 `?input=<url-safe-base64>` 传入 UTF-8 对局输入并自动播放；兼容 `replay` / `data` 参数别名，解码失败时会停留在输入面板并显示错误。
-- show 示例右下角控制栏新增分享按钮，可复制当前对局对应的 `input` 链接；复制成功时会在控制栏上方显示短暂提示。
 
 ### 验证
 
