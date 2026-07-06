@@ -322,6 +322,11 @@ function nicknameForKey(key) {
   return nicknameByIdName.get(normalizedKey) ?? nicknameByIdName.get(baseNicknameKey(normalizedKey)) ?? "";
 }
 
+function stateCanUsePlayerNickname(state) {
+  const minionKind = state?.minion_kind ?? null;
+  return minionKind == null || minionKind === "clone";
+}
+
 function ensureRawDisplayName(actor) {
   if (!actor) {
     return "";
@@ -355,6 +360,9 @@ function applyNicknamesToReplay(replay) {
     if (!state) {
       return "";
     }
+    if (!stateCanUsePlayerNickname(state)) {
+      return "";
+    }
     return (
       inputKeysById.get(state.id) ??
       inputKeysById.get(state.owner_id) ??
@@ -374,6 +382,9 @@ function applyNicknamesToReplay(replay) {
       return;
     }
     const state = stateById.get(part.player_id);
+    if (state && !stateCanUsePlayerNickname(state)) {
+      return;
+    }
     const key = inputKeysById.get(part.player_id) || nicknameKeyForState(state) || part.text;
     const nickname = nicknameForKey(key);
     if (nickname) {

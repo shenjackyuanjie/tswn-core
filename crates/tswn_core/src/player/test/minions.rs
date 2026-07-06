@@ -687,6 +687,130 @@ fn ol_overlay_allows_summon_minion_diy_normal_skills_with_prefix() {
 }
 
 #[test]
+fn summon_minion_charge_boosts_haste_from_classified_skill_lane() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw(
+        r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[60,60,60,60,60,60,60,240],"skills":{"normal:sklcharge":255,"normal:sklhaste":255}}}"#
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    let charge_key = crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 19;
+    let haste_key = crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 12;
+
+    {
+        let summoned = storage.just_get_player_mut(summoned_id).unwrap();
+        summoned.status.hp = 240;
+        summoned.status.max_hp = 240;
+        summoned.status.magic_point = 999;
+        summoned.status.set_alive(true);
+        summoned.skills.skill_by_id_mut(charge_key).act(
+            vec![summoned_id],
+            true,
+            (summoned_id, &mut randomer, &mut updates, &storage),
+        );
+    }
+
+    assert!(storage.get_player(&summoned_id).unwrap().skills.charge_runtime_active());
+    assert!((storage.get_player(&summoned_id).unwrap().get_status().at_boost - 3.0).abs() < 1e-6);
+
+    {
+        let summoned = storage.just_get_player_mut(summoned_id).unwrap();
+        summoned.skills.skill_by_id_mut(haste_key).act(
+            vec![summoned_id],
+            true,
+            (summoned_id, &mut randomer, &mut updates, &storage),
+        );
+    }
+
+    let summoned = storage.get_player(&summoned_id).unwrap();
+    let haste = summoned
+        .get_state::<crate::player::skill::haste::HasteState>()
+        .expect("charge-boosted haste should be active");
+    assert_eq!(haste.faster, 4);
+    assert_eq!(haste.step, 5);
+}
+
+#[test]
+fn summon_minion_charge_boosts_assassinate_from_classified_skill_lane() {
+    let storage = Storage::new_arc();
+    let mut owner = Player::new_from_namerena_raw(
+        r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"summon":{"attrs":[60,60,60,60,60,60,60,240],"skills":{"normal:sklcharge":255,"normal:sklassassinate":255}}}"#
+            .to_string(),
+        storage.clone(),
+    )
+    .unwrap();
+    owner.build();
+    let owner_id = storage.just_insert_player(owner);
+    let target = Player::new_from_namerena_raw("target@other".to_string(), storage.clone()).unwrap();
+    let target_id = storage.just_insert_player(target);
+    let mut randomer = RC4::default();
+    let mut updates = RunUpdates::new();
+    let mut summon = crate::player::skill::summon::SummonSkill::new();
+
+    <crate::player::skill::summon::SummonSkill as crate::player::skill::SkillTrait>::act_with_level(
+        &mut summon,
+        255,
+        vec![owner_id],
+        false,
+        (owner_id, &mut randomer, &mut updates, &storage),
+    );
+
+    let pending = storage.take_pending_spawns();
+    assert_eq!(pending.len(), 1);
+    let summoned_id = storage.just_insert_player(pending.into_iter().next().unwrap().player);
+    let charge_key = crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 19;
+    let assassinate_key = crate::player::skill::SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 21;
+
+    {
+        let target = storage.just_get_player_mut(target_id).unwrap();
+        target.status.hp = 240;
+        target.status.max_hp = 240;
+        target.status.set_alive(true);
+    }
+
+    {
+        let summoned = storage.just_get_player_mut(summoned_id).unwrap();
+        summoned.status.hp = 240;
+        summoned.status.max_hp = 240;
+        summoned.status.magic_point = 999;
+        summoned.status.set_alive(true);
+        summoned.skills.skill_by_id_mut(charge_key).act(
+            vec![summoned_id],
+            true,
+            (summoned_id, &mut randomer, &mut updates, &storage),
+        );
+        summoned.status.magic = 20;
+        summoned.status.move_point = 100;
+        summoned.skills.skill_by_id_mut(assassinate_key).act(
+            vec![target_id],
+            true,
+            (summoned_id, &mut randomer, &mut updates, &storage),
+        );
+    }
+
+    let summoned = storage.get_player(&summoned_id).unwrap();
+    assert_eq!(summoned.move_point(), 100 + 20 * 3 + 1600);
+}
+
+#[test]
 fn classified_merge_keeps_normal_and_summon_skill_lanes_separate() {
     let storage = Storage::new_arc();
     let mut owner = Player::new_from_namerena_raw(

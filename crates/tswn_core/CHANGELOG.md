@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 修复使魔模板中通过 `normal:sklcharge` 配置的蓄力不会被后续技能识别的问题：疾走、潜行等依赖蓄力运行时态的逻辑改为扫描当前技能仓库，而不是硬编码普通玩家的 `19` 号技能槽，确保使魔隔离技能槽 `80+id` 里的蓄力也能正确触发加成。
+
+### 验证
+
+- `cargo test -p tswn_core summon_minion_charge -- --nocapture`
+- `cargo test -p tswn_core`
+
 ## [0.3.14] - 2026-06-27
 
 ### 新增

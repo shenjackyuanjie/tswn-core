@@ -7,6 +7,10 @@
 - show 示例右侧战斗正文只消费 `RoundFrame.rows[].clips[]` 结构化 replay view；移除基于 `message_template` / `message_rendered` / `hp_delta` 的旧 fallback，避免前端继续从文本和数值反推分行、delay、血条和死亡效果。
 - show 示例左侧玩家 HP 条变化速度放慢；normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表，fast / turbo / 单步跳转保持即时反馈。
 
+### 修复
+
+- 修复 show 示例自定义昵称会通过 `owner_id` 误应用到幻影、使魔、丧尸等固定显示名召唤物的问题；昵称仍应用于本体和分身。
+
 ### 验证
 
 - `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js crates/tswn_wasm/examples/show.js`

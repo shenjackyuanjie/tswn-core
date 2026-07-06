@@ -162,7 +162,7 @@ impl SkillTrait for AssassinateSkill {
                 .3
                 .get_player(&args.0)
                 .map(|owner| {
-                    let charge_active = owner.skills.store.get(&19).map(|skill| skill.charge_runtime_active()).unwrap_or(false);
+                    let charge_active = owner.skills.charge_runtime_active();
                     (owner.move_point(), owner.get_status().magic, charge_active)
                 })
                 .expect("cannot get assassinate owner from storage");
