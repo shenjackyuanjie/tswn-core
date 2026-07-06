@@ -85,8 +85,7 @@ impl SkillTrait for HasteSkill {
         let charge_active = args
             .3
             .get_player(&args.0)
-            .and_then(|owner| owner.skills.store.get(&19))
-            .map(|skill| skill.charge_runtime_active())
+            .map(|owner| owner.skills.charge_runtime_active())
             .unwrap_or(false);
         #[cfg(not(feature = "no_debug"))]
         if crate::debug::debug_post_action() {

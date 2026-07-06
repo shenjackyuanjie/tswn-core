@@ -396,6 +396,8 @@ impl SkillStorage {
         self.sync_dynamic_pre_action_state(key, manages, enabled);
     }
 
+    pub fn charge_runtime_active(&self) -> bool { self.store.values().any(|skill| skill.charge_runtime_active()) }
+
     pub fn skill_by_idx(&self, idx: usize) -> &Skill { self.store.get(&self.skill[idx]).expect("skill not found in store") }
 
     pub fn skill_by_idx_mut(&mut self, idx: usize) -> &mut Skill {
