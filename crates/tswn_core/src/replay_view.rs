@@ -406,9 +406,10 @@ fn push_player_part<S: ReplayState>(
     before: &HashMap<PlrId, S>,
     after: &HashMap<PlrId, S>,
     player_names: &HashMap<PlrId, String>,
+    death_effect_allowed: bool,
 ) -> (i32, i32, bool, bool) {
     let (hp_before, hp_after, show_hp) = hp_pair(player_id, before, after);
-    let death_effect = hp_before == 0 && hp_after == 0;
+    let death_effect = death_effect_allowed && hp_before == 0 && hp_after == 0;
     template.push_str("<player>");
     parts.push(ReplayTextPart {
         kind: ReplayTextPartKind::Player,
@@ -441,6 +442,10 @@ fn update_player_id_hint(update: &RunUpdate, tone: ReplayTone) -> PlrId {
 
 fn is_hp_report_update(update: &RunUpdate) -> bool { update.message == "[0]\u{8fd8}\u{5269}[2]\u{70b9}\u{8840}" }
 
+fn is_death_effect_update(update: &RunUpdate) -> bool {
+    update.message.contains("\u{88ab}\u{51fb}\u{5012}") || update.message.contains("\u{6d88}\u{5931}")
+}
+
 fn build_clip_parts<S: ReplayState>(
     update: &RunUpdate,
     tone: ReplayTone,
@@ -456,6 +461,7 @@ fn build_clip_parts<S: ReplayState>(
     let mut primary_show_hp = false;
     let mut primary_death_effect = false;
     let primary_player_id = update_player_id_hint(update, tone);
+    let death_effect_allowed = is_death_effect_update(update);
 
     let mut rest = update.message.as_ref();
     while let Some(start) = rest.find('[') {
@@ -470,7 +476,15 @@ fn build_clip_parts<S: ReplayState>(
         match token {
             "0" => {
                 let (hp_before, hp_after, show_hp, death_effect) =
-                    push_player_part(&mut parts, &mut template, update.caster, before, after, player_names);
+                    push_player_part(
+                        &mut parts,
+                        &mut template,
+                        update.caster,
+                        before,
+                        after,
+                        player_names,
+                        death_effect_allowed,
+                    );
                 if !primary_show_hp && show_hp {
                     primary_hp_before = hp_before;
                     primary_hp_after = hp_after;
@@ -482,7 +496,15 @@ fn build_clip_parts<S: ReplayState>(
             }
             "1" => {
                 let (hp_before, hp_after, show_hp, death_effect) =
-                    push_player_part(&mut parts, &mut template, update.target, before, after, player_names);
+                    push_player_part(
+                        &mut parts,
+                        &mut template,
+                        update.target,
+                        before,
+                        after,
+                        player_names,
+                        death_effect_allowed,
+                    );
                 if !primary_show_hp || update_player_id_hint(update, tone) == update.target {
                     primary_hp_before = hp_before;
                     primary_hp_after = hp_after;
@@ -736,6 +758,29 @@ mod tests {
     }
 
     #[test]
+    fn death_effect_renders_for_disappear_sentence() {
+        let update = RunUpdate::new("[1]\u{6d88}\u{5931}\u{4e86}", 0, 1, 50);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Knockout,
+            message_rendered: "target\u{6d88}\u{5931}\u{4e86}",
+        }];
+        let previous = vec![state(0, 100), state(1, 0)];
+        let frame = vec![state(0, 100), state(1, 0)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        assert!(!clip.show_hp);
+        assert_eq!((clip.hp_before, clip.hp_after), (0, 0));
+        assert!(clip.death_effect);
+        let player_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap();
+        assert!(!player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (0, 0));
+        assert!(player_part.death_effect);
+    }
+
+    #[test]
     fn reraise_knockout_does_not_show_hp_until_recover() {
         let knockout = RunUpdate::new("[1]被击倒了", 0, 1, 50);
         let reraise = RunUpdate::new("[0]使用[护身符]抵挡了一次死亡", 1, 1, 80);
@@ -771,7 +816,7 @@ mod tests {
         assert!(knockout_clip.death_effect);
         assert!(!reraise_clip.show_hp);
         assert_eq!((reraise_clip.hp_before, reraise_clip.hp_after), (0, 0));
-        assert!(reraise_clip.death_effect);
+        assert!(!reraise_clip.death_effect);
         assert!(recover_clip.show_hp);
         assert_eq!((recover_clip.hp_before, recover_clip.hp_after), (0, 8));
         assert!(!recover_clip.death_effect);
