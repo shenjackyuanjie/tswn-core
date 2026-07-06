@@ -5,9 +5,11 @@
 ### 修复
 
 - 修复使魔模板中通过 `normal:sklcharge` 配置的蓄力不会被后续技能识别的问题：疾走、潜行等依赖蓄力运行时态的逻辑改为扫描当前技能仓库，而不是硬编码普通玩家的 `19` 号技能槽，确保使魔隔离技能槽 `80+id` 里的蓄力也能正确触发加成。
+- 修复 replay view 死亡特效判定过宽的问题：只有“被击倒”或“消失”句子才允许设置 `death_effect`，护身符等 HP 前后同为 `0` 但并非击倒/消失的句子不再触发死亡特效。
 
 ### 验证
 
+- `cargo test -p tswn_core replay_view`
 - `cargo test -p tswn_core summon_minion_charge -- --nocapture`
 - `cargo test -p tswn_core`
 
