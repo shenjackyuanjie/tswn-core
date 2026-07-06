@@ -1259,6 +1259,36 @@ input {
     justify-items: end;
 }
 
+.share-toast {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+    min-width: 132px;
+    padding: 7px 12px;
+    color: #fff;
+    background: rgba(8, 71, 101, 0.94);
+    box-shadow: 0 6px 18px rgba(7, 51, 74, 0.22);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(6px);
+}
+
+.share-toast.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+        opacity 160ms ease,
+        transform 160ms ease;
+}
+
+.share-toast[hidden] {
+    display: none;
+}
+
 .controls-toggle {
     justify-self: end;
 }
