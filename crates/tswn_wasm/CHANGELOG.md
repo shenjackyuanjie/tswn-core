@@ -15,6 +15,18 @@
 
 - `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js crates/tswn_wasm/examples/show.js`
 
+## [0.3.12] - 2026-07-06
+
+### 新增
+
+- show 示例支持通过 `?input=<url-safe-base64>` 传入 UTF-8 对局输入并自动播放；兼容 `replay` / `data` 参数别名，解码失败时会停留在输入面板并显示错误。
+- show 示例右下角控制栏新增分享按钮，可复制当前对局对应的 `input` 链接；复制成功时会在控制栏上方显示短暂提示。
+
+### 验证
+
+- `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js crates/tswn_wasm/examples/show.js`
+- `python scripts/build_wasm.py --release`
+
 ## [0.3.0] - 2026-06-27
 
 ### 新增

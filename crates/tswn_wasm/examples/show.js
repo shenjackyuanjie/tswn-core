@@ -148,6 +148,8 @@ const INPUT_STORAGE_KEY = "tswn_wasm_show_input";
 const NICKNAME_STORAGE_KEY = "tswn_wasm_show_nicknames";
 /** @type {SpeedMode} 新战斗默认播放速度 */
 const DEFAULT_SPEED_MODE = "normal";
+/** @type {string[]} URL 参数名，值为 URL-safe Base64 编码后的原始对局输入 */
+const STATIC_INPUT_PARAM_NAMES = ["input", "replay", "data"];
 
 // ============================================================================
 // DOM 元素引用
@@ -213,6 +215,10 @@ const turboBtn = document.querySelector("#turboBtn");
 const pauseBtn = document.querySelector("#pauseBtn");
 /** @type {HTMLButtonElement} */
 const refreshBtn = document.querySelector("#refreshBtn");
+/** @type {HTMLButtonElement} */
+const shareBtn = document.querySelector("#shareBtn");
+/** @type {HTMLElement} */
+const shareToast = document.querySelector("#shareToast");
 /** @type {HTMLElement} */
 const rightControls = document.querySelector("#rightControls");
 /** @type {HTMLButtonElement} */
@@ -263,6 +269,8 @@ let playbackPaused = false;
 let playbackFinished = false;
 /** @type {boolean} 右下角控制组是否收起 */
 let rightControlsCollapsed = window.matchMedia("(max-width: 640px)").matches;
+/** @type {number|null} 分享复制提示的隐藏定时器 */
+let shareToastTimer = null;
 
 // 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
@@ -542,6 +550,7 @@ function syncPlaybackUi() {
   );
 
   pauseBtn.disabled = !currentReplay;
+  shareBtn.disabled = !currentReplay;
   pauseBtn.classList.toggle("is-paused", playbackPaused);
 
   stepControls.hidden = false;
@@ -1031,6 +1040,144 @@ function isEditableKeyTarget(target) {
   return editableTarget instanceof HTMLElement && editableTarget.isContentEditable;
 }
 
+function showShareToast(message = "分享链接已复制") {
+  if (shareToastTimer != null) {
+    clearTimeout(shareToastTimer);
+    shareToastTimer = null;
+  }
+  shareToast.textContent = message;
+  shareToast.hidden = false;
+  window.requestAnimationFrame(() => {
+    shareToast.classList.add("is-visible");
+  });
+  shareToastTimer = window.setTimeout(() => {
+    shareToast.classList.remove("is-visible");
+    shareToastTimer = window.setTimeout(() => {
+      shareToast.hidden = true;
+      shareToastTimer = null;
+    }, 180);
+  }, 1600);
+}
+
+// ============================================================================
+// URL 静态输入参数
+// ============================================================================
+
+/**
+ * 将 URL-safe Base64 文本解码成 UTF-8 字符串。
+ * @param {string} encoded
+ * @returns {string}
+ * @throws {Error} 当参数为空、Base64 不合法或 UTF-8 解码失败时抛出错误
+ */
+function decodeBase64UrlUtf8(encoded) {
+  const compact = encoded.trim();
+  if (!compact) {
+    throw new Error("URL 参数为空。");
+  }
+  if (!/^[A-Za-z0-9_-]+={0,2}$/.test(compact)) {
+    throw new Error("不是合法的 URL-safe Base64。");
+  }
+
+  const base64 = compact.replace(/-/g, "+").replace(/_/g, "/");
+  if (base64.length % 4 === 1) {
+    throw new Error("Base64 长度不合法。");
+  }
+
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  const binary = window.atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
+/**
+ * 将 UTF-8 字符串编码成 URL-safe Base64。
+ * @param {string} input
+ * @returns {string}
+ */
+function encodeBase64UrlUtf8(input) {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return window
+    .btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/**
+ * 为当前对局输入生成分享链接。
+ * @param {string} rawInput
+ * @returns {string}
+ */
+function buildShareUrl(rawInput) {
+  const url = new URL(window.location.href);
+  for (const paramName of STATIC_INPUT_PARAM_NAMES) {
+    url.searchParams.delete(paramName);
+  }
+  url.searchParams.set("input", encodeBase64UrlUtf8(rawInput));
+  url.hash = "";
+  return url.href;
+}
+
+/**
+ * 复制文本到剪贴板，Clipboard API 不可用时使用 textarea fallback。
+ * @param {string} text
+ * @returns {Promise<void>}
+ */
+async function copyTextToClipboard(text) {
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.append(textarea);
+  textarea.select();
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("浏览器拒绝复制操作。");
+    }
+  } finally {
+    textarea.remove();
+  }
+}
+
+/**
+ * 从当前页面 URL 中读取静态对局输入参数。
+ * @returns {{ ok: true, input: string, paramName: string }|{ ok: false, message: string }|null}
+ */
+function readStaticReplayInputFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  for (const paramName of STATIC_INPUT_PARAM_NAMES) {
+    if (!params.has(paramName)) {
+      continue;
+    }
+    try {
+      return {
+        ok: true,
+        input: decodeBase64UrlUtf8(params.get(paramName) ?? ""),
+        paramName,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: `URL 参数 ${paramName} 解码失败：${formatError(error)}`,
+      };
+    }
+  }
+  return null;
+}
+
 // ============================================================================
 // localStorage 持久化
 // ============================================================================
@@ -1239,9 +1386,10 @@ function clearCurrentNickname() {
  */
 /**
  * 开始一场新战斗：校验输入 → 生成回放 → 自动播放。
+ * @param {{ persistInput?: boolean }} [options]
  * @returns {Promise<void>}
  */
-async function startBattle() {
+async function startBattle({ persistInput = true } = {}) {
   const rawInput = inputName.value.trim();
   if (!rawInput) {
     setInputStatus("请输入至少一个名字。", true);
@@ -1256,7 +1404,9 @@ async function startBattle() {
   }
 
   speedMode = DEFAULT_SPEED_MODE;
-  persistInputValue();
+  if (persistInput) {
+    persistInputValue();
+  }
   stopPlaybackLoop();
   clearCurrentReplayView();
   setLoading(true);
@@ -1289,6 +1439,22 @@ async function replayCurrent() {
   beginReplayPlayback(currentReplay);
 }
 
+async function copyCurrentShareUrl() {
+  if (!currentReplay?.raw_input) {
+    setInputStatus("当前还没有可分享的对局。", true);
+    openInputEditor();
+    return;
+  }
+
+  try {
+    await copyTextToClipboard(buildShareUrl(currentReplay.raw_input));
+    setInputStatus("分享链接已复制到剪贴板。");
+    showShareToast();
+  } catch (error) {
+    setInputStatus(`复制分享链接失败：${formatError(error)}`, true);
+  }
+}
+
 // ============================================================================
 // 事件绑定
 // ============================================================================
@@ -1315,6 +1481,10 @@ playAgainBtn.addEventListener("click", () => {
 // 刷新按钮：重播当前回放
 refreshBtn.addEventListener("click", () => {
   void replayCurrent();
+});
+
+shareBtn.addEventListener("click", () => {
+  void copyCurrentShareUrl();
 });
 
 toggleControlsBtn.addEventListener("click", () => {
@@ -1484,14 +1654,27 @@ nicknameInput.addEventListener("keydown", (event) => {
  * @returns {Promise<void>}
  */
 async function main() {
+  const staticInput = readStaticReplayInputFromUrl();
+  if (staticInput?.ok) {
+    inputName.value = staticInput.input;
+  }
+
   renderIdleState(playerList, battleRows, plistMeta, headerMeta);
   syncPlaybackUi();
   syncRightControlsUi();
-  setInputStatus("会使用 show 风格自动播放整场战斗。");
-  openInputEditor();
+  if (staticInput?.ok) {
+    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在初始化回放...`);
+  } else {
+    setInputStatus(staticInput?.message ?? "会使用 show 风格自动播放整场战斗。", Boolean(staticInput));
+    openInputEditor();
+  }
 
   try {
     await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    if (staticInput?.ok) {
+      await startBattle({ persistInput: false });
+      return;
+    }
     setInputStatus("tswn_wasm 已初始化，可以开始。");
   } catch (error) {
     setInputStatus(`模块加载失败: ${formatError(error)}`, true);

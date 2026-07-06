@@ -100,6 +100,8 @@ frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子 `6
 
 normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算表；fast、turbo 和单步跳转会即时显示。左侧玩家列表 HP 条使用较慢的过渡动画，以便看清血量变化。
 
+`show.html` 支持通过 `?input=<url-safe-base64>` 直接传入 UTF-8 对局输入并自动播放；`replay` / `data` 可作为兼容别名，解码失败时会停留在输入面板并显示错误。右下角控制栏的分享按钮会复制当前对局对应的 `input` 链接。
+
 ### 错误
 
 所有可能失败的函数返回 `WasmResult<T>`（即 `Result<T, JsValue>`），错误对象结构为 `{ code: string, message: string }`。
