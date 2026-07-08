@@ -66,6 +66,7 @@ pub mod error;
 pub mod player;
 pub mod rc4;
 pub mod replay_view;
+pub mod runtime_v2;
 pub mod win_rate;
 
 /// 核心对局入口。
