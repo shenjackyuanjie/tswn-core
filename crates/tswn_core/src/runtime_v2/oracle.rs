@@ -93,6 +93,8 @@ pub struct NormalizedOutcome {
     pub entity_ids: Vec<usize>,
     pub teams: Vec<usize>,
     pub hp: Vec<i32>,
+    pub defense: Vec<i32>,
+    pub resistance: Vec<i32>,
     pub alive: Vec<bool>,
     pub round_order: Vec<usize>,
     pub flat_alive: Vec<usize>,
@@ -120,6 +122,8 @@ impl NormalizedOutcome {
             entity_ids: runtime.entities.iter().map(|(_, entity)| entity.template.id).collect(),
             teams: runtime.entities.iter().map(|(_, entity)| entity.runtime.team).collect(),
             hp: runtime.entities.iter().map(|(_, entity)| entity.runtime.hp).collect(),
+            defense: runtime.entities.iter().map(|(_, entity)| entity.runtime.defense).collect(),
+            resistance: runtime.entities.iter().map(|(_, entity)| entity.runtime.resistance).collect(),
             alive: runtime.entities.iter().map(|(_, entity)| entity.runtime.alive).collect(),
             round_order: runtime.world.round_order().iter().map(|idx| idx.0 as usize).collect(),
             flat_alive: runtime.world.flat_alive().iter().map(|idx| idx.0 as usize).collect(),
@@ -160,6 +164,14 @@ pub enum StrictDiff {
         actual: NormalizedRngCheckpoint,
     },
     Hp {
+        expected: Vec<i32>,
+        actual: Vec<i32>,
+    },
+    Defense {
+        expected: Vec<i32>,
+        actual: Vec<i32>,
+    },
+    Resistance {
         expected: Vec<i32>,
         actual: Vec<i32>,
     },
@@ -254,6 +266,18 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
             actual: actual.hp.clone(),
         });
     }
+    if expected.defense != actual.defense {
+        return Err(StrictDiff::Defense {
+            expected: expected.defense.clone(),
+            actual: actual.defense.clone(),
+        });
+    }
+    if expected.resistance != actual.resistance {
+        return Err(StrictDiff::Resistance {
+            expected: expected.resistance.clone(),
+            actual: actual.resistance.clone(),
+        });
+    }
     if expected.alive != actual.alive {
         return Err(StrictDiff::Alive {
             expected: expected.alive.clone(),
@@ -333,6 +357,8 @@ pub fn minimal_1v1_expected_after_one_round(left_hp: i32, right_hp: i32, attack:
         entity_ids: vec![1, 2],
         teams: vec![0, 1],
         hp: vec![left_hp, (right_hp - attack).max(0)],
+        defense: vec![0, 0],
+        resistance: vec![0, 0],
         alive: vec![true, right_alive],
         round_order: if right_alive { vec![0, 1] } else { vec![0] },
         flat_alive: if right_alive { vec![0, 1] } else { vec![0] },
@@ -412,7 +438,37 @@ mod tests {
     }
 
     #[test]
-    fn strict_diff_harness_reports_alive_mismatch_after_hp_matches() {
+    fn strict_diff_harness_reports_defense_mismatch_after_hp_matches() {
+        let expected = minimal_1v1_expected_after_one_round(10, 3, 3);
+        let mut actual = expected.clone();
+        actual.defense[1] = 7;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::Defense {
+                expected: vec![0, 0],
+                actual: vec![0, 7],
+            })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_resistance_mismatch_after_defense_matches() {
+        let expected = minimal_1v1_expected_after_one_round(10, 3, 3);
+        let mut actual = expected.clone();
+        actual.resistance[1] = 9;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::Resistance {
+                expected: vec![0, 0],
+                actual: vec![0, 9],
+            })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_alive_mismatch_after_def_res_matches() {
         let expected = minimal_1v1_expected_after_one_round(10, 3, 3);
         let mut actual = expected.clone();
         actual.alive[1] = true;

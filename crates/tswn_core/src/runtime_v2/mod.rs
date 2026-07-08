@@ -1409,6 +1409,8 @@ mod tests {
             entity_ids: vec![1, 2, 3, 4],
             teams: vec![0, 0, 1, 0],
             hp: vec![16, 10, 10, 8],
+            defense: vec![77, 0, 0, 77],
+            resistance: vec![88, 0, 0, 88],
             alive: vec![true, true, true, true],
             round_order: vec![0, 1, 2, 3],
             flat_alive: vec![0, 1, 3, 2],
