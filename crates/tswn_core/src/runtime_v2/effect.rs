@@ -24,6 +24,21 @@ pub enum QueuedEffect {
         target: EntityIdx,
         legacy_order_key: u32,
     },
+    Revive {
+        caster: EntityIdx,
+        target: EntityIdx,
+        hp: i32,
+    },
+    Remove {
+        caster: EntityIdx,
+        target: EntityIdx,
+    },
+    Replay {
+        caster: EntityIdx,
+        target: EntityIdx,
+        message: String,
+        score: u32,
+    },
     Custom(CustomEffect),
 }
 
@@ -387,6 +402,16 @@ impl RuntimeFrame {
     pub fn add_state_update(target: usize) -> RunUpdate { RunUpdate::new("[1]状态改变", target, target, 0) }
 
     pub fn clear_state_update(target: usize) -> RunUpdate { RunUpdate::new("[1]状态解除", target, target, 0) }
+
+    pub fn revive_update(caster: usize, target: usize, hp: i32) -> RunUpdate {
+        RunUpdate::new("[1][复活]了", caster, target, hp.max(0) as u32)
+    }
+
+    pub fn remove_update(caster: usize, target: usize) -> RunUpdate { RunUpdate::new("[1]消失了", caster, target, 0) }
+
+    pub fn replay_update(caster: usize, target: usize, message: impl Into<String>, score: u32) -> RunUpdate {
+        RunUpdate::new(message.into(), caster, target, score)
+    }
 
     pub fn single_damage(caster: usize, target: usize, amount: i32) -> Self {
         let mut updates = RunUpdates::new();

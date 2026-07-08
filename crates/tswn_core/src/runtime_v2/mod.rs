@@ -173,7 +173,7 @@ impl CombatRuntime {
             match effect {
                 QueuedEffect::Damage { caster, target, amount } => {
                     let Some(target_entity) = self.entities.get_mut(target) else {
-                        continue;
+                        panic!("unknown runtime_v2 damage target entity: {}", target.0);
                     };
                     target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
                     if target_entity.runtime.hp == 0 {
@@ -209,6 +209,35 @@ impl CombatRuntime {
                     if target_entity.states.clear_legacy_key(legacy_order_key) {
                         updates.add(RuntimeFrame::clear_state_update(target.0 as usize));
                     }
+                }
+                QueuedEffect::Revive { caster, target, hp } => {
+                    let Some(target_entity) = self.entities.get_mut(target) else {
+                        panic!("unknown runtime_v2 revive target entity: {}", target.0);
+                    };
+                    target_entity.runtime.hp = hp.max(1).min(target_entity.template.max_hp);
+                    target_entity.runtime.alive = true;
+                    updates.add(RuntimeFrame::revive_update(caster.0 as usize, target.0 as usize, hp));
+                }
+                QueuedEffect::Remove { caster, target } => {
+                    let Some(target_entity) = self.entities.get_mut(target) else {
+                        panic!("unknown runtime_v2 remove target entity: {}", target.0);
+                    };
+                    target_entity.runtime.hp = 0;
+                    target_entity.runtime.alive = false;
+                    updates.add(RuntimeFrame::remove_update(caster.0 as usize, target.0 as usize));
+                }
+                QueuedEffect::Replay {
+                    caster,
+                    target,
+                    message,
+                    score,
+                } => {
+                    updates.add(RuntimeFrame::replay_update(
+                        caster.0 as usize,
+                        target.0 as usize,
+                        message,
+                        score,
+                    ));
                 }
                 QueuedEffect::Custom(custom) => {
                     let Some(handler) = self.effect_handlers.get(custom.handler) else {
@@ -535,6 +564,73 @@ mod tests {
         assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 7);
         assert_eq!(frame.updates.updates[0].message, "[1]回复体力[2]点");
         assert_eq!(frame.updates.updates[1].message, "after heal");
+    }
+
+    #[test]
+    fn flush_effects_revives_dead_entity_with_capped_hp() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
+        target.runtime.hp = 0;
+        target.runtime.alive = false;
+        runtime.effects.push(QueuedEffect::Revive {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+            hp: 20,
+        });
+
+        let frame = runtime.flush_effects().expect("revive should emit update");
+
+        let target = runtime.entities.get(EntityIdx(1)).unwrap();
+        assert_eq!(target.runtime.hp, 10);
+        assert!(target.runtime.alive);
+        assert_eq!(frame.updates.updates[0].message, "[1][复活]了");
+    }
+
+    #[test]
+    fn flush_effects_removes_entity_from_alive_set() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        runtime.effects.push(QueuedEffect::Remove {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        let frame = runtime.flush_effects().expect("remove should emit update");
+
+        let target = runtime.entities.get(EntityIdx(1)).unwrap();
+        assert_eq!(target.runtime.hp, 0);
+        assert!(!target.runtime.alive);
+        assert_eq!(frame.updates.updates[0].message, "[1]消失了");
+    }
+
+    #[test]
+    fn flush_effects_emits_replay_effect_without_state_mutation() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        runtime.effects.push(QueuedEffect::Replay {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+            message: "custom replay".to_owned(),
+            score: 7,
+        });
+
+        let frame = runtime.flush_effects().expect("replay should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10);
+        assert_eq!(frame.updates.updates[0].message, "custom replay");
+        assert_eq!(frame.updates.updates[0].score, 7);
+    }
+
+    #[test]
+    fn flush_effects_panics_on_unknown_damage_target() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(0),
+            target: EntityIdx(99),
+            amount: 1,
+        });
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runtime.flush_effects()));
+
+        assert!(result.is_err());
     }
 
     #[test]
