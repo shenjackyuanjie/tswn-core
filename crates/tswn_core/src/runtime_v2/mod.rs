@@ -1,5 +1,6 @@
 pub mod effect;
 pub mod entity;
+pub mod extension;
 pub mod oracle;
 pub mod scheduler;
 pub mod scratch;
@@ -7,6 +8,7 @@ pub mod world;
 
 pub use effect::{EffectQueue, QueuedEffect, RuntimeFrame};
 pub use entity::{EntityArena, EntityIdx, EntityRecord, PlayerRuntime, PlayerTemplate};
+pub use extension::{ExtensionError, ExtensionRegistry, ExtensionRegistryBuilder, PlayerKindId, PlayerKindSpec};
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
 pub use scheduler::{ActionPlan, PhaseScheduler};
 pub use scratch::BattleScratch;
