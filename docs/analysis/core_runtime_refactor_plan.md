@@ -619,6 +619,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 内置技能全部迁静态路径；
 - custom skill 走 registry fallback；
 - 已接入 `SkillSpec::hook_mask` 与按 loadout/registry 生成的 `SkillHookPlan`，作为静态/自定义 skill 调度入口；
+- 已接入 `SkillHandlers` / `SkillContext` 和 runtime skill hook 执行入口，handler 可产出 update 或投递 effect queue；
 - `StateStore` 改 `SmallVec`/dense index + legacy order key；
 - hook plan 变化当前 phase 立即可见。
 

@@ -15,6 +15,7 @@ use crate::rc4::RC4;
 pub use effect::{
     CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn, EffectHandlers, EffectQueue,
     QueuedEffect, RenderedReplay, RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame, ShowRendererFn, ShowRenderers,
+    SkillContext, SkillHandlerFn, SkillHandlers,
 };
 pub use entity::{
     EntityArena, EntityIdx, EntityRecord, MoveState, PlayerRuntime, PlayerTemplate, SkillLoadout, StateEntry, StateStore,
@@ -75,6 +76,7 @@ pub struct CombatRuntime {
     pub scheduler: PhaseScheduler,
     pub effects: EffectQueue,
     pub effect_handlers: EffectHandlers,
+    pub skill_handlers: SkillHandlers,
     pub replay_renderers: ReplayRenderers,
     pub show_renderers: ShowRenderers,
     pub scratch: BattleScratch,
@@ -92,6 +94,7 @@ impl CombatRuntime {
         let world = WorldArena::from_entities(&entities);
         let slots = BattleSlotStorage::from_registry(&template.registry);
         let effect_handlers = EffectHandlers::from_registry(&template.registry);
+        let skill_handlers = SkillHandlers::from_registry(&template.registry);
         let replay_renderers = ReplayRenderers::from_registry(&template.registry);
         let show_renderers = ShowRenderers::from_registry(&template.registry);
         Self {
@@ -100,6 +103,7 @@ impl CombatRuntime {
             scheduler: PhaseScheduler,
             effects: EffectQueue::default(),
             effect_handlers,
+            skill_handlers,
             replay_renderers,
             show_renderers,
             scratch: BattleScratch::default(),
@@ -127,6 +131,17 @@ impl CombatRuntime {
         capabilities: &[ExtensionCapability],
     ) {
         self.effect_handlers.set_with_capabilities(id, handler, capabilities);
+    }
+
+    pub fn set_skill_handler(&mut self, id: SkillId, handler: SkillHandlerFn) { self.skill_handlers.set(id, handler); }
+
+    pub fn set_skill_handler_with_capabilities(
+        &mut self,
+        id: SkillId,
+        handler: SkillHandlerFn,
+        capabilities: &[ExtensionCapability],
+    ) {
+        self.skill_handlers.set_with_capabilities(id, handler, capabilities);
     }
 
     pub fn set_replay_renderer(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
@@ -159,6 +174,35 @@ impl CombatRuntime {
                 renderer(frame)
             })
             .collect()
+    }
+
+    pub fn run_skill_hooks(&mut self, owner: EntityIdx, hook: ProcMask) -> Option<RuntimeFrame> {
+        let plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, owner, hook);
+        self.flush_skill_hook_plan(&plan)
+    }
+
+    fn flush_skill_hook_plan(&mut self, plan: &SkillHookPlan) -> Option<RuntimeFrame> {
+        let mut updates = RunUpdates::new();
+        for entry in &plan.entries {
+            let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
+                panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
+            };
+            {
+                let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(&[]);
+                let mut context = SkillContext::new(
+                    &mut self.entities,
+                    &mut self.world,
+                    &mut self.slots,
+                    &mut self.effects,
+                    &mut updates,
+                    *entry,
+                    capabilities,
+                );
+                handler(&mut context, entry);
+            }
+            self.drain_effects_into(&mut updates);
+        }
+        updates.had_updates().then_some(RuntimeFrame { updates })
     }
 
     pub fn run_minimal_round(&mut self) -> RoundOutcome {
@@ -211,6 +255,11 @@ impl CombatRuntime {
 
     fn flush_effects(&mut self) -> Option<RuntimeFrame> {
         let mut updates = RunUpdates::new();
+        self.drain_effects_into(&mut updates);
+        updates.had_updates().then_some(RuntimeFrame { updates })
+    }
+
+    fn drain_effects_into(&mut self, updates: &mut RunUpdates) {
         while let Some(effect) = self.effects.pop_next() {
             match effect {
                 QueuedEffect::Damage { caster, target, amount } => {
@@ -296,7 +345,7 @@ impl CombatRuntime {
                         &mut self.world,
                         &mut self.slots,
                         &mut self.effects,
-                        &mut updates,
+                        updates,
                         &custom,
                         capabilities,
                     );
@@ -304,7 +353,6 @@ impl CombatRuntime {
                 }
             }
         }
-        updates.had_updates().then_some(RuntimeFrame { updates })
     }
 }
 
@@ -464,6 +512,23 @@ mod tests {
         context.add_update(crate::engine::update::RunUpdate::new("slot set", 0, 0, 0));
     }
 
+    fn skill_marks_update(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "skill mark",
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            entry.skill_id.0,
+        ));
+    }
+
+    fn skill_pushes_nested_damage(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        context.push_nested(QueuedEffect::Damage {
+            caster: context.owner_idx(),
+            target: EntityIdx(1),
+            amount: 2,
+        });
+    }
+
     fn render_first_message_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
         Some(RenderedReplay::new(
             ReplayRendererId(0),
@@ -483,6 +548,66 @@ mod tests {
             ShowRendererId(0),
             frame.updates.updates.first()?.message.to_string(),
         ))
+    }
+
+    #[test]
+    fn run_skill_hooks_dispatches_registered_skill_handlers() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let marker = builder
+            .register_skill_with_hooks(
+                "custom",
+                "marker",
+                "custom.marker",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([marker])],
+            registry,
+        ));
+        runtime.set_skill_handler(marker, skill_marks_update);
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("skill handler should emit update");
+
+        assert_eq!(frame.updates.updates[0].message, "skill mark");
+        assert_eq!(frame.updates.updates[0].score, marker.0);
+    }
+
+    #[test]
+    fn run_skill_hooks_flushes_nested_effects() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "damage",
+                "custom.damage",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([skill]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(skill, skill_pushes_nested_damage);
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("nested damage should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 8);
+        assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[0].score, 2);
     }
 
     #[test]
