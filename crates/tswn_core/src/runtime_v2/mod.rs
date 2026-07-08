@@ -27,7 +27,7 @@ pub use extension::{
     TemplateSlotSpec, TswnExtension,
 };
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
-pub use scheduler::{ActionPlan, PhaseScheduler, StateHookPlan, StateHookPlanEntry};
+pub use scheduler::{ActionPlan, PhaseScheduler, SkillHookPlan, SkillHookPlanEntry, StateHookPlan, StateHookPlanEntry};
 pub use scratch::BattleScratch;
 pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, TemplateSlotStorage};
 #[cfg(not(feature = "no_debug"))]

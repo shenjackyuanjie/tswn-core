@@ -1,5 +1,7 @@
 use crate::runtime_v2::entity::{EntityArena, EntityIdx};
-use crate::runtime_v2::extension::{ProcMask, RegistrationOrder, SkillPriority, StateId};
+use crate::runtime_v2::extension::{
+    ExtensionRegistry, ProcMask, RegistrationOrder, SkillId, SkillPriority, StateId, TargetPolicy,
+};
 use crate::runtime_v2::world::WorldArena;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -7,6 +9,23 @@ pub struct ActionPlan {
     pub actor: EntityIdx,
     pub target: EntityIdx,
     pub amount: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SkillHookPlanEntry {
+    pub owner: EntityIdx,
+    pub skill_id: SkillId,
+    pub target_policy: TargetPolicy,
+    pub priority: SkillPriority,
+    pub registration_order: RegistrationOrder,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillHookPlan {
+    pub owner: EntityIdx,
+    pub hook: ProcMask,
+    pub loadout_len: usize,
+    pub entries: Vec<SkillHookPlanEntry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +53,43 @@ impl PhaseScheduler {
         let target = world.first_alive_enemy(actor, entities)?;
         let amount = entities.get(actor).map_or(0, |entity| entity.template.attack);
         Some(ActionPlan { actor, target, amount })
+    }
+
+    pub fn skill_hook_plan(
+        &self,
+        entities: &EntityArena,
+        registry: &ExtensionRegistry,
+        owner: EntityIdx,
+        hook: ProcMask,
+    ) -> SkillHookPlan {
+        let entity = entities
+            .get(owner)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 skill owner entity: {}", owner.0));
+        let mut entries = entity
+            .template
+            .skills
+            .skills()
+            .iter()
+            .filter_map(|skill_id| {
+                let spec = registry
+                    .skill(*skill_id)
+                    .unwrap_or_else(|| panic!("unknown runtime_v2 skill id in loadout: {}", skill_id.0));
+                spec.hook_mask.intersects(hook).then_some(SkillHookPlanEntry {
+                    owner,
+                    skill_id: spec.id,
+                    target_policy: spec.target_policy,
+                    priority: spec.priority,
+                    registration_order: spec.registration_order,
+                })
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
+        SkillHookPlan {
+            owner,
+            hook,
+            loadout_len: entity.template.skills.len(),
+            entries,
+        }
     }
 
     pub fn state_hook_plan(&self, entities: &EntityArena, owner: EntityIdx, hook: ProcMask) -> StateHookPlan {
@@ -64,7 +120,7 @@ impl PhaseScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_v2::{PlayerTemplate, PreparedCombatTemplate, StateEntry};
+    use crate::runtime_v2::{ExtensionRegistryBuilder, PlayerTemplate, PreparedCombatTemplate, StateEntry, TargetPolicy};
 
     #[test]
     fn scheduler_selects_next_actor_first_alive_enemy_and_amount() {
@@ -111,6 +167,72 @@ mod tests {
         let mut scheduler = PhaseScheduler;
 
         assert_eq!(scheduler.select_minimal_action(&mut world, &entities), None);
+    }
+
+    #[test]
+    fn scheduler_builds_skill_hook_plan_from_loadout_and_registry_order() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let late = builder
+            .register_skill_with_hooks(
+                "custom",
+                "late",
+                "custom.late",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(10),
+            )
+            .expect("late skill should register");
+        let early = builder
+            .register_skill_with_hooks(
+                "custom",
+                "early",
+                "custom.early",
+                ProcMask::PRE_ACTION | ProcMask::POST_ACTION,
+                TargetPolicy::Ally,
+                SkillPriority(1),
+            )
+            .expect("early skill should register");
+        let unrelated = builder
+            .register_skill_with_hooks(
+                "custom",
+                "unrelated",
+                "custom.unrelated",
+                ProcMask::POST_DAMAGE,
+                TargetPolicy::Any,
+                SkillPriority(0),
+            )
+            .expect("unrelated skill should register");
+        let registry = builder.build();
+        let entities = EntityArena::from_templates_with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 4).with_skills([late, unrelated, early])],
+            &registry,
+        );
+        let scheduler = PhaseScheduler;
+
+        let plan = scheduler.skill_hook_plan(&entities, &registry, EntityIdx(0), ProcMask::PRE_ACTION);
+
+        assert_eq!(plan.owner, EntityIdx(0));
+        assert_eq!(plan.hook, ProcMask::PRE_ACTION);
+        assert_eq!(plan.loadout_len, 3);
+        assert_eq!(
+            plan.entries,
+            vec![
+                SkillHookPlanEntry {
+                    owner: EntityIdx(0),
+                    skill_id: early,
+                    target_policy: TargetPolicy::Ally,
+                    priority: SkillPriority(1),
+                    registration_order: RegistrationOrder(1),
+                },
+                SkillHookPlanEntry {
+                    owner: EntityIdx(0),
+                    skill_id: late,
+                    target_policy: TargetPolicy::Enemy,
+                    priority: SkillPriority(10),
+                    registration_order: RegistrationOrder(0),
+                },
+            ]
+        );
     }
 
     #[test]

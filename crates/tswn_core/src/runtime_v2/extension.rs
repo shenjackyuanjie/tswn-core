@@ -161,6 +161,7 @@ pub struct SkillSpec {
     pub namespace: String,
     pub name: String,
     pub export_name: String,
+    pub hook_mask: ProcMask,
     pub target_policy: TargetPolicy,
     pub priority: SkillPriority,
     pub registration_order: RegistrationOrder,
@@ -374,6 +375,18 @@ impl ExtensionRegistryBuilder {
         target_policy: TargetPolicy,
         priority: SkillPriority,
     ) -> Result<SkillId, ExtensionError> {
+        self.register_skill_with_hooks(namespace, name, export_name, ProcMask::PRE_ACTION, target_policy, priority)
+    }
+
+    pub fn register_skill_with_hooks(
+        &mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        export_name: impl Into<String>,
+        hook_mask: ProcMask,
+        target_policy: TargetPolicy,
+        priority: SkillPriority,
+    ) -> Result<SkillId, ExtensionError> {
         let namespace = namespace.into();
         let name = name.into();
         let export_name = export_name.into();
@@ -392,6 +405,7 @@ impl ExtensionRegistryBuilder {
             namespace,
             name,
             export_name,
+            hook_mask,
             target_policy,
             priority,
             registration_order: self.next_order(),
