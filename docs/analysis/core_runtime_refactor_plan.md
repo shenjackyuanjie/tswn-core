@@ -568,8 +568,8 @@ Co-authored-by: Codex <codex@openai.com>
 
 ### 阶段 B：custom diff 审计
 
-- 对 `github/custom` 相对 main 做 diff 归类；
-- 产出 custom 改动清单和 v2 落点；
+- 已在 `docs/analysis/custom_runtime_v2_migration.md` 对 `github/custom` 相对 main 做首版 diff 归类；
+- 已产出 custom 改动清单和 v2 落点；
 - 为关键行为设计 repo 内 extension fixture；
 - 标出需要 capability 例外的跨实体读取点。
 
