@@ -55,6 +55,7 @@ impl PreparedCombatTemplate {
 
 #[derive(Debug, Clone)]
 pub struct RoundOutcome {
+    pub action: Option<ActionPlan>,
     pub frame: Option<RuntimeFrame>,
     pub winner_team: Option<usize>,
 }
@@ -143,6 +144,7 @@ impl CombatRuntime {
     pub fn run_minimal_round(&mut self) -> RoundOutcome {
         if let Some(winner_team) = self.world.sync_winner(&self.entities) {
             return RoundOutcome {
+                action: None,
                 frame: None,
                 winner_team: Some(winner_team),
             };
@@ -150,6 +152,7 @@ impl CombatRuntime {
 
         let Some(action) = self.scheduler.select_minimal_action(&mut self.world, &self.entities) else {
             return RoundOutcome {
+                action: None,
                 frame: None,
                 winner_team: None,
             };
@@ -164,7 +167,11 @@ impl CombatRuntime {
         let frame = self.flush_effects();
         self.round += 1;
         let winner_team = self.world.sync_winner(&self.entities);
-        RoundOutcome { frame, winner_team }
+        RoundOutcome {
+            action: Some(action),
+            frame,
+            winner_team,
+        }
     }
 
     fn flush_effects(&mut self) -> Option<RuntimeFrame> {

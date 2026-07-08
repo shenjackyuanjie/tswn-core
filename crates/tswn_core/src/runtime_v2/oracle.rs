@@ -2,6 +2,30 @@ use crate::engine::update::{DEFAULT_DELAY0_MS, DEFAULT_DELAY1_MS, UpdateType};
 use crate::runtime_v2::{CombatRuntime, EntityIdx, PreparedCombatTemplate, RoundOutcome};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizedActionBoundary {
+    pub round: u64,
+    pub actor: usize,
+    pub target: usize,
+    pub amount: i32,
+}
+
+impl NormalizedActionBoundary {
+    pub fn from_outcome(runtime: &CombatRuntime, outcome: &RoundOutcome) -> Vec<Self> {
+        outcome
+            .action
+            .map(|action| {
+                vec![Self {
+                    round: runtime.round,
+                    actor: action.actor.0 as usize,
+                    target: action.target.0 as usize,
+                    amount: action.amount,
+                }]
+            })
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedUpdateFrame {
     pub message: String,
     pub caster: usize,
@@ -49,6 +73,7 @@ pub struct NormalizedOutcome {
     pub teams: Vec<usize>,
     pub hp: Vec<i32>,
     pub alive: Vec<bool>,
+    pub actions: Vec<NormalizedActionBoundary>,
     pub frames: Vec<NormalizedUpdateFrame>,
 }
 
@@ -61,6 +86,7 @@ impl NormalizedOutcome {
             teams: runtime.entities.iter().map(|(_, entity)| entity.template.team).collect(),
             hp: runtime.entities.iter().map(|(_, entity)| entity.runtime.hp).collect(),
             alive: runtime.entities.iter().map(|(_, entity)| entity.runtime.alive).collect(),
+            actions: NormalizedActionBoundary::from_outcome(runtime, outcome),
             frames: NormalizedUpdateFrame::from_outcome(outcome),
         }
     }
@@ -91,6 +117,15 @@ pub enum StrictDiff {
     Teams {
         expected: Vec<usize>,
         actual: Vec<usize>,
+    },
+    ActionCount {
+        expected: usize,
+        actual: usize,
+    },
+    Action {
+        index: usize,
+        expected: NormalizedActionBoundary,
+        actual: NormalizedActionBoundary,
     },
     FrameCount {
         expected: usize,
@@ -140,6 +175,21 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
             actual: actual.alive.clone(),
         });
     }
+    if expected.actions.len() != actual.actions.len() {
+        return Err(StrictDiff::ActionCount {
+            expected: expected.actions.len(),
+            actual: actual.actions.len(),
+        });
+    }
+    for (index, (expected_action, actual_action)) in expected.actions.iter().zip(&actual.actions).enumerate() {
+        if expected_action != actual_action {
+            return Err(StrictDiff::Action {
+                index,
+                expected: expected_action.clone(),
+                actual: actual_action.clone(),
+            });
+        }
+    }
     if expected.frames.len() != actual.frames.len() {
         return Err(StrictDiff::FrameCount {
             expected: expected.frames.len(),
@@ -172,6 +222,12 @@ pub fn minimal_1v1_expected_after_one_round(left_hp: i32, right_hp: i32, attack:
         teams: vec![0, 1],
         hp: vec![left_hp, (right_hp - attack).max(0)],
         alive: vec![true, right_hp > attack],
+        actions: vec![NormalizedActionBoundary {
+            round: 1,
+            actor: EntityIdx(0).0 as usize,
+            target: EntityIdx(1).0 as usize,
+            amount: attack,
+        }],
         frames: vec![NormalizedUpdateFrame {
             message: "[0]攻击[1]".to_owned(),
             caster: EntityIdx(0).0 as usize,
@@ -214,6 +270,23 @@ mod tests {
                 index: 0,
                 expected: expected.frames[0].clone(),
                 actual: actual.frames[0].clone(),
+            })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_action_boundary_mismatch_before_frames() {
+        let expected = minimal_1v1_expected_after_one_round(10, 10, 3);
+        let mut actual = expected.clone();
+        actual.actions[0].target = 0;
+        actual.frames[0].target = 0;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::Action {
+                index: 0,
+                expected: expected.actions[0].clone(),
+                actual: actual.actions[0].clone(),
             })
         );
     }
