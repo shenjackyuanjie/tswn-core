@@ -1,5 +1,5 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
-use crate::runtime_v2::entity::EntityIdx;
+use crate::runtime_v2::entity::{EntityIdx, StateEntry};
 use crate::runtime_v2::extension::{EffectHandlerId, ExtensionCapability, ExtensionRegistry, ReplayRendererId, ShowRendererId};
 use crate::runtime_v2::{BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, SlotError, SlotValue, WorldArena};
 use std::collections::VecDeque;
@@ -10,6 +10,19 @@ pub enum QueuedEffect {
         caster: EntityIdx,
         target: EntityIdx,
         amount: i32,
+    },
+    Heal {
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+    },
+    AddState {
+        target: EntityIdx,
+        state: StateEntry,
+    },
+    ClearState {
+        target: EntityIdx,
+        legacy_order_key: u32,
     },
     Custom(CustomEffect),
 }
@@ -366,6 +379,14 @@ impl RuntimeFrame {
     pub fn damage_update(caster: usize, target: usize, amount: i32) -> RunUpdate {
         RunUpdate::new("[0]攻击[1]", caster, target, amount.max(0) as u32)
     }
+
+    pub fn heal_update(caster: usize, target: usize, amount: i32) -> RunUpdate {
+        RunUpdate::new("[1]回复体力[2]点", caster, target, amount.max(0) as u32)
+    }
+
+    pub fn add_state_update(target: usize) -> RunUpdate { RunUpdate::new("[1]状态改变", target, target, 0) }
+
+    pub fn clear_state_update(target: usize) -> RunUpdate { RunUpdate::new("[1]状态解除", target, target, 0) }
 
     pub fn single_damage(caster: usize, target: usize, amount: i32) -> Self {
         let mut updates = RunUpdates::new();

@@ -181,6 +181,35 @@ impl CombatRuntime {
                     }
                     updates.add(RuntimeFrame::damage_update(caster.0 as usize, target.0 as usize, amount));
                 }
+                QueuedEffect::Heal { caster, target, amount } => {
+                    let Some(target_entity) = self.entities.get_mut(target) else {
+                        panic!("unknown runtime_v2 heal target entity: {}", target.0);
+                    };
+                    target_entity.runtime.hp = (target_entity.runtime.hp + amount.max(0)).min(target_entity.template.max_hp);
+                    if target_entity.runtime.hp > 0 {
+                        target_entity.runtime.alive = true;
+                    }
+                    updates.add(RuntimeFrame::heal_update(caster.0 as usize, target.0 as usize, amount));
+                }
+                QueuedEffect::AddState { target, state } => {
+                    let Some(target_entity) = self.entities.get_mut(target) else {
+                        panic!("unknown runtime_v2 add-state target entity: {}", target.0);
+                    };
+                    if target_entity.states.add_entry(state) {
+                        updates.add(RuntimeFrame::add_state_update(target.0 as usize));
+                    }
+                }
+                QueuedEffect::ClearState {
+                    target,
+                    legacy_order_key,
+                } => {
+                    let Some(target_entity) = self.entities.get_mut(target) else {
+                        panic!("unknown runtime_v2 clear-state target entity: {}", target.0);
+                    };
+                    if target_entity.states.clear_legacy_key(legacy_order_key) {
+                        updates.add(RuntimeFrame::clear_state_update(target.0 as usize));
+                    }
+                }
                 QueuedEffect::Custom(custom) => {
                     let Some(handler) = self.effect_handlers.get(custom.handler) else {
                         panic!("missing runtime_v2 effect handler implementation: {}", custom.handler.0);
@@ -290,6 +319,17 @@ mod tests {
             panic!("custom test effect expects int payload");
         };
         context.push_nested(QueuedEffect::Damage {
+            caster: effect.caster,
+            target: effect.target.expect("custom test effect needs target"),
+            amount,
+        });
+    }
+
+    fn custom_spawns_nested_heal(context: &mut EffectContext<'_>, effect: &CustomEffect) {
+        let CustomEffectPayload::Int(amount) = effect.payload else {
+            panic!("custom test effect expects int payload");
+        };
+        context.push_nested(QueuedEffect::Heal {
             caster: effect.caster,
             target: effect.target.expect("custom test effect needs target"),
             amount,
@@ -408,6 +448,93 @@ mod tests {
         assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 6);
         assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
         assert_eq!(frame.updates.updates[1].message, "after nested");
+    }
+
+    #[test]
+    fn flush_effects_applies_heal_without_exceeding_max_hp() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 4;
+        runtime.effects.push(QueuedEffect::Heal {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+            amount: 20,
+        });
+
+        let frame = runtime.flush_effects().expect("heal should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10);
+        assert_eq!(frame.updates.updates[0].message, "[1]回复体力[2]点");
+    }
+
+    #[test]
+    fn flush_effects_adds_and_clears_state_entries() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        let state = StateEntry {
+            legacy_order_key: 77,
+            extension_state_id: Some(StateId(1)),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(5),
+            registration_order: RegistrationOrder(2),
+        };
+
+        runtime.effects.push(QueuedEffect::AddState {
+            target: EntityIdx(1),
+            state,
+        });
+        let add_frame = runtime.flush_effects().expect("add state should emit update");
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.entry(77), Some(&state));
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.generation(), 1);
+        assert_eq!(add_frame.updates.updates[0].message, "[1]状态改变");
+
+        runtime.effects.push(QueuedEffect::ClearState {
+            target: EntityIdx(1),
+            legacy_order_key: 77,
+        });
+        let clear_frame = runtime.flush_effects().expect("clear state should emit update");
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.entry(77), None);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.generation(), 2);
+        assert_eq!(clear_frame.updates.updates[0].message, "[1]状态解除");
+    }
+
+    #[test]
+    fn flush_effects_runs_nested_heal_before_older_siblings() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let nested_heal = builder
+            .register_effect_handler("custom", "nested-heal", "custom.nested_heal", SkillPriority(0))
+            .expect("handler should register");
+        let marker = builder
+            .register_effect_handler("custom", "mark", "custom.mark", SkillPriority(1))
+            .expect("handler should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 3;
+        runtime.set_effect_handler(nested_heal, custom_spawns_nested_heal);
+        runtime.set_effect_handler(marker, custom_marks_update);
+
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            nested_heal,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::Int(4),
+        )));
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            marker,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::Text("after heal".to_owned()),
+        )));
+
+        let frame = runtime.flush_effects().expect("nested heal should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 7);
+        assert_eq!(frame.updates.updates[0].message, "[1]回复体力[2]点");
+        assert_eq!(frame.updates.updates[1].message, "after heal");
     }
 
     #[test]
