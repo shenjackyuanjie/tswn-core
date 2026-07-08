@@ -462,6 +462,7 @@ impl CombatRuntime {
                         &mut self.slots,
                         &mut self.effects,
                         updates,
+                        &mut self.rng,
                         &custom,
                         capabilities,
                     );
@@ -1067,6 +1068,20 @@ mod tests {
         context.add_update(crate::engine::update::RunUpdate::new("slot set", 0, 0, 0));
     }
 
+    fn custom_consumes_rng(context: &mut EffectContext<'_>, effect: &CustomEffect) {
+        let CustomEffectPayload::Int(max) = effect.payload else {
+            panic!("custom test effect expects rng max payload");
+        };
+        let value = context.rng_next_i32(max);
+        let next_byte = context.rng_next_u8();
+        context.add_update(crate::engine::update::RunUpdate::new(
+            format!("rng:{value}:{next_byte}"),
+            effect.caster.0 as usize,
+            effect.target.unwrap().0 as usize,
+            value as u32,
+        ));
+    }
+
     fn skill_marks_update(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
         context.add_update(crate::engine::update::RunUpdate::new(
             "skill mark",
@@ -1621,6 +1636,43 @@ mod tests {
 
         let frame = runtime.flush_effects().expect("custom handler should emit update");
         assert_eq!(frame.updates.updates[0].message, "custom mark");
+    }
+
+    #[test]
+    fn flush_effects_exposes_controlled_rng_to_custom_handlers() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let rng_handler = builder
+            .register_effect_handler("custom", "rng", "custom.rng", SkillPriority(0))
+            .expect("handler should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_effect_handler(rng_handler, custom_consumes_rng);
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            rng_handler,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::Int(10),
+        )));
+        let mut expected_rng = RC4::default();
+        let expected_value = expected_rng.next_i32(10);
+        let expected_byte = expected_rng.next_u8();
+
+        let frame = runtime.flush_effects().expect("custom rng handler should emit update");
+
+        assert_eq!(
+            frame.updates.updates[0].message,
+            format!("rng:{expected_value}:{expected_byte}")
+        );
+        assert_eq!(frame.updates.updates[0].score, expected_value as u32);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
     }
 
     #[test]
