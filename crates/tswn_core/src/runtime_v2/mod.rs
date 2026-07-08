@@ -1,12 +1,14 @@
 pub mod effect;
 pub mod entity;
 pub mod oracle;
+pub mod scheduler;
 pub mod scratch;
 pub mod world;
 
 pub use effect::{EffectQueue, QueuedEffect, RuntimeFrame};
 pub use entity::{EntityArena, EntityIdx, EntityRecord, PlayerRuntime, PlayerTemplate};
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
+pub use scheduler::{ActionPlan, PhaseScheduler};
 pub use scratch::BattleScratch;
 pub use world::WorldArena;
 
@@ -38,6 +40,7 @@ pub struct RoundOutcome {
 pub struct CombatRuntime {
     pub entities: EntityArena,
     pub world: WorldArena,
+    pub scheduler: PhaseScheduler,
     pub effects: EffectQueue,
     pub scratch: BattleScratch,
     pub round: u64,
@@ -50,6 +53,7 @@ impl CombatRuntime {
         Self {
             entities,
             world,
+            scheduler: PhaseScheduler,
             effects: EffectQueue::default(),
             scratch: BattleScratch::default(),
             round: 0,
@@ -64,7 +68,7 @@ impl CombatRuntime {
             };
         }
 
-        let Some(actor) = self.world.next_actor(&self.entities) else {
+        let Some(action) = self.scheduler.select_minimal_action(&mut self.world, &self.entities) else {
             return RoundOutcome {
                 frame: None,
                 winner_team: None,
@@ -72,19 +76,10 @@ impl CombatRuntime {
         };
         self.scratch.selected_actor_round = self.round;
 
-        let Some(target) = self.world.first_alive_enemy(actor, &self.entities) else {
-            let winner_team = self.world.sync_winner(&self.entities);
-            return RoundOutcome {
-                frame: None,
-                winner_team,
-            };
-        };
-
-        let amount = self.entities.get(actor).map_or(0, |entity| entity.template.attack);
         self.effects.push(QueuedEffect::Damage {
-            caster: actor,
-            target,
-            amount,
+            caster: action.actor,
+            target: action.target,
+            amount: action.amount,
         });
         let frame = self.flush_effects();
         self.round += 1;
