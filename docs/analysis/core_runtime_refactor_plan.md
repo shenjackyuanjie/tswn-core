@@ -620,7 +620,7 @@ Co-authored-by: Codex <codex@openai.com>
 - custom skill 走 registry fallback；
 - 已接入 `SkillSpec::hook_mask` 与按 loadout/registry 生成的 `SkillHookPlan`，作为静态/自定义 skill 调度入口；
 - 已接入 `SkillHandlers` / `SkillContext` 和 runtime skill hook 执行入口，handler 可产出 update 或投递 effect queue；
-- `run_minimal_round` 已执行 actor 的 `PRE_ACTION` skill hook，并将 skill update/effect 与基础攻击合入同一 frame；
+- `run_minimal_round` 已执行 actor 的 `PRE_ACTION` / `PRE_DAMAGE` / `POST_DAMAGE` / `POST_ACTION` skill hook，并将 skill update/effect 与基础攻击及 state hook 合入同一 frame；
 - 已接入 `StateHandlers` / `StateContext` 和 runtime state hook 执行入口，legacy-only state entry 在 v2 handler 分发中跳过；
 - `run_minimal_round` 已在基础攻击后执行 actor 的 `POST_ACTION` state hook，并将 state update/effect 合入同一 frame；
 - `run_minimal_round` 已在基础攻击前后执行 actor 的 `PRE_DAMAGE` / `POST_DAMAGE` state hook，并按 pre-damage -> damage -> post-damage -> post-action 顺序合帧；

@@ -293,6 +293,10 @@ impl CombatRuntime {
             .scheduler
             .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_ACTION);
         self.drain_skill_hook_plan_into(&skill_plan, &mut updates);
+        let pre_damage_skill_plan =
+            self.scheduler
+                .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_DAMAGE);
+        self.drain_skill_hook_plan_into(&pre_damage_skill_plan, &mut updates);
         let pre_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_DAMAGE);
         self.drain_state_hook_plan_into(&pre_damage_state_plan, &mut updates);
         self.effects.push(QueuedEffect::Damage {
@@ -301,8 +305,16 @@ impl CombatRuntime {
             amount: action.amount,
         });
         self.drain_effects_into(&mut updates);
+        let post_damage_skill_plan =
+            self.scheduler
+                .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::POST_DAMAGE);
+        self.drain_skill_hook_plan_into(&post_damage_skill_plan, &mut updates);
         let post_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_DAMAGE);
         self.drain_state_hook_plan_into(&post_damage_state_plan, &mut updates);
+        let post_action_skill_plan =
+            self.scheduler
+                .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::POST_ACTION);
+        self.drain_skill_hook_plan_into(&post_action_skill_plan, &mut updates);
         let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_ACTION);
         self.drain_state_hook_plan_into(&state_plan, &mut updates);
         let frame = updates.had_updates().then_some(RuntimeFrame { updates });
@@ -756,6 +768,103 @@ mod tests {
         assert_eq!(frame.updates.updates.len(), 2);
         assert_eq!(frame.updates.updates[0].score, 2);
         assert_eq!(frame.updates.updates[1].score, 3);
+    }
+
+    #[test]
+    fn run_minimal_round_dispatches_damage_skill_hooks_around_attack() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let pre_damage = builder
+            .register_skill_with_hooks(
+                "custom",
+                "pre-damage",
+                "custom.pre_damage",
+                ProcMask::PRE_DAMAGE,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("pre-damage skill should register");
+        let post_damage = builder
+            .register_skill_with_hooks(
+                "custom",
+                "post-damage",
+                "custom.post_damage",
+                ProcMask::POST_DAMAGE,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("post-damage skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([pre_damage, post_damage]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(pre_damage, skill_marks_update);
+        runtime.set_skill_handler(post_damage, skill_marks_update);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("damage skill hooks plus attack should emit update");
+
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "skill mark");
+        assert_eq!(frame.updates.updates[0].score, pre_damage.0);
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[2].message, "skill mark");
+        assert_eq!(frame.updates.updates[2].score, post_damage.0);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 7);
+    }
+
+    #[test]
+    fn run_minimal_round_dispatches_post_action_skill_before_state() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "post-action-skill",
+                "custom.post_action_skill",
+                ProcMask::POST_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("post-action skill should register");
+        let state = builder
+            .register_state(
+                "custom",
+                "post-action-state",
+                "custom.post_action_state",
+                ProcMask::POST_ACTION,
+                SkillPriority(0),
+            )
+            .expect("post-action state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([skill]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry {
+            legacy_order_key: 55,
+            extension_state_id: Some(state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(0),
+        });
+        runtime.set_skill_handler(skill, skill_marks_update);
+        runtime.set_state_handler(state, state_marks_update);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("post-action skill and state plus attack should emit update");
+
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].message, "skill mark");
+        assert_eq!(frame.updates.updates[1].score, skill.0);
+        assert_eq!(frame.updates.updates[2].message, "state mark");
+        assert_eq!(frame.updates.updates[2].score, 55);
     }
 
     #[test]
