@@ -1,0 +1,31 @@
+//! 小规模对局回放测试。
+//!
+//! 收纳短输入、低轮数和边界 seed 的回放断言，用于快速暴露 runner 初始化或早期 tick 解算问题。
+
+use super::*;
+
+pub fn small_seed<E: crate::EngineAdapter>() {
+    let mut runner = E::new_from_raw("aaaaa\nbbbbb\nseed:tester@!".to_string()).unwrap();
+    let (lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 256, true);
+    assert_eq!(total_score, 635, "small_seed score mismatch");
+
+    assert!(guard < 256, "combat did not finish in expected rounds");
+    assert_eq!(
+        lines,
+        vec![
+            "aaaaa发起攻击, bbbbb受到104点伤害",
+            "bbbbb发起攻击, aaaaa受到76点伤害",
+            "aaaaa发起反击, bbbbb受到119点伤害",
+            "bbbbb发起攻击, aaaaa受到41点伤害",
+            "aaaaa发起攻击, bbbbb受到45点伤害",
+            "bbbbb发起攻击, aaaaa受到55点伤害",
+            "aaaaa发起攻击, bbbbb受到144点伤害",
+            "bbbbb被击倒了"
+        ]
+    );
+
+    let winner = winner_names::<E>(&runner);
+    assert_eq!(winner, vec!["aaaaa".to_string()]);
+}
+
+

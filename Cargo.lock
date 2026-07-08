@@ -4277,6 +4277,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tswn_test"
+version = "0.0.0"
+dependencies = [
+ "tswn_core",
+]
+
+[[package]]
 name = "tswn_wasm"
 version = "0.3.0"
 dependencies = [
