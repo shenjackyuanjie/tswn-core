@@ -1,4 +1,4 @@
-use crate::runtime_v2::extension::{PlayerKindFlags, PlayerKindId, ProcMask, RegistrationOrder, SkillPriority, StateId};
+use crate::runtime_v2::extension::{PlayerKindFlags, PlayerKindId, ProcMask, RegistrationOrder, SkillId, SkillPriority, StateId};
 use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ pub struct PlayerTemplate {
     pub id: PlrId,
     pub name: String,
     pub kind: PlayerKindId,
+    pub skills: SkillLoadout,
     pub team: usize,
     pub max_hp: i32,
     pub attack: i32,
@@ -29,11 +30,40 @@ impl PlayerTemplate {
             id,
             name: name.into(),
             kind,
+            skills: SkillLoadout::default(),
             team,
             max_hp,
             attack,
         }
     }
+
+    pub fn with_skill_loadout(mut self, skills: SkillLoadout) -> Self {
+        self.skills = skills;
+        self
+    }
+
+    pub fn with_skills(self, skills: impl IntoIterator<Item = SkillId>) -> Self {
+        self.with_skill_loadout(SkillLoadout::from_skills(skills))
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct SkillLoadout {
+    skills: SmallVec<[SkillId; 8]>,
+}
+
+impl SkillLoadout {
+    pub fn from_skills(skills: impl IntoIterator<Item = SkillId>) -> Self {
+        Self {
+            skills: skills.into_iter().collect(),
+        }
+    }
+
+    pub fn skills(&self) -> &[SkillId] { &self.skills }
+
+    pub fn is_empty(&self) -> bool { self.skills.is_empty() }
+
+    pub fn len(&self) -> usize { self.skills.len() }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -225,6 +255,47 @@ mod tests {
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.team, 0);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.flags, PlayerKindFlags::NONE);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.move_state, MoveState::default());
+        assert!(arena.get(EntityIdx(0)).unwrap().template.skills.is_empty());
+    }
+
+    #[test]
+    fn player_template_stores_registered_skill_loadout() {
+        let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
+        let skill = builder
+            .register_skill(
+                "custom",
+                "fire",
+                "custom.fire",
+                crate::runtime_v2::TargetPolicy::Enemy,
+                SkillPriority(3),
+            )
+            .expect("skill should register");
+        let registry = builder.build();
+        let template = PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([skill]);
+
+        let arena = EntityArena::from_templates_with_registry(vec![template], &registry);
+
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().template.skills.skills(), &[skill]);
+    }
+
+    #[test]
+    fn entity_arena_preserves_skill_loadout_when_spawning() {
+        let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
+        let skill = builder
+            .register_skill(
+                "custom",
+                "summon-skill",
+                "custom.summon_skill",
+                crate::runtime_v2::TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("skill should register");
+        let registry = builder.build();
+        let mut arena = EntityArena::from_templates_with_registry(vec![PlayerTemplate::new(1, "left", 0, 10, 3)], &registry);
+
+        let spawned = arena.spawn_from_template(PlayerTemplate::new(2, "spawned", 1, 7, 2).with_skills([skill]), &registry);
+
+        assert_eq!(arena.get(spawned).unwrap().template.skills.skills(), &[skill]);
     }
 
     #[test]

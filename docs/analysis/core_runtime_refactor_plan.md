@@ -605,6 +605,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 拆 `PlayerTemplate` / `PlayerRuntime` / identity cold data；
 - 建立 experimental `ExtensionRegistry`；
 - 实现 namespace ID、priority hook、链式 handler、typed slots；
+- 已接入 `SkillLoadout` 纯数据面，默认空 loadout 并随 template/spawn 进入实体；
 - 实现 custom repo 内 example/fixture 的基础能力。
 
 完成标准：
