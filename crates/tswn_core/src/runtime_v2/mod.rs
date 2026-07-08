@@ -2465,4 +2465,32 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn runtime_frame_renders_hp_marker_core_show_golden() {
+        let mut updates = crate::engine::update::RunUpdates::new();
+        let mut hp_report = RuntimeFrame::replay_update(0, 0, "[0]还剩[2]点血", 0);
+        hp_report.param = Some(87);
+        updates.add(hp_report);
+        let frame = RuntimeFrame { updates };
+
+        assert_eq!(
+            frame.render_core_replay(),
+            vec![CoreReplayEvent {
+                message: "[0]还剩[2]点血".to_owned(),
+                caster: 0,
+                target: 0,
+                targets: Vec::new(),
+                param: Some(87),
+                score: 0,
+            }]
+        );
+        assert_eq!(
+            frame.render_core_show(),
+            vec![CoreShowEvent {
+                text: "0还剩87点血".to_owned(),
+                score: 0,
+            }]
+        );
+    }
 }

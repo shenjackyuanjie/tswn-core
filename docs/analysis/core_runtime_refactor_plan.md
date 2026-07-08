@@ -659,7 +659,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 ### 阶段 H：wasm/show/DIY/OL 迁移
 
-- 已补 v2 `RuntimeFrame` 核心 replay/show renderer golden，作为 `show.html` 迁移前的最小帧展示对账面；
+- 已补 v2 `RuntimeFrame` 核心 replay/show renderer golden，并覆盖 custom HP marker payload，作为 `show.html` 迁移前的最小帧展示对账面；
 - `show.html` 迁到 v2 replay schema；
 - wasm API 可 breaking；
 - DIY/OL schema 重做；

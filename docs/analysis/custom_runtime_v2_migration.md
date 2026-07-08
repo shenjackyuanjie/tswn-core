@@ -43,8 +43,8 @@ git diff --name-status github/main..github/custom
 | merge 固定槽继承 | custom 保留 `slot_skill` 固定槽语义以避免 merge 错位 | `MergePolicy::FixedLane` | 已接入并测试 fixed lane 合并 | 同槽位技能覆盖，未映射技能 append |
 | merge 丢弃未映射技能 | custom 分支支持 drop unmapped 语义 | `MergePolicy::DropUnmappedSkills` | 已接入并测试 drop unmapped | 未映射来源技能不进入 caster loadout |
 | merge replay | custom replay 使用吞噬/属性上升展示 | `QueuedEffect::Merge` replay update | 已输出 `[0][吞噬]了[1]` 与 `[0]属性上升` | merge frame 顺序、score 分别为 60/0 |
-| HP report replay | custom 新增 `"[0]还剩[2]点血"` 作为 HP marker | replay/show renderer + entity slot | v2 已有 core show renderer；缺 custom HP marker renderer fixture | HP marker 强制显示 HP bar，`[2]` 作为 data |
-| show 数字高亮 | `show-utils.js` 把 `点血` 纳入数字高亮 | show renderer / wasm show adapter | v2 core show payload 已有；缺 wasm show adapter | `还剩87点血` 中 87 被识别为数值 |
+| HP report replay | custom 新增 `"[0]还剩[2]点血"` 作为 HP marker | replay/show renderer + entity slot | 已用 v2 core replay/show golden 固化 payload 和 `[2]` param；仍缺 HP bar renderer fixture | HP marker 强制显示 HP bar，`[2]` 作为 data |
+| show 数字高亮 | `show-utils.js` 把 `点血` 纳入数字高亮 | show renderer / wasm show adapter | v2 core show golden 已覆盖 `还剩87点血` 文本；缺 wasm show adapter | `还剩87点血` 中 87 被识别为数值 |
 | runner fixture 内置化 | `crates/tswn_test/src/suite/**` moved into `crates/tswn_core/src/engine/test/**` | repo 内 extension fixture + strict diff runner | v2 尚缺 custom runner fixture | bed2/summon/merge/minion/custom replay golden 可稳定复跑 |
 
 ---
@@ -54,7 +54,7 @@ git diff --name-status github/main..github/custom
 1. **bed2 registry fixture**：注册 `custom.bed2` kind、固定 summon skill、HP marker slot。
 2. **summon policy fixture**：覆盖 root-owner 路由、owner/summon 双向伤害共享、recast 复用技能。
 3. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
-4. **HP marker renderer fixture**：用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data。
+4. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data；后续补 HP bar/show adapter。
 5. **runner fixture**：把 custom 分支 large / fight_multi 的关键样例缩成 v2 strict diff golden。
 
 ---
@@ -73,6 +73,6 @@ git diff --name-status github/main..github/custom
 
 - bed2 的完整 player/template 构造 fixture。
 - summon recast、继承 owner 防御/魔防、minion heal 行为的专用 fixture。
-- HP marker replay/show renderer fixture。
+- HP marker HP bar renderer fixture 与 wasm show adapter。
 - custom large / fight_multi runner 归一化 golden。
 - 将审计表中的每个验收 case 接入 strict diff 或稳定单测。
