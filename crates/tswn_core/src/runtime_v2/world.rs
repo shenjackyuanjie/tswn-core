@@ -3,6 +3,9 @@ use crate::runtime_v2::entity::{EntityArena, EntityIdx};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldArena {
     round_order: Vec<EntityIdx>,
+    team_alive: Vec<Vec<EntityIdx>>,
+    flat_alive: Vec<EntityIdx>,
+    alive_group_count: usize,
     cursor: usize,
     winner_team: Option<usize>,
 }
@@ -10,8 +13,22 @@ pub struct WorldArena {
 impl WorldArena {
     pub fn from_entities(entities: &EntityArena) -> Self {
         let round_order = entities.iter().map(|(idx, _)| idx).collect();
+        let team_count = entities.iter().map(|(_, entity)| entity.runtime.team).max().map_or(0, |team| team + 1);
+        let mut team_alive = vec![Vec::new(); team_count];
+        let mut flat_alive = Vec::new();
+        for (idx, entity) in entities.iter() {
+            if !entity.runtime.alive {
+                continue;
+            }
+            team_alive[entity.runtime.team].push(idx);
+            flat_alive.push(idx);
+        }
+        let alive_group_count = team_alive.iter().filter(|team| !team.is_empty()).count();
         Self {
             round_order,
+            team_alive,
+            flat_alive,
+            alive_group_count,
             cursor: 0,
             winner_team: None,
         }
@@ -34,13 +51,18 @@ impl WorldArena {
 
     pub fn first_alive_enemy(&self, actor: EntityIdx, entities: &EntityArena) -> Option<EntityIdx> {
         let actor_team = entities.get(actor)?.runtime.team;
-        entities
+        self.flat_alive
             .iter()
-            .find(|(_, entity)| entity.runtime.alive && entity.runtime.team != actor_team)
-            .map(|(idx, _)| idx)
+            .copied()
+            .find(|idx| entities.get(*idx).is_some_and(|entity| entity.runtime.team != actor_team))
     }
 
     pub fn append_round_actor(&mut self, actor: EntityIdx) { self.round_order.push(actor); }
+
+    pub fn add_spawned_alive(&mut self, actor: EntityIdx, team: usize) {
+        self.append_round_actor(actor);
+        self.revive_alive(actor, team);
+    }
 
     pub fn remove_round_actor(&mut self, actor: EntityIdx) -> bool {
         let Some(pos) = self.round_order.iter().position(|idx| *idx == actor) else {
@@ -71,6 +93,52 @@ impl WorldArena {
 
     pub fn round_order(&self) -> &[EntityIdx] { &self.round_order }
 
+    pub fn team_alive(&self, team: usize) -> Option<&[EntityIdx]> { self.team_alive.get(team).map(Vec::as_slice) }
+
+    pub fn flat_alive(&self) -> &[EntityIdx] { &self.flat_alive }
+
+    pub fn alive_group_count(&self) -> usize { self.alive_group_count }
+
+    pub fn revive_alive(&mut self, actor: EntityIdx, team: usize) {
+        if self.flat_alive.contains(&actor) {
+            return;
+        }
+        if self.team_alive.len() <= team {
+            self.team_alive.resize_with(team + 1, Vec::new);
+        }
+        let was_empty = self.team_alive[team].is_empty();
+        let last_teammate_pos = self.team_alive[team]
+            .iter()
+            .rev()
+            .find_map(|idx| self.flat_alive.iter().position(|alive| alive == idx));
+        self.team_alive[team].push(actor);
+        if let Some(pos) = last_teammate_pos {
+            self.flat_alive.insert(pos + 1, actor);
+        } else {
+            self.flat_alive.push(actor);
+        }
+        if was_empty {
+            self.alive_group_count += 1;
+        }
+    }
+
+    pub fn remove_alive(&mut self, actor: EntityIdx, team: usize) -> bool {
+        let was_flat_alive = if let Some(pos) = self.flat_alive.iter().position(|idx| *idx == actor) {
+            self.flat_alive.remove(pos);
+            true
+        } else {
+            false
+        };
+        if let Some(team_alive) = self.team_alive.get_mut(team) {
+            let was_team_alive = team_alive.contains(&actor);
+            team_alive.retain(|idx| *idx != actor);
+            if was_team_alive && team_alive.is_empty() {
+                self.alive_group_count = self.alive_group_count.saturating_sub(1);
+            }
+        }
+        was_flat_alive
+    }
+
     pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
         let mut alive_team = None;
         for (_, entity) in entities.iter() {
@@ -99,13 +167,32 @@ mod tests {
     use crate::runtime_v2::{EntityArena, PlayerTemplate};
 
     #[test]
-    fn world_appends_spawned_actor_to_round_order() {
+    fn world_initializes_alive_views_in_team_order() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3),
+            PlayerTemplate::new(2, "right", 1, 10, 3),
+            PlayerTemplate::new(3, "ally", 0, 10, 3),
+        ]);
+        let world = WorldArena::from_entities(&entities);
+
+        assert_eq!(world.round_order(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
+        assert_eq!(world.team_alive(0), Some([EntityIdx(0), EntityIdx(2)].as_slice()));
+        assert_eq!(world.team_alive(1), Some([EntityIdx(1)].as_slice()));
+        assert_eq!(world.flat_alive(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
+        assert_eq!(world.alive_group_count(), 2);
+    }
+
+    #[test]
+    fn world_appends_spawned_actor_to_round_and_alive_views() {
         let entities = EntityArena::from_templates(vec![PlayerTemplate::new(1, "left", 0, 10, 3)]);
         let mut world = WorldArena::from_entities(&entities);
 
-        world.append_round_actor(EntityIdx(1));
+        world.add_spawned_alive(EntityIdx(1), 0);
 
         assert_eq!(world.round_order(), &[EntityIdx(0), EntityIdx(1)]);
+        assert_eq!(world.team_alive(0), Some([EntityIdx(0), EntityIdx(1)].as_slice()));
+        assert_eq!(world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
+        assert_eq!(world.alive_group_count(), 1);
     }
 
     #[test]
@@ -137,5 +224,38 @@ mod tests {
         assert!(world.revive_round_actor(EntityIdx(1)));
         assert!(!world.revive_round_actor(EntityIdx(1)));
         assert_eq!(world.round_order(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
+    }
+
+    #[test]
+    fn world_revives_alive_after_last_team_member_in_flat_order() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3),
+            PlayerTemplate::new(2, "enemy", 1, 10, 3),
+            PlayerTemplate::new(3, "ally", 0, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+
+        assert!(world.remove_alive(EntityIdx(2), 0));
+        assert_eq!(world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
+        world.revive_alive(EntityIdx(2), 0);
+
+        assert_eq!(world.team_alive(0), Some([EntityIdx(0), EntityIdx(2)].as_slice()));
+        assert_eq!(world.flat_alive(), &[EntityIdx(0), EntityIdx(2), EntityIdx(1)]);
+        assert_eq!(world.alive_group_count(), 2);
+    }
+
+    #[test]
+    fn world_remove_alive_updates_team_flat_and_group_count() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3),
+            PlayerTemplate::new(2, "right", 1, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+
+        assert!(world.remove_alive(EntityIdx(1), 1));
+
+        assert_eq!(world.team_alive(1), Some([].as_slice()));
+        assert_eq!(world.flat_alive(), &[EntityIdx(0)]);
+        assert_eq!(world.alive_group_count(), 1);
     }
 }

@@ -368,7 +368,8 @@ impl CombatRuntime {
                 QueuedEffect::Spawn { caster, template } => {
                     self.ensure_effect_entity("spawn", "caster", caster);
                     let spawned = self.entities.spawn_from_template(template, &self.registry);
-                    self.world.append_round_actor(spawned);
+                    let team = self.entities.get(spawned).unwrap().runtime.team;
+                    self.world.add_spawned_alive(spawned, team);
                     updates.add(RuntimeFrame::spawn_update(caster.0 as usize, spawned.0 as usize));
                 }
                 QueuedEffect::AddState { target, state } => {
@@ -400,7 +401,9 @@ impl CombatRuntime {
                     };
                     target_entity.runtime.hp = hp.max(1).min(target_entity.template.max_hp);
                     target_entity.runtime.alive = true;
+                    let team = target_entity.runtime.team;
                     self.world.revive_round_actor(target);
+                    self.world.revive_alive(target, team);
                     updates.add(RuntimeFrame::revive_update(caster.0 as usize, target.0 as usize, hp));
                 }
                 QueuedEffect::Remove { caster, target } => {
@@ -411,7 +414,9 @@ impl CombatRuntime {
                     };
                     target_entity.runtime.hp = 0;
                     target_entity.runtime.alive = false;
+                    let team = target_entity.runtime.team;
                     self.world.remove_round_actor(target);
+                    self.world.remove_alive(target, team);
                     updates.add(RuntimeFrame::remove_update(caster.0 as usize, target.0 as usize));
                 }
                 QueuedEffect::Replay {
@@ -1241,6 +1246,8 @@ mod tests {
         assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().template.name, "summoned");
         assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 5);
         assert_eq!(runtime.world.round_order(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
+        assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0), EntityIdx(2)].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(2), EntityIdx(1)]);
         assert_eq!(frame.updates.updates[0].message, "出现一个新的[1]");
     }
 
@@ -1357,6 +1364,8 @@ mod tests {
         assert_eq!(target.runtime.hp, 10);
         assert!(target.runtime.alive);
         assert_eq!(runtime.world.round_order(), &[EntityIdx(0), EntityIdx(1)]);
+        assert_eq!(runtime.world.team_alive(1), Some([EntityIdx(1)].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
         assert_eq!(frame.updates.updates[0].message, "[1][复活]了");
     }
 
@@ -1374,6 +1383,8 @@ mod tests {
         assert_eq!(target.runtime.hp, 0);
         assert!(!target.runtime.alive);
         assert_eq!(runtime.world.round_order(), &[EntityIdx(0)]);
+        assert_eq!(runtime.world.team_alive(1), Some([].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0)]);
         assert_eq!(frame.updates.updates[0].message, "[1]消失了");
     }
 
