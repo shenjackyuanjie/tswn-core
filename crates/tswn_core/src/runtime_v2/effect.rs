@@ -352,6 +352,7 @@ pub struct SkillContext<'a> {
     slots: &'a mut BattleSlotStorage,
     queue: &'a mut EffectQueue,
     updates: &'a mut RunUpdates,
+    rng: &'a mut RC4,
     owner: EntityIdx,
     capabilities: &'a [ExtensionCapability],
 }
@@ -363,6 +364,7 @@ impl<'a> SkillContext<'a> {
         slots: &'a mut BattleSlotStorage,
         queue: &'a mut EffectQueue,
         updates: &'a mut RunUpdates,
+        rng: &'a mut RC4,
         entry: SkillHookPlanEntry,
         capabilities: &'a [ExtensionCapability],
     ) -> Self {
@@ -372,6 +374,7 @@ impl<'a> SkillContext<'a> {
             slots,
             queue,
             updates,
+            rng,
             owner: entry.owner,
             capabilities,
         }
@@ -414,6 +417,10 @@ impl<'a> SkillContext<'a> {
     pub fn push_nested(&mut self, effect: QueuedEffect) { self.queue.push_nested(effect); }
 
     pub fn add_update(&mut self, update: RunUpdate) { self.updates.add(update); }
+
+    pub fn rng_next_u8(&mut self) -> u8 { self.rng.next_u8() }
+
+    pub fn rng_next_i32(&mut self, max: i32) -> i32 { self.rng.next_i32(max) }
 
     pub fn sync_winner(&mut self) -> Option<usize> { self.world.sync_winner(self.entities) }
 
@@ -432,6 +439,7 @@ pub struct StateContext<'a> {
     slots: &'a mut BattleSlotStorage,
     queue: &'a mut EffectQueue,
     updates: &'a mut RunUpdates,
+    rng: &'a mut RC4,
     owner: EntityIdx,
     capabilities: &'a [ExtensionCapability],
 }
@@ -443,6 +451,7 @@ impl<'a> StateContext<'a> {
         slots: &'a mut BattleSlotStorage,
         queue: &'a mut EffectQueue,
         updates: &'a mut RunUpdates,
+        rng: &'a mut RC4,
         entry: StateHookPlanEntry,
         capabilities: &'a [ExtensionCapability],
     ) -> Self {
@@ -452,6 +461,7 @@ impl<'a> StateContext<'a> {
             slots,
             queue,
             updates,
+            rng,
             owner: entry.owner,
             capabilities,
         }
@@ -494,6 +504,10 @@ impl<'a> StateContext<'a> {
     pub fn push_nested(&mut self, effect: QueuedEffect) { self.queue.push_nested(effect); }
 
     pub fn add_update(&mut self, update: RunUpdate) { self.updates.add(update); }
+
+    pub fn rng_next_u8(&mut self) -> u8 { self.rng.next_u8() }
+
+    pub fn rng_next_i32(&mut self, max: i32) -> i32 { self.rng.next_i32(max) }
 
     pub fn sync_winner(&mut self) -> Option<usize> { self.world.sync_winner(self.entities) }
 

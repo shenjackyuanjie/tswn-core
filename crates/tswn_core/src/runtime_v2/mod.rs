@@ -214,6 +214,7 @@ impl CombatRuntime {
                     &mut self.slots,
                     &mut self.effects,
                     updates,
+                    &mut self.rng,
                     *entry,
                     capabilities,
                 );
@@ -250,6 +251,7 @@ impl CombatRuntime {
                     &mut self.slots,
                     &mut self.effects,
                     updates,
+                    &mut self.rng,
                     *entry,
                     capabilities,
                 );
@@ -1099,6 +1101,17 @@ mod tests {
         });
     }
 
+    fn skill_consumes_rng(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        let value = context.rng_next_i32(10);
+        let next_byte = context.rng_next_u8();
+        context.add_update(crate::engine::update::RunUpdate::new(
+            format!("skill-rng:{value}:{next_byte}"),
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            value as u32,
+        ));
+    }
+
     fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
         context.add_update(crate::engine::update::RunUpdate::new(
             "state mark",
@@ -1114,6 +1127,17 @@ mod tests {
             target: context.owner_idx(),
             amount: 2,
         });
+    }
+
+    fn state_consumes_rng(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+        let value = context.rng_next_i32(10);
+        let next_byte = context.rng_next_u8();
+        context.add_update(crate::engine::update::RunUpdate::new(
+            format!("state-rng:{value}:{next_byte}"),
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            value as u32,
+        ));
     }
 
     fn render_first_message_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
@@ -1163,6 +1187,43 @@ mod tests {
 
         assert_eq!(frame.updates.updates[0].message, "skill mark");
         assert_eq!(frame.updates.updates[0].score, marker.0);
+    }
+
+    #[test]
+    fn run_skill_hooks_exposes_controlled_rng_to_skill_handlers() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "rng-skill",
+                "custom.rng_skill",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([skill])],
+            registry,
+        ));
+        runtime.set_skill_handler(skill, skill_consumes_rng);
+        let mut expected_rng = RC4::default();
+        let expected_value = expected_rng.next_i32(10);
+        let expected_byte = expected_rng.next_u8();
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("skill rng handler should emit update");
+
+        assert_eq!(
+            frame.updates.updates[0].message,
+            format!("skill-rng:{expected_value}:{expected_byte}")
+        );
+        assert_eq!(frame.updates.updates[0].score, expected_value as u32);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
     }
 
     #[test]
@@ -1574,6 +1635,49 @@ mod tests {
 
         assert_eq!(frame.updates.updates[0].message, "state mark");
         assert_eq!(frame.updates.updates[0].score, 42);
+    }
+
+    #[test]
+    fn run_state_hooks_exposes_controlled_rng_to_state_handlers() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let state = builder
+            .register_state(
+                "custom",
+                "rng-state",
+                "custom.rng_state",
+                ProcMask::POST_ACTION,
+                SkillPriority(0),
+            )
+            .expect("state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry {
+            legacy_order_key: 88,
+            extension_state_id: Some(state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(0),
+        });
+        runtime.set_state_handler(state, state_consumes_rng);
+        let mut expected_rng = RC4::default();
+        let expected_value = expected_rng.next_i32(10);
+        let expected_byte = expected_rng.next_u8();
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("state rng handler should emit update");
+
+        assert_eq!(
+            frame.updates.updates[0].message,
+            format!("state-rng:{expected_value}:{expected_byte}")
+        );
+        assert_eq!(frame.updates.updates[0].score, expected_value as u32);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
     }
 
     #[test]
