@@ -342,6 +342,8 @@ impl CombatRuntime {
         while let Some(effect) = self.effects.pop_next() {
             match effect {
                 QueuedEffect::Damage { caster, target, amount } => {
+                    self.ensure_effect_entity("damage", "caster", caster);
+                    self.ensure_effect_entity("damage", "target", target);
                     let Some(target_entity) = self.entities.get_mut(target) else {
                         panic!("unknown runtime_v2 damage target entity: {}", target.0);
                     };
@@ -352,6 +354,8 @@ impl CombatRuntime {
                     updates.add(RuntimeFrame::damage_update(caster.0 as usize, target.0 as usize, amount));
                 }
                 QueuedEffect::Heal { caster, target, amount } => {
+                    self.ensure_effect_entity("heal", "caster", caster);
+                    self.ensure_effect_entity("heal", "target", target);
                     let Some(target_entity) = self.entities.get_mut(target) else {
                         panic!("unknown runtime_v2 heal target entity: {}", target.0);
                     };
@@ -362,11 +366,13 @@ impl CombatRuntime {
                     updates.add(RuntimeFrame::heal_update(caster.0 as usize, target.0 as usize, amount));
                 }
                 QueuedEffect::Spawn { caster, template } => {
+                    self.ensure_effect_entity("spawn", "caster", caster);
                     let spawned = self.entities.spawn_from_template(template, &self.registry);
                     self.world.append_round_actor(spawned);
                     updates.add(RuntimeFrame::spawn_update(caster.0 as usize, spawned.0 as usize));
                 }
                 QueuedEffect::AddState { target, state } => {
+                    self.ensure_effect_entity("add-state", "target", target);
                     let Some(target_entity) = self.entities.get_mut(target) else {
                         panic!("unknown runtime_v2 add-state target entity: {}", target.0);
                     };
@@ -378,6 +384,7 @@ impl CombatRuntime {
                     target,
                     legacy_order_key,
                 } => {
+                    self.ensure_effect_entity("clear-state", "target", target);
                     let Some(target_entity) = self.entities.get_mut(target) else {
                         panic!("unknown runtime_v2 clear-state target entity: {}", target.0);
                     };
@@ -386,6 +393,8 @@ impl CombatRuntime {
                     }
                 }
                 QueuedEffect::Revive { caster, target, hp } => {
+                    self.ensure_effect_entity("revive", "caster", caster);
+                    self.ensure_effect_entity("revive", "target", target);
                     let Some(target_entity) = self.entities.get_mut(target) else {
                         panic!("unknown runtime_v2 revive target entity: {}", target.0);
                     };
@@ -394,6 +403,8 @@ impl CombatRuntime {
                     updates.add(RuntimeFrame::revive_update(caster.0 as usize, target.0 as usize, hp));
                 }
                 QueuedEffect::Remove { caster, target } => {
+                    self.ensure_effect_entity("remove", "caster", caster);
+                    self.ensure_effect_entity("remove", "target", target);
                     let Some(target_entity) = self.entities.get_mut(target) else {
                         panic!("unknown runtime_v2 remove target entity: {}", target.0);
                     };
@@ -407,6 +418,8 @@ impl CombatRuntime {
                     message,
                     score,
                 } => {
+                    self.ensure_effect_entity("replay", "caster", caster);
+                    self.ensure_effect_entity("replay", "target", target);
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
                         target.0 as usize,
@@ -415,6 +428,10 @@ impl CombatRuntime {
                     ));
                 }
                 QueuedEffect::Custom(custom) => {
+                    self.ensure_effect_entity("custom", "caster", custom.caster);
+                    if let Some(target) = custom.target {
+                        self.ensure_effect_entity("custom", "target", target);
+                    }
                     let Some(handler) = self.effect_handlers.get(custom.handler) else {
                         panic!("missing runtime_v2 effect handler implementation: {}", custom.handler.0);
                     };
@@ -431,6 +448,12 @@ impl CombatRuntime {
                     handler(&mut context, &custom);
                 }
             }
+        }
+    }
+
+    fn ensure_effect_entity(&self, effect: &'static str, role: &'static str, entity: EntityIdx) {
+        if self.entities.get(entity).is_none() {
+            panic!("unknown runtime_v2 {effect} {role} entity: {}", entity.0);
         }
     }
 }
@@ -1378,6 +1401,124 @@ mod tests {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runtime.flush_effects()));
 
         assert!(result.is_err());
+    }
+
+    fn assert_effect_panics(effect: QueuedEffect) {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        runtime.effects.push(effect);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runtime.flush_effects()));
+
+        assert!(result.is_err());
+    }
+
+    fn dummy_state_entry() -> StateEntry {
+        StateEntry {
+            legacy_order_key: 999,
+            extension_state_id: None,
+            hook_mask: ProcMask::NONE,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(0),
+        }
+    }
+
+    #[test]
+    fn flush_effects_panics_on_unknown_effect_entities() {
+        assert_effect_panics(QueuedEffect::Damage {
+            caster: EntityIdx(99),
+            target: EntityIdx(1),
+            amount: 1,
+        });
+        assert_effect_panics(QueuedEffect::Heal {
+            caster: EntityIdx(99),
+            target: EntityIdx(1),
+            amount: 1,
+        });
+        assert_effect_panics(QueuedEffect::Heal {
+            caster: EntityIdx(0),
+            target: EntityIdx(99),
+            amount: 1,
+        });
+        assert_effect_panics(QueuedEffect::Spawn {
+            caster: EntityIdx(99),
+            template: PlayerTemplate::new(3, "ghost", 1, 1, 0),
+        });
+        assert_effect_panics(QueuedEffect::AddState {
+            target: EntityIdx(99),
+            state: dummy_state_entry(),
+        });
+        assert_effect_panics(QueuedEffect::ClearState {
+            target: EntityIdx(99),
+            legacy_order_key: 999,
+        });
+        assert_effect_panics(QueuedEffect::Revive {
+            caster: EntityIdx(99),
+            target: EntityIdx(1),
+            hp: 1,
+        });
+        assert_effect_panics(QueuedEffect::Revive {
+            caster: EntityIdx(0),
+            target: EntityIdx(99),
+            hp: 1,
+        });
+        assert_effect_panics(QueuedEffect::Remove {
+            caster: EntityIdx(99),
+            target: EntityIdx(1),
+        });
+        assert_effect_panics(QueuedEffect::Remove {
+            caster: EntityIdx(0),
+            target: EntityIdx(99),
+        });
+        assert_effect_panics(QueuedEffect::Replay {
+            caster: EntityIdx(99),
+            target: EntityIdx(1),
+            message: "bad caster".to_owned(),
+            score: 0,
+        });
+        assert_effect_panics(QueuedEffect::Replay {
+            caster: EntityIdx(0),
+            target: EntityIdx(99),
+            message: "bad target".to_owned(),
+            score: 0,
+        });
+    }
+
+    #[test]
+    fn flush_effects_panics_on_unknown_custom_effect_entities() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let handler = builder
+            .register_effect_handler("custom", "mark", "custom.mark", SkillPriority(0))
+            .expect("handler should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_effect_handler(handler, custom_marks_update);
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            handler,
+            EntityIdx(99),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::Text("bad caster".to_owned()),
+        )));
+
+        let bad_caster = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runtime.flush_effects()));
+
+        assert!(bad_caster.is_err());
+
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            handler,
+            EntityIdx(0),
+            Some(EntityIdx(99)),
+            CustomEffectPayload::Text("bad target".to_owned()),
+        )));
+
+        let bad_target = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runtime.flush_effects()));
+
+        assert!(bad_target.is_err());
     }
 
     #[test]
