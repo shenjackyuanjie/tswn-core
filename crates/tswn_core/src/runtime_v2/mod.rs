@@ -10,6 +10,7 @@ pub mod trace;
 pub mod world;
 
 use crate::engine::update::RunUpdates;
+use crate::player::PlrId;
 use crate::rc4::RC4;
 
 pub use effect::{
@@ -59,6 +60,68 @@ impl PreparedCombatTemplate {
             PlayerTemplate::new(1, "left", 0, left_hp, attack),
             PlayerTemplate::new(2, "right", 1, right_hp, attack),
         ])
+    }
+}
+
+pub const DEFAULT_BED2_HP: i32 = 3000;
+pub const DEFAULT_BED2_DEFENSE: i32 = 99;
+pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomBed2Import {
+    pub name: String,
+    pub team: Option<String>,
+    pub hp: i32,
+}
+
+impl CustomBed2Import {
+    pub fn parse(raw: &str) -> Option<Self> {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return None;
+        }
+
+        let (name, team, plus_rest, team_marker_hp) = if let Some((name, team_and_rest)) = raw.split_once('@') {
+            let (team_part, plus_rest) = team_and_rest.split_once('+').unwrap_or((team_and_rest, ""));
+            let (team, hp) = Self::split_bed2_team_marker(team_part.trim());
+            (name.trim(), team, plus_rest, hp)
+        } else if let Some((name, plus_rest)) = raw.split_once('+') {
+            (name.trim(), None, plus_rest, None)
+        } else {
+            return None;
+        };
+
+        let hp = Self::parse_bed2_plus_segments(plus_rest).or(team_marker_hp)?;
+        Some(Self {
+            name: name.to_owned(),
+            team,
+            hp,
+        })
+    }
+
+    pub fn into_player_template(self, id: PlrId, kind: PlayerKindId, team: usize, summon_skill: SkillId) -> PlayerTemplate {
+        PlayerTemplate::with_kind(id, self.name, kind, team, self.hp, 0)
+            .with_def_res(DEFAULT_BED2_DEFENSE, DEFAULT_BED2_RESISTANCE)
+            .with_skills([summon_skill])
+    }
+
+    fn split_bed2_team_marker(team: &str) -> (Option<String>, Option<i32>) {
+        if team == "bed2" {
+            return (None, Some(DEFAULT_BED2_HP));
+        }
+        match team.rsplit_once('@') {
+            Some((team, "bed2")) if !team.is_empty() => (Some(team.to_owned()), Some(DEFAULT_BED2_HP)),
+            _ if team.is_empty() => (None, None),
+            _ => (Some(team.to_owned()), None),
+        }
+    }
+
+    fn parse_bed2_plus_segments(raw: &str) -> Option<i32> { raw.split('+').filter_map(Self::parse_bed2_plus_marker).last() }
+
+    fn parse_bed2_plus_marker(segment: &str) -> Option<i32> {
+        let rest = segment.trim().strip_prefix("bed2[")?;
+        let hp = rest.strip_suffix(']')?.trim().parse::<i32>().ok()?;
+        (hp > 0).then_some(hp)
     }
 }
 
@@ -671,6 +734,56 @@ mod tests {
         assert_eq!(entity.runtime.policies.damage_share, DamageSharePolicy::ShareToOwner);
         assert_eq!(entity.runtime.policies.merge, MergePolicy::FixedLane);
         assert_eq!(entity.slots.get(hp_marker), Some(&SlotValue::Bool(true)));
+    }
+
+    #[test]
+    fn custom_bed2_import_fixture_parses_markers_into_v2_template() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let plus = CustomBed2Import::parse("alpha@red+bed2[4500]+ol:{\"skills\":{\"sklsummon\":255}}")
+            .expect("bed2 plus marker should parse");
+        let legacy_team = CustomBed2Import::parse("beta@blue@bed2").expect("legacy bed2 team marker should parse");
+        let bare = CustomBed2Import::parse("gamma+bed2[2500]").expect("bare bed2 marker should parse");
+
+        assert_eq!(plus.name, "alpha");
+        assert_eq!(plus.team.as_deref(), Some("red"));
+        assert_eq!(plus.hp, 4500);
+        assert_eq!(legacy_team.name, "beta");
+        assert_eq!(legacy_team.team.as_deref(), Some("blue"));
+        assert_eq!(legacy_team.hp, DEFAULT_BED2_HP);
+        assert_eq!(bare.name, "gamma");
+        assert_eq!(bare.team, None);
+        assert_eq!(bare.hp, 2500);
+        assert_eq!(CustomBed2Import::parse("alpha@red+bed2[0]"), None);
+
+        let template = plus.into_player_template(1, bed2, 0, summon);
+        let runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(vec![template], registry));
+        let entity = runtime.entities.get(EntityIdx(0)).expect("bed2 entity should import");
+
+        assert_eq!(entity.template.name, "alpha");
+        assert_eq!(entity.template.max_hp, 4500);
+        assert_eq!(entity.template.attack, 0);
+        assert_eq!(entity.template.defense, DEFAULT_BED2_DEFENSE);
+        assert_eq!(entity.template.resistance, DEFAULT_BED2_RESISTANCE);
+        assert_eq!(entity.template.skills.skills(), &[summon]);
+        assert!(entity.runtime.flags.contains(PlayerKindFlags::BED2));
     }
 
     #[cfg(not(feature = "no_debug"))]

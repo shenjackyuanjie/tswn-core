@@ -31,7 +31,7 @@ git diff --name-status github/main..github/custom
 
 | custom 改动点 | 证据锚点 | v2 落点 | 当前 v2 状态 | 验收 case |
 | --- | --- | --- | --- | --- |
-| bed2 player type | `DEFAULT_BED2_HP = 3000`; `PlayerType::Bed2`; `bed2[...]` / `@bed2` marker | `PlayerKindSpec` + `PlayerKindPolicies` + template/entity slot | 已有 bed2 registry/template fixture 覆盖 kind、policy、3000 HP 与 marker slot；仍缺完整 parser/import fixture | bed2 构造后固定 HP、技能槽、summon 模板 strict diff |
+| bed2 player type | `DEFAULT_BED2_HP = 3000`; `PlayerType::Bed2`; `bed2[...]` / `@bed2` marker | `PlayerKindSpec` + `PlayerKindPolicies` + template/entity slot | 已有 bed2 registry/template fixture 覆盖 kind、policy、3000 HP 与 marker slot，并补最小 v2 marker import helper；仍缺真实 Player facade parser 接入 | bed2 构造后固定 HP、技能槽、summon 模板 strict diff |
 | bed2 固定 summon 技能 | custom 将 bed2 overlay 设为 `[0,99,0,0,0,99,0,hp]` 并只保留 `sklsummon=255` | `PlayerTemplate::with_kind(...).with_skills([summon])` + policy | v2 fixture 已覆盖固定 summon skill loadout；缺内置 summon 技能迁移 | bed2 只尝试 summon，不扫描普通技能 |
 | bed2 summon template 导出 | `summon_overlay_from_player_template`; `overlay_from_built_minion` | template slot 保存 summon/minion 模板；effect handler 生成实体 | v2 fixture 已覆盖 summon template slot；缺真实 template payload 与 custom parser | bed2 summon 的 attr/skills 与 custom branch 一致 |
 | summon recast 复用技能 | `reuse_skills_on_recast: is_summon` | summon policy + effect handler | 已有 custom summon 复合 fixture 覆盖 spawn 后 SkillLoadout 保留；仍缺真实 recast handler | summon recast 后技能继承/复用顺序不漂移 |
@@ -51,7 +51,7 @@ git diff --name-status github/main..github/custom
 
 ## 3. v2 fixture 切分顺序
 
-1. **bed2 registry fixture**：已注册 `custom.bed2` kind、固定 summon skill、HP marker slot；后续补真实 parser/template payload。
+1. **bed2 registry/import fixture**：已注册 `custom.bed2` kind、固定 summon skill、HP marker slot，并覆盖 `bed2[...]` / `@bed2` marker 到 v2 template 的最小导入；后续补真实 Player facade parser/template payload。
 2. **summon policy fixture**：已覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留、owner defense/resistance 继承；后续补真实 recast handler。
 3. **minion heal fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享；后续补真实 minion handler。
 4. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
@@ -63,6 +63,7 @@ git diff --name-status github/main..github/custom
 ## 4. 已落地能力
 
 - `PlayerKindSpec` / `PlayerKindPolicies` 可表达 custom kind 与行为策略。
+- `CustomBed2Import` 已覆盖 `bed2[...]` / `@bed2` marker 到 v2 bed2 template 的最小导入面。
 - `OwnerResolutionPolicy::RootOwner` 已覆盖 summon/root-owner 伤害路由。
 - `DamageSharePolicy::ShareToOwner` / `ShareToSummons` 已覆盖 owner 与 summon 伤害共享。
 - `PlayerKindPolicies::inherit_owner_def_res` 已覆盖 custom summon 继承 owner 防御/魔防的数据面。
@@ -76,7 +77,7 @@ git diff --name-status github/main..github/custom
 
 ## 5. 未完成项
 
-- bed2 的 parser/import 与真实 summon template payload fixture。
+- bed2 的真实 Player facade parser 接入与真实 summon template payload fixture。
 - summon 真实 recast handler、真实 minion handler。
 - HP marker wasm show adapter。
 - custom large / fight_multi runner 归一化 golden 扩展。
