@@ -5,6 +5,8 @@ pub mod oracle;
 pub mod scheduler;
 pub mod scratch;
 pub mod slot;
+#[cfg(not(feature = "no_debug"))]
+pub mod trace;
 pub mod world;
 
 use crate::engine::update::RunUpdates;
@@ -24,6 +26,8 @@ pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_di
 pub use scheduler::{ActionPlan, PhaseScheduler, StateHookPlan, StateHookPlanEntry};
 pub use scratch::BattleScratch;
 pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, TemplateSlotStorage};
+#[cfg(not(feature = "no_debug"))]
+pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +76,8 @@ pub struct CombatRuntime {
     pub scratch: BattleScratch,
     pub slots: BattleSlotStorage,
     pub registry: ExtensionRegistry,
+    #[cfg(not(feature = "no_debug"))]
+    pub trace: Option<RuntimeTrace>,
     pub round: u64,
 }
 
@@ -94,9 +100,17 @@ impl CombatRuntime {
             scratch: BattleScratch::default(),
             slots,
             registry: template.registry,
+            #[cfg(not(feature = "no_debug"))]
+            trace: None,
             round: 0,
         }
     }
+
+    #[cfg(not(feature = "no_debug"))]
+    pub fn enable_trace(&mut self) { self.trace = Some(RuntimeTrace::default()); }
+
+    #[cfg(not(feature = "no_debug"))]
+    pub fn trace(&self) -> Option<&RuntimeTrace> { self.trace.as_ref() }
 
     pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) { self.effect_handlers.set(id, handler); }
 
@@ -158,6 +172,17 @@ impl CombatRuntime {
             };
         };
         self.scratch.selected_actor_round = self.round;
+        #[cfg(not(feature = "no_debug"))]
+        if let Some(trace) = &mut self.trace {
+            trace.record_action(TraceAction {
+                round: self.round + 1,
+                actor: action.actor,
+                target: action.target,
+                amount: action.amount,
+                rng_before: None,
+                rng_after: None,
+            });
+        }
 
         self.effects.push(QueuedEffect::Damage {
             caster: action.actor,
@@ -167,6 +192,10 @@ impl CombatRuntime {
         let frame = self.flush_effects();
         self.round += 1;
         let winner_team = self.world.sync_winner(&self.entities);
+        #[cfg(not(feature = "no_debug"))]
+        if let (Some(trace), Some(frame)) = (&mut self.trace, &frame) {
+            trace.record_frame(self.round, frame, winner_team);
+        }
         RoundOutcome {
             action: Some(action),
             frame,
@@ -321,6 +350,22 @@ mod tests {
             runtime.entities.get(EntityIdx(0)).unwrap().slots.get(entity_slot),
             Some(&SlotValue::Bool(true))
         );
+    }
+
+    #[cfg(not(feature = "no_debug"))]
+    #[test]
+    fn run_minimal_round_records_trace_when_enabled() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        runtime.enable_trace();
+
+        runtime.run_minimal_round();
+
+        let trace = runtime.trace().expect("trace should be enabled");
+        assert_eq!(trace.actions.len(), 1);
+        assert_eq!(trace.actions[0].actor, EntityIdx(0));
+        assert_eq!(trace.actions[0].target, EntityIdx(1));
+        assert_eq!(trace.frames.len(), 1);
+        assert_eq!(trace.frames[0].updates[0].score, 3);
     }
 
     #[test]
