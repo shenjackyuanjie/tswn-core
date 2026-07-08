@@ -34,11 +34,11 @@ git diff --name-status github/main..github/custom
 | bed2 player type | `DEFAULT_BED2_HP = 3000`; `PlayerType::Bed2`; `bed2[...]` / `@bed2` marker | `PlayerKindSpec` + `PlayerKindPolicies` + template/entity slot | 已有 bed2 registry/template fixture 覆盖 kind、policy、3000 HP 与 marker slot；仍缺完整 parser/import fixture | bed2 构造后固定 HP、技能槽、summon 模板 strict diff |
 | bed2 固定 summon 技能 | custom 将 bed2 overlay 设为 `[0,99,0,0,0,99,0,hp]` 并只保留 `sklsummon=255` | `PlayerTemplate::with_kind(...).with_skills([summon])` + policy | v2 fixture 已覆盖固定 summon skill loadout；缺内置 summon 技能迁移 | bed2 只尝试 summon，不扫描普通技能 |
 | bed2 summon template 导出 | `summon_overlay_from_player_template`; `overlay_from_built_minion` | template slot 保存 summon/minion 模板；effect handler 生成实体 | v2 fixture 已覆盖 summon template slot；缺真实 template payload 与 custom parser | bed2 summon 的 attr/skills 与 custom branch 一致 |
-| summon recast 复用技能 | `reuse_skills_on_recast: is_summon` | summon policy + effect handler | v2 spawn 保留 `SkillLoadout`；缺 recast fixture | summon recast 后技能继承/复用顺序不漂移 |
+| summon recast 复用技能 | `reuse_skills_on_recast: is_summon` | summon policy + effect handler | 已有 custom summon 复合 fixture 覆盖 spawn 后 SkillLoadout 保留；仍缺真实 recast handler | summon recast 后技能继承/复用顺序不漂移 |
 | summon 继承 owner 防御/魔防 | `inherit_owner_def_res: is_summon` | player kind policy 或 entity slot capability | v2 kind policies 已存在；缺 def/res 专项策略 | summon 出场后的防御/魔防展示与 custom 一致 |
-| summon/root-owner 伤害路由 | summon clone damage route to root owner | `OwnerResolutionPolicy::RootOwner` | 已接入并测试 root-owner damage routing | root owner 承伤、致死 hook 目标一致 |
-| summon 伤害共享 owner | child/summon damage share owner | `DamageSharePolicy::ShareToOwner` | 已接入并测试 owner 共享致死 hook | 子实体受伤同步扣 owner，owner 死亡 hook 顺序一致 |
-| owner 伤害共享 summon | owner damage share alive summons | `DamageSharePolicy::ShareToSummons` | 已接入并测试按实体顺序共享 | owner 受伤同步扣存活 summon，顺序稳定 |
+| summon/root-owner 伤害路由 | summon clone damage route to root owner | `OwnerResolutionPolicy::RootOwner` | 已接入并在 custom summon 复合 fixture 中覆盖 | root owner 承伤、致死 hook 目标一致 |
+| summon 伤害共享 owner | child/summon damage share owner | `DamageSharePolicy::ShareToOwner` | 已接入并测试 owner 共享致死 hook；复合 fixture 覆盖 summon policy 注册 | 子实体受伤同步扣 owner，owner 死亡 hook 顺序一致 |
+| owner 伤害共享 summon | owner damage share alive summons | `DamageSharePolicy::ShareToSummons` | 已接入并在 custom summon 复合 fixture 中覆盖按实体顺序共享 | owner 受伤同步扣存活 summon，顺序稳定 |
 | minion heal sharing 移除/调整 | custom minion 行为集中在 `act/minion.rs` 与 `player/test/minions.rs` | player kind policy 或 damage/share policy | v2 尚缺 minion heal 专项 fixture | minion 相关 heal 不再产生 custom 分支禁止的共享 |
 | merge 固定槽继承 | custom 保留 `slot_skill` 固定槽语义以避免 merge 错位 | `MergePolicy::FixedLane` | 已接入并测试 fixed lane 合并 | 同槽位技能覆盖，未映射技能 append |
 | merge 丢弃未映射技能 | custom 分支支持 drop unmapped 语义 | `MergePolicy::DropUnmappedSkills` | 已接入并测试 drop unmapped | 未映射来源技能不进入 caster loadout |
@@ -52,7 +52,7 @@ git diff --name-status github/main..github/custom
 ## 3. v2 fixture 切分顺序
 
 1. **bed2 registry fixture**：已注册 `custom.bed2` kind、固定 summon skill、HP marker slot；后续补真实 parser/template payload。
-2. **summon policy fixture**：覆盖 root-owner 路由、owner/summon 双向伤害共享、recast 复用技能。
+2. **summon policy fixture**：已覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留；后续补真实 recast handler。
 3. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
 4. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data；后续补 HP bar/show adapter。
 5. **runner fixture**：把 custom 分支 large / fight_multi 的关键样例缩成 v2 strict diff golden。
@@ -72,7 +72,7 @@ git diff --name-status github/main..github/custom
 ## 5. 未完成项
 
 - bed2 的 parser/import 与真实 summon template payload fixture。
-- summon recast、继承 owner 防御/魔防、minion heal 行为的专用 fixture。
+- summon 真实 recast handler、继承 owner 防御/魔防、minion heal 行为的专用 fixture。
 - HP marker HP bar renderer fixture 与 wasm show adapter。
 - custom large / fight_multi runner 归一化 golden。
 - 将审计表中的每个验收 case 接入 strict diff 或稳定单测。

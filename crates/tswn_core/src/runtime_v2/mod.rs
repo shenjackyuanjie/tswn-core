@@ -1096,6 +1096,105 @@ mod tests {
         assert_eq!(frame.updates.updates[1].score, 3);
     }
 
+    #[test]
+    fn custom_summon_fixture_combines_owner_route_share_and_skill_reuse() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let recast_skill = builder
+            .register_skill(
+                "custom",
+                "summon-recast",
+                "custom.summon_recast",
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("summon recast skill should register");
+        let owner_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon-owner",
+                "custom.summon_owner",
+                PlayerKindFlags::default(),
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToSummons,
+                    merge: MergePolicy::None,
+                },
+            )
+            .expect("summon owner kind should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                },
+            )
+            .expect("summon kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "owner", owner_kind, 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1).with_skills([recast_skill]),
+        });
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(4, "summon-recast", summon_kind, 0, 5, 1).with_skills([recast_skill]),
+        });
+        runtime.flush_effects().expect("summon spawns should emit updates");
+
+        assert_eq!(
+            runtime.entities.get(EntityIdx(2)).unwrap().template.skills.skills(),
+            &[recast_skill]
+        );
+        assert_eq!(
+            runtime.entities.get(EntityIdx(3)).unwrap().template.skills.skills(),
+            &[recast_skill]
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.owner, EntityIdx(0));
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.root_owner, EntityIdx(0));
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().runtime.owner, EntityIdx(0));
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().runtime.root_owner, EntityIdx(0));
+
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(2),
+            amount: 4,
+        });
+        let routed = runtime.flush_effects().expect("summon/root owner damage should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 6);
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 5);
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().runtime.hp, 5);
+        assert_eq!(routed.updates.updates.len(), 1);
+        assert_eq!(routed.updates.updates[0].target, 0);
+        assert_eq!(routed.updates.updates[0].score, 4);
+
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(0),
+            amount: 2,
+        });
+        let shared = runtime.flush_effects().expect("owner damage should share to summons");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 4);
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 3);
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().runtime.hp, 3);
+        assert_eq!(shared.updates.updates.len(), 3);
+        assert_eq!(shared.updates.updates[0].target, 0);
+        assert_eq!(shared.updates.updates[1].target, 2);
+        assert_eq!(shared.updates.updates[2].target, 3);
+    }
+
     fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
         let CustomEffectPayload::Text(message) = &effect.payload else {
             panic!("custom test effect expects text payload");
