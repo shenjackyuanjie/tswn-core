@@ -344,17 +344,23 @@ impl CombatRuntime {
                 QueuedEffect::Damage { caster, target, amount } => {
                     self.ensure_effect_entity("damage", "caster", caster);
                     self.ensure_effect_entity("damage", "target", target);
-                    let Some(target_entity) = self.entities.get_mut(target) else {
-                        panic!("unknown runtime_v2 damage target entity: {}", target.0);
+                    let resolved_target = self.resolve_damage_target(target);
+                    self.ensure_effect_entity("damage", "resolved target", resolved_target);
+                    let Some(target_entity) = self.entities.get_mut(resolved_target) else {
+                        panic!("unknown runtime_v2 damage target entity: {}", resolved_target.0);
                     };
                     target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
                     let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
                     if killed {
                         target_entity.runtime.alive = false;
                     }
-                    updates.add(RuntimeFrame::damage_update(caster.0 as usize, target.0 as usize, amount));
+                    updates.add(RuntimeFrame::damage_update(
+                        caster.0 as usize,
+                        resolved_target.0 as usize,
+                        amount,
+                    ));
                     if killed {
-                        self.drain_lethal_damage_hooks_into(caster, target, updates);
+                        self.drain_lethal_damage_hooks_into(caster, resolved_target, updates);
                     }
                 }
                 QueuedEffect::Heal { caster, target, amount } => {
@@ -474,6 +480,17 @@ impl CombatRuntime {
         self.drain_skill_hook_plan_into(&kill_skill_plan, updates);
         let kill_state_plan = self.scheduler.state_hook_plan(&self.entities, caster, ProcMask::KILL);
         self.drain_state_hook_plan_into(&kill_state_plan, updates);
+    }
+
+    fn resolve_damage_target(&self, target: EntityIdx) -> EntityIdx {
+        let target_entity = self
+            .entities
+            .get(target)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 damage target entity: {}", target.0));
+        match target_entity.runtime.policies.owner_resolution {
+            OwnerResolutionPolicy::SelfEntity => target,
+            OwnerResolutionPolicy::RootOwner => target_entity.runtime.root_owner,
+        }
     }
 
     fn ensure_effect_entity(&self, effect: &'static str, role: &'static str, entity: EntityIdx) {
@@ -671,6 +688,106 @@ mod tests {
         assert_eq!(frame.updates.updates[1].score, die_skill.0);
         assert_eq!(frame.updates.updates[2].message, "skill mark");
         assert_eq!(frame.updates.updates[2].score, kill_skill.0);
+    }
+
+    #[test]
+    fn flush_effects_routes_root_owner_damage_to_owner_entity() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                },
+            )
+            .expect("summon kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1),
+        });
+        runtime.flush_effects().expect("spawn should emit update");
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(2),
+            amount: 4,
+        });
+
+        let frame = runtime.flush_effects().expect("routed damage should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 6);
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 5);
+        assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[0].target, 0);
+        assert_eq!(frame.updates.updates[0].score, 4);
+    }
+
+    #[test]
+    fn flush_effects_runs_die_hook_on_resolved_root_owner() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                },
+            )
+            .expect("summon kind should register");
+        let die_state = builder
+            .register_state("custom", "die", "custom.die", ProcMask::DIE, SkillPriority(0))
+            .expect("die state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 4, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry {
+            legacy_order_key: 99,
+            extension_state_id: Some(die_state),
+            hook_mask: ProcMask::DIE,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(0),
+        });
+        runtime.set_state_handler(die_state, state_marks_update);
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1),
+        });
+        runtime.flush_effects().expect("spawn should emit update");
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(2),
+            amount: 4,
+        });
+
+        let frame = runtime.flush_effects().expect("lethal routed damage should emit hooks");
+
+        assert!(!runtime.entities.get(EntityIdx(0)).unwrap().runtime.alive);
+        assert!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].target, 0);
+        assert_eq!(frame.updates.updates[1].message, "state mark");
+        assert_eq!(frame.updates.updates[1].score, 99);
     }
 
     fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
