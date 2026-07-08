@@ -28,6 +28,25 @@ pub struct ReplayRendererId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ShowRendererId(pub u32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ExtensionVersion {
+    pub major: u16,
+    pub minor: u16,
+    pub patch: u16,
+}
+
+impl ExtensionVersion {
+    pub const fn new(major: u16, minor: u16, patch: u16) -> Self { Self { major, minor, patch } }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExtensionCapability {
+    ReadAllies,
+    ReadEnemies,
+    ReadBattleSlots,
+    MutateEntitySlots,
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SkillPriority(pub i32);
 
@@ -155,7 +174,15 @@ pub struct ShowRendererSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledExtensionSpec {
+    pub name: String,
+    pub version: ExtensionVersion,
+    pub capabilities: Vec<ExtensionCapability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionError {
+    DuplicateExtensionName { name: String },
     DuplicateName { namespace: String, name: String },
     DuplicateExportName { export_name: String },
 }
@@ -163,6 +190,9 @@ pub enum ExtensionError {
 impl Display for ExtensionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            ExtensionError::DuplicateExtensionName { name } => {
+                write!(f, "duplicate extension name: {name}")
+            }
             ExtensionError::DuplicateName { namespace, name } => {
                 write!(f, "duplicate extension name: {namespace}::{name}")
             }
@@ -175,8 +205,19 @@ impl Display for ExtensionError {
 
 impl std::error::Error for ExtensionError {}
 
+pub trait TswnExtension {
+    fn name(&self) -> &'static str;
+
+    fn version(&self) -> ExtensionVersion;
+
+    fn capabilities(&self) -> &'static [ExtensionCapability] { &[] }
+
+    fn register(&self, registry: &mut ExtensionRegistryBuilder) -> Result<(), ExtensionError>;
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExtensionRegistryBuilder {
+    installed_extensions: Vec<InstalledExtensionSpec>,
     player_kinds: Vec<PlayerKindSpec>,
     skills: Vec<SkillSpec>,
     states: Vec<StateSpec>,
@@ -195,11 +236,28 @@ pub struct ExtensionRegistryBuilder {
     effect_handler_names: HashMap<(String, String), EffectHandlerId>,
     replay_renderer_names: HashMap<(String, String), ReplayRendererId>,
     show_renderer_names: HashMap<(String, String), ShowRendererId>,
+    extension_names: HashMap<String, ()>,
     export_names: HashMap<String, ()>,
     next_registration_order: u32,
 }
 
 impl ExtensionRegistryBuilder {
+    pub fn install_extension(&mut self, extension: &impl TswnExtension) -> Result<(), ExtensionError> {
+        let name = extension.name().to_owned();
+        if self.extension_names.contains_key(&name) {
+            return Err(ExtensionError::DuplicateExtensionName { name });
+        }
+
+        extension.register(self)?;
+        self.extension_names.insert(name.clone(), ());
+        self.installed_extensions.push(InstalledExtensionSpec {
+            name,
+            version: extension.version(),
+            capabilities: extension.capabilities().to_vec(),
+        });
+        Ok(())
+    }
+
     pub fn register_player_kind(
         &mut self,
         namespace: impl Into<String>,
@@ -500,6 +558,7 @@ impl ExtensionRegistryBuilder {
 
     pub fn build(self) -> ExtensionRegistry {
         ExtensionRegistry {
+            installed_extensions: self.installed_extensions,
             player_kinds: self.player_kinds,
             skills: self.skills,
             states: self.states,
@@ -521,6 +580,7 @@ impl ExtensionRegistryBuilder {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExtensionRegistry {
+    installed_extensions: Vec<InstalledExtensionSpec>,
     player_kinds: Vec<PlayerKindSpec>,
     skills: Vec<SkillSpec>,
     states: Vec<StateSpec>,
@@ -533,6 +593,8 @@ pub struct ExtensionRegistry {
 }
 
 impl ExtensionRegistry {
+    pub fn installed_extensions(&self) -> &[InstalledExtensionSpec] { &self.installed_extensions }
+
     pub fn player_kind(&self, id: PlayerKindId) -> Option<&PlayerKindSpec> { self.player_kinds.get(id.0 as usize) }
 
     pub fn player_kinds(&self) -> &[PlayerKindSpec] { &self.player_kinds }
@@ -605,6 +667,25 @@ impl ExtensionRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct FixtureExtension;
+
+    impl TswnExtension for FixtureExtension {
+        fn name(&self) -> &'static str { "fixture" }
+
+        fn version(&self) -> ExtensionVersion { ExtensionVersion::new(1, 2, 3) }
+
+        fn capabilities(&self) -> &'static [ExtensionCapability] {
+            &[ExtensionCapability::ReadAllies, ExtensionCapability::MutateEntitySlots]
+        }
+
+        fn register(&self, registry: &mut ExtensionRegistryBuilder) -> Result<(), ExtensionError> {
+            registry.register_player_kind("fixture", "kind", "fixture.kind")?;
+            registry.register_skill("fixture", "skill", "fixture.skill", TargetPolicy::Enemy, SkillPriority(3))?;
+            registry.reserve_entity_slot("fixture", "flags", "fixture.flags")?;
+            Ok(())
+        }
+    }
 
     #[test]
     fn registry_allocates_stable_player_kind_ids_in_registration_order() {
@@ -911,6 +992,40 @@ mod tests {
             builder.register_show_renderer("custom", "hp", "custom.hp.replay", SkillPriority(0)),
             Err(ExtensionError::DuplicateExportName {
                 export_name: "custom.hp.replay".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn registry_runs_extension_registration_flow() {
+        let mut builder = ExtensionRegistryBuilder::default();
+
+        builder.install_extension(&FixtureExtension).expect("fixture extension should install");
+
+        let registry = builder.build();
+        assert_eq!(
+            registry.installed_extensions(),
+            &[InstalledExtensionSpec {
+                name: "fixture".to_owned(),
+                version: ExtensionVersion::new(1, 2, 3),
+                capabilities: vec![ExtensionCapability::ReadAllies, ExtensionCapability::MutateEntitySlots],
+            }]
+        );
+        assert_eq!(registry.player_kinds()[0].export_name, "fixture.kind");
+        assert_eq!(registry.skills()[0].priority, SkillPriority(3));
+        assert_eq!(registry.entity_slots()[0].name, "flags");
+    }
+
+    #[test]
+    fn registry_rejects_duplicate_extension_names() {
+        let mut builder = ExtensionRegistryBuilder::default();
+
+        builder.install_extension(&FixtureExtension).expect("first fixture should install");
+
+        assert_eq!(
+            builder.install_extension(&FixtureExtension),
+            Err(ExtensionError::DuplicateExtensionName {
+                name: "fixture".to_owned(),
             })
         );
     }
