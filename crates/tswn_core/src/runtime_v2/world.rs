@@ -33,10 +33,10 @@ impl WorldArena {
     }
 
     pub fn first_alive_enemy(&self, actor: EntityIdx, entities: &EntityArena) -> Option<EntityIdx> {
-        let actor_team = entities.get(actor)?.template.team;
+        let actor_team = entities.get(actor)?.runtime.team;
         entities
             .iter()
-            .find(|(_, entity)| entity.runtime.alive && entity.template.team != actor_team)
+            .find(|(_, entity)| entity.runtime.alive && entity.runtime.team != actor_team)
             .map(|(idx, _)| idx)
     }
 
@@ -51,8 +51,8 @@ impl WorldArena {
                 continue;
             }
             match alive_team {
-                None => alive_team = Some(entity.template.team),
-                Some(team) if team == entity.template.team => {}
+                None => alive_team = Some(entity.runtime.team),
+                Some(team) if team == entity.runtime.team => {}
                 Some(_) => {
                     self.winner_team = None;
                     return None;

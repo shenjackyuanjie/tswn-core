@@ -83,7 +83,7 @@ impl NormalizedOutcome {
             winner_team: outcome.winner_team,
             round: runtime.round,
             entity_ids: runtime.entities.iter().map(|(_, entity)| entity.template.id).collect(),
-            teams: runtime.entities.iter().map(|(_, entity)| entity.template.team).collect(),
+            teams: runtime.entities.iter().map(|(_, entity)| entity.runtime.team).collect(),
             hp: runtime.entities.iter().map(|(_, entity)| entity.runtime.hp).collect(),
             alive: runtime.entities.iter().map(|(_, entity)| entity.runtime.alive).collect(),
             actions: NormalizedActionBoundary::from_outcome(runtime, outcome),

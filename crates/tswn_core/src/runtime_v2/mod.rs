@@ -16,12 +16,13 @@ pub use effect::{
     CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn, EffectHandlers, EffectQueue,
     QueuedEffect, RenderedReplay, RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame, ShowRendererFn, ShowRenderers,
 };
-pub use entity::{EntityArena, EntityIdx, EntityRecord, PlayerRuntime, PlayerTemplate, StateEntry, StateStore};
+pub use entity::{EntityArena, EntityIdx, EntityRecord, MoveState, PlayerRuntime, PlayerTemplate, StateEntry, StateStore};
 pub use extension::{
     BattleSlotId, BattleSlotSpec, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec, ExtensionCapability,
-    ExtensionError, ExtensionRegistry, ExtensionRegistryBuilder, ExtensionVersion, InstalledExtensionSpec, PlayerKindId,
-    PlayerKindSpec, ProcMask, RegistrationOrder, ReplayRendererId, ReplayRendererSpec, ShowRendererId, ShowRendererSpec, SkillId,
-    SkillPriority, SkillSpec, StateId, StateSpec, TargetPolicy, TemplateSlotId, TemplateSlotSpec, TswnExtension,
+    ExtensionError, ExtensionRegistry, ExtensionRegistryBuilder, ExtensionVersion, InstalledExtensionSpec, PlayerKindFlags,
+    PlayerKindId, PlayerKindPolicies, PlayerKindSpec, ProcMask, RegistrationOrder, ReplayRendererId, ReplayRendererSpec,
+    ShowRendererId, ShowRendererSpec, SkillId, SkillPriority, SkillSpec, StateId, StateSpec, TargetPolicy, TemplateSlotId,
+    TemplateSlotSpec, TswnExtension,
 };
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
 pub use scheduler::{ActionPlan, PhaseScheduler, StateHookPlan, StateHookPlanEntry};

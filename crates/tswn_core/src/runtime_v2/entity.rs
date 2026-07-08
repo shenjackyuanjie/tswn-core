@@ -1,4 +1,4 @@
-use crate::runtime_v2::extension::{ProcMask, RegistrationOrder, SkillPriority, StateId};
+use crate::runtime_v2::extension::{PlayerKindFlags, PlayerKindId, ProcMask, RegistrationOrder, SkillPriority, StateId};
 use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -9,18 +9,26 @@ use crate::player::PlrId;
 pub struct PlayerTemplate {
     pub id: PlrId,
     pub name: String,
+    pub kind: PlayerKindId,
     pub team: usize,
     pub max_hp: i32,
     pub attack: i32,
 }
 
 impl PlayerTemplate {
+    pub const DEFAULT_KIND: PlayerKindId = PlayerKindId(u32::MAX);
+
     pub fn new(id: PlrId, name: impl Into<String>, team: usize, max_hp: i32, attack: i32) -> Self {
+        Self::with_kind(id, name, Self::DEFAULT_KIND, team, max_hp, attack)
+    }
+
+    pub fn with_kind(id: PlrId, name: impl Into<String>, kind: PlayerKindId, team: usize, max_hp: i32, attack: i32) -> Self {
         assert!(max_hp > 0, "runtime_v2 player max_hp must be positive");
         assert!(attack >= 0, "runtime_v2 player attack must be non-negative");
         Self {
             id,
             name: name.into(),
+            kind,
             team,
             max_hp,
             attack,
@@ -28,17 +36,31 @@ impl PlayerTemplate {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct MoveState {
+    pub speed_points: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerRuntime {
     pub hp: i32,
     pub alive: bool,
+    pub kind: PlayerKindId,
+    pub team: usize,
+    pub flags: PlayerKindFlags,
+    pub move_state: MoveState,
 }
 
 impl PlayerRuntime {
-    pub fn from_template(template: &PlayerTemplate) -> Self {
+    pub fn from_template(template: &PlayerTemplate, registry: &ExtensionRegistry) -> Self {
+        let flags = registry.player_kind(template.kind).map_or(PlayerKindFlags::NONE, |kind| kind.flags);
         Self {
             hp: template.max_hp,
             alive: true,
+            kind: template.kind,
+            team: template.team,
+            flags,
+            move_state: MoveState::default(),
         }
     }
 }
@@ -65,7 +87,7 @@ impl EntityArena {
         let entities = players
             .into_iter()
             .map(|template| {
-                let runtime = PlayerRuntime::from_template(&template);
+                let runtime = PlayerRuntime::from_template(&template, registry);
                 EntityRecord {
                     template,
                     runtime,
@@ -87,7 +109,7 @@ impl EntityArena {
 
     pub fn spawn_from_template(&mut self, template: PlayerTemplate, registry: &ExtensionRegistry) -> EntityIdx {
         let idx = EntityIdx(self.entities.len().try_into().expect("runtime_v2 entity index overflow"));
-        let runtime = PlayerRuntime::from_template(&template);
+        let runtime = PlayerRuntime::from_template(&template, registry);
         self.entities.push(EntityRecord {
             template,
             runtime,
@@ -199,6 +221,34 @@ mod tests {
 
         assert!(arena.get(EntityIdx(0)).unwrap().states.entries().is_empty());
         assert_eq!(arena.get(EntityIdx(0)).unwrap().states.hook_mask(), ProcMask::default());
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.kind, PlayerTemplate::DEFAULT_KIND);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.team, 0);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.flags, PlayerKindFlags::NONE);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.move_state, MoveState::default());
+    }
+
+    #[test]
+    fn entity_records_copy_registered_player_kind_flags_into_runtime() {
+        let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
+        let kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                crate::runtime_v2::PlayerKindPolicies::default(),
+            )
+            .expect("kind should register");
+        let registry = builder.build();
+
+        let arena =
+            EntityArena::from_templates_with_registry(vec![PlayerTemplate::with_kind(1, "summon", kind, 0, 10, 3)], &registry);
+
+        let runtime = &arena.get(EntityIdx(0)).unwrap().runtime;
+        assert_eq!(runtime.kind, kind);
+        assert_eq!(runtime.team, 0);
+        assert!(runtime.flags.contains(PlayerKindFlags::SUMMON));
+        assert!(runtime.flags.contains(PlayerKindFlags::MINION));
     }
 
     #[test]
