@@ -618,6 +618,60 @@ mod tests {
         );
     }
 
+    #[test]
+    fn custom_bed2_fixture_maps_kind_skill_and_marker_slots() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let summon_template = builder
+            .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
+            .expect("bed2 summon template slot should reserve");
+        let hp_marker = builder
+            .reserve_entity_slot("custom", "hp-marker", "custom.hp_marker")
+            .expect("hp marker slot should reserve");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::with_kind(1, "bed2", bed2, 0, 3000, 0).with_skills([summon])],
+            registry,
+        );
+        template
+            .slots
+            .set(summon_template, SlotValue::Text("bed2:summon-template".to_owned()))
+            .expect("bed2 summon template slot should write");
+
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime
+            .entities
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .slots
+            .set(hp_marker, SlotValue::Bool(true))
+            .expect("hp marker slot should write");
+        let entity = runtime.entities.get(EntityIdx(0)).expect("bed2 entity should exist");
+
+        assert_eq!(entity.template.max_hp, 3000);
+        assert_eq!(entity.template.skills.skills(), &[summon]);
+        assert!(entity.runtime.flags.contains(PlayerKindFlags::BED2));
+        assert_eq!(entity.runtime.policies.owner_resolution, OwnerResolutionPolicy::RootOwner);
+        assert_eq!(entity.runtime.policies.damage_share, DamageSharePolicy::ShareToOwner);
+        assert_eq!(entity.runtime.policies.merge, MergePolicy::FixedLane);
+        assert_eq!(entity.slots.get(hp_marker), Some(&SlotValue::Bool(true)));
+    }
+
     #[cfg(not(feature = "no_debug"))]
     #[test]
     fn run_minimal_round_records_trace_when_enabled() {

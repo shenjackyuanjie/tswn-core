@@ -570,6 +570,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 已在 `docs/analysis/custom_runtime_v2_migration.md` 对 `github/custom` 相对 main 做首版 diff 归类；
 - 已产出 custom 改动清单和 v2 落点；
+- 已补 bed2 registry/template fixture，覆盖 `custom.bed2` kind、固定 summon skill 与 HP marker slot；
 - 为关键行为设计 repo 内 extension fixture；
 - 标出需要 capability 例外的跨实体读取点。
 
