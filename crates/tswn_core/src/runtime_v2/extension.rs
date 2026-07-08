@@ -64,6 +64,8 @@ impl ProcMask {
     pub const POST_DAMAGE: Self = Self(1 << 3);
     pub const DIE: Self = Self(1 << 4);
     pub const KILL: Self = Self(1 << 5);
+
+    pub const fn intersects(self, rhs: Self) -> bool { (self.0 & rhs.0) != 0 }
 }
 
 impl Default for ProcMask {

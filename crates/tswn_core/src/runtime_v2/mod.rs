@@ -21,7 +21,7 @@ pub use extension::{
     SkillPriority, SkillSpec, StateId, StateSpec, TargetPolicy, TemplateSlotId, TemplateSlotSpec, TswnExtension,
 };
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
-pub use scheduler::{ActionPlan, PhaseScheduler};
+pub use scheduler::{ActionPlan, PhaseScheduler, StateHookPlan, StateHookPlanEntry};
 pub use scratch::BattleScratch;
 pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, TemplateSlotStorage};
 pub use world::WorldArena;
