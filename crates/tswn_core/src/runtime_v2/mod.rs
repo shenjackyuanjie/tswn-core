@@ -7,7 +7,11 @@ pub mod scratch;
 pub mod slot;
 pub mod world;
 
-pub use effect::{EffectQueue, QueuedEffect, RuntimeFrame};
+use crate::engine::update::RunUpdates;
+
+pub use effect::{
+    CustomEffect, CustomEffectPayload, EffectContext, EffectHandlerFn, EffectHandlers, EffectQueue, QueuedEffect, RuntimeFrame,
+};
 pub use entity::{EntityArena, EntityIdx, EntityRecord, PlayerRuntime, PlayerTemplate, StateEntry, StateStore};
 pub use extension::{
     BattleSlotId, BattleSlotSpec, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec, ExtensionCapability,
@@ -60,8 +64,10 @@ pub struct CombatRuntime {
     pub world: WorldArena,
     pub scheduler: PhaseScheduler,
     pub effects: EffectQueue,
+    pub effect_handlers: EffectHandlers,
     pub scratch: BattleScratch,
     pub slots: BattleSlotStorage,
+    pub registry: ExtensionRegistry,
     pub round: u64,
 }
 
@@ -70,16 +76,21 @@ impl CombatRuntime {
         let entities = EntityArena::from_templates_with_registry(template.players, &template.registry);
         let world = WorldArena::from_entities(&entities);
         let slots = BattleSlotStorage::from_registry(&template.registry);
+        let effect_handlers = EffectHandlers::from_registry(&template.registry);
         Self {
             entities,
             world,
             scheduler: PhaseScheduler,
             effects: EffectQueue::default(),
+            effect_handlers,
             scratch: BattleScratch::default(),
             slots,
+            registry: template.registry,
             round: 0,
         }
     }
+
+    pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) { self.effect_handlers.set(id, handler); }
 
     pub fn run_minimal_round(&mut self) -> RoundOutcome {
         if let Some(winner_team) = self.world.sync_winner(&self.entities) {
@@ -109,7 +120,7 @@ impl CombatRuntime {
     }
 
     fn flush_effects(&mut self) -> Option<RuntimeFrame> {
-        let mut frame = None;
+        let mut updates = RunUpdates::new();
         while let Some(effect) = self.effects.pop_next() {
             match effect {
                 QueuedEffect::Damage { caster, target, amount } => {
@@ -120,11 +131,24 @@ impl CombatRuntime {
                     if target_entity.runtime.hp == 0 {
                         target_entity.runtime.alive = false;
                     }
-                    frame = Some(RuntimeFrame::single_damage(caster.0 as usize, target.0 as usize, amount));
+                    updates.add(RuntimeFrame::damage_update(caster.0 as usize, target.0 as usize, amount));
+                }
+                QueuedEffect::Custom(custom) => {
+                    let Some(handler) = self.effect_handlers.get(custom.handler) else {
+                        panic!("missing runtime_v2 effect handler implementation: {}", custom.handler.0);
+                    };
+                    let mut context = EffectContext {
+                        entities: &mut self.entities,
+                        world: &mut self.world,
+                        slots: &mut self.slots,
+                        queue: &mut self.effects,
+                        updates: &mut updates,
+                    };
+                    handler(&mut context, &custom);
                 }
             }
         }
-        frame
+        updates.had_updates().then_some(RuntimeFrame { updates })
     }
 }
 
@@ -196,5 +220,94 @@ mod tests {
 
         assert_eq!(outcome.winner_team, Some(0));
         assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+    }
+
+    fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
+        let CustomEffectPayload::Text(message) = &effect.payload else {
+            panic!("custom test effect expects text payload");
+        };
+        context.updates.add(crate::engine::update::RunUpdate::new(
+            message.clone(),
+            effect.caster.0 as usize,
+            effect.target.unwrap().0 as usize,
+            0,
+        ));
+    }
+
+    fn custom_spawns_nested_damage(context: &mut EffectContext<'_>, effect: &CustomEffect) {
+        let CustomEffectPayload::Int(amount) = effect.payload else {
+            panic!("custom test effect expects int payload");
+        };
+        context.queue.push_nested(QueuedEffect::Damage {
+            caster: effect.caster,
+            target: effect.target.expect("custom test effect needs target"),
+            amount,
+        });
+    }
+
+    #[test]
+    fn flush_effects_dispatches_custom_handlers() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let marker = builder
+            .register_effect_handler("custom", "mark", "custom.mark", SkillPriority(0))
+            .expect("handler should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_effect_handler(marker, custom_marks_update);
+
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            marker,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::Text("custom mark".to_owned()),
+        )));
+
+        let frame = runtime.flush_effects().expect("custom handler should emit update");
+        assert_eq!(frame.updates.updates[0].message, "custom mark");
+    }
+
+    #[test]
+    fn flush_effects_runs_nested_custom_effect_before_older_siblings() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let nested_damage = builder
+            .register_effect_handler("custom", "nested-damage", "custom.nested_damage", SkillPriority(0))
+            .expect("handler should register");
+        let marker = builder
+            .register_effect_handler("custom", "mark", "custom.mark", SkillPriority(1))
+            .expect("handler should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_effect_handler(nested_damage, custom_spawns_nested_damage);
+        runtime.set_effect_handler(marker, custom_marks_update);
+
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            nested_damage,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::Int(4),
+        )));
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            marker,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::Text("after nested".to_owned()),
+        )));
+
+        let frame = runtime.flush_effects().expect("nested damage should emit update");
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 6);
+        assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].message, "after nested");
     }
 }
