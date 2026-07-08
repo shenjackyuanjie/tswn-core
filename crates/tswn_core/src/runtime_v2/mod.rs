@@ -9,8 +9,9 @@ pub mod world;
 pub use effect::{EffectQueue, QueuedEffect, RuntimeFrame};
 pub use entity::{EntityArena, EntityIdx, EntityRecord, PlayerRuntime, PlayerTemplate, StateEntry, StateStore};
 pub use extension::{
-    ExtensionError, ExtensionRegistry, ExtensionRegistryBuilder, PlayerKindId, PlayerKindSpec, ProcMask, RegistrationOrder,
-    SkillId, SkillPriority, SkillSpec, StateId, StateSpec, TargetPolicy,
+    BattleSlotId, BattleSlotSpec, EntitySlotId, EntitySlotSpec, ExtensionError, ExtensionRegistry, ExtensionRegistryBuilder,
+    PlayerKindId, PlayerKindSpec, ProcMask, RegistrationOrder, SkillId, SkillPriority, SkillSpec, StateId, StateSpec,
+    TargetPolicy, TemplateSlotId, TemplateSlotSpec,
 };
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
 pub use scheduler::{ActionPlan, PhaseScheduler};

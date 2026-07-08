@@ -10,6 +10,15 @@ pub struct SkillId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StateId(pub u32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TemplateSlotId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BattleSlotId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EntitySlotId(pub u32);
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SkillPriority(pub i32);
 
@@ -83,6 +92,30 @@ pub struct StateSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TemplateSlotSpec {
+    pub id: TemplateSlotId,
+    pub namespace: String,
+    pub name: String,
+    pub export_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BattleSlotSpec {
+    pub id: BattleSlotId,
+    pub namespace: String,
+    pub name: String,
+    pub export_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntitySlotSpec {
+    pub id: EntitySlotId,
+    pub namespace: String,
+    pub name: String,
+    pub export_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionError {
     DuplicateName { namespace: String, name: String },
     DuplicateExportName { export_name: String },
@@ -108,9 +141,15 @@ pub struct ExtensionRegistryBuilder {
     player_kinds: Vec<PlayerKindSpec>,
     skills: Vec<SkillSpec>,
     states: Vec<StateSpec>,
+    template_slots: Vec<TemplateSlotSpec>,
+    battle_slots: Vec<BattleSlotSpec>,
+    entity_slots: Vec<EntitySlotSpec>,
     player_kind_names: HashMap<(String, String), PlayerKindId>,
     skill_names: HashMap<(String, String), SkillId>,
     state_names: HashMap<(String, String), StateId>,
+    template_slot_names: HashMap<(String, String), TemplateSlotId>,
+    battle_slot_names: HashMap<(String, String), BattleSlotId>,
+    entity_slot_names: HashMap<(String, String), EntitySlotId>,
     export_names: HashMap<String, ()>,
     next_registration_order: u32,
 }
@@ -219,11 +258,107 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    pub fn reserve_template_slot(
+        &mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        export_name: impl Into<String>,
+    ) -> Result<TemplateSlotId, ExtensionError> {
+        let namespace = namespace.into();
+        let name = name.into();
+        let export_name = export_name.into();
+        let name_key = (namespace.clone(), name.clone());
+
+        if self.template_slot_names.contains_key(&name_key) {
+            return Err(ExtensionError::DuplicateName { namespace, name });
+        }
+        if self.export_names.contains_key(&export_name) {
+            return Err(ExtensionError::DuplicateExportName { export_name });
+        }
+
+        let id = TemplateSlotId(self.template_slots.len() as u32);
+        let spec = TemplateSlotSpec {
+            id,
+            namespace,
+            name,
+            export_name,
+        };
+        self.template_slot_names.insert(name_key, id);
+        self.export_names.insert(spec.export_name.clone(), ());
+        self.template_slots.push(spec);
+        Ok(id)
+    }
+
+    pub fn reserve_battle_slot(
+        &mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        export_name: impl Into<String>,
+    ) -> Result<BattleSlotId, ExtensionError> {
+        let namespace = namespace.into();
+        let name = name.into();
+        let export_name = export_name.into();
+        let name_key = (namespace.clone(), name.clone());
+
+        if self.battle_slot_names.contains_key(&name_key) {
+            return Err(ExtensionError::DuplicateName { namespace, name });
+        }
+        if self.export_names.contains_key(&export_name) {
+            return Err(ExtensionError::DuplicateExportName { export_name });
+        }
+
+        let id = BattleSlotId(self.battle_slots.len() as u32);
+        let spec = BattleSlotSpec {
+            id,
+            namespace,
+            name,
+            export_name,
+        };
+        self.battle_slot_names.insert(name_key, id);
+        self.export_names.insert(spec.export_name.clone(), ());
+        self.battle_slots.push(spec);
+        Ok(id)
+    }
+
+    pub fn reserve_entity_slot(
+        &mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        export_name: impl Into<String>,
+    ) -> Result<EntitySlotId, ExtensionError> {
+        let namespace = namespace.into();
+        let name = name.into();
+        let export_name = export_name.into();
+        let name_key = (namespace.clone(), name.clone());
+
+        if self.entity_slot_names.contains_key(&name_key) {
+            return Err(ExtensionError::DuplicateName { namespace, name });
+        }
+        if self.export_names.contains_key(&export_name) {
+            return Err(ExtensionError::DuplicateExportName { export_name });
+        }
+
+        let id = EntitySlotId(self.entity_slots.len() as u32);
+        let spec = EntitySlotSpec {
+            id,
+            namespace,
+            name,
+            export_name,
+        };
+        self.entity_slot_names.insert(name_key, id);
+        self.export_names.insert(spec.export_name.clone(), ());
+        self.entity_slots.push(spec);
+        Ok(id)
+    }
+
     pub fn build(self) -> ExtensionRegistry {
         ExtensionRegistry {
             player_kinds: self.player_kinds,
             skills: self.skills,
             states: self.states,
+            template_slots: self.template_slots,
+            battle_slots: self.battle_slots,
+            entity_slots: self.entity_slots,
         }
     }
 
@@ -239,6 +374,9 @@ pub struct ExtensionRegistry {
     player_kinds: Vec<PlayerKindSpec>,
     skills: Vec<SkillSpec>,
     states: Vec<StateSpec>,
+    template_slots: Vec<TemplateSlotSpec>,
+    battle_slots: Vec<BattleSlotSpec>,
+    entity_slots: Vec<EntitySlotSpec>,
 }
 
 impl ExtensionRegistry {
@@ -253,6 +391,18 @@ impl ExtensionRegistry {
     pub fn state(&self, id: StateId) -> Option<&StateSpec> { self.states.get(id.0 as usize) }
 
     pub fn states(&self) -> &[StateSpec] { &self.states }
+
+    pub fn template_slot(&self, id: TemplateSlotId) -> Option<&TemplateSlotSpec> { self.template_slots.get(id.0 as usize) }
+
+    pub fn template_slots(&self) -> &[TemplateSlotSpec] { &self.template_slots }
+
+    pub fn battle_slot(&self, id: BattleSlotId) -> Option<&BattleSlotSpec> { self.battle_slots.get(id.0 as usize) }
+
+    pub fn battle_slots(&self) -> &[BattleSlotSpec] { &self.battle_slots }
+
+    pub fn entity_slot(&self, id: EntitySlotId) -> Option<&EntitySlotSpec> { self.entity_slots.get(id.0 as usize) }
+
+    pub fn entity_slots(&self) -> &[EntitySlotSpec] { &self.entity_slots }
 
     pub fn skills_in_hook_order(&self) -> Vec<&SkillSpec> {
         let mut specs: Vec<&SkillSpec> = self.skills.iter().collect();
@@ -437,6 +587,52 @@ mod tests {
             builder.register_state("custom", "burning", "custom.fire", ProcMask::POST_ACTION, SkillPriority(0)),
             Err(ExtensionError::DuplicateExportName {
                 export_name: "custom.fire".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn registry_stores_template_battle_and_entity_slot_specs() {
+        let mut builder = ExtensionRegistryBuilder::default();
+
+        let template = builder
+            .reserve_template_slot("custom", "template-config", "custom.template_config")
+            .expect("template slot should reserve");
+        let battle = builder
+            .reserve_battle_slot("custom", "battle-cache", "custom.battle_cache")
+            .expect("battle slot should reserve");
+        let entity = builder
+            .reserve_entity_slot("custom", "entity-flags", "custom.entity_flags")
+            .expect("entity slot should reserve");
+
+        assert_eq!(template, TemplateSlotId(0));
+        assert_eq!(battle, BattleSlotId(0));
+        assert_eq!(entity, EntitySlotId(0));
+
+        let registry = builder.build();
+        assert_eq!(registry.template_slot(template).unwrap().name, "template-config");
+        assert_eq!(registry.battle_slot(battle).unwrap().export_name, "custom.battle_cache");
+        assert_eq!(registry.entity_slot(entity).unwrap().namespace, "custom");
+    }
+
+    #[test]
+    fn registry_rejects_slot_name_and_export_collisions() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        builder
+            .reserve_template_slot("custom", "config", "custom.config")
+            .expect("template slot should reserve");
+
+        assert_eq!(
+            builder.reserve_template_slot("custom", "config", "custom.config.v2"),
+            Err(ExtensionError::DuplicateName {
+                namespace: "custom".to_owned(),
+                name: "config".to_owned(),
+            })
+        );
+        assert_eq!(
+            builder.reserve_battle_slot("custom", "cache", "custom.config"),
+            Err(ExtensionError::DuplicateExportName {
+                export_name: "custom.config".to_owned(),
             })
         );
     }
