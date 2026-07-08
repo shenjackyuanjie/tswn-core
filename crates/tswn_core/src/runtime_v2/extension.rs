@@ -91,12 +91,68 @@ pub enum TargetPolicy {
     Any,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlayerKindFlags(pub u64);
+
+impl PlayerKindFlags {
+    pub const NONE: Self = Self(0);
+    pub const BOSS: Self = Self(1 << 0);
+    pub const MINION: Self = Self(1 << 1);
+    pub const SUMMON: Self = Self(1 << 2);
+    pub const BED2: Self = Self(1 << 3);
+
+    pub const fn contains(self, rhs: Self) -> bool { (self.0 & rhs.0) == rhs.0 }
+    pub const fn intersects(self, rhs: Self) -> bool { (self.0 & rhs.0) != 0 }
+}
+
+impl std::ops::BitOr for PlayerKindFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output { Self(self.0 | rhs.0) }
+}
+
+impl std::ops::BitOrAssign for PlayerKindFlags {
+    fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum OwnerResolutionPolicy {
+    #[default]
+    SelfEntity,
+    RootOwner,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum DamageSharePolicy {
+    #[default]
+    None,
+    ShareToOwner,
+    ShareToSummons,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum MergePolicy {
+    #[default]
+    None,
+    FixedLane,
+    DropUnmappedSkills,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerKindPolicies {
+    pub owner_resolution: OwnerResolutionPolicy,
+    pub damage_share: DamageSharePolicy,
+    pub merge: MergePolicy,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerKindSpec {
     pub id: PlayerKindId,
     pub namespace: String,
     pub name: String,
     pub export_name: String,
+    pub flags: PlayerKindFlags,
+    pub policies: PlayerKindPolicies,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -266,6 +322,23 @@ impl ExtensionRegistryBuilder {
         name: impl Into<String>,
         export_name: impl Into<String>,
     ) -> Result<PlayerKindId, ExtensionError> {
+        self.register_player_kind_with_policies(
+            namespace,
+            name,
+            export_name,
+            PlayerKindFlags::default(),
+            PlayerKindPolicies::default(),
+        )
+    }
+
+    pub fn register_player_kind_with_policies(
+        &mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        export_name: impl Into<String>,
+        flags: PlayerKindFlags,
+        policies: PlayerKindPolicies,
+    ) -> Result<PlayerKindId, ExtensionError> {
         let namespace = namespace.into();
         let name = name.into();
         let export_name = export_name.into();
@@ -284,6 +357,8 @@ impl ExtensionRegistryBuilder {
             namespace,
             name,
             export_name,
+            flags,
+            policies,
         };
         self.player_kind_names.insert(name_key, id);
         self.export_names.insert(spec.export_name.clone(), ());
@@ -706,7 +781,37 @@ mod tests {
         let registry = builder.build();
         assert_eq!(registry.player_kind(alpha).unwrap().name, "alpha");
         assert_eq!(registry.player_kind(beta).unwrap().export_name, "custom.beta");
+        assert_eq!(registry.player_kind(alpha).unwrap().flags, PlayerKindFlags::NONE);
+        assert_eq!(registry.player_kind(alpha).unwrap().policies, PlayerKindPolicies::default());
         assert_eq!(registry.player_kinds().len(), 2);
+    }
+
+    #[test]
+    fn registry_stores_player_kind_policy_flags_without_kind_explosion() {
+        let mut builder = ExtensionRegistryBuilder::default();
+
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2 | PlayerKindFlags::SUMMON,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                },
+            )
+            .expect("bed2 kind should register");
+
+        let registry = builder.build();
+        let spec = registry.player_kind(bed2).expect("bed2 kind should exist");
+        assert!(spec.flags.contains(PlayerKindFlags::BED2));
+        assert!(spec.flags.contains(PlayerKindFlags::SUMMON));
+        assert_eq!(spec.policies.owner_resolution, OwnerResolutionPolicy::RootOwner);
+        assert_eq!(spec.policies.damage_share, DamageSharePolicy::ShareToOwner);
+        assert_eq!(spec.policies.merge, MergePolicy::FixedLane);
+        assert_eq!(registry.player_kinds().len(), 1);
     }
 
     #[test]
