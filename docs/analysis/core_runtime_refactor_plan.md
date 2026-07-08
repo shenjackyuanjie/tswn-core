@@ -1,93 +1,131 @@
-# tswn_core 下一代核心重构计划
+# tswn_core Runtime v2 核心重构实施规格
 
-> 状态：计划文档
-> 范围：`crates/tswn_core` 的 `engine`、`player`、`skill`、`state`、扩展 API 与 custom branch 迁移
-> 目标：允许 breaking change 的激进高性能重构，同时保留二次开发迁移路径
-
----
-
-## 1. 背景与目标
-
-当前 `tswn_core` 主线已经做过多轮热路径优化，包括目标选择降分配、hook 空路径跳过、`PlayerStateStore` 存储整理、固定 30-case 性能基准建设等。这些优化有效，但仍然建立在现有架构上：
-
-- `EngineCore + Storage + WorldState` 分散维护战斗状态；
-- `Storage` 通过 `UnsafeCell` 暴露跨实体内部可变性；
-- `SkillTrait / StateTrait / SkillArgs / OnDamageFunc` 把过宽能力传入技能和状态；
-- `Player` 同时承担构造数据、身份数据、运行时状态、技能、状态、武器、overlay 等职责；
-- 内置技能与动态技能都主要走 trait object 宽接口；
-- 部分正确性仍依赖 nightly 下的 `mutable-noalias=no` 规避 LLVM 对 `&mut` noalias 的优化假设。
-
-这份计划的目标不是继续做小步局部优化，而是设计一套下一代核心：
-
-- 热路径以 dense arena、阶段调度、静态技能元数据、effect pipeline、scratch buffer 复用为主；
-- 内置技能走高性能静态路径；
-- 自定义技能、boss、玩家类型、replay 展示等二次开发能力走明确扩展层；
-- breaking change 允许发生在 Rust 内部 API 和扩展 API 上；
-- CLI 行为、JS/Dart 对齐语义、RC4 消费顺序、replay/winner/score 不应因架构重写而改变。
-
-额外约束：`github/custom` 已经存在二次开发分支，包含 bed2 玩家类型、HP marker、召唤/使魔/merge 行为、replay 显示和大量 runner 测试。新架构必须能让这类分支迁移到稳定扩展 API 上，而不是迫使二开继续 fork `engine/player/skill` 内部结构。
+> 状态：实施规格
+> 范围：`crates/tswn_core` 的 runtime、engine、player、skill、state、wasm/show、extension/custom 迁移
+> 第一优先级：消除 UB 风险，并与当前 legacy/md5.js 结果严格一致
+> 兼容策略：不保留旧 Rust/extension/CLI/wasm API 兼容，只保最终呈现结果与归一化帧级行为一致
 
 ---
 
-## 2. 现状问题
+## 1. 目标与非目标
 
-### 2.1 `Storage` 与别名边界
+这次重构不是继续在旧 `EngineCore + Storage + WorldState + Player + SkillTrait` 上做局部优化，而是建设 `CombatRuntime` v2：
 
-当前 `Storage` 用 `UnsafeCell` 持有 players、groups、alive groups、pending queues 等运行时数据。这个设计让技能和状态可以从 `Arc<Storage>` 中重新取出任意 `Player` 的可变引用，但也导致：
+- 消除旧 `Storage`/`UnsafeCell` 风格同实体和跨实体重借带来的 UB 风险；
+- 移除架构上对 `mutable-noalias=no` 的必要依赖；
+- 以当前 legacy Rust 为直接 oracle，保持与 md5.js 已对齐的行为结果；
+- 用 arena、静态内置技能路径、phase scheduler、effect pipeline、scratch buffer 复用提升默认路径性能；
+- 让 `github/custom` 作为准产品线迁移到 repo 内 experimental extension example/fixture；
+- 允许 Rust public API、extension API、CLI/wasm 输入结构、DIY/OL schema、replay schema breaking。
 
-- owner 自己持有 `&mut self` 时，技能/状态仍可通过 `storage.just_get_player_mut(owner)` 再次取得 owner；
-- `damage()` 持有 target 的 `&mut self` 时，`on_damage` 回调可以重新取 target 或 caster；
-- 正确性边界依赖运行期 discipline，而不是 Rust 类型系统；
-- 想移除 `mutable-noalias=no` 时，必须先消除这些同实体重借路径。
+非目标：
 
-`docs/analysis/storage_refactor.md` 中已经把这类风险拆成 owner-phase alias、target/caster phase alias、staged damage、阶段化 context、split components、EventQueue 等方案。下一代架构应直接吸收这些结论，不再把 `Arc<Storage>` 作为默认扩展能力传给所有回调。
-
-### 2.2 `Player` 大对象问题
-
-当前 `Player` 是战斗实体聚合根，集中持有：
-
-- 身份与显示：名字、队伍、显示名覆盖、ID；
-- 构造数据：name base、skill id/prop、overlay、weapon；
-- 运行时状态：HP/MP/move point、属性、flags；
-- 技能容器与状态容器；
-- 召唤物、boss、DIY/OL 等特殊运行时逻辑。
-
-这让代码调用直观，但对热路径不友好：
-
-- 每场或每次 prepared runner clone 时，大对象深拷贝成本高；
-- 很多路径只需要 `PlayerStatus` 或 team/alive 信息，却必须借整个 `Player`；
-- 自定义分支容易通过往 `Player` 或 `PlayerType` 加字段/枚举值扩展功能，导致核心结构持续膨胀；
-- 二次开发与核心热路径耦合过紧。
-
-### 2.3 技能和状态接口过宽
-
-当前 `SkillTrait` 负责主动行动、目标选择、概率、pre/post action、pre/post defend、post damage、die/kill、clear positive、update state 等大量阶段。`SkillArgs` 又直接携带 `PlrId + RC4 + RunUpdates + Arc<Storage>`。
-
-问题：
-
-- 内置技能每次扫描都要通过 trait object 查询 action/proc/priority/target 等元数据；
-- custom 技能和内置技能共享同一热路径成本；
-- hook 分发常需要临时收集、排序、clone key 列表；
-- `Vec<PlrId>` 返回值导致目标选择边界容易分配；
-- 扩展能力太大，二开可以直接改任意 player/storage 状态，难以保证时序和别名安全。
-
-### 2.4 世界同步与目标选择敏感
-
-`WorldState` 当前维护 round order、teams、alive、flat_alive、alive set、player team、alive_group_count 等多份派生索引。它有不少必须保留的 JS 兼容细节：
-
-- `flat_alive` 是目标选择顺序来源，不能从 teams 临时重建；
-- `round_pos` 在 remove 时有特殊 splice 语义；
-- `alive_group_count` 不是普通“当前非空队伍数”；
-- pending spawn/revival 在某些路径需要提前可见；
-- linked minion、owner death、share damage、death queue 顺序会影响 replay 和分叉点。
-
-下一代架构应让世界顺序只有一个权威来源，同时把这些敏感点固化成测试。
+- 不保留 `SkillArgs`、`OnDamageFunc`、`Arc<Storage>`、旧 `SkillTrait`/`StateTrait` 作为新 runtime 扩展能力边界；
+- 不提供 Legacy Adapter；
+- 不承诺旧 `Player` 构造 API、旧 wasm API、旧 replay JSON、旧 DIY/OL JSON 的结构兼容；
+- 不为了修正有感 legacy/md5.js 历史行为而改变帧级输出或 RNG 顺序。
 
 ---
 
-## 3. 目标架构
+## 2. 决策表
 
-新增 `CombatRuntime` 作为战斗核心，替代当前松散的 `EngineCore + Storage + WorldState` 组合。
+| 主题 | 决策 |
+| --- | --- |
+| 第一优先级 | UB 安全与结果一致都不可牺牲；性能和扩展能力排在二者之后。 |
+| 行为 oracle | 以当前 legacy Rust 为 v2 直接 oracle；当前 legacy 已与 md5.js 一致。若后续发现 legacy 与 md5.js 不一致，本计划内 legacy 优先，md5.js 差异另开专项。 |
+| 结果粒度 | 归一化 replay/update 帧级序列、winner、score、RNG 全量严格一致；原始 JSON 结构可变。 |
+| RNG | 内置路径必须与 legacy/md5.js 完全一致；extension/custom RNG 通过受控 API；内置热路径可直接调用 RC4 保性能。 |
+| 旧 bug | 只有不改变帧级展示和 RNG 时才修；有感变化不在本次重构中修。 |
+| API 兼容 | Rust public API、extension API、CLI/wasm 输入结构都可 breaking；只保最终结果和展示。 |
+| Legacy Adapter | 不做。旧技能、状态、custom 行为直接按新 API / 新 runtime 迁移。 |
+| 双栈 | legacy/v2 只用于开发对账；v2 四项门槛过后切换即删 legacy。 |
+| `mutable-noalias=no` | 最终必须移除，并证明 v2 不依赖它。 |
+| unsafe | 性能优先但必须安全；unsafe 集中在少数模块，写专门设计说明，核心测试全量 Miri。 |
+| extension 稳定性 | 先 experimental；v2 切换并验证 custom 后再考虑稳定。 |
+| custom 地位 | `github/custom` 是准产品线；main 重构必须承担关键行为迁移。 |
+| custom 审计 | 以 `github/custom` 相对 main 的 git diff 为准，逐项归类到 kind/skill/effect/replay/runner。 |
+| custom 交付 | custom 作为 repo 内 extension example/fixture 跟 main 一起测试。 |
+| extension 能力 | 支持自定义 skill、skill 行为、player type；默认局部可读，custom 需要跨实体时通过 capability 逐项放开。 |
+| custom 性能 | 第一版只做通用 extension；不建专门 custom 快路径，热点后续凭数据优化。 |
+| ID 策略 | 内置 ID 固定；extension 通过 namespace 动态分配，动态 ID 只要求单次 registry/build 内稳定；name/export_name 冲突报错。 |
+| EntityIdx | 混合复用：默认不复用，只有经 strict diff 证明无影响的实体类别白名单复用；u32 上限溢出直接 panic。 |
+| revive | 复活身份语义按 md5.js/legacy 保持。 |
+| cold data | battle 构造时复制必要冷数据，runtime 自给自足。 |
+| Player facade | 保留一个输入解析/测试辅助外壳；不是稳定 API，不参与 runtime 热路径；正式 runtime 输入是 `PreparedCombatTemplate`。 |
+| DIY/OL | schema 可重做；只要求归一化 roundtrip / 展示结果一致。 |
+| wasm/show | wasm API 可 breaking；`show.html` 迁到 v2 replay schema，以视觉可用和核心 golden 为准。 |
+| 技能槽 | 内部可变槽；导入/导出/replay 层模拟旧槽位语义。 |
+| PlayerKind | 单一 `PlayerKindId` + 可组合 policy/flags，避免 kind 爆炸。 |
+| Skill 路径 | 内置技能全部迁到静态路径；custom 走 registry/extension fallback。 |
+| Skill 迁移顺序 | 行为优先；先迁移行为敏感技能并建立 diff 基线，再做性能专门化。 |
+| 目标选择 | 内部过程、RNG 节点、外显目标必须完全复刻 legacy/md5.js。 |
+| StateStore | `SmallVec`/dense index 优先，同时保留 legacy 注册顺序作为行为键。 |
+| hook 顺序 | 新统一 priority/order 是设计目标；若与 strict diff 冲突，以归一化帧级/RNG 一致为准。 |
+| hook plan 可见性 | phase 中状态变化必须立即影响后续 hook plan。 |
+| EffectQueue | 可内部批处理，但 flush 后必须逐项模拟 legacy/md5.js 顺序；嵌套 effect 深度优先。 |
+| CustomEffect | 可改实体和提交 update，但 RNG 必须走受控 API。 |
+| Scheduler | 可定义新的清晰 phase；pending 可见性逐点复刻 legacy/md5.js。 |
+| WorldArena | 复刻 md5.js 数据结构语义，不强行统一成单一世界真相。 |
+| Context | 少数通用 ctx 类型 + method/capability 限制；内置热路径可直接改实体，extension 通过受控 API/effect。 |
+| error model | extension 边界 `Result`；内置热路径用 panic/debug assert；非法 effect 所有模式 panic；extension panic 在 runner/wasm 边界捕获。 |
+| Trace | 可选诊断能力，默认无 trace 路径零成本；trace 粒度 frame 级。 |
+| 并行 | 单场内只允许无 RNG、无 update 的纯 score/候选目标等局部纯算并行。 |
+| 依赖 | 手写优先；只有原型证明明确性能收益才引入新依赖；不默认引入 ECS。 |
+| 分支策略 | v2 长期分支隔离开发，main 漂移末期同步解决。 |
+| 版本 | 继续 0.x 发布，切换时 bump `0.x+1`。 |
+| 文档 | 用户 changelog 简洁；开发者 migration guide 详细。 |
+
+---
+
+## 3. 行为与 oracle 规格
+
+### 3.1 Strict diff 是第一阶段
+
+实施顺序必须先做 oracle/strict diff，再写 v2 runtime。v2 不能用“最终看起来差不多”作为验收依据。
+
+strict diff 比较：
+
+- 归一化 replay/update 帧级序列；
+- winner；
+- score；
+- RNG 消费序列或等价 checkpoint；
+- action/frame 边界；
+- custom golden 中 bed2/summon/merge/minion/replay 关键行为。
+
+不要求比较：
+
+- 原始 JSON 字段名和嵌套结构；
+- v2 内部 `WorldArena`、`EntityArena`、scratch buffer 的存储形态；
+- 非 trace 构建中的内部 checkpoint 数据。
+
+任何 strict diff 失败都阻塞切换，不设 allowlist。
+
+### 3.2 Oracle 权威
+
+- 当前 legacy Rust 是 v2 直接 oracle；
+- md5.js 是背景权威，因为当前 legacy 已经与 md5.js 一致；
+- 若后续发现 legacy 与 md5.js 不一致，本计划内不临时改 oracle，先按 legacy 继续，另开 md5.js 对齐专项。
+
+### 3.3 有感行为不得改变
+
+以下有感行为必须保持：
+
+- RC4/RNG 消费顺序；
+- 目标选择顺序和 score 过程；
+- replay/update 归一化帧顺序；
+- HP/MP、死亡、复活、召唤、merge、share damage 的展示结果；
+- winner、score、round/frame 结果；
+- `show.html` 可视化播放的核心帧表现。
+
+旧行为中疑似 bug 的语义，只有在不改变上述结果和 RNG 时才允许修。
+
+---
+
+## 4. Runtime v2 架构
+
+### 4.1 核心结构
+
+新增 `CombatRuntime` 作为 v2 战斗核心：
 
 ```rust,ignore
 pub struct CombatRuntime {
@@ -102,131 +140,43 @@ pub struct CombatRuntime {
 }
 ```
 
-### 3.1 `EntityArena`
+正式 runtime 输入收束为：
 
-`EntityArena` 是所有实体运行时数据的权威存储：
+```rust,ignore
+pub struct PreparedCombatTemplate {
+    players: Vec<PlayerTemplate>,
+    registry: ExtensionRegistry,
+    // battle-level init data
+}
+```
+
+`Player` 只作为输入解析和测试辅助 facade，不是稳定 API，也不进入热路径。
+
+### 4.2 EntityArena
 
 ```rust,ignore
 pub struct EntityArena {
     runtime: Vec<PlayerRuntime>,
     skills: Vec<SkillLoadout>,
     states: Vec<StateStore>,
-    identity: Vec<PlayerIdentityRef>,
+    identity: Vec<PlayerIdentity>,
     extension_slots: Vec<EntityExtensionSlots>,
     id_to_idx: FastHashMap<PlrId, EntityIdx>,
 }
+
+pub struct EntityIdx(u32);
 ```
 
-设计选择：
+规则：
 
-- `PlrId` 保留为外部稳定 ID，用于 replay、updates、CLI、JS 对齐；
-- `EntityIdx(u32)` 是单场战斗内部 dense index，用于热路径；
-- 单场内实体 slot 不复用，避免 spawn/remove/revive 改变 replay 语义；
-- 冷数据和热数据拆分，减少 run-to-completion 的 cache 压力。
+- `EntityIdx` 默认单场不复用；
+- 只有 strict diff 证明无影响的实体类别可进入复用白名单；
+- `EntityIdx(u32)` 溢出视为不可恢复 bug，直接 panic；
+- revive 身份语义按 md5.js/legacy；
+- remove 后是否保留 tombstone 由 strict diff 和 replay 需求决定；
+- battle 构造时复制必要 identity/display/export 冷数据，runtime 自给自足。
 
-### 3.2 `WorldArena`
-
-`WorldArena` 统一维护战场顺序和队伍视图：
-
-```rust,ignore
-pub struct WorldArena {
-    round_order: Vec<EntityIdx>,
-    round_pos: usize,
-    teams: Vec<TeamRuntime>,
-    flat_alive: Vec<EntityIdx>,
-    alive_set: GenerationMarkSet,
-    player_team: Vec<TeamId>,
-    alive_group_count_js: usize,
-    pending: PendingQueues,
-}
-```
-
-设计选择：
-
-- `round_order` 和 `flat_alive` 是顺序真相；
-- `teams.alive` 只作为 view/cache，不反向决定 target order；
-- pending spawn/revival/remove/death 通过 `RuntimeSyncDelta` 应用；
-- `alive_group_count_js` 命名上明确这是 JS 兼容计数，而非普通派生值。
-
-### 3.3 `PhaseScheduler`
-
-`PhaseScheduler` 负责阶段化执行：
-
-```text
-tick
-  -> sync pending runtime entities
-  -> select next actor
-  -> pre action hooks
-  -> choose action
-  -> target selection
-  -> action/effects
-  -> damage/defend/death phases
-  -> run_update_end
-  -> sync pending runtime entities
-  -> winner check
-  -> post action hooks
-```
-
-调度器的目标是：
-
-- 所有 hook 都有明确 phase；
-- phase 内只暴露最小能力 context；
-- 跨实体副作用不直接借全局 mutable storage，而是进入 effect queue；
-- 内置 hook plan 可缓存，动态扩展 hook 只在实际注册后进入 fallback。
-
-### 3.4 `EffectQueue`
-
-所有跨实体副作用都表达成 effect：
-
-```rust,ignore
-pub enum Effect {
-    Damage(DamageEffect),
-    Heal(HealEffect),
-    AddState(AddStateEffect),
-    ClearState(ClearStateEffect),
-    Spawn(SpawnEffect),
-    Revive(ReviveEffect),
-    Remove(RemoveEffect),
-    Replay(ReplayEffect),
-    Custom(CustomEffect),
-}
-```
-
-设计选择：
-
-- effect 不是异步乱序队列；默认在当前 phase 的指定 flush 点按原语义立即处理；
-- 伤害链用 effect pipeline 替换旧 `OnDamageFunc`；
-- summon share damage、boss infection、absorb heal、poison tick 等都应迁移成 effect；
-- custom effect 通过 extension registry 声明 handler。
-
-### 3.5 `BattleScratch`
-
-热路径临时数据统一复用：
-
-```rust,ignore
-pub struct BattleScratch {
-    targets: TargetBuf,
-    scores: ScoreBuf,
-    hooks: HookBuf,
-    effects: SmallVec<[Effect; 8]>,
-    clear_states: SmallVec<[StateKindId; 4]>,
-}
-```
-
-目标：
-
-- 目标选择常见 1v1/2v2 不分配；
-- post_defend/post_damage 不反复构造 heap Vec；
-- score buffer、skip indices、pending view 等可复用；
-- no-capture benchmark 路径不构造显示字符串。
-
----
-
-## 4. 核心数据模型
-
-### 4.1 Player 拆分
-
-`Player` 不再作为战斗热路径聚合根，而是拆成：
+### 4.3 Player 拆分
 
 ```rust,ignore
 pub struct PlayerTemplate {
@@ -243,46 +193,119 @@ pub struct PlayerRuntime {
     kind: PlayerKindId,
     team: TeamId,
 }
-
-pub struct PlayerIdentity {
-    raw_name: String,
-    display_name: Option<String>,
-    clan_name: Option<String>,
-    id_name_override: Option<String>,
-}
 ```
 
-默认取舍：
+要求：
 
-- `name_base` 改为 `[u8; 128]`；
-- 固定 40 技能槽改为紧凑数组或 boxed slice；
-- identity/display/export/DIY 走冷路径；
-- `Player` 旧构造 API 可作为 facade 存在，但不再是 runtime 内部核心类型。
+- 输入长度沿用现有限制；构造出来的 name/display 不应超限；
+- 不新增超长 fallback；
+- 技能槽内部可变长度，但导入/导出/replay 层模拟旧 slot/merge 语义；
+- DIY/OL schema 可重做，只要求归一化 roundtrip / 展示结果一致。
 
-### 4.2 Player Kind 扩展
+### 4.4 PlayerKind
 
-替换不可扩展的 enum 风格：
+`PlayerKindId` 保持单一 kind，差异能力通过 policy/flags 组合：
 
 ```rust,ignore
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-pub struct PlayerKindId(u16);
-
 pub struct PlayerKindSpec {
     pub id: PlayerKindId,
     pub name: &'static str,
-    pub build_hooks: PlayerBuildHooks,
-    pub phase_hooks: PlayerKindPhaseHooks,
+    pub policies: PlayerKindPolicies,
+    pub hooks: PlayerKindHooks,
     pub replay: PlayerReplaySpec,
 }
 ```
 
-用途：
+Boss、Minion、Bed2 等不要通过 kind 爆炸表达。需要组合语义时使用 kind + policy/flags。
 
-- 内置 Normal/Boss/Minion/Shadow/Zombie 等用固定 kind；
-- custom branch 的 bed2 player type 通过 `PlayerKindSpec` 注册；
-- 不再要求二开修改核心 `PlayerType` enum。
+### 4.5 WorldArena
 
-### 4.3 Skill 元数据
+`WorldArena` 不强行做单一真相模型，而是复刻 md5.js/legacy 的多份派生结构语义：
+
+```rust,ignore
+pub struct WorldArena {
+    round_order: Vec<EntityIdx>,
+    round_pos: usize,
+    teams: Vec<TeamRuntime>,
+    flat_alive: Vec<EntityIdx>,
+    alive_set: GenerationMarkSet,
+    player_team: Vec<TeamId>,
+    alive_group_count_js: usize,
+    pending: PendingQueues,
+}
+```
+
+要求：
+
+- pending spawn/revival/remove/death 的可见性逐点复刻 legacy/md5.js；
+- `flat_alive`、`round_order`、`teams.alive` 的同步顺序由 strict diff 固化；
+- `round_pos` remove/splice、`alive_group_count_js` 等历史语义不做有感清理。
+
+### 4.6 PhaseScheduler
+
+允许设计新的清晰 phase，但 phase 输出必须 strict diff 通过。
+
+原则：
+
+- phase boundary 是实现模型，不是可改变行为的理由；
+- forced pre_action、assassinate 空 target、protect pending target、post_action 混排等行为必须通过归一化帧和 RNG 对账；
+- 状态/技能变化对当前 phase 后续 hook plan 立即可见；
+- hook priority/order 可统一建模，但只要 diff 不过，就必须调整到等价 legacy 行为。
+
+### 4.7 EffectQueue
+
+`EffectQueue` 是同步 effect pipeline，不是异步乱序队列。
+
+```rust,ignore
+pub enum Effect {
+    Damage(DamageEffect),
+    Heal(HealEffect),
+    AddState(AddStateEffect),
+    ClearState(ClearStateEffect),
+    Spawn(SpawnEffect),
+    Revive(ReviveEffect),
+    Remove(RemoveEffect),
+    Replay(ReplayEffect),
+    Custom(CustomEffect),
+}
+```
+
+规则：
+
+- 内部可批处理；
+- flush 后必须逐项模拟 legacy/md5.js 顺序；
+- effect handler 产生新 effect 时深度优先；
+- 非法 effect、非法目标、非法 slot 视为不可恢复 bug，所有模式 panic；
+- `CustomEffect` 可改实体和提交 update，但 RNG 必须走受控 API。
+
+### 4.8 Context 与实体修改
+
+Context 不做每个 phase 一个大类型爆炸，采用少数通用 ctx + method/capability 限制。
+
+规则：
+
+- 内置热路径可直接修改当前安全范围内实体；
+- extension 默认只能局部读取 phase 相关实体和目标；
+- custom 准产品能力需要跨实体信息时，通过 capability 逐项放开；
+- extension 跨实体修改通过 effect 或受控 API；
+- 旧 `Arc<Storage>`、`&mut Player` 跨实体能力不得重新暴露。
+
+### 4.9 Trace
+
+`RuntimeTrace` 是可选诊断能力。
+
+- 默认无 trace 路径必须零成本或近似零成本；
+- trace 粒度为 frame 级；
+- trace 可记录 action/frame、RNG checkpoint、update、winner、score；
+- phase/effect 深度 trace 不作为默认要求，可按调试需要追加。
+
+---
+
+## 5. Skill / State / Extension
+
+### 5.1 内置 Skill 静态路径
+
+内置技能全部迁到静态路径；custom 技能走 registry/extension fallback。
 
 ```rust,ignore
 pub struct SkillMeta {
@@ -292,23 +315,22 @@ pub struct SkillMeta {
     pub proc_mask: ProcMask,
     pub target_policy: TargetPolicy,
     pub priority: SkillPriority,
-    pub ops: SkillOps,
 }
 
-pub enum SkillRuntime {
-    Builtin(BuiltinSkillRuntime),
-    Custom(CustomSkillBox),
+pub enum BuiltinSkillRuntime {
+    // enum/match or equivalent static dispatch
 }
 ```
 
-目标：
+迁移顺序：
 
-- 内置技能扫描时先看 `SkillMeta`，避免通过 trait object 问 `has_action_impl/proc_kinds/priority`；
-- 统一生成 factory、名字解析、export 名、DIY active/passive 列表；
-- custom 技能仍可注册，但走 fallback；
-- 内置高频技能可逐步迁移到 `SkillKind + runtime payload` 静态分发。
+1. 行为敏感技能优先；
+2. 每组迁移后补 strict diff/golden；
+3. 行为基线稳定后再做性能专门化。
 
-### 4.4 State Store
+目标选择的内部 score、RNG 节点、目标顺序必须完全复刻 legacy/md5.js。
+
+### 5.2 StateStore
 
 ```rust,ignore
 pub struct StateStore {
@@ -320,289 +342,339 @@ pub struct StateStore {
 }
 ```
 
-目标：
+要求：
 
-- 常见状态数量小，优先 small storage；
-- hook plan 按 generation 懒重建；
-- 同优先级仍按 JS 注册 order；
-- clear list 返回 `SmallVec`，避免 0-2 个清理项也分配。
+- `SmallVec`/dense index 优先；
+- 保留 legacy 注册顺序作为行为键；
+- phase 中状态变化立即影响后续 hook plan；
+- clear、post_action、post_defend、post_damage 等顺序由 strict diff 固化。
 
----
+### 5.3 Extension Registry
 
-## 5. 扩展与二次开发 API
-
-### 5.1 新增 `extension` 模块
-
-公开稳定扩展入口：
+extension API 先标 experimental：
 
 ```rust,ignore
 pub trait TswnExtension {
     fn name(&self) -> &'static str;
     fn version(&self) -> ExtensionVersion;
-    fn register(&self, registry: &mut ExtensionRegistryBuilder);
-}
-
-pub struct ExtensionRegistryBuilder {
-    pub fn register_player_kind(&mut self, spec: PlayerKindSpec);
-    pub fn register_skill(&mut self, meta: SkillMeta, factory: CustomSkillFactory);
-    pub fn register_state(&mut self, spec: StateSpec);
-    pub fn register_effect_handler(&mut self, kind: EffectKind, handler: EffectHandler);
-    pub fn register_replay_renderer(&mut self, renderer: ReplayRendererHook);
+    fn register(&self, registry: &mut ExtensionRegistryBuilder) -> Result<(), ExtensionError>;
 }
 ```
+
+能力：
+
+- register player kind；
+- register skill / skill behavior；
+- register state；
+- register effect handler；
+- register replay/show renderer；
+- reserve typed slots；
+- declare capability for broader custom reads.
+
+规则：
+
+- 内置 ID 固定；
+- extension 用 namespace 动态分配 ID；
+- 动态 ID 只需单次 registry/build 内稳定；
+- name/export_name 冲突直接报错；
+- 多 extension/hook/policy 使用 priority，同 priority 按注册顺序；
+- handler 链式执行。
+
+### 5.4 Typed Slots
+
+支持三类 slot：
+
+- template slot；
+- battle slot；
+- entity slot。
+
+phase 临时数据走 `BattleScratch`，不做 phase slot。
+
+slot 初始化失败只发生在构造/注册边界，返回 `Result`。prepared runner / batch clone 的 slot clone/reset 策略不预先固定：先实现显式 hook 与 `T: Clone` 两种原型，用 microbench/runner clone 数据选择更快方案。
+
+---
+
+## 6. Custom 准产品线迁移
+
+### 6.1 审计方法
+
+以 `github/custom` 相对 main 的 git diff 为准，逐项归类：
+
+- player kind / player policy；
+- skill / skill behavior；
+- effect / damage / summon / merge policy；
+- replay/show/HP marker；
+- runner / large / fight_multi fixture。
+
+审计产物必须列出：
+
+- 原 custom 改动点；
+- v2 extension 落点；
+- strict diff 或 golden 验收 case；
+- 是否需要 capability 例外；
+- 是否需要后续性能优化。
+
+### 6.2 迁移落点
+
+| custom 主题 | v2 落点 |
+| --- | --- |
+| bed2 player type | `PlayerKindSpec` + policy/flags |
+| bed2 HP marker | replay/show renderer + template/entity slot |
+| bed2 summon flow / recast | summon policy + effect handler |
+| summon clone damage route to root owner | owner resolution / damage policy |
+| summon damage/share behavior | damage share policy + damage effect hook |
+| merge lane mapping | merge policy / skill lane policy |
+| drop unmapped skills on merge | merge policy |
+| remove minion heal sharing | player kind policy or damage share policy |
+| wasm replay HP report | v2 replay schema + show renderer |
+| custom runner tests | repo 内 extension fixture + strict diff |
+
+custom 第一版只通过通用 extension 实现，不建专门快路径。性能热点后续用 perf 数据决定是否专门化。
+
+---
+
+## 7. Wasm / Replay / DIY / OL
+
+### 7.1 Replay schema
+
+v2 replay 数据结构可重做，`show.html` 同步迁移到 v2 schema。
+
+验收比较归一化帧序列，不比较旧 JSON 原始结构。归一化帧应覆盖：
+
+- actor/action；
+- visible HP/MP/status changes；
+- damage/heal/state add/clear；
+- death/revive/spawn/remove；
+- summon/merge/custom display；
+- winner/score/final frame。
+
+### 7.2 show.html
+
+`show.html` 以视觉可用为准：
+
+- 可以迁移 wasm API；
+- 可以迁移 replay schema；
+- 需要少量核心 replay case 的 golden 视觉/DOM 测试；
+- golden 覆盖加载、播放、关键帧展示，不要求大规模截图矩阵。
+
+### 7.3 DIY / OL
+
+DIY/OL schema 可随 v2 重做。
 
 要求：
 
-- 扩展不能直接持有或访问 `Arc<Storage>`；
-- 扩展不能要求 `&mut Player` 贯穿跨实体调用；
-- 扩展通过 context 读取世界状态，通过 effect 修改跨实体状态；
-- 无扩展时默认 main 热路径只检查 bitmask，不进入 dyn dispatch；
-- extension crate 只能依赖公开扩展模块和 facade，不依赖 `engine` 内部实现细节。
+- 归一化 roundtrip 结果一致；
+- 旧 slot/merge 语义在导入/导出/replay 层模拟；
+- 需要 developer migration guide 说明新入口和旧结构破坏面。
 
-### 5.2 阶段化 Context
+---
 
-替换旧 `SkillArgs` / `OnDamageFunc`：
+## 8. Safety / Unsafe / 依赖 / 性能
 
-```rust,ignore
-pub struct ActionCtx<'a> {
-    pub actor: EntityIdx,
-    pub rng: &'a mut RC4,
-    pub updates: &'a mut RunUpdates,
-    pub world: WorldView<'a>,
-    pub targets: TargetView<'a>,
-    pub effects: &'a mut EffectQueue,
-    pub scratch: &'a mut BattleScratch,
-    pub ext: ExtensionView<'a>,
-}
+### 8.1 UB 与 unsafe
 
-pub struct DamageCtx<'a> {
-    pub caster: EntityIdx,
-    pub target: EntityIdx,
-    pub rng: &'a mut RC4,
-    pub updates: &'a mut RunUpdates,
-    pub world: WorldView<'a>,
-    pub effects: &'a mut EffectQueue,
-    pub ext: ExtensionView<'a>,
-}
+新 runtime 必须从设计上消除旧 `Storage` 风格任意重借。短期桥接只允许在以下条件同时满足时存在：
+
+- 明确游戏需求或性能需求；
+- 封装边界小；
+- 有 unsafe 设计说明；
+- 核心 Miri 覆盖；
+- strict diff 通过。
+
+unsafe 策略：
+
+- 可以为性能使用；
+- 必须集中到少数模块；
+- 每个 unsafe 模块写设计说明；
+- 最终核心 tests 全量 Miri；
+- 切换时移除 `mutable-noalias=no` 的架构必要性。
+
+### 8.2 依赖
+
+默认手写 `Vec` / `SmallVec` / `foldhash` 等直接结构。
+
+新依赖引入流程：
+
+1. 做小型原型或 microbench；
+2. 证明有明确性能收益；
+3. 确认不增加 strict diff 风险；
+4. 再引入。
+
+不默认引入 ECS 或完整调度框架。
+
+### 8.3 并行
+
+单场内只允许无 RNG、无 update 的纯计算局部并行，例如候选目标评分预计算。并行结果必须先收集，再按 legacy/md5.js 顺序消费。
+
+第一版可以只预留接口，不强制启用单场内并行。
+
+### 8.4 性能门槛
+
+切换硬门槛是“不退步”，不是必须达到百分比提升。
+
+必须覆盖：
+
+- fixed cases；
+- stress_multi；
+- no_debug release；
+- no-capture fight path；
+- prepared runner / batch clone；
+- custom extension fixture。
+
+20%/15% 等提升目标可作为阶段优化目标，但不是 v2 切换阻塞项。
+
+---
+
+## 9. 实施阶段
+
+### 提交粒度与提交信息
+
+实施过程中必须按“完成一块可审查内容就提交一次”的方式推进，避免把多个独立阶段或多个子系统混在同一个 commit。
+
+提交信息采用约定式提交，格式：
+
+```text
+feat(runtime): 中文一句话描述
+
+- 具体修改点 1
+- 具体修改点 2
+- 验证方式或对账结果
+
+Co-authored-by: Codex <codex@openai.com>
 ```
 
-能力分层：
+规则：
 
-- `WorldView`：只读 alive、team、pending、round order；
-- `EntityMut`：只修改当前 phase 安全开放的 owner/target 字段；
-- `EffectQueue`：提交跨实体副作用；
-- `ExtensionView`：访问扩展自己的 typed slot。
+- 新能力使用 `feat(模块): 中文描述`；
+- 修复行为、diff、测试或文档问题使用 `fix(模块): 中文描述`；
+- 纯文档调整使用 `docs(模块): 中文描述`；
+- 纯测试补充使用 `test(模块): 中文描述`；
+- commit body 必须写清具体修改内容、涉及门禁、验证命令或未验证原因；
+- 每个 commit 只覆盖一个清晰模块或一块行为闭环，例如 oracle、custom 审计、runtime 骨架、world/scheduler、skill/static path、effect pipeline、wasm/show 迁移。
 
-### 5.3 Extension Typed Slots
+### 阶段 A：Oracle 与 strict diff
 
-扩展不能直接往核心 struct 加字段，而应保留 typed slot：
+- 建立 legacy/v2 对账框架；
+- 定义归一化 replay/update 帧；
+- 记录 winner、score、RNG、action/frame；
+- 接入 fixed golden、track_case_miner 大样本、custom golden；
+- 明确任何 diff 失败阻塞切换。
 
-```rust,ignore
-pub struct ExtensionSlot<T> {
-    id: ExtensionSlotId,
-    _marker: PhantomData<T>,
-}
+完成标准：
 
-impl ExtensionRegistryBuilder {
-    pub fn reserve_entity_slot<T: 'static>(&mut self, name: &'static str) -> ExtensionSlot<T>;
-    pub fn reserve_battle_slot<T: 'static>(&mut self, name: &'static str) -> BattleSlot<T>;
-}
-```
+- legacy 自身可生成归一化帧；
+- fixed/custom golden 可稳定复跑；
+- diff 输出能定位到 frame/action/RNG 节点。
 
-用途：
+### 阶段 B：custom diff 审计
 
-- custom player kind runtime state；
-- summon/merge/minion policy 数据；
-- replay 展示配置；
-- bed2 HP marker；
-- 扩展私有 flags 和临时状态。
+- 对 `github/custom` 相对 main 做 diff 归类；
+- 产出 custom 改动清单和 v2 落点；
+- 为关键行为设计 repo 内 extension fixture；
+- 标出需要 capability 例外的跨实体读取点。
 
-### 5.4 Custom Branch 迁移映射
+完成标准：
 
-`github/custom` 当前主题应迁移为：
+- bed2、summon、merge、minion、HP marker、wasm replay 行为都有验收 case；
+- 每项 custom 关键行为都有 v2 extension 落点。
 
-| custom branch 改动 | 新架构落点 |
-| --- | --- |
-| `feat: add bed2 player type` | `register_player_kind(PlayerKindSpec)` |
-| configurable bed2 HP marker | `ReplayRendererHook + PlayerReplaySpec` |
-| bed2 summon flow / recast | `SummonPolicy + EffectHandler` |
-| bed2 summon damage handling | `DamageSharePolicy + DamageEffectHook` |
-| route summon clone damage to root owner | `OwnerResolutionPolicy` |
-| map merge skills to minion lanes | `MergePolicy / SkillLanePolicy` |
-| drop unmapped skills on summon merge | `MergePolicy` |
-| remove minion heal sharing | `DamageSharePolicy` 或 player kind policy |
-| wasm replay HP report | `ReplayRendererHook` |
-| custom runner tests | extension fixture tests |
+### 阶段 C：Runtime v2 骨架
 
-迁移目标不是把 custom 分支硬合进 main，而是让 custom 以扩展包形式表达这些规则。
+- 新增 `CombatRuntime`、`PreparedCombatTemplate`、`EntityArena`、`WorldArena`、`PhaseScheduler`、`EffectQueue`、`BattleScratch`；
+- 保留 `Player` 输入/测试 facade，但 battle start 前转换成 template；
+- 实现最小 1v1，并接入 strict diff。
+
+完成标准：
+
+- 最小 case winner/score/frame/RNG 通过；
+- v2 路径不暴露 `Arc<Storage>` 或旧 `SkillArgs` 能力。
+
+### 阶段 D：World/Scheduler 行为复刻
+
+- 复刻 legacy/md5.js 的 world 派生结构和 pending 可见性；
+- 建立新的 phase，但保持归一化帧和 RNG strict diff；
+- 固化 target selection、round_pos、alive_group_count、pending spawn/revival/remove/death 行为。
+
+完成标准：
+
+- track_case_miner 小样本 strict diff 通过；
+- 目标选择和 pending 行为 golden 覆盖。
+
+### 阶段 E：Player/Kind/Extension
+
+- 拆 `PlayerTemplate` / `PlayerRuntime` / identity cold data；
+- 建立 experimental `ExtensionRegistry`；
+- 实现 namespace ID、priority hook、链式 handler、typed slots；
+- 实现 custom repo 内 example/fixture 的基础能力。
+
+完成标准：
+
+- custom 审计关键能力能表达；
+- extension panic 在 runner/wasm 边界捕获；
+- 注册/构造错误走 `Result`。
+
+### 阶段 F：Skill/State 静态化
+
+- 内置技能全部迁静态路径；
+- custom skill 走 registry fallback；
+- `StateStore` 改 `SmallVec`/dense index + legacy order key；
+- hook plan 变化当前 phase 立即可见。
+
+完成标准：
+
+- 行为敏感技能 strict diff 通过；
+- 内置路径不依赖宽 trait object 查询；
+- 目标选择内部 RNG/score 顺序完全复刻。
+
+### 阶段 G：Effect pipeline 与伤害链
+
+- 用 effect pipeline 替换 `OnDamageFunc`；
+- damage/heal/state/spawn/revive/remove/replay/custom effect 接入；
+- effect batch 后逐项复刻 legacy flush；
+- 嵌套 effect 深度优先；
+- 清掉新 runtime 中 `just_get_player_mut` 风格重借。
+
+完成标准：
+
+- damage/death/revive/share/summon/merge strict diff 通过；
+- 非法 effect 所有模式 panic；
+- Miri 覆盖核心 unsafe/alias 路径。
+
+### 阶段 H：wasm/show/DIY/OL 迁移
+
+- `show.html` 迁到 v2 replay schema；
+- wasm API 可 breaking；
+- DIY/OL schema 重做；
+- 增加核心 show golden。
+
+完成标准：
+
+- 核心 replay case 可加载、播放、关键帧展示一致；
+- DIY/OL 归一化 roundtrip 一致；
+- migration guide 记录新入口和破坏面。
+
+### 阶段 I：切换与删除 legacy
+
+切换 PR 必须同时完成：
+
+- v2 成为正式路径；
+- 删除 legacy runtime；
+- 删除 Legacy Adapter 计划残留；
+- 移除 `mutable-noalias=no` 的架构必要性；
+- 更新 changelog 和 developer migration guide。
+
+切换硬门槛：
+
+- 核心 tests 全量 Miri；
+- strict diff 大样本 + fixed/custom golden 全过；
+- `show.html` 核心 golden 全过；
+- fixed/stress/no_debug performance 不退步。
 
 ---
 
-## 6. 兼容桥
+## 10. 验证命令与门禁
 
-### 6.1 Legacy Adapter
-
-为迁移保留一个短期 adapter：
-
-```rust,ignore
-pub trait LegacySkillAdapter {
-    fn legacy_act(&mut self, ctx: LegacyActionCompatCtx);
-    fn legacy_post_damage(&mut self, ctx: LegacyDamageCompatCtx);
-}
-```
-
-约束：
-
-- adapter 只存在一个迁移周期；
-- adapter 不重新暴露 `Arc<Storage>`；
-- adapter 用新 context 模拟旧 `SkillArgs` 常见能力；
-- adapter 默认不进入内置技能热路径；
-- adapter 的目的是让 custom 分支先编译、再逐个迁移成原生 extension API。
-
-### 6.2 旧接口迁移表
-
-| 旧接口 | 新接口 |
-| --- | --- |
-| `register_skill_factory(id, factory)` | `register_skill(meta, factory)` |
-| `SkillTrait::act(Vec<PlrId>, ..., SkillArgs)` | `SkillOps::act(TargetBuf, ActionCtx)` |
-| `StateTrait::post_damage(..., SkillArgs)` | `StateSpec + PhaseHook::PostDamage` |
-| `OnDamageFunc` | `DamageEffectHook` |
-| `BossHandler` | `PlayerKindSpec + PhaseHook + EffectHandler` |
-| `HookPipeline` | `ExtensionRegistry` engine phase hook |
-| `PlayerType` enum 扩展 | `PlayerKindId` registry |
-| replay 特殊显示 | `ReplayRendererHook` |
-| summon/merge 特化 | `SummonPolicy / MergePolicy` |
-
----
-
-## 7. 实施阶段
-
-### 阶段 A：扩展契约先行
-
-先定义未来稳定扩展 API，不急着重写热路径：
-
-- 新增 `extension` 模块和 `ExtensionRegistryBuilder`；
-- 给现有 `register_skill_factory / register_boss_handler / HookPipeline` 标记 legacy；
-- 新增 `docs/extension_migration.md`，以 bed2/custom branch 作为迁移样例；
-- 定义 `PlayerKindId / SkillId / StateKindId / EffectKind` 的编号策略；
-- 明确 extension crate 不能依赖 `engine` 内部模块。
-
-完成标准：
-
-- main 编译通过；
-- custom branch 现有改动点都能在迁移文档里找到新落点；
-- 不要求本阶段有性能收益。
-
-### 阶段 B：Runtime v2 骨架
-
-- 新增 `runtime_v2`；
-- 实现 `CombatRuntime / EntityArena / WorldArena / EffectQueue / BattleScratch`；
-- legacy runtime 保留，可并行 diff；
-- `PreparedCombatTemplate` 从旧 prepared template 派生；
-- `RuntimeTrace` 记录 actor、phase、effect、RC4 checkpoint、update frame。
-
-完成标准：
-
-- v2 可跑最小 `1v1 a vs b`；
-- winner、round count、updates frame 数与 legacy 一致；
-- 测试可同输入跑 legacy/v2 diff。
-
-### 阶段 C：World / Scheduler 替换
-
-- `sync_runtime_entities` 改为 `PendingQueues -> RuntimeSyncDelta -> WorldArena.apply_delta()`；
-- 固定同步顺序：revival → roster revived scan → spawn → death_queue → pending_remove → fallback；
-- `flat_alive` 成为目标选择唯一源；
-- `TargetView + BattleScratch` 替代热路径临时 `Vec`；
-- pending spawn 提前可见逻辑固化为 `WorldArena` API。
-
-完成标准：
-
-- engine runner tests 与 `engine_core` 等价用例通过；
-- custom branch 中新增 runner case 可迁移为共享 fixture；
-- `ActionTargets` 顺序 golden 覆盖 charm、pending spawn、pending revival、EnemyAlive skip。
-
-### 阶段 D：Player Runtime 拆分
-
-- 拆 `PlayerTemplate / PlayerRuntime / PlayerIdentity`；
-- `PlayerKindSpec` 接管 boss/bed2/custom type 差异；
-- summon/minion/clone/revive 改为 template/runtime 双层构造；
-- `PlayerOverlay` 解析输出到 `PlayerTemplate` 和 extension slots；
-- `to_diy / to_ol_json / replay display` 通过 cold facade 实现。
-
-完成标准：
-
-- DIY/OL roundtrip 不退步；
-- bed2 这类 custom player kind 能用 registry 表达；
-- 战斗循环不再 clone 完整 `Player` 大对象。
-
-### 阶段 E：Skill / State 元数据化
-
-- 引入 `SkillMeta` 总表；
-- 内置技能迁到 `BuiltinSkillRuntime` 静态分发；
-- `CustomSkillBox` 支持扩展技能；
-- `StateStore` 改 dense entries + generation cached hook plan；
-- `post_action / post_defend / post_damage` 使用 cached phase plan。
-
-完成标准：
-
-- 内置技能扫描不再依赖宽 trait object；
-- custom 技能可注册并参与 action/defend/damage/death phase；
-- 同优先级 `order`、post_action cursor、post_defend skill/state 合并顺序保持一致。
-
-### 阶段 F：Effect Pipeline 替换伤害链
-
-- 伤害链改为 `DamageEffect -> apply_damage_core -> on_damage hooks -> on_damaged -> post_damage -> death phase`；
-- 吸血、冰冻、中毒、感染、净化、使魔分摊、boss 特效迁为 effect；
-- `SummonPolicy / MergePolicy / DamageSharePolicy` 作为扩展点开放；
-- `clear_positive_runtime`、owner self-modify 不再通过 storage 重借 owner。
-
-完成标准：
-
-- 技能/状态实现不再调用 `just_get_player_mut`；
-- `SkillArgs` 和 `OnDamageFunc` 从新 runtime 消失；
-- custom branch 的 summon/merge/minion damage 行为可用 policy/effect 迁移。
-
-### 阶段 G：删除 Legacy Runtime
-
-- `EngineCore` facade 指向 `CombatRuntime`；
-- 删除或隔离旧 `Storage`；
-- 删除 `mutable-noalias=no` 的架构必要性；
-- legacy adapter 保留一个版本周期后移除；
-- 更新 architecture、extension migration、performance、breaking changes 文档。
-
-完成标准：
-
-- no_debug release 不包含 legacy 对照路径；
-- extension examples 覆盖 custom branch 关键能力；
-- changelog 明确标注 breaking API 和迁移路径。
-
----
-
-## 8. 行为边界
-
-以下语义不可改变：
-
-- RC4 消费顺序，包括 smart、prob、空目标、单目标 score、EnemyAlive、dodge、mp、boss prob；
-- `flat_alive` 目标选择顺序；
-- `round_pos` remove/splice 调整语义；
-- `alive_group_count` 的 JS 兼容语义；
-- pending spawn/revival 的提前可见性；
-- `sync_runtime_entities` 的 revival/spawn/death/remove/fallback 顺序；
-- `run_update_end` 的 `mem::take` 分批和 64 guard；
-- 行动中已决胜时跳过 recover/newline/post_action；
-- post_action early/state/deferred/late 混排；
-- post_defend skill/state priority 合并；
-- protect 的 effective group、split pre_defend、pending target 规则；
-- assassinate 的 pending target、forced pre_action、空 target act 语义；
-- linked minion / owner death / share damage 顺序；
-- DIY clone、SkillBoost、slot_skill、merge lane 语义；
-- CLI/replay 输出字段和排序，除非另行作为 breaking output 记录。
-
----
-
-## 9. 验证计划
-
-### 9.1 Main 基础测试
+### 10.1 基础测试
 
 ```powershell
 cargo test -p tswn_core --lib
@@ -612,97 +684,73 @@ cargo test -p tswn_core --features no_debug --lib
 python track_test.py -q
 ```
 
-### 9.2 Legacy/V2 Diff
+### 10.2 strict diff
 
-新增测试工具，同输入同时跑 legacy 和 v2，比较：
-
-- winner；
-- round count；
-- score；
-- updates frame 数；
-- 前 N 条 update；
-- RC4 checkpoint；
-- `flat_alive` 和 `round_pos`；
-- pending queue flush 点。
-
-### 9.3 Custom 迁移基线
-
-不直接把 custom branch 代码合进 main，但要提取其行为为 fixture：
-
-- bed2 player type；
-- bed2 HP marker；
-- summon recast；
-- merge lane mapping；
-- minion damage/share behavior；
-- wasm replay HP report；
-- custom runner large/fight_multi case。
-
-每个 custom 主题至少要有一个 extension example 或 migration fixture。
-
-### 9.4 JS/Rust 对账
-
-分层运行：
+日常轻量：
 
 ```powershell
 cargo run -p tswn_core --features aux_bins --bin track_case_miner -- -q --max-cases-per-mode 64 --keep-going
-cargo run -p tswn_core --bin track_diy_roundtrip -- --quiet --max-cases-per-mode 64 --keep-going
 ```
 
-最终切换前运行：
+切换前完整：
 
 ```powershell
 cargo run -p tswn_core --features aux_bins --bin track_case_miner -- -q --modes 1v1,2v2,3v3v3,ffa --ffa-sizes 4,6,8 --case-offset-per-mode 0 --max-cases-per-mode 2000 --keep-going
 ```
 
-验收：
+strict diff 工具还必须覆盖 fixed/custom golden。任何失败阻塞切换。
 
-- 不新增 diff signature；
-- 已知失败 idx 不提前；
-- fixed case legacy/v2 完全一致后才能删除 legacy。
+### 10.3 Miri
 
-### 9.5 性能基准
+核心 `tswn_core` tests 全量 Miri。若耗时过长，允许日常 CI 分层执行，但切换 PR 必须全量通过。
 
-主基准：
+### 10.4 show golden
+
+少量核心 replay case：
+
+- 加载成功；
+- 可播放；
+- 关键帧 DOM/截图 golden 一致；
+- custom HP marker / summon / merge 展示可用。
+
+### 10.5 性能
 
 ```powershell
 cargo run -p tswn_core --release --features "no_debug aux_bins" --bin track_perf_cases -- --case-dir docs/perf/fixed_cases_30 --out-dir target/perf_cases_v2_t1 --bench-runs 13000 --thread 1 -q
 cargo run -p tswn_core --release --features "no_debug aux_bins" --bin track_perf_cases -- --case-dir docs/perf/fixed_cases_30 --out-dir target/perf_cases_v2_t0 --bench-runs 13000 --thread 0 -q
 ```
 
-目标：
+硬门槛：
 
-- 无扩展、内置技能路径：`core_1v1_2v2` 中位数改善 20%+；
-- `overall` 中位数改善 15%+；
-- `stress_multi` 不退步，目标改善 10%+；
-- 默认 main 路径不被 custom fallback 拖慢；
-- no-capture fight path 不做 display string formatting；
-- batch-rate / pair / score 长跑内存稳定，无全局 cache 线性增长。
-
----
-
-## 10. 验收标准
-
-最终合并前必须满足：
-
-- 新 runtime 在固定 legacy/v2 diff case 上行为完全一致；
-- `track_test.py -q` 无新增退步；
-- JS/Rust miner 不新增 diff signature；
-- DIY/OL roundtrip 不退步；
-- custom branch 的 bed2 关键行为能通过 extension API 表达；
-- 无扩展 main 默认路径不进入 dyn extension dispatch；
-- `SkillArgs / OnDamageFunc / Arc<Storage>` 不再是新 runtime 的扩展能力边界；
-- `mutable-noalias=no` 不再是架构正确性的必要条件；
-- 文档包含 extension migration、breaking change、性能基准解释；
-- changelog 用中文记录重构影响和迁移建议。
+- fixed cases 不退步；
+- stress_multi 不退步；
+- no_debug release 不退步；
+- batch/prepared runner clone 无异常退步；
+- 默认无 trace 路径无可测常驻成本。
 
 ---
 
-## 11. 默认取舍
+## 11. 文档与发布
 
-- 不引入外部 ECS 框架，采用手写 dense arena；
-- 不在单场战斗内部并行，保持 deterministic；
-- 内置技能为性能服务，扩展技能为二开友好服务，两条路径分层；
-- breaking change 优先发生在 Rust 内部 API，不主动破坏 CLI/JS 行为；
-- custom branch 迁移优先通过 extension API，不鼓励继续 fork engine/player 内部结构；
-- 行为对账优先于性能目标，性能通过 layout/cache/specialization 逐步回收；
-- 先设计扩展契约，再重写 runtime，避免重构完成后 custom branch 无迁移出口。
+切换时版本继续走 0.x 线，bump `0.x+1`。
+
+必须更新：
+
+- 用户 changelog：简洁说明用户可见结果保持一致、wasm/show 已迁移、开发 API breaking；
+- developer migration guide：详细列 Rust API、extension API、wasm/CLI、DIY/OL、replay schema 的破坏面和替代入口；
+- unsafe/runtime design：记录 unsafe 集中模块、alias 边界、Miri 门禁；
+- custom migration：记录 `github/custom` diff 审计表、extension 落点和 fixture。
+
+---
+
+## 12. 最终验收
+
+v2 合入并删除 legacy 前必须满足：
+
+- UB 安全：核心全量 Miri 通过，unsafe 设计说明完整，`mutable-noalias=no` 不再是必要条件；
+- 行为一致：legacy/v2 strict diff 大样本 + fixed/custom golden 全过，RNG 完全一致；
+- 展示可用：`show.html` v2 schema 核心 golden 通过；
+- custom 迁移：`github/custom` 审计出的关键行为有 repo 内 extension example/fixture；
+- 性能不退步：fixed/stress/no_debug/perf clone 路径不退步；
+- 删除旧栈：正式路径无 legacy runtime，旧 `Storage`/`SkillArgs`/`OnDamageFunc` 不作为新扩展能力边界；
+- 文档完整：changelog、developer migration guide、unsafe/runtime design、custom migration 均更新。
