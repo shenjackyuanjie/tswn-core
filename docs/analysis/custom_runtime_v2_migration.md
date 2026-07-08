@@ -45,7 +45,7 @@ git diff --name-status github/main..github/custom
 | merge replay | custom replay 使用吞噬/属性上升展示 | `QueuedEffect::Merge` replay update | 已输出 `[0][吞噬]了[1]` 与 `[0]属性上升` | merge frame 顺序、score 分别为 60/0 |
 | HP report replay | custom 新增 `"[0]还剩[2]点血"` 作为 HP marker | replay/show renderer + entity slot | 已用 v2 core replay/show golden 固化 payload 和 `[2]` param；仍缺 HP bar renderer fixture | HP marker 强制显示 HP bar，`[2]` 作为 data |
 | show 数字高亮 | `show-utils.js` 把 `点血` 纳入数字高亮 | show renderer / wasm show adapter | v2 core show golden 已覆盖 `还剩87点血` 文本；缺 wasm show adapter | `还剩87点血` 中 87 被识别为数值 |
-| runner fixture 内置化 | `crates/tswn_test/src/suite/**` moved into `crates/tswn_core/src/engine/test/**` | repo 内 extension fixture + strict diff runner | v2 尚缺 custom runner fixture | bed2/summon/merge/minion/custom replay golden 可稳定复跑 |
+| runner fixture 内置化 | `crates/tswn_test/src/suite/**` moved into `crates/tswn_core/src/engine/test/**` | repo 内 extension fixture + strict diff runner | 已有最小 v2 custom runner strict-diff golden 覆盖 spawn、owner def/res、damage share、heal 与 HP marker；仍缺 large/fight_multi 样例 | bed2/summon/merge/minion/custom replay golden 可稳定复跑 |
 
 ---
 
@@ -56,7 +56,7 @@ git diff --name-status github/main..github/custom
 3. **minion heal fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享；后续补真实 minion handler。
 4. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
 5. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data；后续补 HP bar/show adapter。
-6. **runner fixture**：把 custom 分支 large / fight_multi 的关键样例缩成 v2 strict diff golden。
+6. **runner fixture**：已新增最小 v2 strict-diff golden；后续把 custom 分支 large / fight_multi 的关键样例缩成更多 runner golden。
 
 ---
 
@@ -69,6 +69,7 @@ git diff --name-status github/main..github/custom
 - `QueuedEffect::Heal` 已用 custom minion fixture 固化不触发 owner/summon damage share。
 - `MergePolicy::FixedLane` / `DropUnmappedSkills` 已覆盖 custom merge 数据面。
 - `RuntimeFrame::render_core_replay` / `render_core_show` 已提供 show 迁移前的最小 golden 面。
+- 最小 custom runner strict-diff golden 已把 spawn、share、heal、HP marker 和 world 派生视图接入同一验收面。
 
 ---
 
@@ -77,5 +78,5 @@ git diff --name-status github/main..github/custom
 - bed2 的 parser/import 与真实 summon template payload fixture。
 - summon 真实 recast handler、真实 minion handler。
 - HP marker HP bar renderer fixture 与 wasm show adapter。
-- custom large / fight_multi runner 归一化 golden。
+- custom large / fight_multi runner 归一化 golden 扩展。
 - 将审计表中的每个验收 case 接入 strict diff 或稳定单测。
