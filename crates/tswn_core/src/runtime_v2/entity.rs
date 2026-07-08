@@ -1,3 +1,7 @@
+use crate::runtime_v2::extension::{ProcMask, RegistrationOrder, SkillPriority, StateId};
+use smallvec::SmallVec;
+use std::collections::HashMap;
+
 use crate::player::PlrId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +46,7 @@ impl PlayerRuntime {
 pub struct EntityRecord {
     pub template: PlayerTemplate,
     pub runtime: PlayerRuntime,
+    pub states: StateStore,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -55,7 +60,11 @@ impl EntityArena {
             .into_iter()
             .map(|template| {
                 let runtime = PlayerRuntime::from_template(&template);
-                EntityRecord { template, runtime }
+                EntityRecord {
+                    template,
+                    runtime,
+                    states: StateStore::default(),
+                }
             })
             .collect();
         Self { entities }
@@ -76,3 +85,196 @@ impl EntityArena {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityIdx(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StateEntry {
+    pub legacy_order_key: u32,
+    pub extension_state_id: Option<StateId>,
+    pub hook_mask: ProcMask,
+    pub priority: SkillPriority,
+    pub registration_order: RegistrationOrder,
+}
+
+impl StateEntry {
+    pub fn legacy(legacy_order_key: u32) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: None,
+            hook_mask: ProcMask::default(),
+            priority: SkillPriority::default(),
+            registration_order: RegistrationOrder::default(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct StateStore {
+    entries: SmallVec<[StateEntry; 8]>,
+    hook_mask: ProcMask,
+    generation: u32,
+    index: HashMap<u32, usize>,
+}
+
+impl StateStore {
+    pub fn entries(&self) -> &[StateEntry] { &self.entries }
+
+    pub fn hook_mask(&self) -> ProcMask { self.hook_mask }
+
+    pub fn generation(&self) -> u32 { self.generation }
+
+    pub fn entry(&self, legacy_order_key: u32) -> Option<&StateEntry> {
+        self.index.get(&legacy_order_key).and_then(|idx| self.entries.get(*idx))
+    }
+
+    pub fn add_legacy_key(&mut self, legacy_order_key: u32) -> bool { self.add_entry(StateEntry::legacy(legacy_order_key)) }
+
+    pub fn add_entry(&mut self, entry: StateEntry) -> bool {
+        if self.index.contains_key(&entry.legacy_order_key) {
+            return false;
+        }
+
+        self.index.insert(entry.legacy_order_key, self.entries.len());
+        self.hook_mask |= entry.hook_mask;
+        self.entries.push(entry);
+        self.generation = self.generation.wrapping_add(1);
+        true
+    }
+
+    pub fn clear_legacy_key(&mut self, legacy_order_key: u32) -> bool {
+        let Some(idx) = self.index.get(&legacy_order_key).copied() else {
+            return false;
+        };
+
+        self.entries.remove(idx);
+        self.rebuild_index();
+        self.rebuild_hook_mask();
+        self.generation = self.generation.wrapping_add(1);
+        true
+    }
+
+    pub fn entries_in_hook_order(&self) -> Vec<&StateEntry> {
+        let mut entries: Vec<&StateEntry> = self.entries.iter().collect();
+        entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
+        entries
+    }
+
+    fn rebuild_index(&mut self) {
+        self.index.clear();
+        for (idx, entry) in self.entries.iter().enumerate() {
+            self.index.insert(entry.legacy_order_key, idx);
+        }
+    }
+
+    fn rebuild_hook_mask(&mut self) {
+        self.hook_mask = self.entries.iter().fold(ProcMask::default(), |mask, entry| mask | entry.hook_mask);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entity_records_start_with_empty_state_store() {
+        let arena = EntityArena::from_templates(vec![PlayerTemplate::new(1, "left", 0, 10, 3)]);
+
+        assert!(arena.get(EntityIdx(0)).unwrap().states.entries().is_empty());
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().states.hook_mask(), ProcMask::default());
+    }
+
+    #[test]
+    fn state_store_updates_legacy_keys_and_generation() {
+        let mut store = StateStore::default();
+
+        assert!(store.add_legacy_key(11));
+        assert!(!store.add_legacy_key(11));
+        assert_eq!(store.generation(), 1);
+        assert_eq!(store.entries(), &[StateEntry::legacy(11)]);
+        assert_eq!(store.entry(11), Some(&StateEntry::legacy(11)));
+
+        assert!(store.clear_legacy_key(11));
+        assert!(!store.clear_legacy_key(11));
+        assert_eq!(store.generation(), 2);
+        assert!(store.entries().is_empty());
+        assert_eq!(store.entry(11), None);
+    }
+
+    #[test]
+    fn state_store_rebuilds_dense_index_after_clear() {
+        let mut store = StateStore::default();
+        store.add_legacy_key(11);
+        store.add_legacy_key(22);
+        store.add_legacy_key(33);
+
+        assert!(store.clear_legacy_key(22));
+
+        assert_eq!(store.entry(11), Some(&StateEntry::legacy(11)));
+        assert_eq!(store.entry(22), None);
+        assert_eq!(store.entry(33), Some(&StateEntry::legacy(33)));
+    }
+
+    #[test]
+    fn state_store_tracks_v2_state_entry_metadata_and_hook_mask() {
+        let mut store = StateStore::default();
+        let entry = StateEntry {
+            legacy_order_key: 42,
+            extension_state_id: Some(StateId(3)),
+            hook_mask: ProcMask::PRE_ACTION | ProcMask::POST_DAMAGE,
+            priority: SkillPriority(9),
+            registration_order: RegistrationOrder(4),
+        };
+
+        assert!(store.add_entry(entry));
+        assert!(!store.add_entry(entry));
+        assert_eq!(store.entries(), &[entry]);
+        assert_eq!(store.entry(42), Some(&entry));
+        assert_eq!(store.hook_mask(), ProcMask::PRE_ACTION | ProcMask::POST_DAMAGE);
+
+        assert!(store.clear_legacy_key(42));
+        assert!(store.entries().is_empty());
+        assert_eq!(store.hook_mask(), ProcMask::default());
+    }
+
+    #[test]
+    fn state_store_orders_entries_by_priority_then_registration() {
+        let mut store = StateStore::default();
+        let late = StateEntry {
+            legacy_order_key: 11,
+            extension_state_id: Some(StateId(1)),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(10),
+            registration_order: RegistrationOrder(1),
+        };
+        let early = StateEntry {
+            legacy_order_key: 22,
+            extension_state_id: Some(StateId(2)),
+            hook_mask: ProcMask::PRE_ACTION,
+            priority: SkillPriority(1),
+            registration_order: RegistrationOrder(2),
+        };
+        let tie = StateEntry {
+            legacy_order_key: 33,
+            extension_state_id: Some(StateId(3)),
+            hook_mask: ProcMask::POST_DAMAGE,
+            priority: SkillPriority(10),
+            registration_order: RegistrationOrder(3),
+        };
+
+        store.add_entry(late);
+        store.add_entry(early);
+        store.add_entry(tie);
+
+        assert_eq!(
+            store
+                .entries_in_hook_order()
+                .into_iter()
+                .map(|entry| entry.legacy_order_key)
+                .collect::<Vec<_>>(),
+            vec![22, 11, 33]
+        );
+        assert_eq!(
+            store.hook_mask(),
+            ProcMask::PRE_ACTION | ProcMask::POST_ACTION | ProcMask::POST_DAMAGE
+        );
+    }
+}
