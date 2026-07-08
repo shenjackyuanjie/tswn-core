@@ -640,6 +640,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::RootOwner,
                     damage_share: DamageSharePolicy::ShareToOwner,
                     merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("bed2 kind should register");
@@ -835,6 +836,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::RootOwner,
                     damage_share: DamageSharePolicy::None,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("summon kind should register");
@@ -879,6 +881,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::RootOwner,
                     damage_share: DamageSharePolicy::None,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("summon kind should register");
@@ -935,6 +938,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::SelfEntity,
                     damage_share: DamageSharePolicy::ShareToOwner,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("summon kind should register");
@@ -981,6 +985,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::SelfEntity,
                     damage_share: DamageSharePolicy::ShareToOwner,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("summon kind should register");
@@ -1056,6 +1061,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::SelfEntity,
                     damage_share: DamageSharePolicy::ShareToSummons,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("owner kind should register");
@@ -1118,6 +1124,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::SelfEntity,
                     damage_share: DamageSharePolicy::ShareToSummons,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("summon owner kind should register");
@@ -1131,6 +1138,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::RootOwner,
                     damage_share: DamageSharePolicy::ShareToOwner,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: true,
                 },
             )
             .expect("summon kind should register");
@@ -1196,6 +1204,45 @@ mod tests {
     }
 
     #[test]
+    fn custom_summon_fixture_inherits_owner_defense_and_resistance() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("summon kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_def_res(77, 88),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        ));
+
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 10, 1).with_def_res(11, 22),
+        });
+        runtime.flush_effects().expect("summon spawn should emit update");
+
+        let summon = runtime.entities.get(EntityIdx(2)).expect("summon should spawn");
+        assert_eq!(summon.template.defense, 77);
+        assert_eq!(summon.template.resistance, 88);
+        assert_eq!(summon.runtime.defense, 77);
+        assert_eq!(summon.runtime.resistance, 88);
+    }
+
+    #[test]
     fn custom_minion_heal_fixture_does_not_share_with_owner_or_summons() {
         let mut builder = ExtensionRegistryBuilder::default();
         let owner_kind = builder
@@ -1208,6 +1255,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::SelfEntity,
                     damage_share: DamageSharePolicy::ShareToSummons,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("minion owner kind should register");
@@ -1221,6 +1269,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::SelfEntity,
                     damage_share: DamageSharePolicy::ShareToOwner,
                     merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("minion kind should register");
@@ -2323,6 +2372,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::SelfEntity,
                     damage_share: DamageSharePolicy::None,
                     merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("merge kind should register");
@@ -2373,6 +2423,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::SelfEntity,
                     damage_share: DamageSharePolicy::None,
                     merge: MergePolicy::DropUnmappedSkills,
+                    inherit_owner_def_res: false,
                 },
             )
             .expect("merge kind should register");

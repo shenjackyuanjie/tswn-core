@@ -143,6 +143,7 @@ pub struct PlayerKindPolicies {
     pub owner_resolution: OwnerResolutionPolicy,
     pub damage_share: DamageSharePolicy,
     pub merge: MergePolicy,
+    pub inherit_owner_def_res: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -814,6 +815,7 @@ mod tests {
                     owner_resolution: OwnerResolutionPolicy::RootOwner,
                     damage_share: DamageSharePolicy::ShareToOwner,
                     merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: true,
                 },
             )
             .expect("bed2 kind should register");
@@ -825,6 +827,7 @@ mod tests {
         assert_eq!(spec.policies.owner_resolution, OwnerResolutionPolicy::RootOwner);
         assert_eq!(spec.policies.damage_share, DamageSharePolicy::ShareToOwner);
         assert_eq!(spec.policies.merge, MergePolicy::FixedLane);
+        assert!(spec.policies.inherit_owner_def_res);
         assert_eq!(registry.player_kinds().len(), 1);
     }
 

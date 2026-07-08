@@ -647,6 +647,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `Damage` effect 已接入 `OwnerResolutionPolicy::RootOwner`，summon/root-owner 伤害可转打 root owner 并在解析目标上触发致死 hook；
 - `Damage` effect 已接入 `DamageSharePolicy::ShareToOwner`，子实体受伤时可同步扣 owner 并在共享致死时触发 owner 致死 hook；
 - `Damage` effect 已接入 `DamageSharePolicy::ShareToSummons`，owner 受伤时可按实体顺序同步扣存活子实体；
+- `Spawn` effect 已接入 `PlayerKindPolicies::inherit_owner_def_res`，custom summon 可在生成时继承 owner 防御/魔防数据面；
 - `CustomEffect` / skill / state handler 已通过各自 context 暴露受控 RNG 消费 API，不直接暴露 `RC4` 本体；
 - `Merge` effect 已接入 `MergePolicy::FixedLane` / `DropUnmappedSkills` 的固定技能槽位合并数据面，并在成功合并时输出吞噬/属性上升帧；
 - effect batch 后逐项复刻 legacy flush；

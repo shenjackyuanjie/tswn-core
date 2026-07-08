@@ -16,6 +16,8 @@ pub struct PlayerTemplate {
     pub team: usize,
     pub max_hp: i32,
     pub attack: i32,
+    pub defense: i32,
+    pub resistance: i32,
 }
 
 impl PlayerTemplate {
@@ -36,7 +38,17 @@ impl PlayerTemplate {
             team,
             max_hp,
             attack,
+            defense: 0,
+            resistance: 0,
         }
+    }
+
+    pub fn with_def_res(mut self, defense: i32, resistance: i32) -> Self {
+        assert!(defense >= 0, "runtime_v2 player defense must be non-negative");
+        assert!(resistance >= 0, "runtime_v2 player resistance must be non-negative");
+        self.defense = defense;
+        self.resistance = resistance;
+        self
     }
 
     pub fn with_skill_loadout(mut self, skills: SkillLoadout) -> Self {
@@ -98,6 +110,8 @@ pub struct MoveState {
 pub struct PlayerRuntime {
     pub hp: i32,
     pub alive: bool,
+    pub defense: i32,
+    pub resistance: i32,
     pub kind: PlayerKindId,
     pub owner: EntityIdx,
     pub root_owner: EntityIdx,
@@ -122,6 +136,8 @@ impl PlayerRuntime {
         Self {
             hp: template.max_hp,
             alive: true,
+            defense: template.defense,
+            resistance: template.resistance,
             kind: template.kind,
             owner,
             root_owner,
@@ -183,7 +199,7 @@ impl EntityArena {
 
     pub fn spawn_from_template_with_owner(
         &mut self,
-        template: PlayerTemplate,
+        mut template: PlayerTemplate,
         registry: &ExtensionRegistry,
         owner: Option<EntityIdx>,
         root_owner: Option<EntityIdx>,
@@ -191,6 +207,19 @@ impl EntityArena {
         let idx = EntityIdx(self.entities.len().try_into().expect("runtime_v2 entity index overflow"));
         let owner = owner.unwrap_or(idx);
         let root_owner = root_owner.unwrap_or(owner);
+        if let Some(owner_idx) = Some(owner).filter(|owner_idx| *owner_idx != idx) {
+            let owner_entity = self
+                .entities
+                .get(owner_idx.0 as usize)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 spawn owner entity: {}", owner_idx.0));
+            let policies = registry
+                .player_kind(template.kind)
+                .map_or(PlayerKindPolicies::default(), |kind| kind.policies);
+            if policies.inherit_owner_def_res {
+                template.defense = owner_entity.runtime.defense;
+                template.resistance = owner_entity.runtime.resistance;
+            }
+        }
         let runtime = PlayerRuntime::from_template(&template, registry, owner, root_owner);
         self.entities.push(EntityRecord {
             template,
@@ -417,6 +446,7 @@ mod tests {
             owner_resolution: crate::runtime_v2::OwnerResolutionPolicy::RootOwner,
             damage_share: crate::runtime_v2::DamageSharePolicy::ShareToOwner,
             merge: crate::runtime_v2::MergePolicy::FixedLane,
+            inherit_owner_def_res: false,
         };
         let kind = builder
             .register_player_kind_with_policies("custom", "summon", "custom.summon", PlayerKindFlags::SUMMON, policies)
