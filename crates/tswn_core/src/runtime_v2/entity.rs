@@ -1,4 +1,5 @@
 use crate::runtime_v2::extension::{ProcMask, RegistrationOrder, SkillPriority, StateId};
+use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
 use std::collections::HashMap;
 
@@ -47,6 +48,7 @@ pub struct EntityRecord {
     pub template: PlayerTemplate,
     pub runtime: PlayerRuntime,
     pub states: StateStore,
+    pub slots: EntitySlotStorage,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -56,6 +58,10 @@ pub struct EntityArena {
 
 impl EntityArena {
     pub fn from_templates(players: Vec<PlayerTemplate>) -> Self {
+        Self::from_templates_with_registry(players, &ExtensionRegistry::default())
+    }
+
+    pub fn from_templates_with_registry(players: Vec<PlayerTemplate>, registry: &ExtensionRegistry) -> Self {
         let entities = players
             .into_iter()
             .map(|template| {
@@ -64,6 +70,7 @@ impl EntityArena {
                     template,
                     runtime,
                     states: StateStore::default(),
+                    slots: EntitySlotStorage::from_registry(registry),
                 }
             })
             .collect();
@@ -180,6 +187,28 @@ mod tests {
 
         assert!(arena.get(EntityIdx(0)).unwrap().states.entries().is_empty());
         assert_eq!(arena.get(EntityIdx(0)).unwrap().states.hook_mask(), ProcMask::default());
+    }
+
+    #[test]
+    fn entity_records_reserve_registered_entity_slots() {
+        let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
+        let slot = builder
+            .reserve_entity_slot("custom", "flag", "custom.flag")
+            .expect("entity slot should reserve");
+        let registry = builder.build();
+        let mut arena = EntityArena::from_templates_with_registry(vec![PlayerTemplate::new(1, "left", 0, 10, 3)], &registry);
+
+        arena
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .slots
+            .set(slot, crate::runtime_v2::SlotValue::Bool(true))
+            .unwrap();
+
+        assert_eq!(
+            arena.get(EntityIdx(0)).unwrap().slots.get(slot),
+            Some(&crate::runtime_v2::SlotValue::Bool(true))
+        );
     }
 
     #[test]

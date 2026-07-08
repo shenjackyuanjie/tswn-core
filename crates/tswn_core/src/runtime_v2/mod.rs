@@ -4,6 +4,7 @@ pub mod extension;
 pub mod oracle;
 pub mod scheduler;
 pub mod scratch;
+pub mod slot;
 pub mod world;
 
 pub use effect::{EffectQueue, QueuedEffect, RuntimeFrame};
@@ -16,23 +17,33 @@ pub use extension::{
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
 pub use scheduler::{ActionPlan, PhaseScheduler};
 pub use scratch::BattleScratch;
+pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, TemplateSlotStorage};
 pub use world::WorldArena;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedCombatTemplate {
     pub players: Vec<PlayerTemplate>,
+    pub registry: ExtensionRegistry,
+    pub slots: TemplateSlotStorage,
 }
 
 impl PreparedCombatTemplate {
-    pub fn new(players: Vec<PlayerTemplate>) -> Self { Self { players } }
+    pub fn new(players: Vec<PlayerTemplate>) -> Self { Self::with_registry(players, ExtensionRegistry::default()) }
+
+    pub fn with_registry(players: Vec<PlayerTemplate>, registry: ExtensionRegistry) -> Self {
+        let slots = TemplateSlotStorage::from_registry(&registry);
+        Self {
+            players,
+            registry,
+            slots,
+        }
+    }
 
     pub fn minimal_1v1(left_hp: i32, right_hp: i32, attack: i32) -> Self {
-        Self {
-            players: vec![
-                PlayerTemplate::new(1, "left", 0, left_hp, attack),
-                PlayerTemplate::new(2, "right", 1, right_hp, attack),
-            ],
-        }
+        Self::new(vec![
+            PlayerTemplate::new(1, "left", 0, left_hp, attack),
+            PlayerTemplate::new(2, "right", 1, right_hp, attack),
+        ])
     }
 }
 
@@ -49,19 +60,22 @@ pub struct CombatRuntime {
     pub scheduler: PhaseScheduler,
     pub effects: EffectQueue,
     pub scratch: BattleScratch,
+    pub slots: BattleSlotStorage,
     pub round: u64,
 }
 
 impl CombatRuntime {
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
-        let entities = EntityArena::from_templates(template.players);
+        let entities = EntityArena::from_templates_with_registry(template.players, &template.registry);
         let world = WorldArena::from_entities(&entities);
+        let slots = BattleSlotStorage::from_registry(&template.registry);
         Self {
             entities,
             world,
             scheduler: PhaseScheduler,
             effects: EffectQueue::default(),
             scratch: BattleScratch::default(),
+            slots,
             round: 0,
         }
     }
@@ -124,6 +138,43 @@ mod tests {
         assert_eq!(runtime.entities.len(), 2);
         assert_eq!(runtime.world.winner_team(), None);
         assert!(runtime.effects.is_empty());
+        assert!(runtime.slots.is_empty());
+    }
+
+    #[test]
+    fn runtime_from_template_reserves_registered_slot_storage() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let template_slot = builder
+            .reserve_template_slot("custom", "template", "custom.template")
+            .expect("template slot should reserve");
+        let battle_slot = builder
+            .reserve_battle_slot("custom", "battle", "custom.battle")
+            .expect("battle slot should reserve");
+        let entity_slot = builder
+            .reserve_entity_slot("custom", "entity", "custom.entity")
+            .expect("entity slot should reserve");
+        let registry = builder.build();
+        let mut template = PreparedCombatTemplate::with_registry(vec![PlayerTemplate::new(1, "left", 0, 10, 3)], registry);
+        template
+            .slots
+            .set(template_slot, SlotValue::Text("seed".to_owned()))
+            .expect("template slot should write");
+
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.slots.set(battle_slot, SlotValue::U64(1)).expect("battle slot should write");
+        runtime
+            .entities
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .slots
+            .set(entity_slot, SlotValue::Bool(true))
+            .expect("entity slot should write");
+
+        assert_eq!(runtime.slots.get(battle_slot), Some(&SlotValue::U64(1)));
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(entity_slot),
+            Some(&SlotValue::Bool(true))
+        );
     }
 
     #[test]
