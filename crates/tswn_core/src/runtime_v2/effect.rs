@@ -41,6 +41,10 @@ pub enum QueuedEffect {
         caster: EntityIdx,
         target: EntityIdx,
     },
+    Merge {
+        caster: EntityIdx,
+        target: EntityIdx,
+    },
     Replay {
         caster: EntityIdx,
         target: EntityIdx,

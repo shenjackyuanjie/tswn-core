@@ -434,6 +434,23 @@ impl CombatRuntime {
                     self.world.remove_alive(target, team);
                     updates.add(RuntimeFrame::remove_update(caster.0 as usize, target.0 as usize));
                 }
+                QueuedEffect::Merge { caster, target } => {
+                    self.ensure_effect_entity("merge", "caster", caster);
+                    self.ensure_effect_entity("merge", "target", target);
+                    let target_skills = self.entities.get(target).unwrap().template.skills.clone();
+                    let policy = self.entities.get(caster).unwrap().runtime.policies.merge;
+                    let Some(caster_entity) = self.entities.get_mut(caster) else {
+                        panic!("unknown runtime_v2 merge caster entity: {}", caster.0);
+                    };
+                    if caster_entity.template.skills.merge_fixed_lanes_from(&target_skills, policy) {
+                        updates.add(crate::engine::update::RunUpdate::new(
+                            "[0][吞噬]了[1]",
+                            caster.0 as usize,
+                            target.0 as usize,
+                            60,
+                        ));
+                    }
+                }
                 QueuedEffect::Replay {
                     caster,
                     target,
@@ -2038,6 +2055,97 @@ mod tests {
     }
 
     #[test]
+    fn flush_effects_merges_fixed_lane_skill_loadout() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let skill_a = builder
+            .register_skill("custom", "a", "custom.a", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("skill should register");
+        let skill_b = builder
+            .register_skill("custom", "b", "custom.b", TargetPolicy::Enemy, SkillPriority(1))
+            .expect("skill should register");
+        let skill_c = builder
+            .register_skill("custom", "c", "custom.c", TargetPolicy::Enemy, SkillPriority(2))
+            .expect("skill should register");
+        let merge_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "merge",
+                "custom.merge",
+                PlayerKindFlags::default(),
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::FixedLane,
+                },
+            )
+            .expect("merge kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "left", merge_kind, 0, 10, 3).with_skills([skill_a]),
+                PlayerTemplate::new(2, "right", 1, 10, 3).with_skills([skill_b, skill_c]),
+            ],
+            registry,
+        ));
+        runtime.effects.push(QueuedEffect::Merge {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        let frame = runtime.flush_effects().expect("merge should emit update");
+
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().template.skills.skills(),
+            &[skill_b, skill_c]
+        );
+        assert_eq!(frame.updates.updates[0].message, "[0][吞噬]了[1]");
+        assert_eq!(frame.updates.updates[0].score, 60);
+    }
+
+    #[test]
+    fn flush_effects_merge_drops_unmapped_skills_when_policy_requires() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let skill_a = builder
+            .register_skill("custom", "a", "custom.a", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("skill should register");
+        let skill_b = builder
+            .register_skill("custom", "b", "custom.b", TargetPolicy::Enemy, SkillPriority(1))
+            .expect("skill should register");
+        let skill_c = builder
+            .register_skill("custom", "c", "custom.c", TargetPolicy::Enemy, SkillPriority(2))
+            .expect("skill should register");
+        let merge_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "merge",
+                "custom.merge",
+                PlayerKindFlags::default(),
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::DropUnmappedSkills,
+                },
+            )
+            .expect("merge kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "left", merge_kind, 0, 10, 3).with_skills([skill_a]),
+                PlayerTemplate::new(2, "right", 1, 10, 3).with_skills([skill_b, skill_c]),
+            ],
+            registry,
+        ));
+        runtime.effects.push(QueuedEffect::Merge {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        runtime.flush_effects().expect("merge should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().template.skills.skills(), &[skill_b]);
+    }
+
+    #[test]
     fn flush_effects_panics_on_unknown_damage_target() {
         let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
         runtime.effects.push(QueuedEffect::Damage {
@@ -2114,6 +2222,14 @@ mod tests {
             target: EntityIdx(1),
         });
         assert_effect_panics(QueuedEffect::Remove {
+            caster: EntityIdx(0),
+            target: EntityIdx(99),
+        });
+        assert_effect_panics(QueuedEffect::Merge {
+            caster: EntityIdx(99),
+            target: EntityIdx(1),
+        });
+        assert_effect_panics(QueuedEffect::Merge {
             caster: EntityIdx(0),
             target: EntityIdx(99),
         });

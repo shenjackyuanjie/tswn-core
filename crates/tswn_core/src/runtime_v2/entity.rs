@@ -1,5 +1,5 @@
 use crate::runtime_v2::extension::{
-    PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask, RegistrationOrder, SkillId, SkillPriority, StateId,
+    MergePolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask, RegistrationOrder, SkillId, SkillPriority, StateId,
 };
 use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
@@ -66,6 +66,27 @@ impl SkillLoadout {
     pub fn is_empty(&self) -> bool { self.skills.is_empty() }
 
     pub fn len(&self) -> usize { self.skills.len() }
+
+    pub fn merge_fixed_lanes_from(&mut self, source: &Self, policy: MergePolicy) -> bool {
+        let drop_unmapped = match policy {
+            MergePolicy::None => return false,
+            MergePolicy::FixedLane => false,
+            MergePolicy::DropUnmappedSkills => true,
+        };
+        let mut changed = false;
+        for (idx, source_skill) in source.skills.iter().copied().enumerate() {
+            if let Some(target_skill) = self.skills.get_mut(idx) {
+                if *target_skill != source_skill {
+                    *target_skill = source_skill;
+                    changed = true;
+                }
+            } else if !drop_unmapped {
+                self.skills.push(source_skill);
+                changed = true;
+            }
+        }
+        changed
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -310,6 +331,36 @@ mod tests {
         let arena = EntityArena::from_templates_with_registry(vec![template], &registry);
 
         assert_eq!(arena.get(EntityIdx(0)).unwrap().template.skills.skills(), &[skill]);
+    }
+
+    #[test]
+    fn skill_loadout_merges_fixed_lanes_and_appends_unmapped_skills() {
+        let mut target = SkillLoadout::from_skills([SkillId(1), SkillId(2)]);
+        let source = SkillLoadout::from_skills([SkillId(1), SkillId(3), SkillId(4)]);
+
+        assert!(target.merge_fixed_lanes_from(&source, MergePolicy::FixedLane));
+
+        assert_eq!(target.skills(), &[SkillId(1), SkillId(3), SkillId(4)]);
+    }
+
+    #[test]
+    fn skill_loadout_drops_unmapped_merge_skills() {
+        let mut target = SkillLoadout::from_skills([SkillId(1), SkillId(2)]);
+        let source = SkillLoadout::from_skills([SkillId(3), SkillId(4), SkillId(5)]);
+
+        assert!(target.merge_fixed_lanes_from(&source, MergePolicy::DropUnmappedSkills));
+
+        assert_eq!(target.skills(), &[SkillId(3), SkillId(4)]);
+    }
+
+    #[test]
+    fn skill_loadout_ignores_none_merge_policy() {
+        let mut target = SkillLoadout::from_skills([SkillId(1)]);
+        let source = SkillLoadout::from_skills([SkillId(2)]);
+
+        assert!(!target.merge_fixed_lanes_from(&source, MergePolicy::None));
+
+        assert_eq!(target.skills(), &[SkillId(1)]);
     }
 
     #[test]
