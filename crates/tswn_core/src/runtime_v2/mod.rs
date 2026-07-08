@@ -1,10 +1,12 @@
 pub mod effect;
 pub mod entity;
+pub mod oracle;
 pub mod scratch;
 pub mod world;
 
 pub use effect::{EffectQueue, QueuedEffect, RuntimeFrame};
 pub use entity::{EntityArena, EntityIdx, EntityRecord, PlayerRuntime, PlayerTemplate};
+pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
 pub use scratch::BattleScratch;
 pub use world::WorldArena;
 
