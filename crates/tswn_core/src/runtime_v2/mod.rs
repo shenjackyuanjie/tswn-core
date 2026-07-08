@@ -13,9 +13,9 @@ use crate::engine::update::RunUpdates;
 use crate::rc4::RC4;
 
 pub use effect::{
-    CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn, EffectHandlers, EffectQueue,
-    QueuedEffect, RenderedReplay, RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame, ShowRendererFn, ShowRenderers,
-    SkillContext, SkillHandlerFn, SkillHandlers, StateContext, StateHandlerFn, StateHandlers,
+    CoreReplayEvent, CoreShowEvent, CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn,
+    EffectHandlers, EffectQueue, QueuedEffect, RenderedReplay, RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame,
+    ShowRendererFn, ShowRenderers, SkillContext, SkillHandlerFn, SkillHandlers, StateContext, StateHandlerFn, StateHandlers,
 };
 pub use entity::{
     EntityArena, EntityIdx, EntityRecord, MoveState, PlayerRuntime, PlayerTemplate, SkillLoadout, StateEntry, StateStore,
@@ -2423,5 +2423,46 @@ mod tests {
         let rendered = runtime.render_show_frame(&frame);
 
         assert_eq!(rendered, vec![RenderedShow::new(ShowRendererId(0), "[0]攻击[1]")]);
+    }
+
+    #[test]
+    fn runtime_frame_renders_core_replay_and_show_golden() {
+        let mut frame = RuntimeFrame::single_damage(0, 1, 3);
+        frame.updates.add(RuntimeFrame::replay_update(0, 1, "[0]属性上升", 0));
+
+        assert_eq!(
+            frame.render_core_replay(),
+            vec![
+                CoreReplayEvent {
+                    message: "[0]攻击[1]".to_owned(),
+                    caster: 0,
+                    target: 1,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 3,
+                },
+                CoreReplayEvent {
+                    message: "[0]属性上升".to_owned(),
+                    caster: 0,
+                    target: 1,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 0,
+                },
+            ]
+        );
+        assert_eq!(
+            frame.render_core_show(),
+            vec![
+                CoreShowEvent {
+                    text: "0攻击1".to_owned(),
+                    score: 3,
+                },
+                CoreShowEvent {
+                    text: "0属性上升".to_owned(),
+                    score: 0,
+                },
+            ]
+        );
     }
 }

@@ -222,6 +222,22 @@ impl RenderedShow {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoreReplayEvent {
+    pub message: String,
+    pub caster: usize,
+    pub target: usize,
+    pub targets: Vec<usize>,
+    pub param: Option<u32>,
+    pub score: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoreShowEvent {
+    pub text: String,
+    pub score: u32,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ReplayRenderers {
     renderers: Vec<Option<ReplayRendererFn>>,
@@ -708,5 +724,31 @@ impl RuntimeFrame {
         let mut updates = RunUpdates::new();
         updates.add(Self::damage_update(caster, target, amount));
         Self { updates }
+    }
+
+    pub fn render_core_replay(&self) -> Vec<CoreReplayEvent> {
+        self.updates
+            .updates
+            .iter()
+            .map(|update| CoreReplayEvent {
+                message: update.message.to_string(),
+                caster: update.caster,
+                target: update.target,
+                targets: update.targets.iter().copied().collect(),
+                param: update.param,
+                score: update.score,
+            })
+            .collect()
+    }
+
+    pub fn render_core_show(&self) -> Vec<CoreShowEvent> {
+        self.updates
+            .updates
+            .iter()
+            .map(|update| CoreShowEvent {
+                text: update.msg(),
+                score: update.score,
+            })
+            .collect()
     }
 }
