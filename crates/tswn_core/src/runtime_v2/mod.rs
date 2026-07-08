@@ -363,11 +363,17 @@ impl CombatRuntime {
                     let Some(target_entity) = self.entities.get_mut(target) else {
                         panic!("unknown runtime_v2 heal target entity: {}", target.0);
                     };
+                    let was_alive = target_entity.runtime.alive;
                     target_entity.runtime.hp = (target_entity.runtime.hp + amount.max(0)).min(target_entity.template.max_hp);
                     if target_entity.runtime.hp > 0 {
                         target_entity.runtime.alive = true;
                     }
+                    let team = target_entity.runtime.team;
                     updates.add(RuntimeFrame::heal_update(caster.0 as usize, target.0 as usize, amount));
+                    if !was_alive && target_entity.runtime.alive {
+                        self.world.revive_round_actor(target);
+                        self.world.revive_alive(target, team);
+                    }
                 }
                 QueuedEffect::Spawn { caster, template } => {
                     self.ensure_effect_entity("spawn", "caster", caster);
@@ -1670,6 +1676,34 @@ mod tests {
 
         assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10);
         assert_eq!(frame.updates.updates[0].message, "[1]回复体力[2]点");
+    }
+
+    #[test]
+    fn flush_effects_readds_healed_dead_target_to_alive_views() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 4, 3));
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+            amount: 4,
+        });
+        runtime.flush_effects().expect("lethal damage should emit update");
+        runtime.effects.push(QueuedEffect::Heal {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+            amount: 2,
+        });
+
+        runtime.flush_effects().expect("heal should emit update");
+
+        assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 2);
+        assert_eq!(runtime.world.team_alive(1), Some([EntityIdx(1)].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
+        assert_eq!(runtime.world.alive_group_count(), 2);
+        assert_eq!(
+            runtime.world.first_alive_enemy(EntityIdx(0), &runtime.entities),
+            Some(EntityIdx(1))
+        );
     }
 
     #[test]
