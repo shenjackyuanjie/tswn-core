@@ -324,7 +324,7 @@ impl CombatRuntime {
         let winner_team = self.world.sync_winner(&self.entities);
         #[cfg(not(feature = "no_debug"))]
         if let (Some(trace), Some(frame)) = (&mut self.trace, &frame) {
-            trace.record_frame(self.round, frame, winner_team);
+            trace.record_frame(self.round, frame, winner_team, Some(RngCheckpoint::from_rc4(&self.rng)));
         }
         RoundOutcome {
             action: Some(action),
@@ -642,6 +642,14 @@ mod tests {
         assert_eq!(trace.frames.len(), 1);
         assert_eq!(trace.frames[0].total_score, 3);
         assert_eq!(trace.frames[0].winner_team, None);
+        assert_eq!(
+            trace.frames[0].rng_after,
+            Some(RngCheckpoint {
+                i: 0,
+                j: 0,
+                byte_count: 0,
+            })
+        );
         assert_eq!(trace.frames[0].updates[0].score, 3);
     }
 

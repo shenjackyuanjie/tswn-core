@@ -296,7 +296,7 @@ Context 不做每个 phase 一个大类型爆炸，采用少数通用 ctx + meth
 
 - 默认无 trace 路径必须零成本或近似零成本；
 - trace 粒度为 frame 级；
-- trace 可记录 action/frame、RNG checkpoint、update、winner、score 汇总；
+- trace 已记录 action/frame、RNG checkpoint、update、winner、score 汇总；
 - phase/effect 深度 trace 不作为默认要求，可按调试需要追加。
 
 ---

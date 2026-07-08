@@ -34,6 +34,7 @@ pub struct TraceFrame {
     pub updates: Vec<NormalizedUpdateFrame>,
     pub total_score: u64,
     pub winner_team: Option<usize>,
+    pub rng_after: Option<RngCheckpoint>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -45,7 +46,13 @@ pub struct RuntimeTrace {
 impl RuntimeTrace {
     pub fn record_action(&mut self, action: TraceAction) { self.actions.push(action); }
 
-    pub fn record_frame(&mut self, round: u64, frame: &RuntimeFrame, winner_team: Option<usize>) {
+    pub fn record_frame(
+        &mut self,
+        round: u64,
+        frame: &RuntimeFrame,
+        winner_team: Option<usize>,
+        rng_after: Option<RngCheckpoint>,
+    ) {
         let outcome = crate::runtime_v2::RoundOutcome {
             action: None,
             frame: Some(frame.clone()),
@@ -58,6 +65,7 @@ impl RuntimeTrace {
             updates,
             total_score,
             winner_team,
+            rng_after,
         });
     }
 }
@@ -86,12 +94,29 @@ mod tests {
                 byte_count: 6,
             }),
         });
-        trace.record_frame(1, &RuntimeFrame::single_damage(0, 1, 3), None);
+        trace.record_frame(
+            1,
+            &RuntimeFrame::single_damage(0, 1, 3),
+            None,
+            Some(RngCheckpoint {
+                i: 7,
+                j: 8,
+                byte_count: 9,
+            }),
+        );
 
         assert_eq!(trace.actions.len(), 1);
         assert_eq!(trace.actions[0].actor, EntityIdx(0));
         assert_eq!(trace.frames.len(), 1);
         assert_eq!(trace.frames[0].updates[0].message, "[0]攻击[1]");
         assert_eq!(trace.frames[0].total_score, 3);
+        assert_eq!(
+            trace.frames[0].rng_after,
+            Some(RngCheckpoint {
+                i: 7,
+                j: 8,
+                byte_count: 9,
+            })
+        );
     }
 }
