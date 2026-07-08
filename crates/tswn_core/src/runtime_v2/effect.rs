@@ -1,7 +1,7 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::runtime_v2::entity::EntityIdx;
-use crate::runtime_v2::extension::{EffectHandlerId, ExtensionRegistry, ReplayRendererId, ShowRendererId};
-use crate::runtime_v2::{BattleSlotStorage, EntityArena, WorldArena};
+use crate::runtime_v2::extension::{EffectHandlerId, ExtensionCapability, ExtensionRegistry, ReplayRendererId, ShowRendererId};
+use crate::runtime_v2::{BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, SlotError, SlotValue, WorldArena};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,27 +44,47 @@ pub type EffectHandlerFn = fn(&mut EffectContext<'_>, &CustomEffect);
 pub type ReplayRendererFn = fn(&RuntimeFrame) -> Option<RenderedReplay>;
 pub type ShowRendererFn = fn(&RuntimeFrame) -> Option<RenderedShow>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectContextError {
+    MissingCapability(ExtensionCapability),
+    UnknownEntity(EntityIdx),
+    Slot(SlotError),
+}
+
+impl From<SlotError> for EffectContextError {
+    fn from(error: SlotError) -> Self { Self::Slot(error) }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EffectHandlers {
     handlers: Vec<Option<EffectHandlerFn>>,
+    capabilities: Vec<Vec<ExtensionCapability>>,
 }
 
 impl EffectHandlers {
     pub fn from_registry(registry: &ExtensionRegistry) -> Self {
         Self {
             handlers: vec![None; registry.effect_handlers().len()],
+            capabilities: vec![Vec::new(); registry.effect_handlers().len()],
         }
     }
 
-    pub fn set(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) {
+    pub fn set(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) { self.set_with_capabilities(id, handler, &[]); }
+
+    pub fn set_with_capabilities(&mut self, id: EffectHandlerId, handler: EffectHandlerFn, capabilities: &[ExtensionCapability]) {
         let Some(slot) = self.handlers.get_mut(id.0 as usize) else {
             panic!("unknown runtime_v2 effect handler id: {}", id.0);
         };
         *slot = Some(handler);
+        self.capabilities[id.0 as usize] = capabilities.to_vec();
     }
 
     pub fn get(&self, id: EffectHandlerId) -> Option<EffectHandlerFn> {
         self.handlers.get(id.0 as usize).and_then(|handler| *handler)
+    }
+
+    pub fn capabilities(&self, id: EffectHandlerId) -> Option<&[ExtensionCapability]> {
+        self.capabilities.get(id.0 as usize).map(Vec::as_slice)
     }
 }
 
@@ -147,11 +167,76 @@ impl ShowRenderers {
 }
 
 pub struct EffectContext<'a> {
-    pub entities: &'a mut EntityArena,
-    pub world: &'a mut WorldArena,
-    pub slots: &'a mut BattleSlotStorage,
-    pub queue: &'a mut EffectQueue,
-    pub updates: &'a mut RunUpdates,
+    entities: &'a mut EntityArena,
+    world: &'a mut WorldArena,
+    slots: &'a mut BattleSlotStorage,
+    queue: &'a mut EffectQueue,
+    updates: &'a mut RunUpdates,
+    caster: EntityIdx,
+    target: Option<EntityIdx>,
+    capabilities: &'a [ExtensionCapability],
+}
+
+impl<'a> EffectContext<'a> {
+    pub fn new(
+        entities: &'a mut EntityArena,
+        world: &'a mut WorldArena,
+        slots: &'a mut BattleSlotStorage,
+        queue: &'a mut EffectQueue,
+        updates: &'a mut RunUpdates,
+        effect: &CustomEffect,
+        capabilities: &'a [ExtensionCapability],
+    ) -> Self {
+        Self {
+            entities,
+            world,
+            slots,
+            queue,
+            updates,
+            caster: effect.caster,
+            target: effect.target,
+            capabilities,
+        }
+    }
+
+    pub fn caster(&self) -> Option<&EntityRecord> { self.entities.get(self.caster) }
+
+    pub fn target(&self) -> Option<&EntityRecord> { self.target.and_then(|target| self.entities.get(target)) }
+
+    pub fn entity(&self, entity: EntityIdx) -> Result<&EntityRecord, EffectContextError> {
+        if entity != self.caster && Some(entity) != self.target {
+            self.require(ExtensionCapability::ReadEnemies)?;
+        }
+        self.entities.get(entity).ok_or(EffectContextError::UnknownEntity(entity))
+    }
+
+    pub fn battle_slot(&self, id: crate::runtime_v2::BattleSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
+        self.require(ExtensionCapability::ReadBattleSlots)?;
+        Ok(self.slots.get(id))
+    }
+
+    pub fn set_entity_slot(&mut self, entity: EntityIdx, slot: EntitySlotId, value: SlotValue) -> Result<(), EffectContextError> {
+        self.require(ExtensionCapability::MutateEntitySlots)?;
+        let Some(entity) = self.entities.get_mut(entity) else {
+            return Err(EffectContextError::UnknownEntity(entity));
+        };
+        entity.slots.set(slot, value)?;
+        Ok(())
+    }
+
+    pub fn push_nested(&mut self, effect: QueuedEffect) { self.queue.push_nested(effect); }
+
+    pub fn add_update(&mut self, update: RunUpdate) { self.updates.add(update); }
+
+    pub fn sync_winner(&mut self) -> Option<usize> { self.world.sync_winner(self.entities) }
+
+    fn require(&self, capability: ExtensionCapability) -> Result<(), EffectContextError> {
+        if self.capabilities.contains(&capability) {
+            Ok(())
+        } else {
+            Err(EffectContextError::MissingCapability(capability))
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

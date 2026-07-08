@@ -10,8 +10,8 @@ pub mod world;
 use crate::engine::update::RunUpdates;
 
 pub use effect::{
-    CustomEffect, CustomEffectPayload, EffectContext, EffectHandlerFn, EffectHandlers, EffectQueue, QueuedEffect, RenderedReplay,
-    RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame, ShowRendererFn, ShowRenderers,
+    CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn, EffectHandlers, EffectQueue,
+    QueuedEffect, RenderedReplay, RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame, ShowRendererFn, ShowRenderers,
 };
 pub use entity::{EntityArena, EntityIdx, EntityRecord, PlayerRuntime, PlayerTemplate, StateEntry, StateStore};
 pub use extension::{
@@ -99,6 +99,15 @@ impl CombatRuntime {
 
     pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) { self.effect_handlers.set(id, handler); }
 
+    pub fn set_effect_handler_with_capabilities(
+        &mut self,
+        id: EffectHandlerId,
+        handler: EffectHandlerFn,
+        capabilities: &[ExtensionCapability],
+    ) {
+        self.effect_handlers.set_with_capabilities(id, handler, capabilities);
+    }
+
     pub fn set_replay_renderer(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
         self.replay_renderers.set(id, renderer);
     }
@@ -176,13 +185,16 @@ impl CombatRuntime {
                     let Some(handler) = self.effect_handlers.get(custom.handler) else {
                         panic!("missing runtime_v2 effect handler implementation: {}", custom.handler.0);
                     };
-                    let mut context = EffectContext {
-                        entities: &mut self.entities,
-                        world: &mut self.world,
-                        slots: &mut self.slots,
-                        queue: &mut self.effects,
-                        updates: &mut updates,
-                    };
+                    let capabilities = self.effect_handlers.capabilities(custom.handler).unwrap_or(&[]);
+                    let mut context = EffectContext::new(
+                        &mut self.entities,
+                        &mut self.world,
+                        &mut self.slots,
+                        &mut self.effects,
+                        &mut updates,
+                        &custom,
+                        capabilities,
+                    );
                     handler(&mut context, &custom);
                 }
             }
@@ -265,7 +277,7 @@ mod tests {
         let CustomEffectPayload::Text(message) = &effect.payload else {
             panic!("custom test effect expects text payload");
         };
-        context.updates.add(crate::engine::update::RunUpdate::new(
+        context.add_update(crate::engine::update::RunUpdate::new(
             message.clone(),
             effect.caster.0 as usize,
             effect.target.unwrap().0 as usize,
@@ -277,11 +289,38 @@ mod tests {
         let CustomEffectPayload::Int(amount) = effect.payload else {
             panic!("custom test effect expects int payload");
         };
-        context.queue.push_nested(QueuedEffect::Damage {
+        context.push_nested(QueuedEffect::Damage {
             caster: effect.caster,
             target: effect.target.expect("custom test effect needs target"),
             amount,
         });
+    }
+
+    fn custom_rejects_cross_entity_read(context: &mut EffectContext<'_>, _: &CustomEffect) {
+        assert_eq!(
+            context.entity(EntityIdx(2)),
+            Err(EffectContextError::MissingCapability(ExtensionCapability::ReadEnemies))
+        );
+        context.add_update(crate::engine::update::RunUpdate::new("read denied", 0, 0, 0));
+    }
+
+    fn custom_reads_cross_entity(context: &mut EffectContext<'_>, _: &CustomEffect) {
+        let observed = context.entity(EntityIdx(2)).expect("capability should allow cross-entity read");
+        context.add_update(crate::engine::update::RunUpdate::new(observed.template.name.clone(), 0, 2, 0));
+    }
+
+    fn custom_mutates_entity_slot(context: &mut EffectContext<'_>, effect: &CustomEffect) {
+        let CustomEffectPayload::Int(slot) = effect.payload else {
+            panic!("custom test effect expects entity slot id payload");
+        };
+        context
+            .set_entity_slot(
+                effect.target.expect("custom test effect needs target"),
+                EntitySlotId(slot as u32),
+                SlotValue::Bool(true),
+            )
+            .expect("capability should allow entity slot mutation");
+        context.add_update(crate::engine::update::RunUpdate::new("slot set", 0, 0, 0));
     }
 
     fn render_first_message_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
@@ -369,6 +408,80 @@ mod tests {
         assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 6);
         assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
         assert_eq!(frame.updates.updates[1].message, "after nested");
+    }
+
+    #[test]
+    fn custom_context_restricts_cross_entity_reads_by_capability() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let reader = builder
+            .register_effect_handler("custom", "reader", "custom.reader", SkillPriority(0))
+            .expect("handler should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+                PlayerTemplate::new(3, "third", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_effect_handler(reader, custom_rejects_cross_entity_read);
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            reader,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::None,
+        )));
+        let denied = runtime.flush_effects().expect("denied read handler should emit update");
+        assert_eq!(denied.updates.updates[0].message, "read denied");
+
+        runtime.set_effect_handler_with_capabilities(reader, custom_reads_cross_entity, &[ExtensionCapability::ReadEnemies]);
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            reader,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::None,
+        )));
+        let allowed = runtime.flush_effects().expect("allowed read handler should emit update");
+        assert_eq!(allowed.updates.updates[0].message, "third");
+    }
+
+    #[test]
+    fn custom_context_requires_capability_for_entity_slot_mutation() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let slot = builder
+            .reserve_entity_slot("custom", "flag", "custom.flag")
+            .expect("entity slot should reserve");
+        let mutator = builder
+            .register_effect_handler("custom", "mutator", "custom.mutator", SkillPriority(0))
+            .expect("handler should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_effect_handler_with_capabilities(
+            mutator,
+            custom_mutates_entity_slot,
+            &[ExtensionCapability::MutateEntitySlots],
+        );
+        runtime.effects.push(QueuedEffect::Custom(CustomEffect::new(
+            mutator,
+            EntityIdx(0),
+            Some(EntityIdx(1)),
+            CustomEffectPayload::Int(slot.0 as i32),
+        )));
+
+        let frame = runtime.flush_effects().expect("slot mutation should emit update");
+
+        assert_eq!(frame.updates.updates[0].message, "slot set");
+        assert_eq!(
+            runtime.entities.get(EntityIdx(1)).unwrap().slots.get(slot),
+            Some(&SlotValue::Bool(true))
+        );
     }
 
     #[test]
