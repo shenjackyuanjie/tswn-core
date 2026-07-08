@@ -74,7 +74,7 @@ pub fn choose_action(
     }
 }
 
-pub(super) fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
+pub fn select_targets(actor: PlrId, world: &WorldState, storage: &Arc<Storage>) -> ActionTargets {
     let Some(actor_player) = storage.get_player(&actor) else {
         return ActionTargets::default();
     };
