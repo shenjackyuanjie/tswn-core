@@ -1195,6 +1195,84 @@ mod tests {
         assert_eq!(shared.updates.updates[2].target, 3);
     }
 
+    #[test]
+    fn custom_minion_heal_fixture_does_not_share_with_owner_or_summons() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let owner_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "minion-owner",
+                "custom.minion_owner",
+                PlayerKindFlags::default(),
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToSummons,
+                    merge: MergePolicy::None,
+                },
+            )
+            .expect("minion owner kind should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "minion",
+                "custom.minion",
+                PlayerKindFlags::MINION | PlayerKindFlags::SUMMON,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                },
+            )
+            .expect("minion kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "owner", owner_kind, 0, 20, 3),
+                PlayerTemplate::new(2, "healer", 0, 10, 1),
+                PlayerTemplate::new(3, "enemy", 1, 10, 1),
+            ],
+            registry,
+        ));
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(4, "summon-a", summon_kind, 0, 10, 1),
+        });
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(5, "summon-b", summon_kind, 0, 10, 1),
+        });
+        runtime.flush_effects().expect("minion spawns should emit updates");
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(2),
+            target: EntityIdx(0),
+            amount: 4,
+        });
+        let shared_damage = runtime.flush_effects().expect("owner damage should share to minions");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 16);
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().runtime.hp, 6);
+        assert_eq!(runtime.entities.get(EntityIdx(4)).unwrap().runtime.hp, 6);
+        assert_eq!(shared_damage.updates.updates.len(), 3);
+        assert_eq!(shared_damage.updates.updates[0].target, 0);
+        assert_eq!(shared_damage.updates.updates[1].target, 3);
+        assert_eq!(shared_damage.updates.updates[2].target, 4);
+
+        runtime.effects.push(QueuedEffect::Heal {
+            caster: EntityIdx(1),
+            target: EntityIdx(3),
+            amount: 3,
+        });
+        let minion_heal = runtime.flush_effects().expect("minion heal should emit one update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 16);
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().runtime.hp, 9);
+        assert_eq!(runtime.entities.get(EntityIdx(4)).unwrap().runtime.hp, 6);
+        assert_eq!(minion_heal.updates.updates.len(), 1);
+        assert_eq!(minion_heal.updates.updates[0].message, "[1]回复体力[2]点");
+        assert_eq!(minion_heal.updates.updates[0].target, 3);
+        assert_eq!(minion_heal.updates.updates[0].score, 3);
+    }
+
     fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
         let CustomEffectPayload::Text(message) = &effect.payload else {
             panic!("custom test effect expects text payload");

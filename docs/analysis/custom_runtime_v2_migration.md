@@ -39,7 +39,7 @@ git diff --name-status github/main..github/custom
 | summon/root-owner 伤害路由 | summon clone damage route to root owner | `OwnerResolutionPolicy::RootOwner` | 已接入并在 custom summon 复合 fixture 中覆盖 | root owner 承伤、致死 hook 目标一致 |
 | summon 伤害共享 owner | child/summon damage share owner | `DamageSharePolicy::ShareToOwner` | 已接入并测试 owner 共享致死 hook；复合 fixture 覆盖 summon policy 注册 | 子实体受伤同步扣 owner，owner 死亡 hook 顺序一致 |
 | owner 伤害共享 summon | owner damage share alive summons | `DamageSharePolicy::ShareToSummons` | 已接入并在 custom summon 复合 fixture 中覆盖按实体顺序共享 | owner 受伤同步扣存活 summon，顺序稳定 |
-| minion heal sharing 移除/调整 | custom minion 行为集中在 `act/minion.rs` 与 `player/test/minions.rs` | player kind policy 或 damage/share policy | v2 尚缺 minion heal 专项 fixture | minion 相关 heal 不再产生 custom 分支禁止的共享 |
+| minion heal sharing 移除/调整 | custom minion 行为集中在 `act/minion.rs` 与 `player/test/minions.rs` | player kind policy 或 damage/share policy | 已有 v2 custom minion heal fixture 固化 damage 仍共享、heal 只作用目标实体；仍缺真实 minion handler | minion 相关 heal 不再产生 custom 分支禁止的共享 |
 | merge 固定槽继承 | custom 保留 `slot_skill` 固定槽语义以避免 merge 错位 | `MergePolicy::FixedLane` | 已接入并测试 fixed lane 合并 | 同槽位技能覆盖，未映射技能 append |
 | merge 丢弃未映射技能 | custom 分支支持 drop unmapped 语义 | `MergePolicy::DropUnmappedSkills` | 已接入并测试 drop unmapped | 未映射来源技能不进入 caster loadout |
 | merge replay | custom replay 使用吞噬/属性上升展示 | `QueuedEffect::Merge` replay update | 已输出 `[0][吞噬]了[1]` 与 `[0]属性上升` | merge frame 顺序、score 分别为 60/0 |
@@ -53,9 +53,10 @@ git diff --name-status github/main..github/custom
 
 1. **bed2 registry fixture**：已注册 `custom.bed2` kind、固定 summon skill、HP marker slot；后续补真实 parser/template payload。
 2. **summon policy fixture**：已覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留；后续补真实 recast handler。
-3. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
-4. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data；后续补 HP bar/show adapter。
-5. **runner fixture**：把 custom 分支 large / fight_multi 的关键样例缩成 v2 strict diff golden。
+3. **minion heal fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享；后续补真实 minion handler。
+4. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
+5. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data；后续补 HP bar/show adapter。
+6. **runner fixture**：把 custom 分支 large / fight_multi 的关键样例缩成 v2 strict diff golden。
 
 ---
 
@@ -64,6 +65,7 @@ git diff --name-status github/main..github/custom
 - `PlayerKindSpec` / `PlayerKindPolicies` 可表达 custom kind 与行为策略。
 - `OwnerResolutionPolicy::RootOwner` 已覆盖 summon/root-owner 伤害路由。
 - `DamageSharePolicy::ShareToOwner` / `ShareToSummons` 已覆盖 owner 与 summon 伤害共享。
+- `QueuedEffect::Heal` 已用 custom minion fixture 固化不触发 owner/summon damage share。
 - `MergePolicy::FixedLane` / `DropUnmappedSkills` 已覆盖 custom merge 数据面。
 - `RuntimeFrame::render_core_replay` / `render_core_show` 已提供 show 迁移前的最小 golden 面。
 
@@ -72,7 +74,7 @@ git diff --name-status github/main..github/custom
 ## 5. 未完成项
 
 - bed2 的 parser/import 与真实 summon template payload fixture。
-- summon 真实 recast handler、继承 owner 防御/魔防、minion heal 行为的专用 fixture。
+- summon 真实 recast handler、继承 owner 防御/魔防、真实 minion handler。
 - HP marker HP bar renderer fixture 与 wasm show adapter。
 - custom large / fight_multi runner 归一化 golden。
 - 将审计表中的每个验收 case 接入 strict diff 或稳定单测。
