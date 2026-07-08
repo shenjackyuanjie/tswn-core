@@ -1,5 +1,5 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
-use crate::runtime_v2::entity::{EntityIdx, StateEntry};
+use crate::runtime_v2::entity::{EntityIdx, PlayerTemplate, StateEntry};
 use crate::runtime_v2::extension::{EffectHandlerId, ExtensionCapability, ExtensionRegistry, ReplayRendererId, ShowRendererId};
 use crate::runtime_v2::{BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, SlotError, SlotValue, WorldArena};
 use std::collections::VecDeque;
@@ -15,6 +15,10 @@ pub enum QueuedEffect {
         caster: EntityIdx,
         target: EntityIdx,
         amount: i32,
+    },
+    Spawn {
+        caster: EntityIdx,
+        template: PlayerTemplate,
     },
     AddState {
         target: EntityIdx,
@@ -397,6 +401,10 @@ impl RuntimeFrame {
 
     pub fn heal_update(caster: usize, target: usize, amount: i32) -> RunUpdate {
         RunUpdate::new("[1]回复体力[2]点", caster, target, amount.max(0) as u32)
+    }
+
+    pub fn spawn_update(caster: usize, spawned: usize) -> RunUpdate {
+        RunUpdate::new("出现一个新的[1]", caster, spawned, 0)
     }
 
     pub fn add_state_update(target: usize) -> RunUpdate { RunUpdate::new("[1]状态改变", target, target, 0) }

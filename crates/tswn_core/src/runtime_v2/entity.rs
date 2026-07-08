@@ -35,7 +35,7 @@ pub struct PlayerRuntime {
 }
 
 impl PlayerRuntime {
-    fn from_template(template: &PlayerTemplate) -> Self {
+    pub fn from_template(template: &PlayerTemplate) -> Self {
         Self {
             hp: template.max_hp,
             alive: true,
@@ -84,6 +84,18 @@ impl EntityArena {
     pub fn get(&self, idx: EntityIdx) -> Option<&EntityRecord> { self.entities.get(idx.0 as usize) }
 
     pub fn get_mut(&mut self, idx: EntityIdx) -> Option<&mut EntityRecord> { self.entities.get_mut(idx.0 as usize) }
+
+    pub fn spawn_from_template(&mut self, template: PlayerTemplate, registry: &ExtensionRegistry) -> EntityIdx {
+        let idx = EntityIdx(self.entities.len().try_into().expect("runtime_v2 entity index overflow"));
+        let runtime = PlayerRuntime::from_template(&template);
+        self.entities.push(EntityRecord {
+            template,
+            runtime,
+            states: StateStore::default(),
+            slots: EntitySlotStorage::from_registry(registry),
+        });
+        idx
+    }
 
     pub fn iter(&self) -> impl Iterator<Item = (EntityIdx, &EntityRecord)> {
         self.entities.iter().enumerate().map(|(idx, entity)| (EntityIdx(idx as u32), entity))
@@ -209,6 +221,24 @@ mod tests {
             arena.get(EntityIdx(0)).unwrap().slots.get(slot),
             Some(&crate::runtime_v2::SlotValue::Bool(true))
         );
+    }
+
+    #[test]
+    fn entity_arena_spawns_new_entity_without_reusing_indices() {
+        let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
+        let slot = builder
+            .reserve_entity_slot("custom", "flag", "custom.flag")
+            .expect("entity slot should reserve");
+        let registry = builder.build();
+        let mut arena = EntityArena::from_templates_with_registry(vec![PlayerTemplate::new(1, "left", 0, 10, 3)], &registry);
+
+        let spawned = arena.spawn_from_template(PlayerTemplate::new(2, "spawned", 1, 7, 2), &registry);
+
+        assert_eq!(spawned, EntityIdx(1));
+        assert_eq!(arena.len(), 2);
+        assert_eq!(arena.get(spawned).unwrap().template.name, "spawned");
+        assert_eq!(arena.get(spawned).unwrap().runtime.hp, 7);
+        assert_eq!(arena.get(spawned).unwrap().slots.get(slot), None);
     }
 
     #[test]

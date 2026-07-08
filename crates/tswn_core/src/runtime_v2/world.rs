@@ -40,6 +40,10 @@ impl WorldArena {
             .map(|(idx, _)| idx)
     }
 
+    pub fn append_round_actor(&mut self, actor: EntityIdx) { self.round_order.push(actor); }
+
+    pub fn round_order(&self) -> &[EntityIdx] { &self.round_order }
+
     pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
         let mut alive_team = None;
         for (_, entity) in entities.iter() {
@@ -60,4 +64,20 @@ impl WorldArena {
     }
 
     pub fn winner_team(&self) -> Option<usize> { self.winner_team }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_v2::{EntityArena, PlayerTemplate};
+
+    #[test]
+    fn world_appends_spawned_actor_to_round_order() {
+        let entities = EntityArena::from_templates(vec![PlayerTemplate::new(1, "left", 0, 10, 3)]);
+        let mut world = WorldArena::from_entities(&entities);
+
+        world.append_round_actor(EntityIdx(1));
+
+        assert_eq!(world.round_order(), &[EntityIdx(0), EntityIdx(1)]);
+    }
 }

@@ -191,6 +191,11 @@ impl CombatRuntime {
                     }
                     updates.add(RuntimeFrame::heal_update(caster.0 as usize, target.0 as usize, amount));
                 }
+                QueuedEffect::Spawn { caster, template } => {
+                    let spawned = self.entities.spawn_from_template(template, &self.registry);
+                    self.world.append_round_actor(spawned);
+                    updates.add(RuntimeFrame::spawn_update(caster.0 as usize, spawned.0 as usize));
+                }
                 QueuedEffect::AddState { target, state } => {
                     let Some(target_entity) = self.entities.get_mut(target) else {
                         panic!("unknown runtime_v2 add-state target entity: {}", target.0);
@@ -493,6 +498,46 @@ mod tests {
 
         assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10);
         assert_eq!(frame.updates.updates[0].message, "[1]回复体力[2]点");
+    }
+
+    #[test]
+    fn flush_effects_spawns_entity_and_adds_it_to_round_order() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::new(3, "summoned", 0, 5, 2),
+        });
+
+        let frame = runtime.flush_effects().expect("spawn should emit update");
+
+        assert_eq!(runtime.entities.len(), 3);
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().template.name, "summoned");
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 5);
+        assert_eq!(runtime.world.round_order(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
+        assert_eq!(frame.updates.updates[0].message, "出现一个新的[1]");
+    }
+
+    #[test]
+    fn spawned_entity_can_be_selected_by_scheduler() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            ExtensionRegistry::default(),
+        ));
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::new(2, "enemy", 1, 8, 4),
+        });
+        runtime.flush_effects().expect("spawn should emit update");
+
+        assert_eq!(runtime.world.sync_winner(&runtime.entities), None);
+        assert_eq!(
+            runtime.scheduler.select_minimal_action(&mut runtime.world, &runtime.entities),
+            Some(ActionPlan {
+                actor: EntityIdx(0),
+                target: EntityIdx(1),
+                amount: 3,
+            })
+        );
     }
 
     #[test]
