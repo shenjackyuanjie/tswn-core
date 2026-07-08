@@ -1637,6 +1637,19 @@ mod tests {
         ))
     }
 
+    fn render_hp_marker_bar_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
+        let hp_report = frame.updates.updates.iter().find(|update| update.message == "[0]还剩[2]点血")?;
+        Some(RenderedShow::new(
+            ShowRendererId(0),
+            format!(
+                "hp-bar:actor={}:value={}:text={}",
+                hp_report.caster,
+                hp_report.param.unwrap_or(hp_report.score),
+                hp_report.msg()
+            ),
+        ))
+    }
+
     #[test]
     fn run_skill_hooks_dispatches_registered_skill_handlers() {
         let mut builder = ExtensionRegistryBuilder::default();
@@ -2868,6 +2881,32 @@ mod tests {
         let rendered = runtime.render_show_frame(&frame);
 
         assert_eq!(rendered, vec![RenderedShow::new(ShowRendererId(0), "[0]攻击[1]")]);
+    }
+
+    #[test]
+    fn runtime_dispatches_hp_marker_show_renderer_golden() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let show = builder
+            .register_show_renderer("custom", "hp-marker", "custom.hp_marker.show", SkillPriority(0))
+            .expect("hp marker show renderer should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.set_show_renderer(show, render_hp_marker_bar_show);
+        let mut updates = crate::engine::update::RunUpdates::new();
+        let mut hp_report = RuntimeFrame::replay_update(0, 0, "[0]还剩[2]点血", 0);
+        hp_report.param = Some(87);
+        updates.add(hp_report);
+        let frame = RuntimeFrame { updates };
+
+        let rendered = runtime.render_show_frame(&frame);
+
+        assert_eq!(
+            rendered,
+            vec![RenderedShow::new(ShowRendererId(0), "hp-bar:actor=0:value=87:text=0还剩87点血")]
+        );
     }
 
     #[test]
