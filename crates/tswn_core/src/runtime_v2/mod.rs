@@ -640,6 +640,8 @@ mod tests {
         );
         assert_eq!(trace.actions[0].rng_after, trace.actions[0].rng_before);
         assert_eq!(trace.frames.len(), 1);
+        assert_eq!(trace.frames[0].total_score, 3);
+        assert_eq!(trace.frames[0].winner_team, None);
         assert_eq!(trace.frames[0].updates[0].score, 3);
     }
 

@@ -32,6 +32,7 @@ pub struct TraceAction {
 pub struct TraceFrame {
     pub round: u64,
     pub updates: Vec<NormalizedUpdateFrame>,
+    pub total_score: u64,
     pub winner_team: Option<usize>,
 }
 
@@ -50,9 +51,12 @@ impl RuntimeTrace {
             frame: Some(frame.clone()),
             winner_team,
         };
+        let updates = NormalizedUpdateFrame::from_outcome(&outcome);
+        let total_score = updates.iter().map(|update| u64::from(update.score)).sum();
         self.frames.push(TraceFrame {
             round,
-            updates: NormalizedUpdateFrame::from_outcome(&outcome),
+            updates,
+            total_score,
             winner_team,
         });
     }
@@ -88,5 +92,6 @@ mod tests {
         assert_eq!(trace.actions[0].actor, EntityIdx(0));
         assert_eq!(trace.frames.len(), 1);
         assert_eq!(trace.frames[0].updates[0].message, "[0]攻击[1]");
+        assert_eq!(trace.frames[0].total_score, 3);
     }
 }
