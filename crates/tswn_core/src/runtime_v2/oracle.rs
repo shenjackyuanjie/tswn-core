@@ -88,6 +88,7 @@ impl NormalizedUpdateFrame {
 pub struct NormalizedOutcome {
     pub winner_team: Option<usize>,
     pub round: u64,
+    pub total_score: u64,
     pub rng: NormalizedRngCheckpoint,
     pub entity_ids: Vec<usize>,
     pub teams: Vec<usize>,
@@ -112,6 +113,9 @@ impl NormalizedOutcome {
         Self {
             winner_team: outcome.winner_team,
             round: runtime.round,
+            total_score: outcome.frame.as_ref().map_or(0, |frame| {
+                frame.updates.updates.iter().map(|update| u64::from(update.score)).sum()
+            }),
             rng: NormalizedRngCheckpoint::from_runtime(runtime),
             entity_ids: runtime.entities.iter().map(|(_, entity)| entity.template.id).collect(),
             teams: runtime.entities.iter().map(|(_, entity)| entity.runtime.team).collect(),
@@ -144,6 +148,10 @@ pub enum StrictDiff {
         actual: Option<usize>,
     },
     Round {
+        expected: u64,
+        actual: u64,
+    },
+    Score {
         expected: u64,
         actual: u64,
     },
@@ -214,6 +222,12 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
         return Err(StrictDiff::Round {
             expected: expected.round,
             actual: actual.round,
+        });
+    }
+    if expected.total_score != actual.total_score {
+        return Err(StrictDiff::Score {
+            expected: expected.total_score,
+            actual: actual.total_score,
         });
     }
     if expected.rng != actual.rng {
@@ -314,6 +328,7 @@ pub fn minimal_1v1_expected_after_one_round(left_hp: i32, right_hp: i32, attack:
     NormalizedOutcome {
         winner_team: (right_hp <= attack).then_some(0),
         round: 1,
+        total_score: attack.max(0) as u64,
         rng: NormalizedRngCheckpoint::default(),
         entity_ids: vec![1, 2],
         teams: vec![0, 1],
@@ -505,6 +520,19 @@ mod tests {
                 expected: expected.rng.clone(),
                 actual: actual.rng.clone(),
             })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_score_mismatch_before_rng() {
+        let expected = minimal_1v1_expected_after_one_round(10, 10, 3);
+        let mut actual = expected.clone();
+        actual.total_score = 4;
+        actual.rng.i = 1;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::Score { expected: 3, actual: 4 })
         );
     }
 

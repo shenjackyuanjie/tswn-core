@@ -556,7 +556,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 建立 legacy/v2 对账框架；
 - 定义归一化 replay/update 帧；
-- 已在 v2 `NormalizedOutcome` / `strict_diff` 中记录并比较 winner、score、RNG checkpoint、entity/HP/alive、WorldArena 派生视图、action/frame；
+- 已在 v2 `NormalizedOutcome` / `strict_diff` 中记录并比较 winner、score 汇总、RNG checkpoint、entity/HP/alive、WorldArena 派生视图、action/frame；
 - 接入 fixed golden、track_case_miner 大样本、custom golden；
 - 明确任何 diff 失败阻塞切换。
 
