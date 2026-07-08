@@ -10,6 +10,7 @@ pub mod trace;
 pub mod world;
 
 use crate::engine::update::RunUpdates;
+use crate::rc4::RC4;
 
 pub use effect::{
     CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn, EffectHandlers, EffectQueue,
@@ -64,7 +65,7 @@ pub struct RoundOutcome {
     pub winner_team: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct CombatRuntime {
     pub entities: EntityArena,
     pub world: WorldArena,
@@ -76,6 +77,7 @@ pub struct CombatRuntime {
     pub scratch: BattleScratch,
     pub slots: BattleSlotStorage,
     pub registry: ExtensionRegistry,
+    pub rng: RC4,
     #[cfg(not(feature = "no_debug"))]
     pub trace: Option<RuntimeTrace>,
     pub round: u64,
@@ -100,6 +102,7 @@ impl CombatRuntime {
             scratch: BattleScratch::default(),
             slots,
             registry: template.registry,
+            rng: RC4::default(),
             #[cfg(not(feature = "no_debug"))]
             trace: None,
             round: 0,
@@ -179,8 +182,8 @@ impl CombatRuntime {
                 actor: action.actor,
                 target: action.target,
                 amount: action.amount,
-                rng_before: None,
-                rng_after: None,
+                rng_before: Some(RngCheckpoint::from_rc4(&self.rng)),
+                rng_after: Some(RngCheckpoint::from_rc4(&self.rng)),
             });
         }
 
@@ -364,6 +367,15 @@ mod tests {
         assert_eq!(trace.actions.len(), 1);
         assert_eq!(trace.actions[0].actor, EntityIdx(0));
         assert_eq!(trace.actions[0].target, EntityIdx(1));
+        assert_eq!(
+            trace.actions[0].rng_before,
+            Some(RngCheckpoint {
+                i: 0,
+                j: 0,
+                byte_count: 0,
+            })
+        );
+        assert_eq!(trace.actions[0].rng_after, trace.actions[0].rng_before);
         assert_eq!(trace.frames.len(), 1);
         assert_eq!(trace.frames[0].updates[0].score, 3);
     }

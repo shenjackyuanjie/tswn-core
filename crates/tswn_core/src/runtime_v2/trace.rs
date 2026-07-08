@@ -1,3 +1,4 @@
+use crate::rc4::RC4;
 use crate::runtime_v2::{EntityIdx, NormalizedUpdateFrame, RuntimeFrame};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5,6 +6,16 @@ pub struct RngCheckpoint {
     pub i: u32,
     pub j: u32,
     pub byte_count: u64,
+}
+
+impl RngCheckpoint {
+    pub fn from_rc4(rng: &RC4) -> Self {
+        Self {
+            i: rng.i,
+            j: rng.j,
+            byte_count: rng.byte_count,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
