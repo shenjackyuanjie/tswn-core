@@ -93,12 +93,22 @@ pub struct NormalizedOutcome {
     pub teams: Vec<usize>,
     pub hp: Vec<i32>,
     pub alive: Vec<bool>,
+    pub round_order: Vec<usize>,
+    pub flat_alive: Vec<usize>,
+    pub team_alive: Vec<Vec<usize>>,
+    pub alive_group_count: usize,
     pub actions: Vec<NormalizedActionBoundary>,
     pub frames: Vec<NormalizedUpdateFrame>,
 }
 
 impl NormalizedOutcome {
     pub fn from_runtime(runtime: &CombatRuntime, outcome: &RoundOutcome) -> Self {
+        let team_count = runtime
+            .entities
+            .iter()
+            .map(|(_, entity)| entity.runtime.team)
+            .max()
+            .map_or(0, |team| team + 1);
         Self {
             winner_team: outcome.winner_team,
             round: runtime.round,
@@ -107,6 +117,20 @@ impl NormalizedOutcome {
             teams: runtime.entities.iter().map(|(_, entity)| entity.runtime.team).collect(),
             hp: runtime.entities.iter().map(|(_, entity)| entity.runtime.hp).collect(),
             alive: runtime.entities.iter().map(|(_, entity)| entity.runtime.alive).collect(),
+            round_order: runtime.world.round_order().iter().map(|idx| idx.0 as usize).collect(),
+            flat_alive: runtime.world.flat_alive().iter().map(|idx| idx.0 as usize).collect(),
+            team_alive: (0..team_count)
+                .map(|team| {
+                    runtime
+                        .world
+                        .team_alive(team)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|idx| idx.0 as usize)
+                        .collect()
+                })
+                .collect(),
+            alive_group_count: runtime.world.alive_group_count(),
             actions: NormalizedActionBoundary::from_outcome(runtime, outcome),
             frames: NormalizedUpdateFrame::from_outcome(outcome),
         }
@@ -134,6 +158,22 @@ pub enum StrictDiff {
     Alive {
         expected: Vec<bool>,
         actual: Vec<bool>,
+    },
+    RoundOrder {
+        expected: Vec<usize>,
+        actual: Vec<usize>,
+    },
+    FlatAlive {
+        expected: Vec<usize>,
+        actual: Vec<usize>,
+    },
+    TeamAlive {
+        expected: Vec<Vec<usize>>,
+        actual: Vec<Vec<usize>>,
+    },
+    AliveGroupCount {
+        expected: usize,
+        actual: usize,
     },
     EntityIds {
         expected: Vec<usize>,
@@ -206,6 +246,30 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
             actual: actual.alive.clone(),
         });
     }
+    if expected.round_order != actual.round_order {
+        return Err(StrictDiff::RoundOrder {
+            expected: expected.round_order.clone(),
+            actual: actual.round_order.clone(),
+        });
+    }
+    if expected.flat_alive != actual.flat_alive {
+        return Err(StrictDiff::FlatAlive {
+            expected: expected.flat_alive.clone(),
+            actual: actual.flat_alive.clone(),
+        });
+    }
+    if expected.team_alive != actual.team_alive {
+        return Err(StrictDiff::TeamAlive {
+            expected: expected.team_alive.clone(),
+            actual: actual.team_alive.clone(),
+        });
+    }
+    if expected.alive_group_count != actual.alive_group_count {
+        return Err(StrictDiff::AliveGroupCount {
+            expected: expected.alive_group_count,
+            actual: actual.alive_group_count,
+        });
+    }
     if expected.actions.len() != actual.actions.len() {
         return Err(StrictDiff::ActionCount {
             expected: expected.actions.len(),
@@ -246,6 +310,7 @@ pub fn run_minimal_v2_once(template: PreparedCombatTemplate) -> NormalizedOutcom
 }
 
 pub fn minimal_1v1_expected_after_one_round(left_hp: i32, right_hp: i32, attack: i32) -> NormalizedOutcome {
+    let right_alive = right_hp > attack;
     NormalizedOutcome {
         winner_team: (right_hp <= attack).then_some(0),
         round: 1,
@@ -253,7 +318,15 @@ pub fn minimal_1v1_expected_after_one_round(left_hp: i32, right_hp: i32, attack:
         entity_ids: vec![1, 2],
         teams: vec![0, 1],
         hp: vec![left_hp, (right_hp - attack).max(0)],
-        alive: vec![true, right_hp > attack],
+        alive: vec![true, right_alive],
+        round_order: if right_alive { vec![0, 1] } else { vec![0] },
+        flat_alive: if right_alive { vec![0, 1] } else { vec![0] },
+        team_alive: if right_alive {
+            vec![vec![0], vec![1]]
+        } else {
+            vec![vec![0], vec![]]
+        },
+        alive_group_count: if right_alive { 2 } else { 1 },
         actions: vec![NormalizedActionBoundary {
             round: 1,
             actor: EntityIdx(0).0 as usize,
@@ -335,6 +408,70 @@ mod tests {
                 expected: vec![true, false],
                 actual: vec![true, true],
             })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_world_view_mismatch_after_alive_matches() {
+        let expected = minimal_1v1_expected_after_one_round(10, 3, 3);
+        let mut actual = expected.clone();
+        actual.round_order = vec![0, 1];
+        actual.flat_alive = vec![0, 1];
+        actual.team_alive = vec![vec![0], vec![1]];
+        actual.alive_group_count = 2;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::RoundOrder {
+                expected: vec![0],
+                actual: vec![0, 1],
+            })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_flat_alive_before_team_alive() {
+        let expected = minimal_1v1_expected_after_one_round(10, 3, 3);
+        let mut actual = expected.clone();
+        actual.flat_alive = vec![0, 1];
+        actual.team_alive = vec![vec![0], vec![1]];
+        actual.alive_group_count = 2;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::FlatAlive {
+                expected: vec![0],
+                actual: vec![0, 1],
+            })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_team_alive_before_group_count() {
+        let expected = minimal_1v1_expected_after_one_round(10, 3, 3);
+        let mut actual = expected.clone();
+        actual.team_alive = vec![vec![0], vec![1]];
+        actual.alive_group_count = 2;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::TeamAlive {
+                expected: vec![vec![0], vec![]],
+                actual: vec![vec![0], vec![1]],
+            })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_alive_group_count_before_actions() {
+        let expected = minimal_1v1_expected_after_one_round(10, 3, 3);
+        let mut actual = expected.clone();
+        actual.alive_group_count = 2;
+        actual.actions[0].target = 0;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::AliveGroupCount { expected: 1, actual: 2 })
         );
     }
 
