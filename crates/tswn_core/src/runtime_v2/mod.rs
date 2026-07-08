@@ -183,6 +183,11 @@ impl CombatRuntime {
 
     fn flush_skill_hook_plan(&mut self, plan: &SkillHookPlan) -> Option<RuntimeFrame> {
         let mut updates = RunUpdates::new();
+        self.drain_skill_hook_plan_into(plan, &mut updates);
+        updates.had_updates().then_some(RuntimeFrame { updates })
+    }
+
+    fn drain_skill_hook_plan_into(&mut self, plan: &SkillHookPlan, updates: &mut RunUpdates) {
         for entry in &plan.entries {
             let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
                 panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
@@ -194,15 +199,14 @@ impl CombatRuntime {
                     &mut self.world,
                     &mut self.slots,
                     &mut self.effects,
-                    &mut updates,
+                    updates,
                     *entry,
                     capabilities,
                 );
                 handler(&mut context, entry);
             }
-            self.drain_effects_into(&mut updates);
+            self.drain_effects_into(updates);
         }
-        updates.had_updates().then_some(RuntimeFrame { updates })
     }
 
     pub fn run_minimal_round(&mut self) -> RoundOutcome {
@@ -234,12 +238,18 @@ impl CombatRuntime {
             });
         }
 
+        let mut updates = RunUpdates::new();
+        let skill_plan = self
+            .scheduler
+            .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_ACTION);
+        self.drain_skill_hook_plan_into(&skill_plan, &mut updates);
         self.effects.push(QueuedEffect::Damage {
             caster: action.actor,
             target: action.target,
             amount: action.amount,
         });
-        let frame = self.flush_effects();
+        self.drain_effects_into(&mut updates);
+        let frame = updates.had_updates().then_some(RuntimeFrame { updates });
         self.round += 1;
         let winner_team = self.world.sync_winner(&self.entities);
         #[cfg(not(feature = "no_debug"))]
@@ -253,6 +263,7 @@ impl CombatRuntime {
         }
     }
 
+    #[cfg(test)]
     fn flush_effects(&mut self) -> Option<RuntimeFrame> {
         let mut updates = RunUpdates::new();
         self.drain_effects_into(&mut updates);
@@ -608,6 +619,70 @@ mod tests {
         assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 8);
         assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
         assert_eq!(frame.updates.updates[0].score, 2);
+    }
+
+    #[test]
+    fn run_minimal_round_dispatches_pre_action_skill_before_attack() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let marker = builder
+            .register_skill_with_hooks(
+                "custom",
+                "marker",
+                "custom.marker",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([marker]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(marker, skill_marks_update);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("skill plus attack should emit update");
+
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "skill mark");
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 7);
+    }
+
+    #[test]
+    fn run_minimal_round_flushes_pre_action_skill_effect_before_attack() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "damage",
+                "custom.damage",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([skill]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(skill, skill_pushes_nested_damage);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("skill damage plus attack should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 5);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].score, 2);
+        assert_eq!(frame.updates.updates[1].score, 3);
     }
 
     #[test]
