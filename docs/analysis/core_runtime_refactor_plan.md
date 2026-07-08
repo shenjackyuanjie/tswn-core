@@ -622,6 +622,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 已接入 `SkillHandlers` / `SkillContext` 和 runtime skill hook 执行入口，handler 可产出 update 或投递 effect queue；
 - `run_minimal_round` 已执行 actor 的 `PRE_ACTION` skill hook，并将 skill update/effect 与基础攻击合入同一 frame；
 - 已接入 `StateHandlers` / `StateContext` 和 runtime state hook 执行入口，legacy-only state entry 在 v2 handler 分发中跳过；
+- `run_minimal_round` 已在基础攻击后执行 actor 的 `POST_ACTION` state hook，并将 state update/effect 合入同一 frame；
 - `StateStore` 改 `SmallVec`/dense index + legacy order key；
 - hook plan 变化当前 phase 立即可见。
 
