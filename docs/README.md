@@ -13,6 +13,7 @@
 | `perf/opt_target_selection.md` | 目标选择优化移植报告            | 已完成并合入主线的优化报告                                                     |
 | `perf/ub_fix_no_debug.md`      | UB 修复 + no_debug 泄漏修复报告 | 已完成并合入主线的修复报告                                                     |
 | `storage_refactor_analysis.md` | Storage 内部可变性方案分析      | 当前架构的内部可变性方案分析，与实际代码一致                                   |
+| `analysis/core_runtime_refactor_plan.md` | 下一代核心重构计划 | `engine / player / skill` 激进高性能重构方案，包含扩展 API 与 custom branch 迁移策略 |
 | `DIY.md`                       | DIY / OL overlay 使用说明       | 当前代码通过 `PlayerOverlay` 支持玩家与召唤物的 `diy[...]` / `ol:{...}` 覆盖   |
 | `howto/README.md`              | 项目概况                        | 简要说明项目目标和起源                                                         |
 | `howto/capi_cpp_windows.md`    | C API C++ Windows 使用指南      | C++ 编译/链接指南，与当前 bundle 产物一致                                      |
@@ -45,7 +46,7 @@
 
 | 类别                | 数量                       |
 | ------------------- | -------------------------- |
-| ✅ 当前有用且不过时 | **8** 个文件               |
+| ✅ 当前有用且不过时 | **9** 个文件               |
 | ❌ 已删除的过时文档 | **10** 个文件 + 1 个空目录 |
 | 📋 计划中未实现     | **0** 个文件               |
 
@@ -59,6 +60,8 @@ docs/
 ├── build_all.md                    # 构建流程
 ├── DIY.md                          # DIY / OL overlay 使用说明
 ├── storage_refactor_analysis.md    # 内部可变性分析
+├── analysis/
+│   └── core_runtime_refactor_plan.md # 下一代核心重构计划
 ├── howto/
 │   ├── README.md                   # 项目概况
 │   └── capi_cpp_windows.md         # C API 使用指南
