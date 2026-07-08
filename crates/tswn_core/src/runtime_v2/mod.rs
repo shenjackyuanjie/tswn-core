@@ -15,7 +15,7 @@ use crate::rc4::RC4;
 pub use effect::{
     CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn, EffectHandlers, EffectQueue,
     QueuedEffect, RenderedReplay, RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame, ShowRendererFn, ShowRenderers,
-    SkillContext, SkillHandlerFn, SkillHandlers,
+    SkillContext, SkillHandlerFn, SkillHandlers, StateContext, StateHandlerFn, StateHandlers,
 };
 pub use entity::{
     EntityArena, EntityIdx, EntityRecord, MoveState, PlayerRuntime, PlayerTemplate, SkillLoadout, StateEntry, StateStore,
@@ -77,6 +77,7 @@ pub struct CombatRuntime {
     pub effects: EffectQueue,
     pub effect_handlers: EffectHandlers,
     pub skill_handlers: SkillHandlers,
+    pub state_handlers: StateHandlers,
     pub replay_renderers: ReplayRenderers,
     pub show_renderers: ShowRenderers,
     pub scratch: BattleScratch,
@@ -95,6 +96,7 @@ impl CombatRuntime {
         let slots = BattleSlotStorage::from_registry(&template.registry);
         let effect_handlers = EffectHandlers::from_registry(&template.registry);
         let skill_handlers = SkillHandlers::from_registry(&template.registry);
+        let state_handlers = StateHandlers::from_registry(&template.registry);
         let replay_renderers = ReplayRenderers::from_registry(&template.registry);
         let show_renderers = ShowRenderers::from_registry(&template.registry);
         Self {
@@ -104,6 +106,7 @@ impl CombatRuntime {
             effects: EffectQueue::default(),
             effect_handlers,
             skill_handlers,
+            state_handlers,
             replay_renderers,
             show_renderers,
             scratch: BattleScratch::default(),
@@ -142,6 +145,17 @@ impl CombatRuntime {
         capabilities: &[ExtensionCapability],
     ) {
         self.skill_handlers.set_with_capabilities(id, handler, capabilities);
+    }
+
+    pub fn set_state_handler(&mut self, id: StateId, handler: StateHandlerFn) { self.state_handlers.set(id, handler); }
+
+    pub fn set_state_handler_with_capabilities(
+        &mut self,
+        id: StateId,
+        handler: StateHandlerFn,
+        capabilities: &[ExtensionCapability],
+    ) {
+        self.state_handlers.set_with_capabilities(id, handler, capabilities);
     }
 
     pub fn set_replay_renderer(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
@@ -195,6 +209,42 @@ impl CombatRuntime {
             {
                 let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(&[]);
                 let mut context = SkillContext::new(
+                    &mut self.entities,
+                    &mut self.world,
+                    &mut self.slots,
+                    &mut self.effects,
+                    updates,
+                    *entry,
+                    capabilities,
+                );
+                handler(&mut context, entry);
+            }
+            self.drain_effects_into(updates);
+        }
+    }
+
+    pub fn run_state_hooks(&mut self, owner: EntityIdx, hook: ProcMask) -> Option<RuntimeFrame> {
+        let plan = self.scheduler.state_hook_plan(&self.entities, owner, hook);
+        self.flush_state_hook_plan(&plan)
+    }
+
+    fn flush_state_hook_plan(&mut self, plan: &StateHookPlan) -> Option<RuntimeFrame> {
+        let mut updates = RunUpdates::new();
+        self.drain_state_hook_plan_into(plan, &mut updates);
+        updates.had_updates().then_some(RuntimeFrame { updates })
+    }
+
+    fn drain_state_hook_plan_into(&mut self, plan: &StateHookPlan, updates: &mut RunUpdates) {
+        for entry in &plan.entries {
+            let Some(state_id) = entry.state_id else {
+                continue;
+            };
+            let Some(handler) = self.state_handlers.get(state_id) else {
+                panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
+            };
+            {
+                let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(&[]);
+                let mut context = StateContext::new(
                     &mut self.entities,
                     &mut self.world,
                     &mut self.slots,
@@ -540,6 +590,23 @@ mod tests {
         });
     }
 
+    fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "state mark",
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            entry.legacy_order_key,
+        ));
+    }
+
+    fn state_pushes_nested_heal(context: &mut StateContext<'_>, _: &StateHookPlanEntry) {
+        context.push_nested(QueuedEffect::Heal {
+            caster: context.owner_idx(),
+            target: context.owner_idx(),
+            amount: 2,
+        });
+    }
+
     fn render_first_message_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
         Some(RenderedReplay::new(
             ReplayRendererId(0),
@@ -683,6 +750,69 @@ mod tests {
         assert_eq!(frame.updates.updates.len(), 2);
         assert_eq!(frame.updates.updates[0].score, 2);
         assert_eq!(frame.updates.updates[1].score, 3);
+    }
+
+    #[test]
+    fn run_state_hooks_dispatches_registered_state_handlers() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let state = builder
+            .register_state("custom", "burning", "custom.burning", ProcMask::POST_ACTION, SkillPriority(0))
+            .expect("state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry {
+            legacy_order_key: 42,
+            extension_state_id: Some(state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(0),
+        });
+        runtime.set_state_handler(state, state_marks_update);
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("state handler should emit update");
+
+        assert_eq!(frame.updates.updates[0].message, "state mark");
+        assert_eq!(frame.updates.updates[0].score, 42);
+    }
+
+    #[test]
+    fn run_state_hooks_flushes_nested_effects_and_skips_legacy_entries() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let state = builder
+            .register_state("custom", "regen", "custom.regen", ProcMask::POST_ACTION, SkillPriority(0))
+            .expect("state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 4;
+        {
+            let store = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().states;
+            store.add_legacy_key(11);
+            store.add_entry(StateEntry {
+                legacy_order_key: 22,
+                extension_state_id: Some(state),
+                hook_mask: ProcMask::POST_ACTION,
+                priority: SkillPriority(0),
+                registration_order: RegistrationOrder(1),
+            });
+        }
+        runtime.set_state_handler(state, state_pushes_nested_heal);
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("state heal should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 6);
+        assert_eq!(frame.updates.updates.len(), 1);
+        assert_eq!(frame.updates.updates[0].message, "[1]回复体力[2]点");
+        assert_eq!(frame.updates.updates[0].score, 2);
     }
 
     #[test]
