@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### 测试
+
+- 新增 `tswn_test` 共享测试 harness，并将原先嵌在 `tswn_core::engine::test` 下的多组回放/战斗测试迁移为可复用的测试 suite，便于后续多个 engine 实现共用同一批行为对账用例。
+- 将 `tswn_core` 专属 engine 测试拆到 `crates/tswn_core/tests/engine_core.rs`，让核心 crate 的公开行为测试与共享测试工具解耦。
+- 更新 `track_test.py` 默认追踪包，默认覆盖迁移后的 large / small seed / multi fight 测试集合。
+
 ### 修复
 
 - 修复使魔模板中通过 `normal:sklcharge` 配置的蓄力不会被后续技能识别的问题：疾走、潜行等依赖蓄力运行时态的逻辑改为扫描当前技能仓库，而不是硬编码普通玩家的 `19` 号技能槽，确保使魔隔离技能槽 `80+id` 里的蓄力也能正确触发加成。
