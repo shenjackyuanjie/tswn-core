@@ -646,7 +646,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `Damage` effect 已接入 `DamageSharePolicy::ShareToOwner`，子实体受伤时可同步扣 owner 并在共享致死时触发 owner 致死 hook；
 - `Damage` effect 已接入 `DamageSharePolicy::ShareToSummons`，owner 受伤时可按实体顺序同步扣存活子实体；
 - `CustomEffect` / skill / state handler 已通过各自 context 暴露受控 RNG 消费 API，不直接暴露 `RC4` 本体；
-- `Merge` effect 已接入 `MergePolicy::FixedLane` / `DropUnmappedSkills` 的固定技能槽位合并数据面；
+- `Merge` effect 已接入 `MergePolicy::FixedLane` / `DropUnmappedSkills` 的固定技能槽位合并数据面，并在成功合并时输出吞噬/属性上升帧；
 - effect batch 后逐项复刻 legacy flush；
 - 嵌套 effect 深度优先；
 - 清掉新 runtime 中 `just_get_player_mut` 风格重借。

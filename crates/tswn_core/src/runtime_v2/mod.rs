@@ -449,6 +449,12 @@ impl CombatRuntime {
                             target.0 as usize,
                             60,
                         ));
+                        updates.add(crate::engine::update::RunUpdate::new(
+                            "[0]属性上升",
+                            caster.0 as usize,
+                            target.0 as usize,
+                            0,
+                        ));
                     }
                 }
                 QueuedEffect::Replay {
@@ -2100,6 +2106,8 @@ mod tests {
         );
         assert_eq!(frame.updates.updates[0].message, "[0][吞噬]了[1]");
         assert_eq!(frame.updates.updates[0].score, 60);
+        assert_eq!(frame.updates.updates[1].message, "[0]属性上升");
+        assert_eq!(frame.updates.updates[1].score, 0);
     }
 
     #[test]
