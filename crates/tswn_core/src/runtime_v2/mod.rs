@@ -21,11 +21,11 @@ pub use entity::{
     EntityArena, EntityIdx, EntityRecord, MoveState, PlayerRuntime, PlayerTemplate, SkillLoadout, StateEntry, StateStore,
 };
 pub use extension::{
-    BattleSlotId, BattleSlotSpec, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec, ExtensionCapability,
-    ExtensionError, ExtensionRegistry, ExtensionRegistryBuilder, ExtensionVersion, InstalledExtensionSpec, PlayerKindFlags,
-    PlayerKindId, PlayerKindPolicies, PlayerKindSpec, ProcMask, RegistrationOrder, ReplayRendererId, ReplayRendererSpec,
-    ShowRendererId, ShowRendererSpec, SkillId, SkillPriority, SkillSpec, StateId, StateSpec, TargetPolicy, TemplateSlotId,
-    TemplateSlotSpec, TswnExtension,
+    BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,
+    ExtensionCapability, ExtensionError, ExtensionRegistry, ExtensionRegistryBuilder, ExtensionVersion, InstalledExtensionSpec,
+    MergePolicy, OwnerResolutionPolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, PlayerKindSpec, ProcMask,
+    RegistrationOrder, ReplayRendererId, ReplayRendererSpec, ShowRendererId, ShowRendererSpec, SkillId, SkillPriority, SkillSpec,
+    StateId, StateSpec, TargetPolicy, TemplateSlotId, TemplateSlotSpec, TswnExtension,
 };
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
 pub use scheduler::{ActionPlan, PhaseScheduler, SkillHookPlan, SkillHookPlanEntry, StateHookPlan, StateHookPlanEntry};
@@ -371,7 +371,10 @@ impl CombatRuntime {
                 }
                 QueuedEffect::Spawn { caster, template } => {
                     self.ensure_effect_entity("spawn", "caster", caster);
-                    let spawned = self.entities.spawn_from_template(template, &self.registry);
+                    let root_owner = self.entities.get(caster).unwrap().runtime.root_owner;
+                    let spawned =
+                        self.entities
+                            .spawn_from_template_with_owner(template, &self.registry, Some(caster), Some(root_owner));
                     let team = self.entities.get(spawned).unwrap().runtime.team;
                     self.world.add_spawned_alive(spawned, team);
                     updates.add(RuntimeFrame::spawn_update(caster.0 as usize, spawned.0 as usize));
@@ -1355,6 +1358,8 @@ mod tests {
         assert_eq!(runtime.entities.len(), 3);
         assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().template.name, "summoned");
         assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 5);
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.owner, EntityIdx(0));
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.root_owner, EntityIdx(0));
         assert_eq!(runtime.world.round_order(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
         assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0), EntityIdx(2)].as_slice()));
         assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(2), EntityIdx(1)]);

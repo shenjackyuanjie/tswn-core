@@ -641,6 +641,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `Revive` / `Remove` effect 已同步维护 v2 `round_order`，为 pending revive/remove 可见性对齐 legacy 铺底；
 - `WorldArena` 已接入 `team_alive` / `flat_alive` / `alive_group_count` 派生存活视图，并随 spawn/revive/remove 同步维护；
 - 致死 `Damage` effect 已按 damage -> die(target) -> kill(caster) 顺序执行 `DIE` / `KILL` skill/state hook；
+- `PlayerRuntime` 已记录 `owner` / `root_owner` / `PlayerKindPolicies`，`Spawn` effect 会把新实体挂到 caster/root-owner 链路上；
 - effect batch 后逐项复刻 legacy flush；
 - 嵌套 effect 深度优先；
 - 清掉新 runtime 中 `just_get_player_mut` 风格重借。
