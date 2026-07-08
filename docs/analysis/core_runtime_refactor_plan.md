@@ -638,6 +638,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 用 effect pipeline 替换 `OnDamageFunc`；
 - damage/heal/state/spawn/revive/remove/replay/custom effect 接入；
 - 已补齐 damage/heal/spawn/state/revive/remove/replay/custom effect 的实体存在性校验，非法 caster/target panic；
+- `Revive` / `Remove` effect 已同步维护 v2 `round_order`，为 pending revive/remove 可见性对齐 legacy 铺底；
 - effect batch 后逐项复刻 legacy flush；
 - 嵌套 effect 深度优先；
 - 清掉新 runtime 中 `just_get_player_mut` 风格重借。

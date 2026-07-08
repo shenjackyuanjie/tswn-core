@@ -400,6 +400,7 @@ impl CombatRuntime {
                     };
                     target_entity.runtime.hp = hp.max(1).min(target_entity.template.max_hp);
                     target_entity.runtime.alive = true;
+                    self.world.revive_round_actor(target);
                     updates.add(RuntimeFrame::revive_update(caster.0 as usize, target.0 as usize, hp));
                 }
                 QueuedEffect::Remove { caster, target } => {
@@ -410,6 +411,7 @@ impl CombatRuntime {
                     };
                     target_entity.runtime.hp = 0;
                     target_entity.runtime.alive = false;
+                    self.world.remove_round_actor(target);
                     updates.add(RuntimeFrame::remove_update(caster.0 as usize, target.0 as usize));
                 }
                 QueuedEffect::Replay {
@@ -1339,6 +1341,7 @@ mod tests {
     #[test]
     fn flush_effects_revives_dead_entity_with_capped_hp() {
         let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
+        runtime.world.remove_round_actor(EntityIdx(1));
         let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
         target.runtime.hp = 0;
         target.runtime.alive = false;
@@ -1353,6 +1356,7 @@ mod tests {
         let target = runtime.entities.get(EntityIdx(1)).unwrap();
         assert_eq!(target.runtime.hp, 10);
         assert!(target.runtime.alive);
+        assert_eq!(runtime.world.round_order(), &[EntityIdx(0), EntityIdx(1)]);
         assert_eq!(frame.updates.updates[0].message, "[1][复活]了");
     }
 
@@ -1369,6 +1373,7 @@ mod tests {
         let target = runtime.entities.get(EntityIdx(1)).unwrap();
         assert_eq!(target.runtime.hp, 0);
         assert!(!target.runtime.alive);
+        assert_eq!(runtime.world.round_order(), &[EntityIdx(0)]);
         assert_eq!(frame.updates.updates[0].message, "[1]消失了");
     }
 

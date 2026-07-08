@@ -42,6 +42,33 @@ impl WorldArena {
 
     pub fn append_round_actor(&mut self, actor: EntityIdx) { self.round_order.push(actor); }
 
+    pub fn remove_round_actor(&mut self, actor: EntityIdx) -> bool {
+        let Some(pos) = self.round_order.iter().position(|idx| *idx == actor) else {
+            return false;
+        };
+        self.round_order.remove(pos);
+        if self.round_order.is_empty() {
+            self.cursor = 0;
+        } else if pos < self.cursor {
+            self.cursor -= 1;
+        } else if self.cursor >= self.round_order.len() {
+            self.cursor = 0;
+        }
+        true
+    }
+
+    pub fn revive_round_actor(&mut self, actor: EntityIdx) -> bool {
+        if self.round_order.contains(&actor) {
+            return false;
+        }
+        let insert_at = self.round_order.iter().position(|idx| *idx > actor).unwrap_or(self.round_order.len());
+        self.round_order.insert(insert_at, actor);
+        if insert_at < self.cursor {
+            self.cursor += 1;
+        }
+        true
+    }
+
     pub fn round_order(&self) -> &[EntityIdx] { &self.round_order }
 
     pub fn sync_winner(&mut self, entities: &EntityArena) -> Option<usize> {
@@ -79,5 +106,36 @@ mod tests {
         world.append_round_actor(EntityIdx(1));
 
         assert_eq!(world.round_order(), &[EntityIdx(0), EntityIdx(1)]);
+    }
+
+    #[test]
+    fn world_removes_round_actor_and_keeps_cursor_on_next_actor() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3),
+            PlayerTemplate::new(2, "middle", 1, 10, 3),
+            PlayerTemplate::new(3, "right", 2, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+
+        assert_eq!(world.next_actor(&entities), Some(EntityIdx(0)));
+        assert!(world.remove_round_actor(EntityIdx(0)));
+        assert_eq!(world.round_order(), &[EntityIdx(1), EntityIdx(2)]);
+        assert_eq!(world.next_actor(&entities), Some(EntityIdx(1)));
+    }
+
+    #[test]
+    fn world_revives_round_actor_by_entity_order_without_duplicates() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3),
+            PlayerTemplate::new(2, "middle", 1, 10, 3),
+            PlayerTemplate::new(3, "right", 2, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+
+        assert!(world.remove_round_actor(EntityIdx(1)));
+        assert_eq!(world.round_order(), &[EntityIdx(0), EntityIdx(2)]);
+        assert!(world.revive_round_actor(EntityIdx(1)));
+        assert!(!world.revive_round_actor(EntityIdx(1)));
+        assert_eq!(world.round_order(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
     }
 }
