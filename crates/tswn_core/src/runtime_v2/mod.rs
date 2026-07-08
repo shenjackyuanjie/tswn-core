@@ -485,7 +485,11 @@ impl CombatRuntime {
         if killed {
             target_entity.runtime.alive = false;
         }
+        let team = target_entity.runtime.team;
         updates.add(RuntimeFrame::damage_update(caster.0 as usize, target.0 as usize, amount));
+        if killed {
+            self.world.remove_alive(target, team);
+        }
         killed
     }
 
@@ -923,6 +927,24 @@ mod tests {
         assert_eq!(frame.updates.updates[1].target, 0);
         assert_eq!(frame.updates.updates[2].message, "state mark");
         assert_eq!(frame.updates.updates[2].score, 101);
+    }
+
+    #[test]
+    fn flush_effects_removes_lethal_damage_target_from_alive_views() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 4, 3));
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+            amount: 4,
+        });
+
+        runtime.flush_effects().expect("lethal damage should emit update");
+
+        assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+        assert_eq!(runtime.world.team_alive(1), Some([].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0)]);
+        assert_eq!(runtime.world.alive_group_count(), 1);
+        assert_eq!(runtime.world.first_alive_enemy(EntityIdx(0), &runtime.entities), None);
     }
 
     #[test]
