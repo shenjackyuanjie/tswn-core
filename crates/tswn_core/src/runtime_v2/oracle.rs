@@ -1,6 +1,25 @@
 use crate::engine::update::{DEFAULT_DELAY0_MS, DEFAULT_DELAY1_MS, UpdateType};
 use crate::runtime_v2::{CombatRuntime, EntityIdx, PreparedCombatTemplate, RoundOutcome};
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct NormalizedRngCheckpoint {
+    pub i: u32,
+    pub j: u32,
+    #[cfg(not(feature = "no_debug"))]
+    pub byte_count: u64,
+}
+
+impl NormalizedRngCheckpoint {
+    pub fn from_runtime(runtime: &CombatRuntime) -> Self {
+        Self {
+            i: runtime.rng.i,
+            j: runtime.rng.j,
+            #[cfg(not(feature = "no_debug"))]
+            byte_count: runtime.rng.byte_count,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedActionBoundary {
     pub round: u64,
@@ -69,6 +88,7 @@ impl NormalizedUpdateFrame {
 pub struct NormalizedOutcome {
     pub winner_team: Option<usize>,
     pub round: u64,
+    pub rng: NormalizedRngCheckpoint,
     pub entity_ids: Vec<usize>,
     pub teams: Vec<usize>,
     pub hp: Vec<i32>,
@@ -82,6 +102,7 @@ impl NormalizedOutcome {
         Self {
             winner_team: outcome.winner_team,
             round: runtime.round,
+            rng: NormalizedRngCheckpoint::from_runtime(runtime),
             entity_ids: runtime.entities.iter().map(|(_, entity)| entity.template.id).collect(),
             teams: runtime.entities.iter().map(|(_, entity)| entity.runtime.team).collect(),
             hp: runtime.entities.iter().map(|(_, entity)| entity.runtime.hp).collect(),
@@ -101,6 +122,10 @@ pub enum StrictDiff {
     Round {
         expected: u64,
         actual: u64,
+    },
+    Rng {
+        expected: NormalizedRngCheckpoint,
+        actual: NormalizedRngCheckpoint,
     },
     Hp {
         expected: Vec<i32>,
@@ -149,6 +174,12 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
         return Err(StrictDiff::Round {
             expected: expected.round,
             actual: actual.round,
+        });
+    }
+    if expected.rng != actual.rng {
+        return Err(StrictDiff::Rng {
+            expected: expected.rng.clone(),
+            actual: actual.rng.clone(),
         });
     }
     if expected.entity_ids != actual.entity_ids {
@@ -218,6 +249,7 @@ pub fn minimal_1v1_expected_after_one_round(left_hp: i32, right_hp: i32, attack:
     NormalizedOutcome {
         winner_team: (right_hp <= attack).then_some(0),
         round: 1,
+        rng: NormalizedRngCheckpoint::default(),
         entity_ids: vec![1, 2],
         teams: vec![0, 1],
         hp: vec![left_hp, (right_hp - attack).max(0)],
@@ -319,6 +351,22 @@ mod tests {
             Err(StrictDiff::EntityIds {
                 expected: vec![1, 2],
                 actual: vec![1, 9],
+            })
+        );
+    }
+
+    #[test]
+    fn strict_diff_harness_reports_rng_mismatch_before_entities() {
+        let expected = minimal_1v1_expected_after_one_round(10, 10, 3);
+        let mut actual = expected.clone();
+        actual.rng.i = 1;
+        actual.entity_ids[1] = 9;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::Rng {
+                expected: expected.rng.clone(),
+                actual: actual.rng.clone(),
             })
         );
     }
