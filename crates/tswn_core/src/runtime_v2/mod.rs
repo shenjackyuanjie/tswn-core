@@ -293,12 +293,16 @@ impl CombatRuntime {
             .scheduler
             .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_ACTION);
         self.drain_skill_hook_plan_into(&skill_plan, &mut updates);
+        let pre_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_DAMAGE);
+        self.drain_state_hook_plan_into(&pre_damage_state_plan, &mut updates);
         self.effects.push(QueuedEffect::Damage {
             caster: action.actor,
             target: action.target,
             amount: action.amount,
         });
         self.drain_effects_into(&mut updates);
+        let post_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_DAMAGE);
+        self.drain_state_hook_plan_into(&post_damage_state_plan, &mut updates);
         let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_ACTION);
         self.drain_state_hook_plan_into(&state_plan, &mut updates);
         let frame = updates.had_updates().then_some(RuntimeFrame { updates });
@@ -820,6 +824,128 @@ mod tests {
         assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
         assert_eq!(frame.updates.updates[1].message, "[1]回复体力[2]点");
         assert_eq!(frame.updates.updates[1].score, 2);
+    }
+
+    #[test]
+    fn run_minimal_round_dispatches_damage_state_hooks_around_attack() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let pre_damage = builder
+            .register_state(
+                "custom",
+                "pre-damage",
+                "custom.pre_damage",
+                ProcMask::PRE_DAMAGE,
+                SkillPriority(0),
+            )
+            .expect("pre-damage state should register");
+        let post_damage = builder
+            .register_state(
+                "custom",
+                "post-damage",
+                "custom.post_damage",
+                ProcMask::POST_DAMAGE,
+                SkillPriority(0),
+            )
+            .expect("post-damage state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        {
+            let store = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().states;
+            store.add_entry(StateEntry {
+                legacy_order_key: 11,
+                extension_state_id: Some(pre_damage),
+                hook_mask: ProcMask::PRE_DAMAGE,
+                priority: SkillPriority(0),
+                registration_order: RegistrationOrder(0),
+            });
+            store.add_entry(StateEntry {
+                legacy_order_key: 22,
+                extension_state_id: Some(post_damage),
+                hook_mask: ProcMask::POST_DAMAGE,
+                priority: SkillPriority(0),
+                registration_order: RegistrationOrder(1),
+            });
+        }
+        runtime.set_state_handler(pre_damage, state_marks_update);
+        runtime.set_state_handler(post_damage, state_marks_update);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("damage state hooks plus attack should emit update");
+
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "state mark");
+        assert_eq!(frame.updates.updates[0].score, 11);
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[2].message, "state mark");
+        assert_eq!(frame.updates.updates[2].score, 22);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 7);
+    }
+
+    #[test]
+    fn run_minimal_round_flushes_post_damage_state_effect_before_post_action() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let post_damage = builder
+            .register_state(
+                "custom",
+                "post-damage-regen",
+                "custom.post_damage_regen",
+                ProcMask::POST_DAMAGE,
+                SkillPriority(0),
+            )
+            .expect("post-damage state should register");
+        let post_action = builder
+            .register_state(
+                "custom",
+                "post-action-marker",
+                "custom.post_action_marker",
+                ProcMask::POST_ACTION,
+                SkillPriority(0),
+            )
+            .expect("post-action state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 4;
+        {
+            let store = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().states;
+            store.add_entry(StateEntry {
+                legacy_order_key: 33,
+                extension_state_id: Some(post_damage),
+                hook_mask: ProcMask::POST_DAMAGE,
+                priority: SkillPriority(0),
+                registration_order: RegistrationOrder(0),
+            });
+            store.add_entry(StateEntry {
+                legacy_order_key: 44,
+                extension_state_id: Some(post_action),
+                hook_mask: ProcMask::POST_ACTION,
+                priority: SkillPriority(0),
+                registration_order: RegistrationOrder(1),
+            });
+        }
+        runtime.set_state_handler(post_damage, state_pushes_nested_heal);
+        runtime.set_state_handler(post_action, state_marks_update);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("post-damage effect plus post-action state should emit update");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 6);
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].message, "[1]回复体力[2]点");
+        assert_eq!(frame.updates.updates[2].message, "state mark");
+        assert_eq!(frame.updates.updates[2].score, 44);
     }
 
     #[test]
