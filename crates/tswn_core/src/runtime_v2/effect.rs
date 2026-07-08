@@ -1,6 +1,6 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::runtime_v2::entity::EntityIdx;
-use crate::runtime_v2::extension::{EffectHandlerId, ExtensionRegistry};
+use crate::runtime_v2::extension::{EffectHandlerId, ExtensionRegistry, ReplayRendererId, ShowRendererId};
 use crate::runtime_v2::{BattleSlotStorage, EntityArena, WorldArena};
 use std::collections::VecDeque;
 
@@ -41,6 +41,8 @@ pub enum CustomEffectPayload {
 }
 
 pub type EffectHandlerFn = fn(&mut EffectContext<'_>, &CustomEffect);
+pub type ReplayRendererFn = fn(&RuntimeFrame) -> Option<RenderedReplay>;
+pub type ShowRendererFn = fn(&RuntimeFrame) -> Option<RenderedShow>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EffectHandlers {
@@ -63,6 +65,84 @@ impl EffectHandlers {
 
     pub fn get(&self, id: EffectHandlerId) -> Option<EffectHandlerFn> {
         self.handlers.get(id.0 as usize).and_then(|handler| *handler)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedReplay {
+    pub renderer: ReplayRendererId,
+    pub payload: String,
+}
+
+impl RenderedReplay {
+    pub fn new(renderer: ReplayRendererId, payload: impl Into<String>) -> Self {
+        Self {
+            renderer,
+            payload: payload.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedShow {
+    pub renderer: ShowRendererId,
+    pub payload: String,
+}
+
+impl RenderedShow {
+    pub fn new(renderer: ShowRendererId, payload: impl Into<String>) -> Self {
+        Self {
+            renderer,
+            payload: payload.into(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct ReplayRenderers {
+    renderers: Vec<Option<ReplayRendererFn>>,
+}
+
+impl ReplayRenderers {
+    pub fn from_registry(registry: &ExtensionRegistry) -> Self {
+        Self {
+            renderers: vec![None; registry.replay_renderers().len()],
+        }
+    }
+
+    pub fn set(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
+        let Some(slot) = self.renderers.get_mut(id.0 as usize) else {
+            panic!("unknown runtime_v2 replay renderer id: {}", id.0);
+        };
+        *slot = Some(renderer);
+    }
+
+    pub fn get(&self, id: ReplayRendererId) -> Option<ReplayRendererFn> {
+        self.renderers.get(id.0 as usize).and_then(|renderer| *renderer)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct ShowRenderers {
+    renderers: Vec<Option<ShowRendererFn>>,
+}
+
+impl ShowRenderers {
+    pub fn from_registry(registry: &ExtensionRegistry) -> Self {
+        Self {
+            renderers: vec![None; registry.show_renderers().len()],
+        }
+    }
+
+    pub fn set(&mut self, id: ShowRendererId, renderer: ShowRendererFn) {
+        let Some(slot) = self.renderers.get_mut(id.0 as usize) else {
+            panic!("unknown runtime_v2 show renderer id: {}", id.0);
+        };
+        *slot = Some(renderer);
+    }
+
+    pub fn get(&self, id: ShowRendererId) -> Option<ShowRendererFn> {
+        self.renderers.get(id.0 as usize).and_then(|renderer| *renderer)
     }
 }
 
@@ -167,6 +247,28 @@ mod tests {
 
         assert!(handlers.get(handler).is_some());
         assert!(handlers.get(EffectHandlerId(1)).is_none());
+    }
+
+    #[test]
+    fn renderer_tables_size_from_registry_and_reject_unknown_ids() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let replay = builder
+            .register_replay_renderer("custom", "replay", "custom.replay", SkillPriority(0))
+            .expect("replay renderer should register");
+        let show = builder
+            .register_show_renderer("custom", "show", "custom.show", SkillPriority(0))
+            .expect("show renderer should register");
+        let registry = builder.build();
+        let mut replay_renderers = ReplayRenderers::from_registry(&registry);
+        let mut show_renderers = ShowRenderers::from_registry(&registry);
+
+        replay_renderers.set(replay, |_| None);
+        show_renderers.set(show, |_| None);
+
+        assert!(replay_renderers.get(replay).is_some());
+        assert!(replay_renderers.get(ReplayRendererId(1)).is_none());
+        assert!(show_renderers.get(show).is_some());
+        assert!(show_renderers.get(ShowRendererId(1)).is_none());
     }
 }
 

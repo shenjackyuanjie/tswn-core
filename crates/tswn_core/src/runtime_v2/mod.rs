@@ -10,7 +10,8 @@ pub mod world;
 use crate::engine::update::RunUpdates;
 
 pub use effect::{
-    CustomEffect, CustomEffectPayload, EffectContext, EffectHandlerFn, EffectHandlers, EffectQueue, QueuedEffect, RuntimeFrame,
+    CustomEffect, CustomEffectPayload, EffectContext, EffectHandlerFn, EffectHandlers, EffectQueue, QueuedEffect, RenderedReplay,
+    RenderedShow, ReplayRendererFn, ReplayRenderers, RuntimeFrame, ShowRendererFn, ShowRenderers,
 };
 pub use entity::{EntityArena, EntityIdx, EntityRecord, PlayerRuntime, PlayerTemplate, StateEntry, StateStore};
 pub use extension::{
@@ -65,6 +66,8 @@ pub struct CombatRuntime {
     pub scheduler: PhaseScheduler,
     pub effects: EffectQueue,
     pub effect_handlers: EffectHandlers,
+    pub replay_renderers: ReplayRenderers,
+    pub show_renderers: ShowRenderers,
     pub scratch: BattleScratch,
     pub slots: BattleSlotStorage,
     pub registry: ExtensionRegistry,
@@ -77,12 +80,16 @@ impl CombatRuntime {
         let world = WorldArena::from_entities(&entities);
         let slots = BattleSlotStorage::from_registry(&template.registry);
         let effect_handlers = EffectHandlers::from_registry(&template.registry);
+        let replay_renderers = ReplayRenderers::from_registry(&template.registry);
+        let show_renderers = ShowRenderers::from_registry(&template.registry);
         Self {
             entities,
             world,
             scheduler: PhaseScheduler,
             effects: EffectQueue::default(),
             effect_handlers,
+            replay_renderers,
+            show_renderers,
             scratch: BattleScratch::default(),
             slots,
             registry: template.registry,
@@ -91,6 +98,38 @@ impl CombatRuntime {
     }
 
     pub fn set_effect_handler(&mut self, id: EffectHandlerId, handler: EffectHandlerFn) { self.effect_handlers.set(id, handler); }
+
+    pub fn set_replay_renderer(&mut self, id: ReplayRendererId, renderer: ReplayRendererFn) {
+        self.replay_renderers.set(id, renderer);
+    }
+
+    pub fn set_show_renderer(&mut self, id: ShowRendererId, renderer: ShowRendererFn) { self.show_renderers.set(id, renderer); }
+
+    pub fn render_replay_frame(&self, frame: &RuntimeFrame) -> Vec<RenderedReplay> {
+        self.registry
+            .replay_renderers_in_order()
+            .into_iter()
+            .filter_map(|spec| {
+                let Some(renderer) = self.replay_renderers.get(spec.id) else {
+                    panic!("missing runtime_v2 replay renderer implementation: {}", spec.id.0);
+                };
+                renderer(frame)
+            })
+            .collect()
+    }
+
+    pub fn render_show_frame(&self, frame: &RuntimeFrame) -> Vec<RenderedShow> {
+        self.registry
+            .show_renderers_in_order()
+            .into_iter()
+            .filter_map(|spec| {
+                let Some(renderer) = self.show_renderers.get(spec.id) else {
+                    panic!("missing runtime_v2 show renderer implementation: {}", spec.id.0);
+                };
+                renderer(frame)
+            })
+            .collect()
+    }
 
     pub fn run_minimal_round(&mut self) -> RoundOutcome {
         if let Some(winner_team) = self.world.sync_winner(&self.entities) {
@@ -245,6 +284,27 @@ mod tests {
         });
     }
 
+    fn render_first_message_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
+        Some(RenderedReplay::new(
+            ReplayRendererId(0),
+            frame.updates.updates.first()?.message.to_string(),
+        ))
+    }
+
+    fn render_update_count_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {
+        Some(RenderedReplay::new(
+            ReplayRendererId(1),
+            frame.updates.updates.len().to_string(),
+        ))
+    }
+
+    fn render_first_message_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
+        Some(RenderedShow::new(
+            ShowRendererId(0),
+            frame.updates.updates.first()?.message.to_string(),
+        ))
+    }
+
     #[test]
     fn flush_effects_dispatches_custom_handlers() {
         let mut builder = ExtensionRegistryBuilder::default();
@@ -309,5 +369,53 @@ mod tests {
         assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 6);
         assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
         assert_eq!(frame.updates.updates[1].message, "after nested");
+    }
+
+    #[test]
+    fn runtime_dispatches_replay_renderers_in_registry_order() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let late = builder
+            .register_replay_renderer("custom", "late", "custom.late_replay", SkillPriority(10))
+            .expect("late replay renderer should register");
+        let early = builder
+            .register_replay_renderer("custom", "early", "custom.early_replay", SkillPriority(1))
+            .expect("early replay renderer should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.set_replay_renderer(late, render_update_count_replay);
+        runtime.set_replay_renderer(early, render_first_message_replay);
+        let frame = RuntimeFrame::single_damage(0, 0, 3);
+
+        let rendered = runtime.render_replay_frame(&frame);
+
+        assert_eq!(
+            rendered,
+            vec![
+                RenderedReplay::new(ReplayRendererId(0), "[0]攻击[1]"),
+                RenderedReplay::new(ReplayRendererId(1), "1")
+            ]
+        );
+    }
+
+    #[test]
+    fn runtime_dispatches_show_renderers_in_registry_order() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let show = builder
+            .register_show_renderer("custom", "show", "custom.show", SkillPriority(0))
+            .expect("show renderer should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.set_show_renderer(show, render_first_message_show);
+        let frame = RuntimeFrame::single_damage(0, 0, 3);
+
+        let rendered = runtime.render_show_frame(&frame);
+
+        assert_eq!(rendered, vec![RenderedShow::new(ShowRendererId(0), "[0]攻击[1]")]);
     }
 }
