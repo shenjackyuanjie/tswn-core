@@ -19,6 +19,15 @@ pub struct BattleSlotId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntitySlotId(pub u32);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EffectHandlerId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ReplayRendererId(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ShowRendererId(pub u32);
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SkillPriority(pub i32);
 
@@ -116,6 +125,36 @@ pub struct EntitySlotSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectHandlerSpec {
+    pub id: EffectHandlerId,
+    pub namespace: String,
+    pub name: String,
+    pub export_name: String,
+    pub priority: SkillPriority,
+    pub registration_order: RegistrationOrder,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayRendererSpec {
+    pub id: ReplayRendererId,
+    pub namespace: String,
+    pub name: String,
+    pub export_name: String,
+    pub priority: SkillPriority,
+    pub registration_order: RegistrationOrder,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShowRendererSpec {
+    pub id: ShowRendererId,
+    pub namespace: String,
+    pub name: String,
+    pub export_name: String,
+    pub priority: SkillPriority,
+    pub registration_order: RegistrationOrder,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionError {
     DuplicateName { namespace: String, name: String },
     DuplicateExportName { export_name: String },
@@ -144,12 +183,18 @@ pub struct ExtensionRegistryBuilder {
     template_slots: Vec<TemplateSlotSpec>,
     battle_slots: Vec<BattleSlotSpec>,
     entity_slots: Vec<EntitySlotSpec>,
+    effect_handlers: Vec<EffectHandlerSpec>,
+    replay_renderers: Vec<ReplayRendererSpec>,
+    show_renderers: Vec<ShowRendererSpec>,
     player_kind_names: HashMap<(String, String), PlayerKindId>,
     skill_names: HashMap<(String, String), SkillId>,
     state_names: HashMap<(String, String), StateId>,
     template_slot_names: HashMap<(String, String), TemplateSlotId>,
     battle_slot_names: HashMap<(String, String), BattleSlotId>,
     entity_slot_names: HashMap<(String, String), EntitySlotId>,
+    effect_handler_names: HashMap<(String, String), EffectHandlerId>,
+    replay_renderer_names: HashMap<(String, String), ReplayRendererId>,
+    show_renderer_names: HashMap<(String, String), ShowRendererId>,
     export_names: HashMap<String, ()>,
     next_registration_order: u32,
 }
@@ -351,6 +396,108 @@ impl ExtensionRegistryBuilder {
         Ok(id)
     }
 
+    pub fn register_effect_handler(
+        &mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        export_name: impl Into<String>,
+        priority: SkillPriority,
+    ) -> Result<EffectHandlerId, ExtensionError> {
+        let namespace = namespace.into();
+        let name = name.into();
+        let export_name = export_name.into();
+        let name_key = (namespace.clone(), name.clone());
+
+        if self.effect_handler_names.contains_key(&name_key) {
+            return Err(ExtensionError::DuplicateName { namespace, name });
+        }
+        if self.export_names.contains_key(&export_name) {
+            return Err(ExtensionError::DuplicateExportName { export_name });
+        }
+
+        let id = EffectHandlerId(self.effect_handlers.len() as u32);
+        let spec = EffectHandlerSpec {
+            id,
+            namespace,
+            name,
+            export_name,
+            priority,
+            registration_order: self.next_order(),
+        };
+        self.effect_handler_names.insert(name_key, id);
+        self.export_names.insert(spec.export_name.clone(), ());
+        self.effect_handlers.push(spec);
+        Ok(id)
+    }
+
+    pub fn register_replay_renderer(
+        &mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        export_name: impl Into<String>,
+        priority: SkillPriority,
+    ) -> Result<ReplayRendererId, ExtensionError> {
+        let namespace = namespace.into();
+        let name = name.into();
+        let export_name = export_name.into();
+        let name_key = (namespace.clone(), name.clone());
+
+        if self.replay_renderer_names.contains_key(&name_key) {
+            return Err(ExtensionError::DuplicateName { namespace, name });
+        }
+        if self.export_names.contains_key(&export_name) {
+            return Err(ExtensionError::DuplicateExportName { export_name });
+        }
+
+        let id = ReplayRendererId(self.replay_renderers.len() as u32);
+        let spec = ReplayRendererSpec {
+            id,
+            namespace,
+            name,
+            export_name,
+            priority,
+            registration_order: self.next_order(),
+        };
+        self.replay_renderer_names.insert(name_key, id);
+        self.export_names.insert(spec.export_name.clone(), ());
+        self.replay_renderers.push(spec);
+        Ok(id)
+    }
+
+    pub fn register_show_renderer(
+        &mut self,
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        export_name: impl Into<String>,
+        priority: SkillPriority,
+    ) -> Result<ShowRendererId, ExtensionError> {
+        let namespace = namespace.into();
+        let name = name.into();
+        let export_name = export_name.into();
+        let name_key = (namespace.clone(), name.clone());
+
+        if self.show_renderer_names.contains_key(&name_key) {
+            return Err(ExtensionError::DuplicateName { namespace, name });
+        }
+        if self.export_names.contains_key(&export_name) {
+            return Err(ExtensionError::DuplicateExportName { export_name });
+        }
+
+        let id = ShowRendererId(self.show_renderers.len() as u32);
+        let spec = ShowRendererSpec {
+            id,
+            namespace,
+            name,
+            export_name,
+            priority,
+            registration_order: self.next_order(),
+        };
+        self.show_renderer_names.insert(name_key, id);
+        self.export_names.insert(spec.export_name.clone(), ());
+        self.show_renderers.push(spec);
+        Ok(id)
+    }
+
     pub fn build(self) -> ExtensionRegistry {
         ExtensionRegistry {
             player_kinds: self.player_kinds,
@@ -359,6 +506,9 @@ impl ExtensionRegistryBuilder {
             template_slots: self.template_slots,
             battle_slots: self.battle_slots,
             entity_slots: self.entity_slots,
+            effect_handlers: self.effect_handlers,
+            replay_renderers: self.replay_renderers,
+            show_renderers: self.show_renderers,
         }
     }
 
@@ -377,6 +527,9 @@ pub struct ExtensionRegistry {
     template_slots: Vec<TemplateSlotSpec>,
     battle_slots: Vec<BattleSlotSpec>,
     entity_slots: Vec<EntitySlotSpec>,
+    effect_handlers: Vec<EffectHandlerSpec>,
+    replay_renderers: Vec<ReplayRendererSpec>,
+    show_renderers: Vec<ShowRendererSpec>,
 }
 
 impl ExtensionRegistry {
@@ -404,6 +557,20 @@ impl ExtensionRegistry {
 
     pub fn entity_slots(&self) -> &[EntitySlotSpec] { &self.entity_slots }
 
+    pub fn effect_handler(&self, id: EffectHandlerId) -> Option<&EffectHandlerSpec> { self.effect_handlers.get(id.0 as usize) }
+
+    pub fn effect_handlers(&self) -> &[EffectHandlerSpec] { &self.effect_handlers }
+
+    pub fn replay_renderer(&self, id: ReplayRendererId) -> Option<&ReplayRendererSpec> {
+        self.replay_renderers.get(id.0 as usize)
+    }
+
+    pub fn replay_renderers(&self) -> &[ReplayRendererSpec] { &self.replay_renderers }
+
+    pub fn show_renderer(&self, id: ShowRendererId) -> Option<&ShowRendererSpec> { self.show_renderers.get(id.0 as usize) }
+
+    pub fn show_renderers(&self) -> &[ShowRendererSpec] { &self.show_renderers }
+
     pub fn skills_in_hook_order(&self) -> Vec<&SkillSpec> {
         let mut specs: Vec<&SkillSpec> = self.skills.iter().collect();
         specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
@@ -412,6 +579,24 @@ impl ExtensionRegistry {
 
     pub fn states_in_hook_order(&self) -> Vec<&StateSpec> {
         let mut specs: Vec<&StateSpec> = self.states.iter().collect();
+        specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
+        specs
+    }
+
+    pub fn effect_handlers_in_chain_order(&self) -> Vec<&EffectHandlerSpec> {
+        let mut specs: Vec<&EffectHandlerSpec> = self.effect_handlers.iter().collect();
+        specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
+        specs
+    }
+
+    pub fn replay_renderers_in_order(&self) -> Vec<&ReplayRendererSpec> {
+        let mut specs: Vec<&ReplayRendererSpec> = self.replay_renderers.iter().collect();
+        specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
+        specs
+    }
+
+    pub fn show_renderers_in_order(&self) -> Vec<&ShowRendererSpec> {
+        let mut specs: Vec<&ShowRendererSpec> = self.show_renderers.iter().collect();
         specs.sort_by_key(|spec| (spec.priority, spec.registration_order));
         specs
     }
@@ -633,6 +818,99 @@ mod tests {
             builder.reserve_battle_slot("custom", "cache", "custom.config"),
             Err(ExtensionError::DuplicateExportName {
                 export_name: "custom.config".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn registry_stores_effect_replay_and_show_renderer_specs() {
+        let mut builder = ExtensionRegistryBuilder::default();
+
+        let effect = builder
+            .register_effect_handler("custom", "summon-damage", "custom.summon_damage", SkillPriority(10))
+            .expect("effect handler should register");
+        let replay = builder
+            .register_replay_renderer("custom", "hp-marker", "custom.hp_marker.replay", SkillPriority(5))
+            .expect("replay renderer should register");
+        let show = builder
+            .register_show_renderer("custom", "hp-marker", "custom.hp_marker.show", SkillPriority(5))
+            .expect("show renderer should register");
+
+        assert_eq!(effect, EffectHandlerId(0));
+        assert_eq!(replay, ReplayRendererId(0));
+        assert_eq!(show, ShowRendererId(0));
+
+        let registry = builder.build();
+        assert_eq!(registry.effect_handler(effect).unwrap().name, "summon-damage");
+        assert_eq!(registry.replay_renderer(replay).unwrap().export_name, "custom.hp_marker.replay");
+        assert_eq!(registry.show_renderer(show).unwrap().namespace, "custom");
+    }
+
+    #[test]
+    fn registry_orders_effect_and_renderer_specs_by_priority_then_registration() {
+        let mut builder = ExtensionRegistryBuilder::default();
+
+        let late_effect = builder
+            .register_effect_handler("custom", "late-effect", "custom.late_effect", SkillPriority(10))
+            .expect("late effect should register");
+        let early_effect = builder
+            .register_effect_handler("custom", "early-effect", "custom.early_effect", SkillPriority(1))
+            .expect("early effect should register");
+        let tie_effect = builder
+            .register_effect_handler("custom", "tie-effect", "custom.tie_effect", SkillPriority(10))
+            .expect("tie effect should register");
+
+        let late_replay = builder
+            .register_replay_renderer("custom", "late-replay", "custom.late_replay", SkillPriority(10))
+            .expect("late replay should register");
+        let early_replay = builder
+            .register_replay_renderer("custom", "early-replay", "custom.early_replay", SkillPriority(1))
+            .expect("early replay should register");
+        let late_show = builder
+            .register_show_renderer("custom", "late-show", "custom.late_show", SkillPriority(10))
+            .expect("late show should register");
+        let early_show = builder
+            .register_show_renderer("custom", "early-show", "custom.early_show", SkillPriority(1))
+            .expect("early show should register");
+
+        let registry = builder.build();
+
+        assert_eq!(
+            registry
+                .effect_handlers_in_chain_order()
+                .into_iter()
+                .map(|spec| spec.id)
+                .collect::<Vec<_>>(),
+            vec![early_effect, late_effect, tie_effect]
+        );
+        assert_eq!(
+            registry.replay_renderers_in_order().into_iter().map(|spec| spec.id).collect::<Vec<_>>(),
+            vec![early_replay, late_replay]
+        );
+        assert_eq!(
+            registry.show_renderers_in_order().into_iter().map(|spec| spec.id).collect::<Vec<_>>(),
+            vec![early_show, late_show]
+        );
+    }
+
+    #[test]
+    fn registry_rejects_renderer_name_and_export_collisions() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        builder
+            .register_replay_renderer("custom", "hp", "custom.hp.replay", SkillPriority(0))
+            .expect("replay renderer should register");
+
+        assert_eq!(
+            builder.register_replay_renderer("custom", "hp", "custom.hp.replay.v2", SkillPriority(0)),
+            Err(ExtensionError::DuplicateName {
+                namespace: "custom".to_owned(),
+                name: "hp".to_owned(),
+            })
+        );
+        assert_eq!(
+            builder.register_show_renderer("custom", "hp", "custom.hp.replay", SkillPriority(0)),
+            Err(ExtensionError::DuplicateExportName {
+                export_name: "custom.hp.replay".to_owned(),
             })
         );
     }
