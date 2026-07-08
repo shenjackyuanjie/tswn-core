@@ -346,11 +346,11 @@ impl CombatRuntime {
                     self.ensure_effect_entity("damage", "target", target);
                     let resolved_target = self.resolve_damage_target(target);
                     self.ensure_effect_entity("damage", "resolved target", resolved_target);
-                    let share_target = self.resolve_damage_share_target(target, resolved_target);
+                    let share_targets = self.resolve_damage_share_targets(target, resolved_target);
                     if self.apply_damage_into(caster, resolved_target, amount, updates) {
                         self.drain_lethal_damage_hooks_into(caster, resolved_target, updates);
                     }
-                    if let Some(share_target) = share_target {
+                    for share_target in share_targets {
                         self.ensure_effect_entity("damage", "share target", share_target);
                         if self.apply_damage_into(caster, share_target, amount, updates) {
                             self.drain_lethal_damage_hooks_into(caster, share_target, updates);
@@ -500,16 +500,27 @@ impl CombatRuntime {
         }
     }
 
-    fn resolve_damage_share_target(&self, target: EntityIdx, resolved_target: EntityIdx) -> Option<EntityIdx> {
+    fn resolve_damage_share_targets(&self, target: EntityIdx, resolved_target: EntityIdx) -> Vec<EntityIdx> {
         let target_entity = self
             .entities
             .get(target)
             .unwrap_or_else(|| panic!("unknown runtime_v2 damage target entity: {}", target.0));
         match target_entity.runtime.policies.damage_share {
-            DamageSharePolicy::None | DamageSharePolicy::ShareToSummons => None,
+            DamageSharePolicy::None => Vec::new(),
             DamageSharePolicy::ShareToOwner => {
                 let owner = target_entity.runtime.owner;
-                (owner != resolved_target).then_some(owner)
+                (owner != resolved_target).then_some(owner).into_iter().collect()
+            }
+            DamageSharePolicy::ShareToSummons => {
+                if resolved_target != target {
+                    return Vec::new();
+                }
+                self.entities
+                    .iter()
+                    .filter_map(|(idx, entity)| {
+                        (idx != target && entity.runtime.alive && entity.runtime.owner == target).then_some(idx)
+                    })
+                    .collect()
             }
         }
     }
@@ -912,6 +923,59 @@ mod tests {
         assert_eq!(frame.updates.updates[1].target, 0);
         assert_eq!(frame.updates.updates[2].message, "state mark");
         assert_eq!(frame.updates.updates[2].score, 101);
+    }
+
+    #[test]
+    fn flush_effects_shares_owner_damage_to_alive_summons() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let owner_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "owner",
+                "custom.owner",
+                PlayerKindFlags::default(),
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToSummons,
+                    merge: MergePolicy::None,
+                },
+            )
+            .expect("owner kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "owner", owner_kind, 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::new(3, "summon-a", 0, 5, 1),
+        });
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::new(4, "summon-b", 0, 5, 1),
+        });
+        runtime.flush_effects().expect("spawns should emit updates");
+        runtime.entities.get_mut(EntityIdx(3)).unwrap().runtime.alive = false;
+        runtime.entities.get_mut(EntityIdx(3)).unwrap().runtime.hp = 0;
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(0),
+            amount: 3,
+        });
+
+        let frame = runtime.flush_effects().expect("shared summon damage should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 7);
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 2);
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().runtime.hp, 0);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].target, 0);
+        assert_eq!(frame.updates.updates[0].score, 3);
+        assert_eq!(frame.updates.updates[1].target, 2);
+        assert_eq!(frame.updates.updates[1].score, 3);
     }
 
     fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
