@@ -1339,6 +1339,7 @@ pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
 pub const DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT: &str = "custom.summon";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT: &str = "custom.summon.fire";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT: &str = "custom.summon.explode";
+pub const DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT: &str = "custom.bed2.summoned_entity";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_TEMPLATE_EXPORT: &str = "custom.bed2.summon_template";
 pub const DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT: &str = "custom.bed2.shadow_template";
 pub const DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT: &str = "custom.bed2.zombie_template";
@@ -1460,6 +1461,11 @@ pub fn default_custom_runtime_v2_import_config()
         "custom.minion.heal",
         TargetPolicy::Ally,
         SkillPriority(4),
+    )?;
+    builder.reserve_entity_slot(
+        "custom",
+        "bed2-summoned-entity",
+        DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT,
     )?;
     let summon_template_slot = builder.reserve_template_slot(
         "custom",
@@ -5592,6 +5598,15 @@ delta@blue+bed2[8]\n";
             .skill_id_by_export_name("custom.minion.heal")
             .expect("default profile should register minion heal export");
         assert_eq!(config.registry.player_kind(bed2).unwrap().export_name, "custom.bed2");
+        let summon_entity_slot = config
+            .registry
+            .entity_slots()
+            .iter()
+            .find(|slot| slot.export_name == DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT)
+            .expect("default profile should reserve summon entity slot")
+            .id;
+        assert_eq!(summon_entity_slot, EntitySlotId(0));
+        assert_eq!(overlays.summon.template_slot, TemplateSlotId(0));
         assert_eq!(
             config.registry.player_kind(overlays.summon.summon_kind).unwrap().export_name,
             DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT
