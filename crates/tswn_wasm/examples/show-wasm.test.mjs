@@ -124,5 +124,11 @@ test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () =
   assert.equal(defeatedTargetPart.hp_before, 80);
   assert.equal(defeatedTargetPart.hp_after, 0);
   assert.equal(defeatedTargetPart.death_effect, true);
+  const winnerClip = replay.frames[1].rows.at(-1).clips[0];
+  assert.equal(winnerClip.winner, true);
+  assert.equal(winnerClip.text_template, "胜者：<data>");
+  assert.equal(winnerClip.parts.map((part) => part.text).join(""), "胜者：left@red");
+  assert.equal(winnerClip.delay, 1000);
+  assert.equal(replay.frames[1].total_delay, 1070);
   assert.deepEqual(replay.frames[1].winner_ids, [0]);
 });

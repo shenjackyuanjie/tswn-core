@@ -13,6 +13,7 @@
 let wasmApi = null;
 const MODULE_CACHE_BUST = Date.now().toString(36);
 const V2_DEFAULT_MAX_ROUNDS = 2048;
+const V2_WINNER_DELAY_MS = 1000;
 
 function withCacheBust(url) {
     const busted = new URL(url);
@@ -373,6 +374,40 @@ function v2RowsFromUpdates(updates, states, previousStates, namesById) {
     return rows.filter((row) => row.clips.length > 0);
 }
 
+function v2WinnerRow(winnerIds, namesById) {
+    if (!winnerIds.length) {
+        return null;
+    }
+    const names = winnerIds.map((id) => namesById.get(id) ?? `#${id}`).join("、");
+    return {
+        indent: 0,
+        clips: [
+            {
+                delay: V2_WINNER_DELAY_MS,
+                text_template: "胜者：<data>",
+                color: null,
+                tone: "knockout",
+                player_id: null,
+                data: null,
+                show_hp: false,
+                hp_before: null,
+                hp_after: null,
+                death_effect: false,
+                emoji: null,
+                parts: [
+                    { kind: "text", text: "胜者：" },
+                    { kind: "data", text: names },
+                ],
+                caster_ids: [],
+                target_ids: [],
+                sidebar_states: [],
+                sidebar_previous_states: [],
+                winner: true,
+            },
+        ],
+    };
+}
+
 function winnerIdsFromOutcome(outcome) {
     const winnerTeam = outcome?.winner_team;
     if (winnerTeam == null) {
@@ -392,12 +427,17 @@ function buildV2Frame(outcome, previousStates, playersById, maxHpById) {
     const namesById = buildStateNameMap(states);
     const updates = (outcome.frames ?? []).map((frame) => v2UpdateFromFrame(frame, namesById));
     const rows = v2RowsFromUpdates(updates, states, previousStates, namesById);
+    const winnerIds = winnerIdsFromOutcome(outcome);
+    const winnerRow = outcome.winner_team == null ? null : v2WinnerRow(winnerIds, namesById);
+    if (winnerRow) {
+        rows.push(winnerRow);
+    }
     const totalDelay = rows
         .flatMap((row) => row.clips)
         .reduce((sum, clip) => sum + Number(clip.delay ?? 0), 0);
     return {
         finished: outcome.winner_team != null,
-        winner_ids: winnerIdsFromOutcome(outcome),
+        winner_ids: winnerIds,
         updates,
         rows,
         states,
