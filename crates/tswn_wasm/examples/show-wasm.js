@@ -2,7 +2,7 @@
  * @fileoverview tswn_wasm 战斗回放展示页 — WASM 模块加载与回放生成
  *
  * 负责动态加载 tswn_wasm WASM 模块（懒加载 + 缓存），
- * 以及根据用户输入调用 FightSession 生成完整回放数据。
+ * 以及根据用户输入调用 FightSession 或 v2 normalized run 生成回放数据。
  */
 
 // ============================================================================
@@ -12,6 +12,7 @@
 /** @type {object|null} WASM 模块的 API 句柄，仅在首次 ensureApi() 时初始化 */
 let wasmApi = null;
 const MODULE_CACHE_BUST = Date.now().toString(36);
+const V2_DEFAULT_MAX_ROUNDS = 2048;
 
 function withCacheBust(url) {
     const busted = new URL(url);
@@ -103,6 +104,260 @@ function extractSpecifiedSeedLine(rawInput) {
     return null;
 }
 
+function normalizeUpdateType(updateType) {
+    if (typeof updateType === "string") {
+        const lowered = updateType.toLowerCase();
+        return lowered === "nextline" ? "next_line" : lowered;
+    }
+    return `${updateType ?? "none"}`.toLowerCase();
+}
+
+function collectRawPlayers(rawInput) {
+    const players = [];
+    let teamIndex = 0;
+    let currentTeamHasPlayer = false;
+    for (const line of rawInput.replace(/\r\n?/g, "\n").split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            if (currentTeamHasPlayer) {
+                teamIndex += 1;
+                currentTeamHasPlayer = false;
+            }
+            continue;
+        }
+        if (/^seed:/i.test(trimmed)) {
+            continue;
+        }
+        players.push({
+            id_name: trimmed,
+            icon_key: trimmed,
+            display_name: trimmed,
+            team_index: teamIndex,
+        });
+        currentTeamHasPlayer = true;
+    }
+    return players;
+}
+
+function maxHpByEntity(run) {
+    const maxHpById = new Map();
+    for (const round of run.rounds ?? []) {
+        for (const [index, entityId] of (round.entity_ids ?? []).entries()) {
+            const id = Number(entityId);
+            const hp = Number(round.hp?.[index] ?? 0);
+            maxHpById.set(id, Math.max(maxHpById.get(id) ?? 1, hp, 1));
+        }
+    }
+    return maxHpById;
+}
+
+function buildV2Players(rawInput, run) {
+    const rawPlayers = collectRawPlayers(rawInput);
+    const firstRound = run.rounds?.[0] ?? null;
+    const ids = firstRound?.entity_ids ?? [];
+    const count = rawPlayers.length || ids.length;
+    return Array.from({ length: count }, (_, index) => {
+        const id = Number(ids[index] ?? index);
+        const rawPlayer = rawPlayers[index] ?? {};
+        const displayName = rawPlayer.display_name ?? `#${id}`;
+        return {
+            id,
+            team_index: Number(rawPlayer.team_index ?? firstRound?.teams?.[index] ?? 0),
+            id_name: rawPlayer.id_name ?? `entity_${id}`,
+            icon_key: rawPlayer.icon_key ?? rawPlayer.id_name ?? `entity_${id}`,
+            display_name: displayName,
+            icon_png_base64: null,
+        };
+    });
+}
+
+function buildV2States(outcome, playersById, maxHpById) {
+    return (outcome?.entity_ids ?? []).map((entityId, index) => {
+        const id = Number(entityId);
+        const player = playersById.get(id);
+        const hp = Number(outcome.hp?.[index] ?? 0);
+        const maxHp = Math.max(1, Number(maxHpById.get(id) ?? hp));
+        return {
+            id,
+            team_index: Number(outcome.teams?.[index] ?? player?.team_index ?? 0),
+            id_name: player?.id_name ?? `entity_${id}`,
+            icon_key: player?.icon_key ?? player?.id_name ?? `entity_${id}`,
+            display_name: player?.display_name ?? `#${id}`,
+            display_index: 0,
+            icon_png_base64: player?.icon_png_base64 ?? null,
+            hp,
+            max_hp: maxHp,
+            magic_point: Number(outcome.magic_point?.[index] ?? 0),
+            move_point: 0,
+            speed: 0,
+            agility: 0,
+            magic: 0,
+            attack: 0,
+            defense: Number(outcome.defense?.[index] ?? 0),
+            resistance: Number(outcome.resistance?.[index] ?? 0),
+            wisdom: 0,
+            point: 0,
+            all_sum: 0,
+            name_factor: 0,
+            at_boost: 0,
+            attract: 0,
+            alive: Boolean(outcome.alive?.[index]),
+            frozen: false,
+            status_labels: [],
+        };
+    });
+}
+
+function buildStateNameMap(states) {
+    return new Map(states.map((state) => [state.id, state.display_name ?? `#${state.id}`]));
+}
+
+function v2PlayerPart(playerId, namesById) {
+    const id = Number(playerId);
+    return {
+        kind: "player",
+        text: namesById.get(id) ?? `#${id}`,
+        player_id: id,
+        show_hp: false,
+    };
+}
+
+function v2PartsFromMessage(message, update, namesById) {
+    const parts = [];
+    const template = `${message ?? ""}`;
+    const tokenRe = /\[(\d+)\]/g;
+    let cursor = 0;
+    let match;
+    while ((match = tokenRe.exec(template)) != null) {
+        if (match.index > cursor) {
+            parts.push({ kind: "text", text: template.slice(cursor, match.index) });
+        }
+        const placeholder = Number(match[1]);
+        if (placeholder === 0 && update.caster_id != null) {
+            parts.push(v2PlayerPart(update.caster_id, namesById));
+        } else if (placeholder === 1 && update.target_id != null) {
+            parts.push(v2PlayerPart(update.target_id, namesById));
+        } else if (placeholder === 2 && update.param != null) {
+            parts.push({ kind: "data", text: `${update.param}` });
+        } else {
+            parts.push({ kind: "text", text: match[0] });
+        }
+        cursor = tokenRe.lastIndex;
+    }
+    if (cursor < template.length) {
+        parts.push({ kind: "text", text: template.slice(cursor) });
+    }
+    return parts;
+}
+
+function renderedV2Message(message, update, namesById) {
+    return v2PartsFromMessage(message, update, namesById)
+        .map((part) => part.text ?? "")
+        .join("");
+}
+
+function classifyV2Tone(frame) {
+    const message = `${frame.message ?? ""}`;
+    if (/击败|死亡|死了|消失/.test(message)) {
+        return "knockout";
+    }
+    if (/恢复|回复|治疗/.test(message)) {
+        return "recover";
+    }
+    if ((frame.score ?? 0) > 0 || /伤害|攻击/.test(message)) {
+        return "damage";
+    }
+    if (/解除|结束/.test(message)) {
+        return "status_exit";
+    }
+    return "normal";
+}
+
+function v2UpdateFromFrame(frame, namesById) {
+    const update = {
+        score: Number(frame.score ?? 0),
+        delay0: Number(frame.delay0 ?? 0),
+        delay1: Number(frame.delay1 ?? 0),
+        caster_id: Number(frame.caster ?? 0),
+        target_id: Number(frame.target ?? 0),
+        target_ids: (frame.targets ?? []).map(Number),
+        update_type: normalizeUpdateType(frame.update_type),
+        message_template: `${frame.message ?? ""}`,
+        param: frame.param == null ? null : Number(frame.param),
+        hp_delta: null,
+        status_change_tokens: [],
+        tone: classifyV2Tone(frame),
+    };
+    update.message_rendered = renderedV2Message(update.message_template, update, namesById);
+    return update;
+}
+
+function v2ClipFromUpdate(update, states, previousStates, namesById) {
+    return {
+        delay: Math.max(0, Number(update.delay0 ?? 0) + Number(update.delay1 ?? 0)),
+        text_template: update.message_template,
+        color: null,
+        tone: update.tone,
+        player_id: update.caster_id,
+        data: update.param,
+        show_hp: false,
+        hp_before: null,
+        hp_after: null,
+        death_effect: update.tone === "knockout",
+        emoji: null,
+        parts: v2PartsFromMessage(update.message_template, update, namesById),
+        caster_ids: update.caster_id == null ? [] : [update.caster_id],
+        target_ids: update.target_ids?.length ? update.target_ids : [update.target_id],
+        sidebar_states: states,
+        sidebar_previous_states: previousStates,
+        winner: null,
+    };
+}
+
+function v2RowsFromUpdates(updates, states, previousStates, namesById) {
+    const rows = [{ indent: 0, clips: [] }];
+    for (const update of updates) {
+        const currentRow = rows[rows.length - 1];
+        if (update.update_type === "next_line" && currentRow.clips.length > 0) {
+            rows.push({ indent: 0, clips: [] });
+        }
+        rows[rows.length - 1].clips.push(v2ClipFromUpdate(update, states, previousStates, namesById));
+    }
+    return rows.filter((row) => row.clips.length > 0);
+}
+
+function winnerIdsFromOutcome(outcome) {
+    const winnerTeam = outcome?.winner_team;
+    if (winnerTeam == null) {
+        return [];
+    }
+    const winners = [];
+    for (const [index, entityId] of (outcome.entity_ids ?? []).entries()) {
+        if (outcome.teams?.[index] === winnerTeam && outcome.alive?.[index]) {
+            winners.push(Number(entityId));
+        }
+    }
+    return winners;
+}
+
+function buildV2Frame(outcome, previousStates, playersById, maxHpById) {
+    const states = buildV2States(outcome, playersById, maxHpById);
+    const namesById = buildStateNameMap(states);
+    const updates = (outcome.frames ?? []).map((frame) => v2UpdateFromFrame(frame, namesById));
+    const rows = v2RowsFromUpdates(updates, states, previousStates, namesById);
+    const totalDelay = rows
+        .flatMap((row) => row.clips)
+        .reduce((sum, clip) => sum + Number(clip.delay ?? 0), 0);
+    return {
+        finished: outcome.winner_team != null,
+        winner_ids: winnerIdsFromOutcome(outcome),
+        updates,
+        rows,
+        states,
+        total_delay: totalDelay,
+    };
+}
+
 /**
  * 根据原始输入文本生成完整回放数据。
  *
@@ -128,6 +383,58 @@ export async function buildReplay(rawInput, versionInfo, coreVersionInfo, module
         frames: replay.frames,
         winner_ids: replay.winner_ids,
         final_states: replay.final_states,
+        wasm_duration_ms: wasmDurationMs,
+    };
+}
+
+/**
+ * 使用 v2 default custom profile 的 normalized run 构造 show-compatible replay。
+ *
+ * 这是 Phase H 迁移用的显式入口：当前 show.html 默认仍走 FightSession，
+ * 后续可以用这个结果和 legacy replay view 做 DOM/golden 对账后再切换默认路径。
+ *
+ * @param {string} rawInput
+ * @param {HTMLElement} versionInfo
+ * @param {HTMLElement} coreVersionInfo
+ * @param {HTMLElement} modulePathInfo
+ * @param {{ maxRounds?: number }} [options]
+ * @returns {Promise<FightReplay>}
+ */
+export async function buildV2NormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo, options = {}) {
+    const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    if (typeof api.default_custom_runtime_v2_normalized_run !== "function") {
+        throw new Error("当前 tswn_wasm 包未导出 default_custom_runtime_v2_normalized_run");
+    }
+    const maxRounds = Math.max(1, Number(options.maxRounds ?? V2_DEFAULT_MAX_ROUNDS) || V2_DEFAULT_MAX_ROUNDS);
+    const wasmStart = performance.now();
+    const run = api.default_custom_runtime_v2_normalized_run(rawInput, maxRounds);
+    const wasmDurationMs = performance.now() - wasmStart;
+    const players = buildV2Players(rawInput, run);
+    const playersById = new Map(players.map((player) => [player.id, player]));
+    const maxHpById = maxHpByEntity(run);
+    const firstOutcome = run.rounds?.[0] ?? null;
+    const finalOutcome = run.rounds?.[run.rounds.length - 1] ?? firstOutcome;
+    const initial_states = buildV2States(firstOutcome, playersById, maxHpById);
+    const frames = [];
+    let previousStates = initial_states;
+    for (const outcome of run.rounds ?? []) {
+        const frame = buildV2Frame(outcome, previousStates, playersById, maxHpById);
+        frames.push(frame);
+        previousStates = frame.states;
+    }
+    const final_states = buildV2States(finalOutcome, playersById, maxHpById);
+    return {
+        raw_input: rawInput,
+        seed_line: extractSpecifiedSeedLine(rawInput),
+        players,
+        initial_states,
+        frames,
+        winner_ids: winnerIdsFromOutcome(finalOutcome),
+        final_states,
+        runtime_v2: true,
+        winner_team: run.winner_team ?? null,
+        guard_exhausted: Boolean(run.guard_exhausted),
+        total_score: Number(run.total_score ?? 0),
         wasm_duration_ms: wasmDurationMs,
     };
 }

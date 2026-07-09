@@ -678,6 +678,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 已补 v2 `RuntimeFrame` 核心 replay/show renderer golden，并覆盖 custom HP marker payload，作为 `show.html` 迁移前的最小帧展示对账面；
 - 已补 HP marker 结构化 replay view 适配，`"[0]还剩[2]点血"` 即使 HP 未变化也会向 wasm/show 输出 `show_hp` 和 `Data` part；
 - wasm 已新增默认 custom v2 normalized-run typed 入口 `default_custom_runtime_v2_normalized_run`，可先从 JS 侧取得 v2 归一化 rounds/actions/frames 结构，再继续迁移 `show.html`；
+- `show-wasm.js` 已新增显式 `buildV2NormalizedReplay()` adapter，可把 v2 default custom normalized run 的 rounds/actions/frames 转成当前 show-compatible replay shape，供后续 DOM/golden 对账和默认路径切换；
 - `show.html` 迁到 v2 replay schema；
 - wasm API 可 breaking；
 - DIY/OL schema 重做；
