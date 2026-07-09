@@ -81,6 +81,14 @@ pub struct CustomBed2RosterImportError {
     pub raw: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomMixedRosterImportError {
+    pub team_index: usize,
+    pub player_index: usize,
+    pub raw: String,
+    pub message: String,
+}
+
 impl CustomBed2Import {
     pub fn parse(raw: &str) -> Option<Self> {
         let raw = raw.trim();
@@ -153,6 +161,66 @@ impl CustomBed2Import {
                     });
                 };
                 players.push(import.into_player_template(next_id, kind, team_index, summon_skill));
+                next_id += 1;
+            }
+        }
+        Ok(players)
+    }
+
+    pub fn mixed_roster_into_prepared_template(
+        raw_groups: &[Vec<String>],
+        registry: ExtensionRegistry,
+        bed2_kind: PlayerKindId,
+        bed2_summon_skill: SkillId,
+    ) -> Result<PreparedCombatTemplate, CustomMixedRosterImportError> {
+        let players = Self::mixed_roster_into_player_templates(raw_groups, bed2_kind, bed2_summon_skill)?;
+        Ok(PreparedCombatTemplate::with_registry(players, registry))
+    }
+
+    pub fn mixed_roster_into_player_templates(
+        raw_groups: &[Vec<String>],
+        bed2_kind: PlayerKindId,
+        bed2_summon_skill: SkillId,
+    ) -> Result<Vec<PlayerTemplate>, CustomMixedRosterImportError> {
+        let storage = crate::engine::storage::Storage::new_arc();
+        let mut players = Vec::new();
+        let mut next_id = 1;
+        for (team_index, group) in raw_groups.iter().enumerate() {
+            for (player_index, raw) in group.iter().enumerate() {
+                let raw_trimmed = raw.trim();
+                if crate::player::Player::check_is_seed(raw_trimmed) {
+                    continue;
+                }
+
+                let template = if let Some(import) = Self::parse_player_facade_raw(raw_trimmed) {
+                    import.into_player_template(next_id, bed2_kind, team_index, bed2_summon_skill)
+                } else {
+                    let mut player =
+                        crate::player::Player::new_from_namerena_raw(raw.clone(), storage.clone()).map_err(|error| {
+                            CustomMixedRosterImportError {
+                                team_index,
+                                player_index,
+                                raw: raw.clone(),
+                                message: format!("{error:?}"),
+                            }
+                        })?;
+                    player.build();
+                    let status = player.get_status();
+                    if status.max_hp <= 0 || status.attack < 0 || status.defense < 0 || status.resistance < 0 {
+                        return Err(CustomMixedRosterImportError {
+                            team_index,
+                            player_index,
+                            raw: raw.clone(),
+                            message: format!(
+                                "legacy player facade produced unsupported status max_hp={} attack={} defense={} resistance={}",
+                                status.max_hp, status.attack, status.defense, status.resistance
+                            ),
+                        });
+                    }
+                    PlayerTemplate::new(next_id, player.id_name(), team_index, status.max_hp, status.attack)
+                        .with_def_res(status.defense, status.resistance)
+                };
+                players.push(template);
                 next_id += 1;
             }
         }
@@ -1097,6 +1165,69 @@ mod tests {
                 raw: "plain".to_owned(),
             }
         );
+    }
+
+    #[test]
+    fn custom_mixed_roster_import_bridges_bed2_and_legacy_player_templates() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![
+            vec!["plain@red".to_owned(), "alpha@red+bed2[4500]".to_owned()],
+            vec!["seed:custom-seed@!".to_owned(), "beta@blue@bed2".to_owned()],
+        ];
+
+        let template = CustomBed2Import::mixed_roster_into_prepared_template(&raw_groups, registry, bed2, summon)
+            .expect("mixed legacy/bed2 raw roster should build a prepared template");
+        let legacy_storage = crate::engine::storage::Storage::new_arc();
+        let mut legacy_plain = crate::player::Player::new_from_namerena_raw("plain@red".to_owned(), legacy_storage)
+            .expect("legacy player facade should parse plain player");
+        legacy_plain.build();
+        let legacy_status = legacy_plain.get_status();
+
+        assert_eq!(template.players.len(), 3);
+        assert_eq!(template.players[0].id, 1);
+        assert_eq!(template.players[0].name, legacy_plain.id_name());
+        assert_eq!(template.players[0].kind, PlayerTemplate::DEFAULT_KIND);
+        assert_eq!(template.players[0].team, 0);
+        assert_eq!(template.players[0].max_hp, legacy_status.max_hp);
+        assert_eq!(template.players[0].attack, legacy_status.attack);
+        assert_eq!(template.players[0].defense, legacy_status.defense);
+        assert_eq!(template.players[0].resistance, legacy_status.resistance);
+        assert_eq!(template.players[1].id, 2);
+        assert_eq!(template.players[1].kind, bed2);
+        assert_eq!(template.players[1].name, "alpha");
+        assert_eq!(template.players[1].team, 0);
+        assert_eq!(template.players[1].max_hp, 4500);
+        assert_eq!(template.players[1].skills.skills(), &[summon]);
+        assert_eq!(template.players[2].id, 3);
+        assert_eq!(template.players[2].kind, bed2);
+        assert_eq!(template.players[2].name, "beta");
+        assert_eq!(template.players[2].team, 1);
+        assert_eq!(template.players[2].max_hp, DEFAULT_BED2_HP);
+
+        let runtime = CombatRuntime::from_template(template);
+        assert!(!runtime.entities.get(EntityIdx(0)).unwrap().runtime.flags.contains(PlayerKindFlags::BED2));
+        assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.flags.contains(PlayerKindFlags::BED2));
+        assert!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.flags.contains(PlayerKindFlags::BED2));
+        assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0), EntityIdx(1)].as_slice()));
+        assert_eq!(runtime.world.team_alive(1), Some([EntityIdx(2)].as_slice()));
     }
 
     #[cfg(not(feature = "no_debug"))]
