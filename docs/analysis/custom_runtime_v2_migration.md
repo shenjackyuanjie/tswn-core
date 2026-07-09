@@ -39,7 +39,7 @@ git diff --name-status github/main..github/custom
 | summon/root-owner 伤害路由 | summon clone damage route to root owner | `OwnerResolutionPolicy::RootOwner` | 已接入并在 custom summon 复合 fixture 中覆盖 | root owner 承伤、致死 hook 目标一致 |
 | summon 伤害共享 owner | child/summon damage share owner | `DamageSharePolicy::ShareToOwner` | 已接入并测试 owner 共享致死 hook；复合 fixture 覆盖 summon policy 注册 | 子实体受伤同步扣 owner，owner 死亡 hook 顺序一致 |
 | owner 伤害共享 summon | owner damage share alive summons | `DamageSharePolicy::ShareToSummons` | 已接入并在 custom summon 复合 fixture 中覆盖按实体顺序共享 | owner 受伤同步扣存活 summon，顺序稳定 |
-| minion heal sharing 移除/调整 | custom minion 行为集中在 `act/minion.rs` 与 `player/test/minions.rs` | player kind policy 或 damage/share policy | 已有 v2 custom minion fixture 固化 damage 仍共享、heal 只作用目标实体，并补 owner death / explicit remove 时 linked minion 按实体顺序清理；`next_minion_name_from_entity_slot` 已覆盖 root owner counter 分配 `owner?N` 名称和 child minion 复用 root counter；仍缺完整真实 minion handler | minion 相关 heal 不再产生 custom 分支禁止的共享，owner 死亡同步清理 linked minion，名称计数从 root owner 稳定递增 |
+| minion heal sharing 移除/调整 | custom minion 行为集中在 `act/minion.rs` 与 `player/test/minions.rs` | player kind policy 或 damage/share policy | 已有 v2 custom minion fixture 固化 damage 仍共享、heal 只作用目标实体，并补 owner death / explicit remove 时 linked minion 按实体顺序清理；`next_minion_name_from_entity_slot` 已覆盖 root owner counter 分配 `owner?N` 名称和 child minion 复用 root counter，`minion_display_index_for_entity` 已覆盖 legacy `?N` 展示序号解析；仍缺完整真实 minion handler | minion 相关 heal 不再产生 custom 分支禁止的共享，owner 死亡同步清理 linked minion，名称计数与展示序号从 root owner 稳定递增 |
 | merge 固定槽继承 | custom 保留 `slot_skill` 固定槽语义以避免 merge 错位 | `MergePolicy::FixedLane` | 已接入并测试 fixed lane 合并 | 同槽位技能覆盖，未映射技能 append |
 | merge 丢弃未映射技能 | custom 分支支持 drop unmapped 语义 | `MergePolicy::DropUnmappedSkills` | 已接入并测试 drop unmapped | 未映射来源技能不进入 caster loadout |
 | merge replay | custom replay 使用吞噬/属性上升展示 | `QueuedEffect::Merge` replay update | 已输出 `[0][吞噬]了[1]` 与 `[0]属性上升` | merge frame 顺序、score 分别为 60/0 |
@@ -75,7 +75,7 @@ git diff --name-status github/main..github/custom
 - `SpawnWithMessage` / `ReviveWithMessage` 已让 summon helper 能保留 legacy summon 技能的外显文案顺序：先输出 `[0]使用[血祭]`，再在 spawn 或 revive 原实体时输出 `召唤出[1]`。
 - `QueuedEffect::Heal` 已用 custom minion fixture 固化不触发 owner/summon damage share。
 - linked minion cleanup 已接入 v2 damage/remove pipeline，owner 致死或显式 remove 时按实体顺序把存活 minion 标记死亡、移出 round/alive views 并输出 `[1]消失了`。
-- `next_minion_name_from_entity_slot` 已通过 root owner entity slot 记录 minion 名称计数，root owner 自身与 child minion 都按 `owner?N` 稳定分配；child minion 缺少 `ReadAllies` capability 时返回结构化错误，避免跨实体读取绕过 capability。
+- `next_minion_name_from_entity_slot` 已通过 root owner entity slot 记录 minion 名称计数，root owner 自身与 child minion 都按 `owner?N` 稳定分配；`minion_display_index_for_entity` 已按 legacy `minion_display_index` 规则把 `?N` 转为 1-based 展示序号；child minion 缺少 `ReadAllies` capability 时返回结构化错误，避免跨实体读取绕过 capability。
 - `MergePolicy::FixedLane` / `DropUnmappedSkills` 已覆盖 custom merge 数据面。
 - `RuntimeFrame::render_core_replay` / `render_core_show` 已提供 show 迁移前的最小 golden 面。
 - HP marker show renderer fixture 已固化 `hp-bar` payload，保留 `[2]` HP 数值给展示层使用。

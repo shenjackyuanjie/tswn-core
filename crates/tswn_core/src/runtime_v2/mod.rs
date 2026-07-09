@@ -381,6 +381,22 @@ pub fn next_minion_name_from_entity_slot(
     Ok(format!("{root_name}?{next}"))
 }
 
+pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
+    let Some(entity) = entity else {
+        return 0;
+    };
+    if !entity.runtime.flags.contains(PlayerKindFlags::MINION) {
+        return 0;
+    }
+    entity
+        .template
+        .name
+        .rsplit_once('?')
+        .and_then(|(_, index)| index.parse::<usize>().ok())
+        .map(|index| index + 1)
+        .unwrap_or(1)
+}
+
 pub const DEFAULT_BED2_HP: i32 = 3000;
 pub const DEFAULT_BED2_DEFENSE: i32 = 99;
 pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
@@ -3186,6 +3202,43 @@ mod tests {
         assert!(frame.is_none());
         assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().slots.get(counter_slot), None);
         assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().slots.get(counter_slot), None);
+    }
+
+    #[test]
+    fn minion_display_index_for_entity_matches_legacy_name_suffix() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let minion_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "minion",
+                "custom.minion",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("minion kind should register");
+        let registry = builder.build();
+        let runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3),
+                PlayerTemplate::with_kind(2, "owner?0", minion_kind, 0, 5, 1),
+                PlayerTemplate::with_kind(3, "owner?12", minion_kind, 0, 5, 1),
+                PlayerTemplate::with_kind(4, "owner?shadow", minion_kind, 0, 5, 1),
+                PlayerTemplate::with_kind(5, "shadow", minion_kind, 0, 5, 1),
+            ],
+            registry,
+        ));
+
+        assert_eq!(minion_display_index_for_entity(None), 0);
+        assert_eq!(minion_display_index_for_entity(runtime.entities.get(EntityIdx(0))), 0);
+        assert_eq!(minion_display_index_for_entity(runtime.entities.get(EntityIdx(1))), 1);
+        assert_eq!(minion_display_index_for_entity(runtime.entities.get(EntityIdx(2))), 13);
+        assert_eq!(minion_display_index_for_entity(runtime.entities.get(EntityIdx(3))), 1);
+        assert_eq!(minion_display_index_for_entity(runtime.entities.get(EntityIdx(4))), 1);
     }
 
     #[test]
