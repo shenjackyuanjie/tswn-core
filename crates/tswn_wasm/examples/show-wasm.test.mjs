@@ -19,7 +19,7 @@ test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () =
         rng_j: 2,
         entity_ids: [0, 1],
         teams: [0, 1],
-        hp: [100, 80],
+        hp: [100, 70],
         magic_point: [10, 20],
         defense: [1, 2],
         resistance: [3, 4],
@@ -39,6 +39,17 @@ test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () =
             score: 3,
             delay0: 120,
             delay1: 80,
+            update_type: "none",
+          },
+          {
+            message: "[0]攻击[1]造成[2]点伤害",
+            caster: 0,
+            target: 1,
+            targets: [1],
+            param: 10,
+            score: 1,
+            delay0: 40,
+            delay1: 20,
             update_type: "none",
           },
           {
@@ -96,11 +107,11 @@ test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () =
 
   assert.deepEqual(replay.players.map((player) => player.display_name), ["left@red", "right@blue"]);
   assert.deepEqual(replay.players.map((player) => player.team_index), [0, 1]);
-  assert.deepEqual(replay.initial_states.map((state) => state.hp), [100, 80]);
+  assert.deepEqual(replay.initial_states.map((state) => state.hp), [100, 100]);
   assert.deepEqual(replay.final_states.map((state) => state.alive), [true, false]);
 
   assert.equal(replay.frames.length, 2);
-  assert.equal(replay.frames[0].total_delay, 225);
+  assert.equal(replay.frames[0].total_delay, 285);
   assert.equal(replay.frames[0].rows.length, 2);
   assert.equal(replay.frames[0].updates[0].message_rendered, "left@red攻击right@blue造成20点伤害");
   assert.equal(replay.frames[0].updates[0].tone, "damage");
@@ -113,16 +124,23 @@ test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () =
   assert.equal(damagedTargetPart.hp_before, 100);
   assert.equal(damagedTargetPart.hp_after, 80);
   assert.equal(damageClip.parts[4].kind, "data");
+  const secondDamageClip = replay.frames[0].rows[0].clips[1];
+  const secondDamagedTargetPart = secondDamageClip.parts.find((part) => part.kind === "player" && part.player_id === 1);
+  assert.equal(secondDamageClip.show_hp, true);
+  assert.equal(secondDamageClip.hp_before, 80);
+  assert.equal(secondDamageClip.hp_after, 70);
+  assert.equal(secondDamagedTargetPart.hp_before, 80);
+  assert.equal(secondDamagedTargetPart.hp_after, 70);
   assert.equal(replay.frames[1].finished, true);
   assert.equal(replay.frames[1].updates[0].tone, "knockout");
   const knockoutClip = replay.frames[1].rows[0].clips[0];
   const defeatedTargetPart = knockoutClip.parts.find((part) => part.kind === "player" && part.player_id === 1);
   assert.equal(knockoutClip.show_hp, true);
-  assert.equal(knockoutClip.hp_before, 80);
+  assert.equal(knockoutClip.hp_before, 70);
   assert.equal(knockoutClip.hp_after, 0);
   assert.equal(knockoutClip.death_effect, true);
   assert.equal(defeatedTargetPart.show_hp, true);
-  assert.equal(defeatedTargetPart.hp_before, 80);
+  assert.equal(defeatedTargetPart.hp_before, 70);
   assert.equal(defeatedTargetPart.hp_after, 0);
   assert.equal(defeatedTargetPart.death_effect, true);
   const winnerClip = replay.frames[1].rows.at(-1).clips[0];
@@ -148,7 +166,7 @@ test("v2 normalized replay renders show-compatible frame chunks", () => {
         rng_j: 2,
         entity_ids: [0, 1],
         teams: [0, 1],
-        hp: [100, 80],
+        hp: [100, 70],
         magic_point: [10, 20],
         defense: [1, 2],
         resistance: [3, 4],

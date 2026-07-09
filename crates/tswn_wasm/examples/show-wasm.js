@@ -217,6 +217,60 @@ function stateMapById(states) {
     return new Map((states ?? []).map((state) => [Number(state.id), state]));
 }
 
+function cloneStateMapById(states) {
+    return new Map((states ?? []).map((state) => [Number(state.id), { ...state }]));
+}
+
+function statesFromStateMap(stateMap, stateOrder) {
+    return (stateOrder ?? []).map((state) => stateMap.get(Number(state.id)) ?? state);
+}
+
+function hpAliveSignature(states) {
+    return (states ?? [])
+        .map((state) => `${Number(state.id)}:${Number(state.hp ?? 0)}:${Boolean(state.alive)}`)
+        .join("|");
+}
+
+function sameHpAliveStates(left, right) {
+    return hpAliveSignature(left) === hpAliveSignature(right);
+}
+
+function v2UpdateTargetIds(update) {
+    const targetIds = (update.target_ids ?? []).filter((id) => id != null).map(Number);
+    if (targetIds.length) {
+        return targetIds;
+    }
+    return update.target_id == null ? [] : [Number(update.target_id)];
+}
+
+function v2UpdateAmount(update) {
+    const amount = Number(update?.param);
+    return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function applyHpDeltaToStateMap(stateMap, targetId, delta) {
+    const id = Number(targetId);
+    const state = stateMap.get(id);
+    if (!state) {
+        return;
+    }
+    const hp = Math.max(0, Number(state.hp ?? 0) + delta);
+    stateMap.set(id, {
+        ...state,
+        hp,
+        alive: hp > 0,
+    });
+}
+
+function applyFinalTargetState(stateMap, targetId, finalStateMap) {
+    const id = Number(targetId);
+    const finalState = finalStateMap.get(id);
+    if (!finalState) {
+        return;
+    }
+    stateMap.set(id, { ...finalState });
+}
+
 function v2HpPartMetadata(playerId, stateMaps, update) {
     const id = Number(playerId);
     const previousState = stateMaps?.previous?.get(id) ?? null;
@@ -334,6 +388,10 @@ function v2UpdateFromFrame(frame, namesById) {
     return update;
 }
 
+function buildV2Updates(outcome, namesById) {
+    return (outcome?.frames ?? []).map((frame) => v2UpdateFromFrame(frame, namesById));
+}
+
 function v2ClipFromUpdate(update, states, previousStates, namesById) {
     const stateMaps = {
         next: stateMapById(states),
@@ -362,14 +420,65 @@ function v2ClipFromUpdate(update, states, previousStates, namesById) {
     };
 }
 
+function reverseApplyV2Update(stateMap, update) {
+    const amount = v2UpdateAmount(update);
+    if (amount == null) {
+        return;
+    }
+    const delta = update.tone === "recover" ? -amount : (update.tone === "damage" || update.tone === "knockout" ? amount : 0);
+    if (delta === 0) {
+        return;
+    }
+    for (const targetId of v2UpdateTargetIds(update)) {
+        applyHpDeltaToStateMap(stateMap, targetId, delta);
+    }
+}
+
+function inferV2RoundStartStates(states, previousStates, updates) {
+    if (!states?.length) {
+        return [];
+    }
+    if (previousStates?.length && !sameHpAliveStates(previousStates, states)) {
+        return previousStates;
+    }
+    const inferred = cloneStateMapById(states);
+    for (const update of [...updates].reverse()) {
+        reverseApplyV2Update(inferred, update);
+    }
+    return statesFromStateMap(inferred, states);
+}
+
+function applyV2UpdateToRunningState(stateMap, update, finalStateMap) {
+    const amount = v2UpdateAmount(update);
+    if (amount != null && (update.tone === "damage" || update.tone === "knockout" || update.tone === "recover")) {
+        const delta = update.tone === "recover" ? amount : -amount;
+        for (const targetId of v2UpdateTargetIds(update)) {
+            applyHpDeltaToStateMap(stateMap, targetId, delta);
+        }
+        return;
+    }
+    if (update.tone === "knockout") {
+        for (const targetId of v2UpdateTargetIds(update)) {
+            applyFinalTargetState(stateMap, targetId, finalStateMap);
+        }
+    }
+}
+
 function v2RowsFromUpdates(updates, states, previousStates, namesById) {
     const rows = [{ indent: 0, clips: [] }];
+    const stateOrder = states ?? [];
+    const finalStateMap = cloneStateMapById(stateOrder);
+    const startStates = inferV2RoundStartStates(stateOrder, previousStates, updates);
+    const running = cloneStateMapById(startStates);
     for (const update of updates) {
         const currentRow = rows[rows.length - 1];
         if (update.update_type === "next_line" && currentRow.clips.length > 0) {
             rows.push({ indent: 0, clips: [] });
         }
-        rows[rows.length - 1].clips.push(v2ClipFromUpdate(update, states, previousStates, namesById));
+        const beforeStates = statesFromStateMap(running, stateOrder);
+        applyV2UpdateToRunningState(running, update, finalStateMap);
+        const afterStates = statesFromStateMap(running, stateOrder);
+        rows[rows.length - 1].clips.push(v2ClipFromUpdate(update, afterStates, beforeStates, namesById));
     }
     return rows.filter((row) => row.clips.length > 0);
 }
@@ -425,7 +534,7 @@ function winnerIdsFromOutcome(outcome) {
 function buildV2Frame(outcome, previousStates, playersById, maxHpById) {
     const states = buildV2States(outcome, playersById, maxHpById);
     const namesById = buildStateNameMap(states);
-    const updates = (outcome.frames ?? []).map((frame) => v2UpdateFromFrame(frame, namesById));
+    const updates = buildV2Updates(outcome, namesById);
     const rows = v2RowsFromUpdates(updates, states, previousStates, namesById);
     const winnerIds = winnerIdsFromOutcome(outcome);
     const winnerRow = outcome.winner_team == null ? null : v2WinnerRow(winnerIds, namesById);
@@ -445,6 +554,13 @@ function buildV2Frame(outcome, previousStates, playersById, maxHpById) {
     };
 }
 
+function buildV2InitialStates(firstOutcome, playersById, maxHpById) {
+    const states = buildV2States(firstOutcome, playersById, maxHpById);
+    const namesById = buildStateNameMap(states);
+    const updates = buildV2Updates(firstOutcome, namesById);
+    return inferV2RoundStartStates(states, states, updates);
+}
+
 /**
  * 将 v2 normalized run 转成当前 show.html 可消费的 replay shape。
  *
@@ -459,7 +575,7 @@ export function buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0
     const maxHpById = maxHpByEntity(run);
     const firstOutcome = run.rounds?.[0] ?? null;
     const finalOutcome = run.rounds?.[run.rounds.length - 1] ?? firstOutcome;
-    const initial_states = buildV2States(firstOutcome, playersById, maxHpById);
+    const initial_states = buildV2InitialStates(firstOutcome, playersById, maxHpById);
     const frames = [];
     let previousStates = initial_states;
     for (const outcome of run.rounds ?? []) {
