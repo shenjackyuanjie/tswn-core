@@ -365,6 +365,56 @@ pub fn push_summon_recast_from_entity_slot_with_messages(
     Ok(next_entity)
 }
 
+pub fn push_summon_recast_from_template_slot_with_messages(
+    context: &mut SkillContext<'_>,
+    entity_slot: EntitySlotId,
+    template_slot: TemplateSlotId,
+    revive_hp: i32,
+    spawn_message: impl Into<String>,
+    revive_message: impl Into<String>,
+) -> Result<EntityIdx, RuntimeV2SummonHandlerError> {
+    let summon_template = match context.template_slot(template_slot)? {
+        Some(SlotValue::PlayerTemplate(template)) => template.as_ref().clone(),
+        Some(_) => return Err(RuntimeV2SummonHandlerError::InvalidTemplateSlot(template_slot)),
+        None => return Err(RuntimeV2SummonHandlerError::MissingTemplateSlot(template_slot)),
+    };
+    push_summon_recast_from_entity_slot_with_messages(
+        context,
+        entity_slot,
+        summon_template,
+        revive_hp,
+        spawn_message,
+        revive_message,
+    )
+}
+
+pub fn push_summon_recast_from_template_slot(
+    context: &mut SkillContext<'_>,
+    entity_slot: EntitySlotId,
+    template_slot: TemplateSlotId,
+    revive_hp: i32,
+) -> Result<EntityIdx, RuntimeV2SummonHandlerError> {
+    push_summon_recast_from_template_slot_with_messages(
+        context,
+        entity_slot,
+        template_slot,
+        revive_hp,
+        "出现一个新的[1]",
+        "[1][复活]了",
+    )
+}
+
+pub fn push_summon_recast_from_template_slot_with_message(
+    context: &mut SkillContext<'_>,
+    entity_slot: EntitySlotId,
+    template_slot: TemplateSlotId,
+    revive_hp: i32,
+    message: impl Into<String>,
+) -> Result<EntityIdx, RuntimeV2SummonHandlerError> {
+    let message = message.into();
+    push_summon_recast_from_template_slot_with_messages(context, entity_slot, template_slot, revive_hp, message.clone(), message)
+}
+
 pub fn next_minion_name_from_entity_slot(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -2992,6 +3042,127 @@ mod tests {
     }
 
     #[test]
+    fn summon_recast_from_template_slot_uses_payload_and_revives_existing_entity() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summoned_slot = builder
+            .reserve_entity_slot("custom", "summoned-entity", "custom.summon.summoned_entity")
+            .expect("summoned entity slot should reserve");
+        let template_slot = builder
+            .reserve_template_slot("custom", "summon-template", "custom.summon.template")
+            .expect("summon template slot should reserve");
+        let recast_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "summon-recast",
+                "custom.summon_recast",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("summon recast skill should register");
+        let owner_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon-owner",
+                "custom.summon_owner",
+                PlayerKindFlags::default(),
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToSummons,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("summon owner kind should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("summon kind should register");
+        let registry = builder.build();
+        let payload = PlayerTemplate::with_kind(3, "summon-template", summon_kind, 0, 10, 1)
+            .with_def_res(11, 22)
+            .with_skills([recast_skill]);
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "owner", owner_kind, 0, 20, 3)
+                    .with_def_res(77, 88)
+                    .with_skills([recast_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        );
+        template
+            .slots
+            .set(template_slot, SlotValue::PlayerTemplate(Box::new(payload.clone())))
+            .expect("summon template slot should write");
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            recast_skill,
+            skill_legacy_summon_recast_from_template_slot_handler,
+            &[
+                ExtensionCapability::ReadTemplateSlots,
+                ExtensionCapability::ReadAllies,
+                ExtensionCapability::MutateEntitySlots,
+            ],
+        );
+
+        let first = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("template-slot summon cast should emit updates");
+
+        assert_eq!(runtime.entities.len(), 3);
+        assert_eq!(first.updates.updates.len(), 2);
+        assert_eq!(first.updates.updates[0].message, "[0]使用[血祭]");
+        assert_eq!(first.updates.updates[0].score, 60);
+        assert_eq!(first.updates.updates[1].message, "召唤出[1]");
+        assert_eq!(first.updates.updates[1].target, 2);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(summoned_slot),
+            Some(&SlotValue::U64(2))
+        );
+        let summon = runtime.entities.get(EntityIdx(2)).expect("summon should spawn");
+        assert_eq!(summon.template.name, payload.name);
+        assert_eq!(summon.template.kind, summon_kind);
+        assert_eq!(summon.template.skills.skills(), &[recast_skill]);
+        assert_eq!(summon.runtime.owner, EntityIdx(0));
+        assert_eq!(summon.runtime.root_owner, EntityIdx(0));
+        assert_eq!(summon.runtime.defense, 77);
+        assert_eq!(summon.runtime.resistance, 88);
+
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(2),
+            amount: 10,
+        });
+        runtime.flush_effects().expect("lethal summon damage should emit update");
+        assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+
+        let recast = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("template-slot summon recast should revive existing entity");
+
+        assert_eq!(runtime.entities.len(), 3);
+        assert_eq!(recast.updates.updates.len(), 2);
+        assert_eq!(recast.updates.updates[0].message, "[0]使用[血祭]");
+        assert_eq!(recast.updates.updates[1].message, "召唤出[1]");
+        assert_eq!(recast.updates.updates[1].target, 2);
+        let revived = runtime.entities.get(EntityIdx(2)).expect("summon should revive in place");
+        assert!(revived.runtime.alive);
+        assert_eq!(revived.runtime.hp, 10);
+        assert_eq!(revived.template.skills.skills(), &[recast_skill]);
+    }
+
+    #[test]
     fn push_summon_recast_from_entity_slot_reports_alive_remembered_summon() {
         let mut builder = ExtensionRegistryBuilder::default();
         let summoned_slot = builder
@@ -4343,6 +4514,24 @@ mod tests {
             "召唤出[1]",
         )
         .expect("legacy summon recast fixture should spawn or revive summon");
+    }
+
+    fn skill_legacy_summon_recast_from_template_slot_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "[0]使用[血祭]",
+            context.owner_idx().0 as usize,
+            context.owner_idx().0 as usize,
+            60,
+        ));
+        push_summon_recast_from_template_slot_with_messages(
+            context,
+            EntitySlotId(0),
+            TemplateSlotId(0),
+            10,
+            "召唤出[1]",
+            "召唤出[1]",
+        )
+        .expect("template-slot summon recast fixture should spawn or revive summon");
     }
 
     fn skill_records_alive_summon_recast_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
