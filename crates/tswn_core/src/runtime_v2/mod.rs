@@ -498,8 +498,8 @@ pub fn run_disperse_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry
     push_disperse_attack(context, target);
 }
 
-pub fn score_disperse_target(runtime: &CombatRuntime, target: EntityIdx, smart: bool, rng: &mut RC4) -> f64 {
-    let Some(target_entity) = runtime.entities.get(target) else {
+pub fn score_disperse_target(entities: &EntityArena, world: &WorldArena, target: EntityIdx, smart: bool, rng: &mut RC4) -> f64 {
+    let Some(target_entity) = entities.get(target) else {
         return f64::MIN;
     };
     let rate_hi_hp = |hp: i32| -> f64 {
@@ -513,8 +513,8 @@ pub fn score_disperse_target(runtime: &CombatRuntime, target: EntityIdx, smart: 
     };
     let target_runtime = &target_entity.runtime;
     let mut score = if smart {
-        if runtime.world.alive_group_count() > 2 {
-            rate_hi_hp(target_runtime.hp) * runtime.world.alive_group_len_containing(target) as f64 * target_runtime.attract()
+        if world.alive_group_count() > 2 {
+            rate_hi_hp(target_runtime.hp) * world.alive_group_len_containing(target) as f64 * target_runtime.attract()
         } else {
             (1.0 / rate_hi_hp(target_runtime.hp)) * target_runtime.atk_sum as f64 * target_runtime.attract()
         }
@@ -525,6 +525,75 @@ pub fn score_disperse_target(runtime: &CombatRuntime, target: EntityIdx, smart: 
         score *= 2.0;
     }
     score
+}
+
+pub fn select_disperse_targets(
+    entities: &EntityArena,
+    world: &WorldArena,
+    actor: EntityIdx,
+    smart: bool,
+    rng: &mut RC4,
+) -> Vec<EntityIdx> {
+    let Some(actor_entity) = entities.get(actor) else {
+        return Vec::new();
+    };
+    let candidates = world
+        .flat_alive()
+        .iter()
+        .copied()
+        .filter(|target| {
+            entities
+                .get(*target)
+                .is_some_and(|target_entity| target_entity.runtime.team != actor_entity.runtime.team)
+        })
+        .collect::<Vec<_>>();
+    select_disperse_targets_from_candidates(entities, world, &candidates, smart, rng)
+}
+
+fn select_disperse_targets_from_candidates(
+    entities: &EntityArena,
+    world: &WorldArena,
+    candidates: &[EntityIdx],
+    smart: bool,
+    rng: &mut RC4,
+) -> Vec<EntityIdx> {
+    let select_count = if smart { 3 } else { 2 };
+    let mut selected = Vec::new();
+    let mut dup = 0usize;
+    let mut invalid = -(select_count as i32);
+    while dup <= select_count && invalid <= select_count as i32 {
+        let Some(idx) = rng.pick(candidates) else {
+            return Vec::new();
+        };
+        let target = candidates[idx];
+        if entities.get(target).is_none() {
+            invalid += 1;
+            continue;
+        }
+        if selected.contains(&target) {
+            dup += 1;
+            continue;
+        }
+        selected.push(target);
+        if selected.len() >= select_count {
+            break;
+        }
+    }
+    if selected.is_empty() {
+        return Vec::new();
+    }
+    if selected.len() == 1 {
+        let target = selected[0];
+        let _ = score_disperse_target(entities, world, target, smart, rng);
+        return vec![target];
+    }
+
+    let mut scored = selected
+        .into_iter()
+        .map(|target| (target, score_disperse_target(entities, world, target, smart, rng)))
+        .collect::<Vec<_>>();
+    scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.into_iter().map(|(target, _)| target).collect()
 }
 
 pub fn run_charge_post_action_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
@@ -1422,7 +1491,8 @@ impl CombatRuntime {
         let skill_plan = self
             .scheduler
             .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_ACTION);
-        self.drain_skill_hook_plan_with_selected_target_into(&skill_plan, &mut updates, Some(action.target));
+        let selected_target = self.selected_pre_action_target(&skill_plan, action.actor).unwrap_or(action.target);
+        self.drain_skill_hook_plan_with_selected_target_into(&skill_plan, &mut updates, Some(selected_target));
         let pre_damage_skill_plan =
             self.scheduler
                 .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_DAMAGE);
@@ -1463,6 +1533,20 @@ impl CombatRuntime {
             frame,
             winner_team,
         }
+    }
+
+    fn selected_pre_action_target(&mut self, plan: &SkillHookPlan, actor: EntityIdx) -> Option<EntityIdx> {
+        let has_disperse = plan.entries.iter().any(|entry| {
+            self.registry
+                .skill(entry.skill_id)
+                .is_some_and(|spec| spec.export_name == "core.disperse")
+        });
+        if !has_disperse {
+            return None;
+        }
+        select_disperse_targets(&self.entities, &self.world, actor, true, &mut self.rng)
+            .into_iter()
+            .next()
     }
 
     #[cfg(test)]
@@ -7005,6 +7089,77 @@ mod tests {
     }
 
     #[test]
+    fn run_minimal_round_disperse_skill_scores_multiple_enemy_targets() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let disperse = builder
+            .register_skill_with_hooks(
+                "core",
+                "disperse",
+                "core.disperse",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("disperse skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "caster", 0, 10, 0).with_magic(80).with_skills([disperse]),
+                PlayerTemplate::new(2, "first", 1, 200, 0)
+                    .with_def_res(0, 16)
+                    .with_magic_point(96)
+                    .with_target_score_stats(0, 30, 1.0),
+                PlayerTemplate::new(3, "best", 1, 200, 0)
+                    .with_def_res(0, 16)
+                    .with_magic_point(96)
+                    .with_target_score_stats(0, 300, 1.0),
+                PlayerTemplate::new(4, "also-picked", 1, 200, 0)
+                    .with_def_res(0, 16)
+                    .with_magic_point(96)
+                    .with_target_score_stats(0, 60, 1.0),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(disperse, run_disperse_skill);
+        let mut expected_rng = RC4::default();
+        let selected_targets = select_disperse_targets(&runtime.entities, &runtime.world, EntityIdx(0), true, &mut expected_rng);
+        let selected_target = selected_targets[0];
+        assert_eq!(selected_target, EntityIdx(2));
+        let atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng);
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(selected_target).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let expected_disperse_damage =
+            (atp / runtime.entities.get(selected_target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("disperse should emit update");
+
+        assert_eq!(outcome.action.unwrap().target, EntityIdx(1));
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 200);
+        assert_eq!(
+            runtime.entities.get(selected_target).unwrap().runtime.hp,
+            200 - expected_disperse_damage
+        );
+        assert_eq!(runtime.entities.get(selected_target).unwrap().runtime.magic_point, 32);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+                .map(|update| (update.message.as_ref(), update.target))
+                .collect::<Vec<_>>(),
+            vec![("[0]使用[净化]", 2), ("[1]受到[2]点伤害", 2), ("[0]攻击[1]", 1)]
+        );
+    }
+
+    #[test]
     fn score_disperse_target_matches_legacy_smart_two_team_formula() {
         let runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
             PlayerTemplate::new(1, "caster", 0, 10, 3),
@@ -7012,7 +7167,7 @@ mod tests {
         ]));
         let mut rng = RC4::default();
 
-        let score = score_disperse_target(&runtime, EntityIdx(1), true, &mut rng);
+        let score = score_disperse_target(&runtime.entities, &runtime.world, EntityIdx(1), true, &mut rng);
 
         assert_eq!(score, (1.0 / 80.0) * 120.0 * 2.5);
         let expected_rng = RC4::default();
@@ -7045,7 +7200,7 @@ mod tests {
         ));
         let mut rng = RC4::default();
 
-        let score = score_disperse_target(&runtime, EntityIdx(1), true, &mut rng);
+        let score = score_disperse_target(&runtime.entities, &runtime.world, EntityIdx(1), true, &mut rng);
 
         assert_eq!(score, 300.0 * 2.0 * 2.5 * 2.0);
         let expected_rng = RC4::default();
@@ -7064,11 +7219,17 @@ mod tests {
         let mut expected_rng = RC4::default();
         let expected = expected_rng.rFFFF() as f64 + 2.5;
 
-        assert_eq!(score_disperse_target(&runtime, EntityIdx(1), false, &mut rng), expected);
+        assert_eq!(
+            score_disperse_target(&runtime.entities, &runtime.world, EntityIdx(1), false, &mut rng),
+            expected
+        );
         assert_eq!(rng.i, expected_rng.i);
         assert_eq!(rng.j, expected_rng.j);
         assert_eq!(rng.main_val, expected_rng.main_val);
-        assert_eq!(score_disperse_target(&runtime, EntityIdx(99), false, &mut rng), f64::MIN);
+        assert_eq!(
+            score_disperse_target(&runtime.entities, &runtime.world, EntityIdx(99), false, &mut rng),
+            f64::MIN
+        );
     }
 
     #[test]
