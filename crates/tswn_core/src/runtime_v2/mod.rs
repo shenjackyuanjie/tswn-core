@@ -5924,6 +5924,56 @@ delta@blue+bed2[8]\n";
     }
 
     #[test]
+    fn runtime_v2_runner_fight_multi_full_terminal_normalized_run_matches_golden() {
+        let raw_input = "测707640862046T，烦恼立刻消失@爱\n坚持 E6b10FVHvKDO@Afterglow\nInfluence #MEZC2wa@Unbound\n耀眼之星 /JxrJYwouGw/@新纪元\n随之任之 #iWZYBGuwxX@🥒\n\n真夜霞 #FBNWDPBPW@无惨\n虚空托腮 UMOXFIARH@TigerStar\nFengshen ONVWTGMPNCKV@nan\nBoundless_Ocean,Vast_Skies #l6RZxopUn@Shabby_fish\nSpearmaster ZbblyZQQwr@RainWorld_XIV\nseed:1376-2-15@!";
+
+        let (mut runner, _) = mixed_raw_runner_for_plain_fixture(raw_input);
+        let run = runner.run_until_winner_normalized_rounds(256);
+
+        assert_eq!(run.winner_team, Some(1));
+        assert!(!run.guard_exhausted);
+        assert_eq!(run.total_score, 3211);
+        assert_eq!(run.rounds.len(), 88);
+
+        let expected_terminal = NormalizedOutcome {
+            winner_team: Some(1),
+            round: 88,
+            total_score: 61,
+            rng: normalized_rng_checkpoint(46, 249),
+            entity_ids: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            teams: vec![1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+            hp: vec![342, 0, 52, 0, 0, 0, 0, 0, 0, 0],
+            magic_point: vec![30, 28, 23, 30, 26, 24, 26, 25, 23, 25],
+            defense: vec![51, 37, 51, 39, 53, 55, 52, 53, 45, 54],
+            resistance: vec![44, 52, 60, 56, 56, 59, 36, 59, 58, 56],
+            alive: vec![true, false, true, false, false, false, false, false, false, false],
+            round_order: vec![6, 3, 9, 5, 4, 1, 7, 8, 2, 0],
+            flat_alive: vec![2, 0],
+            team_alive: vec![vec![], vec![2, 0]],
+            alive_group_count: 1,
+            actions: vec![crate::runtime_v2::oracle::NormalizedActionBoundary {
+                round: 88,
+                actor: 2,
+                target: 8,
+                amount: 61,
+            }],
+            frames: vec![NormalizedUpdateFrame {
+                message: "[0]攻击[1]".to_owned(),
+                caster: 2,
+                target: 8,
+                targets: Vec::new(),
+                param: None,
+                score: 61,
+                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                update_type: crate::engine::update::UpdateType::None,
+            }],
+        };
+
+        assert_eq!(strict_diff(&expected_terminal, run.rounds.last().unwrap()), Ok(()));
+    }
+
+    #[test]
     fn runtime_v2_runner_rejects_plain_rows_in_bed2_roster() {
         let mut builder = ExtensionRegistryBuilder::default();
         let summon = builder
