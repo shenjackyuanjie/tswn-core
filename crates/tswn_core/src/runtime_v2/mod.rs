@@ -400,6 +400,21 @@ pub fn push_minion_from_template_with_allocated_name(
     Ok(next_entity)
 }
 
+pub fn push_minion_from_template_with_allocated_name_silent(
+    context: &mut SkillContext<'_>,
+    counter_slot: EntitySlotId,
+    mut minion_template: PlayerTemplate,
+) -> Result<EntityIdx, RuntimeV2MinionHandlerError> {
+    let minion_name = next_minion_name_from_entity_slot(context, counter_slot)?;
+    let next_entity = EntityIdx(context.entity_count().try_into().expect("runtime_v2 entity index overflow"));
+    minion_template.name = minion_name;
+    context.push_nested(QueuedEffect::SpawnSilent {
+        caster: context.owner_idx(),
+        template: minion_template,
+    });
+    Ok(next_entity)
+}
+
 pub fn push_minion_from_template_slot_with_allocated_name(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -412,6 +427,19 @@ pub fn push_minion_from_template_slot_with_allocated_name(
         None => return Err(RuntimeV2MinionHandlerError::MissingTemplateSlot(template_slot)),
     };
     push_minion_from_template_with_allocated_name(context, counter_slot, minion_template, message)
+}
+
+pub fn push_minion_from_template_slot_with_allocated_name_silent(
+    context: &mut SkillContext<'_>,
+    counter_slot: EntitySlotId,
+    template_slot: TemplateSlotId,
+) -> Result<EntityIdx, RuntimeV2MinionHandlerError> {
+    let minion_template = match context.template_slot(template_slot)? {
+        Some(SlotValue::PlayerTemplate(template)) => template.as_ref().clone(),
+        Some(_) => return Err(RuntimeV2MinionHandlerError::InvalidTemplateSlot(template_slot)),
+        None => return Err(RuntimeV2MinionHandlerError::MissingTemplateSlot(template_slot)),
+    };
+    push_minion_from_template_with_allocated_name_silent(context, counter_slot, minion_template)
 }
 
 pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
@@ -963,6 +991,15 @@ impl CombatRuntime {
                     let team = self.entities.get(spawned).unwrap().runtime.team;
                     self.world.add_spawned_alive(spawned, team);
                     updates.add(RuntimeFrame::spawn_update(caster.0 as usize, spawned.0 as usize));
+                }
+                QueuedEffect::SpawnSilent { caster, template } => {
+                    self.ensure_effect_entity("spawn", "caster", caster);
+                    let root_owner = self.entities.get(caster).unwrap().runtime.root_owner;
+                    let spawned =
+                        self.entities
+                            .spawn_from_template_with_owner(template, &self.registry, Some(caster), Some(root_owner));
+                    let team = self.entities.get(spawned).unwrap().runtime.team;
+                    self.world.add_spawned_alive(spawned, team);
                 }
                 QueuedEffect::SpawnWithMessage {
                     caster,
@@ -3474,6 +3511,85 @@ mod tests {
     }
 
     #[test]
+    fn zombie_style_minion_template_handler_emits_legacy_replay_sequence() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let counter_slot = builder
+            .reserve_entity_slot("custom", "minion-counter", "custom.minion.counter")
+            .expect("minion counter slot should reserve");
+        let template_slot = builder
+            .reserve_template_slot("custom", "zombie-template", "custom.minion.zombie_template")
+            .expect("zombie template slot should reserve");
+        let zombie_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "zombie",
+                "custom.minion.zombie_skill",
+                ProcMask::KILL,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("zombie skill should register");
+        let zombie_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "zombie",
+                "custom.minion.zombie",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("zombie minion kind should register");
+        let registry = builder.build();
+        let payload = PlayerTemplate::with_kind(3, "owner?zombie", zombie_kind, 0, 4, 1);
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([zombie_skill]),
+                PlayerTemplate::new(2, "victim", 1, 10, 1),
+            ],
+            registry,
+        );
+        template
+            .slots
+            .set(template_slot, SlotValue::PlayerTemplate(Box::new(payload)))
+            .expect("zombie template slot should write");
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            zombie_skill,
+            skill_zombie_style_minion_from_template_slot,
+            &[ExtensionCapability::ReadTemplateSlots, ExtensionCapability::MutateEntitySlots],
+        );
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::KILL)
+            .expect("zombie-style minion spawn should emit legacy updates");
+
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "\n");
+        assert_eq!(frame.updates.updates[1].message, "[0][召唤亡灵]");
+        assert_eq!(frame.updates.updates[1].caster, 0);
+        assert_eq!(frame.updates.updates[1].target, 1);
+        assert_eq!(frame.updates.updates[1].score, 60);
+        assert_eq!(frame.updates.updates[1].delay0, 1500);
+        assert_eq!(frame.updates.updates[2].message, "[2]变成了[1]");
+        assert_eq!(frame.updates.updates[2].caster, 0);
+        assert_eq!(frame.updates.updates[2].target, 2);
+        assert_eq!(frame.updates.updates[2].targets.as_slice(), &[1]);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(counter_slot),
+            Some(&SlotValue::U64(1))
+        );
+        let zombie = runtime.entities.get(EntityIdx(2)).expect("zombie minion should spawn");
+        assert_eq!(zombie.template.name, "owner?0");
+        assert_eq!(zombie.template.kind, zombie_kind);
+        assert_eq!(zombie.runtime.owner, EntityIdx(0));
+        assert_eq!(zombie.runtime.root_owner, EntityIdx(0));
+    }
+
+    #[test]
     fn minion_display_index_for_entity_matches_legacy_name_suffix() {
         let mut builder = ExtensionRegistryBuilder::default();
         let minion_kind = builder
@@ -4297,6 +4413,19 @@ mod tests {
             push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]"),
             Ok(EntityIdx(2))
         );
+    }
+
+    fn skill_zombie_style_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        let zombie = push_minion_from_template_slot_with_allocated_name_silent(context, EntitySlotId(0), TemplateSlotId(0))
+            .expect("zombie minion should spawn from template slot");
+        context.add_update(crate::engine::update::RunUpdate::new_newline());
+        let mut summon_update = crate::engine::update::RunUpdate::new("[0][召唤亡灵]", context.owner_idx().0 as usize, 1, 60);
+        summon_update.delay0 = 1500;
+        context.add_update(summon_update);
+        let mut zombied =
+            crate::engine::update::RunUpdate::new("[2]变成了[1]", context.owner_idx().0 as usize, zombie.0 as usize, 0);
+        zombied.targets.push(1);
+        context.add_update(zombied);
     }
 
     fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {

@@ -27,6 +27,10 @@ pub enum QueuedEffect {
         caster: EntityIdx,
         template: PlayerTemplate,
     },
+    SpawnSilent {
+        caster: EntityIdx,
+        template: PlayerTemplate,
+    },
     SpawnWithMessage {
         caster: EntityIdx,
         template: PlayerTemplate,
