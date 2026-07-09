@@ -300,4 +300,14 @@ mod tests {
         assert_eq!(frame.delay1, tswn_core::engine::update::DEFAULT_DELAY1_MS);
         assert_eq!(frame.update_type, UpdateTypeView::None);
     }
+
+    #[test]
+    fn default_custom_runtime_v2_normalized_run_rejects_zero_max_rounds() {
+        let err = tswn_core::cli_api::default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 0)
+            .expect_err("default custom runtime v2 normalized run should reject zero max rounds");
+        let err = crate::error::cli_api_tswn_error(err);
+
+        assert_eq!(err.code, "INVALID_INPUT");
+        assert_eq!(err.message, "runtime v2 max_rounds must be positive");
+    }
 }

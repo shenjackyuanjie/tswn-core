@@ -26,16 +26,27 @@ pub fn win_rate_invalid_groups() -> JsValue {
 pub fn internal_error(message: impl Into<String>) -> JsValue { error_value("INTERNAL_ERROR", message) }
 
 pub fn error_value(code: &'static str, message: impl Into<String>) -> JsValue {
-    let error = TswnError {
-        code,
-        message: message.into(),
-    };
+    let error = TswnError::new(code, message);
     serde_wasm_bindgen::to_value(&error).unwrap_or_else(|_| JsValue::from_str(error.code))
 }
 
 pub fn cli_api_error(err: CliApiError) -> JsValue {
+    let error = cli_api_tswn_error(err);
+    error_value(error.code, error.message)
+}
+
+pub fn cli_api_tswn_error(err: CliApiError) -> TswnError {
     match err {
-        CliApiError::InvalidInput(message) => invalid_input(message),
-        CliApiError::Runner(err) => runner_init_failed(err.to_string()),
+        CliApiError::InvalidInput(message) => TswnError::new("INVALID_INPUT", message),
+        CliApiError::Runner(err) => TswnError::new("RUNNER_INIT_FAILED", err.to_string()),
+    }
+}
+
+impl TswnError {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 }
