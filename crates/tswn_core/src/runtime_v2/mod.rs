@@ -291,7 +291,38 @@ pub fn push_summon_recast_from_entity_slot(
     summon_template: PlayerTemplate,
     revive_hp: i32,
 ) -> Result<EntityIdx, RuntimeV2SummonHandlerError> {
+    push_summon_recast_from_entity_slot_with_messages(
+        context,
+        entity_slot,
+        summon_template,
+        revive_hp,
+        "出现一个新的[1]",
+        "[1][复活]了",
+    )
+}
+
+pub fn push_summon_recast_from_entity_slot_with_message(
+    context: &mut SkillContext<'_>,
+    entity_slot: EntitySlotId,
+    summon_template: PlayerTemplate,
+    revive_hp: i32,
+    message: impl Into<String>,
+) -> Result<EntityIdx, RuntimeV2SummonHandlerError> {
+    let message = message.into();
+    push_summon_recast_from_entity_slot_with_messages(context, entity_slot, summon_template, revive_hp, message.clone(), message)
+}
+
+pub fn push_summon_recast_from_entity_slot_with_messages(
+    context: &mut SkillContext<'_>,
+    entity_slot: EntitySlotId,
+    summon_template: PlayerTemplate,
+    revive_hp: i32,
+    spawn_message: impl Into<String>,
+    revive_message: impl Into<String>,
+) -> Result<EntityIdx, RuntimeV2SummonHandlerError> {
     let owner = context.owner_idx();
+    let spawn_message = spawn_message.into();
+    let revive_message = revive_message.into();
     let remembered = context
         .owner()
         .and_then(|entity| entity.slots.get(entity_slot))
@@ -304,18 +335,20 @@ pub fn push_summon_recast_from_entity_slot(
         if entity.runtime.alive {
             return Err(RuntimeV2SummonHandlerError::RememberedSummonAlive(summon));
         }
-        context.push_nested(QueuedEffect::Revive {
+        context.push_nested(QueuedEffect::ReviveWithMessage {
             caster: owner,
             target: summon,
             hp: revive_hp,
+            message: revive_message,
         });
         return Ok(summon);
     }
 
     let next_entity = EntityIdx(context.entity_count().try_into().expect("runtime_v2 entity index overflow"));
-    context.push_nested(QueuedEffect::Spawn {
+    context.push_nested(QueuedEffect::SpawnWithMessage {
         caster: owner,
         template: summon_template,
+        message: spawn_message,
     });
     context.set_entity_slot(owner, entity_slot, SlotValue::U64(u64::from(next_entity.0)))?;
     Ok(next_entity)
@@ -873,6 +906,20 @@ impl CombatRuntime {
                     self.world.add_spawned_alive(spawned, team);
                     updates.add(RuntimeFrame::spawn_update(caster.0 as usize, spawned.0 as usize));
                 }
+                QueuedEffect::SpawnWithMessage {
+                    caster,
+                    template,
+                    message,
+                } => {
+                    self.ensure_effect_entity("spawn", "caster", caster);
+                    let root_owner = self.entities.get(caster).unwrap().runtime.root_owner;
+                    let spawned =
+                        self.entities
+                            .spawn_from_template_with_owner(template, &self.registry, Some(caster), Some(root_owner));
+                    let team = self.entities.get(spawned).unwrap().runtime.team;
+                    self.world.add_spawned_alive(spawned, team);
+                    updates.add(RuntimeFrame::replay_update(caster.0 as usize, spawned.0 as usize, message, 0));
+                }
                 QueuedEffect::AddState { target, state } => {
                     self.ensure_effect_entity("add-state", "target", target);
                     let Some(target_entity) = self.entities.get_mut(target) else {
@@ -906,6 +953,29 @@ impl CombatRuntime {
                     self.world.revive_round_actor(target);
                     self.world.revive_alive(target, team);
                     updates.add(RuntimeFrame::revive_update(caster.0 as usize, target.0 as usize, hp));
+                }
+                QueuedEffect::ReviveWithMessage {
+                    caster,
+                    target,
+                    hp,
+                    message,
+                } => {
+                    self.ensure_effect_entity("revive", "caster", caster);
+                    self.ensure_effect_entity("revive", "target", target);
+                    let Some(target_entity) = self.entities.get_mut(target) else {
+                        panic!("unknown runtime_v2 revive target entity: {}", target.0);
+                    };
+                    target_entity.runtime.hp = hp.max(1).min(target_entity.template.max_hp);
+                    target_entity.runtime.alive = true;
+                    let team = target_entity.runtime.team;
+                    self.world.revive_round_actor(target);
+                    self.world.revive_alive(target, team);
+                    updates.add(RuntimeFrame::replay_update(
+                        caster.0 as usize,
+                        target.0 as usize,
+                        message,
+                        hp.max(0) as u32,
+                    ));
                 }
                 QueuedEffect::Remove { caster, target } => {
                     self.ensure_effect_entity("remove", "caster", caster);
@@ -2684,6 +2754,101 @@ mod tests {
     }
 
     #[test]
+    fn custom_summon_recast_handler_can_emit_legacy_summon_messages() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summoned_slot = builder
+            .reserve_entity_slot("custom", "summoned-entity", "custom.summon.summoned_entity")
+            .expect("summoned entity slot should reserve");
+        let recast_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "summon-recast",
+                "custom.summon_recast",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("summon recast skill should register");
+        let owner_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon-owner",
+                "custom.summon_owner",
+                PlayerKindFlags::default(),
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToSummons,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("summon owner kind should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("summon kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "owner", owner_kind, 0, 20, 3).with_skills([recast_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler_with_capabilities(
+            recast_skill,
+            skill_legacy_summon_recast_fixture_handler,
+            &[ExtensionCapability::ReadAllies, ExtensionCapability::MutateEntitySlots],
+        );
+
+        let first = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("legacy summon cast should emit updates");
+
+        assert_eq!(runtime.entities.len(), 3);
+        assert_eq!(first.updates.updates.len(), 2);
+        assert_eq!(first.updates.updates[0].message, "[0]使用[血祭]");
+        assert_eq!(first.updates.updates[0].score, 60);
+        assert_eq!(first.updates.updates[1].message, "召唤出[1]");
+        assert_eq!(first.updates.updates[1].target, 2);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(summoned_slot),
+            Some(&SlotValue::U64(2))
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().template.kind, summon_kind);
+
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(2),
+            amount: 10,
+        });
+        runtime.flush_effects().expect("lethal summon damage should emit update");
+        assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+
+        let recast = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("legacy summon recast should emit updates");
+
+        assert_eq!(runtime.entities.len(), 3);
+        assert_eq!(recast.updates.updates.len(), 2);
+        assert_eq!(recast.updates.updates[0].message, "[0]使用[血祭]");
+        assert_eq!(recast.updates.updates[0].score, 60);
+        assert_eq!(recast.updates.updates[1].message, "召唤出[1]");
+        assert_eq!(recast.updates.updates[1].target, 2);
+        assert!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+    }
+
+    #[test]
     fn push_summon_recast_from_entity_slot_reports_alive_remembered_summon() {
         let mut builder = ExtensionRegistryBuilder::default();
         let summoned_slot = builder
@@ -3657,6 +3822,27 @@ mod tests {
             .with_skills([SkillId(0)]);
         push_summon_recast_from_entity_slot(context, EntitySlotId(0), summon_template, 10)
             .expect("summon recast fixture should spawn or revive summon");
+    }
+
+    fn skill_legacy_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "[0]使用[血祭]",
+            context.owner_idx().0 as usize,
+            context.owner_idx().0 as usize,
+            60,
+        ));
+        let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
+            .with_def_res(11, 22)
+            .with_skills([SkillId(0)]);
+        push_summon_recast_from_entity_slot_with_messages(
+            context,
+            EntitySlotId(0),
+            summon_template,
+            10,
+            "召唤出[1]",
+            "召唤出[1]",
+        )
+        .expect("legacy summon recast fixture should spawn or revive summon");
     }
 
     fn skill_records_alive_summon_recast_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {

@@ -27,6 +27,11 @@ pub enum QueuedEffect {
         caster: EntityIdx,
         template: PlayerTemplate,
     },
+    SpawnWithMessage {
+        caster: EntityIdx,
+        template: PlayerTemplate,
+        message: String,
+    },
     AddState {
         target: EntityIdx,
         state: StateEntry,
@@ -39,6 +44,12 @@ pub enum QueuedEffect {
         caster: EntityIdx,
         target: EntityIdx,
         hp: i32,
+    },
+    ReviveWithMessage {
+        caster: EntityIdx,
+        target: EntityIdx,
+        hp: i32,
+        message: String,
     },
     Remove {
         caster: EntityIdx,
