@@ -165,6 +165,23 @@ impl RuntimeV2Runner {
         Ok(Self::from_template(template))
     }
 
+    pub fn from_bed2_roster_with_summon_overlay(
+        raw_groups: &[Vec<String>],
+        registry: ExtensionRegistry,
+        kind: PlayerKindId,
+        summon_skill: SkillId,
+        config: CustomBed2SummonTemplateConfig<'_>,
+    ) -> Result<Self, CustomBed2SummonTemplateImportError> {
+        let template = CustomBed2Import::roster_into_prepared_template_with_summon_overlay(
+            raw_groups,
+            registry,
+            kind,
+            summon_skill,
+            config,
+        )?;
+        Ok(Self::from_template(template))
+    }
+
     pub fn from_bed2_namerena_raw(
         raw_input: String,
         registry: ExtensionRegistry,
@@ -173,6 +190,19 @@ impl RuntimeV2Runner {
     ) -> Result<Self, CustomBed2RosterImportError> {
         let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
         let mut runner = Self::from_bed2_roster(&raw_groups, registry, kind, summon_skill)?;
+        runner.sync_legacy_raw_state(&raw_groups);
+        Ok(runner)
+    }
+
+    pub fn from_bed2_namerena_raw_with_summon_overlay(
+        raw_input: String,
+        registry: ExtensionRegistry,
+        kind: PlayerKindId,
+        summon_skill: SkillId,
+        config: CustomBed2SummonTemplateConfig<'_>,
+    ) -> Result<Self, CustomBed2SummonTemplateImportError> {
+        let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
+        let mut runner = Self::from_bed2_roster_with_summon_overlay(&raw_groups, registry, kind, summon_skill, config)?;
         runner.sync_legacy_raw_state(&raw_groups);
         Ok(runner)
     }
@@ -187,6 +217,23 @@ impl RuntimeV2Runner {
         Ok(Self::from_template(template))
     }
 
+    pub fn from_mixed_roster_with_summon_overlay(
+        raw_groups: &[Vec<String>],
+        registry: ExtensionRegistry,
+        bed2_kind: PlayerKindId,
+        bed2_summon_skill: SkillId,
+        config: CustomBed2SummonTemplateConfig<'_>,
+    ) -> Result<Self, CustomBed2SummonTemplateImportError> {
+        let template = CustomBed2Import::mixed_roster_into_prepared_template_with_summon_overlay(
+            raw_groups,
+            registry,
+            bed2_kind,
+            bed2_summon_skill,
+            config,
+        )?;
+        Ok(Self::from_template(template))
+    }
+
     pub fn from_mixed_namerena_raw(
         raw_input: String,
         registry: ExtensionRegistry,
@@ -195,6 +242,20 @@ impl RuntimeV2Runner {
     ) -> Result<Self, CustomMixedRosterImportError> {
         let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
         let mut runner = Self::from_mixed_roster(&raw_groups, registry, bed2_kind, bed2_summon_skill)?;
+        runner.sync_legacy_raw_state(&raw_groups);
+        Ok(runner)
+    }
+
+    pub fn from_mixed_namerena_raw_with_summon_overlay(
+        raw_input: String,
+        registry: ExtensionRegistry,
+        bed2_kind: PlayerKindId,
+        bed2_summon_skill: SkillId,
+        config: CustomBed2SummonTemplateConfig<'_>,
+    ) -> Result<Self, CustomBed2SummonTemplateImportError> {
+        let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
+        let mut runner =
+            Self::from_mixed_roster_with_summon_overlay(&raw_groups, registry, bed2_kind, bed2_summon_skill, config)?;
         runner.sync_legacy_raw_state(&raw_groups);
         Ok(runner)
     }
@@ -3396,6 +3457,95 @@ mod tests {
         assert_eq!(runner.runtime().rng.i, legacy.randomer.i);
         assert_eq!(runner.runtime().rng.j, legacy.randomer.j);
         assert_eq!(runner.runtime().rng.main_val, legacy.randomer.main_val);
+    }
+
+    #[test]
+    fn runtime_v2_runner_bed2_raw_can_import_ol_summon_overlay_template_slot() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let fire = builder
+            .register_skill(
+                "custom",
+                "summon-fire",
+                "custom.summon.fire",
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("summon fire skill should register");
+        let explode = builder
+            .register_skill(
+                "custom",
+                "summon-explode",
+                "custom.summon.explode",
+                TargetPolicy::Enemy,
+                SkillPriority(2),
+            )
+            .expect("summon explode skill should register");
+        let summon_template_slot = builder
+            .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
+            .expect("bed2 summon template slot should reserve");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2-summon",
+                "custom.bed2.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("bed2 summon kind should register");
+        let registry = builder.build();
+        let raw_input = "alpha@red+bed2[5]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire2\":4,\"sklfire1\":5}}}\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
+
+        let runner = RuntimeV2Runner::from_bed2_namerena_raw_with_summon_overlay(
+            raw_input.to_owned(),
+            registry,
+            bed2,
+            summon,
+            CustomBed2SummonTemplateConfig {
+                template_slot: summon_template_slot,
+                summon_kind,
+                fire_skill_export_name: "custom.summon.fire",
+                explode_skill_export_name: "custom.summon.explode",
+            },
+        )
+        .expect("bed2 raw runner should import summon overlay template slot");
+        let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
+
+        assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
+        let SlotValue::PlayerTemplate(summon_template) = runner
+            .runtime()
+            .template_slots
+            .get(summon_template_slot)
+            .expect("runner should preserve imported summon template slot")
+        else {
+            panic!("runner summon template slot should hold PlayerTemplate");
+        };
+        assert_eq!(summon_template.name, "alpha?0");
+        assert_eq!(summon_template.kind, summon_kind);
+        assert_eq!(summon_template.max_hp, 123);
+        assert_eq!(summon_template.skills.skills(), &[fire, fire, explode]);
+        assert_eq!(summon_template.skills.active_order(), &[1, 0]);
     }
 
     #[test]
