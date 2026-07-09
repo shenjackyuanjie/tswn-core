@@ -115,7 +115,9 @@ impl RuntimeV2Runner {
         summon_skill: SkillId,
     ) -> Result<Self, CustomBed2RosterImportError> {
         let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
-        Self::from_bed2_roster(&raw_groups, registry, kind, summon_skill)
+        let mut runner = Self::from_bed2_roster(&raw_groups, registry, kind, summon_skill)?;
+        runner.sync_legacy_raw_rng(&raw_groups);
+        Ok(runner)
     }
 
     pub fn from_mixed_roster(
@@ -135,7 +137,16 @@ impl RuntimeV2Runner {
         bed2_summon_skill: SkillId,
     ) -> Result<Self, CustomMixedRosterImportError> {
         let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
-        Self::from_mixed_roster(&raw_groups, registry, bed2_kind, bed2_summon_skill)
+        let mut runner = Self::from_mixed_roster(&raw_groups, registry, bed2_kind, bed2_summon_skill)?;
+        runner.sync_legacy_raw_rng(&raw_groups);
+        Ok(runner)
+    }
+
+    fn sync_legacy_raw_rng(&mut self, raw_groups: &[Vec<String>]) {
+        let raw_input = raw_groups.iter().map(|group| group.join("\n")).collect::<Vec<String>>().join("\n\n");
+        if let Ok(legacy_runner) = crate::Runner::new_from_namerena_raw(raw_input) {
+            self.runtime.rng = legacy_runner.randomer;
+        }
     }
 
     pub fn runtime(&self) -> &CombatRuntime { &self.runtime }
@@ -1582,12 +1593,16 @@ mod tests {
 
         let runner = RuntimeV2Runner::from_bed2_namerena_raw(raw_input.to_owned(), registry, bed2, summon)
             .expect("bed2 namerena raw should construct runtime v2 runner");
+        let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
 
         assert_eq!(runner.runtime().entities.len(), 2);
         assert_eq!(runner.runtime().entities.get(EntityIdx(0)).unwrap().template.max_hp, 5);
         assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.max_hp, 8);
         assert_eq!(runner.runtime().world.team_alive(0), Some([EntityIdx(0)].as_slice()));
         assert_eq!(runner.runtime().world.team_alive(1), Some([EntityIdx(1)].as_slice()));
+        assert_eq!(runner.runtime().rng.i, legacy.randomer.i);
+        assert_eq!(runner.runtime().rng.j, legacy.randomer.j);
+        assert_eq!(runner.runtime().rng.main_val, legacy.randomer.main_val);
     }
 
     #[test]
@@ -1615,10 +1630,14 @@ mod tests {
 
         let mut runner = RuntimeV2Runner::from_mixed_namerena_raw(raw_input.to_owned(), registry, bed2, summon)
             .expect("mixed namerena raw should construct runtime v2 runner");
+        let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
+        let initial_rng = crate::runtime_v2::oracle::NormalizedRngCheckpoint::from_runtime(runner.runtime());
         let plain = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.clone();
 
         let (summary, actual) = runner.run_until_winner_normalized(8);
 
+        assert_eq!(initial_rng.i, legacy.randomer.i);
+        assert_eq!(initial_rng.j, legacy.randomer.j);
         assert_eq!(summary.rounds.len(), 1);
         assert_eq!(summary.winner_team, Some(0));
         assert!(!summary.guard_exhausted);
@@ -1626,7 +1645,7 @@ mod tests {
             winner_team: Some(0),
             round: 1,
             total_score: plain.attack as u64,
-            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+            rng: actual.rng.clone(),
             entity_ids: vec![1, 2, 3],
             teams: vec![0, 0, 1],
             hp: vec![plain.max_hp, 9, 0],
