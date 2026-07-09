@@ -23,6 +23,7 @@ pub struct PlayerTemplate {
     pub magic: i32,
     pub defense: i32,
     pub resistance: i32,
+    pub agility: i32,
     pub at_boost_millionths: i64,
     pub move_state: MoveState,
     pub policy_overrides: PlayerPolicyOverrides,
@@ -49,6 +50,7 @@ impl PlayerTemplate {
             magic: 0,
             defense: 0,
             resistance: 0,
+            agility: 0,
             at_boost_millionths: DEFAULT_AT_BOOST_MILLIONTHS,
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
@@ -75,6 +77,12 @@ impl PlayerTemplate {
         assert!(resistance >= 0, "runtime_v2 player resistance must be non-negative");
         self.defense = defense;
         self.resistance = resistance;
+        self
+    }
+
+    pub fn with_agility(mut self, agility: i32) -> Self {
+        assert!(agility >= 0, "runtime_v2 player agility must be non-negative");
+        self.agility = agility;
         self
     }
 
@@ -218,6 +226,7 @@ pub struct PlayerRuntime {
     pub magic: i32,
     pub defense: i32,
     pub resistance: i32,
+    pub agility: i32,
     pub at_boost_millionths: i64,
     pub kind: PlayerKindId,
     pub owner: EntityIdx,
@@ -247,6 +256,7 @@ impl PlayerRuntime {
             magic: template.magic,
             defense: template.defense,
             resistance: template.resistance,
+            agility: template.agility,
             at_boost_millionths: template.at_boost_millionths,
             kind: template.kind,
             owner,
@@ -282,6 +292,25 @@ impl PlayerRuntime {
     }
 
     pub fn magic_defense(&self) -> i32 { self.resistance + 64 }
+
+    pub fn magic_accuracy(&self) -> i32 { self.magic + self.agility }
+
+    pub fn magic_dodge(&self) -> i32 { self.resistance + self.agility }
+
+    pub fn dodge(accuracy: i32, dodge_value: i32, randomer: &mut RC4) -> bool {
+        let chance = {
+            let temp = 24 + dodge_value - accuracy;
+            if temp < 7 {
+                7
+            } else if temp > 64 {
+                temp / 4 + 48
+            } else {
+                temp
+            }
+        };
+
+        randomer.next_u8() as i32 <= chance
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -524,6 +553,7 @@ mod tests {
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.move_state, MoveState::default());
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.attack, 3);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic, 0);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.agility, 0);
         assert_eq!(
             arena.get(EntityIdx(0)).unwrap().runtime.at_boost_millionths,
             DEFAULT_AT_BOOST_MILLIONTHS
@@ -564,6 +594,26 @@ mod tests {
         assert_eq!(rng.i, expected_rng.i);
         assert_eq!(rng.j, expected_rng.j);
         assert_eq!(rng.main_val, expected_rng.main_val);
+    }
+
+    #[test]
+    fn player_runtime_dodge_matches_legacy_rng_formula() {
+        let cases = [(64, 64), (200, 0), (0, 256), (80, 512)];
+
+        for (accuracy, dodge_value) in cases {
+            let mut runtime_rng = RC4::default();
+            let mut legacy_rng = RC4::default();
+
+            for _ in 0..8 {
+                assert_eq!(
+                    PlayerRuntime::dodge(accuracy, dodge_value, &mut runtime_rng),
+                    crate::player::Player::dodge(accuracy, dodge_value, &mut legacy_rng)
+                );
+                assert_eq!(runtime_rng.i, legacy_rng.i);
+                assert_eq!(runtime_rng.j, legacy_rng.j);
+                assert_eq!(runtime_rng.main_val, legacy_rng.main_val);
+            }
+        }
     }
 
     #[test]

@@ -677,6 +677,7 @@ impl CustomBed2Import {
                     }
                     PlayerTemplate::new(next_id, player.id_name(), team_index, status.max_hp, status.attack)
                         .with_magic(status.magic)
+                        .with_agility(status.agility)
                         .with_at_boost_millionths((status.at_boost * 1_000_000.0).round() as i64)
                         .with_def_res(status.defense, status.resistance)
                 };
@@ -1047,10 +1048,19 @@ impl CombatRuntime {
                         0,
                     ));
                     let killed_caster = self.kill_entity_without_damage_into(caster, updates);
-                    if self.apply_damage_into(caster, target, amount, updates) {
-                        self.drain_lethal_damage_hooks_into(caster, target, updates);
-                    } else if amount > 0 {
-                        self.apply_fire_on_damage(target, fire_state_key);
+                    if self.summon_explode_dodged(caster, target) {
+                        updates.add(RuntimeFrame::replay_update(
+                            target.0 as usize,
+                            caster.0 as usize,
+                            "[0][回避]了攻击",
+                            20,
+                        ));
+                    } else {
+                        if self.apply_damage_into(caster, target, amount, updates) {
+                            self.drain_lethal_damage_hooks_into(caster, target, updates);
+                        } else if amount > 0 {
+                            self.apply_fire_on_damage(target, fire_state_key);
+                        }
                     }
                     if killed_caster {
                         self.drain_die_hooks_into(caster, updates);
@@ -1277,6 +1287,19 @@ impl CombatRuntime {
             self.cleanup_linked_minions_for_owner(target, updates);
         }
         killed
+    }
+
+    fn summon_explode_dodged(&mut self, caster: EntityIdx, target: EntityIdx) -> bool {
+        let Some(target_entity) = self.entities.get(target) else {
+            panic!("unknown runtime_v2 summon explode dodge target entity: {}", target.0);
+        };
+        if !target_entity.runtime.alive {
+            return false;
+        }
+
+        let accuracy = self.entities.get(caster).unwrap().runtime.magic_accuracy();
+        let dodge_value = target_entity.runtime.magic_dodge();
+        PlayerRuntime::dodge(accuracy, dodge_value, &mut self.rng)
     }
 
     fn apply_fire_on_damage(&mut self, target: EntityIdx, fire_state_key: u32) {
@@ -2993,9 +3016,13 @@ mod tests {
             .states
             .add_entry(StateEntry::fire_mag(91, 3));
         let mut expected_rng = RC4::default();
-        let expected_amount = ((runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 5.5)
-            / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64)
-            .ceil() as i32;
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 5.5;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let expected_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
         runtime.effects.push(QueuedEffect::SummonExplode {
             caster: EntityIdx(2),
             target: EntityIdx(1),
@@ -3022,6 +3049,51 @@ mod tests {
         assert_eq!(frame.updates.updates[1].caster, 2);
         assert_eq!(frame.updates.updates[1].target, 1);
         assert_eq!(frame.updates.updates[1].score, expected_amount as u32);
+    }
+
+    #[test]
+    fn summon_explode_can_be_dodged_after_self_death() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+            PlayerTemplate::new(1, "owner", 0, 10, 3),
+            PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 512).with_agility(512),
+            PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(0),
+        ]));
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::fire_mag(91, 3));
+        let mut expected_rng = RC4::default();
+        let _ = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng);
+        assert!(PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("dodged summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 0);
+        assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 1.5);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0)].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[0][回避]了攻击");
+        assert_eq!(frame.updates.updates[1].caster, 1);
+        assert_eq!(frame.updates.updates[1].target, 2);
+        assert_eq!(frame.updates.updates[1].score, 20);
     }
 
     #[test]
