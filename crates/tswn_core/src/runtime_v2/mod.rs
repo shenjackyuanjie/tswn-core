@@ -186,6 +186,7 @@ pub enum RuntimeV2SummonHandlerError {
     Context(EffectContextError),
     MissingTemplateSlot(TemplateSlotId),
     InvalidTemplateSlot(TemplateSlotId),
+    RememberedSummonAlive(EntityIdx),
 }
 
 impl From<EffectContextError> for RuntimeV2SummonHandlerError {
@@ -222,9 +223,11 @@ pub fn push_summon_recast_from_entity_slot(
             SlotValue::U64(idx) => Some(EntityIdx(*idx as u32)),
             _ => None,
         });
-    if let Some(summon) = remembered
-        && context.entity(summon).is_ok_and(|entity| !entity.runtime.alive)
-    {
+    if let Some(summon) = remembered {
+        let entity = context.entity(summon)?;
+        if entity.runtime.alive {
+            return Err(RuntimeV2SummonHandlerError::RememberedSummonAlive(summon));
+        }
         context.push_nested(QueuedEffect::Revive {
             caster: owner,
             target: summon,
@@ -2451,6 +2454,125 @@ mod tests {
     }
 
     #[test]
+    fn push_summon_recast_from_entity_slot_reports_alive_remembered_summon() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summoned_slot = builder
+            .reserve_entity_slot("custom", "summoned-entity", "custom.summon.summoned_entity")
+            .expect("summoned entity slot should reserve");
+        let recast_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "summon-recast",
+                "custom.summon_recast",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("summon recast skill should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("summon kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([recast_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+                PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 10, 1),
+            ],
+            registry,
+        ));
+        runtime
+            .entities
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .slots
+            .set(summoned_slot, SlotValue::U64(2))
+            .expect("remembered summon slot should write");
+        runtime.set_skill_handler_with_capabilities(
+            recast_skill,
+            skill_records_alive_summon_recast_error,
+            &[ExtensionCapability::ReadAllies],
+        );
+
+        let frame = runtime.run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(runtime.entities.len(), 3);
+        assert!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+        assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0), EntityIdx(2)].as_slice()));
+    }
+
+    #[test]
+    fn push_summon_recast_from_entity_slot_reports_missing_read_allies_capability() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summoned_slot = builder
+            .reserve_entity_slot("custom", "summoned-entity", "custom.summon.summoned_entity")
+            .expect("summoned entity slot should reserve");
+        let recast_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "summon-recast",
+                "custom.summon_recast",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("summon recast skill should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("summon kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([recast_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+                PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 10, 1),
+            ],
+            registry,
+        ));
+        runtime
+            .entities
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .slots
+            .set(summoned_slot, SlotValue::U64(2))
+            .expect("remembered summon slot should write");
+        runtime.set_skill_handler_with_capabilities(
+            recast_skill,
+            skill_records_missing_recast_read_allies_error,
+            &[ExtensionCapability::MutateEntitySlots],
+        );
+
+        let frame = runtime.run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(runtime.entities.len(), 3);
+        assert!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+    }
+
+    #[test]
     fn custom_minion_heal_fixture_does_not_share_with_owner_or_summons() {
         let mut builder = ExtensionRegistryBuilder::default();
         let owner_kind = builder
@@ -3139,6 +3261,28 @@ mod tests {
             .with_skills([SkillId(0)]);
         push_summon_recast_from_entity_slot(context, EntitySlotId(0), summon_template, 10)
             .expect("summon recast fixture should spawn or revive summon");
+    }
+
+    fn skill_records_alive_summon_recast_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
+            .with_def_res(11, 22)
+            .with_skills([SkillId(0)]);
+        assert_eq!(
+            push_summon_recast_from_entity_slot(context, EntitySlotId(0), summon_template, 10),
+            Err(RuntimeV2SummonHandlerError::RememberedSummonAlive(EntityIdx(2)))
+        );
+    }
+
+    fn skill_records_missing_recast_read_allies_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
+            .with_def_res(11, 22)
+            .with_skills([SkillId(0)]);
+        assert_eq!(
+            push_summon_recast_from_entity_slot(context, EntitySlotId(0), summon_template, 10),
+            Err(RuntimeV2SummonHandlerError::Context(EffectContextError::MissingCapability(
+                ExtensionCapability::ReadAllies
+            )))
+        );
     }
 
     fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
