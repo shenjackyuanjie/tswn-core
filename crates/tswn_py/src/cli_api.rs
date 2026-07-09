@@ -1,7 +1,14 @@
 //! Python-facing helpers aligned with the high-level `tswn-cli` commands.
 
-use pyo3::{PyResult, exceptions::PyValueError, pyclass, pyfunction, pymethods};
+use pyo3::{
+    Py, PyAny, PyResult, Python,
+    exceptions::PyValueError,
+    pyclass, pyfunction, pymethods,
+    types::{PyDict, PyDictMethods, PyList},
+};
 use tswn_core::cli_api::{self as core_cli_api, CliApiError};
+use tswn_core::engine::update::UpdateType;
+use tswn_core::runtime_v2::{NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2NormalizedRun};
 
 use crate::wrapper;
 
@@ -375,6 +382,84 @@ fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     }
 }
 
+fn update_type_name(value: UpdateType) -> &'static str {
+    match value {
+        UpdateType::Win => "win",
+        UpdateType::None => "none",
+        UpdateType::NextLine => "next_line",
+    }
+}
+
+fn normalized_run_to_pydict<'py>(py: Python<'py>, run: RuntimeV2NormalizedRun) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    let rounds = run
+        .rounds
+        .into_iter()
+        .map(|round| normalized_outcome_to_pydict(py, round))
+        .collect::<PyResult<Vec<_>>>()?;
+    dict.set_item("rounds", PyList::new(py, rounds)?)?;
+    dict.set_item("winner_team", run.winner_team)?;
+    dict.set_item("guard_exhausted", run.guard_exhausted)?;
+    dict.set_item("total_score", run.total_score)?;
+    Ok(dict)
+}
+
+fn normalized_outcome_to_pydict<'py>(py: Python<'py>, outcome: NormalizedOutcome) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("winner_team", outcome.winner_team)?;
+    dict.set_item("round", outcome.round)?;
+    dict.set_item("total_score", outcome.total_score)?;
+    dict.set_item("rng_i", outcome.rng.i)?;
+    dict.set_item("rng_j", outcome.rng.j)?;
+    dict.set_item("entity_ids", outcome.entity_ids)?;
+    dict.set_item("teams", outcome.teams)?;
+    dict.set_item("hp", outcome.hp)?;
+    dict.set_item("magic_point", outcome.magic_point)?;
+    dict.set_item("defense", outcome.defense)?;
+    dict.set_item("resistance", outcome.resistance)?;
+    dict.set_item("alive", outcome.alive)?;
+    dict.set_item("round_order", outcome.round_order)?;
+    dict.set_item("flat_alive", outcome.flat_alive)?;
+    dict.set_item("team_alive", outcome.team_alive)?;
+    dict.set_item("alive_group_count", outcome.alive_group_count)?;
+
+    let actions = outcome
+        .actions
+        .into_iter()
+        .map(|action| {
+            let action_dict = PyDict::new(py);
+            action_dict.set_item("round", action.round)?;
+            action_dict.set_item("actor", action.actor)?;
+            action_dict.set_item("target", action.target)?;
+            action_dict.set_item("amount", action.amount)?;
+            Ok(action_dict)
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    dict.set_item("actions", PyList::new(py, actions)?)?;
+
+    let frames = outcome
+        .frames
+        .into_iter()
+        .map(|frame| normalized_update_frame_to_pydict(py, frame))
+        .collect::<PyResult<Vec<_>>>()?;
+    dict.set_item("frames", PyList::new(py, frames)?)?;
+    Ok(dict)
+}
+
+fn normalized_update_frame_to_pydict<'py>(py: Python<'py>, frame: NormalizedUpdateFrame) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("message", frame.message)?;
+    dict.set_item("caster", frame.caster)?;
+    dict.set_item("target", frame.target)?;
+    dict.set_item("targets", frame.targets)?;
+    dict.set_item("param", frame.param)?;
+    dict.set_item("score", frame.score)?;
+    dict.set_item("delay0", frame.delay0)?;
+    dict.set_item("delay1", frame.delay1)?;
+    dict.set_item("update_type", update_type_name(frame.update_type))?;
+    Ok(dict)
+}
+
 #[pyfunction(signature = (raw, n, eval_rq=None, thread=0))]
 pub fn win_rate_summary(raw: String, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<PyWinRateResult> {
     core_cli_api::win_rate_summary(&raw, n, eval_rq, thread)
@@ -467,6 +552,12 @@ pub fn parse_group_lines(content: String, double_plus: bool) -> Vec<String> {
     core_cli_api::parse_group_lines(&content, double_plus)
 }
 
+#[pyfunction(signature = (raw, max_rounds))]
+pub fn default_custom_runtime_v2_normalized_run(py: Python<'_>, raw: String, max_rounds: usize) -> PyResult<Py<PyAny>> {
+    let run = core_cli_api::default_custom_runtime_v2_normalized_run(&raw, max_rounds).map_err(map_cli_error)?;
+    Ok(normalized_run_to_pydict(py, run)?.into_any().unbind())
+}
+
 fn format_rate(value: f64, precision: usize) -> String {
     let value = if value.abs() < 0.5_f64 * 10_f64.powi(-(precision as i32)) {
         0.0
@@ -474,4 +565,39 @@ fn format_rate(value: f64, precision: usize) -> String {
         value
     };
     format!("{value:.precision$}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pyo3::types::{PyAnyMethods, PyDictMethods};
+
+    #[test]
+    fn runtime_v2_update_type_names_are_stable_json_tokens() {
+        assert_eq!(update_type_name(UpdateType::Win), "win");
+        assert_eq!(update_type_name(UpdateType::None), "none");
+        assert_eq!(update_type_name(UpdateType::NextLine), "next_line");
+    }
+
+    #[test]
+    fn default_custom_runtime_v2_normalized_run_returns_python_dict() {
+        Python::initialize();
+        Python::attach(|py| {
+            let value = default_custom_runtime_v2_normalized_run(py, "left@red\n\nright@blue\n".to_string(), 1)
+                .expect("default custom runtime v2 normalized run should execute");
+            let dict = value.bind(py).cast::<PyDict>().expect("normalized run should be a dict");
+
+            let rounds = dict
+                .get_item("rounds")
+                .expect("rounds key should exist")
+                .expect("rounds should not be None");
+            assert_eq!(rounds.len().expect("rounds should be a sized list"), 1);
+
+            let total_score = dict
+                .get_item("total_score")
+                .expect("total_score key should exist")
+                .expect("total_score should not be None");
+            assert!(total_score.extract::<u64>().expect("total_score should be u64") > 0);
+        });
+    }
 }
