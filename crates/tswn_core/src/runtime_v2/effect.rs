@@ -1,6 +1,6 @@
 use crate::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use crate::rc4::RC4;
-use crate::runtime_v2::entity::{ChargeRuntime, EntityIdx, PlayerTemplate, StateEntry, StatePayload};
+use crate::runtime_v2::entity::{AccumulateRuntime, ChargeRuntime, EntityIdx, PlayerTemplate, StateEntry, StatePayload};
 use crate::runtime_v2::extension::{
     EffectHandlerId, ExtensionCapability, ExtensionRegistry, ReplayRendererId, ShowRendererId, SkillId, StateId,
 };
@@ -462,6 +462,8 @@ impl<'a> SkillContext<'a> {
 
     pub fn owner_charge_runtime(&self) -> Option<ChargeRuntime> { self.owner().map(|entity| entity.runtime.charge) }
 
+    pub fn owner_accumulate_runtime(&self) -> Option<AccumulateRuntime> { self.owner().map(|entity| entity.runtime.accumulate) }
+
     pub fn activate_owner_charge_runtime(&mut self) -> Result<(), EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
@@ -482,6 +484,27 @@ impl<'a> SkillContext<'a> {
             return Err(EffectContextError::UnknownEntity(self.owner));
         };
         Ok(owner.clear_charge_runtime())
+    }
+
+    pub fn activate_owner_accumulate_runtime(&mut self) -> Result<bool, EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        Ok(owner.activate_accumulate_runtime())
+    }
+
+    pub fn clear_owner_accumulate_runtime(&mut self) -> Result<bool, EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        Ok(owner.clear_accumulate_runtime())
+    }
+
+    pub fn clear_owner_positive_runtime_messages(&mut self) -> Result<Vec<(i32, &'static str)>, EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        Ok(owner.clear_positive_runtime_messages())
     }
 
     pub fn entity_count(&self) -> usize { self.entities.len() }

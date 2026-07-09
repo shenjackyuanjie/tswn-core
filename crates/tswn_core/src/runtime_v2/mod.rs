@@ -488,6 +488,26 @@ pub fn run_charge_post_action_skill(context: &mut SkillContext<'_>, _: &SkillHoo
     context.tick_owner_charge_post_action().expect("charge post_action owner should exist");
 }
 
+pub fn run_accumulate_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    if !context.activate_owner_accumulate_runtime().expect("accumulate owner should exist") {
+        return;
+    }
+
+    let owner = context.owner_idx();
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[0]开始[聚气]",
+        owner.0 as usize,
+        owner.0 as usize,
+        1,
+    ));
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[0]攻击力上升",
+        owner.0 as usize,
+        owner.0 as usize,
+        0,
+    ));
+}
+
 pub fn run_shield_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::ShieldValue(shield)) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -6150,6 +6170,21 @@ mod tests {
         ));
     }
 
+    fn skill_clears_positive_runtime(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        let messages = context
+            .clear_owner_positive_runtime_messages()
+            .expect("clear-positive owner should exist");
+        let owner = context.owner_idx();
+        for (priority, message) in messages {
+            context.add_update(crate::engine::update::RunUpdate::new(
+                message,
+                owner.0 as usize,
+                owner.0 as usize,
+                priority as u32,
+            ));
+        }
+    }
+
     fn skill_noop(_: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {}
 
     fn skill_pushes_nested_damage(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
@@ -7752,6 +7787,148 @@ mod tests {
                 step: 0,
             }
         );
+        assert_eq!(owner.runtime.at_boost_millionths, 1_000_000);
+    }
+
+    #[test]
+    fn run_skill_hooks_accumulate_activates_runtime_and_boosts_move() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let accumulate = builder
+            .register_skill_with_hooks(
+                "core",
+                "accumulate",
+                "core.accumulate",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("accumulate skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed_points(100).with_skills([accumulate])],
+            registry,
+        ));
+        runtime.set_skill_handler(accumulate, run_accumulate_skill);
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("accumulate act should emit updates");
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .map(|update| (update.message.as_ref(), update.score))
+                .collect::<Vec<_>>(),
+            vec![("[0]开始[聚气]", 1), ("[0]攻击力上升", 0)]
+        );
+        assert!(owner.runtime.accumulate.active);
+        assert_eq!(owner.runtime.accumulate.charge_bonus(), 0.0);
+        assert_eq!(owner.runtime.move_state.speed_points, 500);
+        assert_eq!(owner.runtime.at_boost_millionths, 1_700_000);
+    }
+
+    #[test]
+    fn run_minimal_round_accumulate_uses_charge_bonus_until_late_charge_clear() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let accumulate = builder
+            .register_skill_with_hooks(
+                "core",
+                "accumulate",
+                "core.accumulate",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("accumulate skill should register");
+        let charge = builder
+            .register_skill_with_hooks_and_post_action_phase(
+                "core",
+                "charge",
+                "core.charge",
+                ProcMask::POST_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+                SkillPostActionPhase::Late,
+            )
+            .expect("charge skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3)
+                    .with_speed_points(100)
+                    .with_skills([accumulate, charge]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        {
+            let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+            owner.activate_charge_runtime();
+            owner.runtime.charge.step = 1;
+        }
+        runtime.set_skill_handler(accumulate, run_accumulate_skill);
+        runtime.set_skill_handler(charge, run_charge_post_action_skill);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("accumulate, attack, and charge tick should emit frame");
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+
+        assert_eq!(
+            frame.updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+            vec!["[0]开始[聚气]", "[0]攻击力上升", "[0]攻击[1]"]
+        );
+        assert!(owner.runtime.accumulate.active);
+        assert_eq!(owner.runtime.accumulate.charge_bonus(), 1.0);
+        assert_eq!(owner.runtime.move_state.speed_points, 1000);
+        assert_eq!(owner.runtime.charge.active, false);
+        assert_eq!(owner.runtime.at_boost_millionths, 2_700_000);
+    }
+
+    #[test]
+    fn run_skill_hooks_clear_positive_runtime_orders_accumulate_before_charge() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let clear = builder
+            .register_skill_with_hooks(
+                "custom",
+                "clear-positive",
+                "custom.clear_positive",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("clear-positive skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([clear])],
+            registry,
+        ));
+        {
+            let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+            owner.activate_charge_runtime();
+            owner.activate_accumulate_runtime();
+        }
+        runtime.set_skill_handler(clear, skill_clears_positive_runtime);
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("clear-positive runtime should emit messages");
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .map(|update| (update.message.as_ref(), update.score))
+                .collect::<Vec<_>>(),
+            vec![(("[1]的[聚气]被打消了"), 100), (("[1]的[蓄力]被中止了"), 200)]
+        );
+        assert!(!owner.runtime.accumulate.active);
+        assert!(!owner.runtime.charge.active);
+        assert_eq!(owner.runtime.accumulate.acc(), 1.600000023841858);
         assert_eq!(owner.runtime.at_boost_millionths, 1_000_000);
     }
 

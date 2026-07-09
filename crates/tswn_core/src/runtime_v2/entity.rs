@@ -236,6 +236,7 @@ pub struct PlayerRuntime {
     pub policies: PlayerKindPolicies,
     pub move_state: MoveState,
     pub charge: ChargeRuntime,
+    pub accumulate: AccumulateRuntime,
 }
 
 impl PlayerRuntime {
@@ -267,6 +268,7 @@ impl PlayerRuntime {
             policies,
             move_state: template.move_state,
             charge: ChargeRuntime::default(),
+            accumulate: AccumulateRuntime::default(),
         }
     }
 
@@ -322,6 +324,33 @@ pub struct ChargeRuntime {
     pub step: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AccumulateRuntime {
+    pub active: bool,
+    pub acc_bits: u64,
+    pub charge_bonus_bits: u64,
+}
+
+impl Default for AccumulateRuntime {
+    fn default() -> Self {
+        Self {
+            active: false,
+            acc_bits: 1.7000000476837158_f64.to_bits(),
+            charge_bonus_bits: 0.0_f64.to_bits(),
+        }
+    }
+}
+
+impl AccumulateRuntime {
+    pub fn acc(self) -> f64 { f64::from_bits(self.acc_bits) }
+
+    pub fn charge_bonus(self) -> f64 { f64::from_bits(self.charge_bonus_bits) }
+
+    fn set_acc(&mut self, acc: f64) { self.acc_bits = acc.to_bits(); }
+
+    fn set_charge_bonus(&mut self, charge_bonus: f64) { self.charge_bonus_bits = charge_bonus.to_bits(); }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityRecord {
     pub template: PlayerTemplate,
@@ -335,7 +364,7 @@ impl EntityRecord {
         self.runtime.charge.step += 2;
         self.runtime.charge.active = true;
         self.runtime.charge.post_action_active = true;
-        self.refresh_charge_at_boost();
+        self.refresh_runtime_at_boost();
     }
 
     pub fn tick_charge_post_action(&mut self) -> bool {
@@ -347,7 +376,7 @@ impl EntityRecord {
         if self.runtime.charge.step <= 0 {
             self.runtime.charge.active = false;
             self.runtime.charge.post_action_active = false;
-            self.refresh_charge_at_boost();
+            self.refresh_runtime_at_boost();
         }
         true
     }
@@ -359,16 +388,59 @@ impl EntityRecord {
 
         self.runtime.charge.active = false;
         self.runtime.charge.post_action_active = false;
-        self.refresh_charge_at_boost();
+        self.refresh_runtime_at_boost();
         true
     }
 
-    fn refresh_charge_at_boost(&mut self) {
-        self.runtime.at_boost_millionths = if self.runtime.charge.active {
-            self.template.at_boost_millionths.saturating_mul(3)
-        } else {
-            self.template.at_boost_millionths
-        };
+    pub fn activate_accumulate_runtime(&mut self) -> bool {
+        if self.runtime.accumulate.active {
+            return false;
+        }
+
+        let charge_active = self.runtime.at_boost_millionths >= 3_000_000;
+        self.runtime.accumulate.active = true;
+        self.runtime.accumulate.set_charge_bonus(if charge_active { 1.0 } else { 0.0 });
+        if charge_active {
+            self.runtime.move_state.speed_points += 500;
+        }
+        self.refresh_runtime_at_boost();
+        self.runtime.move_state.speed_points += 400;
+        true
+    }
+
+    pub fn clear_accumulate_runtime(&mut self) -> bool {
+        if !self.runtime.accumulate.active {
+            return false;
+        }
+
+        self.runtime.accumulate.active = false;
+        self.runtime.accumulate.set_acc(1.600000023841858);
+        self.runtime.accumulate.set_charge_bonus(0.0);
+        self.refresh_runtime_at_boost();
+        true
+    }
+
+    pub fn clear_positive_runtime_messages(&mut self) -> Vec<(i32, &'static str)> {
+        let mut messages = Vec::new();
+        if self.clear_accumulate_runtime() {
+            messages.push((100, "[1]的[聚气]被打消了"));
+        }
+        if self.clear_charge_runtime() {
+            messages.push((200, "[1]的[蓄力]被中止了"));
+        }
+        messages.sort_unstable_by_key(|(priority, _)| *priority);
+        messages
+    }
+
+    fn refresh_runtime_at_boost(&mut self) {
+        let mut at_boost = self.template.at_boost_millionths as f64 / DEFAULT_AT_BOOST_MILLIONTHS as f64;
+        if self.runtime.charge.active {
+            at_boost *= 3.0;
+        }
+        if self.runtime.accumulate.active {
+            at_boost *= self.runtime.accumulate.acc() + self.runtime.accumulate.charge_bonus();
+        }
+        self.runtime.at_boost_millionths = (at_boost * DEFAULT_AT_BOOST_MILLIONTHS as f64).round() as i64;
     }
 }
 
