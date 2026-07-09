@@ -2,6 +2,8 @@ use std::ffi::c_char;
 
 use serde::Serialize;
 use tswn_core::cli_api::{self as core_cli_api, CliApiError};
+use tswn_core::engine::update::UpdateType;
+use tswn_core::runtime_v2::{NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2NormalizedRun};
 
 use crate::{
     FfiError, ffi_boundary, ffi_error, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t, write_json_result,
@@ -85,6 +87,57 @@ struct JsonIconInfo {
     fg_color_indices: Vec<usize>,
     fg_colors: Vec<[u8; 3]>,
     colors_consumed: usize,
+}
+
+#[derive(Serialize)]
+struct JsonRuntimeV2NormalizedRun {
+    rounds: Vec<JsonRuntimeV2NormalizedOutcome>,
+    winner_team: Option<usize>,
+    guard_exhausted: bool,
+    total_score: u64,
+}
+
+#[derive(Serialize)]
+struct JsonRuntimeV2NormalizedOutcome {
+    winner_team: Option<usize>,
+    round: u64,
+    total_score: u64,
+    rng_i: u32,
+    rng_j: u32,
+    entity_ids: Vec<usize>,
+    teams: Vec<usize>,
+    hp: Vec<i32>,
+    magic_point: Vec<i32>,
+    defense: Vec<i32>,
+    resistance: Vec<i32>,
+    alive: Vec<bool>,
+    round_order: Vec<usize>,
+    flat_alive: Vec<usize>,
+    team_alive: Vec<Vec<usize>>,
+    alive_group_count: usize,
+    actions: Vec<JsonRuntimeV2ActionBoundary>,
+    frames: Vec<JsonRuntimeV2UpdateFrame>,
+}
+
+#[derive(Serialize)]
+struct JsonRuntimeV2ActionBoundary {
+    round: u64,
+    actor: usize,
+    target: usize,
+    amount: i32,
+}
+
+#[derive(Serialize)]
+struct JsonRuntimeV2UpdateFrame {
+    message: String,
+    caster: usize,
+    target: usize,
+    targets: Vec<usize>,
+    param: Option<u32>,
+    score: u32,
+    delay0: i32,
+    delay1: i32,
+    update_type: &'static str,
 }
 
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
@@ -196,6 +249,75 @@ impl From<core_cli_api::IconInfo> for JsonIconInfo {
             fg_colors: value.fg_colors,
             colors_consumed: value.colors_consumed,
         }
+    }
+}
+
+impl From<RuntimeV2NormalizedRun> for JsonRuntimeV2NormalizedRun {
+    fn from(value: RuntimeV2NormalizedRun) -> Self {
+        Self {
+            rounds: value.rounds.into_iter().map(Into::into).collect(),
+            winner_team: value.winner_team,
+            guard_exhausted: value.guard_exhausted,
+            total_score: value.total_score,
+        }
+    }
+}
+
+impl From<NormalizedOutcome> for JsonRuntimeV2NormalizedOutcome {
+    fn from(value: NormalizedOutcome) -> Self {
+        Self {
+            winner_team: value.winner_team,
+            round: value.round,
+            total_score: value.total_score,
+            rng_i: value.rng.i,
+            rng_j: value.rng.j,
+            entity_ids: value.entity_ids,
+            teams: value.teams,
+            hp: value.hp,
+            magic_point: value.magic_point,
+            defense: value.defense,
+            resistance: value.resistance,
+            alive: value.alive,
+            round_order: value.round_order,
+            flat_alive: value.flat_alive,
+            team_alive: value.team_alive,
+            alive_group_count: value.alive_group_count,
+            actions: value
+                .actions
+                .into_iter()
+                .map(|action| JsonRuntimeV2ActionBoundary {
+                    round: action.round,
+                    actor: action.actor,
+                    target: action.target,
+                    amount: action.amount,
+                })
+                .collect(),
+            frames: value.frames.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<NormalizedUpdateFrame> for JsonRuntimeV2UpdateFrame {
+    fn from(value: NormalizedUpdateFrame) -> Self {
+        Self {
+            message: value.message,
+            caster: value.caster,
+            target: value.target,
+            targets: value.targets,
+            param: value.param,
+            score: value.score,
+            delay0: value.delay0,
+            delay1: value.delay1,
+            update_type: update_type_name(value.update_type),
+        }
+    }
+}
+
+fn update_type_name(value: UpdateType) -> &'static str {
+    match value {
+        UpdateType::Win => "win",
+        UpdateType::None => "none",
+        UpdateType::NextLine => "next_line",
     }
 }
 
@@ -466,4 +588,42 @@ pub unsafe extern "C" fn tswn_parse_group_lines_json(
         let value = core_cli_api::parse_group_lines(&content, double_plus != 0);
         write_json_result(out_json, &value)
     })
+}
+
+/// # Safety
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_default_custom_runtime_v2_normalized_run_json(
+    raw_text_utf8: *const c_char,
+    max_rounds: usize,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let raw = unsafe { read_utf8(raw_text_utf8, "raw_text_utf8")? };
+        let value = core_cli_api::default_custom_runtime_v2_normalized_run(&raw, max_rounds).map_err(cli_api_error)?;
+        write_json_result(out_json, &JsonRuntimeV2NormalizedRun::from(value))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_v2_update_type_names_are_stable_json_tokens() {
+        assert_eq!(update_type_name(UpdateType::Win), "win");
+        assert_eq!(update_type_name(UpdateType::None), "none");
+        assert_eq!(update_type_name(UpdateType::NextLine), "next_line");
+    }
+
+    #[test]
+    fn runtime_v2_normalized_run_json_keeps_core_fields() {
+        let run = core_cli_api::default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 1)
+            .expect("default custom runtime v2 run should execute");
+        let json = JsonRuntimeV2NormalizedRun::from(run);
+
+        assert_eq!(json.rounds.len(), 1);
+        assert_eq!(json.guard_exhausted, json.winner_team.is_none());
+        assert_eq!(json.total_score, json.rounds.iter().map(|round| round.total_score).sum::<u64>());
+        assert!(!json.rounds[0].frames.is_empty());
+    }
 }
