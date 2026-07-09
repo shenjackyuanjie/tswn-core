@@ -1303,12 +1303,31 @@ impl CombatRuntime {
     }
 
     fn apply_fire_on_damage(&mut self, target: EntityIdx, fire_state_key: u32) {
+        let Some(target_entity) = self.entities.get(target) else {
+            panic!("unknown runtime_v2 fire target entity: {}", target.0);
+        };
+        if target_entity.runtime.hp <= 0 || self.fire_immune(target) {
+            return;
+        }
+
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime_v2 fire target entity: {}", target.0);
         };
-        if target_entity.runtime.hp > 0 {
-            target_entity.states.add_fire_mag_half_step(fire_state_key);
+        target_entity.states.add_fire_mag_half_step(fire_state_key);
+    }
+
+    fn fire_immune(&mut self, target: EntityIdx) -> bool {
+        let Some(target_entity) = self.entities.get(target) else {
+            panic!("unknown runtime_v2 fire immune target entity: {}", target.0);
+        };
+        if target_entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
+            let threshold = crate::player::boss::boss_immune_threshold(&target_entity.template.name, "fire");
+            return (self.rng.next_u8() as i32) < threshold;
         }
+        if target_entity.runtime.flags.contains(PlayerKindFlags::BOOST) {
+            return self.rng.r127() < crate::player::boost_value(&target_entity.template.name);
+        }
+        false
     }
 
     fn kill_entity_without_damage_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) -> bool {
@@ -3094,6 +3113,62 @@ mod tests {
         assert_eq!(frame.updates.updates[1].caster, 1);
         assert_eq!(frame.updates.updates[1].target, 2);
         assert_eq!(frame.updates.updates[1].score, 20);
+    }
+
+    #[test]
+    fn summon_explode_fire_stack_respects_boss_fire_immune() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let boss_kind = builder
+            .register_player_kind_with_policies(
+                "core",
+                "boss",
+                "core.boss",
+                PlayerKindFlags::BOSS,
+                PlayerKindPolicies::default(),
+            )
+            .expect("boss kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::with_kind(2, "saitama", boss_kind, 1, 10_000, 3).with_def_res(0, 16),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::fire_mag(91, 3));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 5.5;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let expected_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        let threshold = crate::player::boss::boss_immune_threshold("saitama", "fire");
+        assert!((expected_rng.next_u8() as i32) < threshold);
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("boss immune summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 1.5);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].score, expected_amount as u32);
     }
 
     #[test]
