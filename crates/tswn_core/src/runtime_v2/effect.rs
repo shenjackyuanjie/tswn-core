@@ -18,6 +18,11 @@ pub enum QueuedEffect {
         target: EntityIdx,
         amount: i32,
     },
+    SummonExplode {
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+    },
     Heal {
         caster: EntityIdx,
         target: EntityIdx,

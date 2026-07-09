@@ -420,6 +420,14 @@ pub fn summon_default_skill_loadout(fire_skill: SkillId, explode_skill: SkillId,
     SkillLoadout::from_skills([fire_skill, fire_skill, explode_skill]).with_active_order(active_order)
 }
 
+pub fn push_summon_explode(context: &mut SkillContext<'_>, target: EntityIdx, amount: i32) {
+    context.push_nested(QueuedEffect::SummonExplode {
+        caster: context.owner_idx(),
+        target,
+        amount,
+    });
+}
+
 pub fn next_minion_name_from_entity_slot(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -1019,6 +1027,23 @@ impl CombatRuntime {
                         }
                     }
                 }
+                QueuedEffect::SummonExplode { caster, target, amount } => {
+                    self.ensure_effect_entity("summon-explode", "caster", caster);
+                    self.ensure_effect_entity("summon-explode", "target", target);
+                    updates.add(RuntimeFrame::replay_update(
+                        caster.0 as usize,
+                        target.0 as usize,
+                        "[0]使用[自爆]",
+                        0,
+                    ));
+                    let killed_caster = self.kill_entity_without_damage_into(caster, updates);
+                    if self.apply_damage_into(caster, target, amount, updates) {
+                        self.drain_lethal_damage_hooks_into(caster, target, updates);
+                    }
+                    if killed_caster {
+                        self.drain_die_hooks_into(caster, updates);
+                    }
+                }
                 QueuedEffect::Heal { caster, target, amount } => {
                     self.ensure_effect_entity("heal", "caster", caster);
                     self.ensure_effect_entity("heal", "target", target);
@@ -1206,10 +1231,18 @@ impl CombatRuntime {
     }
 
     fn drain_lethal_damage_hooks_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        self.drain_die_hooks_into(target, updates);
+        self.drain_kill_hooks_into(caster, updates);
+    }
+
+    fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
         let die_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, target, ProcMask::DIE);
         self.drain_skill_hook_plan_into(&die_skill_plan, updates);
         let die_state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::DIE);
         self.drain_state_hook_plan_into(&die_state_plan, updates);
+    }
+
+    fn drain_kill_hooks_into(&mut self, caster: EntityIdx, updates: &mut RunUpdates) {
         let kill_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, caster, ProcMask::KILL);
         self.drain_skill_hook_plan_into(&kill_skill_plan, updates);
         let kill_state_plan = self.scheduler.state_hook_plan(&self.entities, caster, ProcMask::KILL);
@@ -1227,6 +1260,21 @@ impl CombatRuntime {
         }
         let team = target_entity.runtime.team;
         updates.add(RuntimeFrame::damage_update(caster.0 as usize, target.0 as usize, amount));
+        if killed {
+            self.world.remove_alive(target, team);
+            self.cleanup_linked_minions_for_owner(target, updates);
+        }
+        killed
+    }
+
+    fn kill_entity_without_damage_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) -> bool {
+        let Some(target_entity) = self.entities.get_mut(target) else {
+            panic!("unknown runtime_v2 self-death target entity: {}", target.0);
+        };
+        let killed = target_entity.runtime.alive;
+        target_entity.runtime.hp = 0;
+        target_entity.runtime.alive = false;
+        let team = target_entity.runtime.team;
         if killed {
             self.world.remove_alive(target, team);
             self.cleanup_linked_minions_for_owner(target, updates);
@@ -2904,6 +2952,95 @@ mod tests {
         assert_eq!(frame.updates.updates.len(), 1);
         assert_eq!(frame.updates.updates[0].target, 2);
         assert_eq!(frame.updates.updates[0].score, 4);
+    }
+
+    #[test]
+    fn summon_explode_effect_emits_legacy_replay_and_kills_summon() {
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+            PlayerTemplate::new(1, "owner", 0, 10, 3),
+            PlayerTemplate::new(2, "enemy", 1, 10, 3),
+            PlayerTemplate::new(3, "summon", 0, 5, 1),
+        ]));
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            amount: 4,
+        });
+
+        let frame = runtime.flush_effects().expect("summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 0);
+        assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 6);
+        assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0)].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[0].caster, 2);
+        assert_eq!(frame.updates.updates[0].target, 1);
+        assert_eq!(frame.updates.updates[0].score, 0);
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].caster, 2);
+        assert_eq!(frame.updates.updates[1].target, 1);
+        assert_eq!(frame.updates.updates[1].score, 4);
+    }
+
+    #[test]
+    fn summon_explode_runs_summon_die_and_target_kill_hooks() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let die_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "die-skill",
+                "custom.die_skill",
+                ProcMask::DIE,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("die skill should register");
+        let kill_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "kill-skill",
+                "custom.kill_skill",
+                ProcMask::KILL,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("kill skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 3, 3).with_skills([die_skill]),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_skills([die_skill, kill_skill]),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(die_skill, skill_marks_update);
+        runtime.set_skill_handler(kill_skill, skill_marks_update);
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            amount: 3,
+        });
+
+        let frame = runtime.flush_effects().expect("summon explode should emit hook updates");
+
+        assert_eq!(frame.updates.updates.len(), 5);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].target, 1);
+        assert_eq!(frame.updates.updates[2].message, "skill mark");
+        assert_eq!(frame.updates.updates[2].caster, 1);
+        assert_eq!(frame.updates.updates[2].score, die_skill.0);
+        assert_eq!(frame.updates.updates[3].message, "skill mark");
+        assert_eq!(frame.updates.updates[3].caster, 2);
+        assert_eq!(frame.updates.updates[3].score, kill_skill.0);
+        assert_eq!(frame.updates.updates[4].message, "skill mark");
+        assert_eq!(frame.updates.updates[4].caster, 2);
+        assert_eq!(frame.updates.updates[4].target, 2);
+        assert_eq!(frame.updates.updates[4].score, die_skill.0);
     }
 
     #[test]
@@ -5837,6 +5974,16 @@ mod tests {
         assert_effect_panics(QueuedEffect::Damage {
             caster: EntityIdx(99),
             target: EntityIdx(1),
+            amount: 1,
+        });
+        assert_effect_panics(QueuedEffect::SummonExplode {
+            caster: EntityIdx(99),
+            target: EntityIdx(1),
+            amount: 1,
+        });
+        assert_effect_panics(QueuedEffect::SummonExplode {
+            caster: EntityIdx(0),
+            target: EntityIdx(99),
             amount: 1,
         });
         assert_effect_panics(QueuedEffect::Heal {
