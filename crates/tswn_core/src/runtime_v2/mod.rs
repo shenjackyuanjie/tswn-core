@@ -1046,6 +1046,29 @@ pub struct CustomBed2RosterImportError {
     pub raw: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CustomBed2SummonTemplateConfig<'a> {
+    pub template_slot: TemplateSlotId,
+    pub summon_kind: PlayerKindId,
+    pub fire_skill_export_name: &'a str,
+    pub explode_skill_export_name: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CustomBed2SummonTemplateImportError {
+    Roster(CustomBed2RosterImportError),
+    MissingSkillExportName { export_name: String },
+    Slot(SlotError),
+}
+
+impl From<CustomBed2RosterImportError> for CustomBed2SummonTemplateImportError {
+    fn from(error: CustomBed2RosterImportError) -> Self { Self::Roster(error) }
+}
+
+impl From<SlotError> for CustomBed2SummonTemplateImportError {
+    fn from(error: SlotError) -> Self { Self::Slot(error) }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomMixedRosterImportError {
     pub team_index: usize,
@@ -1104,6 +1127,35 @@ impl CustomBed2Import {
     ) -> Result<PreparedCombatTemplate, CustomBed2RosterImportError> {
         let players = Self::roster_into_player_templates(raw_groups, kind, summon_skill)?;
         Ok(PreparedCombatTemplate::with_registry(players, registry))
+    }
+
+    pub fn roster_into_prepared_template_with_summon_overlay(
+        raw_groups: &[Vec<String>],
+        registry: ExtensionRegistry,
+        kind: PlayerKindId,
+        summon_skill: SkillId,
+        config: CustomBed2SummonTemplateConfig<'_>,
+    ) -> Result<PreparedCombatTemplate, CustomBed2SummonTemplateImportError> {
+        let fire_skill = registry.skill_id_by_export_name(config.fire_skill_export_name).ok_or_else(|| {
+            CustomBed2SummonTemplateImportError::MissingSkillExportName {
+                export_name: config.fire_skill_export_name.to_owned(),
+            }
+        })?;
+        let explode_skill = registry.skill_id_by_export_name(config.explode_skill_export_name).ok_or_else(|| {
+            CustomBed2SummonTemplateImportError::MissingSkillExportName {
+                export_name: config.explode_skill_export_name.to_owned(),
+            }
+        })?;
+        let players = Self::roster_into_player_templates(raw_groups, kind, summon_skill)?;
+        let mut template = PreparedCombatTemplate::with_registry(players, registry);
+        if let Some(summon_template) =
+            Self::first_summon_template_from_roster(raw_groups, config.summon_kind, fire_skill, explode_skill)
+        {
+            template
+                .slots
+                .set(config.template_slot, SlotValue::PlayerTemplate(Box::new(summon_template)))?;
+        }
+        Ok(template)
     }
 
     pub fn roster_into_player_templates(
@@ -1231,6 +1283,144 @@ impl CustomBed2Import {
         let rest = segment.trim().strip_prefix("bed2[")?;
         let hp = rest.strip_suffix(']')?.trim().parse::<i32>().ok()?;
         (hp > 0).then_some(hp)
+    }
+
+    fn first_summon_template_from_roster(
+        raw_groups: &[Vec<String>],
+        summon_kind: PlayerKindId,
+        fire_skill: SkillId,
+        explode_skill: SkillId,
+    ) -> Option<PlayerTemplate> {
+        for (team_index, group) in raw_groups.iter().enumerate() {
+            for raw in group {
+                if crate::player::Player::check_is_seed(raw.trim()) {
+                    continue;
+                }
+                let Some(import) = Self::parse_player_facade_raw(raw) else {
+                    continue;
+                };
+                let Some(overlay) = Self::player_overlay_from_raw(raw) else {
+                    continue;
+                };
+                let Some(summon_overlay) = overlay.summon.as_ref() else {
+                    continue;
+                };
+                return Some(Self::summon_template_from_overlay(
+                    &import,
+                    team_index,
+                    summon_kind,
+                    summon_overlay,
+                    fire_skill,
+                    explode_skill,
+                ));
+            }
+        }
+        None
+    }
+
+    fn summon_template_from_overlay(
+        import: &Self,
+        team: usize,
+        summon_kind: PlayerKindId,
+        overlay: &crate::player::overlay::MinionOverlay,
+        fire_skill: SkillId,
+        explode_skill: SkillId,
+    ) -> PlayerTemplate {
+        let attrs = overlay.attrs.unwrap_or([0, DEFAULT_BED2_DEFENSE, 0, 0, 0, DEFAULT_BED2_RESISTANCE, 0, 1]);
+        let skills = Self::summon_skill_loadout_from_overlay(overlay, fire_skill, explode_skill);
+        PlayerTemplate::with_kind(
+            0,
+            format!("{}?0", import.name),
+            summon_kind,
+            team,
+            attrs[7].max(1),
+            attrs[0].max(0),
+        )
+        .with_def_res(attrs[1].max(0), attrs[5].max(0))
+        .with_agility(attrs[3].max(0))
+        .with_magic(attrs[4].max(0))
+        .with_magic_point(attrs[6].max(0) >> 1)
+        .with_wisdom(attrs[6].max(0))
+        .with_speed_points(attrs[2].max(0) + 160)
+        .with_policy_overrides(PlayerPolicyOverrides::default().with_inherit_owner_def_res(overlay.inherit_owner_def_res))
+        .with_skill_loadout(skills)
+    }
+
+    fn summon_skill_loadout_from_overlay(
+        overlay: &crate::player::overlay::MinionOverlay,
+        fire_skill: SkillId,
+        explode_skill: SkillId,
+    ) -> SkillLoadout {
+        let mut active_order = Vec::new();
+        if let Some(skill_levels) = overlay.skills.as_ref() {
+            for (name, _) in skill_levels {
+                let Some(lane) = Self::summon_overlay_skill_lane(name) else {
+                    continue;
+                };
+                if !active_order.contains(&lane) {
+                    active_order.push(lane);
+                }
+            }
+        }
+        if active_order.is_empty() {
+            active_order.extend([0, 1, 2]);
+        }
+        summon_default_skill_loadout(fire_skill, explode_skill, [0, 1, 2]).with_active_order(active_order)
+    }
+
+    fn summon_overlay_skill_lane(name: &str) -> Option<usize> {
+        let skill_ref = crate::player::skill::parse_prefixed_classified_skill_name(name)
+            .or_else(|| crate::player::skill::summon_slot_skill_ref_from_name(name))?;
+        match skill_ref {
+            crate::player::skill::ClassifiedSkillRef::SummonFire1 => Some(0),
+            crate::player::skill::ClassifiedSkillRef::SummonFire2 => Some(1),
+            crate::player::skill::ClassifiedSkillRef::SummonExplode => Some(2),
+            _ => None,
+        }
+    }
+
+    fn player_overlay_from_raw(raw: &str) -> Option<crate::player::overlay::PlayerOverlay> {
+        Self::split_by_plus_outside_json(raw)
+            .into_iter()
+            .filter_map(|segment| crate::player::overlay::PlayerOverlay::parse_inline(segment.trim()))
+            .last()
+    }
+
+    fn split_by_plus_outside_json(raw: &str) -> Vec<String> {
+        let mut segments = Vec::new();
+        let mut current = String::new();
+        let mut in_string = false;
+        let mut escaped = false;
+        let mut brace_depth = 0usize;
+        let mut bracket_depth = 0usize;
+        for ch in raw.chars() {
+            if in_string {
+                current.push(ch);
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => escaped = true,
+                    '"' => in_string = false,
+                    _ => {}
+                }
+            } else if ch == '+' && brace_depth == 0 && bracket_depth == 0 {
+                segments.push(std::mem::take(&mut current));
+            } else {
+                current.push(ch);
+                match ch {
+                    '"' => in_string = true,
+                    '{' => brace_depth += 1,
+                    '}' => brace_depth = brace_depth.saturating_sub(1),
+                    '[' => bracket_depth += 1,
+                    ']' => bracket_depth = bracket_depth.saturating_sub(1),
+                    _ => {}
+                }
+            }
+        }
+        segments.push(current);
+        segments
     }
 }
 
@@ -2693,6 +2883,163 @@ mod tests {
                 .entities
                 .iter()
                 .all(|(_, entity)| entity.runtime.flags.contains(PlayerKindFlags::BED2))
+        );
+    }
+
+    #[test]
+    fn custom_bed2_roster_import_exports_ol_summon_overlay_to_template_slot() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let fire = builder
+            .register_skill(
+                "custom",
+                "summon-fire",
+                "custom.summon.fire",
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("summon fire skill should register");
+        let explode = builder
+            .register_skill(
+                "custom",
+                "summon-explode",
+                "custom.summon.explode",
+                TargetPolicy::Enemy,
+                SkillPriority(2),
+            )
+            .expect("summon explode skill should register");
+        let summon_template_slot = builder
+            .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
+            .expect("bed2 summon template slot should reserve");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2-summon",
+                "custom.bed2.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("bed2 summon kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![
+            vec![
+                "alpha@red+bed2[4500]".to_owned(),
+                "seed:custom-seed@!".to_owned(),
+            ],
+            vec![r#"beta@blue@bed2+ol:{"summon":{"attrs":[36,86,56,55,36,89,88,89],"skills":{"sklfire2":4,"sklexplode":3,"sklfire1":"2*14"},"reuse_skills_on_recast":true,"inherit_owner_def_res":true}}"#.to_owned()],
+        ];
+
+        let template = CustomBed2Import::roster_into_prepared_template_with_summon_overlay(
+            &raw_groups,
+            registry,
+            bed2,
+            summon,
+            CustomBed2SummonTemplateConfig {
+                template_slot: summon_template_slot,
+                summon_kind,
+                fire_skill_export_name: "custom.summon.fire",
+                explode_skill_export_name: "custom.summon.explode",
+            },
+        )
+        .expect("bed2 roster with summon overlay should build prepared template");
+
+        assert_eq!(template.players.len(), 2);
+        assert_eq!(template.players[0].name, "alpha");
+        assert_eq!(template.players[0].skills.skills(), &[summon]);
+        let SlotValue::PlayerTemplate(summon_template) = template
+            .slots
+            .get(summon_template_slot)
+            .expect("summon overlay should populate template slot")
+        else {
+            panic!("summon overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(summon_template.name, "beta?0");
+        assert_eq!(summon_template.kind, summon_kind);
+        assert_eq!(summon_template.team, 1);
+        assert_eq!(summon_template.max_hp, 89);
+        assert_eq!(summon_template.attack, 0);
+        assert_eq!(summon_template.defense, 50);
+        assert_eq!(summon_template.resistance, 53);
+        assert_eq!(summon_template.agility, 19);
+        assert_eq!(summon_template.magic, 0);
+        assert_eq!(summon_template.wisdom, 52);
+        assert_eq!(summon_template.magic_point, 26);
+        assert_eq!(summon_template.move_state.speed_points, 180);
+        assert_eq!(summon_template.policy_overrides.inherit_owner_def_res, Some(true));
+        assert_eq!(summon_template.skills.skills(), &[fire, fire, explode]);
+        assert_eq!(summon_template.skills.active_order(), &[1, 2, 0]);
+    }
+
+    #[test]
+    fn custom_bed2_summon_overlay_import_rejects_missing_skill_export_name() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let fire = builder
+            .register_skill(
+                "custom",
+                "summon-fire",
+                "custom.summon.fire",
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("summon fire skill should register");
+        let summon_template_slot = builder
+            .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
+            .expect("bed2 summon template slot should reserve");
+        let bed2 = builder
+            .register_player_kind("custom", "bed2", "custom.bed2")
+            .expect("bed2 kind should register");
+        let summon_kind = builder
+            .register_player_kind("custom", "bed2-summon", "custom.bed2.summon")
+            .expect("bed2 summon kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![vec![
+            r#"beta@blue@bed2+ol:{"summon":{"attrs":[36,86,56,55,36,89,88,89],"skills":{"sklfire1":5}}}"#.to_owned(),
+        ]];
+
+        let err = CustomBed2Import::roster_into_prepared_template_with_summon_overlay(
+            &raw_groups,
+            registry,
+            bed2,
+            summon,
+            CustomBed2SummonTemplateConfig {
+                template_slot: summon_template_slot,
+                summon_kind,
+                fire_skill_export_name: "custom.summon.fire",
+                explode_skill_export_name: "custom.summon.explode",
+            },
+        )
+        .expect_err("missing explode skill export should reject parser-facing import");
+
+        assert_eq!(fire, SkillId(1));
+        assert_eq!(
+            err,
+            CustomBed2SummonTemplateImportError::MissingSkillExportName {
+                export_name: "custom.summon.explode".to_owned(),
+            }
         );
     }
 
