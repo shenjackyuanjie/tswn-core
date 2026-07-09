@@ -530,6 +530,10 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
     let Some(StatePayload::Iron { protect, step }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
     };
+    if context.defend_damage().is_none() {
+        run_iron_post_action_state(context, entry, protect, step);
+        return;
+    }
     if step <= 0 || protect <= 0 {
         return;
     }
@@ -563,6 +567,41 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
         "[1]的[铁壁]被打消了",
         caster.0 as usize,
         target.0 as usize,
+        0,
+    ));
+}
+
+fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, protect: i32, step: i32) {
+    if step <= 0 {
+        context
+            .clear_owner_state(entry.legacy_order_key)
+            .expect("iron state payload should still exist");
+        return;
+    }
+
+    let next_step = step - 1;
+    if next_step > 0 {
+        context
+            .set_owner_state_payload(
+                entry.legacy_order_key,
+                StatePayload::Iron {
+                    protect,
+                    step: next_step,
+                },
+            )
+            .expect("iron state payload should still exist");
+        return;
+    }
+
+    context
+        .clear_owner_state(entry.legacy_order_key)
+        .expect("iron state payload should still exist");
+    context.adjust_owner_speed_points(-128).expect("iron state owner should still exist");
+    context.add_newline();
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[1]从[铁壁]中解除",
+        context.owner_idx().0 as usize,
+        context.owner_idx().0 as usize,
         0,
     ));
 }
@@ -6828,6 +6867,191 @@ mod tests {
         assert_eq!(frame.updates.updates.len(), 1);
         assert_eq!(frame.updates.updates[0].message, "[1]回复体力[2]点");
         assert_eq!(frame.updates.updates[0].score, 2);
+    }
+
+    #[test]
+    fn run_state_hooks_iron_post_action_decrements_step_without_update() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let iron_state = builder
+            .register_state(
+                "core",
+                "iron",
+                "core.iron",
+                ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+                SkillPriority(10),
+            )
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed_points(2048)],
+            registry,
+        ));
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::iron(
+            79,
+            iron_state,
+            300,
+            3,
+            SkillPriority(10),
+        ));
+
+        let frame = runtime.run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(0))
+                .unwrap()
+                .states
+                .entry(79)
+                .and_then(StateEntry::iron_value),
+            Some((300, 2))
+        );
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
+            2048
+        );
+    }
+
+    #[test]
+    fn run_state_hooks_iron_post_action_clears_and_emits_release() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let iron_state = builder
+            .register_state(
+                "core",
+                "iron",
+                "core.iron",
+                ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+                SkillPriority(10),
+            )
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed_points(2048)],
+            registry,
+        ));
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::iron(
+            79,
+            iron_state,
+            300,
+            1,
+            SkillPriority(10),
+        ));
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("iron release should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(79), None);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
+            1920
+        );
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(
+            frame.updates.updates[0].update_type,
+            crate::engine::update::UpdateType::NextLine
+        );
+        assert_eq!(frame.updates.updates[1].message, "[1]从[铁壁]中解除");
+        assert_eq!(frame.updates.updates[1].caster, 0);
+        assert_eq!(frame.updates.updates[1].target, 0);
+    }
+
+    #[test]
+    fn run_state_hooks_iron_post_action_clears_expired_without_update() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let iron_state = builder
+            .register_state(
+                "core",
+                "iron",
+                "core.iron",
+                ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+                SkillPriority(10),
+            )
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed_points(2048)],
+            registry,
+        ));
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::iron(
+            79,
+            iron_state,
+            300,
+            0,
+            SkillPriority(10),
+        ));
+
+        let frame = runtime.run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(79), None);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points,
+            2048
+        );
+    }
+
+    #[test]
+    fn run_state_hooks_iron_post_action_runs_at_legacy_priority() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let marker_state = builder
+            .register_state("custom", "marker", "custom.marker", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("marker state should register");
+        let iron_state = builder
+            .register_state(
+                "core",
+                "iron",
+                "core.iron",
+                ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+                SkillPriority(10),
+            )
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed_points(2048)],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry {
+            legacy_order_key: 42,
+            extension_state_id: Some(marker_state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(100),
+            registration_order: RegistrationOrder(1),
+            payload: StatePayload::None,
+        });
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::iron(
+            79,
+            iron_state,
+            300,
+            1,
+            SkillPriority(10),
+        ));
+        runtime.set_state_handler(marker_state, state_marks_update);
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+
+        let plan = runtime.scheduler.state_hook_plan(&runtime.entities, EntityIdx(0), ProcMask::POST_ACTION);
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("marker and iron release should emit updates");
+
+        assert_eq!(
+            plan.entries
+                .iter()
+                .map(|entry| (entry.legacy_order_key, entry.priority))
+                .collect::<Vec<_>>(),
+            vec![(42, SkillPriority(100)), (79, SkillPriority(210))]
+        );
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "state mark");
+        assert_eq!(
+            frame.updates.updates[1].update_type,
+            crate::engine::update::UpdateType::NextLine
+        );
+        assert_eq!(frame.updates.updates[2].message, "[1]从[铁壁]中解除");
     }
 
     #[test]

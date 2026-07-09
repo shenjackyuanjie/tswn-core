@@ -475,7 +475,7 @@ impl StateEntry {
         Self {
             legacy_order_key,
             extension_state_id: Some(state_id),
-            hook_mask: ProcMask::POST_DEFEND,
+            hook_mask: ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
             priority,
             registration_order: RegistrationOrder::default(),
             payload: StatePayload::Iron { protect, step },
@@ -505,6 +505,13 @@ impl StateEntry {
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. } => None,
+        }
+    }
+
+    pub fn priority_for_hook(&self, hook: ProcMask) -> SkillPriority {
+        match self.payload {
+            StatePayload::Iron { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(210),
+            _ => self.priority,
         }
     }
 }
@@ -598,6 +605,12 @@ impl StateStore {
     pub fn entries_in_hook_order(&self) -> Vec<&StateEntry> {
         let mut entries: Vec<&StateEntry> = self.entries.iter().collect();
         entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
+        entries
+    }
+
+    pub fn entries_in_hook_order_for(&self, hook: ProcMask) -> Vec<&StateEntry> {
+        let mut entries: Vec<&StateEntry> = self.entries.iter().filter(|entry| entry.hook_mask.intersects(hook)).collect();
+        entries.sort_by_key(|entry| (entry.priority_for_hook(hook), entry.registration_order));
         entries
     }
 
@@ -1064,8 +1077,47 @@ mod tests {
             vec![22, 11, 33]
         );
         assert_eq!(
+            store
+                .entries_in_hook_order_for(ProcMask::POST_ACTION)
+                .into_iter()
+                .map(|entry| entry.legacy_order_key)
+                .collect::<Vec<_>>(),
+            vec![11]
+        );
+        assert_eq!(
             store.hook_mask(),
             ProcMask::PRE_ACTION | ProcMask::POST_ACTION | ProcMask::POST_DAMAGE
+        );
+    }
+
+    #[test]
+    fn state_store_uses_hook_specific_priority_for_iron() {
+        let mut store = StateStore::default();
+        store.add_entry(StateEntry::iron(11, StateId(1), 500, 3, SkillPriority(10)));
+        store.add_entry(StateEntry {
+            legacy_order_key: 22,
+            extension_state_id: Some(StateId(2)),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(100),
+            registration_order: RegistrationOrder(1),
+            payload: StatePayload::None,
+        });
+
+        assert_eq!(
+            store
+                .entries_in_hook_order_for(ProcMask::POST_DEFEND)
+                .into_iter()
+                .map(|entry| (entry.legacy_order_key, entry.priority_for_hook(ProcMask::POST_DEFEND)))
+                .collect::<Vec<_>>(),
+            [(11, SkillPriority(10))].into_iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            store
+                .entries_in_hook_order_for(ProcMask::POST_ACTION)
+                .into_iter()
+                .map(|entry| (entry.legacy_order_key, entry.priority_for_hook(ProcMask::POST_ACTION)))
+                .collect::<Vec<_>>(),
+            vec![(22, SkillPriority(100)), (11, SkillPriority(210))]
         );
     }
 

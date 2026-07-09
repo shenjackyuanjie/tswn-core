@@ -110,14 +110,13 @@ impl PhaseScheduler {
             .unwrap_or_else(|| panic!("unknown runtime_v2 hook owner entity: {}", owner.0));
         let entries = entity
             .states
-            .entries_in_hook_order()
+            .entries_in_hook_order_for(hook)
             .into_iter()
-            .filter(|entry| entry.hook_mask.intersects(hook))
             .map(|entry| StateHookPlanEntry {
                 owner,
                 state_id: entry.extension_state_id,
                 legacy_order_key: entry.legacy_order_key,
-                priority: entry.priority,
+                priority: entry.priority_for_hook(hook),
                 registration_order: entry.registration_order,
             })
             .collect();
