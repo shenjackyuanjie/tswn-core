@@ -93,6 +93,7 @@ pub struct NormalizedOutcome {
     pub entity_ids: Vec<usize>,
     pub teams: Vec<usize>,
     pub hp: Vec<i32>,
+    pub magic_point: Vec<i32>,
     pub defense: Vec<i32>,
     pub resistance: Vec<i32>,
     pub alive: Vec<bool>,
@@ -122,6 +123,7 @@ impl NormalizedOutcome {
             entity_ids: runtime.entities.iter().map(|(_, entity)| entity.template.id).collect(),
             teams: runtime.entities.iter().map(|(_, entity)| entity.runtime.team).collect(),
             hp: runtime.entities.iter().map(|(_, entity)| entity.runtime.hp).collect(),
+            magic_point: runtime.entities.iter().map(|(_, entity)| entity.runtime.magic_point).collect(),
             defense: runtime.entities.iter().map(|(_, entity)| entity.runtime.defense).collect(),
             resistance: runtime.entities.iter().map(|(_, entity)| entity.runtime.resistance).collect(),
             alive: runtime.entities.iter().map(|(_, entity)| entity.runtime.alive).collect(),
@@ -164,6 +166,10 @@ pub enum StrictDiff {
         actual: NormalizedRngCheckpoint,
     },
     Hp {
+        expected: Vec<i32>,
+        actual: Vec<i32>,
+    },
+    MagicPoint {
         expected: Vec<i32>,
         actual: Vec<i32>,
     },
@@ -266,6 +272,12 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
             actual: actual.hp.clone(),
         });
     }
+    if expected.magic_point != actual.magic_point {
+        return Err(StrictDiff::MagicPoint {
+            expected: expected.magic_point.clone(),
+            actual: actual.magic_point.clone(),
+        });
+    }
     if expected.defense != actual.defense {
         return Err(StrictDiff::Defense {
             expected: expected.defense.clone(),
@@ -357,6 +369,7 @@ pub fn minimal_1v1_expected_after_one_round(left_hp: i32, right_hp: i32, attack:
         entity_ids: vec![1, 2],
         teams: vec![0, 1],
         hp: vec![left_hp, (right_hp - attack).max(0)],
+        magic_point: vec![0, 0],
         defense: vec![0, 0],
         resistance: vec![0, 0],
         alive: vec![true, right_alive],

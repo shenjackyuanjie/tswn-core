@@ -21,6 +21,7 @@ pub struct PlayerTemplate {
     pub max_hp: i32,
     pub attack: i32,
     pub magic: i32,
+    pub magic_point: i32,
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
@@ -48,6 +49,7 @@ impl PlayerTemplate {
             max_hp,
             attack,
             magic: 0,
+            magic_point: 0,
             defense: 0,
             resistance: 0,
             agility: 0,
@@ -60,6 +62,11 @@ impl PlayerTemplate {
     pub fn with_magic(mut self, magic: i32) -> Self {
         assert!(magic >= 0, "runtime_v2 player magic must be non-negative");
         self.magic = magic;
+        self
+    }
+
+    pub fn with_magic_point(mut self, magic_point: i32) -> Self {
+        self.magic_point = magic_point;
         self
     }
 
@@ -224,6 +231,7 @@ pub struct PlayerRuntime {
     pub alive: bool,
     pub attack: i32,
     pub magic: i32,
+    pub magic_point: i32,
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
@@ -256,6 +264,7 @@ impl PlayerRuntime {
             alive: true,
             attack: template.attack,
             magic: template.magic,
+            magic_point: template.magic_point,
             defense: template.defense,
             resistance: template.resistance,
             agility: template.agility,
@@ -1015,12 +1024,20 @@ mod tests {
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.move_state, MoveState::default());
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.attack, 3);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic, 0);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic_point, 0);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.agility, 0);
         assert_eq!(
             arena.get(EntityIdx(0)).unwrap().runtime.at_boost_millionths,
             DEFAULT_AT_BOOST_MILLIONTHS
         );
         assert!(arena.get(EntityIdx(0)).unwrap().template.skills.is_empty());
+    }
+
+    #[test]
+    fn player_template_carries_magic_point_into_runtime() {
+        let arena = EntityArena::from_templates(vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_magic_point(96)]);
+
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic_point, 96);
     }
 
     #[test]

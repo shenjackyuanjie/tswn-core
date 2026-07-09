@@ -1011,6 +1011,7 @@ impl CustomBed2Import {
                     }
                     PlayerTemplate::new(next_id, player.id_name(), team_index, status.max_hp, status.attack)
                         .with_magic(status.magic)
+                        .with_magic_point(status.magic_point)
                         .with_agility(status.agility)
                         .with_at_boost_millionths((status.at_boost * 1_000_000.0).round() as i64)
                         .with_def_res(status.defense, status.resistance)
@@ -2524,6 +2525,7 @@ mod tests {
 
         let actor_attack = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.attack;
         let plain_hp = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.max_hp;
+        let plain_mp = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.magic_point;
         let plain_defense = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.defense;
         let plain_resistance = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.resistance;
 
@@ -2536,6 +2538,7 @@ mod tests {
             entity_ids: vec![1, 2, 3],
             teams: vec![0, 0, 1],
             hp: vec![plain_hp, 9, DEFAULT_BED2_HP - actor_attack],
+            magic_point: vec![plain_mp, 0, 0],
             defense: vec![plain_defense, 99, 99],
             resistance: vec![plain_resistance, 99, 99],
             alive: vec![true, true, true],
@@ -2647,6 +2650,7 @@ mod tests {
             entity_ids: vec![1, 2, 3],
             teams: vec![1, 1, 0],
             hp: vec![plain.max_hp, 9, 0],
+            magic_point: vec![plain.magic_point, 0, 0],
             defense: vec![plain.defense, DEFAULT_BED2_DEFENSE, DEFAULT_BED2_DEFENSE],
             resistance: vec![plain.resistance, DEFAULT_BED2_RESISTANCE, DEFAULT_BED2_RESISTANCE],
             alive: vec![true, true, false],
@@ -2775,6 +2779,7 @@ mod tests {
             entity_ids: vec![1, 2, 3],
             teams: vec![0, 0, 1],
             hp: vec![plain.max_hp, 9, 0],
+            magic_point: vec![plain.magic_point, 0, 0],
             defense: vec![plain.defense, DEFAULT_BED2_DEFENSE, DEFAULT_BED2_DEFENSE],
             resistance: vec![plain.resistance, DEFAULT_BED2_RESISTANCE, DEFAULT_BED2_RESISTANCE],
             alive: vec![true, true, false],
@@ -2845,6 +2850,7 @@ mod tests {
                 entity_ids: vec![1, 2],
                 teams: vec![0, 1],
                 hp: vec![8, 2],
+                magic_point: vec![0, 0],
                 defense: vec![0, DEFAULT_BED2_DEFENSE],
                 resistance: vec![0, DEFAULT_BED2_RESISTANCE],
                 alive: vec![true, true],
@@ -2878,6 +2884,7 @@ mod tests {
                 entity_ids: vec![1, 2],
                 teams: vec![0, 1],
                 hp: vec![8, 2],
+                magic_point: vec![0, 0],
                 defense: vec![0, DEFAULT_BED2_DEFENSE],
                 resistance: vec![0, DEFAULT_BED2_RESISTANCE],
                 alive: vec![true, true],
@@ -2911,6 +2918,7 @@ mod tests {
                 entity_ids: vec![1, 2],
                 teams: vec![0, 1],
                 hp: vec![8, 0],
+                magic_point: vec![0, 0],
                 defense: vec![0, DEFAULT_BED2_DEFENSE],
                 resistance: vec![0, DEFAULT_BED2_RESISTANCE],
                 alive: vec![true, false],
@@ -5795,6 +5803,7 @@ mod tests {
             entity_ids: vec![1, 2, 3, 4],
             teams: vec![0, 0, 1, 0],
             hp: vec![16, 10, 10, 8],
+            magic_point: vec![0, 0, 0, 0],
             defense: vec![77, 0, 0, 77],
             resistance: vec![88, 0, 0, 88],
             alive: vec![true, true, true, true],
@@ -5927,6 +5936,7 @@ mod tests {
             entity_ids: vec![1, 2, 3, 4],
             teams: vec![0, 1, 0, 0],
             hp: vec![0, 10, 0, 0],
+            magic_point: vec![0, 0, 0, 0],
             defense: vec![0, 0, 0, 0],
             resistance: vec![0, 0, 0, 0],
             alive: vec![false, true, false, false],
@@ -6030,6 +6040,7 @@ mod tests {
             entity_ids: vec![1, 2],
             teams: vec![0, 1],
             hp: vec![10, 10],
+            magic_point: vec![0, 0],
             defense: vec![0, 0],
             resistance: vec![0, 0],
             alive: vec![true, true],
