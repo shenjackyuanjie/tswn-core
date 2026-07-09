@@ -430,6 +430,7 @@ pub struct SkillContext<'a> {
     updates: &'a mut RunUpdates,
     rng: &'a mut RC4,
     defend_value: Option<&'a mut RuntimeDefendValue>,
+    selected_target: Option<EntityIdx>,
     owner: EntityIdx,
     capabilities: &'a [ExtensionCapability],
 }
@@ -455,6 +456,7 @@ impl<'a> SkillContext<'a> {
             updates,
             rng,
             defend_value: None,
+            selected_target: None,
             owner: entry.owner,
             capabilities,
         }
@@ -465,7 +467,14 @@ impl<'a> SkillContext<'a> {
         self
     }
 
+    pub fn with_selected_target(mut self, selected_target: EntityIdx) -> Self {
+        self.selected_target = Some(selected_target);
+        self
+    }
+
     pub fn owner_idx(&self) -> EntityIdx { self.owner }
+
+    pub fn selected_target(&self) -> Option<EntityIdx> { self.selected_target }
 
     pub fn owner(&self) -> Option<&EntityRecord> { self.entities.get(self.owner) }
 

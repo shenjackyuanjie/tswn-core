@@ -491,6 +491,13 @@ pub fn push_disperse_attack(context: &mut SkillContext<'_>, target: EntityIdx) {
     });
 }
 
+pub fn run_disperse_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    let Some(target) = context.selected_target() else {
+        return;
+    };
+    push_disperse_attack(context, target);
+}
+
 pub fn run_charge_post_action_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     context.tick_owner_charge_post_action().expect("charge post_action owner should exist");
 }
@@ -1213,23 +1220,38 @@ impl CombatRuntime {
     }
 
     fn drain_skill_hook_plan_into(&mut self, plan: &SkillHookPlan, updates: &mut RunUpdates) {
+        self.drain_skill_hook_plan_with_selected_target_into(plan, updates, None);
+    }
+
+    fn drain_skill_hook_plan_with_selected_target_into(
+        &mut self,
+        plan: &SkillHookPlan,
+        updates: &mut RunUpdates,
+        selected_target: Option<EntityIdx>,
+    ) {
         for entry in &plan.entries {
             let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
                 panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
             };
             {
                 let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(&[]);
-                let mut context = SkillContext::new(
-                    &mut self.entities,
-                    &mut self.world,
-                    &self.template_slots,
-                    &mut self.slots,
-                    &mut self.effects,
-                    updates,
-                    &mut self.rng,
-                    *entry,
-                    capabilities,
-                );
+                let mut context = {
+                    let context = SkillContext::new(
+                        &mut self.entities,
+                        &mut self.world,
+                        &self.template_slots,
+                        &mut self.slots,
+                        &mut self.effects,
+                        updates,
+                        &mut self.rng,
+                        *entry,
+                        capabilities,
+                    );
+                    match selected_target {
+                        Some(target) => context.with_selected_target(target),
+                        None => context,
+                    }
+                };
                 handler(&mut context, entry);
             }
             self.drain_effects_into(updates);
@@ -1370,7 +1392,7 @@ impl CombatRuntime {
         let skill_plan = self
             .scheduler
             .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_ACTION);
-        self.drain_skill_hook_plan_into(&skill_plan, &mut updates);
+        self.drain_skill_hook_plan_with_selected_target_into(&skill_plan, &mut updates, Some(action.target));
         let pre_damage_skill_plan =
             self.scheduler
                 .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_DAMAGE);
@@ -6793,6 +6815,35 @@ mod tests {
     }
 
     #[test]
+    fn run_skill_hooks_disperse_without_selected_target_noops() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let disperse = builder
+            .register_skill_with_hooks(
+                "core",
+                "disperse",
+                "core.disperse",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("disperse skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([disperse]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(disperse, run_disperse_skill);
+
+        let frame = runtime.run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10);
+    }
+
+    #[test]
     fn run_minimal_round_dispatches_pre_action_skill_before_attack() {
         let mut builder = ExtensionRegistryBuilder::default();
         let marker = builder
@@ -6854,6 +6905,73 @@ mod tests {
         assert_eq!(frame.updates.updates.len(), 2);
         assert_eq!(frame.updates.updates[0].score, 2);
         assert_eq!(frame.updates.updates[1].score, 3);
+    }
+
+    #[test]
+    fn run_minimal_round_disperse_skill_uses_selected_target_before_attack() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let disperse = builder
+            .register_skill_with_hooks(
+                "core",
+                "disperse",
+                "core.disperse",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("disperse skill should register");
+        let haste = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "caster", 0, 10, 3).with_magic(80).with_skills([disperse]),
+                PlayerTemplate::new(2, "target", 1, 1_000, 3).with_def_res(0, 16).with_magic_point(96),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(disperse, run_disperse_skill);
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng);
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let expected_disperse_damage =
+            (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("disperse plus attack should emit update");
+
+        assert_eq!(outcome.action.unwrap().target, EntityIdx(1));
+        assert_eq!(
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp,
+            1_000 - expected_disperse_damage - 3
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_point, 32);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.entry(77), None);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+                .map(|update| update.message.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["[0]使用[净化]", "[1]受到[2]点伤害", "[1]从[疾走]中解除", "[0]攻击[1]"]
+        );
+        assert_eq!(frame.updates.updates.last().unwrap().score, 3);
     }
 
     #[test]
