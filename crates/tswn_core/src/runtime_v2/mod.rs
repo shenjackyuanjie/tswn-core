@@ -526,6 +526,56 @@ pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &State
     }
 }
 
+pub fn run_haste_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    let Some(StatePayload::Haste { faster, step }) = context.owner_state_payload(entry.legacy_order_key) else {
+        return;
+    };
+    run_timed_release_post_action_state(
+        context,
+        entry,
+        StatePayload::Haste { faster, step: step - 1 },
+        step,
+        "[1]从[疾走]中解除",
+    );
+}
+
+pub fn run_slow_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    let Some(StatePayload::Slow { step }) = context.owner_state_payload(entry.legacy_order_key) else {
+        return;
+    };
+    run_timed_release_post_action_state(context, entry, StatePayload::Slow { step: step - 1 }, step, "[1]从[迟缓]中解除");
+}
+
+fn run_timed_release_post_action_state(
+    context: &mut StateContext<'_>,
+    entry: &StateHookPlanEntry,
+    next_payload: StatePayload,
+    step: i32,
+    release_message: &'static str,
+) {
+    let next_step = step - 1;
+    if next_step > 0 {
+        context
+            .set_owner_state_payload(entry.legacy_order_key, next_payload)
+            .expect("timed state payload should still exist");
+        return;
+    }
+
+    context
+        .clear_owner_state(entry.legacy_order_key)
+        .expect("timed state payload should still exist");
+    let alive = context.owner().map(|owner| owner.runtime.alive).unwrap_or(false);
+    if alive {
+        context.add_newline();
+        context.add_update(crate::engine::update::RunUpdate::new(
+            release_message,
+            context.owner_idx().0 as usize,
+            context.owner_idx().0 as usize,
+            0,
+        ));
+    }
+}
+
 pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Iron { protect, step }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -6915,6 +6965,171 @@ mod tests {
     }
 
     #[test]
+    fn run_state_hooks_haste_post_action_decrements_step_without_update() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let haste_state = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.set_state_handler(haste_state, run_haste_post_action_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::haste(
+            77,
+            haste_state,
+            4,
+            3,
+            SkillPriority(100),
+        ));
+
+        let frame = runtime.run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(0))
+                .unwrap()
+                .states
+                .entry(77)
+                .and_then(StateEntry::haste_value),
+            Some((4, 2))
+        );
+    }
+
+    #[test]
+    fn run_state_hooks_haste_post_action_clears_and_emits_release() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let haste_state = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.set_state_handler(haste_state, run_haste_post_action_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::haste(
+            77,
+            haste_state,
+            2,
+            1,
+            SkillPriority(100),
+        ));
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("haste release should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(77), None);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(
+            frame.updates.updates[0].update_type,
+            crate::engine::update::UpdateType::NextLine
+        );
+        assert_eq!(frame.updates.updates[1].message, "[1]从[疾走]中解除");
+        assert_eq!(frame.updates.updates[1].caster, 0);
+        assert_eq!(frame.updates.updates[1].target, 0);
+    }
+
+    #[test]
+    fn run_state_hooks_haste_post_action_clears_dead_owner_without_update() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let haste_state = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = false;
+        runtime.set_state_handler(haste_state, run_haste_post_action_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::haste(
+            77,
+            haste_state,
+            2,
+            1,
+            SkillPriority(100),
+        ));
+
+        let frame = runtime.run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(77), None);
+    }
+
+    #[test]
+    fn run_state_hooks_slow_post_action_decrements_step_without_update() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let slow_state = builder
+            .register_state("core", "slow", "core.slow", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("slow state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.set_state_handler(slow_state, run_slow_post_action_state);
+        runtime
+            .entities
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::slow(78, slow_state, 2, SkillPriority(100)));
+
+        let frame = runtime.run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(0))
+                .unwrap()
+                .states
+                .entry(78)
+                .and_then(StateEntry::slow_value),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn run_state_hooks_slow_post_action_clears_and_emits_release() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let slow_state = builder
+            .register_state("core", "slow", "core.slow", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("slow state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3)],
+            registry,
+        ));
+        runtime.set_state_handler(slow_state, run_slow_post_action_state);
+        runtime
+            .entities
+            .get_mut(EntityIdx(0))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::slow(78, slow_state, 1, SkillPriority(100)));
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("slow release should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(78), None);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(
+            frame.updates.updates[0].update_type,
+            crate::engine::update::UpdateType::NextLine
+        );
+        assert_eq!(frame.updates.updates[1].message, "[1]从[迟缓]中解除");
+        assert_eq!(frame.updates.updates[1].caster, 0);
+        assert_eq!(frame.updates.updates[1].target, 0);
+    }
+
+    #[test]
     fn run_state_hooks_iron_post_action_clears_and_emits_release() {
         let mut builder = ExtensionRegistryBuilder::default();
         let iron_state = builder
@@ -7052,6 +7267,80 @@ mod tests {
             crate::engine::update::UpdateType::NextLine
         );
         assert_eq!(frame.updates.updates[2].message, "[1]从[铁壁]中解除");
+    }
+
+    #[test]
+    fn run_state_hooks_haste_slow_and_iron_share_legacy_post_action_priority() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let marker_state = builder
+            .register_state("custom", "marker", "custom.marker", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("marker state should register");
+        let haste_state = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let slow_state = builder
+            .register_state("core", "slow", "core.slow", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("slow state should register");
+        let iron_state = builder
+            .register_state(
+                "core",
+                "iron",
+                "core.iron",
+                ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+                SkillPriority(10),
+            )
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed_points(2048)],
+            registry,
+        ));
+        {
+            let store = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().states;
+            store.add_entry(StateEntry {
+                legacy_order_key: 42,
+                extension_state_id: Some(marker_state),
+                hook_mask: ProcMask::POST_ACTION,
+                priority: SkillPriority(100),
+                registration_order: RegistrationOrder(1),
+                payload: StatePayload::None,
+            });
+            store.add_entry(StateEntry::haste(77, haste_state, 2, 1, SkillPriority(100)));
+            store.add_entry(StateEntry::slow(78, slow_state, 1, SkillPriority(100)));
+            store.add_entry(StateEntry::iron(79, iron_state, 300, 1, SkillPriority(10)));
+        }
+        runtime.set_state_handler(marker_state, state_marks_update);
+        runtime.set_state_handler(haste_state, run_haste_post_action_state);
+        runtime.set_state_handler(slow_state, run_slow_post_action_state);
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+
+        let plan = runtime.scheduler.state_hook_plan(&runtime.entities, EntityIdx(0), ProcMask::POST_ACTION);
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("marker and timed release states should emit updates");
+
+        assert_eq!(
+            plan.entries
+                .iter()
+                .map(|entry| (entry.legacy_order_key, entry.priority))
+                .collect::<Vec<_>>(),
+            vec![
+                (42, SkillPriority(100)),
+                (77, SkillPriority(210)),
+                (78, SkillPriority(210)),
+                (79, SkillPriority(210)),
+            ]
+        );
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+                .map(|update| update.message.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["state mark", "[1]从[疾走]中解除", "[1]从[迟缓]中解除", "[1]从[铁壁]中解除"]
+        );
     }
 
     #[test]

@@ -420,6 +420,13 @@ pub enum StatePayload {
         prob: i32,
         multiply: i32,
     },
+    Haste {
+        faster: i32,
+        step: i32,
+    },
+    Slow {
+        step: i32,
+    },
     Iron {
         protect: i32,
         step: i32,
@@ -471,6 +478,28 @@ impl StateEntry {
         }
     }
 
+    pub fn haste(legacy_order_key: u32, state_id: StateId, faster: i32, step: i32, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_ACTION,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::Haste { faster, step },
+        }
+    }
+
+    pub fn slow(legacy_order_key: u32, state_id: StateId, step: i32, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_ACTION,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::Slow { step },
+        }
+    }
+
     pub fn iron(legacy_order_key: u32, state_id: StateId, protect: i32, step: i32, priority: SkillPriority) -> Self {
         Self {
             legacy_order_key,
@@ -485,16 +514,48 @@ impl StateEntry {
     pub fn fire_mag_value(&self) -> Option<f64> {
         match self.payload {
             StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(half_steps) * 0.5),
-            StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } | StatePayload::Iron { .. } => None,
+            StatePayload::None
+            | StatePayload::ShieldValue(_)
+            | StatePayload::Curse { .. }
+            | StatePayload::Haste { .. }
+            | StatePayload::Slow { .. }
+            | StatePayload::Iron { .. } => None,
         }
     }
 
     pub fn shield_value(&self) -> Option<i32> {
         match self.payload {
             StatePayload::ShieldValue(shield) => Some(shield),
-            StatePayload::None | StatePayload::FireMagHalfSteps(_) | StatePayload::Curse { .. } | StatePayload::Iron { .. } => {
-                None
-            }
+            StatePayload::None
+            | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Curse { .. }
+            | StatePayload::Haste { .. }
+            | StatePayload::Slow { .. }
+            | StatePayload::Iron { .. } => None,
+        }
+    }
+
+    pub fn haste_value(&self) -> Option<(i32, i32)> {
+        match self.payload {
+            StatePayload::Haste { faster, step } => Some((faster, step)),
+            StatePayload::None
+            | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::ShieldValue(_)
+            | StatePayload::Curse { .. }
+            | StatePayload::Slow { .. }
+            | StatePayload::Iron { .. } => None,
+        }
+    }
+
+    pub fn slow_value(&self) -> Option<i32> {
+        match self.payload {
+            StatePayload::Slow { step } => Some(step),
+            StatePayload::None
+            | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::ShieldValue(_)
+            | StatePayload::Curse { .. }
+            | StatePayload::Haste { .. }
+            | StatePayload::Iron { .. } => None,
         }
     }
 
@@ -505,11 +566,15 @@ impl StateEntry {
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. } => None,
+            StatePayload::Haste { .. } | StatePayload::Slow { .. } => None,
         }
     }
 
     pub fn priority_for_hook(&self, hook: ProcMask) -> SkillPriority {
         match self.payload {
+            StatePayload::Haste { .. } | StatePayload::Slow { .. } if hook.intersects(ProcMask::POST_ACTION) => {
+                SkillPriority(210)
+            }
             StatePayload::Iron { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(210),
             _ => self.priority,
         }
@@ -553,6 +618,9 @@ impl StateStore {
                     *half_steps += 1;
                 }
                 StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } | StatePayload::Iron { .. } => {
+                    entry.payload = StatePayload::FireMagHalfSteps(1);
+                }
+                StatePayload::Haste { .. } | StatePayload::Slow { .. } => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
             }
