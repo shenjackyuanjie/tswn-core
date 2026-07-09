@@ -1335,7 +1335,8 @@ pub fn run_zombie_minion_from_template_slot_with_config(
 }
 
 pub fn run_zombie_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-    run_zombie_minion_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0), EntityIdx(1));
+    let killed_target = context.selected_target().unwrap_or(EntityIdx(1));
+    run_zombie_minion_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0), killed_target);
 }
 
 pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
@@ -3225,7 +3226,7 @@ impl CombatRuntime {
 
     fn drain_lethal_damage_hooks_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         self.drain_die_hooks_into(target, updates);
-        self.drain_kill_hooks_into(caster, updates);
+        self.drain_kill_hooks_into(caster, target, updates);
     }
 
     fn drain_pre_defend_hooks_into(
@@ -3312,9 +3313,9 @@ impl CombatRuntime {
         self.drain_state_hook_plan_into(&die_state_plan, updates);
     }
 
-    fn drain_kill_hooks_into(&mut self, caster: EntityIdx, updates: &mut RunUpdates) {
+    fn drain_kill_hooks_into(&mut self, caster: EntityIdx, killed_target: EntityIdx, updates: &mut RunUpdates) {
         let kill_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, caster, ProcMask::KILL);
-        self.drain_skill_hook_plan_into(&kill_skill_plan, updates);
+        self.drain_skill_hook_plan_with_selected_target_into(&kill_skill_plan, updates, Some(killed_target));
         let kill_state_plan = self.scheduler.state_hook_plan(&self.entities, caster, ProcMask::KILL);
         self.drain_state_hook_plan_into(&kill_state_plan, updates);
     }
@@ -6757,6 +6758,45 @@ delta@blue+bed2[8]\n";
     }
 
     #[test]
+    fn flush_effects_passes_killed_target_to_kill_skill_hooks() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let kill_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "kill-skill",
+                "custom.kill_skill",
+                ProcMask::KILL,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("kill skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([kill_skill]),
+                PlayerTemplate::new(2, "first-target", 1, 10, 3),
+                PlayerTemplate::new(3, "killed-target", 1, 3, 3),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(kill_skill, skill_marks_selected_target);
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(0),
+            target: EntityIdx(2),
+            amount: 3,
+        });
+
+        let frame = runtime.flush_effects().expect("lethal damage should emit kill hook");
+
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[0].target, 2);
+        assert_eq!(frame.updates.updates[1].message, "selected target");
+        assert_eq!(frame.updates.updates[1].target, 2);
+        assert_eq!(frame.updates.updates[1].score, 2);
+    }
+
+    #[test]
     fn flush_effects_routes_root_owner_damage_to_owner_entity() {
         let mut builder = ExtensionRegistryBuilder::default();
         let summon_kind = builder
@@ -10030,6 +10070,16 @@ delta@blue+bed2[8]\n";
             entry.owner.0 as usize,
             entry.owner.0 as usize,
             entry.skill_id.0,
+        ));
+    }
+
+    fn skill_marks_selected_target(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        let target = context.selected_target().expect("skill should receive selected target");
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "selected target",
+            entry.owner.0 as usize,
+            target.0 as usize,
+            target.0,
         ));
     }
 
