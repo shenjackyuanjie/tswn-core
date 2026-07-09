@@ -416,6 +416,10 @@ pub fn push_summon_recast_from_template_slot_with_message(
     push_summon_recast_from_template_slot_with_messages(context, entity_slot, template_slot, revive_hp, message.clone(), message)
 }
 
+pub fn summon_default_skill_loadout(fire_skill: SkillId, explode_skill: SkillId, active_order: [usize; 3]) -> SkillLoadout {
+    SkillLoadout::from_skills([fire_skill, fire_skill, explode_skill]).with_active_order(active_order)
+}
+
 pub fn next_minion_name_from_entity_slot(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -2840,6 +2844,16 @@ mod tests {
         assert_eq!(summon.template.resistance, 88);
         assert_eq!(summon.runtime.defense, 77);
         assert_eq!(summon.runtime.resistance, 88);
+    }
+
+    #[test]
+    fn summon_default_skill_loadout_keeps_fixed_lanes_and_active_order() {
+        let fire = SkillId(11);
+        let explode = SkillId(12);
+        let loadout = summon_default_skill_loadout(fire, explode, [2, 0, 1]);
+
+        assert_eq!(loadout.skills(), &[fire, fire, explode]);
+        assert_eq!(loadout.active_order(), &[2, 0, 1]);
     }
 
     #[test]

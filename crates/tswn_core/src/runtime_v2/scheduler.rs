@@ -17,6 +17,8 @@ pub struct SkillHookPlanEntry {
     pub skill_id: SkillId,
     pub target_policy: TargetPolicy,
     pub priority: SkillPriority,
+    pub active_order: usize,
+    pub fixed_lane: usize,
     pub registration_order: RegistrationOrder,
 }
 
@@ -68,9 +70,17 @@ impl PhaseScheduler {
         let mut entries = entity
             .template
             .skills
-            .skills()
+            .active_order()
             .iter()
-            .filter_map(|skill_id| {
+            .enumerate()
+            .filter_map(|lane| {
+                let (active_order, lane) = lane;
+                let skill_id = entity
+                    .template
+                    .skills
+                    .skills()
+                    .get(*lane)
+                    .unwrap_or_else(|| panic!("runtime_v2 skill active order references missing lane: {lane}"));
                 let spec = registry
                     .skill(*skill_id)
                     .unwrap_or_else(|| panic!("unknown runtime_v2 skill id in loadout: {}", skill_id.0));
@@ -79,11 +89,13 @@ impl PhaseScheduler {
                     skill_id: spec.id,
                     target_policy: spec.target_policy,
                     priority: spec.priority,
+                    active_order,
+                    fixed_lane: *lane,
                     registration_order: spec.registration_order,
                 })
             })
             .collect::<Vec<_>>();
-        entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
+        entries.sort_by_key(|entry| (entry.priority, entry.active_order, entry.registration_order));
         SkillHookPlan {
             owner,
             hook,
@@ -222,6 +234,8 @@ mod tests {
                     skill_id: early,
                     target_policy: TargetPolicy::Ally,
                     priority: SkillPriority(1),
+                    active_order: 2,
+                    fixed_lane: 2,
                     registration_order: RegistrationOrder(1),
                 },
                 SkillHookPlanEntry {
@@ -229,9 +243,65 @@ mod tests {
                     skill_id: late,
                     target_policy: TargetPolicy::Enemy,
                     priority: SkillPriority(10),
+                    active_order: 0,
+                    fixed_lane: 0,
                     registration_order: RegistrationOrder(0),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn scheduler_uses_active_order_for_same_priority_skill_hooks() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let first_lane = builder
+            .register_skill_with_hooks(
+                "custom",
+                "first-lane",
+                "custom.first_lane",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("first lane skill should register");
+        let second_lane = builder
+            .register_skill_with_hooks(
+                "custom",
+                "second-lane",
+                "custom.second_lane",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("second lane skill should register");
+        let third_lane = builder
+            .register_skill_with_hooks(
+                "custom",
+                "third-lane",
+                "custom.third_lane",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("third lane skill should register");
+        let registry = builder.build();
+        let loadout =
+            crate::runtime_v2::SkillLoadout::from_skills([first_lane, second_lane, third_lane]).with_active_order([2, 0, 1]);
+        let entities = EntityArena::from_templates_with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 4).with_skill_loadout(loadout)],
+            &registry,
+        );
+        let scheduler = PhaseScheduler;
+
+        let plan = scheduler.skill_hook_plan(&entities, &registry, EntityIdx(0), ProcMask::PRE_ACTION);
+
+        assert_eq!(
+            plan.entries.iter().map(|entry| entry.skill_id).collect::<Vec<_>>(),
+            vec![third_lane, first_lane, second_lane]
+        );
+        assert_eq!(
+            plan.entries.iter().map(|entry| entry.fixed_lane).collect::<Vec<_>>(),
+            vec![2, 0, 1]
         );
     }
 

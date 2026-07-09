@@ -96,20 +96,32 @@ impl PlayerTemplate {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SkillLoadout {
     skills: SmallVec<[SkillId; 8]>,
+    active_order: SmallVec<[usize; 8]>,
 }
 
 impl SkillLoadout {
     pub fn from_skills(skills: impl IntoIterator<Item = SkillId>) -> Self {
-        Self {
-            skills: skills.into_iter().collect(),
-        }
+        let skills = skills.into_iter().collect::<SmallVec<[SkillId; 8]>>();
+        let active_order = (0..skills.len()).collect();
+        Self { skills, active_order }
     }
 
     pub fn skills(&self) -> &[SkillId] { &self.skills }
 
+    pub fn active_order(&self) -> &[usize] { &self.active_order }
+
     pub fn is_empty(&self) -> bool { self.skills.is_empty() }
 
     pub fn len(&self) -> usize { self.skills.len() }
+
+    pub fn with_active_order(mut self, active_order: impl IntoIterator<Item = usize>) -> Self {
+        self.active_order = active_order.into_iter().collect();
+        assert!(
+            self.active_order.iter().all(|idx| *idx < self.skills.len()),
+            "runtime_v2 skill active order must reference existing fixed lanes"
+        );
+        self
+    }
 
     pub fn merge_fixed_lanes_from(&mut self, source: &Self, policy: MergePolicy) -> bool {
         let drop_unmapped = match policy {
@@ -126,9 +138,11 @@ impl SkillLoadout {
                 }
             } else if !drop_unmapped {
                 self.skills.push(source_skill);
+                self.active_order.push(idx);
                 changed = true;
             }
         }
+        self.active_order.retain(|idx| *idx < self.skills.len());
         changed
     }
 }
@@ -439,6 +453,14 @@ mod tests {
     }
 
     #[test]
+    fn skill_loadout_tracks_fixed_lanes_and_active_order_separately() {
+        let loadout = SkillLoadout::from_skills([SkillId(1), SkillId(2), SkillId(3)]).with_active_order([2, 0, 1]);
+
+        assert_eq!(loadout.skills(), &[SkillId(1), SkillId(2), SkillId(3)]);
+        assert_eq!(loadout.active_order(), &[2, 0, 1]);
+    }
+
+    #[test]
     fn skill_loadout_merges_fixed_lanes_and_appends_unmapped_skills() {
         let mut target = SkillLoadout::from_skills([SkillId(1), SkillId(2)]);
         let source = SkillLoadout::from_skills([SkillId(1), SkillId(3), SkillId(4)]);
@@ -446,6 +468,7 @@ mod tests {
         assert!(target.merge_fixed_lanes_from(&source, MergePolicy::FixedLane));
 
         assert_eq!(target.skills(), &[SkillId(1), SkillId(3), SkillId(4)]);
+        assert_eq!(target.active_order(), &[0, 1, 2]);
     }
 
     #[test]
