@@ -153,12 +153,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runtime_v2_normalized_json_contains_default_run_fields() {
+    fn runtime_v2_normalized_json_matches_default_run_golden_shape() {
         let json = runtime_v2_normalized_json("left@red\n\nright@blue\n", 1).expect("runtime v2 json should serialize");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("runtime v2 json should parse");
 
-        assert!(json.contains("\"rounds\""));
-        assert!(json.contains("\"total_score\""));
-        assert!(json.contains("\"update_type\""));
+        assert_eq!(value["winner_team"], serde_json::Value::Null);
+        assert_eq!(value["guard_exhausted"], true);
+        assert_eq!(value["total_score"], 37);
+        let rounds = value["rounds"].as_array().expect("rounds should be an array");
+        assert_eq!(rounds.len(), 1);
+        let round = &rounds[0];
+        assert_eq!(round["winner_team"], serde_json::Value::Null);
+        assert_eq!(round["round"], 1);
+        assert_eq!(round["total_score"], 37);
+        assert_eq!(round["rng_i"], 48);
+        assert_eq!(round["rng_j"], 161);
+        assert_eq!(round["entity_ids"], serde_json::json!([1, 2]));
+        assert_eq!(round["teams"], serde_json::json!([0, 1]));
+        assert_eq!(round["hp"], serde_json::json!([339, 251]));
+        assert_eq!(round["magic_point"], serde_json::json!([23, 8]));
+        assert_eq!(round["defense"], serde_json::json!([6, 56]));
+        assert_eq!(round["resistance"], serde_json::json!([52, 25]));
+        assert_eq!(round["alive"], serde_json::json!([true, true]));
+        assert_eq!(round["round_order"], serde_json::json!([0, 1]));
+        assert_eq!(round["flat_alive"], serde_json::json!([0, 1]));
+        assert_eq!(round["team_alive"], serde_json::json!([[0], [1]]));
+        assert_eq!(round["alive_group_count"], 2);
+        assert_eq!(
+            round["actions"],
+            serde_json::json!([{ "round": 1, "actor": 0, "target": 1, "amount": 37 }])
+        );
+        assert_eq!(
+            round["frames"],
+            serde_json::json!([{
+                "message": "[0]攻击[1]",
+                "caster": 0,
+                "target": 1,
+                "targets": [],
+                "param": null,
+                "score": 37,
+                "delay0": tswn_core::engine::update::DEFAULT_DELAY0_MS,
+                "delay1": tswn_core::engine::update::DEFAULT_DELAY1_MS,
+                "update_type": "none"
+            }])
+        );
     }
 
     #[test]
