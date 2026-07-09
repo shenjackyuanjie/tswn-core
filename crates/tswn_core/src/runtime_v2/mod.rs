@@ -99,10 +99,37 @@ impl CustomBed2Import {
         })
     }
 
+    pub fn parse_player_facade_raw(raw: &str) -> Option<Self> {
+        let marker_import = Self::parse(raw)?;
+        let id_name = crate::player::Player::raw_namerena_to_idname(raw.trim());
+        let (name, team, facade_hp) = Self::parse_facade_id_name(&id_name);
+        Some(Self {
+            name,
+            team,
+            hp: facade_hp.unwrap_or(marker_import.hp),
+        })
+    }
+
     pub fn into_player_template(self, id: PlrId, kind: PlayerKindId, team: usize, summon_skill: SkillId) -> PlayerTemplate {
         PlayerTemplate::with_kind(id, self.name, kind, team, self.hp, 0)
             .with_def_res(DEFAULT_BED2_DEFENSE, DEFAULT_BED2_RESISTANCE)
             .with_skills([summon_skill])
+    }
+
+    fn parse_facade_id_name(id_name: &str) -> (String, Option<String>, Option<i32>) {
+        let (base, plus_rest) = id_name.split_once('+').unwrap_or((id_name, ""));
+        let (name, team, team_marker_hp) = Self::split_facade_name_team(base);
+        let plus_marker_hp = Self::parse_bed2_plus_segments(plus_rest);
+        (name, team, plus_marker_hp.or(team_marker_hp))
+    }
+
+    fn split_facade_name_team(raw: &str) -> (String, Option<String>, Option<i32>) {
+        if let Some((name, team)) = raw.split_once('@') {
+            let (team, hp) = Self::split_bed2_team_marker(team.trim());
+            (name.trim().to_owned(), team, hp)
+        } else {
+            (raw.trim().to_owned(), None, None)
+        }
     }
 
     fn split_bed2_team_marker(team: &str) -> (Option<String>, Option<i32>) {
@@ -772,6 +799,24 @@ mod tests {
         assert_eq!(bare.team, None);
         assert_eq!(bare.hp, 2500);
         assert_eq!(CustomBed2Import::parse("alpha@red+bed2[0]"), None);
+
+        let facade_bridge =
+            CustomBed2Import::parse_player_facade_raw("alpha@red+weapon+bed2[4500]+ol:{\"skills\":{\"sklsummon\":255}}")
+                .expect("bed2 raw should bridge through player facade id name");
+        assert_eq!(
+            crate::player::Player::raw_namerena_to_idname("alpha@red+weapon+bed2[4500]+ol:{\"skills\":{\"sklsummon\":255}}"),
+            "alpha@red"
+        );
+        assert_eq!(facade_bridge.name, "alpha");
+        assert_eq!(facade_bridge.team.as_deref(), Some("red"));
+        assert_eq!(facade_bridge.hp, 4500);
+
+        let same_team_bridge = CustomBed2Import::parse_player_facade_raw("same@same+bed2[1800]")
+            .expect("same-team bed2 raw should bridge through normalized player facade id name");
+        assert_eq!(crate::player::Player::raw_namerena_to_idname("same@same+bed2[1800]"), "same");
+        assert_eq!(same_team_bridge.name, "same");
+        assert_eq!(same_team_bridge.team, None);
+        assert_eq!(same_team_bridge.hp, 1800);
 
         let template = plus.into_player_template(1, bed2, 0, summon);
         let runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(vec![template], registry));
