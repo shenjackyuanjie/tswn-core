@@ -5518,12 +5518,12 @@ delta@blue+bed2[8]\n";
             "虚空托腮 IVHEWTNEA@TigerStar\n\n进口牢货.不可磨灭的回忆之殇 8}i%Yh&<@幻景殇\nseed:2026-03-07 22:54 #013595@!";
 
         let (mut runner, _) = mixed_raw_runner_for_plain_fixture(raw_input);
-        let run = runner.run_until_winner_normalized_rounds(3);
+        let run = runner.run_until_winner_normalized_rounds(4);
 
         assert_eq!(run.winner_team, None);
         assert!(run.guard_exhausted);
-        assert_eq!(run.total_score, 151);
-        assert_eq!(run.rounds.len(), 3);
+        assert_eq!(run.total_score, 188);
+        assert_eq!(run.rounds.len(), 4);
         let expected_rounds = vec![
             NormalizedOutcome {
                 winner_team: None,
@@ -5627,6 +5627,40 @@ delta@blue+bed2[8]\n";
                     update_type: crate::engine::update::UpdateType::None,
                 }],
             },
+            NormalizedOutcome {
+                winner_team: None,
+                round: 4,
+                total_score: 37,
+                rng: normalized_rng_checkpoint(229, 251),
+                entity_ids: vec![1, 2],
+                teams: vec![0, 1],
+                hp: vec![276, 208],
+                magic_point: vec![28, 29],
+                defense: vec![58, 52],
+                resistance: vec![49, 57],
+                alive: vec![true, true],
+                round_order: vec![0, 1],
+                flat_alive: vec![0, 1],
+                team_alive: vec![vec![0], vec![1]],
+                alive_group_count: 2,
+                actions: vec![crate::runtime_v2::oracle::NormalizedActionBoundary {
+                    round: 4,
+                    actor: 1,
+                    target: 0,
+                    amount: 37,
+                }],
+                frames: vec![NormalizedUpdateFrame {
+                    message: "[0]攻击[1]".to_owned(),
+                    caster: 1,
+                    target: 0,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 37,
+                    delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                    delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                    update_type: crate::engine::update::UpdateType::None,
+                }],
+            },
         ];
 
         for (expected, actual) in expected_rounds.iter().zip(&run.rounds) {
@@ -5651,12 +5685,12 @@ delta@blue+bed2[8]\n";
         let raw_input = "测707640862046T，烦恼立刻消失@爱\n坚持 E6b10FVHvKDO@Afterglow\nInfluence #MEZC2wa@Unbound\n耀眼之星 /JxrJYwouGw/@新纪元\n随之任之 #iWZYBGuwxX@🥒\n\n真夜霞 #FBNWDPBPW@无惨\n虚空托腮 UMOXFIARH@TigerStar\nFengshen ONVWTGMPNCKV@nan\nBoundless_Ocean,Vast_Skies #l6RZxopUn@Shabby_fish\nSpearmaster ZbblyZQQwr@RainWorld_XIV\nseed:1376-2-15@!";
 
         let (mut runner, _) = mixed_raw_runner_for_plain_fixture(raw_input);
-        let run = runner.run_until_winner_normalized_rounds(3);
+        let run = runner.run_until_winner_normalized_rounds(4);
 
         assert_eq!(run.winner_team, None);
         assert!(run.guard_exhausted);
-        assert_eq!(run.total_score, 129);
-        assert_eq!(run.rounds.len(), 3);
+        assert_eq!(run.total_score, 187);
+        assert_eq!(run.rounds.len(), 4);
         let expected_rounds = vec![
             NormalizedOutcome {
                 winner_team: None,
@@ -5755,6 +5789,40 @@ delta@blue+bed2[8]\n";
                     targets: Vec::new(),
                     param: None,
                     score: 59,
+                    delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                    delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                    update_type: crate::engine::update::UpdateType::None,
+                }],
+            },
+            NormalizedOutcome {
+                winner_team: None,
+                round: 4,
+                total_score: 58,
+                rng: normalized_rng_checkpoint(218, 78),
+                entity_ids: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                teams: vec![1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+                hp: vec![342, 331, 387, 150, 359, 331, 324, 327, 332, 335],
+                magic_point: vec![30, 28, 23, 30, 26, 24, 26, 25, 23, 25],
+                defense: vec![51, 37, 51, 39, 53, 55, 52, 53, 45, 54],
+                resistance: vec![44, 52, 60, 56, 56, 59, 36, 59, 58, 56],
+                alive: vec![true, true, true, true, true, true, true, true, true, true],
+                round_order: vec![6, 3, 9, 5, 4, 1, 7, 8, 2, 0],
+                flat_alive: vec![6, 9, 5, 7, 8, 3, 4, 1, 2, 0],
+                team_alive: vec![vec![6, 9, 5, 7, 8], vec![3, 4, 1, 2, 0]],
+                alive_group_count: 2,
+                actions: vec![crate::runtime_v2::oracle::NormalizedActionBoundary {
+                    round: 4,
+                    actor: 5,
+                    target: 3,
+                    amount: 58,
+                }],
+                frames: vec![NormalizedUpdateFrame {
+                    message: "[0]攻击[1]".to_owned(),
+                    caster: 5,
+                    target: 3,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 58,
                     delay0: crate::engine::update::DEFAULT_DELAY0_MS,
                     delay1: crate::engine::update::DEFAULT_DELAY1_MS,
                     update_type: crate::engine::update::UpdateType::None,
