@@ -3388,6 +3388,92 @@ mod tests {
     }
 
     #[test]
+    fn shadow_style_minion_template_handler_emits_legacy_replay_sequence() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let counter_slot = builder
+            .reserve_entity_slot("custom", "minion-counter", "custom.minion.counter")
+            .expect("minion counter slot should reserve");
+        let template_slot = builder
+            .reserve_template_slot("custom", "shadow-template", "custom.minion.shadow_template")
+            .expect("shadow template slot should reserve");
+        let shadow_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "shadow",
+                "custom.minion.shadow_skill",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("shadow skill should register");
+        let possess_skill = builder
+            .register_skill(
+                "custom",
+                "possess",
+                "custom.minion.possess",
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("possess skill should register");
+        let shadow_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "shadow",
+                "custom.minion.shadow",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("shadow minion kind should register");
+        let registry = builder.build();
+        let payload = PlayerTemplate::with_kind(3, "owner?shadow", shadow_kind, 0, 5, 1).with_skills([possess_skill]);
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([shadow_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        );
+        template
+            .slots
+            .set(template_slot, SlotValue::PlayerTemplate(Box::new(payload)))
+            .expect("shadow template slot should write");
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            shadow_skill,
+            skill_shadow_style_minion_from_template_slot,
+            &[ExtensionCapability::ReadTemplateSlots, ExtensionCapability::MutateEntitySlots],
+        );
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("shadow-style minion spawn should emit legacy updates");
+
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[幻术]");
+        assert_eq!(frame.updates.updates[0].caster, 0);
+        assert_eq!(frame.updates.updates[0].target, 0);
+        assert_eq!(frame.updates.updates[0].score, 60);
+        assert_eq!(frame.updates.updates[1].message, "召唤出[1]");
+        assert_eq!(frame.updates.updates[1].caster, 0);
+        assert_eq!(frame.updates.updates[1].target, 2);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(counter_slot),
+            Some(&SlotValue::U64(1))
+        );
+        let shadow = runtime.entities.get(EntityIdx(2)).expect("shadow minion should spawn");
+        assert_eq!(shadow.template.name, "owner?0");
+        assert_eq!(shadow.template.kind, shadow_kind);
+        assert_eq!(shadow.template.skills.skills(), &[possess_skill]);
+        assert_eq!(shadow.runtime.owner, EntityIdx(0));
+        assert_eq!(shadow.runtime.root_owner, EntityIdx(0));
+    }
+
+    #[test]
     fn minion_display_index_for_entity_matches_legacy_name_suffix() {
         let mut builder = ExtensionRegistryBuilder::default();
         let minion_kind = builder
@@ -4194,6 +4280,19 @@ mod tests {
     }
 
     fn skill_pushes_named_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        assert_eq!(
+            push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]"),
+            Ok(EntityIdx(2))
+        );
+    }
+
+    fn skill_shadow_style_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "[0]使用[幻术]",
+            context.owner_idx().0 as usize,
+            context.owner_idx().0 as usize,
+            60,
+        ));
         assert_eq!(
             push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]"),
             Ok(EntityIdx(2))
