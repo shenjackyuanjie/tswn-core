@@ -498,6 +498,35 @@ pub fn run_disperse_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry
     push_disperse_attack(context, target);
 }
 
+pub fn score_disperse_target(runtime: &CombatRuntime, target: EntityIdx, smart: bool, rng: &mut RC4) -> f64 {
+    let Some(target_entity) = runtime.entities.get(target) else {
+        return f64::MIN;
+    };
+    let rate_hi_hp = |hp: i32| -> f64 {
+        if hp < 20 {
+            30.0
+        } else if hp > 300 {
+            300.0
+        } else {
+            hp as f64
+        }
+    };
+    let target_runtime = &target_entity.runtime;
+    let mut score = if smart {
+        if runtime.world.alive_group_count() > 2 {
+            rate_hi_hp(target_runtime.hp) * runtime.world.alive_group_len_containing(target) as f64 * target_runtime.attract()
+        } else {
+            (1.0 / rate_hi_hp(target_runtime.hp)) * target_runtime.atk_sum as f64 * target_runtime.attract()
+        }
+    } else {
+        rng.rFFFF() as f64 + target_runtime.attract()
+    };
+    if smart && target_runtime.flags.contains(PlayerKindFlags::MINION) && target_runtime.hp > 100 {
+        score *= 2.0;
+    }
+    score
+}
+
 pub fn run_charge_post_action_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     context.tick_owner_charge_post_action().expect("charge post_action owner should exist");
 }
@@ -1028,6 +1057,7 @@ impl CustomBed2Import {
                         .with_magic_point(status.magic_point)
                         .with_agility(status.agility)
                         .with_at_boost_millionths((status.at_boost * 1_000_000.0).round() as i64)
+                        .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
                         .with_def_res(status.defense, status.resistance)
                 };
                 players.push(template);
@@ -6972,6 +7002,73 @@ mod tests {
             vec!["[0]使用[净化]", "[1]受到[2]点伤害", "[1]从[疾走]中解除", "[0]攻击[1]"]
         );
         assert_eq!(frame.updates.updates.last().unwrap().score, 3);
+    }
+
+    #[test]
+    fn score_disperse_target_matches_legacy_smart_two_team_formula() {
+        let runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+            PlayerTemplate::new(1, "caster", 0, 10, 3),
+            PlayerTemplate::new(2, "target", 1, 80, 3).with_target_score_stats(77, 120, 2.5),
+        ]));
+        let mut rng = RC4::default();
+
+        let score = score_disperse_target(&runtime, EntityIdx(1), true, &mut rng);
+
+        assert_eq!(score, (1.0 / 80.0) * 120.0 * 2.5);
+        let expected_rng = RC4::default();
+        assert_eq!(rng.i, expected_rng.i);
+        assert_eq!(rng.j, expected_rng.j);
+        assert_eq!(rng.main_val, expected_rng.main_val);
+    }
+
+    #[test]
+    fn score_disperse_target_matches_legacy_smart_multi_team_and_minion_formula() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let minion_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "minion",
+                "custom.minion",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies::default(),
+            )
+            .expect("minion kind should register");
+        let registry = builder.build();
+        let runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "caster", 0, 10, 3),
+                PlayerTemplate::with_kind(2, "target", minion_kind, 1, 400, 3).with_target_score_stats(77, 120, 2.5),
+                PlayerTemplate::new(3, "team-2", 2, 10, 3),
+                PlayerTemplate::new(4, "team-1-ally", 1, 10, 3),
+            ],
+            registry,
+        ));
+        let mut rng = RC4::default();
+
+        let score = score_disperse_target(&runtime, EntityIdx(1), true, &mut rng);
+
+        assert_eq!(score, 300.0 * 2.0 * 2.5 * 2.0);
+        let expected_rng = RC4::default();
+        assert_eq!(rng.i, expected_rng.i);
+        assert_eq!(rng.j, expected_rng.j);
+        assert_eq!(rng.main_val, expected_rng.main_val);
+    }
+
+    #[test]
+    fn score_disperse_target_matches_legacy_random_formula_and_unknown_target() {
+        let runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+            PlayerTemplate::new(1, "caster", 0, 10, 3),
+            PlayerTemplate::new(2, "target", 1, 80, 3).with_target_score_stats(77, 120, 2.5),
+        ]));
+        let mut rng = RC4::default();
+        let mut expected_rng = RC4::default();
+        let expected = expected_rng.rFFFF() as f64 + 2.5;
+
+        assert_eq!(score_disperse_target(&runtime, EntityIdx(1), false, &mut rng), expected);
+        assert_eq!(rng.i, expected_rng.i);
+        assert_eq!(rng.j, expected_rng.j);
+        assert_eq!(rng.main_val, expected_rng.main_val);
+        assert_eq!(score_disperse_target(&runtime, EntityIdx(99), false, &mut rng), f64::MIN);
     }
 
     #[test]

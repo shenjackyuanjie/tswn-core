@@ -121,6 +121,13 @@ impl WorldArena {
 
     pub fn alive_group_count(&self) -> usize { self.alive_group_count }
 
+    pub fn alive_group_len_containing(&self, actor: EntityIdx) -> usize {
+        let Some(team) = self.team_alive.iter().find(|team| team.contains(&actor)) else {
+            return 0;
+        };
+        team.len()
+    }
+
     pub fn revive_alive(&mut self, actor: EntityIdx, team: usize) {
         if self.flat_alive.contains(&actor) {
             return;
@@ -202,6 +209,25 @@ mod tests {
         assert_eq!(world.team_alive(1), Some([EntityIdx(1)].as_slice()));
         assert_eq!(world.flat_alive(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
         assert_eq!(world.alive_group_count(), 2);
+    }
+
+    #[test]
+    fn world_reports_alive_group_len_containing_entity() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3),
+            PlayerTemplate::new(2, "right", 1, 10, 3),
+            PlayerTemplate::new(3, "ally", 0, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+
+        assert_eq!(world.alive_group_len_containing(EntityIdx(0)), 2);
+        assert_eq!(world.alive_group_len_containing(EntityIdx(1)), 1);
+        assert_eq!(world.alive_group_len_containing(EntityIdx(99)), 0);
+
+        assert!(world.remove_alive(EntityIdx(2), 0));
+
+        assert_eq!(world.alive_group_len_containing(EntityIdx(0)), 1);
+        assert_eq!(world.alive_group_len_containing(EntityIdx(2)), 0);
     }
 
     #[test]

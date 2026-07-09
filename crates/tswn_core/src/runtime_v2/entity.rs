@@ -26,6 +26,9 @@ pub struct PlayerTemplate {
     pub resistance: i32,
     pub agility: i32,
     pub at_boost_millionths: i64,
+    pub attr_sum: u32,
+    pub atk_sum: i32,
+    pub attract_bits: u64,
     pub move_state: MoveState,
     pub policy_overrides: PlayerPolicyOverrides,
 }
@@ -54,6 +57,9 @@ impl PlayerTemplate {
             resistance: 0,
             agility: 0,
             at_boost_millionths: DEFAULT_AT_BOOST_MILLIONTHS,
+            attr_sum: 0,
+            atk_sum: attack,
+            attract_bits: 32768.0_f64.to_bits(),
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
         }
@@ -76,6 +82,14 @@ impl PlayerTemplate {
             "runtime_v2 player at_boost_millionths must be non-negative"
         );
         self.at_boost_millionths = at_boost_millionths;
+        self
+    }
+
+    pub fn with_target_score_stats(mut self, attr_sum: u32, atk_sum: i32, attract: f64) -> Self {
+        assert!(attract.is_finite(), "runtime_v2 player attract must be finite");
+        self.attr_sum = attr_sum;
+        self.atk_sum = atk_sum;
+        self.attract_bits = attract.to_bits();
         self
     }
 
@@ -236,6 +250,9 @@ pub struct PlayerRuntime {
     pub resistance: i32,
     pub agility: i32,
     pub at_boost_millionths: i64,
+    pub attr_sum: u32,
+    pub atk_sum: i32,
+    pub attract_bits: u64,
     pub kind: PlayerKindId,
     pub owner: EntityIdx,
     pub root_owner: EntityIdx,
@@ -269,6 +286,9 @@ impl PlayerRuntime {
             resistance: template.resistance,
             agility: template.agility,
             at_boost_millionths: template.at_boost_millionths,
+            attr_sum: template.attr_sum,
+            atk_sum: template.atk_sum,
+            attract_bits: template.attract_bits,
             kind: template.kind,
             owner,
             root_owner,
@@ -282,6 +302,8 @@ impl PlayerRuntime {
     }
 
     pub fn at_boost(&self) -> f64 { self.at_boost_millionths as f64 / DEFAULT_AT_BOOST_MILLIONTHS as f64 }
+
+    pub fn attract(&self) -> f64 { f64::from_bits(self.attract_bits) }
 
     pub fn get_at(&self, use_mag: bool, randomer: &mut RC4) -> f64 {
         let atk = if use_mag { self.magic } else { self.attack };
@@ -1026,6 +1048,9 @@ mod tests {
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic, 0);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic_point, 0);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.agility, 0);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.attr_sum, 0);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.atk_sum, 3);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.attract(), 32768.0);
         assert_eq!(
             arena.get(EntityIdx(0)).unwrap().runtime.at_boost_millionths,
             DEFAULT_AT_BOOST_MILLIONTHS
@@ -1038,6 +1063,18 @@ mod tests {
         let arena = EntityArena::from_templates(vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_magic_point(96)]);
 
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic_point, 96);
+    }
+
+    #[test]
+    fn player_template_carries_target_score_stats_into_runtime() {
+        let arena = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3).with_target_score_stats(42, 17, 1234.5),
+        ]);
+        let runtime = &arena.get(EntityIdx(0)).unwrap().runtime;
+
+        assert_eq!(runtime.attr_sum, 42);
+        assert_eq!(runtime.atk_sum, 17);
+        assert_eq!(runtime.attract(), 1234.5);
     }
 
     #[test]
