@@ -844,6 +844,33 @@ pub fn run_disperse_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry
     push_disperse_attack(context, target);
 }
 
+pub fn run_possess_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    let Some(target) = context.selected_target() else {
+        return;
+    };
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[0]使用[附体]",
+        context.owner_idx().0 as usize,
+        target.0 as usize,
+        0,
+    ));
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[1]进入[狂暴]状态",
+        context.owner_idx().0 as usize,
+        target.0 as usize,
+        0,
+    ));
+    context.push_nested(QueuedEffect::Remove {
+        caster: context.owner_idx(),
+        target: context.owner_idx(),
+    });
+    context.push_nested(QueuedEffect::AddBerserkState {
+        target,
+        legacy_order_key: 10,
+        step: 4,
+    });
+}
+
 pub fn score_disperse_target(entities: &EntityArena, world: &WorldArena, target: EntityIdx, smart: bool, rng: &mut RC4) -> f64 {
     let Some(target_entity) = entities.get(target) else {
         return f64::MIN;
@@ -3077,6 +3104,30 @@ impl CombatRuntime {
                     };
                     if target_entity.states.add_entry(state) {
                         updates.add(RuntimeFrame::add_state_update(target.0 as usize));
+                    }
+                }
+                QueuedEffect::AddBerserkState {
+                    target,
+                    legacy_order_key,
+                    step,
+                } => {
+                    self.ensure_effect_entity("add-berserk-state", "target", target);
+                    let Some(target_entity) = self.entities.get_mut(target) else {
+                        panic!("unknown runtime_v2 add-berserk-state target entity: {}", target.0);
+                    };
+                    let next_step = target_entity
+                        .states
+                        .entry(legacy_order_key)
+                        .and_then(|entry| match entry.payload {
+                            StatePayload::Berserk { step: existing_step } => Some(existing_step + step),
+                            _ => None,
+                        })
+                        .unwrap_or(step);
+                    if !target_entity
+                        .states
+                        .set_payload(legacy_order_key, StatePayload::Berserk { step: next_step })
+                    {
+                        target_entity.states.add_entry(StateEntry::berserk(legacy_order_key, next_step));
                     }
                 }
                 QueuedEffect::ClearState {
@@ -9185,6 +9236,114 @@ delta@blue+bed2[8]\n";
         assert_eq!(shadow.runtime.owner, EntityIdx(0));
         assert_eq!(shadow.runtime.root_owner, EntityIdx(0));
         assert_eq!(shadow.runtime.move_state, MoveState { speed_points: -2048 });
+    }
+
+    #[test]
+    fn possess_skill_berserks_target_and_removes_shadow_caster() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let possess_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "possess",
+                "custom.minion.possess",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("possess skill should register");
+        let shadow_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "shadow",
+                "custom.minion.shadow",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("shadow minion kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3),
+                PlayerTemplate::with_kind(2, "owner?0", shadow_kind, 0, 5, 1).with_skills([possess_skill]),
+                PlayerTemplate::new(3, "target", 1, 20, 1),
+            ],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.owner = EntityIdx(0);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.root_owner = EntityIdx(0);
+        runtime.set_skill_handler(possess_skill, run_possess_skill);
+
+        let plan = runtime
+            .scheduler
+            .skill_hook_plan(&runtime.entities, &runtime.registry, EntityIdx(1), ProcMask::PRE_ACTION);
+        let mut updates = RunUpdates::new();
+        runtime.drain_skill_hook_plan_with_selected_target_into(&plan, &mut updates, Some(EntityIdx(2)));
+        let frame = RuntimeFrame { updates };
+
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[附体]");
+        assert_eq!(frame.updates.updates[0].caster, 1);
+        assert_eq!(frame.updates.updates[0].target, 2);
+        assert_eq!(frame.updates.updates[1].message, "[1]进入[狂暴]状态");
+        assert_eq!(frame.updates.updates[1].caster, 1);
+        assert_eq!(frame.updates.updates[1].target, 2);
+        assert_eq!(frame.updates.updates[2].message, "[1]消失了");
+        assert_eq!(frame.updates.updates[2].caster, 1);
+        assert_eq!(frame.updates.updates[2].target, 1);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(2)).unwrap().states.entry(10).map(|entry| entry.payload),
+            Some(StatePayload::Berserk { step: 4 })
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 0);
+        assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+        assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0)].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(2)]);
+    }
+
+    #[test]
+    fn possess_skill_extends_existing_berserk_state() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let possess_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "possess",
+                "custom.minion.possess",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("possess skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "shadow", 0, 5, 1).with_skills([possess_skill]),
+                PlayerTemplate::new(2, "target", 1, 20, 1),
+            ],
+            registry,
+        ));
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::berserk(10, 2));
+        runtime.set_skill_handler(possess_skill, run_possess_skill);
+
+        let plan = runtime
+            .scheduler
+            .skill_hook_plan(&runtime.entities, &runtime.registry, EntityIdx(0), ProcMask::PRE_ACTION);
+        let mut updates = RunUpdates::new();
+        runtime.drain_skill_hook_plan_with_selected_target_into(&plan, &mut updates, Some(EntityIdx(1)));
+
+        assert_eq!(
+            runtime.entities.get(EntityIdx(1)).unwrap().states.entry(10).map(|entry| entry.payload),
+            Some(StatePayload::Berserk { step: 6 })
+        );
     }
 
     #[test]

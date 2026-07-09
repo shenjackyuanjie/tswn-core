@@ -601,6 +601,9 @@ pub enum StatePayload {
         faster: i32,
         step: i32,
     },
+    Berserk {
+        step: i32,
+    },
     Charm {
         group_id: usize,
         effective_team_idx: Option<usize>,
@@ -697,6 +700,17 @@ impl StateEntry {
         }
     }
 
+    pub fn berserk(legacy_order_key: u32, step: i32) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: None,
+            hook_mask: ProcMask::default(),
+            priority: SkillPriority::default(),
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::Berserk { step },
+        }
+    }
+
     pub fn charm(
         legacy_order_key: u32,
         state_id: StateId,
@@ -753,6 +767,7 @@ impl StateEntry {
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
+            | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. } => None,
@@ -767,6 +782,7 @@ impl StateEntry {
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
+            | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. } => None,
@@ -781,6 +797,7 @@ impl StateEntry {
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
+            | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. } => None,
@@ -800,6 +817,7 @@ impl StateEntry {
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
             | StatePayload::Haste { .. }
+            | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. } => None,
@@ -821,6 +839,7 @@ impl StateEntry {
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
+            | StatePayload::Berserk { .. }
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. } => None,
         }
@@ -835,6 +854,7 @@ impl StateEntry {
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
+            | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Iron { .. } => None,
         }
@@ -847,9 +867,11 @@ impl StateEntry {
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. } => None,
-            StatePayload::Poison { .. } | StatePayload::Haste { .. } | StatePayload::Charm { .. } | StatePayload::Slow { .. } => {
-                None
-            }
+            StatePayload::Poison { .. }
+            | StatePayload::Haste { .. }
+            | StatePayload::Berserk { .. }
+            | StatePayload::Charm { .. }
+            | StatePayload::Slow { .. } => None,
         }
     }
 
@@ -876,6 +898,7 @@ impl StateEntry {
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
+            | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. } => None,
         }
@@ -890,6 +913,7 @@ impl StateEntry {
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
+            | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. } => false,
         }
@@ -937,6 +961,7 @@ impl StateStore {
                 }
                 StatePayload::Poison { .. }
                 | StatePayload::Haste { .. }
+                | StatePayload::Berserk { .. }
                 | StatePayload::Charm { .. }
                 | StatePayload::Slow { .. } => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);

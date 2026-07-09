@@ -64,6 +64,11 @@ pub enum QueuedEffect {
         target: EntityIdx,
         state: StateEntry,
     },
+    AddBerserkState {
+        target: EntityIdx,
+        legacy_order_key: u32,
+        step: i32,
+    },
     ClearState {
         target: EntityIdx,
         legacy_order_key: u32,
