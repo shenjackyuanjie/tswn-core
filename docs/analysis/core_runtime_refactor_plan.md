@@ -577,7 +577,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 已把 linked minion owner death cleanup 纳入 custom runner strict-diff golden，覆盖消失帧、winner 与 WorldArena 派生视图；
 - 已把 merge 纳入 custom runner strict-diff golden，覆盖吞噬/属性上升帧、score 与 fixed-lane 技能槽继承；
 - 已补 custom runner multi-round normalized run golden，覆盖 `RuntimeV2Runner::run_until_winner_normalized_rounds`、guard 状态、累计 score 与逐回合 strict diff；
-- 已从 custom large / fight_multi 真实 raw 输入抽出初始化 parity golden，覆盖 v2 raw runner 对 legacy seed RNG、team 编号与 WorldArena 初始派生视图的对齐；large 真实 raw 已补完整 run-until-winner normalized golden，fight_multi 真实 raw 已补前 4 轮 normalized prefix golden 与完整 run-until-winner 终局 golden，固定 RNG checkpoint、HP/MP/防御/魔防、round/alive 派生视图、action/frame、winner 与 guard 状态；
+- 已从 custom large / fight_multi 真实 raw 输入抽出初始化 parity golden，覆盖 v2 raw runner 对 legacy seed RNG、team 编号与 WorldArena 初始派生视图的对齐；large 真实 raw 已补完整 run-until-winner normalized golden，fight_multi 真实 raw 已补前 4 轮 normalized prefix golden、完整 run-until-winner 终局 golden 与 88 轮完整逐回合 checkpoint golden，固定每轮 RNG checkpoint、HP/alive、action/frame、winner、guard 与终局 world 派生视图；
 - 为关键行为设计 repo 内 extension fixture；
 - 标出需要 capability 例外的跨实体读取点。
 

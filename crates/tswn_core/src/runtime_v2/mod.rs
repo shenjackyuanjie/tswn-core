@@ -6205,6 +6205,114 @@ delta@blue+bed2[8]\n";
         assert_eq!(run.total_score, 3211);
         assert_eq!(run.rounds.len(), 88);
 
+        let expected_checkpoints = [
+            (1, None, 50, 215, 67, [342, 331, 387, 267, 359, 331, 344, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [6, 3, 50]),
+            (2, None, 20, 216, 115, [342, 331, 387, 267, 359, 331, 324, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [3, 6, 20]),
+            (3, None, 59, 217, 59, [342, 331, 387, 208, 359, 331, 324, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [9, 3, 59]),
+            (4, None, 58, 218, 78, [342, 331, 387, 150, 359, 331, 324, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [5, 3, 58]),
+            (5, None, 48, 219, 152, [342, 331, 387, 150, 359, 331, 276, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [4, 6, 48]),
+            (6, None, 47, 220, 55, [342, 331, 387, 150, 359, 331, 229, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [1, 6, 47]),
+            (7, None, 37, 221, 90, [342, 331, 387, 113, 359, 331, 229, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [7, 3, 37]),
+            (8, None, 5, 222, 110, [342, 331, 387, 108, 359, 331, 229, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [8, 3, 5]),
+            (9, None, 61, 223, 126, [342, 331, 387, 108, 359, 331, 168, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [2, 6, 61]),
+            (10, None, 20, 224, 62, [342, 331, 387, 108, 359, 331, 148, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [0, 6, 20]),
+            (11, None, 50, 225, 11, [342, 331, 387, 58, 359, 331, 148, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [6, 3, 50]),
+            (12, None, 20, 226, 147, [342, 331, 387, 58, 359, 331, 128, 327, 332, 335], [true, true, true, true, true, true, true, true, true, true], [3, 6, 20]),
+            (13, None, 59, 227, 2, [342, 331, 387, 0, 359, 331, 128, 327, 332, 335], [true, true, true, false, true, true, true, true, true, true], [9, 3, 59]),
+            (14, None, 58, 228, 44, [342, 331, 387, 0, 301, 331, 128, 327, 332, 335], [true, true, true, false, true, true, true, true, true, true], [5, 4, 58]),
+            (15, None, 48, 229, 76, [342, 331, 387, 0, 301, 331, 80, 327, 332, 335], [true, true, true, false, true, true, true, true, true, true], [4, 6, 48]),
+            (16, None, 47, 230, 217, [342, 331, 387, 0, 301, 331, 33, 327, 332, 335], [true, true, true, false, true, true, true, true, true, true], [1, 6, 47]),
+            (17, None, 37, 231, 11, [342, 331, 387, 0, 264, 331, 33, 327, 332, 335], [true, true, true, false, true, true, true, true, true, true], [7, 4, 37]),
+            (18, None, 5, 232, 198, [342, 331, 387, 0, 259, 331, 33, 327, 332, 335], [true, true, true, false, true, true, true, true, true, true], [8, 4, 5]),
+            (19, None, 61, 233, 235, [342, 331, 387, 0, 259, 331, 0, 327, 332, 335], [true, true, true, false, true, true, false, true, true, true], [2, 6, 61]),
+            (20, None, 20, 234, 89, [342, 331, 387, 0, 259, 331, 0, 327, 332, 315], [true, true, true, false, true, true, false, true, true, true], [0, 9, 20]),
+            (21, None, 59, 235, 126, [342, 331, 387, 0, 200, 331, 0, 327, 332, 315], [true, true, true, false, true, true, false, true, true, true], [9, 4, 59]),
+            (22, None, 58, 236, 92, [342, 331, 387, 0, 142, 331, 0, 327, 332, 315], [true, true, true, false, true, true, false, true, true, true], [5, 4, 58]),
+            (23, None, 48, 237, 176, [342, 331, 387, 0, 142, 331, 0, 327, 332, 267], [true, true, true, false, true, true, false, true, true, true], [4, 9, 48]),
+            (24, None, 47, 238, 119, [342, 331, 387, 0, 142, 331, 0, 327, 332, 220], [true, true, true, false, true, true, false, true, true, true], [1, 9, 47]),
+            (25, None, 37, 239, 54, [342, 331, 387, 0, 105, 331, 0, 327, 332, 220], [true, true, true, false, true, true, false, true, true, true], [7, 4, 37]),
+            (26, None, 5, 240, 168, [342, 331, 387, 0, 100, 331, 0, 327, 332, 220], [true, true, true, false, true, true, false, true, true, true], [8, 4, 5]),
+            (27, None, 61, 241, 169, [342, 331, 387, 0, 100, 331, 0, 327, 332, 159], [true, true, true, false, true, true, false, true, true, true], [2, 9, 61]),
+            (28, None, 20, 242, 84, [342, 331, 387, 0, 100, 331, 0, 327, 332, 139], [true, true, true, false, true, true, false, true, true, true], [0, 9, 20]),
+            (29, None, 59, 243, 173, [342, 331, 387, 0, 41, 331, 0, 327, 332, 139], [true, true, true, false, true, true, false, true, true, true], [9, 4, 59]),
+            (30, None, 58, 244, 241, [342, 331, 387, 0, 0, 331, 0, 327, 332, 139], [true, true, true, false, false, true, false, true, true, true], [5, 4, 58]),
+            (31, None, 47, 245, 186, [342, 331, 387, 0, 0, 331, 0, 327, 332, 92], [true, true, true, false, false, true, false, true, true, true], [1, 9, 47]),
+            (32, None, 37, 246, 197, [342, 294, 387, 0, 0, 331, 0, 327, 332, 92], [true, true, true, false, false, true, false, true, true, true], [7, 1, 37]),
+            (33, None, 5, 247, 40, [342, 289, 387, 0, 0, 331, 0, 327, 332, 92], [true, true, true, false, false, true, false, true, true, true], [8, 1, 5]),
+            (34, None, 61, 248, 9, [342, 289, 387, 0, 0, 331, 0, 327, 332, 31], [true, true, true, false, false, true, false, true, true, true], [2, 9, 61]),
+            (35, None, 20, 249, 136, [342, 289, 387, 0, 0, 331, 0, 327, 332, 11], [true, true, true, false, false, true, false, true, true, true], [0, 9, 20]),
+            (36, None, 59, 250, 211, [342, 230, 387, 0, 0, 331, 0, 327, 332, 11], [true, true, true, false, false, true, false, true, true, true], [9, 1, 59]),
+            (37, None, 58, 251, 207, [342, 172, 387, 0, 0, 331, 0, 327, 332, 11], [true, true, true, false, false, true, false, true, true, true], [5, 1, 58]),
+            (38, None, 47, 252, 245, [342, 172, 387, 0, 0, 331, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [1, 9, 47]),
+            (39, None, 37, 253, 82, [342, 135, 387, 0, 0, 331, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [7, 1, 37]),
+            (40, None, 5, 254, 138, [342, 130, 387, 0, 0, 331, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [8, 1, 5]),
+            (41, None, 61, 255, 140, [342, 130, 387, 0, 0, 270, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [2, 5, 61]),
+            (42, None, 20, 0, 50, [342, 130, 387, 0, 0, 250, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [0, 5, 20]),
+            (43, None, 58, 1, 43, [342, 72, 387, 0, 0, 250, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [5, 1, 58]),
+            (44, None, 47, 2, 154, [342, 72, 387, 0, 0, 203, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [1, 5, 47]),
+            (45, None, 37, 3, 188, [342, 35, 387, 0, 0, 203, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [7, 1, 37]),
+            (46, None, 5, 4, 57, [342, 30, 387, 0, 0, 203, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [8, 1, 5]),
+            (47, None, 61, 5, 240, [342, 30, 387, 0, 0, 142, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [2, 5, 61]),
+            (48, None, 20, 6, 222, [342, 30, 387, 0, 0, 122, 0, 327, 332, 0], [true, true, true, false, false, true, false, true, true, false], [0, 5, 20]),
+            (49, None, 58, 7, 58, [342, 0, 387, 0, 0, 122, 0, 327, 332, 0], [true, false, true, false, false, true, false, true, true, false], [5, 1, 58]),
+            (50, None, 37, 8, 46, [342, 0, 350, 0, 0, 122, 0, 327, 332, 0], [true, false, true, false, false, true, false, true, true, false], [7, 2, 37]),
+            (51, None, 5, 9, 15, [342, 0, 345, 0, 0, 122, 0, 327, 332, 0], [true, false, true, false, false, true, false, true, true, false], [8, 2, 5]),
+            (52, None, 61, 10, 42, [342, 0, 345, 0, 0, 61, 0, 327, 332, 0], [true, false, true, false, false, true, false, true, true, false], [2, 5, 61]),
+            (53, None, 20, 11, 92, [342, 0, 345, 0, 0, 41, 0, 327, 332, 0], [true, false, true, false, false, true, false, true, true, false], [0, 5, 20]),
+            (54, None, 58, 12, 105, [342, 0, 287, 0, 0, 41, 0, 327, 332, 0], [true, false, true, false, false, true, false, true, true, false], [5, 2, 58]),
+            (55, None, 37, 13, 205, [342, 0, 250, 0, 0, 41, 0, 327, 332, 0], [true, false, true, false, false, true, false, true, true, false], [7, 2, 37]),
+            (56, None, 5, 14, 86, [342, 0, 245, 0, 0, 41, 0, 327, 332, 0], [true, false, true, false, false, true, false, true, true, false], [8, 2, 5]),
+            (57, None, 61, 15, 55, [342, 0, 245, 0, 0, 0, 0, 327, 332, 0], [true, false, true, false, false, false, false, true, true, false], [2, 5, 61]),
+            (58, None, 20, 16, 186, [342, 0, 245, 0, 0, 0, 0, 307, 332, 0], [true, false, true, false, false, false, false, true, true, false], [0, 7, 20]),
+            (59, None, 37, 17, 58, [342, 0, 208, 0, 0, 0, 0, 307, 332, 0], [true, false, true, false, false, false, false, true, true, false], [7, 2, 37]),
+            (60, None, 5, 18, 239, [342, 0, 203, 0, 0, 0, 0, 307, 332, 0], [true, false, true, false, false, false, false, true, true, false], [8, 2, 5]),
+            (61, None, 61, 19, 84, [342, 0, 203, 0, 0, 0, 0, 246, 332, 0], [true, false, true, false, false, false, false, true, true, false], [2, 7, 61]),
+            (62, None, 20, 20, 196, [342, 0, 203, 0, 0, 0, 0, 226, 332, 0], [true, false, true, false, false, false, false, true, true, false], [0, 7, 20]),
+            (63, None, 37, 21, 219, [342, 0, 166, 0, 0, 0, 0, 226, 332, 0], [true, false, true, false, false, false, false, true, true, false], [7, 2, 37]),
+            (64, None, 5, 22, 22, [342, 0, 161, 0, 0, 0, 0, 226, 332, 0], [true, false, true, false, false, false, false, true, true, false], [8, 2, 5]),
+            (65, None, 61, 23, 250, [342, 0, 161, 0, 0, 0, 0, 165, 332, 0], [true, false, true, false, false, false, false, true, true, false], [2, 7, 61]),
+            (66, None, 20, 24, 57, [342, 0, 161, 0, 0, 0, 0, 145, 332, 0], [true, false, true, false, false, false, false, true, true, false], [0, 7, 20]),
+            (67, None, 37, 25, 36, [342, 0, 124, 0, 0, 0, 0, 145, 332, 0], [true, false, true, false, false, false, false, true, true, false], [7, 2, 37]),
+            (68, None, 5, 26, 112, [342, 0, 119, 0, 0, 0, 0, 145, 332, 0], [true, false, true, false, false, false, false, true, true, false], [8, 2, 5]),
+            (69, None, 61, 27, 215, [342, 0, 119, 0, 0, 0, 0, 84, 332, 0], [true, false, true, false, false, false, false, true, true, false], [2, 7, 61]),
+            (70, None, 20, 28, 239, [342, 0, 119, 0, 0, 0, 0, 64, 332, 0], [true, false, true, false, false, false, false, true, true, false], [0, 7, 20]),
+            (71, None, 37, 29, 214, [342, 0, 82, 0, 0, 0, 0, 64, 332, 0], [true, false, true, false, false, false, false, true, true, false], [7, 2, 37]),
+            (72, None, 5, 30, 1, [342, 0, 77, 0, 0, 0, 0, 64, 332, 0], [true, false, true, false, false, false, false, true, true, false], [8, 2, 5]),
+            (73, None, 61, 31, 56, [342, 0, 77, 0, 0, 0, 0, 3, 332, 0], [true, false, true, false, false, false, false, true, true, false], [2, 7, 61]),
+            (74, None, 20, 32, 161, [342, 0, 77, 0, 0, 0, 0, 0, 332, 0], [true, false, true, false, false, false, false, false, true, false], [0, 7, 20]),
+            (75, None, 5, 33, 208, [342, 0, 72, 0, 0, 0, 0, 0, 332, 0], [true, false, true, false, false, false, false, false, true, false], [8, 2, 5]),
+            (76, None, 61, 34, 164, [342, 0, 72, 0, 0, 0, 0, 0, 271, 0], [true, false, true, false, false, false, false, false, true, false], [2, 8, 61]),
+            (77, None, 20, 35, 128, [342, 0, 72, 0, 0, 0, 0, 0, 251, 0], [true, false, true, false, false, false, false, false, true, false], [0, 8, 20]),
+            (78, None, 5, 36, 107, [342, 0, 67, 0, 0, 0, 0, 0, 251, 0], [true, false, true, false, false, false, false, false, true, false], [8, 2, 5]),
+            (79, None, 61, 37, 115, [342, 0, 67, 0, 0, 0, 0, 0, 190, 0], [true, false, true, false, false, false, false, false, true, false], [2, 8, 61]),
+            (80, None, 20, 38, 6, [342, 0, 67, 0, 0, 0, 0, 0, 170, 0], [true, false, true, false, false, false, false, false, true, false], [0, 8, 20]),
+            (81, None, 5, 39, 57, [342, 0, 62, 0, 0, 0, 0, 0, 170, 0], [true, false, true, false, false, false, false, false, true, false], [8, 2, 5]),
+            (82, None, 61, 40, 156, [342, 0, 62, 0, 0, 0, 0, 0, 109, 0], [true, false, true, false, false, false, false, false, true, false], [2, 8, 61]),
+            (83, None, 20, 41, 137, [342, 0, 62, 0, 0, 0, 0, 0, 89, 0], [true, false, true, false, false, false, false, false, true, false], [0, 8, 20]),
+            (84, None, 5, 42, 164, [342, 0, 57, 0, 0, 0, 0, 0, 89, 0], [true, false, true, false, false, false, false, false, true, false], [8, 2, 5]),
+            (85, None, 61, 43, 157, [342, 0, 57, 0, 0, 0, 0, 0, 28, 0], [true, false, true, false, false, false, false, false, true, false], [2, 8, 61]),
+            (86, None, 20, 44, 199, [342, 0, 57, 0, 0, 0, 0, 0, 8, 0], [true, false, true, false, false, false, false, false, true, false], [0, 8, 20]),
+            (87, None, 5, 45, 5, [342, 0, 52, 0, 0, 0, 0, 0, 8, 0], [true, false, true, false, false, false, false, false, true, false], [8, 2, 5]),
+            (88, Some(1), 61, 46, 249, [342, 0, 52, 0, 0, 0, 0, 0, 0, 0], [true, false, true, false, false, false, false, false, false, false], [2, 8, 61]),
+        ];
+        assert_eq!(run.rounds.len(), expected_checkpoints.len());
+        for (round, (expected_round, expected_winner, expected_score, rng_i, rng_j, expected_hp, expected_alive, expected_action)) in
+            run.rounds.iter().zip(expected_checkpoints)
+        {
+            assert_eq!(round.round, expected_round);
+            assert_eq!(round.winner_team, expected_winner);
+            assert_eq!(round.total_score, expected_score);
+            assert_eq!(round.rng, normalized_rng_checkpoint(rng_i, rng_j));
+            assert_eq!(round.hp, expected_hp);
+            assert_eq!(round.alive, expected_alive);
+            assert_eq!(round.actions.len(), 1);
+            assert_eq!(round.frames.len(), 1);
+            let action = round.actions.first().unwrap();
+            let frame = round.frames.first().unwrap();
+            assert_eq!([action.actor, action.target, action.amount as usize], expected_action);
+            assert_eq!([frame.caster, frame.target, frame.score as usize], expected_action);
+        }
+
         let expected_terminal = NormalizedOutcome {
             winner_team: Some(1),
             round: 88,
