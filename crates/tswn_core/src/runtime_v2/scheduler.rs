@@ -1,6 +1,6 @@
 use crate::runtime_v2::entity::{EntityArena, EntityIdx};
 use crate::runtime_v2::extension::{
-    ExtensionRegistry, ProcMask, RegistrationOrder, SkillId, SkillPriority, StateId, TargetPolicy,
+    ExtensionRegistry, ProcMask, RegistrationOrder, SkillId, SkillPostActionPhase, SkillPriority, StateId, TargetPolicy,
 };
 use crate::runtime_v2::world::WorldArena;
 
@@ -102,6 +102,23 @@ impl PhaseScheduler {
             loadout_len: entity.template.skills.len(),
             entries,
         }
+    }
+
+    pub fn skill_post_action_hook_plan(
+        &self,
+        entities: &EntityArena,
+        registry: &ExtensionRegistry,
+        owner: EntityIdx,
+        phase: SkillPostActionPhase,
+    ) -> SkillHookPlan {
+        let mut plan = self.skill_hook_plan(entities, registry, owner, ProcMask::POST_ACTION);
+        plan.entries.retain(|entry| {
+            registry
+                .skill(entry.skill_id)
+                .map(|spec| spec.post_action_phase == phase)
+                .unwrap_or(false)
+        });
+        plan
     }
 
     pub fn state_hook_plan(&self, entities: &EntityArena, owner: EntityIdx, hook: ProcMask) -> StateHookPlan {

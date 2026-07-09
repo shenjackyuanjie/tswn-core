@@ -70,6 +70,7 @@ git diff --name-status github/main..github/custom
 - `TemplateSlotStorage` 已可保留 typed `PlayerTemplate` payload，extension context 通过 `ReadTemplateSlots` capability 读取 bed2 summon 模板，`push_summon_from_template_slot` helper 会校验 payload 并交给 `QueuedEffect::SpawnWithMessage` 生成实体；`push_summon_from_template_slot_with_message` 可为真实 summon handler 指定 `召唤出[1]` 等 legacy/custom 外显文案。
 - `OwnerResolutionPolicy::RootOwner` 已覆盖 summon/root-owner 伤害路由。
 - `DamageSharePolicy::ShareToOwner` / `ShareToSummons` 已覆盖 owner 与 summon 伤害共享；`PlayerTemplate` policy override 已支持 charged summon 这类 per-entity 差异，避免为了关闭 share damage 拆出额外 kind。
+- `SkillPostActionPhase::Late` 已覆盖 charge 这类 legacy x2 尾部 post_action：普通 post_action skill 先于 state 收尾，charge late handler 晚于 state 收尾并负责清理 `ChargeRuntime` / `at_boost`。
 - `SkillLoadout` 已区分 fixed lanes 与 active order，默认 summon loadout helper 固化 `[fire, fire, explode]` 固定槽位，避免后续 merge 读取被主动顺序洗牌影响。
 - `PlayerKindPolicies::inherit_owner_def_res` 已覆盖 custom summon 继承 owner 防御/魔防的数据面。
 - `push_summon_recast_from_entity_slot` 已通过 owner entity slot 记录 summon 实体，并覆盖死亡后重施复活同一 `EntityIdx`、保留技能 loadout 和 owner/root-owner 元数据；`push_summon_recast_from_template_slot` 已把 typed template slot payload 接入同一路径，让真实 summon handler 可复用导入阶段生成的 summon 模板；helper 会在 remembered summon 仍存活时返回 `RememberedSummonAlive`，缺少 `ReadTemplateSlots` / `ReadAllies` 时返回 capability 错误，避免静默生成第二个 summon。

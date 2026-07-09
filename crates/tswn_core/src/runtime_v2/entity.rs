@@ -235,6 +235,7 @@ pub struct PlayerRuntime {
     pub flags: PlayerKindFlags,
     pub policies: PlayerKindPolicies,
     pub move_state: MoveState,
+    pub charge: ChargeRuntime,
 }
 
 impl PlayerRuntime {
@@ -265,6 +266,7 @@ impl PlayerRuntime {
             flags,
             policies,
             move_state: template.move_state,
+            charge: ChargeRuntime::default(),
         }
     }
 
@@ -313,12 +315,61 @@ impl PlayerRuntime {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ChargeRuntime {
+    pub active: bool,
+    pub post_action_active: bool,
+    pub step: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityRecord {
     pub template: PlayerTemplate,
     pub runtime: PlayerRuntime,
     pub states: StateStore,
     pub slots: EntitySlotStorage,
+}
+
+impl EntityRecord {
+    pub fn activate_charge_runtime(&mut self) {
+        self.runtime.charge.step += 2;
+        self.runtime.charge.active = true;
+        self.runtime.charge.post_action_active = true;
+        self.refresh_charge_at_boost();
+    }
+
+    pub fn tick_charge_post_action(&mut self) -> bool {
+        if !self.runtime.charge.post_action_active {
+            return false;
+        }
+
+        self.runtime.charge.step -= 1;
+        if self.runtime.charge.step <= 0 {
+            self.runtime.charge.active = false;
+            self.runtime.charge.post_action_active = false;
+            self.refresh_charge_at_boost();
+        }
+        true
+    }
+
+    pub fn clear_charge_runtime(&mut self) -> bool {
+        if !self.runtime.charge.active {
+            return false;
+        }
+
+        self.runtime.charge.active = false;
+        self.runtime.charge.post_action_active = false;
+        self.refresh_charge_at_boost();
+        true
+    }
+
+    fn refresh_charge_at_boost(&mut self) {
+        self.runtime.at_boost_millionths = if self.runtime.charge.active {
+            self.template.at_boost_millionths.saturating_mul(3)
+        } else {
+            self.template.at_boost_millionths
+        };
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 use crate::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use crate::rc4::RC4;
-use crate::runtime_v2::entity::{EntityIdx, PlayerTemplate, StateEntry, StatePayload};
+use crate::runtime_v2::entity::{ChargeRuntime, EntityIdx, PlayerTemplate, StateEntry, StatePayload};
 use crate::runtime_v2::extension::{
     EffectHandlerId, ExtensionCapability, ExtensionRegistry, ReplayRendererId, ShowRendererId, SkillId, StateId,
 };
@@ -459,6 +459,30 @@ impl<'a> SkillContext<'a> {
     pub fn owner_idx(&self) -> EntityIdx { self.owner }
 
     pub fn owner(&self) -> Option<&EntityRecord> { self.entities.get(self.owner) }
+
+    pub fn owner_charge_runtime(&self) -> Option<ChargeRuntime> { self.owner().map(|entity| entity.runtime.charge) }
+
+    pub fn activate_owner_charge_runtime(&mut self) -> Result<(), EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        owner.activate_charge_runtime();
+        Ok(())
+    }
+
+    pub fn tick_owner_charge_post_action(&mut self) -> Result<bool, EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        Ok(owner.tick_charge_post_action())
+    }
+
+    pub fn clear_owner_charge_runtime(&mut self) -> Result<bool, EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        Ok(owner.clear_charge_runtime())
+    }
 
     pub fn entity_count(&self) -> usize { self.entities.len() }
 

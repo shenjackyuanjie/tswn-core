@@ -26,8 +26,8 @@ pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,
     ExtensionCapability, ExtensionError, ExtensionRegistry, ExtensionRegistryBuilder, ExtensionVersion, InstalledExtensionSpec,
     MergePolicy, OwnerResolutionPolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, PlayerKindSpec, ProcMask,
-    RegistrationOrder, ReplayRendererId, ReplayRendererSpec, ShowRendererId, ShowRendererSpec, SkillId, SkillPriority, SkillSpec,
-    StateId, StateSpec, TargetPolicy, TemplateSlotId, TemplateSlotSpec, TswnExtension,
+    RegistrationOrder, ReplayRendererId, ReplayRendererSpec, ShowRendererId, ShowRendererSpec, SkillId, SkillPostActionPhase,
+    SkillPriority, SkillSpec, StateId, StateSpec, TargetPolicy, TemplateSlotId, TemplateSlotSpec, TswnExtension,
 };
 pub use oracle::{NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, strict_diff};
 pub use scheduler::{ActionPlan, PhaseScheduler, SkillHookPlan, SkillHookPlanEntry, StateHookPlan, StateHookPlanEntry};
@@ -482,6 +482,10 @@ pub fn push_summon_explode(context: &mut SkillContext<'_>, target: EntityIdx, fi
         target,
         fire_state_key,
     });
+}
+
+pub fn run_charge_post_action_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    context.tick_owner_charge_post_action().expect("charge post_action owner should exist");
 }
 
 pub fn run_shield_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
@@ -1359,10 +1363,14 @@ impl CombatRuntime {
         self.drain_state_hook_plan_into(&post_damage_state_plan, &mut updates);
         let post_action_skill_plan =
             self.scheduler
-                .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::POST_ACTION);
+                .skill_post_action_hook_plan(&self.entities, &self.registry, action.actor, SkillPostActionPhase::Early);
         self.drain_skill_hook_plan_into(&post_action_skill_plan, &mut updates);
         let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_ACTION);
         self.drain_state_hook_plan_into(&state_plan, &mut updates);
+        let post_action_late_skill_plan =
+            self.scheduler
+                .skill_post_action_hook_plan(&self.entities, &self.registry, action.actor, SkillPostActionPhase::Late);
+        self.drain_skill_hook_plan_into(&post_action_late_skill_plan, &mut updates);
         let frame = updates.had_updates().then_some(RuntimeFrame { updates });
         self.round += 1;
         let winner_team = self.world.sync_winner(&self.entities);
@@ -6127,6 +6135,21 @@ mod tests {
         ));
     }
 
+    fn state_marks_charge_boost(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+        let owner = context.owner().expect("state owner should exist");
+        let message = if owner.runtime.charge.active && owner.runtime.at_boost_millionths == 3_000_000 {
+            "charge boosted"
+        } else {
+            "charge inactive"
+        };
+        context.add_update(crate::engine::update::RunUpdate::new(
+            message,
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            entry.legacy_order_key,
+        ));
+    }
+
     fn skill_noop(_: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {}
 
     fn skill_pushes_nested_damage(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
@@ -6748,6 +6771,78 @@ mod tests {
         assert_eq!(frame.updates.updates[1].score, skill.0);
         assert_eq!(frame.updates.updates[2].message, "state mark");
         assert_eq!(frame.updates.updates[2].score, 55);
+    }
+
+    #[test]
+    fn run_minimal_round_dispatches_late_post_action_skill_after_state() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let early = builder
+            .register_skill_with_hooks(
+                "custom",
+                "early-post-action",
+                "custom.early_post_action",
+                ProcMask::POST_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("early post-action skill should register");
+        let late = builder
+            .register_skill_with_hooks_and_post_action_phase(
+                "custom",
+                "late-post-action",
+                "custom.late_post_action",
+                ProcMask::POST_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+                SkillPostActionPhase::Late,
+            )
+            .expect("late post-action skill should register");
+        let state = builder
+            .register_state(
+                "custom",
+                "post-action-state",
+                "custom.post_action_state",
+                ProcMask::POST_ACTION,
+                SkillPriority(0),
+            )
+            .expect("post-action state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([late, early]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry {
+            legacy_order_key: 55,
+            extension_state_id: Some(state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
+        });
+        runtime.set_skill_handler(early, skill_marks_update);
+        runtime.set_skill_handler(late, skill_marks_update);
+        runtime.set_state_handler(state, state_marks_update);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("post-action hooks plus attack should emit update");
+
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .map(|update| (update.message.as_ref(), update.score))
+                .collect::<Vec<_>>(),
+            vec![
+                ("[0]攻击[1]", 3),
+                ("skill mark", early.0),
+                ("state mark", 55),
+                ("skill mark", late.0),
+            ]
+        );
     }
 
     #[test]
@@ -7561,6 +7656,103 @@ mod tests {
         assert_eq!(frame.updates.updates[1].message, "[1]从[迟缓]中解除");
         assert_eq!(frame.updates.updates[1].caster, 0);
         assert_eq!(frame.updates.updates[1].target, 0);
+    }
+
+    #[test]
+    fn run_skill_hooks_charge_post_action_decrements_step_without_update() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let charge = builder
+            .register_skill_with_hooks_and_post_action_phase(
+                "core",
+                "charge",
+                "core.charge",
+                ProcMask::POST_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+                SkillPostActionPhase::Late,
+            )
+            .expect("charge skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([charge])],
+            registry,
+        ));
+        runtime.set_skill_handler(charge, run_charge_post_action_skill);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().activate_charge_runtime();
+
+        let frame = runtime.run_skill_hooks(EntityIdx(0), ProcMask::POST_ACTION);
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+
+        assert!(frame.is_none());
+        assert_eq!(
+            owner.runtime.charge,
+            crate::runtime_v2::entity::ChargeRuntime {
+                active: true,
+                post_action_active: true,
+                step: 1,
+            }
+        );
+        assert_eq!(owner.runtime.at_boost_millionths, 3_000_000);
+    }
+
+    #[test]
+    fn run_minimal_round_charge_late_post_action_clears_after_state_hooks() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let charge = builder
+            .register_skill_with_hooks_and_post_action_phase(
+                "core",
+                "charge",
+                "core.charge",
+                ProcMask::POST_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+                SkillPostActionPhase::Late,
+            )
+            .expect("charge skill should register");
+        let state = builder
+            .register_state("custom", "marker", "custom.marker", ProcMask::POST_ACTION, SkillPriority(0))
+            .expect("state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([charge]),
+                PlayerTemplate::new(2, "right", 1, 10, 3),
+            ],
+            registry,
+        ));
+        {
+            let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+            owner.activate_charge_runtime();
+            owner.runtime.charge.step = 1;
+            owner.states.add_entry(StateEntry {
+                legacy_order_key: 55,
+                extension_state_id: Some(state),
+                hook_mask: ProcMask::POST_ACTION,
+                priority: SkillPriority(0),
+                registration_order: RegistrationOrder(0),
+                payload: StatePayload::None,
+            });
+        }
+        runtime.set_skill_handler(charge, run_charge_post_action_skill);
+        runtime.set_state_handler(state, state_marks_charge_boost);
+
+        let outcome = runtime.run_minimal_round();
+        let frame = outcome.frame.expect("attack and charge-observing state should emit updates");
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+
+        assert_eq!(
+            frame.updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+            vec!["[0]攻击[1]", "charge boosted"]
+        );
+        assert_eq!(
+            owner.runtime.charge,
+            crate::runtime_v2::entity::ChargeRuntime {
+                active: false,
+                post_action_active: false,
+                step: 0,
+            }
+        );
+        assert_eq!(owner.runtime.at_boost_millionths, 1_000_000);
     }
 
     #[test]
