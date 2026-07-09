@@ -817,6 +817,35 @@ impl StateEntry {
             _ => self.priority,
         }
     }
+
+    pub fn positive_clear_message(self, owner_alive: bool) -> Option<(i32, &'static str)> {
+        match self.payload {
+            StatePayload::Haste { .. } if owner_alive => Some((300, "[1]从[疾走]中解除")),
+            StatePayload::Iron { .. } => Some((400, "[1]的[铁壁]被打消了")),
+            StatePayload::None
+            | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::ShieldValue(_)
+            | StatePayload::Curse { .. }
+            | StatePayload::Poison { .. }
+            | StatePayload::Haste { .. }
+            | StatePayload::Charm { .. }
+            | StatePayload::Slow { .. } => None,
+        }
+    }
+
+    pub fn is_positive_state(self) -> bool {
+        match self.payload {
+            StatePayload::ShieldValue(shield) => shield > 0,
+            StatePayload::Haste { .. } => true,
+            StatePayload::Iron { step, .. } => step > 0,
+            StatePayload::None
+            | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Curse { .. }
+            | StatePayload::Poison { .. }
+            | StatePayload::Charm { .. }
+            | StatePayload::Slow { .. } => false,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -909,6 +938,31 @@ impl StateStore {
         self.rebuild_hook_mask();
         self.generation = self.generation.wrapping_add(1);
         true
+    }
+
+    pub fn clear_positive_states_with_ordered_messages(&mut self, owner_alive: bool) -> Vec<(i32, &'static str)> {
+        let mut messages = Vec::new();
+        let mut to_remove = Vec::new();
+
+        for entry in &self.entries {
+            if entry.is_positive_state() {
+                if let Some(message) = entry.positive_clear_message(owner_alive) {
+                    messages.push((message.0, entry.registration_order, entry.legacy_order_key, message.1));
+                }
+                to_remove.push(entry.legacy_order_key);
+            }
+        }
+
+        messages.sort_unstable_by(|(priority_a, order_a, key_a, _), (priority_b, order_b, key_b, _)| {
+            priority_a
+                .cmp(priority_b)
+                .then_with(|| order_a.cmp(order_b))
+                .then_with(|| key_a.cmp(key_b))
+        });
+        for legacy_order_key in to_remove {
+            self.clear_legacy_key(legacy_order_key);
+        }
+        messages.into_iter().map(|(priority, _, _, message)| (priority, message)).collect()
     }
 
     pub fn entries_in_hook_order(&self) -> Vec<&StateEntry> {

@@ -507,6 +507,13 @@ impl<'a> SkillContext<'a> {
         Ok(owner.clear_positive_runtime_messages())
     }
 
+    pub fn clear_owner_positive_state_messages(&mut self) -> Result<Vec<(i32, &'static str)>, EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        Ok(owner.states.clear_positive_states_with_ordered_messages(owner.runtime.alive))
+    }
+
     pub fn entity_count(&self) -> usize { self.entities.len() }
 
     pub fn entity(&self, entity: EntityIdx) -> Result<&EntityRecord, EffectContextError> {

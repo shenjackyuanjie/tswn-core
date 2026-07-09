@@ -6185,6 +6185,19 @@ mod tests {
         }
     }
 
+    fn skill_clears_positive_states(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        let messages = context.clear_owner_positive_state_messages().expect("clear-positive owner should exist");
+        let owner = context.owner_idx();
+        for (priority, message) in messages {
+            context.add_update(crate::engine::update::RunUpdate::new(
+                message,
+                owner.0 as usize,
+                owner.0 as usize,
+                priority as u32,
+            ));
+        }
+    }
+
     fn skill_noop(_: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {}
 
     fn skill_pushes_nested_damage(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
@@ -7930,6 +7943,122 @@ mod tests {
         assert!(!owner.runtime.charge.active);
         assert_eq!(owner.runtime.accumulate.acc(), 1.600000023841858);
         assert_eq!(owner.runtime.at_boost_millionths, 1_000_000);
+    }
+
+    #[test]
+    fn run_skill_hooks_clear_positive_states_removes_shield_and_orders_messages() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let clear = builder
+            .register_skill_with_hooks(
+                "custom",
+                "clear-positive-states",
+                "custom.clear_positive_states",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("clear-positive skill should register");
+        let shield = builder
+            .register_state("core", "shield", "core.shield", ProcMask::POST_DEFEND, SkillPriority(6000))
+            .expect("shield state should register");
+        let haste = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let iron = builder
+            .register_state(
+                "core",
+                "iron",
+                "core.iron",
+                ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+                SkillPriority(10),
+            )
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([clear])],
+            registry,
+        ));
+        {
+            let store = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().states;
+            store.add_entry(StateEntry::iron(79, iron, 300, 1, SkillPriority(10)));
+            store.add_entry(StateEntry::shield(74, shield, 50, SkillPriority(6000)));
+            store.add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
+        }
+        runtime.set_skill_handler(clear, skill_clears_positive_states);
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("clear-positive state messages should emit");
+        let store = &runtime.entities.get(EntityIdx(0)).unwrap().states;
+
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .map(|update| (update.message.as_ref(), update.score))
+                .collect::<Vec<_>>(),
+            vec![("[1]从[疾走]中解除", 300), ("[1]的[铁壁]被打消了", 400)]
+        );
+        assert_eq!(store.entry(74), None);
+        assert_eq!(store.entry(77), None);
+        assert_eq!(store.entry(79), None);
+    }
+
+    #[test]
+    fn run_skill_hooks_clear_positive_states_suppresses_dead_haste_message() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let clear = builder
+            .register_skill_with_hooks(
+                "custom",
+                "clear-positive-states",
+                "custom.clear_positive_states",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("clear-positive skill should register");
+        let haste = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let iron = builder
+            .register_state(
+                "core",
+                "iron",
+                "core.iron",
+                ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+                SkillPriority(10),
+            )
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([clear])],
+            registry,
+        ));
+        {
+            let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+            owner.runtime.alive = false;
+            owner.states.add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
+            owner.states.add_entry(StateEntry::iron(79, iron, 300, 1, SkillPriority(10)));
+        }
+        runtime.set_skill_handler(clear, skill_clears_positive_states);
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("iron clear message should emit");
+        let store = &runtime.entities.get(EntityIdx(0)).unwrap().states;
+
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .map(|update| (update.message.as_ref(), update.score))
+                .collect::<Vec<_>>(),
+            vec![("[1]的[铁壁]被打消了", 400)]
+        );
+        assert_eq!(store.entry(77), None);
+        assert_eq!(store.entry(79), None);
     }
 
     #[test]
