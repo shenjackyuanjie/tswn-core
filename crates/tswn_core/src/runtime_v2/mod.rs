@@ -204,7 +204,7 @@ impl RuntimeV2Runner {
         registry: ExtensionRegistry,
         kind: PlayerKindId,
         summon_skill: SkillId,
-        config: CustomBed2ZombieTemplateConfig,
+        config: CustomBed2ZombieTemplateConfig<'_>,
     ) -> Result<Self, CustomBed2ZombieTemplateImportError> {
         let template = CustomBed2Import::roster_into_prepared_template_with_zombie_overlay(
             raw_groups,
@@ -259,7 +259,7 @@ impl RuntimeV2Runner {
         registry: ExtensionRegistry,
         kind: PlayerKindId,
         summon_skill: SkillId,
-        config: CustomBed2ZombieTemplateConfig,
+        config: CustomBed2ZombieTemplateConfig<'_>,
     ) -> Result<Self, CustomBed2ZombieTemplateImportError> {
         let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
         let mut runner = Self::from_bed2_roster_with_zombie_overlay(&raw_groups, registry, kind, summon_skill, config)?;
@@ -316,7 +316,7 @@ impl RuntimeV2Runner {
         registry: ExtensionRegistry,
         bed2_kind: PlayerKindId,
         bed2_summon_skill: SkillId,
-        config: CustomBed2ZombieTemplateConfig,
+        config: CustomBed2ZombieTemplateConfig<'_>,
     ) -> Result<Self, CustomBed2ZombieTemplateImportError> {
         let template = CustomBed2Import::mixed_roster_into_prepared_template_with_zombie_overlay(
             raw_groups,
@@ -373,7 +373,7 @@ impl RuntimeV2Runner {
         registry: ExtensionRegistry,
         bed2_kind: PlayerKindId,
         bed2_summon_skill: SkillId,
-        config: CustomBed2ZombieTemplateConfig,
+        config: CustomBed2ZombieTemplateConfig<'_>,
     ) -> Result<Self, CustomBed2ZombieTemplateImportError> {
         let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
         let mut runner =
@@ -1245,9 +1245,10 @@ pub struct CustomBed2ShadowTemplateConfig<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CustomBed2ZombieTemplateConfig {
+pub struct CustomBed2ZombieTemplateConfig<'a> {
     pub template_slot: TemplateSlotId,
     pub zombie_kind: PlayerKindId,
+    pub skill_export_name_prefix: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1294,6 +1295,7 @@ impl From<SlotError> for CustomBed2ShadowTemplateImportError {
 pub enum CustomBed2ZombieTemplateImportError {
     Roster(CustomBed2RosterImportError),
     MixedRoster(CustomMixedRosterImportError),
+    MissingSkillExportName { export_name: String },
     Slot(SlotError),
 }
 
@@ -1396,7 +1398,7 @@ impl CustomBed2Import {
         registry: ExtensionRegistry,
         kind: PlayerKindId,
         summon_skill: SkillId,
-        config: CustomBed2ZombieTemplateConfig,
+        config: CustomBed2ZombieTemplateConfig<'_>,
     ) -> Result<PreparedCombatTemplate, CustomBed2ZombieTemplateImportError> {
         let players = Self::roster_into_player_templates(raw_groups, kind, summon_skill)?;
         Self::prepared_template_with_zombie_overlay(raw_groups, registry, players, config)
@@ -1453,10 +1455,12 @@ impl CustomBed2Import {
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
         players: Vec<PlayerTemplate>,
-        config: CustomBed2ZombieTemplateConfig,
+        config: CustomBed2ZombieTemplateConfig<'_>,
     ) -> Result<PreparedCombatTemplate, CustomBed2ZombieTemplateImportError> {
+        let zombie_template =
+            Self::first_zombie_template_from_roster(raw_groups, config.zombie_kind, &registry, config.skill_export_name_prefix)?;
         let mut template = PreparedCombatTemplate::with_registry(players, registry);
-        if let Some(zombie_template) = Self::first_zombie_template_from_roster(raw_groups, config.zombie_kind) {
+        if let Some(zombie_template) = zombie_template {
             template
                 .slots
                 .set(config.template_slot, SlotValue::PlayerTemplate(Box::new(zombie_template)))?;
@@ -1527,7 +1531,7 @@ impl CustomBed2Import {
         registry: ExtensionRegistry,
         bed2_kind: PlayerKindId,
         bed2_summon_skill: SkillId,
-        config: CustomBed2ZombieTemplateConfig,
+        config: CustomBed2ZombieTemplateConfig<'_>,
     ) -> Result<PreparedCombatTemplate, CustomBed2ZombieTemplateImportError> {
         let players = Self::mixed_roster_into_player_templates(raw_groups, bed2_kind, bed2_summon_skill)?;
         Self::prepared_template_with_zombie_overlay(raw_groups, registry, players, config)
@@ -1688,7 +1692,12 @@ impl CustomBed2Import {
         None
     }
 
-    fn first_zombie_template_from_roster(raw_groups: &[Vec<String>], zombie_kind: PlayerKindId) -> Option<PlayerTemplate> {
+    fn first_zombie_template_from_roster(
+        raw_groups: &[Vec<String>],
+        zombie_kind: PlayerKindId,
+        registry: &ExtensionRegistry,
+        skill_export_name_prefix: &str,
+    ) -> Result<Option<PlayerTemplate>, CustomBed2ZombieTemplateImportError> {
         for (team_index, group) in raw_groups.iter().enumerate() {
             for raw in group {
                 if crate::player::Player::check_is_seed(raw.trim()) {
@@ -1703,15 +1712,17 @@ impl CustomBed2Import {
                 let Some(zombie_overlay) = overlay.zombie.as_ref() else {
                     continue;
                 };
-                return Some(Self::zombie_template_from_overlay(
+                return Ok(Some(Self::zombie_template_from_overlay(
                     &import,
                     team_index,
                     zombie_kind,
                     zombie_overlay,
-                ));
+                    registry,
+                    skill_export_name_prefix,
+                )?));
             }
         }
-        None
+        Ok(None)
     }
 
     fn summon_template_from_overlay(
@@ -1773,10 +1784,12 @@ impl CustomBed2Import {
         team: usize,
         zombie_kind: PlayerKindId,
         overlay: &crate::player::overlay::MinionOverlay,
-    ) -> PlayerTemplate {
+        registry: &ExtensionRegistry,
+        skill_export_name_prefix: &str,
+    ) -> Result<PlayerTemplate, CustomBed2ZombieTemplateImportError> {
         let attrs = overlay.attrs.unwrap_or([0, 0, 0, 0, 0, 0, 0, 1]);
-        let skills = Self::zombie_skill_loadout_from_overlay(overlay);
-        PlayerTemplate::with_kind(
+        let skills = Self::zombie_skill_loadout_from_overlay(overlay, registry, skill_export_name_prefix)?;
+        Ok(PlayerTemplate::with_kind(
             0,
             format!("{}?zombie", import.name),
             zombie_kind,
@@ -1790,7 +1803,7 @@ impl CustomBed2Import {
         .with_magic_point(attrs[6].max(0) >> 1)
         .with_wisdom(attrs[6].max(0))
         .with_speed_points(0)
-        .with_skill_loadout(skills)
+        .with_skill_loadout(skills))
     }
 
     fn summon_skill_loadout_from_overlay(
@@ -1856,12 +1869,66 @@ impl CustomBed2Import {
         }
     }
 
-    fn zombie_skill_loadout_from_overlay(overlay: &crate::player::overlay::MinionOverlay) -> SkillLoadout {
-        if overlay.skills.as_ref().is_some_and(|skills| !skills.is_empty()) {
-            // The v2 zombie import surface currently preserves attrs/move_state only.
-            // Skill-bearing zombie overlays need a dedicated registry mapping slice.
+    fn zombie_skill_loadout_from_overlay(
+        overlay: &crate::player::overlay::MinionOverlay,
+        registry: &ExtensionRegistry,
+        skill_export_name_prefix: &str,
+    ) -> Result<SkillLoadout, CustomBed2ZombieTemplateImportError> {
+        let Some(skill_levels) = overlay.skills.as_ref() else {
+            return Ok(SkillLoadout::default());
+        };
+        let mut skills = Vec::new();
+        for (raw_name, _) in skill_levels {
+            let Some(suffix) = Self::zombie_overlay_skill_export_suffix(raw_name) else {
+                continue;
+            };
+            let export_name = if skill_export_name_prefix.is_empty() {
+                suffix
+            } else {
+                format!("{skill_export_name_prefix}.{suffix}")
+            };
+            let skill_id = registry.skill_id_by_export_name(&export_name).ok_or_else(|| {
+                CustomBed2ZombieTemplateImportError::MissingSkillExportName {
+                    export_name: export_name.clone(),
+                }
+            })?;
+            if !skills.contains(&skill_id) {
+                skills.push(skill_id);
+            }
         }
-        SkillLoadout::default()
+        Ok(SkillLoadout::from_skills(skills))
+    }
+
+    fn zombie_overlay_skill_export_suffix(name: &str) -> Option<String> {
+        match crate::player::skill::player_classified_skill_ref_from_name(name) {
+            Some(crate::player::skill::ClassifiedSkillRef::Normal(skill_id)) => {
+                return Some(Self::normal_skill_export_suffix(skill_id));
+            }
+            Some(crate::player::skill::ClassifiedSkillRef::SummonFire1) => return Some("summon_fire1".to_owned()),
+            Some(crate::player::skill::ClassifiedSkillRef::SummonFire2) => return Some("summon_fire2".to_owned()),
+            Some(crate::player::skill::ClassifiedSkillRef::SummonExplode) => return Some("explode".to_owned()),
+            Some(crate::player::skill::ClassifiedSkillRef::PhantomPossess) => return Some("possess".to_owned()),
+            None => {}
+        }
+        match Self::normalize_minion_overlay_skill_name(name).as_str() {
+            "possess" | "possession" => Some("possess".to_owned()),
+            "explode" | "selfdestruct" | "self_destruct" | "summonexplode" => Some("explode".to_owned()),
+            _ => crate::player::skill::skill_name_to_id(name).map(Self::normal_skill_export_suffix),
+        }
+    }
+
+    fn normal_skill_export_suffix(skill_id: usize) -> String {
+        let export_name = crate::player::skill::skill_name_for_export(skill_id);
+        export_name.strip_prefix("skl").unwrap_or(export_name.as_str()).to_ascii_lowercase()
+    }
+
+    fn normalize_minion_overlay_skill_name(name: &str) -> String {
+        let lower = name.trim().to_ascii_lowercase();
+        lower
+            .strip_prefix("skl")
+            .or_else(|| lower.strip_prefix("skill"))
+            .unwrap_or(lower.as_str())
+            .to_string()
     }
 
     fn player_overlay_from_raw(raw: &str) -> Option<crate::player::overlay::PlayerOverlay> {
@@ -3668,6 +3735,24 @@ mod tests {
         let zombie_template_slot = builder
             .reserve_template_slot("custom", "bed2-zombie-template", "custom.bed2.zombie_template")
             .expect("bed2 zombie template slot should reserve");
+        let zombie_heal = builder
+            .register_skill(
+                "custom",
+                "zombie-heal",
+                "custom.minion.heal",
+                TargetPolicy::Ally,
+                SkillPriority(1),
+            )
+            .expect("zombie heal skill should register");
+        let zombie_explode = builder
+            .register_skill(
+                "custom",
+                "zombie-explode",
+                "custom.minion.explode",
+                TargetPolicy::Enemy,
+                SkillPriority(2),
+            )
+            .expect("zombie explode skill should register");
         let bed2 = builder
             .register_player_kind_with_policies(
                 "custom",
@@ -3699,7 +3784,10 @@ mod tests {
         let registry = builder.build();
         let raw_groups = vec![
             vec!["alpha@red+bed2[4500]".to_owned()],
-            vec![r#"beta@blue@bed2+ol:{"zombie":{"attrs":[46,47,48,49,50,51,52,77]}}"#.to_owned()],
+            vec![
+                r#"beta@blue@bed2+ol:{"zombie":{"attrs":[46,47,48,49,50,51,52,77],"skills":{"sklheal":3,"sklexplode":4}}}"#
+                    .to_owned(),
+            ],
         ];
 
         let template = CustomBed2Import::roster_into_prepared_template_with_zombie_overlay(
@@ -3710,6 +3798,7 @@ mod tests {
             CustomBed2ZombieTemplateConfig {
                 template_slot: zombie_template_slot,
                 zombie_kind,
+                skill_export_name_prefix: "custom.minion",
             },
         )
         .expect("bed2 roster with zombie overlay should build prepared template");
@@ -3735,7 +3824,49 @@ mod tests {
         assert_eq!(zombie_template.wisdom, 16);
         assert_eq!(zombie_template.magic_point, 8);
         assert_eq!(zombie_template.move_state.speed_points, 0);
-        assert!(zombie_template.skills.is_empty());
+        assert_eq!(zombie_template.skills.skills(), &[zombie_heal, zombie_explode]);
+        assert_eq!(zombie_template.skills.active_order(), &[0, 1]);
+    }
+
+    #[test]
+    fn custom_bed2_zombie_overlay_import_rejects_missing_skill_export_name() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let zombie_template_slot = builder
+            .reserve_template_slot("custom", "bed2-zombie-template", "custom.bed2.zombie_template")
+            .expect("bed2 zombie template slot should reserve");
+        let bed2 = builder
+            .register_player_kind("custom", "bed2", "custom.bed2")
+            .expect("bed2 kind should register");
+        let zombie_kind = builder
+            .register_player_kind("custom", "bed2-zombie", "custom.bed2.zombie")
+            .expect("bed2 zombie kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![vec![
+            r#"beta@blue@bed2+ol:{"zombie":{"attrs":[46,47,48,49,50,51,52,77],"skills":{"sklheal":3}}}"#.to_owned(),
+        ]];
+
+        let err = CustomBed2Import::roster_into_prepared_template_with_zombie_overlay(
+            &raw_groups,
+            registry,
+            bed2,
+            summon,
+            CustomBed2ZombieTemplateConfig {
+                template_slot: zombie_template_slot,
+                zombie_kind,
+                skill_export_name_prefix: "custom.minion",
+            },
+        )
+        .expect_err("missing zombie skill export should reject parser-facing import");
+
+        assert_eq!(
+            err,
+            CustomBed2ZombieTemplateImportError::MissingSkillExportName {
+                export_name: "custom.minion.heal".to_owned(),
+            }
+        );
     }
 
     #[test]
@@ -4285,6 +4416,7 @@ mod tests {
             CustomBed2ZombieTemplateConfig {
                 template_slot: zombie_template_slot,
                 zombie_kind,
+                skill_export_name_prefix: "custom.minion",
             },
         )
         .expect("bed2 raw runner should import zombie overlay template slot");
