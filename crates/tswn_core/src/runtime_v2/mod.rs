@@ -1337,6 +1337,16 @@ pub const DEFAULT_BED2_DEFENSE: i32 = 99;
 pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
 
 pub const DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT: &str = "custom.summon";
+pub const DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT: &str = "custom.summon.fire";
+pub const DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT: &str = "custom.summon.explode";
+pub const DEFAULT_CUSTOM_BED2_SUMMON_TEMPLATE_EXPORT: &str = "custom.bed2.summon_template";
+pub const DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT: &str = "custom.bed2.shadow_template";
+pub const DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT: &str = "custom.bed2.zombie_template";
+pub const DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT: &str = "custom.bed2.summon";
+pub const DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT: &str = "custom.bed2.shadow";
+pub const DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT: &str = "custom.bed2.zombie";
+pub const DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT: &str = "custom.minion.possess";
+pub const DEFAULT_CUSTOM_MINION_SKILL_EXPORT_PREFIX: &str = "custom.minion";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomBed2Import {
@@ -1423,6 +1433,49 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::Enemy,
         SkillPriority(0),
     )?;
+    builder.register_skill(
+        "custom",
+        "summon-fire",
+        DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT,
+        TargetPolicy::Enemy,
+        SkillPriority(1),
+    )?;
+    builder.register_skill(
+        "custom",
+        "summon-explode",
+        DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT,
+        TargetPolicy::Enemy,
+        SkillPriority(2),
+    )?;
+    builder.register_skill(
+        "custom",
+        "minion-possess",
+        DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT,
+        TargetPolicy::Enemy,
+        SkillPriority(3),
+    )?;
+    builder.register_skill(
+        "custom",
+        "minion-heal",
+        "custom.minion.heal",
+        TargetPolicy::Ally,
+        SkillPriority(4),
+    )?;
+    let summon_template_slot = builder.reserve_template_slot(
+        "custom",
+        "bed2-summon-template",
+        DEFAULT_CUSTOM_BED2_SUMMON_TEMPLATE_EXPORT,
+    )?;
+    let shadow_template_slot = builder.reserve_template_slot(
+        "custom",
+        "bed2-shadow-template",
+        DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT,
+    )?;
+    let zombie_template_slot = builder.reserve_template_slot(
+        "custom",
+        "bed2-zombie-template",
+        DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT,
+    )?;
     let bed2 = builder.register_player_kind_with_policies(
         "custom",
         "bed2",
@@ -1435,7 +1488,62 @@ pub fn default_custom_runtime_v2_import_config()
             inherit_owner_def_res: false,
         },
     )?;
-    Ok(CustomRuntimeV2ImportConfig::new(builder.build(), bed2, summon))
+    let summon_kind = builder.register_player_kind_with_policies(
+        "custom",
+        "bed2-summon",
+        DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT,
+        PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+        PlayerKindPolicies {
+            owner_resolution: OwnerResolutionPolicy::RootOwner,
+            damage_share: DamageSharePolicy::ShareToOwner,
+            merge: MergePolicy::FixedLane,
+            inherit_owner_def_res: true,
+        },
+    )?;
+    let shadow_kind = builder.register_player_kind_with_policies(
+        "custom",
+        "bed2-shadow",
+        DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT,
+        PlayerKindFlags::MINION,
+        PlayerKindPolicies {
+            owner_resolution: OwnerResolutionPolicy::RootOwner,
+            damage_share: DamageSharePolicy::ShareToOwner,
+            merge: MergePolicy::FixedLane,
+            inherit_owner_def_res: false,
+        },
+    )?;
+    let zombie_kind = builder.register_player_kind_with_policies(
+        "custom",
+        "bed2-zombie",
+        DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT,
+        PlayerKindFlags::MINION,
+        PlayerKindPolicies {
+            owner_resolution: OwnerResolutionPolicy::RootOwner,
+            damage_share: DamageSharePolicy::ShareToOwner,
+            merge: MergePolicy::FixedLane,
+            inherit_owner_def_res: false,
+        },
+    )?;
+    Ok(CustomRuntimeV2ImportConfig::new(builder.build(), bed2, summon).with_bed2_minion_overlays(
+        CustomBed2MinionOverlayConfig {
+            summon: CustomBed2SummonTemplateConfig {
+                template_slot: summon_template_slot,
+                summon_kind,
+                fire_skill_export_name: DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT,
+                explode_skill_export_name: DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT,
+            },
+            shadow: CustomBed2ShadowTemplateConfig {
+                template_slot: shadow_template_slot,
+                shadow_kind,
+                possess_skill_export_name: DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT,
+            },
+            zombie: CustomBed2ZombieTemplateConfig {
+                template_slot: zombie_template_slot,
+                zombie_kind,
+                skill_export_name_prefix: DEFAULT_CUSTOM_MINION_SKILL_EXPORT_PREFIX,
+            },
+        },
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5457,6 +5565,9 @@ delta@blue+bed2[8]\n";
         let config = default_custom_runtime_v2_import_config().expect("default custom runtime v2 profile should build");
         let bed2 = config.bed2_kind;
         let summon = config.bed2_summon_skill;
+        let overlays = config
+            .bed2_minion_overlays
+            .expect("default custom profile should install bed2 minion overlay import");
         assert_eq!(
             config
                 .registry
@@ -5464,9 +5575,42 @@ delta@blue+bed2[8]\n";
                 .map(|spec| spec.id),
             Some(summon)
         );
+        let fire = config
+            .registry
+            .skill_id_by_export_name(DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT)
+            .expect("default profile should register summon fire export");
+        let explode = config
+            .registry
+            .skill_id_by_export_name(DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT)
+            .expect("default profile should register summon explode export");
+        let possess = config
+            .registry
+            .skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT)
+            .expect("default profile should register minion possess export");
+        let zombie_heal = config
+            .registry
+            .skill_id_by_export_name("custom.minion.heal")
+            .expect("default profile should register minion heal export");
         assert_eq!(config.registry.player_kind(bed2).unwrap().export_name, "custom.bed2");
+        assert_eq!(
+            config.registry.player_kind(overlays.summon.summon_kind).unwrap().export_name,
+            DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT
+        );
+        assert_eq!(
+            config.registry.player_kind(overlays.shadow.shadow_kind).unwrap().export_name,
+            DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT
+        );
+        assert_eq!(
+            config.registry.player_kind(overlays.zombie.zombie_kind).unwrap().export_name,
+            DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT
+        );
 
-        let raw_input = "plain@red\nalpha@red@bed2\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
+        let raw_input = "plain@red\n\
+alpha@red@bed2+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire2\":4,\"sklfire1\":5},\"inherit_owner_def_res\":true}}\n\
+beta@red@bed2+ol:{\"shadow\":{\"attrs\":[47,48,49,50,51,52,53,88],\"skills\":{\"phantom:sklpossess\":5}}}\n\
+gamma@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{\"sklheal\":3}}}\n\n\
+seed:custom-seed@!\n\n\
+delta@blue+bed2[8]\n";
         let runner = RuntimeV2Runner::from_custom_mixed_namerena_raw(raw_input.to_owned(), config)
             .expect("default custom profile should construct mixed runner");
         let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
@@ -5477,6 +5621,43 @@ delta@blue+bed2[8]\n";
             runner.runtime().entities.get(EntityIdx(1)).unwrap().template.skills.skills(),
             &[summon]
         );
+        let SlotValue::PlayerTemplate(summon_template) = runner
+            .runtime()
+            .template_slots
+            .get(overlays.summon.template_slot)
+            .expect("default profile should populate summon template slot")
+        else {
+            panic!("default profile summon overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(summon_template.kind, overlays.summon.summon_kind);
+        assert_eq!(summon_template.max_hp, 123);
+        assert_eq!(summon_template.policy_overrides.inherit_owner_def_res, Some(true));
+        assert_eq!(summon_template.skills.skills(), &[fire, fire, explode]);
+        assert_eq!(summon_template.skills.active_order(), &[1, 0]);
+
+        let SlotValue::PlayerTemplate(shadow_template) = runner
+            .runtime()
+            .template_slots
+            .get(overlays.shadow.template_slot)
+            .expect("default profile should populate shadow template slot")
+        else {
+            panic!("default profile shadow overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(shadow_template.kind, overlays.shadow.shadow_kind);
+        assert_eq!(shadow_template.max_hp, 88);
+        assert_eq!(shadow_template.skills.skills(), &[possess]);
+
+        let SlotValue::PlayerTemplate(zombie_template) = runner
+            .runtime()
+            .template_slots
+            .get(overlays.zombie.template_slot)
+            .expect("default profile should populate zombie template slot")
+        else {
+            panic!("default profile zombie overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(zombie_template.kind, overlays.zombie.zombie_kind);
+        assert_eq!(zombie_template.max_hp, 77);
+        assert_eq!(zombie_template.skills.skills(), &[zombie_heal]);
     }
 
     #[test]
