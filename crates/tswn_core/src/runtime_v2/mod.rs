@@ -273,14 +273,23 @@ pub fn push_summon_from_template_slot(
     context: &mut SkillContext<'_>,
     template_slot: TemplateSlotId,
 ) -> Result<(), RuntimeV2SummonHandlerError> {
+    push_summon_from_template_slot_with_message(context, template_slot, "出现一个新的[1]")
+}
+
+pub fn push_summon_from_template_slot_with_message(
+    context: &mut SkillContext<'_>,
+    template_slot: TemplateSlotId,
+    message: impl Into<String>,
+) -> Result<(), RuntimeV2SummonHandlerError> {
     let summon_template = match context.template_slot(template_slot)? {
         Some(SlotValue::PlayerTemplate(template)) => template.as_ref().clone(),
         Some(_) => return Err(RuntimeV2SummonHandlerError::InvalidTemplateSlot(template_slot)),
         None => return Err(RuntimeV2SummonHandlerError::MissingTemplateSlot(template_slot)),
     };
-    context.push_nested(QueuedEffect::Spawn {
+    context.push_nested(QueuedEffect::SpawnWithMessage {
         caster: context.owner_idx(),
         template: summon_template,
+        message: message.into(),
     });
     Ok(())
 }
@@ -1381,6 +1390,54 @@ mod tests {
         assert_eq!(runtime.entities.len(), 1);
         assert_eq!(frame.updates.updates.len(), 1);
         assert_eq!(frame.updates.updates[0].message, "missing summon template");
+    }
+
+    #[test]
+    fn push_summon_from_template_slot_can_emit_legacy_summon_message() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill_with_hooks(
+                "custom",
+                "summon",
+                "custom.summon",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("summon skill should register");
+        let summon_template = builder
+            .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
+            .expect("bed2 summon template slot should reserve");
+        let registry = builder.build();
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "bed2", 0, 3000, 0).with_skills([summon])],
+            registry,
+        );
+        let payload = PlayerTemplate::new(2, "bed2?0", 0, 1000, 1).with_skills([summon]);
+        template
+            .slots
+            .set(summon_template, SlotValue::PlayerTemplate(Box::new(payload.clone())))
+            .expect("bed2 summon template slot should write");
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            summon,
+            skill_bed2_template_slot_legacy_summon_handler,
+            &[ExtensionCapability::ReadTemplateSlots],
+        );
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("bed2 summon handler should spawn template payload");
+
+        assert_eq!(runtime.entities.len(), 2);
+        assert_eq!(frame.updates.updates.len(), 1);
+        assert_eq!(frame.updates.updates[0].message, "召唤出[1]");
+        assert_eq!(frame.updates.updates[0].target, 1);
+        let summoned = runtime.entities.get(EntityIdx(1)).expect("summon should spawn");
+        assert_eq!(summoned.template.name, payload.name);
+        assert_eq!(summoned.template.skills.skills(), payload.skills.skills());
+        assert_eq!(summoned.runtime.owner, EntityIdx(0));
+        assert_eq!(summoned.runtime.root_owner, EntityIdx(0));
     }
 
     #[test]
@@ -3789,6 +3846,11 @@ mod tests {
 
     fn skill_bed2_template_slot_summon_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
         push_summon_from_template_slot(context, TemplateSlotId(0))
+            .expect("bed2 summon handler should read template slot payload");
+    }
+
+    fn skill_bed2_template_slot_legacy_summon_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        push_summon_from_template_slot_with_message(context, TemplateSlotId(0), "召唤出[1]")
             .expect("bed2 summon handler should read template slot payload");
     }
 
