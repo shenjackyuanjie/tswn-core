@@ -1049,6 +1049,8 @@ impl CombatRuntime {
                     let killed_caster = self.kill_entity_without_damage_into(caster, updates);
                     if self.apply_damage_into(caster, target, amount, updates) {
                         self.drain_lethal_damage_hooks_into(caster, target, updates);
+                    } else if amount > 0 {
+                        self.apply_fire_on_damage(target, fire_state_key);
                     }
                     if killed_caster {
                         self.drain_die_hooks_into(caster, updates);
@@ -1275,6 +1277,15 @@ impl CombatRuntime {
             self.cleanup_linked_minions_for_owner(target, updates);
         }
         killed
+    }
+
+    fn apply_fire_on_damage(&mut self, target: EntityIdx, fire_state_key: u32) {
+        let Some(target_entity) = self.entities.get_mut(target) else {
+            panic!("unknown runtime_v2 fire target entity: {}", target.0);
+        };
+        if target_entity.runtime.hp > 0 {
+            target_entity.states.add_fire_mag_half_step(fire_state_key);
+        }
     }
 
     fn kill_entity_without_damage_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) -> bool {
@@ -2996,6 +3007,7 @@ mod tests {
         assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 0);
         assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
         assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 2.0);
         assert_eq!(runtime.rng.i, expected_rng.i);
         assert_eq!(runtime.rng.j, expected_rng.j);
         assert_eq!(runtime.rng.main_val, expected_rng.main_val);

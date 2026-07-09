@@ -442,6 +442,25 @@ impl StateStore {
         self.entry(legacy_order_key).and_then(StateEntry::fire_mag_value).unwrap_or(0.0)
     }
 
+    pub fn add_fire_mag_half_step(&mut self, legacy_order_key: u32) {
+        if let Some(idx) = self.index.get(&legacy_order_key).copied()
+            && let Some(entry) = self.entries.get_mut(idx)
+        {
+            match &mut entry.payload {
+                StatePayload::FireMagHalfSteps(half_steps) => {
+                    *half_steps += 1;
+                }
+                StatePayload::None => {
+                    entry.payload = StatePayload::FireMagHalfSteps(1);
+                }
+            }
+            self.generation = self.generation.wrapping_add(1);
+            return;
+        }
+
+        self.add_entry(StateEntry::fire_mag(legacy_order_key, 1));
+    }
+
     pub fn add_legacy_key(&mut self, legacy_order_key: u32) -> bool { self.add_entry(StateEntry::legacy(legacy_order_key)) }
 
     pub fn add_entry(&mut self, entry: StateEntry) -> bool {
@@ -930,5 +949,22 @@ mod tests {
 
         assert_eq!(store.entry(91).and_then(StateEntry::fire_mag_value), Some(1.5));
         assert_eq!(store.fire_mag(91), 1.5);
+    }
+
+    #[test]
+    fn state_store_adds_or_increments_fire_mag_half_steps() {
+        let mut store = StateStore::default();
+
+        store.add_fire_mag_half_step(91);
+        assert_eq!(store.fire_mag(91), 0.5);
+        assert_eq!(store.generation(), 1);
+
+        store.add_fire_mag_half_step(91);
+        assert_eq!(store.fire_mag(91), 1.0);
+        assert_eq!(store.generation(), 2);
+
+        assert!(store.add_legacy_key(22));
+        store.add_fire_mag_half_step(22);
+        assert_eq!(store.fire_mag(22), 0.5);
     }
 }
