@@ -56,7 +56,7 @@ git diff --name-status github/main..github/custom
 3. **minion fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享，以及 owner death / explicit remove 清理 linked minion；后续补完整真实 minion handler。
 4. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
 5. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data，并补 HP bar show renderer payload；wasm 结构化 replay view 已对 HP marker 强制 `show_hp`。
-6. **runner fixture**：已新增最小 v2 strict-diff golden，并把 linked minion owner-death cleanup、merge 与 multi-round run-until-winner 纳入归一化 runner golden；后续把 custom 分支 large / fight_multi 的关键样例缩成更多 runner golden。
+6. **runner fixture**：已新增最小 v2 strict-diff golden，并把 linked minion owner-death cleanup、merge 与 multi-round run-until-winner 纳入归一化 runner golden；已从 custom 分支 large / fight_multi 真实 raw 输入抽出初始化 parity golden，覆盖 seed RNG、team 编号和 round/alive 派生视图；后续继续把关键样例缩成完整 runner golden。
 
 ---
 
@@ -88,5 +88,5 @@ git diff --name-status github/main..github/custom
 ## 5. 未完成项
 
 - summon 完整内置技能迁移、完整真实 minion handler。
-- custom large / fight_multi runner 归一化 golden 扩展。
+- custom large / fight_multi runner 归一化 golden 继续扩展到完整 replay 行为。
 - 将审计表中的每个验收 case 接入 strict diff 或稳定单测。
