@@ -438,3 +438,94 @@ test("v2 normalized replay renders new summoned entities only after spawn frame"
   assert.match(chunks[0].html, /actor-token has-hp/);
   assert.match(chunks[0].html, /actor-hp-delta is-recover/);
 });
+
+test("v2 normalized replay renders removed entities with death HP state", () => {
+  const replay = buildV2ReplayFromNormalizedRun("owner@red\n\ntarget@blue\n", {
+    winner_team: null,
+    guard_exhausted: false,
+    total_score: 1,
+    rounds: [
+      {
+        winner_team: null,
+        round: 1,
+        total_score: 0,
+        rng_i: 11,
+        rng_j: 12,
+        entity_ids: [0, 1, 2],
+        teams: [0, 1, 0],
+        hp: [100, 100, 80],
+        magic_point: [10, 10, 0],
+        defense: [1, 2, 0],
+        resistance: [3, 4, 0],
+        alive: [true, true, true],
+        round_order: [0, 1, 2],
+        flat_alive: [0, 1, 2],
+        team_alive: [[0, 2], [1]],
+        alive_group_count: 2,
+        actions: [],
+        frames: [],
+      },
+      {
+        winner_team: null,
+        round: 2,
+        total_score: 1,
+        rng_i: 13,
+        rng_j: 14,
+        entity_ids: [0, 1, 2],
+        teams: [0, 1, 0],
+        hp: [100, 100, 0],
+        magic_point: [10, 10, 0],
+        defense: [1, 2, 0],
+        resistance: [3, 4, 0],
+        alive: [true, true, false],
+        round_order: [0, 1],
+        flat_alive: [0, 1],
+        team_alive: [[0], [1]],
+        alive_group_count: 2,
+        actions: [],
+        frames: [
+          {
+            message: "[1]消失了",
+            caster: 0,
+            target: 2,
+            targets: [2],
+            score: 1,
+            delay0: 25,
+            delay1: 15,
+            update_type: "none",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(replay.frames[0].states.map((state) => state.id), [0, 1, 2]);
+  assert.deepEqual(replay.frames[1].states.map((state) => state.alive), [true, true, false]);
+  assert.deepEqual(replay.frames[1].states.map((state) => state.hp), [100, 100, 0]);
+
+  const removeClip = replay.frames[1].rows[0].clips[0];
+  assert.equal(removeClip.tone, "knockout");
+  assert.deepEqual(removeClip.target_ids, [2]);
+  assert.equal(removeClip.show_hp, true);
+  assert.equal(removeClip.hp_before, 80);
+  assert.equal(removeClip.hp_after, 0);
+  assert.equal(removeClip.death_effect, true);
+  assert.deepEqual(removeClip.sidebar_previous_states.map((state) => state.alive), [true, true, true]);
+  assert.deepEqual(removeClip.sidebar_states.map((state) => state.alive), [true, true, false]);
+
+  const removedPart = removeClip.parts.find((part) => part.kind === "player" && part.player_id === 2);
+  assert.equal(removedPart.show_hp, true);
+  assert.equal(removedPart.hp_before, 80);
+  assert.equal(removedPart.hp_after, 0);
+  assert.equal(removedPart.death_effect, true);
+
+  const playersById = new Map(replay.players.map((player) => [player.id, player]));
+  const chunks = buildFrameRows(replay.frames[1], 1, replay.frames[0].states, playersById);
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0].target, "battleRows");
+  assert.deepEqual([...chunks[0].sidebarInvolved.targets], [2]);
+  assert.match(chunks[0].html, /消失了/);
+  assert.match(chunks[0].html, /#2/);
+  assert.match(chunks[0].html, /namedie/);
+  assert.match(chunks[0].html, /actor-hp-delta is-damage/);
+});

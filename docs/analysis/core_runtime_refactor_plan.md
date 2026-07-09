@@ -680,7 +680,7 @@ Co-authored-by: Codex <codex@openai.com>
 - wasm 已新增默认 custom v2 normalized-run typed 入口 `default_custom_runtime_v2_normalized_run`，可先从 JS 侧取得 v2 归一化 rounds/actions/frames 结构，再继续迁移 `show.html`；
 - `show-wasm.js` 已新增显式 `buildV2NormalizedReplay()` adapter，可把 v2 default custom normalized run 的 rounds/actions/frames 转成当前 show-compatible replay shape，供后续 DOM/golden 对账和默认路径切换；
 - `show.html` 已支持 `engine=v2` / `runtime=v2` opt-in 路径，页面会调用 `buildV2NormalizedReplay()` 并保留 legacy `FightSession` 作为默认路径，便于 Phase H DOM/golden 对账；
-- 已补 `show-wasm.test.mjs` 纯 JS adapter 与 HTML chunk 测试，固定 v2 normalized run 到 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row / summoned entity first-appearance shape 的转换和 `buildFrameRows()` 渲染；
+- 已补 `show-wasm.test.mjs` 纯 JS adapter 与 HTML chunk 测试，固定 v2 normalized run 到 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row / summoned entity first-appearance / removed entity disappearance shape 的转换和 `buildFrameRows()` 渲染；
 - 已把 `show.html` 的 URL input、engine/runtime 选择、分享链接清洗与 v2 engine 保留逻辑抽到 `show-routing.js`，并补 `show-routing.test.mjs` 固定 v2 alias、legacy fallback、非法 input 与 share URL 行为；
 - `show.html` 迁到 v2 replay schema；
 - wasm API 可 breaking；

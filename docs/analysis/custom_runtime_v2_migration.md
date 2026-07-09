@@ -92,7 +92,7 @@ git diff --name-status github/main..github/custom
 - `build_replay_view_frame` 已对 `"[0]还剩[2]点血"` 强制输出 player part `show_hp`，wasm/show 可复用现有结构化 `actorToken` 血条渲染，并通过 `Data` part 标记数值。
 - `show-wasm.js` 已新增显式 `buildV2NormalizedReplay()` adapter，可把 wasm `default_custom_runtime_v2_normalized_run()` 的 rounds/actions/frames 转成当前 show-compatible replay shape；当前默认 show 路径仍保留 `FightSession`，后续继续补 DOM/golden 对账后再切换。
 - `show.html` 已接入 `engine=v2` / `runtime=v2` opt-in，显式 v2 页面路径会调用 adapter 生成可播放 replay，分享链接会保留 v2 选择；默认路径仍保留 `FightSession`。
-- `show-wasm.test.mjs` 已覆盖纯 adapter 输出和 `buildFrameRows()` HTML chunk 渲染，固定 v2 normalized run 到 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row / summoned entity first-appearance shape 的最小验收面。
+- `show-wasm.test.mjs` 已覆盖纯 adapter 输出和 `buildFrameRows()` HTML chunk 渲染，固定 v2 normalized run 到 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row / summoned entity first-appearance / removed entity disappearance shape 的最小验收面。
 - `show-routing.js` / `show-routing.test.mjs` 已把 URL-safe input、`engine`/`runtime` v2 alias、legacy fallback、非法 input 报错和 v2 分享链接保留逻辑抽成可单测路由面，降低后续默认路径切换风险。
 - 最小 custom runner strict-diff golden 已把 spawn、share、heal、HP marker 和 world 派生视图接入同一验收面。
 - linked minion owner-death cleanup 已接入 runner strict-diff golden，固定 owner 致死后的消失帧、round/alive 派生视图与 winner 汇总。
