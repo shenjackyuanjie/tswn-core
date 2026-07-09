@@ -78,6 +78,7 @@ fn main() {
         ParsedCommand::Fight { out_raw: true, .. }
             | ParsedCommand::FightRaw { .. }
             | ParsedCommand::FightDiff { .. }
+            | ParsedCommand::RuntimeV2NormalizedRun { .. }
             | ParsedCommand::NamerPf { .. }
     ) {
         print_banner();
@@ -87,6 +88,7 @@ fn main() {
         ParsedCommand::Fight { raw, out_raw } => fight::run(raw, out_raw),
         ParsedCommand::FightDiff { raw } => fight::run_diff(raw),
         ParsedCommand::FightRaw { raw, n, threads } => fight::run_raw(raw, n, threads),
+        ParsedCommand::RuntimeV2NormalizedRun { raw, max_rounds } => fight::run_runtime_v2_normalized(raw, max_rounds),
         ParsedCommand::BenchAuto {
             raw,
             n,

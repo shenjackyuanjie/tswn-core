@@ -67,6 +67,9 @@ enum CliCommand {
     ///   tswn-cli diff -f input.txt
     #[command(name = "diff", verbatim_doc_comment)]
     FightDiff(FightDiffCommand),
+    /// 运行 v2 runtime 相关调试/迁移入口。
+    #[command(name = "runtime-v2", verbatim_doc_comment)]
+    RuntimeV2(RuntimeV2Command),
     /// 运行基准测试相关功能。
     Bench(BenchCommand),
     /// 运行与 ica-plugin `/namer-pf` 相同的四项评分。
@@ -129,6 +132,35 @@ struct FightDiffCommand {
     /// 原始对战输入来源参数。
     #[command(flatten)]
     input: InputArgs,
+}
+
+#[derive(Debug, Args)]
+struct RuntimeV2Command {
+    /// v2 runtime 子命令。
+    #[command(subcommand)]
+    command: RuntimeV2Subcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum RuntimeV2Subcommand {
+    /// 使用默认 custom v2 profile 运行 raw 输入，并输出 normalized-run JSON。
+    ///
+    /// 示例:
+    ///   tswn-cli runtime-v2 normalized-run -r "left\n\nright" --max-rounds 8
+    ///   tswn-cli runtime-v2 normalized-run -f input.txt
+    #[command(name = "normalized-run", verbatim_doc_comment)]
+    NormalizedRun(RuntimeV2NormalizedRunCommand),
+}
+
+#[derive(Debug, Args)]
+struct RuntimeV2NormalizedRunCommand {
+    /// v2 runtime 输入来源参数。
+    #[command(flatten)]
+    input: InputArgs,
+
+    /// 最多推进的回合数。
+    #[arg(long = "max-rounds", default_value_t = 20_000, value_parser = parse_positive_usize, value_name = "N")]
+    max_rounds: usize,
 }
 
 #[derive(Debug, Args)]
@@ -604,6 +636,12 @@ impl ParsedCli {
             CliCommand::FightDiff(cmd) => ParsedCommand::FightDiff {
                 raw: cmd.input.read_or_stdin()?,
             },
+            CliCommand::RuntimeV2(RuntimeV2Command { command }) => match command {
+                RuntimeV2Subcommand::NormalizedRun(cmd) => ParsedCommand::RuntimeV2NormalizedRun {
+                    raw: cmd.input.read_or_stdin()?,
+                    max_rounds: cmd.max_rounds,
+                },
+            },
             CliCommand::Bench(BenchCommand { command }) => match command {
                 BenchSubcommand::Auto(cmd) => ParsedCommand::BenchAuto {
                     raw: cmd.input.read_or_stdin()?,
@@ -798,6 +836,28 @@ mod tests {
     fn to_diy_command_rejects_old_with_minions() {
         let err = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario", "--old", "--minions"]).unwrap_err();
         assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn runtime_v2_normalized_run_accepts_raw_and_max_rounds() {
+        let cli = Cli::try_parse_from([
+            "tswn-cli",
+            "runtime-v2",
+            "normalized-run",
+            "-r",
+            "left\\n\\nright",
+            "--max-rounds",
+            "8",
+        ])
+        .unwrap();
+        let parsed = ParsedCli::from_cli(cli).unwrap();
+        match parsed.command {
+            ParsedCommand::RuntimeV2NormalizedRun { raw, max_rounds } => {
+                assert_eq!(raw, "left\n\nright");
+                assert_eq!(max_rounds, 8);
+            }
+            _ => panic!("unexpected command"),
+        }
     }
 
     #[test]
