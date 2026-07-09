@@ -729,6 +729,22 @@ impl ExtensionRegistry {
 
     pub fn skills(&self) -> &[SkillSpec] { &self.skills }
 
+    pub fn skill_by_name(&self, namespace: &str, name: &str) -> Option<&SkillSpec> {
+        self.skills.iter().find(|spec| spec.namespace == namespace && spec.name == name)
+    }
+
+    pub fn skill_id_by_name(&self, namespace: &str, name: &str) -> Option<SkillId> {
+        self.skill_by_name(namespace, name).map(|spec| spec.id)
+    }
+
+    pub fn skill_by_export_name(&self, export_name: &str) -> Option<&SkillSpec> {
+        self.skills.iter().find(|spec| spec.export_name == export_name)
+    }
+
+    pub fn skill_id_by_export_name(&self, export_name: &str) -> Option<SkillId> {
+        self.skill_by_export_name(export_name).map(|spec| spec.id)
+    }
+
     pub fn state(&self, id: StateId) -> Option<&StateSpec> { self.states.get(id.0 as usize) }
 
     pub fn states(&self) -> &[StateSpec] { &self.states }
@@ -937,6 +953,35 @@ mod tests {
             registry.state(state).unwrap().hook_mask,
             ProcMask::POST_ACTION | ProcMask::POST_DAMAGE
         );
+    }
+
+    #[test]
+    fn registry_resolves_skill_specs_by_local_name_and_export_name() {
+        let mut builder = ExtensionRegistryBuilder::default();
+
+        let custom_fire = builder
+            .register_skill("custom", "fire", "custom.fire", TargetPolicy::Enemy, SkillPriority(10))
+            .expect("custom fire should register");
+        let core_fire = builder
+            .register_skill("core", "fire", "core.fire", TargetPolicy::Enemy, SkillPriority(20))
+            .expect("core fire should register");
+        let disperse = builder
+            .register_skill("core", "disperse", "core.disperse", TargetPolicy::Enemy, SkillPriority(30))
+            .expect("disperse should register");
+
+        let registry = builder.build();
+
+        assert_eq!(registry.skill_by_name("custom", "fire").unwrap().id, custom_fire);
+        assert_eq!(registry.skill_id_by_name("core", "fire"), Some(core_fire));
+        assert_eq!(
+            registry
+                .skill_by_export_name("core.disperse")
+                .map(|spec| (&spec.namespace, &spec.name, spec.id)),
+            Some((&"core".to_owned(), &"disperse".to_owned(), disperse))
+        );
+        assert_eq!(registry.skill_id_by_export_name("custom.fire"), Some(custom_fire));
+        assert_eq!(registry.skill_by_name("missing", "fire"), None);
+        assert_eq!(registry.skill_by_export_name("legacy.fire"), None);
     }
 
     #[test]

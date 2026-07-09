@@ -652,6 +652,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `WorldArena` 已接入 `team_alive` / `flat_alive` / `alive_group_count` 派生存活视图，并随 spawn/revive/remove/death/heal 复活同步维护；
 - raw namerena runner 已在 seed 初始化后同步 legacy `WorldState` 的 team 编号、`round_order`、`team_alive`、`flat_alive` 与 `alive_group_count`，避免 large / fight_multi runner golden 在初始世界顺序上偏移；
 - `NormalizedOutcome` 已纳入 defense/resistance，strict diff 可覆盖 custom summon 继承 owner 防御/魔防的数据面；
+- `ExtensionRegistry` 已补 skill name / export_name -> v2 `SkillId` 查找面，为 DIY/OL/custom parser 把 overlay 技能名导入 v2 `SkillLoadout` 铺底，避免依赖 legacy skill id 与 v2 registry 顺序偶然一致；
 - 致死 `Damage` effect 已按 damage -> die(target) -> kill(caster) 顺序执行 `DIE` / `KILL` skill/state hook；
 - `PlayerRuntime` 已记录 `owner` / `root_owner` / `PlayerKindPolicies`，`Spawn` effect 会把新实体挂到 caster/root-owner 链路上；
 - `Damage` effect 已接入 `OwnerResolutionPolicy::RootOwner`，summon/root-owner 伤害可转打 root owner 并在解析目标上触发致死 hook；
