@@ -800,12 +800,34 @@ pub fn summon_default_skill_loadout(fire_skill: SkillId, explode_skill: SkillId,
     SkillLoadout::from_skills([fire_skill, fire_skill, explode_skill]).with_active_order(active_order)
 }
 
+pub fn push_summon_fire(context: &mut SkillContext<'_>, target: EntityIdx, fire_state_key: u32) {
+    context.push_nested(QueuedEffect::FireAttack {
+        caster: context.owner_idx(),
+        target,
+        fire_state_key,
+    });
+}
+
+pub fn run_summon_fire_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    let Some(target) = context.selected_target() else {
+        return;
+    };
+    push_summon_fire(context, target, 91);
+}
+
 pub fn push_summon_explode(context: &mut SkillContext<'_>, target: EntityIdx, fire_state_key: u32) {
     context.push_nested(QueuedEffect::SummonExplode {
         caster: context.owner_idx(),
         target,
         fire_state_key,
     });
+}
+
+pub fn run_summon_explode_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    let Some(target) = context.selected_target() else {
+        return;
+    };
+    push_summon_explode(context, target, 91);
 }
 
 pub fn push_disperse_attack(context: &mut SkillContext<'_>, target: EntityIdx) {
@@ -2828,6 +2850,58 @@ impl CombatRuntime {
                         self.drain_lethal_damage_hooks_into(caster, target, updates);
                     } else if self.entities.get(target).map(|entity| entity.runtime.alive).unwrap_or(false) {
                         self.emit_poison_release_if_cleared(target, updates);
+                    }
+                }
+                QueuedEffect::FireAttack {
+                    caster,
+                    target,
+                    fire_state_key,
+                } => {
+                    self.ensure_effect_entity("fire-attack", "caster", caster);
+                    self.ensure_effect_entity("fire-attack", "target", target);
+                    let fire_mag = self.entities.get(target).unwrap().states.fire_mag(fire_state_key);
+                    let atp = self.entities.get(caster).unwrap().runtime.get_at(true, &mut self.rng);
+                    let mut defend_value = RuntimeDefendValue::Atp {
+                        value: atp * (1.5 + fire_mag),
+                        caster,
+                        target,
+                    };
+                    updates.add(RuntimeFrame::replay_update(
+                        caster.0 as usize,
+                        target.0 as usize,
+                        "[0]使用[火球术]",
+                        1,
+                    ));
+                    self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
+                    let Some(atp) = defend_value.atp() else {
+                        panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
+                    };
+                    if atp == 0.0 {
+                        continue;
+                    }
+                    if self.magic_attack_dodged(caster, target) {
+                        updates.add(RuntimeFrame::replay_update(
+                            target.0 as usize,
+                            caster.0 as usize,
+                            "[0][回避]了攻击",
+                            20,
+                        ));
+                    } else {
+                        let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+                        let mut defend_value = RuntimeDefendValue::Damage {
+                            value: amount,
+                            caster,
+                            target,
+                        };
+                        self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
+                        let Some(amount) = defend_value.damage() else {
+                            panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
+                        };
+                        if self.apply_damage_into(caster, target, amount, updates) {
+                            self.drain_lethal_damage_hooks_into(caster, target, updates);
+                        } else if amount > 0 {
+                            self.apply_fire_on_damage(target, fire_state_key);
+                        }
                     }
                 }
                 QueuedEffect::SummonExplode {

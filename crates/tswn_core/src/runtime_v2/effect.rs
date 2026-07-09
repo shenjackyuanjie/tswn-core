@@ -23,6 +23,11 @@ pub enum QueuedEffect {
         target: EntityIdx,
         amount: i32,
     },
+    FireAttack {
+        caster: EntityIdx,
+        target: EntityIdx,
+        fire_state_key: u32,
+    },
     SummonExplode {
         caster: EntityIdx,
         target: EntityIdx,

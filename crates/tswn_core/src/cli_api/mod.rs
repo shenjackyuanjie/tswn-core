@@ -9,7 +9,8 @@ use crate::player::eval_name;
 use crate::player::icon::icon_from_raw_name;
 use crate::runtime_v2::{
     CustomRuntimeV2ImportConfig, ExtensionCapability, RuntimeV2NormalizedRun, RuntimeV2Runner,
-    default_custom_runtime_v2_import_config, run_legacy_summon_recast_from_template_slot,
+    default_custom_runtime_v2_import_config, run_legacy_summon_recast_from_template_slot, run_summon_explode_skill,
+    run_summon_fire_skill,
 };
 use crate::win_rate::{WinRateSummary, WinRateTiming, groups_win_rate};
 
@@ -413,6 +414,14 @@ pub fn custom_runtime_v2_mixed_runner(raw: &str, config: CustomRuntimeV2ImportCo
 pub fn default_custom_runtime_v2_mixed_runner(raw: &str) -> CliApiResult<RuntimeV2Runner> {
     let config = default_custom_runtime_v2_import_config().map_err(default_custom_runtime_v2_profile_error)?;
     let summon_skill = config.bed2_summon_skill;
+    let summon_fire_skill = config
+        .registry
+        .skill_id_by_export_name(crate::runtime_v2::DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT)
+        .expect("default custom runtime v2 profile should register summon fire skill");
+    let summon_explode_skill = config
+        .registry
+        .skill_id_by_export_name(crate::runtime_v2::DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT)
+        .expect("default custom runtime v2 profile should register summon explode skill");
     let mut runner = custom_runtime_v2_mixed_runner(raw, config)?;
     runner.runtime_mut().set_skill_handler_with_capabilities(
         summon_skill,
@@ -423,6 +432,12 @@ pub fn default_custom_runtime_v2_mixed_runner(raw: &str) -> CliApiResult<Runtime
             ExtensionCapability::MutateEntitySlots,
         ],
     );
+    runner
+        .runtime_mut()
+        .set_skill_handler(summon_fire_skill, run_summon_fire_skill);
+    runner
+        .runtime_mut()
+        .set_skill_handler(summon_explode_skill, run_summon_explode_skill);
     Ok(runner)
 }
 
@@ -709,6 +724,58 @@ beta@blue\n";
         assert_eq!(run.rounds[0].alive, vec![true, true, true]);
         assert_eq!(run.rounds[0].team_alive, vec![vec![0, 2], vec![1]]);
         assert_eq!(run.rounds[0].flat_alive, vec![0, 2, 1]);
+    }
+
+    #[test]
+    fn cli_api_default_custom_runtime_v2_normalized_run_executes_spawned_summon_fire() {
+        let raw = "alpha@red+bed2[3000]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire1\":5}}}\n\n\
+beta@blue\n";
+
+        let run =
+            default_custom_runtime_v2_normalized_run(raw, 3).expect("default custom runtime v2 summon fire run should execute");
+
+        assert_eq!(run.rounds.len(), 3);
+        assert_eq!(run.rounds[2].actions[0].actor, 2);
+        assert_eq!(
+            run.rounds[2]
+                .frames
+                .iter()
+                .take(2)
+                .map(|frame| frame.message.as_str())
+                .collect::<Vec<_>>(),
+            vec!["[0]使用[火球术]", "[0]攻击[1]"]
+        );
+        assert_eq!(run.rounds[2].frames[0].caster, 2);
+        assert_eq!(run.rounds[2].frames[0].target, 1);
+        assert_eq!(run.rounds[2].frames[0].score, 1);
+        assert!(run.rounds[2].hp[1] < run.rounds[1].hp[1]);
+    }
+
+    #[test]
+    fn cli_api_default_custom_runtime_v2_normalized_run_executes_spawned_summon_explode() {
+        let raw = "alpha@red+bed2[3000]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklexplode\":5}}}\n\n\
+beta@blue\n";
+
+        let run = default_custom_runtime_v2_normalized_run(raw, 3)
+            .expect("default custom runtime v2 summon explode run should execute");
+
+        assert_eq!(run.rounds.len(), 3);
+        assert_eq!(run.rounds[2].actions[0].actor, 2);
+        assert_eq!(
+            run.rounds[2]
+                .frames
+                .iter()
+                .take(2)
+                .map(|frame| frame.message.as_str())
+                .collect::<Vec<_>>(),
+            vec!["[0]使用[自爆]", "[0]攻击[1]"]
+        );
+        assert_eq!(run.rounds[2].frames[0].caster, 2);
+        assert_eq!(run.rounds[2].frames[0].target, 1);
+        assert_eq!(run.rounds[2].frames[0].score, 0);
+        assert!(!run.rounds[2].alive[2]);
+        assert_eq!(run.rounds[2].team_alive[0], vec![0]);
+        assert!(run.rounds[2].hp[1] < run.rounds[1].hp[1]);
     }
 
     #[test]
