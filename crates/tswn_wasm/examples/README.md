@@ -18,6 +18,7 @@
   - `show-utils.js` — DOM 渲染工具函数（头像、状态标签、`replayDisplayName()` 等）
   - `show-render.js` — 玩家状态 / 头像 / 状态标签渲染，seed 行展示
   - `show-replay.js` — 回放介绍、播放速度控制、逐段推进逻辑
+  - `show-routing.js` — URL 输入、v2 engine 选择与分享链接参数处理
 - 支持 normal / fast / turbo 三种播放速度。
 - 支持从原始输入中提取 `seed:` 行并显示在玩家列表顶部。
 - 支持通过 URL 参数直接传入对局输入并自动播放：`show.html?input=<url-safe-base64>`。参数值按 UTF-8 解码，Base64 使用 URL-safe 字符集（`+`→`-`、`/`→`_`，可省略末尾 `=`）。`replay` 和 `data` 也可作为兼容别名；参数为空、Base64 非法或 UTF-8 解码失败时会停留在输入面板并显示错误。
@@ -27,7 +28,7 @@
 - 只消费 `RoundFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。
 - normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表；fast / turbo / 单步跳转保持即时显示。左侧玩家 HP 条变化使用较慢动画，方便观察血量变化。
 - `show-wasm.js` 另外暴露 `buildV2NormalizedReplay()` 作为 Phase H 迁移入口，可把 `default_custom_runtime_v2_normalized_run()` 的 rounds/actions/frames 适配成当前 show-compatible replay shape；`show.html` 默认路径仍保留 `FightSession`，等待 DOM/golden 对账后切换。
-- `show-wasm.test.mjs` 覆盖 `buildV2ReplayFromNormalizedRun()` 的纯 adapter 输出和 `buildFrameRows()` HTML chunk 渲染，验证 v2 normalized run 可以生成 show-compatible players / states / rows / clips / sequential HP bar / winner row shape。
+- `show-wasm.test.mjs` 覆盖 `buildV2ReplayFromNormalizedRun()` 的纯 adapter 输出和 `buildFrameRows()` HTML chunk 渲染，验证 v2 normalized run 可以生成 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row shape；`show-routing.test.mjs` 覆盖 URL-safe input、`engine`/`runtime` v2 alias、legacy fallback 和 v2 分享链接保留。
 
 生成参数示例：
 

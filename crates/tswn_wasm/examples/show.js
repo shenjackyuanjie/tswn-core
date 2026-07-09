@@ -127,6 +127,12 @@ import {
   playbackDelay,
   buildReplayResultTableHtml,
 } from "./show-replay.js";
+import {
+  buildShowShareUrl,
+  readReplayEngineFromSearch,
+  readStaticReplayInputFromSearch,
+  replayEngineStatusText as showReplayEngineStatusText,
+} from "./show-routing.js";
 import { ensureApi, buildReplay, buildV2NormalizedReplay } from "./show-wasm.js";
 
 // ============================================================================
@@ -148,13 +154,6 @@ const INPUT_STORAGE_KEY = "tswn_wasm_show_input";
 const NICKNAME_STORAGE_KEY = "tswn_wasm_show_nicknames";
 /** @type {SpeedMode} 新战斗默认播放速度 */
 const DEFAULT_SPEED_MODE = "normal";
-/** @type {string[]} URL 参数名，值为 URL-safe Base64 编码后的原始对局输入 */
-const STATIC_INPUT_PARAM_NAMES = ["input", "replay", "data"];
-/** @type {string[]} URL 参数名，用于显式选择 replay runtime */
-const REPLAY_ENGINE_PARAM_NAMES = ["engine", "runtime"];
-const REPLAY_ENGINE_V2_VALUES = new Set(["v2", "runtime_v2", "normalized", "normalized_v2"]);
-const REPLAY_ENGINE_LEGACY_VALUES = new Set(["legacy", "v1", "fightsession", "fight_session"]);
-
 // ============================================================================
 // DOM 元素引用
 // ============================================================================
@@ -1077,65 +1076,16 @@ function showShareToast(message = "分享链接已复制") {
  * @returns {string}
  * @throws {Error} 当参数为空、Base64 不合法或 UTF-8 解码失败时抛出错误
  */
-function decodeBase64UrlUtf8(encoded) {
-  const compact = encoded.trim();
-  if (!compact) {
-    throw new Error("URL 参数为空。");
-  }
-  if (!/^[A-Za-z0-9_-]+={0,2}$/.test(compact)) {
-    throw new Error("不是合法的 URL-safe Base64。");
-  }
-
-  const base64 = compact.replace(/-/g, "+").replace(/_/g, "/");
-  if (base64.length % 4 === 1) {
-    throw new Error("Base64 长度不合法。");
-  }
-
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const binary = window.atob(padded);
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-}
-
-/**
- * 将 UTF-8 字符串编码成 URL-safe Base64。
- * @param {string} input
- * @returns {string}
- */
-function encodeBase64UrlUtf8(input) {
-  const bytes = new TextEncoder().encode(input);
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    const chunk = bytes.subarray(offset, offset + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return window
-    .btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 /**
  * 为当前对局输入生成分享链接。
  * @param {string} rawInput
  * @returns {string}
  */
 function buildShareUrl(rawInput) {
-  const url = new URL(window.location.href);
-  for (const paramName of STATIC_INPUT_PARAM_NAMES) {
-    url.searchParams.delete(paramName);
-  }
-  for (const paramName of REPLAY_ENGINE_PARAM_NAMES) {
-    url.searchParams.delete(paramName);
-  }
-  url.searchParams.set("input", encodeBase64UrlUtf8(rawInput));
-  if (currentReplay?.runtime_v2 || replayEngine === "v2") {
-    url.searchParams.set("engine", "v2");
-  }
-  url.hash = "";
-  return url.href;
+  return buildShowShareUrl(rawInput, {
+    href: window.location.href,
+    runtimeV2: Boolean(currentReplay?.runtime_v2) || replayEngine === "v2",
+  });
 }
 
 /**
@@ -1171,25 +1121,7 @@ async function copyTextToClipboard(text) {
  * @returns {{ ok: true, input: string, paramName: string }|{ ok: false, message: string }|null}
  */
 function readStaticReplayInputFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  for (const paramName of STATIC_INPUT_PARAM_NAMES) {
-    if (!params.has(paramName)) {
-      continue;
-    }
-    try {
-      return {
-        ok: true,
-        input: decodeBase64UrlUtf8(params.get(paramName) ?? ""),
-        paramName,
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        message: `URL 参数 ${paramName} 解码失败：${formatError(error)}`,
-      };
-    }
-  }
-  return null;
+  return readStaticReplayInputFromSearch(window.location.search);
 }
 
 /**
@@ -1197,31 +1129,11 @@ function readStaticReplayInputFromUrl() {
  * @returns {{ engine: 'legacy'|'v2', paramName: string, message?: string }|null}
  */
 function readReplayEngineFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  for (const paramName of REPLAY_ENGINE_PARAM_NAMES) {
-    if (!params.has(paramName)) {
-      continue;
-    }
-    const value = `${params.get(paramName) ?? ""}`.trim().toLowerCase();
-    if (REPLAY_ENGINE_V2_VALUES.has(value)) {
-      return { engine: "v2", paramName };
-    }
-    if (!value || REPLAY_ENGINE_LEGACY_VALUES.has(value)) {
-      return { engine: "legacy", paramName };
-    }
-    return {
-      engine: "legacy",
-      paramName,
-      message: `URL 参数 ${paramName}=${value} 未识别，已回退 FightSession。`,
-    };
-  }
-  return null;
+  return readReplayEngineFromSearch(window.location.search);
 }
 
 function replayEngineStatusText() {
-  return replayEngine === "v2"
-    ? "使用 v2 normalized run 生成 replay 适配视图。"
-    : "自动使用 FightSession 捕获 replay，并按帧播放。";
+  return showReplayEngineStatusText(replayEngine);
 }
 
 function syncReplayEngineUi() {
