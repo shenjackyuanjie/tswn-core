@@ -9268,6 +9268,91 @@ delta@blue+bed2[8]\n";
     }
 
     #[test]
+    fn zombie_style_minion_handler_uses_lethal_damage_killed_target() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let counter_slot = builder
+            .reserve_entity_slot("custom", "minion-counter", "custom.minion.counter")
+            .expect("minion counter slot should reserve");
+        let template_slot = builder
+            .reserve_template_slot("custom", "zombie-template", "custom.minion.zombie_template")
+            .expect("zombie template slot should reserve");
+        let zombie_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "zombie",
+                "custom.minion.zombie_skill",
+                ProcMask::KILL,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("zombie skill should register");
+        let zombie_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "zombie",
+                "custom.minion.zombie",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("zombie minion kind should register");
+        let registry = builder.build();
+        let payload = PlayerTemplate::with_kind(4, "owner?zombie", zombie_kind, 0, 4, 1);
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([zombie_skill]),
+                PlayerTemplate::new(2, "first-target", 1, 20, 1),
+                PlayerTemplate::new(3, "killed-target", 1, 3, 1),
+            ],
+            registry,
+        );
+        template
+            .slots
+            .set(template_slot, SlotValue::PlayerTemplate(Box::new(payload)))
+            .expect("zombie template slot should write");
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            zombie_skill,
+            run_zombie_minion_from_template_slot,
+            &[ExtensionCapability::ReadTemplateSlots, ExtensionCapability::MutateEntitySlots],
+        );
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(0),
+            target: EntityIdx(2),
+            amount: 3,
+        });
+
+        let frame = runtime
+            .flush_effects()
+            .expect("lethal damage should drive zombie-style minion spawn");
+
+        assert_eq!(frame.updates.updates.len(), 4);
+        assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[0].target, 2);
+        assert_eq!(frame.updates.updates[1].message, "\n");
+        assert_eq!(frame.updates.updates[2].message, "[0][召唤亡灵]");
+        assert_eq!(frame.updates.updates[2].target, 2);
+        assert_eq!(frame.updates.updates[3].message, "[2]变成了[1]");
+        assert_eq!(frame.updates.updates[3].target, 3);
+        assert_eq!(frame.updates.updates[3].targets.as_slice(), &[2]);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(counter_slot),
+            Some(&SlotValue::U64(1))
+        );
+        let zombie = runtime.entities.get(EntityIdx(3)).expect("zombie minion should spawn");
+        assert_eq!(zombie.template.name, "owner?0");
+        assert_eq!(zombie.template.kind, zombie_kind);
+        assert_eq!(zombie.runtime.owner, EntityIdx(0));
+        assert_eq!(zombie.runtime.root_owner, EntityIdx(0));
+        assert!(!runtime.world.flat_alive().contains(&EntityIdx(2)));
+        assert!(runtime.world.flat_alive().contains(&EntityIdx(3)));
+    }
+
+    #[test]
     fn configured_minion_handlers_use_non_default_slots_and_targets() {
         let mut builder = ExtensionRegistryBuilder::default();
         builder
