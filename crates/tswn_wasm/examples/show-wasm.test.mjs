@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { buildFrameRows } from "./show-render.js";
 import { buildV2ReplayFromNormalizedRun } from "./show-wasm.js";
 
 test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () => {
@@ -131,4 +132,101 @@ test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () =
   assert.equal(winnerClip.delay, 1000);
   assert.equal(replay.frames[1].total_delay, 1070);
   assert.deepEqual(replay.frames[1].winner_ids, [0]);
+});
+
+test("v2 normalized replay renders show-compatible frame chunks", () => {
+  const replay = buildV2ReplayFromNormalizedRun("left@red\n\nright@blue\n", {
+    winner_team: 0,
+    guard_exhausted: false,
+    total_score: 7,
+    rounds: [
+      {
+        winner_team: null,
+        round: 1,
+        total_score: 3,
+        rng_i: 1,
+        rng_j: 2,
+        entity_ids: [0, 1],
+        teams: [0, 1],
+        hp: [100, 80],
+        magic_point: [10, 20],
+        defense: [1, 2],
+        resistance: [3, 4],
+        alive: [true, true],
+        round_order: [0, 1],
+        flat_alive: [0, 1],
+        team_alive: [[0], [1]],
+        alive_group_count: 2,
+        actions: [],
+        frames: [
+          {
+            message: "[0]攻击[1]造成[2]点伤害",
+            caster: 0,
+            target: 1,
+            targets: [1],
+            param: 20,
+            score: 3,
+            delay0: 120,
+            delay1: 80,
+            update_type: "none",
+          },
+        ],
+      },
+      {
+        winner_team: 0,
+        round: 2,
+        total_score: 7,
+        rng_i: 3,
+        rng_j: 4,
+        entity_ids: [0, 1],
+        teams: [0, 1],
+        hp: [100, 0],
+        magic_point: [10, 20],
+        defense: [1, 2],
+        resistance: [3, 4],
+        alive: [true, false],
+        round_order: [0],
+        flat_alive: [0],
+        team_alive: [[0], []],
+        alive_group_count: 1,
+        actions: [],
+        frames: [
+          {
+            message: "[0]击败[1]",
+            caster: 0,
+            target: 1,
+            targets: [1],
+            score: 4,
+            delay0: 30,
+            delay1: 40,
+            update_type: "win",
+          },
+        ],
+      },
+    ],
+  });
+
+  const playersById = new Map(replay.players.map((player) => [player.id, player]));
+  const damageChunks = buildFrameRows(replay.frames[0], 0, replay.initial_states, playersById);
+  const winnerChunks = buildFrameRows(replay.frames[1], 1, replay.frames[0].states, playersById);
+
+  assert.equal(damageChunks.length, 1);
+  assert.equal(damageChunks[0].target, "battleRows");
+  assert.equal(damageChunks[0].delay, 200);
+  assert.match(damageChunks[0].html, /round-block/);
+  assert.match(damageChunks[0].html, /actor-token has-hp/);
+  assert.match(damageChunks[0].html, /actor-hp-delta is-damage/);
+  assert.match(damageChunks[0].html, /message-number">20<\/span>/);
+  assert.match(damageChunks[0].html, /left@red/);
+  assert.match(damageChunks[0].html, /right@blue/);
+
+  assert.equal(winnerChunks.length, 2);
+  assert.equal(winnerChunks[0].target, "battleRows");
+  assert.match(winnerChunks[0].html, /namedie/);
+  assert.match(winnerChunks[0].html, /actor-hp-delta is-damage/);
+  assert.equal(winnerChunks[1].target, "frameBody");
+  assert.equal(winnerChunks[1].delay, 1000);
+  assert.match(winnerChunks[1].html, /winner-line/);
+  assert.match(winnerChunks[1].html, /winner-row/);
+  assert.match(winnerChunks[1].html, /胜者：left@red/);
 });
