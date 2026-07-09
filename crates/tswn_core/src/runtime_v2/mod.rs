@@ -63,6 +63,50 @@ impl PreparedCombatTemplate {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct RuntimeV2Runner {
+    runtime: CombatRuntime,
+}
+
+impl RuntimeV2Runner {
+    pub fn from_template(template: PreparedCombatTemplate) -> Self {
+        Self {
+            runtime: CombatRuntime::from_template(template),
+        }
+    }
+
+    pub fn from_bed2_roster(
+        raw_groups: &[Vec<String>],
+        registry: ExtensionRegistry,
+        kind: PlayerKindId,
+        summon_skill: SkillId,
+    ) -> Result<Self, CustomBed2RosterImportError> {
+        let template = CustomBed2Import::roster_into_prepared_template(raw_groups, registry, kind, summon_skill)?;
+        Ok(Self::from_template(template))
+    }
+
+    pub fn from_mixed_roster(
+        raw_groups: &[Vec<String>],
+        registry: ExtensionRegistry,
+        bed2_kind: PlayerKindId,
+        bed2_summon_skill: SkillId,
+    ) -> Result<Self, CustomMixedRosterImportError> {
+        let template = CustomBed2Import::mixed_roster_into_prepared_template(raw_groups, registry, bed2_kind, bed2_summon_skill)?;
+        Ok(Self::from_template(template))
+    }
+
+    pub fn runtime(&self) -> &CombatRuntime { &self.runtime }
+
+    pub fn runtime_mut(&mut self) -> &mut CombatRuntime { &mut self.runtime }
+
+    pub fn run_round(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
+
+    pub fn run_round_normalized(&mut self) -> NormalizedOutcome {
+        let outcome = self.run_round();
+        NormalizedOutcome::from_runtime(&self.runtime, &outcome)
+    }
+}
+
 pub const DEFAULT_BED2_HP: i32 = 3000;
 pub const DEFAULT_BED2_DEFENSE: i32 = 99;
 pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
@@ -1228,6 +1272,126 @@ mod tests {
         assert!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.flags.contains(PlayerKindFlags::BED2));
         assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0), EntityIdx(1)].as_slice()));
         assert_eq!(runtime.world.team_alive(1), Some([EntityIdx(2)].as_slice()));
+    }
+
+    #[test]
+    fn runtime_v2_runner_constructs_and_runs_mixed_roster() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![
+            vec!["plain@red".to_owned(), "alpha@red+bed2[9]".to_owned()],
+            vec!["seed:custom-seed@!".to_owned(), "beta@blue@bed2".to_owned()],
+        ];
+
+        let mut runner = RuntimeV2Runner::from_mixed_roster(&raw_groups, registry, bed2, summon)
+            .expect("mixed roster should construct a runtime v2 runner");
+
+        assert_eq!(
+            runner.runtime().world.team_alive(0),
+            Some([EntityIdx(0), EntityIdx(1)].as_slice())
+        );
+        assert_eq!(runner.runtime().world.team_alive(1), Some([EntityIdx(2)].as_slice()));
+        assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.max_hp, 9);
+        assert!(
+            runner
+                .runtime()
+                .entities
+                .get(EntityIdx(1))
+                .unwrap()
+                .runtime
+                .flags
+                .contains(PlayerKindFlags::BED2)
+        );
+
+        let actor_attack = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.attack;
+        let plain_hp = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.max_hp;
+        let plain_defense = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.defense;
+        let plain_resistance = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.resistance;
+
+        let actual = runner.run_round_normalized();
+        let expected = NormalizedOutcome {
+            winner_team: None,
+            round: 1,
+            total_score: actor_attack as u64,
+            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+            entity_ids: vec![1, 2, 3],
+            teams: vec![0, 0, 1],
+            hp: vec![plain_hp, 9, DEFAULT_BED2_HP - actor_attack],
+            defense: vec![plain_defense, 99, 99],
+            resistance: vec![plain_resistance, 99, 99],
+            alive: vec![true, true, true],
+            round_order: vec![0, 1, 2],
+            flat_alive: vec![0, 1, 2],
+            team_alive: vec![vec![0, 1], vec![2]],
+            alive_group_count: 2,
+            actions: vec![crate::runtime_v2::oracle::NormalizedActionBoundary {
+                round: 1,
+                actor: 0,
+                target: 2,
+                amount: actor_attack,
+            }],
+            frames: vec![NormalizedUpdateFrame {
+                message: "[0]攻击[1]".to_owned(),
+                caster: 0,
+                target: 2,
+                targets: Vec::new(),
+                param: None,
+                score: actor_attack as u32,
+                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                update_type: crate::engine::update::UpdateType::None,
+            }],
+        };
+
+        assert_eq!(strict_diff(&expected, &actual), Ok(()));
+    }
+
+    #[test]
+    fn runtime_v2_runner_rejects_plain_rows_in_bed2_roster() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies::default(),
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![vec!["plain".to_owned()], vec!["beta@blue@bed2".to_owned()]];
+
+        let err = RuntimeV2Runner::from_bed2_roster(&raw_groups, registry, bed2, summon)
+            .expect_err("bed2-only runner constructor should reject non-bed2 rows");
+
+        assert_eq!(
+            err,
+            CustomBed2RosterImportError {
+                team_index: 0,
+                player_index: 0,
+                raw: "plain".to_owned(),
+            }
+        );
     }
 
     #[cfg(not(feature = "no_debug"))]
