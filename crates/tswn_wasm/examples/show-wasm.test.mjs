@@ -248,3 +248,93 @@ test("v2 normalized replay renders show-compatible frame chunks", () => {
   assert.match(winnerChunks[1].html, /winner-row/);
   assert.match(winnerChunks[1].html, /胜者：left@red/);
 });
+
+test("v2 normalized replay preserves recover and multi-target HP chunks", () => {
+  const replay = buildV2ReplayFromNormalizedRun("healer@red\nfront@blue\nback@blue\n", {
+    winner_team: null,
+    guard_exhausted: false,
+    total_score: 6,
+    rounds: [
+      {
+        winner_team: null,
+        round: 1,
+        total_score: 6,
+        rng_i: 5,
+        rng_j: 6,
+        entity_ids: [0, 1, 2],
+        teams: [0, 1, 1],
+        hp: [100, 75, 70],
+        magic_point: [30, 10, 10],
+        defense: [1, 2, 3],
+        resistance: [4, 5, 6],
+        alive: [true, true, true],
+        round_order: [0, 1, 2],
+        flat_alive: [0, 1, 2],
+        team_alive: [[0], [1, 2]],
+        alive_group_count: 2,
+        actions: [{ round: 1, actor: 0, target: 1, amount: 30 }],
+        frames: [
+          {
+            message: "[0]攻击[1]造成[2]点伤害",
+            caster: 0,
+            target: 1,
+            targets: [1, 2],
+            param: 30,
+            score: 4,
+            delay0: 50,
+            delay1: 25,
+            update_type: "none",
+          },
+          {
+            message: "[0]治疗[1]恢复[2]点血",
+            caster: 0,
+            target: 1,
+            targets: [1],
+            param: 5,
+            score: 2,
+            delay0: 40,
+            delay1: 20,
+            update_type: "next_line",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(replay.initial_states.map((state) => state.hp), [100, 100, 100]);
+  assert.deepEqual(replay.frames[0].states.map((state) => state.hp), [100, 75, 70]);
+  assert.equal(replay.frames[0].rows.length, 2);
+
+  const damageClip = replay.frames[0].rows[0].clips[0];
+  assert.equal(damageClip.tone, "damage");
+  assert.deepEqual(damageClip.target_ids, [1, 2]);
+  assert.deepEqual(damageClip.sidebar_states.map((state) => state.hp), [100, 70, 70]);
+  assert.deepEqual(damageClip.sidebar_previous_states.map((state) => state.hp), [100, 100, 100]);
+  assert.equal(damageClip.show_hp, true);
+  assert.equal(damageClip.hp_before, 100);
+  assert.equal(damageClip.hp_after, 70);
+
+  const recoverClip = replay.frames[0].rows[1].clips[0];
+  assert.equal(recoverClip.tone, "recover");
+  assert.deepEqual(recoverClip.target_ids, [1]);
+  assert.equal(recoverClip.delay, 60);
+  assert.equal(recoverClip.show_hp, true);
+  assert.equal(recoverClip.hp_before, 70);
+  assert.equal(recoverClip.hp_after, 75);
+  assert.deepEqual(recoverClip.sidebar_previous_states.map((state) => state.hp), [100, 70, 70]);
+  assert.deepEqual(recoverClip.sidebar_states.map((state) => state.hp), [100, 75, 70]);
+
+  const playersById = new Map(replay.players.map((player) => [player.id, player]));
+  const chunks = buildFrameRows(replay.frames[0], 0, replay.initial_states, playersById);
+  assert.equal(chunks.length, 2);
+  assert.equal(chunks[0].target, "battleRows");
+  assert.equal(chunks[0].delay, 75);
+  assert.deepEqual([...chunks[0].sidebarInvolved.targets], [1, 2]);
+  assert.match(chunks[0].html, /actor-hp-delta is-damage/);
+  assert.match(chunks[0].html, /message-number">30<\/span>/);
+  assert.equal(chunks[1].target, "frameBody");
+  assert.equal(chunks[1].delay, 60);
+  assert.deepEqual([...chunks[1].sidebarInvolved.targets], [1]);
+  assert.match(chunks[1].html, /actor-hp-delta is-recover/);
+  assert.match(chunks[1].html, /message-number">5<\/span>/);
+});
