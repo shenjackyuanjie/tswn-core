@@ -570,7 +570,7 @@ fn format_rate(value: f64, precision: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pyo3::types::{PyAnyMethods, PyDictMethods};
+    use pyo3::types::{PyAnyMethods, PyDict, PyDictMethods, PyList};
 
     #[test]
     fn runtime_v2_update_type_names_are_stable_json_tokens() {
@@ -580,24 +580,124 @@ mod tests {
     }
 
     #[test]
-    fn default_custom_runtime_v2_normalized_run_returns_python_dict() {
+    fn default_custom_runtime_v2_normalized_run_returns_python_dict_golden_shape() {
         Python::initialize();
         Python::attach(|py| {
             let value = default_custom_runtime_v2_normalized_run(py, "left@red\n\nright@blue\n".to_string(), 1)
                 .expect("default custom runtime v2 normalized run should execute");
             let dict = value.bind(py).cast::<PyDict>().expect("normalized run should be a dict");
 
-            let rounds = dict
+            assert_eq!(
+                dict.get_item("winner_team")
+                    .expect("winner_team key should exist")
+                    .expect("winner_team should not be missing")
+                    .is_none(),
+                true
+            );
+            assert!(
+                dict.get_item("guard_exhausted")
+                    .expect("guard_exhausted key should exist")
+                    .expect("guard_exhausted should not be missing")
+                    .extract::<bool>()
+                    .expect("guard_exhausted should be bool")
+            );
+            assert_eq!(
+                dict.get_item("total_score")
+                    .expect("total_score key should exist")
+                    .expect("total_score should not be None")
+                    .extract::<u64>()
+                    .expect("total_score should be u64"),
+                37
+            );
+
+            let rounds_item = dict
                 .get_item("rounds")
                 .expect("rounds key should exist")
                 .expect("rounds should not be None");
-            assert_eq!(rounds.len().expect("rounds should be a sized list"), 1);
+            let rounds = rounds_item.cast::<PyList>().expect("rounds should be a list");
+            assert_eq!(rounds.len().expect("rounds should be sized"), 1);
+            let round = rounds.get_item(0).expect("first round should exist");
+            let round = round.cast::<PyDict>().expect("round should be a dict");
 
-            let total_score = dict
-                .get_item("total_score")
-                .expect("total_score key should exist")
-                .expect("total_score should not be None");
-            assert!(total_score.extract::<u64>().expect("total_score should be u64") > 0);
+            assert!(
+                round
+                    .get_item("winner_team")
+                    .expect("winner_team key should exist")
+                    .expect("winner_team should not be missing")
+                    .is_none()
+            );
+            assert_eq!(round.get_item("round").unwrap().unwrap().extract::<u64>().unwrap(), 1);
+            assert_eq!(round.get_item("total_score").unwrap().unwrap().extract::<u64>().unwrap(), 37);
+            assert_eq!(round.get_item("rng_i").unwrap().unwrap().extract::<u32>().unwrap(), 48);
+            assert_eq!(round.get_item("rng_j").unwrap().unwrap().extract::<u32>().unwrap(), 161);
+            assert_eq!(
+                round.get_item("entity_ids").unwrap().unwrap().extract::<Vec<usize>>().unwrap(),
+                vec![1, 2]
+            );
+            assert_eq!(round.get_item("teams").unwrap().unwrap().extract::<Vec<usize>>().unwrap(), vec![0, 1]);
+            assert_eq!(round.get_item("hp").unwrap().unwrap().extract::<Vec<i32>>().unwrap(), vec![339, 251]);
+            assert_eq!(round.get_item("magic_point").unwrap().unwrap().extract::<Vec<i32>>().unwrap(), vec![23, 8]);
+            assert_eq!(round.get_item("defense").unwrap().unwrap().extract::<Vec<i32>>().unwrap(), vec![6, 56]);
+            assert_eq!(round.get_item("resistance").unwrap().unwrap().extract::<Vec<i32>>().unwrap(), vec![52, 25]);
+            assert_eq!(
+                round.get_item("alive").unwrap().unwrap().extract::<Vec<bool>>().unwrap(),
+                vec![true, true]
+            );
+            assert_eq!(
+                round.get_item("round_order").unwrap().unwrap().extract::<Vec<usize>>().unwrap(),
+                vec![0, 1]
+            );
+            assert_eq!(
+                round.get_item("flat_alive").unwrap().unwrap().extract::<Vec<usize>>().unwrap(),
+                vec![0, 1]
+            );
+            assert_eq!(
+                round
+                    .get_item("team_alive")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<Vec<Vec<usize>>>()
+                    .unwrap(),
+                vec![vec![0], vec![1]]
+            );
+            assert_eq!(
+                round.get_item("alive_group_count").unwrap().unwrap().extract::<usize>().unwrap(),
+                2
+            );
+
+            let actions_item = round.get_item("actions").unwrap().unwrap();
+            let actions = actions_item.cast::<PyList>().unwrap();
+            assert_eq!(actions.len().expect("actions should be sized"), 1);
+            let action_item = actions.get_item(0).unwrap();
+            let action = action_item.cast::<PyDict>().unwrap();
+            assert_eq!(action.get_item("round").unwrap().unwrap().extract::<u64>().unwrap(), 1);
+            assert_eq!(action.get_item("actor").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert_eq!(action.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert_eq!(action.get_item("amount").unwrap().unwrap().extract::<i32>().unwrap(), 37);
+
+            let frames_item = round.get_item("frames").unwrap().unwrap();
+            let frames = frames_item.cast::<PyList>().unwrap();
+            assert_eq!(frames.len().expect("frames should be sized"), 1);
+            let frame_item = frames.get_item(0).unwrap();
+            let frame = frame_item.cast::<PyDict>().unwrap();
+            assert_eq!(frame.get_item("message").unwrap().unwrap().extract::<String>().unwrap(), "[0]攻击[1]");
+            assert_eq!(frame.get_item("caster").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert_eq!(frame.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert!(frame.get_item("targets").unwrap().unwrap().extract::<Vec<usize>>().unwrap().is_empty());
+            assert!(frame.get_item("param").unwrap().unwrap().is_none());
+            assert_eq!(frame.get_item("score").unwrap().unwrap().extract::<u32>().unwrap(), 37);
+            assert_eq!(
+                frame.get_item("delay0").unwrap().unwrap().extract::<i32>().unwrap(),
+                tswn_core::engine::update::DEFAULT_DELAY0_MS
+            );
+            assert_eq!(
+                frame.get_item("delay1").unwrap().unwrap().extract::<i32>().unwrap(),
+                tswn_core::engine::update::DEFAULT_DELAY1_MS
+            );
+            assert_eq!(
+                frame.get_item("update_type").unwrap().unwrap().extract::<String>().unwrap(),
+                "none"
+            );
         });
     }
 }
