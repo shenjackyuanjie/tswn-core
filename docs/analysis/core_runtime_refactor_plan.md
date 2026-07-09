@@ -570,7 +570,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 已在 `docs/analysis/custom_runtime_v2_migration.md` 对 `github/custom` 相对 main 做首版 diff 归类；
 - 已产出 custom 改动清单和 v2 落点；
-- 已补 bed2 registry/template/import fixture，覆盖 `custom.bed2` kind、固定 summon skill、HP marker slot、`bed2[...]` / `@bed2` marker 最小 v2 导入、Player facade id-name 归一化桥接、typed summon template payload 读取后 spawn、`push_summon_from_template_slot` helper、grouped raw bed2 roster、mixed legacy/bed2 raw roster 到 `PreparedCombatTemplate` 的 helper，以及 `RuntimeV2Runner` 对 bed2-only / mixed roster、raw namerena fixture 形状和 seed 初始 RNG 的正式构造、单回合归一化和 run-until-winner 归一化入口；
+- 已补 bed2 registry/template/import fixture，覆盖 `custom.bed2` kind、固定 summon skill、HP marker slot、`bed2[...]` / `@bed2` marker 最小 v2 导入、Player facade id-name 归一化桥接、typed summon template payload 读取后 spawn、`push_summon_from_template_slot` helper、grouped raw bed2 roster、mixed legacy/bed2 raw roster 到 `PreparedCombatTemplate` 的 helper，以及 `RuntimeV2Runner` 对 bed2-only / mixed roster、raw namerena fixture 形状、seed 初始 RNG 与 legacy 初始 world/order 的正式构造、单回合归一化和 run-until-winner 归一化入口；
 - 已补 custom summon 复合 fixture，覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留与 `push_summon_recast_from_entity_slot` 原实体复活复用，并固化 remembered summon 存活/缺少读取 capability 时不静默重建；
 - 已补 custom minion owner cleanup fixture，覆盖 owner 致死或显式 remove 时 linked minion 按实体顺序死亡、移出 round/alive views 并输出消失帧；
 - 已把 linked minion owner death cleanup 纳入 custom runner strict-diff golden，覆盖消失帧、winner 与 WorldArena 派生视图；
@@ -646,6 +646,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 已补齐 damage/heal/spawn/state/revive/remove/replay/custom effect 的实体存在性校验，非法 caster/target panic；
 - `Revive` / `Remove` effect 已同步维护 v2 `round_order`，为 pending revive/remove 可见性对齐 legacy 铺底；
 - `WorldArena` 已接入 `team_alive` / `flat_alive` / `alive_group_count` 派生存活视图，并随 spawn/revive/remove/death/heal 复活同步维护；
+- raw namerena runner 已在 seed 初始化后同步 legacy `WorldState` 的 team 编号、`round_order`、`team_alive`、`flat_alive` 与 `alive_group_count`，避免 large / fight_multi runner golden 在初始世界顺序上偏移；
 - `NormalizedOutcome` 已纳入 defense/resistance，strict diff 可覆盖 custom summon 继承 owner 防御/魔防的数据面；
 - 致死 `Damage` effect 已按 damage -> die(target) -> kill(caster) 顺序执行 `DIE` / `KILL` skill/state hook；
 - `PlayerRuntime` 已记录 `owner` / `root_owner` / `PlayerKindPolicies`，`Spawn` effect 会把新实体挂到 caster/root-owner 链路上；

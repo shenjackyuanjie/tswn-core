@@ -66,7 +66,7 @@ git diff --name-status github/main..github/custom
 - `CustomBed2Import` 已覆盖 `bed2[...]` / `@bed2` marker 到 v2 bed2 template 的最小导入面，并通过 `parse_player_facade_raw` 对接 `Player::raw_namerena_to_idname` 的名字/队伍归一化结果。
 - grouped raw bed2 roster 已可跳过 seed 行、按输入队伍顺序分配 team/id，并转换为 `PreparedCombatTemplate`。
 - mixed legacy/bed2 raw roster 已可通过 legacy `Player` facade 导入普通玩家，同时对 bed2 marker 使用 custom bed2 template importer。
-- `RuntimeV2Runner` 已可从 bed2-only / mixed roster 与 raw namerena 文本构造正式 v2 runner，复用 legacy 空行分组 / seed 独占组解析形状，并把 raw seed 初始化后的 RC4 checkpoint 对齐到 legacy `Runner`，输出单回合与 run-until-winner 的 `NormalizedOutcome` 供 strict diff / runner golden 复用。
+- `RuntimeV2Runner` 已可从 bed2-only / mixed roster 与 raw namerena 文本构造正式 v2 runner，复用 legacy 空行分组 / seed 独占组解析形状，并把 raw seed 初始化后的 RC4 checkpoint、team 编号、round/alive 派生视图对齐到 legacy `Runner` / `WorldState`，输出单回合与 run-until-winner 的 `NormalizedOutcome` 供 strict diff / runner golden 复用。
 - `TemplateSlotStorage` 已可保留 typed `PlayerTemplate` payload，extension context 通过 `ReadTemplateSlots` capability 读取 bed2 summon 模板，`push_summon_from_template_slot` helper 会校验 payload 并交给 `QueuedEffect::Spawn` 生成实体。
 - `OwnerResolutionPolicy::RootOwner` 已覆盖 summon/root-owner 伤害路由。
 - `DamageSharePolicy::ShareToOwner` / `ShareToSummons` 已覆盖 owner 与 summon 伤害共享。

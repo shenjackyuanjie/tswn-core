@@ -116,7 +116,7 @@ impl RuntimeV2Runner {
     ) -> Result<Self, CustomBed2RosterImportError> {
         let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
         let mut runner = Self::from_bed2_roster(&raw_groups, registry, kind, summon_skill)?;
-        runner.sync_legacy_raw_rng(&raw_groups);
+        runner.sync_legacy_raw_state(&raw_groups);
         Ok(runner)
     }
 
@@ -138,15 +138,49 @@ impl RuntimeV2Runner {
     ) -> Result<Self, CustomMixedRosterImportError> {
         let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
         let mut runner = Self::from_mixed_roster(&raw_groups, registry, bed2_kind, bed2_summon_skill)?;
-        runner.sync_legacy_raw_rng(&raw_groups);
+        runner.sync_legacy_raw_state(&raw_groups);
         Ok(runner)
     }
 
-    fn sync_legacy_raw_rng(&mut self, raw_groups: &[Vec<String>]) {
+    fn sync_legacy_raw_state(&mut self, raw_groups: &[Vec<String>]) {
         let raw_input = raw_groups.iter().map(|group| group.join("\n")).collect::<Vec<String>>().join("\n\n");
         if let Ok(legacy_runner) = crate::Runner::new_from_namerena_raw(raw_input) {
+            self.sync_legacy_raw_world(&legacy_runner.world);
             self.runtime.rng = legacy_runner.randomer;
         }
+    }
+
+    fn sync_legacy_raw_world(&mut self, legacy_world: &crate::engine::world_state::WorldState) {
+        for (team_idx, group) in legacy_world.groups.iter().enumerate() {
+            for plr_id in group {
+                let entity_idx = Self::entity_idx_from_legacy_plr(*plr_id);
+                let entity = self.runtime.entities.get_mut(entity_idx).unwrap_or_else(|| {
+                    panic!(
+                        "legacy raw world contains player id {} missing from runtime_v2 entities",
+                        plr_id
+                    )
+                });
+                entity.template.team = team_idx;
+                entity.runtime.team = team_idx;
+            }
+        }
+
+        let round_order = Self::entity_order_from_legacy_plrs(&legacy_world.players);
+        let team_alive = (0..legacy_world.groups.len())
+            .map(|team| legacy_world.team_alive(team).map(Self::entity_order_from_legacy_plrs).unwrap_or_default())
+            .collect();
+        let flat_alive = Self::entity_order_from_legacy_plrs(&legacy_world.flat_alive);
+        self.runtime
+            .world
+            .sync_initial_views(&self.runtime.entities, round_order, team_alive, flat_alive);
+    }
+
+    fn entity_order_from_legacy_plrs(plrs: &[crate::player::PlrId]) -> Vec<EntityIdx> {
+        plrs.iter().copied().map(Self::entity_idx_from_legacy_plr).collect()
+    }
+
+    fn entity_idx_from_legacy_plr(plr_id: crate::player::PlrId) -> EntityIdx {
+        EntityIdx(plr_id.try_into().expect("legacy raw player id overflowed runtime_v2 entity index"))
     }
 
     pub fn runtime(&self) -> &CombatRuntime { &self.runtime }
@@ -1598,8 +1632,7 @@ mod tests {
         assert_eq!(runner.runtime().entities.len(), 2);
         assert_eq!(runner.runtime().entities.get(EntityIdx(0)).unwrap().template.max_hp, 5);
         assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.max_hp, 8);
-        assert_eq!(runner.runtime().world.team_alive(0), Some([EntityIdx(0)].as_slice()));
-        assert_eq!(runner.runtime().world.team_alive(1), Some([EntityIdx(1)].as_slice()));
+        assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
         assert_eq!(runner.runtime().rng.i, legacy.randomer.i);
         assert_eq!(runner.runtime().rng.j, legacy.randomer.j);
         assert_eq!(runner.runtime().rng.main_val, legacy.randomer.main_val);
@@ -1631,6 +1664,8 @@ mod tests {
         let mut runner = RuntimeV2Runner::from_mixed_namerena_raw(raw_input.to_owned(), registry, bed2, summon)
             .expect("mixed namerena raw should construct runtime v2 runner");
         let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
+        runner.runtime_mut().set_skill_handler(summon, skill_noop);
+        assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
         let initial_rng = crate::runtime_v2::oracle::NormalizedRngCheckpoint::from_runtime(runner.runtime());
         let plain = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.clone();
 
@@ -1638,26 +1673,26 @@ mod tests {
 
         assert_eq!(initial_rng.i, legacy.randomer.i);
         assert_eq!(initial_rng.j, legacy.randomer.j);
-        assert_eq!(summary.rounds.len(), 1);
-        assert_eq!(summary.winner_team, Some(0));
+        assert_eq!(summary.rounds.len(), 2);
+        assert_eq!(summary.winner_team, Some(1));
         assert!(!summary.guard_exhausted);
         let expected = NormalizedOutcome {
-            winner_team: Some(0),
-            round: 1,
+            winner_team: Some(1),
+            round: 2,
             total_score: plain.attack as u64,
             rng: actual.rng.clone(),
             entity_ids: vec![1, 2, 3],
-            teams: vec![0, 0, 1],
+            teams: vec![1, 1, 0],
             hp: vec![plain.max_hp, 9, 0],
             defense: vec![plain.defense, DEFAULT_BED2_DEFENSE, DEFAULT_BED2_DEFENSE],
             resistance: vec![plain.resistance, DEFAULT_BED2_RESISTANCE, DEFAULT_BED2_RESISTANCE],
             alive: vec![true, true, false],
-            round_order: vec![0, 1, 2],
+            round_order: vec![2, 0, 1],
             flat_alive: vec![0, 1],
-            team_alive: vec![vec![0, 1], Vec::new()],
+            team_alive: vec![Vec::new(), vec![0, 1]],
             alive_group_count: 1,
             actions: vec![crate::runtime_v2::oracle::NormalizedActionBoundary {
-                round: 1,
+                round: 2,
                 actor: 0,
                 target: 2,
                 amount: plain.attack,
@@ -3359,6 +3394,8 @@ mod tests {
         ));
     }
 
+    fn skill_noop(_: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {}
+
     fn skill_pushes_nested_damage(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
         context.push_nested(QueuedEffect::Damage {
             caster: context.owner_idx(),
@@ -3486,6 +3523,46 @@ mod tests {
                 hp_report.msg()
             ),
         ))
+    }
+
+    fn assert_runtime_world_matches_legacy_raw_world(
+        runtime: &CombatRuntime,
+        legacy_world: &crate::engine::world_state::WorldState,
+    ) {
+        assert_eq!(
+            runtime.world.round_order(),
+            legacy_entity_order(&legacy_world.players).as_slice()
+        );
+        assert_eq!(
+            runtime.world.flat_alive(),
+            legacy_entity_order(&legacy_world.flat_alive).as_slice()
+        );
+        assert_eq!(runtime.world.alive_group_count(), legacy_world.alive_group_count());
+        for team_idx in 0..legacy_world.groups.len() {
+            assert_eq!(
+                runtime.world.team_alive(team_idx),
+                Some(legacy_entity_order(legacy_world.team_alive(team_idx).unwrap_or_default()).as_slice())
+            );
+        }
+        for (team_idx, group) in legacy_world.groups.iter().enumerate() {
+            for plr in group {
+                let entity = runtime
+                    .entities
+                    .get(EntityIdx(
+                        (*plr).try_into().expect("legacy fixture player id should fit EntityIdx"),
+                    ))
+                    .expect("legacy raw world player should exist in runtime_v2");
+                assert_eq!(entity.runtime.team, team_idx);
+                assert_eq!(entity.template.team, team_idx);
+            }
+        }
+    }
+
+    fn legacy_entity_order(plrs: &[crate::player::PlrId]) -> Vec<EntityIdx> {
+        plrs.iter()
+            .copied()
+            .map(|plr| EntityIdx(plr.try_into().expect("legacy fixture player id should fit EntityIdx")))
+            .collect()
     }
 
     #[test]

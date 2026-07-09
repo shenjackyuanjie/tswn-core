@@ -34,6 +34,28 @@ impl WorldArena {
         }
     }
 
+    pub fn sync_initial_views(
+        &mut self,
+        entities: &EntityArena,
+        round_order: Vec<EntityIdx>,
+        team_alive: Vec<Vec<EntityIdx>>,
+        flat_alive: Vec<EntityIdx>,
+    ) {
+        debug_assert!(round_order.iter().all(|idx| entities.get(*idx).is_some()));
+        debug_assert!(flat_alive.iter().all(|idx| entities.get(*idx).is_some_and(|entity| entity.runtime.alive)));
+        debug_assert!(team_alive.iter().enumerate().all(|(team, alive)| alive.iter().all(|idx| {
+            entities
+                .get(*idx)
+                .is_some_and(|entity| entity.runtime.alive && entity.runtime.team == team)
+        })));
+
+        self.round_order = round_order;
+        self.team_alive = team_alive;
+        self.flat_alive = flat_alive;
+        self.alive_group_count = self.team_alive.iter().filter(|team| !team.is_empty()).count();
+        self.cursor = 0;
+    }
+
     pub fn next_actor(&mut self, entities: &EntityArena) -> Option<EntityIdx> {
         if self.round_order.is_empty() {
             return None;
@@ -179,6 +201,29 @@ mod tests {
         assert_eq!(world.team_alive(0), Some([EntityIdx(0), EntityIdx(2)].as_slice()));
         assert_eq!(world.team_alive(1), Some([EntityIdx(1)].as_slice()));
         assert_eq!(world.flat_alive(), &[EntityIdx(0), EntityIdx(1), EntityIdx(2)]);
+        assert_eq!(world.alive_group_count(), 2);
+    }
+
+    #[test]
+    fn world_sync_initial_views_replaces_seed_sorted_orders() {
+        let entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 1, 10, 3),
+            PlayerTemplate::new(2, "right", 0, 10, 3),
+            PlayerTemplate::new(3, "ally", 1, 10, 3),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+
+        world.sync_initial_views(
+            &entities,
+            vec![EntityIdx(2), EntityIdx(0), EntityIdx(1)],
+            vec![vec![EntityIdx(1)], vec![EntityIdx(2), EntityIdx(0)]],
+            vec![EntityIdx(1), EntityIdx(2), EntityIdx(0)],
+        );
+
+        assert_eq!(world.round_order(), &[EntityIdx(2), EntityIdx(0), EntityIdx(1)]);
+        assert_eq!(world.team_alive(0), Some([EntityIdx(1)].as_slice()));
+        assert_eq!(world.team_alive(1), Some([EntityIdx(2), EntityIdx(0)].as_slice()));
+        assert_eq!(world.flat_alive(), &[EntityIdx(1), EntityIdx(2), EntityIdx(0)]);
         assert_eq!(world.alive_group_count(), 2);
     }
 
