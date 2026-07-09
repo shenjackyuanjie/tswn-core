@@ -7,6 +7,7 @@ use crate::Runner;
 use crate::error::runner::RunnerError;
 use crate::player::eval_name;
 use crate::player::icon::icon_from_raw_name;
+use crate::runtime_v2::{CustomRuntimeV2ImportConfig, RuntimeV2NormalizedRun, RuntimeV2Runner};
 use crate::win_rate::{WinRateSummary, WinRateTiming, groups_win_rate};
 
 pub type CliApiResult<T> = Result<T, CliApiError>;
@@ -402,7 +403,24 @@ pub fn parse_group_lines(content: &str, double_plus: bool) -> Vec<String> {
         .collect()
 }
 
+pub fn custom_runtime_v2_mixed_runner(raw: &str, config: CustomRuntimeV2ImportConfig<'_>) -> CliApiResult<RuntimeV2Runner> {
+    RuntimeV2Runner::from_custom_mixed_namerena_raw(raw.to_owned(), config).map_err(custom_runtime_v2_import_error)
+}
+
+pub fn custom_runtime_v2_normalized_run(
+    raw: &str,
+    max_rounds: usize,
+    config: CustomRuntimeV2ImportConfig<'_>,
+) -> CliApiResult<RuntimeV2NormalizedRun> {
+    let mut runner = custom_runtime_v2_mixed_runner(raw, config)?;
+    Ok(runner.run_until_winner_normalized_rounds(max_rounds))
+}
+
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
+
+fn custom_runtime_v2_import_error(error: crate::runtime_v2::CustomRuntimeV2ImportError) -> CliApiError {
+    invalid_input(format!("custom runtime v2 import failed: {error:?}"))
+}
 
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> CliApiResult<()> {
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
@@ -449,4 +467,70 @@ fn normalize_namer_pf_modes(modes: Option<Vec<String>>) -> CliApiResult<Vec<Name
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_v2::{
+        DamageSharePolicy, EntityIdx, ExtensionRegistryBuilder, MergePolicy, OwnerResolutionPolicy, PlayerKindFlags,
+        PlayerKindId, PlayerKindPolicies, SkillId, SkillPriority, TargetPolicy,
+    };
+
+    fn custom_runtime_v2_config() -> (CustomRuntimeV2ImportConfig<'static>, PlayerKindId, SkillId) {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        (CustomRuntimeV2ImportConfig::new(registry, bed2, summon), bed2, summon)
+    }
+
+    #[test]
+    fn cli_api_custom_runtime_v2_mixed_runner_imports_custom_profile_raw() {
+        let (config, bed2, _) = custom_runtime_v2_config();
+        let raw = "plain@red\nalpha@red@bed2\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
+
+        let runner = custom_runtime_v2_mixed_runner(raw, config).expect("custom runtime v2 mixed runner should build");
+        let legacy = Runner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
+        let expected_round_order = legacy
+            .world
+            .players
+            .iter()
+            .map(|plr_id| u32::try_from(*plr_id).expect("legacy player id should fit runtime v2 entity index"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.kind, bed2);
+        assert_eq!(runner.runtime().entities.get(EntityIdx(2)).unwrap().template.kind, bed2);
+        assert_eq!(
+            runner.runtime().world.round_order().iter().map(|idx| idx.0).collect::<Vec<_>>(),
+            expected_round_order
+        );
+    }
+
+    #[test]
+    fn cli_api_custom_runtime_v2_normalized_run_executes_plain_raw() {
+        let (config, _, _) = custom_runtime_v2_config();
+        let raw = "left@red\n\nright@blue\n";
+
+        let run = custom_runtime_v2_normalized_run(raw, 1, config).expect("custom runtime v2 normalized run should execute");
+
+        assert_eq!(run.rounds.len(), 1);
+        assert_eq!(run.guard_exhausted, run.winner_team.is_none());
+        assert!(!run.rounds[0].frames.is_empty());
+    }
 }
