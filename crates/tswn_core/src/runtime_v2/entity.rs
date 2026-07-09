@@ -416,6 +416,10 @@ pub enum StatePayload {
     None,
     FireMagHalfSteps(i32),
     ShieldValue(i32),
+    Curse {
+        prob: i32,
+        multiply: i32,
+    },
 }
 
 impl StateEntry {
@@ -452,17 +456,28 @@ impl StateEntry {
         }
     }
 
+    pub fn curse(legacy_order_key: u32, state_id: StateId, prob: i32, multiply: i32, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_DEFEND,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::Curse { prob, multiply },
+        }
+    }
+
     pub fn fire_mag_value(&self) -> Option<f64> {
         match self.payload {
             StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(half_steps) * 0.5),
-            StatePayload::None | StatePayload::ShieldValue(_) => None,
+            StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } => None,
         }
     }
 
     pub fn shield_value(&self) -> Option<i32> {
         match self.payload {
             StatePayload::ShieldValue(shield) => Some(shield),
-            StatePayload::None | StatePayload::FireMagHalfSteps(_) => None,
+            StatePayload::None | StatePayload::FireMagHalfSteps(_) | StatePayload::Curse { .. } => None,
         }
     }
 }
@@ -503,7 +518,7 @@ impl StateStore {
                 StatePayload::FireMagHalfSteps(half_steps) => {
                     *half_steps += 1;
                 }
-                StatePayload::None | StatePayload::ShieldValue(_) => {
+                StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
             }

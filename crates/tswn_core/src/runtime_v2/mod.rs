@@ -94,36 +94,56 @@ impl RuntimeV2NormalizedRun {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RuntimeDefendValue {
-    Atp(f64),
-    Damage(i32),
+    Atp {
+        value: f64,
+        caster: EntityIdx,
+        target: EntityIdx,
+    },
+    Damage {
+        value: i32,
+        caster: EntityIdx,
+        target: EntityIdx,
+    },
 }
 
 impl RuntimeDefendValue {
     pub fn atp(self) -> Option<f64> {
         match self {
-            Self::Atp(atp) => Some(atp),
-            Self::Damage(_) => None,
+            Self::Atp { value, .. } => Some(value),
+            Self::Damage { .. } => None,
         }
     }
 
     pub fn set_atp(&mut self, atp: f64) {
         match self {
-            Self::Atp(value) => *value = atp,
-            Self::Damage(_) => panic!("runtime_v2 defend value is damage, not atp"),
+            Self::Atp { value, .. } => *value = atp,
+            Self::Damage { .. } => panic!("runtime_v2 defend value is damage, not atp"),
         }
     }
 
     pub fn damage(self) -> Option<i32> {
         match self {
-            Self::Atp(_) => None,
-            Self::Damage(damage) => Some(damage),
+            Self::Atp { .. } => None,
+            Self::Damage { value, .. } => Some(value),
         }
     }
 
     pub fn set_damage(&mut self, damage: i32) {
         match self {
-            Self::Atp(_) => panic!("runtime_v2 defend value is atp, not damage"),
-            Self::Damage(value) => *value = damage,
+            Self::Atp { .. } => panic!("runtime_v2 defend value is atp, not damage"),
+            Self::Damage { value, .. } => *value = damage,
+        }
+    }
+
+    pub fn caster(self) -> EntityIdx {
+        match self {
+            Self::Atp { caster, .. } | Self::Damage { caster, .. } => caster,
+        }
+    }
+
+    pub fn target(self) -> EntityIdx {
+        match self {
+            Self::Atp { target, .. } | Self::Damage { target, .. } => target,
         }
     }
 }
@@ -481,6 +501,28 @@ pub fn run_shield_post_defend_state(context: &mut StateContext<'_>, entry: &Stat
         context
             .set_owner_state_payload(entry.legacy_order_key, StatePayload::ShieldValue(shield - damage))
             .expect("shield state payload should still exist");
+    }
+}
+
+pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    let Some(StatePayload::Curse { prob, multiply }) = context.owner_state_payload(entry.legacy_order_key) else {
+        return;
+    };
+    let damage = context.defend_damage().expect("curse state should run during POST_DEFEND");
+    if damage <= 0 {
+        return;
+    }
+
+    if (context.rng_next_u8() as u32) & 63 < prob as u32 {
+        let caster = context.defend_caster().expect("curse state should receive incoming defend caster");
+        let target = context.defend_target().expect("curse state should receive incoming defend target");
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "[诅咒]使伤害加倍",
+            caster.0 as usize,
+            target.0 as usize,
+            0,
+        ));
+        context.set_defend_damage(damage * multiply);
     }
 }
 
@@ -1158,7 +1200,11 @@ impl CombatRuntime {
                     self.ensure_effect_entity("summon-explode", "target", target);
                     let fire_mag = self.entities.get(target).unwrap().states.fire_mag(fire_state_key);
                     let atp = self.entities.get(caster).unwrap().runtime.get_at(true, &mut self.rng);
-                    let mut defend_value = RuntimeDefendValue::Atp(atp * (4.0 + fire_mag));
+                    let mut defend_value = RuntimeDefendValue::Atp {
+                        value: atp * (4.0 + fire_mag),
+                        caster,
+                        target,
+                    };
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
                         target.0 as usize,
@@ -1185,7 +1231,11 @@ impl CombatRuntime {
                         ));
                     } else {
                         let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
-                        let mut defend_value = RuntimeDefendValue::Damage(amount);
+                        let mut defend_value = RuntimeDefendValue::Damage {
+                            value: amount,
+                            caster,
+                            target,
+                        };
                         self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
                         let Some(amount) = defend_value.damage() else {
                             panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
@@ -3631,6 +3681,175 @@ mod tests {
         assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
         assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
         assert_eq!(frame.updates.updates[1].score, raw_amount as u32);
+    }
+
+    #[test]
+    fn summon_explode_post_defend_curse_doubles_damage_and_emits_replay() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let curse_state = builder
+            .register_state("core", "curse", "core.curse", ProcMask::POST_DEFEND, SkillPriority(10_000))
+            .expect("curse state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(curse_state, run_curse_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::curse(
+            78,
+            curse_state,
+            64,
+            2,
+            SkillPriority(10_000),
+        ));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 4.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let raw_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        let curse_roll = expected_rng.next_u8() as u32 & 63;
+        assert!(curse_roll < 64);
+        let expected_amount = raw_amount * 2;
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("curse summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.5);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[诅咒]使伤害加倍");
+        assert_eq!(frame.updates.updates[1].caster, 2);
+        assert_eq!(frame.updates.updates[1].target, 1);
+        assert_eq!(frame.updates.updates[1].score, 0);
+        assert_eq!(frame.updates.updates[2].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[2].score, expected_amount as u32);
+    }
+
+    #[test]
+    fn summon_explode_post_defend_curse_consumes_rng_without_trigger() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let curse_state = builder
+            .register_state("core", "curse", "core.curse", ProcMask::POST_DEFEND, SkillPriority(10_000))
+            .expect("curse state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(curse_state, run_curse_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::curse(
+            78,
+            curse_state,
+            0,
+            2,
+            SkillPriority(10_000),
+        ));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 4.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let raw_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        let _curse_roll = expected_rng.next_u8() as u32 & 63;
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("curse miss summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - raw_amount);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.5);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].score, raw_amount as u32);
+    }
+
+    #[test]
+    fn summon_explode_post_defend_curse_skips_rng_when_damage_is_zero() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let shield_state = builder
+            .register_state("core", "shield", "core.shield", ProcMask::POST_DEFEND, SkillPriority(6000))
+            .expect("shield state should register");
+        let curse_state = builder
+            .register_state("core", "curse", "core.curse", ProcMask::POST_DEFEND, SkillPriority(10_000))
+            .expect("curse state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(shield_state, run_shield_post_defend_state);
+        runtime.set_state_handler(curse_state, run_curse_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::shield(
+            77,
+            shield_state,
+            500,
+            SkillPriority(6000),
+        ));
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::curse(
+            78,
+            curse_state,
+            64,
+            2,
+            SkillPriority(10_000),
+        ));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 4.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let raw_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        assert!(raw_amount < 500);
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("shielded curse summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.0);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].score, 0);
     }
 
     #[test]

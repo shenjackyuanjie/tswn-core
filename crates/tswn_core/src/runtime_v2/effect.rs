@@ -510,6 +510,10 @@ impl<'a> SkillContext<'a> {
         value.set_damage(damage);
     }
 
+    pub fn defend_caster(&self) -> Option<EntityIdx> { self.defend_value.as_ref().map(|value| value.caster()) }
+
+    pub fn defend_target(&self) -> Option<EntityIdx> { self.defend_value.as_ref().map(|value| value.target()) }
+
     pub fn owner_state_payload(&self, legacy_order_key: u32) -> Option<StatePayload> {
         self.owner()?.states.entry(legacy_order_key).map(|entry| entry.payload)
     }
@@ -643,6 +647,10 @@ impl<'a> StateContext<'a> {
         };
         value.set_damage(damage);
     }
+
+    pub fn defend_caster(&self) -> Option<EntityIdx> { self.defend_value.as_ref().map(|value| value.caster()) }
+
+    pub fn defend_target(&self) -> Option<EntityIdx> { self.defend_value.as_ref().map(|value| value.target()) }
 
     pub fn owner_state_payload(&self, legacy_order_key: u32) -> Option<StatePayload> {
         self.owner()?.states.entry(legacy_order_key).map(|entry| entry.payload)
