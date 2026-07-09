@@ -15,7 +15,8 @@ use error::WasmResult;
 pub use fight::FightSession;
 use model::{
     CliBatchRateResult, CliGroupWinRateResult, CliIconInfo, CliNamerPfResult, CliPairRateResult, CliScoreResult,
-    CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, WinRateOptions, WinRateResult,
+    CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeV2NormalizedRunView, WinRateOptions,
+    WinRateResult,
 };
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
@@ -216,6 +217,14 @@ pub fn pair_rate(
 }
 
 #[wasm_bindgen]
+pub fn default_custom_runtime_v2_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeV2NormalizedRunView> {
+    install_panic_hook();
+    tswn_core::cli_api::default_custom_runtime_v2_normalized_run(&raw_input, max_rounds)
+        .map(Into::into)
+        .map_err(error::cli_api_error)
+}
+
+#[wasm_bindgen]
 pub fn to_diy(name: String, old: Option<bool>, minions: Option<bool>) -> WasmResult<String> {
     install_panic_hook();
     tswn_core::cli_api::to_diy(&name, old.unwrap_or(false), minions.unwrap_or(false)).map_err(error::cli_api_error)
@@ -237,4 +246,20 @@ pub fn icon_info(name: String) -> CliIconInfo {
 pub fn parse_group_lines(content: String, double_plus: Option<bool>) -> Vec<String> {
     install_panic_hook();
     tswn_core::cli_api::parse_group_lines(&content, double_plus.unwrap_or(false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_custom_runtime_v2_normalized_run_exposes_wasm_view() {
+        let run = default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n".to_string(), 1)
+            .expect("default custom runtime v2 normalized run should execute");
+
+        assert_eq!(run.rounds.len(), 1);
+        assert_eq!(run.guard_exhausted, run.winner_team.is_none());
+        assert_eq!(run.total_score, run.rounds.iter().map(|round| round.total_score).sum::<u64>());
+        assert!(!run.rounds[0].frames.is_empty());
+    }
 }

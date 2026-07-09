@@ -8,6 +8,7 @@ use tsify::Tsify;
 use tswn_core::cli_api as core_cli_api;
 use tswn_core::engine::update::UpdateType;
 use tswn_core::player::skill::act::minion::MinionKind;
+use tswn_core::runtime_v2::{NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2NormalizedRun};
 
 #[derive(Debug, Clone, Default, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
@@ -116,7 +117,7 @@ impl From<MinionKind> for MinionKindView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Tsify)]
 #[tsify(into_wasm_abi)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateTypeView {
@@ -133,6 +134,62 @@ impl From<UpdateType> for UpdateTypeView {
             UpdateType::NextLine => Self::NextLine,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct RuntimeV2NormalizedRunView {
+    pub rounds: Vec<RuntimeV2NormalizedOutcomeView>,
+    pub winner_team: Option<usize>,
+    pub guard_exhausted: bool,
+    pub total_score: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct RuntimeV2NormalizedOutcomeView {
+    pub winner_team: Option<usize>,
+    pub round: u64,
+    pub total_score: u64,
+    pub rng_i: u32,
+    pub rng_j: u32,
+    pub entity_ids: Vec<usize>,
+    pub teams: Vec<usize>,
+    pub hp: Vec<i32>,
+    pub magic_point: Vec<i32>,
+    pub defense: Vec<i32>,
+    pub resistance: Vec<i32>,
+    pub alive: Vec<bool>,
+    pub round_order: Vec<usize>,
+    pub flat_alive: Vec<usize>,
+    pub team_alive: Vec<Vec<usize>>,
+    pub alive_group_count: usize,
+    pub actions: Vec<RuntimeV2ActionBoundaryView>,
+    pub frames: Vec<RuntimeV2UpdateFrameView>,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct RuntimeV2ActionBoundaryView {
+    pub round: u64,
+    pub actor: usize,
+    pub target: usize,
+    pub amount: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct RuntimeV2UpdateFrameView {
+    pub message: String,
+    pub caster: usize,
+    pub target: usize,
+    pub targets: Vec<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub param: Option<u32>,
+    pub score: u32,
+    pub delay0: i32,
+    pub delay1: i32,
+    pub update_type: UpdateTypeView,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Tsify)]
@@ -393,6 +450,67 @@ pub struct CliIconInfo {
 }
 
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
+
+impl From<RuntimeV2NormalizedRun> for RuntimeV2NormalizedRunView {
+    fn from(value: RuntimeV2NormalizedRun) -> Self {
+        Self {
+            rounds: value.rounds.into_iter().map(Into::into).collect(),
+            winner_team: value.winner_team,
+            guard_exhausted: value.guard_exhausted,
+            total_score: value.total_score,
+        }
+    }
+}
+
+impl From<NormalizedOutcome> for RuntimeV2NormalizedOutcomeView {
+    fn from(value: NormalizedOutcome) -> Self {
+        Self {
+            winner_team: value.winner_team,
+            round: value.round,
+            total_score: value.total_score,
+            rng_i: value.rng.i,
+            rng_j: value.rng.j,
+            entity_ids: value.entity_ids,
+            teams: value.teams,
+            hp: value.hp,
+            magic_point: value.magic_point,
+            defense: value.defense,
+            resistance: value.resistance,
+            alive: value.alive,
+            round_order: value.round_order,
+            flat_alive: value.flat_alive,
+            team_alive: value.team_alive,
+            alive_group_count: value.alive_group_count,
+            actions: value
+                .actions
+                .into_iter()
+                .map(|action| RuntimeV2ActionBoundaryView {
+                    round: action.round,
+                    actor: action.actor,
+                    target: action.target,
+                    amount: action.amount,
+                })
+                .collect(),
+            frames: value.frames.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<NormalizedUpdateFrame> for RuntimeV2UpdateFrameView {
+    fn from(value: NormalizedUpdateFrame) -> Self {
+        Self {
+            message: value.message,
+            caster: value.caster,
+            target: value.target,
+            targets: value.targets,
+            param: value.param,
+            score: value.score,
+            delay0: value.delay0,
+            delay1: value.delay1,
+            update_type: value.update_type.into(),
+        }
+    }
+}
 
 impl From<core_cli_api::WinRateResult> for CliWinRateResult {
     fn from(value: core_cli_api::WinRateResult) -> Self {
