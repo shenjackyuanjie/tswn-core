@@ -1934,6 +1934,110 @@ mod tests {
         assert_eq!(strict_diff(&expected, &actual), Ok(()));
     }
 
+    #[test]
+    fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let minion_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "runner-linked-minion",
+                "custom.runner_linked_minion",
+                PlayerKindFlags::MINION | PlayerKindFlags::SUMMON,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("runner minion kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        ));
+
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(3, "owner?0", minion_kind, 0, 4, 1),
+        });
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(4, "owner?1", minion_kind, 0, 4, 1),
+        });
+        runtime.flush_effects().expect("minion spawns should emit updates");
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(0),
+            amount: 10,
+        });
+
+        let frame = runtime.flush_effects().expect("owner death should cleanup linked minions");
+        let outcome = RoundOutcome {
+            action: None,
+            frame: Some(frame),
+            winner_team: runtime.world.sync_winner(&runtime.entities),
+        };
+        let actual = NormalizedOutcome::from_runtime(&runtime, &outcome);
+        let expected = NormalizedOutcome {
+            winner_team: Some(1),
+            round: 0,
+            total_score: 10,
+            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+            entity_ids: vec![1, 2, 3, 4],
+            teams: vec![0, 1, 0, 0],
+            hp: vec![0, 10, 0, 0],
+            defense: vec![0, 0, 0, 0],
+            resistance: vec![0, 0, 0, 0],
+            alive: vec![false, true, false, false],
+            round_order: vec![0, 1],
+            flat_alive: vec![1],
+            team_alive: vec![Vec::new(), vec![1]],
+            alive_group_count: 1,
+            actions: Vec::new(),
+            frames: vec![
+                NormalizedUpdateFrame {
+                    message: "[0]攻击[1]".to_owned(),
+                    caster: 1,
+                    target: 0,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 10,
+                    delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                    delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                    update_type: crate::engine::update::UpdateType::None,
+                },
+                NormalizedUpdateFrame {
+                    message: "[1]消失了".to_owned(),
+                    caster: 0,
+                    target: 2,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 0,
+                    delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                    delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                    update_type: crate::engine::update::UpdateType::None,
+                },
+                NormalizedUpdateFrame {
+                    message: "[1]消失了".to_owned(),
+                    caster: 0,
+                    target: 3,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 0,
+                    delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                    delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                    update_type: crate::engine::update::UpdateType::None,
+                },
+            ],
+        };
+
+        assert_eq!(strict_diff(&expected, &actual), Ok(()));
+    }
+
     fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
         let CustomEffectPayload::Text(message) = &effect.payload else {
             panic!("custom test effect expects text payload");
