@@ -432,6 +432,13 @@ impl EntityRecord {
         messages
     }
 
+    pub fn clear_positive_messages(&mut self) -> Vec<(i32, &'static str)> {
+        let mut messages = self.clear_positive_runtime_messages();
+        messages.extend(self.states.clear_positive_states_with_ordered_messages(self.runtime.alive));
+        messages.sort_unstable_by_key(|(priority, _)| *priority);
+        messages
+    }
+
     fn refresh_runtime_at_boost(&mut self) {
         let mut at_boost = self.template.at_boost_millionths as f64 / DEFAULT_AT_BOOST_MILLIONTHS as f64;
         if self.runtime.charge.active {
