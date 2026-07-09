@@ -90,11 +90,11 @@ git diff --name-status github/main..github/custom
 - `RuntimeFrame::render_core_replay` / `render_core_show` 已提供 show 迁移前的最小 golden 面。
 - HP marker show renderer fixture 已固化 `hp-bar` payload，保留 `[2]` HP 数值给展示层使用。
 - `build_replay_view_frame` 已对 `"[0]还剩[2]点血"` 强制输出 player part `show_hp`，wasm/show 可复用现有结构化 `actorToken` 血条渲染，并通过 `Data` part 标记数值。
-- `show-wasm.js` 已新增显式 `buildV2NormalizedReplay()` adapter，可把 wasm `default_custom_runtime_v2_normalized_run()` 的 rounds/actions/frames 转成当前 show-compatible replay shape；当前默认 show 路径仍保留 `FightSession`，后续继续补 DOM/golden 对账后再切换。
-- `show.html` 已接入 `engine=v2` / `runtime=v2` opt-in，显式 v2 页面路径会调用 adapter 生成可播放 replay，分享链接会保留 v2 选择；默认路径仍保留 `FightSession`。
+- `show-wasm.js` 已新增显式 `buildV2NormalizedReplay()` adapter，可把 wasm `default_custom_runtime_v2_normalized_run()` 的 rounds/actions/frames 转成当前 show-compatible replay shape；当前默认 show 路径已切到该 adapter，legacy `FightSession` 作为显式 fallback 保留。
+- `show.html` 默认会调用 v2 adapter 生成可播放 replay，可通过 `engine=legacy` / `runtime=legacy` / `engine=fight_session` 显式回退 `FightSession`，分享链接会保留当前 runtime 选择。
 - `show-wasm.test.mjs` 已覆盖纯 adapter 输出和 `buildFrameRows()` HTML chunk 渲染，固定 v2 normalized run 到 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row / summoned entity first-appearance / removed entity disappearance shape 的最小验收面。
-- `show-routing.js` / `show-routing.test.mjs` 已把 URL-safe input、`engine`/`runtime` v2 alias、legacy fallback、非法 input 报错和 v2 分享链接保留逻辑抽成可单测路由面，降低后续默认路径切换风险。
-- `show-page-contract.test.mjs` 已固定 `show.html` v2 opt-in 页面契约：runtime mode DOM、module script、`show.js` runtime routing、adapter 调用和 v2 分享链接保留逻辑，作为后续默认路径切换前的最小页面 wiring golden。
+- `show-routing.js` / `show-routing.test.mjs` 已把 URL-safe input、v2 默认、`engine`/`runtime` alias、legacy fallback、非法 input 报错和 runtime 分享链接保留逻辑抽成可单测路由面，降低后续 legacy 删除风险。
+- `show-page-contract.test.mjs` 已固定 `show.html` v2 默认页面契约：runtime mode DOM、module script、`show.js` runtime routing、adapter 调用和 runtime 分享链接保留逻辑，作为后续 legacy fallback 删除前的最小页面 wiring golden。
 - 最小 custom runner strict-diff golden 已把 spawn、share、heal、HP marker 和 world 派生视图接入同一验收面。
 - linked minion owner-death cleanup 已接入 runner strict-diff golden，固定 owner 致死后的消失帧、round/alive 派生视图与 winner 汇总。
 - merge 已接入 runner strict-diff golden，固定吞噬/属性上升帧、score 与 fixed-lane 技能槽继承结果。

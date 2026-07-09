@@ -129,6 +129,7 @@ import {
 } from "./show-replay.js";
 import {
   buildShowShareUrl,
+  DEFAULT_REPLAY_ENGINE,
   readReplayEngineFromSearch,
   readStaticReplayInputFromSearch,
   replayEngineStatusText as showReplayEngineStatusText,
@@ -277,7 +278,7 @@ let rightControlsCollapsed = window.matchMedia("(max-width: 640px)").matches;
 /** @type {number|null} 分享复制提示的隐藏定时器 */
 let shareToastTimer = null;
 /** @type {'legacy'|'v2'} 当前 replay 生成路径 */
-let replayEngine = "legacy";
+let replayEngine = DEFAULT_REPLAY_ENGINE;
 
 // 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
@@ -1084,7 +1085,7 @@ function showShareToast(message = "分享链接已复制") {
 function buildShareUrl(rawInput) {
   return buildShowShareUrl(rawInput, {
     href: window.location.href,
-    runtimeV2: Boolean(currentReplay?.runtime_v2) || replayEngine === "v2",
+    runtimeEngine: Boolean(currentReplay?.runtime_v2) || replayEngine === "v2" ? "v2" : "legacy",
   });
 }
 
@@ -1125,7 +1126,7 @@ function readStaticReplayInputFromUrl() {
 }
 
 /**
- * 从 URL 读取 replay runtime。未指定时保持 legacy FightSession 默认路径。
+ * 从 URL 读取 replay runtime。未指定时使用页面默认 runtime。
  * @returns {{ engine: 'legacy'|'v2', paramName: string, message?: string }|null}
  */
 function readReplayEngineFromUrl() {

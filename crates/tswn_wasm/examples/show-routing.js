@@ -4,6 +4,8 @@ import { formatError } from "./show-utils.js";
 export const STATIC_INPUT_PARAM_NAMES = ["input", "replay", "data"];
 /** @type {string[]} URL 参数名，用于显式选择 replay runtime */
 export const REPLAY_ENGINE_PARAM_NAMES = ["engine", "runtime"];
+/** @type {'legacy'|'v2'} show 页面未显式指定 runtime 时使用的默认 replay runtime */
+export const DEFAULT_REPLAY_ENGINE = "v2";
 
 const REPLAY_ENGINE_V2_VALUES = new Set(["v2", "runtime_v2", "normalized", "normalized_v2"]);
 const REPLAY_ENGINE_LEGACY_VALUES = new Set(["legacy", "v1", "fightsession", "fight_session"]);
@@ -55,10 +57,10 @@ export function encodeBase64UrlUtf8(input) {
 /**
  * 为当前对局输入生成分享链接。
  * @param {string} rawInput
- * @param {{ href: string, runtimeV2?: boolean }} options
+ * @param {{ href: string, runtimeV2?: boolean, runtimeEngine?: 'legacy'|'v2'|null }} options
  * @returns {string}
  */
-export function buildShowShareUrl(rawInput, { href, runtimeV2 = false }) {
+export function buildShowShareUrl(rawInput, { href, runtimeV2 = false, runtimeEngine = null }) {
   const url = new URL(href);
   for (const paramName of STATIC_INPUT_PARAM_NAMES) {
     url.searchParams.delete(paramName);
@@ -67,8 +69,11 @@ export function buildShowShareUrl(rawInput, { href, runtimeV2 = false }) {
     url.searchParams.delete(paramName);
   }
   url.searchParams.set("input", encodeBase64UrlUtf8(rawInput));
-  if (runtimeV2) {
+  const engine = runtimeEngine ?? (runtimeV2 ? "v2" : null);
+  if (engine === "v2") {
     url.searchParams.set("engine", "v2");
+  } else if (engine === "legacy") {
+    url.searchParams.set("engine", "legacy");
   }
   url.hash = "";
   return url.href;
@@ -102,7 +107,7 @@ export function readStaticReplayInputFromSearch(search) {
 }
 
 /**
- * 从 URL search 中读取 replay runtime。未指定时保持 legacy FightSession 默认路径。
+ * 从 URL search 中读取 replay runtime。未指定时返回 null，由页面默认 runtime 决定。
  * @param {string} search
  * @returns {{ engine: 'legacy'|'v2', paramName: string, message?: string }|null}
  */
@@ -120,9 +125,9 @@ export function readReplayEngineFromSearch(search) {
       return { engine: "legacy", paramName };
     }
     return {
-      engine: "legacy",
+      engine: DEFAULT_REPLAY_ENGINE,
       paramName,
-      message: `URL 参数 ${paramName}=${value} 未识别，已回退 FightSession。`,
+      message: `URL 参数 ${paramName}=${value} 未识别，已回退 v2 normalized run。`,
     };
   }
   return null;

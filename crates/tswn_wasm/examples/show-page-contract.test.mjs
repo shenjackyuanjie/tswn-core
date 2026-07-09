@@ -10,15 +10,18 @@ async function readExampleFile(name) {
   return readFile(join(examplesDir, name), "utf8");
 }
 
-test("show page keeps v2 runtime opt-in wired to the adapter path", async () => {
+test("show page keeps v2 runtime default wired to the adapter path", async () => {
   const [html, script] = await Promise.all([
     readExampleFile("show.html"),
     readExampleFile("show.js"),
   ]);
 
   assert.match(html, /id="runtimeModeInfo"/);
+  assert.match(html, /使用 v2 normalized run 生成 replay 适配视图。/);
   assert.match(html, /<script type="module" src="\.\/show\.js\?v=[^"]+"><\/script>/);
 
+  assert.match(script, /DEFAULT_REPLAY_ENGINE/);
+  assert.match(script, /let replayEngine = DEFAULT_REPLAY_ENGINE;/);
   assert.match(script, /import \{ ensureApi, buildReplay, buildV2NormalizedReplay \} from "\.\/show-wasm\.js";/);
   assert.match(script, /readReplayEngineFromSearch\(window\.location\.search\)/);
   assert.match(script, /runtimeModeInfo\.textContent = replayEngineStatusText\(\);/);
@@ -28,5 +31,5 @@ test("show page keeps v2 runtime opt-in wired to the adapter path", async () => 
 test("show page preserves v2 runtime in generated share links", async () => {
   const script = await readExampleFile("show.js");
 
-  assert.match(script, /buildShowShareUrl\(rawInput, \{\s*href: window\.location\.href,\s*runtimeV2: Boolean\(currentReplay\?\.runtime_v2\) \|\| replayEngine === "v2",\s*\}\)/s);
+  assert.match(script, /buildShowShareUrl\(rawInput, \{\s*href: window\.location\.href,\s*runtimeEngine: Boolean\(currentReplay\?\.runtime_v2\) \|\| replayEngine === "v2" \? "v2" : "legacy",\s*\}\)/s);
 });

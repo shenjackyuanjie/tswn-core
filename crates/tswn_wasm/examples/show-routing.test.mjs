@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildShowShareUrl,
+  DEFAULT_REPLAY_ENGINE,
   decodeBase64UrlUtf8,
   encodeBase64UrlUtf8,
   readReplayEngineFromSearch,
@@ -31,6 +32,7 @@ test("show routing reports invalid static replay input", () => {
 });
 
 test("show routing recognizes v2 and legacy engine aliases", () => {
+  assert.equal(DEFAULT_REPLAY_ENGINE, "v2");
   assert.deepEqual(readReplayEngineFromSearch("?engine=v2"), { engine: "v2", paramName: "engine" });
   assert.deepEqual(readReplayEngineFromSearch("?runtime=normalized_v2"), { engine: "v2", paramName: "runtime" });
   assert.deepEqual(readReplayEngineFromSearch("?engine=fight_session"), { engine: "legacy", paramName: "engine" });
@@ -41,26 +43,27 @@ test("show routing recognizes v2 and legacy engine aliases", () => {
 test("show routing falls back to legacy for unknown engine values", () => {
   const result = readReplayEngineFromSearch("?runtime=experimental");
 
-  assert.equal(result?.engine, "legacy");
+  assert.equal(result?.engine, DEFAULT_REPLAY_ENGINE);
   assert.equal(result?.paramName, "runtime");
-  assert.match(result?.message ?? "", /未识别/);
+  assert.match(result?.message ?? "", /已回退 v2 normalized run/);
 });
 
-test("show share URL preserves v2 engine only for v2 replay paths", () => {
+test("show share URL preserves selected runtime engine", () => {
   const rawInput = "left@red\n\nright@blue\n";
   const legacyUrl = buildShowShareUrl(rawInput, {
     href: "https://example.test/show.html?runtime=v2&data=old#section",
+    runtimeEngine: "legacy",
   });
   const v2Url = buildShowShareUrl(rawInput, {
     href: "https://example.test/show.html?runtime=legacy&replay=old#section",
-    runtimeV2: true,
+    runtimeEngine: "v2",
   });
 
   const legacyParsed = new URL(legacyUrl);
   assert.equal(legacyParsed.hash, "");
   assert.equal(legacyParsed.searchParams.has("runtime"), false);
   assert.equal(legacyParsed.searchParams.has("data"), false);
-  assert.equal(legacyParsed.searchParams.get("engine"), null);
+  assert.equal(legacyParsed.searchParams.get("engine"), "legacy");
   assert.equal(decodeBase64UrlUtf8(legacyParsed.searchParams.get("input") ?? ""), rawInput);
 
   const v2Parsed = new URL(v2Url);
