@@ -132,7 +132,9 @@ impl PhaseScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_v2::{ExtensionRegistryBuilder, PlayerTemplate, PreparedCombatTemplate, StateEntry, TargetPolicy};
+    use crate::runtime_v2::{
+        ExtensionRegistryBuilder, PlayerTemplate, PreparedCombatTemplate, StateEntry, StatePayload, TargetPolicy,
+    };
 
     #[test]
     fn scheduler_selects_next_actor_first_alive_enemy_and_amount() {
@@ -314,6 +316,7 @@ mod tests {
             hook_mask: ProcMask::PRE_ACTION,
             priority: SkillPriority(10),
             registration_order: RegistrationOrder(1),
+            payload: StatePayload::None,
         };
         let early = StateEntry {
             legacy_order_key: 22,
@@ -321,6 +324,7 @@ mod tests {
             hook_mask: ProcMask::PRE_ACTION | ProcMask::POST_ACTION,
             priority: SkillPriority(1),
             registration_order: RegistrationOrder(2),
+            payload: StatePayload::None,
         };
         let unrelated = StateEntry {
             legacy_order_key: 33,
@@ -328,6 +332,7 @@ mod tests {
             hook_mask: ProcMask::POST_DAMAGE,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         };
         let owner = entities.get_mut(EntityIdx(0)).unwrap();
         owner.states.add_entry(late);
@@ -369,6 +374,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(10),
             registration_order: RegistrationOrder(1),
+            payload: StatePayload::None,
         };
         let second = StateEntry {
             legacy_order_key: 22,
@@ -376,6 +382,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(1),
             registration_order: RegistrationOrder(2),
+            payload: StatePayload::None,
         };
         let scheduler = PhaseScheduler;
         entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(first);

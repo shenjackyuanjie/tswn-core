@@ -325,6 +325,14 @@ pub struct StateEntry {
     pub hook_mask: ProcMask,
     pub priority: SkillPriority,
     pub registration_order: RegistrationOrder,
+    pub payload: StatePayload,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum StatePayload {
+    #[default]
+    None,
+    FireMagHalfSteps(i32),
 }
 
 impl StateEntry {
@@ -335,6 +343,25 @@ impl StateEntry {
             hook_mask: ProcMask::default(),
             priority: SkillPriority::default(),
             registration_order: RegistrationOrder::default(),
+            payload: StatePayload::None,
+        }
+    }
+
+    pub fn fire_mag(legacy_order_key: u32, half_steps: i32) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: None,
+            hook_mask: ProcMask::default(),
+            priority: SkillPriority::default(),
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::FireMagHalfSteps(half_steps),
+        }
+    }
+
+    pub fn fire_mag_value(&self) -> Option<f64> {
+        match self.payload {
+            StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(half_steps) * 0.5),
+            StatePayload::None => None,
         }
     }
 }
@@ -356,6 +383,10 @@ impl StateStore {
 
     pub fn entry(&self, legacy_order_key: u32) -> Option<&StateEntry> {
         self.index.get(&legacy_order_key).and_then(|idx| self.entries.get(*idx))
+    }
+
+    pub fn fire_mag(&self, legacy_order_key: u32) -> f64 {
+        self.entry(legacy_order_key).and_then(StateEntry::fire_mag_value).unwrap_or(0.0)
     }
 
     pub fn add_legacy_key(&mut self, legacy_order_key: u32) -> bool { self.add_entry(StateEntry::legacy(legacy_order_key)) }
@@ -736,6 +767,7 @@ mod tests {
             hook_mask: ProcMask::PRE_ACTION | ProcMask::POST_DAMAGE,
             priority: SkillPriority(9),
             registration_order: RegistrationOrder(4),
+            payload: StatePayload::None,
         };
 
         assert!(store.add_entry(entry));
@@ -758,6 +790,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(10),
             registration_order: RegistrationOrder(1),
+            payload: StatePayload::None,
         };
         let early = StateEntry {
             legacy_order_key: 22,
@@ -765,6 +798,7 @@ mod tests {
             hook_mask: ProcMask::PRE_ACTION,
             priority: SkillPriority(1),
             registration_order: RegistrationOrder(2),
+            payload: StatePayload::None,
         };
         let tie = StateEntry {
             legacy_order_key: 33,
@@ -772,6 +806,7 @@ mod tests {
             hook_mask: ProcMask::POST_DAMAGE,
             priority: SkillPriority(10),
             registration_order: RegistrationOrder(3),
+            payload: StatePayload::None,
         };
 
         store.add_entry(late);
@@ -790,5 +825,16 @@ mod tests {
             store.hook_mask(),
             ProcMask::PRE_ACTION | ProcMask::POST_ACTION | ProcMask::POST_DAMAGE
         );
+    }
+
+    #[test]
+    fn state_store_tracks_fire_mag_payload_as_half_steps() {
+        let mut store = StateStore::default();
+
+        assert_eq!(store.fire_mag(91), 0.0);
+        assert!(store.add_entry(StateEntry::fire_mag(91, 3)));
+
+        assert_eq!(store.entry(91).and_then(StateEntry::fire_mag_value), Some(1.5));
+        assert_eq!(store.fire_mag(91), 1.5);
     }
 }

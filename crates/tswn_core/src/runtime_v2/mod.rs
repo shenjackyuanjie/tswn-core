@@ -20,7 +20,7 @@ pub use effect::{
 };
 pub use entity::{
     EntityArena, EntityIdx, EntityRecord, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate, SkillLoadout,
-    StateEntry, StateStore,
+    StateEntry, StatePayload, StateStore,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,
@@ -2403,6 +2403,7 @@ mod tests {
             hook_mask: ProcMask::KILL,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         });
         runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry {
             legacy_order_key: 22,
@@ -2410,6 +2411,7 @@ mod tests {
             hook_mask: ProcMask::DIE,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(1),
+            payload: StatePayload::None,
         });
         runtime.set_state_handler(die_state, state_marks_update);
         runtime.set_state_handler(kill_state, state_marks_update);
@@ -2554,6 +2556,7 @@ mod tests {
             hook_mask: ProcMask::DIE,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         });
         runtime.set_state_handler(die_state, state_marks_update);
         runtime.effects.push(QueuedEffect::Spawn {
@@ -2658,6 +2661,7 @@ mod tests {
             hook_mask: ProcMask::DIE,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         });
         runtime.set_state_handler(die_state, state_marks_update);
         runtime.effects.push(QueuedEffect::Spawn {
@@ -5208,6 +5212,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         });
         runtime.set_skill_handler(skill, skill_marks_update);
         runtime.set_state_handler(state, state_marks_update);
@@ -5243,6 +5248,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         });
         runtime.set_state_handler(state, state_marks_update);
 
@@ -5277,6 +5283,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         });
         runtime.set_state_handler(state, state_pushes_nested_heal);
 
@@ -5328,6 +5335,7 @@ mod tests {
                 hook_mask: ProcMask::PRE_DAMAGE,
                 priority: SkillPriority(0),
                 registration_order: RegistrationOrder(0),
+                payload: StatePayload::None,
             });
             store.add_entry(StateEntry {
                 legacy_order_key: 22,
@@ -5335,6 +5343,7 @@ mod tests {
                 hook_mask: ProcMask::POST_DAMAGE,
                 priority: SkillPriority(0),
                 registration_order: RegistrationOrder(1),
+                payload: StatePayload::None,
             });
         }
         runtime.set_state_handler(pre_damage, state_marks_update);
@@ -5390,6 +5399,7 @@ mod tests {
                 hook_mask: ProcMask::POST_DAMAGE,
                 priority: SkillPriority(0),
                 registration_order: RegistrationOrder(0),
+                payload: StatePayload::None,
             });
             store.add_entry(StateEntry {
                 legacy_order_key: 44,
@@ -5397,6 +5407,7 @@ mod tests {
                 hook_mask: ProcMask::POST_ACTION,
                 priority: SkillPriority(0),
                 registration_order: RegistrationOrder(1),
+                payload: StatePayload::None,
             });
         }
         runtime.set_state_handler(post_damage, state_pushes_nested_heal);
@@ -5430,6 +5441,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         });
         runtime.set_state_handler(state, state_marks_update);
 
@@ -5464,6 +5476,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         });
         runtime.set_state_handler(state, state_consumes_rng);
         let mut expected_rng = RC4::default();
@@ -5505,6 +5518,7 @@ mod tests {
                 hook_mask: ProcMask::POST_ACTION,
                 priority: SkillPriority(0),
                 registration_order: RegistrationOrder(1),
+                payload: StatePayload::None,
             });
         }
         runtime.set_state_handler(state, state_pushes_nested_heal);
@@ -5719,6 +5733,7 @@ mod tests {
             hook_mask: ProcMask::POST_ACTION,
             priority: SkillPriority(5),
             registration_order: RegistrationOrder(2),
+            payload: StatePayload::None,
         };
 
         runtime.effects.push(QueuedEffect::AddState {
@@ -5966,6 +5981,7 @@ mod tests {
             hook_mask: ProcMask::NONE,
             priority: SkillPriority(0),
             registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
         }
     }
 

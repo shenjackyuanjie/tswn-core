@@ -346,6 +346,7 @@ pub struct StateStore {
 
 - `SmallVec`/dense index 优先；
 - 保留 legacy 注册顺序作为行为键；
+- `StateEntry` 已带最小 payload，当前覆盖 `FireMagHalfSteps`，用于后续 fire/summon explode 公式 parity；
 - phase 中状态变化立即影响后续 hook plan；
 - clear、post_action、post_defend、post_damage 等顺序由 strict diff 固化。
 
