@@ -68,6 +68,17 @@ pub struct RuntimeV2Runner {
     runtime: CombatRuntime,
 }
 
+#[derive(Debug, Clone)]
+pub struct RuntimeV2RunSummary {
+    pub rounds: Vec<RoundOutcome>,
+    pub winner_team: Option<usize>,
+    pub guard_exhausted: bool,
+}
+
+impl RuntimeV2RunSummary {
+    pub fn last_outcome(&self) -> Option<&RoundOutcome> { self.rounds.last() }
+}
+
 impl RuntimeV2Runner {
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
         Self {
@@ -104,6 +115,36 @@ impl RuntimeV2Runner {
     pub fn run_round_normalized(&mut self) -> NormalizedOutcome {
         let outcome = self.run_round();
         NormalizedOutcome::from_runtime(&self.runtime, &outcome)
+    }
+
+    pub fn run_until_winner(&mut self, max_rounds: usize) -> RuntimeV2RunSummary {
+        let mut rounds = Vec::new();
+        let mut winner_team = self.runtime.world.sync_winner(&self.runtime.entities);
+        while winner_team.is_none() && rounds.len() < max_rounds {
+            let outcome = self.run_round();
+            winner_team = outcome.winner_team;
+            let made_progress = outcome.action.is_some() || outcome.frame.is_some();
+            rounds.push(outcome);
+            if winner_team.is_some() || !made_progress {
+                break;
+            }
+        }
+        RuntimeV2RunSummary {
+            guard_exhausted: winner_team.is_none() && rounds.len() == max_rounds,
+            rounds,
+            winner_team,
+        }
+    }
+
+    pub fn run_until_winner_normalized(&mut self, max_rounds: usize) -> (RuntimeV2RunSummary, NormalizedOutcome) {
+        let summary = self.run_until_winner(max_rounds);
+        let final_outcome = summary.last_outcome().cloned().unwrap_or(RoundOutcome {
+            action: None,
+            frame: None,
+            winner_team: summary.winner_team,
+        });
+        let normalized = NormalizedOutcome::from_runtime(&self.runtime, &final_outcome);
+        (summary, normalized)
     }
 }
 
@@ -1392,6 +1433,78 @@ mod tests {
                 raw: "plain".to_owned(),
             }
         );
+    }
+
+    #[test]
+    fn runtime_v2_runner_runs_mixed_roster_until_winner() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![
+            vec!["plain@red".to_owned(), "alpha@red+bed2[9]".to_owned()],
+            vec!["seed:custom-seed@!".to_owned(), "beta@blue+bed2[3]".to_owned()],
+        ];
+
+        let mut runner = RuntimeV2Runner::from_mixed_roster(&raw_groups, registry, bed2, summon)
+            .expect("mixed roster should construct a runtime v2 runner");
+        let plain = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.clone();
+
+        let (summary, actual) = runner.run_until_winner_normalized(8);
+
+        assert_eq!(summary.rounds.len(), 1);
+        assert_eq!(summary.winner_team, Some(0));
+        assert!(!summary.guard_exhausted);
+        let expected = NormalizedOutcome {
+            winner_team: Some(0),
+            round: 1,
+            total_score: plain.attack as u64,
+            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+            entity_ids: vec![1, 2, 3],
+            teams: vec![0, 0, 1],
+            hp: vec![plain.max_hp, 9, 0],
+            defense: vec![plain.defense, DEFAULT_BED2_DEFENSE, DEFAULT_BED2_DEFENSE],
+            resistance: vec![plain.resistance, DEFAULT_BED2_RESISTANCE, DEFAULT_BED2_RESISTANCE],
+            alive: vec![true, true, false],
+            round_order: vec![0, 1, 2],
+            flat_alive: vec![0, 1],
+            team_alive: vec![vec![0, 1], Vec::new()],
+            alive_group_count: 1,
+            actions: vec![crate::runtime_v2::oracle::NormalizedActionBoundary {
+                round: 1,
+                actor: 0,
+                target: 2,
+                amount: plain.attack,
+            }],
+            frames: vec![NormalizedUpdateFrame {
+                message: "[0]攻击[1]".to_owned(),
+                caster: 0,
+                target: 2,
+                targets: Vec::new(),
+                param: None,
+                score: plain.attack as u32,
+                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                update_type: crate::engine::update::UpdateType::None,
+            }],
+        };
+
+        assert_eq!(strict_diff(&expected, &actual), Ok(()));
     }
 
     #[cfg(not(feature = "no_debug"))]
