@@ -261,6 +261,8 @@ impl From<EffectContextError> for RuntimeV2SummonHandlerError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeV2MinionHandlerError {
     Context(EffectContextError),
+    MissingTemplateSlot(TemplateSlotId),
+    InvalidTemplateSlot(TemplateSlotId),
     InvalidCounterSlot(EntitySlotId),
     CounterOverflow(EntitySlotId),
 }
@@ -396,6 +398,20 @@ pub fn push_minion_from_template_with_allocated_name(
         message: message.into(),
     });
     Ok(next_entity)
+}
+
+pub fn push_minion_from_template_slot_with_allocated_name(
+    context: &mut SkillContext<'_>,
+    counter_slot: EntitySlotId,
+    template_slot: TemplateSlotId,
+    message: impl Into<String>,
+) -> Result<EntityIdx, RuntimeV2MinionHandlerError> {
+    let minion_template = match context.template_slot(template_slot)? {
+        Some(SlotValue::PlayerTemplate(template)) => template.as_ref().clone(),
+        Some(_) => return Err(RuntimeV2MinionHandlerError::InvalidTemplateSlot(template_slot)),
+        None => return Err(RuntimeV2MinionHandlerError::MissingTemplateSlot(template_slot)),
+    };
+    push_minion_from_template_with_allocated_name(context, counter_slot, minion_template, message)
 }
 
 pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
@@ -3286,6 +3302,92 @@ mod tests {
     }
 
     #[test]
+    fn push_minion_from_template_slot_with_allocated_name_reads_template_and_spawns() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let counter_slot = builder
+            .reserve_entity_slot("custom", "minion-counter", "custom.minion.counter")
+            .expect("minion counter slot should reserve");
+        let template_slot = builder
+            .reserve_template_slot("custom", "shadow-template", "custom.minion.shadow_template")
+            .expect("shadow template slot should reserve");
+        let minion_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "minion-template-spawn",
+                "custom.minion_template_spawn",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("minion template spawn skill should register");
+        let inherited_skill = builder
+            .register_skill(
+                "custom",
+                "possess",
+                "custom.minion.possess",
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("inherited minion skill should register");
+        let minion_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "shadow",
+                "custom.minion.shadow",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("shadow minion kind should register");
+        let registry = builder.build();
+        let payload = PlayerTemplate::with_kind(3, "placeholder-shadow", minion_kind, 0, 5, 1)
+            .with_def_res(2, 3)
+            .with_skills([inherited_skill]);
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([minion_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        );
+        template
+            .slots
+            .set(template_slot, SlotValue::PlayerTemplate(Box::new(payload.clone())))
+            .expect("shadow template slot should write");
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            minion_skill,
+            skill_pushes_named_minion_from_template_slot,
+            &[ExtensionCapability::ReadTemplateSlots, ExtensionCapability::MutateEntitySlots],
+        );
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("named minion template spawn should emit update");
+
+        assert_eq!(frame.updates.updates.len(), 1);
+        assert_eq!(frame.updates.updates[0].message, "召唤出[1]");
+        assert_eq!(frame.updates.updates[0].target, 2);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(counter_slot),
+            Some(&SlotValue::U64(1))
+        );
+        let minion = runtime.entities.get(EntityIdx(2)).expect("template minion should spawn");
+        assert_eq!(minion.template.name, "owner?0");
+        assert_eq!(minion.template.kind, minion_kind);
+        assert_eq!(minion.template.max_hp, payload.max_hp);
+        assert_eq!(minion.template.defense, payload.defense);
+        assert_eq!(minion.template.resistance, payload.resistance);
+        assert_eq!(minion.template.skills.skills(), &[inherited_skill]);
+        assert_eq!(minion.runtime.owner, EntityIdx(0));
+        assert_eq!(minion.runtime.root_owner, EntityIdx(0));
+    }
+
+    #[test]
     fn minion_display_index_for_entity_matches_legacy_name_suffix() {
         let mut builder = ExtensionRegistryBuilder::default();
         let minion_kind = builder
@@ -4087,6 +4189,13 @@ mod tests {
         let minion_template = PlayerTemplate::with_kind(3, "placeholder", PlayerKindId(0), 0, 5, 1);
         assert_eq!(
             push_minion_from_template_with_allocated_name(context, EntitySlotId(0), minion_template, "召唤出[1]"),
+            Ok(EntityIdx(2))
+        );
+    }
+
+    fn skill_pushes_named_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        assert_eq!(
+            push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]"),
             Ok(EntityIdx(2))
         );
     }
