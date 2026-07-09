@@ -407,8 +407,10 @@ fn push_player_part<S: ReplayState>(
     after: &HashMap<PlrId, S>,
     player_names: &HashMap<PlrId, String>,
     death_effect_allowed: bool,
+    force_show_hp: bool,
 ) -> (i32, i32, bool, bool) {
     let (hp_before, hp_after, show_hp) = hp_pair(player_id, before, after);
+    let show_hp = show_hp || force_show_hp;
     let death_effect = death_effect_allowed && hp_before == 0 && hp_after == 0;
     template.push_str("<player>");
     parts.push(ReplayTextPart {
@@ -444,6 +446,8 @@ fn is_death_effect_update(update: &RunUpdate) -> bool {
     update.message.contains("\u{88ab}\u{51fb}\u{5012}") || update.message.contains("\u{6d88}\u{5931}")
 }
 
+fn is_hp_marker_update(update: &RunUpdate) -> bool { update.message == "[0]还剩[2]点血" }
+
 fn build_clip_parts<S: ReplayState>(
     update: &RunUpdate,
     tone: ReplayTone,
@@ -460,6 +464,7 @@ fn build_clip_parts<S: ReplayState>(
     let mut primary_death_effect = false;
     let primary_player_id = update_player_id_hint(update, tone);
     let death_effect_allowed = is_death_effect_update(update);
+    let force_hp_marker = is_hp_marker_update(update);
 
     let mut rest = update.message.as_ref();
     while let Some(start) = rest.find('[') {
@@ -473,16 +478,16 @@ fn build_clip_parts<S: ReplayState>(
         let token = &after_open[..end];
         match token {
             "0" => {
-                let (hp_before, hp_after, show_hp, death_effect) =
-                    push_player_part(
-                        &mut parts,
-                        &mut template,
-                        update.caster,
-                        before,
-                        after,
-                        player_names,
-                        death_effect_allowed,
-                    );
+                let (hp_before, hp_after, show_hp, death_effect) = push_player_part(
+                    &mut parts,
+                    &mut template,
+                    update.caster,
+                    before,
+                    after,
+                    player_names,
+                    death_effect_allowed,
+                    force_hp_marker,
+                );
                 if !primary_show_hp && show_hp {
                     primary_hp_before = hp_before;
                     primary_hp_after = hp_after;
@@ -493,16 +498,16 @@ fn build_clip_parts<S: ReplayState>(
                 }
             }
             "1" => {
-                let (hp_before, hp_after, show_hp, death_effect) =
-                    push_player_part(
-                        &mut parts,
-                        &mut template,
-                        update.target,
-                        before,
-                        after,
-                        player_names,
-                        death_effect_allowed,
-                    );
+                let (hp_before, hp_after, show_hp, death_effect) = push_player_part(
+                    &mut parts,
+                    &mut template,
+                    update.target,
+                    before,
+                    after,
+                    player_names,
+                    death_effect_allowed,
+                    false,
+                );
                 if !primary_show_hp || update_player_id_hint(update, tone) == update.target {
                     primary_hp_before = hp_before;
                     primary_hp_after = hp_after;
@@ -560,9 +565,7 @@ fn clip_delay(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ReplayEventView, ReplayState, ReplayTextPartKind, ReplayTone, STATUS_EXIT_TEXT_COLOR, build_replay_view_frame,
-    };
+    use super::{ReplayEventView, ReplayState, ReplayTextPartKind, ReplayTone, STATUS_EXIT_TEXT_COLOR, build_replay_view_frame};
     use crate::engine::update::RunUpdate;
     use crate::player::PlrId;
     use std::collections::HashMap;
@@ -666,9 +669,11 @@ mod tests {
 
         assert_eq!(clip.color, STATUS_EXIT_TEXT_COLOR);
         assert_eq!(clip.tone, ReplayTone::StatusExit);
-        assert!(clip.parts.iter().any(|part| {
-            part.kind == ReplayTextPartKind::Highlight && part.text == "狂暴"
-        }));
+        assert!(
+            clip.parts
+                .iter()
+                .any(|part| { part.kind == ReplayTextPartKind::Highlight && part.text == "狂暴" })
+        );
     }
 
     #[test]
@@ -740,6 +745,32 @@ mod tests {
         assert!(!player_part.show_hp);
         assert_eq!((player_part.hp_before, player_part.hp_after), (0, 0));
         assert!(player_part.death_effect);
+    }
+
+    #[test]
+    fn hp_marker_report_forces_hp_bar_without_hp_delta() {
+        let mut update = RunUpdate::new("[0]还剩[2]点血", 0, 0, 0);
+        update.param = Some(87);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Normal,
+            message_rendered: "caster还剩87点血",
+        }];
+        let previous = vec![state(0, 87), state(1, 100)];
+        let frame = vec![state(0, 87), state(1, 100)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        assert!(clip.show_hp);
+        assert_eq!((clip.hp_before, clip.hp_after), (87, 87));
+        assert_eq!(clip.data.as_deref(), Some("87"));
+        assert_eq!(clip.player_id, Some(0));
+        let player_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap();
+        assert!(player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (87, 87));
+        let data_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Data).unwrap();
+        assert_eq!(data_part.text, "87");
     }
 
     #[test]
