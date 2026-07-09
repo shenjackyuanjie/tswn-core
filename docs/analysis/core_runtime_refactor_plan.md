@@ -572,6 +572,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 已产出 custom 改动清单和 v2 落点；
 - 已补 bed2 registry/template/import fixture，覆盖 `custom.bed2` kind、固定 summon skill、HP marker slot、`bed2[...]` / `@bed2` marker 最小 v2 导入、Player facade id-name 归一化桥接，以及 typed summon template payload 读取后 spawn；
 - 已补 custom summon 复合 fixture，覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留与 recast handler 原实体复活复用；
+- 已补 custom minion owner death cleanup fixture，覆盖 owner 致死时 linked minion 按实体顺序死亡、移出 round/alive views 并输出消失帧；
 - 为关键行为设计 repo 内 extension fixture；
 - 标出需要 capability 例外的跨实体读取点。
 
@@ -648,6 +649,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `Damage` effect 已接入 `OwnerResolutionPolicy::RootOwner`，summon/root-owner 伤害可转打 root owner 并在解析目标上触发致死 hook；
 - `Damage` effect 已接入 `DamageSharePolicy::ShareToOwner`，子实体受伤时可同步扣 owner 并在共享致死时触发 owner 致死 hook；
 - `Damage` effect 已接入 `DamageSharePolicy::ShareToSummons`，owner 受伤时可按实体顺序同步扣存活子实体；
+- `Damage` effect 已接入 linked minion cleanup，owner 致死时按实体顺序清理存活 minion 并同步 `round_order` / alive views；
 - `Spawn` effect 已接入 `PlayerKindPolicies::inherit_owner_def_res`，custom summon 可在生成时继承 owner 防御/魔防数据面；
 - `CustomEffect` / skill / state handler 已通过各自 context 暴露受控 RNG 消费 API，不直接暴露 `RC4` 本体；
 - `Merge` effect 已接入 `MergePolicy::FixedLane` / `DropUnmappedSkills` 的固定技能槽位合并数据面，并在成功合并时输出吞噬/属性上升帧；

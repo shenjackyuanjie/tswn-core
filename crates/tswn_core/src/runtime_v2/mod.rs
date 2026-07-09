@@ -621,8 +621,35 @@ impl CombatRuntime {
         updates.add(RuntimeFrame::damage_update(caster.0 as usize, target.0 as usize, amount));
         if killed {
             self.world.remove_alive(target, team);
+            self.cleanup_linked_minions_for_owner(target, updates);
         }
         killed
+    }
+
+    fn cleanup_linked_minions_for_owner(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
+        let linked_minions = self
+            .entities
+            .iter()
+            .filter_map(|(idx, entity)| {
+                (idx != owner
+                    && entity.runtime.alive
+                    && entity.runtime.owner == owner
+                    && entity.runtime.flags.contains(PlayerKindFlags::MINION))
+                .then_some(idx)
+            })
+            .collect::<Vec<_>>();
+
+        for minion in linked_minions {
+            let Some(minion_entity) = self.entities.get_mut(minion) else {
+                panic!("unknown runtime_v2 linked minion entity: {}", minion.0);
+            };
+            minion_entity.runtime.hp = 0;
+            minion_entity.runtime.alive = false;
+            let team = minion_entity.runtime.team;
+            self.world.remove_round_actor(minion);
+            self.world.remove_alive(minion, team);
+            updates.add(RuntimeFrame::remove_update(owner.0 as usize, minion.0 as usize));
+        }
     }
 
     fn resolve_damage_target(&self, target: EntityIdx) -> EntityIdx {
@@ -1682,6 +1709,66 @@ mod tests {
         assert_eq!(minion_heal.updates.updates[0].message, "[1]回复体力[2]点");
         assert_eq!(minion_heal.updates.updates[0].target, 3);
         assert_eq!(minion_heal.updates.updates[0].score, 3);
+    }
+
+    #[test]
+    fn custom_minion_owner_death_removes_linked_minions_in_entity_order() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let minion_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "minion",
+                "custom.minion",
+                PlayerKindFlags::MINION | PlayerKindFlags::SUMMON,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("minion kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        ));
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(3, "owner?0", minion_kind, 0, 4, 1),
+        });
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(4, "owner?1", minion_kind, 0, 4, 1),
+        });
+        runtime.flush_effects().expect("minion spawns should emit updates");
+
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(0),
+            amount: 10,
+        });
+        let frame = runtime.flush_effects().expect("owner death should cleanup linked minions");
+
+        assert!(!runtime.entities.get(EntityIdx(0)).unwrap().runtime.alive);
+        assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+        assert!(!runtime.entities.get(EntityIdx(3)).unwrap().runtime.alive);
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 0);
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().runtime.hp, 0);
+        assert_eq!(runtime.world.round_order(), &[EntityIdx(0), EntityIdx(1)]);
+        assert_eq!(runtime.world.team_alive(0), Some([].as_slice()));
+        assert_eq!(runtime.world.flat_alive(), &[EntityIdx(1)]);
+        assert_eq!(runtime.world.alive_group_count(), 1);
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].target, 0);
+        assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].target, 2);
+        assert_eq!(frame.updates.updates[1].message, "[1]消失了");
+        assert_eq!(frame.updates.updates[2].target, 3);
+        assert_eq!(frame.updates.updates[2].message, "[1]消失了");
     }
 
     #[test]
