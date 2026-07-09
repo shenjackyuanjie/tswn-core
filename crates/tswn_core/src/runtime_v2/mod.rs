@@ -108,6 +108,16 @@ impl RuntimeV2Runner {
         Ok(Self::from_template(template))
     }
 
+    pub fn from_bed2_namerena_raw(
+        raw_input: String,
+        registry: ExtensionRegistry,
+        kind: PlayerKindId,
+        summon_skill: SkillId,
+    ) -> Result<Self, CustomBed2RosterImportError> {
+        let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
+        Self::from_bed2_roster(&raw_groups, registry, kind, summon_skill)
+    }
+
     pub fn from_mixed_roster(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -116,6 +126,16 @@ impl RuntimeV2Runner {
     ) -> Result<Self, CustomMixedRosterImportError> {
         let template = CustomBed2Import::mixed_roster_into_prepared_template(raw_groups, registry, bed2_kind, bed2_summon_skill)?;
         Ok(Self::from_template(template))
+    }
+
+    pub fn from_mixed_namerena_raw(
+        raw_input: String,
+        registry: ExtensionRegistry,
+        bed2_kind: PlayerKindId,
+        bed2_summon_skill: SkillId,
+    ) -> Result<Self, CustomMixedRosterImportError> {
+        let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
+        Self::from_mixed_roster(&raw_groups, registry, bed2_kind, bed2_summon_skill)
     }
 
     pub fn runtime(&self) -> &CombatRuntime { &self.runtime }
@@ -1528,6 +1548,108 @@ mod tests {
                 targets: Vec::new(),
                 param: None,
                 score: actor_attack as u32,
+                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                update_type: crate::engine::update::UpdateType::None,
+            }],
+        };
+
+        assert_eq!(strict_diff(&expected, &actual), Ok(()));
+    }
+
+    #[test]
+    fn runtime_v2_runner_constructs_from_bed2_namerena_raw_fixture_shape() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let raw_input = "alpha@red+bed2[5]\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
+
+        let runner = RuntimeV2Runner::from_bed2_namerena_raw(raw_input.to_owned(), registry, bed2, summon)
+            .expect("bed2 namerena raw should construct runtime v2 runner");
+
+        assert_eq!(runner.runtime().entities.len(), 2);
+        assert_eq!(runner.runtime().entities.get(EntityIdx(0)).unwrap().template.max_hp, 5);
+        assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.max_hp, 8);
+        assert_eq!(runner.runtime().world.team_alive(0), Some([EntityIdx(0)].as_slice()));
+        assert_eq!(runner.runtime().world.team_alive(1), Some([EntityIdx(1)].as_slice()));
+    }
+
+    #[test]
+    fn runtime_v2_runner_runs_mixed_namerena_raw_fixture_shape() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let raw_input = "plain@red\nalpha@red+bed2[9]\n\nseed:custom-seed@!\n\nbeta@blue+bed2[3]\n";
+
+        let mut runner = RuntimeV2Runner::from_mixed_namerena_raw(raw_input.to_owned(), registry, bed2, summon)
+            .expect("mixed namerena raw should construct runtime v2 runner");
+        let plain = runner.runtime().entities.get(EntityIdx(0)).unwrap().template.clone();
+
+        let (summary, actual) = runner.run_until_winner_normalized(8);
+
+        assert_eq!(summary.rounds.len(), 1);
+        assert_eq!(summary.winner_team, Some(0));
+        assert!(!summary.guard_exhausted);
+        let expected = NormalizedOutcome {
+            winner_team: Some(0),
+            round: 1,
+            total_score: plain.attack as u64,
+            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+            entity_ids: vec![1, 2, 3],
+            teams: vec![0, 0, 1],
+            hp: vec![plain.max_hp, 9, 0],
+            defense: vec![plain.defense, DEFAULT_BED2_DEFENSE, DEFAULT_BED2_DEFENSE],
+            resistance: vec![plain.resistance, DEFAULT_BED2_RESISTANCE, DEFAULT_BED2_RESISTANCE],
+            alive: vec![true, true, false],
+            round_order: vec![0, 1, 2],
+            flat_alive: vec![0, 1],
+            team_alive: vec![vec![0, 1], Vec::new()],
+            alive_group_count: 1,
+            actions: vec![crate::runtime_v2::oracle::NormalizedActionBoundary {
+                round: 1,
+                actor: 0,
+                target: 2,
+                amount: plain.attack,
+            }],
+            frames: vec![NormalizedUpdateFrame {
+                message: "[0]攻击[1]".to_owned(),
+                caster: 0,
+                target: 2,
+                targets: Vec::new(),
+                param: None,
+                score: plain.attack as u32,
                 delay0: crate::engine::update::DEFAULT_DELAY0_MS,
                 delay1: crate::engine::update::DEFAULT_DELAY1_MS,
                 update_type: crate::engine::update::UpdateType::None,

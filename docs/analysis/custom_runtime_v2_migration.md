@@ -51,7 +51,7 @@ git diff --name-status github/main..github/custom
 
 ## 3. v2 fixture 切分顺序
 
-1. **bed2 registry/import fixture**：已注册 `custom.bed2` kind、固定 summon skill、HP marker slot，并覆盖 `bed2[...]` / `@bed2` marker 到 v2 template 的最小导入、Player facade id-name 归一化桥接、typed summon template payload 读取后 spawn、grouped raw bed2 roster、mixed legacy/bed2 raw roster 到 `PreparedCombatTemplate` 的 helper，以及 `RuntimeV2Runner` 的 bed2-only / mixed roster 正式构造、单回合与 run-until-winner 归一化入口。
+1. **bed2 registry/import fixture**：已注册 `custom.bed2` kind、固定 summon skill、HP marker slot，并覆盖 `bed2[...]` / `@bed2` marker 到 v2 template 的最小导入、Player facade id-name 归一化桥接、typed summon template payload 读取后 spawn、grouped raw bed2 roster、mixed legacy/bed2 raw roster 到 `PreparedCombatTemplate` 的 helper，以及 `RuntimeV2Runner` 的 bed2-only / mixed roster 与 raw namerena fixture 形状正式构造、单回合与 run-until-winner 归一化入口。
 2. **summon policy fixture**：已覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留、owner defense/resistance 继承，以及 `push_summon_recast_from_entity_slot` 死亡后原实体复活复用、活体 remembered summon 防重复 spawn、缺少读取 capability 的结构化错误；后续补完整内置 summon 技能迁移。
 3. **minion fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享，以及 owner death / explicit remove 清理 linked minion；后续补完整真实 minion handler。
 4. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
@@ -66,7 +66,7 @@ git diff --name-status github/main..github/custom
 - `CustomBed2Import` 已覆盖 `bed2[...]` / `@bed2` marker 到 v2 bed2 template 的最小导入面，并通过 `parse_player_facade_raw` 对接 `Player::raw_namerena_to_idname` 的名字/队伍归一化结果。
 - grouped raw bed2 roster 已可跳过 seed 行、按输入队伍顺序分配 team/id，并转换为 `PreparedCombatTemplate`。
 - mixed legacy/bed2 raw roster 已可通过 legacy `Player` facade 导入普通玩家，同时对 bed2 marker 使用 custom bed2 template importer。
-- `RuntimeV2Runner` 已可从 bed2-only / mixed roster 构造正式 v2 runner，并输出单回合与 run-until-winner 的 `NormalizedOutcome` 供 strict diff / runner golden 复用。
+- `RuntimeV2Runner` 已可从 bed2-only / mixed roster 与 raw namerena 文本构造正式 v2 runner，复用 legacy 空行分组 / seed 独占组解析形状，并输出单回合与 run-until-winner 的 `NormalizedOutcome` 供 strict diff / runner golden 复用。
 - `TemplateSlotStorage` 已可保留 typed `PlayerTemplate` payload，extension context 通过 `ReadTemplateSlots` capability 读取 bed2 summon 模板，`push_summon_from_template_slot` helper 会校验 payload 并交给 `QueuedEffect::Spawn` 生成实体。
 - `OwnerResolutionPolicy::RootOwner` 已覆盖 summon/root-owner 伤害路由。
 - `DamageSharePolicy::ShareToOwner` / `ShareToSummons` 已覆盖 owner 与 summon 伤害共享。
