@@ -1,4 +1,5 @@
 use crate::engine::update::{DEFAULT_DELAY0_MS, DEFAULT_DELAY1_MS, UpdateType};
+use crate::rc4::RC4;
 use crate::runtime_v2::{CombatRuntime, EntityIdx, PreparedCombatTemplate, RoundOutcome};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -16,6 +17,19 @@ impl NormalizedRngCheckpoint {
             j: runtime.rng.j,
             #[cfg(not(feature = "no_debug"))]
             byte_count: runtime.rng.byte_count,
+        }
+    }
+
+    pub fn after_next_u8(count: usize) -> Self {
+        let mut rng = RC4::default();
+        for _ in 0..count {
+            let _ = rng.next_u8();
+        }
+        Self {
+            i: rng.i,
+            j: rng.j,
+            #[cfg(not(feature = "no_debug"))]
+            byte_count: rng.byte_count,
         }
     }
 }
@@ -365,7 +379,7 @@ pub fn minimal_1v1_expected_after_one_round(left_hp: i32, right_hp: i32, attack:
         winner_team: (right_hp <= attack).then_some(0),
         round: 1,
         total_score: attack.max(0) as u64,
-        rng: NormalizedRngCheckpoint::default(),
+        rng: NormalizedRngCheckpoint::after_next_u8(1),
         entity_ids: vec![1, 2],
         teams: vec![0, 1],
         hp: vec![left_hp, (right_hp - attack).max(0)],
@@ -580,7 +594,7 @@ mod tests {
     fn strict_diff_harness_reports_rng_mismatch_before_entities() {
         let expected = minimal_1v1_expected_after_one_round(10, 10, 3);
         let mut actual = expected.clone();
-        actual.rng.i = 1;
+        actual.rng = NormalizedRngCheckpoint::after_next_u8(2);
         actual.entity_ids[1] = 9;
 
         assert_eq!(

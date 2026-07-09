@@ -22,6 +22,7 @@ pub struct PlayerTemplate {
     pub attack: i32,
     pub magic: i32,
     pub magic_point: i32,
+    pub wisdom: i32,
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
@@ -53,6 +54,7 @@ impl PlayerTemplate {
             attack,
             magic: 0,
             magic_point: 0,
+            wisdom: 0,
             defense: 0,
             resistance: 0,
             agility: 0,
@@ -73,6 +75,12 @@ impl PlayerTemplate {
 
     pub fn with_magic_point(mut self, magic_point: i32) -> Self {
         self.magic_point = magic_point;
+        self
+    }
+
+    pub fn with_wisdom(mut self, wisdom: i32) -> Self {
+        assert!(wisdom >= 0, "runtime_v2 player wisdom must be non-negative");
+        self.wisdom = wisdom;
         self
     }
 
@@ -246,6 +254,7 @@ pub struct PlayerRuntime {
     pub attack: i32,
     pub magic: i32,
     pub magic_point: i32,
+    pub wisdom: i32,
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
@@ -282,6 +291,7 @@ impl PlayerRuntime {
             attack: template.attack,
             magic: template.magic,
             magic_point: template.magic_point,
+            wisdom: template.wisdom,
             defense: template.defense,
             resistance: template.resistance,
             agility: template.agility,
@@ -1047,6 +1057,7 @@ mod tests {
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.attack, 3);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic, 0);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic_point, 0);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.wisdom, 0);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.agility, 0);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.attr_sum, 0);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.atk_sum, 3);
@@ -1063,6 +1074,13 @@ mod tests {
         let arena = EntityArena::from_templates(vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_magic_point(96)]);
 
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic_point, 96);
+    }
+
+    #[test]
+    fn player_template_carries_wisdom_into_runtime() {
+        let arena = EntityArena::from_templates(vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_wisdom(77)]);
+
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.wisdom, 77);
     }
 
     #[test]

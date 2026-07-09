@@ -1124,6 +1124,7 @@ impl CustomBed2Import {
                     PlayerTemplate::new(next_id, player.id_name(), team_index, status.max_hp, status.attack)
                         .with_magic(status.magic)
                         .with_magic_point(status.magic_point)
+                        .with_wisdom(status.wisdom)
                         .with_agility(status.agility)
                         .with_at_boost_millionths((status.at_boost * 1_000_000.0).round() as i64)
                         .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
@@ -1476,14 +1477,19 @@ impl CombatRuntime {
         };
         self.scratch.selected_actor_round = self.round;
         #[cfg(not(feature = "no_debug"))]
+        let action_rng_before = RngCheckpoint::from_rc4(&self.rng);
+        let smart = self.roll_actor_smart(action.actor);
+        #[cfg(not(feature = "no_debug"))]
+        let action_rng_after = RngCheckpoint::from_rc4(&self.rng);
+        #[cfg(not(feature = "no_debug"))]
         if let Some(trace) = &mut self.trace {
             trace.record_action(TraceAction {
                 round: self.round + 1,
                 actor: action.actor,
                 target: action.target,
                 amount: action.amount,
-                rng_before: Some(RngCheckpoint::from_rc4(&self.rng)),
-                rng_after: Some(RngCheckpoint::from_rc4(&self.rng)),
+                rng_before: Some(action_rng_before),
+                rng_after: Some(action_rng_after),
             });
         }
 
@@ -1491,7 +1497,7 @@ impl CombatRuntime {
         let skill_plan = self
             .scheduler
             .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::PRE_ACTION);
-        let selected_target = self.selected_pre_action_target(&skill_plan, action.actor).unwrap_or(action.target);
+        let selected_target = self.selected_pre_action_target(&skill_plan, action.actor, smart).unwrap_or(action.target);
         self.drain_skill_hook_plan_with_selected_target_into(&skill_plan, &mut updates, Some(selected_target));
         let pre_damage_skill_plan =
             self.scheduler
@@ -1535,7 +1541,13 @@ impl CombatRuntime {
         }
     }
 
-    fn selected_pre_action_target(&mut self, plan: &SkillHookPlan, actor: EntityIdx) -> Option<EntityIdx> {
+    fn roll_actor_smart(&mut self, actor: EntityIdx) -> bool {
+        let smart_byte = self.rng.next_u8();
+        let smart_roll = (smart_byte & 63) as i32;
+        self.entities.get(actor).is_some_and(|entity| entity.runtime.wisdom > smart_roll)
+    }
+
+    fn selected_pre_action_target(&mut self, plan: &SkillHookPlan, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         let has_disperse = plan.entries.iter().any(|entry| {
             self.registry
                 .skill(entry.skill_id)
@@ -1544,7 +1556,7 @@ impl CombatRuntime {
         if !has_disperse {
             return None;
         }
-        select_disperse_targets(&self.entities, &self.world, actor, true, &mut self.rng)
+        select_disperse_targets(&self.entities, &self.world, actor, smart, &mut self.rng)
             .into_iter()
             .next()
     }
@@ -2779,7 +2791,7 @@ mod tests {
             winner_team: None,
             round: 1,
             total_score: actor_attack as u64,
-            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::after_next_u8(1),
             entity_ids: vec![1, 2, 3],
             teams: vec![0, 0, 1],
             hp: vec![plain_hp, 9, DEFAULT_BED2_HP - actor_attack],
@@ -3020,7 +3032,7 @@ mod tests {
             winner_team: Some(0),
             round: 1,
             total_score: plain.attack as u64,
-            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::after_next_u8(1),
             entity_ids: vec![1, 2, 3],
             teams: vec![0, 0, 1],
             hp: vec![plain.max_hp, 9, 0],
@@ -3091,7 +3103,7 @@ mod tests {
                 winner_team: None,
                 round: 1,
                 total_score: 3,
-                rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+                rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::after_next_u8(1),
                 entity_ids: vec![1, 2],
                 teams: vec![0, 1],
                 hp: vec![8, 2],
@@ -3125,7 +3137,7 @@ mod tests {
                 winner_team: None,
                 round: 2,
                 total_score: 0,
-                rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+                rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::after_next_u8(2),
                 entity_ids: vec![1, 2],
                 teams: vec![0, 1],
                 hp: vec![8, 2],
@@ -3159,7 +3171,7 @@ mod tests {
                 winner_team: Some(0),
                 round: 3,
                 total_score: 3,
-                rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+                rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::after_next_u8(3),
                 entity_ids: vec![1, 2],
                 teams: vec![0, 1],
                 hp: vec![8, 0],
@@ -3216,15 +3228,22 @@ mod tests {
                 byte_count: 0,
             })
         );
-        assert_eq!(trace.actions[0].rng_after, trace.actions[0].rng_before);
+        assert_eq!(
+            trace.actions[0].rng_after,
+            Some(RngCheckpoint {
+                i: 1,
+                j: 1,
+                byte_count: 0,
+            })
+        );
         assert_eq!(trace.frames.len(), 1);
         assert_eq!(trace.frames[0].total_score, 3);
         assert_eq!(trace.frames[0].winner_team, None);
         assert_eq!(
             trace.frames[0].rng_after,
             Some(RngCheckpoint {
-                i: 0,
-                j: 0,
+                i: 1,
+                j: 1,
                 byte_count: 0,
             })
         );
@@ -7040,7 +7059,10 @@ mod tests {
         let registry = builder.build();
         let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
             vec![
-                PlayerTemplate::new(1, "caster", 0, 10, 3).with_magic(80).with_skills([disperse]),
+                PlayerTemplate::new(1, "caster", 0, 10, 3)
+                    .with_magic(80)
+                    .with_wisdom(64)
+                    .with_skills([disperse]),
                 PlayerTemplate::new(2, "target", 1, 1_000, 3).with_def_res(0, 16).with_magic_point(96),
             ],
             registry,
@@ -7053,6 +7075,7 @@ mod tests {
             .states
             .add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
         let mut expected_rng = RC4::default();
+        let _smart_byte = expected_rng.next_u8();
         let atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng);
         assert!(!PlayerRuntime::dodge(
             runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
@@ -7104,7 +7127,10 @@ mod tests {
         let registry = builder.build();
         let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
             vec![
-                PlayerTemplate::new(1, "caster", 0, 10, 0).with_magic(80).with_skills([disperse]),
+                PlayerTemplate::new(1, "caster", 0, 10, 0)
+                    .with_magic(80)
+                    .with_wisdom(64)
+                    .with_skills([disperse]),
                 PlayerTemplate::new(2, "first", 1, 200, 0)
                     .with_def_res(0, 16)
                     .with_magic_point(96)
@@ -7122,6 +7148,7 @@ mod tests {
         ));
         runtime.set_skill_handler(disperse, run_disperse_skill);
         let mut expected_rng = RC4::default();
+        let _smart_byte = expected_rng.next_u8();
         let selected_targets = select_disperse_targets(&runtime.entities, &runtime.world, EntityIdx(0), true, &mut expected_rng);
         let selected_target = selected_targets[0];
         assert_eq!(selected_target, EntityIdx(2));
@@ -7155,7 +7182,7 @@ mod tests {
                 .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
                 .map(|update| (update.message.as_ref(), update.target))
                 .collect::<Vec<_>>(),
-            vec![("[0]使用[净化]", 2), ("[1]受到[2]点伤害", 2), ("[0]攻击[1]", 1)]
+            vec![("[0]使用[净化]", 2), ("[1]受到[2]点伤害[s_dmg120]", 2), ("[0]攻击[1]", 1)]
         );
     }
 
