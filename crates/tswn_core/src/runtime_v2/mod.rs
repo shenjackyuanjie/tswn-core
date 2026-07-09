@@ -19,7 +19,8 @@ pub use effect::{
     ShowRendererFn, ShowRenderers, SkillContext, SkillHandlerFn, SkillHandlers, StateContext, StateHandlerFn, StateHandlers,
 };
 pub use entity::{
-    EntityArena, EntityIdx, EntityRecord, MoveState, PlayerRuntime, PlayerTemplate, SkillLoadout, StateEntry, StateStore,
+    EntityArena, EntityIdx, EntityRecord, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate, SkillLoadout,
+    StateEntry, StateStore,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,
@@ -2839,6 +2840,56 @@ mod tests {
         assert_eq!(summon.template.resistance, 88);
         assert_eq!(summon.runtime.defense, 77);
         assert_eq!(summon.runtime.resistance, 88);
+    }
+
+    #[test]
+    fn charged_summon_template_can_disable_share_damage() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("summon kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10, 3),
+            ],
+            registry,
+        ));
+        runtime.effects.push(QueuedEffect::Spawn {
+            caster: EntityIdx(0),
+            template: PlayerTemplate::with_kind(3, "charged-summon", summon_kind, 0, 5, 1)
+                .with_damage_share_policy(DamageSharePolicy::None)
+                .with_speed_points(2048),
+        });
+        runtime.flush_effects().expect("charged summon spawn should emit update");
+
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(2),
+            amount: 4,
+        });
+        let frame = runtime.flush_effects().expect("summon damage should emit update");
+
+        let summon = runtime.entities.get(EntityIdx(2)).expect("charged summon should exist");
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 10);
+        assert_eq!(summon.runtime.hp, 1);
+        assert_eq!(summon.runtime.move_state, MoveState { speed_points: 2048 });
+        assert_eq!(summon.runtime.policies.damage_share, DamageSharePolicy::None);
+        assert_eq!(frame.updates.updates.len(), 1);
+        assert_eq!(frame.updates.updates[0].target, 2);
+        assert_eq!(frame.updates.updates[0].score, 4);
     }
 
     #[test]

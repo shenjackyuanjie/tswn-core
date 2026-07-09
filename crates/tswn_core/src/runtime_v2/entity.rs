@@ -1,5 +1,6 @@
 use crate::runtime_v2::extension::{
-    MergePolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask, RegistrationOrder, SkillId, SkillPriority, StateId,
+    DamageSharePolicy, MergePolicy, OwnerResolutionPolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask,
+    RegistrationOrder, SkillId, SkillPriority, StateId,
 };
 use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
@@ -19,6 +20,7 @@ pub struct PlayerTemplate {
     pub defense: i32,
     pub resistance: i32,
     pub move_state: MoveState,
+    pub policy_overrides: PlayerPolicyOverrides,
 }
 
 impl PlayerTemplate {
@@ -42,6 +44,7 @@ impl PlayerTemplate {
             defense: 0,
             resistance: 0,
             move_state: MoveState::default(),
+            policy_overrides: PlayerPolicyOverrides::default(),
         }
     }
 
@@ -70,6 +73,23 @@ impl PlayerTemplate {
     pub fn with_speed_points(mut self, speed_points: i32) -> Self {
         self.move_state.speed_points = speed_points;
         self
+    }
+
+    pub fn with_policy_overrides(mut self, policy_overrides: PlayerPolicyOverrides) -> Self {
+        self.policy_overrides = policy_overrides;
+        self
+    }
+
+    pub fn with_damage_share_policy(mut self, damage_share: DamageSharePolicy) -> Self {
+        self.policy_overrides.damage_share = Some(damage_share);
+        self
+    }
+
+    pub fn effective_policies(&self, registry: &ExtensionRegistry) -> PlayerKindPolicies {
+        let policies = registry
+            .player_kind(self.kind)
+            .map_or(PlayerKindPolicies::default(), |kind| kind.policies);
+        self.policy_overrides.apply_to(policies)
     }
 }
 
@@ -118,6 +138,42 @@ pub struct MoveState {
     pub speed_points: i32,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerPolicyOverrides {
+    pub owner_resolution: Option<OwnerResolutionPolicy>,
+    pub damage_share: Option<DamageSharePolicy>,
+    pub merge: Option<MergePolicy>,
+    pub inherit_owner_def_res: Option<bool>,
+}
+
+impl PlayerPolicyOverrides {
+    pub fn apply_to(self, mut policies: PlayerKindPolicies) -> PlayerKindPolicies {
+        if let Some(owner_resolution) = self.owner_resolution {
+            policies.owner_resolution = owner_resolution;
+        }
+        if let Some(damage_share) = self.damage_share {
+            policies.damage_share = damage_share;
+        }
+        if let Some(merge) = self.merge {
+            policies.merge = merge;
+        }
+        if let Some(inherit_owner_def_res) = self.inherit_owner_def_res {
+            policies.inherit_owner_def_res = inherit_owner_def_res;
+        }
+        policies
+    }
+
+    pub fn with_damage_share(mut self, damage_share: DamageSharePolicy) -> Self {
+        self.damage_share = Some(damage_share);
+        self
+    }
+
+    pub fn with_inherit_owner_def_res(mut self, inherit_owner_def_res: bool) -> Self {
+        self.inherit_owner_def_res = Some(inherit_owner_def_res);
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerRuntime {
     pub hp: i32,
@@ -143,7 +199,7 @@ impl PlayerRuntime {
         let (flags, policies) = registry
             .player_kind(template.kind)
             .map_or((PlayerKindFlags::NONE, PlayerKindPolicies::default()), |kind| {
-                (kind.flags, kind.policies)
+                (kind.flags, template.policy_overrides.apply_to(kind.policies))
             });
         Self {
             hp: template.max_hp,
@@ -224,9 +280,7 @@ impl EntityArena {
                 .entities
                 .get(owner_idx.0 as usize)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 spawn owner entity: {}", owner_idx.0));
-            let policies = registry
-                .player_kind(template.kind)
-                .map_or(PlayerKindPolicies::default(), |kind| kind.policies);
+            let policies = template.effective_policies(registry);
             if policies.inherit_owner_def_res {
                 template.defense = owner_entity.runtime.defense;
                 template.resistance = owner_entity.runtime.resistance;
@@ -491,6 +545,74 @@ mod tests {
             EntityArena::from_templates_with_registry(vec![PlayerTemplate::with_kind(1, "summon", kind, 0, 10, 3)], &registry);
 
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.policies, policies);
+    }
+
+    #[test]
+    fn player_template_policy_overrides_update_runtime_policy_fields() {
+        let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
+        let policies = crate::runtime_v2::PlayerKindPolicies {
+            owner_resolution: crate::runtime_v2::OwnerResolutionPolicy::RootOwner,
+            damage_share: crate::runtime_v2::DamageSharePolicy::ShareToOwner,
+            merge: crate::runtime_v2::MergePolicy::FixedLane,
+            inherit_owner_def_res: true,
+        };
+        let kind = builder
+            .register_player_kind_with_policies("custom", "summon", "custom.summon", PlayerKindFlags::SUMMON, policies)
+            .expect("kind should register");
+        let registry = builder.build();
+
+        let arena = EntityArena::from_templates_with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "summon", kind, 0, 10, 3)
+                    .with_damage_share_policy(crate::runtime_v2::DamageSharePolicy::None),
+            ],
+            &registry,
+        );
+
+        let runtime = &arena.get(EntityIdx(0)).unwrap().runtime;
+        assert_eq!(
+            runtime.policies.owner_resolution,
+            crate::runtime_v2::OwnerResolutionPolicy::RootOwner
+        );
+        assert_eq!(runtime.policies.damage_share, crate::runtime_v2::DamageSharePolicy::None);
+        assert_eq!(runtime.policies.merge, crate::runtime_v2::MergePolicy::FixedLane);
+        assert!(runtime.policies.inherit_owner_def_res);
+    }
+
+    #[test]
+    fn entity_arena_uses_policy_overrides_when_spawning() {
+        let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
+        let kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "summon",
+                "custom.summon",
+                PlayerKindFlags::SUMMON,
+                crate::runtime_v2::PlayerKindPolicies {
+                    owner_resolution: crate::runtime_v2::OwnerResolutionPolicy::SelfEntity,
+                    damage_share: crate::runtime_v2::DamageSharePolicy::None,
+                    merge: crate::runtime_v2::MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("kind should register");
+        let registry = builder.build();
+        let mut arena = EntityArena::from_templates_with_registry(
+            vec![PlayerTemplate::new(1, "owner", 0, 10, 3).with_def_res(77, 88)],
+            &registry,
+        );
+
+        let spawned = arena.spawn_from_template_with_owner(
+            PlayerTemplate::with_kind(2, "summon", kind, 0, 7, 2)
+                .with_policy_overrides(PlayerPolicyOverrides::default().with_inherit_owner_def_res(true)),
+            &registry,
+            Some(EntityIdx(0)),
+            Some(EntityIdx(0)),
+        );
+
+        assert_eq!(arena.get(spawned).unwrap().template.defense, 77);
+        assert_eq!(arena.get(spawned).unwrap().template.resistance, 88);
+        assert!(arena.get(spawned).unwrap().runtime.policies.inherit_owner_def_res);
     }
 
     #[test]
