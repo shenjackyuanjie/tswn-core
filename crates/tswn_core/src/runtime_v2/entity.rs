@@ -18,6 +18,7 @@ pub struct PlayerTemplate {
     pub attack: i32,
     pub defense: i32,
     pub resistance: i32,
+    pub move_state: MoveState,
 }
 
 impl PlayerTemplate {
@@ -40,6 +41,7 @@ impl PlayerTemplate {
             attack,
             defense: 0,
             resistance: 0,
+            move_state: MoveState::default(),
         }
     }
 
@@ -58,6 +60,16 @@ impl PlayerTemplate {
 
     pub fn with_skills(self, skills: impl IntoIterator<Item = SkillId>) -> Self {
         self.with_skill_loadout(SkillLoadout::from_skills(skills))
+    }
+
+    pub fn with_move_state(mut self, move_state: MoveState) -> Self {
+        self.move_state = move_state;
+        self
+    }
+
+    pub fn with_speed_points(mut self, speed_points: i32) -> Self {
+        self.move_state.speed_points = speed_points;
+        self
     }
 }
 
@@ -144,7 +156,7 @@ impl PlayerRuntime {
             team: template.team,
             flags,
             policies,
-            move_state: MoveState::default(),
+            move_state: template.move_state,
         }
     }
 }
@@ -343,6 +355,16 @@ mod tests {
     }
 
     #[test]
+    fn player_template_carries_move_state_into_runtime() {
+        let template = PlayerTemplate::new(1, "left", 0, 10, 3).with_speed_points(2048);
+
+        let arena = EntityArena::from_templates(vec![template.clone()]);
+
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().template.move_state, template.move_state);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.move_state, template.move_state);
+    }
+
+    #[test]
     fn player_template_stores_registered_skill_loadout() {
         let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
         let skill = builder
@@ -412,6 +434,18 @@ mod tests {
         assert_eq!(arena.get(spawned).unwrap().template.skills.skills(), &[skill]);
         assert_eq!(arena.get(spawned).unwrap().runtime.owner, spawned);
         assert_eq!(arena.get(spawned).unwrap().runtime.root_owner, spawned);
+    }
+
+    #[test]
+    fn entity_arena_preserves_move_state_when_spawning() {
+        let registry = ExtensionRegistry::default();
+        let mut arena = EntityArena::from_templates_with_registry(vec![PlayerTemplate::new(1, "left", 0, 10, 3)], &registry);
+        let payload = PlayerTemplate::new(2, "spawned", 1, 7, 2).with_speed_points(-2048);
+
+        let spawned = arena.spawn_from_template(payload.clone(), &registry);
+
+        assert_eq!(arena.get(spawned).unwrap().template.move_state, payload.move_state);
+        assert_eq!(arena.get(spawned).unwrap().runtime.move_state, payload.move_state);
     }
 
     #[test]

@@ -3091,7 +3091,8 @@ mod tests {
         let registry = builder.build();
         let payload = PlayerTemplate::with_kind(3, "summon-template", summon_kind, 0, 10, 1)
             .with_def_res(11, 22)
-            .with_skills([recast_skill]);
+            .with_skills([recast_skill])
+            .with_speed_points(2048);
         let mut template = PreparedCombatTemplate::with_registry(
             vec![
                 PlayerTemplate::with_kind(1, "owner", owner_kind, 0, 20, 3)
@@ -3138,6 +3139,8 @@ mod tests {
         assert_eq!(summon.runtime.root_owner, EntityIdx(0));
         assert_eq!(summon.runtime.defense, 77);
         assert_eq!(summon.runtime.resistance, 88);
+        assert_eq!(summon.template.move_state, payload.move_state);
+        assert_eq!(summon.runtime.move_state, payload.move_state);
 
         runtime.effects.push(QueuedEffect::Damage {
             caster: EntityIdx(1),
@@ -3160,6 +3163,7 @@ mod tests {
         assert!(revived.runtime.alive);
         assert_eq!(revived.runtime.hp, 10);
         assert_eq!(revived.template.skills.skills(), &[recast_skill]);
+        assert_eq!(revived.runtime.move_state, payload.move_state);
     }
 
     #[test]
@@ -3554,7 +3558,8 @@ mod tests {
         let registry = builder.build();
         let payload = PlayerTemplate::with_kind(3, "placeholder-shadow", minion_kind, 0, 5, 1)
             .with_def_res(2, 3)
-            .with_skills([inherited_skill]);
+            .with_skills([inherited_skill])
+            .with_speed_points(-2048);
         let mut template = PreparedCombatTemplate::with_registry(
             vec![
                 PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([minion_skill]),
@@ -3593,6 +3598,8 @@ mod tests {
         assert_eq!(minion.template.skills.skills(), &[inherited_skill]);
         assert_eq!(minion.runtime.owner, EntityIdx(0));
         assert_eq!(minion.runtime.root_owner, EntityIdx(0));
+        assert_eq!(minion.template.move_state, payload.move_state);
+        assert_eq!(minion.runtime.move_state, payload.move_state);
     }
 
     #[test]
@@ -3638,7 +3645,9 @@ mod tests {
             )
             .expect("shadow minion kind should register");
         let registry = builder.build();
-        let payload = PlayerTemplate::with_kind(3, "owner?shadow", shadow_kind, 0, 5, 1).with_skills([possess_skill]);
+        let payload = PlayerTemplate::with_kind(3, "owner?shadow", shadow_kind, 0, 5, 1)
+            .with_skills([possess_skill])
+            .with_speed_points(-2048);
         let mut template = PreparedCombatTemplate::with_registry(
             vec![
                 PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([shadow_skill]),
@@ -3679,6 +3688,7 @@ mod tests {
         assert_eq!(shadow.template.skills.skills(), &[possess_skill]);
         assert_eq!(shadow.runtime.owner, EntityIdx(0));
         assert_eq!(shadow.runtime.root_owner, EntityIdx(0));
+        assert_eq!(shadow.runtime.move_state, MoveState { speed_points: -2048 });
     }
 
     #[test]
@@ -3715,7 +3725,7 @@ mod tests {
             )
             .expect("zombie minion kind should register");
         let registry = builder.build();
-        let payload = PlayerTemplate::with_kind(3, "owner?zombie", zombie_kind, 0, 4, 1);
+        let payload = PlayerTemplate::with_kind(3, "owner?zombie", zombie_kind, 0, 4, 1).with_speed_points(1020);
         let mut template = PreparedCombatTemplate::with_registry(
             vec![
                 PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([zombie_skill]),
@@ -3758,6 +3768,7 @@ mod tests {
         assert_eq!(zombie.template.kind, zombie_kind);
         assert_eq!(zombie.runtime.owner, EntityIdx(0));
         assert_eq!(zombie.runtime.root_owner, EntityIdx(0));
+        assert_eq!(zombie.runtime.move_state, MoveState { speed_points: 1020 });
     }
 
     #[test]
