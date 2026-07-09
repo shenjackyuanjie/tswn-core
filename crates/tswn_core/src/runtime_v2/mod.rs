@@ -472,22 +472,24 @@ pub fn push_summon_recast_from_template_slot_with_message(
     push_summon_recast_from_template_slot_with_messages(context, entity_slot, template_slot, revive_hp, message.clone(), message)
 }
 
-pub fn run_legacy_summon_recast_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+pub fn run_legacy_summon_recast_from_template_slot_with_config(
+    context: &mut SkillContext<'_>,
+    entity_slot: EntitySlotId,
+    template_slot: TemplateSlotId,
+    revive_hp: i32,
+) {
     context.add_update(crate::engine::update::RunUpdate::new(
         "[0]使用[血祭]",
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,
         60,
     ));
-    push_summon_recast_from_template_slot_with_messages(
-        context,
-        EntitySlotId(0),
-        TemplateSlotId(0),
-        10,
-        "召唤出[1]",
-        "召唤出[1]",
-    )
-    .expect("legacy summon recast handler should spawn or revive template-slot summon");
+    push_summon_recast_from_template_slot_with_messages(context, entity_slot, template_slot, revive_hp, "召唤出[1]", "召唤出[1]")
+        .expect("legacy summon recast handler should spawn or revive template-slot summon");
+}
+
+pub fn run_legacy_summon_recast_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    run_legacy_summon_recast_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0), 10);
 }
 
 pub fn summon_default_skill_loadout(fire_skill: SkillId, explode_skill: SkillId, active_order: [usize; 3]) -> SkillLoadout {
@@ -969,27 +971,45 @@ pub fn push_minion_from_template_slot_with_allocated_name_silent(
     push_minion_from_template_with_allocated_name_silent(context, counter_slot, minion_template)
 }
 
-pub fn run_shadow_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+pub fn run_shadow_minion_from_template_slot_with_config(
+    context: &mut SkillContext<'_>,
+    counter_slot: EntitySlotId,
+    template_slot: TemplateSlotId,
+) {
     context.add_update(crate::engine::update::RunUpdate::new(
         "[0]使用[幻术]",
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,
         60,
     ));
-    push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]")
+    push_minion_from_template_slot_with_allocated_name(context, counter_slot, template_slot, "召唤出[1]")
         .expect("shadow minion handler should spawn template-slot minion");
 }
 
-pub fn run_zombie_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-    let zombie = push_minion_from_template_slot_with_allocated_name_silent(context, EntitySlotId(0), TemplateSlotId(0))
+pub fn run_shadow_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    run_shadow_minion_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0));
+}
+
+pub fn run_zombie_minion_from_template_slot_with_config(
+    context: &mut SkillContext<'_>,
+    counter_slot: EntitySlotId,
+    template_slot: TemplateSlotId,
+    killed_target: EntityIdx,
+) {
+    let zombie = push_minion_from_template_slot_with_allocated_name_silent(context, counter_slot, template_slot)
         .expect("zombie minion handler should spawn template-slot minion");
     context.add_update(crate::engine::update::RunUpdate::new_newline());
-    let mut summon_update = crate::engine::update::RunUpdate::new("[0][召唤亡灵]", context.owner_idx().0 as usize, 1, 60);
+    let mut summon_update =
+        crate::engine::update::RunUpdate::new("[0][召唤亡灵]", context.owner_idx().0 as usize, killed_target.0 as usize, 60);
     summon_update.delay0 = 1500;
     context.add_update(summon_update);
     let mut zombied = crate::engine::update::RunUpdate::new("[2]变成了[1]", context.owner_idx().0 as usize, zombie.0 as usize, 0);
-    zombied.targets.push(1);
+    zombied.targets.push(killed_target.0 as usize);
     context.add_update(zombied);
+}
+
+pub fn run_zombie_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    run_zombie_minion_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0), EntityIdx(1));
 }
 
 pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
@@ -5181,6 +5201,100 @@ mod tests {
     }
 
     #[test]
+    fn configured_summon_recast_handler_uses_non_default_slots() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        builder
+            .reserve_entity_slot("custom", "unused-entity-slot", "custom.summon.unused_entity")
+            .expect("unused entity slot should reserve");
+        let summoned_slot = builder
+            .reserve_entity_slot("custom", "configured-summon-slot", "custom.summon.configured_entity")
+            .expect("configured summoned entity slot should reserve");
+        builder
+            .reserve_template_slot("custom", "unused-template-slot", "custom.summon.unused_template")
+            .expect("unused template slot should reserve");
+        let template_slot = builder
+            .reserve_template_slot("custom", "configured-summon-template", "custom.summon.configured_template")
+            .expect("configured summon template slot should reserve");
+        let recast_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "configured-summon-recast",
+                "custom.configured_summon_recast",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("configured summon recast skill should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "configured-summon",
+                "custom.configured_summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("configured summon kind should register");
+        let registry = builder.build();
+        let payload = PlayerTemplate::with_kind(3, "configured-summon", summon_kind, 0, 7, 1);
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([recast_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        );
+        template
+            .slots
+            .set(template_slot, SlotValue::PlayerTemplate(Box::new(payload.clone())))
+            .expect("configured summon template slot should write");
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            recast_skill,
+            skill_configured_summon_recast_handler,
+            &[
+                ExtensionCapability::ReadTemplateSlots,
+                ExtensionCapability::ReadAllies,
+                ExtensionCapability::MutateEntitySlots,
+            ],
+        );
+
+        let first = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("configured summon recast should emit updates");
+
+        assert_eq!(first.updates.updates[0].message, "[0]使用[血祭]");
+        assert_eq!(first.updates.updates[1].message, "召唤出[1]");
+        assert_eq!(first.updates.updates[1].target, 2);
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().slots.get(EntitySlotId(0)), None);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(summoned_slot),
+            Some(&SlotValue::U64(2))
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().template.name, payload.name);
+
+        runtime.effects.push(QueuedEffect::Damage {
+            caster: EntityIdx(1),
+            target: EntityIdx(2),
+            amount: 7,
+        });
+        runtime.flush_effects().expect("configured summon damage should flush");
+        assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+
+        let recast = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("configured summon recast should revive existing entity");
+
+        assert_eq!(runtime.entities.len(), 3);
+        assert_eq!(recast.updates.updates[1].target, 2);
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 7);
+    }
+
+    #[test]
     fn push_summon_recast_from_entity_slot_reports_alive_remembered_summon() {
         let mut builder = ExtensionRegistryBuilder::default();
         let summoned_slot = builder
@@ -5783,6 +5897,126 @@ mod tests {
         assert_eq!(zombie.runtime.owner, EntityIdx(0));
         assert_eq!(zombie.runtime.root_owner, EntityIdx(0));
         assert_eq!(zombie.runtime.move_state, MoveState { speed_points: 1020 });
+    }
+
+    #[test]
+    fn configured_minion_handlers_use_non_default_slots_and_targets() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        builder
+            .reserve_entity_slot("custom", "unused-counter", "custom.minion.unused_counter")
+            .expect("unused counter slot should reserve");
+        let counter_slot = builder
+            .reserve_entity_slot("custom", "configured-counter", "custom.minion.configured_counter")
+            .expect("configured counter slot should reserve");
+        builder
+            .reserve_template_slot("custom", "unused-template", "custom.minion.unused_template")
+            .expect("unused template slot should reserve");
+        let shadow_template_slot = builder
+            .reserve_template_slot(
+                "custom",
+                "configured-shadow-template",
+                "custom.minion.configured_shadow_template",
+            )
+            .expect("configured shadow template slot should reserve");
+        let zombie_template_slot = builder
+            .reserve_template_slot(
+                "custom",
+                "configured-zombie-template",
+                "custom.minion.configured_zombie_template",
+            )
+            .expect("configured zombie template slot should reserve");
+        let shadow_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "configured-shadow",
+                "custom.configured_shadow",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("configured shadow skill should register");
+        let zombie_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "configured-zombie",
+                "custom.configured_zombie",
+                ProcMask::KILL,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
+            .expect("configured zombie skill should register");
+        let minion_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "configured-minion",
+                "custom.configured_minion",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("configured minion kind should register");
+        let registry = builder.build();
+        let shadow_payload = PlayerTemplate::with_kind(3, "shadow-template", minion_kind, 0, 5, 1);
+        let zombie_payload = PlayerTemplate::with_kind(4, "zombie-template", minion_kind, 0, 6, 1);
+        let mut template = PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([shadow_skill, zombie_skill]),
+                PlayerTemplate::new(2, "victim-a", 1, 10, 1),
+                PlayerTemplate::new(3, "victim-b", 1, 10, 1),
+            ],
+            registry,
+        );
+        template
+            .slots
+            .set(shadow_template_slot, SlotValue::PlayerTemplate(Box::new(shadow_payload)))
+            .expect("configured shadow template slot should write");
+        template
+            .slots
+            .set(zombie_template_slot, SlotValue::PlayerTemplate(Box::new(zombie_payload)))
+            .expect("configured zombie template slot should write");
+        let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            shadow_skill,
+            skill_configured_shadow_minion_handler,
+            &[ExtensionCapability::ReadTemplateSlots, ExtensionCapability::MutateEntitySlots],
+        );
+        runtime.set_skill_handler_with_capabilities(
+            zombie_skill,
+            skill_configured_zombie_minion_handler,
+            &[ExtensionCapability::ReadTemplateSlots, ExtensionCapability::MutateEntitySlots],
+        );
+
+        let shadow_frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("configured shadow minion should emit updates");
+
+        assert_eq!(shadow_frame.updates.updates[0].message, "[0]使用[幻术]");
+        assert_eq!(shadow_frame.updates.updates[1].target, 3);
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().slots.get(EntitySlotId(0)), None);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(counter_slot),
+            Some(&SlotValue::U64(1))
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().template.name, "owner?0");
+
+        let zombie_frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::KILL)
+            .expect("configured zombie minion should emit updates");
+
+        assert_eq!(zombie_frame.updates.updates[1].message, "[0][召唤亡灵]");
+        assert_eq!(zombie_frame.updates.updates[1].target, 2);
+        assert_eq!(zombie_frame.updates.updates[2].message, "[2]变成了[1]");
+        assert_eq!(zombie_frame.updates.updates[2].target, 4);
+        assert_eq!(zombie_frame.updates.updates[2].targets.as_slice(), &[2]);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(counter_slot),
+            Some(&SlotValue::U64(2))
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(4)).unwrap().template.name, "owner?1");
     }
 
     #[test]
@@ -6644,6 +6878,10 @@ mod tests {
         .expect("legacy summon recast fixture should spawn or revive summon");
     }
 
+    fn skill_configured_summon_recast_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        run_legacy_summon_recast_from_template_slot_with_config(context, EntitySlotId(1), TemplateSlotId(1), 7);
+    }
+
     fn skill_records_alive_summon_recast_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
         let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
             .with_def_res(11, 22)
@@ -6699,6 +6937,14 @@ mod tests {
             push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]"),
             Ok(EntityIdx(2))
         );
+    }
+
+    fn skill_configured_shadow_minion_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        run_shadow_minion_from_template_slot_with_config(context, EntitySlotId(1), TemplateSlotId(1));
+    }
+
+    fn skill_configured_zombie_minion_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        run_zombie_minion_from_template_slot_with_config(context, EntitySlotId(1), TemplateSlotId(2), EntityIdx(2));
     }
 
     fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
