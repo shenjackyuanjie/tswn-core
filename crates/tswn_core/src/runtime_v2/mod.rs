@@ -208,6 +208,40 @@ pub fn push_summon_from_template_slot(
     Ok(())
 }
 
+pub fn push_summon_recast_from_entity_slot(
+    context: &mut SkillContext<'_>,
+    entity_slot: EntitySlotId,
+    summon_template: PlayerTemplate,
+    revive_hp: i32,
+) -> Result<EntityIdx, RuntimeV2SummonHandlerError> {
+    let owner = context.owner_idx();
+    let remembered = context
+        .owner()
+        .and_then(|entity| entity.slots.get(entity_slot))
+        .and_then(|value| match value {
+            SlotValue::U64(idx) => Some(EntityIdx(*idx as u32)),
+            _ => None,
+        });
+    if let Some(summon) = remembered
+        && context.entity(summon).is_ok_and(|entity| !entity.runtime.alive)
+    {
+        context.push_nested(QueuedEffect::Revive {
+            caster: owner,
+            target: summon,
+            hp: revive_hp,
+        });
+        return Ok(summon);
+    }
+
+    let next_entity = EntityIdx(context.entity_count().try_into().expect("runtime_v2 entity index overflow"));
+    context.push_nested(QueuedEffect::Spawn {
+        caster: owner,
+        template: summon_template,
+    });
+    context.set_entity_slot(owner, entity_slot, SlotValue::U64(u64::from(next_entity.0)))?;
+    Ok(next_entity)
+}
+
 pub const DEFAULT_BED2_HP: i32 = 3000;
 pub const DEFAULT_BED2_DEFENSE: i32 = 99;
 pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
@@ -3100,34 +3134,11 @@ mod tests {
     }
 
     fn skill_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-        let owner = context.owner_idx();
-        let remembered = context
-            .owner()
-            .and_then(|entity| entity.slots.get(EntitySlotId(0)))
-            .and_then(|value| match value {
-                SlotValue::U64(idx) => Some(EntityIdx(*idx as u32)),
-                _ => None,
-            });
-        if let Some(summon) = remembered
-            && context.entity(summon).is_ok_and(|entity| !entity.runtime.alive)
-        {
-            context.push_nested(QueuedEffect::Revive {
-                caster: owner,
-                target: summon,
-                hp: 10,
-            });
-            return;
-        }
         let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
             .with_def_res(11, 22)
             .with_skills([SkillId(0)]);
-        context.push_nested(QueuedEffect::Spawn {
-            caster: owner,
-            template: summon_template,
-        });
-        context
-            .set_entity_slot(owner, EntitySlotId(0), SlotValue::U64(2))
-            .expect("summon recast fixture should store spawned entity");
+        push_summon_recast_from_entity_slot(context, EntitySlotId(0), summon_template, 10)
+            .expect("summon recast fixture should spawn or revive summon");
     }
 
     fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {

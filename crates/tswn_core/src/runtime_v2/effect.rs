@@ -418,6 +418,8 @@ impl<'a> SkillContext<'a> {
 
     pub fn owner(&self) -> Option<&EntityRecord> { self.entities.get(self.owner) }
 
+    pub fn entity_count(&self) -> usize { self.entities.len() }
+
     pub fn entity(&self, entity: EntityIdx) -> Result<&EntityRecord, EffectContextError> {
         let observed = self.entities.get(entity).ok_or(EffectContextError::UnknownEntity(entity))?;
         if entity == self.owner {
