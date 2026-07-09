@@ -1,6 +1,6 @@
 use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::rc4::RC4;
-use crate::runtime_v2::entity::{EntityIdx, PlayerTemplate, StateEntry};
+use crate::runtime_v2::entity::{EntityIdx, PlayerTemplate, StateEntry, StatePayload};
 use crate::runtime_v2::extension::{
     EffectHandlerId, ExtensionCapability, ExtensionRegistry, ReplayRendererId, ShowRendererId, SkillId, StateId,
 };
@@ -510,6 +510,20 @@ impl<'a> SkillContext<'a> {
         value.set_damage(damage);
     }
 
+    pub fn owner_state_payload(&self, legacy_order_key: u32) -> Option<StatePayload> {
+        self.owner()?.states.entry(legacy_order_key).map(|entry| entry.payload)
+    }
+
+    pub fn set_owner_state_payload(&mut self, legacy_order_key: u32, payload: StatePayload) -> Result<(), EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        if !owner.states.set_payload(legacy_order_key, payload) {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        }
+        Ok(())
+    }
+
     fn require(&self, capability: ExtensionCapability) -> Result<(), EffectContextError> {
         if self.capabilities.contains(&capability) {
             Ok(())
@@ -628,6 +642,20 @@ impl<'a> StateContext<'a> {
             panic!("runtime_v2 defend damage is only available during POST_DEFEND hooks");
         };
         value.set_damage(damage);
+    }
+
+    pub fn owner_state_payload(&self, legacy_order_key: u32) -> Option<StatePayload> {
+        self.owner()?.states.entry(legacy_order_key).map(|entry| entry.payload)
+    }
+
+    pub fn set_owner_state_payload(&mut self, legacy_order_key: u32, payload: StatePayload) -> Result<(), EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        if !owner.states.set_payload(legacy_order_key, payload) {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        }
+        Ok(())
     }
 
     fn require(&self, capability: ExtensionCapability) -> Result<(), EffectContextError> {

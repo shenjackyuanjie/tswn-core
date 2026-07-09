@@ -415,6 +415,7 @@ pub enum StatePayload {
     #[default]
     None,
     FireMagHalfSteps(i32),
+    ShieldValue(i32),
 }
 
 impl StateEntry {
@@ -440,10 +441,28 @@ impl StateEntry {
         }
     }
 
+    pub fn shield(legacy_order_key: u32, state_id: StateId, shield: i32, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_DEFEND,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::ShieldValue(shield),
+        }
+    }
+
     pub fn fire_mag_value(&self) -> Option<f64> {
         match self.payload {
             StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(half_steps) * 0.5),
-            StatePayload::None => None,
+            StatePayload::None | StatePayload::ShieldValue(_) => None,
+        }
+    }
+
+    pub fn shield_value(&self) -> Option<i32> {
+        match self.payload {
+            StatePayload::ShieldValue(shield) => Some(shield),
+            StatePayload::None | StatePayload::FireMagHalfSteps(_) => None,
         }
     }
 }
@@ -467,6 +486,11 @@ impl StateStore {
         self.index.get(&legacy_order_key).and_then(|idx| self.entries.get(*idx))
     }
 
+    pub fn entry_mut(&mut self, legacy_order_key: u32) -> Option<&mut StateEntry> {
+        let idx = self.index.get(&legacy_order_key).copied()?;
+        self.entries.get_mut(idx)
+    }
+
     pub fn fire_mag(&self, legacy_order_key: u32) -> f64 {
         self.entry(legacy_order_key).and_then(StateEntry::fire_mag_value).unwrap_or(0.0)
     }
@@ -479,7 +503,7 @@ impl StateStore {
                 StatePayload::FireMagHalfSteps(half_steps) => {
                     *half_steps += 1;
                 }
-                StatePayload::None => {
+                StatePayload::None | StatePayload::ShieldValue(_) => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
             }
@@ -488,6 +512,19 @@ impl StateStore {
         }
 
         self.add_entry(StateEntry::fire_mag(legacy_order_key, 1));
+    }
+
+    pub fn set_shield_value(&mut self, legacy_order_key: u32, shield: i32) -> bool {
+        self.set_payload(legacy_order_key, StatePayload::ShieldValue(shield.max(0)))
+    }
+
+    pub fn set_payload(&mut self, legacy_order_key: u32, payload: StatePayload) -> bool {
+        let Some(entry) = self.entry_mut(legacy_order_key) else {
+            return false;
+        };
+        entry.payload = payload;
+        self.generation = self.generation.wrapping_add(1);
+        true
     }
 
     pub fn add_legacy_key(&mut self, legacy_order_key: u32) -> bool { self.add_entry(StateEntry::legacy(legacy_order_key)) }
