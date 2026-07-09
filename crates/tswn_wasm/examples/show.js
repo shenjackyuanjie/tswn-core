@@ -127,7 +127,7 @@ import {
   playbackDelay,
   buildReplayResultTableHtml,
 } from "./show-replay.js";
-import { ensureApi, buildReplay } from "./show-wasm.js";
+import { ensureApi, buildReplay, buildV2NormalizedReplay } from "./show-wasm.js";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -150,6 +150,10 @@ const NICKNAME_STORAGE_KEY = "tswn_wasm_show_nicknames";
 const DEFAULT_SPEED_MODE = "normal";
 /** @type {string[]} URL 参数名，值为 URL-safe Base64 编码后的原始对局输入 */
 const STATIC_INPUT_PARAM_NAMES = ["input", "replay", "data"];
+/** @type {string[]} URL 参数名，用于显式选择 replay runtime */
+const REPLAY_ENGINE_PARAM_NAMES = ["engine", "runtime"];
+const REPLAY_ENGINE_V2_VALUES = new Set(["v2", "runtime_v2", "normalized", "normalized_v2"]);
+const REPLAY_ENGINE_LEGACY_VALUES = new Set(["legacy", "v1", "fightsession", "fight_session"]);
 
 // ============================================================================
 // DOM 元素引用
@@ -184,6 +188,8 @@ const versionInfo = document.querySelector("#versionInfo");
 const coreVersionInfo = document.querySelector("#coreVersionInfo");
 /** @type {HTMLElement} */
 const modulePathInfo = document.querySelector("#modulePathInfo");
+/** @type {HTMLElement} */
+const runtimeModeInfo = document.querySelector("#runtimeModeInfo");
 
 /** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
@@ -271,6 +277,8 @@ let playbackFinished = false;
 let rightControlsCollapsed = window.matchMedia("(max-width: 640px)").matches;
 /** @type {number|null} 分享复制提示的隐藏定时器 */
 let shareToastTimer = null;
+/** @type {'legacy'|'v2'} 当前 replay 生成路径 */
+let replayEngine = "legacy";
 
 // 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
@@ -1119,7 +1127,13 @@ function buildShareUrl(rawInput) {
   for (const paramName of STATIC_INPUT_PARAM_NAMES) {
     url.searchParams.delete(paramName);
   }
+  for (const paramName of REPLAY_ENGINE_PARAM_NAMES) {
+    url.searchParams.delete(paramName);
+  }
   url.searchParams.set("input", encodeBase64UrlUtf8(rawInput));
+  if (currentReplay?.runtime_v2 || replayEngine === "v2") {
+    url.searchParams.set("engine", "v2");
+  }
   url.hash = "";
   return url.href;
 }
@@ -1176,6 +1190,51 @@ function readStaticReplayInputFromUrl() {
     }
   }
   return null;
+}
+
+/**
+ * 从 URL 读取 replay runtime。未指定时保持 legacy FightSession 默认路径。
+ * @returns {{ engine: 'legacy'|'v2', paramName: string, message?: string }|null}
+ */
+function readReplayEngineFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  for (const paramName of REPLAY_ENGINE_PARAM_NAMES) {
+    if (!params.has(paramName)) {
+      continue;
+    }
+    const value = `${params.get(paramName) ?? ""}`.trim().toLowerCase();
+    if (REPLAY_ENGINE_V2_VALUES.has(value)) {
+      return { engine: "v2", paramName };
+    }
+    if (!value || REPLAY_ENGINE_LEGACY_VALUES.has(value)) {
+      return { engine: "legacy", paramName };
+    }
+    return {
+      engine: "legacy",
+      paramName,
+      message: `URL 参数 ${paramName}=${value} 未识别，已回退 FightSession。`,
+    };
+  }
+  return null;
+}
+
+function replayEngineStatusText() {
+  return replayEngine === "v2"
+    ? "使用 v2 normalized run 生成 replay 适配视图。"
+    : "自动使用 FightSession 捕获 replay，并按帧播放。";
+}
+
+function syncReplayEngineUi() {
+  if (runtimeModeInfo) {
+    runtimeModeInfo.textContent = replayEngineStatusText();
+  }
+}
+
+async function buildReplayForCurrentEngine(rawInput) {
+  if (replayEngine === "v2") {
+    return buildV2NormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
+  }
+  return buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
 }
 
 // ============================================================================
@@ -1410,13 +1469,13 @@ async function startBattle({ persistInput = true } = {}) {
   stopPlaybackLoop();
   clearCurrentReplayView();
   setLoading(true);
-  setInputStatus("正在生成回放，请稍候...");
+  setInputStatus(replayEngine === "v2" ? "正在使用 v2 normalized run 生成回放，请稍候..." : "正在生成回放，请稍候...");
 
   try {
     currentReplay = applyNicknamesToReplay(
-      normalizeReplayPlayers(await buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo)),
+      normalizeReplayPlayers(await buildReplayForCurrentEngine(rawInput)),
     );
-    setInputStatus("回放已生成，开始自动播放。");
+    setInputStatus(replayEngine === "v2" ? "v2 回放已生成，开始自动播放。" : "回放已生成，开始自动播放。");
     closePanel(inputPanel);
     beginReplayPlayback(currentReplay);
   } catch (error) {
@@ -1655,15 +1714,23 @@ nicknameInput.addEventListener("keydown", (event) => {
  */
 async function main() {
   const staticInput = readStaticReplayInputFromUrl();
+  const replayEngineOption = readReplayEngineFromUrl();
+  if (replayEngineOption) {
+    replayEngine = replayEngineOption.engine;
+  }
   if (staticInput?.ok) {
     inputName.value = staticInput.input;
   }
 
   renderIdleState(playerList, battleRows, plistMeta, headerMeta);
+  syncReplayEngineUi();
   syncPlaybackUi();
   syncRightControlsUi();
   if (staticInput?.ok) {
-    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在初始化回放...`);
+    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，${replayEngineStatusText()}正在初始化回放...`);
+  } else if (replayEngineOption?.message) {
+    setInputStatus(replayEngineOption.message, true);
+    openInputEditor();
   } else {
     setInputStatus(staticInput?.message ?? "会使用 show 风格自动播放整场战斗。", Boolean(staticInput));
     openInputEditor();

@@ -21,6 +21,7 @@
 - 支持 normal / fast / turbo 三种播放速度。
 - 支持从原始输入中提取 `seed:` 行并显示在玩家列表顶部。
 - 支持通过 URL 参数直接传入对局输入并自动播放：`show.html?input=<url-safe-base64>`。参数值按 UTF-8 解码，Base64 使用 URL-safe 字符集（`+`→`-`、`/`→`_`，可省略末尾 `=`）。`replay` 和 `data` 也可作为兼容别名；参数为空、Base64 非法或 UTF-8 解码失败时会停留在输入面板并显示错误。
+- 支持通过 `engine=v2` 或 `runtime=v2` 显式使用 v2 normalized replay adapter；未指定时仍使用 `FightSession` 默认路径，分享链接会保留当前 v2 选择。
 - 支持在右下角控制栏复制当前对局的分享链接，链接会使用同一套 `input` 参数格式。
 - 召唤单位（clone / summon / shadow / zombie）会按类型显示对应的中文名；分身名字里的编号使用底层 `display_index`，左侧仍单独保留 `#playerId`。
 - 只消费 `RoundFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。
