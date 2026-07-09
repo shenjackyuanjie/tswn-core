@@ -700,4 +700,15 @@ mod tests {
             );
         });
     }
+
+    #[test]
+    fn default_custom_runtime_v2_normalized_run_rejects_zero_max_rounds() {
+        Python::initialize();
+        Python::attach(|py| {
+            let err = default_custom_runtime_v2_normalized_run(py, "left@red\n\nright@blue\n".to_string(), 0)
+                .expect_err("default custom runtime v2 normalized run should reject zero max rounds");
+
+            assert_eq!(err.to_string(), "ValueError: runtime v2 max_rounds must be positive");
+        });
+    }
 }

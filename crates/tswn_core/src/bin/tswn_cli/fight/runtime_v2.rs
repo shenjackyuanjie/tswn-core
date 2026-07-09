@@ -200,6 +200,14 @@ mod tests {
     }
 
     #[test]
+    fn runtime_v2_normalized_json_rejects_zero_max_rounds() {
+        let err = runtime_v2_normalized_json("left@red\n\nright@blue\n", 0)
+            .expect_err("runtime v2 json should reject zero max rounds");
+
+        assert_eq!(err, "runtime v2 max_rounds must be positive");
+    }
+
+    #[test]
     fn runtime_v2_update_type_names_are_stable_json_tokens() {
         assert_eq!(update_type_name(UpdateType::Win), "win");
         assert_eq!(update_type_name(UpdateType::None), "none");

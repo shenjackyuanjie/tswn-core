@@ -663,4 +663,23 @@ mod tests {
         assert_eq!(frame.delay1, tswn_core::engine::update::DEFAULT_DELAY1_MS);
         assert_eq!(frame.update_type, "none");
     }
+
+    #[test]
+    fn runtime_v2_normalized_run_json_rejects_zero_max_rounds() {
+        let raw = std::ffi::CString::new("left@red\n\nright@blue\n").unwrap();
+        let mut out = tswn_str_t::default();
+
+        let status = unsafe { tswn_default_custom_runtime_v2_normalized_run_json(raw.as_ptr(), 0, &mut out) };
+
+        assert_eq!(status, tswn_status_t::TSWN_ERR_INVALID_ARGUMENT);
+        assert_eq!(out.len, 0);
+        assert!(out.ptr.is_null());
+
+        let err = crate::tswn_last_error_message();
+        let message = unsafe {
+            std::str::from_utf8_unchecked(std::slice::from_raw_parts(err.ptr as *const u8, err.len)).to_owned()
+        };
+        unsafe { crate::tswn_str_free(err) };
+        assert_eq!(message, "runtime v2 max_rounds must be positive");
+    }
 }
