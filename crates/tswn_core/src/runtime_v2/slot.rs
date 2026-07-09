@@ -1,3 +1,4 @@
+use crate::runtime_v2::entity::PlayerTemplate;
 use crate::runtime_v2::{BattleSlotId, EntitySlotId, ExtensionRegistry, TemplateSlotId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6,6 +7,7 @@ pub enum SlotValue {
     I64(i64),
     U64(u64),
     Text(String),
+    PlayerTemplate(Box<PlayerTemplate>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

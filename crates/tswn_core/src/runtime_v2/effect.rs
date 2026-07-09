@@ -5,7 +5,10 @@ use crate::runtime_v2::extension::{
     EffectHandlerId, ExtensionCapability, ExtensionRegistry, ReplayRendererId, ShowRendererId, SkillId, StateId,
 };
 use crate::runtime_v2::scheduler::{SkillHookPlanEntry, StateHookPlanEntry};
-use crate::runtime_v2::{BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, SlotError, SlotValue, WorldArena};
+use crate::runtime_v2::{
+    BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, SlotError, SlotValue, TemplateSlotId, TemplateSlotStorage,
+    WorldArena,
+};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -289,6 +292,7 @@ impl ShowRenderers {
 pub struct EffectContext<'a> {
     entities: &'a mut EntityArena,
     world: &'a mut WorldArena,
+    template_slots: &'a TemplateSlotStorage,
     slots: &'a mut BattleSlotStorage,
     queue: &'a mut EffectQueue,
     updates: &'a mut RunUpdates,
@@ -302,6 +306,7 @@ impl<'a> EffectContext<'a> {
     pub fn new(
         entities: &'a mut EntityArena,
         world: &'a mut WorldArena,
+        template_slots: &'a TemplateSlotStorage,
         slots: &'a mut BattleSlotStorage,
         queue: &'a mut EffectQueue,
         updates: &'a mut RunUpdates,
@@ -312,6 +317,7 @@ impl<'a> EffectContext<'a> {
         Self {
             entities,
             world,
+            template_slots,
             slots,
             queue,
             updates,
@@ -336,6 +342,11 @@ impl<'a> EffectContext<'a> {
     pub fn battle_slot(&self, id: crate::runtime_v2::BattleSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
         self.require(ExtensionCapability::ReadBattleSlots)?;
         Ok(self.slots.get(id))
+    }
+
+    pub fn template_slot(&self, id: TemplateSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
+        self.require(ExtensionCapability::ReadTemplateSlots)?;
+        Ok(self.template_slots.get(id))
     }
 
     pub fn set_entity_slot(&mut self, entity: EntityIdx, slot: EntitySlotId, value: SlotValue) -> Result<(), EffectContextError> {
@@ -369,6 +380,7 @@ impl<'a> EffectContext<'a> {
 pub struct SkillContext<'a> {
     entities: &'a mut EntityArena,
     world: &'a mut WorldArena,
+    template_slots: &'a TemplateSlotStorage,
     slots: &'a mut BattleSlotStorage,
     queue: &'a mut EffectQueue,
     updates: &'a mut RunUpdates,
@@ -381,6 +393,7 @@ impl<'a> SkillContext<'a> {
     pub fn new(
         entities: &'a mut EntityArena,
         world: &'a mut WorldArena,
+        template_slots: &'a TemplateSlotStorage,
         slots: &'a mut BattleSlotStorage,
         queue: &'a mut EffectQueue,
         updates: &'a mut RunUpdates,
@@ -391,6 +404,7 @@ impl<'a> SkillContext<'a> {
         Self {
             entities,
             world,
+            template_slots,
             slots,
             queue,
             updates,
@@ -423,6 +437,11 @@ impl<'a> SkillContext<'a> {
     pub fn battle_slot(&self, id: crate::runtime_v2::BattleSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
         self.require(ExtensionCapability::ReadBattleSlots)?;
         Ok(self.slots.get(id))
+    }
+
+    pub fn template_slot(&self, id: TemplateSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
+        self.require(ExtensionCapability::ReadTemplateSlots)?;
+        Ok(self.template_slots.get(id))
     }
 
     pub fn set_entity_slot(&mut self, entity: EntityIdx, slot: EntitySlotId, value: SlotValue) -> Result<(), EffectContextError> {
@@ -456,6 +475,7 @@ impl<'a> SkillContext<'a> {
 pub struct StateContext<'a> {
     entities: &'a mut EntityArena,
     world: &'a mut WorldArena,
+    template_slots: &'a TemplateSlotStorage,
     slots: &'a mut BattleSlotStorage,
     queue: &'a mut EffectQueue,
     updates: &'a mut RunUpdates,
@@ -468,6 +488,7 @@ impl<'a> StateContext<'a> {
     pub fn new(
         entities: &'a mut EntityArena,
         world: &'a mut WorldArena,
+        template_slots: &'a TemplateSlotStorage,
         slots: &'a mut BattleSlotStorage,
         queue: &'a mut EffectQueue,
         updates: &'a mut RunUpdates,
@@ -478,6 +499,7 @@ impl<'a> StateContext<'a> {
         Self {
             entities,
             world,
+            template_slots,
             slots,
             queue,
             updates,
@@ -510,6 +532,11 @@ impl<'a> StateContext<'a> {
     pub fn battle_slot(&self, id: crate::runtime_v2::BattleSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
         self.require(ExtensionCapability::ReadBattleSlots)?;
         Ok(self.slots.get(id))
+    }
+
+    pub fn template_slot(&self, id: TemplateSlotId) -> Result<Option<&SlotValue>, EffectContextError> {
+        self.require(ExtensionCapability::ReadTemplateSlots)?;
+        Ok(self.template_slots.get(id))
     }
 
     pub fn set_entity_slot(&mut self, entity: EntityIdx, slot: EntitySlotId, value: SlotValue) -> Result<(), EffectContextError> {

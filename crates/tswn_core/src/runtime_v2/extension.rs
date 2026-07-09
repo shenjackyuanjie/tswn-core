@@ -44,6 +44,7 @@ pub enum ExtensionCapability {
     ReadAllies,
     ReadEnemies,
     ReadBattleSlots,
+    ReadTemplateSlots,
     MutateEntitySlots,
 }
 

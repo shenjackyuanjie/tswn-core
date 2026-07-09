@@ -171,6 +171,7 @@ pub struct CombatRuntime {
     pub replay_renderers: ReplayRenderers,
     pub show_renderers: ShowRenderers,
     pub scratch: BattleScratch,
+    pub template_slots: TemplateSlotStorage,
     pub slots: BattleSlotStorage,
     pub registry: ExtensionRegistry,
     pub rng: RC4,
@@ -181,14 +182,19 @@ pub struct CombatRuntime {
 
 impl CombatRuntime {
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
-        let entities = EntityArena::from_templates_with_registry(template.players, &template.registry);
+        let PreparedCombatTemplate {
+            players,
+            registry,
+            slots: template_slots,
+        } = template;
+        let entities = EntityArena::from_templates_with_registry(players, &registry);
         let world = WorldArena::from_entities(&entities);
-        let slots = BattleSlotStorage::from_registry(&template.registry);
-        let effect_handlers = EffectHandlers::from_registry(&template.registry);
-        let skill_handlers = SkillHandlers::from_registry(&template.registry);
-        let state_handlers = StateHandlers::from_registry(&template.registry);
-        let replay_renderers = ReplayRenderers::from_registry(&template.registry);
-        let show_renderers = ShowRenderers::from_registry(&template.registry);
+        let slots = BattleSlotStorage::from_registry(&registry);
+        let effect_handlers = EffectHandlers::from_registry(&registry);
+        let skill_handlers = SkillHandlers::from_registry(&registry);
+        let state_handlers = StateHandlers::from_registry(&registry);
+        let replay_renderers = ReplayRenderers::from_registry(&registry);
+        let show_renderers = ShowRenderers::from_registry(&registry);
         Self {
             entities,
             world,
@@ -200,8 +206,9 @@ impl CombatRuntime {
             replay_renderers,
             show_renderers,
             scratch: BattleScratch::default(),
+            template_slots,
             slots,
-            registry: template.registry,
+            registry,
             rng: RC4::default(),
             #[cfg(not(feature = "no_debug"))]
             trace: None,
@@ -301,6 +308,7 @@ impl CombatRuntime {
                 let mut context = SkillContext::new(
                     &mut self.entities,
                     &mut self.world,
+                    &self.template_slots,
                     &mut self.slots,
                     &mut self.effects,
                     updates,
@@ -338,6 +346,7 @@ impl CombatRuntime {
                 let mut context = StateContext::new(
                     &mut self.entities,
                     &mut self.world,
+                    &self.template_slots,
                     &mut self.slots,
                     &mut self.effects,
                     updates,
@@ -574,6 +583,7 @@ impl CombatRuntime {
                     let mut context = EffectContext::new(
                         &mut self.entities,
                         &mut self.world,
+                        &self.template_slots,
                         &mut self.slots,
                         &mut self.effects,
                         updates,
@@ -701,6 +711,10 @@ mod tests {
             .set(entity_slot, SlotValue::Bool(true))
             .expect("entity slot should write");
 
+        assert_eq!(
+            runtime.template_slots.get(template_slot),
+            Some(&SlotValue::Text("seed".to_owned()))
+        );
         assert_eq!(runtime.slots.get(battle_slot), Some(&SlotValue::U64(1)));
         assert_eq!(
             runtime.entities.get(EntityIdx(0)).unwrap().slots.get(entity_slot),
@@ -712,8 +726,33 @@ mod tests {
     fn custom_bed2_fixture_maps_kind_skill_and_marker_slots() {
         let mut builder = ExtensionRegistryBuilder::default();
         let summon = builder
-            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .register_skill_with_hooks(
+                "custom",
+                "summon",
+                "custom.summon",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::Enemy,
+                SkillPriority(0),
+            )
             .expect("summon skill should register");
+        let fire = builder
+            .register_skill(
+                "custom",
+                "summon-fire",
+                "custom.summon.fire",
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("summon fire skill should register");
+        let explode = builder
+            .register_skill(
+                "custom",
+                "summon-explode",
+                "custom.summon.explode",
+                TargetPolicy::Enemy,
+                SkillPriority(2),
+            )
+            .expect("summon explode skill should register");
         let summon_template = builder
             .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
             .expect("bed2 summon template slot should reserve");
@@ -734,17 +773,46 @@ mod tests {
                 },
             )
             .expect("bed2 kind should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2-summon",
+                "custom.bed2.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("bed2 summon kind should register");
         let registry = builder.build();
         let mut template = PreparedCombatTemplate::with_registry(
-            vec![PlayerTemplate::with_kind(1, "bed2", bed2, 0, 3000, 0).with_skills([summon])],
+            vec![
+                PlayerTemplate::with_kind(1, "bed2", bed2, 0, 3000, 0)
+                    .with_def_res(DEFAULT_BED2_DEFENSE, DEFAULT_BED2_RESISTANCE)
+                    .with_skills([summon]),
+            ],
             registry,
         );
+        let bed2_summon_template = PlayerTemplate::with_kind(2, "bed2?0", summon_kind, 0, 1000, 1)
+            .with_def_res(99, 99)
+            .with_skills([fire, explode]);
         template
             .slots
-            .set(summon_template, SlotValue::Text("bed2:summon-template".to_owned()))
+            .set(
+                summon_template,
+                SlotValue::PlayerTemplate(Box::new(bed2_summon_template.clone())),
+            )
             .expect("bed2 summon template slot should write");
 
         let mut runtime = CombatRuntime::from_template(template);
+        runtime.set_skill_handler_with_capabilities(
+            summon,
+            skill_bed2_template_slot_summon_handler,
+            &[ExtensionCapability::ReadTemplateSlots],
+        );
         runtime
             .entities
             .get_mut(EntityIdx(0))
@@ -761,6 +829,37 @@ mod tests {
         assert_eq!(entity.runtime.policies.damage_share, DamageSharePolicy::ShareToOwner);
         assert_eq!(entity.runtime.policies.merge, MergePolicy::FixedLane);
         assert_eq!(entity.slots.get(hp_marker), Some(&SlotValue::Bool(true)));
+        assert_eq!(
+            runtime.template_slots.get(summon_template),
+            Some(&SlotValue::PlayerTemplate(Box::new(bed2_summon_template.clone())))
+        );
+        let SlotValue::PlayerTemplate(stored_template) =
+            runtime.template_slots.get(summon_template).expect("bed2 summon template should persist")
+        else {
+            panic!("bed2 summon template slot should hold a PlayerTemplate payload");
+        };
+        assert_eq!(stored_template.kind, summon_kind);
+        assert_eq!(stored_template.max_hp, 1000);
+        assert_eq!(stored_template.defense, DEFAULT_BED2_DEFENSE);
+        assert_eq!(stored_template.resistance, DEFAULT_BED2_RESISTANCE);
+        assert_eq!(stored_template.skills.skills(), &[fire, explode]);
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("bed2 summon handler should spawn template payload");
+
+        assert_eq!(runtime.entities.len(), 2);
+        assert_eq!(frame.updates.updates.len(), 1);
+        assert_eq!(frame.updates.updates[0].message, "出现一个新的[1]");
+        assert_eq!(frame.updates.updates[0].target, 1);
+        let summoned = runtime.entities.get(EntityIdx(1)).expect("bed2 summon should spawn from template slot");
+        assert_eq!(summoned.template.kind, summon_kind);
+        assert_eq!(summoned.template.max_hp, 1000);
+        assert_eq!(summoned.template.skills.skills(), &[fire, explode]);
+        assert_eq!(summoned.runtime.owner, EntityIdx(0));
+        assert_eq!(summoned.runtime.root_owner, EntityIdx(0));
+        assert_eq!(summoned.runtime.defense, DEFAULT_BED2_DEFENSE);
+        assert_eq!(summoned.runtime.resistance, DEFAULT_BED2_RESISTANCE);
     }
 
     #[test]
@@ -1837,6 +1936,20 @@ mod tests {
             caster: context.owner_idx(),
             target: EntityIdx(1),
             amount: 2,
+        });
+    }
+
+    fn skill_bed2_template_slot_summon_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        let summon_template = match context
+            .template_slot(TemplateSlotId(0))
+            .expect("bed2 summon handler should read template slot")
+        {
+            Some(SlotValue::PlayerTemplate(template)) => template.as_ref().clone(),
+            _ => panic!("bed2 summon handler expects PlayerTemplate payload"),
+        };
+        context.push_nested(QueuedEffect::Spawn {
+            caster: context.owner_idx(),
+            template: summon_template,
         });
     }
 
