@@ -181,6 +181,33 @@ impl RuntimeV2Runner {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeV2SummonHandlerError {
+    Context(EffectContextError),
+    MissingTemplateSlot(TemplateSlotId),
+    InvalidTemplateSlot(TemplateSlotId),
+}
+
+impl From<EffectContextError> for RuntimeV2SummonHandlerError {
+    fn from(error: EffectContextError) -> Self { Self::Context(error) }
+}
+
+pub fn push_summon_from_template_slot(
+    context: &mut SkillContext<'_>,
+    template_slot: TemplateSlotId,
+) -> Result<(), RuntimeV2SummonHandlerError> {
+    let summon_template = match context.template_slot(template_slot)? {
+        Some(SlotValue::PlayerTemplate(template)) => template.as_ref().clone(),
+        Some(_) => return Err(RuntimeV2SummonHandlerError::InvalidTemplateSlot(template_slot)),
+        None => return Err(RuntimeV2SummonHandlerError::MissingTemplateSlot(template_slot)),
+    };
+    context.push_nested(QueuedEffect::Spawn {
+        caster: context.owner_idx(),
+        template: summon_template,
+    });
+    Ok(())
+}
+
 pub const DEFAULT_BED2_HP: i32 = 3000;
 pub const DEFAULT_BED2_DEFENSE: i32 = 99;
 pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
@@ -1117,6 +1144,42 @@ mod tests {
         assert_eq!(summoned.runtime.root_owner, EntityIdx(0));
         assert_eq!(summoned.runtime.defense, DEFAULT_BED2_DEFENSE);
         assert_eq!(summoned.runtime.resistance, DEFAULT_BED2_RESISTANCE);
+    }
+
+    #[test]
+    fn push_summon_from_template_slot_reports_missing_template_payload() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill_with_hooks(
+                "custom",
+                "summon",
+                "custom.summon",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("summon skill should register");
+        builder
+            .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
+            .expect("bed2 summon template slot should reserve");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "bed2", 0, 3000, 0).with_skills([summon])],
+            registry,
+        ));
+        runtime.set_skill_handler_with_capabilities(
+            summon,
+            skill_records_missing_template_slot_error,
+            &[ExtensionCapability::ReadTemplateSlots],
+        );
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("missing template payload should be recorded");
+
+        assert_eq!(runtime.entities.len(), 1);
+        assert_eq!(frame.updates.updates.len(), 1);
+        assert_eq!(frame.updates.updates[0].message, "missing summon template");
     }
 
     #[test]
@@ -3008,17 +3071,21 @@ mod tests {
     }
 
     fn skill_bed2_template_slot_summon_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-        let summon_template = match context
-            .template_slot(TemplateSlotId(0))
-            .expect("bed2 summon handler should read template slot")
-        {
-            Some(SlotValue::PlayerTemplate(template)) => template.as_ref().clone(),
-            _ => panic!("bed2 summon handler expects PlayerTemplate payload"),
-        };
-        context.push_nested(QueuedEffect::Spawn {
-            caster: context.owner_idx(),
-            template: summon_template,
-        });
+        push_summon_from_template_slot(context, TemplateSlotId(0))
+            .expect("bed2 summon handler should read template slot payload");
+    }
+
+    fn skill_records_missing_template_slot_error(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        assert_eq!(
+            push_summon_from_template_slot(context, TemplateSlotId(0)),
+            Err(RuntimeV2SummonHandlerError::MissingTemplateSlot(TemplateSlotId(0)))
+        );
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "missing summon template",
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            0,
+        ));
     }
 
     fn skill_consumes_rng(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {

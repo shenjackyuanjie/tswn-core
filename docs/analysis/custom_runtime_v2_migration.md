@@ -33,7 +33,7 @@ git diff --name-status github/main..github/custom
 | --- | --- | --- | --- | --- |
 | bed2 player type | `DEFAULT_BED2_HP = 3000`; `PlayerType::Bed2`; `bed2[...]` / `@bed2` marker | `PlayerKindSpec` + `PlayerKindPolicies` + template/entity slot | 已有 bed2 registry/template fixture 覆盖 kind、policy、3000 HP 与 marker slot，并补最小 v2 marker import helper 与 Player facade id-name 归一化桥接；template slot 已保存 typed summon payload 并可由 handler 读取后 spawn；已补 grouped raw bed2 roster 与 mixed legacy/bed2 raw roster -> `PreparedCombatTemplate` helper，并通过 `RuntimeV2Runner` 正式接入 bed2-only / mixed roster 构造、单回合归一化和 run-until-winner 归一化入口 | bed2 构造后固定 HP、技能槽、summon 模板 strict diff |
 | bed2 固定 summon 技能 | custom 将 bed2 overlay 设为 `[0,99,0,0,0,99,0,hp]` 并只保留 `sklsummon=255` | `PlayerTemplate::with_kind(...).with_skills([summon])` + policy | v2 fixture 已覆盖固定 summon skill loadout；缺内置 summon 技能迁移 | bed2 只尝试 summon，不扫描普通技能 |
-| bed2 summon template 导出 | `summon_overlay_from_player_template`; `overlay_from_built_minion` | template slot 保存 summon/minion 模板；effect handler 生成实体 | v2 fixture 已覆盖 typed summon template payload，handler 可通过 template slot 读取 `PlayerTemplate` 并 spawn，保留 attr/skills/owner/root-owner；仍缺 custom parser 接入 | bed2 summon 的 attr/skills 与 custom branch 一致 |
+| bed2 summon template 导出 | `summon_overlay_from_player_template`; `overlay_from_built_minion` | template slot 保存 summon/minion 模板；effect handler 生成实体 | v2 fixture 已覆盖 typed summon template payload，`push_summon_from_template_slot` helper 可通过 template slot 读取 `PlayerTemplate` 并 spawn，保留 attr/skills/owner/root-owner，并对缺失/类型错误 payload 返回结构化错误；仍缺 custom parser 接入 | bed2 summon 的 attr/skills 与 custom branch 一致 |
 | summon recast 复用技能 | `reuse_skills_on_recast: is_summon` | summon policy + effect handler | 已有 custom summon 复合 fixture 覆盖 spawn 后 SkillLoadout 保留，并补 recast handler fixture 覆盖死亡后复活复用同一 summon 实体；仍缺完整内置 summon 技能迁移 | summon recast 后技能继承/复用顺序不漂移 |
 | summon 继承 owner 防御/魔防 | `inherit_owner_def_res: is_summon` | `PlayerKindPolicies::inherit_owner_def_res` + template/runtime def/res | 已有 v2 custom summon fixture 覆盖 spawn 时继承 owner defense/resistance；仍缺真实 summon handler | summon 出场后的防御/魔防展示与 custom 一致 |
 | summon/root-owner 伤害路由 | summon clone damage route to root owner | `OwnerResolutionPolicy::RootOwner` | 已接入并在 custom summon 复合 fixture 中覆盖 | root owner 承伤、致死 hook 目标一致 |
@@ -67,7 +67,7 @@ git diff --name-status github/main..github/custom
 - grouped raw bed2 roster 已可跳过 seed 行、按输入队伍顺序分配 team/id，并转换为 `PreparedCombatTemplate`。
 - mixed legacy/bed2 raw roster 已可通过 legacy `Player` facade 导入普通玩家，同时对 bed2 marker 使用 custom bed2 template importer。
 - `RuntimeV2Runner` 已可从 bed2-only / mixed roster 构造正式 v2 runner，并输出单回合与 run-until-winner 的 `NormalizedOutcome` 供 strict diff / runner golden 复用。
-- `TemplateSlotStorage` 已可保留 typed `PlayerTemplate` payload，extension context 通过 `ReadTemplateSlots` capability 读取 bed2 summon 模板并交给 `QueuedEffect::Spawn` 生成实体。
+- `TemplateSlotStorage` 已可保留 typed `PlayerTemplate` payload，extension context 通过 `ReadTemplateSlots` capability 读取 bed2 summon 模板，`push_summon_from_template_slot` helper 会校验 payload 并交给 `QueuedEffect::Spawn` 生成实体。
 - `OwnerResolutionPolicy::RootOwner` 已覆盖 summon/root-owner 伤害路由。
 - `DamageSharePolicy::ShareToOwner` / `ShareToSummons` 已覆盖 owner 与 summon 伤害共享。
 - `PlayerKindPolicies::inherit_owner_def_res` 已覆盖 custom summon 继承 owner 防御/魔防的数据面。
