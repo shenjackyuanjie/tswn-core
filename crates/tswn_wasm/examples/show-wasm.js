@@ -359,6 +359,45 @@ function buildV2Frame(outcome, previousStates, playersById, maxHpById) {
 }
 
 /**
+ * 将 v2 normalized run 转成当前 show.html 可消费的 replay shape。
+ *
+ * @param {string} rawInput
+ * @param {object} run
+ * @param {number} [wasmDurationMs=0]
+ * @returns {FightReplay}
+ */
+export function buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0) {
+    const players = buildV2Players(rawInput, run);
+    const playersById = new Map(players.map((player) => [player.id, player]));
+    const maxHpById = maxHpByEntity(run);
+    const firstOutcome = run.rounds?.[0] ?? null;
+    const finalOutcome = run.rounds?.[run.rounds.length - 1] ?? firstOutcome;
+    const initial_states = buildV2States(firstOutcome, playersById, maxHpById);
+    const frames = [];
+    let previousStates = initial_states;
+    for (const outcome of run.rounds ?? []) {
+        const frame = buildV2Frame(outcome, previousStates, playersById, maxHpById);
+        frames.push(frame);
+        previousStates = frame.states;
+    }
+    const final_states = buildV2States(finalOutcome, playersById, maxHpById);
+    return {
+        raw_input: rawInput,
+        seed_line: extractSpecifiedSeedLine(rawInput),
+        players,
+        initial_states,
+        frames,
+        winner_ids: winnerIdsFromOutcome(finalOutcome),
+        final_states,
+        runtime_v2: true,
+        winner_team: run.winner_team ?? null,
+        guard_exhausted: Boolean(run.guard_exhausted),
+        total_score: Number(run.total_score ?? 0),
+        wasm_duration_ms: wasmDurationMs,
+    };
+}
+
+/**
  * 根据原始输入文本生成完整回放数据。
  *
  * @param {string} rawInput — 原始输入文本（每行一个名字，空行分隔队伍）
@@ -409,32 +448,5 @@ export async function buildV2NormalizedReplay(rawInput, versionInfo, coreVersion
     const wasmStart = performance.now();
     const run = api.default_custom_runtime_v2_normalized_run(rawInput, maxRounds);
     const wasmDurationMs = performance.now() - wasmStart;
-    const players = buildV2Players(rawInput, run);
-    const playersById = new Map(players.map((player) => [player.id, player]));
-    const maxHpById = maxHpByEntity(run);
-    const firstOutcome = run.rounds?.[0] ?? null;
-    const finalOutcome = run.rounds?.[run.rounds.length - 1] ?? firstOutcome;
-    const initial_states = buildV2States(firstOutcome, playersById, maxHpById);
-    const frames = [];
-    let previousStates = initial_states;
-    for (const outcome of run.rounds ?? []) {
-        const frame = buildV2Frame(outcome, previousStates, playersById, maxHpById);
-        frames.push(frame);
-        previousStates = frame.states;
-    }
-    const final_states = buildV2States(finalOutcome, playersById, maxHpById);
-    return {
-        raw_input: rawInput,
-        seed_line: extractSpecifiedSeedLine(rawInput),
-        players,
-        initial_states,
-        frames,
-        winner_ids: winnerIdsFromOutcome(finalOutcome),
-        final_states,
-        runtime_v2: true,
-        winner_team: run.winner_team ?? null,
-        guard_exhausted: Boolean(run.guard_exhausted),
-        total_score: Number(run.total_score ?? 0),
-        wasm_duration_ms: wasmDurationMs,
-    };
+    return buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs);
 }

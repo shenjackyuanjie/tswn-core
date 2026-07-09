@@ -1,0 +1,110 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { buildV2ReplayFromNormalizedRun } from "./show-wasm.js";
+
+test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () => {
+  const rawInput = "seed: fixed\nleft@red\n\nright@blue\n";
+  const replay = buildV2ReplayFromNormalizedRun(rawInput, {
+    winner_team: 0,
+    guard_exhausted: false,
+    total_score: 7,
+    rounds: [
+      {
+        winner_team: null,
+        round: 1,
+        total_score: 3,
+        rng_i: 1,
+        rng_j: 2,
+        entity_ids: [0, 1],
+        teams: [0, 1],
+        hp: [100, 80],
+        magic_point: [10, 20],
+        defense: [1, 2],
+        resistance: [3, 4],
+        alive: [true, true],
+        round_order: [0, 1],
+        flat_alive: [0, 1],
+        team_alive: [[0], [1]],
+        alive_group_count: 2,
+        actions: [{ round: 1, actor: 0, target: 1, amount: 20 }],
+        frames: [
+          {
+            message: "[0]攻击[1]造成[2]点伤害",
+            caster: 0,
+            target: 1,
+            targets: [1],
+            param: 20,
+            score: 3,
+            delay0: 120,
+            delay1: 80,
+            update_type: "none",
+          },
+          {
+            message: "[1][回避]了攻击",
+            caster: 1,
+            target: 0,
+            targets: [0],
+            score: 0,
+            delay0: 10,
+            delay1: 15,
+            update_type: "next_line",
+          },
+        ],
+      },
+      {
+        winner_team: 0,
+        round: 2,
+        total_score: 7,
+        rng_i: 3,
+        rng_j: 4,
+        entity_ids: [0, 1],
+        teams: [0, 1],
+        hp: [100, 0],
+        magic_point: [10, 20],
+        defense: [1, 2],
+        resistance: [3, 4],
+        alive: [true, false],
+        round_order: [0],
+        flat_alive: [0],
+        team_alive: [[0], []],
+        alive_group_count: 1,
+        actions: [{ round: 2, actor: 0, target: 1, amount: 80 }],
+        frames: [
+          {
+            message: "[0]击败[1]",
+            caster: 0,
+            target: 1,
+            targets: [1],
+            score: 4,
+            delay0: 30,
+            delay1: 40,
+            update_type: "win",
+          },
+        ],
+      },
+    ],
+  }, 12.5);
+
+  assert.equal(replay.runtime_v2, true);
+  assert.equal(replay.seed_line, "seed: fixed");
+  assert.equal(replay.winner_team, 0);
+  assert.deepEqual(replay.winner_ids, [0]);
+  assert.equal(replay.total_score, 7);
+  assert.equal(replay.wasm_duration_ms, 12.5);
+
+  assert.deepEqual(replay.players.map((player) => player.display_name), ["left@red", "right@blue"]);
+  assert.deepEqual(replay.players.map((player) => player.team_index), [0, 1]);
+  assert.deepEqual(replay.initial_states.map((state) => state.hp), [100, 80]);
+  assert.deepEqual(replay.final_states.map((state) => state.alive), [true, false]);
+
+  assert.equal(replay.frames.length, 2);
+  assert.equal(replay.frames[0].total_delay, 225);
+  assert.equal(replay.frames[0].rows.length, 2);
+  assert.equal(replay.frames[0].updates[0].message_rendered, "left@red攻击right@blue造成20点伤害");
+  assert.equal(replay.frames[0].updates[0].tone, "damage");
+  assert.equal(replay.frames[0].rows[0].clips[0].parts[4].kind, "data");
+  assert.equal(replay.frames[1].finished, true);
+  assert.equal(replay.frames[1].updates[0].tone, "knockout");
+  assert.deepEqual(replay.frames[1].winner_ids, [0]);
+});
