@@ -650,8 +650,8 @@ export async function buildReplay(rawInput, versionInfo, coreVersionInfo, module
 /**
  * 使用 v2 default custom profile 的 normalized run 构造 show-compatible replay。
  *
- * 这是 Phase H 迁移用的显式入口：当前 show.html 默认仍走 FightSession，
- * 后续可以用这个结果和 legacy replay view 做 DOM/golden 对账后再切换默认路径。
+ * 这是 Phase H 的 show 默认路径入口：show.html 默认使用 v2 normalized replay，
+ * legacy FightSession 仅保留给显式 legacy fallback。
  *
  * @param {string} rawInput
  * @param {HTMLElement} versionInfo
