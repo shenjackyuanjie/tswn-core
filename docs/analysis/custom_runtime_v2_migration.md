@@ -65,9 +65,9 @@ git diff --name-status github/main..github/custom
 - `PlayerKindSpec` / `PlayerKindPolicies` 可表达 custom kind 与行为策略。
 - `CustomBed2Import` 已覆盖 `bed2[...]` / `@bed2` marker 到 v2 bed2 template 的最小导入面，并通过 `parse_player_facade_raw` 对接 `Player::raw_namerena_to_idname` 的名字/队伍归一化结果。
 - grouped raw bed2 roster 已可跳过 seed 行、按输入队伍顺序分配 team/id，并转换为 `PreparedCombatTemplate`。
-- bed2-only 与 mixed roster / runner import 已新增 parser-facing summon/shadow/zombie overlay 入口、组合 minion overlay 入口和 `CustomRuntimeV2ImportConfig` profile 入口，可复用现有 `ol:` overlay parser，把首个 bed2 `ol.summon` 的 attrs、inherit_owner_def_res 和 `sklfire1` / `sklfire2` / `sklexplode` active order 转为 typed v2 `PlayerTemplate` payload；`ol.shadow` 的 attrs 与 possess active order 可转为 typed shadow template slot；`ol.zombie` 的 attrs 与 normal / possess / explode 等 overlay skill 可通过 skill export 前缀转为 typed zombie template slot；需要技能映射的路径均通过 registry `export_name` 查找 v2 `SkillId` 后写入 template slot；core `cli_api` 已提供 `custom_runtime_v2_mixed_runner` / `custom_runtime_v2_normalized_run`，作为不替换 legacy API 的外层 custom profile 调用面。
+- bed2-only 与 mixed roster / runner import 已新增 parser-facing summon/shadow/zombie overlay 入口、组合 minion overlay 入口和 `CustomRuntimeV2ImportConfig` profile 入口，可复用现有 `ol:` overlay parser，把首个 bed2 `ol.summon` 的 attrs、inherit_owner_def_res 和 `sklfire1` / `sklfire2` / `sklexplode` active order 转为 typed v2 `PlayerTemplate` payload；`ol.shadow` 的 attrs 与 possess active order 可转为 typed shadow template slot；`ol.zombie` 的 attrs 与 normal / possess / explode 等 overlay skill 可通过 skill export 前缀转为 typed zombie template slot；需要技能映射的路径均通过 registry `export_name` 查找 v2 `SkillId` 后写入 template slot；core 已提供 `default_custom_runtime_v2_import_config`，core `cli_api` 已提供 `custom_runtime_v2_mixed_runner` / `custom_runtime_v2_normalized_run`，作为不替换 legacy API 的外层 custom profile 调用面。
 - mixed legacy/bed2 raw roster 已可通过 legacy `Player` facade 导入普通玩家，同时对 bed2 marker 使用 custom bed2 template importer。
-- `RuntimeV2Runner` 已可从 bed2-only / mixed roster 与 raw namerena 文本构造正式 v2 runner，复用 legacy 空行分组 / seed 独占组解析形状，并把 raw seed 初始化后的 RC4 checkpoint、team 编号、round/alive 派生视图对齐到 legacy `Runner` / `WorldState`，输出单回合与 run-until-winner 的 `NormalizedOutcome` 供 strict diff / runner golden 复用；core `cli_api` 已把 custom profile raw import + normalized run 包成专用 v2 helper，供后续 CLI/wasm/Python/C API 切换复用。
+- `RuntimeV2Runner` 已可从 bed2-only / mixed roster 与 raw namerena 文本构造正式 v2 runner，复用 legacy 空行分组 / seed 独占组解析形状，并把 raw seed 初始化后的 RC4 checkpoint、team 编号、round/alive 派生视图对齐到 legacy `Runner` / `WorldState`，输出单回合与 run-until-winner 的 `NormalizedOutcome` 供 strict diff / runner golden 复用；core 已把默认 custom v2 profile 构造和 raw import + normalized run 包成专用 helper，供后续 CLI/wasm/Python/C API 切换复用。
 - `TemplateSlotStorage` 已可保留 typed `PlayerTemplate` payload，extension context 通过 `ReadTemplateSlots` capability 读取 bed2 summon 模板，`push_summon_from_template_slot` helper 会校验 payload 并交给 `QueuedEffect::SpawnWithMessage` 生成实体；`push_summon_from_template_slot_with_message` 可为真实 summon handler 指定 `召唤出[1]` 等 legacy/custom 外显文案。
 - `OwnerResolutionPolicy::RootOwner` 已覆盖 summon/root-owner 伤害路由。
 - `DamageSharePolicy::ShareToOwner` / `ShareToSummons` 已覆盖 owner 与 summon 伤害共享；`PlayerTemplate` policy override 已支持 charged summon 这类 per-entity 差异，避免为了关闭 share damage 拆出额外 kind。
@@ -99,6 +99,6 @@ git diff --name-status github/main..github/custom
 
 ## 5. 未完成项
 
-- summon 完整内置技能迁移，完整 custom DIY/OL parser 与 CLI/wasm/Python/C API 切换接入（已有 parser-facing summon/shadow/zombie、组合 minion overlay 导入入口和 core `cli_api` custom v2 profile helper），以及更多内置 minion handler 参数化/strict-diff parity。
+- summon 完整内置技能迁移，完整 custom DIY/OL parser 与 CLI/wasm/Python/C API 切换接入（已有 parser-facing summon/shadow/zombie、组合 minion overlay 导入入口、默认 custom v2 profile 和 core `cli_api` custom v2 profile helper），以及更多内置 minion handler 参数化/strict-diff parity。
 - custom large / fight_multi runner 归一化 golden 继续扩展到完整 replay 行为。
 - 将审计表中的每个验收 case 接入 strict diff 或稳定单测。

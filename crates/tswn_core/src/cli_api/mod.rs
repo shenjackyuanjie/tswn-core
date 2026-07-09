@@ -472,37 +472,12 @@ fn normalize_namer_pf_modes(modes: Option<Vec<String>>) -> CliApiResult<Vec<Name
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_v2::{
-        DamageSharePolicy, EntityIdx, ExtensionRegistryBuilder, MergePolicy, OwnerResolutionPolicy, PlayerKindFlags,
-        PlayerKindId, PlayerKindPolicies, SkillId, SkillPriority, TargetPolicy,
-    };
-
-    fn custom_runtime_v2_config() -> (CustomRuntimeV2ImportConfig<'static>, PlayerKindId, SkillId) {
-        let mut builder = ExtensionRegistryBuilder::default();
-        let summon = builder
-            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
-            .expect("summon skill should register");
-        let bed2 = builder
-            .register_player_kind_with_policies(
-                "custom",
-                "bed2",
-                "custom.bed2",
-                PlayerKindFlags::BED2,
-                PlayerKindPolicies {
-                    owner_resolution: OwnerResolutionPolicy::RootOwner,
-                    damage_share: DamageSharePolicy::ShareToOwner,
-                    merge: MergePolicy::FixedLane,
-                    inherit_owner_def_res: false,
-                },
-            )
-            .expect("bed2 kind should register");
-        let registry = builder.build();
-        (CustomRuntimeV2ImportConfig::new(registry, bed2, summon), bed2, summon)
-    }
+    use crate::runtime_v2::{EntityIdx, default_custom_runtime_v2_import_config};
 
     #[test]
     fn cli_api_custom_runtime_v2_mixed_runner_imports_custom_profile_raw() {
-        let (config, bed2, _) = custom_runtime_v2_config();
+        let config = default_custom_runtime_v2_import_config().expect("default custom runtime v2 profile should build");
+        let bed2 = config.bed2_kind;
         let raw = "plain@red\nalpha@red@bed2\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
         let runner = custom_runtime_v2_mixed_runner(raw, config).expect("custom runtime v2 mixed runner should build");
@@ -524,7 +499,7 @@ mod tests {
 
     #[test]
     fn cli_api_custom_runtime_v2_normalized_run_executes_plain_raw() {
-        let (config, _, _) = custom_runtime_v2_config();
+        let config = default_custom_runtime_v2_import_config().expect("default custom runtime v2 profile should build");
         let raw = "left@red\n\nright@blue\n";
 
         let run = custom_runtime_v2_normalized_run(raw, 1, config).expect("custom runtime v2 normalized run should execute");

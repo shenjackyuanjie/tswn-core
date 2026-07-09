@@ -1336,6 +1336,8 @@ pub const DEFAULT_BED2_HP: i32 = 3000;
 pub const DEFAULT_BED2_DEFENSE: i32 = 99;
 pub const DEFAULT_BED2_RESISTANCE: i32 = 99;
 
+pub const DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT: &str = "custom.summon";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomBed2Import {
     pub name: String,
@@ -1400,6 +1402,40 @@ impl<'a> CustomRuntimeV2ImportConfig<'a> {
         self.bed2_minion_overlays = Some(config);
         self
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DefaultCustomRuntimeV2ProfileError {
+    Registry(ExtensionError),
+}
+
+impl From<ExtensionError> for DefaultCustomRuntimeV2ProfileError {
+    fn from(error: ExtensionError) -> Self { Self::Registry(error) }
+}
+
+pub fn default_custom_runtime_v2_import_config()
+-> Result<CustomRuntimeV2ImportConfig<'static>, DefaultCustomRuntimeV2ProfileError> {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let summon = builder.register_skill(
+        "custom",
+        "summon",
+        DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT,
+        TargetPolicy::Enemy,
+        SkillPriority(0),
+    )?;
+    let bed2 = builder.register_player_kind_with_policies(
+        "custom",
+        "bed2",
+        "custom.bed2",
+        PlayerKindFlags::BED2,
+        PlayerKindPolicies {
+            owner_resolution: OwnerResolutionPolicy::RootOwner,
+            damage_share: DamageSharePolicy::ShareToOwner,
+            merge: MergePolicy::FixedLane,
+            inherit_owner_def_res: false,
+        },
+    )?;
+    Ok(CustomRuntimeV2ImportConfig::new(builder.build(), bed2, summon))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5348,6 +5384,33 @@ delta@blue+bed2[8]\n";
                     export_name: "custom.minion.possess".to_owned(),
                 }
             ))
+        );
+    }
+
+    #[test]
+    fn default_custom_runtime_v2_profile_builds_mixed_raw_runner() {
+        let config = default_custom_runtime_v2_import_config().expect("default custom runtime v2 profile should build");
+        let bed2 = config.bed2_kind;
+        let summon = config.bed2_summon_skill;
+        assert_eq!(
+            config
+                .registry
+                .skill_by_export_name(DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT)
+                .map(|spec| spec.id),
+            Some(summon)
+        );
+        assert_eq!(config.registry.player_kind(bed2).unwrap().export_name, "custom.bed2");
+
+        let raw_input = "plain@red\nalpha@red@bed2\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
+        let runner = RuntimeV2Runner::from_custom_mixed_namerena_raw(raw_input.to_owned(), config)
+            .expect("default custom profile should construct mixed runner");
+        let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
+
+        assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
+        assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.kind, bed2);
+        assert_eq!(
+            runner.runtime().entities.get(EntityIdx(1)).unwrap().template.skills.skills(),
+            &[summon]
         );
     }
 
