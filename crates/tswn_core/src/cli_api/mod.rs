@@ -7,7 +7,9 @@ use crate::Runner;
 use crate::error::runner::RunnerError;
 use crate::player::eval_name;
 use crate::player::icon::icon_from_raw_name;
-use crate::runtime_v2::{CustomRuntimeV2ImportConfig, RuntimeV2NormalizedRun, RuntimeV2Runner};
+use crate::runtime_v2::{
+    CustomRuntimeV2ImportConfig, RuntimeV2NormalizedRun, RuntimeV2Runner, default_custom_runtime_v2_import_config,
+};
 use crate::win_rate::{WinRateSummary, WinRateTiming, groups_win_rate};
 
 pub type CliApiResult<T> = Result<T, CliApiError>;
@@ -407,6 +409,11 @@ pub fn custom_runtime_v2_mixed_runner(raw: &str, config: CustomRuntimeV2ImportCo
     RuntimeV2Runner::from_custom_mixed_namerena_raw(raw.to_owned(), config).map_err(custom_runtime_v2_import_error)
 }
 
+pub fn default_custom_runtime_v2_mixed_runner(raw: &str) -> CliApiResult<RuntimeV2Runner> {
+    let config = default_custom_runtime_v2_import_config().map_err(default_custom_runtime_v2_profile_error)?;
+    custom_runtime_v2_mixed_runner(raw, config)
+}
+
 pub fn custom_runtime_v2_normalized_run(
     raw: &str,
     max_rounds: usize,
@@ -416,10 +423,19 @@ pub fn custom_runtime_v2_normalized_run(
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
+pub fn default_custom_runtime_v2_normalized_run(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeV2NormalizedRun> {
+    let mut runner = default_custom_runtime_v2_mixed_runner(raw)?;
+    Ok(runner.run_until_winner_normalized_rounds(max_rounds))
+}
+
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 
 fn custom_runtime_v2_import_error(error: crate::runtime_v2::CustomRuntimeV2ImportError) -> CliApiError {
     invalid_input(format!("custom runtime v2 import failed: {error:?}"))
+}
+
+fn default_custom_runtime_v2_profile_error(error: crate::runtime_v2::DefaultCustomRuntimeV2ProfileError) -> CliApiError {
+    invalid_input(format!("default custom runtime v2 profile failed: {error:?}"))
 }
 
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> CliApiResult<()> {
@@ -503,6 +519,18 @@ mod tests {
         let raw = "left@red\n\nright@blue\n";
 
         let run = custom_runtime_v2_normalized_run(raw, 1, config).expect("custom runtime v2 normalized run should execute");
+
+        assert_eq!(run.rounds.len(), 1);
+        assert_eq!(run.guard_exhausted, run.winner_team.is_none());
+        assert!(!run.rounds[0].frames.is_empty());
+    }
+
+    #[test]
+    fn cli_api_default_custom_runtime_v2_normalized_run_executes_plain_raw() {
+        let raw = "left@red\n\nright@blue\n";
+
+        let run =
+            default_custom_runtime_v2_normalized_run(raw, 1).expect("default custom runtime v2 normalized run should execute");
 
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(run.guard_exhausted, run.winner_team.is_none());
