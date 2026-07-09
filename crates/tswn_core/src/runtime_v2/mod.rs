@@ -3360,6 +3360,62 @@ mod tests {
         }
     }
 
+    fn plain_large_expected_round(
+        round: u64,
+        winner_team: Option<usize>,
+        score: u64,
+        rng_i: u32,
+        rng_j: u32,
+        hp: [i32; 2],
+        alive: [bool; 2],
+        action: [usize; 2],
+    ) -> NormalizedOutcome {
+        let team_alive = vec![
+            alive[0].then_some(0).into_iter().collect::<Vec<_>>(),
+            alive[1].then_some(1).into_iter().collect::<Vec<_>>(),
+        ];
+        let flat_alive = alive
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, is_alive)| is_alive.then_some(idx))
+            .collect::<Vec<_>>();
+        let alive_group_count = team_alive.iter().filter(|team| !team.is_empty()).count();
+        NormalizedOutcome {
+            winner_team,
+            round,
+            total_score: score,
+            rng: normalized_rng_checkpoint(rng_i, rng_j),
+            entity_ids: vec![1, 2],
+            teams: vec![0, 1],
+            hp: hp.to_vec(),
+            magic_point: vec![28, 29],
+            defense: vec![58, 52],
+            resistance: vec![49, 57],
+            alive: alive.to_vec(),
+            round_order: vec![0, 1],
+            flat_alive,
+            team_alive,
+            alive_group_count,
+            actions: vec![crate::runtime_v2::oracle::NormalizedActionBoundary {
+                round,
+                actor: action[0],
+                target: action[1],
+                amount: score as i32,
+            }],
+            frames: vec![NormalizedUpdateFrame {
+                message: "[0]攻击[1]".to_owned(),
+                caster: action[0],
+                target: action[1],
+                targets: Vec::new(),
+                param: None,
+                score: score as u32,
+                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                update_type: crate::engine::update::UpdateType::None,
+            }],
+        }
+    }
+
     #[test]
     fn minimal_1v1_template_builds_runtime() {
         let runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));
@@ -5661,6 +5717,38 @@ delta@blue+bed2[8]\n";
                     update_type: crate::engine::update::UpdateType::None,
                 }],
             },
+        ];
+
+        for (expected, actual) in expected_rounds.iter().zip(&run.rounds) {
+            assert_eq!(strict_diff(expected, actual), Ok(()));
+        }
+    }
+
+    #[test]
+    fn runtime_v2_runner_large_full_normalized_run_matches_golden() {
+        let raw_input =
+            "虚空托腮 IVHEWTNEA@TigerStar\n\n进口牢货.不可磨灭的回忆之殇 8}i%Yh&<@幻景殇\nseed:2026-03-07 22:54 #013595@!";
+
+        let (mut runner, _) = mixed_raw_runner_for_plain_fixture(raw_input);
+        let run = runner.run_until_winner_normalized_rounds(32);
+
+        assert_eq!(run.winner_team, Some(0));
+        assert!(!run.guard_exhausted);
+        assert_eq!(run.total_score, 527);
+        assert_eq!(run.rounds.len(), 11);
+
+        let expected_rounds = [
+            plain_large_expected_round(1, None, 57, 226, 30, [350, 265], [true, true], [0, 1]),
+            plain_large_expected_round(2, None, 37, 227, 87, [313, 265], [true, true], [1, 0]),
+            plain_large_expected_round(3, None, 57, 228, 178, [313, 208], [true, true], [0, 1]),
+            plain_large_expected_round(4, None, 37, 229, 251, [276, 208], [true, true], [1, 0]),
+            plain_large_expected_round(5, None, 57, 230, 218, [276, 151], [true, true], [0, 1]),
+            plain_large_expected_round(6, None, 37, 231, 61, [239, 151], [true, true], [1, 0]),
+            plain_large_expected_round(7, None, 57, 232, 135, [239, 94], [true, true], [0, 1]),
+            plain_large_expected_round(8, None, 37, 233, 250, [202, 94], [true, true], [1, 0]),
+            plain_large_expected_round(9, None, 57, 234, 242, [202, 37], [true, true], [0, 1]),
+            plain_large_expected_round(10, None, 37, 235, 149, [165, 37], [true, true], [1, 0]),
+            plain_large_expected_round(11, Some(0), 57, 236, 3, [165, 0], [true, false], [0, 1]),
         ];
 
         for (expected, actual) in expected_rounds.iter().zip(&run.rounds) {
