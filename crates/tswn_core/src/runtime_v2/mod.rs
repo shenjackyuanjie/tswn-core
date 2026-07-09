@@ -155,6 +155,66 @@ impl RuntimeV2Runner {
         }
     }
 
+    pub fn from_custom_bed2_roster(
+        raw_groups: &[Vec<String>],
+        config: CustomRuntimeV2ImportConfig<'_>,
+    ) -> Result<Self, CustomRuntimeV2ImportError> {
+        let CustomRuntimeV2ImportConfig {
+            registry,
+            bed2_kind,
+            bed2_summon_skill,
+            bed2_minion_overlays,
+        } = config;
+        match bed2_minion_overlays {
+            Some(minion_overlays) => {
+                Self::from_bed2_roster_with_minion_overlays(raw_groups, registry, bed2_kind, bed2_summon_skill, minion_overlays)
+                    .map_err(CustomRuntimeV2ImportError::Bed2MinionOverlay)
+            }
+            None => Self::from_bed2_roster(raw_groups, registry, bed2_kind, bed2_summon_skill)
+                .map_err(CustomRuntimeV2ImportError::Bed2Roster),
+        }
+    }
+
+    pub fn from_custom_bed2_namerena_raw(
+        raw_input: String,
+        config: CustomRuntimeV2ImportConfig<'_>,
+    ) -> Result<Self, CustomRuntimeV2ImportError> {
+        let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
+        let mut runner = Self::from_custom_bed2_roster(&raw_groups, config)?;
+        runner.sync_legacy_raw_state(&raw_groups);
+        Ok(runner)
+    }
+
+    pub fn from_custom_mixed_roster(
+        raw_groups: &[Vec<String>],
+        config: CustomRuntimeV2ImportConfig<'_>,
+    ) -> Result<Self, CustomRuntimeV2ImportError> {
+        let CustomRuntimeV2ImportConfig {
+            registry,
+            bed2_kind,
+            bed2_summon_skill,
+            bed2_minion_overlays,
+        } = config;
+        match bed2_minion_overlays {
+            Some(minion_overlays) => {
+                Self::from_mixed_roster_with_minion_overlays(raw_groups, registry, bed2_kind, bed2_summon_skill, minion_overlays)
+                    .map_err(CustomRuntimeV2ImportError::Bed2MinionOverlay)
+            }
+            None => Self::from_mixed_roster(raw_groups, registry, bed2_kind, bed2_summon_skill)
+                .map_err(CustomRuntimeV2ImportError::MixedRoster),
+        }
+    }
+
+    pub fn from_custom_mixed_namerena_raw(
+        raw_input: String,
+        config: CustomRuntimeV2ImportConfig<'_>,
+    ) -> Result<Self, CustomRuntimeV2ImportError> {
+        let (raw_groups, _) = crate::Runner::split_namerena_into_groups(raw_input);
+        let mut runner = Self::from_custom_mixed_roster(&raw_groups, config)?;
+        runner.sync_legacy_raw_state(&raw_groups);
+        Ok(runner)
+    }
+
     pub fn from_bed2_roster(
         raw_groups: &[Vec<String>],
         registry: ExtensionRegistry,
@@ -1319,6 +1379,29 @@ pub struct CustomBed2MinionOverlayConfig<'a> {
     pub zombie: CustomBed2ZombieTemplateConfig<'a>,
 }
 
+pub struct CustomRuntimeV2ImportConfig<'a> {
+    pub registry: ExtensionRegistry,
+    pub bed2_kind: PlayerKindId,
+    pub bed2_summon_skill: SkillId,
+    pub bed2_minion_overlays: Option<CustomBed2MinionOverlayConfig<'a>>,
+}
+
+impl<'a> CustomRuntimeV2ImportConfig<'a> {
+    pub fn new(registry: ExtensionRegistry, bed2_kind: PlayerKindId, bed2_summon_skill: SkillId) -> Self {
+        Self {
+            registry,
+            bed2_kind,
+            bed2_summon_skill,
+            bed2_minion_overlays: None,
+        }
+    }
+
+    pub fn with_bed2_minion_overlays(mut self, config: CustomBed2MinionOverlayConfig<'a>) -> Self {
+        self.bed2_minion_overlays = Some(config);
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomBed2SummonTemplateImportError {
     Roster(CustomBed2RosterImportError),
@@ -1411,6 +1494,25 @@ impl From<CustomBed2ZombieTemplateImportError> for CustomBed2MinionOverlayImport
 
 impl From<SlotError> for CustomBed2MinionOverlayImportError {
     fn from(error: SlotError) -> Self { Self::Slot(error) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CustomRuntimeV2ImportError {
+    Bed2Roster(CustomBed2RosterImportError),
+    MixedRoster(CustomMixedRosterImportError),
+    Bed2MinionOverlay(CustomBed2MinionOverlayImportError),
+}
+
+impl From<CustomBed2RosterImportError> for CustomRuntimeV2ImportError {
+    fn from(error: CustomBed2RosterImportError) -> Self { Self::Bed2Roster(error) }
+}
+
+impl From<CustomMixedRosterImportError> for CustomRuntimeV2ImportError {
+    fn from(error: CustomMixedRosterImportError) -> Self { Self::MixedRoster(error) }
+}
+
+impl From<CustomBed2MinionOverlayImportError> for CustomRuntimeV2ImportError {
+    fn from(error: CustomBed2MinionOverlayImportError) -> Self { Self::Bed2MinionOverlay(error) }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4986,6 +5088,267 @@ delta@blue+bed2[8]\n";
         assert_eq!(zombie_template.max_hp, 77);
         assert_eq!(zombie_template.skills.skills(), &[zombie_heal]);
         assert_eq!(zombie_template.skills.active_order(), &[0]);
+    }
+
+    #[test]
+    fn runtime_v2_custom_import_profile_builds_mixed_raw_with_minion_overlays() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let fire = builder
+            .register_skill(
+                "custom",
+                "summon-fire",
+                "custom.summon.fire",
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("summon fire skill should register");
+        let explode = builder
+            .register_skill(
+                "custom",
+                "summon-explode",
+                "custom.summon.explode",
+                TargetPolicy::Enemy,
+                SkillPriority(2),
+            )
+            .expect("summon explode skill should register");
+        let possess = builder
+            .register_skill(
+                "custom",
+                "possess",
+                "custom.minion.possess",
+                TargetPolicy::Enemy,
+                SkillPriority(3),
+            )
+            .expect("possess skill should register");
+        let zombie_heal = builder
+            .register_skill(
+                "custom",
+                "zombie-heal",
+                "custom.minion.heal",
+                TargetPolicy::Ally,
+                SkillPriority(4),
+            )
+            .expect("zombie heal skill should register");
+        let summon_template_slot = builder
+            .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
+            .expect("bed2 summon template slot should reserve");
+        let shadow_template_slot = builder
+            .reserve_template_slot("custom", "bed2-shadow-template", "custom.bed2.shadow_template")
+            .expect("bed2 shadow template slot should reserve");
+        let zombie_template_slot = builder
+            .reserve_template_slot("custom", "bed2-zombie-template", "custom.bed2.zombie_template")
+            .expect("bed2 zombie template slot should reserve");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let summon_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2-summon",
+                "custom.bed2.summon",
+                PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: true,
+                },
+            )
+            .expect("bed2 summon kind should register");
+        let shadow_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2-shadow",
+                "custom.bed2.shadow",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 shadow kind should register");
+        let zombie_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2-zombie",
+                "custom.bed2.zombie",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 zombie kind should register");
+        let registry = builder.build();
+        let config =
+            CustomRuntimeV2ImportConfig::new(registry, bed2, summon).with_bed2_minion_overlays(CustomBed2MinionOverlayConfig {
+                summon: CustomBed2SummonTemplateConfig {
+                    template_slot: summon_template_slot,
+                    summon_kind,
+                    fire_skill_export_name: "custom.summon.fire",
+                    explode_skill_export_name: "custom.summon.explode",
+                },
+                shadow: CustomBed2ShadowTemplateConfig {
+                    template_slot: shadow_template_slot,
+                    shadow_kind,
+                    possess_skill_export_name: "custom.minion.possess",
+                },
+                zombie: CustomBed2ZombieTemplateConfig {
+                    template_slot: zombie_template_slot,
+                    zombie_kind,
+                    skill_export_name_prefix: "custom.minion",
+                },
+            });
+        let raw_input = "plain@red\n\
+alpha@red@bed2+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire2\":4,\"sklfire1\":5},\"inherit_owner_def_res\":true}}\n\
+beta@red@bed2+ol:{\"shadow\":{\"attrs\":[47,48,49,50,51,52,53,88],\"skills\":{\"phantom:sklpossess\":5}}}\n\
+gamma@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{\"sklheal\":3}}}\n\n\
+seed:custom-seed@!\n\n\
+delta@blue+bed2[8]\n";
+
+        let runner = RuntimeV2Runner::from_custom_mixed_namerena_raw(raw_input.to_owned(), config)
+            .expect("custom import profile should construct mixed runner");
+        let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
+
+        assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
+        assert_eq!(
+            runner.runtime().entities.get(EntityIdx(0)).unwrap().template.kind,
+            PlayerTemplate::DEFAULT_KIND
+        );
+        assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.kind, bed2);
+        let SlotValue::PlayerTemplate(summon_template) = runner
+            .runtime()
+            .template_slots
+            .get(summon_template_slot)
+            .expect("profile import should populate summon template slot")
+        else {
+            panic!("profile summon overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(summon_template.kind, summon_kind);
+        assert_eq!(summon_template.skills.skills(), &[fire, fire, explode]);
+        assert_eq!(summon_template.skills.active_order(), &[1, 0]);
+
+        let SlotValue::PlayerTemplate(shadow_template) = runner
+            .runtime()
+            .template_slots
+            .get(shadow_template_slot)
+            .expect("profile import should populate shadow template slot")
+        else {
+            panic!("profile shadow overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(shadow_template.kind, shadow_kind);
+        assert_eq!(shadow_template.skills.skills(), &[possess]);
+
+        let SlotValue::PlayerTemplate(zombie_template) = runner
+            .runtime()
+            .template_slots
+            .get(zombie_template_slot)
+            .expect("profile import should populate zombie template slot")
+        else {
+            panic!("profile zombie overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(zombie_template.kind, zombie_kind);
+        assert_eq!(zombie_template.skills.skills(), &[zombie_heal]);
+    }
+
+    #[test]
+    fn runtime_v2_custom_import_profile_wraps_missing_overlay_skill_errors() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        builder
+            .register_skill(
+                "custom",
+                "summon-fire",
+                "custom.summon.fire",
+                TargetPolicy::Enemy,
+                SkillPriority(1),
+            )
+            .expect("summon fire skill should register");
+        builder
+            .register_skill(
+                "custom",
+                "summon-explode",
+                "custom.summon.explode",
+                TargetPolicy::Enemy,
+                SkillPriority(2),
+            )
+            .expect("summon explode skill should register");
+        let summon_template_slot = builder
+            .reserve_template_slot("custom", "bed2-summon-template", "custom.bed2.summon_template")
+            .expect("bed2 summon template slot should reserve");
+        let shadow_template_slot = builder
+            .reserve_template_slot("custom", "bed2-shadow-template", "custom.bed2.shadow_template")
+            .expect("bed2 shadow template slot should reserve");
+        let zombie_template_slot = builder
+            .reserve_template_slot("custom", "bed2-zombie-template", "custom.bed2.zombie_template")
+            .expect("bed2 zombie template slot should reserve");
+        let bed2 = builder
+            .register_player_kind("custom", "bed2", "custom.bed2")
+            .expect("bed2 kind should register");
+        let summon_kind = builder
+            .register_player_kind("custom", "bed2-summon", "custom.bed2.summon")
+            .expect("bed2 summon kind should register");
+        let shadow_kind = builder
+            .register_player_kind("custom", "bed2-shadow", "custom.bed2.shadow")
+            .expect("bed2 shadow kind should register");
+        let zombie_kind = builder
+            .register_player_kind("custom", "bed2-zombie", "custom.bed2.zombie")
+            .expect("bed2 zombie kind should register");
+        let registry = builder.build();
+        let config =
+            CustomRuntimeV2ImportConfig::new(registry, bed2, summon).with_bed2_minion_overlays(CustomBed2MinionOverlayConfig {
+                summon: CustomBed2SummonTemplateConfig {
+                    template_slot: summon_template_slot,
+                    summon_kind,
+                    fire_skill_export_name: "custom.summon.fire",
+                    explode_skill_export_name: "custom.summon.explode",
+                },
+                shadow: CustomBed2ShadowTemplateConfig {
+                    template_slot: shadow_template_slot,
+                    shadow_kind,
+                    possess_skill_export_name: "custom.minion.possess",
+                },
+                zombie: CustomBed2ZombieTemplateConfig {
+                    template_slot: zombie_template_slot,
+                    zombie_kind,
+                    skill_export_name_prefix: "custom.minion",
+                },
+            });
+
+        let err = RuntimeV2Runner::from_custom_bed2_namerena_raw(
+            r#"alpha@red@bed2+ol:{"shadow":{"attrs":[47,48,49,50,51,52,53,88],"skills":{"sklpossess":5}}}"#.to_owned(),
+            config,
+        )
+        .expect_err("custom profile should wrap missing shadow possess export");
+
+        assert_eq!(
+            err,
+            CustomRuntimeV2ImportError::Bed2MinionOverlay(CustomBed2MinionOverlayImportError::Shadow(
+                CustomBed2ShadowTemplateImportError::MissingSkillExportName {
+                    export_name: "custom.minion.possess".to_owned(),
+                }
+            ))
+        );
     }
 
     #[test]
