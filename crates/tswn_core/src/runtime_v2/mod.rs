@@ -74,6 +74,13 @@ pub struct CustomBed2Import {
     pub hp: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomBed2RosterImportError {
+    pub team_index: usize,
+    pub player_index: usize,
+    pub raw: String,
+}
+
 impl CustomBed2Import {
     pub fn parse(raw: &str) -> Option<Self> {
         let raw = raw.trim();
@@ -114,6 +121,42 @@ impl CustomBed2Import {
         PlayerTemplate::with_kind(id, self.name, kind, team, self.hp, 0)
             .with_def_res(DEFAULT_BED2_DEFENSE, DEFAULT_BED2_RESISTANCE)
             .with_skills([summon_skill])
+    }
+
+    pub fn roster_into_prepared_template(
+        raw_groups: &[Vec<String>],
+        registry: ExtensionRegistry,
+        kind: PlayerKindId,
+        summon_skill: SkillId,
+    ) -> Result<PreparedCombatTemplate, CustomBed2RosterImportError> {
+        let players = Self::roster_into_player_templates(raw_groups, kind, summon_skill)?;
+        Ok(PreparedCombatTemplate::with_registry(players, registry))
+    }
+
+    pub fn roster_into_player_templates(
+        raw_groups: &[Vec<String>],
+        kind: PlayerKindId,
+        summon_skill: SkillId,
+    ) -> Result<Vec<PlayerTemplate>, CustomBed2RosterImportError> {
+        let mut players = Vec::new();
+        let mut next_id = 1;
+        for (team_index, group) in raw_groups.iter().enumerate() {
+            for (player_index, raw) in group.iter().enumerate() {
+                if crate::player::Player::check_is_seed(raw.trim()) {
+                    continue;
+                }
+                let Some(import) = Self::parse_player_facade_raw(raw) else {
+                    return Err(CustomBed2RosterImportError {
+                        team_index,
+                        player_index,
+                        raw: raw.clone(),
+                    });
+                };
+                players.push(import.into_player_template(next_id, kind, team_index, summon_skill));
+                next_id += 1;
+            }
+        }
+        Ok(players)
     }
 
     fn parse_facade_id_name(id_name: &str) -> (String, Option<String>, Option<i32>) {
@@ -955,6 +998,104 @@ mod tests {
         assert_eq!(entity.template.resistance, DEFAULT_BED2_RESISTANCE);
         assert_eq!(entity.template.skills.skills(), &[summon]);
         assert!(entity.runtime.flags.contains(PlayerKindFlags::BED2));
+    }
+
+    #[test]
+    fn custom_bed2_roster_import_builds_prepared_template_from_grouped_raw_players() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![
+            vec![
+                "alpha@red+weapon+bed2[4500]+ol:{\"skills\":{\"sklsummon\":255}}".to_owned(),
+                "seed:custom-seed@!".to_owned(),
+            ],
+            vec!["beta@blue@bed2".to_owned(), "same@same+bed2[1800]".to_owned()],
+        ];
+
+        let template = CustomBed2Import::roster_into_prepared_template(&raw_groups, registry, bed2, summon)
+            .expect("grouped bed2 raw roster should build a prepared template");
+
+        assert_eq!(template.players.len(), 3);
+        assert_eq!(template.players[0].id, 1);
+        assert_eq!(template.players[0].name, "alpha");
+        assert_eq!(template.players[0].team, 0);
+        assert_eq!(template.players[0].max_hp, 4500);
+        assert_eq!(template.players[0].skills.skills(), &[summon]);
+        assert_eq!(template.players[1].id, 2);
+        assert_eq!(template.players[1].name, "beta");
+        assert_eq!(template.players[1].team, 1);
+        assert_eq!(template.players[1].max_hp, DEFAULT_BED2_HP);
+        assert_eq!(template.players[2].id, 3);
+        assert_eq!(template.players[2].name, "same");
+        assert_eq!(template.players[2].team, 1);
+        assert_eq!(template.players[2].max_hp, 1800);
+        assert!(template.players.iter().all(|player| player.kind == bed2
+            && player.attack == 0
+            && player.defense == DEFAULT_BED2_DEFENSE
+            && player.resistance == DEFAULT_BED2_RESISTANCE));
+
+        let runtime = CombatRuntime::from_template(template);
+        assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0)].as_slice()));
+        assert_eq!(runtime.world.team_alive(1), Some([EntityIdx(1), EntityIdx(2)].as_slice()));
+        assert!(
+            runtime
+                .entities
+                .iter()
+                .all(|(_, entity)| entity.runtime.flags.contains(PlayerKindFlags::BED2))
+        );
+    }
+
+    #[test]
+    fn custom_bed2_roster_import_rejects_non_bed2_players() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let summon = builder
+            .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("summon skill should register");
+        let bed2 = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "bed2",
+                "custom.bed2",
+                PlayerKindFlags::BED2,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::RootOwner,
+                    damage_share: DamageSharePolicy::ShareToOwner,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("bed2 kind should register");
+        let registry = builder.build();
+        let raw_groups = vec![vec!["alpha+bed2[4500]".to_owned()], vec!["plain".to_owned()]];
+
+        let err = CustomBed2Import::roster_into_prepared_template(&raw_groups, registry, bed2, summon)
+            .expect_err("non-bed2 raw players should be rejected by the bed2 roster importer");
+
+        assert_eq!(
+            err,
+            CustomBed2RosterImportError {
+                team_index: 1,
+                player_index: 0,
+                raw: "plain".to_owned(),
+            }
+        );
     }
 
     #[cfg(not(feature = "no_debug"))]

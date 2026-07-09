@@ -570,7 +570,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 已在 `docs/analysis/custom_runtime_v2_migration.md` 对 `github/custom` 相对 main 做首版 diff 归类；
 - 已产出 custom 改动清单和 v2 落点；
-- 已补 bed2 registry/template/import fixture，覆盖 `custom.bed2` kind、固定 summon skill、HP marker slot、`bed2[...]` / `@bed2` marker 最小 v2 导入、Player facade id-name 归一化桥接，以及 typed summon template payload 读取后 spawn；
+- 已补 bed2 registry/template/import fixture，覆盖 `custom.bed2` kind、固定 summon skill、HP marker slot、`bed2[...]` / `@bed2` marker 最小 v2 导入、Player facade id-name 归一化桥接、typed summon template payload 读取后 spawn，以及 grouped raw bed2 roster 到 `PreparedCombatTemplate` 的 helper；
 - 已补 custom summon 复合 fixture，覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留与 recast handler 原实体复活复用；
 - 已补 custom minion owner death cleanup fixture，覆盖 owner 致死时 linked minion 按实体顺序死亡、移出 round/alive views 并输出消失帧；
 - 已把 linked minion owner death cleanup 纳入 custom runner strict-diff golden，覆盖消失帧、winner 与 WorldArena 派生视图；
