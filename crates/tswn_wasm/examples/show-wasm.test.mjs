@@ -338,3 +338,103 @@ test("v2 normalized replay preserves recover and multi-target HP chunks", () => 
   assert.match(chunks[1].html, /actor-hp-delta is-recover/);
   assert.match(chunks[1].html, /message-number">5<\/span>/);
 });
+
+test("v2 normalized replay renders new summoned entities only after spawn frame", () => {
+  const replay = buildV2ReplayFromNormalizedRun("summoner@red\n\ntarget@blue\n", {
+    winner_team: null,
+    guard_exhausted: false,
+    total_score: 2,
+    rounds: [
+      {
+        winner_team: null,
+        round: 1,
+        total_score: 1,
+        rng_i: 7,
+        rng_j: 8,
+        entity_ids: [0, 1],
+        teams: [0, 1],
+        hp: [100, 100],
+        magic_point: [10, 10],
+        defense: [1, 2],
+        resistance: [3, 4],
+        alive: [true, true],
+        round_order: [0, 1],
+        flat_alive: [0, 1],
+        team_alive: [[0], [1]],
+        alive_group_count: 2,
+        actions: [],
+        frames: [
+          {
+            message: "[0]准备召唤",
+            caster: 0,
+            target: 0,
+            targets: [],
+            score: 1,
+            delay0: 10,
+            delay1: 10,
+            update_type: "none",
+          },
+        ],
+      },
+      {
+        winner_team: null,
+        round: 2,
+        total_score: 2,
+        rng_i: 9,
+        rng_j: 10,
+        entity_ids: [0, 1, 2],
+        teams: [0, 1, 0],
+        hp: [100, 100, 80],
+        magic_point: [10, 10, 0],
+        defense: [1, 2, 0],
+        resistance: [3, 4, 0],
+        alive: [true, true, true],
+        round_order: [0, 1, 2],
+        flat_alive: [0, 1, 2],
+        team_alive: [[0, 2], [1]],
+        alive_group_count: 2,
+        actions: [],
+        frames: [
+          {
+            message: "[0]召唤出[1]",
+            caster: 0,
+            target: 2,
+            targets: [2],
+            score: 1,
+            delay0: 30,
+            delay1: 20,
+            update_type: "none",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(replay.players.map((player) => player.display_name), ["summoner@red", "target@blue"]);
+  assert.deepEqual(replay.frames[0].states.map((state) => state.id), [0, 1]);
+  assert.deepEqual(replay.frames[1].states.map((state) => state.id), [0, 1, 2]);
+
+  const spawnClip = replay.frames[1].rows[0].clips[0];
+  assert.equal(spawnClip.tone, "normal");
+  assert.deepEqual(spawnClip.sidebar_previous_states.map((state) => state.id), [0, 1]);
+  assert.deepEqual(spawnClip.sidebar_states.map((state) => state.id), [0, 1, 2]);
+  assert.deepEqual(spawnClip.target_ids, [2]);
+  assert.equal(spawnClip.show_hp, true);
+  assert.equal(spawnClip.hp_before, 0);
+  assert.equal(spawnClip.hp_after, 80);
+
+  const summonedPart = spawnClip.parts.find((part) => part.kind === "player" && part.player_id === 2);
+  assert.equal(summonedPart.show_hp, true);
+  assert.equal(summonedPart.hp_before, 0);
+  assert.equal(summonedPart.hp_after, 80);
+
+  const playersById = new Map(replay.players.map((player) => [player.id, player]));
+  const chunks = buildFrameRows(replay.frames[1], 1, replay.frames[0].states, playersById);
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0].target, "battleRows");
+  assert.deepEqual([...chunks[0].sidebarInvolved.targets], [2]);
+  assert.match(chunks[0].html, /召唤出/);
+  assert.match(chunks[0].html, /#2/);
+  assert.match(chunks[0].html, /actor-token has-hp/);
+  assert.match(chunks[0].html, /actor-hp-delta is-recover/);
+});

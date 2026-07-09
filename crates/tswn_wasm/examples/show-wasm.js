@@ -222,7 +222,9 @@ function cloneStateMapById(states) {
 }
 
 function statesFromStateMap(stateMap, stateOrder) {
-    return (stateOrder ?? []).map((state) => stateMap.get(Number(state.id)) ?? state);
+    return (stateOrder ?? [])
+        .map((state) => stateMap.get(Number(state.id)) ?? null)
+        .filter((state) => state != null);
 }
 
 function hpAliveSignature(states) {
@@ -268,7 +270,7 @@ function applyFinalTargetState(stateMap, targetId, finalStateMap) {
     if (!finalState) {
         return;
     }
-    stateMap.set(id, { ...finalState });
+    stateMap.set(id, { ...finalState, _is_new_in_frame: !stateMap.has(id) });
 }
 
 function v2HpPartMetadata(playerId, stateMaps, update) {
@@ -282,6 +284,15 @@ function v2HpPartMetadata(playerId, stateMaps, update) {
     const hpAfter = Number(nextState.hp ?? hpBefore);
     let aliveBefore = Boolean(previousState?.alive ?? nextState.alive);
     const aliveAfter = Boolean(nextState.alive);
+
+    if (!previousState && update?.target_id === id) {
+        return {
+            show_hp: true,
+            hp_before: 0,
+            hp_after: hpAfter,
+            death_effect: false,
+        };
+    }
 
     if (hpBefore === hpAfter && aliveBefore === aliveAfter && update?.target_id === id && update?.param != null) {
         const amount = Number(update.param);
@@ -359,6 +370,9 @@ function classifyV2Tone(frame) {
     }
     if (/恢复|回复|治疗/.test(message)) {
         return "recover";
+    }
+    if (/召唤出|生成|复活|变成了/.test(message)) {
+        return "normal";
     }
     if ((frame.score ?? 0) > 0 || /伤害|攻击/.test(message)) {
         return "damage";
@@ -457,11 +471,15 @@ function applyV2UpdateToRunningState(stateMap, update, finalStateMap) {
         }
         return;
     }
-    if (update.tone === "knockout") {
+    if (update.tone === "knockout" || isV2EntityAppearUpdate(update)) {
         for (const targetId of v2UpdateTargetIds(update)) {
             applyFinalTargetState(stateMap, targetId, finalStateMap);
         }
     }
+}
+
+function isV2EntityAppearUpdate(update) {
+    return /召唤出|生成|复活|变成了/.test(`${update?.message_template ?? ""}`);
 }
 
 function v2RowsFromUpdates(updates, states, previousStates, namesById) {
