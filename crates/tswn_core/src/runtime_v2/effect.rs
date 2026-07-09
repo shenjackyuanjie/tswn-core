@@ -28,6 +28,10 @@ pub enum QueuedEffect {
         target: EntityIdx,
         fire_state_key: u32,
     },
+    DisperseAttack {
+        caster: EntityIdx,
+        target: EntityIdx,
+    },
     DisperseHit {
         caster: EntityIdx,
         target: EntityIdx,

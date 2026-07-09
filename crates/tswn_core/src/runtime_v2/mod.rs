@@ -484,6 +484,13 @@ pub fn push_summon_explode(context: &mut SkillContext<'_>, target: EntityIdx, fi
     });
 }
 
+pub fn push_disperse_attack(context: &mut SkillContext<'_>, target: EntityIdx) {
+    context.push_nested(QueuedEffect::DisperseAttack {
+        caster: context.owner_idx(),
+        target,
+    });
+}
+
 pub fn run_charge_post_action_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     context.tick_owner_charge_post_action().expect("charge post_action owner should exist");
 }
@@ -1472,7 +1479,7 @@ impl CombatRuntime {
                         }
                         continue;
                     }
-                    if self.summon_explode_dodged(caster, target) {
+                    if self.magic_attack_dodged(caster, target) {
                         updates.add(RuntimeFrame::replay_update(
                             target.0 as usize,
                             caster.0 as usize,
@@ -1498,6 +1505,54 @@ impl CombatRuntime {
                     }
                     if killed_caster {
                         self.drain_die_hooks_into(caster, updates);
+                    }
+                }
+                QueuedEffect::DisperseAttack { caster, target } => {
+                    self.ensure_effect_entity("disperse-attack", "caster", caster);
+                    self.ensure_effect_entity("disperse-attack", "target", target);
+                    let mut atp = self.entities.get(caster).unwrap().runtime.get_at(true, &mut self.rng);
+                    if self.entities.get(target).unwrap().runtime.flags.contains(PlayerKindFlags::MINION) {
+                        atp *= 2.0;
+                    }
+                    let mut defend_value = RuntimeDefendValue::Atp {
+                        value: atp,
+                        caster,
+                        target,
+                    };
+                    updates.add(RuntimeFrame::replay_update(
+                        caster.0 as usize,
+                        target.0 as usize,
+                        "[0]使用[净化]",
+                        20,
+                    ));
+                    self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
+                    let Some(atp) = defend_value.atp() else {
+                        panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
+                    };
+                    if atp == 0.0 {
+                        continue;
+                    }
+                    if self.magic_attack_dodged(caster, target) {
+                        updates.add(RuntimeFrame::replay_update(
+                            target.0 as usize,
+                            caster.0 as usize,
+                            "[0][回避]了攻击",
+                            20,
+                        ));
+                    } else {
+                        let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+                        let mut defend_value = RuntimeDefendValue::Damage {
+                            value: amount,
+                            caster,
+                            target,
+                        };
+                        self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
+                        let Some(amount) = defend_value.damage() else {
+                            panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
+                        };
+                        if self.apply_disperse_attack_damage_into(caster, target, amount, updates) {
+                            self.drain_lethal_damage_hooks_into(caster, target, updates);
+                        }
                     }
                 }
                 QueuedEffect::DisperseHit { caster, target, damage } => {
@@ -1850,6 +1905,34 @@ impl CombatRuntime {
         killed
     }
 
+    fn apply_disperse_attack_damage_into(
+        &mut self,
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+        updates: &mut RunUpdates,
+    ) -> bool {
+        let Some(target_entity) = self.entities.get_mut(target) else {
+            panic!("unknown runtime_v2 disperse damage target entity: {}", target.0);
+        };
+        target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
+        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
+        let team = target_entity.runtime.team;
+        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        if amount > 0 {
+            self.apply_disperse_hit_into(caster, target, updates);
+        }
+        if killed {
+            let Some(target_entity) = self.entities.get_mut(target) else {
+                panic!("unknown runtime_v2 disperse damage target entity: {}", target.0);
+            };
+            target_entity.runtime.alive = false;
+            self.world.remove_alive(target, team);
+            self.cleanup_linked_minions_for_owner(target, updates);
+        }
+        killed
+    }
+
     fn emit_poison_release_if_cleared(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
         let Some(target_entity) = self.entities.get(target) else {
             panic!("unknown runtime_v2 poison release target entity: {}", target.0);
@@ -1871,9 +1954,9 @@ impl CombatRuntime {
         ));
     }
 
-    fn summon_explode_dodged(&mut self, caster: EntityIdx, target: EntityIdx) -> bool {
+    fn magic_attack_dodged(&mut self, caster: EntityIdx, target: EntityIdx) -> bool {
         let Some(target_entity) = self.entities.get(target) else {
-            panic!("unknown runtime_v2 summon explode dodge target entity: {}", target.0);
+            panic!("unknown runtime_v2 magic attack dodge target entity: {}", target.0);
         };
         if !target_entity.runtime.alive {
             return false;
@@ -8301,6 +8384,256 @@ mod tests {
     }
 
     #[test]
+    fn flush_effects_disperse_attack_emits_legacy_damage_then_clears_positive() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let haste = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "caster", 0, 10, 3).with_magic(80),
+                PlayerTemplate::new(2, "target", 1, 1_000, 3).with_def_res(0, 16).with_magic_point(96),
+            ],
+            registry,
+        ));
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng);
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let expected_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        runtime.effects.push(QueuedEffect::DisperseAttack {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        let frame = runtime.flush_effects().expect("disperse attack should emit updates");
+        let target = runtime.entities.get(EntityIdx(1)).unwrap();
+
+        assert_eq!(target.runtime.hp, 1_000 - expected_amount);
+        assert_eq!(target.runtime.magic_point, 32);
+        assert_eq!(target.states.entry(77), None);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 4);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[净化]");
+        assert_eq!(frame.updates.updates[0].score, 20);
+        assert_eq!(frame.updates.updates[1].message, "[1]受到[2]点伤害");
+        assert_eq!(frame.updates.updates[1].caster, 0);
+        assert_eq!(frame.updates.updates[1].target, 1);
+        assert_eq!(frame.updates.updates[1].score, expected_amount as u32);
+        assert_eq!(
+            frame.updates.updates[2].update_type,
+            crate::engine::update::UpdateType::NextLine
+        );
+        assert_eq!(frame.updates.updates[3].message, "[1]从[疾走]中解除");
+    }
+
+    #[test]
+    fn flush_effects_disperse_attack_dodge_skips_damage_clear_and_mp_spend() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let haste = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "caster", 0, 10, 3).with_magic(0),
+                PlayerTemplate::new(2, "target", 1, 1_000, 3)
+                    .with_def_res(0, 512)
+                    .with_agility(512)
+                    .with_magic_point(96),
+            ],
+            registry,
+        ));
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
+        let mut expected_rng = RC4::default();
+        let _ = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng);
+        assert!(PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        runtime.effects.push(QueuedEffect::DisperseAttack {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        let frame = runtime.flush_effects().expect("dodged disperse should emit replay");
+        let target = runtime.entities.get(EntityIdx(1)).unwrap();
+
+        assert_eq!(target.runtime.hp, 1_000);
+        assert_eq!(target.runtime.magic_point, 96);
+        assert!(target.states.entry(77).is_some());
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[净化]");
+        assert_eq!(frame.updates.updates[1].message, "[0][回避]了攻击");
+        assert_eq!(frame.updates.updates[1].caster, 1);
+        assert_eq!(frame.updates.updates[1].target, 0);
+        assert_eq!(frame.updates.updates[1].score, 20);
+    }
+
+    #[test]
+    fn flush_effects_disperse_attack_pre_defend_zero_stops_before_dodge_and_damage() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let pre_defend = builder
+            .register_skill_with_hooks(
+                "custom",
+                "pre-defend-zero",
+                "custom.pre_defend_zero",
+                ProcMask::PRE_DEFEND,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("pre-defend skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "caster", 0, 10, 3).with_magic(0),
+                PlayerTemplate::new(2, "target", 1, 1_000, 3)
+                    .with_def_res(0, 512)
+                    .with_agility(512)
+                    .with_magic_point(96)
+                    .with_skills([pre_defend]),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(pre_defend, skill_zeroes_defend_atp);
+        let mut expected_rng = RC4::default();
+        let _ = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng);
+        runtime.effects.push(QueuedEffect::DisperseAttack {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        let frame = runtime.flush_effects().expect("pre-defend zero should emit replay");
+        let target = runtime.entities.get(EntityIdx(1)).unwrap();
+
+        assert_eq!(target.runtime.hp, 1_000);
+        assert_eq!(target.runtime.magic_point, 96);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[净化]");
+        assert_eq!(frame.updates.updates[1].message, "pre defend zero");
+    }
+
+    #[test]
+    fn flush_effects_disperse_attack_doubles_atp_against_minion_targets() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let minion_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "minion",
+                "custom.minion",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies::default(),
+            )
+            .expect("minion kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "caster", 0, 10, 3).with_magic(80),
+                PlayerTemplate::with_kind(2, "minion", minion_kind, 1, 10_000, 3).with_def_res(0, 16),
+            ],
+            registry,
+        ));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng) * 2.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let expected_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        runtime.effects.push(QueuedEffect::DisperseAttack {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        let frame = runtime.flush_effects().expect("minion disperse should emit damage");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[1].message, "[1]受到[2]点伤害");
+        assert_eq!(frame.updates.updates[1].score, expected_amount as u32);
+    }
+
+    #[test]
+    fn flush_effects_disperse_attack_lethal_hit_clears_haste_before_death() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let haste = builder
+            .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+            .expect("haste state should register");
+        let die_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "die",
+                "custom.die",
+                ProcMask::DIE,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("die skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "caster", 0, 10, 3).with_magic(80),
+                PlayerTemplate::new(2, "target", 1, 1, 3)
+                    .with_def_res(0, 0)
+                    .with_magic_point(96)
+                    .with_skills([die_skill]),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(die_skill, skill_marks_update);
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
+        runtime.effects.push(QueuedEffect::DisperseAttack {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        let frame = runtime.flush_effects().expect("lethal disperse should emit updates");
+        let messages = frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .map(|update| update.message.as_ref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            messages,
+            vec!["[0]使用[净化]", "[1]受到[2]点伤害", "[1]从[疾走]中解除", "skill mark"]
+        );
+        assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+    }
+
+    #[test]
     fn run_state_hooks_iron_post_action_clears_and_emits_release() {
         let mut builder = ExtensionRegistryBuilder::default();
         let iron_state = builder
@@ -9019,6 +9352,14 @@ mod tests {
             caster: EntityIdx(0),
             target: EntityIdx(99),
             fire_state_key: 91,
+        });
+        assert_effect_panics(QueuedEffect::DisperseAttack {
+            caster: EntityIdx(99),
+            target: EntityIdx(1),
+        });
+        assert_effect_panics(QueuedEffect::DisperseAttack {
+            caster: EntityIdx(0),
+            target: EntityIdx(99),
         });
         assert_effect_panics(QueuedEffect::DisperseHit {
             caster: EntityIdx(99),
