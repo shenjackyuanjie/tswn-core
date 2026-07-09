@@ -7,6 +7,9 @@ use smallvec::SmallVec;
 use std::collections::HashMap;
 
 use crate::player::PlrId;
+use crate::rc4::RC4;
+
+const DEFAULT_AT_BOOST_MILLIONTHS: i64 = 1_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerTemplate {
@@ -17,8 +20,10 @@ pub struct PlayerTemplate {
     pub team: usize,
     pub max_hp: i32,
     pub attack: i32,
+    pub magic: i32,
     pub defense: i32,
     pub resistance: i32,
+    pub at_boost_millionths: i64,
     pub move_state: MoveState,
     pub policy_overrides: PlayerPolicyOverrides,
 }
@@ -41,11 +46,28 @@ impl PlayerTemplate {
             team,
             max_hp,
             attack,
+            magic: 0,
             defense: 0,
             resistance: 0,
+            at_boost_millionths: DEFAULT_AT_BOOST_MILLIONTHS,
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
         }
+    }
+
+    pub fn with_magic(mut self, magic: i32) -> Self {
+        assert!(magic >= 0, "runtime_v2 player magic must be non-negative");
+        self.magic = magic;
+        self
+    }
+
+    pub fn with_at_boost_millionths(mut self, at_boost_millionths: i64) -> Self {
+        assert!(
+            at_boost_millionths >= 0,
+            "runtime_v2 player at_boost_millionths must be non-negative"
+        );
+        self.at_boost_millionths = at_boost_millionths;
+        self
     }
 
     pub fn with_def_res(mut self, defense: i32, resistance: i32) -> Self {
@@ -192,8 +214,11 @@ impl PlayerPolicyOverrides {
 pub struct PlayerRuntime {
     pub hp: i32,
     pub alive: bool,
+    pub attack: i32,
+    pub magic: i32,
     pub defense: i32,
     pub resistance: i32,
+    pub at_boost_millionths: i64,
     pub kind: PlayerKindId,
     pub owner: EntityIdx,
     pub root_owner: EntityIdx,
@@ -218,8 +243,11 @@ impl PlayerRuntime {
         Self {
             hp: template.max_hp,
             alive: true,
+            attack: template.attack,
+            magic: template.magic,
             defense: template.defense,
             resistance: template.resistance,
+            at_boost_millionths: template.at_boost_millionths,
             kind: template.kind,
             owner,
             root_owner,
@@ -228,6 +256,29 @@ impl PlayerRuntime {
             policies,
             move_state: template.move_state,
         }
+    }
+
+    pub fn at_boost(&self) -> f64 { self.at_boost_millionths as f64 / DEFAULT_AT_BOOST_MILLIONTHS as f64 }
+
+    pub fn get_at(&self, use_mag: bool, randomer: &mut RC4) -> f64 {
+        let atk = if use_mag { self.magic } else { self.attack };
+        let a = {
+            let mut temp = [
+                randomer.r127() as i32,
+                randomer.r127() as i32,
+                randomer.r127() as i32,
+                atk + 64,
+                atk,
+            ];
+            temp.sort_unstable();
+            temp[2] as f64
+        };
+        let b = {
+            let mut temp = [randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64];
+            temp.sort_unstable();
+            temp[1] as f64
+        };
+        a * b * self.at_boost()
     }
 }
 
@@ -450,7 +501,48 @@ mod tests {
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.flags, PlayerKindFlags::NONE);
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.policies, PlayerKindPolicies::default());
         assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.move_state, MoveState::default());
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.attack, 3);
+        assert_eq!(arena.get(EntityIdx(0)).unwrap().runtime.magic, 0);
+        assert_eq!(
+            arena.get(EntityIdx(0)).unwrap().runtime.at_boost_millionths,
+            DEFAULT_AT_BOOST_MILLIONTHS
+        );
         assert!(arena.get(EntityIdx(0)).unwrap().template.skills.is_empty());
+    }
+
+    #[test]
+    fn player_runtime_get_at_matches_legacy_rng_formula_for_magic() {
+        let arena = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3)
+                .with_magic(80)
+                .with_at_boost_millionths(1_500_000),
+        ]);
+        let runtime = &arena.get(EntityIdx(0)).unwrap().runtime;
+        let mut rng = RC4::default();
+        let mut expected_rng = RC4::default();
+
+        let a = {
+            let mut temp = [
+                expected_rng.r127() as i32,
+                expected_rng.r127() as i32,
+                expected_rng.r127() as i32,
+                80 + 64,
+                80,
+            ];
+            temp.sort_unstable();
+            temp[2] as f64
+        };
+        let b = {
+            let mut temp = [expected_rng.r63() as i32 + 64, expected_rng.r63() as i32 + 64, 80 + 64];
+            temp.sort_unstable();
+            temp[1] as f64
+        };
+        let expected = a * b * 1.5;
+
+        assert_eq!(runtime.get_at(true, &mut rng), expected);
+        assert_eq!(rng.i, expected_rng.i);
+        assert_eq!(rng.j, expected_rng.j);
+        assert_eq!(rng.main_val, expected_rng.main_val);
     }
 
     #[test]

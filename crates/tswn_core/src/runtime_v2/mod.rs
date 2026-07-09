@@ -676,6 +676,8 @@ impl CustomBed2Import {
                         });
                     }
                     PlayerTemplate::new(next_id, player.id_name(), team_index, status.max_hp, status.attack)
+                        .with_magic(status.magic)
+                        .with_at_boost_millionths((status.at_boost * 1_000_000.0).round() as i64)
                         .with_def_res(status.defense, status.resistance)
                 };
                 players.push(template);
