@@ -419,11 +419,13 @@ pub fn custom_runtime_v2_normalized_run(
     max_rounds: usize,
     config: CustomRuntimeV2ImportConfig<'_>,
 ) -> CliApiResult<RuntimeV2NormalizedRun> {
+    ensure_runtime_v2_max_rounds(max_rounds)?;
     let mut runner = custom_runtime_v2_mixed_runner(raw, config)?;
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
 pub fn default_custom_runtime_v2_normalized_run(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeV2NormalizedRun> {
+    ensure_runtime_v2_max_rounds(max_rounds)?;
     let mut runner = default_custom_runtime_v2_mixed_runner(raw)?;
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
@@ -436,6 +438,14 @@ fn custom_runtime_v2_import_error(error: crate::runtime_v2::CustomRuntimeV2Impor
 
 fn default_custom_runtime_v2_profile_error(error: crate::runtime_v2::DefaultCustomRuntimeV2ProfileError) -> CliApiError {
     invalid_input(format!("default custom runtime v2 profile failed: {error:?}"))
+}
+
+fn ensure_runtime_v2_max_rounds(max_rounds: usize) -> CliApiResult<()> {
+    if max_rounds == 0 {
+        Err(invalid_input("runtime v2 max_rounds must be positive"))
+    } else {
+        Ok(())
+    }
 }
 
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> CliApiResult<()> {
@@ -535,5 +545,22 @@ mod tests {
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(run.guard_exhausted, run.winner_team.is_none());
         assert!(!run.rounds[0].frames.is_empty());
+    }
+
+    #[test]
+    fn cli_api_custom_runtime_v2_normalized_run_rejects_zero_max_rounds() {
+        let config = default_custom_runtime_v2_import_config().expect("default custom runtime v2 profile should build");
+        let err = custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 0, config)
+            .expect_err("custom runtime v2 normalized run should reject zero max rounds");
+
+        assert_eq!(err.to_string(), "runtime v2 max_rounds must be positive");
+    }
+
+    #[test]
+    fn cli_api_default_custom_runtime_v2_normalized_run_rejects_zero_max_rounds() {
+        let err = default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 0)
+            .expect_err("default custom runtime v2 normalized run should reject zero max rounds");
+
+        assert_eq!(err.to_string(), "runtime v2 max_rounds must be positive");
     }
 }
