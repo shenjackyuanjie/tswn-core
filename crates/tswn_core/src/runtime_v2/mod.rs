@@ -472,6 +472,24 @@ pub fn push_summon_recast_from_template_slot_with_message(
     push_summon_recast_from_template_slot_with_messages(context, entity_slot, template_slot, revive_hp, message.clone(), message)
 }
 
+pub fn run_legacy_summon_recast_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[0]使用[血祭]",
+        context.owner_idx().0 as usize,
+        context.owner_idx().0 as usize,
+        60,
+    ));
+    push_summon_recast_from_template_slot_with_messages(
+        context,
+        EntitySlotId(0),
+        TemplateSlotId(0),
+        10,
+        "召唤出[1]",
+        "召唤出[1]",
+    )
+    .expect("legacy summon recast handler should spawn or revive template-slot summon");
+}
+
 pub fn summon_default_skill_loadout(fire_skill: SkillId, explode_skill: SkillId, active_order: [usize; 3]) -> SkillLoadout {
     SkillLoadout::from_skills([fire_skill, fire_skill, explode_skill]).with_active_order(active_order)
 }
@@ -949,6 +967,29 @@ pub fn push_minion_from_template_slot_with_allocated_name_silent(
         None => return Err(RuntimeV2MinionHandlerError::MissingTemplateSlot(template_slot)),
     };
     push_minion_from_template_with_allocated_name_silent(context, counter_slot, minion_template)
+}
+
+pub fn run_shadow_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[0]使用[幻术]",
+        context.owner_idx().0 as usize,
+        context.owner_idx().0 as usize,
+        60,
+    ));
+    push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]")
+        .expect("shadow minion handler should spawn template-slot minion");
+}
+
+pub fn run_zombie_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    let zombie = push_minion_from_template_slot_with_allocated_name_silent(context, EntitySlotId(0), TemplateSlotId(0))
+        .expect("zombie minion handler should spawn template-slot minion");
+    context.add_update(crate::engine::update::RunUpdate::new_newline());
+    let mut summon_update = crate::engine::update::RunUpdate::new("[0][召唤亡灵]", context.owner_idx().0 as usize, 1, 60);
+    summon_update.delay0 = 1500;
+    context.add_update(summon_update);
+    let mut zombied = crate::engine::update::RunUpdate::new("[2]变成了[1]", context.owner_idx().0 as usize, zombie.0 as usize, 0);
+    zombied.targets.push(1);
+    context.add_update(zombied);
 }
 
 pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
@@ -5082,7 +5123,7 @@ mod tests {
         let mut runtime = CombatRuntime::from_template(template);
         runtime.set_skill_handler_with_capabilities(
             recast_skill,
-            skill_legacy_summon_recast_from_template_slot_handler,
+            run_legacy_summon_recast_from_template_slot,
             &[
                 ExtensionCapability::ReadTemplateSlots,
                 ExtensionCapability::ReadAllies,
@@ -5635,7 +5676,7 @@ mod tests {
         let mut runtime = CombatRuntime::from_template(template);
         runtime.set_skill_handler_with_capabilities(
             shadow_skill,
-            skill_shadow_style_minion_from_template_slot,
+            run_shadow_minion_from_template_slot,
             &[ExtensionCapability::ReadTemplateSlots, ExtensionCapability::MutateEntitySlots],
         );
 
@@ -5713,7 +5754,7 @@ mod tests {
         let mut runtime = CombatRuntime::from_template(template);
         runtime.set_skill_handler_with_capabilities(
             zombie_skill,
-            skill_zombie_style_minion_from_template_slot,
+            run_zombie_minion_from_template_slot,
             &[ExtensionCapability::ReadTemplateSlots, ExtensionCapability::MutateEntitySlots],
         );
 
@@ -6603,24 +6644,6 @@ mod tests {
         .expect("legacy summon recast fixture should spawn or revive summon");
     }
 
-    fn skill_legacy_summon_recast_from_template_slot_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-        context.add_update(crate::engine::update::RunUpdate::new(
-            "[0]使用[血祭]",
-            context.owner_idx().0 as usize,
-            context.owner_idx().0 as usize,
-            60,
-        ));
-        push_summon_recast_from_template_slot_with_messages(
-            context,
-            EntitySlotId(0),
-            TemplateSlotId(0),
-            10,
-            "召唤出[1]",
-            "召唤出[1]",
-        )
-        .expect("template-slot summon recast fixture should spawn or revive summon");
-    }
-
     fn skill_records_alive_summon_recast_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
         let summon_template = PlayerTemplate::with_kind(3, "summon", PlayerKindId(1), 0, 10, 1)
             .with_def_res(11, 22)
@@ -6676,32 +6699,6 @@ mod tests {
             push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]"),
             Ok(EntityIdx(2))
         );
-    }
-
-    fn skill_shadow_style_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-        context.add_update(crate::engine::update::RunUpdate::new(
-            "[0]使用[幻术]",
-            context.owner_idx().0 as usize,
-            context.owner_idx().0 as usize,
-            60,
-        ));
-        assert_eq!(
-            push_minion_from_template_slot_with_allocated_name(context, EntitySlotId(0), TemplateSlotId(0), "召唤出[1]"),
-            Ok(EntityIdx(2))
-        );
-    }
-
-    fn skill_zombie_style_minion_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-        let zombie = push_minion_from_template_slot_with_allocated_name_silent(context, EntitySlotId(0), TemplateSlotId(0))
-            .expect("zombie minion should spawn from template slot");
-        context.add_update(crate::engine::update::RunUpdate::new_newline());
-        let mut summon_update = crate::engine::update::RunUpdate::new("[0][召唤亡灵]", context.owner_idx().0 as usize, 1, 60);
-        summon_update.delay0 = 1500;
-        context.add_update(summon_update);
-        let mut zombied =
-            crate::engine::update::RunUpdate::new("[2]变成了[1]", context.owner_idx().0 as usize, zombie.0 as usize, 0);
-        zombied.targets.push(1);
-        context.add_update(zombied);
     }
 
     fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
