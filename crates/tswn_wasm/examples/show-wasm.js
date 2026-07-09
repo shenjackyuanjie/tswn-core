@@ -212,17 +212,58 @@ function buildStateNameMap(states) {
     return new Map(states.map((state) => [state.id, state.display_name ?? `#${state.id}`]));
 }
 
-function v2PlayerPart(playerId, namesById) {
+function stateMapById(states) {
+    return new Map((states ?? []).map((state) => [Number(state.id), state]));
+}
+
+function v2HpPartMetadata(playerId, stateMaps, update) {
     const id = Number(playerId);
+    const previousState = stateMaps?.previous?.get(id) ?? null;
+    const nextState = stateMaps?.next?.get(id) ?? previousState;
+    if (!nextState) {
+        return {};
+    }
+    let hpBefore = Number(previousState?.hp ?? nextState.hp ?? 0);
+    const hpAfter = Number(nextState.hp ?? hpBefore);
+    let aliveBefore = Boolean(previousState?.alive ?? nextState.alive);
+    const aliveAfter = Boolean(nextState.alive);
+
+    if (hpBefore === hpAfter && aliveBefore === aliveAfter && update?.target_id === id && update?.param != null) {
+        const amount = Number(update.param);
+        if (Number.isFinite(amount) && amount > 0) {
+            if (update.tone === "recover") {
+                hpBefore = Math.max(0, hpAfter - amount);
+            } else if (update.tone === "damage" || update.tone === "knockout") {
+                hpBefore = hpAfter + amount;
+                aliveBefore = true;
+            }
+        }
+    }
+
+    if (hpBefore === hpAfter && aliveBefore === aliveAfter) {
+        return {};
+    }
+    return {
+        show_hp: true,
+        hp_before: hpBefore,
+        hp_after: hpAfter,
+        death_effect: aliveBefore && !aliveAfter,
+    };
+}
+
+function v2PlayerPart(playerId, namesById, stateMaps, update) {
+    const id = Number(playerId);
+    const hpMetadata = v2HpPartMetadata(id, stateMaps, update);
     return {
         kind: "player",
         text: namesById.get(id) ?? `#${id}`,
         player_id: id,
-        show_hp: false,
+        show_hp: Boolean(hpMetadata.show_hp),
+        ...hpMetadata,
     };
 }
 
-function v2PartsFromMessage(message, update, namesById) {
+function v2PartsFromMessage(message, update, namesById, stateMaps) {
     const parts = [];
     const template = `${message ?? ""}`;
     const tokenRe = /\[(\d+)\]/g;
@@ -234,9 +275,9 @@ function v2PartsFromMessage(message, update, namesById) {
         }
         const placeholder = Number(match[1]);
         if (placeholder === 0 && update.caster_id != null) {
-            parts.push(v2PlayerPart(update.caster_id, namesById));
+            parts.push(v2PlayerPart(update.caster_id, namesById, null, null));
         } else if (placeholder === 1 && update.target_id != null) {
-            parts.push(v2PlayerPart(update.target_id, namesById));
+            parts.push(v2PlayerPart(update.target_id, namesById, stateMaps, update));
         } else if (placeholder === 2 && update.param != null) {
             parts.push({ kind: "data", text: `${update.param}` });
         } else {
@@ -251,7 +292,7 @@ function v2PartsFromMessage(message, update, namesById) {
 }
 
 function renderedV2Message(message, update, namesById) {
-    return v2PartsFromMessage(message, update, namesById)
+    return v2PartsFromMessage(message, update, namesById, null)
         .map((part) => part.text ?? "")
         .join("");
 }
@@ -293,6 +334,12 @@ function v2UpdateFromFrame(frame, namesById) {
 }
 
 function v2ClipFromUpdate(update, states, previousStates, namesById) {
+    const stateMaps = {
+        next: stateMapById(states),
+        previous: stateMapById(previousStates),
+    };
+    const parts = v2PartsFromMessage(update.message_template, update, namesById, stateMaps);
+    const showHpPart = parts.find((part) => part.kind === "player" && part.show_hp);
     return {
         delay: Math.max(0, Number(update.delay0 ?? 0) + Number(update.delay1 ?? 0)),
         text_template: update.message_template,
@@ -300,12 +347,12 @@ function v2ClipFromUpdate(update, states, previousStates, namesById) {
         tone: update.tone,
         player_id: update.caster_id,
         data: update.param,
-        show_hp: false,
-        hp_before: null,
-        hp_after: null,
-        death_effect: update.tone === "knockout",
+        show_hp: Boolean(showHpPart),
+        hp_before: showHpPart?.hp_before ?? null,
+        hp_after: showHpPart?.hp_after ?? null,
+        death_effect: Boolean(showHpPart?.death_effect) || update.tone === "knockout",
         emoji: null,
-        parts: v2PartsFromMessage(update.message_template, update, namesById),
+        parts,
         caster_ids: update.caster_id == null ? [] : [update.caster_id],
         target_ids: update.target_ids?.length ? update.target_ids : [update.target_id],
         sidebar_states: states,
