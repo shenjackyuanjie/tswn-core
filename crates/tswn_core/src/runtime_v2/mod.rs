@@ -92,6 +92,42 @@ impl RuntimeV2NormalizedRun {
     pub fn last_outcome(&self) -> Option<&NormalizedOutcome> { self.rounds.last() }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RuntimeDefendValue {
+    Atp(f64),
+    Damage(i32),
+}
+
+impl RuntimeDefendValue {
+    pub fn atp(self) -> Option<f64> {
+        match self {
+            Self::Atp(atp) => Some(atp),
+            Self::Damage(_) => None,
+        }
+    }
+
+    pub fn set_atp(&mut self, atp: f64) {
+        match self {
+            Self::Atp(value) => *value = atp,
+            Self::Damage(_) => panic!("runtime_v2 defend value is damage, not atp"),
+        }
+    }
+
+    pub fn damage(self) -> Option<i32> {
+        match self {
+            Self::Atp(_) => None,
+            Self::Damage(damage) => Some(damage),
+        }
+    }
+
+    pub fn set_damage(&mut self, damage: i32) {
+        match self {
+            Self::Atp(_) => panic!("runtime_v2 defend value is atp, not damage"),
+            Self::Damage(value) => *value = damage,
+        }
+    }
+}
+
 impl RuntimeV2Runner {
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
         Self {
@@ -894,6 +930,36 @@ impl CombatRuntime {
         }
     }
 
+    fn drain_skill_hook_plan_with_defend_value_into(
+        &mut self,
+        plan: &SkillHookPlan,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+    ) {
+        for entry in &plan.entries {
+            let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
+                panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
+            };
+            {
+                let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(&[]);
+                let mut context = SkillContext::new(
+                    &mut self.entities,
+                    &mut self.world,
+                    &self.template_slots,
+                    &mut self.slots,
+                    &mut self.effects,
+                    updates,
+                    &mut self.rng,
+                    *entry,
+                    capabilities,
+                )
+                .with_defend_value(defend_value);
+                handler(&mut context, entry);
+            }
+            self.drain_effects_into(updates);
+        }
+    }
+
     pub fn run_state_hooks(&mut self, owner: EntityIdx, hook: ProcMask) -> Option<RuntimeFrame> {
         let plan = self.scheduler.state_hook_plan(&self.entities, owner, hook);
         self.flush_state_hook_plan(&plan)
@@ -926,6 +992,39 @@ impl CombatRuntime {
                     *entry,
                     capabilities,
                 );
+                handler(&mut context, entry);
+            }
+            self.drain_effects_into(updates);
+        }
+    }
+
+    fn drain_state_hook_plan_with_defend_value_into(
+        &mut self,
+        plan: &StateHookPlan,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+    ) {
+        for entry in &plan.entries {
+            let Some(state_id) = entry.state_id else {
+                continue;
+            };
+            let Some(handler) = self.state_handlers.get(state_id) else {
+                panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
+            };
+            {
+                let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(&[]);
+                let mut context = StateContext::new(
+                    &mut self.entities,
+                    &mut self.world,
+                    &self.template_slots,
+                    &mut self.slots,
+                    &mut self.effects,
+                    updates,
+                    &mut self.rng,
+                    *entry,
+                    capabilities,
+                )
+                .with_defend_value(defend_value);
                 handler(&mut context, entry);
             }
             self.drain_effects_into(updates);
@@ -1039,8 +1138,7 @@ impl CombatRuntime {
                     self.ensure_effect_entity("summon-explode", "target", target);
                     let fire_mag = self.entities.get(target).unwrap().states.fire_mag(fire_state_key);
                     let atp = self.entities.get(caster).unwrap().runtime.get_at(true, &mut self.rng);
-                    let amount = ((atp * (4.0 + fire_mag)) / self.entities.get(target).unwrap().runtime.magic_defense() as f64)
-                        .ceil() as i32;
+                    let mut defend_value = RuntimeDefendValue::Atp(atp * (4.0 + fire_mag));
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
                         target.0 as usize,
@@ -1048,6 +1146,16 @@ impl CombatRuntime {
                         0,
                     ));
                     let killed_caster = self.kill_entity_without_damage_into(caster, updates);
+                    self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
+                    let Some(atp) = defend_value.atp() else {
+                        panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
+                    };
+                    if atp == 0.0 {
+                        if killed_caster {
+                            self.drain_die_hooks_into(caster, updates);
+                        }
+                        continue;
+                    }
                     if self.summon_explode_dodged(caster, target) {
                         updates.add(RuntimeFrame::replay_update(
                             target.0 as usize,
@@ -1056,6 +1164,12 @@ impl CombatRuntime {
                             20,
                         ));
                     } else {
+                        let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+                        let mut defend_value = RuntimeDefendValue::Damage(amount);
+                        self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
+                        let Some(amount) = defend_value.damage() else {
+                            panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
+                        };
                         if self.apply_damage_into(caster, target, amount, updates) {
                             self.drain_lethal_damage_hooks_into(caster, target, updates);
                         } else if amount > 0 {
@@ -1255,6 +1369,83 @@ impl CombatRuntime {
     fn drain_lethal_damage_hooks_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         self.drain_die_hooks_into(target, updates);
         self.drain_kill_hooks_into(caster, updates);
+    }
+
+    fn drain_pre_defend_hooks_into(
+        &mut self,
+        target: EntityIdx,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+    ) {
+        let skill_plan = self
+            .scheduler
+            .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::PRE_DEFEND);
+        self.drain_skill_hook_plan_with_defend_value_into(&skill_plan, updates, defend_value);
+        let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::PRE_DEFEND);
+        self.drain_state_hook_plan_with_defend_value_into(&state_plan, updates, defend_value);
+    }
+
+    fn drain_post_defend_hooks_into(
+        &mut self,
+        target: EntityIdx,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+    ) {
+        let skill_plan = self
+            .scheduler
+            .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::POST_DEFEND);
+        let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::POST_DEFEND);
+
+        #[derive(Clone, Copy)]
+        enum DefendHookPlanEntry {
+            Skill(SkillHookPlanEntry),
+            State(StateHookPlanEntry),
+        }
+
+        let mut entries = Vec::with_capacity(skill_plan.entries.len() + state_plan.entries.len());
+        entries.extend(skill_plan.entries.iter().copied().map(|entry| {
+            (
+                entry.priority,
+                0_u8,
+                entry.active_order,
+                entry.registration_order,
+                DefendHookPlanEntry::Skill(entry),
+            )
+        }));
+        entries.extend(state_plan.entries.iter().copied().map(|entry| {
+            (
+                entry.priority,
+                1_u8,
+                usize::MAX,
+                entry.registration_order,
+                DefendHookPlanEntry::State(entry),
+            )
+        }));
+        entries.sort_by_key(|(priority, kind_order, active_order, registration_order, _)| {
+            (*priority, *kind_order, *active_order, *registration_order)
+        });
+
+        for (_, _, _, _, entry) in entries {
+            match entry {
+                DefendHookPlanEntry::Skill(entry) => {
+                    let plan = SkillHookPlan {
+                        owner: skill_plan.owner,
+                        hook: skill_plan.hook,
+                        loadout_len: skill_plan.loadout_len,
+                        entries: vec![entry],
+                    };
+                    self.drain_skill_hook_plan_with_defend_value_into(&plan, updates, defend_value);
+                }
+                DefendHookPlanEntry::State(entry) => {
+                    let plan = StateHookPlan {
+                        hook: state_plan.hook,
+                        store_generation: state_plan.store_generation,
+                        entries: vec![entry],
+                    };
+                    self.drain_state_hook_plan_with_defend_value_into(&plan, updates, defend_value);
+                }
+            }
+        }
     }
 
     fn drain_die_hooks_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
@@ -3116,6 +3307,193 @@ mod tests {
     }
 
     #[test]
+    fn summon_explode_runs_pre_defend_before_dodge_and_damage() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let pre_defend = builder
+            .register_skill_with_hooks(
+                "custom",
+                "pre-defend",
+                "custom.pre_defend",
+                ProcMask::PRE_DEFEND,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("pre-defend skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3)
+                    .with_def_res(0, 16)
+                    .with_skills([pre_defend]),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(pre_defend, skill_halves_defend_atp);
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::fire_mag(91, 3));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 5.5 / 2.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let expected_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("pre-defend summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 2.0);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "pre defend skill");
+        assert_eq!(frame.updates.updates[1].caster, 1);
+        assert_eq!(frame.updates.updates[2].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[2].score, expected_amount as u32);
+    }
+
+    #[test]
+    fn summon_explode_pre_defend_zero_stops_before_dodge_damage_and_fire() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let pre_defend = builder
+            .register_skill_with_hooks(
+                "custom",
+                "pre-defend-zero",
+                "custom.pre_defend_zero",
+                ProcMask::PRE_DEFEND,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("pre-defend skill should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3)
+                    .with_def_res(0, 512)
+                    .with_agility(512)
+                    .with_skills([pre_defend]),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(0),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(pre_defend, skill_zeroes_defend_atp);
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::fire_mag(91, 3));
+        let mut expected_rng = RC4::default();
+        let _ = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng);
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("pre-defend zero should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 0);
+        assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 1.5);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "pre defend zero");
+    }
+
+    #[test]
+    fn summon_explode_runs_post_defend_skill_and_state_in_priority_order() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let post_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "post-defend-skill",
+                "custom.post_defend_skill",
+                ProcMask::POST_DEFEND,
+                TargetPolicy::None,
+                SkillPriority(2000),
+            )
+            .expect("post-defend skill should register");
+        let post_state = builder
+            .register_state(
+                "custom",
+                "post-defend-state",
+                "custom.post_defend_state",
+                ProcMask::POST_DEFEND,
+                SkillPriority(1000),
+            )
+            .expect("post-defend state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3)
+                    .with_def_res(0, 16)
+                    .with_skills([post_skill]),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(post_skill, skill_halves_defend_damage);
+        runtime.set_state_handler(post_state, state_adds_defend_damage);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry {
+            legacy_order_key: 77,
+            extension_state_id: Some(post_state),
+            hook_mask: ProcMask::POST_DEFEND,
+            priority: SkillPriority(1000),
+            registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
+        });
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 4.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let raw_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        let expected_amount = (raw_amount + 3) / 2;
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("post-defend summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.5);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 4);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "post defend state");
+        assert_eq!(frame.updates.updates[2].message, "post defend skill");
+        assert_eq!(frame.updates.updates[3].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[3].score, expected_amount as u32);
+    }
+
+    #[test]
     fn summon_explode_fire_stack_respects_boss_fire_immune() {
         let mut builder = ExtensionRegistryBuilder::default();
         let boss_kind = builder
@@ -4854,6 +5232,39 @@ mod tests {
         });
     }
 
+    fn skill_halves_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        let atp = context.defend_atp().expect("pre-defend skill should receive atp");
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "pre defend skill",
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            atp as u32,
+        ));
+        context.set_defend_atp(atp / 2.0);
+    }
+
+    fn skill_zeroes_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        assert!(context.defend_atp().expect("pre-defend skill should receive atp") > 0.0);
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "pre defend zero",
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            entry.skill_id.0,
+        ));
+        context.set_defend_atp(0.0);
+    }
+
+    fn skill_halves_defend_damage(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        let damage = context.defend_damage().expect("post-defend skill should receive damage");
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "post defend skill",
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            damage as u32,
+        ));
+        context.set_defend_damage(damage / 2);
+    }
+
     fn skill_bed2_template_slot_summon_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
         push_summon_from_template_slot(context, TemplateSlotId(0))
             .expect("bed2 summon handler should read template slot payload");
@@ -5044,6 +5455,17 @@ mod tests {
             entry.owner.0 as usize,
             value as u32,
         ));
+    }
+
+    fn state_adds_defend_damage(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+        let damage = context.defend_damage().expect("post-defend state should receive damage");
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "post defend state",
+            entry.owner.0 as usize,
+            entry.owner.0 as usize,
+            entry.legacy_order_key,
+        ));
+        context.set_defend_damage(damage + 3);
     }
 
     fn render_first_message_replay(frame: &RuntimeFrame) -> Option<RenderedReplay> {

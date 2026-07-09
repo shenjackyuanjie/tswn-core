@@ -63,8 +63,10 @@ impl ProcMask {
     pub const POST_ACTION: Self = Self(1 << 1);
     pub const PRE_DAMAGE: Self = Self(1 << 2);
     pub const POST_DAMAGE: Self = Self(1 << 3);
-    pub const DIE: Self = Self(1 << 4);
-    pub const KILL: Self = Self(1 << 5);
+    pub const PRE_DEFEND: Self = Self(1 << 4);
+    pub const POST_DEFEND: Self = Self(1 << 5);
+    pub const DIE: Self = Self(1 << 6);
+    pub const KILL: Self = Self(1 << 7);
 
     pub const fn intersects(self, rhs: Self) -> bool { (self.0 & rhs.0) != 0 }
 }

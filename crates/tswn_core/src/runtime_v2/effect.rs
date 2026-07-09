@@ -6,8 +6,8 @@ use crate::runtime_v2::extension::{
 };
 use crate::runtime_v2::scheduler::{SkillHookPlanEntry, StateHookPlanEntry};
 use crate::runtime_v2::{
-    BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, SlotError, SlotValue, TemplateSlotId, TemplateSlotStorage,
-    WorldArena,
+    BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, RuntimeDefendValue, SlotError, SlotValue, TemplateSlotId,
+    TemplateSlotStorage, WorldArena,
 };
 use std::collections::VecDeque;
 
@@ -405,6 +405,7 @@ pub struct SkillContext<'a> {
     queue: &'a mut EffectQueue,
     updates: &'a mut RunUpdates,
     rng: &'a mut RC4,
+    defend_value: Option<&'a mut RuntimeDefendValue>,
     owner: EntityIdx,
     capabilities: &'a [ExtensionCapability],
 }
@@ -429,9 +430,15 @@ impl<'a> SkillContext<'a> {
             queue,
             updates,
             rng,
+            defend_value: None,
             owner: entry.owner,
             capabilities,
         }
+    }
+
+    pub fn with_defend_value(mut self, defend_value: &'a mut RuntimeDefendValue) -> Self {
+        self.defend_value = Some(defend_value);
+        self
     }
 
     pub fn owner_idx(&self) -> EntityIdx { self.owner }
@@ -485,6 +492,24 @@ impl<'a> SkillContext<'a> {
 
     pub fn sync_winner(&mut self) -> Option<usize> { self.world.sync_winner(self.entities) }
 
+    pub fn defend_atp(&self) -> Option<f64> { self.defend_value.as_ref().and_then(|value| value.atp()) }
+
+    pub fn set_defend_atp(&mut self, atp: f64) {
+        let Some(value) = self.defend_value.as_deref_mut() else {
+            panic!("runtime_v2 defend atp is only available during PRE_DEFEND hooks");
+        };
+        value.set_atp(atp);
+    }
+
+    pub fn defend_damage(&self) -> Option<i32> { self.defend_value.as_ref().and_then(|value| value.damage()) }
+
+    pub fn set_defend_damage(&mut self, damage: i32) {
+        let Some(value) = self.defend_value.as_deref_mut() else {
+            panic!("runtime_v2 defend damage is only available during POST_DEFEND hooks");
+        };
+        value.set_damage(damage);
+    }
+
     fn require(&self, capability: ExtensionCapability) -> Result<(), EffectContextError> {
         if self.capabilities.contains(&capability) {
             Ok(())
@@ -502,6 +527,7 @@ pub struct StateContext<'a> {
     queue: &'a mut EffectQueue,
     updates: &'a mut RunUpdates,
     rng: &'a mut RC4,
+    defend_value: Option<&'a mut RuntimeDefendValue>,
     owner: EntityIdx,
     capabilities: &'a [ExtensionCapability],
 }
@@ -526,9 +552,15 @@ impl<'a> StateContext<'a> {
             queue,
             updates,
             rng,
+            defend_value: None,
             owner: entry.owner,
             capabilities,
         }
+    }
+
+    pub fn with_defend_value(mut self, defend_value: &'a mut RuntimeDefendValue) -> Self {
+        self.defend_value = Some(defend_value);
+        self
     }
 
     pub fn owner_idx(&self) -> EntityIdx { self.owner }
@@ -579,6 +611,24 @@ impl<'a> StateContext<'a> {
     pub fn rng_next_i32(&mut self, max: i32) -> i32 { self.rng.next_i32(max) }
 
     pub fn sync_winner(&mut self) -> Option<usize> { self.world.sync_winner(self.entities) }
+
+    pub fn defend_atp(&self) -> Option<f64> { self.defend_value.as_ref().and_then(|value| value.atp()) }
+
+    pub fn set_defend_atp(&mut self, atp: f64) {
+        let Some(value) = self.defend_value.as_deref_mut() else {
+            panic!("runtime_v2 defend atp is only available during PRE_DEFEND hooks");
+        };
+        value.set_atp(atp);
+    }
+
+    pub fn defend_damage(&self) -> Option<i32> { self.defend_value.as_ref().and_then(|value| value.damage()) }
+
+    pub fn set_defend_damage(&mut self, damage: i32) {
+        let Some(value) = self.defend_value.as_deref_mut() else {
+            panic!("runtime_v2 defend damage is only available during POST_DEFEND hooks");
+        };
+        value.set_damage(damage);
+    }
 
     fn require(&self, capability: ExtensionCapability) -> Result<(), EffectContextError> {
         if self.capabilities.contains(&capability) {
