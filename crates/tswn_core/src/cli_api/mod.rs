@@ -498,7 +498,13 @@ fn normalize_namer_pf_modes(modes: Option<Vec<String>>) -> CliApiResult<Vec<Name
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_v2::{EntityIdx, default_custom_runtime_v2_import_config};
+    use crate::runtime_v2::{
+        EntityIdx, SlotValue, DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT, DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT,
+        DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT, DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT,
+        DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT, DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT,
+        DEFAULT_CUSTOM_BED2_SUMMON_TEMPLATE_EXPORT, DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT,
+        DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT, DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT, default_custom_runtime_v2_import_config,
+    };
 
     #[test]
     fn cli_api_custom_runtime_v2_mixed_runner_imports_custom_profile_raw() {
@@ -521,6 +527,116 @@ mod tests {
             runner.runtime().world.round_order().iter().map(|idx| idx.0).collect::<Vec<_>>(),
             expected_round_order
         );
+    }
+
+    #[test]
+    fn cli_api_default_custom_runtime_v2_mixed_runner_imports_ol_minion_overlays() {
+        let raw = "plain@red\n\
+alpha@red@bed2+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire2\":4,\"sklfire1\":5},\"inherit_owner_def_res\":true}}\n\
+beta@red@bed2+ol:{\"shadow\":{\"attrs\":[47,48,49,50,51,52,53,88],\"skills\":{\"phantom:sklpossess\":5}}}\n\
+gamma@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{\"sklheal\":3}}}\n\n\
+seed:custom-seed@!\n\n\
+delta@blue+bed2[8]\n";
+
+        let runner = default_custom_runtime_v2_mixed_runner(raw).expect("default custom runtime v2 mixed runner should build");
+        let runtime = runner.runtime();
+        let summon_skill = runtime
+            .registry
+            .skill_id_by_export_name(DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT)
+            .expect("default profile should register summon skill");
+        let fire_skill = runtime
+            .registry
+            .skill_id_by_export_name(DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT)
+            .expect("default profile should register summon fire skill");
+        let explode_skill = runtime
+            .registry
+            .skill_id_by_export_name(DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT)
+            .expect("default profile should register summon explode skill");
+        let possess_skill = runtime
+            .registry
+            .skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT)
+            .expect("default profile should register possess skill");
+        let zombie_heal_skill = runtime
+            .registry
+            .skill_id_by_export_name("custom.minion.heal")
+            .expect("default profile should register zombie heal skill");
+        let summon_kind = runtime
+            .registry
+            .player_kinds()
+            .iter()
+            .find(|kind| kind.export_name == DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT)
+            .expect("default profile should register summon kind")
+            .id;
+        let shadow_kind = runtime
+            .registry
+            .player_kinds()
+            .iter()
+            .find(|kind| kind.export_name == DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT)
+            .expect("default profile should register shadow kind")
+            .id;
+        let zombie_kind = runtime
+            .registry
+            .player_kinds()
+            .iter()
+            .find(|kind| kind.export_name == DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT)
+            .expect("default profile should register zombie kind")
+            .id;
+        let summon_template_slot = runtime
+            .registry
+            .template_slots()
+            .iter()
+            .find(|slot| slot.export_name == DEFAULT_CUSTOM_BED2_SUMMON_TEMPLATE_EXPORT)
+            .expect("default profile should reserve summon template slot")
+            .id;
+        let shadow_template_slot = runtime
+            .registry
+            .template_slots()
+            .iter()
+            .find(|slot| slot.export_name == DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT)
+            .expect("default profile should reserve shadow template slot")
+            .id;
+        let zombie_template_slot = runtime
+            .registry
+            .template_slots()
+            .iter()
+            .find(|slot| slot.export_name == DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT)
+            .expect("default profile should reserve zombie template slot")
+            .id;
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().template.skills.skills(), &[summon_skill]);
+        let SlotValue::PlayerTemplate(summon_template) = runtime
+            .template_slots
+            .get(summon_template_slot)
+            .expect("default cli api should populate summon template slot")
+        else {
+            panic!("default cli api summon overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(summon_template.kind, summon_kind);
+        assert_eq!(summon_template.max_hp, 123);
+        assert_eq!(summon_template.skills.skills(), &[fire_skill, fire_skill, explode_skill]);
+        assert_eq!(summon_template.skills.active_order(), &[1, 0]);
+
+        let SlotValue::PlayerTemplate(shadow_template) = runtime
+            .template_slots
+            .get(shadow_template_slot)
+            .expect("default cli api should populate shadow template slot")
+        else {
+            panic!("default cli api shadow overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(shadow_template.kind, shadow_kind);
+        assert_eq!(shadow_template.max_hp, 88);
+        assert_eq!(shadow_template.skills.skills(), &[possess_skill]);
+
+        let SlotValue::PlayerTemplate(zombie_template) = runtime
+            .template_slots
+            .get(zombie_template_slot)
+            .expect("default cli api should populate zombie template slot")
+        else {
+            panic!("default cli api zombie overlay slot should hold PlayerTemplate");
+        };
+        assert_eq!(zombie_template.kind, zombie_kind);
+        assert_eq!(zombie_template.max_hp, 77);
+        assert_eq!(zombie_template.skills.skills(), &[zombie_heal_skill]);
     }
 
     #[test]

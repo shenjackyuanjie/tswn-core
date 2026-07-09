@@ -45,7 +45,7 @@ git diff --name-status github/main..github/custom
 | merge replay | custom replay 使用吞噬/属性上升展示 | `QueuedEffect::Merge` replay update | 已输出 `[0][吞噬]了[1]` 与 `[0]属性上升` | merge frame 顺序、score 分别为 60/0 |
 | HP report replay | custom 新增 `"[0]还剩[2]点血"` 作为 HP marker | replay/show renderer + entity slot | 已用 v2 core replay/show golden 固化 payload 和 `[2]` param，并补 HP bar show renderer fixture；wasm 结构化 replay view 已强制 `show_hp`，可复用现有 actorToken HP 条渲染 | HP marker 强制显示 HP bar，`[2]` 作为 data |
 | show 数字高亮 | `show-utils.js` 把 `点血` 纳入数字高亮 | show renderer / wasm show adapter | v2 core show golden 已覆盖 `还剩87点血` 文本；结构化 `Data` part 已让 wasm/show 对 `[2]` 渲染 `message-number` | `还剩87点血` 中 87 被识别为数值 |
-| runner fixture 内置化 | `crates/tswn_test/src/suite/**` moved into `crates/tswn_core/src/engine/test/**` | repo 内 extension fixture + strict diff runner | 已有最小 v2 custom runner strict-diff golden 覆盖 spawn、owner def/res、damage share、heal 与 HP marker，并补 linked minion owner-death cleanup、merge 与 multi-round normalized run 的 runner strict-diff golden；仍缺 large/fight_multi legacy 样例 | bed2/summon/merge/minion/custom replay golden 可稳定复跑 |
+| runner fixture 内置化 | `crates/tswn_test/src/suite/**` moved into `crates/tswn_core/src/engine/test/**` | repo 内 extension fixture + strict diff runner | 已有最小 v2 custom runner strict-diff golden 覆盖 spawn、owner def/res、damage share、heal 与 HP marker，并补 linked minion owner-death cleanup、merge 与 multi-round normalized run 的 runner strict-diff golden；large 已有完整 run-until-winner golden，fight_multi 已有前 4 轮 prefix golden 与完整终局 golden；后续继续补 fight_multi 完整逐回合 replay golden | bed2/summon/merge/minion/custom replay golden 可稳定复跑 |
 
 ---
 
