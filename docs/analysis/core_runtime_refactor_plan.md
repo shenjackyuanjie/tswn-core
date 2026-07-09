@@ -682,6 +682,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `show.html` 已支持 `engine=v2` / `runtime=v2` opt-in 路径，页面会调用 `buildV2NormalizedReplay()` 并保留 legacy `FightSession` 作为默认路径，便于 Phase H DOM/golden 对账；
 - 已补 `show-wasm.test.mjs` 纯 JS adapter 与 HTML chunk 测试，固定 v2 normalized run 到 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row / summoned entity first-appearance / removed entity disappearance shape 的转换和 `buildFrameRows()` 渲染；
 - 已把 `show.html` 的 URL input、engine/runtime 选择、分享链接清洗与 v2 engine 保留逻辑抽到 `show-routing.js`，并补 `show-routing.test.mjs` 固定 v2 alias、legacy fallback、非法 input 与 share URL 行为；
+- 已补 `show-page-contract.test.mjs` 固定 `show.html` v2 opt-in DOM 节点、module script、`show.js` runtime routing、adapter 调用和 v2 分享链接保留契约，作为无浏览器依赖的最小页面 wiring golden；
 - `show.html` 迁到 v2 replay schema；
 - wasm API 可 breaking；
 - DIY/OL schema 重做；

@@ -94,6 +94,7 @@ git diff --name-status github/main..github/custom
 - `show.html` 已接入 `engine=v2` / `runtime=v2` opt-in，显式 v2 页面路径会调用 adapter 生成可播放 replay，分享链接会保留 v2 选择；默认路径仍保留 `FightSession`。
 - `show-wasm.test.mjs` 已覆盖纯 adapter 输出和 `buildFrameRows()` HTML chunk 渲染，固定 v2 normalized run 到 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row / summoned entity first-appearance / removed entity disappearance shape 的最小验收面。
 - `show-routing.js` / `show-routing.test.mjs` 已把 URL-safe input、`engine`/`runtime` v2 alias、legacy fallback、非法 input 报错和 v2 分享链接保留逻辑抽成可单测路由面，降低后续默认路径切换风险。
+- `show-page-contract.test.mjs` 已固定 `show.html` v2 opt-in 页面契约：runtime mode DOM、module script、`show.js` runtime routing、adapter 调用和 v2 分享链接保留逻辑，作为后续默认路径切换前的最小页面 wiring golden。
 - 最小 custom runner strict-diff golden 已把 spawn、share、heal、HP marker 和 world 派生视图接入同一验收面。
 - linked minion owner-death cleanup 已接入 runner strict-diff golden，固定 owner 致死后的消失帧、round/alive 派生视图与 winner 汇总。
 - merge 已接入 runner strict-diff golden，固定吞噬/属性上升帧、score 与 fixed-lane 技能槽继承结果。
