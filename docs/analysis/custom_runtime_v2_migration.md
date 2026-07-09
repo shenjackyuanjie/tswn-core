@@ -56,7 +56,7 @@ git diff --name-status github/main..github/custom
 3. **minion fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享、owner death / explicit remove 清理 linked minion，以及从 template slot 读取真实 minion 模板后按 root owner entity slot 递增分配 `owner?N` minion 名称并按 legacy/custom 文案 spawn；shadow/zombie handler 已提升为带槽位参数的正式 helper，并覆盖 `幻术` / `召唤亡灵` 外显帧序列；后续补更多内置 minion strict-diff parity。
 4. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
 5. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data，并补 HP bar show renderer payload；wasm 结构化 replay view 已对 HP marker 强制 `show_hp`。
-6. **runner fixture**：已新增最小 v2 strict-diff golden，并把 linked minion owner-death cleanup、merge 与 multi-round run-until-winner 纳入归一化 runner golden；已从 custom 分支 large / fight_multi 真实 raw 输入抽出初始化 parity golden，覆盖 seed RNG、team 编号和 round/alive 派生视图；后续继续把关键样例缩成完整 runner golden。
+6. **runner fixture**：已新增最小 v2 strict-diff golden，并把 linked minion owner-death cleanup、merge 与 multi-round run-until-winner 纳入归一化 runner golden；已从 custom 分支 large / fight_multi 真实 raw 输入抽出初始化 parity golden，覆盖 seed RNG、team 编号和 round/alive 派生视图；fight_multi 真实 raw 已补前 3 轮 normalized prefix golden，固定 RNG checkpoint、HP/MP/防御/魔防、action/frame、world 派生视图与 guard 状态；后续继续把关键样例缩成完整 runner golden。
 
 ---
 
