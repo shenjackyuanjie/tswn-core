@@ -280,6 +280,8 @@ impl PlayerRuntime {
         };
         a * b * self.at_boost()
     }
+
+    pub fn magic_defense(&self) -> i32 { self.resistance + 64 }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

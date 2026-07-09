@@ -21,7 +21,7 @@ pub enum QueuedEffect {
     SummonExplode {
         caster: EntityIdx,
         target: EntityIdx,
-        amount: i32,
+        fire_state_key: u32,
     },
     Heal {
         caster: EntityIdx,

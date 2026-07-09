@@ -420,11 +420,11 @@ pub fn summon_default_skill_loadout(fire_skill: SkillId, explode_skill: SkillId,
     SkillLoadout::from_skills([fire_skill, fire_skill, explode_skill]).with_active_order(active_order)
 }
 
-pub fn push_summon_explode(context: &mut SkillContext<'_>, target: EntityIdx, amount: i32) {
+pub fn push_summon_explode(context: &mut SkillContext<'_>, target: EntityIdx, fire_state_key: u32) {
     context.push_nested(QueuedEffect::SummonExplode {
         caster: context.owner_idx(),
         target,
-        amount,
+        fire_state_key,
     });
 }
 
@@ -1029,9 +1029,17 @@ impl CombatRuntime {
                         }
                     }
                 }
-                QueuedEffect::SummonExplode { caster, target, amount } => {
+                QueuedEffect::SummonExplode {
+                    caster,
+                    target,
+                    fire_state_key,
+                } => {
                     self.ensure_effect_entity("summon-explode", "caster", caster);
                     self.ensure_effect_entity("summon-explode", "target", target);
+                    let fire_mag = self.entities.get(target).unwrap().states.fire_mag(fire_state_key);
+                    let atp = self.entities.get(caster).unwrap().runtime.get_at(true, &mut self.rng);
+                    let amount = ((atp * (4.0 + fire_mag)) / self.entities.get(target).unwrap().runtime.magic_defense() as f64)
+                        .ceil() as i32;
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
                         target.0 as usize,
@@ -2964,20 +2972,33 @@ mod tests {
     fn summon_explode_effect_emits_legacy_replay_and_kills_summon() {
         let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
             PlayerTemplate::new(1, "owner", 0, 10, 3),
-            PlayerTemplate::new(2, "enemy", 1, 10, 3),
-            PlayerTemplate::new(3, "summon", 0, 5, 1),
+            PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
+            PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
         ]));
+        runtime
+            .entities
+            .get_mut(EntityIdx(1))
+            .unwrap()
+            .states
+            .add_entry(StateEntry::fire_mag(91, 3));
+        let mut expected_rng = RC4::default();
+        let expected_amount = ((runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 5.5)
+            / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64)
+            .ceil() as i32;
         runtime.effects.push(QueuedEffect::SummonExplode {
             caster: EntityIdx(2),
             target: EntityIdx(1),
-            amount: 4,
+            fire_state_key: 91,
         });
 
         let frame = runtime.flush_effects().expect("summon explode should emit updates");
 
         assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 0);
         assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
-        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 6);
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
         assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0)].as_slice()));
         assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
         assert_eq!(frame.updates.updates.len(), 2);
@@ -2988,7 +3009,7 @@ mod tests {
         assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
         assert_eq!(frame.updates.updates[1].caster, 2);
         assert_eq!(frame.updates.updates[1].target, 1);
-        assert_eq!(frame.updates.updates[1].score, 4);
+        assert_eq!(frame.updates.updates[1].score, expected_amount as u32);
     }
 
     #[test]
@@ -3018,8 +3039,10 @@ mod tests {
         let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
             vec![
                 PlayerTemplate::new(1, "owner", 0, 10, 3),
-                PlayerTemplate::new(2, "enemy", 1, 3, 3).with_skills([die_skill]),
-                PlayerTemplate::new(3, "summon", 0, 5, 1).with_skills([die_skill, kill_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 3, 3).with_def_res(0, 0).with_skills([die_skill]),
+                PlayerTemplate::new(3, "summon", 0, 5, 1)
+                    .with_magic(80)
+                    .with_skills([die_skill, kill_skill]),
             ],
             registry,
         ));
@@ -3028,7 +3051,7 @@ mod tests {
         runtime.effects.push(QueuedEffect::SummonExplode {
             caster: EntityIdx(2),
             target: EntityIdx(1),
-            amount: 3,
+            fire_state_key: 91,
         });
 
         let frame = runtime.flush_effects().expect("summon explode should emit hook updates");
@@ -5997,12 +6020,12 @@ mod tests {
         assert_effect_panics(QueuedEffect::SummonExplode {
             caster: EntityIdx(99),
             target: EntityIdx(1),
-            amount: 1,
+            fire_state_key: 91,
         });
         assert_effect_panics(QueuedEffect::SummonExplode {
             caster: EntityIdx(0),
             target: EntityIdx(99),
-            amount: 1,
+            fire_state_key: 91,
         });
         assert_effect_panics(QueuedEffect::Heal {
             caster: EntityIdx(99),
