@@ -526,6 +526,62 @@ pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &State
     }
 }
 
+pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    let Some(StatePayload::Poison {
+        caster,
+        target,
+        atp_bits,
+        count,
+    }) = context.owner_state_payload(entry.legacy_order_key)
+    else {
+        return;
+    };
+    let Some(owner) = context.owner() else {
+        return;
+    };
+    if !owner.runtime.alive {
+        return;
+    }
+
+    let atp = f64::from_bits(atp_bits);
+    let tick_atp = atp * (1.0 + (count - 1) as f64 * 0.10000000149011612) / count as f64;
+    let next_atp = atp - tick_atp;
+    let damage = (tick_atp / (owner.runtime.magic + 64) as f64).ceil() as i32;
+    let next_count = count - 1;
+    let poison_caster = caster.map_or(context.owner_idx(), EntityIdx);
+
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[1][毒性发作]",
+        poison_caster.0 as usize,
+        context.owner_idx().0 as usize,
+        0,
+    ));
+    context.push_nested(QueuedEffect::PoisonTick {
+        caster: poison_caster,
+        target: context.owner_idx(),
+        amount: damage,
+    });
+
+    if next_count > 0 {
+        context
+            .set_owner_state_payload(
+                entry.legacy_order_key,
+                StatePayload::Poison {
+                    caster,
+                    target,
+                    atp_bits: next_atp.to_bits(),
+                    count: next_count,
+                },
+            )
+            .expect("poison state payload should still exist");
+        return;
+    }
+
+    context
+        .clear_owner_state(entry.legacy_order_key)
+        .expect("poison state payload should still exist");
+}
+
 pub fn run_haste_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let Some(StatePayload::Haste { faster, step }) = context.owner_state_payload(entry.legacy_order_key) else {
         return;
@@ -1347,6 +1403,15 @@ impl CombatRuntime {
                         }
                     }
                 }
+                QueuedEffect::PoisonTick { caster, target, amount } => {
+                    self.ensure_effect_entity("poison tick", "caster", caster);
+                    self.ensure_effect_entity("poison tick", "target", target);
+                    if self.apply_poison_tick_damage_into(caster, target, amount, updates) {
+                        self.drain_lethal_damage_hooks_into(caster, target, updates);
+                    } else if self.entities.get(target).map(|entity| entity.runtime.alive).unwrap_or(false) {
+                        self.emit_poison_release_if_cleared(target, updates);
+                    }
+                }
                 QueuedEffect::SummonExplode {
                     caster,
                     target,
@@ -1704,6 +1769,51 @@ impl CombatRuntime {
             self.cleanup_linked_minions_for_owner(target, updates);
         }
         killed
+    }
+
+    fn apply_poison_tick_damage_into(
+        &mut self,
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+        updates: &mut RunUpdates,
+    ) -> bool {
+        let Some(target_entity) = self.entities.get_mut(target) else {
+            panic!("unknown runtime_v2 poison tick target entity: {}", target.0);
+        };
+        target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
+        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
+        if killed {
+            target_entity.runtime.alive = false;
+        }
+        let team = target_entity.runtime.team;
+        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        if killed {
+            self.world.remove_alive(target, team);
+            self.cleanup_linked_minions_for_owner(target, updates);
+        }
+        killed
+    }
+
+    fn emit_poison_release_if_cleared(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
+        let Some(target_entity) = self.entities.get(target) else {
+            panic!("unknown runtime_v2 poison release target entity: {}", target.0);
+        };
+        if target_entity
+            .states
+            .entries()
+            .iter()
+            .any(|entry| matches!(entry.payload, StatePayload::Poison { .. }))
+        {
+            return;
+        }
+        updates.add_newline();
+        updates.add(RuntimeFrame::replay_update(
+            target.0 as usize,
+            target.0 as usize,
+            "[1]从[中毒]中解除",
+            0,
+        ));
     }
 
     fn summon_explode_dodged(&mut self, caster: EntityIdx, target: EntityIdx) -> bool {
@@ -6946,6 +7056,198 @@ mod tests {
     }
 
     #[test]
+    fn run_state_hooks_poison_post_action_ticks_damage_and_keeps_state() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let poison_state = builder
+            .register_state("core", "poison", "core.poison", ProcMask::POST_ACTION, SkillPriority(150))
+            .expect("poison state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 40, 3).with_magic(16),
+                PlayerTemplate::new(2, "right", 1, 40, 3),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(poison_state, run_poison_post_action_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::poison(
+            75,
+            poison_state,
+            Some(1),
+            Some(0),
+            160.0,
+            4,
+            SkillPriority(150),
+        ));
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("poison tick should emit updates");
+
+        let remaining_atp = 160.0 - (160.0 * (1.0 + 3.0 * 0.10000000149011612) / 4.0);
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 39);
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(0))
+                .unwrap()
+                .states
+                .entry(75)
+                .and_then(StateEntry::poison_value),
+            Some((Some(1), Some(0), remaining_atp, 3))
+        );
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[1][毒性发作]");
+        assert_eq!(frame.updates.updates[0].caster, 1);
+        assert_eq!(frame.updates.updates[0].target, 0);
+        assert_eq!(frame.updates.updates[1].message, "[1]受到[2]点伤害");
+        assert_eq!(frame.updates.updates[1].caster, 1);
+        assert_eq!(frame.updates.updates[1].target, 0);
+        assert_eq!(frame.updates.updates[1].score, 1);
+        assert_eq!(frame.updates.updates[1].delay0, 1002);
+    }
+
+    #[test]
+    fn run_state_hooks_poison_post_action_clears_and_emits_release_after_tick() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let poison_state = builder
+            .register_state("core", "poison", "core.poison", ProcMask::POST_ACTION, SkillPriority(150))
+            .expect("poison state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 40, 3).with_magic(16),
+                PlayerTemplate::new(2, "right", 1, 40, 3),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(poison_state, run_poison_post_action_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::poison(
+            75,
+            poison_state,
+            Some(1),
+            Some(0),
+            80.0,
+            1,
+            SkillPriority(150),
+        ));
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("poison clear should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 39);
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(75), None);
+        assert_eq!(frame.updates.updates.len(), 4);
+        assert_eq!(frame.updates.updates[0].message, "[1][毒性发作]");
+        assert_eq!(frame.updates.updates[1].message, "[1]受到[2]点伤害");
+        assert_eq!(
+            frame.updates.updates[2].update_type,
+            crate::engine::update::UpdateType::NextLine
+        );
+        assert_eq!(frame.updates.updates[3].message, "[1]从[中毒]中解除");
+        assert_eq!(frame.updates.updates[3].caster, 0);
+        assert_eq!(frame.updates.updates[3].target, 0);
+    }
+
+    #[test]
+    fn run_state_hooks_poison_post_action_clears_without_release_when_tick_kills() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let poison_state = builder
+            .register_state("core", "poison", "core.poison", ProcMask::POST_ACTION, SkillPriority(150))
+            .expect("poison state should register");
+        let die_state = builder
+            .register_state("custom", "die", "custom.die", ProcMask::DIE, SkillPriority(0))
+            .expect("die state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 3, 3).with_magic(16),
+                PlayerTemplate::new(2, "right", 1, 40, 3),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(poison_state, run_poison_post_action_state);
+        runtime.set_state_handler(die_state, state_marks_update);
+        {
+            let store = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().states;
+            store.add_entry(StateEntry::poison(
+                75,
+                poison_state,
+                Some(1),
+                Some(0),
+                240.0,
+                1,
+                SkillPriority(150),
+            ));
+            store.add_entry(StateEntry {
+                legacy_order_key: 44,
+                extension_state_id: Some(die_state),
+                hook_mask: ProcMask::DIE,
+                priority: SkillPriority(0),
+                registration_order: RegistrationOrder(1),
+                payload: StatePayload::None,
+            });
+        }
+
+        let frame = runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("lethal poison tick should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 0);
+        assert!(!runtime.entities.get(EntityIdx(0)).unwrap().runtime.alive);
+        assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(75), None);
+        assert_eq!(
+            frame
+                .updates
+                .updates
+                .iter()
+                .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+                .map(|update| update.message.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["[1][毒性发作]", "[1]受到[2]点伤害", "state mark"]
+        );
+    }
+
+    #[test]
+    fn run_state_hooks_poison_post_action_skips_dead_owner_without_mutation() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let poison_state = builder
+            .register_state("core", "poison", "core.poison", ProcMask::POST_ACTION, SkillPriority(150))
+            .expect("poison state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![PlayerTemplate::new(1, "left", 0, 40, 3).with_magic(16)],
+            registry,
+        ));
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = false;
+        runtime.set_state_handler(poison_state, run_poison_post_action_state);
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::poison(
+            75,
+            poison_state,
+            Some(1),
+            Some(0),
+            160.0,
+            4,
+            SkillPriority(150),
+        ));
+
+        let frame = runtime.run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION);
+
+        assert!(frame.is_none());
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(0))
+                .unwrap()
+                .states
+                .entry(75)
+                .and_then(StateEntry::poison_value),
+            Some((Some(1), Some(0), 160.0, 4))
+        );
+    }
+
+    #[test]
     fn run_state_hooks_iron_post_action_decrements_step_without_update() {
         let mut builder = ExtensionRegistryBuilder::default();
         let iron_state = builder
@@ -7407,6 +7709,9 @@ mod tests {
         let marker_state = builder
             .register_state("custom", "marker", "custom.marker", ProcMask::POST_ACTION, SkillPriority(100))
             .expect("marker state should register");
+        let poison_state = builder
+            .register_state("core", "poison", "core.poison", ProcMask::POST_ACTION, SkillPriority(0))
+            .expect("poison state should register");
         let haste_state = builder
             .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
             .expect("haste state should register");
@@ -7440,6 +7745,15 @@ mod tests {
                 registration_order: RegistrationOrder(1),
                 payload: StatePayload::None,
             });
+            store.add_entry(StateEntry::poison(
+                75,
+                poison_state,
+                Some(0),
+                Some(0),
+                80.0,
+                2,
+                SkillPriority(0),
+            ));
             store.add_entry(StateEntry::haste(77, haste_state, 2, 1, SkillPriority(100)));
             store.add_entry(StateEntry::charm(
                 76,
@@ -7455,6 +7769,7 @@ mod tests {
             store.add_entry(StateEntry::iron(79, iron_state, 300, 1, SkillPriority(10)));
         }
         runtime.set_state_handler(marker_state, state_marks_update);
+        runtime.set_state_handler(poison_state, run_poison_post_action_state);
         runtime.set_state_handler(haste_state, run_haste_post_action_state);
         runtime.set_state_handler(charm_state, run_charm_post_action_state);
         runtime.set_state_handler(slow_state, run_slow_post_action_state);
@@ -7472,6 +7787,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 (42, SkillPriority(100)),
+                (75, SkillPriority(150)),
                 (77, SkillPriority(210)),
                 (76, SkillPriority(210)),
                 (78, SkillPriority(210)),
@@ -7488,6 +7804,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 "state mark",
+                "[1][毒性发作]",
+                "[1]受到[2]点伤害",
                 "[1]从[疾走]中解除",
                 "[1]从[魅惑]中解除",
                 "[1]从[迟缓]中解除",

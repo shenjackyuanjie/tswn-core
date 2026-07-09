@@ -420,6 +420,12 @@ pub enum StatePayload {
         prob: i32,
         multiply: i32,
     },
+    Poison {
+        caster: Option<u32>,
+        target: Option<u32>,
+        atp_bits: u64,
+        count: i32,
+    },
     Haste {
         faster: i32,
         step: i32,
@@ -482,6 +488,30 @@ impl StateEntry {
             priority,
             registration_order: RegistrationOrder::default(),
             payload: StatePayload::Curse { prob, multiply },
+        }
+    }
+
+    pub fn poison(
+        legacy_order_key: u32,
+        state_id: StateId,
+        caster: Option<u32>,
+        target: Option<u32>,
+        atp: f64,
+        count: i32,
+        priority: SkillPriority,
+    ) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_ACTION,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::Poison {
+                caster,
+                target,
+                atp_bits: atp.to_bits(),
+                count,
+            },
         }
     }
 
@@ -550,6 +580,7 @@ impl StateEntry {
             StatePayload::None
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
+            | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
@@ -563,6 +594,7 @@ impl StateEntry {
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::Curse { .. }
+            | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
@@ -577,6 +609,26 @@ impl StateEntry {
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
+            | StatePayload::Poison { .. }
+            | StatePayload::Charm { .. }
+            | StatePayload::Slow { .. }
+            | StatePayload::Iron { .. } => None,
+        }
+    }
+
+    pub fn poison_value(&self) -> Option<(Option<u32>, Option<u32>, f64, i32)> {
+        match self.payload {
+            StatePayload::Poison {
+                caster,
+                target,
+                atp_bits,
+                count,
+            } => Some((caster, target, f64::from_bits(atp_bits), count)),
+            StatePayload::None
+            | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::ShieldValue(_)
+            | StatePayload::Curse { .. }
+            | StatePayload::Haste { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. } => None,
@@ -596,6 +648,7 @@ impl StateEntry {
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
+            | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Slow { .. }
             | StatePayload::Iron { .. } => None,
@@ -609,6 +662,7 @@ impl StateEntry {
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
+            | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Iron { .. } => None,
@@ -622,12 +676,15 @@ impl StateEntry {
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. } => None,
-            StatePayload::Haste { .. } | StatePayload::Charm { .. } | StatePayload::Slow { .. } => None,
+            StatePayload::Poison { .. } | StatePayload::Haste { .. } | StatePayload::Charm { .. } | StatePayload::Slow { .. } => {
+                None
+            }
         }
     }
 
     pub fn priority_for_hook(&self, hook: ProcMask) -> SkillPriority {
         match self.payload {
+            StatePayload::Poison { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(150),
             StatePayload::Haste { .. } | StatePayload::Charm { .. } | StatePayload::Slow { .. }
                 if hook.intersects(ProcMask::POST_ACTION) =>
             {
@@ -678,7 +735,10 @@ impl StateStore {
                 StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } | StatePayload::Iron { .. } => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
-                StatePayload::Haste { .. } | StatePayload::Charm { .. } | StatePayload::Slow { .. } => {
+                StatePayload::Poison { .. }
+                | StatePayload::Haste { .. }
+                | StatePayload::Charm { .. }
+                | StatePayload::Slow { .. } => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
             }

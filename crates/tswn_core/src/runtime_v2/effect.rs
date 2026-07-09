@@ -18,6 +18,11 @@ pub enum QueuedEffect {
         target: EntityIdx,
         amount: i32,
     },
+    PoisonTick {
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+    },
     SummonExplode {
         caster: EntityIdx,
         target: EntityIdx,
@@ -879,6 +884,25 @@ pub struct RuntimeFrame {
 impl RuntimeFrame {
     pub fn damage_update(caster: usize, target: usize, amount: i32) -> RunUpdate {
         RunUpdate::new("[0]攻击[1]", caster, target, amount.max(0) as u32)
+    }
+
+    pub fn legacy_damage_update(caster: usize, target: usize, amount: i32) -> RunUpdate {
+        if amount <= 0 {
+            let mut update = RunUpdate::new("[0]受到[2]点伤害[s_dmg0]", target, target, 10);
+            update.param = Some(0);
+            return update;
+        }
+
+        let message = if amount >= 160 {
+            "[1]受到[2]点伤害[s_dmg160]"
+        } else if amount >= 120 {
+            "[1]受到[2]点伤害[s_dmg120]"
+        } else {
+            "[1]受到[2]点伤害"
+        };
+        let mut update = RunUpdate::new(message, caster, target, amount as u32);
+        update.delay0 = if amount > 250 { 1500 } else { 1000 + amount * 2 };
+        update
     }
 
     pub fn heal_update(caster: usize, target: usize, amount: i32) -> RunUpdate {
