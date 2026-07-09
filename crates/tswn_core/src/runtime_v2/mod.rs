@@ -381,6 +381,23 @@ pub fn next_minion_name_from_entity_slot(
     Ok(format!("{root_name}?{next}"))
 }
 
+pub fn push_minion_from_template_with_allocated_name(
+    context: &mut SkillContext<'_>,
+    counter_slot: EntitySlotId,
+    mut minion_template: PlayerTemplate,
+    message: impl Into<String>,
+) -> Result<EntityIdx, RuntimeV2MinionHandlerError> {
+    let minion_name = next_minion_name_from_entity_slot(context, counter_slot)?;
+    let next_entity = EntityIdx(context.entity_count().try_into().expect("runtime_v2 entity index overflow"));
+    minion_template.name = minion_name;
+    context.push_nested(QueuedEffect::SpawnWithMessage {
+        caster: context.owner_idx(),
+        template: minion_template,
+        message: message.into(),
+    });
+    Ok(next_entity)
+}
+
 pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
     let Some(entity) = entity else {
         return 0;
@@ -3205,6 +3222,70 @@ mod tests {
     }
 
     #[test]
+    fn push_minion_from_template_with_allocated_name_sets_name_and_spawns() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let counter_slot = builder
+            .reserve_entity_slot("custom", "minion-counter", "custom.minion.counter")
+            .expect("minion counter slot should reserve");
+        let minion_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "minion-spawn",
+                "custom.minion_spawn",
+                ProcMask::PRE_ACTION,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("minion spawn skill should register");
+        let minion_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "minion",
+                "custom.minion",
+                PlayerKindFlags::MINION,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::None,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("minion kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 20, 3).with_skills([minion_skill]),
+                PlayerTemplate::new(2, "enemy", 1, 10, 1),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler_with_capabilities(
+            minion_skill,
+            skill_pushes_named_minion_spawn,
+            &[ExtensionCapability::MutateEntitySlots],
+        );
+
+        let frame = runtime
+            .run_skill_hooks(EntityIdx(0), ProcMask::PRE_ACTION)
+            .expect("named minion spawn should emit update");
+
+        assert_eq!(frame.updates.updates.len(), 1);
+        assert_eq!(frame.updates.updates[0].message, "召唤出[1]");
+        assert_eq!(frame.updates.updates[0].caster, 0);
+        assert_eq!(frame.updates.updates[0].target, 2);
+        assert_eq!(runtime.entities.len(), 3);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().slots.get(counter_slot),
+            Some(&SlotValue::U64(1))
+        );
+        let minion = runtime.entities.get(EntityIdx(2)).expect("minion should spawn");
+        assert_eq!(minion.template.name, "owner?0");
+        assert_eq!(minion.template.kind, minion_kind);
+        assert_eq!(minion.runtime.owner, EntityIdx(0));
+        assert_eq!(minion.runtime.root_owner, EntityIdx(0));
+    }
+
+    #[test]
     fn minion_display_index_for_entity_matches_legacy_name_suffix() {
         let mut builder = ExtensionRegistryBuilder::default();
         let minion_kind = builder
@@ -3999,6 +4080,14 @@ mod tests {
             Err(RuntimeV2MinionHandlerError::Context(EffectContextError::MissingCapability(
                 ExtensionCapability::ReadAllies
             )))
+        );
+    }
+
+    fn skill_pushes_named_minion_spawn(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        let minion_template = PlayerTemplate::with_kind(3, "placeholder", PlayerKindId(0), 0, 5, 1);
+        assert_eq!(
+            push_minion_from_template_with_allocated_name(context, EntitySlotId(0), minion_template, "召唤出[1]"),
+            Ok(EntityIdx(2))
         );
     }
 
