@@ -574,6 +574,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 已补 custom summon 复合 fixture，覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留与 recast handler 原实体复活复用；
 - 已补 custom minion owner cleanup fixture，覆盖 owner 致死或显式 remove 时 linked minion 按实体顺序死亡、移出 round/alive views 并输出消失帧；
 - 已把 linked minion owner death cleanup 纳入 custom runner strict-diff golden，覆盖消失帧、winner 与 WorldArena 派生视图；
+- 已把 merge 纳入 custom runner strict-diff golden，覆盖吞噬/属性上升帧、score 与 fixed-lane 技能槽继承；
 - 为关键行为设计 repo 内 extension fixture；
 - 标出需要 capability 例外的跨实体读取点。
 

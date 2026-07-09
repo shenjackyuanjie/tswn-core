@@ -2239,6 +2239,102 @@ mod tests {
         assert_eq!(strict_diff(&expected, &actual), Ok(()));
     }
 
+    #[test]
+    fn custom_runner_merge_matches_strict_diff_golden() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let skill_a = builder
+            .register_skill("custom", "runner-a", "custom.runner_a", TargetPolicy::Enemy, SkillPriority(0))
+            .expect("runner skill should register");
+        let skill_b = builder
+            .register_skill("custom", "runner-b", "custom.runner_b", TargetPolicy::Enemy, SkillPriority(1))
+            .expect("runner skill should register");
+        let skill_c = builder
+            .register_skill("custom", "runner-c", "custom.runner_c", TargetPolicy::Enemy, SkillPriority(2))
+            .expect("runner skill should register");
+        let merge_kind = builder
+            .register_player_kind_with_policies(
+                "custom",
+                "runner-merge",
+                "custom.runner_merge",
+                PlayerKindFlags::NONE,
+                PlayerKindPolicies {
+                    owner_resolution: OwnerResolutionPolicy::SelfEntity,
+                    damage_share: DamageSharePolicy::None,
+                    merge: MergePolicy::FixedLane,
+                    inherit_owner_def_res: false,
+                },
+            )
+            .expect("runner merge kind should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::with_kind(1, "merge-owner", merge_kind, 0, 10, 3).with_skills([skill_a]),
+                PlayerTemplate::new(2, "merge-target", 1, 10, 3).with_skills([skill_b, skill_c]),
+            ],
+            registry,
+        ));
+
+        runtime.effects.push(QueuedEffect::Merge {
+            caster: EntityIdx(0),
+            target: EntityIdx(1),
+        });
+
+        let frame = runtime.flush_effects().expect("runner merge should emit updates");
+        let outcome = RoundOutcome {
+            action: None,
+            frame: Some(frame),
+            winner_team: runtime.world.sync_winner(&runtime.entities),
+        };
+        let actual = NormalizedOutcome::from_runtime(&runtime, &outcome);
+        let expected = NormalizedOutcome {
+            winner_team: None,
+            round: 0,
+            total_score: 60,
+            rng: crate::runtime_v2::oracle::NormalizedRngCheckpoint::default(),
+            entity_ids: vec![1, 2],
+            teams: vec![0, 1],
+            hp: vec![10, 10],
+            defense: vec![0, 0],
+            resistance: vec![0, 0],
+            alive: vec![true, true],
+            round_order: vec![0, 1],
+            flat_alive: vec![0, 1],
+            team_alive: vec![vec![0], vec![1]],
+            alive_group_count: 2,
+            actions: Vec::new(),
+            frames: vec![
+                NormalizedUpdateFrame {
+                    message: "[0][吞噬]了[1]".to_owned(),
+                    caster: 0,
+                    target: 1,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 60,
+                    delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                    delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                    update_type: crate::engine::update::UpdateType::None,
+                },
+                NormalizedUpdateFrame {
+                    message: "[0]属性上升".to_owned(),
+                    caster: 0,
+                    target: 1,
+                    targets: Vec::new(),
+                    param: None,
+                    score: 0,
+                    delay0: crate::engine::update::DEFAULT_DELAY0_MS,
+                    delay1: crate::engine::update::DEFAULT_DELAY1_MS,
+                    update_type: crate::engine::update::UpdateType::None,
+                },
+            ],
+        };
+
+        assert_eq!(
+            runtime.entities.get(EntityIdx(0)).unwrap().template.skills.skills(),
+            &[skill_b, skill_c]
+        );
+        assert_eq!(strict_diff(&expected, &actual), Ok(()));
+    }
+
     fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
         let CustomEffectPayload::Text(message) = &effect.payload else {
             panic!("custom test effect expects text payload");
