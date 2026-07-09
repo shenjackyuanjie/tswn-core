@@ -420,6 +420,10 @@ pub enum StatePayload {
         prob: i32,
         multiply: i32,
     },
+    Iron {
+        protect: i32,
+        step: i32,
+    },
 }
 
 impl StateEntry {
@@ -467,17 +471,40 @@ impl StateEntry {
         }
     }
 
+    pub fn iron(legacy_order_key: u32, state_id: StateId, protect: i32, step: i32, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_DEFEND,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::Iron { protect, step },
+        }
+    }
+
     pub fn fire_mag_value(&self) -> Option<f64> {
         match self.payload {
             StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(half_steps) * 0.5),
-            StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } => None,
+            StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } | StatePayload::Iron { .. } => None,
         }
     }
 
     pub fn shield_value(&self) -> Option<i32> {
         match self.payload {
             StatePayload::ShieldValue(shield) => Some(shield),
-            StatePayload::None | StatePayload::FireMagHalfSteps(_) | StatePayload::Curse { .. } => None,
+            StatePayload::None | StatePayload::FireMagHalfSteps(_) | StatePayload::Curse { .. } | StatePayload::Iron { .. } => {
+                None
+            }
+        }
+    }
+
+    pub fn iron_value(&self) -> Option<(i32, i32)> {
+        match self.payload {
+            StatePayload::Iron { protect, step } => Some((protect, step)),
+            StatePayload::None
+            | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::ShieldValue(_)
+            | StatePayload::Curse { .. } => None,
         }
     }
 }
@@ -518,7 +545,7 @@ impl StateStore {
                 StatePayload::FireMagHalfSteps(half_steps) => {
                     *half_steps += 1;
                 }
-                StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } => {
+                StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } | StatePayload::Iron { .. } => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
             }

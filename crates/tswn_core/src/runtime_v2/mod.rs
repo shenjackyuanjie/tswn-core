@@ -526,6 +526,47 @@ pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &State
     }
 }
 
+pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
+    let Some(StatePayload::Iron { protect, step }) = context.owner_state_payload(entry.legacy_order_key) else {
+        return;
+    };
+    if step <= 0 || protect <= 0 {
+        return;
+    }
+
+    let damage = context.defend_damage().expect("iron state should run during POST_DEFEND");
+    if damage <= 0 {
+        context.set_defend_damage(0);
+        return;
+    }
+
+    let caster = context.defend_caster().expect("iron state should receive incoming defend caster");
+    let target = context.defend_target().expect("iron state should receive incoming defend target");
+    if damage <= protect {
+        let defended = context
+            .last_non_newline_update()
+            .map(|update| {
+                update.message == "[0][防御]" && update.caster == target.0 as usize && update.target == caster.0 as usize
+            })
+            .unwrap_or(false);
+        context.set_defend_damage(if defended { 0 } else { 1 });
+        return;
+    }
+
+    let remaining = damage - protect;
+    context
+        .set_owner_state_payload(entry.legacy_order_key, StatePayload::Iron { protect: 0, step: 0 })
+        .expect("iron state payload should still exist");
+    context.set_defend_damage(remaining);
+    context.add_newline();
+    context.add_update(crate::engine::update::RunUpdate::new(
+        "[1]的[铁壁]被打消了",
+        caster.0 as usize,
+        target.0 as usize,
+        0,
+    ));
+}
+
 pub fn next_minion_name_from_entity_slot(
     context: &mut SkillContext<'_>,
     counter_slot: EntitySlotId,
@@ -3684,6 +3725,286 @@ mod tests {
     }
 
     #[test]
+    fn summon_explode_post_defend_iron_reduces_absorbed_damage_to_one() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let iron_state = builder
+            .register_state("core", "iron", "core.iron", ProcMask::POST_DEFEND, SkillPriority(10))
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::iron(
+            79,
+            iron_state,
+            500,
+            3,
+            SkillPriority(10),
+        ));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 4.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let raw_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        assert!((1..=500).contains(&raw_amount));
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("iron absorbed summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 9_999);
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(1))
+                .unwrap()
+                .states
+                .entry(79)
+                .and_then(StateEntry::iron_value),
+            Some((500, 3))
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.5);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].score, 1);
+    }
+
+    #[test]
+    fn summon_explode_post_defend_iron_reduces_defended_damage_to_zero() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let defend_skill = builder
+            .register_skill_with_hooks(
+                "custom",
+                "defend-marker",
+                "custom.defend_marker",
+                ProcMask::POST_DEFEND,
+                TargetPolicy::None,
+                SkillPriority(0),
+            )
+            .expect("defend marker skill should register");
+        let iron_state = builder
+            .register_state("core", "iron", "core.iron", ProcMask::POST_DEFEND, SkillPriority(10))
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3)
+                    .with_def_res(0, 16)
+                    .with_skills([defend_skill]),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_skill_handler(defend_skill, skill_marks_defend_replay);
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::iron(
+            79,
+            iron_state,
+            500,
+            3,
+            SkillPriority(10),
+        ));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 4.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let raw_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        assert!((1..=500).contains(&raw_amount));
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("defended iron summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000);
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(1))
+                .unwrap()
+                .states
+                .entry(79)
+                .and_then(StateEntry::iron_value),
+            Some((500, 3))
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.0);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 3);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[0][防御]");
+        assert_eq!(frame.updates.updates[1].caster, 1);
+        assert_eq!(frame.updates.updates[1].target, 2);
+        assert_eq!(frame.updates.updates[2].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[2].score, 0);
+    }
+
+    #[test]
+    fn summon_explode_post_defend_iron_breaks_and_emits_cancel_replay() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let iron_state = builder
+            .register_state("core", "iron", "core.iron", ProcMask::POST_DEFEND, SkillPriority(10))
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::iron(
+            79,
+            iron_state,
+            3,
+            3,
+            SkillPriority(10),
+        ));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 4.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let raw_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        assert!(raw_amount > 3);
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("broken iron summon explode should emit updates");
+
+        assert_eq!(
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp,
+            10_000 - (raw_amount - 3)
+        );
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(1))
+                .unwrap()
+                .states
+                .entry(79)
+                .and_then(StateEntry::iron_value),
+            Some((0, 0))
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.5);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 4);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(
+            frame.updates.updates[1].update_type,
+            crate::engine::update::UpdateType::NextLine
+        );
+        assert_eq!(frame.updates.updates[2].message, "[1]的[铁壁]被打消了");
+        assert_eq!(frame.updates.updates[2].caster, 2);
+        assert_eq!(frame.updates.updates[2].target, 1);
+        assert_eq!(frame.updates.updates[3].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[3].score, (raw_amount - 3) as u32);
+    }
+
+    #[test]
+    fn summon_explode_post_defend_iron_skips_state_change_when_damage_is_zero() {
+        let mut builder = ExtensionRegistryBuilder::default();
+        let shield_state = builder
+            .register_state("core", "shield", "core.shield", ProcMask::POST_DEFEND, SkillPriority(0))
+            .expect("shield state should register");
+        let iron_state = builder
+            .register_state("core", "iron", "core.iron", ProcMask::POST_DEFEND, SkillPriority(10))
+            .expect("iron state should register");
+        let registry = builder.build();
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "owner", 0, 10, 3),
+                PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
+                PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+            ],
+            registry,
+        ));
+        runtime.set_state_handler(shield_state, run_shield_post_defend_state);
+        runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::shield(
+            77,
+            shield_state,
+            500,
+            SkillPriority(0),
+        ));
+        runtime.entities.get_mut(EntityIdx(1)).unwrap().states.add_entry(StateEntry::iron(
+            79,
+            iron_state,
+            300,
+            3,
+            SkillPriority(10),
+        ));
+        let mut expected_rng = RC4::default();
+        let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 4.0;
+        assert!(!PlayerRuntime::dodge(
+            runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+            runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+            &mut expected_rng
+        ));
+        let raw_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+        assert!(raw_amount < 500);
+        runtime.effects.push(QueuedEffect::SummonExplode {
+            caster: EntityIdx(2),
+            target: EntityIdx(1),
+            fire_state_key: 91,
+        });
+
+        let frame = runtime.flush_effects().expect("zero damage iron summon explode should emit updates");
+
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000);
+        assert_eq!(
+            runtime
+                .entities
+                .get(EntityIdx(1))
+                .unwrap()
+                .states
+                .entry(79)
+                .and_then(StateEntry::iron_value),
+            Some((300, 3))
+        );
+        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.0);
+        assert_eq!(runtime.rng.i, expected_rng.i);
+        assert_eq!(runtime.rng.j, expected_rng.j);
+        assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+        assert_eq!(frame.updates.updates.len(), 2);
+        assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+        assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
+        assert_eq!(frame.updates.updates[1].score, 0);
+    }
+
+    #[test]
     fn summon_explode_post_defend_curse_doubles_damage_and_emits_replay() {
         let mut builder = ExtensionRegistryBuilder::default();
         let curse_state = builder
@@ -5611,6 +5932,17 @@ mod tests {
             entry.skill_id.0,
         ));
         context.set_defend_atp(0.0);
+    }
+
+    fn skill_marks_defend_replay(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+        let caster = context.defend_caster().expect("post-defend skill should receive incoming caster");
+        let target = context.defend_target().expect("post-defend skill should receive incoming target");
+        context.add_update(crate::engine::update::RunUpdate::new(
+            "[0][防御]",
+            target.0 as usize,
+            caster.0 as usize,
+            0,
+        ));
     }
 
     fn skill_halves_defend_damage(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {

@@ -1,4 +1,4 @@
-use crate::engine::update::{RunUpdate, RunUpdates};
+use crate::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use crate::rc4::RC4;
 use crate::runtime_v2::entity::{EntityIdx, PlayerTemplate, StateEntry, StatePayload};
 use crate::runtime_v2::extension::{
@@ -382,6 +382,16 @@ impl<'a> EffectContext<'a> {
 
     pub fn add_update(&mut self, update: RunUpdate) { self.updates.add(update); }
 
+    pub fn add_newline(&mut self) { self.updates.add_newline(); }
+
+    pub fn last_non_newline_update(&self) -> Option<&RunUpdate> {
+        self.updates
+            .updates
+            .iter()
+            .rev()
+            .find(|update| !matches!(update.update_type, UpdateType::NextLine))
+    }
+
     pub fn rng_next_u8(&mut self) -> u8 { self.rng.next_u8() }
 
     pub fn rng_next_i32(&mut self, max: i32) -> i32 { self.rng.next_i32(max) }
@@ -485,6 +495,16 @@ impl<'a> SkillContext<'a> {
     pub fn push_nested(&mut self, effect: QueuedEffect) { self.queue.push_nested(effect); }
 
     pub fn add_update(&mut self, update: RunUpdate) { self.updates.add(update); }
+
+    pub fn add_newline(&mut self) { self.updates.add_newline(); }
+
+    pub fn last_non_newline_update(&self) -> Option<&RunUpdate> {
+        self.updates
+            .updates
+            .iter()
+            .rev()
+            .find(|update| !matches!(update.update_type, UpdateType::NextLine))
+    }
 
     pub fn rng_next_u8(&mut self) -> u8 { self.rng.next_u8() }
 
@@ -623,6 +643,16 @@ impl<'a> StateContext<'a> {
     pub fn push_nested(&mut self, effect: QueuedEffect) { self.queue.push_nested(effect); }
 
     pub fn add_update(&mut self, update: RunUpdate) { self.updates.add(update); }
+
+    pub fn add_newline(&mut self) { self.updates.add_newline(); }
+
+    pub fn last_non_newline_update(&self) -> Option<&RunUpdate> {
+        self.updates
+            .updates
+            .iter()
+            .rev()
+            .find(|update| !matches!(update.update_type, UpdateType::NextLine))
+    }
 
     pub fn rng_next_u8(&mut self) -> u8 { self.rng.next_u8() }
 
