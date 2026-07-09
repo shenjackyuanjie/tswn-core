@@ -39,7 +39,7 @@ git diff --name-status github/main..github/custom
 | summon/root-owner 伤害路由 | summon clone damage route to root owner | `OwnerResolutionPolicy::RootOwner` | 已接入并在 custom summon 复合 fixture 中覆盖 | root owner 承伤、致死 hook 目标一致 |
 | summon 伤害共享 owner | child/summon damage share owner | `DamageSharePolicy::ShareToOwner` | 已接入并测试 owner 共享致死 hook；复合 fixture 覆盖 summon policy 注册 | 子实体受伤同步扣 owner，owner 死亡 hook 顺序一致 |
 | owner 伤害共享 summon | owner damage share alive summons | `DamageSharePolicy::ShareToSummons` | 已接入并在 custom summon 复合 fixture 中覆盖按实体顺序共享 | owner 受伤同步扣存活 summon，顺序稳定 |
-| minion heal sharing 移除/调整 | custom minion 行为集中在 `act/minion.rs` 与 `player/test/minions.rs` | player kind policy 或 damage/share policy | 已有 v2 custom minion fixture 固化 damage 仍共享、heal 只作用目标实体，并补 owner death 时 linked minion 按实体顺序清理；仍缺完整真实 minion handler | minion 相关 heal 不再产生 custom 分支禁止的共享，owner 死亡同步清理 linked minion |
+| minion heal sharing 移除/调整 | custom minion 行为集中在 `act/minion.rs` 与 `player/test/minions.rs` | player kind policy 或 damage/share policy | 已有 v2 custom minion fixture 固化 damage 仍共享、heal 只作用目标实体，并补 owner death / explicit remove 时 linked minion 按实体顺序清理；仍缺完整真实 minion handler | minion 相关 heal 不再产生 custom 分支禁止的共享，owner 死亡同步清理 linked minion |
 | merge 固定槽继承 | custom 保留 `slot_skill` 固定槽语义以避免 merge 错位 | `MergePolicy::FixedLane` | 已接入并测试 fixed lane 合并 | 同槽位技能覆盖，未映射技能 append |
 | merge 丢弃未映射技能 | custom 分支支持 drop unmapped 语义 | `MergePolicy::DropUnmappedSkills` | 已接入并测试 drop unmapped | 未映射来源技能不进入 caster loadout |
 | merge replay | custom replay 使用吞噬/属性上升展示 | `QueuedEffect::Merge` replay update | 已输出 `[0][吞噬]了[1]` 与 `[0]属性上升` | merge frame 顺序、score 分别为 60/0 |
@@ -53,7 +53,7 @@ git diff --name-status github/main..github/custom
 
 1. **bed2 registry/import fixture**：已注册 `custom.bed2` kind、固定 summon skill、HP marker slot，并覆盖 `bed2[...]` / `@bed2` marker 到 v2 template 的最小导入、Player facade id-name 归一化桥接、typed summon template payload 读取后 spawn，以及 grouped raw bed2 roster 到 `PreparedCombatTemplate` 的 helper；后续补 mixed legacy roster / runner 正式接入。
 2. **summon policy fixture**：已覆盖 root-owner 路由、owner/summon 伤害共享、spawn 后技能保留、owner defense/resistance 继承，以及 recast handler 死亡后原实体复活复用；后续补完整内置 summon 技能迁移。
-3. **minion fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享，以及 owner death 清理 linked minion；后续补完整真实 minion handler。
+3. **minion fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享，以及 owner death / explicit remove 清理 linked minion；后续补完整真实 minion handler。
 4. **merge fixture**：使用 `FixedLane` 与 `DropUnmappedSkills` 两组 golden 覆盖 replay 与 loadout。
 5. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data，并补 HP bar show renderer payload；wasm 结构化 replay view 已对 HP marker 强制 `show_hp`。
 6. **runner fixture**：已新增最小 v2 strict-diff golden，并把 linked minion owner-death cleanup 纳入归一化 runner golden；后续把 custom 分支 large / fight_multi 的关键样例缩成更多 runner golden。
@@ -71,7 +71,7 @@ git diff --name-status github/main..github/custom
 - `PlayerKindPolicies::inherit_owner_def_res` 已覆盖 custom summon 继承 owner 防御/魔防的数据面。
 - summon recast handler fixture 已通过 owner entity slot 记录 summon 实体，并覆盖死亡后重施复活同一 `EntityIdx`、保留技能 loadout 和 owner/root-owner 元数据。
 - `QueuedEffect::Heal` 已用 custom minion fixture 固化不触发 owner/summon damage share。
-- linked minion cleanup 已接入 v2 damage pipeline，owner 致死时按实体顺序把存活 minion 标记死亡、移出 round/alive views 并输出 `[1]消失了`。
+- linked minion cleanup 已接入 v2 damage/remove pipeline，owner 致死或显式 remove 时按实体顺序把存活 minion 标记死亡、移出 round/alive views 并输出 `[1]消失了`。
 - `MergePolicy::FixedLane` / `DropUnmappedSkills` 已覆盖 custom merge 数据面。
 - `RuntimeFrame::render_core_replay` / `render_core_show` 已提供 show 迁移前的最小 golden 面。
 - HP marker show renderer fixture 已固化 `hp-bar` payload，保留 `[2]` HP 数值给展示层使用。
