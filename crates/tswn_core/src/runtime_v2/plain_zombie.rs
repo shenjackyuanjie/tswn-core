@@ -3,12 +3,17 @@ use super::*;
 impl CombatRuntime {
     pub fn drain_plain_kill_skill_plan_into(&mut self, plan: &SkillHookPlan, killed_target: EntityIdx, updates: &mut RunUpdates) {
         for entry in &plan.entries {
-            let is_zombie = self
-                .registry
-                .skill(entry.skill_id)
-                .is_some_and(|skill| skill.export_name == DEFAULT_CORE_ZOMBIE_SKILL_EXPORT);
-            if is_zombie {
-                self.drain_plain_zombie_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates);
+            let export_name = self.registry.skill(entry.skill_id).map(|skill| skill.export_name.as_str());
+            if export_name == Some(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT) {
+                if self.drain_plain_zombie_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates) {
+                    break;
+                }
+                continue;
+            }
+            if export_name == Some(DEFAULT_CORE_MERGE_SKILL_EXPORT) {
+                if self.drain_plain_merge_kill_skill_into(entry.owner, entry.fixed_lane, killed_target, updates) {
+                    break;
+                }
                 continue;
             }
             let entry_plan = SkillHookPlan {
@@ -27,7 +32,7 @@ impl CombatRuntime {
         fixed_lane: usize,
         killed_target: EntityIdx,
         updates: &mut RunUpdates,
-    ) {
+    ) -> bool {
         let target_is_combat_minion = self
             .entities
             .get(killed_target)
@@ -35,7 +40,7 @@ impl CombatRuntime {
             .runtime
             .is_combat_minion();
         if target_is_combat_minion {
-            return;
+            return false;
         }
 
         let level = self
@@ -44,7 +49,7 @@ impl CombatRuntime {
             .and_then(|entity| entity.template.skills.level_at(fixed_lane))
             .unwrap_or_else(|| panic!("runtime_v2 zombie level missing for fixed lane {fixed_lane}"));
         if self.rng.r63() >= level {
-            return;
+            return false;
         }
 
         let blueprint_slot = self
@@ -58,7 +63,7 @@ impl CombatRuntime {
         };
         if blueprint.is_none() {
             self.mark_zombie_corpse(killed_target);
-            return;
+            return true;
         }
         if !self
             .entities
@@ -67,7 +72,7 @@ impl CombatRuntime {
             .runtime
             .mp_ready(&mut self.rng)
         {
-            return;
+            return false;
         }
 
         self.mark_zombie_corpse(killed_target);
@@ -90,6 +95,25 @@ impl CombatRuntime {
         let mut zombied = crate::engine::update::RunUpdate::new("[2]变成了[1]", caster.0 as usize, zombie.0 as usize, 0);
         zombied.targets.push(killed_target.0 as usize);
         updates.add(zombied);
+        true
+    }
+
+    pub fn drain_plain_merge_kill_skill_into(
+        &mut self,
+        caster: EntityIdx,
+        fixed_lane: usize,
+        killed_target: EntityIdx,
+        updates: &mut RunUpdates,
+    ) -> bool {
+        let level = self
+            .entities
+            .get(caster)
+            .and_then(|entity| entity.template.skills.level_at(fixed_lane))
+            .unwrap_or_else(|| panic!("runtime_v2 merge level missing for fixed lane {fixed_lane}"));
+        if self.rng.r63() >= level {
+            return false;
+        }
+        self.apply_plain_merge_into(caster, killed_target, updates)
     }
 
     pub fn mark_zombie_corpse(&mut self, target: EntityIdx) {

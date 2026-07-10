@@ -60,7 +60,7 @@ impl CombatRuntime {
                     self.ensure_effect_entity("poison tick", "caster", caster);
                     self.ensure_effect_entity("poison tick", "target", target);
                     if self.apply_poison_tick_damage_into(caster, target, amount, updates) {
-                        self.drain_lethal_damage_hooks_into(caster, target, updates);
+                        self.drain_plain_lethal_damage_into(caster, target, updates);
                     } else if self.entities.get(target).map(|entity| entity.runtime.alive).unwrap_or(false) {
                         self.emit_poison_release_if_cleared(target, updates);
                     }
@@ -421,80 +421,11 @@ impl CombatRuntime {
                     target_entity.runtime.hp = 0;
                     target_entity.runtime.alive = false;
                     let team = target_entity.runtime.team;
-                    self.world.mark_dead(target, team);
                     updates.add(RuntimeFrame::remove_update(caster.0 as usize, target.0 as usize));
-                    self.cleanup_linked_minions_for_owner(target, updates);
+                    self.mark_dead_with_linked_minions_into(target, team, updates);
                 }
                 QueuedEffect::Merge { caster, target } => {
-                    self.ensure_effect_entity("merge", "caster", caster);
-                    self.ensure_effect_entity("merge", "target", target);
-                    let target_skills = self.entities.get(target).unwrap().template.skills.clone();
-                    let target_build = self.entities.get(target).unwrap().template.clone_build.clone();
-                    let target_magic_point = self.entities.get(target).unwrap().runtime.magic_point;
-                    let target_move_points = self.entities.get(target).unwrap().runtime.move_state.speed_points;
-                    let (merged, transfer_magic_point, transfer_move_points) = {
-                        let Some(caster_entity) = self.entities.get_mut(caster) else {
-                            panic!("unknown runtime_v2 merge caster entity: {}", caster.0);
-                        };
-                        let merged_attrs = match (caster_entity.template.clone_build.as_mut(), target_build.as_ref()) {
-                            (Some(owner_build), Some(target_build)) => owner_build.merge_attrs_from(target_build),
-                            _ => false,
-                        };
-                        if merged_attrs {
-                            let stats = caster_entity
-                                .template
-                                .clone_build
-                                .as_ref()
-                                .expect("runtime_v2 merge owner build disappeared")
-                                .derive_stats();
-                            caster_entity.apply_derived_stats(stats);
-                        }
-                        let merged_skills = caster_entity
-                            .template
-                            .skills
-                            .merge_fixed_lanes_from(&target_skills, caster_entity.runtime.policies.merge);
-                        let transfer_magic_point = target_magic_point > caster_entity.runtime.magic_point;
-                        if transfer_magic_point {
-                            caster_entity.runtime.magic_point = target_magic_point;
-                        }
-                        let transfer_move_points = target_move_points > caster_entity.runtime.move_state.speed_points;
-                        if transfer_move_points {
-                            caster_entity.runtime.move_state.speed_points += target_move_points;
-                        }
-                        (merged_attrs || merged_skills, transfer_magic_point, transfer_move_points)
-                    };
-                    if transfer_magic_point || transfer_move_points {
-                        let target_entity = self
-                            .entities
-                            .get_mut(target)
-                            .unwrap_or_else(|| panic!("unknown runtime_v2 merge target entity: {}", target.0));
-                        if transfer_magic_point {
-                            target_entity.runtime.magic_point = 0;
-                        }
-                        if transfer_move_points {
-                            target_entity.runtime.move_state.speed_points = 0;
-                        }
-                    }
-                    if merged {
-                        self.entities
-                            .get_mut(target)
-                            .unwrap_or_else(|| panic!("runtime_v2 merge target disappeared: {}", target.0))
-                            .runtime
-                            .corpse = RuntimeCorpseKind::Merge;
-                        updates.add_newline();
-                        updates.add(crate::engine::update::RunUpdate::new(
-                            "[0][吞噬]了[1]",
-                            caster.0 as usize,
-                            target.0 as usize,
-                            60,
-                        ));
-                        updates.add(crate::engine::update::RunUpdate::new(
-                            "[0]属性上升",
-                            caster.0 as usize,
-                            target.0 as usize,
-                            0,
-                        ));
-                    }
+                    self.apply_plain_merge_into(caster, target, updates);
                 }
                 QueuedEffect::Replay {
                     caster,
@@ -535,5 +466,80 @@ impl CombatRuntime {
                 }
             }
         }
+    }
+
+    pub fn apply_plain_merge_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) -> bool {
+        self.ensure_effect_entity("merge", "caster", caster);
+        self.ensure_effect_entity("merge", "target", target);
+        let target_skills = self.entities.get(target).unwrap().template.skills.clone();
+        let target_build = self.entities.get(target).unwrap().template.clone_build.clone();
+        let target_magic_point = self.entities.get(target).unwrap().runtime.magic_point;
+        let target_move_points = self.entities.get(target).unwrap().runtime.move_state.speed_points;
+        let (merged, transfer_magic_point, transfer_move_points) = {
+            let caster_entity = self
+                .entities
+                .get_mut(caster)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 merge caster entity: {}", caster.0));
+            let merged_attrs = match (caster_entity.template.clone_build.as_mut(), target_build.as_ref()) {
+                (Some(owner_build), Some(target_build)) => owner_build.merge_attrs_from(target_build),
+                _ => false,
+            };
+            if merged_attrs {
+                let stats = caster_entity
+                    .template
+                    .clone_build
+                    .as_ref()
+                    .expect("runtime_v2 merge owner build disappeared")
+                    .derive_stats();
+                caster_entity.apply_derived_stats(stats);
+            }
+            let merged_skills = caster_entity
+                .template
+                .skills
+                .merge_fixed_lanes_from(&target_skills, caster_entity.runtime.policies.merge);
+            let transfer_magic_point = target_magic_point > caster_entity.runtime.magic_point;
+            if transfer_magic_point {
+                caster_entity.runtime.magic_point = target_magic_point;
+            }
+            let transfer_move_points = target_move_points > caster_entity.runtime.move_state.speed_points;
+            if transfer_move_points {
+                caster_entity.runtime.move_state.speed_points += target_move_points;
+            }
+            (merged_attrs || merged_skills, transfer_magic_point, transfer_move_points)
+        };
+        if transfer_magic_point || transfer_move_points {
+            let target_entity = self
+                .entities
+                .get_mut(target)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 merge target entity: {}", target.0));
+            if transfer_magic_point {
+                target_entity.runtime.magic_point = 0;
+            }
+            if transfer_move_points {
+                target_entity.runtime.move_state.speed_points = 0;
+            }
+        }
+        if !merged {
+            return false;
+        }
+        self.entities
+            .get_mut(target)
+            .unwrap_or_else(|| panic!("runtime_v2 merge target disappeared: {}", target.0))
+            .runtime
+            .corpse = RuntimeCorpseKind::Merge;
+        updates.add_newline();
+        updates.add(crate::engine::update::RunUpdate::new(
+            "[0][吞噬]了[1]",
+            caster.0 as usize,
+            target.0 as usize,
+            60,
+        ));
+        updates.add(crate::engine::update::RunUpdate::new(
+            "[0]属性上升",
+            caster.0 as usize,
+            target.0 as usize,
+            0,
+        ));
+        true
     }
 }

@@ -417,8 +417,7 @@ impl CombatRuntime {
         updates.add(replay(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         if killed {
-            self.world.mark_dead(target, team);
-            self.cleanup_linked_minions_for_owner(target, updates);
+            self.mark_dead_with_linked_minions_into(target, team, updates);
         }
         killed
     }
@@ -430,7 +429,15 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
-        self.apply_legacy_damage_into(caster, target, amount, updates)
+        let target_entity = self
+            .entities
+            .get_mut(target)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 poison target entity: {}", target.0));
+        target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
+        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
+        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
+        killed
     }
 
     pub fn apply_disperse_attack_damage_into(
@@ -553,10 +560,14 @@ impl CombatRuntime {
         target_entity.runtime.alive = false;
         let team = target_entity.runtime.team;
         if killed {
-            self.world.mark_dead(target, team);
-            self.cleanup_linked_minions_for_owner(target, updates);
+            self.mark_dead_with_linked_minions_into(target, team, updates);
         }
         killed
+    }
+
+    pub fn mark_dead_with_linked_minions_into(&mut self, owner: EntityIdx, team: usize, updates: &mut RunUpdates) {
+        self.cleanup_linked_minions_for_owner(owner, updates);
+        self.world.mark_dead(owner, team);
     }
 
     pub fn cleanup_linked_minions_for_owner(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {

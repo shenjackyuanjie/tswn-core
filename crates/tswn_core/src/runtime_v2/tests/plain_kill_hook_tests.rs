@@ -28,6 +28,84 @@ fn queue_lethal_damage(runtime: &mut CombatRuntime, target: EntityIdx) {
     });
 }
 
+fn zombie_merge_kill_runtime(zombie_level: u32, target_zombie_level: u32) -> CombatRuntime {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let zombie = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT)
+        .expect("default profile should register zombie");
+    let merge = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_MERGE_SKILL_EXPORT)
+        .expect("default profile should register merge");
+    CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "killer", 0, 100, 10)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(zombie, zombie_level), (merge, 64)])),
+            PlayerTemplate::new(2, "victim", 1, 1, 10)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(zombie, target_zombie_level), (merge, 1)])),
+            PlayerTemplate::new(3, "enemy", 1, 100, 10),
+        ],
+        config.registry,
+    ))
+}
+
+fn zombie_first_kill_plan(runtime: &CombatRuntime) -> SkillHookPlan {
+    let mut plan = runtime
+        .scheduler
+        .skill_hook_plan(&runtime.entities, &runtime.registry, EntityIdx(0), ProcMask::KILL);
+    plan.entries.sort_by_key(|entry| {
+        let export_name = runtime.registry.skill(entry.skill_id).unwrap().export_name.as_str();
+        usize::from(export_name != DEFAULT_CORE_ZOMBIE_SKILL_EXPORT)
+    });
+    plan
+}
+
+#[test]
+fn zombie_trigger_stops_merge_kill_hook_before_second_rng_roll() {
+    let mut runtime = zombie_merge_kill_runtime(64, 64);
+    let mut expected_rng = runtime.rng.clone();
+    assert!(expected_rng.r63() < 64);
+    let plan = zombie_first_kill_plan(&runtime);
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_kill_skill_plan_into(&plan, EntityIdx(1), &mut updates);
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert_eq!(
+        runtime.entities.get(EntityIdx(1)).unwrap().runtime.corpse,
+        RuntimeCorpseKind::Zombie
+    );
+}
+
+#[test]
+fn zombie_failure_allows_merge_kill_hook_to_consume_next_rng_roll() {
+    let mut runtime = zombie_merge_kill_runtime(1, 64);
+    while {
+        let mut probe = runtime.rng.clone();
+        probe.r63() < 1
+    } {
+        runtime.rng.next_u8();
+    }
+    let mut expected_rng = runtime.rng.clone();
+    assert!(expected_rng.r63() >= 1);
+    assert!(expected_rng.r63() < 64);
+    let plan = zombie_first_kill_plan(&runtime);
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_kill_skill_plan_into(&plan, EntityIdx(1), &mut updates);
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert_eq!(
+        runtime.entities.get(EntityIdx(1)).unwrap().runtime.corpse,
+        RuntimeCorpseKind::Merge
+    );
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec!["\n", "[0][吞噬]了[1]", "[0]属性上升"]
+    );
+}
+
 #[test]
 fn terminal_kill_skips_kill_hooks_without_consuming_rng() {
     let mut runtime = kill_rng_runtime(vec![

@@ -368,8 +368,7 @@ impl CombatRuntime {
         }
 
         self.entities.get_mut(target).unwrap().runtime.alive = false;
-        self.world.mark_dead(target, team);
-        self.cleanup_linked_minions_for_owner(target, updates);
+        self.mark_dead_with_linked_minions_into(target, team, updates);
         if self.should_run_kill_hooks(caster, target) {
             self.drain_kill_hooks_into(caster, target, updates);
         }
