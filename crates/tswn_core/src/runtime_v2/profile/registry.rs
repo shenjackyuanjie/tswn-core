@@ -176,6 +176,13 @@ pub fn default_custom_runtime_v2_import_config()
             ..PlayerKindPolicies::default()
         },
     )?;
+    builder.register_player_kind_with_policies(
+        "core",
+        "zombie",
+        DEFAULT_CORE_ZOMBIE_KIND_EXPORT,
+        PlayerKindFlags::MINION,
+        PlayerKindPolicies::default(),
+    )?;
     let shield = builder.register_skill_with_hooks(
         "core",
         "shield",
@@ -238,6 +245,14 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::Enemy,
         SkillPriority(31),
     )?;
+    let zombie = builder.register_skill_with_hooks(
+        "core",
+        "zombie",
+        DEFAULT_CORE_ZOMBIE_SKILL_EXPORT,
+        ProcMask::KILL,
+        TargetPolicy::Enemy,
+        SkillPriority(32),
+    )?;
     let reraise = builder.register_skill_with_hooks(
         "core",
         "reraise",
@@ -248,6 +263,7 @@ pub fn default_custom_runtime_v2_import_config()
     )?;
     builder.reserve_entity_slot("core", "shadow-blueprint", DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "summon-blueprint", DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)?;
+    builder.reserve_entity_slot("core", "zombie-blueprint", DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "summoned-entity", DEFAULT_CORE_SUMMON_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "minion-counter", DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("custom", "bed2-summoned-entity", DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT)?;
@@ -345,6 +361,7 @@ pub fn default_custom_runtime_v2_import_config()
         .with_skill_handler(hide, run_plain_passive_noop_skill)
         .with_skill_handler(counter, run_plain_passive_noop_skill)
         .with_skill_handler(merge, run_merge_kill_skill)
+        .with_skill_handler(zombie, run_plain_passive_noop_skill)
         .with_skill_handler(reraise, run_reraise_die_skill)
         .with_state_handler(charm_state, run_charm_post_action_state)
         .with_state_handler(curse_state, run_curse_post_defend_state)

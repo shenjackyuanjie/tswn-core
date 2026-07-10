@@ -37,7 +37,7 @@ fn plain_summon_probability_gates_low_smart_hp_and_alive_remembered_entity_witho
 fn plain_summon_spawns_once_then_resets_and_revives_the_same_entity() {
     let mut runtime = summon_runtime();
     let owner = EntityIdx(1);
-    let summoned = EntityIdx(2);
+    let summoned = EntityIdx(3);
     let mut expected_rng = runtime.rng.clone();
     let expected_move_points = expected_rng.r255() as i32 * 4;
     let mut updates = RunUpdates::new();
@@ -45,7 +45,7 @@ fn plain_summon_spawns_once_then_resets_and_revives_the_same_entity() {
     runtime.drain_plain_summon_skill_into(owner, &mut updates);
 
     assert_rng_state_eq(&runtime.rng, &expected_rng);
-    assert_eq!(runtime.entities.len(), 3);
+    assert_eq!(runtime.entities.len(), 4);
     let summoned_entity = runtime.entities.get(summoned).expect("summon should spawn");
     assert_eq!(summoned_entity.runtime.owner, owner);
     assert_eq!(summoned_entity.runtime.move_state.speed_points, expected_move_points);
@@ -78,7 +78,7 @@ fn plain_summon_spawns_once_then_resets_and_revives_the_same_entity() {
     runtime.drain_plain_summon_skill_into(owner, &mut recast_updates);
 
     assert_rng_state_eq(&runtime.rng, &expected_rng);
-    assert_eq!(runtime.entities.len(), 3);
+    assert_eq!(runtime.entities.len(), 4);
     let revived = runtime.entities.get(summoned).unwrap();
     assert!(revived.runtime.alive);
     assert_eq!(revived.template.name, original_name);
@@ -117,7 +117,7 @@ fn plain_clone_inherits_summon_blueprint_and_can_summon() {
     let mut updates = RunUpdates::new();
     runtime.drain_plain_summon_skill_into(clone, &mut updates);
 
-    let summoned = EntityIdx(3);
+    let summoned = EntityIdx(4);
     assert_eq!(runtime.entities.get(summoned).unwrap().runtime.owner, clone);
     assert_eq!(
         updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
@@ -130,7 +130,7 @@ fn plain_summon_share_damage_halves_damage_and_does_not_cleanup_source_when_owne
     let mut runtime = summon_runtime();
     let owner = EntityIdx(1);
     let caster = EntityIdx(0);
-    let summoned = EntityIdx(2);
+    let summoned = EntityIdx(3);
     runtime.drain_plain_summon_skill_into(owner, &mut RunUpdates::new());
     runtime.entities.get_mut(owner).unwrap().runtime.hp = 5;
     let mut updates = RunUpdates::new();
@@ -148,7 +148,7 @@ fn plain_summon_explode_uses_static_effect_path_and_kills_the_summon() {
     let mut runtime = summon_runtime();
     let owner = EntityIdx(1);
     let target = EntityIdx(0);
-    let summoned = EntityIdx(2);
+    let summoned = EntityIdx(3);
     runtime.drain_plain_summon_skill_into(owner, &mut RunUpdates::new());
     let target_hp = runtime.entities.get(target).unwrap().runtime.hp;
     let mut updates = RunUpdates::new();

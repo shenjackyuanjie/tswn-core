@@ -159,6 +159,7 @@ impl CloneBuildData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerTemplate {
     pub id: PlrId,
+    pub reserved_player_ids_before_spawn: u32,
     pub name: String,
     pub display_name: String,
     pub kind: PlayerKindId,
@@ -195,6 +196,7 @@ impl PlayerTemplate {
         let name = name.into();
         Self {
             id,
+            reserved_player_ids_before_spawn: 0,
             display_name: name.clone(),
             name,
             kind,
@@ -221,6 +223,11 @@ impl PlayerTemplate {
 
     pub fn with_display_name(mut self, display_name: impl Into<String>) -> Self {
         self.display_name = display_name.into();
+        self
+    }
+
+    pub fn with_reserved_player_ids_before_spawn(mut self, count: u32) -> Self {
+        self.reserved_player_ids_before_spawn = count;
         self
     }
 

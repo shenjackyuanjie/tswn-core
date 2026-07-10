@@ -1,11 +1,13 @@
 use super::*;
 
+mod entity_identity_tests;
 mod plain_action_scheduler_tests;
 mod plain_assassinate_skill_tests;
 mod plain_attack_skill_tests;
 mod plain_raw_import_tests;
 mod plain_status_skill_tests;
 mod plain_summon_skill_tests;
+mod plain_zombie_skill_tests;
 mod prepared_init_tests;
 
 fn normalized_rng_checkpoint(i: u32, j: u32) -> crate::runtime_v2::oracle::NormalizedRngCheckpoint {

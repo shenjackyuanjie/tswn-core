@@ -6,6 +6,7 @@ mod handlers;
 pub mod oracle;
 mod plain_assassinate;
 mod plain_summon;
+mod plain_zombie;
 mod prepared_init;
 mod profile;
 mod runner;
@@ -27,8 +28,8 @@ pub use effect::{
 };
 pub use entity::{
     AssassinateRuntime, CloneBuildData, CloneDerivedStats, CounterRuntime, CovidInfectionEntry, EntityArena, EntityIdx,
-    EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate, ProtectLinkRuntime, SkillLoadout,
-    StateEntry, StatePayload, StateStore,
+    EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate, ProtectLinkRuntime,
+    RuntimeCorpseKind, SkillLoadout, StateEntry, StatePayload, StateStore,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,

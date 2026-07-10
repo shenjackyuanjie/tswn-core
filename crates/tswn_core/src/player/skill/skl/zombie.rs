@@ -2,6 +2,7 @@
 //!
 //! 本模块负责在击杀后把目标标记为丧尸尸体，并按需要生成可作战的丧尸召唤物。
 
+use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
@@ -12,12 +13,49 @@ use crate::player::{
     skill::corpse::CorpseState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait, store::SkillStorage},
 };
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
 pub struct ZombieSkill;
 
 impl ZombieSkill {
     pub fn new() -> Self { Self }
+}
+
+pub fn build_zombie_minion_blueprint(owner: PlrId, storage: &Arc<Storage>) -> Player {
+    let (owner_clan, seed_name) = {
+        let owner_player = storage.get_player(&owner).expect("cannot get zombie owner");
+        (owner_player.clan_name(), format!("{}?zombie", owner_player.base_name()))
+    };
+
+    let minion_overlay = owner_minion_overlay(storage, owner, MinionKind::Zombie);
+    let mut zombie =
+        Player::new_minion_and_init(Some(owner_clan), seed_name, None, storage.clone()).expect("cannot init zombie minion");
+    prepare_combat_minion(&mut zombie);
+    zombie.build();
+    zombie.set_display_name_override(Some("丧尸".to_string()));
+    if !apply_minion_attrs(&mut zombie, minion_overlay.as_ref()) {
+        zombie.attr[0] = 0;
+        zombie.attr[6] = 0;
+        zombie.attr[7] = (zombie.attr[7] >> 1).max(1);
+    }
+    apply_child_minion_overlay(&mut zombie, minion_overlay.as_ref());
+    zombie.init_values();
+    zombie.player_type = PlayerType::Clone;
+    zombie.sort_int = 0;
+    zombie.state = PlayerStateStore::default();
+    zombie.set_state(MinionRuntimeState {
+        owner: Some(owner),
+        kind: MinionKind::Zombie,
+        share_damage_owner: None,
+    });
+    zombie.status.set_alive(true);
+    zombie.status.set_frozen(false);
+    if !apply_minion_skill_overlay(&mut zombie, minion_overlay.as_ref()) {
+        zombie.skills = SkillStorage::new();
+        zombie.skills.update_proc();
+    }
+    zombie
 }
 
 impl SkillExt for ZombieSkill {

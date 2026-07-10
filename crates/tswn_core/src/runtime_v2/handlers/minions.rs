@@ -25,7 +25,7 @@ pub fn push_minion_from_template_with_allocated_name(
     message: impl Into<String>,
 ) -> Result<EntityIdx, RuntimeV2MinionHandlerError> {
     let minion_name = next_minion_name_from_entity_slot(context, counter_slot)?;
-    let next_entity = EntityIdx(context.entity_count().try_into().expect("runtime_v2 entity index overflow"));
+    let next_entity = EntityArena::next_spawn_idx_from_slot_count(context.entity_count(), &minion_template);
     minion_template.name = minion_name;
     context.push_nested(QueuedEffect::SpawnWithMessage {
         caster: context.owner_idx(),
@@ -41,7 +41,7 @@ pub fn push_minion_from_template_with_allocated_name_silent(
     mut minion_template: PlayerTemplate,
 ) -> Result<EntityIdx, RuntimeV2MinionHandlerError> {
     let minion_name = next_minion_name_from_entity_slot(context, counter_slot)?;
-    let next_entity = EntityIdx(context.entity_count().try_into().expect("runtime_v2 entity index overflow"));
+    let next_entity = EntityArena::next_spawn_idx_from_slot_count(context.entity_count(), &minion_template);
     minion_template.name = minion_name;
     context.push_nested(QueuedEffect::SpawnSilent {
         caster: context.owner_idx(),

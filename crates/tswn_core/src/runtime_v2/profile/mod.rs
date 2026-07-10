@@ -19,6 +19,7 @@ pub const DEFAULT_CORE_UPGRADE_SKILL_EXPORT: &str = "core.skill.upgrade";
 pub const DEFAULT_CORE_HIDE_SKILL_EXPORT: &str = "core.skill.hide";
 pub const DEFAULT_CORE_COUNTER_SKILL_EXPORT: &str = "core.skill.counter";
 pub const DEFAULT_CORE_MERGE_SKILL_EXPORT: &str = "core.skill.merge";
+pub const DEFAULT_CORE_ZOMBIE_SKILL_EXPORT: &str = "core.skill.zombie";
 pub const DEFAULT_CORE_RERAISE_SKILL_EXPORT: &str = "core.skill.reraise";
 pub const DEFAULT_CORE_CHARM_STATE_EXPORT: &str = "core.state.charm";
 pub const DEFAULT_CORE_CURSE_STATE_EXPORT: &str = "core.state.curse";
@@ -31,10 +32,12 @@ pub const DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT: &str = "core.state.lazy-infe
 pub const DEFAULT_CORE_SAITAMA_BOSS_STATE_EXPORT: &str = "core.state.saitama-boss";
 pub const DEFAULT_CORE_SHADOW_KIND_EXPORT: &str = "core.kind.shadow";
 pub const DEFAULT_CORE_SUMMON_KIND_EXPORT: &str = "core.kind.summon";
+pub const DEFAULT_CORE_ZOMBIE_KIND_EXPORT: &str = "core.kind.zombie";
 pub const DEFAULT_CORE_BOSS_KIND_EXPORT: &str = "core.kind.boss";
 pub const DEFAULT_CORE_BOOST_KIND_EXPORT: &str = "core.kind.boost";
 pub const DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.shadow_blueprint";
 pub const DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.summon_blueprint";
+pub const DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.zombie_blueprint";
 pub const DEFAULT_CORE_SUMMON_ENTITY_EXPORT: &str = "core.entity.summoned_entity";
 pub const DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT: &str = "core.entity.minion_counter";
 pub const DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT: &str = "core.skill.summon-explode";
@@ -288,6 +291,8 @@ pub fn import_plain_legacy_skill_loadout(
     let counter_skill = registry.skill_id_by_export_name(DEFAULT_CORE_COUNTER_SKILL_EXPORT);
     let merge_kind = std::any::type_name::<crate::player::skill::merge::MergeSkill>();
     let merge_skill = registry.skill_id_by_export_name(DEFAULT_CORE_MERGE_SKILL_EXPORT);
+    let zombie_kind = std::any::type_name::<crate::player::skill::zombie::ZombieSkill>();
+    let zombie_skill = registry.skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT);
     let reraise_kind = std::any::type_name::<crate::player::skill::reraise::ReraiseSkill>();
     let reraise_skill = registry.skill_id_by_export_name(DEFAULT_CORE_RERAISE_SKILL_EXPORT);
     let fire_kind = std::any::type_name::<crate::player::skill::act::fire::FireSkill>();
@@ -328,6 +333,8 @@ pub fn import_plain_legacy_skill_loadout(
             counter_skill
         } else if entry.runtime_kind == merge_kind {
             merge_skill
+        } else if entry.runtime_kind == zombie_kind {
+            zombie_skill
         } else if entry.runtime_kind == reraise_kind {
             reraise_skill
         } else {

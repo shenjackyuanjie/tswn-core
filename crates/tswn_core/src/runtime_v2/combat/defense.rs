@@ -325,7 +325,7 @@ impl CombatRuntime {
                 caster.0, caster_entity.template.name, killed_target.0, self.rng.i, self.rng.j,
             );
         }
-        self.drain_skill_hook_plan_with_selected_target_into(&kill_skill_plan, updates, Some(killed_target));
+        self.drain_plain_kill_skill_plan_into(&kill_skill_plan, killed_target, updates);
         let kill_state_plan = self.scheduler.state_hook_plan(&self.entities, caster, ProcMask::KILL);
         self.drain_state_hook_plan_into(&kill_state_plan, updates);
     }

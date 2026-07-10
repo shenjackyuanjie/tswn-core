@@ -115,7 +115,7 @@ pub fn push_summon_recast_from_entity_slot_with_messages(
         return Ok(summon);
     }
 
-    let next_entity = EntityIdx(context.entity_count().try_into().expect("runtime_v2 entity index overflow"));
+    let next_entity = EntityArena::next_spawn_idx_from_slot_count(context.entity_count(), &summon_template);
     context.push_nested(QueuedEffect::SpawnWithMessage {
         caster: owner,
         template: summon_template,

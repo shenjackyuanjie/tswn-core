@@ -335,8 +335,6 @@ impl CombatRuntime {
             .slots
             .set(counter_slot, SlotValue::U64(next_minion_index + 1))
             .expect("runtime_v2 core minion counter slot must exist");
-        let next_entity = self.entities.len();
-        shadow_template.id = next_entity + 1;
         shadow_template.name = format!("{root_name}?{next_minion_index}");
         shadow_template.move_state.speed_points = if self
             .entities

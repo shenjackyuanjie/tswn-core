@@ -71,9 +71,8 @@ impl CombatRuntime {
             return;
         }
 
-        let summoned = EntityIdx(self.entities.len().try_into().expect("runtime_v2 summon entity index overflow"));
         let mut template = blueprint;
-        template.id = summoned.0 as usize + 1;
+        let summoned = self.entities.next_spawn_idx(&template);
         template.name = self.allocate_plain_minion_name(actor);
         template.team = self.entities.get(actor).unwrap().runtime.team;
         template.move_state.speed_points = move_points;
@@ -236,7 +235,7 @@ impl CombatRuntime {
         self.world.revive_alive(summoned, team);
     }
 
-    fn allocate_plain_minion_name(&mut self, actor: EntityIdx) -> String {
+    pub fn allocate_plain_minion_name(&mut self, actor: EntityIdx) -> String {
         let root = self.plain_minion_name_root(actor);
         let counter_slot = self
             .registry

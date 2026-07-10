@@ -70,6 +70,14 @@ pub struct CounterRuntime {
     pub last_updates_id: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RuntimeCorpseKind {
+    #[default]
+    None,
+    Merge,
+    Zombie,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerRuntime {
     pub hp: i32,
@@ -102,6 +110,7 @@ pub struct PlayerRuntime {
     pub hide: Option<HideRuntime>,
     pub assassinate: Option<AssassinateRuntime>,
     pub counter: CounterRuntime,
+    pub corpse: RuntimeCorpseKind,
 }
 
 impl PlayerRuntime {
@@ -147,6 +156,7 @@ impl PlayerRuntime {
             hide: None,
             assassinate: None,
             counter: CounterRuntime::default(),
+            corpse: RuntimeCorpseKind::None,
         }
     }
 
@@ -365,7 +375,7 @@ impl EntityRecord {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EntityArena {
-    entities: Vec<EntityRecord>,
+    entities: Vec<Option<EntityRecord>>,
 }
 
 impl EntityArena {
@@ -380,12 +390,12 @@ impl EntityArena {
             .map(|(idx, template)| {
                 let owner = EntityIdx(idx as u32);
                 let runtime = PlayerRuntime::from_template(&template, registry, owner, owner);
-                EntityRecord {
+                Some(EntityRecord {
                     template,
                     runtime,
                     states: StateStore::default(),
                     slots: EntitySlotStorage::from_registry(registry),
-                }
+                })
             })
             .collect();
         Self { entities }
@@ -395,9 +405,22 @@ impl EntityArena {
 
     pub fn is_empty(&self) -> bool { self.entities.is_empty() }
 
-    pub fn get(&self, idx: EntityIdx) -> Option<&EntityRecord> { self.entities.get(idx.0 as usize) }
+    pub fn get(&self, idx: EntityIdx) -> Option<&EntityRecord> { self.entities.get(idx.0 as usize).and_then(Option::as_ref) }
 
-    pub fn get_mut(&mut self, idx: EntityIdx) -> Option<&mut EntityRecord> { self.entities.get_mut(idx.0 as usize) }
+    pub fn get_mut(&mut self, idx: EntityIdx) -> Option<&mut EntityRecord> {
+        self.entities.get_mut(idx.0 as usize).and_then(Option::as_mut)
+    }
+
+    pub fn next_spawn_idx(&self, template: &PlayerTemplate) -> EntityIdx {
+        Self::next_spawn_idx_from_slot_count(self.entities.len(), template)
+    }
+
+    pub fn next_spawn_idx_from_slot_count(slot_count: usize, template: &PlayerTemplate) -> EntityIdx {
+        let reserved =
+            usize::try_from(template.reserved_player_ids_before_spawn).expect("runtime_v2 reserved player id count overflow");
+        let idx = slot_count.checked_add(reserved).expect("runtime_v2 entity slot count overflow");
+        EntityIdx(idx.try_into().expect("runtime_v2 entity index overflow"))
+    }
 
     pub fn spawn_from_template(&mut self, template: PlayerTemplate, registry: &ExtensionRegistry) -> EntityIdx {
         self.spawn_from_template_with_owner(template, registry, None, None)
@@ -410,13 +433,16 @@ impl EntityArena {
         owner: Option<EntityIdx>,
         root_owner: Option<EntityIdx>,
     ) -> EntityIdx {
-        let idx = EntityIdx(self.entities.len().try_into().expect("runtime_v2 entity index overflow"));
+        let idx = self.next_spawn_idx(&template);
+        let reserved =
+            usize::try_from(template.reserved_player_ids_before_spawn).expect("runtime_v2 reserved player id count overflow");
+        self.entities.extend(std::iter::repeat_n(None, reserved));
+        template.id = idx.0 as usize + 1;
         let owner = owner.unwrap_or(idx);
         let root_owner = root_owner.unwrap_or(owner);
         if let Some(owner_idx) = Some(owner).filter(|owner_idx| *owner_idx != idx) {
             let owner_entity = self
-                .entities
-                .get(owner_idx.0 as usize)
+                .get(owner_idx)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 spawn owner entity: {}", owner_idx.0));
             // Legacy `queue_spawn(owner, child)` assigns the child to the
             // owner's current world group. Blueprint teams are import-time
@@ -429,16 +455,19 @@ impl EntityArena {
             }
         }
         let runtime = PlayerRuntime::from_template(&template, registry, owner, root_owner);
-        self.entities.push(EntityRecord {
+        self.entities.push(Some(EntityRecord {
             template,
             runtime,
             states: StateStore::default(),
             slots: EntitySlotStorage::from_registry(registry),
-        });
+        }));
         idx
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (EntityIdx, &EntityRecord)> {
-        self.entities.iter().enumerate().map(|(idx, entity)| (EntityIdx(idx as u32), entity))
+        self.entities
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, entity)| entity.as_ref().map(|entity| (EntityIdx(idx as u32), entity)))
     }
 }

@@ -258,6 +258,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("runtime_v2 clone level missing for fixed lane {fixed_lane}"));
         let shadow_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT);
         let summon_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT);
+        let zombie_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);
         let random_factor = (u32::from(self.rng.next_u8()) & 63) + 64;
         let mut decayed_level = ((current_level as f64) * random_factor as f64 / 128.0).ceil() as u32;
         let charge_active = self
@@ -294,6 +295,7 @@ impl CombatRuntime {
             clone_build,
             shadow_blueprint,
             summon_blueprint,
+            zombie_blueprint,
         ) = {
             let owner = self
                 .entities
@@ -323,6 +325,11 @@ impl CombatRuntime {
                 Some(_) => panic!("runtime_v2 core summon blueprint slot has invalid value"),
                 None => None,
             });
+            let zombie_blueprint = zombie_blueprint_slot.and_then(|slot| match owner.slots.get(slot) {
+                Some(SlotValue::PlayerTemplate(template)) => Some(template.as_ref().clone()),
+                Some(_) => panic!("runtime_v2 core zombie blueprint slot has invalid value"),
+                None => None,
+            });
             (
                 root_owner,
                 root_name,
@@ -334,6 +341,7 @@ impl CombatRuntime {
                 clone_build,
                 shadow_blueprint,
                 summon_blueprint,
+                zombie_blueprint,
             )
         };
         clone_skills.reapply_clone_boosts();
@@ -433,6 +441,12 @@ impl CombatRuntime {
                 .slots
                 .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
                 .expect("runtime_v2 core summon blueprint slot must exist");
+        }
+        if let (Some(slot), Some(template)) = (zombie_blueprint_slot, zombie_blueprint) {
+            clone_entity
+                .slots
+                .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                .expect("runtime_v2 core zombie blueprint slot must exist");
         }
     }
 

@@ -57,6 +57,7 @@ struct PreparedPlayerInit {
     boss_state: PreparedBossState,
     shadow_blueprint: Option<PlayerTemplate>,
     summon_blueprint: Option<PlayerTemplate>,
+    zombie_blueprint: Option<PlayerTemplate>,
 }
 
 #[derive(Debug, Clone)]
@@ -255,6 +256,9 @@ impl PreparedBattleInit {
         let summon_blueprint_slot = runtime
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT);
+        let zombie_blueprint_slot = runtime
+            .registry
+            .entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);
         for (index, prepared) in self.players.into_iter().enumerate() {
             let entity_idx = Self::entity_idx(index);
             let entity = runtime
@@ -324,6 +328,13 @@ impl PreparedBattleInit {
                     .slots
                     .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
                     .expect("runtime v2 core summon blueprint slot must exist");
+            }
+            if let Some(template) = prepared.zombie_blueprint {
+                let slot = zombie_blueprint_slot.expect("runtime v2 zombie skill requires the core zombie blueprint entity slot");
+                entity
+                    .slots
+                    .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                    .expect("runtime v2 core zombie blueprint slot must exist");
             }
         }
 
@@ -416,8 +427,13 @@ impl PreparedBattleInit {
                     .expect("runtime v2 registry importing summon must register core summon kind");
                 let mut template = Self::template_from_player(&summon, 0, team, summon_skills);
                 template.kind = summon_kind;
+                template.reserved_player_ids_before_spawn = 1;
                 template
             });
+        let zombie_blueprint = registry
+            .skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT)
+            .filter(|skill| skills.skills().contains(skill))
+            .map(|_| Self::build_zombie_blueprint(id, team, storage, registry));
         let boss_state = match crate::player::boss::boss_kind(&player.id_name()) {
             crate::player::boss::BossKind::Covid => PreparedBossState::Covid,
             crate::player::boss::BossKind::Lazy => PreparedBossState::Lazy,
@@ -431,7 +447,25 @@ impl PreparedBattleInit {
             boss_state,
             shadow_blueprint,
             summon_blueprint,
+            zombie_blueprint,
         }
+    }
+
+    fn build_zombie_blueprint(
+        id: PlrId,
+        team: usize,
+        storage: &std::sync::Arc<Storage>,
+        registry: &ExtensionRegistry,
+    ) -> PlayerTemplate {
+        let zombie = crate::player::skill::zombie::build_zombie_minion_blueprint(id, storage);
+        let zombie_skills = import_plain_legacy_skill_loadout(registry, &zombie.skill_loadout_snapshot());
+        let zombie_kind = registry
+            .player_kind_id_by_export_name(DEFAULT_CORE_ZOMBIE_KIND_EXPORT)
+            .expect("runtime v2 registry importing zombie must register core zombie kind");
+        let mut template = Self::template_from_player(&zombie, 0, team, zombie_skills);
+        template.kind = zombie_kind;
+        template.reserved_player_ids_before_spawn = 1;
+        template
     }
 
     fn template_from_player(player: &Player, id: PlrId, team: usize, skills: SkillLoadout) -> PlayerTemplate {
