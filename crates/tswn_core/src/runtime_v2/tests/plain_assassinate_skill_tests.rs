@@ -110,6 +110,67 @@ fn plain_assassinate_forced_backstab_skips_mp_gate_and_normal_dodge() {
 }
 
 #[test]
+fn plain_assassinate_forced_backstab_skips_reflect_pre_defend_rng() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let assassinate = builder
+        .register_skill(
+            "core",
+            "assassinate",
+            BuiltinActiveSkill::Assassinate.export_name(),
+            TargetPolicy::Enemy,
+            SkillPriority(21),
+        )
+        .expect("assassinate skill should register");
+    let reflect = builder
+        .register_skill_with_hooks(
+            "core",
+            "reflect",
+            DEFAULT_CORE_REFLECT_SKILL_EXPORT,
+            ProcMask::PRE_DEFEND,
+            TargetPolicy::None,
+            SkillPriority(1_000),
+        )
+        .expect("reflect skill should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 1_000, 40)
+                .with_magic(80)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(assassinate, 128)])),
+            PlayerTemplate::new(2, "reflector", 1, 1_000_000, 3)
+                .with_def_res(0, 0)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(reflect, 1)])),
+        ],
+        registry,
+    ));
+    runtime.set_skill_handler(reflect, run_reflect_pre_defend_skill);
+    {
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        owner.runtime.assassinate = Some(AssassinateRuntime {
+            fixed_lane: 0,
+            target: EntityIdx(1),
+            break_on_damage: true,
+        });
+        owner.template.skills.ensure_pre_action_lane(0);
+    }
+
+    let mut expected_rng = runtime.rng.clone();
+    let owner = &runtime.entities.get(EntityIdx(0)).unwrap().runtime;
+    owner.get_at(true, &mut expected_rng);
+    owner.get_at(true, &mut expected_rng);
+    owner.get_at(true, &mut expected_rng);
+    let hp_before = runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp;
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_assassinate_skill_into(EntityIdx(0), 0, EntityIdx(1), &mut updates);
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp < hp_before);
+    assert!(updates.updates.iter().all(|update| update.message.as_ref() != "[0]使用[伤害反弹]"));
+    assert!(runtime.effects.is_empty());
+}
+
+#[test]
 fn plain_assassinate_breaks_on_damage_unless_charge_was_active() {
     let (mut runtime, _) = assassinate_runtime();
     let mut updates = RunUpdates::new();

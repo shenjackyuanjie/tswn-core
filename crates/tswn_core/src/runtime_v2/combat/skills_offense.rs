@@ -257,7 +257,7 @@ impl CombatRuntime {
                 .get_at(true, &mut self.rng)
                 * 0.36000001430511475;
             let update_pos = updates.updates.len();
-            self.drain_plain_defended_attack_with_atp_into(actor, target, true, atp, updates);
+            self.drain_plain_attack_from_defense_into(actor, target, true, atp, updates);
             if let Some(update) = updates.updates.get_mut(update_pos) {
                 update.delay0 = 300;
             }

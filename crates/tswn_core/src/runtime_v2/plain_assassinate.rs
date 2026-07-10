@@ -201,7 +201,7 @@ impl CombatRuntime {
                 ));
                 return;
             }
-            self.drain_plain_defended_attack_with_atp_into(actor, target, true, atp, updates);
+            self.drain_plain_attack_from_defense_into(actor, target, true, atp, updates);
             return;
         }
 

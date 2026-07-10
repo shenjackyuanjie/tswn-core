@@ -413,7 +413,11 @@ impl CombatRuntime {
         self.drain_plain_attack_after_dodge_into(actor, target, use_magic, atp, covid_source, on_damage, updates)
     }
 
-    pub fn drain_plain_defended_attack_with_atp_into(
+    /// 从防御值换算阶段开始结算攻击。
+    ///
+    /// 这对应 legacy `Player::defned`：调用方已经决定跳过 `PRE_DEFEND`
+    /// 和普通闪避，只保留伤害换算、`POST_DEFEND` 与后续伤害链。
+    pub fn drain_plain_attack_from_defense_into(
         &mut self,
         actor: EntityIdx,
         target: EntityIdx,
@@ -422,18 +426,6 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) -> i32 {
         let covid_source = self.covid_boss_mutation(actor).map(|mutation| (actor, mutation));
-        let mut defend_value = RuntimeDefendValue::Atp {
-            value: atp,
-            caster: actor,
-            target,
-        };
-        self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
-        let Some(atp) = defend_value.atp() else {
-            panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
-        };
-        if atp == 0.0 {
-            return 0;
-        }
         self.drain_plain_attack_after_dodge_into(actor, target, use_magic, atp, covid_source, PlainAttackOnDamage::None, updates)
     }
 
