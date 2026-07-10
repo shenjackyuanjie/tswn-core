@@ -140,3 +140,28 @@ pub fn case_d8c6_opening_matches_js_trace<E: crate::EngineAdapter>() {
         ]
     );
 }
+
+pub fn case_large_67_summon_opening_matches_js_trace<E: crate::EngineAdapter>() {
+    let raw_input = "Stupefy #rkISERW8@Shabby_fish\n日落·日出 #Pd3J7shds@Shabby_fish".to_string();
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 10_000, true);
+    assert!(guard < 10_000, "case large_67 combat did not finish");
+    assert!(
+        actual_lines.len() >= 9,
+        "case large_67 opening ended before summon lifecycle completed"
+    );
+    assert_eq!(
+        actual_lines[..9],
+        [
+            "Stupefy潜行到日落·日出身后".to_string(),
+            "日落·日出使用血祭, 召唤出使魔".to_string(),
+            "使魔发起攻击, Stupefy受到31点伤害".to_string(),
+            "Stupefy的潜行被识破".to_string(),
+            "Stupefy潜行到日落·日出身后".to_string(),
+            "日落·日出使用分身, 出现一个新的日落·日出".to_string(),
+            "Stupefy发动背刺, 日落·日出受到440点伤害".to_string(),
+            "日落·日出被击倒了".to_string(),
+            "使魔消失了".to_string(),
+        ]
+    );
+}

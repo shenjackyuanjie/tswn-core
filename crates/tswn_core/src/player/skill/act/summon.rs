@@ -19,7 +19,7 @@ use super::minion::{
     apply_summon_attrs, owner_minion_overlay, prepare_combat_minion,
 };
 
-pub(super) const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
+pub(crate) const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
 
 pub(super) fn ensure_summon_share_damage_skill(skills: &mut SkillStorage, enabled: bool) {
     skills
@@ -41,6 +41,85 @@ impl SummonSkill {
 
 impl SkillExt for SummonSkill {
     fn box_new() -> Box<dyn SkillTrait> { Box::new(Self::new()) }
+}
+
+pub(crate) fn build_summon_minion(owner_id: PlrId, storage: &Arc<Storage>, share_damage: bool) -> crate::player::Player {
+    let owner = storage.get_player(&owner_id).expect("cannot get summon owner from storage").clone();
+    let minion_overlay = owner_minion_overlay(storage, owner_id, MinionKind::Summon);
+    let summon_team = owner.clan_name();
+    let summon_name = format!("{}?summon", owner.base_name());
+    let mut summoned =
+        crate::player::Player::new_minion_and_init(Some(summon_team.clone()), summon_name.clone(), None, storage.clone())
+            .expect("cannot init summon minion");
+    prepare_combat_minion(&mut summoned);
+    summoned.build();
+    if !apply_summon_attrs(&mut summoned, &owner, minion_overlay.as_ref()) {
+        summoned.attr[7] = (summoned.attr[7] / 3).max(1);
+        summoned.attr[0] = 0;
+        summoned.attr[1] = owner.attr[1];
+        summoned.attr[4] = 0;
+        summoned.attr[5] = owner.attr[5];
+    }
+    summoned.update_states();
+    summoned.status.hp = summoned.status.max_hp;
+    summoned.status.magic_point = summoned.status.wisdom >> 1;
+    summoned.set_display_name_override(Some("使魔".to_string()));
+    summoned.player_type = PlayerType::Clone;
+    summoned.sort_int = 0;
+    summoned.state = PlayerStateStore::default();
+    summoned.set_state(MinionRuntimeState {
+        owner: Some(owner_id),
+        kind: MinionKind::Summon,
+        share_damage_owner: None,
+    });
+    apply_child_minion_overlay(&mut summoned, minion_overlay.as_ref());
+    summoned.status.set_alive(true);
+    summoned.status.set_frozen(false);
+
+    if !apply_minion_skill_overlay(&mut summoned, minion_overlay.as_ref()) {
+        let skill_level_from_slot = |slot: usize| -> u32 {
+            let base = 64 + slot * 4;
+            if base + 3 >= summoned.name_base.len() {
+                return 0;
+            }
+            let minv = summoned.name_base[base..base + 4].iter().copied().min().unwrap_or(0);
+            minv.saturating_sub(10) as u32
+        };
+        let mut skill_order = [0usize, 1, 2];
+        let team_bytes = [0_u8].iter().chain(summon_team.as_bytes()).copied().collect::<Vec<u8>>();
+        let name_bytes = [0_u8].iter().chain(summon_name.as_bytes()).copied().collect::<Vec<u8>>();
+        let mut skill_rand = RC4::new(&team_bytes, 1);
+        skill_rand.update(&name_bytes, 2);
+        skill_rand.sort_list(&mut skill_order);
+        let mut skills = SkillStorage::new();
+        skills.add_skill(Skill::new_with_id(0, 0));
+        skills.add_skill(Skill::new_with_id(0, 0));
+        skills.add_skill(Skill::new(0, Box::new(SummonExplodeSkill::new())));
+        for (slot, skill_key) in skill_order.iter().copied().enumerate() {
+            let level = skill_level_from_slot(slot);
+            let skill = skills.skill_by_id_mut(skill_key);
+            skill.set_level(level);
+            if level > 0 {
+                let raw_base = 64 + slot * 4;
+                if raw_base + 3 < summoned.raw_name_base.len() {
+                    let raw_min = summoned.raw_name_base[raw_base..raw_base + 4].iter().copied().min().unwrap_or(0);
+                    if raw_min <= 10 {
+                        skill.boosted = true;
+                    }
+                }
+            }
+        }
+        skills.slot_skill = vec![0, 1, 2];
+        skills.skill = skill_order.to_vec();
+        ensure_summon_share_damage_skill(&mut skills, share_damage);
+        skills.boost_last();
+        summoned.skills = skills;
+        summoned.skills.update_proc();
+    } else {
+        ensure_summon_share_damage_skill(&mut summoned.skills, share_damage);
+        summoned.skills.update_proc();
+    }
+    summoned
 }
 
 impl SkillTrait for SummonSkill {
@@ -115,96 +194,9 @@ impl SkillTrait for SummonSkill {
             args.2.add(RunUpdate::new("召唤出[1]", args.0, summoned_id, 0));
             return;
         }
-        let summon_team = owner.clan_name();
-        let summon_name = format!("{}?summon", owner.base_name());
-        let mut summoned =
-            crate::player::Player::new_minion_and_init(Some(summon_team.clone()), summon_name.clone(), None, args.3.clone())
-                .expect("cannot init summon minion");
-        prepare_combat_minion(&mut summoned);
-        summoned.build();
-        if !apply_summon_attrs(&mut summoned, &owner, minion_overlay.as_ref()) {
-            summoned.attr[7] = (summoned.attr[7] / 3).max(1);
-            summoned.attr[0] = 0;
-            summoned.attr[1] = owner.attr[1];
-            summoned.attr[4] = 0;
-            summoned.attr[5] = owner.attr[5];
-        }
-        summoned.update_states();
-        summoned.status.hp = summoned.status.max_hp;
-        summoned.status.magic_point = summoned.status.wisdom >> 1;
-
+        let mut summoned = build_summon_minion(args.0, args.3, !charge_active);
         summoned.id = args.3.new_plr_id();
         summoned.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
-        summoned.set_display_name_override(Some("使魔".to_string()));
-        summoned.player_type = PlayerType::Clone;
-        summoned.sort_int = 0;
-        summoned.state = PlayerStateStore::default();
-        summoned.set_state(MinionRuntimeState {
-            owner: Some(args.0),
-            kind: MinionKind::Summon,
-            share_damage_owner: None,
-        });
-        apply_child_minion_overlay(&mut summoned, minion_overlay.as_ref());
-        summoned.status.set_alive(true);
-        summoned.status.set_frozen(false);
-
-        if !apply_minion_skill_overlay(&mut summoned, minion_overlay.as_ref()) {
-            let skill_level_from_slot = |slot: usize| -> u32 {
-                let base = 64 + slot * 4;
-                if base + 3 >= summoned.name_base.len() {
-                    return 0;
-                }
-                let minv = summoned.name_base[base..base + 4].iter().copied().min().unwrap_or(0);
-                minv.saturating_sub(10) as u32
-            };
-            let mut skill_order = [0usize, 1, 2];
-            let team_bytes = [0_u8].iter().chain(summon_team.as_bytes()).copied().collect::<Vec<u8>>();
-            let name_bytes = [0_u8].iter().chain(summon_name.as_bytes()).copied().collect::<Vec<u8>>();
-            let mut skill_rand = RC4::new(&team_bytes, 1);
-            skill_rand.update(&name_bytes, 2);
-            skill_rand.sort_list(&mut skill_order);
-            let mut skills = SkillStorage::new();
-            skills.add_skill(Skill::new_with_id(0, 0));
-            skills.add_skill(Skill::new_with_id(0, 0));
-            skills.add_skill(Skill::new(0, Box::new(SummonExplodeSkill::new())));
-            // JS `PlrSummon.ac()/dm()/bs()` 的关键点：
-            //
-            // 1. 固定槽位 `k1` 永远是 `[fire, fire, explode]`
-            // 2. 只会打乱“哪个对象先行动/哪个对象拿到第几个等级”的遍历顺序视图
-            // 3. merge 读取的是固定槽位 `k1`，不是打乱后的主动顺序
-            //
-            // 所以 Rust 必须把这两层分开表达：
-            // - `slot_skill = [0, 1, 2]` 保留稳定的固定槽位语义
-            // - `skill = skill_order` 表达当前主动技能扫描顺序
-            //
-            // 否则后面一旦有人吞 summon，merge 就会按错误的顺序继承等级。
-            for (slot, skill_key) in skill_order.iter().copied().enumerate() {
-                let level = skill_level_from_slot(slot);
-                let skill = skills.skill_by_id_mut(skill_key);
-                skill.set_level(level);
-                // JS `Plr.dm()`：如果算出的 level > 0，就检查*原始*（raw）hash；
-                // 若 raw min - 10 <= 0，则把技能标记为已 boost，让 boost_last 跳过它。
-                if level > 0 {
-                    let raw_base = 64 + slot * 4;
-                    if raw_base + 3 < summoned.raw_name_base.len() {
-                        let raw_min = summoned.raw_name_base[raw_base..raw_base + 4].iter().copied().min().unwrap_or(0);
-                        if raw_min <= 10 {
-                            skill.boosted = true;
-                        }
-                    }
-                }
-            }
-            // 固定槽位始终不洗牌；这里只记录 JS `k1` 的稳定视图。
-            skills.slot_skill = vec![0, 1, 2];
-            skills.skill = skill_order.to_vec();
-            ensure_summon_share_damage_skill(&mut skills, !charge_active);
-            skills.boost_last();
-            summoned.skills = skills;
-            summoned.skills.update_proc();
-        } else {
-            ensure_summon_share_damage_skill(&mut summoned.skills, !charge_active);
-            summoned.skills.update_proc();
-        }
 
         // JS: this_.fr.l = a8.n() * 4 (无条件消耗 r255)
         // 然后如果 charge: this_.fr.l = 2048 (覆盖)
@@ -278,7 +270,7 @@ impl SkillTrait for SummonExplodeSkill {
 }
 
 #[derive(Debug, Clone, Default)]
-struct SummonShareDamageSkill;
+pub(crate) struct SummonShareDamageSkill;
 
 impl SummonShareDamageSkill {
     fn new() -> Self { Self }

@@ -3,6 +3,7 @@ pub mod entity;
 pub mod extension;
 pub mod oracle;
 mod plain_assassinate;
+mod plain_summon;
 pub mod scheduler;
 pub mod scratch;
 pub mod slot;
@@ -604,6 +605,10 @@ impl RuntimeV2Runner {
             .runtime
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT);
+        let summon_blueprint_slot = self
+            .runtime
+            .registry
+            .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT);
         for index in 0..self.runtime.entities.len() {
             let entity_idx = EntityIdx(index.try_into().expect("runtime_v2 entity index overflow"));
             let legacy_player_id = index;
@@ -646,6 +651,11 @@ impl RuntimeV2Runner {
                 .registry
                 .skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name())
                 .is_some_and(|shadow_skill| skills.skills().contains(&shadow_skill));
+            let imported_summon_skill = self
+                .runtime
+                .registry
+                .skill_id_by_export_name(BuiltinActiveSkill::Summon.export_name())
+                .is_some_and(|summon_skill| skills.skills().contains(&summon_skill));
             let team = self.runtime.entities.get(entity_idx).unwrap().runtime.team;
             let kind = match legacy_player.player_type() {
                 crate::player::PlayerType::Boss => self
@@ -689,6 +699,22 @@ impl RuntimeV2Runner {
                 let shadow_skills = import_plain_legacy_skill_loadout(&self.runtime.registry, &shadow_snapshot);
                 let mut template = Self::template_from_legacy_player(&shadow, 0, team, shadow_skills);
                 template.kind = shadow_player_kind;
+                (slot, template)
+            });
+            let summon_blueprint = imported_summon_skill.then(|| {
+                let slot = summon_blueprint_slot
+                    .expect("runtime v2 registry importing core summon skill must reserve core summon blueprint slot");
+                let summon_player_kind = self
+                    .runtime
+                    .registry
+                    .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
+                    .expect("runtime v2 registry importing core summon skill must register core summon kind");
+                let summon =
+                    crate::player::skill::act::summon::build_summon_minion(legacy_player_id, &legacy_runner.storage, true);
+                let summon_snapshot = summon.skill_loadout_snapshot();
+                let summon_skills = import_plain_legacy_skill_loadout(&self.runtime.registry, &summon_snapshot);
+                let mut template = Self::template_from_legacy_player(&summon, 0, team, summon_skills);
+                template.kind = summon_player_kind;
                 (slot, template)
             });
             let entity = self
@@ -750,6 +776,12 @@ impl RuntimeV2Runner {
                     .slots
                     .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
                     .expect("runtime_v2 core shadow blueprint slot must exist");
+            }
+            if let Some((slot, template)) = summon_blueprint {
+                entity
+                    .slots
+                    .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                    .expect("runtime_v2 core summon blueprint slot must exist");
             }
         }
     }
@@ -1994,10 +2026,15 @@ pub const DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT: &str = "core.state.covid-in
 pub const DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT: &str = "core.state.lazy-infection";
 pub const DEFAULT_CORE_SAITAMA_BOSS_STATE_EXPORT: &str = "core.state.saitama-boss";
 pub const DEFAULT_CORE_SHADOW_KIND_EXPORT: &str = "core.kind.shadow";
+pub const DEFAULT_CORE_SUMMON_KIND_EXPORT: &str = "core.kind.summon";
 pub const DEFAULT_CORE_BOSS_KIND_EXPORT: &str = "core.kind.boss";
 pub const DEFAULT_CORE_BOOST_KIND_EXPORT: &str = "core.kind.boost";
 pub const DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.shadow_blueprint";
+pub const DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.summon_blueprint";
+pub const DEFAULT_CORE_SUMMON_ENTITY_EXPORT: &str = "core.entity.summoned_entity";
 pub const DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT: &str = "core.entity.minion_counter";
+pub const DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT: &str = "core.skill.summon-explode";
+pub const DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT: &str = "core.skill.summon-share-damage";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT: &str = "custom.summon";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT: &str = "custom.summon.fire";
 pub const DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT: &str = "custom.summon.explode";
@@ -2036,6 +2073,7 @@ enum BuiltinActiveSkill {
     Accumulate,
     Assassinate,
     Summon,
+    SummonExplode,
     Clone,
     Shadow,
     Possess,
@@ -2137,6 +2175,7 @@ impl BuiltinActiveSkill {
             Self::Accumulate => 20,
             Self::Assassinate => 21,
             Self::Summon => 22,
+            Self::SummonExplode => 255,
             Self::Clone => 23,
             Self::Shadow => 24,
             Self::Possess => 43,
@@ -2168,6 +2207,7 @@ impl BuiltinActiveSkill {
             Self::Accumulate => "accumulate",
             Self::Assassinate => "assassinate",
             Self::Summon => "summon",
+            Self::SummonExplode => "summon-explode",
             Self::Clone => "clone",
             Self::Shadow => "shadow",
             Self::Possess => "minion-possess",
@@ -2199,6 +2239,7 @@ impl BuiltinActiveSkill {
             Self::Accumulate => "core.skill.accumulate",
             Self::Assassinate => "core.skill.assassinate",
             Self::Summon => "core.skill.summon",
+            Self::SummonExplode => DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT,
             Self::Clone => "core.skill.clone",
             Self::Shadow => "core.skill.shadow",
             Self::Possess => DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT,
@@ -2216,6 +2257,9 @@ impl BuiltinActiveSkill {
     fn from_legacy_key(key: usize) -> Option<Self> { Self::ALL.into_iter().find(|skill| skill.legacy_key() == key) }
 
     fn from_export_name(export_name: &str) -> Option<Self> {
+        if export_name == DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT {
+            return Some(Self::SummonExplode);
+        }
         Self::ALL.into_iter().find(|skill| skill.export_name() == export_name)
     }
 }
@@ -2242,10 +2286,22 @@ fn import_plain_legacy_skill_loadout(
     let merge_skill = registry.skill_id_by_export_name(DEFAULT_CORE_MERGE_SKILL_EXPORT);
     let reraise_kind = std::any::type_name::<crate::player::skill::reraise::ReraiseSkill>();
     let reraise_skill = registry.skill_id_by_export_name(DEFAULT_CORE_RERAISE_SKILL_EXPORT);
+    let fire_kind = std::any::type_name::<crate::player::skill::act::fire::FireSkill>();
+    let fire_skill = registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name());
+    let summon_explode_kind = std::any::type_name::<crate::player::skill::act::summon::SummonExplodeSkill>();
+    let summon_explode_skill = registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT);
+    let summon_share_kind = std::any::type_name::<crate::player::skill::act::summon::SummonShareDamageSkill>();
+    let summon_share_skill = registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT);
     let possess_kind = std::any::type_name::<crate::player::skill::act::possess::PossessSkill>();
     let possess_skill = registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT);
     let resolve = |entry: &crate::player::skill::store::SkillSnapshot| {
-        let active_skill = if entry.runtime_kind == possess_kind {
+        let active_skill = if entry.runtime_kind == fire_kind {
+            fire_skill
+        } else if entry.runtime_kind == summon_explode_kind {
+            summon_explode_skill
+        } else if entry.runtime_kind == summon_share_kind {
+            summon_share_skill
+        } else if entry.runtime_kind == possess_kind {
             possess_skill
         } else {
             BuiltinActiveSkill::from_legacy_key(entry.key).and_then(|skill| registry.skill_id_by_export_name(skill.export_name()))
@@ -2640,6 +2696,22 @@ pub fn default_custom_runtime_v2_import_config()
             charge = Some(skill_id);
         }
     }
+    builder.register_skill_with_hooks(
+        "core",
+        "summon-explode",
+        DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT,
+        ProcMask::NONE,
+        TargetPolicy::Enemy,
+        SkillPriority(2),
+    )?;
+    builder.register_skill_with_hooks(
+        "core",
+        "summon-share-damage",
+        DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT,
+        ProcMask::NONE,
+        TargetPolicy::None,
+        SkillPriority(255),
+    )?;
     let charge = charge.expect("default runtime v2 profile must register ChargeSkill");
     let charm_state = builder.register_state(
         "core",
@@ -2725,6 +2797,16 @@ pub fn default_custom_runtime_v2_import_config()
         PlayerKindFlags::MINION,
         PlayerKindPolicies::default(),
     )?;
+    builder.register_player_kind_with_policies(
+        "core",
+        "summon",
+        DEFAULT_CORE_SUMMON_KIND_EXPORT,
+        PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+        PlayerKindPolicies {
+            merge: MergePolicy::FixedLane,
+            ..PlayerKindPolicies::default()
+        },
+    )?;
     let shield = builder.register_skill_with_hooks(
         "core",
         "shield",
@@ -2796,6 +2878,8 @@ pub fn default_custom_runtime_v2_import_config()
         SkillPriority(10),
     )?;
     builder.reserve_entity_slot("core", "shadow-blueprint", DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT)?;
+    builder.reserve_entity_slot("core", "summon-blueprint", DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)?;
+    builder.reserve_entity_slot("core", "summoned-entity", DEFAULT_CORE_SUMMON_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "minion-counter", DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("custom", "bed2-summoned-entity", DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT)?;
     let summon_template_slot =
@@ -4724,7 +4808,8 @@ impl CombatRuntime {
                     | BuiltinActiveSkill::Thunder
                     | BuiltinActiveSkill::Absorb
                     | BuiltinActiveSkill::Poison
-                    | BuiltinActiveSkill::Critical => self.select_plain_default_enemy_targets(actor, smart),
+                    | BuiltinActiveSkill::Critical
+                    | BuiltinActiveSkill::SummonExplode => self.select_plain_default_enemy_targets(actor, smart),
                     BuiltinActiveSkill::Berserk => self.select_plain_berserk_targets(actor, smart),
                     BuiltinActiveSkill::Quake => {
                         self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 6 } else { 5 })
@@ -4746,8 +4831,8 @@ impl CombatRuntime {
                     BuiltinActiveSkill::Charge => vec![actor],
                     BuiltinActiveSkill::Accumulate => vec![actor],
                     BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
+                    BuiltinActiveSkill::Summon => vec![actor],
                     BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
-                    _ => return None,
                 };
                 #[cfg(not(feature = "no_debug"))]
                 if self.probe_plain_action_matches(actor) {
@@ -4877,6 +4962,9 @@ impl CombatRuntime {
                     .any(|entry| matches!(entry.payload, StatePayload::Poison { .. }))
             })
         {
+            return false;
+        }
+        if builtin_skill == BuiltinActiveSkill::Summon && !self.plain_summon_probability_allowed(actor, smart) {
             return false;
         }
         // ShadowSkill 在 smart 模式且 HP < 80 时短路，不消耗概率字节。
@@ -5058,11 +5146,17 @@ impl CombatRuntime {
                 let target = prepared.targets[0];
                 self.drain_plain_assassinate_skill_into(actor, prepared.selected.fixed_lane, target, updates);
             }
+            BuiltinActiveSkill::Summon => {
+                self.drain_plain_summon_skill_into(actor, updates);
+            }
+            BuiltinActiveSkill::SummonExplode => {
+                let target = prepared.targets[0];
+                self.drain_plain_summon_explode_into(actor, target, updates);
+            }
             BuiltinActiveSkill::Possess => {
                 let target = prepared.targets[0];
                 self.drain_plain_possess_skill_into(actor, target, updates);
             }
-            _ => unreachable!("only migrated builtin skills may produce PreparedPlainAction::BuiltinSkill"),
         }
     }
 
@@ -6598,6 +6692,7 @@ impl CombatRuntime {
             Hide,
             Counter,
             Assassinate,
+            SummonShareDamage,
         }
 
         let mut plan = self
@@ -6619,6 +6714,7 @@ impl CombatRuntime {
                     export_name if export_name == BuiltinActiveSkill::Assassinate.export_name() => {
                         PlainPostDamageSkill::Assassinate
                     }
+                    DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT => PlainPostDamageSkill::SummonShareDamage,
                     _ => return None,
                 };
                 let level = self.entities.get(target)?.template.skills.level_at(fixed_lane)?;
@@ -6654,6 +6750,9 @@ impl CombatRuntime {
                 }
                 PlainPostDamageSkill::Assassinate => {
                     self.run_plain_assassinate_post_damage_into(target, damage, updates);
+                }
+                PlainPostDamageSkill::SummonShareDamage => {
+                    self.drain_plain_summon_share_damage_into(target, level, damage, caster, updates);
                 }
             }
             #[cfg(not(feature = "no_debug"))]
@@ -10247,6 +10346,7 @@ mod tests {
     mod plain_attack_skill_tests;
     mod plain_raw_import_tests;
     mod plain_status_skill_tests;
+    mod plain_summon_skill_tests;
 
     fn normalized_rng_checkpoint(i: u32, j: u32) -> crate::runtime_v2::oracle::NormalizedRngCheckpoint {
         crate::runtime_v2::oracle::NormalizedRngCheckpoint {

@@ -53,3 +53,53 @@ fn case_d8c6_import_preserves_plain_pre_action_order_and_assassinate_levels() {
         assert_eq!(entity.template.skills.level_at(assassinate_lane), Some(expected_level));
     }
 }
+
+#[test]
+fn case_large_67_import_builds_plain_summon_blueprint_with_static_child_skills() {
+    let raw = "Stupefy #rkISERW8@Shabby_fish\n日落·日出 #Pd3J7shds@Shabby_fish";
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let runner =
+        RuntimeV2Runner::from_custom_mixed_namerena_raw(raw.to_owned(), config).expect("runtime v2 summon runner should build");
+    let owner = runner.runtime.entities.get(EntityIdx(1)).expect("summon owner should exist");
+    let blueprint_slot = runner
+        .runtime
+        .registry
+        .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)
+        .expect("core summon blueprint slot should exist");
+    let SlotValue::PlayerTemplate(blueprint) = owner.slots.get(blueprint_slot).expect("summon owner should carry a blueprint")
+    else {
+        panic!("core summon blueprint slot should contain a player template");
+    };
+
+    assert_eq!(blueprint.display_name, "使魔");
+    let kind = runner
+        .runtime
+        .registry
+        .player_kind(blueprint.kind)
+        .expect("core summon kind should exist");
+    assert!(kind.flags.contains(PlayerKindFlags::SUMMON));
+    assert!(kind.flags.contains(PlayerKindFlags::MINION));
+    let exports = blueprint
+        .skills
+        .skills()
+        .iter()
+        .map(|skill| runner.runtime.registry.skill(*skill).unwrap().export_name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        exports,
+        vec![
+            BuiltinActiveSkill::Fire.export_name(),
+            BuiltinActiveSkill::Fire.export_name(),
+            DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT,
+            DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT,
+        ]
+    );
+    let mut active_skills = blueprint.skills.active_order()[..3].to_vec();
+    active_skills.sort_unstable();
+    assert_eq!(active_skills, vec![0, 1, 2]);
+    assert_eq!(blueprint.skills.active_order()[3], 3);
+    assert_eq!(
+        blueprint.skills.fixed_lane_key_at(3),
+        Some(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY)
+    );
+}

@@ -48,6 +48,10 @@ macro_rules! test_engine_suite {
             fn small_seed_scores() { $crate::suite::simple::small_seed_scores::<$engine>(); }
             #[test]
             fn case_d8c6_opening_matches_js_trace() { $crate::suite::simple::case_d8c6_opening_matches_js_trace::<$engine>(); }
+            #[test]
+            fn case_large_67_summon_opening_matches_js_trace() {
+                $crate::suite::simple::case_large_67_summon_opening_matches_js_trace::<$engine>();
+            }
         }
 
         mod fight_large {
