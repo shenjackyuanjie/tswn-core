@@ -409,8 +409,9 @@ fn push_player_part<S: ReplayState>(
     player_names: &HashMap<PlrId, String>,
     death_effect_allowed: bool,
 ) {
-    let (hp_before, hp_after, show_hp) = hp_pair(player_id, before, after);
+    let (hp_before, hp_after, hp_changed) = hp_pair(player_id, before, after);
     let death_effect = death_effect_allowed && hp_after == 0;
+    let show_hp = hp_changed && !death_effect;
     parts.push(ReplayTextPart {
         kind: ReplayTextPartKind::Player,
         text: render_name(player_id, player_names),
@@ -716,7 +717,7 @@ mod tests {
         let clip = &view.rows[0].clips[0];
 
         let player_part = player_part(clip);
-        assert!(player_part.show_hp);
+        assert!(!player_part.show_hp);
         assert_eq!((player_part.hp_before, player_part.hp_after), (40, 0));
         assert!(player_part.death_effect);
     }
