@@ -408,9 +408,11 @@ fn push_player_part<S: ReplayState>(
     after: &HashMap<PlrId, S>,
     player_names: &HashMap<PlrId, String>,
     death_effect_allowed: bool,
+    force_show_hp: bool,
 ) {
-    let (hp_before, hp_after, show_hp) = hp_pair(player_id, before, after);
+    let (hp_before, hp_after, hp_changed) = hp_pair(player_id, before, after);
     let death_effect = death_effect_allowed && hp_after == 0;
+    let show_hp = (hp_changed || force_show_hp) && !death_effect;
     parts.push(ReplayTextPart {
         kind: ReplayTextPartKind::Player,
         text: render_name(player_id, player_names),
@@ -446,6 +448,7 @@ fn build_clip_parts<S: ReplayState>(
     let mut parts = Vec::new();
     let data = data_for_update(update, player_names);
     let death_effect_allowed = is_death_effect_update(update);
+    let force_show_hp = is_hp_swap_update(update);
 
     let mut rest = update.message.as_ref();
     while let Some(start) = rest.find('[') {
@@ -459,10 +462,26 @@ fn build_clip_parts<S: ReplayState>(
         let token = &after_open[..end];
         match token {
             "0" => {
-                push_player_part(&mut parts, update.caster, before, after, player_names, death_effect_allowed);
+                push_player_part(
+                    &mut parts,
+                    update.caster,
+                    before,
+                    after,
+                    player_names,
+                    death_effect_allowed,
+                    force_show_hp,
+                );
             }
             "1" => {
-                push_player_part(&mut parts, update.target, before, after, player_names, death_effect_allowed);
+                push_player_part(
+                    &mut parts,
+                    update.target,
+                    before,
+                    after,
+                    player_names,
+                    death_effect_allowed,
+                    force_show_hp,
+                );
             }
             "2" => push_data_part(&mut parts, &data),
             _ => {
@@ -693,6 +712,26 @@ mod tests {
     }
 
     #[test]
+    fn hp_swap_forces_hp_for_unchanged_players() {
+        let update = RunUpdate::new("[1]\u{7684}\u{4f53}\u{529b}\u{503c}\u{4e0e}[0]\u{4e92}\u{6362}", 0, 1, 100);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Normal,
+            message_rendered: "target\u{7684}\u{4f53}\u{529b}\u{503c}\u{4e0e}caster\u{4e92}\u{6362}",
+        }];
+        let previous = vec![state(0, 50), state(1, 50)];
+        let frame = vec![state(0, 50), state(1, 50)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+        let parts = player_parts(clip);
+
+        assert_eq!(parts.len(), 2);
+        assert!(parts.iter().all(|part| part.show_hp));
+        assert!(parts.iter().all(|part| (part.hp_before, part.hp_after) == (50, 50)));
+    }
+
+    #[test]
     fn death_effect_only_renders_when_hp_stays_zero() {
         let update = RunUpdate::new("[1]被击倒", 0, 1, 50);
         let events = [ReplayEventView {
@@ -747,7 +786,7 @@ mod tests {
         let clip = &view.rows[0].clips[0];
 
         let player_part = player_part(clip);
-        assert!(player_part.show_hp);
+        assert!(!player_part.show_hp);
         assert_eq!((player_part.hp_before, player_part.hp_after), (40, 0));
         assert!(player_part.death_effect);
     }
