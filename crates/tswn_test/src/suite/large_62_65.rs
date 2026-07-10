@@ -630,5 +630,3 @@ seed:33554432@!
     assert!(guard < 20_000, "sampled case-65 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-65", &actual_lines, &expected_lines);
 }
-
-

@@ -676,9 +676,8 @@ mod tests {
         assert!(out.ptr.is_null());
 
         let err = crate::tswn_last_error_message();
-        let message = unsafe {
-            std::str::from_utf8_unchecked(std::slice::from_raw_parts(err.ptr as *const u8, err.len)).to_owned()
-        };
+        let message =
+            unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(err.ptr as *const u8, err.len)).to_owned() };
         unsafe { crate::tswn_str_free(err) };
         assert_eq!(message, "runtime v2 max_rounds must be positive");
     }

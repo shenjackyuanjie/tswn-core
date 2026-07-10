@@ -1014,5 +1014,3 @@ pub fn fight_multi_5<E: crate::EngineAdapter>() {
         );
     }
 }
-
-

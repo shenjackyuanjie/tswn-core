@@ -176,12 +176,19 @@ fn run_score_worker(
         if i >= end {
             break;
         }
-        run_score_round(target_group, modifier, i, eval_rq, &mut bench_input, &mut RoundAccum {
-            wins: &mut wins,
-            total: &mut total,
-            errors: &mut errors,
-            timing: &mut timing,
-        });
+        run_score_round(
+            target_group,
+            modifier,
+            i,
+            eval_rq,
+            &mut bench_input,
+            &mut RoundAccum {
+                wins: &mut wins,
+                total: &mut total,
+                errors: &mut errors,
+                timing: &mut timing,
+            },
+        );
     }
 
     (wins, total, errors, timing)
@@ -201,12 +208,19 @@ fn run_score_range(
     let mut bench_input = String::with_capacity(target_group.iter().map(|name| name.len() + 1).sum::<usize>() + 96);
 
     for i in start..end {
-        run_score_round(target_group, modifier, i, eval_rq, &mut bench_input, &mut RoundAccum {
-            wins: &mut wins,
-            total: &mut total,
-            errors: &mut errors,
-            timing: &mut timing,
-        });
+        run_score_round(
+            target_group,
+            modifier,
+            i,
+            eval_rq,
+            &mut bench_input,
+            &mut RoundAccum {
+                wins: &mut wins,
+                total: &mut total,
+                errors: &mut errors,
+                timing: &mut timing,
+            },
+        );
     }
 
     (wins, total, errors, timing)

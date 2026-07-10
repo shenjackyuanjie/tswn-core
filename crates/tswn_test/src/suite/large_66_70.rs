@@ -699,5 +699,3 @@ Superpower被击倒了
     assert!(guard < 20_000, "sampled case-70 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-70", &actual_lines, &expected_lines);
 }
-
-

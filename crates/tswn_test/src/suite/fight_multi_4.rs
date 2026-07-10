@@ -1034,5 +1034,3 @@ pub fn fight_multi_4<E: crate::EngineAdapter>() {
     assert!(guard < 50_000, "fight_multi_4 combat did not finish in expected rounds");
     assert_trace_with_context("fight_multi_4", &actual_lines, &expected_lines);
 }
-
-

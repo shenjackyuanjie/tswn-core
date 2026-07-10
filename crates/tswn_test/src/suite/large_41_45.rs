@@ -1002,5 +1002,3 @@ Reku_Mochizuki发起攻击, 丧尸受到107点伤害
     assert!(guard < 20_000, "sampled case-45 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-45", &actual_lines, &expected_lines);
 }
-
-

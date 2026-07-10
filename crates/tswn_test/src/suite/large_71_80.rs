@@ -263,5 +263,3 @@ Parallel使用地裂术
     assert!(guard < 20_000, "sampled case-72 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-72", &actual_lines, &expected_lines);
 }
-
-

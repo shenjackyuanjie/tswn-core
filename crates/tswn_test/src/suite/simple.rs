@@ -140,5 +140,3 @@ pub fn case_d8c6_opening_matches_js_trace<E: crate::EngineAdapter>() {
         ]
     );
 }
-
-

@@ -339,5 +339,3 @@ Dianmu发起狂暴攻击, Dianmu受到43点伤害
     assert!(guard < 20_000, "sampled case-50 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-50", &actual_lines, &expected_lines);
 }
-
-

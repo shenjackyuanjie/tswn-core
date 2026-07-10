@@ -610,5 +610,3 @@ pub fn case_17<E: crate::EngineAdapter>() {
     let winner = winner_names::<E>(&runner);
     assert_eq!(winner, vec!["help".to_string()]);
 }
-
-

@@ -1310,5 +1310,3 @@ Dianmu使用魅惑, 一拳超人回避了攻击
     assert_trace_with_context("sampled case-55", &actual_lines, &expected_lines);
     assert_eq!(total_score, 11370, "large_55 score mismatch");
 }
-
-

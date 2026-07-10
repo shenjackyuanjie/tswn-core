@@ -1467,5 +1467,3 @@ U0TvbhRUZT发起攻击, UfjGOy7sst受到38点伤害
     assert!(guard < 20_000, "sampled case-30 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-30", &actual_lines, &expected_lines);
 }
-
-

@@ -218,7 +218,10 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
             },
             || {
                 progress_done += 1;
-                send(ProgressEvent::Progress { done: progress_done, total });
+                send(ProgressEvent::Progress {
+                    done: progress_done,
+                    total,
+                });
             },
             |result| {
                 emit_namer_pf_result(
@@ -480,14 +483,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
             outer_workers,
             &input.cancel,
             |index, player, tick| {
-                compute_batch_rate_result(
-                    player,
-                    &player_labels[index],
-                    &target_groups,
-                    job_settings,
-                    &input.cancel,
-                    tick,
-                )
+                compute_batch_rate_result(player, &player_labels[index], &target_groups, job_settings, &input.cancel, tick)
             },
             || {
                 done += 1;
