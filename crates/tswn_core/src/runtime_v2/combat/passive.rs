@@ -22,6 +22,10 @@ impl CombatRuntime {
         caster: EntityIdx,
         updates: &mut RunUpdates,
     ) {
+        if damage <= 0 {
+            return;
+        }
+
         #[derive(Debug, Clone, Copy)]
         enum PlainPostDamageSkill {
             Upgrade,
