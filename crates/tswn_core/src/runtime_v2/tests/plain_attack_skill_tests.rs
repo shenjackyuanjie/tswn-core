@@ -201,7 +201,7 @@ fn plain_quake_static_dispatch_consumes_dead_target_attack_rng() {
         .filter(|update| update.message.starts_with("[1]受到[2]点伤害"))
         .collect::<Vec<_>>();
     assert_eq!(damage_updates.len(), picked_len - 1);
-    assert!(damage_updates.iter().all(|update| update.delay0 == 300));
+    assert!(damage_updates.iter().all(|update| update.delay0 == 1000 + update.score as i32 * 2));
 }
 
 #[test]

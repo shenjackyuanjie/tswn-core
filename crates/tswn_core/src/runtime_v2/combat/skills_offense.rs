@@ -295,11 +295,7 @@ impl CombatRuntime {
             }
 
             updates.add_newline();
-            let update_pos = updates.updates.len();
             self.drain_plain_attack_with_atp_into(actor, target, true, atp, updates);
-            if let Some(update) = updates.updates.get_mut(update_pos) {
-                update.delay0 = 300;
-            }
             if self.world.sync_winner(&self.entities).is_some() {
                 break;
             }
