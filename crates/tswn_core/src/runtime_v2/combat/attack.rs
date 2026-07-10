@@ -535,6 +535,9 @@ impl CombatRuntime {
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
         updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        if amount == 0 {
+            return false;
+        }
         if let Some((boss, mutation)) = covid_source {
             self.try_covid_spread_on_damage_into(boss, target, mutation, amount, updates);
         }
