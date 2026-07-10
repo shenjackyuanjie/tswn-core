@@ -398,6 +398,7 @@ impl EntityRecord {
     }
 
     pub fn clear_positive_runtime_messages(&mut self) -> Vec<(i32, &'static str)> {
+        let emit_state_cancel = self.runtime.alive && self.runtime.hp > 0;
         let mut messages = Vec::new();
         if self.clear_accumulate_runtime() {
             messages.push((100, "[1]的[聚气]被打消了"));
@@ -405,7 +406,7 @@ impl EntityRecord {
         if self.clear_charge_runtime() {
             messages.push((200, "[1]的[蓄力]被中止了"));
         }
-        if self.clear_upgrade_runtime() {
+        if self.clear_upgrade_runtime() && emit_state_cancel {
             messages.push((500, "[1]的[垂死]属性被打消"));
         }
         messages.sort_unstable_by_key(|(priority, _)| *priority);
@@ -413,8 +414,9 @@ impl EntityRecord {
     }
 
     pub fn clear_positive_messages(&mut self) -> Vec<(i32, &'static str)> {
+        let emit_state_cancel = self.runtime.alive && self.runtime.hp > 0;
         let mut messages = self.clear_positive_runtime_messages();
-        messages.extend(self.states.clear_positive_states_with_ordered_messages(self.runtime.alive));
+        messages.extend(self.states.clear_positive_states_with_ordered_messages(emit_state_cancel));
         messages.sort_unstable_by_key(|(priority, _)| *priority);
         messages
     }

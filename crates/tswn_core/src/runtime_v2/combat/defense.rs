@@ -445,20 +445,11 @@ impl CombatRuntime {
         };
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
         let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
-        let team = target_entity.runtime.team;
         updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
-        self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);
         }
-        if killed {
-            let Some(target_entity) = self.entities.get_mut(target) else {
-                panic!("unknown runtime_v2 disperse damage target entity: {}", target.0);
-            };
-            target_entity.runtime.alive = false;
-            self.world.mark_dead(target, team);
-            self.cleanup_linked_minions_for_owner(target, updates);
-        }
+        self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         killed
     }
 

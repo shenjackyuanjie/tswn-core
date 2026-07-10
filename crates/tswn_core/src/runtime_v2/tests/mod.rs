@@ -9141,61 +9141,6 @@ fn flush_effects_disperse_attack_doubles_atp_against_minion_targets() {
 }
 
 #[test]
-fn flush_effects_disperse_attack_lethal_hit_clears_haste_before_death() {
-    let mut builder = ExtensionRegistryBuilder::default();
-    let haste = builder
-        .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
-        .expect("haste state should register");
-    let die_skill = builder
-        .register_skill_with_hooks(
-            "custom",
-            "die",
-            "custom.die",
-            ProcMask::DIE,
-            TargetPolicy::None,
-            SkillPriority(0),
-        )
-        .expect("die skill should register");
-    let registry = builder.build();
-    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
-        vec![
-            PlayerTemplate::new(1, "caster", 0, 10, 3).with_magic(80),
-            PlayerTemplate::new(2, "target", 1, 1, 3)
-                .with_def_res(0, 0)
-                .with_magic_point(96)
-                .with_skills([die_skill]),
-        ],
-        registry,
-    ));
-    runtime.set_skill_handler(die_skill, skill_marks_update);
-    runtime
-        .entities
-        .get_mut(EntityIdx(1))
-        .unwrap()
-        .states
-        .add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
-    runtime.effects.push(QueuedEffect::DisperseAttack {
-        caster: EntityIdx(0),
-        target: EntityIdx(1),
-    });
-
-    let frame = runtime.flush_effects().expect("lethal disperse should emit updates");
-    let messages = frame
-        .updates
-        .updates
-        .iter()
-        .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
-        .map(|update| update.message.as_ref())
-        .collect::<Vec<_>>();
-
-    assert_eq!(
-        messages,
-        vec!["[0]使用[净化]", "[1]受到[2]点伤害", "[1]从[疾走]中解除", "skill mark"]
-    );
-    assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
-}
-
-#[test]
 fn run_state_hooks_iron_post_action_clears_and_emits_release() {
     let mut builder = ExtensionRegistryBuilder::default();
     let iron_state = builder

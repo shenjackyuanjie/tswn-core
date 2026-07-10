@@ -128,6 +128,109 @@ fn plain_disperse_damage_then_clears_positive_state_and_magic_point() {
 }
 
 #[test]
+fn plain_disperse_clears_before_post_damage_upgrade_activation() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let upgrade = builder
+        .register_skill_with_hooks(
+            "core",
+            "upgrade",
+            DEFAULT_CORE_UPGRADE_SKILL_EXPORT,
+            ProcMask::POST_DAMAGE,
+            TargetPolicy::None,
+            SkillPriority(0),
+        )
+        .expect("upgrade skill should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3).with_magic(80),
+            PlayerTemplate::new(2, "target", 1, 100, 3)
+                .with_def_res(0, 16)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(upgrade, 128)])),
+        ],
+        registry,
+    ));
+    let mut updates = RunUpdates::new();
+
+    assert!(!runtime.apply_disperse_attack_damage_into(EntityIdx(0), EntityIdx(1), 90, &mut updates,));
+
+    let target = runtime.entities.get(EntityIdx(1)).unwrap();
+    assert_eq!(target.runtime.hp, 10);
+    assert!(target.runtime.upgrade_active);
+    assert_eq!(
+        updates
+            .updates
+            .iter()
+            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .map(|update| update.message.as_ref())
+            .collect::<Vec<_>>(),
+        vec!["[1]受到[2]点伤害", "[0]做出[垂死]抗争", "[0]所有属性上升"]
+    );
+}
+
+#[test]
+fn lethal_disperse_emits_knockout_before_reraise_without_state_cancel_message() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let reraise = builder
+        .register_skill_with_hooks(
+            "core",
+            "reraise",
+            DEFAULT_CORE_RERAISE_SKILL_EXPORT,
+            ProcMask::DIE,
+            TargetPolicy::None,
+            SkillPriority(0),
+        )
+        .expect("reraise skill should register");
+    let haste = builder
+        .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+        .expect("haste state should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3).with_magic(1_000),
+            PlayerTemplate::new(2, "target", 1, 1, 3)
+                .with_def_res(0, 16)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(reraise, 128)])),
+        ],
+        registry,
+    ));
+    runtime.set_skill_handler(reraise, run_reraise_die_skill);
+    runtime
+        .entities
+        .get_mut(EntityIdx(1))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::haste(77, haste, 2, 3, SkillPriority(100)));
+    runtime.effects.push(QueuedEffect::DisperseAttack {
+        caster: EntityIdx(0),
+        target: EntityIdx(1),
+    });
+
+    let frame = runtime.flush_effects().expect("lethal disperse with reraise should emit updates");
+    let target = runtime.entities.get(EntityIdx(1)).unwrap();
+
+    assert!(target.runtime.alive);
+    assert!(target.runtime.hp > 0);
+    assert_eq!(target.states.entry(77), None);
+    assert_eq!(
+        frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .map(|update| update.message.as_ref())
+            .collect::<Vec<_>>(),
+        vec![
+            "[0]使用[净化]",
+            "[1]受到[2]点伤害",
+            "[1]被击倒了",
+            "[0]使用[护身符]抵挡了一次死亡",
+            "[1]回复体力[2]点",
+        ]
+    );
+}
+
+#[test]
 fn plain_disperse_runs_before_default_attack_in_minimal_round() {
     let mut builder = ExtensionRegistryBuilder::default();
     let disperse = builder
