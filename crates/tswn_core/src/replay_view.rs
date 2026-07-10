@@ -170,6 +170,9 @@ pub fn build_replay_view_frame<S: ReplayState>(
                 apply_hp_delta(&mut running, *target_id, hp_delta);
             }
         }
+        if is_hp_swap_update(update) {
+            apply_hp_swap(&mut running, update.caster, update.target);
+        }
         let after = running.clone();
         let parts = build_clip_parts(update, &before, &after, player_names);
         let show_hp = parts.iter().any(|part| part.show_hp);
@@ -312,6 +315,25 @@ fn apply_hp_delta<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId, hp
     running.insert(id, state.with_hp_alive(hp, hp > 0));
 }
 
+fn apply_hp_swap<S: ReplayState>(running: &mut HashMap<PlrId, S>, caster_id: PlrId, target_id: PlrId) {
+    let Some(caster) = running.get(&caster_id).cloned() else {
+        return;
+    };
+    let Some(target) = running.get(&target_id).cloned() else {
+        return;
+    };
+    let caster_hp = caster.hp();
+    let target_hp = target.hp();
+    let caster_new_hp = if caster.max_hp() > 0 {
+        target_hp.min(caster.max_hp())
+    } else {
+        target_hp
+    };
+    let target_new_hp = caster_hp;
+    running.insert(caster_id, caster.with_hp_alive(caster_new_hp, caster_new_hp > 0));
+    running.insert(target_id, target.with_hp_alive(target_new_hp, target_new_hp > 0));
+}
+
 fn hp_pair<S: ReplayState>(player_id: PlrId, before: &HashMap<PlrId, S>, after: &HashMap<PlrId, S>) -> (i32, i32, bool) {
     let hp_after = after.get(&player_id).map(ReplayState::hp);
     let is_new_entity = !before.contains_key(&player_id) && hp_after.is_some();
@@ -397,6 +419,10 @@ fn push_data_part(parts: &mut Vec<ReplayTextPart>, value: &str) {
 
 fn is_death_effect_update(update: &RunUpdate) -> bool {
     update.message.contains("\u{88ab}\u{51fb}\u{5012}") || update.message.contains("\u{6d88}\u{5931}")
+}
+
+fn is_hp_swap_update(update: &RunUpdate) -> bool {
+    update.message.contains("\u{4f53}\u{529b}\u{503c}\u{4e0e}") && update.message.contains("\u{4e92}\u{6362}")
 }
 
 fn build_clip_parts<S: ReplayState>(
@@ -512,6 +538,10 @@ mod tests {
         clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Player).unwrap()
     }
 
+    fn player_parts(clip: &ReplayClip<TestState>) -> Vec<&ReplayTextPart> {
+        clip.parts.iter().filter(|part| part.kind == ReplayTextPartKind::Player).collect()
+    }
+
     #[test]
     fn hp_bar_only_shows_when_hp_changes() {
         let update = RunUpdate::new("[1]受到[2]点伤害", 0, 1, 30);
@@ -595,6 +625,30 @@ mod tests {
         assert!(player_part.show_hp);
         assert_eq!((player_part.hp_before, player_part.hp_after), (60, 60));
         assert!(!player_part.death_effect);
+    }
+
+    #[test]
+    fn hp_swap_shows_hp_for_both_players() {
+        let update = RunUpdate::new("[1]\u{7684}\u{4f53}\u{529b}\u{503c}\u{4e0e}[0]\u{4e92}\u{6362}", 0, 1, 100);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Normal,
+            message_rendered: "target\u{7684}\u{4f53}\u{529b}\u{503c}\u{4e0e}caster\u{4e92}\u{6362}",
+        }];
+        let previous = vec![state(0, 30), state(1, 80)];
+        let frame = vec![state(0, 80), state(1, 30)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+        let parts = player_parts(clip);
+
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].player_id, Some(1));
+        assert!(parts[0].show_hp);
+        assert_eq!((parts[0].hp_before, parts[0].hp_after), (80, 30));
+        assert_eq!(parts[1].player_id, Some(0));
+        assert!(parts[1].show_hp);
+        assert_eq!((parts[1].hp_before, parts[1].hp_after), (30, 80));
     }
 
     #[test]

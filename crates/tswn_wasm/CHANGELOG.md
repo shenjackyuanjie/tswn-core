@@ -6,6 +6,7 @@
 
 - 精简 `ReplayClip` 导出字段，移除 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji`；这些渲染语义统一由 `parts[]` 中的 `ReplayTextPart` 表达，clip 只保留 delay、颜色/语义、关联 id、侧栏快照和胜利标记。
 - show 示例同步适配新 replay view：规范 `parts[]`、`caster_ids[]`、`target_ids[]` 与侧栏快照数组，并明确正文渲染只消费 `clip.parts[]` 的结构化语义。
+- replay view 同步修复生命之轮体力互换的血条数据：互换句中的两个玩家 part 都会携带各自正确的帧前/帧后 HP，并仅在实际变化时展示血条。
 
 ## [0.3.1] - 2026-07-06
 
