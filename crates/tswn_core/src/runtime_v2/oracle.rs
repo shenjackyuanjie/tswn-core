@@ -1,6 +1,7 @@
-use crate::engine::update::{DEFAULT_DELAY0_MS, DEFAULT_DELAY1_MS, UpdateType};
+use crate::Runner;
+use crate::engine::update::{DEFAULT_DELAY0_MS, DEFAULT_DELAY1_MS, RunUpdates, UpdateType};
 use crate::rc4::RC4;
-use crate::runtime_v2::{CombatRuntime, EntityIdx, PreparedCombatTemplate, RoundOutcome};
+use crate::runtime_v2::{CombatRuntime, EntityIdx, PreparedCombatTemplate, RoundOutcome, RuntimeV2NormalizedRun};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NormalizedRngCheckpoint {
@@ -11,14 +12,16 @@ pub struct NormalizedRngCheckpoint {
 }
 
 impl NormalizedRngCheckpoint {
-    pub fn from_runtime(runtime: &CombatRuntime) -> Self {
+    pub fn from_rc4(rng: &RC4) -> Self {
         Self {
-            i: runtime.rng.i,
-            j: runtime.rng.j,
+            i: rng.i,
+            j: rng.j,
             #[cfg(not(feature = "no_debug"))]
-            byte_count: runtime.rng.byte_count,
+            byte_count: rng.byte_count,
         }
     }
+
+    pub fn from_runtime(runtime: &CombatRuntime) -> Self { Self::from_rc4(&runtime.rng) }
 
     pub fn after_next_u8(count: usize) -> Self {
         let mut rng = RC4::default();
@@ -72,29 +75,26 @@ pub struct NormalizedUpdateFrame {
 }
 
 impl NormalizedUpdateFrame {
-    pub fn from_outcome(outcome: &RoundOutcome) -> Vec<Self> {
-        outcome
-            .frame
-            .as_ref()
-            .map(|frame| {
-                frame
-                    .updates
-                    .updates
-                    .iter()
-                    .map(|update| Self {
-                        message: update.message.to_string(),
-                        caster: update.caster,
-                        target: update.target,
-                        targets: update.targets.iter().copied().collect(),
-                        param: update.param,
-                        score: update.score,
-                        delay0: update.delay0,
-                        delay1: update.delay1,
-                        update_type: update.update_type,
-                    })
-                    .collect()
+    pub fn from_updates(updates: &RunUpdates) -> Vec<Self> {
+        updates
+            .updates
+            .iter()
+            .map(|update| Self {
+                message: update.message.to_string(),
+                caster: update.caster,
+                target: update.target,
+                targets: update.targets.iter().copied().collect(),
+                param: update.param,
+                score: update.score,
+                delay0: update.delay0,
+                delay1: update.delay1,
+                update_type: update.update_type,
             })
-            .unwrap_or_default()
+            .collect()
+    }
+
+    pub fn from_outcome(outcome: &RoundOutcome) -> Vec<Self> {
+        outcome.frame.as_ref().map(|frame| Self::from_updates(&frame.updates)).unwrap_or_default()
     }
 }
 
@@ -157,6 +157,68 @@ impl NormalizedOutcome {
             alive_group_count: runtime.world.alive_group_count(),
             actions: NormalizedActionBoundary::from_outcome(runtime, outcome),
             frames: NormalizedUpdateFrame::from_outcome(outcome),
+        }
+    }
+
+    pub fn from_legacy_runner(runner: &Runner, round: u64, updates: &RunUpdates) -> Self {
+        let mut entity_ids = runner.all_plrs();
+        entity_ids.sort_unstable();
+        entity_ids.dedup();
+        let winner_team = runner
+            .world
+            .winner
+            .as_ref()
+            .and_then(|winner| runner.world.teams.iter().position(|team| team.roster == *winner));
+        let teams = entity_ids
+            .iter()
+            .map(|id| {
+                runner
+                    .world
+                    .team_index_of(*id)
+                    .unwrap_or_else(|| panic!("legacy oracle player {id} is missing a team"))
+            })
+            .collect();
+        let statuses = entity_ids
+            .iter()
+            .map(|id| {
+                runner
+                    .storage
+                    .get_player(id)
+                    .unwrap_or_else(|| panic!("legacy oracle player {id} is missing from storage"))
+                    .get_status()
+            })
+            .collect::<Vec<_>>();
+        #[cfg(not(feature = "no_debug"))]
+        let actions = updates
+            .action_boundaries()
+            .iter()
+            .map(|action| NormalizedActionBoundary {
+                round,
+                actor: action.actor,
+                target: action.target,
+                amount: action.amount,
+            })
+            .collect();
+        #[cfg(feature = "no_debug")]
+        let actions = Vec::new();
+        Self {
+            winner_team,
+            round,
+            total_score: updates.updates.iter().map(|update| u64::from(update.score)).sum(),
+            rng: NormalizedRngCheckpoint::from_rc4(&runner.randomer),
+            entity_ids: entity_ids.iter().map(|id| id + 1).collect(),
+            teams,
+            hp: statuses.iter().map(|status| status.hp).collect(),
+            magic_point: statuses.iter().map(|status| status.magic_point).collect(),
+            defense: statuses.iter().map(|status| status.defense).collect(),
+            resistance: statuses.iter().map(|status| status.resistance).collect(),
+            alive: statuses.iter().map(|status| status.alive()).collect(),
+            round_order: runner.world.players.clone(),
+            flat_alive: runner.world.flat_alive.clone(),
+            team_alive: runner.world.teams.iter().map(|team| team.alive.clone()).collect(),
+            alive_group_count: runner.world.alive_group_count(),
+            actions,
+            frames: NormalizedUpdateFrame::from_updates(updates),
         }
     }
 }
@@ -243,6 +305,15 @@ pub enum StrictDiff {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StrictRunDiff {
+    Round { index: usize, diff: StrictDiff },
+    RoundCount { expected: usize, actual: usize },
+    Winner { expected: Option<usize>, actual: Option<usize> },
+    GuardExhausted { expected: bool, actual: bool },
+    TotalScore { expected: u64, actual: u64 },
+}
+
 pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> Result<(), StrictDiff> {
     if expected.winner_team != actual.winner_team {
         return Err(StrictDiff::Winner {
@@ -255,6 +326,24 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
             expected: expected.round,
             actual: actual.round,
         });
+    }
+    #[cfg(not(feature = "no_debug"))]
+    {
+        if expected.actions.len() != actual.actions.len() {
+            return Err(StrictDiff::ActionCount {
+                expected: expected.actions.len(),
+                actual: actual.actions.len(),
+            });
+        }
+        for (index, (expected_action, actual_action)) in expected.actions.iter().zip(&actual.actions).enumerate() {
+            if expected_action != actual_action {
+                return Err(StrictDiff::Action {
+                    index,
+                    expected: expected_action.clone(),
+                    actual: actual_action.clone(),
+                });
+            }
+        }
     }
     if expected.total_score != actual.total_score {
         return Err(StrictDiff::Score {
@@ -334,21 +423,6 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
             actual: actual.alive_group_count,
         });
     }
-    if expected.actions.len() != actual.actions.len() {
-        return Err(StrictDiff::ActionCount {
-            expected: expected.actions.len(),
-            actual: actual.actions.len(),
-        });
-    }
-    for (index, (expected_action, actual_action)) in expected.actions.iter().zip(&actual.actions).enumerate() {
-        if expected_action != actual_action {
-            return Err(StrictDiff::Action {
-                index,
-                expected: expected_action.clone(),
-                actual: actual_action.clone(),
-            });
-        }
-    }
     if expected.frames.len() != actual.frames.len() {
         return Err(StrictDiff::FrameCount {
             expected: expected.frames.len(),
@@ -365,6 +439,62 @@ pub fn strict_diff(expected: &NormalizedOutcome, actual: &NormalizedOutcome) -> 
         }
     }
     Ok(())
+}
+
+pub fn strict_diff_runs(expected: &RuntimeV2NormalizedRun, actual: &RuntimeV2NormalizedRun) -> Result<(), StrictRunDiff> {
+    for (index, (expected_round, actual_round)) in expected.rounds.iter().zip(&actual.rounds).enumerate() {
+        if let Err(diff) = strict_diff(expected_round, actual_round) {
+            return Err(StrictRunDiff::Round { index, diff });
+        }
+    }
+    if expected.rounds.len() != actual.rounds.len() {
+        return Err(StrictRunDiff::RoundCount {
+            expected: expected.rounds.len(),
+            actual: actual.rounds.len(),
+        });
+    }
+    if expected.winner_team != actual.winner_team {
+        return Err(StrictRunDiff::Winner {
+            expected: expected.winner_team,
+            actual: actual.winner_team,
+        });
+    }
+    if expected.guard_exhausted != actual.guard_exhausted {
+        return Err(StrictRunDiff::GuardExhausted {
+            expected: expected.guard_exhausted,
+            actual: actual.guard_exhausted,
+        });
+    }
+    if expected.total_score != actual.total_score {
+        return Err(StrictRunDiff::TotalScore {
+            expected: expected.total_score,
+            actual: actual.total_score,
+        });
+    }
+    Ok(())
+}
+
+pub fn normalize_legacy_run(runner: &mut Runner, max_rounds: usize) -> RuntimeV2NormalizedRun {
+    let mut rounds = Vec::new();
+    while !runner.have_winner() && rounds.len() < max_rounds {
+        let updates = runner.main_round();
+        rounds.push(NormalizedOutcome::from_legacy_runner(runner, rounds.len() as u64 + 1, &updates));
+        if runner.have_winner() {
+            break;
+        }
+    }
+    let winner_team = runner
+        .world
+        .winner
+        .as_ref()
+        .and_then(|winner| runner.world.teams.iter().position(|team| team.roster == *winner));
+    let total_score = rounds.iter().map(|outcome| outcome.total_score).sum();
+    RuntimeV2NormalizedRun {
+        guard_exhausted: winner_team.is_none() && rounds.len() == max_rounds,
+        rounds,
+        winner_team,
+        total_score,
+    }
 }
 
 pub fn run_minimal_v2_once(template: PreparedCombatTemplate) -> NormalizedOutcome {
@@ -447,12 +577,62 @@ mod tests {
         );
     }
 
+    #[cfg(not(feature = "no_debug"))]
     #[test]
     fn strict_diff_harness_reports_action_boundary_mismatch_before_frames() {
         let expected = minimal_1v1_expected_after_one_round(10, 10, 3);
         let mut actual = expected.clone();
         actual.actions[0].target = 0;
         actual.frames[0].target = 0;
+
+        assert_eq!(
+            strict_diff(&expected, &actual),
+            Err(StrictDiff::Action {
+                index: 0,
+                expected: expected.actions[0].clone(),
+                actual: actual.actions[0].clone(),
+            })
+        );
+    }
+
+    #[cfg(not(feature = "no_debug"))]
+    #[test]
+    fn legacy_normalizer_records_default_action_boundary() {
+        let mut runner = Runner::new_from_namerena_raw("left@red\n\nright@blue".to_owned()).expect("legacy runner should build");
+        let normalized = normalize_legacy_run(&mut runner, 1);
+        let round = normalized.rounds.first().expect("legacy run should produce one round");
+        let action = round.actions.first().expect("legacy round should record its primary action");
+
+        assert_eq!(
+            action,
+            &NormalizedActionBoundary {
+                round: 1,
+                actor: 1,
+                target: 0,
+                amount: 36,
+            }
+        );
+    }
+
+    #[test]
+    fn legacy_normalizer_keeps_running_across_idle_ticks() {
+        let mut runner =
+            Runner::new_from_namerena_raw("aaaa+123\nbbb+324\nccc+2345".to_owned()).expect("legacy runner should build");
+
+        let normalized = normalize_legacy_run(&mut runner, 2);
+
+        assert_eq!(normalized.rounds.len(), 2);
+        assert!(normalized.guard_exhausted);
+    }
+
+    #[cfg(not(feature = "no_debug"))]
+    #[test]
+    fn strict_diff_reports_action_before_downstream_score_and_state() {
+        let expected = minimal_1v1_expected_after_one_round(10, 10, 3);
+        let mut actual = expected.clone();
+        actual.actions[0].actor = 1;
+        actual.total_score = 99;
+        actual.hp[1] = 1;
 
         assert_eq!(
             strict_diff(&expected, &actual),
@@ -561,11 +741,10 @@ mod tests {
     }
 
     #[test]
-    fn strict_diff_harness_reports_alive_group_count_before_actions() {
+    fn strict_diff_harness_reports_alive_group_count_after_entity_views() {
         let expected = minimal_1v1_expected_after_one_round(10, 3, 3);
         let mut actual = expected.clone();
         actual.alive_group_count = 2;
-        actual.actions[0].target = 0;
 
         assert_eq!(
             strict_diff(&expected, &actual),

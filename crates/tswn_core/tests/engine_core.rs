@@ -1,9 +1,9 @@
+use tswn_core::Runner;
 use tswn_core::engine::engine_core::EngineCore;
 use tswn_core::engine::tick;
 use tswn_core::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use tswn_core::player::skill::act::minion::{MinionKind, MinionRuntimeState};
 use tswn_core::player::{Player, PlayerType};
-use tswn_core::Runner;
 
 macro_rules! str_vec {
     () => {{
@@ -227,8 +227,7 @@ fn bang_testex_same_team_does_not_upgrade() {
     let raw_input = "aaaaaa\n33554632@!\n\n33554633@!\n33554634@!".to_string();
     let (groups, seed) = Runner::split_namerena_into_groups(raw_input);
     let runner =
-        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ)
-            .unwrap();
+        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ).unwrap();
     let magic = runner
         .world
         .all_plrs()
@@ -246,8 +245,7 @@ fn bang_score_round_235_clone_raw_base_matches_md5_winner() {
     let raw_input = "aaaaaa\n33555133@!\n\n33555134@!\n33555135@!".to_string();
     let (groups, seed) = Runner::split_namerena_into_groups(raw_input);
     let mut runner =
-        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ)
-            .unwrap();
+        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ).unwrap();
     runner.run_to_completion();
 
     let mut winners = winner_names(&runner);
@@ -260,8 +258,7 @@ fn score_round_4950_reused_summon_clears_runtime_states_matches_md5_winner() {
     let raw_input = "aaaa@aaaaa\n33569278@\u{0002}\n\n33569279@\u{0002}\n33569280@\u{0002}".to_string();
     let (groups, seed) = Runner::split_namerena_into_groups(raw_input);
     let mut runner =
-        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ)
-            .unwrap();
+        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ).unwrap();
     runner.run_to_completion();
 
     let mut winners = winner_names(&runner);
@@ -274,8 +271,7 @@ fn bang_score_round_8662_broken_iron_clears_immediately_matches_md5_winner() {
     let raw_input = "aaaa@aaaaa\n33580414@!\n\n33580415@!\n33580416@!".to_string();
     let (groups, seed) = Runner::split_namerena_into_groups(raw_input);
     let mut runner =
-        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ)
-            .unwrap();
+        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ).unwrap();
     runner.run_to_completion();
 
     let mut winners = winner_names(&runner);
@@ -288,8 +284,7 @@ fn bang_score_round_6024_dead_owner_minion_not_protect_candidate_matches_md5_win
     let raw_input = "[Face: 212]@!\n33572500@!\n\n33572501@!\n33572502@!".to_string();
     let (groups, seed) = Runner::split_namerena_into_groups(raw_input);
     let mut runner =
-        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ)
-            .unwrap();
+        Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, tswn_core::player::eval_name::WIN_RATE_EVAL_RQ).unwrap();
     runner.run_to_completion();
 
     let mut winners = winner_names(&runner);
@@ -315,10 +310,22 @@ fn no_seed_runner_and_prepared_runner_match() {
     raw_winners.sort();
     let mut prepared_winners = winner_names(&prepared_runner);
     prepared_winners.sort();
-    assert_eq!(raw_winners, prepared_winners, "winner names differ between raw and prepared without seed");
-    assert_eq!(raw_score, prepared_score, "battle score differs between raw and prepared without seed");
-    assert_eq!(raw_rounds, prepared_rounds, "round count differs between raw and prepared without seed");
-    assert_eq!(raw_lines, prepared_lines, "replay trace differs between raw and prepared without seed");
+    assert_eq!(
+        raw_winners, prepared_winners,
+        "winner names differ between raw and prepared without seed"
+    );
+    assert_eq!(
+        raw_score, prepared_score,
+        "battle score differs between raw and prepared without seed"
+    );
+    assert_eq!(
+        raw_rounds, prepared_rounds,
+        "round count differs between raw and prepared without seed"
+    );
+    assert_eq!(
+        raw_lines, prepared_lines,
+        "replay trace differs between raw and prepared without seed"
+    );
 }
 
 #[derive(Clone, Copy)]
@@ -436,15 +443,29 @@ fn assert_prepare_vs_raw_case(mode: PreparedParityMode, case_idx: usize, library
     let (raw_lines, raw_guard, raw_score) = collect_replay_lines(&mut raw_runner, 10_000, true);
     let (prepared_lines, prepared_guard, prepared_score) = collect_replay_lines(&mut prepared_runner, 10_000, true);
 
-    assert!(raw_guard < 10_000, "raw runner did not finish for mode={} case_idx={case_idx}", mode.label());
+    assert!(
+        raw_guard < 10_000,
+        "raw runner did not finish for mode={} case_idx={case_idx}",
+        mode.label()
+    );
     assert!(
         prepared_guard < 10_000,
         "prepared runner did not finish for mode={} case_idx={case_idx}",
         mode.label()
     );
-    assert_eq!(raw_score, prepared_score, "battle score mismatch for mode={} case_idx={case_idx}", mode.label());
+    assert_eq!(
+        raw_score,
+        prepared_score,
+        "battle score mismatch for mode={} case_idx={case_idx}",
+        mode.label()
+    );
     assert_eq!(winner_names(&raw_runner), winner_names(&prepared_runner), "winner mismatch");
-    assert_eq!(raw_lines, prepared_lines, "full replay trace mismatch for mode={} case_idx={case_idx}", mode.label());
+    assert_eq!(
+        raw_lines,
+        prepared_lines,
+        "full replay trace mismatch for mode={} case_idx={case_idx}",
+        mode.label()
+    );
 }
 
 #[test]

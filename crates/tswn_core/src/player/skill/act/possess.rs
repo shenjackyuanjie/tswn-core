@@ -33,6 +33,18 @@ impl SkillTrait for PossessSkill {
         };
         args.2.add(RunUpdate::new("[0]使用[附体]", args.0, target_id, 0));
 
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_PROBE_POSSESS").is_some() {
+            let target_name = args
+                .3
+                .get_player(&target_id)
+                .map(|target| target.id_name())
+                .unwrap_or_else(|| format!("#{target_id}"));
+            eprintln!(
+                "[possess_probe:legacy:act_before] actor={} target={} target_name={} rc4=({},{})",
+                args.0, target_id, target_name, args.1.i, args.1.j,
+            );
+        }
         let dodged = if let (Some(caster), Some(target)) = (args.3.get_player(&args.0), args.3.get_player(&target_id)) {
             if target.check_immune("berserk", args.1) {
                 true
@@ -44,6 +56,13 @@ impl SkillTrait for PossessSkill {
         } else {
             return;
         };
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_PROBE_POSSESS").is_some() {
+            eprintln!(
+                "[possess_probe:legacy:act_after] actor={} target={} dodged={} rc4=({},{})",
+                args.0, target_id, dodged, args.1.i, args.1.j,
+            );
+        }
         if dodged {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
             return;

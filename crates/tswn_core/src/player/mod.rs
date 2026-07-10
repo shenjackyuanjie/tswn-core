@@ -276,6 +276,10 @@ pub struct Player {
     id: u64,
 }
 
+impl Player {
+    pub(crate) fn skill_loadout_snapshot(&self) -> skill::store::SkillLoadoutSnapshot { self.skills.snapshot() }
+}
+
 impl PartialOrd for Player {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { Some(self.p_cmp(other)) }
 }

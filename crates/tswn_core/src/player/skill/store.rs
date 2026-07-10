@@ -52,6 +52,21 @@ use smallvec::SmallVec;
 /// SkillStorage 内部使用的稳定技能键。
 pub type SkillKey = usize;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SkillSnapshot {
+    pub key: SkillKey,
+    pub runtime_kind: &'static str,
+    pub level: u32,
+    pub boost: Option<crate::player::skill::SkillBoost>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SkillLoadoutSnapshot {
+    pub entries: Vec<SkillSnapshot>,
+    pub fixed_lanes: Vec<SkillKey>,
+    pub active_order: Vec<SkillKey>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SkillStore {
     entries: Vec<Option<Skill>>,
@@ -164,6 +179,26 @@ pub struct SkillStorage {
 
 impl SkillStorage {
     pub fn new() -> Self { Self::with_skill_capacity(0) }
+
+    pub(crate) fn snapshot(&self) -> SkillLoadoutSnapshot {
+        SkillLoadoutSnapshot {
+            entries: self
+                .store
+                .keys()
+                .map(|key| {
+                    let skill = self.store.get(&key).expect("skill snapshot key must exist");
+                    SkillSnapshot {
+                        key,
+                        runtime_kind: skill.debug_skill_type_name(),
+                        level: skill.level(),
+                        boost: skill.diy_boost.clone(),
+                    }
+                })
+                .collect(),
+            fixed_lanes: self.slot_skill.clone(),
+            active_order: self.skill.clone(),
+        }
+    }
 
     #[inline]
     pub fn has_pre_step(&self) -> bool { !self.pre_step.is_empty() }

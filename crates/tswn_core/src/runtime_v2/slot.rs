@@ -37,6 +37,13 @@ impl TemplateSlotStorage {
 
     pub fn get(&self, id: TemplateSlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
 
+    pub fn iter(&self) -> impl Iterator<Item = (TemplateSlotId, &SlotValue)> {
+        self.values
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, value)| value.as_ref().map(|value| (TemplateSlotId(idx as u32), value)))
+    }
+
     pub fn len(&self) -> usize { self.values.len() }
 
     pub fn is_empty(&self) -> bool { self.values.is_empty() }

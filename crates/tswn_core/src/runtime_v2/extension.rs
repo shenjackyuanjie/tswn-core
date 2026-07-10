@@ -69,6 +69,8 @@ impl ProcMask {
     pub const KILL: Self = Self(1 << 7);
 
     pub const fn intersects(self, rhs: Self) -> bool { (self.0 & rhs.0) != 0 }
+
+    pub const fn is_empty(self) -> bool { self.0 == 0 }
 }
 
 impl Default for ProcMask {
@@ -725,6 +727,14 @@ impl ExtensionRegistry {
 
     pub fn player_kinds(&self) -> &[PlayerKindSpec] { &self.player_kinds }
 
+    pub fn player_kind_by_export_name(&self, export_name: &str) -> Option<&PlayerKindSpec> {
+        self.player_kinds.iter().find(|spec| spec.export_name == export_name)
+    }
+
+    pub fn player_kind_id_by_export_name(&self, export_name: &str) -> Option<PlayerKindId> {
+        self.player_kind_by_export_name(export_name).map(|spec| spec.id)
+    }
+
     pub fn skill(&self, id: SkillId) -> Option<&SkillSpec> { self.skills.get(id.0 as usize) }
 
     pub fn skills(&self) -> &[SkillSpec] { &self.skills }
@@ -749,6 +759,14 @@ impl ExtensionRegistry {
 
     pub fn states(&self) -> &[StateSpec] { &self.states }
 
+    pub fn state_by_export_name(&self, export_name: &str) -> Option<&StateSpec> {
+        self.states.iter().find(|spec| spec.export_name == export_name)
+    }
+
+    pub fn state_id_by_export_name(&self, export_name: &str) -> Option<StateId> {
+        self.state_by_export_name(export_name).map(|spec| spec.id)
+    }
+
     pub fn template_slot(&self, id: TemplateSlotId) -> Option<&TemplateSlotSpec> { self.template_slots.get(id.0 as usize) }
 
     pub fn template_slots(&self) -> &[TemplateSlotSpec] { &self.template_slots }
@@ -758,6 +776,14 @@ impl ExtensionRegistry {
     pub fn battle_slots(&self) -> &[BattleSlotSpec] { &self.battle_slots }
 
     pub fn entity_slot(&self, id: EntitySlotId) -> Option<&EntitySlotSpec> { self.entity_slots.get(id.0 as usize) }
+
+    pub fn entity_slot_by_export_name(&self, export_name: &str) -> Option<&EntitySlotSpec> {
+        self.entity_slots.iter().find(|spec| spec.export_name == export_name)
+    }
+
+    pub fn entity_slot_id_by_export_name(&self, export_name: &str) -> Option<EntitySlotId> {
+        self.entity_slot_by_export_name(export_name).map(|spec| spec.id)
+    }
 
     pub fn entity_slots(&self) -> &[EntitySlotSpec] { &self.entity_slots }
 

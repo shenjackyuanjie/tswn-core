@@ -3,6 +3,8 @@ use crate::runtime_v2::extension::{
     ExtensionRegistry, ProcMask, RegistrationOrder, SkillId, SkillPostActionPhase, SkillPriority, StateId, TargetPolicy,
 };
 use crate::runtime_v2::world::WorldArena;
+use crate::{player::MOVE_POINT_THRESHOLD, rc4::RC4};
+use smallvec::SmallVec;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActionPlan {
@@ -46,10 +48,157 @@ pub struct StateHookPlan {
     pub entries: Vec<StateHookPlanEntry>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct PhaseScheduler;
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum ActionSchedulerMode {
+    #[default]
+    Minimal,
+    LegacyStep,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhaseScheduler {
+    action_mode: ActionSchedulerMode,
+    ice_release_events: SmallVec<[EntityIdx; 4]>,
+}
+
+impl Default for PhaseScheduler {
+    fn default() -> Self {
+        Self {
+            action_mode: ActionSchedulerMode::Minimal,
+            ice_release_events: SmallVec::new(),
+        }
+    }
+}
 
 impl PhaseScheduler {
+    pub fn from_entities(entities: &EntityArena) -> Self {
+        Self {
+            action_mode: Self::infer_action_mode(entities),
+            ice_release_events: SmallVec::new(),
+        }
+    }
+
+    pub const fn action_mode(&self) -> ActionSchedulerMode { self.action_mode }
+
+    pub const fn set_action_mode(&mut self, action_mode: ActionSchedulerMode) { self.action_mode = action_mode; }
+
+    pub fn reset_action_mode_from_entities(&mut self, entities: &EntityArena) {
+        self.action_mode = Self::infer_action_mode(entities);
+    }
+
+    pub const fn uses_legacy_step_scheduler(&self) -> bool { matches!(self.action_mode, ActionSchedulerMode::LegacyStep) }
+
+    pub fn take_ice_release_events(&mut self) -> SmallVec<[EntityIdx; 4]> { std::mem::take(&mut self.ice_release_events) }
+
+    fn infer_action_mode(entities: &EntityArena) -> ActionSchedulerMode {
+        let mut has_speed = false;
+        for (_, entity) in entities.iter() {
+            if entity.template.kind != crate::runtime_v2::PlayerTemplate::DEFAULT_KIND
+                && !entity
+                    .runtime
+                    .flags
+                    .intersects(crate::runtime_v2::PlayerKindFlags::BOSS | crate::runtime_v2::PlayerKindFlags::BOOST)
+            {
+                return ActionSchedulerMode::Minimal;
+            }
+            has_speed |= entity.runtime.speed > 0;
+        }
+        if has_speed {
+            ActionSchedulerMode::LegacyStep
+        } else {
+            ActionSchedulerMode::Minimal
+        }
+    }
+
+    pub fn select_action(
+        &mut self,
+        world: &mut WorldArena,
+        entities: &mut EntityArena,
+        randomer: &mut RC4,
+    ) -> Option<ActionPlan> {
+        self.ice_release_events.clear();
+        if !self.uses_legacy_step_scheduler() {
+            return self.select_minimal_action(world, entities);
+        }
+
+        let max_ticks = entities.len().max(1) * 4;
+        for _ in 0..max_ticks {
+            let actor = world.next_actor(entities)?;
+            let step_byte = randomer.next_u8();
+            let step_roll = (step_byte & 3) as i32;
+            #[cfg(not(feature = "no_debug"))]
+            let probe_step = std::env::var("TSWN_PROBE_STEP")
+                .map(|needle| {
+                    entities.get(actor).is_some_and(|entity| {
+                        entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
+                    })
+                })
+                .unwrap_or(false);
+            let (should_act, ice_released) = {
+                let actor = entities
+                    .get_mut(actor)
+                    .unwrap_or_else(|| panic!("runtime_v2 scheduler selected unknown actor: {}", actor.0));
+                let effective_speed = actor.states.effective_speed(actor.runtime.speed);
+                #[cfg(not(feature = "no_debug"))]
+                let move_points_before = actor.runtime.move_state.speed_points;
+                let (step, ice_released) = actor
+                    .states
+                    .apply_ice_pre_step(effective_speed * step_roll, actor.runtime.move_state.speed_points);
+                actor.runtime.move_state.speed_points += step;
+                if actor.runtime.move_state.speed_points > MOVE_POINT_THRESHOLD {
+                    actor.runtime.move_state.speed_points -= MOVE_POINT_THRESHOLD;
+                    #[cfg(not(feature = "no_debug"))]
+                    if probe_step {
+                        eprintln!(
+                            "[step_probe:v2] actor={} name={} byte={} roll={} speed={} effective_speed={} \
+                             step={} move_before={} move_after={} acted=true",
+                            actor.template.id,
+                            actor.template.name,
+                            step_byte,
+                            step_roll,
+                            actor.runtime.speed,
+                            effective_speed,
+                            step,
+                            move_points_before,
+                            actor.runtime.move_state.speed_points,
+                        );
+                    }
+                    (true, ice_released)
+                } else {
+                    #[cfg(not(feature = "no_debug"))]
+                    if probe_step {
+                        eprintln!(
+                            "[step_probe:v2] actor={} name={} byte={} roll={} speed={} effective_speed={} \
+                             step={} move_before={} move_after={} acted=false",
+                            actor.template.id,
+                            actor.template.name,
+                            step_byte,
+                            step_roll,
+                            actor.runtime.speed,
+                            effective_speed,
+                            step,
+                            move_points_before,
+                            actor.runtime.move_state.speed_points,
+                        );
+                    }
+                    (false, ice_released)
+                }
+            };
+            if ice_released {
+                self.ice_release_events.push(actor);
+                return None;
+            }
+            if !should_act {
+                continue;
+            }
+
+            let target = world.first_alive_enemy(actor, entities)?;
+            let amount = entities.get(actor).map_or(0, |entity| entity.template.attack);
+            return Some(ActionPlan { actor, target, amount });
+        }
+        None
+    }
+
     pub fn select_minimal_action(&mut self, world: &mut WorldArena, entities: &EntityArena) -> Option<ActionPlan> {
         let actor = world.next_actor(entities)?;
         let target = world.first_alive_enemy(actor, entities)?;
@@ -75,6 +224,9 @@ impl PhaseScheduler {
             .enumerate()
             .filter_map(|lane| {
                 let (active_order, lane) = lane;
+                if entity.template.skills.level_at(*lane) == Some(0) {
+                    return None;
+                }
                 let skill_id = entity
                     .template
                     .skills
@@ -156,7 +308,7 @@ mod tests {
     fn scheduler_selects_next_actor_first_alive_enemy_and_amount() {
         let entities = EntityArena::from_templates(PreparedCombatTemplate::minimal_1v1(10, 10, 4).players);
         let mut world = WorldArena::from_entities(&entities);
-        let mut scheduler = PhaseScheduler;
+        let mut scheduler = PhaseScheduler::default();
 
         assert_eq!(
             scheduler.select_minimal_action(&mut world, &entities),
@@ -177,7 +329,7 @@ mod tests {
         ]);
         entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = false;
         let mut world = WorldArena::from_entities(&entities);
-        let mut scheduler = PhaseScheduler;
+        let mut scheduler = PhaseScheduler::default();
 
         assert_eq!(
             scheduler.select_minimal_action(&mut world, &entities),
@@ -194,9 +346,33 @@ mod tests {
         let mut entities = EntityArena::from_templates(PreparedCombatTemplate::minimal_1v1(10, 10, 4).players);
         entities.get_mut(EntityIdx(1)).unwrap().runtime.alive = false;
         let mut world = WorldArena::from_entities(&entities);
-        let mut scheduler = PhaseScheduler;
+        let mut scheduler = PhaseScheduler::default();
 
         assert_eq!(scheduler.select_minimal_action(&mut world, &entities), None);
+    }
+
+    #[test]
+    fn scheduler_advances_legacy_speed_points_until_an_actor_is_ready() {
+        let mut entities = EntityArena::from_templates(vec![
+            PlayerTemplate::new(1, "left", 0, 10, 4).with_speed(1),
+            PlayerTemplate::new(2, "right", 1, 10, 5)
+                .with_speed(1)
+                .with_speed_points(MOVE_POINT_THRESHOLD + 1),
+        ]);
+        let mut world = WorldArena::from_entities(&entities);
+        let mut scheduler = PhaseScheduler::from_entities(&entities);
+        let mut randomer = RC4::new(b"runtime-v2-scheduler", 1);
+
+        assert_eq!(
+            scheduler.select_action(&mut world, &mut entities, &mut randomer),
+            Some(ActionPlan {
+                actor: EntityIdx(1),
+                target: EntityIdx(0),
+                amount: 5,
+            })
+        );
+        assert!(entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points <= 3);
+        assert!(entities.get(EntityIdx(1)).unwrap().runtime.move_state.speed_points <= 4);
     }
 
     #[test]
@@ -237,7 +413,7 @@ mod tests {
             vec![PlayerTemplate::new(1, "left", 0, 10, 4).with_skills([late, unrelated, early])],
             &registry,
         );
-        let scheduler = PhaseScheduler;
+        let scheduler = PhaseScheduler::default();
 
         let plan = scheduler.skill_hook_plan(&entities, &registry, EntityIdx(0), ProcMask::PRE_ACTION);
 
@@ -309,7 +485,7 @@ mod tests {
             vec![PlayerTemplate::new(1, "left", 0, 10, 4).with_skill_loadout(loadout)],
             &registry,
         );
-        let scheduler = PhaseScheduler;
+        let scheduler = PhaseScheduler::default();
 
         let plan = scheduler.skill_hook_plan(&entities, &registry, EntityIdx(0), ProcMask::PRE_ACTION);
 
@@ -354,7 +530,7 @@ mod tests {
         owner.states.add_entry(late);
         owner.states.add_entry(early);
         owner.states.add_entry(unrelated);
-        let scheduler = PhaseScheduler;
+        let scheduler = PhaseScheduler::default();
 
         let plan = scheduler.state_hook_plan(&entities, EntityIdx(0), ProcMask::PRE_ACTION);
 
@@ -400,7 +576,7 @@ mod tests {
             registration_order: RegistrationOrder(2),
             payload: StatePayload::None,
         };
-        let scheduler = PhaseScheduler;
+        let scheduler = PhaseScheduler::default();
         entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(first);
 
         let before = scheduler.state_hook_plan(&entities, EntityIdx(0), ProcMask::POST_ACTION);

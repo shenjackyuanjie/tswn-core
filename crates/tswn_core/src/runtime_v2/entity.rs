@@ -6,15 +6,150 @@ use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
 use std::collections::HashMap;
 
-use crate::player::PlrId;
+use crate::player::{MOVE_POINT_THRESHOLD, PlayerStatus, PlrId, skill::SkillBoost};
 use crate::rc4::RC4;
 
 const DEFAULT_AT_BOOST_MILLIONTHS: i64 = 1_000_000;
+const CLONE_ATTR_DECAY: f64 = 0.7799999713897705;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CloneStatAdjustments {
+    max_hp: i32,
+    attack: i32,
+    magic: i32,
+    wisdom: i32,
+    speed: i32,
+    defense: i32,
+    resistance: i32,
+    agility: i32,
+    at_boost_millionths: i64,
+    attr_sum: i64,
+    atk_sum: i32,
+    attract_delta_bits: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CloneDerivedStats {
+    pub max_hp: i32,
+    pub attack: i32,
+    pub magic: i32,
+    pub wisdom: i32,
+    pub speed: i32,
+    pub defense: i32,
+    pub resistance: i32,
+    pub agility: i32,
+    pub at_boost_millionths: i64,
+    pub attr_sum: u32,
+    pub atk_sum: i32,
+    pub attract_bits: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloneBuildData {
+    attrs: [u32; 8],
+    weapon_attr_bonus: [i32; 8],
+    name_factor_bits: u64,
+    adjustments: CloneStatAdjustments,
+}
+
+impl CloneBuildData {
+    pub fn from_legacy(attrs: [u32; 8], weapon_attr_bonus: [i32; 8], name_factor: f64, status: &PlayerStatus) -> Self {
+        let raw = Self::derive_raw(attrs, name_factor);
+        Self {
+            attrs,
+            weapon_attr_bonus,
+            name_factor_bits: name_factor.to_bits(),
+            adjustments: CloneStatAdjustments {
+                max_hp: status.max_hp - raw.max_hp,
+                attack: status.attack - raw.attack,
+                magic: status.magic - raw.magic,
+                wisdom: status.wisdom - raw.wisdom,
+                speed: status.speed - raw.speed,
+                defense: status.defense - raw.defense,
+                resistance: status.resistance - raw.resistance,
+                agility: status.agility - raw.agility,
+                at_boost_millionths: (status.at_boost * 1_000_000.0).round() as i64 - raw.at_boost_millionths,
+                attr_sum: i64::from(status.attr_sum) - i64::from(raw.attr_sum),
+                atk_sum: status.atk_sum - raw.atk_sum,
+                attract_delta_bits: (status.attract - f64::from_bits(raw.attract_bits)).to_bits(),
+            },
+        }
+    }
+
+    pub fn decay_owner(&mut self) {
+        for attr in &mut self.attrs[..7] {
+            *attr = ((*attr as f64) * CLONE_ATTR_DECAY).ceil() as u32;
+        }
+        self.attrs[7] = ((self.attrs[7] as f64) * 0.5).ceil() as u32;
+    }
+
+    pub fn child(&self) -> Self {
+        let mut child = self.clone();
+        for (attr, bonus) in child.attrs.iter_mut().zip(child.weapon_attr_bonus) {
+            *attr = (*attr as i32 + bonus) as u32;
+        }
+        child
+    }
+
+    pub fn merge_attrs_from(&mut self, source: &Self) -> bool {
+        let mut changed = false;
+        for (owner_attr, source_attr) in self.attrs.iter_mut().zip(source.attrs) {
+            if source_attr > *owner_attr {
+                *owner_attr = source_attr;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    pub fn derive_stats(&self) -> CloneDerivedStats {
+        let raw = Self::derive_raw(self.attrs, f64::from_bits(self.name_factor_bits));
+        let attr_sum = i64::from(raw.attr_sum) + self.adjustments.attr_sum;
+        let attract = f64::from_bits(raw.attract_bits) + f64::from_bits(self.adjustments.attract_delta_bits);
+        CloneDerivedStats {
+            max_hp: raw.max_hp + self.adjustments.max_hp,
+            attack: raw.attack + self.adjustments.attack,
+            magic: raw.magic + self.adjustments.magic,
+            wisdom: raw.wisdom + self.adjustments.wisdom,
+            speed: raw.speed + self.adjustments.speed,
+            defense: raw.defense + self.adjustments.defense,
+            resistance: raw.resistance + self.adjustments.resistance,
+            agility: raw.agility + self.adjustments.agility,
+            at_boost_millionths: raw.at_boost_millionths + self.adjustments.at_boost_millionths,
+            attr_sum: attr_sum.try_into().expect("runtime_v2 clone attr_sum became negative"),
+            atk_sum: raw.atk_sum + self.adjustments.atk_sum,
+            attract_bits: attract.to_bits(),
+        }
+    }
+
+    fn derive_raw(attrs: [u32; 8], name_factor: f64) -> CloneDerivedStats {
+        let scale = |value: u32, divisor: f64| ((value as f64) * (1.0 - name_factor / divisor)).round() as i32;
+        let attr_sum = attrs[..7].iter().sum();
+        let atk_sum = (attrs[0] as i32 - attrs[1] as i32 + attrs[2] as i32 + attrs[4] as i32 - attrs[5] as i32) * 2
+            + attrs[3] as i32
+            + attrs[6] as i32;
+        CloneDerivedStats {
+            max_hp: attrs[7] as i32,
+            attack: scale(attrs[0], 128.0),
+            magic: scale(attrs[4], 128.0),
+            wisdom: scale(attrs[6], 80.0),
+            speed: scale(attrs[2], 128.0) + 160,
+            defense: scale(attrs[1], 128.0),
+            resistance: scale(attrs[5], 128.0),
+            agility: scale(attrs[3], 128.0),
+            at_boost_millionths: DEFAULT_AT_BOOST_MILLIONTHS,
+            attr_sum,
+            atk_sum,
+            attract_bits: 32768.0_f64.to_bits(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerTemplate {
     pub id: PlrId,
     pub name: String,
+    pub display_name: String,
     pub kind: PlayerKindId,
     pub skills: SkillLoadout,
     pub team: usize,
@@ -23,6 +158,7 @@ pub struct PlayerTemplate {
     pub magic: i32,
     pub magic_point: i32,
     pub wisdom: i32,
+    pub speed: i32,
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
@@ -32,6 +168,7 @@ pub struct PlayerTemplate {
     pub attract_bits: u64,
     pub move_state: MoveState,
     pub policy_overrides: PlayerPolicyOverrides,
+    pub clone_build: Option<CloneBuildData>,
 }
 
 impl PlayerTemplate {
@@ -44,9 +181,11 @@ impl PlayerTemplate {
     pub fn with_kind(id: PlrId, name: impl Into<String>, kind: PlayerKindId, team: usize, max_hp: i32, attack: i32) -> Self {
         assert!(max_hp > 0, "runtime_v2 player max_hp must be positive");
         assert!(attack >= 0, "runtime_v2 player attack must be non-negative");
+        let name = name.into();
         Self {
             id,
-            name: name.into(),
+            display_name: name.clone(),
+            name,
             kind,
             skills: SkillLoadout::default(),
             team,
@@ -55,6 +194,7 @@ impl PlayerTemplate {
             magic: 0,
             magic_point: 0,
             wisdom: 0,
+            speed: 0,
             defense: 0,
             resistance: 0,
             agility: 0,
@@ -64,7 +204,13 @@ impl PlayerTemplate {
             attract_bits: 32768.0_f64.to_bits(),
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
+            clone_build: None,
         }
+    }
+
+    pub fn with_display_name(mut self, display_name: impl Into<String>) -> Self {
+        self.display_name = display_name.into();
+        self
     }
 
     pub fn with_magic(mut self, magic: i32) -> Self {
@@ -81,6 +227,12 @@ impl PlayerTemplate {
     pub fn with_wisdom(mut self, wisdom: i32) -> Self {
         assert!(wisdom >= 0, "runtime_v2 player wisdom must be non-negative");
         self.wisdom = wisdom;
+        self
+    }
+
+    pub fn with_speed(mut self, speed: i32) -> Self {
+        assert!(speed >= 0, "runtime_v2 player speed must be non-negative");
+        self.speed = speed;
         self
     }
 
@@ -155,23 +307,101 @@ impl PlayerTemplate {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SkillLoadout {
     skills: SmallVec<[SkillId; 8]>,
+    levels: SmallVec<[u32; 8]>,
+    boosts: SmallVec<[Option<SkillBoost>; 8]>,
+    fixed_lane_keys: SmallVec<[usize; 8]>,
     active_order: SmallVec<[usize; 8]>,
 }
 
 impl SkillLoadout {
     pub fn from_skills(skills: impl IntoIterator<Item = SkillId>) -> Self {
         let skills = skills.into_iter().collect::<SmallVec<[SkillId; 8]>>();
+        let levels = std::iter::repeat_n(1, skills.len()).collect();
+        let boosts = std::iter::repeat_n(None, skills.len()).collect();
+        let fixed_lane_keys = (0..skills.len()).collect();
         let active_order = (0..skills.len()).collect();
-        Self { skills, active_order }
+        Self {
+            skills,
+            levels,
+            boosts,
+            fixed_lane_keys,
+            active_order,
+        }
+    }
+
+    pub fn from_skill_levels(skills: impl IntoIterator<Item = (SkillId, u32)>) -> Self {
+        let (skills, levels): (SmallVec<[SkillId; 8]>, SmallVec<[u32; 8]>) = skills.into_iter().unzip();
+        let boosts = std::iter::repeat_n(None, skills.len()).collect();
+        let fixed_lane_keys = (0..skills.len()).collect();
+        let active_order = (0..skills.len()).collect();
+        Self {
+            skills,
+            levels,
+            boosts,
+            fixed_lane_keys,
+            active_order,
+        }
+    }
+
+    pub fn from_skill_levels_and_boosts(skills: impl IntoIterator<Item = (SkillId, u32, Option<SkillBoost>)>) -> Self {
+        let mut skill_ids = SmallVec::new();
+        let mut levels = SmallVec::new();
+        let mut boosts = SmallVec::new();
+        for (skill_id, level, boost) in skills {
+            skill_ids.push(skill_id);
+            levels.push(level);
+            boosts.push(boost);
+        }
+        let fixed_lane_keys = (0..skill_ids.len()).collect();
+        let active_order = (0..skill_ids.len()).collect();
+        Self {
+            skills: skill_ids,
+            levels,
+            boosts,
+            fixed_lane_keys,
+            active_order,
+        }
     }
 
     pub fn skills(&self) -> &[SkillId] { &self.skills }
+
+    pub fn levels(&self) -> &[u32] { &self.levels }
+
+    pub fn level_at(&self, fixed_lane: usize) -> Option<u32> { self.levels.get(fixed_lane).copied() }
+
+    pub fn boost_at(&self, fixed_lane: usize) -> Option<&SkillBoost> { self.boosts.get(fixed_lane).and_then(Option::as_ref) }
+
+    pub fn fixed_lane_key_at(&self, fixed_lane: usize) -> Option<usize> { self.fixed_lane_keys.get(fixed_lane).copied() }
+
+    pub fn set_level_at(&mut self, fixed_lane: usize, level: u32) -> bool {
+        let Some(current) = self.levels.get_mut(fixed_lane) else {
+            return false;
+        };
+        *current = level;
+        true
+    }
 
     pub fn active_order(&self) -> &[usize] { &self.active_order }
 
     pub fn is_empty(&self) -> bool { self.skills.is_empty() }
 
     pub fn len(&self) -> usize { self.skills.len() }
+
+    pub fn reapply_clone_boosts(&mut self) {
+        for (level, boost) in self.levels.iter_mut().zip(&self.boosts) {
+            let Some(boost) = boost else {
+                continue;
+            };
+            if *level >= boost.final_level() {
+                continue;
+            }
+            *level = match boost {
+                SkillBoost::Normal(_) => *level,
+                SkillBoost::LastBoost(_) => level.saturating_mul(2),
+                SkillBoost::SlotBoost { boost, .. } => level.saturating_add((*boost).min(*level)),
+            };
+        }
+    }
 
     pub fn with_active_order(mut self, active_order: impl IntoIterator<Item = usize>) -> Self {
         self.active_order = active_order.into_iter().collect();
@@ -182,26 +412,38 @@ impl SkillLoadout {
         self
     }
 
+    pub fn with_fixed_lane_keys(mut self, fixed_lane_keys: impl IntoIterator<Item = usize>) -> Self {
+        self.fixed_lane_keys = fixed_lane_keys.into_iter().collect();
+        assert_eq!(
+            self.fixed_lane_keys.len(),
+            self.skills.len(),
+            "runtime_v2 fixed lane keys must match skill loadout length"
+        );
+        self
+    }
+
     pub fn merge_fixed_lanes_from(&mut self, source: &Self, policy: MergePolicy) -> bool {
-        let drop_unmapped = match policy {
+        match policy {
             MergePolicy::None => return false,
-            MergePolicy::FixedLane => false,
-            MergePolicy::DropUnmappedSkills => true,
-        };
+            MergePolicy::FixedLane | MergePolicy::DropUnmappedSkills => {}
+        }
         let mut changed = false;
-        for (idx, source_skill) in source.skills.iter().copied().enumerate() {
-            if let Some(target_skill) = self.skills.get_mut(idx) {
-                if *target_skill != source_skill {
-                    *target_skill = source_skill;
-                    changed = true;
+        for owner_idx in 0..self.levels.len() {
+            let fixed_lane_key = self.fixed_lane_keys[owner_idx];
+            let Some(source_idx) = source.fixed_lane_keys.iter().position(|source_key| *source_key == fixed_lane_key) else {
+                continue;
+            };
+            let owner_level = &mut self.levels[owner_idx];
+            let source_level = source.levels[source_idx];
+            if source_level > *owner_level {
+                let was_zero = *owner_level == 0;
+                *owner_level = source_level;
+                if was_zero && !self.active_order.contains(&owner_idx) {
+                    self.active_order.push(owner_idx);
                 }
-            } else if !drop_unmapped {
-                self.skills.push(source_skill);
-                self.active_order.push(idx);
                 changed = true;
             }
         }
-        self.active_order.retain(|idx| *idx < self.skills.len());
         changed
     }
 }
@@ -248,6 +490,28 @@ impl PlayerPolicyOverrides {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtectLinkRuntime {
+    pub owner: EntityIdx,
+    pub level: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HideRuntime {
+    pub level: u32,
+    pub attract_bits: u64,
+    pub agility: i32,
+    pub defense: i32,
+    pub resistance: i32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CounterRuntime {
+    pub pending: bool,
+    pub last_target: Option<EntityIdx>,
+    pub last_updates_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerRuntime {
     pub hp: i32,
     pub alive: bool,
@@ -255,6 +519,7 @@ pub struct PlayerRuntime {
     pub magic: i32,
     pub magic_point: i32,
     pub wisdom: i32,
+    pub speed: i32,
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
@@ -271,6 +536,12 @@ pub struct PlayerRuntime {
     pub move_state: MoveState,
     pub charge: ChargeRuntime,
     pub accumulate: AccumulateRuntime,
+    pub shield: i32,
+    pub protect_to: Option<EntityIdx>,
+    pub protect_from: Vec<ProtectLinkRuntime>,
+    pub upgrade_active: bool,
+    pub hide: Option<HideRuntime>,
+    pub counter: CounterRuntime,
 }
 
 impl PlayerRuntime {
@@ -292,6 +563,7 @@ impl PlayerRuntime {
             magic: template.magic,
             magic_point: template.magic_point,
             wisdom: template.wisdom,
+            speed: template.speed,
             defense: template.defense,
             resistance: template.resistance,
             agility: template.agility,
@@ -308,12 +580,32 @@ impl PlayerRuntime {
             move_state: template.move_state,
             charge: ChargeRuntime::default(),
             accumulate: AccumulateRuntime::default(),
+            shield: 0,
+            protect_to: None,
+            protect_from: Vec::new(),
+            upgrade_active: false,
+            hide: None,
+            counter: CounterRuntime::default(),
         }
     }
 
     pub fn at_boost(&self) -> f64 { self.at_boost_millionths as f64 / DEFAULT_AT_BOOST_MILLIONTHS as f64 }
 
     pub fn attract(&self) -> f64 { f64::from_bits(self.attract_bits) }
+
+    pub fn active(&self) -> bool { self.alive && self.hp > 0 }
+
+    pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
+        if !self.active() {
+            return false;
+        }
+        let require_mp = randomer.r3x3() as i32;
+        if self.magic_point < require_mp {
+            return false;
+        }
+        self.magic_point -= require_mp;
+        true
+    }
 
     pub fn get_at(&self, use_mag: bool, randomer: &mut RC4) -> f64 {
         let atk = if use_mag { self.magic } else { self.attack };
@@ -401,6 +693,35 @@ pub struct EntityRecord {
 }
 
 impl EntityRecord {
+    #[inline]
+    pub fn is_active(&self) -> bool { self.runtime.active() && !self.states.is_frozen() }
+
+    pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
+        self.template.max_hp = stats.max_hp.max(1);
+        self.template.attack = stats.attack.max(0);
+        self.template.magic = stats.magic.max(0);
+        self.template.wisdom = stats.wisdom.max(0);
+        self.template.speed = stats.speed.max(0);
+        self.template.defense = stats.defense.max(0);
+        self.template.resistance = stats.resistance.max(0);
+        self.template.agility = stats.agility.max(0);
+        self.template.at_boost_millionths = stats.at_boost_millionths.max(0);
+        self.template.attr_sum = stats.attr_sum;
+        self.template.atk_sum = stats.atk_sum;
+        self.template.attract_bits = stats.attract_bits;
+        self.runtime.attack = self.template.attack;
+        self.runtime.magic = self.template.magic;
+        self.runtime.wisdom = self.template.wisdom;
+        self.runtime.speed = self.template.speed;
+        self.runtime.defense = self.template.defense;
+        self.runtime.resistance = self.template.resistance;
+        self.runtime.agility = self.template.agility;
+        self.runtime.attr_sum = self.template.attr_sum;
+        self.runtime.atk_sum = self.template.atk_sum;
+        self.runtime.attract_bits = self.template.attract_bits;
+        self.refresh_runtime_at_boost();
+    }
+
     pub fn activate_charge_runtime(&mut self) {
         self.runtime.charge.step += 2;
         self.runtime.charge.active = true;
@@ -547,6 +868,10 @@ impl EntityArena {
                 .entities
                 .get(owner_idx.0 as usize)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 spawn owner entity: {}", owner_idx.0));
+            // Legacy `queue_spawn(owner, child)` assigns the child to the
+            // owner's current world group. Blueprint teams are import-time
+            // placeholders and must not decide runtime ownership.
+            template.team = owner_entity.runtime.team;
             let policies = template.effective_policies(registry);
             if policies.inherit_owner_def_res {
                 template.defense = owner_entity.runtime.defense;
@@ -571,7 +896,7 @@ impl EntityArena {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityIdx(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateEntry {
     pub legacy_order_key: u32,
     pub extension_state_id: Option<StateId>,
@@ -581,11 +906,21 @@ pub struct StateEntry {
     pub payload: StatePayload,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CovidInfectionEntry {
+    pub boss: EntityIdx,
+    pub mutation: i32,
+    pub days: i32,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum StatePayload {
     #[default]
     None,
     FireMagHalfSteps(i32),
+    Ice {
+        frozen_step: i32,
+    },
     ShieldValue(i32),
     Curse {
         prob: i32,
@@ -618,6 +953,26 @@ pub enum StatePayload {
         protect: i32,
         step: i32,
     },
+    CovidBoss {
+        mutation: i32,
+    },
+    CovidInfection {
+        entries: SmallVec<[CovidInfectionEntry; 2]>,
+        mutation_set: SmallVec<[i32; 4]>,
+        recovered: bool,
+    },
+    SaitamaBoss {
+        turns: i32,
+        damages: i32,
+        hitters: SmallVec<[EntityIdx; 8]>,
+        minions: SmallVec<[EntityIdx; 8]>,
+    },
+    LazyBoss {
+        at_boost_bits: u64,
+    },
+    LazyInfection {
+        boss: EntityIdx,
+    },
 }
 
 impl StateEntry {
@@ -640,6 +995,17 @@ impl StateEntry {
             priority: SkillPriority::default(),
             registration_order: RegistrationOrder::default(),
             payload: StatePayload::FireMagHalfSteps(half_steps),
+        }
+    }
+
+    pub fn ice(legacy_order_key: u32, frozen_step: i32) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: None,
+            hook_mask: ProcMask::default(),
+            priority: SkillPriority::default(),
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::Ice { frozen_step },
         }
     }
 
@@ -759,10 +1125,83 @@ impl StateEntry {
         }
     }
 
+    pub fn covid_boss(legacy_order_key: u32, mutation: i32) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: None,
+            hook_mask: ProcMask::NONE,
+            priority: SkillPriority::default(),
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::CovidBoss { mutation },
+        }
+    }
+
+    pub fn covid_infection(
+        legacy_order_key: u32,
+        state_id: StateId,
+        boss: EntityIdx,
+        mutation: i32,
+        priority: SkillPriority,
+    ) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::PRE_ACTION | ProcMask::POST_ACTION,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::CovidInfection {
+                entries: SmallVec::from_slice(&[CovidInfectionEntry { boss, mutation, days: 0 }]),
+                mutation_set: SmallVec::from_slice(&[mutation]),
+                recovered: false,
+            },
+        }
+    }
+
+    pub fn lazy_boss(legacy_order_key: u32, at_boost: f64) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: None,
+            hook_mask: ProcMask::NONE,
+            priority: SkillPriority::default(),
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::LazyBoss {
+                at_boost_bits: at_boost.to_bits(),
+            },
+        }
+    }
+
+    pub fn saitama_boss(legacy_order_key: u32, state_id: StateId, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::POST_DEFEND,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::SaitamaBoss {
+                turns: 0,
+                damages: 0,
+                hitters: SmallVec::new(),
+                minions: SmallVec::new(),
+            },
+        }
+    }
+
+    pub fn lazy_infection(legacy_order_key: u32, state_id: StateId, boss: EntityIdx, priority: SkillPriority) -> Self {
+        Self {
+            legacy_order_key,
+            extension_state_id: Some(state_id),
+            hook_mask: ProcMask::PRE_ACTION | ProcMask::POST_ACTION,
+            priority,
+            registration_order: RegistrationOrder::default(),
+            payload: StatePayload::LazyInfection { boss },
+        }
+    }
+
     pub fn fire_mag_value(&self) -> Option<f64> {
-        match self.payload {
-            StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(half_steps) * 0.5),
+        match &self.payload {
+            StatePayload::FireMagHalfSteps(half_steps) => Some(f64::from(*half_steps) * 0.5),
             StatePayload::None
+            | StatePayload::Ice { .. }
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
@@ -770,84 +1209,134 @@ impl StateEntry {
             | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
-            | StatePayload::Iron { .. } => None,
+            | StatePayload::Iron { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
         }
     }
 
     pub fn shield_value(&self) -> Option<i32> {
-        match self.payload {
-            StatePayload::ShieldValue(shield) => Some(shield),
+        match &self.payload {
+            StatePayload::ShieldValue(shield) => Some(*shield),
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Ice { .. }
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
-            | StatePayload::Iron { .. } => None,
+            | StatePayload::Iron { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
         }
     }
 
     pub fn haste_value(&self) -> Option<(i32, i32)> {
-        match self.payload {
-            StatePayload::Haste { faster, step } => Some((faster, step)),
+        match &self.payload {
+            StatePayload::Haste { faster, step } => Some((*faster, *step)),
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Ice { .. }
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
-            | StatePayload::Iron { .. } => None,
+            | StatePayload::Iron { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
         }
     }
 
     pub fn poison_value(&self) -> Option<(Option<u32>, Option<u32>, f64, i32)> {
-        match self.payload {
+        match &self.payload {
             StatePayload::Poison {
                 caster,
                 target,
                 atp_bits,
                 count,
-            } => Some((caster, target, f64::from_bits(atp_bits), count)),
+            } => Some((*caster, *target, f64::from_bits(*atp_bits), *count)),
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Ice { .. }
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
             | StatePayload::Slow { .. }
-            | StatePayload::Iron { .. } => None,
+            | StatePayload::Iron { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
         }
     }
 
     pub fn charm_value(&self) -> Option<(usize, Option<usize>, Option<usize>, Option<u32>, i32)> {
-        match self.payload {
+        match &self.payload {
             StatePayload::Charm {
                 group_id,
                 effective_team_idx,
                 source_team_idx,
                 target,
                 step,
-            } => Some((group_id, effective_team_idx, source_team_idx, target, step)),
+            } => Some((*group_id, *effective_team_idx, *source_team_idx, *target, *step)),
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Ice { .. }
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Berserk { .. }
             | StatePayload::Slow { .. }
-            | StatePayload::Iron { .. } => None,
+            | StatePayload::Iron { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
         }
     }
 
     pub fn slow_value(&self) -> Option<i32> {
-        match self.payload {
-            StatePayload::Slow { step } => Some(step),
+        match &self.payload {
+            StatePayload::Slow { step } => Some(*step),
+            StatePayload::None
+            | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Ice { .. }
+            | StatePayload::ShieldValue(_)
+            | StatePayload::Curse { .. }
+            | StatePayload::Poison { .. }
+            | StatePayload::Haste { .. }
+            | StatePayload::Berserk { .. }
+            | StatePayload::Charm { .. }
+            | StatePayload::Iron { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
+        }
+    }
+
+    pub fn ice_value(&self) -> Option<i32> {
+        match &self.payload {
+            StatePayload::Ice { frozen_step } => Some(*frozen_step),
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::ShieldValue(_)
@@ -856,27 +1345,39 @@ impl StateEntry {
             | StatePayload::Haste { .. }
             | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
-            | StatePayload::Iron { .. } => None,
+            | StatePayload::Slow { .. }
+            | StatePayload::Iron { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
         }
     }
 
     pub fn iron_value(&self) -> Option<(i32, i32)> {
-        match self.payload {
-            StatePayload::Iron { protect, step } => Some((protect, step)),
+        match &self.payload {
+            StatePayload::Iron { protect, step } => Some((*protect, *step)),
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Ice { .. }
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. } => None,
             StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
-            | StatePayload::Slow { .. } => None,
+            | StatePayload::Slow { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
         }
     }
 
     pub fn priority_for_hook(&self, hook: ProcMask) -> SkillPriority {
-        match self.payload {
+        match &self.payload {
             StatePayload::Poison { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(150),
             StatePayload::Haste { .. } | StatePayload::Charm { .. } | StatePayload::Slow { .. }
                 if hook.intersects(ProcMask::POST_ACTION) =>
@@ -884,38 +1385,56 @@ impl StateEntry {
                 SkillPriority(210)
             }
             StatePayload::Iron { .. } if hook.intersects(ProcMask::POST_ACTION) => SkillPriority(210),
+            StatePayload::CovidInfection { .. } if hook.intersects(ProcMask::PRE_ACTION | ProcMask::POST_ACTION) => {
+                SkillPriority(1000)
+            }
+            StatePayload::LazyInfection { .. } if hook.intersects(ProcMask::PRE_ACTION | ProcMask::POST_ACTION) => {
+                SkillPriority(1000)
+            }
             _ => self.priority,
         }
     }
 
-    pub fn positive_clear_message(self, owner_alive: bool) -> Option<(i32, &'static str)> {
-        match self.payload {
+    pub fn positive_clear_message(&self, owner_alive: bool) -> Option<(i32, &'static str)> {
+        match &self.payload {
             StatePayload::Haste { .. } if owner_alive => Some((300, "[1]从[疾走]中解除")),
             StatePayload::Iron { .. } => Some((400, "[1]的[铁壁]被打消了")),
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Ice { .. }
             | StatePayload::ShieldValue(_)
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Haste { .. }
             | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
-            | StatePayload::Slow { .. } => None,
+            | StatePayload::Slow { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => None,
         }
     }
 
-    pub fn is_positive_state(self) -> bool {
-        match self.payload {
-            StatePayload::ShieldValue(shield) => shield > 0,
+    pub fn is_positive_state(&self) -> bool {
+        match &self.payload {
+            StatePayload::ShieldValue(shield) => *shield > 0,
             StatePayload::Haste { .. } => true,
-            StatePayload::Iron { step, .. } => step > 0,
+            StatePayload::Iron { step, .. } => *step > 0,
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
+            | StatePayload::Ice { .. }
             | StatePayload::Curse { .. }
             | StatePayload::Poison { .. }
             | StatePayload::Berserk { .. }
             | StatePayload::Charm { .. }
-            | StatePayload::Slow { .. } => false,
+            | StatePayload::Slow { .. }
+            | StatePayload::CovidBoss { .. }
+            | StatePayload::CovidInfection { .. }
+            | StatePayload::SaitamaBoss { .. }
+            | StatePayload::LazyBoss { .. }
+            | StatePayload::LazyInfection { .. } => false,
         }
     }
 }
@@ -935,6 +1454,21 @@ impl StateStore {
 
     pub fn generation(&self) -> u32 { self.generation }
 
+    pub fn is_frozen(&self) -> bool { self.entries.iter().any(|entry| matches!(&entry.payload, StatePayload::Ice { .. })) }
+
+    pub fn effective_speed(&self, base_speed: i32) -> i32 {
+        let mut speed = base_speed;
+        for entry in &self.entries {
+            match &entry.payload {
+                StatePayload::Haste { faster, .. } => speed *= *faster,
+                StatePayload::Slow { .. } => speed /= 2,
+                StatePayload::LazyInfection { .. } => speed /= 2,
+                _ => {}
+            }
+        }
+        speed
+    }
+
     pub fn entry(&self, legacy_order_key: u32) -> Option<&StateEntry> {
         self.index.get(&legacy_order_key).and_then(|idx| self.entries.get(*idx))
     }
@@ -948,6 +1482,54 @@ impl StateStore {
         self.entry(legacy_order_key).and_then(StateEntry::fire_mag_value).unwrap_or(0.0)
     }
 
+    pub fn ice_frozen_step(&self, legacy_order_key: u32) -> Option<i32> {
+        self.entry(legacy_order_key).and_then(StateEntry::ice_value)
+    }
+
+    pub fn add_ice_frozen_step(&mut self, legacy_order_key: u32, frozen_step: i32) {
+        if let Some(entry) = self.entry_mut(legacy_order_key) {
+            let current = match &entry.payload {
+                StatePayload::Ice { frozen_step } => *frozen_step,
+                _ => 0,
+            };
+            entry.payload = StatePayload::Ice {
+                frozen_step: current + frozen_step,
+            };
+            self.generation = self.generation.wrapping_add(1);
+            return;
+        }
+
+        self.add_entry(StateEntry::ice(legacy_order_key, frozen_step));
+    }
+
+    pub fn apply_ice_pre_step(&mut self, step: i32, move_points: i32) -> (i32, bool) {
+        let Some((legacy_order_key, frozen_step)) = self.entries.iter_mut().find_map(|entry| {
+            if let StatePayload::Ice { frozen_step } = &mut entry.payload {
+                Some((entry.legacy_order_key, frozen_step))
+            } else {
+                None
+            }
+        }) else {
+            return (step, false);
+        };
+
+        if *frozen_step > 0 {
+            if step != 0 {
+                *frozen_step -= step;
+                self.generation = self.generation.wrapping_add(1);
+            }
+            return (0, false);
+        }
+        if step + move_points >= MOVE_POINT_THRESHOLD {
+            assert!(
+                self.clear_legacy_key(legacy_order_key),
+                "runtime_v2 ice state disappeared during pre-step"
+            );
+            return (0, true);
+        }
+        (step, false)
+    }
+
     pub fn add_fire_mag_half_step(&mut self, legacy_order_key: u32) {
         if let Some(idx) = self.index.get(&legacy_order_key).copied()
             && let Some(entry) = self.entries.get_mut(idx)
@@ -956,7 +1538,16 @@ impl StateStore {
                 StatePayload::FireMagHalfSteps(half_steps) => {
                     *half_steps += 1;
                 }
-                StatePayload::None | StatePayload::ShieldValue(_) | StatePayload::Curse { .. } | StatePayload::Iron { .. } => {
+                StatePayload::None
+                | StatePayload::Ice { .. }
+                | StatePayload::ShieldValue(_)
+                | StatePayload::Curse { .. }
+                | StatePayload::Iron { .. }
+                | StatePayload::CovidBoss { .. }
+                | StatePayload::CovidInfection { .. }
+                | StatePayload::SaitamaBoss { .. }
+                | StatePayload::LazyBoss { .. }
+                | StatePayload::LazyInfection { .. } => {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
                 StatePayload::Poison { .. }
@@ -1214,34 +1805,50 @@ mod tests {
     }
 
     #[test]
-    fn skill_loadout_merges_fixed_lanes_and_appends_unmapped_skills() {
-        let mut target = SkillLoadout::from_skills([SkillId(1), SkillId(2)]);
-        let source = SkillLoadout::from_skills([SkillId(1), SkillId(3), SkillId(4)]);
+    fn skill_loadout_merges_levels_by_fixed_lane_without_replacing_skill_ids() {
+        let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 0), (SkillId(2), 4)])
+            .with_fixed_lane_keys([0, 2])
+            .with_active_order([1]);
+        let source =
+            SkillLoadout::from_skill_levels([(SkillId(3), 9), (SkillId(4), 7), (SkillId(5), 11)]).with_fixed_lane_keys([0, 2, 4]);
 
         assert!(target.merge_fixed_lanes_from(&source, MergePolicy::FixedLane));
 
-        assert_eq!(target.skills(), &[SkillId(1), SkillId(3), SkillId(4)]);
-        assert_eq!(target.active_order(), &[0, 1, 2]);
+        assert_eq!(target.skills(), &[SkillId(1), SkillId(2)]);
+        assert_eq!(target.levels(), &[9, 7]);
+        assert_eq!(target.active_order(), &[1, 0]);
     }
 
     #[test]
-    fn skill_loadout_drops_unmapped_merge_skills() {
-        let mut target = SkillLoadout::from_skills([SkillId(1), SkillId(2)]);
-        let source = SkillLoadout::from_skills([SkillId(3), SkillId(4), SkillId(5)]);
+    fn skill_loadout_ignores_unmapped_source_lanes() {
+        let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 1), (SkillId(2), 2)]).with_fixed_lane_keys([0, 2]);
+        let source = SkillLoadout::from_skill_levels([(SkillId(3), 9), (SkillId(4), 8)]).with_fixed_lane_keys([0, 7]);
 
         assert!(target.merge_fixed_lanes_from(&source, MergePolicy::DropUnmappedSkills));
 
-        assert_eq!(target.skills(), &[SkillId(3), SkillId(4)]);
+        assert_eq!(target.skills(), &[SkillId(1), SkillId(2)]);
+        assert_eq!(target.levels(), &[9, 2]);
     }
 
     #[test]
-    fn skill_loadout_ignores_none_merge_policy() {
-        let mut target = SkillLoadout::from_skills([SkillId(1)]);
-        let source = SkillLoadout::from_skills([SkillId(2)]);
+    fn skill_loadout_merge_reports_no_change_when_source_level_is_not_higher() {
+        let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 5)]);
+        let source = SkillLoadout::from_skill_levels([(SkillId(2), 5)]);
 
-        assert!(!target.merge_fixed_lanes_from(&source, MergePolicy::None));
+        assert!(!target.merge_fixed_lanes_from(&source, MergePolicy::FixedLane));
 
         assert_eq!(target.skills(), &[SkillId(1)]);
+        assert_eq!(target.levels(), &[5]);
+    }
+
+    #[test]
+    fn skill_loadout_none_merge_policy_keeps_levels_unchanged() {
+        let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 1)]);
+        let source = SkillLoadout::from_skill_levels([(SkillId(2), 9)]);
+
+        assert!(!target.merge_fixed_lanes_from(&source, MergePolicy::None));
+        assert_eq!(target.skills(), &[SkillId(1)]);
+        assert_eq!(target.levels(), &[1]);
     }
 
     #[test]
@@ -1406,7 +2013,8 @@ mod tests {
         let runtime = &arena.get(spawned).unwrap().runtime;
         assert_eq!(runtime.owner, EntityIdx(0));
         assert_eq!(runtime.root_owner, EntityIdx(0));
-        assert_eq!(runtime.team, 1);
+        assert_eq!(runtime.team, 0);
+        assert_eq!(arena.get(spawned).unwrap().template.team, 0);
     }
 
     #[test]
@@ -1492,9 +2100,9 @@ mod tests {
             payload: StatePayload::None,
         };
 
-        assert!(store.add_entry(entry));
-        assert!(!store.add_entry(entry));
-        assert_eq!(store.entries(), &[entry]);
+        assert!(store.add_entry(entry.clone()));
+        assert!(!store.add_entry(entry.clone()));
+        assert_eq!(store.entries(), &[entry.clone()]);
         assert_eq!(store.entry(42), Some(&entry));
         assert_eq!(store.hook_mask(), ProcMask::PRE_ACTION | ProcMask::POST_DAMAGE);
 

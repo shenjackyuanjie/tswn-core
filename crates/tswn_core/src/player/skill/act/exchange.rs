@@ -113,6 +113,29 @@ impl SkillTrait for ExchangeSkill {
                 )
             })
             .expect("cannot get exchange target from storage");
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_PROBE_EXCHANGE").is_some() {
+            let owner = args.3.get_player(&args.0).expect("cannot get exchange owner for probe");
+            let target = args.3.get_player(&target_id).expect("cannot get exchange target for probe");
+            eprintln!(
+                "[exchange_probe:legacy:before] owner={} target={} owner_hp={} target_hp={} owner_max_hp={} owner_magic={} \
+                 owner_boost={} charge={} owner_move={} target_move={} target_active={} target_immune={} rc4=({}, {})",
+                owner.id_name(),
+                target.id_name(),
+                owner_hp,
+                target_hp,
+                owner_max_hp,
+                owner_magic,
+                owner.get_status().at_boost,
+                charge_active,
+                owner.move_point(),
+                target.move_point(),
+                target_active,
+                target_immune,
+                args.1.i,
+                args.1.j,
+            );
+        }
         if target_immune
             || (target_active && !charge_active && Player::dodge(owner_magic, target_res + target_def + target_agl, args.1))
         {
@@ -157,6 +180,20 @@ impl SkillTrait for ExchangeSkill {
         if target_hp > target_new_hp {
             let target = args.3.just_get_player_mut(target_id).expect("cannot get exchange target from storage");
             target.on_damaged(target_hp - target_new_hp, target_hp, args.0, args.1, args.2, args.3);
+        }
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_PROBE_EXCHANGE").is_some() {
+            let owner = args.3.get_player(&args.0).expect("cannot get exchange owner after probe");
+            let target = args.3.get_player(&target_id).expect("cannot get exchange target after probe");
+            eprintln!(
+                "[exchange_probe:legacy:after] owner_hp={} target_hp={} owner_move={} target_move={} rc4=({}, {})",
+                owner.get_status().hp,
+                target.get_status().hp,
+                owner.move_point(),
+                target.move_point(),
+                args.1.i,
+                args.1.j,
+            );
         }
     }
 }

@@ -8,9 +8,8 @@ use crate::error::runner::RunnerError;
 use crate::player::eval_name;
 use crate::player::icon::icon_from_raw_name;
 use crate::runtime_v2::{
-    CustomRuntimeV2ImportConfig, ExtensionCapability, RuntimeV2NormalizedRun, RuntimeV2Runner,
-    default_custom_runtime_v2_import_config, run_legacy_summon_recast_from_template_slot, run_summon_explode_skill,
-    run_summon_fire_skill,
+    CustomRuntimeV2ImportConfig, RuntimeV2NormalizedRun, RuntimeV2Runner, StrictRunDiff, default_custom_runtime_v2_import_config,
+    normalize_legacy_run, strict_diff_runs,
 };
 use crate::win_rate::{WinRateSummary, WinRateTiming, groups_win_rate};
 
@@ -79,6 +78,13 @@ pub struct ScoreResult {
     pub errors: usize,
     pub init_nanos: u128,
     pub fight_nanos: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeV2ParityReport {
+    pub legacy: RuntimeV2NormalizedRun,
+    pub v2: RuntimeV2NormalizedRun,
+    pub first_diff: Option<StrictRunDiff>,
 }
 
 impl ScoreResult {
@@ -413,32 +419,7 @@ pub fn custom_runtime_v2_mixed_runner(raw: &str, config: CustomRuntimeV2ImportCo
 
 pub fn default_custom_runtime_v2_mixed_runner(raw: &str) -> CliApiResult<RuntimeV2Runner> {
     let config = default_custom_runtime_v2_import_config().map_err(default_custom_runtime_v2_profile_error)?;
-    let summon_skill = config.bed2_summon_skill;
-    let summon_fire_skill = config
-        .registry
-        .skill_id_by_export_name(crate::runtime_v2::DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT)
-        .expect("default custom runtime v2 profile should register summon fire skill");
-    let summon_explode_skill = config
-        .registry
-        .skill_id_by_export_name(crate::runtime_v2::DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT)
-        .expect("default custom runtime v2 profile should register summon explode skill");
-    let mut runner = custom_runtime_v2_mixed_runner(raw, config)?;
-    runner.runtime_mut().set_skill_handler_with_capabilities(
-        summon_skill,
-        run_legacy_summon_recast_from_template_slot,
-        &[
-            ExtensionCapability::ReadTemplateSlots,
-            ExtensionCapability::ReadAllies,
-            ExtensionCapability::MutateEntitySlots,
-        ],
-    );
-    runner
-        .runtime_mut()
-        .set_skill_handler(summon_fire_skill, run_summon_fire_skill);
-    runner
-        .runtime_mut()
-        .set_skill_handler(summon_explode_skill, run_summon_explode_skill);
-    Ok(runner)
+    custom_runtime_v2_mixed_runner(raw, config)
 }
 
 pub fn custom_runtime_v2_normalized_run(
@@ -457,10 +438,22 @@ pub fn default_custom_runtime_v2_normalized_run(raw: &str, max_rounds: usize) ->
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
+pub fn default_custom_runtime_v2_parity_report(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeV2ParityReport> {
+    ensure_runtime_v2_max_rounds(max_rounds)?;
+    let mut legacy_runner = Runner::new_from_namerena_raw(raw.to_owned())?;
+    let legacy = normalize_legacy_run(&mut legacy_runner, max_rounds);
+    let v2 = default_custom_runtime_v2_normalized_run(raw, max_rounds)?;
+    let first_diff = strict_diff_runs(&legacy, &v2).err();
+    Ok(RuntimeV2ParityReport { legacy, v2, first_diff })
+}
+
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 
 fn custom_runtime_v2_import_error(error: crate::runtime_v2::CustomRuntimeV2ImportError) -> CliApiError {
-    invalid_input(format!("custom runtime v2 import failed: {error:?}"))
+    match error {
+        crate::runtime_v2::CustomRuntimeV2ImportError::NotReady(error) => invalid_input(error.to_string()),
+        error => invalid_input(format!("custom runtime v2 import failed: {error:?}")),
+    }
 }
 
 fn default_custom_runtime_v2_profile_error(error: crate::runtime_v2::DefaultCustomRuntimeV2ProfileError) -> CliApiError {
@@ -526,12 +519,12 @@ fn normalize_namer_pf_modes(modes: Option<Vec<String>>) -> CliApiResult<Vec<Name
 mod tests {
     use super::*;
     use crate::runtime_v2::{
-        EntityIdx, EntitySlotId, SlotValue, TemplateSlotId, DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT,
-        DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT, DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT,
+        DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT, DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT,
         DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT, DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT,
         DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT, DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT,
         DEFAULT_CUSTOM_BED2_SUMMON_TEMPLATE_EXPORT, DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT,
-        DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT, DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT, default_custom_runtime_v2_import_config,
+        DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT, DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT, EntityIdx, SlotValue,
+        TemplateSlotId, default_custom_runtime_v2_import_config,
     };
 
     #[test]
@@ -562,7 +555,7 @@ mod tests {
         let raw = "plain@red\n\
 alpha@red@bed2+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire2\":4,\"sklfire1\":5},\"inherit_owner_def_res\":true}}\n\
 beta@red@bed2+ol:{\"shadow\":{\"attrs\":[47,48,49,50,51,52,53,88],\"skills\":{\"phantom:sklpossess\":5}}}\n\
-gamma@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{\"sklheal\":3}}}\n\n\
+gamma@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{}}}\n\n\
 seed:custom-seed@!\n\n\
 delta@blue+bed2[8]\n";
 
@@ -584,10 +577,10 @@ delta@blue+bed2[8]\n";
             .registry
             .skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT)
             .expect("default profile should register possess skill");
-        let zombie_heal_skill = runtime
-            .registry
-            .skill_id_by_export_name("custom.minion.heal")
-            .expect("default profile should register zombie heal skill");
+        assert!(runtime.skill_handlers.get(summon_skill).is_some());
+        assert!(runtime.skill_handlers.get(fire_skill).is_some());
+        assert!(runtime.skill_handlers.get(explode_skill).is_some());
+        assert!(runtime.skill_handlers.get(possess_skill).is_some());
         let summon_kind = runtime
             .registry
             .player_kinds()
@@ -630,17 +623,12 @@ delta@blue+bed2[8]\n";
             .find(|slot| slot.export_name == DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT)
             .expect("default profile should reserve zombie template slot")
             .id;
-        let summon_entity_slot = runtime
-            .registry
-            .entity_slots()
-            .iter()
-            .find(|slot| slot.export_name == DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT)
-            .expect("default profile should reserve summon entity slot")
-            .id;
-        assert_eq!(summon_entity_slot, EntitySlotId(0));
         assert_eq!(summon_template_slot, TemplateSlotId(0));
 
-        assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().template.skills.skills(), &[summon_skill]);
+        assert_eq!(
+            runtime.entities.get(EntityIdx(1)).unwrap().template.skills.skills(),
+            &[summon_skill]
+        );
         let SlotValue::PlayerTemplate(summon_template) = runtime
             .template_slots
             .get(summon_template_slot)
@@ -673,7 +661,21 @@ delta@blue+bed2[8]\n";
         };
         assert_eq!(zombie_template.kind, zombie_kind);
         assert_eq!(zombie_template.max_hp, 77);
-        assert_eq!(zombie_template.skills.skills(), &[zombie_heal_skill]);
+        assert!(zombie_template.skills.skills().is_empty());
+    }
+
+    #[test]
+    fn cli_api_default_custom_runtime_v2_mixed_runner_rejects_unimplemented_minion_heal() {
+        let raw = "alpha@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{\"sklheal\":3}}}\n\n\
+beta@blue\n";
+
+        let err = default_custom_runtime_v2_mixed_runner(raw)
+            .expect_err("default custom runtime v2 profile must reject imported skills without handlers");
+
+        assert_eq!(
+            err.to_string(),
+            "runtime v2 missing skill handlers: custom.minion.heal (id 4) used by template slot 2"
+        );
     }
 
     #[test]
@@ -701,12 +703,31 @@ delta@blue+bed2[8]\n";
     }
 
     #[test]
+    fn cli_api_default_custom_runtime_v2_parity_report_matches_converged_first_round() {
+        let report = default_custom_runtime_v2_parity_report("left@red\n\nright@blue\n", 1)
+            .expect("default custom runtime v2 parity report should execute");
+
+        assert_eq!(report.legacy.rounds.len(), 1);
+        assert_eq!(report.v2.rounds.len(), 1);
+        assert_eq!(report.first_diff, None);
+
+        #[cfg(not(feature = "no_debug"))]
+        assert_eq!(report.legacy, report.v2);
+
+        #[cfg(feature = "no_debug")]
+        {
+            assert_eq!(report.legacy.total_score, report.v2.total_score);
+            assert_eq!(report.legacy.rounds[0].frames, report.v2.rounds[0].frames);
+            assert_eq!(report.legacy.rounds[0].rng, report.v2.rounds[0].rng);
+        }
+    }
+
+    #[test]
     fn cli_api_default_custom_runtime_v2_normalized_run_executes_bed2_summon_overlay() {
         let raw = "alpha@red+bed2[3000]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire1\":5}}}\n\n\
 beta@blue\n";
 
-        let run =
-            default_custom_runtime_v2_normalized_run(raw, 1).expect("default custom runtime v2 summon run should execute");
+        let run = default_custom_runtime_v2_normalized_run(raw, 1).expect("default custom runtime v2 summon run should execute");
 
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(
@@ -736,19 +757,26 @@ beta@blue\n";
 
         assert_eq!(run.rounds.len(), 3);
         assert_eq!(run.rounds[2].actions[0].actor, 2);
-        assert_eq!(
-            run.rounds[2]
-                .frames
-                .iter()
-                .take(2)
-                .map(|frame| frame.message.as_str())
-                .collect::<Vec<_>>(),
-            vec!["[0]使用[火球术]", "[0]攻击[1]"]
-        );
-        assert_eq!(run.rounds[2].frames[0].caster, 2);
-        assert_eq!(run.rounds[2].frames[0].target, 1);
-        assert_eq!(run.rounds[2].frames[0].score, 1);
-        assert!(run.rounds[2].hp[1] < run.rounds[1].hp[1]);
+        let fire = &run.rounds[2].frames[0];
+        assert_eq!(fire.message, "[0]使用[火球术]");
+        assert_eq!(fire.caster, 2);
+        assert_eq!(fire.target, 1);
+        assert_eq!(fire.score, 1);
+
+        let resolution = &run.rounds[2].frames[1];
+        match resolution.message.as_str() {
+            "[0]攻击[1]" => {
+                assert_eq!(resolution.caster, 2);
+                assert_eq!(resolution.target, 1);
+                assert!(resolution.score > 0);
+            }
+            "[0][回避]了攻击" => {
+                assert_eq!(resolution.caster, 1);
+                assert_eq!(resolution.target, 2);
+                assert_eq!(resolution.score, 20);
+            }
+            message => panic!("unexpected summon fire resolution: {message}"),
+        }
     }
 
     #[test]

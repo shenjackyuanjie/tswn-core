@@ -26,6 +26,27 @@ impl SkillTrait for CharmSkill {
 
     fn has_action_impl(&self) -> bool { true }
 
+    fn prob(&self, level: u32, _smart: bool, args: SkillArgs) -> bool {
+        #[cfg(not(feature = "no_debug"))]
+        let before = (args.1.i, args.1.j);
+        let roll = args.1.r127();
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+            eprintln!(
+                "[charm_probe:legacy:prob] actor={} level={} roll={} pass={} rc4=({},{}) -> ({},{})",
+                args.0,
+                level,
+                roll,
+                roll < level,
+                before.0,
+                before.1,
+                args.1.i,
+                args.1.j,
+            );
+        }
+        roll < level
+    }
+
     fn valid_target_with_level(&self, _level: u32, target: PlrId, smart: bool, args: SkillArgs) -> bool {
         if !smart {
             return true;
@@ -76,6 +97,13 @@ impl SkillTrait for CharmSkill {
             return;
         }
         let target_id = targets[0];
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+            eprintln!(
+                "[charm_probe:legacy:act_before] actor={} target={} rc4=({},{})",
+                args.0, target_id, args.1.i, args.1.j,
+            );
+        }
         args.2.add(RunUpdate::new("[0]使用[魅惑]", args.0, target_id, 1));
 
         let (owner_magic, charge_active) = {
@@ -103,6 +131,13 @@ impl SkillTrait for CharmSkill {
                 ))
         {
             args.2.add(RunUpdate::new("[0][回避]了攻击", target_id, args.0, 20));
+            #[cfg(not(feature = "no_debug"))]
+            if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+                eprintln!(
+                    "[charm_probe:legacy:act_after] actor={} target={} dodged=true rc4=({},{})",
+                    args.0, target_id, args.1.i, args.1.j,
+                );
+            }
             return;
         }
 
@@ -147,6 +182,13 @@ impl SkillTrait for CharmSkill {
             });
         }
         args.2.add(RunUpdate::new("[1]被[魅惑]了", args.0, target_id, 120));
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
+            eprintln!(
+                "[charm_probe:legacy:act_after] actor={} target={} dodged=false rc4=({},{})",
+                args.0, target_id, args.1.i, args.1.j,
+            );
+        }
     }
 }
 

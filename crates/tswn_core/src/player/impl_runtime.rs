@@ -300,6 +300,8 @@ impl Player {
         let state_hijacked =
             has_states && self.state.on_pre_action_states(self.as_ptr(), smart, randomer, updates, storage, targets);
         if state_hijacked {
+            #[cfg(not(feature = "no_debug"))]
+            updates.record_action_boundary(ptr, ptr, 0);
             let recover_threshold = self.status.wisdom + 64;
             if (randomer.r127() as i32) < recover_threshold {
                 self.status.magic_point += 16;
@@ -489,6 +491,8 @@ impl Player {
                     skill.target_domain() == SkillTargetDomain::SelfOnly || skill.allows_empty_targets()
                 };
                 if !selected_targets.is_empty() || allow_empty {
+                    #[cfg(not(feature = "no_debug"))]
+                    updates.record_action_boundary(ptr, selected_targets.first().copied().unwrap_or(ptr), 0);
                     updates.mark_primary_action();
                     let (manages_dynamic_pre_action, dynamic_pre_action_enabled) = {
                         let skill = self.skills.skill_by_id_mut(skill_key);
@@ -1137,6 +1141,15 @@ impl Player {
         let Some(target_id) = self.select_forced_attack_target(config, randomer, storage, targets) else {
             return;
         };
+        #[cfg(not(feature = "no_debug"))]
+        {
+            let base = if config.use_mag {
+                self.status.magic
+            } else {
+                self.status.attack
+            };
+            updates.record_action_boundary(self.as_ptr(), target_id, (base as f64 * config.attack_scale).round() as i32);
+        }
         let atp = self.get_at(config.use_mag, randomer) * config.attack_scale;
         updates.mark_primary_action();
         updates.emit(|| RunUpdate::new(config.message, self.as_ptr(), target_id, 0));
@@ -1307,6 +1320,12 @@ impl Player {
         targets: &ActionTargets,
     ) {
         if self.player_type == PlayerType::Boss {
+            #[cfg(not(feature = "no_debug"))]
+            updates.record_action_boundary(
+                self.as_ptr(),
+                targets.enemy_alive.first().copied().unwrap_or_else(|| self.as_ptr()),
+                self.status.attack,
+            );
             updates.mark_primary_action();
             crate::player::boss::boss_default_action(self, smart, randomer, updates, storage, targets);
             return;
@@ -1319,6 +1338,8 @@ impl Player {
             let req_mp = (self.status.magic - self.status.attack) >> 2;
             if self.status.magic_point >= req_mp {
                 self.status.magic_point -= req_mp;
+                #[cfg(not(feature = "no_debug"))]
+                updates.record_action_boundary(self.as_ptr(), target_id, self.status.magic);
                 let atp = self.get_at(true, randomer);
                 updates.mark_primary_action();
                 updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));
@@ -1330,6 +1351,8 @@ impl Player {
             }
         }
 
+        #[cfg(not(feature = "no_debug"))]
+        updates.record_action_boundary(self.as_ptr(), target_id, self.status.attack);
         let atp = self.get_at(false, randomer);
         updates.mark_primary_action();
         updates.emit(|| RunUpdate::new("[0]发起攻击", self.as_ptr(), target_id, 0));

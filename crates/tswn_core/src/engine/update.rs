@@ -74,6 +74,19 @@ pub enum UpdateType {
     NextLine,
 }
 
+/// Legacy runtime 在一次 `main_round` 批次内实际提交的主体行动边界。
+///
+/// 仅用于 legacy/v2 strict-diff。`amount` 表示行动决策时的基础威力：
+/// 默认/强制攻击使用对应攻击属性，技能和状态劫持使用 `0`，避免把后续伤害链
+/// 的随机浮动错误地当成 scheduler 决策。
+#[cfg(not(feature = "no_debug"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyActionBoundary {
+    pub actor: PlrId,
+    pub target: PlrId,
+    pub amount: i32,
+}
+
 /// 单条战斗事件消息帧。
 ///
 /// 对应 JS 产物中的 `RunUpdate` 对象，携带：
@@ -218,6 +231,9 @@ pub struct RunUpdates {
     pub updates: smallvec::SmallVec<[RunUpdate; 8]>,
     /// 本批次结束后需要触发 `on_update_end` 回调的玩家列表。
     pub on_update_end: smallvec::SmallVec<[PlrId; 8]>,
+    /// 本批次内实际提交的主体行动边界。
+    #[cfg(not(feature = "no_debug"))]
+    action_boundaries: smallvec::SmallVec<[LegacyActionBoundary; 1]>,
     /// 是否缓存详细帧内容（benchmark 高速路径可关闭）。
     pub capture_updates: bool,
     /// 本批次是否出现过事件（无论是否缓存详细帧）。
@@ -234,6 +250,8 @@ impl RunUpdates {
             id: next_run_updates_id(),
             updates: smallvec::SmallVec::new(),
             on_update_end: smallvec::SmallVec::new(),
+            #[cfg(not(feature = "no_debug"))]
+            action_boundaries: smallvec::SmallVec::new(),
             capture_updates,
             has_activity: false,
             segment_has_activity: false,
@@ -252,6 +270,8 @@ impl RunUpdates {
         self.id = next_run_updates_id();
         self.updates.clear();
         self.on_update_end.clear();
+        #[cfg(not(feature = "no_debug"))]
+        self.action_boundaries.clear();
         self.has_activity = false;
         self.segment_has_activity = false;
         self.segment_has_primary_action = false;
@@ -271,6 +291,19 @@ impl RunUpdates {
         self.segment_has_activity = true;
         self.segment_has_primary_action = true;
     }
+
+    /// 记录 legacy 主体行动的结构化边界。
+    ///
+    /// `new_no_capture()` 的高速路径不会保存该诊断数据。
+    #[cfg(not(feature = "no_debug"))]
+    pub fn record_action_boundary(&mut self, actor: PlrId, target: PlrId, amount: i32) {
+        if self.capture_updates {
+            self.action_boundaries.push(LegacyActionBoundary { actor, target, amount });
+        }
+    }
+
+    #[cfg(not(feature = "no_debug"))]
+    pub fn action_boundaries(&self) -> &[LegacyActionBoundary] { &self.action_boundaries }
 
     /// 追加一个换行分隔帧。
     pub fn add_newline(&mut self) {
@@ -314,4 +347,30 @@ impl RunUpdates {
 
 impl Default for RunUpdates {
     fn default() -> Self { Self::new() }
+}
+
+#[cfg(all(test, not(feature = "no_debug")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn action_boundaries_follow_capture_and_reset_semantics() {
+        let mut updates = RunUpdates::new();
+        updates.record_action_boundary(1, 2, 37);
+        assert_eq!(
+            updates.action_boundaries(),
+            &[LegacyActionBoundary {
+                actor: 1,
+                target: 2,
+                amount: 37,
+            }]
+        );
+
+        updates.reset();
+        assert!(updates.action_boundaries().is_empty());
+
+        let mut no_capture = RunUpdates::new_no_capture();
+        no_capture.record_action_boundary(1, 2, 37);
+        assert!(no_capture.action_boundaries().is_empty());
+    }
 }

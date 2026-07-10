@@ -901,6 +901,14 @@ impl Player {
     /// 获取 短号系数
     pub fn get_name_factor(&self) -> f64 { self.name_factor }
 
+    pub(crate) fn clone_build_inputs(&self) -> ([u32; 8], [i32; 8], f64) {
+        (
+            self.attr,
+            self.weapon_state.as_ref().map_or([0; 8], |weapon| weapon.attr_bonus),
+            self.name_factor,
+        )
+    }
+
     /// 检查输入的名字是否是种子玩家
     pub fn check_is_seed(name: &str) -> bool { name.starts_with(SEED_PREFIX) }
 

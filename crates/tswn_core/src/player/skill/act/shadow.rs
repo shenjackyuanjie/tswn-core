@@ -3,6 +3,9 @@
 //! 本模块负责生成幻影召唤物，并保持其熟练度衰减、覆盖模板应用、
 //! 以及运行时初始化行为与原版逻辑一致。
 
+use std::sync::Arc;
+
+use crate::engine::storage::Storage;
 use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
@@ -24,6 +27,47 @@ impl ShadowSkill {
 
 impl SkillExt for ShadowSkill {
     fn box_new() -> Box<dyn SkillTrait> { Box::new(Self::new()) }
+}
+
+pub(crate) fn build_shadow_minion(owner_id: PlrId, storage: &Arc<Storage>) -> Player {
+    let (owner_base_name, owner_clan, charge_active) = {
+        let owner = storage.get_player(&owner_id).expect("cannot get shadow owner from storage");
+        (owner.base_name(), owner.clan_name(), owner.get_status().at_boost >= 3.0)
+    };
+    let minion_overlay = owner_minion_overlay(storage, owner_id, MinionKind::Shadow);
+    let seed_name = format!("{owner_base_name}?shadow");
+    let mut shadow =
+        Player::new_minion_and_init(Some(owner_clan), seed_name, None, storage.clone()).expect("cannot init shadow minion");
+    prepare_combat_minion(&mut shadow);
+    shadow.build();
+    if !apply_minion_attrs(&mut shadow, minion_overlay.as_ref()) {
+        shadow.attr[7] /= 2;
+    }
+    apply_child_minion_overlay(&mut shadow, minion_overlay.as_ref());
+    shadow.init_values();
+    shadow.set_display_name_override(Some("幻影".to_string()));
+    shadow.player_type = PlayerType::Clone;
+    shadow.sort_int = 0;
+    shadow.state = PlayerStateStore::default();
+    shadow.set_state(MinionRuntimeState {
+        owner: Some(owner_id),
+        kind: MinionKind::Shadow,
+        share_damage_owner: None,
+    });
+    shadow.status.set_alive(true);
+    shadow.status.set_frozen(false);
+
+    if !apply_minion_skill_overlay(&mut shadow, minion_overlay.as_ref()) {
+        let possess_level = ((shadow.name_base[64..68].iter().copied().min().unwrap_or(0) as i32 - 10) / 2 + 36).max(0) as u32;
+        let mut skills = SkillStorage::new();
+        skills.add_skill(Skill::new(possess_level, super::possess::PossessSkill::box_new()));
+        skills.boost_last();
+        shadow.skills = skills;
+        shadow.skills.update_proc();
+    }
+
+    shadow.status.move_point = if charge_active { 2048 } else { -2048 };
+    shadow
 }
 
 impl SkillTrait for ShadowSkill {
@@ -61,45 +105,8 @@ impl SkillTrait for ShadowSkill {
 
     fn act_with_level(&mut self, _level: u32, _targets: Vec<PlrId>, _smart: bool, args: SkillArgs) {
         args.2.add(RunUpdate::new("[0]使用[幻术]", args.0, args.0, 60));
-        let (owner_base_name, owner_clan, charge_active) = {
-            let owner = args.3.get_player(&args.0).expect("cannot get shadow owner from storage");
-            (owner.base_name(), owner.clan_name(), owner.get_status().at_boost >= 3.0)
-        };
-        let minion_overlay = owner_minion_overlay(args.3, args.0, MinionKind::Shadow);
-        let seed_name = format!("{owner_base_name}?shadow");
-        let mut shadow =
-            Player::new_minion_and_init(Some(owner_clan), seed_name, None, args.3.clone()).expect("cannot init shadow minion");
-        prepare_combat_minion(&mut shadow);
-        shadow.build();
-        if !apply_minion_attrs(&mut shadow, minion_overlay.as_ref()) {
-            shadow.attr[7] /= 2;
-        }
-        apply_child_minion_overlay(&mut shadow, minion_overlay.as_ref());
-        shadow.init_values();
+        let mut shadow = build_shadow_minion(args.0, args.3);
         shadow.set_id_name_override(Some(alloc_minion_name(args.3, args.0)));
-        shadow.set_display_name_override(Some("幻影".to_string()));
-        shadow.player_type = PlayerType::Clone;
-        shadow.sort_int = 0;
-        shadow.state = PlayerStateStore::default();
-        shadow.set_state(MinionRuntimeState {
-            owner: Some(args.0),
-            kind: MinionKind::Shadow,
-            share_damage_owner: None,
-        });
-        shadow.status.set_alive(true);
-        shadow.status.set_frozen(false);
-
-        if !apply_minion_skill_overlay(&mut shadow, minion_overlay.as_ref()) {
-            let possess_level =
-                ((shadow.name_base[64..68].iter().copied().min().unwrap_or(0) as i32 - 10) / 2 + 36).max(0) as u32;
-            let mut skills = SkillStorage::new();
-            skills.add_skill(Skill::new(possess_level, super::possess::PossessSkill::box_new()));
-            skills.boost_last();
-            shadow.skills = skills;
-            shadow.skills.update_proc();
-        }
-
-        shadow.status.move_point = if charge_active { 2048 } else { -2048 };
         let shadow_id = shadow.as_ptr();
         args.3.queue_spawn(args.0, shadow);
         args.2.add(RunUpdate::new("召唤出[1]", args.0, shadow_id, 0));
