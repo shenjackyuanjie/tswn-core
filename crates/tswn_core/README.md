@@ -80,6 +80,7 @@ let runner = Runner::new_from_namerena_raw(raw_input, eval_rq).unwrap();
 高亮文字颜色码 `color`、语义分类 `tone`、关联玩家 id、侧栏状态快照和胜利片段标记。
 文本、玩家、数值、HP 条、死亡特效与 emoji 占位字段都下沉到 `ReplayTextPart`。包装层只需要把
 自己的玩家快照类型实现 `ReplayState`，即可复用同一套回放推演规则。
+同一句包含多个玩家时，每个玩家 part 独立携带 HP 前后值；例如生命之轮互换会分别表达双方的加血或扣血。
 
 当前 delay 规则按优先级依次为：frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子
 `600ms`，其他句子 `500ms`。血条只在帧前后 HP 不同时展示；死亡特效只在帧前后 HP 均为 `0`
