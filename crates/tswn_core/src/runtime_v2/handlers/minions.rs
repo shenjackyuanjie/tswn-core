@@ -123,7 +123,7 @@ pub fn minion_display_index_for_entity(entity: Option<&EntityRecord>) -> usize {
     let Some(entity) = entity else {
         return 0;
     };
-    if !entity.runtime.flags.contains(PlayerKindFlags::MINION) {
+    if !entity.runtime.is_minion() {
         return 0;
     }
     entity

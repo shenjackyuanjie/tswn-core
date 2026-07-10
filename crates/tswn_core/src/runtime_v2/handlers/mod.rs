@@ -293,7 +293,7 @@ pub fn score_disperse_target(entities: &EntityArena, world: &WorldArena, target:
     } else {
         rng.rFFFF() as f64 + target_runtime.attract()
     };
-    if smart && target_runtime.flags.contains(PlayerKindFlags::MINION) && target_runtime.hp > 100 {
+    if smart && target_runtime.is_combat_minion() && target_runtime.hp > 100 {
         score *= 2.0;
     }
     score

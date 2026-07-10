@@ -49,7 +49,7 @@ fn plain_revive_selects_dead_non_minion_ally_by_attr_sum() {
             "custom",
             "minion",
             "custom.minion",
-            PlayerKindFlags::MINION,
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
             PlayerKindPolicies::default(),
         )
         .expect("minion kind should register");
@@ -76,6 +76,39 @@ fn plain_revive_selects_dead_non_minion_ally_by_attr_sum() {
     assert_eq!(selected.first(), Some(&EntityIdx(2)));
     assert!(selected.contains(&EntityIdx(1)));
     assert!(!selected.contains(&EntityIdx(3)));
+}
+
+#[test]
+fn plain_revive_can_select_dead_clone_minion() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let clone_kind = builder
+        .register_player_kind_with_policies(
+            "custom",
+            "clone",
+            "custom.clone",
+            PlayerKindFlags::MINION,
+            PlayerKindPolicies::default(),
+        )
+        .expect("clone kind should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3),
+            PlayerTemplate::with_kind(2, "clone", clone_kind, 0, 100, 3),
+            PlayerTemplate::new(3, "enemy", 1, 100, 3),
+        ],
+        registry,
+    ));
+    {
+        let clone = runtime.entities.get_mut(EntityIdx(1)).unwrap();
+        clone.runtime.hp = 0;
+        clone.runtime.alive = false;
+    }
+    assert!(runtime.world.mark_dead(EntityIdx(1), 0));
+
+    let selected = runtime.select_plain_revive_targets(EntityIdx(0), true);
+
+    assert!(selected.contains(&EntityIdx(1)));
 }
 
 #[test]

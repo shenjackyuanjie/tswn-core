@@ -28,14 +28,13 @@ impl CombatRuntime {
         killed_target: EntityIdx,
         updates: &mut RunUpdates,
     ) {
-        let target_is_minion = self
+        let target_is_combat_minion = self
             .entities
             .get(killed_target)
             .unwrap_or_else(|| panic!("runtime_v2 zombie target disappeared: {}", killed_target.0))
             .runtime
-            .flags
-            .contains(PlayerKindFlags::MINION);
-        if target_is_minion {
+            .is_combat_minion();
+        if target_is_combat_minion {
             return;
         }
 

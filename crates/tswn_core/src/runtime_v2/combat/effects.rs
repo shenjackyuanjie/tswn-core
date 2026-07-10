@@ -180,7 +180,7 @@ impl CombatRuntime {
                     self.ensure_effect_entity("disperse-attack", "caster", caster);
                     self.ensure_effect_entity("disperse-attack", "target", target);
                     let mut atp = self.entities.get(caster).unwrap().runtime.get_at(true, &mut self.rng);
-                    if self.entities.get(target).unwrap().runtime.flags.contains(PlayerKindFlags::MINION) {
+                    if self.entities.get(target).unwrap().runtime.is_combat_minion() {
                         atp *= 2.0;
                     }
                     let mut defend_value = RuntimeDefendValue::Atp {

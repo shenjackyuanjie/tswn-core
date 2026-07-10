@@ -395,7 +395,7 @@ impl CombatRuntime {
                         .entries()
                         .iter()
                         .any(|entry| matches!(entry.payload, StatePayload::Berserk { .. }))
-                        && !entity.runtime.flags.contains(PlayerKindFlags::MINION))
+                        && !entity.runtime.is_combat_minion())
             });
             if !valid {
                 invalid_count += 1;
@@ -484,7 +484,7 @@ impl CombatRuntime {
                         .entry(PLAIN_HASTE_STATE_KEY)
                         .and_then(StateEntry::haste_value)
                         .is_none_or(|(_, step)| (step + 1) * 60 <= entity.runtime.hp)
-                    && !entity.runtime.flags.contains(PlayerKindFlags::MINION)
+                    && !entity.runtime.is_combat_minion()
             });
             if !valid {
                 invalid_count += 1;

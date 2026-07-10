@@ -6,8 +6,8 @@ use crate::runtime_v2::extension::{
 };
 use crate::runtime_v2::scheduler::{SkillHookPlanEntry, StateHookPlanEntry};
 use crate::runtime_v2::{
-    BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, PlayerKindFlags, ProcMask, ProtectLinkRuntime,
-    RuntimeDefendValue, SlotError, SlotValue, TemplateSlotId, TemplateSlotStorage, WorldArena,
+    BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, ProcMask, ProtectLinkRuntime, RuntimeDefendValue, SlotError,
+    SlotValue, TemplateSlotId, TemplateSlotStorage, WorldArena,
 };
 use std::collections::VecDeque;
 

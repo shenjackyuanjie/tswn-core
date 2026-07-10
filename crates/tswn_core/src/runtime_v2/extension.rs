@@ -113,7 +113,7 @@ impl PlayerKindFlags {
     pub const SUMMON: Self = Self(1 << 2);
     pub const BED2: Self = Self(1 << 3);
     pub const BOOST: Self = Self(1 << 4);
-    pub const KNOCKOUT_ON_DEATH: Self = Self(1 << 5);
+    pub const COMBAT_MINION: Self = Self(1 << 5);
 
     pub const fn contains(self, rhs: Self) -> bool { (self.0 & rhs.0) == rhs.0 }
     pub const fn intersects(self, rhs: Self) -> bool { (self.0 & rhs.0) != 0 }

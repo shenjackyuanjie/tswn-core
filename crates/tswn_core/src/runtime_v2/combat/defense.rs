@@ -520,11 +520,8 @@ impl CombatRuntime {
             .entities
             .iter()
             .filter_map(|(idx, entity)| {
-                (idx != owner
-                    && entity.runtime.alive
-                    && entity.runtime.owner == owner
-                    && entity.runtime.flags.contains(PlayerKindFlags::MINION))
-                .then_some(idx)
+                (idx != owner && entity.runtime.alive && entity.runtime.owner == owner && entity.runtime.is_combat_minion())
+                    .then_some(idx)
             })
             .collect::<Vec<_>>();
 

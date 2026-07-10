@@ -457,7 +457,7 @@ pub fn run_saitama_boss_state(context: &mut StateContext<'_>, entry: &StateHookP
     let caster_entity = context
         .entity(caster)
         .unwrap_or_else(|error| panic!("runtime_v2 saitama caster lookup failed: {error:?}"));
-    let hitter = if caster_entity.runtime.flags.contains(PlayerKindFlags::MINION) && caster_entity.runtime.owner != caster {
+    let hitter = if caster_entity.runtime.is_minion() && caster_entity.runtime.owner != caster {
         if !minions.contains(&caster) {
             minions.push(caster);
         }

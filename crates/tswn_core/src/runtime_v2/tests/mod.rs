@@ -5,6 +5,7 @@ mod plain_action_scheduler_tests;
 mod plain_assassinate_skill_tests;
 mod plain_attack_skill_tests;
 mod plain_charm_targeting_tests;
+mod plain_protect_skill_tests;
 mod plain_raw_import_tests;
 mod plain_revive_lifecycle_tests;
 mod plain_status_skill_tests;
@@ -6267,7 +6268,7 @@ fn custom_minion_heal_fixture_does_not_share_with_owner_or_summons() {
             "custom",
             "minion",
             "custom.minion",
-            PlayerKindFlags::MINION | PlayerKindFlags::SUMMON,
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION | PlayerKindFlags::SUMMON,
             PlayerKindPolicies {
                 owner_resolution: OwnerResolutionPolicy::SelfEntity,
                 damage_share: DamageSharePolicy::ShareToOwner,
@@ -6333,7 +6334,7 @@ fn custom_minion_owner_death_removes_linked_minions_in_entity_order() {
             "custom",
             "minion",
             "custom.minion",
-            PlayerKindFlags::MINION | PlayerKindFlags::SUMMON,
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION | PlayerKindFlags::SUMMON,
             PlayerKindPolicies {
                 owner_resolution: OwnerResolutionPolicy::SelfEntity,
                 damage_share: DamageSharePolicy::ShareToOwner,
@@ -6403,7 +6404,7 @@ fn custom_minion_owner_remove_cleans_linked_minions_in_entity_order() {
             "custom",
             "minion",
             "custom.minion",
-            PlayerKindFlags::MINION | PlayerKindFlags::SUMMON,
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION | PlayerKindFlags::SUMMON,
             PlayerKindPolicies {
                 owner_resolution: OwnerResolutionPolicy::SelfEntity,
                 damage_share: DamageSharePolicy::ShareToOwner,
@@ -6636,7 +6637,7 @@ fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
             "custom",
             "runner-linked-minion",
             "custom.runner_linked_minion",
-            PlayerKindFlags::MINION | PlayerKindFlags::SUMMON,
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION | PlayerKindFlags::SUMMON,
             PlayerKindPolicies {
                 owner_resolution: OwnerResolutionPolicy::SelfEntity,
                 damage_share: DamageSharePolicy::ShareToOwner,
@@ -7802,7 +7803,7 @@ fn score_disperse_target_matches_legacy_smart_multi_team_and_minion_formula() {
             "custom",
             "minion",
             "custom.minion",
-            PlayerKindFlags::MINION,
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
             PlayerKindPolicies::default(),
         )
         .expect("minion kind should register");
@@ -9538,7 +9539,7 @@ fn flush_effects_disperse_attack_doubles_atp_against_minion_targets() {
             "custom",
             "minion",
             "custom.minion",
-            PlayerKindFlags::MINION,
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
             PlayerKindPolicies::default(),
         )
         .expect("minion kind should register");

@@ -23,9 +23,7 @@ impl CombatRuntime {
             };
             let target = candidates[picked];
             let valid = self.entities.get(target).is_some_and(|entity| {
-                !entity.runtime.alive
-                    && !entity.runtime.flags.contains(PlayerKindFlags::MINION)
-                    && entity.runtime.corpse == RuntimeCorpseKind::None
+                !entity.runtime.alive && !entity.runtime.is_combat_minion() && entity.runtime.corpse == RuntimeCorpseKind::None
             });
             if !valid {
                 invalid += 1;

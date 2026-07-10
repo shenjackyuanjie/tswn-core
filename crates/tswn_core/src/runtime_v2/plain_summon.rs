@@ -268,7 +268,7 @@ impl CombatRuntime {
                 .entities
                 .get(current)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 minion name owner: {}", current.0));
-            if entity.runtime.flags.contains(PlayerKindFlags::MINION) {
+            if entity.runtime.is_combat_minion() {
                 return current;
             }
             if entity.runtime.owner == current {
@@ -287,7 +287,7 @@ impl CombatRuntime {
                     && idx != owner
                     && entity.runtime.alive
                     && entity.runtime.owner == owner
-                    && entity.runtime.flags.contains(PlayerKindFlags::MINION))
+                    && entity.runtime.is_combat_minion())
                 .then_some(idx)
             })
             .collect::<Vec<_>>();

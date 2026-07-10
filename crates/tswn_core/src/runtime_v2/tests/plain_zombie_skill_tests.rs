@@ -116,7 +116,7 @@ fn plain_zombie_marks_corpse_spawns_after_reserved_id_and_emits_legacy_updates()
     assert_eq!(zombie.runtime.owner, EntityIdx(0));
     assert_eq!(zombie.runtime.root_owner, EntityIdx(0));
     assert_eq!(zombie.runtime.move_state.speed_points, expected_move_points);
-    assert!(zombie.runtime.flags.contains(PlayerKindFlags::MINION));
+    assert!(zombie.runtime.is_combat_minion());
     assert_eq!(
         updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
         vec!["\n", "[0][召唤亡灵]", "[2]变成了[1]"]

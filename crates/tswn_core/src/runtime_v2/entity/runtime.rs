@@ -164,6 +164,10 @@ impl PlayerRuntime {
 
     pub fn attract(&self) -> f64 { f64::from_bits(self.attract_bits) }
 
+    pub fn is_minion(&self) -> bool { self.flags.contains(PlayerKindFlags::MINION) }
+
+    pub fn is_combat_minion(&self) -> bool { self.flags.contains(PlayerKindFlags::COMBAT_MINION) }
+
     pub fn active(&self) -> bool { self.alive && self.hp > 0 }
 
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {

@@ -106,8 +106,8 @@ fn plain_clone_inherits_summon_blueprint_and_can_summon() {
 
     let clone = EntityIdx(2);
     let clone_entity = runtime.entities.get(clone).expect("clone should spawn");
-    assert!(clone_entity.runtime.flags.contains(PlayerKindFlags::MINION));
-    assert!(clone_entity.runtime.flags.contains(PlayerKindFlags::KNOCKOUT_ON_DEATH));
+    assert!(clone_entity.runtime.is_minion());
+    assert!(!clone_entity.runtime.is_combat_minion());
     assert_eq!(
         clone_entity.runtime.kind,
         runtime

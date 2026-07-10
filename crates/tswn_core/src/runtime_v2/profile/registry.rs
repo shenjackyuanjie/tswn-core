@@ -163,14 +163,14 @@ pub fn default_custom_runtime_v2_import_config()
         "core",
         "shadow",
         DEFAULT_CORE_SHADOW_KIND_EXPORT,
-        PlayerKindFlags::MINION,
+        PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
         PlayerKindPolicies::default(),
     )?;
     builder.register_player_kind_with_policies(
         "core",
         "summon",
         DEFAULT_CORE_SUMMON_KIND_EXPORT,
-        PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+        PlayerKindFlags::SUMMON | PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
         PlayerKindPolicies {
             merge: MergePolicy::FixedLane,
             ..PlayerKindPolicies::default()
@@ -180,14 +180,14 @@ pub fn default_custom_runtime_v2_import_config()
         "core",
         "zombie",
         DEFAULT_CORE_ZOMBIE_KIND_EXPORT,
-        PlayerKindFlags::MINION,
+        PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
         PlayerKindPolicies::default(),
     )?;
     builder.register_player_kind_with_policies(
         "core",
         "clone",
         DEFAULT_CORE_CLONE_KIND_EXPORT,
-        PlayerKindFlags::MINION | PlayerKindFlags::KNOCKOUT_ON_DEATH,
+        PlayerKindFlags::MINION,
         PlayerKindPolicies::default(),
     )?;
     let shield = builder.register_skill_with_hooks(
@@ -296,7 +296,7 @@ pub fn default_custom_runtime_v2_import_config()
         "custom",
         "bed2-summon",
         DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT,
-        PlayerKindFlags::SUMMON | PlayerKindFlags::MINION,
+        PlayerKindFlags::SUMMON | PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
         PlayerKindPolicies {
             owner_resolution: OwnerResolutionPolicy::RootOwner,
             damage_share: DamageSharePolicy::ShareToOwner,
@@ -308,7 +308,7 @@ pub fn default_custom_runtime_v2_import_config()
         "custom",
         "bed2-shadow",
         DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT,
-        PlayerKindFlags::MINION,
+        PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
         PlayerKindPolicies {
             owner_resolution: OwnerResolutionPolicy::RootOwner,
             damage_share: DamageSharePolicy::ShareToOwner,
@@ -320,7 +320,7 @@ pub fn default_custom_runtime_v2_import_config()
         "custom",
         "bed2-zombie",
         DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT,
-        PlayerKindFlags::MINION,
+        PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
         PlayerKindPolicies {
             owner_resolution: OwnerResolutionPolicy::RootOwner,
             damage_share: DamageSharePolicy::ShareToOwner,

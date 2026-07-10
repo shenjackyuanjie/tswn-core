@@ -312,10 +312,7 @@ impl<'a> SkillContext<'a> {
                     break;
                 };
                 let target = candidates[picked];
-                let valid = self
-                    .entities
-                    .get(target)
-                    .is_some_and(|entity| !entity.runtime.flags.contains(PlayerKindFlags::MINION));
+                let valid = self.entities.get(target).is_some_and(|entity| !entity.runtime.is_combat_minion());
                 if !valid {
                     invalid += 1;
                     continue;

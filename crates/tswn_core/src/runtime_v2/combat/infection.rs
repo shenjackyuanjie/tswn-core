@@ -374,10 +374,7 @@ impl CombatRuntime {
     }
 
     pub fn emit_plain_lethal_replay_into(&self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        let die_message = if self.entities.get(target).is_some_and(|entity| {
-            entity.runtime.flags.contains(PlayerKindFlags::MINION)
-                && !entity.runtime.flags.contains(PlayerKindFlags::KNOCKOUT_ON_DEATH)
-        }) {
+        let die_message = if self.entities.get(target).is_some_and(|entity| entity.runtime.is_combat_minion()) {
             "[1]消失了"
         } else {
             "[1]被击倒了"
