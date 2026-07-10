@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### 变更
+
+- 精简 `Runner.build_replay()` 中 `frames[].rows[].clips[]` 的 clip dict 与类型存根：移除 clip 顶层的 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji`，统一从 `parts[]` 读取文本、玩家、数值、血条和死亡特效语义。
+
 ## [0.3.0] - 2026-06-27
 
 ### 新增

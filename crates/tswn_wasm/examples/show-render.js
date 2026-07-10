@@ -639,8 +639,8 @@ export function renderPlayers(
 
 /**
  * 构建单帧的战斗记录 HTML。
- * 每帧内部的多条消息用" ，"分隔，换行消息（next_line）触发新行。
- * HP 条会基于当前帧内累计伤害/回复进行模拟变化。
+ * 每帧内部的多条消息用" ，"分隔，换行消息（next_line）已经由 replay view 表达为新行。
+ * HP 条、死亡特效和文本分段都来自 core/WASM 提供的 clip.parts[]。
  *
  * @param {FrameUpdate} frame — 当前帧数据
  * @param {number} roundIndex — 帧序号

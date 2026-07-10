@@ -77,15 +77,7 @@ class ReplayTextPart(TypedDict):
 
 class ReplayClip(TypedDict):
     delay: int
-    text_template: str
     color: ReplayTone
-    player_id: int | None
-    data: str | None
-    show_hp: bool
-    hp_before: int
-    hp_after: int
-    death_effect: bool
-    emoji: str | None
     parts: list[ReplayTextPart]
     caster_ids: list[int]
     target_ids: list[int]
