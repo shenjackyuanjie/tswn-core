@@ -173,6 +173,9 @@ pub fn build_replay_view_frame<S: ReplayState>(
         if is_hp_swap_update(update) {
             apply_hp_swap(&mut running, update.caster, update.target);
         }
+        if is_death_effect_update(update) {
+            apply_death_update(&mut running, update.target);
+        }
         let after = running.clone();
         let parts = build_clip_parts(update, &before, &after, player_names);
         let show_hp = parts.iter().any(|part| part.show_hp);
@@ -334,6 +337,13 @@ fn apply_hp_swap<S: ReplayState>(running: &mut HashMap<PlrId, S>, caster_id: Plr
     running.insert(target_id, target.with_hp_alive(target_new_hp, target_new_hp > 0));
 }
 
+fn apply_death_update<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId) {
+    let Some(state) = running.get(&id) else {
+        return;
+    };
+    running.insert(id, state.with_hp_alive(0, false));
+}
+
 fn hp_pair<S: ReplayState>(player_id: PlrId, before: &HashMap<PlrId, S>, after: &HashMap<PlrId, S>) -> (i32, i32, bool) {
     let hp_after = after.get(&player_id).map(ReplayState::hp);
     let is_new_entity = !before.contains_key(&player_id) && hp_after.is_some();
@@ -402,7 +412,7 @@ fn push_player_part<S: ReplayState>(
 ) {
     let (hp_before, hp_after, show_hp) = hp_pair(player_id, before, after);
     let show_hp = show_hp || force_show_hp;
-    let death_effect = death_effect_allowed && hp_before == 0 && hp_after == 0;
+    let death_effect = death_effect_allowed && hp_after == 0;
     parts.push(ReplayTextPart {
         kind: ReplayTextPartKind::Player,
         text: render_name(player_id, player_names),
@@ -732,6 +742,26 @@ mod tests {
         assert_eq!((player_part.hp_before, player_part.hp_after), (87, 87));
         let data_part = clip.parts.iter().find(|part| part.kind == ReplayTextPartKind::Data).unwrap();
         assert_eq!(data_part.text, "87");
+    }
+
+    #[test]
+    fn mechanism_death_sets_hp_to_zero_and_renders_death_effect() {
+        let update = RunUpdate::new("[1]\u{6d88}\u{5931}\u{4e86}", 0, 1, 50);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Knockout,
+            message_rendered: "target\u{6d88}\u{5931}\u{4e86}",
+        }];
+        let previous = vec![state(0, 100), state(1, 40)];
+        let frame = vec![state(0, 100), state(1, 0)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        let player_part = player_part(clip);
+        assert!(player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (40, 0));
+        assert!(player_part.death_effect);
     }
 
     #[test]
