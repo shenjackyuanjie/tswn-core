@@ -145,8 +145,8 @@ pub enum DamageSharePolicy {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum MergePolicy {
-    #[default]
     None,
+    #[default]
     FixedLane,
     DropUnmappedSkills,
 }

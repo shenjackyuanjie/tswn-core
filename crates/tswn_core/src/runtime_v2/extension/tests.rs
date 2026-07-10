@@ -20,6 +20,12 @@ impl TswnExtension for FixtureExtension {
 }
 
 #[test]
+fn merge_policy_defaults_to_legacy_fixed_lane_semantics() {
+    assert_eq!(MergePolicy::default(), MergePolicy::FixedLane);
+    assert_eq!(PlayerKindPolicies::default().merge, MergePolicy::FixedLane);
+}
+
+#[test]
 fn registry_allocates_stable_player_kind_ids_in_registration_order() {
     let mut builder = ExtensionRegistryBuilder::default();
 

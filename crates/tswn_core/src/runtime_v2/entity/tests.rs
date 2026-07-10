@@ -150,7 +150,7 @@ fn skill_loadout_tracks_fixed_lanes_and_active_order_separately() {
 #[test]
 fn skill_loadout_merges_levels_by_fixed_lane_without_replacing_skill_ids() {
     let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 0), (SkillId(2), 4)])
-        .with_fixed_lane_keys([0, 2])
+        .with_fixed_lane_keys([10, 20])
         .with_active_order([1]);
     let source =
         SkillLoadout::from_skill_levels([(SkillId(3), 9), (SkillId(4), 7), (SkillId(5), 11)]).with_fixed_lane_keys([0, 2, 4]);
@@ -171,6 +171,18 @@ fn skill_loadout_ignores_unmapped_source_lanes() {
 
     assert_eq!(target.skills(), &[SkillId(1), SkillId(2)]);
     assert_eq!(target.levels(), &[9, 2]);
+}
+
+#[test]
+fn skill_loadout_moves_newly_enabled_lanes_to_action_order_tail() {
+    let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 4), (SkillId(2), 0), (SkillId(3), 7), (SkillId(4), 0)])
+        .with_active_order([1, 0, 3, 2]);
+    let source = SkillLoadout::from_skill_levels([(SkillId(5), 1), (SkillId(6), 8), (SkillId(7), 2), (SkillId(8), 9)]);
+
+    assert!(target.merge_fixed_lanes_from(&source, MergePolicy::FixedLane));
+
+    assert_eq!(target.levels(), &[4, 8, 7, 9]);
+    assert_eq!(target.active_order(), &[0, 2, 1, 3]);
 }
 
 #[test]

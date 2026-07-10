@@ -92,6 +92,40 @@ fn plain_summon_spawns_once_then_resets_and_revives_the_same_entity() {
 }
 
 #[test]
+fn plain_clone_inherits_summon_blueprint_and_can_summon() {
+    let mut runtime = summon_runtime();
+    let owner = EntityIdx(1);
+    let clone_lane = {
+        let skills = &runtime.entities.get(owner).unwrap().template.skills;
+        (0..skills.len())
+            .find(|lane| skills.fixed_lane_key_at(*lane) == Some(BuiltinActiveSkill::Clone.legacy_key()))
+            .expect("fixture owner should contain clone")
+    };
+
+    runtime.drain_plain_clone_skill_into(owner, clone_lane, &mut RunUpdates::new());
+
+    let clone = EntityIdx(2);
+    let blueprint_slot = runtime
+        .registry
+        .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)
+        .expect("core summon blueprint slot should exist");
+    assert!(matches!(
+        runtime.entities.get(clone).unwrap().slots.get(blueprint_slot),
+        Some(SlotValue::PlayerTemplate(_))
+    ));
+
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_summon_skill_into(clone, &mut updates);
+
+    let summoned = EntityIdx(3);
+    assert_eq!(runtime.entities.get(summoned).unwrap().runtime.owner, clone);
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec!["[0]使用[血祭]", "召唤出[1]"]
+    );
+}
+
+#[test]
 fn plain_summon_share_damage_halves_damage_and_does_not_cleanup_source_when_owner_dies() {
     let mut runtime = summon_runtime();
     let owner = EntityIdx(1);

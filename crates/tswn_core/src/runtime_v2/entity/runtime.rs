@@ -258,18 +258,7 @@ impl EntityRecord {
     pub fn is_active(&self) -> bool { self.runtime.active() && !self.states.is_frozen() }
 
     pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
-        self.template.max_hp = stats.max_hp.max(1);
-        self.template.attack = stats.attack.max(0);
-        self.template.magic = stats.magic.max(0);
-        self.template.wisdom = stats.wisdom.max(0);
-        self.template.speed = stats.speed.max(0);
-        self.template.defense = stats.defense.max(0);
-        self.template.resistance = stats.resistance.max(0);
-        self.template.agility = stats.agility.max(0);
-        self.template.at_boost_millionths = stats.at_boost_millionths.max(0);
-        self.template.attr_sum = stats.attr_sum;
-        self.template.atk_sum = stats.atk_sum;
-        self.template.attract_bits = stats.attract_bits;
+        self.template.apply_derived_stats(stats);
         self.runtime.attack = self.template.attack;
         self.runtime.magic = self.template.magic;
         self.runtime.wisdom = self.template.wisdom;

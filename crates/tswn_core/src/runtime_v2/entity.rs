@@ -108,6 +108,11 @@ impl CloneBuildData {
         changed
     }
 
+    pub fn refresh_summon_owner_attrs(&mut self, owner: &Self) {
+        self.attrs[1] = owner.attrs[1];
+        self.attrs[5] = owner.attrs[5];
+    }
+
     pub fn derive_stats(&self) -> CloneDerivedStats {
         let raw = Self::derive_raw(self.attrs, f64::from_bits(self.name_factor_bits));
         let attr_sum = i64::from(raw.attr_sum) + self.adjustments.attr_sum;
@@ -276,6 +281,21 @@ impl PlayerTemplate {
     pub fn with_skill_loadout(mut self, skills: SkillLoadout) -> Self {
         self.skills = skills;
         self
+    }
+
+    pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
+        self.max_hp = stats.max_hp.max(1);
+        self.attack = stats.attack.max(0);
+        self.magic = stats.magic.max(0);
+        self.wisdom = stats.wisdom.max(0);
+        self.speed = stats.speed.max(0);
+        self.defense = stats.defense.max(0);
+        self.resistance = stats.resistance.max(0);
+        self.agility = stats.agility.max(0);
+        self.at_boost_millionths = stats.at_boost_millionths.max(0);
+        self.attr_sum = stats.attr_sum;
+        self.atk_sum = stats.atk_sum;
+        self.attract_bits = stats.attract_bits;
     }
 
     pub fn with_skills(self, skills: impl IntoIterator<Item = SkillId>) -> Self {
@@ -457,27 +477,40 @@ impl SkillLoadout {
 
     pub fn merge_fixed_lanes_from(&mut self, source: &Self, policy: MergePolicy) -> bool {
         match policy {
-            MergePolicy::None => return false,
-            MergePolicy::FixedLane | MergePolicy::DropUnmappedSkills => {}
-        }
-        let mut changed = false;
-        for owner_idx in 0..self.levels.len() {
-            let fixed_lane_key = self.fixed_lane_keys[owner_idx];
-            let Some(source_idx) = source.fixed_lane_keys.iter().position(|source_key| *source_key == fixed_lane_key) else {
-                continue;
-            };
-            let owner_level = &mut self.levels[owner_idx];
-            let source_level = source.levels[source_idx];
-            if source_level > *owner_level {
-                let was_zero = *owner_level == 0;
-                *owner_level = source_level;
-                if was_zero && !self.active_order.contains(&owner_idx) {
-                    self.active_order.push(owner_idx);
+            MergePolicy::None => false,
+            MergePolicy::FixedLane => {
+                let lane_count = self.levels.len().min(source.levels.len());
+                (0..lane_count)
+                    .map(|owner_idx| self.merge_level_at(owner_idx, source.levels[owner_idx]))
+                    .fold(false, |changed, lane_changed| changed || lane_changed)
+            }
+            MergePolicy::DropUnmappedSkills => {
+                let mut changed = false;
+                for owner_idx in 0..self.levels.len() {
+                    let fixed_lane_key = self.fixed_lane_keys[owner_idx];
+                    let Some(source_idx) = source.fixed_lane_keys.iter().position(|source_key| *source_key == fixed_lane_key)
+                    else {
+                        continue;
+                    };
+                    changed |= self.merge_level_at(owner_idx, source.levels[source_idx]);
                 }
-                changed = true;
+                changed
             }
         }
-        changed
+    }
+
+    fn merge_level_at(&mut self, owner_idx: usize, source_level: u32) -> bool {
+        let owner_level = &mut self.levels[owner_idx];
+        if source_level <= *owner_level {
+            return false;
+        }
+        let was_zero = *owner_level == 0;
+        *owner_level = source_level;
+        if was_zero {
+            self.active_order.retain(|lane| *lane != owner_idx);
+            self.active_order.push(owner_idx);
+        }
+        true
     }
 }
 

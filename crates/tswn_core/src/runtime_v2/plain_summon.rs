@@ -158,17 +158,22 @@ impl CombatRuntime {
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)
             .expect("default runtime v2 profile must reserve core summon blueprint slot");
-        match self
+        let owner = self
             .entities
             .get(actor)
-            .unwrap_or_else(|| panic!("unknown runtime_v2 summon owner: {}", actor.0))
-            .slots
-            .get(slot)
-        {
+            .unwrap_or_else(|| panic!("unknown runtime_v2 summon owner: {}", actor.0));
+        let mut template = match owner.slots.get(slot) {
             Some(SlotValue::PlayerTemplate(template)) => template.as_ref().clone(),
             Some(_) => panic!("runtime_v2 core summon blueprint slot has invalid value"),
-            None => panic!("runtime_v2 summon owner is missing core summon blueprint"),
+            None => panic!("runtime_v2 summon owner {} is missing core summon blueprint", actor.0),
+        };
+        if let (Some(owner_build), Some(summon_build)) = (owner.template.clone_build.as_ref(), template.clone_build.as_mut()) {
+            summon_build.refresh_summon_owner_attrs(owner_build);
+            let stats = summon_build.derive_stats();
+            template.apply_derived_stats(stats);
+            template.magic_point = (template.wisdom >> 1).max(0);
         }
+        template
     }
 
     fn plain_summon_entity_slot(&self) -> EntitySlotId {
