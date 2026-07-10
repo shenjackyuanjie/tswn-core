@@ -77,7 +77,7 @@
 
 ### 2.1 2026-07 架构复查结论
 
-截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。Runtime v2 模块测试在 `mutable-noalias=yes` 下为 302 passed / 4 ignored，feature-gated `runtime-v2-corpus` 与 release noalias 门禁已经落地。`case_d8c6_opening_matches_js_trace` 的潜行/背刺首差异和 `case_large_67_summon_opening_matches_js_trace` 的 Summon 前九帧已经修复，并在 debug/release `mutable-noalias=yes` 下通过；但完整 debug corpus 当前仅 15/87 通过，其余 72 个 case 仍有行为或结果差异，因此不能据此判断“可以删除 legacy”。当前 `large_67` 的下一首差异是 Merge kill hook 未触发。raw 初始化仍有 legacy bridge，部分入口/展示链和未覆盖技能组合尚未完成独立化。
+截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。Runtime v2 模块测试在 `mutable-noalias=yes` 下为 debug 320 passed / 4 ignored、`no_debug` 311 passed / 4 ignored，CLI 与 release noalias 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace` 和完整 `large_67` 已在 `mutable-noalias=yes` 下通过；完整 release corpus 当前为 21/87 通过、66 个 case 尚未收敛，本轮相对 track baseline 新修复 5 个 case 且无退步，因此仍不能判断“可以删除 legacy”。`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；raw 初始化仍有 legacy bridge，部分入口/展示链和未覆盖技能组合尚未完成独立化。
 
 可以保留并继续演进：
 
@@ -90,14 +90,14 @@
 
 - phase 开始时预先冻结的 hook plan，状态增删后必须按最新 generation 决定后续 hook；
 - raw 初始化通过 legacy `Runner` 搭桥并静默忽略同步失败的路径；
-- 尚未被 corpus 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending 与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽和伤害分摊并修复 `large_67` 前九帧，但完整 corpus 的剩余差异仍说明 kill hook、已迁移技能、行动顺序或 RNG 可能回归；
+- 尚未被 corpus 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending 与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊和 clone blueprint 继承，Merge 已补齐固定槽位逐位抬级和 0→正等级 action 队尾语义并修复完整 `large_67`，但剩余 66 个 corpus 差异仍说明已迁移技能、状态生命周期、行动顺序或 RNG 可能回归；
 - 内置技能借用 extension handler 的过渡路径继续收敛为静态 dispatch；
 - 以 v2 自身输出生成并验证 v2 的 self golden；此类测试只能保留为内部回归，不能充当 parity 门禁。
 - CLI/C API/Python/wasm/show 默认入口切换、legacy fallback 收口和最终删除。
 
 ### 2.2 修订后的近期实施顺序
 
-1. 保持 `case_d8c6` 与 `case_large_67_summon_opening_matches_js_trace` 在 debug/release `mutable-noalias=yes` 下持续通过，按首差异修复 Merge kill hook 并持续运行完整 87-case corpus 门禁；任何 frame/RNG 回归立即阻塞；
+1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace` 与完整 `large_67` 在 debug/release `mutable-noalias=yes` 下持续通过；当前完整 corpus 为 21/87，每个行为闭环后继续运行 87-case 门禁，任何 frame/RNG 回归立即阻塞；
 2. 建立独立 `PreparedBattleInit`，删除 v2 runtime 构造对 legacy `Runner` 的依赖和静默同步失败；
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
 4. 重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
@@ -621,7 +621,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 新增 `CombatRuntime`、`PreparedCombatTemplate`、`EntityArena`、`WorldArena`、`PhaseScheduler`、`EffectQueue`、`BattleScratch`；
 - 保留 `Player` 输入/测试 facade，但 battle start 前转换成 template；
-- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler，并从完整 legacy raw 初始化同步普通玩家运行时属性；历史检查点曾在 debug/release 下达到 86/86，但当前 `case_d8c6_opening_matches_js_trace` 已重新暴露潜行/背刺首差异，必须以 feature-gated corpus 的真实红灯为准继续收敛。
+- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler，并从完整 legacy raw 初始化同步普通玩家运行时属性；历史 86/86 检查点包含自指 v2 golden，不能作为 parity 结论，当前必须以 feature-gated 87-case corpus 的 21/87 真实结果继续收敛。
 
 完成标准：
 
@@ -680,7 +680,8 @@ Co-authored-by: Codex <codex@openai.com>
 - Fire 已迁入 plain 静态 dispatch：Fire/Poison 共用默认敌方 `all_alive + pickSkipRange` 抽样与 legacy smart/random 评分 helper；Fire 直接复用 `FireAttack` 的 `get_at(true) * (1.5 + fire_mag)`、pre/post defend、回避、伤害与命中后半层叠加链，无需技能 handler；
 - Poison 已迁入 plain 静态 dispatch：统一魔法攻击链新增 Poison on-damage 分支，严格保留 `damage <= 4` 短路、目标存活/免疫检查后第二次 `get_at(true) * 1.2000000476837158`、state 创建/叠加、count 重置为 4 和 `[1][中毒]` replay；默认 profile 已正式注册 `core.state.poison` 与 post-action handler，Fire/Ice/Poison 的 BOSS/BOOST 免疫判断收束为统一 status immunity helper；
 - Assassinate 已迁入 plain 静态 dispatch：导入 legacy `pre_action` 顺序，复刻 smart + Poison 无 RNG 短路、专用目标抽样评分、charge 行动力加成、潜行锁定目标、受伤识破、死亡目标清理和下一次行动强制背刺；背刺使用三次 `get_at(true)` 最大值乘四，并跳过普通 agility dodge；`case_d8c6` 已在 debug/release `mutable-noalias=yes` 下通过；
-- Summon 已迁入 plain 静态 dispatch：smart HP `<80` 与存活 remembered entity 均无 RNG 短路，typed slots 保存 blueprint/remembered entity，首次 spawn 与死亡后原实体 revive 复用同一生命周期；charge 仍消费 `r255` 后把行动力覆盖为 2048，使魔固定 Fire/Fire/SummonExplode 槽并保持 shuffled active order，非 charge 时伤害按半数分摊给直接 owner，SummonExplode 复用静态 effect pipeline；`case_large_67` 前九帧已在 debug/release `mutable-noalias=yes` 下通过；
+- Summon 已迁入 plain 静态 dispatch：smart HP `<80` 与存活 remembered entity 均无 RNG 短路，typed slots 保存 blueprint/remembered entity，首次 spawn 与死亡后原实体 revive 复用同一生命周期；charge 仍消费 `r255` 后把行动力覆盖为 2048，使魔固定 Fire/Fire/SummonExplode 槽并保持 shuffled active order，非 charge 时伤害按半数分摊给直接 owner，SummonExplode 复用静态 effect pipeline；clone spawn 会继承 Summon blueprint，实际召唤前按当前 owner build 刷新防御/魔防派生属性，避免 Clone/Merge 后使用陈旧静态模板；
+- Merge 已复刻 JS `k1` 语义：`FixedLane` 按槽位位置逐位抬级，`DropUnmappedSkills` 保留 fixed key 映射，标准 kind 默认采用 `FixedLane`；0→正等级技能会从旧 action 位置移除并按 fixed lane 遍历顺序追加到队尾，属性、MP 和 move point 转移后完整 `large_67` 已在 release `mutable-noalias=yes` 下通过；
 - plain 内置主动静态 dispatch 当前覆盖 26/26；
 - `StateStore` 改 `SmallVec`/dense index + legacy order key；
 - scheduler 已能按 generation 重建 state hook plan，但当前执行器仍可能在 phase 开始时冻结计划；必须改为每个后续 hook 读取最新 generation 后再决定执行集合。
