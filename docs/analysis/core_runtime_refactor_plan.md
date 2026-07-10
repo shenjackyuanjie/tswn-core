@@ -77,7 +77,7 @@
 
 ### 2.1 2026-07 架构复查结论
 
-截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试为 debug 484 passed / 4 ignored，CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_67`、完整 `large_01` 和完整 `large_70` 已在 `mutable-noalias=yes` 下通过；当前 runtime-v2 tracker 为 27/84 通过、57 个 case 尚未收敛，本轮属性重建修复相对 track baseline 有改进且无退步，因此仍不能判断“可以删除 legacy”。`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`，部分入口/展示链和未覆盖技能组合仍未完成独立化。
+截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试为 debug 498 passed / 4 ignored，CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_67`、完整 `large_01`、完整 `large_70` 和完整 `large_72` 已在 `mutable-noalias=yes` 下通过；当前 runtime-v2 tracker 为 39/84 通过、45 个 case 尚未收敛，完整 corpus 相对上一轮无退步，因此仍不能判断“可以删除 legacy”。`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`，部分入口/展示链和未覆盖技能组合仍未完成独立化。
 
 可以保留并继续演进：
 
@@ -91,14 +91,14 @@
 切换前仍必须完成：
 
 - phase 开始时预先冻结的 hook plan，状态增删后必须按最新 generation 决定后续 hook；
-- 尚未被 corpus 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending 与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级和 0→正等级 action 队尾语义并修复完整 `large_67`；当前 runtime-v2 tracker 的 84 个 case 中 22 个通过、62 个仍有差异，说明已迁移技能、状态生命周期、行动顺序或 RNG 仍可能回归；
+- 尚未被 corpus 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending、冻结目标与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级、0→正等级 action 队尾和终局 KILL gate 语义并修复完整 `large_67` / `large_72`；当前 runtime-v2 tracker 的 84 个 case 中 39 个通过、45 个仍有差异，说明已迁移技能、状态生命周期、行动顺序或 RNG 仍可能回归；
 - 内置技能借用 extension handler 的过渡路径继续收敛为静态 dispatch；
 - 以 v2 自身输出生成并验证 v2 的 self golden；此类测试只能保留为内部回归，不能充当 parity 门禁。
 - CLI/C API/Python/wasm/show 默认入口切换、legacy fallback 收口和最终删除。
 
 ### 2.2 修订后的近期实施顺序
 
-1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_67`、完整 `large_01` 与完整 `large_70` 在 debug/release `mutable-noalias=yes` 下持续通过；当前 runtime-v2 tracker 为 27/84，每个行为闭环后继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
+1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_67`、完整 `large_01`、完整 `large_70` 与完整 `large_72` 在 debug/release `mutable-noalias=yes` 下持续通过；当前 runtime-v2 tracker 为 39/84，每个行为闭环后继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
 2. **已完成**：建立独立 `PreparedBattleInit`，自行复刻 raw 分组、同队 upgrade、build、seed/RNG、初始 world views、loadout 与 summon/shadow blueprint 准备；删除 v2 runtime 构造对 legacy `Runner` / `WorldState` 的依赖和静默同步失败；
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
 4. 重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
@@ -622,7 +622,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 新增 `CombatRuntime`、`PreparedCombatTemplate`、`EntityArena`、`WorldArena`、`PhaseScheduler`、`EffectQueue`、`BattleScratch`；
 - 保留 `Player` 输入/测试 facade，但 battle start 前转换成 template；
-- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler；`PreparedBattleInit` 已独立复刻 raw 分组、同队 upgrade、按 id-name build、seed RC4 消费、move point、初始 world views、普通玩家运行时属性与 summon/shadow blueprint，并显式报告初始化错误；历史 86/86 检查点包含自指 v2 golden，不能作为 parity 结论，当前必须以 feature-gated runtime-v2 tracker 的 27/84 真实结果继续收敛。
+- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler；`PreparedBattleInit` 已独立复刻 raw 分组、同队 upgrade、按 id-name build、seed RC4 消费、move point、初始 world views、普通玩家运行时属性与 summon/shadow blueprint，并显式报告初始化错误；历史 86/86 检查点包含自指 v2 golden，不能作为 parity 结论，当前必须以 feature-gated runtime-v2 tracker 的 39/84 真实结果继续收敛。
 
 完成标准：
 
@@ -779,7 +779,7 @@ cargo test -p tswn_core --features no_debug --lib
 cargo test -p tswn_test
 python track_test.py -q
 python scripts/check_runtime_v2_noalias.py
-# v2 完整 corpus 是 release mutable-noalias=yes 门禁；case_d8c6 已绿，完整 corpus 仍有 66 个差异
+# v2 完整 corpus 是 release mutable-noalias=yes 门禁；当前 39/84 通过，仍有 45 个差异
 python track_test.py --engine runtime-v2 -q
 ```
 
