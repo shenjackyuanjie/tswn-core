@@ -12,6 +12,8 @@ impl EffectQueue {
 
     pub fn pop_next(&mut self) -> Option<QueuedEffect> { self.effects.pop_front() }
 
+    pub fn iter(&self) -> impl Iterator<Item = &QueuedEffect> { self.effects.iter() }
+
     pub fn len(&self) -> usize { self.effects.len() }
 
     pub fn is_empty(&self) -> bool { self.effects.is_empty() }

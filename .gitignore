@@ -6,6 +6,8 @@ __pycache__
 !docs/perf/fixed_cases_30/
 !docs/perf/fixed_cases_30/*.txt
 tests
+!crates/tswn_core/src/runtime_v2/tests/
+!crates/tswn_core/src/runtime_v2/tests/*.rs
 .claude
 dist
 md5.js

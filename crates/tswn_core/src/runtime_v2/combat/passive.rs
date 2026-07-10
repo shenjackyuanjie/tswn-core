@@ -301,7 +301,7 @@ impl CombatRuntime {
         let (already_active, owner_active) = self
             .entities
             .get(target)
-            .map(|entity| (entity.runtime.hide.is_some(), entity.runtime.alive && entity.runtime.hp > 0))
+            .map(|entity| (entity.runtime.hide.is_some(), entity.is_active()))
             .unwrap_or_else(|| panic!("unknown runtime_v2 hide target: {}", target.0));
         if level == 0 || already_active || !owner_active {
             return;

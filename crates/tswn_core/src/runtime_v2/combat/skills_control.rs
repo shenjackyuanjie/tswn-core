@@ -168,49 +168,13 @@ impl CombatRuntime {
             .runtime
             .get_at(true, &mut self.rng)
             * crate::player::skill::act::ice::ICE_DAMAGE_MULTIPLIER;
-        let mut defend_value = RuntimeDefendValue::Atp {
-            value: atp,
-            caster: actor,
-            target,
-        };
         updates.add(RuntimeFrame::replay_update(
             actor.0 as usize,
             target.0 as usize,
             "[0]使用[冰冻术]",
             1,
         ));
-        self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
-        let Some(atp) = defend_value.atp() else {
-            panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
-        };
-        if atp == 0.0 {
-            return;
-        }
-        if self.magic_attack_dodged(actor, target) {
-            updates.add(RuntimeFrame::replay_update(
-                target.0 as usize,
-                actor.0 as usize,
-                "[0][回避]了攻击",
-                20,
-            ));
-            return;
-        }
-
-        let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
-        let mut defend_value = RuntimeDefendValue::Damage {
-            value: amount,
-            caster: actor,
-            target,
-        };
-        self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
-        let Some(amount) = defend_value.damage() else {
-            panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
-        };
-        if self.apply_plain_attack_damage_into(actor, target, amount, updates) {
-            self.drain_plain_lethal_damage_into(actor, target, updates);
-        } else if amount > 0 {
-            self.apply_ice_on_damage(actor, target, updates);
-        }
+        self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Ice, updates);
     }
 
     pub fn drain_plain_charge_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {

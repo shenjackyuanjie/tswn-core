@@ -191,6 +191,7 @@ impl CombatRuntime {
                     let context = SkillContext::new(
                         &mut self.entities,
                         &mut self.world,
+                        &self.registry,
                         &self.template_slots,
                         &mut self.slots,
                         &mut self.effects,
@@ -228,6 +229,7 @@ impl CombatRuntime {
                 let mut context = SkillContext::new(
                     &mut self.entities,
                     &mut self.world,
+                    &self.registry,
                     &self.template_slots,
                     &mut self.slots,
                     &mut self.effects,

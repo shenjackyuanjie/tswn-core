@@ -49,7 +49,7 @@ impl CombatRuntime {
                             .remove_pre_action_lane(fixed_lane);
                         continue;
                     };
-                    if self.entities.get(pending.target).is_some_and(EntityRecord::is_active) {
+                    if self.entities.get(pending.target).is_some_and(|entity| entity.runtime.active()) {
                         outcome.forced_skill = Some(PreparedBuiltinSkillAction {
                             selected: SelectedBuiltinSkill {
                                 skill: BuiltinActiveSkill::Assassinate,
@@ -172,7 +172,7 @@ impl CombatRuntime {
     ) {
         if let Some(pending) = self.clear_plain_assassinate_pending(actor) {
             let target = pending.target;
-            if !self.entities.get(target).is_some_and(EntityRecord::is_active) {
+            if !self.entities.get(target).is_some_and(|entity| entity.runtime.active()) {
                 return;
             }
             updates.add(RuntimeFrame::replay_update(

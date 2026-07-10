@@ -70,18 +70,6 @@ pub fn run_plain_passive_noop_skill(_: &mut SkillContext<'_>, _: &SkillHookPlanE
 pub fn run_merge_kill_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let level = context.skill_level(entry);
     let roll = context.rng_r63();
-    #[cfg(not(feature = "no_debug"))]
-    if std::env::var_os("TSWN_PROBE_KILL").is_some() {
-        eprintln!(
-            "[kill_probe:v2:merge] owner={} target={:?} lane={} level={} roll={} pass={}",
-            context.owner_idx().0,
-            context.selected_target().map(|target| target.0),
-            entry.fixed_lane,
-            level,
-            roll,
-            roll < level,
-        );
-    }
     if roll >= level {
         return;
     }

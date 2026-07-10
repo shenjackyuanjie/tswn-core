@@ -3,6 +3,7 @@ use super::*;
 pub struct SkillContext<'a> {
     entities: &'a mut EntityArena,
     world: &'a mut WorldArena,
+    registry: &'a ExtensionRegistry,
     template_slots: &'a TemplateSlotStorage,
     slots: &'a mut BattleSlotStorage,
     queue: &'a mut EffectQueue,
@@ -18,6 +19,7 @@ impl<'a> SkillContext<'a> {
     pub fn new(
         entities: &'a mut EntityArena,
         world: &'a mut WorldArena,
+        registry: &'a ExtensionRegistry,
         template_slots: &'a TemplateSlotStorage,
         slots: &'a mut BattleSlotStorage,
         queue: &'a mut EffectQueue,
@@ -29,6 +31,7 @@ impl<'a> SkillContext<'a> {
         Self {
             entities,
             world,
+            registry,
             template_slots,
             slots,
             queue,
@@ -364,6 +367,9 @@ impl<'a> SkillContext<'a> {
                 && let Some(target) = self.entities.get_mut(old_target)
             {
                 target.runtime.protect_from.retain(|link| link.owner != self.owner);
+                if target.runtime.protect_from.is_empty() {
+                    target.runtime.protect_pre_defend_skill_count = None;
+                }
             }
             self.entities
                 .get_mut(self.owner)
@@ -372,7 +378,29 @@ impl<'a> SkillContext<'a> {
                 .protect_to = next_target;
         }
         if let Some(next_target) = next_target {
+            let pre_defend_skill_count = {
+                let target = self.entities.get(next_target).ok_or(EffectContextError::UnknownEntity(next_target))?;
+                target
+                    .template
+                    .skills
+                    .active_order()
+                    .iter()
+                    .filter(|fixed_lane| {
+                        target.template.skills.level_at(**fixed_lane).is_some_and(|level| level > 0)
+                            && target
+                                .template
+                                .skills
+                                .skills()
+                                .get(**fixed_lane)
+                                .and_then(|skill_id| self.registry.skill(*skill_id))
+                                .is_some_and(|skill| skill.hook_mask.intersects(ProcMask::PRE_DEFEND))
+                    })
+                    .count()
+            };
             let target = self.entities.get_mut(next_target).ok_or(EffectContextError::UnknownEntity(next_target))?;
+            if target.runtime.protect_from.is_empty() {
+                target.runtime.protect_pre_defend_skill_count = Some(pre_defend_skill_count);
+            }
             if let Some(link) = target.runtime.protect_from.iter_mut().find(|link| link.owner == self.owner) {
                 link.level = level;
             } else {
@@ -388,6 +416,8 @@ impl<'a> SkillContext<'a> {
     pub fn sync_winner(&mut self) -> Option<usize> { self.world.sync_winner(self.entities) }
 
     pub fn defend_atp(&self) -> Option<f64> { self.defend_value.as_ref().and_then(|value| value.atp()) }
+
+    pub fn defend_is_magic(&self) -> Option<bool> { self.defend_value.as_ref().and_then(|value| value.is_magic()) }
 
     pub fn set_defend_atp(&mut self, atp: f64) {
         let Some(value) = self.defend_value.as_deref_mut() else {

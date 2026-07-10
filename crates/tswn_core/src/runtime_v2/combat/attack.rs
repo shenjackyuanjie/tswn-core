@@ -344,6 +344,7 @@ impl CombatRuntime {
             value: atp,
             caster: actor,
             target,
+            is_magic: use_magic,
         };
         #[cfg(not(feature = "no_debug"))]
         if debug_attack {
@@ -548,6 +549,8 @@ impl CombatRuntime {
             PlainAttackOnDamage::Absorb => self.apply_absorb_on_damage(caster, amount, updates),
             PlainAttackOnDamage::Berserk => self.apply_berserk_on_damage(caster, target, amount, updates),
             PlainAttackOnDamage::Curse => self.apply_curse_on_damage(caster, target, amount, updates),
+            PlainAttackOnDamage::Ice if amount > 0 => self.apply_ice_on_damage(caster, target, updates),
+            PlainAttackOnDamage::Ice => {}
             PlainAttackOnDamage::Poison => self.apply_poison_on_damage(caster, target, amount, updates),
         }
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);

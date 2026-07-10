@@ -110,6 +110,41 @@ fn plain_assassinate_forced_backstab_skips_mp_gate_and_normal_dodge() {
 }
 
 #[test]
+fn plain_assassinate_forced_backstab_keeps_frozen_target() {
+    let (mut runtime, _) = assassinate_runtime();
+    {
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        owner.runtime.assassinate = Some(AssassinateRuntime {
+            fixed_lane: 0,
+            target: EntityIdx(1),
+            break_on_damage: true,
+        });
+        owner.template.skills.ensure_pre_action_lane(0);
+    }
+    {
+        let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
+        target.states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 2));
+        assert!(target.runtime.active());
+        assert!(!target.is_active());
+    }
+
+    let pre_action = runtime.run_plain_skill_pre_action_accumulator(EntityIdx(0));
+    let prepared = runtime
+        .prepare_plain_action(EntityIdx(0), false, pre_action)
+        .expect("frozen pending target should still force assassinate");
+    let hp_before = runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp;
+    let mut updates = RunUpdates::new();
+    let PreparedPlainAction::BuiltinSkill(prepared) = prepared else {
+        panic!("frozen pending target should prepare a builtin skill");
+    };
+    runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);
+
+    assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp < hp_before);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.assassinate, None);
+    assert_eq!(updates.updates.first().unwrap().message, "[0]发动[背刺]");
+}
+
+#[test]
 fn plain_assassinate_forced_backstab_skips_reflect_pre_defend_rng() {
     let mut builder = ExtensionRegistryBuilder::default();
     let assassinate = builder

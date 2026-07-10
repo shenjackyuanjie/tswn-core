@@ -78,6 +78,7 @@ impl CombatRuntime {
                         value: atp * (1.5 + fire_mag),
                         caster,
                         target,
+                        is_magic: true,
                     };
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
@@ -130,6 +131,7 @@ impl CombatRuntime {
                         value: atp * (4.0 + fire_mag),
                         caster,
                         target,
+                        is_magic: true,
                     };
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
@@ -183,45 +185,27 @@ impl CombatRuntime {
                     if self.entities.get(target).unwrap().runtime.is_combat_minion() {
                         atp *= 2.0;
                     }
-                    let mut defend_value = RuntimeDefendValue::Atp {
-                        value: atp,
-                        caster,
-                        target,
-                    };
                     updates.add(RuntimeFrame::replay_update(
                         caster.0 as usize,
                         target.0 as usize,
                         "[0]使用[净化]",
                         20,
                     ));
-                    self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
-                    let Some(atp) = defend_value.atp() else {
-                        panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
+                    // Legacy `DisperseSkill::act_with_level` deliberately calls `Player::defned`
+                    // instead of `Player::attacked`. Therefore disperse skips PRE_DEFEND and
+                    // dodge entirely, but still runs POST_DEFEND before applying damage.
+                    let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+                    let mut defend_value = RuntimeDefendValue::Damage {
+                        value: amount,
+                        caster,
+                        target,
                     };
-                    if atp == 0.0 {
-                        continue;
-                    }
-                    if self.magic_attack_dodged(caster, target) {
-                        updates.add(RuntimeFrame::replay_update(
-                            target.0 as usize,
-                            caster.0 as usize,
-                            "[0][回避]了攻击",
-                            20,
-                        ));
-                    } else {
-                        let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
-                        let mut defend_value = RuntimeDefendValue::Damage {
-                            value: amount,
-                            caster,
-                            target,
-                        };
-                        self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
-                        let Some(amount) = defend_value.damage() else {
-                            panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
-                        };
-                        if self.apply_disperse_attack_damage_into(caster, target, amount, updates) {
-                            self.drain_lethal_damage_hooks_into(caster, target, updates);
-                        }
+                    self.drain_post_defend_hooks_into(target, updates, &mut defend_value);
+                    let Some(amount) = defend_value.damage() else {
+                        panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
+                    };
+                    if self.apply_disperse_attack_damage_into(caster, target, amount, updates) {
+                        self.drain_lethal_damage_hooks_into(caster, target, updates);
                     }
                 }
                 QueuedEffect::DisperseHit { caster, target, damage } => {
@@ -490,34 +474,6 @@ impl CombatRuntime {
                         if transfer_move_points {
                             target_entity.runtime.move_state.speed_points = 0;
                         }
-                    }
-                    #[cfg(not(feature = "no_debug"))]
-                    if std::env::var_os("TSWN_PROBE_KILL").is_some() {
-                        let caster_entity = self
-                            .entities
-                            .get(caster)
-                            .unwrap_or_else(|| panic!("runtime_v2 merge probe caster disappeared: {}", caster.0));
-                        let find_fixed_lane = |loadout: &SkillLoadout, fixed_lane_key: usize| {
-                            (0..loadout.len()).find_map(|lane| {
-                                (loadout.fixed_lane_key_at(lane) == Some(fixed_lane_key)).then(|| (lane, loadout.level_at(lane)))
-                            })
-                        };
-                        eprintln!(
-                            "[kill_probe:v2:merge_effect] caster={} merged={} transfer_mp={} transfer_move={} \
-                             attack={} magic={} speed={} agility={} mp={} move={} owner_key1={:?} target_key1={:?}",
-                            caster.0,
-                            merged,
-                            transfer_magic_point,
-                            transfer_move_points,
-                            caster_entity.runtime.attack,
-                            caster_entity.runtime.magic,
-                            caster_entity.runtime.speed,
-                            caster_entity.runtime.agility,
-                            caster_entity.runtime.magic_point,
-                            caster_entity.runtime.move_state.speed_points,
-                            find_fixed_lane(&caster_entity.template.skills, 1),
-                            find_fixed_lane(&target_skills, 1),
-                        );
                     }
                     if merged {
                         self.entities

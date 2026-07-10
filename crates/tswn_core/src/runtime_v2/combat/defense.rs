@@ -25,7 +25,43 @@ impl CombatRuntime {
         if self.entities.get(target).is_some_and(|entity| entity.runtime.hp > 0) {
             return;
         }
-        self.drain_kill_hooks_into(caster, target, updates);
+        if self.should_run_kill_hooks(caster, target) {
+            self.drain_kill_hooks_into(caster, target, updates);
+        }
+    }
+
+    pub fn has_alive_enemy_or_pending_spawn(&self, caster: EntityIdx) -> bool {
+        let caster_team = self
+            .entities
+            .get(caster)
+            .unwrap_or_else(|| panic!("runtime_v2 kill caster disappeared: {}", caster.0))
+            .runtime
+            .team;
+        if self
+            .world
+            .flat_alive()
+            .iter()
+            .copied()
+            .any(|target| self.entities.get(target).is_some_and(|entity| entity.runtime.team != caster_team))
+        {
+            return true;
+        }
+
+        self.effects.iter().any(|effect| {
+            let owner = match effect {
+                QueuedEffect::Spawn { caster, .. }
+                | QueuedEffect::SpawnSilent { caster, .. }
+                | QueuedEffect::SpawnWithMessage { caster, .. } => *caster,
+                _ => return false,
+            };
+            self.entities.get(owner).is_some_and(|entity| entity.runtime.team != caster_team)
+        })
+    }
+
+    pub fn should_run_kill_hooks(&self, caster: EntityIdx, killed_target: EntityIdx) -> bool {
+        caster != killed_target
+            && self.entities.get(caster).is_some_and(|entity| entity.runtime.hp > 0)
+            && self.has_alive_enemy_or_pending_spawn(caster)
     }
 
     pub fn drain_pre_defend_hooks_into(
@@ -34,12 +70,44 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
-        if self.drain_plain_protect_pre_defend_into(target, updates, defend_value) {
-            return;
-        }
         let skill_plan = self
             .scheduler
             .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::PRE_DEFEND);
+        let protect_split = self.entities.get(target).and_then(|entity| {
+            (!entity.runtime.protect_from.is_empty())
+                .then_some(entity.runtime.protect_pre_defend_skill_count)
+                .flatten()
+        });
+        if let Some(protect_split) = protect_split {
+            let started_zero = defend_value.atp() == Some(0.0);
+            let protect_split = protect_split.min(skill_plan.entries.len());
+            let before_protect = SkillHookPlan {
+                owner: skill_plan.owner,
+                hook: skill_plan.hook,
+                loadout_len: skill_plan.loadout_len,
+                entries: skill_plan.entries[..protect_split].to_vec(),
+            };
+            self.drain_skill_hook_plan_with_defend_value_into(&before_protect, updates, defend_value);
+            if defend_value.atp() == Some(0.0) && (!started_zero || protect_split > 0) {
+                return;
+            }
+            if self.drain_plain_protect_pre_defend_into(target, updates, defend_value) {
+                return;
+            }
+            let after_protect = SkillHookPlan {
+                owner: skill_plan.owner,
+                hook: skill_plan.hook,
+                loadout_len: skill_plan.loadout_len,
+                entries: skill_plan.entries[protect_split..].to_vec(),
+            };
+            self.drain_skill_hook_plan_with_defend_value_into(&after_protect, updates, defend_value);
+            if defend_value.atp() == Some(0.0) {
+                return;
+            }
+            let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::PRE_DEFEND);
+            self.drain_state_hook_plan_with_defend_value_into(&state_plan, updates, defend_value);
+            return;
+        }
         self.drain_skill_hook_plan_with_defend_value_into(&skill_plan, updates, defend_value);
         let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::PRE_DEFEND);
         self.drain_state_hook_plan_with_defend_value_into(&state_plan, updates, defend_value);
@@ -87,6 +155,9 @@ impl CombatRuntime {
         let Some(incoming_atp) = defend_value.atp() else {
             return false;
         };
+        let is_magic = defend_value
+            .is_magic()
+            .expect("runtime_v2 protect PRE_DEFEND value must carry attack type");
         let caster = defend_value.caster();
         let target_team = self
             .entities
@@ -159,6 +230,7 @@ impl CombatRuntime {
                     value: incoming_atp,
                     caster,
                     target: link.owner,
+                    is_magic,
                 };
                 self.drain_pre_defend_hooks_into(link.owner, updates, &mut redirected_atp);
                 let redirected_atp = redirected_atp.atp().expect("runtime_v2 protect pre-defend hooks must leave an atp value");
@@ -172,7 +244,11 @@ impl CombatRuntime {
                         .entities
                         .get(link.owner)
                         .unwrap_or_else(|| panic!("runtime_v2 protector disappeared: {}", link.owner.0));
-                    protector.runtime.defense + 64
+                    if is_magic {
+                        protector.runtime.resistance + 64
+                    } else {
+                        protector.runtime.defense + 64
+                    }
                 };
                 let redirected_damage = (redirected_atp * 0.5 / defense as f64).floor() as i32;
                 let mut redirected_damage_value = RuntimeDefendValue::Damage {
@@ -191,7 +267,11 @@ impl CombatRuntime {
                 return true;
             }
 
-            self.entities.get_mut(target).unwrap().runtime.protect_from.remove(link_index);
+            let target_runtime = &mut self.entities.get_mut(target).unwrap().runtime;
+            target_runtime.protect_from.remove(link_index);
+            if target_runtime.protect_from.is_empty() {
+                target_runtime.protect_pre_defend_skill_count = None;
+            }
             if let Some(protector) = self.entities.get_mut(link.owner)
                 && protector.runtime.protect_to == Some(target)
             {
@@ -298,33 +378,6 @@ impl CombatRuntime {
 
     pub fn drain_kill_hooks_into(&mut self, caster: EntityIdx, killed_target: EntityIdx, updates: &mut RunUpdates) {
         let kill_skill_plan = self.scheduler.skill_hook_plan(&self.entities, &self.registry, caster, ProcMask::KILL);
-        #[cfg(not(feature = "no_debug"))]
-        if std::env::var_os("TSWN_PROBE_KILL").is_some() {
-            let caster_entity = self
-                .entities
-                .get(caster)
-                .unwrap_or_else(|| panic!("runtime_v2 kill probe caster disappeared: {}", caster.0));
-            let entries = kill_skill_plan
-                .entries
-                .iter()
-                .map(|entry| {
-                    let export_name = self
-                        .registry
-                        .skill(entry.skill_id)
-                        .map(|spec| spec.export_name.as_str())
-                        .unwrap_or("<missing>");
-                    (
-                        entry.fixed_lane,
-                        export_name,
-                        caster_entity.template.skills.level_at(entry.fixed_lane),
-                    )
-                })
-                .collect::<Vec<_>>();
-            eprintln!(
-                "[kill_probe:v2:plan] caster={} name={} target={} entries={entries:?} rc4=({}, {})",
-                caster.0, caster_entity.template.name, killed_target.0, self.rng.i, self.rng.j,
-            );
-        }
         self.drain_plain_kill_skill_plan_into(&kill_skill_plan, killed_target, updates);
         let kill_state_plan = self.scheduler.state_hook_plan(&self.entities, caster, ProcMask::KILL);
         self.drain_state_hook_plan_into(&kill_state_plan, updates);

@@ -107,6 +107,7 @@ pub enum RuntimeDefendValue {
         value: f64,
         caster: EntityIdx,
         target: EntityIdx,
+        is_magic: bool,
     },
     Damage {
         value: i32,
@@ -119,6 +120,13 @@ impl RuntimeDefendValue {
     pub fn atp(self) -> Option<f64> {
         match self {
             Self::Atp { value, .. } => Some(value),
+            Self::Damage { .. } => None,
+        }
+    }
+
+    pub fn is_magic(self) -> Option<bool> {
+        match self {
+            Self::Atp { is_magic, .. } => Some(is_magic),
             Self::Damage { .. } => None,
         }
     }

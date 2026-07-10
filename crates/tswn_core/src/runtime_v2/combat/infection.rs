@@ -370,7 +370,9 @@ impl CombatRuntime {
         self.entities.get_mut(target).unwrap().runtime.alive = false;
         self.world.mark_dead(target, team);
         self.cleanup_linked_minions_for_owner(target, updates);
-        self.drain_kill_hooks_into(caster, target, updates);
+        if self.should_run_kill_hooks(caster, target) {
+            self.drain_kill_hooks_into(caster, target, updates);
+        }
     }
 
     pub fn emit_plain_lethal_replay_into(&self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {

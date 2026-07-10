@@ -854,7 +854,7 @@ fn summon_explode_fire_stack_respects_boss_fire_immune() {
 }
 
 #[test]
-fn summon_explode_runs_summon_die_and_target_kill_hooks() {
+fn summon_explode_skips_kill_hook_after_summon_self_death() {
     let mut builder = ExtensionRegistryBuilder::default();
     let die_skill = builder
         .register_skill_with_hooks(
@@ -884,6 +884,7 @@ fn summon_explode_runs_summon_die_and_target_kill_hooks() {
             PlayerTemplate::new(3, "summon", 0, 5, 1)
                 .with_magic(80)
                 .with_skills([die_skill, kill_skill]),
+            PlayerTemplate::new(4, "enemy-ally", 1, 100, 1),
         ],
         registry,
     ));
@@ -897,7 +898,7 @@ fn summon_explode_runs_summon_die_and_target_kill_hooks() {
 
     let frame = runtime.flush_effects().expect("summon explode should emit hook updates");
 
-    assert_eq!(frame.updates.updates.len(), 5);
+    assert_eq!(frame.updates.updates.len(), 4);
     assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
     assert_eq!(frame.updates.updates[1].message, "[1]受到[2]点伤害");
     assert_eq!(frame.updates.updates[1].target, 1);
@@ -906,9 +907,7 @@ fn summon_explode_runs_summon_die_and_target_kill_hooks() {
     assert_eq!(frame.updates.updates[2].score, die_skill.0);
     assert_eq!(frame.updates.updates[3].message, "skill mark");
     assert_eq!(frame.updates.updates[3].caster, 2);
-    assert_eq!(frame.updates.updates[3].score, kill_skill.0);
-    assert_eq!(frame.updates.updates[4].message, "skill mark");
-    assert_eq!(frame.updates.updates[4].caster, 2);
-    assert_eq!(frame.updates.updates[4].target, 2);
-    assert_eq!(frame.updates.updates[4].score, die_skill.0);
+    assert_eq!(frame.updates.updates[3].target, 2);
+    assert_eq!(frame.updates.updates[3].score, die_skill.0);
+    assert!(!frame.updates.updates.iter().any(|update| update.score == kill_skill.0));
 }

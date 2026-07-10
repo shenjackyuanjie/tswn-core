@@ -38,6 +38,7 @@ pub enum PlainAttackOnDamage {
     Absorb,
     Berserk,
     Curse,
+    Ice,
     Poison,
 }
 
