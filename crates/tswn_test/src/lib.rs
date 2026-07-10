@@ -29,6 +29,7 @@ pub trait EngineAdapter {
 }
 
 pub struct CoreEngine;
+pub struct RuntimeV2Engine;
 
 #[macro_export]
 macro_rules! test_engine_suite {
@@ -46,9 +47,7 @@ macro_rules! test_engine_suite {
             #[test]
             fn small_seed_scores() { $crate::suite::simple::small_seed_scores::<$engine>(); }
             #[test]
-            fn case_d8c6_opening_matches_js_trace() {
-                $crate::suite::simple::case_d8c6_opening_matches_js_trace::<$engine>();
-            }
+            fn case_d8c6_opening_matches_js_trace() { $crate::suite::simple::case_d8c6_opening_matches_js_trace::<$engine>(); }
         }
 
         mod fight_large {

@@ -4,5 +4,13 @@ version = "0.0.0"
 edition = "2024"
 publish = false
 
+[features]
+runtime-v2-corpus = []
+
 [dependencies]
 tswn_core = { path = "../tswn_core" }
+
+[[test]]
+name = "runtime_v2"
+path = "runtime_v2_corpus.rs"
+required-features = ["runtime-v2-corpus"]

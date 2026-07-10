@@ -6,6 +6,7 @@
 
 import argparse
 import json
+import os
 import re
 import subprocess
 from datetime import datetime
@@ -18,6 +19,38 @@ LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
 CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
 DEFAULT_FILTER = "large large_full small_seed fight_multi"
 DEFAULT_PACKAGE = "tswn_test"
+ENGINE_CORE = "core"
+ENGINE_RUNTIME_V2 = "runtime-v2"
+
+
+def configure_engine_paths(engine: str):
+    """隔离 legacy 与 runtime v2 的回归记录和存档点。"""
+    global RECORD_FILE, LOG_FILE, CHECKPOINT_DIR
+    if engine == ENGINE_CORE:
+        RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
+        LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
+        CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
+        return
+    RECORD_FILE = PROJECT_ROOT / "target" / "test_regression_runtime_v2.json"
+    LOG_FILE = PROJECT_ROOT / "target" / "test_regression_runtime_v2.log"
+    CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints_runtime_v2"
+
+
+def cargo_test_base(engine: str) -> tuple[list[str], dict[str, str]]:
+    cmd = ["cargo", "test", "-p", DEFAULT_PACKAGE]
+    env = os.environ.copy()
+    if engine == ENGINE_RUNTIME_V2:
+        cmd.extend(
+            [
+                "--features",
+                "runtime-v2-corpus",
+                "--test",
+                "runtime_v2",
+                "--release",
+            ]
+        )
+        env["CARGO_ENCODED_RUSTFLAGS"] = "-Z\x1fmutable-noalias=yes"
+    return cmd, env
 
 
 def load_previous_records() -> dict:
@@ -439,6 +472,12 @@ def main():
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="安静模式，只输出关键信息"
     )
+    parser.add_argument(
+        "--engine",
+        choices=[ENGINE_CORE, ENGINE_RUNTIME_V2],
+        default=ENGINE_CORE,
+        help="选择回归引擎；runtime-v2 使用 release + mutable-noalias=yes",
+    )
     subparsers = parser.add_subparsers(dest="command")
     save_parser = subparsers.add_parser("save", help="将当前记录保存为存档点")
     save_parser.add_argument(
@@ -452,6 +491,7 @@ def main():
     delete_parser = subparsers.add_parser("delete", help="删除指定存档点")
     delete_parser.add_argument("name", help="存档点名称")
     args = parser.parse_args()
+    configure_engine_paths(args.engine)
 
     # 子命令分发
     if args.command:
@@ -488,32 +528,44 @@ def main():
                 print(f"  {test} => idx={idx}")
         return
 
+    base_cmd, test_env = cargo_test_base(args.engine)
     if not args.quiet:
-        print(f"运行测试: -p {DEFAULT_PACKAGE} -- {args.filter}")
+        print(f"运行测试: {' '.join(base_cmd)} -- {args.filter}")
         print()
     elif args.quiet:
-        print(f"[track_test] 运行测试: -p {DEFAULT_PACKAGE} -- {args.filter}")
+        print(f"[track_test] 运行测试: {' '.join(base_cmd)} -- {args.filter}")
 
-    test_args = args.filter.split() if args.filter else []
-    cmd = f"cargo test -p {DEFAULT_PACKAGE} -- " + " ".join(test_args)
-
-    result = subprocess.run(
-        cmd,
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        shell=True,
-    )
-    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    test_filters = args.filter.split() if args.filter else [None]
+    outputs = []
+    command_failed = False
+    for test_filter in test_filters:
+        cmd = [*base_cmd]
+        if test_filter:
+            cmd.append(test_filter)
+        cmd.append("--")
+        result = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            shell=False,
+            env=test_env,
+        )
+        command_failed |= result.returncode != 0
+        outputs.append((result.stdout or "") + "\n" + (result.stderr or ""))
+    output = "\n".join(outputs)
 
     current_records = parse_cargo_test_output(output)
+    parsed_test_failure = any(r.get("status") == "FAILED" for r in current_records.values())
+    if command_failed and not parsed_test_failure:
+        current_records["__cargo__"] = {"status": "FAILED", "idx": -1}
+        if not args.quiet:
+            print("cargo test 未生成可解析的失败测试；按编译/执行失败处理。")
+            print(output)
 
-    has_failure = any(
-        r.get("status") == "FAILED" and r.get("idx", -1) >= 0
-        for r in current_records.values()
-    )
+    has_failure = any(r.get("status") == "FAILED" for r in current_records.values())
 
     if not has_failure:
         if not args.quiet:

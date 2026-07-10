@@ -5,8 +5,9 @@
 
 use std::collections::HashMap;
 
-use crate::{CoreEngine, EngineAdapter, EventSnapshot, SnapshotKind};
+use crate::{CoreEngine, EngineAdapter, EventSnapshot, RuntimeV2Engine, SnapshotKind};
 use tswn_core::engine::update::{RunUpdate, UpdateType};
+use tswn_core::runtime_v2::{EntityIdx, RuntimeV2Runner, default_custom_runtime_v2_import_config};
 
 pub mod fight_large;
 pub mod fight_multi_1;
@@ -124,6 +125,90 @@ impl EngineAdapter for CoreEngine {
 
     fn rc4_state(runner: &Self::Runner) -> Option<(usize, usize)> {
         Some((runner.randomer.i as usize, runner.randomer.j as usize))
+    }
+}
+
+fn runtime_v2_entity_name(runner: &RuntimeV2Runner, id: usize) -> String {
+    u32::try_from(id)
+        .ok()
+        .and_then(|id| runner.runtime().entities.get(EntityIdx(id)))
+        .map(|entity| entity.template.display_name.clone())
+        .unwrap_or_else(|| format!("#{id}"))
+}
+
+fn format_runtime_v2_update_message(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
+    let caster = runtime_v2_entity_name(runner, update.caster);
+    let target = runtime_v2_entity_name(runner, update.target);
+    let mut msg = update.message.to_string();
+    msg = msg.replace("[0]", &caster);
+    msg = msg.replace("[1]", &target);
+    let param = if let Some(param) = update.param {
+        param.to_string()
+    } else if update.targets.is_empty() {
+        update.score.to_string()
+    } else {
+        update
+            .targets
+            .iter()
+            .map(|id| runtime_v2_entity_name(runner, *id))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    msg.replace("[2]", &param)
+}
+
+impl EngineAdapter for RuntimeV2Engine {
+    type Runner = RuntimeV2Runner;
+
+    fn new_from_raw(raw: String) -> Result<Self::Runner, String> {
+        let config = default_custom_runtime_v2_import_config().map_err(|err| format!("{err:?}"))?;
+        RuntimeV2Runner::from_custom_mixed_namerena_raw(raw, config).map_err(|err| format!("{err:?}"))
+    }
+
+    fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot> {
+        let outcome = runner.run_round();
+        let Some(frame) = outcome.frame else {
+            return Vec::new();
+        };
+        frame
+            .updates
+            .updates
+            .into_iter()
+            .map(|update| {
+                let kind = match update.update_type {
+                    UpdateType::Win => SnapshotKind::Win,
+                    UpdateType::NextLine => SnapshotKind::NextLine,
+                    UpdateType::None => SnapshotKind::Event,
+                };
+                EventSnapshot {
+                    message: format_runtime_v2_update_message(runner, &update),
+                    caster_name: runtime_v2_entity_name(runner, update.caster),
+                    score: update.score,
+                    kind,
+                }
+            })
+            .collect()
+    }
+
+    fn have_winner(runner: &Self::Runner) -> bool { runner.runtime().world.winner_team().is_some() }
+
+    fn winner_names(runner: &Self::Runner) -> Vec<String> {
+        let Some(team) = runner.runtime().world.winner_team() else {
+            return Vec::new();
+        };
+        runner
+            .runtime()
+            .world
+            .team_alive(team)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|entity| runner.runtime().entities.get(*entity))
+            .map(|entity| entity.template.name.clone())
+            .collect()
+    }
+
+    fn rc4_state(runner: &Self::Runner) -> Option<(usize, usize)> {
+        Some((runner.runtime().rng.i as usize, runner.runtime().rng.j as usize))
     }
 }
 
