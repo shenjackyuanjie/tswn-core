@@ -90,14 +90,14 @@
 切换前仍必须完成：
 
 - phase 开始时预先冻结的 hook plan，状态增删后必须按最新 generation 决定后续 hook；
-- 尚未被 corpus 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending 与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊和 clone blueprint 继承，Merge 已补齐固定槽位逐位抬级和 0→正等级 action 队尾语义并修复完整 `large_67`，但剩余 66 个 corpus 差异仍说明已迁移技能、状态生命周期、行动顺序或 RNG 可能回归；
+- 尚未被 corpus 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending 与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级和 0→正等级 action 队尾语义并修复完整 `large_67`；当前 runtime-v2 tracker 的 84 个 case 中 22 个通过、62 个仍有差异，说明已迁移技能、状态生命周期、行动顺序或 RNG 仍可能回归；
 - 内置技能借用 extension handler 的过渡路径继续收敛为静态 dispatch；
 - 以 v2 自身输出生成并验证 v2 的 self golden；此类测试只能保留为内部回归，不能充当 parity 门禁。
 - CLI/C API/Python/wasm/show 默认入口切换、legacy fallback 收口和最终删除。
 
 ### 2.2 修订后的近期实施顺序
 
-1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace` 与完整 `large_67` 在 debug/release `mutable-noalias=yes` 下持续通过；当前完整 corpus 为 21/87，每个行为闭环后继续运行 87-case 门禁，任何 frame/RNG 回归立即阻塞；
+1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_67` 与完整 `large_01` 在 debug/release `mutable-noalias=yes` 下持续通过；当前 runtime-v2 tracker 为 22/84，每个行为闭环后继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
 2. **已完成**：建立独立 `PreparedBattleInit`，自行复刻 raw 分组、同队 upgrade、build、seed/RNG、初始 world views、loadout 与 summon/shadow blueprint 准备；删除 v2 runtime 构造对 legacy `Runner` / `WorldState` 的依赖和静默同步失败；
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
 4. 重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
@@ -680,7 +680,9 @@ Co-authored-by: Codex <codex@openai.com>
 - Fire 已迁入 plain 静态 dispatch：Fire/Poison 共用默认敌方 `all_alive + pickSkipRange` 抽样与 legacy smart/random 评分 helper；Fire 直接复用 `FireAttack` 的 `get_at(true) * (1.5 + fire_mag)`、pre/post defend、回避、伤害与命中后半层叠加链，无需技能 handler；
 - Poison 已迁入 plain 静态 dispatch：统一魔法攻击链新增 Poison on-damage 分支，严格保留 `damage <= 4` 短路、目标存活/免疫检查后第二次 `get_at(true) * 1.2000000476837158`、state 创建/叠加、count 重置为 4 和 `[1][中毒]` replay；默认 profile 已正式注册 `core.state.poison` 与 post-action handler，Fire/Ice/Poison 的 BOSS/BOOST 免疫判断收束为统一 status immunity helper；
 - Assassinate 已迁入 plain 静态 dispatch：导入 legacy `pre_action` 顺序，复刻 smart + Poison 无 RNG 短路、专用目标抽样评分、charge 行动力加成、潜行锁定目标、受伤识破、死亡目标清理和下一次行动强制背刺；背刺使用三次 `get_at(true)` 最大值乘四，并跳过普通 agility dodge；`case_d8c6` 已在 debug/release `mutable-noalias=yes` 下通过；
-- Summon 已迁入 plain 静态 dispatch：smart HP `<80` 与存活 remembered entity 均无 RNG 短路，typed slots 保存 blueprint/remembered entity，首次 spawn 与死亡后原实体 revive 复用同一生命周期；charge 仍消费 `r255` 后把行动力覆盖为 2048，使魔固定 Fire/Fire/SummonExplode 槽并保持 shuffled active order，非 charge 时伤害按半数分摊给直接 owner，SummonExplode 复用静态 effect pipeline；clone spawn 会继承 Summon blueprint，实际召唤前按当前 owner build 刷新防御/魔防派生属性，避免 Clone/Merge 后使用陈旧静态模板；
+- Summon 已迁入 plain 静态 dispatch：smart HP `<80` 与存活 remembered entity 均无 RNG 短路，typed slots 保存 blueprint/remembered entity，首次 spawn 与死亡后原实体 revive 复用同一生命周期；charge 仍消费 `r255` 后把行动力覆盖为 2048，使魔固定 Fire/Fire/SummonExplode 槽并保持 shuffled active order，非 charge 时伤害按半数分摊给直接 owner，owner 因分摊致死时补齐 legacy 击倒 replay 且不误删当前召唤物，SummonExplode 复用静态 effect pipeline；clone spawn 会继承 Summon blueprint，实际召唤前按当前 owner build 刷新防御/魔防派生属性，避免 Clone/Merge 后使用陈旧静态模板；首次召唤还会保留 legacy build 产生且永不复用的实体 ID 空洞；
+- Zombie 已迁入 plain KILL 静态 dispatch：combat minion 目标无 RNG 短路，普通目标先执行 `r63` 概率判定，再按 blueprint 是否存在决定只标记尸体或继续执行 MP gate；成功生成时继承正式 Zombie blueprint、消费 `r255 * 4` 行动力、保留 spawn 前实体 ID 空洞并按 `[0][召唤亡灵]` / `[2]变成了[1]` 顺序输出 replay；Clone 会继承 Zombie blueprint；
+- Charm 下的敌方目标选择已按 legacy roster 语义修正：只替换行动者的 effective team，候选实体仍按实际 team 过滤，因此被魅惑行动者自身仍可进入默认敌方技能和 Berserk 的候选集合；该修复使完整 `large_01` strict parity 通过；
 - Merge 已复刻 JS `k1` 语义：`FixedLane` 按槽位位置逐位抬级，`DropUnmappedSkills` 保留 fixed key 映射，标准 kind 默认采用 `FixedLane`；0→正等级技能会从旧 action 位置移除并按 fixed lane 遍历顺序追加到队尾，属性、MP 和 move point 转移后完整 `large_67` 已在 release `mutable-noalias=yes` 下通过；
 - plain 内置主动静态 dispatch 当前覆盖 26/26；
 - `StateStore` 改 `SmallVec`/dense index + legacy order key；
