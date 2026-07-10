@@ -1,13 +1,13 @@
 use super::*;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(super) struct PlainSkillPreActionOutcome {
-    pub(super) forced_skill: Option<PreparedBuiltinSkillAction>,
-    pub(super) clear_forced_action: bool,
+pub struct PlainSkillPreActionOutcome {
+    pub forced_skill: Option<PreparedBuiltinSkillAction>,
+    pub clear_forced_action: bool,
 }
 
 impl CombatRuntime {
-    pub(super) fn run_plain_skill_pre_action_accumulator(&mut self, actor: EntityIdx) -> PlainSkillPreActionOutcome {
+    pub fn run_plain_skill_pre_action_accumulator(&mut self, actor: EntityIdx) -> PlainSkillPreActionOutcome {
         let pre_action_order = self
             .entities
             .get(actor)

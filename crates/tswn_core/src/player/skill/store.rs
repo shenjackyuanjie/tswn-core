@@ -53,7 +53,7 @@ use smallvec::SmallVec;
 pub type SkillKey = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SkillSnapshot {
+pub struct SkillSnapshot {
     pub key: SkillKey,
     pub runtime_kind: &'static str,
     pub level: u32,
@@ -61,7 +61,7 @@ pub(crate) struct SkillSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SkillLoadoutSnapshot {
+pub struct SkillLoadoutSnapshot {
     pub entries: Vec<SkillSnapshot>,
     pub fixed_lanes: Vec<SkillKey>,
     pub active_order: Vec<SkillKey>,
