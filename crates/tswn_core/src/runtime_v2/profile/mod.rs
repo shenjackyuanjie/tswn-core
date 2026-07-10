@@ -615,6 +615,7 @@ pub enum CustomRuntimeV2ImportError {
     Bed2Roster(CustomBed2RosterImportError),
     MixedRoster(CustomMixedRosterImportError),
     Bed2MinionOverlay(CustomBed2MinionOverlayImportError),
+    BattleInit(RuntimeV2BattleInitError),
     NotReady(RuntimeV2ReadyError),
 }
 
@@ -628,6 +629,10 @@ impl From<CustomMixedRosterImportError> for CustomRuntimeV2ImportError {
 
 impl From<CustomBed2MinionOverlayImportError> for CustomRuntimeV2ImportError {
     fn from(error: CustomBed2MinionOverlayImportError) -> Self { Self::Bed2MinionOverlay(error) }
+}
+
+impl From<RuntimeV2BattleInitError> for CustomRuntimeV2ImportError {
+    fn from(error: RuntimeV2BattleInitError) -> Self { Self::BattleInit(error) }
 }
 
 impl From<RuntimeV2ReadyError> for CustomRuntimeV2ImportError {

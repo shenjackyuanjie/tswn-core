@@ -6,6 +6,7 @@ mod plain_attack_skill_tests;
 mod plain_raw_import_tests;
 mod plain_status_skill_tests;
 mod plain_summon_skill_tests;
+mod prepared_init_tests;
 
 fn normalized_rng_checkpoint(i: u32, j: u32) -> crate::runtime_v2::oracle::NormalizedRngCheckpoint {
     crate::runtime_v2::oracle::NormalizedRngCheckpoint {
@@ -1461,8 +1462,9 @@ fn runtime_v2_runner_constructs_from_bed2_namerena_raw_fixture_shape() {
     let registry = builder.build();
     let raw_input = "alpha@red+bed2[5]\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-    let runner = RuntimeV2Runner::from_bed2_namerena_raw(raw_input.to_owned(), registry, bed2, summon)
-        .expect("bed2 namerena raw should construct runtime v2 runner");
+    let runner = prepared_init_tests::runtime_v2_runner_from_raw(raw_input, |raw_groups| {
+        RuntimeV2Runner::from_bed2_roster(raw_groups, registry, bed2, summon)
+    });
     let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
 
     assert_eq!(runner.runtime().entities.len(), 2);
@@ -1532,19 +1534,20 @@ fn runtime_v2_runner_bed2_raw_can_import_ol_summon_overlay_template_slot() {
     let registry = builder.build();
     let raw_input = "alpha@red+bed2[5]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire2\":4,\"sklfire1\":5}}}\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-    let runner = RuntimeV2Runner::from_bed2_namerena_raw_with_summon_overlay(
-        raw_input.to_owned(),
-        registry,
-        bed2,
-        summon,
-        CustomBed2SummonTemplateConfig {
-            template_slot: summon_template_slot,
-            summon_kind,
-            fire_skill_export_name: "custom.summon.fire",
-            explode_skill_export_name: "custom.summon.explode",
-        },
-    )
-    .expect("bed2 raw runner should import summon overlay template slot");
+    let runner = prepared_init_tests::runtime_v2_runner_from_raw(raw_input, |raw_groups| {
+        RuntimeV2Runner::from_bed2_roster_with_summon_overlay(
+            raw_groups,
+            registry,
+            bed2,
+            summon,
+            CustomBed2SummonTemplateConfig {
+                template_slot: summon_template_slot,
+                summon_kind,
+                fire_skill_export_name: "custom.summon.fire",
+                explode_skill_export_name: "custom.summon.explode",
+            },
+        )
+    });
     let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
 
     assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
@@ -1612,18 +1615,19 @@ fn runtime_v2_runner_bed2_raw_can_import_ol_shadow_overlay_template_slot() {
     let registry = builder.build();
     let raw_input = "alpha@red+bed2[5]+ol:{\"shadow\":{\"attrs\":[47,48,49,50,51,52,53,88],\"skills\":{\"phantom:sklpossess\":5}}}\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-    let runner = RuntimeV2Runner::from_bed2_namerena_raw_with_shadow_overlay(
-        raw_input.to_owned(),
-        registry,
-        bed2,
-        summon,
-        CustomBed2ShadowTemplateConfig {
-            template_slot: shadow_template_slot,
-            shadow_kind,
-            possess_skill_export_name: "custom.minion.possess",
-        },
-    )
-    .expect("bed2 raw runner should import shadow overlay template slot");
+    let runner = prepared_init_tests::runtime_v2_runner_from_raw(raw_input, |raw_groups| {
+        RuntimeV2Runner::from_bed2_roster_with_shadow_overlay(
+            raw_groups,
+            registry,
+            bed2,
+            summon,
+            CustomBed2ShadowTemplateConfig {
+                template_slot: shadow_template_slot,
+                shadow_kind,
+                possess_skill_export_name: "custom.minion.possess",
+            },
+        )
+    });
     let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
 
     assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
@@ -1684,18 +1688,19 @@ fn runtime_v2_runner_bed2_raw_can_import_ol_zombie_overlay_template_slot() {
     let raw_input =
         "alpha@red+bed2[5]+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77]}}\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-    let runner = RuntimeV2Runner::from_bed2_namerena_raw_with_zombie_overlay(
-        raw_input.to_owned(),
-        registry,
-        bed2,
-        summon,
-        CustomBed2ZombieTemplateConfig {
-            template_slot: zombie_template_slot,
-            zombie_kind,
-            skill_export_name_prefix: "custom.minion",
-        },
-    )
-    .expect("bed2 raw runner should import zombie overlay template slot");
+    let runner = prepared_init_tests::runtime_v2_runner_from_raw(raw_input, |raw_groups| {
+        RuntimeV2Runner::from_bed2_roster_with_zombie_overlay(
+            raw_groups,
+            registry,
+            bed2,
+            summon,
+            CustomBed2ZombieTemplateConfig {
+                template_slot: zombie_template_slot,
+                zombie_kind,
+                skill_export_name_prefix: "custom.minion",
+            },
+        )
+    });
     let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
 
     assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
@@ -1828,31 +1833,32 @@ gamma@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{\
 seed:custom-seed@!\n\n\
 delta@blue+bed2[8]\n";
 
-    let runner = RuntimeV2Runner::from_bed2_namerena_raw_with_minion_overlays(
-        raw_input.to_owned(),
-        registry,
-        bed2,
-        summon,
-        CustomBed2MinionOverlayConfig {
-            summon: CustomBed2SummonTemplateConfig {
-                template_slot: summon_template_slot,
-                summon_kind,
-                fire_skill_export_name: "custom.summon.fire",
-                explode_skill_export_name: "custom.summon.explode",
+    let runner = prepared_init_tests::runtime_v2_runner_from_raw(raw_input, |raw_groups| {
+        RuntimeV2Runner::from_bed2_roster_with_minion_overlays(
+            raw_groups,
+            registry,
+            bed2,
+            summon,
+            CustomBed2MinionOverlayConfig {
+                summon: CustomBed2SummonTemplateConfig {
+                    template_slot: summon_template_slot,
+                    summon_kind,
+                    fire_skill_export_name: "custom.summon.fire",
+                    explode_skill_export_name: "custom.summon.explode",
+                },
+                shadow: CustomBed2ShadowTemplateConfig {
+                    template_slot: shadow_template_slot,
+                    shadow_kind,
+                    possess_skill_export_name: "custom.minion.possess",
+                },
+                zombie: CustomBed2ZombieTemplateConfig {
+                    template_slot: zombie_template_slot,
+                    zombie_kind,
+                    skill_export_name_prefix: "custom.minion",
+                },
             },
-            shadow: CustomBed2ShadowTemplateConfig {
-                template_slot: shadow_template_slot,
-                shadow_kind,
-                possess_skill_export_name: "custom.minion.possess",
-            },
-            zombie: CustomBed2ZombieTemplateConfig {
-                template_slot: zombie_template_slot,
-                zombie_kind,
-                skill_export_name_prefix: "custom.minion",
-            },
-        },
-    )
-    .expect("bed2 raw runner should import all minion overlay template slots");
+        )
+    });
     let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
 
     assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
@@ -2149,7 +2155,7 @@ fn runtime_v2_custom_import_profile_wraps_missing_overlay_skill_errors() {
             },
         });
 
-    let err = RuntimeV2Runner::from_custom_bed2_namerena_raw(
+    let err = RuntimeV2Runner::from_custom_mixed_namerena_raw(
         r#"alpha@red@bed2+ol:{"shadow":{"attrs":[47,48,49,50,51,52,53,88],"skills":{"sklpossess":5}}}"#.to_owned(),
         config,
     )
@@ -2520,8 +2526,9 @@ fn runtime_v2_runner_runs_mixed_namerena_raw_fixture_shape() {
     let registry = builder.build();
     let raw_input = "plain@red\nalpha@red+bed2[9]\n\nseed:custom-seed@!\n\nbeta@blue+bed2[3]\n";
 
-    let mut runner = RuntimeV2Runner::from_mixed_namerena_raw(raw_input.to_owned(), registry, bed2, summon)
-        .expect("mixed namerena raw should construct runtime v2 runner");
+    let mut runner = prepared_init_tests::runtime_v2_runner_from_raw(raw_input, |raw_groups| {
+        RuntimeV2Runner::from_mixed_roster(raw_groups, registry, bed2, summon)
+    });
     let legacy = crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
     runner.runtime_mut().set_skill_handler(summon, skill_noop);
     assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
@@ -8232,8 +8239,9 @@ fn mixed_raw_runner_for_plain_fixture(raw_input: &str) -> (RuntimeV2Runner, crat
         )
         .expect("bed2 kind should register");
     let registry = builder.build();
-    let runner = RuntimeV2Runner::from_mixed_namerena_raw(raw_input.to_owned(), registry, bed2, summon)
-        .expect("plain raw fixture should construct runtime v2 runner");
+    let runner = prepared_init_tests::runtime_v2_runner_from_raw(raw_input, |raw_groups| {
+        RuntimeV2Runner::from_mixed_roster(raw_groups, registry, bed2, summon)
+    });
     let legacy =
         crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("plain raw fixture should construct legacy runner");
     (runner, legacy)

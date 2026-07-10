@@ -6,6 +6,7 @@ mod handlers;
 pub mod oracle;
 mod plain_assassinate;
 mod plain_summon;
+mod prepared_init;
 mod profile;
 mod runner;
 pub mod scheduler;
@@ -51,6 +52,7 @@ pub use world::WorldArena;
 pub use combat::{CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, RoundOutcome, SelectedBuiltinSkill};
 pub use handlers::*;
 pub use plain_assassinate::PlainSkillPreActionOutcome;
+pub use prepared_init::{PreparedBattleInit, RuntimeV2BattleInitError};
 pub use profile::*;
 pub use runner::*;
 
