@@ -449,6 +449,7 @@ fn build_clip_parts<S: ReplayState>(
     let data = data_for_update(update, player_names);
     let death_effect_allowed = is_death_effect_update(update);
     let force_hp_marker = is_hp_marker_update(update);
+    let force_show_hp = is_hp_swap_update(update);
 
     let mut rest = update.message.as_ref();
     while let Some(start) = rest.find('[') {
@@ -469,7 +470,7 @@ fn build_clip_parts<S: ReplayState>(
                     after,
                     player_names,
                     death_effect_allowed,
-                    force_hp_marker,
+                    force_hp_marker || force_show_hp,
                 );
             }
             "1" => {
@@ -480,7 +481,7 @@ fn build_clip_parts<S: ReplayState>(
                     after,
                     player_names,
                     death_effect_allowed,
-                    false,
+                    force_show_hp,
                 );
             }
             "2" => push_data_part(&mut parts, &data),
@@ -680,6 +681,26 @@ mod tests {
         assert_eq!(parts[1].player_id, Some(0));
         assert!(parts[1].show_hp);
         assert_eq!((parts[1].hp_before, parts[1].hp_after), (30, 80));
+    }
+
+    #[test]
+    fn hp_swap_forces_hp_for_unchanged_players() {
+        let update = RunUpdate::new("[1]\u{7684}\u{4f53}\u{529b}\u{503c}\u{4e0e}[0]\u{4e92}\u{6362}", 0, 1, 100);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Normal,
+            message_rendered: "target\u{7684}\u{4f53}\u{529b}\u{503c}\u{4e0e}caster\u{4e92}\u{6362}",
+        }];
+        let previous = vec![state(0, 50), state(1, 50)];
+        let frame = vec![state(0, 50), state(1, 50)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+        let parts = player_parts(clip);
+
+        assert_eq!(parts.len(), 2);
+        assert!(parts.iter().all(|part| part.show_hp));
+        assert!(parts.iter().all(|part| (part.hp_before, part.hp_after) == (50, 50)));
     }
 
     #[test]
