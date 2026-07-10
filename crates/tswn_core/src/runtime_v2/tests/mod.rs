@@ -4,6 +4,7 @@ mod entity_identity_tests;
 mod plain_action_scheduler_tests;
 mod plain_assassinate_skill_tests;
 mod plain_attack_skill_tests;
+mod plain_charm_targeting_tests;
 mod plain_raw_import_tests;
 mod plain_status_skill_tests;
 mod plain_summon_share_damage_tests;

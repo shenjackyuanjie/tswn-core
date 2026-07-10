@@ -132,7 +132,12 @@ impl CombatRuntime {
         let ally_skip_indices = all_alive
             .iter()
             .enumerate()
-            .filter_map(|(index, candidate)| (self.plain_effective_team(*candidate) == actor_team).then_some(index))
+            .filter_map(|(index, candidate)| {
+                self.entities
+                    .get(*candidate)
+                    .is_some_and(|entity| entity.runtime.team == actor_team)
+                    .then_some(index)
+            })
             .collect::<Vec<_>>();
         let mut selected = Vec::with_capacity(select_count);
         let mut duplicate_count = 0usize;
@@ -362,7 +367,12 @@ impl CombatRuntime {
         let ally_skip_indices = all_alive
             .iter()
             .enumerate()
-            .filter_map(|(index, target)| (self.plain_effective_team(*target) == actor_team).then_some(index))
+            .filter_map(|(index, target)| {
+                self.entities
+                    .get(*target)
+                    .is_some_and(|entity| entity.runtime.team == actor_team)
+                    .then_some(index)
+            })
             .collect::<Vec<_>>();
         let select_count = if smart { 3 } else { 2 };
         let mut selected = Vec::with_capacity(select_count);
