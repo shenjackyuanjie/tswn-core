@@ -344,3 +344,79 @@ fn plain_critical_static_dispatch_uses_three_physical_rolls_and_maximum() {
         vec!["[0]发动[会心一击]", "[1]受到[2]点伤害[s_dmg160]"]
     );
 }
+
+#[test]
+fn plain_fire_uses_builtin_static_dispatch_and_stacks_fire_mag() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let fire = builder
+        .register_skill(
+            "core",
+            "fire",
+            BuiltinActiveSkill::Fire.export_name(),
+            TargetPolicy::Enemy,
+            SkillPriority(0),
+        )
+        .expect("fire skill should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3)
+                .with_magic(1_000_000)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(fire, 128)])),
+            PlayerTemplate::new(2, "target", 1, 100_000, 3).with_def_res(0, 0),
+        ],
+        registry,
+    ));
+
+    let prepared = runtime
+        .scan_plain_action_skill_probabilities(EntityIdx(0), false)
+        .expect("fire should be selected");
+    assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Fire);
+    assert_eq!(prepared.targets, vec![EntityIdx(1)]);
+
+    let mut expected_rng = runtime.rng.clone();
+    let first_atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng) * 1.5;
+    assert!(!PlayerRuntime::dodge(
+        runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
+        runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+        &mut expected_rng,
+    ));
+    let first_damage = (first_atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100_000 - first_damage);
+    assert_eq!(
+        runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(PLAIN_FIRE_STATE_KEY),
+        0.5
+    );
+    let expected_damage_update = RuntimeFrame::legacy_damage_update(0, 1, first_damage);
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec!["[0]使用[火球术]", expected_damage_update.message.as_ref()]
+    );
+    assert_eq!(updates.updates[1].delay0, expected_damage_update.delay0);
+
+    let mut expected_rng = runtime.rng.clone();
+    let second_atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng) * 2.0;
+    assert!(!PlayerRuntime::dodge(
+        runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
+        runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+        &mut expected_rng,
+    ));
+    let second_damage = (second_atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+
+    runtime.drain_plain_fire_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert_eq!(
+        runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp,
+        100_000 - first_damage - second_damage
+    );
+    assert_eq!(
+        runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(PLAIN_FIRE_STATE_KEY),
+        1.0
+    );
+}

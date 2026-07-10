@@ -331,6 +331,27 @@ impl CombatRuntime {
     }
 
     pub fn apply_damage_into(&mut self, caster: EntityIdx, target: EntityIdx, amount: i32, updates: &mut RunUpdates) -> bool {
+        self.apply_damage_with_replay_into(caster, target, amount, updates, RuntimeFrame::damage_update)
+    }
+
+    pub fn apply_legacy_damage_into(
+        &mut self,
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+        updates: &mut RunUpdates,
+    ) -> bool {
+        self.apply_damage_with_replay_into(caster, target, amount, updates, RuntimeFrame::legacy_damage_update)
+    }
+
+    pub fn apply_damage_with_replay_into(
+        &mut self,
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+        updates: &mut RunUpdates,
+        replay: fn(usize, usize, i32) -> crate::engine::update::RunUpdate,
+    ) -> bool {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime_v2 damage target entity: {}", target.0);
         };
@@ -340,7 +361,7 @@ impl CombatRuntime {
             target_entity.runtime.alive = false;
         }
         let team = target_entity.runtime.team;
-        updates.add(RuntimeFrame::damage_update(caster.0 as usize, target.0 as usize, amount));
+        updates.add(replay(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
         if killed {
             self.world.mark_dead(target, team);
@@ -356,22 +377,7 @@ impl CombatRuntime {
         amount: i32,
         updates: &mut RunUpdates,
     ) -> bool {
-        let Some(target_entity) = self.entities.get_mut(target) else {
-            panic!("unknown runtime_v2 poison tick target entity: {}", target.0);
-        };
-        target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
-        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
-        if killed {
-            target_entity.runtime.alive = false;
-        }
-        let team = target_entity.runtime.team;
-        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
-        self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
-        if killed {
-            self.world.mark_dead(target, team);
-            self.cleanup_linked_minions_for_owner(target, updates);
-        }
-        killed
+        self.apply_legacy_damage_into(caster, target, amount, updates)
     }
 
     pub fn apply_disperse_attack_damage_into(

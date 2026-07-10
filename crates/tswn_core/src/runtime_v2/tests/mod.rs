@@ -4860,55 +4860,6 @@ fn charged_summon_template_can_disable_share_damage() {
 }
 
 #[test]
-fn summon_explode_effect_emits_legacy_replay_and_kills_summon() {
-    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
-        PlayerTemplate::new(1, "owner", 0, 10, 3),
-        PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
-        PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
-    ]));
-    runtime
-        .entities
-        .get_mut(EntityIdx(1))
-        .unwrap()
-        .states
-        .add_entry(StateEntry::fire_mag(91, 3));
-    let mut expected_rng = RC4::default();
-    let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 5.5;
-    assert!(!PlayerRuntime::dodge(
-        runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
-        runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
-        &mut expected_rng
-    ));
-    let expected_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
-    runtime.effects.push(QueuedEffect::SummonExplode {
-        caster: EntityIdx(2),
-        target: EntityIdx(1),
-        fire_state_key: 91,
-    });
-
-    let frame = runtime.flush_effects().expect("summon explode should emit updates");
-
-    assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 0);
-    assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
-    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
-    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 2.0);
-    assert_eq!(runtime.rng.i, expected_rng.i);
-    assert_eq!(runtime.rng.j, expected_rng.j);
-    assert_eq!(runtime.rng.main_val, expected_rng.main_val);
-    assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0)].as_slice()));
-    assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
-    assert_eq!(frame.updates.updates.len(), 2);
-    assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
-    assert_eq!(frame.updates.updates[0].caster, 2);
-    assert_eq!(frame.updates.updates[0].target, 1);
-    assert_eq!(frame.updates.updates[0].score, 0);
-    assert_eq!(frame.updates.updates[1].message, "[0]攻击[1]");
-    assert_eq!(frame.updates.updates[1].caster, 2);
-    assert_eq!(frame.updates.updates[1].target, 1);
-    assert_eq!(frame.updates.updates[1].score, expected_amount as u32);
-}
-
-#[test]
 fn summon_explode_can_be_dodged_after_self_death() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
         PlayerTemplate::new(1, "owner", 0, 10, 3),
@@ -12207,80 +12158,6 @@ fn plain_default_enemy_target_selection_matches_legacy_rng_for_single_enemy() {
 
     assert_eq!(selected, vec![EntityIdx(2)]);
     assert_rng_state_eq(&runtime.rng, &expected_rng);
-}
-
-#[test]
-fn plain_fire_uses_builtin_static_dispatch_and_stacks_fire_mag() {
-    let mut builder = ExtensionRegistryBuilder::default();
-    let fire = builder
-        .register_skill(
-            "core",
-            "fire",
-            BuiltinActiveSkill::Fire.export_name(),
-            TargetPolicy::Enemy,
-            SkillPriority(0),
-        )
-        .expect("fire skill should register");
-    let registry = builder.build();
-    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
-        vec![
-            PlayerTemplate::new(1, "caster", 0, 100, 3)
-                .with_magic(1_000_000)
-                .with_skill_loadout(SkillLoadout::from_skill_levels([(fire, 128)])),
-            PlayerTemplate::new(2, "target", 1, 100_000, 3).with_def_res(0, 0),
-        ],
-        registry,
-    ));
-
-    let prepared = runtime
-        .scan_plain_action_skill_probabilities(EntityIdx(0), false)
-        .expect("fire should be selected");
-    assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Fire);
-    assert_eq!(prepared.targets, vec![EntityIdx(1)]);
-
-    let mut expected_rng = runtime.rng.clone();
-    let first_atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng) * 1.5;
-    assert!(!PlayerRuntime::dodge(
-        runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
-        runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
-        &mut expected_rng,
-    ));
-    let first_damage = (first_atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
-    let mut updates = RunUpdates::new();
-
-    runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);
-
-    assert_rng_state_eq(&runtime.rng, &expected_rng);
-    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100_000 - first_damage);
-    assert_eq!(
-        runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(PLAIN_FIRE_STATE_KEY),
-        0.5
-    );
-    assert_eq!(
-        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
-        vec!["[0]使用[火球术]", "[0]攻击[1]"]
-    );
-
-    let mut expected_rng = runtime.rng.clone();
-    let second_atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng) * 2.0;
-    assert!(!PlayerRuntime::dodge(
-        runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy(),
-        runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
-        &mut expected_rng,
-    ));
-    let second_damage = (second_atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
-
-    runtime.drain_plain_fire_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
-
-    assert_rng_state_eq(&runtime.rng, &expected_rng);
-    assert_eq!(
-        runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp,
-        100_000 - first_damage - second_damage
-    );
-    assert_eq!(
-        runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(PLAIN_FIRE_STATE_KEY),
-        1.0
-    );
 }
 
 #[test]

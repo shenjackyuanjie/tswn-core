@@ -159,3 +159,54 @@ fn plain_summon_explode_uses_static_effect_path_and_kills_the_summon() {
     assert!(runtime.entities.get(target).unwrap().runtime.hp < target_hp);
     assert_eq!(updates.updates.first().unwrap().message, "[0]使用[自爆]");
 }
+
+#[test]
+fn summon_explode_effect_emits_legacy_replay_and_kills_summon() {
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+        PlayerTemplate::new(1, "owner", 0, 10, 3),
+        PlayerTemplate::new(2, "enemy", 1, 10_000, 3).with_def_res(0, 16),
+        PlayerTemplate::new(3, "summon", 0, 5, 1).with_magic(80),
+    ]));
+    runtime
+        .entities
+        .get_mut(EntityIdx(1))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::fire_mag(91, 3));
+    let mut expected_rng = RC4::default();
+    let atp = runtime.entities.get(EntityIdx(2)).unwrap().runtime.get_at(true, &mut expected_rng) * 5.5;
+    assert!(!PlayerRuntime::dodge(
+        runtime.entities.get(EntityIdx(2)).unwrap().runtime.magic_accuracy(),
+        runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge(),
+        &mut expected_rng
+    ));
+    let expected_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
+    runtime.effects.push(QueuedEffect::SummonExplode {
+        caster: EntityIdx(2),
+        target: EntityIdx(1),
+        fire_state_key: 91,
+    });
+
+    let frame = runtime.flush_effects().expect("summon explode should emit updates");
+
+    assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 0);
+    assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 10_000 - expected_amount);
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 2.0);
+    assert_eq!(runtime.rng.i, expected_rng.i);
+    assert_eq!(runtime.rng.j, expected_rng.j);
+    assert_eq!(runtime.rng.main_val, expected_rng.main_val);
+    assert_eq!(runtime.world.team_alive(0), Some([EntityIdx(0)].as_slice()));
+    assert_eq!(runtime.world.flat_alive(), &[EntityIdx(0), EntityIdx(1)]);
+    assert_eq!(frame.updates.updates.len(), 2);
+    assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
+    assert_eq!(frame.updates.updates[0].caster, 2);
+    assert_eq!(frame.updates.updates[0].target, 1);
+    assert_eq!(frame.updates.updates[0].score, 0);
+    let expected_damage_update = RuntimeFrame::legacy_damage_update(2, 1, expected_amount);
+    assert_eq!(frame.updates.updates[1].message, expected_damage_update.message);
+    assert_eq!(frame.updates.updates[1].caster, 2);
+    assert_eq!(frame.updates.updates[1].target, 1);
+    assert_eq!(frame.updates.updates[1].score, expected_amount as u32);
+    assert_eq!(frame.updates.updates[1].delay0, expected_damage_update.delay0);
+}
