@@ -2,6 +2,7 @@ pub mod effect;
 pub mod entity;
 pub mod extension;
 pub mod oracle;
+mod plain_assassinate;
 pub mod scheduler;
 pub mod scratch;
 pub mod slot;
@@ -12,6 +13,7 @@ pub mod world;
 use crate::engine::update::RunUpdates;
 use crate::player::PlrId;
 use crate::rc4::RC4;
+use plain_assassinate::PlainSkillPreActionOutcome;
 
 pub use effect::{
     CoreReplayEvent, CoreShowEvent, CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn,
@@ -19,9 +21,9 @@ pub use effect::{
     ShowRendererFn, ShowRenderers, SkillContext, SkillHandlerFn, SkillHandlers, StateContext, StateHandlerFn, StateHandlers,
 };
 pub use entity::{
-    CloneBuildData, CloneDerivedStats, CounterRuntime, CovidInfectionEntry, EntityArena, EntityIdx, EntityRecord, HideRuntime,
-    MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate, ProtectLinkRuntime, SkillLoadout, StateEntry, StatePayload,
-    StateStore,
+    AssassinateRuntime, CloneBuildData, CloneDerivedStats, CounterRuntime, CovidInfectionEntry, EntityArena, EntityIdx,
+    EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate, ProtectLinkRuntime, SkillLoadout,
+    StateEntry, StatePayload, StateStore,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,
@@ -2302,11 +2304,17 @@ fn import_plain_legacy_skill_loadout(
             active_order.push(lane);
         }
     }
+    let pre_action_order = snapshot
+        .pre_action_order
+        .iter()
+        .filter_map(|key| imported.iter().position(|(imported_key, _, _, _)| imported_key == key))
+        .collect::<Vec<_>>();
 
     let fixed_lane_keys = imported.iter().map(|(key, _, _, _)| *key).collect::<Vec<_>>();
     SkillLoadout::from_skill_levels_and_boosts(imported.into_iter().map(|(_, skill_id, level, boost)| (skill_id, level, boost)))
         .with_fixed_lane_keys(fixed_lane_keys)
         .with_active_order(active_order)
+        .with_pre_action_order(pre_action_order)
 }
 
 pub fn run_defend_post_defend_skill(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
@@ -4216,9 +4224,9 @@ impl CombatRuntime {
         #[cfg(not(feature = "no_debug"))]
         let action_rng_before = RngCheckpoint::from_rc4(&self.rng);
         let smart = self.roll_actor_smart(action.actor);
-        if legacy_plain_action {
-            self.clear_plain_hide_before_action(action.actor);
-        }
+        let plain_skill_pre_action = legacy_plain_action
+            .then(|| self.run_plain_skill_pre_action_accumulator(action.actor))
+            .unwrap_or_default();
 
         let skill_plan = self
             .scheduler
@@ -4234,7 +4242,7 @@ impl CombatRuntime {
             self.drain_state_hook_plan_with_action_smart_into(&pre_action_state_plan, &mut updates, Some(smart));
         let mut prepared_plain_action = None;
         if legacy_plain_action && !state_intercepted_action {
-            let Some(prepared) = self.prepare_plain_action(action.actor, smart) else {
+            let Some(prepared) = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action) else {
                 return self.finish_round(None, updates);
             };
             match &prepared {
@@ -4392,8 +4400,16 @@ impl CombatRuntime {
             .unwrap_or(false)
     }
 
-    fn prepare_plain_action(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedPlainAction> {
-        if self.has_plain_berserk_state(actor) {
+    fn prepare_plain_action(
+        &mut self,
+        actor: EntityIdx,
+        smart: bool,
+        pre_action: PlainSkillPreActionOutcome,
+    ) -> Option<PreparedPlainAction> {
+        if let Some(forced_skill) = pre_action.forced_skill {
+            return Some(PreparedPlainAction::BuiltinSkill(forced_skill));
+        }
+        if !pre_action.clear_forced_action && self.has_plain_berserk_state(actor) {
             let target = self.select_plain_berserk_forced_attack_target(smart)?;
             let amount = self
                 .entities
@@ -4729,6 +4745,7 @@ impl CombatRuntime {
                     BuiltinActiveSkill::Clone => vec![actor],
                     BuiltinActiveSkill::Charge => vec![actor],
                     BuiltinActiveSkill::Accumulate => vec![actor],
+                    BuiltinActiveSkill::Assassinate => self.select_plain_assassinate_targets(actor, smart),
                     BuiltinActiveSkill::Possess => self.select_plain_possess_targets(actor, smart),
                     _ => return None,
                 };
@@ -4849,6 +4866,18 @@ impl CombatRuntime {
                 }
                 return false;
             }
+        }
+        if builtin_skill == BuiltinActiveSkill::Assassinate
+            && smart
+            && self.entities.get(actor).is_some_and(|entity| {
+                entity
+                    .states
+                    .entries()
+                    .iter()
+                    .any(|entry| matches!(entry.payload, StatePayload::Poison { .. }))
+            })
+        {
+            return false;
         }
         // ShadowSkill 在 smart 模式且 HP < 80 时短路，不消耗概率字节。
         if builtin_skill == BuiltinActiveSkill::Shadow
@@ -5024,6 +5053,10 @@ impl CombatRuntime {
             }
             BuiltinActiveSkill::Accumulate => {
                 self.drain_plain_accumulate_skill_into(actor, updates);
+            }
+            BuiltinActiveSkill::Assassinate => {
+                let target = prepared.targets[0];
+                self.drain_plain_assassinate_skill_into(actor, prepared.selected.fixed_lane, target, updates);
             }
             BuiltinActiveSkill::Possess => {
                 let target = prepared.targets[0];
@@ -6564,9 +6597,10 @@ impl CombatRuntime {
             Upgrade,
             Hide,
             Counter,
+            Assassinate,
         }
 
-        let plan = self
+        let mut plan = self
             .entities
             .get(target)
             .unwrap_or_else(|| panic!("unknown runtime_v2 post-damage target: {}", target.0))
@@ -6582,6 +6616,9 @@ impl CombatRuntime {
                     DEFAULT_CORE_UPGRADE_SKILL_EXPORT => PlainPostDamageSkill::Upgrade,
                     DEFAULT_CORE_HIDE_SKILL_EXPORT => PlainPostDamageSkill::Hide,
                     DEFAULT_CORE_COUNTER_SKILL_EXPORT => PlainPostDamageSkill::Counter,
+                    export_name if export_name == BuiltinActiveSkill::Assassinate.export_name() => {
+                        PlainPostDamageSkill::Assassinate
+                    }
                     _ => return None,
                 };
                 let level = self.entities.get(target)?.template.skills.level_at(fixed_lane)?;
@@ -6591,6 +6628,7 @@ impl CombatRuntime {
                 Some((skill, level))
             })
             .collect::<Vec<_>>();
+        plan.sort_by_key(|(skill, _)| matches!(skill, PlainPostDamageSkill::Assassinate));
         #[cfg(not(feature = "no_debug"))]
         let debug_counter = std::env::var_os("TSWN_PROBE_COUNTER").is_some();
         #[cfg(not(feature = "no_debug"))]
@@ -6613,6 +6651,9 @@ impl CombatRuntime {
                 }
                 PlainPostDamageSkill::Counter => {
                     self.run_plain_counter_post_damage_into(target, level, damage, caster, updates);
+                }
+                PlainPostDamageSkill::Assassinate => {
+                    self.run_plain_assassinate_post_damage_into(target, damage, updates);
                 }
             }
             #[cfg(not(feature = "no_debug"))]
@@ -10201,7 +10242,10 @@ impl CombatRuntime {
 mod tests {
     use super::*;
 
+    mod plain_action_scheduler_tests;
+    mod plain_assassinate_skill_tests;
     mod plain_attack_skill_tests;
+    mod plain_raw_import_tests;
     mod plain_status_skill_tests;
 
     fn normalized_rng_checkpoint(i: u32, j: u32) -> crate::runtime_v2::oracle::NormalizedRngCheckpoint {

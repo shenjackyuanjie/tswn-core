@@ -65,6 +65,7 @@ pub(crate) struct SkillLoadoutSnapshot {
     pub entries: Vec<SkillSnapshot>,
     pub fixed_lanes: Vec<SkillKey>,
     pub active_order: Vec<SkillKey>,
+    pub pre_action_order: Vec<SkillKey>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -197,6 +198,7 @@ impl SkillStorage {
                 .collect(),
             fixed_lanes: self.slot_skill.clone(),
             active_order: self.skill.clone(),
+            pre_action_order: self.pre_action.clone(),
         }
     }
 

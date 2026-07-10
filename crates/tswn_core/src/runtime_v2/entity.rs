@@ -311,6 +311,7 @@ pub struct SkillLoadout {
     boosts: SmallVec<[Option<SkillBoost>; 8]>,
     fixed_lane_keys: SmallVec<[usize; 8]>,
     active_order: SmallVec<[usize; 8]>,
+    pre_action_order: SmallVec<[usize; 8]>,
 }
 
 impl SkillLoadout {
@@ -326,6 +327,7 @@ impl SkillLoadout {
             boosts,
             fixed_lane_keys,
             active_order,
+            pre_action_order: SmallVec::new(),
         }
     }
 
@@ -340,6 +342,7 @@ impl SkillLoadout {
             boosts,
             fixed_lane_keys,
             active_order,
+            pre_action_order: SmallVec::new(),
         }
     }
 
@@ -360,6 +363,7 @@ impl SkillLoadout {
             boosts,
             fixed_lane_keys,
             active_order,
+            pre_action_order: SmallVec::new(),
         }
     }
 
@@ -382,6 +386,8 @@ impl SkillLoadout {
     }
 
     pub fn active_order(&self) -> &[usize] { &self.active_order }
+
+    pub fn pre_action_order(&self) -> &[usize] { &self.pre_action_order }
 
     pub fn is_empty(&self) -> bool { self.skills.is_empty() }
 
@@ -411,6 +417,27 @@ impl SkillLoadout {
         );
         self
     }
+
+    pub fn with_pre_action_order(mut self, pre_action_order: impl IntoIterator<Item = usize>) -> Self {
+        self.pre_action_order = pre_action_order.into_iter().collect();
+        assert!(
+            self.pre_action_order.iter().all(|idx| *idx < self.skills.len()),
+            "runtime_v2 skill pre-action order must reference existing fixed lanes"
+        );
+        self
+    }
+
+    pub fn ensure_pre_action_lane(&mut self, fixed_lane: usize) {
+        assert!(
+            fixed_lane < self.skills.len(),
+            "runtime_v2 skill pre-action order must reference existing fixed lanes"
+        );
+        if !self.pre_action_order.contains(&fixed_lane) {
+            self.pre_action_order.push(fixed_lane);
+        }
+    }
+
+    pub fn remove_pre_action_lane(&mut self, fixed_lane: usize) { self.pre_action_order.retain(|lane| *lane != fixed_lane); }
 
     pub fn with_fixed_lane_keys(mut self, fixed_lane_keys: impl IntoIterator<Item = usize>) -> Self {
         self.fixed_lane_keys = fixed_lane_keys.into_iter().collect();
@@ -504,6 +531,13 @@ pub struct HideRuntime {
     pub resistance: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AssassinateRuntime {
+    pub fixed_lane: usize,
+    pub target: EntityIdx,
+    pub break_on_damage: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CounterRuntime {
     pub pending: bool,
@@ -541,6 +575,7 @@ pub struct PlayerRuntime {
     pub protect_from: Vec<ProtectLinkRuntime>,
     pub upgrade_active: bool,
     pub hide: Option<HideRuntime>,
+    pub assassinate: Option<AssassinateRuntime>,
     pub counter: CounterRuntime,
 }
 
@@ -585,6 +620,7 @@ impl PlayerRuntime {
             protect_from: Vec::new(),
             upgrade_active: false,
             hide: None,
+            assassinate: None,
             counter: CounterRuntime::default(),
         }
     }
