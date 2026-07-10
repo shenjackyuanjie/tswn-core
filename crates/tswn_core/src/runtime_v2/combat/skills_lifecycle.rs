@@ -2,12 +2,7 @@ use super::*;
 
 impl CombatRuntime {
     pub fn select_plain_revive_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
-        let actor_team = self
-            .entities
-            .get(actor)
-            .unwrap_or_else(|| panic!("unknown runtime_v2 revive actor: {}", actor.0))
-            .runtime
-            .team;
+        let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_roster(actor_team).unwrap_or_default().to_vec();
         if candidates.is_empty() {
             return Vec::new();

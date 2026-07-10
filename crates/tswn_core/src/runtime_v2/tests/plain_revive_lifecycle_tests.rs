@@ -1,6 +1,51 @@
 use super::*;
 
 #[test]
+fn plain_revive_uses_charmed_effective_team_roster() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let charm = builder
+        .register_state(
+            "core",
+            "charm",
+            DEFAULT_CORE_CHARM_STATE_EXPORT,
+            ProcMask::POST_ACTION,
+            SkillPriority(210),
+        )
+        .expect("charm state should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "actor", 0, 100, 3),
+            PlayerTemplate::new(2, "original-team-dead", 0, 100, 3).with_target_score_stats(1_000, 0, 1.0),
+            PlayerTemplate::new(3, "effective-team-dead", 1, 100, 3).with_target_score_stats(1, 0, 1.0),
+        ],
+        registry,
+    ));
+    for target in [EntityIdx(1), EntityIdx(2)] {
+        let entity = runtime.entities.get_mut(target).unwrap();
+        entity.runtime.hp = 0;
+        entity.runtime.alive = false;
+        assert!(runtime.world.mark_dead(target, entity.runtime.team));
+    }
+    assert!(
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::charm(
+            76,
+            charm,
+            2,
+            Some(1),
+            Some(0),
+            Some(0),
+            2,
+            SkillPriority(210),
+        ))
+    );
+
+    let selected = runtime.select_plain_revive_targets(EntityIdx(0), true);
+
+    assert_eq!(selected, vec![EntityIdx(2)]);
+}
+
+#[test]
 fn plain_revive_without_valid_target_continues_to_clone() {
     let mut builder = ExtensionRegistryBuilder::default();
     let revive = builder
