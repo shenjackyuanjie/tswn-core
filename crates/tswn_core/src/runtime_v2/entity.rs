@@ -341,6 +341,7 @@ impl PlayerTemplate {
 pub struct SkillLoadout {
     skills: SmallVec<[SkillId; 8]>,
     levels: SmallVec<[u32; 8]>,
+    build_levels: SmallVec<[u32; 8]>,
     boosts: SmallVec<[Option<SkillBoost>; 8]>,
     fixed_lane_keys: SmallVec<[usize; 8]>,
     active_order: SmallVec<[usize; 8]>,
@@ -350,13 +351,15 @@ pub struct SkillLoadout {
 impl SkillLoadout {
     pub fn from_skills(skills: impl IntoIterator<Item = SkillId>) -> Self {
         let skills = skills.into_iter().collect::<SmallVec<[SkillId; 8]>>();
-        let levels = std::iter::repeat_n(1, skills.len()).collect();
+        let levels = std::iter::repeat_n(1, skills.len()).collect::<SmallVec<[u32; 8]>>();
+        let build_levels = levels.clone();
         let boosts = std::iter::repeat_n(None, skills.len()).collect();
         let fixed_lane_keys = (0..skills.len()).collect();
         let active_order = (0..skills.len()).collect();
         Self {
             skills,
             levels,
+            build_levels,
             boosts,
             fixed_lane_keys,
             active_order,
@@ -366,12 +369,14 @@ impl SkillLoadout {
 
     pub fn from_skill_levels(skills: impl IntoIterator<Item = (SkillId, u32)>) -> Self {
         let (skills, levels): (SmallVec<[SkillId; 8]>, SmallVec<[u32; 8]>) = skills.into_iter().unzip();
+        let build_levels = levels.clone();
         let boosts = std::iter::repeat_n(None, skills.len()).collect();
         let fixed_lane_keys = (0..skills.len()).collect();
         let active_order = (0..skills.len()).collect();
         Self {
             skills,
             levels,
+            build_levels,
             boosts,
             fixed_lane_keys,
             active_order,
@@ -380,19 +385,25 @@ impl SkillLoadout {
     }
 
     pub fn from_skill_levels_and_boosts(skills: impl IntoIterator<Item = (SkillId, u32, Option<SkillBoost>)>) -> Self {
-        let mut skill_ids = SmallVec::new();
-        let mut levels = SmallVec::new();
-        let mut boosts = SmallVec::new();
+        let mut skill_ids = SmallVec::<[SkillId; 8]>::new();
+        let mut levels = SmallVec::<[u32; 8]>::new();
+        let mut boosts = SmallVec::<[Option<SkillBoost>; 8]>::new();
         for (skill_id, level, boost) in skills {
             skill_ids.push(skill_id);
             levels.push(level);
             boosts.push(boost);
         }
+        let build_levels = levels
+            .iter()
+            .zip(&boosts)
+            .map(|(level, boost)| boost.as_ref().map_or(*level, SkillBoost::base_level))
+            .collect::<SmallVec<[u32; 8]>>();
         let fixed_lane_keys = (0..skill_ids.len()).collect();
         let active_order = (0..skill_ids.len()).collect();
         Self {
             skills: skill_ids,
             levels,
+            build_levels,
             boosts,
             fixed_lane_keys,
             active_order,
@@ -405,6 +416,8 @@ impl SkillLoadout {
     pub fn levels(&self) -> &[u32] { &self.levels }
 
     pub fn level_at(&self, fixed_lane: usize) -> Option<u32> { self.levels.get(fixed_lane).copied() }
+
+    pub fn build_level_at(&self, fixed_lane: usize) -> Option<u32> { self.build_levels.get(fixed_lane).copied() }
 
     pub fn boost_at(&self, fixed_lane: usize) -> Option<&SkillBoost> { self.boosts.get(fixed_lane).and_then(Option::as_ref) }
 
@@ -426,21 +439,20 @@ impl SkillLoadout {
 
     pub fn len(&self) -> usize { self.skills.len() }
 
-    pub fn reapply_clone_boosts(&mut self) {
-        for (level, boost) in self.levels.iter_mut().zip(&self.boosts) {
-            let Some(boost) = boost else {
-                continue;
-            };
-            if *level >= boost.final_level() {
-                continue;
-            }
-            *level = match boost {
-                SkillBoost::Normal(_) => *level,
-                SkillBoost::LastBoost(_) => level.saturating_mul(2),
-                SkillBoost::SlotBoost { boost, .. } => level.saturating_add((*boost).min(*level)),
+    pub fn rebuilt_for_clone(&self) -> Self {
+        let mut clone = self.clone();
+        for lane in 0..clone.levels.len() {
+            let clamped = self.build_levels[lane].min(self.levels[lane]);
+            clone.levels[lane] = match &self.boosts[lane] {
+                None | Some(SkillBoost::Normal(_)) => clamped,
+                Some(SkillBoost::LastBoost(_)) => clamped.saturating_mul(2),
+                Some(SkillBoost::SlotBoost { boost, .. }) => clamped.saturating_add((*boost).min(clamped)),
             };
         }
+        clone
     }
+
+    pub fn disable_action_lane(&mut self, fixed_lane: usize) { self.active_order.retain(|lane| *lane != fixed_lane); }
 
     pub fn with_active_order(mut self, active_order: impl IntoIterator<Item = usize>) -> Self {
         self.active_order = active_order.into_iter().collect();

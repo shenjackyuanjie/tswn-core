@@ -341,23 +341,26 @@ impl CombatRuntime {
                 owner.runtime.team,
                 owner.runtime.hp,
                 owner.runtime.magic,
-                owner.template.skills.clone(),
+                owner.template.skills.rebuilt_for_clone(),
                 clone_build,
                 shadow_blueprint,
                 summon_blueprint,
                 zombie_blueprint,
             )
         };
-        clone_skills.reapply_clone_boosts();
         let clone_move_points = self.rng.r255() as i32 * 4 + 256;
         if owner_hp + owner_magic < self.rng.r255() as i32 {
             decayed_level = (decayed_level >> 1) + 1;
         }
         let cloned_clone_level = (decayed_level as f64).sqrt().ceil() as u32;
+        let clone_skill_was_zero = clone_skills.level_at(fixed_lane) == Some(0);
         assert!(
             clone_skills.set_level_at(fixed_lane, cloned_clone_level.max(1)),
             "runtime_v2 clone fixed lane disappeared while building child"
         );
+        if clone_skill_was_zero {
+            clone_skills.disable_action_lane(fixed_lane);
+        }
         assert!(
             self.entities
                 .get_mut(actor)

@@ -5,6 +5,7 @@ mod plain_action_scheduler_tests;
 mod plain_assassinate_skill_tests;
 mod plain_attack_skill_tests;
 mod plain_charm_targeting_tests;
+mod plain_clone_skill_tests;
 mod plain_protect_skill_tests;
 mod plain_raw_import_tests;
 mod plain_revive_lifecycle_tests;

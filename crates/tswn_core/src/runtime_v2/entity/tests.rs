@@ -148,6 +148,45 @@ fn skill_loadout_tracks_fixed_lanes_and_active_order_separately() {
 }
 
 #[test]
+fn skill_loadout_rebuilds_clone_levels_from_build_baseline_before_boosts() {
+    let mut owner = SkillLoadout::from_skill_levels_and_boosts([
+        (SkillId(1), 4, None),
+        (SkillId(2), 96, None),
+        (SkillId(3), 0, None),
+        (SkillId(4), 92, Some(crate::player::skill::SkillBoost::LastBoost(46))),
+        (
+            SkillId(5),
+            70,
+            Some(crate::player::skill::SkillBoost::SlotBoost { base: 40, boost: 30 }),
+        ),
+    ]);
+    assert!(owner.set_level_at(0, 10));
+    assert!(owner.set_level_at(1, 100));
+    assert!(owner.set_level_at(2, 12));
+    assert!(owner.set_level_at(3, 40));
+    assert!(owner.set_level_at(4, 20));
+
+    let clone = owner.rebuilt_for_clone();
+
+    assert_eq!(clone.levels(), &[4, 96, 0, 80, 40]);
+    assert_eq!(clone.build_level_at(0), Some(4));
+    assert_eq!(clone.build_level_at(3), Some(46));
+    assert_eq!(clone.build_level_at(4), Some(40));
+}
+
+#[test]
+fn skill_loadout_clone_rebuild_keeps_zero_build_lane_out_of_action_order_when_disabled() {
+    let mut clone = SkillLoadout::from_skill_levels([(SkillId(1), 0), (SkillId(2), 4)]).with_active_order([0, 1]);
+
+    assert!(clone.set_level_at(0, 3));
+    clone.disable_action_lane(0);
+
+    assert_eq!(clone.levels(), &[3, 4]);
+    assert_eq!(clone.active_order(), &[1]);
+    assert_eq!(clone.build_level_at(0), Some(0));
+}
+
+#[test]
 fn skill_loadout_merges_levels_by_fixed_lane_without_replacing_skill_ids() {
     let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 0), (SkillId(2), 4)])
         .with_fixed_lane_keys([10, 20])
