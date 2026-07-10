@@ -80,6 +80,12 @@ pub enum ParsedCommand {
         /// 最多推进的回合数。
         max_rounds: usize,
     },
+    RuntimeV2Parity {
+        /// 同时交给 legacy 与默认 custom v2 profile 运行的 namerena raw 输入。
+        raw: String,
+        /// 两侧最多推进的回合数。
+        max_rounds: usize,
+    },
     BenchAuto {
         /// 基准测试原始输入，按组数自动分流到评分或胜率测试。
         raw: String,

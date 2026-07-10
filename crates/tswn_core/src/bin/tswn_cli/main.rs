@@ -19,6 +19,7 @@
 //! - `fight`: 运行普通对战，可选 `--out-raw` 输出聚合战斗日志。
 //! - `raw`: 直接运行 namerena 原始输入，兼容普通对战和 `!test!` 基准测试输入。
 //! - `diff`: 运行普通对战，并按 runner diff 格式输出。
+//! - `runtime-v2 normalized-run|parity`: 输出 v2 normalized run，或与 legacy 严格对账。
 //! - `bench auto`: 按输入组数自动切换评分基准测试或胜率基准测试。
 //! - `bench win-rate`: 显式比较两队胜率。
 //! - `bench group-win-rate`: 目标组对多个对手组逐个统计并汇总平均胜率。
@@ -30,7 +31,7 @@
 //!
 //! 输出约定：
 //! - 默认会打印欢迎 banner，便于交互式使用。
-//! - `fight --out-raw`、`raw`、`diff`、`namer-pf` 会跳过 banner，避免污染机器可读输出。
+//! - `fight --out-raw`、`raw`、`diff`、`runtime-v2`、`namer-pf` 会跳过 banner，避免污染机器可读输出。
 //!
 //! 输入约定：
 //! - 原始对战/benchmark 输入使用 namerena raw 文本，组与组之间用空行分隔。
@@ -79,6 +80,7 @@ fn main() {
             | ParsedCommand::FightRaw { .. }
             | ParsedCommand::FightDiff { .. }
             | ParsedCommand::RuntimeV2NormalizedRun { .. }
+            | ParsedCommand::RuntimeV2Parity { .. }
             | ParsedCommand::NamerPf { .. }
     ) {
         print_banner();
@@ -89,6 +91,7 @@ fn main() {
         ParsedCommand::FightDiff { raw } => fight::run_diff(raw),
         ParsedCommand::FightRaw { raw, n, threads } => fight::run_raw(raw, n, threads),
         ParsedCommand::RuntimeV2NormalizedRun { raw, max_rounds } => fight::run_runtime_v2_normalized(raw, max_rounds),
+        ParsedCommand::RuntimeV2Parity { raw, max_rounds } => fight::run_runtime_v2_parity(raw, max_rounds),
         ParsedCommand::BenchAuto {
             raw,
             n,

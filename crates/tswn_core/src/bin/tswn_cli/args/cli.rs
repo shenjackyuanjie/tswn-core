@@ -150,6 +150,13 @@ enum RuntimeV2Subcommand {
     ///   tswn-cli runtime-v2 normalized-run -f input.txt
     #[command(name = "normalized-run", verbatim_doc_comment)]
     NormalizedRun(RuntimeV2NormalizedRunCommand),
+    /// 同时运行 legacy 与默认 custom v2 profile，并输出首个严格差异及两侧 normalized-run JSON。
+    ///
+    /// 示例:
+    ///   tswn-cli runtime-v2 parity -r "left\n\nright" --max-rounds 8
+    ///   tswn-cli runtime-v2 parity -f input.txt
+    #[command(name = "parity", verbatim_doc_comment)]
+    Parity(RuntimeV2NormalizedRunCommand),
 }
 
 #[derive(Debug, Args)]
@@ -641,6 +648,10 @@ impl ParsedCli {
                     raw: cmd.input.read_or_stdin()?,
                     max_rounds: cmd.max_rounds,
                 },
+                RuntimeV2Subcommand::Parity(cmd) => ParsedCommand::RuntimeV2Parity {
+                    raw: cmd.input.read_or_stdin()?,
+                    max_rounds: cmd.max_rounds,
+                },
             },
             CliCommand::Bench(BenchCommand { command }) => match command {
                 BenchSubcommand::Auto(cmd) => ParsedCommand::BenchAuto {
@@ -853,6 +864,20 @@ mod tests {
         let parsed = ParsedCli::from_cli(cli).unwrap();
         match parsed.command {
             ParsedCommand::RuntimeV2NormalizedRun { raw, max_rounds } => {
+                assert_eq!(raw, "left\n\nright");
+                assert_eq!(max_rounds, 8);
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn runtime_v2_parity_accepts_raw_and_max_rounds() {
+        let cli =
+            Cli::try_parse_from(["tswn-cli", "runtime-v2", "parity", "-r", "left\\n\\nright", "--max-rounds", "8"]).unwrap();
+        let parsed = ParsedCli::from_cli(cli).unwrap();
+        match parsed.command {
+            ParsedCommand::RuntimeV2Parity { raw, max_rounds } => {
                 assert_eq!(raw, "left\n\nright");
                 assert_eq!(max_rounds, 8);
             }
