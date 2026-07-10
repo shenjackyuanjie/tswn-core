@@ -146,7 +146,7 @@ impl CombatRuntime {
                     };
                     if atp == 0.0 {
                         if killed_caster {
-                            self.drain_die_hooks_into(caster, updates);
+                            self.drain_summon_explode_self_death_into(caster, updates);
                         }
                         continue;
                     }
@@ -175,7 +175,7 @@ impl CombatRuntime {
                         }
                     }
                     if killed_caster {
-                        self.drain_die_hooks_into(caster, updates);
+                        self.drain_summon_explode_self_death_into(caster, updates);
                     }
                 }
                 QueuedEffect::DisperseAttack { caster, target } => {
@@ -541,5 +541,18 @@ impl CombatRuntime {
             0,
         ));
         true
+    }
+
+    pub fn drain_summon_explode_self_death_into(&mut self, caster: EntityIdx, updates: &mut RunUpdates) {
+        if self
+            .entities
+            .get(caster)
+            .unwrap_or_else(|| panic!("runtime_v2 summon explode caster disappeared: {}", caster.0))
+            .runtime
+            .is_combat_minion()
+        {
+            self.emit_plain_lethal_replay_into(caster, caster, updates);
+        }
+        self.drain_die_hooks_into(caster, updates);
     }
 }
