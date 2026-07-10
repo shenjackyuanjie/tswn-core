@@ -103,11 +103,13 @@ impl CombatRuntime {
                 rng_after: Some(action_rng_after),
             });
         }
-        if state_intercepted_action {
+        let terminal_plain_action = if state_intercepted_action {
             // PRE_ACTION state handlers own this action. Legacy still performs
             // recovery and the full post-action chain after the state action.
+            legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else if let Some(PreparedPlainAction::BuiltinSkill(prepared)) = prepared_plain_action.clone() {
             self.drain_plain_builtin_skill_into(action.actor, prepared, &mut updates);
+            legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else {
             let pre_damage_skill_plan =
                 self.scheduler
@@ -137,32 +139,42 @@ impl CombatRuntime {
                     self.drain_effects_into(&mut updates);
                 }
             }
+            let terminal_plain_action = legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor);
             let post_damage_skill_plan =
                 self.scheduler
                     .skill_hook_plan(&self.entities, &self.registry, action.actor, ProcMask::POST_DAMAGE);
             self.drain_skill_hook_plan_into(&post_damage_skill_plan, &mut updates);
             let post_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_DAMAGE);
             self.drain_state_hook_plan_into(&post_damage_state_plan, &mut updates);
+            terminal_plain_action
+        };
+        if !terminal_plain_action {
+            if matches!(prepared_plain_action, Some(PreparedPlainAction::ForcedAttack { .. })) {
+                self.drain_plain_berserk_forced_action_state_into(action.actor, &mut updates);
+            }
+            if legacy_plain_action {
+                self.recover_plain_actor_into(action.actor, &mut updates);
+            }
+            if state_intercepted_action {
+                updates.add_newline();
+            }
+            let post_action_skill_plan = self.scheduler.skill_post_action_hook_plan(
+                &self.entities,
+                &self.registry,
+                action.actor,
+                SkillPostActionPhase::Early,
+            );
+            self.drain_skill_hook_plan_into(&post_action_skill_plan, &mut updates);
+            let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_ACTION);
+            self.drain_state_hook_plan_into(&state_plan, &mut updates);
+            let post_action_late_skill_plan = self.scheduler.skill_post_action_hook_plan(
+                &self.entities,
+                &self.registry,
+                action.actor,
+                SkillPostActionPhase::Late,
+            );
+            self.drain_skill_hook_plan_into(&post_action_late_skill_plan, &mut updates);
         }
-        if matches!(prepared_plain_action, Some(PreparedPlainAction::ForcedAttack { .. })) {
-            self.drain_plain_berserk_forced_action_state_into(action.actor, &mut updates);
-        }
-        if legacy_plain_action {
-            self.recover_plain_actor_into(action.actor, &mut updates);
-        }
-        if state_intercepted_action {
-            updates.add_newline();
-        }
-        let post_action_skill_plan =
-            self.scheduler
-                .skill_post_action_hook_plan(&self.entities, &self.registry, action.actor, SkillPostActionPhase::Early);
-        self.drain_skill_hook_plan_into(&post_action_skill_plan, &mut updates);
-        let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_ACTION);
-        self.drain_state_hook_plan_into(&state_plan, &mut updates);
-        let post_action_late_skill_plan =
-            self.scheduler
-                .skill_post_action_hook_plan(&self.entities, &self.registry, action.actor, SkillPostActionPhase::Late);
-        self.drain_skill_hook_plan_into(&post_action_late_skill_plan, &mut updates);
         self.drain_plain_update_end_into(&mut updates);
         #[cfg(not(feature = "no_debug"))]
         if debug_tick {
