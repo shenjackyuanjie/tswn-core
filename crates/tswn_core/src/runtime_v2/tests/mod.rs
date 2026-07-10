@@ -6,6 +6,7 @@ mod plain_assassinate_skill_tests;
 mod plain_attack_skill_tests;
 mod plain_raw_import_tests;
 mod plain_status_skill_tests;
+mod plain_summon_share_damage_tests;
 mod plain_summon_skill_tests;
 mod plain_zombie_skill_tests;
 mod prepared_init_tests;

@@ -147,6 +147,7 @@ impl CombatRuntime {
         if !killed {
             return;
         }
+        self.emit_plain_lethal_replay_into(caster, owner, updates);
         self.world.mark_dead(owner, team);
         self.cleanup_plain_summon_owner_minions_except(owner, summoned, updates);
         self.drain_lethal_damage_hooks_into(caster, owner, updates);

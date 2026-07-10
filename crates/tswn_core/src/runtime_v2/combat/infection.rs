@@ -355,6 +355,25 @@ impl CombatRuntime {
     }
 
     pub fn drain_plain_lethal_damage_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
+        self.emit_plain_lethal_replay_into(caster, target, updates);
+        self.drain_die_hooks_into(target, updates);
+
+        let (hp, team) = self
+            .entities
+            .get(target)
+            .map(|entity| (entity.runtime.hp, entity.runtime.team))
+            .unwrap_or_else(|| panic!("runtime_v2 lethal target disappeared: {}", target.0));
+        if hp > 0 {
+            return;
+        }
+
+        self.entities.get_mut(target).unwrap().runtime.alive = false;
+        self.world.mark_dead(target, team);
+        self.cleanup_linked_minions_for_owner(target, updates);
+        self.drain_kill_hooks_into(caster, target, updates);
+    }
+
+    pub fn emit_plain_lethal_replay_into(&self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let die_message = if self
             .entities
             .get(target)
@@ -371,21 +390,6 @@ impl CombatRuntime {
             target.0 as usize,
             50,
         ));
-        self.drain_die_hooks_into(target, updates);
-
-        let (hp, team) = self
-            .entities
-            .get(target)
-            .map(|entity| (entity.runtime.hp, entity.runtime.team))
-            .unwrap_or_else(|| panic!("runtime_v2 lethal target disappeared: {}", target.0));
-        if hp > 0 {
-            return;
-        }
-
-        self.entities.get_mut(target).unwrap().runtime.alive = false;
-        self.world.mark_dead(target, team);
-        self.cleanup_linked_minions_for_owner(target, updates);
-        self.drain_kill_hooks_into(caster, target, updates);
     }
 
     pub fn recover_plain_actor_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
