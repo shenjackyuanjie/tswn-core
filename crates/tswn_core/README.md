@@ -76,8 +76,9 @@ let runner = Runner::new_from_namerena_raw(raw_input, eval_rq).unwrap();
 ```
 
 `tswn_core::replay_view` 暴露公共的 replay view 构建结构：一个 frame 包含多行 `ReplayRow`，
-一行包含多个 `ReplayClip`，clip 内提供展示前 `delay`、结构化文本 `parts`、`[]` 高亮文字颜色码 `color`、语义分类 `tone`、
-关联玩家、HP 前后值、是否展示血条、是否渲染死亡特效以及 emoji 占位字段。包装层只需要把
+一行包含多个 `ReplayClip`。clip 只承载播放与布局信息：展示前 `delay`、结构化文本 `parts`、`[]`
+高亮文字颜色码 `color`、语义分类 `tone`、关联玩家 id、侧栏状态快照和胜利片段标记。
+文本、玩家、数值、HP 条、死亡特效与 emoji 占位字段都下沉到 `ReplayTextPart`。包装层只需要把
 自己的玩家快照类型实现 `ReplayState`，即可复用同一套回放推演规则。
 
 当前 delay 规则按优先级依次为：frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子

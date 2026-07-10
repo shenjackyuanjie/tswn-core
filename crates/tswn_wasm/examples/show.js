@@ -64,11 +64,43 @@
  * 单帧更新的结构：
  * @typedef {{
  *   updates: FrameMessage[],
+ *   rows?: ReplayRow[],
  *   states: FightState[],
  *   finished: boolean,
  *   winner_ids: number[],
  *   total_delay: number
  * }} FrameUpdate
+ *
+ * replay view 行结构：
+ * @typedef {{
+ *   indent: boolean,
+ *   clips: ReplayClip[]
+ * }} ReplayRow
+ *
+ * replay view 片段结构；文本/玩家/血条/死亡特效语义都在 parts 内。
+ * @typedef {{
+ *   delay: number,
+ *   color: string,
+ *   tone: MessageTone,
+ *   parts: ReplayTextPart[],
+ *   caster_ids?: number[],
+ *   target_ids?: number[],
+ *   sidebar_states?: FightState[],
+ *   sidebar_previous_states?: FightState[],
+ *   winner?: boolean
+ * }} ReplayClip
+ *
+ * replay view 文本片段结构：
+ * @typedef {{
+ *   kind: 'text' | 'highlight' | 'player' | 'data',
+ *   text: string,
+ *   player_id?: number|null,
+ *   show_hp?: boolean,
+ *   hp_before?: number,
+ *   hp_after?: number,
+ *   death_effect?: boolean,
+ *   emoji?: string|null
+ * }} ReplayTextPart
  *
  * 单条消息的结构：
  * @typedef {{

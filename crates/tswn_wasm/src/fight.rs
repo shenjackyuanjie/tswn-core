@@ -379,16 +379,8 @@ fn rows_from_core(view: ReplayViewFrame<PlayerState>) -> (Vec<ReplayRow>, i32) {
                 .into_iter()
                 .map(|clip| ReplayClip {
                     delay: clip.delay,
-                    text_template: clip.text_template,
                     color: clip.color,
                     tone: tone_from_core(clip.tone),
-                    player_id: clip.player_id,
-                    data: clip.data,
-                    show_hp: clip.show_hp,
-                    hp_before: clip.hp_before,
-                    hp_after: clip.hp_after,
-                    death_effect: clip.death_effect,
-                    emoji: clip.emoji,
                     parts: clip.parts.into_iter().map(part_from_core).collect(),
                     caster_ids: clip.caster_ids,
                     target_ids: clip.target_ids,

@@ -268,18 +268,8 @@ pub struct ReplayTextPart {
 #[tsify(into_wasm_abi)]
 pub struct ReplayClip {
     pub delay: i32,
-    pub text_template: String,
     pub color: String,
     pub tone: MessageTone,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub player_id: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<String>,
-    pub show_hp: bool,
-    pub hp_before: i32,
-    pub hp_after: i32,
-    pub death_effect: bool,
-    pub emoji: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<ReplayTextPart>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

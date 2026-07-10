@@ -7,6 +7,7 @@
 - `tswn-cli fight`（含 `--out-raw`）、`tswn-cli diff` 与 `tswn-cli raw`（含 `!test!` 评分/胜率）默认改用 Runtime v2；需要旧实现对账时可显式传入 `--runtime legacy`。普通日志、raw 聚合日志、赢家输入索引、玩家状态摘要及 benchmark 汇总输出保持与 legacy 逐行一致。
 - Runtime v2 新增可复用的 `PreparedBattleRoster` / `PreparedRuntimeV2Runner` 与无逐回合结果积累的批量 completion 路径；胜率只重建 seed 相关状态，评分复用固定 runtime/registry 形状，并显式支持 benchmark 所需的 `eval_rq=6`。
 - Runtime v2 的 `PlayerTemplate` 保留 `id_key_name` 与 clan 冷身份数据；运行期子实体生成和使魔复活会同步维护该身份，CLI/replay 等上层不再需要回查 legacy `Storage` 才能还原完整名字。
+- 精简公共 `replay_view` 数据结构：`ReplayClip` 现在只承载播放、布局、关联 id、侧栏快照和胜利标记；玩家、数值、血条、死亡特效与 emoji 语义统一下沉到 `ReplayTextPart`，避免多玩家句子被 clip 级单一字段误表达。
 
 ### 测试
 
