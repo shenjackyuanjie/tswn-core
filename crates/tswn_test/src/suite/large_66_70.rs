@@ -5,8 +5,7 @@
 use super::*;
 
 /// 用来测试 clamp
-#[test]
-fn large_66() {
+pub fn large_66<E: crate::EngineAdapter>() {
     const CASE: &str = r#"太阳帝国 #Sc2WCffta@Shabby_fish
 机械革命 #nYHCsQ1ak@Shabby_fish
 
@@ -68,15 +67,14 @@ fn large_66() {
         "sampled case-66 must contain a blank separator between input and trace",
         "sampled case-66 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-66 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-66", &actual_lines, &expected_lines);
 }
 
 /// 这个好像是用来check ts的
-#[test]
-fn large_67() {
+pub fn large_67<E: crate::EngineAdapter>() {
     const CASE: &str = r#"Stupefy #rkISERW8@Shabby_fish
 日落·日出 #Pd3J7shds@Shabby_fish
 
@@ -129,14 +127,13 @@ Stupefy发起攻击, 日落·日出受到49点伤害
         "sampled case-67 must contain a blank separator between input and trace",
         "sampled case-67 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-67 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-67", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_68() {
+pub fn large_68<E: crate::EngineAdapter>() {
     const CASE: &str = r#"Queen_G #LGDj0Xr29@Shabby_fish
 使腿勇腋二@Shabby_fish
 Light_Years_Away #XgTW5RYlF@Shabby_fish
@@ -534,14 +531,13 @@ Avada_Kedavra发起攻击, 给我看点新花样受到98点伤害
         "sampled case-68 must contain a blank separator between input and trace",
         "sampled case-68 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-68 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-68", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_69() {
+pub fn large_69<E: crate::EngineAdapter>() {
     const CASE: &str = r#"洋基周刊 #40WSvjsmo@Shabby_fish
 El_Hombre_que_Ríe #wnyYvAHgu@Shabby_fish
 
@@ -636,14 +632,13 @@ El_Hombre_que_Ríe发起攻击, 雷达使用伤害反弹, El_Hombre_que_Ríe使�
         "sampled case-69 must contain a blank separator between input and trace",
         "sampled case-69 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-69 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-69", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_70() {
+pub fn large_70<E: crate::EngineAdapter>() {
     const CASE: &str = r#"Superpower #ddDROyhTJ@Shabby_fish
 大化西游 #faYL5F6xL@Shabby_fish
 
@@ -699,8 +694,10 @@ Superpower被击倒了
         "sampled case-70 must contain a blank separator between input and trace",
         "sampled case-70 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-70 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-70", &actual_lines, &expected_lines);
 }
+
+

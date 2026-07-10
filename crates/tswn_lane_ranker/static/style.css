@@ -328,20 +328,30 @@ td, th {
 
 /* v31 skill type column */
 .score-table .type-col,
-.score-table .type-cell {
+.score-table .type-cell,
+.score-table .text-type-col,
+.score-table .text-type-cell {
   width: 1%;
   white-space: nowrap;
   padding-left: 18px;
   padding-right: 18px;
 }
 
-.score-table .type-cell {
+.score-table .type-cell,
+.score-table .text-type-cell {
   color: #333;
 }
 
+.score-table .uncertainty-col,
+.score-table .uncertainty-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
 /* v37 pairwise calibration columns */
-.score-table .raw-rank-col,
-.score-table .raw-rank-cell,
 .score-table .raw-col,
 .score-table .raw-cell,
 .score-table .delta-col,
@@ -434,4 +444,212 @@ td, th {
   text-align: right;
   white-space: nowrap;
   padding-left: 18px;
+}
+
+
+.empty-pair-calibration {
+  padding: 0.75rem;
+  color: #555;
+}
+
+
+.text-type-col,
+.text-type-cell {
+  white-space: nowrap;
+  max-width: 14rem;
+}
+
+.type-col,
+.type-cell {
+  white-space: nowrap;
+}
+
+
+.score-table .simple-type-col,
+.score-table .simple-type-cell,
+.score-table .text-type-col,
+.score-table .text-type-cell,
+.score-table .type-col,
+.score-table .type-cell {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* v41 winrate type quality gating */
+.score-table .type-quality-col,
+.score-table .type-quality-cell {
+  width: 1%;
+  white-space: nowrap;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.type-quality-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: #eeeeee;
+  color: #555555;
+}
+
+.type-quality-stable_core {
+  background: #d8f5d8;
+  color: #205d20;
+}
+
+.type-quality-probable {
+  background: #e6f1ff;
+  color: #1d4f8f;
+}
+
+.type-quality-boundary {
+  background: #fff1b8;
+  color: #6b5200;
+}
+
+.type-quality-mixed {
+  background: #ffe2d6;
+  color: #7a2f12;
+}
+
+.type-quality-low_support {
+  background: #eeeeee;
+  color: #666666;
+}
+
+.type-quality-uncalibrated {
+  background: #f2f2f2;
+  color: #777777;
+}
+
+.folded-score-table tr.type-quality-row-boundary,
+.folded-score-table tr.type-quality-row-mixed {
+  background-image: linear-gradient(to right, rgba(255, 193, 7, 0.08), rgba(255, 255, 255, 0));
+}
+
+.folded-score-table tr.type-quality-row-stable_core {
+  background-image: linear-gradient(to right, rgba(34, 197, 94, 0.06), rgba(255, 255, 255, 0));
+}
+
+
+.manual-winrate-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px);
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.manual-winrate-controls label {
+  font-size: 14px;
+  color: #444;
+}
+
+/* Crossfit EB calibration view: compact fixed columns only. */
+.score-table .raw-rank-col,
+.score-table .raw-rank-cell,
+.score-table .constrained-rank-col,
+.score-table .constrained-rank-cell,
+.score-table .delta-rank-col,
+.score-table .delta-rank-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.score-table.constrained-view .text-type-cell,
+.score-table.constrained-view .text-type-col {
+  white-space: nowrap;
+}
+
+
+/* Strict Python calibration table: requested compact headers and left-aligned numeric columns. */
+.score-table.constrained-view .score-col,
+.score-table.constrained-view .score-cell,
+.score-table.constrained-view .raw-col,
+.score-table.constrained-view .raw-cell,
+.score-table.constrained-view .raw-rank-col,
+.score-table.constrained-view .raw-rank-cell,
+.score-table.constrained-view .constrained-rank-col,
+.score-table.constrained-view .constrained-rank-cell,
+.score-table.constrained-view .delta-rank-col,
+.score-table.constrained-view .delta-rank-cell {
+  text-align: left;
+  padding-left: 18px;
+  padding-right: 8px;
+}
+
+
+/* vStrict UI fix: score tables are fully left-aligned.
+   Name rows include an 18px fold marker; the header now includes the same marker
+   placeholder in app.js, so the "Name" label lines up with the name text below. */
+.score-table th,
+.score-table td,
+.score-table .score-col,
+.score-table .score-cell,
+.score-table .raw-col,
+.score-table .raw-cell,
+.score-table .raw-rank-col,
+.score-table .raw-rank-cell,
+.score-table .constrained-rank-col,
+.score-table .constrained-rank-cell,
+.score-table .delta-rank-col,
+.score-table .delta-rank-cell,
+.score-table .odds-col,
+.score-table .odds-cell,
+.score-table .uncertainty-col,
+.score-table .uncertainty-cell,
+.score-table .mv-col,
+.score-table .mv-cell,
+.score-table .type-col,
+.score-table .type-cell,
+.score-table .text-type-col,
+.score-table .text-type-cell,
+.score-table .simple-type-col,
+.score-table .simple-type-cell,
+.score-table .name-col,
+.score-table .name-cell {
+  text-align: left !important;
+}
+
+.score-table .name-col .fold-icon {
+  visibility: hidden;
+}
+
+
+.target-generation-panel {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #f7f7fb;
+}
+
+.target-threshold-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+}
+
+.target-threshold-option input {
+  width: 90px;
+}
+
+#targetResults {
+  overflow-x: auto;
+}
+
+.target-summary {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f6f6f6;
+  font-size: 13px;
+  color: #444;
+  white-space: nowrap;
+}
+
+.target-table {
+  margin-top: 8px;
 }

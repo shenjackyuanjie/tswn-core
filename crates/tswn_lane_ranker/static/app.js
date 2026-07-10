@@ -1,4 +1,5 @@
 let currentResults = [];
+let currentTargets = null;
 let showConstrainedResults = false;
 
 async function postJson(url, body) {
@@ -32,7 +33,22 @@ function readWorkerSettings() {
   };
 }
 
+function defaultCalibrationThresholdForLane(laneSize) {
+  return Number(laneSize) === 1 ? 47.5 : 48.5;
+}
+
+function syncDefaultCalibrationThreshold(force = false) {
+  const laneSize = Number(document.getElementById("laneSize").value || 1);
+  const input = document.getElementById("selectionCqdThresholdInput");
+  const next = defaultCalibrationThresholdForLane(laneSize).toFixed(1);
+  if (force || !input.value.trim()) {
+    input.value = next;
+  }
+  input.placeholder = next;
+}
+
 function readSelectionSettings() {
+  const laneSize = Number(document.getElementById("laneSize").value || 1);
   const thresholdRaw = document.getElementById("selectionCqdThresholdInput").value.trim();
   const outerRaw = document.getElementById("outerWorkersInput").value.trim();
 
@@ -41,17 +57,20 @@ function readSelectionSettings() {
   }
 
   if (thresholdRaw && !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(thresholdRaw)) {
-    throw new Error("环境阈值必须是数字，例如 48.5。");
+    throw new Error("校准池 Raw Score 阈值必须是数字，例如 48.2。");
   }
 
-  const cqdThreshold = thresholdRaw ? Number(thresholdRaw) : 48.5;
-  if (!Number.isFinite(cqdThreshold) || cqdThreshold < 0 || cqdThreshold > 100) {
-    throw new Error("环境阈值必须在 0 到 100 之间。");
+  const rawScoreThreshold = thresholdRaw ? Number(thresholdRaw) : defaultCalibrationThresholdForLane(laneSize);
+  if (!Number.isFinite(rawScoreThreshold) || rawScoreThreshold < 0 || rawScoreThreshold > 100) {
+    throw new Error("校准池 Raw Score 阈值必须在 0 到 100 之间。");
   }
 
   return {
     outer_workers: outerRaw ? Number(outerRaw) : 0,
-    cqd_threshold: cqdThreshold,
+    raw_score_threshold: rawScoreThreshold,
+    // Legacy compatibility for older backend builds. New strict Python calibration
+    // uses raw_score_threshold and passes the same value to --raw-min.
+    cqd_threshold: rawScoreThreshold,
   };
 }
 
@@ -115,15 +134,45 @@ document.getElementById("mergeBtn").addEventListener("click", async () => {
   }
 });
 
+
+document.getElementById("addWinratesBtn").addEventListener("click", async () => {
+  const out = document.getElementById("addWinratesOutput");
+  try {
+    out.textContent = "computing manual winrates...";
+    const groups = document.getElementById("manualWinratesInput").value
+      .split(/\r?\n/)
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    if (groups.length < 2) {
+      out.textContent = "请至少输入两行组合。每两行组成一组对战。";
+      return;
+    }
+
+    const workerSettings = readWorkerSettings();
+    const body = { groups, ...workerSettings };
+
+    const data = await postJson("/api/winrates/add", body);
+    showJson(out, data);
+    await loadLanes();
+  } catch (err) {
+    out.textContent = String(err);
+  }
+});
+
 document.getElementById("refreshLanesBtn").addEventListener("click", loadLanes);
 document.getElementById("loadResultsBtn").addEventListener("click", loadResults);
 document.getElementById("exportResultsBtn").addEventListener("click", exportResults);
-document.getElementById("purgeLowScoreBtn").addEventListener("click", purgeLowScoreGroups);
 document.getElementById("runConstrainedSelectionBtn").addEventListener("click", runConstrainedSelection);
 document.getElementById("exportConstrainedResultsBtn").addEventListener("click", exportConstrainedResults);
+document.getElementById("generateTargetsBtn").addEventListener("click", generateTargets);
+document.getElementById("exportTargetsBtn").addEventListener("click", exportTargets);
 document.getElementById("showConstrainedResultsInput").addEventListener("change", event => {
   showConstrainedResults = event.target.checked;
   renderResultsTable();
+});
+document.getElementById("laneSize").addEventListener("change", () => {
+  syncDefaultCalibrationThreshold(true);
 });
 
 async function loadLanes() {
@@ -147,7 +196,7 @@ async function loadLanes() {
            <strong>${escapeHtml(p.phase)}</strong>
            ${p.total_rounds ? ` round ${p.round}/${p.total_rounds}` : ""}
            ${p.rate_total ? ` rates ${p.rate_done}/${p.rate_total}` : ""}
-           ${p.kicked_count ? ` changed ${p.kicked_count}` : ""}
+           ${p.kicked_count ? ` archived ${p.kicked_count}` : ""}
            <br><span>${escapeHtml(p.message || "")}</span>
          </div>`
       : "";
@@ -202,11 +251,13 @@ window.recomputeLane = async function(size) {
 
 window.selectLane = function(size) {
   document.getElementById("laneSize").value = size;
+  syncDefaultCalibrationThreshold(true);
   loadResults();
 };
 
 async function loadResults() {
   const el = document.getElementById("results");
+  syncDefaultCalibrationThreshold(false);
   const laneSize = document.getElementById("laneSize").value;
   const res = await fetch(`/api/lanes/${laneSize}/results`);
   const rows = await res.json();
@@ -230,10 +281,32 @@ function renderResultsTable() {
   const rows = showConstrainedResults
     ? constrainedPresentationRows(currentResults)
     : rawPresentationRows(currentResults);
+
+  if (showConstrainedResults && !rows.some(hasSelectionWeightCqd)) {
+    el.innerHTML = `
+      <p class="empty-pair-calibration">
+        当前没有校准结果。请点击“执行校准”，等状态显示完成后会自动刷新。
+      </p>
+    `;
+    return;
+  }
+
+
   const groups = buildFoldedResultGroups(rows);
-  const constrainedHeader = showConstrainedResults
-    ? `<th class="constrained-rank-col">P-Rank</th><th class="score-col">P-Score</th><th class="raw-rank-col">R-Rank</th><th class="raw-col">R-Score</th><th class="delta-col">Δ</th>`
-    : `<th class="score-col">Score</th>`;
+  const tableHeader = showConstrainedResults
+    ? `
+          <th class="constrained-rank-col">C-Rank</th>
+          <th class="score-col">C-Score</th>
+          <th class="raw-rank-col">R-Rank</th>
+          <th class="raw-col">R-Score</th>
+          <th class="delta-rank-col">Δ</th>
+          <th class="text-type-col">Type</th>
+          <th class="name-col"><span class="fold-icon"></span>Name</th>`
+    : `
+          <th>R-Rank</th>
+          <th class="score-col">R-Score</th>
+          <th class="text-type-col">Type</th>
+          <th class="name-col"><span class="fold-icon"></span>Name</th>`;
 
   // 高级结果 UI：
   // 从上往下扫描，每扫到一个没有被折叠的组，将下面所有与它有重复 member 的组折叠到它下面。
@@ -242,10 +315,7 @@ function renderResultsTable() {
     <table class="score-table folded-score-table ${showConstrainedResults ? "constrained-view" : "raw-view"}">
       <thead>
         <tr>
-          ${showConstrainedResults ? "" : "<th>Rank</th>"}
-          ${constrainedHeader}
-          <th class="type-col">Type</th>
-          <th class="name-col">Name</th>
+          ${tableHeader}
         </tr>
       </thead>
       <tbody>
@@ -281,59 +351,34 @@ function renderResultsTable() {
   });
 }
 
+
 function rawPresentationRows(rows) {
-  return [...rows].sort((a, b) => {
-    const scoreDiff = rawScoreOf(b) - rawScoreOf(a);
-    if (Number.isFinite(scoreDiff) && scoreDiff !== 0) return scoreDiff;
-    return String(a.canonical || "").localeCompare(String(b.canonical || ""));
-  }).map((row, idx) => ({ ...row, true_raw_rank: idx + 1 }));
+  return [...rows].sort((a, b) => Number(a.rank || 0) - Number(b.rank || 0));
 }
 
-function rawScoreOf(row) {
-  const raw = Number(row && row.raw_average_cqd);
-  if (Number.isFinite(raw) && raw !== 0) return raw;
-  const avg = Number(row && row.average_cqd);
-  return Number.isFinite(avg) ? avg : Number.NEGATIVE_INFINITY;
-}
-
-function trueRawRankMap(rows) {
-  const map = new Map();
-  rawPresentationRows(rows).forEach((row, idx) => {
-    map.set(row.group_id, idx + 1);
-  });
-  return map;
-}
-
-function trueRawRankOf(row) {
-  if (row && Number.isFinite(Number(row.true_raw_rank))) {
-    return Number(row.true_raw_rank);
-  }
-  if (row && Number.isFinite(Number(row.raw_rank))) {
-    return Number(row.raw_rank);
-  }
-  return Number(row && row.rank) || "—";
+function isConstrainedVisibleRow(row) {
+  return row
+    && row.selection_status !== "below_threshold"
+    && hasSelectionWeightCqd(row);
 }
 
 function constrainedPresentationRows(rows) {
-  const rawRanks = trueRawRankMap(rows);
-  return [...rows].map(row => ({
-    ...row,
-    true_raw_rank: rawRanks.get(row.group_id) || row.rank,
-  })).sort((a, b) => {
-    const aHasPair = Number.isFinite(Number(a.pair_score));
-    const bHasPair = Number.isFinite(Number(b.pair_score));
-    if (aHasPair !== bHasPair) return aHasPair ? -1 : 1;
+  return [...rows]
+    .filter(isConstrainedVisibleRow)
+    .sort((a, b) => {
+      const aPairRank = hasFiniteNumber(selectionWeightRank(a)) ? selectionWeightRank(a) : Infinity;
+      const bPairRank = hasFiniteNumber(selectionWeightRank(b)) ? selectionWeightRank(b) : Infinity;
+      if (aPairRank !== bPairRank) {
+        return aPairRank - bPairRank;
+      }
 
-    const ar = Number(a.pair_rank ?? Number.POSITIVE_INFINITY);
-    const br = Number(b.pair_rank ?? Number.POSITIVE_INFINITY);
-    if (Number.isFinite(ar) && Number.isFinite(br) && ar !== br) return ar - br;
+      const pairDiff = Number(selectionWeightCqd(b)) - Number(selectionWeightCqd(a));
+      if (Number.isFinite(pairDiff) && pairDiff !== 0) return pairDiff;
 
-    const pairDiff = Number(b.pair_score ?? -Infinity) - Number(a.pair_score ?? -Infinity);
-    if (Number.isFinite(pairDiff) && pairDiff !== 0) return pairDiff;
-
-    return Number(trueRawRankOf(a) || 0) - Number(trueRawRankOf(b) || 0);
-  });
+      return Number(a.rank || 0) - Number(b.rank || 0);
+    });
 }
+
 
 function buildFoldedResultGroups(rows) {
   const consumed = new Array(rows.length).fill(false);
@@ -450,19 +495,25 @@ function renderFoldedGroup(group, groupIndex) {
   const clickableClass = childCount ? "fold-toggle has-children" : "fold-row";
   const icon = childCount ? "▸" : "";
   const childBadge = childCount ? `<span class="fold-count">+${childCount}</span>` : "";
+  const parentRankCell = showConstrainedResults ? "" : `<td>${parent.rank}</td>`;
   const parentCells = showConstrainedResults
     ? `
-      <td class="constrained-rank-cell">${parent.pair_rank ?? "—"}</td>
-      <td class="score-cell">${formatScore(parent.pair_score)}</td>
-      <td class="raw-rank-cell">${trueRawRankOf(parent)}</td>
-      <td class="raw-cell">${formatScore(rawScoreOf(parent))}</td>
-      <td class="delta-cell">${formatSigned(parent.raw_delta)}</td>`
-    : `<td>${trueRawRankOf(parent)}</td><td class="score-cell">${formatScore(rawScoreOf(parent))}</td>`;
+      <td class="constrained-rank-cell">${selectionWeightRank(parent) ?? "—"}</td>
+      <td class="score-cell">${formatScore(selectionWeightCqd(parent))}</td>
+      <td class="raw-rank-cell">${parent.rank ?? "—"}</td>
+      <td class="raw-cell">${formatScore(parent.raw_average_cqd ?? parent.average_cqd)}</td>
+      <td class="delta-rank-cell">${formatDeltaRank(parent)}</td>`
+    : `<td class="score-cell">${formatScore(parent.raw_average_cqd ?? parent.average_cqd)}</td>`;
+
+  const parentExtraCells = showConstrainedResults
+    ? `<td class="text-type-cell">${escapeHtml(parent.type_label || "无")}</td>`
+    : `<td class="text-type-cell">${escapeHtml(parent.type_label || "无")}</td>`;
 
   const parentRow = `
     <tr class="${clickableClass} ${rowClass(parent)}" data-group-index="${groupIndex}" data-expanded="false" title="${escapeHtml(rowTooltip(parent))}">
+      ${parentRankCell}
       ${parentCells}
-      <td class="type-cell">${escapeHtml(parent.type_label || "无")}</td>
+      ${parentExtraCells}
       <td class="name-cell">
         <span class="fold-icon">${icon}</span>
         ${escapeHtml(parent.canonical)}
@@ -473,19 +524,25 @@ function renderFoldedGroup(group, groupIndex) {
   `;
 
   const childRows = group.children.map(child => {
+    const childRankCell = showConstrainedResults ? "" : `<td>${child.rank}</td>`;
     const childCells = showConstrainedResults
       ? `
-        <td class="constrained-rank-cell">${child.pair_rank ?? "—"}</td>
-        <td class="score-cell">${formatScore(child.pair_score)}</td>
-        <td class="raw-rank-cell">${trueRawRankOf(child)}</td>
-        <td class="raw-cell">${formatScore(rawScoreOf(child))}</td>
-        <td class="delta-cell">${formatSigned(child.raw_delta)}</td>`
-      : `<td>${trueRawRankOf(child)}</td><td class="score-cell">${formatScore(rawScoreOf(child))}</td>`;
+        <td class="constrained-rank-cell">${selectionWeightRank(child) ?? "—"}</td>
+        <td class="score-cell">${formatScore(selectionWeightCqd(child))}</td>
+        <td class="raw-rank-cell">${child.rank ?? "—"}</td>
+        <td class="raw-cell">${formatScore(child.raw_average_cqd ?? child.average_cqd)}</td>
+        <td class="delta-rank-cell">${formatDeltaRank(child)}</td>`
+      : `<td class="score-cell">${formatScore(child.raw_average_cqd ?? child.average_cqd)}</td>`;
+
+    const childExtraCells = showConstrainedResults
+      ? `<td class="text-type-cell">${escapeHtml(child.type_label || "无")}</td>`
+      : `<td class="text-type-cell">${escapeHtml(child.type_label || "无")}</td>`;
 
     return `
       <tr class="fold-child ${rowClass(child)}" data-parent-index="${groupIndex}" hidden title="${escapeHtml(rowTooltip(child))}">
+        ${childRankCell}
         ${childCells}
-        <td class="type-cell">${escapeHtml(child.type_label || "无")}</td>
+        ${childExtraCells}
         <td class="name-cell child-name">
           <span class="fold-child-marker">↳</span>
           ${escapeHtml(child.canonical)}
@@ -498,17 +555,357 @@ function renderFoldedGroup(group, groupIndex) {
   return parentRow + childRows;
 }
 
+
+
+
+function hasFiniteNumber(value) {
+  if (value === null || value === undefined || value === "") {
+    return false;
+  }
+  const number = Number(value);
+  return Number.isFinite(number);
+}
+
+function selectionWeightCqd(row) {
+  if (!row) return null;
+  const value = row.selection_weight_cqd ?? row.selection_weight_cqd_display ?? row.pair_score;
+  return hasFiniteNumber(value) ? Number(value) : null;
+}
+
+function selectionWeightRank(row) {
+  if (!row) return null;
+  const value = row.selection_weight_rank_all_candidates ?? row.pair_rank;
+  return hasFiniteNumber(value) ? Number(value) : null;
+}
+
+function hasSelectionWeightCqd(row) {
+  return hasFiniteNumber(selectionWeightCqd(row));
+}
+
+
+const WINRATE_TYPE_QUALITY = Object.freeze({
+  STABLE_CORE: "stable_core",
+  PROBABLE: "probable",
+  BOUNDARY: "boundary",
+  MIXED: "mixed",
+  LOW_SUPPORT: "low_support",
+  UNCALIBRATED: "uncalibrated",
+});
+
+const WINRATE_TYPE_QUALITY_LABEL = Object.freeze({
+  stable_core: "稳定核心",
+  probable: "较稳定",
+  boundary: "边界型",
+  mixed: "混合型",
+  low_support: "低样本",
+  uncalibrated: "未校准",
+});
+
+const WINRATE_TYPE_QUALITY_EN_LABEL = Object.freeze({
+  stable_core: "Stable Core",
+  probable: "Probable Type",
+  boundary: "Boundary Type",
+  mixed: "Mixed Type",
+  low_support: "Low-Support Type",
+  uncalibrated: "Uncalibrated",
+});
+
+const WINRATE_TYPE_QUALITY_ORDER = Object.freeze([
+  WINRATE_TYPE_QUALITY.STABLE_CORE,
+  WINRATE_TYPE_QUALITY.PROBABLE,
+  WINRATE_TYPE_QUALITY.BOUNDARY,
+  WINRATE_TYPE_QUALITY.MIXED,
+  WINRATE_TYPE_QUALITY.LOW_SUPPORT,
+  WINRATE_TYPE_QUALITY.UNCALIBRATED,
+]);
+
+const WINRATE_TYPE_QUALITY_THRESHOLDS = Object.freeze({
+  minClusterSize: 20,
+  stableConfidence: 0.75,
+  stableReclusterStability: 0.75,
+  stableAssignmentEntropy: 0.30,
+  probableConfidence: 0.65,
+  probableReclusterStability: 0.60,
+  probableAssignmentEntropy: 0.50,
+  boundaryReclusterStability: 0.60,
+  boundaryAssignmentEntropy: 0.50,
+  boundaryMargin: 0.02,
+  mixedConfidence: 0.60,
+  mixedEntropy: 0.60,
+});
+
+const RESIDUAL_TYPE_QUALITY_THRESHOLDS = Object.freeze({
+  ...WINRATE_TYPE_QUALITY_THRESHOLDS,
+  minClusterSize: 8,
+  lowVarianceBasinProbableStability: 0.70,
+  lowVarianceBasinProbableAssignmentEntropy: 0.38,
+  lowVarianceBasinStableStability: 0.78,
+  lowVarianceBasinStableAssignmentEntropy: 0.28,
+});
+
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function winrateClusterSizeFromLabel(label) {
+  const match = String(label || "").match(/n\s*=\s*(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+function primaryWinrateConfidence(row) {
+  return numberOrNull(row && (row.winrate_profile_soft_confidence_calibrated ?? row.winrate_profile_soft_confidence));
+}
+
+function primaryWinrateEntropy(row) {
+  return numberOrNull(row && (row.winrate_profile_soft_entropy_calibrated ?? row.winrate_profile_soft_entropy));
+}
+
+function primaryWinrateStability(row) {
+  return numberOrNull(row && (row.winrate_profile_recluster_stability ?? row.winrate_profile_bootstrap_stability));
+}
+
+function winrateTypeQuality(row) {
+  const label = row && row.winrate_type_label;
+  if (!label) {
+    return {
+      code: WINRATE_TYPE_QUALITY.UNCALIBRATED,
+      label: WINRATE_TYPE_QUALITY_LABEL.uncalibrated,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.uncalibrated,
+      reason: "missing_winrate_type",
+      isStableCore: false,
+    };
+  }
+
+  const clusterSize = winrateClusterSizeFromLabel(label);
+  const conf = primaryWinrateConfidence(row);
+  const entropy = primaryWinrateEntropy(row);
+  const stability = primaryWinrateStability(row);
+  const assignmentEntropy = numberOrNull(row && row.winrate_profile_assignment_entropy);
+  const margin = numberOrNull(row && row.winrate_profile_margin);
+  const reasons = [];
+
+  if (clusterSize != null && clusterSize < WINRATE_TYPE_QUALITY_THRESHOLDS.minClusterSize) {
+    reasons.push(`cluster_size=${clusterSize}<${WINRATE_TYPE_QUALITY_THRESHOLDS.minClusterSize}`);
+    return {
+      code: WINRATE_TYPE_QUALITY.LOW_SUPPORT,
+      label: WINRATE_TYPE_QUALITY_LABEL.low_support,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.low_support,
+      reason: reasons.join(";"),
+      isStableCore: false,
+    };
+  }
+
+  const stableCore =
+    conf != null &&
+    stability != null &&
+    assignmentEntropy != null &&
+    conf >= WINRATE_TYPE_QUALITY_THRESHOLDS.stableConfidence &&
+    stability >= WINRATE_TYPE_QUALITY_THRESHOLDS.stableReclusterStability &&
+    assignmentEntropy <= WINRATE_TYPE_QUALITY_THRESHOLDS.stableAssignmentEntropy;
+  if (stableCore) {
+    return {
+      code: WINRATE_TYPE_QUALITY.STABLE_CORE,
+      label: WINRATE_TYPE_QUALITY_LABEL.stable_core,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.stable_core,
+      reason: `conf>=${WINRATE_TYPE_QUALITY_THRESHOLDS.stableConfidence};stability>=${WINRATE_TYPE_QUALITY_THRESHOLDS.stableReclusterStability};assignment_entropy<=${WINRATE_TYPE_QUALITY_THRESHOLDS.stableAssignmentEntropy}`,
+      isStableCore: true,
+    };
+  }
+
+  const probable =
+    conf != null &&
+    stability != null &&
+    assignmentEntropy != null &&
+    conf >= WINRATE_TYPE_QUALITY_THRESHOLDS.probableConfidence &&
+    stability >= WINRATE_TYPE_QUALITY_THRESHOLDS.probableReclusterStability &&
+    assignmentEntropy <= WINRATE_TYPE_QUALITY_THRESHOLDS.probableAssignmentEntropy;
+  if (probable) {
+    return {
+      code: WINRATE_TYPE_QUALITY.PROBABLE,
+      label: WINRATE_TYPE_QUALITY_LABEL.probable,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.probable,
+      reason: `conf>=${WINRATE_TYPE_QUALITY_THRESHOLDS.probableConfidence};stability>=${WINRATE_TYPE_QUALITY_THRESHOLDS.probableReclusterStability};assignment_entropy<=${WINRATE_TYPE_QUALITY_THRESHOLDS.probableAssignmentEntropy}`,
+      isStableCore: false,
+    };
+  }
+
+  if (margin != null && margin <= WINRATE_TYPE_QUALITY_THRESHOLDS.boundaryMargin) {
+    reasons.push(`margin<=${WINRATE_TYPE_QUALITY_THRESHOLDS.boundaryMargin}`);
+  }
+  if (stability != null && stability < WINRATE_TYPE_QUALITY_THRESHOLDS.boundaryReclusterStability) {
+    reasons.push(`recluster_stability<${WINRATE_TYPE_QUALITY_THRESHOLDS.boundaryReclusterStability}`);
+  }
+  if (assignmentEntropy != null && assignmentEntropy > WINRATE_TYPE_QUALITY_THRESHOLDS.boundaryAssignmentEntropy) {
+    reasons.push(`assignment_entropy>${WINRATE_TYPE_QUALITY_THRESHOLDS.boundaryAssignmentEntropy}`);
+  }
+  if (reasons.length) {
+    return {
+      code: WINRATE_TYPE_QUALITY.BOUNDARY,
+      label: WINRATE_TYPE_QUALITY_LABEL.boundary,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.boundary,
+      reason: reasons.join(";"),
+      isStableCore: false,
+    };
+  }
+
+  if (conf != null && conf < WINRATE_TYPE_QUALITY_THRESHOLDS.mixedConfidence) {
+    reasons.push(`conf<${WINRATE_TYPE_QUALITY_THRESHOLDS.mixedConfidence}`);
+  }
+  if (entropy != null && entropy >= WINRATE_TYPE_QUALITY_THRESHOLDS.mixedEntropy) {
+    reasons.push(`entropy>=${WINRATE_TYPE_QUALITY_THRESHOLDS.mixedEntropy}`);
+  }
+
+  return {
+    code: WINRATE_TYPE_QUALITY.MIXED,
+    label: WINRATE_TYPE_QUALITY_LABEL.mixed,
+    englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.mixed,
+    reason: reasons.length ? reasons.join(";") : "not_stable_or_probable",
+    isStableCore: false,
+  };
+}
+
+function winrateTypeQualityBadge(row) {
+  const quality = winrateTypeQuality(row);
+  return `<span class="type-quality-badge type-quality-${quality.code}" title="${escapeHtml(quality.reason)}">${escapeHtml(quality.label)}</span>`;
+}
+
+function residualTypeQuality(row) {
+  const label = row && row.residual_type_label;
+  if (!label) {
+    return {
+      code: WINRATE_TYPE_QUALITY.UNCALIBRATED,
+      label: WINRATE_TYPE_QUALITY_LABEL.uncalibrated,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.uncalibrated,
+      reason: "missing_residual_type",
+      isStableCore: false,
+    };
+  }
+
+  const clusterSize = winrateClusterSizeFromLabel(label);
+  const conf = numberOrNull(row && row.residual_profile_soft_confidence_calibrated);
+  const stability = numberOrNull(row && row.residual_profile_recluster_stability);
+  const assignmentEntropy = numberOrNull(row && row.residual_profile_assignment_entropy);
+  const margin = numberOrNull(row && row.residual_profile_margin);
+  const isLowVarianceBasin = /\bvar-low\b/.test(String(label || ""));
+  const reasons = [];
+
+  if (clusterSize != null && clusterSize < RESIDUAL_TYPE_QUALITY_THRESHOLDS.minClusterSize) {
+    reasons.push(`cluster_size=${clusterSize}<${RESIDUAL_TYPE_QUALITY_THRESHOLDS.minClusterSize}`);
+    return {
+      code: WINRATE_TYPE_QUALITY.LOW_SUPPORT,
+      label: WINRATE_TYPE_QUALITY_LABEL.low_support,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.low_support,
+      reason: reasons.join(";"),
+      isStableCore: false,
+    };
+  }
+
+  if (isLowVarianceBasin &&
+      (stability == null || assignmentEntropy == null ||
+       stability < RESIDUAL_TYPE_QUALITY_THRESHOLDS.lowVarianceBasinProbableStability ||
+       assignmentEntropy > RESIDUAL_TYPE_QUALITY_THRESHOLDS.lowVarianceBasinProbableAssignmentEntropy)) {
+    reasons.push(`var_low_basin_requires_stability>=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.lowVarianceBasinProbableStability}`);
+    reasons.push(`var_low_basin_requires_assignment_entropy<=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.lowVarianceBasinProbableAssignmentEntropy}`);
+    return {
+      code: WINRATE_TYPE_QUALITY.BOUNDARY,
+      label: WINRATE_TYPE_QUALITY_LABEL.boundary,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.boundary,
+      reason: reasons.join(";"),
+      isStableCore: false,
+    };
+  }
+
+  if (conf != null && stability != null && assignmentEntropy != null &&
+      conf >= RESIDUAL_TYPE_QUALITY_THRESHOLDS.stableConfidence &&
+      stability >= (isLowVarianceBasin ? RESIDUAL_TYPE_QUALITY_THRESHOLDS.lowVarianceBasinStableStability : RESIDUAL_TYPE_QUALITY_THRESHOLDS.stableReclusterStability) &&
+      assignmentEntropy <= (isLowVarianceBasin ? RESIDUAL_TYPE_QUALITY_THRESHOLDS.lowVarianceBasinStableAssignmentEntropy : RESIDUAL_TYPE_QUALITY_THRESHOLDS.stableAssignmentEntropy)) {
+    return {
+      code: WINRATE_TYPE_QUALITY.STABLE_CORE,
+      label: WINRATE_TYPE_QUALITY_LABEL.stable_core,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.stable_core,
+      reason: `residual_conf>=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.stableConfidence};residual_stability>=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.stableReclusterStability};residual_assignment_entropy<=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.stableAssignmentEntropy}`,
+      isStableCore: true,
+    };
+  }
+
+  if (conf != null && stability != null && assignmentEntropy != null &&
+      conf >= RESIDUAL_TYPE_QUALITY_THRESHOLDS.probableConfidence &&
+      stability >= (isLowVarianceBasin ? RESIDUAL_TYPE_QUALITY_THRESHOLDS.lowVarianceBasinProbableStability : RESIDUAL_TYPE_QUALITY_THRESHOLDS.probableReclusterStability) &&
+      assignmentEntropy <= (isLowVarianceBasin ? RESIDUAL_TYPE_QUALITY_THRESHOLDS.lowVarianceBasinProbableAssignmentEntropy : RESIDUAL_TYPE_QUALITY_THRESHOLDS.probableAssignmentEntropy)) {
+    return {
+      code: WINRATE_TYPE_QUALITY.PROBABLE,
+      label: WINRATE_TYPE_QUALITY_LABEL.probable,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.probable,
+      reason: `residual_conf>=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.probableConfidence};residual_stability>=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.probableReclusterStability};residual_assignment_entropy<=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.probableAssignmentEntropy}`,
+      isStableCore: false,
+    };
+  }
+
+  if (margin != null && margin <= RESIDUAL_TYPE_QUALITY_THRESHOLDS.boundaryMargin) {
+    reasons.push(`residual_margin<=${RESIDUAL_TYPE_QUALITY_THRESHOLDS.boundaryMargin}`);
+  }
+  if (stability != null && stability < RESIDUAL_TYPE_QUALITY_THRESHOLDS.boundaryReclusterStability) {
+    reasons.push(`residual_recluster_stability<${RESIDUAL_TYPE_QUALITY_THRESHOLDS.boundaryReclusterStability}`);
+  }
+  if (assignmentEntropy != null && assignmentEntropy > RESIDUAL_TYPE_QUALITY_THRESHOLDS.boundaryAssignmentEntropy) {
+    reasons.push(`residual_assignment_entropy>${RESIDUAL_TYPE_QUALITY_THRESHOLDS.boundaryAssignmentEntropy}`);
+  }
+
+  if (reasons.length) {
+    return {
+      code: WINRATE_TYPE_QUALITY.BOUNDARY,
+      label: WINRATE_TYPE_QUALITY_LABEL.boundary,
+      englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.boundary,
+      reason: reasons.join(";"),
+      isStableCore: false,
+    };
+  }
+
+  return {
+    code: WINRATE_TYPE_QUALITY.MIXED,
+    label: WINRATE_TYPE_QUALITY_LABEL.mixed,
+    englishLabel: WINRATE_TYPE_QUALITY_EN_LABEL.mixed,
+    reason: "residual_not_stable_or_probable",
+    isStableCore: false,
+  };
+}
+
+function residualTypeQualityBadge(row) {
+  const quality = residualTypeQuality(row);
+  return `<span class="type-quality-badge type-quality-${quality.code}" title="${escapeHtml(quality.reason)}">${escapeHtml(quality.label)}</span>`;
+}
+
 function formatScore(value) {
+  if (value == null) {
+    return "—";
+  }
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(3) : "—";
 }
 
 function formatSigned(value) {
+  if (value == null) {
+    return "—";
+  }
   const n = Number(value);
   if (!Number.isFinite(n)) {
     return "—";
   }
   return `${n >= 0 ? "+" : ""}${n.toFixed(3)}`;
+}
+
+function formatDeltaRank(row) {
+  const rawRank = Number(row && row.rank);
+  const correctRank = Number(selectionWeightRank(row));
+  if (!Number.isFinite(rawRank) || !Number.isFinite(correctRank)) {
+    return "—";
+  }
+  const delta = rawRank - correctRank;
+  return `${delta >= 0 ? "+" : ""}${delta}`;
 }
 
 function rowClass(row) {
@@ -519,10 +916,12 @@ function rowClass(row) {
   return classes.join(" ");
 }
 
+
 function statusBadge(row) {
   if (!row) {
     return "";
   }
+  // Active-environment non-selected rows are displayed like normal rows.
   if (isBlockedRow(row)) {
     return `<span class="blocked-badge">blocked</span>`;
   }
@@ -532,28 +931,26 @@ function statusBadge(row) {
   return "";
 }
 
+
 function rowTooltip(row) {
   if (!row) {
     return "";
   }
   const parts = [
     `status=${row.selection_status || "unknown"}`,
-    `raw=${formatScore(rawScoreOf(row))}`,
+    `raw_rank=${row.rank ?? ""}`,
+    `raw_score=${formatScore(row.raw_average_cqd ?? row.average_cqd)}`,
   ];
-  if (row.pair_score != null) parts.push(`pair=${formatScore(row.pair_score)}`);
-  if (row.pair_rank != null) parts.push(`pair_rank=${row.pair_rank}`);
-  if (row.raw_delta != null) parts.push(`delta=${formatSigned(row.raw_delta)}`);
-  if (row.pair_score_std != null) parts.push(`score_std=${formatScore(row.pair_score_std)}`);
-  if (row.pair_rank_std != null) parts.push(`rank_std=${formatScore(row.pair_rank_std)}`);
-  if (row.delta_std != null) parts.push(`delta_std=${formatScore(row.delta_std)}`);
-  if (row.edge_count_mean != null) parts.push(`edge_mean=${formatScore(row.edge_count_mean)}`);
-  if (row.stability_flag) parts.push(`stability=${row.stability_flag}`);
+  if (hasSelectionWeightCqd(row)) parts.push(`selection_weight_rank=${selectionWeightRank(row) ?? ""}`);
+  if (hasSelectionWeightCqd(row)) parts.push(`selection_weight_cqd=${formatScore(selectionWeightCqd(row))}`);
+  if (row.type_label) parts.push(`text_type=${row.type_label}`);
+  if (row.raw_delta != null) parts.push(`score_delta=${formatSigned(row.raw_delta)}`);
   return parts.join(" | ");
 }
 
+
 function effectiveExportScore(row) {
-  const raw = rawScoreOf(row);
-  return Number.isFinite(raw) ? raw : 0;
+  return Number(row && (row.raw_average_cqd ?? row.average_cqd)) || 0;
 }
 
 function exportResults() {
@@ -564,14 +961,19 @@ function exportResults() {
     return;
   }
 
-  // Raw 导出保持旧格式：只按默认 Score/CQD 输出，不混入约束选号结果。
-  const rawRows = rawPresentationRows(currentResults);
-  const resultLines = rawRows
-    .map(row => `${effectiveExportScore(row).toFixed(3)} ${row.canonical}`);
+  const rawRows = rawPresentationRows(currentResults)
+    .filter(row => hasFiniteNumber(row.raw_average_cqd ?? row.average_cqd));
+  const lines = [
+    "R-Rank\tR-Score\tType\tName",
+    ...rawRows.map(row => [
+      row.rank ?? "",
+      formatScore(row.raw_average_cqd ?? row.average_cqd),
+      row.type_label || "",
+      row.canonical || "",
+    ].map(value => String(value).replace(/\t/g, " ")).join("\t")),
+  ];
 
-  const content = resultLines.join("\n");
-
-  downloadText(`lane_${laneSize}_score.txt`, content);
+  downloadText(`lane_${laneSize}_raw_score.txt`, lines.join("\n"));
 }
 
 function exportConstrainedResults() {
@@ -582,62 +984,226 @@ function exportConstrainedResults() {
     return;
   }
 
-  const allRows = constrainedPresentationRows(currentResults);
-  const calibratedRows = allRows.filter(row => row.pair_score != null || row.pair_rank != null);
+  const rows = constrainedPresentationRows(currentResults)
+    .filter(isConstrainedVisibleRow);
 
-  if (!calibratedRows.length) {
-    alert("当前没有修正结果。请先点击“执行修正”，等任务完成后再读取结果。");
+  if (!rows.length) {
+    alert("当前没有校准结果。请先点击“执行校准”，等任务完成后再读取结果。");
     return;
   }
 
-  const foldedGroups = buildFoldedResultGroups(calibratedRows);
-  const envThreshold = currentEnvironmentThreshold();
-  const pairSkillTotalLines = buildSkillEquivalentSummary(foldedGroups, envThreshold, row => row.pair_score);
+  const lines = [
+    "C-Rank\tC-Score\tR-Rank\tR-Score\tΔ\tType\tName",
+    ...rows.map(row => [
+      selectionWeightRank(row) ?? "",
+      formatScore(selectionWeightCqd(row)),
+      row.rank ?? "",
+      formatScore(row.raw_average_cqd ?? row.average_cqd),
+      formatDeltaRank(row),
+      row.type_label || "",
+      row.canonical || "",
+    ].map(value => String(value).replace(/\t/g, " ")).join("\t")),
+  ];
 
-  const content = [
-    "P-Rank	P-Score	R-Rank	R-Score	Δ	Type	Name	pair_score_std	delta_std	pair_rank_std	edge_count_mean	stability_flag	uncertainty	status",
-    ...calibratedRows.map(row => [
-      row.pair_rank ?? "",
-      formatScore(row.pair_score),
-      trueRawRankOf(row),
-      formatScore(rawScoreOf(row)),
-      formatSigned(row.raw_delta),
-      row.type_label || "无",
-      row.canonical,
-      formatScore(row.pair_score_std),
-      formatScore(row.delta_std),
-      formatScore(row.pair_rank_std),
-      formatScore(row.edge_count_mean),
-      row.stability_flag || "",
-      formatScore(row.uncertainty),
-      row.selection_status || "",
-    ].join("\t")),
-    "",
-    "# Full Raw/Calibration Table",
-    "P-Rank	P-Score	R-Rank	R-Score	Δ	Type	Name	pair_score_std	delta_std	pair_rank_std	edge_count_mean	stability_flag	uncertainty	status",
-    ...allRows.map(row => [
-      row.pair_rank ?? "",
-      formatScore(row.pair_score),
-      trueRawRankOf(row),
-      formatScore(rawScoreOf(row)),
-      formatSigned(row.raw_delta),
-      row.type_label || "无",
-      row.canonical,
-      formatScore(row.pair_score_std),
-      formatScore(row.delta_std),
-      formatScore(row.pair_rank_std),
-      formatScore(row.edge_count_mean),
-      row.stability_flag || "",
-      formatScore(row.uncertainty),
-      row.selection_status || "",
-    ].join("\t")),
-    "",
-    `# Skill Equivalent Sum for unfolded, unblocked groups with pair_score >= ${formatThreshold(envThreshold)}`,
-    ...pairSkillTotalLines,
-  ].join("\n");
-
-  downloadText(`lane_${laneSize}_stability.txt`, content);
+  downloadText(`lane_${laneSize}_correct_score.txt`, lines.join("\n"));
 }
+
+
+
+
+function readTargetSettings() {
+  const raw = document.getElementById("targetCqdThresholdInput").value.trim();
+  if (raw && !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw)) {
+    throw new Error("靶子 C-Score 阈值必须是数字，例如 49.0。");
+  }
+  const threshold = raw ? Number(raw) : 49.0;
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
+    throw new Error("靶子 C-Score 阈值必须在 0 到 100 之间。");
+  }
+
+  const fixedRaw = document.getElementById("targetFixedMainCountInput").value.trim();
+  if (fixedRaw && !/^\d+$/.test(fixedRaw)) {
+    throw new Error("固定主榜数量必须是 0 到 50 之间的整数。");
+  }
+  const fixedMainCount = fixedRaw ? Number(fixedRaw) : 40;
+  if (!Number.isInteger(fixedMainCount) || fixedMainCount < 0 || fixedMainCount > 50) {
+    throw new Error("固定主榜数量必须是 0 到 50 之间的整数。");
+  }
+
+  return {
+    cqd_threshold: threshold,
+    fixed_main_count: fixedMainCount,
+  };
+}
+
+
+function ensureTargetResultsContainer() {
+  let el = document.getElementById("targetResults");
+  if (el) {
+    return el;
+  }
+
+  el = document.createElement("div");
+  el.id = "targetResults";
+
+  const results = document.getElementById("results");
+  if (results && results.parentNode) {
+    results.parentNode.insertBefore(el, results);
+    return el;
+  }
+
+  const panel = document.querySelector(".target-generation-panel")
+    || document.querySelector(".constrained-selection-panel")
+    || document.body;
+  panel.insertAdjacentElement("afterend", el);
+  return el;
+}
+
+
+async function generateTargets() {
+  const laneSize = document.getElementById("laneSize").value;
+  const out = document.getElementById("targetGenerationOutput");
+  try {
+    out.textContent = "generating targets...";
+    const data = await postJson(`/api/lanes/${laneSize}/targets`, readTargetSettings());
+    currentTargets = data;
+    clearTargetPreview();
+    const s = data.summary || {};
+    out.textContent = `靶子完成：${s.target_count || 0} 个；fixed ${s.fixed_main_count || 0} + optimized ${s.optimized_count || 0}；${targetReferenceScopeLabel(s)} 审计 ${s.audit_reference_rows ?? 0} 行；mean abs diff=${formatMetric(s.audit_mean_abs_diff)}；max abs diff=${formatMetric(s.audit_max_abs_diff)}；p95=${formatMetric(s.audit_p95_abs_diff)}；corr=${formatMetric(s.objective_corr)}`;
+  } catch (err) {
+    out.textContent = String(err);
+  }
+}
+
+function clearTargetPreview() {
+  const el = document.getElementById("targetResults");
+  if (el) {
+    el.innerHTML = "";
+  }
+}
+
+
+function targetPhaseLabel(phase) {
+  if (phase === "fixed_main_prefix") return "fixed";
+  if (phase === "minimax_lns_fill") return "minimax";
+  if (phase === "weighted_milp_fill") return "weighted-milp";
+  if (phase === "fixed_main_top40") return "main40";
+  if (phase === "optimized_profile_fill") return "fit";
+  return phase || "";
+}
+
+function formatMetric(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "—";
+  return Number(value).toFixed(6);
+}
+
+function formatWeight(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "";
+  return Number(value).toFixed(12);
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "";
+  return `${Number(value).toFixed(3)}%`;
+}
+
+function targetReferenceScopeLabel(summary) {
+  const lane = Number(summary && summary.lane_size);
+  const limit = Number(summary && summary.reference_limit);
+  if (lane === 1) return `Single main Top${Number.isFinite(limit) ? limit : 100}`;
+  if (Number.isFinite(lane) && lane > 1) return `Multi main Top${Number.isFinite(limit) ? limit : 200}`;
+  return `Main Top${Number.isFinite(limit) ? limit : ""}`;
+}
+
+
+function exportTargets() {
+  if (!currentTargets || !Array.isArray(currentTargets.rows) || !currentTargets.rows.length) {
+    alert("当前没有靶子。请先点击“生成靶子”。");
+    return;
+  }
+
+  const laneSize = document.getElementById("laneSize").value;
+  const s = currentTargets.summary || {};
+  const auditRows = Array.isArray(currentTargets.reference_audit_rows)
+    ? currentTargets.reference_audit_rows
+    : [];
+
+  const configText = typeof currentTargets.target_config_text === "string"
+    ? currentTargets.target_config_text.trim()
+    : currentTargets.rows.map(row => `${formatWeight(row.target_weight)}\t${row.canonical || ""}`).join("\n");
+
+  const lines = [
+    "# Weighted target config: weight<TAB>combination",
+    ...configText.split(/\r?\n/).filter(Boolean),
+    "",
+    "# Target generation summary",
+    `lane_size\t${s.lane_size ?? ""}`,
+    `target_count\t${s.target_count ?? ""}`,
+    `fixed_main_count\t${s.fixed_main_count ?? ""}`,
+    `optimized_count\t${s.optimized_count ?? ""}`,
+    `player_cap\t${s.player_cap ?? ""}`,
+    `player_weight_cap\t${formatMetric(s.player_weight_cap)}`,
+    `target_weight_sum\t${formatMetric(s.target_weight_sum)}`,
+    `target_weight_min\t${formatMetric(s.target_weight_min)}`,
+    `target_weight_max\t${formatMetric(s.target_weight_max)}`,
+    `cqd_threshold\t${formatScore(s.cqd_threshold)}`,
+    `reference_scope\t${targetReferenceScopeLabel(s)}`,
+    `reference_limit\t${s.reference_limit ?? ""}`,
+    `reference_count\t${s.reference_count ?? ""}`,
+    `candidate_count\t${s.candidate_count ?? ""}`,
+    `objective_mode\tweighted_milp_minimax_abs_aligned_diff_then_p95_mean_rmse_mse`,
+    `objective_mse\t${formatMetric(s.objective_mse)}`,
+    `objective_corr\t${formatMetric(s.objective_corr)}`,
+    `reference_avg_winrate_mean\t${formatScore(s.reference_avg_winrate_mean)}%`,
+    `reference_avg_winrate_std\t${formatScore(s.reference_avg_winrate_std)}`,
+    `reference_c_score_mean\t${formatScore(s.reference_c_score_mean)}`,
+    `reference_c_score_std\t${formatScore(s.reference_c_score_std)}`,
+    `audit_reference_rows\t${s.audit_reference_rows ?? ""}`,
+    `audit_mean_diff\t${formatMetric(s.audit_mean_diff)}`,
+    `audit_mean_abs_diff\t${formatMetric(s.audit_mean_abs_diff)}`,
+    `audit_max_abs_diff\t${formatMetric(s.audit_max_abs_diff)}`,
+    `audit_rmse\t${formatMetric(s.audit_rmse)}`,
+    `audit_p95_abs_diff\t${formatMetric(s.audit_p95_abs_diff)}`,
+    "",
+    "# Target rows",
+    "T-Rank\tWeight\tPhase\tC-Rank\tC-Score\tR-Rank\tR-Score\tRef Avg\tRef N\tStatus\tType\tName",
+    ...currentTargets.rows.map(row => [
+      row.target_rank ?? "",
+      formatWeight(row.target_weight),
+      targetPhaseLabel(row.phase),
+      row.correct_rank ?? "",
+      formatScore(row.correct_score),
+      row.raw_rank ?? "",
+      formatScore(row.raw_score),
+      formatPercent(row.average_reference_winrate),
+      row.reference_rate_count ?? "",
+      row.selection_status || "",
+      row.type_label || "",
+      row.canonical || "",
+    ].map(value => String(value).replace(/\t/g, " ")).join("\t")),
+    "",
+    `# ${targetReferenceScopeLabel(s)} audit rows: each reference row's weighted winrate against the 50 targets`,
+    "Ref-Rank-in-Scope\tC-Rank\tC-Score\tR-Rank\tR-Score\tWeighted Avg Winrate vs Targets\tTarget N\tAligned C-Score From Targets\tAligned-C minus C-Score\tAbs Diff\tType\tName",
+    ...auditRows.map(row => [
+      row.reference_rank ?? "",
+      row.correct_rank ?? "",
+      formatScore(row.correct_score),
+      row.raw_rank ?? "",
+      formatScore(row.raw_score),
+      formatPercent(row.average_winrate_vs_targets),
+      row.target_rate_count ?? "",
+      formatScore(row.aligned_c_score_from_targets),
+      formatSigned(row.aligned_minus_c_score),
+      formatScore(row.abs_aligned_minus_c_score),
+      row.type_label || "",
+      row.canonical || "",
+    ].map(value => String(value).replace(/\t/g, " ")).join("\t")),
+  ];
+
+  downloadText(`lane_${laneSize}_targets.txt`, lines.join("\n"));
+}
+
+
 
 
 function downloadText(filename, content) {
@@ -654,114 +1220,83 @@ function downloadText(filename, content) {
   URL.revokeObjectURL(url);
 }
 
-async function purgeLowScoreGroups() {
-  const laneSize = document.getElementById("laneSize").value;
-  if (!laneSize) {
-    alert("请先选择赛道。");
-    return;
-  }
 
-  if (!confirm("将从数据库物理删除该赛道所有 R-Score < 45 的组合；45.000 不删。这个操作不是封存，不能直接撤销。继续吗？")) {
-    return;
-  }
-
-  try {
-    const workerSettings = readWorkerSettings();
-    const data = await postJson(`/api/lanes/${laneSize}/purge-low-score`, workerSettings);
-    alert(`已物理删除 ${data.deleted_count} 个 R-Score < ${formatThreshold(data.threshold)} 的组合。${data.queued_lanes?.length ? "已自动提交重算。" : "没有需要删除的组合。"}`);
-    await loadLanes();
-    await loadResults();
-  } catch (err) {
-    alert(String(err));
-  }
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+async function loadLaneProgress(laneSize) {
+  const res = await fetch(`/api/lanes/${laneSize}/progress`);
+  if (!res.ok) {
+    return null;
+  }
+  return await res.json();
+}
+
+async function waitForPairwiseCalibration(laneSize, out) {
+  const readyPhases = new Set([
+    "winrate_type_profile_ready",
+    "pairwise_calibration_ready", // compatibility with older builds / stale DB progress
+    "calibration_ready",
+    "constrained_selection_ready",
+  ]);
+
+  for (let attempt = 0; attempt < 1800; attempt += 1) {
+    await sleep(1000);
+    await loadLanes();
+
+    const progress = await loadLaneProgress(laneSize);
+    const phase = progress && progress.phase ? String(progress.phase) : "";
+    const message = progress && progress.message ? String(progress.message) : "";
+
+    if (phase) {
+      out.textContent = `校准中：${phase}${message ? " — " + message : ""}`;
+    }
+
+    if (readyPhases.has(phase)) {
+      out.textContent = `校准完成。${message || "结果已写入表格。"}`;
+      return true;
+    }
+
+    if (/failed|error/i.test(phase) || /failed|error|panic/i.test(message)) {
+      throw new Error(`校准失败：${phase}${message ? " — " + message : ""}`);
+    }
+  }
+
+  out.textContent = "校准仍在运行；可以稍后点击“读取结果”或“导出校准”。";
+  return false;
+}
+
+
+
+
 
 async function runConstrainedSelection() {
   const out = document.getElementById("constrainedSelectionOutput");
   const laneSize = document.getElementById("laneSize").value;
   try {
     const settings = readSelectionSettings();
-    out.textContent = "queueing edge-bagging stability...";
-    const data = await postJson(`/api/lanes/${laneSize}/constrained-selection`, settings);
-    out.textContent = "已提交修正任务。";
-    document.getElementById("showConstrainedResultsInput").checked = true;
+    out.textContent = "queueing calibration...";
+    const data = await postJson(`/api/lanes/${laneSize}/calibration`, settings);
+
+    const checkbox = document.getElementById("showConstrainedResultsInput");
+    checkbox.checked = true;
     showConstrainedResults = true;
+
+    const queuedThreshold = Number(data.raw_score_threshold ?? data.cqd_threshold);
+    out.textContent = `已排队校准：Raw Score ≥ ${queuedThreshold.toFixed(3)}，等待完成...`;
+    renderResultsTable();
     await loadLanes();
+
+    const finished = await waitForPairwiseCalibration(laneSize, out);
+    if (finished) {
+      await loadResults();
+    }
   } catch (err) {
     out.textContent = String(err);
   }
 }
 
-
-function buildTeamOddsSummary(rows) {
-  const teamOdds = new Map();
-
-  for (const row of rows) {
-    const odds = Number(row.golden_rate || 0);
-    if (!Number.isFinite(odds) || odds <= 0) {
-      continue;
-    }
-
-    const team = String(row.root_team_name || row.team_name || extractTeamName(row.canonical) || "").trim();
-    if (!team) {
-      continue;
-    }
-
-    teamOdds.set(team, (teamOdds.get(team) || 0) + odds);
-  }
-
-  return Array.from(teamOdds.entries())
-    .filter(([, odds]) => odds > 0)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([team, odds]) => `${odds.toFixed(3)} ${team}`);
-}
-
-function skillEquivalentThresholdForLane(laneSize) {
-  return Number(laneSize) === 1 ? 48.0 : 48.5;
-}
-
-function currentEnvironmentThreshold() {
-  const raw = document.getElementById("selectionCqdThresholdInput")?.value?.trim();
-  const value = raw ? Number(raw) : 48.5;
-  return Number.isFinite(value) ? value : 48.5;
-}
-
-function formatThreshold(value) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-function buildSkillEquivalentSummary(foldedGroups, threshold, scoreSelector = row => row.average_cqd) {
-  const totals = new Map();
-
-  for (const group of foldedGroups) {
-    const row = group.parent;
-    if (!row || isBlockedRow(row) || Number(scoreSelector(row) || 0) < threshold) {
-      continue;
-    }
-
-    for (const item of row.skill_totals || []) {
-      const name = String(item.name || "").trim();
-      const value = Number(item.value || 0);
-      if (!name || !Number.isFinite(value)) {
-        continue;
-      }
-      totals.set(name, (totals.get(name) || 0) + value);
-    }
-  }
-
-  return Array.from(totals.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([name, value]) => `${value.toFixed(2)} ${name}`);
-}
-
-function extractTeamName(canonical) {
-  const firstMember = String(canonical || "").split("+")[0] || "";
-  const at = firstMember.lastIndexOf("@");
-  if (at < 0 || at === firstMember.length - 1) {
-    return "";
-  }
-  return firstMember.slice(at + 1);
-}
 
 function escapeHtml(value) {
   return String(value)

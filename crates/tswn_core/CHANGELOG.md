@@ -2,10 +2,22 @@
 
 ## [Unreleased]
 
+### 变更
+
+- 精简公共 `replay_view` 数据结构：`ReplayClip` 现在只承载播放、布局、关联 id、侧栏快照和胜利标记；玩家、数值、血条、死亡特效与 emoji 语义统一下沉到 `ReplayTextPart`，避免多玩家句子被 clip 级单一字段误表达。
+
+### 测试
+
+- 新增 `tswn_test` 共享测试 harness，并将原先嵌在 `tswn_core::engine::test` 下的多组回放/战斗测试迁移为可复用的测试 suite，便于后续多个 engine 实现共用同一批行为对账用例。
+- 将 `tswn_core` 专属 engine 测试拆到 `crates/tswn_core/tests/engine_core.rs`，让核心 crate 的公开行为测试与共享测试工具解耦。
+- 更新 `track_test.py` 默认追踪包，默认覆盖迁移后的 large / small seed / multi fight 测试集合。
+
 ### 修复
 
 - 修复使魔模板中通过 `normal:sklcharge` 配置的蓄力不会被后续技能识别的问题：疾走、潜行等依赖蓄力运行时态的逻辑改为扫描当前技能仓库，而不是硬编码普通玩家的 `19` 号技能槽，确保使魔隔离技能槽 `80+id` 里的蓄力也能正确触发加成。
 - 修复 replay view 死亡特效判定过宽的问题：只有“被击倒”或“消失”句子才允许设置 `death_effect`，护身符等 HP 前后同为 `0` 但并非击倒/消失的句子不再触发死亡特效。
+- 修复 replay view 未为“体力值与 X 互换”句子展示血条的问题：生命之轮交换现在会在底层推演 caster/target 的 HP 互换，让两个玩家片段都携带正确的帧前/帧后血量。
+- 修复 replay view 漏掉机制死亡特效的问题：附体、自爆、owner 死亡牵连等没有前置伤害句的死亡，会在“被击倒/消失”句同步目标 HP 为 `0` 并设置 `death_effect`。
 
 ### 验证
 

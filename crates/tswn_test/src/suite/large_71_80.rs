@@ -4,8 +4,7 @@
 
 use super::*;
 
-#[test]
-fn large_71() {
+pub fn large_71<E: crate::EngineAdapter>() {
     const CASE: &str = r#"南峰 }bRMSYZX@Shabby_fish
 反袭 #YN785ClJ3@Shabby_fish
 
@@ -47,14 +46,13 @@ fn large_71() {
         "sampled case-71 must contain a blank separator between input and trace",
         "sampled case-71 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-71 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-71", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_72() {
+pub fn large_72<E: crate::EngineAdapter>() {
     const CASE: &str = r#"来日再会 #ysKNqZlKC@Shabby_fish
 Light_Years_Away #XgTW5RYlF@Shabby_fish
 Fly_Away #4D6i0uPzI@Shabby_fish
@@ -260,8 +258,10 @@ Parallel使用地裂术
         "sampled case-72 must contain a blank separator between input and trace",
         "sampled case-72 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-72 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-72", &actual_lines, &expected_lines);
 }
+
+

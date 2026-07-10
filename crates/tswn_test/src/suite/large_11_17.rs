@@ -4,8 +4,7 @@
 
 use super::*;
 
-#[test]
-fn large_11() {
+pub fn large_11<E: crate::EngineAdapter>() {
     const CASE: &str = r####"abc
 aaaa
 adwada
@@ -126,8 +125,8 @@ sdc发起攻击, fdgs受到53点伤害
         "sampled case-11 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 3021, "large_11 score mismatch");
 
     assert!(guard < 20_000, "sampled case-11 combat did not finish in expected rounds");
@@ -145,8 +144,7 @@ sdc发起攻击, fdgs受到53点伤害
     assert_trace_with_context("sampled case-11", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_12() {
+pub fn large_12<E: crate::EngineAdapter>() {
     const CASE: &str = r####"WmG4iW0iZI
 L6x5GQXq47
 PzFvkx7lP7
@@ -225,16 +223,15 @@ m6SPYplZoz发起攻击, WmG4iW0iZI受到85点伤害
         "sampled case-12 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 2014, "large_12 score mismatch");
 
     assert!(guard < 20_000, "sampled case-12 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-12", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_13() {
+pub fn large_13<E: crate::EngineAdapter>() {
     const CASE: &str = r####"qmAhJQzAVj
 VuRY86K5Fy
 YbhecuG73P
@@ -303,16 +300,15 @@ VuRY86K5Fy发起攻击, bFtbzLCkX3受到113点伤害
         "sampled case-13 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 1833, "large_13 score mismatch");
 
     assert!(guard < 20_000, "sampled case-13 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-13", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_14() {
+pub fn large_14<E: crate::EngineAdapter>() {
     const CASE: &str = r####"gKDx7bsm2Z
 fIF34rkasK
 LTfpktRhRR
@@ -407,16 +403,15 @@ zCqAbiIWgv发起攻击, LTfpktRhRR受到49点伤害
         "sampled case-14 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 2490, "large_14 score mismatch");
 
     assert!(guard < 20_000, "sampled case-14 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-14", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_15() {
+pub fn large_15<E: crate::EngineAdapter>() {
     const CASE: &str = r####"QnljmCHowQ
 IdUM9kx9c2
 vhxSYeEzvf
@@ -487,16 +482,15 @@ IdUM9kx9c2发起攻击, qze3UVC1DD受到101点伤害
         "sampled case-15 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 2107, "large_15 score mismatch");
 
     assert!(guard < 20_000, "sampled case-15 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-15", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_16() {
+pub fn large_16<E: crate::EngineAdapter>() {
     const CASE: &str = r####"WxDNynGfG7
 BQfPHVmVNP
 Qa2SeIjNn5
@@ -569,16 +563,15 @@ WxDNynGfG7发动会心一击, BQfPHVmVNP受到120点伤害
         "sampled case-16 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 1984, "large_16 score mismatch");
 
     assert!(guard < 20_000, "sampled case-16 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-16", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn case_17() {
+pub fn case_17<E: crate::EngineAdapter>() {
     let expected: Vec<String> = vec![
         "aaaaa发起攻击",
         "help受到77点伤害",
@@ -607,13 +600,15 @@ fn case_17() {
     .map(String::from)
     .collect();
 
-    let mut runner = runners::Runner::new_from_namerena_raw("help\naaaaa".to_string()).unwrap();
-    let (actual, guard, total_score) = collect_replay_events(&mut runner, 256, false);
+    let mut runner = E::new_from_raw("help\naaaaa".to_string()).unwrap();
+    let (actual, guard, total_score) = collect_replay_events::<E>(&mut runner, 256, false);
     assert_eq!(total_score, 645, "case_17 score mismatch");
 
     assert!(guard < 256, "combat did not finish in expected rounds");
     assert_trace_with_context("case_17", &actual, &expected);
 
-    let winner = winner_names(&runner);
+    let winner = winner_names::<E>(&runner);
     assert_eq!(winner, vec!["help".to_string()]);
 }
+
+

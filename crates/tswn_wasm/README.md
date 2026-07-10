@@ -81,7 +81,7 @@ session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
 | `RoundFrame`         | 回合帧：`finished`, `winner_ids`, `updates[]`, `rows[]`, `states[]`, `total_delay`                                                                     |
 | `UpdateView`         | 单条更新消息：`caster_id`, `target_id`, `message_rendered`, `message_template`, `tone`, …                                                              |
 | `ReplayRow`          | 回放行：`indent`, `clips[]`；一般首行不缩进，后续行缩进                                                                                                 |
-| `ReplayClip`         | 回放片段：`delay`, `text_template`, `parts[]`, `color`（`[]` 高亮文字 6 位色号）, `tone`, `player_id`, `show_hp`, `hp_before`, `hp_after`, `death_effect`, `sidebar_states[]` 等 |
+| `ReplayClip`         | 回放片段：`delay`, `parts[]`, `color`（`[]` 高亮文字 6 位色号）, `tone`, `caster_ids[]`, `target_ids[]`, `sidebar_states[]`, `sidebar_previous_states[]`, `winner`；文本/玩家/血条/死亡特效语义均在 `parts[]` |
 | `ReplayTextPart`     | 文本片段：`kind`, `text`, `player_id?`, `show_hp`, `hp_before`, `hp_after`, `death_effect`, `emoji?`；`kind` 为 `text` / `highlight` / `player` / `data` |
 | `MessageTone`        | 消息色调：`"normal"` / `"damage"` / `"recover"` / `"knockout"` / `"status_exit"`                                                                        |
 | `FightReplay`        | 完整回放：`players`, `frames[]`, `winner_ids`, `final_states`                                                                                          |
@@ -95,6 +95,8 @@ session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
 `display_index` 是底层分配的展示序号：普通本体为 `0`；同名分身在名字中显示为 `#1`、`#2`……。
 左侧仍会单独显示对象 `#playerId`，用于区分唯一对象编号。`ReplayClip.delay` 按句子级规则给出：
 frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子 `600ms`，其他句子 `500ms`，按该顺序优先匹配。
+同一句中的多个 `player` part 各自携带独立的 HP 前后值；生命之轮体力互换会分别展示双方实际发生的加血或扣血。
+死亡特效只读取死亡句中 player part 的 `death_effect`；附体、自爆或 owner 死亡牵连等机制死亡会由底层在“被击倒/消失”句同步 HP 为 `0`。
 
 `show.html` 的战斗正文渲染只消费 `RoundFrame.rows[].clips[]` 结构化 replay view：分行、分段 delay、文本片段、高亮色、玩家 HP 条、死亡效果和侧栏快照均来自底层字段。前端不再从 `message_template`、`message_rendered` 或 `hp_delta` 反推展示语义；`updates[]` 仅保留给结算统计等非正文渲染用途。
 

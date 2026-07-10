@@ -4,8 +4,7 @@
 
 use super::*;
 
-#[test]
-fn large_51() {
+pub fn large_51<E: crate::EngineAdapter>() {
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋+123
 万我 68#huMG43@仙蛊屋+123
 
@@ -224,15 +223,14 @@ Freddy发起攻击, 我力回避了攻击
         "sampled case-51 must contain a blank separator between input and trace",
         "sampled case-51 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-51 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-51", &actual_lines, &expected_lines);
     assert_eq!(total_score, 6177, "large_51 score mismatch");
 }
 
-#[test]
-fn large_52() {
+pub fn large_52<E: crate::EngineAdapter>() {
     const CASE: &str = r#"aaaa+123
 bbb+324
 ccc+2345
@@ -275,16 +273,15 @@ bbb发起攻击, aaaa受到56点伤害
         "sampled case-52 must contain a blank separator between input and trace",
         "sampled case-52 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 924, "large_52 score mismatch");
     assert!(guard < 20_000, "sampled case-52 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-52", &actual_lines, &expected_lines);
 }
 
 /// covid
-#[test]
-fn large_53() {
+pub fn large_53<E: crate::EngineAdapter>() {
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋+123
 万我 68#huMG43@仙蛊屋+123
 Dianmu YKFMWRPXIMCQ@nan+234
@@ -420,8 +417,8 @@ Dianmu和幻影近距离接触
         "sampled case-53 must contain a blank separator between input and trace",
         "sampled case-53 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
 
     assert!(guard < 20_000, "sampled case-53 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-53", &actual_lines, &expected_lines);
@@ -429,8 +426,7 @@ Dianmu和幻影近距离接触
 }
 
 /// lazy
-#[test]
-fn large_54() {
+pub fn large_54<E: crate::EngineAdapter>() {
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋+123
 万我 68#huMG43@仙蛊屋+123
 Dianmu YKFMWRPXIMCQ@nan+234
@@ -506,8 +502,8 @@ Dianmu打开了文明6, 这回合什么也没做
         "sampled case-54 must contain a blank separator between input and trace",
         "sampled case-54 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
 
     assert!(guard < 20_000, "sampled case-54 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-54", &actual_lines, &expected_lines);
@@ -515,8 +511,7 @@ Dianmu打开了文明6, 这回合什么也没做
 }
 
 /// saitama
-#[test]
-fn large_55() {
+pub fn large_55<E: crate::EngineAdapter>() {
     const CASE: &str = r#"我力 7#W2ib8D@仙蛊屋+123
 万我 68#huMG43@仙蛊屋+123
 Dianmu YKFMWRPXIMCQ@nan+234
@@ -1308,10 +1303,12 @@ Dianmu使用魅惑, 一拳超人回避了攻击
         "sampled case-55 must contain a blank separator between input and trace",
         "sampled case-55 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
 
     assert!(guard < 20_000, "sampled case-55 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-55", &actual_lines, &expected_lines);
     assert_eq!(total_score, 11370, "large_55 score mismatch");
 }
+
+

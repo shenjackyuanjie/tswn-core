@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### 变更
+
+- 精简 `Runner.build_replay()` 中 `frames[].rows[].clips[]` 的 clip dict 与类型存根：移除 clip 顶层的 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji`，统一从 `parts[]` 读取文本、玩家、数值、血条和死亡特效语义。
+- `Runner.build_replay()` 同步补齐机制死亡的 part 级 `death_effect`：附体、自爆、owner 死亡牵连等没有前置伤害句的死亡，会在“被击倒/消失”句显示死亡特效。
+
 ## [0.3.0] - 2026-06-27
 
 ### 新增

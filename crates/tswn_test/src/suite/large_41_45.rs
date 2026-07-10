@@ -5,8 +5,7 @@
 use super::*;
 
 /// 滚木
-#[test]
-fn large_41() {
+pub fn large_41<E: crate::EngineAdapter>() {
     const CASE: &str = r####"桃v66wy7tgu27xp@asyncTales
 b64d64cfaae1f621@asyncTales
 
@@ -145,15 +144,14 @@ Reku_Mochizuki发起攻击, 丧尸受到107点伤害
         "sampled case-41 must contain a blank separator between input and trace",
         "sampled case-41 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 2880, "large_41 score mismatch");
     assert!(guard < 20_000, "sampled case-41 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-41", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_42() {
+pub fn large_42<E: crate::EngineAdapter>() {
     const CASE: &str = r#"锋利Ⅴ EGZPVQMY@TigerStar
 雾山惟助 BAAOVADZ@TigerStar
 
@@ -301,16 +299,15 @@ seed:S2-week2-477-加赛-3@!
         "sampled case-42 must contain a blank separator between input and trace",
         "sampled case-42 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 5091, "large_42 score mismatch");
     assert!(guard < 20_000, "sampled case-42 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-42", &actual_lines, &expected_lines);
 }
 
 /// 护盾+蓄力特性
-#[test]
-fn large_43() {
+pub fn large_43<E: crate::EngineAdapter>() {
     const CASE: &str = r####"豹山惟助 PFOQXFYL@TigerStar
 
 泠珞 itVMnXnsL@807139
@@ -365,16 +362,15 @@ fn large_43() {
         "sampled case-43 must contain a blank separator between input and trace",
         "sampled case-43 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 1078, "large_43 score mismatch");
     assert!(guard < 20_000, "sampled case-43 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-43", &actual_lines, &expected_lines);
 }
 
 /// 护盾
-#[test]
-fn large_44() {
+pub fn large_44<E: crate::EngineAdapter>() {
     const CASE: &str = r####"虚蚓嬉申杆@Shabby_fish
 曾搪激归汗@Hell
 seed:1129 R1-#9-3@!
@@ -853,16 +849,15 @@ seed:1129 R1-#9-3@!
         "sampled case-44 must contain a blank separator between input and trace",
         "sampled case-44 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 6584, "large_44 score mismatch");
     assert!(guard < 20_000, "sampled case-44 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-44", &actual_lines, &expected_lines);
 }
 
 /// 滚木?
-#[test]
-fn large_45() {
+pub fn large_45<E: crate::EngineAdapter>() {
     const CASE: &str = r####"桃v66wy7tgu27xp@asyncTales
 b64d64cfaae1f621@asyncTales
 
@@ -1001,9 +996,11 @@ Reku_Mochizuki发起攻击, 丧尸受到107点伤害
         "sampled case-45 must contain a blank separator between input and trace",
         "sampled case-45 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 2880, "large_45 score mismatch");
     assert!(guard < 20_000, "sampled case-45 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-45", &actual_lines, &expected_lines);
 }
+
+

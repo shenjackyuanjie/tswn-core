@@ -4,8 +4,7 @@
 
 use super::*;
 
-#[test]
-fn large_full() {
+pub fn large_full<E: crate::EngineAdapter>() {
     const FIGHT_CASE: &str = r###"兔蛙智仁$0a0LD4Dh@爱425
 沉睡在悲伤的海洋中#056ARx3e@爱425
 都江堰00217109183087@abruce425
@@ -1457,8 +1456,8 @@ wangifc5NuJx52y1cMSaD发起攻击, 丧尸回避了攻击
         "embedded fight case must contain a blank separator between input and trace",
         "embedded fight trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 50_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 50_000, true);
     assert_eq!(total_score, 40889, "large_full score mismatch");
     assert!(guard < 50_000, "fight.md combat did not finish in expected rounds");
     if actual_lines != expected_lines {
@@ -1487,3 +1486,5 @@ wangifc5NuJx52y1cMSaD发起攻击, 丧尸回避了攻击
         );
     }
 }
+
+

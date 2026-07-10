@@ -4,8 +4,7 @@
 
 use super::*;
 
-#[test]
-fn large_18() {
+pub fn large_18<E: crate::EngineAdapter>() {
     const CASE: &str = r####"xwjcqObl2L
 OD2wlIdqr1
 xbws21Im4P
@@ -132,16 +131,15 @@ Omj8qVJppc发起攻击, 4iJ53RqFn8受到72点伤害
         "sampled case-18 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 2598, "large_18 score mismatch");
 
     assert!(guard < 20_000, "sampled case-18 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-18", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_19() {
+pub fn large_19<E: crate::EngineAdapter>() {
     const CASE: &str = r####"l4nehpuWwK
 GVZ36Iw0Q2
 E42WIlaV65
@@ -234,16 +232,15 @@ E42WIlaV65开始蓄力
         "sampled case-19 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 1782, "large_19 score mismatch");
 
     assert!(guard < 20_000, "sampled case-19 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-19", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_20() {
+pub fn large_20<E: crate::EngineAdapter>() {
     const CASE: &str = r####"k9brYO9ljp
 5fh9ir4AaE
 905nLuadjH
@@ -330,16 +327,15 @@ kil5DzKTCb发起攻击, 5fh9ir4AaE受到90点伤害
         "sampled case-20 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 1796, "large_20 score mismatch");
 
     assert!(guard < 20_000, "sampled case-20 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-20", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_21() {
+pub fn large_21<E: crate::EngineAdapter>() {
     const CASE: &str = r####"YFvkJHzIuC
 UeqihUcRJb
 0pmsnYnvfO
@@ -432,16 +428,15 @@ YFvkJHzIuC发起攻击, UeqihUcRJb受到60点伤害
         "sampled case-21 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 1888, "large_21 score mismatch");
 
     assert!(guard < 20_000, "sampled case-21 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-21", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_22() {
+pub fn large_22<E: crate::EngineAdapter>() {
     const CASE: &str = r####"7Gk3oYoEGP
 pNa6d5nbSu
 Fvsbto5UXx
@@ -516,10 +511,12 @@ HNi9InX0qm使用地裂术
         "sampled case-22 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 2055, "large_22 score mismatch");
 
     assert!(guard < 20_000, "sampled case-22 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-22", &actual_lines, &expected_lines);
 }
+
+

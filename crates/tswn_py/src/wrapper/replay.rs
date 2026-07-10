@@ -515,24 +515,8 @@ pub fn replay_row_to_pydict<'py>(
     for clip in &row.clips {
         let clip_dict = PyDict::new(py);
         clip_dict.set_item("delay", clip.delay)?;
-        clip_dict.set_item("text_template", &clip.text_template)?;
         clip_dict.set_item("color", &clip.color)?;
         clip_dict.set_item("tone", replay_tone_to_str(clip.tone))?;
-        set_optional_usize(&clip_dict, "player_id", clip.player_id)?;
-        if let Some(data) = &clip.data {
-            clip_dict.set_item("data", data)?;
-        } else {
-            clip_dict.set_item("data", py_none(py)?)?;
-        }
-        clip_dict.set_item("show_hp", clip.show_hp)?;
-        clip_dict.set_item("hp_before", clip.hp_before)?;
-        clip_dict.set_item("hp_after", clip.hp_after)?;
-        clip_dict.set_item("death_effect", clip.death_effect)?;
-        if let Some(emoji) = &clip.emoji {
-            clip_dict.set_item("emoji", emoji)?;
-        } else {
-            clip_dict.set_item("emoji", py_none(py)?)?;
-        }
 
         let parts = PyList::empty(py);
         for part in &clip.parts {

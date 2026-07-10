@@ -4,8 +4,7 @@
 
 use super::*;
 
-#[test]
-fn large_01() {
+pub fn large_01<E: crate::EngineAdapter>() {
     const CASE: &str = r####"「OS」#c1#bFc71OCDuO35@mwh_425
 血谣染硫决@Mithril425
 锋利ⅤEGZPVQMY@TigerStar425
@@ -167,16 +166,15 @@ Imperio#4B4UZThv发起攻击, 愞㢯老海受到105点伤害
         "sampled case-01 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 4830, "large_01 score mismatch");
 
     assert!(guard < 20_000, "sampled case-01 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-01", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_02() {
+pub fn large_02<E: crate::EngineAdapter>() {
     const CASE: &str = r####"「OS」#H1#YoRmfG4zW9@mwh_425
 「OS」#c1#E7WGTekQTugF@mwh_425
 RedOT<{f2=v}67w@流浪冒险者425
@@ -350,16 +348,15 @@ mVf4YCPDlRm发起攻击, SDPC#AZLZJQUPN受到38点伤害
         "sampled case-02 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 10_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 10_000, true);
     assert_eq!(total_score, 4824, "large_02 score mismatch");
 
     assert!(guard < 20_000, "sampled case-02 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-02", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_03() {
+pub fn large_03<E: crate::EngineAdapter>() {
     const CASE: &str = r####"#念-GP8LKM21D4JZ@柚子不是油渍425
 Wakaba_mutsumi#pjFhEhSbjy@🥒425
 Tachibana_akira#BydbIMidbs@🥒425
@@ -511,16 +508,15 @@ SDPC#AZLZJQUPN发起攻击, MeltelabRC3P3Go7受到37点伤害
         "sampled case-03 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 4452, "large_03 score mismatch");
 
     assert!(guard < 20_000, "sampled case-03 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-03", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_04() {
+pub fn large_04<E: crate::EngineAdapter>() {
     const CASE: &str = r####"沉睡在悲伤的海洋中#056ARx3e@爱425
 「OS」#c1#E7WGTekQTugF@mwh_425
 RedOT<{f2=v}67w@流浪冒险者425
@@ -660,16 +656,15 @@ Hypochondriac#TtwN3jZ发起攻击, 东乡幻翎#BCBNRCXFX受到122点伤害
         "sampled case-04 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 4221, "large_04 score mismatch");
 
     assert!(guard < 20_000, "sampled case-04 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-04", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_05() {
+pub fn large_05<E: crate::EngineAdapter>() {
     const CASE: &str = r####"「OS」#c1#bFc71OCDuO35@mwh_425
 GordonALYJDXORPTER@nan425
 "铁胆"哈拉文领主-ksbGnquBbq-@新纪元425
@@ -811,16 +806,15 @@ SDPC#AZLZJQUPN发起攻击, 冥河WyO8MUZPPtKH受到68点伤害
         "sampled case-05 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 4319, "large_05 score mismatch");
 
     assert!(guard < 20_000, "sampled case-05 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-05", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_06() {
+pub fn large_06<E: crate::EngineAdapter>() {
     const CASE: &str = r####"都江堰00217109183087@abruce425
 血谣染硫决@Mithril425
 Straight_into_the_lights#VpdbCrcFJV@🥒425
@@ -988,16 +982,15 @@ Tik_Tok#IBxWzGZtr发起攻击, 血谣染硫决防御, 血谣染硫决受到71点
         "sampled case-06 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 4456, "large_06 score mismatch");
 
     assert!(guard < 20_000, "sampled case-06 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-06", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_07() {
+pub fn large_07<E: crate::EngineAdapter>() {
     const CASE: &str = r####"mVf4YCPDlRm@tyakasha425
 ➐M1jC95o@新纪元425
 锋利ⅤEGZPVQMY@TigerStar425
@@ -1199,16 +1192,15 @@ Hypochondriac#TtwN3jZ发起攻击, mVf4YCPDlRm受到72点伤害
         "sampled case-07 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 5439, "large_07 score mismatch");
 
     assert!(guard < 20_000, "sampled case-07 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-07", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_08() {
+pub fn large_08<E: crate::EngineAdapter>() {
     const CASE: &str = r####"「OS」#c1#bFc71OCDuO35@mwh_425
 #念-GP8LKM21D4JZ@柚子不是油渍425
 RedOT<{f2=v}67w@流浪冒险者425
@@ -1372,16 +1364,15 @@ tCtrVweRgshV发起攻击, Reku_Mochizuki#494460162188受到93点伤害
         "sampled case-08 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 4090, "large_08 score mismatch");
 
     assert!(guard < 20_000, "sampled case-08 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-08", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_09() {
+pub fn large_09<E: crate::EngineAdapter>() {
     const CASE: &str = r####"#念-GP8LKM21D4JZ@柚子不是油渍425
 血谣染硫决@Mithril425
 仇决clFJZCMHS@candle425
@@ -1555,16 +1546,15 @@ Imperio#4B4UZThv发起攻击, 仇决clFJZCMHS受到57点伤害
         "sampled case-09 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 4878, "large_09 score mismatch");
 
     assert!(guard < 20_000, "sampled case-09 combat did not finish in expected rounds");
     assert_trace_with_name_noise_ignored("sampled case-09", &actual_lines, &expected_lines);
 }
 
-#[test]
-fn large_10() {
+pub fn large_10<E: crate::EngineAdapter>() {
     const CASE: &str = r####"子子油渍柚不子油不是子柚渍不不渍柚油柚子@柚子不是油渍425
 #念-GP8LKM21D4JZ@柚子不是油渍425
 权计WN13vmJnn@candle425
@@ -1738,10 +1728,12 @@ ImmutableZYsdlabOOz发起攻击, 子子油渍柚不子油不是子柚渍不不�
         "sampled case-10 trace is empty",
     );
 
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert_eq!(total_score, 4537, "large_10 score mismatch");
 
     assert!(guard < 20_000, "sampled case-10 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-10", &actual_lines, &expected_lines);
 }
+
+

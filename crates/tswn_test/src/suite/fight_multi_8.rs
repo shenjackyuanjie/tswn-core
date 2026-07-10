@@ -4,8 +4,7 @@
 
 use super::*;
 
-#[test]
-fn fight_multi_8() {
+pub fn fight_multi_8<E: crate::EngineAdapter>() {
     const FIGHT_CASE: &str = r###"0_0_cx2a5TJT1F
 0_1_2DSdSOmqo8
 0_2_It3MVeWRmJ
@@ -949,8 +948,8 @@ fn fight_multi_8() {
         "embedded fight case must contain a blank separator between input and trace",
         "embedded fight trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, total_score) = collect_replay_lines(&mut runner, 50_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, total_score) = collect_replay_lines::<E>(&mut runner, 50_000, true);
     assert_eq!(total_score, 26679, "fight_multi_8 score mismatch");
     assert!(guard < 50_000, "fight_multi_8 combat did not finish in expected rounds");
     if actual_lines != expected_lines {
@@ -979,3 +978,5 @@ fn fight_multi_8() {
         );
     }
 }
+
+

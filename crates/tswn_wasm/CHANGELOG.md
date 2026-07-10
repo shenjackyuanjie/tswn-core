@@ -4,6 +4,20 @@
 
 ### 变更
 
+- 精简 `ReplayClip` 导出字段，移除 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji`；这些渲染语义统一由 `parts[]` 中的 `ReplayTextPart` 表达，clip 只保留 delay、颜色/语义、关联 id、侧栏快照和胜利标记。
+- show 示例同步适配新 replay view：规范 `parts[]`、`caster_ids[]`、`target_ids[]` 与侧栏快照数组，并明确正文渲染只消费 `clip.parts[]` 的结构化语义。
+- replay view 同步修复生命之轮体力互换的血条数据：互换句中的两个玩家 part 都会携带各自正确的帧前/帧后 HP，并仅在实际变化时展示血条。
+- replay view 同步补齐机制死亡的 `death_effect`：附体、自爆、owner 死亡牵连等没有前置伤害句的死亡，会在“被击倒/消失”句显示死亡特效。
+
+## [0.3.1] - 2026-07-06
+
+### 新增
+
+- show 示例支持通过 `?input=<url-safe-base64>` 传入 UTF-8 对局输入并自动播放；兼容 `replay` / `data` 参数别名，解码失败时会停留在输入面板并显示错误。
+- show 示例右下角控制栏新增分享按钮，可复制当前对局对应的 `input` 链接；复制成功时会在控制栏上方显示短暂提示。
+
+### 变更
+
 - show 示例右侧战斗正文只消费 `RoundFrame.rows[].clips[]` 结构化 replay view；移除基于 `message_template` / `message_rendered` / `hp_delta` 的旧 fallback，避免前端继续从文本和数值反推分行、delay、血条和死亡效果。
 - show 示例左侧玩家 HP 条变化速度放慢；normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表，fast / turbo / 单步跳转保持即时反馈。
 
@@ -14,6 +28,7 @@
 ### 验证
 
 - `bun --check crates/tswn_wasm/examples/show-render.js crates/tswn_wasm/examples/show-replay.js crates/tswn_wasm/examples/show-utils.js crates/tswn_wasm/examples/show-wasm.js crates/tswn_wasm/examples/show.js`
+- `python scripts/build_wasm.py --release`
 
 ## [0.3.12] - 2026-07-06
 

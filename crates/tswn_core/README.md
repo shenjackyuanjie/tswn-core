@@ -68,13 +68,15 @@ let runner = Runner::new_from_namerena_raw(raw_input, eval_rq).unwrap();
 ```
 
 `tswn_core::replay_view` 暴露公共的 replay view 构建结构：一个 frame 包含多行 `ReplayRow`，
-一行包含多个 `ReplayClip`，clip 内提供展示前 `delay`、结构化文本 `parts`、`[]` 高亮文字颜色码 `color`、语义分类 `tone`、
-关联玩家、HP 前后值、是否展示血条、是否渲染死亡特效以及 emoji 占位字段。包装层只需要把
+一行包含多个 `ReplayClip`。clip 只承载播放与布局信息：展示前 `delay`、结构化文本 `parts`、`[]`
+高亮文字颜色码 `color`、语义分类 `tone`、关联玩家 id、侧栏状态快照和胜利片段标记。
+文本、玩家、数值、HP 条、死亡特效与 emoji 占位字段都下沉到 `ReplayTextPart`。包装层只需要把
 自己的玩家快照类型实现 `ReplayState`，即可复用同一套回放推演规则。
+同一句包含多个玩家时，每个玩家 part 独立携带 HP 前后值；例如生命之轮互换会分别表达双方的加血或扣血。
 
 当前 delay 规则按优先级依次为：frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子
-`600ms`，其他句子 `500ms`。血条只在帧前后 HP 不同时展示；死亡特效只在帧前后 HP 均为 `0`
-时渲染。分身展示序号由 `player::skill::act::minion::minion_display_index` 提供：本体为 `0`，
+`600ms`，其他句子 `500ms`。血条只在帧前后 HP 不同时展示；死亡特效只在“被击倒”或“消失”等死亡句且该句后 HP 为 `0`
+时渲染；附体、自爆、owner 死亡牵连等机制死亡会在死亡句同步为 `0`。分身展示序号由 `player::skill::act::minion::minion_display_index` 提供：本体为 `0`，
 后续同名分身为 `1`、`2`……，供上层在名字内展示；唯一对象编号仍使用玩家 id。
 默认 `[]` 高亮文字颜色为 `0077BB`；解除、识破、中止、打消等状态离开消息使用 `bb7700`。普通文本不使用该颜色码。
 

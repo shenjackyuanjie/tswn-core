@@ -5,8 +5,7 @@
 use super::*;
 
 /// diff_case 04
-#[test]
-fn large_62() {
+pub fn large_62<E: crate::EngineAdapter>() {
     const CASE: &str = r#"Italian_Love #5Agn8kVYl@Shabby_fish
 我会回来的 #yTneTj00J@Shabby_fish
 
@@ -140,15 +139,14 @@ Italian_Love发起攻击, Orbital受到42点伤害
         "sampled case-62 must contain a blank separator between input and trace",
         "sampled case-62 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-62 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-62", &actual_lines, &expected_lines);
 }
 
 /// diff_case 07
-#[test]
-fn large_63() {
+pub fn large_63<E: crate::EngineAdapter>() {
     const CASE: &str = r#"killer YFgziuYJGUOW93Ryni2X@czr2012
 dust lmHylvLqY4hn0QIMnCia@czr2012
 
@@ -344,15 +342,14 @@ dust发起攻击, Orbital受到51点伤害
         "sampled case-63 must contain a blank separator between input and trace",
         "sampled case-63 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-63 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-63", &actual_lines, &expected_lines);
 }
 
 /// diff_case 09
-#[test]
-fn large_64() {
+pub fn large_64<E: crate::EngineAdapter>() {
     const CASE: &str = r#"三猴一体 vFz1cu21MCaW@TigerStar
 涵虚不等式 PFVKEUPBU@TigerStar
 
@@ -590,15 +587,14 @@ Orbital发起攻击, 涵虚不等式受到40点伤害
         "sampled case-64 must contain a blank separator between input and trace",
         "sampled case-64 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-64 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-64", &actual_lines, &expected_lines);
 }
 
 /// diff_case 11
-#[test]
-fn large_65() {
+pub fn large_65<E: crate::EngineAdapter>() {
     const CASE: &str = r#"💛💜💛🤎🩵🧡🩷🩶💛💛🤎💙💜@新纪元
 失温滢霞.寂静蓝 `f.Gi\Z:R@四象柯
 seed:33554432@!
@@ -629,8 +625,10 @@ seed:33554432@!
         "sampled case-65 must contain a blank separator between input and trace",
         "sampled case-65 trace is empty",
     );
-    let mut runner = runners::Runner::new_from_namerena_raw(raw_input).unwrap();
-    let (actual_lines, guard, _total_score) = collect_replay_lines(&mut runner, 20_000, true);
+    let mut runner = E::new_from_raw(raw_input).unwrap();
+    let (actual_lines, guard, _total_score) = collect_replay_lines::<E>(&mut runner, 20_000, true);
     assert!(guard < 20_000, "sampled case-65 combat did not finish in expected rounds");
     assert_trace_with_context("sampled case-65", &actual_lines, &expected_lines);
 }
+
+

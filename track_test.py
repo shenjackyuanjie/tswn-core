@@ -17,6 +17,7 @@ RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
 LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
 CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
 DEFAULT_FILTER = "large large_full small_seed fight_multi"
+DEFAULT_PACKAGE = "tswn_test"
 
 
 def load_previous_records() -> dict:
@@ -488,13 +489,13 @@ def main():
         return
 
     if not args.quiet:
-        print(f"运行测试: {args.filter}")
+        print(f"运行测试: -p {DEFAULT_PACKAGE} -- {args.filter}")
         print()
     elif args.quiet:
-        print(f"[track_test] 运行测试: {args.filter}")
+        print(f"[track_test] 运行测试: -p {DEFAULT_PACKAGE} -- {args.filter}")
 
     test_args = args.filter.split() if args.filter else []
-    cmd = "cargo test -- " + " ".join(test_args)
+    cmd = f"cargo test -p {DEFAULT_PACKAGE} -- " + " ".join(test_args)
 
     result = subprocess.run(
         cmd,
