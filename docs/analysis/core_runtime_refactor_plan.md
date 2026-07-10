@@ -77,7 +77,7 @@
 
 ### 2.1 2026-07 架构复查结论
 
-截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试为 debug 498 passed / 4 ignored，CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_67`、完整 `large_01`、完整 `large_70` 和完整 `large_72` 已在 `mutable-noalias=yes` 下通过；当前 runtime-v2 tracker 为 39/84 通过、45 个 case 尚未收敛，完整 corpus 相对上一轮无退步，因此仍不能判断“可以删除 legacy”。`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`，部分入口/展示链和未覆盖技能组合仍未完成独立化。
+截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下为 506 passed / 4 ignored，CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；当前完整 runtime-v2 corpus 为 61/87 通过、26 个 case 尚未收敛，因此仍不能判断“可以删除 legacy”。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`，部分入口/展示链和未覆盖技能组合仍未完成独立化。
 
 可以保留并继续演进：
 
@@ -91,14 +91,14 @@
 切换前仍必须完成：
 
 - phase 开始时预先冻结的 hook plan，状态增删后必须按最新 generation 决定后续 hook；
-- 尚未被 corpus 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending、冻结目标与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级、0→正等级 action 队尾和终局 KILL gate 语义并修复完整 `large_67` / `large_72`；当前 runtime-v2 tracker 的 84 个 case 中 39 个通过、45 个仍有差异，说明已迁移技能、状态生命周期、行动顺序或 RNG 仍可能回归；
+- 尚未被 corpus 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending、冻结目标与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级、0→正等级 action 队尾和终局 KILL gate 语义并修复完整 `large_67` / `large_72`；KILL 技能链已按 legacy 在首个真实触发后短路；当前完整 runtime-v2 corpus 的 87 个 case 中 61 个通过、26 个仍有差异，说明已迁移技能、状态生命周期、行动顺序或 RNG 仍可能回归；
 - 内置技能借用 extension handler 的过渡路径继续收敛为静态 dispatch；
 - 以 v2 自身输出生成并验证 v2 的 self golden；此类测试只能保留为内部回归，不能充当 parity 门禁。
 - CLI/C API/Python/wasm/show 默认入口切换、legacy fallback 收口和最终删除。
 
 ### 2.2 修订后的近期实施顺序
 
-1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_67`、完整 `large_01`、完整 `large_70` 与完整 `large_72` 在 debug/release `mutable-noalias=yes` 下持续通过；当前 runtime-v2 tracker 为 39/84，每个行为闭环后继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
+1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 与 `large_72` 在 debug/release `mutable-noalias=yes` 下持续通过；当前完整 runtime-v2 corpus 为 61/87，每个行为闭环后继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
 2. **已完成**：建立独立 `PreparedBattleInit`，自行复刻 raw 分组、同队 upgrade、build、seed/RNG、初始 world views、loadout 与 summon/shadow blueprint 准备；删除 v2 runtime 构造对 legacy `Runner` / `WorldState` 的依赖和静默同步失败；
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
 4. 重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
@@ -622,7 +622,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 新增 `CombatRuntime`、`PreparedCombatTemplate`、`EntityArena`、`WorldArena`、`PhaseScheduler`、`EffectQueue`、`BattleScratch`；
 - 保留 `Player` 输入/测试 facade，但 battle start 前转换成 template；
-- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler；`PreparedBattleInit` 已独立复刻 raw 分组、同队 upgrade、按 id-name build、seed RC4 消费、move point、初始 world views、普通玩家运行时属性与 summon/shadow blueprint，并显式报告初始化错误；历史 86/86 检查点包含自指 v2 golden，不能作为 parity 结论，当前必须以 feature-gated runtime-v2 tracker 的 39/84 真实结果继续收敛。
+- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler；`PreparedBattleInit` 已独立复刻 raw 分组、同队 upgrade、按 id-name build、seed RC4 消费、move point、初始 world views、普通玩家运行时属性与 summon/shadow blueprint，并显式报告初始化错误；历史 86/86 检查点包含自指 v2 golden，不能作为 parity 结论，当前必须以 feature-gated 完整 runtime-v2 corpus 的 61/87 真实结果继续收敛。
 
 完成标准：
 
@@ -636,7 +636,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 固化 target selection、round_pos、alive_group_count、pending spawn/revival/remove/death 行为。
 - `WorldArena` 已改为 legacy `round_pos: i32` 与 `rem_euclid` 推进语义，删除实体时按 legacy 规则调整位置；
 - plain scheduler 已按 legacy `main_round` 的 `entity_count * 4` tick 上限执行 step roll，只有 move point 严格大于 2048 才提交行动；纯 v2/custom fixture 暂保留现有 handler 驱动路径，避免未迁完的普通玩家 loadout 影响 custom 验收；
-- damage、poison、disperse、self-death、remove、linked-minion cleanup 已统一通过 `mark_dead` 同步 round/alive 派生视图；
+- damage、poison、disperse、self-death、remove、linked-minion cleanup 已统一通过 `mark_dead` 同步 round/alive 派生视图；owner 死亡时先按实体顺序清理 linked minion、再移除 owner，保持连续删除下的 legacy `round_pos` 调整顺序；
 - revive 已改为追加到 `round_order` 尾部，且复活空队伍不恢复历史 `alive_group_count`，与 legacy/JS 语义一致；
 - scheduler 的当前 corpus 行动、目标选择与 pending 可见性已通过真实 legacy/v2 run parity；仍需用新增样例覆盖 corpus 未触达的技能组合，而不能仅以 world 单测替代 run parity。
 
@@ -673,7 +673,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `run_minimal_round` 已在基础攻击后执行 actor 的 `POST_ACTION` state hook，并将 state update/effect 合入同一 frame；
 - `run_minimal_round` 已在基础攻击前后执行 actor 的 `PRE_DAMAGE` / `POST_DAMAGE` state hook，并按 pre-damage -> damage -> post-damage -> post-action 顺序合帧；
 - `run_legacy_summon_recast_from_template_slot_with_config`、`run_shadow_minion_from_template_slot_with_config`、`run_zombie_minion_from_template_slot_with_config` 已把 summon/shadow/zombie fixture 闭包提升为可配置正式 handler，复用 typed template slot、entity slot counter 与 legacy replay 顺序；`run_possess_skill` 已补最小 v2 possess 数据面，覆盖 `[0]使用[附体]`、目标进入 Berserk payload、已有狂暴 step +4，以及 shadow/minion caster 自身移除；
-- `SummonExplode` 已接入 target-side `PRE_DEFEND` / `POST_DEFEND` skill/state hook，context 可暴露并改写当前攻击量或最终伤害，并携带 incoming caster/target 元数据；`StatePayload::ShieldValue` 与 `run_shield_post_defend_state` 已覆盖 ShieldState 护盾吸收/耗尽数据面，并纳入 clear-positive state 清理但不输出取消消息；`StatePayload::Curse` 与 `run_curse_post_defend_state` 已覆盖 CurseState 的 r63 判定、伤害倍增 replay、未触发 RNG 消耗和 damage<=0 跳过 RNG；`StatePayload::Iron` 与 `run_iron_post_defend_state` 已覆盖 IronState 的吸收削伤、防御 replay 判定、击破换行/打消 replay、damage<=0 不改状态、post_action step 递减、step<=0 清理、自然解除时 speed_points 调整和换行 replay，并纳入 clear-positive priority 400 打消消息；`StatePayload::Poison` 与 poison tick effect 已覆盖 PoisonState 毒性发作 replay、持续伤害、count/atp 递减、自然解除 replay、死亡静默跳过和致死不释放；`StatePayload::Haste` / `StatePayload::Charm` / `StatePayload::Slow` 与对应 post_action handler 已覆盖疾走/魅惑/迟缓 step 递减、自然解除 replay、死亡静默清理和与 Iron 同层的 legacy 210 优先级；`StatePayload::Haste` 已纳入 clear-positive priority 300，死亡时清理但不输出取消消息；
+- `SummonExplode` 已接入 target-side `PRE_DEFEND` / `POST_DEFEND` skill/state hook，context 可暴露并改写当前攻击量或最终伤害，并携带 incoming caster/target 元数据；`StatePayload::ShieldValue` 与 `run_shield_post_defend_state` 已覆盖 ShieldState 护盾吸收/耗尽数据面，并纳入 clear-positive state 清理但不输出取消消息；`StatePayload::Curse` 与 `run_curse_post_defend_state` 已覆盖 CurseState 的 r63 判定、伤害倍增 replay、未触发 RNG 消耗和 damage<=0 跳过 RNG；`StatePayload::Iron` 与 `run_iron_post_defend_state` 已覆盖 IronState 的吸收削伤、防御 replay 判定、击破换行/打消 replay、damage<=0 不改状态、post_action step 递减、step<=0 清理、自然解除时 speed_points 调整和换行 replay，并纳入 clear-positive priority 400 打消消息；`StatePayload::Poison` 与 poison tick effect 已覆盖 PoisonState 毒性发作 replay、持续伤害、count/atp 递减、自然解除 replay、死亡静默跳过，以及致死时按 damage → 击倒 replay/50 score → DIE/KILL hook 的统一 lethal pipeline 结算且不输出解除；`StatePayload::Haste` / `StatePayload::Charm` / `StatePayload::Slow` 与对应 post_action handler 已覆盖疾走/魅惑/迟缓 step 递减、自然解除 replay、死亡静默清理和与 Iron 同层的 legacy 210 优先级；`StatePayload::Haste` 已纳入 clear-positive priority 300，死亡时清理但不输出取消消息；
 - Reflect 已迁入正式 `PRE_DEFEND` skill hook：概率失败只消费 `r255`，触发后清零原攻击量、提交完整魔法反射攻击，并在反射伤害/死亡链结束后扣除 480 行动力；
 - Curse 主动技能已迁入 plain 静态 dispatch：目标抽样完整复刻空目标 RNG 消费，命中走统一魔法攻击链，并在伤害落地后、POST_DAMAGE 与 DIE/KILL 之前执行 on_damage，完成 BOSS/BOOST 阻断、默认 `prob=42/multiply=2`、charge 加成、重复叠加和 `[1]被[诅咒]了` replay；
 - Heal 已迁入 plain 静态 dispatch：`AllyAlive` 抽样、smart 有效目标和 `(missing_hp + negative_count * 64) * attr_sum` 评分、`get_at(true)/60` 回复、8 级以上每次 -1 衰减均已接入；治疗后按 berserk → charm → curse → ice → poison → slow 顺序输出解除消息，清除 Fire 等无消息负面 meta，并从当前 template 基线恢复 Curse 放大的 `atk_sum`、按剩余 Haste/Lazy state 重算 speed；
@@ -779,7 +779,7 @@ cargo test -p tswn_core --features no_debug --lib
 cargo test -p tswn_test
 python track_test.py -q
 python scripts/check_runtime_v2_noalias.py
-# v2 完整 corpus 是 release mutable-noalias=yes 门禁；当前 39/84 通过，仍有 45 个差异
+# v2 完整 corpus 是 release mutable-noalias=yes 门禁；当前 61/87 通过，仍有 26 个差异
 python track_test.py --engine runtime-v2 -q
 ```
 
