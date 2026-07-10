@@ -287,15 +287,7 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("runtime_v2 upgrade target disappeared: {}", target.0));
-        target.runtime.upgrade_active = true;
-        target.runtime.move_state.speed_points += 400;
-        target.runtime.attack += 30;
-        target.runtime.defense += 30;
-        target.runtime.agility += 30;
-        target.runtime.magic += 30;
-        target.runtime.resistance += 30;
-        target.runtime.speed += 20;
-        target.runtime.wisdom += 20;
+        assert!(target.activate_upgrade_runtime(), "runtime_v2 upgrade activated twice");
     }
 
     pub fn run_plain_hide_post_damage_into(

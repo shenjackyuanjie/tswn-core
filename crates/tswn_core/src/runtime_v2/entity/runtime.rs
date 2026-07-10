@@ -269,6 +269,11 @@ impl EntityRecord {
 
     pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
         self.template.apply_derived_stats(stats);
+        self.refresh_runtime_stats_from_template();
+    }
+
+    pub fn refresh_runtime_stats_from_template(&mut self) {
+        let hide_level = self.runtime.hide.map(|hide| hide.level);
         self.runtime.attack = self.template.attack;
         self.runtime.magic = self.template.magic;
         self.runtime.wisdom = self.template.wisdom;
@@ -277,9 +282,53 @@ impl EntityRecord {
         self.runtime.resistance = self.template.resistance;
         self.runtime.agility = self.template.agility;
         self.runtime.attr_sum = self.template.attr_sum;
-        self.runtime.atk_sum = self.template.atk_sum;
+        self.runtime.atk_sum = self.states.effective_atk_sum(self.template.atk_sum);
         self.runtime.attract_bits = self.template.attract_bits;
+        if self.runtime.upgrade_active {
+            self.runtime.attack += 30;
+            self.runtime.defense += 30;
+            self.runtime.agility += 30;
+            self.runtime.magic += 30;
+            self.runtime.resistance += 30;
+            self.runtime.speed += 20;
+            self.runtime.wisdom += 20;
+        }
         self.refresh_runtime_at_boost();
+        if let Some(level) = hide_level {
+            self.runtime.hide = Some(HideRuntime {
+                level,
+                attract_bits: self.runtime.attract_bits,
+                agility: self.runtime.agility,
+                defense: self.runtime.defense,
+                resistance: self.runtime.resistance,
+            });
+            self.runtime.attract_bits = (self.runtime.attract() / 10.0).to_bits();
+            if level > 63 {
+                let boost = (level - 63) as i32;
+                self.runtime.agility += boost;
+                self.runtime.defense += boost;
+                self.runtime.resistance += boost;
+            }
+        }
+    }
+
+    pub fn activate_upgrade_runtime(&mut self) -> bool {
+        if self.runtime.upgrade_active {
+            return false;
+        }
+        self.runtime.upgrade_active = true;
+        self.runtime.move_state.speed_points += 400;
+        self.refresh_runtime_stats_from_template();
+        true
+    }
+
+    pub fn clear_upgrade_runtime(&mut self) -> bool {
+        if !self.runtime.upgrade_active {
+            return false;
+        }
+        self.runtime.upgrade_active = false;
+        self.refresh_runtime_stats_from_template();
+        true
     }
 
     pub fn activate_charge_runtime(&mut self) {
@@ -349,6 +398,9 @@ impl EntityRecord {
         }
         if self.clear_charge_runtime() {
             messages.push((200, "[1]的[蓄力]被中止了"));
+        }
+        if self.clear_upgrade_runtime() {
+            messages.push((500, "[1]的[垂死]属性被打消"));
         }
         messages.sort_unstable_by_key(|(priority, _)| *priority);
         messages

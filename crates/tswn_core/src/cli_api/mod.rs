@@ -796,7 +796,7 @@ beta@blue\n";
                 .take(2)
                 .map(|frame| frame.message.as_str())
                 .collect::<Vec<_>>(),
-            vec!["[0]使用[自爆]", "[0]攻击[1]"]
+            vec!["[0]使用[自爆]", "[1]受到[2]点伤害[s_dmg160]"]
         );
         assert_eq!(run.rounds[2].frames[0].caster, 2);
         assert_eq!(run.rounds[2].frames[0].target, 1);

@@ -576,6 +576,16 @@ impl StateStore {
         speed
     }
 
+    pub fn effective_atk_sum(&self, base_atk_sum: i32) -> i32 {
+        self.entries.iter().fold(base_atk_sum, |atk_sum, entry| {
+            if matches!(entry.payload, StatePayload::Curse { .. }) {
+                atk_sum.saturating_mul(4)
+            } else {
+                atk_sum
+            }
+        })
+    }
+
     pub fn entry(&self, legacy_order_key: u32) -> Option<&StateEntry> {
         self.index.get(&legacy_order_key).and_then(|idx| self.entries.get(*idx))
     }
