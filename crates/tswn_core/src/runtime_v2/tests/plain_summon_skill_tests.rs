@@ -105,6 +105,16 @@ fn plain_clone_inherits_summon_blueprint_and_can_summon() {
     runtime.drain_plain_clone_skill_into(owner, clone_lane, &mut RunUpdates::new());
 
     let clone = EntityIdx(2);
+    let clone_entity = runtime.entities.get(clone).expect("clone should spawn");
+    assert!(clone_entity.runtime.flags.contains(PlayerKindFlags::MINION));
+    assert!(clone_entity.runtime.flags.contains(PlayerKindFlags::KNOCKOUT_ON_DEATH));
+    assert_eq!(
+        clone_entity.runtime.kind,
+        runtime
+            .registry
+            .player_kind_id_by_export_name(DEFAULT_CORE_CLONE_KIND_EXPORT)
+            .expect("core clone kind should exist")
+    );
     let blueprint_slot = runtime
         .registry
         .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)
@@ -123,6 +133,14 @@ fn plain_clone_inherits_summon_blueprint_and_can_summon() {
         updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
         vec!["[0]使用[血祭]", "召唤出[1]"]
     );
+
+    let mut clone_death_updates = RunUpdates::new();
+    runtime.emit_plain_lethal_replay_into(owner, clone, &mut clone_death_updates);
+    assert_eq!(clone_death_updates.updates.last().unwrap().message, "[1]被击倒了");
+
+    let mut summon_death_updates = RunUpdates::new();
+    runtime.emit_plain_lethal_replay_into(owner, summoned, &mut summon_death_updates);
+    assert_eq!(summon_death_updates.updates.last().unwrap().message, "[1]消失了");
 }
 
 #[test]

@@ -22,10 +22,11 @@ impl CombatRuntime {
                 return Vec::new();
             };
             let target = candidates[picked];
-            let valid = self
-                .entities
-                .get(target)
-                .is_some_and(|entity| !entity.runtime.alive && !entity.runtime.flags.contains(PlayerKindFlags::MINION));
+            let valid = self.entities.get(target).is_some_and(|entity| {
+                !entity.runtime.alive
+                    && !entity.runtime.flags.contains(PlayerKindFlags::MINION)
+                    && entity.runtime.corpse == RuntimeCorpseKind::None
+            });
             if !valid {
                 invalid += 1;
                 continue;

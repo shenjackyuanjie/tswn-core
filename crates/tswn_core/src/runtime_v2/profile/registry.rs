@@ -183,6 +183,13 @@ pub fn default_custom_runtime_v2_import_config()
         PlayerKindFlags::MINION,
         PlayerKindPolicies::default(),
     )?;
+    builder.register_player_kind_with_policies(
+        "core",
+        "clone",
+        DEFAULT_CORE_CLONE_KIND_EXPORT,
+        PlayerKindFlags::MINION | PlayerKindFlags::KNOCKOUT_ON_DEATH,
+        PlayerKindPolicies::default(),
+    )?;
     let shield = builder.register_skill_with_hooks(
         "core",
         "shield",

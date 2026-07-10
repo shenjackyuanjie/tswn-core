@@ -520,6 +520,11 @@ impl CombatRuntime {
                         );
                     }
                     if merged {
+                        self.entities
+                            .get_mut(target)
+                            .unwrap_or_else(|| panic!("runtime_v2 merge target disappeared: {}", target.0))
+                            .runtime
+                            .corpse = RuntimeCorpseKind::Merge;
                         updates.add_newline();
                         updates.add(crate::engine::update::RunUpdate::new(
                             "[0][吞噬]了[1]",

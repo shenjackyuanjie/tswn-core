@@ -259,6 +259,10 @@ impl CombatRuntime {
         let shadow_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT);
         let summon_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT);
         let zombie_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);
+        let clone_kind = self
+            .registry
+            .player_kind_id_by_export_name(DEFAULT_CORE_CLONE_KIND_EXPORT)
+            .expect("default runtime v2 profile must register core clone kind");
         let random_factor = (u32::from(self.rng.next_u8()) & 63) + 64;
         let mut decayed_level = ((current_level as f64) * random_factor as f64 / 128.0).ceil() as u32;
         let charge_active = self
@@ -388,9 +392,10 @@ impl CombatRuntime {
 
         let clone_stats = clone_build.derive_stats();
         let next_entity = self.entities.len();
-        let mut clone_template = PlayerTemplate::new(
+        let mut clone_template = PlayerTemplate::with_kind(
             next_entity + 1,
             format!("{root_name}?{next_minion_index}"),
+            clone_kind,
             owner_team,
             clone_stats.max_hp.max(1),
             clone_stats.attack.max(0),

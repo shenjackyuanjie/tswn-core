@@ -33,6 +33,7 @@ pub const DEFAULT_CORE_SAITAMA_BOSS_STATE_EXPORT: &str = "core.state.saitama-bos
 pub const DEFAULT_CORE_SHADOW_KIND_EXPORT: &str = "core.kind.shadow";
 pub const DEFAULT_CORE_SUMMON_KIND_EXPORT: &str = "core.kind.summon";
 pub const DEFAULT_CORE_ZOMBIE_KIND_EXPORT: &str = "core.kind.zombie";
+pub const DEFAULT_CORE_CLONE_KIND_EXPORT: &str = "core.kind.clone";
 pub const DEFAULT_CORE_BOSS_KIND_EXPORT: &str = "core.kind.boss";
 pub const DEFAULT_CORE_BOOST_KIND_EXPORT: &str = "core.kind.boost";
 pub const DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.shadow_blueprint";
