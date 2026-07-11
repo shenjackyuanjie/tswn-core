@@ -220,6 +220,7 @@ pub fn pair_rate(
 pub fn default_custom_runtime_v2_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeV2NormalizedRunView> {
     install_panic_hook();
     tswn_core::cli_api::default_custom_runtime_v2_normalized_run(&raw_input, max_rounds)
+        .map(tswn_core::cli_api::JsonRuntimeV2NormalizedRun::from)
         .map(Into::into)
         .map_err(error::cli_api_error)
 }
@@ -261,18 +262,18 @@ mod tests {
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(run.winner_team, None);
         assert!(run.guard_exhausted);
-        assert_eq!(run.total_score, 37);
+        assert_eq!(run.total_score, 77);
 
         let round = &run.rounds[0];
         assert_eq!(round.winner_team, None);
         assert_eq!(round.round, 1);
-        assert_eq!(round.total_score, 37);
-        assert_eq!(round.rng_i, 48);
-        assert_eq!(round.rng_j, 161);
+        assert_eq!(round.total_score, 77);
+        assert_eq!(round.rng_i, 74);
+        assert_eq!(round.rng_j, 92);
         assert_eq!(round.entity_ids, vec![1, 2]);
         assert_eq!(round.teams, vec![0, 1]);
-        assert_eq!(round.hp, vec![339, 251]);
-        assert_eq!(round.magic_point, vec![23, 8]);
+        assert_eq!(round.hp, vec![262, 288]);
+        assert_eq!(round.magic_point, vec![23, 16]);
         assert_eq!(round.defense, vec![6, 56]);
         assert_eq!(round.resistance, vec![52, 25]);
         assert_eq!(round.alive, vec![true, true]);
@@ -284,21 +285,43 @@ mod tests {
         assert_eq!(round.actions.len(), 1);
         let action = &round.actions[0];
         assert_eq!(action.round, 1);
-        assert_eq!(action.actor, 0);
-        assert_eq!(action.target, 1);
-        assert_eq!(action.amount, 37);
+        assert_eq!(action.actor, 1);
+        assert_eq!(action.target, 0);
+        assert_eq!(action.amount, 36);
 
-        assert_eq!(round.frames.len(), 1);
+        assert_eq!(round.frames.len(), 3);
         let frame = &round.frames[0];
-        assert_eq!(frame.message, "[0]攻击[1]");
-        assert_eq!(frame.caster, 0);
-        assert_eq!(frame.target, 1);
+        assert_eq!(frame.message, "[0]发起攻击");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
         assert!(frame.targets.is_empty());
         assert_eq!(frame.param, None);
-        assert_eq!(frame.score, 37);
-        assert_eq!(frame.delay0, tswn_core::engine::update::DEFAULT_DELAY0_MS);
-        assert_eq!(frame.delay1, tswn_core::engine::update::DEFAULT_DELAY1_MS);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 1000);
+        assert_eq!(frame.delay1, 100);
         assert_eq!(frame.update_type, UpdateTypeView::None);
+
+        let frame = &round.frames[1];
+        assert_eq!(frame.message, "[1]受到[2]点伤害");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
+        assert!(frame.targets.is_empty());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 77);
+        assert_eq!(frame.delay0, 1154);
+        assert_eq!(frame.delay1, 100);
+        assert_eq!(frame.update_type, UpdateTypeView::None);
+
+        let frame = &round.frames[2];
+        assert_eq!(frame.message, "\n");
+        assert_eq!(frame.caster, 0);
+        assert_eq!(frame.target, 0);
+        assert!(frame.targets.is_empty());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 0);
+        assert_eq!(frame.delay1, 0);
+        assert_eq!(frame.update_type, UpdateTypeView::NextLine);
     }
 
     #[test]

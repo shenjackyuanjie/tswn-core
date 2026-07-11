@@ -8,7 +8,6 @@ use tsify::Tsify;
 use tswn_core::cli_api as core_cli_api;
 use tswn_core::engine::update::UpdateType;
 use tswn_core::player::skill::act::minion::MinionKind;
-use tswn_core::runtime_v2::{NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2NormalizedRun};
 
 #[derive(Debug, Clone, Default, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
@@ -132,6 +131,17 @@ impl From<UpdateType> for UpdateTypeView {
             UpdateType::Win => Self::Win,
             UpdateType::None => Self::None,
             UpdateType::NextLine => Self::NextLine,
+        }
+    }
+}
+
+impl From<&str> for UpdateTypeView {
+    fn from(value: &str) -> Self {
+        match value {
+            "win" => Self::Win,
+            "none" => Self::None,
+            "next_line" => Self::NextLine,
+            other => panic!("unknown runtime_v2 update_type token: {other}"),
         }
     }
 }
@@ -451,8 +461,8 @@ pub struct CliIconInfo {
 
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
-impl From<RuntimeV2NormalizedRun> for RuntimeV2NormalizedRunView {
-    fn from(value: RuntimeV2NormalizedRun) -> Self {
+impl From<core_cli_api::JsonRuntimeV2NormalizedRun> for RuntimeV2NormalizedRunView {
+    fn from(value: core_cli_api::JsonRuntimeV2NormalizedRun) -> Self {
         Self {
             rounds: value.rounds.into_iter().map(Into::into).collect(),
             winner_team: value.winner_team,
@@ -462,14 +472,14 @@ impl From<RuntimeV2NormalizedRun> for RuntimeV2NormalizedRunView {
     }
 }
 
-impl From<NormalizedOutcome> for RuntimeV2NormalizedOutcomeView {
-    fn from(value: NormalizedOutcome) -> Self {
+impl From<core_cli_api::JsonRuntimeV2NormalizedOutcome> for RuntimeV2NormalizedOutcomeView {
+    fn from(value: core_cli_api::JsonRuntimeV2NormalizedOutcome) -> Self {
         Self {
             winner_team: value.winner_team,
             round: value.round,
             total_score: value.total_score,
-            rng_i: value.rng.i,
-            rng_j: value.rng.j,
+            rng_i: value.rng_i,
+            rng_j: value.rng_j,
             entity_ids: value.entity_ids,
             teams: value.teams,
             hp: value.hp,
@@ -496,8 +506,8 @@ impl From<NormalizedOutcome> for RuntimeV2NormalizedOutcomeView {
     }
 }
 
-impl From<NormalizedUpdateFrame> for RuntimeV2UpdateFrameView {
-    fn from(value: NormalizedUpdateFrame) -> Self {
+impl From<core_cli_api::JsonRuntimeV2UpdateFrame> for RuntimeV2UpdateFrameView {
+    fn from(value: core_cli_api::JsonRuntimeV2UpdateFrame) -> Self {
         Self {
             message: value.message,
             caster: value.caster,
