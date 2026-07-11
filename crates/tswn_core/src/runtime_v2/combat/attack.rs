@@ -353,7 +353,7 @@ impl CombatRuntime {
                 actor.0, target.0, atp, self.rng.i, self.rng.j,
             );
         }
-        self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
+        self.drain_pre_defend_hooks_with_on_damage_into(target, updates, &mut defend_value, on_damage);
         let Some(atp) = defend_value.atp() else {
             panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
         };

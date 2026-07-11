@@ -70,6 +70,16 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
+        self.drain_pre_defend_hooks_with_on_damage_into(target, updates, defend_value, PlainAttackOnDamage::None);
+    }
+
+    pub fn drain_pre_defend_hooks_with_on_damage_into(
+        &mut self,
+        target: EntityIdx,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+        on_damage: PlainAttackOnDamage,
+    ) {
         let skill_plan = self
             .scheduler
             .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::PRE_DEFEND);
@@ -91,7 +101,7 @@ impl CombatRuntime {
             if defend_value.atp() == Some(0.0) && (!started_zero || protect_split > 0) {
                 return;
             }
-            if self.drain_plain_protect_pre_defend_into(target, updates, defend_value) {
+            if self.drain_plain_protect_pre_defend_into(target, updates, defend_value, on_damage) {
                 return;
             }
             let after_protect = SkillHookPlan {
@@ -151,6 +161,7 @@ impl CombatRuntime {
         target: EntityIdx,
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
+        on_damage: PlainAttackOnDamage,
     ) -> bool {
         let Some(incoming_atp) = defend_value.atp() else {
             return false;
@@ -260,7 +271,14 @@ impl CombatRuntime {
                 let redirected_damage = redirected_damage_value
                     .damage()
                     .expect("runtime_v2 protect post-defend hooks must leave a damage value");
-                if self.apply_plain_attack_damage_into(caster, link.owner, redirected_damage, updates) {
+                if self.apply_plain_attack_damage_with_covid_and_on_damage_into(
+                    caster,
+                    link.owner,
+                    redirected_damage,
+                    None,
+                    on_damage,
+                    updates,
+                ) {
                     self.drain_plain_lethal_damage_into(caster, link.owner, updates);
                 }
                 defend_value.set_atp(0.0);

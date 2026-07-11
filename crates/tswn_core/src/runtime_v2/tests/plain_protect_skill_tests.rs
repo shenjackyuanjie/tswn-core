@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_v2::combat::PlainAttackOnDamage;
 
 fn protect_runtime(target_kind_export: &str) -> CombatRuntime {
     let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
@@ -163,4 +164,56 @@ fn plain_protect_redirect_uses_magic_resistance_for_magic_attacks() {
     assert_eq!(defend_value.atp(), Some(0.0));
     assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 100);
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 98);
+}
+
+#[test]
+fn plain_protect_redirect_preserves_absorb_on_damage_heal() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let protect = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_PROTECT_SKILL_EXPORT)
+        .expect("default profile should register protect skill");
+    let CustomRuntimeV2ImportConfig {
+        registry,
+        skill_handlers,
+        ..
+    } = config;
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "protector", 0, 100, 100)
+                .with_def_res(0, 0)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(protect, 256)])),
+            PlayerTemplate::new(2, "ally", 0, 100, 100),
+            PlayerTemplate::new(3, "absorber", 1, 100, 100),
+        ],
+        registry,
+    ));
+    for binding in skill_handlers {
+        runtime.set_skill_handler_with_capabilities(binding.skill_id, binding.handler, &binding.capabilities);
+    }
+    runtime.entities.get_mut(EntityIdx(2)).unwrap().runtime.hp = 20;
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_protect_post_action_into(EntityIdx(0), &mut updates);
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.magic_point = 100;
+
+    let amount = runtime.drain_plain_attack_with_atp_and_on_damage_into(
+        EntityIdx(2),
+        EntityIdx(1),
+        true,
+        4_352.0,
+        PlainAttackOnDamage::Absorb,
+        &mut updates,
+    );
+
+    assert_eq!(amount, 0);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hp, 66);
+    assert_eq!(runtime.entities.get(EntityIdx(2)).unwrap().runtime.hp, 37);
+    assert_eq!(
+        updates
+            .updates
+            .iter()
+            .map(|update| (update.message.as_ref(), update.score))
+            .collect::<Vec<_>>(),
+        vec![("[0][守护][1]", 40), ("[1]受到[2]点伤害", 34), ("[1]回复体力[2]点", 17)]
+    );
 }
