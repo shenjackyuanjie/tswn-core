@@ -130,7 +130,10 @@ impl PhaseScheduler {
             let probe_step = std::env::var("TSWN_PROBE_STEP")
                 .map(|needle| {
                     entities.get(actor).is_some_and(|entity| {
-                        entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
+                        needle.strip_prefix("idx:").is_some_and(|idx| idx == actor.0.to_string())
+                            || needle.strip_prefix("id:").is_some_and(|id| id == entity.template.id.to_string())
+                            || entity.template.name.contains(&needle)
+                            || entity.template.display_name.contains(&needle)
                     })
                 })
                 .unwrap_or(false);
