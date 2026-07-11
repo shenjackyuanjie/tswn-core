@@ -6,9 +6,9 @@ use pyo3::{
     pyclass, pyfunction, pymethods,
     types::{PyDict, PyDictMethods, PyList},
 };
-use tswn_core::cli_api::{self as core_cli_api, CliApiError};
-use tswn_core::engine::update::UpdateType;
-use tswn_core::runtime_v2::{NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2NormalizedRun};
+use tswn_core::cli_api::{
+    self as core_cli_api, CliApiError, JsonRuntimeV2NormalizedOutcome, JsonRuntimeV2NormalizedRun, JsonRuntimeV2UpdateFrame,
+};
 
 use crate::wrapper;
 
@@ -382,15 +382,7 @@ fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     }
 }
 
-fn update_type_name(value: UpdateType) -> &'static str {
-    match value {
-        UpdateType::Win => "win",
-        UpdateType::None => "none",
-        UpdateType::NextLine => "next_line",
-    }
-}
-
-fn normalized_run_to_pydict<'py>(py: Python<'py>, run: RuntimeV2NormalizedRun) -> PyResult<pyo3::Bound<'py, PyDict>> {
+fn normalized_run_to_pydict<'py>(py: Python<'py>, run: JsonRuntimeV2NormalizedRun) -> PyResult<pyo3::Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     let rounds = run
         .rounds
@@ -404,13 +396,16 @@ fn normalized_run_to_pydict<'py>(py: Python<'py>, run: RuntimeV2NormalizedRun) -
     Ok(dict)
 }
 
-fn normalized_outcome_to_pydict<'py>(py: Python<'py>, outcome: NormalizedOutcome) -> PyResult<pyo3::Bound<'py, PyDict>> {
+fn normalized_outcome_to_pydict<'py>(
+    py: Python<'py>,
+    outcome: JsonRuntimeV2NormalizedOutcome,
+) -> PyResult<pyo3::Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     dict.set_item("winner_team", outcome.winner_team)?;
     dict.set_item("round", outcome.round)?;
     dict.set_item("total_score", outcome.total_score)?;
-    dict.set_item("rng_i", outcome.rng.i)?;
-    dict.set_item("rng_j", outcome.rng.j)?;
+    dict.set_item("rng_i", outcome.rng_i)?;
+    dict.set_item("rng_j", outcome.rng_j)?;
     dict.set_item("entity_ids", outcome.entity_ids)?;
     dict.set_item("teams", outcome.teams)?;
     dict.set_item("hp", outcome.hp)?;
@@ -446,7 +441,10 @@ fn normalized_outcome_to_pydict<'py>(py: Python<'py>, outcome: NormalizedOutcome
     Ok(dict)
 }
 
-fn normalized_update_frame_to_pydict<'py>(py: Python<'py>, frame: NormalizedUpdateFrame) -> PyResult<pyo3::Bound<'py, PyDict>> {
+fn normalized_update_frame_to_pydict<'py>(
+    py: Python<'py>,
+    frame: JsonRuntimeV2UpdateFrame,
+) -> PyResult<pyo3::Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     dict.set_item("message", frame.message)?;
     dict.set_item("caster", frame.caster)?;
@@ -456,7 +454,7 @@ fn normalized_update_frame_to_pydict<'py>(py: Python<'py>, frame: NormalizedUpda
     dict.set_item("score", frame.score)?;
     dict.set_item("delay0", frame.delay0)?;
     dict.set_item("delay1", frame.delay1)?;
-    dict.set_item("update_type", update_type_name(frame.update_type))?;
+    dict.set_item("update_type", frame.update_type)?;
     Ok(dict)
 }
 
@@ -555,7 +553,7 @@ pub fn parse_group_lines(content: String, double_plus: bool) -> Vec<String> {
 #[pyfunction(signature = (raw, max_rounds))]
 pub fn default_custom_runtime_v2_normalized_run(py: Python<'_>, raw: String, max_rounds: usize) -> PyResult<Py<PyAny>> {
     let run = core_cli_api::default_custom_runtime_v2_normalized_run(&raw, max_rounds).map_err(map_cli_error)?;
-    Ok(normalized_run_to_pydict(py, run)?.into_any().unbind())
+    Ok(normalized_run_to_pydict(py, run.into())?.into_any().unbind())
 }
 
 fn format_rate(value: f64, precision: usize) -> String {
@@ -571,13 +569,6 @@ fn format_rate(value: f64, precision: usize) -> String {
 mod tests {
     use super::*;
     use pyo3::types::{PyAnyMethods, PyDict, PyDictMethods, PyList};
-
-    #[test]
-    fn runtime_v2_update_type_names_are_stable_json_tokens() {
-        assert_eq!(update_type_name(UpdateType::Win), "win");
-        assert_eq!(update_type_name(UpdateType::None), "none");
-        assert_eq!(update_type_name(UpdateType::NextLine), "next_line");
-    }
 
     #[test]
     fn default_custom_runtime_v2_normalized_run_returns_python_dict_golden_shape() {
@@ -607,7 +598,7 @@ mod tests {
                     .expect("total_score should not be None")
                     .extract::<u64>()
                     .expect("total_score should be u64"),
-                37
+                77
             );
 
             let rounds_item = dict
@@ -627,9 +618,9 @@ mod tests {
                     .is_none()
             );
             assert_eq!(round.get_item("round").unwrap().unwrap().extract::<u64>().unwrap(), 1);
-            assert_eq!(round.get_item("total_score").unwrap().unwrap().extract::<u64>().unwrap(), 37);
-            assert_eq!(round.get_item("rng_i").unwrap().unwrap().extract::<u32>().unwrap(), 48);
-            assert_eq!(round.get_item("rng_j").unwrap().unwrap().extract::<u32>().unwrap(), 161);
+            assert_eq!(round.get_item("total_score").unwrap().unwrap().extract::<u64>().unwrap(), 77);
+            assert_eq!(round.get_item("rng_i").unwrap().unwrap().extract::<u32>().unwrap(), 74);
+            assert_eq!(round.get_item("rng_j").unwrap().unwrap().extract::<u32>().unwrap(), 92);
             assert_eq!(
                 round.get_item("entity_ids").unwrap().unwrap().extract::<Vec<usize>>().unwrap(),
                 vec![1, 2]
@@ -640,11 +631,11 @@ mod tests {
             );
             assert_eq!(
                 round.get_item("hp").unwrap().unwrap().extract::<Vec<i32>>().unwrap(),
-                vec![339, 251]
+                vec![262, 288]
             );
             assert_eq!(
                 round.get_item("magic_point").unwrap().unwrap().extract::<Vec<i32>>().unwrap(),
-                vec![23, 8]
+                vec![23, 16]
             );
             assert_eq!(
                 round.get_item("defense").unwrap().unwrap().extract::<Vec<i32>>().unwrap(),
@@ -681,35 +672,62 @@ mod tests {
             let action_item = actions.get_item(0).unwrap();
             let action = action_item.cast::<PyDict>().unwrap();
             assert_eq!(action.get_item("round").unwrap().unwrap().extract::<u64>().unwrap(), 1);
-            assert_eq!(action.get_item("actor").unwrap().unwrap().extract::<usize>().unwrap(), 0);
-            assert_eq!(action.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 1);
-            assert_eq!(action.get_item("amount").unwrap().unwrap().extract::<i32>().unwrap(), 37);
+            assert_eq!(action.get_item("actor").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert_eq!(action.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert_eq!(action.get_item("amount").unwrap().unwrap().extract::<i32>().unwrap(), 36);
 
             let frames_item = round.get_item("frames").unwrap().unwrap();
             let frames = frames_item.cast::<PyList>().unwrap();
-            assert_eq!(frames.len().expect("frames should be sized"), 1);
+            assert_eq!(frames.len().expect("frames should be sized"), 3);
             let frame_item = frames.get_item(0).unwrap();
             let frame = frame_item.cast::<PyDict>().unwrap();
             assert_eq!(
                 frame.get_item("message").unwrap().unwrap().extract::<String>().unwrap(),
-                "[0]攻击[1]"
+                "[0]发起攻击"
             );
-            assert_eq!(frame.get_item("caster").unwrap().unwrap().extract::<usize>().unwrap(), 0);
-            assert_eq!(frame.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert_eq!(frame.get_item("caster").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert_eq!(frame.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 0);
             assert!(frame.get_item("targets").unwrap().unwrap().extract::<Vec<usize>>().unwrap().is_empty());
             assert!(frame.get_item("param").unwrap().unwrap().is_none());
-            assert_eq!(frame.get_item("score").unwrap().unwrap().extract::<u32>().unwrap(), 37);
-            assert_eq!(
-                frame.get_item("delay0").unwrap().unwrap().extract::<i32>().unwrap(),
-                tswn_core::engine::update::DEFAULT_DELAY0_MS
-            );
-            assert_eq!(
-                frame.get_item("delay1").unwrap().unwrap().extract::<i32>().unwrap(),
-                tswn_core::engine::update::DEFAULT_DELAY1_MS
-            );
+            assert_eq!(frame.get_item("score").unwrap().unwrap().extract::<u32>().unwrap(), 0);
+            assert_eq!(frame.get_item("delay0").unwrap().unwrap().extract::<i32>().unwrap(), 1000);
+            assert_eq!(frame.get_item("delay1").unwrap().unwrap().extract::<i32>().unwrap(), 100);
             assert_eq!(
                 frame.get_item("update_type").unwrap().unwrap().extract::<String>().unwrap(),
                 "none"
+            );
+
+            let frame_item = frames.get_item(1).unwrap();
+            let frame = frame_item.cast::<PyDict>().unwrap();
+            assert_eq!(
+                frame.get_item("message").unwrap().unwrap().extract::<String>().unwrap(),
+                "[1]受到[2]点伤害"
+            );
+            assert_eq!(frame.get_item("caster").unwrap().unwrap().extract::<usize>().unwrap(), 1);
+            assert_eq!(frame.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert!(frame.get_item("targets").unwrap().unwrap().extract::<Vec<usize>>().unwrap().is_empty());
+            assert!(frame.get_item("param").unwrap().unwrap().is_none());
+            assert_eq!(frame.get_item("score").unwrap().unwrap().extract::<u32>().unwrap(), 77);
+            assert_eq!(frame.get_item("delay0").unwrap().unwrap().extract::<i32>().unwrap(), 1154);
+            assert_eq!(frame.get_item("delay1").unwrap().unwrap().extract::<i32>().unwrap(), 100);
+            assert_eq!(
+                frame.get_item("update_type").unwrap().unwrap().extract::<String>().unwrap(),
+                "none"
+            );
+
+            let frame_item = frames.get_item(2).unwrap();
+            let frame = frame_item.cast::<PyDict>().unwrap();
+            assert_eq!(frame.get_item("message").unwrap().unwrap().extract::<String>().unwrap(), "\n");
+            assert_eq!(frame.get_item("caster").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert_eq!(frame.get_item("target").unwrap().unwrap().extract::<usize>().unwrap(), 0);
+            assert!(frame.get_item("targets").unwrap().unwrap().extract::<Vec<usize>>().unwrap().is_empty());
+            assert!(frame.get_item("param").unwrap().unwrap().is_none());
+            assert_eq!(frame.get_item("score").unwrap().unwrap().extract::<u32>().unwrap(), 0);
+            assert_eq!(frame.get_item("delay0").unwrap().unwrap().extract::<i32>().unwrap(), 0);
+            assert_eq!(frame.get_item("delay1").unwrap().unwrap().extract::<i32>().unwrap(), 0);
+            assert_eq!(
+                frame.get_item("update_type").unwrap().unwrap().extract::<String>().unwrap(),
+                "next_line"
             );
         });
     }
