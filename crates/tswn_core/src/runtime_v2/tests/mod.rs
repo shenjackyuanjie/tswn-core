@@ -28,6 +28,7 @@ mod plain_summon_skill_tests;
 mod plain_terminal_round_tests;
 mod plain_zombie_skill_tests;
 mod prepared_init_tests;
+mod state_hook_generation_tests;
 mod summon_explode_scheduler_tests;
 mod summon_explode_tests;
 

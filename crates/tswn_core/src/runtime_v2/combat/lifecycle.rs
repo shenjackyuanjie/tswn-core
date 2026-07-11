@@ -267,7 +267,28 @@ impl CombatRuntime {
         action_smart: Option<bool>,
     ) -> bool {
         let mut action_intercepted = false;
-        for entry in &plan.entries {
+        let mut entries = plan.entries.clone();
+        let mut store_generation = plan.store_generation;
+        let mut cursor = 0usize;
+        let mut executed_legacy_keys = Vec::new();
+        while let Some(entry) = entries.get(cursor).copied() {
+            cursor += 1;
+            if self
+                .entities
+                .get(entry.owner)
+                .and_then(|entity| entity.states.entry(entry.legacy_order_key))
+                .is_none()
+            {
+                let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);
+                entries = rebuilt.entries;
+                store_generation = rebuilt.store_generation;
+                cursor = entries
+                    .iter()
+                    .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
+                    .unwrap_or(entries.len());
+                continue;
+            }
+
             let Some(state_id) = entry.state_id else {
                 continue;
             };
@@ -284,7 +305,7 @@ impl CombatRuntime {
                     &mut self.effects,
                     updates,
                     &mut self.rng,
-                    *entry,
+                    entry,
                     plan.hook,
                     capabilities,
                 );
@@ -293,10 +314,21 @@ impl CombatRuntime {
                 } else {
                     context
                 };
-                handler(&mut context, entry);
+                handler(&mut context, &entry);
                 action_intercepted |= context.action_intercepted();
             }
+            executed_legacy_keys.push(entry.legacy_order_key);
             self.drain_effects_into(updates);
+            let current_generation = self.entities.get(entry.owner).map(|entity| entity.states.generation());
+            if current_generation != Some(store_generation) {
+                let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);
+                entries = rebuilt.entries;
+                store_generation = rebuilt.store_generation;
+                cursor = entries
+                    .iter()
+                    .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
+                    .unwrap_or(entries.len());
+            }
         }
         action_intercepted
     }
@@ -307,7 +339,28 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
-        for entry in &plan.entries {
+        let mut entries = plan.entries.clone();
+        let mut store_generation = plan.store_generation;
+        let mut cursor = 0usize;
+        let mut executed_legacy_keys = Vec::new();
+        while let Some(entry) = entries.get(cursor).copied() {
+            cursor += 1;
+            if self
+                .entities
+                .get(entry.owner)
+                .and_then(|entity| entity.states.entry(entry.legacy_order_key))
+                .is_none()
+            {
+                let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);
+                entries = rebuilt.entries;
+                store_generation = rebuilt.store_generation;
+                cursor = entries
+                    .iter()
+                    .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
+                    .unwrap_or(entries.len());
+                continue;
+            }
+
             let Some(state_id) = entry.state_id else {
                 continue;
             };
@@ -324,14 +377,25 @@ impl CombatRuntime {
                     &mut self.effects,
                     updates,
                     &mut self.rng,
-                    *entry,
+                    entry,
                     plan.hook,
                     capabilities,
                 )
                 .with_defend_value(defend_value);
-                handler(&mut context, entry);
+                handler(&mut context, &entry);
             }
+            executed_legacy_keys.push(entry.legacy_order_key);
             self.drain_effects_into(updates);
+            let current_generation = self.entities.get(entry.owner).map(|entity| entity.states.generation());
+            if current_generation != Some(store_generation) {
+                let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);
+                entries = rebuilt.entries;
+                store_generation = rebuilt.store_generation;
+                cursor = entries
+                    .iter()
+                    .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
+                    .unwrap_or(entries.len());
+            }
         }
     }
 }
