@@ -175,7 +175,7 @@ pub fn push_summon_recast_from_template_slot_with_message(
     push_summon_recast_from_template_slot_with_messages(context, entity_slot, template_slot, revive_hp, message.clone(), message)
 }
 
-pub fn run_legacy_summon_recast_from_template_slot_with_config(
+pub fn run_summon_recast_from_template_slot_with_config(
     context: &mut SkillContext<'_>,
     entity_slot: EntitySlotId,
     template_slot: TemplateSlotId,
@@ -188,11 +188,11 @@ pub fn run_legacy_summon_recast_from_template_slot_with_config(
         60,
     ));
     push_summon_recast_from_template_slot_with_messages(context, entity_slot, template_slot, revive_hp, "召唤出[1]", "召唤出[1]")
-        .expect("legacy summon recast handler should spawn or revive template-slot summon");
+        .expect("summon recast handler should spawn or revive template-slot summon");
 }
 
-pub fn run_legacy_summon_recast_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-    run_legacy_summon_recast_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0), 10);
+pub fn run_summon_recast_from_template_slot(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
+    run_summon_recast_from_template_slot_with_config(context, EntitySlotId(0), TemplateSlotId(0), 10);
 }
 
 pub fn summon_default_skill_loadout(fire_skill: SkillId, explode_skill: SkillId, active_order: [usize; 3]) -> SkillLoadout {

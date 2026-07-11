@@ -5011,7 +5011,7 @@ fn summon_recast_from_template_slot_uses_payload_and_revives_existing_entity() {
     let mut runtime = CombatRuntime::from_template(template);
     runtime.set_skill_handler_with_capabilities(
         recast_skill,
-        run_legacy_summon_recast_from_template_slot,
+        run_summon_recast_from_template_slot,
         &[
             ExtensionCapability::ReadTemplateSlots,
             ExtensionCapability::ReadAllies,
@@ -7005,7 +7005,7 @@ fn skill_legacy_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _:
 }
 
 fn skill_configured_summon_recast_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-    run_legacy_summon_recast_from_template_slot_with_config(context, EntitySlotId(1), TemplateSlotId(1), 7);
+    run_summon_recast_from_template_slot_with_config(context, EntitySlotId(1), TemplateSlotId(1), 7);
 }
 
 fn skill_records_alive_summon_recast_error(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {

@@ -349,7 +349,7 @@ pub fn default_custom_runtime_v2_import_config()
         })
         .with_skill_handler_with_capabilities(
             summon,
-            run_legacy_summon_recast_from_template_slot,
+            run_summon_recast_from_template_slot,
             &[
                 ExtensionCapability::ReadTemplateSlots,
                 ExtensionCapability::ReadAllies,
