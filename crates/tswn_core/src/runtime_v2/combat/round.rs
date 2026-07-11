@@ -87,6 +87,7 @@ impl CombatRuntime {
                 }
                 return None;
             }
+            let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
             let Some(prepared) = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action) else {
                 return Some(self.finish_round(None, updates));
             };
@@ -104,7 +105,11 @@ impl CombatRuntime {
                     action.amount = 0;
                 }
                 PreparedPlainAction::BuiltinSkill(prepared) => {
-                    action.target = prepared.targets.first().copied().unwrap_or(action.actor);
+                    if forced_pre_action_skill {
+                        action.target = action.actor;
+                    } else {
+                        action.target = prepared.targets.first().copied().unwrap_or(action.actor);
+                    }
                     action.amount = 0;
                 }
             }

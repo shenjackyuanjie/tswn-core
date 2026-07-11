@@ -110,6 +110,33 @@ fn plain_assassinate_forced_backstab_skips_mp_gate_and_normal_dodge() {
 }
 
 #[test]
+fn plain_assassinate_forced_backstab_records_actor_boundary_target() {
+    let (mut runtime, assassinate) = assassinate_runtime();
+    runtime.set_skill_handler(assassinate, skill_noop);
+    {
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        owner.runtime.assassinate = Some(AssassinateRuntime {
+            fixed_lane: 0,
+            target: EntityIdx(1),
+            break_on_damage: true,
+        });
+        owner.template.skills.ensure_pre_action_lane(0);
+        owner.runtime.move_state.speed_points = crate::player::MOVE_POINT_THRESHOLD + 1;
+    }
+    runtime.scheduler.set_action_mode(ActionSchedulerMode::LegacyStep);
+
+    let outcome = runtime.run_minimal_round_once().expect("forced backstab should produce a round");
+
+    let action = outcome.action.expect("forced pre-action skill should record an action boundary");
+    assert_eq!(action.actor, EntityIdx(0));
+    assert_eq!(action.target, EntityIdx(0));
+    assert_eq!(action.amount, 0);
+    let frame = outcome.frame.expect("forced backstab should emit replay frames");
+    assert_eq!(frame.updates.updates.first().unwrap().message, "[0]发动[背刺]");
+    assert_eq!(frame.updates.updates.first().unwrap().target, 1);
+}
+
+#[test]
 fn plain_assassinate_forced_backstab_keeps_frozen_target() {
     let (mut runtime, _) = assassinate_runtime();
     {
