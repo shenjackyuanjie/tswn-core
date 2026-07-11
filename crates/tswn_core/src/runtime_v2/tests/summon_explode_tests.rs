@@ -943,17 +943,18 @@ fn summon_explode_skips_kill_hook_after_summon_self_death() {
 
     let frame = runtime.flush_effects().expect("summon explode should emit hook updates");
 
-    assert_eq!(frame.updates.updates.len(), 4);
+    assert_eq!(frame.updates.updates.len(), 6);
     assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
     assert_eq!(frame.updates.updates[1].message, "[1]受到[2]点伤害");
     assert_eq!(frame.updates.updates[1].target, 1);
-    assert_eq!(frame.updates.updates[2].message, "skill mark");
-    assert_eq!(frame.updates.updates[2].caster, 1);
-    assert_eq!(frame.updates.updates[2].score, die_skill.0);
-    assert_eq!(frame.updates.updates[3].message, "skill mark");
-    assert_eq!(frame.updates.updates[3].caster, 2);
-    assert_eq!(frame.updates.updates[3].target, 2);
-    assert_eq!(frame.updates.updates[3].score, die_skill.0);
+    assert_eq!(frame.updates.updates[3].message, "[1]被击倒了");
+    assert_eq!(frame.updates.updates[4].message, "skill mark");
+    assert_eq!(frame.updates.updates[4].caster, 1);
+    assert_eq!(frame.updates.updates[4].score, die_skill.0);
+    assert_eq!(frame.updates.updates[5].message, "skill mark");
+    assert_eq!(frame.updates.updates[5].caster, 2);
+    assert_eq!(frame.updates.updates[5].target, 2);
+    assert_eq!(frame.updates.updates[5].score, die_skill.0);
     assert!(!frame.updates.updates.iter().any(|update| update.score == kill_skill.0));
 }
 

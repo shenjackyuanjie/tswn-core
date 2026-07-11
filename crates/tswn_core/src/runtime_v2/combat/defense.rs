@@ -588,16 +588,26 @@ impl CombatRuntime {
     pub fn fire_immune(&mut self, target: EntityIdx) -> bool { self.status_immune(target, "fire") }
 
     pub fn kill_entity_without_damage_into(&mut self, target: EntityIdx, updates: &mut RunUpdates) -> bool {
+        let killed = self.kill_entity_without_damage_mark_only_into(target);
+        if killed {
+            let team = self
+                .entities
+                .get(target)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 self-death target entity: {}", target.0))
+                .runtime
+                .team;
+            self.entities.get_mut(target).unwrap().runtime.alive = false;
+            self.mark_dead_with_linked_minions_into(target, team, updates);
+        }
+        killed
+    }
+
+    pub fn kill_entity_without_damage_mark_only_into(&mut self, target: EntityIdx) -> bool {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime_v2 self-death target entity: {}", target.0);
         };
         let killed = target_entity.runtime.alive;
         target_entity.runtime.hp = 0;
-        target_entity.runtime.alive = false;
-        let team = target_entity.runtime.team;
-        if killed {
-            self.mark_dead_with_linked_minions_into(target, team, updates);
-        }
         killed
     }
 

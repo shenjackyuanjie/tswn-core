@@ -22,6 +22,7 @@ mod plain_summon_skill_tests;
 mod plain_terminal_round_tests;
 mod plain_zombie_skill_tests;
 mod prepared_init_tests;
+mod summon_explode_scheduler_tests;
 mod summon_explode_tests;
 
 fn normalized_rng_checkpoint(i: u32, j: u32) -> crate::runtime_v2::oracle::NormalizedRngCheckpoint {

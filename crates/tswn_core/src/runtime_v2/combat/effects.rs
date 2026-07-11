@@ -139,7 +139,7 @@ impl CombatRuntime {
                         "[0]使用[自爆]",
                         0,
                     ));
-                    let killed_caster = self.kill_entity_without_damage_into(caster, updates);
+                    let killed_caster = self.kill_entity_without_damage_mark_only_into(caster);
                     self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
                     let Some(atp) = defend_value.atp() else {
                         panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
@@ -576,5 +576,14 @@ impl CombatRuntime {
             self.emit_plain_lethal_replay_into(caster, caster, updates);
         }
         self.drain_die_hooks_into(caster, updates);
+        let (hp, team) = self
+            .entities
+            .get(caster)
+            .map(|entity| (entity.runtime.hp, entity.runtime.team))
+            .unwrap_or_else(|| panic!("runtime_v2 summon explode caster disappeared after die hooks: {}", caster.0));
+        if hp <= 0 {
+            self.entities.get_mut(caster).unwrap().runtime.alive = false;
+            self.mark_dead_with_linked_minions_into(caster, team, updates);
+        }
     }
 }
