@@ -103,3 +103,38 @@ fn case_large_67_import_builds_plain_summon_blueprint_with_static_child_skills()
         Some(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY)
     );
 }
+
+#[test]
+fn raw_import_minion_blueprints_keep_clone_build_metadata() {
+    let raw = concat!(
+        r#"owner@red+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklshadow":10,"sklsummon":10,"sklzombie":10}}"#,
+        "\n",
+        "target@blue",
+    );
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let runner = RuntimeV2Runner::from_custom_mixed_namerena_raw(raw.to_owned(), config)
+        .expect("runtime v2 minion blueprint runner should build");
+    let owner = runner.runtime.entities.get(EntityIdx(0)).expect("minion owner should exist");
+    assert!(owner.template.clone_build.is_some());
+
+    for (slot_export, expected_name) in [
+        (DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT, "幻影"),
+        (DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT, "使魔"),
+        (DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT, "丧尸"),
+    ] {
+        let slot = runner
+            .runtime
+            .registry
+            .entity_slot_id_by_export_name(slot_export)
+            .expect("core minion blueprint slot should exist");
+        let SlotValue::PlayerTemplate(blueprint) = owner.slots.get(slot).expect("owner should carry minion blueprint") else {
+            panic!("core minion blueprint slot should contain a player template");
+        };
+
+        assert_eq!(blueprint.display_name, expected_name);
+        assert!(
+            blueprint.clone_build.is_some(),
+            "{expected_name} blueprint should keep clone build metadata"
+        );
+    }
+}

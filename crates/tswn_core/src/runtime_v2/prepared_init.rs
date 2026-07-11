@@ -414,6 +414,7 @@ impl PreparedBattleInit {
                     .expect("runtime v2 registry importing shadow must register core shadow kind");
                 let mut template = Self::template_from_player(&shadow, 0, team, shadow_skills);
                 template.kind = shadow_kind;
+                template.clone_build = Some(Self::clone_build_from_player(&shadow));
                 template
             });
         let summon_blueprint = registry
@@ -428,6 +429,7 @@ impl PreparedBattleInit {
                 let mut template = Self::template_from_player(&summon, 0, team, summon_skills);
                 template.kind = summon_kind;
                 template.reserved_player_ids_before_spawn = 1;
+                template.clone_build = Some(Self::clone_build_from_player(&summon));
                 template
             });
         let zombie_blueprint = registry
@@ -465,7 +467,14 @@ impl PreparedBattleInit {
         let mut template = Self::template_from_player(&zombie, 0, team, zombie_skills);
         template.kind = zombie_kind;
         template.reserved_player_ids_before_spawn = 1;
+        template.clone_build = Some(Self::clone_build_from_player(&zombie));
         template
+    }
+
+    fn clone_build_from_player(player: &Player) -> CloneBuildData {
+        let status = player.get_status();
+        let (clone_attrs, clone_weapon_attr_bonus, clone_name_factor) = player.clone_build_inputs();
+        CloneBuildData::from_legacy(clone_attrs, clone_weapon_attr_bonus, clone_name_factor, status)
     }
 
     fn template_from_player(player: &Player, id: PlrId, team: usize, skills: SkillLoadout) -> PlayerTemplate {
