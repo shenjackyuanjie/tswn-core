@@ -126,17 +126,13 @@ impl CombatRuntime {
             return;
         }
         let shared_damage = damage / 2;
-        let (killed, team) = {
+        let killed = {
             let owner_entity = self
                 .entities
                 .get_mut(owner)
                 .unwrap_or_else(|| panic!("runtime_v2 summon share owner disappeared: {}", owner.0));
             owner_entity.runtime.hp = (owner_entity.runtime.hp - shared_damage).max(0);
-            let killed = owner_entity.runtime.hp == 0 && owner_entity.runtime.alive;
-            if killed {
-                owner_entity.runtime.alive = false;
-            }
-            (killed, owner_entity.runtime.team)
+            owner_entity.runtime.hp == 0 && owner_entity.runtime.alive
         };
         updates.add(RuntimeFrame::legacy_damage_update(
             caster.0 as usize,
@@ -148,9 +144,21 @@ impl CombatRuntime {
             return;
         }
         self.emit_plain_lethal_replay_into(caster, owner, updates);
+        self.drain_die_hooks_into(owner, updates);
+        let (hp, team) = self
+            .entities
+            .get(owner)
+            .map(|entity| (entity.runtime.hp, entity.runtime.team))
+            .unwrap_or_else(|| panic!("runtime_v2 summon share owner disappeared after die hooks: {}", owner.0));
+        if hp > 0 {
+            return;
+        }
+        self.entities.get_mut(owner).unwrap().runtime.alive = false;
         self.world.mark_dead(owner, team);
         self.cleanup_plain_summon_owner_minions_except(owner, summoned, updates);
-        self.drain_lethal_damage_hooks_into(caster, owner, updates);
+        if self.should_run_kill_hooks(caster, owner) {
+            self.drain_kill_hooks_into(caster, owner, updates);
+        }
     }
 
     fn plain_summon_blueprint(&self, actor: EntityIdx) -> PlayerTemplate {

@@ -252,3 +252,41 @@ fn plain_revive_random_score_consumes_legacy_rffff() {
     assert_eq!(actual, expected);
     assert_rng_state_eq(&runtime.rng, &expected_rng);
 }
+
+#[test]
+fn plain_reraise_restores_hp_without_readding_round_actor() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let reraise = builder
+        .register_skill_with_hooks(
+            "core",
+            "reraise",
+            DEFAULT_CORE_RERAISE_SKILL_EXPORT,
+            ProcMask::DIE,
+            TargetPolicy::None,
+            SkillPriority(10),
+        )
+        .expect("reraise skill should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "killer", 0, 100, 3),
+            PlayerTemplate::new(2, "target", 1, 100, 3).with_skill_loadout(SkillLoadout::from_skill_levels([(reraise, 128)])),
+            PlayerTemplate::new(3, "tail", 0, 100, 3),
+        ],
+        registry,
+    ));
+    runtime.set_skill_handler(reraise, run_reraise_die_skill);
+    assert_eq!(runtime.world.next_actor(&runtime.entities), Some(EntityIdx(0)));
+    assert_eq!(runtime.world.next_actor(&runtime.entities), Some(EntityIdx(1)));
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 0;
+    let before_order = runtime.world.round_order().to_vec();
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_lethal_damage_into(EntityIdx(0), EntityIdx(1), &mut updates);
+
+    let target = runtime.entities.get(EntityIdx(1)).unwrap();
+    assert!(target.runtime.alive);
+    assert!(target.runtime.hp > 0);
+    assert_eq!(runtime.world.round_order(), before_order.as_slice());
+    assert_eq!(runtime.world.next_actor(&runtime.entities), Some(EntityIdx(2)));
+}

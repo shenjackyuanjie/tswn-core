@@ -226,9 +226,6 @@ impl<'a> SkillContext<'a> {
         );
         owner.runtime.hp = hp.max(1).min(owner.template.max_hp);
         owner.runtime.alive = true;
-        let team = owner.runtime.team;
-        self.world.revive_round_actor(self.owner);
-        self.world.revive_alive(self.owner, team);
         Ok(())
     }
 
