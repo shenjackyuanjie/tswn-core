@@ -227,6 +227,9 @@ impl CombatRuntime {
             if !self.entities.get(target).is_some_and(EntityRecord::is_active) {
                 continue;
             }
+            if !self.entities.get(owner).is_some_and(EntityRecord::is_active) {
+                continue;
+            }
 
             let atp = {
                 let owner_runtime = &mut self

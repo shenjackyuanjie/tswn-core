@@ -6,6 +6,7 @@ mod plain_assassinate_skill_tests;
 mod plain_attack_skill_tests;
 mod plain_charm_targeting_tests;
 mod plain_clone_skill_tests;
+mod plain_counter_skill_tests;
 mod plain_damage_short_circuit_tests;
 mod plain_disperse_skill_tests;
 mod plain_ice_skill_tests;
