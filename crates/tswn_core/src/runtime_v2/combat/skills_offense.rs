@@ -451,12 +451,9 @@ impl CombatRuntime {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self
             .world
-            .team_roster(actor_team)
+            .team_alive(actor_team)
             .unwrap_or_default()
-            .iter()
-            .copied()
-            .filter(|target| self.entities.get(*target).is_some_and(|entity| entity.runtime.alive))
-            .collect::<Vec<_>>();
+            .to_vec();
         if candidates.is_empty() {
             return Vec::new();
         }

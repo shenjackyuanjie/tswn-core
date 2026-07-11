@@ -11,6 +11,7 @@ mod plain_counter_skill_tests;
 mod plain_damage_short_circuit_tests;
 mod plain_disperse_skill_tests;
 mod plain_heal_skill_tests;
+mod plain_haste_targeting_tests;
 mod plain_ice_scheduler_tests;
 mod plain_ice_skill_tests;
 mod plain_kill_hook_tests;
