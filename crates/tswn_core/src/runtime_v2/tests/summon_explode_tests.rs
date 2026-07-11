@@ -956,3 +956,53 @@ fn summon_explode_skips_kill_hook_after_summon_self_death() {
     assert_eq!(frame.updates.updates[3].score, die_skill.0);
     assert!(!frame.updates.updates.iter().any(|update| update.score == kill_skill.0));
 }
+
+#[test]
+fn summon_explode_target_lethal_damage_emits_knockout_before_self_death() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let summon_kind = builder
+        .register_player_kind_with_policies(
+            "core",
+            "summon",
+            "core.kind.test-summon",
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
+            PlayerKindPolicies::default(),
+        )
+        .expect("summon kind should register");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "owner", 0, 10, 3),
+            PlayerTemplate::new(2, "enemy", 1, 3, 3).with_def_res(0, 0),
+            PlayerTemplate::with_kind(3, "summon", summon_kind, 0, 5, 1).with_magic(80),
+        ],
+        builder.build(),
+    ));
+    runtime.effects.push(QueuedEffect::SummonExplode {
+        caster: EntityIdx(2),
+        target: EntityIdx(1),
+        fire_state_key: 91,
+    });
+
+    let frame = runtime
+        .flush_effects()
+        .expect("summon explode should emit lethal target and caster updates");
+
+    assert_eq!(
+        frame
+            .updates
+            .updates
+            .iter()
+            .map(|update| (update.message.as_ref(), update.score))
+            .collect::<Vec<_>>(),
+        vec![
+            ("[0]使用[自爆]", 0),
+            ("[1]受到[2]点伤害", frame.updates.updates[1].score),
+            ("\n", 0),
+            ("[1]被击倒了", 50),
+            ("\n", 0),
+            ("[1]消失了", 50),
+        ]
+    );
+    assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+    assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+}

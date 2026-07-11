@@ -420,3 +420,22 @@ fn plain_fire_uses_builtin_static_dispatch_and_stacks_fire_mag() {
         1.0
     );
 }
+
+#[test]
+fn plain_fire_lethal_damage_emits_knockout_replay() {
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+        PlayerTemplate::new(1, "caster", 0, 100, 3).with_magic(1_000_000),
+        PlayerTemplate::new(2, "target", 1, 3, 3).with_def_res(0, 0),
+    ]));
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_fire_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
+
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp, 0);
+    assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec!["[0]使用[火球术]", "[1]受到[2]点伤害", "\n", "[1]被击倒了"]
+    );
+    assert_eq!(updates.updates[3].score, 50);
+}
