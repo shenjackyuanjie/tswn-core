@@ -103,12 +103,24 @@ pub fn render_update_message(update: &RunUpdate, names: &HashMap<PlrId, String>)
 fn render_name(id: PlrId, names: &HashMap<PlrId, String>) -> String { names.get(&id).cloned().unwrap_or_else(|| id.to_string()) }
 
 pub fn hp_delta_for_tone(tone: ReplayTone, update: &RunUpdate) -> Option<i32> {
-    let value = update.param.unwrap_or(update.score).min(i32::MAX as u32) as i32;
+    let value = hp_delta_value(update).min(i32::MAX as u32) as i32;
     match tone {
         ReplayTone::Damage => Some(-value),
         ReplayTone::Recover => Some(value),
         _ => None,
     }
+}
+
+fn hp_delta_value(update: &RunUpdate) -> u32 {
+    if is_percent_hp_damage_update(update) {
+        update.score
+    } else {
+        update.param.unwrap_or(update.score)
+    }
+}
+
+fn is_percent_hp_damage_update(update: &RunUpdate) -> bool {
+    update.message.contains("体力减少") && update.message.contains("[2]%")
 }
 
 pub fn replay_tone_color(tone: ReplayTone) -> &'static str {
@@ -609,6 +621,27 @@ mod tests {
         assert!(player_part.show_hp);
         assert_eq!((player_part.hp_before, player_part.hp_after), (50, 0));
         assert!(!player_part.death_effect);
+    }
+
+    #[test]
+    fn percent_hp_damage_uses_actual_score_for_hp_bar() {
+        let mut update = RunUpdate::new("[1]体力减少[2]%", 0, 1, 9);
+        update.param = Some(47);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Damage,
+            message_rendered: "target体力减少47%",
+        }];
+        let previous = vec![state(0, 100), state(1, 20)];
+        let frame = vec![state(0, 100), state(1, 11)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let clip = &view.rows[0].clips[0];
+
+        let player_part = player_part(clip);
+        assert!(player_part.show_hp);
+        assert_eq!((player_part.hp_before, player_part.hp_after), (20, 11));
+        assert!(clip.parts.iter().any(|part| part.kind == ReplayTextPartKind::Data && part.text == "47"));
     }
 
     #[test]
