@@ -9,13 +9,13 @@
     --paper-2: #f1f8fc;
     --ink: #214052;
     --line: #c6e1ef;
-    --damage: #d84d45;
-    --recover: #0077BB;
+    --damage: #800020;
+    --recover: #40d040;
     --status-exit: #bb7700;
     --skill: #0077BB;
     --knockout: #b06a0e;
-    --hp: #49c267;
-    --oldhp: #ef7f79;
+    --hp: #40d040;
+    --oldhp: #800020;
     --healhp: #08f;
 }
 
@@ -526,7 +526,7 @@ button:hover {
 }
 
 .hp {
-    background: linear-gradient(90deg, #4cce69 0%, var(--hp) 100%);
+    background: linear-gradient(90deg, var(--hp) 0%, var(--hp) 100%);
 }
 
 .mpwrap {
@@ -732,7 +732,7 @@ button:hover {
 }
 
 .message-number {
-    color: #d84d45;
+    color: var(--damage);
 }
 
 .actor-token {
