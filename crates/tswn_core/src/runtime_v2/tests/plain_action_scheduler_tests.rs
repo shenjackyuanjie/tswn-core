@@ -177,3 +177,28 @@ fn plain_clone_rebuild_drops_runtime_merge_hide_pre_action_when_level_clamps_to_
     assert_eq!(clone_skills.level_at(0), Some(0));
     assert!(clone_skills.pre_action_order().is_empty());
 }
+
+#[test]
+fn plain_frozen_actor_threshold_action_skips_mp_gate_and_visible_action() {
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+        PlayerTemplate::new(1, "frozen", 0, 100, 3).with_speed(600).with_magic_point(80),
+        PlayerTemplate::new(2, "target", 1, 100, 3).with_speed(1),
+    ]));
+    let actor = EntityIdx(0);
+    runtime
+        .entities
+        .get_mut(actor)
+        .unwrap()
+        .states
+        .add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 1024));
+    runtime.entities.get_mut(actor).unwrap().runtime.move_state.speed_points = crate::player::MOVE_POINT_THRESHOLD + 1;
+
+    let outcome = runtime.run_minimal_round_once();
+
+    assert!(outcome.is_none());
+    let actor = runtime.entities.get(actor).unwrap();
+    assert_eq!(actor.runtime.magic_point, 80);
+    assert_eq!(actor.runtime.move_state.speed_points, 1);
+    assert!(actor.states.is_frozen());
+    assert_eq!(runtime.rng.i, 2);
+}

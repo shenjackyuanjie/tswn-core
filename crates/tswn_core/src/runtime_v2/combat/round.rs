@@ -2,12 +2,20 @@ use super::*;
 
 impl CombatRuntime {
     pub fn run_minimal_round(&mut self) -> RoundOutcome {
+        loop {
+            if let Some(outcome) = self.run_minimal_round_once() {
+                return outcome;
+            }
+        }
+    }
+
+    pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> {
         if let Some(winner_team) = self.world.sync_winner(&self.entities) {
-            return RoundOutcome {
+            return Some(RoundOutcome {
                 action: None,
                 frame: None,
                 winner_team: Some(winner_team),
-            };
+            });
         }
 
         let selected_action = self.scheduler.select_action(&mut self.world, &mut self.entities, &mut self.rng);
@@ -22,7 +30,7 @@ impl CombatRuntime {
             ));
         }
         let Some(mut action) = selected_action else {
-            return self.finish_round(None, updates);
+            return Some(self.finish_round(None, updates));
         };
         let legacy_plain_action = self.scheduler.uses_legacy_step_scheduler();
         self.scratch.selected_actor_round = self.round;
@@ -67,8 +75,20 @@ impl CombatRuntime {
             self.drain_state_hook_plan_with_action_smart_into(&pre_action_state_plan, &mut updates, Some(smart));
         let mut prepared_plain_action = None;
         if legacy_plain_action && !state_intercepted_action {
+            if self
+                .entities
+                .get(action.actor)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 frozen-action actor: {}", action.actor.0))
+                .states
+                .is_frozen()
+            {
+                if updates.had_updates() {
+                    return Some(self.finish_round(None, updates));
+                }
+                return None;
+            }
             let Some(prepared) = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action) else {
-                return self.finish_round(None, updates);
+                return Some(self.finish_round(None, updates));
             };
             match &prepared {
                 PreparedPlainAction::BasicAttack { target, amount, .. } => {
@@ -202,7 +222,7 @@ impl CombatRuntime {
                     .collect::<Vec<_>>(),
             );
         }
-        self.finish_round(Some(action), updates)
+        Some(self.finish_round(Some(action), updates))
     }
 
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {
