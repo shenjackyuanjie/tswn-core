@@ -234,7 +234,7 @@ impl<'a> SkillContext<'a> {
             .entities
             .get(self.owner)
             .ok_or(EffectContextError::UnknownEntity(self.owner))
-            .map(|owner| owner.runtime.alive && owner.runtime.hp > 0)?;
+            .map(EntityRecord::is_active)?;
         if !active {
             return Ok(false);
         }

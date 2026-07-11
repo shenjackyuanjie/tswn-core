@@ -231,17 +231,15 @@ impl CombatRuntime {
                 continue;
             }
 
-            let atp = {
-                let owner_runtime = &mut self
-                    .entities
-                    .get_mut(owner)
-                    .unwrap_or_else(|| panic!("runtime_v2 counter owner disappeared: {}", owner.0))
-                    .runtime;
-                if !owner_runtime.mp_ready(&mut self.rng) {
-                    continue;
-                }
-                owner_runtime.get_at(false, &mut self.rng)
-            };
+            if !self.entity_mp_ready(owner) {
+                continue;
+            }
+            let atp = self
+                .entities
+                .get(owner)
+                .unwrap_or_else(|| panic!("runtime_v2 counter owner disappeared: {}", owner.0))
+                .runtime
+                .get_at(false, &mut self.rng);
             updates.add_newline();
             updates.add(crate::engine::update::RunUpdate::new(
                 "[0]发起[反击][s_counter]",

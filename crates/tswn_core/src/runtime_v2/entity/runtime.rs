@@ -175,9 +175,6 @@ impl PlayerRuntime {
     pub fn active(&self) -> bool { self.alive && self.hp > 0 }
 
     pub fn mp_ready(&mut self, randomer: &mut RC4) -> bool {
-        if !self.active() {
-            return false;
-        }
         let require_mp = randomer.r3x3() as i32;
         if self.magic_point < require_mp {
             return false;

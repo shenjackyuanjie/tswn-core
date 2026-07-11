@@ -205,11 +205,7 @@ impl CombatRuntime {
                 .get(link.owner)
                 .is_some_and(|_| self.plain_effective_team(link.owner) == target_team);
             let trigger_ok = same_group && self.rng.r127() < level;
-            let protector_ready = trigger_ok
-                && self
-                    .entities
-                    .get_mut(link.owner)
-                    .is_some_and(|protector| protector.runtime.mp_ready(&mut self.rng));
+            let protector_ready = trigger_ok && self.entity_mp_ready(link.owner);
 
             #[cfg(not(feature = "no_debug"))]
             if std::env::var_os("TSWN_PROBE_PROTECT").is_some() {

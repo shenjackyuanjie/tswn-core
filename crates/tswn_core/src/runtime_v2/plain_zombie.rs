@@ -65,13 +65,7 @@ impl CombatRuntime {
             self.mark_zombie_corpse(killed_target);
             return true;
         }
-        if !self
-            .entities
-            .get_mut(caster)
-            .unwrap_or_else(|| panic!("runtime_v2 zombie caster disappeared: {}", caster.0))
-            .runtime
-            .mp_ready(&mut self.rng)
-        {
+        if !self.entity_mp_ready(caster) {
             return false;
         }
 

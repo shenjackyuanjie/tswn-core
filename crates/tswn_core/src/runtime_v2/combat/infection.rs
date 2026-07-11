@@ -1,6 +1,20 @@
 use super::*;
 
 impl CombatRuntime {
+    pub fn entity_mp_ready(&mut self, owner: EntityIdx) -> bool {
+        let Some(entity) = self.entities.get(owner) else {
+            return false;
+        };
+        if !entity.is_active() {
+            return false;
+        }
+        self.entities
+            .get_mut(owner)
+            .expect("runtime_v2 entity disappeared during mp_ready")
+            .runtime
+            .mp_ready(&mut self.rng)
+    }
+
     pub fn apply_poison_on_damage(&mut self, caster: EntityIdx, target: EntityIdx, damage: i32, updates: &mut RunUpdates) {
         if damage <= 4 {
             return;
