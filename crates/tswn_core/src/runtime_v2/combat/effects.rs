@@ -111,8 +111,8 @@ impl CombatRuntime {
                         let Some(amount) = defend_value.damage() else {
                             panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
                         };
-                        if self.apply_legacy_damage_into(caster, target, amount, updates) {
-                            self.drain_marked_plain_lethal_damage_into(caster, target, updates);
+                        if self.apply_plain_legacy_damage_into(caster, target, amount, updates) {
+                            self.drain_plain_lethal_damage_into(caster, target, updates);
                         } else if amount > 0 {
                             self.apply_fire_on_damage(target, fire_state_key);
                         }
@@ -168,8 +168,8 @@ impl CombatRuntime {
                         let Some(amount) = defend_value.damage() else {
                             panic!("runtime_v2 POST_DEFEND hooks must leave a damage value");
                         };
-                        if self.apply_legacy_damage_into(caster, target, amount, updates) {
-                            self.drain_marked_plain_lethal_damage_into(caster, target, updates);
+                        if self.apply_plain_legacy_damage_into(caster, target, amount, updates) {
+                            self.drain_plain_lethal_damage_into(caster, target, updates);
                         } else if amount > 0 {
                             self.apply_fire_on_damage(target, fire_state_key);
                         }

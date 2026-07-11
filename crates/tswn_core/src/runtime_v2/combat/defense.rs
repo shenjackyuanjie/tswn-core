@@ -397,6 +397,24 @@ impl CombatRuntime {
         self.apply_damage_with_replay_into(caster, target, amount, updates, RuntimeFrame::legacy_damage_update)
     }
 
+    pub fn apply_plain_legacy_damage_into(
+        &mut self,
+        caster: EntityIdx,
+        target: EntityIdx,
+        amount: i32,
+        updates: &mut RunUpdates,
+    ) -> bool {
+        let target_entity = self
+            .entities
+            .get_mut(target)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 plain legacy damage target entity: {}", target.0));
+        target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
+        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
+        updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
+        self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
+        killed
+    }
+
     pub fn apply_damage_with_replay_into(
         &mut self,
         caster: EntityIdx,

@@ -374,11 +374,6 @@ impl CombatRuntime {
         }
     }
 
-    pub fn drain_marked_plain_lethal_damage_into(&mut self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        self.emit_plain_lethal_replay_into(caster, target, updates);
-        self.drain_lethal_damage_hooks_into(caster, target, updates);
-    }
-
     pub fn emit_plain_lethal_replay_into(&self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
         let die_message = if self.entities.get(target).is_some_and(|entity| entity.runtime.is_combat_minion()) {
             "[1]消失了"
