@@ -77,7 +77,7 @@
 
 ### 2.1 2026-07 架构复查结论
 
-截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下为 506 passed / 4 ignored，CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 87/87 通过，当前已完成已知 corpus 行为收敛，但仍不能据此判断“可以删除 legacy”。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`，部分入口/展示链和未覆盖的大样本/自定义组合仍未完成独立化。
+截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 87/87 通过，当前已完成已知 corpus 行为收敛，但仍不能据此判断“可以删除 legacy”。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`，部分入口/展示链和未覆盖的大样本/自定义组合仍未完成独立化。
 
 可以保留并继续演进：
 
@@ -93,7 +93,7 @@
 - **已完成**：state hook 执行器按 `StateStore` generation 动态刷新后续 hook，状态增删会在当前 phase 内影响后续 state hook；
 - 尚未被大样本/custom 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending、冻结目标与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级、0→正等级 action 队尾和终局 KILL gate 语义并修复完整 `large_67` / `large_72`；KILL 技能链已按 legacy 在首个真实触发后短路；feature-gated 完整 runtime-v2 corpus 的 87 个 case 已全部通过；后续风险转为大样本、custom golden、状态生命周期边界和 RNG 回归；
 - 内置技能借用 extension handler 的过渡路径继续收敛为静态 dispatch；
-- 以 v2 自身输出生成并验证 v2 的 self golden；此类测试只能保留为内部回归，不能充当 parity 门禁。
+- 已清理过期的 v2 self-golden ignore；后续新增 runner 回归必须优先使用 legacy/v2 strict diff 或稳定行为断言，不能把 v2 自身输出当作 parity 门禁。
 - CLI/C API/Python/wasm/show 默认入口切换、legacy fallback 收口和最终删除。
 
 ### 2.2 修订后的近期实施顺序
@@ -609,7 +609,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 已把 linked minion owner death cleanup 纳入 custom runner strict-diff golden，覆盖消失帧、winner 与 WorldArena 派生视图；
 - 已把 merge 纳入 custom runner strict-diff golden，覆盖吞噬/属性上升帧、score，以及 JS `k1` 语义下按 fixed-lane key 提升 owner 既有技能等级（不复制 target 技能 ID）；
 - 已补 custom runner multi-round normalized run golden，覆盖 `RuntimeV2Runner::run_until_winner_normalized_rounds`、guard 状态、累计 score 与逐回合 strict diff；
-- 已从 custom large / fight_multi 真实 raw 输入抽出初始化 parity fixture，覆盖 seed RNG、team 编号与 WorldArena 初始派生视图；旧 large / fight_multi prefix/terminal v2 self golden 已标记忽略，真实 legacy oracle 与 `track_test.py --engine runtime-v2` 是后续收敛门槛；
+- 已从 custom large / fight_multi 真实 raw 输入抽出初始化 parity fixture，覆盖 seed RNG、team 编号与 WorldArena 初始派生视图；旧 large / fight_multi prefix/terminal v2 self golden 已删除，保留真实 legacy oracle 与 `track_test.py --engine runtime-v2` 作为后续收敛门槛；
 - 为关键行为设计 repo 内 extension fixture；
 - 标出需要 capability 例外的跨实体读取点。
 
@@ -622,7 +622,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 新增 `CombatRuntime`、`PreparedCombatTemplate`、`EntityArena`、`WorldArena`、`PhaseScheduler`、`EffectQueue`、`BattleScratch`；
 - 保留 `Player` 输入/测试 facade，但 battle start 前转换成 template；
-- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler；`PreparedBattleInit` 已独立复刻 raw 分组、同队 upgrade、按 id-name build、seed RC4 消费、move point、初始 world views、普通玩家运行时属性与 summon/shadow blueprint，并显式报告初始化错误；历史 86/86 检查点包含自指 v2 golden，不能作为 parity 结论，当前 feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 87/87，通过结果可作为后续回归门禁。
+- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler；`PreparedBattleInit` 已独立复刻 raw 分组、同队 upgrade、按 id-name build、seed RC4 消费、move point、初始 world views、普通玩家运行时属性与 summon/shadow blueprint，并显式报告初始化错误；过期自指 v2 golden 已删除；当前 feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 87/87，通过结果可作为后续回归门禁。
 
 完成标准：
 
@@ -854,3 +854,4 @@ v2 合入并删除 legacy 前必须满足：
 - 性能不退步：fixed/stress/no_debug/perf clone 路径不退步；
 - 删除旧栈：正式路径无 legacy runtime，旧 `Storage`/`SkillArgs`/`OnDamageFunc` 不作为新扩展能力边界；
 - 文档完整：changelog、developer migration guide、unsafe/runtime design、custom migration 均更新。
+

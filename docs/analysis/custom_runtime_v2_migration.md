@@ -56,7 +56,7 @@ git diff --name-status github/main..github/custom
 3. **minion fixture**：已覆盖 owner damage share 仍生效、minion heal 不向 owner 或 sibling minion 共享、owner death / explicit remove 清理 linked minion，以及从 template slot 读取真实 minion 模板后按 root owner entity slot 递增分配 `owner?N` minion 名称并按 legacy/custom 文案 spawn；shadow/zombie handler 已提升为带槽位参数的正式 helper，并覆盖 `幻术` / `召唤亡灵` 外显帧序列；后续补更多内置 minion strict-diff parity。
 4. **merge fixture**：使用 `FixedLane` 与兼容 `DropUnmappedSkills` 两组 golden 覆盖 replay、固定槽位等级提升、owner 技能 ID 稳定和未映射来源槽位忽略。
 5. **HP marker renderer fixture**：已用 core replay/show payload 固化 `还剩[2]点血` 展示与数值 data，并补 HP bar show renderer payload；wasm 结构化 replay view 已对 HP marker 强制 `show_hp`。
-6. **runner fixture**：已新增最小 v2 strict-diff golden，并把 linked minion owner-death cleanup、merge 与 multi-round run-until-winner 纳入归一化 runner golden；已从 custom 分支 large / fight_multi 真实 raw 输入抽出初始化 parity golden，覆盖 seed RNG、team 编号和 round/alive 派生视图；large 真实 raw 已补完整 run-until-winner normalized golden，fight_multi 真实 raw 已补前 4 轮 normalized prefix golden、完整 run-until-winner 终局 golden 与 88 轮完整逐回合 checkpoint golden，固定每轮 RNG checkpoint、HP/alive、action/frame、winner、guard 与终局 world 派生视图；后续继续把关键样例扩展到更多内置技能/状态逐回合 runner golden。
+6. **runner fixture**：已新增最小 v2 strict-diff golden，并把 linked minion owner-death cleanup、merge 与 multi-round run-until-winner 纳入归一化 runner golden；已从 custom 分支 large / fight_multi 真实 raw 输入抽出初始化 parity fixture，覆盖 seed RNG、team 编号和 round/alive 派生视图；过期 large / fight_multi v2 self-golden 已删除，fight_multi 保留真实 legacy/v2 divergence 断言；后续继续把关键样例扩展到 legacy/v2 strict diff 或稳定行为断言。
 
 ---
 
@@ -107,5 +107,6 @@ git diff --name-status github/main..github/custom
 ## 5. 未完成项
 
 - summon 完整内置技能迁移，完整 custom DIY/OL parser 与 CLI/wasm/Python/C API 切换接入（已有 parser-facing summon/shadow/zombie、组合 minion overlay 导入入口、默认 custom v2 profile、默认 mixed raw runner summon/fire/explode/possess handler 安装、core `cli_api` custom v2 profile helper、CLI / C API 默认 normalized-run JSON 入口、Python 默认 normalized-run dict 入口，以及 wasm 默认 normalized-run typed 入口），以及更多内置 minion handler 参数化/strict-diff parity。
-- custom fight_multi runner 归一化 golden 已覆盖完整 run-until-winner 终局与 88 轮逐回合 checkpoint；后续继续扩展更多内置技能/状态 replay 行为。
+- custom fight_multi 现保留真实 legacy/v2 divergence 断言；后续继续扩展更多内置技能/状态 replay 行为，并优先使用 strict-diff parity 而不是 v2 self-golden。
 - 将审计表中的每个验收 case 接入 strict diff 或稳定单测。
+
