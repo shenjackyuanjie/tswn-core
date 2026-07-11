@@ -493,10 +493,32 @@ impl CombatRuntime {
                     .derive_stats();
                 caster_entity.apply_derived_stats(stats);
             }
+            let before_levels = caster_entity.template.skills.levels().to_vec();
             let merged_skills = caster_entity
                 .template
                 .skills
                 .merge_fixed_lanes_from(&target_skills, caster_entity.runtime.policies.merge);
+            let can_restore_owner_proc_lanes = caster_entity.runtime.owner == caster
+                && caster_entity.runtime.root_owner == caster
+                && !caster_entity.runtime.is_minion();
+            if merged_skills && can_restore_owner_proc_lanes {
+                let skills = caster_entity.template.skills.skills().to_vec();
+                let after_levels = caster_entity.template.skills.levels().to_vec();
+                for (lane, (before, after)) in before_levels.iter().zip(after_levels.iter()).enumerate() {
+                    if *before != 0 || *after == 0 {
+                        continue;
+                    }
+                    let Some(skill_id) = skills.get(lane).copied() else {
+                        continue;
+                    };
+                    let Some(skill) = self.registry.skill(skill_id) else {
+                        continue;
+                    };
+                    if skill.export_name == DEFAULT_CORE_HIDE_SKILL_EXPORT {
+                        caster_entity.template.skills.ensure_pre_action_lane(lane);
+                    }
+                }
+            }
             let transfer_magic_point = target_magic_point > caster_entity.runtime.magic_point;
             if transfer_magic_point {
                 caster_entity.runtime.magic_point = target_magic_point;

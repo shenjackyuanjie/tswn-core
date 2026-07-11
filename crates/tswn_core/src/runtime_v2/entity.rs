@@ -450,6 +450,9 @@ impl SkillLoadout {
             };
         }
         clone
+            .pre_action_order
+            .retain(|lane| clone.levels.get(*lane).is_some_and(|level| *level > 0));
+        clone
     }
 
     pub fn disable_action_lane(&mut self, fixed_lane: usize) { self.active_order.retain(|lane| *lane != fixed_lane); }
