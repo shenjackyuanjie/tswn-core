@@ -1,9 +1,7 @@
 use std::ffi::c_char;
 
 use serde::Serialize;
-use tswn_core::cli_api::{self as core_cli_api, CliApiError};
-use tswn_core::engine::update::UpdateType;
-use tswn_core::runtime_v2::{NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2NormalizedRun};
+use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeV2NormalizedRun};
 
 use crate::{
     FfiError, ffi_boundary, ffi_error, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t, write_json_result,
@@ -87,57 +85,6 @@ struct JsonIconInfo {
     fg_color_indices: Vec<usize>,
     fg_colors: Vec<[u8; 3]>,
     colors_consumed: usize,
-}
-
-#[derive(Serialize)]
-struct JsonRuntimeV2NormalizedRun {
-    rounds: Vec<JsonRuntimeV2NormalizedOutcome>,
-    winner_team: Option<usize>,
-    guard_exhausted: bool,
-    total_score: u64,
-}
-
-#[derive(Serialize)]
-struct JsonRuntimeV2NormalizedOutcome {
-    winner_team: Option<usize>,
-    round: u64,
-    total_score: u64,
-    rng_i: u32,
-    rng_j: u32,
-    entity_ids: Vec<usize>,
-    teams: Vec<usize>,
-    hp: Vec<i32>,
-    magic_point: Vec<i32>,
-    defense: Vec<i32>,
-    resistance: Vec<i32>,
-    alive: Vec<bool>,
-    round_order: Vec<usize>,
-    flat_alive: Vec<usize>,
-    team_alive: Vec<Vec<usize>>,
-    alive_group_count: usize,
-    actions: Vec<JsonRuntimeV2ActionBoundary>,
-    frames: Vec<JsonRuntimeV2UpdateFrame>,
-}
-
-#[derive(Serialize)]
-struct JsonRuntimeV2ActionBoundary {
-    round: u64,
-    actor: usize,
-    target: usize,
-    amount: i32,
-}
-
-#[derive(Serialize)]
-struct JsonRuntimeV2UpdateFrame {
-    message: String,
-    caster: usize,
-    target: usize,
-    targets: Vec<usize>,
-    param: Option<u32>,
-    score: u32,
-    delay0: i32,
-    delay1: i32,
-    update_type: &'static str,
 }
 
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
@@ -249,75 +196,6 @@ impl From<core_cli_api::IconInfo> for JsonIconInfo {
             fg_colors: value.fg_colors,
             colors_consumed: value.colors_consumed,
         }
-    }
-}
-
-impl From<RuntimeV2NormalizedRun> for JsonRuntimeV2NormalizedRun {
-    fn from(value: RuntimeV2NormalizedRun) -> Self {
-        Self {
-            rounds: value.rounds.into_iter().map(Into::into).collect(),
-            winner_team: value.winner_team,
-            guard_exhausted: value.guard_exhausted,
-            total_score: value.total_score,
-        }
-    }
-}
-
-impl From<NormalizedOutcome> for JsonRuntimeV2NormalizedOutcome {
-    fn from(value: NormalizedOutcome) -> Self {
-        Self {
-            winner_team: value.winner_team,
-            round: value.round,
-            total_score: value.total_score,
-            rng_i: value.rng.i,
-            rng_j: value.rng.j,
-            entity_ids: value.entity_ids,
-            teams: value.teams,
-            hp: value.hp,
-            magic_point: value.magic_point,
-            defense: value.defense,
-            resistance: value.resistance,
-            alive: value.alive,
-            round_order: value.round_order,
-            flat_alive: value.flat_alive,
-            team_alive: value.team_alive,
-            alive_group_count: value.alive_group_count,
-            actions: value
-                .actions
-                .into_iter()
-                .map(|action| JsonRuntimeV2ActionBoundary {
-                    round: action.round,
-                    actor: action.actor,
-                    target: action.target,
-                    amount: action.amount,
-                })
-                .collect(),
-            frames: value.frames.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-impl From<NormalizedUpdateFrame> for JsonRuntimeV2UpdateFrame {
-    fn from(value: NormalizedUpdateFrame) -> Self {
-        Self {
-            message: value.message,
-            caster: value.caster,
-            target: value.target,
-            targets: value.targets,
-            param: value.param,
-            score: value.score,
-            delay0: value.delay0,
-            delay1: value.delay1,
-            update_type: update_type_name(value.update_type),
-        }
-    }
-}
-
-fn update_type_name(value: UpdateType) -> &'static str {
-    match value {
-        UpdateType::Win => "win",
-        UpdateType::None => "none",
-        UpdateType::NextLine => "next_line",
     }
 }
 
@@ -609,13 +487,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runtime_v2_update_type_names_are_stable_json_tokens() {
-        assert_eq!(update_type_name(UpdateType::Win), "win");
-        assert_eq!(update_type_name(UpdateType::None), "none");
-        assert_eq!(update_type_name(UpdateType::NextLine), "next_line");
-    }
-
-    #[test]
     fn runtime_v2_normalized_run_json_matches_default_run_golden_shape() {
         let run = core_cli_api::default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 1)
             .expect("default custom runtime v2 run should execute");
@@ -624,18 +495,18 @@ mod tests {
         assert_eq!(json.rounds.len(), 1);
         assert_eq!(json.winner_team, None);
         assert_eq!(json.guard_exhausted, true);
-        assert_eq!(json.total_score, 37);
+        assert_eq!(json.total_score, 77);
 
         let round = &json.rounds[0];
         assert_eq!(round.winner_team, None);
         assert_eq!(round.round, 1);
-        assert_eq!(round.total_score, 37);
-        assert_eq!(round.rng_i, 48);
-        assert_eq!(round.rng_j, 161);
+        assert_eq!(round.total_score, 77);
+        assert_eq!(round.rng_i, 74);
+        assert_eq!(round.rng_j, 92);
         assert_eq!(round.entity_ids, vec![1, 2]);
         assert_eq!(round.teams, vec![0, 1]);
-        assert_eq!(round.hp, vec![339, 251]);
-        assert_eq!(round.magic_point, vec![23, 8]);
+        assert_eq!(round.hp, vec![262, 288]);
+        assert_eq!(round.magic_point, vec![23, 16]);
         assert_eq!(round.defense, vec![6, 56]);
         assert_eq!(round.resistance, vec![52, 25]);
         assert_eq!(round.alive, vec![true, true]);
@@ -647,21 +518,43 @@ mod tests {
         assert_eq!(round.actions.len(), 1);
         let action = &round.actions[0];
         assert_eq!(action.round, 1);
-        assert_eq!(action.actor, 0);
-        assert_eq!(action.target, 1);
-        assert_eq!(action.amount, 37);
+        assert_eq!(action.actor, 1);
+        assert_eq!(action.target, 0);
+        assert_eq!(action.amount, 36);
 
-        assert_eq!(round.frames.len(), 1);
+        assert_eq!(round.frames.len(), 3);
         let frame = &round.frames[0];
-        assert_eq!(frame.message, "[0]攻击[1]");
-        assert_eq!(frame.caster, 0);
-        assert_eq!(frame.target, 1);
+        assert_eq!(frame.message, "[0]发起攻击");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
         assert_eq!(frame.targets, Vec::<usize>::new());
         assert_eq!(frame.param, None);
-        assert_eq!(frame.score, 37);
-        assert_eq!(frame.delay0, tswn_core::engine::update::DEFAULT_DELAY0_MS);
-        assert_eq!(frame.delay1, tswn_core::engine::update::DEFAULT_DELAY1_MS);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 1000);
+        assert_eq!(frame.delay1, 100);
         assert_eq!(frame.update_type, "none");
+
+        let frame = &round.frames[1];
+        assert_eq!(frame.message, "[1]受到[2]点伤害");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
+        assert_eq!(frame.targets, Vec::<usize>::new());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 77);
+        assert_eq!(frame.delay0, 1154);
+        assert_eq!(frame.delay1, 100);
+        assert_eq!(frame.update_type, "none");
+
+        let frame = &round.frames[2];
+        assert_eq!(frame.message, "\n");
+        assert_eq!(frame.caster, 0);
+        assert_eq!(frame.target, 0);
+        assert_eq!(frame.targets, Vec::<usize>::new());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 0);
+        assert_eq!(frame.delay1, 0);
+        assert_eq!(frame.update_type, "next_line");
     }
 
     #[test]

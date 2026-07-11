@@ -4,12 +4,13 @@ mod bench;
 mod parse;
 
 use crate::Runner;
+use crate::engine::update::UpdateType;
 use crate::error::runner::RunnerError;
 use crate::player::eval_name;
 use crate::player::icon::icon_from_raw_name;
 use crate::runtime_v2::{
-    CustomRuntimeV2ImportConfig, RuntimeV2NormalizedRun, RuntimeV2Runner, StrictRunDiff, default_custom_runtime_v2_import_config,
-    normalize_legacy_run, strict_diff_runs,
+    CustomRuntimeV2ImportConfig, NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2NormalizedRun, RuntimeV2Runner,
+    StrictRunDiff, default_custom_runtime_v2_import_config, normalize_legacy_run, strict_diff_runs,
 };
 use crate::win_rate::{WinRateSummary, WinRateTiming, groups_win_rate};
 
@@ -85,6 +86,126 @@ pub struct RuntimeV2ParityReport {
     pub legacy: RuntimeV2NormalizedRun,
     pub v2: RuntimeV2NormalizedRun,
     pub first_diff: Option<StrictRunDiff>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct JsonRuntimeV2NormalizedRun {
+    pub rounds: Vec<JsonRuntimeV2NormalizedOutcome>,
+    pub winner_team: Option<usize>,
+    pub guard_exhausted: bool,
+    pub total_score: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct JsonRuntimeV2NormalizedOutcome {
+    pub winner_team: Option<usize>,
+    pub round: u64,
+    pub total_score: u64,
+    pub rng_i: u32,
+    pub rng_j: u32,
+    pub entity_ids: Vec<usize>,
+    pub teams: Vec<usize>,
+    pub hp: Vec<i32>,
+    pub magic_point: Vec<i32>,
+    pub defense: Vec<i32>,
+    pub resistance: Vec<i32>,
+    pub alive: Vec<bool>,
+    pub round_order: Vec<usize>,
+    pub flat_alive: Vec<usize>,
+    pub team_alive: Vec<Vec<usize>>,
+    pub alive_group_count: usize,
+    pub actions: Vec<JsonRuntimeV2ActionBoundary>,
+    pub frames: Vec<JsonRuntimeV2UpdateFrame>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct JsonRuntimeV2ActionBoundary {
+    pub round: u64,
+    pub actor: usize,
+    pub target: usize,
+    pub amount: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct JsonRuntimeV2UpdateFrame {
+    pub message: String,
+    pub caster: usize,
+    pub target: usize,
+    pub targets: Vec<usize>,
+    pub param: Option<u32>,
+    pub score: u32,
+    pub delay0: i32,
+    pub delay1: i32,
+    pub update_type: &'static str,
+}
+
+impl From<RuntimeV2NormalizedRun> for JsonRuntimeV2NormalizedRun {
+    fn from(value: RuntimeV2NormalizedRun) -> Self {
+        Self {
+            rounds: value.rounds.into_iter().map(Into::into).collect(),
+            winner_team: value.winner_team,
+            guard_exhausted: value.guard_exhausted,
+            total_score: value.total_score,
+        }
+    }
+}
+
+impl From<NormalizedOutcome> for JsonRuntimeV2NormalizedOutcome {
+    fn from(value: NormalizedOutcome) -> Self {
+        Self {
+            winner_team: value.winner_team,
+            round: value.round,
+            total_score: value.total_score,
+            rng_i: value.rng.i,
+            rng_j: value.rng.j,
+            entity_ids: value.entity_ids,
+            teams: value.teams,
+            hp: value.hp,
+            magic_point: value.magic_point,
+            defense: value.defense,
+            resistance: value.resistance,
+            alive: value.alive,
+            round_order: value.round_order,
+            flat_alive: value.flat_alive,
+            team_alive: value.team_alive,
+            alive_group_count: value.alive_group_count,
+            actions: value
+                .actions
+                .into_iter()
+                .map(|action| JsonRuntimeV2ActionBoundary {
+                    round: action.round,
+                    actor: action.actor,
+                    target: action.target,
+                    amount: action.amount,
+                })
+                .collect(),
+            frames: value.frames.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<NormalizedUpdateFrame> for JsonRuntimeV2UpdateFrame {
+    fn from(value: NormalizedUpdateFrame) -> Self {
+        Self {
+            message: value.message,
+            caster: value.caster,
+            target: value.target,
+            targets: value.targets,
+            param: value.param,
+            score: value.score,
+            delay0: value.delay0,
+            delay1: value.delay1,
+            update_type: runtime_v2_update_type_name(value.update_type),
+        }
+    }
+}
+
+pub fn runtime_v2_update_type_name(value: UpdateType) -> &'static str {
+    match value {
+        UpdateType::Win => "win",
+        UpdateType::None => "none",
+        UpdateType::NextLine => "next_line",
+    }
 }
 
 impl ScoreResult {
@@ -526,6 +647,13 @@ mod tests {
         DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT, DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT, EntityIdx, SlotValue,
         TemplateSlotId, default_custom_runtime_v2_import_config,
     };
+
+    #[test]
+    fn runtime_v2_update_type_names_are_stable_json_tokens() {
+        assert_eq!(runtime_v2_update_type_name(UpdateType::Win), "win");
+        assert_eq!(runtime_v2_update_type_name(UpdateType::None), "none");
+        assert_eq!(runtime_v2_update_type_name(UpdateType::NextLine), "next_line");
+    }
 
     #[test]
     fn cli_api_custom_runtime_v2_mixed_runner_imports_custom_profile_raw() {
