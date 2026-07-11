@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Run Runtime v2 release gates with rustc's default mutable noalias enabled."""
+"""Run Runtime v2 release gates with mutable noalias enabled.
+
+The workspace default still carries ``-Z mutable-noalias=no`` for the legacy
+runtime.  This script intentionally overrides it with
+``CARGO_ENCODED_RUSTFLAGS=-Z mutable-noalias=yes`` so Runtime v2 cannot
+accidentally pass because of the legacy compatibility flag.
+"""
 
 from __future__ import annotations
 
@@ -54,7 +60,7 @@ def main() -> int:
     parser.add_argument(
         "--corpus",
         action="store_true",
-        help="同时执行当前尚在收敛中的完整 tswn_test v2 corpus",
+        help="同时执行完整 tswn_test v2 corpus",
     )
     args = parser.parse_args()
 

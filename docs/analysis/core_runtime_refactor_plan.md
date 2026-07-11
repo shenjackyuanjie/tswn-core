@@ -77,7 +77,7 @@
 
 ### 2.1 2026-07 架构复查结论
 
-截至 2026-07-11，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 87/87 通过，当前已完成已知 corpus 行为收敛，但仍不能据此判断“可以删除 legacy”。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`，部分入口/展示链和未覆盖的大样本/自定义组合仍未完成独立化。
+截至 2026-07-12，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 87/87 通过，当前已完成已知 corpus 行为收敛，但仍不能据此判断“可以删除 legacy”。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`；`tswn_test` 大型 fixture 已按主题拆分或外置回放文本，完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下复跑 87/87 通过。部分入口/展示链和未覆盖的大样本/自定义组合仍未完成独立化。
 
 可以保留并继续演进：
 
@@ -87,6 +87,7 @@
 - `EffectQueue`、受控 context 和已经按 legacy 顺序验证过的局部伤害链。
 - `PreparedBattleInit` 的显式构造边界：`Player` facade 与临时 `Storage` 只用于输入解析、build 和蓝图准备，Runtime v2 热路径不持有它们。
 - `EntityRecord::refresh_runtime_stats_from_template` 的统一属性刷新边界：模板派生属性变化后重放 Upgrade、Curse、Hide、Charge 与 Accumulate 的运行期修饰，Clone 与 Merge 不再各自手工覆盖 runtime 属性。
+- `scripts/check_runtime_v2_noalias.py` 与 `track_test.py --engine runtime-v2` 的门禁边界：workspace 全局仍可为 legacy 保留 `mutable-noalias=no`，但 runtime v2 验证必须显式覆盖为 `mutable-noalias=yes`。
 
 切换前仍必须完成：
 
@@ -98,7 +99,7 @@
 
 ### 2.2 修订后的近期实施顺序
 
-1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 与 `large_72` 在 debug/release `mutable-noalias=yes` 下持续通过；当前完整 runtime-v2 corpus 为 87/87，后续每个行为闭环仍继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
+1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 与 `large_72` 在 debug/release `mutable-noalias=yes` 下持续通过；当前完整 runtime-v2 corpus 为 87/87，`tswn_test` 分片拆分后已复跑完整 release corpus 通过，后续每个行为闭环仍继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
 2. **已完成**：建立独立 `PreparedBattleInit`，自行复刻 raw 分组、同队 upgrade、build、seed/RNG、初始 world views、loadout 与 summon/shadow blueprint 准备；删除 v2 runtime 构造对 legacy `Runner` / `WorldState` 的依赖和静默同步失败；
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
 4. **已完成**：重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；

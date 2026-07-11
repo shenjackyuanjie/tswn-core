@@ -1,9 +1,13 @@
 [build]
-# 禁用 LLVM 对 &mut 引用的 noalias 优化。
-# 本项目中 Storage（共享 Arc<Storage>）的设计允许多个 &mut Player 引用同时存在
+# Legacy runtime 仍需禁用 LLVM 对 &mut 引用的 noalias 优化。
+# 旧 Storage（共享 Arc<Storage>）的设计允许多个 &mut Player 引用同时存在
 # （通过 UnsafeCell），技能回调经常通过 storage.just_get_player_mut(owner_id)
 # 访问与调用者 &mut self 相同的 Player，违反 Rust 的 noalias 约束。
 # 在 release 优化下，LLVM 基于 noalias 进行的值缓存/重排会产生错误结果。
+#
+# Runtime v2 不允许依赖这个全局保命配置：
+# scripts/check_runtime_v2_noalias.py 和 track_test.py --engine runtime-v2 会通过
+# CARGO_ENCODED_RUSTFLAGS 显式覆盖为 -Z mutable-noalias=yes。
 rustflags = ["-Z", "mutable-noalias=no"]
 
 # HarmonyOS/OpenHarmony 交叉编译路径不要写在这里。
