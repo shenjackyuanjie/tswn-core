@@ -445,7 +445,7 @@ impl CombatRuntime {
 
             if had_curse || had_ice || had_charm || had_slow {
                 target_entity.runtime.atk_sum = target_entity.template.atk_sum;
-                target_entity.runtime.speed = target_entity.states.effective_speed(target_entity.template.speed);
+                target_entity.runtime.speed = target_entity.template.speed;
             }
             (had_berserk, had_charm, had_curse, had_ice, had_poison, had_slow)
         };
