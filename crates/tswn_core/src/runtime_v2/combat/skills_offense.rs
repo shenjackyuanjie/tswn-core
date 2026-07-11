@@ -644,6 +644,7 @@ impl CombatRuntime {
             );
         }
         owner.runtime.move_state.speed_points -= 256;
+        owner.refresh_runtime_stats_from_template();
         updates.add(crate::engine::update::RunUpdate::new(
             "[0]防御力大幅上升",
             actor.0 as usize,

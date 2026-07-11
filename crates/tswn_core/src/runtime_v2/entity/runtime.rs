@@ -290,6 +290,7 @@ impl EntityRecord {
         self.runtime.attr_sum = self.template.attr_sum;
         self.runtime.atk_sum = self.states.effective_atk_sum(self.template.atk_sum);
         self.runtime.attract_bits = self.template.attract_bits;
+        self.runtime.attract_bits = self.states.effective_attract(self.runtime.attract()).to_bits();
         if self.runtime.upgrade_active {
             self.runtime.attack += 30;
             self.runtime.defense += 30;

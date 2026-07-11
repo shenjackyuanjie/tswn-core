@@ -586,6 +586,13 @@ impl StateStore {
         })
     }
 
+    pub fn effective_attract(&self, base_attract: f64) -> f64 {
+        self.entries.iter().fold(base_attract, |attract, entry| match entry.payload {
+            StatePayload::Iron { step, .. } if step > 0 => attract * 1.1200000047683716,
+            _ => attract,
+        })
+    }
+
     pub fn entry(&self, legacy_order_key: u32) -> Option<&StateEntry> {
         self.index.get(&legacy_order_key).and_then(|idx| self.entries.get(*idx))
     }
