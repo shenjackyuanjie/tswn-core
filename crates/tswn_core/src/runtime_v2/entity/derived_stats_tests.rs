@@ -10,6 +10,7 @@ fn derived_stats(speed: i32) -> CloneDerivedStats {
         defense: 42,
         resistance: 41,
         agility: 14,
+        at_boost_bits: DEFAULT_AT_BOOST_BITS,
         at_boost_millionths: DEFAULT_AT_BOOST_MILLIONTHS,
         attr_sum: 219,
         atk_sum: 49,

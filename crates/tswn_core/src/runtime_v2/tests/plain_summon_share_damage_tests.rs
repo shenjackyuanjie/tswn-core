@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn summon_share_damage_emits_owner_death_replay_without_removing_the_active_summon() {
+fn summon_share_damage_owner_death_marks_active_summon_for_outer_lethal_chain() {
     let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
     let summon_kind = config
         .registry
@@ -29,7 +29,11 @@ fn summon_share_damage_emits_owner_death_replay_without_removing_the_active_summ
     let owner = runtime.entities.get(EntityIdx(0)).unwrap();
     assert_eq!(owner.runtime.hp, 0);
     assert!(!owner.runtime.alive);
-    assert!(runtime.entities.get(summoned).unwrap().runtime.alive);
+    let summoned_entity = runtime.entities.get(summoned).unwrap();
+    assert_eq!(summoned_entity.runtime.hp, 0);
+    assert!(summoned_entity.runtime.alive);
+    assert!(runtime.world.round_order().contains(&summoned));
+    assert!(runtime.world.flat_alive().contains(&summoned));
     assert_eq!(
         updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
         vec!["[1]受到[2]点伤害", "\n", "[1]被击倒了"]
@@ -37,6 +41,61 @@ fn summon_share_damage_emits_owner_death_replay_without_removing_the_active_summ
     assert_eq!(updates.updates[2].caster, 1);
     assert_eq!(updates.updates[2].target, 0);
     assert_eq!(updates.updates[2].score, 50);
+}
+
+#[test]
+fn summon_share_damage_owner_death_removes_root_owned_sibling_minions() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let summon_kind = config
+        .registry
+        .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
+        .expect("default profile should register core summon kind");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "root", 0, 100, 1),
+            PlayerTemplate::new(2, "owner", 0, 20, 1),
+            PlayerTemplate::new(3, "caster", 1, 100, 1),
+        ],
+        config.registry,
+    ));
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.owner = EntityIdx(0);
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.root_owner = EntityIdx(0);
+    let active_summon = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(0, "owner?0", summon_kind, 0, 40, 0),
+        &runtime.registry,
+        Some(EntityIdx(1)),
+        Some(EntityIdx(0)),
+    );
+    let sibling = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(0, "root?0", summon_kind, 0, 40, 0),
+        &runtime.registry,
+        Some(EntityIdx(0)),
+        Some(EntityIdx(1)),
+    );
+    let active_team = runtime.entities.get(active_summon).unwrap().runtime.team;
+    let sibling_team = runtime.entities.get(sibling).unwrap().runtime.team;
+    runtime.world.add_spawned_alive(active_summon, active_team);
+    runtime.world.add_spawned_alive(sibling, sibling_team);
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_summon_share_damage_into(active_summon, 1, 50, EntityIdx(2), &mut updates);
+
+    assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
+    let active_summon_entity = runtime.entities.get(active_summon).unwrap();
+    assert_eq!(active_summon_entity.runtime.hp, 0);
+    assert!(active_summon_entity.runtime.alive);
+    assert!(!runtime.entities.get(sibling).unwrap().runtime.alive);
+    assert!(runtime.world.round_order().contains(&active_summon));
+    assert!(!runtime.world.round_order().contains(&sibling));
+    assert!(runtime.world.flat_alive().contains(&active_summon));
+    assert!(!runtime.world.flat_alive().contains(&sibling));
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec!["[1]受到[2]点伤害", "\n", "[1]被击倒了", "\n", "[1]消失了"]
+    );
+    assert_eq!(updates.updates[4].caster, 1);
+    assert_eq!(updates.updates[4].target, sibling.0 as usize);
+    assert_eq!(updates.updates[4].score, 50);
 }
 
 #[test]

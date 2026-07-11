@@ -154,8 +154,14 @@ impl CombatRuntime {
             return;
         }
         self.entities.get_mut(owner).unwrap().runtime.alive = false;
+        if let Some(entity) = self.entities.get_mut(summoned)
+            && entity.runtime.alive
+            && entity.runtime.hp > 0
+        {
+            entity.runtime.hp = 0;
+        }
+        self.cleanup_linked_minions_for_owner_except(owner, Some(summoned), updates);
         self.world.mark_dead(owner, team);
-        self.cleanup_plain_summon_owner_minions_except(owner, summoned, updates);
         if self.should_run_kill_hooks(caster, owner) {
             self.drain_kill_hooks_into(caster, owner, updates);
         }
@@ -283,38 +289,6 @@ impl CombatRuntime {
                 return current;
             }
             current = entity.runtime.owner;
-        }
-    }
-
-    fn cleanup_plain_summon_owner_minions_except(&mut self, owner: EntityIdx, excluded: EntityIdx, updates: &mut RunUpdates) {
-        let linked = self
-            .entities
-            .iter()
-            .filter_map(|(idx, entity)| {
-                (idx != excluded
-                    && idx != owner
-                    && entity.runtime.alive
-                    && entity.runtime.owner == owner
-                    && entity.runtime.is_combat_minion())
-                .then_some(idx)
-            })
-            .collect::<Vec<_>>();
-        for minion in linked {
-            let entity = self
-                .entities
-                .get_mut(minion)
-                .unwrap_or_else(|| panic!("unknown runtime_v2 linked minion entity: {}", minion.0));
-            entity.runtime.hp = 0;
-            entity.runtime.alive = false;
-            let team = entity.runtime.team;
-            self.world.mark_dead(minion, team);
-            updates.add_newline();
-            updates.add(crate::engine::update::RunUpdate::new(
-                "[1]消失了",
-                owner.0 as usize,
-                minion.0 as usize,
-                50,
-            ));
         }
     }
 }

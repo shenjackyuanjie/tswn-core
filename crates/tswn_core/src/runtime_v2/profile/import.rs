@@ -341,7 +341,7 @@ impl CustomBed2Import {
                         .with_magic_point(status.magic_point)
                         .with_wisdom(status.wisdom)
                         .with_agility(status.agility)
-                        .with_at_boost_millionths((status.at_boost * 1_000_000.0).round() as i64)
+                        .with_at_boost(status.at_boost)
                         .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
                         .with_def_res(status.defense, status.resistance)
                 };

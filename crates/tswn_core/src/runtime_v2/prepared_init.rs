@@ -283,6 +283,7 @@ impl PreparedBattleInit {
             entity.template.defense = prepared_template.defense;
             entity.template.resistance = prepared_template.resistance;
             entity.template.agility = prepared_template.agility;
+            entity.template.at_boost_bits = prepared_template.at_boost_bits;
             entity.template.at_boost_millionths = prepared_template.at_boost_millionths;
             entity.template.attr_sum = prepared_template.attr_sum;
             entity.template.atk_sum = prepared_template.atk_sum;
@@ -487,7 +488,7 @@ impl PreparedBattleInit {
             .with_speed(status.speed)
             .with_def_res(status.defense, status.resistance)
             .with_agility(status.agility)
-            .with_at_boost_millionths((status.at_boost * 1_000_000.0).round() as i64)
+            .with_at_boost(status.at_boost)
             .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
             .with_speed_points(player.move_point())
             .with_skill_loadout(skills)

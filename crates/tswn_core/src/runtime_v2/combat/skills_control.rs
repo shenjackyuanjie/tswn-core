@@ -374,7 +374,7 @@ impl CombatRuntime {
         .with_speed(clone_stats.speed.max(0))
         .with_def_res(clone_stats.defense.max(0), clone_stats.resistance.max(0))
         .with_agility(clone_stats.agility.max(0))
-        .with_at_boost_millionths(clone_stats.at_boost_millionths.max(0))
+        .with_at_boost(f64::from_bits(clone_stats.at_boost_bits).max(0.0))
         .with_target_score_stats(
             clone_stats.attr_sum,
             clone_stats.atk_sum,

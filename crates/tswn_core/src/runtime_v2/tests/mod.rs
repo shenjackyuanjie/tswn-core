@@ -3,6 +3,7 @@ use super::*;
 mod entity_identity_tests;
 mod plain_action_scheduler_tests;
 mod plain_assassinate_skill_tests;
+mod plain_at_boost_precision_tests;
 mod plain_attack_skill_tests;
 mod plain_charm_targeting_tests;
 mod plain_clone_skill_tests;

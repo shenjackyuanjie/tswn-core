@@ -1,6 +1,20 @@
 use super::*;
 
 impl CombatRuntime {
+    #[cfg(not(feature = "no_debug"))]
+    fn probe_default_attack_matches(&self, actor: EntityIdx) -> bool {
+        std::env::var("TSWN_PROBE_DEFAULT_ATTACK")
+            .map(|needle| {
+                if let Some(raw_idx) = needle.strip_prefix("idx:") {
+                    return raw_idx.parse::<u32>().is_ok_and(|idx| actor.0 == idx);
+                }
+                self.entities.get(actor).is_some_and(|entity| {
+                    entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
+                })
+            })
+            .unwrap_or(false)
+    }
+
     pub fn select_plain_default_attack_target(&mut self, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         self.entities.get(actor)?;
         let actor_team = self.plain_effective_team(actor);
@@ -65,14 +79,7 @@ impl CombatRuntime {
         }
         scored.sort_by(|left, right| right.1.partial_cmp(&left.1).unwrap_or(std::cmp::Ordering::Equal));
         #[cfg(not(feature = "no_debug"))]
-        if std::env::var("TSWN_PROBE_DEFAULT_ATTACK")
-            .map(|needle| {
-                self.entities.get(actor).is_some_and(|entity| {
-                    entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
-                })
-            })
-            .unwrap_or(false)
-        {
+        if self.probe_default_attack_matches(actor) {
             let entity_name = |entity: EntityIdx| {
                 self.entities
                     .get(entity)
@@ -106,13 +113,7 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) {
         #[cfg(not(feature = "no_debug"))]
-        let debug_attack = std::env::var("TSWN_PROBE_DEFAULT_ATTACK")
-            .map(|needle| {
-                self.entities.get(actor).is_some_and(|entity| {
-                    entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
-                })
-            })
-            .unwrap_or(false);
+        let debug_attack = self.probe_default_attack_matches(actor);
         if let Some(at_boost) = self.lazy_boss_at_boost(actor)
             && self.has_lazy_infection(target)
             && self.rng.next_u8() < 128
@@ -333,13 +334,7 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) -> i32 {
         #[cfg(not(feature = "no_debug"))]
-        let debug_attack = std::env::var("TSWN_PROBE_DEFAULT_ATTACK")
-            .map(|needle| {
-                self.entities.get(actor).is_some_and(|entity| {
-                    entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
-                })
-            })
-            .unwrap_or(false);
+        let debug_attack = self.probe_default_attack_matches(actor);
         let mut defend_value = RuntimeDefendValue::Atp {
             value: atp,
             caster: actor,
@@ -441,13 +436,7 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
     ) -> i32 {
         #[cfg(not(feature = "no_debug"))]
-        let debug_attack = std::env::var("TSWN_PROBE_DEFAULT_ATTACK")
-            .map(|needle| {
-                self.entities.get(actor).is_some_and(|entity| {
-                    entity.template.name.contains(&needle) || entity.template.display_name.contains(&needle)
-                })
-            })
-            .unwrap_or(false);
+        let debug_attack = self.probe_default_attack_matches(actor);
         let defense = {
             let target_runtime = &self
                 .entities
@@ -533,7 +522,7 @@ impl CombatRuntime {
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime_v2 default attack target: {}", target.0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
-        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
+        let was_alive = target_entity.runtime.alive;
         updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         if amount == 0 {
             return false;
@@ -557,7 +546,11 @@ impl CombatRuntime {
             PlainAttackOnDamage::Poison => self.apply_poison_on_damage(caster, target, amount, updates),
         }
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
-        killed
+        was_alive
+            && self
+                .entities
+                .get(target)
+                .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
     pub fn apply_absorb_on_damage(&mut self, caster: EntityIdx, damage: i32, updates: &mut RunUpdates) {

@@ -90,6 +90,7 @@ pub struct PlayerRuntime {
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
+    pub at_boost_bits: u64,
     pub at_boost_millionths: i64,
     pub attr_sum: u32,
     pub atk_sum: i32,
@@ -137,6 +138,7 @@ impl PlayerRuntime {
             defense: template.defense,
             resistance: template.resistance,
             agility: template.agility,
+            at_boost_bits: template.at_boost_bits,
             at_boost_millionths: template.at_boost_millionths,
             attr_sum: template.attr_sum,
             atk_sum: template.atk_sum,
@@ -162,7 +164,7 @@ impl PlayerRuntime {
         }
     }
 
-    pub fn at_boost(&self) -> f64 { self.at_boost_millionths as f64 / DEFAULT_AT_BOOST_MILLIONTHS as f64 }
+    pub fn at_boost(&self) -> f64 { f64::from_bits(self.at_boost_bits) }
 
     pub fn attract(&self) -> f64 { f64::from_bits(self.attract_bits) }
 
@@ -424,14 +426,15 @@ impl EntityRecord {
     }
 
     fn refresh_runtime_at_boost(&mut self) {
-        let mut at_boost = self.template.at_boost_millionths as f64 / DEFAULT_AT_BOOST_MILLIONTHS as f64;
+        let mut at_boost = f64::from_bits(self.template.at_boost_bits);
         if self.runtime.charge.active {
             at_boost *= 3.0;
         }
         if self.runtime.accumulate.active {
             at_boost *= self.runtime.accumulate.acc() + self.runtime.accumulate.charge_bonus();
         }
-        self.runtime.at_boost_millionths = (at_boost * DEFAULT_AT_BOOST_MILLIONTHS as f64).round() as i64;
+        self.runtime.at_boost_bits = at_boost.to_bits();
+        self.runtime.at_boost_millionths = at_boost_to_millionths(at_boost);
     }
 }
 

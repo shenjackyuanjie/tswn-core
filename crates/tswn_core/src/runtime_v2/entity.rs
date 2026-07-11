@@ -16,7 +16,10 @@ pub use runtime::*;
 pub use state::*;
 
 const DEFAULT_AT_BOOST_MILLIONTHS: i64 = 1_000_000;
+const DEFAULT_AT_BOOST_BITS: u64 = 1.0_f64.to_bits();
 const CLONE_ATTR_DECAY: f64 = 0.7799999713897705;
+
+pub fn at_boost_to_millionths(at_boost: f64) -> i64 { (at_boost * DEFAULT_AT_BOOST_MILLIONTHS as f64).round() as i64 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CloneStatAdjustments {
@@ -28,7 +31,7 @@ struct CloneStatAdjustments {
     defense: i32,
     resistance: i32,
     agility: i32,
-    at_boost_millionths: i64,
+    at_boost_delta_bits: u64,
     attr_sum: i64,
     atk_sum: i32,
     attract_delta_bits: u64,
@@ -44,6 +47,7 @@ pub struct CloneDerivedStats {
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
+    pub at_boost_bits: u64,
     pub at_boost_millionths: i64,
     pub attr_sum: u32,
     pub atk_sum: i32,
@@ -74,7 +78,7 @@ impl CloneBuildData {
                 defense: status.defense - raw.defense,
                 resistance: status.resistance - raw.resistance,
                 agility: status.agility - raw.agility,
-                at_boost_millionths: (status.at_boost * 1_000_000.0).round() as i64 - raw.at_boost_millionths,
+                at_boost_delta_bits: (status.at_boost - f64::from_bits(raw.at_boost_bits)).to_bits(),
                 attr_sum: i64::from(status.attr_sum) - i64::from(raw.attr_sum),
                 atk_sum: status.atk_sum - raw.atk_sum,
                 attract_delta_bits: (status.attract - f64::from_bits(raw.attract_bits)).to_bits(),
@@ -117,6 +121,7 @@ impl CloneBuildData {
         let raw = Self::derive_raw(self.attrs, f64::from_bits(self.name_factor_bits));
         let attr_sum = i64::from(raw.attr_sum) + self.adjustments.attr_sum;
         let attract = f64::from_bits(raw.attract_bits) + f64::from_bits(self.adjustments.attract_delta_bits);
+        let at_boost = f64::from_bits(raw.at_boost_bits) + f64::from_bits(self.adjustments.at_boost_delta_bits);
         CloneDerivedStats {
             max_hp: raw.max_hp + self.adjustments.max_hp,
             attack: raw.attack + self.adjustments.attack,
@@ -126,7 +131,8 @@ impl CloneBuildData {
             defense: raw.defense + self.adjustments.defense,
             resistance: raw.resistance + self.adjustments.resistance,
             agility: raw.agility + self.adjustments.agility,
-            at_boost_millionths: raw.at_boost_millionths + self.adjustments.at_boost_millionths,
+            at_boost_bits: at_boost.to_bits(),
+            at_boost_millionths: at_boost_to_millionths(at_boost),
             attr_sum: attr_sum.try_into().expect("runtime_v2 clone attr_sum became negative"),
             atk_sum: raw.atk_sum + self.adjustments.atk_sum,
             attract_bits: attract.to_bits(),
@@ -148,6 +154,7 @@ impl CloneBuildData {
             defense: scale(attrs[1], 128.0),
             resistance: scale(attrs[5], 128.0),
             agility: scale(attrs[3], 128.0),
+            at_boost_bits: DEFAULT_AT_BOOST_BITS,
             at_boost_millionths: DEFAULT_AT_BOOST_MILLIONTHS,
             attr_sum,
             atk_sum,
@@ -174,6 +181,7 @@ pub struct PlayerTemplate {
     pub defense: i32,
     pub resistance: i32,
     pub agility: i32,
+    pub at_boost_bits: u64,
     pub at_boost_millionths: i64,
     pub attr_sum: u32,
     pub atk_sum: i32,
@@ -211,6 +219,7 @@ impl PlayerTemplate {
             defense: 0,
             resistance: 0,
             agility: 0,
+            at_boost_bits: DEFAULT_AT_BOOST_BITS,
             at_boost_millionths: DEFAULT_AT_BOOST_MILLIONTHS,
             attr_sum: 0,
             atk_sum: attack,
@@ -260,6 +269,17 @@ impl PlayerTemplate {
             "runtime_v2 player at_boost_millionths must be non-negative"
         );
         self.at_boost_millionths = at_boost_millionths;
+        self.at_boost_bits = (at_boost_millionths as f64 / DEFAULT_AT_BOOST_MILLIONTHS as f64).to_bits();
+        self
+    }
+
+    pub fn with_at_boost(mut self, at_boost: f64) -> Self {
+        assert!(
+            at_boost.is_finite() && at_boost >= 0.0,
+            "runtime_v2 player at_boost must be a non-negative finite number"
+        );
+        self.at_boost_bits = at_boost.to_bits();
+        self.at_boost_millionths = at_boost_to_millionths(at_boost);
         self
     }
 
@@ -299,7 +319,10 @@ impl PlayerTemplate {
         self.defense = stats.defense.max(0);
         self.resistance = stats.resistance.max(0);
         self.agility = stats.agility.max(0);
-        self.at_boost_millionths = stats.at_boost_millionths.max(0);
+        let at_boost = f64::from_bits(stats.at_boost_bits);
+        let at_boost = if at_boost.is_finite() { at_boost.max(0.0) } else { 0.0 };
+        self.at_boost_bits = at_boost.to_bits();
+        self.at_boost_millionths = at_boost_to_millionths(at_boost);
         self.attr_sum = stats.attr_sum;
         self.atk_sum = stats.atk_sum;
         self.attract_bits = stats.attract_bits;

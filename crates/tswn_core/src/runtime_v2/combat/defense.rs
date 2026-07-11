@@ -427,10 +427,14 @@ impl CombatRuntime {
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime_v2 plain legacy damage target entity: {}", target.0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
-        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
+        let was_alive = target_entity.runtime.alive;
         updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
-        killed
+        was_alive
+            && self
+                .entities
+                .get(target)
+                .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
     pub fn apply_damage_with_replay_into(
@@ -470,10 +474,14 @@ impl CombatRuntime {
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime_v2 poison target entity: {}", target.0));
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
-        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
+        let was_alive = target_entity.runtime.alive;
         updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
-        killed
+        was_alive
+            && self
+                .entities
+                .get(target)
+                .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
     pub fn apply_disperse_attack_damage_into(
@@ -487,13 +495,17 @@ impl CombatRuntime {
             panic!("unknown runtime_v2 disperse damage target entity: {}", target.0);
         };
         target_entity.runtime.hp = (target_entity.runtime.hp - amount).max(0);
-        let killed = target_entity.runtime.hp == 0 && target_entity.runtime.alive;
+        let was_alive = target_entity.runtime.alive;
         updates.add(RuntimeFrame::legacy_damage_update(caster.0 as usize, target.0 as usize, amount));
         if amount > 0 {
             self.apply_disperse_hit_into(caster, target, updates);
         }
         self.drain_plain_post_damage_skill_chain_into(target, amount, caster, updates);
-        killed
+        was_alive
+            && self
+                .entities
+                .get(target)
+                .is_some_and(|entity| entity.runtime.hp == 0 && entity.runtime.alive)
     }
 
     pub fn emit_poison_release_if_cleared(&mut self, target: EntityIdx, updates: &mut RunUpdates) {
@@ -617,12 +629,25 @@ impl CombatRuntime {
     }
 
     pub fn cleanup_linked_minions_for_owner(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
+        self.cleanup_linked_minions_for_owner_except(owner, None, updates);
+    }
+
+    pub fn cleanup_linked_minions_for_owner_except(
+        &mut self,
+        owner: EntityIdx,
+        excluded: Option<EntityIdx>,
+        updates: &mut RunUpdates,
+    ) {
         let linked_minions = self
             .entities
             .iter()
             .filter_map(|(idx, entity)| {
-                (idx != owner && entity.runtime.alive && entity.runtime.owner == owner && entity.runtime.is_combat_minion())
-                    .then_some(idx)
+                (idx != owner
+                    && Some(idx) != excluded
+                    && entity.runtime.alive
+                    && (entity.runtime.owner == owner || entity.runtime.root_owner == owner)
+                    && entity.runtime.is_combat_minion())
+                .then_some(idx)
             })
             .collect::<Vec<_>>();
 
