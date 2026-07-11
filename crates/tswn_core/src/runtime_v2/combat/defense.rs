@@ -632,11 +632,33 @@ impl CombatRuntime {
         self.cleanup_linked_minions_for_owner_except(owner, None, updates);
     }
 
+    pub fn cleanup_linked_summons_for_owner_except(
+        &mut self,
+        owner: EntityIdx,
+        excluded: Option<EntityIdx>,
+        updates: &mut RunUpdates,
+    ) {
+        self.cleanup_linked_minions_for_owner_except_if(owner, excluded, true, updates, |entity| {
+            entity.runtime.flags.contains(PlayerKindFlags::SUMMON)
+        });
+    }
+
     pub fn cleanup_linked_minions_for_owner_except(
         &mut self,
         owner: EntityIdx,
         excluded: Option<EntityIdx>,
         updates: &mut RunUpdates,
+    ) {
+        self.cleanup_linked_minions_for_owner_except_if(owner, excluded, false, updates, |_| true);
+    }
+
+    pub fn cleanup_linked_minions_for_owner_except_if(
+        &mut self,
+        owner: EntityIdx,
+        excluded: Option<EntityIdx>,
+        include_root_owner: bool,
+        updates: &mut RunUpdates,
+        keep: impl Fn(&EntityRecord) -> bool,
     ) {
         let linked_minions = self
             .entities
@@ -645,8 +667,9 @@ impl CombatRuntime {
                 (idx != owner
                     && Some(idx) != excluded
                     && entity.runtime.alive
-                    && (entity.runtime.owner == owner || entity.runtime.root_owner == owner)
-                    && entity.runtime.is_combat_minion())
+                    && (entity.runtime.owner == owner || (include_root_owner && entity.runtime.root_owner == owner))
+                    && entity.runtime.is_combat_minion()
+                    && keep(entity))
                 .then_some(idx)
             })
             .collect::<Vec<_>>();

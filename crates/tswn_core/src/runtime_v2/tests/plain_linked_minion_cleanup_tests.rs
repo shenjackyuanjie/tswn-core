@@ -93,3 +93,36 @@ fn plain_fire_lethal_owner_replays_knockout_before_linked_minion_cleanup() {
     assert!(!runtime.entities.get(owner).unwrap().runtime.alive);
     assert!(!runtime.entities.get(minion).unwrap().runtime.alive);
 }
+
+#[test]
+fn owner_death_does_not_cleanup_root_owned_shadow_for_child_owner() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let shadow_kind = config
+        .registry
+        .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
+        .expect("default profile should register core shadow kind");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "root", 0, 100, 1),
+            PlayerTemplate::new(2, "child", 0, 10, 1),
+            PlayerTemplate::new(3, "tail", 1, 10, 1),
+        ],
+        config.registry,
+    ));
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.owner = EntityIdx(0);
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.root_owner = EntityIdx(0);
+    let shadow = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(4, "root?shadow", shadow_kind, 0, 5, 1),
+        &runtime.registry,
+        Some(EntityIdx(0)),
+        Some(EntityIdx(1)),
+    );
+    runtime.world.add_spawned_alive(shadow, 0);
+    let mut updates = RunUpdates::new();
+
+    assert!(runtime.kill_entity_without_damage_into(EntityIdx(1), &mut updates));
+
+    assert!(runtime.entities.get(shadow).unwrap().runtime.alive);
+    assert!(runtime.world.round_order().contains(&shadow));
+    assert_eq!(updates.updates.len(), 0);
+}

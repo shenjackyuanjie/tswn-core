@@ -160,7 +160,7 @@ impl CombatRuntime {
         {
             entity.runtime.hp = 0;
         }
-        self.cleanup_linked_minions_for_owner_except(owner, Some(summoned), updates);
+        self.cleanup_linked_summons_for_owner_except(owner, Some(summoned), updates);
         self.world.mark_dead(owner, team);
         if self.should_run_kill_hooks(caster, owner) {
             self.drain_kill_hooks_into(caster, owner, updates);
