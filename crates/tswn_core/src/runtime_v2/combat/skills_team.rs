@@ -442,11 +442,7 @@ impl CombatRuntime {
                     "runtime_v2 negative state disappeared during heal"
                 );
             }
-
-            if had_curse || had_ice || had_charm || had_slow {
-                target_entity.runtime.atk_sum = target_entity.template.atk_sum;
-                target_entity.runtime.speed = target_entity.template.speed;
-            }
+            target_entity.refresh_runtime_stats_from_template();
             (had_berserk, had_charm, had_curse, had_ice, had_poison, had_slow)
         };
 

@@ -9,6 +9,8 @@ mod plain_clone_skill_tests;
 mod plain_counter_skill_tests;
 mod plain_damage_short_circuit_tests;
 mod plain_disperse_skill_tests;
+mod plain_heal_skill_tests;
+mod plain_ice_scheduler_tests;
 mod plain_ice_skill_tests;
 mod plain_kill_hook_tests;
 mod plain_linked_minion_cleanup_tests;

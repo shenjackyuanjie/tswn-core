@@ -627,6 +627,10 @@ impl StateStore {
     }
 
     pub fn apply_ice_pre_step(&mut self, step: i32, move_points: i32) -> (i32, bool) {
+        if step <= 0 {
+            return (step, false);
+        }
+
         let Some((legacy_order_key, frozen_step)) = self.entries.iter_mut().find_map(|entry| {
             if let StatePayload::Ice { frozen_step } = &mut entry.payload {
                 Some((entry.legacy_order_key, frozen_step))
@@ -638,10 +642,8 @@ impl StateStore {
         };
 
         if *frozen_step > 0 {
-            if step != 0 {
-                *frozen_step -= step;
-                self.generation = self.generation.wrapping_add(1);
-            }
+            *frozen_step -= step;
+            self.generation = self.generation.wrapping_add(1);
             return (0, false);
         }
         if step + move_points >= MOVE_POINT_THRESHOLD {
