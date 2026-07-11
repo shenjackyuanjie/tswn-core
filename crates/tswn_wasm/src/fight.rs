@@ -301,10 +301,19 @@ fn player_names_from_states(states: &[PlayerState]) -> HashMap<PlrId, String> {
 fn u32_to_i32_saturating(value: u32) -> i32 { value.min(i32::MAX as u32) as i32 }
 
 fn update_hp_delta(tone: MessageTone, update: &tswn_core::RunUpdate) -> Option<i32> {
+    let value = update_hp_delta_value(update);
     match tone {
-        MessageTone::Damage => Some(-u32_to_i32_saturating(update.param.unwrap_or(update.score))),
-        MessageTone::Recover => Some(u32_to_i32_saturating(update.param.unwrap_or(update.score))),
+        MessageTone::Damage => Some(-u32_to_i32_saturating(value)),
+        MessageTone::Recover => Some(u32_to_i32_saturating(value)),
         _ => None,
+    }
+}
+
+fn update_hp_delta_value(update: &tswn_core::RunUpdate) -> u32 {
+    if update.message.contains("体力减少") && update.message.contains("[2]%") {
+        update.score
+    } else {
+        update.param.unwrap_or(update.score)
     }
 }
 
