@@ -89,6 +89,14 @@ pub struct RuntimeV2ParityReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct JsonRuntimeV2ParityReport {
+    pub matched: bool,
+    pub first_diff: Option<String>,
+    pub legacy: JsonRuntimeV2NormalizedRun,
+    pub v2: JsonRuntimeV2NormalizedRun,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeV2NormalizedRun {
     pub rounds: Vec<JsonRuntimeV2NormalizedOutcome>,
     pub winner_team: Option<usize>,
@@ -137,6 +145,18 @@ pub struct JsonRuntimeV2UpdateFrame {
     pub delay0: i32,
     pub delay1: i32,
     pub update_type: &'static str,
+}
+
+impl From<RuntimeV2ParityReport> for JsonRuntimeV2ParityReport {
+    fn from(value: RuntimeV2ParityReport) -> Self {
+        let RuntimeV2ParityReport { legacy, v2, first_diff } = value;
+        Self {
+            matched: first_diff.is_none(),
+            first_diff: first_diff.map(|diff| format!("{diff:?}")),
+            legacy: legacy.into(),
+            v2: v2.into(),
+        }
+    }
 }
 
 impl From<RuntimeV2NormalizedRun> for JsonRuntimeV2NormalizedRun {

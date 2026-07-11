@@ -1,15 +1,6 @@
 //! CLI 侧的 runtime v2 迁移/调试入口。
 
-use serde::Serialize;
-use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeV2NormalizedRun, RuntimeV2ParityReport};
-
-#[derive(Serialize)]
-struct JsonRuntimeV2ParityReport {
-    matched: bool,
-    first_diff: Option<String>,
-    legacy: JsonRuntimeV2NormalizedRun,
-    v2: JsonRuntimeV2NormalizedRun,
-}
+use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeV2NormalizedRun, JsonRuntimeV2ParityReport};
 
 pub fn run_runtime_v2_normalized(raw: String, max_rounds: usize) {
     match runtime_v2_normalized_json(&raw, max_rounds) {
@@ -47,18 +38,6 @@ fn cli_api_error(err: CliApiError) -> String {
     match err {
         CliApiError::InvalidInput(message) => message,
         CliApiError::Runner(err) => format!("构建 v2 对局失败: {err}"),
-    }
-}
-
-impl From<RuntimeV2ParityReport> for JsonRuntimeV2ParityReport {
-    fn from(value: RuntimeV2ParityReport) -> Self {
-        let RuntimeV2ParityReport { legacy, v2, first_diff } = value;
-        Self {
-            matched: first_diff.is_none(),
-            first_diff: first_diff.map(|diff| format!("{diff:?}")),
-            legacy: legacy.into(),
-            v2: v2.into(),
-        }
     }
 }
 
