@@ -37,8 +37,8 @@ impl CombatRuntime {
             .get(actor)
             .unwrap_or_else(|| panic!("unknown runtime_v2 summon owner: {}", actor.0))
             .runtime
-            .at_boost()
-            >= 3.0;
+            .at_boost_millionths
+            >= 3_000_000;
         let random_move_points = self.rng.r255() as i32 * 4;
         let move_points = if charge_active { 2048 } else { random_move_points };
         let blueprint = self.plain_summon_blueprint(actor);
