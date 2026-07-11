@@ -90,7 +90,7 @@
 
 切换前仍必须完成：
 
-- phase 开始时预先冻结的 hook plan，状态增删后必须按最新 generation 决定后续 hook；
+- **已完成**：state hook 执行器按 `StateStore` generation 动态刷新后续 hook，状态增删会在当前 phase 内影响后续 state hook；
 - 尚未被大样本/custom 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending、冻结目标与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级、0→正等级 action 队尾和终局 KILL gate 语义并修复完整 `large_67` / `large_72`；KILL 技能链已按 legacy 在首个真实触发后短路；feature-gated 完整 runtime-v2 corpus 的 87 个 case 已全部通过；后续风险转为大样本、custom golden、状态生命周期边界和 RNG 回归；
 - 内置技能借用 extension handler 的过渡路径继续收敛为静态 dispatch；
 - 以 v2 自身输出生成并验证 v2 的 self golden；此类测试只能保留为内部回归，不能充当 parity 门禁。
@@ -101,7 +101,7 @@
 1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 与 `large_72` 在 debug/release `mutable-noalias=yes` 下持续通过；当前完整 runtime-v2 corpus 为 87/87，后续每个行为闭环仍继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
 2. **已完成**：建立独立 `PreparedBattleInit`，自行复刻 raw 分组、同队 upgrade、build、seed/RNG、初始 world views、loadout 与 summon/shadow blueprint 准备；删除 v2 runtime 构造对 legacy `Runner` / `WorldState` 的依赖和静默同步失败；
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
-4. 重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
+4. **已完成**：重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
 5. 收敛 CLI/C API/Python/wasm/show 默认入口和 legacy fallback；
 6. 最后执行性能、Miri/alias、长时间 stress 门禁，再删除 legacy runtime。
 
@@ -687,7 +687,7 @@ Co-authored-by: Codex <codex@openai.com>
 - Merge 已复刻 JS `k1` 语义：`FixedLane` 按槽位位置逐位抬级，`DropUnmappedSkills` 保留 fixed key 映射，标准 kind 默认采用 `FixedLane`；0→正等级技能会从旧 action 位置移除并按 fixed lane 遍历顺序追加到队尾，属性、MP 和 move point 转移后完整 `large_67` 已在 release `mutable-noalias=yes` 下通过；
 - plain 内置主动静态 dispatch 当前覆盖 26/26；
 - `StateStore` 改 `SmallVec`/dense index + legacy order key；
-- scheduler 已能按 generation 重建 state hook plan，但当前执行器仍可能在 phase 开始时冻结计划；必须改为每个后续 hook 读取最新 generation 后再决定执行集合。
+- scheduler 已能按 generation 重建 state hook plan；state hook 执行器已改为每个 handler 后检查 `StateStore` generation，发生变化时重建后续 hook 列表，避免 phase 开始时冻结整段计划。
 
 完成标准：
 
