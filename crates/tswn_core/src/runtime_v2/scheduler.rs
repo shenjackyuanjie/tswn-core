@@ -141,7 +141,7 @@ impl PhaseScheduler {
                 let actor = entities
                     .get_mut(actor)
                     .unwrap_or_else(|| panic!("runtime_v2 scheduler selected unknown actor: {}", actor.0));
-                let effective_speed = actor.states.effective_speed(actor.runtime.speed);
+                let effective_speed = actor.effective_speed();
                 #[cfg(not(feature = "no_debug"))]
                 let move_points_before = actor.runtime.move_state.speed_points;
                 let (step, ice_released) = actor

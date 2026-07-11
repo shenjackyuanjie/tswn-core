@@ -275,6 +275,15 @@ impl EntityRecord {
     #[inline]
     pub fn is_active(&self) -> bool { self.runtime.active() && !self.states.is_frozen() }
 
+    #[inline]
+    pub fn effective_speed(&self) -> i32 {
+        let mut speed = self.states.effective_speed(self.template.speed);
+        if self.runtime.upgrade_active {
+            speed += 20;
+        }
+        speed
+    }
+
     pub fn apply_derived_stats(&mut self, stats: CloneDerivedStats) {
         self.template.apply_derived_stats(stats);
         self.refresh_runtime_stats_from_template();

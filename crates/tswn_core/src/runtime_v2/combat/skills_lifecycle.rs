@@ -266,7 +266,7 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime_v2 slow target: {}", target.0));
-        let reduce_move_point = target_entity.states.effective_speed(target_entity.runtime.speed) + 64;
+        let reduce_move_point = target_entity.effective_speed() + 64;
         target_entity.runtime.move_state.speed_points -= reduce_move_point;
         let next_step = target_entity.states.entry(78).and_then(StateEntry::slow_value).map_or(2, |step| step + 2)
             + if charge_active { 4 } else { 0 };

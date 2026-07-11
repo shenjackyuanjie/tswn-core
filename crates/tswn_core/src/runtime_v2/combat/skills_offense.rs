@@ -449,11 +449,7 @@ impl CombatRuntime {
 
     pub fn select_plain_haste_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
         let actor_team = self.plain_effective_team(actor);
-        let candidates = self
-            .world
-            .team_alive(actor_team)
-            .unwrap_or_default()
-            .to_vec();
+        let candidates = self.world.team_alive(actor_team).unwrap_or_default().to_vec();
         if candidates.is_empty() {
             return Vec::new();
         }
@@ -535,10 +531,7 @@ impl CombatRuntime {
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 haste actor: {}", actor.0));
-            (
-                owner.runtime.at_boost_millionths >= 3_000_000,
-                owner.states.effective_speed(owner.runtime.speed),
-            )
+            (owner.runtime.at_boost_millionths >= 3_000_000, owner.effective_speed())
         };
         self.entities
             .get_mut(actor)
