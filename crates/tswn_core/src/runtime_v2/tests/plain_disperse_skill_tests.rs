@@ -128,6 +128,58 @@ fn plain_disperse_damage_then_clears_positive_state_and_magic_point() {
 }
 
 #[test]
+fn plain_disperse_refreshes_runtime_attract_after_clearing_iron() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let iron = config
+        .registry
+        .skill_id_by_export_name(BuiltinActiveSkill::Iron.export_name())
+        .expect("default profile should register iron skill");
+    let CustomRuntimeV2ImportConfig {
+        registry,
+        state_handlers,
+        ..
+    } = config;
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3).with_magic(80),
+            PlayerTemplate::new(2, "target", 1, 1_000, 3)
+                .with_def_res(0, 16)
+                .with_magic(20)
+                .with_magic_point(96)
+                .with_target_score_stats(100, 100, 32_768.0)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(iron, 128)])),
+        ],
+        registry,
+    ));
+    for binding in state_handlers {
+        runtime.set_state_handler_with_capabilities(binding.state_id, binding.handler, &binding.capabilities);
+    }
+    runtime.drain_plain_iron_skill_into(EntityIdx(1), &mut RunUpdates::new());
+    assert_eq!(
+        runtime.entities.get(EntityIdx(1)).unwrap().runtime.attract(),
+        32_768.0 * 1.1200000047683716
+    );
+    let mut updates = RunUpdates::new();
+
+    assert!(!runtime.apply_disperse_attack_damage_into(EntityIdx(0), EntityIdx(1), 1, &mut updates));
+
+    let target = runtime.entities.get(EntityIdx(1)).unwrap();
+    assert_eq!(target.runtime.hp, 999);
+    assert_eq!(target.runtime.magic_point, 32);
+    assert_eq!(target.states.entry(PLAIN_IRON_STATE_KEY), None);
+    assert_eq!(target.runtime.attract(), 32_768.0);
+    assert_eq!(
+        updates
+            .updates
+            .iter()
+            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .map(|update| update.message.as_ref())
+            .collect::<Vec<_>>(),
+        vec!["[1]受到[2]点伤害", "[1]的[铁壁]被打消了"]
+    );
+}
+
+#[test]
 fn plain_disperse_clears_before_post_damage_upgrade_activation() {
     let mut builder = ExtensionRegistryBuilder::default();
     let upgrade = builder

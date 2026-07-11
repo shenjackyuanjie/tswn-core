@@ -174,6 +174,7 @@ impl<'a> StateContext<'a> {
         if !owner.states.set_payload(legacy_order_key, payload) {
             return Err(EffectContextError::UnknownEntity(self.owner));
         }
+        owner.refresh_runtime_stats_from_template();
         Ok(())
     }
 
@@ -184,6 +185,7 @@ impl<'a> StateContext<'a> {
         if !owner.states.clear_legacy_key(legacy_order_key) {
             return Err(EffectContextError::UnknownEntity(self.owner));
         }
+        owner.refresh_runtime_stats_from_template();
         Ok(())
     }
 

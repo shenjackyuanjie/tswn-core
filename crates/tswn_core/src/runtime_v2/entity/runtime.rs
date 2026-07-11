@@ -418,6 +418,7 @@ impl EntityRecord {
         let emit_state_cancel = self.runtime.alive && self.runtime.hp > 0;
         let mut messages = self.clear_positive_runtime_messages();
         messages.extend(self.states.clear_positive_states_with_ordered_messages(emit_state_cancel));
+        self.refresh_runtime_stats_from_template();
         messages.sort_unstable_by_key(|(priority, _)| *priority);
         messages
     }

@@ -255,3 +255,60 @@ fn plain_iron_static_dispatch_gates_active_state_and_uses_charge_formula() {
     );
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points, 488);
 }
+
+#[test]
+fn plain_iron_refreshes_runtime_attract_after_shield_break() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let iron = config
+        .registry
+        .skill_id_by_export_name(BuiltinActiveSkill::Iron.export_name())
+        .expect("default profile should register iron skill");
+    let CustomRuntimeV2ImportConfig {
+        registry,
+        state_handlers,
+        ..
+    } = config;
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "iron", 0, 100, 3)
+                .with_magic(20)
+                .with_target_score_stats(100, 100, 32_768.0)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(iron, 128)])),
+            PlayerTemplate::new(2, "enemy", 1, 100, 3),
+        ],
+        registry,
+    ));
+    for binding in state_handlers {
+        runtime.set_state_handler_with_capabilities(binding.state_id, binding.handler, &binding.capabilities);
+    }
+    runtime.drain_plain_iron_skill_into(EntityIdx(0), &mut RunUpdates::new());
+    assert_eq!(
+        runtime.entities.get(EntityIdx(0)).unwrap().runtime.attract(),
+        32_768.0 * 1.1200000047683716
+    );
+    let mut defend_value = RuntimeDefendValue::Damage {
+        value: 200,
+        caster: EntityIdx(1),
+        target: EntityIdx(0),
+    };
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_post_defend_hooks_into(EntityIdx(0), &mut updates, &mut defend_value);
+
+    assert_eq!(defend_value.damage(), Some(70));
+    assert_eq!(
+        runtime
+            .entities
+            .get(EntityIdx(0))
+            .unwrap()
+            .states
+            .entry(PLAIN_IRON_STATE_KEY)
+            .and_then(StateEntry::iron_value),
+        Some((0, 0))
+    );
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.attract(), 32_768.0);
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec!["\n", "[1]的[铁壁]被打消了"]
+    );
+}

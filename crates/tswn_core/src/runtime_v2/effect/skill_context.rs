@@ -131,7 +131,9 @@ impl<'a> SkillContext<'a> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
         };
-        Ok(owner.states.clear_positive_states_with_ordered_messages(owner.runtime.alive))
+        let messages = owner.states.clear_positive_states_with_ordered_messages(owner.runtime.alive);
+        owner.refresh_runtime_stats_from_template();
+        Ok(messages)
     }
 
     pub fn clear_owner_positive_messages(&mut self) -> Result<Vec<(i32, &'static str)>, EffectContextError> {
@@ -450,6 +452,7 @@ impl<'a> SkillContext<'a> {
         if !owner.states.set_payload(legacy_order_key, payload) {
             return Err(EffectContextError::UnknownEntity(self.owner));
         }
+        owner.refresh_runtime_stats_from_template();
         Ok(())
     }
 
