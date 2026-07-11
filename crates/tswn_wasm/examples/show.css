@@ -9,13 +9,13 @@
     --paper-2: #f1f8fc;
     --ink: #214052;
     --line: #c6e1ef;
-    --damage: #800020;
-    --recover: #40d040;
+    --damage: #e07020;
+    --recover: #60e060;
     --status-exit: #bb7700;
     --skill: #0077BB;
     --knockout: #b06a0e;
-    --hp: #40d040;
-    --oldhp: #800020;
+    --hp: #60e060;
+    --oldhp: #e07020;
     --healhp: #08f;
 }
 
