@@ -1710,7 +1710,7 @@ fn bed2_summon_merge_inherits_normal_lane_skills() {
 }
 
 #[test]
-fn bed2_summon_merge_transfers_move_point_but_not_mp() {
+fn bed2_summon_merge_transfers_resources_at_half_efficiency() {
     let storage = Storage::new_arc();
     let mut bed2 = Player::new_from_namerena_raw(
         "alpha@red+bed2[3000]+ol:{\"attrs\":[86,86,86,86,86,86,86,300],\"skills\":{\"sklsummon\":255}}".to_string(),
@@ -1766,11 +1766,11 @@ fn bed2_summon_merge_transfers_move_point_but_not_mp() {
             .level(),
         87
     );
-    assert_eq!(summoned_after.magic_point(), 11);
-    assert_eq!(summoned_after.move_point(), 910);
+    assert_eq!(summoned_after.magic_point(), 394);
+    assert_eq!(summoned_after.move_point(), 466);
 
     let target_after = storage.get_player(&target_id).unwrap();
-    assert_eq!(target_after.magic_point(), 777);
+    assert_eq!(target_after.magic_point(), 0);
     assert_eq!(target_after.move_point(), 0);
 }
 

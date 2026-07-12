@@ -25,7 +25,7 @@ fn prepare_merge_skill_slots(owner: &crate::player::Player) -> Vec<usize> {
     }
 }
 
-fn disable_magic_point_merge_for_bed2_summon(
+fn half_resource_merge_for_bed2_summon(
     owner: &crate::player::Player,
     storage: &crate::engine::storage::Storage,
 ) -> bool {
@@ -195,14 +195,18 @@ impl SkillTrait for MergeSkill {
             for skill_key in newly_enabled_skills {
                 owner.skills.register_skill_proc_after_states(skill_key, post_action_state_cursor);
             }
-            let disable_magic_point_merge = disable_magic_point_merge_for_bed2_summon(owner, args.3);
-            let transfer_mp = !disable_magic_point_merge && target_mp > owner.magic_point();
+            let half_resource_merge = half_resource_merge_for_bed2_summon(owner, args.3);
+            let transfer_mp = target_mp > owner.magic_point();
             if transfer_mp {
-                owner.set_magic_point(target_mp);
+                if half_resource_merge {
+                    owner.set_magic_point(owner.magic_point() + (target_mp - owner.magic_point()) / 2);
+                } else {
+                    owner.set_magic_point(target_mp);
+                }
             }
             let transfer_move_point = target_move_point > owner.move_point();
             if transfer_move_point {
-                owner.set_move_point(owner.move_point() + target_move_point);
+                owner.set_move_point(owner.move_point() + if half_resource_merge { target_move_point / 2 } else { target_move_point });
             }
             if merged {
                 owner.update_states();
