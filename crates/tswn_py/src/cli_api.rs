@@ -7,7 +7,8 @@ use pyo3::{
     types::{PyDict, PyDictMethods, PyList},
 };
 use tswn_core::cli_api::{
-    self as core_cli_api, CliApiError, JsonRuntimeV2NormalizedOutcome, JsonRuntimeV2NormalizedRun, JsonRuntimeV2UpdateFrame,
+    self as core_cli_api, CliApiError, JsonRuntimeV2NormalizedOutcome, JsonRuntimeV2NormalizedRun, JsonRuntimeV2ParityReport,
+    JsonRuntimeV2UpdateFrame,
 };
 
 use crate::wrapper;
@@ -396,6 +397,15 @@ fn normalized_run_to_pydict<'py>(py: Python<'py>, run: JsonRuntimeV2NormalizedRu
     Ok(dict)
 }
 
+fn parity_report_to_pydict<'py>(py: Python<'py>, report: JsonRuntimeV2ParityReport) -> PyResult<pyo3::Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    dict.set_item("matched", report.matched)?;
+    dict.set_item("first_diff", report.first_diff)?;
+    dict.set_item("legacy", normalized_run_to_pydict(py, report.legacy)?)?;
+    dict.set_item("v2", normalized_run_to_pydict(py, report.v2)?)?;
+    Ok(dict)
+}
+
 fn normalized_outcome_to_pydict<'py>(
     py: Python<'py>,
     outcome: JsonRuntimeV2NormalizedOutcome,
@@ -554,6 +564,12 @@ pub fn parse_group_lines(content: String, double_plus: bool) -> Vec<String> {
 pub fn default_custom_runtime_v2_normalized_run(py: Python<'_>, raw: String, max_rounds: usize) -> PyResult<Py<PyAny>> {
     let run = core_cli_api::default_custom_runtime_v2_normalized_run(&raw, max_rounds).map_err(map_cli_error)?;
     Ok(normalized_run_to_pydict(py, run.into())?.into_any().unbind())
+}
+
+#[pyfunction(signature = (raw, max_rounds))]
+pub fn default_custom_runtime_v2_parity_report(py: Python<'_>, raw: String, max_rounds: usize) -> PyResult<Py<PyAny>> {
+    let report = core_cli_api::default_custom_runtime_v2_parity_report(&raw, max_rounds).map_err(map_cli_error)?;
+    Ok(parity_report_to_pydict(py, report.into())?.into_any().unbind())
 }
 
 fn format_rate(value: f64, precision: usize) -> String {
@@ -738,6 +754,75 @@ mod tests {
         Python::attach(|py| {
             let err = default_custom_runtime_v2_normalized_run(py, "left@red\n\nright@blue\n".to_string(), 0)
                 .expect_err("default custom runtime v2 normalized run should reject zero max rounds");
+
+            assert_eq!(err.to_string(), "ValueError: runtime v2 max_rounds must be positive");
+        });
+    }
+
+    #[test]
+    fn default_custom_runtime_v2_parity_report_returns_python_dict_golden_shape() {
+        Python::initialize();
+        Python::attach(|py| {
+            let value = default_custom_runtime_v2_parity_report(py, "left@red\n\nright@blue\n".to_string(), 1)
+                .expect("default custom runtime v2 parity report should execute");
+            let dict = value.bind(py).cast::<PyDict>().expect("parity report should be a dict");
+
+            assert!(
+                dict.get_item("matched")
+                    .expect("matched key should exist")
+                    .expect("matched should not be missing")
+                    .extract::<bool>()
+                    .expect("matched should be bool")
+            );
+            assert!(
+                dict.get_item("first_diff")
+                    .expect("first_diff key should exist")
+                    .expect("first_diff should not be missing")
+                    .is_none()
+            );
+
+            let legacy_item = dict
+                .get_item("legacy")
+                .expect("legacy key should exist")
+                .expect("legacy should not be missing");
+            let v2_item = dict.get_item("v2").expect("v2 key should exist").expect("v2 should not be missing");
+            let legacy = legacy_item.cast::<PyDict>().expect("legacy should be a dict");
+            let v2 = v2_item.cast::<PyDict>().expect("v2 should be a dict");
+
+            assert_eq!(
+                legacy.get_item("total_score").unwrap().unwrap().extract::<u64>().unwrap(),
+                v2.get_item("total_score").unwrap().unwrap().extract::<u64>().unwrap()
+            );
+            let legacy_rounds_item = legacy.get_item("rounds").unwrap().unwrap();
+            let legacy_rounds = legacy_rounds_item.cast::<PyList>().unwrap();
+            let v2_rounds_item = v2.get_item("rounds").unwrap().unwrap();
+            let v2_rounds = v2_rounds_item.cast::<PyList>().unwrap();
+            assert_eq!(legacy_rounds.len().unwrap(), 1);
+            assert_eq!(v2_rounds.len().unwrap(), 1);
+
+            let legacy_round_item = legacy_rounds.get_item(0).unwrap();
+            let legacy_round = legacy_round_item.cast::<PyDict>().unwrap();
+            let v2_round_item = v2_rounds.get_item(0).unwrap();
+            let v2_round = v2_round_item.cast::<PyDict>().unwrap();
+            let legacy_frames_item = legacy_round.get_item("frames").unwrap().unwrap();
+            let legacy_frames = legacy_frames_item.cast::<PyList>().unwrap();
+            let v2_frames_item = v2_round.get_item("frames").unwrap().unwrap();
+            let v2_frames = v2_frames_item.cast::<PyList>().unwrap();
+            assert_eq!(legacy_frames.len().unwrap(), v2_frames.len().unwrap());
+            assert_eq!(v2.get_item("total_score").unwrap().unwrap().extract::<u64>().unwrap(), 77);
+            assert_eq!(
+                v2_round.get_item("actions").unwrap().unwrap().cast::<PyList>().unwrap().len().unwrap(),
+                1
+            );
+        });
+    }
+
+    #[test]
+    fn default_custom_runtime_v2_parity_report_rejects_zero_max_rounds() {
+        Python::initialize();
+        Python::attach(|py| {
+            let err = default_custom_runtime_v2_parity_report(py, "left@red\n\nright@blue\n".to_string(), 0)
+                .expect_err("default custom runtime v2 parity report should reject zero max rounds");
 
             assert_eq!(err.to_string(), "ValueError: runtime v2 max_rounds must be positive");
         });

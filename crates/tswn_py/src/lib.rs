@@ -147,6 +147,7 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cli_api::icon_info, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::parse_group_lines, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_v2_normalized_run, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_v2_parity_report, m)?)?;
     m.add_class::<cli_api::PyWinRateResult>()?;
     m.add_class::<cli_api::PyScoreResult>()?;
     m.add_class::<cli_api::PyNamerPfResult>()?;
