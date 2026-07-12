@@ -5,6 +5,7 @@
 
 use std::collections::HashSet;
 
+use serde::Deserialize;
 use tswn_core::player::{Player, overlay::PlayerOverlay};
 
 pub fn parse_line_list(content: &str) -> Vec<String> {
@@ -21,6 +22,39 @@ pub fn parse_plus_separated_groups(content: &str) -> Vec<String> { parse_separat
 pub fn parse_target_groups(content: &str, double_plus: bool) -> Vec<String> {
     let separator = if double_plus { "++" } else { "+" };
     parse_separated_groups(content, separator)
+}
+
+#[derive(Debug, Deserialize)]
+struct FactoredTargetFile {
+    targets: Vec<FactoredTarget>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FactoredTarget {
+    factor: f64,
+    players: Vec<String>,
+}
+
+pub fn parse_factored_target_groups(content: &str) -> Result<(Vec<String>, Vec<f64>), String> {
+    let parsed: FactoredTargetFile = toml::from_str(content).map_err(|err| format!("解析带权靶子 TOML 失败: {err}"))?;
+    if parsed.targets.is_empty() {
+        return Err("带权靶子 TOML 中的 targets 不能为空。".to_string());
+    }
+
+    let mut groups = Vec::with_capacity(parsed.targets.len());
+    let mut factors = Vec::with_capacity(parsed.targets.len());
+    for (index, target) in parsed.targets.into_iter().enumerate() {
+        if !target.factor.is_finite() || target.factor <= 0.0 {
+            return Err(format!("带权靶子 targets[{}].factor 必须是有限正数。", index));
+        }
+        let players = target.players.into_iter().map(|player| player.trim().to_string()).collect::<Vec<_>>();
+        if players.is_empty() || players.iter().any(String::is_empty) {
+            return Err(format!("带权靶子 targets[{}].players 不能为空或包含空名字。", index));
+        }
+        groups.push(players.join("\n"));
+        factors.push(target.factor);
+    }
+    Ok((groups, factors))
 }
 
 fn parse_separated_groups(content: &str, separator: &str) -> Vec<String> {
@@ -63,6 +97,23 @@ pub fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
         }
     }
     None
+}
+
+pub fn groups_have_same_players(left: &str, right: &str) -> bool {
+    let mut left = normalized_group_players(left);
+    let mut right = normalized_group_players(right);
+    left.sort_unstable();
+    right.sort_unstable();
+    left == right
+}
+
+fn normalized_group_players(group: &str) -> Vec<String> {
+    group
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(Player::raw_namerena_to_idname)
+        .collect()
 }
 
 fn parse_namer_pf_group_line(line: &str) -> Vec<String> {
@@ -118,7 +169,10 @@ fn split_plus_outside_quotes(raw: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_namer_pf_groups, parse_player_groups_with_labels, parse_target_groups};
+    use super::{
+        groups_have_same_players, parse_factored_target_groups, parse_namer_pf_groups, parse_player_groups_with_labels,
+        parse_target_groups,
+    };
 
     #[test]
     fn namer_pf_keeps_overlay_suffix() {
@@ -144,5 +198,42 @@ mod tests {
     fn normal_target_list_still_splits_single_plus() {
         let groups = parse_target_groups("mario+luigi", false);
         assert_eq!(groups, vec!["mario\nluigi".to_string()]);
+    }
+
+    #[test]
+    fn parses_factored_target_toml() {
+        let raw = r#"
+            [[targets]]
+            factor = 1.5
+            players = ["mario", "luigi"]
+
+            [[targets]]
+            factor = 0.25
+            players = ["peach", "fire"]
+        "#;
+        let (groups, factors) = parse_factored_target_groups(raw).expect("valid factored targets");
+        assert_eq!(groups, vec!["mario\nluigi", "peach\nfire"]);
+        assert_eq!(factors, vec![1.5, 0.25]);
+    }
+
+    #[test]
+    fn parses_embedded_factored_target_file() {
+        let raw = include_str!("../../assets/targets/newTarget2.toml");
+        let (groups, factors) = parse_factored_target_groups(raw).expect("embedded factored targets are valid");
+        assert_eq!(groups.len(), 50);
+        assert_eq!(factors.len(), 50);
+        assert!(groups.iter().all(|group| group.lines().count() == 2));
+    }
+
+    #[test]
+    fn rejects_non_positive_target_factor() {
+        let raw = "[[targets]]\nfactor = 0\nplayers = [\"mario\", \"luigi\"]";
+        assert!(parse_factored_target_groups(raw).is_err());
+    }
+
+    #[test]
+    fn same_players_ignores_team_order() {
+        assert!(groups_have_same_players("mario\nluigi", "luigi\nmario"));
+        assert!(!groups_have_same_players("mario\nluigi", "mario\npeach"));
     }
 }

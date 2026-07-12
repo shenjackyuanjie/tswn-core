@@ -12,7 +12,7 @@ use tswn_core::win_rate::{WinRateTiming, prepared_win_rate, resolve_win_rate_wor
 use tswn_core::{PreparedRunner, Runner};
 
 use super::format::display_group;
-use super::parse::first_duplicate_name_in_matchup;
+use super::parse::{first_duplicate_name_in_matchup, groups_have_same_players};
 
 const BENCH_PARALLEL_THRESHOLD: usize = 100;
 
@@ -48,6 +48,7 @@ pub enum BatchTargetOutcome {
 pub fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],
+    target_factors: Option<&[f64]>,
     n: usize,
     threads: Option<usize>,
     eval_rq: f64,
@@ -57,18 +58,40 @@ pub fn bench_batch_rate_for_group(
     mut tick_target: impl FnMut(usize, usize, &str, BatchTargetOutcome),
 ) -> BatchRateSummary {
     let mut accumulated_rate = 0.0;
+    let mut accumulated_factor = 0.0;
     let mut accumulated_wins = 0usize;
     let mut accumulated_total = 0usize;
     let mut _accumulated_timing = WinRateTiming::default();
     let mut valid_matchups = 0usize;
     let mut skipped_matchups = 0usize;
+    let factored = target_factors.is_some();
 
     for (index, target) in target_groups.iter().enumerate() {
+        let factor = target_factors.map_or(1.0, |factors| factors[index]);
         let target_total = target_groups.len();
         if cancel.load(Ordering::Relaxed) {
             break;
         }
-        if let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target.as_str()]) {
+        if factored && groups_have_same_players(player, target) {
+            const MIRROR_RATE: f64 = 50.0;
+            if verbose {
+                let _ = writeln!(
+                    verbose_buf,
+                    "  [{}/{}] vs {} => {MIRROR_RATE:.2}% (same players)",
+                    index + 1,
+                    target_groups.len(),
+                    display_group(target),
+                );
+            }
+            accumulated_rate += MIRROR_RATE * factor;
+            accumulated_factor += factor;
+            accumulated_wins += 1;
+            accumulated_total += 2;
+            valid_matchups += 1;
+            tick_target(index, target_total, target, BatchTargetOutcome::Rate { percent: MIRROR_RATE });
+            continue;
+        }
+        if !factored && let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target.as_str()]) {
             skipped_matchups += 1;
             if verbose {
                 let _ = writeln!(
@@ -99,7 +122,8 @@ pub fn bench_batch_rate_for_group(
                         summary.total
                     );
                 }
-                accumulated_rate += summary.win_rate_percent();
+                accumulated_rate += summary.win_rate_percent() * factor;
+                accumulated_factor += factor;
                 accumulated_wins += summary.wins;
                 accumulated_total += summary.total;
                 _accumulated_timing.merge(summary.timing);
@@ -129,8 +153,8 @@ pub fn bench_batch_rate_for_group(
         }
     }
 
-    let avg = if valid_matchups > 0 {
-        accumulated_rate / valid_matchups as f64
+    let avg = if accumulated_factor > 0.0 {
+        accumulated_rate / accumulated_factor
     } else {
         0.0
     };
@@ -334,5 +358,55 @@ fn js_score_profiles_per_round(target_group: &[String]) -> usize {
         3
     } else {
         target_group.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::AtomicBool;
+
+    use super::bench_batch_rate_for_group;
+
+    #[test]
+    fn factored_mirror_match_is_fifty_percent_without_running() {
+        let targets = vec!["luigi\nmario".to_string()];
+        let factors = [2.5];
+        let mut verbose = String::new();
+        let summary = bench_batch_rate_for_group(
+            "mario\nluigi",
+            &targets,
+            Some(&factors),
+            1,
+            Some(1),
+            0.0,
+            false,
+            &mut verbose,
+            &AtomicBool::new(false),
+            |_, _, _, _| {},
+        );
+        assert_eq!(summary.avg, 50.0);
+        assert_eq!(summary.valid_matchups, 1);
+        assert_eq!(summary.skipped_matchups, 0);
+    }
+
+    #[test]
+    fn factored_partial_overlap_is_calculated() {
+        let targets = vec!["mario\npeach".to_string()];
+        let factors = [1.0];
+        let mut verbose = String::new();
+        let summary = bench_batch_rate_for_group(
+            "mario\nluigi",
+            &targets,
+            Some(&factors),
+            1,
+            Some(1),
+            0.0,
+            false,
+            &mut verbose,
+            &AtomicBool::new(false),
+            |_, _, _, _| {},
+        );
+        assert_eq!(summary.valid_matchups, 1);
+        assert_eq!(summary.skipped_matchups, 0);
     }
 }

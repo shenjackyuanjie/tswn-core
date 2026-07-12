@@ -20,7 +20,8 @@ use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
 };
 use super::parse::{
-    parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups, parse_target_groups,
+    parse_factored_target_groups, parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels,
+    parse_plus_separated_groups, parse_target_groups,
 };
 use super::score::{BatchRateSummary, BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
@@ -434,7 +435,19 @@ impl NamerPfScores {
 }
 
 pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
-    let target_groups = parse_target_groups(&input.target_text, input.target_double_plus);
+    let (target_groups, target_factors) = if input.target_factor_enabled {
+        match parse_factored_target_groups(&input.target_text) {
+            Ok(targets) => targets,
+            Err(err) => {
+                send(ProgressEvent::Done(Err(err)));
+                return;
+            }
+        }
+    } else {
+        let groups = parse_target_groups(&input.target_text, input.target_double_plus);
+        let factors = vec![1.0; groups.len()];
+        (groups, factors)
+    };
     let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
     if target_groups.is_empty() {
         send(ProgressEvent::Done(Err("batch-rate: 靶子列表为空。".to_string())));
@@ -471,6 +484,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         eval_rq,
         verbose: input.options.verbose,
         collect_details: input.show_matchups,
+        factored: input.target_factor_enabled,
     };
     let outer_workers = low_accuracy_outer_workers(n, player_groups.len(), outer_thread_spec(input.options.threads));
     if outer_workers > 1 {
@@ -484,6 +498,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
                     player,
                     &player_labels[index],
                     &target_groups,
+                    &target_factors,
                     job_settings,
                     &input.cancel,
                     tick,
@@ -500,10 +515,18 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         }
     } else {
         for (player, label) in player_groups.iter().zip(player_labels.iter()) {
-            let result = compute_batch_rate_result(player, label, &target_groups, job_settings, &input.cancel, || {
-                done += 1;
-                send(ProgressEvent::Progress { done, total });
-            });
+            let result = compute_batch_rate_result(
+                player,
+                label,
+                &target_groups,
+                &target_factors,
+                job_settings,
+                &input.cancel,
+                || {
+                    done += 1;
+                    send(ProgressEvent::Progress { done, total });
+                },
+            );
             if let Err(err) = emit_batch_rate_result(&result, &input, &mut output, precision, &send) {
                 send(ProgressEvent::Done(Err(err)));
                 return;
@@ -540,6 +563,7 @@ struct BatchRateJobSettings {
     eval_rq: f64,
     verbose: bool,
     collect_details: bool,
+    factored: bool,
 }
 
 impl BatchRateJobSettings {
@@ -556,6 +580,7 @@ fn compute_batch_rate_result(
     player: &str,
     label: &str,
     target_groups: &[String],
+    target_factors: &[f64],
     settings: BatchRateJobSettings,
     cancel: &AtomicBool,
     mut tick_target: impl FnMut(),
@@ -565,6 +590,7 @@ fn compute_batch_rate_result(
     let summary = bench_batch_rate_for_group(
         player,
         target_groups,
+        settings.factored.then_some(target_factors),
         settings.n,
         settings.threads,
         settings.eval_rq,
@@ -682,6 +708,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
             let summary = bench_batch_rate_for_group(
                 &pair_group,
                 &target_groups,
+                None,
                 n,
                 input.options.threads,
                 eval_rq,
