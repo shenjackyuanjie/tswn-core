@@ -36,16 +36,20 @@ test("show routing recognizes v2 and legacy engine aliases", () => {
   assert.deepEqual(readReplayEngineFromSearch("?engine=v2"), { engine: "v2", paramName: "engine" });
   assert.deepEqual(readReplayEngineFromSearch("?runtime=normalized_v2"), { engine: "v2", paramName: "runtime" });
   assert.deepEqual(readReplayEngineFromSearch("?engine=fight_session"), { engine: "legacy", paramName: "engine" });
-  assert.deepEqual(readReplayEngineFromSearch("?engine="), { engine: "legacy", paramName: "engine" });
   assert.equal(readReplayEngineFromSearch("?input=abc"), null);
 });
 
-test("show routing falls back to legacy for unknown engine values", () => {
-  const result = readReplayEngineFromSearch("?runtime=experimental");
+test("show routing falls back to v2 for empty or unknown engine values", () => {
+  const empty = readReplayEngineFromSearch("?engine=");
+  const unknown = readReplayEngineFromSearch("?runtime=experimental");
 
-  assert.equal(result?.engine, DEFAULT_REPLAY_ENGINE);
-  assert.equal(result?.paramName, "runtime");
-  assert.match(result?.message ?? "", /已回退 v2 normalized run/);
+  assert.equal(empty?.engine, DEFAULT_REPLAY_ENGINE);
+  assert.equal(empty?.paramName, "engine");
+  assert.match(empty?.message ?? "", /为空，已回退 v2 normalized run/);
+
+  assert.equal(unknown?.engine, DEFAULT_REPLAY_ENGINE);
+  assert.equal(unknown?.paramName, "runtime");
+  assert.match(unknown?.message ?? "", /未识别，已回退 v2 normalized run/);
 });
 
 test("show share URL preserves selected runtime engine", () => {

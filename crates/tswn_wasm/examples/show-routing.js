@@ -108,6 +108,7 @@ export function readStaticReplayInputFromSearch(search) {
 
 /**
  * 从 URL search 中读取 replay runtime。未指定时返回 null，由页面默认 runtime 决定。
+ * 只有显式 legacy alias 才进入 legacy FightSession；空值或未知值回退到默认 v2。
  * @param {string} search
  * @returns {{ engine: 'legacy'|'v2', paramName: string, message?: string }|null}
  */
@@ -121,13 +122,15 @@ export function readReplayEngineFromSearch(search) {
     if (REPLAY_ENGINE_V2_VALUES.has(value)) {
       return { engine: "v2", paramName };
     }
-    if (!value || REPLAY_ENGINE_LEGACY_VALUES.has(value)) {
+    if (REPLAY_ENGINE_LEGACY_VALUES.has(value)) {
       return { engine: "legacy", paramName };
     }
     return {
       engine: DEFAULT_REPLAY_ENGINE,
       paramName,
-      message: `URL 参数 ${paramName}=${value} 未识别，已回退 v2 normalized run。`,
+      message: value
+        ? `URL 参数 ${paramName}=${value} 未识别，已回退 v2 normalized run。`
+        : `URL 参数 ${paramName} 为空，已回退 v2 normalized run。`,
     };
   }
   return null;
