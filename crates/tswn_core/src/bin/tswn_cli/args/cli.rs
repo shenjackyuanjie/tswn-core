@@ -17,7 +17,7 @@ use super::input::{
     parse_plus_separated_groups, parse_positive_usize, parse_thread_count, parse_to_diy_file_names, parse_win_rate_teams,
     parse_wr_precision, read_file, read_stdin,
 };
-use super::parsed::{BenchThreadMode, NamerPfMode, ParsedCli, ParsedCommand};
+use super::parsed::{BenchThreadMode, NamerPfMode, ParsedCli, ParsedCommand, RuntimeEngine};
 
 // ----------------------------------------------------------------------------
 // 顶层 CLI 结构。
@@ -129,6 +129,25 @@ struct FightDiffCommand {
     /// 原始对战输入来源参数。
     #[command(flatten)]
     input: InputArgs,
+
+    /// diff 使用的 runtime；默认 v2，legacy 需要显式指定。
+    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::V2, value_name = "ENGINE")]
+    runtime: RuntimeEngineArg,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum RuntimeEngineArg {
+    V2,
+    Legacy,
+}
+
+impl From<RuntimeEngineArg> for RuntimeEngine {
+    fn from(value: RuntimeEngineArg) -> Self {
+        match value {
+            RuntimeEngineArg::V2 => Self::V2,
+            RuntimeEngineArg::Legacy => Self::Legacy,
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -639,6 +658,7 @@ impl ParsedCli {
             },
             CliCommand::FightDiff(cmd) => ParsedCommand::FightDiff {
                 raw: cmd.input.read_or_stdin()?,
+                runtime: cmd.runtime.into(),
             },
             CliCommand::RuntimeV2(RuntimeV2Command { command }) => match command {
                 RuntimeV2Subcommand::NormalizedRun(cmd) => ParsedCommand::RuntimeV2NormalizedRun {

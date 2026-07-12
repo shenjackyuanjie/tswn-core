@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use tswn_core::Runner;
 use tswn_core::engine;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
+use tswn_core::runtime_v2::{EntityIdx, RuntimeV2Runner};
 
 use super::driver::fmt_winner_input_indices;
 
@@ -130,6 +131,40 @@ fn fmt_update_diff(runner: &Runner, update: &RunUpdate) -> String {
                     .map(|plr| plr.display_name())
                     .unwrap_or_else(|| format!("#{id}"))
             })
+            .collect::<Vec<String>>()
+            .join(",")
+    };
+    msg.replace("[2]", &param)
+}
+
+fn runtime_v2_plr_name_diff(runner: &RuntimeV2Runner, id: usize) -> String {
+    let Ok(entity_id) = u32::try_from(id) else {
+        return format!("#{id}");
+    };
+    runner
+        .runtime()
+        .entities
+        .get(EntityIdx(entity_id))
+        .map(|entity| entity.template.display_name.clone())
+        .unwrap_or_else(|| format!("#{id}"))
+}
+
+/// Runtime v2 diff 输出使用与 legacy diff 相同的保守名字替换规则。
+fn fmt_runtime_v2_update_diff(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
+    let caster = runtime_v2_plr_name_diff(runner, update.caster);
+    let target = runtime_v2_plr_name_diff(runner, update.target);
+    let mut msg = update.message.to_string();
+    msg = msg.replace("[0]", &caster);
+    msg = msg.replace("[1]", &target);
+    let param = if let Some(p) = update.param {
+        p.to_string()
+    } else if update.targets.is_empty() {
+        update.score.to_string()
+    } else {
+        update
+            .targets
+            .iter()
+            .map(|id| runtime_v2_plr_name_diff(runner, *id))
             .collect::<Vec<String>>()
             .join(",")
     };
@@ -378,6 +413,50 @@ pub(super) fn collect_diff_lines(runner: &mut Runner, max_rounds: usize, normali
             lines.push(parts.join(", "));
         }
         guard += 1;
+    }
+    (lines, guard, total_score)
+}
+
+/// 收集 Runtime v2 diff 模式的全部输出行。
+pub(super) fn collect_runtime_v2_diff_lines(
+    runner: &mut RuntimeV2Runner,
+    max_rounds: usize,
+    normalize: bool,
+) -> (Vec<String>, usize, u64) {
+    let mut lines = Vec::new();
+    let mut guard = 0usize;
+    let mut total_score = 0u64;
+    while guard < max_rounds {
+        let outcome = runner.run_round();
+        if let Some(frame) = outcome.frame {
+            let mut parts = Vec::new();
+            for update in frame.updates.updates {
+                if matches!(update.update_type, UpdateType::NextLine) {
+                    if !parts.is_empty() {
+                        lines.push(parts.join(", "));
+                        parts.clear();
+                    }
+                    continue;
+                }
+                if update.score > 0 {
+                    total_score += u64::from(update.score);
+                }
+                let mut msg = fmt_runtime_v2_update_diff(runner, &update);
+                if normalize {
+                    msg = normalize_diff_trace_line(msg);
+                }
+                if !msg.is_empty() {
+                    parts.push(msg);
+                }
+            }
+            if !parts.is_empty() {
+                lines.push(parts.join(", "));
+            }
+        }
+        guard += 1;
+        if outcome.winner_team.is_some() {
+            break;
+        }
     }
     (lines, guard, total_score)
 }

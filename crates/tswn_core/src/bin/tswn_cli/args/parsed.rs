@@ -48,6 +48,15 @@ impl NamerPfMode {
     }
 }
 
+/// CLI 可选择的战斗 runtime。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeEngine {
+    /// 默认 Runtime v2 路径。
+    V2,
+    /// 显式 legacy fallback。
+    Legacy,
+}
+
 /// 归一化后的 CLI 命令。
 ///
 /// 这里的每个字段都已经过输入来源统一、基础校验和必要的文本转换：
@@ -65,6 +74,8 @@ pub enum ParsedCommand {
     FightDiff {
         /// 普通对战输入，使用 namerena raw 格式，并按 runner diff 的格式输出。
         raw: String,
+        /// diff 输出使用的 runtime；默认 v2，legacy 只作为显式 fallback。
+        runtime: RuntimeEngine,
     },
     FightRaw {
         /// 原始 namerena 输入，可能是普通对战，也可能是 `!test!` 基准测试输入。

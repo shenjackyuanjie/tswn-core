@@ -72,6 +72,29 @@ fn runtime_v2_parity_accepts_raw_and_max_rounds() {
 }
 
 #[test]
+fn diff_defaults_to_v2_and_accepts_legacy_runtime() {
+    let v2 = Cli::try_parse_from(["tswn-cli", "diff", "-r", "left\\n\\nright"]).unwrap();
+    let parsed = ParsedCli::from_cli(v2).unwrap();
+    match parsed.command {
+        ParsedCommand::FightDiff { raw, runtime } => {
+            assert_eq!(raw, "left\n\nright");
+            assert_eq!(runtime, RuntimeEngine::V2);
+        }
+        _ => panic!("unexpected command"),
+    }
+
+    let legacy = Cli::try_parse_from(["tswn-cli", "diff", "-r", "left\\n\\nright", "--runtime", "legacy"]).unwrap();
+    let parsed = ParsedCli::from_cli(legacy).unwrap();
+    match parsed.command {
+        ParsedCommand::FightDiff { raw, runtime } => {
+            assert_eq!(raw, "left\n\nright");
+            assert_eq!(runtime, RuntimeEngine::Legacy);
+        }
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
 fn namer_pf_accepts_multiple_modes() {
     let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--mode", "pp", "qd"]).unwrap();
     match cli.command {

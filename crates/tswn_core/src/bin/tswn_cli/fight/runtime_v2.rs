@@ -1,6 +1,22 @@
 //! CLI 侧的 runtime v2 迁移/调试入口。
 
+use super::trace::collect_runtime_v2_diff_lines;
+
 use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeV2NormalizedRun, JsonRuntimeV2ParityReport};
+
+pub(super) fn run_runtime_v2_diff(raw: String) {
+    match runtime_v2_diff_lines(&raw, 20_000) {
+        Ok(lines) => {
+            if !lines.is_empty() {
+                println!("{}", lines.join("\n"));
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+    }
+}
 
 pub fn run_runtime_v2_normalized(raw: String, max_rounds: usize) {
     match runtime_v2_normalized_json(&raw, max_rounds) {
@@ -20,6 +36,12 @@ pub fn run_runtime_v2_parity(raw: String, max_rounds: usize) {
             std::process::exit(1);
         }
     }
+}
+
+fn runtime_v2_diff_lines(raw: &str, max_rounds: usize) -> Result<Vec<String>, String> {
+    let mut runner = core_cli_api::default_custom_runtime_v2_mixed_runner(raw).map_err(cli_api_error)?;
+    let (lines, _guard, _total_score) = collect_runtime_v2_diff_lines(&mut runner, max_rounds, true);
+    Ok(lines)
 }
 
 fn runtime_v2_normalized_json(raw: &str, max_rounds: usize) -> Result<String, String> {
@@ -44,6 +66,17 @@ fn cli_api_error(err: CliApiError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_v2_diff_lines_match_legacy_diff_for_minimal_raw() {
+        let raw = "left@red\n\nright@blue\n";
+        let lines = runtime_v2_diff_lines(raw, 1).expect("runtime v2 diff should render");
+
+        let mut legacy = tswn_core::Runner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
+        let (legacy_lines, _guard, _total_score) = super::super::trace::collect_diff_lines(&mut legacy, 1, true);
+
+        assert_eq!(lines, legacy_lines);
+    }
 
     #[test]
     fn runtime_v2_normalized_json_matches_default_run_golden_shape() {

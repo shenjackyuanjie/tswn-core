@@ -88,7 +88,7 @@ fn main() {
 
     match cli.command {
         ParsedCommand::Fight { raw, out_raw } => fight::run(raw, out_raw),
-        ParsedCommand::FightDiff { raw } => fight::run_diff(raw),
+        ParsedCommand::FightDiff { raw, runtime } => fight::run_diff(raw, runtime),
         ParsedCommand::FightRaw { raw, n, threads } => fight::run_raw(raw, n, threads),
         ParsedCommand::RuntimeV2NormalizedRun { raw, max_rounds } => fight::run_runtime_v2_normalized(raw, max_rounds),
         ParsedCommand::RuntimeV2Parity { raw, max_rounds } => fight::run_runtime_v2_parity(raw, max_rounds),

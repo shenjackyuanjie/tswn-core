@@ -9,6 +9,8 @@
 
 use std::collections::HashMap;
 
+use crate::args::RuntimeEngine;
+
 use tswn_core::Runner;
 use tswn_core::engine::update::UpdateType;
 use tswn_core::error::runner::RunnerResult;
@@ -95,7 +97,14 @@ pub fn run(raw: String, out_raw: bool) {
 }
 
 /// 运行普通对战并按 runner diff 格式输出。
-pub fn run_diff(raw: String) {
+pub fn run_diff(raw: String, runtime: RuntimeEngine) {
+    match runtime {
+        RuntimeEngine::V2 => super::runtime_v2::run_runtime_v2_diff(raw),
+        RuntimeEngine::Legacy => run_legacy_diff(raw),
+    }
+}
+
+fn run_legacy_diff(raw: String) {
     let mut runner = match new_runner_from_raw_for_cli(raw) {
         Ok(runner) => runner,
         Err(err) => {
