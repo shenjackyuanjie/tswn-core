@@ -95,6 +95,7 @@ fn runtime_from_template_reserves_registered_slot_storage() {
     );
 }
 
+#[cfg(not(feature = "no_debug"))]
 #[test]
 fn run_minimal_round_records_trace_when_enabled() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::minimal_1v1(10, 10, 3));

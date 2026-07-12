@@ -1,5 +1,8 @@
 use super::*;
 
+const NO_EXTENSION_CAPABILITIES: &[ExtensionCapability] = &[];
+const READ_ALLIES_CAPABILITY: &[ExtensionCapability] = &[ExtensionCapability::ReadAllies];
+
 impl CombatRuntime {
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
         let PreparedCombatTemplate {
@@ -117,6 +120,9 @@ impl CombatRuntime {
             if self.registry.skill(*skill_id).is_some_and(|spec| spec.hook_mask.is_empty()) {
                 continue;
             }
+            if self.skill_uses_builtin_static_dispatch(*skill_id) {
+                continue;
+            }
             if self.skill_handlers.get(*skill_id).is_some() {
                 continue;
             }
@@ -131,6 +137,30 @@ impl CombatRuntime {
                 export_name: self.registry.skill(*skill_id).map(|spec| spec.export_name.clone()),
                 sources: vec![source.clone()],
             });
+        }
+    }
+
+    pub fn skill_uses_builtin_static_dispatch(&self, skill_id: SkillId) -> bool {
+        self.builtin_static_skill_handler(skill_id).is_some()
+    }
+
+    fn builtin_static_skill_handler(&self, skill_id: SkillId) -> Option<(SkillHandlerFn, &'static [ExtensionCapability])> {
+        let export_name = self.registry.skill(skill_id)?.export_name.as_str();
+        match export_name {
+            DEFAULT_CORE_SHIELD_SKILL_EXPORT => Some((run_shield_pre_action_skill, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_PROTECT_SKILL_EXPORT => Some((run_protect_post_action_skill, READ_ALLIES_CAPABILITY)),
+            DEFAULT_CORE_DEFEND_SKILL_EXPORT => Some((run_defend_post_defend_skill, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_REFLECT_SKILL_EXPORT => Some((run_reflect_pre_defend_skill, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_UPGRADE_SKILL_EXPORT
+            | DEFAULT_CORE_HIDE_SKILL_EXPORT
+            | DEFAULT_CORE_COUNTER_SKILL_EXPORT
+            | DEFAULT_CORE_ZOMBIE_SKILL_EXPORT => Some((run_plain_passive_noop_skill, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_MERGE_SKILL_EXPORT => Some((run_merge_kill_skill, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_RERAISE_SKILL_EXPORT => Some((run_reraise_die_skill, NO_EXTENSION_CAPABILITIES)),
+            export_name if export_name == BuiltinActiveSkill::Charge.export_name() => {
+                Some((run_charge_post_action_skill, NO_EXTENSION_CAPABILITIES))
+            }
+            _ => None,
         }
     }
 
@@ -182,11 +212,16 @@ impl CombatRuntime {
         selected_target: Option<EntityIdx>,
     ) {
         for entry in &plan.entries {
-            let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
-                panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
+            let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
+                static_handler
+            } else {
+                let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
+                    panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
+                };
+                let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
+                (handler, capabilities)
             };
             {
-                let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(&[]);
                 let mut context = {
                     let context = SkillContext::new(
                         &mut self.entities,
@@ -221,11 +256,16 @@ impl CombatRuntime {
         defend_value: &mut RuntimeDefendValue,
     ) {
         for entry in &plan.entries {
-            let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
-                panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
+            let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
+                static_handler
+            } else {
+                let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
+                    panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
+                };
+                let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
+                (handler, capabilities)
             };
             {
-                let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(&[]);
                 let mut context = SkillContext::new(
                     &mut self.entities,
                     &mut self.world,

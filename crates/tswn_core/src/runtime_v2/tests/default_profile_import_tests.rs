@@ -447,7 +447,8 @@ fn default_profile_imports_plain_merge_kill_hook_from_legacy_loadout() {
         .position(|skill| *skill == merge)
         .unwrap_or_else(|| panic!("runtime v2 loadout should contain MergeSkill; legacy snapshot: {snapshot:?}"));
     assert_eq!(owner.template.skills.level_at(merge_lane), Some(expected_level));
-    assert!(runner.runtime().skill_handlers.get(merge).is_some());
+    assert!(runner.runtime().skill_handlers.get(merge).is_none());
+    assert!(runner.runtime().skill_uses_builtin_static_dispatch(merge));
 
     let plan = runner.runtime().scheduler.skill_hook_plan(
         &runner.runtime().entities,

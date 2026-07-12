@@ -39,9 +39,8 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::Ally,
         SkillPriority(4),
     )?;
-    let mut charge = None;
     for builtin_skill in BuiltinActiveSkill::CORE {
-        let skill_id = if builtin_skill == BuiltinActiveSkill::Charge {
+        if builtin_skill == BuiltinActiveSkill::Charge {
             builder.register_skill_with_hooks_and_post_action_phase(
                 "core",
                 builtin_skill.local_name(),
@@ -61,9 +60,6 @@ pub fn default_custom_runtime_v2_import_config()
                 SkillPriority(builtin_skill.legacy_key() as i32),
             )?
         };
-        if builtin_skill == BuiltinActiveSkill::Charge {
-            charge = Some(skill_id);
-        }
     }
     builder.register_skill_with_hooks(
         "core",
@@ -81,7 +77,6 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::None,
         SkillPriority(255),
     )?;
-    let charge = charge.expect("default runtime v2 profile must register ChargeSkill");
     let charm_state = builder.register_state(
         "core",
         "charm",
@@ -190,7 +185,7 @@ pub fn default_custom_runtime_v2_import_config()
         PlayerKindFlags::MINION,
         PlayerKindPolicies::default(),
     )?;
-    let shield = builder.register_skill_with_hooks(
+    builder.register_skill_with_hooks(
         "core",
         "shield",
         DEFAULT_CORE_SHIELD_SKILL_EXPORT,
@@ -198,7 +193,7 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::None,
         SkillPriority(0),
     )?;
-    let protect = builder.register_skill_with_hooks(
+    builder.register_skill_with_hooks(
         "core",
         "protect",
         DEFAULT_CORE_PROTECT_SKILL_EXPORT,
@@ -206,7 +201,7 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::Ally,
         SkillPriority(0),
     )?;
-    let defend = builder.register_skill_with_hooks(
+    builder.register_skill_with_hooks(
         "core",
         "defend",
         DEFAULT_CORE_DEFEND_SKILL_EXPORT,
@@ -214,7 +209,7 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::None,
         SkillPriority(2000),
     )?;
-    let reflect = builder.register_skill_with_hooks(
+    builder.register_skill_with_hooks(
         "core",
         "reflect",
         DEFAULT_CORE_REFLECT_SKILL_EXPORT,
@@ -222,21 +217,21 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::None,
         SkillPriority(1000),
     )?;
-    let upgrade = builder.register_skill(
+    builder.register_skill(
         "core",
         "upgrade",
         DEFAULT_CORE_UPGRADE_SKILL_EXPORT,
         TargetPolicy::None,
         SkillPriority(33),
     )?;
-    let hide = builder.register_skill(
+    builder.register_skill(
         "core",
         "hide",
         DEFAULT_CORE_HIDE_SKILL_EXPORT,
         TargetPolicy::None,
         SkillPriority(34),
     )?;
-    let counter = builder.register_skill_with_hooks(
+    builder.register_skill_with_hooks(
         "core",
         "counter",
         DEFAULT_CORE_COUNTER_SKILL_EXPORT,
@@ -244,7 +239,7 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::None,
         SkillPriority(30),
     )?;
-    let merge = builder.register_skill_with_hooks(
+    builder.register_skill_with_hooks(
         "core",
         "merge",
         DEFAULT_CORE_MERGE_SKILL_EXPORT,
@@ -252,7 +247,7 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::Enemy,
         SkillPriority(31),
     )?;
-    let zombie = builder.register_skill_with_hooks(
+    builder.register_skill_with_hooks(
         "core",
         "zombie",
         DEFAULT_CORE_ZOMBIE_SKILL_EXPORT,
@@ -260,7 +255,7 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::Enemy,
         SkillPriority(32),
     )?;
-    let reraise = builder.register_skill_with_hooks(
+    builder.register_skill_with_hooks(
         "core",
         "reraise",
         DEFAULT_CORE_RERAISE_SKILL_EXPORT,
@@ -359,17 +354,6 @@ pub fn default_custom_runtime_v2_import_config()
         .with_skill_handler(summon_fire, run_summon_fire_skill)
         .with_skill_handler(summon_explode, run_summon_explode_skill)
         .with_skill_handler(possess, run_possess_skill)
-        .with_skill_handler(shield, run_shield_pre_action_skill)
-        .with_skill_handler_with_capabilities(protect, run_protect_post_action_skill, &[ExtensionCapability::ReadAllies])
-        .with_skill_handler(defend, run_defend_post_defend_skill)
-        .with_skill_handler(reflect, run_reflect_pre_defend_skill)
-        .with_skill_handler(charge, run_charge_post_action_skill)
-        .with_skill_handler(upgrade, run_plain_passive_noop_skill)
-        .with_skill_handler(hide, run_plain_passive_noop_skill)
-        .with_skill_handler(counter, run_plain_passive_noop_skill)
-        .with_skill_handler(merge, run_merge_kill_skill)
-        .with_skill_handler(zombie, run_plain_passive_noop_skill)
-        .with_skill_handler(reraise, run_reraise_die_skill)
         .with_state_handler(charm_state, run_charm_post_action_state)
         .with_state_handler(curse_state, run_curse_post_defend_state)
         .with_state_handler(poison_state, run_poison_post_action_state)
