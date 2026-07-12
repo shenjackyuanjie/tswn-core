@@ -4,7 +4,7 @@
 
 use crate::engine::update::RunUpdate;
 use crate::player::{
-    PlrId,
+    PlayerType, PlrId,
     skill::act::minion::{MinionKind, MinionRuntimeState},
     skill::corpse::CorpseState,
     skill::{ProcKind, SkillArgs, SkillExt, SkillTrait},
@@ -23,6 +23,25 @@ fn prepare_merge_skill_slots(owner: &crate::player::Player) -> Vec<usize> {
     } else {
         owner.skills.slot_skill.clone()
     }
+}
+
+fn disable_magic_point_merge_for_bed2_summon(
+    owner: &crate::player::Player,
+    storage: &crate::engine::storage::Storage,
+) -> bool {
+    let Some(state) = owner.get_state::<MinionRuntimeState>() else {
+        return false;
+    };
+    if state.kind != MinionKind::Summon {
+        return false;
+    }
+    let Some(owner_id) = state.owner.or(state.share_damage_owner) else {
+        return false;
+    };
+    storage
+        .get_player_or_pending(&owner_id)
+        .map(|owner| owner.player_type() == PlayerType::Bed2)
+        .unwrap_or(false)
 }
 
 impl SkillExt for MergeSkill {
@@ -176,7 +195,8 @@ impl SkillTrait for MergeSkill {
             for skill_key in newly_enabled_skills {
                 owner.skills.register_skill_proc_after_states(skill_key, post_action_state_cursor);
             }
-            let transfer_mp = target_mp > owner.magic_point();
+            let disable_magic_point_merge = disable_magic_point_merge_for_bed2_summon(owner, args.3);
+            let transfer_mp = !disable_magic_point_merge && target_mp > owner.magic_point();
             if transfer_mp {
                 owner.set_magic_point(target_mp);
             }
