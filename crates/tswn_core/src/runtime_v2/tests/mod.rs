@@ -49,6 +49,8 @@ mod runtime_render_tests;
 mod skill_hook_dispatch_tests;
 mod state_hook_dispatch_tests;
 mod state_hook_generation_tests;
+mod summon_explode_post_defend_tests;
+mod summon_explode_pre_defend_tests;
 mod summon_explode_scheduler_tests;
 mod summon_explode_tests;
 
