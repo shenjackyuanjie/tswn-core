@@ -461,28 +461,9 @@ fn render_hp_marker_bar_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
 }
 
 fn mixed_raw_runner_for_plain_fixture(raw_input: &str) -> (RuntimeV2Runner, crate::Runner) {
-    let mut builder = ExtensionRegistryBuilder::default();
-    let summon = builder
-        .register_skill("custom", "summon", "custom.summon", TargetPolicy::Enemy, SkillPriority(0))
-        .expect("summon skill should register");
-    let bed2 = builder
-        .register_player_kind_with_policies(
-            "custom",
-            "bed2",
-            "custom.bed2",
-            PlayerKindFlags::BED2,
-            PlayerKindPolicies {
-                owner_resolution: OwnerResolutionPolicy::RootOwner,
-                damage_share: DamageSharePolicy::ShareToOwner,
-                merge: MergePolicy::FixedLane,
-                inherit_owner_def_res: false,
-            },
-        )
-        .expect("bed2 kind should register");
-    let registry = builder.build();
-    let runner = prepared_init_tests::runtime_v2_runner_from_raw(raw_input, |raw_groups| {
-        RuntimeV2Runner::from_mixed_roster(raw_groups, registry, bed2, summon)
-    });
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let runner = RuntimeV2Runner::from_custom_mixed_namerena_raw(raw_input.to_owned(), config)
+        .expect("plain raw fixture should construct runtime_v2 runner");
     let legacy =
         crate::Runner::new_from_namerena_raw(raw_input.to_owned()).expect("plain raw fixture should construct legacy runner");
     (runner, legacy)

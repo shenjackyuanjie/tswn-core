@@ -25,7 +25,7 @@ fn runtime_v2_runner_aligns_fight_multi_raw_initial_state_with_legacy_world() {
 }
 
 #[test]
-fn runtime_v2_runner_fight_multi_reports_real_legacy_divergence() {
+fn runtime_v2_runner_fight_multi_matches_legacy_run() {
     let raw_input = "测707640862046T，烦恼立刻消失@爱\n坚持 E6b10FVHvKDO@Afterglow\nInfluence #MEZC2wa@Unbound\n耀眼之星 /JxrJYwouGw/@新纪元\n随之任之 #iWZYBGuwxX@🥒\n\n真夜霞 #FBNWDPBPW@无惨\n虚空托腮 UMOXFIARH@TigerStar\nFengshen ONVWTGMPNCKV@nan\nBoundless_Ocean,Vast_Skies #l6RZxopUn@Shabby_fish\nSpearmaster ZbblyZQQwr@RainWorld_XIV\nseed:1376-2-15@!";
 
     let mut legacy_runner =
@@ -36,5 +36,5 @@ fn runtime_v2_runner_fight_multi_reports_real_legacy_divergence() {
 
     assert_eq!(legacy.rounds.len(), 84);
     assert_eq!(legacy.total_score, 6766);
-    assert!(matches!(strict_diff_runs(&legacy, &v2), Err(StrictRunDiff::Round { .. })));
+    strict_diff_runs(&legacy, &v2).expect("runtime_v2 fight_multi fixture should match legacy run");
 }
