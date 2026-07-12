@@ -2,6 +2,8 @@ use super::*;
 
 const NO_EXTENSION_CAPABILITIES: &[ExtensionCapability] = &[];
 const READ_ALLIES_CAPABILITY: &[ExtensionCapability] = &[ExtensionCapability::ReadAllies];
+const READ_ALLIES_AND_ENEMIES_CAPABILITIES: &[ExtensionCapability] =
+    &[ExtensionCapability::ReadAllies, ExtensionCapability::ReadEnemies];
 
 impl CombatRuntime {
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
@@ -160,6 +162,26 @@ impl CombatRuntime {
             export_name if export_name == BuiltinActiveSkill::Charge.export_name() => {
                 Some((run_charge_post_action_skill, NO_EXTENSION_CAPABILITIES))
             }
+            _ => None,
+        }
+    }
+
+    pub fn state_uses_builtin_static_dispatch(&self, state_id: StateId) -> bool {
+        self.builtin_static_state_handler(state_id).is_some()
+    }
+
+    fn builtin_static_state_handler(&self, state_id: StateId) -> Option<(StateHandlerFn, &'static [ExtensionCapability])> {
+        let export_name = self.registry.state(state_id)?.export_name.as_str();
+        match export_name {
+            DEFAULT_CORE_CHARM_STATE_EXPORT => Some((run_charm_post_action_state, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_CURSE_STATE_EXPORT => Some((run_curse_post_defend_state, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_POISON_STATE_EXPORT => Some((run_poison_post_action_state, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_HASTE_STATE_EXPORT => Some((run_haste_post_action_state, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_SLOW_STATE_EXPORT => Some((run_slow_post_action_state, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_IRON_STATE_EXPORT => Some((run_iron_post_defend_state, NO_EXTENSION_CAPABILITIES)),
+            DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT => Some((run_covid_infection_state, READ_ALLIES_AND_ENEMIES_CAPABILITIES)),
+            DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT => Some((run_lazy_infection_state, READ_ALLIES_AND_ENEMIES_CAPABILITIES)),
+            DEFAULT_CORE_SAITAMA_BOSS_STATE_EXPORT => Some((run_saitama_boss_state, READ_ALLIES_AND_ENEMIES_CAPABILITIES)),
             _ => None,
         }
     }
@@ -332,11 +354,16 @@ impl CombatRuntime {
             let Some(state_id) = entry.state_id else {
                 continue;
             };
-            let Some(handler) = self.state_handlers.get(state_id) else {
-                panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
+            let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_state_handler(state_id) {
+                static_handler
+            } else {
+                let Some(handler) = self.state_handlers.get(state_id) else {
+                    panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
+                };
+                let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
+                (handler, capabilities)
             };
             {
-                let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(&[]);
                 let context = StateContext::new(
                     &mut self.entities,
                     &mut self.world,
@@ -404,11 +431,16 @@ impl CombatRuntime {
             let Some(state_id) = entry.state_id else {
                 continue;
             };
-            let Some(handler) = self.state_handlers.get(state_id) else {
-                panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
+            let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_state_handler(state_id) {
+                static_handler
+            } else {
+                let Some(handler) = self.state_handlers.get(state_id) else {
+                    panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
+                };
+                let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
+                (handler, capabilities)
             };
             {
-                let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(&[]);
                 let mut context = StateContext::new(
                     &mut self.entities,
                     &mut self.world,

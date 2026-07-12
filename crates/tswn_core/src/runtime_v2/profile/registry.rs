@@ -77,63 +77,63 @@ pub fn default_custom_runtime_v2_import_config()
         TargetPolicy::None,
         SkillPriority(255),
     )?;
-    let charm_state = builder.register_state(
+    builder.register_state(
         "core",
         "charm",
         DEFAULT_CORE_CHARM_STATE_EXPORT,
         ProcMask::POST_ACTION,
         SkillPriority(210),
     )?;
-    let curse_state = builder.register_state(
+    builder.register_state(
         "core",
         "curse",
         DEFAULT_CORE_CURSE_STATE_EXPORT,
         ProcMask::POST_DEFEND,
         SkillPriority(10_000),
     )?;
-    let poison_state = builder.register_state(
+    builder.register_state(
         "core",
         "poison",
         DEFAULT_CORE_POISON_STATE_EXPORT,
         ProcMask::POST_ACTION,
         SkillPriority(150),
     )?;
-    let haste_state = builder.register_state(
+    builder.register_state(
         "core",
         "haste",
         DEFAULT_CORE_HASTE_STATE_EXPORT,
         ProcMask::POST_ACTION,
         SkillPriority(210),
     )?;
-    let slow_state = builder.register_state(
+    builder.register_state(
         "core",
         "slow",
         DEFAULT_CORE_SLOW_STATE_EXPORT,
         ProcMask::POST_ACTION,
         SkillPriority(210),
     )?;
-    let iron_state = builder.register_state(
+    builder.register_state(
         "core",
         "iron",
         DEFAULT_CORE_IRON_STATE_EXPORT,
         ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
         SkillPriority(10),
     )?;
-    let covid_infection_state = builder.register_state(
+    builder.register_state(
         "core",
         "covid-infection",
         DEFAULT_CORE_COVID_INFECTION_STATE_EXPORT,
         ProcMask::PRE_ACTION | ProcMask::POST_ACTION,
         SkillPriority(1000),
     )?;
-    let lazy_infection_state = builder.register_state(
+    builder.register_state(
         "core",
         "lazy-infection",
         DEFAULT_CORE_LAZY_INFECTION_STATE_EXPORT,
         ProcMask::PRE_ACTION | ProcMask::POST_ACTION,
         SkillPriority(1000),
     )?;
-    let saitama_boss_state = builder.register_state(
+    builder.register_state(
         "core",
         "saitama-boss",
         DEFAULT_CORE_SAITAMA_BOSS_STATE_EXPORT,
@@ -353,26 +353,5 @@ pub fn default_custom_runtime_v2_import_config()
         )
         .with_skill_handler(summon_fire, run_summon_fire_skill)
         .with_skill_handler(summon_explode, run_summon_explode_skill)
-        .with_skill_handler(possess, run_possess_skill)
-        .with_state_handler(charm_state, run_charm_post_action_state)
-        .with_state_handler(curse_state, run_curse_post_defend_state)
-        .with_state_handler(poison_state, run_poison_post_action_state)
-        .with_state_handler(haste_state, run_haste_post_action_state)
-        .with_state_handler(slow_state, run_slow_post_action_state)
-        .with_state_handler(iron_state, run_iron_post_defend_state)
-        .with_state_handler_with_capabilities(
-            covid_infection_state,
-            run_covid_infection_state,
-            &[ExtensionCapability::ReadAllies, ExtensionCapability::ReadEnemies],
-        )
-        .with_state_handler_with_capabilities(
-            lazy_infection_state,
-            run_lazy_infection_state,
-            &[ExtensionCapability::ReadAllies, ExtensionCapability::ReadEnemies],
-        )
-        .with_state_handler_with_capabilities(
-            saitama_boss_state,
-            run_saitama_boss_state,
-            &[ExtensionCapability::ReadAllies, ExtensionCapability::ReadEnemies],
-        ))
+        .with_skill_handler(possess, run_possess_skill))
 }
