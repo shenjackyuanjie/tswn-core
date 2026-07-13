@@ -53,7 +53,7 @@
 | cold data | battle 构造时复制必要冷数据，runtime 自给自足。 |
 | Player facade | 保留一个输入解析/测试辅助外壳；不是稳定 API，不参与 runtime 热路径；正式 runtime 输入是 `PreparedCombatTemplate`。 |
 | DIY/OL | schema 可重做；只要求归一化 roundtrip / 展示结果一致。 |
-| wasm/show | wasm API 可 breaking；`show.html` 迁到 v2 replay schema，以视觉可用和核心 golden 为准。 |
+| wasm/show | wasm API 可 breaking；`examples/index.html` 迁到 v2 replay schema，以视觉可用和核心 golden 为准。 |
 | 技能槽 | 内部可变槽；导入/导出/replay 层模拟旧槽位语义。 |
 | PlayerKind | 单一 `PlayerKindId` + 可组合 policy/flags，避免 kind 爆炸。 |
 | Skill 路径 | 内置技能全部迁到静态路径；custom 走 registry/extension fallback。 |
@@ -77,7 +77,7 @@
 
 ### 2.1 2026-07 架构复查结论
 
-截至 2026-07-14，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 118/118 通过。`tests/sqp5900.txt` 六模式 24000 条与 `tests/sqp6000.txt` 六模式实际可生成的 15792 条均已完成 strict diff，TS/Rust 失败、TS 空输出与结果差异全部为 0；按本轮约定的正确性验收范围，Runtime v2 正确性确认完成，但这仍不等于已经满足删除 legacy 的全部安全、性能、绑定和展示门槛。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；sqp6000 暴露的直接 owner 存活时 root-owned summon 清理、终局状态 hook 截断、实体 ID 空洞计数、LifeWheel/Exchange 后置致死链和 Charge 激活刷新 Haste 倍率问题均已闭环，四个原始输入已归档并接入长期回归。raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`；CLI `fight`（含 `--out-raw`）、`diff` 与 `raw`（含 `!test!` 评分/胜率）已默认走 Runtime v2，legacy 只通过显式 `--runtime legacy` fallback；独立 bench、部分绑定入口、展示链仍未完成独立化，核心全量 Miri 与性能不退步门槛也尚未通过。
+截至 2026-07-14，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 118/118 通过。`tests/sqp5900.txt` 六模式 24000 条与 `tests/sqp6000.txt` 六模式实际可生成的 15792 条均已完成 strict diff，TS/Rust 失败、TS 空输出与结果差异全部为 0；按本轮约定的正确性验收范围，Runtime v2 正确性确认完成，但这仍不等于已经满足删除 legacy 的全部安全、性能门槛。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；sqp6000 暴露的直接 owner 存活时 root-owned summon 清理、终局状态 hook 截断、实体 ID 空洞计数、LifeWheel/Exchange 后置致死链和 Charge 激活刷新 Haste 倍率问题均已闭环，四个原始输入已归档并接入长期回归。raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`；CLI `fight`（含 `--out-raw`）、`diff`、`raw`（含 `!test!` 评分/胜率）和独立 `bench` 已默认走 Runtime v2，core `cli_api` 及 C、Python、WASM 高层评分/胜率入口同步完成默认切换；`examples/index.html` 仅调用 v2 normalized run，并已对齐 main 的 replay 语义与视觉效果。低层 legacy 类型仍作为兼容/对账 API 保留，核心全量 Miri 与性能不退步门槛也尚未通过。
 
 可以保留并继续演进：
 
@@ -98,7 +98,7 @@
 - 压力 strict-diff 首次发现且尚未闭环的输入不得只保留在 `target` 临时目录；必须原样复制到 `crates/tswn_test/cases/runtime_v2_stress/`，记录来源、模式、首差异和处理状态。修复后必须将该输入接入长期 Runtime v2 严格回归，并继续保留原始 input。
 - **已完成（2026-07-14 复验）**：`tests/sqp5900.txt` 最终六种模式各 4000 条、共 24000 条全部执行；`summary.json` 为 `ts_failures=0`、`rust_failures=0`、`ts_empty_outputs=0`、`diff_failures=0`。
 - **已完成（2026-07-14）**：`tests/sqp6000.txt` 以每模式上限 4000 条执行；受号库组合数限制，实际六种模式各生成 2632 条、共 15792 条，全部执行且 `ts_failures=0`、`rust_failures=0`、`ts_empty_outputs=0`、`diff_failures=0`。本轮发现的四个输入已归档到 `crates/tswn_test/cases/runtime_v2_stress/` 并接入上述 118 项 release `mutable-noalias=yes` corpus。完成 sqp5900 与 sqp6000 两套验收后，按约定可视为正确性无误。
-- **部分完成**：CLI `fight`（含 `--out-raw`）、`diff` 与 `raw`（含 `!test!` 评分/胜率）默认入口已切换到 Runtime v2，并以普通输出/raw 输出的 legacy/v2 逐行一致测试固定最小样例和含幻影/分身/clan 的 `large_51`；`PlayerTemplate` 已复制 `id_key_name` / clan 冷身份数据，子实体 spawn/revive 会保持身份自洽；Runtime v2 批量层已显式复刻 `eval_rq=6`、profile seed、串并行确定性和无回放积累 completion，但 2026-07-14 正式 no_debug 性能复测已确认 fixed30、stress_multi 与 Runtime v2 batch probe 均退步，必须先优化后再验收；独立 bench、C API、Python、wasm 的正式默认入口、legacy fallback 收口和最终删除仍待完成。
+- **默认入口已完成，最终删除未完成**：CLI `fight`（含 `--out-raw`）、`diff`、`raw`（含 `!test!` 评分/胜率）和独立 `bench` 默认入口已切换到 Runtime v2；core `cli_api` 与 C、Python、WASM 的无 runtime 参数高层评分/胜率入口同步改走 v2，WASM `WinRateSession` 保留原协议但内部使用 `PreparedRuntimeV2Runner`；`examples/index.html` 只调用 v2 normalized replay adapter。低层 `Runner`、`PreparedRunner`、`FightSession` 等兼容对象和 CLI 显式 `--runtime legacy` 对账入口仍保留。2026-07-14 正式 no_debug 性能复测已确认 fixed30、stress_multi 与 Runtime v2 batch probe 均退步，核心全量 Miri 仍被 legacy alias UB 阻塞，因此整个重构计划尚未完成。
 
 ### 2.2 修订后的近期实施顺序
 
@@ -106,7 +106,7 @@
 2. **已完成**：建立独立 `PreparedBattleInit`，自行复刻 raw 分组、同队 upgrade、build、seed/RNG、初始 world views、loadout 与 summon/shadow blueprint 准备；删除 v2 runtime 构造对 legacy `Runner` / `WorldState` 的依赖和静默同步失败；
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
 4. **已完成**：重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
-5. **部分完成**：CLI `fight`（含 `--out-raw`）、`diff` 与 `raw`（含 `!test!`）已默认切到 v2，显式 `--runtime legacy` 保留对账 fallback；继续收敛独立 bench、C API、Python、wasm 默认入口和 legacy fallback；
+5. **默认入口已完成**：CLI `fight`（含 `--out-raw`）、`diff`、`raw`（含 `!test!`）和独立 `bench` 已默认切到 v2，C、Python、WASM 高层评分/胜率入口及 show 页面同步完成；后续只继续收敛显式 legacy fallback、低层兼容对象和最终删除；
 6. **已执行但未通过**：2026-07-14 已运行性能与 Miri/alias 门禁；Runtime v2 独立 `mutable-noalias=yes` 门禁通过，但核心全量 Miri 被 legacy `Storage` alias UB 阻塞，性能门禁也确认退步。先闭环两项，再执行长时间 stress 和删除 legacy runtime。
 
 ---
@@ -149,7 +149,7 @@ strict diff 比较：
 - replay/update 归一化帧顺序；
 - HP/MP、死亡、复活、召唤、merge、share damage 的展示结果；
 - winner、score、round/frame 结果；
-- `show.html` 可视化播放的核心帧表现。
+- `examples/index.html` 可视化播放的核心帧表现。
 
 旧行为中疑似 bug 的语义，只有在不改变上述结果和 RNG 时才允许修。
 
@@ -472,7 +472,7 @@ custom 第一版只通过通用 extension 实现，不建专门快路径。性�
 
 ### 7.1 Replay schema
 
-v2 replay 数据结构可重做，`show.html` 同步迁移到 v2 schema。
+v2 replay 数据结构可重做，`examples/index.html` 同步迁移到 v2 schema。
 
 验收比较归一化帧序列，不比较旧 JSON 原始结构。归一化帧应覆盖：
 
@@ -483,9 +483,9 @@ v2 replay 数据结构可重做，`show.html` 同步迁移到 v2 schema。
 - summon/merge/custom display；
 - winner/score/final frame。
 
-### 7.2 show.html
+### 7.2 examples/index.html
 
-`show.html` 以视觉可用为准：
+`examples/index.html` 以视觉可用为准：
 
 - 可以迁移 wasm API；
 - 可以迁移 replay schema；
@@ -734,15 +734,15 @@ Co-authored-by: Codex <codex@openai.com>
 
 ### 阶段 H：wasm/show/DIY/OL 迁移
 
-- 已补 v2 `RuntimeFrame` 核心 replay/show renderer golden，并覆盖 custom HP marker payload，作为 `show.html` 迁移前的最小帧展示对账面；
+- 已补 v2 `RuntimeFrame` 核心 replay/show renderer golden，并覆盖 custom HP marker payload，作为 `examples/index.html` 迁移前的最小帧展示对账面；
 - 已补 HP marker 结构化 replay view 适配，`"[0]还剩[2]点血"` 即使 HP 未变化也会向 wasm/show 输出 `show_hp` 和 `Data` part；
-- wasm 已新增默认 custom v2 normalized-run typed 入口 `default_custom_runtime_v2_normalized_run`，可先从 JS 侧取得 v2 归一化 rounds/actions/frames 结构，再继续迁移 `show.html`；
+- wasm 已新增默认 custom v2 normalized-run typed 入口 `default_custom_runtime_v2_normalized_run`，JS 侧通过该入口取得 v2 归一化 rounds/actions/frames 结构；
 - `show-wasm.js` 已新增显式 `buildV2NormalizedReplay()` adapter，可把 v2 default custom normalized run 的 rounds/actions/frames 转成当前 show-compatible replay shape，供后续 DOM/golden 对账和默认路径切换；
-- `show.html` 默认路径已切到 v2 normalized replay adapter，页面会调用 `buildV2NormalizedReplay()`；legacy `FightSession` 仅保留为 `engine=legacy` / `runtime=legacy` / `engine=fight_session` 显式 fallback；
+- `examples/index.html` 已只调用 v2 normalized replay adapter 的 `buildV2NormalizedReplay()`；页面和 `show-wasm.js` 均不再引用 legacy `FightSession`，历史 `engine` / `runtime` 参数只在分享链接中清理；
 - 已补 `show-wasm.test.mjs` 纯 JS adapter 与 HTML chunk 测试，固定 v2 normalized run 到 show-compatible players / states / rows / clips / sequential HP bar / recover HP bar / multi-target sidebar / winner row / summoned entity first-appearance / removed entity disappearance shape 的转换和 `buildFrameRows()` 渲染；
-- 已把 `show.html` 的 URL input、engine/runtime 选择、分享链接清洗与 runtime 保留逻辑抽到 `show-routing.js`，并补 `show-routing.test.mjs` 固定 v2 默认、v2 alias、legacy fallback、非法 input 与 share URL 行为；
-- 已补 `show-page-contract.test.mjs` 固定 `show.html` v2 默认 DOM 节点、module script、`show.js` runtime routing、adapter 调用和 runtime 分享链接保留契约，作为无浏览器依赖的最小页面 wiring golden；
-- `show.html` 迁到 v2 replay schema；
+- 已把 `examples/index.html` 的 URL input 与分享链接清洗逻辑抽到 `show-routing.js`，并补 `show-routing.test.mjs` 固定非法 input、历史 runtime 参数清理与 share URL 行为；
+- 已补 `show-page-contract.test.mjs` 固定 `examples/index.html` 的 v2 DOM 节点、module script、唯一 adapter 调用和分享链接契约，作为无浏览器依赖的最小页面 wiring golden；
+- **已完成**：展示入口已从 `show.html` 重命名为 `examples/index.html` 并迁到 v2 replay schema；同步移植 main 在 `d266cfe` 后的 part 级 clip、生命之轮、机制死亡、百分比伤害 HP 条与配色重构；
 - wasm API 可 breaking；
 - DIY/OL schema 重做；
 - 增加核心 show golden。
@@ -767,7 +767,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 核心 tests 全量 Miri；
 - strict diff 大样本 + fixed/custom golden 全过；
-- `show.html` 核心 golden 全过；
+- `examples/index.html` 核心 golden 全过；
 - fixed/stress/no_debug performance 不退步。
 
 ---
@@ -872,7 +872,7 @@ v2 合入并删除 legacy 前必须满足：
 
 - UB 安全：核心全量 Miri 通过，unsafe 设计说明完整，`mutable-noalias=no` 不再是必要条件；
 - 行为一致：legacy/v2 strict diff 大样本 + fixed/custom golden 全过，RNG 完全一致；
-- 展示可用：`show.html` v2 schema 核心 golden 通过；
+- 展示可用：`examples/index.html` v2 schema 核心 golden 通过；
 - custom 迁移：`github/custom` 审计出的关键行为有 repo 内 extension example/fixture；
 - 性能不退步：fixed/stress/no_debug/perf clone 路径不退步；
 - 删除旧栈：正式路径无 legacy runtime，旧 `Storage`/`SkillArgs`/`OnDamageFunc` 不作为新扩展能力边界；

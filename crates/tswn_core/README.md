@@ -26,7 +26,7 @@ cargo build -p tswn_core --bin tswn-cli --release
 # 单局对战（stdin 输入）
 echo '<your raw input>' | ./target/release/tswn-cli fight
 
-# fight/diff/raw 默认使用 Runtime v2；需要旧实现对账时显式选择 legacy
+# fight/diff/raw/bench 默认使用 Runtime v2；需要旧实现对账时显式选择 legacy
 ./target/release/tswn-cli fight -f input.txt --runtime legacy
 ./target/release/tswn-cli diff -f input.txt --runtime legacy
 ./target/release/tswn-cli raw -f input.txt
