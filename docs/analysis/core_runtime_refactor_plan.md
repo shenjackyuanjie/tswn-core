@@ -77,7 +77,7 @@
 
 ### 2.1 2026-07 架构复查结论
 
-截至 2026-07-12，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 87/87 通过，当前已完成已知 corpus 行为收敛，但仍不能据此判断“可以删除 legacy”。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`；`tswn_test` 大型 fixture 已按主题拆分或外置回放文本，完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下复跑 87/87 通过。部分入口/展示链和未覆盖的大样本/自定义组合仍未完成独立化。
+截至 2026-07-14，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 118/118 通过。`tests/sqp5900.txt` 六模式 24000 条与 `tests/sqp6000.txt` 六模式实际可生成的 15792 条均已完成 strict diff，TS/Rust 失败、TS 空输出与结果差异全部为 0；按本轮约定的正确性验收范围，Runtime v2 正确性确认完成，但这仍不等于已经满足删除 legacy 的全部安全、性能、绑定和展示门槛。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；sqp6000 暴露的直接 owner 存活时 root-owned summon 清理、终局状态 hook 截断、实体 ID 空洞计数、LifeWheel/Exchange 后置致死链和 Charge 激活刷新 Haste 倍率问题均已闭环，四个原始输入已归档并接入长期回归。raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`；CLI `fight`（含 `--out-raw`）、`diff` 与 `raw`（含 `!test!` 评分/胜率）已默认走 Runtime v2，legacy 只通过显式 `--runtime legacy` fallback；独立 bench、部分绑定入口、展示链仍未完成独立化，核心全量 Miri 与性能不退步门槛也尚未通过。
 
 可以保留并继续演进：
 
@@ -87,24 +87,27 @@
 - `EffectQueue`、受控 context 和已经按 legacy 顺序验证过的局部伤害链。
 - `PreparedBattleInit` 的显式构造边界：`Player` facade 与临时 `Storage` 只用于输入解析、build 和蓝图准备，Runtime v2 热路径不持有它们。
 - `EntityRecord::refresh_runtime_stats_from_template` 的统一属性刷新边界：模板派生属性变化后重放 Upgrade、Curse、Hide、Charge 与 Accumulate 的运行期修饰，Clone 与 Merge 不再各自手工覆盖 runtime 属性。
-- `scripts/check_runtime_v2_noalias.py` 与 `track_test.py --engine runtime-v2` 的门禁边界：workspace 全局仍可为 legacy 保留 `mutable-noalias=no`，但 runtime v2 验证必须显式覆盖为 `mutable-noalias=yes`。
+- `scripts/check_runtime_v2_noalias.py` 与 `track_test.py --engine runtime-v2` 的门禁边界：workspace 默认已改为 `mutable-noalias=yes`；legacy 若确有兼容需要，必须由对应命令显式覆盖为 `mutable-noalias=no`，不能再由全局配置掩盖。
 
 切换前仍必须完成：
 
 - **已完成**：state hook 执行器按 `StateStore` generation 动态刷新后续 hook，状态增删会在当前 phase 内影响后续 state hook；
-- 尚未被大样本/custom 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending、冻结目标与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级、0→正等级 action 队尾和终局 KILL gate 语义并修复完整 `large_67` / `large_72`；KILL 技能链已按 legacy 在首个真实触发后短路；feature-gated 完整 runtime-v2 corpus 的 87 个 case 已全部通过；后续风险转为大样本、custom golden、状态生命周期边界和 RNG 回归；
+- 尚未被大样本/custom 命中的内置技能/状态组合；plain 主动静态 dispatch 当前覆盖 26/26；Assassinate 已补齐 pre-action 顺序、潜行 pending、冻结目标与强制背刺路径并修复 `case_d8c6`，Summon 已补齐 blueprint、remembered entity、首次 spawn、死亡后复活、charge、固定技能槽、伤害分摊、owner 分摊致死 replay 和 clone blueprint 继承，Zombie 已补齐 KILL 静态 dispatch、尸体标记、蓝图生成、Clone 继承、MP/RNG/replay 顺序与 spawn 前 ID 空洞，Merge 已补齐固定槽位逐位抬级、0→正等级 action 队尾和终局 KILL gate 语义并修复完整 `large_67` / `large_72`；KILL 技能链已按 legacy 在首个真实触发后短路；feature-gated 完整 runtime-v2 corpus 的 118 个 case 已全部通过；后续风险转为 custom golden、状态生命周期边界和 RNG 回归；
 - 内置技能借用 extension handler 的过渡路径继续收敛为静态 dispatch；
 - 已清理过期的 v2 self-golden ignore；后续新增 runner 回归必须优先使用 legacy/v2 strict diff 或稳定行为断言，不能把 v2 自身输出当作 parity 门禁。
-- CLI/C API/Python/wasm/show 默认入口切换、legacy fallback 收口和最终删除。
+- 压力 strict-diff 首次发现且尚未闭环的输入不得只保留在 `target` 临时目录；必须原样复制到 `crates/tswn_test/cases/runtime_v2_stress/`，记录来源、模式、首差异和处理状态。修复后必须将该输入接入长期 Runtime v2 严格回归，并继续保留原始 input。
+- **已完成（2026-07-14 复验）**：`tests/sqp5900.txt` 最终六种模式各 4000 条、共 24000 条全部执行；`summary.json` 为 `ts_failures=0`、`rust_failures=0`、`ts_empty_outputs=0`、`diff_failures=0`。
+- **已完成（2026-07-14）**：`tests/sqp6000.txt` 以每模式上限 4000 条执行；受号库组合数限制，实际六种模式各生成 2632 条、共 15792 条，全部执行且 `ts_failures=0`、`rust_failures=0`、`ts_empty_outputs=0`、`diff_failures=0`。本轮发现的四个输入已归档到 `crates/tswn_test/cases/runtime_v2_stress/` 并接入上述 118 项 release `mutable-noalias=yes` corpus。完成 sqp5900 与 sqp6000 两套验收后，按约定可视为正确性无误。
+- **部分完成**：CLI `fight`（含 `--out-raw`）、`diff` 与 `raw`（含 `!test!` 评分/胜率）默认入口已切换到 Runtime v2，并以普通输出/raw 输出的 legacy/v2 逐行一致测试固定最小样例和含幻影/分身/clan 的 `large_51`；`PlayerTemplate` 已复制 `id_key_name` / clan 冷身份数据，子实体 spawn/revive 会保持身份自洽；Runtime v2 批量层已显式复刻 `eval_rq=6`、profile seed、串并行确定性和无回放积累 completion，但 2026-07-14 正式 no_debug 性能复测已确认 fixed30、stress_multi 与 Runtime v2 batch probe 均退步，必须先优化后再验收；独立 bench、C API、Python、wasm 的正式默认入口、legacy fallback 收口和最终删除仍待完成。
 
 ### 2.2 修订后的近期实施顺序
 
-1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 与 `large_72` 在 debug/release `mutable-noalias=yes` 下持续通过；当前完整 runtime-v2 corpus 为 87/87，`tswn_test` 分片拆分后已复跑完整 release corpus 通过，后续每个行为闭环仍继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
+1. 保持 `case_d8c6`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 与 `large_72` 在 debug/release `mutable-noalias=yes` 下持续通过；当前完整 runtime-v2 corpus 为 118/118，`tswn_test` 分片拆分后已复跑完整 release corpus 通过，后续每个行为闭环仍继续运行完整 corpus 门禁，任何 frame/RNG 回归立即阻塞；
 2. **已完成**：建立独立 `PreparedBattleInit`，自行复刻 raw 分组、同队 upgrade、build、seed/RNG、初始 world views、loadout 与 summon/shadow blueprint 准备；删除 v2 runtime 构造对 legacy `Runner` / `WorldState` 的依赖和静默同步失败；
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
 4. **已完成**：重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
-5. 收敛 CLI/C API/Python/wasm/show 默认入口和 legacy fallback；
-6. 最后执行性能、Miri/alias、长时间 stress 门禁，再删除 legacy runtime。
+5. **部分完成**：CLI `fight`（含 `--out-raw`）、`diff` 与 `raw`（含 `!test!`）已默认切到 v2，显式 `--runtime legacy` 保留对账 fallback；继续收敛独立 bench、C API、Python、wasm 默认入口和 legacy fallback；
+6. **已执行但未通过**：2026-07-14 已运行性能与 Miri/alias 门禁；Runtime v2 独立 `mutable-noalias=yes` 门禁通过，但核心全量 Miri 被 legacy `Storage` alias UB 阻塞，性能门禁也确认退步。先闭环两项，再执行长时间 stress 和删除 legacy runtime。
 
 ---
 
@@ -623,7 +626,7 @@ Co-authored-by: Codex <codex@openai.com>
 
 - 新增 `CombatRuntime`、`PreparedCombatTemplate`、`EntityArena`、`WorldArena`、`PhaseScheduler`、`EffectQueue`、`BattleScratch`；
 - 保留 `Player` 输入/测试 facade，但 battle start 前转换成 template；
-- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler；`PreparedBattleInit` 已独立复刻 raw 分组、同队 upgrade、按 id-name build、seed RC4 消费、move point、初始 world views、普通玩家运行时属性与 summon/shadow blueprint，并显式报告初始化错误；过期自指 v2 golden 已删除；当前 feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 87/87，通过结果可作为后续回归门禁。
+- 已把 legacy `round_pos`、step RNG、speed/move-point 阈值推进迁入 plain Runtime v2 scheduler；`PreparedBattleInit` 已独立复刻 raw 分组、同队 upgrade、按 id-name build、seed RC4 消费、move point、初始 world views、普通玩家运行时属性与 summon/shadow blueprint，并显式报告初始化错误；过期自指 v2 golden 已删除；当前 feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 118/118，通过结果可作为后续回归门禁。
 
 完成标准：
 
@@ -684,7 +687,7 @@ Co-authored-by: Codex <codex@openai.com>
 - Assassinate 已迁入 plain 静态 dispatch：导入 legacy `pre_action` 顺序，复刻 smart + Poison 无 RNG 短路、专用目标抽样评分、charge 行动力加成、潜行锁定目标、受伤识破、死亡目标清理和下一次行动强制背刺；背刺使用三次 `get_at(true)` 最大值乘四，并跳过普通 agility dodge；`case_d8c6` 已在 debug/release `mutable-noalias=yes` 下通过；
 - Summon 已迁入 plain 静态 dispatch：smart HP `<80` 与存活 remembered entity 均无 RNG 短路，typed slots 保存 blueprint/remembered entity，首次 spawn 与死亡后原实体 revive 复用同一生命周期；charge 仍消费 `r255` 后把行动力覆盖为 2048，使魔固定 Fire/Fire/SummonExplode 槽并保持 shuffled active order，非 charge 时伤害按半数分摊给直接 owner，owner 因分摊致死时补齐 legacy 击倒 replay 且不误删当前召唤物，SummonExplode 复用静态 effect pipeline；clone spawn 会继承 Summon blueprint，实际召唤前按当前 owner build 刷新防御/魔防派生属性，避免 Clone/Merge 后使用陈旧静态模板；首次召唤还会保留 legacy build 产生且永不复用的实体 ID 空洞；
 - Zombie 已迁入 plain KILL 静态 dispatch：combat minion 目标无 RNG 短路，普通目标先执行 `r63` 概率判定，再按 blueprint 是否存在决定只标记尸体或继续执行 MP gate；成功生成时继承正式 Zombie blueprint、消费 `r255 * 4` 行动力、保留 spawn 前实体 ID 空洞并按 `[0][召唤亡灵]` / `[2]变成了[1]` 顺序输出 replay；Clone 会继承 Zombie blueprint；
-- Charm 下的敌方目标选择已按 legacy roster 语义修正：只替换行动者的 effective team，候选实体仍按实际 team 过滤，因此被魅惑行动者自身仍可进入默认敌方技能和 Berserk 的候选集合；该修复使完整 `large_01` strict parity 通过；
+- Charm 下的敌方目标选择已按 legacy roster 语义修正：只替换行动者的 effective team，候选实体仍按实际 team 过滤，因此被魅惑行动者自身仍可进入默认敌方技能、Berserk 与 Exchange 的候选集合；生命之轮已补 seed `33554642@!` 严格回归，该修复使完整 `large_01` strict parity 通过；
 - Merge 已复刻 JS `k1` 语义：`FixedLane` 按槽位位置逐位抬级，`DropUnmappedSkills` 保留 fixed key 映射，标准 kind 默认采用 `FixedLane`；0→正等级技能会从旧 action 位置移除并按 fixed lane 遍历顺序追加到队尾，属性、MP 和 move point 转移后完整 `large_67` 已在 release `mutable-noalias=yes` 下通过；
 - plain 内置主动静态 dispatch 当前覆盖 26/26；
 - `StateStore` 改 `SmallVec`/dense index + legacy order key；
@@ -708,6 +711,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `ExtensionRegistry` 已补 skill name / export_name -> v2 `SkillId` 查找面，为 DIY/OL/custom parser 把 overlay 技能名导入 v2 `SkillLoadout` 铺底，避免依赖 legacy skill id 与 v2 registry 顺序偶然一致；
 - `CustomBed2Import` / `RuntimeV2Runner` 已补 parser-facing summon/shadow/zombie overlay 导入入口、组合 minion overlay 导入入口和 `CustomRuntimeV2ImportConfig` profile 入口，可从 bed2-only 与 mixed roster/runner 的 bed2 raw `ol.summon` 解析 attrs、inherit_owner_def_res 与 summon fire/explode active order，并可从 `ol.shadow` 解析 attrs 与 possess active order、从 `ol.zombie` 解析 attrs 与 skill export 前缀映射，把 typed `PlayerTemplate` payload 写入 v2 template slot；core 已新增 `default_custom_runtime_v2_import_config`，默认 custom v2 profile 已注册 summon/shadow/zombie overlay 所需 kind、template slot、remembered summon entity slot 与默认 skill export，并可经默认 mixed raw runner 导入三类 `ol` template payload；默认 mixed raw runner 已安装 summon recast handler、summon fire/explode 子技能 handler 与 minion possess handler，`default_custom_runtime_v2_normalized_run` 可实际执行 bed2 `ol.summon`、spawned summon 火球术/自爆并输出对应 legacy 前缀帧；显式 profile 与默认 profile 两组 `custom_runtime_v2_*` / `default_custom_runtime_v2_*` 专用外层 helper 已落地，并在 core helper 层统一校验 `max_rounds > 0`；CLI 已暴露 `runtime-v2 normalized-run` JSON 命令并补结构化 JSON golden 与 zero max_rounds 错误覆盖；C API 已暴露 `tswn_default_custom_runtime_v2_normalized_run_json` 并补结构化 JSON golden 与 zero max_rounds 错误覆盖；Python 已暴露 `default_custom_runtime_v2_normalized_run` dict 入口并补 dict golden 与 zero max_rounds 错误覆盖；wasm 已暴露 `default_custom_runtime_v2_normalized_run` typed 入口并补 typed view golden 固定 rounds / RNG / entity stats / action / frame / `UpdateTypeView` 字段形状，以及 zero max_rounds `INVALID_INPUT` 错误覆盖，作为默认 custom v2 normalized run 绑定入口，先提供 custom profile raw import 与 normalized run 调用面，不替换现有 legacy API；
 - core 已新增 `default_custom_runtime_v2_parity_report`，CLI 已暴露 `runtime-v2 parity`；该入口直接双跑 legacy/v2 并报告真实首差异，后续行为迁移必须优先用它验证，而不是新增 v2 self golden；
+- CLI `fight`（含 `--out-raw`）、`diff` 与 `raw`（含 `!test!` 评分/胜率）已默认使用 Runtime v2，legacy 仅保留显式 `--runtime legacy` fallback；v2 普通输出、raw 聚合日志、赢家输入索引和玩家状态摘要均复用 runtime 自身实体/世界数据，最小样例与含幻影、分身、clan 的 `large_51` 已固定 legacy/v2 逐行一致；批量层新增 seed-independent `PreparedBattleRoster`、可复用 `PreparedRuntimeV2Runner` 和无逐回合向量积累的 completion runner，显式覆盖 benchmark `eval_rq=6`、ProfileWinChance seed 调度、普通/`!` 评分以及 4-worker 汇总确定性；高轮数对账进一步修复反弹攻击丢失 Ice/Curse/Poison `on_damage` 回调和 Exchange 忽略 charm effective team 两项缺口，单线程 score/胜率各 1000 局累计结果已对齐；`PlayerTemplate` 新增 `id_key_name` / clan 冷身份数据，运行期子实体 spawn 与 summon revive 会重建或保留自洽身份，不需要为 CLI 回查 legacy `Storage`；独立 bench 与正式 no_debug 性能门槛仍待收敛；
 - 致死 `Damage` effect 已按 damage -> die(target) -> kill(caster) 顺序执行 `DIE` / `KILL` skill/state hook，并把真实被击杀目标通过 `SkillContext::selected_target` 透传给 `KILL` skill hook；已补真实 lethal damage 路径下 zombie handler 使用被击杀目标而非 fallback victim 的回归 fixture，供后续 minion strict-diff parity 复用；
 - `PlayerRuntime` 已记录 `owner` / `root_owner` / `PlayerKindPolicies`，`Spawn` effect 会把新实体挂到 caster/root-owner 链路上；
 - `Damage` effect 已接入 `OwnerResolutionPolicy::RootOwner`，summon/root-owner 伤害可转打 root owner 并在解析目标上触发致死 hook；
@@ -780,7 +784,7 @@ cargo test -p tswn_core --features no_debug --lib
 cargo test -p tswn_test
 python track_test.py -q
 python scripts/check_runtime_v2_noalias.py
-# v2 完整 corpus 是 release mutable-noalias=yes 门禁；当前 87/87 通过
+# v2 完整 corpus 是 release mutable-noalias=yes 门禁；当前 118/118 通过
 python track_test.py --engine runtime-v2 -q
 ```
 
@@ -805,6 +809,15 @@ strict diff 工具还必须覆盖 fixed/custom golden。任何失败阻塞切换
 
 核心 `tswn_core` tests 全量 Miri。若耗时过长，允许日常 CI 分层执行，但切换 PR 必须全量通过。
 
+2026-07-14 实测记录：
+
+- workspace 默认已切换为 `-Z mutable-noalias=yes`；
+- 安装 nightly Miri 后执行 `cargo +nightly miri test -p tswn_core`，共发现 567 项测试，但在第 21 项 `cli_api_default_custom_runtime_v2_parity_report_matches_converged_first_round` 进入 legacy oracle 时失败；
+- Miri 在 `crates/tswn_core/src/engine/storage.rs:384` 报告 `Storage::get_player` 从 `UnsafeCell<Player>` 建立共享引用会移除仍受保护的独占 tag，调用链来自 legacy `Player::attacked`；这是实际 alias/UB 阻塞，不得记录为通过；
+- 独立 Runtime v2 release `mutable-noalias=yes` 门禁已通过：core 407 项、CLI 12 项、完整 corpus 118 项均为 0 失败；但它不能替代“核心 `tswn_core` tests 全量 Miri”。
+
+结论：Miri 已实际执行，当前门槛为**未通过**；删除 legacy 前必须消除或隔离上述 legacy alias 路径，并重新跑完整 567 项。
+
 ### 10.4 show golden
 
 少量核心 replay case：
@@ -820,6 +833,15 @@ strict diff 工具还必须覆盖 fixed/custom golden。任何失败阻塞切换
 cargo run -p tswn_core --release --features "no_debug aux_bins" --bin track_perf_cases -- --case-dir docs/perf/fixed_cases_30 --out-dir target/perf_cases_v2_t1 --bench-runs 13000 --thread 1 -q
 cargo run -p tswn_core --release --features "no_debug aux_bins" --bin track_perf_cases -- --case-dir docs/perf/fixed_cases_30 --out-dir target/perf_cases_v2_t0 --bench-runs 13000 --thread 0 -q
 ```
+
+2026-07-14 实测记录（release、`no_debug`、`mutable-noalias=yes`）：
+
+- fixed30 单线程 390000 局：overall `75.285 us/battle`、`13282.79 battles/s`；相对 `docs/perf/fixed_cases_30_results/perf_cases.json` 的 0.3.10 基线 `68.952 us/battle` 慢 9.2%；
+- fixed30 单线程 `stress_multi`：`153.453 us/battle`，相对基线 `141.170 us/battle` 慢 8.7%；
+- fixed30 自动线程：overall `9.881 us/battle`、`101200.04 battles/s`。该工具当前调用 legacy `prepared_win_rate`，用于固定样本基线，不应误记为 Runtime v2 本体性能；
+- Runtime v2/legacy batch probe 以 13000 局复测且结果一致性断言通过：score wall v2 `3.491 s`、legacy `1.113 s`（v2 慢 213.6%），其中 init 慢 427.6%、fight 慢 15.7%；win-rate wall v2 `273.2 ms`、legacy `209.0 ms`（v2 慢 30.7%），其中 init 慢 60.0%、fight 慢 36.4%。
+
+结论：性能测试已实际执行，但 fixed/stress 与 batch/prepared runner 均存在可复现退步，当前性能门槛为**未通过**；下一阶段优先分析 `PreparedRuntimeV2Runner` 的 score 初始化与重复 roster/template 构造，再复跑同一口径。
 
 硬门槛：
 
