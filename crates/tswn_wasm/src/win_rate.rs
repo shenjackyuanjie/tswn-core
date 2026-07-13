@@ -3,15 +3,16 @@
 //! 提供 `WinRateSession`（分批次步进执行，支持进度轮询）及 `run_win_rate_sync`
 //! 一次性同步函数，计算第一组玩家对其余组的胜率百分比。
 
-use std::fmt::Write as _;
-
-use tswn_core::{PreparedRunner, Runner};
+use tswn_core::Runner;
+use tswn_core::runtime_v2::{
+    PreparedRuntimeV2Runner, default_custom_runtime_v2_import_config, prepared_runtime_v2_win_rate_range,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, invalid_input, runner_init_failed, win_rate_invalid_groups};
 use crate::model::{WinRateOptions, WinRateProgress, WinRateResult, WinRateTiming};
 
-fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<PreparedRunner> {
+fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<PreparedRuntimeV2Runner> {
     if raw_input.trim().is_empty() {
         return Err(invalid_input("rawInput is empty"));
     }
@@ -22,29 +23,16 @@ fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<Prepared
         return Err(win_rate_invalid_groups());
     }
 
-    Runner::prepare_groups_with_eval_rq(&groups, eval_rq).map_err(|err| runner_init_failed(err.to_string()))
+    let config = default_custom_runtime_v2_import_config().map_err(|error| runner_init_failed(format!("{error:?}")))?;
+    PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(&groups, eval_rq, config)
+        .map_err(|error| runner_init_failed(format!("{error:?}")))
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
-
-fn measure_elapsed_nanos<T>(operation: impl FnOnce() -> T) -> (T, u64) {
-    #[cfg(target_arch = "wasm32")]
-    {
-        (operation(), 0)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let started = std::time::Instant::now();
-        let value = operation();
-        (value, nanos_to_u64(started.elapsed().as_nanos()))
-    }
-}
 
 #[wasm_bindgen]
 pub struct WinRateSession {
-    prepared: PreparedRunner,
+    prepared: PreparedRuntimeV2Runner,
     total_rounds: usize,
     next_round: usize,
     wins: usize,
@@ -89,32 +77,11 @@ impl WinRateSession {
     fn step_internal(&mut self, batch_size: usize) -> WasmResult<WinRateProgress> {
         let batch_size = batch_size.max(1);
         let batch_end = self.total_rounds.min(self.next_round.saturating_add(batch_size));
-        let mut seed = String::with_capacity(24);
-
-        for i in self.next_round..batch_end {
-            let seed_ref: &[String] = if i == 0 {
-                &[]
-            } else {
-                seed.clear();
-                let _ = write!(&mut seed, "seed:{}@!", tswn_core::engine::PROFILE_START as usize + i);
-                std::slice::from_ref(&seed)
-            };
-
-            let (runner_result, init_nanos) =
-                measure_elapsed_nanos(|| Runner::new_from_prepared_with_seed(&self.prepared, seed_ref));
-            let mut runner = runner_result.map_err(|err| runner_init_failed(err.to_string()))?;
-            self.init_nanos = self.init_nanos.saturating_add(init_nanos);
-
-            let (_, fight_nanos) = measure_elapsed_nanos(|| runner.run_to_completion());
-            self.fight_nanos = self.fight_nanos.saturating_add(fight_nanos);
-
-            if let Some(winners) = runner.world.winner.as_ref()
-                && let Some(team0) = runner.input_groups.first()
-                && winners.iter().any(|winner| team0.contains(winner))
-            {
-                self.wins += 1;
-            }
-        }
+        let summary = prepared_runtime_v2_win_rate_range(&self.prepared, self.next_round, batch_end)
+            .map_err(|error| runner_init_failed(error.to_string()))?;
+        self.wins += summary.wins;
+        self.init_nanos = self.init_nanos.saturating_add(nanos_to_u64(summary.timing.init_nanos));
+        self.fight_nanos = self.fight_nanos.saturating_add(nanos_to_u64(summary.timing.fight_nanos));
 
         self.next_round = batch_end;
         Ok(self.progress_value())
