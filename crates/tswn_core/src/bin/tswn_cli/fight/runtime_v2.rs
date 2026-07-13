@@ -201,6 +201,7 @@ fn cli_api_error(err: CliApiError) -> String {
     match err {
         CliApiError::InvalidInput(message) => message,
         CliApiError::Runner(err) => format!("构建 v2 对局失败: {err}"),
+        CliApiError::RuntimeV2(message) => format!("运行 v2 对局失败: {message}"),
     }
 }
 

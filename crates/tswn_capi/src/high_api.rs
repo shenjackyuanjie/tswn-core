@@ -93,6 +93,7 @@ fn cli_api_error(err: CliApiError) -> FfiError {
     match err {
         CliApiError::InvalidInput(message) => ffi_error(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, message),
         CliApiError::Runner(err) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()),
+        CliApiError::RuntimeV2(message) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, message),
     }
 }
 

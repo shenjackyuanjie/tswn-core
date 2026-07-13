@@ -52,7 +52,8 @@ pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
 pub use batch::{
-    RuntimeV2BatchError, RuntimeV2BatchSummary, prepared_runtime_v2_win_rate, runtime_v2_groups_win_rate, runtime_v2_score,
+    RuntimeV2BatchError, RuntimeV2BatchSummary, prepared_runtime_v2_win_rate, prepared_runtime_v2_win_rate_range,
+    runtime_v2_groups_win_rate, runtime_v2_score, runtime_v2_score_range,
 };
 pub use combat::{CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, RoundOutcome, SelectedBuiltinSkill};
 pub use handlers::*;

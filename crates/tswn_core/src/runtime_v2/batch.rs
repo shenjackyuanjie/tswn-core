@@ -33,7 +33,7 @@ impl RuntimeV2BatchSummary {
 
     pub fn score_10000(self) -> f64 { self.wins as f64 * 10_000.0 / self.total.max(1) as f64 }
 
-    fn merge(&mut self, other: Self) {
+    pub fn merge(&mut self, other: Self) {
         self.wins += other.wins;
         self.total += other.total;
         self.errors += other.errors;
@@ -107,6 +107,15 @@ pub fn prepared_runtime_v2_win_rate(
     Ok(merged)
 }
 
+/// 对已经准备好的 Runtime v2 对局执行指定轮次区间。
+pub fn prepared_runtime_v2_win_rate_range(
+    prepared: &PreparedRuntimeV2Runner,
+    start: usize,
+    end: usize,
+) -> Result<RuntimeV2BatchSummary, RuntimeV2BatchError> {
+    run_prepared_range(prepared, start, end).map_err(Into::into)
+}
+
 pub fn runtime_v2_score(
     target_group: &[String],
     modifier: &str,
@@ -143,6 +152,20 @@ pub fn runtime_v2_score(
         merged.merge(handle.join().expect("runtime v2 score worker thread panicked"));
     }
     Ok(merged)
+}
+
+/// 使用与完整评分相同的轮次编号执行一个评分区间。
+pub fn runtime_v2_score_range(
+    target_group: &[String],
+    modifier: &str,
+    start: usize,
+    end: usize,
+    eval_rq: f64,
+) -> Result<RuntimeV2BatchSummary, RuntimeV2BatchError> {
+    let first_groups = ScoreMatchGroups::new(target_group, modifier).groups;
+    let config = default_custom_runtime_v2_import_config()?;
+    let prepared = PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(&first_groups, eval_rq, config)?;
+    Ok(run_score_range(target_group, modifier, start, end, eval_rq, &prepared))
 }
 
 fn run_prepared_range(

@@ -9,10 +9,11 @@ use crate::error::runner::RunnerError;
 use crate::player::eval_name;
 use crate::player::icon::icon_from_raw_name;
 use crate::runtime_v2::{
-    CustomRuntimeV2ImportConfig, NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2NormalizedRun, RuntimeV2Runner,
-    StrictRunDiff, default_custom_runtime_v2_import_config, normalize_legacy_run, strict_diff_runs,
+    CustomRuntimeV2ImportConfig, NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2BatchSummary, RuntimeV2NormalizedRun,
+    RuntimeV2Runner, StrictRunDiff, default_custom_runtime_v2_import_config, normalize_legacy_run, runtime_v2_groups_win_rate,
+    runtime_v2_score, strict_diff_runs,
 };
-use crate::win_rate::{WinRateSummary, WinRateTiming, groups_win_rate};
+use crate::win_rate::{WinRateSummary, WinRateTiming};
 
 pub type CliApiResult<T> = Result<T, CliApiError>;
 
@@ -20,6 +21,7 @@ pub type CliApiResult<T> = Result<T, CliApiError>;
 pub enum CliApiError {
     InvalidInput(String),
     Runner(RunnerError),
+    RuntimeV2(String),
 }
 
 impl std::fmt::Display for CliApiError {
@@ -27,6 +29,7 @@ impl std::fmt::Display for CliApiError {
         match self {
             Self::InvalidInput(message) => f.write_str(message),
             Self::Runner(err) => err.fmt(f),
+            Self::RuntimeV2(message) => f.write_str(message),
         }
     }
 }
@@ -36,6 +39,7 @@ impl std::error::Error for CliApiError {
         match self {
             Self::InvalidInput(_) => None,
             Self::Runner(err) => Some(err),
+            Self::RuntimeV2(_) => None,
         }
     }
 }
@@ -55,6 +59,18 @@ pub struct WinRateResult {
 
 impl From<WinRateSummary> for WinRateResult {
     fn from(value: WinRateSummary) -> Self {
+        Self {
+            wins: value.wins,
+            total: value.total,
+            win_rate: value.win_rate_percent(),
+            init_nanos: value.timing.init_nanos,
+            fight_nanos: value.timing.fight_nanos,
+        }
+    }
+}
+
+impl From<RuntimeV2BatchSummary> for WinRateResult {
+    fn from(value: RuntimeV2BatchSummary) -> Self {
         Self {
             wins: value.wins,
             total: value.total,
@@ -228,19 +244,6 @@ pub fn runtime_v2_update_type_name(value: UpdateType) -> &'static str {
     }
 }
 
-impl ScoreResult {
-    fn from_summary(summary: BenchSummary) -> Self {
-        Self {
-            score: summary.score_10000(),
-            wins: summary.wins,
-            total: summary.total,
-            errors: summary.errors,
-            init_nanos: summary.timing.init_nanos,
-            fight_nanos: summary.timing.fight_nanos,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamerPfResult {
     pub group: Vec<String>,
@@ -341,18 +344,6 @@ impl NamerPfMode {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct BenchSummary {
-    wins: usize,
-    total: usize,
-    errors: usize,
-    timing: WinRateTiming,
-}
-
-impl BenchSummary {
-    fn score_10000(self) -> f64 { self.wins as f64 * 10_000.0 / self.total.max(1) as f64 }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
 pub(super) struct BatchSummary {
     avg: f64,
     aggregate_rate: f64,
@@ -367,7 +358,9 @@ pub fn win_rate_summary(raw: &str, n: usize, eval_rq: Option<f64>, thread: u32) 
     let eval_rq = eval_rq.unwrap_or(eval_name::WIN_RATE_EVAL_RQ);
     let groups = Runner::split_namerena_into_groups(raw.to_owned()).0;
     ensure_win_rate_group_count(&groups)?;
-    groups_win_rate(&groups, n.max(1), eval_rq, thread).map(Into::into).map_err(Into::into)
+    runtime_v2_groups_win_rate(&groups, n.max(1), eval_rq, thread)
+        .map(Into::into)
+        .map_err(runtime_v2_batch_error)
 }
 
 pub fn team_win_rate_summary(
@@ -407,14 +400,22 @@ pub fn score(raw: &str, n: usize, mode: &str, eval_rq: Option<f64>, thread: u32)
     if target_group.is_empty() {
         return Err(invalid_input("score requires at least one player"));
     }
-    let summary = bench::run_score_inner(
+    let summary = runtime_v2_score(
         &target_group,
         score_mode.modifier(),
         n.max(1),
         eval_rq.unwrap_or(eval_name::WIN_RATE_EVAL_RQ),
         thread,
-    );
-    Ok(ScoreResult::from_summary(summary))
+    )
+    .map_err(runtime_v2_batch_error)?;
+    Ok(ScoreResult {
+        score: summary.score_10000(),
+        wins: summary.wins,
+        total: summary.total,
+        errors: summary.errors + summary.guard_exhausted,
+        init_nanos: summary.timing.init_nanos,
+        fight_nanos: summary.timing.fight_nanos,
+    })
 }
 
 pub fn namer_pf(raw: &str, n: usize, modes: Option<Vec<String>>, keep_rq: bool, thread: u32) -> CliApiResult<Vec<NamerPfResult>> {
@@ -439,16 +440,16 @@ pub fn namer_pf(raw: &str, n: usize, modes: Option<Vec<String>>, keep_rq: bool, 
                     let (modifier, duplicate) = mode.score_params();
                     bench::namer_pf_score(&group, modifier, duplicate, n.max(1), thread, eval_rq)
                 })
-                .collect::<Vec<_>>();
+                .collect::<CliApiResult<Vec<_>>>()?;
             let total_score = scores.iter().sum();
-            NamerPfResult {
+            Ok(NamerPfResult {
                 group,
                 modes: labels.clone(),
                 scores,
                 total_score,
-            }
+            })
         })
-        .collect())
+        .collect::<CliApiResult<Vec<_>>>()?)
 }
 
 pub fn batch_rate(
@@ -589,6 +590,10 @@ pub fn default_custom_runtime_v2_parity_report(raw: &str, max_rounds: usize) -> 
 }
 
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
+
+fn runtime_v2_batch_error(error: crate::runtime_v2::RuntimeV2BatchError) -> CliApiError {
+    CliApiError::RuntimeV2(error.to_string())
+}
 
 fn custom_runtime_v2_import_error(error: crate::runtime_v2::CustomRuntimeV2ImportError) -> CliApiError {
     match error {

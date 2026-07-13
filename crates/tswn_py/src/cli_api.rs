@@ -2,7 +2,7 @@
 
 use pyo3::{
     Py, PyAny, PyResult, Python,
-    exceptions::PyValueError,
+    exceptions::{PyRuntimeError, PyValueError},
     pyclass, pyfunction, pymethods,
     types::{PyDict, PyDictMethods, PyList},
 };
@@ -380,6 +380,7 @@ fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     match err {
         CliApiError::InvalidInput(message) => PyValueError::new_err(message),
         CliApiError::Runner(err) => wrapper::error::PyRunnerError::new(err).into(),
+        CliApiError::RuntimeV2(message) => PyRuntimeError::new_err(message),
     }
 }
 
