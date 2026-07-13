@@ -77,7 +77,7 @@
 
 ### 2.1 2026-07 架构复查结论
 
-截至 2026-07-14，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 118/118 通过。`tests/sqp5900.txt` 六模式 24000 条与 `tests/sqp6000.txt` 六模式实际可生成的 15792 条均已完成 strict diff，TS/Rust 失败、TS 空输出与结果差异全部为 0；按本轮约定的正确性验收范围，Runtime v2 正确性确认完成。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；sqp6000 暴露的直接 owner 存活时 root-owned summon 清理、终局状态 hook 截断、实体 ID 空洞计数、LifeWheel/Exchange 后置致死链和 Charge 激活刷新 Haste 倍率问题均已闭环，四个原始输入已归档并接入长期回归。raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`；CLI `fight`（含 `--out-raw`）、`diff`、`raw`（含 `!test!` 评分/胜率）和独立 `bench` 已默认走 Runtime v2，core `cli_api` 及 C、Python、WASM 高层评分/胜率入口同步完成默认切换；`examples/index.html` 仅调用 v2 normalized run，并已对齐 main 的 replay 语义与视觉效果。低层 legacy 类型仍作为兼容/对账 API 保留；legacy alias/Miri 清理已降为可选项，不阻塞本轮，剩余必须继续关注的是批量 score/prepared 初始化性能。
+截至 2026-07-14，`runtime_v2` 已从“最小 fixture 原型”进入行为收敛阶段。core 全量测试在 `mutable-noalias=yes` 下不再保留 runtime_v2 self-golden ignore；CLI 与 release `mutable-noalias=yes` 门禁均通过。`case_d8c6_opening_matches_js_trace`、`case_large_67_summon_opening_matches_js_trace`、完整 `large_01`、`large_02`、`large_36`、`large_67`、`large_70` 和 `large_72` 已在 `mutable-noalias=yes` 下通过；feature-gated 完整 runtime-v2 corpus 已在 release `mutable-noalias=yes` 下达到 118/118 通过。`tests/sqp5900.txt` 六模式 24000 条与 `tests/sqp6000.txt` 六模式实际可生成的 15792 条均已完成 strict diff，TS/Rust 失败、TS 空输出与结果差异全部为 0；按本轮约定的正确性验收范围，Runtime v2 正确性确认完成。`large_36` 暴露的 linked-minion 连续删除游标与 KILL 技能首触发短路已经闭环，`large_02` 暴露的 PoisonTick 致死 replay/score 已进入统一 lethal pipeline；`large_67` 暴露的 Merge 固定槽位、0→正等级 action 队尾和 clone 继承 Summon blueprint 问题已经闭环；`large_70` 暴露的 Clone 属性重建丢失垂死增益问题已通过统一 Runtime v2 属性刷新入口闭环；`large_72` 暴露的 Disperse 防御链、Protect hook 插入顺序与魔法重定向、冻结背刺、Ice/Hide on_damage 时序以及终局 KILL hook/RNG 问题已经闭环；sqp6000 暴露的直接 owner 存活时 root-owned summon 清理、终局状态 hook 截断、实体 ID 空洞计数、LifeWheel/Exchange 后置致死链和 Charge 激活刷新 Haste 倍率问题均已闭环，四个原始输入已归档并接入长期回归。raw 初始化已切换到独立 `PreparedBattleInit`，不再构造 legacy `Runner` 或读取 legacy `WorldState`；CLI `fight`（含 `--out-raw`）、`diff`、`raw`（含 `!test!` 评分/胜率）和独立 `bench` 已默认走 Runtime v2，core `cli_api` 及 C、Python、WASM 高层评分/胜率入口同步完成默认切换；`examples/index.html` 仅调用 v2 normalized run，并已对齐 main 的 replay 语义与视觉效果。低层 legacy 类型仍作为兼容/对账 API 保留；legacy alias/Miri 清理已降为可选项，不阻塞本轮。CQP/CQD 已完成固定 roster 热复位、matchup 级动态调度和原生 allocator 优化，OpenBox 单/双人 1%/10%/100% 六档相对 Runtime v1 均快 39.89% 以上；剩余性能关注点收束为普通 score 的动态 roster/profile 初始化。
 
 可以保留并继续演进：
 
@@ -98,7 +98,7 @@
 - 压力 strict-diff 首次发现且尚未闭环的输入不得只保留在 `target` 临时目录；必须原样复制到 `crates/tswn_test/cases/runtime_v2_stress/`，记录来源、模式、首差异和处理状态。修复后必须将该输入接入长期 Runtime v2 严格回归，并继续保留原始 input。
 - **已完成（2026-07-14 复验）**：`tests/sqp5900.txt` 最终六种模式各 4000 条、共 24000 条全部执行；`summary.json` 为 `ts_failures=0`、`rust_failures=0`、`ts_empty_outputs=0`、`diff_failures=0`。
 - **已完成（2026-07-14）**：`tests/sqp6000.txt` 以每模式上限 4000 条执行；受号库组合数限制，实际六种模式各生成 2632 条、共 15792 条，全部执行且 `ts_failures=0`、`rust_failures=0`、`ts_empty_outputs=0`、`diff_failures=0`。本轮发现的四个输入已归档到 `crates/tswn_test/cases/runtime_v2_stress/` 并接入上述 118 项 release `mutable-noalias=yes` corpus。完成 sqp5900 与 sqp6000 两套验收后，按约定可视为正确性无误。
-- **默认入口已完成，性能仍需收敛**：CLI `fight`（含 `--out-raw`）、`diff`、`raw`（含 `!test!` 评分/胜率）和独立 `bench` 默认入口已切换到 Runtime v2；core `cli_api` 与 C、Python、WASM 的无 runtime 参数高层评分/胜率入口同步改走 v2，WASM `WinRateSession` 保留原协议但内部使用 `PreparedRuntimeV2Runner`；`examples/index.html` 只调用 v2 normalized replay adapter。低层 `Runner`、`PreparedRunner`、`FightSession` 等兼容对象和 CLI 显式 `--runtime legacy` 对账入口仍保留。2026-07-14 最新 no_debug 复测中 fixed30 overall 与 stress_multi 已分别快于基线 4.3% 和 3.2%，但 score 13000 单线程仍明显慢于已记录的 legacy probe，继续作为性能优化项。legacy alias/Miri 已降为可选诊断，不再阻塞本轮。
+- **默认入口与 CQP/CQD 性能目标已完成，score 仍需收敛**：CLI `fight`（含 `--out-raw`）、`diff`、`raw`（含 `!test!` 评分/胜率）和独立 `bench` 默认入口已切换到 Runtime v2；core `cli_api` 与 C、Python、WASM 的无 runtime 参数高层评分/胜率入口同步改走 v2，WASM `WinRateSession` 保留原协议但内部使用 `PreparedRuntimeV2Runner`；`examples/index.html` 只调用 v2 normalized replay adapter。CLI 与 OpenBox cqd/cqp 共用 Runtime v2 matchup 矩阵执行器，单/双人 1%/10%/100% 六档相对 Runtime v1 快 39.89%～51.30%。低层 `Runner`、`PreparedRunner`、`FightSession` 等兼容对象和 CLI 显式 `--runtime legacy` 对账入口仍保留。fixed30 overall 与 stress_multi 已分别快于基线 4.3% 和 3.2%，但 score 13000 单线程仍明显慢于已记录的 legacy probe，继续作为性能优化项。legacy alias/Miri 已降为可选诊断，不再阻塞本轮。
 
 ### 2.2 修订后的近期实施顺序
 
@@ -107,7 +107,7 @@
 3. 补齐尚未被 corpus 命中的内置技能/状态生命周期，并为 RNG 短路、on_damage 时序和状态叠加补精确单测；
 4. **已完成**：重写 state hook 执行器，使当前 phase 内状态 generation 变化立即影响后续 hook；
 5. **默认入口已完成**：CLI `fight`（含 `--out-raw`）、`diff`、`raw`（含 `!test!`）和独立 `bench` 已默认切到 v2，C、Python、WASM 高层评分/胜率入口及 show 页面同步完成；后续只继续收敛显式 legacy fallback、低层兼容对象和最终删除；
-6. **部分通过**：2026-07-14 最新 fixed30、stress_multi 与自动线程口径已经不退步；继续优化 score/prepared 初始化并复跑相同口径。legacy `Storage` alias 与全量 Miri 改为可选清理项，不再阻塞默认 Runtime v2。
+6. **CQP/CQD 已完成，score 部分通过**：fixed30、stress_multi 与自动线程口径已经不退步；CQP/CQD 六个精度/组队档位相对 Runtime v1 均快至少 39.89%，并已接入 CLI/OpenBox 共用调度器。后续只继续优化动态 roster 的 score/prepared 初始化并复跑相同口径。legacy `Storage` alias 与全量 Miri 为可选清理项，不再阻塞默认 Runtime v2。
 
 ---
 
@@ -843,6 +843,15 @@ cargo run -p tswn_core --release --features "no_debug aux_bins" --bin track_perf
 
 结论：fixed cases、stress_multi、no_debug release 与自动线程总体口径已经通过“不退步”门槛；剩余风险集中在 score/prepared 初始化，普通评分虽比上次 v2 改善 8.6%，仍显著慢于 legacy 记录。总体性能不再是全面退步，但该热点仍需继续关注。
 
+2026-07-14 CQP/CQD 专项已经完成，详细输入、SHA-256、命令和逐轮数据见 `docs/perf/cqp_runtime_v2_baseline.md`：
+
+| 输入 | 1% | 10% | 100% |
+| --- | ---: | ---: | ---: |
+| sqp6000 前 20 单人 × target1 | 快 49.64% | 快 51.30% | 快 40.78% |
+| cqp_double_target 32 双人 × target2 | 快 44.52% | 快 43.39% | 快 39.89% |
+
+该专项采用整批墙钟而非并行 matchup 累计耗时。Runtime v2 为固定 roster 增加热字段/seed/world view 容量复用；CQP/CQD 改为持久 worker 动态派发 matchup，自动模式按 1.5×/2× 逻辑核分档；原生默认启用已有 mimalloc，WASM 显式关闭。CLI 自动/串行业务字段差异为 0，OpenBox 新增 v2/legacy 汇总对照；`sby_test.md` 规定的六模式共 12000 case 复验为 TS/Rust/diff failure 全 0。CQP/CQD 的“至少快 30%”门槛据此关闭，普通 score 的动态 profile 初始化仍是独立未完成项。
+
 硬门槛：
 
 - fixed cases 不退步；
@@ -874,7 +883,7 @@ v2 合入并删除 legacy 前必须满足：
 - 行为一致：legacy/v2 strict diff 大样本 + fixed/custom golden 全过，RNG 完全一致；
 - 展示可用：`examples/index.html` v2 schema 核心 golden 通过；
 - custom 迁移：`github/custom` 审计出的关键行为有 repo 内 extension example/fixture；
-- 性能不退步：fixed/stress/no_debug/perf clone 路径不退步；
+- 性能不退步：fixed/stress/no_debug/perf clone 路径不退步，CQP/CQD 单/双人 1%/10%/100% 相对 Runtime v1 至少快 30%；
 - 删除旧栈：正式路径无 legacy runtime，旧 `Storage`/`SkillArgs`/`OnDamageFunc` 不作为新扩展能力边界；
 - 文档完整：changelog、developer migration guide、unsafe/runtime design、custom migration 均更新。
 

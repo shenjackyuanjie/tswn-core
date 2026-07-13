@@ -10,6 +10,9 @@
 
 ### 变更
 
+- 新增 Runtime v2 CQP/CQD matchup 矩阵执行器，CLI `bench batch-rate` / `cqp` 的自动线程路径改为按 `player × target` 动态派发给持久 worker；短任务自动使用 1.5 倍逻辑核，中长任务使用 2 倍逻辑核，显式 `-t` 与 `-s` 语义保持不变。
+- 固定 roster 的 `PreparedRuntimeV2Runner` 复位路径改为只恢复战斗热字段，并复用 seed、输入分组和 world view 小向量容量；每轮改变 profile 身份的 score 路径继续完整复位，避免错误复用冷身份数据。
+- 原生 `tswn_core` 默认启用已有 `mimalloc_alloc` feature；WASM 依赖显式关闭默认 feature 并保留 `png_render`，不把原生 allocator 带入浏览器构建。
 - `tswn-cli fight`（含 `--out-raw`）、`tswn-cli diff` 与 `tswn-cli raw`（含 `!test!` 评分/胜率）默认改用 Runtime v2；需要旧实现对账时可显式传入 `--runtime legacy`。普通日志、raw 聚合日志、赢家输入索引、玩家状态摘要及 benchmark 汇总输出保持与 legacy 逐行一致。
 - 独立 `bench` 的自动分流、score、win-rate、group-win-rate、分段 buckets 与 `namer-pf` 默认改用 Runtime v2；core `cli_api` 及 C、Python、WASM 高层评分/胜率包装同步切换，无 runtime 参数的正式入口不再隐式构造 legacy Runner。
 - Runtime v2 批量层新增 prepared win-rate 与 score 的区间执行 API，供 CLI 分段输出和 WASM `WinRateSession` 在多次 step 之间保持全局 round/profile seed 调度。
@@ -19,6 +22,7 @@
 
 ### 测试
 
+- 新增 CQP/CQD 矩阵输入顺序、胜场汇总、取消语义回归，以及复用 runner 连跑 200 个会修改技能/分身状态的 seed 与每局新建 runner 的逐局对照。
 - 新增 `tswn_test` 共享测试 harness，并将原先嵌在 `tswn_core::engine::test` 下的多组回放/战斗测试迁移为可复用的测试 suite，便于后续多个 engine 实现共用同一批行为对账用例。
 - 将 `tswn_core` 专属 engine 测试拆到 `crates/tswn_core/tests/engine_core.rs`，让核心 crate 的公开行为测试与共享测试工具解耦。
 - 更新 `track_test.py` 默认追踪包，默认覆盖迁移后的 large / small seed / multi fight 测试集合。
@@ -36,6 +40,9 @@
 
 ### 验证
 
+- CQP/CQD 同机 Runtime v1 基线对照：OpenBox 单人 20 × target1 的 1%/10%/100% 分别快 49.64%/51.30%/40.78%，双人 32 × target2 分别快 44.52%/43.39%/39.89%；完整口径见 `docs/perf/cqp_runtime_v2_baseline.md`。
+- CLI 自动矩阵与 `-s` 串行路径的 20 条 CQP 业务字段差异为 0；`sby_test.md` 六模式共 12000 case 为 `ts_failures=0`、`rust_failures=0`、`diff_failures=0`。
+- `cargo test -p tswn_core`（核心库 573 通过、2 忽略；CLI 59、runtime trace 3、engine 集成 29 均通过）
 - `track_perf_cases` 已改为实际运行 Runtime v2；fixed30/no_debug/13000 单线程 overall 为 `66.005 us/battle`，比 0.3.10 基线快 4.3%，`stress_multi` 为 `136.698 us/battle`，比基线快 3.2%；自动线程 overall 为 `8.978 us/battle`。
 - score 13000 单线程普通评分 wall 为 `3.191 s`，比上次 v2 记录快 8.6%，但仍显著慢于已记录的 legacy `1.113 s`，后续继续优化 prepared 初始化。
 - `cargo test -p tswn_core --bin tswn-cli --release`（61 通过）
