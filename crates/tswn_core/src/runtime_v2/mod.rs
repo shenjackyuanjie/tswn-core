@@ -1,5 +1,6 @@
 mod batch;
 mod combat;
+mod cqp;
 pub mod effect;
 pub mod entity;
 pub mod extension;
@@ -56,6 +57,9 @@ pub use batch::{
     runtime_v2_groups_win_rate, runtime_v2_score, runtime_v2_score_range,
 };
 pub use combat::{CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, RoundOutcome, SelectedBuiltinSkill};
+pub use cqp::{
+    RuntimeV2CqpBatchResult, RuntimeV2CqpMatchup, RuntimeV2CqpMatchupResult, resolve_cqp_workers, runtime_v2_cqp_matchups,
+};
 pub use handlers::*;
 pub use plain_assassinate::PlainSkillPreActionOutcome;
 pub use prepared_init::{PreparedBattleInit, PreparedBattleRoster, RuntimeV2BattleInitError};
