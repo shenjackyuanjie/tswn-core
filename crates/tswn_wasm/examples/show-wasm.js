@@ -580,7 +580,7 @@ function buildV2InitialStates(firstOutcome, playersById, maxHpById) {
 }
 
 /**
- * 将 v2 normalized run 转成当前 show.html 可消费的 replay shape。
+ * 将 v2 normalized run 转成当前 index.html 可消费的 replay shape。
  *
  * @param {string} rawInput
  * @param {object} run
@@ -621,7 +621,7 @@ export function buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0
 /**
  * 使用 v2 default custom profile 的 normalized run 构造 show-compatible replay。
  *
- * show.html 只通过这个入口生成 replay，不再提供 legacy fallback。
+ * index.html 只通过这个入口生成 replay，不再提供 legacy fallback。
  *
  * @param {string} rawInput
  * @param {HTMLElement} versionInfo

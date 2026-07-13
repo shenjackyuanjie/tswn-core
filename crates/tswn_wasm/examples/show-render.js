@@ -2,7 +2,7 @@
  * @fileoverview tswn_wasm 战斗回放展示页 — 渲染函数
  *
  * 本模块负责将战斗数据（FightPlayer、FightState、FrameUpdate）转换为 HTML
- * 字符串，供 show.html 页面直接插入 DOM。所有渲染函数均为纯函数，通过参数
+ * 字符串，供 index.html 页面直接插入 DOM。所有渲染函数均为纯函数，通过参数
  * 接收 DOM 引用和全局状态（playersById），不直接依赖模块级变量。
  *
  * ## 导出函数一览
@@ -144,7 +144,7 @@ export function renderIdleState(playerList, battleRows, plistMeta, headerMeta) {
     `;
   battleRows.innerHTML = `
         <div class="welcome">
-            <div><strong>show.html 是单独的 Fight 展示页。</strong></div>
+            <div><strong>index.html 是单独的 Fight 展示页。</strong></div>
             <div>它不再混合胜率功能，而是专门模仿原始名字竞技场与 fast-namerena 的战斗观感。</div>
         </div>
     `;

@@ -12,7 +12,7 @@ async function readExampleFile(name) {
 
 test("show page only wires the v2 adapter path", async () => {
   const [html, script, wasmScript] = await Promise.all([
-    readExampleFile("show.html"),
+    readExampleFile("index.html"),
     readExampleFile("show.js"),
     readExampleFile("show-wasm.js"),
   ]);
