@@ -2,13 +2,6 @@ import { formatError } from "./show-utils.js";
 
 /** @type {string[]} URL 参数名，值为 URL-safe Base64 编码后的原始对局输入 */
 export const STATIC_INPUT_PARAM_NAMES = ["input", "replay", "data"];
-/** @type {string[]} URL 参数名，用于显式选择 replay runtime */
-export const REPLAY_ENGINE_PARAM_NAMES = ["engine", "runtime"];
-/** @type {'legacy'|'v2'} show 页面未显式指定 runtime 时使用的默认 replay runtime */
-export const DEFAULT_REPLAY_ENGINE = "v2";
-
-const REPLAY_ENGINE_V2_VALUES = new Set(["v2", "runtime_v2", "normalized", "normalized_v2"]);
-const REPLAY_ENGINE_LEGACY_VALUES = new Set(["legacy", "v1", "fightsession", "fight_session"]);
 
 /**
  * 从 URL-safe Base64 解码 UTF-8 原始输入。
@@ -57,24 +50,18 @@ export function encodeBase64UrlUtf8(input) {
 /**
  * 为当前对局输入生成分享链接。
  * @param {string} rawInput
- * @param {{ href: string, runtimeV2?: boolean, runtimeEngine?: 'legacy'|'v2'|null }} options
+ * @param {{ href: string }} options
  * @returns {string}
  */
-export function buildShowShareUrl(rawInput, { href, runtimeV2 = false, runtimeEngine = null }) {
+export function buildShowShareUrl(rawInput, { href }) {
   const url = new URL(href);
   for (const paramName of STATIC_INPUT_PARAM_NAMES) {
     url.searchParams.delete(paramName);
   }
-  for (const paramName of REPLAY_ENGINE_PARAM_NAMES) {
+  for (const paramName of ["engine", "runtime"]) {
     url.searchParams.delete(paramName);
   }
   url.searchParams.set("input", encodeBase64UrlUtf8(rawInput));
-  const engine = runtimeEngine ?? (runtimeV2 ? "v2" : null);
-  if (engine === "v2") {
-    url.searchParams.set("engine", "v2");
-  } else if (engine === "legacy") {
-    url.searchParams.set("engine", "legacy");
-  }
   url.hash = "";
   return url.href;
 }
@@ -104,44 +91,4 @@ export function readStaticReplayInputFromSearch(search) {
     }
   }
   return null;
-}
-
-/**
- * 从 URL search 中读取 replay runtime。未指定时返回 null，由页面默认 runtime 决定。
- * 只有显式 legacy alias 才进入 legacy FightSession；空值或未知值回退到默认 v2。
- * @param {string} search
- * @returns {{ engine: 'legacy'|'v2', paramName: string, message?: string }|null}
- */
-export function readReplayEngineFromSearch(search) {
-  const params = new URLSearchParams(search);
-  for (const paramName of REPLAY_ENGINE_PARAM_NAMES) {
-    if (!params.has(paramName)) {
-      continue;
-    }
-    const value = `${params.get(paramName) ?? ""}`.trim().toLowerCase();
-    if (REPLAY_ENGINE_V2_VALUES.has(value)) {
-      return { engine: "v2", paramName };
-    }
-    if (REPLAY_ENGINE_LEGACY_VALUES.has(value)) {
-      return { engine: "legacy", paramName };
-    }
-    return {
-      engine: DEFAULT_REPLAY_ENGINE,
-      paramName,
-      message: value
-        ? `URL 参数 ${paramName}=${value} 未识别，已回退 v2 normalized run。`
-        : `URL 参数 ${paramName} 为空，已回退 v2 normalized run。`,
-    };
-  }
-  return null;
-}
-
-/**
- * @param {'legacy'|'v2'} replayEngine
- * @returns {string}
- */
-export function replayEngineStatusText(replayEngine) {
-  return replayEngine === "v2"
-    ? "使用 v2 normalized run 生成 replay 适配视图。"
-    : "自动使用 FightSession 捕获 replay，并按帧播放。";
 }

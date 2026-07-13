@@ -2,7 +2,7 @@
  * @fileoverview tswn_wasm 战斗回放展示页 — WASM 模块加载与回放生成
  *
  * 负责动态加载 tswn_wasm WASM 模块（懒加载 + 缓存），
- * 以及根据用户输入调用 FightSession 或 v2 normalized run 生成回放数据。
+ * 以及根据用户输入调用 v2 normalized run 生成回放数据。
  */
 
 // ============================================================================
@@ -619,39 +619,9 @@ export function buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0
 }
 
 /**
- * 根据原始输入文本生成完整回放数据。
- *
- * @param {string} rawInput — 原始输入文本（每行一个名字，空行分隔队伍）
- * @param {HTMLElement} versionInfo
- * @param {HTMLElement} coreVersionInfo
- * @param {HTMLElement} modulePathInfo
- * @returns {Promise<FightReplay>}
- */
-export async function buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo) {
-    const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
-    const session = new api.FightSession(rawInput, { include_icons: true, capture_replay: true });
-    const players = session.players();
-    const initial_states = session.state();
-    const wasmStart = performance.now();
-    const replay = session.run_to_end();
-    const wasmDurationMs = performance.now() - wasmStart;
-    return {
-        raw_input: rawInput,
-        seed_line: extractSpecifiedSeedLine(rawInput),
-        players,
-        initial_states,
-        frames: replay.frames,
-        winner_ids: replay.winner_ids,
-        final_states: replay.final_states,
-        wasm_duration_ms: wasmDurationMs,
-    };
-}
-
-/**
  * 使用 v2 default custom profile 的 normalized run 构造 show-compatible replay。
  *
- * 这是 Phase H 的 show 默认路径入口：show.html 默认使用 v2 normalized replay，
- * legacy FightSession 仅保留给显式 legacy fallback。
+ * show.html 只通过这个入口生成 replay，不再提供 legacy fallback。
  *
  * @param {string} rawInput
  * @param {HTMLElement} versionInfo

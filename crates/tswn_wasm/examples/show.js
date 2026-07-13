@@ -129,12 +129,9 @@ import {
 } from "./show-replay.js";
 import {
   buildShowShareUrl,
-  DEFAULT_REPLAY_ENGINE,
-  readReplayEngineFromSearch,
   readStaticReplayInputFromSearch,
-  replayEngineStatusText as showReplayEngineStatusText,
 } from "./show-routing.js";
-import { ensureApi, buildReplay, buildV2NormalizedReplay } from "./show-wasm.js";
+import { ensureApi, buildV2NormalizedReplay } from "./show-wasm.js";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -188,9 +185,6 @@ const versionInfo = document.querySelector("#versionInfo");
 const coreVersionInfo = document.querySelector("#coreVersionInfo");
 /** @type {HTMLElement} */
 const modulePathInfo = document.querySelector("#modulePathInfo");
-/** @type {HTMLElement} */
-const runtimeModeInfo = document.querySelector("#runtimeModeInfo");
-
 /** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
 /** @type {HTMLButtonElement} */
@@ -277,9 +271,6 @@ let playbackFinished = false;
 let rightControlsCollapsed = window.matchMedia("(max-width: 640px)").matches;
 /** @type {number|null} 分享复制提示的隐藏定时器 */
 let shareToastTimer = null;
-/** @type {'legacy'|'v2'} 当前 replay 生成路径 */
-let replayEngine = DEFAULT_REPLAY_ENGINE;
-
 // 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
 restoreNicknameMap();
@@ -1085,7 +1076,6 @@ function showShareToast(message = "分享链接已复制") {
 function buildShareUrl(rawInput) {
   return buildShowShareUrl(rawInput, {
     href: window.location.href,
-    runtimeEngine: Boolean(currentReplay?.runtime_v2) || replayEngine === "v2" ? "v2" : "legacy",
   });
 }
 
@@ -1125,29 +1115,8 @@ function readStaticReplayInputFromUrl() {
   return readStaticReplayInputFromSearch(window.location.search);
 }
 
-/**
- * 从 URL 读取 replay runtime。未指定时使用页面默认 runtime。
- * @returns {{ engine: 'legacy'|'v2', paramName: string, message?: string }|null}
- */
-function readReplayEngineFromUrl() {
-  return readReplayEngineFromSearch(window.location.search);
-}
-
-function replayEngineStatusText() {
-  return showReplayEngineStatusText(replayEngine);
-}
-
-function syncReplayEngineUi() {
-  if (runtimeModeInfo) {
-    runtimeModeInfo.textContent = replayEngineStatusText();
-  }
-}
-
-async function buildReplayForCurrentEngine(rawInput) {
-  if (replayEngine === "v2") {
-    return buildV2NormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
-  }
-  return buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
+async function buildV2Replay(rawInput) {
+  return buildV2NormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
 }
 
 // ============================================================================
@@ -1382,13 +1351,13 @@ async function startBattle({ persistInput = true } = {}) {
   stopPlaybackLoop();
   clearCurrentReplayView();
   setLoading(true);
-  setInputStatus(replayEngine === "v2" ? "正在使用 v2 normalized run 生成回放，请稍候..." : "正在生成回放，请稍候...");
+  setInputStatus("正在使用 v2 normalized run 生成回放，请稍候...");
 
   try {
     currentReplay = applyNicknamesToReplay(
-      normalizeReplayPlayers(await buildReplayForCurrentEngine(rawInput)),
+      normalizeReplayPlayers(await buildV2Replay(rawInput)),
     );
-    setInputStatus(replayEngine === "v2" ? "v2 回放已生成，开始自动播放。" : "回放已生成，开始自动播放。");
+    setInputStatus("v2 回放已生成，开始自动播放。");
     closePanel(inputPanel);
     beginReplayPlayback(currentReplay);
   } catch (error) {
@@ -1627,23 +1596,15 @@ nicknameInput.addEventListener("keydown", (event) => {
  */
 async function main() {
   const staticInput = readStaticReplayInputFromUrl();
-  const replayEngineOption = readReplayEngineFromUrl();
-  if (replayEngineOption) {
-    replayEngine = replayEngineOption.engine;
-  }
   if (staticInput?.ok) {
     inputName.value = staticInput.input;
   }
 
   renderIdleState(playerList, battleRows, plistMeta, headerMeta);
-  syncReplayEngineUi();
   syncPlaybackUi();
   syncRightControlsUi();
   if (staticInput?.ok) {
-    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，${replayEngineStatusText()}正在初始化回放...`);
-  } else if (replayEngineOption?.message) {
-    setInputStatus(replayEngineOption.message, true);
-    openInputEditor();
+    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在使用 v2 normalized run 初始化回放...`);
   } else {
     setInputStatus(staticInput?.message ?? "会使用 show 风格自动播放整场战斗。", Boolean(staticInput));
     openInputEditor();
