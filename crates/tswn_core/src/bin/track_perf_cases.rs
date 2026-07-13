@@ -15,7 +15,7 @@ use tswn_core::case_gen::{
     CaseMode, GeneratedCase, case_id, deterministic_shuffle, generate_cases_for_mode, load_library, stable_hash,
 };
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::win_rate::{WinRateSummary, prepared_win_rate};
+use tswn_core::runtime_v2::{RuntimeV2BatchSummary, runtime_v2_groups_win_rate};
 
 const DEFAULT_LIBRARY: &str = "tests/sqp6000.txt";
 const DEFAULT_OUT_DIR: &str = "target/perf_cases";
@@ -388,18 +388,13 @@ fn run_fixed_cases(cases: Vec<(PathBuf, GeneratedCase)>, config: &Config) -> Res
 
 fn bench_generated_case(case: &GeneratedCase, runs: usize, thread: u32) -> Result<BenchRun, String> {
     let (groups, _) = Runner::split_namerena_into_groups(case.input.clone());
-    // 这里遍历的是大量自动生成 case。每个 case 通常只 benchmark 一次，
-    // 没有把模板留在全局缓存里的收益；改走 uncached 后，离线批量分析时常驻内存更稳定。
-    let prepared = Runner::prepare_groups_with_eval_rq_uncached(&groups, WIN_RATE_EVAL_RQ)
-        .map_err(|e| format!("prepare 失败({}): {e}", case_id(case.mode, case.input_hash)))?;
-
     let started = Instant::now();
-    let summary = prepared_win_rate(&prepared, runs, WIN_RATE_EVAL_RQ, thread)
+    let summary = runtime_v2_groups_win_rate(&groups, runs, WIN_RATE_EVAL_RQ, thread)
         .map_err(|e| format!("benchmark 失败({}): {e}", case_id(case.mode, case.input_hash)))?;
     Ok(bench_run_from_summary(summary, started.elapsed()))
 }
 
-fn bench_run_from_summary(summary: WinRateSummary, elapsed: Duration) -> BenchRun {
+fn bench_run_from_summary(summary: RuntimeV2BatchSummary, elapsed: Duration) -> BenchRun {
     let total = summary.total.max(1) as f64;
     let elapsed_s = elapsed.as_secs_f64();
     BenchRun {
