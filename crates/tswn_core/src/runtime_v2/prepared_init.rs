@@ -98,6 +98,8 @@ pub struct PreparedBattleSeed {
     teams: Vec<usize>,
     speed_points: Vec<i32>,
     rng: RC4,
+    sort_ints: Vec<i32>,
+    battle_groups: Vec<Vec<PlrId>>,
 }
 
 impl PreparedBattleRoster {
@@ -217,75 +219,102 @@ impl PreparedBattleRoster {
     }
 
     pub fn seed_state(&self, seed: &[String]) -> PreparedBattleSeed {
+        let mut state = PreparedBattleSeed {
+            input_groups: Vec::with_capacity(self.input_groups.len()),
+            round_order: Vec::with_capacity(self.players.len()),
+            team_roster: Vec::with_capacity(self.input_groups.len()),
+            team_alive: Vec::with_capacity(self.input_groups.len()),
+            flat_alive: Vec::with_capacity(self.players.len()),
+            teams: vec![0; self.players.len()],
+            speed_points: vec![0; self.players.len()],
+            rng: RC4::default(),
+            sort_ints: vec![0; self.players.len()],
+            battle_groups: self.input_groups.clone(),
+        };
+        self.refill_seed_state(seed, &mut state);
+        state
+    }
+
+    /// 原地刷新 seed 状态，供同一 worker 的连续对局复用所有小向量容量。
+    pub fn refill_seed_state(&self, seed: &[String], state: &mut PreparedBattleSeed) {
         let key = PreparedBattleInit::rc4_key_with_seed(&self.base_names_sorted, seed);
         let mut rng = RC4::new(key.as_bytes(), 1);
         rng.js_xor_str(&key);
 
-        let mut sort_ints = vec![0; self.players.len()];
+        state.sort_ints.clear();
+        state.sort_ints.resize(self.players.len(), 0);
         for &id in &self.sorted_by_id_name {
-            sort_ints[id] = rng.rFFFFFF() as i32;
+            state.sort_ints[id] = rng.rFFFFFF() as i32;
         }
 
-        let mut battle_groups = self.input_groups.clone();
-        for group in &mut battle_groups {
-            group.sort_by(|left, right| PreparedBattleInit::cmp_player_keys(&sort_ints, &self.id_key_names, *left, *right));
+        state.battle_groups.clone_from(&self.input_groups);
+        for group in &mut state.battle_groups {
+            group.sort_by(|left, right| PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, *left, *right));
         }
-        let input_groups = battle_groups.iter().map(|group| PreparedBattleInit::entity_order(group)).collect();
-        battle_groups.sort_by(|left, right| match (left.first(), right.first()) {
-            (Some(left), Some(right)) => PreparedBattleInit::cmp_player_keys(&sort_ints, &self.id_key_names, *left, *right),
+        Self::refill_entity_groups(&mut state.input_groups, &state.battle_groups);
+        state.battle_groups.sort_by(|left, right| match (left.first(), right.first()) {
+            (Some(left), Some(right)) => PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, *left, *right),
             (None, Some(_)) => std::cmp::Ordering::Less,
             (Some(_), None) => std::cmp::Ordering::Greater,
             (None, None) => std::cmp::Ordering::Equal,
         });
 
-        for group in &battle_groups {
+        for group in &state.battle_groups {
             for player in group {
                 rng.encrypt_bytes_no_change(&self.id_key_names[*player]);
             }
             rng.encrypt_bytes(&mut [0]);
         }
 
-        let mut teams = vec![0; self.players.len()];
-        for (team, group) in battle_groups.iter().enumerate() {
+        state.teams.clear();
+        state.teams.resize(self.players.len(), 0);
+        for (team, group) in state.battle_groups.iter().enumerate() {
             for &player in group {
-                teams[player] = team;
+                state.teams[player] = team;
             }
         }
 
-        let mut round_order = battle_groups.iter().flatten().copied().collect::<Vec<_>>();
-        round_order.sort_by(|left, right| PreparedBattleInit::cmp_player_keys(&sort_ints, &self.id_key_names, *left, *right));
-        let mut speed_points = vec![0; self.players.len()];
-        for &player in &round_order {
-            speed_points[player] = rng.r255() as i32;
+        state.round_order.clear();
+        state
+            .round_order
+            .extend(state.battle_groups.iter().flatten().copied().map(PreparedBattleInit::entity_idx));
+        state.round_order.sort_by(|left, right| {
+            PreparedBattleInit::cmp_player_keys(&state.sort_ints, &self.id_key_names, left.0 as usize, right.0 as usize)
+        });
+        state.speed_points.clear();
+        state.speed_points.resize(self.players.len(), 0);
+        for &player in &state.round_order {
+            state.speed_points[player.0 as usize] = rng.r255() as i32;
         }
 
-        let team_roster = battle_groups
-            .iter()
-            .map(|group| PreparedBattleInit::entity_order(group))
-            .collect::<Vec<_>>();
-        let team_alive = battle_groups
-            .iter()
-            .map(|group| {
+        Self::refill_entity_groups(&mut state.team_roster, &state.battle_groups);
+        Self::resize_nested_groups(&mut state.team_alive, state.battle_groups.len());
+        for (alive, group) in state.team_alive.iter_mut().zip(&state.battle_groups) {
+            alive.clear();
+            alive.extend(
                 group
                     .iter()
                     .copied()
                     .filter(|id| self.players[*id].alive)
-                    .map(PreparedBattleInit::entity_idx)
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        let flat_alive = team_alive.iter().flatten().copied().collect();
-
-        PreparedBattleSeed {
-            input_groups,
-            round_order: PreparedBattleInit::entity_order(&round_order),
-            team_roster,
-            team_alive,
-            flat_alive,
-            teams,
-            speed_points,
-            rng,
+                    .map(PreparedBattleInit::entity_idx),
+            );
         }
+        state.flat_alive.clear();
+        state.flat_alive.extend(state.team_alive.iter().flatten().copied());
+        state.rng = rng;
+    }
+
+    fn refill_entity_groups(target: &mut Vec<Vec<EntityIdx>>, source: &[Vec<PlrId>]) {
+        Self::resize_nested_groups(target, source.len());
+        for (target, source) in target.iter_mut().zip(source) {
+            target.clear();
+            target.extend(source.iter().copied().map(PreparedBattleInit::entity_idx));
+        }
+    }
+
+    fn resize_nested_groups(groups: &mut Vec<Vec<EntityIdx>>, len: usize) {
+        groups.truncate(len);
+        groups.resize_with(len, Vec::new);
     }
 
     pub fn input_groups(&self) -> Vec<Vec<EntityIdx>> {
@@ -312,7 +341,7 @@ impl PreparedBattleSeed {
         }
     }
 
-    pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
+    fn apply_entities(&self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
         if self.teams.len() != runtime.entities.len() {
             return Err(RuntimeV2BattleInitError::EntityCountMismatch {
                 prepared: self.teams.len(),
@@ -352,6 +381,12 @@ impl PreparedBattleSeed {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
+        self.apply_entities(runtime)?;
+
         runtime.world.sync_initial_views(
             &runtime.entities,
             self.round_order,
@@ -360,6 +395,21 @@ impl PreparedBattleSeed {
             self.flat_alive,
         );
         runtime.rng = self.rng;
+        runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
+        Ok(())
+    }
+
+    /// 将 seed 状态应用到已复位的 runtime，同时保留本对象和 world 内部向量的容量。
+    pub fn apply_reusing(&self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
+        self.apply_entities(runtime)?;
+        runtime.world.sync_initial_views_reusing(
+            &runtime.entities,
+            &self.round_order,
+            &self.team_roster,
+            &self.team_alive,
+            &self.flat_alive,
+        );
+        runtime.rng.clone_from(&self.rng);
         runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
         Ok(())
     }

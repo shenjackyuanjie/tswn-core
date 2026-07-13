@@ -381,6 +381,37 @@ mod tests {
     }
 
     #[test]
+    fn reusable_runner_reset_matches_fresh_runner_after_mutating_fights() {
+        let groups = vec![
+            vec!["Don't_Force_It #f4fMecHe1@Shabby_fish".to_owned()],
+            vec!["涵虚不等式 PFVKEUPBU@TigerStar".to_owned()],
+        ];
+        let config = default_custom_runtime_v2_import_config().expect("默认 Runtime v2 配置应构建成功");
+        let prepared = PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(
+            &groups,
+            crate::player::eval_name::DEFAULT_EVAL_RQ,
+            config,
+        )
+        .expect("CQP 对局应准备成功");
+        let mut reusable = prepared.new_reusable_runner();
+        let mut seed = String::with_capacity(24);
+
+        for round in 0..200 {
+            let seed = profile_seed_for_round(&mut seed, round);
+            prepared.reset_with_seed(&mut reusable, seed).expect("复用 runner 应复位成功");
+            let reused = reusable.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
+
+            let mut fresh = prepared.new_with_seed(seed).expect("全新 runner 应构建成功");
+            let expected = fresh.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
+            assert_eq!(
+                (reused.winner_team, reusable.input_group_won(0), reused.guard_exhausted),
+                (expected.winner_team, fresh.input_group_won(0), expected.guard_exhausted),
+                "round={round}"
+            );
+        }
+    }
+
+    #[test]
     fn runtime_v2_score_matches_legacy_profile_rounds() {
         let target_group = vec!["mario".to_owned()];
         let legacy = crate::cli_api::score("mario", 200, "normal", Some(crate::player::eval_name::WIN_RATE_EVAL_RQ), 1)

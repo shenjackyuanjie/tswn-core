@@ -1,3 +1,4 @@
+use super::prepared_init::PreparedBattleSeed;
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,7 @@ impl PreparedCombatTemplate {
 pub struct RuntimeV2Runner {
     pub runtime: CombatRuntime,
     pub input_groups: Vec<Vec<EntityIdx>>,
+    prepared_seed: Option<PreparedBattleSeed>,
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +190,7 @@ impl RuntimeV2Runner {
         Self {
             runtime: CombatRuntime::from_template(template),
             input_groups,
+            prepared_seed: None,
         }
     }
 
@@ -597,10 +600,18 @@ impl PreparedRuntimeV2Runner {
 
     pub fn reset_with_seed(&self, runner: &mut RuntimeV2Runner, seed: &[String]) -> Result<(), CustomRuntimeV2ImportError> {
         self.reset_mutable_battle_state(runner);
-        let seed_state = self.battle_roster.seed_state(seed);
-        runner.input_groups = seed_state.input_groups().to_vec();
-        seed_state.apply(&mut runner.runtime)?;
-        Ok(())
+        let (mut seed_state, needs_refill) = match runner.prepared_seed.take() {
+            Some(seed_state) => (seed_state, true),
+            None => (self.battle_roster.seed_state(seed), false),
+        };
+        if needs_refill {
+            self.battle_roster.refill_seed_state(seed, &mut seed_state);
+        }
+
+        Self::clone_input_groups_reusing(&mut runner.input_groups, seed_state.input_groups());
+        let result = seed_state.apply_reusing(&mut runner.runtime).map_err(Into::into);
+        runner.prepared_seed = Some(seed_state);
+        result
     }
 
     /// 复用同一 runtime/registry 形状，以一份新 roster 构造对局。
@@ -635,7 +646,10 @@ impl PreparedRuntimeV2Runner {
     }
 
     fn reset_with_init(&self, runner: &mut RuntimeV2Runner, init: PreparedBattleInit) -> Result<(), CustomRuntimeV2ImportError> {
-        self.reset_mutable_battle_state(runner);
+        // score 路径每轮都会换 profile 名字，身份字段并不固定，不能使用 CQP 的热字段复位。
+        runner.runtime.entities.clone_from(&self.prototype.runtime.entities);
+        self.reset_shared_battle_state(runner);
+        runner.prepared_seed = None;
         runner.input_groups = init.input_groups().to_vec();
         init.apply(&mut runner.runtime)?;
         runner.validate_ready()?;
@@ -643,7 +657,11 @@ impl PreparedRuntimeV2Runner {
     }
 
     fn reset_mutable_battle_state(&self, runner: &mut RuntimeV2Runner) {
-        runner.runtime.entities.clone_from(&self.prototype.runtime.entities);
+        runner.runtime.entities.reset_battle_state_from(&self.prototype.runtime.entities);
+        self.reset_shared_battle_state(runner);
+    }
+
+    fn reset_shared_battle_state(&self, runner: &mut RuntimeV2Runner) {
         runner.runtime.scheduler.clone_from(&self.prototype.runtime.scheduler);
         runner.runtime.effects.clear();
         runner.runtime.scratch.clear();
@@ -651,6 +669,15 @@ impl PreparedRuntimeV2Runner {
         #[cfg(not(feature = "no_debug"))]
         runner.runtime.trace.clone_from(&self.prototype.runtime.trace);
         runner.runtime.round = 0;
+    }
+
+    fn clone_input_groups_reusing(target: &mut Vec<Vec<EntityIdx>>, source: &[Vec<EntityIdx>]) {
+        target.truncate(source.len());
+        target.resize_with(source.len(), Vec::new);
+        for (target, source) in target.iter_mut().zip(source) {
+            target.clear();
+            target.extend_from_slice(source);
+        }
     }
 
     pub fn input_groups(&self) -> Vec<Vec<EntityIdx>> { self.battle_roster.input_groups() }

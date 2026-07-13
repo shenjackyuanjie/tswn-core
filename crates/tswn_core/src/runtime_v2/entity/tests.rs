@@ -29,6 +29,26 @@ fn entity_records_start_with_empty_state_store() {
 }
 
 #[test]
+fn arena_battle_reset_restores_hot_state_and_discards_spawned_entities() {
+    let registry = ExtensionRegistry::default();
+    let mut arena =
+        EntityArena::from_templates_with_registry(vec![PlayerTemplate::new(1, "left", 0, 100, 30).with_magic(40)], &registry);
+    let prepared = arena.clone();
+
+    let entity = arena.get_mut(EntityIdx(0)).unwrap();
+    entity.template.attack = 999;
+    entity.template.team = 3;
+    entity.runtime.hp = 1;
+    entity.runtime.attack = 999;
+    entity.states.add_legacy_key(42);
+    arena.spawn_from_template(PlayerTemplate::new(2, "spawned", 1, 10, 1), &registry);
+
+    arena.reset_battle_state_from(&prepared);
+
+    assert_eq!(arena, prepared);
+}
+
+#[test]
 fn compressed_legacy_states_reserve_registration_order_without_adding_hook_entries() {
     let mut states = StateStore::default();
 

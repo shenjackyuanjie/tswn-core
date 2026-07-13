@@ -377,6 +377,36 @@ impl PlayerTemplate {
         self.attract_bits = stats.attract_bits;
     }
 
+    /// 从准备模板恢复一场战斗可能修改的热字段。
+    ///
+    /// 名字和策略等冷数据在固定 roster 的连续对局间不会变化；技能等级和 clone build
+    /// 会被升级、驱散、合体等机制修改，仍必须恢复。避免整份 `PlayerTemplate::clone_from`
+    /// 可以省掉每局重复复制身份字符串。
+    pub fn reset_battle_fields_from(&mut self, prepared: &Self) {
+        debug_assert_eq!(self.id, prepared.id);
+        debug_assert_eq!(self.name, prepared.name);
+        debug_assert_eq!(self.id_key_name, prepared.id_key_name);
+        debug_assert_eq!(self.clan_name, prepared.clan_name);
+        self.skills.clone_from(&prepared.skills);
+        self.team = prepared.team;
+        self.max_hp = prepared.max_hp;
+        self.attack = prepared.attack;
+        self.magic = prepared.magic;
+        self.magic_point = prepared.magic_point;
+        self.wisdom = prepared.wisdom;
+        self.speed = prepared.speed;
+        self.defense = prepared.defense;
+        self.resistance = prepared.resistance;
+        self.agility = prepared.agility;
+        self.at_boost_bits = prepared.at_boost_bits;
+        self.at_boost_millionths = prepared.at_boost_millionths;
+        self.attr_sum = prepared.attr_sum;
+        self.atk_sum = prepared.atk_sum;
+        self.attract_bits = prepared.attract_bits;
+        self.move_state = prepared.move_state;
+        self.clone_build.clone_from(&prepared.clone_build);
+    }
+
     pub fn reuse_summon_stats_from(&mut self, source: &Self) {
         self.max_hp = source.max_hp;
         self.attack = source.attack;

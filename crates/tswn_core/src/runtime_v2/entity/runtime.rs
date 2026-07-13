@@ -446,6 +446,14 @@ impl EntityRecord {
         messages
     }
 
+    /// 恢复固定 roster 中实体的可变战斗状态，同时保留模板冷数据的既有分配。
+    pub fn reset_battle_state_from(&mut self, prepared: &Self) {
+        self.template.reset_battle_fields_from(&prepared.template);
+        self.runtime.clone_from(&prepared.runtime);
+        self.states.clone_from(&prepared.states);
+        self.slots.clone_from(&prepared.slots);
+    }
+
     fn refresh_runtime_at_boost(&mut self) {
         let mut at_boost = f64::from_bits(self.template.at_boost_bits);
         if self.runtime.charge.active {
@@ -494,6 +502,20 @@ impl EntityArena {
     pub fn len(&self) -> usize { self.entities.len() }
 
     pub fn is_empty(&self) -> bool { self.entities.is_empty() }
+
+    /// 从准备好的 arena 恢复下一局，并丢弃上一局生成的召唤物、分身和实体空洞。
+    pub fn reset_battle_state_from(&mut self, prepared: &Self) {
+        self.entities.truncate(prepared.entities.len());
+        if self.entities.len() < prepared.entities.len() {
+            self.entities.resize_with(prepared.entities.len(), || None);
+        }
+        for (current, prepared) in self.entities.iter_mut().zip(&prepared.entities) {
+            match (current.as_mut(), prepared.as_ref()) {
+                (Some(current), Some(prepared)) => current.reset_battle_state_from(prepared),
+                _ => current.clone_from(prepared),
+            }
+        }
+    }
 
     pub fn get(&self, idx: EntityIdx) -> Option<&EntityRecord> { self.entities.get(idx.0 as usize).and_then(Option::as_ref) }
 

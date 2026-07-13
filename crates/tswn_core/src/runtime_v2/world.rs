@@ -68,6 +68,50 @@ impl WorldArena {
         self.winner_team = None;
     }
 
+    /// 复用现有世界视图的向量容量，同步一局新的初始顺序。
+    pub fn sync_initial_views_reusing(
+        &mut self,
+        entities: &EntityArena,
+        round_order: &[EntityIdx],
+        team_roster: &[Vec<EntityIdx>],
+        team_alive: &[Vec<EntityIdx>],
+        flat_alive: &[EntityIdx],
+    ) {
+        debug_assert!(round_order.iter().all(|idx| entities.get(*idx).is_some()));
+        debug_assert!(team_roster.iter().enumerate().all(|(team, roster)| {
+            roster
+                .iter()
+                .all(|idx| entities.get(*idx).is_some_and(|entity| entity.runtime.team == team))
+        }));
+        debug_assert!(flat_alive.iter().all(|idx| entities.get(*idx).is_some_and(|entity| entity.runtime.alive)));
+        debug_assert!(team_alive.iter().enumerate().all(|(team, alive)| alive.iter().all(|idx| {
+            entities
+                .get(*idx)
+                .is_some_and(|entity| entity.runtime.alive && entity.runtime.team == team)
+        })));
+
+        Self::clone_slice_reusing(&mut self.round_order, round_order);
+        Self::clone_nested_reusing(&mut self.team_roster, team_roster);
+        Self::clone_nested_reusing(&mut self.team_alive, team_alive);
+        Self::clone_slice_reusing(&mut self.flat_alive, flat_alive);
+        self.alive_group_count = self.team_alive.iter().filter(|team| !team.is_empty()).count();
+        self.round_pos = -1;
+        self.winner_team = None;
+    }
+
+    fn clone_slice_reusing<T: Copy>(target: &mut Vec<T>, source: &[T]) {
+        target.clear();
+        target.extend_from_slice(source);
+    }
+
+    fn clone_nested_reusing<T: Copy>(target: &mut Vec<Vec<T>>, source: &[Vec<T>]) {
+        target.truncate(source.len());
+        target.resize_with(source.len(), Vec::new);
+        for (target, source) in target.iter_mut().zip(source) {
+            Self::clone_slice_reusing(target, source);
+        }
+    }
+
     pub fn next_actor(&mut self, entities: &EntityArena) -> Option<EntityIdx> {
         if self.round_order.is_empty() {
             return None;
