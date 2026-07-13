@@ -40,7 +40,7 @@ impl BatchRateSummary {}
 
 #[derive(Debug, Clone)]
 pub enum BatchTargetOutcome {
-    Rate { percent: f64 },
+    Rate,
     Skipped,
 }
 
@@ -104,14 +104,7 @@ pub fn bench_batch_rate_for_group(
                 accumulated_total += summary.total;
                 _accumulated_timing.merge(summary.timing);
                 valid_matchups += 1;
-                tick_target(
-                    index,
-                    target_total,
-                    target,
-                    BatchTargetOutcome::Rate {
-                        percent: summary.win_rate_percent(),
-                    },
-                );
+                tick_target(index, target_total, target, BatchTargetOutcome::Rate);
             }
             Err(err) => {
                 skipped_matchups += 1;

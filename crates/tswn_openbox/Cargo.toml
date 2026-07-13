@@ -1,7 +1,7 @@
 [package]
 name = "tswn_openbox"
 description = "A simple interactive panel for common tswn tools"
-version = "0.3.11"
+version = "0.3.12"
 edition = "2024"
 
 [dependencies]
@@ -10,9 +10,9 @@ rfd = "0.17.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "1.1.2"
-tswn_core = { path = "../tswn_core", features = ["no_debug"] }
+tswn_core = { path = "../tswn_core", default-features = false, features = ["no_debug", "png_render"] }
 
 [features]
-default = []
+default = ["mimalloc_alloc"]
 no_debug = ["tswn_core/no_debug"]
 mimalloc_alloc = ["tswn_core/mimalloc_alloc"]

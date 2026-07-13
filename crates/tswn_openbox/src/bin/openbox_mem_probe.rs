@@ -154,7 +154,7 @@ fn read_limited_lines(path: &PathBuf, limit: Option<usize>) -> String {
 
 fn report(started: Instant, stats: &Stats) {
     eprintln!(
-        "t={:.1}s rss_kb={} progress={}/{} events={} logs={} log_kb={} highlights={}",
+        "t={:.6}s rss_kb={} progress={}/{} events={} logs={} log_kb={} highlights={}",
         started.elapsed().as_secs_f64(),
         current_rss_kb(),
         stats.last_done,
