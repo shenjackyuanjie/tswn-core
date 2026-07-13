@@ -277,6 +277,16 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
+        self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(plan, updates, defend_value, PlainAttackOnDamage::None);
+    }
+
+    pub fn drain_skill_hook_plan_with_defend_value_and_on_damage_into(
+        &mut self,
+        plan: &SkillHookPlan,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+        on_damage: PlainAttackOnDamage,
+    ) {
         for entry in &plan.entries {
             let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
                 static_handler
@@ -300,7 +310,8 @@ impl CombatRuntime {
                     *entry,
                     capabilities,
                 )
-                .with_defend_value(defend_value);
+                .with_defend_value(defend_value)
+                .with_defend_on_damage(on_damage);
                 handler(&mut context, entry);
             }
             self.drain_effects_into(updates);
@@ -322,6 +333,75 @@ impl CombatRuntime {
         self.drain_state_hook_plan_with_action_smart_into(plan, updates, None)
     }
 
+    pub fn drain_state_hook_entry_into(&mut self, hook: ProcMask, entry: StateHookPlanEntry, updates: &mut RunUpdates) -> bool {
+        self.drain_state_hook_entry_with_deferred_clears_into(hook, entry, updates, None)
+    }
+
+    pub(crate) fn drain_state_hook_entry_with_deferred_clears_into(
+        &mut self,
+        hook: ProcMask,
+        entry: StateHookPlanEntry,
+        updates: &mut RunUpdates,
+        deferred_owner_state_clears: Option<&mut Vec<u32>>,
+    ) -> bool {
+        if self
+            .entities
+            .get(entry.owner)
+            .and_then(|entity| entity.states.entry(entry.legacy_order_key))
+            .is_none()
+        {
+            return false;
+        }
+        let Some(state_id) = entry.state_id else {
+            return false;
+        };
+        let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_state_handler(state_id) {
+            static_handler
+        } else {
+            let Some(handler) = self.state_handlers.get(state_id) else {
+                panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
+            };
+            let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
+            (handler, capabilities)
+        };
+        let action_intercepted = {
+            let context = StateContext::new(
+                &mut self.entities,
+                &mut self.world,
+                &self.template_slots,
+                &mut self.slots,
+                &mut self.effects,
+                updates,
+                &mut self.rng,
+                entry,
+                hook,
+                capabilities,
+            );
+            let mut context = if let Some(clears) = deferred_owner_state_clears {
+                context.with_deferred_owner_state_clears(clears)
+            } else {
+                context
+            };
+            handler(&mut context, &entry);
+            context.action_intercepted()
+        };
+        self.drain_effects_into(updates);
+        action_intercepted
+    }
+
+    pub(crate) fn flush_deferred_owner_state_clears(&mut self, owner: EntityIdx, clears: &[u32]) {
+        let Some(owner) = self.entities.get_mut(owner) else {
+            return;
+        };
+        let mut changed = false;
+        for legacy_order_key in clears {
+            changed |= owner.states.clear_legacy_key(*legacy_order_key);
+        }
+        if changed {
+            owner.refresh_runtime_stats_from_template();
+        }
+    }
+
     pub fn drain_state_hook_plan_with_action_smart_into(
         &mut self,
         plan: &StateHookPlan,
@@ -335,6 +415,9 @@ impl CombatRuntime {
         let mut executed_legacy_keys = Vec::new();
         while let Some(entry) = entries.get(cursor).copied() {
             cursor += 1;
+            if executed_legacy_keys.contains(&entry.legacy_order_key) {
+                continue;
+            }
             if self
                 .entities
                 .get(entry.owner)
@@ -400,6 +483,52 @@ impl CombatRuntime {
         action_intercepted
     }
 
+    pub fn drain_state_hook_entry_with_defend_value_into(
+        &mut self,
+        hook: ProcMask,
+        entry: StateHookPlanEntry,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+    ) {
+        if self
+            .entities
+            .get(entry.owner)
+            .and_then(|entity| entity.states.entry(entry.legacy_order_key))
+            .is_none()
+        {
+            return;
+        }
+        let Some(state_id) = entry.state_id else {
+            return;
+        };
+        let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_state_handler(state_id) {
+            static_handler
+        } else {
+            let Some(handler) = self.state_handlers.get(state_id) else {
+                panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
+            };
+            let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
+            (handler, capabilities)
+        };
+        {
+            let mut context = StateContext::new(
+                &mut self.entities,
+                &mut self.world,
+                &self.template_slots,
+                &mut self.slots,
+                &mut self.effects,
+                updates,
+                &mut self.rng,
+                entry,
+                hook,
+                capabilities,
+            )
+            .with_defend_value(defend_value);
+            handler(&mut context, &entry);
+        }
+        self.drain_effects_into(updates);
+    }
+
     pub fn drain_state_hook_plan_with_defend_value_into(
         &mut self,
         plan: &StateHookPlan,
@@ -412,6 +541,9 @@ impl CombatRuntime {
         let mut executed_legacy_keys = Vec::new();
         while let Some(entry) = entries.get(cursor).copied() {
             cursor += 1;
+            if executed_legacy_keys.contains(&entry.legacy_order_key) {
+                continue;
+            }
             if self
                 .entities
                 .get(entry.owner)
@@ -428,36 +560,11 @@ impl CombatRuntime {
                 continue;
             }
 
-            let Some(state_id) = entry.state_id else {
+            if entry.state_id.is_none() {
                 continue;
-            };
-            let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_state_handler(state_id) {
-                static_handler
-            } else {
-                let Some(handler) = self.state_handlers.get(state_id) else {
-                    panic!("missing runtime_v2 state handler implementation: {}", state_id.0);
-                };
-                let capabilities = self.state_handlers.capabilities(state_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
-                (handler, capabilities)
-            };
-            {
-                let mut context = StateContext::new(
-                    &mut self.entities,
-                    &mut self.world,
-                    &self.template_slots,
-                    &mut self.slots,
-                    &mut self.effects,
-                    updates,
-                    &mut self.rng,
-                    entry,
-                    plan.hook,
-                    capabilities,
-                )
-                .with_defend_value(defend_value);
-                handler(&mut context, &entry);
             }
+            self.drain_state_hook_entry_with_defend_value_into(plan.hook, entry, updates, defend_value);
             executed_legacy_keys.push(entry.legacy_order_key);
-            self.drain_effects_into(updates);
             let current_generation = self.entities.get(entry.owner).map(|entity| entity.states.generation());
             if current_generation != Some(store_generation) {
                 let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);

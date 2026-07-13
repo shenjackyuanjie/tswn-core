@@ -389,11 +389,21 @@ impl CombatRuntime {
     }
 
     pub fn emit_plain_lethal_replay_into(&self, caster: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        let die_message = if self.entities.get(target).is_some_and(|entity| entity.runtime.is_combat_minion()) {
-            "[1]消失了"
-        } else {
-            "[1]被击倒了"
-        };
+        let target_entity = self
+            .entities
+            .get(target)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 lethal replay target: {}", target.0));
+        let is_combat_minion = target_entity.runtime.is_combat_minion();
+        if is_combat_minion
+            && !self
+                .entities
+                .iter()
+                .any(|(_, entity)| entity.runtime.alive && entity.runtime.team != target_entity.runtime.team)
+        {
+            // legacy 在战斗已结束时抑制战斗召唤物自身的死亡日志；典型路径是使魔自爆击倒最后敌人。
+            return;
+        }
+        let die_message = if is_combat_minion { "[1]消失了" } else { "[1]被击倒了" };
         updates.add_newline();
         updates.add(crate::engine::update::RunUpdate::new(
             die_message,

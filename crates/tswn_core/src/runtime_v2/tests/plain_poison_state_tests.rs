@@ -144,6 +144,70 @@ fn run_state_hooks_poison_post_action_emits_death_before_die_hooks() {
 }
 
 #[test]
+fn run_state_hooks_poison_post_action_emits_release_after_die_hook_reraises_owner() {
+    fn reraise_owner(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
+        context.reraise_owner(entry, 5).expect("reraise owner should exist");
+    }
+
+    let mut builder = ExtensionRegistryBuilder::default();
+    let poison_state = builder
+        .register_state("core", "poison", "core.poison", ProcMask::POST_ACTION, SkillPriority(150))
+        .expect("poison state should register");
+    let reraise_skill = builder
+        .register_skill_with_hooks(
+            "core",
+            "reraise",
+            "core.reraise",
+            ProcMask::DIE,
+            TargetPolicy::None,
+            SkillPriority(10),
+        )
+        .expect("reraise skill should register");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3)
+                .with_magic(16)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(reraise_skill, 127)])),
+            PlayerTemplate::new(2, "right", 1, 40, 3),
+        ],
+        builder.build(),
+    ));
+    runtime.set_state_handler(poison_state, run_poison_post_action_state);
+    runtime.set_skill_handler(reraise_skill, reraise_owner);
+    {
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        owner.runtime.hp = 3;
+        owner.states.add_entry(StateEntry::poison(
+            75,
+            poison_state,
+            Some(1),
+            Some(0),
+            240.0,
+            1,
+            SkillPriority(150),
+        ));
+    }
+
+    let frame = runtime
+        .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+        .expect("reraise poison tick should emit updates");
+
+    let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert_eq!(owner.runtime.hp, 5);
+    assert!(owner.runtime.alive);
+    assert_eq!(owner.states.entry(75), None);
+    assert_eq!(
+        frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| update.message == "[1]从[中毒]中解除")
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn run_state_hooks_poison_post_action_skips_dead_owner_without_mutation() {
     let (mut runtime, _) = poison_runtime(40, 160.0, 4);
     runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = false;

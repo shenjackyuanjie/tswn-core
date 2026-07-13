@@ -57,6 +57,7 @@ pub struct SkillSnapshot {
     pub key: SkillKey,
     pub runtime_kind: &'static str,
     pub level: u32,
+    pub boosted: bool,
     pub boost: Option<crate::player::skill::SkillBoost>,
 }
 
@@ -66,6 +67,8 @@ pub struct SkillLoadoutSnapshot {
     pub fixed_lanes: Vec<SkillKey>,
     pub active_order: Vec<SkillKey>,
     pub pre_action_order: Vec<SkillKey>,
+    pub post_damage_order: Vec<SkillKey>,
+    pub post_action_after_states: Vec<(u64, SkillKey)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -181,6 +184,7 @@ pub struct SkillStorage {
 impl SkillStorage {
     pub fn new() -> Self { Self::with_skill_capacity(0) }
 
+    #[cfg(test)]
     pub(crate) fn snapshot(&self) -> SkillLoadoutSnapshot {
         SkillLoadoutSnapshot {
             entries: self
@@ -192,6 +196,7 @@ impl SkillStorage {
                         key,
                         runtime_kind: skill.debug_skill_type_name(),
                         level: skill.level(),
+                        boosted: skill.boosted,
                         boost: skill.diy_boost.clone(),
                     }
                 })
@@ -199,6 +204,8 @@ impl SkillStorage {
             fixed_lanes: self.slot_skill.clone(),
             active_order: self.skill.clone(),
             pre_action_order: self.pre_action.clone(),
+            post_damage_order: self.post_damage.clone(),
+            post_action_after_states: self.post_action_after_states.clone(),
         }
     }
 

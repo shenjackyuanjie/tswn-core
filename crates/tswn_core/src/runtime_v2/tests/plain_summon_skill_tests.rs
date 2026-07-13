@@ -62,6 +62,37 @@ fn plain_summon_spawns_once_then_resets_and_revives_the_same_entity() {
     );
 
     let original_name = summoned_entity.template.name.clone();
+    let original_defense = summoned_entity.template.defense;
+    let original_resistance = summoned_entity.template.resistance;
+    let next_boost_lane = summoned_entity
+        .template
+        .skills
+        .active_order()
+        .iter()
+        .rev()
+        .copied()
+        .find(|lane| {
+            summoned_entity.template.skills.fixed_lane_key_at(*lane)
+                != Some(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY)
+                && summoned_entity.template.skills.level_at(*lane).is_some_and(|level| level > 0)
+                && summoned_entity.template.skills.boosted_at(*lane) == Some(false)
+        })
+        .expect("fixture summon should retain an unboosted active skill for recast");
+    let next_boost_base = summoned_entity.template.skills.level_at(next_boost_lane).unwrap();
+    {
+        let owner_entity = runtime.entities.get_mut(owner).unwrap();
+        let stats = {
+            let build = owner_entity
+                .template
+                .clone_build
+                .as_mut()
+                .expect("summon owner should retain clone build data");
+            build.decay_owner();
+            build.derive_stats()
+        };
+        owner_entity.apply_derived_stats(stats);
+    }
+    assert_ne!(runtime.entities.get(owner).unwrap().template.defense, original_defense);
     {
         let summoned_entity = runtime.entities.get_mut(summoned).unwrap();
         summoned_entity.runtime.hp = 0;
@@ -82,13 +113,55 @@ fn plain_summon_spawns_once_then_resets_and_revives_the_same_entity() {
     let revived = runtime.entities.get(summoned).unwrap();
     assert!(revived.runtime.alive);
     assert_eq!(revived.template.name, original_name);
+    assert_eq!(revived.template.defense, original_defense);
+    assert_eq!(revived.template.resistance, original_resistance);
     assert_eq!(revived.runtime.move_state.speed_points, 2048);
     assert!(revived.states.entries().is_empty());
     assert_eq!(summon_share_level(&runtime, summoned), 0);
+    assert_eq!(revived.template.skills.level_at(next_boost_lane), Some(next_boost_base * 2));
+    assert_eq!(revived.template.skills.boosted_at(next_boost_lane), Some(true));
+    assert_eq!(
+        revived.template.skills.boost_at(next_boost_lane),
+        Some(&crate::player::skill::SkillBoost::LastBoost(next_boost_base))
+    );
     assert_eq!(
         recast_updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
         vec!["[0]使用[血祭]", "召唤出[1]"]
     );
+}
+
+#[test]
+fn summon_explode_self_death_suppresses_disappear_after_last_enemy_dies() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let summon_kind = builder
+        .register_player_kind_with_policies(
+            "core",
+            "summon",
+            "core.summon",
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION | PlayerKindFlags::SUMMON,
+            PlayerKindPolicies::default(),
+        )
+        .expect("summon kind should register");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "owner", 0, 100, 1),
+            PlayerTemplate::with_kind(2, "owner?0", summon_kind, 0, 10, 1),
+            PlayerTemplate::new(3, "last-enemy", 1, 10, 1),
+        ],
+        builder.build(),
+    ));
+    let summon = EntityIdx(1);
+    let enemy = EntityIdx(2);
+    runtime.entities.get_mut(summon).unwrap().runtime.hp = 0;
+    runtime.entities.get_mut(enemy).unwrap().runtime.hp = 0;
+    runtime.entities.get_mut(enemy).unwrap().runtime.alive = false;
+    runtime.world.mark_dead(enemy, 1);
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_summon_explode_self_death_into(summon, &mut updates);
+
+    assert!(!runtime.entities.get(summon).unwrap().runtime.alive);
+    assert!(updates.updates.is_empty());
 }
 
 #[test]

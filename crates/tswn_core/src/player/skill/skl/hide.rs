@@ -82,7 +82,27 @@ impl SkillTrait for HideSkill {
             }
         }
         let alive_allies = alive_candidates.len();
-        if owner_active && alive_allies > 1 && args.1.r63() < level {
+        if !owner_active || alive_allies <= 1 {
+            #[cfg(not(feature = "no_debug"))]
+            if std::env::var_os("TSWN_PROBE_HIDE").is_some() {
+                eprintln!(
+                    "[hide_probe:legacy:skip] target={} level={} owner_active={} alive_allies={} rc4=({}, {})",
+                    args.0, level, owner_active, alive_allies, args.1.i, args.1.j,
+                );
+            }
+            return;
+        }
+        #[cfg(not(feature = "no_debug"))]
+        let rng_before = (args.1.i, args.1.j);
+        let roll = args.1.r63();
+        #[cfg(not(feature = "no_debug"))]
+        if std::env::var_os("TSWN_PROBE_HIDE").is_some() {
+            eprintln!(
+                "[hide_probe:legacy:roll] target={} level={} alive_allies={} roll={} rc4=({}, {}) -> ({}, {})",
+                args.0, level, alive_allies, roll, rng_before.0, rng_before.1, args.1.i, args.1.j,
+            );
+        }
+        if roll < level {
             self.on_update_state = Some(());
             args.3
                 .just_get_player_mut(args.0)

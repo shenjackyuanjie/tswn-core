@@ -45,10 +45,18 @@ impl CombatRuntime {
                     caster,
                     target,
                     atp_bits,
+                    on_damage,
                 } => {
                     self.ensure_effect_entity("reflected attack", "caster", caster);
                     self.ensure_effect_entity("reflected attack", "target", target);
-                    self.drain_plain_attack_with_atp_into(caster, target, true, f64::from_bits(atp_bits), updates);
+                    self.drain_plain_attack_with_atp_and_on_damage_into(
+                        caster,
+                        target,
+                        true,
+                        f64::from_bits(atp_bits),
+                        on_damage,
+                        updates,
+                    );
                     self.entities
                         .get_mut(caster)
                         .expect("runtime_v2 reflected attack caster disappeared")
@@ -61,7 +69,10 @@ impl CombatRuntime {
                     self.ensure_effect_entity("poison tick", "target", target);
                     if self.apply_poison_tick_damage_into(caster, target, amount, updates) {
                         self.drain_plain_lethal_damage_into(caster, target, updates);
-                    } else if self.entities.get(target).map(|entity| entity.runtime.alive).unwrap_or(false) {
+                    }
+                    // 最后一跳毒伤即使一度致死，也可能被护身符在 DIE 钩子中救回。
+                    // legacy 会在整条死亡链结束后按最终存活状态决定是否输出中毒解除。
+                    if self.entities.get(target).map(|entity| entity.runtime.alive).unwrap_or(false) {
                         self.emit_poison_release_if_cleared(target, updates);
                     }
                 }
@@ -86,7 +97,12 @@ impl CombatRuntime {
                         "[0]使用[火球术]",
                         1,
                     ));
-                    self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
+                    self.drain_pre_defend_hooks_with_on_damage_into(
+                        target,
+                        updates,
+                        &mut defend_value,
+                        PlainAttackOnDamage::Fire(fire_state_key),
+                    );
                     let Some(atp) = defend_value.atp() else {
                         panic!("runtime_v2 PRE_DEFEND hooks must leave an atp value");
                     };
@@ -191,9 +207,9 @@ impl CombatRuntime {
                         "[0]使用[净化]",
                         20,
                     ));
-                    // Legacy `DisperseSkill::act_with_level` deliberately calls `Player::defned`
-                    // instead of `Player::attacked`. Therefore disperse skips PRE_DEFEND and
-                    // dodge entirely, but still runs POST_DEFEND before applying damage.
+                    // legacy 的 `DisperseSkill::act_with_level` 会刻意调用 `Player::defned`，
+                    // 而不是 `Player::attacked`。因此驱散完全跳过 PRE_DEFEND 和闪避，
+                    // 但仍会在结算伤害前执行 POST_DEFEND。
                     let amount = (atp / self.entities.get(target).unwrap().runtime.magic_defense() as f64).ceil() as i32;
                     let mut defend_value = RuntimeDefendValue::Damage {
                         value: amount,
@@ -493,15 +509,13 @@ impl CombatRuntime {
                     .derive_stats();
                 caster_entity.apply_derived_stats(stats);
             }
+            let post_action_state_cursor = caster_entity.states.post_action_registration_cursor();
             let before_levels = caster_entity.template.skills.levels().to_vec();
             let merged_skills = caster_entity
                 .template
                 .skills
                 .merge_fixed_lanes_from(&target_skills, caster_entity.runtime.policies.merge);
-            let can_restore_owner_proc_lanes = caster_entity.runtime.owner == caster
-                && caster_entity.runtime.root_owner == caster
-                && !caster_entity.runtime.is_minion();
-            if merged_skills && can_restore_owner_proc_lanes {
+            if merged_skills {
                 let skills = caster_entity.template.skills.skills().to_vec();
                 let after_levels = caster_entity.template.skills.levels().to_vec();
                 for (lane, (before, after)) in before_levels.iter().zip(after_levels.iter()).enumerate() {
@@ -514,6 +528,15 @@ impl CombatRuntime {
                     let Some(skill) = self.registry.skill(skill_id) else {
                         continue;
                     };
+                    // JS 的 x2 会把 Merge 新启用的 early POST_ACTION 钩子插到当前状态队列尾部，
+                    // 后续新增状态仍排在它后面；这里保存当时的状态注册游标，不能只按固定槽位重排。
+                    if skill.hook_mask.intersects(ProcMask::POST_ACTION) && skill.post_action_phase == SkillPostActionPhase::Early
+                    {
+                        caster_entity
+                            .template
+                            .skills
+                            .register_post_action_after_states(lane, post_action_state_cursor);
+                    }
                     if skill.export_name == DEFAULT_CORE_HIDE_SKILL_EXPORT {
                         caster_entity.template.skills.ensure_pre_action_lane(lane);
                     }
@@ -544,11 +567,12 @@ impl CombatRuntime {
         if !merged {
             return false;
         }
-        self.entities
+        let target_entity = self
+            .entities
             .get_mut(target)
-            .unwrap_or_else(|| panic!("runtime_v2 merge target disappeared: {}", target.0))
-            .runtime
-            .corpse = RuntimeCorpseKind::Merge;
+            .unwrap_or_else(|| panic!("runtime_v2 merge target disappeared: {}", target.0));
+        target_entity.states.register_compressed_legacy_state(CompressedLegacyState::Corpse);
+        target_entity.runtime.corpse = RuntimeCorpseKind::Merge;
         updates.add_newline();
         updates.add(crate::engine::update::RunUpdate::new(
             "[0][吞噬]了[1]",

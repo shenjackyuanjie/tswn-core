@@ -287,6 +287,7 @@ impl EntityRecord {
     }
 
     pub fn refresh_runtime_stats_from_template(&mut self) {
+        self.states.refresh_effective_haste_faster();
         let hide_level = self.runtime.hide.map(|hide| hide.level);
         self.runtime.attack = self.template.attack;
         self.runtime.magic = self.template.magic;
@@ -331,6 +332,7 @@ impl EntityRecord {
         if self.runtime.upgrade_active {
             return false;
         }
+        self.states.register_compressed_legacy_state(CompressedLegacyState::Upgrade);
         self.runtime.upgrade_active = true;
         self.runtime.move_state.speed_points += 400;
         self.refresh_runtime_stats_from_template();
@@ -342,6 +344,7 @@ impl EntityRecord {
             return false;
         }
         self.runtime.upgrade_active = false;
+        self.states.clear_compressed_legacy_state(CompressedLegacyState::Upgrade);
         self.refresh_runtime_stats_from_template();
         true
     }
@@ -350,7 +353,9 @@ impl EntityRecord {
         self.runtime.charge.step += 2;
         self.runtime.charge.active = true;
         self.runtime.charge.post_action_active = true;
-        self.refresh_runtime_at_boost();
+        // legacy 的 Charge.act 会立即调用 update_states；除了启用蓄力倍率，
+        // 也会让先前叠加、等待完整属性重算的疾走倍率在本次行动后生效。
+        self.refresh_runtime_stats_from_template();
     }
 
     pub fn tick_charge_post_action(&mut self) -> bool {
@@ -362,7 +367,9 @@ impl EntityRecord {
         if self.runtime.charge.step <= 0 {
             self.runtime.charge.active = false;
             self.runtime.charge.post_action_active = false;
-            self.refresh_runtime_at_boost();
+            // legacy 的 Charge.post_action 会调用 update_states；除了撤销攻击倍率，
+            // 还必须让等待下一次完整重算的疾走倍率正式生效。
+            self.refresh_runtime_stats_from_template();
         }
         true
     }
@@ -374,7 +381,8 @@ impl EntityRecord {
 
         self.runtime.charge.active = false;
         self.runtime.charge.post_action_active = false;
-        self.refresh_runtime_at_boost();
+        // legacy 的 Charge.clear_positive_runtime 同样会调用 update_states。
+        self.refresh_runtime_stats_from_template();
         true
     }
 
@@ -423,11 +431,18 @@ impl EntityRecord {
     }
 
     pub fn clear_positive_messages(&mut self) -> Vec<(i32, &'static str)> {
-        let emit_state_cancel = self.runtime.alive && self.runtime.hp > 0;
         let mut messages = self.clear_positive_runtime_messages();
-        messages.extend(self.states.clear_positive_states_with_ordered_messages(emit_state_cancel));
-        self.refresh_runtime_stats_from_template();
+        messages.extend(self.clear_positive_state_messages());
         messages.sort_unstable_by_key(|(priority, _)| *priority);
+        messages
+    }
+
+    pub fn clear_positive_state_messages(&mut self) -> Vec<(i32, &'static str)> {
+        let emit_state_cancel = self.runtime.alive && self.runtime.hp > 0;
+        self.runtime.shield = 0;
+        self.states.clear_compressed_legacy_state(CompressedLegacyState::Shield);
+        let messages = self.states.clear_positive_states_with_ordered_messages(emit_state_cancel);
+        self.refresh_runtime_stats_from_template();
         messages
     }
 
@@ -461,10 +476,14 @@ impl EntityArena {
             .map(|(idx, template)| {
                 let owner = EntityIdx(idx as u32);
                 let runtime = PlayerRuntime::from_template(&template, registry, owner, owner);
+                let mut states = StateStore::default();
+                if runtime.is_minion() {
+                    states.register_compressed_legacy_state(CompressedLegacyState::Minion);
+                }
                 Some(EntityRecord {
                     template,
                     runtime,
-                    states: StateStore::default(),
+                    states,
                     slots: EntitySlotStorage::from_registry(registry),
                 })
             })
@@ -515,21 +534,31 @@ impl EntityArena {
             let owner_entity = self
                 .get(owner_idx)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 spawn owner entity: {}", owner_idx.0));
-            // Legacy `queue_spawn(owner, child)` assigns the child to the
-            // owner's current world group. Blueprint teams are import-time
-            // placeholders and must not decide runtime ownership.
+            // legacy 的 `queue_spawn(owner, child)` 会把子实体放进 owner 当前所在的世界队伍。
+            // 蓝图中的队伍只是导入期占位值，不能决定运行期归属。
             template.team = owner_entity.runtime.team;
             let policies = template.effective_policies(registry);
             if policies.inherit_owner_def_res {
                 template.defense = owner_entity.runtime.defense;
                 template.resistance = owner_entity.runtime.resistance;
             }
+            let root_clan_name = self
+                .get(root_owner)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 spawn root owner entity: {}", root_owner.0))
+                .template
+                .clan_name
+                .clone();
+            template.set_runtime_clan_name(root_clan_name);
         }
         let runtime = PlayerRuntime::from_template(&template, registry, owner, root_owner);
+        let mut states = StateStore::default();
+        if runtime.is_minion() {
+            states.register_compressed_legacy_state(CompressedLegacyState::Minion);
+        }
         self.entities.push(Some(EntityRecord {
             template,
             runtime,
-            states: StateStore::default(),
+            states,
             slots: EntitySlotStorage::from_registry(registry),
         }));
         idx

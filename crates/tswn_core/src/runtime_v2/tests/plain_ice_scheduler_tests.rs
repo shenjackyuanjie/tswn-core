@@ -25,3 +25,35 @@ fn ice_pre_step_positive_step_releases_when_crossing_threshold() {
     assert!(released);
     assert!(!states.is_frozen());
 }
+
+#[test]
+fn ice_release_keeps_action_when_saved_move_points_already_crossed_threshold() {
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
+        PlayerTemplate::new(1, "frozen", 0, 100, 3)
+            .with_speed(1)
+            .with_speed_points(crate::player::MOVE_POINT_THRESHOLD + 1),
+        PlayerTemplate::new(2, "target", 1, 100, 3).with_speed(1),
+    ]));
+    runtime
+        .entities
+        .get_mut(EntityIdx(0))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 0));
+    while {
+        let mut probe = runtime.rng.clone();
+        probe.next_u8() & 3 == 0
+    } {
+        runtime.rng.next_u8();
+    }
+
+    let action = runtime
+        .scheduler
+        .select_action(&mut runtime.world, &mut runtime.entities, &mut runtime.rng)
+        .expect("ice release should keep the pending action");
+
+    assert_eq!(action.actor, EntityIdx(0));
+    assert_eq!(runtime.scheduler.take_ice_release_events().as_slice(), &[EntityIdx(0)]);
+    assert!(!runtime.entities.get(EntityIdx(0)).unwrap().states.is_frozen());
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points, 1);
+}

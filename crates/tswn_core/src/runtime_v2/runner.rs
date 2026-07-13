@@ -30,6 +30,7 @@ impl PreparedCombatTemplate {
 #[derive(Debug, Clone)]
 pub struct RuntimeV2Runner {
     pub runtime: CombatRuntime,
+    pub input_groups: Vec<Vec<EntityIdx>>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +38,22 @@ pub struct RuntimeV2RunSummary {
     pub rounds: Vec<RoundOutcome>,
     pub winner_team: Option<usize>,
     pub guard_exhausted: bool,
+}
+
+/// 不保留逐回合帧的批量对局结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuntimeV2CompletionSummary {
+    pub rounds: usize,
+    pub winner_team: Option<usize>,
+    pub guard_exhausted: bool,
+}
+
+/// 可反复按不同 seed 构造 Runtime v2 对局的模板。
+#[derive(Debug, Clone)]
+pub struct PreparedRuntimeV2Runner {
+    prototype: RuntimeV2Runner,
+    battle_roster: PreparedBattleRoster,
+    skill_import: PlainLegacySkillImportMap,
 }
 
 impl RuntimeV2RunSummary {
@@ -167,9 +184,20 @@ impl RuntimeDefendValue {
 
 impl RuntimeV2Runner {
     pub fn from_template(template: PreparedCombatTemplate) -> Self {
+        let input_groups = Self::input_groups_from_templates(&template.players);
         Self {
             runtime: CombatRuntime::from_template(template),
+            input_groups,
         }
+    }
+
+    fn input_groups_from_templates(players: &[PlayerTemplate]) -> Vec<Vec<EntityIdx>> {
+        let team_count = players.iter().map(|player| player.team).max().map_or(0, |team| team + 1);
+        let mut groups = vec![Vec::new(); team_count];
+        for (index, player) in players.iter().enumerate() {
+            groups[player.team].push(EntityIdx(index.try_into().expect("runtime v2 input entity index overflow")));
+        }
+        groups.into_iter().filter(|group| !group.is_empty()).collect()
     }
 
     pub fn from_custom_bed2_roster(
@@ -228,9 +256,19 @@ impl RuntimeV2Runner {
         raw_input: String,
         config: CustomRuntimeV2ImportConfig<'_>,
     ) -> Result<Self, CustomRuntimeV2ImportError> {
+        Self::from_custom_mixed_namerena_raw_with_eval_rq(raw_input, crate::player::eval_name::DEFAULT_EVAL_RQ, config)
+    }
+
+    pub fn from_custom_mixed_namerena_raw_with_eval_rq(
+        raw_input: String,
+        eval_rq: f64,
+        config: CustomRuntimeV2ImportConfig<'_>,
+    ) -> Result<Self, CustomRuntimeV2ImportError> {
         let (raw_groups, seed) = PreparedBattleInit::split_namerena_raw(raw_input);
         let mut runner = Self::from_custom_mixed_roster(&raw_groups, config)?;
-        PreparedBattleInit::from_groups(&raw_groups, &seed, &runner.runtime.registry)?.apply(&mut runner.runtime)?;
+        let init = PreparedBattleInit::from_groups_with_eval_rq(&raw_groups, &seed, eval_rq, &runner.runtime.registry)?;
+        runner.input_groups = init.input_groups().to_vec();
+        init.apply(&mut runner.runtime)?;
         runner.validate_ready()?;
         Ok(runner)
     }
@@ -395,6 +433,20 @@ impl RuntimeV2Runner {
 
     pub fn runtime_mut(&mut self) -> &mut CombatRuntime { &mut self.runtime }
 
+    pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
+
+    pub fn input_group_won(&self, group_index: usize) -> bool {
+        let Some(winner_team) = self.runtime.world.winner_team() else {
+            return false;
+        };
+        let Some(winner_roster) = self.runtime.world.team_roster(winner_team) else {
+            return false;
+        };
+        self.input_groups
+            .get(group_index)
+            .is_some_and(|group| group.iter().any(|entity| winner_roster.contains(entity)))
+    }
+
     pub fn validate_ready(&self) -> Result<(), RuntimeV2ReadyError> { self.runtime.validate_ready() }
 
     fn install_skill_handler_bindings(&mut self, bindings: Vec<RuntimeV2SkillHandlerBinding>) {
@@ -448,6 +500,27 @@ impl RuntimeV2Runner {
         }
     }
 
+    /// 跑到胜者产生或达到 guard；不收集逐回合结果，供批量评分/胜率热路径使用。
+    pub fn run_to_completion(&mut self, max_rounds: usize) -> RuntimeV2CompletionSummary {
+        self.assert_ready();
+        self.run_to_completion_prevalidated(max_rounds)
+    }
+
+    /// 跳过 immutable handler readiness 扫描并跑到完成，供已在构造/复位时验证的批量 runner 使用。
+    pub fn run_to_completion_prevalidated(&mut self, max_rounds: usize) -> RuntimeV2CompletionSummary {
+        let mut rounds = 0usize;
+        let mut winner_team = self.runtime.world.sync_winner(&self.runtime.entities);
+        while winner_team.is_none() && rounds < max_rounds {
+            winner_team = self.run_round_unchecked().winner_team;
+            rounds += 1;
+        }
+        RuntimeV2CompletionSummary {
+            rounds,
+            winner_team,
+            guard_exhausted: winner_team.is_none() && rounds == max_rounds,
+        }
+    }
+
     pub fn run_until_winner_normalized(&mut self, max_rounds: usize) -> (RuntimeV2RunSummary, NormalizedOutcome) {
         let summary = self.run_until_winner(max_rounds);
         let final_outcome = summary.last_outcome().cloned().unwrap_or(RoundOutcome {
@@ -479,4 +552,106 @@ impl RuntimeV2Runner {
             total_score,
         }
     }
+}
+
+impl PreparedRuntimeV2Runner {
+    pub fn from_custom_mixed_roster(
+        raw_groups: &[Vec<String>],
+        config: CustomRuntimeV2ImportConfig<'_>,
+    ) -> Result<Self, CustomRuntimeV2ImportError> {
+        Self::from_custom_mixed_roster_with_eval_rq(raw_groups, crate::player::eval_name::DEFAULT_EVAL_RQ, config)
+    }
+
+    pub fn from_custom_mixed_roster_with_eval_rq(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        config: CustomRuntimeV2ImportConfig<'_>,
+    ) -> Result<Self, CustomRuntimeV2ImportError> {
+        let skill_import = PlainLegacySkillImportMap::new(&config.registry);
+        let battle_roster = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import(
+            raw_groups,
+            eval_rq,
+            &config.registry,
+            &skill_import,
+        )?;
+        let mut prototype = RuntimeV2Runner::from_custom_mixed_roster(raw_groups, config)?;
+        let base_init = battle_roster.with_seed(&[]);
+        prototype.input_groups = base_init.input_groups().to_vec();
+        base_init.apply(&mut prototype.runtime)?;
+        prototype.validate_ready()?;
+        Ok(Self {
+            prototype,
+            battle_roster,
+            skill_import,
+        })
+    }
+
+    pub fn new_with_seed(&self, seed: &[String]) -> Result<RuntimeV2Runner, CustomRuntimeV2ImportError> {
+        let mut runner = self.new_reusable_runner();
+        self.reset_with_seed(&mut runner, seed)?;
+        Ok(runner)
+    }
+
+    /// 为单个批量 worker 创建可反复复位的 runner 缓冲区。
+    pub fn new_reusable_runner(&self) -> RuntimeV2Runner { self.prototype.clone() }
+
+    pub fn reset_with_seed(&self, runner: &mut RuntimeV2Runner, seed: &[String]) -> Result<(), CustomRuntimeV2ImportError> {
+        self.reset_mutable_battle_state(runner);
+        let seed_state = self.battle_roster.seed_state(seed);
+        runner.input_groups = seed_state.input_groups().to_vec();
+        seed_state.apply(&mut runner.runtime)?;
+        Ok(())
+    }
+
+    /// 复用同一 runtime/registry 形状，以一份新 roster 构造对局。
+    ///
+    /// profile 评分每轮玩家名字会变化，但实体数量、custom kind 和全局模板槽形状不变；
+    /// 该入口避免为每轮重新注册整套 Runtime v2 profile。
+    pub fn new_from_groups_with_seed_and_eval_rq(
+        &self,
+        raw_groups: &[Vec<String>],
+        seed: &[String],
+        eval_rq: f64,
+    ) -> Result<RuntimeV2Runner, CustomRuntimeV2ImportError> {
+        let mut runner = self.new_reusable_runner();
+        self.reset_from_groups_with_seed_and_eval_rq(&mut runner, raw_groups, seed, eval_rq)?;
+        Ok(runner)
+    }
+
+    pub fn reset_from_groups_with_seed_and_eval_rq(
+        &self,
+        runner: &mut RuntimeV2Runner,
+        raw_groups: &[Vec<String>],
+        seed: &[String],
+        eval_rq: f64,
+    ) -> Result<(), CustomRuntimeV2ImportError> {
+        let battle_roster = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import(
+            raw_groups,
+            eval_rq,
+            &self.prototype.runtime.registry,
+            &self.skill_import,
+        )?;
+        self.reset_with_init(runner, battle_roster.into_with_seed(seed))
+    }
+
+    fn reset_with_init(&self, runner: &mut RuntimeV2Runner, init: PreparedBattleInit) -> Result<(), CustomRuntimeV2ImportError> {
+        self.reset_mutable_battle_state(runner);
+        runner.input_groups = init.input_groups().to_vec();
+        init.apply(&mut runner.runtime)?;
+        runner.validate_ready()?;
+        Ok(())
+    }
+
+    fn reset_mutable_battle_state(&self, runner: &mut RuntimeV2Runner) {
+        runner.runtime.entities.clone_from(&self.prototype.runtime.entities);
+        runner.runtime.scheduler.clone_from(&self.prototype.runtime.scheduler);
+        runner.runtime.effects.clear();
+        runner.runtime.scratch.clear();
+        runner.runtime.slots.clone_from(&self.prototype.runtime.slots);
+        #[cfg(not(feature = "no_debug"))]
+        runner.runtime.trace.clone_from(&self.prototype.runtime.trace);
+        runner.runtime.round = 0;
+    }
+
+    pub fn input_groups(&self) -> Vec<Vec<EntityIdx>> { self.battle_roster.input_groups() }
 }

@@ -207,7 +207,7 @@ fn summon_explode_skips_kill_hook_after_summon_self_death() {
 }
 
 #[test]
-fn summon_explode_target_lethal_damage_emits_knockout_before_self_death() {
+fn summon_explode_terminal_knockout_suppresses_self_disappear_replay() {
     let mut builder = ExtensionRegistryBuilder::default();
     let summon_kind = builder
         .register_player_kind_with_policies(
@@ -248,8 +248,6 @@ fn summon_explode_target_lethal_damage_emits_knockout_before_self_death() {
             ("[1]受到[2]点伤害", frame.updates.updates[1].score),
             ("\n", 0),
             ("[1]被击倒了", 50),
-            ("\n", 0),
-            ("[1]消失了", 50),
         ]
     );
     assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);

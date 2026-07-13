@@ -1,3 +1,4 @@
+mod batch;
 mod combat;
 pub mod effect;
 pub mod entity;
@@ -27,9 +28,9 @@ pub use effect::{
     ShowRendererFn, ShowRenderers, SkillContext, SkillHandlerFn, SkillHandlers, StateContext, StateHandlerFn, StateHandlers,
 };
 pub use entity::{
-    AssassinateRuntime, CloneBuildData, CloneDerivedStats, CounterRuntime, CovidInfectionEntry, EntityArena, EntityIdx,
-    EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate, ProtectLinkRuntime,
-    RuntimeCorpseKind, SkillLoadout, StateEntry, StatePayload, StateStore,
+    AssassinateRuntime, CloneBuildData, CloneDerivedStats, CompressedLegacyState, CounterRuntime, CovidInfectionEntry,
+    EntityArena, EntityIdx, EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate,
+    ProtectLinkRuntime, RuntimeCorpseKind, SkillLoadout, StateEntry, StatePayload, StateStore,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,
@@ -50,10 +51,13 @@ pub use slot::{BattleSlotStorage, EntitySlotStorage, SlotError, SlotValue, Templ
 pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
+pub use batch::{
+    RuntimeV2BatchError, RuntimeV2BatchSummary, prepared_runtime_v2_win_rate, runtime_v2_groups_win_rate, runtime_v2_score,
+};
 pub use combat::{CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, RoundOutcome, SelectedBuiltinSkill};
 pub use handlers::*;
 pub use plain_assassinate::PlainSkillPreActionOutcome;
-pub use prepared_init::{PreparedBattleInit, RuntimeV2BattleInitError};
+pub use prepared_init::{PreparedBattleInit, PreparedBattleRoster, RuntimeV2BattleInitError};
 pub use profile::*;
 pub use runner::*;
 

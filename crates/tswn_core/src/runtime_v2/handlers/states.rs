@@ -123,13 +123,22 @@ pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &Stat
 }
 
 pub fn run_haste_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
-    let Some(StatePayload::Haste { faster, step }) = context.owner_state_payload(entry.legacy_order_key) else {
+    let Some(StatePayload::Haste {
+        faster,
+        effective_faster,
+        step,
+    }) = context.owner_state_payload(entry.legacy_order_key)
+    else {
         return;
     };
     run_timed_release_post_action_state(
         context,
         entry,
-        StatePayload::Haste { faster, step: step - 1 },
+        StatePayload::Haste {
+            faster,
+            effective_faster,
+            step: step - 1,
+        },
         step,
         "[1]从[疾走]中解除",
     );
@@ -492,13 +501,16 @@ fn run_timed_release_post_action_state(
     let next_step = step - 1;
     if next_step > 0 {
         context
-            .set_owner_state_payload(entry.legacy_order_key, next_payload)
+            .set_owner_state_payload_without_refresh(entry.legacy_order_key, next_payload)
             .expect("timed state payload should still exist");
         return;
     }
 
     context
-        .clear_owner_state(entry.legacy_order_key)
+        .set_owner_state_payload_without_refresh(entry.legacy_order_key, next_payload)
+        .expect("timed state payload should still exist");
+    context
+        .defer_owner_state_clear(entry.legacy_order_key)
         .expect("timed state payload should still exist");
     let alive = context.owner().map(|owner| owner.runtime.alive).unwrap_or(false);
     if alive {
@@ -560,15 +572,16 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
 fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry, protect: i32, step: i32) {
     if step <= 0 {
         context
-            .clear_owner_state(entry.legacy_order_key)
+            .defer_owner_state_clear(entry.legacy_order_key)
             .expect("iron state payload should still exist");
         return;
     }
 
     let next_step = step - 1;
     if next_step > 0 {
+        // legacy 这里只原地递减铁壁步数，不会调用 update_states；否则会提前同步疾走的待生效倍率。
         context
-            .set_owner_state_payload(
+            .set_owner_state_payload_without_refresh(
                 entry.legacy_order_key,
                 StatePayload::Iron {
                     protect,
@@ -580,7 +593,16 @@ fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookP
     }
 
     context
-        .clear_owner_state(entry.legacy_order_key)
+        .set_owner_state_payload_without_refresh(
+            entry.legacy_order_key,
+            StatePayload::Iron {
+                protect,
+                step: next_step,
+            },
+        )
+        .expect("iron state payload should still exist");
+    context
+        .defer_owner_state_clear(entry.legacy_order_key)
         .expect("iron state payload should still exist");
     context.adjust_owner_speed_points(-128).expect("iron state owner should still exist");
     context.add_newline();

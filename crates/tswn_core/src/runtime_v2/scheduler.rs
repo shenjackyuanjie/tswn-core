@@ -39,6 +39,7 @@ pub struct StateHookPlanEntry {
     pub legacy_order_key: u32,
     pub priority: SkillPriority,
     pub registration_order: RegistrationOrder,
+    pub runtime_registration_order: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,7 +122,9 @@ impl PhaseScheduler {
             return self.select_minimal_action(world, entities);
         }
 
-        let max_ticks = entities.len().max(1) * 4;
+        // legacy 按世界 roster（包含已死亡实体）限制单帧 tick 数；EntityArena 中为 spawn
+        // 保留的 ID 空洞不属于 roster，若把它们计入会让新生成的使魔或亡灵提前一帧行动。
+        let max_ticks = world.roster_entity_count().max(1) * 4;
         for _ in 0..max_ticks {
             let actor = world.next_actor(entities)?;
             let step_byte = randomer.next_u8();
@@ -189,7 +192,9 @@ impl PhaseScheduler {
             };
             if ice_released {
                 self.ice_release_events.push(actor);
-                return None;
+                if !should_act {
+                    return None;
+                }
             }
             if !should_act {
                 continue;
@@ -273,7 +278,47 @@ impl PhaseScheduler {
                 .map(|spec| spec.post_action_phase == phase)
                 .unwrap_or(false)
         });
+        if phase == SkillPostActionPhase::Early {
+            let deferred_lanes = entities
+                .get(owner)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 post-action skill owner entity: {}", owner.0))
+                .template
+                .skills
+                .post_action_after_states();
+            plan.entries
+                .retain(|entry| !deferred_lanes.iter().any(|(_, fixed_lane)| *fixed_lane == entry.fixed_lane));
+        }
         plan
+    }
+
+    pub fn deferred_skill_post_action_entries(
+        &self,
+        entities: &EntityArena,
+        registry: &ExtensionRegistry,
+        owner: EntityIdx,
+    ) -> Vec<(u64, SkillHookPlanEntry)> {
+        let entity = entities
+            .get(owner)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 deferred post-action skill owner entity: {}", owner.0));
+        let plan = self.skill_hook_plan(entities, registry, owner, ProcMask::POST_ACTION);
+        entity
+            .template
+            .skills
+            .post_action_after_states()
+            .iter()
+            .filter_map(|(cursor, fixed_lane)| {
+                plan.entries
+                    .iter()
+                    .find(|entry| {
+                        entry.fixed_lane == *fixed_lane
+                            && registry
+                                .skill(entry.skill_id)
+                                .is_some_and(|spec| spec.post_action_phase == SkillPostActionPhase::Early)
+                    })
+                    .copied()
+                    .map(|entry| (*cursor, entry))
+            })
+            .collect()
     }
 
     pub fn state_hook_plan(&self, entities: &EntityArena, owner: EntityIdx, hook: ProcMask) -> StateHookPlan {
@@ -290,6 +335,10 @@ impl PhaseScheduler {
                 legacy_order_key: entry.legacy_order_key,
                 priority: entry.priority_for_hook(hook),
                 registration_order: entry.registration_order,
+                runtime_registration_order: entity
+                    .states
+                    .runtime_registration_order(entry.legacy_order_key)
+                    .expect("runtime_v2 state hook entry must have a runtime registration order"),
             })
             .collect();
         StateHookPlan {
@@ -548,6 +597,7 @@ mod tests {
                     legacy_order_key: 22,
                     priority: SkillPriority(1),
                     registration_order: RegistrationOrder(2),
+                    runtime_registration_order: 1,
                 },
                 StateHookPlanEntry {
                     owner: EntityIdx(0),
@@ -555,6 +605,7 @@ mod tests {
                     legacy_order_key: 11,
                     priority: SkillPriority(10),
                     registration_order: RegistrationOrder(1),
+                    runtime_registration_order: 0,
                 },
             ]
         );

@@ -44,6 +44,7 @@ pub fn run_reflect_pre_defend_skill(context: &mut SkillContext<'_>, entry: &Skil
         caster: context.owner_idx(),
         target: caster,
         atp_bits: reflect_atp.to_bits(),
+        on_damage: context.defend_on_damage(),
     });
 }
 

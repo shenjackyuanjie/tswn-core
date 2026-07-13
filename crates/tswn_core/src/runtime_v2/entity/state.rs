@@ -41,6 +41,7 @@ pub enum StatePayload {
     },
     Haste {
         faster: i32,
+        effective_faster: i32,
         step: i32,
     },
     Berserk {
@@ -163,13 +164,28 @@ impl StateEntry {
     }
 
     pub fn haste(legacy_order_key: u32, state_id: StateId, faster: i32, step: i32, priority: SkillPriority) -> Self {
+        Self::haste_with_effective_faster(legacy_order_key, state_id, faster, faster, step, priority)
+    }
+
+    pub fn haste_with_effective_faster(
+        legacy_order_key: u32,
+        state_id: StateId,
+        faster: i32,
+        effective_faster: i32,
+        step: i32,
+        priority: SkillPriority,
+    ) -> Self {
         Self {
             legacy_order_key,
             extension_state_id: Some(state_id),
             hook_mask: ProcMask::POST_ACTION,
             priority,
             registration_order: RegistrationOrder::default(),
-            payload: StatePayload::Haste { faster, step },
+            payload: StatePayload::Haste {
+                faster,
+                effective_faster,
+                step,
+            },
         }
     }
 
@@ -348,7 +364,7 @@ impl StateEntry {
 
     pub fn haste_value(&self) -> Option<(i32, i32)> {
         match &self.payload {
-            StatePayload::Haste { faster, step } => Some((*faster, *step)),
+            StatePayload::Haste { faster, step, .. } => Some((*faster, *step)),
             StatePayload::None
             | StatePayload::FireMagHalfSteps(_)
             | StatePayload::Ice { .. }
@@ -364,6 +380,17 @@ impl StateEntry {
             | StatePayload::SaitamaBoss { .. }
             | StatePayload::LazyBoss { .. }
             | StatePayload::LazyInfection { .. } => None,
+        }
+    }
+
+    pub fn haste_runtime_value(&self) -> Option<(i32, i32, i32)> {
+        match &self.payload {
+            StatePayload::Haste {
+                faster,
+                effective_faster,
+                step,
+            } => Some((*faster, *effective_faster, *step)),
+            _ => None,
         }
     }
 
@@ -546,12 +573,28 @@ impl StateEntry {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompressedLegacyState {
+    Shield,
+    Protect,
+    Upgrade,
+    Corpse,
+    Minion,
+}
+
+impl CompressedLegacyState {
+    fn bit(self) -> u8 { 1 << self as u8 }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct StateStore {
     entries: SmallVec<[StateEntry; 8]>,
     hook_mask: ProcMask,
     generation: u32,
     index: HashMap<u32, usize>,
+    runtime_registration_orders: HashMap<u32, u64>,
+    next_runtime_registration_order: u64,
+    compressed_legacy_states: u8,
 }
 
 impl StateStore {
@@ -561,19 +604,67 @@ impl StateStore {
 
     pub fn generation(&self) -> u32 { self.generation }
 
+    pub fn post_action_registration_cursor(&self) -> u64 { self.next_runtime_registration_order }
+
+    pub fn runtime_registration_order(&self, legacy_order_key: u32) -> Option<u64> {
+        self.runtime_registration_orders.get(&legacy_order_key).copied()
+    }
+
+    pub fn register_compressed_legacy_state(&mut self, state: CompressedLegacyState) -> bool {
+        let bit = state.bit();
+        if self.compressed_legacy_states & bit != 0 {
+            return false;
+        }
+        // 有些 legacy State 在 V2 中被压成专用 runtime 字段，虽然不再需要执行通用钩子，
+        // 但它们仍会占据统一状态注册队列的位置，影响 Merge 中途新增钩子的先后顺序。
+        self.compressed_legacy_states |= bit;
+        self.next_runtime_registration_order = self.next_runtime_registration_order.wrapping_add(1);
+        true
+    }
+
+    pub fn clear_compressed_legacy_state(&mut self, state: CompressedLegacyState) -> bool {
+        let bit = state.bit();
+        if self.compressed_legacy_states & bit == 0 {
+            return false;
+        }
+        self.compressed_legacy_states &= !bit;
+        true
+    }
+
     pub fn is_frozen(&self) -> bool { self.entries.iter().any(|entry| matches!(&entry.payload, StatePayload::Ice { .. })) }
 
     pub fn effective_speed(&self, base_speed: i32) -> i32 {
         let mut speed = base_speed;
         for entry in &self.entries {
             match &entry.payload {
-                StatePayload::Haste { faster, .. } => speed *= *faster,
+                StatePayload::Haste { effective_faster, .. } => speed *= *effective_faster,
                 StatePayload::Slow { .. } => speed /= 2,
                 StatePayload::LazyInfection { .. } => speed /= 2,
                 _ => {}
             }
         }
         speed
+    }
+
+    pub fn refresh_effective_haste_faster(&mut self) {
+        let mut changed = false;
+        for entry in &mut self.entries {
+            let StatePayload::Haste {
+                faster,
+                effective_faster,
+                ..
+            } = &mut entry.payload
+            else {
+                continue;
+            };
+            if *effective_faster != *faster {
+                *effective_faster = *faster;
+                changed = true;
+            }
+        }
+        if changed {
+            self.generation = self.generation.wrapping_add(1);
+        }
     }
 
     pub fn effective_atk_sum(&self, base_atk_sum: i32) -> i32 {
@@ -711,6 +802,10 @@ impl StateStore {
             return false;
         }
 
+        let runtime_registration_order = self.next_runtime_registration_order;
+        self.next_runtime_registration_order = self.next_runtime_registration_order.wrapping_add(1);
+        self.runtime_registration_orders
+            .insert(entry.legacy_order_key, runtime_registration_order);
         self.index.insert(entry.legacy_order_key, self.entries.len());
         self.hook_mask |= entry.hook_mask;
         self.entries.push(entry);
@@ -724,6 +819,7 @@ impl StateStore {
         };
 
         self.entries.remove(idx);
+        self.runtime_registration_orders.remove(&legacy_order_key);
         self.rebuild_index();
         self.rebuild_hook_mask();
         self.generation = self.generation.wrapping_add(1);

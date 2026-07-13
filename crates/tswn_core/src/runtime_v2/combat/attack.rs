@@ -541,6 +541,8 @@ impl CombatRuntime {
             PlainAttackOnDamage::Absorb => self.apply_absorb_on_damage(caster, amount, updates),
             PlainAttackOnDamage::Berserk => self.apply_berserk_on_damage(caster, target, amount, updates),
             PlainAttackOnDamage::Curse => self.apply_curse_on_damage(caster, target, amount, updates),
+            PlainAttackOnDamage::Fire(fire_state_key) if amount > 0 => self.apply_fire_on_damage(target, fire_state_key),
+            PlainAttackOnDamage::Fire(_) => {}
             PlainAttackOnDamage::Ice if amount > 0 => self.apply_ice_on_damage(caster, target, updates),
             PlainAttackOnDamage::Ice => {}
             PlainAttackOnDamage::Poison => self.apply_poison_on_damage(caster, target, amount, updates),

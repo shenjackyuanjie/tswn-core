@@ -52,3 +52,29 @@ fn plain_counter_update_end_skips_frozen_owner_without_mp_rng() {
     assert!(updates.on_update_end.is_empty());
     assert!(!updates.updates.iter().any(|update| update.message == "[0]发起[反击][s_counter]"));
 }
+
+#[test]
+fn plain_counter_update_end_can_attack_a_frozen_living_target() {
+    let mut runtime = counter_runtime(255);
+    runtime
+        .entities
+        .get_mut(EntityIdx(0))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 2));
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.magic_point = 100;
+    let mut updates = RunUpdates::new();
+    {
+        let counter = &mut runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.counter;
+        counter.pending = true;
+        counter.last_target = Some(EntityIdx(0));
+        counter.last_updates_id = Some(updates.id);
+    }
+    updates.on_update_end.push(1);
+
+    runtime.drain_plain_update_end_into(&mut updates);
+
+    assert!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.alive);
+    assert!(runtime.entities.get(EntityIdx(0)).unwrap().states.is_frozen());
+    assert!(updates.updates.iter().any(|update| update.message == "[0]发起[反击][s_counter]"));
+}

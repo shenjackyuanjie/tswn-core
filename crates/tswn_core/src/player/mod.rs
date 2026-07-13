@@ -277,6 +277,7 @@ pub struct Player {
 }
 
 impl Player {
+    #[cfg(test)]
     pub(crate) fn skill_loadout_snapshot(&self) -> skill::store::SkillLoadoutSnapshot { self.skills.snapshot() }
 }
 

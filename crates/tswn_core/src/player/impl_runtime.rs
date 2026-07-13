@@ -845,6 +845,39 @@ impl Player {
         if select_count == 0 {
             return Vec::new();
         }
+        #[cfg(not(feature = "no_debug"))]
+        let probe_heal = std::env::var_os("TSWN_PROBE_HEAL").is_some()
+            && skill.debug_skill_type_name() == std::any::type_name::<crate::player::skill::heal::HealSkill>();
+        #[cfg(not(feature = "no_debug"))]
+        if probe_heal {
+            let candidates = targets
+                .ally_alive
+                .iter()
+                .map(|target_id| {
+                    storage
+                        .get_player(target_id)
+                        .map(|target| {
+                            format!(
+                                "{}:{}:{}/{}",
+                                target_id,
+                                target.id_name(),
+                                target.get_status().hp,
+                                target.get_status().max_hp
+                            )
+                        })
+                        .unwrap_or_else(|| format!("{target_id}:<missing>"))
+                })
+                .collect::<Vec<_>>();
+            eprintln!(
+                "[heal_select:legacy:start] actor={} smart={} count={} candidates={:?} rc4=({}, {})",
+                self.id_name(),
+                smart,
+                select_count,
+                candidates,
+                randomer.i,
+                randomer.j,
+            );
+        }
 
         if domain == SkillTargetDomain::EnemyAlive && skill.uses_attack_aa_sampling() && !skill.allows_empty_targets() {
             return self.select_attack_aa_targets(skill, smart, randomer, updates, storage, targets);
@@ -866,10 +899,19 @@ impl Player {
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
+            #[cfg(not(feature = "no_debug"))]
+            let rng_before_pick = (randomer.i, randomer.j);
             let Some(target_id) = self.pick_target_by_domain(domain, targets, randomer) else {
                 return Vec::new();
             };
             let valid = skill.valid_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
+            #[cfg(not(feature = "no_debug"))]
+            if probe_heal {
+                eprintln!(
+                    "[heal_select:legacy:pick] target={} valid={} dup={} invalid={} rc4=({}, {}) -> ({}, {})",
+                    target_id, valid, dup, invalid, rng_before_pick.0, rng_before_pick.1, randomer.i, randomer.j,
+                );
+            }
             if !valid {
                 invalid += 1;
                 continue;
@@ -889,12 +931,24 @@ impl Player {
 
         let mut scored: SmallVec<[(PlrId, f64); 4]> = SmallVec::new();
         for target_id in selected {
-            scored.push((
-                target_id,
-                skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage)),
-            ));
+            let score = skill.score_target(target_id, smart, (self.as_ptr(), randomer, updates, storage));
+            #[cfg(not(feature = "no_debug"))]
+            if probe_heal {
+                eprintln!(
+                    "[heal_select:legacy:score] target={} score={} rc4=({}, {})",
+                    target_id, score, randomer.i, randomer.j,
+                );
+            }
+            scored.push((target_id, score));
         }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        #[cfg(not(feature = "no_debug"))]
+        if probe_heal {
+            eprintln!(
+                "[heal_select:legacy:done] scored={:?} rc4=({}, {})",
+                scored, randomer.i, randomer.j
+            );
+        }
         scored.into_iter().map(|x| x.0).collect()
     }
 

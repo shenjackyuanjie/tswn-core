@@ -65,6 +65,7 @@ impl WorldArena {
         self.flat_alive = flat_alive;
         self.alive_group_count = self.team_alive.iter().filter(|team| !team.is_empty()).count();
         self.round_pos = -1;
+        self.winner_team = None;
     }
 
     pub fn next_actor(&mut self, entities: &EntityArena) -> Option<EntityIdx> {
@@ -156,6 +157,12 @@ impl WorldArena {
     }
 
     pub fn round_order(&self) -> &[EntityIdx] { &self.round_order }
+
+    /// 返回 legacy `WorldState::all_plr_len()` 对应的世界 roster 实体数。
+    /// 已死亡实体仍保留在 roster 中，EntityArena 的空 ID 槽则不计入。
+    pub fn roster_entity_count(&self) -> usize { self.team_roster.iter().map(Vec::len).sum() }
+
+    pub const fn round_position(&self) -> i32 { self.round_pos }
 
     pub fn team_roster(&self, team: usize) -> Option<&[EntityIdx]> { self.team_roster.get(team).map(Vec::as_slice) }
 

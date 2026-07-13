@@ -59,6 +59,7 @@ pub struct CloneBuildData {
     attrs: [u32; 8],
     weapon_attr_bonus: [i32; 8],
     name_factor_bits: u64,
+    child_name_factor_bits: u64,
     adjustments: CloneStatAdjustments,
 }
 
@@ -69,6 +70,7 @@ impl CloneBuildData {
             attrs,
             weapon_attr_bonus,
             name_factor_bits: name_factor.to_bits(),
+            child_name_factor_bits: name_factor.to_bits(),
             adjustments: CloneStatAdjustments {
                 max_hp: status.max_hp - raw.max_hp,
                 attack: status.attack - raw.attack,
@@ -86,6 +88,11 @@ impl CloneBuildData {
         }
     }
 
+    pub(crate) fn with_child_name_factor(mut self, child_name_factor: f64) -> Self {
+        self.child_name_factor_bits = child_name_factor.to_bits();
+        self
+    }
+
     pub fn decay_owner(&mut self) {
         for attr in &mut self.attrs[..7] {
             *attr = ((*attr as f64) * CLONE_ATTR_DECAY).ceil() as u32;
@@ -98,6 +105,8 @@ impl CloneBuildData {
         for (attr, bonus) in child.attrs.iter_mut().zip(child.weapon_attr_bonus) {
             *attr = (*attr as i32 + bonus) as u32;
         }
+        // 特殊编号玩家的本体因子可能被强制为零，但分身仍会按根玩家名字重新计算构造因子。
+        child.name_factor_bits = child.child_name_factor_bits;
         child
     }
 
@@ -139,6 +148,15 @@ impl CloneBuildData {
         }
     }
 
+    /// 输入名字派生属性时使用的短号系数。
+    ///
+    /// 这是构造期冷数据，Runtime v2 的 CLI/展示入口需要它来复刻 legacy 的玩家状态摘要，
+    /// 热路径不会读取该值。
+    pub fn name_factor(&self) -> f64 { f64::from_bits(self.name_factor_bits) }
+
+    /// 复刻 legacy `PlayerStatus::all_sum` 的当前构造属性总和。
+    pub fn all_sum(&self) -> u32 { self.attrs[..7].iter().sum::<u32>() * 3 + self.attrs[7] }
+
     fn derive_raw(attrs: [u32; 8], name_factor: f64) -> CloneDerivedStats {
         let scale = |value: u32, divisor: f64| ((value as f64) * (1.0 - name_factor / divisor)).round() as i32;
         let attr_sum = attrs[..7].iter().sum();
@@ -168,6 +186,8 @@ pub struct PlayerTemplate {
     pub id: PlrId,
     pub reserved_player_ids_before_spawn: u32,
     pub name: String,
+    pub id_key_name: String,
+    pub clan_name: String,
     pub display_name: String,
     pub kind: PlayerKindId,
     pub skills: SkillLoadout,
@@ -189,6 +209,12 @@ pub struct PlayerTemplate {
     pub move_state: MoveState,
     pub policy_overrides: PlayerPolicyOverrides,
     pub clone_build: Option<CloneBuildData>,
+    /// 使魔复活重施时是否沿用死亡对象上的当前技能表。
+    pub reuse_skills_on_recast: bool,
+    /// 使魔复活重施时是否沿用死亡对象上的持久属性。
+    pub reuse_stats_on_recast: bool,
+    /// 构造使魔属性时是否继承 owner 当前的防御与抗性。
+    pub inherit_owner_def_res: bool,
 }
 
 impl PlayerTemplate {
@@ -206,6 +232,8 @@ impl PlayerTemplate {
             id,
             reserved_player_ids_before_spawn: 0,
             display_name: name.clone(),
+            id_key_name: name.clone(),
+            clan_name: name.clone(),
             name,
             kind,
             skills: SkillLoadout::default(),
@@ -227,12 +255,33 @@ impl PlayerTemplate {
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
             clone_build: None,
+            reuse_skills_on_recast: false,
+            reuse_stats_on_recast: false,
+            inherit_owner_def_res: false,
         }
     }
 
     pub fn with_display_name(mut self, display_name: impl Into<String>) -> Self {
         self.display_name = display_name.into();
         self
+    }
+
+    /// 保存 legacy 输入身份的冷数据，供 CLI/replay/图标层使用。
+    pub fn with_identity_names(mut self, id_key_name: impl Into<String>, clan_name: impl Into<String>) -> Self {
+        self.id_key_name = id_key_name.into();
+        self.clan_name = clan_name.into();
+        self
+    }
+
+    /// 运行期子实体沿用根 owner 的 clan，并据当前 `name` 重建 legacy `id_key_name`。
+    pub fn set_runtime_clan_name(&mut self, clan_name: impl Into<String>) {
+        let clan_name = clan_name.into();
+        self.id_key_name = if clan_name.is_empty() || clan_name == self.name {
+            self.name.clone()
+        } else {
+            format!("{}@{clan_name}", self.name)
+        };
+        self.clan_name = clan_name;
     }
 
     pub fn with_reserved_player_ids_before_spawn(mut self, count: u32) -> Self {
@@ -328,6 +377,24 @@ impl PlayerTemplate {
         self.attract_bits = stats.attract_bits;
     }
 
+    pub fn reuse_summon_stats_from(&mut self, source: &Self) {
+        self.max_hp = source.max_hp;
+        self.attack = source.attack;
+        self.magic = source.magic;
+        self.magic_point = (source.wisdom >> 1).max(0);
+        self.wisdom = source.wisdom;
+        self.speed = source.speed;
+        self.defense = source.defense;
+        self.resistance = source.resistance;
+        self.agility = source.agility;
+        self.at_boost_bits = source.at_boost_bits;
+        self.at_boost_millionths = source.at_boost_millionths;
+        self.attr_sum = source.attr_sum;
+        self.atk_sum = source.atk_sum;
+        self.attract_bits = source.attract_bits;
+        self.clone_build = source.clone_build.clone();
+    }
+
     pub fn with_skills(self, skills: impl IntoIterator<Item = SkillId>) -> Self {
         self.with_skill_loadout(SkillLoadout::from_skills(skills))
     }
@@ -366,9 +433,13 @@ pub struct SkillLoadout {
     levels: SmallVec<[u32; 8]>,
     build_levels: SmallVec<[u32; 8]>,
     boosts: SmallVec<[Option<SkillBoost>; 8]>,
+    boosted: SmallVec<[bool; 8]>,
     fixed_lane_keys: SmallVec<[usize; 8]>,
+    merge_lane_order: SmallVec<[usize; 8]>,
     active_order: SmallVec<[usize; 8]>,
     pre_action_order: SmallVec<[usize; 8]>,
+    post_damage_order: SmallVec<[usize; 8]>,
+    post_action_after_states: SmallVec<[(u64, usize); 4]>,
 }
 
 impl SkillLoadout {
@@ -377,16 +448,23 @@ impl SkillLoadout {
         let levels = std::iter::repeat_n(1, skills.len()).collect::<SmallVec<[u32; 8]>>();
         let build_levels = levels.clone();
         let boosts = std::iter::repeat_n(None, skills.len()).collect();
+        let boosted = std::iter::repeat_n(false, skills.len()).collect();
         let fixed_lane_keys = (0..skills.len()).collect();
+        let merge_lane_order = (0..skills.len()).collect();
         let active_order = (0..skills.len()).collect();
+        let post_damage_order = (0..skills.len()).collect();
         Self {
             skills,
             levels,
             build_levels,
             boosts,
+            boosted,
             fixed_lane_keys,
+            merge_lane_order,
             active_order,
             pre_action_order: SmallVec::new(),
+            post_damage_order,
+            post_action_after_states: SmallVec::new(),
         }
     }
 
@@ -394,16 +472,23 @@ impl SkillLoadout {
         let (skills, levels): (SmallVec<[SkillId; 8]>, SmallVec<[u32; 8]>) = skills.into_iter().unzip();
         let build_levels = levels.clone();
         let boosts = std::iter::repeat_n(None, skills.len()).collect();
+        let boosted = std::iter::repeat_n(false, skills.len()).collect();
         let fixed_lane_keys = (0..skills.len()).collect();
+        let merge_lane_order = (0..skills.len()).collect();
         let active_order = (0..skills.len()).collect();
+        let post_damage_order = (0..skills.len()).collect();
         Self {
             skills,
             levels,
             build_levels,
             boosts,
+            boosted,
             fixed_lane_keys,
+            merge_lane_order,
             active_order,
             pre_action_order: SmallVec::new(),
+            post_damage_order,
+            post_action_after_states: SmallVec::new(),
         }
     }
 
@@ -421,16 +506,26 @@ impl SkillLoadout {
             .zip(&boosts)
             .map(|(level, boost)| boost.as_ref().map_or(*level, SkillBoost::base_level))
             .collect::<SmallVec<[u32; 8]>>();
+        let boosted = boosts
+            .iter()
+            .map(|boost| matches!(boost, Some(SkillBoost::LastBoost(_) | SkillBoost::SlotBoost { .. })))
+            .collect();
         let fixed_lane_keys = (0..skill_ids.len()).collect();
+        let merge_lane_order = (0..skill_ids.len()).collect();
         let active_order = (0..skill_ids.len()).collect();
+        let post_damage_order = (0..skill_ids.len()).collect();
         Self {
             skills: skill_ids,
             levels,
             build_levels,
             boosts,
+            boosted,
             fixed_lane_keys,
+            merge_lane_order,
             active_order,
             pre_action_order: SmallVec::new(),
+            post_damage_order,
+            post_action_after_states: SmallVec::new(),
         }
     }
 
@@ -444,7 +539,11 @@ impl SkillLoadout {
 
     pub fn boost_at(&self, fixed_lane: usize) -> Option<&SkillBoost> { self.boosts.get(fixed_lane).and_then(Option::as_ref) }
 
+    pub fn boosted_at(&self, fixed_lane: usize) -> Option<bool> { self.boosted.get(fixed_lane).copied() }
+
     pub fn fixed_lane_key_at(&self, fixed_lane: usize) -> Option<usize> { self.fixed_lane_keys.get(fixed_lane).copied() }
+
+    pub fn merge_lane_order(&self) -> &[usize] { &self.merge_lane_order }
 
     pub fn set_level_at(&mut self, fixed_lane: usize, level: u32) -> bool {
         let Some(current) = self.levels.get_mut(fixed_lane) else {
@@ -457,6 +556,10 @@ impl SkillLoadout {
     pub fn active_order(&self) -> &[usize] { &self.active_order }
 
     pub fn pre_action_order(&self) -> &[usize] { &self.pre_action_order }
+
+    pub fn post_damage_order(&self) -> &[usize] { &self.post_damage_order }
+
+    pub fn post_action_after_states(&self) -> &[(u64, usize)] { &self.post_action_after_states }
 
     pub fn is_empty(&self) -> bool { self.skills.is_empty() }
 
@@ -475,6 +578,9 @@ impl SkillLoadout {
         clone
             .pre_action_order
             .retain(|lane| clone.levels.get(*lane).is_some_and(|level| *level > 0));
+        clone
+            .post_action_after_states
+            .retain(|(_, lane)| clone.levels.get(*lane).is_some_and(|level| *level > 0));
         clone
     }
 
@@ -496,6 +602,37 @@ impl SkillLoadout {
             "runtime_v2 skill pre-action order must reference existing fixed lanes"
         );
         self
+    }
+
+    pub fn with_post_damage_order(mut self, post_damage_order: impl IntoIterator<Item = usize>) -> Self {
+        self.post_damage_order = post_damage_order.into_iter().collect();
+        assert!(
+            self.post_damage_order.iter().all(|idx| *idx < self.skills.len()),
+            "runtime_v2 skill post-damage order must reference existing fixed lanes"
+        );
+        self
+    }
+
+    pub fn with_post_action_after_states(mut self, post_action_after_states: impl IntoIterator<Item = (u64, usize)>) -> Self {
+        self.post_action_after_states = post_action_after_states.into_iter().collect();
+        assert!(
+            self.post_action_after_states.iter().all(|(_, idx)| *idx < self.skills.len()),
+            "runtime_v2 deferred post-action order must reference existing fixed lanes"
+        );
+        self.post_action_after_states.sort_by_key(|(cursor, _)| *cursor);
+        self
+    }
+
+    pub fn register_post_action_after_states(&mut self, fixed_lane: usize, state_order_cursor: u64) {
+        assert!(
+            fixed_lane < self.skills.len(),
+            "runtime_v2 deferred post-action order must reference an existing fixed lane"
+        );
+        if self.post_action_after_states.iter().any(|(_, lane)| *lane == fixed_lane) {
+            return;
+        }
+        self.post_action_after_states.push((state_order_cursor, fixed_lane));
+        self.post_action_after_states.sort_by_key(|(cursor, _)| *cursor);
     }
 
     pub fn ensure_pre_action_lane(&mut self, fixed_lane: usize) {
@@ -520,13 +657,54 @@ impl SkillLoadout {
         self
     }
 
+    pub fn with_boosted_flags(mut self, boosted: impl IntoIterator<Item = bool>) -> Self {
+        self.boosted = boosted.into_iter().collect();
+        assert_eq!(
+            self.boosted.len(),
+            self.skills.len(),
+            "runtime_v2 boosted flags must match skill loadout length"
+        );
+        self
+    }
+
+    /// 复刻 legacy `boost_last()`：从行动顺序末尾寻找首个未强化的正等级技能。
+    pub fn boost_last_active_except_key(&mut self, excluded_fixed_key: usize) -> bool {
+        for &lane in self.active_order.iter().rev() {
+            if self.fixed_lane_keys[lane] == excluded_fixed_key || self.levels[lane] == 0 || self.boosted[lane] {
+                continue;
+            }
+            let base = self.levels[lane];
+            self.levels[lane] = base.saturating_mul(2);
+            self.build_levels[lane] = base;
+            self.boosts[lane] = Some(SkillBoost::LastBoost(base));
+            self.boosted[lane] = true;
+            return true;
+        }
+        false
+    }
+
+    pub fn with_merge_lane_order(mut self, merge_lane_order: impl IntoIterator<Item = usize>) -> Self {
+        self.merge_lane_order = merge_lane_order.into_iter().collect();
+        assert!(
+            self.merge_lane_order.iter().all(|idx| *idx < self.skills.len()),
+            "runtime_v2 merge lane order must reference existing fixed lanes"
+        );
+        self
+    }
+
     pub fn merge_fixed_lanes_from(&mut self, source: &Self, policy: MergePolicy) -> bool {
         match policy {
             MergePolicy::None => false,
             MergePolicy::FixedLane => {
-                let lane_count = self.levels.len().min(source.levels.len());
+                // legacy 的 Merge 只会按双方 `slot_skill` 的位置配对；store 中额外注册的
+                // 分摊伤害等技能不属于固定槽位，不能挤进普通技能槽位。
+                let lane_count = self.merge_lane_order.len().min(source.merge_lane_order.len());
                 (0..lane_count)
-                    .map(|owner_idx| self.merge_level_at(owner_idx, source.levels[owner_idx]))
+                    .map(|position| {
+                        let owner_idx = self.merge_lane_order[position];
+                        let source_idx = source.merge_lane_order[position];
+                        self.merge_level_at(owner_idx, source.levels[source_idx])
+                    })
                     .fold(false, |changed, lane_changed| changed || lane_changed)
             }
             MergePolicy::DropUnmappedSkills => {
@@ -554,6 +732,10 @@ impl SkillLoadout {
         if was_zero {
             self.active_order.retain(|lane| *lane != owner_idx);
             self.active_order.push(owner_idx);
+            // legacy 会在 Merge 把零级槽位抬为正等级时注册新钩子，因此同优先级的
+            // post_damage 新钩子应排在原有活跃钩子之后，与固定槽位编号无关。
+            self.post_damage_order.retain(|lane| *lane != owner_idx);
+            self.post_damage_order.push(owner_idx);
         }
         true
     }

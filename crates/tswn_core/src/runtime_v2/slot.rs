@@ -100,6 +100,10 @@ impl EntitySlotStorage {
 
     pub fn get(&self, id: EntitySlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
 
+    pub fn get_mut(&mut self, id: EntitySlotId) -> Option<&mut SlotValue> {
+        self.values.get_mut(id.0 as usize).and_then(Option::as_mut)
+    }
+
     pub fn clear(&mut self) {
         for value in &mut self.values {
             *value = None;

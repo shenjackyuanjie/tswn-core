@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_v2::combat::PlainAttackOnDamage;
 
 pub struct SkillContext<'a> {
     entities: &'a mut EntityArena,
@@ -10,6 +11,7 @@ pub struct SkillContext<'a> {
     updates: &'a mut RunUpdates,
     rng: &'a mut RC4,
     defend_value: Option<&'a mut RuntimeDefendValue>,
+    defend_on_damage: PlainAttackOnDamage,
     selected_target: Option<EntityIdx>,
     owner: EntityIdx,
     capabilities: &'a [ExtensionCapability],
@@ -38,6 +40,7 @@ impl<'a> SkillContext<'a> {
             updates,
             rng,
             defend_value: None,
+            defend_on_damage: PlainAttackOnDamage::None,
             selected_target: None,
             owner: entry.owner,
             capabilities,
@@ -46,6 +49,11 @@ impl<'a> SkillContext<'a> {
 
     pub fn with_defend_value(mut self, defend_value: &'a mut RuntimeDefendValue) -> Self {
         self.defend_value = Some(defend_value);
+        self
+    }
+
+    pub fn with_defend_on_damage(mut self, on_damage: PlainAttackOnDamage) -> Self {
+        self.defend_on_damage = on_damage;
         self
     }
 
@@ -80,6 +88,9 @@ impl<'a> SkillContext<'a> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
         };
+        if shield > 0 {
+            owner.states.register_compressed_legacy_state(CompressedLegacyState::Shield);
+        }
         owner.runtime.shield = shield.max(0);
         Ok(())
     }
@@ -131,9 +142,7 @@ impl<'a> SkillContext<'a> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));
         };
-        let messages = owner.states.clear_positive_states_with_ordered_messages(owner.runtime.alive);
-        owner.refresh_runtime_stats_from_template();
-        Ok(messages)
+        Ok(owner.clear_positive_state_messages())
     }
 
     pub fn clear_owner_positive_messages(&mut self) -> Result<Vec<(i32, &'static str)>, EffectContextError> {
@@ -293,8 +302,7 @@ impl<'a> SkillContext<'a> {
             })
             .collect::<Vec<_>>();
 
-        // Legacy Protect always consumes its smart roll before handling an
-        // empty effective ally group.
+        // legacy Protect 会先消耗 smart 判定，再处理有效友军列表为空的情况。
         let smart = self.rng.r127() < wisdom;
         let next_target = if candidates.is_empty() {
             None
@@ -368,6 +376,7 @@ impl<'a> SkillContext<'a> {
                 target.runtime.protect_from.retain(|link| link.owner != self.owner);
                 if target.runtime.protect_from.is_empty() {
                     target.runtime.protect_pre_defend_skill_count = None;
+                    target.states.clear_compressed_legacy_state(CompressedLegacyState::Protect);
                 }
             }
             self.entities
@@ -399,6 +408,7 @@ impl<'a> SkillContext<'a> {
             let target = self.entities.get_mut(next_target).ok_or(EffectContextError::UnknownEntity(next_target))?;
             if target.runtime.protect_from.is_empty() {
                 target.runtime.protect_pre_defend_skill_count = Some(pre_defend_skill_count);
+                target.states.register_compressed_legacy_state(CompressedLegacyState::Protect);
             }
             if let Some(link) = target.runtime.protect_from.iter_mut().find(|link| link.owner == self.owner) {
                 link.level = level;
@@ -417,6 +427,8 @@ impl<'a> SkillContext<'a> {
     pub fn defend_atp(&self) -> Option<f64> { self.defend_value.as_ref().and_then(|value| value.atp()) }
 
     pub fn defend_is_magic(&self) -> Option<bool> { self.defend_value.as_ref().and_then(|value| value.is_magic()) }
+
+    pub fn defend_on_damage(&self) -> PlainAttackOnDamage { self.defend_on_damage }
 
     pub fn set_defend_atp(&mut self, atp: f64) {
         let Some(value) = self.defend_value.as_deref_mut() else {

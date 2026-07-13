@@ -93,3 +93,31 @@ fn refreshing_runtime_replays_curse_atk_sum() {
 
     assert_eq!(owner.runtime.atk_sum, 68);
 }
+
+#[test]
+fn clone_child_uses_separate_name_factor_without_changing_owner_decay() {
+    let attrs = [39, 39, 43, 43, 37, 36, 42, 149];
+    let owner_raw = CloneBuildData::derive_raw(attrs, 0.0);
+    let status = PlayerStatus {
+        max_hp: owner_raw.max_hp,
+        attack: owner_raw.attack,
+        magic: owner_raw.magic,
+        wisdom: owner_raw.wisdom,
+        speed: owner_raw.speed,
+        defense: owner_raw.defense,
+        resistance: owner_raw.resistance,
+        agility: owner_raw.agility,
+        at_boost: f64::from_bits(owner_raw.at_boost_bits),
+        attr_sum: owner_raw.attr_sum,
+        atk_sum: owner_raw.atk_sum,
+        attract: f64::from_bits(owner_raw.attract_bits),
+        ..PlayerStatus::default()
+    };
+    let build = CloneBuildData::from_legacy(attrs, [0; 8], 0.0, &status).with_child_name_factor(-4.909645111040874);
+
+    assert_eq!(build.derive_stats().speed, 203);
+
+    let child = build.child();
+    assert_eq!(child.name_factor(), -4.909645111040874);
+    assert_eq!(child.derive_stats().speed, 205);
+}

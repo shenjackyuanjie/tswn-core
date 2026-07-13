@@ -111,10 +111,11 @@ impl CombatRuntime {
     }
 
     pub fn mark_zombie_corpse(&mut self, target: EntityIdx) {
-        self.entities
+        let target = self
+            .entities
             .get_mut(target)
-            .unwrap_or_else(|| panic!("runtime_v2 zombie corpse target disappeared: {}", target.0))
-            .runtime
-            .corpse = RuntimeCorpseKind::Zombie;
+            .unwrap_or_else(|| panic!("runtime_v2 zombie corpse target disappeared: {}", target.0));
+        target.states.register_compressed_legacy_state(CompressedLegacyState::Corpse);
+        target.runtime.corpse = RuntimeCorpseKind::Zombie;
     }
 }

@@ -60,6 +60,73 @@ fn plain_protect_can_target_clone_and_preserves_legacy_rng_consumption() {
 }
 
 #[test]
+fn deferred_plain_protect_keeps_expiring_charm_team_until_state_chain_tail() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let protect = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_PROTECT_SKILL_EXPORT)
+        .expect("default profile should register protect skill");
+    let charm = config
+        .registry
+        .state_id_by_export_name(DEFAULT_CORE_CHARM_STATE_EXPORT)
+        .expect("default profile should register charm state");
+    let CustomRuntimeV2ImportConfig {
+        registry,
+        skill_handlers,
+        state_handlers,
+        ..
+    } = config;
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "protector", 0, 100, 3)
+                .with_wisdom(256)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(protect, 64)])),
+            PlayerTemplate::new(2, "original ally", 0, 100, 3),
+            PlayerTemplate::new(3, "charm ally", 1, 100, 3),
+        ],
+        registry,
+    ));
+    for binding in skill_handlers {
+        runtime.set_skill_handler_with_capabilities(binding.skill_id, binding.handler, &binding.capabilities);
+    }
+    for binding in state_handlers {
+        runtime.set_state_handler_with_capabilities(binding.state_id, binding.handler, &binding.capabilities);
+    }
+    {
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        assert!(owner.states.add_entry(StateEntry::charm(
+            76,
+            charm,
+            2,
+            Some(1),
+            Some(1),
+            Some(2),
+            1,
+            SkillPriority(210),
+        )));
+        let state_cursor = owner.states.post_action_registration_cursor();
+        owner.template.skills.register_post_action_after_states(0, state_cursor);
+    }
+
+    let outcome = runtime.run_minimal_round();
+
+    assert_eq!(
+        runtime.entities.get(EntityIdx(0)).unwrap().runtime.protect_to,
+        Some(EntityIdx(2))
+    );
+    assert!(runtime.entities.get(EntityIdx(0)).unwrap().states.entry(76).is_none());
+    assert!(
+        outcome
+            .frame
+            .unwrap()
+            .updates
+            .updates
+            .iter()
+            .any(|update| update.message == "[1]从[魅惑]中解除")
+    );
+}
+
+#[test]
 fn plain_protect_rejects_combat_minion_after_legacy_retry_budget() {
     let mut runtime = protect_runtime(DEFAULT_CORE_SUMMON_KIND_EXPORT);
     let candidates = runtime.world.team_alive(0).unwrap().to_vec();
@@ -216,4 +283,49 @@ fn plain_protect_redirect_preserves_absorb_on_damage_heal() {
             .collect::<Vec<_>>(),
         vec![("[0][守护][1]", 40), ("[1]受到[2]点伤害", 34), ("[1]回复体力[2]点", 17)]
     );
+}
+
+#[test]
+fn nested_plain_protect_redirect_preserves_poison_on_damage() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "target", 0, 1_000, 100),
+            PlayerTemplate::new(2, "first protector", 0, 1_000, 100),
+            PlayerTemplate::new(3, "second protector", 0, 1_000, 100),
+            PlayerTemplate::new(4, "poisoner", 1, 1_000, 100).with_magic(100),
+        ],
+        config.registry,
+    ));
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.magic_point = 100;
+    runtime.entities.get_mut(EntityIdx(2)).unwrap().runtime.magic_point = 100;
+    {
+        let target = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime;
+        target.protect_from.push(ProtectLinkRuntime {
+            owner: EntityIdx(1),
+            level: 256,
+        });
+        target.protect_pre_defend_skill_count = Some(0);
+    }
+    {
+        let first = &mut runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime;
+        first.protect_from.push(ProtectLinkRuntime {
+            owner: EntityIdx(2),
+            level: 256,
+        });
+        first.protect_pre_defend_skill_count = Some(0);
+    }
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_attack_with_atp_and_on_damage_into(
+        EntityIdx(3),
+        EntityIdx(0),
+        true,
+        10_000.0,
+        PlainAttackOnDamage::Poison,
+        &mut updates,
+    );
+
+    assert!(runtime.entities.get(EntityIdx(2)).unwrap().states.entry(PLAIN_POISON_STATE_KEY).is_some());
+    assert!(updates.updates.iter().any(|update| update.message == "[1][中毒]"));
 }

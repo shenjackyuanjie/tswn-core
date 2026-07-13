@@ -94,7 +94,13 @@ impl CombatRuntime {
                 self.drain_plain_accumulate_skill_into(actor, updates);
             }
             BuiltinActiveSkill::Assassinate => {
-                let target = prepared.targets[0];
+                let target = prepared.targets.first().copied().or_else(|| {
+                    self.entities
+                        .get(actor)
+                        .and_then(|entity| entity.runtime.assassinate)
+                        .map(|pending| pending.target)
+                });
+                let target = target.expect("runtime_v2 assassinate action is missing its selected or pending target");
                 self.drain_plain_assassinate_skill_into(actor, prepared.selected.fixed_lane, target, updates);
             }
             BuiltinActiveSkill::Summon => {
@@ -531,7 +537,7 @@ impl CombatRuntime {
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 haste actor: {}", actor.0));
-            (owner.runtime.at_boost_millionths >= 3_000_000, owner.effective_speed())
+            (owner.runtime.charge.active, owner.effective_speed())
         };
         self.entities
             .get_mut(actor)
@@ -553,7 +559,10 @@ impl CombatRuntime {
             .entities
             .get_mut(target)
             .unwrap_or_else(|| panic!("unknown runtime_v2 haste target: {}", target.0));
-        if let Some((mut faster, mut step)) = target_entity.states.entry(PLAIN_HASTE_STATE_KEY).and_then(StateEntry::haste_value)
+        if let Some((mut faster, effective_faster, mut step)) = target_entity
+            .states
+            .entry(PLAIN_HASTE_STATE_KEY)
+            .and_then(StateEntry::haste_runtime_value)
         {
             step += 2;
             if charge_active {
@@ -561,17 +570,23 @@ impl CombatRuntime {
                 step += 2;
             }
             assert!(
-                target_entity
-                    .states
-                    .set_payload(PLAIN_HASTE_STATE_KEY, StatePayload::Haste { faster, step }),
+                target_entity.states.set_payload(
+                    PLAIN_HASTE_STATE_KEY,
+                    StatePayload::Haste {
+                        faster,
+                        effective_faster,
+                        step,
+                    },
+                ),
                 "runtime_v2 haste state disappeared during extension"
             );
         } else {
             assert!(
-                target_entity.states.add_entry(StateEntry::haste(
+                target_entity.states.add_entry(StateEntry::haste_with_effective_faster(
                     PLAIN_HASTE_STATE_KEY,
                     haste_state_id,
                     if charge_active { 4 } else { 2 },
+                    2,
                     if charge_active { 5 } else { 3 },
                     haste_priority,
                 )),

@@ -1,13 +1,14 @@
 use crate::engine::update::{RunUpdate, RunUpdates, UpdateType};
 use crate::rc4::RC4;
+use crate::runtime_v2::combat::PlainAttackOnDamage;
 use crate::runtime_v2::entity::{AccumulateRuntime, ChargeRuntime, EntityIdx, PlayerTemplate, StateEntry, StatePayload};
 use crate::runtime_v2::extension::{
     EffectHandlerId, ExtensionCapability, ExtensionRegistry, ReplayRendererId, ShowRendererId, SkillId, StateId,
 };
 use crate::runtime_v2::scheduler::{SkillHookPlanEntry, StateHookPlanEntry};
 use crate::runtime_v2::{
-    BattleSlotStorage, EntityArena, EntityRecord, EntitySlotId, ProcMask, ProtectLinkRuntime, RuntimeDefendValue, SlotError,
-    SlotValue, TemplateSlotId, TemplateSlotStorage, WorldArena,
+    BattleSlotStorage, CompressedLegacyState, EntityArena, EntityRecord, EntitySlotId, ProcMask, ProtectLinkRuntime,
+    RuntimeDefendValue, SlotError, SlotValue, TemplateSlotId, TemplateSlotStorage, WorldArena,
 };
 use std::collections::VecDeque;
 
@@ -34,6 +35,7 @@ pub enum QueuedEffect {
         caster: EntityIdx,
         target: EntityIdx,
         atp_bits: u64,
+        on_damage: PlainAttackOnDamage,
     },
     PoisonTick {
         caster: EntityIdx,

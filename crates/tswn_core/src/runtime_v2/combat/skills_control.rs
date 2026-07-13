@@ -423,11 +423,12 @@ impl CombatRuntime {
     }
 
     pub fn select_plain_exchange_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
-        let (actor_team, actor_hp) = self
+        let actor_hp = self
             .entities
             .get(actor)
-            .map(|entity| (entity.runtime.team, entity.runtime.hp))
+            .map(|entity| entity.runtime.hp)
             .unwrap_or_else(|| panic!("unknown runtime_v2 exchange actor: {}", actor.0));
+        let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive().to_vec();
         if all_alive.is_empty() {
             return Vec::new();
@@ -633,6 +634,15 @@ impl CombatRuntime {
         ));
         if target_hp > owner_hp {
             self.drain_plain_post_damage_skill_chain_into(target, target_hp - owner_hp, actor, updates);
+            // 生命之轮直接改写 HP 后仍会调用 legacy on_damaged；若伤害分摊等
+            // post_damage 回调把目标压到 0 HP，必须在当前技能内完成死亡与 KILL 链。
+            let target_needs_lethal = self
+                .entities
+                .get(target)
+                .is_some_and(|entity| entity.runtime.hp <= 0 && entity.runtime.alive);
+            if target_needs_lethal {
+                self.drain_plain_lethal_damage_into(actor, target, updates);
+            }
         }
         #[cfg(not(feature = "no_debug"))]
         if std::env::var_os("TSWN_PROBE_EXCHANGE").is_some() {

@@ -44,7 +44,43 @@ fn summon_share_damage_owner_death_marks_active_summon_for_outer_lethal_chain() 
 }
 
 #[test]
-fn summon_share_damage_owner_death_removes_root_owned_sibling_minions() {
+fn summon_share_damage_hide_counts_zero_hp_summon_before_outer_lethal_chain() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let summon_kind = config
+        .registry
+        .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
+        .expect("default profile should register core summon kind");
+    let hide = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_HIDE_SKILL_EXPORT)
+        .expect("default profile should register hide skill");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "owner", 0, 100, 1).with_skill_loadout(SkillLoadout::from_skill_levels([(hide, 20)])),
+            PlayerTemplate::new(2, "caster", 1, 100, 1),
+        ],
+        config.registry,
+    ));
+    let summoned = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(0, "owner?0", summon_kind, 0, 40, 0),
+        &runtime.registry,
+        Some(EntityIdx(0)),
+        Some(EntityIdx(0)),
+    );
+    let summon_team = runtime.entities.get(summoned).unwrap().runtime.team;
+    runtime.world.add_spawned_alive(summoned, summon_team);
+    runtime.entities.get_mut(summoned).unwrap().runtime.hp = 0;
+    let mut expected_rng = runtime.rng.clone();
+    expected_rng.r63();
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_summon_share_damage_into(summoned, 1, 10, EntityIdx(1), &mut updates);
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+}
+
+#[test]
+fn summon_share_damage_owner_death_removes_root_owned_sibling_minion_when_direct_owner_is_dead() {
     let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
     let summon_kind = config
         .registry
@@ -76,6 +112,9 @@ fn summon_share_damage_owner_death_removes_root_owned_sibling_minions() {
     let sibling_team = runtime.entities.get(sibling).unwrap().runtime.team;
     runtime.world.add_spawned_alive(active_summon, active_team);
     runtime.world.add_spawned_alive(sibling, sibling_team);
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.hp = 0;
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.alive = false;
+    runtime.world.mark_dead(EntityIdx(0), 0);
     let mut updates = RunUpdates::new();
 
     runtime.drain_plain_summon_share_damage_into(active_summon, 1, 50, EntityIdx(2), &mut updates);
@@ -99,7 +138,7 @@ fn summon_share_damage_owner_death_removes_root_owned_sibling_minions() {
 }
 
 #[test]
-fn summon_share_damage_owner_death_keeps_root_owned_shadow_minions() {
+fn summon_share_damage_owner_death_removes_direct_shadow_but_keeps_root_owned_shadow() {
     let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
     let summon_kind = config
         .registry
@@ -131,10 +170,18 @@ fn summon_share_damage_owner_death_keeps_root_owned_shadow_minions() {
         Some(EntityIdx(0)),
         Some(EntityIdx(1)),
     );
+    let direct_shadow = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(0, "owner?shadow", shadow_kind, 0, 40, 0),
+        &runtime.registry,
+        Some(EntityIdx(1)),
+        Some(EntityIdx(0)),
+    );
     let active_team = runtime.entities.get(active_summon).unwrap().runtime.team;
     let shadow_team = runtime.entities.get(sibling_shadow).unwrap().runtime.team;
+    let direct_shadow_team = runtime.entities.get(direct_shadow).unwrap().runtime.team;
     runtime.world.add_spawned_alive(active_summon, active_team);
     runtime.world.add_spawned_alive(sibling_shadow, shadow_team);
+    runtime.world.add_spawned_alive(direct_shadow, direct_shadow_team);
     let mut updates = RunUpdates::new();
 
     runtime.drain_plain_summon_share_damage_into(active_summon, 1, 50, EntityIdx(2), &mut updates);
@@ -143,10 +190,14 @@ fn summon_share_damage_owner_death_keeps_root_owned_shadow_minions() {
     assert!(runtime.entities.get(sibling_shadow).unwrap().runtime.alive);
     assert!(runtime.world.round_order().contains(&sibling_shadow));
     assert!(runtime.world.flat_alive().contains(&sibling_shadow));
+    assert!(!runtime.entities.get(direct_shadow).unwrap().runtime.alive);
+    assert!(!runtime.world.round_order().contains(&direct_shadow));
+    assert!(!runtime.world.flat_alive().contains(&direct_shadow));
     assert_eq!(
         updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
-        vec!["[1]受到[2]点伤害", "\n", "[1]被击倒了"]
+        vec!["[1]受到[2]点伤害", "\n", "[1]被击倒了", "\n", "[1]消失了"]
     );
+    assert_eq!(updates.updates[4].target, direct_shadow.0 as usize);
 }
 
 #[test]

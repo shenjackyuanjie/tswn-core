@@ -129,8 +129,7 @@ impl CombatRuntime {
             });
         }
         let terminal_plain_action = if state_intercepted_action {
-            // PRE_ACTION state handlers own this action. Legacy still performs
-            // recovery and the full post-action chain after the state action.
+            // PRE_ACTION 状态钩子接管本次行动后，legacy 仍会继续执行恢复和完整的行动后链。
             legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else if let Some(PreparedPlainAction::BuiltinSkill(prepared)) = prepared_plain_action.clone() {
             self.drain_plain_builtin_skill_into(action.actor, prepared, &mut updates);
@@ -183,22 +182,7 @@ impl CombatRuntime {
             if state_intercepted_action {
                 updates.add_newline();
             }
-            let post_action_skill_plan = self.scheduler.skill_post_action_hook_plan(
-                &self.entities,
-                &self.registry,
-                action.actor,
-                SkillPostActionPhase::Early,
-            );
-            self.drain_skill_hook_plan_into(&post_action_skill_plan, &mut updates);
-            let state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::POST_ACTION);
-            self.drain_state_hook_plan_into(&state_plan, &mut updates);
-            let post_action_late_skill_plan = self.scheduler.skill_post_action_hook_plan(
-                &self.entities,
-                &self.registry,
-                action.actor,
-                SkillPostActionPhase::Late,
-            );
-            self.drain_skill_hook_plan_into(&post_action_late_skill_plan, &mut updates);
+            self.drain_post_action_chain_into(action.actor, &mut updates);
         }
         self.drain_plain_update_end_into(&mut updates);
         #[cfg(not(feature = "no_debug"))]
@@ -228,6 +212,71 @@ impl CombatRuntime {
             );
         }
         Some(self.finish_round(Some(action), updates))
+    }
+
+    fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
+        let early_skill_plan =
+            self.scheduler
+                .skill_post_action_hook_plan(&self.entities, &self.registry, owner, SkillPostActionPhase::Early);
+        self.drain_skill_hook_plan_into(&early_skill_plan, updates);
+
+        let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
+        let deferred_entries = self.scheduler.deferred_skill_post_action_entries(&self.entities, &self.registry, owner);
+        let loadout_len = self
+            .entities
+            .get(owner)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 post-action owner entity: {}", owner.0))
+            .template
+            .skills
+            .len();
+        let mut deferred_idx = 0usize;
+        let mut deferred_owner_state_clears = Vec::new();
+        for state_entry in state_plan.entries.iter().copied() {
+            while deferred_entries
+                .get(deferred_idx)
+                .is_some_and(|(cursor, _)| *cursor <= state_entry.runtime_registration_order)
+            {
+                let entry = deferred_entries[deferred_idx].1;
+                let plan = SkillHookPlan {
+                    owner,
+                    hook: ProcMask::POST_ACTION,
+                    loadout_len,
+                    entries: vec![entry],
+                };
+                self.drain_skill_hook_plan_into(&plan, updates);
+                deferred_idx += 1;
+            }
+            // legacy 的状态循环会在每个状态执行前检查 dj()：只有行动者已经死亡且
+            // 战斗同时结束时才中断；尚未执行的尾部 deferred skill 仍会在循环后继续处理。
+            let owner_alive = self.entities.get(owner).is_some_and(|entity| entity.runtime.alive);
+            if !owner_alive && self.world.alive_group_count() <= 1 {
+                break;
+            }
+            self.drain_state_hook_entry_with_deferred_clears_into(
+                ProcMask::POST_ACTION,
+                state_entry,
+                updates,
+                Some(&mut deferred_owner_state_clears),
+            );
+        }
+        while let Some((_, entry)) = deferred_entries.get(deferred_idx).copied() {
+            let plan = SkillHookPlan {
+                owner,
+                hook: ProcMask::POST_ACTION,
+                loadout_len,
+                entries: vec![entry],
+            };
+            self.drain_skill_hook_plan_into(&plan, updates);
+            deferred_idx += 1;
+        }
+        // legacy 会先记录本轮需要清理的状态，等状态与中途注册技能全部执行完后再统一移除。
+        self.flush_deferred_owner_state_clears(owner, &deferred_owner_state_clears);
+
+        // Charge 以及 Haste、Slow 的尾阶段必须继续晚于状态和中途注册的 early 技能。
+        let late_skill_plan =
+            self.scheduler
+                .skill_post_action_hook_plan(&self.entities, &self.registry, owner, SkillPostActionPhase::Late);
+        self.drain_skill_hook_plan_into(&late_skill_plan, updates);
     }
 
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {
@@ -624,7 +673,9 @@ impl CombatRuntime {
                         self.rng.j,
                     );
                 }
-                if targets.is_empty() {
+                let allows_empty_targets = builtin_skill == BuiltinActiveSkill::Assassinate
+                    && self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some());
+                if targets.is_empty() && !allows_empty_targets {
                     continue;
                 }
                 return Some(PreparedBuiltinSkillAction { selected, targets });

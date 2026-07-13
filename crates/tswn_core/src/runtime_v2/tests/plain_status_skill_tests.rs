@@ -89,7 +89,7 @@ fn plain_berserk_static_dispatch_applies_and_extends_forced_action_state() {
 }
 
 #[test]
-fn plain_haste_static_dispatch_applies_speed_state_and_charge_extension() {
+fn plain_haste_static_dispatch_requires_active_charge_for_charge_extension() {
     let mut builder = ExtensionRegistryBuilder::default();
     let haste = builder
         .register_skill(
@@ -161,9 +161,27 @@ fn plain_haste_static_dispatch_applies_speed_state_and_charge_extension() {
             .states
             .entry(PLAIN_HASTE_STATE_KEY)
             .and_then(StateEntry::haste_value),
-        Some((4, 7))
+        Some((2, 5))
     );
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points, 220);
+
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime.charge.active = true;
+    runtime.drain_plain_haste_skill_into(EntityIdx(0), EntityIdx(0), &mut updates);
+    assert_eq!(
+        runtime
+            .entities
+            .get(EntityIdx(0))
+            .unwrap()
+            .states
+            .entry(PLAIN_HASTE_STATE_KEY)
+            .and_then(StateEntry::haste_value),
+        Some((4, 9))
+    );
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points, 300);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().effective_speed(), 80);
+
+    runtime.entities.get_mut(EntityIdx(0)).unwrap().refresh_runtime_stats_from_template();
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().effective_speed(), 160);
 }
 
 #[test]
@@ -428,4 +446,223 @@ fn plain_iron_refreshes_runtime_attract_after_shield_break() {
         updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
         vec!["\n", "[1]的[铁壁]被打消了"]
     );
+}
+
+#[test]
+fn post_defend_state_mutation_does_not_repeat_later_state_hook() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let iron = config
+        .registry
+        .skill_id_by_export_name(BuiltinActiveSkill::Iron.export_name())
+        .expect("default profile should register iron skill");
+    let curse = config
+        .registry
+        .state_id_by_export_name(DEFAULT_CORE_CURSE_STATE_EXPORT)
+        .expect("default profile should register curse state");
+    let CustomRuntimeV2ImportConfig {
+        registry,
+        state_handlers,
+        ..
+    } = config;
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "iron", 0, 100, 3)
+                .with_magic(20)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(iron, 128)])),
+            PlayerTemplate::new(2, "enemy", 1, 100, 3),
+        ],
+        registry,
+    ));
+    for binding in state_handlers {
+        runtime.set_state_handler_with_capabilities(binding.state_id, binding.handler, &binding.capabilities);
+    }
+    runtime.drain_plain_iron_skill_into(EntityIdx(0), &mut RunUpdates::new());
+    assert!(
+        runtime.entities.get_mut(EntityIdx(0)).unwrap().states.add_entry(StateEntry::curse(
+            PLAIN_CURSE_STATE_KEY,
+            curse,
+            64,
+            2,
+            SkillPriority(10_000),
+        ))
+    );
+    let mut defend_value = RuntimeDefendValue::Damage {
+        value: 200,
+        caster: EntityIdx(1),
+        target: EntityIdx(0),
+    };
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_post_defend_hooks_into(EntityIdx(0), &mut updates, &mut defend_value);
+
+    assert_eq!(defend_value.damage(), Some(140));
+    assert_eq!(
+        updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),
+        vec!["\n", "[1]的[铁壁]被打消了", "[诅咒]使伤害加倍"]
+    );
+}
+
+#[test]
+fn runtime_shield_absorbs_damage_before_curse_state() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let curse = config
+        .registry
+        .state_id_by_export_name(DEFAULT_CORE_CURSE_STATE_EXPORT)
+        .expect("default profile should register curse state");
+    let CustomRuntimeV2ImportConfig {
+        registry,
+        state_handlers,
+        ..
+    } = config;
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "shielded", 0, 100, 3),
+            PlayerTemplate::new(2, "enemy", 1, 100, 3),
+        ],
+        registry,
+    ));
+    for binding in state_handlers {
+        runtime.set_state_handler_with_capabilities(binding.state_id, binding.handler, &binding.capabilities);
+    }
+    let target = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+    target.runtime.shield = 100;
+    assert!(
+        target
+            .states
+            .add_entry(StateEntry::curse(PLAIN_CURSE_STATE_KEY, curse, 64, 2, SkillPriority(10_000),))
+    );
+    let expected_rng = runtime.rng.clone();
+    let mut defend_value = RuntimeDefendValue::Damage {
+        value: 50,
+        caster: EntityIdx(1),
+        target: EntityIdx(0),
+    };
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_post_defend_hooks_into(EntityIdx(0), &mut updates, &mut defend_value);
+
+    assert_eq!(defend_value.damage(), Some(0));
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.shield, 50);
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert!(updates.updates.is_empty());
+}
+
+#[test]
+fn post_damage_hooks_follow_registration_order() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let upgrade = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_UPGRADE_SKILL_EXPORT)
+        .expect("default profile should register upgrade skill");
+    let hide = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_HIDE_SKILL_EXPORT)
+        .expect("default profile should register hide skill");
+    let (rng, hide_level) = (0_u8..=u8::MAX)
+        .find_map(|seed| {
+            let rng = RC4::new(&[seed], 1);
+            let mut probe = rng.clone();
+            let first = probe.r63();
+            let second = probe.r63();
+            (first < second).then_some((rng, first + 1))
+        })
+        .expect("a one-byte seed should distinguish the first two r63 rolls");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "target", 0, 100, 3).with_skill_loadout(
+                SkillLoadout::from_skill_levels([(upgrade, hide_level), (hide, hide_level)])
+                    .with_fixed_lane_keys([33, 34])
+                    .with_post_damage_order([1, 0]),
+            ),
+            PlayerTemplate::new(2, "ally", 0, 100, 3),
+            PlayerTemplate::new(3, "enemy", 1, 100, 3),
+        ],
+        config.registry,
+    ));
+    runtime.rng = rng;
+
+    runtime.apply_plain_attack_damage_into(EntityIdx(2), EntityIdx(0), 1, &mut RunUpdates::new());
+
+    assert!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.hide.is_some());
+}
+
+#[test]
+fn plain_hide_activation_refreshes_pending_haste_multiplier() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let haste_state = config
+        .registry
+        .state_id_by_export_name(DEFAULT_CORE_HASTE_STATE_EXPORT)
+        .expect("default profile should register haste state");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "target", 0, 100, 3).with_speed(100),
+            PlayerTemplate::new(2, "ally", 0, 100, 3),
+            PlayerTemplate::new(3, "enemy", 1, 100, 3),
+        ],
+        config.registry,
+    ));
+    runtime
+        .entities
+        .get_mut(EntityIdx(0))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::haste_with_effective_faster(
+            PLAIN_HASTE_STATE_KEY,
+            haste_state,
+            4,
+            2,
+            9,
+            SkillPriority(210),
+        ));
+
+    runtime.run_plain_hide_post_damage_into(EntityIdx(0), 128, 1, EntityIdx(2), &mut RunUpdates::new());
+
+    let target = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert!(target.runtime.hide.is_some());
+    assert_eq!(
+        target.states.entry(PLAIN_HASTE_STATE_KEY).and_then(StateEntry::haste_runtime_value),
+        Some((4, 4, 9))
+    );
+    assert_eq!(target.effective_speed(), 400);
+}
+
+#[test]
+fn plain_hide_clear_refreshes_pending_haste_multiplier() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let haste_state = config
+        .registry
+        .state_id_by_export_name(DEFAULT_CORE_HASTE_STATE_EXPORT)
+        .expect("default profile should register haste state");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![PlayerTemplate::new(1, "target", 0, 100, 3).with_speed(100)],
+        config.registry,
+    ));
+    {
+        let target = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        target.states.add_entry(StateEntry::haste_with_effective_faster(
+            PLAIN_HASTE_STATE_KEY,
+            haste_state,
+            4,
+            2,
+            9,
+            SkillPriority(210),
+        ));
+        target.runtime.hide = Some(HideRuntime {
+            level: 64,
+            attract_bits: target.runtime.attract_bits,
+            agility: target.runtime.agility,
+            defense: target.runtime.defense,
+            resistance: target.runtime.resistance,
+        });
+    }
+
+    runtime.clear_plain_hide_before_action(EntityIdx(0));
+
+    let target = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert!(target.runtime.hide.is_none());
+    assert_eq!(
+        target.states.entry(PLAIN_HASTE_STATE_KEY).and_then(StateEntry::haste_runtime_value),
+        Some((4, 4, 9))
+    );
+    assert_eq!(target.effective_speed(), 400);
 }

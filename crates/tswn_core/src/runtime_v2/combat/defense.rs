@@ -97,7 +97,7 @@ impl CombatRuntime {
                 loadout_len: skill_plan.loadout_len,
                 entries: skill_plan.entries[..protect_split].to_vec(),
             };
-            self.drain_skill_hook_plan_with_defend_value_into(&before_protect, updates, defend_value);
+            self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(&before_protect, updates, defend_value, on_damage);
             if defend_value.atp() == Some(0.0) && (!started_zero || protect_split > 0) {
                 return;
             }
@@ -110,7 +110,7 @@ impl CombatRuntime {
                 loadout_len: skill_plan.loadout_len,
                 entries: skill_plan.entries[protect_split..].to_vec(),
             };
-            self.drain_skill_hook_plan_with_defend_value_into(&after_protect, updates, defend_value);
+            self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(&after_protect, updates, defend_value, on_damage);
             if defend_value.atp() == Some(0.0) {
                 return;
             }
@@ -118,7 +118,7 @@ impl CombatRuntime {
             self.drain_state_hook_plan_with_defend_value_into(&state_plan, updates, defend_value);
             return;
         }
-        self.drain_skill_hook_plan_with_defend_value_into(&skill_plan, updates, defend_value);
+        self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(&skill_plan, updates, defend_value, on_damage);
         let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::PRE_DEFEND);
         self.drain_state_hook_plan_with_defend_value_into(&state_plan, updates, defend_value);
     }
@@ -143,9 +143,11 @@ impl CombatRuntime {
     }
 
     pub fn drain_plain_protect_post_action_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
-        let mut plan =
-            self.scheduler
-                .skill_post_action_hook_plan(&self.entities, &self.registry, owner, SkillPostActionPhase::Early);
+        // 守护触发时，JS 会直接调用 ProtectSkill.post_action；即使该技能是 Merge 中途注册、
+        // 在常规 POST_ACTION 队列里处于延后位置，这次直接调用也不能被延后过滤掉。
+        let mut plan = self
+            .scheduler
+            .skill_hook_plan(&self.entities, &self.registry, owner, ProcMask::POST_ACTION);
         plan.entries.retain(|entry| {
             self.registry
                 .skill(entry.skill_id)
@@ -239,7 +241,7 @@ impl CombatRuntime {
                     target: link.owner,
                     is_magic,
                 };
-                self.drain_pre_defend_hooks_into(link.owner, updates, &mut redirected_atp);
+                self.drain_pre_defend_hooks_with_on_damage_into(link.owner, updates, &mut redirected_atp, on_damage);
                 let redirected_atp = redirected_atp.atp().expect("runtime_v2 protect pre-defend hooks must leave an atp value");
                 if redirected_atp == 0.0 {
                     defend_value.set_atp(0.0);
@@ -281,10 +283,11 @@ impl CombatRuntime {
                 return true;
             }
 
-            let target_runtime = &mut self.entities.get_mut(target).unwrap().runtime;
-            target_runtime.protect_from.remove(link_index);
-            if target_runtime.protect_from.is_empty() {
-                target_runtime.protect_pre_defend_skill_count = None;
+            let target_entity = self.entities.get_mut(target).unwrap();
+            target_entity.runtime.protect_from.remove(link_index);
+            if target_entity.runtime.protect_from.is_empty() {
+                target_entity.runtime.protect_pre_defend_skill_count = None;
+                target_entity.states.clear_compressed_legacy_state(CompressedLegacyState::Protect);
             }
             if let Some(protector) = self.entities.get_mut(link.owner)
                 && protector.runtime.protect_to == Some(target)
@@ -300,43 +303,74 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
-        let skill_plan = self
-            .scheduler
-            .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::POST_DEFEND);
-        let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::POST_DEFEND);
-
         #[derive(Clone, Copy)]
         enum DefendHookPlanEntry {
             Skill(SkillHookPlanEntry),
             State(StateHookPlanEntry),
+            RuntimeShield,
         }
 
-        let mut entries = Vec::with_capacity(skill_plan.entries.len() + state_plan.entries.len());
-        entries.extend(skill_plan.entries.iter().copied().map(|entry| {
-            (
-                entry.priority,
-                0_u8,
-                entry.active_order,
-                entry.registration_order,
-                DefendHookPlanEntry::Skill(entry),
-            )
-        }));
-        entries.extend(state_plan.entries.iter().copied().map(|entry| {
-            (
-                entry.priority,
-                1_u8,
-                usize::MAX,
-                entry.registration_order,
-                DefendHookPlanEntry::State(entry),
-            )
-        }));
-        entries.sort_by_key(|(priority, kind_order, active_order, registration_order, _)| {
-            (*priority, *kind_order, *active_order, *registration_order)
-        });
-
-        for (_, _, _, _, entry) in entries {
+        let mut executed_skill_lanes = Vec::new();
+        let mut executed_state_keys = Vec::new();
+        let mut executed_runtime_shield = false;
+        loop {
+            // 状态钩子可能修改自身存储（最常见的是铁甲被击破）。
+            // 每执行一项都重建合并计划，并共用一份执行记录，避免重建后的状态计划
+            // 或外层技能/状态合并计划重复执行同一钩子。
+            let skill_plan = self
+                .scheduler
+                .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::POST_DEFEND);
+            let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::POST_DEFEND);
+            let mut entries = Vec::with_capacity(skill_plan.entries.len() + state_plan.entries.len() + 1);
+            entries.extend(skill_plan.entries.iter().copied().map(|entry| {
+                (
+                    entry.priority,
+                    0_u8,
+                    entry.active_order,
+                    entry.registration_order,
+                    DefendHookPlanEntry::Skill(entry),
+                )
+            }));
+            entries.extend(state_plan.entries.iter().copied().map(|entry| {
+                (
+                    entry.priority,
+                    1_u8,
+                    usize::MAX,
+                    entry.registration_order,
+                    DefendHookPlanEntry::State(entry),
+                )
+            }));
+            if self.entities.get(target).is_some_and(|entity| entity.runtime.shield > 0) {
+                // legacy 的 ShieldStat 是优先级 6000 的 y2/post_defend 项，位于
+                // Defend（2000）和 Curse（10000）之间。即使护盾压缩成 runtime 字段，
+                // 也不能把它移到整条钩子链的末尾。
+                entries.push((
+                    SkillPriority(6000),
+                    1_u8,
+                    usize::MAX,
+                    RegistrationOrder(u32::MAX),
+                    DefendHookPlanEntry::RuntimeShield,
+                ));
+            }
+            entries.sort_by_key(|(priority, kind_order, active_order, registration_order, _)| {
+                (*priority, *kind_order, *active_order, *registration_order)
+            });
+            let next = entries.into_iter().find_map(|(_, _, _, _, entry)| match entry {
+                DefendHookPlanEntry::Skill(entry) if !executed_skill_lanes.contains(&entry.fixed_lane) => {
+                    Some(DefendHookPlanEntry::Skill(entry))
+                }
+                DefendHookPlanEntry::State(entry) if !executed_state_keys.contains(&entry.legacy_order_key) => {
+                    Some(DefendHookPlanEntry::State(entry))
+                }
+                DefendHookPlanEntry::RuntimeShield if !executed_runtime_shield => Some(DefendHookPlanEntry::RuntimeShield),
+                _ => None,
+            });
+            let Some(entry) = next else {
+                break;
+            };
             match entry {
                 DefendHookPlanEntry::Skill(entry) => {
+                    executed_skill_lanes.push(entry.fixed_lane);
                     let plan = SkillHookPlan {
                         owner: skill_plan.owner,
                         hook: skill_plan.hook,
@@ -346,16 +380,15 @@ impl CombatRuntime {
                     self.drain_skill_hook_plan_with_defend_value_into(&plan, updates, defend_value);
                 }
                 DefendHookPlanEntry::State(entry) => {
-                    let plan = StateHookPlan {
-                        hook: state_plan.hook,
-                        store_generation: state_plan.store_generation,
-                        entries: vec![entry],
-                    };
-                    self.drain_state_hook_plan_with_defend_value_into(&plan, updates, defend_value);
+                    executed_state_keys.push(entry.legacy_order_key);
+                    self.drain_state_hook_entry_with_defend_value_into(state_plan.hook, entry, updates, defend_value);
+                }
+                DefendHookPlanEntry::RuntimeShield => {
+                    executed_runtime_shield = true;
+                    self.apply_runtime_shield_post_defend(target, defend_value);
                 }
             }
         }
-        self.apply_runtime_shield_post_defend(target, defend_value);
     }
 
     pub fn apply_runtime_shield_post_defend(&mut self, target: EntityIdx, defend_value: &mut RuntimeDefendValue) {
@@ -628,14 +661,23 @@ impl CombatRuntime {
         self.cleanup_linked_minions_for_owner_except(owner, None, updates);
     }
 
-    pub fn cleanup_linked_summons_for_owner_except(
+    pub fn cleanup_linked_share_minions_for_owner_except(
         &mut self,
         owner: EntityIdx,
         excluded: Option<EntityIdx>,
         updates: &mut RunUpdates,
     ) {
+        // 分摊伤害致死时，直接绑定 owner 的幻影、使魔等都要随 owner 消失；
+        // 仅通过 root_owner 关联的旁系实体，只清理直接 owner 也已死亡的使魔；
+        // 若直接 owner（例如仍存活的分身）还活着，该使魔仍有独立生命周期。
+        let alive_owners = self
+            .entities
+            .iter()
+            .filter_map(|(idx, entity)| entity.runtime.alive.then_some(idx))
+            .collect::<Vec<_>>();
         self.cleanup_linked_minions_for_owner_except_if(owner, excluded, true, updates, |entity| {
-            entity.runtime.flags.contains(PlayerKindFlags::SUMMON)
+            entity.runtime.owner == owner
+                || (entity.runtime.flags.contains(PlayerKindFlags::SUMMON) && !alive_owners.contains(&entity.runtime.owner))
         });
     }
 

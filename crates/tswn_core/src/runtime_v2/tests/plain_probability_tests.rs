@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_v2::combat::PlainAttackOnDamage;
 
 #[test]
 fn plain_absorb_smart_low_missing_hp_skips_probability_rng() {
@@ -125,6 +126,7 @@ fn reflected_attack_applies_damage_before_move_penalty_finishes() {
         caster: EntityIdx(0),
         target: EntityIdx(1),
         atp_bits: 50.0_f64.to_bits(),
+        on_damage: PlainAttackOnDamage::None,
     });
 
     assert_eq!(

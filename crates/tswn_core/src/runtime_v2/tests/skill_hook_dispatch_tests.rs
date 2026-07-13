@@ -361,6 +361,101 @@ fn run_minimal_round_dispatches_late_post_action_skill_after_state() {
 }
 
 #[test]
+fn run_minimal_round_interleaves_merge_registered_post_action_skill_between_existing_and_future_states() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let initial_skill = builder
+        .register_skill_with_hooks(
+            "custom",
+            "initial-post-action",
+            "custom.initial_post_action",
+            ProcMask::POST_ACTION,
+            TargetPolicy::Enemy,
+            SkillPriority(0),
+        )
+        .expect("initial post-action skill should register");
+    let merged_skill = builder
+        .register_skill_with_hooks(
+            "custom",
+            "merged-post-action",
+            "custom.merged_post_action",
+            ProcMask::POST_ACTION,
+            TargetPolicy::Enemy,
+            SkillPriority(0),
+        )
+        .expect("merged post-action skill should register");
+    let existing_state = builder
+        .register_state(
+            "custom",
+            "existing-post-action-state",
+            "custom.existing_post_action_state",
+            ProcMask::POST_ACTION,
+            SkillPriority(0),
+        )
+        .expect("existing post-action state should register");
+    let future_state = builder
+        .register_state(
+            "custom",
+            "future-post-action-state",
+            "custom.future_post_action_state",
+            ProcMask::POST_ACTION,
+            SkillPriority(0),
+        )
+        .expect("future post-action state should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "left", 0, 10, 3).with_skills([initial_skill, merged_skill]),
+            PlayerTemplate::new(2, "right", 1, 10, 3),
+        ],
+        registry,
+    ));
+    {
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        owner.states.add_entry(StateEntry {
+            legacy_order_key: 55,
+            extension_state_id: Some(existing_state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(0),
+            payload: StatePayload::None,
+        });
+        let state_cursor = owner.states.post_action_registration_cursor();
+        owner.template.skills.register_post_action_after_states(1, state_cursor);
+        owner.states.add_entry(StateEntry {
+            legacy_order_key: 66,
+            extension_state_id: Some(future_state),
+            hook_mask: ProcMask::POST_ACTION,
+            priority: SkillPriority(0),
+            registration_order: RegistrationOrder(1),
+            payload: StatePayload::None,
+        });
+    }
+    runtime.set_skill_handler(initial_skill, skill_marks_update);
+    runtime.set_skill_handler(merged_skill, skill_marks_update);
+    runtime.set_state_handler(existing_state, state_marks_update);
+    runtime.set_state_handler(future_state, state_marks_update);
+
+    let outcome = runtime.run_minimal_round();
+    let frame = outcome.frame.expect("post-action hooks plus attack should emit update");
+
+    assert_eq!(
+        frame
+            .updates
+            .updates
+            .iter()
+            .map(|update| (update.message.as_ref(), update.score))
+            .collect::<Vec<_>>(),
+        vec![
+            ("[0]攻击[1]", 3),
+            ("skill mark", initial_skill.0),
+            ("state mark", 55),
+            ("skill mark", merged_skill.0),
+            ("state mark", 66),
+        ]
+    );
+}
+
+#[test]
 fn run_minimal_round_dispatches_post_action_state_after_attack() {
     let mut builder = ExtensionRegistryBuilder::default();
     let state = builder

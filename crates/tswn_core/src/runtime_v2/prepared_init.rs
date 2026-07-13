@@ -60,14 +60,309 @@ struct PreparedPlayerInit {
     zombie_blueprint: Option<PlayerTemplate>,
 }
 
+/// 与 seed 无关的 Runtime v2 对局初始化模板。
+///
+/// 名字解析、组队加成、玩家 build 和召唤物蓝图只执行一次；每场对局只需根据
+/// seed 重建随机排序、初始移动点和 world 视图，供批量评分/胜率路径复用。
+#[derive(Debug, Clone)]
+pub struct PreparedBattleRoster {
+    players: Vec<PreparedPlayerInit>,
+    input_groups: Vec<Vec<PlrId>>,
+    base_names_sorted: Vec<String>,
+    id_key_names: Vec<String>,
+    sorted_by_id_name: Vec<PlrId>,
+}
+
 #[derive(Debug, Clone)]
 pub struct PreparedBattleInit {
     players: Vec<PreparedPlayerInit>,
+    input_groups: Vec<Vec<EntityIdx>>,
     round_order: Vec<EntityIdx>,
     team_roster: Vec<Vec<EntityIdx>>,
     team_alive: Vec<Vec<EntityIdx>>,
     flat_alive: Vec<EntityIdx>,
     rng: RC4,
+}
+
+/// 只包含 seed 会改变的对局初始状态。
+///
+/// 固定 roster 的批量胜率路径可直接把这份轻量状态应用到已经复位的 prototype，
+/// 无需为每局深拷贝玩家模板、技能表和召唤物蓝图。
+#[derive(Debug, Clone)]
+pub struct PreparedBattleSeed {
+    input_groups: Vec<Vec<EntityIdx>>,
+    round_order: Vec<EntityIdx>,
+    team_roster: Vec<Vec<EntityIdx>>,
+    team_alive: Vec<Vec<EntityIdx>>,
+    flat_alive: Vec<EntityIdx>,
+    teams: Vec<usize>,
+    speed_points: Vec<i32>,
+    rng: RC4,
+}
+
+impl PreparedBattleRoster {
+    pub fn from_groups(raw_groups: &[Vec<String>], registry: &ExtensionRegistry) -> Result<Self, RuntimeV2BattleInitError> {
+        Self::from_groups_with_eval_rq(raw_groups, crate::player::eval_name::DEFAULT_EVAL_RQ, registry)
+    }
+
+    pub fn from_groups_with_eval_rq(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        registry: &ExtensionRegistry,
+    ) -> Result<Self, RuntimeV2BattleInitError> {
+        let skill_import = PlainLegacySkillImportMap::new(registry);
+        Self::from_groups_with_eval_rq_and_skill_import(raw_groups, eval_rq, registry, &skill_import)
+    }
+
+    pub fn from_groups_with_eval_rq_and_skill_import(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+    ) -> Result<Self, RuntimeV2BattleInitError> {
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
+        let player_capacity = raw_groups.iter().map(Vec::len).sum();
+        let storage = Storage::new_arc_with_eval_rq_and_capacities(eval_rq, player_capacity, raw_groups.len());
+        let mut players = Vec::with_capacity(player_capacity);
+        let mut input_groups = Vec::with_capacity(raw_groups.len());
+
+        for (team_index, raw_group) in raw_groups.iter().enumerate() {
+            let mut group = Vec::with_capacity(raw_group.len());
+            for (player_index, raw) in raw_group.iter().enumerate() {
+                if Player::check_is_seed(raw) {
+                    continue;
+                }
+                let player = Player::new_from_namerena_raw(raw.clone(), storage.clone()).map_err(|error| {
+                    RuntimeV2BattleInitError::Player {
+                        team_index,
+                        player_index,
+                        raw: raw.clone(),
+                        message: format!("{error:?}"),
+                    }
+                })?;
+                let id: usize = player.id().try_into().expect("runtime v2 prepared player id overflow");
+                assert_eq!(id, players.len(), "runtime v2 prepared player ids must be dense");
+                players.push(player);
+                group.push(id);
+            }
+            if !group.is_empty() {
+                input_groups.push(group);
+            }
+        }
+        #[cfg(test)]
+        let parsed_elapsed = phase_started.elapsed();
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
+
+        PreparedBattleInit::apply_team_upgrades(&mut players, &mut input_groups);
+        PreparedBattleInit::build_players(&mut players);
+        #[cfg(test)]
+        let built_elapsed = phase_started.elapsed();
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
+
+        let player_count = players.len();
+        for player in players {
+            storage.just_insert_player(player);
+        }
+
+        let id_key_names = (0..player_count)
+            .map(|id| storage.get_player(&id).expect("runtime v2 prepared player disappeared").id_key_name())
+            .collect::<Vec<_>>();
+        let mut sorted_by_id_name = (0..player_count).collect::<Vec<_>>();
+        sorted_by_id_name.sort_by(|left, right| id_key_names[*left].cmp(&id_key_names[*right]));
+
+        let mut team_by_player = vec![0; player_count];
+        for (team, group) in input_groups.iter().enumerate() {
+            for player in group {
+                team_by_player[*player] = team;
+            }
+        }
+        #[cfg(test)]
+        let indexed_elapsed = phase_started.elapsed();
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
+        let players = (0..player_count)
+            .map(|id| {
+                let player = storage.get_player(&id).expect("runtime v2 prepared player disappeared");
+                PreparedBattleInit::prepare_player(player, id, team_by_player[id], &storage, registry, skill_import)
+            })
+            .collect::<Vec<_>>();
+        #[cfg(test)]
+        if std::env::var_os("TSWN_PROBE_PREPARED_INIT").is_some() {
+            eprintln!(
+                "[v2_prepared_init] players={player_count} parse={}ns build={}ns index={}ns convert={}ns",
+                parsed_elapsed.as_nanos(),
+                built_elapsed.as_nanos(),
+                indexed_elapsed.as_nanos(),
+                phase_started.elapsed().as_nanos(),
+            );
+        }
+
+        Ok(Self {
+            players,
+            input_groups,
+            base_names_sorted: PreparedBattleInit::base_names_sorted(raw_groups),
+            id_key_names,
+            sorted_by_id_name,
+        })
+    }
+
+    pub fn with_seed(&self, seed: &[String]) -> PreparedBattleInit { self.seed_state(seed).into_init(self.players.clone()) }
+
+    pub fn into_with_seed(self, seed: &[String]) -> PreparedBattleInit {
+        let seed_state = self.seed_state(seed);
+        seed_state.into_init(self.players)
+    }
+
+    pub fn seed_state(&self, seed: &[String]) -> PreparedBattleSeed {
+        let key = PreparedBattleInit::rc4_key_with_seed(&self.base_names_sorted, seed);
+        let mut rng = RC4::new(key.as_bytes(), 1);
+        rng.js_xor_str(&key);
+
+        let mut sort_ints = vec![0; self.players.len()];
+        for &id in &self.sorted_by_id_name {
+            sort_ints[id] = rng.rFFFFFF() as i32;
+        }
+
+        let mut battle_groups = self.input_groups.clone();
+        for group in &mut battle_groups {
+            group.sort_by(|left, right| PreparedBattleInit::cmp_player_keys(&sort_ints, &self.id_key_names, *left, *right));
+        }
+        let input_groups = battle_groups.iter().map(|group| PreparedBattleInit::entity_order(group)).collect();
+        battle_groups.sort_by(|left, right| match (left.first(), right.first()) {
+            (Some(left), Some(right)) => PreparedBattleInit::cmp_player_keys(&sort_ints, &self.id_key_names, *left, *right),
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        });
+
+        for group in &battle_groups {
+            for player in group {
+                rng.encrypt_bytes_no_change(&self.id_key_names[*player]);
+            }
+            rng.encrypt_bytes(&mut [0]);
+        }
+
+        let mut teams = vec![0; self.players.len()];
+        for (team, group) in battle_groups.iter().enumerate() {
+            for &player in group {
+                teams[player] = team;
+            }
+        }
+
+        let mut round_order = battle_groups.iter().flatten().copied().collect::<Vec<_>>();
+        round_order.sort_by(|left, right| PreparedBattleInit::cmp_player_keys(&sort_ints, &self.id_key_names, *left, *right));
+        let mut speed_points = vec![0; self.players.len()];
+        for &player in &round_order {
+            speed_points[player] = rng.r255() as i32;
+        }
+
+        let team_roster = battle_groups
+            .iter()
+            .map(|group| PreparedBattleInit::entity_order(group))
+            .collect::<Vec<_>>();
+        let team_alive = battle_groups
+            .iter()
+            .map(|group| {
+                group
+                    .iter()
+                    .copied()
+                    .filter(|id| self.players[*id].alive)
+                    .map(PreparedBattleInit::entity_idx)
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let flat_alive = team_alive.iter().flatten().copied().collect();
+
+        PreparedBattleSeed {
+            input_groups,
+            round_order: PreparedBattleInit::entity_order(&round_order),
+            team_roster,
+            team_alive,
+            flat_alive,
+            teams,
+            speed_points,
+            rng,
+        }
+    }
+
+    pub fn input_groups(&self) -> Vec<Vec<EntityIdx>> {
+        self.input_groups.iter().map(|group| PreparedBattleInit::entity_order(group)).collect()
+    }
+}
+
+impl PreparedBattleSeed {
+    pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
+
+    fn into_init(self, mut players: Vec<PreparedPlayerInit>) -> PreparedBattleInit {
+        for (index, player) in players.iter_mut().enumerate() {
+            PreparedBattleInit::set_prepared_team(player, self.teams[index]);
+            player.template.move_state.speed_points = self.speed_points[index];
+        }
+        PreparedBattleInit {
+            players,
+            input_groups: self.input_groups,
+            round_order: self.round_order,
+            team_roster: self.team_roster,
+            team_alive: self.team_alive,
+            flat_alive: self.flat_alive,
+            rng: self.rng,
+        }
+    }
+
+    pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
+        if self.teams.len() != runtime.entities.len() {
+            return Err(RuntimeV2BattleInitError::EntityCountMismatch {
+                prepared: self.teams.len(),
+                runtime: runtime.entities.len(),
+            });
+        }
+
+        let shadow_blueprint_slot = runtime
+            .registry
+            .entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT);
+        let summon_blueprint_slot = runtime
+            .registry
+            .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT);
+        let zombie_blueprint_slot = runtime
+            .registry
+            .entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);
+        for (index, (&team, &speed_points)) in self.teams.iter().zip(&self.speed_points).enumerate() {
+            let entity_idx = PreparedBattleInit::entity_idx(index);
+            let entity = runtime
+                .entities
+                .get_mut(entity_idx)
+                .unwrap_or_else(|| panic!("runtime v2 entity disappeared during seed reset: {}", entity_idx.0));
+            entity.template.team = team;
+            entity.runtime.team = team;
+            if entity.template.kind != PlayerTemplate::DEFAULT_KIND {
+                continue;
+            }
+            entity.template.move_state.speed_points = speed_points;
+            entity.runtime.move_state.speed_points = speed_points;
+            for slot in [shadow_blueprint_slot, summon_blueprint_slot, zombie_blueprint_slot]
+                .into_iter()
+                .flatten()
+            {
+                if let Some(SlotValue::PlayerTemplate(template)) = entity.slots.get_mut(slot) {
+                    template.team = team;
+                }
+            }
+        }
+
+        runtime.world.sync_initial_views(
+            &runtime.entities,
+            self.round_order,
+            self.team_roster,
+            self.team_alive,
+            self.flat_alive,
+        );
+        runtime.rng = self.rng;
+        runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
+        Ok(())
+    }
 }
 
 impl PreparedBattleInit {
@@ -133,114 +428,19 @@ impl PreparedBattleInit {
         seed: &[String],
         registry: &ExtensionRegistry,
     ) -> Result<Self, RuntimeV2BattleInitError> {
-        let storage = Storage::new_arc();
-        let mut players = Vec::new();
-        let mut input_groups = Vec::with_capacity(raw_groups.len());
-
-        for (team_index, raw_group) in raw_groups.iter().enumerate() {
-            let mut group = Vec::with_capacity(raw_group.len());
-            for (player_index, raw) in raw_group.iter().enumerate() {
-                if Player::check_is_seed(raw) {
-                    continue;
-                }
-                let player = Player::new_from_namerena_raw(raw.clone(), storage.clone()).map_err(|error| {
-                    RuntimeV2BattleInitError::Player {
-                        team_index,
-                        player_index,
-                        raw: raw.clone(),
-                        message: format!("{error:?}"),
-                    }
-                })?;
-                let id: usize = player.id().try_into().expect("runtime v2 prepared player id overflow");
-                assert_eq!(id, players.len(), "runtime v2 prepared player ids must be dense");
-                players.push(player);
-                group.push(id);
-            }
-            if !group.is_empty() {
-                input_groups.push(group);
-            }
-        }
-
-        Self::apply_team_upgrades(&mut players, &mut input_groups);
-        Self::build_players(&mut players);
-
-        let base_names_sorted = Self::base_names_sorted(raw_groups);
-        let key = Self::rc4_key_with_seed(&base_names_sorted, seed);
-        let mut rng = RC4::new(key.as_bytes(), 1);
-        rng.js_xor_str(&key);
-
-        let id_key_names = players.iter().map(Player::id_key_name).collect::<Vec<_>>();
-        let mut sort_ints = vec![0; players.len()];
-        let mut sorted_by_id_name = (0..players.len()).collect::<Vec<_>>();
-        sorted_by_id_name.sort_by(|left, right| id_key_names[*left].cmp(&id_key_names[*right]));
-        for id in sorted_by_id_name {
-            let sort_int = rng.rFFFFFF() as i32;
-            sort_ints[id] = sort_int;
-            players[id].set_sort_int(sort_int);
-        }
-
-        for group in &mut input_groups {
-            group.sort_by(|left, right| Self::cmp_player_keys(&sort_ints, &id_key_names, *left, *right));
-        }
-        input_groups.sort_by(|left, right| match (left.first(), right.first()) {
-            (Some(left), Some(right)) => Self::cmp_player_keys(&sort_ints, &id_key_names, *left, *right),
-            (None, Some(_)) => std::cmp::Ordering::Less,
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
-
-        for group in &input_groups {
-            for player in group {
-                rng.encrypt_bytes_no_change(&id_key_names[*player]);
-            }
-            rng.encrypt_bytes(&mut [0]);
-        }
-
-        let mut round_order = input_groups.iter().flatten().copied().collect::<Vec<_>>();
-        round_order.sort_by(|left, right| Self::cmp_player_keys(&sort_ints, &id_key_names, *left, *right));
-        for player in &round_order {
-            players[*player].set_move_point(rng.r255() as i32);
-        }
-
-        for player in &players {
-            storage.just_insert_player(player.clone());
-        }
-
-        let mut team_by_player = vec![0; players.len()];
-        for (team, group) in input_groups.iter().enumerate() {
-            for player in group {
-                team_by_player[*player] = team;
-            }
-        }
-
-        let prepared_players = players
-            .iter()
-            .enumerate()
-            .map(|(id, player)| Self::prepare_player(player, id, team_by_player[id], &storage, registry))
-            .collect();
-        let team_roster = input_groups.iter().map(|group| Self::entity_order(group)).collect::<Vec<_>>();
-        let team_alive = input_groups
-            .iter()
-            .map(|group| {
-                group
-                    .iter()
-                    .copied()
-                    .filter(|id| players[*id].alive())
-                    .map(Self::entity_idx)
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        let flat_alive = team_alive.iter().flatten().copied().collect();
-
-        Ok(Self {
-            players: prepared_players,
-            round_order: Self::entity_order(&round_order),
-            team_roster,
-            team_alive,
-            flat_alive,
-            rng,
-        })
+        Self::from_groups_with_eval_rq(raw_groups, seed, crate::player::eval_name::DEFAULT_EVAL_RQ, registry)
     }
+
+    pub fn from_groups_with_eval_rq(
+        raw_groups: &[Vec<String>],
+        seed: &[String],
+        eval_rq: f64,
+        registry: &ExtensionRegistry,
+    ) -> Result<Self, RuntimeV2BattleInitError> {
+        Ok(PreparedBattleRoster::from_groups_with_eval_rq(raw_groups, eval_rq, registry)?.with_seed(seed))
+    }
+
+    pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
         if self.players.len() != runtime.entities.len() {
@@ -273,6 +473,8 @@ impl PreparedBattleInit {
 
             let prepared_template = prepared.template;
             entity.template.display_name = prepared_template.display_name;
+            entity.template.id_key_name = prepared_template.id_key_name;
+            entity.template.clan_name = prepared_template.clan_name;
             entity.template.kind = prepared_template.kind;
             entity.template.max_hp = prepared_template.max_hp;
             entity.template.attack = prepared_template.attack;
@@ -381,15 +583,35 @@ impl PreparedBattleInit {
         }
     }
 
+    fn set_prepared_team(prepared: &mut PreparedPlayerInit, team: usize) {
+        prepared.template.team = team;
+        for blueprint in [
+            &mut prepared.shadow_blueprint,
+            &mut prepared.summon_blueprint,
+            &mut prepared.zombie_blueprint,
+        ] {
+            if let Some(template) = blueprint.as_mut() {
+                template.team = team;
+            }
+        }
+    }
+
     fn prepare_player(
         player: &Player,
         id: PlrId,
         team: usize,
         storage: &std::sync::Arc<Storage>,
         registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
     ) -> PreparedPlayerInit {
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
         let status = player.get_status();
-        let skills = import_plain_legacy_skill_loadout(registry, &player.skill_loadout_snapshot());
+        let skills = skill_import.import_storage(player.skill_storage());
+        #[cfg(test)]
+        let skill_elapsed = phase_started.elapsed();
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
         let kind = match player.player_type() {
             PlayerType::Boss => registry
                 .player_kind_id_by_export_name(DEFAULT_CORE_BOSS_KIND_EXPORT)
@@ -400,49 +622,91 @@ impl PreparedBattleInit {
             _ => PlayerTemplate::DEFAULT_KIND,
         };
         let (clone_attrs, clone_weapon_attr_bonus, clone_name_factor) = player.clone_build_inputs();
-        let clone_build = CloneBuildData::from_legacy(clone_attrs, clone_weapon_attr_bonus, clone_name_factor, status);
+        let child_clone_name_factor = Self::child_clone_name_factor(player, storage.eval_rq());
+        let clone_build = CloneBuildData::from_legacy(clone_attrs, clone_weapon_attr_bonus, clone_name_factor, status)
+            .with_child_name_factor(child_clone_name_factor);
         let mut template = Self::template_from_player(player, id, team, skills.clone());
         template.kind = kind;
         template.clone_build = Some(clone_build);
+        #[cfg(test)]
+        let template_elapsed = phase_started.elapsed();
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
         let shadow_blueprint = registry
             .skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name())
             .filter(|skill| skills.skills().contains(skill))
             .map(|_| {
                 let shadow = crate::player::skill::act::shadow::build_shadow_minion(id, storage);
-                let shadow_skills = import_plain_legacy_skill_loadout(registry, &shadow.skill_loadout_snapshot());
+                let shadow_skills = skill_import.import_storage(shadow.skill_storage());
                 let shadow_kind = registry
                     .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
                     .expect("runtime v2 registry importing shadow must register core shadow kind");
                 let mut template = Self::template_from_player(&shadow, 0, team, shadow_skills);
                 template.kind = shadow_kind;
-                template.clone_build = Some(Self::clone_build_from_player(&shadow));
+                template.clone_build = Some(Self::clone_build_from_player(&shadow, child_clone_name_factor));
                 template
             });
+        #[cfg(test)]
+        let shadow_elapsed = phase_started.elapsed();
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
         let summon_blueprint = registry
             .skill_id_by_export_name(BuiltinActiveSkill::Summon.export_name())
             .filter(|skill| skills.skills().contains(skill))
             .map(|_| {
+                let summon_overlay = crate::player::skill::act::minion::owner_minion_overlay(
+                    storage,
+                    id,
+                    crate::player::skill::act::minion::MinionKind::Summon,
+                );
                 let summon = crate::player::skill::act::summon::build_summon_minion(id, storage, true);
-                let summon_skills = import_plain_legacy_skill_loadout(registry, &summon.skill_loadout_snapshot());
+                let summon_skills = skill_import.import_storage(summon.skill_storage());
                 let summon_kind = registry
                     .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
                     .expect("runtime v2 registry importing summon must register core summon kind");
                 let mut template = Self::template_from_player(&summon, 0, team, summon_skills);
                 template.kind = summon_kind;
                 template.reserved_player_ids_before_spawn = 1;
-                template.clone_build = Some(Self::clone_build_from_player(&summon));
+                template.clone_build = Some(Self::clone_build_from_player(&summon, child_clone_name_factor));
+                template.reuse_skills_on_recast = summon_overlay.as_ref().map_or(true, |overlay| overlay.reuse_skills_on_recast);
+                let has_overlay_attrs = summon_overlay.as_ref().is_some_and(|overlay| overlay.attrs.is_some());
+                template.reuse_stats_on_recast = !has_overlay_attrs;
+                template.inherit_owner_def_res =
+                    !has_overlay_attrs || summon_overlay.as_ref().is_some_and(|overlay| overlay.inherit_owner_def_res);
                 template
             });
+        #[cfg(test)]
+        let summon_elapsed = phase_started.elapsed();
+        #[cfg(test)]
+        let phase_started = std::time::Instant::now();
         let zombie_blueprint = registry
             .skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT)
             .filter(|skill| skills.skills().contains(skill))
-            .map(|_| Self::build_zombie_blueprint(id, team, storage, registry));
+            .map(|_| Self::build_zombie_blueprint(id, team, storage, registry, skill_import, child_clone_name_factor));
+        #[cfg(test)]
+        let zombie_elapsed = phase_started.elapsed();
         let boss_state = match crate::player::boss::boss_kind(&player.id_name()) {
             crate::player::boss::BossKind::Covid => PreparedBossState::Covid,
             crate::player::boss::BossKind::Lazy => PreparedBossState::Lazy,
             crate::player::boss::BossKind::Saitama => PreparedBossState::Saitama,
             _ => PreparedBossState::None,
         };
+        #[cfg(test)]
+        if std::env::var_os("TSWN_PROBE_PREPARED_PLAYER").is_some() {
+            eprintln!(
+                "[v2_prepared_player] id={id} name={:?} skills={} skill={}ns template={}ns shadow={}ns summon={}ns zombie={}ns blueprints={}/{}/{}",
+                player.id_name(),
+                skills.skills().len(),
+                skill_elapsed.as_nanos(),
+                template_elapsed.as_nanos(),
+                shadow_elapsed.as_nanos(),
+                summon_elapsed.as_nanos(),
+                zombie_elapsed.as_nanos(),
+                shadow_blueprint.is_some(),
+                summon_blueprint.is_some(),
+                zombie_blueprint.is_some(),
+            );
+        }
         PreparedPlayerInit {
             template,
             hp: status.hp,
@@ -459,28 +723,38 @@ impl PreparedBattleInit {
         team: usize,
         storage: &std::sync::Arc<Storage>,
         registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        child_clone_name_factor: f64,
     ) -> PlayerTemplate {
         let zombie = crate::player::skill::zombie::build_zombie_minion_blueprint(id, storage);
-        let zombie_skills = import_plain_legacy_skill_loadout(registry, &zombie.skill_loadout_snapshot());
+        let zombie_skills = skill_import.import_storage(zombie.skill_storage());
         let zombie_kind = registry
             .player_kind_id_by_export_name(DEFAULT_CORE_ZOMBIE_KIND_EXPORT)
             .expect("runtime v2 registry importing zombie must register core zombie kind");
         let mut template = Self::template_from_player(&zombie, 0, team, zombie_skills);
         template.kind = zombie_kind;
         template.reserved_player_ids_before_spawn = 1;
-        template.clone_build = Some(Self::clone_build_from_player(&zombie));
+        template.clone_build = Some(Self::clone_build_from_player(&zombie, child_clone_name_factor));
         template
     }
 
-    fn clone_build_from_player(player: &Player) -> CloneBuildData {
+    fn clone_build_from_player(player: &Player, child_clone_name_factor: f64) -> CloneBuildData {
         let status = player.get_status();
         let (clone_attrs, clone_weapon_attr_bonus, clone_name_factor) = player.clone_build_inputs();
         CloneBuildData::from_legacy(clone_attrs, clone_weapon_attr_bonus, clone_name_factor, status)
+            .with_child_name_factor(child_clone_name_factor)
+    }
+
+    fn child_clone_name_factor(player: &Player, eval_rq: f64) -> f64 {
+        let factor_name = crate::player::eval_name::eval_str_common_with_rq(player.base_name().as_str(), true, eval_rq);
+        let factor_team = crate::player::eval_name::eval_str_common_with_rq(player.clan_name().as_str(), true, eval_rq);
+        factor_name.max(factor_team - 6.0)
     }
 
     fn template_from_player(player: &Player, id: PlrId, team: usize, skills: SkillLoadout) -> PlayerTemplate {
         let status = player.get_status();
         PlayerTemplate::new(id, player.id_name(), team, status.max_hp, status.attack)
+            .with_identity_names(player.id_key_name(), player.clan_name())
             .with_display_name(player.display_name())
             .with_magic(status.magic)
             .with_magic_point(status.magic_point)

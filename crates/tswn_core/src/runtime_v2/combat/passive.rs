@@ -2,17 +2,14 @@ use super::*;
 
 impl CombatRuntime {
     pub fn clear_plain_hide_before_action(&mut self, actor: EntityIdx) {
-        let Some(hide) = self.entities.get_mut(actor).and_then(|entity| entity.runtime.hide.take()) else {
+        let Some(actor) = self.entities.get_mut(actor) else {
             return;
         };
-        let actor = self
-            .entities
-            .get_mut(actor)
-            .unwrap_or_else(|| panic!("runtime_v2 hide owner disappeared while clearing: {}", actor.0));
-        actor.runtime.attract_bits = hide.attract_bits;
-        actor.runtime.agility = hide.agility;
-        actor.runtime.defense = hide.defense;
-        actor.runtime.resistance = hide.resistance;
+        if actor.runtime.hide.take().is_none() {
+            return;
+        }
+        // legacy 的 Hide.pre_action 会在清除隐匿标记后调用 update_states，同时同步疾走等待生效状态。
+        actor.refresh_runtime_stats_from_template();
     }
 
     pub fn drain_plain_post_damage_skill_chain_into(
@@ -35,17 +32,19 @@ impl CombatRuntime {
             SummonShareDamage,
         }
 
-        let mut plan = self
+        let target_entity = self
             .entities
             .get(target)
-            .unwrap_or_else(|| panic!("unknown runtime_v2 post-damage target: {}", target.0))
+            .unwrap_or_else(|| panic!("unknown runtime_v2 post-damage target: {}", target.0));
+        let mut plan = target_entity
             .template
             .skills
-            .skills()
+            .post_damage_order()
             .iter()
             .copied()
             .enumerate()
-            .filter_map(|(fixed_lane, skill_id)| {
+            .filter_map(|(registration_order, fixed_lane)| {
+                let skill_id = *target_entity.template.skills.skills().get(fixed_lane)?;
                 let export_name = self.registry.skill(skill_id)?.export_name.as_str();
                 let skill = match export_name {
                     DEFAULT_CORE_UPGRADE_SKILL_EXPORT => PlainPostDamageSkill::Upgrade,
@@ -57,14 +56,21 @@ impl CombatRuntime {
                     DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT => PlainPostDamageSkill::SummonShareDamage,
                     _ => return None,
                 };
-                let level = self.entities.get(target)?.template.skills.level_at(fixed_lane)?;
+                let level = target_entity.template.skills.level_at(fixed_lane)?;
                 if level == 0 {
                     return None;
                 }
-                Some((skill, level))
+                let priority = if matches!(skill, PlainPostDamageSkill::Assassinate) {
+                    i32::MAX
+                } else {
+                    0
+                };
+                Some((skill, level, priority, registration_order))
             })
             .collect::<Vec<_>>();
-        plan.sort_by_key(|(skill, _)| matches!(skill, PlainPostDamageSkill::Assassinate));
+        // `post_damage_order` 保存钩子的实际注册顺序。Merge 可能在运行期启用
+        // 原本为零级的槽位，因此固定槽位顺序和主动行动顺序都不足以复现该事件列表。
+        plan.sort_by_key(|(_, _, priority, registration_order)| (*priority, *registration_order));
         #[cfg(not(feature = "no_debug"))]
         let debug_counter = std::env::var_os("TSWN_PROBE_COUNTER").is_some();
         #[cfg(not(feature = "no_debug"))]
@@ -75,7 +81,7 @@ impl CombatRuntime {
             );
         }
 
-        for (skill, level) in plan {
+        for (skill, level, _, _) in plan {
             #[cfg(not(feature = "no_debug"))]
             let rng_before = (self.rng.i, self.rng.j);
             match skill {
@@ -224,7 +230,8 @@ impl CombatRuntime {
             let Some(target) = target else {
                 continue;
             };
-            if !self.entities.get(target).is_some_and(EntityRecord::is_active) {
+            // legacy 这里只检查反击目标的 alive 标记；冰冻目标仍然可以被反击。
+            if !self.entities.get(target).is_some_and(|entity| entity.runtime.alive) {
                 continue;
             }
             if !self.entities.get(owner).is_some_and(EntityRecord::is_active) {
@@ -303,25 +310,50 @@ impl CombatRuntime {
         _caster: EntityIdx,
         updates: &mut RunUpdates,
     ) {
+        #[cfg(not(feature = "no_debug"))]
+        let probe_hide = std::env::var_os("TSWN_PROBE_HIDE").is_some();
         let (already_active, owner_active) = self
             .entities
             .get(target)
             .map(|entity| (entity.runtime.hide.is_some(), entity.is_active()))
             .unwrap_or_else(|| panic!("unknown runtime_v2 hide target: {}", target.0));
         if level == 0 || already_active || !owner_active {
+            #[cfg(not(feature = "no_debug"))]
+            if probe_hide {
+                eprintln!(
+                    "[hide_probe:v2:skip] target={} level={} already_active={} owner_active={} rc4=({}, {})",
+                    target.0, level, already_active, owner_active, self.rng.i, self.rng.j,
+                );
+            }
             return;
         }
         let effective_team = self.plain_effective_team(target);
         let alive_allies = self.world.team_alive(effective_team).map_or(0, |team| {
             team.iter()
-                .filter(|ally| {
-                    self.entities
-                        .get(**ally)
-                        .is_some_and(|entity| entity.runtime.alive && entity.runtime.hp > 0)
-                })
+                .filter(|ally| self.entities.get(**ally).is_some_and(|entity| entity.runtime.alive))
                 .count()
         });
-        if alive_allies <= 1 || self.rng.r63() >= level {
+        if alive_allies <= 1 {
+            #[cfg(not(feature = "no_debug"))]
+            if probe_hide {
+                eprintln!(
+                    "[hide_probe:v2:alone] target={} team={} level={} alive_allies={} rc4=({}, {})",
+                    target.0, effective_team, level, alive_allies, self.rng.i, self.rng.j,
+                );
+            }
+            return;
+        }
+        #[cfg(not(feature = "no_debug"))]
+        let rng_before = (self.rng.i, self.rng.j);
+        let roll = self.rng.r63();
+        #[cfg(not(feature = "no_debug"))]
+        if probe_hide {
+            eprintln!(
+                "[hide_probe:v2:roll] target={} team={} level={} alive_allies={} roll={} rc4=({}, {}) -> ({}, {})",
+                target.0, effective_team, level, alive_allies, roll, rng_before.0, rng_before.1, self.rng.i, self.rng.j,
+            );
+        }
+        if roll >= level {
             return;
         }
 
@@ -336,13 +368,8 @@ impl CombatRuntime {
             defense: target_entity.runtime.defense,
             resistance: target_entity.runtime.resistance,
         });
-        target_entity.runtime.attract_bits = (target_entity.runtime.attract() / 10.0).to_bits();
-        if level > 63 {
-            let boost = (level - 63) as i32;
-            target_entity.runtime.agility += boost;
-            target_entity.runtime.defense += boost;
-            target_entity.runtime.resistance += boost;
-        }
+        // legacy 激活隐匿后会调用 update_states，因此必须连同疾走等状态一起重算，而不是只局部改隐匿属性。
+        target_entity.refresh_runtime_stats_from_template();
         updates.add(crate::engine::update::RunUpdate::new(
             "[0]发动[隐匿]",
             target.0 as usize,

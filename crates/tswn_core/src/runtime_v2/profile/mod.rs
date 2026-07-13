@@ -272,117 +272,247 @@ impl BuiltinActiveSkill {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PlainLegacySkillImportMap {
+    active_by_legacy_key: [Option<SkillId>; 256],
+    special_by_runtime_kind: [(&'static str, Option<SkillId>); 4],
+    passive_by_runtime_kind: [(&'static str, Option<SkillId>); 10],
+}
+
+impl PlainLegacySkillImportMap {
+    pub fn new(registry: &ExtensionRegistry) -> Self {
+        let mut active_by_legacy_key = [None; 256];
+        for skill in BuiltinActiveSkill::ALL {
+            active_by_legacy_key[skill.legacy_key()] = registry.skill_id_by_export_name(skill.export_name());
+        }
+        Self {
+            active_by_legacy_key,
+            special_by_runtime_kind: [
+                (
+                    std::any::type_name::<crate::player::skill::act::fire::FireSkill>(),
+                    registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name()),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::act::summon::SummonExplodeSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::act::summon::SummonShareDamageSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::act::possess::PossessSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT),
+                ),
+            ],
+            passive_by_runtime_kind: [
+                (
+                    std::any::type_name::<crate::player::skill::defend::DefendSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_DEFEND_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::reflect::ReflectSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_REFLECT_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::protect::ProtectSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_PROTECT_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::shield::ShieldSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_SHIELD_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::upgrade::UpgradeSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_UPGRADE_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::hide::HideSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_HIDE_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::counter::CounterSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_COUNTER_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::merge::MergeSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_MERGE_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::zombie::ZombieSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::reraise::ReraiseSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_RERAISE_SKILL_EXPORT),
+                ),
+            ],
+        }
+    }
+
+    fn resolve(
+        &self,
+        key: usize,
+        runtime_kind: &'static str,
+        level: u32,
+        boosted: bool,
+        boost: Option<crate::player::skill::SkillBoost>,
+    ) -> Option<(usize, SkillId, u32, bool, Option<crate::player::skill::SkillBoost>)> {
+        let active_skill = if let Some((_, skill_id)) = self
+            .special_by_runtime_kind
+            .iter()
+            .find(|(registered_kind, _)| *registered_kind == runtime_kind)
+        {
+            *skill_id
+        } else if key < self.active_by_legacy_key.len() {
+            self.active_by_legacy_key[key]
+        } else {
+            None
+        };
+        let skill_id = if let Some(skill_id) = active_skill {
+            Some(skill_id)
+        } else if let Some((_, skill_id)) = self
+            .passive_by_runtime_kind
+            .iter()
+            .find(|(registered_kind, _)| *registered_kind == runtime_kind)
+        {
+            *skill_id
+        } else {
+            None
+        };
+        skill_id.map(|skill_id| (key, skill_id, level, boosted, boost))
+    }
+
+    fn finish_import(
+        &self,
+        imported: Vec<(usize, SkillId, u32, bool, Option<crate::player::skill::SkillBoost>)>,
+        merge_lane_order_keys: &[usize],
+        active_order_keys: &[usize],
+        pre_action_order_keys: &[usize],
+        post_damage_order_keys: &[usize],
+        post_action_after_states_keys: &[(u64, usize)],
+    ) -> SkillLoadout {
+        let merge_lane_order = merge_lane_order_keys
+            .iter()
+            .filter_map(|key| imported.iter().position(|(imported_key, _, _, _, _)| imported_key == key))
+            .collect::<Vec<_>>();
+        let mut active_order = active_order_keys
+            .iter()
+            .filter_map(|key| imported.iter().position(|(imported_key, _, _, _, _)| imported_key == key))
+            .collect::<Vec<_>>();
+        for lane in 0..imported.len() {
+            if !active_order.contains(&lane) {
+                active_order.push(lane);
+            }
+        }
+        let pre_action_order = pre_action_order_keys
+            .iter()
+            .filter_map(|key| imported.iter().position(|(imported_key, _, _, _, _)| imported_key == key))
+            .collect::<Vec<_>>();
+        let post_damage_order = post_damage_order_keys
+            .iter()
+            .filter_map(|key| imported.iter().position(|(imported_key, _, _, _, _)| imported_key == key))
+            .collect::<Vec<_>>();
+        let post_action_after_states = post_action_after_states_keys
+            .iter()
+            .filter_map(|(cursor, key)| {
+                imported
+                    .iter()
+                    .position(|(imported_key, _, _, _, _)| imported_key == key)
+                    .map(|lane| (*cursor, lane))
+            })
+            .collect::<Vec<_>>();
+
+        let fixed_lane_keys = imported.iter().map(|(key, _, _, _, _)| *key).collect::<Vec<_>>();
+        let boosted = imported.iter().map(|(_, _, _, boosted, _)| *boosted).collect::<Vec<_>>();
+        SkillLoadout::from_skill_levels_and_boosts(
+            imported.into_iter().map(|(_, skill_id, level, _, boost)| (skill_id, level, boost)),
+        )
+        .with_fixed_lane_keys(fixed_lane_keys)
+        .with_boosted_flags(boosted)
+        .with_merge_lane_order(merge_lane_order)
+        .with_active_order(active_order)
+        .with_pre_action_order(pre_action_order)
+        .with_post_damage_order(post_damage_order)
+        .with_post_action_after_states(post_action_after_states)
+    }
+
+    pub fn import(&self, snapshot: &crate::player::skill::store::SkillLoadoutSnapshot) -> SkillLoadout {
+        let resolve = |entry: &crate::player::skill::store::SkillSnapshot| {
+            self.resolve(entry.key, entry.runtime_kind, entry.level, entry.boosted, entry.boost.clone())
+        };
+
+        let mut imported = Vec::new();
+        for key in &snapshot.fixed_lanes {
+            let Some(entry) = snapshot.entries.iter().find(|entry| entry.key == *key) else {
+                continue;
+            };
+            if let Some(mapped) = resolve(entry) {
+                imported.push(mapped);
+            }
+        }
+        for entry in &snapshot.entries {
+            if imported.iter().any(|(key, _, _, _, _)| *key == entry.key) {
+                continue;
+            }
+            if let Some(mapped) = resolve(entry) {
+                imported.push(mapped);
+            }
+        }
+
+        self.finish_import(
+            imported,
+            &snapshot.fixed_lanes,
+            &snapshot.active_order,
+            &snapshot.pre_action_order,
+            &snapshot.post_damage_order,
+            &snapshot.post_action_after_states,
+        )
+    }
+
+    pub fn import_storage(&self, storage: &crate::player::skill::store::SkillStorage) -> SkillLoadout {
+        let resolve = |key: usize| {
+            let skill = storage.store.get(&key)?;
+            self.resolve(
+                key,
+                skill.debug_skill_type_name(),
+                skill.level(),
+                skill.boosted,
+                skill.diy_boost.clone(),
+            )
+        };
+
+        let mut imported = Vec::new();
+        for &key in &storage.slot_skill {
+            if let Some(mapped) = resolve(key) {
+                imported.push(mapped);
+            }
+        }
+        for key in storage.store.keys() {
+            if imported.iter().any(|(imported_key, _, _, _, _)| *imported_key == key) {
+                continue;
+            }
+            if let Some(mapped) = resolve(key) {
+                imported.push(mapped);
+            }
+        }
+
+        self.finish_import(
+            imported,
+            &storage.slot_skill,
+            &storage.skill,
+            &storage.pre_action,
+            &storage.post_damage,
+            &storage.post_action_after_states,
+        )
+    }
+}
+
 pub fn import_plain_legacy_skill_loadout(
     registry: &ExtensionRegistry,
     snapshot: &crate::player::skill::store::SkillLoadoutSnapshot,
 ) -> SkillLoadout {
-    let defend_kind = std::any::type_name::<crate::player::skill::defend::DefendSkill>();
-    let defend_skill = registry.skill_id_by_export_name(DEFAULT_CORE_DEFEND_SKILL_EXPORT);
-    let reflect_kind = std::any::type_name::<crate::player::skill::reflect::ReflectSkill>();
-    let reflect_skill = registry.skill_id_by_export_name(DEFAULT_CORE_REFLECT_SKILL_EXPORT);
-    let protect_kind = std::any::type_name::<crate::player::skill::protect::ProtectSkill>();
-    let protect_skill = registry.skill_id_by_export_name(DEFAULT_CORE_PROTECT_SKILL_EXPORT);
-    let shield_kind = std::any::type_name::<crate::player::skill::shield::ShieldSkill>();
-    let shield_skill = registry.skill_id_by_export_name(DEFAULT_CORE_SHIELD_SKILL_EXPORT);
-    let upgrade_kind = std::any::type_name::<crate::player::skill::upgrade::UpgradeSkill>();
-    let upgrade_skill = registry.skill_id_by_export_name(DEFAULT_CORE_UPGRADE_SKILL_EXPORT);
-    let hide_kind = std::any::type_name::<crate::player::skill::hide::HideSkill>();
-    let hide_skill = registry.skill_id_by_export_name(DEFAULT_CORE_HIDE_SKILL_EXPORT);
-    let counter_kind = std::any::type_name::<crate::player::skill::counter::CounterSkill>();
-    let counter_skill = registry.skill_id_by_export_name(DEFAULT_CORE_COUNTER_SKILL_EXPORT);
-    let merge_kind = std::any::type_name::<crate::player::skill::merge::MergeSkill>();
-    let merge_skill = registry.skill_id_by_export_name(DEFAULT_CORE_MERGE_SKILL_EXPORT);
-    let zombie_kind = std::any::type_name::<crate::player::skill::zombie::ZombieSkill>();
-    let zombie_skill = registry.skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT);
-    let reraise_kind = std::any::type_name::<crate::player::skill::reraise::ReraiseSkill>();
-    let reraise_skill = registry.skill_id_by_export_name(DEFAULT_CORE_RERAISE_SKILL_EXPORT);
-    let fire_kind = std::any::type_name::<crate::player::skill::act::fire::FireSkill>();
-    let fire_skill = registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name());
-    let summon_explode_kind = std::any::type_name::<crate::player::skill::act::summon::SummonExplodeSkill>();
-    let summon_explode_skill = registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT);
-    let summon_share_kind = std::any::type_name::<crate::player::skill::act::summon::SummonShareDamageSkill>();
-    let summon_share_skill = registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT);
-    let possess_kind = std::any::type_name::<crate::player::skill::act::possess::PossessSkill>();
-    let possess_skill = registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT);
-    let resolve = |entry: &crate::player::skill::store::SkillSnapshot| {
-        let active_skill = if entry.runtime_kind == fire_kind {
-            fire_skill
-        } else if entry.runtime_kind == summon_explode_kind {
-            summon_explode_skill
-        } else if entry.runtime_kind == summon_share_kind {
-            summon_share_skill
-        } else if entry.runtime_kind == possess_kind {
-            possess_skill
-        } else {
-            BuiltinActiveSkill::from_legacy_key(entry.key).and_then(|skill| registry.skill_id_by_export_name(skill.export_name()))
-        };
-        let skill_id = if let Some(skill_id) = active_skill {
-            Some(skill_id)
-        } else if entry.runtime_kind == defend_kind {
-            defend_skill
-        } else if entry.runtime_kind == reflect_kind {
-            reflect_skill
-        } else if entry.runtime_kind == protect_kind {
-            protect_skill
-        } else if entry.runtime_kind == shield_kind {
-            shield_skill
-        } else if entry.runtime_kind == upgrade_kind {
-            upgrade_skill
-        } else if entry.runtime_kind == hide_kind {
-            hide_skill
-        } else if entry.runtime_kind == counter_kind {
-            counter_skill
-        } else if entry.runtime_kind == merge_kind {
-            merge_skill
-        } else if entry.runtime_kind == zombie_kind {
-            zombie_skill
-        } else if entry.runtime_kind == reraise_kind {
-            reraise_skill
-        } else {
-            None
-        };
-        skill_id.map(|skill_id| (entry.key, skill_id, entry.level, entry.boost.clone()))
-    };
-
-    let mut imported = Vec::new();
-    for key in &snapshot.fixed_lanes {
-        let Some(entry) = snapshot.entries.iter().find(|entry| entry.key == *key) else {
-            continue;
-        };
-        if let Some(mapped) = resolve(entry) {
-            imported.push(mapped);
-        }
-    }
-    for entry in &snapshot.entries {
-        if imported.iter().any(|(key, _, _, _)| *key == entry.key) {
-            continue;
-        }
-        if let Some(mapped) = resolve(entry) {
-            imported.push(mapped);
-        }
-    }
-
-    let mut active_order = snapshot
-        .active_order
-        .iter()
-        .filter_map(|key| imported.iter().position(|(imported_key, _, _, _)| imported_key == key))
-        .collect::<Vec<_>>();
-    for lane in 0..imported.len() {
-        if !active_order.contains(&lane) {
-            active_order.push(lane);
-        }
-    }
-    let pre_action_order = snapshot
-        .pre_action_order
-        .iter()
-        .filter_map(|key| imported.iter().position(|(imported_key, _, _, _)| imported_key == key))
-        .collect::<Vec<_>>();
-
-    let fixed_lane_keys = imported.iter().map(|(key, _, _, _)| *key).collect::<Vec<_>>();
-    SkillLoadout::from_skill_levels_and_boosts(imported.into_iter().map(|(_, skill_id, level, boost)| (skill_id, level, boost)))
-        .with_fixed_lane_keys(fixed_lane_keys)
-        .with_active_order(active_order)
-        .with_pre_action_order(pre_action_order)
+    PlainLegacySkillImportMap::new(registry).import(snapshot)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -428,6 +558,7 @@ pub struct CustomBed2MinionOverlayConfig<'a> {
     pub zombie: CustomBed2ZombieTemplateConfig<'a>,
 }
 
+#[derive(Clone)]
 pub struct CustomRuntimeV2ImportConfig<'a> {
     pub registry: ExtensionRegistry,
     pub bed2_kind: PlayerKindId,

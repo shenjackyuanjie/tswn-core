@@ -29,6 +29,24 @@ fn entity_records_start_with_empty_state_store() {
 }
 
 #[test]
+fn compressed_legacy_states_reserve_registration_order_without_adding_hook_entries() {
+    let mut states = StateStore::default();
+
+    assert!(states.register_compressed_legacy_state(CompressedLegacyState::Shield));
+    assert!(!states.register_compressed_legacy_state(CompressedLegacyState::Shield));
+    assert_eq!(states.post_action_registration_cursor(), 1);
+    assert!(states.entries().is_empty());
+
+    assert!(states.add_entry(StateEntry::legacy(123)));
+    assert_eq!(states.runtime_registration_order(123), Some(1));
+    assert_eq!(states.post_action_registration_cursor(), 2);
+
+    assert!(states.clear_compressed_legacy_state(CompressedLegacyState::Shield));
+    assert!(states.register_compressed_legacy_state(CompressedLegacyState::Shield));
+    assert_eq!(states.post_action_registration_cursor(), 3);
+}
+
+#[test]
 fn player_template_carries_magic_point_into_runtime() {
     let arena = EntityArena::from_templates(vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_magic_point(96)]);
 
@@ -141,10 +159,13 @@ fn player_template_stores_registered_skill_loadout() {
 
 #[test]
 fn skill_loadout_tracks_fixed_lanes_and_active_order_separately() {
-    let loadout = SkillLoadout::from_skills([SkillId(1), SkillId(2), SkillId(3)]).with_active_order([2, 0, 1]);
+    let loadout = SkillLoadout::from_skills([SkillId(1), SkillId(2), SkillId(3)])
+        .with_active_order([2, 0, 1])
+        .with_post_damage_order([1, 2, 0]);
 
     assert_eq!(loadout.skills(), &[SkillId(1), SkillId(2), SkillId(3)]);
     assert_eq!(loadout.active_order(), &[2, 0, 1]);
+    assert_eq!(loadout.post_damage_order(), &[1, 2, 0]);
 }
 
 #[test]
@@ -202,6 +223,16 @@ fn skill_loadout_merges_levels_by_fixed_lane_without_replacing_skill_ids() {
 }
 
 #[test]
+fn skill_loadout_fixed_lane_merge_ignores_source_skills_outside_legacy_slots() {
+    let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 6), (SkillId(2), 0), (SkillId(3), 0), (SkillId(4), 0)]);
+    let source = SkillLoadout::from_skill_levels([(SkillId(5), 6), (SkillId(6), 0), (SkillId(7), 0), (SkillId(8), 1)])
+        .with_merge_lane_order([0, 1, 2]);
+
+    assert!(!target.merge_fixed_lanes_from(&source, MergePolicy::FixedLane));
+    assert_eq!(target.levels(), &[6, 0, 0, 0]);
+}
+
+#[test]
 fn skill_loadout_ignores_unmapped_source_lanes() {
     let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 1), (SkillId(2), 2)]).with_fixed_lane_keys([0, 2]);
     let source = SkillLoadout::from_skill_levels([(SkillId(3), 9), (SkillId(4), 8)]).with_fixed_lane_keys([0, 7]);
@@ -222,6 +253,7 @@ fn skill_loadout_moves_newly_enabled_lanes_to_action_order_tail() {
 
     assert_eq!(target.levels(), &[4, 8, 7, 9]);
     assert_eq!(target.active_order(), &[0, 2, 1, 3]);
+    assert_eq!(target.post_damage_order(), &[0, 2, 1, 3]);
 }
 
 #[test]
@@ -395,10 +427,13 @@ fn entity_arena_uses_policy_overrides_when_spawning() {
 #[test]
 fn entity_arena_spawns_with_owner_and_root_owner_metadata() {
     let registry = ExtensionRegistry::default();
-    let mut arena = EntityArena::from_templates_with_registry(vec![PlayerTemplate::new(1, "owner", 0, 10, 3)], &registry);
+    let mut arena = EntityArena::from_templates_with_registry(
+        vec![PlayerTemplate::new(1, "owner", 0, 10, 3).with_identity_names("owner@red", "red")],
+        &registry,
+    );
 
     let spawned = arena.spawn_from_template_with_owner(
-        PlayerTemplate::new(2, "spawned", 1, 7, 2),
+        PlayerTemplate::new(2, "owner?0", 1, 7, 2),
         &registry,
         Some(EntityIdx(0)),
         Some(EntityIdx(0)),
@@ -409,6 +444,8 @@ fn entity_arena_spawns_with_owner_and_root_owner_metadata() {
     assert_eq!(runtime.root_owner, EntityIdx(0));
     assert_eq!(runtime.team, 0);
     assert_eq!(arena.get(spawned).unwrap().template.team, 0);
+    assert_eq!(arena.get(spawned).unwrap().template.clan_name, "red");
+    assert_eq!(arena.get(spawned).unwrap().template.id_key_name, "owner?0@red");
 }
 
 #[test]

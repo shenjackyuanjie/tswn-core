@@ -37,7 +37,14 @@ impl CustomBed2Import {
     }
 
     pub fn into_player_template(self, id: PlrId, kind: PlayerKindId, team: usize, summon_skill: SkillId) -> PlayerTemplate {
+        let id_key_name = self
+            .team
+            .as_ref()
+            .filter(|clan| !clan.is_empty() && *clan != &self.name)
+            .map_or_else(|| self.name.clone(), |clan| format!("{}@{clan}", self.name));
+        let clan_name = self.team.unwrap_or_else(|| self.name.clone());
         PlayerTemplate::with_kind(id, self.name, kind, team, self.hp, 0)
+            .with_identity_names(id_key_name, clan_name)
             .with_def_res(DEFAULT_BED2_DEFENSE, DEFAULT_BED2_RESISTANCE)
             .with_skills([summon_skill])
     }
@@ -336,6 +343,7 @@ impl CustomBed2Import {
                         });
                     }
                     PlayerTemplate::new(next_id, player.id_name(), team_index, status.max_hp, status.attack)
+                        .with_identity_names(player.id_key_name(), player.clan_name())
                         .with_display_name(player.display_name())
                         .with_magic(status.magic)
                         .with_magic_point(status.magic_point)

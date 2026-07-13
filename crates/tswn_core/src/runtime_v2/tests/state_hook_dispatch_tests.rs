@@ -504,6 +504,53 @@ fn run_state_hooks_iron_post_action_clears_expired_without_update() {
 }
 
 #[test]
+fn run_state_hooks_iron_step_does_not_refresh_pending_haste_multiplier() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let haste_state = builder
+        .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+        .expect("haste state should register");
+    let iron_state = builder
+        .register_state(
+            "core",
+            "iron",
+            "core.iron",
+            ProcMask::POST_DEFEND | ProcMask::POST_ACTION,
+            SkillPriority(10),
+        )
+        .expect("iron state should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed(100)],
+        registry,
+    ));
+    {
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        owner.states.add_entry(StateEntry::haste_with_effective_faster(
+            77,
+            haste_state,
+            4,
+            2,
+            9,
+            SkillPriority(100),
+        ));
+        owner.states.add_entry(StateEntry::iron(79, iron_state, 300, 3, SkillPriority(10)));
+    }
+    runtime.set_state_handler(haste_state, run_haste_post_action_state);
+    runtime.set_state_handler(iron_state, run_iron_post_defend_state);
+
+    let frame = runtime.run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION);
+
+    let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert!(frame.is_none());
+    assert_eq!(
+        owner.states.entry(77).and_then(StateEntry::haste_runtime_value),
+        Some((4, 2, 8))
+    );
+    assert_eq!(owner.states.entry(79).and_then(StateEntry::iron_value), Some((300, 2)));
+    assert_eq!(owner.effective_speed(), 200);
+}
+
+#[test]
 fn run_state_hooks_iron_post_action_runs_at_legacy_priority() {
     let mut builder = ExtensionRegistryBuilder::default();
     let marker_state = builder

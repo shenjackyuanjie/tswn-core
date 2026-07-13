@@ -160,7 +160,7 @@ impl CombatRuntime {
         {
             entity.runtime.hp = 0;
         }
-        self.cleanup_linked_summons_for_owner_except(owner, Some(summoned), updates);
+        self.cleanup_linked_share_minions_for_owner_except(owner, Some(summoned), updates);
         self.world.mark_dead(owner, team);
         if self.should_run_kill_hooks(caster, owner) {
             self.drain_kill_hooks_into(caster, owner, updates);
@@ -181,7 +181,9 @@ impl CombatRuntime {
             Some(_) => panic!("runtime_v2 core summon blueprint slot has invalid value"),
             None => panic!("runtime_v2 summon owner {} is missing core summon blueprint", actor.0),
         };
-        if let (Some(owner_build), Some(summon_build)) = (owner.template.clone_build.as_ref(), template.clone_build.as_mut()) {
+        if template.inherit_owner_def_res
+            && let (Some(owner_build), Some(summon_build)) = (owner.template.clone_build.as_ref(), template.clone_build.as_mut())
+        {
             summon_build.refresh_summon_owner_attrs(owner_build);
             let stats = summon_build.derive_stats();
             template.apply_derived_stats(stats);
@@ -217,7 +219,9 @@ impl CombatRuntime {
         move_points: i32,
         share_damage: bool,
     ) {
-        let (id, name, display_name, root_owner) = {
+        let reuse_skills_on_recast = template.reuse_skills_on_recast;
+        let reuse_stats_on_recast = template.reuse_stats_on_recast;
+        let (id, name, id_key_name, clan_name, display_name, root_owner, recast_skills, recast_stats) = {
             let existing = self
                 .entities
                 .get(summoned)
@@ -225,16 +229,33 @@ impl CombatRuntime {
             (
                 existing.template.id,
                 existing.template.name.clone(),
+                existing.template.id_key_name.clone(),
+                existing.template.clan_name.clone(),
                 existing.template.display_name.clone(),
                 existing.runtime.root_owner,
+                reuse_skills_on_recast.then(|| existing.template.skills.clone()),
+                reuse_stats_on_recast.then(|| existing.template.clone()),
             )
         };
         template.id = id;
         template.name = name;
+        template.id_key_name = id_key_name;
+        template.clan_name = clan_name;
         template.display_name = display_name;
         template.team = self.entities.get(actor).unwrap().runtime.team;
         template.move_state.speed_points = move_points;
-        self.set_plain_summon_share_level(&mut template.skills, share_damage);
+        if let Some(recast_stats) = recast_stats {
+            // legacy 在无属性 overlay 时复用死亡使魔对象；清空状态后重新 update_states，
+            // 不会从已经发生分身衰减的 owner 再复制一次防御与抗性。
+            template.reuse_summon_stats_from(&recast_stats);
+        }
+        if let Some(mut skills) = recast_skills {
+            self.set_plain_summon_share_level(&mut skills, share_damage);
+            skills.boost_last_active_except_key(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY);
+            template.skills = skills;
+        } else {
+            self.set_plain_summon_share_level(&mut template.skills, share_damage);
+        }
         let runtime = PlayerRuntime::from_template(&template, &self.registry, actor, root_owner);
         *self
             .entities

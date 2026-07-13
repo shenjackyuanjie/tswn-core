@@ -65,6 +65,25 @@ fn plain_pre_action_late_hide_clears_forced_backstab_without_dropping_pending() 
 }
 
 #[test]
+fn plain_pending_assassinate_can_be_selected_normally_after_late_hide_clears_forced() {
+    let mut runtime = pre_action_runtime([0, 1]);
+    assert!(runtime.entities.get_mut(EntityIdx(0)).unwrap().template.skills.set_level_at(0, 128));
+    let pre_action = runtime.run_plain_skill_pre_action_accumulator(EntityIdx(0));
+    assert!(pre_action.forced_skill.is_none());
+
+    let prepared = runtime
+        .scan_plain_action_skill_probabilities(EntityIdx(0), false)
+        .expect("pending assassinate should remain eligible in the normal skill scan");
+
+    assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Assassinate);
+    assert!(prepared.targets.is_empty());
+    let mut updates = RunUpdates::new();
+    runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);
+    assert_eq!(updates.updates[0].message.as_ref(), "[0]发动[背刺]");
+    assert!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.assassinate.is_none());
+}
+
+#[test]
 fn plain_merge_restores_newly_enabled_hide_pre_action_lane() {
     let mut builder = ExtensionRegistryBuilder::default();
     let hide = builder
@@ -100,7 +119,7 @@ fn plain_merge_restores_newly_enabled_hide_pre_action_lane() {
 }
 
 #[test]
-fn plain_merge_does_not_restore_hide_pre_action_for_minion_lane() {
+fn plain_merge_restores_hide_pre_action_for_minion_lane() {
     let mut builder = ExtensionRegistryBuilder::default();
     let minion_kind = builder
         .register_player_kind_with_policies(
@@ -140,7 +159,15 @@ fn plain_merge_does_not_restore_hide_pre_action_for_minion_lane() {
 
     let minion_entity = runtime.entities.get(minion).unwrap();
     assert_eq!(minion_entity.template.skills.level_at(0), Some(64));
-    assert!(minion_entity.template.skills.pre_action_order().is_empty());
+    assert_eq!(minion_entity.template.skills.pre_action_order(), &[0]);
+    runtime
+        .entities
+        .get_mut(minion)
+        .unwrap()
+        .states
+        .add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 2));
+    let outcome = runtime.run_plain_skill_pre_action_accumulator(minion);
+    assert!(outcome.clear_forced_action);
 }
 
 #[test]

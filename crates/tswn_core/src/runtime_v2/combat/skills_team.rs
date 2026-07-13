@@ -272,14 +272,26 @@ impl CombatRuntime {
 
     pub fn select_plain_heal_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
         let actor_team = self.plain_effective_team(actor);
-        let candidates = self
-            .world
-            .team_roster(actor_team)
-            .unwrap_or_default()
-            .iter()
-            .copied()
-            .filter(|target| self.entities.get(*target).is_some_and(|entity| entity.runtime.alive))
-            .collect::<Vec<_>>();
+        let candidates = self.world.team_alive(actor_team).unwrap_or_default().to_vec();
+        #[cfg(not(feature = "no_debug"))]
+        let probe_heal = std::env::var_os("TSWN_PROBE_HEAL").is_some();
+        #[cfg(not(feature = "no_debug"))]
+        if probe_heal {
+            let described = candidates
+                .iter()
+                .map(|target| {
+                    let entity = self.entities.get(*target).expect("runtime_v2 heal candidate should exist");
+                    format!(
+                        "{}:{}:{}/{}",
+                        target.0, entity.template.name, entity.runtime.hp, entity.template.max_hp
+                    )
+                })
+                .collect::<Vec<_>>();
+            eprintln!(
+                "[heal_select:v2:start] actor={} smart={} candidates={:?} rc4=({}, {})",
+                actor.0, smart, described, self.rng.i, self.rng.j,
+            );
+        }
         if candidates.is_empty() {
             return Vec::new();
         }
@@ -289,6 +301,8 @@ impl CombatRuntime {
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
+            #[cfg(not(feature = "no_debug"))]
+            let rng_before_pick = (self.rng.i, self.rng.j);
             let Some(picked) = self.rng.pick(&candidates) else {
                 return Vec::new();
             };
@@ -300,6 +314,13 @@ impl CombatRuntime {
                     entity.runtime.hp < entity.template.max_hp
                 }
             });
+            #[cfg(not(feature = "no_debug"))]
+            if probe_heal {
+                eprintln!(
+                    "[heal_select:v2:pick] target={} valid={} dup={} invalid={} rc4=({}, {}) -> ({}, {})",
+                    target.0, valid, dup, invalid, rng_before_pick.0, rng_before_pick.1, self.rng.i, self.rng.j,
+                );
+            }
             if !valid {
                 invalid += 1;
                 continue;
@@ -316,9 +337,23 @@ impl CombatRuntime {
 
         let mut scored = selected
             .into_iter()
-            .map(|target| (target, self.score_plain_heal_target(target, smart)))
+            .map(|target| {
+                let score = self.score_plain_heal_target(target, smart);
+                #[cfg(not(feature = "no_debug"))]
+                if probe_heal {
+                    eprintln!(
+                        "[heal_select:v2:score] target={} score={} rc4=({}, {})",
+                        target.0, score, self.rng.i, self.rng.j,
+                    );
+                }
+                (target, score)
+            })
             .collect::<Vec<_>>();
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
+        #[cfg(not(feature = "no_debug"))]
+        if probe_heal {
+            eprintln!("[heal_select:v2:done] scored={:?} rc4=({}, {})", scored, self.rng.i, self.rng.j);
+        }
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
@@ -380,6 +415,25 @@ impl CombatRuntime {
             return;
         }
         let heal = ((atp / 60.0).ceil() as i32).clamp(1, missing_hp);
+        if crate::debug::debug_heal() {
+            let owner = self.entities.get(actor).expect("runtime_v2 heal owner should exist");
+            let target_entity = self.entities.get(target).expect("runtime_v2 heal target should exist");
+            eprintln!(
+                "[heal:v2] owner={} target={} owner_hp={}/{} target_hp={}/{} at_boost={} atp={:.2} missing={} heal={} rc4=({}, {})",
+                owner.template.name,
+                target_entity.template.name,
+                owner.runtime.hp,
+                owner.template.max_hp,
+                target_entity.runtime.hp,
+                target_entity.template.max_hp,
+                owner.runtime.at_boost_millionths as f64 / 1_000_000.0,
+                atp,
+                missing_hp,
+                heal,
+                self.rng.i,
+                self.rng.j,
+            );
+        }
         updates.add(crate::engine::update::RunUpdate::new(
             "[0]使用[治愈魔法]",
             actor.0 as usize,

@@ -14,6 +14,7 @@ pub struct StateContext<'a> {
     capabilities: &'a [ExtensionCapability],
     action_intercepted: bool,
     action_smart: Option<bool>,
+    deferred_owner_state_clears: Option<&'a mut Vec<u32>>,
 }
 
 impl<'a> StateContext<'a> {
@@ -43,6 +44,7 @@ impl<'a> StateContext<'a> {
             capabilities,
             action_intercepted: false,
             action_smart: None,
+            deferred_owner_state_clears: None,
         }
     }
 
@@ -53,6 +55,11 @@ impl<'a> StateContext<'a> {
 
     pub fn with_action_smart(mut self, smart: bool) -> Self {
         self.action_smart = Some(smart);
+        self
+    }
+
+    pub fn with_deferred_owner_state_clears(mut self, clears: &'a mut Vec<u32>) -> Self {
+        self.deferred_owner_state_clears = Some(clears);
         self
     }
 
@@ -175,6 +182,38 @@ impl<'a> StateContext<'a> {
             return Err(EffectContextError::UnknownEntity(self.owner));
         }
         owner.refresh_runtime_stats_from_template();
+        Ok(())
+    }
+
+    pub fn set_owner_state_payload_without_refresh(
+        &mut self,
+        legacy_order_key: u32,
+        payload: StatePayload,
+    ) -> Result<(), EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        if !owner.states.set_payload(legacy_order_key, payload) {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        }
+        Ok(())
+    }
+
+    pub fn defer_owner_state_clear(&mut self, legacy_order_key: u32) -> Result<(), EffectContextError> {
+        if self
+            .entities
+            .get(self.owner)
+            .and_then(|owner| owner.states.entry(legacy_order_key))
+            .is_none()
+        {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        }
+        let Some(clears) = self.deferred_owner_state_clears.as_deref_mut() else {
+            return self.clear_owner_state(legacy_order_key);
+        };
+        if !clears.contains(&legacy_order_key) {
+            clears.push(legacy_order_key);
+        }
         Ok(())
     }
 
