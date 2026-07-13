@@ -15,11 +15,16 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tswn_core::Runner;
 use tswn_core::case_gen::{
     CaseMode, GeneratedCase, case_id, deterministic_shuffle, generate_cases_for_mode, load_library, stable_hash,
 };
-use tswn_core::engine::update::{RunUpdate, UpdateType};
+
+#[path = "tswn_case_miner/report_helpers.rs"]
+mod report_helpers;
+#[path = "tswn_case_miner/runtime_trace.rs"]
+mod runtime_trace;
+use report_helpers::{build_failed_diff, json_btreemap, json_escape, json_string_array};
+use runtime_trace::{RustRuntime, run_rust_trace};
 
 #[derive(Debug)]
 struct Config {
@@ -32,6 +37,7 @@ struct Config {
     shuffle_seed: u64,
     keep_going: bool,
     save_all: bool,
+    runtime: RustRuntime,
 }
 
 #[derive(Debug)]
@@ -199,7 +205,7 @@ fn try_main() -> Result<(), String> {
             }
         };
 
-        let rust_output = match run_rust_trace(&case.input) {
+        let rust_output = match run_rust_trace(&case.input, config.runtime) {
             Ok(output) => output,
             Err(err) => {
                 summary.rust_failures += 1;
@@ -257,6 +263,7 @@ fn try_main() -> Result<(), String> {
 
     println!("号库: {}", config.library.display());
     println!("md5 工具: {}", config.md5_tool.display());
+    println!("Rust runtime: {}", config.runtime.as_str());
     println!("输出目录: {}", config.out_dir.display());
     println!("生成 case: {}", summary.total_generated);
     println!("唯一输入: {}", summary.unique_inputs);
@@ -285,6 +292,7 @@ fn parse_args() -> Result<Config, String> {
     let mut shuffle_seed = 0x5EED_2026_u64;
     let mut keep_going = false;
     let mut save_all = false;
+    let mut runtime = RustRuntime::V2;
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut idx = 0usize;
@@ -337,6 +345,10 @@ fn parse_args() -> Result<Config, String> {
                     .parse::<u64>()
                     .map_err(|e| format!("解析 --shuffle-seed 失败: {e}"))?;
             }
+            "--runtime" => {
+                idx += 1;
+                runtime = RustRuntime::parse(require_arg(&args, idx, "--runtime")?)?;
+            }
             "--keep-going" => keep_going = true,
             "--save-all" => save_all = true,
             other => return Err(format!("未知参数: {other}")),
@@ -383,6 +395,7 @@ fn parse_args() -> Result<Config, String> {
         shuffle_seed,
         keep_going,
         save_all,
+        runtime,
     })
 }
 
@@ -400,6 +413,7 @@ fn print_usage() {
   --case-offset-per-mode <N> 每种模式按稳定顺序跳过前 N 个唯一 case，默认 0
   --max-cases-per-mode <N>  每种模式最多生成多少 case，默认 64
   --shuffle-seed <N>        固定采样顺序，默认 1592597030
+  --runtime <v2|legacy>     Rust 对比引擎，默认 v2
   --keep-going              个别 case 执行失败时继续
   --save-all                连通过 case 也一起保存
 "#
@@ -731,12 +745,6 @@ fn hash_file_for_signature(hasher: &mut impl Hasher, label: &str, path: &Path) -
     Ok(())
 }
 
-fn run_rust_trace(input: &str) -> Result<String, String> {
-    let mut runner = Runner::new_from_namerena_raw(input.to_string()).map_err(|e| format!("构建对局失败: {e}"))?;
-    let lines = collect_fight_raw_lines(&mut runner);
-    Ok(lines.join("\n"))
-}
-
 fn normalize_command_output(raw: &str) -> String {
     raw.replace("\r\n", "\n").replace('\r', "\n").trim_end_matches('\n').to_string()
 }
@@ -920,6 +928,7 @@ fn write_summary(
         "  \"out_dir\": \"{}\",",
         json_escape(&config.out_dir.display().to_string())
     );
+    let _ = writeln!(&mut json, "  \"runtime\": \"{}\",", config.runtime.as_str());
     let _ = writeln!(&mut json, "  \"total_generated\": {},", summary.total_generated);
     let _ = writeln!(&mut json, "  \"unique_inputs\": {},", summary.unique_inputs);
     let _ = writeln!(&mut json, "  \"executed\": {},", summary.executed);
@@ -1016,6 +1025,7 @@ fn write_report(
     let _ = writeln!(&mut report, "- generated_at_unix: {now}");
     let _ = writeln!(&mut report, "- library: `{}`", config.library.display());
     let _ = writeln!(&mut report, "- md5_tool: `{}`", config.md5_tool.display());
+    let _ = writeln!(&mut report, "- rust_runtime: `{}`", config.runtime.as_str());
     let _ = writeln!(&mut report, "- total_generated: {}", summary.total_generated);
     let _ = writeln!(&mut report, "- unique_inputs: {}", summary.unique_inputs);
     let _ = writeln!(&mut report, "- ts_failures: {}", summary.ts_failures);
@@ -1066,378 +1076,4 @@ fn write_report(
     }
 
     fs::write(config.out_dir.join("report.md"), report).map_err(|e| format!("写入 report.md 失败: {e}"))
-}
-
-fn json_escape(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len() + 8);
-    for ch in raw.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if ch.is_control() => {
-                let _ = write!(&mut out, "\\u{:04x}", ch as u32);
-            }
-            ch => out.push(ch),
-        }
-    }
-    out
-}
-
-fn build_failed_diff(ts_output: &str, rust_output: &str) -> String {
-    let ts_lines = split_output_lines(ts_output);
-    let rust_lines = split_output_lines(rust_output);
-    let mismatch_idx = first_mismatch_idx(&ts_lines, &rust_lines);
-    let start = mismatch_idx.saturating_sub(3);
-    let end = (mismatch_idx + 4).max(start + 1);
-
-    let mut out = String::new();
-    let _ = writeln!(&mut out, "--- expected(ts)");
-    let _ = writeln!(&mut out, "+++ actual(rust)");
-    let _ = writeln!(&mut out, "@@ mismatch_idx={} @@", mismatch_idx);
-
-    for idx in start..end {
-        let ts_line = ts_lines.get(idx);
-        let rust_line = rust_lines.get(idx);
-        match (ts_line, rust_line) {
-            (Some(left), Some(right)) if left == right => {
-                let _ = writeln!(&mut out, " {:>4} {}", idx, left);
-            }
-            (Some(left), Some(right)) => {
-                let _ = writeln!(&mut out, "-{:>4} {}", idx, left);
-                let _ = writeln!(&mut out, "+{:>4} {}", idx, right);
-            }
-            (Some(left), None) => {
-                let _ = writeln!(&mut out, "-{:>4} {}", idx, left);
-                let _ = writeln!(&mut out, "+{:>4} <EOF>", idx);
-            }
-            (None, Some(right)) => {
-                let _ = writeln!(&mut out, "-{:>4} <EOF>", idx);
-                let _ = writeln!(&mut out, "+{:>4} {}", idx, right);
-            }
-            (None, None) => break,
-        }
-    }
-    out
-}
-
-fn json_string_array(values: &[String]) -> String {
-    let items = values.iter().map(|value| format!("\"{}\"", json_escape(value))).collect::<Vec<String>>();
-    format!("[{}]", items.join(", "))
-}
-
-fn json_btreemap(values: &BTreeMap<String, usize>) -> String {
-    let items = values
-        .iter()
-        .map(|(key, value)| format!("\"{}\": {}", json_escape(key), value))
-        .collect::<Vec<String>>();
-    format!("{{{}}}", items.join(", "))
-}
-
-#[derive(Default)]
-struct TraceNameState {
-    assigned: std::collections::HashMap<usize, String>,
-    next_index: std::collections::HashMap<usize, usize>,
-    /// 血祭召唤物的名称缓存，按直接施法者实体 ID（owner_id）索引。
-    /// 同一施法者再次释放血祭时，召唤物会复用同一个追踪名称。
-    summon_name: std::collections::HashMap<usize, String>,
-}
-
-fn root_trace_owner_id(storage: &tswn_core::engine::storage::Storage, start_id: usize) -> usize {
-    use tswn_core::player::skill::act::minion::MinionRuntimeState;
-
-    let mut current = start_id;
-    loop {
-        let Some(plr) = storage.get_player_or_pending(&current) else {
-            return current;
-        };
-        let Some(minion) = plr.get_state::<MinionRuntimeState>() else {
-            return current;
-        };
-        let Some(owner) = minion.owner else {
-            return current;
-        };
-        current = owner;
-    }
-}
-
-fn format_trace_minion_name(owner: &tswn_core::player::Player, index: usize) -> String {
-    let base = format!("{}?{}", owner.id_name(), index);
-    let team = owner.clan_name();
-    if !team.is_empty() && team != owner.id_name() {
-        format!("{base}@{team}")
-    } else {
-        base
-    }
-}
-
-fn alloc_trace_minion_name(trace_names: &mut TraceNameState, root_owner_id: usize, owner: &tswn_core::player::Player) -> String {
-    let index = trace_names.next_index.entry(root_owner_id).or_insert(0);
-    let name = format_trace_minion_name(owner, *index);
-    *index += 1;
-    name
-}
-
-fn plr_name_raw(runner: &Runner, id: usize, trace_names: &mut TraceNameState) -> String {
-    if let Some(name) = trace_names.assigned.get(&id) {
-        return name.clone();
-    }
-
-    let Some(plr) = runner.storage.get_player_or_pending(&id) else {
-        return format!("#{id}");
-    };
-
-    use tswn_core::player::PlayerType;
-    use tswn_core::player::skill::act::minion::{MinionKind, MinionRuntimeState};
-
-    let name = if plr.player_type() == PlayerType::Boss {
-        plr.display_name()
-    } else if let Some(minion) = plr.get_state::<MinionRuntimeState>() {
-        if let Some(owner_id) = minion.owner {
-            let root_owner_id = root_trace_owner_id(&runner.storage, owner_id);
-            if let Some(owner) = runner.storage.get_player_or_pending(&root_owner_id) {
-                if minion.kind == MinionKind::Summon {
-                    // 血祭召唤物按直接施法者（owner_id）做缓存。
-                    // 同一施法者再次施放时复用同一个追踪名称；
-                    // 若根所有者相同但施法者不同，则分配新的名称。
-                    if let Some(name) = trace_names.summon_name.get(&owner_id) {
-                        name.clone()
-                    } else {
-                        let name = alloc_trace_minion_name(trace_names, root_owner_id, owner);
-                        trace_names.summon_name.insert(owner_id, name.clone());
-                        name
-                    }
-                } else {
-                    alloc_trace_minion_name(trace_names, root_owner_id, owner)
-                }
-            } else {
-                plr.id_key_name()
-            }
-        } else {
-            plr.id_key_name()
-        }
-    } else {
-        plr.id_key_name()
-    };
-
-    trace_names.assigned.insert(id, name.clone());
-    name
-}
-
-fn fmt_update_raw_with_state(runner: &Runner, update: &RunUpdate, trace_names: &mut TraceNameState) -> String {
-    let caster = plr_name_raw(runner, update.caster, trace_names);
-    let mut target = plr_name_raw(runner, update.target, trace_names);
-    let targets = if let Some(p) = update.param {
-        p.to_string()
-    } else if update.targets.is_empty() {
-        update.score.to_string()
-    } else {
-        update
-            .targets
-            .iter()
-            .map(|id| plr_name_raw(runner, *id, trace_names))
-            .collect::<Vec<String>>()
-            .join(",")
-    };
-
-    if update.message == "召唤出幻影" {
-        use tswn_core::player::skill::act::minion::{MinionKind, MinionRuntimeState};
-
-        let root_owner_id = root_trace_owner_id(&runner.storage, update.caster);
-        let pending_id = runner
-            .storage
-            .all_player_ids()
-            .into_iter()
-            .chain(runner.storage.pending_spawn_ids_for_owner(update.caster))
-            .find(|id| {
-                !trace_names.assigned.contains_key(id)
-                    && runner
-                        .storage
-                        .get_player_or_pending(id)
-                        .and_then(|plr| plr.get_state::<MinionRuntimeState>())
-                        .map(|state| {
-                            state.kind == MinionKind::Shadow
-                                && root_trace_owner_id(&runner.storage, state.owner.unwrap_or(*id)) == root_owner_id
-                        })
-                        .unwrap_or(false)
-            });
-        if let Some(pending_id) = pending_id {
-            target = plr_name_raw(runner, pending_id, trace_names);
-        }
-        return format!("召唤出{target}");
-    }
-
-    let mut msg = update.message.to_string();
-    msg = msg.replace("[0]", &caster);
-    msg = msg.replace("[1]", &target);
-    msg.replace("[2]", &targets)
-}
-
-fn sanitize_output_line(line: &str) -> String {
-    let filtered = line
-        .chars()
-        .filter(|ch| !ch.is_control() && !matches!(*ch, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}'))
-        .collect::<String>();
-
-    let mut normalized = String::with_capacity(filtered.len());
-    let mut prev_space = false;
-    for ch in filtered.chars() {
-        if ch.is_whitespace() {
-            if !prev_space {
-                normalized.push(' ');
-                prev_space = true;
-            }
-        } else {
-            normalized.push(ch);
-            prev_space = false;
-        }
-    }
-    normalized.trim().to_string()
-}
-
-fn normalize_trace_line(line: String) -> String {
-    let mut normalized = line
-        .replace("[s_counter]", "")
-        .replace("[s_dmg160]", "")
-        .replace("[s_dmg120]", "")
-        .replace("[s_dmg0]", "")
-        .replace(' ', "")
-        .replace('！', "!")
-        .replace('？', "?")
-        .replace('，', ",")
-        .replace('：', ":")
-        .replace('；', ";")
-        .replace('（', "(")
-        .replace('）', ")")
-        .replace('²', "2");
-
-    for (from, to) in [
-        ("[回避]", "回避"),
-        ("[反击]", "反击"),
-        ("[吸血攻击]", "吸血攻击"),
-        ("[聚气]", "聚气"),
-        ("[潜行]", "潜行"),
-        ("[背刺]", "背刺"),
-        ("[狂暴攻击]", "狂暴攻击"),
-        ("[狂暴术]", "狂暴术"),
-        ("[狂暴]", "狂暴"),
-        ("[蓄力]", "蓄力"),
-        ("[隐匿]", "隐匿"),
-        ("[魅惑]", "魅惑"),
-        ("[防御]", "防御"),
-        ("[吞噬]", "吞噬"),
-        ("[分身]", "分身"),
-        ("[会心一击]", "会心一击"),
-        ("[伤害反弹]", "伤害反弹"),
-        ("[净化]", "净化"),
-        ("[护身符]", "护身符"),
-        ("[诅咒]", "诅咒"),
-        ("[守护]", "守护"),
-        ("[生命之轮]", "生命之轮"),
-        ("[垂死]", "垂死"),
-        ("[火球术]", "火球术"),
-        ("[瘟疫]", "瘟疫"),
-        ("[加速术]", "加速术"),
-        ("[疾走]", "疾走"),
-        ("[治愈魔法]", "治愈魔法"),
-        ("[迟缓]", "迟缓"),
-        ("[中毒]", "中毒"),
-        ("[冰冻术]", "冰冻术"),
-        ("[冰冻]", "冰冻"),
-        ("[铁壁]", "铁壁"),
-        ("[投毒]", "投毒"),
-        ("[毒性发作]", "毒性发作"),
-        ("[附体]", "附体"),
-        ("[地裂术]", "地裂术"),
-        ("[连击]", "连击"),
-        ("[苏生术]", "苏生术"),
-        ("[复活]", "复活"),
-        ("[幻术]", "幻术"),
-        ("[减速术]", "减速术"),
-        ("[雷击术]", "雷击术"),
-        ("[血祭]", "血祭"),
-        ("[召唤亡灵]", "召唤亡灵"),
-        ("[自爆]", "自爆"),
-    ] {
-        normalized = normalized.replace(from, to);
-    }
-
-    sanitize_output_line(&normalized)
-}
-
-fn is_action_line(line: &str) -> bool {
-    line.contains("发起攻击")
-        || (line.contains("使用") && !line.contains("护身符抵挡了一次死亡"))
-        || line.contains("做出垂死抗争")
-        || line.contains("连击")
-        || line.contains("从疾走中解除")
-}
-
-fn emit_current_turn(output_lines: &mut Vec<String>, pending_action_line: &mut String, pending_misc_lines: &mut Vec<String>) {
-    if !pending_action_line.is_empty() {
-        output_lines.push(std::mem::take(pending_action_line));
-        output_lines.push(String::new());
-        pending_misc_lines.clear();
-        return;
-    }
-    if !pending_misc_lines.is_empty() {
-        output_lines.push(pending_misc_lines.join(", "));
-        output_lines.push(String::new());
-        pending_misc_lines.clear();
-    }
-}
-
-fn collect_fight_raw_lines(runner: &mut Runner) -> Vec<String> {
-    let mut output_lines = Vec::new();
-    let mut pending_action_line = String::new();
-    let mut pending_misc_lines = Vec::new();
-    let mut trace_names = TraceNameState::default();
-
-    let mut round = 1usize;
-    let mut idle_rounds = 0usize;
-    while !runner.have_winner() && round <= 100_000 {
-        let updates = runner.main_round();
-        if updates.updates.is_empty() {
-            idle_rounds += 1;
-            if idle_rounds > 16 {
-                break;
-            }
-            continue;
-        }
-        idle_rounds = 0;
-
-        for update in updates.updates {
-            if matches!(update.update_type, UpdateType::NextLine) {
-                emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
-                continue;
-            }
-
-            let line = normalize_trace_line(fmt_update_raw_with_state(runner, &update, &mut trace_names));
-            if line.is_empty() {
-                continue;
-            }
-
-            if is_action_line(&line) {
-                emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
-                pending_action_line = line;
-                continue;
-            }
-
-            if pending_action_line.is_empty() {
-                pending_misc_lines.push(line);
-            } else {
-                pending_action_line.push_str(", ");
-                pending_action_line.push_str(&line);
-            }
-        }
-        round += 1;
-    }
-
-    emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
-    while matches!(output_lines.last(), Some(line) if line.is_empty()) {
-        output_lines.pop();
-    }
-    output_lines
 }

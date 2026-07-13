@@ -17,6 +17,7 @@ DEFAULT_MODES = "1v1,2v2,3v3v3,ffa"
 DEFAULT_FFA_SIZES = "4,6,8"
 DEFAULT_CASE_OFFSET_PER_MODE = 0
 DEFAULT_MAX_CASES_PER_MODE = 64
+DEFAULT_RUNTIME = "v2"
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -184,6 +185,7 @@ def summarize_run(summary: dict, args) -> dict:
             "case_offset_per_mode": args.case_offset_per_mode,
             "max_cases_per_mode": args.max_cases_per_mode,
             "keep_going": args.keep_going,
+            "runtime": args.runtime,
         },
         "summary": {
             "total_generated": summary.get("total_generated", 0),
@@ -210,12 +212,15 @@ COMPARISON_CONFIG_FIELDS = {
     "ffa_sizes": "ffa sizes",
     "case_offset_per_mode": "case offset per mode",
     "max_cases_per_mode": "max cases per mode",
+    "runtime": "Rust runtime",
 }
 
 
 def _normalized_config(records: dict) -> dict:
     config = dict(records.get("config") or {})
     config.setdefault("case_offset_per_mode", DEFAULT_CASE_OFFSET_PER_MODE)
+    # 旧记录来自只支持 legacy Runner 的 miner。
+    config.setdefault("runtime", "legacy")
     return config
 
 
@@ -419,6 +424,8 @@ def run_miner(args):
         str(args.case_offset_per_mode),
         "--max-cases-per-mode",
         str(args.max_cases_per_mode),
+        "--runtime",
+        args.runtime,
     ]
     if args.quiet:
         cmd.insert(2, "--quiet")
@@ -572,6 +579,12 @@ def main():
         help=f"每种模式最多生成多少 case (default: {DEFAULT_MAX_CASES_PER_MODE})",
     )
     parser.add_argument(
+        "--runtime",
+        choices=("v2", "legacy"),
+        default=DEFAULT_RUNTIME,
+        help=f"Rust 对比引擎 (default: {DEFAULT_RUNTIME})",
+    )
+    parser.add_argument(
         "--keep-going", action="store_true", help="单个 case 失败时继续"
     )
     parser.add_argument(
@@ -648,12 +661,13 @@ def main():
         print(f"bun cache: {args.bun_cache_dir_path}")
         print(f"case offset per mode: {args.case_offset_per_mode}")
         print(f"max cases per mode: {args.max_cases_per_mode}")
+        print(f"Rust runtime: {args.runtime}")
         print()
         print("准备阶段: 启动 cargo run（这里可能会出现 Rust 编译输出）")
     else:
         print(
             f"[track_case_miner] 运行 miner: {args.library_path} "
-            f"(offset={args.case_offset_per_mode}, max={args.max_cases_per_mode})"
+            f"(runtime={args.runtime}, offset={args.case_offset_per_mode}, max={args.max_cases_per_mode})"
         )
 
     result = run_miner(args)
