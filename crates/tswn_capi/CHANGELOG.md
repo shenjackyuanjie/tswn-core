@@ -1,6 +1,10 @@
 # 更新日志
 
-## [0.4.1] - unreleased
+## [0.5.0] - unreleased
+
+### ⚠️ Breaking Changes
+
+- C ABI 函数签名与结构体布局不变，但无 runtime 参数的评分、胜率、批量与配队高层导出默认改用 Runtime v2；依赖 legacy 执行副作用或错误分类的调用方需要重新验证。
 
 ### 新增
 

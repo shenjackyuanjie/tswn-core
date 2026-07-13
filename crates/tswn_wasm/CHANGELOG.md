@@ -1,6 +1,12 @@
 # 更新日志
 
-## [Unreleased]
+## [0.4.0] - unreleased
+
+### ⚠️ Breaking Changes
+
+- `ReplayClip` typed view 删除多项顶层渲染字段，调用方必须改读 `parts[]` 中的 `ReplayTextPart`。
+- 完整回放页面入口由 `examples/show.html` 改为 `examples/index.html`，并删除 legacy runtime URL fallback。
+- 无 runtime 参数的评分、胜率与 `WinRateSession` 默认改用 Runtime v2。
 
 ### 变更
 

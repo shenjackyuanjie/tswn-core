@@ -1,6 +1,12 @@
 # 更新日志
 
-## [Unreleased]
+## [0.4.0] - unreleased
+
+### ⚠️ 破坏性变更
+
+- 公共 `ReplayClip` 移除 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji` 顶层字段；调用方必须从 `parts[]` 中的 `ReplayTextPart` 读取文本、玩家、血条、死亡特效和 emoji 语义。
+- `CliApiError` 新增 `RuntimeV2` 变体；对该枚举做穷举匹配的 Rust 调用方需要处理新分支。
+- 无 runtime 参数的评分、胜率、批量与 `namer-pf` 高层 API 以及独立 `bench` 默认改用 Runtime v2；需要旧栈对账时应使用仍显式提供的 legacy 入口。
 
 ### 变更
 
@@ -30,6 +36,8 @@
 
 ### 验证
 
+- `track_perf_cases` 已改为实际运行 Runtime v2；fixed30/no_debug/13000 单线程 overall 为 `66.005 us/battle`，比 0.3.10 基线快 4.3%，`stress_multi` 为 `136.698 us/battle`，比基线快 3.2%；自动线程 overall 为 `8.978 us/battle`。
+- score 13000 单线程普通评分 wall 为 `3.191 s`，比上次 v2 记录快 8.6%，但仍显著慢于已记录的 legacy `1.113 s`，后续继续优化 prepared 初始化。
 - `cargo test -p tswn_core --bin tswn-cli --release`（61 通过）
 - `python scripts/check_runtime_v2_noalias.py --corpus`（core/no_debug/CLI 与 118 项 corpus 全部通过）
 - `python track_test.py --engine runtime-v2 -q`

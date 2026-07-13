@@ -1,6 +1,11 @@
 # 更新日志
 
-## [Unreleased]
+## [0.4.0] - unreleased
+
+### ⚠️ Breaking Changes
+
+- `Runner.build_replay()` 的 clip dict 与类型存根删除多项顶层渲染字段，调用方必须改读 `parts[]`。
+- 无 runtime 参数的评分、胜率、批量与 `namer_pf` 顶层 helper 默认改用 Runtime v2。
 
 ### 变更
 
