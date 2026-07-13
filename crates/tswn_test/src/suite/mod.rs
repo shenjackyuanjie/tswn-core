@@ -1,7 +1,6 @@
-//! Shared replay test suite.
+//! 共用回放测试套件。
 //!
-//! The files in this module are engine-agnostic fixtures. They only consume
-//! raw input, rendered update snapshots, winners, and scores.
+//! 本模块中的 fixture 不依赖具体引擎，只读取原始输入、渲染后的更新快照、胜者和分数。
 
 use std::collections::HashMap;
 
@@ -123,6 +122,11 @@ impl EngineAdapter for CoreEngine {
             .collect::<Vec<String>>()
     }
 
+    fn winner_team_index(runner: &Self::Runner) -> Option<usize> {
+        let winner = runner.world.winner.as_ref()?;
+        runner.world.groups.iter().position(|group| group == winner)
+    }
+
     fn rc4_state(runner: &Self::Runner) -> Option<(usize, usize)> {
         Some((runner.randomer.i as usize, runner.randomer.j as usize))
     }
@@ -206,6 +210,8 @@ impl EngineAdapter for RuntimeV2Engine {
             .map(|entity| entity.template.name.clone())
             .collect()
     }
+
+    fn winner_team_index(runner: &Self::Runner) -> Option<usize> { runner.runtime().world.winner_team() }
 
     fn rc4_state(runner: &Self::Runner) -> Option<(usize, usize)> {
         Some((runner.runtime().rng.i as usize, runner.runtime().rng.j as usize))
@@ -358,6 +364,38 @@ fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) 
 }
 
 pub fn winner_names<E: EngineAdapter>(runner: &E::Runner) -> Vec<String> { E::winner_names(runner) }
+
+pub fn assert_runtime_v2_matches_legacy(raw: &str, case_name: &str) {
+    assert_runtime_v2_matches_legacy_with_eval_rq(raw, case_name, tswn_core::player::eval_name::DEFAULT_EVAL_RQ);
+}
+
+pub fn assert_runtime_v2_matches_legacy_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {
+    let (groups, seed) = tswn_core::Runner::split_namerena_into_groups(raw.to_string());
+    let mut legacy =
+        tswn_core::Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq).expect("legacy 压力回归输入应能初始化");
+    let config = default_custom_runtime_v2_import_config().expect("Runtime v2 压力回归配置应能初始化");
+    let mut runtime_v2 = RuntimeV2Runner::from_custom_mixed_namerena_raw_with_eval_rq(raw.to_string(), eval_rq, config)
+        .expect("Runtime v2 压力回归输入应能初始化");
+    let (expected_lines, expected_guard, expected_score) = collect_replay_lines::<CoreEngine>(&mut legacy, 20_000, false);
+    let (actual_lines, actual_guard, actual_score) = collect_replay_lines::<RuntimeV2Engine>(&mut runtime_v2, 20_000, false);
+
+    assert!(expected_guard < 20_000, "{case_name} legacy 对局未在上限内结束");
+    assert!(actual_guard < 20_000, "{case_name} Runtime v2 对局未在上限内结束");
+    assert_trace_with_context(case_name, &actual_lines, &expected_lines);
+    assert_eq!(actual_guard, expected_guard, "{case_name} 回合数不一致");
+    assert_eq!(actual_score, expected_score, "{case_name} 总分不一致");
+
+    assert_eq!(
+        RuntimeV2Engine::winner_team_index(&runtime_v2),
+        CoreEngine::winner_team_index(&legacy),
+        "{case_name} 胜者队伍不一致"
+    );
+    assert_eq!(
+        RuntimeV2Engine::rc4_state(&runtime_v2),
+        CoreEngine::rc4_state(&legacy),
+        "{case_name} 最终 RNG 状态不一致"
+    );
+}
 
 fn assert_trace_with_context(case_name: &str, actual_lines: &[String], expected_lines: &[String]) {
     if actual_lines == expected_lines {

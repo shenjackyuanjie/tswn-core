@@ -1,4 +1,4 @@
-//! Shared test harness for tswn engines.
+//! tswn 各运行引擎共用的测试框架。
 
 pub mod suite;
 
@@ -24,6 +24,8 @@ pub trait EngineAdapter {
     fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot>;
     fn have_winner(runner: &Self::Runner) -> bool;
     fn winner_names(runner: &Self::Runner) -> Vec<String>;
+
+    fn winner_team_index(_runner: &Self::Runner) -> Option<usize> { None }
 
     fn rc4_state(_runner: &Self::Runner) -> Option<(usize, usize)> { None }
 }
