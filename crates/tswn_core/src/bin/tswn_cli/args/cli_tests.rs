@@ -95,6 +95,80 @@ fn diff_defaults_to_v2_and_accepts_legacy_runtime() {
 }
 
 #[test]
+fn fight_defaults_to_v2_and_accepts_legacy_runtime() {
+    let v2 = Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright"]).unwrap();
+    let parsed = ParsedCli::from_cli(v2).unwrap();
+    match parsed.command {
+        ParsedCommand::Fight { raw, out_raw, runtime } => {
+            assert_eq!(raw, "left\n\nright");
+            assert!(!out_raw);
+            assert_eq!(runtime, RuntimeEngine::V2);
+        }
+        _ => panic!("unexpected command"),
+    }
+
+    let legacy = Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright", "--out-raw", "--runtime", "legacy"]).unwrap();
+    let parsed = ParsedCli::from_cli(legacy).unwrap();
+    match parsed.command {
+        ParsedCommand::Fight { raw, out_raw, runtime } => {
+            assert_eq!(raw, "left\n\nright");
+            assert!(out_raw);
+            assert_eq!(runtime, RuntimeEngine::Legacy);
+        }
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
+fn raw_fight_defaults_to_v2_and_accepts_legacy_runtime() {
+    let v2 = Cli::try_parse_from(["tswn-cli", "raw", "-r", "left\\n\\nright"]).unwrap();
+    let parsed = ParsedCli::from_cli(v2).unwrap();
+    match parsed.command {
+        ParsedCommand::FightRaw {
+            raw,
+            n,
+            threads,
+            runtime,
+        } => {
+            assert_eq!(raw, "left\n\nright");
+            assert_eq!(n, 10_000);
+            assert_eq!(threads, None);
+            assert_eq!(runtime, RuntimeEngine::V2);
+        }
+        _ => panic!("unexpected command"),
+    }
+
+    let legacy = Cli::try_parse_from([
+        "tswn-cli",
+        "raw",
+        "-r",
+        "left\\n\\nright",
+        "-n",
+        "3",
+        "-t",
+        "2",
+        "--runtime",
+        "legacy",
+    ])
+    .unwrap();
+    let parsed = ParsedCli::from_cli(legacy).unwrap();
+    match parsed.command {
+        ParsedCommand::FightRaw {
+            raw,
+            n,
+            threads,
+            runtime,
+        } => {
+            assert_eq!(raw, "left\n\nright");
+            assert_eq!(n, 3);
+            assert_eq!(threads, Some(2));
+            assert_eq!(runtime, RuntimeEngine::Legacy);
+        }
+        _ => panic!("unexpected command"),
+    }
+}
+
+#[test]
 fn namer_pf_accepts_multiple_modes() {
     let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--mode", "pp", "qd"]).unwrap();
     match cli.command {

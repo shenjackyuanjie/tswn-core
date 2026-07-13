@@ -3,7 +3,7 @@
 //! `raw` 的特殊点在于：它既可能只是“把一场普通 fight 以 raw trace 打印出来”，
 //! 也可能承载 `!test!` 开头的 benchmark 输入。
 //!
-//! 因此这里把“判断是不是 `!test!`”“评分路径如何构造 JS profile 输入”以及
+//! 因此这里把“判断是不是 `!test!`”“普通 raw 对战选择哪个 runtime”“评分路径如何构造 JS profile 输入”以及
 //! “胜率 benchmark 怎么转交给底层实现”全部收拢到一起，避免普通 `fight` 入口沾上这些分支。
 
 use std::sync::Arc;
@@ -11,35 +11,46 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tswn_core::Runner;
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
+use tswn_core::runtime_v2::{runtime_v2_groups_win_rate, runtime_v2_score};
 use tswn_core::win_rate::groups_win_rate;
 
 use crate::BENCH_PARALLEL_THRESHOLD;
+use crate::args::RuntimeEngine;
 
 use super::driver::{collect_input_player_ids, new_runner_from_raw_for_cli};
 use super::trace::print_fight_raw;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RawRoute {
+    Fight(RuntimeEngine),
+    Benchmark(RuntimeEngine),
+}
+
+fn raw_route(raw: &str, runtime: RuntimeEngine) -> RawRoute {
+    if starts_with_raw_bench_header(raw) {
+        RawRoute::Benchmark(runtime)
+    } else {
+        RawRoute::Fight(runtime)
+    }
+}
+
 /// 运行 `raw` 子命令。
 ///
 /// 入口只做一个分派判断：
-/// - 普通 raw 输入直接走 `print_fight_raw`；
-/// - `!test!` 输入按组数分到评分或胜率 benchmark。
-pub fn run_raw(raw: String, n: usize, threads: Option<usize>) {
+/// - 普通 raw 输入默认走 Runtime v2，也可显式选择 legacy；
+/// - `!test!` 输入使用所选 runtime，并按组数分到评分或胜率 benchmark。
+pub fn run_raw(raw: String, n: usize, threads: Option<usize>, runtime: RuntimeEngine) {
     let trimmed = raw.trim().to_string();
     if trimmed.is_empty() {
         eprintln!("raw: 输入为空或无有效玩家");
         return;
     }
 
-    if !starts_with_raw_bench_header(&trimmed) {
-        let mut runner = match new_runner_from_raw_for_cli(trimmed) {
-            Ok(runner) => runner,
-            Err(err) => {
-                eprintln!("构建对局失败: {err}");
-                std::process::exit(1);
-            }
-        };
-        let input_player_ids = collect_input_player_ids(&runner);
-        print_fight_raw(&mut runner, &input_player_ids);
+    if let RawRoute::Fight(runtime) = raw_route(&trimmed, runtime) {
+        match runtime {
+            RuntimeEngine::V2 => super::runtime_v2::run_runtime_v2_fight(trimmed, true),
+            RuntimeEngine::Legacy => run_legacy_raw_fight(trimmed),
+        }
         return;
     }
 
@@ -53,14 +64,26 @@ pub fn run_raw(raw: String, n: usize, threads: Option<usize>) {
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     match group_count {
         0 => eprintln!("raw: !test! 之后未提供有效输入"),
-        1 => run_raw_score(body, n, threads),
-        2 => run_raw_winrate(body, n, threads),
+        1 => run_raw_score(body, n, threads, runtime),
+        2 => run_raw_winrate(body, n, threads, runtime),
         _ => eprintln!("raw: !test! 模式只支持 1 组（评分）或 2 组（胜率）输入"),
     }
 }
 
+fn run_legacy_raw_fight(raw: String) {
+    let mut runner = match new_runner_from_raw_for_cli(raw) {
+        Ok(runner) => runner,
+        Err(err) => {
+            eprintln!("构建对局失败: {err}");
+            std::process::exit(1);
+        }
+    };
+    let input_player_ids = collect_input_player_ids(&runner);
+    print_fight_raw(&mut runner, &input_player_ids);
+}
+
 /// 运行 raw 评分 benchmark。
-fn run_raw_score(raw: String, n: usize, threads: Option<usize>) {
+fn run_raw_score(raw: String, n: usize, threads: Option<usize>, runtime: RuntimeEngine) {
     let (groups, _) = Runner::split_namerena_into_groups(raw.clone());
     let target_group = groups.into_iter().next().unwrap_or_default();
     let target_count = target_group.len();
@@ -74,12 +97,12 @@ fn run_raw_score(raw: String, n: usize, threads: Option<usize>) {
     println!("info: {target_count}");
 
     print!("[普通评分] ");
-    let normal = run_raw_score_inner(&target_group, "\u{0002}", n, threads);
+    let normal = run_raw_score_inner(&target_group, "\u{0002}", n, threads, runtime);
     let ns = normal.0 as f64 * 10_000.0 / normal.1.max(1) as f64;
     println!("普通评分: {:.0} / 10000  ({}/{})", ns, normal.0, normal.1);
 
     print!("[!评分]    ");
-    let bang = run_raw_score_inner(&target_group, "!", n, threads);
+    let bang = run_raw_score_inner(&target_group, "!", n, threads, runtime);
     let bs = bang.0 as f64 * 10_000.0 / bang.1.max(1) as f64;
     println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.0, bang.1);
 }
@@ -142,7 +165,28 @@ fn build_js_score_match_input(target_group: &[String], modifier: &str, round: us
 }
 
 /// raw score 的内层执行器。
-fn run_raw_score_inner(target_group: &[String], modifier: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
+fn run_raw_score_inner(
+    target_group: &[String],
+    modifier: &str,
+    n: usize,
+    threads: Option<usize>,
+    runtime: RuntimeEngine,
+) -> (usize, usize) {
+    if runtime == RuntimeEngine::V2 {
+        let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
+        return match runtime_v2_score(target_group, modifier, n, WIN_RATE_EVAL_RQ, thread) {
+            Ok(summary) => (summary.wins, summary.total),
+            Err(error) => {
+                eprintln!("构建 Runtime v2 评分对局失败: {error}");
+                (0, 0)
+            }
+        };
+    }
+
+    run_legacy_raw_score_inner(target_group, modifier, n, threads)
+}
+
+fn run_legacy_raw_score_inner(target_group: &[String], modifier: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
     let workers = resolve_raw_workers(threads, n);
 
     if workers <= 1 || n < BENCH_PARALLEL_THRESHOLD {
@@ -266,19 +310,27 @@ fn strip_raw_bench_header(raw: &str) -> &str {
 }
 
 /// 运行 raw 胜率 benchmark。
-fn run_raw_winrate(raw: String, n: usize, threads: Option<usize>) {
+fn run_raw_winrate(raw: String, n: usize, threads: Option<usize>, runtime: RuntimeEngine) {
     println!("=== 原始 namerena 胜率测试 ({n} 场) ===");
-    let summary = run_raw_winrate_inner(&raw, n, threads);
+    let summary = run_raw_winrate_inner(&raw, n, threads, runtime);
     let rate = summary.0 as f64 * 100.0 / summary.1.max(1) as f64;
     println!("胜率: {:.2}%  ({}/{})", rate, summary.0, summary.1);
 }
 
 /// raw 胜率 benchmark 的实际执行器。
-fn run_raw_winrate_inner(raw: &str, n: usize, threads: Option<usize>) -> (usize, usize) {
+fn run_raw_winrate_inner(raw: &str, n: usize, threads: Option<usize>, runtime: RuntimeEngine) -> (usize, usize) {
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let thread = threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0);
-    match groups_win_rate(&groups, n, WIN_RATE_EVAL_RQ, thread) {
-        Ok(summary) => (summary.wins, summary.total),
+    let summary = match runtime {
+        RuntimeEngine::V2 => runtime_v2_groups_win_rate(&groups, n, WIN_RATE_EVAL_RQ, thread)
+            .map(|summary| (summary.wins, summary.total))
+            .map_err(|error| error.to_string()),
+        RuntimeEngine::Legacy => groups_win_rate(&groups, n, WIN_RATE_EVAL_RQ, thread)
+            .map(|summary| (summary.wins, summary.total))
+            .map_err(|error| error.to_string()),
+    };
+    match summary {
+        Ok(summary) => summary,
         Err(err) => {
             eprintln!("构建胜率模板失败: {err}");
             (0, 0)
@@ -311,6 +363,47 @@ mod tests {
     fn raw_bench_header_rejects_non_header_inputs() {
         assert!(!starts_with_raw_bench_header("mario\n\nluigi"));
         assert!(!starts_with_raw_bench_header("!test!mario"));
+    }
+
+    #[test]
+    fn raw_route_uses_requested_runtime_for_fights_and_benchmarks() {
+        assert_eq!(
+            raw_route("mario\n\nluigi", RuntimeEngine::V2),
+            RawRoute::Fight(RuntimeEngine::V2)
+        );
+        assert_eq!(
+            raw_route("mario\n\nluigi", RuntimeEngine::Legacy),
+            RawRoute::Fight(RuntimeEngine::Legacy)
+        );
+        assert_eq!(
+            raw_route("!test!\n\nmario", RuntimeEngine::V2),
+            RawRoute::Benchmark(RuntimeEngine::V2)
+        );
+        assert_eq!(
+            raw_route("!test!\n\nmario", RuntimeEngine::Legacy),
+            RawRoute::Benchmark(RuntimeEngine::Legacy)
+        );
+    }
+
+    #[test]
+    fn raw_score_runtime_v2_matches_legacy_for_both_profile_modes() {
+        let target = vec!["mario".to_owned()];
+        for modifier in ["\u{0002}", "!"] {
+            assert_eq!(
+                run_raw_score_inner(&target, modifier, 12, Some(1), RuntimeEngine::V2),
+                run_raw_score_inner(&target, modifier, 12, Some(1), RuntimeEngine::Legacy),
+                "modifier={modifier:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn raw_winrate_runtime_v2_matches_legacy_seed_schedule() {
+        let raw = "left@red\n\nright@blue";
+        assert_eq!(
+            run_raw_winrate_inner(raw, 24, Some(1), RuntimeEngine::V2),
+            run_raw_winrate_inner(raw, 24, Some(1), RuntimeEngine::Legacy)
+        );
     }
 
     #[test]

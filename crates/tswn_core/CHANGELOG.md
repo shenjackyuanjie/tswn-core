@@ -2,19 +2,31 @@
 
 ## [Unreleased]
 
+### 变更
+
+- `tswn-cli fight`（含 `--out-raw`）、`tswn-cli diff` 与 `tswn-cli raw`（含 `!test!` 评分/胜率）默认改用 Runtime v2；需要旧实现对账时可显式传入 `--runtime legacy`。普通日志、raw 聚合日志、赢家输入索引、玩家状态摘要及 benchmark 汇总输出保持与 legacy 逐行一致。
+- Runtime v2 新增可复用的 `PreparedBattleRoster` / `PreparedRuntimeV2Runner` 与无逐回合结果积累的批量 completion 路径；胜率只重建 seed 相关状态，评分复用固定 runtime/registry 形状，并显式支持 benchmark 所需的 `eval_rq=6`。
+- Runtime v2 的 `PlayerTemplate` 保留 `id_key_name` 与 clan 冷身份数据；运行期子实体生成和使魔复活会同步维护该身份，CLI/replay 等上层不再需要回查 legacy `Storage` 才能还原完整名字。
+
 ### 测试
 
 - 新增 `tswn_test` 共享测试 harness，并将原先嵌在 `tswn_core::engine::test` 下的多组回放/战斗测试迁移为可复用的测试 suite，便于后续多个 engine 实现共用同一批行为对账用例。
 - 将 `tswn_core` 专属 engine 测试拆到 `crates/tswn_core/tests/engine_core.rs`，让核心 crate 的公开行为测试与共享测试工具解耦。
 - 更新 `track_test.py` 默认追踪包，默认覆盖迁移后的 large / small seed / multi fight 测试集合。
+- 新增 CLI legacy/v2 输出对账，覆盖最小对局以及含幻影、分身和 clan 的 `large_51`；补充 `raw` 普通对战与 `!test!` benchmark 的默认 v2/显式 legacy 参数、路由和命令级逐字节对账，并覆盖普通/`!` 评分、胜率 profile seed 调度、4-worker 确定性、200 轮 profile 评分，以及反射冰冻与魅惑生命之轮的严格回归 fixture。Runtime v2 在 `mutable-noalias=yes` 下的 core/no_debug/CLI 门禁与 118 项 corpus 全部通过。
 
 ### 修复
 
+- 修复 Runtime v2 反弹攻击丢失原主动技能 `on_damage` 回调的问题：`ReflectedAttack` effect 现在透传 Ice/Curse/Poison 等后续效果，反射伤害会与 legacy 一样继续施加状态和 replay。
+- 修复被魅惑角色使用生命之轮时仍按原始 team 选敌的问题：Exchange 与其他敌方目标技能一样使用 charm effective team，候选实体继续按实际 team 过滤。
 - 修复使魔模板中通过 `normal:sklcharge` 配置的蓄力不会被后续技能识别的问题：疾走、潜行等依赖蓄力运行时态的逻辑改为扫描当前技能仓库，而不是硬编码普通玩家的 `19` 号技能槽，确保使魔隔离技能槽 `80+id` 里的蓄力也能正确触发加成。
 - 修复 replay view 死亡特效判定过宽的问题：只有“被击倒”或“消失”句子才允许设置 `death_effect`，护身符等 HP 前后同为 `0` 但并非击倒/消失的句子不再触发死亡特效。
 
 ### 验证
 
+- `cargo test -p tswn_core --bin tswn-cli --release`（61 通过）
+- `python scripts/check_runtime_v2_noalias.py --corpus`（core/no_debug/CLI 与 118 项 corpus 全部通过）
+- `python track_test.py --engine runtime-v2 -q`
 - `cargo test -p tswn_core replay_view`
 - `cargo test -p tswn_core summon_minion_charge -- --nocapture`
 - `cargo test -p tswn_core`

@@ -102,6 +102,10 @@ struct FightCommand {
     /// 输出 raw 聚合战斗日志。
     #[arg(long)]
     out_raw: bool,
+
+    /// 对战使用的 runtime；默认 v2，legacy 需要显式指定。
+    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::V2, value_name = "ENGINE")]
+    runtime: RuntimeEngineArg,
 }
 
 #[derive(Debug, Args)]
@@ -122,6 +126,10 @@ struct FightRawCommand {
     /// 指定基准测试线程数。
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
+
+    /// 普通 raw 对战及 `!test!` benchmark 使用的 runtime；默认 v2。
+    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::V2, value_name = "ENGINE")]
+    runtime: RuntimeEngineArg,
 }
 
 #[derive(Debug, Args)]
@@ -650,11 +658,13 @@ impl ParsedCli {
             CliCommand::Fight(cmd) => ParsedCommand::Fight {
                 raw: cmd.input.read_or_stdin()?,
                 out_raw: cmd.out_raw,
+                runtime: cmd.runtime.into(),
             },
             CliCommand::FightRaw(cmd) => ParsedCommand::FightRaw {
                 raw: cmd.input.read_or_stdin()?,
                 n: cmd.count.max(1),
                 threads: cmd.thread,
+                runtime: cmd.runtime.into(),
             },
             CliCommand::FightDiff(cmd) => ParsedCommand::FightDiff {
                 raw: cmd.input.read_or_stdin()?,

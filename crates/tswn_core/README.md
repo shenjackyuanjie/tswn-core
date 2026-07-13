@@ -26,6 +26,12 @@ cargo build -p tswn_core --bin tswn-cli --release
 # 单局对战（stdin 输入）
 echo '<your raw input>' | ./target/release/tswn-cli fight
 
+# fight/diff/raw 默认使用 Runtime v2；需要旧实现对账时显式选择 legacy
+./target/release/tswn-cli fight -f input.txt --runtime legacy
+./target/release/tswn-cli diff -f input.txt --runtime legacy
+./target/release/tswn-cli raw -f input.txt
+./target/release/tswn-cli raw -f input.txt --runtime legacy
+
 # DIY/OL 导出
 ./target/release/tswn-cli to-diy -r "mario@team+fire"
 ./target/release/tswn-cli to-diy -r "mario@team+fire" --old
@@ -46,6 +52,8 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ```
+
+`raw` 输入以 `!test!` 开头时会进入 Runtime v2 批量评分/胜率路径；可用同一个 `--runtime legacy` 参数进行结果对账。独立 `bench` 子命令仍待迁移。
 
 `to-diy --minions` 会额外导出 shadow / summon / zombie 模板。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；summon 的两个火球分别用 `sklfire1`、`sklfire2` 表示，自爆用 `sklexplode`，`skills` 保持普通 JSON object 形态，字段顺序就是行动顺序。0 熟练度技能会省略输出，解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名。
 

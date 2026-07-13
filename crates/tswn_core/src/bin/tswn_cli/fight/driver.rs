@@ -1,7 +1,7 @@
 //! `fight` / `diff` 的用户入口。
 //!
 //! 这一层只做两件事：
-//! - 负责把用户输入变成 `Runner`；
+//! - 负责按用户选择把输入交给 Runtime v2 或 legacy `Runner`；
 //! - 负责把对局推进结果按“普通可读输出”或“diff 输出”打印出来。
 //!
 //! 和 raw benchmark 的分流逻辑、trace 字符串归一化逻辑相比，这里的职责更接近
@@ -22,7 +22,14 @@ use super::trace::{collect_diff_lines, fmt_update, print_fight_raw};
 /// 这里保留两种输出模式：
 /// - `out_raw=false` 时打印人类可读的完整回合日志；
 /// - `out_raw=true` 时把输出切给 raw trace 格式化器，避免两条路径彼此污染。
-pub fn run(raw: String, out_raw: bool) {
+pub fn run(raw: String, out_raw: bool, runtime: RuntimeEngine) {
+    match runtime {
+        RuntimeEngine::V2 => super::runtime_v2::run_runtime_v2_fight(raw, out_raw),
+        RuntimeEngine::Legacy => run_legacy(raw, out_raw),
+    }
+}
+
+fn run_legacy(raw: String, out_raw: bool) {
     let mut runner = match new_runner_from_raw_for_cli(raw) {
         Ok(runner) => runner,
         Err(err) => {
@@ -37,14 +44,21 @@ pub fn run(raw: String, out_raw: bool) {
         return;
     }
 
-    print_all_players(&runner);
+    let lines = collect_legacy_fight_lines(&mut runner, &input_player_ids, 100_000);
+    if !lines.is_empty() {
+        println!("{}", lines.join("\n"));
+    }
+}
+
+pub(super) fn collect_legacy_fight_lines(runner: &mut Runner, input_player_ids: &[usize], max_rounds: usize) -> Vec<String> {
+    let mut lines = collect_all_player_lines(runner);
 
     let mut round = 1usize;
     let mut idle_rounds = 0usize;
     let mut total_score = 0u64;
     let mut score_by_caster: HashMap<usize, u64> = HashMap::new();
 
-    while !runner.have_winner() && round <= 100_000 {
+    while !runner.have_winner() && round <= max_rounds {
         let updates = runner.main_round();
         if updates.updates.is_empty() {
             idle_rounds += 1;
@@ -55,45 +69,47 @@ pub fn run(raw: String, out_raw: bool) {
         }
         idle_rounds = 0;
 
-        println!("=== 回合 {round} ===");
+        lines.push(format!("=== 回合 {round} ==="));
         for update in updates.updates {
             match update.update_type {
-                UpdateType::NextLine => println!(),
+                UpdateType::NextLine => lines.push(String::new()),
                 _ => {
                     if update.score > 0 {
                         total_score += update.score as u64;
                         *score_by_caster.entry(update.caster).or_insert(0) += update.score as u64;
                     }
-                    println!("{}", fmt_update(&runner, &update));
+                    lines.push(fmt_update(runner, &update));
                 }
             }
         }
         round += 1;
     }
 
-    println!("\n=== 对局结果 ===");
+    lines.push(String::new());
+    lines.push("=== 对局结果 ===".to_owned());
     if let Some(winners) = runner.world.winner.clone() {
-        println!("赢家:");
+        lines.push("赢家:".to_owned());
         for winner in winners {
             if let Some(plr) = runner.storage.get_player(&winner) {
                 let battle_score = score_by_caster.get(&winner).copied().unwrap_or(0);
-                println!(
+                lines.push(format!(
                     "- {} (id={}, all_sum={}, battle_score={}, hp={})",
                     plr.display_name(),
                     winner,
                     plr.get_status().all_sum,
                     battle_score,
                     plr.get_status().hp
-                );
+                ));
             }
         }
     } else {
-        println!("未分出胜负（达到安全轮次或连续空更新）。");
+        lines.push("未分出胜负（达到安全轮次或连续空更新）。".to_owned());
     }
-    println!("总战斗分: {total_score}");
-    if let Some(win_idx_line) = fmt_winner_input_indices(&runner, &input_player_ids) {
-        println!("{win_idx_line}");
+    lines.push(format!("总战斗分: {total_score}"));
+    if let Some(win_idx_line) = fmt_winner_input_indices(runner, input_player_ids) {
+        lines.push(win_idx_line);
     }
+    lines
 }
 
 /// 运行普通对战并按 runner diff 格式输出。
@@ -159,14 +175,34 @@ pub(super) fn fmt_winner_input_indices(runner: &Runner, input_player_ids: &[usiz
     }
 }
 
-/// 打印开战前所有玩家的状态快照。
-fn print_all_players(runner: &Runner) {
-    println!("=== 玩家状态 ===");
+/// Runtime v2 的初始实体索引与原始输入顺序一致；运行期生成的实体不会进入 `win_idx`。
+pub(super) fn fmt_runtime_v2_winner_input_indices(
+    runner: &tswn_core::runtime_v2::RuntimeV2Runner,
+    input_player_count: usize,
+) -> Option<String> {
+    let winner_team = runner.runtime().world.winner_team()?;
+    let indices = runner
+        .runtime()
+        .world
+        .team_roster(winner_team)?
+        .iter()
+        .filter_map(|entity| ((entity.0 as usize) < input_player_count).then_some(entity.0.to_string()))
+        .collect::<Vec<_>>();
+    if indices.is_empty() {
+        None
+    } else {
+        Some(format!("win_idx={}", indices.join(",")))
+    }
+}
+
+/// 收集开战前所有玩家的状态快照。
+fn collect_all_player_lines(runner: &Runner) -> Vec<String> {
+    let mut lines = vec!["=== 玩家状态 ===".to_owned()];
     let player_ids = runner.storage.all_player_ids();
     for id in player_ids {
         if let Some(plr) = runner.storage.get_player(&id) {
             let status = plr.get_status();
-            println!(
+            lines.push(format!(
                 "- {} (id={}): HP={}/{}, move_point:{} ATK={}, DEF={}, SPD={}, AGI={}, MAG={}, MP={}, MDF={}, ITL={}, all_sum={} 系数: {}",
                 plr.display_name(),
                 id,
@@ -183,10 +219,11 @@ fn print_all_players(runner: &Runner) {
                 status.wisdom,
                 status.all_sum,
                 plr.get_name_factor()
-            );
+            ));
         }
     }
-    println!();
+    lines.push(String::new());
+    lines
 }
 
 #[cfg(test)]

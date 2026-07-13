@@ -70,6 +70,8 @@ pub enum ParsedCommand {
         raw: String,
         /// 是否改为输出 raw 聚合战斗日志。
         out_raw: bool,
+        /// 对战使用的 runtime；默认 v2，legacy 只作为显式 fallback。
+        runtime: RuntimeEngine,
     },
     FightDiff {
         /// 普通对战输入，使用 namerena raw 格式，并按 runner diff 的格式输出。
@@ -84,6 +86,8 @@ pub enum ParsedCommand {
         n: usize,
         /// 显式指定的基准测试线程数。
         threads: Option<usize>,
+        /// 普通 raw 对战及 `!test!` benchmark 使用的 runtime；默认 v2。
+        runtime: RuntimeEngine,
     },
     RuntimeV2NormalizedRun {
         /// 使用默认 custom v2 profile 运行的 namerena raw 输入。

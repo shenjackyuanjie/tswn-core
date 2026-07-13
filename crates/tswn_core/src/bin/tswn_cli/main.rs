@@ -16,9 +16,9 @@
 //! 编译器会按 Rust 默认模块规则自动解析子模块，因此不再需要 `#[path = ...]`。
 //!
 //! 顶层命令概览：
-//! - `fight`: 运行普通对战，可选 `--out-raw` 输出聚合战斗日志。
-//! - `raw`: 直接运行 namerena 原始输入，兼容普通对战和 `!test!` 基准测试输入。
-//! - `diff`: 运行普通对战，并按 runner diff 格式输出。
+//! - `fight`: 默认用 Runtime v2 运行普通对战，可选 `--out-raw` 输出聚合日志，或用 `--runtime legacy` 对账。
+//! - `raw`: 普通输入与 `!test!` 基准测试默认用 Runtime v2，可用 `--runtime legacy` 对账。
+//! - `diff`: 默认用 Runtime v2 按 runner diff 格式输出，或用 `--runtime legacy` 对账。
 //! - `runtime-v2 normalized-run|parity`: 输出 v2 normalized run，或与 legacy 严格对账。
 //! - `bench auto`: 按输入组数自动切换评分基准测试或胜率基准测试。
 //! - `bench win-rate`: 显式比较两队胜率。
@@ -87,9 +87,14 @@ fn main() {
     }
 
     match cli.command {
-        ParsedCommand::Fight { raw, out_raw } => fight::run(raw, out_raw),
+        ParsedCommand::Fight { raw, out_raw, runtime } => fight::run(raw, out_raw, runtime),
         ParsedCommand::FightDiff { raw, runtime } => fight::run_diff(raw, runtime),
-        ParsedCommand::FightRaw { raw, n, threads } => fight::run_raw(raw, n, threads),
+        ParsedCommand::FightRaw {
+            raw,
+            n,
+            threads,
+            runtime,
+        } => fight::run_raw(raw, n, threads, runtime),
         ParsedCommand::RuntimeV2NormalizedRun { raw, max_rounds } => fight::run_runtime_v2_normalized(raw, max_rounds),
         ParsedCommand::RuntimeV2Parity { raw, max_rounds } => fight::run_runtime_v2_parity(raw, max_rounds),
         ParsedCommand::BenchAuto {

@@ -48,7 +48,9 @@ cargo build --profile release-fast --features no_debug
 ```powershell
 cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- fight --out-raw -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt --runtime legacy
 cargo run -p tswn_core --bin tswn-cli -- raw -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- raw -f input.txt --runtime legacy
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire" --old
 cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt -o diy.txt
@@ -63,6 +65,8 @@ cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p play
 cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ```
+
+`fight`（包括 `--out-raw`）、`diff` 和 `raw`（包括 `!test!` 评分/胜率）默认使用 Runtime v2；需要和旧实现对账时显式传入 `--runtime legacy`。独立 `bench` 子命令仍使用现有 legacy 批量路径，后续继续迁移。
 
 `to-diy --minions` 会在 `+ol` 输出中附带可生成的 shadow / summon / zombie 模板，用于更接近原始名字的评分与对战行为。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；使魔模板的 `skills` 使用普通 JSON object 格式，两个火球固定命名为 `sklfire1`、`sklfire2`，自爆命名为 `sklexplode`，字段顺序就是行动顺序。0 熟练度技能会省略输出；解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名，不再支持旧数组格式、`skill_order` 字段或旧的 `sklfire` 别名。
 

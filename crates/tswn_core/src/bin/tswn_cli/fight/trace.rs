@@ -13,9 +13,9 @@ use std::collections::HashMap;
 use tswn_core::Runner;
 use tswn_core::engine;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::runtime_v2::{EntityIdx, RuntimeV2Runner};
+use tswn_core::runtime_v2::{EntityIdx, PlayerKindFlags, RuntimeV2Runner};
 
-use super::driver::fmt_winner_input_indices;
+use super::driver::{fmt_runtime_v2_winner_input_indices, fmt_winner_input_indices};
 
 /// raw trace 下为召唤物分配稳定名字时维护的状态。
 ///
@@ -149,6 +149,56 @@ fn runtime_v2_plr_name_diff(runner: &RuntimeV2Runner, id: usize) -> String {
         .unwrap_or_else(|| format!("#{id}"))
 }
 
+/// Runtime v2 普通输出使用的完整身份名。
+fn runtime_v2_plr_name(runner: &RuntimeV2Runner, id: usize) -> String {
+    let Ok(entity_id) = u32::try_from(id) else {
+        return format!("#{id}");
+    };
+    let Some(entity) = runner.runtime().entities.get(EntityIdx(entity_id)) else {
+        return format!("#{id}");
+    };
+    if !entity.runtime.flags.contains(PlayerKindFlags::MINION) {
+        return entity.template.id_key_name.clone();
+    }
+
+    let root = runner.runtime().entities.get(entity.runtime.root_owner).unwrap_or(entity);
+    let id_name = &entity.template.name;
+    let clan_name = &root.template.clan_name;
+    if !clan_name.is_empty() && clan_name != id_name {
+        format!("{id_name}@{clan_name}")
+    } else {
+        id_name.clone()
+    }
+}
+
+/// Runtime v2 普通文本输出使用与 legacy 相同的名字替换和计分后缀。
+pub(super) fn fmt_runtime_v2_update(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
+    let caster = runtime_v2_plr_name(runner, update.caster);
+    let target = runtime_v2_plr_name(runner, update.target);
+    let targets = if let Some(param) = update.param {
+        param.to_string()
+    } else if update.targets.is_empty() {
+        update.score.to_string()
+    } else {
+        update
+            .targets
+            .iter()
+            .map(|id| runtime_v2_plr_name(runner, *id))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+
+    let mut message = update.message.to_string();
+    message = message.replace("[0]", &caster);
+    message = message.replace("[1]", &target);
+    message = message.replace("[2]", &targets);
+    if update.score > 0 {
+        format!("{message}  (+{})", update.score)
+    } else {
+        message
+    }
+}
+
 /// Runtime v2 diff 输出使用与 legacy diff 相同的保守名字替换规则。
 fn fmt_runtime_v2_update_diff(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
     let caster = runtime_v2_plr_name_diff(runner, update.caster);
@@ -269,6 +319,38 @@ fn fmt_update_raw_with_state(runner: &Runner, update: &RunUpdate, trace_names: &
     msg = msg.replace("[0]", &caster);
     msg = msg.replace("[1]", &target);
     msg.replace("[2]", &targets)
+}
+
+/// Runtime v2 已在 frame 返回前完成 spawn，因此 raw 格式化不再需要查询 pending storage。
+fn fmt_runtime_v2_update_raw(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
+    let raw_name = |id: usize| {
+        let Ok(entity_id) = u32::try_from(id) else {
+            return format!("#{id}");
+        };
+        let Some(entity) = runner.runtime().entities.get(EntityIdx(entity_id)) else {
+            return format!("#{id}");
+        };
+        if entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
+            entity.template.display_name.clone()
+        } else {
+            runtime_v2_plr_name(runner, id)
+        }
+    };
+
+    let caster = raw_name(update.caster);
+    let target = raw_name(update.target);
+    let targets = if let Some(param) = update.param {
+        param.to_string()
+    } else if update.targets.is_empty() {
+        update.score.to_string()
+    } else {
+        update.targets.iter().map(|id| raw_name(*id)).collect::<Vec<_>>().join(",")
+    };
+
+    let mut message = update.message.to_string();
+    message = message.replace("[0]", &caster);
+    message = message.replace("[1]", &target);
+    message.replace("[2]", &targets)
 }
 
 /// 去掉控制字符、零宽字符和多余空白，保证 trace 更稳定。
@@ -485,15 +567,15 @@ fn emit_current_turn(output_lines: &mut Vec<String>, pending_action_line: &mut S
     }
 }
 
-/// 打印 raw 聚合战斗日志。
-///
-/// 这里会把多个 update 重新折叠成更接近 runner raw diff 的格式，并在末尾补一行 `win_idx=...`。
-pub(super) fn print_fight_raw(runner: &mut Runner, input_player_ids: &[usize]) {
+/// 收集 legacy raw 聚合战斗日志，并在末尾补一行 `win_idx=...`。
+pub(super) fn collect_fight_raw_lines(runner: &mut Runner, input_player_ids: &[usize]) -> Vec<String> {
     let mut output_lines: Vec<String> = Vec::new();
     let mut pending_action_line = String::new();
     let mut pending_misc_lines: Vec<String> = Vec::new();
     let mut trace_names = TraceNameState::default();
+    #[cfg(not(feature = "no_debug"))]
     let debug_raw_seq = std::env::var_os("TSWN_DEBUG_RAW_SEQ").is_some();
+    #[cfg(not(feature = "no_debug"))]
     let mut raw_seq_idx = 0usize;
 
     let mut round = 1usize;
@@ -511,6 +593,7 @@ pub(super) fn print_fight_raw(runner: &mut Runner, input_player_ids: &[usize]) {
 
         for update in updates.updates {
             if matches!(update.update_type, UpdateType::NextLine) {
+                #[cfg(not(feature = "no_debug"))]
                 if debug_raw_seq {
                     eprintln!("[raw_seq/{raw_seq_idx}] <NextLine>");
                     raw_seq_idx += 1;
@@ -524,6 +607,7 @@ pub(super) fn print_fight_raw(runner: &mut Runner, input_player_ids: &[usize]) {
                 continue;
             }
 
+            #[cfg(not(feature = "no_debug"))]
             if debug_raw_seq {
                 eprintln!("[raw_seq/{raw_seq_idx}] {line}");
                 raw_seq_idx += 1;
@@ -550,10 +634,98 @@ pub(super) fn print_fight_raw(runner: &mut Runner, input_player_ids: &[usize]) {
         output_lines.pop();
     }
 
+    if let Some(win_idx_line) = fmt_winner_input_indices(runner, input_player_ids) {
+        output_lines.push(win_idx_line);
+    }
+    output_lines
+}
+
+/// 打印 legacy raw 聚合战斗日志。
+pub(super) fn print_fight_raw(runner: &mut Runner, input_player_ids: &[usize]) {
+    let output_lines = collect_fight_raw_lines(runner, input_player_ids);
     if !output_lines.is_empty() {
         println!("{}", output_lines.join("\n"));
     }
-    if let Some(win_idx_line) = fmt_winner_input_indices(runner, input_player_ids) {
-        println!("{win_idx_line}");
+}
+
+/// 收集 Runtime v2 raw 聚合战斗日志。
+pub(super) fn collect_runtime_v2_fight_raw_lines(runner: &mut RuntimeV2Runner, input_player_count: usize) -> Vec<String> {
+    let mut output_lines = Vec::new();
+    let mut pending_action_line = String::new();
+    let mut pending_misc_lines = Vec::new();
+    #[cfg(not(feature = "no_debug"))]
+    let debug_raw_seq = std::env::var_os("TSWN_DEBUG_RAW_SEQ").is_some();
+    #[cfg(not(feature = "no_debug"))]
+    let mut raw_seq_idx = 0usize;
+
+    let mut round = 1usize;
+    let mut idle_rounds = 0usize;
+    while runner.runtime().world.winner_team().is_none() && round <= 100_000 {
+        let outcome = runner.run_round();
+        let finished = outcome.winner_team.is_some();
+        let Some(frame) = outcome.frame else {
+            idle_rounds += 1;
+            if finished || idle_rounds > 16 {
+                break;
+            }
+            continue;
+        };
+        if frame.updates.updates.is_empty() {
+            idle_rounds += 1;
+            if finished || idle_rounds > 16 {
+                break;
+            }
+            continue;
+        }
+        idle_rounds = 0;
+
+        for update in frame.updates.updates {
+            if matches!(update.update_type, UpdateType::NextLine) {
+                #[cfg(not(feature = "no_debug"))]
+                if debug_raw_seq {
+                    eprintln!("[v2_raw_seq/{raw_seq_idx}] <NextLine>");
+                    raw_seq_idx += 1;
+                }
+                emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
+                continue;
+            }
+
+            let line = normalize_trace_line(fmt_runtime_v2_update_raw(runner, &update));
+            if line.is_empty() {
+                continue;
+            }
+
+            #[cfg(not(feature = "no_debug"))]
+            if debug_raw_seq {
+                eprintln!("[v2_raw_seq/{raw_seq_idx}] {line}");
+                raw_seq_idx += 1;
+            }
+
+            if is_action_line(&line) {
+                emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
+                pending_action_line = line;
+                continue;
+            }
+
+            if pending_action_line.is_empty() {
+                pending_misc_lines.push(line);
+            } else {
+                pending_action_line.push_str(", ");
+                pending_action_line.push_str(&line);
+            }
+        }
+        round += 1;
+        if finished {
+            break;
+        }
     }
+
+    emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
+    while matches!(output_lines.last(), Some(line) if line.is_empty()) {
+        output_lines.pop();
+    }
+    if let Some(win_idx_line) = fmt_runtime_v2_winner_input_indices(runner, input_player_count) {
+        output_lines.push(win_idx_line);
+    }
+    output_lines
 }
