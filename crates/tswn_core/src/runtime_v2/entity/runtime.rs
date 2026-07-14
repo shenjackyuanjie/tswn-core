@@ -397,7 +397,9 @@ impl EntityRecord {
         if charge_active {
             self.runtime.move_state.speed_points += 500;
         }
-        self.refresh_runtime_at_boost();
+        // legacy 的 Accumulate.act 会调用 update_states；除了更新聚气攻击倍率，
+        // 也必须让先前叠加、等待完整属性重算的疾走倍率在本次行动后生效。
+        self.refresh_runtime_stats_from_template();
         self.runtime.move_state.speed_points += 400;
         true
     }
@@ -410,7 +412,8 @@ impl EntityRecord {
         self.runtime.accumulate.active = false;
         self.runtime.accumulate.set_acc(1.600000023841858);
         self.runtime.accumulate.set_charge_bonus(0.0);
-        self.refresh_runtime_at_boost();
+        // legacy 的 Accumulate.clear_positive_runtime 同样会调用 update_states。
+        self.refresh_runtime_stats_from_template();
         true
     }
 

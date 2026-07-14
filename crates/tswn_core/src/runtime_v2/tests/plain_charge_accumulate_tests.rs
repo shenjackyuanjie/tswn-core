@@ -208,6 +208,65 @@ fn charge_expiry_refreshes_pending_haste_multiplier() {
 }
 
 #[test]
+fn accumulate_activation_refreshes_pending_haste_multiplier() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let haste = builder
+        .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+        .expect("haste state should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed(100)],
+        registry,
+    ));
+    runtime
+        .entities
+        .get_mut(EntityIdx(0))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::haste_with_effective_faster(77, haste, 4, 2, 9, SkillPriority(100)));
+
+    assert!(runtime.entities.get_mut(EntityIdx(0)).unwrap().activate_accumulate_runtime());
+
+    let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert!(owner.runtime.accumulate.active);
+    assert_eq!(
+        owner.states.entry(77).and_then(StateEntry::haste_runtime_value),
+        Some((4, 4, 9))
+    );
+    assert_eq!(owner.effective_speed(), 400);
+}
+
+#[test]
+fn accumulate_clear_refreshes_pending_haste_multiplier() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let haste = builder
+        .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+        .expect("haste state should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![PlayerTemplate::new(1, "left", 0, 10, 3).with_speed(100)],
+        registry,
+    ));
+    {
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        owner.activate_accumulate_runtime();
+        owner
+            .states
+            .add_entry(StateEntry::haste_with_effective_faster(77, haste, 4, 2, 9, SkillPriority(100)));
+    }
+
+    assert!(runtime.entities.get_mut(EntityIdx(0)).unwrap().clear_accumulate_runtime());
+
+    let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert!(!owner.runtime.accumulate.active);
+    assert_eq!(
+        owner.states.entry(77).and_then(StateEntry::haste_runtime_value),
+        Some((4, 4, 9))
+    );
+    assert_eq!(owner.effective_speed(), 400);
+}
+
+#[test]
 fn run_minimal_round_charge_late_post_action_clears_after_state_hooks() {
     let mut builder = ExtensionRegistryBuilder::default();
     let charge = builder

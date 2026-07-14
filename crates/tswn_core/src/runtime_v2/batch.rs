@@ -533,6 +533,32 @@ mod tests {
     }
 
     #[test]
+    fn runtime_v2_score_shabby_fish_round_185_matches_legacy() {
+        let modifier = "\u{0002}";
+        let profile_base = crate::engine::PROFILE_START as usize + 185 * 3;
+        let groups = vec![
+            vec!["11 #CxersT6Za@Shabby_fish".to_owned(), format!("{profile_base}@{modifier}")],
+            vec![
+                format!("{}@{modifier}", profile_base + 1),
+                format!("{}@{modifier}", profile_base + 2),
+            ],
+        ];
+        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
+        let mut legacy = crate::Runner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &[], eval_rq)
+            .expect("legacy Shabby_fish 评分用例应初始化成功");
+        let expected = crate::runtime_v2::normalize_legacy_run(&mut legacy, BATCH_MAX_ROUNDS);
+
+        let config = default_custom_runtime_v2_import_config().expect("Runtime v2 默认配置应构建成功");
+        let mut v2 = PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(&groups, eval_rq, config)
+            .expect("Runtime v2 Shabby_fish 评分用例应初始化成功")
+            .new_with_seed(&[])
+            .expect("Runtime v2 Shabby_fish 评分用例 seed 应应用成功");
+        let actual = v2.run_until_winner_normalized_rounds(BATCH_MAX_ROUNDS);
+
+        assert_eq!(crate::runtime_v2::strict_diff_runs(&expected, &actual), Ok(()));
+    }
+
+    #[test]
     fn score_match_builder_keeps_js_single_target_shape() {
         let mut groups = ScoreMatchGroups::new(&["mario".to_owned()], "!");
         groups.set_round(2);
