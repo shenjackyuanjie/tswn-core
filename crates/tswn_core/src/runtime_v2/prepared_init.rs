@@ -92,6 +92,11 @@ pub(crate) struct ScoreRoundScratch {
     profile_rngs: Vec<RC4>,
     dynamic_profiles: Vec<ScoreProfileBuild>,
     team_by_player: Vec<usize>,
+    factor_eval_rq_bits: u64,
+    factor_name_len: usize,
+    factor_team: String,
+    child_clone_name_factor: f64,
+    child_clone_name_factor_ready: bool,
 }
 
 /// score roster 构造与应用完成后交还下一轮的输出向量。
@@ -107,16 +112,7 @@ pub(crate) struct ScoreRosterBuffers {
 
 impl ScoreProfileBuild {
     fn from_rng(id: PlrId, name: String, clan_name: String, mut rand: RC4) -> Self {
-        let mut name_base = [0u8; 128];
-        let mut output = 0usize;
-        for &value in &rand.main_val {
-            let mapped = ((u32::from(value) * 181) + 160) & 255;
-            if (89..217).contains(&mapped) {
-                name_base[output] = (mapped & 63) as u8;
-                output += 1;
-            }
-        }
-        assert_eq!(output, 128, "score profile name base must contain 128 entries");
+        let mut name_base = score_name_base(&rand.main_val);
         let mut raw_name_base = name_base;
         let test_ex = clan_name == "!";
         if test_ex {
@@ -168,6 +164,7 @@ impl ScoreProfileBuild {
         self,
         team: usize,
         eval_rq: f64,
+        cached_child_clone_name_factor: Option<f64>,
         skill_import: &PlainLegacySkillImportMap,
         mut skills: SkillLoadout,
         mut id_key_name: String,
@@ -251,11 +248,11 @@ impl ScoreProfileBuild {
             ..crate::player::PlayerStatus::default()
         };
         status.at_boost = 1.0;
-        let child_clone_name_factor = {
+        let child_clone_name_factor = cached_child_clone_name_factor.unwrap_or_else(|| {
             let factor_name = crate::player::eval_name::eval_str_common_with_rq(&self.name, true, eval_rq);
             let factor_team = crate::player::eval_name::eval_str_common_with_rq(&self.clan_name, true, eval_rq);
             factor_name.max(factor_team - 6.0)
-        };
+        });
         let clone_build = CloneBuildData::from_score_profile(attrs, child_clone_name_factor);
         skill_import.reset_score_profile(&mut skills, &levels, &boosted, &boosts, &self.skill_order);
         id_key_name.clear();
@@ -286,6 +283,69 @@ impl ScoreProfileBuild {
             lazy_blueprint_rq_bits: Some(eval_rq.to_bits()),
         }
     }
+}
+
+#[inline]
+fn score_name_base(values: &[u8; 256]) -> [u8; 128] {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if std::arch::is_x86_feature_detected!("avx2") {
+        // SAFETY: 上面的运行时检测保证当前处理器支持本函数使用的全部 AVX2 指令。
+        return unsafe { score_name_base_avx2(values) };
+    }
+    score_name_base_scalar(values)
+}
+
+fn score_name_base_scalar(values: &[u8; 256]) -> [u8; 128] {
+    let mut name_base = [0u8; 128];
+    let mut output = 0usize;
+    for &value in values {
+        let mapped = ((u32::from(value) * 181) + 160) & 255;
+        if (89..217).contains(&mapped) {
+            name_base[output] = (mapped & 63) as u8;
+            output += 1;
+        }
+    }
+    assert_eq!(output, 128, "score profile name base must contain 128 entries");
+    name_base
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2")]
+unsafe fn score_name_base_avx2(values: &[u8; 256]) -> [u8; 128] {
+    #[cfg(target_arch = "x86")]
+    use std::arch::x86::*;
+    #[cfg(target_arch = "x86_64")]
+    use std::arch::x86_64::*;
+
+    let multiplier = _mm256_set1_epi16(181);
+    let offset = _mm256_set1_epi16(160);
+    let low_byte = _mm256_set1_epi16(255);
+    let lower_bound = _mm256_set1_epi16(88);
+    let upper_bound = _mm256_set1_epi16(217);
+    let mut name_base = [0u8; 128];
+    let mut output = 0usize;
+    let mut mapped_bytes = [0u8; 16];
+
+    for chunk_start in (0..256).step_by(16) {
+        // SAFETY: chunk_start 依次为 0..240，始终可以读取完整 16 字节。
+        let input = unsafe { _mm_loadu_si128(values.as_ptr().add(chunk_start).cast()) };
+        let widened = _mm256_cvtepu8_epi16(input);
+        let mapped = _mm256_and_si256(_mm256_add_epi16(_mm256_mullo_epi16(widened, multiplier), offset), low_byte);
+        let selected = _mm256_and_si256(_mm256_cmpgt_epi16(mapped, lower_bound), _mm256_cmpgt_epi16(upper_bound, mapped));
+        let mapped_packed = _mm_packus_epi16(_mm256_castsi256_si128(mapped), _mm256_extracti128_si256(mapped, 1));
+        let selected_packed = _mm_packs_epi16(_mm256_castsi256_si128(selected), _mm256_extracti128_si256(selected, 1));
+        // SAFETY: mapped_bytes 恰好可写入 16 字节。
+        unsafe { _mm_storeu_si128(mapped_bytes.as_mut_ptr().cast(), mapped_packed) };
+        let mut mask = _mm_movemask_epi8(selected_packed) as u32;
+        while mask != 0 {
+            let index = mask.trailing_zeros() as usize;
+            name_base[output] = mapped_bytes[index] & 63;
+            output += 1;
+            mask &= mask - 1;
+        }
+    }
+    assert_eq!(output, 128, "score profile AVX2 name base must contain 128 entries");
+    name_base
 }
 
 /// 与 seed 无关的 Runtime v2 对局初始化模板。
@@ -471,6 +531,36 @@ impl PreparedBattleRoster {
             scratch.name_lengths.push(name.len());
             scratch.name_keys[index][1..1 + name.len()].copy_from_slice(name.as_bytes());
         }
+        let shared_numeric_name_len = scratch.name_lengths.first().copied().filter(|&name_len| {
+            scratch.name_lengths.iter().all(|length| *length == name_len)
+                && scratch.dynamic_inputs.iter().all(|&(team_index, player_index, _)| {
+                    raw_groups[team_index][player_index]
+                        .split_once('@')
+                        .is_some_and(|(name, _)| name.as_bytes().iter().all(u8::is_ascii_digit))
+                })
+        });
+        let cached_child_clone_name_factor = shared_numeric_name_len.map(|name_len| {
+            if !scratch.child_clone_name_factor_ready
+                || scratch.factor_eval_rq_bits != eval_rq.to_bits()
+                || scratch.factor_name_len != name_len
+                || scratch.factor_team != profile_team
+            {
+                let (first_team, first_player, _) = scratch.dynamic_inputs[0];
+                let first_name = raw_groups[first_team][first_player]
+                    .split_once('@')
+                    .expect("已经验证的 score profile 必须包含队名分隔符")
+                    .0;
+                let factor_name = crate::player::eval_name::eval_str_common_with_rq(first_name, true, eval_rq);
+                let factor_team = crate::player::eval_name::eval_str_common_with_rq(profile_team, true, eval_rq);
+                scratch.factor_eval_rq_bits = eval_rq.to_bits();
+                scratch.factor_name_len = name_len;
+                scratch.factor_team.clear();
+                scratch.factor_team.push_str(profile_team);
+                scratch.child_clone_name_factor = factor_name.max(factor_team - 6.0);
+                scratch.child_clone_name_factor_ready = true;
+            }
+            scratch.child_clone_name_factor
+        });
         let key_refs = scratch
             .name_keys
             .iter()
@@ -558,6 +648,7 @@ impl PreparedBattleRoster {
             let prepared = profile.into_prepared(
                 scratch.team_by_player[id],
                 eval_rq,
+                cached_child_clone_name_factor,
                 skill_import,
                 skills,
                 id_key_name,
@@ -1147,6 +1238,10 @@ impl PreparedBattleInit {
                 .entities
                 .get_mut(entity_idx)
                 .unwrap_or_else(|| panic!("runtime v2 entity disappeared during battle init: {}", entity_idx.0));
+            if score_profile_reset {
+                entity.states.clear_score_profile_for_reuse();
+                entity.slots.clear();
+            }
             entity.template.team = prepared.template.team;
             entity.runtime.team = prepared.template.team;
             if entity.template.kind != PlayerTemplate::DEFAULT_KIND {
@@ -1189,14 +1284,18 @@ impl PreparedBattleInit {
 
             // score 的 prototype 带着首轮蓝图；每轮替换 profile 时必须先清掉旧值，
             // 否则延迟构造标记会错误地命中首轮模板。
-            for slot in [shadow_blueprint_slot, summon_blueprint_slot, zombie_blueprint_slot]
-                .into_iter()
-                .flatten()
-            {
-                entity.slots.remove(slot);
+            if !score_profile_reset {
+                for slot in [shadow_blueprint_slot, summon_blueprint_slot, zombie_blueprint_slot]
+                    .into_iter()
+                    .flatten()
+                {
+                    entity.slots.remove(slot);
+                }
             }
             if let Some(slot) = lazy_blueprint_rq_slot {
-                entity.slots.remove(slot);
+                if !score_profile_reset {
+                    entity.slots.remove(slot);
+                }
                 if let Some(rq_bits) = prepared.lazy_blueprint_rq_bits {
                     entity
                         .slots
@@ -1777,6 +1876,14 @@ impl PreparedBattleInit {
 #[cfg(test)]
 mod score_profile_tests {
     use super::*;
+
+    #[test]
+    fn accelerated_score_name_base_matches_scalar_filter() {
+        for key in [b"!".as_slice(), b"33554431".as_slice(), b"score-profile-key".as_slice()] {
+            let rng = RC4::new(key, 3);
+            assert_eq!(score_name_base(&rng.main_val), score_name_base_scalar(&rng.main_val));
+        }
+    }
 
     #[test]
     fn compact_score_profiles_match_full_legacy_builds() {

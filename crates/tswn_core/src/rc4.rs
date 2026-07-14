@@ -94,16 +94,41 @@ macro_rules! define_same_len_interleaved_ksa {
             debug_assert!(keys.iter().all(|key| key.len() == key_len));
             let mut $first_j = 0u8;
             $(let mut $j = 0u8;)+
+            macro_rules! apply_all_lanes {
+                ($x:expr, $key_index:expr) => {{
+                    apply_key_scheduling_step(
+                        &mut $first_state.main_val,
+                        $first_key,
+                        $x,
+                        $key_index,
+                        &mut $first_j,
+                    );
+                    $(apply_key_scheduling_step(&mut $state.main_val, $key, $x, $key_index, &mut $j);)+
+                }};
+            }
+            if key_len == 9 {
+                let mut x = 0usize;
+                while x < 252 {
+                    apply_all_lanes!(x, 0);
+                    apply_all_lanes!(x + 1, 1);
+                    apply_all_lanes!(x + 2, 2);
+                    apply_all_lanes!(x + 3, 3);
+                    apply_all_lanes!(x + 4, 4);
+                    apply_all_lanes!(x + 5, 5);
+                    apply_all_lanes!(x + 6, 6);
+                    apply_all_lanes!(x + 7, 7);
+                    apply_all_lanes!(x + 8, 8);
+                    x += 9;
+                }
+                apply_all_lanes!(252, 0);
+                apply_all_lanes!(253, 1);
+                apply_all_lanes!(254, 2);
+                apply_all_lanes!(255, 3);
+                return;
+            }
             let mut key_index = 0usize;
             for x in 0..VAL_LEN {
-                apply_key_scheduling_step(
-                    &mut $first_state.main_val,
-                    $first_key,
-                    x,
-                    key_index,
-                    &mut $first_j,
-                );
-                $(apply_key_scheduling_step(&mut $state.main_val, $key, x, key_index, &mut $j);)+
+                apply_all_lanes!(x, key_index);
                 key_index += 1;
                 if key_index == key_len {
                     key_index = 0;

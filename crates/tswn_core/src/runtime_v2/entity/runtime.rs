@@ -567,10 +567,10 @@ impl EntityArena {
         }
     }
 
-    /// 恢复 score 对局：固定 target 完整复位，尾部动态 profile 只清理状态与槽位。
+    /// 恢复 score 对局：固定 target 完整复位，尾部动态 profile 留给随后的构造应用。
     ///
-    /// 动态 profile 的模板和 runtime 随后会由本轮数字构造结果整份覆盖，提前复制
-    /// prototype 的身份字符串、35 项技能表与 runtime 只会制造无用分配。
+    /// 动态 profile 的模板、runtime、状态和槽位随后会在同一应用循环中覆盖或清空；
+    /// 这里不提前触碰它们，避免跨两个循环重复扫描实体数据。
     pub(crate) fn reset_score_battle_state_from(&mut self, prepared: &Self, fixed_count: usize) {
         self.entities.truncate(prepared.entities.len());
         if self.entities.len() < prepared.entities.len() {
@@ -579,10 +579,7 @@ impl EntityArena {
         for (index, (current, prepared)) in self.entities.iter_mut().zip(&prepared.entities).enumerate() {
             match (current.as_mut(), prepared.as_ref()) {
                 (Some(current), Some(prepared)) if index < fixed_count => current.reset_battle_state_from(prepared),
-                (Some(current), Some(_)) => {
-                    current.states.clear_score_profile_for_reuse();
-                    current.slots.clear();
-                }
+                (Some(_), Some(_)) => {}
                 _ => current.clone_from(prepared),
             }
         }

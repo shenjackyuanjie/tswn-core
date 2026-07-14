@@ -605,8 +605,12 @@ impl StateStore {
         self.entries.clear();
         self.hook_mask = ProcMask::NONE;
         self.generation = 0;
-        self.index.clear();
-        self.runtime_registration_orders.clear();
+        if !self.index.is_empty() {
+            self.index.clear();
+        }
+        if !self.runtime_registration_orders.is_empty() {
+            self.runtime_registration_orders.clear();
+        }
         self.next_runtime_registration_order = 0;
         self.compressed_legacy_states = 0;
     }
