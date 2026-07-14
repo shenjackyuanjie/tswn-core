@@ -1,5 +1,6 @@
 use crate::runtime_v2::entity::PlayerTemplate;
 use crate::runtime_v2::{BattleSlotId, EntitySlotId, ExtensionRegistry, TemplateSlotId};
+use smallvec::SmallVec;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_SLOT_BASELINE_ID: AtomicU64 = AtomicU64::new(1);
@@ -127,7 +128,8 @@ impl BattleSlotStorage {
 pub struct EntitySlotStorage {
     values: Vec<Option<SlotValue>>,
     baseline_id: u64,
-    battle_dirty: bool,
+    /// 每 64 个槽位共用一个写入位图；默认 core 槽位只占一个栈内 word。
+    battle_dirty_words: SmallVec<[u64; 1]>,
 }
 
 impl Default for EntitySlotStorage {
@@ -147,24 +149,29 @@ impl EntitySlotStorage {
         Self {
             values: vec![None; len],
             baseline_id: next_slot_baseline_id(),
-            battle_dirty: false,
+            battle_dirty_words: std::iter::repeat_n(0, len.div_ceil(64)).collect(),
         }
     }
 
     pub fn set(&mut self, id: EntitySlotId, value: SlotValue) -> Result<(), SlotError> {
-        let Some(slot) = self.values.get_mut(id.0 as usize) else {
+        let index = id.0 as usize;
+        if index >= self.values.len() {
             return Err(SlotError::InvalidEntitySlot(id));
-        };
-        *slot = Some(value);
-        self.battle_dirty = true;
+        }
+        self.mark_battle_dirty(index);
+        self.values[index] = Some(value);
         Ok(())
     }
 
     pub fn get(&self, id: EntitySlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
 
     pub fn get_mut(&mut self, id: EntitySlotId) -> Option<&mut SlotValue> {
-        self.battle_dirty = true;
-        self.values.get_mut(id.0 as usize).and_then(Option::as_mut)
+        let index = id.0 as usize;
+        if !self.values.get(index).is_some_and(Option::is_some) {
+            return None;
+        }
+        self.mark_battle_dirty(index);
+        self.values[index].as_mut()
     }
 
     /// 仅在蓝图队伍确实变化时写入并标脏，避免种子复位的只读命中触发整槽深拷贝。
@@ -174,40 +181,54 @@ impl EntitySlotStorage {
         };
         if template.team != team {
             template.team = team;
-            self.battle_dirty = true;
+            self.mark_battle_dirty(id.0 as usize);
         }
     }
 
     pub(crate) fn remove(&mut self, id: EntitySlotId) -> Option<SlotValue> {
-        let removed = self.values.get_mut(id.0 as usize).and_then(Option::take);
-        self.battle_dirty |= removed.is_some();
+        let index = id.0 as usize;
+        let removed = self.values.get_mut(index).and_then(Option::take);
+        if removed.is_some() {
+            self.mark_battle_dirty(index);
+        }
         removed
     }
 
     pub fn clear(&mut self) {
-        let mut changed = false;
-        for value in &mut self.values {
-            changed |= value.is_some();
-            *value = None;
+        for index in 0..self.values.len() {
+            if self.values[index].take().is_some() {
+                self.mark_battle_dirty(index);
+            }
         }
-        self.battle_dirty |= changed;
     }
 
     /// 封存 prepared runner 的实体槽位基线。
-    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty = false; }
+    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty_words.fill(0); }
 
-    /// 仅在本局写过实体槽位时恢复蓝图，避免逐局深拷贝槽内 PlayerTemplate。
+    /// 仅恢复本局写过的槽位，计数器变化不再连带深拷贝同表中的 PlayerTemplate。
     pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
         if self.baseline_id != prepared.baseline_id {
             self.clone_from(prepared);
             return;
         }
-        if !self.battle_dirty {
+        if !self.has_battle_dirty() {
             return;
         }
-        self.values.clone_from(&prepared.values);
-        self.battle_dirty = false;
+        for word_index in 0..self.battle_dirty_words.len() {
+            let mut dirty = std::mem::take(&mut self.battle_dirty_words[word_index]);
+            while dirty != 0 {
+                let bit = dirty.trailing_zeros() as usize;
+                let index = word_index * 64 + bit;
+                self.values[index].clone_from(&prepared.values[index]);
+                dirty &= dirty - 1;
+            }
+        }
     }
+
+    #[inline]
+    fn mark_battle_dirty(&mut self, index: usize) { self.battle_dirty_words[index / 64] |= 1u64 << (index % 64); }
+
+    fn has_battle_dirty(&self) -> bool { self.battle_dirty_words.iter().any(|word| *word != 0) }
 
     pub fn len(&self) -> usize { self.values.len() }
 
@@ -296,10 +317,28 @@ mod tests {
         slots.mark_battle_baseline();
 
         slots.update_player_template_team(slot, 2);
-        assert!(!slots.battle_dirty);
+        assert!(!slots.has_battle_dirty());
 
         slots.update_player_template_team(slot, 3);
-        assert!(slots.battle_dirty);
+        assert!(slots.has_battle_dirty());
         assert!(matches!(slots.get(slot), Some(SlotValue::PlayerTemplate(template)) if template.team == 3));
+    }
+
+    #[test]
+    fn entity_slots_restore_only_bits_written_in_current_battle() {
+        let low = EntitySlotId(0);
+        let high = EntitySlotId(65);
+        let mut prepared = EntitySlotStorage::with_len(66);
+        prepared.set(low, SlotValue::Text("baseline".to_owned())).unwrap();
+        prepared.set(high, SlotValue::U64(7)).unwrap();
+        prepared.mark_battle_baseline();
+        let mut current = prepared.clone();
+
+        current.set(high, SlotValue::U64(9)).unwrap();
+        assert_eq!(current.battle_dirty_words.as_slice(), &[0, 2]);
+        current.reset_battle_state_from(&prepared);
+
+        assert_eq!(current, prepared);
+        assert!(!current.has_battle_dirty());
     }
 }
