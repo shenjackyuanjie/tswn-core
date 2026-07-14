@@ -600,6 +600,18 @@ pub struct StateStore {
 impl StateStore {
     pub fn entries(&self) -> &[StateEntry] { &self.entries }
 
+    /// 恢复场前状态并复用现有 SmallVec 容量，避免通用 Clone 反复切换内联/堆存储。
+    pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
+        self.entries.clear();
+        self.entries.extend(prepared.entries.iter().cloned());
+        self.hook_mask = prepared.hook_mask;
+        self.generation = prepared.generation;
+        self.runtime_registration_orders.clear();
+        self.runtime_registration_orders.extend_from_slice(&prepared.runtime_registration_orders);
+        self.next_runtime_registration_order = prepared.next_runtime_registration_order;
+        self.compressed_legacy_states = prepared.compressed_legacy_states;
+    }
+
     /// 清空数字 score profile 的战斗状态，同时保留 SmallVec 容量。
     pub(crate) fn clear_score_profile_for_reuse(&mut self) {
         self.entries.clear();

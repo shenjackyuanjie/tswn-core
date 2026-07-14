@@ -1,11 +1,12 @@
+use crate::player::{MOVE_POINT_THRESHOLD, PlayerStatus, PlrId, skill::SkillBoost};
+use crate::rc4::RC4;
 use crate::runtime_v2::extension::{
     DamageSharePolicy, MergePolicy, OwnerResolutionPolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask,
     RegistrationOrder, SkillId, SkillPriority, StateId, TargetPolicy,
 };
 use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
-use crate::player::{MOVE_POINT_THRESHOLD, PlayerStatus, PlrId, skill::SkillBoost};
-use crate::rc4::RC4;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 mod runtime;
 mod state;
@@ -462,7 +463,7 @@ impl PlayerTemplate {
         debug_assert_eq!(self.name, prepared.name);
         debug_assert_eq!(self.id_key_name, prepared.id_key_name);
         debug_assert_eq!(self.clan_name, prepared.clan_name);
-        self.skills.clone_from(&prepared.skills);
+        self.skills.reset_battle_fields_from(&prepared.skills);
         self.team = prepared.team;
         self.max_hp = prepared.max_hp;
         self.attack = prepared.attack;
@@ -533,6 +534,9 @@ impl PlayerTemplate {
 }
 
 const SKILL_HOOK_COUNT: usize = 8;
+static NEXT_SKILL_LOADOUT_BASELINE_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_skill_loadout_baseline_id() -> u64 { NEXT_SKILL_LOADOUT_BASELINE_ID.fetch_add(1, Ordering::Relaxed) }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CachedSkillHookEntry {
@@ -556,7 +560,7 @@ pub(crate) struct ScoreSkillHookPlanEntry {
     pub(crate) registration_order: RegistrationOrder,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct SkillLoadout {
     skills: SmallVec<[SkillId; 8]>,
     levels: SmallVec<[u32; 8]>,
@@ -573,6 +577,33 @@ pub struct SkillLoadout {
     hook_cache: Vec<CachedSkillHookEntry>,
     hook_cache_offsets: [u16; SKILL_HOOK_COUNT + 1],
     hook_cache_ready: bool,
+    /// 同一份准备模板与 worker 克隆共享此编号，用来识别外部整体替换技能表的情况。
+    baseline_id: u64,
+    /// 仅记录一场战斗内可能需要恢复的字段是否发生过变化。
+    battle_dirty: bool,
+}
+
+impl Default for SkillLoadout {
+    fn default() -> Self {
+        Self {
+            skills: SmallVec::new(),
+            levels: SmallVec::new(),
+            build_levels: SmallVec::new(),
+            boosts: SmallVec::new(),
+            boosted: SmallVec::new(),
+            fixed_lane_keys: SmallVec::new(),
+            merge_lane_order: SmallVec::new(),
+            active_order: SmallVec::new(),
+            pre_action_order: SmallVec::new(),
+            post_damage_order: SmallVec::new(),
+            post_action_after_states: SmallVec::new(),
+            hook_cache: Vec::new(),
+            hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
+            hook_cache_ready: false,
+            baseline_id: next_skill_loadout_baseline_id(),
+            battle_dirty: false,
+        }
+    }
 }
 
 impl PartialEq for SkillLoadout {
@@ -619,6 +650,8 @@ impl SkillLoadout {
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
+            baseline_id: next_skill_loadout_baseline_id(),
+            battle_dirty: false,
         }
     }
 
@@ -646,6 +679,8 @@ impl SkillLoadout {
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
+            baseline_id: next_skill_loadout_baseline_id(),
+            battle_dirty: false,
         }
     }
 
@@ -686,6 +721,8 @@ impl SkillLoadout {
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
+            baseline_id: next_skill_loadout_baseline_id(),
+            battle_dirty: false,
         }
     }
 
@@ -769,6 +806,37 @@ impl SkillLoadout {
                 .sort_by_key(|entry| (entry.hook_index, entry.priority, entry.active_order, entry.registration_order));
         }
         self.finish_hook_cache_offsets();
+        self.battle_dirty = false;
+    }
+
+    /// 将当前技能表封为可复用 runner 的场前基线。
+    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty = false; }
+
+    /// 恢复一场战斗会修改的技能字段；未发生修改时完全跳过 SmallVec 深拷贝。
+    pub(crate) fn reset_battle_fields_from(&mut self, prepared: &Self) {
+        if self.baseline_id != prepared.baseline_id {
+            self.clone_from(prepared);
+            return;
+        }
+        if !self.battle_dirty {
+            return;
+        }
+
+        debug_assert_eq!(self.skills, prepared.skills);
+        debug_assert_eq!(self.fixed_lane_keys, prepared.fixed_lane_keys);
+        debug_assert_eq!(self.merge_lane_order, prepared.merge_lane_order);
+        self.levels.clone_from(&prepared.levels);
+        self.build_levels.clone_from(&prepared.build_levels);
+        self.boosts.clone_from(&prepared.boosts);
+        self.boosted.clone_from(&prepared.boosted);
+        self.active_order.clone_from(&prepared.active_order);
+        self.pre_action_order.clone_from(&prepared.pre_action_order);
+        self.post_damage_order.clone_from(&prepared.post_damage_order);
+        self.post_action_after_states.clone_from(&prepared.post_action_after_states);
+        self.hook_cache.clone_from(&prepared.hook_cache);
+        self.hook_cache_offsets = prepared.hook_cache_offsets;
+        self.hook_cache_ready = prepared.hook_cache_ready;
+        self.battle_dirty = false;
     }
 
     /// 预计算八类技能钩子的稳定顺序，避免每次行动重复扫描并排序完整技能表。
@@ -860,7 +928,11 @@ impl SkillLoadout {
         let Some(current) = self.levels.get_mut(fixed_lane) else {
             return false;
         };
+        if *current == level {
+            return true;
+        }
         *current = level;
+        self.battle_dirty = true;
         true
     }
 
@@ -896,8 +968,12 @@ impl SkillLoadout {
     }
 
     pub fn disable_action_lane(&mut self, fixed_lane: usize) {
+        let before = self.active_order.len();
         self.active_order.retain(|lane| *lane != fixed_lane);
-        self.invalidate_hook_cache();
+        if self.active_order.len() != before {
+            self.invalidate_hook_cache();
+            self.battle_dirty = true;
+        }
     }
 
     pub fn with_active_order(mut self, active_order: impl IntoIterator<Item = usize>) -> Self {
@@ -948,6 +1024,7 @@ impl SkillLoadout {
         }
         self.post_action_after_states.push((state_order_cursor, fixed_lane));
         self.post_action_after_states.sort_by_key(|(cursor, _)| *cursor);
+        self.battle_dirty = true;
     }
 
     pub fn ensure_pre_action_lane(&mut self, fixed_lane: usize) {
@@ -957,10 +1034,15 @@ impl SkillLoadout {
         );
         if !self.pre_action_order.contains(&fixed_lane) {
             self.pre_action_order.push(fixed_lane);
+            self.battle_dirty = true;
         }
     }
 
-    pub fn remove_pre_action_lane(&mut self, fixed_lane: usize) { self.pre_action_order.retain(|lane| *lane != fixed_lane); }
+    pub fn remove_pre_action_lane(&mut self, fixed_lane: usize) {
+        let before = self.pre_action_order.len();
+        self.pre_action_order.retain(|lane| *lane != fixed_lane);
+        self.battle_dirty |= self.pre_action_order.len() != before;
+    }
 
     pub fn with_fixed_lane_keys(mut self, fixed_lane_keys: impl IntoIterator<Item = usize>) -> Self {
         self.fixed_lane_keys = fixed_lane_keys.into_iter().collect();
@@ -993,6 +1075,7 @@ impl SkillLoadout {
             self.build_levels[lane] = base;
             self.boosts[lane] = Some(SkillBoost::LastBoost(base));
             self.boosted[lane] = true;
+            self.battle_dirty = true;
             return true;
         }
         false
@@ -1044,6 +1127,7 @@ impl SkillLoadout {
         }
         let was_zero = *owner_level == 0;
         *owner_level = source_level;
+        self.battle_dirty = true;
         if was_zero {
             self.active_order.retain(|lane| *lane != owner_idx);
             self.active_order.push(owner_idx);

@@ -584,6 +584,8 @@ impl PreparedRuntimeV2Runner {
         prototype.input_groups = base_init.input_groups().to_vec();
         base_init.apply(&mut prototype.runtime)?;
         prototype.validate_ready()?;
+        prototype.runtime.entities.mark_battle_baseline();
+        prototype.runtime.slots.mark_battle_baseline();
         Ok(Self {
             prototype,
             battle_roster,
@@ -775,7 +777,7 @@ impl PreparedRuntimeV2Runner {
         runner.runtime.scheduler.clone_from(&self.prototype.runtime.scheduler);
         runner.runtime.effects.clear();
         runner.runtime.scratch.clear();
-        runner.runtime.slots.clone_from(&self.prototype.runtime.slots);
+        runner.runtime.slots.reset_battle_state_from(&self.prototype.runtime.slots);
         #[cfg(not(feature = "no_debug"))]
         runner.runtime.trace.clone_from(&self.prototype.runtime.trace);
         runner.runtime.round = 0;

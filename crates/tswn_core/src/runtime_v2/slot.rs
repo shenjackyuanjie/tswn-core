@@ -1,5 +1,10 @@
 use crate::runtime_v2::entity::PlayerTemplate;
 use crate::runtime_v2::{BattleSlotId, EntitySlotId, ExtensionRegistry, TemplateSlotId};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_SLOT_BASELINE_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_slot_baseline_id() -> u64 { NEXT_SLOT_BASELINE_ID.fetch_add(1, Ordering::Relaxed) }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlotValue {
@@ -49,30 +54,68 @@ impl TemplateSlotStorage {
     pub fn is_empty(&self) -> bool { self.values.is_empty() }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct BattleSlotStorage {
     values: Vec<Option<SlotValue>>,
+    baseline_id: u64,
+    battle_dirty: bool,
 }
+
+impl Default for BattleSlotStorage {
+    fn default() -> Self { Self::with_len(0) }
+}
+
+impl PartialEq for BattleSlotStorage {
+    fn eq(&self, other: &Self) -> bool { self.values == other.values }
+}
+
+impl Eq for BattleSlotStorage {}
 
 impl BattleSlotStorage {
     pub fn from_registry(registry: &ExtensionRegistry) -> Self { Self::with_len(registry.battle_slots().len()) }
 
-    pub fn with_len(len: usize) -> Self { Self { values: vec![None; len] } }
+    pub fn with_len(len: usize) -> Self {
+        Self {
+            values: vec![None; len],
+            baseline_id: next_slot_baseline_id(),
+            battle_dirty: false,
+        }
+    }
 
     pub fn set(&mut self, id: BattleSlotId, value: SlotValue) -> Result<(), SlotError> {
         let Some(slot) = self.values.get_mut(id.0 as usize) else {
             return Err(SlotError::InvalidBattleSlot(id));
         };
         *slot = Some(value);
+        self.battle_dirty = true;
         Ok(())
     }
 
     pub fn get(&self, id: BattleSlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
 
     pub fn clear(&mut self) {
+        let mut changed = false;
         for value in &mut self.values {
+            changed |= value.is_some();
             *value = None;
         }
+        self.battle_dirty |= changed;
+    }
+
+    /// 封存 prepared runner 的全局槽位基线。
+    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty = false; }
+
+    /// 仅在本局写过全局槽位时恢复内容，常见只读路径不再克隆 Vec。
+    pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
+        if self.baseline_id != prepared.baseline_id {
+            self.clone_from(prepared);
+            return;
+        }
+        if !self.battle_dirty {
+            return;
+        }
+        self.values.clone_from(&prepared.values);
+        self.battle_dirty = false;
     }
 
     pub fn len(&self) -> usize { self.values.len() }
@@ -80,38 +123,79 @@ impl BattleSlotStorage {
     pub fn is_empty(&self) -> bool { self.values.is_empty() }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct EntitySlotStorage {
     values: Vec<Option<SlotValue>>,
+    baseline_id: u64,
+    battle_dirty: bool,
 }
+
+impl Default for EntitySlotStorage {
+    fn default() -> Self { Self::with_len(0) }
+}
+
+impl PartialEq for EntitySlotStorage {
+    fn eq(&self, other: &Self) -> bool { self.values == other.values }
+}
+
+impl Eq for EntitySlotStorage {}
 
 impl EntitySlotStorage {
     pub fn from_registry(registry: &ExtensionRegistry) -> Self { Self::with_len(registry.entity_slots().len()) }
 
-    pub fn with_len(len: usize) -> Self { Self { values: vec![None; len] } }
+    pub fn with_len(len: usize) -> Self {
+        Self {
+            values: vec![None; len],
+            baseline_id: next_slot_baseline_id(),
+            battle_dirty: false,
+        }
+    }
 
     pub fn set(&mut self, id: EntitySlotId, value: SlotValue) -> Result<(), SlotError> {
         let Some(slot) = self.values.get_mut(id.0 as usize) else {
             return Err(SlotError::InvalidEntitySlot(id));
         };
         *slot = Some(value);
+        self.battle_dirty = true;
         Ok(())
     }
 
     pub fn get(&self, id: EntitySlotId) -> Option<&SlotValue> { self.values.get(id.0 as usize).and_then(Option::as_ref) }
 
     pub fn get_mut(&mut self, id: EntitySlotId) -> Option<&mut SlotValue> {
+        self.battle_dirty = true;
         self.values.get_mut(id.0 as usize).and_then(Option::as_mut)
     }
 
     pub(crate) fn remove(&mut self, id: EntitySlotId) -> Option<SlotValue> {
-        self.values.get_mut(id.0 as usize).and_then(Option::take)
+        let removed = self.values.get_mut(id.0 as usize).and_then(Option::take);
+        self.battle_dirty |= removed.is_some();
+        removed
     }
 
     pub fn clear(&mut self) {
+        let mut changed = false;
         for value in &mut self.values {
+            changed |= value.is_some();
             *value = None;
         }
+        self.battle_dirty |= changed;
+    }
+
+    /// 封存 prepared runner 的实体槽位基线。
+    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty = false; }
+
+    /// 仅在本局写过实体槽位时恢复蓝图，避免逐局深拷贝槽内 PlayerTemplate。
+    pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
+        if self.baseline_id != prepared.baseline_id {
+            self.clone_from(prepared);
+            return;
+        }
+        if !self.battle_dirty {
+            return;
+        }
+        self.values.clone_from(&prepared.values);
+        self.battle_dirty = false;
     }
 
     pub fn len(&self) -> usize { self.values.len() }

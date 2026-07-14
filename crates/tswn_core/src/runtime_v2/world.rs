@@ -118,7 +118,17 @@ impl WorldArena {
         }
 
         for _ in 0..self.round_order.len() {
-            self.round_pos = (self.round_pos + 1).rem_euclid(self.round_order.len() as i32);
+            let len = self.round_order.len() as i32;
+            let next = self.round_pos + 1;
+            self.round_pos = if next >= len {
+                let wrapped = next - len;
+                if wrapped < len { wrapped } else { next.rem_euclid(len) }
+            } else if next < 0 {
+                let wrapped = next + len;
+                if wrapped >= 0 { wrapped } else { next.rem_euclid(len) }
+            } else {
+                next
+            };
             let actor = self.round_order[self.round_pos as usize];
             if entities.get(actor).is_some_and(|entity| entity.runtime.alive) {
                 #[cfg(not(feature = "no_debug"))]

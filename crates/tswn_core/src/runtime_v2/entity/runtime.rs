@@ -41,7 +41,7 @@ impl PlayerPolicyOverrides {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProtectLinkRuntime {
     pub owner: EntityIdx,
     pub level: u32,
@@ -206,6 +206,44 @@ impl PlayerRuntime {
         self.assassinate = None;
         self.counter = CounterRuntime::default();
         self.corpse = RuntimeCorpseKind::None;
+    }
+
+    /// 从场前模板原地恢复运行态，并保留保护链向量已经申请的容量。
+    pub(crate) fn reset_battle_state_from(&mut self, prepared: &Self) {
+        self.hp = prepared.hp;
+        self.alive = prepared.alive;
+        self.attack = prepared.attack;
+        self.magic = prepared.magic;
+        self.magic_point = prepared.magic_point;
+        self.wisdom = prepared.wisdom;
+        self.speed = prepared.speed;
+        self.defense = prepared.defense;
+        self.resistance = prepared.resistance;
+        self.agility = prepared.agility;
+        self.at_boost_bits = prepared.at_boost_bits;
+        self.at_boost_millionths = prepared.at_boost_millionths;
+        self.attr_sum = prepared.attr_sum;
+        self.atk_sum = prepared.atk_sum;
+        self.attract_bits = prepared.attract_bits;
+        self.kind = prepared.kind;
+        self.owner = prepared.owner;
+        self.root_owner = prepared.root_owner;
+        self.team = prepared.team;
+        self.flags = prepared.flags;
+        self.policies = prepared.policies;
+        self.move_state = prepared.move_state;
+        self.charge = prepared.charge;
+        self.accumulate = prepared.accumulate;
+        self.shield = prepared.shield;
+        self.protect_to = prepared.protect_to;
+        self.protect_from.clear();
+        self.protect_from.extend_from_slice(&prepared.protect_from);
+        self.protect_pre_defend_skill_count = prepared.protect_pre_defend_skill_count;
+        self.upgrade_active = prepared.upgrade_active;
+        self.hide = prepared.hide;
+        self.assassinate = prepared.assassinate;
+        self.counter.clone_from(&prepared.counter);
+        self.corpse = prepared.corpse;
     }
 
     pub fn at_boost(&self) -> f64 { f64::from_bits(self.at_boost_bits) }
@@ -496,9 +534,9 @@ impl EntityRecord {
     /// 恢复固定 roster 中实体的可变战斗状态，同时保留模板冷数据的既有分配。
     pub fn reset_battle_state_from(&mut self, prepared: &Self) {
         self.template.reset_battle_fields_from(&prepared.template);
-        self.runtime.clone_from(&prepared.runtime);
-        self.states.clone_from(&prepared.states);
-        self.slots.clone_from(&prepared.slots);
+        self.runtime.reset_battle_state_from(&prepared.runtime);
+        self.states.reset_battle_state_from(&prepared.states);
+        self.slots.reset_battle_state_from(&prepared.slots);
     }
 
     fn refresh_runtime_at_boost(&mut self) {
@@ -552,6 +590,14 @@ impl EntityArena {
     pub fn len(&self) -> usize { self.entities.len() }
 
     pub fn is_empty(&self) -> bool { self.entities.is_empty() }
+
+    /// 封存 prepared runner 的技能基线，后续未修改的技能表不再逐局深拷贝。
+    pub(crate) fn mark_battle_baseline(&mut self) {
+        for entity in self.entities.iter_mut().flatten() {
+            entity.template.skills.mark_battle_baseline();
+            entity.slots.mark_battle_baseline();
+        }
+    }
 
     /// 从准备好的 arena 恢复下一局，并丢弃上一局生成的召唤物、分身和实体空洞。
     pub fn reset_battle_state_from(&mut self, prepared: &Self) {

@@ -333,6 +333,13 @@ impl PhaseScheduler {
         let entity = entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime_v2 hook owner entity: {}", owner.0));
+        if !entity.states.hook_mask().intersects(hook) {
+            return StateHookPlan {
+                hook,
+                store_generation: entity.states.generation(),
+                entries: SmallVec::new(),
+            };
+        }
         let entries = entity
             .states
             .entries_in_hook_order_for(hook)
