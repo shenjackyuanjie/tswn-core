@@ -144,10 +144,15 @@ impl CombatRuntime {
                 rng_after: Some(action_rng_after),
             });
         }
+        let forced_plain_action = matches!(prepared_plain_action.as_ref(), Some(PreparedPlainAction::ForcedAttack { .. }));
+        let builtin_plain_action = matches!(prepared_plain_action.as_ref(), Some(PreparedPlainAction::BuiltinSkill(_)));
         let terminal_plain_action = if state_intercepted_action {
             // PRE_ACTION 状态钩子接管本次行动后，legacy 仍会继续执行恢复和完整的行动后链。
             legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
-        } else if let Some(PreparedPlainAction::BuiltinSkill(prepared)) = prepared_plain_action.clone() {
+        } else if builtin_plain_action {
+            let Some(PreparedPlainAction::BuiltinSkill(prepared)) = prepared_plain_action.take() else {
+                unreachable!("builtin action marker must retain the prepared action")
+            };
             self.drain_plain_builtin_skill_into(action.actor, prepared, &mut updates);
             legacy_plain_action && !self.has_alive_enemy_or_pending_spawn(action.actor)
         } else {
@@ -157,7 +162,7 @@ impl CombatRuntime {
             self.drain_skill_hook_plan_into(&pre_damage_skill_plan, &mut updates);
             let pre_damage_state_plan = self.scheduler.state_hook_plan(&self.entities, action.actor, ProcMask::PRE_DAMAGE);
             self.drain_state_hook_plan_into(&pre_damage_state_plan, &mut updates);
-            match prepared_plain_action {
+            match prepared_plain_action.take() {
                 Some(PreparedPlainAction::BasicAttack { use_magic, .. }) => {
                     self.drain_plain_default_attack_into(action.actor, action.target, use_magic, &mut updates);
                 }
@@ -189,7 +194,7 @@ impl CombatRuntime {
             terminal_plain_action
         };
         if !terminal_plain_action {
-            if matches!(prepared_plain_action, Some(PreparedPlainAction::ForcedAttack { .. })) {
+            if forced_plain_action {
                 self.drain_plain_berserk_forced_action_state_into(action.actor, &mut updates);
             }
             if legacy_plain_action {
@@ -359,15 +364,20 @@ impl CombatRuntime {
         let rng_before = (self.rng.i, self.rng.j);
         let req_mp_byte = self.rng.next_u8();
         let req_mp = (req_mp_byte & 15) as i32 + 8;
-        let (mp_before, is_boss, actor_name) = {
+        let (mp_before, is_boss, boss_action_prob_count) = {
             let actor_entity = self
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 default attack actor: {}", actor.0));
+            let is_boss = actor_entity.runtime.flags.contains(PlayerKindFlags::BOSS);
             (
                 actor_entity.runtime.magic_point,
-                actor_entity.runtime.flags.contains(PlayerKindFlags::BOSS),
-                actor_entity.template.name.clone(),
+                is_boss,
+                if is_boss {
+                    crate::player::boss::boss_action_prob_count(&actor_entity.template.name)
+                } else {
+                    0
+                },
             )
         };
         let can_scan_skills = mp_before >= req_mp;
@@ -421,7 +431,7 @@ impl CombatRuntime {
         }
         let prepared_skill = if can_scan_skills {
             let selected = if is_boss {
-                for _ in 0..crate::player::boss::boss_action_prob_count(&actor_name) {
+                for _ in 0..boss_action_prob_count {
                     let _ = self.rng.r127();
                 }
                 None

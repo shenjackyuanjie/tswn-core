@@ -285,6 +285,27 @@ impl RC4 {
         }
     }
 
+    /// 推进一步 PRGA。`i`、`j` 只取低 8 位，三个状态下标因此天然位于 256 字节 S-box 内。
+    #[inline(always)]
+    fn next_u8_untracked(&mut self) -> u8 {
+        let i = (self.i as u8).wrapping_add(1);
+        let state = self.main_val.as_mut_ptr();
+        // SAFETY: i 与 j 均为 u8；si、sj 也来自 u8 S-box，因此三个 add 下标都在 0..256。
+        // 先读取交换前的 si/sj 后直接写回，i == j 时仍与普通 swap 完全等价。
+        unsafe {
+            let i_ptr = state.add(i as usize);
+            let si = *i_ptr;
+            let j = (self.j as u8).wrapping_add(si);
+            let j_ptr = state.add(j as usize);
+            let sj = *j_ptr;
+            *i_ptr = sj;
+            *j_ptr = si;
+            self.i = u32::from(i);
+            self.j = u32::from(j);
+            *state.add(si.wrapping_add(sj) as usize)
+        }
+    }
+
     /// 异或字节
     /// ```dart
     /// void xorBytes(List<int> bytes) {
@@ -302,11 +323,7 @@ impl RC4 {
     #[inline]
     pub fn xor_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            *byte ^=
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
+            *byte ^= self.next_u8_untracked();
         }
     }
 
@@ -314,25 +331,15 @@ impl RC4 {
     #[inline]
     pub fn js_xor_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            *byte ^=
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-
-            self.j = (self.j + (*byte) as u32) & 255; // 新增此行
+            *byte ^= self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(*byte));
         }
     }
 
     #[inline]
     pub fn xor_str(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            self.j = (byte
-                ^ self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255])
-                as u32;
+            self.j = u32::from(*byte ^ self.next_u8_untracked());
         }
     }
 
@@ -340,12 +347,8 @@ impl RC4 {
     #[inline]
     pub fn js_xor_str(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
-            let mut val = *byte;
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            val ^= self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            self.j = (self.j + val as u32) & 255; // 新增此行
+            let val = *byte ^ self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(val));
         }
     }
 
@@ -368,25 +371,16 @@ impl RC4 {
     #[inline]
     pub fn encrypt_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            *byte ^=
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            self.j = (self.j + *byte as u32) & 255;
+            *byte ^= self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(*byte));
         }
     }
 
     /// 只是加密, 不改变原来的字节
     pub fn encrypt_bytes_no_change(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            let tmp =
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            let encrypted = *byte ^ tmp;
-            self.j = (self.j + encrypted as u32) & 255;
+            let encrypted = *byte ^ self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(encrypted));
         }
     }
 
@@ -410,13 +404,9 @@ impl RC4 {
     #[inline]
     pub fn decrypt_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
             let byte_v = *byte;
-            *byte ^=
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            self.j = (self.j + byte_v as u32) & 255;
+            *byte ^= self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(byte_v));
         }
     }
 
@@ -434,10 +424,7 @@ impl RC4 {
     #[inline]
     #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn next_u8(&mut self) -> u8 {
-        self.i = (self.i + 1) & 255;
-        self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-        self.main_val.swap(self.i as usize, self.j as usize);
-        let val = self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
+        let val = self.next_u8_untracked();
         #[cfg(not(feature = "no_debug"))]
         {
             if std::env::var("TSWN_PROBE_RC4").is_ok() {
@@ -840,6 +827,32 @@ mod tests {
             }
         }
         state
+    }
+
+    fn reference_next_u8(state: &mut [u8; VAL_LEN], i: &mut u32, j: &mut u32) -> u8 {
+        *i = i.wrapping_add(1) & 255;
+        *j = j.wrapping_add(state[*i as usize] as u32) & 255;
+        state.swap(*i as usize, *j as usize);
+        state[(state[*i as usize] as usize + state[*j as usize] as usize) & 255]
+    }
+
+    #[test]
+    fn unchecked_prga_matches_safe_reference() {
+        for key_len in [1usize, 2, 7, 16, 31, 255, 256] {
+            let keys = (0..key_len)
+                .map(|index| (index as u8).wrapping_mul(73).wrapping_add(41))
+                .collect::<Vec<_>>();
+            let mut actual = RC4::new(&keys, 2);
+            let mut expected_state = actual.main_val;
+            let mut expected_i = 0u32;
+            let mut expected_j = 0u32;
+            for step in 0..4096 {
+                let expected = reference_next_u8(&mut expected_state, &mut expected_i, &mut expected_j);
+                assert_eq!(actual.next_u8(), expected, "key_len={key_len}, step={step}");
+            }
+            assert_eq!(actual.main_val, expected_state, "key_len={key_len}");
+            assert_eq!((actual.i, actual.j), (expected_i, expected_j), "key_len={key_len}");
+        }
     }
 
     #[test]

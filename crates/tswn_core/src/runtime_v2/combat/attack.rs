@@ -18,7 +18,7 @@ impl CombatRuntime {
     pub fn select_plain_default_attack_target(&mut self, actor: EntityIdx, smart: bool) -> Option<EntityIdx> {
         self.entities.get(actor)?;
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive().to_vec();
+        let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
             return None;
         }
@@ -31,15 +31,15 @@ impl CombatRuntime {
                     .is_some_and(|record| record.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[usize; 8]>>();
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::with_capacity(select_count);
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut duplicate_count = 0usize;
         while duplicate_count <= select_count {
             let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(&all_alive)
+                self.rng.pick(all_alive)
             } else {
-                self.rng.pick_skip_range(&all_alive, &enemy_skip_indices)
+                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             }?;
             let target = all_alive[picked];
             if selected.contains(&target) {
@@ -55,7 +55,7 @@ impl CombatRuntime {
             return None;
         }
 
-        let mut scored = Vec::with_capacity(selected.len());
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
         for target in selected {
             let target_entity = self.entities.get(target).unwrap();
             let score = if smart {
