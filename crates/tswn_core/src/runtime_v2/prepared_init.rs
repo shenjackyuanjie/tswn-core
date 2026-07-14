@@ -50,7 +50,7 @@ enum PreparedBossState {
     Saitama,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PreparedPlayerInit {
     template: PlayerTemplate,
     hp: i32,
@@ -62,13 +62,201 @@ struct PreparedPlayerInit {
     lazy_blueprint_rq_bits: Option<u64>,
 }
 
+/// score 数字 profile 的紧凑构造态；只保留生成 Runtime v2 模板真正需要的数据。
+struct ScoreProfileBuild {
+    id: PlrId,
+    name: String,
+    clan_name: String,
+    name_base: [u8; 128],
+    raw_name_base: [u8; 128],
+    skill_order: [u32; 40],
+    test_ex: bool,
+}
+
+impl ScoreProfileBuild {
+    fn from_rng(id: PlrId, name: String, clan_name: String, mut rand: RC4) -> Self {
+        let mut name_base = [0u8; 128];
+        let mut output = 0usize;
+        for &value in &rand.main_val {
+            let mapped = ((u32::from(value) * 181) + 160) & 255;
+            if (89..217).contains(&mapped) {
+                name_base[output] = (mapped & 63) as u8;
+                output += 1;
+            }
+        }
+        assert_eq!(output, 128, "score profile name base must contain 128 entries");
+        let mut raw_name_base = name_base;
+        let test_ex = clan_name == "!";
+        if test_ex {
+            for value in &mut name_base[6..50] {
+                if *value < 41 {
+                    *value = (*value & 15) + 41;
+                }
+            }
+            for value in &mut name_base[50..] {
+                if *value < 16 {
+                    *value += 32;
+                }
+            }
+            raw_name_base = name_base;
+        } else {
+            debug_assert_eq!(clan_name, "\u{0002}");
+            for value in &mut name_base[..50] {
+                if *value < 12 {
+                    *value = 63 - *value;
+                }
+            }
+        }
+
+        let mut skill_order = std::array::from_fn(|index| index as u32);
+        rand.sort_list(&mut skill_order);
+        Self {
+            id,
+            name,
+            clan_name,
+            name_base,
+            raw_name_base,
+            skill_order,
+            test_ex,
+        }
+    }
+
+    fn id_key_name(&self) -> String { format!("{}@{}", self.name, self.clan_name) }
+
+    fn upgrade_from(&mut self, other: &Self) {
+        if self.test_ex {
+            return;
+        }
+        for index in 7..128 {
+            if other.raw_name_base[index - 1] == self.raw_name_base[index] && other.raw_name_base[index] > self.name_base[index] {
+                self.name_base[index] = other.raw_name_base[index];
+            }
+        }
+    }
+
+    fn into_prepared(self, team: usize, eval_rq: f64, skill_import: &PlainLegacySkillImportMap) -> PreparedPlayerInit {
+        let mut sorted_head: [u8; 10] = self.name_base[..10].try_into().expect("score profile head length is fixed");
+        sorted_head.sort_unstable();
+        let mut attrs = [0u32; 8];
+        for (attr, offset) in attrs[..7].iter_mut().zip((10..31).step_by(3)) {
+            *attr = u32::from(crate::player::median(
+                self.name_base[offset],
+                self.name_base[offset + 1],
+                self.name_base[offset + 2],
+            ));
+        }
+        attrs[7] =
+            154 + u32::from(sorted_head[3]) + u32::from(sorted_head[4]) + u32::from(sorted_head[5]) + u32::from(sorted_head[6]);
+
+        let mut levels = [0u32; 35];
+        let mut boosted = [false; 35];
+        let mut boosts: [Option<crate::player::skill::SkillBoost>; 35] = std::array::from_fn(|_| None);
+        let mut slot_skill_keys = [None; 16];
+        for (slot, offset) in (64..128).step_by(4).enumerate() {
+            let small = *self.name_base[offset..offset + 4].iter().min().unwrap();
+            let key = self.skill_order[slot] as usize;
+            if small <= 10 || key >= 35 {
+                continue;
+            }
+            levels[key] = u32::from(small - 10);
+            boosted[key] = self.raw_name_base[offset..offset + 4].iter().min().copied().unwrap() <= 10;
+            slot_skill_keys[slot] = Some(key);
+        }
+        for &key in self.skill_order.iter().rev() {
+            let key = key as usize;
+            if key < 25 && levels[key] > 0 && !boosted[key] {
+                let base = levels[key];
+                levels[key] = base.saturating_mul(2);
+                boosted[key] = true;
+                boosts[key] = Some(crate::player::skill::SkillBoost::LastBoost(base));
+                break;
+            }
+        }
+        for (slot, left, right) in [(14usize, 60usize, 61usize), (15, 62, 63)] {
+            let Some(key) = slot_skill_keys[slot] else {
+                continue;
+            };
+            if levels[key] == 0 || boosted[key] {
+                continue;
+            }
+            let base = levels[key];
+            let amount = u32::from(self.name_base[left].min(self.name_base[right])).min(base);
+            levels[key] = base.saturating_add(amount);
+            boosted[key] = true;
+            boosts[key] = Some(crate::player::skill::SkillBoost::SlotBoost { base, boost: amount });
+        }
+
+        let attack = attrs[0] as i32;
+        let defense = attrs[1] as i32;
+        let speed = attrs[2] as i32 + 160;
+        let agility = attrs[3] as i32;
+        let magic = attrs[4] as i32;
+        let resistance = attrs[5] as i32;
+        let wisdom = attrs[6] as i32;
+        let max_hp = attrs[7] as i32;
+        let attr_sum = attrs[..7].iter().sum();
+        let atk_sum = (attack - defense + attrs[2] as i32 + magic - resistance) * 2 + agility + wisdom;
+        let mut status = crate::player::PlayerStatus {
+            hp: max_hp,
+            max_hp,
+            attack,
+            defense,
+            speed,
+            agility,
+            magic,
+            magic_point: wisdom >> 1,
+            resistance,
+            wisdom,
+            attr_sum,
+            atk_sum,
+            all_sum: attr_sum * 3 + attrs[7],
+            ..crate::player::PlayerStatus::default()
+        };
+        status.at_boost = 1.0;
+        let child_clone_name_factor = {
+            let factor_name = crate::player::eval_name::eval_str_common_with_rq(&self.name, true, eval_rq);
+            let factor_team = crate::player::eval_name::eval_str_common_with_rq(&self.clan_name, true, eval_rq);
+            factor_name.max(factor_team - 6.0)
+        };
+        let clone_build =
+            CloneBuildData::from_legacy(attrs, [0; 8], 0.0, &status).with_child_name_factor(child_clone_name_factor);
+        let skills = skill_import.import_score_profile(levels, boosted, boosts, &self.skill_order);
+        let template = PlayerTemplate::new(self.id, self.name.clone(), team, max_hp, attack)
+            .with_identity_names(self.id_key_name(), self.clan_name)
+            .with_display_name(self.name)
+            .with_magic(magic)
+            .with_magic_point(status.magic_point)
+            .with_wisdom(wisdom)
+            .with_speed(speed)
+            .with_def_res(defense, resistance)
+            .with_agility(agility)
+            .with_at_boost(1.0)
+            .with_target_score_stats(attr_sum, atk_sum, 32768.0)
+            .with_skill_loadout(skills);
+        let mut template = template;
+        template.clone_build = Some(clone_build);
+        PreparedPlayerInit {
+            template,
+            hp: max_hp,
+            alive: true,
+            boss_state: PreparedBossState::None,
+            shadow_blueprint: None,
+            summon_blueprint: None,
+            zombie_blueprint: None,
+            lazy_blueprint_rq_bits: Some(eval_rq.to_bits()),
+        }
+    }
+}
+
 /// 与 seed 无关的 Runtime v2 对局初始化模板。
 ///
 /// 名字解析、组队加成、玩家 build 和召唤物蓝图只执行一次；每场对局只需根据
 /// seed 重建随机排序、初始移动点和 world 视图，供批量评分/胜率路径复用。
 #[derive(Debug, Clone)]
 pub struct PreparedBattleRoster {
-    players: Vec<PreparedPlayerInit>,
+    /// `None` 表示 score 轮次直接保留 prototype 中的固定 target。
+    players: Vec<Option<PreparedPlayerInit>>,
+    player_alive: Vec<bool>,
     input_groups: Vec<Vec<PlrId>>,
     base_names_sorted: Vec<String>,
     id_key_names: Vec<String>,
@@ -77,13 +265,15 @@ pub struct PreparedBattleRoster {
 
 #[derive(Debug, Clone)]
 pub struct PreparedBattleInit {
-    players: Vec<PreparedPlayerInit>,
+    players: Vec<Option<PreparedPlayerInit>>,
     input_groups: Vec<Vec<EntityIdx>>,
     round_order: Vec<EntityIdx>,
     team_roster: Vec<Vec<EntityIdx>>,
     team_alive: Vec<Vec<EntityIdx>>,
     flat_alive: Vec<EntityIdx>,
     rng: RC4,
+    teams: Vec<usize>,
+    speed_points: Vec<i32>,
 }
 
 /// 只包含 seed 会改变的对局初始状态。
@@ -127,20 +317,164 @@ impl PreparedBattleRoster {
         Self::from_groups_with_eval_rq_and_skill_import_selected(raw_groups, eval_rq, registry, skill_import, &[])
     }
 
-    pub(crate) fn from_groups_with_eval_rq_and_skill_import_lazy_players(
+    /// 复用首轮已经准备好的固定 target，只重建位于尾部的动态 profile。
+    ///
+    /// score 的玩家编号布局始终是“固定 target 在前、动态 profile 在后”。固定
+    /// target 的名字、技能与召唤物蓝图不会随轮次变化，因此无需再次解析和 build。
+    /// 如果遇到非标准布局，或 profile 与同组固定 target 同 clan、需要跨边界升级，
+    /// 则回退到完整构造，保证公共 score 入口对任意合法输入仍保持原语义。
+    pub(crate) fn from_score_groups_with_cached_targets(
         raw_groups: &[Vec<String>],
         eval_rq: f64,
         registry: &ExtensionRegistry,
         skill_import: &PlainLegacySkillImportMap,
-        lazy_blueprint_players: &[PlrId],
+        profile_player_ids: &[PlrId],
+        profile_team: &str,
+        profile_team_rng: &RC4,
+        cached: &Self,
     ) -> Result<Self, RuntimeV2BattleInitError> {
-        Self::from_groups_with_eval_rq_and_skill_import_selected(
-            raw_groups,
-            eval_rq,
-            registry,
-            skill_import,
-            lazy_blueprint_players,
-        )
+        let player_count = raw_groups.iter().flatten().filter(|raw| !Player::check_is_seed(raw)).count();
+        let fixed_count = profile_player_ids.first().copied().unwrap_or(player_count);
+        let suffix_layout = player_count == cached.players.len()
+            && fixed_count <= player_count
+            && profile_player_ids.iter().copied().eq(fixed_count..player_count);
+        if !suffix_layout {
+            return Self::from_groups_with_eval_rq_and_skill_import_selected(
+                raw_groups,
+                eval_rq,
+                registry,
+                skill_import,
+                profile_player_ids,
+            );
+        }
+        if !matches!(profile_team, "!" | "\u{0002}") {
+            return Self::from_groups_with_eval_rq_and_skill_import_selected(
+                raw_groups,
+                eval_rq,
+                registry,
+                skill_import,
+                profile_player_ids,
+            );
+        }
+
+        let mut dynamic_inputs = Vec::with_capacity(player_count - fixed_count);
+        let mut dynamic_groups = Vec::with_capacity(raw_groups.len());
+        let mut next_player_id = 0usize;
+
+        for (team_index, raw_group) in raw_groups.iter().enumerate() {
+            let mut group = Vec::new();
+            for (player_index, raw) in raw_group.iter().enumerate() {
+                if Player::check_is_seed(raw) {
+                    continue;
+                }
+                let id = next_player_id;
+                next_player_id += 1;
+                if id < fixed_count {
+                    continue;
+                }
+                group.push(id - fixed_count);
+                dynamic_inputs.push((team_index, player_index, id, raw));
+            }
+            dynamic_groups.push(group);
+        }
+
+        // 标准 score profile 都使用同一个 modifier 作为 clan；若与同组固定 target
+        // 相同，就必须让双方共同参与 upgrade，因此回退完整 legacy 构造。
+        for group in &cached.input_groups {
+            if group.iter().any(|id| *id >= fixed_count)
+                && group.iter().filter(|id| **id < fixed_count).any(|id| {
+                    cached.players[*id]
+                        .as_ref()
+                        .expect("runtime v2 score target cache must contain fixed players")
+                        .template
+                        .clan_name
+                        == profile_team
+                })
+            {
+                return Self::from_groups_with_eval_rq_and_skill_import_selected(
+                    raw_groups,
+                    eval_rq,
+                    registry,
+                    skill_import,
+                    profile_player_ids,
+                );
+            }
+        }
+
+        let Some(parts) = dynamic_inputs
+            .iter()
+            .map(|(_, _, _, raw)| raw.split_once('@').filter(|(_, team)| *team == profile_team && !team.contains('+')))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return Self::from_groups_with_eval_rq_and_skill_import_selected(
+                raw_groups,
+                eval_rq,
+                registry,
+                skill_import,
+                profile_player_ids,
+            );
+        };
+        let mut name_keys = vec![[0u8; crate::player::NAME_MAX_LEN + 1]; parts.len()];
+        for (key, (name, _)) in name_keys.iter_mut().zip(&parts) {
+            key[1..1 + name.len()].copy_from_slice(name.as_bytes());
+        }
+        let key_refs = name_keys
+            .iter()
+            .zip(&parts)
+            .map(|(key, (name, _))| &key[..1 + name.len()])
+            .collect::<Vec<_>>();
+        let mut profile_rngs = vec![profile_team_rng.clone(); parts.len()];
+        RC4::update_interleaved(&mut profile_rngs, &key_refs, 2);
+        let mut dynamic_profiles = dynamic_inputs
+            .iter()
+            .zip(parts)
+            .zip(profile_rngs)
+            .map(|(((_, _, id, _), (name, team)), rand)| ScoreProfileBuild::from_rng(*id, name.to_owned(), team.to_owned(), rand))
+            .collect::<Vec<_>>();
+        for group in &mut dynamic_groups {
+            group.sort_by(|left, right| {
+                dynamic_profiles[*left]
+                    .name
+                    .cmp(&dynamic_profiles[*right].name)
+                    .then_with(|| dynamic_profiles[*left].id.cmp(&dynamic_profiles[*right].id))
+            });
+            for left_index in 0..group.len() {
+                for right_index in (left_index + 1)..group.len() {
+                    let (left, right) =
+                        PreparedBattleInit::two_score_profiles_mut(&mut dynamic_profiles, group[left_index], group[right_index]);
+                    left.upgrade_from(right);
+                    right.upgrade_from(left);
+                }
+            }
+        }
+
+        let mut team_by_player = vec![0; player_count];
+        for (team, group) in cached.input_groups.iter().enumerate() {
+            for &player in group {
+                team_by_player[player] = team;
+            }
+        }
+        let mut players = std::iter::repeat_with(|| None).take(fixed_count).collect::<Vec<_>>();
+        let mut player_alive = cached.player_alive[..fixed_count].to_vec();
+        let mut id_key_names = cached.id_key_names[..fixed_count].to_vec();
+        for profile in dynamic_profiles {
+            let id = profile.id;
+            id_key_names.push(profile.id_key_name());
+            let prepared = profile.into_prepared(team_by_player[id], eval_rq, skill_import);
+            player_alive.push(prepared.alive);
+            players.push(Some(prepared));
+        }
+
+        let mut sorted_by_id_name = (0..player_count).collect::<Vec<_>>();
+        sorted_by_id_name.sort_by(|left, right| id_key_names[*left].cmp(&id_key_names[*right]));
+        Ok(Self {
+            players,
+            player_alive,
+            input_groups: cached.input_groups.clone(),
+            base_names_sorted: PreparedBattleInit::base_names_sorted(raw_groups),
+            id_key_names,
+            sorted_by_id_name,
+        })
     }
 
     fn from_groups_with_eval_rq_and_skill_import_selected(
@@ -227,6 +561,8 @@ impl PreparedBattleRoster {
                 )
             })
             .collect::<Vec<_>>();
+        let player_alive = players.iter().map(|player| player.alive).collect();
+        let players = players.into_iter().map(Some).collect();
         #[cfg(test)]
         if std::env::var_os("TSWN_PROBE_PREPARED_INIT").is_some() {
             eprintln!(
@@ -240,6 +576,7 @@ impl PreparedBattleRoster {
 
         Ok(Self {
             players,
+            player_alive,
             input_groups,
             base_names_sorted: PreparedBattleInit::base_names_sorted(raw_groups),
             id_key_names,
@@ -331,7 +668,7 @@ impl PreparedBattleRoster {
                 group
                     .iter()
                     .copied()
-                    .filter(|id| self.players[*id].alive)
+                    .filter(|id| self.player_alive[*id])
                     .map(PreparedBattleInit::entity_idx),
             );
         }
@@ -361,8 +698,11 @@ impl PreparedBattleRoster {
 impl PreparedBattleSeed {
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
-    fn into_init(self, mut players: Vec<PreparedPlayerInit>) -> PreparedBattleInit {
+    fn into_init(self, mut players: Vec<Option<PreparedPlayerInit>>) -> PreparedBattleInit {
         for (index, player) in players.iter_mut().enumerate() {
+            let Some(player) = player else {
+                continue;
+            };
             PreparedBattleInit::set_prepared_team(player, self.teams[index]);
             player.template.move_state.speed_points = self.speed_points[index];
         }
@@ -374,13 +714,19 @@ impl PreparedBattleSeed {
             team_alive: self.team_alive,
             flat_alive: self.flat_alive,
             rng: self.rng,
+            teams: self.teams,
+            speed_points: self.speed_points,
         }
     }
 
-    fn apply_entities(&self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
-        if self.teams.len() != runtime.entities.len() {
+    fn apply_entity_seed_values(
+        teams: &[usize],
+        speed_points: &[i32],
+        runtime: &mut CombatRuntime,
+    ) -> Result<(), RuntimeV2BattleInitError> {
+        if teams.len() != runtime.entities.len() {
             return Err(RuntimeV2BattleInitError::EntityCountMismatch {
-                prepared: self.teams.len(),
+                prepared: teams.len(),
                 runtime: runtime.entities.len(),
             });
         }
@@ -394,7 +740,7 @@ impl PreparedBattleSeed {
         let zombie_blueprint_slot = runtime
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);
-        for (index, (&team, &speed_points)) in self.teams.iter().zip(&self.speed_points).enumerate() {
+        for (index, (&team, &speed_points)) in teams.iter().zip(speed_points).enumerate() {
             let entity_idx = PreparedBattleInit::entity_idx(index);
             let entity = runtime
                 .entities
@@ -418,6 +764,10 @@ impl PreparedBattleSeed {
         }
 
         Ok(())
+    }
+
+    fn apply_entities(&self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
+        Self::apply_entity_seed_values(&self.teams, &self.speed_points, runtime)
     }
 
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
@@ -646,6 +996,9 @@ impl PreparedBattleInit {
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT);
         for (index, prepared) in self.players.into_iter().enumerate() {
+            let Some(prepared) = prepared else {
+                continue;
+            };
             let entity_idx = Self::entity_idx(index);
             let entity = runtime
                 .entities
@@ -745,6 +1098,10 @@ impl PreparedBattleInit {
                     .expect("runtime v2 core zombie blueprint slot must exist");
             }
         }
+
+        // 固定 target 虽然不需要重写冷模板，但 profile 名变化仍可能改变输入组排序，
+        // 因此所有实体的本轮 team 与初始移动点都必须按 seed 结果刷新。
+        PreparedBattleSeed::apply_entity_seed_values(&self.teams, &self.speed_points, runtime)?;
 
         runtime.world.sync_initial_views(
             &runtime.entities,
@@ -1034,9 +1391,94 @@ impl PreparedBattleInit {
         }
     }
 
+    fn two_score_profiles_mut(
+        players: &mut [ScoreProfileBuild],
+        left: usize,
+        right: usize,
+    ) -> (&mut ScoreProfileBuild, &mut ScoreProfileBuild) {
+        assert_ne!(left, right, "runtime v2 score upgrade requested the same profile twice");
+        if left < right {
+            let (before_right, from_right) = players.split_at_mut(right);
+            (&mut before_right[left], &mut from_right[0])
+        } else {
+            let (before_left, from_left) = players.split_at_mut(left);
+            (&mut from_left[0], &mut before_left[right])
+        }
+    }
+
     fn entity_order(players: &[PlrId]) -> Vec<EntityIdx> { players.iter().copied().map(Self::entity_idx).collect() }
 
     fn entity_idx(player: PlrId) -> EntityIdx {
         EntityIdx(player.try_into().expect("runtime v2 prepared player id overflowed entity index"))
+    }
+}
+
+#[cfg(test)]
+mod score_profile_tests {
+    use super::*;
+
+    #[test]
+    fn compact_score_profiles_match_full_legacy_builds() {
+        let config = default_custom_runtime_v2_import_config().expect("runtime v2 profile should build");
+        let skill_import = PlainLegacySkillImportMap::new(&config.registry);
+        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
+        for modifier in ["!", "\u{0002}"] {
+            let first_base = crate::engine::PROFILE_START as usize;
+            let first_groups = vec![
+                vec!["mario".to_owned(), format!("{first_base}@{modifier}")],
+                vec![
+                    format!("{}@{modifier}", first_base + 1),
+                    format!("{}@{modifier}", first_base + 2),
+                ],
+            ];
+            let cached = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import(
+                &first_groups,
+                eval_rq,
+                &config.registry,
+                &skill_import,
+            )
+            .expect("score target cache should build");
+            let profile_ids = [1usize, 2, 3];
+            let team_rng = Player::score_profile_team_rng(modifier);
+
+            for round in 0..64 {
+                let base = first_base + round * profile_ids.len();
+                let groups = vec![
+                    vec!["mario".to_owned(), format!("{base}@{modifier}")],
+                    vec![format!("{}@{modifier}", base + 1), format!("{}@{modifier}", base + 2)],
+                ];
+                let expected = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_selected(
+                    &groups,
+                    eval_rq,
+                    &config.registry,
+                    &skill_import,
+                    &profile_ids,
+                )
+                .expect("full score profile should build");
+                let actual = PreparedBattleRoster::from_score_groups_with_cached_targets(
+                    &groups,
+                    eval_rq,
+                    &config.registry,
+                    &skill_import,
+                    &profile_ids,
+                    modifier,
+                    &team_rng,
+                    &cached,
+                )
+                .expect("compact score profile should build");
+
+                for id in profile_ids {
+                    assert_eq!(
+                        actual.players[id], expected.players[id],
+                        "modifier={modifier:?}, round={round}, id={id}"
+                    );
+                }
+                assert_eq!(actual.player_alive, expected.player_alive);
+                assert_eq!(actual.input_groups, expected.input_groups);
+                assert_eq!(actual.base_names_sorted, expected.base_names_sorted);
+                assert_eq!(actual.id_key_names, expected.id_key_names);
+                assert_eq!(actual.sorted_by_id_name, expected.sorted_by_id_name);
+            }
+        }
     }
 }

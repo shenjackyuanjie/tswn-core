@@ -106,6 +106,14 @@ impl Player {
         Self::new_and_init_inner(team, name, weapon, overlay, storage, false)
     }
 
+    /// 预先计算 score profile 共用的队名 KSA 状态。
+    pub(crate) fn score_profile_team_rng(team: &str) -> RC4 {
+        assert!(team.len() <= TEAM_MAX_LEN, "score profile team name is too long");
+        let mut key = [0u8; TEAM_MAX_LEN + 1];
+        key[1..1 + team.len()].copy_from_slice(team.as_bytes());
+        RC4::new(&key[..1 + team.len()], 1)
+    }
+
     fn new_and_init_inner(
         team: Option<String>,
         name: String,
@@ -155,15 +163,13 @@ impl Player {
             }
         };
         // 开始处理 rc4 部分
-        let name_bytes = [0_u8].iter().chain(name.as_bytes()).copied().collect::<Vec<u8>>();
-        let team_bytes = [0_u8]
-            .iter()
-            .chain(team.as_ref().unwrap_or(&name).as_bytes())
-            .copied()
-            .collect::<Vec<u8>>();
-
-        let mut rand = RC4::new(&team_bytes, 1);
-        rand.update(&name_bytes, 2);
+        let mut name_key = [0u8; NAME_MAX_LEN + 1];
+        name_key[1..1 + name.len()].copy_from_slice(name.as_bytes());
+        let team_or_name = team.as_ref().unwrap_or(&name);
+        let mut team_key = [0u8; TEAM_MAX_LEN + 1];
+        team_key[1..1 + team_or_name.len()].copy_from_slice(team_or_name.as_bytes());
+        let mut rand = RC4::new(&team_key[..1 + team_or_name.len()], 1);
+        rand.update(&name_key[..1 + name.len()], 2);
 
         // 生成 name_base
         let mut name_base: Vec<u8> = Vec::with_capacity(128);

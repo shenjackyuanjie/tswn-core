@@ -276,6 +276,7 @@ impl BuiltinActiveSkill {
 #[derive(Debug, Clone)]
 pub struct PlainLegacySkillImportMap {
     active_by_legacy_key: [Option<SkillId>; 256],
+    plain_by_legacy_key: [Option<SkillId>; 35],
     special_by_runtime_kind: [(&'static str, Option<SkillId>); 4],
     passive_by_runtime_kind: [(&'static str, Option<SkillId>); 10],
 }
@@ -286,8 +287,28 @@ impl PlainLegacySkillImportMap {
         for skill in BuiltinActiveSkill::ALL {
             active_by_legacy_key[skill.legacy_key()] = registry.skill_id_by_export_name(skill.export_name());
         }
+        let mut plain_by_legacy_key = [None; 35];
+        plain_by_legacy_key[..25].copy_from_slice(&active_by_legacy_key[..25]);
+        for (key, export_name) in [
+            DEFAULT_CORE_DEFEND_SKILL_EXPORT,
+            DEFAULT_CORE_PROTECT_SKILL_EXPORT,
+            DEFAULT_CORE_REFLECT_SKILL_EXPORT,
+            DEFAULT_CORE_RERAISE_SKILL_EXPORT,
+            DEFAULT_CORE_SHIELD_SKILL_EXPORT,
+            DEFAULT_CORE_COUNTER_SKILL_EXPORT,
+            DEFAULT_CORE_MERGE_SKILL_EXPORT,
+            DEFAULT_CORE_ZOMBIE_SKILL_EXPORT,
+            DEFAULT_CORE_UPGRADE_SKILL_EXPORT,
+            DEFAULT_CORE_HIDE_SKILL_EXPORT,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            plain_by_legacy_key[25 + key] = registry.skill_id_by_export_name(export_name);
+        }
         Self {
             active_by_legacy_key,
+            plain_by_legacy_key,
             special_by_runtime_kind: [
                 (
                     std::any::type_name::<crate::player::skill::act::fire::FireSkill>(),
@@ -393,35 +414,27 @@ impl PlainLegacySkillImportMap {
         post_damage_order_keys: &[usize],
         post_action_after_states_keys: &[(u64, usize)],
     ) -> SkillLoadout {
-        let merge_lane_order = merge_lane_order_keys
-            .iter()
-            .filter_map(|key| imported.iter().position(|(imported_key, _, _, _, _)| imported_key == key))
-            .collect::<Vec<_>>();
-        let mut active_order = active_order_keys
-            .iter()
-            .filter_map(|key| imported.iter().position(|(imported_key, _, _, _, _)| imported_key == key))
-            .collect::<Vec<_>>();
+        let mut lane_by_key = vec![usize::MAX; imported.iter().map(|(key, _, _, _, _)| *key).max().unwrap_or(0) + 1];
+        for (lane, (key, _, _, _, _)) in imported.iter().enumerate() {
+            lane_by_key[*key] = lane;
+        }
+        let lane_for_key = |key: usize| lane_by_key.get(key).copied().filter(|lane| *lane != usize::MAX);
+        let merge_lane_order = merge_lane_order_keys.iter().filter_map(|key| lane_for_key(*key)).collect::<Vec<_>>();
+        let mut active_order = active_order_keys.iter().filter_map(|key| lane_for_key(*key)).collect::<Vec<_>>();
+        let mut active_lanes = vec![false; imported.len()];
+        for &lane in &active_order {
+            active_lanes[lane] = true;
+        }
         for lane in 0..imported.len() {
-            if !active_order.contains(&lane) {
+            if !active_lanes[lane] {
                 active_order.push(lane);
             }
         }
-        let pre_action_order = pre_action_order_keys
-            .iter()
-            .filter_map(|key| imported.iter().position(|(imported_key, _, _, _, _)| imported_key == key))
-            .collect::<Vec<_>>();
-        let post_damage_order = post_damage_order_keys
-            .iter()
-            .filter_map(|key| imported.iter().position(|(imported_key, _, _, _, _)| imported_key == key))
-            .collect::<Vec<_>>();
+        let pre_action_order = pre_action_order_keys.iter().filter_map(|key| lane_for_key(*key)).collect::<Vec<_>>();
+        let post_damage_order = post_damage_order_keys.iter().filter_map(|key| lane_for_key(*key)).collect::<Vec<_>>();
         let post_action_after_states = post_action_after_states_keys
             .iter()
-            .filter_map(|(cursor, key)| {
-                imported
-                    .iter()
-                    .position(|(imported_key, _, _, _, _)| imported_key == key)
-                    .map(|lane| (*cursor, lane))
-            })
+            .filter_map(|(cursor, key)| lane_for_key(*key).map(|lane| (*cursor, lane)))
             .collect::<Vec<_>>();
 
         let fixed_lane_keys = imported.iter().map(|(key, _, _, _, _)| *key).collect::<Vec<_>>();
@@ -484,13 +497,18 @@ impl PlainLegacySkillImportMap {
         };
 
         let mut imported = Vec::new();
+        let mut imported_keys = Vec::<bool>::new();
         for &key in &storage.slot_skill {
             if let Some(mapped) = resolve(key) {
                 imported.push(mapped);
+                if key >= imported_keys.len() {
+                    imported_keys.resize(key + 1, false);
+                }
+                imported_keys[key] = true;
             }
         }
         for key in storage.store.keys() {
-            if imported.iter().any(|(imported_key, _, _, _, _)| *imported_key == key) {
+            if imported_keys.get(key).copied().unwrap_or(false) {
                 continue;
             }
             if let Some(mapped) = resolve(key) {
@@ -506,6 +524,50 @@ impl PlainLegacySkillImportMap {
             &storage.post_damage,
             &storage.post_action_after_states,
         )
+    }
+
+    /// 直接导入无 overlay 的普通 score profile，跳过 legacy 技能对象与 proc 缓存。
+    pub(crate) fn import_score_profile(
+        &self,
+        levels: [u32; 35],
+        boosted: [bool; 35],
+        boosts: [Option<crate::player::skill::SkillBoost>; 35],
+        action_order: &[u32; 40],
+    ) -> SkillLoadout {
+        let mut lane_by_key = [usize::MAX; 35];
+        let mut fixed_lane_keys = Vec::with_capacity(35);
+        let mut imported = Vec::with_capacity(35);
+        let mut imported_boosted = Vec::with_capacity(35);
+        for key in 0..35 {
+            let Some(skill_id) = self.plain_by_legacy_key[key] else {
+                continue;
+            };
+            lane_by_key[key] = imported.len();
+            fixed_lane_keys.push(key);
+            imported.push((skill_id, levels[key], boosts[key].clone()));
+            imported_boosted.push(boosted[key]);
+        }
+        let lane = |key: usize| lane_by_key.get(key).copied().filter(|lane| *lane != usize::MAX);
+        let active_order = action_order.iter().filter_map(|key| lane(*key as usize)).collect::<Vec<_>>();
+        let pre_action_order = [29usize, 34]
+            .into_iter()
+            .filter(|key| levels[*key] > 0)
+            .filter_map(lane)
+            .collect::<Vec<_>>();
+        let post_damage_order = [30usize, 33, 34, 21]
+            .into_iter()
+            .filter(|key| levels[*key] > 0)
+            .filter_map(lane)
+            .collect::<Vec<_>>();
+        let merge_lane_order = (0..35).filter_map(lane).collect::<Vec<_>>();
+
+        SkillLoadout::from_skill_levels_and_boosts(imported)
+            .with_fixed_lane_keys(fixed_lane_keys)
+            .with_boosted_flags(imported_boosted)
+            .with_merge_lane_order(merge_lane_order)
+            .with_active_order(active_order)
+            .with_pre_action_order(pre_action_order)
+            .with_post_damage_order(post_damage_order)
     }
 }
 

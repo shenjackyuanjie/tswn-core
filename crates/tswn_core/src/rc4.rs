@@ -61,6 +61,23 @@ fn apply_key_scheduling(state: &mut [u8; VAL_LEN], keys: &[u8]) {
     }
 }
 
+/// 交错推进多条相互独立的 KSA 链，让处理器同时隐藏各 lane 的数据依赖延迟。
+#[inline]
+fn apply_key_scheduling_interleaved<const N: usize>(states: &mut [RC4; N], keys: &[&[u8]; N]) {
+    let mut key_indices = [0usize; N];
+    let mut js = [0u8; N];
+    for x in 0..VAL_LEN {
+        for lane in 0..N {
+            let state = &mut states[lane].main_val;
+            let key = keys[lane];
+            let key_index = key_indices[lane];
+            js[lane] = js[lane].wrapping_add(state[x]).wrapping_add(key[key_index]);
+            state.swap(x, js[lane] as usize);
+            key_indices[lane] = if key_index + 1 == key.len() { 0 } else { key_index + 1 };
+        }
+    }
+}
+
 /// RC4 类
 /// 名竞的核心~
 #[allow(unused)]
@@ -141,6 +158,31 @@ impl RC4 {
     pub fn update(&mut self, keys: &[u8], round: usize) {
         for _ in 0..round {
             apply_key_scheduling(&mut self.main_val, keys);
+        }
+    }
+
+    /// 对 2～4 个独立状态交错执行相同轮数的 KSA；其他宽度回退到普通路径。
+    pub(crate) fn update_interleaved(states: &mut [Self], keys: &[&[u8]], round: usize) {
+        assert_eq!(states.len(), keys.len(), "RC4 交错 KSA 的状态和密钥数量必须一致");
+        assert!(keys.iter().all(|key| !key.is_empty()), "RC4 密钥不能为空");
+        macro_rules! run_width {
+            ($width:literal) => {{
+                let states: &mut [RC4; $width] = states.try_into().expect("RC4 交错 KSA 状态宽度错误");
+                let keys: &[&[u8]; $width] = keys.try_into().expect("RC4 交错 KSA 密钥宽度错误");
+                for _ in 0..round {
+                    apply_key_scheduling_interleaved(states, keys);
+                }
+            }};
+        }
+        match states.len() {
+            2 => run_width!(2),
+            3 => run_width!(3),
+            4 => run_width!(4),
+            _ => {
+                for (state, key) in states.iter_mut().zip(keys) {
+                    state.update(key, round);
+                }
+            }
         }
     }
 
@@ -724,6 +766,29 @@ mod tests {
                 rounded.round(&keys, Some(rounds));
                 assert_eq!(rounded.main_val, expected, "round: key_len={key_len}, rounds={rounds}");
                 assert_eq!((rounded.i, rounded.j), (0, 0));
+            }
+        }
+    }
+
+    #[test]
+    fn interleaved_key_scheduling_matches_independent_updates() {
+        for width in 1..=5 {
+            let keys = (0..width)
+                .map(|lane| {
+                    (0..(lane + 2))
+                        .map(|index| (lane as u8).wrapping_mul(73).wrapping_add(index as u8).wrapping_add(1))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            let mut expected = (0..width).map(|lane| RC4::new(&[0, lane as u8 + 1], 1)).collect::<Vec<_>>();
+            let mut actual = expected.clone();
+            for (state, key) in expected.iter_mut().zip(&keys) {
+                state.update(key, 2);
+            }
+            let key_refs = keys.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            RC4::update_interleaved(&mut actual, &key_refs, 2);
+            for lane in 0..width {
+                assert_eq!(actual[lane].main_val, expected[lane].main_val, "width={width}, lane={lane}");
             }
         }
     }

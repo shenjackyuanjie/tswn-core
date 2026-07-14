@@ -278,7 +278,15 @@ fn run_score_round(
     match_groups.set_round(round);
     let init_started = Instant::now();
     if prepared
-        .reset_score_groups_with_seed_and_eval_rq(runner, &match_groups.groups, &match_groups.profile_player_ids, &[], eval_rq)
+        .reset_score_groups_with_seed_and_eval_rq(
+            runner,
+            &match_groups.groups,
+            &match_groups.profile_player_ids,
+            &match_groups.modifier,
+            &match_groups.profile_team_rng,
+            &[],
+            eval_rq,
+        )
         .is_err()
     {
         summary.errors += 1;
@@ -317,6 +325,7 @@ struct ScoreMatchGroups {
     profile_slots: Vec<(usize, usize)>,
     profile_player_ids: Vec<crate::player::PlrId>,
     modifier: String,
+    profile_team_rng: crate::rc4::RC4,
 }
 
 impl ScoreMatchGroups {
@@ -357,6 +366,12 @@ impl ScoreMatchGroups {
             profile_slots,
             profile_player_ids,
             modifier: modifier.to_owned(),
+            profile_team_rng: if modifier.len() <= crate::player::TEAM_MAX_LEN {
+                crate::player::Player::score_profile_team_rng(modifier)
+            } else {
+                // 非法的超长 modifier 会在完整玩家构造路径返回原有错误；这里不能提前 panic。
+                crate::rc4::RC4::default()
+            },
         };
         value.set_round(0);
         value
@@ -456,6 +471,8 @@ mod tests {
                 &mut actual,
                 &match_groups.groups,
                 &match_groups.profile_player_ids,
+                &match_groups.modifier,
+                &match_groups.profile_team_rng,
                 &[],
                 eval_rq,
             )

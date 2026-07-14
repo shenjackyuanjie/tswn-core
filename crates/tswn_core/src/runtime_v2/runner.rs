@@ -650,15 +650,20 @@ impl PreparedRuntimeV2Runner {
         runner: &mut RuntimeV2Runner,
         raw_groups: &[Vec<String>],
         profile_player_ids: &[crate::player::PlrId],
+        profile_team: &str,
+        profile_team_rng: &crate::rc4::RC4,
         seed: &[String],
         eval_rq: f64,
     ) -> Result<(), CustomRuntimeV2ImportError> {
-        let battle_roster = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_lazy_players(
+        let battle_roster = PreparedBattleRoster::from_score_groups_with_cached_targets(
             raw_groups,
             eval_rq,
             &self.prototype.runtime.registry,
             &self.skill_import,
             profile_player_ids,
+            profile_team,
+            profile_team_rng,
+            &self.battle_roster,
         )?;
         self.reset_with_init(runner, battle_roster.into_with_seed(seed))
     }
