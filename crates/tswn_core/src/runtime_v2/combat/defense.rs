@@ -310,18 +310,31 @@ impl CombatRuntime {
             RuntimeShield,
         }
 
-        let mut executed_skill_lanes = Vec::new();
-        let mut executed_state_keys = Vec::new();
+        let mut executed_skill_lanes = smallvec::SmallVec::<[usize; 8]>::new();
+        let mut executed_state_keys = smallvec::SmallVec::<[u32; 8]>::new();
         let mut executed_runtime_shield = false;
         loop {
             // 状态钩子可能修改自身存储（最常见的是铁甲被击破）。
-            // 每执行一项都重建合并计划，并共用一份执行记录，避免重建后的状态计划
-            // 或外层技能/状态合并计划重复执行同一钩子。
+            // 先记录两类计划代数和护盾存在性；只有执行确实改变计划成员时才重建，
+            // 常规防御链可以沿同一份有序计划连续执行，仍以执行记录避免动态重建后重复触发。
+            let (skill_generation, state_generation, shield_active) = {
+                let entity = self
+                    .entities
+                    .get(target)
+                    .unwrap_or_else(|| panic!("runtime_v2 防御钩子目标已消失：{}", target.0));
+                (
+                    entity.template.skills.hook_generation(),
+                    entity.states.generation(),
+                    entity.runtime.shield > 0,
+                )
+            };
             let skill_plan = self
                 .scheduler
                 .skill_hook_plan(&self.entities, &self.registry, target, ProcMask::POST_DEFEND);
             let state_plan = self.scheduler.state_hook_plan(&self.entities, target, ProcMask::POST_DEFEND);
-            let mut entries = Vec::with_capacity(skill_plan.entries.len() + state_plan.entries.len() + 1);
+            debug_assert_eq!(state_plan.store_generation, state_generation);
+            let mut entries =
+                smallvec::SmallVec::<[(SkillPriority, u8, usize, RegistrationOrder, DefendHookPlanEntry); 8]>::new();
             entries.extend(skill_plan.entries.iter().copied().map(|entry| {
                 (
                     entry.priority,
@@ -340,7 +353,7 @@ impl CombatRuntime {
                     DefendHookPlanEntry::State(entry),
                 )
             }));
-            if self.entities.get(target).is_some_and(|entity| entity.runtime.shield > 0) {
+            if shield_active {
                 // legacy 的 ShieldStat 是优先级 6000 的 y2/post_defend 项，位于
                 // Defend（2000）和 Curse（10000）之间。即使护盾压缩成 runtime 字段，
                 // 也不能把它移到整条钩子链的末尾。
@@ -355,38 +368,42 @@ impl CombatRuntime {
             entries.sort_by_key(|(priority, kind_order, active_order, registration_order, _)| {
                 (*priority, *kind_order, *active_order, *registration_order)
             });
-            let next = entries.into_iter().find_map(|(_, _, _, _, entry)| match entry {
-                DefendHookPlanEntry::Skill(entry) if !executed_skill_lanes.contains(&entry.fixed_lane) => {
-                    Some(DefendHookPlanEntry::Skill(entry))
+            let mut rebuild = false;
+            for (_, _, _, _, entry) in entries {
+                match entry {
+                    DefendHookPlanEntry::Skill(entry) if !executed_skill_lanes.contains(&entry.fixed_lane) => {
+                        executed_skill_lanes.push(entry.fixed_lane);
+                        self.drain_skill_hook_entry_with_defend_value_and_on_damage_into(
+                            entry,
+                            updates,
+                            defend_value,
+                            PlainAttackOnDamage::None,
+                        );
+                    }
+                    DefendHookPlanEntry::State(entry) if !executed_state_keys.contains(&entry.legacy_order_key) => {
+                        executed_state_keys.push(entry.legacy_order_key);
+                        self.drain_state_hook_entry_with_defend_value_into(state_plan.hook, entry, updates, defend_value);
+                    }
+                    DefendHookPlanEntry::RuntimeShield if !executed_runtime_shield => {
+                        executed_runtime_shield = true;
+                        self.apply_runtime_shield_post_defend(target, defend_value);
+                    }
+                    _ => continue,
                 }
-                DefendHookPlanEntry::State(entry) if !executed_state_keys.contains(&entry.legacy_order_key) => {
-                    Some(DefendHookPlanEntry::State(entry))
+
+                let entity = self
+                    .entities
+                    .get(target)
+                    .unwrap_or_else(|| panic!("runtime_v2 防御钩子目标已消失：{}", target.0));
+                rebuild = entity.template.skills.hook_generation() != skill_generation
+                    || entity.states.generation() != state_generation
+                    || (entity.runtime.shield > 0) != shield_active;
+                if rebuild {
+                    break;
                 }
-                DefendHookPlanEntry::RuntimeShield if !executed_runtime_shield => Some(DefendHookPlanEntry::RuntimeShield),
-                _ => None,
-            });
-            let Some(entry) = next else {
+            }
+            if !rebuild {
                 break;
-            };
-            match entry {
-                DefendHookPlanEntry::Skill(entry) => {
-                    executed_skill_lanes.push(entry.fixed_lane);
-                    let plan = SkillHookPlan {
-                        owner: skill_plan.owner,
-                        hook: skill_plan.hook,
-                        loadout_len: skill_plan.loadout_len,
-                        entries: smallvec::SmallVec::from_slice(&[entry]),
-                    };
-                    self.drain_skill_hook_plan_with_defend_value_into(&plan, updates, defend_value);
-                }
-                DefendHookPlanEntry::State(entry) => {
-                    executed_state_keys.push(entry.legacy_order_key);
-                    self.drain_state_hook_entry_with_defend_value_into(state_plan.hook, entry, updates, defend_value);
-                }
-                DefendHookPlanEntry::RuntimeShield => {
-                    executed_runtime_shield = true;
-                    self.apply_runtime_shield_post_defend(target, defend_value);
-                }
             }
         }
     }

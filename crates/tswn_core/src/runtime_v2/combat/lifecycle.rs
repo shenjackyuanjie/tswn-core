@@ -289,34 +289,45 @@ impl CombatRuntime {
         on_damage: PlainAttackOnDamage,
     ) {
         for entry in &plan.entries {
-            let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
-                static_handler
-            } else {
-                let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
-                    panic!("missing runtime_v2 skill handler implementation: {}", entry.skill_id.0);
-                };
-                let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
-                (handler, capabilities)
-            };
-            {
-                let mut context = SkillContext::new(
-                    &mut self.entities,
-                    &mut self.world,
-                    &self.registry,
-                    &self.template_slots,
-                    &mut self.slots,
-                    &mut self.effects,
-                    updates,
-                    &mut self.rng,
-                    *entry,
-                    capabilities,
-                )
-                .with_defend_value(defend_value)
-                .with_defend_on_damage(on_damage);
-                handler(&mut context, entry);
-            }
-            self.drain_effects_into(updates);
+            self.drain_skill_hook_entry_with_defend_value_and_on_damage_into(*entry, updates, defend_value, on_damage);
         }
+    }
+
+    /// 执行单个防御技能钩子，供动态合并计划直接调用，避免为一项钩子临时构造计划容器。
+    pub(super) fn drain_skill_hook_entry_with_defend_value_and_on_damage_into(
+        &mut self,
+        entry: SkillHookPlanEntry,
+        updates: &mut RunUpdates,
+        defend_value: &mut RuntimeDefendValue,
+        on_damage: PlainAttackOnDamage,
+    ) {
+        let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
+            static_handler
+        } else {
+            let Some(handler) = self.skill_handlers.get(entry.skill_id) else {
+                panic!("缺少 runtime_v2 技能处理器实现：{}", entry.skill_id.0);
+            };
+            let capabilities = self.skill_handlers.capabilities(entry.skill_id).unwrap_or(NO_EXTENSION_CAPABILITIES);
+            (handler, capabilities)
+        };
+        {
+            let mut context = SkillContext::new(
+                &mut self.entities,
+                &mut self.world,
+                &self.registry,
+                &self.template_slots,
+                &mut self.slots,
+                &mut self.effects,
+                updates,
+                &mut self.rng,
+                entry,
+                capabilities,
+            )
+            .with_defend_value(defend_value)
+            .with_defend_on_damage(on_damage);
+            handler(&mut context, &entry);
+        }
+        self.drain_effects_into(updates);
     }
 
     pub fn run_state_hooks(&mut self, owner: EntityIdx, hook: ProcMask) -> Option<RuntimeFrame> {
