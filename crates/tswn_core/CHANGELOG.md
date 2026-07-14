@@ -13,6 +13,10 @@
 - prepared runner 为技能表、实体槽位和全局槽位记录场前基线与本局写标记；未修改对象不再逐局深拷贝 SmallVec、召唤物蓝图和槽内 PlayerTemplate，运行态与状态存储改为保留既有容量的原地复位。actor 游标的常规轮转移除整数取模，空状态 hook 直接短路。fixed30/no_debug/13000 单线程同机 overall 从 `39.558` 降至 `37.587 us/battle`，init 从 `7.266` 降至 `6.207 us/battle`；core 1v1/2v2、1v1、2v2、stress_multi 分别为 `18.836`、`12.499`、`30.455`、`77.520 us/battle`。win-rate 13000 场阶段实测为 `0.142 s`，胜场保持 `7077/13000`。
 - prepared 批量战斗新增不保留 replay 明细的完成路径，同时保留事件活动标记和铁壁依赖的最后事件语义；胜者判定改用持续维护的存活组视图。内置主动技能在 registry 构造期解析，行动扫描不再复制顺序或逐次比较导出名；常见状态的索引、运行期注册顺序和 hook plan 改用 8 项栈内数组，移除小状态集合的 HashMap/Vec 分配。fixed30/no_debug/13000 单线程同机 overall 从 `42.619` 降至 `39.558 us/battle`，core 1v1/2v2、1v1、2v2、stress_multi 分别为 `19.909`、`13.197`、`32.214`、`81.507 us/battle`；win-rate 13000 场从 `0.176` 降至 `0.159 s`，胜场保持 `7077/13000`。
 
+### 验证
+
+- `d813e5f` 完成单次全套阶段快照：fixed30 单线程/自动线程 overall 为 `32.105/4.644 us/battle`，stress_multi 为 `66.340 us/battle`，win-rate 13000 场为 `0.117 s`、`7077` 胜；score mario、CQP 单人、双人分别达到同轮 legacy 的 `1.734x/1.814x/2.018x` 吞吐且逐组 0 差异；CQP/CQD 六档较旧 v2 再快 25.78%～29.38%。该快照不重置既定半时硬线，完整数据见 `docs/perf/runtime_v2_0.4.2_d813e5f_snapshot.md`。
+
 ## [0.4.1] - 2026-07-14
 
 ### 性能优化
