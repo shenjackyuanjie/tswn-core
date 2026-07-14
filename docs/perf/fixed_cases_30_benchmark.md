@@ -38,9 +38,9 @@
 - 单线程：`--thread 1`
 - 每个 case：`13000` 场
 - 总量：`30 * 13000 = 390000` 场
-- 当前机器实测目标耗时：约 `40s`（`0.3.7` / 单线程 / `--features no_debug` 下为 `40.507s`）
+- 当前机器实测目标耗时：约 `18.2s`（`0.4.0` / 单线程 / release + `no_debug` + 默认 mimalloc）
 
-说明：`release-fast` profile 用于日常快速验证，编译更快；它的性能结果不要和本文长期 `--release` 留档数据混用。benchmark 口径不启用 `mimalloc_alloc`，最终 release 构建再启用。
+说明：`release-fast` profile 用于日常快速验证，编译更快；它的性能结果不要和本文长期 `--release` 留档数据混用。`0.4.0` 起 `tswn_core` 原生默认 feature 已包含 `mimalloc_alloc`，正式基线保持默认 feature 开启；若显式关闭默认 feature，必须作为另一套口径单独记录。
 
 推荐命令：
 
@@ -68,6 +68,8 @@ cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
 - `stress_multi`：统计 `ffa_6`、`ffa_8`、`3v3v3` 等重型多人局。
 
 每个分组包含：case 数、runs、win rate、elapsed、`us/场`、`场/s`、`init us/场`、`fight us/场`。
+
+当前 `0.4.0` 正式基线见 [`runtime_v2_0.4.0_baseline.md`](runtime_v2_0.4.0_baseline.md)：单线程 overall 为 `46.729 µs/场`，stress_multi 为 `97.614 µs/场`，分别比 `0.3.10` 留档快 `32.23%` 与 `30.85%`；自动线程 overall 为 `5.872 µs/场`。
 
 ## 5. 判读
 

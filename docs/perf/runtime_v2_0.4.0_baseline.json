@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-07-14",
+  "version": "0.4.0",
+  "tested_commit": "0c5ac9c444d84abbf112fb057cd3480861fb3aba",
+  "environment": {
+    "cpu": "AMD Ryzen 7 5800X",
+    "physical_cores": 8,
+    "logical_processors": 16,
+    "os_target": "windows-x86_64-pc-windows-msvc",
+    "rustc": "1.99.0-nightly (f10db292a 2026-07-07)",
+    "cargo": "1.99.0-nightly (2f0e7011e 2026-07-05)",
+    "profile": "release",
+    "features": [
+      "no_debug",
+      "aux_bins",
+      "default:mimalloc_alloc"
+    ],
+    "mutable_noalias": "yes"
+  },
+  "fixed30": {
+    "runs_per_case": 13000,
+    "single_thread": {
+      "independent_runs": 3,
+      "groups": [
+        {
+          "name": "overall",
+          "cases": 30,
+          "battles": 390000,
+          "wins": 150853,
+          "wall_us_per_battle_samples": [46.72853974358976, 46.68210076923077, 46.84830717948718],
+          "wall_us_per_battle_median": 46.72853974358976,
+          "init_us_per_battle_median": 7.255859743589742,
+          "fight_us_per_battle_median": 39.352455384615375,
+          "battles_per_second_median": 21400.197940856488,
+          "v0_3_10_wall_us_per_battle": 68.95178538461539,
+          "improvement_percent": 32.2301
+        },
+        {
+          "name": "core_1v1_2v2",
+          "cases": 17,
+          "battles": 221000,
+          "wins": 112305,
+          "wall_us_per_battle_samples": [23.102152488687782, 22.997633936651578, 23.08663393665158],
+          "wall_us_per_battle_median": 23.08663393665158,
+          "init_us_per_battle_median": 4.670069683257919,
+          "fight_us_per_battle_median": 18.291537556561085,
+          "battles_per_second_median": 43315.10616679519,
+          "v0_3_10_wall_us_per_battle": 35.35382398190045,
+          "improvement_percent": 34.6983
+        },
+        {
+          "name": "one_v_one",
+          "cases": 11,
+          "battles": 143000,
+          "wins": 70035,
+          "wall_us_per_battle_samples": [15.104751748251749, 15.07084825174825, 15.125605594405595],
+          "wall_us_per_battle_median": 15.104751748251749,
+          "init_us_per_battle_median": 3.5929041958041954,
+          "fight_us_per_battle_median": 11.397728671328672,
+          "battles_per_second_median": 66204.33203185494,
+          "v0_3_10_wall_us_per_battle": 22.519960139860142,
+          "improvement_percent": 32.9273
+        },
+        {
+          "name": "two_v_two",
+          "cases": 6,
+          "battles": 78000,
+          "wins": 42270,
+          "wall_us_per_battle_samples": [37.76405384615385, 37.53007435897436, 37.68185256410256],
+          "wall_us_per_battle_median": 37.68185256410256,
+          "init_us_per_battle_median": 6.6321089743589745,
+          "fight_us_per_battle_median": 30.90753205128205,
+          "battles_per_second_median": 26537.973373226487,
+          "v0_3_10_wall_us_per_battle": 58.88257435897436,
+          "improvement_percent": 36.0051
+        },
+        {
+          "name": "stress_multi",
+          "cases": 8,
+          "battles": 104000,
+          "wins": 23118,
+          "wall_us_per_battle_samples": [97.44261153846153, 97.61374711538461, 97.92712115384614],
+          "wall_us_per_battle_median": 97.61374711538461,
+          "init_us_per_battle_median": 13.067229807692307,
+          "fight_us_per_battle_median": 84.46990192307693,
+          "battles_per_second_median": 10244.458691027885,
+          "v0_3_10_wall_us_per_battle": 141.17023942307694,
+          "improvement_percent": 30.8539
+        }
+      ]
+    },
+    "auto_thread": {
+      "independent_runs": 5,
+      "init_and_fight_are_aggregate_worker_cpu_time": true,
+      "groups": [
+        {
+          "name": "overall",
+          "wall_us_per_battle_samples": [5.851348205128205, 5.86315923076923, 5.889122051282052, 5.885986666666668, 5.87152282051282],
+          "wall_us_per_battle_median": 5.87152282051282,
+          "aggregate_init_us_per_battle_median": 13.855298974358973,
+          "aggregate_fight_us_per_battle_median": 86.86623051282052,
+          "battles_per_second_median": 170313.56780329428,
+          "previous_v2_wall_us_per_battle": 8.978386,
+          "improvement_percent": 34.6038
+        },
+        {
+          "name": "core_1v1_2v2",
+          "wall_us_per_battle_median": 2.9666909502262446,
+          "aggregate_init_us_per_battle_median": 8.49465701357466,
+          "aggregate_fight_us_per_battle_median": 37.49730633484163,
+          "battles_per_second_median": 337075.8925609485
+        },
+        {
+          "name": "one_v_one",
+          "wall_us_per_battle_median": 1.9775398601398597,
+          "aggregate_init_us_per_battle_median": 6.039172727272728,
+          "aggregate_fight_us_per_battle_median": 23.29526993006993,
+          "battles_per_second_median": 505678.8083802649
+        },
+        {
+          "name": "two_v_two",
+          "wall_us_per_battle_median": 4.77652564102564,
+          "aggregate_init_us_per_battle_median": 12.805779487179485,
+          "aggregate_fight_us_per_battle_median": 63.90719615384615,
+          "battles_per_second_median": 209357.1928958126
+        },
+        {
+          "name": "stress_multi",
+          "wall_us_per_battle_median": 12.140535576923076,
+          "aggregate_init_us_per_battle_median": 25.718240384615385,
+          "aggregate_fight_us_per_battle_median": 193.22629038461537,
+          "battles_per_second_median": 82368.68906350523
+        }
+      ]
+    }
+  },
+  "score_raw_single_thread": {
+    "timing_scope": "core batch wall; excludes build, process startup, input read and report serialization",
+    "independent_runs": 5,
+    "runtime_order_alternated": true,
+    "acceptance_rule": "v2 wall must be no greater than same-tool legacy wall and every group result must match",
+    "cases": [
+      {
+        "name": "mario",
+        "input": "docs/perf/score/mario.txt",
+        "groups": 1,
+        "count_per_group": 13000,
+        "total_battles": 13000,
+        "v2_wall_seconds_samples": [2.3315284, 2.3262051, 2.3164698, 2.3252676, 2.3163065],
+        "v2_wall_seconds_median": 2.3252676,
+        "v2_init_seconds_median": 1.8847207,
+        "v2_fight_seconds_median": 0.4366308,
+        "v2_us_per_battle_median": 178.86673846153846,
+        "v2_battles_per_second_median": 5590.754371668878,
+        "legacy_wall_seconds_samples": [0.8183687, 0.8168718, 0.8224792, 0.8279047, 0.8190914],
+        "legacy_target_wall_seconds_median": 0.8190914,
+        "legacy_init_seconds_median": 0.3711084,
+        "legacy_fight_seconds_median": 0.4304567,
+        "legacy_us_per_battle_median": 63.007030769230774,
+        "legacy_battles_per_second_median": 15871.244649864471,
+        "v2_slower_percent": 183.8838,
+        "required_v2_wall_reduction_percent": 64.7743,
+        "wins": 4171,
+        "result_mismatches": 0,
+        "performance_status": "fail"
+      },
+      {
+        "name": "cqp_single_first20_10_percent",
+        "input": "docs/perf/cqp/sqp6000_first20.txt",
+        "groups": 20,
+        "count_per_group": 1000,
+        "total_battles": 20000,
+        "v2_wall_seconds_samples": [3.6046359, 3.6023819, 3.6477782, 3.6077911, 3.6666742],
+        "v2_wall_seconds_median": 3.6077911,
+        "v2_init_seconds_median": 2.9141999,
+        "v2_fight_seconds_median": 0.6859371,
+        "v2_us_per_battle_median": 180.389555,
+        "v2_battles_per_second_median": 5543.558217658445,
+        "legacy_wall_seconds_samples": [1.2795242, 1.2903748, 1.2868953, 1.2864181, 1.2926691],
+        "legacy_target_wall_seconds_median": 1.2868953,
+        "legacy_init_seconds_median": 0.5866153,
+        "legacy_fight_seconds_median": 0.6732929,
+        "legacy_us_per_battle_median": 64.344765,
+        "legacy_battles_per_second_median": 15541.279853924401,
+        "v2_slower_percent": 180.3485,
+        "required_v2_wall_reduction_percent": 64.3301,
+        "wins": 14513,
+        "result_mismatches": 0,
+        "performance_status": "fail"
+      },
+      {
+        "name": "cqp_double_10_percent",
+        "input": "cqp_double_target.txt",
+        "groups": 32,
+        "players_per_group": 2,
+        "count_per_group": 1000,
+        "total_battles": 32000,
+        "v2_wall_seconds_samples": [5.6138376, 5.630758, 5.6100153, 5.6101904, 5.6128021],
+        "v2_wall_seconds_median": 5.6128021,
+        "v2_init_seconds_median": 4.5657801,
+        "v2_fight_seconds_median": 1.0331453,
+        "v2_us_per_battle_median": 175.400065625,
+        "v2_battles_per_second_median": 5701.252142846797,
+        "legacy_wall_seconds_samples": [2.1410435, 2.1517373, 2.1660607, 2.1659499, 2.1751101],
+        "legacy_target_wall_seconds_median": 2.1659499,
+        "legacy_init_seconds_median": 0.9344052,
+        "legacy_fight_seconds_median": 1.1843334,
+        "legacy_us_per_battle_median": 67.685934375,
+        "legacy_battles_per_second_median": 14774.118274850216,
+        "v2_slower_percent": 159.1381,
+        "required_v2_wall_reduction_percent": 61.4105,
+        "wins": 30295,
+        "result_mismatches": 0,
+        "performance_status": "fail"
+      }
+    ]
+  },
+  "win_rate_single_thread": {
+    "input": "left@red\\nright@blue",
+    "battles": 13000,
+    "independent_runs": 5,
+    "v2_wall_seconds_samples": [0.183, 0.184, 0.185, 0.183, 0.184],
+    "v2_wall_seconds_median": 0.184,
+    "v2_init_seconds_median": 0.040,
+    "v2_fight_seconds_median": 0.142,
+    "v2_wins": 7077,
+    "legacy_wall_seconds_median": 0.2177835,
+    "legacy_init_seconds_median": 0.046990,
+    "legacy_fight_seconds_median": 0.152587,
+    "improvement_percent": 15.5124
+  },
+  "cqp_cqd_auto_thread": {
+    "details": "docs/perf/cqp_runtime_v2_baseline.md",
+    "rows": [
+      {"input": "single20_target1", "precision_percent": 1, "runtime_v1_seconds": 0.345417, "runtime_v2_seconds": 0.173947, "improvement_percent": 49.64},
+      {"input": "single20_target1", "precision_percent": 10, "runtime_v1_seconds": 3.145753, "runtime_v2_seconds": 1.531991, "improvement_percent": 51.30},
+      {"input": "single20_target1", "precision_percent": 100, "runtime_v1_seconds": 25.381207, "runtime_v2_seconds": 15.031414, "improvement_percent": 40.78},
+      {"input": "double32_target2", "precision_percent": 1, "runtime_v1_seconds": 1.287154, "runtime_v2_seconds": 0.714121, "improvement_percent": 44.52},
+      {"input": "double32_target2", "precision_percent": 10, "runtime_v1_seconds": 11.965849, "runtime_v2_seconds": 6.773550, "improvement_percent": 43.39},
+      {"input": "double32_target2", "precision_percent": 100, "runtime_v1_seconds": 111.456257, "runtime_v2_seconds": 66.997727, "improvement_percent": 39.89}
+    ]
+  }
+}

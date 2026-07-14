@@ -12,6 +12,7 @@
 
 - 新增 Runtime v2 CQP/CQD matchup 矩阵执行器，CLI `bench batch-rate` / `cqp` 的自动线程路径改为按 `player × target` 动态派发给持久 worker；短任务自动使用 1.5 倍逻辑核，中长任务使用 2 倍逻辑核，显式 `-t` 与 `-s` 语义保持不变。
 - 固定 roster 的 `PreparedRuntimeV2Runner` 复位路径改为只恢复战斗热字段，并复用 seed、输入分组和 world view 小向量容量；每轮改变 profile 身份的 score 路径继续完整复位，避免错误复用冷身份数据。
+- 新增 `track_score_perf` 单线程裸计时/对账工具，按输入组分别运行 Runtime v2 与 legacy score，报告整批 wall、init、fight、吞吐及首个结果差异；计时排除编译、进程启动、输入读取和报告序列化，可固定 mario、CQP 单人及双人输入作为长期回归口径。
 - 原生 `tswn_core` 默认启用已有 `mimalloc_alloc` feature；WASM 依赖显式关闭默认 feature 并保留 `png_render`，不把原生 allocator 带入浏览器构建。
 - `tswn-cli fight`（含 `--out-raw`）、`tswn-cli diff` 与 `tswn-cli raw`（含 `!test!` 评分/胜率）默认改用 Runtime v2；需要旧实现对账时可显式传入 `--runtime legacy`。普通日志、raw 聚合日志、赢家输入索引、玩家状态摘要及 benchmark 汇总输出保持与 legacy 逐行一致。
 - 独立 `bench` 的自动分流、score、win-rate、group-win-rate、分段 buckets 与 `namer-pf` 默认改用 Runtime v2；core `cli_api` 及 C、Python、WASM 高层评分/胜率包装同步切换，无 runtime 参数的正式入口不再隐式构造 legacy Runner。
@@ -27,6 +28,7 @@
 - 将 `tswn_core` 专属 engine 测试拆到 `crates/tswn_core/tests/engine_core.rs`，让核心 crate 的公开行为测试与共享测试工具解耦。
 - 更新 `track_test.py` 默认追踪包，默认覆盖迁移后的 large / small seed / multi fight 测试集合。
 - 新增 CLI legacy/v2 输出对账，覆盖最小对局以及含幻影、分身和 clan 的 `large_51`；补充 `raw` 普通对战与 `!test!` benchmark 的默认 v2/显式 legacy 参数、路由和命令级逐字节对账，并覆盖普通/`!` 评分、胜率 profile seed 调度、4-worker 确定性、200 轮 profile 评分，以及反射冰冻与魅惑生命之轮的严格回归 fixture。Runtime v2 在 `mutable-noalias=yes` 下的 core/no_debug/CLI 门禁与 118 项 corpus 全部通过。
+- 新增聚气激活/清除时刷新待生效疾走倍率的精确回归，并把 CQP 单人第 13 组第 185 轮加入完整 score legacy/v2 严格对账，防止行动顺序和赢家再次漂移。
 
 ### 修复
 
@@ -34,6 +36,7 @@
 - 修复被魅惑角色使用生命之轮时仍按原始 team 选敌的问题：Exchange 与其他敌方目标技能一样使用 charm effective team，候选实体继续按实际 team 过滤。
 - 修复 replay view 对“体力减少百分比”类句子的血量推进：`[2]` 仍展示百分比，但血条使用 `score` 中记录的真实 HP 变化量，避免瘟疫回放把显示百分比当作扣血值。
 - 修复使魔模板中通过 `normal:sklcharge` 配置的蓄力不会被后续技能识别的问题：疾走、潜行等依赖蓄力运行时态的逻辑改为扫描当前技能仓库，而不是硬编码普通玩家的 `19` 号技能槽，确保使魔隔离技能槽 `80+id` 里的蓄力也能正确触发加成。
+- 修复 Runtime v2 聚气激活或清除时只刷新聚气自身、未应用待生效疾走倍率的问题：聚气状态变化后统一重建模板派生运行时属性，使连续疾走叠层后的速度、行动点、行动顺序与 legacy 保持一致。
 - 修复 replay view 死亡特效判定过宽的问题：只有“被击倒”或“消失”句子才允许设置 `death_effect`，护身符等 HP 前后同为 `0` 但并非击倒/消失的句子不再触发死亡特效。
 - 修复 replay view 未为“体力值与 X 互换”句子展示血条的问题：生命之轮交换现在会在底层推演 caster/target 的 HP 互换，并强制两个玩家片段展示各自的帧前/帧后血量，即使血量没有实际变化。
 - 修复 replay view 漏掉机制死亡特效的问题：附体、自爆、owner 死亡牵连等没有前置伤害句的死亡，会在“被击倒/消失”句同步目标 HP 为 `0` 并设置 `death_effect`；所有带死亡特效的 player part 都强制关闭血条展示。
@@ -42,9 +45,10 @@
 
 - CQP/CQD 同机 Runtime v1 基线对照：OpenBox 单人 20 × target1 的 1%/10%/100% 分别快 49.64%/51.30%/40.78%，双人 32 × target2 分别快 44.52%/43.39%/39.89%；完整口径见 `docs/perf/cqp_runtime_v2_baseline.md`。
 - CLI 自动矩阵与 `-s` 串行路径的 20 条 CQP 业务字段差异为 0；`sby_test.md` 六模式共 12000 case 为 `ts_failures=0`、`rust_failures=0`、`diff_failures=0`。
-- `cargo test -p tswn_core`（核心库 573 通过、2 忽略；CLI 59、runtime trace 3、engine 集成 29 均通过）
-- `track_perf_cases` 已改为实际运行 Runtime v2；fixed30/no_debug/13000 单线程 overall 为 `66.005 us/battle`，比 0.3.10 基线快 4.3%，`stress_multi` 为 `136.698 us/battle`，比基线快 3.2%；自动线程 overall 为 `8.978 us/battle`。
-- score 13000 单线程普通评分 wall 为 `3.191 s`，比上次 v2 记录快 8.6%，但仍显著慢于已记录的 legacy `1.113 s`，后续继续优化 prepared 初始化。
+- `cargo test -p tswn_core`（核心库 576 通过、2 忽略；CLI 59、runtime trace 3、engine 集成 29 均通过）；`track_score_perf` 自身 3 项测试通过。
+- fixed30/no_debug/13000 单线程正式中位数：overall `46.729 us/battle`，比 0.3.10 快 32.23%；core 1v1/2v2、1v1、2v2、stress_multi 分别快 34.70%、32.93%、36.01%、30.85%；自动线程 overall 为 `5.872 us/battle`。
+- score 单线程裸计时：mario 13000 场 v2/legacy wall 为 `2.325/0.819 s`；CQP 单人 20 组 × 1000 场为 `3.608/1.287 s`；双人 32 组 × 1000 场为 `5.613/2.166 s`。三类输入各 5 轮逐组结果差异均为 0；v2 性能尚未达到 legacy 硬目标，仍需分别压缩 64.77%、64.33%、61.41%。
+- win-rate 13000 场单线程 v2 wall/init/fight 中位数为 `0.184/0.040/0.142 s`，相对同口径 legacy wall `0.2177835 s` 快 15.51%；完整新基线见 `docs/perf/runtime_v2_0.4.0_baseline.md`。
 - `cargo test -p tswn_core --bin tswn-cli --release`（61 通过）
 - `python scripts/check_runtime_v2_noalias.py --corpus`（core/no_debug/CLI 与 118 项 corpus 全部通过）
 - `python track_test.py --engine runtime-v2 -q`

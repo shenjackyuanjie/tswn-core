@@ -9,6 +9,7 @@
 - `0.2.20`
 - `0.3.1`
 - `0.3.2`
+- `0.4.0` Runtime v2
 
 当前这份记录重点对应：
 
@@ -16,12 +17,13 @@
 - `0.3.1` 在补齐 WASM 查询接口后，按同口径补跑 benchmark，确认当前版本没有新异常，但相较 `0.2.20` 有一小段性能回退
 - `0.3.2` 新增 DIY / overlay 覆盖系统，按同口径补跑确认非 DIY 通路无性能回退
 - 当前表格已同步到 `0.3.2` 的稳定重跑结果，可直接和 `0.3.1`、`0.2.20`、`0.2.14` 做横向比较
+- `0.4.0` 的 fixed30、score、win-rate 与 CQP/CQD 统一结果另见 `docs/perf/runtime_v2_0.4.0_baseline.md`
 
 ---
 
 ## 1. 口径
 
-- 编译参数：正式留档使用 `--release --features no_debug`；日常快速试跑可用 `--profile release-fast --features no_debug`，但不要和长期表格混用。benchmark 口径不启用 `mimalloc_alloc`。
+- 编译参数：正式留档使用 `--release --features no_debug`；日常快速试跑可用 `--profile release-fast --features no_debug`，但不要和长期表格混用。`0.4.0` 起原生默认 feature 包含 `mimalloc_alloc`；旧版本未启用 allocator 的历史数据保留原口径，不反向改写。
 - CLI：`tswn-cli bench win-rate ... --perf`
 - 单线程：追加 `--single-thread`
 - 多线程：直接使用 CLI 默认线程策略
@@ -30,6 +32,8 @@
   - `喘际瞬爆@昀澤` vs `蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall`
 
 说明：
+
+- Runtime v2 `0.4.0` 的当前回归基线与 legacy score 硬目标见 [`runtime_v2_0.4.0_baseline.md`](runtime_v2_0.4.0_baseline.md)；
 
 - `Bun` 与 `0.2.12` 的数据来自 `docs\update\0.2.12.md` 中的同机历史记录；
 - `0.2.13` 数据来自 detached worktree：`f9b0e3c`；
