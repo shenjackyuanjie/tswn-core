@@ -373,7 +373,7 @@ impl CombatRuntime {
         let rng_before = (self.rng.i, self.rng.j);
         let req_mp_byte = self.rng.next_u8();
         let req_mp = (req_mp_byte & 15) as i32 + 8;
-        let (mp_before, is_boss, boss_action_prob_count) = {
+        let (mp_before, attack, magic, is_boss, boss_action_prob_count) = {
             let actor_entity = self
                 .entities
                 .get(actor)
@@ -381,6 +381,8 @@ impl CombatRuntime {
             let is_boss = actor_entity.runtime.flags.contains(PlayerKindFlags::BOSS);
             (
                 actor_entity.runtime.magic_point,
+                actor_entity.runtime.attack,
+                actor_entity.runtime.magic,
                 is_boss,
                 if is_boss {
                     crate::player::boss::boss_action_prob_count(&actor_entity.template.name)
@@ -474,16 +476,10 @@ impl CombatRuntime {
                 return Some(PreparedPlainAction::Saitama { target });
             }
             let target = self.select_plain_default_attack_target(actor, smart)?;
-            let amount = self
-                .entities
-                .get(actor)
-                .unwrap_or_else(|| panic!("unknown runtime_v2 boss actor: {}", actor.0))
-                .runtime
-                .attack;
             return Some(PreparedPlainAction::BasicAttack {
                 target,
                 use_magic: false,
-                amount,
+                amount: attack,
             });
         }
 
@@ -495,14 +491,9 @@ impl CombatRuntime {
             );
         }
         let target = self.select_plain_default_attack_target(actor, smart)?;
-        let actor_entity = self
-            .entities
-            .get(actor)
-            .unwrap_or_else(|| panic!("unknown runtime_v2 default attack actor: {}", actor.0));
-        let attack = actor_entity.runtime.attack;
-        let magic = actor_entity.runtime.magic;
         let magic_cost = (magic - attack) >> 2;
-        let use_magic = smart && magic > attack && actor_entity.runtime.magic_point >= magic_cost;
+        let mp_after_skill_scan = if can_scan_skills { mp_before - req_mp } else { mp_before };
+        let use_magic = smart && magic > attack && mp_after_skill_scan >= magic_cost;
         if use_magic {
             self.entities.get_mut(actor).unwrap().runtime.magic_point -= magic_cost;
             Some(PreparedPlainAction::BasicAttack {
@@ -760,129 +751,134 @@ impl CombatRuntime {
     ) -> bool {
         #[cfg(not(feature = "no_debug"))]
         let probe_action = self.probe_plain_action_matches(actor);
-        if builtin_skill == BuiltinActiveSkill::Charge {
-            let actor_runtime = &self
-                .entities
-                .get(actor)
-                .unwrap_or_else(|| panic!("unknown runtime_v2 charge probability actor: {}", actor.0))
-                .runtime;
-            if actor_runtime.charge.active || (smart && actor_runtime.hp < 100) {
-                #[cfg(not(feature = "no_debug"))]
-                if probe_action {
-                    eprintln!(
-                        "[action_probe:v2:prob] actor={} skill={} level={} smart={} skipped=charge_gate active={} hp={} \
+        match builtin_skill {
+            BuiltinActiveSkill::Charge => {
+                let actor_runtime = &self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown runtime_v2 charge probability actor: {}", actor.0))
+                    .runtime;
+                if actor_runtime.charge.active || (smart && actor_runtime.hp < 100) {
+                    #[cfg(not(feature = "no_debug"))]
+                    if probe_action {
+                        eprintln!(
+                            "[action_probe:v2:prob] actor={} skill={} level={} smart={} skipped=charge_gate active={} hp={} \
                          rc4=({}, {})",
-                        actor.0,
-                        builtin_skill.export_name(),
-                        level,
-                        smart,
-                        actor_runtime.charge.active,
-                        actor_runtime.hp,
-                        self.rng.i,
-                        self.rng.j,
-                    );
+                            actor.0,
+                            builtin_skill.export_name(),
+                            level,
+                            smart,
+                            actor_runtime.charge.active,
+                            actor_runtime.hp,
+                            self.rng.i,
+                            self.rng.j,
+                        );
+                    }
+                    return false;
                 }
-                return false;
             }
-        }
-        if builtin_skill == BuiltinActiveSkill::Absorb && smart {
-            let actor_entity = self
-                .entities
-                .get(actor)
-                .unwrap_or_else(|| panic!("unknown runtime_v2 absorb probability actor: {}", actor.0));
-            if actor_entity.template.max_hp - actor_entity.runtime.hp < 32 {
-                #[cfg(not(feature = "no_debug"))]
-                if probe_action {
-                    eprintln!(
-                        "[action_probe:v2:prob] actor={} skill={} level={} smart={} skipped=absorb_low_missing_hp \
+            BuiltinActiveSkill::Absorb if smart => {
+                let actor_entity = self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown runtime_v2 absorb probability actor: {}", actor.0));
+                if actor_entity.template.max_hp - actor_entity.runtime.hp < 32 {
+                    #[cfg(not(feature = "no_debug"))]
+                    if probe_action {
+                        eprintln!(
+                            "[action_probe:v2:prob] actor={} skill={} level={} smart={} skipped=absorb_low_missing_hp \
                          hp={} max_hp={} rc4=({}, {})",
-                        actor.0,
-                        builtin_skill.export_name(),
-                        level,
-                        smart,
-                        actor_entity.runtime.hp,
-                        actor_entity.template.max_hp,
-                        self.rng.i,
-                        self.rng.j,
-                    );
+                            actor.0,
+                            builtin_skill.export_name(),
+                            level,
+                            smart,
+                            actor_entity.runtime.hp,
+                            actor_entity.template.max_hp,
+                            self.rng.i,
+                            self.rng.j,
+                        );
+                    }
+                    return false;
                 }
-                return false;
             }
-        }
-        if builtin_skill == BuiltinActiveSkill::Iron
-            && self
-                .entities
-                .get(actor)
-                .and_then(|entity| entity.states.entry(PLAIN_IRON_STATE_KEY))
-                .and_then(StateEntry::iron_value)
-                .is_some_and(|(protect, step)| protect > 0 && step > 0)
-        {
-            return false;
-        }
-        if builtin_skill == BuiltinActiveSkill::Accumulate {
-            let actor_runtime = &self
-                .entities
-                .get(actor)
-                .unwrap_or_else(|| panic!("unknown runtime_v2 accumulate probability actor: {}", actor.0))
-                .runtime;
-            if actor_runtime.accumulate.active || (smart && actor_runtime.hp < 120) {
-                #[cfg(not(feature = "no_debug"))]
-                if probe_action {
-                    eprintln!(
-                        "[action_probe:v2:prob] actor={} skill={} level={} smart={} skipped=accumulate_gate \
+            BuiltinActiveSkill::Iron => {
+                if self
+                    .entities
+                    .get(actor)
+                    .and_then(|entity| entity.states.entry(PLAIN_IRON_STATE_KEY))
+                    .and_then(StateEntry::iron_value)
+                    .is_some_and(|(protect, step)| protect > 0 && step > 0)
+                {
+                    return false;
+                }
+            }
+            BuiltinActiveSkill::Accumulate => {
+                let actor_runtime = &self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown runtime_v2 accumulate probability actor: {}", actor.0))
+                    .runtime;
+                if actor_runtime.accumulate.active || (smart && actor_runtime.hp < 120) {
+                    #[cfg(not(feature = "no_debug"))]
+                    if probe_action {
+                        eprintln!(
+                            "[action_probe:v2:prob] actor={} skill={} level={} smart={} skipped=accumulate_gate \
                          active={} hp={} rc4=({}, {})",
-                        actor.0,
-                        builtin_skill.export_name(),
-                        level,
-                        smart,
-                        actor_runtime.accumulate.active,
-                        actor_runtime.hp,
-                        self.rng.i,
-                        self.rng.j,
-                    );
+                            actor.0,
+                            builtin_skill.export_name(),
+                            level,
+                            smart,
+                            actor_runtime.accumulate.active,
+                            actor_runtime.hp,
+                            self.rng.i,
+                            self.rng.j,
+                        );
+                    }
+                    return false;
                 }
-                return false;
             }
-        }
-        if builtin_skill == BuiltinActiveSkill::Assassinate
-            && smart
-            && self.entities.get(actor).is_some_and(|entity| {
-                entity
-                    .states
-                    .entries()
-                    .iter()
-                    .any(|entry| matches!(entry.payload, StatePayload::Poison { .. }))
-            })
-        {
-            return false;
-        }
-        if builtin_skill == BuiltinActiveSkill::Summon && !self.plain_summon_probability_allowed(actor, smart) {
-            return false;
-        }
-        // ShadowSkill 在 smart 模式且 HP < 80 时短路，不消耗概率字节。
-        if builtin_skill == BuiltinActiveSkill::Shadow
-            && smart
-            && self
-                .entities
-                .get(actor)
-                .unwrap_or_else(|| panic!("unknown runtime_v2 shadow probability actor: {}", actor.0))
-                .runtime
-                .hp
-                < 80
-        {
-            #[cfg(not(feature = "no_debug"))]
-            if probe_action {
-                eprintln!(
-                    "[action_probe:v2:prob] actor={} skill={} level={} smart={} skipped=shadow_low_hp rc4=({}, {})",
-                    actor.0,
-                    builtin_skill.export_name(),
-                    level,
-                    smart,
-                    self.rng.i,
-                    self.rng.j,
-                );
+            BuiltinActiveSkill::Assassinate if smart => {
+                if self.entities.get(actor).is_some_and(|entity| {
+                    entity
+                        .states
+                        .entries()
+                        .iter()
+                        .any(|entry| matches!(entry.payload, StatePayload::Poison { .. }))
+                }) {
+                    return false;
+                }
             }
-            return false;
+            BuiltinActiveSkill::Summon => {
+                if !self.plain_summon_probability_allowed(actor, smart) {
+                    return false;
+                }
+            }
+            // 影袭在智能模式且 HP < 80 时短路，不消耗概率字节。
+            BuiltinActiveSkill::Shadow if smart => {
+                if self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown runtime_v2 shadow probability actor: {}", actor.0))
+                    .runtime
+                    .hp
+                    < 80
+                {
+                    #[cfg(not(feature = "no_debug"))]
+                    if probe_action {
+                        eprintln!(
+                            "[action_probe:v2:prob] actor={} skill={} level={} smart={} skipped=shadow_low_hp rc4=({}, {})",
+                            actor.0,
+                            builtin_skill.export_name(),
+                            level,
+                            smart,
+                            self.rng.i,
+                            self.rng.j,
+                        );
+                    }
+                    return false;
+                }
+            }
+            _ => {}
         }
         #[cfg(not(feature = "no_debug"))]
         let before = (self.rng.i, self.rng.j);
