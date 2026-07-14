@@ -7,7 +7,7 @@ use crate::engine::update::RunUpdate;
 use crate::player::{
     Player, PlayerStateStore, PlayerType, PlrId,
     skill::act::minion::{
-        MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_attrs,
+        MinionBlueprintOwner, MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_attrs,
         apply_minion_skill_overlay, is_combat_minion, owner_minion_overlay, prepare_combat_minion,
     },
     skill::corpse::CorpseState,
@@ -23,35 +23,39 @@ impl ZombieSkill {
 }
 
 pub fn build_zombie_minion_blueprint(owner: PlrId, storage: &Arc<Storage>) -> Player {
-    let (owner_clan, seed_name) = {
+    let owner = {
         let owner_player = storage.get_player(&owner).expect("cannot get zombie owner");
-        (owner_player.clan_name(), format!("{}?zombie", owner_player.base_name()))
+        MinionBlueprintOwner::from_player(owner, owner_player)
     };
+    build_zombie_minion_blueprint_from_owner(&owner, storage)
+}
 
-    let minion_overlay = owner_minion_overlay(storage, owner, MinionKind::Zombie);
-    let mut zombie =
-        Player::new_minion_and_init(Some(owner_clan), seed_name, None, storage.clone()).expect("cannot init zombie minion");
+pub(crate) fn build_zombie_minion_blueprint_from_owner(owner: &MinionBlueprintOwner, storage: &Arc<Storage>) -> Player {
+    let seed_name = format!("{}?zombie", owner.base_name);
+    let minion_overlay = owner.overlay(MinionKind::Zombie);
+    let mut zombie = Player::new_minion_and_init(Some(owner.clan_name.clone()), seed_name, None, storage.clone())
+        .expect("cannot init zombie minion");
     prepare_combat_minion(&mut zombie);
     zombie.build();
     zombie.set_display_name_override(Some("丧尸".to_string()));
-    if !apply_minion_attrs(&mut zombie, minion_overlay.as_ref()) {
+    if !apply_minion_attrs(&mut zombie, minion_overlay) {
         zombie.attr[0] = 0;
         zombie.attr[6] = 0;
         zombie.attr[7] = (zombie.attr[7] >> 1).max(1);
     }
-    apply_child_minion_overlay(&mut zombie, minion_overlay.as_ref());
+    apply_child_minion_overlay(&mut zombie, minion_overlay);
     zombie.init_values();
     zombie.player_type = PlayerType::Clone;
     zombie.sort_int = 0;
     zombie.state = PlayerStateStore::default();
     zombie.set_state(MinionRuntimeState {
-        owner: Some(owner),
+        owner: Some(owner.owner_id),
         kind: MinionKind::Zombie,
         share_damage_owner: None,
     });
     zombie.status.set_alive(true);
     zombie.status.set_frozen(false);
-    if !apply_minion_skill_overlay(&mut zombie, minion_overlay.as_ref()) {
+    if !apply_minion_skill_overlay(&mut zombie, minion_overlay) {
         zombie.skills = SkillStorage::new();
         zombie.skills.update_proc();
     }

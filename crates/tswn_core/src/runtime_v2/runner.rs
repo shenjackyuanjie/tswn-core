@@ -645,6 +645,24 @@ impl PreparedRuntimeV2Runner {
         self.reset_with_init(runner, battle_roster.into_with_seed(seed))
     }
 
+    pub(crate) fn reset_score_groups_with_seed_and_eval_rq(
+        &self,
+        runner: &mut RuntimeV2Runner,
+        raw_groups: &[Vec<String>],
+        profile_player_ids: &[crate::player::PlrId],
+        seed: &[String],
+        eval_rq: f64,
+    ) -> Result<(), CustomRuntimeV2ImportError> {
+        let battle_roster = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_lazy_players(
+            raw_groups,
+            eval_rq,
+            &self.prototype.runtime.registry,
+            &self.skill_import,
+            profile_player_ids,
+        )?;
+        self.reset_with_init(runner, battle_roster.into_with_seed(seed))
+    }
+
     fn reset_with_init(&self, runner: &mut RuntimeV2Runner, init: PreparedBattleInit) -> Result<(), CustomRuntimeV2ImportError> {
         // score 路径每轮都会换 profile 名字，身份字段并不固定，不能使用 CQP 的热字段复位。
         runner.runtime.entities.clone_from(&self.prototype.runtime.entities);

@@ -266,6 +266,7 @@ pub fn default_custom_runtime_v2_import_config()
     builder.reserve_entity_slot("core", "shadow-blueprint", DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "summon-blueprint", DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "zombie-blueprint", DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT)?;
+    builder.reserve_entity_slot("core", "lazy-blueprint-rq", DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "summoned-entity", DEFAULT_CORE_SUMMON_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("core", "minion-counter", DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT)?;
     builder.reserve_entity_slot("custom", "bed2-summoned-entity", DEFAULT_CUSTOM_BED2_SUMMON_ENTITY_EXPORT)?;

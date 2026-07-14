@@ -220,6 +220,11 @@ impl CombatRuntime {
             .get(actor)
             .and_then(|entity| entity.template.skills.level_at(fixed_lane))
             .unwrap_or_else(|| panic!("runtime_v2 clone level missing for fixed lane {fixed_lane}"));
+        // eager 路径已经有三类蓝图；score 的延迟路径必须在本体属性衰减前补齐，
+        // 克隆体随后才能继承与旧初始化顺序完全相同的模板。
+        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Shadow);
+        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Summon);
+        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Zombie);
         let shadow_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT);
         let summon_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT);
         let zombie_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);

@@ -14,8 +14,8 @@ use crate::player::{
 };
 
 use super::minion::{
-    MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_attrs,
-    apply_minion_skill_overlay, owner_minion_overlay, prepare_combat_minion,
+    MinionBlueprintOwner, MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_attrs,
+    apply_minion_skill_overlay, prepare_combat_minion,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -30,34 +30,38 @@ impl SkillExt for ShadowSkill {
 }
 
 pub(crate) fn build_shadow_minion(owner_id: PlrId, storage: &Arc<Storage>) -> Player {
-    let (owner_base_name, owner_clan, charge_active) = {
+    let owner = {
         let owner = storage.get_player(&owner_id).expect("cannot get shadow owner from storage");
-        (owner.base_name(), owner.clan_name(), owner.get_status().at_boost >= 3.0)
+        MinionBlueprintOwner::from_player(owner_id, owner)
     };
-    let minion_overlay = owner_minion_overlay(storage, owner_id, MinionKind::Shadow);
-    let seed_name = format!("{owner_base_name}?shadow");
-    let mut shadow =
-        Player::new_minion_and_init(Some(owner_clan), seed_name, None, storage.clone()).expect("cannot init shadow minion");
+    build_shadow_minion_from_owner(&owner, storage)
+}
+
+pub(crate) fn build_shadow_minion_from_owner(owner: &MinionBlueprintOwner, storage: &Arc<Storage>) -> Player {
+    let minion_overlay = owner.overlay(MinionKind::Shadow);
+    let seed_name = format!("{}?shadow", owner.base_name);
+    let mut shadow = Player::new_minion_and_init(Some(owner.clan_name.clone()), seed_name, None, storage.clone())
+        .expect("cannot init shadow minion");
     prepare_combat_minion(&mut shadow);
     shadow.build();
-    if !apply_minion_attrs(&mut shadow, minion_overlay.as_ref()) {
+    if !apply_minion_attrs(&mut shadow, minion_overlay) {
         shadow.attr[7] /= 2;
     }
-    apply_child_minion_overlay(&mut shadow, minion_overlay.as_ref());
+    apply_child_minion_overlay(&mut shadow, minion_overlay);
     shadow.init_values();
     shadow.set_display_name_override(Some("幻影".to_string()));
     shadow.player_type = PlayerType::Clone;
     shadow.sort_int = 0;
     shadow.state = PlayerStateStore::default();
     shadow.set_state(MinionRuntimeState {
-        owner: Some(owner_id),
+        owner: Some(owner.owner_id),
         kind: MinionKind::Shadow,
         share_damage_owner: None,
     });
     shadow.status.set_alive(true);
     shadow.status.set_frozen(false);
 
-    if !apply_minion_skill_overlay(&mut shadow, minion_overlay.as_ref()) {
+    if !apply_minion_skill_overlay(&mut shadow, minion_overlay) {
         let possess_level = ((shadow.name_base[64..68].iter().copied().min().unwrap_or(0) as i32 - 10) / 2 + 36).max(0) as u32;
         let mut skills = SkillStorage::new();
         skills.add_skill(Skill::new(possess_level, super::possess::PossessSkill::box_new()));
@@ -66,7 +70,7 @@ pub(crate) fn build_shadow_minion(owner_id: PlrId, storage: &Arc<Storage>) -> Pl
         shadow.skills.update_proc();
     }
 
-    shadow.status.move_point = if charge_active { 2048 } else { -2048 };
+    shadow.status.move_point = if owner.at_boost() >= 3.0 { 2048 } else { -2048 };
     shadow
 }
 

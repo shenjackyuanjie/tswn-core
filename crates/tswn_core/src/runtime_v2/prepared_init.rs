@@ -1,5 +1,6 @@
 use super::*;
 use crate::engine::storage::Storage;
+use crate::player::skill::act::minion::MinionBlueprintOwner;
 use crate::player::utils::trim_js_line_end;
 use crate::player::{Player, PlayerType, PlrId};
 
@@ -58,6 +59,7 @@ struct PreparedPlayerInit {
     shadow_blueprint: Option<PlayerTemplate>,
     summon_blueprint: Option<PlayerTemplate>,
     zombie_blueprint: Option<PlayerTemplate>,
+    lazy_blueprint_rq_bits: Option<u64>,
 }
 
 /// 与 seed 无关的 Runtime v2 对局初始化模板。
@@ -121,6 +123,32 @@ impl PreparedBattleRoster {
         eval_rq: f64,
         registry: &ExtensionRegistry,
         skill_import: &PlainLegacySkillImportMap,
+    ) -> Result<Self, RuntimeV2BattleInitError> {
+        Self::from_groups_with_eval_rq_and_skill_import_selected(raw_groups, eval_rq, registry, skill_import, &[])
+    }
+
+    pub(crate) fn from_groups_with_eval_rq_and_skill_import_lazy_players(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        lazy_blueprint_players: &[PlrId],
+    ) -> Result<Self, RuntimeV2BattleInitError> {
+        Self::from_groups_with_eval_rq_and_skill_import_selected(
+            raw_groups,
+            eval_rq,
+            registry,
+            skill_import,
+            lazy_blueprint_players,
+        )
+    }
+
+    fn from_groups_with_eval_rq_and_skill_import_selected(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        lazy_blueprint_players: &[PlrId],
     ) -> Result<Self, RuntimeV2BattleInitError> {
         #[cfg(test)]
         let phase_started = std::time::Instant::now();
@@ -188,7 +216,15 @@ impl PreparedBattleRoster {
         let players = (0..player_count)
             .map(|id| {
                 let player = storage.get_player(&id).expect("runtime v2 prepared player disappeared");
-                PreparedBattleInit::prepare_player(player, id, team_by_player[id], &storage, registry, skill_import)
+                PreparedBattleInit::prepare_player(
+                    player,
+                    id,
+                    team_by_player[id],
+                    &storage,
+                    registry,
+                    skill_import,
+                    lazy_blueprint_players.contains(&id),
+                )
             })
             .collect::<Vec<_>>();
         #[cfg(test)]
@@ -415,6 +451,103 @@ impl PreparedBattleSeed {
     }
 }
 
+impl CombatRuntime {
+    /// 为 score 的动态 profile 按需生成一类召唤物蓝图，并写回实体槽供本场复用。
+    pub(crate) fn ensure_plain_minion_blueprint(
+        &mut self,
+        actor: EntityIdx,
+        kind: crate::player::skill::act::minion::MinionKind,
+    ) -> bool {
+        use crate::player::skill::act::minion::MinionKind;
+
+        let blueprint_export = match kind {
+            MinionKind::Shadow => DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT,
+            MinionKind::Summon => DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT,
+            MinionKind::Zombie => DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT,
+            MinionKind::Clone => return false,
+        };
+        let blueprint_slot = self
+            .registry
+            .entity_slot_id_by_export_name(blueprint_export)
+            .unwrap_or_else(|| panic!("default runtime v2 profile must register {blueprint_export}"));
+        match self.entities.get(actor).and_then(|entity| entity.slots.get(blueprint_slot)) {
+            Some(SlotValue::PlayerTemplate(_)) => return true,
+            Some(_) => panic!("runtime_v2 core minion blueprint slot has invalid value"),
+            None => {}
+        }
+
+        let lazy_slot = self
+            .registry
+            .entity_slot_id_by_export_name(DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT)
+            .expect("default runtime v2 profile must register core lazy blueprint rq slot");
+        let (eval_rq, owner, team) = {
+            let entity = self
+                .entities
+                .get(actor)
+                .unwrap_or_else(|| panic!("runtime_v2 lazy blueprint owner disappeared: {}", actor.0));
+            let eval_rq = match entity.slots.get(lazy_slot) {
+                Some(SlotValue::U64(bits)) => f64::from_bits(*bits),
+                Some(_) => panic!("runtime_v2 core lazy blueprint rq slot has invalid value"),
+                None => return false,
+            };
+            let attrs = entity
+                .template
+                .clone_build
+                .as_ref()
+                .unwrap_or_else(|| panic!("runtime_v2 lazy blueprint owner {} is missing clone build data", actor.0))
+                .attrs();
+            let owner = MinionBlueprintOwner::plain(
+                actor.0 as usize,
+                entity.template.name.clone(),
+                entity.template.clan_name.clone(),
+                attrs,
+                entity.template.at_boost_bits,
+            );
+            (eval_rq, owner, entity.runtime.team)
+        };
+
+        let storage = Storage::new_arc_with_eval_rq(eval_rq);
+        let skill_import = PlainLegacySkillImportMap::new(&self.registry);
+        let factor_name = crate::player::eval_name::eval_str_common_with_rq(&owner.base_name, true, eval_rq);
+        let factor_team = crate::player::eval_name::eval_str_common_with_rq(&owner.clan_name, true, eval_rq);
+        let child_clone_name_factor = factor_name.max(factor_team - 6.0);
+        let template = match kind {
+            MinionKind::Shadow => PreparedBattleInit::build_shadow_blueprint(
+                &owner,
+                team,
+                &storage,
+                &self.registry,
+                &skill_import,
+                child_clone_name_factor,
+            ),
+            MinionKind::Summon => PreparedBattleInit::build_summon_blueprint(
+                &owner,
+                team,
+                &storage,
+                &self.registry,
+                &skill_import,
+                child_clone_name_factor,
+            ),
+            MinionKind::Zombie => PreparedBattleInit::build_zombie_blueprint(
+                &owner,
+                team,
+                &storage,
+                &self.registry,
+                &skill_import,
+                child_clone_name_factor,
+            ),
+            MinionKind::Clone => unreachable!(),
+        };
+        self.entities
+            .get_mut(actor)
+            .unwrap()
+            .slots
+            .set(blueprint_slot, SlotValue::PlayerTemplate(Box::new(template)))
+            .expect("runtime v2 core minion blueprint slot must exist");
+        true
+    }
+}
+
 impl PreparedBattleInit {
     pub fn split_namerena_raw(raw_input: String) -> (Vec<Vec<String>>, Vec<String>) {
         let raw_input = raw_input.replace("\r\n", "\n").replace('\r', "\n");
@@ -509,6 +642,9 @@ impl PreparedBattleInit {
         let zombie_blueprint_slot = runtime
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);
+        let lazy_blueprint_rq_slot = runtime
+            .registry
+            .entity_slot_id_by_export_name(DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT);
         for (index, prepared) in self.players.into_iter().enumerate() {
             let entity_idx = Self::entity_idx(index);
             let entity = runtime
@@ -522,6 +658,7 @@ impl PreparedBattleInit {
             }
 
             let prepared_template = prepared.template;
+            entity.template.name = prepared_template.name;
             entity.template.display_name = prepared_template.display_name;
             entity.template.id_key_name = prepared_template.id_key_name;
             entity.template.clan_name = prepared_template.clan_name;
@@ -546,6 +683,24 @@ impl PreparedBattleInit {
             entity.runtime = PlayerRuntime::from_template(&entity.template, &runtime.registry, entity_idx, entity_idx);
             entity.runtime.hp = prepared.hp;
             entity.runtime.alive = prepared.alive;
+
+            // score 的 prototype 带着首轮蓝图；每轮替换 profile 时必须先清掉旧值，
+            // 否则延迟构造标记会错误地命中首轮模板。
+            for slot in [shadow_blueprint_slot, summon_blueprint_slot, zombie_blueprint_slot]
+                .into_iter()
+                .flatten()
+            {
+                entity.slots.remove(slot);
+            }
+            if let Some(slot) = lazy_blueprint_rq_slot {
+                entity.slots.remove(slot);
+                if let Some(rq_bits) = prepared.lazy_blueprint_rq_bits {
+                    entity
+                        .slots
+                        .set(slot, SlotValue::U64(rq_bits))
+                        .expect("runtime v2 core lazy blueprint rq slot must exist");
+                }
+            }
 
             match prepared.boss_state {
                 PreparedBossState::None => {}
@@ -653,6 +808,7 @@ impl PreparedBattleInit {
         storage: &std::sync::Arc<Storage>,
         registry: &ExtensionRegistry,
         skill_import: &PlainLegacySkillImportMap,
+        lazy_blueprints: bool,
     ) -> PreparedPlayerInit {
         #[cfg(test)]
         let phase_started = std::time::Instant::now();
@@ -678,61 +834,37 @@ impl PreparedBattleInit {
         let mut template = Self::template_from_player(player, id, team, skills.clone());
         template.kind = kind;
         template.clone_build = Some(clone_build);
+        let blueprint_owner = (!lazy_blueprints).then(|| MinionBlueprintOwner::from_player(id, player));
         #[cfg(test)]
         let template_elapsed = phase_started.elapsed();
         #[cfg(test)]
         let phase_started = std::time::Instant::now();
-        let shadow_blueprint = registry
-            .skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name())
-            .filter(|skill| skills.skills().contains(skill))
-            .map(|_| {
-                let shadow = crate::player::skill::act::shadow::build_shadow_minion(id, storage);
-                let shadow_skills = skill_import.import_storage(shadow.skill_storage());
-                let shadow_kind = registry
-                    .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
-                    .expect("runtime v2 registry importing shadow must register core shadow kind");
-                let mut template = Self::template_from_player(&shadow, 0, team, shadow_skills);
-                template.kind = shadow_kind;
-                template.clone_build = Some(Self::clone_build_from_player(&shadow, child_clone_name_factor));
-                template
-            });
+        let shadow_blueprint = blueprint_owner.as_ref().and_then(|owner| {
+            registry
+                .skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name())
+                .filter(|skill| skills.skills().contains(skill))
+                .map(|_| Self::build_shadow_blueprint(owner, team, storage, registry, skill_import, child_clone_name_factor))
+        });
         #[cfg(test)]
         let shadow_elapsed = phase_started.elapsed();
         #[cfg(test)]
         let phase_started = std::time::Instant::now();
-        let summon_blueprint = registry
-            .skill_id_by_export_name(BuiltinActiveSkill::Summon.export_name())
-            .filter(|skill| skills.skills().contains(skill))
-            .map(|_| {
-                let summon_overlay = crate::player::skill::act::minion::owner_minion_overlay(
-                    storage,
-                    id,
-                    crate::player::skill::act::minion::MinionKind::Summon,
-                );
-                let summon = crate::player::skill::act::summon::build_summon_minion(id, storage, true);
-                let summon_skills = skill_import.import_storage(summon.skill_storage());
-                let summon_kind = registry
-                    .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
-                    .expect("runtime v2 registry importing summon must register core summon kind");
-                let mut template = Self::template_from_player(&summon, 0, team, summon_skills);
-                template.kind = summon_kind;
-                template.reserved_player_ids_before_spawn = 1;
-                template.clone_build = Some(Self::clone_build_from_player(&summon, child_clone_name_factor));
-                template.reuse_skills_on_recast = summon_overlay.as_ref().map_or(true, |overlay| overlay.reuse_skills_on_recast);
-                let has_overlay_attrs = summon_overlay.as_ref().is_some_and(|overlay| overlay.attrs.is_some());
-                template.reuse_stats_on_recast = !has_overlay_attrs;
-                template.inherit_owner_def_res =
-                    !has_overlay_attrs || summon_overlay.as_ref().is_some_and(|overlay| overlay.inherit_owner_def_res);
-                template
-            });
+        let summon_blueprint = blueprint_owner.as_ref().and_then(|owner| {
+            registry
+                .skill_id_by_export_name(BuiltinActiveSkill::Summon.export_name())
+                .filter(|skill| skills.skills().contains(skill))
+                .map(|_| Self::build_summon_blueprint(owner, team, storage, registry, skill_import, child_clone_name_factor))
+        });
         #[cfg(test)]
         let summon_elapsed = phase_started.elapsed();
         #[cfg(test)]
         let phase_started = std::time::Instant::now();
-        let zombie_blueprint = registry
-            .skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT)
-            .filter(|skill| skills.skills().contains(skill))
-            .map(|_| Self::build_zombie_blueprint(id, team, storage, registry, skill_import, child_clone_name_factor));
+        let zombie_blueprint = blueprint_owner.as_ref().and_then(|owner| {
+            registry
+                .skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT)
+                .filter(|skill| skills.skills().contains(skill))
+                .map(|_| Self::build_zombie_blueprint(owner, team, storage, registry, skill_import, child_clone_name_factor))
+        });
         #[cfg(test)]
         let zombie_elapsed = phase_started.elapsed();
         let boss_state = match crate::player::boss::boss_kind(&player.id_name()) {
@@ -765,18 +897,64 @@ impl PreparedBattleInit {
             shadow_blueprint,
             summon_blueprint,
             zombie_blueprint,
+            lazy_blueprint_rq_bits: lazy_blueprints.then_some(storage.eval_rq().to_bits()),
         }
     }
 
-    fn build_zombie_blueprint(
-        id: PlrId,
+    fn build_shadow_blueprint(
+        owner: &MinionBlueprintOwner,
         team: usize,
         storage: &std::sync::Arc<Storage>,
         registry: &ExtensionRegistry,
         skill_import: &PlainLegacySkillImportMap,
         child_clone_name_factor: f64,
     ) -> PlayerTemplate {
-        let zombie = crate::player::skill::zombie::build_zombie_minion_blueprint(id, storage);
+        let shadow = crate::player::skill::act::shadow::build_shadow_minion_from_owner(owner, storage);
+        let shadow_skills = skill_import.import_storage(shadow.skill_storage());
+        let shadow_kind = registry
+            .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
+            .expect("runtime v2 registry importing shadow must register core shadow kind");
+        let mut template = Self::template_from_player(&shadow, 0, team, shadow_skills);
+        template.kind = shadow_kind;
+        template.clone_build = Some(Self::clone_build_from_player(&shadow, child_clone_name_factor));
+        template
+    }
+
+    fn build_summon_blueprint(
+        owner: &MinionBlueprintOwner,
+        team: usize,
+        storage: &std::sync::Arc<Storage>,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        child_clone_name_factor: f64,
+    ) -> PlayerTemplate {
+        let summon_overlay = owner.overlay(crate::player::skill::act::minion::MinionKind::Summon);
+        let summon = crate::player::skill::act::summon::build_summon_minion_from_owner(owner, storage, true);
+        let summon_skills = skill_import.import_storage(summon.skill_storage());
+        let summon_kind = registry
+            .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
+            .expect("runtime v2 registry importing summon must register core summon kind");
+        let mut template = Self::template_from_player(&summon, 0, team, summon_skills);
+        template.kind = summon_kind;
+        template.reserved_player_ids_before_spawn = 1;
+        template.clone_build = Some(Self::clone_build_from_player(&summon, child_clone_name_factor));
+        template.reuse_skills_on_recast = summon_overlay.is_none_or(|overlay| overlay.reuse_skills_on_recast);
+        let has_overlay_attrs = summon_overlay.is_some_and(|overlay| overlay.attrs.is_some());
+        template.reuse_stats_on_recast = !has_overlay_attrs;
+        template.inherit_owner_def_res =
+            !has_overlay_attrs || summon_overlay.is_some_and(|overlay| overlay.inherit_owner_def_res);
+        template
+    }
+
+    fn build_zombie_blueprint(
+        owner: &MinionBlueprintOwner,
+        team: usize,
+        storage: &std::sync::Arc<Storage>,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        child_clone_name_factor: f64,
+    ) -> PlayerTemplate {
+        let zombie = crate::player::skill::zombie::build_zombie_minion_blueprint_from_owner(owner, storage);
         let zombie_skills = skill_import.import_storage(zombie.skill_storage());
         let zombie_kind = registry
             .player_kind_id_by_export_name(DEFAULT_CORE_ZOMBIE_KIND_EXPORT)

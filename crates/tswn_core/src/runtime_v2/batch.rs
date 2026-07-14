@@ -278,7 +278,7 @@ fn run_score_round(
     match_groups.set_round(round);
     let init_started = Instant::now();
     if prepared
-        .reset_from_groups_with_seed_and_eval_rq(runner, &match_groups.groups, &[], eval_rq)
+        .reset_score_groups_with_seed_and_eval_rq(runner, &match_groups.groups, &match_groups.profile_player_ids, &[], eval_rq)
         .is_err()
     {
         summary.errors += 1;
@@ -315,6 +315,7 @@ fn js_score_profiles_per_round(target_group: &[String]) -> usize {
 struct ScoreMatchGroups {
     groups: Vec<Vec<String>>,
     profile_slots: Vec<(usize, usize)>,
+    profile_player_ids: Vec<crate::player::PlrId>,
     modifier: String,
 }
 
@@ -343,9 +344,18 @@ impl ScoreMatchGroups {
             }
         }
 
+        let mut group_offsets = Vec::with_capacity(groups.len());
+        let mut offset = 0usize;
+        for group in &groups {
+            group_offsets.push(offset);
+            offset += group.len();
+        }
+        let profile_player_ids = profile_slots.iter().map(|&(group, player)| group_offsets[group] + player).collect();
+
         let mut value = Self {
             groups,
             profile_slots,
+            profile_player_ids,
             modifier: modifier.to_owned(),
         };
         value.set_round(0);
@@ -423,6 +433,36 @@ mod tests {
             (v2.wins, v2.total, v2.errors, v2.guard_exhausted),
             (legacy.wins, legacy.total, legacy.errors, 0)
         );
+    }
+
+    #[test]
+    fn runtime_v2_lazy_score_round_42_matches_legacy() {
+        let target_group = vec!["mario".to_owned()];
+        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
+        let mut match_groups = ScoreMatchGroups::new(&target_group, "\u{0002}");
+        let first_groups = match_groups.groups.clone();
+        match_groups.set_round(42);
+
+        let mut legacy = crate::Runner::new_from_groups_with_seed_and_eval_rq_uncached(&match_groups.groups, &[], eval_rq)
+            .expect("legacy score round should initialize");
+        let expected = crate::runtime_v2::normalize_legacy_run(&mut legacy, BATCH_MAX_ROUNDS);
+
+        let config = default_custom_runtime_v2_import_config().expect("runtime v2 profile should build");
+        let prepared = PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(&first_groups, eval_rq, config)
+            .expect("runtime v2 score template should initialize");
+        let mut actual = prepared.new_reusable_runner();
+        prepared
+            .reset_score_groups_with_seed_and_eval_rq(
+                &mut actual,
+                &match_groups.groups,
+                &match_groups.profile_player_ids,
+                &[],
+                eval_rq,
+            )
+            .expect("runtime v2 lazy score round should initialize");
+        let actual = actual.run_until_winner_normalized_rounds(BATCH_MAX_ROUNDS);
+
+        assert_eq!(crate::runtime_v2::strict_diff_runs(&expected, &actual), Ok(()));
     }
 
     #[test]

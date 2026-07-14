@@ -104,6 +104,10 @@ impl EntitySlotStorage {
         self.values.get_mut(id.0 as usize).and_then(Option::as_mut)
     }
 
+    pub(crate) fn remove(&mut self, id: EntitySlotId) -> Option<SlotValue> {
+        self.values.get_mut(id.0 as usize).and_then(Option::take)
+    }
+
     pub fn clear(&mut self) {
         for value in &mut self.values {
             *value = None;

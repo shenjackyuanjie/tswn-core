@@ -28,6 +28,62 @@ pub enum MinionKind {
     Zombie,
 }
 
+/// 构造战斗召唤物蓝图所需的 owner 冷数据。
+///
+/// Runtime v2 的 score profile 可以保存这份轻量快照，把昂贵的召唤物构造推迟到
+/// 技能真正触发时；legacy 路径也通过同一快照进入共享构造函数，避免两套公式漂移。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MinionBlueprintOwner {
+    pub(crate) owner_id: PlrId,
+    pub(crate) base_name: String,
+    pub(crate) clan_name: String,
+    pub(crate) attrs: [u32; 8],
+    pub(crate) at_boost_bits: u64,
+    shadow_overlay: Option<MinionOverlay>,
+    summon_overlay: Option<MinionOverlay>,
+    zombie_overlay: Option<MinionOverlay>,
+}
+
+impl MinionBlueprintOwner {
+    pub(crate) fn from_player(owner_id: PlrId, player: &Player) -> Self {
+        let overlay = player.overlay.as_deref();
+        Self {
+            owner_id,
+            base_name: player.base_name(),
+            clan_name: player.clan_name(),
+            attrs: player.attr,
+            at_boost_bits: player.get_status().at_boost.to_bits(),
+            shadow_overlay: overlay.and_then(|overlay| overlay.shadow.clone()),
+            summon_overlay: overlay.and_then(|overlay| overlay.summon.clone()),
+            zombie_overlay: overlay.and_then(|overlay| overlay.zombie.clone()),
+        }
+    }
+
+    pub(crate) fn plain(owner_id: PlrId, base_name: String, clan_name: String, attrs: [u32; 8], at_boost_bits: u64) -> Self {
+        Self {
+            owner_id,
+            base_name,
+            clan_name,
+            attrs,
+            at_boost_bits,
+            shadow_overlay: None,
+            summon_overlay: None,
+            zombie_overlay: None,
+        }
+    }
+
+    pub(crate) fn at_boost(&self) -> f64 { f64::from_bits(self.at_boost_bits) }
+
+    pub(crate) fn overlay(&self, kind: MinionKind) -> Option<&MinionOverlay> {
+        match kind {
+            MinionKind::Shadow => self.shadow_overlay.as_ref(),
+            MinionKind::Summon => self.summon_overlay.as_ref(),
+            MinionKind::Zombie => self.zombie_overlay.as_ref(),
+            MinionKind::Clone => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MinionRuntimeState {
     pub owner: Option<PlrId>,

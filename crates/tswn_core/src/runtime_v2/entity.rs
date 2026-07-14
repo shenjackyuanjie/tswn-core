@@ -157,6 +157,9 @@ impl CloneBuildData {
     /// 复刻 legacy `PlayerStatus::all_sum` 的当前构造属性总和。
     pub fn all_sum(&self) -> u32 { self.attrs[..7].iter().sum::<u32>() * 3 + self.attrs[7] }
 
+    /// 返回构造召唤物蓝图所需的 owner 原始八围。
+    pub(crate) fn attrs(&self) -> [u32; 8] { self.attrs }
+
     fn derive_raw(attrs: [u32; 8], name_factor: f64) -> CloneDerivedStats {
         let scale = |value: u32, divisor: f64| ((value as f64) * (1.0 - name_factor / divisor)).round() as i32;
         let attr_sum = attrs[..7].iter().sum();

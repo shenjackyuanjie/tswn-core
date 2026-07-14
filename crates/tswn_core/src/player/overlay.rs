@@ -9,7 +9,7 @@ use crate::player::skill::SkillBoost;
 ///
 /// 允许单独覆盖召唤物的八围属性和技能列表，格式与主玩家 overlay 中
 /// 的 `attrs` / `skills` 字段保持一致。
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MinionOverlay {
     /// 八围属性覆盖值（`[atk, def, spd, agi, mag, res, wis, maxhp]`）。
     /// `None` 表示沿用默认派生结果。

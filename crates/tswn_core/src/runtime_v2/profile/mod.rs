@@ -39,6 +39,7 @@ pub const DEFAULT_CORE_BOOST_KIND_EXPORT: &str = "core.kind.boost";
 pub const DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.shadow_blueprint";
 pub const DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.summon_blueprint";
 pub const DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT: &str = "core.entity.zombie_blueprint";
+pub const DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT: &str = "core.entity.lazy_blueprint_rq";
 pub const DEFAULT_CORE_SUMMON_ENTITY_EXPORT: &str = "core.entity.summoned_entity";
 pub const DEFAULT_CORE_MINION_COUNTER_ENTITY_EXPORT: &str = "core.entity.minion_counter";
 pub const DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT: &str = "core.skill.summon-explode";

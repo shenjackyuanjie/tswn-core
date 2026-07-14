@@ -167,7 +167,8 @@ impl CombatRuntime {
         }
     }
 
-    fn plain_summon_blueprint(&self, actor: EntityIdx) -> PlayerTemplate {
+    fn plain_summon_blueprint(&mut self, actor: EntityIdx) -> PlayerTemplate {
+        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Summon);
         let slot = self
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)

@@ -15,8 +15,8 @@ use crate::player::{
 use crate::rc4::RC4;
 
 use super::minion::{
-    MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_skill_overlay,
-    apply_summon_attrs, owner_minion_overlay, prepare_combat_minion,
+    MinionBlueprintOwner, MinionKind, MinionRuntimeState, alloc_minion_name, apply_child_minion_overlay, apply_minion_attrs,
+    apply_minion_skill_overlay, apply_summon_attrs, owner_minion_overlay, prepare_combat_minion,
 };
 
 pub(crate) const SUMMON_SHARE_DAMAGE_SKILL_KEY: usize = 255;
@@ -44,21 +44,37 @@ impl SkillExt for SummonSkill {
 }
 
 pub(crate) fn build_summon_minion(owner_id: PlrId, storage: &Arc<Storage>, share_damage: bool) -> crate::player::Player {
-    let owner = storage.get_player(&owner_id).expect("cannot get summon owner from storage").clone();
-    let minion_overlay = owner_minion_overlay(storage, owner_id, MinionKind::Summon);
-    let summon_team = owner.clan_name();
-    let summon_name = format!("{}?summon", owner.base_name());
+    let owner = {
+        let owner = storage.get_player(&owner_id).expect("cannot get summon owner from storage");
+        MinionBlueprintOwner::from_player(owner_id, owner)
+    };
+    build_summon_minion_from_owner(&owner, storage, share_damage)
+}
+
+pub(crate) fn build_summon_minion_from_owner(
+    owner: &MinionBlueprintOwner,
+    storage: &Arc<Storage>,
+    share_damage: bool,
+) -> crate::player::Player {
+    let minion_overlay = owner.overlay(MinionKind::Summon);
+    let summon_team = owner.clan_name.clone();
+    let summon_name = format!("{}?summon", owner.base_name);
     let mut summoned =
         crate::player::Player::new_minion_and_init(Some(summon_team.clone()), summon_name.clone(), None, storage.clone())
             .expect("cannot init summon minion");
     prepare_combat_minion(&mut summoned);
     summoned.build();
-    if !apply_summon_attrs(&mut summoned, &owner, minion_overlay.as_ref()) {
+    if apply_minion_attrs(&mut summoned, minion_overlay) {
+        if minion_overlay.is_some_and(|overlay| overlay.inherit_owner_def_res) {
+            summoned.attr[1] = owner.attrs[1];
+            summoned.attr[5] = owner.attrs[5];
+        }
+    } else {
         summoned.attr[7] = (summoned.attr[7] / 3).max(1);
         summoned.attr[0] = 0;
-        summoned.attr[1] = owner.attr[1];
+        summoned.attr[1] = owner.attrs[1];
         summoned.attr[4] = 0;
-        summoned.attr[5] = owner.attr[5];
+        summoned.attr[5] = owner.attrs[5];
     }
     summoned.update_states();
     summoned.status.hp = summoned.status.max_hp;
@@ -68,15 +84,15 @@ pub(crate) fn build_summon_minion(owner_id: PlrId, storage: &Arc<Storage>, share
     summoned.sort_int = 0;
     summoned.state = PlayerStateStore::default();
     summoned.set_state(MinionRuntimeState {
-        owner: Some(owner_id),
+        owner: Some(owner.owner_id),
         kind: MinionKind::Summon,
         share_damage_owner: None,
     });
-    apply_child_minion_overlay(&mut summoned, minion_overlay.as_ref());
+    apply_child_minion_overlay(&mut summoned, minion_overlay);
     summoned.status.set_alive(true);
     summoned.status.set_frozen(false);
 
-    if !apply_minion_skill_overlay(&mut summoned, minion_overlay.as_ref()) {
+    if !apply_minion_skill_overlay(&mut summoned, minion_overlay) {
         let skill_level_from_slot = |slot: usize| -> u32 {
             let base = 64 + slot * 4;
             if base + 3 >= summoned.name_base.len() {

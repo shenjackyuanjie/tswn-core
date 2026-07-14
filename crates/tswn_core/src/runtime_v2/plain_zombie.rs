@@ -52,6 +52,8 @@ impl CombatRuntime {
             return false;
         }
 
+        self.ensure_plain_minion_blueprint(caster, crate::player::skill::act::minion::MinionKind::Zombie);
+
         let blueprint_slot = self
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT)

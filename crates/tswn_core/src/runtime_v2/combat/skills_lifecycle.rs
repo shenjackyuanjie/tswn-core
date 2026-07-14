@@ -292,6 +292,7 @@ impl CombatRuntime {
     }
 
     pub fn drain_plain_shadow_skill_into(&mut self, actor: EntityIdx, fixed_lane: usize, updates: &mut RunUpdates) {
+        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Shadow);
         let blueprint_slot = self
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT)
