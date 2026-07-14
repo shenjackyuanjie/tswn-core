@@ -4,7 +4,7 @@ use crate::runtime_v2::extension::{
     DamageSharePolicy, MergePolicy, OwnerResolutionPolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask,
     RegistrationOrder, SkillId, SkillPostActionPhase, SkillPriority, StateId, TargetPolicy,
 };
-use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
+use crate::runtime_v2::{BuiltinActiveSkill, EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -562,6 +562,12 @@ pub(crate) struct ScoreSkillHookPlanEntry {
     pub(crate) registration_order: RegistrationOrder,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CachedBuiltinActionEntry {
+    pub(crate) fixed_lane: u16,
+    pub(crate) skill: BuiltinActiveSkill,
+}
+
 const SKILL_DIRTY_LEVELS: u8 = 1 << 0;
 const SKILL_DIRTY_BOOSTS: u8 = 1 << 1;
 const SKILL_DIRTY_ACTIVE_HOOKS: u8 = 1 << 2;
@@ -582,6 +588,9 @@ pub struct SkillLoadout {
     pre_action_order: SmallVec<[usize; 8]>,
     post_damage_order: SmallVec<[usize; 8]>,
     post_action_after_states: SmallVec<[(u64, usize); 4]>,
+    // 主动技能热路径只需要固定槽位和已解析的内置类型；u16 槽位让常见八项缓存留在栈内。
+    action_cache: SmallVec<[CachedBuiltinActionEntry; 8]>,
+    action_cache_ready: bool,
     // 这是纯派生缓存，不参与 loadout 的语义相等性；score 会跨场复用其堆容量。
     hook_cache: Vec<CachedSkillHookEntry>,
     hook_cache_offsets: [u16; SKILL_HOOK_COUNT + 1],
@@ -608,6 +617,8 @@ impl Default for SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order: SmallVec::new(),
             post_action_after_states: SmallVec::new(),
+            action_cache: SmallVec::new(),
+            action_cache_ready: false,
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
@@ -659,6 +670,8 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            action_cache: SmallVec::new(),
+            action_cache_ready: false,
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
@@ -689,6 +702,8 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            action_cache: SmallVec::new(),
+            action_cache_ready: false,
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
@@ -732,6 +747,8 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            action_cache: SmallVec::new(),
+            action_cache_ready: false,
             hook_cache: Vec::new(),
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
@@ -786,9 +803,17 @@ impl SkillLoadout {
             let key = key as usize;
             if key < lane_by_key.len() && lane_by_key[key] != usize::MAX {
                 active_position_by_key[key] = self.active_order.len();
-                self.active_order.push(lane_by_key[key]);
+                let fixed_lane = lane_by_key[key];
+                self.active_order.push(fixed_lane);
+                if let Some(skill) = BuiltinActiveSkill::from_legacy_key(key) {
+                    self.action_cache.push(CachedBuiltinActionEntry {
+                        fixed_lane: u16::try_from(fixed_lane).expect("runtime_v2 score 主动技能槽位超出 u16"),
+                        skill,
+                    });
+                }
             }
         }
+        self.action_cache_ready = true;
         for key in [29usize, 34] {
             if levels[key] > 0 && lane_by_key[key] != usize::MAX {
                 self.pre_action_order.push(lane_by_key[key]);
@@ -856,6 +881,8 @@ impl SkillLoadout {
         }
         if dirty & SKILL_DIRTY_ACTIVE_HOOKS != 0 {
             self.active_order.clone_from(&prepared.active_order);
+            self.action_cache.clone_from(&prepared.action_cache);
+            self.action_cache_ready = prepared.action_cache_ready;
             self.hook_cache.clone_from(&prepared.hook_cache);
             self.hook_cache_offsets = prepared.hook_cache_offsets;
             self.hook_cache_ready = prepared.hook_cache_ready;
@@ -878,7 +905,9 @@ impl SkillLoadout {
         if self.hook_cache_ready {
             return;
         }
+        self.action_cache.clear();
         self.hook_cache.clear();
+        let mut action_cache_supported = true;
         for (active_order, &fixed_lane) in self.active_order.iter().enumerate() {
             let skill_id = *self
                 .skills
@@ -887,6 +916,13 @@ impl SkillLoadout {
             let spec = registry
                 .skill(skill_id)
                 .unwrap_or_else(|| panic!("unknown runtime_v2 skill id in loadout: {}", skill_id.0));
+            if let Some(skill) = registry.builtin_active_skill(skill_id) {
+                if let Ok(fixed_lane) = u16::try_from(fixed_lane) {
+                    self.action_cache.push(CachedBuiltinActionEntry { fixed_lane, skill });
+                } else {
+                    action_cache_supported = false;
+                }
+            }
             let mut hooks = spec.hook_mask.0 & ((1 << SKILL_HOOK_COUNT) - 1);
             while hooks != 0 {
                 let hook_index = hooks.trailing_zeros() as u8;
@@ -905,6 +941,10 @@ impl SkillLoadout {
         }
         self.hook_cache
             .sort_by_key(|entry| (entry.hook_index, entry.priority, entry.active_order, entry.registration_order));
+        if !action_cache_supported {
+            self.action_cache.clear();
+        }
+        self.action_cache_ready = action_cache_supported;
         self.finish_hook_cache_offsets();
     }
 
@@ -937,7 +977,13 @@ impl SkillLoadout {
         Some(&self.hook_cache[start..end])
     }
 
+    pub(crate) fn cached_builtin_actions(&self) -> Option<&[CachedBuiltinActionEntry]> {
+        self.action_cache_ready.then_some(self.action_cache.as_slice())
+    }
+
     fn invalidate_hook_cache(&mut self) {
+        self.action_cache.clear();
+        self.action_cache_ready = false;
         self.hook_cache.clear();
         self.hook_cache_offsets.fill(0);
         self.hook_cache_ready = false;

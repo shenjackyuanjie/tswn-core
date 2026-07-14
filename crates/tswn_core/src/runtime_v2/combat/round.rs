@@ -633,16 +633,37 @@ impl CombatRuntime {
     }
 
     pub fn scan_plain_action_skill_probabilities(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
-        let active_order_len = self
-            .entities
-            .get(actor)
-            .unwrap_or_else(|| panic!("unknown runtime_v2 action-scan actor: {}", actor.0))
-            .template
-            .skills
-            .active_order()
-            .len();
-        for active_index in 0..active_order_len {
-            let (fixed_lane, skill_id, level) = {
+        let (scan_len, use_cache) = {
+            let skills = &self
+                .entities
+                .get(actor)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 action-scan actor: {}", actor.0))
+                .template
+                .skills;
+            match skills.cached_builtin_actions() {
+                Some(cache) => (cache.len(), true),
+                None => (skills.active_order().len(), false),
+            }
+        };
+        for active_index in 0..scan_len {
+            let (fixed_lane, builtin_skill, level) = if use_cache {
+                let loadout = &self
+                    .entities
+                    .get(actor)
+                    .unwrap_or_else(|| panic!("unknown runtime_v2 action-scan actor: {}", actor.0))
+                    .template
+                    .skills;
+                let cached = *loadout
+                    .cached_builtin_actions()
+                    .expect("runtime_v2 主动技能缓存扫描期间失效")
+                    .get(active_index)
+                    .unwrap_or_else(|| panic!("runtime_v2 主动技能缓存缺少第 {active_index} 项"));
+                let fixed_lane = usize::from(cached.fixed_lane);
+                let level = loadout
+                    .level_at(fixed_lane)
+                    .unwrap_or_else(|| panic!("runtime_v2 主动技能等级缺少固定槽位 {fixed_lane}"));
+                (fixed_lane, cached.skill, level)
+            } else {
                 let loadout = &self
                     .entities
                     .get(actor)
@@ -659,14 +680,14 @@ impl CombatRuntime {
                 let level = loadout
                     .level_at(fixed_lane)
                     .unwrap_or_else(|| panic!("runtime_v2 active skill level missing for fixed lane {fixed_lane}"));
-                (fixed_lane, skill_id, level)
+                let Some(builtin_skill) = self.builtin_active_skill(skill_id) else {
+                    continue;
+                };
+                (fixed_lane, builtin_skill, level)
             };
             if level == 0 {
                 continue;
             }
-            let Some(builtin_skill) = self.builtin_active_skill(skill_id) else {
-                continue;
-            };
             if self.plain_action_skill_probability(actor, builtin_skill, level, smart) {
                 let selected = SelectedBuiltinSkill {
                     skill: builtin_skill,

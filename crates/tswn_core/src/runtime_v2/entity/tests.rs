@@ -189,6 +189,42 @@ fn skill_loadout_tracks_fixed_lanes_and_active_order_separately() {
 }
 
 #[test]
+fn skill_loadout_caches_only_builtin_action_lanes_and_invalidates_with_order() {
+    let mut builder = crate::runtime_v2::ExtensionRegistryBuilder::default();
+    let custom = builder
+        .register_skill(
+            "custom",
+            "action",
+            "custom.action",
+            crate::runtime_v2::TargetPolicy::Enemy,
+            SkillPriority(0),
+        )
+        .expect("自定义技能应注册成功");
+    let fire = builder
+        .register_skill(
+            "core",
+            crate::runtime_v2::BuiltinActiveSkill::Fire.local_name(),
+            crate::runtime_v2::BuiltinActiveSkill::Fire.export_name(),
+            crate::runtime_v2::TargetPolicy::Enemy,
+            SkillPriority(1),
+        )
+        .expect("内置技能应注册成功");
+    let registry = builder.build();
+    let mut loadout = SkillLoadout::from_skill_levels([(custom, 7), (fire, 9)]).with_active_order([0, 1]);
+
+    loadout.prepare_hook_cache(&registry);
+    let cached = loadout.cached_builtin_actions().expect("准备后应提供主动技能缓存");
+    assert_eq!(cached.len(), 1);
+    assert_eq!(usize::from(cached[0].fixed_lane), 1);
+    assert_eq!(cached[0].skill, crate::runtime_v2::BuiltinActiveSkill::Fire);
+
+    loadout.disable_action_lane(1);
+    assert!(loadout.cached_builtin_actions().is_none());
+    loadout.prepare_hook_cache(&registry);
+    assert!(loadout.cached_builtin_actions().expect("重建后应恢复缓存").is_empty());
+}
+
+#[test]
 fn skill_loadout_rebuilds_clone_levels_from_build_baseline_before_boosts() {
     let mut owner = SkillLoadout::from_skill_levels_and_boosts([
         (SkillId(1), 4, None),
