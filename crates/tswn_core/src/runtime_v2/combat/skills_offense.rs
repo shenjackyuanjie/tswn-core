@@ -362,7 +362,7 @@ impl CombatRuntime {
 
     pub fn select_plain_berserk_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive().to_vec();
+        let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
             return Vec::new();
         }
@@ -375,16 +375,16 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[usize; 8]>>();
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::with_capacity(select_count);
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut duplicate_count = 0usize;
         let mut invalid_count = -(select_count as i32);
         while duplicate_count <= select_count && invalid_count <= select_count as i32 {
             let picked = if ally_skip_indices.is_empty() {
-                self.rng.pick(&all_alive)
+                self.rng.pick(all_alive)
             } else {
-                self.rng.pick_skip_range(&all_alive, &ally_skip_indices)
+                self.rng.pick_skip_range(all_alive, &ally_skip_indices)
             };
             let Some(picked) = picked else {
                 return Vec::new();
@@ -412,10 +412,10 @@ impl CombatRuntime {
                 break;
             }
         }
-        let mut scored = selected
-            .into_iter()
-            .map(|target| (target, self.score_plain_berserk_target(target, smart)))
-            .collect::<Vec<_>>();
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
+        for target in selected {
+            scored.push((target, self.score_plain_berserk_target(target, smart)));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|(target, _)| target).collect()
     }
@@ -455,17 +455,17 @@ impl CombatRuntime {
 
     pub fn select_plain_haste_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
         let actor_team = self.plain_effective_team(actor);
-        let candidates = self.world.team_alive(actor_team).unwrap_or_default().to_vec();
+        let candidates = self.world.team_alive(actor_team).unwrap_or_default();
         if candidates.is_empty() {
             return Vec::new();
         }
 
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::with_capacity(select_count);
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut duplicate_count = 0usize;
         let mut invalid_count = -(select_count as i32);
         while duplicate_count <= select_count && invalid_count <= select_count as i32 {
-            let Some(picked) = self.rng.pick(&candidates) else {
+            let Some(picked) = self.rng.pick(candidates) else {
                 return Vec::new();
             };
             let target = candidates[picked];
@@ -494,10 +494,10 @@ impl CombatRuntime {
                 break;
             }
         }
-        let mut scored = selected
-            .into_iter()
-            .map(|target| (target, self.score_plain_haste_target(target, smart)))
-            .collect::<Vec<_>>();
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
+        for target in selected {
+            scored.push((target, self.score_plain_haste_target(target, smart)));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|(target, _)| target).collect()
     }
@@ -660,7 +660,7 @@ impl CombatRuntime {
 
     pub fn select_plain_rapid_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive().to_vec();
+        let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
             return Vec::new();
         }
@@ -673,15 +673,15 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[usize; 8]>>();
         let select_count = if smart { 5 } else { 3 };
-        let mut selected = Vec::with_capacity(select_count);
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 5]>::new();
         let mut duplicate_count = 0usize;
         while duplicate_count <= select_count {
             let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(&all_alive)
+                self.rng.pick(all_alive)
             } else {
-                self.rng.pick_skip_range(&all_alive, &enemy_skip_indices)
+                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
                 return Vec::new();
@@ -700,32 +700,30 @@ impl CombatRuntime {
             return Vec::new();
         }
 
-        let mut scored = selected
-            .into_iter()
-            .map(|target| {
-                let target_entity = self
-                    .entities
-                    .get(target)
-                    .unwrap_or_else(|| panic!("runtime_v2 rapid target disappeared: {}", target.0));
-                let score = if smart {
-                    let hp = if target_entity.runtime.hp < 20 {
-                        30
-                    } else if target_entity.runtime.hp > 300 {
-                        300
-                    } else {
-                        target_entity.runtime.hp
-                    };
-                    if self.world.alive_group_count() > 2 {
-                        hp as f64 * self.world.alive_group_len_containing(target) as f64 * target_entity.runtime.attract()
-                    } else {
-                        (1.0 / hp as f64) * target_entity.runtime.atk_sum as f64 * target_entity.runtime.attract()
-                    }
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 5]>::new();
+        for target in selected {
+            let target_entity = self
+                .entities
+                .get(target)
+                .unwrap_or_else(|| panic!("runtime_v2 rapid target disappeared: {}", target.0));
+            let score = if smart {
+                let hp = if target_entity.runtime.hp < 20 {
+                    30
+                } else if target_entity.runtime.hp > 300 {
+                    300
                 } else {
-                    self.rng.rFFFF() as f64 + target_entity.runtime.attract()
+                    target_entity.runtime.hp
                 };
-                (target, score)
-            })
-            .collect::<Vec<_>>();
+                if self.world.alive_group_count() > 2 {
+                    hp as f64 * self.world.alive_group_len_containing(target) as f64 * target_entity.runtime.attract()
+                } else {
+                    (1.0 / hp as f64) * target_entity.runtime.atk_sum as f64 * target_entity.runtime.attract()
+                }
+            } else {
+                self.rng.rFFFF() as f64 + target_entity.runtime.attract()
+            };
+            scored.push((target, score));
+        }
         scored.sort_by(|left, right| right.1.partial_cmp(&left.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|(target, _)| target).collect()
     }

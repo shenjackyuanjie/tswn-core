@@ -30,9 +30,9 @@ impl CombatRuntime {
         #[cfg(not(feature = "no_debug"))]
         let before = (self.rng.i, self.rng.j);
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive().to_vec();
-        let mut candidates = Vec::new();
-        let mut enemy_skip_indices = Vec::new();
+        let all_alive = self.world.flat_alive();
+        let mut candidates = smallvec::SmallVec::<[EntityIdx; 8]>::new();
+        let mut enemy_skip_indices = smallvec::SmallVec::<[usize; 8]>::new();
         for (idx, target) in all_alive.iter().copied().enumerate() {
             if self.entities.get(target).is_some_and(|entity| entity.runtime.team == actor_team) {
                 enemy_skip_indices.push(idx);
@@ -44,14 +44,14 @@ impl CombatRuntime {
             return Vec::new();
         }
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::new();
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
             let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(&all_alive)
+                self.rng.pick(all_alive)
             } else {
-                self.rng.pick_skip_range(&all_alive, &enemy_skip_indices)
+                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
                 return Vec::new();
@@ -77,10 +77,10 @@ impl CombatRuntime {
                 break;
             }
         }
-        let mut scored = selected
-            .into_iter()
-            .map(|target| (target, self.score_plain_charm_target(target, smart)))
-            .collect::<Vec<_>>();
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
+        for target in selected {
+            scored.push((target, self.score_plain_charm_target(target, smart)));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         let targets = scored.into_iter().map(|(target, _)| target).collect::<Vec<_>>();
         #[cfg(not(feature = "no_debug"))]
@@ -272,7 +272,7 @@ impl CombatRuntime {
 
     pub fn select_plain_heal_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
         let actor_team = self.plain_effective_team(actor);
-        let candidates = self.world.team_alive(actor_team).unwrap_or_default().to_vec();
+        let candidates = self.world.team_alive(actor_team).unwrap_or_default();
         #[cfg(not(feature = "no_debug"))]
         let probe_heal = std::env::var_os("TSWN_PROBE_HEAL").is_some();
         #[cfg(not(feature = "no_debug"))]
@@ -297,13 +297,13 @@ impl CombatRuntime {
         }
 
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::new();
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
             #[cfg(not(feature = "no_debug"))]
             let rng_before_pick = (self.rng.i, self.rng.j);
-            let Some(picked) = self.rng.pick(&candidates) else {
+            let Some(picked) = self.rng.pick(candidates) else {
                 return Vec::new();
             };
             let target = candidates[picked];
@@ -335,20 +335,18 @@ impl CombatRuntime {
             }
         }
 
-        let mut scored = selected
-            .into_iter()
-            .map(|target| {
-                let score = self.score_plain_heal_target(target, smart);
-                #[cfg(not(feature = "no_debug"))]
-                if probe_heal {
-                    eprintln!(
-                        "[heal_select:v2:score] target={} score={} rc4=({}, {})",
-                        target.0, score, self.rng.i, self.rng.j,
-                    );
-                }
-                (target, score)
-            })
-            .collect::<Vec<_>>();
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
+        for target in selected {
+            let score = self.score_plain_heal_target(target, smart);
+            #[cfg(not(feature = "no_debug"))]
+            if probe_heal {
+                eprintln!(
+                    "[heal_select:v2:score] target={} score={} rc4=({}, {})",
+                    target.0, score, self.rng.i, self.rng.j,
+                );
+            }
+            scored.push((target, score));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         #[cfg(not(feature = "no_debug"))]
         if probe_heal {
@@ -528,7 +526,7 @@ impl CombatRuntime {
 
     pub fn select_plain_disperse_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive().to_vec();
+        let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
             return Vec::new();
         }
@@ -541,16 +539,16 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[usize; 8]>>();
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::new();
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
             let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(&all_alive)
+                self.rng.pick(all_alive)
             } else {
-                self.rng.pick_skip_range(&all_alive, &enemy_skip_indices)
+                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
                 return Vec::new();
@@ -569,15 +567,13 @@ impl CombatRuntime {
                 break;
             }
         }
-        let mut scored = selected
-            .into_iter()
-            .map(|target| {
-                (
-                    target,
-                    score_disperse_target(&self.entities, &self.world, target, smart, &mut self.rng),
-                )
-            })
-            .collect::<Vec<_>>();
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
+        for target in selected {
+            scored.push((
+                target,
+                score_disperse_target(&self.entities, &self.world, target, smart, &mut self.rng),
+            ));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|(target, _)| target).collect()
     }

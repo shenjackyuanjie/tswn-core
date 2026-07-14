@@ -530,16 +530,16 @@ impl CombatRuntime {
     }
 
     pub fn select_plain_berserk_forced_attack_target(&mut self, smart: bool) -> Option<EntityIdx> {
-        let all_alive = self.world.flat_alive().to_vec();
+        let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
             return None;
         }
 
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::with_capacity(select_count);
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut duplicate_count = 0usize;
         while duplicate_count <= select_count {
-            let picked = self.rng.pick(&all_alive)?;
+            let picked = self.rng.pick(all_alive)?;
             let target = all_alive[picked];
             if selected.contains(&target) {
                 duplicate_count += 1;
@@ -554,18 +554,16 @@ impl CombatRuntime {
             return None;
         }
 
-        let mut scored = selected
-            .into_iter()
-            .map(|target| {
-                let attract = self
-                    .entities
-                    .get(target)
-                    .unwrap_or_else(|| panic!("runtime_v2 forced-attack target disappeared: {}", target.0))
-                    .runtime
-                    .attract();
-                (target, self.rng.rFFFF() as f64 * attract)
-            })
-            .collect::<Vec<_>>();
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
+        for target in selected {
+            let attract = self
+                .entities
+                .get(target)
+                .unwrap_or_else(|| panic!("runtime_v2 forced-attack target disappeared: {}", target.0))
+                .runtime
+                .attract();
+            scored.push((target, self.rng.rFFFF() as f64 * attract));
+        }
         scored.sort_by(|left, right| right.1.partial_cmp(&left.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.first().map(|(target, _)| *target)
     }

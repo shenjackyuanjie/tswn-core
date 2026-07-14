@@ -82,7 +82,7 @@ impl CombatRuntime {
 
     pub fn select_plain_ice_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive().to_vec();
+        let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
             return Vec::new();
         }
@@ -95,16 +95,16 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[usize; 8]>>();
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::new();
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
             let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(&all_alive)
+                self.rng.pick(all_alive)
             } else {
-                self.rng.pick_skip_range(&all_alive, &enemy_skip_indices)
+                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
                 return Vec::new();
@@ -123,10 +123,10 @@ impl CombatRuntime {
                 break;
             }
         }
-        let mut scored = selected
-            .into_iter()
-            .map(|target| (target, self.score_plain_ice_target(target, smart)))
-            .collect::<Vec<_>>();
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
+        for target in selected {
+            scored.push((target, self.score_plain_ice_target(target, smart)));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|(target, _)| target).collect()
     }
@@ -434,7 +434,7 @@ impl CombatRuntime {
             .map(|entity| entity.runtime.hp)
             .unwrap_or_else(|| panic!("unknown runtime_v2 exchange actor: {}", actor.0));
         let actor_team = self.plain_effective_team(actor);
-        let all_alive = self.world.flat_alive().to_vec();
+        let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
             return Vec::new();
         }
@@ -447,16 +447,16 @@ impl CombatRuntime {
                     .is_some_and(|entity| entity.runtime.team == actor_team)
                     .then_some(index)
             })
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[usize; 8]>>();
         let select_count = if smart { 3 } else { 2 };
-        let mut selected = Vec::new();
+        let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
         let mut dup = 0usize;
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
             let picked = if enemy_skip_indices.is_empty() {
-                self.rng.pick(&all_alive)
+                self.rng.pick(all_alive)
             } else {
-                self.rng.pick_skip_range(&all_alive, &enemy_skip_indices)
+                self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
                 return Vec::new();
@@ -482,10 +482,10 @@ impl CombatRuntime {
                 break;
             }
         }
-        let mut scored = selected
-            .into_iter()
-            .map(|target| (target, self.score_plain_exchange_target(target, smart)))
-            .collect::<Vec<_>>();
+        let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
+        for target in selected {
+            scored.push((target, self.score_plain_exchange_target(target, smart)));
+        }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.into_iter().map(|(target, _)| target).collect()
     }
