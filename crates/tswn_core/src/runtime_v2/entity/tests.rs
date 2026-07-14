@@ -228,6 +228,47 @@ fn skill_loadout_clone_rebuild_keeps_zero_build_lane_out_of_action_order_when_di
 }
 
 #[test]
+fn skill_loadout_resets_each_dirty_field_group_from_battle_baseline() {
+    let prepared = SkillLoadout::from_skill_levels([(SkillId(1), 5), (SkillId(2), 0), (SkillId(3), 3), (SkillId(4), 4)])
+        .with_active_order([0, 1, 2, 3])
+        .with_pre_action_order([0])
+        .with_post_damage_order([0, 1, 2, 3])
+        .with_post_action_after_states([(1, 0)]);
+
+    let mut levels = prepared.clone();
+    assert!(levels.set_level_at(0, 2));
+    levels.reset_battle_fields_from(&prepared);
+    assert_eq!(levels, prepared);
+
+    let mut active_hooks = prepared.clone();
+    active_hooks.disable_action_lane(3);
+    active_hooks.reset_battle_fields_from(&prepared);
+    assert_eq!(active_hooks, prepared);
+
+    let mut deferred = prepared.clone();
+    deferred.register_post_action_after_states(2, 3);
+    deferred.reset_battle_fields_from(&prepared);
+    assert_eq!(deferred, prepared);
+
+    let mut pre_action = prepared.clone();
+    pre_action.remove_pre_action_lane(0);
+    pre_action.ensure_pre_action_lane(2);
+    pre_action.reset_battle_fields_from(&prepared);
+    assert_eq!(pre_action, prepared);
+
+    let mut boosts = prepared.clone();
+    assert!(boosts.boost_last_active_except_key(usize::MAX));
+    boosts.reset_battle_fields_from(&prepared);
+    assert_eq!(boosts, prepared);
+
+    let source = SkillLoadout::from_skill_levels([(SkillId(5), 5), (SkillId(6), 7), (SkillId(7), 3), (SkillId(8), 4)]);
+    let mut merged = prepared.clone();
+    assert!(merged.merge_fixed_lanes_from(&source, MergePolicy::FixedLane));
+    merged.reset_battle_fields_from(&prepared);
+    assert_eq!(merged, prepared);
+}
+
+#[test]
 fn skill_loadout_merges_levels_by_fixed_lane_without_replacing_skill_ids() {
     let mut target = SkillLoadout::from_skill_levels([(SkillId(1), 0), (SkillId(2), 4)])
         .with_fixed_lane_keys([10, 20])

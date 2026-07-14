@@ -1006,9 +1006,7 @@ impl PreparedBattleSeed {
                 .into_iter()
                 .flatten()
             {
-                if let Some(SlotValue::PlayerTemplate(template)) = entity.slots.get_mut(slot) {
-                    template.team = team;
-                }
+                entity.slots.update_player_template_team(slot, team);
             }
         }
 

@@ -560,6 +560,13 @@ pub(crate) struct ScoreSkillHookPlanEntry {
     pub(crate) registration_order: RegistrationOrder,
 }
 
+const SKILL_DIRTY_LEVELS: u8 = 1 << 0;
+const SKILL_DIRTY_BOOSTS: u8 = 1 << 1;
+const SKILL_DIRTY_ACTIVE_HOOKS: u8 = 1 << 2;
+const SKILL_DIRTY_PRE_ACTION: u8 = 1 << 3;
+const SKILL_DIRTY_POST_DAMAGE: u8 = 1 << 4;
+const SKILL_DIRTY_DEFERRED: u8 = 1 << 5;
+
 #[derive(Debug, Clone)]
 pub struct SkillLoadout {
     skills: SmallVec<[SkillId; 8]>,
@@ -579,8 +586,8 @@ pub struct SkillLoadout {
     hook_cache_ready: bool,
     /// 同一份准备模板与 worker 克隆共享此编号，用来识别外部整体替换技能表的情况。
     baseline_id: u64,
-    /// 仅记录一场战斗内可能需要恢复的字段是否发生过变化。
-    battle_dirty: bool,
+    /// 按字段组记录本局写入，只复位真正变化过的 SmallVec 和 hook 缓存。
+    battle_dirty: u8,
 }
 
 impl Default for SkillLoadout {
@@ -601,7 +608,7 @@ impl Default for SkillLoadout {
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
             baseline_id: next_skill_loadout_baseline_id(),
-            battle_dirty: false,
+            battle_dirty: 0,
         }
     }
 }
@@ -651,7 +658,7 @@ impl SkillLoadout {
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
             baseline_id: next_skill_loadout_baseline_id(),
-            battle_dirty: false,
+            battle_dirty: 0,
         }
     }
 
@@ -680,7 +687,7 @@ impl SkillLoadout {
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
             baseline_id: next_skill_loadout_baseline_id(),
-            battle_dirty: false,
+            battle_dirty: 0,
         }
     }
 
@@ -722,7 +729,7 @@ impl SkillLoadout {
             hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
             hook_cache_ready: false,
             baseline_id: next_skill_loadout_baseline_id(),
-            battle_dirty: false,
+            battle_dirty: 0,
         }
     }
 
@@ -806,11 +813,11 @@ impl SkillLoadout {
                 .sort_by_key(|entry| (entry.hook_index, entry.priority, entry.active_order, entry.registration_order));
         }
         self.finish_hook_cache_offsets();
-        self.battle_dirty = false;
+        self.battle_dirty = 0;
     }
 
     /// 将当前技能表封为可复用 runner 的场前基线。
-    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty = false; }
+    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty = 0; }
 
     /// 恢复一场战斗会修改的技能字段；未发生修改时完全跳过 SmallVec 深拷贝。
     pub(crate) fn reset_battle_fields_from(&mut self, prepared: &Self) {
@@ -818,25 +825,38 @@ impl SkillLoadout {
             self.clone_from(prepared);
             return;
         }
-        if !self.battle_dirty {
+        let dirty = self.battle_dirty;
+        if dirty == 0 {
             return;
         }
 
         debug_assert_eq!(self.skills, prepared.skills);
         debug_assert_eq!(self.fixed_lane_keys, prepared.fixed_lane_keys);
         debug_assert_eq!(self.merge_lane_order, prepared.merge_lane_order);
-        self.levels.clone_from(&prepared.levels);
-        self.build_levels.clone_from(&prepared.build_levels);
-        self.boosts.clone_from(&prepared.boosts);
-        self.boosted.clone_from(&prepared.boosted);
-        self.active_order.clone_from(&prepared.active_order);
-        self.pre_action_order.clone_from(&prepared.pre_action_order);
-        self.post_damage_order.clone_from(&prepared.post_damage_order);
-        self.post_action_after_states.clone_from(&prepared.post_action_after_states);
-        self.hook_cache.clone_from(&prepared.hook_cache);
-        self.hook_cache_offsets = prepared.hook_cache_offsets;
-        self.hook_cache_ready = prepared.hook_cache_ready;
-        self.battle_dirty = false;
+        if dirty & SKILL_DIRTY_LEVELS != 0 {
+            self.levels.clone_from(&prepared.levels);
+        }
+        if dirty & SKILL_DIRTY_BOOSTS != 0 {
+            self.build_levels.clone_from(&prepared.build_levels);
+            self.boosts.clone_from(&prepared.boosts);
+            self.boosted.clone_from(&prepared.boosted);
+        }
+        if dirty & SKILL_DIRTY_ACTIVE_HOOKS != 0 {
+            self.active_order.clone_from(&prepared.active_order);
+            self.hook_cache.clone_from(&prepared.hook_cache);
+            self.hook_cache_offsets = prepared.hook_cache_offsets;
+            self.hook_cache_ready = prepared.hook_cache_ready;
+        }
+        if dirty & SKILL_DIRTY_PRE_ACTION != 0 {
+            self.pre_action_order.clone_from(&prepared.pre_action_order);
+        }
+        if dirty & SKILL_DIRTY_POST_DAMAGE != 0 {
+            self.post_damage_order.clone_from(&prepared.post_damage_order);
+        }
+        if dirty & SKILL_DIRTY_DEFERRED != 0 {
+            self.post_action_after_states.clone_from(&prepared.post_action_after_states);
+        }
+        self.battle_dirty = 0;
     }
 
     /// 预计算八类技能钩子的稳定顺序，避免每次行动重复扫描并排序完整技能表。
@@ -932,7 +952,7 @@ impl SkillLoadout {
             return true;
         }
         *current = level;
-        self.battle_dirty = true;
+        self.battle_dirty |= SKILL_DIRTY_LEVELS;
         true
     }
 
@@ -972,7 +992,7 @@ impl SkillLoadout {
         self.active_order.retain(|lane| *lane != fixed_lane);
         if self.active_order.len() != before {
             self.invalidate_hook_cache();
-            self.battle_dirty = true;
+            self.battle_dirty |= SKILL_DIRTY_ACTIVE_HOOKS;
         }
     }
 
@@ -1024,7 +1044,7 @@ impl SkillLoadout {
         }
         self.post_action_after_states.push((state_order_cursor, fixed_lane));
         self.post_action_after_states.sort_by_key(|(cursor, _)| *cursor);
-        self.battle_dirty = true;
+        self.battle_dirty |= SKILL_DIRTY_DEFERRED;
     }
 
     pub fn ensure_pre_action_lane(&mut self, fixed_lane: usize) {
@@ -1034,14 +1054,16 @@ impl SkillLoadout {
         );
         if !self.pre_action_order.contains(&fixed_lane) {
             self.pre_action_order.push(fixed_lane);
-            self.battle_dirty = true;
+            self.battle_dirty |= SKILL_DIRTY_PRE_ACTION;
         }
     }
 
     pub fn remove_pre_action_lane(&mut self, fixed_lane: usize) {
         let before = self.pre_action_order.len();
         self.pre_action_order.retain(|lane| *lane != fixed_lane);
-        self.battle_dirty |= self.pre_action_order.len() != before;
+        if self.pre_action_order.len() != before {
+            self.battle_dirty |= SKILL_DIRTY_PRE_ACTION;
+        }
     }
 
     pub fn with_fixed_lane_keys(mut self, fixed_lane_keys: impl IntoIterator<Item = usize>) -> Self {
@@ -1075,7 +1097,7 @@ impl SkillLoadout {
             self.build_levels[lane] = base;
             self.boosts[lane] = Some(SkillBoost::LastBoost(base));
             self.boosted[lane] = true;
-            self.battle_dirty = true;
+            self.battle_dirty |= SKILL_DIRTY_LEVELS | SKILL_DIRTY_BOOSTS;
             return true;
         }
         false
@@ -1127,7 +1149,7 @@ impl SkillLoadout {
         }
         let was_zero = *owner_level == 0;
         *owner_level = source_level;
-        self.battle_dirty = true;
+        self.battle_dirty |= SKILL_DIRTY_LEVELS;
         if was_zero {
             self.active_order.retain(|lane| *lane != owner_idx);
             self.active_order.push(owner_idx);
@@ -1136,6 +1158,7 @@ impl SkillLoadout {
             self.post_damage_order.retain(|lane| *lane != owner_idx);
             self.post_damage_order.push(owner_idx);
             self.invalidate_hook_cache();
+            self.battle_dirty |= SKILL_DIRTY_ACTIVE_HOOKS | SKILL_DIRTY_POST_DAMAGE;
         }
         true
     }

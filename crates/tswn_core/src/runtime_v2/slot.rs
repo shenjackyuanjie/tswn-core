@@ -167,6 +167,17 @@ impl EntitySlotStorage {
         self.values.get_mut(id.0 as usize).and_then(Option::as_mut)
     }
 
+    /// 仅在蓝图队伍确实变化时写入并标脏，避免种子复位的只读命中触发整槽深拷贝。
+    pub(crate) fn update_player_template_team(&mut self, id: EntitySlotId, team: usize) {
+        let Some(Some(SlotValue::PlayerTemplate(template))) = self.values.get_mut(id.0 as usize) else {
+            return;
+        };
+        if template.team != team {
+            template.team = team;
+            self.battle_dirty = true;
+        }
+    }
+
     pub(crate) fn remove(&mut self, id: EntitySlotId) -> Option<SlotValue> {
         let removed = self.values.get_mut(id.0 as usize).and_then(Option::take);
         self.battle_dirty |= removed.is_some();
@@ -270,5 +281,25 @@ mod tests {
             entity_slots.set(EntitySlotId(1), SlotValue::Bool(true)),
             Err(SlotError::InvalidEntitySlot(EntitySlotId(1)))
         );
+    }
+
+    #[test]
+    fn unchanged_blueprint_team_does_not_mark_entity_slots_dirty() {
+        let slot = EntitySlotId(0);
+        let mut slots = EntitySlotStorage::with_len(1);
+        slots
+            .set(
+                slot,
+                SlotValue::PlayerTemplate(Box::new(PlayerTemplate::new(1, "blueprint", 2, 10, 3))),
+            )
+            .unwrap();
+        slots.mark_battle_baseline();
+
+        slots.update_player_template_team(slot, 2);
+        assert!(!slots.battle_dirty);
+
+        slots.update_player_template_team(slot, 3);
+        assert!(slots.battle_dirty);
+        assert!(matches!(slots.get(slot), Some(SlotValue::PlayerTemplate(template)) if template.team == 3));
     }
 }
