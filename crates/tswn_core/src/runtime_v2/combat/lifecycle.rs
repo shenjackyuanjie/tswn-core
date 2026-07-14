@@ -1,4 +1,5 @@
 use super::*;
+use smallvec::SmallVec;
 
 const NO_EXTENSION_CAPABILITIES: &[ExtensionCapability] = &[];
 const READ_ALLIES_CAPABILITY: &[ExtensionCapability] = &[ExtensionCapability::ReadAllies];
@@ -409,11 +410,13 @@ impl CombatRuntime {
         action_smart: Option<bool>,
     ) -> bool {
         let mut action_intercepted = false;
-        let mut entries = plan.entries.clone();
+        let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 8]>>;
         let mut store_generation = plan.store_generation;
         let mut cursor = 0usize;
-        let mut executed_legacy_keys = Vec::new();
-        while let Some(entry) = entries.get(cursor).copied() {
+        let mut executed_legacy_keys = SmallVec::<[u32; 8]>::new();
+        loop {
+            let entry = rebuilt_entries.as_ref().unwrap_or(&plan.entries).get(cursor).copied();
+            let Some(entry) = entry else { break };
             cursor += 1;
             if executed_legacy_keys.contains(&entry.legacy_order_key) {
                 continue;
@@ -425,12 +428,14 @@ impl CombatRuntime {
                 .is_none()
             {
                 let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);
-                entries = rebuilt.entries;
                 store_generation = rebuilt.store_generation;
-                cursor = entries
+                rebuilt_entries = Some(rebuilt.entries);
+                cursor = rebuilt_entries
+                    .as_ref()
+                    .expect("刚重建的状态计划必须存在")
                     .iter()
                     .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
-                    .unwrap_or(entries.len());
+                    .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
                 continue;
             }
 
@@ -472,12 +477,14 @@ impl CombatRuntime {
             let current_generation = self.entities.get(entry.owner).map(|entity| entity.states.generation());
             if current_generation != Some(store_generation) {
                 let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);
-                entries = rebuilt.entries;
                 store_generation = rebuilt.store_generation;
-                cursor = entries
+                rebuilt_entries = Some(rebuilt.entries);
+                cursor = rebuilt_entries
+                    .as_ref()
+                    .expect("刚重建的状态计划必须存在")
                     .iter()
                     .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
-                    .unwrap_or(entries.len());
+                    .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
             }
         }
         action_intercepted
@@ -535,11 +542,13 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
-        let mut entries = plan.entries.clone();
+        let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 8]>>;
         let mut store_generation = plan.store_generation;
         let mut cursor = 0usize;
-        let mut executed_legacy_keys = Vec::new();
-        while let Some(entry) = entries.get(cursor).copied() {
+        let mut executed_legacy_keys = SmallVec::<[u32; 8]>::new();
+        loop {
+            let entry = rebuilt_entries.as_ref().unwrap_or(&plan.entries).get(cursor).copied();
+            let Some(entry) = entry else { break };
             cursor += 1;
             if executed_legacy_keys.contains(&entry.legacy_order_key) {
                 continue;
@@ -551,12 +560,14 @@ impl CombatRuntime {
                 .is_none()
             {
                 let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);
-                entries = rebuilt.entries;
                 store_generation = rebuilt.store_generation;
-                cursor = entries
+                rebuilt_entries = Some(rebuilt.entries);
+                cursor = rebuilt_entries
+                    .as_ref()
+                    .expect("刚重建的状态计划必须存在")
                     .iter()
                     .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
-                    .unwrap_or(entries.len());
+                    .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
                 continue;
             }
 
@@ -568,12 +579,14 @@ impl CombatRuntime {
             let current_generation = self.entities.get(entry.owner).map(|entity| entity.states.generation());
             if current_generation != Some(store_generation) {
                 let rebuilt = self.scheduler.state_hook_plan(&self.entities, entry.owner, plan.hook);
-                entries = rebuilt.entries;
                 store_generation = rebuilt.store_generation;
-                cursor = entries
+                rebuilt_entries = Some(rebuilt.entries);
+                cursor = rebuilt_entries
+                    .as_ref()
+                    .expect("刚重建的状态计划必须存在")
                     .iter()
                     .position(|candidate| !executed_legacy_keys.contains(&candidate.legacy_order_key))
-                    .unwrap_or(entries.len());
+                    .unwrap_or_else(|| rebuilt_entries.as_ref().expect("刚重建的状态计划必须存在").len());
             }
         }
     }

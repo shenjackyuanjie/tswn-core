@@ -232,50 +232,52 @@ impl PhaseScheduler {
         let entity = entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime_v2 skill owner entity: {}", owner.0));
+        let skills = &entity.template.skills;
         let mut entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
-        if let Some(cached_entries) = entity.template.skills.cached_hook_entries(hook) {
-            entries.extend(cached_entries.iter().filter_map(|entry| {
-                (entity.template.skills.level_at(entry.fixed_lane) != Some(0)).then_some(SkillHookPlanEntry {
-                    owner,
-                    skill_id: entry.skill_id,
-                    target_policy: entry.target_policy,
-                    priority: entry.priority,
-                    active_order: entry.active_order,
-                    fixed_lane: entry.fixed_lane,
-                    registration_order: entry.registration_order,
-                })
-            }));
-        } else {
-            entries.extend(entity.template.skills.active_order().iter().enumerate().filter_map(|lane| {
-                let (active_order, lane) = lane;
-                if entity.template.skills.level_at(*lane) == Some(0) {
-                    return None;
+        if let Some(cached_entries) = skills.cached_hook_entries(hook) {
+            for entry in cached_entries {
+                if skills.level_at(entry.fixed_lane) != Some(0) {
+                    entries.push(SkillHookPlanEntry {
+                        owner,
+                        skill_id: entry.skill_id,
+                        target_policy: entry.target_policy,
+                        priority: entry.priority,
+                        active_order: entry.active_order,
+                        fixed_lane: entry.fixed_lane,
+                        registration_order: entry.registration_order,
+                    });
                 }
-                let skill_id = entity
-                    .template
-                    .skills
+            }
+        } else {
+            for (active_order, &fixed_lane) in skills.active_order().iter().enumerate() {
+                if skills.level_at(fixed_lane) == Some(0) {
+                    continue;
+                }
+                let skill_id = skills
                     .skills()
-                    .get(*lane)
-                    .unwrap_or_else(|| panic!("runtime_v2 skill active order references missing lane: {lane}"));
+                    .get(fixed_lane)
+                    .unwrap_or_else(|| panic!("runtime_v2 skill active order references missing lane: {fixed_lane}"));
                 let spec = registry
                     .skill(*skill_id)
                     .unwrap_or_else(|| panic!("unknown runtime_v2 skill id in loadout: {}", skill_id.0));
-                spec.hook_mask.intersects(hook).then_some(SkillHookPlanEntry {
-                    owner,
-                    skill_id: spec.id,
-                    target_policy: spec.target_policy,
-                    priority: spec.priority,
-                    active_order,
-                    fixed_lane: *lane,
-                    registration_order: spec.registration_order,
-                })
-            }));
+                if spec.hook_mask.intersects(hook) {
+                    entries.push(SkillHookPlanEntry {
+                        owner,
+                        skill_id: spec.id,
+                        target_policy: spec.target_policy,
+                        priority: spec.priority,
+                        active_order,
+                        fixed_lane,
+                        registration_order: spec.registration_order,
+                    });
+                }
+            }
             entries.sort_by_key(|entry| (entry.priority, entry.active_order, entry.registration_order));
         }
         SkillHookPlan {
             owner,
             hook,
-            loadout_len: entity.template.skills.len(),
+            loadout_len: skills.len(),
             entries,
         }
     }
@@ -315,7 +317,6 @@ impl PhaseScheduler {
         registry: &ExtensionRegistry,
         owner: EntityIdx,
     ) -> SkillPostActionPlans {
-        let plan = self.skill_hook_plan(entities, registry, owner, ProcMask::POST_ACTION);
         let skills = &entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime_v2 post-action skill owner entity: {}", owner.0))
@@ -323,31 +324,61 @@ impl PhaseScheduler {
             .skills;
         let deferred_lanes = skills.post_action_after_states();
         let mut deferred = SmallVec::<[(u64, SkillHookPlanEntry); 4]>::new();
-        for (cursor, fixed_lane) in deferred_lanes {
-            let Some(entry) = plan.entries.iter().find(|entry| entry.fixed_lane == *fixed_lane).copied() else {
-                continue;
-            };
-            if registry
-                .skill(entry.skill_id)
-                .is_some_and(|spec| spec.post_action_phase == SkillPostActionPhase::Early)
-            {
-                deferred.push((*cursor, entry));
-            }
-        }
-
         let mut early_entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
         let mut late_entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
-        for entry in plan.entries {
-            let phase = registry
-                .skill(entry.skill_id)
-                .map(|spec| spec.post_action_phase)
-                .unwrap_or(SkillPostActionPhase::Early);
-            match phase {
-                SkillPostActionPhase::Early if !deferred_lanes.iter().any(|(_, fixed_lane)| *fixed_lane == entry.fixed_lane) => {
-                    early_entries.push(entry);
+
+        if let Some(cached_entries) = skills.cached_hook_entries(ProcMask::POST_ACTION) {
+            for cached in cached_entries {
+                if skills.level_at(cached.fixed_lane) == Some(0) {
+                    continue;
                 }
-                SkillPostActionPhase::Early => {}
-                SkillPostActionPhase::Late => late_entries.push(entry),
+                let entry = SkillHookPlanEntry {
+                    owner,
+                    skill_id: cached.skill_id,
+                    target_policy: cached.target_policy,
+                    priority: cached.priority,
+                    active_order: cached.active_order,
+                    fixed_lane: cached.fixed_lane,
+                    registration_order: cached.registration_order,
+                };
+                match cached.post_action_phase {
+                    SkillPostActionPhase::Early => {
+                        if let Some((cursor, _)) = deferred_lanes.iter().find(|(_, lane)| *lane == cached.fixed_lane) {
+                            deferred.push((*cursor, entry));
+                        } else {
+                            early_entries.push(entry);
+                        }
+                    }
+                    SkillPostActionPhase::Late => late_entries.push(entry),
+                }
+            }
+        } else {
+            let plan = self.skill_hook_plan(entities, registry, owner, ProcMask::POST_ACTION);
+            for (cursor, fixed_lane) in deferred_lanes {
+                let Some(entry) = plan.entries.iter().find(|entry| entry.fixed_lane == *fixed_lane).copied() else {
+                    continue;
+                };
+                let spec = registry
+                    .skill(entry.skill_id)
+                    .unwrap_or_else(|| panic!("unknown runtime_v2 post-action skill id: {}", entry.skill_id.0));
+                if spec.post_action_phase == SkillPostActionPhase::Early {
+                    deferred.push((*cursor, entry));
+                }
+            }
+            for entry in plan.entries {
+                let phase = registry
+                    .skill(entry.skill_id)
+                    .map(|spec| spec.post_action_phase)
+                    .unwrap_or(SkillPostActionPhase::Early);
+                match phase {
+                    SkillPostActionPhase::Early
+                        if !deferred_lanes.iter().any(|(_, fixed_lane)| *fixed_lane == entry.fixed_lane) =>
+                    {
+                        early_entries.push(entry);
+                    }
+                    SkillPostActionPhase::Early => {}
+                    SkillPostActionPhase::Late => late_entries.push(entry),
+                }
             }
         }
 
@@ -411,11 +442,12 @@ impl PhaseScheduler {
                 entries: SmallVec::new(),
             };
         }
-        let entries = entity
-            .states
-            .entries_in_hook_order_for(hook)
-            .into_iter()
-            .map(|entry| StateHookPlanEntry {
+        let mut entries = SmallVec::<[StateHookPlanEntry; 8]>::new();
+        for entry in entity.states.entries() {
+            if !entry.hook_mask.intersects(hook) {
+                continue;
+            }
+            entries.push(StateHookPlanEntry {
                 owner,
                 state_id: entry.extension_state_id,
                 legacy_order_key: entry.legacy_order_key,
@@ -425,8 +457,9 @@ impl PhaseScheduler {
                     .states
                     .runtime_registration_order(entry.legacy_order_key)
                     .expect("runtime_v2 state hook entry must have a runtime registration order"),
-            })
-            .collect();
+            });
+        }
+        entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
         StateHookPlan {
             hook,
             store_generation: entity.states.generation(),

@@ -4,6 +4,7 @@
 
 ### 性能优化
 
+- 技能 hook 计划从 iterator/filter/collect 改为直接填充栈内条目，缓存同时携带 POST_ACTION early/late phase，普通行动后不再回查 registry 或先构造完整计划再分区；状态 hook 执行在 generation 未变化时直接借用调用方计划，仅真实增删状态后才接管重建计划，已执行 key 也改用栈内小数组。core 全量 586 项通过；fixed30/no_debug/13000 单线程三轮 overall 为 `30.871`、`30.778`、`30.819 us/battle`，中位相对上一阶段缩短约 4.2%，fight 中位从约 `29.152` 降至 `27.695 us/battle`，stress_multi 中位降至 `64.022 us/battle`，结果聚合保持 `150858`。
 - 冰冻、瘟疫、诅咒、复活、减速、附体、狂暴、加速、连击、魅惑、治疗、驱散、暗杀及狂暴强制攻击等 15 条目标选择热路径，改为直接借用存活 roster，并以栈内 `SmallVec` 保存跳过下标、去重候选与评分结果；公开 `Vec` 返回类型和随机数消费顺序保持不变，常见 1v1/2v2 从每次约 4～5 次临时堆分配降为最终结果的 1 次。core 全量 586 项通过；fixed30/no_debug/13000 单线程三轮 overall 为 `32.169`、`32.183`、`31.997 us/battle`，中位相对上一阶段再缩短约 0.5%，one_v_one 中位从 `10.379` 降至 `10.166 us/battle`，约缩短 2.1%，结果聚合保持 `150858`。
 - 实体槽位写入位图扩展为每槽 2 bit，区分蓝图队伍标量变化与完整槽值变化；固定 roster 在 seed 间切换 team 时只恢复 `PlayerTemplate::team`，不再深拷贝整份玩家蓝图和技能表，完整写入、删除与可变借用仍按原语义恢复。新增 team-only 回滚与第 65 号跨 word 槽位覆盖，core 全量 586 项通过；fixed30/no_debug/13000 单线程三轮 overall 为 `32.370`、`31.987`、`32.319 us/battle`，中位相对上一阶段再缩短约 3.6%，init 中位从 `4.537` 降至 `2.888 us/battle`，约缩短 36.4%，stress_multi 中位降至 `66.610 us/battle`，结果聚合保持 `150858`。
 - POST_ACTION 技能钩子按 early、状态间 deferred、late 一次扫描分区，并以 `SkillLoadout` hook 写入代数检测执行期间的等级、行动顺序或延迟注册变化；普通行动从三次完整计划构建降为一次，发生真实技能写入时仍按原语义重建后续分区。14 项钩子顺序回归与 core 全量测试通过；fixed30/no_debug/13000 单线程三轮 overall 为 `33.565`、`33.533`、`33.438 us/battle`，中位相对上一阶段缩短约 3.2%，fight 中位降至 `28.871 us/battle`，stress_multi 中位降至 `69.705 us/battle`，结果聚合保持 `150858`。

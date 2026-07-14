@@ -2,7 +2,7 @@ use crate::player::{MOVE_POINT_THRESHOLD, PlayerStatus, PlrId, skill::SkillBoost
 use crate::rc4::RC4;
 use crate::runtime_v2::extension::{
     DamageSharePolicy, MergePolicy, OwnerResolutionPolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask,
-    RegistrationOrder, SkillId, SkillPriority, StateId, TargetPolicy,
+    RegistrationOrder, SkillId, SkillPostActionPhase, SkillPriority, StateId, TargetPolicy,
 };
 use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
@@ -544,6 +544,7 @@ pub(crate) struct CachedSkillHookEntry {
     pub(crate) skill_id: SkillId,
     pub(crate) target_policy: TargetPolicy,
     pub(crate) priority: SkillPriority,
+    pub(crate) post_action_phase: SkillPostActionPhase,
     pub(crate) active_order: usize,
     pub(crate) fixed_lane: usize,
     pub(crate) registration_order: RegistrationOrder,
@@ -557,6 +558,7 @@ pub(crate) struct ScoreSkillHookPlanEntry {
     pub(crate) skill_id: SkillId,
     pub(crate) target_policy: TargetPolicy,
     pub(crate) priority: SkillPriority,
+    pub(crate) post_action_phase: SkillPostActionPhase,
     pub(crate) registration_order: RegistrationOrder,
 }
 
@@ -809,6 +811,7 @@ impl SkillLoadout {
                 skill_id: plan.skill_id,
                 target_policy: plan.target_policy,
                 priority: plan.priority,
+                post_action_phase: plan.post_action_phase,
                 active_order,
                 fixed_lane,
                 registration_order: plan.registration_order,
@@ -893,6 +896,7 @@ impl SkillLoadout {
                     skill_id: spec.id,
                     target_policy: spec.target_policy,
                     priority: spec.priority,
+                    post_action_phase: spec.post_action_phase,
                     active_order,
                     fixed_lane,
                     registration_order: spec.registration_order,

@@ -327,6 +327,7 @@ impl PlainLegacySkillImportMap {
                     skill_id: spec.id,
                     target_policy: spec.target_policy,
                     priority: spec.priority,
+                    post_action_phase: spec.post_action_phase,
                     registration_order: spec.registration_order,
                 });
             }
