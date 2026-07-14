@@ -4,6 +4,7 @@
 
 ### 性能优化
 
+- 实体槽位写入位图扩展为每槽 2 bit，区分蓝图队伍标量变化与完整槽值变化；固定 roster 在 seed 间切换 team 时只恢复 `PlayerTemplate::team`，不再深拷贝整份玩家蓝图和技能表，完整写入、删除与可变借用仍按原语义恢复。新增 team-only 回滚与第 65 号跨 word 槽位覆盖，core 全量 586 项通过；fixed30/no_debug/13000 单线程三轮 overall 为 `32.370`、`31.987`、`32.319 us/battle`，中位相对上一阶段再缩短约 3.6%，init 中位从 `4.537` 降至 `2.888 us/battle`，约缩短 36.4%，stress_multi 中位降至 `66.610 us/battle`，结果聚合保持 `150858`。
 - POST_ACTION 技能钩子按 early、状态间 deferred、late 一次扫描分区，并以 `SkillLoadout` hook 写入代数检测执行期间的等级、行动顺序或延迟注册变化；普通行动从三次完整计划构建降为一次，发生真实技能写入时仍按原语义重建后续分区。14 项钩子顺序回归与 core 全量测试通过；fixed30/no_debug/13000 单线程三轮 overall 为 `33.565`、`33.533`、`33.438 us/battle`，中位相对上一阶段缩短约 3.2%，fight 中位降至 `28.871 us/battle`，stress_multi 中位降至 `69.705 us/battle`，结果聚合保持 `150858`。
 - 实体槽位的场内写入改用可扩展的 64-bit word 位图逐槽记录；召唤编号或计数器变化时，下一场只恢复对应标量槽，不再连带深拷贝同表蓝图，并覆盖第 65 号扩展槽位跨 word 复位。fixed30/no_debug/13000 单线程三轮 overall 为 `34.649`、`34.558`、`34.866 us/battle`，中位相对上一阶段再缩短约 0.6%；init 中位从 `4.898` 降至 `4.626 us/battle`，约缩短 5.6%，结果聚合保持 `150858`。
 - `SkillLoadout` 的场内写标记细分为等级、强化、行动/hook、行动前、受伤后与延迟钩子六组，只复位真正变化的 SmallVec；固定 roster 的种子应用改为仅在召唤蓝图 team 实际变化时标脏实体槽，避免普通复位误触发三份 `PlayerTemplate + SkillLoadout` 深拷贝。新增逐字段组复位、蓝图无变化不标脏与 200 轮复用 runner 对账；fixed30/no_debug/13000 单线程三轮 overall 为 `34.851`、`35.110`、`34.690 us/battle`，中位相对上一阶段约 `36.405` 再缩短 4.3%，init 中位降至 `4.898 us/battle`，stress_multi 中位降至 `72.650 us/battle`，结果聚合保持 `150858`。

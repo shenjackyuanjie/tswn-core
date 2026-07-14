@@ -124,11 +124,15 @@ impl BattleSlotStorage {
     pub fn is_empty(&self) -> bool { self.values.is_empty() }
 }
 
+const ENTITY_SLOT_DIRTY_TEAM: u64 = 1;
+const ENTITY_SLOT_DIRTY_VALUE: u64 = 2;
+const ENTITY_SLOTS_PER_DIRTY_WORD: usize = 32;
+
 #[derive(Debug, Clone)]
 pub struct EntitySlotStorage {
     values: Vec<Option<SlotValue>>,
     baseline_id: u64,
-    /// 每 64 个槽位共用一个写入位图；默认 core 槽位只占一个栈内 word。
+    /// 每槽 2 bit 区分蓝图 team-only 与完整值写入；默认 core 槽位只占一个栈内 word。
     battle_dirty_words: SmallVec<[u64; 1]>,
 }
 
@@ -149,7 +153,7 @@ impl EntitySlotStorage {
         Self {
             values: vec![None; len],
             baseline_id: next_slot_baseline_id(),
-            battle_dirty_words: std::iter::repeat_n(0, len.div_ceil(64)).collect(),
+            battle_dirty_words: std::iter::repeat_n(0, len.div_ceil(ENTITY_SLOTS_PER_DIRTY_WORD)).collect(),
         }
     }
 
@@ -158,7 +162,7 @@ impl EntitySlotStorage {
         if index >= self.values.len() {
             return Err(SlotError::InvalidEntitySlot(id));
         }
-        self.mark_battle_dirty(index);
+        self.mark_battle_dirty(index, ENTITY_SLOT_DIRTY_VALUE);
         self.values[index] = Some(value);
         Ok(())
     }
@@ -170,7 +174,7 @@ impl EntitySlotStorage {
         if !self.values.get(index).is_some_and(Option::is_some) {
             return None;
         }
-        self.mark_battle_dirty(index);
+        self.mark_battle_dirty(index, ENTITY_SLOT_DIRTY_VALUE);
         self.values[index].as_mut()
     }
 
@@ -181,7 +185,7 @@ impl EntitySlotStorage {
         };
         if template.team != team {
             template.team = team;
-            self.mark_battle_dirty(id.0 as usize);
+            self.mark_battle_dirty(id.0 as usize, ENTITY_SLOT_DIRTY_TEAM);
         }
     }
 
@@ -189,7 +193,7 @@ impl EntitySlotStorage {
         let index = id.0 as usize;
         let removed = self.values.get_mut(index).and_then(Option::take);
         if removed.is_some() {
-            self.mark_battle_dirty(index);
+            self.mark_battle_dirty(index, ENTITY_SLOT_DIRTY_VALUE);
         }
         removed
     }
@@ -197,7 +201,7 @@ impl EntitySlotStorage {
     pub fn clear(&mut self) {
         for index in 0..self.values.len() {
             if self.values[index].take().is_some() {
-                self.mark_battle_dirty(index);
+                self.mark_battle_dirty(index, ENTITY_SLOT_DIRTY_VALUE);
             }
         }
     }
@@ -217,16 +221,31 @@ impl EntitySlotStorage {
         for word_index in 0..self.battle_dirty_words.len() {
             let mut dirty = std::mem::take(&mut self.battle_dirty_words[word_index]);
             while dirty != 0 {
-                let bit = dirty.trailing_zeros() as usize;
-                let index = word_index * 64 + bit;
-                self.values[index].clone_from(&prepared.values[index]);
-                dirty &= dirty - 1;
+                let local_index = dirty.trailing_zeros() as usize / 2;
+                let shift = local_index * 2;
+                let flags = (dirty >> shift) & 3;
+                let index = word_index * ENTITY_SLOTS_PER_DIRTY_WORD + local_index;
+                if flags & ENTITY_SLOT_DIRTY_VALUE != 0 {
+                    self.values[index].clone_from(&prepared.values[index]);
+                } else if flags & ENTITY_SLOT_DIRTY_TEAM != 0 {
+                    let (Some(SlotValue::PlayerTemplate(current)), Some(SlotValue::PlayerTemplate(prepared))) =
+                        (self.values[index].as_mut(), prepared.values[index].as_ref())
+                    else {
+                        unreachable!("team-only 实体槽必须保留玩家蓝图")
+                    };
+                    current.team = prepared.team;
+                }
+                dirty &= !(3u64 << shift);
             }
         }
     }
 
     #[inline]
-    fn mark_battle_dirty(&mut self, index: usize) { self.battle_dirty_words[index / 64] |= 1u64 << (index % 64); }
+    fn mark_battle_dirty(&mut self, index: usize, flags: u64) {
+        let word = index / ENTITY_SLOTS_PER_DIRTY_WORD;
+        let shift = (index % ENTITY_SLOTS_PER_DIRTY_WORD) * 2;
+        self.battle_dirty_words[word] |= flags << shift;
+    }
 
     fn has_battle_dirty(&self) -> bool { self.battle_dirty_words.iter().any(|word| *word != 0) }
 
@@ -315,6 +334,7 @@ mod tests {
             )
             .unwrap();
         slots.mark_battle_baseline();
+        let prepared = slots.clone();
 
         slots.update_player_template_team(slot, 2);
         assert!(!slots.has_battle_dirty());
@@ -322,6 +342,9 @@ mod tests {
         slots.update_player_template_team(slot, 3);
         assert!(slots.has_battle_dirty());
         assert!(matches!(slots.get(slot), Some(SlotValue::PlayerTemplate(template)) if template.team == 3));
+        slots.reset_battle_state_from(&prepared);
+        assert!(matches!(slots.get(slot), Some(SlotValue::PlayerTemplate(template)) if template.team == 2));
+        assert!(!slots.has_battle_dirty());
     }
 
     #[test]
@@ -335,7 +358,7 @@ mod tests {
         let mut current = prepared.clone();
 
         current.set(high, SlotValue::U64(9)).unwrap();
-        assert_eq!(current.battle_dirty_words.as_slice(), &[0, 2]);
+        assert_eq!(current.battle_dirty_words.as_slice(), &[0, 0, 8]);
         current.reset_battle_state_from(&prepared);
 
         assert_eq!(current, prepared);
