@@ -41,6 +41,11 @@ path = "src/bin/track_perf_cases.rs"
 required-features = ["aux_bins"]
 
 [[bin]]
+name = "track_score_perf"
+path = "src/bin/track_score_perf.rs"
+required-features = ["aux_bins"]
+
+[[bin]]
 name = "track_test"
 path = "src/bin/track_test.rs"
 required-features = ["aux_bins"]
