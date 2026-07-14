@@ -32,6 +32,14 @@ pub struct SkillHookPlan {
     pub entries: SmallVec<[SkillHookPlanEntry; 8]>,
 }
 
+#[derive(Debug)]
+pub(crate) struct SkillPostActionPlans {
+    pub(crate) generation: u32,
+    pub(crate) early: SkillHookPlan,
+    pub(crate) deferred: SmallVec<[(u64, SkillHookPlanEntry); 4]>,
+    pub(crate) late: SkillHookPlan,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StateHookPlanEntry {
     pub owner: EntityIdx,
@@ -297,6 +305,69 @@ impl PhaseScheduler {
                 .retain(|entry| !deferred_lanes.iter().any(|(_, fixed_lane)| *fixed_lane == entry.fixed_lane));
         }
         plan
+    }
+
+    /// 一次扫描 POST_ACTION 缓存并分成即时、状态间穿插和末尾三段。
+    /// 调用方用 generation 判断执行期间是否发生技能写入，再按需重建。
+    pub(crate) fn skill_post_action_plans(
+        &self,
+        entities: &EntityArena,
+        registry: &ExtensionRegistry,
+        owner: EntityIdx,
+    ) -> SkillPostActionPlans {
+        let plan = self.skill_hook_plan(entities, registry, owner, ProcMask::POST_ACTION);
+        let skills = &entities
+            .get(owner)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 post-action skill owner entity: {}", owner.0))
+            .template
+            .skills;
+        let deferred_lanes = skills.post_action_after_states();
+        let mut deferred = SmallVec::<[(u64, SkillHookPlanEntry); 4]>::new();
+        for (cursor, fixed_lane) in deferred_lanes {
+            let Some(entry) = plan.entries.iter().find(|entry| entry.fixed_lane == *fixed_lane).copied() else {
+                continue;
+            };
+            if registry
+                .skill(entry.skill_id)
+                .is_some_and(|spec| spec.post_action_phase == SkillPostActionPhase::Early)
+            {
+                deferred.push((*cursor, entry));
+            }
+        }
+
+        let mut early_entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
+        let mut late_entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
+        for entry in plan.entries {
+            let phase = registry
+                .skill(entry.skill_id)
+                .map(|spec| spec.post_action_phase)
+                .unwrap_or(SkillPostActionPhase::Early);
+            match phase {
+                SkillPostActionPhase::Early if !deferred_lanes.iter().any(|(_, fixed_lane)| *fixed_lane == entry.fixed_lane) => {
+                    early_entries.push(entry);
+                }
+                SkillPostActionPhase::Early => {}
+                SkillPostActionPhase::Late => late_entries.push(entry),
+            }
+        }
+
+        let loadout_len = skills.len();
+        SkillPostActionPlans {
+            generation: skills.hook_generation(),
+            early: SkillHookPlan {
+                owner,
+                hook: ProcMask::POST_ACTION,
+                loadout_len,
+                entries: early_entries,
+            },
+            deferred,
+            late: SkillHookPlan {
+                owner,
+                hook: ProcMask::POST_ACTION,
+                loadout_len,
+                entries: late_entries,
+            },
+        }
     }
 
     pub fn deferred_skill_post_action_entries(

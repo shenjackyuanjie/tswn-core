@@ -236,20 +236,22 @@ impl CombatRuntime {
     }
 
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
-        let early_skill_plan =
-            self.scheduler
-                .skill_post_action_hook_plan(&self.entities, &self.registry, owner, SkillPostActionPhase::Early);
-        self.drain_skill_hook_plan_into(&early_skill_plan, updates);
-
-        let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
-        let deferred_entries = self.scheduler.deferred_skill_post_action_entries(&self.entities, &self.registry, owner);
-        let loadout_len = self
+        let mut skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+        self.drain_skill_hook_plan_into(&skill_plans.early, updates);
+        let generation_after_early = self
             .entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime_v2 post-action owner entity: {}", owner.0))
             .template
             .skills
-            .len();
+            .hook_generation();
+        if generation_after_early != skill_plans.generation {
+            skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+        }
+
+        let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
+        let deferred_entries = &skill_plans.deferred;
+        let loadout_len = skill_plans.early.loadout_len;
         let mut deferred_idx = 0usize;
         let mut deferred_owner_state_clears = Vec::new();
         for state_entry in state_plan.entries.iter().copied() {
@@ -294,10 +296,17 @@ impl CombatRuntime {
         self.flush_deferred_owner_state_clears(owner, &deferred_owner_state_clears);
 
         // Charge 以及 Haste、Slow 的尾阶段必须继续晚于状态和中途注册的 early 技能。
-        let late_skill_plan =
-            self.scheduler
-                .skill_post_action_hook_plan(&self.entities, &self.registry, owner, SkillPostActionPhase::Late);
-        self.drain_skill_hook_plan_into(&late_skill_plan, updates);
+        let generation_after_states = self
+            .entities
+            .get(owner)
+            .unwrap_or_else(|| panic!("unknown runtime_v2 post-action owner entity: {}", owner.0))
+            .template
+            .skills
+            .hook_generation();
+        if generation_after_states != skill_plans.generation {
+            skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
+        }
+        self.drain_skill_hook_plan_into(&skill_plans.late, updates);
     }
 
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {

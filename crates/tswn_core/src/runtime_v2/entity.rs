@@ -588,6 +588,8 @@ pub struct SkillLoadout {
     baseline_id: u64,
     /// 按字段组记录本局写入，只复位真正变化过的 SmallVec 和 hook 缓存。
     battle_dirty: u8,
+    /// 会改变技能钩子计划的写入代数，用于同一行动内安全复用 POST_ACTION 分区。
+    hook_generation: u32,
 }
 
 impl Default for SkillLoadout {
@@ -609,6 +611,7 @@ impl Default for SkillLoadout {
             hook_cache_ready: false,
             baseline_id: next_skill_loadout_baseline_id(),
             battle_dirty: 0,
+            hook_generation: 0,
         }
     }
 }
@@ -659,6 +662,7 @@ impl SkillLoadout {
             hook_cache_ready: false,
             baseline_id: next_skill_loadout_baseline_id(),
             battle_dirty: 0,
+            hook_generation: 0,
         }
     }
 
@@ -688,6 +692,7 @@ impl SkillLoadout {
             hook_cache_ready: false,
             baseline_id: next_skill_loadout_baseline_id(),
             battle_dirty: 0,
+            hook_generation: 0,
         }
     }
 
@@ -730,6 +735,7 @@ impl SkillLoadout {
             hook_cache_ready: false,
             baseline_id: next_skill_loadout_baseline_id(),
             battle_dirty: 0,
+            hook_generation: 0,
         }
     }
 
@@ -814,10 +820,14 @@ impl SkillLoadout {
         }
         self.finish_hook_cache_offsets();
         self.battle_dirty = 0;
+        self.hook_generation = 0;
     }
 
     /// 将当前技能表封为可复用 runner 的场前基线。
-    pub(crate) fn mark_battle_baseline(&mut self) { self.battle_dirty = 0; }
+    pub(crate) fn mark_battle_baseline(&mut self) {
+        self.battle_dirty = 0;
+        self.hook_generation = 0;
+    }
 
     /// 恢复一场战斗会修改的技能字段；未发生修改时完全跳过 SmallVec 深拷贝。
     pub(crate) fn reset_battle_fields_from(&mut self, prepared: &Self) {
@@ -857,6 +867,7 @@ impl SkillLoadout {
             self.post_action_after_states.clone_from(&prepared.post_action_after_states);
         }
         self.battle_dirty = 0;
+        self.hook_generation = prepared.hook_generation;
     }
 
     /// 预计算八类技能钩子的稳定顺序，避免每次行动重复扫描并排序完整技能表。
@@ -952,7 +963,7 @@ impl SkillLoadout {
             return true;
         }
         *current = level;
-        self.battle_dirty |= SKILL_DIRTY_LEVELS;
+        self.mark_hook_mutation(SKILL_DIRTY_LEVELS);
         true
     }
 
@@ -963,6 +974,8 @@ impl SkillLoadout {
     pub fn post_damage_order(&self) -> &[usize] { &self.post_damage_order }
 
     pub fn post_action_after_states(&self) -> &[(u64, usize)] { &self.post_action_after_states }
+
+    pub(crate) const fn hook_generation(&self) -> u32 { self.hook_generation }
 
     pub fn is_empty(&self) -> bool { self.skills.is_empty() }
 
@@ -992,7 +1005,7 @@ impl SkillLoadout {
         self.active_order.retain(|lane| *lane != fixed_lane);
         if self.active_order.len() != before {
             self.invalidate_hook_cache();
-            self.battle_dirty |= SKILL_DIRTY_ACTIVE_HOOKS;
+            self.mark_hook_mutation(SKILL_DIRTY_ACTIVE_HOOKS);
         }
     }
 
@@ -1044,7 +1057,7 @@ impl SkillLoadout {
         }
         self.post_action_after_states.push((state_order_cursor, fixed_lane));
         self.post_action_after_states.sort_by_key(|(cursor, _)| *cursor);
-        self.battle_dirty |= SKILL_DIRTY_DEFERRED;
+        self.mark_hook_mutation(SKILL_DIRTY_DEFERRED);
     }
 
     pub fn ensure_pre_action_lane(&mut self, fixed_lane: usize) {
@@ -1097,7 +1110,7 @@ impl SkillLoadout {
             self.build_levels[lane] = base;
             self.boosts[lane] = Some(SkillBoost::LastBoost(base));
             self.boosted[lane] = true;
-            self.battle_dirty |= SKILL_DIRTY_LEVELS | SKILL_DIRTY_BOOSTS;
+            self.mark_hook_mutation(SKILL_DIRTY_LEVELS | SKILL_DIRTY_BOOSTS);
             return true;
         }
         false
@@ -1149,7 +1162,7 @@ impl SkillLoadout {
         }
         let was_zero = *owner_level == 0;
         *owner_level = source_level;
-        self.battle_dirty |= SKILL_DIRTY_LEVELS;
+        self.mark_hook_mutation(SKILL_DIRTY_LEVELS);
         if was_zero {
             self.active_order.retain(|lane| *lane != owner_idx);
             self.active_order.push(owner_idx);
@@ -1161,6 +1174,12 @@ impl SkillLoadout {
             self.battle_dirty |= SKILL_DIRTY_ACTIVE_HOOKS | SKILL_DIRTY_POST_DAMAGE;
         }
         true
+    }
+
+    #[inline]
+    fn mark_hook_mutation(&mut self, dirty: u8) {
+        self.battle_dirty |= dirty;
+        self.hook_generation = self.hook_generation.wrapping_add(1);
     }
 }
 

@@ -234,11 +234,14 @@ fn skill_loadout_resets_each_dirty_field_group_from_battle_baseline() {
         .with_pre_action_order([0])
         .with_post_damage_order([0, 1, 2, 3])
         .with_post_action_after_states([(1, 0)]);
+    let baseline_generation = prepared.hook_generation();
 
     let mut levels = prepared.clone();
     assert!(levels.set_level_at(0, 2));
+    assert_ne!(levels.hook_generation(), baseline_generation);
     levels.reset_battle_fields_from(&prepared);
     assert_eq!(levels, prepared);
+    assert_eq!(levels.hook_generation(), baseline_generation);
 
     let mut active_hooks = prepared.clone();
     active_hooks.disable_action_lane(3);
@@ -253,6 +256,7 @@ fn skill_loadout_resets_each_dirty_field_group_from_battle_baseline() {
     let mut pre_action = prepared.clone();
     pre_action.remove_pre_action_lane(0);
     pre_action.ensure_pre_action_lane(2);
+    assert_eq!(pre_action.hook_generation(), baseline_generation);
     pre_action.reset_battle_fields_from(&prepared);
     assert_eq!(pre_action, prepared);
 
