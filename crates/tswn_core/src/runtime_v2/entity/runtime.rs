@@ -164,6 +164,50 @@ impl PlayerRuntime {
         }
     }
 
+    /// 从标准数字 score profile 原地复位运行态，并保留保护链向量的容量。
+    pub(crate) fn reset_score_profile_from_template(
+        &mut self,
+        template: &PlayerTemplate,
+        owner: EntityIdx,
+        hp: i32,
+        alive: bool,
+    ) {
+        debug_assert_eq!(template.kind, PlayerTemplate::DEFAULT_KIND);
+        self.hp = hp;
+        self.alive = alive;
+        self.attack = template.attack;
+        self.magic = template.magic;
+        self.magic_point = template.magic_point;
+        self.wisdom = template.wisdom;
+        self.speed = template.speed;
+        self.defense = template.defense;
+        self.resistance = template.resistance;
+        self.agility = template.agility;
+        self.at_boost_bits = template.at_boost_bits;
+        self.at_boost_millionths = template.at_boost_millionths;
+        self.attr_sum = template.attr_sum;
+        self.atk_sum = template.atk_sum;
+        self.attract_bits = template.attract_bits;
+        self.kind = template.kind;
+        self.owner = owner;
+        self.root_owner = owner;
+        self.team = template.team;
+        self.flags = PlayerKindFlags::NONE;
+        self.policies = PlayerKindPolicies::default();
+        self.move_state = template.move_state;
+        self.charge = ChargeRuntime::default();
+        self.accumulate = AccumulateRuntime::default();
+        self.shield = 0;
+        self.protect_to = None;
+        self.protect_from.clear();
+        self.protect_pre_defend_skill_count = None;
+        self.upgrade_active = false;
+        self.hide = None;
+        self.assassinate = None;
+        self.counter = CounterRuntime::default();
+        self.corpse = RuntimeCorpseKind::None;
+    }
+
     pub fn at_boost(&self) -> f64 { f64::from_bits(self.at_boost_bits) }
 
     pub fn attract(&self) -> f64 { f64::from_bits(self.attract_bits) }
@@ -535,9 +579,9 @@ impl EntityArena {
         for (index, (current, prepared)) in self.entities.iter_mut().zip(&prepared.entities).enumerate() {
             match (current.as_mut(), prepared.as_ref()) {
                 (Some(current), Some(prepared)) if index < fixed_count => current.reset_battle_state_from(prepared),
-                (Some(current), Some(prepared)) => {
-                    current.states.clone_from(&prepared.states);
-                    current.slots.clone_from(&prepared.slots);
+                (Some(current), Some(_)) => {
+                    current.states.clear_score_profile_for_reuse();
+                    current.slots.clear();
                 }
                 _ => current.clone_from(prepared),
             }

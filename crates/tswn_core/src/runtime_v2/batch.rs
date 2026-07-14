@@ -13,7 +13,7 @@ use crate::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
 use super::{
     CustomRuntimeV2ImportError, DefaultCustomRuntimeV2ProfileError, PreparedRuntimeV2Runner, RuntimeV2Runner,
-    ScoreIdentityBuffer, SkillLoadout, default_custom_runtime_v2_import_config,
+    ScoreIdentityBuffer, ScoreRosterBuffers, ScoreRoundScratch, SkillLoadout, default_custom_runtime_v2_import_config,
 };
 
 const BATCH_PARALLEL_THRESHOLD: usize = 100;
@@ -286,6 +286,8 @@ fn run_score_round(
             &match_groups.profile_team_rng,
             &mut match_groups.skill_buffers,
             &mut match_groups.identity_buffers,
+            &mut match_groups.round_scratch,
+            &mut match_groups.roster_buffers,
             &[],
             eval_rq,
         )
@@ -330,6 +332,8 @@ struct ScoreMatchGroups {
     profile_team_rng: crate::rc4::RC4,
     skill_buffers: Vec<SkillLoadout>,
     identity_buffers: Vec<ScoreIdentityBuffer>,
+    round_scratch: ScoreRoundScratch,
+    roster_buffers: ScoreRosterBuffers,
 }
 
 impl ScoreMatchGroups {
@@ -378,6 +382,8 @@ impl ScoreMatchGroups {
             },
             skill_buffers: vec![SkillLoadout::default(); profile_count],
             identity_buffers: (0..profile_count).map(|_| ScoreIdentityBuffer::default()).collect(),
+            round_scratch: ScoreRoundScratch::default(),
+            roster_buffers: ScoreRosterBuffers::default(),
         };
         value.set_round(0);
         value
@@ -481,6 +487,8 @@ mod tests {
                 &match_groups.profile_team_rng,
                 &mut match_groups.skill_buffers,
                 &mut match_groups.identity_buffers,
+                &mut match_groups.round_scratch,
+                &mut match_groups.roster_buffers,
                 &[],
                 eval_rq,
             )

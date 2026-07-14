@@ -93,6 +93,30 @@ impl CloneBuildData {
         self
     }
 
+    /// 直接构造未叠加武器和名字系数的数字 score profile 分身数据。
+    pub(crate) fn from_score_profile(attrs: [u32; 8], child_name_factor: f64) -> Self {
+        Self {
+            attrs,
+            weapon_attr_bonus: [0; 8],
+            name_factor_bits: 0.0_f64.to_bits(),
+            child_name_factor_bits: child_name_factor.to_bits(),
+            adjustments: CloneStatAdjustments {
+                max_hp: 0,
+                attack: 0,
+                magic: 0,
+                wisdom: 0,
+                speed: 0,
+                defense: 0,
+                resistance: 0,
+                agility: 0,
+                at_boost_delta_bits: 0.0_f64.to_bits(),
+                attr_sum: 0,
+                atk_sum: 0,
+                attract_delta_bits: 0.0_f64.to_bits(),
+            },
+        }
+    }
+
     /// 返回子分身与召唤物已经计算好的名字系数，避免技能触发时重复解析名字。
     pub(crate) fn child_name_factor(&self) -> f64 { f64::from_bits(self.child_name_factor_bits) }
 
@@ -261,6 +285,53 @@ impl PlayerTemplate {
             move_state: MoveState::default(),
             policy_overrides: PlayerPolicyOverrides::default(),
             clone_build: None,
+            reuse_skills_on_recast: false,
+            reuse_stats_on_recast: false,
+            inherit_owner_def_res: false,
+        }
+    }
+
+    /// 消费已经回收的身份字符串，直接构造数字 score profile 模板。
+    pub(crate) fn from_score_profile(
+        id: PlrId,
+        name: String,
+        id_key_name: String,
+        clan_name: String,
+        display_name: String,
+        team: usize,
+        status: &PlayerStatus,
+        skills: SkillLoadout,
+        clone_build: CloneBuildData,
+    ) -> Self {
+        debug_assert!(status.max_hp > 0);
+        debug_assert!(status.attack >= 0);
+        Self {
+            id,
+            reserved_player_ids_before_spawn: 0,
+            name,
+            id_key_name,
+            clan_name,
+            display_name,
+            kind: Self::DEFAULT_KIND,
+            skills,
+            team,
+            max_hp: status.max_hp,
+            attack: status.attack,
+            magic: status.magic,
+            magic_point: status.magic_point,
+            wisdom: status.wisdom,
+            speed: status.speed,
+            defense: status.defense,
+            resistance: status.resistance,
+            agility: status.agility,
+            at_boost_bits: status.at_boost.to_bits(),
+            at_boost_millionths: at_boost_to_millionths(status.at_boost),
+            attr_sum: status.attr_sum,
+            atk_sum: status.atk_sum,
+            attract_bits: status.attract.to_bits(),
+            move_state: MoveState::default(),
+            policy_overrides: PlayerPolicyOverrides::default(),
+            clone_build: Some(clone_build),
             reuse_skills_on_recast: false,
             reuse_stats_on_recast: false,
             inherit_owner_def_res: false,
@@ -476,6 +547,17 @@ pub(crate) struct CachedSkillHookEntry {
     pub(crate) registration_order: RegistrationOrder,
 }
 
+/// 默认 score 技能表在 registry 构造期固化的 hook 元数据。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ScoreSkillHookPlanEntry {
+    pub(crate) legacy_key: usize,
+    pub(crate) hook_index: u8,
+    pub(crate) skill_id: SkillId,
+    pub(crate) target_policy: TargetPolicy,
+    pub(crate) priority: SkillPriority,
+    pub(crate) registration_order: RegistrationOrder,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct SkillLoadout {
     skills: SmallVec<[SkillId; 8]>,
@@ -613,6 +695,8 @@ impl SkillLoadout {
     pub(crate) fn reset_score_profile(
         &mut self,
         skill_ids: &[Option<SkillId>; 35],
+        hook_plan: &[ScoreSkillHookPlanEntry],
+        hook_plan_needs_active_sort: bool,
         levels: &[u32; 35],
         boosted: &[bool; 35],
         boosts: &[Option<SkillBoost>; 35],
@@ -647,9 +731,11 @@ impl SkillLoadout {
             self.merge_lane_order.push(lane);
         }
 
+        let mut active_position_by_key = [usize::MAX; 35];
         for &key in action_order {
             let key = key as usize;
             if key < lane_by_key.len() && lane_by_key[key] != usize::MAX {
+                active_position_by_key[key] = self.active_order.len();
                 self.active_order.push(lane_by_key[key]);
             }
         }
@@ -663,10 +749,35 @@ impl SkillLoadout {
                 self.post_damage_order.push(lane_by_key[key]);
             }
         }
+
+        for plan in hook_plan {
+            let fixed_lane = lane_by_key[plan.legacy_key];
+            let active_order = active_position_by_key[plan.legacy_key];
+            if fixed_lane == usize::MAX || active_order == usize::MAX {
+                continue;
+            }
+            self.hook_cache.push(CachedSkillHookEntry {
+                hook_index: plan.hook_index,
+                skill_id: plan.skill_id,
+                target_policy: plan.target_policy,
+                priority: plan.priority,
+                active_order,
+                fixed_lane,
+                registration_order: plan.registration_order,
+            });
+        }
+        if hook_plan_needs_active_sort {
+            self.hook_cache
+                .sort_by_key(|entry| (entry.hook_index, entry.priority, entry.active_order, entry.registration_order));
+        }
+        self.finish_hook_cache_offsets();
     }
 
     /// 预计算八类技能钩子的稳定顺序，避免每次行动重复扫描并排序完整技能表。
     pub(crate) fn prepare_hook_cache(&mut self, registry: &ExtensionRegistry) {
+        if self.hook_cache_ready {
+            return;
+        }
         self.hook_cache.clear();
         for (active_order, &fixed_lane) in self.active_order.iter().enumerate() {
             let skill_id = *self
@@ -693,6 +804,10 @@ impl SkillLoadout {
         }
         self.hook_cache
             .sort_by_key(|entry| (entry.hook_index, entry.priority, entry.active_order, entry.registration_order));
+        self.finish_hook_cache_offsets();
+    }
+
+    fn finish_hook_cache_offsets(&mut self) {
         let mut cursor = 0usize;
         for hook_index in 0..SKILL_HOOK_COUNT {
             self.hook_cache_offsets[hook_index] = u16::try_from(cursor).expect("runtime_v2 skill hook cache exceeds u16 range");

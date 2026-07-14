@@ -77,9 +77,8 @@ pub fn eval_str_common_with_rq(s: &str, ladder_version: bool, rq: f64) -> f64 {
     const COMMON: usize = 4;
     const ELSE: usize = 5;
 
-    // 按 UTF-16 码元遍历（与 JavaScript 完全一致）
-    let code_units: Vec<u16> = s.encode_utf16().collect();
-    for &code in &code_units {
+    // 直接遍历 UTF-16 码元，与 JavaScript 语义一致，同时避免每次评估分配临时向量。
+    for code in s.encode_utf16() {
         if code == 32 {
             // ASCII 空格
             space_count += 1;

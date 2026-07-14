@@ -600,6 +600,17 @@ pub struct StateStore {
 impl StateStore {
     pub fn entries(&self) -> &[StateEntry] { &self.entries }
 
+    /// 清空数字 score profile 的战斗状态，同时保留 SmallVec 与 HashMap 容量。
+    pub(crate) fn clear_score_profile_for_reuse(&mut self) {
+        self.entries.clear();
+        self.hook_mask = ProcMask::NONE;
+        self.generation = 0;
+        self.index.clear();
+        self.runtime_registration_orders.clear();
+        self.next_runtime_registration_order = 0;
+        self.compressed_legacy_states = 0;
+    }
+
     pub fn hook_mask(&self) -> ProcMask { self.hook_mask }
 
     pub fn generation(&self) -> u32 { self.generation }

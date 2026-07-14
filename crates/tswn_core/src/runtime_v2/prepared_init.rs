@@ -82,6 +82,29 @@ pub(crate) struct ScoreIdentityBuffer {
     pub(crate) display_name: String,
 }
 
+/// score 每轮构造动态 profile 时复用的临时向量。
+#[derive(Default)]
+pub(crate) struct ScoreRoundScratch {
+    dynamic_inputs: Vec<(usize, usize, usize)>,
+    dynamic_groups: Vec<Vec<usize>>,
+    name_keys: Vec<[u8; crate::player::NAME_MAX_LEN + 1]>,
+    name_lengths: Vec<usize>,
+    profile_rngs: Vec<RC4>,
+    dynamic_profiles: Vec<ScoreProfileBuild>,
+    team_by_player: Vec<usize>,
+}
+
+/// score roster 构造与应用完成后交还下一轮的输出向量。
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ScoreRosterBuffers {
+    players: Vec<Option<PreparedPlayerInit>>,
+    player_alive: Vec<bool>,
+    input_groups: Vec<Vec<PlrId>>,
+    base_names_sorted: Vec<String>,
+    id_key_names: Vec<String>,
+    sorted_by_id_name: Vec<PlrId>,
+}
+
 impl ScoreProfileBuild {
     fn from_rng(id: PlrId, name: String, clan_name: String, mut rand: RC4) -> Self {
         let mut name_base = [0u8; 128];
@@ -129,8 +152,6 @@ impl ScoreProfileBuild {
             test_ex,
         }
     }
-
-    fn id_key_name(&self) -> String { format!("{}@{}", self.name, self.clan_name) }
 
     fn upgrade_from(&mut self, other: &Self) {
         if self.test_ex {
@@ -235,8 +256,7 @@ impl ScoreProfileBuild {
             let factor_team = crate::player::eval_name::eval_str_common_with_rq(&self.clan_name, true, eval_rq);
             factor_name.max(factor_team - 6.0)
         };
-        let clone_build =
-            CloneBuildData::from_legacy(attrs, [0; 8], 0.0, &status).with_child_name_factor(child_clone_name_factor);
+        let clone_build = CloneBuildData::from_score_profile(attrs, child_clone_name_factor);
         skill_import.reset_score_profile(&mut skills, &levels, &boosted, &boosts, &self.skill_order);
         id_key_name.clear();
         id_key_name.push_str(&self.name);
@@ -244,20 +264,17 @@ impl ScoreProfileBuild {
         id_key_name.push_str(&self.clan_name);
         display_name.clear();
         display_name.push_str(&self.name);
-        let template = PlayerTemplate::new(self.id, self.name, team, max_hp, attack)
-            .with_identity_names(id_key_name, self.clan_name)
-            .with_display_name(display_name)
-            .with_magic(magic)
-            .with_magic_point(status.magic_point)
-            .with_wisdom(wisdom)
-            .with_speed(speed)
-            .with_def_res(defense, resistance)
-            .with_agility(agility)
-            .with_at_boost(1.0)
-            .with_target_score_stats(attr_sum, atk_sum, 32768.0)
-            .with_skill_loadout(skills);
-        let mut template = template;
-        template.clone_build = Some(clone_build);
+        let template = PlayerTemplate::from_score_profile(
+            self.id,
+            self.name,
+            id_key_name,
+            self.clan_name,
+            display_name,
+            team,
+            &status,
+            skills,
+            clone_build,
+        );
         PreparedPlayerInit {
             template,
             hp: max_hp,
@@ -284,6 +301,7 @@ pub struct PreparedBattleRoster {
     base_names_sorted: Vec<String>,
     id_key_names: Vec<String>,
     sorted_by_id_name: Vec<PlrId>,
+    recycle_score_buffers: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -300,6 +318,7 @@ pub struct PreparedBattleInit {
     sort_ints: Vec<i32>,
     battle_groups: Vec<Vec<PlrId>>,
     rc4_key: String,
+    score_buffers: Option<ScoreRosterBuffers>,
 }
 
 /// 只包含 seed 会改变的对局初始状态。
@@ -361,6 +380,8 @@ impl PreparedBattleRoster {
         cached: &Self,
         skill_buffers: &mut [SkillLoadout],
         identity_buffers: &mut [ScoreIdentityBuffer],
+        scratch: &mut ScoreRoundScratch,
+        roster_buffers: &mut ScoreRosterBuffers,
     ) -> Result<Self, RuntimeV2BattleInitError> {
         let player_count = raw_groups.iter().flatten().filter(|raw| !Player::check_is_seed(raw)).count();
         let fixed_count = profile_player_ids.first().copied().unwrap_or(player_count);
@@ -386,12 +407,15 @@ impl PreparedBattleRoster {
             );
         }
 
-        let mut dynamic_inputs = Vec::with_capacity(player_count - fixed_count);
-        let mut dynamic_groups = Vec::with_capacity(raw_groups.len());
+        scratch.dynamic_inputs.clear();
+        scratch.dynamic_groups.resize_with(raw_groups.len(), Vec::new);
+        scratch.dynamic_groups.truncate(raw_groups.len());
+        for group in &mut scratch.dynamic_groups {
+            group.clear();
+        }
         let mut next_player_id = 0usize;
 
         for (team_index, raw_group) in raw_groups.iter().enumerate() {
-            let mut group = Vec::new();
             for (player_index, raw) in raw_group.iter().enumerate() {
                 if Player::check_is_seed(raw) {
                     continue;
@@ -401,10 +425,9 @@ impl PreparedBattleRoster {
                 if id < fixed_count {
                     continue;
                 }
-                group.push(id - fixed_count);
-                dynamic_inputs.push((team_index, player_index, id, raw));
+                scratch.dynamic_groups[team_index].push(id - fixed_count);
+                scratch.dynamic_inputs.push((team_index, player_index, id));
             }
-            dynamic_groups.push(group);
         }
 
         // 标准 score profile 都使用同一个 modifier 作为 clan；若与同组固定 target
@@ -429,78 +452,100 @@ impl PreparedBattleRoster {
                 );
             }
         }
-
-        let Some(parts) = dynamic_inputs
-            .iter()
-            .map(|(_, _, _, raw)| raw.split_once('@').filter(|(_, team)| *team == profile_team && !team.contains('+')))
-            .collect::<Option<Vec<_>>>()
-        else {
-            return Self::from_groups_with_eval_rq_and_skill_import_selected(
-                raw_groups,
-                eval_rq,
-                registry,
-                skill_import,
-                profile_player_ids,
-            );
-        };
-        let mut name_keys = vec![[0u8; crate::player::NAME_MAX_LEN + 1]; parts.len()];
-        for (key, (name, _)) in name_keys.iter_mut().zip(&parts) {
-            key[1..1 + name.len()].copy_from_slice(name.as_bytes());
+        scratch.name_keys.clear();
+        scratch
+            .name_keys
+            .resize(scratch.dynamic_inputs.len(), [0u8; crate::player::NAME_MAX_LEN + 1]);
+        scratch.name_lengths.clear();
+        for (index, &(team_index, player_index, _)) in scratch.dynamic_inputs.iter().enumerate() {
+            let raw = &raw_groups[team_index][player_index];
+            let Some((name, _)) = raw.split_once('@').filter(|(_, team)| *team == profile_team && !team.contains('+')) else {
+                return Self::from_groups_with_eval_rq_and_skill_import_selected(
+                    raw_groups,
+                    eval_rq,
+                    registry,
+                    skill_import,
+                    profile_player_ids,
+                );
+            };
+            scratch.name_lengths.push(name.len());
+            scratch.name_keys[index][1..1 + name.len()].copy_from_slice(name.as_bytes());
         }
-        let key_refs = name_keys
+        let key_refs = scratch
+            .name_keys
             .iter()
-            .zip(&parts)
-            .map(|(key, (name, _))| &key[..1 + name.len()])
-            .collect::<Vec<_>>();
-        let mut profile_rngs = vec![profile_team_rng.clone(); parts.len()];
-        RC4::update_interleaved(&mut profile_rngs, &key_refs, 2);
-        let mut dynamic_profiles = dynamic_inputs
-            .iter()
-            .zip(parts)
-            .zip(profile_rngs)
-            .enumerate()
-            .map(|(index, (((_, _, id, _), (name, team)), rand))| {
-                let (mut name_buffer, mut team_buffer) = if let Some(identity) = identity_buffers.get_mut(index) {
-                    (std::mem::take(&mut identity.name), std::mem::take(&mut identity.clan_name))
-                } else {
-                    (String::new(), String::new())
-                };
-                name_buffer.clear();
-                name_buffer.push_str(name);
-                team_buffer.clear();
-                team_buffer.push_str(team);
-                ScoreProfileBuild::from_rng(*id, name_buffer, team_buffer, rand)
-            })
-            .collect::<Vec<_>>();
-        for group in &mut dynamic_groups {
+            .zip(&scratch.name_lengths)
+            .map(|(key, &name_len)| &key[..1 + name_len])
+            .collect::<smallvec::SmallVec<[_; 4]>>();
+        scratch.profile_rngs.resize_with(scratch.dynamic_inputs.len(), RC4::default);
+        for rng in &mut scratch.profile_rngs {
+            rng.clone_from(profile_team_rng);
+        }
+        RC4::update_interleaved(&mut scratch.profile_rngs, &key_refs, 2);
+        scratch.dynamic_profiles.clear();
+        for (index, &(team_index, player_index, id)) in scratch.dynamic_inputs.iter().enumerate() {
+            let (name, team) = raw_groups[team_index][player_index]
+                .split_once('@')
+                .expect("已经验证的 score profile 必须包含队名分隔符");
+            let (mut name_buffer, mut team_buffer) = if let Some(identity) = identity_buffers.get_mut(index) {
+                (std::mem::take(&mut identity.name), std::mem::take(&mut identity.clan_name))
+            } else {
+                (String::new(), String::new())
+            };
+            name_buffer.clear();
+            name_buffer.push_str(name);
+            team_buffer.clear();
+            team_buffer.push_str(team);
+            scratch.dynamic_profiles.push(ScoreProfileBuild::from_rng(
+                id,
+                name_buffer,
+                team_buffer,
+                std::mem::take(&mut scratch.profile_rngs[index]),
+            ));
+        }
+        for group in &mut scratch.dynamic_groups {
             group.sort_by(|left, right| {
-                dynamic_profiles[*left]
+                scratch.dynamic_profiles[*left]
                     .name
-                    .cmp(&dynamic_profiles[*right].name)
-                    .then_with(|| dynamic_profiles[*left].id.cmp(&dynamic_profiles[*right].id))
+                    .cmp(&scratch.dynamic_profiles[*right].name)
+                    .then_with(|| scratch.dynamic_profiles[*left].id.cmp(&scratch.dynamic_profiles[*right].id))
             });
             for left_index in 0..group.len() {
                 for right_index in (left_index + 1)..group.len() {
-                    let (left, right) =
-                        PreparedBattleInit::two_score_profiles_mut(&mut dynamic_profiles, group[left_index], group[right_index]);
+                    let (left, right) = PreparedBattleInit::two_score_profiles_mut(
+                        &mut scratch.dynamic_profiles,
+                        group[left_index],
+                        group[right_index],
+                    );
                     left.upgrade_from(right);
                     right.upgrade_from(left);
                 }
             }
         }
-
-        let mut team_by_player = vec![0; player_count];
+        scratch.team_by_player.clear();
+        scratch.team_by_player.resize(player_count, 0);
         for (team, group) in cached.input_groups.iter().enumerate() {
             for &player in group {
-                team_by_player[player] = team;
+                scratch.team_by_player[player] = team;
             }
         }
-        let mut players = std::iter::repeat_with(|| None).take(fixed_count).collect::<Vec<_>>();
-        let mut player_alive = cached.player_alive[..fixed_count].to_vec();
-        let mut id_key_names = cached.id_key_names[..fixed_count].to_vec();
-        for (profile_index, profile) in dynamic_profiles.into_iter().enumerate() {
+        let mut players = std::mem::take(&mut roster_buffers.players);
+        players.clear();
+        players.resize_with(player_count, || None);
+        let mut player_alive = std::mem::take(&mut roster_buffers.player_alive);
+        player_alive.resize(player_count, false);
+        player_alive[..fixed_count].copy_from_slice(&cached.player_alive[..fixed_count]);
+        let mut id_key_names = std::mem::take(&mut roster_buffers.id_key_names);
+        id_key_names.resize_with(player_count, String::new);
+        for (target, source) in id_key_names[..fixed_count].iter_mut().zip(&cached.id_key_names[..fixed_count]) {
+            target.clone_from(source);
+        }
+        for (profile_index, profile) in scratch.dynamic_profiles.drain(..).enumerate() {
             let id = profile.id;
-            id_key_names.push(profile.id_key_name());
+            id_key_names[id].clear();
+            id_key_names[id].push_str(&profile.name);
+            id_key_names[id].push('@');
+            id_key_names[id].push_str(&profile.clan_name);
             let skills = skill_buffers.get_mut(profile_index).map(std::mem::take).unwrap_or_default();
             let (id_key_name, display_name) = if let Some(identity) = identity_buffers.get_mut(profile_index) {
                 (
@@ -510,20 +555,33 @@ impl PreparedBattleRoster {
             } else {
                 (String::new(), String::new())
             };
-            let prepared = profile.into_prepared(team_by_player[id], eval_rq, skill_import, skills, id_key_name, display_name);
-            player_alive.push(prepared.alive);
-            players.push(Some(prepared));
+            let prepared = profile.into_prepared(
+                scratch.team_by_player[id],
+                eval_rq,
+                skill_import,
+                skills,
+                id_key_name,
+                display_name,
+            );
+            player_alive[id] = prepared.alive;
+            players[id] = Some(prepared);
         }
-
-        let mut sorted_by_id_name = (0..player_count).collect::<Vec<_>>();
+        let mut sorted_by_id_name = std::mem::take(&mut roster_buffers.sorted_by_id_name);
+        sorted_by_id_name.clear();
+        sorted_by_id_name.extend(0..player_count);
         sorted_by_id_name.sort_by(|left, right| id_key_names[*left].cmp(&id_key_names[*right]));
+        let mut input_groups = std::mem::take(&mut roster_buffers.input_groups);
+        Self::clone_player_groups_reusing(&mut input_groups, &cached.input_groups);
+        let mut base_names_sorted = std::mem::take(&mut roster_buffers.base_names_sorted);
+        PreparedBattleInit::refill_base_names_sorted(raw_groups, &mut base_names_sorted);
         Ok(Self {
             players,
             player_alive,
-            input_groups: cached.input_groups.clone(),
-            base_names_sorted: PreparedBattleInit::base_names_sorted(raw_groups),
+            input_groups,
+            base_names_sorted,
             id_key_names,
             sorted_by_id_name,
+            recycle_score_buffers: true,
         })
     }
 
@@ -631,6 +689,7 @@ impl PreparedBattleRoster {
             base_names_sorted: PreparedBattleInit::base_names_sorted(raw_groups),
             id_key_names,
             sorted_by_id_name,
+            recycle_score_buffers: false,
         })
     }
 
@@ -638,13 +697,34 @@ impl PreparedBattleRoster {
 
     pub fn into_with_seed(self, seed: &[String]) -> PreparedBattleInit {
         let seed_state = self.seed_state(seed);
-        seed_state.into_init(self.players)
+        self.into_init_with_seed_state(seed_state)
     }
 
     /// 用已有 seed 缓冲区生成本轮初始化数据，保留所有小向量的容量。
     pub(crate) fn into_with_reused_seed(self, seed: &[String], mut state: PreparedBattleSeed) -> PreparedBattleInit {
         self.refill_seed_state(seed, &mut state);
-        state.into_init(self.players)
+        self.into_init_with_seed_state(state)
+    }
+
+    fn into_init_with_seed_state(self, state: PreparedBattleSeed) -> PreparedBattleInit {
+        let Self {
+            players,
+            player_alive,
+            input_groups,
+            base_names_sorted,
+            id_key_names,
+            sorted_by_id_name,
+            recycle_score_buffers,
+        } = self;
+        let score_buffers = recycle_score_buffers.then_some(ScoreRosterBuffers {
+            players: Vec::new(),
+            player_alive,
+            input_groups,
+            base_names_sorted,
+            id_key_names,
+            sorted_by_id_name,
+        });
+        state.into_init_with_score_buffers(players, score_buffers)
     }
 
     pub fn seed_state(&self, seed: &[String]) -> PreparedBattleSeed {
@@ -742,6 +822,15 @@ impl PreparedBattleRoster {
         }
     }
 
+    fn clone_player_groups_reusing(target: &mut Vec<Vec<PlrId>>, source: &[Vec<PlrId>]) {
+        target.truncate(source.len());
+        target.resize_with(source.len(), Vec::new);
+        for (target, source) in target.iter_mut().zip(source) {
+            target.clear();
+            target.extend_from_slice(source);
+        }
+    }
+
     fn resize_nested_groups(groups: &mut Vec<Vec<EntityIdx>>, len: usize) {
         groups.truncate(len);
         groups.resize_with(len, Vec::new);
@@ -755,7 +844,15 @@ impl PreparedBattleRoster {
 impl PreparedBattleSeed {
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
-    fn into_init(self, mut players: Vec<Option<PreparedPlayerInit>>) -> PreparedBattleInit {
+    fn into_init(self, players: Vec<Option<PreparedPlayerInit>>) -> PreparedBattleInit {
+        self.into_init_with_score_buffers(players, None)
+    }
+
+    fn into_init_with_score_buffers(
+        self,
+        mut players: Vec<Option<PreparedPlayerInit>>,
+        score_buffers: Option<ScoreRosterBuffers>,
+    ) -> PreparedBattleInit {
         for (index, player) in players.iter_mut().enumerate() {
             let Some(player) = player else {
                 continue;
@@ -776,6 +873,7 @@ impl PreparedBattleSeed {
             sort_ints: self.sort_ints,
             battle_groups: self.battle_groups,
             rc4_key: self.rc4_key,
+            score_buffers,
         }
     }
 
@@ -1017,9 +1115,9 @@ impl PreparedBattleInit {
 
     /// 应用本轮初始化并收回 seed 缓冲区，供同一 worker 的下一轮复用。
     pub(crate) fn apply_and_recover_seed(
-        self,
+        mut self,
         runtime: &mut CombatRuntime,
-    ) -> Result<PreparedBattleSeed, RuntimeV2BattleInitError> {
+    ) -> Result<(PreparedBattleSeed, Option<ScoreRosterBuffers>), RuntimeV2BattleInitError> {
         if self.players.len() != runtime.entities.len() {
             return Err(RuntimeV2BattleInitError::EntityCountMismatch {
                 prepared: self.players.len(),
@@ -1039,8 +1137,9 @@ impl PreparedBattleInit {
         let lazy_blueprint_rq_slot = runtime
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT);
-        for (index, prepared) in self.players.into_iter().enumerate() {
-            let Some(prepared) = prepared else {
+        let score_profile_reset = self.score_buffers.is_some();
+        for (index, prepared) in self.players.iter_mut().enumerate() {
+            let Some(prepared) = prepared.take() else {
                 continue;
             };
             let entity_idx = Self::entity_idx(index);
@@ -1078,9 +1177,15 @@ impl PreparedBattleInit {
             entity.template.skills = prepared_template.skills;
             entity.template.skills.prepare_hook_cache(&runtime.registry);
             entity.template.clone_build = prepared_template.clone_build;
-            entity.runtime = PlayerRuntime::from_template(&entity.template, &runtime.registry, entity_idx, entity_idx);
-            entity.runtime.hp = prepared.hp;
-            entity.runtime.alive = prepared.alive;
+            if score_profile_reset {
+                entity
+                    .runtime
+                    .reset_score_profile_from_template(&entity.template, entity_idx, prepared.hp, prepared.alive);
+            } else {
+                entity.runtime = PlayerRuntime::from_template(&entity.template, &runtime.registry, entity_idx, entity_idx);
+                entity.runtime.hp = prepared.hp;
+                entity.runtime.alive = prepared.alive;
+            }
 
             // score 的 prototype 带着首轮蓝图；每轮替换 profile 时必须先清掉旧值，
             // 否则延迟构造标记会错误地命中首轮模板。
@@ -1157,7 +1262,7 @@ impl PreparedBattleInit {
         );
         runtime.rng.clone_from(&self.rng);
         runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
-        Ok(PreparedBattleSeed {
+        let seed = PreparedBattleSeed {
             input_groups: self.input_groups,
             round_order: self.round_order,
             team_roster: self.team_roster,
@@ -1169,7 +1274,12 @@ impl PreparedBattleInit {
             sort_ints: self.sort_ints,
             battle_groups: self.battle_groups,
             rc4_key: self.rc4_key,
-        })
+        };
+        let score_buffers = self.score_buffers.map(|mut buffers| {
+            buffers.players = self.players;
+            buffers
+        });
+        Ok((seed, score_buffers))
     }
 
     fn apply_team_upgrades(players: &mut [Player], groups: &mut [Vec<PlrId>]) {
@@ -1588,6 +1698,19 @@ impl PreparedBattleInit {
         names
     }
 
+    fn refill_base_names_sorted(raw_groups: &[Vec<String>], names: &mut Vec<String>) {
+        let player_count = raw_groups.iter().flatten().filter(|raw| !Player::check_is_seed(raw)).count();
+        names.resize_with(player_count, String::new);
+        let mut index = 0usize;
+        for raw in raw_groups.iter().flatten().filter(|raw| !Player::check_is_seed(raw)) {
+            Player::raw_namerena_to_idname_into(raw, &mut names[index]);
+            index += 1;
+        }
+        names.truncate(index);
+        names.sort();
+        names.dedup();
+    }
+
     fn refill_rc4_key_with_seed(base_names_sorted: &[String], seed: &[String], output: &mut String) {
         output.clear();
         if seed.is_empty() {
@@ -1705,6 +1828,8 @@ mod score_profile_tests {
                     &cached,
                     &mut [],
                     &mut [],
+                    &mut ScoreRoundScratch::default(),
+                    &mut ScoreRosterBuffers::default(),
                 )
                 .expect("compact score profile should build");
 

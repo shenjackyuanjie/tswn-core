@@ -1001,6 +1001,15 @@ impl Player {
     /// 把原始的 namerena 名字转换为 id name
     #[inline]
     pub fn raw_namerena_to_idname(raw_name: &str) -> String {
+        let mut output = String::new();
+        Self::raw_namerena_to_idname_into(raw_name, &mut output);
+        output
+    }
+
+    /// 把原始 namerena 名字写入可复用字符串，保持 `raw_namerena_to_idname` 的格式语义。
+    #[inline]
+    pub(crate) fn raw_namerena_to_idname_into(raw_name: &str, output: &mut String) {
+        output.clear();
         let no_weapon = if let Some((left, _)) = raw_name.split_once("+") {
             left
         } else {
@@ -1008,12 +1017,14 @@ impl Player {
         };
         if let Some((name, team)) = no_weapon.split_once("@") {
             if team.is_empty() || team == name || team.contains(":") {
-                name.to_string()
+                output.push_str(name);
             } else {
-                format!("{name}@{team}")
+                output.push_str(name);
+                output.push('@');
+                output.push_str(team);
             }
         } else {
-            no_weapon.to_string()
+            output.push_str(no_weapon);
         }
     }
 }

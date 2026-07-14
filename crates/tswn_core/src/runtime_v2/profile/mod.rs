@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_v2::entity::ScoreSkillHookPlanEntry;
 
 mod hooks;
 mod import;
@@ -277,6 +278,8 @@ impl BuiltinActiveSkill {
 pub struct PlainLegacySkillImportMap {
     active_by_legacy_key: [Option<SkillId>; 256],
     plain_by_legacy_key: [Option<SkillId>; 35],
+    score_hook_plan: Vec<ScoreSkillHookPlanEntry>,
+    score_hook_plan_needs_active_sort: bool,
     special_by_runtime_kind: [(&'static str, Option<SkillId>); 4],
     passive_by_runtime_kind: [(&'static str, Option<SkillId>); 10],
 }
@@ -306,9 +309,37 @@ impl PlainLegacySkillImportMap {
         {
             plain_by_legacy_key[25 + key] = registry.skill_id_by_export_name(export_name);
         }
+        let mut score_hook_plan = Vec::new();
+        for (legacy_key, skill_id) in plain_by_legacy_key.iter().copied().enumerate() {
+            let Some(skill_id) = skill_id else {
+                continue;
+            };
+            let spec = registry
+                .skill(skill_id)
+                .unwrap_or_else(|| panic!("默认 score 技能映射引用了未知技能 {}", skill_id.0));
+            let mut hooks = spec.hook_mask.0 & 0xff;
+            while hooks != 0 {
+                let hook_index = hooks.trailing_zeros() as u8;
+                hooks &= hooks - 1;
+                score_hook_plan.push(ScoreSkillHookPlanEntry {
+                    legacy_key,
+                    hook_index,
+                    skill_id: spec.id,
+                    target_policy: spec.target_policy,
+                    priority: spec.priority,
+                    registration_order: spec.registration_order,
+                });
+            }
+        }
+        score_hook_plan.sort_by_key(|entry| (entry.hook_index, entry.priority, entry.registration_order));
+        let score_hook_plan_needs_active_sort = score_hook_plan
+            .windows(2)
+            .any(|pair| pair[0].hook_index == pair[1].hook_index && pair[0].priority == pair[1].priority);
         Self {
             active_by_legacy_key,
             plain_by_legacy_key,
+            score_hook_plan,
+            score_hook_plan_needs_active_sort,
             special_by_runtime_kind: [
                 (
                     std::any::type_name::<crate::player::skill::act::fire::FireSkill>(),
@@ -377,6 +408,8 @@ impl PlainLegacySkillImportMap {
         Self {
             active_by_legacy_key: [None; 256],
             plain_by_legacy_key: [None; 35],
+            score_hook_plan: Vec::new(),
+            score_hook_plan_needs_active_sort: false,
             special_by_runtime_kind: [
                 (
                     std::any::type_name::<crate::player::skill::act::fire::FireSkill>(),
@@ -570,7 +603,15 @@ impl PlainLegacySkillImportMap {
         boosts: &[Option<crate::player::skill::SkillBoost>; 35],
         action_order: &[u32; 40],
     ) {
-        loadout.reset_score_profile(&self.plain_by_legacy_key, levels, boosted, boosts, action_order);
+        loadout.reset_score_profile(
+            &self.plain_by_legacy_key,
+            &self.score_hook_plan,
+            self.score_hook_plan_needs_active_sort,
+            levels,
+            boosted,
+            boosts,
+            action_order,
+        );
     }
 
     /// 直接构造无 overlay 幻影的唯一技能，跳过 legacy SkillStorage。

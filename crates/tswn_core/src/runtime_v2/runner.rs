@@ -654,6 +654,8 @@ impl PreparedRuntimeV2Runner {
         profile_team_rng: &crate::rc4::RC4,
         skill_buffers: &mut [SkillLoadout],
         identity_buffers: &mut [ScoreIdentityBuffer],
+        round_scratch: &mut ScoreRoundScratch,
+        roster_buffers: &mut ScoreRosterBuffers,
         seed: &[String],
         eval_rq: f64,
     ) -> Result<(), CustomRuntimeV2ImportError> {
@@ -681,7 +683,6 @@ impl PreparedRuntimeV2Runner {
             std::mem::swap(&mut entity.template.clan_name, &mut identity_buffer.clan_name);
             std::mem::swap(&mut entity.template.display_name, &mut identity_buffer.display_name);
         }
-
         let battle_roster = PreparedBattleRoster::from_score_groups_with_cached_targets(
             raw_groups,
             eval_rq,
@@ -693,6 +694,8 @@ impl PreparedRuntimeV2Runner {
             &self.battle_roster,
             skill_buffers,
             identity_buffers,
+            round_scratch,
+            roster_buffers,
         );
         let battle_roster = match battle_roster {
             Ok(roster) => roster,
@@ -719,12 +722,12 @@ impl PreparedRuntimeV2Runner {
             None => battle_roster.into_with_seed(seed),
         };
         let fixed_count = profile_player_ids.first().copied().unwrap_or(runner.runtime.entities.len());
-        self.reset_with_score_init(runner, init, fixed_count)
+        self.reset_with_score_init(runner, init, fixed_count, roster_buffers)
     }
 
     fn reset_with_init(&self, runner: &mut RuntimeV2Runner, init: PreparedBattleInit) -> Result<(), CustomRuntimeV2ImportError> {
         runner.runtime.entities.clone_from(&self.prototype.runtime.entities);
-        self.finish_reset_with_init(runner, init)
+        self.finish_reset_with_init(runner, init, None)
     }
 
     fn reset_with_score_init(
@@ -732,23 +735,30 @@ impl PreparedRuntimeV2Runner {
         runner: &mut RuntimeV2Runner,
         init: PreparedBattleInit,
         fixed_count: usize,
+        roster_buffers: &mut ScoreRosterBuffers,
     ) -> Result<(), CustomRuntimeV2ImportError> {
         runner
             .runtime
             .entities
             .reset_score_battle_state_from(&self.prototype.runtime.entities, fixed_count);
-        self.finish_reset_with_init(runner, init)
+        self.finish_reset_with_init(runner, init, Some(roster_buffers))
     }
 
     fn finish_reset_with_init(
         &self,
         runner: &mut RuntimeV2Runner,
         init: PreparedBattleInit,
+        roster_buffers: Option<&mut ScoreRosterBuffers>,
     ) -> Result<(), CustomRuntimeV2ImportError> {
         self.reset_shared_battle_state(runner);
         runner.prepared_seed = None;
         Self::clone_input_groups_reusing(&mut runner.input_groups, init.input_groups());
-        let seed_state = init.apply_and_recover_seed(&mut runner.runtime)?;
+        let (seed_state, recycled_roster_buffers) = init.apply_and_recover_seed(&mut runner.runtime)?;
+        if let Some(roster_buffers) = roster_buffers {
+            *roster_buffers = recycled_roster_buffers.expect("score 初始化必须交还 roster 缓冲区");
+        } else {
+            debug_assert!(recycled_roster_buffers.is_none());
+        }
         runner.prepared_seed = Some(seed_state);
         runner.validate_ready()?;
         Ok(())
