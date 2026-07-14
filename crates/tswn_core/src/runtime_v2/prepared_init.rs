@@ -856,38 +856,18 @@ impl CombatRuntime {
             (eval_rq, owner, entity.runtime.team)
         };
 
-        let storage = Storage::new_arc_with_eval_rq(eval_rq);
         let skill_import = PlainLegacySkillImportMap::new(&self.registry);
         let factor_name = crate::player::eval_name::eval_str_common_with_rq(&owner.base_name, true, eval_rq);
         let factor_team = crate::player::eval_name::eval_str_common_with_rq(&owner.clan_name, true, eval_rq);
         let child_clone_name_factor = factor_name.max(factor_team - 6.0);
-        let template = match kind {
-            MinionKind::Shadow => PreparedBattleInit::build_shadow_blueprint(
-                &owner,
-                team,
-                &storage,
-                &self.registry,
-                &skill_import,
-                child_clone_name_factor,
-            ),
-            MinionKind::Summon => PreparedBattleInit::build_summon_blueprint(
-                &owner,
-                team,
-                &storage,
-                &self.registry,
-                &skill_import,
-                child_clone_name_factor,
-            ),
-            MinionKind::Zombie => PreparedBattleInit::build_zombie_blueprint(
-                &owner,
-                team,
-                &storage,
-                &self.registry,
-                &skill_import,
-                child_clone_name_factor,
-            ),
-            MinionKind::Clone => unreachable!(),
-        };
+        let template = PreparedBattleInit::build_plain_score_minion_blueprint(
+            &owner,
+            team,
+            &self.registry,
+            &skill_import,
+            child_clone_name_factor,
+            kind,
+        );
         self.entities
             .get_mut(actor)
             .unwrap()
@@ -1258,6 +1238,172 @@ impl PreparedBattleInit {
         }
     }
 
+    /// 生成普通召唤物名字对应的 RC4 状态和 128 项名字底数。
+    ///
+    /// 召唤物不会继承 `!` / `\x02` profile 的特殊变换，因此这里直接复刻
+    /// `Player::new_minion_and_init` 的普通名字路径，并避免临时 Vec。
+    fn plain_minion_name_base(team: &str, name: &str) -> ([u8; 128], RC4) {
+        assert!(name.len() <= crate::player::NAME_MAX_LEN, "召唤物名字过长");
+        let mut name_key = [0u8; crate::player::NAME_MAX_LEN + 1];
+        name_key[1..1 + name.len()].copy_from_slice(name.as_bytes());
+        let mut rand = Player::score_profile_team_rng(team);
+        rand.update(&name_key[..1 + name.len()], 2);
+
+        let mut name_base = [0u8; 128];
+        let mut output = 0usize;
+        for &value in &rand.main_val {
+            let mapped = ((u32::from(value) * 181) + 160) & 255;
+            if (89..217).contains(&mapped) {
+                name_base[output] = (mapped & 63) as u8;
+                output += 1;
+            }
+        }
+        assert_eq!(output, 128, "召唤物名字底数必须包含 128 项");
+        (name_base, rand)
+    }
+
+    /// 从普通名字底数推导无武器、无 overlay 的原始八围。
+    fn plain_minion_attrs(name_base: &[u8; 128]) -> [u32; 8] {
+        let mut sorted_head: [u8; 10] = name_base[..10].try_into().expect("召唤物名字头长度固定");
+        sorted_head.sort_unstable();
+        let mut attrs = [0u32; 8];
+        for (attr, offset) in attrs[..7].iter_mut().zip((10..31).step_by(3)) {
+            *attr = u32::from(crate::player::median(
+                name_base[offset],
+                name_base[offset + 1],
+                name_base[offset + 2],
+            ));
+        }
+        attrs[7] =
+            154 + u32::from(sorted_head[3]) + u32::from(sorted_head[4]) + u32::from(sorted_head[5]) + u32::from(sorted_head[6]);
+        attrs
+    }
+
+    fn plain_minion_status(attrs: [u32; 8]) -> crate::player::PlayerStatus {
+        let attack = attrs[0] as i32;
+        let defense = attrs[1] as i32;
+        let speed_attr = attrs[2] as i32;
+        let agility = attrs[3] as i32;
+        let magic = attrs[4] as i32;
+        let resistance = attrs[5] as i32;
+        let wisdom = attrs[6] as i32;
+        let max_hp = attrs[7] as i32;
+        let attr_sum = attrs[..7].iter().sum();
+        let atk_sum = (attack - defense + speed_attr + magic - resistance) * 2 + agility + wisdom;
+        crate::player::PlayerStatus {
+            hp: max_hp,
+            max_hp,
+            attack,
+            defense,
+            speed: speed_attr + 160,
+            agility,
+            magic,
+            magic_point: wisdom >> 1,
+            resistance,
+            wisdom,
+            attr_sum,
+            atk_sum,
+            all_sum: attr_sum * 3 + attrs[7],
+            ..crate::player::PlayerStatus::default()
+        }
+    }
+
+    /// 直接构造普通 score profile 的召唤物模板，跳过完整 legacy Player 与技能对象。
+    fn build_plain_score_minion_blueprint(
+        owner: &MinionBlueprintOwner,
+        team: usize,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        child_clone_name_factor: f64,
+        kind: crate::player::skill::act::minion::MinionKind,
+    ) -> PlayerTemplate {
+        use crate::player::skill::act::minion::MinionKind;
+
+        debug_assert!(owner.overlay(kind).is_none(), "数字直构只适用于无 overlay 召唤物");
+        let suffix = match kind {
+            MinionKind::Shadow => "shadow",
+            MinionKind::Summon => "summon",
+            MinionKind::Zombie => "zombie",
+            MinionKind::Clone => unreachable!("分身不使用普通召唤物蓝图"),
+        };
+        let name = format!("{}?{suffix}", owner.base_name);
+        let (name_base, mut rand) = Self::plain_minion_name_base(&owner.clan_name, &name);
+        let mut attrs = Self::plain_minion_attrs(&name_base);
+
+        let (display_name, player_kind, skills, speed_points) = match kind {
+            MinionKind::Shadow => {
+                attrs[7] /= 2;
+                let raw = name_base[64..68].iter().copied().min().unwrap_or(0);
+                let possess_level = ((i32::from(raw) - 10) / 2 + 36).max(0) as u32;
+                let skills = skill_import.import_score_shadow_minion(possess_level);
+                let player_kind = registry
+                    .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
+                    .expect("runtime v2 数字幻影需要注册 core 幻影类型");
+                ("幻影", player_kind, skills, if owner.at_boost() >= 3.0 { 2048 } else { -2048 })
+            }
+            MinionKind::Summon => {
+                attrs[7] = (attrs[7] / 3).max(1);
+                attrs[0] = 0;
+                attrs[1] = owner.attrs[1];
+                attrs[4] = 0;
+                attrs[5] = owner.attrs[5];
+                let levels = std::array::from_fn(|slot| {
+                    let offset = 64 + slot * 4;
+                    u32::from(name_base[offset..offset + 4].iter().copied().min().unwrap_or(0).saturating_sub(10))
+                });
+                let mut action_order = [0usize, 1, 2];
+                rand.sort_list(&mut action_order);
+                let skills = skill_import.import_score_summon_minion(levels, action_order);
+                let player_kind = registry
+                    .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
+                    .expect("runtime v2 数字使魔需要注册 core 使魔类型");
+                ("使魔", player_kind, skills, 0)
+            }
+            MinionKind::Zombie => {
+                attrs[0] = 0;
+                attrs[6] = 0;
+                attrs[7] = (attrs[7] >> 1).max(1);
+                let player_kind = registry
+                    .player_kind_id_by_export_name(DEFAULT_CORE_ZOMBIE_KIND_EXPORT)
+                    .expect("runtime v2 数字丧尸需要注册 core 丧尸类型");
+                ("丧尸", player_kind, SkillLoadout::default(), 0)
+            }
+            MinionKind::Clone => unreachable!(),
+        };
+
+        let status = Self::plain_minion_status(attrs);
+        let id_key_name = if owner.clan_name.is_empty() || owner.clan_name == name {
+            name.clone()
+        } else {
+            format!("{name}@{}", owner.clan_name)
+        };
+        let mut template = PlayerTemplate::new(0, name.clone(), team, status.max_hp, status.attack)
+            .with_identity_names(id_key_name, owner.clan_name.clone())
+            .with_display_name(display_name)
+            .with_magic(status.magic)
+            .with_magic_point(status.magic_point)
+            .with_wisdom(status.wisdom)
+            .with_speed(status.speed)
+            .with_def_res(status.defense, status.resistance)
+            .with_agility(status.agility)
+            .with_at_boost(status.at_boost)
+            .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
+            .with_speed_points(speed_points)
+            .with_skill_loadout(skills);
+        template.kind = player_kind;
+        template.clone_build =
+            Some(CloneBuildData::from_legacy(attrs, [0; 8], 0.0, &status).with_child_name_factor(child_clone_name_factor));
+        if matches!(kind, MinionKind::Summon | MinionKind::Zombie) {
+            template.reserved_player_ids_before_spawn = 1;
+        }
+        if kind == MinionKind::Summon {
+            template.reuse_skills_on_recast = true;
+            template.reuse_stats_on_recast = true;
+            template.inherit_owner_def_res = true;
+        }
+        template
+    }
+
     fn build_shadow_blueprint(
         owner: &MinionBlueprintOwner,
         team: usize,
@@ -1422,6 +1568,7 @@ mod score_profile_tests {
         let config = default_custom_runtime_v2_import_config().expect("runtime v2 profile should build");
         let skill_import = PlainLegacySkillImportMap::new(&config.registry);
         let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
+        let storage = Storage::new_arc_with_eval_rq(eval_rq);
         for modifier in ["!", "\u{0002}"] {
             let first_base = crate::engine::PROFILE_START as usize;
             let first_groups = vec![
@@ -1472,6 +1619,63 @@ mod score_profile_tests {
                         actual.players[id], expected.players[id],
                         "modifier={modifier:?}, round={round}, id={id}"
                     );
+
+                    let template = &actual.players[id].as_ref().expect("数字 profile 必须存在").template;
+                    let owner = MinionBlueprintOwner::plain(
+                        id,
+                        template.name.clone(),
+                        template.clan_name.clone(),
+                        template.clone_build.as_ref().expect("数字 profile 必须含分身数据").attrs(),
+                        template.at_boost_bits,
+                    );
+                    let factor_name = crate::player::eval_name::eval_str_common_with_rq(&owner.base_name, true, eval_rq);
+                    let factor_team = crate::player::eval_name::eval_str_common_with_rq(&owner.clan_name, true, eval_rq);
+                    let child_factor = factor_name.max(factor_team - 6.0);
+                    for kind in [
+                        crate::player::skill::act::minion::MinionKind::Shadow,
+                        crate::player::skill::act::minion::MinionKind::Summon,
+                        crate::player::skill::act::minion::MinionKind::Zombie,
+                    ] {
+                        let legacy = match kind {
+                            crate::player::skill::act::minion::MinionKind::Shadow => PreparedBattleInit::build_shadow_blueprint(
+                                &owner,
+                                template.team,
+                                &storage,
+                                &config.registry,
+                                &skill_import,
+                                child_factor,
+                            ),
+                            crate::player::skill::act::minion::MinionKind::Summon => PreparedBattleInit::build_summon_blueprint(
+                                &owner,
+                                template.team,
+                                &storage,
+                                &config.registry,
+                                &skill_import,
+                                child_factor,
+                            ),
+                            crate::player::skill::act::minion::MinionKind::Zombie => PreparedBattleInit::build_zombie_blueprint(
+                                &owner,
+                                template.team,
+                                &storage,
+                                &config.registry,
+                                &skill_import,
+                                child_factor,
+                            ),
+                            crate::player::skill::act::minion::MinionKind::Clone => unreachable!(),
+                        };
+                        let compact = PreparedBattleInit::build_plain_score_minion_blueprint(
+                            &owner,
+                            template.team,
+                            &config.registry,
+                            &skill_import,
+                            child_factor,
+                            kind,
+                        );
+                        assert_eq!(
+                            compact, legacy,
+                            "召唤物模板不一致：modifier={modifier:?}, round={round}, id={id}, kind={kind:?}"
+                        );
+                    }
                 }
                 assert_eq!(actual.player_alive, expected.player_alive);
                 assert_eq!(actual.input_groups, expected.input_groups);

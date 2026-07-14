@@ -405,6 +405,14 @@ impl PlainLegacySkillImportMap {
         skill_id.map(|skill_id| (key, skill_id, level, boosted, boost))
     }
 
+    fn special_skill_id(&self, runtime_kind: &'static str) -> SkillId {
+        self.special_by_runtime_kind
+            .iter()
+            .find(|(registered_kind, _)| *registered_kind == runtime_kind)
+            .and_then(|(_, skill_id)| *skill_id)
+            .unwrap_or_else(|| panic!("runtime v2 默认 profile 未注册召唤物技能 {runtime_kind}"))
+    }
+
     fn finish_import(
         &self,
         imported: Vec<(usize, SkillId, u32, bool, Option<crate::player::skill::SkillBoost>)>,
@@ -568,6 +576,62 @@ impl PlainLegacySkillImportMap {
             .with_active_order(active_order)
             .with_pre_action_order(pre_action_order)
             .with_post_damage_order(post_damage_order)
+    }
+
+    /// 直接构造无 overlay 幻影的唯一技能，跳过 legacy SkillStorage。
+    pub(crate) fn import_score_shadow_minion(&self, base_level: u32) -> SkillLoadout {
+        let possess = self.special_skill_id(std::any::type_name::<crate::player::skill::act::possess::PossessSkill>());
+        let (level, boosted, boost) = if base_level > 0 {
+            (
+                base_level.saturating_mul(2),
+                true,
+                Some(crate::player::skill::SkillBoost::LastBoost(base_level)),
+            )
+        } else {
+            (0, false, None)
+        };
+        SkillLoadout::from_skill_levels_and_boosts([(possess, level, boost)])
+            .with_boosted_flags([boosted])
+            .with_fixed_lane_keys([0])
+            .with_merge_lane_order([0])
+            .with_active_order([0])
+            .with_post_damage_order([])
+    }
+
+    /// 直接构造无 overlay 使魔的固定四技能布局，保持 legacy 洗牌与末位加成顺序。
+    pub(crate) fn import_score_summon_minion(&self, slot_levels: [u32; 3], action_order: [usize; 3]) -> SkillLoadout {
+        let mut levels = [0u32; 3];
+        for (slot, &key) in action_order.iter().enumerate() {
+            levels[key] = slot_levels[slot];
+        }
+        let mut boosted = [false; 3];
+        let mut boosts: [Option<crate::player::skill::SkillBoost>; 3] = std::array::from_fn(|_| None);
+        for &key in action_order.iter().rev() {
+            let base = levels[key];
+            if base == 0 {
+                continue;
+            }
+            levels[key] = base.saturating_mul(2);
+            boosted[key] = true;
+            boosts[key] = Some(crate::player::skill::SkillBoost::LastBoost(base));
+            break;
+        }
+
+        let fire = self.special_skill_id(std::any::type_name::<crate::player::skill::act::fire::FireSkill>());
+        let explode = self.special_skill_id(std::any::type_name::<crate::player::skill::act::summon::SummonExplodeSkill>());
+        let share = self.special_skill_id(std::any::type_name::<crate::player::skill::act::summon::SummonShareDamageSkill>());
+        let imported = [
+            (fire, levels[0], boosts[0].clone()),
+            (fire, levels[1], boosts[1].clone()),
+            (explode, levels[2], boosts[2].clone()),
+            (share, 1, None),
+        ];
+        SkillLoadout::from_skill_levels_and_boosts(imported)
+            .with_boosted_flags([boosted[0], boosted[1], boosted[2], false])
+            .with_fixed_lane_keys([0, 1, 2, crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY])
+            .with_merge_lane_order([0, 1, 2])
+            .with_active_order(action_order.into_iter().chain([3]))
+            .with_post_damage_order([3])
     }
 }
 
