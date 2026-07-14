@@ -46,7 +46,7 @@ pub struct StateHookPlanEntry {
 pub struct StateHookPlan {
     pub hook: ProcMask,
     pub store_generation: u32,
-    pub entries: Vec<StateHookPlanEntry>,
+    pub entries: SmallVec<[StateHookPlanEntry; 8]>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -598,7 +598,7 @@ mod tests {
         assert_eq!(plan.store_generation, 3);
         assert_eq!(
             plan.entries,
-            vec![
+            SmallVec::<[StateHookPlanEntry; 8]>::from_slice(&[
                 StateHookPlanEntry {
                     owner: EntityIdx(0),
                     state_id: Some(StateId(2)),
@@ -615,7 +615,7 @@ mod tests {
                     registration_order: RegistrationOrder(1),
                     runtime_registration_order: 0,
                 },
-            ]
+            ])
         );
     }
 

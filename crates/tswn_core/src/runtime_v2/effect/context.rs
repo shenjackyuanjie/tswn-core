@@ -78,11 +78,7 @@ impl<'a> EffectContext<'a> {
     pub fn add_newline(&mut self) { self.updates.add_newline(); }
 
     pub fn last_non_newline_update(&self) -> Option<&RunUpdate> {
-        self.updates
-            .updates
-            .iter()
-            .rev()
-            .find(|update| !matches!(update.update_type, UpdateType::NextLine))
+        self.updates.last_non_newline_update()
     }
 
     pub fn rng_next_u8(&mut self) -> u8 { self.rng.next_u8() }

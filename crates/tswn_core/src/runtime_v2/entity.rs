@@ -4,8 +4,6 @@ use crate::runtime_v2::extension::{
 };
 use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
-use std::collections::HashMap;
-
 use crate::player::{MOVE_POINT_THRESHOLD, PlayerStatus, PlrId, skill::SkillBoost};
 use crate::rc4::RC4;
 

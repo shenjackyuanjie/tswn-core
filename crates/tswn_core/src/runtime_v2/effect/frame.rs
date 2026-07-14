@@ -47,8 +47,13 @@ impl RuntimeFrame {
 
     pub fn remove_update(caster: usize, target: usize) -> RunUpdate { RunUpdate::new("[1]消失了", caster, target, 0) }
 
-    pub fn replay_update(caster: usize, target: usize, message: impl Into<String>, score: u32) -> RunUpdate {
-        RunUpdate::new(message.into(), caster, target, score)
+    pub fn replay_update(
+        caster: usize,
+        target: usize,
+        message: impl Into<std::borrow::Cow<'static, str>>,
+        score: u32,
+    ) -> RunUpdate {
+        RunUpdate::new(message, caster, target, score)
     }
 
     pub fn single_damage(caster: usize, target: usize, amount: i32) -> Self {

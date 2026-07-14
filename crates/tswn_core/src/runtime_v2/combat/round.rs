@@ -1,16 +1,28 @@
 use super::*;
 
 impl CombatRuntime {
-    pub fn run_minimal_round(&mut self) -> RoundOutcome {
+    pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture(true) }
+
+    /// 批量胜率与评分只需要胜者，不保留 replay 帧。
+    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture(false) }
+
+    fn run_minimal_round_with_capture(&mut self, capture_updates: bool) -> RoundOutcome {
         loop {
-            if let Some(outcome) = self.run_minimal_round_once() {
+            if let Some(outcome) = self.run_minimal_round_once_with_capture(capture_updates) {
                 return outcome;
             }
         }
     }
 
-    pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> {
-        if let Some(winner_team) = self.world.sync_winner(&self.entities) {
+    pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> { self.run_minimal_round_once_with_capture(true) }
+
+    fn run_minimal_round_once_with_capture(&mut self, capture_updates: bool) -> Option<RoundOutcome> {
+        let winner_team = if capture_updates {
+            self.world.sync_winner(&self.entities)
+        } else {
+            self.world.sync_winner_from_alive_views()
+        };
+        if let Some(winner_team) = winner_team {
             return Some(RoundOutcome {
                 action: None,
                 frame: None,
@@ -19,7 +31,11 @@ impl CombatRuntime {
         }
 
         let selected_action = self.scheduler.select_action(&mut self.world, &mut self.entities, &mut self.rng);
-        let mut updates = RunUpdates::new();
+        let mut updates = if capture_updates {
+            RunUpdates::new()
+        } else {
+            RunUpdates::new_no_capture()
+        };
         for target in self.scheduler.take_ice_release_events() {
             updates.add_newline();
             updates.add(RuntimeFrame::replay_update(
@@ -280,9 +296,14 @@ impl CombatRuntime {
     }
 
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {
-        let frame = updates.had_updates().then_some(RuntimeFrame { updates });
+        let capture_updates = updates.capture_updates;
+        let frame = (capture_updates && updates.had_updates()).then_some(RuntimeFrame { updates });
         self.round += 1;
-        let winner_team = self.world.sync_winner(&self.entities);
+        let winner_team = if capture_updates {
+            self.world.sync_winner(&self.entities)
+        } else {
+            self.world.sync_winner_from_alive_views()
+        };
         #[cfg(not(feature = "no_debug"))]
         if let (Some(trace), Some(frame)) = (&mut self.trace, &frame) {
             trace.record_frame(self.round, frame, winner_team, Some(RngCheckpoint::from_rc4(&self.rng)));
@@ -595,29 +616,33 @@ impl CombatRuntime {
     }
 
     pub fn scan_plain_action_skill_probabilities(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
-        let active_order = self
+        let active_order_len = self
             .entities
             .get(actor)
             .unwrap_or_else(|| panic!("unknown runtime_v2 action-scan actor: {}", actor.0))
             .template
             .skills
             .active_order()
-            .to_vec();
-        for fixed_lane in active_order {
-            let (skill_id, level) = {
+            .len();
+        for active_index in 0..active_order_len {
+            let (fixed_lane, skill_id, level) = {
                 let loadout = &self
                     .entities
                     .get(actor)
                     .unwrap_or_else(|| panic!("unknown runtime_v2 action-scan actor: {}", actor.0))
                     .template
                     .skills;
+                let fixed_lane = *loadout
+                    .active_order()
+                    .get(active_index)
+                    .unwrap_or_else(|| panic!("runtime_v2 active skill order missing index {active_index}"));
                 let Some(skill_id) = loadout.skills().get(fixed_lane).copied() else {
                     panic!("runtime_v2 active skill order references missing fixed lane {fixed_lane}");
                 };
                 let level = loadout
                     .level_at(fixed_lane)
                     .unwrap_or_else(|| panic!("runtime_v2 active skill level missing for fixed lane {fixed_lane}"));
-                (skill_id, level)
+                (fixed_lane, skill_id, level)
             };
             if level == 0 {
                 continue;
@@ -685,7 +710,7 @@ impl CombatRuntime {
     }
 
     pub fn builtin_active_skill(&self, skill_id: SkillId) -> Option<BuiltinActiveSkill> {
-        BuiltinActiveSkill::from_export_name(&self.registry.skill(skill_id)?.export_name)
+        self.registry.builtin_active_skill(skill_id)
     }
 
     pub fn plain_action_skill_probability(

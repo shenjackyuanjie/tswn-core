@@ -1,4 +1,4 @@
-use crate::engine::update::{RunUpdate, RunUpdates, UpdateType};
+use crate::engine::update::{RunUpdate, RunUpdates};
 use crate::rc4::RC4;
 use crate::runtime_v2::combat::PlainAttackOnDamage;
 use crate::runtime_v2::entity::{AccumulateRuntime, ChargeRuntime, EntityIdx, PlayerTemplate, StateEntry, StatePayload};

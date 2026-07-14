@@ -474,6 +474,8 @@ impl RuntimeV2Runner {
 
     fn run_round_unchecked(&mut self) -> RoundOutcome { self.runtime.run_minimal_round() }
 
+    fn run_round_unchecked_no_capture(&mut self) -> RoundOutcome { self.runtime.run_minimal_round_no_capture() }
+
     pub fn run_round(&mut self) -> RoundOutcome {
         self.assert_ready();
         self.run_round_unchecked()
@@ -512,9 +514,9 @@ impl RuntimeV2Runner {
     /// 跳过 immutable handler readiness 扫描并跑到完成，供已在构造/复位时验证的批量 runner 使用。
     pub fn run_to_completion_prevalidated(&mut self, max_rounds: usize) -> RuntimeV2CompletionSummary {
         let mut rounds = 0usize;
-        let mut winner_team = self.runtime.world.sync_winner(&self.runtime.entities);
+        let mut winner_team = self.runtime.world.sync_winner_from_alive_views();
         while winner_team.is_none() && rounds < max_rounds {
-            winner_team = self.run_round_unchecked().winner_team;
+            winner_team = self.run_round_unchecked_no_capture().winner_team;
             rounds += 1;
         }
         RuntimeV2CompletionSummary {

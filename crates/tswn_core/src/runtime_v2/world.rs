@@ -288,6 +288,19 @@ impl WorldArena {
         self.winner_team
     }
 
+    /// 使用战斗过程中持续维护的存活视图判定胜者。
+    ///
+    /// prepared 批量路径的死亡、复活和召唤都会同步更新 `team_alive`，因此无需在
+    /// 每个行动前后重新扫描完整实体表；普通可交互路径仍保留 `sync_winner` 的防御性扫描。
+    pub(crate) fn sync_winner_from_alive_views(&mut self) -> Option<usize> {
+        self.winner_team = if self.alive_group_count == 1 {
+            self.team_alive.iter().position(|team| !team.is_empty())
+        } else {
+            None
+        };
+        self.winner_team
+    }
+
     pub fn winner_team(&self) -> Option<usize> { self.winner_team }
 }
 

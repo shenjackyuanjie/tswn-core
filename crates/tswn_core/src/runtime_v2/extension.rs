@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
+use crate::runtime_v2::profile::BuiltinActiveSkill;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PlayerKindId(pub u32);
 
@@ -686,6 +688,11 @@ impl ExtensionRegistryBuilder {
     }
 
     pub fn build(self) -> ExtensionRegistry {
+        let builtin_active_skills = self
+            .skills
+            .iter()
+            .map(|skill| BuiltinActiveSkill::from_export_name(&skill.export_name))
+            .collect();
         ExtensionRegistry {
             installed_extensions: self.installed_extensions,
             player_kinds: self.player_kinds,
@@ -697,6 +704,7 @@ impl ExtensionRegistryBuilder {
             effect_handlers: self.effect_handlers,
             replay_renderers: self.replay_renderers,
             show_renderers: self.show_renderers,
+            builtin_active_skills,
         }
     }
 
@@ -719,6 +727,8 @@ pub struct ExtensionRegistry {
     effect_handlers: Vec<EffectHandlerSpec>,
     replay_renderers: Vec<ReplayRendererSpec>,
     show_renderers: Vec<ShowRendererSpec>,
+    /// 构造期解析好的内置主动技能，战斗热路径按 `SkillId` 直接索引。
+    builtin_active_skills: Vec<Option<BuiltinActiveSkill>>,
 }
 
 impl ExtensionRegistry {
@@ -737,6 +747,10 @@ impl ExtensionRegistry {
     }
 
     pub fn skill(&self, id: SkillId) -> Option<&SkillSpec> { self.skills.get(id.0 as usize) }
+
+    pub(crate) fn builtin_active_skill(&self, id: SkillId) -> Option<BuiltinActiveSkill> {
+        self.builtin_active_skills.get(id.0 as usize).copied().flatten()
+    }
 
     pub fn skills(&self) -> &[SkillSpec] { &self.skills }
 

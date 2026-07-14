@@ -591,8 +591,8 @@ pub struct StateStore {
     entries: SmallVec<[StateEntry; 8]>,
     hook_mask: ProcMask,
     generation: u32,
-    index: HashMap<u32, usize>,
-    runtime_registration_orders: HashMap<u32, u64>,
+    /// 与 `entries` 同下标保存运行期注册顺序，常见状态数不超过内联容量。
+    runtime_registration_orders: SmallVec<[u64; 8]>,
     next_runtime_registration_order: u64,
     compressed_legacy_states: u8,
 }
@@ -600,14 +600,11 @@ pub struct StateStore {
 impl StateStore {
     pub fn entries(&self) -> &[StateEntry] { &self.entries }
 
-    /// 清空数字 score profile 的战斗状态，同时保留 SmallVec 与 HashMap 容量。
+    /// 清空数字 score profile 的战斗状态，同时保留 SmallVec 容量。
     pub(crate) fn clear_score_profile_for_reuse(&mut self) {
         self.entries.clear();
         self.hook_mask = ProcMask::NONE;
         self.generation = 0;
-        if !self.index.is_empty() {
-            self.index.clear();
-        }
         if !self.runtime_registration_orders.is_empty() {
             self.runtime_registration_orders.clear();
         }
@@ -622,7 +619,8 @@ impl StateStore {
     pub fn post_action_registration_cursor(&self) -> u64 { self.next_runtime_registration_order }
 
     pub fn runtime_registration_order(&self, legacy_order_key: u32) -> Option<u64> {
-        self.runtime_registration_orders.get(&legacy_order_key).copied()
+        let index = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)?;
+        self.runtime_registration_orders.get(index).copied()
     }
 
     pub fn register_compressed_legacy_state(&mut self, state: CompressedLegacyState) -> bool {
@@ -700,12 +698,11 @@ impl StateStore {
     }
 
     pub fn entry(&self, legacy_order_key: u32) -> Option<&StateEntry> {
-        self.index.get(&legacy_order_key).and_then(|idx| self.entries.get(*idx))
+        self.entries.iter().find(|entry| entry.legacy_order_key == legacy_order_key)
     }
 
     pub fn entry_mut(&mut self, legacy_order_key: u32) -> Option<&mut StateEntry> {
-        let idx = self.index.get(&legacy_order_key).copied()?;
-        self.entries.get_mut(idx)
+        self.entries.iter_mut().find(|entry| entry.legacy_order_key == legacy_order_key)
     }
 
     pub fn fire_mag(&self, legacy_order_key: u32) -> f64 {
@@ -763,7 +760,7 @@ impl StateStore {
     }
 
     pub fn add_fire_mag_half_step(&mut self, legacy_order_key: u32) {
-        if let Some(idx) = self.index.get(&legacy_order_key).copied()
+        if let Some(idx) = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)
             && let Some(entry) = self.entries.get_mut(idx)
         {
             match &mut entry.payload {
@@ -813,15 +810,13 @@ impl StateStore {
     pub fn add_legacy_key(&mut self, legacy_order_key: u32) -> bool { self.add_entry(StateEntry::legacy(legacy_order_key)) }
 
     pub fn add_entry(&mut self, entry: StateEntry) -> bool {
-        if self.index.contains_key(&entry.legacy_order_key) {
+        if self.entries.iter().any(|current| current.legacy_order_key == entry.legacy_order_key) {
             return false;
         }
 
         let runtime_registration_order = self.next_runtime_registration_order;
         self.next_runtime_registration_order = self.next_runtime_registration_order.wrapping_add(1);
-        self.runtime_registration_orders
-            .insert(entry.legacy_order_key, runtime_registration_order);
-        self.index.insert(entry.legacy_order_key, self.entries.len());
+        self.runtime_registration_orders.push(runtime_registration_order);
         self.hook_mask |= entry.hook_mask;
         self.entries.push(entry);
         self.generation = self.generation.wrapping_add(1);
@@ -829,13 +824,12 @@ impl StateStore {
     }
 
     pub fn clear_legacy_key(&mut self, legacy_order_key: u32) -> bool {
-        let Some(idx) = self.index.get(&legacy_order_key).copied() else {
+        let Some(idx) = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key) else {
             return false;
         };
 
         self.entries.remove(idx);
-        self.runtime_registration_orders.remove(&legacy_order_key);
-        self.rebuild_index();
+        self.runtime_registration_orders.remove(idx);
         self.rebuild_hook_mask();
         self.generation = self.generation.wrapping_add(1);
         true
@@ -866,23 +860,17 @@ impl StateStore {
         messages.into_iter().map(|(priority, _, _, message)| (priority, message)).collect()
     }
 
-    pub fn entries_in_hook_order(&self) -> Vec<&StateEntry> {
-        let mut entries: Vec<&StateEntry> = self.entries.iter().collect();
+    pub fn entries_in_hook_order(&self) -> SmallVec<[&StateEntry; 8]> {
+        let mut entries: SmallVec<[&StateEntry; 8]> = self.entries.iter().collect();
         entries.sort_by_key(|entry| (entry.priority, entry.registration_order));
         entries
     }
 
-    pub fn entries_in_hook_order_for(&self, hook: ProcMask) -> Vec<&StateEntry> {
-        let mut entries: Vec<&StateEntry> = self.entries.iter().filter(|entry| entry.hook_mask.intersects(hook)).collect();
+    pub fn entries_in_hook_order_for(&self, hook: ProcMask) -> SmallVec<[&StateEntry; 8]> {
+        let mut entries: SmallVec<[&StateEntry; 8]> =
+            self.entries.iter().filter(|entry| entry.hook_mask.intersects(hook)).collect();
         entries.sort_by_key(|entry| (entry.priority_for_hook(hook), entry.registration_order));
         entries
-    }
-
-    fn rebuild_index(&mut self) {
-        self.index.clear();
-        for (idx, entry) in self.entries.iter().enumerate() {
-            self.index.insert(entry.legacy_order_key, idx);
-        }
     }
 
     fn rebuild_hook_mask(&mut self) {
