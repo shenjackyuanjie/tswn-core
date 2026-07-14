@@ -41,7 +41,7 @@ cargo build --release --features no_debug,mimalloc_alloc
 cargo build --profile release-fast --features no_debug
 ```
 
-说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。benchmark 不启用 `mimalloc_alloc`，最终 release 构建再启用。
+说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。`tswn_core 0.4.0` 起原生默认 feature 已包含 `mimalloc_alloc`，正式 benchmark 与发布构建都保持默认 allocator；显式关闭默认 feature 的结果必须作为独立口径记录。
 
 运行主 CLI：
 

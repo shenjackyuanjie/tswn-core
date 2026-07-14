@@ -1,6 +1,6 @@
 # 更新日志
 
-## [0.4.0] - unreleased
+## [0.4.0] - 2026-07-14
 
 ### ⚠️ Breaking Changes
 
