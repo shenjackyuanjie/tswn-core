@@ -241,7 +241,7 @@ impl CombatRuntime {
                     owner,
                     hook: ProcMask::POST_ACTION,
                     loadout_len,
-                    entries: vec![entry],
+                    entries: smallvec::SmallVec::from_slice(&[entry]),
                 };
                 self.drain_skill_hook_plan_into(&plan, updates);
                 deferred_idx += 1;
@@ -264,7 +264,7 @@ impl CombatRuntime {
                 owner,
                 hook: ProcMask::POST_ACTION,
                 loadout_len,
-                entries: vec![entry],
+                entries: smallvec::SmallVec::from_slice(&[entry]),
             };
             self.drain_skill_hook_plan_into(&plan, updates);
             deferred_idx += 1;

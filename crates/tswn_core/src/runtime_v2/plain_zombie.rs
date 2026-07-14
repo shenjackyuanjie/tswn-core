@@ -20,7 +20,7 @@ impl CombatRuntime {
                 owner: plan.owner,
                 hook: plan.hook,
                 loadout_len: plan.loadout_len,
-                entries: vec![*entry],
+                entries: smallvec::SmallVec::from_slice(&[*entry]),
             };
             self.drain_skill_hook_plan_with_selected_target_into(&entry_plan, updates, Some(killed_target));
         }

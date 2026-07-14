@@ -1,6 +1,6 @@
 use crate::runtime_v2::extension::{
     DamageSharePolicy, MergePolicy, OwnerResolutionPolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask,
-    RegistrationOrder, SkillId, SkillPriority, StateId,
+    RegistrationOrder, SkillId, SkillPriority, StateId, TargetPolicy,
 };
 use crate::runtime_v2::{EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
@@ -92,6 +92,9 @@ impl CloneBuildData {
         self.child_name_factor_bits = child_name_factor.to_bits();
         self
     }
+
+    /// 返回子分身与召唤物已经计算好的名字系数，避免技能触发时重复解析名字。
+    pub(crate) fn child_name_factor(&self) -> f64 { f64::from_bits(self.child_name_factor_bits) }
 
     pub fn decay_owner(&mut self) {
         for attr in &mut self.attrs[..7] {
@@ -460,7 +463,20 @@ impl PlayerTemplate {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+const SKILL_HOOK_COUNT: usize = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CachedSkillHookEntry {
+    hook_index: u8,
+    pub(crate) skill_id: SkillId,
+    pub(crate) target_policy: TargetPolicy,
+    pub(crate) priority: SkillPriority,
+    pub(crate) active_order: usize,
+    pub(crate) fixed_lane: usize,
+    pub(crate) registration_order: RegistrationOrder,
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct SkillLoadout {
     skills: SmallVec<[SkillId; 8]>,
     levels: SmallVec<[u32; 8]>,
@@ -473,7 +489,29 @@ pub struct SkillLoadout {
     pre_action_order: SmallVec<[usize; 8]>,
     post_damage_order: SmallVec<[usize; 8]>,
     post_action_after_states: SmallVec<[(u64, usize); 4]>,
+    // 这是纯派生缓存，不参与 loadout 的语义相等性；score 会跨场复用其堆容量。
+    hook_cache: Vec<CachedSkillHookEntry>,
+    hook_cache_offsets: [u16; SKILL_HOOK_COUNT + 1],
+    hook_cache_ready: bool,
 }
+
+impl PartialEq for SkillLoadout {
+    fn eq(&self, other: &Self) -> bool {
+        self.skills == other.skills
+            && self.levels == other.levels
+            && self.build_levels == other.build_levels
+            && self.boosts == other.boosts
+            && self.boosted == other.boosted
+            && self.fixed_lane_keys == other.fixed_lane_keys
+            && self.merge_lane_order == other.merge_lane_order
+            && self.active_order == other.active_order
+            && self.pre_action_order == other.pre_action_order
+            && self.post_damage_order == other.post_damage_order
+            && self.post_action_after_states == other.post_action_after_states
+    }
+}
+
+impl Eq for SkillLoadout {}
 
 impl SkillLoadout {
     pub fn from_skills(skills: impl IntoIterator<Item = SkillId>) -> Self {
@@ -498,6 +536,9 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            hook_cache: Vec::new(),
+            hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
+            hook_cache_ready: false,
         }
     }
 
@@ -522,6 +563,9 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            hook_cache: Vec::new(),
+            hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
+            hook_cache_ready: false,
         }
     }
 
@@ -559,7 +603,128 @@ impl SkillLoadout {
             pre_action_order: SmallVec::new(),
             post_damage_order,
             post_action_after_states: SmallVec::new(),
+            hook_cache: Vec::new(),
+            hook_cache_offsets: [0; SKILL_HOOK_COUNT + 1],
+            hook_cache_ready: false,
         }
+    }
+
+    /// 原地重填标准 score profile 的固定 35-lane 技能表，复用上一场的堆容量。
+    pub(crate) fn reset_score_profile(
+        &mut self,
+        skill_ids: &[Option<SkillId>; 35],
+        levels: &[u32; 35],
+        boosted: &[bool; 35],
+        boosts: &[Option<SkillBoost>; 35],
+        action_order: &[u32; 40],
+    ) {
+        self.invalidate_hook_cache();
+        self.skills.clear();
+        self.levels.clear();
+        self.build_levels.clear();
+        self.boosts.clear();
+        self.boosted.clear();
+        self.fixed_lane_keys.clear();
+        self.merge_lane_order.clear();
+        self.active_order.clear();
+        self.pre_action_order.clear();
+        self.post_damage_order.clear();
+        self.post_action_after_states.clear();
+
+        let mut lane_by_key = [usize::MAX; 35];
+        for key in 0..35 {
+            let Some(skill_id) = skill_ids[key] else {
+                continue;
+            };
+            let lane = self.skills.len();
+            lane_by_key[key] = lane;
+            self.skills.push(skill_id);
+            self.levels.push(levels[key]);
+            self.build_levels.push(boosts[key].as_ref().map_or(levels[key], SkillBoost::base_level));
+            self.boosts.push(boosts[key].clone());
+            self.boosted.push(boosted[key]);
+            self.fixed_lane_keys.push(key);
+            self.merge_lane_order.push(lane);
+        }
+
+        for &key in action_order {
+            let key = key as usize;
+            if key < lane_by_key.len() && lane_by_key[key] != usize::MAX {
+                self.active_order.push(lane_by_key[key]);
+            }
+        }
+        for key in [29usize, 34] {
+            if levels[key] > 0 && lane_by_key[key] != usize::MAX {
+                self.pre_action_order.push(lane_by_key[key]);
+            }
+        }
+        for key in [30usize, 33, 34, 21] {
+            if levels[key] > 0 && lane_by_key[key] != usize::MAX {
+                self.post_damage_order.push(lane_by_key[key]);
+            }
+        }
+    }
+
+    /// 预计算八类技能钩子的稳定顺序，避免每次行动重复扫描并排序完整技能表。
+    pub(crate) fn prepare_hook_cache(&mut self, registry: &ExtensionRegistry) {
+        self.hook_cache.clear();
+        for (active_order, &fixed_lane) in self.active_order.iter().enumerate() {
+            let skill_id = *self
+                .skills
+                .get(fixed_lane)
+                .unwrap_or_else(|| panic!("runtime_v2 skill active order references missing lane: {fixed_lane}"));
+            let spec = registry
+                .skill(skill_id)
+                .unwrap_or_else(|| panic!("unknown runtime_v2 skill id in loadout: {}", skill_id.0));
+            let mut hooks = spec.hook_mask.0 & ((1 << SKILL_HOOK_COUNT) - 1);
+            while hooks != 0 {
+                let hook_index = hooks.trailing_zeros() as u8;
+                hooks &= hooks - 1;
+                self.hook_cache.push(CachedSkillHookEntry {
+                    hook_index,
+                    skill_id: spec.id,
+                    target_policy: spec.target_policy,
+                    priority: spec.priority,
+                    active_order,
+                    fixed_lane,
+                    registration_order: spec.registration_order,
+                });
+            }
+        }
+        self.hook_cache
+            .sort_by_key(|entry| (entry.hook_index, entry.priority, entry.active_order, entry.registration_order));
+        let mut cursor = 0usize;
+        for hook_index in 0..SKILL_HOOK_COUNT {
+            self.hook_cache_offsets[hook_index] = u16::try_from(cursor).expect("runtime_v2 skill hook cache exceeds u16 range");
+            while self
+                .hook_cache
+                .get(cursor)
+                .is_some_and(|entry| usize::from(entry.hook_index) == hook_index)
+            {
+                cursor += 1;
+            }
+        }
+        self.hook_cache_offsets[SKILL_HOOK_COUNT] = u16::try_from(cursor).expect("runtime_v2 skill hook cache exceeds u16 range");
+        self.hook_cache_ready = true;
+    }
+
+    pub(crate) fn cached_hook_entries(&self, hook: ProcMask) -> Option<&[CachedSkillHookEntry]> {
+        if !self.hook_cache_ready || !hook.0.is_power_of_two() {
+            return None;
+        }
+        let hook_index = hook.0.trailing_zeros() as usize;
+        if hook_index >= SKILL_HOOK_COUNT {
+            return None;
+        }
+        let start = usize::from(self.hook_cache_offsets[hook_index]);
+        let end = usize::from(self.hook_cache_offsets[hook_index + 1]);
+        Some(&self.hook_cache[start..end])
+    }
+
+    fn invalidate_hook_cache(&mut self) {
+        self.hook_cache.clear();
+        self.hook_cache_offsets.fill(0);
+        self.hook_cache_ready = false;
     }
 
     pub fn skills(&self) -> &[SkillId] { &self.skills }
@@ -617,10 +782,14 @@ impl SkillLoadout {
         clone
     }
 
-    pub fn disable_action_lane(&mut self, fixed_lane: usize) { self.active_order.retain(|lane| *lane != fixed_lane); }
+    pub fn disable_action_lane(&mut self, fixed_lane: usize) {
+        self.active_order.retain(|lane| *lane != fixed_lane);
+        self.invalidate_hook_cache();
+    }
 
     pub fn with_active_order(mut self, active_order: impl IntoIterator<Item = usize>) -> Self {
         self.active_order = active_order.into_iter().collect();
+        self.invalidate_hook_cache();
         assert!(
             self.active_order.iter().all(|idx| *idx < self.skills.len()),
             "runtime_v2 skill active order must reference existing fixed lanes"
@@ -769,6 +938,7 @@ impl SkillLoadout {
             // post_damage 新钩子应排在原有活跃钩子之后，与固定槽位编号无关。
             self.post_damage_order.retain(|lane| *lane != owner_idx);
             self.post_damage_order.push(owner_idx);
+            self.invalidate_hook_cache();
         }
         true
     }

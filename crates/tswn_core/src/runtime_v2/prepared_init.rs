@@ -73,6 +73,15 @@ struct ScoreProfileBuild {
     test_ex: bool,
 }
 
+/// 连续 score 轮次之间回收的动态 profile 身份字符串。
+#[derive(Debug, Default)]
+pub(crate) struct ScoreIdentityBuffer {
+    pub(crate) name: String,
+    pub(crate) id_key_name: String,
+    pub(crate) clan_name: String,
+    pub(crate) display_name: String,
+}
+
 impl ScoreProfileBuild {
     fn from_rng(id: PlrId, name: String, clan_name: String, mut rand: RC4) -> Self {
         let mut name_base = [0u8; 128];
@@ -134,7 +143,15 @@ impl ScoreProfileBuild {
         }
     }
 
-    fn into_prepared(self, team: usize, eval_rq: f64, skill_import: &PlainLegacySkillImportMap) -> PreparedPlayerInit {
+    fn into_prepared(
+        self,
+        team: usize,
+        eval_rq: f64,
+        skill_import: &PlainLegacySkillImportMap,
+        mut skills: SkillLoadout,
+        mut id_key_name: String,
+        mut display_name: String,
+    ) -> PreparedPlayerInit {
         let mut sorted_head: [u8; 10] = self.name_base[..10].try_into().expect("score profile head length is fixed");
         sorted_head.sort_unstable();
         let mut attrs = [0u32; 8];
@@ -220,10 +237,16 @@ impl ScoreProfileBuild {
         };
         let clone_build =
             CloneBuildData::from_legacy(attrs, [0; 8], 0.0, &status).with_child_name_factor(child_clone_name_factor);
-        let skills = skill_import.import_score_profile(levels, boosted, boosts, &self.skill_order);
-        let template = PlayerTemplate::new(self.id, self.name.clone(), team, max_hp, attack)
-            .with_identity_names(self.id_key_name(), self.clan_name)
-            .with_display_name(self.name)
+        skill_import.reset_score_profile(&mut skills, &levels, &boosted, &boosts, &self.skill_order);
+        id_key_name.clear();
+        id_key_name.push_str(&self.name);
+        id_key_name.push('@');
+        id_key_name.push_str(&self.clan_name);
+        display_name.clear();
+        display_name.push_str(&self.name);
+        let template = PlayerTemplate::new(self.id, self.name, team, max_hp, attack)
+            .with_identity_names(id_key_name, self.clan_name)
+            .with_display_name(display_name)
             .with_magic(magic)
             .with_magic_point(status.magic_point)
             .with_wisdom(wisdom)
@@ -274,6 +297,9 @@ pub struct PreparedBattleInit {
     rng: RC4,
     teams: Vec<usize>,
     speed_points: Vec<i32>,
+    sort_ints: Vec<i32>,
+    battle_groups: Vec<Vec<PlrId>>,
+    rc4_key: String,
 }
 
 /// 只包含 seed 会改变的对局初始状态。
@@ -292,6 +318,7 @@ pub struct PreparedBattleSeed {
     rng: RC4,
     sort_ints: Vec<i32>,
     battle_groups: Vec<Vec<PlrId>>,
+    rc4_key: String,
 }
 
 impl PreparedBattleRoster {
@@ -332,6 +359,8 @@ impl PreparedBattleRoster {
         profile_team: &str,
         profile_team_rng: &RC4,
         cached: &Self,
+        skill_buffers: &mut [SkillLoadout],
+        identity_buffers: &mut [ScoreIdentityBuffer],
     ) -> Result<Self, RuntimeV2BattleInitError> {
         let player_count = raw_groups.iter().flatten().filter(|raw| !Player::check_is_seed(raw)).count();
         let fixed_count = profile_player_ids.first().copied().unwrap_or(player_count);
@@ -429,7 +458,19 @@ impl PreparedBattleRoster {
             .iter()
             .zip(parts)
             .zip(profile_rngs)
-            .map(|(((_, _, id, _), (name, team)), rand)| ScoreProfileBuild::from_rng(*id, name.to_owned(), team.to_owned(), rand))
+            .enumerate()
+            .map(|(index, (((_, _, id, _), (name, team)), rand))| {
+                let (mut name_buffer, mut team_buffer) = if let Some(identity) = identity_buffers.get_mut(index) {
+                    (std::mem::take(&mut identity.name), std::mem::take(&mut identity.clan_name))
+                } else {
+                    (String::new(), String::new())
+                };
+                name_buffer.clear();
+                name_buffer.push_str(name);
+                team_buffer.clear();
+                team_buffer.push_str(team);
+                ScoreProfileBuild::from_rng(*id, name_buffer, team_buffer, rand)
+            })
             .collect::<Vec<_>>();
         for group in &mut dynamic_groups {
             group.sort_by(|left, right| {
@@ -457,10 +498,19 @@ impl PreparedBattleRoster {
         let mut players = std::iter::repeat_with(|| None).take(fixed_count).collect::<Vec<_>>();
         let mut player_alive = cached.player_alive[..fixed_count].to_vec();
         let mut id_key_names = cached.id_key_names[..fixed_count].to_vec();
-        for profile in dynamic_profiles {
+        for (profile_index, profile) in dynamic_profiles.into_iter().enumerate() {
             let id = profile.id;
             id_key_names.push(profile.id_key_name());
-            let prepared = profile.into_prepared(team_by_player[id], eval_rq, skill_import);
+            let skills = skill_buffers.get_mut(profile_index).map(std::mem::take).unwrap_or_default();
+            let (id_key_name, display_name) = if let Some(identity) = identity_buffers.get_mut(profile_index) {
+                (
+                    std::mem::take(&mut identity.id_key_name),
+                    std::mem::take(&mut identity.display_name),
+                )
+            } else {
+                (String::new(), String::new())
+            };
+            let prepared = profile.into_prepared(team_by_player[id], eval_rq, skill_import, skills, id_key_name, display_name);
             player_alive.push(prepared.alive);
             players.push(Some(prepared));
         }
@@ -591,6 +641,12 @@ impl PreparedBattleRoster {
         seed_state.into_init(self.players)
     }
 
+    /// 用已有 seed 缓冲区生成本轮初始化数据，保留所有小向量的容量。
+    pub(crate) fn into_with_reused_seed(self, seed: &[String], mut state: PreparedBattleSeed) -> PreparedBattleInit {
+        self.refill_seed_state(seed, &mut state);
+        state.into_init(self.players)
+    }
+
     pub fn seed_state(&self, seed: &[String]) -> PreparedBattleSeed {
         let mut state = PreparedBattleSeed {
             input_groups: Vec::with_capacity(self.input_groups.len()),
@@ -603,6 +659,7 @@ impl PreparedBattleRoster {
             rng: RC4::default(),
             sort_ints: vec![0; self.players.len()],
             battle_groups: self.input_groups.clone(),
+            rc4_key: String::new(),
         };
         self.refill_seed_state(seed, &mut state);
         state
@@ -610,9 +667,9 @@ impl PreparedBattleRoster {
 
     /// 原地刷新 seed 状态，供同一 worker 的连续对局复用所有小向量容量。
     pub fn refill_seed_state(&self, seed: &[String], state: &mut PreparedBattleSeed) {
-        let key = PreparedBattleInit::rc4_key_with_seed(&self.base_names_sorted, seed);
-        let mut rng = RC4::new(key.as_bytes(), 1);
-        rng.js_xor_str(&key);
+        PreparedBattleInit::refill_rc4_key_with_seed(&self.base_names_sorted, seed, &mut state.rc4_key);
+        let mut rng = RC4::new(state.rc4_key.as_bytes(), 1);
+        rng.js_xor_str(&state.rc4_key);
 
         state.sort_ints.clear();
         state.sort_ints.resize(self.players.len(), 0);
@@ -716,6 +773,9 @@ impl PreparedBattleSeed {
             rng: self.rng,
             teams: self.teams,
             speed_points: self.speed_points,
+            sort_ints: self.sort_ints,
+            battle_groups: self.battle_groups,
+            rc4_key: self.rc4_key,
         }
     }
 
@@ -830,36 +890,32 @@ impl CombatRuntime {
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT)
             .expect("default runtime v2 profile must register core lazy blueprint rq slot");
-        let (eval_rq, owner, team) = {
+        let (owner, team, child_clone_name_factor) = {
             let entity = self
                 .entities
                 .get(actor)
                 .unwrap_or_else(|| panic!("runtime_v2 lazy blueprint owner disappeared: {}", actor.0));
-            let eval_rq = match entity.slots.get(lazy_slot) {
-                Some(SlotValue::U64(bits)) => f64::from_bits(*bits),
+            match entity.slots.get(lazy_slot) {
+                Some(SlotValue::U64(_)) => {}
                 Some(_) => panic!("runtime_v2 core lazy blueprint rq slot has invalid value"),
                 None => return false,
-            };
-            let attrs = entity
+            }
+            let clone_build = entity
                 .template
                 .clone_build
                 .as_ref()
-                .unwrap_or_else(|| panic!("runtime_v2 lazy blueprint owner {} is missing clone build data", actor.0))
-                .attrs();
+                .unwrap_or_else(|| panic!("runtime_v2 lazy blueprint owner {} is missing clone build data", actor.0));
             let owner = MinionBlueprintOwner::plain(
                 actor.0 as usize,
                 entity.template.name.clone(),
                 entity.template.clan_name.clone(),
-                attrs,
+                clone_build.attrs(),
                 entity.template.at_boost_bits,
             );
-            (eval_rq, owner, entity.runtime.team)
+            (owner, entity.runtime.team, clone_build.child_name_factor())
         };
 
-        let skill_import = PlainLegacySkillImportMap::new(&self.registry);
-        let factor_name = crate::player::eval_name::eval_str_common_with_rq(&owner.base_name, true, eval_rq);
-        let factor_team = crate::player::eval_name::eval_str_common_with_rq(&owner.clan_name, true, eval_rq);
-        let child_clone_name_factor = factor_name.max(factor_team - 6.0);
+        let skill_import = PlainLegacySkillImportMap::new_score_minions(&self.registry);
         let template = PreparedBattleInit::build_plain_score_minion_blueprint(
             &owner,
             team,
@@ -956,6 +1012,14 @@ impl PreparedBattleInit {
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
     pub fn apply(self, runtime: &mut CombatRuntime) -> Result<(), RuntimeV2BattleInitError> {
+        self.apply_and_recover_seed(runtime).map(drop)
+    }
+
+    /// 应用本轮初始化并收回 seed 缓冲区，供同一 worker 的下一轮复用。
+    pub(crate) fn apply_and_recover_seed(
+        self,
+        runtime: &mut CombatRuntime,
+    ) -> Result<PreparedBattleSeed, RuntimeV2BattleInitError> {
         if self.players.len() != runtime.entities.len() {
             return Err(RuntimeV2BattleInitError::EntityCountMismatch {
                 prepared: self.players.len(),
@@ -1012,6 +1076,7 @@ impl PreparedBattleInit {
             entity.template.attract_bits = prepared_template.attract_bits;
             entity.template.move_state = prepared_template.move_state;
             entity.template.skills = prepared_template.skills;
+            entity.template.skills.prepare_hook_cache(&runtime.registry);
             entity.template.clone_build = prepared_template.clone_build;
             entity.runtime = PlayerRuntime::from_template(&entity.template, &runtime.registry, entity_idx, entity_idx);
             entity.runtime.hp = prepared.hp;
@@ -1083,16 +1148,28 @@ impl PreparedBattleInit {
         // 因此所有实体的本轮 team 与初始移动点都必须按 seed 结果刷新。
         PreparedBattleSeed::apply_entity_seed_values(&self.teams, &self.speed_points, runtime)?;
 
-        runtime.world.sync_initial_views(
+        runtime.world.sync_initial_views_reusing(
             &runtime.entities,
-            self.round_order,
-            self.team_roster,
-            self.team_alive,
-            self.flat_alive,
+            &self.round_order,
+            &self.team_roster,
+            &self.team_alive,
+            &self.flat_alive,
         );
-        runtime.rng = self.rng;
+        runtime.rng.clone_from(&self.rng);
         runtime.scheduler.reset_action_mode_from_entities(&runtime.entities);
-        Ok(())
+        Ok(PreparedBattleSeed {
+            input_groups: self.input_groups,
+            round_order: self.round_order,
+            team_roster: self.team_roster,
+            team_alive: self.team_alive,
+            flat_alive: self.flat_alive,
+            teams: self.teams,
+            speed_points: self.speed_points,
+            rng: self.rng,
+            sort_ints: self.sort_ints,
+            battle_groups: self.battle_groups,
+            rc4_key: self.rc4_key,
+        })
     }
 
     fn apply_team_upgrades(players: &mut [Player], groups: &mut [Vec<PlrId>]) {
@@ -1511,12 +1588,27 @@ impl PreparedBattleInit {
         names
     }
 
-    fn rc4_key_with_seed(base_names_sorted: &[String], seed: &[String]) -> String {
-        let mut names = base_names_sorted.iter().collect::<Vec<_>>();
-        names.extend(seed);
+    fn refill_rc4_key_with_seed(base_names_sorted: &[String], seed: &[String], output: &mut String) {
+        output.clear();
+        if seed.is_empty() {
+            for (index, name) in base_names_sorted.iter().enumerate() {
+                if index > 0 {
+                    output.push('\r');
+                }
+                output.push_str(name);
+            }
+            return;
+        }
+
+        let mut names = base_names_sorted.iter().chain(seed).collect::<smallvec::SmallVec<[&String; 8]>>();
         names.sort_unstable();
         names.dedup();
-        names.into_iter().map(String::as_str).collect::<Vec<_>>().join("\r")
+        for (index, name) in names.into_iter().enumerate() {
+            if index > 0 {
+                output.push('\r');
+            }
+            output.push_str(name);
+        }
     }
 
     fn cmp_player_keys(sort_ints: &[i32], id_key_names: &[String], left: PlrId, right: PlrId) -> std::cmp::Ordering {
@@ -1611,6 +1703,8 @@ mod score_profile_tests {
                     modifier,
                     &team_rng,
                     &cached,
+                    &mut [],
+                    &mut [],
                 )
                 .expect("compact score profile should build");
 

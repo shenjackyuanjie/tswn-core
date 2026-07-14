@@ -95,7 +95,7 @@ impl CombatRuntime {
                 owner: skill_plan.owner,
                 hook: skill_plan.hook,
                 loadout_len: skill_plan.loadout_len,
-                entries: skill_plan.entries[..protect_split].to_vec(),
+                entries: smallvec::SmallVec::from_slice(&skill_plan.entries[..protect_split]),
             };
             self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(&before_protect, updates, defend_value, on_damage);
             if defend_value.atp() == Some(0.0) && (!started_zero || protect_split > 0) {
@@ -108,7 +108,7 @@ impl CombatRuntime {
                 owner: skill_plan.owner,
                 hook: skill_plan.hook,
                 loadout_len: skill_plan.loadout_len,
-                entries: skill_plan.entries[protect_split..].to_vec(),
+                entries: smallvec::SmallVec::from_slice(&skill_plan.entries[protect_split..]),
             };
             self.drain_skill_hook_plan_with_defend_value_and_on_damage_into(&after_protect, updates, defend_value, on_damage);
             if defend_value.atp() == Some(0.0) {
@@ -375,7 +375,7 @@ impl CombatRuntime {
                         owner: skill_plan.owner,
                         hook: skill_plan.hook,
                         loadout_len: skill_plan.loadout_len,
-                        entries: vec![entry],
+                        entries: smallvec::SmallVec::from_slice(&[entry]),
                     };
                     self.drain_skill_hook_plan_with_defend_value_into(&plan, updates, defend_value);
                 }

@@ -652,9 +652,36 @@ impl PreparedRuntimeV2Runner {
         profile_player_ids: &[crate::player::PlrId],
         profile_team: &str,
         profile_team_rng: &crate::rc4::RC4,
+        skill_buffers: &mut [SkillLoadout],
+        identity_buffers: &mut [ScoreIdentityBuffer],
         seed: &[String],
         eval_rq: f64,
     ) -> Result<(), CustomRuntimeV2ImportError> {
+        assert_eq!(
+            skill_buffers.len(),
+            profile_player_ids.len(),
+            "score 技能缓冲区数量必须与动态 profile 数量一致"
+        );
+        assert_eq!(
+            identity_buffers.len(),
+            profile_player_ids.len(),
+            "score 身份缓冲区数量必须与动态 profile 数量一致"
+        );
+        for ((&id, skill_buffer), identity_buffer) in
+            profile_player_ids.iter().zip(skill_buffers.iter_mut()).zip(identity_buffers.iter_mut())
+        {
+            let entity = runner
+                .runtime
+                .entities
+                .get_mut(EntityIdx(id as u32))
+                .expect("score 动态 profile 实体必须存在");
+            std::mem::swap(&mut entity.template.skills, skill_buffer);
+            std::mem::swap(&mut entity.template.name, &mut identity_buffer.name);
+            std::mem::swap(&mut entity.template.id_key_name, &mut identity_buffer.id_key_name);
+            std::mem::swap(&mut entity.template.clan_name, &mut identity_buffer.clan_name);
+            std::mem::swap(&mut entity.template.display_name, &mut identity_buffer.display_name);
+        }
+
         let battle_roster = PreparedBattleRoster::from_score_groups_with_cached_targets(
             raw_groups,
             eval_rq,
@@ -664,17 +691,65 @@ impl PreparedRuntimeV2Runner {
             profile_team,
             profile_team_rng,
             &self.battle_roster,
-        )?;
-        self.reset_with_init(runner, battle_roster.into_with_seed(seed))
+            skill_buffers,
+            identity_buffers,
+        );
+        let battle_roster = match battle_roster {
+            Ok(roster) => roster,
+            Err(error) => {
+                for ((&id, skill_buffer), identity_buffer) in
+                    profile_player_ids.iter().zip(skill_buffers.iter_mut()).zip(identity_buffers.iter_mut())
+                {
+                    let entity = runner
+                        .runtime
+                        .entities
+                        .get_mut(EntityIdx(id as u32))
+                        .expect("score 动态 profile 实体必须存在");
+                    std::mem::swap(&mut entity.template.skills, skill_buffer);
+                    std::mem::swap(&mut entity.template.name, &mut identity_buffer.name);
+                    std::mem::swap(&mut entity.template.id_key_name, &mut identity_buffer.id_key_name);
+                    std::mem::swap(&mut entity.template.clan_name, &mut identity_buffer.clan_name);
+                    std::mem::swap(&mut entity.template.display_name, &mut identity_buffer.display_name);
+                }
+                return Err(error.into());
+            }
+        };
+        let init = match runner.prepared_seed.take() {
+            Some(seed_state) => battle_roster.into_with_reused_seed(seed, seed_state),
+            None => battle_roster.into_with_seed(seed),
+        };
+        let fixed_count = profile_player_ids.first().copied().unwrap_or(runner.runtime.entities.len());
+        self.reset_with_score_init(runner, init, fixed_count)
     }
 
     fn reset_with_init(&self, runner: &mut RuntimeV2Runner, init: PreparedBattleInit) -> Result<(), CustomRuntimeV2ImportError> {
-        // score 路径每轮都会换 profile 名字，身份字段并不固定，不能使用 CQP 的热字段复位。
         runner.runtime.entities.clone_from(&self.prototype.runtime.entities);
+        self.finish_reset_with_init(runner, init)
+    }
+
+    fn reset_with_score_init(
+        &self,
+        runner: &mut RuntimeV2Runner,
+        init: PreparedBattleInit,
+        fixed_count: usize,
+    ) -> Result<(), CustomRuntimeV2ImportError> {
+        runner
+            .runtime
+            .entities
+            .reset_score_battle_state_from(&self.prototype.runtime.entities, fixed_count);
+        self.finish_reset_with_init(runner, init)
+    }
+
+    fn finish_reset_with_init(
+        &self,
+        runner: &mut RuntimeV2Runner,
+        init: PreparedBattleInit,
+    ) -> Result<(), CustomRuntimeV2ImportError> {
         self.reset_shared_battle_state(runner);
         runner.prepared_seed = None;
-        runner.input_groups = init.input_groups().to_vec();
-        init.apply(&mut runner.runtime)?;
+        Self::clone_input_groups_reusing(&mut runner.input_groups, init.input_groups());
+        let seed_state = init.apply_and_recover_seed(&mut runner.runtime)?;
+        runner.prepared_seed = Some(seed_state);
         runner.validate_ready()?;
         Ok(())
     }

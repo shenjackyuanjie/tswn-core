@@ -13,7 +13,7 @@ use crate::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
 use super::{
     CustomRuntimeV2ImportError, DefaultCustomRuntimeV2ProfileError, PreparedRuntimeV2Runner, RuntimeV2Runner,
-    default_custom_runtime_v2_import_config,
+    ScoreIdentityBuffer, SkillLoadout, default_custom_runtime_v2_import_config,
 };
 
 const BATCH_PARALLEL_THRESHOLD: usize = 100;
@@ -284,6 +284,8 @@ fn run_score_round(
             &match_groups.profile_player_ids,
             &match_groups.modifier,
             &match_groups.profile_team_rng,
+            &mut match_groups.skill_buffers,
+            &mut match_groups.identity_buffers,
             &[],
             eval_rq,
         )
@@ -326,6 +328,8 @@ struct ScoreMatchGroups {
     profile_player_ids: Vec<crate::player::PlrId>,
     modifier: String,
     profile_team_rng: crate::rc4::RC4,
+    skill_buffers: Vec<SkillLoadout>,
+    identity_buffers: Vec<ScoreIdentityBuffer>,
 }
 
 impl ScoreMatchGroups {
@@ -372,6 +376,8 @@ impl ScoreMatchGroups {
                 // 非法的超长 modifier 会在完整玩家构造路径返回原有错误；这里不能提前 panic。
                 crate::rc4::RC4::default()
             },
+            skill_buffers: vec![SkillLoadout::default(); profile_count],
+            identity_buffers: (0..profile_count).map(|_| ScoreIdentityBuffer::default()).collect(),
         };
         value.set_round(0);
         value
@@ -473,6 +479,8 @@ mod tests {
                 &match_groups.profile_player_ids,
                 &match_groups.modifier,
                 &match_groups.profile_team_rng,
+                &mut match_groups.skill_buffers,
+                &mut match_groups.identity_buffers,
                 &[],
                 eval_rq,
             )

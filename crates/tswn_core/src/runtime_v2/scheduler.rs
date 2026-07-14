@@ -29,7 +29,7 @@ pub struct SkillHookPlan {
     pub owner: EntityIdx,
     pub hook: ProcMask,
     pub loadout_len: usize,
-    pub entries: Vec<SkillHookPlanEntry>,
+    pub entries: SmallVec<[SkillHookPlanEntry; 8]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -224,13 +224,21 @@ impl PhaseScheduler {
         let entity = entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime_v2 skill owner entity: {}", owner.0));
-        let mut entries = entity
-            .template
-            .skills
-            .active_order()
-            .iter()
-            .enumerate()
-            .filter_map(|lane| {
+        let mut entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
+        if let Some(cached_entries) = entity.template.skills.cached_hook_entries(hook) {
+            entries.extend(cached_entries.iter().filter_map(|entry| {
+                (entity.template.skills.level_at(entry.fixed_lane) != Some(0)).then_some(SkillHookPlanEntry {
+                    owner,
+                    skill_id: entry.skill_id,
+                    target_policy: entry.target_policy,
+                    priority: entry.priority,
+                    active_order: entry.active_order,
+                    fixed_lane: entry.fixed_lane,
+                    registration_order: entry.registration_order,
+                })
+            }));
+        } else {
+            entries.extend(entity.template.skills.active_order().iter().enumerate().filter_map(|lane| {
                 let (active_order, lane) = lane;
                 if entity.template.skills.level_at(*lane) == Some(0) {
                     return None;
@@ -253,9 +261,9 @@ impl PhaseScheduler {
                     fixed_lane: *lane,
                     registration_order: spec.registration_order,
                 })
-            })
-            .collect::<Vec<_>>();
-        entries.sort_by_key(|entry| (entry.priority, entry.active_order, entry.registration_order));
+            }));
+            entries.sort_by_key(|entry| (entry.priority, entry.active_order, entry.registration_order));
+        }
         SkillHookPlan {
             owner,
             hook,
@@ -296,7 +304,7 @@ impl PhaseScheduler {
         entities: &EntityArena,
         registry: &ExtensionRegistry,
         owner: EntityIdx,
-    ) -> Vec<(u64, SkillHookPlanEntry)> {
+    ) -> SmallVec<[(u64, SkillHookPlanEntry); 4]> {
         let entity = entities
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime_v2 deferred post-action skill owner entity: {}", owner.0));
@@ -473,8 +481,8 @@ mod tests {
         assert_eq!(plan.hook, ProcMask::PRE_ACTION);
         assert_eq!(plan.loadout_len, 3);
         assert_eq!(
-            plan.entries,
-            vec![
+            plan.entries.as_slice(),
+            &[
                 SkillHookPlanEntry {
                     owner: EntityIdx(0),
                     skill_id: early,

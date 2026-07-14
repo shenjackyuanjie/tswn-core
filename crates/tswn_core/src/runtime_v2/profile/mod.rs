@@ -372,6 +372,33 @@ impl PlainLegacySkillImportMap {
         }
     }
 
+    /// 只解析数字 score 召唤物需要的四个技能，避免首次触发时扫描整张 legacy 映射表。
+    pub(crate) fn new_score_minions(registry: &ExtensionRegistry) -> Self {
+        Self {
+            active_by_legacy_key: [None; 256],
+            plain_by_legacy_key: [None; 35],
+            special_by_runtime_kind: [
+                (
+                    std::any::type_name::<crate::player::skill::act::fire::FireSkill>(),
+                    registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name()),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::act::summon::SummonExplodeSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::act::summon::SummonShareDamageSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT),
+                ),
+                (
+                    std::any::type_name::<crate::player::skill::act::possess::PossessSkill>(),
+                    registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT),
+                ),
+            ],
+            passive_by_runtime_kind: std::array::from_fn(|_| ("", None)),
+        }
+    }
+
     fn resolve(
         &self,
         key: usize,
@@ -534,48 +561,16 @@ impl PlainLegacySkillImportMap {
         )
     }
 
-    /// 直接导入无 overlay 的普通 score profile，跳过 legacy 技能对象与 proc 缓存。
-    pub(crate) fn import_score_profile(
+    /// 原地重填标准 score profile 技能表，复用上一轮的所有 SmallVec 容量。
+    pub(crate) fn reset_score_profile(
         &self,
-        levels: [u32; 35],
-        boosted: [bool; 35],
-        boosts: [Option<crate::player::skill::SkillBoost>; 35],
+        loadout: &mut SkillLoadout,
+        levels: &[u32; 35],
+        boosted: &[bool; 35],
+        boosts: &[Option<crate::player::skill::SkillBoost>; 35],
         action_order: &[u32; 40],
-    ) -> SkillLoadout {
-        let mut lane_by_key = [usize::MAX; 35];
-        let mut fixed_lane_keys = Vec::with_capacity(35);
-        let mut imported = Vec::with_capacity(35);
-        let mut imported_boosted = Vec::with_capacity(35);
-        for key in 0..35 {
-            let Some(skill_id) = self.plain_by_legacy_key[key] else {
-                continue;
-            };
-            lane_by_key[key] = imported.len();
-            fixed_lane_keys.push(key);
-            imported.push((skill_id, levels[key], boosts[key].clone()));
-            imported_boosted.push(boosted[key]);
-        }
-        let lane = |key: usize| lane_by_key.get(key).copied().filter(|lane| *lane != usize::MAX);
-        let active_order = action_order.iter().filter_map(|key| lane(*key as usize)).collect::<Vec<_>>();
-        let pre_action_order = [29usize, 34]
-            .into_iter()
-            .filter(|key| levels[*key] > 0)
-            .filter_map(lane)
-            .collect::<Vec<_>>();
-        let post_damage_order = [30usize, 33, 34, 21]
-            .into_iter()
-            .filter(|key| levels[*key] > 0)
-            .filter_map(lane)
-            .collect::<Vec<_>>();
-        let merge_lane_order = (0..35).filter_map(lane).collect::<Vec<_>>();
-
-        SkillLoadout::from_skill_levels_and_boosts(imported)
-            .with_fixed_lane_keys(fixed_lane_keys)
-            .with_boosted_flags(imported_boosted)
-            .with_merge_lane_order(merge_lane_order)
-            .with_active_order(active_order)
-            .with_pre_action_order(pre_action_order)
-            .with_post_damage_order(post_damage_order)
+    ) {
+        loadout.reset_score_profile(&self.plain_by_legacy_key, levels, boosted, boosts, action_order);
     }
 
     /// 直接构造无 overlay 幻影的唯一技能，跳过 legacy SkillStorage。

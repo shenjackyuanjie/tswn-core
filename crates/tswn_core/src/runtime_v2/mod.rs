@@ -62,6 +62,7 @@ pub use cqp::{
 };
 pub use handlers::*;
 pub use plain_assassinate::PlainSkillPreActionOutcome;
+pub(crate) use prepared_init::ScoreIdentityBuffer;
 pub use prepared_init::{PreparedBattleInit, PreparedBattleRoster, RuntimeV2BattleInitError};
 pub use profile::*;
 pub use runner::*;
