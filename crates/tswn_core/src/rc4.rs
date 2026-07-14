@@ -28,6 +28,39 @@ const VAL_INIT: [u8; 256] = val!();
 /// 状态数组长度。
 pub const VAL_LEN: usize = 256;
 
+/// 对现有状态执行一轮 RC4 密钥调度。
+///
+/// 热路径会为每个玩家执行多次完整的 256 字节调度。这里用循环键下标代替取模，
+/// 并在一次边界证明后直接访问状态和密钥，避免在循环内反复做边界检查。
+#[inline]
+fn apply_key_scheduling(state: &mut [u8; VAL_LEN], keys: &[u8]) {
+    let key_len = keys.len();
+    assert!(key_len != 0, "RC4 密钥不能为空");
+
+    let state_ptr = state.as_mut_ptr();
+    let key_ptr = keys.as_ptr();
+    let mut key_index = 0usize;
+    let mut j = 0u8;
+
+    for x in 0..VAL_LEN {
+        // SAFETY: x 始终小于 VAL_LEN；key_index 在每轮末尾回绕，始终小于非零的 key_len；
+        // j 是 u8，转换后的下标天然落在 0..VAL_LEN。两个状态指针可能相同，逐字节交换对此安全。
+        unsafe {
+            let x_ptr = state_ptr.add(x);
+            j = j.wrapping_add(*x_ptr).wrapping_add(*key_ptr.add(key_index));
+            let j_ptr = state_ptr.add(j as usize);
+            let value = *x_ptr;
+            *x_ptr = *j_ptr;
+            *j_ptr = value;
+        }
+
+        key_index += 1;
+        if key_index == key_len {
+            key_index = 0;
+        }
+    }
+}
+
 /// RC4 类
 /// 名竞的核心~
 #[allow(unused)]
@@ -92,16 +125,8 @@ impl RC4 {
     /// ```
     pub fn new(keys: &[u8], round: usize) -> Self {
         let mut val = VAL_INIT;
-        let mut j = 0;
-
-        let key_len = keys.len();
         for _ in 0..round {
-            j = 0;
-            for x in 0..256 {
-                let key_v = keys[x % key_len];
-                j = (j + val[x] as u32 + key_v as u32) & 255;
-                val.swap(x, j as usize);
-            }
+            apply_key_scheduling(&mut val, keys);
         }
         RC4 {
             i: 0,
@@ -114,15 +139,8 @@ impl RC4 {
 
     /// update 一下
     pub fn update(&mut self, keys: &[u8], round: usize) {
-        let key_len = keys.len();
-        let mut j = 0;
         for _ in 0..round {
-            j = 0;
-            for x in 0..256 {
-                let key_v = keys[x % key_len];
-                j = (j + self.main_val[x] as u32 + key_v as u32) & 255;
-                self.main_val.swap(x, j as usize);
-            }
+            apply_key_scheduling(&mut self.main_val, keys);
         }
     }
 
@@ -366,14 +384,8 @@ impl RC4 {
     /// ```
     #[inline]
     pub fn round(&mut self, keys: &[u8], round: Option<usize>) {
-        let key_len = keys.len();
         for _ in 0..round.unwrap_or(1) {
-            let mut j = 0;
-            for i in 0..256 {
-                let key_v = keys[i % key_len];
-                j = (j + self.main_val[i] as u32 + key_v as u32) & 255;
-                self.main_val.swap(i, j as usize);
-            }
+            apply_key_scheduling(&mut self.main_val, keys);
         }
         self.i = 0;
         self.j = 0;
@@ -676,6 +688,45 @@ impl RC4 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reference_key_scheduling(mut state: [u8; VAL_LEN], keys: &[u8], rounds: usize) -> [u8; VAL_LEN] {
+        let key_len = keys.len();
+        for _ in 0..rounds {
+            let mut j = 0usize;
+            for x in 0..VAL_LEN {
+                j = (j + state[x] as usize + keys[x % key_len] as usize) & 255;
+                state.swap(x, j);
+            }
+        }
+        state
+    }
+
+    #[test]
+    fn optimized_key_scheduling_matches_safe_reference() {
+        for key_len in [1usize, 2, 3, 7, 16, 31, 255, 256] {
+            let keys: Vec<u8> = (0..key_len).map(|index| (index as u8).wrapping_mul(181).wrapping_add(160)).collect();
+
+            for rounds in [1usize, 2, 3] {
+                let expected = reference_key_scheduling(VAL_INIT, &keys, rounds);
+                assert_eq!(RC4::new(&keys, rounds).main_val, expected, "key_len={key_len}, rounds={rounds}");
+
+                let prefix = [0, 2, 97, 98, 99];
+                let initial = RC4::new(&prefix, 1).main_val;
+                let expected = reference_key_scheduling(initial, &keys, rounds);
+
+                let mut updated = RC4::new(&prefix, 1);
+                updated.update(&keys, rounds);
+                assert_eq!(updated.main_val, expected, "update: key_len={key_len}, rounds={rounds}");
+
+                let mut rounded = RC4::new(&prefix, 1);
+                rounded.i = 37;
+                rounded.j = 91;
+                rounded.round(&keys, Some(rounds));
+                assert_eq!(rounded.main_val, expected, "round: key_len={key_len}, rounds={rounds}");
+                assert_eq!((rounded.i, rounded.j), (0, 0));
+            }
+        }
+    }
 
     #[test]
     fn rc4_sort_int_test() {
