@@ -1,5 +1,34 @@
 use super::*;
 
+#[inline(always)]
+fn order_i32(left: &mut i32, right: &mut i32) {
+    if *left > *right {
+        std::mem::swap(left, right);
+    }
+}
+
+/// 返回五个整数的中值；七项比较网络只整理会影响中间位置的配对。
+#[inline(always)]
+fn median_i32_5(mut a: i32, mut b: i32, mut c: i32, mut d: i32, mut e: i32) -> i32 {
+    order_i32(&mut a, &mut b);
+    order_i32(&mut d, &mut e);
+    order_i32(&mut a, &mut d);
+    order_i32(&mut b, &mut e);
+    order_i32(&mut b, &mut c);
+    order_i32(&mut c, &mut d);
+    order_i32(&mut b, &mut c);
+    c
+}
+
+/// 返回三个整数的中值；固定网络避免进入通用切片排序。
+#[inline(always)]
+fn median_i32_3(mut a: i32, mut b: i32, mut c: i32) -> i32 {
+    order_i32(&mut a, &mut b);
+    order_i32(&mut b, &mut c);
+    order_i32(&mut a, &mut b);
+    b
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct MoveState {
     pub speed_points: i32,
@@ -267,22 +296,14 @@ impl PlayerRuntime {
 
     pub fn get_at(&self, use_mag: bool, randomer: &mut RC4) -> f64 {
         let atk = if use_mag { self.magic } else { self.attack };
-        let a = {
-            let mut temp = [
-                randomer.r127() as i32,
-                randomer.r127() as i32,
-                randomer.r127() as i32,
-                atk + 64,
-                atk,
-            ];
-            temp.sort_unstable();
-            temp[2] as f64
-        };
-        let b = {
-            let mut temp = [randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64];
-            temp.sort_unstable();
-            temp[1] as f64
-        };
+        let a = median_i32_5(
+            randomer.r127() as i32,
+            randomer.r127() as i32,
+            randomer.r127() as i32,
+            atk + 64,
+            atk,
+        ) as f64;
+        let b = median_i32_3(randomer.r63() as i32 + 64, randomer.r63() as i32 + 64, atk + 64) as f64;
         a * b * self.at_boost()
     }
 
@@ -305,6 +326,32 @@ impl PlayerRuntime {
         };
 
         randomer.next_u8() as i32 <= chance
+    }
+}
+
+#[cfg(test)]
+mod median_tests {
+    use super::{median_i32_3, median_i32_5};
+
+    #[test]
+    fn fixed_median_networks_match_sort_with_duplicates() {
+        for a in -2..=2 {
+            for b in -2..=2 {
+                for c in -2..=2 {
+                    let mut three = [a, b, c];
+                    three.sort_unstable();
+                    assert_eq!(median_i32_3(a, b, c), three[1]);
+
+                    for d in -2..=2 {
+                        for e in -2..=2 {
+                            let mut five = [a, b, c, d, e];
+                            five.sort_unstable();
+                            assert_eq!(median_i32_5(a, b, c, d, e), five[2]);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
