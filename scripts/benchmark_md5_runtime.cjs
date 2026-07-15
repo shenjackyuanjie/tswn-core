@@ -82,6 +82,29 @@ function parseGroupLines(raw, doublePlus) {
     .map((line) => line.split(separator).map((name) => name.trim()).filter(Boolean));
 }
 
+function idName(rawName) {
+  const noWeapon = rawName.split("+", 1)[0];
+  const at = noWeapon.indexOf("@");
+  if (at < 0) {
+    return noWeapon;
+  }
+  const name = noWeapon.slice(0, at);
+  const team = noWeapon.slice(at + 1);
+  return team.length === 0 || team === name || team.includes(":") ? name : `${name}@${team}`;
+}
+
+function duplicateIdName(left, right) {
+  const seen = new Set();
+  for (const name of [...left, ...right]) {
+    const identity = idName(name);
+    if (seen.has(identity)) {
+      return identity;
+    }
+    seen.add(identity);
+  }
+  return null;
+}
+
 function parseArgs(argv) {
   const options = {
     mode: null,
@@ -444,8 +467,14 @@ async function runMatrix(options, md5Version) {
   const players = parseGroupLines(playerText, options.doublePlus);
   const targets = parseGroupLines(targetText, options.targetDoublePlus);
   const jobs = [];
+  const skippedMatchups = [];
   for (let playerIndex = 0; playerIndex < players.length; playerIndex += 1) {
     for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
+      const duplicate = duplicateIdName(players[playerIndex], targets[targetIndex]);
+      if (duplicate != null) {
+        skippedMatchups.push({ player_index: playerIndex, target_index: targetIndex, duplicate_id_name: duplicate });
+        continue;
+      }
       jobs.push({
         playerIndex,
         targetIndex,
@@ -479,7 +508,9 @@ async function runMatrix(options, md5Version) {
     count_per_matchup: options.count,
     player_groups: players.length,
     target_groups: targets.length,
+    requested_matchups: players.length * targets.length,
     matchups: jobs.length,
+    skipped_duplicate_matchups: skippedMatchups,
     workers: pool.workers,
     total,
     wins,
