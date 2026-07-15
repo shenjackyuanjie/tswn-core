@@ -8,6 +8,7 @@
 
 ### 性能优化
 
+- prepared runner 复位时直接接管本轮已排序的输入分组，并把上一轮的嵌套向量交换回 seed 状态作为下轮缓冲，不再逐组复制实体索引。升级后 nightly、完整 `cargo clean` 的同环境三轮 A/B 中，fixed30/no_debug/13000 单线程初始化中位数从 `3.132` 降至 `3.062 us/battle`，约缩短 2.28%；overall 从 `32.325` 降至 `32.246 us/battle`，core 1v1/2v2、1v1、2v2 与 stress_multi 中位均未回退，结果聚合保持 `150858`。`cargo test -p tswn_core` 全量通过：核心库 588 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过。
 - 行动准备一次读取攻击、魔法与 MP 标量，默认/首领攻击不再在目标选择后重复查询实体；内置主动技能的 Charge、Absorb、Iron、Accumulate、Assassinate、Summon 与 Shadow 特殊门禁改为单次枚举分派，普通技能不再串行经过七次类型比较，随机数读取与 MP 扣除时点保持不变。core 全量 588 项通过；fixed30/no_debug/13000 单线程三轮 overall 为 `29.340`、`29.403`、`29.470 us/battle`，中位相对上一阶段再缩短约 0.8%，fight 中位降至 `26.428 us/battle`，stress_multi 中位降至 `61.115 us/battle`，core 1v1/2v2 保持基本持平，结果聚合保持 `150858`。
 - `SkillLoadout` 在准备期缓存行动顺序中的内置主动技能类型与 `u16` 固定槽位，行动扫描不再逐项读取技能 ID 并回查 registry；等级仍从运行中槽位即时读取，行动顺序失效或超大槽位会回退原扫描，保持 Merge、Clone 与动态禁用语义。新增自定义技能过滤、固定槽位和失效重建测试；core 全量 588 项通过。fixed30/no_debug/13000 单线程三轮 overall 为 `29.645`、`29.732`、`29.487 us/battle`，中位相对上一阶段再缩短约 0.8%，core 1v1/2v2、one_v_one、two_v_two 与 stress_multi 中位分别降至 `14.457`、`9.457`、`23.661`、`61.637 us/battle`，结果聚合保持 `150858`。
 - Runtime v2 攻击力抽样将固定 5 项与 3 项的通用切片排序替换为 7 次、3 次比较的专用中值网络，保持五次随机数读取及浮点计算顺序不变；新增 `-2..=2` 全组合（含重复值）与排序参考实现逐项对账。core 全量 587 项通过；fixed30/no_debug/13000 单线程三轮 overall 为 `29.974`、`29.875`、`29.711 us/battle`，中位相对上一阶段再缩短约 2.1%，core 1v1/2v2、one_v_one、two_v_two 与 stress_multi 中位分别降至 `14.746`、`9.610`、`24.161`、`61.967 us/battle`，结果聚合保持 `150858`。

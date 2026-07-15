@@ -935,6 +935,11 @@ impl PreparedBattleRoster {
 impl PreparedBattleSeed {
     pub fn input_groups(&self) -> &[Vec<EntityIdx>] { &self.input_groups }
 
+    /// 把本轮已排好的输入分组交给 runner，并接管 runner 上一轮的向量作为下次复用缓冲。
+    pub(crate) fn swap_input_groups(&mut self, target: &mut Vec<Vec<EntityIdx>>) {
+        std::mem::swap(target, &mut self.input_groups);
+    }
+
     fn into_init(self, players: Vec<Option<PreparedPlayerInit>>) -> PreparedBattleInit {
         self.into_init_with_score_buffers(players, None)
     }

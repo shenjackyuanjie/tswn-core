@@ -612,7 +612,7 @@ impl PreparedRuntimeV2Runner {
             self.battle_roster.refill_seed_state(seed, &mut seed_state);
         }
 
-        Self::clone_input_groups_reusing(&mut runner.input_groups, seed_state.input_groups());
+        seed_state.swap_input_groups(&mut runner.input_groups);
         let result = seed_state.apply_reusing(&mut runner.runtime).map_err(Into::into);
         runner.prepared_seed = Some(seed_state);
         result
