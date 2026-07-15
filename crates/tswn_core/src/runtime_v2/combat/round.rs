@@ -237,7 +237,7 @@ impl CombatRuntime {
 
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
         let mut skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
-        self.drain_skill_hook_plan_into(&skill_plans.early, updates);
+        self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.early, updates);
         let generation_after_early = self
             .entities
             .get(owner)
@@ -251,7 +251,6 @@ impl CombatRuntime {
 
         let state_plan = self.scheduler.state_hook_plan(&self.entities, owner, ProcMask::POST_ACTION);
         let deferred_entries = &skill_plans.deferred;
-        let loadout_len = skill_plans.early.loadout_len;
         let mut deferred_idx = 0usize;
         let mut deferred_owner_state_clears = Vec::new();
         for state_entry in state_plan.entries.iter().copied() {
@@ -260,13 +259,7 @@ impl CombatRuntime {
                 .is_some_and(|(cursor, _)| *cursor <= state_entry.runtime_registration_order)
             {
                 let entry = deferred_entries[deferred_idx].1;
-                let plan = SkillHookPlan {
-                    owner,
-                    hook: ProcMask::POST_ACTION,
-                    loadout_len,
-                    entries: smallvec::SmallVec::from_slice(&[entry]),
-                };
-                self.drain_skill_hook_plan_into(&plan, updates);
+                self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, std::slice::from_ref(&entry), updates);
                 deferred_idx += 1;
             }
             // legacy 的状态循环会在每个状态执行前检查 dj()：只有行动者已经死亡且
@@ -283,13 +276,7 @@ impl CombatRuntime {
             );
         }
         while let Some((_, entry)) = deferred_entries.get(deferred_idx).copied() {
-            let plan = SkillHookPlan {
-                owner,
-                hook: ProcMask::POST_ACTION,
-                loadout_len,
-                entries: smallvec::SmallVec::from_slice(&[entry]),
-            };
-            self.drain_skill_hook_plan_into(&plan, updates);
+            self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, std::slice::from_ref(&entry), updates);
             deferred_idx += 1;
         }
         // legacy 会先记录本轮需要清理的状态，等状态与中途注册技能全部执行完后再统一移除。
@@ -306,7 +293,7 @@ impl CombatRuntime {
         if generation_after_states != skill_plans.generation {
             skill_plans = self.scheduler.skill_post_action_plans(&self.entities, &self.registry, owner);
         }
-        self.drain_skill_hook_plan_into(&skill_plans.late, updates);
+        self.drain_skill_hook_entries_into(owner, ProcMask::POST_ACTION, &skill_plans.late, updates);
     }
 
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {

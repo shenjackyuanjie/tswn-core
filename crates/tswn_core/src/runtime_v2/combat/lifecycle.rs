@@ -234,7 +234,31 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         selected_target: Option<EntityIdx>,
     ) {
-        for entry in &plan.entries {
+        self.drain_skill_hook_entries_with_selected_target_into(plan.owner, plan.hook, &plan.entries, updates, selected_target);
+    }
+
+    /// 直接执行借用的技能条目切片，避免私有分段计划为了执行再包装成大容量容器。
+    #[inline]
+    pub(super) fn drain_skill_hook_entries_into(
+        &mut self,
+        owner: EntityIdx,
+        hook: ProcMask,
+        entries: &[SkillHookPlanEntry],
+        updates: &mut RunUpdates,
+    ) {
+        self.drain_skill_hook_entries_with_selected_target_into(owner, hook, entries, updates, None);
+    }
+
+    #[inline]
+    fn drain_skill_hook_entries_with_selected_target_into(
+        &mut self,
+        owner: EntityIdx,
+        hook: ProcMask,
+        entries: &[SkillHookPlanEntry],
+        updates: &mut RunUpdates,
+        selected_target: Option<EntityIdx>,
+    ) {
+        for entry in entries {
             let (handler, capabilities) = if let Some(static_handler) = self.builtin_static_skill_handler(entry.skill_id) {
                 static_handler
             } else {
@@ -266,7 +290,7 @@ impl CombatRuntime {
                 handler(&mut context, entry);
             }
             self.drain_effects_into(updates);
-            if plan.hook.intersects(ProcMask::DIE) && self.entities.get(plan.owner).is_some_and(|entity| entity.runtime.hp > 0) {
+            if hook.intersects(ProcMask::DIE) && self.entities.get(owner).is_some_and(|entity| entity.runtime.hp > 0) {
                 break;
             }
         }

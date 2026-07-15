@@ -35,9 +35,11 @@ pub struct SkillHookPlan {
 #[derive(Debug)]
 pub(crate) struct SkillPostActionPlans {
     pub(crate) generation: u32,
-    pub(crate) early: SkillHookPlan,
+    /// 行动后早期技能通常只有少量条目，私有计划内联四项即可覆盖常见阵容。
+    pub(crate) early: SmallVec<[SkillHookPlanEntry; 4]>,
     pub(crate) deferred: SmallVec<[(u64, SkillHookPlanEntry); 4]>,
-    pub(crate) late: SkillHookPlan,
+    /// 行动后末尾技能与早期段分开内联，超过四项时仍可按需扩容。
+    pub(crate) late: SmallVec<[SkillHookPlanEntry; 4]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,8 +326,8 @@ impl PhaseScheduler {
             .skills;
         let deferred_lanes = skills.post_action_after_states();
         let mut deferred = SmallVec::<[(u64, SkillHookPlanEntry); 4]>::new();
-        let mut early_entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
-        let mut late_entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
+        let mut early_entries = SmallVec::<[SkillHookPlanEntry; 4]>::new();
+        let mut late_entries = SmallVec::<[SkillHookPlanEntry; 4]>::new();
 
         if let Some(cached_entries) = skills.cached_hook_entries(ProcMask::POST_ACTION) {
             for cached in cached_entries {
@@ -382,22 +384,11 @@ impl PhaseScheduler {
             }
         }
 
-        let loadout_len = skills.len();
         SkillPostActionPlans {
             generation: skills.hook_generation(),
-            early: SkillHookPlan {
-                owner,
-                hook: ProcMask::POST_ACTION,
-                loadout_len,
-                entries: early_entries,
-            },
+            early: early_entries,
             deferred,
-            late: SkillHookPlan {
-                owner,
-                hook: ProcMask::POST_ACTION,
-                loadout_len,
-                entries: late_entries,
-            },
+            late: late_entries,
         }
     }
 
