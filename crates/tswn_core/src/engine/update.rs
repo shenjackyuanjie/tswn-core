@@ -228,7 +228,8 @@ pub struct RunUpdates {
     /// 批次唯一 ID（自增，从 1 开始）。
     pub id: u64,
     /// 本批次内所有事件帧，按时间顺序排列。
-    pub updates: smallvec::SmallVec<[RunUpdate; 8]>,
+    /// 常规短事件批次内联两帧；长 replay 批次按需扩容，避免无帧批量路径携带过大的栈对象。
+    pub updates: smallvec::SmallVec<[RunUpdate; 2]>,
     /// 本批次结束后需要触发 `on_update_end` 回调的玩家列表。
     pub on_update_end: smallvec::SmallVec<[PlrId; 8]>,
     /// 本批次内实际提交的主体行动边界。
