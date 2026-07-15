@@ -42,6 +42,37 @@ function benchmarkInput(raw) {
   return normalized.startsWith("!test!") ? normalized : `${TEST_HEADER}${normalized}`;
 }
 
+function winRateBenchmarkInput(raw) {
+  const normalized = normalizeText(raw).trim();
+  if (normalized.startsWith("!test!")) {
+    return normalized;
+  }
+
+  const lines = normalized.split("\n").map((line) => line.trimEnd());
+  let groups;
+  if (!lines.some((line) => line.length === 0)) {
+    // 名竞旧输入在完全没有空行时按“一行一个队伍”解释；加测试头前必须先固化分组。
+    groups = lines.filter(Boolean).map((line) => [line]);
+  } else {
+    groups = [];
+    let current = [];
+    for (const line of lines) {
+      if (line.length === 0) {
+        if (current.length > 0) {
+          groups.push(current);
+          current = [];
+        }
+      } else {
+        current.push(line);
+      }
+    }
+    if (current.length > 0) {
+      groups.push(current);
+    }
+  }
+  return `${TEST_HEADER}${groups.map((group) => group.join("\n")).join("\n\n")}`;
+}
+
 function parseGroupLines(raw, doublePlus) {
   const separator = doublePlus ? "++" : "+";
   return normalizeText(raw)
@@ -141,7 +172,7 @@ async function runWinRate(md5, raw, count) {
     throw new Error(`官方 win_rate_callback 只按 100 场上报，本工具要求 count 是 100 的倍数: ${count}`);
   }
   const result = await md5.win_rate_callback(
-    benchmarkInput(raw),
+    winRateBenchmarkInput(raw),
     (round) => round < count,
   );
   return { wins: Number(result.win_count), total: count, errors: 0 };
