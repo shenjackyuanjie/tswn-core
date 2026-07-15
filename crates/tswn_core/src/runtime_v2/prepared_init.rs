@@ -3,6 +3,7 @@ use crate::engine::storage::Storage;
 use crate::player::skill::act::minion::MinionBlueprintOwner;
 use crate::player::utils::trim_js_line_end;
 use crate::player::{Player, PlayerType, PlrId};
+use crate::rc4::Rc4KeySchedulePrefix;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeV2BattleInitError {
@@ -359,6 +360,7 @@ pub struct PreparedBattleRoster {
     player_alive: Vec<bool>,
     input_groups: Vec<Vec<PlrId>>,
     base_names_sorted: Vec<String>,
+    profile_seed_rc4_prefix: Option<Rc4KeySchedulePrefix>,
     id_key_names: Vec<String>,
     sorted_by_id_name: Vec<PlrId>,
     recycle_score_buffers: bool,
@@ -670,6 +672,7 @@ impl PreparedBattleRoster {
             player_alive,
             input_groups,
             base_names_sorted,
+            profile_seed_rc4_prefix: None,
             id_key_names,
             sorted_by_id_name,
             recycle_score_buffers: true,
@@ -773,11 +776,14 @@ impl PreparedBattleRoster {
             );
         }
 
+        let base_names_sorted = PreparedBattleInit::base_names_sorted(raw_groups);
+        let profile_seed_rc4_prefix = PreparedBattleInit::profile_seed_rc4_prefix(&base_names_sorted);
         Ok(Self {
             players,
             player_alive,
             input_groups,
-            base_names_sorted: PreparedBattleInit::base_names_sorted(raw_groups),
+            base_names_sorted,
+            profile_seed_rc4_prefix,
             id_key_names,
             sorted_by_id_name,
             recycle_score_buffers: false,
@@ -803,6 +809,7 @@ impl PreparedBattleRoster {
             player_alive,
             input_groups,
             base_names_sorted,
+            profile_seed_rc4_prefix: _,
             id_key_names,
             sorted_by_id_name,
             recycle_score_buffers,
@@ -839,7 +846,11 @@ impl PreparedBattleRoster {
     /// 原地刷新 seed 状态，供同一 worker 的连续对局复用所有小向量容量。
     pub fn refill_seed_state(&self, seed: &[String], state: &mut PreparedBattleSeed) {
         PreparedBattleInit::refill_rc4_key_with_seed(&self.base_names_sorted, seed, &mut state.rc4_key);
-        let mut rng = RC4::new(state.rc4_key.as_bytes(), 1);
+        let mut rng = self
+            .profile_seed_rc4_prefix
+            .as_ref()
+            .and_then(|prefix| RC4::new_with_key_schedule_prefix(state.rc4_key.as_bytes(), prefix))
+            .unwrap_or_else(|| RC4::new(state.rc4_key.as_bytes(), 1));
         rng.js_xor_str(&state.rc4_key);
 
         state.sort_ints.clear();
@@ -1825,6 +1836,24 @@ impl PreparedBattleInit {
             return;
         }
 
+        if let [seed_name] = seed {
+            let mut first = true;
+            let mut seed_written = false;
+            for name in base_names_sorted {
+                if !seed_written && seed_name < name {
+                    Self::push_rc4_key_name(output, &mut first, seed_name);
+                    seed_written = true;
+                } else if seed_name == name {
+                    seed_written = true;
+                }
+                Self::push_rc4_key_name(output, &mut first, name);
+            }
+            if !seed_written {
+                Self::push_rc4_key_name(output, &mut first, seed_name);
+            }
+            return;
+        }
+
         let mut names = base_names_sorted.iter().chain(seed).collect::<smallvec::SmallVec<[&String; 8]>>();
         names.sort_unstable();
         names.dedup();
@@ -1834,6 +1863,27 @@ impl PreparedBattleInit {
             }
             output.push_str(name);
         }
+    }
+
+    #[inline]
+    fn push_rc4_key_name(output: &mut String, first: &mut bool, name: &str) {
+        if !*first {
+            output.push('\r');
+        }
+        output.push_str(name);
+        *first = false;
+    }
+
+    /// 为批量胜率的连续数字 seed 预计算第一轮 KSA 的稳定前缀。
+    ///
+    /// 实际密钥每轮仍会逐字节校验前缀；名字排序位置发生变化时自动回退完整 KSA。
+    fn profile_seed_rc4_prefix(base_names_sorted: &[String]) -> Option<Rc4KeySchedulePrefix> {
+        let seed = format!("seed:{}@!", crate::engine::PROFILE_START as usize + 1);
+        let mut key = String::new();
+        Self::refill_rc4_key_with_seed(base_names_sorted, std::slice::from_ref(&seed), &mut key);
+        let seed_offset = key.find(&seed)?;
+        let prefix_len = (seed_offset + "seed:".len()).min(crate::rc4::VAL_LEN);
+        (prefix_len != 0).then(|| Rc4KeySchedulePrefix::new(&key.as_bytes()[..prefix_len]))
     }
 
     fn cmp_player_keys(sort_ints: &[i32], id_key_names: &[String], left: PlrId, right: PlrId) -> std::cmp::Ordering {
@@ -1879,6 +1929,21 @@ impl PreparedBattleInit {
 #[cfg(test)]
 mod score_profile_tests {
     use super::*;
+
+    #[test]
+    fn single_seed_rc4_key_merge_matches_sorted_reference() {
+        let base_names = vec!["alpha".to_owned(), "middle".to_owned(), "zulu".to_owned()];
+        for seed_name in ["0", "alpha", "seed:33554432@!", "zzzz"] {
+            let seed = vec![seed_name.to_owned()];
+            let mut actual = String::new();
+            PreparedBattleInit::refill_rc4_key_with_seed(&base_names, &seed, &mut actual);
+
+            let mut expected_names = base_names.iter().chain(&seed).map(String::as_str).collect::<Vec<_>>();
+            expected_names.sort_unstable();
+            expected_names.dedup();
+            assert_eq!(actual, expected_names.join("\r"), "seed={seed_name:?}");
+        }
+    }
 
     #[test]
     fn accelerated_score_name_base_matches_scalar_filter() {

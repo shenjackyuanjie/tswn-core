@@ -186,6 +186,35 @@ pub struct RC4 {
     pub byte_count: u64,
 }
 
+/// RC4 第一轮 KSA 的可复用前缀检查点。
+///
+/// 如果连续密钥共享开头若干字节，可以从检查点继续剩余交换，避免重复执行
+/// 已经确定的依赖链。检查点最多覆盖第一轮的 256 个状态槽。
+#[derive(Debug, Clone)]
+pub struct Rc4KeySchedulePrefix {
+    key_prefix: Box<[u8]>,
+    main_val: [u8; VAL_LEN],
+    j: u8,
+}
+
+impl Rc4KeySchedulePrefix {
+    pub fn new(key_prefix: &[u8]) -> Self {
+        assert!(!key_prefix.is_empty(), "RC4 KSA 前缀不能为空");
+        let scheduled_len = key_prefix.len().min(VAL_LEN);
+        let key_prefix: Box<[u8]> = key_prefix[..scheduled_len].into();
+        let mut main_val = VAL_INIT;
+        let mut j = 0u8;
+        for x in 0..scheduled_len {
+            apply_key_scheduling_step(&mut main_val, &key_prefix, x, x, &mut j);
+        }
+        Self { key_prefix, main_val, j }
+    }
+
+    pub fn len(&self) -> usize { self.key_prefix.len() }
+
+    pub fn is_empty(&self) -> bool { self.key_prefix.is_empty() }
+}
+
 impl Default for RC4 {
     fn default() -> Self {
         RC4 {
@@ -246,6 +275,37 @@ impl RC4 {
             #[cfg(not(feature = "no_debug"))]
             byte_count: 0,
         }
+    }
+
+    /// 尝试从第一轮 KSA 前缀检查点构造状态。
+    ///
+    /// 密钥前缀不匹配时返回 `None`，调用方必须回退到完整调度。
+    #[inline(never)]
+    pub fn new_with_key_schedule_prefix(keys: &[u8], prefix: &Rc4KeySchedulePrefix) -> Option<Self> {
+        if keys.is_empty() || !keys.starts_with(&prefix.key_prefix) {
+            return None;
+        }
+
+        let mut main_val = prefix.main_val;
+        let mut j = prefix.j;
+        let mut key_index = prefix.len();
+        if key_index == keys.len() {
+            key_index = 0;
+        }
+        for x in prefix.len()..VAL_LEN {
+            apply_key_scheduling_step(&mut main_val, keys, x, key_index, &mut j);
+            key_index += 1;
+            if key_index == keys.len() {
+                key_index = 0;
+            }
+        }
+        Some(Self {
+            i: 0,
+            j: 0,
+            main_val,
+            #[cfg(not(feature = "no_debug"))]
+            byte_count: 0,
+        })
     }
 
     /// update 一下
@@ -880,6 +940,24 @@ mod tests {
                 assert_eq!((rounded.i, rounded.j), (0, 0));
             }
         }
+    }
+
+    #[test]
+    fn cached_key_schedule_prefix_matches_full_schedule() {
+        for key_len in [1usize, 2, 7, 31, 255, 256, 300] {
+            let keys = (0..key_len)
+                .map(|index| (index as u8).wrapping_mul(73).wrapping_add(19))
+                .collect::<Vec<_>>();
+            for prefix_len in [1usize, key_len.min(7), key_len.min(VAL_LEN)] {
+                let prefix = Rc4KeySchedulePrefix::new(&keys[..prefix_len]);
+                let actual = RC4::new_with_key_schedule_prefix(&keys, &prefix).expect("相同前缀应命中检查点");
+                let expected = RC4::new(&keys, 1);
+                assert_eq!(actual.main_val, expected.main_val, "key_len={key_len}, prefix_len={prefix_len}");
+            }
+        }
+
+        let prefix = Rc4KeySchedulePrefix::new(b"seed:");
+        assert!(RC4::new_with_key_schedule_prefix(b"other-key", &prefix).is_none());
     }
 
     #[test]
