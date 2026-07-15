@@ -16,6 +16,7 @@ use tswn_core::case_gen::{
 };
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::runtime_v2::{RuntimeV2BatchSummary, runtime_v2_groups_win_rate};
+use tswn_core::win_rate::{WinRateSummary, groups_win_rate};
 
 const DEFAULT_LIBRARY: &str = "tests/sqp6000.txt";
 const DEFAULT_OUT_DIR: &str = "target/perf_cases";
@@ -25,6 +26,21 @@ const DEFAULT_SAMPLE_RUNS: usize = 64;
 const DEFAULT_BENCH_RUNS: usize = 500_000;
 const DEFAULT_SELECT_COUNT: usize = 20;
 const DEFAULT_SHUFFLE_SEED: u64 = 0x5EED_2026;
+
+#[derive(Clone, Copy, Debug)]
+enum Engine {
+    V1,
+    V2,
+}
+
+impl Engine {
+    fn label(self) -> &'static str {
+        match self {
+            Self::V1 => "v1",
+            Self::V2 => "v2",
+        }
+    }
+}
 
 #[derive(Debug)]
 struct Config {
@@ -39,6 +55,7 @@ struct Config {
     select_count: usize,
     shuffle_seed: u64,
     thread: u32,
+    engine: Engine,
     select_only: bool,
     quiet: bool,
 }
@@ -101,6 +118,7 @@ struct JsonReport {
     select_count: usize,
     shuffle_seed: u64,
     thread: u32,
+    engine: String,
     selected: Vec<CaseReport>,
     summaries: Vec<SummaryReport>,
 }
@@ -190,7 +208,7 @@ fn generate_unique_cases(names: &[String], config: &Config) -> Vec<GeneratedCase
 fn sample_cases(cases: Vec<GeneratedCase>, config: &Config) -> Result<Vec<SampledCase>, String> {
     let mut sampled = Vec::with_capacity(cases.len());
     for (idx, case) in cases.into_iter().enumerate() {
-        match bench_generated_case(&case, config.sample_runs, 1) {
+        match bench_generated_case(&case, config.sample_runs, 1, config.engine) {
             Ok(sample) => sampled.push(SampledCase { case, sample }),
             Err(err) => {
                 if !config.quiet {
@@ -273,7 +291,12 @@ fn run_selected_cases(selected: Vec<SampledCase>, config: &Config) -> Result<Vec
         let benchmark = if config.select_only {
             None
         } else {
-            Some(bench_generated_case(&item.case, config.bench_runs, config.thread)?)
+            Some(bench_generated_case(
+                &item.case,
+                config.bench_runs,
+                config.thread,
+                config.engine,
+            )?)
         };
 
         reports.push(CaseReport {
@@ -369,7 +392,7 @@ fn run_fixed_cases(cases: Vec<(PathBuf, GeneratedCase)>, config: &Config) -> Res
         let benchmark = if config.select_only {
             None
         } else {
-            Some(bench_generated_case(&case, config.bench_runs, config.thread)?)
+            Some(bench_generated_case(&case, config.bench_runs, config.thread, config.engine)?)
         };
         reports.push(CaseReport {
             rank,
@@ -386,25 +409,54 @@ fn run_fixed_cases(cases: Vec<(PathBuf, GeneratedCase)>, config: &Config) -> Res
     Ok(reports)
 }
 
-fn bench_generated_case(case: &GeneratedCase, runs: usize, thread: u32) -> Result<BenchRun, String> {
+fn bench_generated_case(case: &GeneratedCase, runs: usize, thread: u32, engine: Engine) -> Result<BenchRun, String> {
     let (groups, _) = Runner::split_namerena_into_groups(case.input.clone());
     let started = Instant::now();
-    let summary = runtime_v2_groups_win_rate(&groups, runs, WIN_RATE_EVAL_RQ, thread)
-        .map_err(|e| format!("benchmark 失败({}): {e}", case_id(case.mode, case.input_hash)))?;
-    Ok(bench_run_from_summary(summary, started.elapsed()))
+    match engine {
+        Engine::V1 => {
+            let summary = groups_win_rate(&groups, runs, WIN_RATE_EVAL_RQ, thread)
+                .map_err(|e| format!("benchmark 失败({}): {e}", case_id(case.mode, case.input_hash)))?;
+            Ok(bench_run_from_v1_summary(summary, started.elapsed()))
+        }
+        Engine::V2 => {
+            let summary = runtime_v2_groups_win_rate(&groups, runs, WIN_RATE_EVAL_RQ, thread)
+                .map_err(|e| format!("benchmark 失败({}): {e}", case_id(case.mode, case.input_hash)))?;
+            Ok(bench_run_from_v2_summary(summary, started.elapsed()))
+        }
+    }
 }
 
-fn bench_run_from_summary(summary: RuntimeV2BatchSummary, elapsed: Duration) -> BenchRun {
-    let total = summary.total.max(1) as f64;
+fn bench_run_from_v1_summary(summary: WinRateSummary, elapsed: Duration) -> BenchRun {
+    bench_run_from_parts(
+        summary.wins,
+        summary.total,
+        summary.timing.init_nanos,
+        summary.timing.fight_nanos,
+        elapsed,
+    )
+}
+
+fn bench_run_from_v2_summary(summary: RuntimeV2BatchSummary, elapsed: Duration) -> BenchRun {
+    bench_run_from_parts(
+        summary.wins,
+        summary.total,
+        summary.timing.init_nanos,
+        summary.timing.fight_nanos,
+        elapsed,
+    )
+}
+
+fn bench_run_from_parts(wins: usize, runs: usize, init_nanos: u128, fight_nanos: u128, elapsed: Duration) -> BenchRun {
+    let total = runs.max(1) as f64;
     let elapsed_s = elapsed.as_secs_f64();
     BenchRun {
-        runs: summary.total,
-        wins: summary.wins,
+        runs,
+        wins,
         elapsed_ms: elapsed_s * 1000.0,
         us_per_battle: elapsed.as_micros() as f64 / total,
         battles_per_s: if elapsed_s > 0.0 { total / elapsed_s } else { 0.0 },
-        init_us_per_battle: summary.timing.init_nanos as f64 / 1e3 / total,
-        fight_us_per_battle: summary.timing.fight_nanos as f64 / 1e3 / total,
+        init_us_per_battle: init_nanos as f64 / 1e3 / total,
+        fight_us_per_battle: fight_nanos as f64 / 1e3 / total,
     }
 }
 
@@ -428,6 +480,7 @@ fn write_reports(config: &Config, reports: &[CaseReport]) -> Result<(), String> 
         select_count: config.select_count,
         shuffle_seed: config.shuffle_seed,
         thread: config.thread,
+        engine: config.engine.label().to_string(),
         selected: reports.to_vec(),
         summaries,
     };
@@ -533,6 +586,7 @@ fn build_markdown_report(config: &Config, reports: &[CaseReport]) -> String {
     }
     let _ = writeln!(&mut out, "- bench_runs: `{}`", config.bench_runs);
     let _ = writeln!(&mut out, "- thread: `{}`", config.thread);
+    let _ = writeln!(&mut out, "- engine: `{}`", config.engine.label());
     let _ = writeln!(&mut out);
 
     let _ = writeln!(&mut out, "## Selected Cases");
@@ -627,6 +681,7 @@ fn parse_args() -> Result<Config, String> {
         select_count: DEFAULT_SELECT_COUNT,
         shuffle_seed: DEFAULT_SHUFFLE_SEED,
         thread: 1,
+        engine: Engine::V2,
         select_only: false,
         quiet: false,
     };
@@ -703,6 +758,14 @@ fn parse_args() -> Result<Config, String> {
                 config.thread = require_arg(&args, idx, "--thread")?
                     .parse::<u32>()
                     .map_err(|e| format!("解析 --thread 失败: {e}"))?;
+            }
+            "--engine" => {
+                idx += 1;
+                config.engine = match require_arg(&args, idx, "--engine")? {
+                    "v1" | "legacy" => Engine::V1,
+                    "v2" => Engine::V2,
+                    value => return Err(format!("--engine 只支持 v1/legacy/v2，实际为: {value}")),
+                };
             }
             "--select-only" => config.select_only = true,
             "-q" | "--quiet" => config.quiet = true,
@@ -816,6 +879,7 @@ fn print_usage() {
   --select-count <N>            从简单到困难选多少个 case，默认 20
   --shuffle-seed <N>            固定号库采样顺序
   --thread <N>                  正式 benchmark 线程参数：1=单线程，0=默认并行，N=指定线程；默认 1
+  --engine <v1|v2>              被测 runtime，默认 v2；legacy 是 v1 的别名
   --select-only                 只选 case 和写输入，不跑正式 benchmark
   -q, --quiet                   安静模式
 "#

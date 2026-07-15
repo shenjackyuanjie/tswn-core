@@ -46,6 +46,11 @@ path = "src/bin/track_score_perf.rs"
 required-features = ["aux_bins"]
 
 [[bin]]
+name = "track_cqp_perf"
+path = "src/bin/track_cqp_perf.rs"
+required-features = ["aux_bins"]
+
+[[bin]]
 name = "track_test"
 path = "src/bin/track_test.rs"
 required-features = ["aux_bins"]
