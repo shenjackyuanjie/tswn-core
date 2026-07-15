@@ -114,6 +114,7 @@ function parseArgs(argv) {
     caseDir: null,
     count: null,
     workers: 0,
+    evalRq: 6,
     doublePlus: false,
     targetDoublePlus: false,
     label: null,
@@ -152,6 +153,9 @@ function parseArgs(argv) {
       case "--workers":
         options.workers = Number.parseInt(nextValue(), 10);
         break;
+      case "--eval-rq":
+        options.evalRq = Number.parseFloat(nextValue());
+        break;
       case "--label":
         options.label = nextValue();
         break;
@@ -178,6 +182,9 @@ function parseArgs(argv) {
   if (!Number.isInteger(options.workers) || options.workers < 0) {
     throw new Error("--workers 必须是非负整数");
   }
+  if (!Number.isFinite(options.evalRq) || options.evalRq <= 0) {
+    throw new Error("--eval-rq 必须是正数");
+  }
   if (options.mode === "fixed" && !options.caseDir) {
     throw new Error("fixed 模式需要 --case-dir");
   }
@@ -188,6 +195,35 @@ function parseArgs(argv) {
     throw new Error("matrix 模式需要 --targets");
   }
   return options;
+}
+
+function prepareMd5Module(md5Path, evalRq) {
+  if (evalRq === 6) {
+    return { modulePath: md5Path, cleanup: () => {} };
+  }
+
+  const source = fs.readFileSync(md5Path, "utf8");
+  const pattern = /\$\.vr\s*=\s*6/g;
+  const matches = source.match(pattern) || [];
+  if (matches.length !== 1) {
+    throw new Error(`预期 md5.js 只有一处胜率 rq=6，实际找到 ${matches.length} 处`);
+  }
+  // 临时副本放在原文件旁，保持 __dirname 与 assets 相对路径语义不变。
+  const temporaryPath = path.join(
+    path.dirname(md5Path),
+    `.md5-benchmark-rq${String(evalRq).replace(/\W/g, "_")}-${process.pid}-${Date.now()}.cjs`,
+  );
+  fs.writeFileSync(temporaryPath, source.replace(pattern, `$.vr = ${evalRq}`), "utf8");
+  return {
+    modulePath: temporaryPath,
+    cleanup: () => {
+      try {
+        fs.rmSync(temporaryPath, { force: true });
+      } catch (_error) {
+        // 退出阶段尽力清理即可，不能覆盖真正的 benchmark 异常。
+      }
+    },
+  };
 }
 
 async function runWinRate(md5, raw, count) {
@@ -506,6 +542,7 @@ async function runMatrix(options, md5Version) {
     player_sha256: hashText(playerText),
     target_sha256: hashText(targetText),
     count_per_matchup: options.count,
+    eval_rq: options.evalRq,
     player_groups: players.length,
     target_groups: targets.length,
     requested_matchups: players.length * targets.length,
@@ -542,25 +579,31 @@ async function main() {
     throw new Error(`md5.js 不存在: ${options.md5Path}`);
   }
 
-  let report;
-  if (options.mode === "matrix") {
-    // 主线程只负责调度；每个 worker 自己加载一份官方 md5.js。
-    const probe = require(options.md5Path);
-    const md5Version = probe.run_env?.version ?? null;
-    report = await runMatrix(options, md5Version);
-  } else {
-    const md5 = require(options.md5Path);
-    await warmup(md5);
-    const md5Version = md5.run_env?.version ?? null;
-    if (options.mode === "fixed") {
-      report = await runFixed(options, md5, md5Version);
-    } else if (options.mode === "win-rate") {
-      report = await runSingleWinRate(options, md5, md5Version);
+  const prepared = prepareMd5Module(options.md5Path, options.evalRq);
+  options.md5Path = prepared.modulePath;
+  try {
+    let report;
+    if (options.mode === "matrix") {
+      // 主线程只负责调度；每个 worker 自己加载一份相同口径的 md5.js。
+      const probe = require(options.md5Path);
+      const md5Version = probe.run_env?.version ?? null;
+      report = await runMatrix(options, md5Version);
     } else {
-      report = await runScoreBatch(options, md5, md5Version);
+      const md5 = require(options.md5Path);
+      await warmup(md5);
+      const md5Version = md5.run_env?.version ?? null;
+      if (options.mode === "fixed") {
+        report = await runFixed(options, md5, md5Version);
+      } else if (options.mode === "win-rate") {
+        report = await runSingleWinRate(options, md5, md5Version);
+      } else {
+        report = await runScoreBatch(options, md5, md5Version);
+      }
     }
+    writeReport(report, options.out);
+  } finally {
+    prepared.cleanup();
   }
-  writeReport(report, options.out);
 }
 
 if (!isMainThread && workerData?.role === "md5-benchmark-worker") {
