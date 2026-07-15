@@ -331,9 +331,14 @@ function summarizeRows(label, rows, predicate = () => true) {
 }
 
 async function runFixed(options, md5, md5Version) {
-  const filenames = fs.readdirSync(options.caseDir)
+  const allFilenames = fs.readdirSync(options.caseDir)
     .filter((filename) => filename.endsWith(".txt"))
     .sort();
+  // 官方 win_rate 只支持恰好两个对战组；多组 case 必须明确跳过，不能等待一个永远不会发出的事件。
+  const filenames = allFilenames.filter((filename) => ["1v1", "2v2"].includes(inferCaseMode(filename)));
+  const skippedCases = allFilenames
+    .filter((filename) => !filenames.includes(filename))
+    .map((filename) => ({ filename, mode: inferCaseMode(filename), reason: "official win_rate only supports two groups" }));
   const cases = [];
   for (const filename of filenames) {
     const raw = normalizeText(fs.readFileSync(path.join(options.caseDir, filename), "utf8"));
@@ -352,16 +357,25 @@ async function runFixed(options, md5, md5Version) {
     summarizeRows("core_1v1_2v2", cases, (item) => ["1v1", "2v2"].includes(item.mode)),
     summarizeRows("one_v_one", cases, (item) => item.mode === "1v1"),
     summarizeRows("two_v_two", cases, (item) => item.mode === "2v2"),
-    summarizeRows("stress_multi", cases, (item) => ["3v3v3", "ffa_6", "ffa_8"].includes(item.mode)),
   ];
+  const overall = summaries[0];
   return {
     schema_version: 1,
     ...runtimeInfo(),
     md5_version: md5Version,
-    workload: "fixed30-single-thread",
+    workload: "fixed30-two-team-single-thread",
     label: options.label || "fixed30",
     case_dir: options.caseDir,
     count_per_case: options.count,
+    total_case_count: allFilenames.length,
+    benchmarked_case_count: filenames.length,
+    skipped_cases: skippedCases,
+    total: overall.battles,
+    wins: overall.wins,
+    errors: overall.errors,
+    elapsed_nanos: overall.elapsed_nanos,
+    us_per_battle: overall.us_per_battle,
+    battles_per_second: overall.battles_per_second,
     timing_scope: "sequential core wall; excludes process startup, md5.js load, warmup, input read and report serialization",
     cases,
     summaries,
