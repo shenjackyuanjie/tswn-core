@@ -42,7 +42,7 @@ fn plain_revive_uses_charmed_effective_team_roster() {
 
     let selected = runtime.select_plain_revive_targets(EntityIdx(0), true);
 
-    assert_eq!(selected, vec![EntityIdx(2)]);
+    assert_eq!(selected.as_slice(), &[EntityIdx(2)]);
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn plain_revive_without_valid_target_continues_to_clone() {
 
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Clone);
     assert_eq!(prepared.selected.fixed_lane, 1);
-    assert_eq!(prepared.targets, vec![EntityIdx(0)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(0)]);
 }
 
 #[test]

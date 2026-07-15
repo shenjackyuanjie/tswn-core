@@ -117,7 +117,7 @@ impl CombatRuntime {
         }
     }
 
-    pub fn select_plain_default_enemy_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_default_enemy_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         self.select_plain_default_enemy_targets_with_count(actor, smart, if smart { 3 } else { 2 })
     }
 
@@ -126,14 +126,14 @@ impl CombatRuntime {
         actor: EntityIdx,
         smart: bool,
         select_count: usize,
-    ) -> Vec<EntityIdx> {
+    ) -> PreparedTargetList {
         if select_count == 0 {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let ally_skip_indices = all_alive
             .iter()
@@ -154,7 +154,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &ally_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             if selected.contains(&target) {
@@ -167,7 +167,7 @@ impl CombatRuntime {
             }
         }
         if selected.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let mut scored = selected
             .into_iter()
@@ -270,7 +270,7 @@ impl CombatRuntime {
         }
     }
 
-    pub fn drain_plain_quake_skill_into(&mut self, actor: EntityIdx, mut targets: Vec<EntityIdx>, updates: &mut RunUpdates) {
+    pub fn drain_plain_quake_skill_into(&mut self, actor: EntityIdx, mut targets: PreparedTargetList, updates: &mut RunUpdates) {
         if targets.is_empty() {
             return;
         }
@@ -360,11 +360,11 @@ impl CombatRuntime {
         self.drain_plain_attack_with_atp_into(actor, target, false, atp, updates);
     }
 
-    pub fn select_plain_berserk_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_berserk_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let ally_skip_indices = all_alive
             .iter()
@@ -387,7 +387,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &ally_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             let valid = self.entities.get(target).is_some_and(|entity| {
@@ -453,11 +453,11 @@ impl CombatRuntime {
         self.drain_plain_attack_with_atp_and_on_damage_into(actor, target, true, atp, PlainAttackOnDamage::Berserk, updates);
     }
 
-    pub fn select_plain_haste_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_haste_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_alive(actor_team).unwrap_or_default();
         if candidates.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
 
         let select_count = if smart { 3 } else { 2 };
@@ -466,7 +466,7 @@ impl CombatRuntime {
         let mut invalid_count = -(select_count as i32);
         while duplicate_count <= select_count && invalid_count <= select_count as i32 {
             let Some(picked) = self.rng.pick(candidates) else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = candidates[picked];
             let valid = self.entities.get(target).is_some_and(|entity| {
@@ -658,11 +658,11 @@ impl CombatRuntime {
         ));
     }
 
-    pub fn select_plain_rapid_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_rapid_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -684,7 +684,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             if selected.contains(&target) {
@@ -697,7 +697,7 @@ impl CombatRuntime {
             }
         }
         if selected.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
 
         let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 5]>::new();
@@ -728,7 +728,7 @@ impl CombatRuntime {
         scored.into_iter().map(|(target, _)| target).collect()
     }
 
-    pub fn drain_plain_rapid_skill_into(&mut self, actor: EntityIdx, mut targets: Vec<EntityIdx>, updates: &mut RunUpdates) {
+    pub fn drain_plain_rapid_skill_into(&mut self, actor: EntityIdx, mut targets: PreparedTargetList, updates: &mut RunUpdates) {
         if targets.is_empty() {
             return;
         }

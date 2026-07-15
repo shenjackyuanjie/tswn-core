@@ -29,7 +29,7 @@ fn plain_charge_selects_self_executes_and_ticks_in_late_post_action() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("charge should be selected when probability passes");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Charge);
-    assert_eq!(prepared.targets, vec![EntityIdx(0)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(0)]);
 
     let mut updates = RunUpdates::new();
     runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);

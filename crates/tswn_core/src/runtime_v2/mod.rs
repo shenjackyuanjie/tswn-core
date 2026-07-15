@@ -56,7 +56,9 @@ pub use batch::{
     RuntimeV2BatchError, RuntimeV2BatchSummary, prepared_runtime_v2_win_rate, prepared_runtime_v2_win_rate_range,
     runtime_v2_groups_win_rate, runtime_v2_score, runtime_v2_score_range,
 };
-pub use combat::{CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, RoundOutcome, SelectedBuiltinSkill};
+pub use combat::{
+    CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome, SelectedBuiltinSkill,
+};
 pub use cqp::{
     RuntimeV2CqpBatchResult, RuntimeV2CqpMatchup, RuntimeV2CqpMatchupResult, resolve_cqp_workers, runtime_v2_cqp_matchups,
 };

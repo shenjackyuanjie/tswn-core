@@ -258,7 +258,7 @@ fn plain_default_enemy_target_selection_matches_legacy_rng_for_single_enemy() {
 
     let selected = runtime.select_plain_default_enemy_targets(EntityIdx(0), false);
 
-    assert_eq!(selected, vec![EntityIdx(2)]);
+    assert_eq!(selected.as_slice(), &[EntityIdx(2)]);
     assert_rng_state_eq(&runtime.rng, &expected_rng);
 }
 
@@ -309,7 +309,7 @@ fn plain_poison_static_dispatch_applies_threshold_and_stacking_semantics() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("poison should be selected");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Poison);
-    assert_eq!(prepared.targets, vec![EntityIdx(1)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(1)]);
 
     let mut expected_rng = runtime.rng.clone();
     let attack_atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng);

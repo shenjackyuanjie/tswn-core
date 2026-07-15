@@ -40,7 +40,7 @@ fn plain_assassinate_first_phase_matches_single_enemy_rng_and_enters_pending() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("assassinate should be selected");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Assassinate);
-    assert_eq!(prepared.targets, vec![EntityIdx(1)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(1)]);
     assert_rng_state_eq(&runtime.rng, &expected_rng);
 
     let move_before = runtime.entities.get(EntityIdx(0)).unwrap().runtime.move_state.speed_points;

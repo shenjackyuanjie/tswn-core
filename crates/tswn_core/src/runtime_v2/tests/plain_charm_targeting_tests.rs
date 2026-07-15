@@ -57,7 +57,7 @@ fn charmed_actor_remains_default_enemy_candidate_by_actual_team() {
 
     let selected = runtime.select_plain_default_enemy_targets_with_count(EntityIdx(0), false, 1);
 
-    assert_eq!(selected, vec![EntityIdx(0)]);
+    assert_eq!(selected.as_slice(), &[EntityIdx(0)]);
     assert_rng_state_eq(&runtime.rng, &expected_rng);
 }
 

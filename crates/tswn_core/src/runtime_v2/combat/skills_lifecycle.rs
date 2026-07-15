@@ -1,11 +1,11 @@
 use super::*;
 
 impl CombatRuntime {
-    pub fn select_plain_revive_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_revive_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_roster(actor_team).unwrap_or_default();
         if candidates.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
 
         let select_count = if smart { 3 } else { 2 };
@@ -14,7 +14,7 @@ impl CombatRuntime {
         let mut invalid = -(select_count as i32);
         while dup <= select_count && invalid <= select_count as i32 {
             let Some(picked) = self.rng.pick(candidates) else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = candidates[picked];
             let valid = self.entities.get(target).is_some_and(|entity| {
@@ -124,11 +124,11 @@ impl CombatRuntime {
         );
     }
 
-    pub fn select_plain_slow_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_slow_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -151,7 +151,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             let valid = self.entities.get(target).is_some_and(|entity| {
@@ -366,11 +366,11 @@ impl CombatRuntime {
         );
     }
 
-    pub fn select_plain_possess_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_possess_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -387,7 +387,7 @@ impl CombatRuntime {
             .copied()
             .any(|target| self.entities.get(target).is_some_and(|entity| entity.runtime.team != actor_team));
         if !has_enemy {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
@@ -400,7 +400,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             if selected.contains(&target) {

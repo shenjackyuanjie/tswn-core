@@ -26,7 +26,7 @@ impl CombatRuntime {
             .unwrap_or(actor_entity.runtime.team)
     }
 
-    pub fn select_plain_charm_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_charm_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         #[cfg(not(feature = "no_debug"))]
         let before = (self.rng.i, self.rng.j);
         let actor_team = self.plain_effective_team(actor);
@@ -41,7 +41,7 @@ impl CombatRuntime {
             }
         }
         if candidates.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let select_count = if smart { 3 } else { 2 };
         let mut selected = smallvec::SmallVec::<[EntityIdx; 3]>::new();
@@ -54,7 +54,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             let valid = !smart
@@ -82,7 +82,7 @@ impl CombatRuntime {
             scored.push((target, self.score_plain_charm_target(target, smart)));
         }
         scored.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap_or(std::cmp::Ordering::Equal));
-        let targets = scored.into_iter().map(|(target, _)| target).collect::<Vec<_>>();
+        let targets = scored.into_iter().map(|(target, _)| target).collect::<PreparedTargetList>();
         #[cfg(not(feature = "no_debug"))]
         if std::env::var_os("TSWN_PROBE_CHARM").is_some() {
             eprintln!(
@@ -270,7 +270,7 @@ impl CombatRuntime {
         }
     }
 
-    pub fn select_plain_heal_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_heal_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let candidates = self.world.team_alive(actor_team).unwrap_or_default();
         #[cfg(not(feature = "no_debug"))]
@@ -293,7 +293,7 @@ impl CombatRuntime {
             );
         }
         if candidates.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
 
         let select_count = if smart { 3 } else { 2 };
@@ -304,7 +304,7 @@ impl CombatRuntime {
             #[cfg(not(feature = "no_debug"))]
             let rng_before_pick = (self.rng.i, self.rng.j);
             let Some(picked) = self.rng.pick(candidates) else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = candidates[picked];
             let valid = self.entities.get(target).is_some_and(|entity| {
@@ -524,11 +524,11 @@ impl CombatRuntime {
         );
     }
 
-    pub fn select_plain_disperse_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_disperse_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -551,7 +551,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             if self.entities.get(target).is_none() {

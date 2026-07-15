@@ -26,10 +26,13 @@ pub struct SelectedBuiltinSkill {
     pub fixed_lane: usize,
 }
 
+/// 内置主动技能的已选目标；常规上限为地震的 6 个目标，直接保存在栈内。
+pub type PreparedTargetList = smallvec::SmallVec<[EntityIdx; 8]>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedBuiltinSkillAction {
     pub selected: SelectedBuiltinSkill,
-    pub targets: Vec<EntityIdx>,
+    pub targets: PreparedTargetList,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

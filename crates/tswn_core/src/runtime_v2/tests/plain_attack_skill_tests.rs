@@ -27,7 +27,7 @@ fn plain_thunder_static_dispatch_matches_multihit_rng_and_delay() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("thunder should be selected");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Thunder);
-    assert_eq!(prepared.targets, vec![EntityIdx(1)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(1)]);
 
     while {
         let mut probe = runtime.rng.clone();
@@ -372,7 +372,7 @@ fn plain_fire_uses_builtin_static_dispatch_and_stacks_fire_mag() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("fire should be selected");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Fire);
-    assert_eq!(prepared.targets, vec![EntityIdx(1)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(1)]);
 
     let mut expected_rng = runtime.rng.clone();
     let first_atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng) * 1.5;

@@ -1,11 +1,11 @@
 use super::*;
 
 impl CombatRuntime {
-    pub fn select_plain_half_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_half_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -28,7 +28,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             let valid = !smart
@@ -50,7 +50,7 @@ impl CombatRuntime {
             }
         }
         if selected.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
         for target in selected {
@@ -86,11 +86,11 @@ impl CombatRuntime {
         base * entity.runtime.hp as f64
     }
 
-    pub fn select_plain_curse_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_curse_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -113,7 +113,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             let valid = !smart
@@ -143,7 +143,7 @@ impl CombatRuntime {
             }
         }
         if selected.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let mut scored = smallvec::SmallVec::<[(EntityIdx, f64); 3]>::new();
         for target in selected {

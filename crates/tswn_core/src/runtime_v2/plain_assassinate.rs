@@ -57,7 +57,7 @@ impl CombatRuntime {
                                 skill: BuiltinActiveSkill::Assassinate,
                                 fixed_lane: pending.fixed_lane,
                             },
-                            targets: vec![pending.target],
+                            targets: smallvec::smallvec![pending.target],
                         });
                     } else {
                         self.clear_plain_assassinate_pending(actor);
@@ -74,14 +74,14 @@ impl CombatRuntime {
         outcome
     }
 
-    pub(super) fn select_plain_assassinate_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub(super) fn select_plain_assassinate_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         if self.entities.get(actor).is_some_and(|entity| entity.runtime.assassinate.is_some()) {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -104,7 +104,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             let valid = self.entities.get(target).is_some_and(|entity| !smart || entity.runtime.hp > 160);

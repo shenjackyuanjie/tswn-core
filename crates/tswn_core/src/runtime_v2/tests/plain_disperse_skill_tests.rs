@@ -28,7 +28,7 @@ fn plain_disperse_uses_builtin_static_dispatch_without_handler() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("disperse should be selected");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Disperse);
-    assert_eq!(prepared.targets, vec![EntityIdx(1)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(1)]);
 
     let mut updates = RunUpdates::new();
     runtime.drain_plain_builtin_skill_into(EntityIdx(0), prepared, &mut updates);

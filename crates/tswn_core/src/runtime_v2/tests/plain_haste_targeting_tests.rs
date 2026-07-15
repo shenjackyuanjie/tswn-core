@@ -66,6 +66,6 @@ fn plain_haste_samples_ally_alive_order_instead_of_roster_order() {
 
     let selected = runtime.select_plain_haste_targets(EntityIdx(0), true);
 
-    assert_eq!(selected, expected_selected);
+    assert_eq!(selected.as_slice(), expected_selected.as_slice());
     assert_rng_state_eq(&runtime.rng, &expected_rng);
 }

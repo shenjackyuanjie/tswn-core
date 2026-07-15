@@ -27,7 +27,7 @@ fn plain_berserk_static_dispatch_applies_and_extends_forced_action_state() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("berserk should be selected");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Berserk);
-    assert_eq!(prepared.targets, vec![EntityIdx(1)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(1)]);
     while {
         let mut probe = runtime.rng.clone();
         runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut probe);
@@ -124,7 +124,7 @@ fn plain_haste_static_dispatch_requires_active_charge_for_charge_extension() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("haste should be selected");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Haste);
-    assert_eq!(prepared.targets, vec![EntityIdx(0)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(0)]);
     let expected_rng = runtime.rng.clone();
     let mut updates = RunUpdates::new();
 
@@ -337,7 +337,7 @@ fn plain_iron_static_dispatch_gates_active_state_and_uses_charge_formula() {
         .scan_plain_action_skill_probabilities(EntityIdx(0), false)
         .expect("iron should be selected");
     assert_eq!(prepared.selected.skill, BuiltinActiveSkill::Iron);
-    assert_eq!(prepared.targets, vec![EntityIdx(0)]);
+    assert_eq!(prepared.targets.as_slice(), &[EntityIdx(0)]);
     let expected_rng = runtime.rng.clone();
     let mut updates = RunUpdates::new();
 

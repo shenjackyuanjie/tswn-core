@@ -80,11 +80,11 @@ impl CombatRuntime {
         self.drain_plain_post_damage_skill_chain_into(target, damage, actor, updates);
     }
 
-    pub fn select_plain_ice_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_ice_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -107,7 +107,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             if self.entities.get(target).is_none() {
@@ -427,7 +427,7 @@ impl CombatRuntime {
         }
     }
 
-    pub fn select_plain_exchange_targets(&mut self, actor: EntityIdx, smart: bool) -> Vec<EntityIdx> {
+    pub fn select_plain_exchange_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {
         let actor_hp = self
             .entities
             .get(actor)
@@ -436,7 +436,7 @@ impl CombatRuntime {
         let actor_team = self.plain_effective_team(actor);
         let all_alive = self.world.flat_alive();
         if all_alive.is_empty() {
-            return Vec::new();
+            return PreparedTargetList::new();
         }
         let enemy_skip_indices = all_alive
             .iter()
@@ -459,7 +459,7 @@ impl CombatRuntime {
                 self.rng.pick_skip_range(all_alive, &enemy_skip_indices)
             };
             let Some(picked) = picked else {
-                return Vec::new();
+                return PreparedTargetList::new();
             };
             let target = all_alive[picked];
             let valid = self.entities.get(target).is_some_and(|entity| {
