@@ -2,6 +2,10 @@
 
 ## [0.4.2] - 开发中
 
+### 构建兼容
+
+- 移除工作区默认的 `-Z mutable-noalias=yes`：2026-07-14 nightly 已不再提供该不稳定选项，保留会使 Cargo 在目标探测阶段直接失败。升级后重启 sccache 0.15.0 并完成 `cargo check -p tswn_core --lib`，43 个实际 Rust 编译请求全部成功、无缓存读写错误；新 rustc 首轮缓存全部失配属于编译器键更新后的正常重填。
+
 ### 性能优化
 
 - 行动准备一次读取攻击、魔法与 MP 标量，默认/首领攻击不再在目标选择后重复查询实体；内置主动技能的 Charge、Absorb、Iron、Accumulate、Assassinate、Summon 与 Shadow 特殊门禁改为单次枚举分派，普通技能不再串行经过七次类型比较，随机数读取与 MP 扣除时点保持不变。core 全量 588 项通过；fixed30/no_debug/13000 单线程三轮 overall 为 `29.340`、`29.403`、`29.470 us/battle`，中位相对上一阶段再缩短约 0.8%，fight 中位降至 `26.428 us/battle`，stress_multi 中位降至 `61.115 us/battle`，core 1v1/2v2 保持基本持平，结果聚合保持 `150858`。
