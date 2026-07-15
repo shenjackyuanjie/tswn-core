@@ -755,3 +755,25 @@ fn state_store_adds_or_increments_fire_mag_half_steps() {
     store.add_fire_mag_half_step(22);
     assert_eq!(store.fire_mag(22), 0.5);
 }
+
+#[test]
+fn state_store_scheduler_flags_follow_payload_changes_conservatively() {
+    let mut store = StateStore::default();
+    assert_eq!(store.effective_speed(81), 81);
+    assert!(!store.is_frozen());
+
+    assert!(store.add_entry(StateEntry::haste(11, StateId(1), 2, 3, SkillPriority(10))));
+    assert_eq!(store.effective_speed(81), 162);
+    let logical_copy = store.clone();
+    let _ = store.entry_mut(11).unwrap();
+    assert_eq!(store, logical_copy);
+    assert!(store.set_payload(11, StatePayload::FireMagHalfSteps(1)));
+    assert_eq!(store.effective_speed(81), 81);
+
+    assert!(store.add_legacy_key(22));
+    store.entry_mut(22).unwrap().payload = StatePayload::Ice { frozen_step: 3 };
+    assert!(store.is_frozen());
+    assert_eq!(store.apply_ice_pre_step(2, 0), (0, false));
+    assert!(store.clear_legacy_key(22));
+    assert!(!store.is_frozen());
+}

@@ -586,7 +586,20 @@ impl CompressedLegacyState {
     fn bit(self) -> u8 { 1 << self as u8 }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+const SCHEDULER_STATE_ICE: u8 = 1 << 0;
+const SCHEDULER_STATE_SPEED: u8 = 1 << 1;
+const SCHEDULER_STATE_ALL: u8 = SCHEDULER_STATE_ICE | SCHEDULER_STATE_SPEED;
+
+#[inline]
+fn scheduler_state_flags(payload: &StatePayload) -> u8 {
+    match payload {
+        StatePayload::Ice { .. } => SCHEDULER_STATE_ICE,
+        StatePayload::Haste { .. } | StatePayload::Slow { .. } | StatePayload::LazyInfection { .. } => SCHEDULER_STATE_SPEED,
+        _ => 0,
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct StateStore {
     entries: SmallVec<[StateEntry; 8]>,
     hook_mask: ProcMask,
@@ -595,7 +608,22 @@ pub struct StateStore {
     runtime_registration_orders: SmallVec<[u64; 8]>,
     next_runtime_registration_order: u64,
     compressed_legacy_states: u8,
+    /// 调度器只关心冻结和速度类状态；无对应位时可跳过完整 entries 扫描。
+    scheduler_state_flags: u8,
 }
+
+impl PartialEq for StateStore {
+    fn eq(&self, other: &Self) -> bool {
+        self.entries == other.entries
+            && self.hook_mask == other.hook_mask
+            && self.generation == other.generation
+            && self.runtime_registration_orders == other.runtime_registration_orders
+            && self.next_runtime_registration_order == other.next_runtime_registration_order
+            && self.compressed_legacy_states == other.compressed_legacy_states
+    }
+}
+
+impl Eq for StateStore {}
 
 impl StateStore {
     pub fn entries(&self) -> &[StateEntry] { &self.entries }
@@ -610,6 +638,7 @@ impl StateStore {
         self.runtime_registration_orders.extend_from_slice(&prepared.runtime_registration_orders);
         self.next_runtime_registration_order = prepared.next_runtime_registration_order;
         self.compressed_legacy_states = prepared.compressed_legacy_states;
+        self.scheduler_state_flags = prepared.scheduler_state_flags;
     }
 
     /// 清空数字 score profile 的战斗状态，同时保留 SmallVec 容量。
@@ -622,6 +651,7 @@ impl StateStore {
         }
         self.next_runtime_registration_order = 0;
         self.compressed_legacy_states = 0;
+        self.scheduler_state_flags = 0;
     }
 
     pub fn hook_mask(&self) -> ProcMask { self.hook_mask }
@@ -656,9 +686,15 @@ impl StateStore {
         true
     }
 
-    pub fn is_frozen(&self) -> bool { self.entries.iter().any(|entry| matches!(&entry.payload, StatePayload::Ice { .. })) }
+    pub fn is_frozen(&self) -> bool {
+        self.scheduler_state_flags & SCHEDULER_STATE_ICE != 0
+            && self.entries.iter().any(|entry| matches!(&entry.payload, StatePayload::Ice { .. }))
+    }
 
     pub fn effective_speed(&self, base_speed: i32) -> i32 {
+        if self.scheduler_state_flags & SCHEDULER_STATE_SPEED == 0 {
+            return base_speed;
+        }
         let mut speed = base_speed;
         for entry in &self.entries {
             match &entry.payload {
@@ -714,7 +750,10 @@ impl StateStore {
     }
 
     pub fn entry_mut(&mut self, legacy_order_key: u32) -> Option<&mut StateEntry> {
-        self.entries.iter_mut().find(|entry| entry.legacy_order_key == legacy_order_key)
+        let index = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)?;
+        // 调用方可通过公开可变引用替换 payload；升为保守全集，确保快路只会少命中而不会误跳过。
+        self.scheduler_state_flags = SCHEDULER_STATE_ALL;
+        self.entries.get_mut(index)
     }
 
     pub fn fire_mag(&self, legacy_order_key: u32) -> f64 {
@@ -742,7 +781,7 @@ impl StateStore {
     }
 
     pub fn apply_ice_pre_step(&mut self, step: i32, move_points: i32) -> (i32, bool) {
-        if step <= 0 {
+        if step <= 0 || self.scheduler_state_flags & SCHEDULER_STATE_ICE == 0 {
             return (step, false);
         }
 
@@ -799,6 +838,7 @@ impl StateStore {
                     entry.payload = StatePayload::FireMagHalfSteps(1);
                 }
             }
+            self.rebuild_cached_metadata();
             self.generation = self.generation.wrapping_add(1);
             return;
         }
@@ -811,10 +851,11 @@ impl StateStore {
     }
 
     pub fn set_payload(&mut self, legacy_order_key: u32, payload: StatePayload) -> bool {
-        let Some(entry) = self.entry_mut(legacy_order_key) else {
+        let Some(index) = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key) else {
             return false;
         };
-        entry.payload = payload;
+        self.entries[index].payload = payload;
+        self.rebuild_cached_metadata();
         self.generation = self.generation.wrapping_add(1);
         true
     }
@@ -830,6 +871,7 @@ impl StateStore {
         self.next_runtime_registration_order = self.next_runtime_registration_order.wrapping_add(1);
         self.runtime_registration_orders.push(runtime_registration_order);
         self.hook_mask |= entry.hook_mask;
+        self.scheduler_state_flags |= scheduler_state_flags(&entry.payload);
         self.entries.push(entry);
         self.generation = self.generation.wrapping_add(1);
         true
@@ -842,7 +884,7 @@ impl StateStore {
 
         self.entries.remove(idx);
         self.runtime_registration_orders.remove(idx);
-        self.rebuild_hook_mask();
+        self.rebuild_cached_metadata();
         self.generation = self.generation.wrapping_add(1);
         true
     }
@@ -885,7 +927,14 @@ impl StateStore {
         entries
     }
 
-    fn rebuild_hook_mask(&mut self) {
-        self.hook_mask = self.entries.iter().fold(ProcMask::default(), |mask, entry| mask | entry.hook_mask);
+    fn rebuild_cached_metadata(&mut self) {
+        let mut hook_mask = ProcMask::default();
+        let mut state_flags = 0u8;
+        for entry in &self.entries {
+            hook_mask |= entry.hook_mask;
+            state_flags |= scheduler_state_flags(&entry.payload);
+        }
+        self.hook_mask = hook_mask;
+        self.scheduler_state_flags = state_flags;
     }
 }
