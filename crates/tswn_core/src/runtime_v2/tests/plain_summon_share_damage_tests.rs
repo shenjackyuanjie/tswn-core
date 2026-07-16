@@ -44,6 +44,53 @@ fn summon_share_damage_owner_death_marks_active_summon_for_outer_lethal_chain() 
 }
 
 #[test]
+fn half_skill_finishes_active_summon_lethal_chain_after_owner_share_death() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let summon_kind = config
+        .registry
+        .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
+        .expect("default profile should register core summon kind");
+    let summon_share = config
+        .registry
+        .skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT)
+        .expect("default profile should register summon share damage");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "owner", 0, 20, 1),
+            PlayerTemplate::new(2, "caster", 1, 100, 1).with_magic(100),
+        ],
+        config.registry,
+    ));
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().activate_charge_runtime();
+    let summoned = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(0, "owner?0", summon_kind, 0, 100, 0)
+            .with_skill_loadout(SkillLoadout::from_skill_levels([(summon_share, 1)])),
+        &runtime.registry,
+        Some(EntityIdx(0)),
+        Some(EntityIdx(0)),
+    );
+    let summon_team = runtime.entities.get(summoned).unwrap().runtime.team;
+    runtime.world.add_spawned_alive(summoned, summon_team);
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_half_skill_into(EntityIdx(1), summoned, &mut updates);
+
+    assert!(!runtime.entities.get(EntityIdx(0)).unwrap().runtime.alive);
+    let summoned_entity = runtime.entities.get(summoned).unwrap();
+    assert_eq!(summoned_entity.runtime.hp, 0);
+    assert!(!summoned_entity.runtime.alive);
+    assert!(!runtime.world.round_order().contains(&summoned));
+    assert!(!runtime.world.flat_alive().contains(&summoned));
+    assert_eq!(runtime.world.alive_group_count(), 1);
+    assert!(
+        updates
+            .updates
+            .iter()
+            .any(|update| update.target == summoned.0 as usize && update.message == "[1]消失了")
+    );
+}
+
+#[test]
 fn summon_share_damage_hide_counts_zero_hp_summon_before_outer_lethal_chain() {
     let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
     let summon_kind = config

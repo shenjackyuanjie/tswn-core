@@ -78,6 +78,15 @@ impl CombatRuntime {
             .runtime
             .hp = new_hp;
         self.drain_plain_post_damage_skill_chain_into(target, damage, actor, updates);
+        // 瘟疫本身按百分比保底留下 1 HP，但 on_damaged 中的使魔分摊可能击倒 owner，
+        // 并把当前活动使魔标记为 0 HP，等待外层伤害调用方完成致死链。
+        let target_needs_lethal = self
+            .entities
+            .get(target)
+            .is_some_and(|entity| entity.runtime.hp <= 0 && entity.runtime.alive);
+        if target_needs_lethal {
+            self.drain_plain_lethal_damage_into(actor, target, updates);
+        }
     }
 
     pub fn select_plain_ice_targets(&mut self, actor: EntityIdx, smart: bool) -> PreparedTargetList {

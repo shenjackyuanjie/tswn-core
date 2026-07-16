@@ -256,3 +256,19 @@ fn stress_cqd_p19_t26_r0336() {
         "stress cqd-p19-t26-r0336",
     );
 }
+
+#[test]
+fn stress_cqd_p21_t39_r0107() {
+    tswn_test::suite::assert_runtime_v2_matches_legacy(
+        include_str!("cases/runtime_v2_stress/cqd-p21-t39-r0107.txt"),
+        "stress cqd-p21-t39-r0107",
+    );
+}
+
+#[test]
+fn stress_cqd_p21_t31_r5997_guard() {
+    tswn_test::suite::assert_runtime_v2_matches_legacy(
+        include_str!("cases/runtime_v2_stress/cqd-p21-t31-r5997-guard.txt"),
+        "stress cqd-p21-t31-r5997-guard",
+    );
+}
