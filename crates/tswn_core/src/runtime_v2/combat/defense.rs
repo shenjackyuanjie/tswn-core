@@ -614,11 +614,14 @@ impl CombatRuntime {
             .get(caster)
             .is_some_and(|entity| entity.runtime.at_boost_millionths >= 3_000_000);
         let frozen_step = 1024 + if charge_active { 2048 } else { 0 };
-        self.entities
-            .get_mut(target)
-            .unwrap()
-            .states
-            .add_ice_frozen_step(PLAIN_ICE_STATE_KEY, frozen_step);
+        let target_entity = self.entities.get_mut(target).unwrap();
+        let first_application = target_entity.states.entry(PLAIN_ICE_STATE_KEY).is_none();
+        target_entity.states.add_ice_frozen_step(PLAIN_ICE_STATE_KEY, frozen_step);
+        if first_application {
+            // legacy 首次写入 IceState 会通过 set_state 立即调用 update_states；
+            // 已存在冰冻时只延长 frozen_step，不应重复提交等待生效的状态倍率。
+            target_entity.refresh_runtime_stats_from_template();
+        }
         updates.add(RuntimeFrame::replay_update(
             caster.0 as usize,
             target.0 as usize,

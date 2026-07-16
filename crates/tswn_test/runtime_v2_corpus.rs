@@ -288,3 +288,9 @@ fn stress_cqd_p28_t26_r0447() {
         "stress cqd-p28-t26-r0447",
     );
 }
+
+#[test]
+fn stress_score_mario_r11350() {
+    let input = include_str!("cases/runtime_v2_stress/score-mario-r11350.txt").replace("\\x02", "\x02");
+    tswn_test::suite::assert_runtime_v2_matches_legacy(&input, "stress score-mario-r11350");
+}

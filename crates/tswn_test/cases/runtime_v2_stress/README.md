@@ -78,7 +78,13 @@
 | `cqd-p28-t26-r0447.txt` | player 28 × target 26 | 447 / `33554878` | 13 | 首次迟缓未刷新待生效强化疾走倍率，调度 RNG、地裂术伤害与护身符复活链随后分叉 | 已闭环并接入回归 |
 | `cqd-p21-t31-r5997-guard.txt` | player 21 × target 31 | 5997 / `33560428` | 16 | 同一使魔清理缺口最终形成 0 个存活组，v2 在 10 万与 100 万行动上限下都无法产生 winner；legacy 20 个行动结束 | 已闭环并接入回归 |
 
-2026-07-16 修复后复验：player 6 × target 26、player 19 × target 26、player 21 × target 39、player 28 × target 26 各扫描 1000 个 seed，player 21 × target 31 扫描 10000 个 seed，共 14000 个 seed，异常数为 0；包含上述 5 个输入的 release Runtime v2 corpus 为 123/123 通过。
+2026-07-16 修复后复验：player 6 × target 26、player 19 × target 26、player 21 × target 39、player 28 × target 26 各扫描 1000 个 seed，player 21 × target 31 扫描 10000 个 seed，共 14000 个 seed，异常数为 0；包含上述 5 个输入的 release Runtime v2 corpus 当时为 123/123，加入下述 benchmark score case 后当前为 124/124。
+
+以下输入来自 2026-07-16 修复后的 Runtime v2 完整 benchmark。mario 普通 score 从历史 `4171/13000` 变为 `4170/13000`，定点 legacy/v2 对账定位到 round 11350；`out_md5.ts` 与 legacy 一致。文件中的 `\x02` 是普通 score modifier 控制字符的可逆文本转义，回归加载时会还原为单字节 `0x02`：
+
+| 输入 | 模式 | 首差异 | 当前症状 | 状态 |
+| --- | --- | ---: | --- | --- |
+| `score-mario-r11350.txt` | score/normal，round 11350 | 17 | 首次施加冰冻时未复刻 legacy `set_state` 的属性刷新，待生效强化疾走仍按旧倍率递减冰冻步数，导致解冻延后一轮并改变胜负 | 已闭环并接入回归 |
 
 维护规则：
 
