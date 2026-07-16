@@ -27,6 +27,26 @@ fn ice_pre_step_positive_step_releases_when_crossing_threshold() {
 }
 
 #[test]
+fn ice_release_refreshes_pending_haste_multiplier() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let haste = builder
+        .register_state("core", "haste", "core.haste", ProcMask::POST_ACTION, SkillPriority(100))
+        .expect("haste state should register");
+    let mut states = StateStore::default();
+    states.add_entry(StateEntry::haste_with_effective_faster(77, haste, 4, 2, 9, SkillPriority(100)));
+    states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 0));
+    assert_eq!(states.effective_speed(100), 200);
+
+    let (step, released) = states.apply_ice_pre_step(1, crate::player::MOVE_POINT_THRESHOLD);
+
+    assert_eq!(step, 0);
+    assert!(released);
+    assert!(!states.is_frozen());
+    assert_eq!(states.entry(77).and_then(StateEntry::haste_runtime_value), Some((4, 4, 9)));
+    assert_eq!(states.effective_speed(100), 400);
+}
+
+#[test]
 fn ice_release_keeps_action_when_saved_move_points_already_crossed_threshold() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
         PlayerTemplate::new(1, "frozen", 0, 100, 3)

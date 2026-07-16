@@ -248,3 +248,11 @@ fn stress_ffa_4_b9ba9b639670ceb3() {
         "stress ffa_4-b9ba9b639670ceb3",
     );
 }
+
+#[test]
+fn stress_cqd_p19_t26_r0336() {
+    tswn_test::suite::assert_runtime_v2_matches_legacy(
+        include_str!("cases/runtime_v2_stress/cqd-p19-t26-r0336.txt"),
+        "stress cqd-p19-t26-r0336",
+    );
+}

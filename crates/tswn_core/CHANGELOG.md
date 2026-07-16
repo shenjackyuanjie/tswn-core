@@ -71,6 +71,7 @@
 
 ### 测试
 
+- 将 CQD player 19 × target 26、round 336 的精确 seed 输入接入长期 Runtime v2 strict-diff corpus，覆盖冻结角色携带待生效强化疾走时的解冻行动顺序。
 - 新增 CQP/CQD 矩阵输入顺序、胜场汇总、取消语义回归，以及复用 runner 连跑 200 个会修改技能/分身状态的 seed 与每局新建 runner 的逐局对照。
 - 新增 `tswn_test` 共享测试 harness，并将原先嵌在 `tswn_core::engine::test` 下的多组回放/战斗测试迁移为可复用的测试 suite，便于后续多个 engine 实现共用同一批行为对账用例。
 - 将 `tswn_core` 专属 engine 测试拆到 `crates/tswn_core/tests/engine_core.rs`，让核心 crate 的公开行为测试与共享测试工具解耦。
@@ -80,6 +81,7 @@
 
 ### 修复
 
+- 修复 Runtime v2 冰冻自然解除后只删除 Ice 状态、没有重放 legacy `update_states` 副作用的问题；解冻时现在同步提交疾走等待生效的强化倍率，恢复正确速度与后续行动顺序。
 - 修复 Runtime v2 反弹攻击丢失原主动技能 `on_damage` 回调的问题：`ReflectedAttack` effect 现在透传 Ice/Curse/Poison 等后续效果，反射伤害会与 legacy 一样继续施加状态和 replay。
 - 修复被魅惑角色使用生命之轮时仍按原始 team 选敌的问题：Exchange 与其他敌方目标技能一样使用 charm effective team，候选实体继续按实际 team 过滤。
 - 修复 replay view 对“体力减少百分比”类句子的血量推进：`[2]` 仍展示百分比，但血条使用 `score` 中记录的真实 HP 变化量，避免瘟疫回放把显示百分比当作扣血值。

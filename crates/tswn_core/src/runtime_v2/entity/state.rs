@@ -805,6 +805,9 @@ impl StateStore {
                 self.clear_legacy_key(legacy_order_key),
                 "runtime_v2 ice state disappeared during pre-step"
             );
+            // legacy 清除冰冻后会调用 update_states；这一步也会让疾走等待生效的
+            // 强化倍率立即提交，不能只删除 Ice 状态。
+            self.refresh_effective_haste_faster();
             return (0, true);
         }
         (step, false)
