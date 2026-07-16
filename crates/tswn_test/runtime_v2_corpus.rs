@@ -272,3 +272,11 @@ fn stress_cqd_p21_t31_r5997_guard() {
         "stress cqd-p21-t31-r5997-guard",
     );
 }
+
+#[test]
+fn stress_cqd_p06_t26_r0135() {
+    tswn_test::suite::assert_runtime_v2_matches_legacy(
+        include_str!("cases/runtime_v2_stress/cqd-p06-t26-r0135.txt"),
+        "stress cqd-p06-t26-r0135",
+    );
+}

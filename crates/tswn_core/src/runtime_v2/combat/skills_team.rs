@@ -254,6 +254,9 @@ impl CombatRuntime {
                 )),
                 "runtime_v2 charm state should be inserted"
             );
+            // legacy 首次 set_state 会立即调用 update_states；除了缓存魅惑队伍，
+            // 还会提交疾走等等待下一次属性刷新才生效的状态倍率。
+            self.entities.get_mut(target).unwrap().refresh_runtime_stats_from_template();
         }
         updates.add(crate::engine::update::RunUpdate::new(
             "[1]被[魅惑]了",
