@@ -57,9 +57,11 @@ struct PreparedPlayerInit {
     hp: i32,
     alive: bool,
     boss_state: PreparedBossState,
-    shadow_blueprint: Option<PlayerTemplate>,
-    summon_blueprint: Option<PlayerTemplate>,
-    zombie_blueprint: Option<PlayerTemplate>,
+    // 三类蓝图在 score 热路径通常都延迟构造。使用最终槽位本来就需要的 Box，
+    // 避免三个空 Option 仍把每个准备对象撑大一整份 PlayerTemplate。
+    shadow_blueprint: Option<Box<PlayerTemplate>>,
+    summon_blueprint: Option<Box<PlayerTemplate>>,
+    zombie_blueprint: Option<Box<PlayerTemplate>>,
     lazy_blueprint_rq_bits: Option<u64>,
 }
 
@@ -1343,21 +1345,21 @@ impl PreparedBattleInit {
                 let slot = shadow_blueprint_slot.expect("runtime v2 shadow skill requires the core shadow blueprint entity slot");
                 entity
                     .slots
-                    .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                    .set(slot, SlotValue::PlayerTemplate(template))
                     .expect("runtime v2 core shadow blueprint slot must exist");
             }
             if let Some(template) = prepared.summon_blueprint {
                 let slot = summon_blueprint_slot.expect("runtime v2 summon skill requires the core summon blueprint entity slot");
                 entity
                     .slots
-                    .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                    .set(slot, SlotValue::PlayerTemplate(template))
                     .expect("runtime v2 core summon blueprint slot must exist");
             }
             if let Some(template) = prepared.zombie_blueprint {
                 let slot = zombie_blueprint_slot.expect("runtime v2 zombie skill requires the core zombie blueprint entity slot");
                 entity
                     .slots
-                    .set(slot, SlotValue::PlayerTemplate(Box::new(template)))
+                    .set(slot, SlotValue::PlayerTemplate(template))
                     .expect("runtime v2 core zombie blueprint slot must exist");
             }
         }
@@ -1480,7 +1482,16 @@ impl PreparedBattleInit {
             registry
                 .skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name())
                 .filter(|skill| skills.skills().contains(skill))
-                .map(|_| Self::build_shadow_blueprint(owner, team, storage, registry, skill_import, child_clone_name_factor))
+                .map(|_| {
+                    Box::new(Self::build_shadow_blueprint(
+                        owner,
+                        team,
+                        storage,
+                        registry,
+                        skill_import,
+                        child_clone_name_factor,
+                    ))
+                })
         });
         #[cfg(test)]
         let shadow_elapsed = phase_started.elapsed();
@@ -1490,7 +1501,16 @@ impl PreparedBattleInit {
             registry
                 .skill_id_by_export_name(BuiltinActiveSkill::Summon.export_name())
                 .filter(|skill| skills.skills().contains(skill))
-                .map(|_| Self::build_summon_blueprint(owner, team, storage, registry, skill_import, child_clone_name_factor))
+                .map(|_| {
+                    Box::new(Self::build_summon_blueprint(
+                        owner,
+                        team,
+                        storage,
+                        registry,
+                        skill_import,
+                        child_clone_name_factor,
+                    ))
+                })
         });
         #[cfg(test)]
         let summon_elapsed = phase_started.elapsed();
@@ -1500,7 +1520,16 @@ impl PreparedBattleInit {
             registry
                 .skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT)
                 .filter(|skill| skills.skills().contains(skill))
-                .map(|_| Self::build_zombie_blueprint(owner, team, storage, registry, skill_import, child_clone_name_factor))
+                .map(|_| {
+                    Box::new(Self::build_zombie_blueprint(
+                        owner,
+                        team,
+                        storage,
+                        registry,
+                        skill_import,
+                        child_clone_name_factor,
+                    ))
+                })
         });
         #[cfg(test)]
         let zombie_elapsed = phase_started.elapsed();

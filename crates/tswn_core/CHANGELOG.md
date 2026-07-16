@@ -4,6 +4,7 @@
 
 ### 性能优化
 
+- score 准备对象的 Shadow、Summon、Zombie 三类可选蓝图改为使用最终实体槽本来就需要的 `Box<PlayerTemplate>`；常见延迟蓝图路径不再因三个空 `Option<PlayerTemplate>` 固定携带三份大模板，`PreparedPlayerInit` 从 `4920` 字节降至 `1272` 字节，缩小 74.15%，有蓝图时则直接把同一个 Box 移交实体槽，不增加净分配。mario 13 万场单线程五组交替 A/B 的整体与初始化配对中位分别缩短 0.95% 和 2.44%，fight 基本持平；fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 与 init 配对中位分别缩短 0.62% 和 0.91%，五个分组均未回退，2v2 缩短 1.24%，结果聚合保持 `150858`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略，release Runtime v2 corpus 124/124 通过。
 - Runtime v2 将是否保留 replay 帧改为编译期常量，批量胜率/评分独立生成无捕获回合与收尾路径，消除每回合反复判断交互模式、构造 frame 和选择赢家扫描方式的分支。fixed30/no_debug/13000 单线程三轮中位 overall 从 `30.989` 降至 `30.655 us/battle`，fight 从 `27.910` 降至 `27.533 us/battle`，分别缩短 1.08% 与 1.35%；core 1v1/2v2、1v1、2v2、stress_multi 分别缩短 1.84%、2.90%、1.17%、0.59%，结果聚合保持 `150858`。mario 13 万场 score 三轮未观察到超出噪音的稳定变化。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release Runtime v2 corpus 124/124 通过。
 
 ## [0.4.2] - 2026-07-16
