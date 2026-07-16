@@ -280,3 +280,11 @@ fn stress_cqd_p06_t26_r0135() {
         "stress cqd-p06-t26-r0135",
     );
 }
+
+#[test]
+fn stress_cqd_p28_t26_r0447() {
+    tswn_test::suite::assert_runtime_v2_matches_legacy(
+        include_str!("cases/runtime_v2_stress/cqd-p28-t26-r0447.txt"),
+        "stress cqd-p28-t26-r0447",
+    );
+}

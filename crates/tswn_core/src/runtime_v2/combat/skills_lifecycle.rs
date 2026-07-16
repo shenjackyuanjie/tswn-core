@@ -282,6 +282,9 @@ impl CombatRuntime {
                     .add_entry(StateEntry::slow(78, slow_state_id, next_step, slow_priority)),
                 "runtime_v2 slow state should be inserted"
             );
+            // legacy 首次 set_state 会调用 update_states；必须同时提交疾走等
+            // 等待属性刷新才生效的倍率。已有迟缓只延长 step，不触发刷新。
+            target_entity.refresh_runtime_stats_from_template();
         }
         updates.add(crate::engine::update::RunUpdate::new(
             "[1]进入[迟缓]状态",

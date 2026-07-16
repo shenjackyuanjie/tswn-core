@@ -71,6 +71,7 @@
 
 ### 测试
 
+- 将 CQD player 28 × target 26、round 447 的精确 seed 输入接入长期 Runtime v2 strict-diff corpus，覆盖强化疾走后首次迟缓触发属性刷新及地裂术/护身符链 RNG 对齐。
 - 将 CQD player 6 × target 26、round 135 的精确 seed 输入接入长期 Runtime v2 strict-diff corpus，覆盖强化疾走后首次魅惑触发属性刷新及调度 RNG 对齐。
 - 将 CQD player 21 × target 39、round 107 和 player 21 × target 31、round 5997 的精确 seed 输入接入长期 Runtime v2 strict-diff corpus，覆盖瘟疫分摊击倒 owner 后的活动使魔致死链及零存活组终局。
 - 将 CQD player 19 × target 26、round 336 的精确 seed 输入接入长期 Runtime v2 strict-diff corpus，覆盖冻结角色携带待生效强化疾走时的解冻行动顺序。
@@ -83,6 +84,7 @@
 
 ### 修复
 
+- 修复 Runtime v2 首次施加迟缓时只写入状态、没有复刻 legacy `set_state` 后立即 `update_states` 的问题；首次迟缓现在会提交疾走等待生效的强化倍率，已有迟缓延长 step 的路径仍不额外刷新。
 - 修复 Runtime v2 首次施加魅惑时只写入状态、没有复刻 legacy `set_state` 后立即 `update_states` 的问题；魅惑成功后现在会同步提交疾走等待生效的强化倍率，避免速度偏低导致调度额外消耗 tick RNG。
 - 修复 Runtime v2 瘟疫伤害结束后没有检查 post-damage 回调是否把目标压到 0 HP 的问题；使魔分摊击倒 owner 时，当前活动使魔现在会继续完成消失、world 存活视图和 KILL 致死链，不再残留 0 HP alive 实体或进入零存活组无限终局。
 - 修复 Runtime v2 冰冻自然解除后只删除 Ice 状态、没有重放 legacy `update_states` 副作用的问题；解冻时现在同步提交疾走等待生效的强化倍率，恢复正确速度与后续行动顺序。

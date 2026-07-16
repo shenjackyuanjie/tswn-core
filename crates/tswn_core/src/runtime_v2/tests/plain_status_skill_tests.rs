@@ -225,6 +225,47 @@ fn plain_charm_first_application_refreshes_pending_haste_multiplier() {
 }
 
 #[test]
+fn plain_slow_first_application_refreshes_pending_haste_multiplier() {
+    let config = default_custom_runtime_v2_import_config().expect("default runtime v2 profile should build");
+    let haste = config
+        .registry
+        .state_id_by_export_name(DEFAULT_CORE_HASTE_STATE_EXPORT)
+        .expect("default profile should register haste state");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "caster", 0, 100, 3).with_magic(100),
+            PlayerTemplate::new(2, "target", 1, 100, 3).with_speed(100).with_speed_points(500),
+        ],
+        config.registry,
+    ));
+    {
+        let target = runtime.entities.get_mut(EntityIdx(1)).unwrap();
+        target.states.add_entry(StateEntry::haste_with_effective_faster(
+            PLAIN_HASTE_STATE_KEY,
+            haste,
+            4,
+            2,
+            9,
+            SkillPriority(210),
+        ));
+        target.states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 1));
+    }
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().effective_speed(), 200);
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_slow_skill_into(EntityIdx(0), EntityIdx(1), &mut updates);
+
+    let target = runtime.entities.get(EntityIdx(1)).unwrap();
+    assert_eq!(target.runtime.move_state.speed_points, 236);
+    assert_eq!(
+        target.states.entry(PLAIN_HASTE_STATE_KEY).and_then(StateEntry::haste_runtime_value),
+        Some((4, 4, 9))
+    );
+    assert_eq!(target.states.entry(78).and_then(StateEntry::slow_value), Some(2));
+    assert_eq!(target.effective_speed(), 200);
+}
+
+#[test]
 fn plain_heal_clears_negative_states_restores_derived_stats_and_decays_level() {
     let mut builder = ExtensionRegistryBuilder::default();
     let heal = builder
