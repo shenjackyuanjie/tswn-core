@@ -31,7 +31,8 @@
 
 ### 验证
 
-- 四方 CQD 矩阵复测发现 4 个单 seed 胜负分叉和 1 个行动保护上限异常；逐 seed 对比确认并非复用 runner 污染。已将 5 个原始输入归档到 `tswn_test/cases/runtime_v2_stress`，并把全局正确性状态恢复为未完成；保护异常在 100 万行动后仍无 winner，不能通过提高上限规避。
+- 四方 CQD 矩阵复测发现的 4 个单 seed 胜负分叉和 1 个行动保护上限异常现已全部闭环。逐 seed 对比排除了复用 runner 污染；5 个原始输入均已归档到 `tswn_test/cases/runtime_v2_stress` 并接入长期 strict-diff 回归。保护异常与瘟疫分摊后的活动使魔致死链缺口同源，修复后无需提高行动保护上限。
+- 对四个胜负分叉坐标各扩展扫描 1000 个 seed，并对原保护异常坐标扫描 10000 个 seed，共 14000 个 seed，异常数为 0。完整 release Runtime v2 corpus 123/123 通过；`cargo test -p tswn_core` 为核心库 595 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release `no_debug` Runtime v2 库测试 428 通过、2 忽略，release CLI Runtime v2 测试 12 通过。
 - 新增 `track_cqp_case` 辅助诊断工具，可按 CQP/CQD 的真实 seed 调度扫描指定 matchup，并在胜负或保护上限异常时同时对比 legacy、复用 Runtime v2 runner 与全新 Runtime v2 runner，输出首个 strict/non-score 分叉及 JSON 报告；该工具仅在 `aux_bins` feature 下构建，不进入正式运行路径。
 - 新增 `track_cqp_perf`，以相同外层 worker 数在同一批 `player × target` matchup 上交替测量 Runtime v1/v2，输出逐 matchup 对账和机器可读 JSON；`track_perf_cases` 同步增加 `--engine v1|v2`，并新增 Node.js/Bun 官方 `md5.js` 稳态基准脚本，统一覆盖 fixed30、win-rate、score 与 CQP/CQD 动态矩阵。
 - `d813e5f` 完成单次全套阶段快照：fixed30 单线程/自动线程 overall 为 `32.105/4.644 us/battle`，stress_multi 为 `66.340 us/battle`，win-rate 13000 场为 `0.117 s`、`7077` 胜；score mario、CQP 单人、双人分别达到同轮 legacy 的 `1.734x/1.814x/2.018x` 吞吐且逐组 0 差异；CQP/CQD 六档较旧 v2 再快 25.78%～29.38%。该快照不重置既定半时硬线，完整数据见 `docs/perf/runtime_v2_0.4.2_d813e5f_snapshot.md`。
@@ -79,7 +80,7 @@
 - 新增 `tswn_test` 共享测试 harness，并将原先嵌在 `tswn_core::engine::test` 下的多组回放/战斗测试迁移为可复用的测试 suite，便于后续多个 engine 实现共用同一批行为对账用例。
 - 将 `tswn_core` 专属 engine 测试拆到 `crates/tswn_core/tests/engine_core.rs`，让核心 crate 的公开行为测试与共享测试工具解耦。
 - 更新 `track_test.py` 默认追踪包，默认覆盖迁移后的 large / small seed / multi fight 测试集合。
-- 新增 CLI legacy/v2 输出对账，覆盖最小对局以及含幻影、分身和 clan 的 `large_51`；补充 `raw` 普通对战与 `!test!` benchmark 的默认 v2/显式 legacy 参数、路由和命令级逐字节对账，并覆盖普通/`!` 评分、胜率 profile seed 调度、4-worker 确定性、200 轮 profile 评分，以及反射冰冻与魅惑生命之轮的严格回归 fixture。Runtime v2 在 `mutable-noalias=yes` 下的 core/no_debug/CLI 门禁与 118 项 corpus 全部通过。
+- 新增 CLI legacy/v2 输出对账，覆盖最小对局以及含幻影、分身和 clan 的 `large_51`；补充 `raw` 普通对战与 `!test!` benchmark 的默认 v2/显式 legacy 参数、路由和命令级逐字节对账，并覆盖普通/`!` 评分、胜率 profile seed 调度、4-worker 确定性、200 轮 profile 评分，以及反射冰冻与魅惑生命之轮的严格回归 fixture。该阶段 core/no_debug/CLI 门禁与 118 项 corpus 全部通过；CQD 新增回归后，当前完整 corpus 为 123 项。
 - 新增聚气激活/清除时刷新待生效疾走倍率的精确回归，并把 CQP 单人第 13 组第 185 轮加入完整 score legacy/v2 严格对账，防止行动顺序和赢家再次漂移。
 
 ### 修复
@@ -106,7 +107,7 @@
 - score 单线程裸计时：mario 13000 场 v2/legacy wall 为 `2.325/0.819 s`；CQP 单人 20 组 × 1000 场为 `3.608/1.287 s`；双人 32 组 × 1000 场为 `5.613/2.166 s`。三类输入各 5 轮逐组结果差异均为 0；v2 性能尚未达到 legacy 硬目标，仍需分别压缩 64.77%、64.33%、61.41%。
 - win-rate 13000 场单线程 v2 wall/init/fight 中位数为 `0.184/0.040/0.142 s`，相对同口径 legacy wall `0.2177835 s` 快 15.51%；完整新基线见 `docs/perf/runtime_v2_0.4.0_baseline.md`。
 - `cargo test -p tswn_core --bin tswn-cli --release`（61 通过）
-- `python scripts/check_runtime_v2_noalias.py --corpus`（core/no_debug/CLI 与 118 项 corpus 全部通过）
+- 历史命令 `python scripts/check_runtime_v2_noalias.py --corpus` 当时完成 core/no_debug/CLI 与 118 项 corpus；当前 rustc 已移除对应参数，该脚本不再作为现行门禁。
 - `python track_test.py --engine runtime-v2 -q`
 - `cargo test -p tswn_core replay_view`
 - `cargo test -p tswn_core summon_minion_charge -- --nocapture`

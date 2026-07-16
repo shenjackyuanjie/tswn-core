@@ -1,6 +1,6 @@
 # Runtime v2 压力差异输入
 
-这里保存压力 strict-diff 首次发现、尚未闭环的原始输入，避免 case 随 `target` 清理而丢失。
+这里保存压力 strict-diff 首次发现的原始输入；无论后续是否闭环都保留归档，避免 case 随 `target` 清理而丢失。
 
 本批输入来自 `tests/sqp6000.txt`，使用真正的 Runtime v2 路径运行；规模为六种模式各 200 个，共 1200 个。TS/JS 实现是正确性 oracle。首轮发现 8 个差异；全部闭环后重新运行同一规模，又发现并归档 1 个差异：
 
@@ -77,6 +77,8 @@
 | `cqd-p21-t39-r0107.txt` | player 21 × target 39 | 107 / `33554538` | 9 | 瘟疫分摊击倒 owner 后，0 HP 的活动使魔仍保持存活并继续行动 | 已闭环并接入回归 |
 | `cqd-p28-t26-r0447.txt` | player 28 × target 26 | 447 / `33554878` | 13 | 首次迟缓未刷新待生效强化疾走倍率，调度 RNG、地裂术伤害与护身符复活链随后分叉 | 已闭环并接入回归 |
 | `cqd-p21-t31-r5997-guard.txt` | player 21 × target 31 | 5997 / `33560428` | 16 | 同一使魔清理缺口最终形成 0 个存活组，v2 在 10 万与 100 万行动上限下都无法产生 winner；legacy 20 个行动结束 | 已闭环并接入回归 |
+
+2026-07-16 修复后复验：player 6 × target 26、player 19 × target 26、player 21 × target 39、player 28 × target 26 各扫描 1000 个 seed，player 21 × target 31 扫描 10000 个 seed，共 14000 个 seed，异常数为 0；包含上述 5 个输入的 release Runtime v2 corpus 为 123/123 通过。
 
 维护规则：
 
