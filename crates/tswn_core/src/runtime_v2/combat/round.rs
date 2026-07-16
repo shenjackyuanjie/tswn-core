@@ -1,23 +1,24 @@
 use super::*;
 
 impl CombatRuntime {
-    pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture(true) }
+    pub fn run_minimal_round(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<true>() }
 
     /// 批量胜率与评分只需要胜者，不保留 replay 帧。
-    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture(false) }
+    pub(crate) fn run_minimal_round_no_capture(&mut self) -> RoundOutcome { self.run_minimal_round_with_capture::<false>() }
 
-    fn run_minimal_round_with_capture(&mut self, capture_updates: bool) -> RoundOutcome {
+    /// 将 replay 捕获策略固化为编译期常量，让批量路径消除每回合的交互模式分支。
+    fn run_minimal_round_with_capture<const CAPTURE_UPDATES: bool>(&mut self) -> RoundOutcome {
         loop {
-            if let Some(outcome) = self.run_minimal_round_once_with_capture(capture_updates) {
+            if let Some(outcome) = self.run_minimal_round_once_with_capture::<CAPTURE_UPDATES>() {
                 return outcome;
             }
         }
     }
 
-    pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> { self.run_minimal_round_once_with_capture(true) }
+    pub fn run_minimal_round_once(&mut self) -> Option<RoundOutcome> { self.run_minimal_round_once_with_capture::<true>() }
 
-    fn run_minimal_round_once_with_capture(&mut self, capture_updates: bool) -> Option<RoundOutcome> {
-        let winner_team = if capture_updates {
+    fn run_minimal_round_once_with_capture<const CAPTURE_UPDATES: bool>(&mut self) -> Option<RoundOutcome> {
+        let winner_team = if CAPTURE_UPDATES {
             self.world.sync_winner(&self.entities)
         } else {
             self.world.sync_winner_from_alive_views()
@@ -31,7 +32,7 @@ impl CombatRuntime {
         }
 
         let selected_action = self.scheduler.select_action(&mut self.world, &mut self.entities, &mut self.rng);
-        let mut updates = if capture_updates {
+        let mut updates = if CAPTURE_UPDATES {
             RunUpdates::new()
         } else {
             RunUpdates::new_no_capture()
@@ -46,7 +47,7 @@ impl CombatRuntime {
             ));
         }
         let Some(mut action) = selected_action else {
-            return Some(self.finish_round(None, updates));
+            return Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(None, updates));
         };
         let legacy_plain_action = self.scheduler.uses_legacy_step_scheduler();
         self.scratch.selected_actor_round = self.round;
@@ -99,13 +100,13 @@ impl CombatRuntime {
                 .is_frozen()
             {
                 if updates.had_updates() {
-                    return Some(self.finish_round(None, updates));
+                    return Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(None, updates));
                 }
                 return None;
             }
             let forced_pre_action_skill = plain_skill_pre_action.forced_skill.is_some();
             let Some(prepared) = self.prepare_plain_action(action.actor, smart, plain_skill_pre_action) else {
-                return Some(self.finish_round(None, updates));
+                return Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(None, updates));
             };
             match &prepared {
                 PreparedPlainAction::BasicAttack { target, amount, .. } => {
@@ -232,7 +233,7 @@ impl CombatRuntime {
                     .collect::<Vec<_>>(),
             );
         }
-        Some(self.finish_round(Some(action), updates))
+        Some(self.finish_round_with_capture::<CAPTURE_UPDATES>(Some(action), updates))
     }
 
     fn drain_post_action_chain_into(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
@@ -297,10 +298,23 @@ impl CombatRuntime {
     }
 
     pub fn finish_round(&mut self, action: Option<ActionPlan>, updates: RunUpdates) -> RoundOutcome {
-        let capture_updates = updates.capture_updates;
-        let frame = (capture_updates && updates.had_updates()).then_some(RuntimeFrame { updates });
+        if updates.capture_updates {
+            self.finish_round_with_capture::<true>(action, updates)
+        } else {
+            self.finish_round_with_capture::<false>(action, updates)
+        }
+    }
+
+    /// 批量路径不会生成 frame，也不需要重新扫描实体表判定赢家。
+    fn finish_round_with_capture<const CAPTURE_UPDATES: bool>(
+        &mut self,
+        action: Option<ActionPlan>,
+        updates: RunUpdates,
+    ) -> RoundOutcome {
+        debug_assert_eq!(updates.capture_updates, CAPTURE_UPDATES);
+        let frame = (CAPTURE_UPDATES && updates.had_updates()).then_some(RuntimeFrame { updates });
         self.round += 1;
-        let winner_team = if capture_updates {
+        let winner_team = if CAPTURE_UPDATES {
             self.world.sync_winner(&self.entities)
         } else {
             self.world.sync_winner_from_alive_views()
