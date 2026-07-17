@@ -625,7 +625,7 @@ impl CombatRuntime {
     }
 
     pub fn scan_plain_action_skill_probabilities(&mut self, actor: EntityIdx, smart: bool) -> Option<PreparedBuiltinSkillAction> {
-        let (scan_len, use_cache) = {
+        let (scan_len, cached_scan) = {
             let skills = &self
                 .entities
                 .get(actor)
@@ -633,27 +633,23 @@ impl CombatRuntime {
                 .template
                 .skills;
             match skills.cached_builtin_actions() {
-                Some(cache) => (cache.len(), true),
-                None => (skills.active_order().len(), false),
+                Some(cache) => (
+                    cache.len(),
+                    Some((cache.as_ptr(), skills.levels().as_ptr(), skills.levels().len())),
+                ),
+                None => (skills.active_order().len(), None),
             }
         };
         for active_index in 0..scan_len {
-            let (fixed_lane, builtin_skill, level) = if use_cache {
-                let loadout = &self
-                    .entities
-                    .get(actor)
-                    .unwrap_or_else(|| panic!("unknown runtime_v2 action-scan actor: {}", actor.0))
-                    .template
-                    .skills;
-                let cached = *loadout
-                    .cached_builtin_actions()
-                    .expect("runtime_v2 主动技能缓存扫描期间失效")
-                    .get(active_index)
-                    .unwrap_or_else(|| panic!("runtime_v2 主动技能缓存缺少第 {active_index} 项"));
+            let (fixed_lane, builtin_skill, level) = if let Some((cache, levels, levels_len)) = cached_scan {
+                // SAFETY: 两个指针来自 actor 当前 SkillLoadout。扫描失败路径只推进 RNG，
+                // plain_action_skill_probability 不修改实体或技能表；一旦目标选择开始便会立即
+                // 返回，不再读取指针。缓存由 prepare_hook_cache 构造，每个 fixed_lane 均来自
+                // 同一份 levels，因此 active_index 与 fixed_lane 都已分别受两段长度约束。
+                let cached = unsafe { *cache.add(active_index) };
                 let fixed_lane = usize::from(cached.fixed_lane);
-                let level = loadout
-                    .level_at(fixed_lane)
-                    .unwrap_or_else(|| panic!("runtime_v2 主动技能等级缺少固定槽位 {fixed_lane}"));
+                debug_assert!(fixed_lane < levels_len, "runtime_v2 主动技能缓存固定槽位越界");
+                let level = unsafe { *levels.add(fixed_lane) };
                 (fixed_lane, cached.skill, level)
             } else {
                 let loadout = &self
