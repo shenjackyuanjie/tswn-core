@@ -545,12 +545,7 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
     let caster = context.defend_caster().expect("iron state should receive incoming defend caster");
     let target = context.defend_target().expect("iron state should receive incoming defend target");
     if damage <= protect {
-        let defended = context
-            .last_non_newline_update()
-            .map(|update| {
-                update.message == "[0][防御]" && update.caster == target.0 as usize && update.target == caster.0 as usize
-            })
-            .unwrap_or(false);
+        let defended = context.last_update_was_plain_defense(target, caster);
         context.set_defend_damage(if defended { 0 } else { 1 });
         return;
     }

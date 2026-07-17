@@ -239,8 +239,9 @@ pub struct RunUpdates {
     pub capture_updates: bool,
     /// 本批次是否出现过事件（无论是否缓存详细帧）。
     has_activity: bool,
-    /// 无帧模式下保留最后一条非换行事件，供会读取前序事件语义的战斗钩子使用。
-    uncaptured_last_update: Option<RunUpdate>,
+    /// 无帧模式只保留铁壁判定所需的最后防御事件身份，避免携带完整 replay 帧。
+    uncaptured_plain_defense: (PlrId, PlrId),
+    uncaptured_last_was_plain_defense: bool,
     /// 最后一个换行分隔帧之后是否出现过事件。
     segment_has_activity: bool,
     /// 最后一个换行分隔帧之后是否出现过玩家主体行动。
@@ -257,7 +258,8 @@ impl RunUpdates {
             action_boundaries: smallvec::SmallVec::new(),
             capture_updates,
             has_activity: false,
-            uncaptured_last_update: None,
+            uncaptured_plain_defense: (0, 0),
+            uncaptured_last_was_plain_defense: false,
             segment_has_activity: false,
             segment_has_primary_action: false,
         }
@@ -277,7 +279,7 @@ impl RunUpdates {
         #[cfg(not(feature = "no_debug"))]
         self.action_boundaries.clear();
         self.has_activity = false;
-        self.uncaptured_last_update = None;
+        self.uncaptured_last_was_plain_defense = false;
         self.segment_has_activity = false;
         self.segment_has_primary_action = false;
     }
@@ -285,15 +287,24 @@ impl RunUpdates {
     /// 本批次是否发生过有效事件。
     pub fn had_updates(&self) -> bool { self.has_activity }
 
-    /// 返回本批次最后一条非换行事件。
+    /// 返回完整帧模式中最后一条非换行事件。
     ///
-    /// 完整帧模式直接读取事件数组；benchmark 无帧模式只保留这一条语义事件，
-    /// 避免铁壁等钩子因为关闭 replay 缓存而改变战斗结果。
+    /// `new_no_capture()` 不保留可渲染帧；需要读取战斗语义的钩子应使用
+    /// [`Self::last_update_was_plain_defense`]。
     pub fn last_non_newline_update(&self) -> Option<&RunUpdate> {
+        self.updates
+            .iter()
+            .rev()
+            .find(|update| !matches!(update.update_type, UpdateType::NextLine))
+    }
+
+    /// 最后一条非换行事件是否为指定双方的普通防御帧。
+    pub fn last_update_was_plain_defense(&self, caster: PlrId, target: PlrId) -> bool {
         if self.capture_updates {
-            self.updates.iter().rev().find(|update| !matches!(update.update_type, UpdateType::NextLine))
+            self.last_non_newline_update()
+                .is_some_and(|update| update.message == "[0][防御]" && update.caster == caster && update.target == target)
         } else {
-            self.uncaptured_last_update.as_ref()
+            self.uncaptured_last_was_plain_defense && self.uncaptured_plain_defense == (caster, target)
         }
     }
 
@@ -344,7 +355,10 @@ impl RunUpdates {
         if self.capture_updates {
             self.updates.push(update);
         } else if !matches!(update.update_type, UpdateType::NextLine) {
-            self.uncaptured_last_update = Some(update);
+            self.uncaptured_last_was_plain_defense = update.message == "[0][防御]";
+            if self.uncaptured_last_was_plain_defense {
+                self.uncaptured_plain_defense = (update.caster, update.target);
+            }
         }
     }
 
@@ -394,18 +408,19 @@ mod tests {
     }
 
     #[test]
-    fn no_capture_keeps_last_non_newline_semantics_without_frames() {
+    fn no_capture_keeps_only_plain_defense_semantics_without_frames() {
         let mut updates = RunUpdates::new_no_capture();
-        updates.add(RunUpdate::new("first", 1, 2, 3));
+        updates.add(RunUpdate::new("[0][防御]", 1, 2, 3));
         updates.add_newline();
-        updates.add(RunUpdate::new("last", 4, 5, 6));
 
         assert!(updates.updates.is_empty());
-        let last = updates.last_non_newline_update().expect("无帧模式应保留最后一条语义事件");
-        assert_eq!(last.message, "last");
-        assert_eq!((last.caster, last.target, last.score), (4, 5, 6));
+        assert!(updates.last_update_was_plain_defense(1, 2));
+        assert!(!updates.last_update_was_plain_defense(2, 1));
+
+        updates.add(RunUpdate::new("last", 4, 5, 6));
+        assert!(!updates.last_update_was_plain_defense(1, 2));
 
         updates.reset();
-        assert!(updates.last_non_newline_update().is_none());
+        assert!(!updates.last_update_was_plain_defense(1, 2));
     }
 }

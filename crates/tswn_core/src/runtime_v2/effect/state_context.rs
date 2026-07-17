@@ -124,8 +124,8 @@ impl<'a> StateContext<'a> {
         Ok(self.world.flat_alive().to_vec())
     }
 
-    pub fn last_non_newline_update(&self) -> Option<&RunUpdate> {
-        self.updates.last_non_newline_update()
+    pub fn last_update_was_plain_defense(&self, caster: EntityIdx, target: EntityIdx) -> bool {
+        self.updates.last_update_was_plain_defense(caster.0 as usize, target.0 as usize)
     }
 
     pub fn rng_next_u8(&mut self) -> u8 { self.rng.next_u8() }
