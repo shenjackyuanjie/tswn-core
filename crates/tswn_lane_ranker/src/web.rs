@@ -11,10 +11,7 @@ use axum::{
 use serde_json::json;
 use tower_http::services::ServeDir;
 
-use crate::model::{
-    AddGroupsRequest, BlockGroupRequest, BlockGroupsByTextRequest, ConstrainedSelectionRequest, MergeTeamsRequest,
-    PurgeLowScoreGroupsRequest, RecomputeLaneRequest,
-};
+use crate::model::{AddGroupsRequest, AddWinratesRequest, BlockGroupRequest, BlockGroupsByTextRequest, ConstrainedSelectionRequest, MergeTeamsRequest, RecomputeLaneRequest, TargetGenerationRequest};
 use crate::service::AppService;
 
 pub type SharedService = Arc<AppService>;
@@ -25,6 +22,7 @@ pub fn router(service: AppService) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/groups/add", post(add_groups))
+        .route("/api/winrates/add", post(add_winrates))
         .route("/api/groups/block", post(block_groups_by_text))
         .route("/api/groups/unblock", post(unblock_groups_by_text))
         .route("/api/groups/:group_id/block", post(block_group))
@@ -34,14 +32,18 @@ pub fn router(service: AppService) -> Router {
         .route("/api/lanes/:lane_size/results", get(lane_results))
         .route("/api/lanes/:lane_size/progress", get(lane_progress))
         .route("/api/lanes/:lane_size/recompute", post(recompute_lane))
-        .route("/api/lanes/:lane_size/purge-low-score", post(purge_low_score_groups))
         .route("/api/lanes/:lane_size/constrained-selection", post(constrained_selection))
+        .route("/api/lanes/:lane_size/calibration", post(calibration))
+        .route("/api/lanes/:lane_size/targets", post(generate_targets))
+        .route("/api/lanes/:lane_size/pair-validation", post(pair_validation))
         .route("/api/jobs/:job_id", get(job))
         .nest_service("/", ServeDir::new("crates/tswn_lane_ranker/static"))
         .with_state(shared)
 }
 
-async fn health() -> Json<serde_json::Value> { Json(json!({ "ok": true })) }
+async fn health() -> Json<serde_json::Value> {
+    Json(json!({ "ok": true }))
+}
 
 async fn add_groups(
     State(service): State<SharedService>,
@@ -50,6 +52,18 @@ async fn add_groups(
     let response = service.add_groups(req)?;
     Ok(Json(serde_json::to_value(response)?))
 }
+
+async fn add_winrates(
+    State(service): State<SharedService>,
+    Json(req): Json<AddWinratesRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let service_for_task = service.clone();
+    let response = tokio::task::spawn_blocking(move || service_for_task.add_manual_winrates(req))
+        .await
+        .map_err(|err| anyhow::anyhow!("manual winrate task join error: {err}"))??;
+    Ok(Json(serde_json::to_value(response)?))
+}
+
 
 async fn block_groups_by_text(
     State(service): State<SharedService>,
@@ -123,25 +137,6 @@ async fn recompute_lane(
     Ok(Json(serde_json::to_value(response)?))
 }
 
-async fn purge_low_score_groups(
-    State(service): State<SharedService>,
-    Path(lane_size): Path<usize>,
-    body: Bytes,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let req = if body.is_empty() {
-        PurgeLowScoreGroupsRequest {
-            outer_workers: None,
-            inner_workers: None,
-            skip_archived: None,
-        }
-    } else {
-        serde_json::from_slice::<PurgeLowScoreGroupsRequest>(&body)?
-    };
-
-    let response = service.purge_low_score_groups(lane_size, req)?;
-    Ok(Json(serde_json::to_value(response)?))
-}
-
 async fn constrained_selection(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
@@ -151,6 +146,7 @@ async fn constrained_selection(
         ConstrainedSelectionRequest {
             outer_workers: None,
             inner_workers: None,
+            raw_score_threshold: None,
             cqd_threshold: None,
         }
     } else {
@@ -160,6 +156,62 @@ async fn constrained_selection(
     let response = service.queue_constrained_selection_lane(lane_size, req)?;
     Ok(Json(serde_json::to_value(response)?))
 }
+
+async fn calibration(
+    State(service): State<SharedService>,
+    Path(lane_size): Path<usize>,
+    body: Bytes,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let req = if body.is_empty() {
+        ConstrainedSelectionRequest {
+            outer_workers: None,
+            inner_workers: None,
+            raw_score_threshold: None,
+            cqd_threshold: None,
+        }
+    } else {
+        serde_json::from_slice::<ConstrainedSelectionRequest>(&body)?
+    };
+
+    let response = service.queue_constrained_selection_lane(lane_size, req)?;
+    Ok(Json(serde_json::to_value(response)?))
+}
+
+
+async fn generate_targets(
+    State(service): State<SharedService>,
+    Path(lane_size): Path<usize>,
+    Json(req): Json<TargetGenerationRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let service_for_task = service.clone();
+    let response = tokio::task::spawn_blocking(move || service_for_task.generate_lane_targets(lane_size, req))
+        .await
+        .map_err(|err| anyhow::anyhow!("target generation task join error: {err}"))??;
+    Ok(Json(serde_json::to_value(response)?))
+}
+
+
+
+async fn pair_validation(
+    State(service): State<SharedService>,
+    Path(lane_size): Path<usize>,
+    body: Bytes,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let req = if body.is_empty() {
+        ConstrainedSelectionRequest {
+            outer_workers: None,
+            inner_workers: None,
+            raw_score_threshold: None,
+            cqd_threshold: None,
+        }
+    } else {
+        serde_json::from_slice::<ConstrainedSelectionRequest>(&body)?
+    };
+
+    let response = service.validate_pair_strength_lane(lane_size, req)?;
+    Ok(Json(response))
+}
+
 
 async fn lanes(State(service): State<SharedService>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(service.db.lane_statuses()?)?))
@@ -179,7 +231,10 @@ async fn lane_progress(
     Ok(Json(serde_json::to_value(service.db.lane_progress(lane_size)?)?))
 }
 
-async fn job(State(service): State<SharedService>, Path(job_id): Path<i64>) -> Result<Json<serde_json::Value>, ApiError> {
+async fn job(
+    State(service): State<SharedService>,
+    Path(job_id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(service.db.job(job_id)?)?))
 }
 
@@ -190,7 +245,9 @@ impl<E> From<E> for ApiError
 where
     E: Into<anyhow::Error>,
 {
-    fn from(err: E) -> Self { Self(err.into()) }
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
 }
 
 impl IntoResponse for ApiError {
