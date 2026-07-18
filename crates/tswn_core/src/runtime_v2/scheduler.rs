@@ -29,7 +29,7 @@ pub struct SkillHookPlan {
     pub owner: EntityIdx,
     pub hook: ProcMask,
     pub loadout_len: usize,
-    pub entries: SmallVec<[SkillHookPlanEntry; 8]>,
+    pub entries: SmallVec<[SkillHookPlanEntry; 4]>,
 }
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ pub struct StateHookPlanEntry {
 pub struct StateHookPlan {
     pub hook: ProcMask,
     pub store_generation: u32,
-    pub entries: SmallVec<[StateHookPlanEntry; 8]>,
+    pub entries: SmallVec<[StateHookPlanEntry; 2]>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -235,7 +235,7 @@ impl PhaseScheduler {
             .get(owner)
             .unwrap_or_else(|| panic!("unknown runtime_v2 skill owner entity: {}", owner.0));
         let skills = &entity.template.skills;
-        let mut entries = SmallVec::<[SkillHookPlanEntry; 8]>::new();
+        let mut entries = SmallVec::<[SkillHookPlanEntry; 4]>::new();
         if let Some(cached_entries) = skills.cached_hook_entries(hook) {
             for entry in cached_entries {
                 if skills.level_at(entry.fixed_lane) != Some(0) {
@@ -433,7 +433,7 @@ impl PhaseScheduler {
                 entries: SmallVec::new(),
             };
         }
-        let mut entries = SmallVec::<[StateHookPlanEntry; 8]>::new();
+        let mut entries = SmallVec::<[StateHookPlanEntry; 2]>::new();
         for entry in entity.states.entries() {
             if !entry.hook_mask.intersects(hook) {
                 continue;
@@ -700,7 +700,7 @@ mod tests {
         assert_eq!(plan.store_generation, 3);
         assert_eq!(
             plan.entries,
-            SmallVec::<[StateHookPlanEntry; 8]>::from_slice(&[
+            SmallVec::<[StateHookPlanEntry; 2]>::from_slice(&[
                 StateHookPlanEntry {
                     owner: EntityIdx(0),
                     state_id: Some(StateId(2)),

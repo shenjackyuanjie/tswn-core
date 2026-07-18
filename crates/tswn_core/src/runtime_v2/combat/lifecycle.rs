@@ -445,7 +445,7 @@ impl CombatRuntime {
         action_smart: Option<bool>,
     ) -> bool {
         let mut action_intercepted = false;
-        let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 8]>>;
+        let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 2]>>;
         let mut store_generation = plan.store_generation;
         let mut cursor = 0usize;
         let mut executed_legacy_keys = SmallVec::<[u32; 8]>::new();
@@ -577,7 +577,7 @@ impl CombatRuntime {
         updates: &mut RunUpdates,
         defend_value: &mut RuntimeDefendValue,
     ) {
-        let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 8]>>;
+        let mut rebuilt_entries = None::<SmallVec<[StateHookPlanEntry; 2]>>;
         let mut store_generation = plan.store_generation;
         let mut cursor = 0usize;
         let mut executed_legacy_keys = SmallVec::<[u32; 8]>::new();
