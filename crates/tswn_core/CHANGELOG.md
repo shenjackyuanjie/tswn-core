@@ -1,6 +1,6 @@
 # 更新日志
 
-## [0.4.3] - 开发中
+## [0.4.3] - 2026-07-18
 
 ### 性能优化
 
@@ -9,6 +9,10 @@
 - Runtime v2 的内置主动技能扫描在缓存命中时固定只读缓存与等级切片指针；失败概率分支只推进 RC4，不再为平均约十个候选逐项重复查询实体槽、Option 与切片边界，成功进入目标选择后立即返回且不再读取指针。fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 中位从 `28.970` 降至 `28.499 us/battle`，缩短 1.63%；core 1v1/2v2、1v1、2v2、stress_multi 全部同向，结果聚合保持 `150858`。mario 13 万场三组交替 A/B 的整体中位从 `4.290` 降至 `4.216 s`，缩短 1.73%，胜场保持 `41930/130000`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略；release Runtime v2 corpus 124/124 通过；固定 SBY 12000-case 的 TS/Rust 执行失败与 diff 均为 0。
 - score 准备对象的 Shadow、Summon、Zombie 三类可选蓝图改为使用最终实体槽本来就需要的 `Box<PlayerTemplate>`；常见延迟蓝图路径不再因三个空 `Option<PlayerTemplate>` 固定携带三份大模板，`PreparedPlayerInit` 从 `4920` 字节降至 `1272` 字节，缩小 74.15%，有蓝图时则直接把同一个 Box 移交实体槽，不增加净分配。mario 13 万场单线程五组交替 A/B 的整体与初始化配对中位分别缩短 0.95% 和 2.44%，fight 基本持平；fixed30/no_debug/13000 单线程三组交替 A/B 的 overall 与 init 配对中位分别缩短 0.62% 和 0.91%，五个分组均未回退，2v2 缩短 1.24%，结果聚合保持 `150858`。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；`no_debug` 核心库 589 通过、2 忽略，release Runtime v2 corpus 124/124 通过。
 - Runtime v2 将是否保留 replay 帧改为编译期常量，批量胜率/评分独立生成无捕获回合与收尾路径，消除每回合反复判断交互模式、构造 frame 和选择赢家扫描方式的分支。fixed30/no_debug/13000 单线程三轮中位 overall 从 `30.989` 降至 `30.655 us/battle`，fight 从 `27.910` 降至 `27.533 us/battle`，分别缩短 1.08% 与 1.35%；core 1v1/2v2、1v1、2v2、stress_multi 分别缩短 1.84%、2.90%、1.17%、0.59%，结果聚合保持 `150858`。mario 13 万场 score 三轮未观察到超出噪音的稳定变化。`cargo test -p tswn_core` 全量通过：核心库 596 通过、2 忽略，CLI 59、runtime trace 3、engine 集成 29 均通过；release Runtime v2 corpus 124/124 通过。
+
+### 验证
+
+- 在最终代码提交 `9d3a3b9` 上完成 Runtime v2 0.4.3 正式多轮发版 benchmark：fixed30 单线程 3 次中位数为 `28.257 us/battle`，自动线程 5 次中位数为 `3.632 us/battle`，相对 0.4.2 mimalloc 快照分别快 9.74% 与 6.76%；普通 win-rate 13000 场 5 次中位数为 `0.098 s`；三组 score 的 v2 wall 中位数为 `0.428/0.672/0.944 s`，同轮 legacy/v2 吞吐为 `1.939x/1.936x/2.307x`，15 次对账差异均为 0；OpenBox CQP/CQD 六档 5 次中位数相对 0.4.2 快 10.57%～25.81%，30 次运行全部完成。完整环境、逐轮值与硬目标差距见 `docs/perf/runtime_v2_0.4.3_9d3a3b9_release_benchmark.md` 及同名 JSON。
 
 ## [0.4.2] - 2026-07-16
 
