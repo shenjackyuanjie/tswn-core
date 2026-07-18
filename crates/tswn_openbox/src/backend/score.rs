@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use tswn_core::win_rate::{WinRateTiming, prepared_win_rate, resolve_win_rate_workers};
-use tswn_core::{PreparedRunner, Runner};
+use tswn_core::{LegacyPreparedRunner as PreparedRunner, LegacyRunner as Runner};
 
 use super::format::display_group;
 use super::parse::first_duplicate_name_in_matchup;

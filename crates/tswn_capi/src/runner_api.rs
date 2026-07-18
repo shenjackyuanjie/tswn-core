@@ -2,7 +2,7 @@ use std::ffi::c_char;
 
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::player::PlrId;
-use tswn_core::{PreparedRunner, Runner};
+use tswn_core::{LegacyPreparedRunner as PreparedRunner, LegacyRunner as Runner};
 
 use crate::{
     FfiResult, ffi_boundary, ffi_error, into_tswn_str, read_utf8, set_last_error, tswn_player_snapshot_t, tswn_prepared_runner_t,

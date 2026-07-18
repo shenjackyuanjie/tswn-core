@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildFrameRows } from "./show-render.js";
-import { buildV2ReplayFromNormalizedRun } from "./show-wasm.js";
+import { buildMainReplayFromNormalizedRun } from "./show-wasm.js";
 
-test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () => {
+test("buildMainReplayFromNormalizedRun returns show-compatible replay shape", () => {
   const rawInput = "seed: fixed\nleft@red\n\nright@blue\n";
-  const replay = buildV2ReplayFromNormalizedRun(rawInput, {
+  const replay = buildMainReplayFromNormalizedRun(rawInput, {
     winner_team: 0,
     guard_exhausted: false,
     total_score: 7,
@@ -98,7 +98,7 @@ test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () =
     ],
   }, 12.5);
 
-  assert.equal(replay.runtime_v2, true);
+  assert.equal(replay.runtime, true);
   assert.equal(replay.seed_line, "seed: fixed");
   assert.equal(replay.winner_team, 0);
   assert.deepEqual(replay.winner_ids, [0]);
@@ -152,8 +152,8 @@ test("buildV2ReplayFromNormalizedRun returns show-compatible replay shape", () =
   assert.deepEqual(replay.frames[1].winner_ids, [0]);
 });
 
-test("v2 normalized replay renders show-compatible frame chunks", () => {
-  const replay = buildV2ReplayFromNormalizedRun("left@red\n\nright@blue\n", {
+test("runtime normalized replay renders show-compatible frame chunks", () => {
+  const replay = buildMainReplayFromNormalizedRun("left@red\n\nright@blue\n", {
     winner_team: 0,
     guard_exhausted: false,
     total_score: 7,
@@ -249,8 +249,8 @@ test("v2 normalized replay renders show-compatible frame chunks", () => {
   assert.match(winnerChunks[1].html, /胜者：left@red/);
 });
 
-test("v2 normalized replay preserves recover and multi-target HP chunks", () => {
-  const replay = buildV2ReplayFromNormalizedRun("healer@red\nfront@blue\nback@blue\n", {
+test("runtime normalized replay preserves recover and multi-target HP chunks", () => {
+  const replay = buildMainReplayFromNormalizedRun("healer@red\nfront@blue\nback@blue\n", {
     winner_team: null,
     guard_exhausted: false,
     total_score: 6,
@@ -339,8 +339,8 @@ test("v2 normalized replay preserves recover and multi-target HP chunks", () => 
   assert.match(chunks[1].html, /message-number">5<\/span>/);
 });
 
-test("v2 normalized replay renders new summoned entities only after spawn frame", () => {
-  const replay = buildV2ReplayFromNormalizedRun("summoner@red\n\ntarget@blue\n", {
+test("runtime normalized replay renders new summoned entities only after spawn frame", () => {
+  const replay = buildMainReplayFromNormalizedRun("summoner@red\n\ntarget@blue\n", {
     winner_team: null,
     guard_exhausted: false,
     total_score: 2,
@@ -439,8 +439,8 @@ test("v2 normalized replay renders new summoned entities only after spawn frame"
   assert.match(chunks[0].html, /actor-hp-delta is-recover/);
 });
 
-test("v2 normalized replay renders removed entities with death HP state", () => {
-  const replay = buildV2ReplayFromNormalizedRun("owner@red\n\ntarget@blue\n", {
+test("runtime normalized replay renders removed entities with death HP state", () => {
+  const replay = buildMainReplayFromNormalizedRun("owner@red\n\ntarget@blue\n", {
     winner_team: null,
     guard_exhausted: false,
     total_score: 1,

@@ -9,9 +9,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::runtime_v2::{runtime_v2_groups_win_rate, runtime_v2_score};
+use tswn_core::runtime::{runtime_groups_win_rate, runtime_score};
 use tswn_core::win_rate::groups_win_rate;
 
 use crate::BENCH_PARALLEL_THRESHOLD;
@@ -37,7 +37,7 @@ fn raw_route(raw: &str, runtime: RuntimeEngine) -> RawRoute {
 /// 运行 `raw` 子命令。
 ///
 /// 入口只做一个分派判断：
-/// - 普通 raw 输入默认走 Runtime v2，也可显式选择 legacy；
+/// - 普通 raw 输入默认走 Runtime，也可显式选择 legacy；
 /// - `!test!` 输入使用所选 runtime，并按组数分到评分或胜率 benchmark。
 pub fn run_raw(raw: String, n: usize, threads: Option<usize>, runtime: RuntimeEngine) {
     let trimmed = raw.trim().to_string();
@@ -48,7 +48,7 @@ pub fn run_raw(raw: String, n: usize, threads: Option<usize>, runtime: RuntimeEn
 
     if let RawRoute::Fight(runtime) = raw_route(&trimmed, runtime) {
         match runtime {
-            RuntimeEngine::V2 => super::runtime_v2::run_runtime_v2_fight(trimmed, true),
+            RuntimeEngine::Main => super::runtime::run_runtime_fight(trimmed, true),
             RuntimeEngine::Legacy => run_legacy_raw_fight(trimmed),
         }
         return;
@@ -172,12 +172,12 @@ fn run_raw_score_inner(
     threads: Option<usize>,
     runtime: RuntimeEngine,
 ) -> (usize, usize) {
-    if runtime == RuntimeEngine::V2 {
+    if runtime == RuntimeEngine::Main {
         let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
-        return match runtime_v2_score(target_group, modifier, n, WIN_RATE_EVAL_RQ, thread) {
+        return match runtime_score(target_group, modifier, n, WIN_RATE_EVAL_RQ, thread) {
             Ok(summary) => (summary.wins, summary.total),
             Err(error) => {
-                eprintln!("构建 Runtime v2 评分对局失败: {error}");
+                eprintln!("构建 Runtime 评分对局失败: {error}");
                 (0, 0)
             }
         };
@@ -322,7 +322,7 @@ fn run_raw_winrate_inner(raw: &str, n: usize, threads: Option<usize>, runtime: R
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
     let thread = threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0);
     let summary = match runtime {
-        RuntimeEngine::V2 => runtime_v2_groups_win_rate(&groups, n, WIN_RATE_EVAL_RQ, thread)
+        RuntimeEngine::Main => runtime_groups_win_rate(&groups, n, WIN_RATE_EVAL_RQ, thread)
             .map(|summary| (summary.wins, summary.total))
             .map_err(|error| error.to_string()),
         RuntimeEngine::Legacy => groups_win_rate(&groups, n, WIN_RATE_EVAL_RQ, thread)
@@ -368,16 +368,16 @@ mod tests {
     #[test]
     fn raw_route_uses_requested_runtime_for_fights_and_benchmarks() {
         assert_eq!(
-            raw_route("mario\n\nluigi", RuntimeEngine::V2),
-            RawRoute::Fight(RuntimeEngine::V2)
+            raw_route("mario\n\nluigi", RuntimeEngine::Main),
+            RawRoute::Fight(RuntimeEngine::Main)
         );
         assert_eq!(
             raw_route("mario\n\nluigi", RuntimeEngine::Legacy),
             RawRoute::Fight(RuntimeEngine::Legacy)
         );
         assert_eq!(
-            raw_route("!test!\n\nmario", RuntimeEngine::V2),
-            RawRoute::Benchmark(RuntimeEngine::V2)
+            raw_route("!test!\n\nmario", RuntimeEngine::Main),
+            RawRoute::Benchmark(RuntimeEngine::Main)
         );
         assert_eq!(
             raw_route("!test!\n\nmario", RuntimeEngine::Legacy),
@@ -386,11 +386,11 @@ mod tests {
     }
 
     #[test]
-    fn raw_score_runtime_v2_matches_legacy_for_both_profile_modes() {
+    fn raw_score_runtime_matches_legacy_for_both_profile_modes() {
         let target = vec!["mario".to_owned()];
         for modifier in ["\u{0002}", "!"] {
             assert_eq!(
-                run_raw_score_inner(&target, modifier, 12, Some(1), RuntimeEngine::V2),
+                run_raw_score_inner(&target, modifier, 12, Some(1), RuntimeEngine::Main),
                 run_raw_score_inner(&target, modifier, 12, Some(1), RuntimeEngine::Legacy),
                 "modifier={modifier:?}"
             );
@@ -398,10 +398,10 @@ mod tests {
     }
 
     #[test]
-    fn raw_winrate_runtime_v2_matches_legacy_seed_schedule() {
+    fn raw_winrate_runtime_matches_legacy_seed_schedule() {
         let raw = "left@red\n\nright@blue";
         assert_eq!(
-            run_raw_winrate_inner(raw, 24, Some(1), RuntimeEngine::V2),
+            run_raw_winrate_inner(raw, 24, Some(1), RuntimeEngine::Main),
             run_raw_winrate_inner(raw, 24, Some(1), RuntimeEngine::Legacy)
         );
     }

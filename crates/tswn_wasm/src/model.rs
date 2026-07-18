@@ -141,15 +141,15 @@ impl From<&str> for UpdateTypeView {
             "win" => Self::Win,
             "none" => Self::None,
             "next_line" => Self::NextLine,
-            other => panic!("unknown runtime_v2 update_type token: {other}"),
+            other => panic!("unknown runtime update_type token: {other}"),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
 #[tsify(into_wasm_abi)]
-pub struct RuntimeV2NormalizedRunView {
-    pub rounds: Vec<RuntimeV2NormalizedOutcomeView>,
+pub struct RuntimeNormalizedRunView {
+    pub rounds: Vec<RuntimeNormalizedOutcomeView>,
     pub winner_team: Option<usize>,
     pub guard_exhausted: bool,
     pub total_score: u64,
@@ -157,7 +157,7 @@ pub struct RuntimeV2NormalizedRunView {
 
 #[derive(Debug, Clone, Serialize, Tsify)]
 #[tsify(into_wasm_abi)]
-pub struct RuntimeV2NormalizedOutcomeView {
+pub struct RuntimeNormalizedOutcomeView {
     pub winner_team: Option<usize>,
     pub round: u64,
     pub total_score: u64,
@@ -174,13 +174,13 @@ pub struct RuntimeV2NormalizedOutcomeView {
     pub flat_alive: Vec<usize>,
     pub team_alive: Vec<Vec<usize>>,
     pub alive_group_count: usize,
-    pub actions: Vec<RuntimeV2ActionBoundaryView>,
-    pub frames: Vec<RuntimeV2UpdateFrameView>,
+    pub actions: Vec<RuntimeActionBoundaryView>,
+    pub frames: Vec<RuntimeUpdateFrameView>,
 }
 
 #[derive(Debug, Clone, Serialize, Tsify)]
 #[tsify(into_wasm_abi)]
-pub struct RuntimeV2ActionBoundaryView {
+pub struct RuntimeActionBoundaryView {
     pub round: u64,
     pub actor: usize,
     pub target: usize,
@@ -189,7 +189,7 @@ pub struct RuntimeV2ActionBoundaryView {
 
 #[derive(Debug, Clone, Serialize, Tsify)]
 #[tsify(into_wasm_abi)]
-pub struct RuntimeV2UpdateFrameView {
+pub struct RuntimeUpdateFrameView {
     pub message: String,
     pub caster: usize,
     pub target: usize,
@@ -451,8 +451,8 @@ pub struct CliIconInfo {
 
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
-impl From<core_cli_api::JsonRuntimeV2NormalizedRun> for RuntimeV2NormalizedRunView {
-    fn from(value: core_cli_api::JsonRuntimeV2NormalizedRun) -> Self {
+impl From<core_cli_api::JsonRuntimeNormalizedRun> for RuntimeNormalizedRunView {
+    fn from(value: core_cli_api::JsonRuntimeNormalizedRun) -> Self {
         Self {
             rounds: value.rounds.into_iter().map(Into::into).collect(),
             winner_team: value.winner_team,
@@ -462,8 +462,8 @@ impl From<core_cli_api::JsonRuntimeV2NormalizedRun> for RuntimeV2NormalizedRunVi
     }
 }
 
-impl From<core_cli_api::JsonRuntimeV2NormalizedOutcome> for RuntimeV2NormalizedOutcomeView {
-    fn from(value: core_cli_api::JsonRuntimeV2NormalizedOutcome) -> Self {
+impl From<core_cli_api::JsonRuntimeNormalizedOutcome> for RuntimeNormalizedOutcomeView {
+    fn from(value: core_cli_api::JsonRuntimeNormalizedOutcome) -> Self {
         Self {
             winner_team: value.winner_team,
             round: value.round,
@@ -484,7 +484,7 @@ impl From<core_cli_api::JsonRuntimeV2NormalizedOutcome> for RuntimeV2NormalizedO
             actions: value
                 .actions
                 .into_iter()
-                .map(|action| RuntimeV2ActionBoundaryView {
+                .map(|action| RuntimeActionBoundaryView {
                     round: action.round,
                     actor: action.actor,
                     target: action.target,
@@ -496,8 +496,8 @@ impl From<core_cli_api::JsonRuntimeV2NormalizedOutcome> for RuntimeV2NormalizedO
     }
 }
 
-impl From<core_cli_api::JsonRuntimeV2UpdateFrame> for RuntimeV2UpdateFrameView {
-    fn from(value: core_cli_api::JsonRuntimeV2UpdateFrame) -> Self {
+impl From<core_cli_api::JsonRuntimeUpdateFrame> for RuntimeUpdateFrameView {
+    fn from(value: core_cli_api::JsonRuntimeUpdateFrame) -> Self {
         Self {
             message: value.message,
             caster: value.caster,

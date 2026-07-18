@@ -7,11 +7,10 @@
 
 use std::time::{Duration, Instant};
 
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::runtime_v2::{
-    PreparedRuntimeV2Runner, default_custom_runtime_v2_import_config, prepared_runtime_v2_win_rate_range,
-    runtime_v2_groups_win_rate,
+use tswn_core::runtime::{
+    PreparedRuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range, runtime_groups_win_rate,
 };
 use tswn_core::win_rate::WinRateTiming;
 
@@ -177,7 +176,7 @@ pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads
         BenchThreadMode::SingleThread => 1,
         BenchThreadMode::Parallel => threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0),
     };
-    let summary = match runtime_v2_groups_win_rate(&groups, n, eval_rq, thread) {
+    let summary = match runtime_groups_win_rate(&groups, n, eval_rq, thread) {
         Ok(summary) => summary,
         Err(err) => {
             eprintln!("执行胜率测试失败: {err}");
@@ -206,9 +205,9 @@ pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads
 fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) -> BenchSummary {
     let step = step.max(1);
     let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    let prepared = match (|| -> Result<_, tswn_core::runtime_v2::RuntimeV2BatchError> {
-        let config = default_custom_runtime_v2_import_config()?;
-        Ok(PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(
+    let prepared = match (|| -> Result<_, tswn_core::runtime::RuntimeBatchError> {
+        let config = default_custom_runtime_import_config()?;
+        Ok(PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(
             &groups, eval_rq, config,
         )?)
     })() {
@@ -232,7 +231,7 @@ fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) ->
     let mut offset = 0usize;
     while offset < n {
         let chunk_end = (offset + step).min(n);
-        let chunk = match prepared_runtime_v2_win_rate_range(&prepared, offset, chunk_end) {
+        let chunk = match prepared_runtime_win_rate_range(&prepared, offset, chunk_end) {
             Ok(chunk) => chunk,
             Err(err) => {
                 eprintln!("分段 [{offset}, {chunk_end}) 胜率测试失败: {err}");

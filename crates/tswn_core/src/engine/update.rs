@@ -76,7 +76,7 @@ pub enum UpdateType {
 
 /// Legacy runtime 在一次 `main_round` 批次内实际提交的主体行动边界。
 ///
-/// 仅用于 legacy/v2 strict-diff。`amount` 表示行动决策时的基础威力：
+/// 仅用于 legacy/runtime strict-diff。`amount` 表示行动决策时的基础威力：
 /// 默认/强制攻击使用对应攻击属性，技能和状态劫持使用 `0`，避免把后续伤害链
 /// 的随机浮动错误地当成 scheduler 决策。
 #[cfg(not(feature = "no_debug"))]

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::runner::RunnerResult;
-use crate::{PreparedRunner, Runner};
+use crate::{LegacyPreparedRunner as PreparedRunner, LegacyRunner as Runner};
 
 const PREPARED_WIN_RATE_PARALLEL_THRESHOLD: usize = 100;
 

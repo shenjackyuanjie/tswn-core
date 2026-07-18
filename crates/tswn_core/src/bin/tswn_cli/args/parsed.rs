@@ -51,8 +51,8 @@ impl NamerPfMode {
 /// CLI 可选择的战斗 runtime。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeEngine {
-    /// 默认 Runtime v2 路径。
-    V2,
+    /// 默认 Runtime 路径。
+    Main,
     /// 显式 legacy fallback。
     Legacy,
 }
@@ -70,13 +70,13 @@ pub enum ParsedCommand {
         raw: String,
         /// 是否改为输出 raw 聚合战斗日志。
         out_raw: bool,
-        /// 对战使用的 runtime；默认 v2，legacy 只作为显式 fallback。
+        /// 对战使用的 runtime；默认 runtime，legacy 只作为显式 fallback。
         runtime: RuntimeEngine,
     },
     FightDiff {
         /// 普通对战输入，使用 namerena raw 格式，并按 runner diff 的格式输出。
         raw: String,
-        /// diff 输出使用的 runtime；默认 v2，legacy 只作为显式 fallback。
+        /// diff 输出使用的 runtime；默认 runtime，legacy 只作为显式 fallback。
         runtime: RuntimeEngine,
     },
     FightRaw {
@@ -86,17 +86,17 @@ pub enum ParsedCommand {
         n: usize,
         /// 显式指定的基准测试线程数。
         threads: Option<usize>,
-        /// 普通 raw 对战及 `!test!` benchmark 使用的 runtime；默认 v2。
+        /// 普通 raw 对战及 `!test!` benchmark 使用的 runtime；默认 runtime。
         runtime: RuntimeEngine,
     },
-    RuntimeV2NormalizedRun {
-        /// 使用默认 custom v2 profile 运行的 namerena raw 输入。
+    RuntimeNormalizedRun {
+        /// 使用默认 custom runtime profile 运行的 namerena raw 输入。
         raw: String,
         /// 最多推进的回合数。
         max_rounds: usize,
     },
-    RuntimeV2Parity {
-        /// 同时交给 legacy 与默认 custom v2 profile 运行的 namerena raw 输入。
+    RuntimeParity {
+        /// 同时交给 legacy 与默认 custom runtime profile 运行的 namerena raw 输入。
         raw: String,
         /// 两侧最多推进的回合数。
         max_rounds: usize,

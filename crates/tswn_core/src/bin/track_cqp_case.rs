@@ -1,4 +1,4 @@
-//! 单个 CQP/CQD matchup 的逐 seed legacy/v2 诊断工具。
+//! 单个 CQP/CQD matchup 的逐 seed legacy/runtime 诊断工具。
 //!
 //! 本工具只在 `aux_bins` 下构建。正常 seed 只做无回放完成检查；发现胜负、guard
 //! 或复用状态差异后，才重新构造 runner 做逐回合 strict diff。
@@ -11,15 +11,15 @@ use clap::Parser;
 use serde::Serialize;
 use tswn_core::cli_api::parse_group_lines;
 use tswn_core::player::eval_name::DEFAULT_EVAL_RQ;
-use tswn_core::runtime_v2::{
-    NormalizedOutcome, PreparedRuntimeV2Runner, RuntimeV2Runner, default_custom_runtime_v2_import_config, strict_diff,
+use tswn_core::runtime::{
+    NormalizedOutcome, PreparedRuntimeRunner, RuntimeRunner, default_custom_runtime_import_config, strict_diff,
 };
-use tswn_core::{PreparedRunner, Runner};
+use tswn_core::{LegacyPreparedRunner as PreparedRunner, LegacyRunner as Runner};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "track_cqp_case",
-    about = "逐 seed 定位单个 CQP/CQD matchup 的 legacy/v2 分叉与行动保护上限"
+    about = "逐 seed 定位单个 CQP/CQD matchup 的 legacy/runtime 分叉与行动保护上限"
 )]
 struct Args {
     /// 每个非空行是一组选手的输入文件。
@@ -85,8 +85,8 @@ struct RoundAnomaly {
     round: usize,
     seed: Option<String>,
     legacy: CaseOutcome,
-    v2_reused: CaseOutcome,
-    v2_fresh: CaseOutcome,
+    runtime_reused: CaseOutcome,
+    runtime_fresh: CaseOutcome,
     reused_matches_fresh: bool,
     first_strict_diff: Option<String>,
 }
@@ -146,10 +146,10 @@ fn run() -> Result<(), String> {
 
     let legacy_prepared = Runner::prepare_groups_with_eval_rq_uncached(&groups, args.eval_rq)
         .map_err(|error| format!("准备 legacy runner 失败: {error}"))?;
-    let config = default_custom_runtime_v2_import_config().map_err(|error| format!("构造 Runtime v2 默认配置失败: {error:?}"))?;
-    let v2_prepared = PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(&groups, args.eval_rq, config)
-        .map_err(|error| format!("准备 Runtime v2 runner 失败: {error:?}"))?;
-    let mut v2_reusable = v2_prepared.new_reusable_runner();
+    let config = default_custom_runtime_import_config().map_err(|error| format!("构造 Runtime 默认配置失败: {error:?}"))?;
+    let runtime_prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&groups, args.eval_rq, config)
+        .map_err(|error| format!("准备 Runtime runner 失败: {error:?}"))?;
+    let mut runtime_reusable = runtime_prepared.new_reusable_runner();
     let mut anomalies = Vec::new();
     let mut seed_buffer = String::with_capacity(24);
 
@@ -157,31 +157,36 @@ fn run() -> Result<(), String> {
         let seed = seed_for_round(&mut seed_buffer, round);
         let legacy = run_legacy(&legacy_prepared, seed, args.max_rounds)?;
 
-        v2_prepared
-            .reset_with_seed(&mut v2_reusable, seed)
-            .map_err(|error| format!("round={round} 复位 Runtime v2 runner 失败: {error:?}"))?;
-        let v2_reused = run_v2(&mut v2_reusable, args.max_rounds);
+        runtime_prepared
+            .reset_with_seed(&mut runtime_reusable, seed)
+            .map_err(|error| format!("round={round} 复位 Runtime runner 失败: {error:?}"))?;
+        let runtime_reused = run_runtime(&mut runtime_reusable, args.max_rounds);
 
-        if outcomes_match(legacy, v2_reused) {
+        if outcomes_match(legacy, runtime_reused) {
             continue;
         }
 
-        let mut v2_fresh_runner = v2_prepared
+        let mut runtime_fresh_runner = runtime_prepared
             .new_with_seed(seed)
-            .map_err(|error| format!("round={round} 构造全新 Runtime v2 runner 失败: {error:?}"))?;
-        let v2_fresh = run_v2(&mut v2_fresh_runner, args.max_rounds);
+            .map_err(|error| format!("round={round} 构造全新 Runtime runner 失败: {error:?}"))?;
+        let runtime_fresh = run_runtime(&mut runtime_fresh_runner, args.max_rounds);
         let first_strict_diff = if args.strict_limit == 0 {
             None
         } else {
-            Some(find_first_strict_diff(&legacy_prepared, &v2_prepared, seed, args.strict_limit)?)
+            Some(find_first_strict_diff(
+                &legacy_prepared,
+                &runtime_prepared,
+                seed,
+                args.strict_limit,
+            )?)
         };
         let anomaly = RoundAnomaly {
             round,
             seed: seed.first().cloned(),
             legacy,
-            v2_reused,
-            v2_fresh,
-            reused_matches_fresh: v2_reused == v2_fresh,
+            runtime_reused,
+            runtime_fresh,
+            reused_matches_fresh: runtime_reused == runtime_fresh,
             first_strict_diff,
         };
         println!(
@@ -251,7 +256,7 @@ fn run_legacy(prepared: &PreparedRunner, seed: &[String], max_rounds: usize) -> 
     })
 }
 
-fn run_v2(runner: &mut RuntimeV2Runner, max_rounds: usize) -> CaseOutcome {
+fn run_runtime(runner: &mut RuntimeRunner, max_rounds: usize) -> CaseOutcome {
     let completion = runner.run_to_completion_prevalidated(max_rounds);
     CaseOutcome {
         won: runner.input_group_won(0),
@@ -272,35 +277,35 @@ fn legacy_input_group_won(runner: &Runner, group_index: usize) -> bool {
         .is_some_and(|group| winners.iter().any(|winner| group.contains(winner)))
 }
 
-fn outcomes_match(legacy: CaseOutcome, v2: CaseOutcome) -> bool {
-    legacy.won == v2.won && legacy.guard_exhausted == v2.guard_exhausted && !legacy.idle_exhausted
+fn outcomes_match(legacy: CaseOutcome, runtime: CaseOutcome) -> bool {
+    legacy.won == runtime.won && legacy.guard_exhausted == runtime.guard_exhausted && !legacy.idle_exhausted
 }
 
 fn find_first_strict_diff(
     legacy_prepared: &PreparedRunner,
-    v2_prepared: &PreparedRuntimeV2Runner,
+    runtime_prepared: &PreparedRuntimeRunner,
     seed: &[String],
     max_rounds: usize,
 ) -> Result<String, String> {
     let mut legacy = Runner::new_from_prepared_with_seed(legacy_prepared, seed)
         .map_err(|error| format!("strict diff 构造 legacy runner 失败: {error}"))?;
-    let mut v2 = v2_prepared
+    let mut runtime = runtime_prepared
         .new_with_seed(seed)
-        .map_err(|error| format!("strict diff 构造 Runtime v2 runner 失败: {error:?}"))?;
+        .map_err(|error| format!("strict diff 构造 Runtime runner 失败: {error:?}"))?;
     let mut first_any_diff = None;
 
     for index in 0..max_rounds {
         let legacy_finished = legacy.have_winner();
-        let v2_finished = v2.runtime().world.winner_team().is_some();
-        if legacy_finished || v2_finished {
+        let runtime_finished = runtime.runtime().world.winner_team().is_some();
+        if legacy_finished || runtime_finished {
             let legacy_won = legacy_input_group_won(&legacy, 0);
-            let v2_won = v2.input_group_won(0);
-            if legacy_finished == v2_finished && legacy_won == v2_won {
+            let runtime_won = runtime.input_group_won(0);
+            if legacy_finished == runtime_finished && legacy_won == runtime_won {
                 return Ok(first_any_diff.unwrap_or_else(|| format!("前 {index} 轮完全一致并同时结束")));
             }
             let winner_diff = format!(
                 "round={} 行动前胜负不同: legacy_finished={legacy_finished}, legacy_won={legacy_won}, \
-                 v2_finished={v2_finished}, v2_won={v2_won}",
+                 runtime_finished={runtime_finished}, runtime_won={runtime_won}",
                 index + 1,
             );
             return Ok(join_first_diff(first_any_diff, winner_diff));
@@ -308,7 +313,7 @@ fn find_first_strict_diff(
 
         let updates = legacy.main_round();
         let expected = NormalizedOutcome::from_legacy_runner(&legacy, index as u64 + 1, &updates);
-        let actual = v2.run_round_normalized();
+        let actual = runtime.run_round_normalized();
         if let Err(diff) = strict_diff(&expected, &actual) {
             first_any_diff.get_or_insert_with(|| format!("首个 strict diff: round={} {diff:?}", index + 1));
         }
@@ -471,19 +476,19 @@ mod tests {
             guard_exhausted: false,
             idle_exhausted: false,
         };
-        let reordered_v2 = CaseOutcome {
+        let reordered_runtime = CaseOutcome {
             won: true,
             winner_team: Some(1),
             rounds: 12,
             guard_exhausted: false,
             idle_exhausted: false,
         };
-        assert!(outcomes_match(legacy, reordered_v2));
+        assert!(outcomes_match(legacy, reordered_runtime));
 
-        let guarded_v2 = CaseOutcome {
+        let guarded_runtime = CaseOutcome {
             guard_exhausted: true,
-            ..reordered_v2
+            ..reordered_runtime
         };
-        assert!(!outcomes_match(legacy, guarded_v2));
+        assert!(!outcomes_match(legacy, guarded_runtime));
     }
 }

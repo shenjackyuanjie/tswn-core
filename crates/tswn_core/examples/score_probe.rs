@@ -5,7 +5,7 @@
 
 use std::fmt::Write as _;
 
-use tswn_core::{Runner, engine::PROFILE_START, engine::update::UpdateType, player::eval_name::WIN_RATE_EVAL_RQ};
+use tswn_core::{LegacyRunner as Runner, engine::PROFILE_START, engine::update::UpdateType, player::eval_name::WIN_RATE_EVAL_RQ};
 
 fn build_score_match_input(target: &str, modifier: &str, round: usize, out: &mut String) {
     out.clear();

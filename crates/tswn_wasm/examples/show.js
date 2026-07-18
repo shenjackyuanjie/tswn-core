@@ -163,7 +163,7 @@ import {
   buildShowShareUrl,
   readStaticReplayInputFromSearch,
 } from "./show-routing.js";
-import { ensureApi, buildV2NormalizedReplay } from "./show-wasm.js";
+import { ensureApi, buildMainNormalizedReplay } from "./show-wasm.js";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -1147,8 +1147,8 @@ function readStaticReplayInputFromUrl() {
   return readStaticReplayInputFromSearch(window.location.search);
 }
 
-async function buildV2Replay(rawInput) {
-  return buildV2NormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
+async function buildMainReplay(rawInput) {
+  return buildMainNormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
 }
 
 // ============================================================================
@@ -1383,13 +1383,13 @@ async function startBattle({ persistInput = true } = {}) {
   stopPlaybackLoop();
   clearCurrentReplayView();
   setLoading(true);
-  setInputStatus("正在使用 v2 normalized run 生成回放，请稍候...");
+  setInputStatus("正在使用 runtime normalized run 生成回放，请稍候...");
 
   try {
     currentReplay = applyNicknamesToReplay(
-      normalizeReplayPlayers(await buildV2Replay(rawInput)),
+      normalizeReplayPlayers(await buildMainReplay(rawInput)),
     );
-    setInputStatus("v2 回放已生成，开始自动播放。");
+    setInputStatus("runtime 回放已生成，开始自动播放。");
     closePanel(inputPanel);
     beginReplayPlayback(currentReplay);
   } catch (error) {
@@ -1636,7 +1636,7 @@ async function main() {
   syncPlaybackUi();
   syncRightControlsUi();
   if (staticInput?.ok) {
-    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在使用 v2 normalized run 初始化回放...`);
+    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在使用 runtime normalized run 初始化回放...`);
   } else {
     setInputStatus(staticInput?.message ?? "会使用 show 风格自动播放整场战斗。", Boolean(staticInput));
     openInputEditor();

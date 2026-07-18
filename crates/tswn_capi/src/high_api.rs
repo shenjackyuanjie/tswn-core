@@ -1,7 +1,7 @@
 use std::ffi::c_char;
 
 use serde::Serialize;
-use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeV2NormalizedRun, JsonRuntimeV2ParityReport};
+use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun, JsonRuntimeParityReport};
 
 use crate::{
     FfiError, ffi_boundary, ffi_error, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t, write_json_result,
@@ -93,7 +93,7 @@ fn cli_api_error(err: CliApiError) -> FfiError {
     match err {
         CliApiError::InvalidInput(message) => ffi_error(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, message),
         CliApiError::Runner(err) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()),
-        CliApiError::RuntimeV2(message) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, message),
+        CliApiError::Runtime(message) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, message),
     }
 }
 
@@ -471,29 +471,29 @@ pub unsafe extern "C" fn tswn_parse_group_lines_json(
 
 /// # Safety
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tswn_default_custom_runtime_v2_normalized_run_json(
+pub unsafe extern "C" fn tswn_default_custom_runtime_normalized_run_json(
     raw_text_utf8: *const c_char,
     max_rounds: usize,
     out_json: *mut tswn_str_t,
 ) -> tswn_status_t {
     ffi_boundary(|| {
         let raw = unsafe { read_utf8(raw_text_utf8, "raw_text_utf8")? };
-        let value = core_cli_api::default_custom_runtime_v2_normalized_run(&raw, max_rounds).map_err(cli_api_error)?;
-        write_json_result(out_json, &JsonRuntimeV2NormalizedRun::from(value))
+        let value = core_cli_api::default_custom_runtime_normalized_run(&raw, max_rounds).map_err(cli_api_error)?;
+        write_json_result(out_json, &JsonRuntimeNormalizedRun::from(value))
     })
 }
 
 /// # Safety
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tswn_default_custom_runtime_v2_parity_json(
+pub unsafe extern "C" fn tswn_default_custom_runtime_parity_json(
     raw_text_utf8: *const c_char,
     max_rounds: usize,
     out_json: *mut tswn_str_t,
 ) -> tswn_status_t {
     ffi_boundary(|| {
         let raw = unsafe { read_utf8(raw_text_utf8, "raw_text_utf8")? };
-        let value = core_cli_api::default_custom_runtime_v2_parity_report(&raw, max_rounds).map_err(cli_api_error)?;
-        write_json_result(out_json, &JsonRuntimeV2ParityReport::from(value))
+        let value = core_cli_api::default_custom_runtime_parity_report(&raw, max_rounds).map_err(cli_api_error)?;
+        write_json_result(out_json, &JsonRuntimeParityReport::from(value))
     })
 }
 
@@ -502,10 +502,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runtime_v2_normalized_run_json_matches_default_run_golden_shape() {
-        let run = core_cli_api::default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 1)
-            .expect("default custom runtime v2 run should execute");
-        let json = JsonRuntimeV2NormalizedRun::from(run);
+    fn runtime_normalized_run_json_matches_default_run_golden_shape() {
+        let run = core_cli_api::default_custom_runtime_normalized_run("left@red\n\nright@blue\n", 1)
+            .expect("default custom runtime run should execute");
+        let json = JsonRuntimeNormalizedRun::from(run);
 
         assert_eq!(json.rounds.len(), 1);
         assert_eq!(json.winner_team, None);
@@ -573,31 +573,31 @@ mod tests {
     }
 
     #[test]
-    fn runtime_v2_parity_json_matches_converged_first_round() {
-        let report = core_cli_api::default_custom_runtime_v2_parity_report("left@red\n\nright@blue\n", 1)
-            .expect("default custom runtime v2 parity report should execute");
-        let json = JsonRuntimeV2ParityReport::from(report);
+    fn runtime_parity_json_matches_converged_first_round() {
+        let report = core_cli_api::default_custom_runtime_parity_report("left@red\n\nright@blue\n", 1)
+            .expect("default custom runtime parity report should execute");
+        let json = JsonRuntimeParityReport::from(report);
 
         assert!(json.matched);
         assert_eq!(json.first_diff, None);
         assert_eq!(json.legacy.rounds.len(), 1);
-        assert_eq!(json.v2.rounds.len(), 1);
-        assert_eq!(json.legacy.total_score, json.v2.total_score);
-        assert_eq!(json.legacy.rounds[0].total_score, json.v2.rounds[0].total_score);
-        assert_eq!(json.legacy.rounds[0].rng_i, json.v2.rounds[0].rng_i);
-        assert_eq!(json.legacy.rounds[0].rng_j, json.v2.rounds[0].rng_j);
-        assert_eq!(json.legacy.rounds[0].frames, json.v2.rounds[0].frames);
-        assert_eq!(json.v2.total_score, 77);
-        assert_eq!(json.v2.rounds[0].actions.len(), 1);
-        assert_eq!(json.v2.rounds[0].frames.len(), 3);
+        assert_eq!(json.runtime.rounds.len(), 1);
+        assert_eq!(json.legacy.total_score, json.runtime.total_score);
+        assert_eq!(json.legacy.rounds[0].total_score, json.runtime.rounds[0].total_score);
+        assert_eq!(json.legacy.rounds[0].rng_i, json.runtime.rounds[0].rng_i);
+        assert_eq!(json.legacy.rounds[0].rng_j, json.runtime.rounds[0].rng_j);
+        assert_eq!(json.legacy.rounds[0].frames, json.runtime.rounds[0].frames);
+        assert_eq!(json.runtime.total_score, 77);
+        assert_eq!(json.runtime.rounds[0].actions.len(), 1);
+        assert_eq!(json.runtime.rounds[0].frames.len(), 3);
     }
 
     #[test]
-    fn runtime_v2_parity_json_rejects_zero_max_rounds() {
+    fn runtime_parity_json_rejects_zero_max_rounds() {
         let raw = std::ffi::CString::new("left@red\n\nright@blue\n").unwrap();
         let mut out = tswn_str_t::default();
 
-        let status = unsafe { tswn_default_custom_runtime_v2_parity_json(raw.as_ptr(), 0, &mut out) };
+        let status = unsafe { tswn_default_custom_runtime_parity_json(raw.as_ptr(), 0, &mut out) };
 
         assert_eq!(status, tswn_status_t::TSWN_ERR_INVALID_ARGUMENT);
         assert_eq!(out.len, 0);
@@ -607,15 +607,15 @@ mod tests {
         let message =
             unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(err.ptr as *const u8, err.len)).to_owned() };
         unsafe { crate::tswn_str_free(err) };
-        assert_eq!(message, "runtime v2 max_rounds must be positive");
+        assert_eq!(message, "runtime max_rounds must be positive");
     }
 
     #[test]
-    fn runtime_v2_normalized_run_json_rejects_zero_max_rounds() {
+    fn runtime_normalized_run_json_rejects_zero_max_rounds() {
         let raw = std::ffi::CString::new("left@red\n\nright@blue\n").unwrap();
         let mut out = tswn_str_t::default();
 
-        let status = unsafe { tswn_default_custom_runtime_v2_normalized_run_json(raw.as_ptr(), 0, &mut out) };
+        let status = unsafe { tswn_default_custom_runtime_normalized_run_json(raw.as_ptr(), 0, &mut out) };
 
         assert_eq!(status, tswn_status_t::TSWN_ERR_INVALID_ARGUMENT);
         assert_eq!(out.len, 0);
@@ -625,6 +625,6 @@ mod tests {
         let message =
             unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(err.ptr as *const u8, err.len)).to_owned() };
         unsafe { crate::tswn_str_free(err) };
-        assert_eq!(message, "runtime v2 max_rounds must be positive");
+        assert_eq!(message, "runtime max_rounds must be positive");
     }
 }

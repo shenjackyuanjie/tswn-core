@@ -3,15 +3,15 @@
 mod bench;
 mod parse;
 
-use crate::Runner;
+use crate::LegacyRunner as Runner;
 use crate::engine::update::UpdateType;
 use crate::error::runner::RunnerError;
 use crate::player::eval_name;
 use crate::player::icon::icon_from_raw_name;
-use crate::runtime_v2::{
-    CustomRuntimeV2ImportConfig, NormalizedOutcome, NormalizedUpdateFrame, RuntimeV2BatchSummary, RuntimeV2NormalizedRun,
-    RuntimeV2Runner, StrictRunDiff, default_custom_runtime_v2_import_config, normalize_legacy_run, runtime_v2_groups_win_rate,
-    runtime_v2_score, strict_diff_runs,
+use crate::runtime::{
+    CustomRuntimeImportConfig, NormalizedOutcome, NormalizedUpdateFrame, RuntimeBatchSummary, RuntimeNormalizedRun,
+    RuntimeRunner, StrictRunDiff, default_custom_runtime_import_config, normalize_legacy_run, runtime_groups_win_rate,
+    runtime_score, strict_diff_runs,
 };
 use crate::win_rate::{WinRateSummary, WinRateTiming};
 
@@ -21,7 +21,7 @@ pub type CliApiResult<T> = Result<T, CliApiError>;
 pub enum CliApiError {
     InvalidInput(String),
     Runner(RunnerError),
-    RuntimeV2(String),
+    Runtime(String),
 }
 
 impl std::fmt::Display for CliApiError {
@@ -29,7 +29,7 @@ impl std::fmt::Display for CliApiError {
         match self {
             Self::InvalidInput(message) => f.write_str(message),
             Self::Runner(err) => err.fmt(f),
-            Self::RuntimeV2(message) => f.write_str(message),
+            Self::Runtime(message) => f.write_str(message),
         }
     }
 }
@@ -39,7 +39,7 @@ impl std::error::Error for CliApiError {
         match self {
             Self::InvalidInput(_) => None,
             Self::Runner(err) => Some(err),
-            Self::RuntimeV2(_) => None,
+            Self::Runtime(_) => None,
         }
     }
 }
@@ -69,8 +69,8 @@ impl From<WinRateSummary> for WinRateResult {
     }
 }
 
-impl From<RuntimeV2BatchSummary> for WinRateResult {
-    fn from(value: RuntimeV2BatchSummary) -> Self {
+impl From<RuntimeBatchSummary> for WinRateResult {
+    fn from(value: RuntimeBatchSummary) -> Self {
         Self {
             wins: value.wins,
             total: value.total,
@@ -98,30 +98,30 @@ pub struct ScoreResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeV2ParityReport {
-    pub legacy: RuntimeV2NormalizedRun,
-    pub v2: RuntimeV2NormalizedRun,
+pub struct RuntimeParityReport {
+    pub legacy: RuntimeNormalizedRun,
+    pub runtime: RuntimeNormalizedRun,
     pub first_diff: Option<StrictRunDiff>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct JsonRuntimeV2ParityReport {
+pub struct JsonRuntimeParityReport {
     pub matched: bool,
     pub first_diff: Option<String>,
-    pub legacy: JsonRuntimeV2NormalizedRun,
-    pub v2: JsonRuntimeV2NormalizedRun,
+    pub legacy: JsonRuntimeNormalizedRun,
+    pub runtime: JsonRuntimeNormalizedRun,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct JsonRuntimeV2NormalizedRun {
-    pub rounds: Vec<JsonRuntimeV2NormalizedOutcome>,
+pub struct JsonRuntimeNormalizedRun {
+    pub rounds: Vec<JsonRuntimeNormalizedOutcome>,
     pub winner_team: Option<usize>,
     pub guard_exhausted: bool,
     pub total_score: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct JsonRuntimeV2NormalizedOutcome {
+pub struct JsonRuntimeNormalizedOutcome {
     pub winner_team: Option<usize>,
     pub round: u64,
     pub total_score: u64,
@@ -138,12 +138,12 @@ pub struct JsonRuntimeV2NormalizedOutcome {
     pub flat_alive: Vec<usize>,
     pub team_alive: Vec<Vec<usize>>,
     pub alive_group_count: usize,
-    pub actions: Vec<JsonRuntimeV2ActionBoundary>,
-    pub frames: Vec<JsonRuntimeV2UpdateFrame>,
+    pub actions: Vec<JsonRuntimeActionBoundary>,
+    pub frames: Vec<JsonRuntimeUpdateFrame>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct JsonRuntimeV2ActionBoundary {
+pub struct JsonRuntimeActionBoundary {
     pub round: u64,
     pub actor: usize,
     pub target: usize,
@@ -151,7 +151,7 @@ pub struct JsonRuntimeV2ActionBoundary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct JsonRuntimeV2UpdateFrame {
+pub struct JsonRuntimeUpdateFrame {
     pub message: String,
     pub caster: usize,
     pub target: usize,
@@ -163,20 +163,24 @@ pub struct JsonRuntimeV2UpdateFrame {
     pub update_type: &'static str,
 }
 
-impl From<RuntimeV2ParityReport> for JsonRuntimeV2ParityReport {
-    fn from(value: RuntimeV2ParityReport) -> Self {
-        let RuntimeV2ParityReport { legacy, v2, first_diff } = value;
+impl From<RuntimeParityReport> for JsonRuntimeParityReport {
+    fn from(value: RuntimeParityReport) -> Self {
+        let RuntimeParityReport {
+            legacy,
+            runtime,
+            first_diff,
+        } = value;
         Self {
             matched: first_diff.is_none(),
             first_diff: first_diff.map(|diff| format!("{diff:?}")),
             legacy: legacy.into(),
-            v2: v2.into(),
+            runtime: runtime.into(),
         }
     }
 }
 
-impl From<RuntimeV2NormalizedRun> for JsonRuntimeV2NormalizedRun {
-    fn from(value: RuntimeV2NormalizedRun) -> Self {
+impl From<RuntimeNormalizedRun> for JsonRuntimeNormalizedRun {
+    fn from(value: RuntimeNormalizedRun) -> Self {
         Self {
             rounds: value.rounds.into_iter().map(Into::into).collect(),
             winner_team: value.winner_team,
@@ -186,7 +190,7 @@ impl From<RuntimeV2NormalizedRun> for JsonRuntimeV2NormalizedRun {
     }
 }
 
-impl From<NormalizedOutcome> for JsonRuntimeV2NormalizedOutcome {
+impl From<NormalizedOutcome> for JsonRuntimeNormalizedOutcome {
     fn from(value: NormalizedOutcome) -> Self {
         Self {
             winner_team: value.winner_team,
@@ -208,7 +212,7 @@ impl From<NormalizedOutcome> for JsonRuntimeV2NormalizedOutcome {
             actions: value
                 .actions
                 .into_iter()
-                .map(|action| JsonRuntimeV2ActionBoundary {
+                .map(|action| JsonRuntimeActionBoundary {
                     round: action.round,
                     actor: action.actor,
                     target: action.target,
@@ -220,7 +224,7 @@ impl From<NormalizedOutcome> for JsonRuntimeV2NormalizedOutcome {
     }
 }
 
-impl From<NormalizedUpdateFrame> for JsonRuntimeV2UpdateFrame {
+impl From<NormalizedUpdateFrame> for JsonRuntimeUpdateFrame {
     fn from(value: NormalizedUpdateFrame) -> Self {
         Self {
             message: value.message,
@@ -231,12 +235,12 @@ impl From<NormalizedUpdateFrame> for JsonRuntimeV2UpdateFrame {
             score: value.score,
             delay0: value.delay0,
             delay1: value.delay1,
-            update_type: runtime_v2_update_type_name(value.update_type),
+            update_type: runtime_update_type_name(value.update_type),
         }
     }
 }
 
-pub fn runtime_v2_update_type_name(value: UpdateType) -> &'static str {
+pub fn runtime_update_type_name(value: UpdateType) -> &'static str {
     match value {
         UpdateType::Win => "win",
         UpdateType::None => "none",
@@ -358,9 +362,9 @@ pub fn win_rate_summary(raw: &str, n: usize, eval_rq: Option<f64>, thread: u32) 
     let eval_rq = eval_rq.unwrap_or(eval_name::WIN_RATE_EVAL_RQ);
     let groups = Runner::split_namerena_into_groups(raw.to_owned()).0;
     ensure_win_rate_group_count(&groups)?;
-    runtime_v2_groups_win_rate(&groups, n.max(1), eval_rq, thread)
+    runtime_groups_win_rate(&groups, n.max(1), eval_rq, thread)
         .map(Into::into)
-        .map_err(runtime_v2_batch_error)
+        .map_err(runtime_batch_error)
 }
 
 pub fn team_win_rate_summary(
@@ -400,14 +404,14 @@ pub fn score(raw: &str, n: usize, mode: &str, eval_rq: Option<f64>, thread: u32)
     if target_group.is_empty() {
         return Err(invalid_input("score requires at least one player"));
     }
-    let summary = runtime_v2_score(
+    let summary = runtime_score(
         &target_group,
         score_mode.modifier(),
         n.max(1),
         eval_rq.unwrap_or(eval_name::WIN_RATE_EVAL_RQ),
         thread,
     )
-    .map_err(runtime_v2_batch_error)?;
+    .map_err(runtime_batch_error)?;
     Ok(ScoreResult {
         score: summary.score_10000(),
         wins: summary.wins,
@@ -555,60 +559,62 @@ pub fn parse_group_lines(content: &str, double_plus: bool) -> Vec<String> {
         .collect()
 }
 
-pub fn custom_runtime_v2_mixed_runner(raw: &str, config: CustomRuntimeV2ImportConfig<'_>) -> CliApiResult<RuntimeV2Runner> {
-    RuntimeV2Runner::from_custom_mixed_namerena_raw(raw.to_owned(), config).map_err(custom_runtime_v2_import_error)
+pub fn custom_runtime_mixed_runner(raw: &str, config: CustomRuntimeImportConfig<'_>) -> CliApiResult<RuntimeRunner> {
+    RuntimeRunner::from_custom_mixed_namerena_raw(raw.to_owned(), config).map_err(custom_runtime_import_error)
 }
 
-pub fn default_custom_runtime_v2_mixed_runner(raw: &str) -> CliApiResult<RuntimeV2Runner> {
-    let config = default_custom_runtime_v2_import_config().map_err(default_custom_runtime_v2_profile_error)?;
-    custom_runtime_v2_mixed_runner(raw, config)
+pub fn default_custom_runtime_mixed_runner(raw: &str) -> CliApiResult<RuntimeRunner> {
+    let config = default_custom_runtime_import_config().map_err(default_custom_runtime_profile_error)?;
+    custom_runtime_mixed_runner(raw, config)
 }
 
-pub fn custom_runtime_v2_normalized_run(
+pub fn custom_runtime_normalized_run(
     raw: &str,
     max_rounds: usize,
-    config: CustomRuntimeV2ImportConfig<'_>,
-) -> CliApiResult<RuntimeV2NormalizedRun> {
-    ensure_runtime_v2_max_rounds(max_rounds)?;
-    let mut runner = custom_runtime_v2_mixed_runner(raw, config)?;
+    config: CustomRuntimeImportConfig<'_>,
+) -> CliApiResult<RuntimeNormalizedRun> {
+    ensure_runtime_max_rounds(max_rounds)?;
+    let mut runner = custom_runtime_mixed_runner(raw, config)?;
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
-pub fn default_custom_runtime_v2_normalized_run(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeV2NormalizedRun> {
-    ensure_runtime_v2_max_rounds(max_rounds)?;
-    let mut runner = default_custom_runtime_v2_mixed_runner(raw)?;
+pub fn default_custom_runtime_normalized_run(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeNormalizedRun> {
+    ensure_runtime_max_rounds(max_rounds)?;
+    let mut runner = default_custom_runtime_mixed_runner(raw)?;
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
-pub fn default_custom_runtime_v2_parity_report(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeV2ParityReport> {
-    ensure_runtime_v2_max_rounds(max_rounds)?;
+pub fn default_custom_runtime_parity_report(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeParityReport> {
+    ensure_runtime_max_rounds(max_rounds)?;
     let mut legacy_runner = Runner::new_from_namerena_raw(raw.to_owned())?;
     let legacy = normalize_legacy_run(&mut legacy_runner, max_rounds);
-    let v2 = default_custom_runtime_v2_normalized_run(raw, max_rounds)?;
-    let first_diff = strict_diff_runs(&legacy, &v2).err();
-    Ok(RuntimeV2ParityReport { legacy, v2, first_diff })
+    let runtime = default_custom_runtime_normalized_run(raw, max_rounds)?;
+    let first_diff = strict_diff_runs(&legacy, &runtime).err();
+    Ok(RuntimeParityReport {
+        legacy,
+        runtime,
+        first_diff,
+    })
 }
 
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 
-fn runtime_v2_batch_error(error: crate::runtime_v2::RuntimeV2BatchError) -> CliApiError {
-    CliApiError::RuntimeV2(error.to_string())
-}
+fn runtime_batch_error(error: crate::runtime::RuntimeBatchError) -> CliApiError { CliApiError::Runtime(error.to_string()) }
 
-fn custom_runtime_v2_import_error(error: crate::runtime_v2::CustomRuntimeV2ImportError) -> CliApiError {
+fn custom_runtime_import_error(error: crate::runtime::CustomRuntimeImportError) -> CliApiError {
     match error {
-        crate::runtime_v2::CustomRuntimeV2ImportError::NotReady(error) => invalid_input(error.to_string()),
-        error => invalid_input(format!("custom runtime v2 import failed: {error:?}")),
+        crate::runtime::CustomRuntimeImportError::NotReady(error) => invalid_input(error.to_string()),
+        error => invalid_input(format!("custom runtime import failed: {error:?}")),
     }
 }
 
-fn default_custom_runtime_v2_profile_error(error: crate::runtime_v2::DefaultCustomRuntimeV2ProfileError) -> CliApiError {
-    invalid_input(format!("default custom runtime v2 profile failed: {error:?}"))
+fn default_custom_runtime_profile_error(error: crate::runtime::DefaultCustomRuntimeProfileError) -> CliApiError {
+    invalid_input(format!("default custom runtime profile failed: {error:?}"))
 }
 
-fn ensure_runtime_v2_max_rounds(max_rounds: usize) -> CliApiResult<()> {
+fn ensure_runtime_max_rounds(max_rounds: usize) -> CliApiResult<()> {
     if max_rounds == 0 {
-        Err(invalid_input("runtime v2 max_rounds must be positive"))
+        Err(invalid_input("runtime max_rounds must be positive"))
     } else {
         Ok(())
     }
@@ -664,35 +670,35 @@ fn normalize_namer_pf_modes(modes: Option<Vec<String>>) -> CliApiResult<Vec<Name
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_v2::{
+    use crate::runtime::{
         DEFAULT_CUSTOM_BED2_SHADOW_KIND_EXPORT, DEFAULT_CUSTOM_BED2_SHADOW_TEMPLATE_EXPORT,
         DEFAULT_CUSTOM_BED2_SUMMON_EXPLODE_SKILL_EXPORT, DEFAULT_CUSTOM_BED2_SUMMON_FIRE_SKILL_EXPORT,
         DEFAULT_CUSTOM_BED2_SUMMON_KIND_EXPORT, DEFAULT_CUSTOM_BED2_SUMMON_SKILL_EXPORT,
         DEFAULT_CUSTOM_BED2_SUMMON_TEMPLATE_EXPORT, DEFAULT_CUSTOM_BED2_ZOMBIE_KIND_EXPORT,
         DEFAULT_CUSTOM_BED2_ZOMBIE_TEMPLATE_EXPORT, DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT, EntityIdx, SlotValue,
-        TemplateSlotId, default_custom_runtime_v2_import_config,
+        TemplateSlotId, default_custom_runtime_import_config,
     };
 
     #[test]
-    fn runtime_v2_update_type_names_are_stable_json_tokens() {
-        assert_eq!(runtime_v2_update_type_name(UpdateType::Win), "win");
-        assert_eq!(runtime_v2_update_type_name(UpdateType::None), "none");
-        assert_eq!(runtime_v2_update_type_name(UpdateType::NextLine), "next_line");
+    fn runtime_update_type_names_are_stable_json_tokens() {
+        assert_eq!(runtime_update_type_name(UpdateType::Win), "win");
+        assert_eq!(runtime_update_type_name(UpdateType::None), "none");
+        assert_eq!(runtime_update_type_name(UpdateType::NextLine), "next_line");
     }
 
     #[test]
-    fn cli_api_custom_runtime_v2_mixed_runner_imports_custom_profile_raw() {
-        let config = default_custom_runtime_v2_import_config().expect("default custom runtime v2 profile should build");
+    fn cli_api_custom_runtime_mixed_runner_imports_custom_profile_raw() {
+        let config = default_custom_runtime_import_config().expect("default custom runtime profile should build");
         let bed2 = config.bed2_kind;
         let raw = "plain@red\nalpha@red@bed2\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
-        let runner = custom_runtime_v2_mixed_runner(raw, config).expect("custom runtime v2 mixed runner should build");
+        let runner = custom_runtime_mixed_runner(raw, config).expect("custom runtime mixed runner should build");
         let legacy = Runner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
         let expected_round_order = legacy
             .world
             .players
             .iter()
-            .map(|plr_id| u32::try_from(*plr_id).expect("legacy player id should fit runtime v2 entity index"))
+            .map(|plr_id| u32::try_from(*plr_id).expect("legacy player id should fit runtime entity index"))
             .collect::<Vec<_>>();
 
         assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.kind, bed2);
@@ -704,7 +710,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_api_default_custom_runtime_v2_mixed_runner_imports_ol_minion_overlays() {
+    fn cli_api_default_custom_runtime_mixed_runner_imports_ol_minion_overlays() {
         let raw = "plain@red\n\
 alpha@red@bed2+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire2\":4,\"sklfire1\":5},\"inherit_owner_def_res\":true}}\n\
 beta@red@bed2+ol:{\"shadow\":{\"attrs\":[47,48,49,50,51,52,53,88],\"skills\":{\"phantom:sklpossess\":5}}}\n\
@@ -712,7 +718,7 @@ gamma@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{}
 seed:custom-seed@!\n\n\
 delta@blue+bed2[8]\n";
 
-        let runner = default_custom_runtime_v2_mixed_runner(raw).expect("default custom runtime v2 mixed runner should build");
+        let runner = default_custom_runtime_mixed_runner(raw).expect("default custom runtime mixed runner should build");
         let runtime = runner.runtime();
         let summon_skill = runtime
             .registry
@@ -818,25 +824,25 @@ delta@blue+bed2[8]\n";
     }
 
     #[test]
-    fn cli_api_default_custom_runtime_v2_mixed_runner_rejects_unimplemented_minion_heal() {
+    fn cli_api_default_custom_runtime_mixed_runner_rejects_unimplemented_minion_heal() {
         let raw = "alpha@red@bed2+ol:{\"zombie\":{\"attrs\":[46,47,48,49,50,51,52,77],\"skills\":{\"sklheal\":3}}}\n\n\
 beta@blue\n";
 
-        let err = default_custom_runtime_v2_mixed_runner(raw)
-            .expect_err("default custom runtime v2 profile must reject imported skills without handlers");
+        let err = default_custom_runtime_mixed_runner(raw)
+            .expect_err("default custom runtime profile must reject imported skills without handlers");
 
         assert_eq!(
             err.to_string(),
-            "runtime v2 missing skill handlers: custom.minion.heal (id 4) used by template slot 2"
+            "runtime missing skill handlers: custom.minion.heal (id 4) used by template slot 2"
         );
     }
 
     #[test]
-    fn cli_api_custom_runtime_v2_normalized_run_executes_plain_raw() {
-        let config = default_custom_runtime_v2_import_config().expect("default custom runtime v2 profile should build");
+    fn cli_api_custom_runtime_normalized_run_executes_plain_raw() {
+        let config = default_custom_runtime_import_config().expect("default custom runtime profile should build");
         let raw = "left@red\n\nright@blue\n";
 
-        let run = custom_runtime_v2_normalized_run(raw, 1, config).expect("custom runtime v2 normalized run should execute");
+        let run = custom_runtime_normalized_run(raw, 1, config).expect("custom runtime normalized run should execute");
 
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(run.guard_exhausted, run.winner_team.is_none());
@@ -844,11 +850,10 @@ beta@blue\n";
     }
 
     #[test]
-    fn cli_api_default_custom_runtime_v2_normalized_run_executes_plain_raw() {
+    fn cli_api_default_custom_runtime_normalized_run_executes_plain_raw() {
         let raw = "left@red\n\nright@blue\n";
 
-        let run =
-            default_custom_runtime_v2_normalized_run(raw, 1).expect("default custom runtime v2 normalized run should execute");
+        let run = default_custom_runtime_normalized_run(raw, 1).expect("default custom runtime normalized run should execute");
 
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(run.guard_exhausted, run.winner_team.is_none());
@@ -856,31 +861,31 @@ beta@blue\n";
     }
 
     #[test]
-    fn cli_api_default_custom_runtime_v2_parity_report_matches_converged_first_round() {
-        let report = default_custom_runtime_v2_parity_report("left@red\n\nright@blue\n", 1)
-            .expect("default custom runtime v2 parity report should execute");
+    fn cli_api_default_custom_runtime_parity_report_matches_converged_first_round() {
+        let report = default_custom_runtime_parity_report("left@red\n\nright@blue\n", 1)
+            .expect("default custom runtime parity report should execute");
 
         assert_eq!(report.legacy.rounds.len(), 1);
-        assert_eq!(report.v2.rounds.len(), 1);
+        assert_eq!(report.runtime.rounds.len(), 1);
         assert_eq!(report.first_diff, None);
 
         #[cfg(not(feature = "no_debug"))]
-        assert_eq!(report.legacy, report.v2);
+        assert_eq!(report.legacy, report.runtime);
 
         #[cfg(feature = "no_debug")]
         {
-            assert_eq!(report.legacy.total_score, report.v2.total_score);
-            assert_eq!(report.legacy.rounds[0].frames, report.v2.rounds[0].frames);
-            assert_eq!(report.legacy.rounds[0].rng, report.v2.rounds[0].rng);
+            assert_eq!(report.legacy.total_score, report.runtime.total_score);
+            assert_eq!(report.legacy.rounds[0].frames, report.runtime.rounds[0].frames);
+            assert_eq!(report.legacy.rounds[0].rng, report.runtime.rounds[0].rng);
         }
     }
 
     #[test]
-    fn cli_api_default_custom_runtime_v2_normalized_run_executes_bed2_summon_overlay() {
+    fn cli_api_default_custom_runtime_normalized_run_executes_bed2_summon_overlay() {
         let raw = "alpha@red+bed2[3000]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire1\":5}}}\n\n\
 beta@blue\n";
 
-        let run = default_custom_runtime_v2_normalized_run(raw, 1).expect("default custom runtime v2 summon run should execute");
+        let run = default_custom_runtime_normalized_run(raw, 1).expect("default custom runtime summon run should execute");
 
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(
@@ -901,12 +906,11 @@ beta@blue\n";
     }
 
     #[test]
-    fn cli_api_default_custom_runtime_v2_normalized_run_executes_spawned_summon_fire() {
+    fn cli_api_default_custom_runtime_normalized_run_executes_spawned_summon_fire() {
         let raw = "alpha@red+bed2[3000]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklfire1\":5}}}\n\n\
 beta@blue\n";
 
-        let run =
-            default_custom_runtime_v2_normalized_run(raw, 3).expect("default custom runtime v2 summon fire run should execute");
+        let run = default_custom_runtime_normalized_run(raw, 3).expect("default custom runtime summon fire run should execute");
 
         assert_eq!(run.rounds.len(), 3);
         assert_eq!(run.rounds[2].actions[0].actor, 2);
@@ -933,12 +937,12 @@ beta@blue\n";
     }
 
     #[test]
-    fn cli_api_default_custom_runtime_v2_normalized_run_executes_spawned_summon_explode() {
+    fn cli_api_default_custom_runtime_normalized_run_executes_spawned_summon_explode() {
         let raw = "alpha@red+bed2[3000]+ol:{\"summon\":{\"attrs\":[46,47,48,49,50,51,52,123],\"skills\":{\"sklexplode\":5}}}\n\n\
 beta@blue\n";
 
-        let run = default_custom_runtime_v2_normalized_run(raw, 3)
-            .expect("default custom runtime v2 summon explode run should execute");
+        let run =
+            default_custom_runtime_normalized_run(raw, 3).expect("default custom runtime summon explode run should execute");
 
         assert_eq!(run.rounds.len(), 3);
         assert_eq!(run.rounds[2].actions[0].actor, 2);
@@ -960,19 +964,19 @@ beta@blue\n";
     }
 
     #[test]
-    fn cli_api_custom_runtime_v2_normalized_run_rejects_zero_max_rounds() {
-        let config = default_custom_runtime_v2_import_config().expect("default custom runtime v2 profile should build");
-        let err = custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 0, config)
-            .expect_err("custom runtime v2 normalized run should reject zero max rounds");
+    fn cli_api_custom_runtime_normalized_run_rejects_zero_max_rounds() {
+        let config = default_custom_runtime_import_config().expect("default custom runtime profile should build");
+        let err = custom_runtime_normalized_run("left@red\n\nright@blue\n", 0, config)
+            .expect_err("custom runtime normalized run should reject zero max rounds");
 
-        assert_eq!(err.to_string(), "runtime v2 max_rounds must be positive");
+        assert_eq!(err.to_string(), "runtime max_rounds must be positive");
     }
 
     #[test]
-    fn cli_api_default_custom_runtime_v2_normalized_run_rejects_zero_max_rounds() {
-        let err = default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 0)
-            .expect_err("default custom runtime v2 normalized run should reject zero max rounds");
+    fn cli_api_default_custom_runtime_normalized_run_rejects_zero_max_rounds() {
+        let err = default_custom_runtime_normalized_run("left@red\n\nright@blue\n", 0)
+            .expect_err("default custom runtime normalized run should reject zero max rounds");
 
-        assert_eq!(err.to_string(), "runtime v2 max_rounds must be positive");
+        assert_eq!(err.to_string(), "runtime max_rounds must be positive");
     }
 }

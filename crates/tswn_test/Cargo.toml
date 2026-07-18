@@ -5,12 +5,12 @@ edition = "2024"
 publish = false
 
 [features]
-runtime-v2-corpus = []
+runtime-corpus = []
 
 [dependencies]
 tswn_core = { path = "../tswn_core" }
 
 [[test]]
-name = "runtime_v2"
-path = "runtime_v2_corpus.rs"
-required-features = ["runtime-v2-corpus"]
+name = "runtime"
+path = "runtime_corpus.rs"
+required-features = ["runtime-corpus"]

@@ -5,7 +5,7 @@ use pyo3::{
     types::{PyDict, PyDictMethods, PyList, PyListMethods},
 };
 use tswn_core::{
-    RunUpdate, Runner,
+    LegacyRunner as Runner, RunUpdate,
     engine::update::{RunUpdates, UpdateType},
     player::{
         PlrId,

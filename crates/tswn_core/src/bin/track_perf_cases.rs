@@ -10,12 +10,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::case_gen::{
     CaseMode, GeneratedCase, case_id, deterministic_shuffle, generate_cases_for_mode, load_library, stable_hash,
 };
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::runtime_v2::{RuntimeV2BatchSummary, runtime_v2_groups_win_rate};
+use tswn_core::runtime::{RuntimeBatchSummary, runtime_groups_win_rate};
 use tswn_core::win_rate::{WinRateSummary, groups_win_rate};
 
 const DEFAULT_LIBRARY: &str = "tests/sqp6000.txt";
@@ -29,15 +29,15 @@ const DEFAULT_SHUFFLE_SEED: u64 = 0x5EED_2026;
 
 #[derive(Clone, Copy, Debug)]
 enum Engine {
-    V1,
-    V2,
+    Legacy,
+    Main,
 }
 
 impl Engine {
     fn label(self) -> &'static str {
         match self {
-            Self::V1 => "v1",
-            Self::V2 => "v2",
+            Self::Legacy => "legacy",
+            Self::Main => "main",
         }
     }
 }
@@ -413,20 +413,20 @@ fn bench_generated_case(case: &GeneratedCase, runs: usize, thread: u32, engine: 
     let (groups, _) = Runner::split_namerena_into_groups(case.input.clone());
     let started = Instant::now();
     match engine {
-        Engine::V1 => {
+        Engine::Legacy => {
             let summary = groups_win_rate(&groups, runs, WIN_RATE_EVAL_RQ, thread)
                 .map_err(|e| format!("benchmark 失败({}): {e}", case_id(case.mode, case.input_hash)))?;
-            Ok(bench_run_from_v1_summary(summary, started.elapsed()))
+            Ok(bench_run_from_legacy_summary(summary, started.elapsed()))
         }
-        Engine::V2 => {
-            let summary = runtime_v2_groups_win_rate(&groups, runs, WIN_RATE_EVAL_RQ, thread)
+        Engine::Main => {
+            let summary = runtime_groups_win_rate(&groups, runs, WIN_RATE_EVAL_RQ, thread)
                 .map_err(|e| format!("benchmark 失败({}): {e}", case_id(case.mode, case.input_hash)))?;
-            Ok(bench_run_from_v2_summary(summary, started.elapsed()))
+            Ok(bench_run_from_runtime_summary(summary, started.elapsed()))
         }
     }
 }
 
-fn bench_run_from_v1_summary(summary: WinRateSummary, elapsed: Duration) -> BenchRun {
+fn bench_run_from_legacy_summary(summary: WinRateSummary, elapsed: Duration) -> BenchRun {
     bench_run_from_parts(
         summary.wins,
         summary.total,
@@ -436,7 +436,7 @@ fn bench_run_from_v1_summary(summary: WinRateSummary, elapsed: Duration) -> Benc
     )
 }
 
-fn bench_run_from_v2_summary(summary: RuntimeV2BatchSummary, elapsed: Duration) -> BenchRun {
+fn bench_run_from_runtime_summary(summary: RuntimeBatchSummary, elapsed: Duration) -> BenchRun {
     bench_run_from_parts(
         summary.wins,
         summary.total,
@@ -681,7 +681,7 @@ fn parse_args() -> Result<Config, String> {
         select_count: DEFAULT_SELECT_COUNT,
         shuffle_seed: DEFAULT_SHUFFLE_SEED,
         thread: 1,
-        engine: Engine::V2,
+        engine: Engine::Main,
         select_only: false,
         quiet: false,
     };
@@ -762,9 +762,9 @@ fn parse_args() -> Result<Config, String> {
             "--engine" => {
                 idx += 1;
                 config.engine = match require_arg(&args, idx, "--engine")? {
-                    "v1" | "legacy" => Engine::V1,
-                    "v2" => Engine::V2,
-                    value => return Err(format!("--engine 只支持 v1/legacy/v2，实际为: {value}")),
+                    "legacy" => Engine::Legacy,
+                    "main" => Engine::Main,
+                    value => return Err(format!("--engine 只支持 main/legacy，实际为: {value}")),
                 };
             }
             "--select-only" => config.select_only = true,
@@ -879,7 +879,7 @@ fn print_usage() {
   --select-count <N>            从简单到困难选多少个 case，默认 20
   --shuffle-seed <N>            固定号库采样顺序
   --thread <N>                  正式 benchmark 线程参数：1=单线程，0=默认并行，N=指定线程；默认 1
-  --engine <v1|v2>              被测 runtime，默认 v2；legacy 是 v1 的别名
+  --engine <main|legacy>                 被测引擎，默认 main
   --select-only                 只选 case 和写输入，不跑正式 benchmark
   -q, --quiet                   安静模式
 "#

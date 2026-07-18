@@ -292,7 +292,7 @@ fn parse_args() -> Result<Config, String> {
     let mut shuffle_seed = 0x5EED_2026_u64;
     let mut keep_going = false;
     let mut save_all = false;
-    let mut runtime = RustRuntime::V2;
+    let mut runtime = RustRuntime::Main;
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut idx = 0usize;
@@ -413,7 +413,7 @@ fn print_usage() {
   --case-offset-per-mode <N> 每种模式按稳定顺序跳过前 N 个唯一 case，默认 0
   --max-cases-per-mode <N>  每种模式最多生成多少 case，默认 64
   --shuffle-seed <N>        固定采样顺序，默认 1592597030
-  --runtime <v2|legacy>     Rust 对比引擎，默认 v2
+  --runtime <runtime|legacy>     Rust 对比引擎，默认 runtime
   --keep-going              个别 case 执行失败时继续
   --save-all                连通过 case 也一起保存
 "#

@@ -64,9 +64,9 @@ enum CliCommand {
     ///   tswn-cli diff -f input.txt
     #[command(name = "diff", verbatim_doc_comment)]
     FightDiff(FightDiffCommand),
-    /// 运行 v2 runtime 相关调试/迁移入口。
-    #[command(name = "runtime-v2", verbatim_doc_comment)]
-    RuntimeV2(RuntimeV2Command),
+    /// 运行 runtime 相关调试/迁移入口。
+    #[command(name = "runtime", verbatim_doc_comment)]
+    Runtime(RuntimeCommand),
     /// 运行基准测试相关功能。
     Bench(BenchCommand),
     /// 运行与 ica-plugin `/namer-pf` 相同的四项评分。
@@ -103,8 +103,8 @@ struct FightCommand {
     #[arg(long)]
     out_raw: bool,
 
-    /// 对战使用的 runtime；默认 v2，legacy 需要显式指定。
-    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::V2, value_name = "ENGINE")]
+    /// 对战使用的 runtime；默认 runtime，legacy 需要显式指定。
+    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::Main, value_name = "ENGINE")]
     runtime: RuntimeEngineArg,
 }
 
@@ -127,8 +127,8 @@ struct FightRawCommand {
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
 
-    /// 普通 raw 对战及 `!test!` benchmark 使用的 runtime；默认 v2。
-    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::V2, value_name = "ENGINE")]
+    /// 普通 raw 对战及 `!test!` benchmark 使用的 runtime；默认 runtime。
+    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::Main, value_name = "ENGINE")]
     runtime: RuntimeEngineArg,
 }
 
@@ -138,54 +138,54 @@ struct FightDiffCommand {
     #[command(flatten)]
     input: InputArgs,
 
-    /// diff 使用的 runtime；默认 v2，legacy 需要显式指定。
-    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::V2, value_name = "ENGINE")]
+    /// diff 使用的 runtime；默认 runtime，legacy 需要显式指定。
+    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::Main, value_name = "ENGINE")]
     runtime: RuntimeEngineArg,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum RuntimeEngineArg {
-    V2,
+    Main,
     Legacy,
 }
 
 impl From<RuntimeEngineArg> for RuntimeEngine {
     fn from(value: RuntimeEngineArg) -> Self {
         match value {
-            RuntimeEngineArg::V2 => Self::V2,
+            RuntimeEngineArg::Main => Self::Main,
             RuntimeEngineArg::Legacy => Self::Legacy,
         }
     }
 }
 
 #[derive(Debug, Args)]
-struct RuntimeV2Command {
-    /// v2 runtime 子命令。
+struct RuntimeCommand {
+    /// runtime 子命令。
     #[command(subcommand)]
-    command: RuntimeV2Subcommand,
+    command: RuntimeSubcommand,
 }
 
 #[derive(Debug, Subcommand)]
-enum RuntimeV2Subcommand {
-    /// 使用默认 custom v2 profile 运行 raw 输入，并输出 normalized-run JSON。
+enum RuntimeSubcommand {
+    /// 使用默认 custom runtime profile 运行 raw 输入，并输出 normalized-run JSON。
     ///
     /// 示例:
-    ///   tswn-cli runtime-v2 normalized-run -r "left\n\nright" --max-rounds 8
-    ///   tswn-cli runtime-v2 normalized-run -f input.txt
+    ///   tswn-cli runtime normalized-run -r "left\n\nright" --max-rounds 8
+    ///   tswn-cli runtime normalized-run -f input.txt
     #[command(name = "normalized-run", verbatim_doc_comment)]
-    NormalizedRun(RuntimeV2NormalizedRunCommand),
-    /// 同时运行 legacy 与默认 custom v2 profile，并输出首个严格差异及两侧 normalized-run JSON。
+    NormalizedRun(RuntimeNormalizedRunCommand),
+    /// 同时运行 legacy 与默认 custom runtime profile，并输出首个严格差异及两侧 normalized-run JSON。
     ///
     /// 示例:
-    ///   tswn-cli runtime-v2 parity -r "left\n\nright" --max-rounds 8
-    ///   tswn-cli runtime-v2 parity -f input.txt
+    ///   tswn-cli runtime parity -r "left\n\nright" --max-rounds 8
+    ///   tswn-cli runtime parity -f input.txt
     #[command(name = "parity", verbatim_doc_comment)]
-    Parity(RuntimeV2NormalizedRunCommand),
+    Parity(RuntimeNormalizedRunCommand),
 }
 
 #[derive(Debug, Args)]
-struct RuntimeV2NormalizedRunCommand {
-    /// v2 runtime 输入来源参数。
+struct RuntimeNormalizedRunCommand {
+    /// runtime 输入来源参数。
     #[command(flatten)]
     input: InputArgs,
 
@@ -670,12 +670,12 @@ impl ParsedCli {
                 raw: cmd.input.read_or_stdin()?,
                 runtime: cmd.runtime.into(),
             },
-            CliCommand::RuntimeV2(RuntimeV2Command { command }) => match command {
-                RuntimeV2Subcommand::NormalizedRun(cmd) => ParsedCommand::RuntimeV2NormalizedRun {
+            CliCommand::Runtime(RuntimeCommand { command }) => match command {
+                RuntimeSubcommand::NormalizedRun(cmd) => ParsedCommand::RuntimeNormalizedRun {
                     raw: cmd.input.read_or_stdin()?,
                     max_rounds: cmd.max_rounds,
                 },
-                RuntimeV2Subcommand::Parity(cmd) => ParsedCommand::RuntimeV2Parity {
+                RuntimeSubcommand::Parity(cmd) => ParsedCommand::RuntimeParity {
                     raw: cmd.input.read_or_stdin()?,
                     max_rounds: cmd.max_rounds,
                 },

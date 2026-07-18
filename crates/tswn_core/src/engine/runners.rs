@@ -5,7 +5,7 @@
 //! ## 使用方式
 //!
 //! ```rust,no_run
-//! use tswn_core::Runner;
+//! use tswn_core::LegacyRunner as Runner;
 //!
 //! let input = "player1\n\nplayer2".to_string();
 //! let mut runner = Runner::new_from_namerena_raw(input).unwrap();

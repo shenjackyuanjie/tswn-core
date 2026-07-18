@@ -39,7 +39,7 @@ pub fn cli_api_tswn_error(err: CliApiError) -> TswnError {
     match err {
         CliApiError::InvalidInput(message) => TswnError::new("INVALID_INPUT", message),
         CliApiError::Runner(err) => TswnError::new("RUNNER_INIT_FAILED", err.to_string()),
-        CliApiError::RuntimeV2(message) => TswnError::new("RUNTIME_V2_FAILED", message),
+        CliApiError::Runtime(message) => TswnError::new("RUNTIME_FAILED", message),
     }
 }
 

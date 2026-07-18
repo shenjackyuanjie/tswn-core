@@ -1,4 +1,4 @@
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::engine::engine_core::EngineCore;
 use tswn_core::engine::tick;
 use tswn_core::engine::update::{RunUpdate, RunUpdates, UpdateType};

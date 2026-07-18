@@ -1,7 +1,7 @@
 //! `fight` / `diff` 的用户入口。
 //!
 //! 这一层只做两件事：
-//! - 负责按用户选择把输入交给 Runtime v2 或 legacy `Runner`；
+//! - 负责按用户选择把输入交给 Runtime 或 legacy `Runner`；
 //! - 负责把对局推进结果按“普通可读输出”或“diff 输出”打印出来。
 //!
 //! 和 raw benchmark 的分流逻辑、trace 字符串归一化逻辑相比，这里的职责更接近
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use crate::args::RuntimeEngine;
 
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::engine::update::UpdateType;
 use tswn_core::error::runner::RunnerResult;
 
@@ -24,7 +24,7 @@ use super::trace::{collect_diff_lines, fmt_update, print_fight_raw};
 /// - `out_raw=true` 时把输出切给 raw trace 格式化器，避免两条路径彼此污染。
 pub fn run(raw: String, out_raw: bool, runtime: RuntimeEngine) {
     match runtime {
-        RuntimeEngine::V2 => super::runtime_v2::run_runtime_v2_fight(raw, out_raw),
+        RuntimeEngine::Main => super::runtime::run_runtime_fight(raw, out_raw),
         RuntimeEngine::Legacy => run_legacy(raw, out_raw),
     }
 }
@@ -115,7 +115,7 @@ pub(super) fn collect_legacy_fight_lines(runner: &mut Runner, input_player_ids: 
 /// 运行普通对战并按 runner diff 格式输出。
 pub fn run_diff(raw: String, runtime: RuntimeEngine) {
     match runtime {
-        RuntimeEngine::V2 => super::runtime_v2::run_runtime_v2_diff(raw),
+        RuntimeEngine::Main => super::runtime::run_runtime_diff(raw),
         RuntimeEngine::Legacy => run_legacy_diff(raw),
     }
 }
@@ -175,9 +175,9 @@ pub(super) fn fmt_winner_input_indices(runner: &Runner, input_player_ids: &[usiz
     }
 }
 
-/// Runtime v2 的初始实体索引与原始输入顺序一致；运行期生成的实体不会进入 `win_idx`。
-pub(super) fn fmt_runtime_v2_winner_input_indices(
-    runner: &tswn_core::runtime_v2::RuntimeV2Runner,
+/// Runtime 的初始实体索引与原始输入顺序一致；运行期生成的实体不会进入 `win_idx`。
+pub(super) fn fmt_runtime_winner_input_indices(
+    runner: &tswn_core::runtime::RuntimeRunner,
     input_player_count: usize,
 ) -> Option<String> {
     let winner_team = runner.runtime().world.winner_team()?;

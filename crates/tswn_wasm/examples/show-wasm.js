@@ -2,7 +2,7 @@
  * @fileoverview tswn_wasm 战斗回放展示页 — WASM 模块加载与回放生成
  *
  * 负责动态加载 tswn_wasm WASM 模块（懒加载 + 缓存），
- * 以及根据用户输入调用 v2 normalized run 生成回放数据。
+ * 以及根据用户输入调用 runtime normalized run 生成回放数据。
  */
 
 // ============================================================================
@@ -12,8 +12,8 @@
 /** @type {object|null} WASM 模块的 API 句柄，仅在首次 ensureApi() 时初始化 */
 let wasmApi = null;
 const MODULE_CACHE_BUST = Date.now().toString(36);
-const V2_DEFAULT_MAX_ROUNDS = 2048;
-const V2_WINNER_DELAY_MS = 1000;
+const Main_DEFAULT_MAX_ROUNDS = 2048;
+const Main_WINNER_DELAY_MS = 1000;
 
 function withCacheBust(url) {
     const busted = new URL(url);
@@ -152,7 +152,7 @@ function maxHpByEntity(run) {
     return maxHpById;
 }
 
-function buildV2Players(rawInput, run) {
+function buildMainPlayers(rawInput, run) {
     const rawPlayers = collectRawPlayers(rawInput);
     const firstRound = run.rounds?.[0] ?? null;
     const ids = firstRound?.entity_ids ?? [];
@@ -172,7 +172,7 @@ function buildV2Players(rawInput, run) {
     });
 }
 
-function buildV2States(outcome, playersById, maxHpById) {
+function buildMainStates(outcome, playersById, maxHpById) {
     return (outcome?.entity_ids ?? []).map((entityId, index) => {
         const id = Number(entityId);
         const player = playersById.get(id);
@@ -237,7 +237,7 @@ function sameHpAliveStates(left, right) {
     return hpAliveSignature(left) === hpAliveSignature(right);
 }
 
-function v2UpdateTargetIds(update) {
+function runtimeUpdateTargetIds(update) {
     const targetIds = (update.target_ids ?? []).filter((id) => id != null).map(Number);
     if (targetIds.length) {
         return targetIds;
@@ -245,7 +245,7 @@ function v2UpdateTargetIds(update) {
     return update.target_id == null ? [] : [Number(update.target_id)];
 }
 
-function v2UpdateAmount(update) {
+function runtimeUpdateAmount(update) {
     const amount = Number(update?.param);
     return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
@@ -273,7 +273,7 @@ function applyFinalTargetState(stateMap, targetId, finalStateMap) {
     stateMap.set(id, { ...finalState, _is_new_in_frame: !stateMap.has(id) });
 }
 
-function v2HpPartMetadata(playerId, stateMaps, update) {
+function runtimeHpPartMetadata(playerId, stateMaps, update) {
     const id = Number(playerId);
     const previousState = stateMaps?.previous?.get(id) ?? null;
     const nextState = stateMaps?.next?.get(id) ?? previousState;
@@ -317,9 +317,9 @@ function v2HpPartMetadata(playerId, stateMaps, update) {
     };
 }
 
-function v2PlayerPart(playerId, namesById, stateMaps, update) {
+function runtimePlayerPart(playerId, namesById, stateMaps, update) {
     const id = Number(playerId);
-    const hpMetadata = v2HpPartMetadata(id, stateMaps, update);
+    const hpMetadata = runtimeHpPartMetadata(id, stateMaps, update);
     return {
         kind: "player",
         text: namesById.get(id) ?? `#${id}`,
@@ -329,7 +329,7 @@ function v2PlayerPart(playerId, namesById, stateMaps, update) {
     };
 }
 
-function v2PartsFromMessage(message, update, namesById, stateMaps) {
+function runtimePartsFromMessage(message, update, namesById, stateMaps) {
     const parts = [];
     const template = `${message ?? ""}`;
     const tokenRe = /\[(\d+)\]/g;
@@ -341,9 +341,9 @@ function v2PartsFromMessage(message, update, namesById, stateMaps) {
         }
         const placeholder = Number(match[1]);
         if (placeholder === 0 && update.caster_id != null) {
-            parts.push(v2PlayerPart(update.caster_id, namesById, null, null));
+            parts.push(runtimePlayerPart(update.caster_id, namesById, null, null));
         } else if (placeholder === 1 && update.target_id != null) {
-            parts.push(v2PlayerPart(update.target_id, namesById, stateMaps, update));
+            parts.push(runtimePlayerPart(update.target_id, namesById, stateMaps, update));
         } else if (placeholder === 2 && update.param != null) {
             parts.push({ kind: "data", text: `${update.param}` });
         } else {
@@ -357,13 +357,13 @@ function v2PartsFromMessage(message, update, namesById, stateMaps) {
     return parts;
 }
 
-function renderedV2Message(message, update, namesById) {
-    return v2PartsFromMessage(message, update, namesById, null)
+function renderedMainMessage(message, update, namesById) {
+    return runtimePartsFromMessage(message, update, namesById, null)
         .map((part) => part.text ?? "")
         .join("");
 }
 
-function classifyV2Tone(frame) {
+function classifyMainTone(frame) {
     const message = `${frame.message ?? ""}`;
     if (/击败|死亡|死了|消失/.test(message)) {
         return "knockout";
@@ -383,7 +383,7 @@ function classifyV2Tone(frame) {
     return "normal";
 }
 
-function v2UpdateFromFrame(frame, namesById) {
+function runtimeUpdateFromFrame(frame, namesById) {
     const update = {
         score: Number(frame.score ?? 0),
         delay0: Number(frame.delay0 ?? 0),
@@ -396,22 +396,22 @@ function v2UpdateFromFrame(frame, namesById) {
         param: frame.param == null ? null : Number(frame.param),
         hp_delta: null,
         status_change_tokens: [],
-        tone: classifyV2Tone(frame),
+        tone: classifyMainTone(frame),
     };
-    update.message_rendered = renderedV2Message(update.message_template, update, namesById);
+    update.message_rendered = renderedMainMessage(update.message_template, update, namesById);
     return update;
 }
 
-function buildV2Updates(outcome, namesById) {
-    return (outcome?.frames ?? []).map((frame) => v2UpdateFromFrame(frame, namesById));
+function buildMainUpdates(outcome, namesById) {
+    return (outcome?.frames ?? []).map((frame) => runtimeUpdateFromFrame(frame, namesById));
 }
 
-function v2ClipFromUpdate(update, states, previousStates, namesById) {
+function runtimeClipFromUpdate(update, states, previousStates, namesById) {
     const stateMaps = {
         next: stateMapById(states),
         previous: stateMapById(previousStates),
     };
-    const parts = v2PartsFromMessage(update.message_template, update, namesById, stateMaps);
+    const parts = runtimePartsFromMessage(update.message_template, update, namesById, stateMaps);
     const showHpPart = parts.find((part) => part.kind === "player" && part.show_hp);
     return {
         delay: Math.max(0, Number(update.delay0 ?? 0) + Number(update.delay1 ?? 0)),
@@ -434,8 +434,8 @@ function v2ClipFromUpdate(update, states, previousStates, namesById) {
     };
 }
 
-function reverseApplyV2Update(stateMap, update) {
-    const amount = v2UpdateAmount(update);
+function reverseApplyMainUpdate(stateMap, update) {
+    const amount = runtimeUpdateAmount(update);
     if (amount == null) {
         return;
     }
@@ -443,12 +443,12 @@ function reverseApplyV2Update(stateMap, update) {
     if (delta === 0) {
         return;
     }
-    for (const targetId of v2UpdateTargetIds(update)) {
+    for (const targetId of runtimeUpdateTargetIds(update)) {
         applyHpDeltaToStateMap(stateMap, targetId, delta);
     }
 }
 
-function inferV2RoundStartStates(states, previousStates, updates) {
+function inferMainRoundStartStates(states, previousStates, updates) {
     if (!states?.length) {
         return [];
     }
@@ -457,36 +457,36 @@ function inferV2RoundStartStates(states, previousStates, updates) {
     }
     const inferred = cloneStateMapById(states);
     for (const update of [...updates].reverse()) {
-        reverseApplyV2Update(inferred, update);
+        reverseApplyMainUpdate(inferred, update);
     }
     return statesFromStateMap(inferred, states);
 }
 
-function applyV2UpdateToRunningState(stateMap, update, finalStateMap) {
-    const amount = v2UpdateAmount(update);
+function applyMainUpdateToRunningState(stateMap, update, finalStateMap) {
+    const amount = runtimeUpdateAmount(update);
     if (amount != null && (update.tone === "damage" || update.tone === "knockout" || update.tone === "recover")) {
         const delta = update.tone === "recover" ? amount : -amount;
-        for (const targetId of v2UpdateTargetIds(update)) {
+        for (const targetId of runtimeUpdateTargetIds(update)) {
             applyHpDeltaToStateMap(stateMap, targetId, delta);
         }
         return;
     }
-    if (update.tone === "knockout" || isV2EntityAppearUpdate(update)) {
-        for (const targetId of v2UpdateTargetIds(update)) {
+    if (update.tone === "knockout" || isMainEntityAppearUpdate(update)) {
+        for (const targetId of runtimeUpdateTargetIds(update)) {
             applyFinalTargetState(stateMap, targetId, finalStateMap);
         }
     }
 }
 
-function isV2EntityAppearUpdate(update) {
+function isMainEntityAppearUpdate(update) {
     return /召唤出|生成|复活|变成了/.test(`${update?.message_template ?? ""}`);
 }
 
-function v2RowsFromUpdates(updates, states, previousStates, namesById) {
+function runtimeRowsFromUpdates(updates, states, previousStates, namesById) {
     const rows = [{ indent: 0, clips: [] }];
     const stateOrder = states ?? [];
     const finalStateMap = cloneStateMapById(stateOrder);
-    const startStates = inferV2RoundStartStates(stateOrder, previousStates, updates);
+    const startStates = inferMainRoundStartStates(stateOrder, previousStates, updates);
     const running = cloneStateMapById(startStates);
     for (const update of updates) {
         const currentRow = rows[rows.length - 1];
@@ -494,14 +494,14 @@ function v2RowsFromUpdates(updates, states, previousStates, namesById) {
             rows.push({ indent: 0, clips: [] });
         }
         const beforeStates = statesFromStateMap(running, stateOrder);
-        applyV2UpdateToRunningState(running, update, finalStateMap);
+        applyMainUpdateToRunningState(running, update, finalStateMap);
         const afterStates = statesFromStateMap(running, stateOrder);
-        rows[rows.length - 1].clips.push(v2ClipFromUpdate(update, afterStates, beforeStates, namesById));
+        rows[rows.length - 1].clips.push(runtimeClipFromUpdate(update, afterStates, beforeStates, namesById));
     }
     return rows.filter((row) => row.clips.length > 0);
 }
 
-function v2WinnerRow(winnerIds, namesById) {
+function runtimeWinnerRow(winnerIds, namesById) {
     if (!winnerIds.length) {
         return null;
     }
@@ -510,7 +510,7 @@ function v2WinnerRow(winnerIds, namesById) {
         indent: 0,
         clips: [
             {
-                delay: V2_WINNER_DELAY_MS,
+                delay: Main_WINNER_DELAY_MS,
                 text_template: "胜者：<data>",
                 color: null,
                 tone: "knockout",
@@ -549,13 +549,13 @@ function winnerIdsFromOutcome(outcome) {
     return winners;
 }
 
-function buildV2Frame(outcome, previousStates, playersById, maxHpById) {
-    const states = buildV2States(outcome, playersById, maxHpById);
+function buildMainFrame(outcome, previousStates, playersById, maxHpById) {
+    const states = buildMainStates(outcome, playersById, maxHpById);
     const namesById = buildStateNameMap(states);
-    const updates = buildV2Updates(outcome, namesById);
-    const rows = v2RowsFromUpdates(updates, states, previousStates, namesById);
+    const updates = buildMainUpdates(outcome, namesById);
+    const rows = runtimeRowsFromUpdates(updates, states, previousStates, namesById);
     const winnerIds = winnerIdsFromOutcome(outcome);
-    const winnerRow = outcome.winner_team == null ? null : v2WinnerRow(winnerIds, namesById);
+    const winnerRow = outcome.winner_team == null ? null : runtimeWinnerRow(winnerIds, namesById);
     if (winnerRow) {
         rows.push(winnerRow);
     }
@@ -572,36 +572,36 @@ function buildV2Frame(outcome, previousStates, playersById, maxHpById) {
     };
 }
 
-function buildV2InitialStates(firstOutcome, playersById, maxHpById) {
-    const states = buildV2States(firstOutcome, playersById, maxHpById);
+function buildMainInitialStates(firstOutcome, playersById, maxHpById) {
+    const states = buildMainStates(firstOutcome, playersById, maxHpById);
     const namesById = buildStateNameMap(states);
-    const updates = buildV2Updates(firstOutcome, namesById);
-    return inferV2RoundStartStates(states, states, updates);
+    const updates = buildMainUpdates(firstOutcome, namesById);
+    return inferMainRoundStartStates(states, states, updates);
 }
 
 /**
- * 将 v2 normalized run 转成当前 index.html 可消费的 replay shape。
+ * 将 runtime normalized run 转成当前 index.html 可消费的 replay shape。
  *
  * @param {string} rawInput
  * @param {object} run
  * @param {number} [wasmDurationMs=0]
  * @returns {FightReplay}
  */
-export function buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0) {
-    const players = buildV2Players(rawInput, run);
+export function buildMainReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0) {
+    const players = buildMainPlayers(rawInput, run);
     const playersById = new Map(players.map((player) => [player.id, player]));
     const maxHpById = maxHpByEntity(run);
     const firstOutcome = run.rounds?.[0] ?? null;
     const finalOutcome = run.rounds?.[run.rounds.length - 1] ?? firstOutcome;
-    const initial_states = buildV2InitialStates(firstOutcome, playersById, maxHpById);
+    const initial_states = buildMainInitialStates(firstOutcome, playersById, maxHpById);
     const frames = [];
     let previousStates = initial_states;
     for (const outcome of run.rounds ?? []) {
-        const frame = buildV2Frame(outcome, previousStates, playersById, maxHpById);
+        const frame = buildMainFrame(outcome, previousStates, playersById, maxHpById);
         frames.push(frame);
         previousStates = frame.states;
     }
-    const final_states = buildV2States(finalOutcome, playersById, maxHpById);
+    const final_states = buildMainStates(finalOutcome, playersById, maxHpById);
     return {
         raw_input: rawInput,
         seed_line: extractSpecifiedSeedLine(rawInput),
@@ -610,7 +610,7 @@ export function buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0
         frames,
         winner_ids: winnerIdsFromOutcome(finalOutcome),
         final_states,
-        runtime_v2: true,
+        runtime: true,
         winner_team: run.winner_team ?? null,
         guard_exhausted: Boolean(run.guard_exhausted),
         total_score: Number(run.total_score ?? 0),
@@ -619,7 +619,7 @@ export function buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0
 }
 
 /**
- * 使用 v2 default custom profile 的 normalized run 构造 show-compatible replay。
+ * 使用 runtime default custom profile 的 normalized run 构造 show-compatible replay。
  *
  * index.html 只通过这个入口生成 replay，不再提供 legacy fallback。
  *
@@ -630,14 +630,14 @@ export function buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs = 0
  * @param {{ maxRounds?: number }} [options]
  * @returns {Promise<FightReplay>}
  */
-export async function buildV2NormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo, options = {}) {
+export async function buildMainNormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo, options = {}) {
     const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
-    if (typeof api.default_custom_runtime_v2_normalized_run !== "function") {
-        throw new Error("当前 tswn_wasm 包未导出 default_custom_runtime_v2_normalized_run");
+    if (typeof api.default_custom_runtime_normalized_run !== "function") {
+        throw new Error("当前 tswn_wasm 包未导出 default_custom_runtime_normalized_run");
     }
-    const maxRounds = Math.max(1, Number(options.maxRounds ?? V2_DEFAULT_MAX_ROUNDS) || V2_DEFAULT_MAX_ROUNDS);
+    const maxRounds = Math.max(1, Number(options.maxRounds ?? Main_DEFAULT_MAX_ROUNDS) || Main_DEFAULT_MAX_ROUNDS);
     const wasmStart = performance.now();
-    const run = api.default_custom_runtime_v2_normalized_run(rawInput, maxRounds);
+    const run = api.default_custom_runtime_normalized_run(rawInput, maxRounds);
     const wasmDurationMs = performance.now() - wasmStart;
-    return buildV2ReplayFromNormalizedRun(rawInput, run, wasmDurationMs);
+    return buildMainReplayFromNormalizedRun(rawInput, run, wasmDurationMs);
 }

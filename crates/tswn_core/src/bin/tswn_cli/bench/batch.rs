@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
-use tswn_core::runtime_v2::{RuntimeV2CqpMatchup, runtime_v2_cqp_matchups};
+use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
 use tswn_core::win_rate::{WinRateTiming, resolve_win_rate_workers};
 
 use crate::args::BenchThreadMode;
@@ -356,14 +356,14 @@ fn run_bench_batch_rate_parallel(
                 target.lines().map(str::to_owned).collect(),
             ];
             request_by_matchup[flat_index] = Some(requests.len());
-            requests.push(RuntimeV2CqpMatchup::new(groups));
+            requests.push(RuntimeCqpMatchup::new(groups));
         }
     }
 
     // 重复名字无需进入执行器，直接算作已经完成的进度单位。
     done_cell.set(duplicates.iter().filter(|duplicate| duplicate.is_some()).count());
     draw();
-    let batch = match runtime_v2_cqp_matchups(&requests, n, eval_rq, thread_spec(threads), &cancel, || {
+    let batch = match runtime_cqp_matchups(&requests, n, eval_rq, thread_spec(threads), &cancel, || {
         done_cell.set(done_cell.get() + 1);
         draw();
     }) {

@@ -1,27 +1,27 @@
 use std::collections::HashMap;
 
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::runtime_v2::{EntityIdx, PlayerKindFlags, RuntimeV2Runner};
+use tswn_core::runtime::{EntityIdx, PlayerKindFlags, RuntimeRunner};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RustRuntime {
-    V2,
+    Main,
     Legacy,
 }
 
 impl RustRuntime {
     pub fn parse(raw: &str) -> Result<Self, String> {
         match raw {
-            "v2" => Ok(Self::V2),
+            "main" => Ok(Self::Main),
             "legacy" => Ok(Self::Legacy),
-            _ => Err(format!("未知 --runtime: {raw}，可选 v2|legacy")),
+            _ => Err(format!("未知 --runtime: {raw}，可选 main|legacy")),
         }
     }
 
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::V2 => "v2",
+            Self::Main => "main",
             Self::Legacy => "legacy",
         }
     }
@@ -29,10 +29,10 @@ impl RustRuntime {
 
 pub fn run_rust_trace(input: &str, runtime: RustRuntime) -> Result<String, String> {
     let lines = match runtime {
-        RustRuntime::V2 => {
-            let mut runner = tswn_core::cli_api::default_custom_runtime_v2_mixed_runner(input)
-                .map_err(|error| format!("构建 Runtime v2 对局失败: {error:?}"))?;
-            collect_runtime_v2_fight_raw_lines(&mut runner)
+        RustRuntime::Main => {
+            let mut runner = tswn_core::cli_api::default_custom_runtime_mixed_runner(input)
+                .map_err(|error| format!("构建 Runtime 对局失败: {error:?}"))?;
+            collect_runtime_fight_raw_lines(&mut runner)
         }
         RustRuntime::Legacy => {
             let mut runner =
@@ -174,7 +174,7 @@ fn fmt_legacy_update_raw(runner: &Runner, update: &RunUpdate, trace_names: &mut 
     update.message.replace("[0]", &caster).replace("[1]", &target).replace("[2]", &targets)
 }
 
-fn runtime_v2_raw_name(runner: &RuntimeV2Runner, id: usize) -> String {
+fn runtime_raw_name(runner: &RuntimeRunner, id: usize) -> String {
     let Ok(entity_idx) = u32::try_from(id).map(EntityIdx) else {
         return format!("#{id}");
     };
@@ -198,9 +198,9 @@ fn runtime_v2_raw_name(runner: &RuntimeV2Runner, id: usize) -> String {
     }
 }
 
-fn fmt_runtime_v2_update_raw(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
-    let caster = runtime_v2_raw_name(runner, update.caster);
-    let target = runtime_v2_raw_name(runner, update.target);
+fn fmt_runtime_update_raw(runner: &RuntimeRunner, update: &RunUpdate) -> String {
+    let caster = runtime_raw_name(runner, update.caster);
+    let target = runtime_raw_name(runner, update.target);
     let targets = if let Some(param) = update.param {
         param.to_string()
     } else if update.targets.is_empty() {
@@ -209,7 +209,7 @@ fn fmt_runtime_v2_update_raw(runner: &RuntimeV2Runner, update: &RunUpdate) -> St
         update
             .targets
             .iter()
-            .map(|id| runtime_v2_raw_name(runner, *id))
+            .map(|id| runtime_raw_name(runner, *id))
             .collect::<Vec<_>>()
             .join(",")
     };
@@ -389,7 +389,7 @@ fn collect_legacy_fight_raw_lines(runner: &mut Runner) -> Vec<String> {
     output
 }
 
-fn collect_runtime_v2_fight_raw_lines(runner: &mut RuntimeV2Runner) -> Vec<String> {
+fn collect_runtime_fight_raw_lines(runner: &mut RuntimeRunner) -> Vec<String> {
     let mut output = Vec::new();
     let mut pending_action = String::new();
     let mut pending_misc = Vec::new();
@@ -414,7 +414,7 @@ fn collect_runtime_v2_fight_raw_lines(runner: &mut RuntimeV2Runner) -> Vec<Strin
         }
         idle_rounds = 0;
         let lines = frame.updates.updates.into_iter().map(|update| {
-            let line = fmt_runtime_v2_update_raw(runner, &update);
+            let line = fmt_runtime_update_raw(runner, &update);
             (update, line)
         });
         push_updates(&mut output, &mut pending_action, &mut pending_misc, lines);
@@ -433,17 +433,17 @@ mod tests {
 
     #[test]
     fn runtime_selector_rejects_unknown_values() {
-        assert_eq!(RustRuntime::parse("v2"), Ok(RustRuntime::V2));
+        assert_eq!(RustRuntime::parse("main"), Ok(RustRuntime::Main));
         assert_eq!(RustRuntime::parse("legacy"), Ok(RustRuntime::Legacy));
         assert!(RustRuntime::parse("other").is_err());
     }
 
     #[test]
-    fn runtime_v2_trace_matches_legacy_for_minimal_grouped_raw() {
+    fn runtime_trace_matches_legacy_for_minimal_grouped_raw() {
         let raw = "left@red\n\nright@blue";
         let legacy = run_rust_trace(raw, RustRuntime::Legacy).expect("legacy trace should run");
-        let runtime_v2 = run_rust_trace(raw, RustRuntime::V2).expect("Runtime v2 trace should run");
-        assert!(!runtime_v2.is_empty());
-        assert_eq!(runtime_v2, legacy);
+        let runtime = run_rust_trace(raw, RustRuntime::Main).expect("Runtime trace should run");
+        assert!(!runtime.is_empty());
+        assert_eq!(runtime, legacy);
     }
 }

@@ -13,7 +13,7 @@ use tswn_core::case_gen::{CaseMode, case_id, deterministic_shuffle, generate_cas
 use tswn_core::engine::storage::Storage;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
 use tswn_core::player::Player;
-use tswn_core::{Runner, engine};
+use tswn_core::{LegacyRunner as Runner, engine};
 
 #[derive(Debug)]
 struct Config {

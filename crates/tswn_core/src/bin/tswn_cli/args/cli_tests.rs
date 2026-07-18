@@ -37,10 +37,10 @@ fn to_diy_command_rejects_old_with_minions() {
 }
 
 #[test]
-fn runtime_v2_normalized_run_accepts_raw_and_max_rounds() {
+fn runtime_normalized_run_accepts_raw_and_max_rounds() {
     let cli = Cli::try_parse_from([
         "tswn-cli",
-        "runtime-v2",
+        "runtime",
         "normalized-run",
         "-r",
         "left\\n\\nright",
@@ -50,7 +50,7 @@ fn runtime_v2_normalized_run_accepts_raw_and_max_rounds() {
     .unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();
     match parsed.command {
-        ParsedCommand::RuntimeV2NormalizedRun { raw, max_rounds } => {
+        ParsedCommand::RuntimeNormalizedRun { raw, max_rounds } => {
             assert_eq!(raw, "left\n\nright");
             assert_eq!(max_rounds, 8);
         }
@@ -59,11 +59,11 @@ fn runtime_v2_normalized_run_accepts_raw_and_max_rounds() {
 }
 
 #[test]
-fn runtime_v2_parity_accepts_raw_and_max_rounds() {
-    let cli = Cli::try_parse_from(["tswn-cli", "runtime-v2", "parity", "-r", "left\\n\\nright", "--max-rounds", "8"]).unwrap();
+fn runtime_parity_accepts_raw_and_max_rounds() {
+    let cli = Cli::try_parse_from(["tswn-cli", "runtime", "parity", "-r", "left\\n\\nright", "--max-rounds", "8"]).unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();
     match parsed.command {
-        ParsedCommand::RuntimeV2Parity { raw, max_rounds } => {
+        ParsedCommand::RuntimeParity { raw, max_rounds } => {
             assert_eq!(raw, "left\n\nright");
             assert_eq!(max_rounds, 8);
         }
@@ -72,13 +72,13 @@ fn runtime_v2_parity_accepts_raw_and_max_rounds() {
 }
 
 #[test]
-fn diff_defaults_to_v2_and_accepts_legacy_runtime() {
-    let v2 = Cli::try_parse_from(["tswn-cli", "diff", "-r", "left\\n\\nright"]).unwrap();
-    let parsed = ParsedCli::from_cli(v2).unwrap();
+fn diff_defaults_to_runtime_and_accepts_legacy_runtime() {
+    let runtime = Cli::try_parse_from(["tswn-cli", "diff", "-r", "left\\n\\nright"]).unwrap();
+    let parsed = ParsedCli::from_cli(runtime).unwrap();
     match parsed.command {
         ParsedCommand::FightDiff { raw, runtime } => {
             assert_eq!(raw, "left\n\nright");
-            assert_eq!(runtime, RuntimeEngine::V2);
+            assert_eq!(runtime, RuntimeEngine::Main);
         }
         _ => panic!("unexpected command"),
     }
@@ -95,14 +95,14 @@ fn diff_defaults_to_v2_and_accepts_legacy_runtime() {
 }
 
 #[test]
-fn fight_defaults_to_v2_and_accepts_legacy_runtime() {
-    let v2 = Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright"]).unwrap();
-    let parsed = ParsedCli::from_cli(v2).unwrap();
+fn fight_defaults_to_runtime_and_accepts_legacy_runtime() {
+    let runtime = Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright"]).unwrap();
+    let parsed = ParsedCli::from_cli(runtime).unwrap();
     match parsed.command {
         ParsedCommand::Fight { raw, out_raw, runtime } => {
             assert_eq!(raw, "left\n\nright");
             assert!(!out_raw);
-            assert_eq!(runtime, RuntimeEngine::V2);
+            assert_eq!(runtime, RuntimeEngine::Main);
         }
         _ => panic!("unexpected command"),
     }
@@ -120,9 +120,9 @@ fn fight_defaults_to_v2_and_accepts_legacy_runtime() {
 }
 
 #[test]
-fn raw_fight_defaults_to_v2_and_accepts_legacy_runtime() {
-    let v2 = Cli::try_parse_from(["tswn-cli", "raw", "-r", "left\\n\\nright"]).unwrap();
-    let parsed = ParsedCli::from_cli(v2).unwrap();
+fn raw_fight_defaults_to_runtime_and_accepts_legacy_runtime() {
+    let runtime = Cli::try_parse_from(["tswn-cli", "raw", "-r", "left\\n\\nright"]).unwrap();
+    let parsed = ParsedCli::from_cli(runtime).unwrap();
     match parsed.command {
         ParsedCommand::FightRaw {
             raw,
@@ -133,7 +133,7 @@ fn raw_fight_defaults_to_v2_and_accepts_legacy_runtime() {
             assert_eq!(raw, "left\n\nright");
             assert_eq!(n, 10_000);
             assert_eq!(threads, None);
-            assert_eq!(runtime, RuntimeEngine::V2);
+            assert_eq!(runtime, RuntimeEngine::Main);
         }
         _ => panic!("unexpected command"),
     }

@@ -6,12 +6,12 @@
 
 - `ReplayClip` typed view 删除多项顶层渲染字段，调用方必须改读 `parts[]` 中的 `ReplayTextPart`。
 - 完整回放页面入口由 `examples/show.html` 改为 `examples/index.html`，并删除 legacy runtime URL fallback。
-- 无 runtime 参数的评分、胜率与 `WinRateSession` 默认改用 Runtime v2。
+- 无 runtime 参数的评分、胜率与 `WinRateSession` 默认改用 Runtime。
 
 ### 变更
 
-- `win_rate_sync`、`group_win_rate` 与 `WinRateSession` 内部改用 Runtime v2 prepared 批量执行；原有 JS 类名、进度和结果结构保持不变。
-- 完整回放示例从 `show.html` 重命名为 `examples/index.html`，并移除 `FightSession` / legacy runtime URL fallback；页面只调用 v2 normalized run，分享链接会清理历史 `engine` / `runtime` 参数。
+- `win_rate_sync`、`group_win_rate` 与 `WinRateSession` 内部改用 Runtime prepared 批量执行；原有 JS 类名、进度和结果结构保持不变。
+- 完整回放示例从 `show.html` 重命名为 `examples/index.html`，并移除 `FightSession` / legacy runtime URL fallback；页面只调用 runtime normalized run，分享链接会清理历史 `engine` / `runtime` 参数。
 - 同步 `main` 在 `d266cfe` 之后的 replay part 语义与页面配色，覆盖生命之轮、机制死亡、死亡特效、百分比伤害 HP 条和最新调色板。
 - 精简 `ReplayClip` 导出字段，移除 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji`；这些渲染语义统一由 `parts[]` 中的 `ReplayTextPart` 表达，clip 只保留 delay、颜色/语义、关联 id、侧栏快照和胜利标记。
 - show 示例同步适配新 replay view：规范 `parts[]`、`caster_ids[]`、`target_ids[]` 与侧栏快照数组，并明确正文渲染只消费 `clip.parts[]` 的结构化语义。

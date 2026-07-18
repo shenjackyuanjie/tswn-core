@@ -30,7 +30,7 @@ pub enum MinionKind {
 
 /// 构造战斗召唤物蓝图所需的 owner 冷数据。
 ///
-/// Runtime v2 的 score profile 可以保存这份轻量快照，把昂贵的召唤物构造推迟到
+/// Runtime 的 score profile 可以保存这份轻量快照，把昂贵的召唤物构造推迟到
 /// 技能真正触发时；legacy 路径也通过同一快照进入共享构造函数，避免两套公式漂移。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MinionBlueprintOwner {

@@ -4,9 +4,9 @@
 
 use std::collections::HashMap;
 
-use crate::{CoreEngine, EngineAdapter, EventSnapshot, RuntimeV2Engine, SnapshotKind};
+use crate::{CoreEngine, EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::runtime_v2::{EntityIdx, RuntimeV2Runner, default_custom_runtime_v2_import_config};
+use tswn_core::runtime::{EntityIdx, RuntimeRunner, default_custom_runtime_import_config};
 
 pub mod fight_large;
 pub mod fight_multi_1;
@@ -32,7 +32,7 @@ pub mod large_71_80;
 pub mod simple;
 pub mod small;
 
-fn format_core_update_message(runner: &tswn_core::Runner, update: &RunUpdate) -> String {
+fn format_core_update_message(runner: &tswn_core::LegacyRunner, update: &RunUpdate) -> String {
     let caster = runner
         .storage
         .get_player(&update.caster)
@@ -67,7 +67,7 @@ fn format_core_update_message(runner: &tswn_core::Runner, update: &RunUpdate) ->
     msg.replace("[2]", &param)
 }
 
-fn core_caster_name(runner: &tswn_core::Runner, update: &RunUpdate) -> String {
+fn core_caster_name(runner: &tswn_core::LegacyRunner, update: &RunUpdate) -> String {
     runner
         .storage
         .get_player(&update.caster)
@@ -76,10 +76,10 @@ fn core_caster_name(runner: &tswn_core::Runner, update: &RunUpdate) -> String {
 }
 
 impl EngineAdapter for CoreEngine {
-    type Runner = tswn_core::Runner;
+    type Runner = tswn_core::LegacyRunner;
 
     fn new_from_raw(raw: String) -> Result<Self::Runner, String> {
-        tswn_core::Runner::new_from_namerena_raw(raw).map_err(|err| err.to_string())
+        tswn_core::LegacyRunner::new_from_namerena_raw(raw).map_err(|err| err.to_string())
     }
 
     fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot> {
@@ -132,7 +132,7 @@ impl EngineAdapter for CoreEngine {
     }
 }
 
-fn runtime_v2_entity_name(runner: &RuntimeV2Runner, id: usize) -> String {
+fn runtime_entity_name(runner: &RuntimeRunner, id: usize) -> String {
     u32::try_from(id)
         .ok()
         .and_then(|id| runner.runtime().entities.get(EntityIdx(id)))
@@ -140,9 +140,9 @@ fn runtime_v2_entity_name(runner: &RuntimeV2Runner, id: usize) -> String {
         .unwrap_or_else(|| format!("#{id}"))
 }
 
-fn format_runtime_v2_update_message(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
-    let caster = runtime_v2_entity_name(runner, update.caster);
-    let target = runtime_v2_entity_name(runner, update.target);
+fn format_runtime_update_message(runner: &RuntimeRunner, update: &RunUpdate) -> String {
+    let caster = runtime_entity_name(runner, update.caster);
+    let target = runtime_entity_name(runner, update.target);
     let mut msg = update.message.to_string();
     msg = msg.replace("[0]", &caster);
     msg = msg.replace("[1]", &target);
@@ -154,19 +154,19 @@ fn format_runtime_v2_update_message(runner: &RuntimeV2Runner, update: &RunUpdate
         update
             .targets
             .iter()
-            .map(|id| runtime_v2_entity_name(runner, *id))
+            .map(|id| runtime_entity_name(runner, *id))
             .collect::<Vec<_>>()
             .join(",")
     };
     msg.replace("[2]", &param)
 }
 
-impl EngineAdapter for RuntimeV2Engine {
-    type Runner = RuntimeV2Runner;
+impl EngineAdapter for RuntimeEngine {
+    type Runner = RuntimeRunner;
 
     fn new_from_raw(raw: String) -> Result<Self::Runner, String> {
-        let config = default_custom_runtime_v2_import_config().map_err(|err| format!("{err:?}"))?;
-        RuntimeV2Runner::from_custom_mixed_namerena_raw(raw, config).map_err(|err| format!("{err:?}"))
+        let config = default_custom_runtime_import_config().map_err(|err| format!("{err:?}"))?;
+        RuntimeRunner::from_custom_mixed_namerena_raw(raw, config).map_err(|err| format!("{err:?}"))
     }
 
     fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot> {
@@ -185,8 +185,8 @@ impl EngineAdapter for RuntimeV2Engine {
                     UpdateType::None => SnapshotKind::Event,
                 };
                 EventSnapshot {
-                    message: format_runtime_v2_update_message(runner, &update),
-                    caster_name: runtime_v2_entity_name(runner, update.caster),
+                    message: format_runtime_update_message(runner, &update),
+                    caster_name: runtime_entity_name(runner, update.caster),
                     score: update.score,
                     kind,
                 }
@@ -365,33 +365,33 @@ fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) 
 
 pub fn winner_names<E: EngineAdapter>(runner: &E::Runner) -> Vec<String> { E::winner_names(runner) }
 
-pub fn assert_runtime_v2_matches_legacy(raw: &str, case_name: &str) {
-    assert_runtime_v2_matches_legacy_with_eval_rq(raw, case_name, tswn_core::player::eval_name::DEFAULT_EVAL_RQ);
+pub fn assert_runtime_matches_legacy(raw: &str, case_name: &str) {
+    assert_runtime_matches_legacy_with_eval_rq(raw, case_name, tswn_core::player::eval_name::DEFAULT_EVAL_RQ);
 }
 
-pub fn assert_runtime_v2_matches_legacy_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {
-    let (groups, seed) = tswn_core::Runner::split_namerena_into_groups(raw.to_string());
-    let mut legacy =
-        tswn_core::Runner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq).expect("legacy 压力回归输入应能初始化");
-    let config = default_custom_runtime_v2_import_config().expect("Runtime v2 压力回归配置应能初始化");
-    let mut runtime_v2 = RuntimeV2Runner::from_custom_mixed_namerena_raw_with_eval_rq(raw.to_string(), eval_rq, config)
-        .expect("Runtime v2 压力回归输入应能初始化");
+pub fn assert_runtime_matches_legacy_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {
+    let (groups, seed) = tswn_core::LegacyRunner::split_namerena_into_groups(raw.to_string());
+    let mut legacy = tswn_core::LegacyRunner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq)
+        .expect("legacy 压力回归输入应能初始化");
+    let config = default_custom_runtime_import_config().expect("Runtime 压力回归配置应能初始化");
+    let mut runtime = RuntimeRunner::from_custom_mixed_namerena_raw_with_eval_rq(raw.to_string(), eval_rq, config)
+        .expect("Runtime 压力回归输入应能初始化");
     let (expected_lines, expected_guard, expected_score) = collect_replay_lines::<CoreEngine>(&mut legacy, 20_000, false);
-    let (actual_lines, actual_guard, actual_score) = collect_replay_lines::<RuntimeV2Engine>(&mut runtime_v2, 20_000, false);
+    let (actual_lines, actual_guard, actual_score) = collect_replay_lines::<RuntimeEngine>(&mut runtime, 20_000, false);
 
     assert!(expected_guard < 20_000, "{case_name} legacy 对局未在上限内结束");
-    assert!(actual_guard < 20_000, "{case_name} Runtime v2 对局未在上限内结束");
+    assert!(actual_guard < 20_000, "{case_name} Runtime 对局未在上限内结束");
     assert_trace_with_context(case_name, &actual_lines, &expected_lines);
     assert_eq!(actual_guard, expected_guard, "{case_name} 回合数不一致");
     assert_eq!(actual_score, expected_score, "{case_name} 总分不一致");
 
     assert_eq!(
-        RuntimeV2Engine::winner_team_index(&runtime_v2),
+        RuntimeEngine::winner_team_index(&runtime),
         CoreEngine::winner_team_index(&legacy),
         "{case_name} 胜者队伍不一致"
     );
     assert_eq!(
-        RuntimeV2Engine::rc4_state(&runtime_v2),
+        RuntimeEngine::rc4_state(&runtime),
         CoreEngine::rc4_state(&legacy),
         "{case_name} 最终 RNG 状态不一致"
     );

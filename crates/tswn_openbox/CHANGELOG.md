@@ -4,13 +4,13 @@
 
 ### 调整
 
-- `cqd/cqp` 从 legacy `PreparedRunner` 切换到与 CLI 共用的 Runtime v2 matchup 矩阵执行器；单人和双人输入都按 `player × target` 动态派发，输出仍按原始选手顺序汇总，显式线程数、重复号跳过、详情和取消语义保持不变。
+- `cqd/cqp` 从 legacy `PreparedRunner` 切换到与 CLI 共用的 Runtime matchup 矩阵执行器；单人和双人输入都按 `player × target` 动态派发，输出仍按原始选手顺序汇总，显式线程数、重复号跳过、详情和取消语义保持不变。
 - 原生默认启用 `mimalloc_alloc`，并将自动线程分为短任务 1.5 倍逻辑核、中长任务 2 倍逻辑核；仍可在更多设置中显式指定线程数。
 - `openbox_mem_probe` 的最终耗时改为输出 6 位小数，便于稳定记录 1% 短档基线。
 
 ### 测试
 
-- 新增 OpenBox Runtime v2 矩阵与 legacy 小样本平均胜率、选手输出顺序和进度终点对照。
+- 新增 OpenBox Runtime 矩阵与 legacy 小样本平均胜率、选手输出顺序和进度终点对照。
 - `cargo test -p tswn_openbox`
 - `cargo check -p tswn_openbox --all-targets`
 - CQP/CQD 单人 1%/10%/100% 相对 Runtime v1 快 49.64%/51.30%/40.78%，双人快 44.52%/43.39%/39.89%。

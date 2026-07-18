@@ -8,10 +8,10 @@
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::runtime_v2::{RuntimeV2BatchSummary, runtime_v2_score, runtime_v2_score_range};
+use tswn_core::runtime::{RuntimeBatchSummary, runtime_score, runtime_score_range};
 use tswn_core::win_rate::WinRateTiming;
 
 use crate::args::{BenchThreadMode, NamerPfMode};
@@ -102,11 +102,11 @@ pub(super) fn run_bench_score(
 /// 分段输出 score 累积结果。
 fn run_bench_score_with_bucket_output(target_group: &[String], modifier: &str, n: usize, step: usize) -> BenchSummary {
     let started_at = Instant::now();
-    let mut accumulated = RuntimeV2BatchSummary::default();
+    let mut accumulated = RuntimeBatchSummary::default();
     let mut offset = 0usize;
     while offset < n {
         let chunk_end = (offset + step.max(1)).min(n);
-        match runtime_v2_score_range(target_group, modifier, offset, chunk_end, WIN_RATE_EVAL_RQ) {
+        match runtime_score_range(target_group, modifier, offset, chunk_end, WIN_RATE_EVAL_RQ) {
             Ok(chunk) => accumulated.merge(chunk),
             Err(error) => {
                 eprintln!("分段 [{offset}, {chunk_end}) 评分失败: {error}");
@@ -144,10 +144,10 @@ fn run_bench_score_inner(
         BenchThreadMode::SingleThread => 1,
         BenchThreadMode::Parallel => thread_spec(threads),
     };
-    let summary = match runtime_v2_score(target_group, modifier, n, eval_rq, thread) {
+    let summary = match runtime_score(target_group, modifier, n, eval_rq, thread) {
         Ok(summary) => summary,
         Err(error) => {
-            eprintln!("执行 Runtime v2 评分失败: {error}");
+            eprintln!("执行 Runtime 评分失败: {error}");
             return BenchSummary {
                 wins: 0,
                 total: 0,

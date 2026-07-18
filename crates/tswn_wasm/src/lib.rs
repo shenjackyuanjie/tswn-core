@@ -15,7 +15,7 @@ use error::WasmResult;
 pub use fight::FightSession;
 use model::{
     CliBatchRateResult, CliGroupWinRateResult, CliIconInfo, CliNamerPfResult, CliPairRateResult, CliScoreResult,
-    CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeV2NormalizedRunView, WinRateOptions,
+    CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeNormalizedRunView, WinRateOptions,
     WinRateResult,
 };
 use wasm_bindgen::prelude::*;
@@ -217,10 +217,10 @@ pub fn pair_rate(
 }
 
 #[wasm_bindgen]
-pub fn default_custom_runtime_v2_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeV2NormalizedRunView> {
+pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeNormalizedRunView> {
     install_panic_hook();
-    tswn_core::cli_api::default_custom_runtime_v2_normalized_run(&raw_input, max_rounds)
-        .map(tswn_core::cli_api::JsonRuntimeV2NormalizedRun::from)
+    tswn_core::cli_api::default_custom_runtime_normalized_run(&raw_input, max_rounds)
+        .map(tswn_core::cli_api::JsonRuntimeNormalizedRun::from)
         .map(Into::into)
         .map_err(error::cli_api_error)
 }
@@ -255,9 +255,9 @@ mod tests {
     use crate::model::UpdateTypeView;
 
     #[test]
-    fn default_custom_runtime_v2_normalized_run_exposes_wasm_view_golden_shape() {
-        let run = default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n".to_string(), 1)
-            .expect("default custom runtime v2 normalized run should execute");
+    fn default_custom_runtime_normalized_run_exposes_wasm_view_golden_shape() {
+        let run = default_custom_runtime_normalized_run("left@red\n\nright@blue\n".to_string(), 1)
+            .expect("default custom runtime normalized run should execute");
 
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(run.winner_team, None);
@@ -325,12 +325,12 @@ mod tests {
     }
 
     #[test]
-    fn default_custom_runtime_v2_normalized_run_rejects_zero_max_rounds() {
-        let err = tswn_core::cli_api::default_custom_runtime_v2_normalized_run("left@red\n\nright@blue\n", 0)
-            .expect_err("default custom runtime v2 normalized run should reject zero max rounds");
+    fn default_custom_runtime_normalized_run_rejects_zero_max_rounds() {
+        let err = tswn_core::cli_api::default_custom_runtime_normalized_run("left@red\n\nright@blue\n", 0)
+            .expect_err("default custom runtime normalized run should reject zero max rounds");
         let err = crate::error::cli_api_tswn_error(err);
 
         assert_eq!(err.code, "INVALID_INPUT");
-        assert_eq!(err.message, "runtime v2 max_rounds must be positive");
+        assert_eq!(err.message, "runtime max_rounds must be positive");
     }
 }

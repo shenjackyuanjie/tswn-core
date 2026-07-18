@@ -31,7 +31,7 @@ test("show routing reports invalid static replay input", () => {
 test("show share URL removes obsolete runtime selection", () => {
   const rawInput = "left@red\n\nright@blue\n";
   const shareUrl = buildShowShareUrl(rawInput, {
-    href: "https://example.test/index.html?runtime=v2&data=old#section",
+    href: "https://example.test/index.html?runtime=runtime&data=old#section",
   });
 
   const parsed = new URL(shareUrl);

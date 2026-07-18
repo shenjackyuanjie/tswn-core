@@ -15,7 +15,7 @@ use pyo3::{
     types::{PyDictMethods, PyList, PyListMethods, PyModule, PyModuleMethods},
     wrap_pyfunction,
 };
-use tswn_core::{PreparedRunner, Runner};
+use tswn_core::{LegacyPreparedRunner as PreparedRunner, LegacyRunner as Runner};
 
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
@@ -146,8 +146,8 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cli_api::to_diy_batch, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::icon_info, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::parse_group_lines, m)?)?;
-    m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_v2_normalized_run, m)?)?;
-    m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_v2_parity_report, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_normalized_run, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_parity_report, m)?)?;
     m.add_class::<cli_api::PyWinRateResult>()?;
     m.add_class::<cli_api::PyScoreResult>()?;
     m.add_class::<cli_api::PyNamerPfResult>()?;

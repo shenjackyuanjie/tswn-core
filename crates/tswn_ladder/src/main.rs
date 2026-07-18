@@ -9,7 +9,7 @@ use chrono::{Local, Utc};
 use cron::Schedule;
 use tokio::io::AsyncWriteExt;
 use tokio_postgres::{Client, NoTls};
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::player::PlrId;
 
 const ELO_SCALE_FACTOR: f64 = 50_600.0;

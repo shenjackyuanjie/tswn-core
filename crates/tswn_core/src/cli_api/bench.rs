@@ -18,9 +18,9 @@ pub(super) fn namer_pf_score(
         target_group.extend(base_group.iter().cloned());
     }
 
-    crate::runtime_v2::runtime_v2_score(&target_group, modifier, n, eval_rq, thread)
+    crate::runtime::runtime_score(&target_group, modifier, n, eval_rq, thread)
         .map(|summary| summary.score_10000())
-        .map_err(super::runtime_v2_batch_error)
+        .map_err(super::runtime_batch_error)
 }
 
 pub(super) fn batch_rate_for_group(

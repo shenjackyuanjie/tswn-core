@@ -10,12 +10,12 @@
 
 use std::collections::HashMap;
 
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::engine;
 use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::runtime_v2::{EntityIdx, PlayerKindFlags, RuntimeV2Runner};
+use tswn_core::runtime::{EntityIdx, PlayerKindFlags, RuntimeRunner};
 
-use super::driver::{fmt_runtime_v2_winner_input_indices, fmt_winner_input_indices};
+use super::driver::{fmt_runtime_winner_input_indices, fmt_winner_input_indices};
 
 /// raw trace 下为召唤物分配稳定名字时维护的状态。
 ///
@@ -137,7 +137,7 @@ fn fmt_update_diff(runner: &Runner, update: &RunUpdate) -> String {
     msg.replace("[2]", &param)
 }
 
-fn runtime_v2_plr_name_diff(runner: &RuntimeV2Runner, id: usize) -> String {
+fn runtime_plr_name_diff(runner: &RuntimeRunner, id: usize) -> String {
     let Ok(entity_id) = u32::try_from(id) else {
         return format!("#{id}");
     };
@@ -149,8 +149,8 @@ fn runtime_v2_plr_name_diff(runner: &RuntimeV2Runner, id: usize) -> String {
         .unwrap_or_else(|| format!("#{id}"))
 }
 
-/// Runtime v2 普通输出使用的完整身份名。
-fn runtime_v2_plr_name(runner: &RuntimeV2Runner, id: usize) -> String {
+/// Runtime 普通输出使用的完整身份名。
+fn runtime_plr_name(runner: &RuntimeRunner, id: usize) -> String {
     let Ok(entity_id) = u32::try_from(id) else {
         return format!("#{id}");
     };
@@ -171,10 +171,10 @@ fn runtime_v2_plr_name(runner: &RuntimeV2Runner, id: usize) -> String {
     }
 }
 
-/// Runtime v2 普通文本输出使用与 legacy 相同的名字替换和计分后缀。
-pub(super) fn fmt_runtime_v2_update(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
-    let caster = runtime_v2_plr_name(runner, update.caster);
-    let target = runtime_v2_plr_name(runner, update.target);
+/// Runtime 普通文本输出使用与 legacy 相同的名字替换和计分后缀。
+pub(super) fn fmt_runtime_update(runner: &RuntimeRunner, update: &RunUpdate) -> String {
+    let caster = runtime_plr_name(runner, update.caster);
+    let target = runtime_plr_name(runner, update.target);
     let targets = if let Some(param) = update.param {
         param.to_string()
     } else if update.targets.is_empty() {
@@ -183,7 +183,7 @@ pub(super) fn fmt_runtime_v2_update(runner: &RuntimeV2Runner, update: &RunUpdate
         update
             .targets
             .iter()
-            .map(|id| runtime_v2_plr_name(runner, *id))
+            .map(|id| runtime_plr_name(runner, *id))
             .collect::<Vec<_>>()
             .join(",")
     };
@@ -199,10 +199,10 @@ pub(super) fn fmt_runtime_v2_update(runner: &RuntimeV2Runner, update: &RunUpdate
     }
 }
 
-/// Runtime v2 diff 输出使用与 legacy diff 相同的保守名字替换规则。
-fn fmt_runtime_v2_update_diff(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
-    let caster = runtime_v2_plr_name_diff(runner, update.caster);
-    let target = runtime_v2_plr_name_diff(runner, update.target);
+/// Runtime diff 输出使用与 legacy diff 相同的保守名字替换规则。
+fn fmt_runtime_update_diff(runner: &RuntimeRunner, update: &RunUpdate) -> String {
+    let caster = runtime_plr_name_diff(runner, update.caster);
+    let target = runtime_plr_name_diff(runner, update.target);
     let mut msg = update.message.to_string();
     msg = msg.replace("[0]", &caster);
     msg = msg.replace("[1]", &target);
@@ -214,7 +214,7 @@ fn fmt_runtime_v2_update_diff(runner: &RuntimeV2Runner, update: &RunUpdate) -> S
         update
             .targets
             .iter()
-            .map(|id| runtime_v2_plr_name_diff(runner, *id))
+            .map(|id| runtime_plr_name_diff(runner, *id))
             .collect::<Vec<String>>()
             .join(",")
     };
@@ -321,8 +321,8 @@ fn fmt_update_raw_with_state(runner: &Runner, update: &RunUpdate, trace_names: &
     msg.replace("[2]", &targets)
 }
 
-/// Runtime v2 已在 frame 返回前完成 spawn，因此 raw 格式化不再需要查询 pending storage。
-fn fmt_runtime_v2_update_raw(runner: &RuntimeV2Runner, update: &RunUpdate) -> String {
+/// Runtime 已在 frame 返回前完成 spawn，因此 raw 格式化不再需要查询 pending storage。
+fn fmt_runtime_update_raw(runner: &RuntimeRunner, update: &RunUpdate) -> String {
     let raw_name = |id: usize| {
         let Ok(entity_id) = u32::try_from(id) else {
             return format!("#{id}");
@@ -333,7 +333,7 @@ fn fmt_runtime_v2_update_raw(runner: &RuntimeV2Runner, update: &RunUpdate) -> St
         if entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
             entity.template.display_name.clone()
         } else {
-            runtime_v2_plr_name(runner, id)
+            runtime_plr_name(runner, id)
         }
     };
 
@@ -499,9 +499,9 @@ pub(super) fn collect_diff_lines(runner: &mut Runner, max_rounds: usize, normali
     (lines, guard, total_score)
 }
 
-/// 收集 Runtime v2 diff 模式的全部输出行。
-pub(super) fn collect_runtime_v2_diff_lines(
-    runner: &mut RuntimeV2Runner,
+/// 收集 Runtime diff 模式的全部输出行。
+pub(super) fn collect_runtime_diff_lines(
+    runner: &mut RuntimeRunner,
     max_rounds: usize,
     normalize: bool,
 ) -> (Vec<String>, usize, u64) {
@@ -523,7 +523,7 @@ pub(super) fn collect_runtime_v2_diff_lines(
                 if update.score > 0 {
                     total_score += u64::from(update.score);
                 }
-                let mut msg = fmt_runtime_v2_update_diff(runner, &update);
+                let mut msg = fmt_runtime_update_diff(runner, &update);
                 if normalize {
                     msg = normalize_diff_trace_line(msg);
                 }
@@ -648,8 +648,8 @@ pub(super) fn print_fight_raw(runner: &mut Runner, input_player_ids: &[usize]) {
     }
 }
 
-/// 收集 Runtime v2 raw 聚合战斗日志。
-pub(super) fn collect_runtime_v2_fight_raw_lines(runner: &mut RuntimeV2Runner, input_player_count: usize) -> Vec<String> {
+/// 收集 Runtime raw 聚合战斗日志。
+pub(super) fn collect_runtime_fight_raw_lines(runner: &mut RuntimeRunner, input_player_count: usize) -> Vec<String> {
     let mut output_lines = Vec::new();
     let mut pending_action_line = String::new();
     let mut pending_misc_lines = Vec::new();
@@ -683,21 +683,21 @@ pub(super) fn collect_runtime_v2_fight_raw_lines(runner: &mut RuntimeV2Runner, i
             if matches!(update.update_type, UpdateType::NextLine) {
                 #[cfg(not(feature = "no_debug"))]
                 if debug_raw_seq {
-                    eprintln!("[v2_raw_seq/{raw_seq_idx}] <NextLine>");
+                    eprintln!("[runtime_raw_seq/{raw_seq_idx}] <NextLine>");
                     raw_seq_idx += 1;
                 }
                 emit_current_turn(&mut output_lines, &mut pending_action_line, &mut pending_misc_lines);
                 continue;
             }
 
-            let line = normalize_trace_line(fmt_runtime_v2_update_raw(runner, &update));
+            let line = normalize_trace_line(fmt_runtime_update_raw(runner, &update));
             if line.is_empty() {
                 continue;
             }
 
             #[cfg(not(feature = "no_debug"))]
             if debug_raw_seq {
-                eprintln!("[v2_raw_seq/{raw_seq_idx}] {line}");
+                eprintln!("[runtime_raw_seq/{raw_seq_idx}] {line}");
                 raw_seq_idx += 1;
             }
 
@@ -724,7 +724,7 @@ pub(super) fn collect_runtime_v2_fight_raw_lines(runner: &mut RuntimeV2Runner, i
     while matches!(output_lines.last(), Some(line) if line.is_empty()) {
         output_lines.pop();
     }
-    if let Some(win_idx_line) = fmt_runtime_v2_winner_input_indices(runner, input_player_count) {
+    if let Some(win_idx_line) = fmt_runtime_winner_input_indices(runner, input_player_count) {
         output_lines.push(win_idx_line);
     }
     output_lines

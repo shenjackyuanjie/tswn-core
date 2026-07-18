@@ -3,16 +3,14 @@
 //! 提供 `WinRateSession`（分批次步进执行，支持进度轮询）及 `run_win_rate_sync`
 //! 一次性同步函数，计算第一组玩家对其余组的胜率百分比。
 
-use tswn_core::Runner;
-use tswn_core::runtime_v2::{
-    PreparedRuntimeV2Runner, default_custom_runtime_v2_import_config, prepared_runtime_v2_win_rate_range,
-};
+use tswn_core::LegacyRunner as Runner;
+use tswn_core::runtime::{PreparedRuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range};
 use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, invalid_input, runner_init_failed, win_rate_invalid_groups};
 use crate::model::{WinRateOptions, WinRateProgress, WinRateResult, WinRateTiming};
 
-fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<PreparedRuntimeV2Runner> {
+fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<PreparedRuntimeRunner> {
     if raw_input.trim().is_empty() {
         return Err(invalid_input("rawInput is empty"));
     }
@@ -23,8 +21,8 @@ fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<Prepared
         return Err(win_rate_invalid_groups());
     }
 
-    let config = default_custom_runtime_v2_import_config().map_err(|error| runner_init_failed(format!("{error:?}")))?;
-    PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(&groups, eval_rq, config)
+    let config = default_custom_runtime_import_config().map_err(|error| runner_init_failed(format!("{error:?}")))?;
+    PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&groups, eval_rq, config)
         .map_err(|error| runner_init_failed(format!("{error:?}")))
 }
 
@@ -32,7 +30,7 @@ fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 #[wasm_bindgen]
 pub struct WinRateSession {
-    prepared: PreparedRuntimeV2Runner,
+    prepared: PreparedRuntimeRunner,
     total_rounds: usize,
     next_round: usize,
     wins: usize,
@@ -77,7 +75,7 @@ impl WinRateSession {
     fn step_internal(&mut self, batch_size: usize) -> WasmResult<WinRateProgress> {
         let batch_size = batch_size.max(1);
         let batch_end = self.total_rounds.min(self.next_round.saturating_add(batch_size));
-        let summary = prepared_runtime_v2_win_rate_range(&self.prepared, self.next_round, batch_end)
+        let summary = prepared_runtime_win_rate_range(&self.prepared, self.next_round, batch_end)
             .map_err(|error| runner_init_failed(error.to_string()))?;
         self.wins += summary.wins;
         self.init_nanos = self.init_nanos.saturating_add(nanos_to_u64(summary.timing.init_nanos));

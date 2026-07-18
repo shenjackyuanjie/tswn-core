@@ -15,7 +15,7 @@ use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_orde
 use tswn_core::cli_api;
 use tswn_core::engine::storage::Storage;
 use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
-use tswn_core::runtime_v2::{RuntimeV2CqpMatchup, runtime_v2_cqp_matchups};
+use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
 
 use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
@@ -494,12 +494,12 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
                 send(ProgressEvent::Progress { done, total });
                 continue;
             }
-            requests.push(RuntimeV2CqpMatchup::new(vec![group_lines(player), group_lines(target)]));
+            requests.push(RuntimeCqpMatchup::new(vec![group_lines(player), group_lines(target)]));
             request_slots.push((player_index, target_index));
         }
     }
 
-    let matrix = match runtime_v2_cqp_matchups(
+    let matrix = match runtime_cqp_matchups(
         &requests,
         n,
         eval_rq,
@@ -917,7 +917,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_rate_runtime_v2_matrix_matches_legacy_summary_and_order() {
+    fn batch_rate_runtime_matrix_matches_legacy_summary_and_order() {
         let players = ["alpha@red", "beta@blue"];
         let targets = ["gamma@green", "delta@yellow"];
         let mut expected = Vec::new();

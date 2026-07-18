@@ -18,7 +18,7 @@ use tswn_core::replay_view::{
     ReplayEventView, ReplayState, ReplayTextPart as CoreReplayTextPart, ReplayTextPartKind as CoreReplayTextPartKind, ReplayTone,
     ReplayViewFrame, build_replay_view_frame,
 };
-use tswn_core::{RunUpdates, Runner};
+use tswn_core::{LegacyRunner as Runner, RunUpdates};
 use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, internal_error, invalid_input, runner_init_failed};

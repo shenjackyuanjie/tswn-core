@@ -15,7 +15,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
 use tswn_core::engine::update::RunUpdates;
-use tswn_core::{PreparedRunner, Runner};
+use tswn_core::{LegacyPreparedRunner as PreparedRunner, LegacyRunner as Runner};
 
 const TSWN_CAPI_ABI_VERSION: u32 = 3;
 

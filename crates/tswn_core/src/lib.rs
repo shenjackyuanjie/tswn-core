@@ -1,7 +1,7 @@
 //! tswn-core — 星际战争命名器核心战斗引擎库。
 //!
-//! 提供 [`Runner`]（一次性战斗执行器）、[`PreparedRunner`]（预解析的批量执行器）
-//! 及底层 RC4 随机数、玩家/技能/Boss 模型等全部核心类型。
+//! 提供 [`Runner`]（主战斗执行器）、[`PreparedRunner`]（可复用批量执行器），
+//! 以及 [`legacy`] 中用于兼容和严格对账的旧执行器。
 
 #[cfg(feature = "mimalloc_alloc")]
 #[global_allocator]
@@ -66,18 +66,25 @@ pub mod error;
 pub mod player;
 pub mod rc4;
 pub mod replay_view;
-pub mod runtime_v2;
+pub mod runtime;
 pub mod win_rate;
 
-/// 核心对局入口。
+/// 主 Runtime 对局入口。
 ///
 /// - [`Runner`] 表示一场具体可运行的对局
 /// - [`PreparedRunner`] 表示一份可复用的预构建模板，适合同一输入下按不同 seed 批量构造 `Runner`
 ///
 /// 当你只需要跑单局时，通常直接使用 [`Runner`] 即可；
 /// 当你需要对同一组输入重复跑很多局（如 win-rate / benchmark）时，优先考虑先构造 [`PreparedRunner`] 再复用。
-pub use engine::runners::{PreparedRunner, Runner};
+pub use runtime::{PreparedRuntimeRunner as PreparedRunner, RuntimeRunner as Runner};
+
+/// 旧 Runtime，仅用于兼容、oracle 和严格对账。
+pub mod legacy {
+    pub use crate::engine::runners::{PreparedRunner, Runner};
+}
+
 pub use engine::update::{RunUpdate, RunUpdates};
+pub use legacy::{PreparedRunner as LegacyPreparedRunner, Runner as LegacyRunner};
 
 #[inline]
 pub fn version() -> &'static str { env!("CARGO_PKG_VERSION") }

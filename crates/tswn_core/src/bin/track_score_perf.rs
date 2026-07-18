@@ -1,4 +1,4 @@
-//! score 单线程裸性能与 Runtime v2/legacy 对账工具。
+//! score 单线程裸性能与 Runtime/legacy 对账工具。
 //!
 //! 输入文件每个非空行是一组玩家，组内默认用 `+` 分隔。工具在开始计时前完成文件读取，
 //! 执行期间不打印逐组进度；输出的 wall 因而只覆盖 core score 调用及其组内初始化/战斗。
@@ -10,11 +10,11 @@ use std::time::{Duration, Instant};
 
 use clap::{Parser, ValueEnum};
 use serde::Serialize;
-use tswn_core::Runner;
+use tswn_core::LegacyRunner as Runner;
 use tswn_core::cli_api::parse_group_lines;
 use tswn_core::engine::PROFILE_START;
 use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::runtime_v2::{PreparedRuntimeV2Runner, default_custom_runtime_v2_import_config, runtime_v2_score};
+use tswn_core::runtime::{PreparedRuntimeRunner, default_custom_runtime_import_config, runtime_score};
 use tswn_core::win_rate::WinRateTiming;
 
 const MAX_ROUNDS: usize = 100_000;
@@ -22,7 +22,7 @@ const MAX_ROUNDS: usize = 100_000;
 #[derive(Debug, Parser)]
 #[command(
     name = "track_score_perf",
-    about = "测量 score 单线程裸时间，并对账 Runtime v2 与 legacy"
+    about = "测量 score 单线程裸时间，并对账 Runtime 与 legacy"
 )]
 struct Args {
     /// 每个非空行是一组玩家的输入文件。
@@ -42,7 +42,7 @@ struct Args {
     engine: Engine,
 
     /// 同时执行两个 runtime 时先跑哪一个，用于交替消除顺序偏差。
-    #[arg(long, value_enum, default_value_t = FirstEngine::V2)]
+    #[arg(long, value_enum, default_value_t = FirstEngine::Main)]
     first: FirstEngine,
 
     /// profile 评分模式。
@@ -60,14 +60,14 @@ struct Args {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Engine {
-    V2,
+    Main,
     Legacy,
     Both,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum FirstEngine {
-    V2,
+    Main,
     Legacy,
 }
 
@@ -125,11 +125,11 @@ struct EngineResult {
 struct GroupMismatch {
     index: usize,
     players: Vec<String>,
-    v2_wins: usize,
+    runtime_wins: usize,
     legacy_wins: usize,
-    v2_total: usize,
+    runtime_total: usize,
     legacy_total: usize,
-    v2_errors: usize,
+    runtime_errors: usize,
     legacy_errors: usize,
     round_mismatches: Vec<RoundMismatch>,
 }
@@ -137,7 +137,7 @@ struct GroupMismatch {
 #[derive(Debug, Serialize)]
 struct RoundMismatch {
     round: usize,
-    v2_won: bool,
+    runtime_won: bool,
     legacy_won: bool,
 }
 
@@ -152,7 +152,7 @@ struct Report {
     player_counts: Vec<usize>,
     thread: u32,
     timing_scope: &'static str,
-    v2: Option<EngineResult>,
+    runtime: Option<EngineResult>,
     legacy: Option<EngineResult>,
     mismatch_count: usize,
     mismatches: Vec<GroupMismatch>,
@@ -178,21 +178,21 @@ fn run() -> Result<(), String> {
     }
 
     let modifier = args.mode.modifier();
-    let (v2, legacy) = match args.engine {
-        Engine::V2 => (Some(run_v2_batch(&groups, modifier, args.count)?), None),
+    let (runtime, legacy) = match args.engine {
+        Engine::Main => (Some(run_runtime_batch(&groups, modifier, args.count)?), None),
         Engine::Legacy => (None, Some(run_legacy_batch(&groups, modifier, args.count))),
-        Engine::Both if args.first == FirstEngine::V2 => (
-            Some(run_v2_batch(&groups, modifier, args.count)?),
+        Engine::Both if args.first == FirstEngine::Main => (
+            Some(run_runtime_batch(&groups, modifier, args.count)?),
             Some(run_legacy_batch(&groups, modifier, args.count)),
         ),
         Engine::Both => {
             let legacy = run_legacy_batch(&groups, modifier, args.count);
-            let v2 = run_v2_batch(&groups, modifier, args.count)?;
-            (Some(v2), Some(legacy))
+            let runtime = run_runtime_batch(&groups, modifier, args.count)?;
+            (Some(runtime), Some(legacy))
         }
     };
 
-    let report = build_report(&args, &groups, v2, legacy)?;
+    let report = build_report(&args, &groups, runtime, legacy)?;
     finish_report(report, args.out)
 }
 
@@ -204,13 +204,13 @@ fn parse_groups(input: &str, double_plus: bool) -> Vec<Vec<String>> {
         .collect()
 }
 
-fn run_v2_batch(groups: &[Vec<String>], modifier: &str, count: usize) -> Result<EngineResult, String> {
+fn run_runtime_batch(groups: &[Vec<String>], modifier: &str, count: usize) -> Result<EngineResult, String> {
     let started = Instant::now();
     let mut results = Vec::with_capacity(groups.len());
     for (index, group) in groups.iter().enumerate() {
         let group_started = Instant::now();
-        let summary = runtime_v2_score(group, modifier, count, WIN_RATE_EVAL_RQ, 1)
-            .map_err(|error| format!("Runtime v2 第 {} 组评分失败: {error}", index + 1))?;
+        let summary = runtime_score(group, modifier, count, WIN_RATE_EVAL_RQ, 1)
+            .map_err(|error| format!("Runtime 第 {} 组评分失败: {error}", index + 1))?;
         results.push(GroupResult {
             index,
             players: group.clone(),
@@ -222,7 +222,7 @@ fn run_v2_batch(groups: &[Vec<String>], modifier: &str, count: usize) -> Result<
             fight_nanos: summary.timing.fight_nanos,
         });
     }
-    Ok(summarize_engine("v2", started.elapsed(), results))
+    Ok(summarize_engine("runtime", started.elapsed(), results))
 }
 
 fn run_legacy_batch(groups: &[Vec<String>], modifier: &str, count: usize) -> EngineResult {
@@ -359,11 +359,11 @@ fn summarize_engine(engine: &'static str, elapsed: Duration, groups: Vec<GroupRe
 fn build_report(
     args: &Args,
     groups: &[Vec<String>],
-    v2: Option<EngineResult>,
+    runtime: Option<EngineResult>,
     legacy: Option<EngineResult>,
 ) -> Result<Report, String> {
-    let mismatches = match (&v2, &legacy) {
-        (Some(v2), Some(legacy)) => compare_groups(&v2.groups, &legacy.groups, args.mode.modifier(), args.count)?,
+    let mismatches = match (&runtime, &legacy) {
+        (Some(runtime), Some(legacy)) => compare_groups(&runtime.groups, &legacy.groups, args.mode.modifier(), args.count)?,
         _ => Vec::new(),
     };
     Ok(Report {
@@ -376,7 +376,7 @@ fn build_report(
         player_counts: groups.iter().map(Vec::len).collect(),
         thread: 1,
         timing_scope: "core batch wall; excludes build, process startup, input read and report serialization",
-        v2,
+        runtime,
         legacy,
         mismatch_count: mismatches.len(),
         mismatches,
@@ -384,25 +384,26 @@ fn build_report(
 }
 
 fn compare_groups(
-    v2: &[GroupResult],
+    runtime: &[GroupResult],
     legacy: &[GroupResult],
     modifier: &str,
     count: usize,
 ) -> Result<Vec<GroupMismatch>, String> {
-    v2.iter()
+    runtime
+        .iter()
         .zip(legacy)
-        .filter(|(v2, legacy)| (v2.wins, v2.total, v2.errors) != (legacy.wins, legacy.total, legacy.errors))
-        .map(|(v2, legacy)| {
+        .filter(|(runtime, legacy)| (runtime.wins, runtime.total, runtime.errors) != (legacy.wins, legacy.total, legacy.errors))
+        .map(|(runtime, legacy)| {
             Ok(GroupMismatch {
-                index: v2.index,
-                players: v2.players.clone(),
-                v2_wins: v2.wins,
+                index: runtime.index,
+                players: runtime.players.clone(),
+                runtime_wins: runtime.wins,
                 legacy_wins: legacy.wins,
-                v2_total: v2.total,
+                runtime_total: runtime.total,
                 legacy_total: legacy.total,
-                v2_errors: v2.errors,
+                runtime_errors: runtime.errors,
                 legacy_errors: legacy.errors,
-                round_mismatches: diagnose_round_mismatches(&v2.players, modifier, count)?,
+                round_mismatches: diagnose_round_mismatches(&runtime.players, modifier, count)?,
             })
         })
         .collect()
@@ -410,10 +411,10 @@ fn compare_groups(
 
 fn diagnose_round_mismatches(target_group: &[String], modifier: &str, count: usize) -> Result<Vec<RoundMismatch>, String> {
     let first_groups = score_match_groups(target_group, modifier, 0);
-    let config = default_custom_runtime_v2_import_config().map_err(|error| format!("构建 Runtime v2 默认配置失败: {error:?}"))?;
-    let prepared = PreparedRuntimeV2Runner::from_custom_mixed_roster_with_eval_rq(&first_groups, WIN_RATE_EVAL_RQ, config)
-        .map_err(|error| format!("构建 Runtime v2 评分诊断模板失败: {error:?}"))?;
-    let mut v2 = prepared.new_reusable_runner();
+    let config = default_custom_runtime_import_config().map_err(|error| format!("构建 Runtime 默认配置失败: {error:?}"))?;
+    let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&first_groups, WIN_RATE_EVAL_RQ, config)
+        .map_err(|error| format!("构建 Runtime 评分诊断模板失败: {error:?}"))?;
+    let mut runtime = prepared.new_reusable_runner();
     let mut mismatches = Vec::new();
 
     for round in 0..count {
@@ -430,14 +431,14 @@ fn diagnose_round_mismatches(target_group: &[String], modifier: &str, count: usi
             .is_some_and(|winner| target_team.contains(winner));
 
         prepared
-            .reset_from_groups_with_seed_and_eval_rq(&mut v2, &groups, &[], WIN_RATE_EVAL_RQ)
-            .map_err(|error| format!("Runtime v2 第 {round} 场诊断复位失败: {error:?}"))?;
-        v2.run_to_completion_prevalidated(MAX_ROUNDS);
-        let v2_won = v2.input_group_won(0);
-        if v2_won != legacy_won {
+            .reset_from_groups_with_seed_and_eval_rq(&mut runtime, &groups, &[], WIN_RATE_EVAL_RQ)
+            .map_err(|error| format!("Runtime 第 {round} 场诊断复位失败: {error:?}"))?;
+        runtime.run_to_completion_prevalidated(MAX_ROUNDS);
+        let runtime_won = runtime.input_group_won(0);
+        if runtime_won != legacy_won {
             mismatches.push(RoundMismatch {
                 round,
-                v2_won,
+                runtime_won,
                 legacy_won,
             });
         }
@@ -453,8 +454,8 @@ fn score_match_groups(target_group: &[String], modifier: &str, round: usize) -> 
 }
 
 fn finish_report(report: Report, out: Option<PathBuf>) -> Result<(), String> {
-    if let Some(v2) = &report.v2 {
-        print_engine_summary(v2);
+    if let Some(runtime) = &report.runtime {
+        print_engine_summary(runtime);
     }
     if let Some(legacy) = &report.legacy {
         print_engine_summary(legacy);
@@ -473,7 +474,7 @@ fn finish_report(report: Report, out: Option<PathBuf>) -> Result<(), String> {
     }
 
     if report.mismatch_count > 0 {
-        return Err(format!("Runtime v2/legacy 有 {} 组结果不一致", report.mismatch_count));
+        return Err(format!("Runtime/legacy 有 {} 组结果不一致", report.mismatch_count));
     }
     Ok(())
 }
@@ -515,8 +516,8 @@ mod tests {
     #[test]
     fn small_single_and_double_batches_match_legacy() {
         let groups = vec![vec!["mario".to_string()], vec!["luigi".to_string(), "peach".to_string()]];
-        let v2 = run_v2_batch(&groups, "\u{0002}", 8).unwrap();
+        let runtime = run_runtime_batch(&groups, "\u{0002}", 8).unwrap();
         let legacy = run_legacy_batch(&groups, "\u{0002}", 8);
-        assert!(compare_groups(&v2.groups, &legacy.groups, "\u{0002}", 8).unwrap().is_empty());
+        assert!(compare_groups(&runtime.groups, &legacy.groups, "\u{0002}", 8).unwrap().is_empty());
     }
 }

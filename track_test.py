@@ -20,36 +20,35 @@ CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
 DEFAULT_FILTER = "large large_full small_seed fight_multi"
 DEFAULT_PACKAGE = "tswn_test"
 ENGINE_CORE = "core"
-ENGINE_RUNTIME_V2 = "runtime-v2"
+ENGINE_MAIN = "main"
 
 
 def configure_engine_paths(engine: str):
-    """隔离 legacy 与 runtime v2 的回归记录和存档点。"""
+    """隔离 legacy 与主 Runtime 的回归记录和存档点。"""
     global RECORD_FILE, LOG_FILE, CHECKPOINT_DIR
     if engine == ENGINE_CORE:
         RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
         LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
         CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
         return
-    RECORD_FILE = PROJECT_ROOT / "target" / "test_regression_runtime_v2.json"
-    LOG_FILE = PROJECT_ROOT / "target" / "test_regression_runtime_v2.log"
-    CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints_runtime_v2"
+    RECORD_FILE = PROJECT_ROOT / "target" / "test_regression_runtime.json"
+    LOG_FILE = PROJECT_ROOT / "target" / "test_regression_runtime.log"
+    CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints_runtime"
 
 
 def cargo_test_base(engine: str) -> tuple[list[str], dict[str, str]]:
     cmd = ["cargo", "test", "-p", DEFAULT_PACKAGE]
     env = os.environ.copy()
-    if engine == ENGINE_RUNTIME_V2:
+    if engine == ENGINE_MAIN:
         cmd.extend(
             [
                 "--features",
-                "runtime-v2-corpus",
+                "runtime-corpus",
                 "--test",
-                "runtime_v2",
+                "runtime",
                 "--release",
             ]
         )
-        env["CARGO_ENCODED_RUSTFLAGS"] = "-Z\x1fmutable-noalias=yes"
     return cmd, env
 
 
@@ -474,9 +473,9 @@ def main():
     )
     parser.add_argument(
         "--engine",
-        choices=[ENGINE_CORE, ENGINE_RUNTIME_V2],
+        choices=[ENGINE_CORE, ENGINE_MAIN],
         default=ENGINE_CORE,
-        help="选择回归引擎；runtime-v2 使用 release + mutable-noalias=yes",
+        help="选择回归引擎；main 使用 release Runtime corpus",
     )
     subparsers = parser.add_subparsers(dest="command")
     save_parser = subparsers.add_parser("save", help="将当前记录保存为存档点")

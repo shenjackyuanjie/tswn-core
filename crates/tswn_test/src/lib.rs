@@ -31,7 +31,7 @@ pub trait EngineAdapter {
 }
 
 pub struct CoreEngine;
-pub struct RuntimeV2Engine;
+pub struct RuntimeEngine;
 
 #[macro_export]
 macro_rules! test_engine_suite {

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use pyo3::{Py, PyAny, PyResult, Python, pyclass, pymethods};
 use tswn_core::{
-    PreparedRunner as CorePreparedRunner, RunUpdate, RunUpdates, Runner,
+    LegacyPreparedRunner as CorePreparedRunner, LegacyRunner as Runner, RunUpdate, RunUpdates,
     engine::{storage::Storage, update::UpdateType, world_state::WorldState},
     player::PlrId,
 };

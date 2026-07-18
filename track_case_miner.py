@@ -17,7 +17,7 @@ DEFAULT_MODES = "1v1,2v2,3v3v3,ffa"
 DEFAULT_FFA_SIZES = "4,6,8"
 DEFAULT_CASE_OFFSET_PER_MODE = 0
 DEFAULT_MAX_CASES_PER_MODE = 64
-DEFAULT_RUNTIME = "v2"
+DEFAULT_RUNTIME = "main"
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -580,7 +580,7 @@ def main():
     )
     parser.add_argument(
         "--runtime",
-        choices=("v2", "legacy"),
+        choices=("main", "legacy"),
         default=DEFAULT_RUNTIME,
         help=f"Rust 对比引擎 (default: {DEFAULT_RUNTIME})",
     )

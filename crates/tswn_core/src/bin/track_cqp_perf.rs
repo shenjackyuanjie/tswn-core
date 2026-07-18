@@ -1,4 +1,4 @@
-//! CQP/CQD 矩阵的 Runtime v1/v2 同口径性能与结果对账工具。
+//! CQP/CQD 矩阵的 Runtime legacy/runtime 同口径性能与结果对账工具。
 //!
 //! 输入读取、报告序列化和进程启动不计入墙钟；矩阵准备、worker 创建、matchup
 //! 准备与全部战斗均计入。两套 runtime 使用完全相同的外层 worker 数。
@@ -14,13 +14,13 @@ use serde::Serialize;
 use tswn_core::cli_api::parse_group_lines;
 use tswn_core::player::Player;
 use tswn_core::player::eval_name::DEFAULT_EVAL_RQ;
-use tswn_core::runtime_v2::{RuntimeV2CqpMatchup, resolve_cqp_workers, runtime_v2_cqp_matchups};
+use tswn_core::runtime::{RuntimeCqpMatchup, resolve_cqp_workers, runtime_cqp_matchups};
 use tswn_core::win_rate::groups_win_rate;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "track_cqp_perf",
-    about = "同口径测量并对账 CQP/CQD 的 Runtime v1 与 v2"
+    about = "同口径测量并对账 CQP/CQD 的 Runtime legacy 与 runtime"
 )]
 struct Args {
     /// 每个非空行是一组选手的输入文件。
@@ -39,7 +39,7 @@ struct Args {
     #[arg(long, default_value_t = 100)]
     count: usize,
 
-    /// 外层矩阵 worker 数；0 表示使用 Runtime v2 当前自动策略。
+    /// 外层矩阵 worker 数；0 表示使用 Runtime 当前自动策略。
     #[arg(long, default_value_t = 0)]
     workers: usize,
 
@@ -48,7 +48,7 @@ struct Args {
     engine: Engine,
 
     /// 同时执行两个 runtime 时先跑哪一个。
-    #[arg(long, value_enum, default_value_t = FirstEngine::V2)]
+    #[arg(long, value_enum, default_value_t = FirstEngine::Main)]
     first: FirstEngine,
 
     /// 选手组使用 `++` 分隔；默认使用 `+`。
@@ -66,15 +66,15 @@ struct Args {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum Engine {
-    V1,
-    V2,
+    Legacy,
+    Main,
     Both,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum FirstEngine {
-    V1,
-    V2,
+    Legacy,
+    Main,
 }
 
 #[derive(Clone, Debug)]
@@ -110,12 +110,12 @@ struct EngineResult {
 struct MatchupMismatch {
     player_index: usize,
     target_index: usize,
-    v1_wins: usize,
-    v2_wins: usize,
-    v1_total: usize,
-    v2_total: usize,
-    v1_errors: usize,
-    v2_errors: usize,
+    legacy_wins: usize,
+    runtime_wins: usize,
+    legacy_total: usize,
+    runtime_total: usize,
+    legacy_errors: usize,
+    runtime_errors: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,8 +132,8 @@ struct Report {
     workers: usize,
     eval_rq: f64,
     timing_scope: &'static str,
-    v1: Option<EngineResult>,
-    v2: Option<EngineResult>,
+    legacy: Option<EngineResult>,
+    runtime: Option<EngineResult>,
     mismatch_count: usize,
     mismatches: Vec<MatchupMismatch>,
 }
@@ -169,23 +169,23 @@ fn run() -> Result<(), String> {
         args.workers.max(1).min(matchups.len().max(1))
     };
 
-    let (v1, v2) = match args.engine {
-        Engine::V1 => (Some(run_v1(&matchups, args.count, workers)), None),
-        Engine::V2 => (None, Some(run_v2(&matchups, args.count, workers)?)),
-        Engine::Both if args.first == FirstEngine::V1 => {
-            let v1 = run_v1(&matchups, args.count, workers);
-            let v2 = run_v2(&matchups, args.count, workers)?;
-            (Some(v1), Some(v2))
+    let (legacy, runtime) = match args.engine {
+        Engine::Legacy => (Some(run_legacy(&matchups, args.count, workers)), None),
+        Engine::Main => (None, Some(run_runtime(&matchups, args.count, workers)?)),
+        Engine::Both if args.first == FirstEngine::Legacy => {
+            let legacy = run_legacy(&matchups, args.count, workers);
+            let runtime = run_runtime(&matchups, args.count, workers)?;
+            (Some(legacy), Some(runtime))
         }
         Engine::Both => {
-            let v2 = run_v2(&matchups, args.count, workers)?;
-            let v1 = run_v1(&matchups, args.count, workers);
-            (Some(v1), Some(v2))
+            let runtime = run_runtime(&matchups, args.count, workers)?;
+            let legacy = run_legacy(&matchups, args.count, workers);
+            (Some(legacy), Some(runtime))
         }
     };
 
-    let mismatches = match (&v1, &v2) {
-        (Some(v1), Some(v2)) => compare_results(&v1.matchups, &v2.matchups),
+    let mismatches = match (&legacy, &runtime) {
+        (Some(legacy), Some(runtime)) => compare_results(&legacy.matchups, &runtime.matchups),
         _ => Vec::new(),
     };
     let report = Report {
@@ -201,8 +201,8 @@ fn run() -> Result<(), String> {
         workers,
         eval_rq: DEFAULT_EVAL_RQ,
         timing_scope: "matrix wall; excludes build, process startup, input read and report serialization",
-        v1,
-        v2,
+        legacy,
+        runtime,
         mismatch_count: mismatches.len(),
         mismatches,
     };
@@ -241,7 +241,7 @@ fn has_duplicate_id_name(left: &[String], right: &[String]) -> bool {
     left.iter().chain(right).any(|name| !seen.insert(Player::raw_namerena_to_idname(name)))
 }
 
-fn run_v1(matchups: &[Matchup], count: usize, workers: usize) -> EngineResult {
+fn run_legacy(matchups: &[Matchup], count: usize, workers: usize) -> EngineResult {
     let started = Instant::now();
     let next = AtomicUsize::new(0);
     let (tx, rx) = mpsc::channel();
@@ -286,18 +286,18 @@ fn run_v1(matchups: &[Matchup], count: usize, workers: usize) -> EngineResult {
         }
     });
 
-    summarize_engine("v1", started.elapsed(), ordered.into_iter().flatten().collect())
+    summarize_engine("legacy", started.elapsed(), ordered.into_iter().flatten().collect())
 }
 
-fn run_v2(matchups: &[Matchup], count: usize, workers: usize) -> Result<EngineResult, String> {
+fn run_runtime(matchups: &[Matchup], count: usize, workers: usize) -> Result<EngineResult, String> {
     let requests = matchups
         .iter()
-        .map(|matchup| RuntimeV2CqpMatchup::new(matchup.groups.clone()))
+        .map(|matchup| RuntimeCqpMatchup::new(matchup.groups.clone()))
         .collect::<Vec<_>>();
     let cancel = AtomicBool::new(false);
     let started = Instant::now();
-    let batch = runtime_v2_cqp_matchups(&requests, count, DEFAULT_EVAL_RQ, workers as u32, &cancel, || {})
-        .map_err(|error| format!("Runtime v2 矩阵执行失败: {error}"))?;
+    let batch = runtime_cqp_matchups(&requests, count, DEFAULT_EVAL_RQ, workers as u32, &cancel, || {})
+        .map_err(|error| format!("Runtime 矩阵执行失败: {error}"))?;
     let elapsed = started.elapsed();
     let mut results = Vec::with_capacity(matchups.len());
     for (matchup, outcome) in matchups.iter().zip(batch.matchups) {
@@ -328,7 +328,7 @@ fn run_v2(matchups: &[Matchup], count: usize, workers: usize) -> Result<EngineRe
         };
         results.push(result);
     }
-    Ok(summarize_engine("v2", elapsed, results))
+    Ok(summarize_engine("runtime", elapsed, results))
 }
 
 fn summarize_engine(engine: &'static str, elapsed: Duration, matchups: Vec<MatchupResult>) -> EngineResult {
@@ -350,29 +350,30 @@ fn summarize_engine(engine: &'static str, elapsed: Duration, matchups: Vec<Match
     }
 }
 
-fn compare_results(v1: &[MatchupResult], v2: &[MatchupResult]) -> Vec<MatchupMismatch> {
-    v1.iter()
-        .zip(v2)
-        .filter(|(v1, v2)| (v1.wins, v1.total, v1.errors) != (v2.wins, v2.total, v2.errors))
-        .map(|(v1, v2)| MatchupMismatch {
-            player_index: v1.player_index,
-            target_index: v1.target_index,
-            v1_wins: v1.wins,
-            v2_wins: v2.wins,
-            v1_total: v1.total,
-            v2_total: v2.total,
-            v1_errors: v1.errors,
-            v2_errors: v2.errors,
+fn compare_results(legacy: &[MatchupResult], runtime: &[MatchupResult]) -> Vec<MatchupMismatch> {
+    legacy
+        .iter()
+        .zip(runtime)
+        .filter(|(legacy, runtime)| (legacy.wins, legacy.total, legacy.errors) != (runtime.wins, runtime.total, runtime.errors))
+        .map(|(legacy, runtime)| MatchupMismatch {
+            player_index: legacy.player_index,
+            target_index: legacy.target_index,
+            legacy_wins: legacy.wins,
+            runtime_wins: runtime.wins,
+            legacy_total: legacy.total,
+            runtime_total: runtime.total,
+            legacy_errors: legacy.errors,
+            runtime_errors: runtime.errors,
         })
         .collect()
 }
 
 fn finish_report(report: Report, out: Option<PathBuf>) -> Result<(), String> {
-    if let Some(v1) = &report.v1 {
-        print_engine_summary(v1);
+    if let Some(legacy) = &report.legacy {
+        print_engine_summary(legacy);
     }
-    if let Some(v2) = &report.v2 {
-        print_engine_summary(v2);
+    if let Some(runtime) = &report.runtime {
+        print_engine_summary(runtime);
     }
     println!("对账差异: {}", report.mismatch_count);
 
@@ -388,7 +389,7 @@ fn finish_report(report: Report, out: Option<PathBuf>) -> Result<(), String> {
         println!("{json}");
     }
     if mismatch_count > 0 {
-        return Err(format!("Runtime v1/v2 有 {mismatch_count} 个 matchup 结果不一致"));
+        return Err(format!("Runtime legacy/runtime 有 {mismatch_count} 个 matchup 结果不一致"));
     }
     Ok(())
 }
@@ -423,8 +424,8 @@ mod tests {
         let targets = vec![vec!["right@blue".to_string()]];
         let (matchups, skipped) = build_matchups(&players, &targets);
         assert_eq!(skipped, 0);
-        let v1 = run_v1(&matchups, 24, 1);
-        let v2 = run_v2(&matchups, 24, 1).unwrap();
-        assert!(compare_results(&v1.matchups, &v2.matchups).is_empty());
+        let legacy = run_legacy(&matchups, 24, 1);
+        let runtime = run_runtime(&matchups, 24, 1).unwrap();
+        assert!(compare_results(&legacy.matchups, &runtime.matchups).is_empty());
     }
 }
