@@ -5,15 +5,18 @@ from __future__ import annotations
 
 import argparse
 import re
+import runpy
 import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 REMOVED_PATHS = [
+    "track_case_miner.py",
     "crates/tswn_core/src/engine",
     "crates/tswn_core/src/player",
     "crates/tswn_core/src/error.rs",
+    "crates/tswn_core/src/runtime_v2",
     "crates/tswn_core/src/runtime/oracle.rs",
 ]
 BANNED_RUST_TOKENS = [
@@ -100,6 +103,17 @@ def verify_runtime_independence() -> None:
         for token in ("--runtime", "RuntimeParity", "runtime parity"):
             if token in source:
                 failures.append(f"{path.relative_to(ROOT)} still exposes {token!r}")
+
+    track_test = (ROOT / "track_test.py").read_text(encoding="utf-8")
+    for token in ("--engine", "ENGINE_CORE", "ENGINE_MAIN"):
+        if token in track_test:
+            failures.append(f"track_test.py still exposes {token!r}")
+
+    tracker = runpy.run_path(str(ROOT / "track_test.py"), run_name="track_test_release_check")
+    if tracker.get("DEFAULT_FILTER") is not None:
+        failures.append("track_test.py must run the full Runtime corpus by default")
+    if tracker["cargo_test_base"]() != CORPUS_COMMAND:
+        failures.append("track_test.py command must match the Runtime corpus release command")
 
     if failures:
         raise SystemExit("主 Runtime 独立性检查失败:\n- " + "\n- ".join(failures))

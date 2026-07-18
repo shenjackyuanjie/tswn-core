@@ -83,11 +83,11 @@ python scripts/check_runtime_release.py --corpus
 
 该门禁先检查旧对象路径、Rust/CLI 禁用符号和 corpus 清单，再运行 release/no_debug 主 Runtime 测试；`--corpus` 会执行 87 个 JS exact trace 与 37 个冻结压力 golden，共 124 项。
 
-## 重要 binary
+## 重要入口
 
 - `tswn-cli`: 日常调试和用户入口。
-- `track`: `track test` 的短命令转发入口。
-- `track_test`: 可选 `aux_bins` feature 下的测试失败集 checkpoint 工具。
+- `python track.py test`: 主 Runtime corpus 跟踪器的短命令转发入口。
+- `track_test.py`: release corpus 的测试失败集 checkpoint 工具，默认运行完整 124 项。
 
 ## 文档入口
 

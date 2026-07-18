@@ -1,5 +1,8 @@
 # 性能报告：将目标选择热路径优化移植回 main 分支
 
+> 历史报告：涉及的旧 `engine` / `player` 路径和 `track_case_miner.py` 已在
+> `tswn_core 0.5.0` 删除；下文命令与路径仅记录当时的验证口径。
+
 ## 背景
 
 `tswn_core_opencode` 上有一批性能优化并不依赖 stable 别名修复本身，主要集中在 `fight` 热路径的目标选择与主动技扫描开销上。

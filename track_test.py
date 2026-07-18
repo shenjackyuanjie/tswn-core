@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-测试回归追踪工具
-功能：记录测试失败idx，与上次比较，辅助判断修改是否有效
+主 Runtime corpus 回归追踪工具。
+
+默认运行完整 124-case release corpus；可用 -f 显式筛选测试。
 """
 
 import argparse
 import json
-import os
 import re
 import subprocess
 from datetime import datetime
@@ -14,42 +14,25 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
-LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
-CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
-DEFAULT_FILTER = "large large_full small_seed fight_multi"
+RECORD_FILE = PROJECT_ROOT / "target" / "test_regression_runtime.json"
+LOG_FILE = PROJECT_ROOT / "target" / "test_regression_runtime.log"
+CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints_runtime"
+DEFAULT_FILTER = None
 DEFAULT_PACKAGE = "tswn_test"
-ENGINE_CORE = "core"
-ENGINE_MAIN = "main"
 
 
-def configure_engine_paths(engine: str):
-    """隔离 legacy 与主 Runtime 的回归记录和存档点。"""
-    global RECORD_FILE, LOG_FILE, CHECKPOINT_DIR
-    if engine == ENGINE_CORE:
-        RECORD_FILE = PROJECT_ROOT / "target" / "test_regression.json"
-        LOG_FILE = PROJECT_ROOT / "target" / "test_regression.log"
-        CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints"
-        return
-    RECORD_FILE = PROJECT_ROOT / "target" / "test_regression_runtime.json"
-    LOG_FILE = PROJECT_ROOT / "target" / "test_regression_runtime.log"
-    CHECKPOINT_DIR = PROJECT_ROOT / "target" / "test_checkpoints_runtime"
-
-
-def cargo_test_base(engine: str) -> tuple[list[str], dict[str, str]]:
-    cmd = ["cargo", "test", "-p", DEFAULT_PACKAGE]
-    env = os.environ.copy()
-    if engine == ENGINE_MAIN:
-        cmd.extend(
-            [
-                "--features",
-                "runtime-corpus",
-                "--test",
-                "runtime",
-                "--release",
-            ]
-        )
-    return cmd, env
+def cargo_test_base() -> list[str]:
+    return [
+        "cargo",
+        "test",
+        "-p",
+        DEFAULT_PACKAGE,
+        "--features",
+        "runtime-corpus",
+        "--test",
+        "runtime",
+        "--release",
+    ]
 
 
 def load_previous_records() -> dict:
@@ -462,7 +445,7 @@ def main():
         "-f",
         "--filter",
         default=DEFAULT_FILTER,
-        help=f"测试过滤表达式 (default: {DEFAULT_FILTER})",
+        help="测试名过滤表达式（默认运行完整 124-case corpus）",
     )
     parser.add_argument(
         "-s", "--show", action="store_true", help="只显示当前失败状态，不运行测试"
@@ -470,12 +453,6 @@ def main():
     parser.add_argument("-r", "--reset", action="store_true", help="重置历史记录")
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="安静模式，只输出关键信息"
-    )
-    parser.add_argument(
-        "--engine",
-        choices=[ENGINE_CORE, ENGINE_MAIN],
-        default=ENGINE_CORE,
-        help="选择回归引擎；main 使用 release Runtime corpus",
     )
     subparsers = parser.add_subparsers(dest="command")
     save_parser = subparsers.add_parser("save", help="将当前记录保存为存档点")
@@ -490,7 +467,6 @@ def main():
     delete_parser = subparsers.add_parser("delete", help="删除指定存档点")
     delete_parser.add_argument("name", help="存档点名称")
     args = parser.parse_args()
-    configure_engine_paths(args.engine)
 
     # 子命令分发
     if args.command:
@@ -527,12 +503,15 @@ def main():
                 print(f"  {test} => idx={idx}")
         return
 
-    base_cmd, test_env = cargo_test_base(args.engine)
+    base_cmd = cargo_test_base()
+    command_display = " ".join(base_cmd)
+    if args.filter:
+        command_display += f" -- {args.filter}"
     if not args.quiet:
-        print(f"运行测试: {' '.join(base_cmd)} -- {args.filter}")
+        print(f"运行测试: {command_display}")
         print()
     elif args.quiet:
-        print(f"[track_test] 运行测试: {' '.join(base_cmd)} -- {args.filter}")
+        print(f"[track_test] 运行测试: {command_display}")
 
     test_filters = args.filter.split() if args.filter else [None]
     outputs = []
@@ -550,7 +529,6 @@ def main():
             encoding="utf-8",
             errors="replace",
             shell=False,
-            env=test_env,
         )
         command_failed |= result.returncode != 0
         outputs.append((result.stdout or "") + "\n" + (result.stderr or ""))

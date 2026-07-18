@@ -91,7 +91,7 @@
 - `EffectQueue`、受控 context 和已经按 legacy 顺序验证过的局部伤害链。
 - `PreparedBattleInit` 的显式构造边界：`Player` facade 与临时 `Storage` 只用于输入解析、build 和蓝图准备，Runtime 热路径不持有它们。
 - `EntityRecord::refresh_runtime_stats_from_template` 的统一属性刷新边界：模板派生属性变化后重放 Upgrade、Curse、Hide、Charge 与 Accumulate 的运行期修饰，Clone 与 Merge 不再各自手工覆盖 runtime 属性。
-- Runtime 正确性门禁由 release corpus、release `no_debug` 测试与 `track_test.py --engine main` 共同承担。当前 rustc 已移除 `mutable-noalias` 参数，工作区不再设置该选项；`scripts/check_runtime_release.py` 统一执行现行 release 门禁，且不得重新向 Cargo 注入该参数。
+- 迁移实施阶段曾由 release corpus、release `no_debug` 测试与 `track_test.py` 共同承担正确性检查。当前 rustc 已移除 `mutable-noalias` 参数，工作区不再设置该选项；0.5.0 统一由 `scripts/check_runtime_release.py` 执行现行 release 门禁，且不得重新向 Cargo 注入该参数。
 
 切换前仍必须完成：
 
@@ -618,7 +618,7 @@ Co-authored-by: Codex <codex@openai.com>
 - 已把 linked minion owner death cleanup 纳入 custom runner strict-diff golden，覆盖消失帧、winner 与 WorldArena 派生视图；
 - 已把 merge 纳入 custom runner strict-diff golden，覆盖吞噬/属性上升帧、score，以及 JS `k1` 语义下按 fixed-lane key 提升 owner 既有技能等级（不复制 target 技能 ID）；
 - 已补 custom runner multi-round normalized run golden，覆盖 `RuntimeRunner::run_until_winner_normalized_rounds`、guard 状态、累计 score 与逐回合 strict diff；
-- 已从 custom large / fight_multi 真实 raw 输入抽出初始化 parity fixture，覆盖 seed RNG、team 编号与 WorldArena 初始派生视图；旧 large / fight_multi prefix/terminal runtime self golden 已删除，保留真实 legacy oracle 与 `track_test.py --engine main` 作为后续收敛门槛；
+- 已从 custom large / fight_multi 真实 raw 输入抽出初始化 parity fixture，覆盖 seed RNG、team 编号与 WorldArena 初始派生视图；旧 large / fight_multi prefix/terminal runtime self golden 已删除，保留真实 legacy oracle 与 `track_test.py` 作为当时的后续收敛门槛；
 - 为关键行为设计 repo 内 extension fixture；
 - 标出需要 capability 例外的跨实体读取点。
 
@@ -788,10 +788,8 @@ cargo test -p tswn_core --features no_debug --lib
 cargo test -p tswn_core --release --features no_debug runtime --lib
 cargo test -p tswn_core --release --bin tswn-cli runtime
 cargo test -p tswn_test --release --features runtime-corpus --test runtime
-cargo test -p tswn_test
-python track_test.py -q
 # 当前 rustc 已移除 mutable-noalias 参数；runtime 完整 corpus 是 release 门禁，当前 124/124 通过
-python track_test.py --engine main -q
+python track_test.py -q
 ```
 
 ### 10.2 strict diff

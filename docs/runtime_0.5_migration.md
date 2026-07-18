@@ -11,7 +11,7 @@
 | `tswn_wasm` | `0.5.0` | 会话改用主 Runtime，JS/JSON shape 保持不变 |
 | `tswn_capi` | `0.6.0` | C ABI 版本由 `3` 升为 `4` |
 
-本轮只更新源码版本，不自动发布、打 tag 或推送。
+上述版本已经按 2026-07-18 的发布边界封板；release commit、tag 与推送由仓库发布流程分别执行。
 
 ## Rust
 

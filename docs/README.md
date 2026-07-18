@@ -10,7 +10,7 @@
 | [`howto/1-start.md`](howto/1-start.md) | 项目入门与常用命令 |
 | [`howto/capi_cpp_windows.md`](howto/capi_cpp_windows.md) | Windows C/C++ 调用 C ABI |
 | [`howto/diy_validation.md`](howto/diy_validation.md) | DIY / OL 验证流程 |
-| [`perf/fixed_cases_30_benchmark.md`](perf/fixed_cases_30_benchmark.md) | fixed30 性能回归口径 |
+| [`perf/fixed_cases_30_benchmark.md`](perf/fixed_cases_30_benchmark.md) | fixed30 固定输入与 0.4.x 历史性能口径 |
 | [`perf/runtime_0.5.0_749fcd1_release_benchmark.md`](perf/runtime_0.5.0_749fcd1_release_benchmark.md) | 0.5.0 主 Runtime 完整发版基准与同机 A/B |
 | [`perf/benchmark_tracking.md`](perf/benchmark_tracking.md) | 历史性能追踪索引 |
 

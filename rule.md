@@ -2,90 +2,69 @@
 
 ## 核心准则
 
-> 所有性能优化的前提都是建立在不出现行为异常的前提下
+所有性能优化都必须建立在行为不回退的前提下。`tswn_core 0.5.0` 已删除旧执行器，
+正确性判断统一使用主 Runtime 的冻结 corpus，不再通过生产 CLI 或辅助 binary 切换执行器对账。
 
 ## Release profile 选择
 
-- `--release`：正式 benchmark 口径，使用 `lto = "fat"` 和 `codegen-units = 1`，编译慢但运行性能更稳定；benchmark 不启用 `mimalloc_alloc`，最终 release 构建再启用。
-- `--profile release-fast`：日常快速验证口径，使用 `lto = "thin"` 和更多 codegen units，编译更快；性能结果只能作本地参考，不建议写入长期性能表。
+- `--release`：正式 benchmark 和发布口径，使用 fat LTO、`codegen-units = 1` 与默认 mimalloc。
+- `--profile release-fast`：日常快速验证口径，使用 thin LTO 和更多 codegen units；结果不能写入正式性能表。
+- `no_debug`：正式性能与发布构建必须启用，避免诊断逻辑进入热路径。
 
-## 行为验证方法
+## 行为验证
 
-- 最低要求
-  - `cargo test` 全量通过
-
-- 基本要求
-- ```bash
-  cargo run --release --features no_debug --bin tswn_case_miner -- \
-    --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' \
-    --md5-tool 'D:\githubs\namer\fast-namerena\branch\latest\out_md5.ts' \
-    --out-dir '.\target\ts_diff_cases' \
-    --modes '1v1,2v2,3v3v3,ffa' \
-    --ffa-sizes '4,6,8' \
-    --case-offset-per-mode 0 \
-    --max-cases-per-mode 1000
-  ```
-
-- 高级要求
-- ```bash
-  cargo run --release --features no_debug --bin tswn_case_miner -- \
-    --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' \
-    --md5-tool 'D:\githubs\namer\fast-namerena\branch\latest\out_md5.ts' \
-    --out-dir '.\target\ts_diff_cases' \
-    --modes '1v1,2v2,3v3v3,ffa' \
-    --ffa-sizes '4,6,8' \
-    --case-offset-per-mode 0 \
-    --max-cases-per-mode 4000
-  ```
-
-- 完整要求
-- ```bash
-  cargo run --release --features no_debug --bin tswn_case_miner -- \
-    --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' \
-    --md5-tool 'D:\githubs\namer\fast-namerena\branch\latest\out_md5.ts' \
-    --out-dir '.\target\ts_diff_cases' \
-    --modes '1v1,2v2,3v3v3,ffa' \
-    --ffa-sizes '4,6,8' \
-    --case-offset-per-mode 0 \
-    --max-cases-per-mode 4000
-  cargo run --release --features no_debug --bin tswn_case_miner -- \
-    --library 'D:\githubs\namer\tswn-core\tests\sqp5900.txt' \
-    --md5-tool 'D:\githubs\namer\fast-namerena\branch\latest\out_md5.ts' \
-    --out-dir '.\target\ts_diff_cases' \
-    --modes '1v1,2v2,3v3v3,ffa' \
-    --ffa-sizes '4,6,8' \
-    --case-offset-per-mode 0 \
-    --max-cases-per-mode 4000
-  ```
-
-## benchmark 方法
+日常修改至少运行相关测试；准备发布时必须运行完整门禁：
 
 ```powershell
-cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
-  --case-dir docs/perf/fixed_cases_30 `
-  --out-dir docs/perf/fixed_cases_30_results `
-  --bench-runs 13000 `
-  --thread 1
+cargo test --workspace
+python scripts/check_runtime_release.py --corpus
 ```
 
-也可以用 `release-fast` 做日常快速试跑（不要作为正式留档数据）：
+第二条命令同时检查旧源码路径与禁用 API 未回流，并执行 87 个 JS exact trace 和
+37 个冻结压力 golden。C、Python、WASM 和 OpenBox 等包装层修改还应运行：
 
 ```powershell
-cargo run --profile release-fast --features aux_bins,no_debug --bin track_perf_cases -- `
-  --case-dir docs/perf/fixed_cases_30 `
-  --out-dir target/perf_cases_fast `
-  --bench-runs 13000 `
-  --thread 1
+cargo test --workspace --all-targets --no-run
+python scripts/verify_py_cli_api.py --release
 ```
 
-在Windows上如果有 samply，可以参考以下命令进行采样
+0.5.0 之前使用的 `tswn_case_miner`、`track_perf_cases`、`track_score_perf` 和
+legacy/runtime parity 工具已经随旧执行器删除，不得继续把历史文档中的命令作为当前门禁。
+
+## Benchmark 方法
+
+当前仓库可直接复测的 core 单线程胜率口径：
 
 ```powershell
+cargo run -p tswn_core --release --features no_debug --bin tswn-cli -- `
+  bench win-rate -f input.txt -n 13000 -s --perf
+```
+
+OpenBox CQP/CQD 可使用 `openbox_mem_probe`：
+
+```powershell
+cargo build -p tswn_openbox --release --bin openbox_mem_probe
+target\release\openbox_mem_probe.exe `
+  --players docs\perf\cqp\sqp6000_first20.txt `
+  --targets crates\tswn_openbox\assets\targets\target1.txt `
+  --limit all --target-limit all --count 1000 --threads 0
+```
+
+0.5.0 的 fixed30、score、win-rate 与 OpenBox 完整发版数据、环境和 A/B 判定见
+`docs/perf/runtime_0.5.0_749fcd1_release_benchmark.md`。fixed30 与 score 当时使用的临时
+外部 harness 不属于发布源码，因此不能用已删除的旧 binary 复跑。
+
+正式结果必须记录被测 commit、rustc/Cargo 版本、feature、输入哈希、线程口径和原始轮次；
+机器状态变化时，以同一会话中交替顺序的旧版/新版 A/B 为准。
+
+## 采样
+
+Windows 上可用 `samply` 直接采样公开 CLI：
+
+```powershell
+cargo build -p tswn_core --release --features no_debug --bin tswn-cli
 samply record --save-only --unstable-presymbolicate `
   --windows-symbol-server https://msdl.microsoft.com/download/symbols `
-  -o target\samply_track_perf_cases_symbols.json.gz `
-  -- target\release\track_perf_cases.exe `
-  --case-dir docs/perf/fixed_cases_30 `
-  --out-dir target\samply_perf_cases_symbols `
-  --bench-runs 13000 --thread 1 -q
+  -o target\samply_tswn_cli.json.gz -- `
+  target\release\tswn-cli.exe bench win-rate -f input.txt -n 13000 -s --perf
 ```

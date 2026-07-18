@@ -3,7 +3,7 @@
 DIY 往返验证工具 — 验证 DIY 玩家的初始状态（八围、技能等级）与原始玩家一致。
 
 工作流：
-1. 从 tswn_case_miner 或已有目录读取 case 的 input.txt
+1. 从已有 case 目录读取 input.txt
 2. 对每个玩家运行 `tswn-cli to-diy` 获取 DIY 格式名
 3. 对比原始玩家和 DIY 玩家 build 后的初始状态
 """

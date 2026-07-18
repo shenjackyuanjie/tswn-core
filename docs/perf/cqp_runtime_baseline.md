@@ -2,6 +2,8 @@
 
 > 日期：2026-07-14
 > 状态：六个验收档位均达到“相对 legacy Runtime 至少快 30%”目标
+> 历史口径：本文的 legacy 对账与 `track_case_miner.py` 命令已随
+> `tswn_core 0.5.0` 旧执行器删除；现行发版门禁见根目录 `rule.md`。
 
 ## 1. 口径
 
