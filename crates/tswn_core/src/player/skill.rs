@@ -53,6 +53,7 @@ pub mod act;
 pub mod skl;
 pub mod store;
 
+pub use crate::namerena::SkillBoost;
 pub use act::{
     absorb, accumulate, assassinate, berserk, charge, charm, clone, critical, curse, disperse, exchange, fire, half, haste, heal,
     ice, iron, poison, quake, rapid, revive, shadow, slow, summon, thunder,
@@ -60,112 +61,6 @@ pub use act::{
 pub use skl::{corpse, counter, defend, hide, merge, none, protect, reflect, reraise, shield, upgrade, zombie};
 
 pub type SkillFactory = fn() -> Box<dyn SkillTrait>;
-
-/// DIY 技能加成类型。
-///
-/// 用于精确描述一个技能的最终等级是如何构成的，
-/// 在分身后克隆体重建时能够正确计算衰减下限。
-///
-/// # 变体
-///
-/// | 变体 | 内联格式示例 | 说明 |
-/// |------|-------------|------|
-/// | `Normal(lv)` | `"sklfire":5` | 普通技能，无特殊加成 |
-/// | `SlotBoost { base, boost }` | `"sklfire":"40+30"` | 末尾座位加成，最终 = base + boost |
-/// | `LastBoost(base)` | `"sklfire":"2*40"` | 末尾主动技翻倍，最终 = base × 2 |
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SkillBoost {
-    /// 普通技能，无特殊加成。最终等级 = 指定值。
-    Normal(u32),
-    /// 末尾座位加成：最终等级 = base + boost。
-    SlotBoost {
-        /// 基础熟练度
-        base: u32,
-        /// 座位加成值
-        boost: u32,
-    },
-    /// 末尾主动技翻倍：最终等级 = base × 2。
-    LastBoost(u32),
-}
-
-impl SkillBoost {
-    /// 计算最终等级（加成后的展示等级）。
-    pub fn final_level(&self) -> u32 {
-        match self {
-            Self::Normal(lv) => *lv,
-            Self::SlotBoost { base, boost } => base + boost,
-            Self::LastBoost(base) => base * 2,
-        }
-    }
-
-    /// 计算基础等级（加成前的原始熟练度）。
-    pub fn base_level(&self) -> u32 {
-        match self {
-            Self::Normal(lv) => *lv,
-            Self::SlotBoost { base, .. } => *base,
-            Self::LastBoost(base) => *base,
-        }
-    }
-
-    /// 根据当前衰减后的最终等级，反推衰减后的基础等级。
-    ///
-    /// - `Normal`: 基础 = 最终（无分离）
-    /// - `SlotBoost`: 基础 = max(最终 - boost, 1)
-    /// - `LastBoost`: 基础 = 最终 / 2
-    ///
-    /// 用于 clone 重建时计算衰减下限。
-    pub fn decayed_base_from_level(&self, current_level: u32) -> u32 {
-        match self {
-            Self::Normal(_) => current_level,
-            Self::SlotBoost { boost, .. } => current_level.saturating_sub(*boost).max(1),
-            Self::LastBoost(_) => current_level / 2,
-        }
-    }
-
-    /// 根据衰减后的基础等级，重新计算加成后的最终等级。
-    ///
-    /// 用于 clone 重建时恢复 boost。
-    pub fn final_level_from_decayed_base(&self, decayed_base: u32) -> u32 {
-        match self {
-            Self::Normal(_) => decayed_base,
-            Self::SlotBoost { boost, .. } => decayed_base.saturating_add(*boost),
-            Self::LastBoost(_) => decayed_base.saturating_mul(2),
-        }
-    }
-
-    /// 从字符串解析 `SkillBoost`。
-    ///
-    /// 支持格式：
-    /// - `"5"` → `Normal(5)`
-    /// - `"40+30"` → `SlotBoost { base: 40, boost: 30 }`
-    /// - `"2*40"` → `LastBoost(40)`
-    ///
-    /// 解析失败时返回 `None`。
-    pub fn parse(raw: &str) -> Option<Self> {
-        let raw = raw.trim();
-        // 尝试解析为纯数字
-        if let Ok(val) = raw.parse::<u32>() {
-            return Some(Self::Normal(val));
-        }
-        // 尝试 "base+boost" 格式
-        if let Some((base_str, boost_str)) = raw.split_once('+') {
-            let base = base_str.trim().parse::<u32>().ok()?;
-            let boost = boost_str.trim().parse::<u32>().ok()?;
-            return Some(Self::SlotBoost { base, boost });
-        }
-        // 尝试 "2*base" 格式
-        if let Some((mul_str, base_str)) = raw.split_once('*') {
-            let multiplier = mul_str.trim().parse::<u32>().ok()?;
-            let base = base_str.trim().parse::<u32>().ok()?;
-            if multiplier == 2 {
-                return Some(Self::LastBoost(base));
-            }
-            // 其他倍数暂不支持
-            return None;
-        }
-        None
-    }
-}
 
 const BUILTIN_SKILL_FACTORIES: [SkillFactory; 35] = [
     fire::FireSkill::box_new,

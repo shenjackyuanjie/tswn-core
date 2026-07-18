@@ -562,7 +562,23 @@ impl PlainLegacySkillImportMap {
             .iter()
             .filter_map(|entry| {
                 let skill_id = match entry.skill {
-                    BuiltinSkillRef::Normal(key) => self.plain_by_legacy_key.get(key).copied().flatten(),
+                    BuiltinSkillRef::Normal(kind_key) => {
+                        (kind_key == 0)
+                            .then_some(self.special_by_runtime_kind[0].1)
+                            .flatten()
+                            .or_else(|| self.active_by_legacy_key.get(entry.key).copied().flatten())
+                            .or_else(|| {
+                                // Legacy import resolves active skills from the SkillStorage key,
+                                // while Fire and passive skills fall back to their concrete runtime
+                                // kind. Generic/classified minion overlays deliberately use
+                                // nonstandard keys, so preserving both inputs is required for exact
+                                // parity.
+                                (25..35)
+                                    .contains(&kind_key)
+                                    .then(|| self.plain_by_legacy_key.get(kind_key).copied().flatten())
+                                    .flatten()
+                            })
+                    }
                     BuiltinSkillRef::SummonFire => self.special_by_runtime_kind[0].1,
                     BuiltinSkillRef::SummonExplode => self.special_by_runtime_kind[1].1,
                     BuiltinSkillRef::SummonShareDamage => self.special_by_runtime_kind[2].1,

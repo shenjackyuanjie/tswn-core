@@ -3,7 +3,7 @@
 //! 本模块负责解析名字后缀中的 `diy[...]` / `ol:{...}` 覆盖配置，
 //! 并把主玩家与召唤物模板的属性、技能、武器等信息整理成内部结构。
 
-use crate::player::skill::SkillBoost;
+use super::SkillBoost;
 
 /// 战斗召唤物（幻影 / 使魔 / 丧尸）的覆盖配置。
 ///
@@ -39,7 +39,7 @@ pub struct MinionOverlay {
 /// - 字符串 `"2*40"` → [`SkillBoost::LastBoost`]（末尾主动技翻倍）
 ///
 /// `skills` 为有序列表，技能在列表中的顺序决定行动时的尝试顺序。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerOverlay {
     /// 八围属性覆盖值（`[atk, def, spd, agi, mag, res, wis, maxhp]`）。
     /// `None` 表示不覆盖，走正常随机生成。

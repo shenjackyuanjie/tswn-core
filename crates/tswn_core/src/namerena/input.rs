@@ -1,5 +1,7 @@
 use std::fmt;
 
+use super::PlayerOverlay;
+
 pub const NAME_MAX_LEN: usize = 256;
 pub const TEAM_MAX_LEN: usize = 256;
 pub const SEED_PREFIX: &str = "seed:";
@@ -7,6 +9,7 @@ pub const SEED_PREFIX: &str = "seed:";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerClass {
     Normal,
+    Clone,
     Boss,
     Boost,
     Seed,
@@ -21,8 +24,7 @@ pub struct PlayerSpec {
     pub name: String,
     pub team: Option<String>,
     pub weapon: Option<String>,
-    /// 尚未解释的 `diy[...]` / `ol:{...}` 后缀；overlay 构建阶段负责解析。
-    pub overlay_raw: Option<String>,
+    pub overlay: Option<PlayerOverlay>,
     pub class: PlayerClass,
 }
 
@@ -73,15 +75,15 @@ impl PlayerSpec {
         }
 
         let mut weapon = None::<String>;
-        let mut overlay_raw = None;
+        let mut overlay = None;
         if let Some(suffix) = suffix {
             for segment in split_by_plus_outside_quotes(suffix) {
                 let segment = trim_js_name_like(&segment);
                 if segment.is_empty() {
                     continue;
                 }
-                if segment.starts_with("diy[") || segment.starts_with("ol:") {
-                    overlay_raw = Some(segment.to_owned());
+                if let Some(parsed) = PlayerOverlay::parse_inline(segment) {
+                    overlay = Some(parsed);
                 } else if let Some(existing) = &mut weapon {
                     existing.push('+');
                     existing.push_str(segment);
@@ -99,7 +101,7 @@ impl PlayerSpec {
             name,
             team,
             weapon,
-            overlay_raw,
+            overlay,
             class,
         })
     }
@@ -267,6 +269,7 @@ fn trim_js_name_like(value: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::namerena::SkillBoost;
 
     #[test]
     fn parses_identity_weapon_and_overlay_without_splitting_quoted_plus() {
@@ -275,8 +278,8 @@ mod tests {
         assert_eq!(spec.team.as_deref(), Some("red"));
         assert_eq!(spec.weapon.as_deref(), Some("blade"));
         assert_eq!(
-            spec.overlay_raw.as_deref(),
-            Some(r#"ol:{"skills":{"fire":"40+30"},"weapon":"x+y"}"#)
+            spec.overlay.as_ref().and_then(|overlay| overlay.skills.as_ref()).unwrap()[0].1,
+            SkillBoost::SlotBoost { base: 40, boost: 30 }
         );
         assert_eq!(spec.id_name(), "alice@red");
     }

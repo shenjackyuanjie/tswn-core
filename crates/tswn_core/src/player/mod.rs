@@ -77,7 +77,9 @@ pub mod boss;
 pub mod eval_name;
 pub mod icon;
 pub mod icon_render;
-pub mod overlay;
+pub mod overlay {
+    pub use crate::namerena::overlay::*;
+}
 pub mod skill;
 pub mod state;
 pub mod status;
