@@ -139,6 +139,15 @@ fn sha256_hex(bytes: &[u8]) -> String {
     output
 }
 
+fn input_sha256_hex(raw: &str) -> String {
+    if raw.as_bytes().contains(&b'\r') {
+        let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+        sha256_hex(normalized.as_bytes())
+    } else {
+        sha256_hex(raw.as_bytes())
+    }
+}
+
 fn feed_string(hasher: &mut Sha256, value: &str) {
     hasher.update((value.len() as u64).to_le_bytes());
     hasher.update(value.as_bytes());
@@ -217,7 +226,7 @@ fn capture_case<E: EngineAdapter>(mut runner: E::Runner, spec: StressCaseSpec) -
 
     StressCaseGolden {
         file_name: spec.file_name.to_string(),
-        input_sha256: sha256_hex(input.as_bytes()),
+        input_sha256: input_sha256_hex(&input),
         eval_rq: spec.eval_rq,
         winner_team_index,
         rounds: round_digests.len(),
@@ -274,11 +283,11 @@ fn assert_inventory(goldens: &StressGoldenSet) {
 }
 
 fn find_spec_by_input(raw: &str, eval_rq: f64) -> StressCaseSpec {
-    let input_sha256 = sha256_hex(raw.as_bytes());
+    let input_sha256 = input_sha256_hex(raw);
     STRESS_CASES
         .iter()
         .copied()
-        .find(|spec| spec.eval_rq == eval_rq && sha256_hex(spec.effective_input().as_bytes()) == input_sha256)
+        .find(|spec| spec.eval_rq == eval_rq && input_sha256_hex(&spec.effective_input()) == input_sha256)
         .unwrap_or_else(|| panic!("stress input {input_sha256} with eval_rq={eval_rq} is not frozen"))
 }
 
@@ -297,7 +306,7 @@ pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &
         .unwrap_or_else(|| panic!("{case_name}: missing frozen golden for {}", spec.file_name));
     assert_eq!(
         expected.input_sha256,
-        sha256_hex(raw.as_bytes()),
+        input_sha256_hex(raw),
         "{case_name}: input SHA-256 changed"
     );
     assert_eq!(expected.eval_rq, eval_rq, "{case_name}: eval_rq changed");
@@ -322,5 +331,17 @@ pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &
             actual.round_digests.get(mismatch),
             expected.round_digests.get(mismatch),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::input_sha256_hex;
+
+    #[test]
+    fn input_hash_normalizes_platform_line_endings() {
+        let expected = input_sha256_hex("alpha\nbeta\n");
+        assert_eq!(input_sha256_hex("alpha\r\nbeta\r\n"), expected);
+        assert_eq!(input_sha256_hex("alpha\rbeta\r"), expected);
     }
 }
