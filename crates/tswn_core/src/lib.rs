@@ -63,6 +63,7 @@ pub mod case_gen;
 pub mod cli_api;
 pub mod engine;
 pub mod error;
+pub mod namerena;
 pub mod player;
 pub mod rc4;
 pub mod replay_view;
