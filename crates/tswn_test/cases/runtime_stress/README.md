@@ -1,8 +1,8 @@
-# Runtime v2 压力差异输入
+# Runtime 压力差异输入
 
 这里保存压力 strict-diff 首次发现的原始输入；无论后续是否闭环都保留归档，避免 case 随 `target` 清理而丢失。
 
-本批输入来自 `tests/sqp6000.txt`，使用真正的 Runtime v2 路径运行；规模为六种模式各 200 个，共 1200 个。TS/JS 实现是正确性 oracle。首轮发现 8 个差异；全部闭环后重新运行同一规模，又发现并归档 1 个差异：
+本批输入来自 `tests/sqp6000.txt`，使用真正的 Runtime 路径运行；规模为六种模式各 200 个，共 1200 个。TS/JS 实现是正确性 oracle。首轮发现 8 个差异；全部闭环后重新运行同一规模，又发现并归档 1 个差异：
 
 | 输入 | 模式 | 首差异 | 当前症状 | 状态 |
 | --- | --- | ---: | --- | --- |
@@ -68,7 +68,7 @@
 | `ffa_4-37fc802e0ef650a3.txt` | ffa_4 | 191 | 中毒终结战斗后未中断后续状态链，错误输出铁壁自然解除日志 | 已闭环并接入回归 |
 | `ffa_4-b9ba9b639670ceb3.txt` | ffa_4 | 68 | 轮次 tick 上限误计 spawn ID 空洞，且生命之轮回调致死后漏结算目标死亡/KILL 链 | 已闭环并接入回归 |
 
-以下输入来自 2026-07-15 四方运行时报告的 CQD 双人矩阵。选手使用 `cqp_double_target.txt`，靶子使用 OpenBox `target2.txt`，`eval_rq=4`；Node.js 与 Bun 结果一致，Runtime v2 与 oracle 分叉。2026-07-16 使用真实 CQP seed 调度逐轮复现，并同时排除了复用 runner 污染：
+以下输入来自 2026-07-15 四方运行时报告的 CQD 双人矩阵。选手使用 `cqp_double_target.txt`，靶子使用 OpenBox `target2.txt`，`eval_rq=4`；Node.js 与 Bun 结果一致，Runtime 与 oracle 分叉。2026-07-16 使用真实 CQP seed 调度逐轮复现，并同时排除了复用 runner 污染：
 
 | 输入 | 来源坐标 | CQP 轮次 / seed | 首差异 | 当前症状 | 状态 |
 | --- | --- | --- | ---: | --- | --- |
@@ -76,11 +76,11 @@
 | `cqd-p19-t26-r0336.txt` | player 19 × target 26 | 336 / `33554767` | 18 | 冰冻解除后未刷新强化疾走的实际倍率，行动者顺序改变 | 已闭环并接入回归 |
 | `cqd-p21-t39-r0107.txt` | player 21 × target 39 | 107 / `33554538` | 9 | 瘟疫分摊击倒 owner 后，0 HP 的活动使魔仍保持存活并继续行动 | 已闭环并接入回归 |
 | `cqd-p28-t26-r0447.txt` | player 28 × target 26 | 447 / `33554878` | 13 | 首次迟缓未刷新待生效强化疾走倍率，调度 RNG、地裂术伤害与护身符复活链随后分叉 | 已闭环并接入回归 |
-| `cqd-p21-t31-r5997-guard.txt` | player 21 × target 31 | 5997 / `33560428` | 16 | 同一使魔清理缺口最终形成 0 个存活组，v2 在 10 万与 100 万行动上限下都无法产生 winner；legacy 20 个行动结束 | 已闭环并接入回归 |
+| `cqd-p21-t31-r5997-guard.txt` | player 21 × target 31 | 5997 / `33560428` | 16 | 同一使魔清理缺口最终形成 0 个存活组，runtime 在 10 万与 100 万行动上限下都无法产生 winner；legacy 20 个行动结束 | 已闭环并接入回归 |
 
-2026-07-16 修复后复验：player 6 × target 26、player 19 × target 26、player 21 × target 39、player 28 × target 26 各扫描 1000 个 seed，player 21 × target 31 扫描 10000 个 seed，共 14000 个 seed，异常数为 0；包含上述 5 个输入的 release Runtime v2 corpus 当时为 123/123，加入下述 benchmark score case 后当前为 124/124。
+2026-07-16 修复后复验：player 6 × target 26、player 19 × target 26、player 21 × target 39、player 28 × target 26 各扫描 1000 个 seed，player 21 × target 31 扫描 10000 个 seed，共 14000 个 seed，异常数为 0；包含上述 5 个输入的 release Runtime corpus 当时为 123/123，加入下述 benchmark score case 后当前为 124/124。
 
-以下输入来自 2026-07-16 修复后的 Runtime v2 完整 benchmark。mario 普通 score 从历史 `4171/13000` 变为 `4170/13000`，定点 legacy/v2 对账定位到 round 11350；`out_md5.ts` 与 legacy 一致。文件中的 `\x02` 是普通 score modifier 控制字符的可逆文本转义，回归加载时会还原为单字节 `0x02`：
+以下输入来自 2026-07-16 修复后的 Runtime 完整 benchmark。mario 普通 score 从历史 `4171/13000` 变为 `4170/13000`，定点 legacy/runtime 对账定位到 round 11350；`out_md5.ts` 与 legacy 一致。文件中的 `\x02` 是普通 score modifier 控制字符的可逆文本转义，回归加载时会还原为单字节 `0x02`：
 
 | 输入 | 模式 | 首差异 | 当前症状 | 状态 |
 | --- | --- | ---: | --- | --- |
@@ -89,5 +89,5 @@
 维护规则：
 
 - 新发现且尚未闭环的压力差异，先把原始 input 原样放入本目录并更新上表。
-- 修复完成后，把该 input 接入长期 Runtime v2 strict-diff 回归；不得只删除本目录中的记录。
-- 只有 oracle、Runtime v2 输出、RNG/帧序列全部一致，才可把状态改为“已闭环”。
+- 修复完成后，把该 input 接入长期 Runtime strict-diff 回归；不得只删除本目录中的记录。
+- 只有 oracle、Runtime 输出、RNG/帧序列全部一致，才可把状态改为“已闭环”。

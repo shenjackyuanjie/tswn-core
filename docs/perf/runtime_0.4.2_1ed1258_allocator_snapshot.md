@@ -1,14 +1,14 @@
-# Runtime v2 0.4.2 `1ed1258` 完整性能快照
+# Runtime 0.4.2 `1ed1258` 完整性能快照
 
 > 日期：2026-07-16
 >
 > 被测提交：`1ed1258b26f9939398b0e8a6f6c988b70781448f`
 >
-> 范围：仅测试本机 Rust Runtime v2；分别使用 mimalloc 与 Windows 系统分配器，不运行 Runtime v1、Node.js 或 Bun 性能测试
+> 范围：仅测试本机 Rust Runtime；分别使用 mimalloc 与 Windows 系统分配器，不运行 legacy Runtime、Node.js 或 Bun 性能测试
 >
 > 性质：每种 allocator 各一次完整阶段采样；用于修复后留档，不替代正式多轮中位数验收，也不重置既定半时硬线
 
-机器可读结果见 [`runtime_v2_0.4.2_1ed1258_allocator_snapshot.json`](runtime_v2_0.4.2_1ed1258_allocator_snapshot.json)。工具生成的原始 fixed30 JSON、score JSON 和 OpenBox 日志保存在本机 `target/full_bench_1ed1258_20260716/`，不纳入 Git。
+机器可读结果见 [`runtime_0.4.2_1ed1258_allocator_snapshot.json`](runtime_0.4.2_1ed1258_allocator_snapshot.json)。工具生成的原始 fixed30 JSON、score JSON 和 OpenBox 日志保存在本机 `target/full_bench_1ed1258_20260716/`，不纳入 Git。
 
 ## 1. 环境与口径
 
@@ -25,7 +25,7 @@
 - score：单线程 core batch 裸时间；mario 13000 场，CQP 单人/双人每组 1000 场；
 - CQP/CQD：OpenBox 业务入口外层墙钟，自动线程；1%/10%/100% 分别为每 matchup 100/1000/10000 场；
 - 表中“mimalloc 节省”按 `1 - mimalloc / 系统分配器` 计算；
-- 与 `d813e5f` 的变化只比较已保存的 Runtime v2 数据；正数表示当前更快。
+- 与 `d813e5f` 的变化只比较已保存的 Runtime 数据；正数表示当前更快。
 
 输入按 LF 归一化后的 SHA-256 与既有基线一致：
 
@@ -57,7 +57,7 @@
 - mimalloc 的 OpenBox CQP/CQD 结束 RSS 为约 13.1～29.2 MiB，系统分配器约 7.8～9.8 MiB。系统分配器更省常驻内存，但吞吐明显较低；
 - fixed30、自动线程、win-rate 与 CQP/CQD 的中长档较 `d813e5f` 继续提升；CQP 单人 1% 受短任务固定开销影响，本轮单样本慢 11.45%；
 - score 三组较 `d813e5f` 回退 1.00%～10.72%，但相对已保存 legacy 墙钟仍达到 `1.566x / 1.680x / 1.998x`，没有跌破 `1.5x legacy` 硬线；
-- 所有“旧 v2 半时线”仍未完成。当前最接近的是 win-rate，还需压缩约 14.02%；其余主要指标仍需约 22%～36%。
+- 所有“旧 runtime 半时线”仍未完成。当前最接近的是 win-rate，还需压缩约 14.02%；其余主要指标仍需约 22%～36%。
 
 ## 3. fixed30
 
@@ -105,7 +105,7 @@ mimalloc 墙钟快 8.55%。相对 `d813e5f` 的 0.117 s 也快 8.55%，但距离
 | CQP 双人 32 组 | mimalloc | 1.044492 s | 0.327424 | 0.700945 | 30295/32000 |
 | CQP 双人 32 组 | 系统 | 1.188704 s | 0.359820 | 0.804673 | 30295/32000 |
 
-不计入性能结果的 legacy/v2 正确性对账已对三组各执行一次，逐组差异均为 0。按 `d813e5f` 保存的 legacy 墙钟 `0.813613 / 1.284716 / 2.086516 s` 计算，当前 mimalloc v2 吞吐分别为 legacy 的 `1.566x / 1.680x / 1.998x`，仍满足至少 `1.5x legacy`。
+不计入性能结果的 legacy/runtime 正确性对账已对三组各执行一次，逐组差异均为 0。按 `d813e5f` 保存的 legacy 墙钟 `0.813613 / 1.284716 / 2.086516 s` 计算，当前 mimalloc runtime 吞吐分别为 legacy 的 `1.566x / 1.680x / 1.998x`，仍满足至少 `1.5x legacy`。
 
 ## 6. CQP/CQD 自动调度
 
@@ -124,12 +124,12 @@ mimalloc 墙钟快 8.55%。相对 `d813e5f` 的 0.117 s 也快 8.55%，但距离
 
 第一次 benchmark 在提交 `6ae9c86` 上发现 mario score 变为 `4170/13000`。定点对账定位到 round 11350：首次施加冰冻没有复刻 legacy `set_state → update_states`，导致待生效强化疾走仍按旧倍率递减冰冻步数。`out_md5.ts` 与 legacy 一致。
 
-该问题由提交 `1ed1258` 修复，并将原始输入以可逆 `\x02` 转义归档到 `crates/tswn_test/cases/runtime_v2_stress/score-mario-r11350.txt`。最终门禁：
+该问题由提交 `1ed1258` 修复，并将原始输入以可逆 `\x02` 转义归档到 `crates/tswn_test/cases/runtime_stress/score-mario-r11350.txt`。最终门禁：
 
 - `cargo test -p tswn_core`：核心库 596 通过、2 忽略；CLI 59、runtime trace 3、engine 集成 29 均通过；
-- release `no_debug` Runtime v2 库测试：429 通过、2 忽略；
-- release Runtime v2 corpus：124/124；
-- mario、CQP 单人、CQP 双人完整 score legacy/v2 对账：0 差异；
+- release `no_debug` Runtime 库测试：429 通过、2 忽略；
+- release Runtime corpus：124/124；
+- mario、CQP 单人、CQP 双人完整 score legacy/runtime 对账：0 差异；
 - 最终正式 benchmark 的赢家数恢复为 `4171/13000`、`14513/20000`、`30295/32000`。
 
 ## 8. 复测命令
@@ -151,13 +151,13 @@ cargo build -p tswn_openbox --release --no-default-features --bin openbox_mem_pr
 target\release\track_perf_cases.exe `
   --case-dir docs\perf\fixed_cases_30 `
   --out-dir target\full_bench_1ed1258_20260716\mimalloc\fixed30_t1 `
-  --bench-runs 13000 --thread 1 --engine v2 -q
+  --bench-runs 13000 --thread 1 --engine main -q
 
 # score；其余输入替换为 sqp6000_first20.txt / cqp_double_target.txt
 target\release\track_score_perf.exe `
   --input docs\perf\score\mario.txt `
   --label 1ed1258-mimalloc-mario `
-  --count 13000 --engine v2 --mode normal `
+  --count 13000 --engine main --mode normal `
   --out target\full_bench_1ed1258_20260716\mimalloc\score_mario.json
 
 # CQP；双人替换 players/targets，各档把 count 改为 100、1000、10000

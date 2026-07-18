@@ -4,7 +4,7 @@
   "date": "2026-07-16",
   "commit": "1ed1258b26f9939398b0e8a6f6c988b70781448f",
   "core_version": "0.4.2",
-  "runtime_benchmarked": "v2",
+  "runtime_benchmarked": "runtime",
   "other_runtime_performance_run": false,
   "formal_median_baseline": false,
   "resets_half_time_targets": false,
@@ -111,7 +111,7 @@
         "mimalloc_rss_kb": 15908,
         "system_wall_seconds": 0.165999,
         "system_rss_kb": 9068,
-        "old_v2_seconds": 0.122841,
+        "old_runtime_seconds": 0.122841,
         "half_time_target_seconds": 0.0869735
       },
       "ten_percent": {
@@ -120,7 +120,7 @@
         "mimalloc_rss_kb": 13392,
         "system_wall_seconds": 1.193674,
         "system_rss_kb": 8724,
-        "old_v2_seconds": 1.119174,
+        "old_runtime_seconds": 1.119174,
         "half_time_target_seconds": 0.7659955
       },
       "hundred_percent": {
@@ -129,7 +129,7 @@
         "mimalloc_rss_kb": 13676,
         "system_wall_seconds": 12.173085,
         "system_rss_kb": 7996,
-        "old_v2_seconds": 10.955759,
+        "old_runtime_seconds": 10.955759,
         "half_time_target_seconds": 7.515707
       }
     },
@@ -143,7 +143,7 @@
         "mimalloc_rss_kb": 25524,
         "system_wall_seconds": 0.664032,
         "system_rss_kb": 9992,
-        "old_v2_seconds": 0.530053,
+        "old_runtime_seconds": 0.530053,
         "half_time_target_seconds": 0.3570605
       },
       "ten_percent": {
@@ -152,7 +152,7 @@
         "mimalloc_rss_kb": 29876,
         "system_wall_seconds": 5.528828,
         "system_rss_kb": 8824,
-        "old_v2_seconds": 5.006091,
+        "old_runtime_seconds": 5.006091,
         "half_time_target_seconds": 3.386775
       },
       "hundred_percent": {
@@ -161,7 +161,7 @@
         "mimalloc_rss_kb": 23924,
         "system_wall_seconds": 55.332844,
         "system_rss_kb": 10016,
-        "old_v2_seconds": 47.945151,
+        "old_runtime_seconds": 47.945151,
         "half_time_target_seconds": 33.4988635
       }
     }
@@ -173,8 +173,8 @@
     "cli": { "passed": 59, "failed": 0 },
     "runtime_trace": { "passed": 3, "failed": 0 },
     "engine_integration": { "passed": 29, "failed": 0 },
-    "release_no_debug_runtime_v2": { "passed": 429, "ignored": 2, "failed": 0 },
-    "release_runtime_v2_corpus": { "passed": 124, "failed": 0 },
+    "release_no_debug_runtime": { "passed": 429, "ignored": 2, "failed": 0 },
+    "release_runtime_corpus": { "passed": 124, "failed": 0 },
     "score_mario_wins": 4171,
     "score_cqp_single_wins": 14513,
     "score_cqp_double_wins": 30295,

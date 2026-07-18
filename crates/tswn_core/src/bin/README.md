@@ -39,7 +39,7 @@ cargo build -p tswn_core --bins --features aux_bins
 | track_case_miner    | 带历史记录和 checkpoint 的 case miner 包装器   | 持续跟踪 TS/Rust diff 失败变化         | aux_bins     |
 | track_diy_roundtrip | 校验 DIY/OL 导出后的回读和战斗一致性           | 导出链路回归验证                       | 无           |
 | track_perf_cases    | 选择复杂度阶梯 case 并输出 benchmark 报告      | 构造/维护性能基准集                    | aux_bins     |
-| track_cqp_perf      | 同 worker 对账并测量 CQP/CQD 的 v1/v2 矩阵     | 维护批量胜率四方基准                  | aux_bins     |
+| track_cqp_perf      | 同 worker 对账并测量 CQP/CQD 的 legacy/runtime 矩阵     | 维护批量胜率四方基准                  | aux_bins     |
 | track_cqp_case      | 逐 seed 定位单个 CQP/CQD matchup 的行为分叉    | 诊断胜负差异与行动保护上限            | aux_bins     |
 | tswn_case_miner     | 直接生成 TS vs Rust trace diff case 与 summary | 对拍、收集失败样例、缓存 TS trace      | 无           |
 

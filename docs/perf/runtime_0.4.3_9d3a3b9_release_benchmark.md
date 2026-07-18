@@ -1,14 +1,14 @@
-# Runtime v2 0.4.3 `9d3a3b9` 发版基准
+# Runtime 0.4.3 `9d3a3b9` 发版基准
 
 > 日期：2026-07-18
 >
 > 被测代码提交：`9d3a3b919e3df7fb857ec529869632d71766b36c`
 >
-> 范围：本机 Rust Runtime v2、默认 mimalloc；legacy 只作为 score 同轮对照，不运行独立 Runtime v1、Node.js 或 Bun 完整性能套件
+> 范围：本机 Rust Runtime、默认 mimalloc；legacy 只作为 score 同轮对照，不运行独立 legacy Runtime、Node.js 或 Bun 完整性能套件
 >
 > 性质：0.4.3 正式多轮中位数发版存档；不重置 0.4.0 确立的半时硬目标
 
-机器可读结果见 [`runtime_v2_0.4.3_9d3a3b9_release_benchmark.json`](runtime_v2_0.4.3_9d3a3b9_release_benchmark.json)。fixed30 与 score 的工具原始 JSON 位于本机 `target/full_bench_0.4.3_9d3a3b9/`，该目录不纳入 Git；OpenBox 与 win-rate 的逐轮值已完整写入机器可读结果。
+机器可读结果见 [`runtime_0.4.3_9d3a3b9_release_benchmark.json`](runtime_0.4.3_9d3a3b9_release_benchmark.json)。fixed30 与 score 的工具原始 JSON 位于本机 `target/full_bench_0.4.3_9d3a3b9/`，该目录不纳入 Git；OpenBox 与 win-rate 的逐轮值已完整写入机器可读结果。
 
 ## 1. 环境与测量口径
 
@@ -20,7 +20,7 @@
 - 每类负载先单独预热，正式轮次串行执行，期间不并发运行其他 benchmark；
 - fixed30：每个 case 13000 场；单线程 `--thread 1` 独立运行 3 次，自动线程 `--thread 0` 独立运行 5 次，各字段取中位数；
 - win-rate：`left@red` 对 `right@blue`，单线程 13000 场，独立运行 5 次；CLI 当前按毫秒输出 wall/init/fight，因此该项中位数精度为 1 ms；
-- score：单线程 core batch 裸时间，排除构建、进程启动、输入读取和报告序列化；每个输入运行 5 次，按 `v2/legacy/v2/legacy/v2` 交替首个 runtime，各字段取中位数；
+- score：单线程 core batch 裸时间，排除构建、进程启动、输入读取和报告序列化；每个输入运行 5 次，按 `runtime/legacy/runtime/legacy/runtime` 交替首个 runtime，各字段取中位数；
 - CQP/CQD：OpenBox 业务入口外层墙钟，包含自动调度、结果回调与既有内存探针；每档运行 5 次，单双人拓扑与场数顺序交替，各档取中位数。
 
 输入按 LF 归一化后的 SHA-256：
@@ -41,15 +41,15 @@
 | fixed30 自动线程 overall | 3.632 µs/场 | 3.895 | 快 6.76% | ≤ 2.936；还需压缩 19.16% |
 | stress_multi 单线程 | 58.209 µs/场 | 65.044 | 快 10.51% | ≤ 48.807；还需压缩 16.15% |
 | win-rate 单线程 13000 场 | 0.098 s | 0.107 | 快约 8.41% | ≤ 0.092；还需压缩约 6.12% |
-| score mario | 0.428 s | 0.519 | 快 17.59% | legacy/v2 = 1.939x，达标 |
-| score CQP 单人 | 0.672 s | 0.765 | 快 12.11% | legacy/v2 = 1.936x，达标 |
-| score CQP 双人 | 0.944 s | 1.044 | 快 9.61% | legacy/v2 = 2.307x，达标 |
+| score mario | 0.428 s | 0.519 | 快 17.59% | legacy/runtime = 1.939x，达标 |
+| score CQP 单人 | 0.672 s | 0.765 | 快 12.11% | legacy/runtime = 1.936x，达标 |
+| score CQP 双人 | 0.944 s | 1.044 | 快 9.61% | legacy/runtime = 2.307x，达标 |
 | CQP 单人 100% | 8.627 s | 10.404 | 快 17.08% | ≤ 7.516；还需压缩 12.88% |
 | CQD 双人 100% | 39.575 s | 44.255 | 快 10.57% | ≤ 33.499；还需压缩 15.35% |
 
-0.4.3 的正式中位数在全部主要指标上都优于已保存的 0.4.2 mimalloc 单次快照。score 三类输入均明显超过“Runtime v2 吞吐至少为同轮 legacy 的 1.5 倍”硬线，五轮逐组对账全部为零差异。其余旧 v2 半时线仍未完成，最接近的是普通 win-rate，按 CLI 毫秒精度还需约 6.12%；这些硬线继续保留到后续版本。
+0.4.3 的正式中位数在全部主要指标上都优于已保存的 0.4.2 mimalloc 单次快照。score 三类输入均明显超过“Runtime 吞吐至少为同轮 legacy 的 1.5 倍”硬线，五轮逐组对账全部为零差异。其余旧 runtime 半时线仍未完成，最接近的是普通 win-rate，按 CLI 毫秒精度还需约 6.12%；这些硬线继续保留到后续版本。
 
-0.4.2 参考值来自 `runtime_v2_0.4.2_1ed1258_allocator_snapshot` 的单次采样，而本页为多轮中位数；“相对变化”用于版本方向判断，不冒充同轮交替 A/B。0.4.3 每个局部优化的严格 A/B 仍以更新日志中对应提交的交替轮次为准。
+0.4.2 参考值来自 `runtime_0.4.2_1ed1258_allocator_snapshot` 的单次采样，而本页为多轮中位数；“相对变化”用于版本方向判断，不冒充同轮交替 A/B。0.4.3 每个局部优化的严格 A/B 仍以更新日志中对应提交的交替轮次为准。
 
 ## 3. fixed30
 
@@ -91,13 +91,13 @@
 
 ## 5. score 单线程裸时间
 
-| 输入 | 总场数 | v2 wall | v2 init/fight | legacy wall | legacy init/fight | legacy/v2 | 相对 0.4.2 | 对账 |
+| 输入 | 总场数 | runtime wall | runtime init/fight | legacy wall | legacy init/fight | legacy/runtime | 相对 0.4.2 | 对账 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | mario | 13000 | 0.428136 s | 0.147312 / 0.277332 | 0.830057 s | 0.372725 / 0.438456 | 1.939x | 快 17.59% | 4171/13000，5 轮均 0 差异 |
 | CQP 单人 20 组 | 20000 | 0.672131 s | 0.234221 / 0.429179 | 1.301449 s | 0.581869 / 0.688663 | 1.936x | 快 12.11% | 14513/20000，5 轮均 0 差异 |
 | CQP 双人 32 组 | 32000 | 0.944080 s | 0.302716 / 0.628017 | 2.177672 s | 0.922634 / 1.208237 | 2.307x | 快 9.61% | 30295/32000，5 轮均 0 差异 |
 
-三组 v2 wall 的五轮范围分别为 `0.419747～0.431080 s`、`0.658135～0.704039 s` 和 `0.936965～0.956452 s`。首个 runtime 交替后仍没有观察到结果或吞吐硬线回退。
+三组 runtime wall 的五轮范围分别为 `0.419747～0.431080 s`、`0.658135～0.704039 s` 和 `0.936965～0.956452 s`。首个 runtime 交替后仍没有观察到结果或吞吐硬线回退。
 
 ## 6. CQP/CQD OpenBox 自动调度
 
@@ -118,9 +118,9 @@
 
 - `cargo test -p tswn_core`：核心库 596 通过、2 忽略；CLI 59、runtime trace 3、engine 集成 29 均通过；
 - `no_debug` 核心库：589 通过、2 忽略；其余 CLI、runtime trace 与 engine 集成门禁通过；
-- release Runtime v2 corpus：124/124；
+- release Runtime corpus：124/124；
 - 固定 SBY 12000-case：TS/Rust 执行失败、空输出与 diff 均为 0；
-- 本轮 fixed30 所有正式轮次赢家聚合一致，三组 score 共 15 次 legacy/v2 完整对账均为 0 差异，OpenBox 30 次正式运行全部完成。
+- 本轮 fixed30 所有正式轮次赢家聚合一致，三组 score 共 15 次 legacy/runtime 完整对账均为 0 差异，OpenBox 30 次正式运行全部完成。
 
 ## 8. 复测命令
 
@@ -133,17 +133,17 @@ cargo build -p tswn_openbox --release --bin openbox_mem_probe
 target\release\track_perf_cases.exe `
   --case-dir docs\perf\fixed_cases_30 `
   --out-dir target\full_bench_0.4.3_9d3a3b9\fixed_t1_r1 `
-  --bench-runs 13000 --thread 1 --engine v2 -q
+  --bench-runs 13000 --thread 1 --engine main -q
 
 # 普通 win-rate，正式跑 5 次
 target\release\tswn-cli.exe bench win-rate `
   -r "left@red`nright@blue" -n 13000 -s --perf
 
-# score；三个输入各跑 5 次，并在相邻轮次切换 --first v2/legacy
+# score；三个输入各跑 5 次，并在相邻轮次切换 --first main/legacy
 target\release\track_score_perf.exe `
   --input docs\perf\score\mario.txt `
   --label release-0.4.3-mario-r1 --count 13000 `
-  --engine both --first v2 --mode normal `
+  --engine both --first main --mode normal `
   --out target\full_bench_0.4.3_9d3a3b9\score_mario_r1.json
 
 # OpenBox；单双人、100/1000/10000 六档各跑 5 次

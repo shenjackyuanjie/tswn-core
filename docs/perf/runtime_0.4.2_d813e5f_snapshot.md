@@ -1,4 +1,4 @@
-# Runtime v2 0.4.2 `d813e5f` 完整性能快照
+# Runtime 0.4.2 `d813e5f` 完整性能快照
 
 > 日期：2026-07-15
 >
@@ -6,7 +6,7 @@
 >
 > 性质：单次全套阶段采样；用于留档和决定后续优化方向，不替代正式 3/5 次中位数基线，也不重置既定半时硬线
 
-机器可读汇总见 [`runtime_v2_0.4.2_d813e5f_snapshot.json`](runtime_v2_0.4.2_d813e5f_snapshot.json)。三组 score 的工具原始 JSON 与 fixed30 原始报告保存在本机 `target/full_bench_d813e5f/`，该目录不纳入 Git。
+机器可读汇总见 [`runtime_0.4.2_d813e5f_snapshot.json`](runtime_0.4.2_d813e5f_snapshot.json)。三组 score 的工具原始 JSON 与 fixed30 原始报告保存在本机 `target/full_bench_d813e5f/`，该目录不纳入 Git。
 
 ## 1. 环境与口径
 
@@ -37,13 +37,13 @@
 | fixed30 自动线程 overall | 4.644 µs/场 | ≤ 2.936 µs/场 | 36.78% | 未达半时线 |
 | stress_multi 单线程 | 66.340 µs/场 | ≤ 48.807 µs/场 | 26.43% | 未达半时线 |
 | win-rate 单线程 13000 场 | 0.117 s | ≤ 0.092 s | 21.37% | 未达半时线 |
-| score mario | 0.469 / 0.814 s（v2/legacy） | legacy 吞吐的 ≥ 1.5 倍 | 已达 1.734 倍 | 达标，0 差异 |
+| score mario | 0.469 / 0.814 s（runtime/legacy） | legacy 吞吐的 ≥ 1.5 倍 | 已达 1.734 倍 | 达标，0 差异 |
 | score CQP 单人 | 0.708 / 1.285 s | legacy 吞吐的 ≥ 1.5 倍 | 已达 1.814 倍 | 达标，0 差异 |
 | score CQP 双人 | 1.034 / 2.087 s | legacy 吞吐的 ≥ 1.5 倍 | 已达 2.018 倍 | 达标，0 差异 |
-| CQP 单人 1%/10%/100% | 0.123 / 1.119 / 10.956 s | 旧 v2 半时线 | 还需 29.20%～31.56% | 三档未达 |
-| CQD 双人 1%/10%/100% | 0.530 / 5.006 / 47.945 s | 旧 v2 半时线 | 还需 30.13%～32.64% | 三档未达 |
+| CQP 单人 1%/10%/100% | 0.123 / 1.119 / 10.956 s | 旧 runtime 半时线 | 还需 29.20%～31.56% | 三档未达 |
+| CQD 双人 1%/10%/100% | 0.530 / 5.006 / 47.945 s | 旧 runtime 半时线 | 还需 30.13%～32.64% | 三档未达 |
 
-总体上，score 三类输入已经稳定超过 legacy 1.5 倍吞吐硬线；其余指标相对 0.4.0 或旧 v2 基线均继续前进，但“在已保存速度上再快 50%”仍未完成。最远的是 fixed30 自动线程，当前还需压缩 36.78%；单线程共同战斗路径约还需压缩 26%～28%。
+总体上，score 三类输入已经稳定超过 legacy 1.5 倍吞吐硬线；其余指标相对 0.4.0 或旧 runtime 基线均继续前进，但“在已保存速度上再快 50%”仍未完成。最远的是 fixed30 自动线程，当前还需压缩 36.78%；单线程共同战斗路径约还需压缩 26%～28%。
 
 ## 3. fixed30
 
@@ -79,17 +79,17 @@
 
 ## 5. score 单线程裸时间
 
-| 输入 | 总场数 | v2 wall | v2 init | v2 fight | legacy wall | legacy init | legacy fight | legacy/v2 吞吐 | v2 wall 缩短 | 对账 |
+| 输入 | 总场数 | runtime wall | runtime init | runtime fight | legacy wall | legacy init | legacy fight | legacy/runtime 吞吐 | runtime wall 缩短 | 对账 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | mario | 13000 | 0.469200 s | 0.131109 s | 0.334786 s | 0.813613 s | 0.361093 s | 0.434652 s | 1.734x | 42.33% | 4171/13000，0 差异 |
 | CQP 单人 20 组 | 20000 | 0.708266 s | 0.201917 s | 0.497350 s | 1.284716 s | 0.569854 s | 0.686899 s | 1.814x | 44.87% | 14513/20000，0 差异 |
 | CQP 双人 32 组 | 32000 | 1.034110 s | 0.275535 s | 0.744642 s | 2.086516 s | 0.876001 s | 1.167389 s | 2.018x | 50.44% | 30295/32000，0 差异 |
 
-三组均满足“Runtime v2 吞吐至少为同轮 legacy 的 1.5 倍”，且逐组结果差异为零。继续优化共同 runtime 时，仍需用这三组输入防止 score 回退。
+三组均满足“Runtime 吞吐至少为同轮 legacy 的 1.5 倍”，且逐组结果差异为零。继续优化共同 runtime 时，仍需用这三组输入防止 score 回退。
 
 ## 6. CQP/CQD 自动调度
 
-| 输入 | 精度 | matchup 场数 | 本次 wall | 旧 v2 | 相对旧 v2 | 旧 v2 半时线 | 还需压缩 |
+| 输入 | 精度 | matchup 场数 | 本次 wall | 旧 runtime | 相对旧 runtime | 旧 runtime 半时线 | 还需压缩 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 单人 20 × target1 | 1% | 100 | 0.122841 s | 0.173947 s | 快 29.38% | 0.086974 s | 29.20% |
 | 单人 20 × target1 | 10% | 1000 | 1.119174 s | 1.531991 s | 快 26.95% | 0.765996 s | 31.56% |
@@ -98,7 +98,7 @@
 | 双人 32 × target2 | 10% | 1000 | 5.006091 s | 6.773550 s | 快 26.09% | 3.386775 s | 32.35% |
 | 双人 32 × target2 | 100% | 10000 | 47.945151 s | 66.997727 s | 快 28.44% | 33.498864 s | 30.13% |
 
-六档均确认最近的公共 Runtime v2 优化已经传递到 OpenBox 自动调度路径；当前主要差距仍是每场共同 init/fight 成本，而不是某个精度档独有的调度退化。
+六档均确认最近的公共 Runtime 优化已经传递到 OpenBox 自动调度路径；当前主要差距仍是每场共同 init/fight 成本，而不是某个精度档独有的调度退化。
 
 ## 7. 本次命令
 
@@ -109,7 +109,7 @@ target\release\track_perf_cases.exe --case-dir docs\perf\fixed_cases_30 `
 
 # score；其余输入替换为 sqp6000_first20.txt / cqp_double_target.txt
 target\release\track_score_perf.exe --input docs\perf\score\mario.txt `
-  --label full-d813e5f-mario --count 13000 --engine both --first v2 --mode normal `
+  --label full-d813e5f-mario --count 13000 --engine both --first main --mode normal `
   --out target\full_bench_d813e5f\score_mario.json
 
 # CQP；双人替换 players/targets，各档把 count 改为 100、1000、10000

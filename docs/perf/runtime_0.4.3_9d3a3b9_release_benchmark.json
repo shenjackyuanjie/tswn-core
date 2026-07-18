@@ -4,7 +4,7 @@
   "date": "2026-07-18",
   "commit": "9d3a3b919e3df7fb857ec529869632d71766b36c",
   "core_version": "0.4.3",
-  "runtime_benchmarked": "v2",
+  "runtime_benchmarked": "runtime",
   "full_other_runtime_suite_run": false,
   "legacy_score_control_run": true,
   "formal_median_baseline": true,
@@ -34,7 +34,7 @@
     "target2": "A285A267AE4438BC254FE0511F9FDD1C39A458532CF872984FFB1C035E81569D"
   },
   "reference_0_4_2": {
-    "document": "runtime_v2_0.4.2_1ed1258_allocator_snapshot.json",
+    "document": "runtime_0.4.2_1ed1258_allocator_snapshot.json",
     "commit": "1ed1258b26f9939398b0e8a6f6c988b70781448f",
     "allocator": "mimalloc",
     "sampling": "single_full_pass",
@@ -175,14 +175,14 @@
   "score": {
     "thread": 1,
     "repetitions_per_input": 5,
-    "first_runtime_order": ["v2", "legacy", "v2", "legacy", "v2"],
+    "first_runtime_order": ["runtime", "legacy", "runtime", "legacy", "runtime"],
     "aggregation": "median per field",
     "timing_scope": "core batch wall; excludes build, process startup, input read and report serialization",
     "mario": {
       "groups": 1,
       "count_per_group": 13000,
       "battles": 13000,
-      "v2": {
+      "runtime": {
         "wall_seconds": 0.4281363,
         "init_seconds": 0.1473123,
         "fight_seconds": 0.2773318,
@@ -196,8 +196,8 @@
         "wins": 4171,
         "raw_wall_seconds": [0.8510779, 0.8558141, 0.8300573, 0.8253901, 0.8199590]
       },
-      "legacy_over_v2_throughput": 1.9387687986279134,
-      "reference_0_4_2_v2_seconds": 0.519494,
+      "legacy_over_runtime_throughput": 1.9387687986279134,
+      "reference_0_4_2_runtime_seconds": 0.519494,
       "improvement_percent": 17.587,
       "mismatch_counts": [0, 0, 0, 0, 0]
     },
@@ -205,7 +205,7 @@
       "groups": 20,
       "count_per_group": 1000,
       "battles": 20000,
-      "v2": {
+      "runtime": {
         "wall_seconds": 0.6721309,
         "init_seconds": 0.2342206,
         "fight_seconds": 0.4291788,
@@ -219,8 +219,8 @@
         "wins": 14513,
         "raw_wall_seconds": [1.2938966, 1.2924053, 1.3110496, 1.3223689, 1.3014494]
       },
-      "legacy_over_v2_throughput": 1.936303478980062,
-      "reference_0_4_2_v2_seconds": 0.764700,
+      "legacy_over_runtime_throughput": 1.936303478980062,
+      "reference_0_4_2_runtime_seconds": 0.764700,
       "improvement_percent": 12.105,
       "mismatch_counts": [0, 0, 0, 0, 0]
     },
@@ -228,7 +228,7 @@
       "groups": 32,
       "count_per_group": 1000,
       "battles": 32000,
-      "v2": {
+      "runtime": {
         "wall_seconds": 0.9440798,
         "init_seconds": 0.3027161,
         "fight_seconds": 0.6280172,
@@ -242,8 +242,8 @@
         "wins": 30295,
         "raw_wall_seconds": [2.1579504, 2.1776720, 2.1483568, 2.2177059, 2.2540439]
       },
-      "legacy_over_v2_throughput": 2.306660941161965,
-      "reference_0_4_2_v2_seconds": 1.044492,
+      "legacy_over_runtime_throughput": 2.306660941161965,
+      "reference_0_4_2_runtime_seconds": 1.044492,
       "improvement_percent": 9.614,
       "mismatch_counts": [0, 0, 0, 0, 0]
     }
@@ -334,7 +334,7 @@
     "cli_tests_passed": 59,
     "runtime_trace_tests_passed": 3,
     "engine_integration_tests_passed": 29,
-    "release_runtime_v2_corpus": { "passed": 124, "total": 124 },
+    "release_runtime_corpus": { "passed": 124, "total": 124 },
     "sby_cases": 12000,
     "sby_ts_failures": 0,
     "sby_rust_failures": 0,

@@ -55,27 +55,27 @@
     "timing_scope": "core batch wall; excludes build, process startup, input read and report serialization",
     "mario": {
       "battles": 13000,
-      "v2": { "wall_seconds": 0.4692004, "init_seconds": 0.1311091, "fight_seconds": 0.3347861, "wins": 4171 },
+      "runtime": { "wall_seconds": 0.4692004, "init_seconds": 0.1311091, "fight_seconds": 0.3347861, "wins": 4171 },
       "legacy": { "wall_seconds": 0.8136128, "init_seconds": 0.3610925, "fight_seconds": 0.4346521, "wins": 4171 },
-      "legacy_over_v2_throughput": 1.734,
+      "legacy_over_runtime_throughput": 1.734,
       "mismatch_count": 0
     },
     "cqp_single": {
       "groups": 20,
       "count_per_group": 1000,
       "battles": 20000,
-      "v2": { "wall_seconds": 0.7082662, "init_seconds": 0.2019171, "fight_seconds": 0.4973495, "wins": 14513 },
+      "runtime": { "wall_seconds": 0.7082662, "init_seconds": 0.2019171, "fight_seconds": 0.4973495, "wins": 14513 },
       "legacy": { "wall_seconds": 1.2847160, "init_seconds": 0.5698540, "fight_seconds": 0.6868992, "wins": 14513 },
-      "legacy_over_v2_throughput": 1.814,
+      "legacy_over_runtime_throughput": 1.814,
       "mismatch_count": 0
     },
     "cqp_double": {
       "groups": 32,
       "count_per_group": 1000,
       "battles": 32000,
-      "v2": { "wall_seconds": 1.0341102, "init_seconds": 0.2755346, "fight_seconds": 0.7446417, "wins": 30295 },
+      "runtime": { "wall_seconds": 1.0341102, "init_seconds": 0.2755346, "fight_seconds": 0.7446417, "wins": 30295 },
       "legacy": { "wall_seconds": 2.0865163, "init_seconds": 0.8760010, "fight_seconds": 1.1673885, "wins": 30295 },
-      "legacy_over_v2_throughput": 2.018,
+      "legacy_over_runtime_throughput": 2.018,
       "mismatch_count": 0
     }
   },
@@ -84,17 +84,17 @@
       "players": 20,
       "targets": 35,
       "matchups": 700,
-      "one_percent": { "count_per_matchup": 100, "wall_seconds": 0.122841, "old_v2_seconds": 0.173947, "half_time_target_seconds": 0.0869735 },
-      "ten_percent": { "count_per_matchup": 1000, "wall_seconds": 1.119174, "old_v2_seconds": 1.531991, "half_time_target_seconds": 0.7659955 },
-      "hundred_percent": { "count_per_matchup": 10000, "wall_seconds": 10.955759, "old_v2_seconds": 15.031414, "half_time_target_seconds": 7.515707 }
+      "one_percent": { "count_per_matchup": 100, "wall_seconds": 0.122841, "old_runtime_seconds": 0.173947, "half_time_target_seconds": 0.0869735 },
+      "ten_percent": { "count_per_matchup": 1000, "wall_seconds": 1.119174, "old_runtime_seconds": 1.531991, "half_time_target_seconds": 0.7659955 },
+      "hundred_percent": { "count_per_matchup": 10000, "wall_seconds": 10.955759, "old_runtime_seconds": 15.031414, "half_time_target_seconds": 7.515707 }
     },
     "double": {
       "players": 32,
       "targets": 41,
       "matchups": 1312,
-      "one_percent": { "count_per_matchup": 100, "wall_seconds": 0.530053, "old_v2_seconds": 0.714121, "half_time_target_seconds": 0.3570605 },
-      "ten_percent": { "count_per_matchup": 1000, "wall_seconds": 5.006091, "old_v2_seconds": 6.773550, "half_time_target_seconds": 3.386775 },
-      "hundred_percent": { "count_per_matchup": 10000, "wall_seconds": 47.945151, "old_v2_seconds": 66.997727, "half_time_target_seconds": 33.4988635 }
+      "one_percent": { "count_per_matchup": 100, "wall_seconds": 0.530053, "old_runtime_seconds": 0.714121, "half_time_target_seconds": 0.3570605 },
+      "ten_percent": { "count_per_matchup": 1000, "wall_seconds": 5.006091, "old_runtime_seconds": 6.773550, "half_time_target_seconds": 3.386775 },
+      "hundred_percent": { "count_per_matchup": 10000, "wall_seconds": 47.945151, "old_runtime_seconds": 66.997727, "half_time_target_seconds": 33.4988635 }
     }
   }
 }

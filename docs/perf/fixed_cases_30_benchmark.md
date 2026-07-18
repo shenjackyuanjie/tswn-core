@@ -69,7 +69,7 @@ cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
 
 每个分组包含：case 数、runs、win rate、elapsed、`us/场`、`场/s`、`init us/场`、`fight us/场`。
 
-当前 `0.4.0` 正式基线见 [`runtime_v2_0.4.0_baseline.md`](runtime_v2_0.4.0_baseline.md)：单线程 overall 为 `46.729 µs/场`，stress_multi 为 `97.614 µs/场`，分别比 `0.3.10` 留档快 `32.23%` 与 `30.85%`；自动线程 overall 为 `5.872 µs/场`。
+当前 `0.4.0` 正式基线见 [`runtime_0.4.0_baseline.md`](runtime_0.4.0_baseline.md)：单线程 overall 为 `46.729 µs/场`，stress_multi 为 `97.614 µs/场`，分别比 `0.3.10` 留档快 `32.23%` 与 `30.85%`；自动线程 overall 为 `5.872 µs/场`。
 
 ## 5. 判读
 

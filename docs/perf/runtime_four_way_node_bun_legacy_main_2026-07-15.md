@@ -1,4 +1,4 @@
-# Node.js / Bun / Runtime v1 / v2 四方性能报告
+# Node.js / Bun / legacy Runtime / runtime 四方性能报告
 
 > 日期：2026-07-15
 >
@@ -10,15 +10,15 @@
 >
 > JavaScript 基线：`md5.js 0.5.2`
 
-本报告统一复测 Node.js、Bun、当前源码内的 Runtime v1 和 Runtime v2。这里的“v1”是 `tswn_core 0.4.2` 同一份源码中保留的 legacy runtime，不是历史发布版 `0.3.10`；历史 `0.3.10` 只在单独一节中作近似参考。
+本报告统一复测 Node.js、Bun、当前源码内的 legacy Runtime 和 Runtime。这里的“legacy”是 `tswn_core 0.4.2` 同一份源码中保留的 legacy runtime，不是历史发布版 `0.3.10`；历史 `0.3.10` 只在单独一节中作近似参考。
 
-原始 JSON 保存在本机 `target/four_runtime_890a74b/`，不纳入 Git。四方基准工具提交之后没有再修改 runtime 实现，因此被测 Runtime v2 仍以 `6bc60cb` 为锚点。
+原始 JSON 保存在本机 `target/four_runtime_890a74b/`，不纳入 Git。四方基准工具提交之后没有再修改 runtime 实现，因此被测 Runtime 仍以 `6bc60cb` 为锚点。
 
 ## 1. 总结
 
-Runtime v2 相对当前 Runtime v1 的主指标全部超过“节省 30% wall time”的目标：本轮最小提升是普通 win-rate 的 **40.54%**，最大提升是 CQP 双人 score 的 **55.52%**。与 Bun 相比，v2 在单线程公开接口上快 **10.54～18.85 倍**，在自动多线程 CQP/CQD 矩阵上快 **25.69～127.46 倍**。
+Runtime 相对当前 legacy Runtime 的主指标全部超过“节省 30% wall time”的目标：本轮最小提升是普通 win-rate 的 **40.54%**，最大提升是 CQP 双人 score 的 **55.52%**。与 Bun 相比，runtime 在单线程公开接口上快 **10.54～18.85 倍**，在自动多线程 CQP/CQD 矩阵上快 **25.69～127.46 倍**。
 
-| 工作负载 | 规模与计时单位 | Node.js | Bun | Runtime v1 | Runtime v2 | v2 / Node | v2 / Bun | v2 / v1 | v2 相对 v1 节省 |
+| 工作负载 | 规模与计时单位 | Node.js | Bun | legacy Runtime | Runtime | runtime / Node | runtime / Bun | runtime / legacy | runtime 相对 legacy 节省 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | fixed 双队子集 | 17 case × 1000，µs/场 | 360.136 | 266.079 | 33.250 | **16.067** | 22.41x | 16.56x | 2.07x | **51.67%** |
 | 普通 win-rate | 1 case × 13000，总 wall | 2.758 s | 1.819 s | 0.162 s | **0.096 s** | 28.59x | 18.85x | 1.68x | **40.54%** |
@@ -35,7 +35,7 @@ Runtime v2 相对当前 Runtime v1 的主指标全部超过“节省 30% wall ti
 需要同时注意两点：
 
 - Bun 的单线程执行始终比 Node.js 快，但 Bun 的 `worker_threads` 动态矩阵明显比 Node.js 慢；1% 短任务尤其容易被线程通信和任务领取成本放大。
-- score、普通 win-rate 和 CQP 单人结果完全一致；CQD 双人在大样本下发现少量逐 matchup 差异，100% 档还有 1 场触发 v2 的行动保护上限。因此本报告支持“性能目标已达”，但不能据此写成“所有四方结果完全一致”。
+- score、普通 win-rate 和 CQP 单人结果完全一致；CQD 双人在大样本下发现少量逐 matchup 差异，100% 档还有 1 场触发 runtime 的行动保护上限。因此本报告支持“性能目标已达”，但不能据此写成“所有四方结果完全一致”。
 
 ## 2. 环境与计时口径
 
@@ -43,7 +43,7 @@ Runtime v2 相对当前 Runtime v1 的主指标全部超过“节省 30% wall ti
 | --- | --- |
 | CPU | AMD Ryzen 7 5800X，8 核 16 逻辑处理器 |
 | 系统 | Windows，`x86_64-pc-windows-msvc` |
-| Node.js | `v22.23.1` |
+| Node.js | `runtime2.23.1` |
 | Bun | `1.4.0` |
 | Rust | `rustc 1.99.0-nightly (da80ed070 2026-07-14)`，LLVM 22.1.8 |
 | Cargo | `1.99.0-nightly (59800466c 2026-07-07)` |
@@ -70,9 +70,9 @@ Runtime v2 相对当前 Runtime v1 的主指标全部超过“节省 30% wall ti
 
 ### 3.1 四方可比的 1v1/2v2 子集
 
-每个 case 1000 场，3 次独立运行取中位数。Node.js/Bun 与 v2 的汇总胜场完全一致；v1 在 2v2 中多 2 胜。
+每个 case 1000 场，3 次独立运行取中位数。Node.js/Bun 与 runtime 的汇总胜场完全一致；legacy 在 2v2 中多 2 胜。
 
-| 分组 | 场数 | Node.js µs/场 | Bun µs/场 | v1 µs/场 | v2 µs/场 | Node/Bun/v1/v2 胜场 |
+| 分组 | 场数 | Node.js µs/场 | Bun µs/场 | legacy µs/场 | runtime µs/场 | Node/Bun/legacy/runtime 胜场 |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | 1v1 | 11000 | 280.440 | 197.080 | 21.847 | **10.305** | 5441 / 5441 / 5441 / 5441 |
 | 2v2 | 6000 | 510.275 | 391.330 | 54.282 | **26.516** | 3311 / 3311 / 3313 / 3311 |
@@ -82,7 +82,7 @@ Runtime v2 相对当前 Runtime v1 的主指标全部超过“节省 30% wall ti
 
 每个 case 13000 场，3 次中位数。wall/init/fight 的单位均为 µs/场。
 
-| 分组 | v1 wall | v1 init | v1 fight | v2 wall | v2 init | v2 fight | v2/v1 吞吐 | wall 节省 | v1/v2 胜场 |
+| 分组 | legacy wall | legacy init | legacy fight | runtime wall | runtime init | runtime fight | runtime/legacy 吞吐 | wall 节省 | legacy/runtime 胜场 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | overall | 61.906 | 5.078 | 55.269 | **31.668** | 2.979 | 28.521 | 1.96x | **48.85%** | 150824 / 150858 |
 | core_1v1_2v2 | 31.149 | 3.378 | 26.757 | **15.534** | 2.059 | 13.327 | 2.01x | **50.14%** | 112300 / 112305 |
@@ -90,13 +90,13 @@ Runtime v2 相对当前 Runtime v1 的主指标全部超过“节省 30% wall ti
 | 2v2 | 51.533 | 4.592 | 45.480 | **25.689** | 2.826 | 22.697 | 2.01x | **50.15%** | 42276 / 42270 |
 | stress_multi | 128.170 | 8.861 | 116.545 | **65.274** | 4.937 | 60.123 | 1.96x | **49.08%** | 23093 / 23119 |
 
-这也回答了 init 的当前基线：完整 fixed30 单线程 overall 中，v1 init 为 **5.078 µs/场**，v2 为 **2.979 µs/场**，init 时间缩短约 41.34%。
+这也回答了 init 的当前基线：完整 fixed30 单线程 overall 中，legacy init 为 **5.078 µs/场**，runtime 为 **2.979 µs/场**，init 时间缩短约 41.34%。
 
 ### 3.3 Rust 全部 30 case，自动线程
 
 自动模式使用 20 个内部 worker。下表只比较 wall；init/fight 是 worker 累计 CPU 时间，不能与 wall 相加。
 
-| 分组 | v1 wall µs/场 | v2 wall µs/场 | v2/v1 吞吐 | wall 节省 | v1/v2 胜场 |
+| 分组 | legacy wall µs/场 | runtime wall µs/场 | runtime/legacy 吞吐 | wall 节省 | legacy/runtime 胜场 |
 | --- | ---: | ---: | ---: | ---: | --- |
 | overall | 6.680 | **3.681** | 1.81x | **44.89%** | 150824 / 150858 |
 | core_1v1_2v2 | 3.452 | **1.902** | 1.82x | **44.92%** | 112300 / 112305 |
@@ -108,7 +108,7 @@ Runtime v2 相对当前 Runtime v1 的主指标全部超过“节省 30% wall ti
 
 历史值来自 [`fixed_cases_30_results/perf_cases_0.3.10.md`](fixed_cases_30_results/perf_cases_0.3.10.md)，不是本轮同进程 A/B，Rust 工具链与代码基线也不同，只能作为版本级近似参考。
 
-| 分组 | 0.3.10 µs/场 | 当前 v2 µs/场 | 约快 | wall 约节省 |
+| 分组 | 0.3.10 µs/场 | 当前 runtime µs/场 | 约快 | wall 约节省 |
 | --- | ---: | ---: | ---: | ---: |
 | overall | 68.952 | **31.668** | 2.18x | 54.07% |
 | core_1v1_2v2 | 35.354 | **15.534** | 2.28x | 56.07% |
@@ -122,20 +122,20 @@ Runtime v2 相对当前 Runtime v1 的主指标全部超过“节省 30% wall ti
 
 `left@red` 对 `right@blue`，单线程 13000 场，5 次中位数。
 
-| Runtime | wall | µs/场 | 相对 v2 | 胜场 |
+| Runtime | wall | µs/场 | 相对 runtime | 胜场 |
 | --- | ---: | ---: | ---: | ---: |
-| Node.js | 2.758407 s | 212.185 | v2 快 28.59x | 7077 |
-| Bun | 1.818977 s | 139.921 | v2 快 18.85x | 7077 |
-| Runtime v1 | 0.162270 s | 12.482 | v2 快 1.68x | 7077 |
-| Runtime v2 | **0.096483 s** | **7.422** | — | 7077 |
+| Node.js | 2.758407 s | 212.185 | runtime 快 28.59x | 7077 |
+| Bun | 1.818977 s | 139.921 | runtime 快 18.85x | 7077 |
+| legacy Runtime | 0.162270 s | 12.482 | runtime 快 1.68x | 7077 |
+| Runtime | **0.096483 s** | **7.422** | — | 7077 |
 
-Rust 细分中，v1 的 init/fight 分别为 2.097/9.801 µs/场，v2 为 1.125/6.160 µs/场。
+Rust 细分中，legacy 的 init/fight 分别为 2.097/9.801 µs/场，runtime 为 1.125/6.160 µs/场。
 
 ### 4.2 score 单线程裸时间
 
-三种输入均运行 3 次取中位数。所有 Runtime 的胜场逐组一致，Rust v1/v2 的 mismatch 均为 0。
+三种输入均运行 3 次取中位数。所有 Runtime 的胜场逐组一致，Rust legacy/runtime 的 mismatch 均为 0。
 
-| 输入 | 总场数 | Node.js wall / µs | Bun wall / µs | v1 wall / µs | v2 wall / µs | v2/Bun 吞吐 | v2/v1 吞吐 | 胜场 |
+| 输入 | 总场数 | Node.js wall / µs | Bun wall / µs | legacy wall / µs | runtime wall / µs | runtime/Bun 吞吐 | runtime/legacy 吞吐 | 胜场 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | mario | 13000 | 6.228 s / 479.103 | 5.082 s / 390.887 | 0.885 s / 68.100 | **0.482 s / 37.096** | 10.54x | 1.84x | 4171 |
 | CQP 单人 20 组 | 20000 | 9.894 s / 494.725 | 8.225 s / 411.233 | 1.373 s / 68.648 | **0.757 s / 37.855** | 10.86x | 1.81x | 14513 |
@@ -143,7 +143,7 @@ Rust 细分中，v1 的 init/fight 分别为 2.097/9.801 µs/场，v2 为 1.125/
 
 Rust init/fight 总时间如下：
 
-| 输入 | v1 init | v1 fight | v2 init | v2 fight |
+| 输入 | legacy init | legacy fight | runtime init | runtime fight |
 | --- | ---: | ---: | ---: | ---: |
 | mario | 0.390 s | 0.476 s | **0.166 s** | **0.313 s** |
 | CQP 单人 | 0.611 s | 0.736 s | **0.261 s** | **0.484 s** |
@@ -153,7 +153,7 @@ Rust init/fight 总时间如下：
 
 ### 5.1 性能与吞吐
 
-| 输入 | 档位 | 有效总场数 | worker | Node.js wall | Bun wall | v1 wall | v2 wall | v2 µs/场 | v2 吞吐 | v2/v1 |
+| 输入 | 档位 | 有效总场数 | worker | Node.js wall | Bun wall | legacy wall | runtime wall | runtime µs/场 | runtime 吞吐 | runtime/legacy |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | CQP 单人 | 1% | 70000 | 24 | 5.807 s | 14.482 s | 0.194 s | **0.114 s** | 1.623 | 616078 场/s | 1.71x |
 | CQP 单人 | 10% | 700000 | 32 | 36.111 s | 70.460 s | 1.860 s | **0.992 s** | 1.418 | 705428 场/s | 1.87x |
@@ -168,7 +168,7 @@ Rust init/fight 总时间如下：
 
 “差异 matchup”表示该 `player × target` 的汇总胜场不同，不表示有这么多场战斗失败。Node.js 与 Bun 六档逐 matchup 完全一致，因此下表把两者合并为 JS 参考。
 
-| 输入 | 档位 | JS 胜场 | v1 胜场 / 差异 matchup | v2 胜场 / 差异 matchup | v2 errors |
+| 输入 | 档位 | JS 胜场 | legacy 胜场 / 差异 matchup | runtime 胜场 / 差异 matchup | runtime errors |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | CQP 单人 | 1% | 20487 | 20487 / 0 | 20487 / 0 | 0 |
 | CQP 单人 | 10% | 204526 | 204526 / 0 | 204526 / 0 | 0 |
@@ -177,23 +177,23 @@ Rust init/fight 总时间如下：
 | CQD 双人 | 10% | 623330 | 623342 / 112 | 623332 / 4 | 0 |
 | CQD 双人 | 100% | 6231102 | 6231227 / 255 | 6231105 / 26 | **1** |
 
-CQD 100% 的唯一错误位于 `player_index=21, target_index=31`：v2 在 10000 场中记录 4559 胜、1 个错误；诊断确认是单场达到 100000 action 的保护上限，不是输入解析或 worker 崩溃。这个 case 应加入后续卡住/极长对局回归集。
+CQD 100% 的唯一错误位于 `player_index=21, target_index=31`：runtime 在 10000 场中记录 4559 胜、1 个错误；诊断确认是单场达到 100000 action 的保护上限，不是输入解析或 worker 崩溃。这个 case 应加入后续卡住/极长对局回归集。
 
-CQD 10% 的四个 JS/v2 差异为：
+CQD 10% 的四个 JS/runtime 差异为：
 
-| player index | target index | JS | v1 | v2 |
+| player index | target index | JS | legacy | runtime |
 | ---: | ---: | ---: | ---: | ---: |
 | 6 | 26 | 605 | 605 | 604 |
 | 19 | 26 | 335 | 335 | 336 |
 | 21 | 39 | 532 | 532 | 533 |
 | 28 | 26 | 501 | 501 | 502 |
 
-为排除 `rq=6` 与 `rq=4` 的影响，基准工具通过临时 `md5.js` 副本把这四组定点复测为 `rq=4`，结果仍与表中相同，说明这四处不是 rq 口径造成的。100% 档共有 26 个 JS/v2 差异；其中上述四处已完成 rq 对齐确认，其余 22 处尚未逐个做 rq=4 定点诊断。
+为排除 `rq=6` 与 `rq=4` 的影响，基准工具通过临时 `md5.js` 副本把这四组定点复测为 `rq=4`，结果仍与表中相同，说明这四处不是 rq 口径造成的。100% 档共有 26 个 JS/runtime 差异；其中上述四处已完成 rq 对齐确认，其余 22 处尚未逐个做 rq=4 定点诊断。
 
 因此，正确的结论是：
 
 - CQP 单人六档结果全等，score 与普通 win-rate 也全等；
-- CQD 双人的 v2 已明显比 v1 更接近官方 JS，但仍存在边界语义差异和一个极长对局保护上限；
+- CQD 双人的 runtime 已明显比 legacy 更接近官方 JS，但仍存在边界语义差异和一个极长对局保护上限；
 - 在这些差异归零或被明确批准为语义变更前，不应把四方结果描述成“完全正确、逐场等价”。
 
 ## 6. 测试门禁
@@ -219,23 +219,23 @@ cargo test -p tswn_core --features no_debug
 代表性命令如下；正式留档时每轮使用独立进程并写入不同 JSON。
 
 ```powershell
-# Rust fixed；v1/v2 分别执行，自动线程把 --thread 改为 0
+# Rust fixed；legacy/runtime 分别执行，自动线程把 --thread 改为 0
 target\release\track_perf_cases.exe `
   --case-dir docs\perf\fixed_cases_30 `
-  --out-dir target\four_runtime\fixed_v2 `
-  --bench-runs 13000 --thread 1 --engine v2 -q
+  --out-dir target\four_runtime\fixed_runtime `
+  --bench-runs 13000 --thread 1 --engine main -q
 
 # Rust score；input 可替换为 CQP 单人或 CQD 双人文件
 target\release\track_score_perf.exe `
   --input docs\perf\score\mario.txt `
-  --count 13000 --engine both --first v2 `
+  --count 13000 --engine both --first main `
   --out target\four_runtime\score_mario.json
 
-# Rust CQP/CQD 同轮 v1/v2 对账
+# Rust CQP/CQD 同轮 legacy/runtime 对账
 target\release\track_cqp_perf.exe `
   --players docs\perf\cqp\sqp6000_first20.txt `
   --targets crates\tswn_openbox\assets\targets\target1.txt `
-  --count 1000 --workers 0 --engine both --first v2 `
+  --count 1000 --workers 0 --engine both --first main `
   --out target\four_runtime\rust_cqp_10pct.json
 
 # Node.js；把 node 换成 bun 即执行相同 Bun 基准
@@ -249,6 +249,6 @@ node scripts\benchmark_md5_runtime.cjs `
 
 ## 8. 最终判断
 
-从性能验收看，当前 v2 已经稳定越过相对当前 v1 快 30% 的要求，并且不是只在某一个输入上达标：fixed 单线程、stress_multi、自动线程、普通 win-rate、三种 score，以及 CQP/CQD 六个精度档全部达标。与 Node.js/Bun 相比则已经不是小幅领先，而是一个数量级到两个数量级的差距。
+从性能验收看，当前 runtime 已经稳定越过相对当前 legacy 快 30% 的要求，并且不是只在某一个输入上达标：fixed 单线程、stress_multi、自动线程、普通 win-rate、三种 score，以及 CQP/CQD 六个精度档全部达标。与 Node.js/Bun 相比则已经不是小幅领先，而是一个数量级到两个数量级的差距。
 
-从正确性验收看，普通 score、普通 win-rate、fixed 双队的 v2 与 JS、CQP 单人均已对齐；CQD 大样本仍留下 26 个汇总差异 matchup 和 1 场行动保护上限。后续如果继续优化，性能侧应把本报告作为新基线，正确性侧则优先固化并缩小这批 CQD 边界 case。
+从正确性验收看，普通 score、普通 win-rate、fixed 双队的 runtime 与 JS、CQP 单人均已对齐；CQD 大样本仍留下 26 个汇总差异 matchup 和 1 场行动保护上限。后续如果继续优化，性能侧应把本报告作为新基线，正确性侧则优先固化并缩小这批 CQD 边界 case。

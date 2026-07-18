@@ -9,7 +9,7 @@
 - `0.2.20`
 - `0.3.1`
 - `0.3.2`
-- `0.4.0` Runtime v2
+- `0.4.0` Runtime
 
 当前这份记录重点对应：
 
@@ -17,7 +17,7 @@
 - `0.3.1` 在补齐 WASM 查询接口后，按同口径补跑 benchmark，确认当前版本没有新异常，但相较 `0.2.20` 有一小段性能回退
 - `0.3.2` 新增 DIY / overlay 覆盖系统，按同口径补跑确认非 DIY 通路无性能回退
 - 当前表格已同步到 `0.3.2` 的稳定重跑结果，可直接和 `0.3.1`、`0.2.20`、`0.2.14` 做横向比较
-- `0.4.0` 的 fixed30、score、win-rate 与 CQP/CQD 统一结果另见 `docs/perf/runtime_v2_0.4.0_baseline.md`
+- `0.4.0` 的 fixed30、score、win-rate 与 CQP/CQD 统一结果另见 `docs/perf/runtime_0.4.0_baseline.md`
 
 ---
 
@@ -33,7 +33,7 @@
 
 说明：
 
-- Runtime v2 `0.4.0` 的当前回归基线与 legacy score 硬目标见 [`runtime_v2_0.4.0_baseline.md`](runtime_v2_0.4.0_baseline.md)；
+- Runtime `0.4.0` 的当前回归基线与 legacy score 硬目标见 [`runtime_0.4.0_baseline.md`](runtime_0.4.0_baseline.md)；
 
 - `Bun` 与 `0.2.12` 的数据来自 `docs\update\0.2.12.md` 中的同机历史记录；
 - `0.2.13` 数据来自 detached worktree：`f9b0e3c`；
