@@ -18,6 +18,7 @@
 - `0.3.2` 新增 DIY / overlay 覆盖系统，按同口径补跑确认非 DIY 通路无性能回退
 - 当前表格已同步到 `0.3.2` 的稳定重跑结果，可直接和 `0.3.1`、`0.2.20`、`0.2.14` 做横向比较
 - `0.4.0` 的 fixed30、score、win-rate 与 CQP/CQD 统一结果另见 `docs/perf/runtime_0.4.0_baseline.md`
+- `0.5.0` 主 Runtime 独立化后的完整发版结果与 0.4.3 同机交替 A/B 见 `docs/perf/runtime_0.5.0_749fcd1_release_benchmark.md`
 
 ---
 
@@ -34,6 +35,7 @@
 说明：
 
 - Runtime `0.4.0` 的当前回归基线与 legacy score 硬目标见 [`runtime_0.4.0_baseline.md`](runtime_0.4.0_baseline.md)；
+- Runtime `0.5.0` 的发版基准与 3% 回退门禁见 [`runtime_0.5.0_749fcd1_release_benchmark.md`](runtime_0.5.0_749fcd1_release_benchmark.md)；
 
 - `Bun` 与 `0.2.12` 的数据来自 `docs\update\0.2.12.md` 中的同机历史记录；
 - `0.2.13` 数据来自 detached worktree：`f9b0e3c`；

@@ -11,6 +11,7 @@
 | [`howto/capi_cpp_windows.md`](howto/capi_cpp_windows.md) | Windows C/C++ 调用 C ABI |
 | [`howto/diy_validation.md`](howto/diy_validation.md) | DIY / OL 验证流程 |
 | [`perf/fixed_cases_30_benchmark.md`](perf/fixed_cases_30_benchmark.md) | fixed30 性能回归口径 |
+| [`perf/runtime_0.5.0_749fcd1_release_benchmark.md`](perf/runtime_0.5.0_749fcd1_release_benchmark.md) | 0.5.0 主 Runtime 完整发版基准与同机 A/B |
 | [`perf/benchmark_tracking.md`](perf/benchmark_tracking.md) | 历史性能追踪索引 |
 
 ## 历史与实施记录

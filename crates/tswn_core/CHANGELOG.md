@@ -12,6 +12,7 @@
 ### 验证
 
 - 冻结并通过 87 个 JS exact trace 与 37 个压力 golden；release 门禁同时检查输入 SHA-256、winner、rounds、score、最终 RC4、逐回合 canonical digest，以及旧对象路径和禁用符号均未回流。
+- 完成 0.5.0 主 Runtime 完整 release benchmark；fixed30、win-rate、score 与 OpenBox CQP/CQD 均通过相对 0.4.3 不回退超过 3% 的门禁，最大观测回退为 CQP 单人 score 的 2.53%，同机五轮交替 A/B 的最大回退为 CQD 1000 档的 1.09%。完整环境、逐轮中位数与机器漂移说明见 `docs/perf/runtime_0.5.0_749fcd1_release_benchmark.md` 及同名 JSON。
 
 ### 修复
 
