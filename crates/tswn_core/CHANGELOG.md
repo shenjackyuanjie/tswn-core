@@ -4,6 +4,7 @@
 
 ### 破坏性重构
 
+- 新增供 Python、C 与 WASM 共用的主 Runtime 会话快照层；完成态、胜者、RC4、实体状态和回放帧不再经由旧 `Player` / `Storage` / `WorldState` 查询，无显式 guard 的绑定入口统一限制为 20,000 主回合。
 - Runtime 已完成主引擎升格：源码模块统一为 `runtime`，根级 `Runner` / `PreparedRunner` 改为主 Runtime；旧对象模型移入 `legacy`，并保留 `LegacyRunner` / `LegacyPreparedRunner` 显式别名用于兼容和 oracle 对账。
 - 所有 Rust、C、Python、WASM、CLI、测试 feature、脚本和文档中的迁移期版本命名均已移除。CLI 调试入口改为 `runtime normalized-run|parity`，显式引擎选择改为 `--runtime main|legacy`；parity JSON 的主引擎字段改为 `runtime`。
 - 主 `Runner` 新增 `new_from_namerena_raw` 与 `new_from_namerena_raw_with_eval_rq`，默认安装内置 Runtime profile；原低层 legacy API 的调用方需改用 `tswn_core::legacy::Runner` 或 `LegacyRunner`。

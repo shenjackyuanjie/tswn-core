@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use tswn_core::cli_api as core_cli_api;
 use tswn_core::engine::update::UpdateType;
-use tswn_core::player::skill::act::minion::MinionKind;
+use tswn_core::runtime::RuntimeMinionKind;
 
 #[derive(Debug, Clone, Default, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
@@ -105,13 +105,13 @@ pub enum MinionKindView {
     Zombie,
 }
 
-impl From<MinionKind> for MinionKindView {
-    fn from(value: MinionKind) -> Self {
+impl From<RuntimeMinionKind> for MinionKindView {
+    fn from(value: RuntimeMinionKind) -> Self {
         match value {
-            MinionKind::Clone => Self::Clone,
-            MinionKind::Summon => Self::Summon,
-            MinionKind::Shadow => Self::Shadow,
-            MinionKind::Zombie => Self::Zombie,
+            RuntimeMinionKind::Clone => Self::Clone,
+            RuntimeMinionKind::Summon => Self::Summon,
+            RuntimeMinionKind::Shadow => Self::Shadow,
+            RuntimeMinionKind::Zombie => Self::Zombie,
         }
     }
 }

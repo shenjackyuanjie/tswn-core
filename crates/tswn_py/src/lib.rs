@@ -1,6 +1,6 @@
 //! tswn-py — tswn-core 的 Python 绑定。
 //!
-//! 通过 `pyo3` 暴露战斗引擎、预构建胜率计算、玩家/RC4 包装类型以及图标渲染函数。
+//! 通过 `pyo3` 暴露主 Runtime、预构建胜率计算、RC4 快照以及图标渲染函数。
 //! Python 侧接口尽量保持直接：复杂对局仍由 `Runner` / `PreparedRunner` 承担，
 //! 批量胜率和图标输出则提供便于脚本调用的顶层函数。
 
@@ -15,7 +15,7 @@ use pyo3::{
     types::{PyDictMethods, PyList, PyListMethods, PyModule, PyModuleMethods},
     wrap_pyfunction,
 };
-use tswn_core::{LegacyPreparedRunner as PreparedRunner, LegacyRunner as Runner};
+use tswn_core::{PreparedRunner, Runner};
 
 fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
@@ -26,9 +26,9 @@ fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     }
 }
 
-pub fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> PyResult<f64> {
+pub fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, _eval_rq: f64, thread: u32) -> PyResult<f64> {
     let summary =
-        tswn_core::win_rate::prepared_win_rate(prepared, n, eval_rq, thread).map_err(wrapper::error::PyRunnerError::new)?;
+        tswn_core::runtime::prepared_runtime_win_rate(prepared, n, thread).map_err(wrapper::error::PyRunnerError::new)?;
     Ok(summary.win_rate_percent())
 }
 
@@ -147,7 +147,6 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cli_api::icon_info, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::parse_group_lines, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_normalized_run, m)?)?;
-    m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_parity_report, m)?)?;
     m.add_class::<cli_api::PyWinRateResult>()?;
     m.add_class::<cli_api::PyScoreResult>()?;
     m.add_class::<cli_api::PyNamerPfResult>()?;
@@ -156,11 +155,8 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<cli_api::PyIconInfo>()?;
     m.add_class::<wrapper::PyRunner>()?;
     m.add_class::<wrapper::PyPreparedRunner>()?;
-    m.add_class::<wrapper::PyWorldState>()?;
-    m.add_class::<wrapper::PyStorage>()?;
     m.add_class::<wrapper::PyRunUpdate>()?;
     m.add_class::<wrapper::PyRunUpdates>()?;
-    m.add_class::<wrapper::player::PyPlayer>()?;
     m.add_class::<wrapper::rc4::PyRC4>()?;
     m.add_class::<wrapper::error::PyRunnerError>()?;
     Ok(())

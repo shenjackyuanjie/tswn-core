@@ -1,21 +1,19 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use pyo3::{
     IntoPyObjectExt, PyResult,
     types::{PyDict, PyDictMethods, PyList, PyListMethods},
 };
 use tswn_core::{
-    LegacyRunner as Runner, RunUpdate,
+    RunUpdate, Runner,
     engine::update::{RunUpdates, UpdateType},
-    player::{
-        PlrId,
-        skill::act::minion::{MinionKind, MinionRuntimeState, minion_display_index},
-    },
+    player::PlrId,
     replay_view::{
         ReplayEventView, ReplayRow as CoreReplayRow, ReplayState, ReplayTextPart as CoreReplayTextPart,
         ReplayTextPartKind as CoreReplayTextPartKind, ReplayTone, ReplayViewFrame, WIN_UPDATE_DELAY0_MS, build_replay_view_frame,
         render_update_message as core_render_update_message,
     },
+    runtime::{BINDING_COMPLETION_MAX_ROUNDS, RuntimePlayerSnapshot as CorePlayerSnapshot},
 };
 
 #[derive(Clone)]
@@ -87,127 +85,56 @@ pub struct EventDto {
 
 pub fn winner_names(runner: &Runner) -> Vec<String> {
     runner
-        .world
-        .winner
-        .as_ref()
+        .winner_ids()
         .into_iter()
-        .flatten()
         .map(|id| {
             runner
-                .storage
-                .get_player_or_pending(id)
-                .map(|player| player.display_name())
+                .player_snapshot(id)
+                .map(|player| player.display_name)
                 .unwrap_or_else(|| format!("#{id}"))
         })
         .collect()
 }
 
 pub fn snapshot_players(runner: &Runner) -> Vec<PlayerSnapshot> {
-    let mut seen = HashSet::<PlrId>::new();
-    let mut all_ids = Vec::<PlrId>::new();
-
-    for group in &runner.input_groups {
-        for id in group {
-            if seen.insert(*id) {
-                all_ids.push(*id);
-            }
-        }
-    }
-    for id in runner.storage.all_player_ids() {
-        if seen.insert(id) {
-            all_ids.push(id);
-        }
-    }
-    for pending in runner.storage.iter_pending_spawns() {
-        let id = pending.player.as_ptr();
-        if seen.insert(id) {
-            all_ids.push(id);
-        }
-    }
-    all_ids.sort_by_key(|id| {
-        let input_team = runner
-            .world
-            .team_index_of(*id)
-            .and_then(|team_idx| runner.world.input_team_index_of_team(team_idx))
-            .unwrap_or(usize::MAX);
-        (input_team, *id)
-    });
-
-    all_ids
+    runner
+        .player_snapshots()
         .into_iter()
         .enumerate()
-        .filter_map(|(display_order, id)| snapshot_one(runner, id, display_order))
+        .map(|(display_order, snapshot)| snapshot_from_core(snapshot, display_order))
         .collect()
 }
 
-pub fn snapshot_one(runner: &Runner, id: PlrId, display_order: usize) -> Option<PlayerSnapshot> {
-    let player = runner.storage.get_player_or_pending(&id)?;
-    let status = player.get_status();
-    let minion = player.get_state::<MinionRuntimeState>().copied();
-    let owner_id = minion.and_then(|state| state.owner);
-    let source_id = root_owner_id(runner, id);
-    let team_index = runner
-        .world
-        .team_index_of(id)
-        .or_else(|| owner_id.and_then(|owner| runner.world.team_index_of(owner)));
-    let input_team_index = team_index.and_then(|team_idx| runner.world.input_team_index_of_team(team_idx));
-    let id_key_name = player.id_key_name();
-
-    Some(PlayerSnapshot {
-        id,
-        team_index,
-        input_team_index,
-        owner_id,
-        source_id,
+fn snapshot_from_core(snapshot: CorePlayerSnapshot, display_order: usize) -> PlayerSnapshot {
+    PlayerSnapshot {
+        id: snapshot.id,
+        team_index: Some(snapshot.team_index),
+        input_team_index: snapshot.input_team_index,
+        owner_id: snapshot.owner_id,
+        source_id: snapshot.root_owner_id,
         display_order,
-        id_name: player.id_name(),
-        icon_key: id_key_name.clone(),
-        id_key_name,
-        display_name: player.display_name(),
-        display_index: minion_display_index(&runner.storage, id),
-        base_name: player.base_name(),
-        player_type: format!("{:?}", player.player_type()),
-        minion_kind: minion.map(|state| minion_kind_str(state.kind)),
-        hp: status.hp,
-        max_hp: status.max_hp,
-        magic_point: status.magic_point,
-        move_point: status.move_point,
-        attack: status.attack,
-        defense: status.defense,
-        speed: status.speed,
-        agility: status.agility,
-        magic: status.magic,
-        resistance: status.resistance,
-        wisdom: status.wisdom,
-        alive: player.alive(),
-        active: player.active(),
-        frozen: status.frozen,
-    })
-}
-
-fn root_owner_id(runner: &Runner, start_id: PlrId) -> Option<PlrId> {
-    let first = runner.storage.get_player_or_pending(&start_id)?;
-    first.get_state::<MinionRuntimeState>()?;
-
-    let mut current = start_id;
-    loop {
-        let player = runner.storage.get_player_or_pending(&current)?;
-        let Some(minion) = player.get_state::<MinionRuntimeState>() else {
-            return Some(current);
-        };
-        let Some(owner) = minion.owner else {
-            return Some(current);
-        };
-        current = owner;
-    }
-}
-
-fn minion_kind_str(kind: MinionKind) -> &'static str {
-    match kind {
-        MinionKind::Clone => "clone",
-        MinionKind::Summon => "summon",
-        MinionKind::Shadow => "shadow",
-        MinionKind::Zombie => "zombie",
+        id_name: snapshot.id_name,
+        icon_key: snapshot.id_key_name.clone(),
+        id_key_name: snapshot.id_key_name,
+        display_name: snapshot.display_name,
+        display_index: snapshot.display_index,
+        base_name: snapshot.base_name,
+        player_type: snapshot.player_type.to_owned(),
+        minion_kind: snapshot.minion_kind.map(|kind| kind.as_str()),
+        hp: snapshot.hp,
+        max_hp: snapshot.max_hp,
+        magic_point: snapshot.magic_point,
+        move_point: snapshot.move_point,
+        attack: snapshot.attack,
+        defense: snapshot.defense,
+        speed: snapshot.speed,
+        agility: snapshot.agility,
+        magic: snapshot.magic,
+        resistance: snapshot.resistance,
+        wisdom: snapshot.wisdom,
+        alive: snapshot.alive,
+        active: snapshot.active,
+        frozen: snapshot.frozen,
     }
 }
 
@@ -566,15 +493,16 @@ pub fn build_replay(py: pyo3::Python<'_>, runner: &mut Runner, limit: Option<usi
     let mut idle_rounds = 0usize;
     let mut total_visible_events = 0usize;
     let mut any_visible_event_emitted = false;
+    let mut rounds = 0usize;
 
-    while !runner.have_winner() && total_visible_events < max_events {
+    while !runner.have_winner() && total_visible_events < max_events && rounds < BINDING_COMPLETION_MAX_ROUNDS {
+        rounds += 1;
         let before_states = previous_states.clone();
-        let mut updates = RunUpdates::new();
-        runner.round_tick(&mut updates);
+        let updates = runner.main_round();
 
         if !updates.had_updates() || updates.updates.is_empty() {
             idle_rounds += 1;
-            if idle_rounds > 16usize.saturating_mul(runner.all_plr_len().max(1)) {
+            if idle_rounds > 16usize.saturating_mul(runner.runtime.entities.len().max(1)) {
                 break;
             }
             previous_states = snapshot_players(runner);
@@ -600,11 +528,11 @@ pub fn build_replay(py: pyo3::Python<'_>, runner: &mut Runner, limit: Option<usi
             &after_states,
             &names,
             runner.have_winner(),
-            &runner.world.winner.clone().unwrap_or_default(),
+            &runner.winner_ids(),
         );
         let frame = replay_view_frame_to_pydict(py, &replay_view)?;
         frame.set_item("finished", runner.have_winner())?;
-        frame.set_item("winner_ids", runner.world.winner.clone().unwrap_or_default())?;
+        frame.set_item("winner_ids", runner.winner_ids())?;
         let frame_events = PyList::empty(py);
         for event in &event_dtos {
             frame_events.append(event_to_pydict(py, event)?)?;
@@ -651,7 +579,7 @@ pub fn build_replay(py: pyo3::Python<'_>, runner: &mut Runner, limit: Option<usi
     result.set_item("final_states", snapshots_to_pylist(py, &final_states)?)?;
     set_optional_usize(&result, "winner_team_index", runner.winner_team_index())?;
     result.set_item("winner_team_indices", runner.winner_team_indices())?;
-    result.set_item("winner_ids", runner.world.winner.clone().unwrap_or_default())?;
+    result.set_item("winner_ids", runner.winner_ids())?;
     result.set_item("winner_names", winner_names(runner))?;
     result.set_item("state_granularity", "tick")?;
     result.set_item("win_delay_ms", if runner.have_winner() { WIN_UPDATE_DELAY0_MS } else { 0 })?;

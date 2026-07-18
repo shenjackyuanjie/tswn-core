@@ -1,5 +1,12 @@
 # 更新日志
 
+## [Unreleased]
+
+### ⚠️ Breaking Changes
+
+- `Runner` / `PreparedRunner` 会话切换到主 Runtime；删除 `Runner.round_tick*`、`Storage`、`WorldState`、`Player` 及 parity helper，保留 `main_round`、完成态、RC4、胜者、snapshot 与 replay 接口。
+- 未显式提供 guard 的完成与 replay 路径统一使用 20,000 主回合上限；replay clip 继续只从 `parts[]` 暴露渲染语义。
+
 ## [0.4.0] - 2026-07-14
 
 ### ⚠️ Breaking Changes

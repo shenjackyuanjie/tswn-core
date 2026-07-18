@@ -14,6 +14,7 @@ mod profile;
 mod runner;
 pub mod scheduler;
 pub mod scratch;
+mod session;
 pub mod slot;
 #[cfg(not(feature = "no_debug"))]
 pub mod trace;
@@ -66,6 +67,7 @@ pub use prepared_init::{PreparedBattleInit, PreparedBattleRoster, RuntimeBattleI
 pub(crate) use prepared_init::{ScoreIdentityBuffer, ScoreRosterBuffers, ScoreRoundScratch};
 pub use profile::*;
 pub use runner::*;
+pub use session::*;
 
 #[cfg(test)]
 mod tests;

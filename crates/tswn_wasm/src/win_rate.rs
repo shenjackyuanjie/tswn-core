@@ -3,7 +3,7 @@
 //! 提供 `WinRateSession`（分批次步进执行，支持进度轮询）及 `run_win_rate_sync`
 //! 一次性同步函数，计算第一组玩家对其余组的胜率百分比。
 
-use tswn_core::LegacyRunner as Runner;
+use tswn_core::Runner;
 use tswn_core::runtime::{PreparedRuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range};
 use wasm_bindgen::prelude::*;
 

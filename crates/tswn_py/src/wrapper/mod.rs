@@ -1,19 +1,15 @@
 //! Python 可见类型封装。
 //!
 //! 本模块把 `tswn_core` 的核心类型包成 `pyclass`：`Runner` 用于逐场对局，
-//! `PreparedRunner` 用于复用解析结果跑批量胜率，子模块则分别封装玩家、RC4 和错误类型。
-
-use std::sync::Arc;
+//! `PreparedRunner` 用于复用解析结果跑批量胜率，子模块则分别封装 RC4、回放和错误类型。
 
 use pyo3::{Py, PyAny, PyResult, Python, pyclass, pymethods};
 use tswn_core::{
-    LegacyPreparedRunner as CorePreparedRunner, LegacyRunner as Runner, RunUpdate, RunUpdates,
-    engine::{storage::Storage, update::UpdateType, world_state::WorldState},
-    player::PlrId,
+    PreparedRunner as CorePreparedRunner, RunUpdate, RunUpdates, Runner, engine::update::UpdateType, player::PlrId,
+    runtime::EntityIdx,
 };
 
 pub mod error;
-pub mod player;
 pub mod rc4;
 pub mod replay;
 
@@ -96,50 +92,30 @@ impl PyRunner {
     /// 进行一个主回合（直到出现可见更新），并返回更新内容
     pub fn main_round(&mut self) -> PyRunUpdates { self.inner.main_round().into() }
 
-    /// 进行一轮更新
-    pub fn round_tick(&mut self, update: &mut PyRunUpdates) { self.inner.round_tick(&mut update.inner); }
-
-    /// 进行一轮更新，并返回更新内容
-    pub fn round_tick_new_update(&mut self) -> PyRunUpdates {
-        let mut update = RunUpdates::new();
-        self.inner.round_tick(&mut update);
-        update.into()
-    }
-
-    /// 进行一轮更新，但不采集详细更新帧（仅保留活动标记与 on_update_end 队列处理）。
-    pub fn round_tick_new_update_no_capture(&mut self) -> PyRunUpdates {
-        let mut update = RunUpdates::new_no_capture();
-        self.inner.round_tick(&mut update);
-        update.into()
-    }
-
     /// 运行到结束，返回是否有赢家
-    pub fn run_to_completion(&mut self) -> bool { self.inner.run_to_completion() }
-
-    /// 获取一个 Storage 的引用
-    #[getter]
-    pub fn get_storage(&self) -> PyStorage { self.inner.storage.clone().into() }
-
-    /// 获取当前的 WorldState
-    #[getter]
-    pub fn get_world_state(&self) -> PyWorldState { self.inner.world.clone().into() }
+    pub fn run_to_completion(&mut self) -> bool { self.inner.run_binding_to_completion() }
 
     /// 返回原始输入顺序对应的队伍 roster（不受内部排序影响）
     #[getter]
-    pub fn get_input_groups(&self) -> Vec<Vec<PlrId>> { self.inner.input_groups.clone() }
+    pub fn get_input_groups(&self) -> Vec<Vec<PlrId>> {
+        self.inner
+            .input_groups
+            .iter()
+            .map(|group| group.iter().map(|entity| entity.0 as PlrId).collect())
+            .collect()
+    }
 
     /// 查询指定玩家在原始输入中的队伍下标
     pub fn player_input_group_index(&self, player_id: PlrId) -> Option<usize> {
-        self.inner.input_groups.iter().position(|group| group.contains(&player_id))
+        let entity = EntityIdx(player_id.try_into().ok()?);
+        self.inner.input_groups.iter().position(|group| group.contains(&entity))
     }
 
     /// 获取当前的 rc4
     #[getter]
-    pub fn get_rc4(&self) -> rc4::PyRC4 { self.inner.randomer.clone().into() }
+    pub fn get_rc4(&self) -> rc4::PyRC4 { self.inner.runtime.rng.clone().into() }
 
     /// 是否有赢家
-    ///
-    /// 其实就是用的 world_state 的 have_winner 方法
     pub fn have_winner(&self) -> bool { self.inner.have_winner() }
 
     /// 获取已经获胜的输入队伍索引。
@@ -161,156 +137,16 @@ impl PyRunner {
     }
 
     /// 获取所有存活玩家（扁平）
-    pub fn alives_flat(&self) -> Vec<PlrId> { self.inner.alives_flat() }
+    pub fn alives_flat(&self) -> Vec<PlrId> { self.inner.alive_player_ids() }
 
     /// 获取所有存活玩家（按组）
-    pub fn alives(&self) -> Vec<Vec<PlrId>> { self.inner.alives() }
+    pub fn alives(&self) -> Vec<Vec<PlrId>> { self.inner.alive_player_groups() }
 
     /// 获取所有玩家 ID（包含已死亡）
-    pub fn all_plrs(&self) -> Vec<PlrId> { self.inner.all_plrs() }
+    pub fn all_plrs(&self) -> Vec<PlrId> { self.inner.all_player_ids() }
 
     /// 获取玩家总数（包含已死亡）
-    pub fn all_plr_len(&self) -> usize { self.inner.all_plr_len() }
-}
-
-/// WorldState 的 Python 封装
-#[pyclass]
-#[pyo3(name = "WorldState")]
-pub struct PyWorldState {
-    pub inner: WorldState,
-}
-
-#[pymethods]
-impl PyWorldState {
-    /// 获取当前轮次指针
-    #[getter]
-    pub fn get_round_pos(&self) -> i32 { self.inner.round_pos }
-
-    /// 当前行动顺序中的玩家列表（仅存活）
-    #[getter]
-    pub fn get_players(&self) -> Vec<PlrId> { self.inner.players.clone() }
-
-    /// 胜者阵容（若有）
-    #[getter]
-    pub fn get_winner(&self) -> Option<Vec<PlrId>> { self.inner.winner.clone() }
-
-    /// 是否有赢家
-    pub fn have_winner(&self) -> bool { self.inner.have_winner() }
-
-    /// 获取已经获胜的输入队伍索引。
-    pub fn winner_team_index(&self) -> Option<usize> { self.inner.winner_team_index() }
-
-    /// 获取所有已经获胜的输入队伍索引。
-    pub fn winner_team_indices(&self) -> Vec<usize> { self.inner.winner_team_indices() }
-
-    /// 全部玩家（包含已死亡）
-    pub fn all_plrs(&self) -> Vec<PlrId> { self.inner.all_plrs() }
-
-    /// 全部玩家数量（包含已死亡）
-    pub fn all_plr_len(&self) -> usize { self.inner.all_plr_len() }
-
-    /// 阵容（队伍）数量
-    pub fn roster_count(&self) -> usize { self.inner.roster_count() }
-
-    /// 查询玩家所属队伍下标
-    pub fn team_index_of(&self, actor: PlrId) -> Option<usize> { self.inner.team_index_of(actor) }
-
-    /// 获取队伍全员 roster
-    pub fn team_roster(&self, team_idx: usize) -> Option<Vec<PlrId>> { self.inner.team_roster(team_idx).map(|v| v.to_vec()) }
-
-    /// 获取队伍存活列表
-    pub fn team_alive(&self, team_idx: usize) -> Option<Vec<PlrId>> { self.inner.team_alive(team_idx).map(|v| v.to_vec()) }
-
-    /// 某玩家当前是否存活
-    pub fn contains_alive(&self, plr_id: PlrId) -> bool { self.inner.contains_alive(plr_id) }
-
-    /// 获取指定队伍的 winner roster 快照
-    pub fn winner_roster(&self, team_idx: usize) -> Option<Vec<PlrId>> { self.inner.winner_roster(team_idx) }
-}
-
-impl From<WorldState> for PyWorldState {
-    fn from(value: WorldState) -> Self { Self { inner: value } }
-}
-
-/// Storage 的 Python 封装
-///
-/// 用来获取世界状态/获取玩家信息等
-#[pyclass]
-#[pyo3(name = "Storage")]
-pub struct PyStorage {
-    pub inner: Arc<Storage>,
-}
-
-#[pymethods]
-impl PyStorage {
-    /// 获取玩家
-    pub fn get_player_by_id(&self, plr_id: PlrId) -> Option<player::PyPlayer> {
-        self.inner.get_player(&plr_id).map(|p| p.clone().into())
-    }
-
-    /// 获取玩家（若尚未同步入 players，则尝试从 pending_spawns 查询）
-    pub fn get_player_or_pending_by_id(&self, plr_id: PlrId) -> Option<player::PyPlayer> {
-        self.inner.get_player_or_pending(&plr_id).map(|p| p.clone().into())
-    }
-
-    /// 从 pending_spawns 中按 ID 查询玩家
-    pub fn get_pending_spawn_player_by_id(&self, plr_id: PlrId) -> Option<player::PyPlayer> {
-        self.inner.get_pending_spawn_player(plr_id).map(|p| p.clone().into())
-    }
-
-    /// 按队伍索引获取 roster
-    pub fn get_group(&self, group_id: usize) -> Option<Vec<PlrId>> { self.inner.get_group(group_id).cloned() }
-
-    /// 获取包含某玩家的 roster
-    pub fn group_containing(&self, actor: PlrId) -> Option<Vec<PlrId>> { self.inner.group_containing(actor).cloned() }
-
-    /// 查询某玩家所在队伍索引
-    pub fn group_index_of(&self, actor: PlrId) -> Option<usize> { self.inner.group_index_of(actor) }
-
-    /// 获取包含某玩家的存活组
-    pub fn alive_group_containing(&self, actor: PlrId) -> Option<Vec<PlrId>> { self.inner.alive_group_containing(actor).cloned() }
-
-    /// 按某玩家所在队伍返回其存活组（玩家本身可死亡）
-    pub fn alive_group_at_team_of(&self, actor: PlrId) -> Option<Vec<PlrId>> { self.inner.alive_group_at_team_of(actor).cloned() }
-
-    /// 所有存活玩家 ID（扁平）
-    pub fn all_alive_ids(&self) -> Vec<PlrId> { self.inner.all_alive_ids() }
-
-    /// 所有玩家 ID（包含已死亡）
-    pub fn all_player_ids(&self) -> Vec<PlrId> { self.inner.all_player_ids() }
-
-    /// 当前待同步的召唤数量
-    #[getter]
-    pub fn get_pending_spawn_count(&self) -> usize { self.inner.pending_spawn_count() }
-
-    /// 指定 owner 的待同步召唤数量
-    pub fn pending_spawn_count_for_owner(&self, owner: PlrId) -> usize { self.inner.pending_spawn_count_for_owner(owner) }
-
-    /// 指定 owner 的待同步召唤 ID 列表
-    pub fn pending_spawn_ids_for_owner(&self, owner: PlrId) -> Vec<PlrId> { self.inner.pending_spawn_ids_for_owner(owner) }
-
-    /// 指定队员集合对应 owner 的待同步召唤 ID 列表
-    pub fn pending_spawn_ids_for_group(&self, group_members: Vec<PlrId>) -> Vec<PlrId> {
-        self.inner.pending_spawn_ids_for_group(&group_members)
-    }
-
-    /// 当前 alive group 数量（仅非空组）
-    #[getter]
-    pub fn get_alive_group_count(&self) -> usize { self.inner.alive_group_count() }
-
-    /// 是否存在待同步运行期实体变更
-    #[getter]
-    pub fn get_needs_sync(&self) -> bool { self.inner.needs_sync() }
-
-    #[getter]
-    pub fn get_current_plr_id(&self) -> PlrId { self.inner.current_plr_id() as PlrId }
-
-    #[getter]
-    pub fn get_eval_rq(&self) -> f64 { self.inner.eval_rq() }
-}
-
-impl From<Arc<Storage>> for PyStorage {
-    fn from(value: Arc<Storage>) -> Self { Self { inner: value } }
+    pub fn all_plr_len(&self) -> usize { self.inner.runtime.entities.len() }
 }
 
 /// RunUpdates 的 Python 封装

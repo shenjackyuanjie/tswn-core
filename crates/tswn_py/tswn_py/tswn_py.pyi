@@ -1,7 +1,5 @@
 """tswn_py 扩展模块公开 API 的汇总存根。"""
 
-from ._types_engine import Storage, WorldState
-from ._types_player import Player
 from ._types_rc4 import RC4
 from ._types_replay import TimedEvent
 from ._types_runner import PreparedRunner, Runner
@@ -224,9 +222,6 @@ __all__ = [
     "RunUpdate",
     "RunUpdates",
     "Runner",
-    "WorldState",
-    "Storage",
-    "Player",
     "RC4",
     "DEFAULT_EVAL_RQ",
     "WIN_RATE_EVAL_RQ",

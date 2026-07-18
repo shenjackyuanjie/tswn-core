@@ -103,8 +103,6 @@ class PlayerStatus:
     mp: int
     resistance: int
     wisdom: int
-    all_sum: int
-    name_factor: float
 
 
 def split_raw(raw: str) -> list[list[str]]:
@@ -125,28 +123,22 @@ def split_raw(raw: str) -> list[list[str]]:
 
 def collect_statuses(tswn_py: Any, raw: str) -> list[PlayerStatus]:
     runner = tswn_py.Runner.new_from_namerena_raw(raw)
-    storage = runner.storage
     statuses: list[PlayerStatus] = []
-    for pid in runner.all_plrs():
-        player = storage.get_player_by_id(pid)
-        if player is None:
-            raise AssertionError(f"missing player id={pid}")
+    for player in runner.snapshot_players():
         statuses.append(
             PlayerStatus(
-                id=pid,
-                hp=player.hp,
-                max_hp=player.max_hp,
-                move_point=player.move_point,
-                attack=player.attack,
-                defense=player.defense,
-                speed=player.speed,
-                agility=player.agility,
-                magic=player.magic,
-                mp=player.magic_point,
-                resistance=player.resistance,
-                wisdom=player.wisdom,
-                all_sum=player.all_sum,
-                name_factor=player.name_factor,
+                id=player["id"],
+                hp=player["hp"],
+                max_hp=player["max_hp"],
+                move_point=player["move_point"],
+                attack=player["attack"],
+                defense=player["defense"],
+                speed=player["speed"],
+                agility=player["agility"],
+                magic=player["magic"],
+                mp=player["magic_point"],
+                resistance=player["resistance"],
+                wisdom=player["wisdom"],
             )
         )
     return sorted(statuses, key=lambda item: item.id)

@@ -1,5 +1,12 @@
 # 更新日志
 
+## [Unreleased]
+
+### 变更
+
+- `FightSession` 的构造、逐帧推进、状态快照和胜者查询全部切换到主 Runtime；`WinRateSession` 移除最后一处旧 Runner 解析依赖。
+- `FightSession` / `WinRateSession`、`ReplayClip` 与 `ReplayTextPart` 的 JS/JSON shape 保持不变，clip 仍只通过 `parts[]` 表达文本、血条和死亡特效；无显式回放 guard 时上限为 20,000 主回合。
+
 ## [0.4.0] - 2026-07-14
 
 ### ⚠️ Breaking Changes
