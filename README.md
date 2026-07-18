@@ -41,16 +41,15 @@ cargo build --release --features no_debug,mimalloc_alloc
 cargo build --profile release-fast --features no_debug
 ```
 
-说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。`tswn_core 0.4.0` 起原生默认 feature 已包含 `mimalloc_alloc`，正式 benchmark 与发布构建都保持默认 allocator；显式关闭默认 feature 的结果必须作为独立口径记录。
+说明：`--release` 是正式 benchmark/发版口径；日常需要更快的优化构建时可以用 `--profile release-fast`。`tswn_core 0.5.0` 的原生默认 feature 已包含 `mimalloc_alloc`，正式 benchmark 与发布构建都保持默认 allocator；显式关闭默认 feature 的结果必须作为独立口径记录。
 
 运行主 CLI：
 
 ```powershell
 cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- fight --out-raw -f input.txt
-cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt --runtime legacy
 cargo run -p tswn_core --bin tswn-cli -- raw -f input.txt
-cargo run -p tswn_core --bin tswn-cli -- raw -f input.txt --runtime legacy
+cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --max-rounds 20000
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire" --old
 cargo run -p tswn_core --bin tswn-cli -- to-diy -f names.txt -o diy.txt
@@ -66,7 +65,7 @@ cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.tx
 cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ```
 
-`fight`（包括 `--out-raw`）、`diff`、`raw`（包括 `!test!` 评分/胜率）和独立 `bench` 默认使用 Runtime；需要和旧实现对账时，可在仍提供 runtime 参数的命令上显式传入 `--runtime legacy`。C、Python、WASM 的无 runtime 参数高层评分/胜率接口也默认使用 Runtime，低层 legacy 对象仅作为兼容 API 保留。
+`fight`（包括 `--out-raw`）、`diff`、`raw`（包括 `!test!` 评分/胜率）和独立 `bench` 只使用主 Runtime。CLI 不再提供执行器选择器或 parity 子命令；C、Python 与 WASM 绑定也都从同一主 Runtime 会话读取完成态、快照、RC4、胜者与回放。
 
 `to-diy --minions` 会在 `+ol` 输出中附带可生成的 shadow / summon / zombie 模板，用于更接近原始名字的评分与对战行为。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；使魔模板的 `skills` 使用普通 JSON object 格式，两个火球固定命名为 `sklfire1`、`sklfire2`，自爆命名为 `sklexplode`，字段顺序就是行动顺序。0 熟练度技能会省略输出；解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名，不再支持旧数组格式、`skill_order` 字段或旧的 `sklfire` 别名。
 
@@ -76,42 +75,24 @@ OL 召唤物模板可以继续嵌套 `shadow` / `summon` / `zombie` 子模板，
 
 `bench pair` 会先把 `player-list` 中非 DIY/OL 的名字转换为默认 `+ol` 格式，再与 `teammate-list` 中每个队友组成二人组。它会对每个二人组计算一次 batch rate，并把最高的 `--head <N>` 个 batch rate 求和作为该选手的最终分数；`player-list` 和 `teammate-list` 都是每行一个名字。
 
-常用差分 case miner：
+主 Runtime release 回归：
 
 ```powershell
-cargo run --release --features no_debug --bin tswn_case_miner -- `
-  --library .\tests\sqp6000.txt `
-  --md5-tool .\md5.js `
-  --out-dir .\target\ts_diff_cases `
-  --modes 1v1,2v2,3v3v3,ffa `
-  --ffa-sizes 4,6,8 `
-  --case-offset-per-mode 0 `
-  --max-cases-per-mode 4000 `
-  --keep-going
+python scripts/check_runtime_release.py --corpus
 ```
 
-DIY 往返验证：
-
-```powershell
-cargo run --release --features no_debug --bin track_diy_roundtrip -- `
-  --library .\tests\sqp6000.txt `
-  --out-dir .\target\diy_roundtrip `
-  --modes 1v1,2v2,3v3v3,ffa `
-  --ffa-sizes 4,6,8 `
-  --case-offset-per-mode 0 `
-  --max-cases-per-mode 4000 `
-  --keep-going
-```
+该门禁先检查旧对象路径、Rust/CLI 禁用符号和 corpus 清单，再运行 release/no_debug 主 Runtime 测试；`--corpus` 会执行 87 个 JS exact trace 与 37 个冻结压力 golden，共 124 项。
 
 ## 重要 binary
 
 - `tswn-cli`: 日常调试和用户入口。
-- `tswn_case_miner`: 批量生成 case，运行 TS/JS 基准输出并与 Rust trace 对比。
-- `track_diy_roundtrip`: 生成或读取 case，把玩家转成 DIY/OL overlay，再验证初始状态和可选战斗日志一致性。
+- `track`: `track test` 的短命令转发入口。
+- `track_test`: 可选 `aux_bins` feature 下的测试失败集 checkpoint 工具。
 
 ## 文档入口
 
-- [`docs/architecture.md`](docs/architecture.md): 当前架构说明。
+- [`docs/runtime_0.5_migration.md`](docs/runtime_0.5_migration.md): 0.5.0 主 Runtime 迁移指南。
+- [`docs/architecture.md`](docs/architecture.md): 原始 Dart 实现的历史架构说明。
 - [`docs/DIY.md`](docs/DIY.md): DIY/OL overlay 相关说明。
 - [`docs/howto/1-start.md`](docs/howto/1-start.md): 入门操作记录。
 - [`docs/howto/diy_validation.md`](docs/howto/diy_validation.md): DIY 验证流程。
@@ -129,6 +110,6 @@ cargo run --release --features no_debug --bin track_diy_roundtrip -- `
 - `no_debug` feature 用于 release/绑定场景，避免调试路径影响性能和输出。
 - `png_render` 是 `tswn_core` 默认 feature，用于图标 PNG/base64 输出。
 - 差分工具会大量写入 `target/`，这些产物通常不应提交。
-- 修改 Markdown 文档后，记得使用 `oxfmt docs` 格式化文档。
-- 回归追踪入口已迁移到 Rust bin：`track`、`track_test`、`track_case_miner`、`track_diy_roundtrip`。
+- 修改 Markdown 文档后，需要检查相对链接与 `git diff --check`。
+- 主 Runtime 独立性与 124-case release 回归统一由 `scripts/check_runtime_release.py` 执行；`track test` 仅用于维护测试失败集 checkpoint。
 - 当前工作区可能有本地调试文件和未提交产物，提交前需要用 `git status` 明确区分源码改动与生成输出。

@@ -1,8 +1,10 @@
 # runtime custom 迁移审计
 
-> 状态：阶段 B 审计草案
+> 状态：已完成的历史迁移审计；文中的旧源码路径、facade、双栈与 parity 待办均不再代表当前实现
 > 范围：`github/main..github/custom` 中与 custom 产品线相关的行为差异
 > 目标：把 custom 分支的行为改动逐项落到 runtime extension / policy / renderer / fixture 验收面
+
+当前主 Runtime 已通过原生 `namerena` 数据准备链承接这些行为；公开迁移说明见 [`../runtime_0.5_migration.md`](../runtime_0.5_migration.md)。下文原样保留实施阶段的证据与术语。
 
 ---
 

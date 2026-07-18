@@ -174,10 +174,6 @@ uv run scripts/build_wasm.py --release
 cargo install wasm-bindgen-cli
 ```
 
-## 设计
-
-详见 [docs/tswn_wasm_design.md](../../docs/tswn_wasm_design.md)。
-
 ## 版本
 
 当前版本见 [CHANGELOG.md](./CHANGELOG.md)。

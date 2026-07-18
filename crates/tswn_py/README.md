@@ -28,7 +28,8 @@ b64 = tswn_py.name_to_png_base64("某个玩家名")
 # 创建对局
 runner = tswn_py.Runner.new_from_namerena_raw(raw_input)
 runner.run_to_completion()
-winner = runner.world_state.winner
+winner_team = runner.winner_team_index()
+final_states = runner.snapshot_players()
 
 # PreparedRunner 复用胜率
 groups, _ = tswn_py.Runner.split_namerena_into_groups(raw_input)
@@ -139,15 +140,17 @@ replay view 中的玩家文本会使用该序号，而唯一对象编号仍保�
 
 ### 类
 
-| 类               | 说明                                     |
-| ---------------- | ---------------------------------------- |
-| `Runner`         | 对战运行器，支持逐步推进或一次跑完       |
-| `PreparedRunner` | 预处理后的复用模板，支持 `win_rate(...)` |
-| `RunUpdates`     | 回合更新容器                             |
-| `Storage`        | 玩家数据存储                             |
-| `WorldState`     | 世界状态                                 |
-| `Player`         | 玩家状态只读视图                         |
-| `RC4`            | RC4 加密算法                             |
+| 类               | 说明                                          |
+| ---------------- | --------------------------------------------- |
+| `Runner`         | 主 Runtime 对战会话，支持逐回合推进或一次跑完 |
+| `PreparedRunner` | 预处理后的复用模板，支持 `win_rate(...)`      |
+| `RunUpdates`     | 回合更新容器                                  |
+| `RunUpdate`      | 单条结构化更新                                |
+| `RC4`            | RC4 状态与算法                                |
+
+0.5.0 不再暴露 `Storage`、`WorldState`、`Player` 或 `Runner.round_tick*`。状态查询改用
+`snapshot_players()`、`winner_team_index()` / `winner_team_indices()`、`alives*()` 与
+`rc4`；逐回合推进统一使用 `main_round()`。
 
 ## 构建
 

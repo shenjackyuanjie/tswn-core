@@ -6,6 +6,7 @@
 
 - `Runner` / `PreparedRunner` 会话切换到主 Runtime；删除 `Runner.round_tick*`、`Storage`、`WorldState`、`Player` 及 parity helper，保留 `main_round`、完成态、RC4、胜者、snapshot 与 replay 接口。
 - 未显式提供 guard 的完成与 replay 路径统一使用 20,000 主回合上限；replay clip 继续只从 `parts[]` 暴露渲染语义。
+- 迁移时使用 `snapshot_players()` 代替旧玩家/世界对象 getter，使用 `winner_team_index()` / `winner_team_indices()` 查询胜者，逐回合推进统一调用 `main_round()`。
 
 ## [0.4.0] - 2026-07-14
 

@@ -25,6 +25,7 @@
 - 版本查询：
   - `tswn_capi_version()`：返回 `tswn_capi` 包装层版本
   - `tswn_core_version()`：返回 `tswn_core` 版本
+- `tswn_capi_abi_version()`：0.6.0 返回 ABI `4`；从 ABI 3 升级的调用方需要重新编译并重新链接。
 - `tswn_player_snapshot_t` 的蓝量字段统一使用 `magic_point`；不再提供 `mp` 别名。
 
 ## 胜率接口线程参数

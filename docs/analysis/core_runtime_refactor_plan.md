@@ -1,9 +1,11 @@
 # tswn_core Runtime 核心重构实施规格
 
-> 状态：实施规格
+> 状态：已完成的历史实施规格；`tswn_core 0.5.0` 已删除本文所述双栈、旧对象路径与 parity 入口
 > 范围：`crates/tswn_core` 的 runtime、engine、player、skill、state、wasm/show、extension/custom 迁移
 > 第一优先级：消除 UB 风险，并与当前 legacy/md5.js 结果严格一致
 > 兼容策略：不保留旧 Rust/extension/CLI/wasm API 兼容，只保最终呈现结果与归一化帧级行为一致
+
+本文保留迁移过程中的决策与验收语境；当前 API 和替代关系见 [`../runtime_0.5_migration.md`](../runtime_0.5_migration.md)。
 
 ---
 

@@ -26,11 +26,11 @@ cargo build -p tswn_core --bin tswn-cli --release
 # 单局对战（stdin 输入）
 echo '<your raw input>' | ./target/release/tswn-cli fight
 
-# fight/diff/raw/bench 默认使用 Runtime；需要旧实现对账时显式选择 legacy
-./target/release/tswn-cli fight -f input.txt --runtime legacy
-./target/release/tswn-cli diff -f input.txt --runtime legacy
+# fight/diff/raw/bench 均使用主 Runtime
+./target/release/tswn-cli fight -f input.txt
+./target/release/tswn-cli diff -f input.txt
 ./target/release/tswn-cli raw -f input.txt
-./target/release/tswn-cli raw -f input.txt --runtime legacy
+./target/release/tswn-cli runtime normalized-run -f input.txt --max-rounds 20000
 
 # DIY/OL 导出
 ./target/release/tswn-cli to-diy -r "mario@team+fire"
@@ -53,7 +53,7 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
 ```
 
-`raw` 输入以 `!test!` 开头时会进入 Runtime 批量评分/胜率路径；可用同一个 `--runtime legacy` 参数进行结果对账。独立 `bench` 子命令仍待迁移。
+`raw` 输入以 `!test!` 开头时会进入主 Runtime 批量评分/胜率路径。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`；独立 `bench` 也已迁移到同一数据模型。
 
 `to-diy --minions` 会额外导出 shadow / summon / zombie 模板。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；summon 的两个火球分别用 `sklfire1`、`sklfire2` 表示，自爆用 `sklexplode`，`skills` 保持普通 JSON object 形态，字段顺序就是行动顺序。0 熟练度技能会省略输出，解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名。
 
@@ -75,8 +75,9 @@ let mut runner = Runner::new_from_namerena_raw(raw_input).unwrap();
 let summary = runner.run_to_completion(20_000);
 ```
 
-根级 `Runner` / `PreparedRunner` 均指向主 Runtime。旧对象模型仅通过
-`tswn_core::legacy::Runner`、`tswn_core::LegacyRunner` 等显式兼容名称提供。
+根级 `Runner` / `PreparedRunner` 是主 Runtime 的稳定入口。0.5.0 已删除旧
+`engine` / `player` 对象模型及其兼容别名；名字解析、属性与 overlay 数据位于
+`namerena`，运行期实体、调度和更新类型位于 `runtime`。
 
 `tswn_core::replay_view` 暴露公共的 replay view 构建结构：一个 frame 包含多行 `ReplayRow`，
 一行包含多个 `ReplayClip`。clip 只承载播放与布局信息：展示前 `delay`、结构化文本 `parts`、`[]`
@@ -87,7 +88,7 @@ let summary = runner.run_to_completion(20_000);
 
 当前 delay 规则按优先级依次为：frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子
 `600ms`，其他句子 `500ms`。血条只在帧前后 HP 不同且该玩家 part 没有死亡特效时展示；死亡特效只在“被击倒”或“消失”等死亡句且该句后 HP 为 `0`
-时渲染，所有带死亡特效的句子都不展示血条；附体、自爆、owner 死亡牵连等机制死亡会在死亡句同步为 `0`。分身展示序号由 `player::skill::act::minion::minion_display_index` 提供：本体为 `0`，
+时渲染，所有带死亡特效的句子都不展示血条；附体、自爆、owner 死亡牵连等机制死亡会在死亡句同步为 `0`。分身展示序号由 Runtime minion handler 提供：本体为 `0`，
 后续同名分身为 `1`、`2`……，供上层在名字内展示；唯一对象编号仍使用玩家 id。
 默认 `[]` 高亮文字颜色为 `0077BB`；解除、识破、中止、打消等状态离开消息使用 `bb7700`。普通文本不使用该颜色码。
 
@@ -102,7 +103,10 @@ let summary = runner.run_to_completion(20_000);
 
 ```powershell
 cargo test -p tswn_core
+python scripts/check_runtime_release.py --corpus
 ```
+
+第二条命令会检查主 Runtime 独立性并执行 87 个 JS exact trace 与 37 个冻结压力 golden。
 
 ## 版本
 

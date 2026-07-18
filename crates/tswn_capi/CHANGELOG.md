@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### ⚠️ Breaking Changes
+
+- crate 版本进入 `0.6.0`，`tswn_capi_abi_version()` 从 `3` 升为 `4`；调用方必须重新编译并重新链接。
+
 ### 变更
 
 - opaque runner、prepared、updates、snapshot、score 与 win-rate 接口改由主 Runtime 驱动，函数签名和结构体布局保持不变；无显式 guard 的 completion 统一限制为 20,000 主回合。
