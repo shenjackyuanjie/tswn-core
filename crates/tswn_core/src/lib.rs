@@ -1,7 +1,6 @@
 //! tswn-core — 星际战争命名器核心战斗引擎库。
 //!
-//! 提供 [`Runner`]（主战斗执行器）、[`PreparedRunner`]（可复用批量执行器），
-//! 以及 [`legacy`] 中用于兼容和严格对账的旧执行器。
+//! 提供 [`Runner`]（主战斗执行器）与 [`PreparedRunner`]（可复用批量执行器）。
 
 #[cfg(feature = "mimalloc_alloc")]
 #[global_allocator]
@@ -50,21 +49,12 @@ pub mod debug {
     pub const fn debug_damage() -> bool { false }
     #[inline(always)]
     pub const fn trace_rc4() -> bool { false }
-
-    macro_rules! debug_println {
-        ($condition:expr, $($arg:tt)*) => {{}};
-    }
-
-    pub(crate) use debug_println;
 }
 
 pub mod bench_sched;
 pub mod case_gen;
 pub mod cli_api;
-pub mod engine;
-pub mod error;
 pub mod namerena;
-pub mod player;
 pub mod rc4;
 pub mod replay_view;
 pub mod runtime;
@@ -79,13 +69,7 @@ pub mod win_rate;
 /// 当你需要对同一组输入重复跑很多局（如 win-rate / benchmark）时，优先考虑先构造 [`PreparedRunner`] 再复用。
 pub use runtime::{PreparedRuntimeRunner as PreparedRunner, RuntimeRunner as Runner};
 
-/// 旧 Runtime，仅用于兼容、oracle 和严格对账。
-pub mod legacy {
-    pub use crate::engine::runners::{PreparedRunner, Runner};
-}
-
-pub use engine::update::{RunUpdate, RunUpdates};
-pub use legacy::{PreparedRunner as LegacyPreparedRunner, Runner as LegacyRunner};
+pub use runtime::update::{RunUpdate, RunUpdates};
 
 #[inline]
 pub fn version() -> &'static str { env!("CARGO_PKG_VERSION") }

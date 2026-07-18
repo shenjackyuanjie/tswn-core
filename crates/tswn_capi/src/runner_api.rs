@@ -1,7 +1,7 @@
 use std::ffi::c_char;
 
-use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::player::PlrId;
+use tswn_core::runtime::PlrId;
+use tswn_core::runtime::update::{RunUpdate, UpdateType};
 use tswn_core::runtime::{EntityIdx, RuntimePlayerSnapshot};
 use tswn_core::{PreparedRunner, Runner};
 

@@ -37,7 +37,7 @@ fn custom_runner_multi_round_normalized_run_matches_strict_diff_golden() {
             winner_team: None,
             round: 1,
             total_score: 3,
-            rng: crate::runtime::oracle::NormalizedRngCheckpoint::after_next_u8(1),
+            rng: crate::runtime::NormalizedRngCheckpoint::after_next_u8(1),
             entity_ids: vec![1, 2],
             teams: vec![0, 1],
             hp: vec![8, 2],
@@ -49,7 +49,7 @@ fn custom_runner_multi_round_normalized_run_matches_strict_diff_golden() {
             flat_alive: vec![0, 1],
             team_alive: vec![vec![0], vec![1]],
             alive_group_count: 2,
-            actions: vec![crate::runtime::oracle::NormalizedActionBoundary {
+            actions: vec![crate::runtime::NormalizedActionBoundary {
                 round: 1,
                 actor: 0,
                 target: 1,
@@ -62,16 +62,16 @@ fn custom_runner_multi_round_normalized_run_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 3,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             }],
         },
         NormalizedOutcome {
             winner_team: None,
             round: 2,
             total_score: 0,
-            rng: crate::runtime::oracle::NormalizedRngCheckpoint::after_next_u8(2),
+            rng: crate::runtime::NormalizedRngCheckpoint::after_next_u8(2),
             entity_ids: vec![1, 2],
             teams: vec![0, 1],
             hp: vec![8, 2],
@@ -83,7 +83,7 @@ fn custom_runner_multi_round_normalized_run_matches_strict_diff_golden() {
             flat_alive: vec![0, 1],
             team_alive: vec![vec![0], vec![1]],
             alive_group_count: 2,
-            actions: vec![crate::runtime::oracle::NormalizedActionBoundary {
+            actions: vec![crate::runtime::NormalizedActionBoundary {
                 round: 2,
                 actor: 1,
                 target: 0,
@@ -96,16 +96,16 @@ fn custom_runner_multi_round_normalized_run_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 0,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             }],
         },
         NormalizedOutcome {
             winner_team: Some(0),
             round: 3,
             total_score: 3,
-            rng: crate::runtime::oracle::NormalizedRngCheckpoint::after_next_u8(3),
+            rng: crate::runtime::NormalizedRngCheckpoint::after_next_u8(3),
             entity_ids: vec![1, 2],
             teams: vec![0, 1],
             hp: vec![8, 0],
@@ -117,7 +117,7 @@ fn custom_runner_multi_round_normalized_run_matches_strict_diff_golden() {
             flat_alive: vec![0],
             team_alive: vec![vec![0], Vec::new()],
             alive_group_count: 1,
-            actions: vec![crate::runtime::oracle::NormalizedActionBoundary {
+            actions: vec![crate::runtime::NormalizedActionBoundary {
                 round: 3,
                 actor: 0,
                 target: 1,
@@ -130,14 +130,14 @@ fn custom_runner_multi_round_normalized_run_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 3,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             }],
         },
     ];
 
     for (expected, actual) in expected_rounds.iter().zip(&run.rounds) {
-        assert_eq!(strict_diff(expected, actual), Ok(()));
+        assert_eq!(actual, expected);
     }
 }

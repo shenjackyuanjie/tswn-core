@@ -18,8 +18,7 @@ fn plain_ice_freezes_before_hide_post_damage_rng() {
         config.registry,
     ));
     let mut expected_rng = runtime.rng.clone();
-    let atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng)
-        * crate::player::skill::act::ice::ICE_DAMAGE_MULTIPLIER;
+    let atp = runtime.entities.get(EntityIdx(0)).unwrap().runtime.get_at(true, &mut expected_rng) * 0.699999988079071;
     let accuracy = runtime.entities.get(EntityIdx(0)).unwrap().runtime.magic_accuracy();
     let dodge = runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_dodge();
     assert!(!PlayerRuntime::dodge(accuracy, dodge, &mut expected_rng));

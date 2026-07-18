@@ -6,7 +6,7 @@ fn ice_pre_step_zero_step_does_not_release_at_threshold() {
     states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 0));
     let generation = states.generation();
 
-    let (step, released) = states.apply_ice_pre_step(0, crate::player::MOVE_POINT_THRESHOLD + 1);
+    let (step, released) = states.apply_ice_pre_step(0, crate::runtime::MOVE_POINT_THRESHOLD + 1);
 
     assert_eq!(step, 0);
     assert!(!released);
@@ -19,7 +19,7 @@ fn ice_pre_step_positive_step_releases_when_crossing_threshold() {
     let mut states = StateStore::default();
     states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 0));
 
-    let (step, released) = states.apply_ice_pre_step(1, crate::player::MOVE_POINT_THRESHOLD);
+    let (step, released) = states.apply_ice_pre_step(1, crate::runtime::MOVE_POINT_THRESHOLD);
 
     assert_eq!(step, 0);
     assert!(released);
@@ -37,7 +37,7 @@ fn ice_release_refreshes_pending_haste_multiplier() {
     states.add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 0));
     assert_eq!(states.effective_speed(100), 200);
 
-    let (step, released) = states.apply_ice_pre_step(1, crate::player::MOVE_POINT_THRESHOLD);
+    let (step, released) = states.apply_ice_pre_step(1, crate::runtime::MOVE_POINT_THRESHOLD);
 
     assert_eq!(step, 0);
     assert!(released);
@@ -51,7 +51,7 @@ fn ice_release_keeps_action_when_saved_move_points_already_crossed_threshold() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
         PlayerTemplate::new(1, "frozen", 0, 100, 3)
             .with_speed(1)
-            .with_speed_points(crate::player::MOVE_POINT_THRESHOLD + 1),
+            .with_speed_points(crate::runtime::MOVE_POINT_THRESHOLD + 1),
         PlayerTemplate::new(2, "target", 1, 100, 3).with_speed(1),
     ]));
     runtime

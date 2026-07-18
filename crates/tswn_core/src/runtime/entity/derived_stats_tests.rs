@@ -98,7 +98,7 @@ fn refreshing_runtime_replays_curse_atk_sum() {
 fn clone_child_uses_separate_name_factor_without_changing_owner_decay() {
     let attrs = [39, 39, 43, 43, 37, 36, 42, 149];
     let owner_raw = CloneBuildData::derive_raw(attrs, 0.0);
-    let status = PlayerStatus {
+    let status = PlayerStats {
         max_hp: owner_raw.max_hp,
         attack: owner_raw.attack,
         magic: owner_raw.magic,
@@ -111,7 +111,7 @@ fn clone_child_uses_separate_name_factor_without_changing_owner_decay() {
         attr_sum: owner_raw.attr_sum,
         atk_sum: owner_raw.atk_sum,
         attract: f64::from_bits(owner_raw.attract_bits),
-        ..PlayerStatus::default()
+        ..PlayerStats::default()
     };
     let build = CloneBuildData::from_legacy(attrs, [0; 8], 0.0, &status).with_child_name_factor(-4.909645111040874);
 

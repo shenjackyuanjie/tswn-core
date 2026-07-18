@@ -1,4 +1,4 @@
-use crate::player::{MOVE_POINT_THRESHOLD, PlayerStatus, PlrId, skill::SkillBoost};
+use crate::namerena::{PlayerStats, SkillBoost};
 use crate::rc4::RC4;
 use crate::runtime::extension::{
     DamageSharePolicy, MergePolicy, OwnerResolutionPolicy, PlayerKindFlags, PlayerKindId, PlayerKindPolicies, ProcMask,
@@ -7,6 +7,8 @@ use crate::runtime::extension::{
 use crate::runtime::{BuiltinActiveSkill, EntitySlotStorage, ExtensionRegistry};
 use smallvec::SmallVec;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use super::{MOVE_POINT_THRESHOLD, PlrId};
 
 mod runtime;
 mod skill_loadout;
@@ -65,7 +67,7 @@ pub struct CloneBuildData {
 }
 
 impl CloneBuildData {
-    pub fn from_legacy(attrs: [u32; 8], weapon_attr_bonus: [i32; 8], name_factor: f64, status: &PlayerStatus) -> Self {
+    pub fn from_legacy(attrs: [u32; 8], weapon_attr_bonus: [i32; 8], name_factor: f64, status: &PlayerStats) -> Self {
         let raw = Self::derive_raw(attrs, name_factor);
         Self {
             attrs,
@@ -182,7 +184,7 @@ impl CloneBuildData {
     /// 热路径不会读取该值。
     pub fn name_factor(&self) -> f64 { f64::from_bits(self.name_factor_bits) }
 
-    /// 复刻 legacy `PlayerStatus::all_sum` 的当前构造属性总和。
+    /// 复刻 legacy `PlayerStats::all_sum` 的当前构造属性总和。
     pub fn all_sum(&self) -> u32 { self.attrs[..7].iter().sum::<u32>() * 3 + self.attrs[7] }
 
     /// 返回构造召唤物蓝图所需的 owner 原始八围。
@@ -300,7 +302,7 @@ impl PlayerTemplate {
         clan_name: String,
         display_name: String,
         team: usize,
-        status: &PlayerStatus,
+        status: &PlayerStats,
         skills: SkillLoadout,
         clone_build: CloneBuildData,
     ) -> Self {

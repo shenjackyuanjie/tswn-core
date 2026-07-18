@@ -60,7 +60,7 @@ fn runtime_dispatches_hp_marker_show_renderer_golden() {
         registry,
     ));
     runtime.set_show_renderer(show, render_hp_marker_bar_show);
-    let mut updates = crate::engine::update::RunUpdates::new();
+    let mut updates = crate::runtime::update::RunUpdates::new();
     let mut hp_report = RuntimeFrame::replay_update(0, 0, "[0]还剩[2]点血", 0);
     hp_report.param = Some(87);
     updates.add(hp_report);
@@ -117,7 +117,7 @@ fn runtime_frame_renders_core_replay_and_show_golden() {
 
 #[test]
 fn runtime_frame_renders_hp_marker_core_show_golden() {
-    let mut updates = crate::engine::update::RunUpdates::new();
+    let mut updates = crate::runtime::update::RunUpdates::new();
     let mut hp_report = RuntimeFrame::replay_update(0, 0, "[0]还剩[2]点血", 0);
     hp_report.param = Some(87);
     updates.add(hp_report);

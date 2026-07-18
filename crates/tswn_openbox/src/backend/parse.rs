@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use tswn_core::player::{Player, overlay::PlayerOverlay};
+use tswn_core::namerena::{PlayerOverlay, raw_namerena_to_id_name};
 
 pub fn parse_line_list(content: &str) -> Vec<String> {
     content
@@ -56,7 +56,7 @@ pub fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     let mut seen = HashSet::new();
     for group in groups {
         for name in group.lines().map(str::trim).filter(|line| !line.is_empty()) {
-            let id_name = Player::raw_namerena_to_idname(name);
+            let id_name = raw_namerena_to_id_name(name);
             if !seen.insert(id_name.clone()) {
                 return Some(id_name);
             }

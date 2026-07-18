@@ -55,7 +55,7 @@ pub struct RuntimeCompletionSummary {
 pub struct PreparedRuntimeRunner {
     prototype: RuntimeRunner,
     battle_roster: PreparedBattleRoster,
-    skill_import: PlainLegacySkillImportMap,
+    skill_import: BuiltinSkillImportMap,
 }
 
 impl RuntimeRunSummary {
@@ -213,7 +213,7 @@ impl RuntimeDefendValue {
 impl RuntimeRunner {
     /// 使用内置 profile 从 namerena raw 构造主 Runtime 对局。
     pub fn new_from_namerena_raw(raw_input: String) -> Result<Self, RuntimeBuildError> {
-        Self::new_from_namerena_raw_with_eval_rq(raw_input, crate::player::eval_name::DEFAULT_EVAL_RQ)
+        Self::new_from_namerena_raw_with_eval_rq(raw_input, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
     }
 
     /// 使用内置 profile 和显式 `eval_rq` 从 namerena raw 构造主 Runtime 对局。
@@ -296,7 +296,7 @@ impl RuntimeRunner {
         raw_input: String,
         config: CustomRuntimeImportConfig<'_>,
     ) -> Result<Self, CustomRuntimeImportError> {
-        Self::from_custom_mixed_namerena_raw_with_eval_rq(raw_input, crate::player::eval_name::DEFAULT_EVAL_RQ, config)
+        Self::from_custom_mixed_namerena_raw_with_eval_rq(raw_input, crate::namerena::eval_name::DEFAULT_EVAL_RQ, config)
     }
 
     pub fn from_custom_mixed_namerena_raw_with_eval_rq(
@@ -601,7 +601,7 @@ impl PreparedRuntimeRunner {
         raw_groups: &[Vec<String>],
         config: CustomRuntimeImportConfig<'_>,
     ) -> Result<Self, CustomRuntimeImportError> {
-        Self::from_custom_mixed_roster_with_eval_rq(raw_groups, crate::player::eval_name::DEFAULT_EVAL_RQ, config)
+        Self::from_custom_mixed_roster_with_eval_rq(raw_groups, crate::namerena::eval_name::DEFAULT_EVAL_RQ, config)
     }
 
     pub fn from_custom_mixed_roster_with_eval_rq(
@@ -609,7 +609,7 @@ impl PreparedRuntimeRunner {
         eval_rq: f64,
         config: CustomRuntimeImportConfig<'_>,
     ) -> Result<Self, CustomRuntimeImportError> {
-        let skill_import = PlainLegacySkillImportMap::new(&config.registry);
+        let skill_import = BuiltinSkillImportMap::new(&config.registry);
         let battle_roster = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import(
             raw_groups,
             eval_rq,
@@ -690,7 +690,7 @@ impl PreparedRuntimeRunner {
         &self,
         runner: &mut RuntimeRunner,
         raw_groups: &[Vec<String>],
-        profile_player_ids: &[crate::player::PlrId],
+        profile_player_ids: &[crate::runtime::PlrId],
         profile_team: &str,
         profile_team_rng: &crate::rc4::RC4,
         skill_buffers: &mut [SkillLoadout],

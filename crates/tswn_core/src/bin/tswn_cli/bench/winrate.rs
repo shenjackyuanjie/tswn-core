@@ -7,10 +7,10 @@
 
 use std::time::{Duration, Instant};
 
-use tswn_core::LegacyRunner as Runner;
-use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
+use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::runtime::{
-    PreparedRuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range, runtime_groups_win_rate,
+    PreparedRuntimeRunner, RuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range,
+    runtime_groups_win_rate,
 };
 use tswn_core::win_rate::WinRateTiming;
 
@@ -29,7 +29,7 @@ struct BenchmarkInput {
 
 /// 解析 benchmark 输入，并识别 JS `!test!` score marker。
 fn parse_benchmark_input(raw: &str) -> BenchmarkInput {
-    let (mut groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let (mut groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let mut score_modifier = None;
 
     if groups.first().and_then(|group| group.first()).is_some_and(|name| name == "!test!") {
@@ -102,7 +102,7 @@ pub fn run_bench_winrate(
 }
 
 fn print_bench_winrate_matchup(raw: &str) {
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let groups: Vec<_> = groups.into_iter().filter(|group| !group.is_empty()).collect();
 
     match groups.as_slice() {
@@ -169,7 +169,7 @@ pub fn run_bench_group_win_rate(
 
 /// 普通 win-rate 的实际执行器。
 pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64) -> BenchSummary {
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let started_at = Instant::now();
 
     let thread = match mode {
@@ -204,7 +204,7 @@ pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads
 /// 强制单线程以保证顺序正确。
 fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) -> BenchSummary {
     let step = step.max(1);
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let prepared = match (|| -> Result<_, tswn_core::runtime::RuntimeBatchError> {
         let config = default_custom_runtime_import_config()?;
         Ok(PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(

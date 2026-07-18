@@ -435,6 +435,69 @@ pub fn skill_name_to_id(name: &str) -> Option<usize> {
     }
 }
 
+pub fn skill_name_for_export(skill_id: usize) -> String {
+    let name = match skill_id {
+        0 => "fire",
+        1 => "ice",
+        2 => "thunder",
+        3 => "quake",
+        4 => "absorb",
+        5 => "poison",
+        6 => "rapid",
+        7 => "critical",
+        8 => "half",
+        9 => "exchange",
+        10 => "berserk",
+        11 => "charm",
+        12 => "haste",
+        13 => "slow",
+        14 => "curse",
+        15 => "heal",
+        16 => "revive",
+        17 => "disperse",
+        18 => "iron",
+        19 => "charge",
+        20 => "accumulate",
+        21 => "assassinate",
+        22 => "summon",
+        23 => "clone",
+        24 => "shadow",
+        25 => "defend",
+        26 => "protect",
+        27 => "reflect",
+        28 => "reraise",
+        29 => "shield",
+        30 => "counter",
+        31 => "merge",
+        32 => "zombie",
+        33 => "upgrade",
+        34 => "hide",
+        35 => "none",
+        _ => return format!("skill{skill_id}"),
+    };
+    format!("skl{name}")
+}
+
+pub fn classified_player_skill_name_for_export(skill_key: usize) -> Option<String> {
+    match skill_key {
+        SUMMON_FIRE1_SKILL_KEY => Some("summon:sklfire1".to_owned()),
+        SUMMON_FIRE2_SKILL_KEY => Some("summon:sklfire2".to_owned()),
+        SUMMON_EXPLODE_SKILL_KEY => Some("summon:sklexplode".to_owned()),
+        PHANTOM_POSSESS_SKILL_KEY => Some("phantom:sklpossess".to_owned()),
+        _ => None,
+    }
+}
+
+pub fn classified_summon_minion_skill_name_for_export(skill_key: usize) -> Option<String> {
+    if (SUMMON_MINION_NORMAL_SKILL_KEY_BASE..SUMMON_MINION_NORMAL_SKILL_KEY_BASE + 40).contains(&skill_key) {
+        return Some(format!(
+            "normal:{}",
+            skill_name_for_export(skill_key - SUMMON_MINION_NORMAL_SKILL_KEY_BASE)
+        ));
+    }
+    classified_player_skill_name_for_export(skill_key)
+}
+
 pub fn parse_prefixed_classified_skill_name(name: &str) -> Option<ClassifiedSkillRef> {
     let (prefix, name) = name.trim().split_once(':')?;
     match prefix.trim().to_ascii_lowercase().as_str() {
@@ -458,7 +521,7 @@ fn is_player_classified_skill_name(name: &str) -> bool {
         || phantom_skill_ref_from_name(name).is_some()
 }
 
-fn summon_slot_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
+pub fn summon_slot_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
     match name.trim().to_ascii_lowercase().as_str() {
         "sklfire1" => Some(ClassifiedSkillRef::SummonFire1),
         "sklfire2" => Some(ClassifiedSkillRef::SummonFire2),
@@ -467,7 +530,7 @@ fn summon_slot_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
     }
 }
 
-fn phantom_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
+pub fn phantom_skill_ref_from_name(name: &str) -> Option<ClassifiedSkillRef> {
     match normalize_skill_name(name).as_str() {
         "possess" | "possession" | "附体" => Some(ClassifiedSkillRef::PhantomPossess),
         _ => None,

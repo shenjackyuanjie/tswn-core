@@ -123,18 +123,13 @@ impl PreparedBattleSeed {
 
 impl CombatRuntime {
     /// 为 score 的动态 profile 按需生成一类召唤物蓝图，并写回实体槽供本场复用。
-    pub(crate) fn ensure_plain_minion_blueprint(
-        &mut self,
-        actor: EntityIdx,
-        kind: crate::player::skill::act::minion::MinionKind,
-    ) -> bool {
-        use crate::player::skill::act::minion::MinionKind;
+    pub(crate) fn ensure_plain_minion_blueprint(&mut self, actor: EntityIdx, kind: crate::namerena::MinionKind) -> bool {
+        use crate::namerena::MinionKind;
 
         let blueprint_export = match kind {
             MinionKind::Shadow => DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT,
             MinionKind::Summon => DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT,
             MinionKind::Zombie => DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT,
-            MinionKind::Clone => return false,
         };
         let blueprint_slot = self
             .registry
@@ -150,7 +145,7 @@ impl CombatRuntime {
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_LAZY_BLUEPRINT_RQ_ENTITY_EXPORT)
             .expect("default runtime profile must register core lazy blueprint rq slot");
-        let (owner, team, child_clone_name_factor) = {
+        let (base_name, clan_name, owner_attrs, at_boost, team, child_clone_name_factor) = {
             let entity = self
                 .entities
                 .get(actor)
@@ -165,19 +160,22 @@ impl CombatRuntime {
                 .clone_build
                 .as_ref()
                 .unwrap_or_else(|| panic!("runtime lazy blueprint owner {} is missing clone build data", actor.0));
-            let owner = MinionBlueprintOwner::plain(
-                actor.0 as usize,
+            (
                 entity.template.name.clone(),
                 entity.template.clan_name.clone(),
                 clone_build.attrs(),
-                entity.template.at_boost_bits,
-            );
-            (owner, entity.runtime.team, clone_build.child_name_factor())
+                f64::from_bits(entity.template.at_boost_bits),
+                entity.runtime.team,
+                clone_build.child_name_factor(),
+            )
         };
 
-        let skill_import = PlainLegacySkillImportMap::new_score_minions(&self.registry);
+        let skill_import = BuiltinSkillImportMap::new_score_minions(&self.registry);
         let template = PreparedBattleInit::build_plain_score_minion_blueprint(
-            &owner,
+            &base_name,
+            &clan_name,
+            owner_attrs,
+            at_boost,
             team,
             &self.registry,
             &skill_import,

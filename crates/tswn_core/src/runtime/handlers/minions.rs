@@ -82,7 +82,7 @@ pub fn run_shadow_minion_from_template_slot_with_config(
     counter_slot: EntitySlotId,
     template_slot: TemplateSlotId,
 ) {
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[0]使用[幻术]",
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,
@@ -104,12 +104,13 @@ pub fn run_zombie_minion_from_template_slot_with_config(
 ) {
     let zombie = push_minion_from_template_slot_with_allocated_name_silent(context, counter_slot, template_slot)
         .expect("zombie minion handler should spawn template-slot minion");
-    context.add_update(crate::engine::update::RunUpdate::new_newline());
+    context.add_update(crate::runtime::update::RunUpdate::new_newline());
     let mut summon_update =
-        crate::engine::update::RunUpdate::new("[0][召唤亡灵]", context.owner_idx().0 as usize, killed_target.0 as usize, 60);
+        crate::runtime::update::RunUpdate::new("[0][召唤亡灵]", context.owner_idx().0 as usize, killed_target.0 as usize, 60);
     summon_update.delay0 = 1500;
     context.add_update(summon_update);
-    let mut zombied = crate::engine::update::RunUpdate::new("[2]变成了[1]", context.owner_idx().0 as usize, zombie.0 as usize, 0);
+    let mut zombied =
+        crate::runtime::update::RunUpdate::new("[2]变成了[1]", context.owner_idx().0 as usize, zombie.0 as usize, 0);
     zombied.targets.push(killed_target.0 as usize);
     context.add_update(zombied);
 }

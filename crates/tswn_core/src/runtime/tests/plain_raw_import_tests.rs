@@ -3,17 +3,14 @@ use super::*;
 #[test]
 fn case_d8c6_import_preserves_plain_pre_action_order_and_assassinate_levels() {
     let raw = "最光辉的时刻 #8ftphKKCk@Shabby_fish\n营救任务 #tmOaPuIoM@Shabby_fish";
-    let legacy = crate::LegacyRunner::new_from_namerena_raw(raw.to_owned()).expect("legacy d8c6 runner should construct");
+    let input = crate::namerena::NamerenaInput::parse(raw).unwrap();
+    let prepared = crate::namerena::PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let runner =
         RuntimeRunner::from_custom_mixed_namerena_raw(raw.to_owned(), config).expect("runtime d8c6 runner should construct");
 
     for entity_index in 0..2 {
-        let snapshot = legacy
-            .storage
-            .get_player(&entity_index)
-            .expect("legacy d8c6 player should exist")
-            .skill_loadout_snapshot();
+        let snapshot = &prepared.players[entity_index].skills;
         let entity = runner
             .runtime()
             .entities
@@ -49,7 +46,7 @@ fn case_d8c6_import_preserves_plain_pre_action_order_and_assassinate_levels() {
             .iter()
             .find(|entry| entry.key == BuiltinActiveSkill::Assassinate.legacy_key())
             .map(|entry| entry.level)
-            .expect("legacy d8c6 loadout should contain assassinate");
+            .expect("native d8c6 loadout should contain assassinate");
         assert_eq!(entity.template.skills.level_at(assassinate_lane), Some(expected_level));
     }
 }
@@ -100,7 +97,7 @@ fn case_large_67_import_builds_plain_summon_blueprint_with_static_child_skills()
     assert_eq!(blueprint.skills.active_order()[3], 3);
     assert_eq!(
         blueprint.skills.fixed_lane_key_at(3),
-        Some(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY)
+        Some(crate::namerena::SUMMON_SHARE_DAMAGE_SKILL_KEY)
     );
 }
 

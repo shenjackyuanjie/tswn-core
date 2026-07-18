@@ -17,7 +17,7 @@ fn terminal_plain_action_skips_recover_newline_and_post_action_chain() {
         vec![
             PlayerTemplate::new(1, "killer", 0, 100, 100)
                 .with_speed(1)
-                .with_speed_points(crate::player::MOVE_POINT_THRESHOLD + 1)
+                .with_speed_points(crate::runtime::MOVE_POINT_THRESHOLD + 1)
                 .with_magic_point(0)
                 .with_wisdom(255),
             PlayerTemplate::new(2, "last-enemy", 1, 1, 1).with_speed(1),

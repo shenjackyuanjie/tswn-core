@@ -17,7 +17,7 @@ use super::input::{
     parse_plus_separated_groups, parse_positive_usize, parse_thread_count, parse_to_diy_file_names, parse_win_rate_teams,
     parse_wr_precision, read_file, read_stdin,
 };
-use super::parsed::{BenchThreadMode, NamerPfMode, ParsedCli, ParsedCommand, RuntimeEngine};
+use super::parsed::{BenchThreadMode, NamerPfMode, ParsedCli, ParsedCommand};
 
 // ----------------------------------------------------------------------------
 // 顶层 CLI 结构。
@@ -102,10 +102,6 @@ struct FightCommand {
     /// 输出 raw 聚合战斗日志。
     #[arg(long)]
     out_raw: bool,
-
-    /// 对战使用的 runtime；默认 runtime，legacy 需要显式指定。
-    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::Main, value_name = "ENGINE")]
-    runtime: RuntimeEngineArg,
 }
 
 #[derive(Debug, Args)]
@@ -126,10 +122,6 @@ struct FightRawCommand {
     /// 指定基准测试线程数。
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
-
-    /// 普通 raw 对战及 `!test!` benchmark 使用的 runtime；默认 runtime。
-    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::Main, value_name = "ENGINE")]
-    runtime: RuntimeEngineArg,
 }
 
 #[derive(Debug, Args)]
@@ -137,25 +129,6 @@ struct FightDiffCommand {
     /// 原始对战输入来源参数。
     #[command(flatten)]
     input: InputArgs,
-
-    /// diff 使用的 runtime；默认 runtime，legacy 需要显式指定。
-    #[arg(long = "runtime", value_enum, default_value_t = RuntimeEngineArg::Main, value_name = "ENGINE")]
-    runtime: RuntimeEngineArg,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum RuntimeEngineArg {
-    Main,
-    Legacy,
-}
-
-impl From<RuntimeEngineArg> for RuntimeEngine {
-    fn from(value: RuntimeEngineArg) -> Self {
-        match value {
-            RuntimeEngineArg::Main => Self::Main,
-            RuntimeEngineArg::Legacy => Self::Legacy,
-        }
-    }
 }
 
 #[derive(Debug, Args)]
@@ -174,13 +147,6 @@ enum RuntimeSubcommand {
     ///   tswn-cli runtime normalized-run -f input.txt
     #[command(name = "normalized-run", verbatim_doc_comment)]
     NormalizedRun(RuntimeNormalizedRunCommand),
-    /// 同时运行 legacy 与默认 custom runtime profile，并输出首个严格差异及两侧 normalized-run JSON。
-    ///
-    /// 示例:
-    ///   tswn-cli runtime parity -r "left\n\nright" --max-rounds 8
-    ///   tswn-cli runtime parity -f input.txt
-    #[command(name = "parity", verbatim_doc_comment)]
-    Parity(RuntimeNormalizedRunCommand),
 }
 
 #[derive(Debug, Args)]
@@ -658,24 +624,17 @@ impl ParsedCli {
             CliCommand::Fight(cmd) => ParsedCommand::Fight {
                 raw: cmd.input.read_or_stdin()?,
                 out_raw: cmd.out_raw,
-                runtime: cmd.runtime.into(),
             },
             CliCommand::FightRaw(cmd) => ParsedCommand::FightRaw {
                 raw: cmd.input.read_or_stdin()?,
                 n: cmd.count.max(1),
                 threads: cmd.thread,
-                runtime: cmd.runtime.into(),
             },
             CliCommand::FightDiff(cmd) => ParsedCommand::FightDiff {
                 raw: cmd.input.read_or_stdin()?,
-                runtime: cmd.runtime.into(),
             },
             CliCommand::Runtime(RuntimeCommand { command }) => match command {
                 RuntimeSubcommand::NormalizedRun(cmd) => ParsedCommand::RuntimeNormalizedRun {
-                    raw: cmd.input.read_or_stdin()?,
-                    max_rounds: cmd.max_rounds,
-                },
-                RuntimeSubcommand::Parity(cmd) => ParsedCommand::RuntimeParity {
                     raw: cmd.input.read_or_stdin()?,
                     max_rounds: cmd.max_rounds,
                 },

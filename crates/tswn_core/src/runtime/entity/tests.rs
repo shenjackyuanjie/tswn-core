@@ -128,21 +128,27 @@ fn player_runtime_get_at_matches_legacy_rng_formula_for_magic() {
 }
 
 #[test]
-fn player_runtime_dodge_matches_legacy_rng_formula() {
+fn player_runtime_dodge_matches_scalar_rng_formula() {
     let cases = [(64, 64), (200, 0), (0, 256), (80, 512)];
 
     for (accuracy, dodge_value) in cases {
         let mut runtime_rng = RC4::default();
-        let mut legacy_rng = RC4::default();
+        let mut scalar_rng = RC4::default();
 
         for _ in 0..8 {
-            assert_eq!(
-                PlayerRuntime::dodge(accuracy, dodge_value, &mut runtime_rng),
-                crate::player::Player::dodge(accuracy, dodge_value, &mut legacy_rng)
-            );
-            assert_eq!(runtime_rng.i, legacy_rng.i);
-            assert_eq!(runtime_rng.j, legacy_rng.j);
-            assert_eq!(runtime_rng.main_val, legacy_rng.main_val);
+            let temp = 24 + dodge_value - accuracy;
+            let chance = if temp < 7 {
+                7
+            } else if temp > 64 {
+                temp / 4 + 48
+            } else {
+                temp
+            };
+            let expected = scalar_rng.next_u8() as i32 <= chance;
+            assert_eq!(PlayerRuntime::dodge(accuracy, dodge_value, &mut runtime_rng), expected);
+            assert_eq!(runtime_rng.i, scalar_rng.i);
+            assert_eq!(runtime_rng.j, scalar_rng.j);
+            assert_eq!(runtime_rng.main_val, scalar_rng.main_val);
         }
     }
 }
@@ -230,11 +236,11 @@ fn skill_loadout_rebuilds_clone_levels_from_build_baseline_before_boosts() {
         (SkillId(1), 4, None),
         (SkillId(2), 96, None),
         (SkillId(3), 0, None),
-        (SkillId(4), 92, Some(crate::player::skill::SkillBoost::LastBoost(46))),
+        (SkillId(4), 92, Some(crate::namerena::SkillBoost::LastBoost(46))),
         (
             SkillId(5),
             70,
-            Some(crate::player::skill::SkillBoost::SlotBoost { base: 40, boost: 30 }),
+            Some(crate::namerena::SkillBoost::SlotBoost { base: 40, boost: 30 }),
         ),
     ]);
     assert!(owner.set_level_at(0, 10));

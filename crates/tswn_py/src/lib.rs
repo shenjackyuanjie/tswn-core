@@ -42,20 +42,20 @@ fn core_version_str() -> String { tswn_core::version().to_string() }
 
 /// 根据玩家名称生成 PNG 图标的 Base64 编码字符串
 #[pyfunction]
-fn name_to_png_base64(name: String) -> String { tswn_core::player::icon_render::render_icon_b64_from_name(&name) }
+fn name_to_png_base64(name: String) -> String { tswn_core::namerena::icon_render::render_icon_b64_from_name(&name) }
 
 /// 根据玩家名称生成 PNG 图标的字节数据
 #[pyfunction]
-fn name_to_png_bytes(name: String) -> Vec<u8> { tswn_core::player::icon_render::render_icon_png_from_name(&name) }
+fn name_to_png_bytes(name: String) -> Vec<u8> { tswn_core::namerena::icon_render::render_icon_png_from_name(&name) }
 
 /// 根据玩家名称生成 16x16 RGBA 图标像素数据
 #[pyfunction]
-fn name_to_icon_rgba(name: String) -> Vec<u8> { tswn_core::player::icon_render::render_icon_vec_from_name(&name) }
+fn name_to_icon_rgba(name: String) -> Vec<u8> { tswn_core::namerena::icon_render::render_icon_vec_from_name(&name) }
 
 /// 以 CLI 默认语义计算第一组对其余组的胜率（百分比）
 #[pyfunction(signature = (raw, n, eval_rq=None, thread=0))]
 fn win_rate(raw: String, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
-    let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
+    let eval_rq = eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ);
     let groups = Runner::split_namerena_into_groups(raw).0;
     ensure_win_rate_group_count(&groups)?;
     let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq).map_err(wrapper::error::PyRunnerError::new)?;
@@ -71,7 +71,7 @@ fn group_win_rate(
     eval_rq: Option<f64>,
     thread: u32,
 ) -> PyResult<Vec<(String, f64)>> {
-    let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
+    let eval_rq = eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ);
     let mut results = Vec::with_capacity(against.len());
     for opponent in against {
         let raw = format!("{target}\n\n{opponent}");
@@ -89,7 +89,7 @@ fn prepared_win_rate(
     eval_rq: Option<f64>,
     thread: u32,
 ) -> PyResult<f64> {
-    let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
+    let eval_rq = eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ);
     run_prepared_win_rate(&prepared.inner, n, eval_rq, thread)
 }
 
@@ -124,8 +124,8 @@ fn compute_show_timeline(
 #[pymodule]
 #[pyo3(name = "tswn_py")]
 fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("DEFAULT_EVAL_RQ", tswn_core::player::eval_name::DEFAULT_EVAL_RQ)?;
-    m.add("WIN_RATE_EVAL_RQ", tswn_core::player::eval_name::WIN_RATE_EVAL_RQ)?;
+    m.add("DEFAULT_EVAL_RQ", tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ)?;
+    m.add("WIN_RATE_EVAL_RQ", tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ)?;
     m.add_function(wrap_pyfunction!(wrapper_version_str, m)?)?;
     m.add_function(wrap_pyfunction!(core_version_str, m)?)?;
     m.add_function(wrap_pyfunction!(name_to_icon_rgba, m)?)?;

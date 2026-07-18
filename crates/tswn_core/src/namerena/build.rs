@@ -1,10 +1,12 @@
 use std::cmp::Ordering;
 
-use crate::player::{PlayerStatus, boss_append_attr, boss_display_name, median, skill::SkillBoost};
 use crate::rc4::RC4;
 
 use super::weapon::WeaponBuild;
-use super::{NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerOverlay, PlayerSpec, SkillLoadoutSpec, TEAM_MAX_LEN};
+use super::{
+    NAME_MAX_LEN, NamerenaInput, PlayerClass, PlayerOverlay, PlayerSpec, PlayerStats, SkillBoost, SkillLoadoutSpec, TEAM_MAX_LEN,
+    boss_append_attr, boss_display_name, median,
+};
 
 #[derive(Debug, Clone)]
 pub struct PreparedPlayer {
@@ -15,7 +17,7 @@ pub struct PreparedPlayer {
     pub display_name: String,
     pub class: PlayerClass,
     pub attrs: [u32; 8],
-    pub status: PlayerStatus,
+    pub status: PlayerStats,
     pub skills: SkillLoadoutSpec,
     pub name_factor: f64,
     pub weapon_attr_bonus: [i32; 8],
@@ -191,6 +193,14 @@ impl PreparedPlayer {
     }
 }
 
+/// 预先计算 score profile 共用的队名 KSA 状态。
+pub(crate) fn score_profile_team_rng(team: &str) -> RC4 {
+    assert!(team.len() <= TEAM_MAX_LEN, "score profile team name is too long");
+    let mut key = [0u8; TEAM_MAX_LEN + 1];
+    key[1..1 + team.len()].copy_from_slice(team.as_bytes());
+    RC4::new(&key[..1 + team.len()], 1)
+}
+
 impl PlayerBuild {
     fn new(id: usize, spec: &PlayerSpec, eval_rq: f64) -> Self {
         debug_assert!(spec.name.len() <= NAME_MAX_LEN);
@@ -242,8 +252,8 @@ impl PlayerBuild {
             PlayerClass::Test1 | PlayerClass::Test2 | PlayerClass::TestEx => 0.0,
             _ if spec.overlay.as_ref().is_some_and(|overlay| !overlay.name_factor_enabled) => 0.0,
             _ => {
-                let name = crate::player::eval_name::eval_str_common_with_rq(&spec.name, true, eval_rq);
-                let team = crate::player::eval_name::eval_str_common_with_rq(&clan_name, true, eval_rq);
+                let name = crate::namerena::eval_name::eval_str_common_with_rq(&spec.name, true, eval_rq);
+                let team = crate::namerena::eval_name::eval_str_common_with_rq(&clan_name, true, eval_rq);
                 name.max(team - 6.0)
             }
         };
@@ -376,7 +386,7 @@ impl PlayerBuild {
         let atk_sum = (attrs[0] as i32 - attrs[1] as i32 + attrs[2] as i32 + attrs[4] as i32 - attrs[5] as i32) * 2
             + attrs[3] as i32
             + attrs[6] as i32;
-        let mut status = PlayerStatus {
+        let mut status = PlayerStats {
             alive: self.class != PlayerClass::Seed,
             hp: attrs[7] as i32,
             max_hp: attrs[7] as i32,
@@ -391,7 +401,7 @@ impl PlayerBuild {
             attr_sum,
             atk_sum,
             all_sum: attr_sum * 3 + attrs[7],
-            ..PlayerStatus::default()
+            ..PlayerStats::default()
         };
         // Legacy boss initialization installs runtime states after build. TestSubject also
         // replaces the observable cold snapshot copied into Runtime templates.
@@ -481,14 +491,14 @@ fn name_rng(team: &str, name: &str) -> RC4 {
     rng
 }
 
-fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerStatus {
+fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerStats {
     let scale = |value: i32, factor: i32| (value as f64 * (1.0 - name_factor / factor as f64)).round() as i32;
     let attr_sum = attrs[..7].iter().sum();
     let atk_sum = (attrs[0] as i32 - attrs[1] as i32 + attrs[2] as i32 + attrs[4] as i32 - attrs[5] as i32) * 2
         + attrs[3] as i32
         + attrs[6] as i32;
     let wisdom = scale(attrs[6] as i32, 80);
-    PlayerStatus {
+    PlayerStats {
         alive,
         hp: attrs[7] as i32,
         max_hp: attrs[7] as i32,
@@ -503,283 +513,74 @@ fn status_from_attrs(attrs: [u32; 8], name_factor: f64, alive: bool) -> PlayerSt
         attr_sum,
         atk_sum,
         all_sum: attr_sum * 3 + attrs[7],
-        ..PlayerStatus::default()
+        ..PlayerStats::default()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::storage::Storage;
-    use crate::player::Player;
-
-    fn assert_status(actual: &PlayerStatus, expected: &PlayerStatus, context: &str) {
-        assert_eq!(actual.frozen, expected.frozen, "{context}: frozen");
-        assert_eq!(actual.alive, expected.alive, "{context}: alive");
-        assert_eq!(actual.point, expected.point, "{context}: point");
-        assert_eq!(actual.move_point, expected.move_point, "{context}: move point");
-        assert_eq!(actual.hp, expected.hp, "{context}: hp");
-        assert_eq!(actual.max_hp, expected.max_hp, "{context}: max hp");
-        assert_eq!(actual.attack, expected.attack, "{context}: attack");
-        assert_eq!(actual.defense, expected.defense, "{context}: defense");
-        assert_eq!(actual.speed, expected.speed, "{context}: speed");
-        assert_eq!(actual.agility, expected.agility, "{context}: agility");
-        assert_eq!(actual.magic, expected.magic, "{context}: magic");
-        assert_eq!(actual.magic_point, expected.magic_point, "{context}: magic point");
-        assert_eq!(actual.resistance, expected.resistance, "{context}: resistance");
-        assert_eq!(actual.wisdom, expected.wisdom, "{context}: wisdom");
-        assert_eq!(actual.attr_sum, expected.attr_sum, "{context}: attr sum");
-        assert_eq!(actual.atk_sum, expected.atk_sum, "{context}: attack sum");
-        assert_eq!(actual.all_sum, expected.all_sum, "{context}: all sum");
-        assert_eq!(
-            actual.at_boost.to_bits(),
-            expected.at_boost.to_bits(),
-            "{context}: attack boost"
-        );
-        assert_eq!(actual.attract.to_bits(), expected.attract.to_bits(), "{context}: attract");
-    }
-
-    fn assert_skills_match_legacy(actual: &SkillLoadoutSpec, expected: &Player, context: &str) {
-        let snapshot = expected.skill_loadout_snapshot();
-        let actual_keys = actual.entries.iter().map(|entry| entry.key).collect::<Vec<_>>();
-        for entry in &actual.entries {
-            let legacy = snapshot.entries.iter().find(|legacy| legacy.key == entry.key).unwrap();
-            assert_eq!(entry.level, legacy.level, "{context}, skill {}", entry.key);
-            assert_eq!(entry.boosted, legacy.boosted, "{context}, skill {}", entry.key);
-            assert_eq!(entry.boost, legacy.boost, "{context}, skill {}", entry.key);
-        }
-        assert_eq!(
-            actual.fixed_lanes,
-            snapshot
-                .fixed_lanes
-                .iter()
-                .copied()
-                .filter(|key| actual_keys.contains(key))
-                .collect::<Vec<_>>(),
-            "{context}: fixed lanes"
-        );
-        assert_eq!(
-            actual.active_order,
-            snapshot
-                .active_order
-                .iter()
-                .copied()
-                .filter(|key| actual_keys.contains(key))
-                .collect::<Vec<_>>(),
-            "{context}: active order"
-        );
-        assert_eq!(
-            actual.pre_action_order, snapshot.pre_action_order,
-            "{context}: pre-action order"
-        );
-        assert_eq!(
-            actual.post_damage_order, snapshot.post_damage_order,
-            "{context}: post-damage order"
-        );
-        assert_eq!(
-            actual.post_action_after_states, snapshot.post_action_after_states,
-            "{context}: post-action state order"
-        );
-        let config = crate::runtime::default_custom_runtime_import_config().unwrap();
-        let importer = crate::runtime::PlainLegacySkillImportMap::new(&config.registry);
-        assert_eq!(
-            importer.import_namerena(actual),
-            importer.import(&snapshot),
-            "{context}: Runtime skill loadout"
-        );
-    }
 
     #[test]
-    fn native_attributes_and_skills_match_legacy_builds() {
-        let cases = [
-            "alice",
-            "alice@red",
-            "covid@!",
-            "lazy@!",
-            "saitama@!",
-            "testsubject@!",
-            "云剑狄卡敢@!",
-            "target@!",
-            "target@\u{0002}",
-            "target@\u{0003}",
-            "alice@red+普通武器",
-            "alice@red+剁手刀",
-            "alice@red+死亡笔记",
-            "alice@red+属性修改器",
-            "alice@red+bladeEX",
-            r#"mario+diy[72,39,69,76,67,66,0,84]{"sklfire":5,"sklheal":"40+30","sklshadow":"2*4"}"#,
-            r#"luigi+ol:{"attrs":[37,38,39,40,41,42,43,300],"skills":{"fire":4},"weapon":"剁手刀"}"#,
-            r#"aaaaa+ol:{"attrs":[86,86,86,86,86,86,86,300],"name_factor_enabled":false}"#,
-            r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklfire":3,"sklfire1":5,"summon:sklfire2":7,"sklexplode":11,"sklpossess":13}}"#,
-            r#"alice@red+ol:{"weapon":"剁手刀"}"#,
-            r#"alice@red+普通武器+ol:{"weapon":"剁手刀"}"#,
-        ];
-        for raw in cases {
-            let input = NamerenaInput::parse(raw).unwrap();
-            let actual = PreparedRoster::build(&input, crate::player::eval_name::DEFAULT_EVAL_RQ)
-                .unwrap()
-                .players
-                .remove(0);
-            let storage = Storage::new_arc();
-            let mut expected = Player::new_from_namerena_raw(raw.to_owned(), storage).unwrap();
-            expected.build();
-            if expected.player_type() == crate::player::PlayerType::Boss {
-                crate::player::boss::init_boss_state(&mut expected);
-            }
-            assert_eq!(actual.name_base.as_slice(), expected.name_base.as_slice(), "{raw}");
-            let (attrs, weapon_bonus, name_factor) = expected.clone_build_inputs();
-            assert_eq!(actual.attrs, attrs, "{raw}");
-            assert_eq!(actual.weapon_attr_bonus, weapon_bonus, "{raw}");
-            assert_eq!(actual.name_factor.to_bits(), name_factor.to_bits(), "{raw}");
-            assert_eq!(actual.name, expected.base_name(), "{raw}");
-            assert_eq!(actual.clan_name, expected.clan_name(), "{raw}");
-            assert_eq!(actual.id_key_name, expected.id_key_name(), "{raw}");
-            assert_eq!(actual.display_name, expected.display_name(), "{raw}");
-            assert_eq!(actual.overlay.as_ref(), expected.overlay.as_deref(), "{raw}");
-            assert_status(&actual.status, expected.get_status(), raw);
-            assert_skills_match_legacy(&actual.skills, &expected, raw);
-        }
-    }
-
-    #[test]
-    fn native_minion_blueprints_match_legacy_builds() {
-        use crate::player::skill::act::minion::MinionBlueprintOwner;
-
-        let cases = [
-            "owner@same",
-            r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"shadow":{"attrs":[46,47,48,49,50,51,52,200],"skills":{"sklpossess":9}},"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"sklfire2":12,"sklexplode":3,"sklfire1":"2*4"}},"zombie":{"attrs":[40,41,42,43,44,45,46,90],"skills":{"sklrapid":7}}}"#,
-            r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"shadow":{"skills":{"phantom:sklpossess":5,"normal:sklrapid":7}},"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"normal:sklrapid":9,"sklfire1":5,"summon:sklexplode":3},"reuse_skills_on_recast":true,"inherit_owner_def_res":true},"zombie":{"skills":{"normal:sklheal":"40+30"}}}"#,
-        ];
-        for raw in cases {
-            let input = NamerenaInput::parse(raw).unwrap();
-            let owner = PreparedRoster::build(&input, crate::player::eval_name::DEFAULT_EVAL_RQ)
-                .unwrap()
-                .players
-                .remove(0);
-            let storage = Storage::new_arc();
-            let mut legacy_owner = Player::new_from_namerena_raw(raw.to_owned(), storage.clone()).unwrap();
-            legacy_owner.build();
-            let legacy_owner = MinionBlueprintOwner::from_player(0, &legacy_owner);
-
-            for kind in [MinionKind::Shadow, MinionKind::Summon, MinionKind::Zombie] {
-                let actual = owner.minion_blueprint(kind, crate::player::eval_name::DEFAULT_EVAL_RQ);
-                let expected = match kind {
-                    MinionKind::Shadow => {
-                        crate::player::skill::act::shadow::build_shadow_minion_from_owner(&legacy_owner, &storage)
-                    }
-                    MinionKind::Summon => {
-                        crate::player::skill::act::summon::build_summon_minion_from_owner(&legacy_owner, &storage, true)
-                    }
-                    MinionKind::Zombie => {
-                        crate::player::skill::skl::zombie::build_zombie_minion_blueprint_from_owner(&legacy_owner, &storage)
-                    }
-                };
-                let context = format!("{raw}, {kind:?}");
-                let (attrs, weapon_bonus, name_factor) = expected.clone_build_inputs();
-                assert_eq!(actual.player.attrs, attrs, "{context}: attrs");
-                assert_eq!(actual.player.weapon_attr_bonus, weapon_bonus, "{context}: weapon bonus");
-                assert_eq!(
-                    actual.player.name_factor.to_bits(),
-                    name_factor.to_bits(),
-                    "{context}: name factor"
-                );
-                assert_eq!(
-                    actual.player.name_base.as_slice(),
-                    expected.name_base.as_slice(),
-                    "{context}: name base"
-                );
-                assert_eq!(actual.player.name, expected.base_name(), "{context}: name");
-                assert_eq!(actual.player.clan_name, expected.clan_name(), "{context}: clan");
-                assert_eq!(actual.player.id_key_name, expected.id_key_name(), "{context}: id key");
-                assert_eq!(actual.player.display_name, expected.display_name(), "{context}: display name");
-                assert_eq!(
-                    actual.player.overlay.as_ref(),
-                    expected.overlay.as_deref(),
-                    "{context}: child overlay"
-                );
-                assert_eq!(actual.player.class, PlayerClass::Clone, "{context}: class");
-                assert_eq!(
-                    expected.player_type(),
-                    crate::player::PlayerType::Clone,
-                    "{context}: legacy class"
-                );
-                assert_status(&actual.player.status, expected.get_status(), &context);
-                assert_skills_match_legacy(&actual.player.skills, &expected, &context);
-
-                assert_eq!(
-                    actual.reserved_player_ids_before_spawn,
-                    usize::from(matches!(kind, MinionKind::Summon | MinionKind::Zombie)),
-                    "{context}: reserved ids"
-                );
-                if kind != MinionKind::Summon {
-                    assert!(!actual.reuse_skills_on_recast, "{context}: skill reuse");
-                    assert!(!actual.reuse_stats_on_recast, "{context}: stat reuse");
-                    assert!(!actual.inherit_owner_def_res, "{context}: inherited attrs");
-                } else {
-                    let overlay = owner.overlay.as_ref().and_then(|overlay| overlay.summon.as_ref());
-                    let has_overlay_attrs = overlay.is_some_and(|overlay| overlay.attrs.is_some());
-                    assert_eq!(
-                        actual.reuse_skills_on_recast,
-                        overlay.is_none_or(|overlay| overlay.reuse_skills_on_recast),
-                        "{context}: skill reuse"
-                    );
-                    assert_eq!(actual.reuse_stats_on_recast, !has_overlay_attrs, "{context}: stat reuse");
-                    assert_eq!(
-                        actual.inherit_owner_def_res,
-                        !has_overlay_attrs || overlay.is_some_and(|overlay| overlay.inherit_owner_def_res),
-                        "{context}: inherited attrs"
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn native_team_upgrades_match_legacy_builds() {
-        let raw = "alice@red\nbob@red\n\nsolo";
+    fn native_roster_builds_representative_inputs_deterministically() {
+        let raw = concat!(
+            "alice@red+剁手刀\n",
+            "covid@!\n",
+            "target@\u{0002}\n",
+            r#"diy@red+diy[72,39,69,76,67,66,36,84]{"sklfire":5,"sklheal":"40+30"}"#,
+            "\n\nplain@blue"
+        );
         let input = NamerenaInput::parse(raw).unwrap();
-        let actual = PreparedRoster::build(&input, crate::player::eval_name::DEFAULT_EVAL_RQ).unwrap();
-        let storage = Storage::new_arc();
-        let mut expected = input
-            .groups
-            .iter()
-            .flatten()
-            .map(|spec| Player::new_from_namerena_raw(spec.raw.clone(), storage.clone()).unwrap())
-            .collect::<Vec<_>>();
-        let mut groups = actual.groups.clone();
-        for group in &mut groups {
-            group.sort_by(|left, right| expected[*left].cmp_for_sort(&expected[*right]));
-            for left_index in 0..group.len() {
-                for right_index in (left_index + 1)..group.len() {
-                    let left_id = group[left_index];
-                    let right_id = group[right_index];
-                    if expected[left_id].clan_name() != expected[right_id].clan_name() {
-                        continue;
-                    }
-                    let (left, right) = if left_id < right_id {
-                        let (before, after) = expected.split_at_mut(right_id);
-                        (&mut before[left_id], &mut after[0])
-                    } else {
-                        let (before, after) = expected.split_at_mut(left_id);
-                        (&mut after[0], &mut before[right_id])
-                    };
-                    left.upgrade(right);
-                    right.upgrade(left);
-                }
-            }
+        let first = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        let second = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+
+        assert_eq!(first.groups, vec![vec![0, 1, 3, 2], vec![4]]);
+        assert_eq!(first.players.len(), 5);
+        for (id, (left, right)) in first.players.iter().zip(&second.players).enumerate() {
+            assert_eq!(left.id, id);
+            assert_eq!(left.attrs, right.attrs);
+            assert_eq!(left.status, right.status);
+            assert_eq!(left.skills, right.skills);
+            assert!(left.status.max_hp > 0);
         }
-        let mut order = (0..expected.len()).collect::<Vec<_>>();
-        order.sort_by(|left, right| expected[*left].cmp_by_id_name(&expected[*right]));
-        for id in order {
-            expected[id].build();
-            if expected[id].player_type() == crate::player::PlayerType::Boss {
-                crate::player::boss::init_boss_state(&mut expected[id]);
-            }
-        }
-        for (actual, expected) in actual.players.iter().zip(&expected) {
-            assert_eq!(actual.name_base.as_slice(), expected.name_base.as_slice());
-            assert_eq!(actual.attrs, expected.clone_build_inputs().0);
-            assert_status(&actual.status, expected.get_status(), expected.id_name().as_str());
-        }
+        let diy = &first.players[3];
+        assert_eq!(diy.attrs, [36, 3, 33, 40, 31, 30, 0, 84]);
+        assert_eq!(diy.skills.entries.iter().find(|entry| entry.key == 0).unwrap().level, 5);
+        assert_eq!(diy.skills.entries.iter().find(|entry| entry.key == 15).unwrap().level, 70);
+    }
+
+    #[test]
+    fn native_minion_blueprints_apply_overlay_data() {
+        let raw = r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklshadow":10,"sklsummon":10,"sklzombie":10},"shadow":{"attrs":[46,47,48,49,50,51,52,200],"skills":{"phantom:sklpossess":9}},"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"normal:sklrapid":9,"sklfire1":5,"summon:sklexplode":3},"reuse_skills_on_recast":true,"inherit_owner_def_res":true},"zombie":{"attrs":[40,41,42,43,44,45,46,90],"skills":{"normal:sklheal":7}}}"#;
+        let input = NamerenaInput::parse(raw).unwrap();
+        let owner = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
+            .unwrap()
+            .players
+            .remove(0);
+
+        let shadow = owner.minion_blueprint(MinionKind::Shadow, crate::namerena::eval_name::DEFAULT_EVAL_RQ);
+        let summon = owner.minion_blueprint(MinionKind::Summon, crate::namerena::eval_name::DEFAULT_EVAL_RQ);
+        let zombie = owner.minion_blueprint(MinionKind::Zombie, crate::namerena::eval_name::DEFAULT_EVAL_RQ);
+
+        assert_eq!(shadow.player.attrs, [10, 11, 12, 13, 14, 15, 16, 200]);
+        assert_eq!(summon.player.attrs, [14, 50, 16, 17, 18, 50, 20, 180]);
+        assert_eq!(zombie.player.attrs, [4, 5, 6, 7, 8, 9, 10, 90]);
+        assert_eq!(shadow.player.class, PlayerClass::Clone);
+        assert_eq!(summon.reserved_player_ids_before_spawn, 1);
+        assert!(summon.reuse_skills_on_recast);
+        assert!(!summon.reuse_stats_on_recast);
+        assert!(summon.inherit_owner_def_res);
+        assert_eq!(zombie.reserved_player_ids_before_spawn, 1);
+    }
+
+    #[test]
+    fn native_team_upgrade_keeps_dense_ids_and_group_layout() {
+        let input = NamerenaInput::parse("alice@red\nbob@red\n\nsolo").unwrap();
+        let roster = PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        assert_eq!(roster.groups, vec![vec![0, 1], vec![2]]);
+        assert_eq!(roster.players.iter().map(|player| player.id).collect::<Vec<_>>(), vec![0, 1, 2]);
+        assert_eq!(roster.players[0].clan_name, "red");
+        assert_eq!(roster.players[1].clan_name, "red");
+        assert_eq!(roster.players[2].clan_name, "solo");
     }
 }

@@ -71,7 +71,7 @@ impl RuntimeRunner {
     }
 
     pub fn new_from_groups_with_seed(groups: &[Vec<String>], seed: &[String]) -> Result<Self, RuntimeBuildError> {
-        Self::new_from_groups_with_seed_and_eval_rq(groups, seed, crate::player::eval_name::DEFAULT_EVAL_RQ)
+        Self::new_from_groups_with_seed_and_eval_rq(groups, seed, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
     }
 
     pub fn new_from_groups_with_seed_and_eval_rq(
@@ -84,7 +84,7 @@ impl RuntimeRunner {
     }
 
     pub fn prepare_groups(groups: &[Vec<String>]) -> Result<PreparedRuntimeRunner, RuntimeBuildError> {
-        Self::prepare_groups_with_eval_rq(groups, crate::player::eval_name::DEFAULT_EVAL_RQ)
+        Self::prepare_groups_with_eval_rq(groups, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
     }
 
     pub fn prepare_groups_with_eval_rq(groups: &[Vec<String>], eval_rq: f64) -> Result<PreparedRuntimeRunner, RuntimeBuildError> {
@@ -318,19 +318,30 @@ mod tests {
     }
 
     #[test]
-    fn binding_snapshot_preserves_legacy_numeric_contract() {
+    fn binding_snapshot_preserves_native_numeric_contract() {
         let raw = "mario@red+fire\nluigi@red+heal\n\npeach@blue+shadow\nbowser@blue+poison\n";
-        let legacy = crate::LegacyRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
+        let input = crate::namerena::NamerenaInput::parse(raw).unwrap();
+        let prepared = crate::namerena::PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
         let runtime = RuntimeRunner::new_from_namerena_raw(raw.to_owned()).unwrap();
 
-        for id in legacy.all_plrs() {
-            let expected = legacy.storage.get_player(&id).unwrap();
-            let expected_status = expected.get_status();
+        for (id, expected) in prepared.players.iter().enumerate() {
+            let expected_status = &expected.status;
             let actual = runtime.player_snapshot(id).unwrap();
             assert_eq!(actual.hp, expected_status.hp, "player {id}: hp");
             assert_eq!(actual.max_hp, expected_status.max_hp, "player {id}: max hp");
             assert_eq!(actual.magic_point, expected_status.magic_point, "player {id}: magic point");
-            assert_eq!(actual.move_point, expected_status.move_point, "player {id}: move point");
+            assert_eq!(
+                actual.move_point,
+                runtime
+                    .runtime()
+                    .entities
+                    .get(EntityIdx(id as u32))
+                    .unwrap()
+                    .runtime
+                    .move_state
+                    .speed_points,
+                "player {id}: move point"
+            );
             assert_eq!(actual.attack, expected_status.attack, "player {id}: attack");
             assert_eq!(actual.defense, expected_status.defense, "player {id}: defense");
             assert_eq!(actual.speed, expected_status.speed, "player {id}: speed");
@@ -342,7 +353,7 @@ mod tests {
             assert_eq!(actual.all_sum, expected_status.all_sum, "player {id}: all sum");
             assert_eq!(
                 actual.name_factor.to_bits(),
-                expected.get_name_factor().to_bits(),
+                expected.name_factor.to_bits(),
                 "player {id}: name factor"
             );
             assert_eq!(

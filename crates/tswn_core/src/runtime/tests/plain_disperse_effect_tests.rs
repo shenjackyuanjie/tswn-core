@@ -121,7 +121,7 @@ fn flush_effects_disperse_hit_clears_positives_and_spends_mp() {
             .updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec![
@@ -136,7 +136,7 @@ fn flush_effects_disperse_hit_clears_positives_and_spends_mp() {
             .updates
             .updates
             .iter()
-            .filter(|update| matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .count(),
         4
     );

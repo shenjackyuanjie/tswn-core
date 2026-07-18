@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tswn_core::runtime::{RuntimeRunner, default_custom_runtime_import_config};
 
-use crate::{CoreEngine, EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
+use crate::{EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
 
 pub const STRESS_GOLDEN_SCHEMA_VERSION: u32 = 1;
 pub const EXACT_TRACE_CASE_COUNT: usize = 87;
@@ -40,7 +40,7 @@ macro_rules! stress_case {
         StressCaseSpec {
             file_name: $file_name,
             input: include_str!(concat!("../cases/runtime_stress/", $file_name)),
-            eval_rq: tswn_core::player::eval_name::DEFAULT_EVAL_RQ,
+            eval_rq: tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ,
             unescape_x02: false,
         }
     };
@@ -56,7 +56,7 @@ macro_rules! stress_case {
         StressCaseSpec {
             file_name: $file_name,
             input: include_str!(concat!("../cases/runtime_stress/", $file_name)),
-            eval_rq: tswn_core::player::eval_name::DEFAULT_EVAL_RQ,
+            eval_rq: tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ,
             unescape_x02: true,
         }
     };
@@ -98,7 +98,7 @@ pub const STRESS_CASES: &[StressCaseSpec] = &[
     stress_case!("ffa_8-b9a9c7882f4f1f99.txt"),
     stress_case!("ffa_8-cce83cebc69761de.txt"),
     stress_case!("ffa_8-fee2c41a2508ad16.txt"),
-    stress_case!("score_round_7.txt", eval_rq = tswn_core::player::eval_name::WIN_RATE_EVAL_RQ),
+    stress_case!("score_round_7.txt", eval_rq = tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ),
     stress_case!("score-mario-r11350.txt", unescape_x02),
 ];
 
@@ -230,34 +230,11 @@ fn capture_case<E: EngineAdapter>(mut runner: E::Runner, spec: StressCaseSpec) -
     }
 }
 
-fn build_legacy_runner(spec: StressCaseSpec) -> tswn_core::LegacyRunner {
-    let input = spec.effective_input();
-    let (groups, seed) = tswn_core::LegacyRunner::split_namerena_into_groups(input);
-    tswn_core::LegacyRunner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, spec.eval_rq)
-        .unwrap_or_else(|error| panic!("legacy golden input {} failed to build: {error}", spec.file_name))
-}
-
 fn build_runtime_runner(spec: StressCaseSpec) -> RuntimeRunner {
     let config = default_custom_runtime_import_config()
         .unwrap_or_else(|error| panic!("Runtime golden profile failed to build: {error:?}"));
     RuntimeRunner::from_custom_mixed_namerena_raw_with_eval_rq(spec.effective_input(), spec.eval_rq, config)
         .unwrap_or_else(|error| panic!("Runtime golden input {} failed to build: {error:?}", spec.file_name))
-}
-
-/// 仅供冻结提交生成基线；删除 legacy 对象模型时应一并删除调用它的生成二进制。
-pub fn freeze_legacy_stress_goldens() -> StressGoldenSet {
-    assert_eq!(STRESS_CASES.len(), STRESS_CASE_COUNT);
-    StressGoldenSet {
-        schema_version: STRESS_GOLDEN_SCHEMA_VERSION,
-        exact_trace_case_count: EXACT_TRACE_CASE_COUNT,
-        stress_case_count: STRESS_CASE_COUNT,
-        canonical_digest_format: CANONICAL_DIGEST_FORMAT.to_string(),
-        cases: STRESS_CASES
-            .iter()
-            .copied()
-            .map(|spec| capture_case::<CoreEngine>(build_legacy_runner(spec), spec))
-            .collect(),
-    }
 }
 
 fn parse_frozen_goldens() -> StressGoldenSet {
@@ -306,7 +283,7 @@ fn find_spec_by_input(raw: &str, eval_rq: f64) -> StressCaseSpec {
 }
 
 pub fn assert_runtime_matches_frozen_golden(raw: &str, case_name: &str) {
-    assert_runtime_matches_frozen_golden_with_eval_rq(raw, case_name, tswn_core::player::eval_name::DEFAULT_EVAL_RQ);
+    assert_runtime_matches_frozen_golden_with_eval_rq(raw, case_name, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ);
 }
 
 pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {

@@ -185,12 +185,16 @@ impl CombatRuntime {
                 .template
                 .display_name
                 .clone();
-            let mut hungry_update =
-                crate::engine::update::RunUpdate::new(format!("{display_name}觉得有点饿"), actor.0 as usize, actor.0 as usize, 0);
+            let mut hungry_update = crate::runtime::update::RunUpdate::new(
+                format!("{display_name}觉得有点饿"),
+                actor.0 as usize,
+                actor.0 as usize,
+                0,
+            );
             hungry_update.delay1 = 2000;
             updates.add(hungry_update);
             updates.add_newline();
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 format!(" {display_name}离开了战场"),
                 actor.0 as usize,
                 actor.0 as usize,
@@ -235,7 +239,7 @@ impl CombatRuntime {
             .runtime
             .get_at(false, &mut self.rng)
             * 12.0;
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]发起攻击",
             actor.0 as usize,
             target.0 as usize,
@@ -570,7 +574,7 @@ impl CombatRuntime {
         if healed > 0 {
             owner.runtime.hp = (owner.runtime.hp + healed).min(owner.template.max_hp);
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1]回复体力[2]点",
             caster.0 as usize,
             caster.0 as usize,
@@ -622,7 +626,7 @@ impl CombatRuntime {
                 .add_entry(StateEntry::berserk(PLAIN_BERSERK_STATE_KEY, 1 + i32::from(charge_active),)),
             "runtime berserk state should be inserted"
         );
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1]进入[狂暴]状态",
             caster.0 as usize,
             target.0 as usize,
@@ -688,7 +692,7 @@ impl CombatRuntime {
             );
             target_entity.runtime.atk_sum = target_entity.runtime.atk_sum.saturating_mul(4);
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1]被[诅咒]了",
             caster.0 as usize,
             target.0 as usize,

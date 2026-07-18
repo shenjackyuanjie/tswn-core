@@ -1,7 +1,7 @@
 use super::*;
 
 fn state_clears_later_state(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "state clear",
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -11,7 +11,7 @@ fn state_clears_later_state(context: &mut StateContext<'_>, entry: &StateHookPla
 }
 
 fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "state mark",
         entry.owner.0 as usize,
         entry.owner.0 as usize,

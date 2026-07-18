@@ -80,7 +80,7 @@ impl CombatRuntime {
                 "runtime poison state key should be vacant"
             );
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1][中毒]",
             caster.0 as usize,
             target.0 as usize,
@@ -169,7 +169,7 @@ impl CombatRuntime {
             .template
             .display_name
             .clone();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             format!("[1]感染了{boss_display}"),
             boss.0 as usize,
             target.0 as usize,
@@ -194,7 +194,7 @@ impl CombatRuntime {
             .template
             .display_name
             .clone();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             format!("{owner_name}打开了{activity}, 这回合什么也没做"),
             owner.0 as usize,
             owner.0 as usize,
@@ -276,7 +276,7 @@ impl CombatRuntime {
             return false;
         }
 
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             format!("[1]感染了{boss_display}"),
             boss.0 as usize,
             target.0 as usize,
@@ -307,7 +307,7 @@ impl CombatRuntime {
             return;
         }
 
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             format!(" {owner_name}肺炎发作"),
             boss.0 as usize,
             owner.0 as usize,
@@ -335,7 +335,7 @@ impl CombatRuntime {
         let boss_entity = self.entities.get_mut(boss).unwrap();
         boss_entity.runtime.hp = (boss_entity.runtime.hp + heal_amount).min(boss_entity.template.max_hp);
         let boss_display = boss_entity.template.display_name.clone();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             format!("{boss_display}回复体力{heal_amount}点"),
             boss.0 as usize,
             boss.0 as usize,
@@ -357,7 +357,7 @@ impl CombatRuntime {
         }
         let boss_display = self.entities.get(boss).unwrap().template.display_name.clone();
         let owner_name = self.entities.get(owner).unwrap().template.display_name.clone();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             format!(" {owner_name}{boss_display}发作"),
             boss.0 as usize,
             owner.0 as usize,
@@ -405,7 +405,7 @@ impl CombatRuntime {
         }
         let die_message = if is_combat_minion { "[1]消失了" } else { "[1]被击倒了" };
         updates.add_newline();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             die_message,
             caster.0 as usize,
             target.0 as usize,

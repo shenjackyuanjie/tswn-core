@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use crate::player::Player;
 use crate::win_rate::WinRateTiming;
 
 use super::{BatchSummary, CliApiResult, PairRateEntry, PairRateResult};
@@ -130,7 +129,7 @@ fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     let mut seen = HashSet::new();
     for group in groups {
         for name in group.lines().map(str::trim).filter(|line| !line.is_empty()) {
-            let id_name = Player::raw_namerena_to_idname(name);
+            let id_name = crate::namerena::raw_namerena_to_id_name(name);
             if !seen.insert(id_name.clone()) {
                 return Some(id_name);
             }

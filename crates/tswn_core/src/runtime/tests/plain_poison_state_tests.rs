@@ -72,7 +72,7 @@ fn run_state_hooks_poison_post_action_clears_and_emits_release_after_tick() {
     assert_eq!(frame.updates.updates[1].message, "[1]受到[2]点伤害");
     assert_eq!(
         frame.updates.updates[2].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[3].message, "[1]从[中毒]中解除");
     assert_eq!(frame.updates.updates[3].caster, 0);
@@ -129,7 +129,7 @@ fn run_state_hooks_poison_post_action_emits_death_before_die_hooks() {
         .updates
         .updates
         .iter()
-        .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+        .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
         .map(|update| (update.message.as_ref(), update.score))
         .collect::<Vec<_>>();
     assert_eq!(

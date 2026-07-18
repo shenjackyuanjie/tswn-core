@@ -6,13 +6,13 @@ use pyo3::{
 };
 use tswn_core::{
     RunUpdate, Runner,
-    engine::update::{RunUpdates, UpdateType},
-    player::PlrId,
     replay_view::{
         ReplayEventView, ReplayRow as CoreReplayRow, ReplayState, ReplayTextPart as CoreReplayTextPart,
         ReplayTextPartKind as CoreReplayTextPartKind, ReplayTone, ReplayViewFrame, WIN_UPDATE_DELAY0_MS, build_replay_view_frame,
         render_update_message as core_render_update_message,
     },
+    runtime::PlrId,
+    runtime::update::{RunUpdates, UpdateType},
     runtime::{BINDING_COMPLETION_MAX_ROUNDS, RuntimePlayerSnapshot as CorePlayerSnapshot},
 };
 

@@ -6,11 +6,11 @@
 
 use std::collections::HashMap;
 
-use tswn_core::player::PlrId;
 use tswn_core::replay_view::{
     ReplayEventView, ReplayState, ReplayTextPart as CoreReplayTextPart, ReplayTextPartKind as CoreReplayTextPartKind, ReplayTone,
     ReplayViewFrame, build_replay_view_frame,
 };
+use tswn_core::runtime::PlrId;
 use tswn_core::runtime::{BINDING_COMPLETION_MAX_ROUNDS, RuntimePlayerSnapshot};
 use tswn_core::{RunUpdates, Runner};
 use wasm_bindgen::prelude::*;
@@ -47,7 +47,7 @@ fn collect_players(
         let team_index = player.team_index;
         let icon_key = player.id_key_name;
         let icon_png_base64 = if include_icons {
-            Some(tswn_core::player::icon_render::render_icon_b64_from_name(&icon_key))
+            Some(tswn_core::namerena::icon_render::render_icon_b64_from_name(&icon_key))
         } else {
             None
         };
@@ -67,7 +67,7 @@ fn collect_players(
 
 fn state_from_runtime(player: RuntimePlayerSnapshot, include_icons: bool) -> PlayerState {
     let icon_png_base64 = if include_icons && player.root_owner_id.is_some() {
-        Some(tswn_core::player::icon_render::render_icon_b64_from_name(&player.id_key_name))
+        Some(tswn_core::namerena::icon_render::render_icon_b64_from_name(&player.id_key_name))
     } else {
         None
     };

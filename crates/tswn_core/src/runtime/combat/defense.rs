@@ -226,7 +226,7 @@ impl CombatRuntime {
 
             if trigger_ok && protector_ready {
                 self.drain_plain_protect_post_action_into(link.owner, updates);
-                updates.add(crate::engine::update::RunUpdate::new(
+                updates.add(crate::runtime::update::RunUpdate::new(
                     "[0][守护][1]",
                     link.owner.0 as usize,
                     target.0 as usize,
@@ -487,7 +487,7 @@ impl CombatRuntime {
         target: EntityIdx,
         amount: i32,
         updates: &mut RunUpdates,
-        replay: fn(usize, usize, i32) -> crate::engine::update::RunUpdate,
+        replay: fn(usize, usize, i32) -> crate::runtime::update::RunUpdate,
     ) -> bool {
         let Some(target_entity) = self.entities.get_mut(target) else {
             panic!("unknown runtime damage target entity: {}", target.0);
@@ -633,11 +633,11 @@ impl CombatRuntime {
             panic!("unknown runtime {status} immune target entity: {}", target.0);
         };
         if target_entity.runtime.flags.contains(PlayerKindFlags::BOSS) {
-            let threshold = crate::player::boss::boss_immune_threshold(&target_entity.template.name, status);
+            let threshold = crate::namerena::boss_immune_threshold(&target_entity.template.name, status);
             return (self.rng.next_u8() as i32) < threshold;
         }
         if target_entity.runtime.flags.contains(PlayerKindFlags::BOOST) {
-            return self.rng.r127() < crate::player::boost_value(&target_entity.template.name);
+            return self.rng.r127() < crate::namerena::boost_value(&target_entity.template.name);
         }
         false
     }
@@ -739,7 +739,7 @@ impl CombatRuntime {
             let team = minion_entity.runtime.team;
             self.world.mark_dead(minion, team);
             updates.add_newline();
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 "[1]消失了",
                 owner.0 as usize,
                 minion.0 as usize,

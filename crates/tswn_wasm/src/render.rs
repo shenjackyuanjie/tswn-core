@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use tswn_core::RunUpdate;
-use tswn_core::player::PlrId;
+use tswn_core::runtime::PlrId;
 
 use crate::model::MessageTone;
 

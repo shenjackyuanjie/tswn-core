@@ -204,13 +204,3 @@ pub fn trace_rc4() -> bool {
     init_once();
     TRACE_RC4.load(Ordering::Relaxed)
 }
-
-macro_rules! debug_println {
-    ($condition:expr, $($arg:tt)*) => {
-        if $condition {
-            eprintln!($($arg)*);
-        }
-    };
-}
-
-pub(crate) use debug_println;

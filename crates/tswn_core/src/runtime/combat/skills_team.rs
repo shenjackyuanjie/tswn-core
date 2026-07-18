@@ -143,7 +143,7 @@ impl CombatRuntime {
                 actor.0, target.0, self.rng.i, self.rng.j,
             );
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[魅惑]",
             actor.0 as usize,
             target.0 as usize,
@@ -173,15 +173,15 @@ impl CombatRuntime {
             )
         };
         let immune = if target_flags.contains(PlayerKindFlags::BOOST) {
-            self.rng.r127() < crate::player::boost_value(&target_name)
+            self.rng.r127() < crate::namerena::boost_value(&target_name)
         } else if target_flags.contains(PlayerKindFlags::BOSS) {
-            let threshold = crate::player::boss::boss_immune_threshold(&target_name, "charm");
+            let threshold = crate::namerena::boss_immune_threshold(&target_name, "charm");
             (self.rng.next_u8() as i32) < threshold
         } else {
             false
         };
         if immune || (target_active && PlayerRuntime::dodge(owner_magic, target_dodge, &mut self.rng)) {
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",
                 target.0 as usize,
                 actor.0 as usize,
@@ -258,7 +258,7 @@ impl CombatRuntime {
             // 还会提交疾走等等待下一次属性刷新才生效的状态倍率。
             self.entities.get_mut(target).unwrap().refresh_runtime_stats_from_template();
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1]被[魅惑]了",
             actor.0 as usize,
             target.0 as usize,
@@ -438,7 +438,7 @@ impl CombatRuntime {
                 self.rng.j,
             );
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[治愈魔法]",
             actor.0 as usize,
             target.0 as usize,
@@ -505,7 +505,7 @@ impl CombatRuntime {
         };
 
         let mut recover_update =
-            crate::engine::update::RunUpdate::new("[1]回复体力[2]点", actor.0 as usize, target.0 as usize, 0);
+            crate::runtime::update::RunUpdate::new("[1]回复体力[2]点", actor.0 as usize, target.0 as usize, 0);
         recover_update.param = Some(heal as u32);
         updates.add(recover_update);
 

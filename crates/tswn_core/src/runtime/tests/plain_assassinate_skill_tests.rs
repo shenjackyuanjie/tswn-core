@@ -121,7 +121,7 @@ fn plain_assassinate_forced_backstab_records_actor_boundary_target() {
             break_on_damage: true,
         });
         owner.template.skills.ensure_pre_action_lane(0);
-        owner.runtime.move_state.speed_points = crate::player::MOVE_POINT_THRESHOLD + 1;
+        owner.runtime.move_state.speed_points = crate::runtime::MOVE_POINT_THRESHOLD + 1;
     }
     runtime.scheduler.set_action_mode(ActionSchedulerMode::LegacyStep);
 

@@ -26,7 +26,7 @@ impl CombatRuntime {
     }
 
     pub(super) fn drain_plain_summon_skill_into(&mut self, actor: EntityIdx, updates: &mut RunUpdates) {
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[血祭]",
             actor.0 as usize,
             actor.0 as usize,
@@ -166,7 +166,7 @@ impl CombatRuntime {
     }
 
     fn plain_summon_blueprint(&mut self, actor: EntityIdx) -> PlayerTemplate {
-        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Summon);
+        self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Summon);
         let slot = self
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT)
@@ -198,9 +198,8 @@ impl CombatRuntime {
     }
 
     fn set_plain_summon_share_level(&self, skills: &mut SkillLoadout, enabled: bool) {
-        let lane = (0..skills.len()).find(|lane| {
-            skills.fixed_lane_key_at(*lane) == Some(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY)
-        });
+        let lane = (0..skills.len())
+            .find(|lane| skills.fixed_lane_key_at(*lane) == Some(crate::namerena::SUMMON_SHARE_DAMAGE_SKILL_KEY));
         let Some(lane) = lane else {
             panic!("runtime summon blueprint is missing share-damage fixed lane");
         };
@@ -250,7 +249,7 @@ impl CombatRuntime {
         }
         if let Some(mut skills) = recast_skills {
             self.set_plain_summon_share_level(&mut skills, share_damage);
-            skills.boost_last_active_except_key(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY);
+            skills.boost_last_active_except_key(crate::namerena::SUMMON_SHARE_DAMAGE_SKILL_KEY);
             template.skills = skills;
         } else {
             self.set_plain_summon_share_level(&mut template.skills, share_damage);

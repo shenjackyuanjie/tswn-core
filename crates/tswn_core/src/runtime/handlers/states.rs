@@ -10,13 +10,13 @@ pub fn run_accumulate_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEnt
     }
 
     let owner = context.owner_idx();
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[0]开始[聚气]",
         owner.0 as usize,
         owner.0 as usize,
         1,
     ));
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[0]攻击力上升",
         owner.0 as usize,
         owner.0 as usize,
@@ -56,7 +56,7 @@ pub fn run_curse_post_defend_state(context: &mut StateContext<'_>, entry: &State
     if (context.rng_next_u8() as u32) & 63 < prob as u32 {
         let caster = context.defend_caster().expect("curse state should receive incoming defend caster");
         let target = context.defend_target().expect("curse state should receive incoming defend target");
-        context.add_update(crate::engine::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new(
             "[诅咒]使伤害加倍",
             caster.0 as usize,
             target.0 as usize,
@@ -90,7 +90,7 @@ pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &Stat
     let next_count = count - 1;
     let poison_caster = caster.map_or(context.owner_idx(), EntityIdx);
 
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[1][毒性发作]",
         poison_caster.0 as usize,
         context.owner_idx().0 as usize,
@@ -314,7 +314,7 @@ pub fn run_covid_infection_state(context: &mut StateContext<'_>, entry: &StateHo
         } else {
             "[1]在家中自我隔离"
         };
-        context.add_update(crate::engine::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new(
             message,
             boss.0 as usize,
             owner.0 as usize,
@@ -423,7 +423,7 @@ pub fn run_lazy_infection_state(context: &mut StateContext<'_>, entry: &StateHoo
         };
         let owner = context.owner_idx();
         let owner_name = context.owner().expect("runtime lazy owner must exist").template.display_name.clone();
-        context.add_update(crate::engine::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new(
             format!("{owner_name}打开了{activity}, 这回合什么也没做"),
             owner.0 as usize,
             owner.0 as usize,
@@ -510,7 +510,7 @@ fn run_timed_release_post_action_state(
     let alive = context.owner().map(|owner| owner.runtime.alive).unwrap_or(false);
     if alive {
         context.add_newline();
-        context.add_update(crate::engine::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new(
             release_message,
             context.owner_idx().0 as usize,
             context.owner_idx().0 as usize,
@@ -551,7 +551,7 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
         .expect("iron state payload should still exist");
     context.set_defend_damage(remaining);
     context.add_newline();
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[1]的[铁壁]被打消了",
         caster.0 as usize,
         target.0 as usize,
@@ -596,7 +596,7 @@ fn run_iron_post_action_state(context: &mut StateContext<'_>, entry: &StateHookP
         .expect("iron state payload should still exist");
     context.adjust_owner_speed_points(-128).expect("iron state owner should still exist");
     context.add_newline();
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[1]从[铁壁]中解除",
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,

@@ -11,7 +11,7 @@ pub(super) fn summon_runtime() -> CombatRuntime {
 fn summon_share_level(runtime: &CombatRuntime, summoned: EntityIdx) -> u32 {
     let skills = &runtime.entities.get(summoned).unwrap().template.skills;
     let lane = (0..skills.len())
-        .find(|lane| skills.fixed_lane_key_at(*lane) == Some(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY))
+        .find(|lane| skills.fixed_lane_key_at(*lane) == Some(crate::namerena::SUMMON_SHARE_DAMAGE_SKILL_KEY))
         .expect("summon should contain share-damage lane");
     skills.level_at(lane).unwrap()
 }
@@ -72,8 +72,7 @@ fn plain_summon_spawns_once_then_resets_and_revives_the_same_entity() {
         .rev()
         .copied()
         .find(|lane| {
-            summoned_entity.template.skills.fixed_lane_key_at(*lane)
-                != Some(crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY)
+            summoned_entity.template.skills.fixed_lane_key_at(*lane) != Some(crate::namerena::SUMMON_SHARE_DAMAGE_SKILL_KEY)
                 && summoned_entity.template.skills.level_at(*lane).is_some_and(|level| level > 0)
                 && summoned_entity.template.skills.boosted_at(*lane) == Some(false)
         })
@@ -122,7 +121,7 @@ fn plain_summon_spawns_once_then_resets_and_revives_the_same_entity() {
     assert_eq!(revived.template.skills.boosted_at(next_boost_lane), Some(true));
     assert_eq!(
         revived.template.skills.boost_at(next_boost_lane),
-        Some(&crate::player::skill::SkillBoost::LastBoost(next_boost_base))
+        Some(&crate::namerena::SkillBoost::LastBoost(next_boost_base))
     );
     assert_eq!(
         recast_updates.updates.iter().map(|update| update.message.as_ref()).collect::<Vec<_>>(),

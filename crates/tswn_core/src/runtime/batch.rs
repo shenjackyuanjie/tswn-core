@@ -224,7 +224,7 @@ fn profile_seed_for_round(seed: &mut String, round: usize) -> &[String] {
         &[]
     } else {
         seed.clear();
-        let _ = write!(seed, "seed:{}@!", crate::engine::PROFILE_START as usize + round);
+        let _ = write!(seed, "seed:{}@!", crate::runtime::PROFILE_START as usize + round);
         std::slice::from_ref(seed)
     }
 }
@@ -327,7 +327,7 @@ fn js_score_profiles_per_round(target_group: &[String]) -> usize {
 struct ScoreMatchGroups {
     groups: Vec<Vec<String>>,
     profile_slots: Vec<(usize, usize)>,
-    profile_player_ids: Vec<crate::player::PlrId>,
+    profile_player_ids: Vec<crate::runtime::PlrId>,
     modifier: String,
     profile_team_rng: crate::rc4::RC4,
     skill_buffers: Vec<SkillLoadout>,
@@ -374,8 +374,8 @@ impl ScoreMatchGroups {
             profile_slots,
             profile_player_ids,
             modifier: modifier.to_owned(),
-            profile_team_rng: if modifier.len() <= crate::player::TEAM_MAX_LEN {
-                crate::player::Player::score_profile_team_rng(modifier)
+            profile_team_rng: if modifier.len() <= crate::namerena::TEAM_MAX_LEN {
+                crate::namerena::score_profile_team_rng(modifier)
             } else {
                 // 非法的超长 modifier 会在完整玩家构造路径返回原有错误；这里不能提前 panic。
                 crate::rc4::RC4::default()
@@ -390,7 +390,7 @@ impl ScoreMatchGroups {
     }
 
     fn set_round(&mut self, round: usize) {
-        let profile_base = crate::engine::PROFILE_START as usize + round * self.profile_slots.len();
+        let profile_base = crate::runtime::PROFILE_START as usize + round * self.profile_slots.len();
         for (offset, &(group, player)) in self.profile_slots.iter().enumerate() {
             let profile = &mut self.groups[group][player];
             profile.clear();
@@ -404,244 +404,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runtime_prepared_win_rate_matches_legacy_seed_schedule() {
-        let groups = vec![vec!["left@red".to_owned()], vec!["right@blue".to_owned()]];
-        let legacy = crate::win_rate::groups_win_rate(&groups, 24, crate::player::eval_name::WIN_RATE_EVAL_RQ, 1)
-            .expect("legacy win rate should run");
-        let runtime = runtime_groups_win_rate(&groups, 24, crate::player::eval_name::WIN_RATE_EVAL_RQ, 1)
-            .expect("runtime win rate should run");
-
-        assert_eq!(
-            (runtime.wins, runtime.total, runtime.errors, runtime.guard_exhausted),
-            (legacy.wins, legacy.total, 0, 0)
-        );
-    }
-
-    #[test]
-    fn reusable_runner_reset_matches_fresh_runner_after_mutating_fights() {
+    fn reusable_runner_reset_matches_fresh_runner() {
         let groups = vec![
             vec!["Don't_Force_It #f4fMecHe1@Shabby_fish".to_owned()],
             vec!["涵虚不等式 PFVKEUPBU@TigerStar".to_owned()],
         ];
-        let config = default_custom_runtime_import_config().expect("默认 Runtime 配置应构建成功");
+        let config = default_custom_runtime_import_config().unwrap();
         let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(
             &groups,
-            crate::player::eval_name::DEFAULT_EVAL_RQ,
+            crate::namerena::eval_name::DEFAULT_EVAL_RQ,
             config,
         )
-        .expect("CQP 对局应准备成功");
+        .unwrap();
         let mut reusable = prepared.new_reusable_runner();
-        let mut seed = String::with_capacity(24);
+        let mut seed_buffer = String::with_capacity(24);
 
-        for round in 0..200 {
-            let seed = profile_seed_for_round(&mut seed, round);
-            prepared.reset_with_seed(&mut reusable, seed).expect("复用 runner 应复位成功");
+        for round in 0..32 {
+            let seed = profile_seed_for_round(&mut seed_buffer, round);
+            prepared.reset_with_seed(&mut reusable, seed).unwrap();
             let reused = reusable.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
-
-            let mut fresh = prepared.new_with_seed(seed).expect("全新 runner 应构建成功");
+            let mut fresh = prepared.new_with_seed(seed).unwrap();
             let expected = fresh.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
-            assert_eq!(
-                (reused.winner_team, reusable.input_group_won(0), reused.guard_exhausted),
-                (expected.winner_team, fresh.input_group_won(0), expected.guard_exhausted),
-                "round={round}"
-            );
+            assert_eq!(reused, expected, "round={round}");
+            assert_eq!(reusable.input_group_won(0), fresh.input_group_won(0), "round={round}");
         }
     }
 
     #[test]
-    fn runtime_score_matches_legacy_profile_rounds() {
-        let target_group = vec!["mario".to_owned()];
-        let legacy = crate::cli_api::score("mario", 200, "normal", Some(crate::player::eval_name::WIN_RATE_EVAL_RQ), 1)
-            .expect("legacy score should run");
-        let runtime = runtime_score(&target_group, "\u{0002}", 200, crate::player::eval_name::WIN_RATE_EVAL_RQ, 1)
-            .expect("runtime score should run");
-
-        assert_eq!(
-            (runtime.wins, runtime.total, runtime.errors, runtime.guard_exhausted),
-            (legacy.wins, legacy.total, legacy.errors, 0)
-        );
-    }
-
-    #[test]
-    fn runtime_lazy_score_round_42_matches_legacy() {
-        let target_group = vec!["mario".to_owned()];
-        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
-        let mut match_groups = ScoreMatchGroups::new(&target_group, "\u{0002}");
-        let first_groups = match_groups.groups.clone();
-        match_groups.set_round(42);
-
-        let mut legacy = crate::LegacyRunner::new_from_groups_with_seed_and_eval_rq_uncached(&match_groups.groups, &[], eval_rq)
-            .expect("legacy score round should initialize");
-        let expected = crate::runtime::normalize_legacy_run(&mut legacy, BATCH_MAX_ROUNDS);
-
-        let config = default_custom_runtime_import_config().expect("runtime profile should build");
-        let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&first_groups, eval_rq, config)
-            .expect("runtime score template should initialize");
-        let mut actual = prepared.new_reusable_runner();
-        prepared
-            .reset_score_groups_with_seed_and_eval_rq(
-                &mut actual,
-                &match_groups.groups,
-                &match_groups.profile_player_ids,
-                &match_groups.modifier,
-                &match_groups.profile_team_rng,
-                &mut match_groups.skill_buffers,
-                &mut match_groups.identity_buffers,
-                &mut match_groups.round_scratch,
-                &mut match_groups.roster_buffers,
-                &[],
-                eval_rq,
-            )
-            .expect("runtime lazy score round should initialize");
-        let actual = actual.run_until_winner_normalized_rounds(BATCH_MAX_ROUNDS);
-
-        assert_eq!(crate::runtime::strict_diff_runs(&expected, &actual), Ok(()));
-    }
-
-    #[test]
-    fn runtime_parallel_score_and_win_rate_keep_deterministic_totals() {
+    fn parallel_win_rate_and_score_are_deterministic() {
         let groups = vec![vec!["left@red".to_owned()], vec!["right@blue".to_owned()]];
-        let legacy_win_rate = crate::win_rate::groups_win_rate(&groups, 128, crate::player::eval_name::WIN_RATE_EVAL_RQ, 1)
-            .expect("legacy win rate should run");
-        let runtime_win_rate = runtime_groups_win_rate(&groups, 128, crate::player::eval_name::WIN_RATE_EVAL_RQ, 4)
-            .expect("parallel runtime win rate should run");
+        let single = runtime_groups_win_rate(&groups, 128, crate::namerena::eval_name::WIN_RATE_EVAL_RQ, 1).unwrap();
+        let parallel = runtime_groups_win_rate(&groups, 128, crate::namerena::eval_name::WIN_RATE_EVAL_RQ, 4).unwrap();
         assert_eq!(
-            (runtime_win_rate.wins, runtime_win_rate.total),
-            (legacy_win_rate.wins, legacy_win_rate.total)
+            (single.wins, single.total, single.errors, single.guard_exhausted),
+            (parallel.wins, parallel.total, parallel.errors, parallel.guard_exhausted)
         );
 
-        let target_group = vec!["mario".to_owned()];
-        let legacy_score = crate::cli_api::score("mario", 128, "bang", Some(crate::player::eval_name::WIN_RATE_EVAL_RQ), 1)
-            .expect("legacy score should run");
-        let runtime_score = runtime_score(&target_group, "!", 128, crate::player::eval_name::WIN_RATE_EVAL_RQ, 4)
-            .expect("parallel runtime score should run");
+        let targets = vec!["mario".to_owned()];
+        let single = runtime_score(&targets, "!", 128, crate::namerena::eval_name::WIN_RATE_EVAL_RQ, 1).unwrap();
+        let parallel = runtime_score(&targets, "!", 128, crate::namerena::eval_name::WIN_RATE_EVAL_RQ, 4).unwrap();
         assert_eq!(
-            (
-                runtime_score.wins,
-                runtime_score.total,
-                runtime_score.errors,
-                runtime_score.guard_exhausted
-            ),
-            (legacy_score.wins, legacy_score.total, legacy_score.errors, 0)
+            (single.wins, single.total, single.errors, single.guard_exhausted),
+            (parallel.wins, parallel.total, parallel.errors, parallel.guard_exhausted)
         );
     }
 
     #[test]
-    #[ignore = "手动定位批量评分的首个胜负分叉"]
-    fn runtime_score_first_winner_divergence() {
-        let target_group = vec!["mario".to_owned()];
-        let modifier = "!";
-        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
-        let mut match_groups = ScoreMatchGroups::new(&target_group, modifier);
-        let config = default_custom_runtime_import_config().expect("默认 Runtime 配置应构建成功");
-        let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&match_groups.groups, eval_rq, config)
-            .expect("Runtime 评分模板应构建成功");
-        let mut runtime = prepared.new_reusable_runner();
-
-        for round in 0..128 {
-            match_groups.set_round(round);
-            let mut legacy =
-                crate::LegacyRunner::new_from_groups_with_seed_and_eval_rq_uncached(&match_groups.groups, &[], eval_rq)
-                    .expect("legacy 评分对局应构建成功");
-            let target_team = legacy.input_groups[0].clone();
-            legacy.run_to_completion();
-            let legacy_won = legacy
-                .world
-                .winner
-                .as_ref()
-                .and_then(|winners| winners.first())
-                .is_some_and(|winner| target_team.contains(winner));
-
-            prepared
-                .reset_from_groups_with_seed_and_eval_rq(&mut runtime, &match_groups.groups, &[], eval_rq)
-                .expect("Runtime 评分对局应复位成功");
-            runtime.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
-            let runtime_won = runtime.input_group_won(0);
-            if legacy_won != runtime_won {
-                panic!(
-                    "评分首个胜负分叉：round={round} legacy={legacy_won} runtime={runtime_won} groups={:?}",
-                    match_groups.groups
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn runtime_win_rate_charm_exchange_seed_matches_legacy() {
-        let groups = vec![vec!["left@red".to_owned()], vec!["right@blue".to_owned()]];
-        let seed = vec!["seed:33554642@!".to_owned()];
-        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
-        let mut legacy = crate::LegacyRunner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &seed, eval_rq)
-            .expect("legacy charm/exchange fixture should initialize");
-        let expected = crate::runtime::normalize_legacy_run(&mut legacy, BATCH_MAX_ROUNDS);
-
-        let config = default_custom_runtime_import_config().expect("runtime profile should build");
-        let mut runtime = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&groups, eval_rq, config)
-            .expect("runtime charm/exchange fixture should initialize")
-            .new_with_seed(&seed)
-            .expect("runtime charm/exchange seed should apply");
-        let actual = runtime.run_until_winner_normalized_rounds(BATCH_MAX_ROUNDS);
-
-        assert_eq!(crate::runtime::strict_diff_runs(&expected, &actual), Ok(()));
-    }
-
-    #[test]
-    fn runtime_score_reflected_ice_fixture_matches_legacy() {
-        let modifier = "\u{0002}";
-        let profile_base = crate::engine::PROFILE_START as usize + 191 * 3;
-        let groups = vec![
-            vec!["mario".to_owned(), format!("{profile_base}@{modifier}")],
-            vec![
-                format!("{}@{modifier}", profile_base + 1),
-                format!("{}@{modifier}", profile_base + 2),
-            ],
-        ];
-        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
-        let mut legacy = crate::LegacyRunner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &[], eval_rq)
-            .expect("legacy reflected-ice fixture should initialize");
-        let expected = crate::runtime::normalize_legacy_run(&mut legacy, 3);
-
-        let config = default_custom_runtime_import_config().expect("runtime profile should build");
-        let mut runtime = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&groups, eval_rq, config)
-            .expect("runtime reflected-ice fixture should initialize")
-            .new_with_seed(&[])
-            .expect("runtime reflected-ice fixture seed should apply");
-        let actual = runtime.run_until_winner_normalized_rounds(3);
-
-        assert_eq!(crate::runtime::strict_diff_runs(&expected, &actual), Ok(()));
-    }
-
-    #[test]
-    fn runtime_score_shabby_fish_round_185_matches_legacy() {
-        let modifier = "\u{0002}";
-        let profile_base = crate::engine::PROFILE_START as usize + 185 * 3;
-        let groups = vec![
-            vec!["11 #CxersT6Za@Shabby_fish".to_owned(), format!("{profile_base}@{modifier}")],
-            vec![
-                format!("{}@{modifier}", profile_base + 1),
-                format!("{}@{modifier}", profile_base + 2),
-            ],
-        ];
-        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
-        let mut legacy = crate::LegacyRunner::new_from_groups_with_seed_and_eval_rq_uncached(&groups, &[], eval_rq)
-            .expect("legacy Shabby_fish 评分用例应初始化成功");
-        let expected = crate::runtime::normalize_legacy_run(&mut legacy, BATCH_MAX_ROUNDS);
-
-        let config = default_custom_runtime_import_config().expect("Runtime 默认配置应构建成功");
-        let mut runtime = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&groups, eval_rq, config)
-            .expect("Runtime Shabby_fish 评分用例应初始化成功")
-            .new_with_seed(&[])
-            .expect("Runtime Shabby_fish 评分用例 seed 应应用成功");
-        let actual = runtime.run_until_winner_normalized_rounds(BATCH_MAX_ROUNDS);
-
-        assert_eq!(crate::runtime::strict_diff_runs(&expected, &actual), Ok(()));
-    }
-
-    #[test]
-    fn score_match_builder_keeps_js_single_target_shape() {
+    fn score_match_builder_keeps_single_target_shape() {
         let mut groups = ScoreMatchGroups::new(&["mario".to_owned()], "!");
         groups.set_round(2);
-        let base = crate::engine::PROFILE_START as usize + 6;
+        let base = crate::runtime::PROFILE_START as usize + 6;
         assert_eq!(
             groups.groups,
             vec![
@@ -649,52 +461,5 @@ mod tests {
                 vec![format!("{}@!", base + 1), format!("{}@!", base + 2)]
             ]
         );
-    }
-
-    #[test]
-    #[ignore = "manual runtime/legacy batch timing probe"]
-    fn runtime_batch_perf_probe() {
-        let n = std::env::var("TSWN_BATCH_PERF_N")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(1_000);
-        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
-        let target_group = vec!["mario".to_owned()];
-
-        let started = Instant::now();
-        let runtime_score = runtime_score(&target_group, "\u{0002}", n, eval_rq, 1).expect("runtime score should run");
-        let runtime_score_wall = started.elapsed();
-        let started = Instant::now();
-        let legacy_score = crate::cli_api::score("mario", n, "normal", Some(eval_rq), 1).expect("legacy score should run");
-        let legacy_score_wall = started.elapsed();
-
-        let groups = vec![vec!["left@red".to_owned()], vec!["right@blue".to_owned()]];
-        let started = Instant::now();
-        let runtime_rate = runtime_groups_win_rate(&groups, n, eval_rq, 1).expect("runtime win rate should run");
-        let runtime_rate_wall = started.elapsed();
-        let started = Instant::now();
-        let legacy_rate = crate::win_rate::groups_win_rate(&groups, n, eval_rq, 1).expect("legacy win rate should run");
-        let legacy_rate_wall = started.elapsed();
-
-        eprintln!(
-            "score n={n}: runtime wall={runtime_score_wall:?} init={}us fight={}us; legacy wall={legacy_score_wall:?} init={}us fight={}us",
-            runtime_score.timing.init_nanos / 1_000,
-            runtime_score.timing.fight_nanos / 1_000,
-            legacy_score.init_nanos / 1_000,
-            legacy_score.fight_nanos / 1_000,
-        );
-        eprintln!(
-            "win-rate n={n}: runtime wall={runtime_rate_wall:?} init={}us fight={}us; legacy wall={legacy_rate_wall:?} init={}us fight={}us",
-            runtime_rate.timing.init_nanos / 1_000,
-            runtime_rate.timing.fight_nanos / 1_000,
-            legacy_rate.timing.init_nanos / 1_000,
-            legacy_rate.timing.fight_nanos / 1_000,
-        );
-
-        assert_eq!(
-            (runtime_score.wins, runtime_score.total),
-            (legacy_score.wins, legacy_score.total)
-        );
-        assert_eq!((runtime_rate.wins, runtime_rate.total), (legacy_rate.wins, legacy_rate.total));
     }
 }

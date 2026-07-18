@@ -5,7 +5,8 @@ pub mod effect;
 pub mod entity;
 pub mod extension;
 mod handlers;
-pub mod oracle;
+pub mod lang;
+mod normalized;
 mod plain_assassinate;
 mod plain_summon;
 mod plain_zombie;
@@ -18,11 +19,19 @@ mod session;
 pub mod slot;
 #[cfg(not(feature = "no_debug"))]
 pub mod trace;
+pub mod update;
 pub mod world;
 
-use crate::engine::update::RunUpdates;
-use crate::player::PlrId;
 use crate::rc4::RC4;
+
+/// Runtime 实体的稳定数值 ID。
+pub type PlrId = usize;
+
+/// 行动条触发一次行动所需的移动点数。
+pub const MOVE_POINT_THRESHOLD: i32 = 2048;
+
+/// namerena 评分机制里的第一个靶子。
+pub const PROFILE_START: u32 = 3355_4431;
 
 pub use effect::{
     CoreReplayEvent, CoreShowEvent, CustomEffect, CustomEffectPayload, EffectContext, EffectContextError, EffectHandlerFn,
@@ -41,9 +50,7 @@ pub use extension::{
     RegistrationOrder, ReplayRendererId, ReplayRendererSpec, ShowRendererId, ShowRendererSpec, SkillId, SkillPostActionPhase,
     SkillPriority, SkillSpec, StateId, StateSpec, TargetPolicy, TemplateSlotId, TemplateSlotSpec, TswnExtension,
 };
-pub use oracle::{
-    NormalizedOutcome, NormalizedUpdateFrame, StrictDiff, StrictRunDiff, normalize_legacy_run, strict_diff, strict_diff_runs,
-};
+pub use normalized::{NormalizedActionBoundary, NormalizedOutcome, NormalizedRngCheckpoint, NormalizedUpdateFrame};
 pub use scheduler::{
     ActionPlan, ActionSchedulerMode, PhaseScheduler, SkillHookPlan, SkillHookPlanEntry, StateHookPlan, StateHookPlanEntry,
 };
@@ -68,6 +75,7 @@ pub(crate) use prepared_init::{ScoreIdentityBuffer, ScoreRosterBuffers, ScoreRou
 pub use profile::*;
 pub use runner::*;
 pub use session::*;
+pub use update::{RunUpdate, RunUpdates, UpdateType};
 
 #[cfg(test)]
 mod tests;

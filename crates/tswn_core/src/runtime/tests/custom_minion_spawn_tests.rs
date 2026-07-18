@@ -781,14 +781,14 @@ fn custom_minion_owner_death_removes_linked_minions_in_entity_order() {
     assert_eq!(frame.updates.updates[0].message, "[0]攻击[1]");
     assert_eq!(
         frame.updates.updates[1].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[2].target, 2);
     assert_eq!(frame.updates.updates[2].message, "[1]消失了");
     assert_eq!(frame.updates.updates[2].score, 50);
     assert_eq!(
         frame.updates.updates[3].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[4].target, 3);
     assert_eq!(frame.updates.updates[4].message, "[1]消失了");
@@ -850,14 +850,14 @@ fn custom_minion_owner_remove_cleans_linked_minions_in_entity_order() {
     assert_eq!(frame.updates.updates[0].message, "[1]消失了");
     assert_eq!(
         frame.updates.updates[1].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[2].target, 2);
     assert_eq!(frame.updates.updates[2].message, "[1]消失了");
     assert_eq!(frame.updates.updates[2].score, 50);
     assert_eq!(
         frame.updates.updates[3].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[4].target, 3);
     assert_eq!(frame.updates.updates[4].message, "[1]消失了");

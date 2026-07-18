@@ -157,7 +157,7 @@ fn stress_score_round_7_eval_rq_6() {
     tswn_test::suite::assert_runtime_matches_frozen_golden_with_eval_rq(
         include_str!("cases/runtime_stress/score_round_7.txt"),
         "stress score-round-7 eval-rq-6",
-        tswn_core::player::eval_name::WIN_RATE_EVAL_RQ,
+        tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ,
     );
 }
 

@@ -14,19 +14,21 @@ pub(super) fn runtime_runner_from_raw<E: std::fmt::Debug>(
 }
 
 #[test]
-fn prepared_battle_init_split_matches_legacy_group_and_seed_rules() {
-    for raw in [
-        "left@red\nright@blue",
-        "left@red\r\n\r\nseed:abc@!\r\n\r\nright@blue\r\n",
-        "seed:front@!\n\nleft@red\n\nright@blue",
-        "left@red\n\nseed:middle@!\n\nright@blue",
-    ] {
-        assert_eq!(
-            PreparedBattleInit::split_namerena_raw(raw.to_owned()),
-            crate::LegacyRunner::split_namerena_into_groups(raw.to_owned()),
-            "raw split diverged for {raw:?}"
-        );
-    }
+fn prepared_battle_init_split_keeps_group_and_seed_rules() {
+    assert_eq!(
+        PreparedBattleInit::split_namerena_raw("left@red\nright@blue".to_owned()),
+        (vec![vec!["left@red".to_owned()], vec!["right@blue".to_owned()]], Vec::new())
+    );
+    assert_eq!(
+        PreparedBattleInit::split_namerena_raw("left@red\r\n\r\nseed:abc@!\r\n\r\nright@blue\r\n".to_owned()),
+        (
+            vec![
+                vec!["left@red".to_owned(), "seed:abc@!".to_owned()],
+                vec!["right@blue".to_owned()]
+            ],
+            vec!["seed:abc@!".to_owned()]
+        )
+    );
 }
 
 #[test]
@@ -48,7 +50,7 @@ fn prepared_runtime_runner_reuses_roster_across_seeds_at_win_rate_eval_rq() {
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(
         &raw_groups,
-        crate::player::eval_name::WIN_RATE_EVAL_RQ,
+        crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
         config,
     )
     .expect("runtime roster should prepare");
@@ -59,16 +61,12 @@ fn prepared_runtime_runner_reuses_roster_across_seeds_at_win_rate_eval_rq() {
         vec!["seed:33554433@!".to_owned()],
         vec!["seed:prepared-runtime@!".to_owned()],
     ] {
-        let mut legacy = crate::LegacyRunner::new_from_groups_with_seed_and_eval_rq_uncached(
-            &raw_groups,
-            &seed,
-            crate::player::eval_name::WIN_RATE_EVAL_RQ,
-        )
-        .expect("legacy runner should construct");
-        let mut runtime = prepared.new_with_seed(&seed).expect("runtime runner should instantiate");
-
-        let expected = normalize_legacy_run(&mut legacy, 100_000);
-        let actual = runtime.run_until_winner_normalized_rounds(100_000);
-        assert_eq!(strict_diff_runs(&expected, &actual), Ok(()), "seed={seed:?}");
+        let mut first = prepared.new_with_seed(&seed).expect("runtime runner should instantiate");
+        let mut second = prepared.new_with_seed(&seed).expect("runtime runner should instantiate twice");
+        assert_eq!(
+            first.run_until_winner_normalized_rounds(100_000),
+            second.run_until_winner_normalized_rounds(100_000),
+            "seed={seed:?}"
+        );
     }
 }

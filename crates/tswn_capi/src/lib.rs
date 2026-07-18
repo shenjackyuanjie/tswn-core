@@ -14,7 +14,7 @@ use std::ffi::{CStr, c_char};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
-use tswn_core::engine::update::RunUpdates;
+use tswn_core::runtime::update::RunUpdates;
 use tswn_core::{PreparedRunner, Runner};
 
 const TSWN_CAPI_ABI_VERSION: u32 = 3;
@@ -225,10 +225,10 @@ pub extern "C" fn tswn_capi_version() -> tswn_str_t { into_tswn_str(env!("CARGO_
 pub extern "C" fn tswn_core_version() -> tswn_str_t { into_tswn_str(tswn_core::version().to_owned()) }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn tswn_default_eval_rq() -> f64 { tswn_core::player::eval_name::DEFAULT_EVAL_RQ }
+pub extern "C" fn tswn_default_eval_rq() -> f64 { tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn tswn_win_rate_eval_rq() -> f64 { tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
+pub extern "C" fn tswn_win_rate_eval_rq() -> f64 { tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn tswn_last_error_message() -> tswn_str_t {

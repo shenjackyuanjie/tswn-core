@@ -13,8 +13,8 @@ use std::time::Instant;
 
 use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 use tswn_core::cli_api;
-use tswn_core::engine::storage::Storage;
-use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
+use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
+use tswn_core::namerena::{NamerenaInput, PreparedRoster};
 use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
 
 use super::format::{
@@ -53,15 +53,20 @@ pub fn run_to_diy(
             && names.len() == 1
             && let Some(detail_name) = single_to_diy_detail_name(name)
         {
-            let storage = Storage::new_arc();
-            let mut player = Player::new_from_namerena_raw(detail_name.to_string(), storage)
+            let input = NamerenaInput::from_raw_groups(&[vec![detail_name.clone()]])
                 .map_err(|err| format!("构建玩家失败: {detail_name}: {err}"))?;
-            player.build();
-            let status = player.get_status();
+            let roster = match PreparedRoster::build(&input, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) {
+                Ok(roster) => roster,
+                Err(error) => match error {},
+            };
+            let player = roster.players.first().ok_or_else(|| format!("构建玩家失败: {detail_name}: 无有效玩家"))?;
+            let status = player.status;
+            let diy =
+                cli_api::to_diy(&detail_name, true, false).map_err(|err| format!("导出玩家技能失败: {detail_name}: {err}"))?;
             let _ = writeln!(out);
             let _ = writeln!(out, "=== 原始信息 ===");
-            let _ = writeln!(out, "名字: {}", player.id_name());
-            let _ = writeln!(out, "队伍: {}", player.clan_name());
+            let _ = writeln!(out, "名字: {}", player.name);
+            let _ = writeln!(out, "队伍: {}", player.clan_name);
             let _ = writeln!(
                 out,
                 "八围: atk={} def={} spd={} agi={} mag={} res={} wis={} maxhp={}",
@@ -74,8 +79,8 @@ pub fn run_to_diy(
                 status.wisdom,
                 status.max_hp,
             );
-            let _ = writeln!(out, "技能: {}", player_diy_skill_object(&player));
-            let _ = writeln!(out, "name_factor: {:.6}", player.get_name_factor());
+            let _ = writeln!(out, "技能: {}", extract_diy_skill_object(&diy).unwrap_or("{}"));
+            let _ = writeln!(out, "name_factor: {:.6}", player.name_factor);
         }
     }
 
@@ -89,11 +94,6 @@ fn single_to_diy_detail_name(raw: &str) -> Option<String> {
         _ => None,
     }
 }
-fn player_diy_skill_object(player: &Player) -> String {
-    let diy = player.to_diy_compact();
-    extract_diy_skill_object(&diy).unwrap_or("{}").to_string()
-}
-
 fn extract_diy_skill_object(diy: &str) -> Option<&str> {
     let attrs_start = diy.find("+diy[")? + "+diy[".len();
     let attrs_end = attrs_start + diy[attrs_start..].find(']')?;
@@ -836,7 +836,7 @@ fn score_output_line_value(line: &str, mode: OutputMode) -> Option<f64> {
 
 fn eval_rq(keep_rq: bool) -> f64 {
     if keep_rq {
-        tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+        tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
     } else {
         WIN_RATE_EVAL_RQ
     }
@@ -846,11 +846,7 @@ fn player_to_ol(raw: &str) -> Result<String, String> {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return Ok(raw.to_string());
     }
-    let storage = Storage::new_arc();
-    let mut player = Player::new_from_namerena_raw(raw.to_string(), storage)
-        .map_err(|err| format!("转换 player-list 名字为 +ol 失败: {raw}: {err}"))?;
-    player.build();
-    Ok(player.to_ol_json())
+    cli_api::to_diy(raw, false, false).map_err(|err| format!("转换 player-list 名字为 +ol 失败: {raw}: {err}"))
 }
 
 #[cfg(test)]
@@ -859,7 +855,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
 
-    use tswn_core::player::eval_name::DEFAULT_EVAL_RQ;
+    use tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ;
 
     use crate::backend::CommonBenchOptions;
 

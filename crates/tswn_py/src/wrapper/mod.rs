@@ -5,8 +5,8 @@
 
 use pyo3::{Py, PyAny, PyResult, Python, pyclass, pymethods};
 use tswn_core::{
-    PreparedRunner as CorePreparedRunner, RunUpdate, RunUpdates, Runner, engine::update::UpdateType, player::PlrId,
-    runtime::EntityIdx,
+    PreparedRunner as CorePreparedRunner, RunUpdate, RunUpdates, Runner, runtime::EntityIdx, runtime::PlrId,
+    runtime::update::UpdateType,
 };
 
 pub mod error;
@@ -24,7 +24,7 @@ pub struct PyPreparedRunner {
 impl PyPreparedRunner {
     #[pyo3(signature = (n, eval_rq=None, thread=0))]
     pub fn win_rate(&self, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
-        let eval_rq = eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ);
+        let eval_rq = eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ);
         crate::run_prepared_win_rate(&self.inner, n, eval_rq, thread)
     }
 }

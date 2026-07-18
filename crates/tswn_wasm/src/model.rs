@@ -6,8 +6,8 @@
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use tswn_core::cli_api as core_cli_api;
-use tswn_core::engine::update::UpdateType;
 use tswn_core::runtime::RuntimeMinionKind;
+use tswn_core::runtime::update::UpdateType;
 
 #[derive(Debug, Clone, Default, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
@@ -21,7 +21,7 @@ pub struct FightOptions {
 }
 
 impl FightOptions {
-    pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::player::eval_name::DEFAULT_EVAL_RQ) }
+    pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) }
 
     pub fn include_icons(&self) -> bool { self.include_icons.unwrap_or(false) }
 
@@ -38,7 +38,7 @@ pub struct WinRateOptions {
 }
 
 impl WinRateOptions {
-    pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::player::eval_name::WIN_RATE_EVAL_RQ) }
+    pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ) }
 
     pub fn resolved_thread(&self) -> u32 {
         let _ = self.thread;

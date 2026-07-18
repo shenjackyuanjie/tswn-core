@@ -651,7 +651,7 @@ fn flush_effects_merges_fixed_lane_skill_loadout() {
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().template.skills.levels(), &[2]);
     assert_eq!(
         frame.updates.updates[0].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[1].message, "[0][吞噬]了[1]");
     assert_eq!(frame.updates.updates[1].score, 60);

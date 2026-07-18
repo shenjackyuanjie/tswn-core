@@ -181,7 +181,7 @@ pub fn run_summon_recast_from_template_slot_with_config(
     template_slot: TemplateSlotId,
     revive_hp: i32,
 ) {
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[0]使用[血祭]",
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,
@@ -247,13 +247,13 @@ pub fn run_possess_skill(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry)
     let Some(target) = context.selected_target() else {
         return;
     };
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[0]使用[附体]",
         context.owner_idx().0 as usize,
         target.0 as usize,
         0,
     ));
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[1]进入[狂暴]状态",
         context.owner_idx().0 as usize,
         target.0 as usize,

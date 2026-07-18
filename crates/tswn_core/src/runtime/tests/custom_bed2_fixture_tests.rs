@@ -263,7 +263,7 @@ fn custom_bed2_import_fixture_parses_markers_into_runtime_template() {
         CustomBed2Import::parse_player_facade_raw("alpha@red+weapon+bed2[4500]+ol:{\"skills\":{\"sklsummon\":255}}")
             .expect("bed2 raw should bridge through player facade id name");
     assert_eq!(
-        crate::player::Player::raw_namerena_to_idname("alpha@red+weapon+bed2[4500]+ol:{\"skills\":{\"sklsummon\":255}}"),
+        crate::namerena::raw_namerena_to_id_name("alpha@red+weapon+bed2[4500]+ol:{\"skills\":{\"sklsummon\":255}}"),
         "alpha@red"
     );
     assert_eq!(facade_bridge.name, "alpha");
@@ -272,7 +272,7 @@ fn custom_bed2_import_fixture_parses_markers_into_runtime_template() {
 
     let same_team_bridge = CustomBed2Import::parse_player_facade_raw("same@same+bed2[1800]")
         .expect("same-team bed2 raw should bridge through normalized player facade id name");
-    assert_eq!(crate::player::Player::raw_namerena_to_idname("same@same+bed2[1800]"), "same");
+    assert_eq!(crate::namerena::raw_namerena_to_id_name("same@same+bed2[1800]"), "same");
     assert_eq!(same_team_bridge.name, "same");
     assert_eq!(same_team_bridge.team, None);
     assert_eq!(same_team_bridge.hp, 1800);

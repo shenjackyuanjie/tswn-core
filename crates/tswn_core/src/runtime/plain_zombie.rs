@@ -52,7 +52,7 @@ impl CombatRuntime {
             return false;
         }
 
-        self.ensure_plain_minion_blueprint(caster, crate::player::skill::act::minion::MinionKind::Zombie);
+        self.ensure_plain_minion_blueprint(caster, crate::namerena::MinionKind::Zombie);
 
         let blueprint_slot = self
             .registry
@@ -85,10 +85,10 @@ impl CombatRuntime {
 
         updates.add_newline();
         let mut summon_update =
-            crate::engine::update::RunUpdate::new("[0][召唤亡灵]", caster.0 as usize, killed_target.0 as usize, 60);
+            crate::runtime::update::RunUpdate::new("[0][召唤亡灵]", caster.0 as usize, killed_target.0 as usize, 60);
         summon_update.delay0 = 1500;
         updates.add(summon_update);
-        let mut zombied = crate::engine::update::RunUpdate::new("[2]变成了[1]", caster.0 as usize, zombie.0 as usize, 0);
+        let mut zombied = crate::runtime::update::RunUpdate::new("[2]变成了[1]", caster.0 as usize, zombie.0 as usize, 0);
         zombied.targets.push(killed_target.0 as usize);
         updates.add(zombied);
         true

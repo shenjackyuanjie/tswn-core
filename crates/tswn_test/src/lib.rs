@@ -31,7 +31,6 @@ pub trait EngineAdapter {
     fn rc4_state(_runner: &Self::Runner) -> Option<(usize, usize)> { None }
 }
 
-pub struct CoreEngine;
 pub struct RuntimeEngine;
 
 #[macro_export]

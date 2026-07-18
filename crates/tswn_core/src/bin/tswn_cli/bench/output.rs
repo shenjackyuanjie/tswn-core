@@ -12,8 +12,8 @@ use std::io::{self, BufRead, BufReader, Write as _};
 use std::path::Path;
 use std::time::Duration;
 
-use tswn_core::engine::storage::Storage;
-use tswn_core::player::Player;
+use tswn_core::cli_api;
+use tswn_core::namerena::raw_namerena_to_id_name;
 use tswn_core::win_rate::WinRateTiming;
 
 /// 打印 total/init/fight 的耗时拆分。
@@ -52,7 +52,7 @@ pub(super) fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String>
     let mut seen = HashSet::new();
     for group in groups {
         for name in group.lines().map(str::trim).filter(|line| !line.is_empty()) {
-            let id_name = Player::raw_namerena_to_idname(name);
+            let id_name = raw_namerena_to_id_name(name);
             if !seen.insert(id_name.clone()) {
                 return Some(id_name);
             }
@@ -253,16 +253,13 @@ pub(super) fn player_to_ol_or_exit(raw: &str) -> String {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return raw.to_string();
     }
-    let storage = Storage::new_arc();
-    let mut player = match Player::new_from_namerena_raw(raw.to_string(), storage) {
+    match cli_api::to_diy(raw, false, false) {
         Ok(player) => player,
         Err(err) => {
             eprintln!("转换 player-list 名字为 +ol 失败: {raw}: {err}");
             std::process::exit(1);
         }
-    };
-    player.build();
-    player.to_ol_json()
+    }
 }
 
 /// 最小 JSON 字符串转义。

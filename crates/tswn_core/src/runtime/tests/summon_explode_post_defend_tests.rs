@@ -390,7 +390,7 @@ fn summon_explode_post_defend_iron_breaks_and_emits_cancel_replay() {
     assert_eq!(frame.updates.updates[0].message, "[0]使用[自爆]");
     assert_eq!(
         frame.updates.updates[1].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[2].message, "[1]的[铁壁]被打消了");
     assert_eq!(frame.updates.updates[2].caster, 2);

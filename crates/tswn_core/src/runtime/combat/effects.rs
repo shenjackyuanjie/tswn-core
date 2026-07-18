@@ -244,14 +244,14 @@ impl CombatRuntime {
                     let candidate_entity = self.entities.get(candidate).unwrap();
                     let candidate_name = candidate_entity.template.display_name.clone();
                     let threshold = candidate_entity.runtime.wisdom >> 1;
-                    updates.add(crate::engine::update::RunUpdate::new(
+                    updates.add(crate::runtime::update::RunUpdate::new(
                         format!("{owner_name}和{candidate_name}近距离接触"),
                         owner.0 as usize,
                         candidate.0 as usize,
                         0,
                     ));
                     if i32::from(self.rng.next_u8()) < threshold {
-                        updates.add(crate::engine::update::RunUpdate::new(
+                        updates.add(crate::runtime::update::RunUpdate::new(
                             format!("但{candidate_name}没被感染"),
                             owner.0 as usize,
                             candidate.0 as usize,
@@ -574,13 +574,13 @@ impl CombatRuntime {
         target_entity.states.register_compressed_legacy_state(CompressedLegacyState::Corpse);
         target_entity.runtime.corpse = RuntimeCorpseKind::Merge;
         updates.add_newline();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0][吞噬]了[1]",
             caster.0 as usize,
             target.0 as usize,
             60,
         ));
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]属性上升",
             caster.0 as usize,
             target.0 as usize,

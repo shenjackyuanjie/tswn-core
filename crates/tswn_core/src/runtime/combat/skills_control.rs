@@ -2,7 +2,7 @@ use super::*;
 
 impl CombatRuntime {
     pub fn drain_plain_half_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[瘟疫]",
             actor.0 as usize,
             target.0 as usize,
@@ -35,9 +35,9 @@ impl CombatRuntime {
             )
         };
         let immune = if target_flags.contains(PlayerKindFlags::BOOST) {
-            self.rng.r127() < crate::player::boost_value(&target_name)
+            self.rng.r127() < crate::namerena::boost_value(&target_name)
         } else if target_flags.contains(PlayerKindFlags::BOSS) {
-            let threshold = crate::player::boss::boss_immune_threshold(&target_name, "half");
+            let threshold = crate::namerena::boss_immune_threshold(&target_name, "half");
             (self.rng.next_u8() as i32) < threshold
         } else {
             false
@@ -48,7 +48,7 @@ impl CombatRuntime {
                 && !charge_active
                 && PlayerRuntime::dodge(chance, target_resistance + target_agility, &mut self.rng))
         {
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",
                 target.0 as usize,
                 actor.0 as usize,
@@ -65,7 +65,7 @@ impl CombatRuntime {
         let new_hp = ((target_hp as f64) * (100 - percent) as f64 / 100.0).ceil() as i32;
         let damage = (target_hp - new_hp).max(0);
         let mut update =
-            crate::engine::update::RunUpdate::new("[1]体力减少[2]%", actor.0 as usize, target.0 as usize, damage as u32);
+            crate::runtime::update::RunUpdate::new("[1]体力减少[2]%", actor.0 as usize, target.0 as usize, damage as u32);
         update.param = Some(percent.max(0) as u32);
         updates.add(update);
         if damage <= 0 {
@@ -176,7 +176,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime ice actor: {}", actor.0))
             .runtime
             .get_at(true, &mut self.rng)
-            * crate::player::skill::act::ice::ICE_DAMAGE_MULTIPLIER;
+            * 0.699999988079071;
         updates.add(RuntimeFrame::replay_update(
             actor.0 as usize,
             target.0 as usize,
@@ -193,7 +193,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime charge owner: {}", actor.0));
         owner.activate_charge_runtime();
         owner.runtime.magic_point += 32;
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]开始[蓄力]",
             actor.0 as usize,
             actor.0 as usize,
@@ -209,13 +209,13 @@ impl CombatRuntime {
         if !owner.activate_accumulate_runtime() {
             return;
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]开始[聚气]",
             actor.0 as usize,
             actor.0 as usize,
             1,
         ));
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]攻击力上升",
             actor.0 as usize,
             actor.0 as usize,
@@ -231,9 +231,9 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("runtime clone level missing for fixed lane {fixed_lane}"));
         // eager 路径已经有三类蓝图；score 的延迟路径必须在本体属性衰减前补齐，
         // 克隆体随后才能继承与旧初始化顺序完全相同的模板。
-        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Shadow);
-        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Summon);
-        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Zombie);
+        self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Shadow);
+        self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Summon);
+        self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Zombie);
         let shadow_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT);
         let summon_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_SUMMON_BLUEPRINT_ENTITY_EXPORT);
         let zombie_blueprint_slot = self.registry.entity_slot_id_by_export_name(DEFAULT_CORE_ZOMBIE_BLUEPRINT_ENTITY_EXPORT);
@@ -399,7 +399,7 @@ impl CombatRuntime {
         clone_template.clone_build = Some(clone_build);
         let clone_idx = EntityIdx(next_entity.try_into().expect("runtime clone entity index overflow"));
 
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[分身]",
             actor.0 as usize,
             actor.0 as usize,
@@ -546,7 +546,7 @@ impl CombatRuntime {
                 .set_level_at(fixed_lane, (current_level + 1) >> 1),
             "runtime exchange fixed lane disappeared during action"
         );
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[生命之轮]",
             actor.0 as usize,
             target.0 as usize,
@@ -581,9 +581,9 @@ impl CombatRuntime {
             })
             .unwrap_or_else(|| panic!("unknown runtime exchange target: {}", target.0));
         let immune = if target_flags.contains(PlayerKindFlags::BOOST) {
-            self.rng.r127() < crate::player::boost_value(&target_name)
+            self.rng.r127() < crate::namerena::boost_value(&target_name)
         } else if target_flags.contains(PlayerKindFlags::BOSS) {
-            let threshold = crate::player::boss::boss_immune_threshold(&target_name, "exchange");
+            let threshold = crate::namerena::boss_immune_threshold(&target_name, "exchange");
             (self.rng.next_u8() as i32) < threshold
         } else {
             false
@@ -617,7 +617,7 @@ impl CombatRuntime {
                 && !charge_active
                 && PlayerRuntime::dodge(owner_magic, target_res + target_def + target_agl, &mut self.rng))
         {
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",
                 target.0 as usize,
                 actor.0 as usize,
@@ -640,7 +640,7 @@ impl CombatRuntime {
 
         self.entities.get_mut(actor).unwrap().runtime.hp = target_hp.min(owner_max_hp);
         self.entities.get_mut(target).unwrap().runtime.hp = owner_hp;
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1]的体力值与[0]互换",
             actor.0 as usize,
             target.0 as usize,

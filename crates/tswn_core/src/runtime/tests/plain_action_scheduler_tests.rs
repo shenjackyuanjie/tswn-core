@@ -218,7 +218,7 @@ fn plain_frozen_actor_threshold_action_skips_mp_gate_and_visible_action() {
         .unwrap()
         .states
         .add_entry(StateEntry::ice(PLAIN_ICE_STATE_KEY, 1024));
-    runtime.entities.get_mut(actor).unwrap().runtime.move_state.speed_points = crate::player::MOVE_POINT_THRESHOLD + 1;
+    runtime.entities.get_mut(actor).unwrap().runtime.move_state.speed_points = crate::runtime::MOVE_POINT_THRESHOLD + 1;
 
     let outcome = runtime.run_minimal_round_once();
 

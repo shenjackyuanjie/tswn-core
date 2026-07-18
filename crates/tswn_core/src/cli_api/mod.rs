@@ -3,15 +3,12 @@
 mod bench;
 mod parse;
 
-use crate::LegacyRunner as Runner;
-use crate::engine::update::UpdateType;
-use crate::error::runner::RunnerError;
-use crate::player::eval_name;
-use crate::player::icon::icon_from_raw_name;
+use crate::namerena::eval_name;
+use crate::namerena::icon::icon_from_raw_name;
+use crate::runtime::update::UpdateType;
 use crate::runtime::{
     CustomRuntimeImportConfig, NormalizedOutcome, NormalizedUpdateFrame, RuntimeBatchSummary, RuntimeNormalizedRun,
-    RuntimeRunner, StrictRunDiff, default_custom_runtime_import_config, normalize_legacy_run, runtime_groups_win_rate,
-    runtime_score, strict_diff_runs,
+    RuntimeRunner, default_custom_runtime_import_config, runtime_groups_win_rate, runtime_score,
 };
 use crate::win_rate::{WinRateSummary, WinRateTiming};
 
@@ -20,7 +17,7 @@ pub type CliApiResult<T> = Result<T, CliApiError>;
 #[derive(Debug)]
 pub enum CliApiError {
     InvalidInput(String),
-    Runner(RunnerError),
+    Runner(String),
     Runtime(String),
 }
 
@@ -28,7 +25,7 @@ impl std::fmt::Display for CliApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidInput(message) => f.write_str(message),
-            Self::Runner(err) => err.fmt(f),
+            Self::Runner(message) => f.write_str(message),
             Self::Runtime(message) => f.write_str(message),
         }
     }
@@ -38,14 +35,10 @@ impl std::error::Error for CliApiError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::InvalidInput(_) => None,
-            Self::Runner(err) => Some(err),
+            Self::Runner(_) => None,
             Self::Runtime(_) => None,
         }
     }
-}
-
-impl From<RunnerError> for CliApiError {
-    fn from(value: RunnerError) -> Self { Self::Runner(value) }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,21 +90,6 @@ pub struct ScoreResult {
     pub fight_nanos: u128,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeParityReport {
-    pub legacy: RuntimeNormalizedRun,
-    pub runtime: RuntimeNormalizedRun,
-    pub first_diff: Option<StrictRunDiff>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct JsonRuntimeParityReport {
-    pub matched: bool,
-    pub first_diff: Option<String>,
-    pub legacy: JsonRuntimeNormalizedRun,
-    pub runtime: JsonRuntimeNormalizedRun,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct JsonRuntimeNormalizedRun {
     pub rounds: Vec<JsonRuntimeNormalizedOutcome>,
@@ -161,22 +139,6 @@ pub struct JsonRuntimeUpdateFrame {
     pub delay0: i32,
     pub delay1: i32,
     pub update_type: &'static str,
-}
-
-impl From<RuntimeParityReport> for JsonRuntimeParityReport {
-    fn from(value: RuntimeParityReport) -> Self {
-        let RuntimeParityReport {
-            legacy,
-            runtime,
-            first_diff,
-        } = value;
-        Self {
-            matched: first_diff.is_none(),
-            first_diff: first_diff.map(|diff| format!("{diff:?}")),
-            legacy: legacy.into(),
-            runtime: runtime.into(),
-        }
-    }
 }
 
 impl From<RuntimeNormalizedRun> for JsonRuntimeNormalizedRun {
@@ -360,7 +322,7 @@ pub(super) struct BatchSummary {
 
 pub fn win_rate_summary(raw: &str, n: usize, eval_rq: Option<f64>, thread: u32) -> CliApiResult<WinRateResult> {
     let eval_rq = eval_rq.unwrap_or(eval_name::WIN_RATE_EVAL_RQ);
-    let groups = Runner::split_namerena_into_groups(raw.to_owned()).0;
+    let groups = RuntimeRunner::split_namerena_into_groups(raw.to_owned()).0;
     ensure_win_rate_group_count(&groups)?;
     runtime_groups_win_rate(&groups, n.max(1), eval_rq, thread)
         .map(Into::into)
@@ -399,7 +361,7 @@ pub fn group_win_rate_summary(
 
 pub fn score(raw: &str, n: usize, mode: &str, eval_rq: Option<f64>, thread: u32) -> CliApiResult<ScoreResult> {
     let score_mode = parse_score_mode(mode)?;
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_owned());
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
     let target_group = groups.into_iter().next().unwrap_or_default();
     if target_group.is_empty() {
         return Err(invalid_input("score requires at least one player"));
@@ -584,19 +546,6 @@ pub fn default_custom_runtime_normalized_run(raw: &str, max_rounds: usize) -> Cl
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
-pub fn default_custom_runtime_parity_report(raw: &str, max_rounds: usize) -> CliApiResult<RuntimeParityReport> {
-    ensure_runtime_max_rounds(max_rounds)?;
-    let mut legacy_runner = Runner::new_from_namerena_raw(raw.to_owned())?;
-    let legacy = normalize_legacy_run(&mut legacy_runner, max_rounds);
-    let runtime = default_custom_runtime_normalized_run(raw, max_rounds)?;
-    let first_diff = strict_diff_runs(&legacy, &runtime).err();
-    Ok(RuntimeParityReport {
-        legacy,
-        runtime,
-        first_diff,
-    })
-}
-
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 
 fn runtime_batch_error(error: crate::runtime::RuntimeBatchError) -> CliApiError { CliApiError::Runtime(error.to_string()) }
@@ -693,20 +642,11 @@ mod tests {
         let raw = "plain@red\nalpha@red@bed2\n\nseed:custom-seed@!\n\nbeta@blue+bed2[8]\n";
 
         let runner = custom_runtime_mixed_runner(raw, config).expect("custom runtime mixed runner should build");
-        let legacy = Runner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
-        let expected_round_order = legacy
-            .world
-            .players
-            .iter()
-            .map(|plr_id| u32::try_from(*plr_id).expect("legacy player id should fit runtime entity index"))
-            .collect::<Vec<_>>();
-
         assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.kind, bed2);
         assert_eq!(runner.runtime().entities.get(EntityIdx(2)).unwrap().template.kind, bed2);
-        assert_eq!(
-            runner.runtime().world.round_order().iter().map(|idx| idx.0).collect::<Vec<_>>(),
-            expected_round_order
-        );
+        let mut round_order = runner.runtime().world.round_order().iter().map(|idx| idx.0).collect::<Vec<_>>();
+        round_order.sort_unstable();
+        assert_eq!(round_order, vec![0, 1, 2]);
     }
 
     #[test]
@@ -858,26 +798,6 @@ beta@blue\n";
         assert_eq!(run.rounds.len(), 1);
         assert_eq!(run.guard_exhausted, run.winner_team.is_none());
         assert!(!run.rounds[0].frames.is_empty());
-    }
-
-    #[test]
-    fn cli_api_default_custom_runtime_parity_report_matches_converged_first_round() {
-        let report = default_custom_runtime_parity_report("left@red\n\nright@blue\n", 1)
-            .expect("default custom runtime parity report should execute");
-
-        assert_eq!(report.legacy.rounds.len(), 1);
-        assert_eq!(report.runtime.rounds.len(), 1);
-        assert_eq!(report.first_diff, None);
-
-        #[cfg(not(feature = "no_debug"))]
-        assert_eq!(report.legacy, report.runtime);
-
-        #[cfg(feature = "no_debug")]
-        {
-            assert_eq!(report.legacy.total_score, report.runtime.total_score);
-            assert_eq!(report.legacy.rounds[0].frames, report.runtime.rounds[0].frames);
-            assert_eq!(report.legacy.rounds[0].rng, report.runtime.rounds[0].rng);
-        }
     }
 
     #[test]

@@ -228,7 +228,7 @@ impl CombatRuntime {
                 updates
                     .updates
                     .iter()
-                    .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+                    .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
                     .map(|update| update.message.as_ref())
                     .collect::<Vec<_>>(),
             );
@@ -386,7 +386,7 @@ impl CombatRuntime {
                 actor_entity.runtime.magic,
                 is_boss,
                 if is_boss {
-                    crate::player::boss::boss_action_prob_count(&actor_entity.template.name)
+                    crate::namerena::boss_action_prob_count(&actor_entity.template.name)
                 } else {
                     0
                 },
@@ -608,7 +608,7 @@ impl CombatRuntime {
         }
         if actor_alive {
             updates.add_newline();
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 "[1]从[狂暴]中解除",
                 actor.0 as usize,
                 actor.0 as usize,

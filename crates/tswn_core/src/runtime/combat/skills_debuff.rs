@@ -195,7 +195,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime curse actor: {}", actor.0))
             .runtime
             .get_at(true, &mut self.rng);
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[诅咒]",
             actor.0 as usize,
             target.0 as usize,

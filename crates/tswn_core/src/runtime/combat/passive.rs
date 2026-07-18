@@ -248,7 +248,7 @@ impl CombatRuntime {
                 .runtime
                 .get_at(false, &mut self.rng);
             updates.add_newline();
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 "[0]发起[反击][s_counter]",
                 owner.0 as usize,
                 target.0 as usize,
@@ -283,13 +283,13 @@ impl CombatRuntime {
         }
 
         updates.add_newline();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]做出[垂死]抗争",
             target.0 as usize,
             target.0 as usize,
             60,
         ));
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]所有属性上升",
             target.0 as usize,
             target.0 as usize,
@@ -370,7 +370,7 @@ impl CombatRuntime {
         });
         // legacy 激活隐匿后会调用 update_states，因此必须连同疾走等状态一起重算，而不是只局部改隐匿属性。
         target_entity.refresh_runtime_stats_from_template();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]发动[隐匿]",
             target.0 as usize,
             target.0 as usize,

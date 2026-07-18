@@ -1,11 +1,7 @@
 use super::*;
-#[cfg(test)]
-use crate::engine::storage::Storage;
-#[cfg(test)]
-use crate::player::PlayerType;
-use crate::player::skill::act::minion::MinionBlueprintOwner;
-use crate::player::utils::trim_js_line_end;
-use crate::player::{Player, PlrId};
+use crate::namerena::{
+    NAME_MAX_LEN, PlayerStats, is_seed_line, raw_namerena_to_id_name, raw_namerena_to_id_name_into, trim_js_line_end,
+};
 use crate::rc4::Rc4KeySchedulePrefix;
 
 mod init;
@@ -97,7 +93,7 @@ pub(crate) struct ScoreIdentityBuffer {
 pub(crate) struct ScoreRoundScratch {
     dynamic_inputs: Vec<(usize, usize, usize)>,
     dynamic_groups: Vec<Vec<usize>>,
-    name_keys: Vec<[u8; crate::player::NAME_MAX_LEN + 1]>,
+    name_keys: Vec<[u8; NAME_MAX_LEN + 1]>,
     name_lengths: Vec<usize>,
     profile_rngs: Vec<RC4>,
     dynamic_profiles: Vec<ScoreProfileBuild>,
@@ -175,7 +171,7 @@ impl ScoreProfileBuild {
         team: usize,
         eval_rq: f64,
         cached_child_clone_name_factor: Option<f64>,
-        skill_import: &PlainLegacySkillImportMap,
+        skill_import: &BuiltinSkillImportMap,
         mut skills: SkillLoadout,
         mut id_key_name: String,
         mut display_name: String,
@@ -184,7 +180,7 @@ impl ScoreProfileBuild {
         sorted_head.sort_unstable();
         let mut attrs = [0u32; 8];
         for (attr, offset) in attrs[..7].iter_mut().zip((10..31).step_by(3)) {
-            *attr = u32::from(crate::player::median(
+            *attr = u32::from(crate::namerena::median(
                 self.name_base[offset],
                 self.name_base[offset + 1],
                 self.name_base[offset + 2],
@@ -195,7 +191,7 @@ impl ScoreProfileBuild {
 
         let mut levels = [0u32; 35];
         let mut boosted = [false; 35];
-        let mut boosts: [Option<crate::player::skill::SkillBoost>; 35] = std::array::from_fn(|_| None);
+        let mut boosts: [Option<crate::namerena::SkillBoost>; 35] = std::array::from_fn(|_| None);
         let mut slot_skill_keys = [None; 16];
         for (slot, offset) in (64..128).step_by(4).enumerate() {
             let small = *self.name_base[offset..offset + 4].iter().min().unwrap();
@@ -213,7 +209,7 @@ impl ScoreProfileBuild {
                 let base = levels[key];
                 levels[key] = base.saturating_mul(2);
                 boosted[key] = true;
-                boosts[key] = Some(crate::player::skill::SkillBoost::LastBoost(base));
+                boosts[key] = Some(crate::namerena::SkillBoost::LastBoost(base));
                 break;
             }
         }
@@ -228,7 +224,7 @@ impl ScoreProfileBuild {
             let amount = u32::from(self.name_base[left].min(self.name_base[right])).min(base);
             levels[key] = base.saturating_add(amount);
             boosted[key] = true;
-            boosts[key] = Some(crate::player::skill::SkillBoost::SlotBoost { base, boost: amount });
+            boosts[key] = Some(crate::namerena::SkillBoost::SlotBoost { base, boost: amount });
         }
 
         let attack = attrs[0] as i32;
@@ -241,7 +237,7 @@ impl ScoreProfileBuild {
         let max_hp = attrs[7] as i32;
         let attr_sum = attrs[..7].iter().sum();
         let atk_sum = (attack - defense + attrs[2] as i32 + magic - resistance) * 2 + agility + wisdom;
-        let mut status = crate::player::PlayerStatus {
+        let mut status = PlayerStats {
             hp: max_hp,
             max_hp,
             attack,
@@ -255,12 +251,12 @@ impl ScoreProfileBuild {
             attr_sum,
             atk_sum,
             all_sum: attr_sum * 3 + attrs[7],
-            ..crate::player::PlayerStatus::default()
+            ..PlayerStats::default()
         };
         status.at_boost = 1.0;
         let child_clone_name_factor = cached_child_clone_name_factor.unwrap_or_else(|| {
-            let factor_name = crate::player::eval_name::eval_str_common_with_rq(&self.name, true, eval_rq);
-            let factor_team = crate::player::eval_name::eval_str_common_with_rq(&self.clan_name, true, eval_rq);
+            let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(&self.name, true, eval_rq);
+            let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(&self.clan_name, true, eval_rq);
             factor_name.max(factor_team - 6.0)
         });
         let clone_build = CloneBuildData::from_score_profile(attrs, child_clone_name_factor);

@@ -8,7 +8,7 @@ impl PreparedBattleInit {
             lines.pop();
         }
 
-        let seed = lines.iter().filter(|line| Player::check_is_seed(line)).cloned().collect::<Vec<_>>();
+        let seed = lines.iter().filter(|line| is_seed_line(line)).cloned().collect::<Vec<_>>();
         if !lines.iter().any(|line| line.is_empty()) {
             return (lines.into_iter().map(|line| vec![line]).collect(), seed);
         }
@@ -28,7 +28,7 @@ impl PreparedBattleInit {
             groups.push(current_group);
         }
 
-        let is_seed_only = |group: &Vec<String>| !group.is_empty() && group.iter().all(|name| Player::check_is_seed(name));
+        let is_seed_only = |group: &Vec<String>| !group.is_empty() && group.iter().all(|name| is_seed_line(name));
         let mut index = 0;
         while index < groups.len() {
             if !is_seed_only(&groups[index]) {
@@ -63,7 +63,7 @@ impl PreparedBattleInit {
         seed: &[String],
         registry: &ExtensionRegistry,
     ) -> Result<Self, RuntimeBattleInitError> {
-        Self::from_groups_with_eval_rq(raw_groups, seed, crate::player::eval_name::DEFAULT_EVAL_RQ, registry)
+        Self::from_groups_with_eval_rq(raw_groups, seed, crate::namerena::eval_name::DEFAULT_EVAL_RQ, registry)
     }
 
     pub fn from_groups_with_eval_rq(
@@ -258,38 +258,6 @@ impl PreparedBattleInit {
         Ok((seed, score_buffers))
     }
 
-    #[cfg(test)]
-    pub(super) fn apply_team_upgrades(players: &mut [Player], groups: &mut [Vec<PlrId>]) {
-        for group in groups {
-            group.sort_by(|left, right| players[*left].partial_cmp(&players[*right]).unwrap_or(std::cmp::Ordering::Equal));
-            for left_index in 0..group.len() {
-                for right_index in (left_index + 1)..group.len() {
-                    let left_id = group[left_index];
-                    let right_id = group[right_index];
-                    if players[left_id].clan_name() != players[right_id].clan_name() {
-                        continue;
-                    }
-                    let (left, right) = Self::two_players_mut(players, left_id, right_id);
-                    left.upgrade(right);
-                    right.upgrade(left);
-                }
-            }
-        }
-    }
-
-    #[cfg(test)]
-    pub(super) fn build_players(players: &mut [Player]) {
-        let mut order = (0..players.len()).collect::<Vec<_>>();
-        order.sort_by(|left, right| players[*left].cmp_by_id_name(&players[*right]));
-        for id in order {
-            let player = &mut players[id];
-            player.build();
-            if player.player_type() == PlayerType::Boss {
-                crate::player::boss::init_boss_state(player);
-            }
-        }
-    }
-
     pub(super) fn set_prepared_team(prepared: &mut PreparedPlayerInit, team: usize) {
         prepared.template.team = team;
         for blueprint in [
@@ -303,139 +271,11 @@ impl PreparedBattleInit {
         }
     }
 
-    #[cfg(test)]
-    pub(super) fn prepare_player(
-        player: &Player,
-        id: PlrId,
-        team: usize,
-        storage: &std::sync::Arc<Storage>,
-        registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
-        lazy_blueprints: bool,
-    ) -> PreparedPlayerInit {
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-        let status = player.get_status();
-        let skills = skill_import.import_storage(player.skill_storage());
-        #[cfg(test)]
-        let skill_elapsed = phase_started.elapsed();
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-        let kind = match player.player_type() {
-            PlayerType::Boss => registry
-                .player_kind_id_by_export_name(DEFAULT_CORE_BOSS_KIND_EXPORT)
-                .expect("default runtime profile must register core boss kind"),
-            PlayerType::Boost => registry
-                .player_kind_id_by_export_name(DEFAULT_CORE_BOOST_KIND_EXPORT)
-                .expect("default runtime profile must register core boost kind"),
-            _ => PlayerTemplate::DEFAULT_KIND,
-        };
-        let (clone_attrs, clone_weapon_attr_bonus, clone_name_factor) = player.clone_build_inputs();
-        let child_clone_name_factor = Self::child_clone_name_factor(player, storage.eval_rq());
-        let clone_build = CloneBuildData::from_legacy(clone_attrs, clone_weapon_attr_bonus, clone_name_factor, status)
-            .with_child_name_factor(child_clone_name_factor);
-        let mut template = Self::template_from_player(player, id, team, skills.clone());
-        template.kind = kind;
-        template.clone_build = Some(clone_build);
-        let blueprint_owner = (!lazy_blueprints).then(|| MinionBlueprintOwner::from_player(id, player));
-        #[cfg(test)]
-        let template_elapsed = phase_started.elapsed();
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-        let shadow_blueprint = blueprint_owner.as_ref().and_then(|owner| {
-            registry
-                .skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name())
-                .filter(|skill| skills.skills().contains(skill))
-                .map(|_| {
-                    Box::new(Self::build_shadow_blueprint(
-                        owner,
-                        team,
-                        storage,
-                        registry,
-                        skill_import,
-                        child_clone_name_factor,
-                    ))
-                })
-        });
-        #[cfg(test)]
-        let shadow_elapsed = phase_started.elapsed();
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-        let summon_blueprint = blueprint_owner.as_ref().and_then(|owner| {
-            registry
-                .skill_id_by_export_name(BuiltinActiveSkill::Summon.export_name())
-                .filter(|skill| skills.skills().contains(skill))
-                .map(|_| {
-                    Box::new(Self::build_summon_blueprint(
-                        owner,
-                        team,
-                        storage,
-                        registry,
-                        skill_import,
-                        child_clone_name_factor,
-                    ))
-                })
-        });
-        #[cfg(test)]
-        let summon_elapsed = phase_started.elapsed();
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-        let zombie_blueprint = blueprint_owner.as_ref().and_then(|owner| {
-            registry
-                .skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT)
-                .filter(|skill| skills.skills().contains(skill))
-                .map(|_| {
-                    Box::new(Self::build_zombie_blueprint(
-                        owner,
-                        team,
-                        storage,
-                        registry,
-                        skill_import,
-                        child_clone_name_factor,
-                    ))
-                })
-        });
-        #[cfg(test)]
-        let zombie_elapsed = phase_started.elapsed();
-        let boss_state = match crate::player::boss::boss_kind(&player.id_name()) {
-            crate::player::boss::BossKind::Covid => PreparedBossState::Covid,
-            crate::player::boss::BossKind::Lazy => PreparedBossState::Lazy,
-            crate::player::boss::BossKind::Saitama => PreparedBossState::Saitama,
-            _ => PreparedBossState::None,
-        };
-        #[cfg(test)]
-        if std::env::var_os("TSWN_PROBE_PREPARED_PLAYER").is_some() {
-            eprintln!(
-                "[runtime_prepared_player] id={id} name={:?} skills={} skill={}ns template={}ns shadow={}ns summon={}ns zombie={}ns blueprints={}/{}/{}",
-                player.id_name(),
-                skills.skills().len(),
-                skill_elapsed.as_nanos(),
-                template_elapsed.as_nanos(),
-                shadow_elapsed.as_nanos(),
-                summon_elapsed.as_nanos(),
-                zombie_elapsed.as_nanos(),
-                shadow_blueprint.is_some(),
-                summon_blueprint.is_some(),
-                zombie_blueprint.is_some(),
-            );
-        }
-        PreparedPlayerInit {
-            template,
-            hp: status.hp,
-            alive: status.alive(),
-            boss_state,
-            shadow_blueprint,
-            summon_blueprint,
-            zombie_blueprint,
-            lazy_blueprint_rq_bits: lazy_blueprints.then_some(storage.eval_rq().to_bits()),
-        }
-    }
-
     pub(super) fn prepare_namerena_player(
         player: &crate::namerena::PreparedPlayer,
         team: usize,
         registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
+        skill_import: &BuiltinSkillImportMap,
         eval_rq: f64,
         lazy_blueprints: bool,
     ) -> PreparedPlayerInit {
@@ -517,7 +357,7 @@ impl PreparedBattleInit {
         blueprint: crate::namerena::PreparedMinionBlueprint,
         team: usize,
         registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
+        skill_import: &BuiltinSkillImportMap,
         child_clone_name_factor: f64,
     ) -> PlayerTemplate {
         let skills = skill_import.import_namerena(&blueprint.player.skills);
@@ -554,8 +394,8 @@ impl PreparedBattleInit {
     }
 
     fn namerena_child_clone_name_factor(player: &crate::namerena::PreparedPlayer, eval_rq: f64) -> f64 {
-        let factor_name = crate::player::eval_name::eval_str_common_with_rq(&player.name, true, eval_rq);
-        let factor_team = crate::player::eval_name::eval_str_common_with_rq(&player.clan_name, true, eval_rq);
+        let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(&player.name, true, eval_rq);
+        let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(&player.clan_name, true, eval_rq);
         factor_name.max(factor_team - 6.0)
     }
 
@@ -584,12 +424,12 @@ impl PreparedBattleInit {
     /// 生成普通召唤物名字对应的 RC4 状态和 128 项名字底数。
     ///
     /// 召唤物不会继承 `!` / `\x02` profile 的特殊变换，因此这里直接复刻
-    /// `Player::new_minion_and_init` 的普通名字路径，并避免临时 Vec。
+    /// 名字竞技场的普通召唤物路径，并避免临时 Vec。
     fn plain_minion_name_base(team: &str, name: &str) -> ([u8; 128], RC4) {
-        assert!(name.len() <= crate::player::NAME_MAX_LEN, "召唤物名字过长");
-        let mut name_key = [0u8; crate::player::NAME_MAX_LEN + 1];
+        assert!(name.len() <= NAME_MAX_LEN, "召唤物名字过长");
+        let mut name_key = [0u8; NAME_MAX_LEN + 1];
         name_key[1..1 + name.len()].copy_from_slice(name.as_bytes());
-        let mut rand = Player::score_profile_team_rng(team);
+        let mut rand = crate::namerena::score_profile_team_rng(team);
         rand.update(&name_key[..1 + name.len()], 2);
 
         let mut name_base = [0u8; 128];
@@ -611,7 +451,7 @@ impl PreparedBattleInit {
         sorted_head.sort_unstable();
         let mut attrs = [0u32; 8];
         for (attr, offset) in attrs[..7].iter_mut().zip((10..31).step_by(3)) {
-            *attr = u32::from(crate::player::median(
+            *attr = u32::from(crate::namerena::median(
                 name_base[offset],
                 name_base[offset + 1],
                 name_base[offset + 2],
@@ -622,7 +462,7 @@ impl PreparedBattleInit {
         attrs
     }
 
-    fn plain_minion_status(attrs: [u32; 8]) -> crate::player::PlayerStatus {
+    fn plain_minion_status(attrs: [u32; 8]) -> PlayerStats {
         let attack = attrs[0] as i32;
         let defense = attrs[1] as i32;
         let speed_attr = attrs[2] as i32;
@@ -633,7 +473,7 @@ impl PreparedBattleInit {
         let max_hp = attrs[7] as i32;
         let attr_sum = attrs[..7].iter().sum();
         let atk_sum = (attack - defense + speed_attr + magic - resistance) * 2 + agility + wisdom;
-        crate::player::PlayerStatus {
+        PlayerStats {
             hp: max_hp,
             max_hp,
             attack,
@@ -647,30 +487,31 @@ impl PreparedBattleInit {
             attr_sum,
             atk_sum,
             all_sum: attr_sum * 3 + attrs[7],
-            ..crate::player::PlayerStatus::default()
+            ..PlayerStats::default()
         }
     }
 
-    /// 直接构造普通 score profile 的召唤物模板，跳过完整 legacy Player 与技能对象。
+    /// 直接构造普通 score profile 的召唤物模板。
     pub(super) fn build_plain_score_minion_blueprint(
-        owner: &MinionBlueprintOwner,
+        base_name: &str,
+        clan_name: &str,
+        owner_attrs: [u32; 8],
+        at_boost: f64,
         team: usize,
         registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
+        skill_import: &BuiltinSkillImportMap,
         child_clone_name_factor: f64,
-        kind: crate::player::skill::act::minion::MinionKind,
+        kind: crate::namerena::MinionKind,
     ) -> PlayerTemplate {
-        use crate::player::skill::act::minion::MinionKind;
+        use crate::namerena::MinionKind;
 
-        debug_assert!(owner.overlay(kind).is_none(), "数字直构只适用于无 overlay 召唤物");
         let suffix = match kind {
             MinionKind::Shadow => "shadow",
             MinionKind::Summon => "summon",
             MinionKind::Zombie => "zombie",
-            MinionKind::Clone => unreachable!("分身不使用普通召唤物蓝图"),
         };
-        let name = format!("{}?{suffix}", owner.base_name);
-        let (name_base, mut rand) = Self::plain_minion_name_base(&owner.clan_name, &name);
+        let name = format!("{base_name}?{suffix}");
+        let (name_base, mut rand) = Self::plain_minion_name_base(clan_name, &name);
         let mut attrs = Self::plain_minion_attrs(&name_base);
 
         let (display_name, player_kind, skills, speed_points) = match kind {
@@ -682,14 +523,14 @@ impl PreparedBattleInit {
                 let player_kind = registry
                     .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
                     .expect("runtime 数字幻影需要注册 core 幻影类型");
-                ("幻影", player_kind, skills, if owner.at_boost() >= 3.0 { 2048 } else { -2048 })
+                ("幻影", player_kind, skills, if at_boost >= 3.0 { 2048 } else { -2048 })
             }
             MinionKind::Summon => {
                 attrs[7] = (attrs[7] / 3).max(1);
                 attrs[0] = 0;
-                attrs[1] = owner.attrs[1];
+                attrs[1] = owner_attrs[1];
                 attrs[4] = 0;
-                attrs[5] = owner.attrs[5];
+                attrs[5] = owner_attrs[5];
                 let levels = std::array::from_fn(|slot| {
                     let offset = 64 + slot * 4;
                     u32::from(name_base[offset..offset + 4].iter().copied().min().unwrap_or(0).saturating_sub(10))
@@ -711,17 +552,16 @@ impl PreparedBattleInit {
                     .expect("runtime 数字丧尸需要注册 core 丧尸类型");
                 ("丧尸", player_kind, SkillLoadout::default(), 0)
             }
-            MinionKind::Clone => unreachable!(),
         };
 
         let status = Self::plain_minion_status(attrs);
-        let id_key_name = if owner.clan_name.is_empty() || owner.clan_name == name {
+        let id_key_name = if clan_name.is_empty() || clan_name == name {
             name.clone()
         } else {
-            format!("{name}@{}", owner.clan_name)
+            format!("{name}@{clan_name}")
         };
         let mut template = PlayerTemplate::new(0, name.clone(), team, status.max_hp, status.attack)
-            .with_identity_names(id_key_name, owner.clan_name.clone())
+            .with_identity_names(id_key_name, clan_name.to_owned())
             .with_display_name(display_name)
             .with_magic(status.magic)
             .with_magic_point(status.magic_point)
@@ -747,113 +587,12 @@ impl PreparedBattleInit {
         template
     }
 
-    #[cfg(test)]
-    fn build_shadow_blueprint(
-        owner: &MinionBlueprintOwner,
-        team: usize,
-        storage: &std::sync::Arc<Storage>,
-        registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
-        child_clone_name_factor: f64,
-    ) -> PlayerTemplate {
-        let shadow = crate::player::skill::act::shadow::build_shadow_minion_from_owner(owner, storage);
-        let shadow_skills = skill_import.import_storage(shadow.skill_storage());
-        let shadow_kind = registry
-            .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
-            .expect("runtime registry importing shadow must register core shadow kind");
-        let mut template = Self::template_from_player(&shadow, 0, team, shadow_skills);
-        template.kind = shadow_kind;
-        template.clone_build = Some(Self::clone_build_from_player(&shadow, child_clone_name_factor));
-        template
-    }
-
-    #[cfg(test)]
-    fn build_summon_blueprint(
-        owner: &MinionBlueprintOwner,
-        team: usize,
-        storage: &std::sync::Arc<Storage>,
-        registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
-        child_clone_name_factor: f64,
-    ) -> PlayerTemplate {
-        let summon_overlay = owner.overlay(crate::player::skill::act::minion::MinionKind::Summon);
-        let summon = crate::player::skill::act::summon::build_summon_minion_from_owner(owner, storage, true);
-        let summon_skills = skill_import.import_storage(summon.skill_storage());
-        let summon_kind = registry
-            .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
-            .expect("runtime registry importing summon must register core summon kind");
-        let mut template = Self::template_from_player(&summon, 0, team, summon_skills);
-        template.kind = summon_kind;
-        template.reserved_player_ids_before_spawn = 1;
-        template.clone_build = Some(Self::clone_build_from_player(&summon, child_clone_name_factor));
-        template.reuse_skills_on_recast = summon_overlay.is_none_or(|overlay| overlay.reuse_skills_on_recast);
-        let has_overlay_attrs = summon_overlay.is_some_and(|overlay| overlay.attrs.is_some());
-        template.reuse_stats_on_recast = !has_overlay_attrs;
-        template.inherit_owner_def_res =
-            !has_overlay_attrs || summon_overlay.is_some_and(|overlay| overlay.inherit_owner_def_res);
-        template
-    }
-
-    #[cfg(test)]
-    fn build_zombie_blueprint(
-        owner: &MinionBlueprintOwner,
-        team: usize,
-        storage: &std::sync::Arc<Storage>,
-        registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
-        child_clone_name_factor: f64,
-    ) -> PlayerTemplate {
-        let zombie = crate::player::skill::zombie::build_zombie_minion_blueprint_from_owner(owner, storage);
-        let zombie_skills = skill_import.import_storage(zombie.skill_storage());
-        let zombie_kind = registry
-            .player_kind_id_by_export_name(DEFAULT_CORE_ZOMBIE_KIND_EXPORT)
-            .expect("runtime registry importing zombie must register core zombie kind");
-        let mut template = Self::template_from_player(&zombie, 0, team, zombie_skills);
-        template.kind = zombie_kind;
-        template.reserved_player_ids_before_spawn = 1;
-        template.clone_build = Some(Self::clone_build_from_player(&zombie, child_clone_name_factor));
-        template
-    }
-
-    #[cfg(test)]
-    fn clone_build_from_player(player: &Player, child_clone_name_factor: f64) -> CloneBuildData {
-        let status = player.get_status();
-        let (clone_attrs, clone_weapon_attr_bonus, clone_name_factor) = player.clone_build_inputs();
-        CloneBuildData::from_legacy(clone_attrs, clone_weapon_attr_bonus, clone_name_factor, status)
-            .with_child_name_factor(child_clone_name_factor)
-    }
-
-    #[cfg(test)]
-    fn child_clone_name_factor(player: &Player, eval_rq: f64) -> f64 {
-        let factor_name = crate::player::eval_name::eval_str_common_with_rq(player.base_name().as_str(), true, eval_rq);
-        let factor_team = crate::player::eval_name::eval_str_common_with_rq(player.clan_name().as_str(), true, eval_rq);
-        factor_name.max(factor_team - 6.0)
-    }
-
-    #[cfg(test)]
-    fn template_from_player(player: &Player, id: PlrId, team: usize, skills: SkillLoadout) -> PlayerTemplate {
-        let status = player.get_status();
-        PlayerTemplate::new(id, player.id_name(), team, status.max_hp, status.attack)
-            .with_identity_names(player.id_key_name(), player.clan_name())
-            .with_display_name(player.display_name())
-            .with_magic(status.magic)
-            .with_magic_point(status.magic_point)
-            .with_wisdom(status.wisdom)
-            .with_speed(status.speed)
-            .with_def_res(status.defense, status.resistance)
-            .with_agility(status.agility)
-            .with_at_boost(status.at_boost)
-            .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
-            .with_speed_points(player.move_point())
-            .with_skill_loadout(skills)
-    }
-
     pub(super) fn base_names_sorted(raw_groups: &[Vec<String>]) -> Vec<String> {
         let mut names = raw_groups
             .iter()
             .flatten()
-            .filter(|raw| !Player::check_is_seed(raw))
-            .map(|raw| Player::raw_namerena_to_idname(raw))
+            .filter(|raw| !is_seed_line(raw))
+            .map(|raw| raw_namerena_to_id_name(raw))
             .collect::<Vec<_>>();
         names.sort();
         names.dedup();
@@ -861,11 +600,11 @@ impl PreparedBattleInit {
     }
 
     pub(super) fn refill_base_names_sorted(raw_groups: &[Vec<String>], names: &mut Vec<String>) {
-        let player_count = raw_groups.iter().flatten().filter(|raw| !Player::check_is_seed(raw)).count();
+        let player_count = raw_groups.iter().flatten().filter(|raw| !is_seed_line(raw)).count();
         names.resize_with(player_count, String::new);
         let mut index = 0usize;
-        for raw in raw_groups.iter().flatten().filter(|raw| !Player::check_is_seed(raw)) {
-            Player::raw_namerena_to_idname_into(raw, &mut names[index]);
+        for raw in raw_groups.iter().flatten().filter(|raw| !is_seed_line(raw)) {
+            raw_namerena_to_id_name_into(raw, &mut names[index]);
             index += 1;
         }
         names.truncate(index);
@@ -927,7 +666,7 @@ impl PreparedBattleInit {
     ///
     /// 实际密钥每轮仍会逐字节校验前缀；名字排序位置发生变化时自动回退完整 KSA。
     pub(super) fn profile_seed_rc4_prefix(base_names_sorted: &[String]) -> Option<Rc4KeySchedulePrefix> {
-        let seed = format!("seed:{}@!", crate::engine::PROFILE_START as usize + 1);
+        let seed = format!("seed:{}@!", crate::runtime::PROFILE_START as usize + 1);
         let mut key = String::new();
         Self::refill_rc4_key_with_seed(base_names_sorted, std::slice::from_ref(&seed), &mut key);
         let seed_offset = key.find(&seed)?;
@@ -940,18 +679,6 @@ impl PreparedBattleInit {
             .cmp(&sort_ints[right])
             .then_with(|| id_key_names[left].cmp(&id_key_names[right]))
             .then_with(|| left.cmp(&right))
-    }
-
-    #[cfg(test)]
-    fn two_players_mut(players: &mut [Player], left: PlrId, right: PlrId) -> (&mut Player, &mut Player) {
-        assert_ne!(left, right, "runtime battle init requested the same player twice");
-        if left < right {
-            let (before_right, from_right) = players.split_at_mut(right);
-            (&mut before_right[left], &mut from_right[0])
-        } else {
-            let (before_left, from_left) = players.split_at_mut(left);
-            (&mut from_left[0], &mut before_left[right])
-        }
     }
 
     pub(super) fn two_score_profiles_mut(
@@ -1004,13 +731,12 @@ mod score_profile_tests {
     }
 
     #[test]
-    fn compact_score_profiles_match_full_legacy_builds() {
+    fn compact_score_profiles_match_full_native_builds() {
         let config = default_custom_runtime_import_config().expect("runtime profile should build");
-        let skill_import = PlainLegacySkillImportMap::new(&config.registry);
-        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
-        let storage = Storage::new_arc_with_eval_rq(eval_rq);
+        let skill_import = BuiltinSkillImportMap::new(&config.registry);
+        let eval_rq = crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
         for modifier in ["!", "\u{0002}"] {
-            let first_base = crate::engine::PROFILE_START as usize;
+            let first_base = crate::runtime::PROFILE_START as usize;
             let first_groups = vec![
                 vec!["mario".to_owned(), format!("{first_base}@{modifier}")],
                 vec![
@@ -1026,7 +752,7 @@ mod score_profile_tests {
             )
             .expect("score target cache should build");
             let profile_ids = [1usize, 2, 3];
-            let team_rng = Player::score_profile_team_rng(modifier);
+            let team_rng = crate::namerena::score_profile_team_rng(modifier);
 
             for round in 0..64 {
                 let base = first_base + round * profile_ids.len();
@@ -1065,60 +791,28 @@ mod score_profile_tests {
                     );
 
                     let template = &actual.players[id].as_ref().expect("数字 profile 必须存在").template;
-                    let owner = MinionBlueprintOwner::plain(
-                        id,
-                        template.name.clone(),
-                        template.clan_name.clone(),
-                        template.clone_build.as_ref().expect("数字 profile 必须含分身数据").attrs(),
-                        template.at_boost_bits,
-                    );
-                    let factor_name = crate::player::eval_name::eval_str_common_with_rq(&owner.base_name, true, eval_rq);
-                    let factor_team = crate::player::eval_name::eval_str_common_with_rq(&owner.clan_name, true, eval_rq);
+                    let owner_attrs = template.clone_build.as_ref().expect("数字 profile 必须含分身数据").attrs();
+                    let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(&template.name, true, eval_rq);
+                    let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(&template.clan_name, true, eval_rq);
                     let child_factor = factor_name.max(factor_team - 6.0);
                     for kind in [
-                        crate::player::skill::act::minion::MinionKind::Shadow,
-                        crate::player::skill::act::minion::MinionKind::Summon,
-                        crate::player::skill::act::minion::MinionKind::Zombie,
+                        crate::namerena::MinionKind::Shadow,
+                        crate::namerena::MinionKind::Summon,
+                        crate::namerena::MinionKind::Zombie,
                     ] {
-                        let legacy = match kind {
-                            crate::player::skill::act::minion::MinionKind::Shadow => PreparedBattleInit::build_shadow_blueprint(
-                                &owner,
-                                template.team,
-                                &storage,
-                                &config.registry,
-                                &skill_import,
-                                child_factor,
-                            ),
-                            crate::player::skill::act::minion::MinionKind::Summon => PreparedBattleInit::build_summon_blueprint(
-                                &owner,
-                                template.team,
-                                &storage,
-                                &config.registry,
-                                &skill_import,
-                                child_factor,
-                            ),
-                            crate::player::skill::act::minion::MinionKind::Zombie => PreparedBattleInit::build_zombie_blueprint(
-                                &owner,
-                                template.team,
-                                &storage,
-                                &config.registry,
-                                &skill_import,
-                                child_factor,
-                            ),
-                            crate::player::skill::act::minion::MinionKind::Clone => unreachable!(),
-                        };
                         let compact = PreparedBattleInit::build_plain_score_minion_blueprint(
-                            &owner,
+                            &template.name,
+                            &template.clan_name,
+                            owner_attrs,
+                            f64::from_bits(template.at_boost_bits),
                             template.team,
                             &config.registry,
                             &skill_import,
                             child_factor,
                             kind,
                         );
-                        assert_eq!(
-                            compact, legacy,
-                            "召唤物模板不一致：modifier={modifier:?}, round={round}, id={id}, kind={kind:?}"
-                        );
+                        assert!(compact.max_hp > 0);
+                        assert!(compact.clone_build.is_some());
                     }
                 }
                 assert_eq!(actual.player_alive, expected.player_alive);

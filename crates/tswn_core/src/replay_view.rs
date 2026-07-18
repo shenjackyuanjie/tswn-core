@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::engine::update::{RunUpdate, UpdateType};
-use crate::player::PlrId;
+use crate::runtime::PlrId;
+use crate::runtime::update::{RunUpdate, UpdateType};
 
 pub const WIN_UPDATE_DELAY0_MS: i32 = 3000;
 pub const DEFAULT_TEXT_COLOR: &str = "0077BB";
@@ -537,8 +537,8 @@ mod tests {
         ReplayClip, ReplayEventView, ReplayState, ReplayTextPart, ReplayTextPartKind, ReplayTone, STATUS_EXIT_TEXT_COLOR,
         build_replay_view_frame,
     };
-    use crate::engine::update::RunUpdate;
-    use crate::player::PlrId;
+    use crate::runtime::PlrId;
+    use crate::runtime::update::RunUpdate;
     use std::collections::HashMap;
 
     #[derive(Clone)]

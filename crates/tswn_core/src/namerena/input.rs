@@ -151,14 +151,24 @@ impl NamerenaInput {
 pub fn is_seed_line(raw: &str) -> bool { raw.starts_with(SEED_PREFIX) }
 
 pub fn raw_namerena_to_id_name(raw: &str) -> String {
+    let mut output = String::new();
+    raw_namerena_to_id_name_into(raw, &mut output);
+    output
+}
+
+pub(crate) fn raw_namerena_to_id_name_into(raw: &str, output: &mut String) {
+    output.clear();
     let no_weapon = raw.split_once('+').map_or(raw, |(left, _)| left);
     let Some((name, team)) = no_weapon.split_once('@') else {
-        return no_weapon.to_owned();
+        output.push_str(no_weapon);
+        return;
     };
     if team.is_empty() || team == name || team.contains(':') {
-        name.to_owned()
+        output.push_str(name);
     } else {
-        format!("{name}@{team}")
+        output.push_str(name);
+        output.push('@');
+        output.push_str(team);
     }
 }
 
@@ -241,7 +251,7 @@ fn is_js_trim_name_char(ch: char) -> bool {
     matches!(ch as u32, 9..=13 | 32 | 133 | 160 | 5760 | 8192..=8202 | 8232..=8233 | 8239 | 8287 | 12288 | 65279)
 }
 
-fn trim_js_line_end(value: &str) -> &str { value.trim_end_matches(is_js_regex_space) }
+pub(crate) fn trim_js_line_end(value: &str) -> &str { value.trim_end_matches(is_js_regex_space) }
 
 fn trim_js_name_like(value: &str) -> &str {
     let trimmed = value.trim_matches(is_js_regex_space);

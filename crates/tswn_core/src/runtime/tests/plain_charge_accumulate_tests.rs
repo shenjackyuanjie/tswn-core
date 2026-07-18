@@ -99,7 +99,7 @@ fn plain_reraise_revives_halves_level_and_stops_kill_hooks() {
         updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec!["[1]被击倒了", "[0]使用[护身符]抵挡了一次死亡", "[1]回复体力[2]点"]

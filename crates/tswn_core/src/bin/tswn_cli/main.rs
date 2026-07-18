@@ -16,10 +16,10 @@
 //! 编译器会按 Rust 默认模块规则自动解析子模块，因此不再需要 `#[path = ...]`。
 //!
 //! 顶层命令概览：
-//! - `fight`: 默认用 Runtime 运行普通对战，可选 `--out-raw` 输出聚合日志，或用 `--runtime legacy` 对账。
-//! - `raw`: 普通输入与 `!test!` 基准测试默认用 Runtime，可用 `--runtime legacy` 对账。
-//! - `diff`: 默认用 Runtime 按 runner diff 格式输出，或用 `--runtime legacy` 对账。
-//! - `runtime normalized-run|parity`: 输出 runtime normalized run，或与 legacy 严格对账。
+//! - `fight`: 用主 Runtime 运行普通对战，可选 `--out-raw` 输出聚合日志。
+//! - `raw`: 用主 Runtime 运行普通输入或 `!test!` 基准测试。
+//! - `diff`: 用主 Runtime 按 runner diff 格式输出。
+//! - `runtime normalized-run`: 输出主 Runtime 的 normalized run。
 //! - `bench auto`: 按输入组数自动切换评分基准测试或胜率基准测试。
 //! - `bench win-rate`: 显式比较两队胜率。
 //! - `bench group-win-rate`: 目标组对多个对手组逐个统计并汇总平均胜率。
@@ -80,23 +80,16 @@ fn main() {
             | ParsedCommand::FightRaw { .. }
             | ParsedCommand::FightDiff { .. }
             | ParsedCommand::RuntimeNormalizedRun { .. }
-            | ParsedCommand::RuntimeParity { .. }
             | ParsedCommand::NamerPf { .. }
     ) {
         print_banner();
     }
 
     match cli.command {
-        ParsedCommand::Fight { raw, out_raw, runtime } => fight::run(raw, out_raw, runtime),
-        ParsedCommand::FightDiff { raw, runtime } => fight::run_diff(raw, runtime),
-        ParsedCommand::FightRaw {
-            raw,
-            n,
-            threads,
-            runtime,
-        } => fight::run_raw(raw, n, threads, runtime),
+        ParsedCommand::Fight { raw, out_raw } => fight::run(raw, out_raw),
+        ParsedCommand::FightDiff { raw } => fight::run_diff(raw),
+        ParsedCommand::FightRaw { raw, n, threads } => fight::run_raw(raw, n, threads),
         ParsedCommand::RuntimeNormalizedRun { raw, max_rounds } => fight::run_runtime_normalized(raw, max_rounds),
-        ParsedCommand::RuntimeParity { raw, max_rounds } => fight::run_runtime_parity(raw, max_rounds),
         ParsedCommand::BenchAuto {
             raw,
             n,
@@ -116,9 +109,9 @@ fn main() {
             buckets_step,
         } => {
             let eval_rq = if keep_rq {
-                tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+                tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
             } else {
-                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
+                tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
             let raw = format!("{team1}\n\n{team2}");
             bench::run_bench_winrate(&raw, n, mode, threads, eval_rq, perf, buckets_step);
@@ -133,9 +126,9 @@ fn main() {
             keep_rq,
         } => {
             let eval_rq = if keep_rq {
-                tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+                tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
             } else {
-                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
+                tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
             bench::run_bench_group_win_rate(&target, &against, n, mode, threads, eval_rq, perf);
         }
@@ -158,9 +151,9 @@ fn main() {
             wr_precision,
         } => {
             let eval_rq = if keep_rq {
-                tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+                tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
             } else {
-                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
+                tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
             bench::run_bench_batch_rate(
                 &target_groups,
@@ -201,9 +194,9 @@ fn main() {
             wr_precision,
         } => {
             let eval_rq = if keep_rq {
-                tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+                tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
             } else {
-                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
+                tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
             bench::run_bench_pair(
                 &target_groups,
@@ -234,9 +227,9 @@ fn main() {
             modes,
         } => {
             let eval_rq = if keep_rq {
-                tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+                tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
             } else {
-                tswn_core::player::eval_name::WIN_RATE_EVAL_RQ
+                tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ
             };
             bench::run_namer_pf(&raw, n, threads, eval_rq, precision, &modes);
         }

@@ -125,7 +125,7 @@ fn summon_explode_fire_stack_respects_boss_fire_immune() {
         &mut expected_rng
     ));
     let expected_amount = (atp / runtime.entities.get(EntityIdx(1)).unwrap().runtime.magic_defense() as f64).ceil() as i32;
-    let threshold = crate::player::boss::boss_immune_threshold("saitama", "fire");
+    let threshold = crate::namerena::boss_immune_threshold("saitama", "fire");
     assert!((expected_rng.next_u8() as i32) < threshold);
     runtime.effects.push(QueuedEffect::SummonExplode {
         caster: EntityIdx(2),

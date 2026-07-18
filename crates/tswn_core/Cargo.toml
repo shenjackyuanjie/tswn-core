@@ -31,31 +31,6 @@ name = "tswn-cli"
 path = "src/bin/tswn_cli/main.rs"
 
 [[bin]]
-name = "track_case_miner"
-path = "src/bin/track_case_miner.rs"
-required-features = ["aux_bins"]
-
-[[bin]]
-name = "track_perf_cases"
-path = "src/bin/track_perf_cases.rs"
-required-features = ["aux_bins"]
-
-[[bin]]
-name = "track_score_perf"
-path = "src/bin/track_score_perf.rs"
-required-features = ["aux_bins"]
-
-[[bin]]
-name = "track_cqp_perf"
-path = "src/bin/track_cqp_perf.rs"
-required-features = ["aux_bins"]
-
-[[bin]]
-name = "track_cqp_case"
-path = "src/bin/track_cqp_case.rs"
-required-features = ["aux_bins"]
-
-[[bin]]
 name = "track_test"
 path = "src/bin/track_test.rs"
 required-features = ["aux_bins"]

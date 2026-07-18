@@ -275,16 +275,14 @@ impl BuiltinActiveSkill {
 }
 
 #[derive(Debug, Clone)]
-pub struct PlainLegacySkillImportMap {
-    active_by_legacy_key: [Option<SkillId>; 256],
+pub struct BuiltinSkillImportMap {
     plain_by_legacy_key: [Option<SkillId>; 35],
     score_hook_plan: Vec<ScoreSkillHookPlanEntry>,
     score_hook_plan_needs_active_sort: bool,
-    special_by_runtime_kind: [(&'static str, Option<SkillId>); 4],
-    passive_by_runtime_kind: [(&'static str, Option<SkillId>); 10],
+    special_skill_ids: [Option<SkillId>; 4],
 }
 
-impl PlainLegacySkillImportMap {
+impl BuiltinSkillImportMap {
     pub fn new(registry: &ExtensionRegistry) -> Self {
         let mut active_by_legacy_key = [None; 256];
         for skill in BuiltinActiveSkill::ALL {
@@ -337,69 +335,14 @@ impl PlainLegacySkillImportMap {
             .windows(2)
             .any(|pair| pair[0].hook_index == pair[1].hook_index && pair[0].priority == pair[1].priority);
         Self {
-            active_by_legacy_key,
             plain_by_legacy_key,
             score_hook_plan,
             score_hook_plan_needs_active_sort,
-            special_by_runtime_kind: [
-                (
-                    std::any::type_name::<crate::player::skill::act::fire::FireSkill>(),
-                    registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name()),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::act::summon::SummonExplodeSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::act::summon::SummonShareDamageSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::act::possess::PossessSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT),
-                ),
-            ],
-            passive_by_runtime_kind: [
-                (
-                    std::any::type_name::<crate::player::skill::defend::DefendSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_DEFEND_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::reflect::ReflectSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_REFLECT_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::protect::ProtectSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_PROTECT_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::shield::ShieldSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_SHIELD_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::upgrade::UpgradeSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_UPGRADE_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::hide::HideSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_HIDE_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::counter::CounterSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_COUNTER_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::merge::MergeSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_MERGE_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::zombie::ZombieSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::reraise::ReraiseSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_RERAISE_SKILL_EXPORT),
-                ),
+            special_skill_ids: [
+                registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name()),
+                registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT),
             ],
         }
     }
@@ -407,76 +350,25 @@ impl PlainLegacySkillImportMap {
     /// 只解析数字 score 召唤物需要的四个技能，避免首次触发时扫描整张 legacy 映射表。
     pub(crate) fn new_score_minions(registry: &ExtensionRegistry) -> Self {
         Self {
-            active_by_legacy_key: [None; 256],
             plain_by_legacy_key: [None; 35],
             score_hook_plan: Vec::new(),
             score_hook_plan_needs_active_sort: false,
-            special_by_runtime_kind: [
-                (
-                    std::any::type_name::<crate::player::skill::act::fire::FireSkill>(),
-                    registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name()),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::act::summon::SummonExplodeSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::act::summon::SummonShareDamageSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT),
-                ),
-                (
-                    std::any::type_name::<crate::player::skill::act::possess::PossessSkill>(),
-                    registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT),
-                ),
+            special_skill_ids: [
+                registry.skill_id_by_export_name(BuiltinActiveSkill::Fire.export_name()),
+                registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_EXPLODE_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CORE_SUMMON_SHARE_DAMAGE_SKILL_EXPORT),
+                registry.skill_id_by_export_name(DEFAULT_CUSTOM_MINION_POSSESS_SKILL_EXPORT),
             ],
-            passive_by_runtime_kind: std::array::from_fn(|_| ("", None)),
         }
     }
 
-    fn resolve(
-        &self,
-        key: usize,
-        runtime_kind: &'static str,
-        level: u32,
-        boosted: bool,
-        boost: Option<crate::player::skill::SkillBoost>,
-    ) -> Option<(usize, SkillId, u32, bool, Option<crate::player::skill::SkillBoost>)> {
-        let active_skill = if let Some((_, skill_id)) = self
-            .special_by_runtime_kind
-            .iter()
-            .find(|(registered_kind, _)| *registered_kind == runtime_kind)
-        {
-            *skill_id
-        } else if key < self.active_by_legacy_key.len() {
-            self.active_by_legacy_key[key]
-        } else {
-            None
-        };
-        let skill_id = if let Some(skill_id) = active_skill {
-            Some(skill_id)
-        } else if let Some((_, skill_id)) = self
-            .passive_by_runtime_kind
-            .iter()
-            .find(|(registered_kind, _)| *registered_kind == runtime_kind)
-        {
-            *skill_id
-        } else {
-            None
-        };
-        skill_id.map(|skill_id| (key, skill_id, level, boosted, boost))
-    }
-
-    fn special_skill_id(&self, runtime_kind: &'static str) -> SkillId {
-        self.special_by_runtime_kind
-            .iter()
-            .find(|(registered_kind, _)| *registered_kind == runtime_kind)
-            .and_then(|(_, skill_id)| *skill_id)
-            .unwrap_or_else(|| panic!("runtime 默认 profile 未注册召唤物技能 {runtime_kind}"))
+    fn special_skill_id(&self, index: usize) -> SkillId {
+        self.special_skill_ids[index].unwrap_or_else(|| panic!("runtime 默认 profile 未注册召唤物技能索引 {index}"))
     }
 
     fn finish_import(
         &self,
-        imported: Vec<(usize, SkillId, u32, bool, Option<crate::player::skill::SkillBoost>)>,
+        imported: Vec<(usize, SkillId, u32, bool, Option<crate::namerena::SkillBoost>)>,
         merge_lane_order_keys: &[usize],
         active_order_keys: &[usize],
         pre_action_order_keys: &[usize],
@@ -520,40 +412,7 @@ impl PlainLegacySkillImportMap {
         .with_post_action_after_states(post_action_after_states)
     }
 
-    pub fn import(&self, snapshot: &crate::player::skill::store::SkillLoadoutSnapshot) -> SkillLoadout {
-        let resolve = |entry: &crate::player::skill::store::SkillSnapshot| {
-            self.resolve(entry.key, entry.runtime_kind, entry.level, entry.boosted, entry.boost.clone())
-        };
-
-        let mut imported = Vec::new();
-        for key in &snapshot.fixed_lanes {
-            let Some(entry) = snapshot.entries.iter().find(|entry| entry.key == *key) else {
-                continue;
-            };
-            if let Some(mapped) = resolve(entry) {
-                imported.push(mapped);
-            }
-        }
-        for entry in &snapshot.entries {
-            if imported.iter().any(|(key, _, _, _, _)| *key == entry.key) {
-                continue;
-            }
-            if let Some(mapped) = resolve(entry) {
-                imported.push(mapped);
-            }
-        }
-
-        self.finish_import(
-            imported,
-            &snapshot.fixed_lanes,
-            &snapshot.active_order,
-            &snapshot.pre_action_order,
-            &snapshot.post_damage_order,
-            &snapshot.post_action_after_states,
-        )
-    }
-
-    /// 将 namerena 纯数据技能表解析为 Runtime loadout，不构造 legacy 技能对象。
+    /// 将 namerena 纯数据技能表解析为 Runtime loadout。
     pub fn import_namerena(&self, spec: &crate::namerena::SkillLoadoutSpec) -> SkillLoadout {
         use crate::namerena::BuiltinSkillRef;
 
@@ -562,27 +421,11 @@ impl PlainLegacySkillImportMap {
             .iter()
             .filter_map(|entry| {
                 let skill_id = match entry.skill {
-                    BuiltinSkillRef::Normal(kind_key) => {
-                        (kind_key == 0)
-                            .then_some(self.special_by_runtime_kind[0].1)
-                            .flatten()
-                            .or_else(|| self.active_by_legacy_key.get(entry.key).copied().flatten())
-                            .or_else(|| {
-                                // Legacy import resolves active skills from the SkillStorage key,
-                                // while Fire and passive skills fall back to their concrete runtime
-                                // kind. Generic/classified minion overlays deliberately use
-                                // nonstandard keys, so preserving both inputs is required for exact
-                                // parity.
-                                (25..35)
-                                    .contains(&kind_key)
-                                    .then(|| self.plain_by_legacy_key.get(kind_key).copied().flatten())
-                                    .flatten()
-                            })
-                    }
-                    BuiltinSkillRef::SummonFire => self.special_by_runtime_kind[0].1,
-                    BuiltinSkillRef::SummonExplode => self.special_by_runtime_kind[1].1,
-                    BuiltinSkillRef::SummonShareDamage => self.special_by_runtime_kind[2].1,
-                    BuiltinSkillRef::Possess => self.special_by_runtime_kind[3].1,
+                    BuiltinSkillRef::Normal(kind_key) => self.plain_by_legacy_key.get(kind_key).copied().flatten(),
+                    BuiltinSkillRef::SummonFire => self.special_skill_ids[0],
+                    BuiltinSkillRef::SummonExplode => self.special_skill_ids[1],
+                    BuiltinSkillRef::SummonShareDamage => self.special_skill_ids[2],
+                    BuiltinSkillRef::Possess => self.special_skill_ids[3],
                 }?;
                 Some((entry.key, skill_id, entry.level, entry.boosted, entry.boost.clone()))
             })
@@ -597,55 +440,13 @@ impl PlainLegacySkillImportMap {
         )
     }
 
-    pub fn import_storage(&self, storage: &crate::player::skill::store::SkillStorage) -> SkillLoadout {
-        let resolve = |key: usize| {
-            let skill = storage.store.get(&key)?;
-            self.resolve(
-                key,
-                skill.debug_skill_type_name(),
-                skill.level(),
-                skill.boosted,
-                skill.diy_boost.clone(),
-            )
-        };
-
-        let mut imported = Vec::new();
-        let mut imported_keys = Vec::<bool>::new();
-        for &key in &storage.slot_skill {
-            if let Some(mapped) = resolve(key) {
-                imported.push(mapped);
-                if key >= imported_keys.len() {
-                    imported_keys.resize(key + 1, false);
-                }
-                imported_keys[key] = true;
-            }
-        }
-        for key in storage.store.keys() {
-            if imported_keys.get(key).copied().unwrap_or(false) {
-                continue;
-            }
-            if let Some(mapped) = resolve(key) {
-                imported.push(mapped);
-            }
-        }
-
-        self.finish_import(
-            imported,
-            &storage.slot_skill,
-            &storage.skill,
-            &storage.pre_action,
-            &storage.post_damage,
-            &storage.post_action_after_states,
-        )
-    }
-
     /// 原地重填标准 score profile 技能表，复用上一轮的所有 SmallVec 容量。
     pub(crate) fn reset_score_profile(
         &self,
         loadout: &mut SkillLoadout,
         levels: &[u32; 35],
         boosted: &[bool; 35],
-        boosts: &[Option<crate::player::skill::SkillBoost>; 35],
+        boosts: &[Option<crate::namerena::SkillBoost>; 35],
         action_order: &[u32; 40],
     ) {
         loadout.reset_score_profile(
@@ -661,12 +462,12 @@ impl PlainLegacySkillImportMap {
 
     /// 直接构造无 overlay 幻影的唯一技能，跳过 legacy SkillStorage。
     pub(crate) fn import_score_shadow_minion(&self, base_level: u32) -> SkillLoadout {
-        let possess = self.special_skill_id(std::any::type_name::<crate::player::skill::act::possess::PossessSkill>());
+        let possess = self.special_skill_id(3);
         let (level, boosted, boost) = if base_level > 0 {
             (
                 base_level.saturating_mul(2),
                 true,
-                Some(crate::player::skill::SkillBoost::LastBoost(base_level)),
+                Some(crate::namerena::SkillBoost::LastBoost(base_level)),
             )
         } else {
             (0, false, None)
@@ -686,7 +487,7 @@ impl PlainLegacySkillImportMap {
             levels[key] = slot_levels[slot];
         }
         let mut boosted = [false; 3];
-        let mut boosts: [Option<crate::player::skill::SkillBoost>; 3] = std::array::from_fn(|_| None);
+        let mut boosts: [Option<crate::namerena::SkillBoost>; 3] = std::array::from_fn(|_| None);
         for &key in action_order.iter().rev() {
             let base = levels[key];
             if base == 0 {
@@ -694,13 +495,13 @@ impl PlainLegacySkillImportMap {
             }
             levels[key] = base.saturating_mul(2);
             boosted[key] = true;
-            boosts[key] = Some(crate::player::skill::SkillBoost::LastBoost(base));
+            boosts[key] = Some(crate::namerena::SkillBoost::LastBoost(base));
             break;
         }
 
-        let fire = self.special_skill_id(std::any::type_name::<crate::player::skill::act::fire::FireSkill>());
-        let explode = self.special_skill_id(std::any::type_name::<crate::player::skill::act::summon::SummonExplodeSkill>());
-        let share = self.special_skill_id(std::any::type_name::<crate::player::skill::act::summon::SummonShareDamageSkill>());
+        let fire = self.special_skill_id(0);
+        let explode = self.special_skill_id(1);
+        let share = self.special_skill_id(2);
         let imported = [
             (fire, levels[0], boosts[0].clone()),
             (fire, levels[1], boosts[1].clone()),
@@ -709,18 +510,11 @@ impl PlainLegacySkillImportMap {
         ];
         SkillLoadout::from_skill_levels_and_boosts(imported)
             .with_boosted_flags([boosted[0], boosted[1], boosted[2], false])
-            .with_fixed_lane_keys([0, 1, 2, crate::player::skill::act::summon::SUMMON_SHARE_DAMAGE_SKILL_KEY])
+            .with_fixed_lane_keys([0, 1, 2, crate::namerena::SUMMON_SHARE_DAMAGE_SKILL_KEY])
             .with_merge_lane_order([0, 1, 2])
             .with_active_order(action_order.into_iter().chain([3]))
             .with_post_damage_order([3])
     }
-}
-
-pub fn import_plain_legacy_skill_loadout(
-    registry: &ExtensionRegistry,
-    snapshot: &crate::player::skill::store::SkillLoadoutSnapshot,
-) -> SkillLoadout {
-    PlainLegacySkillImportMap::new(registry).import(snapshot)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

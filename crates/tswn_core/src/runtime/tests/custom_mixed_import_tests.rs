@@ -63,22 +63,22 @@ fn custom_mixed_roster_import_bridges_bed2_and_legacy_player_templates() {
     ];
 
     let template = CustomBed2Import::mixed_roster_into_prepared_template(&raw_groups, registry, bed2, summon)
-        .expect("mixed legacy/bed2 raw roster should build a prepared template");
-    let legacy_storage = crate::engine::storage::Storage::new_arc();
-    let mut legacy_plain = crate::player::Player::new_from_namerena_raw("plain@red".to_owned(), legacy_storage)
-        .expect("legacy player facade should parse plain player");
-    legacy_plain.build();
-    let legacy_status = legacy_plain.get_status();
+        .expect("mixed native/bed2 raw roster should build a prepared template");
+    let input = crate::namerena::NamerenaInput::parse("plain@red").unwrap();
+    let plain = crate::namerena::PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
+        .unwrap()
+        .players
+        .remove(0);
 
     assert_eq!(template.players.len(), 3);
     assert_eq!(template.players[0].id, 1);
-    assert_eq!(template.players[0].name, legacy_plain.id_name());
+    assert_eq!(template.players[0].name, plain.name);
     assert_eq!(template.players[0].kind, PlayerTemplate::DEFAULT_KIND);
     assert_eq!(template.players[0].team, 0);
-    assert_eq!(template.players[0].max_hp, legacy_status.max_hp);
-    assert_eq!(template.players[0].attack, legacy_status.attack);
-    assert_eq!(template.players[0].defense, legacy_status.defense);
-    assert_eq!(template.players[0].resistance, legacy_status.resistance);
+    assert_eq!(template.players[0].max_hp, plain.status.max_hp);
+    assert_eq!(template.players[0].attack, plain.status.attack);
+    assert_eq!(template.players[0].defense, plain.status.defense);
+    assert_eq!(template.players[0].resistance, plain.status.resistance);
     assert_eq!(template.players[1].id, 2);
     assert_eq!(template.players[1].kind, bed2);
     assert_eq!(template.players[1].name, "alpha");

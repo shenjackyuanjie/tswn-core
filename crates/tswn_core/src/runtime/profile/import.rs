@@ -27,7 +27,7 @@ impl CustomBed2Import {
 
     pub fn parse_player_facade_raw(raw: &str) -> Option<Self> {
         let marker_import = Self::parse(raw)?;
-        let id_name = crate::player::Player::raw_namerena_to_idname(raw.trim());
+        let id_name = crate::namerena::raw_namerena_to_id_name(raw.trim());
         let (name, team, facade_hp) = Self::parse_facade_id_name(&id_name);
         Some(Self {
             name,
@@ -231,7 +231,7 @@ impl CustomBed2Import {
         let mut next_id = 1;
         for (team_index, group) in raw_groups.iter().enumerate() {
             for (player_index, raw) in group.iter().enumerate() {
-                if crate::player::Player::check_is_seed(raw.trim()) {
+                if crate::namerena::is_seed_line(raw.trim()) {
                     continue;
                 }
                 let Some(import) = Self::parse_player_facade_raw(raw) else {
@@ -307,44 +307,48 @@ impl CustomBed2Import {
         bed2_kind: PlayerKindId,
         bed2_summon_skill: SkillId,
     ) -> Result<Vec<PlayerTemplate>, CustomMixedRosterImportError> {
-        let storage = crate::engine::storage::Storage::new_arc();
         let mut players = Vec::new();
         let mut next_id = 1;
         for (team_index, group) in raw_groups.iter().enumerate() {
             for (player_index, raw) in group.iter().enumerate() {
                 let raw_trimmed = raw.trim();
-                if crate::player::Player::check_is_seed(raw_trimmed) {
+                if crate::namerena::is_seed_line(raw_trimmed) {
                     continue;
                 }
 
                 let template = if let Some(import) = Self::parse_player_facade_raw(raw_trimmed) {
                     import.into_player_template(next_id, bed2_kind, team_index, bed2_summon_skill)
                 } else {
-                    let mut player =
-                        crate::player::Player::new_from_namerena_raw(raw.clone(), storage.clone()).map_err(|error| {
-                            CustomMixedRosterImportError {
-                                team_index,
-                                player_index,
-                                raw: raw.clone(),
-                                message: format!("{error:?}"),
-                            }
-                        })?;
-                    player.build();
-                    let status = player.get_status();
+                    let input = crate::namerena::NamerenaInput::parse(raw).map_err(|error| CustomMixedRosterImportError {
+                        team_index,
+                        player_index,
+                        raw: raw.clone(),
+                        message: error.to_string(),
+                    })?;
+                    let mut prepared =
+                        crate::namerena::PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ)
+                            .map_err(|error| match error {})?;
+                    let player = prepared.players.pop().ok_or_else(|| CustomMixedRosterImportError {
+                        team_index,
+                        player_index,
+                        raw: raw.clone(),
+                        message: "native namerena importer returned no player".to_owned(),
+                    })?;
+                    let status = player.status;
                     if status.max_hp <= 0 || status.attack < 0 || status.defense < 0 || status.resistance < 0 {
                         return Err(CustomMixedRosterImportError {
                             team_index,
                             player_index,
                             raw: raw.clone(),
                             message: format!(
-                                "legacy player facade produced unsupported status max_hp={} attack={} defense={} resistance={}",
+                                "native player import produced unsupported status max_hp={} attack={} defense={} resistance={}",
                                 status.max_hp, status.attack, status.defense, status.resistance
                             ),
                         });
                     }
-                    PlayerTemplate::new(next_id, player.id_name(), team_index, status.max_hp, status.attack)
-                        .with_identity_names(player.id_key_name(), player.clan_name())
-                        .with_display_name(player.display_name())
+                    PlayerTemplate::new(next_id, player.name, team_index, status.max_hp, status.attack)
+                        .with_identity_names(player.id_key_name, player.clan_name)
+                        .with_display_name(player.display_name)
                         .with_magic(status.magic)
                         .with_magic_point(status.magic_point)
                         .with_wisdom(status.wisdom)
@@ -403,7 +407,7 @@ impl CustomBed2Import {
     ) -> Option<PlayerTemplate> {
         for (team_index, group) in raw_groups.iter().enumerate() {
             for raw in group {
-                if crate::player::Player::check_is_seed(raw.trim()) {
+                if crate::namerena::is_seed_line(raw.trim()) {
                     continue;
                 }
                 let Some(import) = Self::parse_player_facade_raw(raw) else {
@@ -435,7 +439,7 @@ impl CustomBed2Import {
     ) -> Option<PlayerTemplate> {
         for (team_index, group) in raw_groups.iter().enumerate() {
             for raw in group {
-                if crate::player::Player::check_is_seed(raw.trim()) {
+                if crate::namerena::is_seed_line(raw.trim()) {
                     continue;
                 }
                 let Some(import) = Self::parse_player_facade_raw(raw) else {
@@ -467,7 +471,7 @@ impl CustomBed2Import {
     ) -> Result<Option<PlayerTemplate>, CustomBed2ZombieTemplateImportError> {
         for (team_index, group) in raw_groups.iter().enumerate() {
             for raw in group {
-                if crate::player::Player::check_is_seed(raw.trim()) {
+                if crate::namerena::is_seed_line(raw.trim()) {
                     continue;
                 }
                 let Some(import) = Self::parse_player_facade_raw(raw) else {
@@ -496,7 +500,7 @@ impl CustomBed2Import {
         import: &Self,
         team: usize,
         summon_kind: PlayerKindId,
-        overlay: &crate::player::overlay::MinionOverlay,
+        overlay: &crate::namerena::MinionOverlay,
         fire_skill: SkillId,
         explode_skill: SkillId,
     ) -> PlayerTemplate {
@@ -524,7 +528,7 @@ impl CustomBed2Import {
         import: &Self,
         team: usize,
         shadow_kind: PlayerKindId,
-        overlay: &crate::player::overlay::MinionOverlay,
+        overlay: &crate::namerena::MinionOverlay,
         possess_skill: SkillId,
     ) -> PlayerTemplate {
         let attrs = overlay.attrs.unwrap_or([0, 0, 0, 0, 0, 0, 0, 1]);
@@ -550,7 +554,7 @@ impl CustomBed2Import {
         import: &Self,
         team: usize,
         zombie_kind: PlayerKindId,
-        overlay: &crate::player::overlay::MinionOverlay,
+        overlay: &crate::namerena::MinionOverlay,
         registry: &ExtensionRegistry,
         skill_export_name_prefix: &str,
     ) -> Result<PlayerTemplate, CustomBed2ZombieTemplateImportError> {
@@ -574,7 +578,7 @@ impl CustomBed2Import {
     }
 
     fn summon_skill_loadout_from_overlay(
-        overlay: &crate::player::overlay::MinionOverlay,
+        overlay: &crate::namerena::MinionOverlay,
         fire_skill: SkillId,
         explode_skill: SkillId,
     ) -> SkillLoadout {
@@ -596,20 +600,17 @@ impl CustomBed2Import {
     }
 
     fn summon_overlay_skill_lane(name: &str) -> Option<usize> {
-        let skill_ref = crate::player::skill::parse_prefixed_classified_skill_name(name)
-            .or_else(|| crate::player::skill::summon_slot_skill_ref_from_name(name))?;
+        let skill_ref = crate::namerena::parse_prefixed_classified_skill_name(name)
+            .or_else(|| crate::namerena::summon_slot_skill_ref_from_name(name))?;
         match skill_ref {
-            crate::player::skill::ClassifiedSkillRef::SummonFire1 => Some(0),
-            crate::player::skill::ClassifiedSkillRef::SummonFire2 => Some(1),
-            crate::player::skill::ClassifiedSkillRef::SummonExplode => Some(2),
+            crate::namerena::ClassifiedSkillRef::SummonFire1 => Some(0),
+            crate::namerena::ClassifiedSkillRef::SummonFire2 => Some(1),
+            crate::namerena::ClassifiedSkillRef::SummonExplode => Some(2),
             _ => None,
         }
     }
 
-    fn shadow_skill_loadout_from_overlay(
-        overlay: &crate::player::overlay::MinionOverlay,
-        possess_skill: SkillId,
-    ) -> SkillLoadout {
+    fn shadow_skill_loadout_from_overlay(overlay: &crate::namerena::MinionOverlay, possess_skill: SkillId) -> SkillLoadout {
         let mut active_order = Vec::new();
         if let Some(skill_levels) = overlay.skills.as_ref() {
             for (name, _) in skill_levels {
@@ -628,16 +629,16 @@ impl CustomBed2Import {
     }
 
     fn shadow_overlay_skill_lane(name: &str) -> Option<usize> {
-        let skill_ref = crate::player::skill::parse_prefixed_classified_skill_name(name)
-            .or_else(|| crate::player::skill::phantom_skill_ref_from_name(name))?;
+        let skill_ref = crate::namerena::parse_prefixed_classified_skill_name(name)
+            .or_else(|| crate::namerena::phantom_skill_ref_from_name(name))?;
         match skill_ref {
-            crate::player::skill::ClassifiedSkillRef::PhantomPossess => Some(0),
+            crate::namerena::ClassifiedSkillRef::PhantomPossess => Some(0),
             _ => None,
         }
     }
 
     fn zombie_skill_loadout_from_overlay(
-        overlay: &crate::player::overlay::MinionOverlay,
+        overlay: &crate::namerena::MinionOverlay,
         registry: &ExtensionRegistry,
         skill_export_name_prefix: &str,
     ) -> Result<SkillLoadout, CustomBed2ZombieTemplateImportError> {
@@ -667,25 +668,25 @@ impl CustomBed2Import {
     }
 
     fn zombie_overlay_skill_export_suffix(name: &str) -> Option<String> {
-        match crate::player::skill::player_classified_skill_ref_from_name(name) {
-            Some(crate::player::skill::ClassifiedSkillRef::Normal(skill_id)) => {
+        match crate::namerena::player_classified_skill_ref_from_name(name) {
+            Some(crate::namerena::ClassifiedSkillRef::Normal(skill_id)) => {
                 return Some(Self::normal_skill_export_suffix(skill_id));
             }
-            Some(crate::player::skill::ClassifiedSkillRef::SummonFire1) => return Some("summon_fire1".to_owned()),
-            Some(crate::player::skill::ClassifiedSkillRef::SummonFire2) => return Some("summon_fire2".to_owned()),
-            Some(crate::player::skill::ClassifiedSkillRef::SummonExplode) => return Some("explode".to_owned()),
-            Some(crate::player::skill::ClassifiedSkillRef::PhantomPossess) => return Some("possess".to_owned()),
+            Some(crate::namerena::ClassifiedSkillRef::SummonFire1) => return Some("summon_fire1".to_owned()),
+            Some(crate::namerena::ClassifiedSkillRef::SummonFire2) => return Some("summon_fire2".to_owned()),
+            Some(crate::namerena::ClassifiedSkillRef::SummonExplode) => return Some("explode".to_owned()),
+            Some(crate::namerena::ClassifiedSkillRef::PhantomPossess) => return Some("possess".to_owned()),
             None => {}
         }
         match Self::normalize_minion_overlay_skill_name(name).as_str() {
             "possess" | "possession" => Some("possess".to_owned()),
             "explode" | "selfdestruct" | "self_destruct" | "summonexplode" => Some("explode".to_owned()),
-            _ => crate::player::skill::skill_name_to_id(name).map(Self::normal_skill_export_suffix),
+            _ => crate::namerena::skill_name_to_id(name).map(Self::normal_skill_export_suffix),
         }
     }
 
     fn normal_skill_export_suffix(skill_id: usize) -> String {
-        let export_name = crate::player::skill::skill_name_for_export(skill_id);
+        let export_name = crate::namerena::skill_name_for_export(skill_id);
         export_name.strip_prefix("skl").unwrap_or(export_name.as_str()).to_ascii_lowercase()
     }
 
@@ -698,10 +699,10 @@ impl CustomBed2Import {
             .to_string()
     }
 
-    fn player_overlay_from_raw(raw: &str) -> Option<crate::player::overlay::PlayerOverlay> {
+    fn player_overlay_from_raw(raw: &str) -> Option<crate::namerena::PlayerOverlay> {
         Self::split_by_plus_outside_json(raw)
             .into_iter()
-            .filter_map(|segment| crate::player::overlay::PlayerOverlay::parse_inline(segment.trim()))
+            .filter_map(|segment| crate::namerena::PlayerOverlay::parse_inline(segment.trim()))
             .last()
     }
 

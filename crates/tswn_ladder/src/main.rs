@@ -9,8 +9,7 @@ use chrono::{Local, Utc};
 use cron::Schedule;
 use tokio::io::AsyncWriteExt;
 use tokio_postgres::{Client, NoTls};
-use tswn_core::LegacyRunner as Runner;
-use tswn_core::player::PlrId;
+use tswn_core::Runner;
 
 const ELO_SCALE_FACTOR: f64 = 50_600.0;
 const HANDICAP_SCALE: f64 = 88.3;
@@ -1285,72 +1284,15 @@ fn generate_unique_seed(rng: &mut fastrand::Rng) -> String {
     format!("{seed} #{basic_seed}")
 }
 
-fn count_input_players(player_text: &str) -> usize {
-    player_text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with("seed:"))
-        .count()
-}
-
-fn run_battle_winner(runs: &str, player1: &str, player2: &str) -> Result<Option<i32>> {
-    let player1_count = count_input_players(player1);
-    let player2_count = count_input_players(player2);
-    let input_player_count = player1_count + player2_count;
-
+fn run_battle_winner(runs: &str, _player1: &str, _player2: &str) -> Result<Option<i32>> {
     let mut runner = Runner::new_from_namerena_raw(runs.to_string()).map_err(|err| anyhow::anyhow!(err.to_string()))?;
-    let input_groups = runner.input_groups.clone();
-    let finished = runner.run_to_completion();
-    if !finished {
+    if runner.run_to_completion(20_000).winner_team.is_none() {
         return Ok(None);
     }
-
-    let Some(winner_ids) = runner.world.winner.clone() else {
-        return Ok(None);
-    };
-    if winner_ids.is_empty() {
-        return Ok(None);
-    }
-
-    let winner_ids = winner_ids.into_iter().collect::<HashSet<PlrId>>();
-    let mut winner_sides = HashSet::new();
-    let mut team_index_to_side = HashMap::new();
-
-    for (input_team_idx, group) in input_groups.iter().enumerate() {
-        let side = match input_team_idx {
-            0 => 1,
-            1 => 0,
-            _ => continue,
-        };
-        for player_id in group {
-            if let Some(team_idx) = runner.world.team_index_of(*player_id) {
-                team_index_to_side.insert(team_idx, side);
-            }
-        }
-    }
-
-    for player_id in runner.storage.all_player_ids() {
-        if !winner_ids.contains(&player_id) {
-            continue;
-        }
-
-        if player_id < player1_count {
-            winner_sides.insert(1);
-        } else if player_id < input_player_count {
-            winner_sides.insert(0);
-        } else if let Some(team_idx) = runner.world.team_index_of(player_id)
-            && let Some(side) = team_index_to_side.get(&team_idx)
-        {
-            winner_sides.insert(*side);
-        }
-    }
-
-    if winner_sides.contains(&1) && !winner_sides.contains(&0) {
-        Ok(Some(1))
-    } else if winner_sides.contains(&0) && !winner_sides.contains(&1) {
-        Ok(Some(0))
-    } else {
-        Ok(None)
+    match runner.winner_team_indices().as_slice() {
+        [0] => Ok(Some(1)),
+        [1] => Ok(Some(0)),
+        _ => Ok(None),
     }
 }
 

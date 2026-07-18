@@ -10,7 +10,7 @@ pub fn run_defend_post_defend_skill(context: &mut SkillContext<'_>, entry: &Skil
         return;
     }
     let caster = context.defend_caster().expect("runtime defend skill must receive incoming caster");
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[0][防御]",
         context.owner_idx().0 as usize,
         caster.0 as usize,
@@ -36,7 +36,7 @@ pub fn run_reflect_pre_defend_skill(context: &mut SkillContext<'_>, entry: &Skil
     let caster = context.defend_caster().expect("runtime reflect skill must receive incoming caster");
     let reflect_atp = (context.owner_attack_power(true).expect("runtime reflect skill owner must exist") * 0.5).min(atp);
     let mut update =
-        crate::engine::update::RunUpdate::new("[0]使用[伤害反弹]", context.owner_idx().0 as usize, caster.0 as usize, 20);
+        crate::runtime::update::RunUpdate::new("[0]使用[伤害反弹]", context.owner_idx().0 as usize, caster.0 as usize, 20);
     update.delay0 = 1500;
     context.add_update(update);
     context.set_defend_atp(0.0);
@@ -90,7 +90,7 @@ pub fn run_reraise_die_skill(context: &mut SkillContext<'_>, entry: &SkillHookPl
     }
     let hp = context.rng_r16() as i32;
     context.reraise_owner(entry, hp).expect("runtime reraise owner must exist");
-    let mut reraise_update = crate::engine::update::RunUpdate::new(
+    let mut reraise_update = crate::runtime::update::RunUpdate::new(
         "[0]使用[护身符]抵挡了一次死亡",
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,
@@ -98,7 +98,7 @@ pub fn run_reraise_die_skill(context: &mut SkillContext<'_>, entry: &SkillHookPl
     );
     reraise_update.delay0 = 1500;
     context.add_update(reraise_update);
-    let mut recover_update = crate::engine::update::RunUpdate::new(
+    let mut recover_update = crate::runtime::update::RunUpdate::new(
         "[1]回复体力[2]点",
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,

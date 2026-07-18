@@ -366,7 +366,7 @@ fn plain_heal_clears_negative_states_restores_derived_stats_and_decays_level() {
         updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec![

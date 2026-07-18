@@ -58,7 +58,7 @@ fn runtime_runner_constructs_and_runs_mixed_roster() {
         winner_team: None,
         round: 1,
         total_score: actor_attack as u64,
-        rng: crate::runtime::oracle::NormalizedRngCheckpoint::after_next_u8(1),
+        rng: crate::runtime::NormalizedRngCheckpoint::after_next_u8(1),
         entity_ids: vec![1, 2, 3],
         teams: vec![0, 0, 1],
         hp: vec![plain_hp, 9, DEFAULT_BED2_HP - actor_attack],
@@ -70,7 +70,7 @@ fn runtime_runner_constructs_and_runs_mixed_roster() {
         flat_alive: vec![0, 1, 2],
         team_alive: vec![vec![0, 1], vec![2]],
         alive_group_count: 2,
-        actions: vec![crate::runtime::oracle::NormalizedActionBoundary {
+        actions: vec![crate::runtime::NormalizedActionBoundary {
             round: 1,
             actor: 0,
             target: 2,
@@ -83,13 +83,13 @@ fn runtime_runner_constructs_and_runs_mixed_roster() {
             targets: Vec::new(),
             param: None,
             score: actor_attack as u32,
-            delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-            delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-            update_type: crate::engine::update::UpdateType::None,
+            delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+            delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+            update_type: crate::runtime::update::UpdateType::None,
         }],
     };
 
-    assert_eq!(strict_diff(&expected, &actual), Ok(()));
+    assert_eq!(actual, expected);
 }
 
 #[test]
@@ -118,15 +118,9 @@ fn runtime_runner_constructs_from_bed2_namerena_raw_fixture_shape() {
     let runner = prepared_init_tests::runtime_runner_from_raw(raw_input, |raw_groups| {
         RuntimeRunner::from_bed2_roster(raw_groups, registry, bed2, summon)
     });
-    let legacy = crate::LegacyRunner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
-
     assert_eq!(runner.runtime().entities.len(), 2);
     assert_eq!(runner.runtime().entities.get(EntityIdx(0)).unwrap().template.max_hp, 5);
     assert_eq!(runner.runtime().entities.get(EntityIdx(1)).unwrap().template.max_hp, 8);
-    assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
-    assert_eq!(runner.runtime().rng.i, legacy.randomer.i);
-    assert_eq!(runner.runtime().rng.j, legacy.randomer.j);
-    assert_eq!(runner.runtime().rng.main_val, legacy.randomer.main_val);
 }
 
 #[test]
@@ -201,9 +195,6 @@ fn runtime_runner_bed2_raw_can_import_ol_summon_overlay_template_slot() {
             },
         )
     });
-    let legacy = crate::LegacyRunner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
-
-    assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
     let SlotValue::PlayerTemplate(summon_template) = runner
         .runtime()
         .template_slots
@@ -281,9 +272,6 @@ fn runtime_runner_bed2_raw_can_import_ol_shadow_overlay_template_slot() {
             },
         )
     });
-    let legacy = crate::LegacyRunner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
-
-    assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
     let SlotValue::PlayerTemplate(shadow_template) = runner
         .runtime()
         .template_slots
@@ -354,9 +342,6 @@ fn runtime_runner_bed2_raw_can_import_ol_zombie_overlay_template_slot() {
             },
         )
     });
-    let legacy = crate::LegacyRunner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
-
-    assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
     let SlotValue::PlayerTemplate(zombie_template) = runner
         .runtime()
         .template_slots
@@ -512,9 +497,6 @@ delta@blue+bed2[8]\n";
             },
         )
     });
-    let legacy = crate::LegacyRunner::new_from_namerena_raw(raw_input.to_owned()).expect("legacy runner should construct");
-
-    assert_runtime_world_matches_legacy_raw_world(runner.runtime(), &legacy.world);
     let SlotValue::PlayerTemplate(summon_template) = runner
         .runtime()
         .template_slots

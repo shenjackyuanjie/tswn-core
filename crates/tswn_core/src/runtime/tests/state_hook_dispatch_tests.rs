@@ -216,7 +216,7 @@ fn run_state_hooks_haste_post_action_clears_and_emits_release() {
     assert_eq!(frame.updates.updates.len(), 2);
     assert_eq!(
         frame.updates.updates[0].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[1].message, "[1]从[疾走]中解除");
     assert_eq!(frame.updates.updates[1].caster, 0);
@@ -319,7 +319,7 @@ fn run_state_hooks_charm_post_action_clears_and_emits_release() {
     assert_eq!(frame.updates.updates.len(), 2);
     assert_eq!(
         frame.updates.updates[0].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[1].message, "[1]从[魅惑]中解除");
     assert_eq!(frame.updates.updates[1].caster, 0);
@@ -417,7 +417,7 @@ fn run_state_hooks_slow_post_action_clears_and_emits_release() {
     assert_eq!(frame.updates.updates.len(), 2);
     assert_eq!(
         frame.updates.updates[0].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[1].message, "[1]从[迟缓]中解除");
     assert_eq!(frame.updates.updates[1].caster, 0);
@@ -461,7 +461,7 @@ fn run_state_hooks_iron_post_action_clears_and_emits_release() {
     assert_eq!(frame.updates.updates.len(), 2);
     assert_eq!(
         frame.updates.updates[0].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[1].message, "[1]从[铁壁]中解除");
     assert_eq!(frame.updates.updates[1].caster, 0);
@@ -603,7 +603,7 @@ fn run_state_hooks_iron_post_action_runs_at_legacy_priority() {
     assert_eq!(frame.updates.updates[0].message, "state mark");
     assert_eq!(
         frame.updates.updates[1].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[2].message, "[1]从[铁壁]中解除");
 }
@@ -704,7 +704,7 @@ fn run_state_hooks_haste_charm_slow_and_iron_share_legacy_post_action_priority()
             .updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec![

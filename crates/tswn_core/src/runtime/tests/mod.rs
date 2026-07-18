@@ -5,12 +5,10 @@ mod custom_bed2_roster_import_tests;
 mod custom_minion_name_tests;
 mod custom_minion_spawn_tests;
 mod custom_mixed_import_tests;
-mod custom_runner_diff_tests;
 mod custom_runner_fixture_diff_tests;
 mod custom_runner_import_tests;
 mod custom_runner_round_diff_tests;
 mod custom_summon_handler_tests;
-mod default_profile_import_tests;
 mod effect_pipeline_tests;
 mod entity_identity_tests;
 mod plain_action_scheduler_tests;
@@ -37,7 +35,6 @@ mod plain_protect_skill_tests;
 mod plain_raw_import_tests;
 mod plain_reflect_skill_tests;
 mod plain_revive_lifecycle_tests;
-mod plain_runner_fixture_tests;
 mod plain_status_skill_tests;
 mod plain_summon_share_damage_tests;
 mod plain_summon_skill_tests;
@@ -64,7 +61,7 @@ fn custom_marks_update(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     let CustomEffectPayload::Text(message) = &effect.payload else {
         panic!("custom test effect expects text payload");
     };
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         message.clone(),
         effect.caster.0 as usize,
         effect.target.unwrap().0 as usize,
@@ -99,12 +96,12 @@ fn custom_rejects_cross_entity_read(context: &mut EffectContext<'_>, _: &CustomE
         context.entity(EntityIdx(2)),
         Err(EffectContextError::MissingCapability(ExtensionCapability::ReadEnemies))
     );
-    context.add_update(crate::engine::update::RunUpdate::new("read denied", 0, 0, 0));
+    context.add_update(crate::runtime::update::RunUpdate::new("read denied", 0, 0, 0));
 }
 
 fn custom_reads_cross_entity(context: &mut EffectContext<'_>, _: &CustomEffect) {
     let observed = context.entity(EntityIdx(2)).expect("capability should allow cross-entity read");
-    context.add_update(crate::engine::update::RunUpdate::new(observed.template.name.clone(), 0, 2, 0));
+    context.add_update(crate::runtime::update::RunUpdate::new(observed.template.name.clone(), 0, 2, 0));
 }
 
 fn custom_mutates_entity_slot(context: &mut EffectContext<'_>, effect: &CustomEffect) {
@@ -118,7 +115,7 @@ fn custom_mutates_entity_slot(context: &mut EffectContext<'_>, effect: &CustomEf
             SlotValue::Bool(true),
         )
         .expect("capability should allow entity slot mutation");
-    context.add_update(crate::engine::update::RunUpdate::new("slot set", 0, 0, 0));
+    context.add_update(crate::runtime::update::RunUpdate::new("slot set", 0, 0, 0));
 }
 
 fn custom_consumes_rng(context: &mut EffectContext<'_>, effect: &CustomEffect) {
@@ -127,7 +124,7 @@ fn custom_consumes_rng(context: &mut EffectContext<'_>, effect: &CustomEffect) {
     };
     let value = context.rng_next_i32(max);
     let next_byte = context.rng_next_u8();
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         format!("rng:{value}:{next_byte}"),
         effect.caster.0 as usize,
         effect.target.unwrap().0 as usize,
@@ -136,7 +133,7 @@ fn custom_consumes_rng(context: &mut EffectContext<'_>, effect: &CustomEffect) {
 }
 
 fn skill_marks_update(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "skill mark",
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -146,7 +143,7 @@ fn skill_marks_update(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry
 
 fn skill_marks_selected_target(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let target = context.selected_target().expect("skill should receive selected target");
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "selected target",
         entry.owner.0 as usize,
         target.0 as usize,
@@ -161,7 +158,7 @@ fn state_marks_charge_boost(context: &mut StateContext<'_>, entry: &StateHookPla
     } else {
         "charge inactive"
     };
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         message,
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -175,7 +172,7 @@ fn skill_clears_positive_runtime(context: &mut SkillContext<'_>, _: &SkillHookPl
         .expect("clear-positive owner should exist");
     let owner = context.owner_idx();
     for (priority, message) in messages {
-        context.add_update(crate::engine::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new(
             message,
             owner.0 as usize,
             owner.0 as usize,
@@ -188,7 +185,7 @@ fn skill_clears_positive_states(context: &mut SkillContext<'_>, _: &SkillHookPla
     let messages = context.clear_owner_positive_state_messages().expect("clear-positive owner should exist");
     let owner = context.owner_idx();
     for (priority, message) in messages {
-        context.add_update(crate::engine::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new(
             message,
             owner.0 as usize,
             owner.0 as usize,
@@ -201,7 +198,7 @@ fn skill_clears_positive(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry)
     let messages = context.clear_owner_positive_messages().expect("clear-positive owner should exist");
     let owner = context.owner_idx();
     for (priority, message) in messages {
-        context.add_update(crate::engine::update::RunUpdate::new(
+        context.add_update(crate::runtime::update::RunUpdate::new(
             message,
             owner.0 as usize,
             owner.0 as usize,
@@ -222,7 +219,7 @@ fn skill_pushes_nested_damage(context: &mut SkillContext<'_>, _: &SkillHookPlanE
 
 fn skill_halves_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let atp = context.defend_atp().expect("pre-defend skill should receive atp");
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "pre defend skill",
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -233,7 +230,7 @@ fn skill_halves_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlan
 
 fn skill_zeroes_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     assert!(context.defend_atp().expect("pre-defend skill should receive atp") > 0.0);
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "pre defend zero",
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -245,7 +242,7 @@ fn skill_zeroes_defend_atp(context: &mut SkillContext<'_>, entry: &SkillHookPlan
 fn skill_marks_defend_replay(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let caster = context.defend_caster().expect("post-defend skill should receive incoming caster");
     let target = context.defend_target().expect("post-defend skill should receive incoming target");
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[0][防御]",
         target.0 as usize,
         caster.0 as usize,
@@ -255,7 +252,7 @@ fn skill_marks_defend_replay(context: &mut SkillContext<'_>, _: &SkillHookPlanEn
 
 fn skill_halves_defend_damage(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let damage = context.defend_damage().expect("post-defend skill should receive damage");
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "post defend skill",
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -278,7 +275,7 @@ fn skill_records_missing_template_slot_error(context: &mut SkillContext<'_>, ent
         push_summon_from_template_slot(context, TemplateSlotId(0)),
         Err(RuntimeSummonHandlerError::MissingTemplateSlot(TemplateSlotId(0)))
     );
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "missing summon template",
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -289,7 +286,7 @@ fn skill_records_missing_template_slot_error(context: &mut SkillContext<'_>, ent
 fn skill_consumes_rng(context: &mut SkillContext<'_>, entry: &SkillHookPlanEntry) {
     let value = context.rng_next_i32(10);
     let next_byte = context.rng_next_u8();
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         format!("skill-rng:{value}:{next_byte}"),
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -306,7 +303,7 @@ fn skill_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _: &Skill
 }
 
 fn skill_legacy_summon_recast_fixture_handler(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "[0]使用[血祭]",
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,
@@ -347,7 +344,7 @@ fn skill_records_missing_recast_read_allies_error(context: &mut SkillContext<'_>
 
 fn skill_records_next_minion_name(context: &mut SkillContext<'_>, _: &SkillHookPlanEntry) {
     let name = next_minion_name_from_entity_slot(context, EntitySlotId(0)).expect("minion name helper should allocate a name");
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         name,
         context.owner_idx().0 as usize,
         context.owner_idx().0 as usize,
@@ -388,7 +385,7 @@ fn skill_configured_zombie_minion_handler(context: &mut SkillContext<'_>, _: &Sk
 }
 
 fn state_marks_update(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "state mark",
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -407,7 +404,7 @@ fn state_pushes_nested_heal(context: &mut StateContext<'_>, _: &StateHookPlanEnt
 fn state_consumes_rng(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let value = context.rng_next_i32(10);
     let next_byte = context.rng_next_u8();
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         format!("state-rng:{value}:{next_byte}"),
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -417,7 +414,7 @@ fn state_consumes_rng(context: &mut StateContext<'_>, entry: &StateHookPlanEntry
 
 fn state_adds_defend_damage(context: &mut StateContext<'_>, entry: &StateHookPlanEntry) {
     let damage = context.defend_damage().expect("post-defend state should receive damage");
-    context.add_update(crate::engine::update::RunUpdate::new(
+    context.add_update(crate::runtime::update::RunUpdate::new(
         "post defend state",
         entry.owner.0 as usize,
         entry.owner.0 as usize,
@@ -458,56 +455,4 @@ fn render_hp_marker_bar_show(frame: &RuntimeFrame) -> Option<RenderedShow> {
             hp_report.msg()
         ),
     ))
-}
-
-fn mixed_raw_runner_for_plain_fixture(raw_input: &str) -> (RuntimeRunner, crate::LegacyRunner) {
-    let config = default_custom_runtime_import_config().expect("default runtime profile should build");
-    let runner = RuntimeRunner::from_custom_mixed_namerena_raw(raw_input.to_owned(), config)
-        .expect("plain raw fixture should construct runtime runner");
-    let legacy = crate::LegacyRunner::new_from_namerena_raw(raw_input.to_owned())
-        .expect("plain raw fixture should construct legacy runner");
-    (runner, legacy)
-}
-
-fn assert_runtime_rng_matches_legacy(runtime: &CombatRuntime, legacy: &crate::LegacyRunner) {
-    assert_eq!(runtime.rng.i, legacy.randomer.i);
-    assert_eq!(runtime.rng.j, legacy.randomer.j);
-    assert_eq!(runtime.rng.main_val, legacy.randomer.main_val);
-}
-
-fn assert_runtime_world_matches_legacy_raw_world(runtime: &CombatRuntime, legacy_world: &crate::engine::world_state::WorldState) {
-    assert_eq!(
-        runtime.world.round_order(),
-        legacy_entity_order(&legacy_world.players).as_slice()
-    );
-    assert_eq!(
-        runtime.world.flat_alive(),
-        legacy_entity_order(&legacy_world.flat_alive).as_slice()
-    );
-    assert_eq!(runtime.world.alive_group_count(), legacy_world.alive_group_count());
-    for team_idx in 0..legacy_world.groups.len() {
-        assert_eq!(
-            runtime.world.team_alive(team_idx),
-            Some(legacy_entity_order(legacy_world.team_alive(team_idx).unwrap_or_default()).as_slice())
-        );
-    }
-    for (team_idx, group) in legacy_world.groups.iter().enumerate() {
-        for plr in group {
-            let entity = runtime
-                .entities
-                .get(EntityIdx(
-                    (*plr).try_into().expect("legacy fixture player id should fit EntityIdx"),
-                ))
-                .expect("legacy raw world player should exist in runtime");
-            assert_eq!(entity.runtime.team, team_idx);
-            assert_eq!(entity.template.team, team_idx);
-        }
-    }
-}
-
-fn legacy_entity_order(plrs: &[crate::player::PlrId]) -> Vec<EntityIdx> {
-    plrs.iter()
-        .copied()
-        .map(|plr| EntityIdx(plr.try_into().expect("legacy fixture player id should fit EntityIdx")))
-        .collect()
 }

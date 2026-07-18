@@ -4,8 +4,8 @@
 
 use std::collections::HashMap;
 
-use crate::{CoreEngine, EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
-use tswn_core::engine::update::{RunUpdate, UpdateType};
+use crate::{EngineAdapter, EventSnapshot, RuntimeEngine, SnapshotKind};
+use tswn_core::runtime::update::{RunUpdate, UpdateType};
 use tswn_core::runtime::{EntityIdx, RuntimeRunner, default_custom_runtime_import_config};
 
 pub mod fight_large;
@@ -31,106 +31,6 @@ pub mod large_66_70;
 pub mod large_71_80;
 pub mod simple;
 pub mod small;
-
-fn format_core_update_message(runner: &tswn_core::LegacyRunner, update: &RunUpdate) -> String {
-    let caster = runner
-        .storage
-        .get_player(&update.caster)
-        .map(|plr| plr.display_name())
-        .unwrap_or_else(|| format!("#{}", update.caster));
-    let target = runner
-        .storage
-        .get_player(&update.target)
-        .map(|plr| plr.display_name())
-        .unwrap_or_else(|| format!("#{}", update.target));
-    let mut msg = update.message.to_string();
-    msg = msg.replace("[0]", &caster);
-    msg = msg.replace("[1]", &target);
-    let param = if let Some(p) = update.param {
-        p.to_string()
-    } else if update.targets.is_empty() {
-        update.score.to_string()
-    } else {
-        update
-            .targets
-            .iter()
-            .map(|id| {
-                runner
-                    .storage
-                    .get_player(id)
-                    .map(|plr| plr.display_name())
-                    .unwrap_or_else(|| format!("#{id}"))
-            })
-            .collect::<Vec<String>>()
-            .join(",")
-    };
-    msg.replace("[2]", &param)
-}
-
-fn core_caster_name(runner: &tswn_core::LegacyRunner, update: &RunUpdate) -> String {
-    runner
-        .storage
-        .get_player(&update.caster)
-        .map(|plr| plr.display_name())
-        .unwrap_or_else(|| format!("#{}", update.caster))
-}
-
-impl EngineAdapter for CoreEngine {
-    type Runner = tswn_core::LegacyRunner;
-
-    fn new_from_raw(raw: String) -> Result<Self::Runner, String> {
-        tswn_core::LegacyRunner::new_from_namerena_raw(raw).map_err(|err| err.to_string())
-    }
-
-    fn main_round(runner: &mut Self::Runner) -> Vec<EventSnapshot> {
-        runner
-            .main_round()
-            .updates
-            .into_iter()
-            .map(|update| {
-                let kind = match update.update_type {
-                    UpdateType::Win => SnapshotKind::Win,
-                    UpdateType::NextLine => SnapshotKind::NextLine,
-                    UpdateType::None => SnapshotKind::Event,
-                };
-                EventSnapshot {
-                    message: format_core_update_message(runner, &update),
-                    caster_name: core_caster_name(runner, &update),
-                    score: update.score,
-                    kind,
-                }
-            })
-            .collect()
-    }
-
-    fn have_winner(runner: &Self::Runner) -> bool { runner.have_winner() }
-
-    fn winner_names(runner: &Self::Runner) -> Vec<String> {
-        runner
-            .world
-            .winner
-            .clone()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|id| {
-                runner
-                    .storage
-                    .get_player(&id)
-                    .map(|plr| plr.id_name())
-                    .unwrap_or_else(|| format!("#{id}"))
-            })
-            .collect::<Vec<String>>()
-    }
-
-    fn winner_team_index(runner: &Self::Runner) -> Option<usize> {
-        let winner = runner.world.winner.as_ref()?;
-        runner.world.groups.iter().position(|group| group == winner)
-    }
-
-    fn rc4_state(runner: &Self::Runner) -> Option<(usize, usize)> {
-        Some((runner.randomer.i as usize, runner.randomer.j as usize))
-    }
-}
 
 fn runtime_entity_name(runner: &RuntimeRunner, id: usize) -> String {
     u32::try_from(id)

@@ -2,7 +2,7 @@ use super::*;
 
 impl PreparedBattleRoster {
     pub fn from_groups(raw_groups: &[Vec<String>], registry: &ExtensionRegistry) -> Result<Self, RuntimeBattleInitError> {
-        Self::from_groups_with_eval_rq(raw_groups, crate::player::eval_name::DEFAULT_EVAL_RQ, registry)
+        Self::from_groups_with_eval_rq(raw_groups, crate::namerena::eval_name::DEFAULT_EVAL_RQ, registry)
     }
 
     pub fn from_groups_with_eval_rq(
@@ -10,7 +10,7 @@ impl PreparedBattleRoster {
         eval_rq: f64,
         registry: &ExtensionRegistry,
     ) -> Result<Self, RuntimeBattleInitError> {
-        let skill_import = PlainLegacySkillImportMap::new(registry);
+        let skill_import = BuiltinSkillImportMap::new(registry);
         Self::from_groups_with_eval_rq_and_skill_import(raw_groups, eval_rq, registry, &skill_import)
     }
 
@@ -18,7 +18,7 @@ impl PreparedBattleRoster {
         raw_groups: &[Vec<String>],
         eval_rq: f64,
         registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
+        skill_import: &BuiltinSkillImportMap,
     ) -> Result<Self, RuntimeBattleInitError> {
         Self::from_groups_with_eval_rq_and_skill_import_selected(raw_groups, eval_rq, registry, skill_import, &[])
     }
@@ -33,7 +33,7 @@ impl PreparedBattleRoster {
         raw_groups: &[Vec<String>],
         eval_rq: f64,
         registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
+        skill_import: &BuiltinSkillImportMap,
         profile_player_ids: &[PlrId],
         profile_team: &str,
         profile_team_rng: &RC4,
@@ -43,7 +43,7 @@ impl PreparedBattleRoster {
         scratch: &mut ScoreRoundScratch,
         roster_buffers: &mut ScoreRosterBuffers,
     ) -> Result<Self, RuntimeBattleInitError> {
-        let player_count = raw_groups.iter().flatten().filter(|raw| !Player::check_is_seed(raw)).count();
+        let player_count = raw_groups.iter().flatten().filter(|raw| !is_seed_line(raw)).count();
         let fixed_count = profile_player_ids.first().copied().unwrap_or(player_count);
         let suffix_layout = player_count == cached.players.len()
             && fixed_count <= player_count
@@ -77,7 +77,7 @@ impl PreparedBattleRoster {
 
         for (team_index, raw_group) in raw_groups.iter().enumerate() {
             for (player_index, raw) in raw_group.iter().enumerate() {
-                if Player::check_is_seed(raw) {
+                if is_seed_line(raw) {
                     continue;
                 }
                 let id = next_player_id;
@@ -91,7 +91,7 @@ impl PreparedBattleRoster {
         }
 
         // 标准 score profile 都使用同一个 modifier 作为 clan；若与同组固定 target
-        // 相同，就必须让双方共同参与 upgrade，因此回退完整 legacy 构造。
+        // 相同，就必须让双方共同参与 upgrade，因此回退完整 roster 构造。
         for group in &cached.input_groups {
             if group.iter().any(|id| *id >= fixed_count)
                 && group.iter().filter(|id| **id < fixed_count).any(|id| {
@@ -113,9 +113,7 @@ impl PreparedBattleRoster {
             }
         }
         scratch.name_keys.clear();
-        scratch
-            .name_keys
-            .resize(scratch.dynamic_inputs.len(), [0u8; crate::player::NAME_MAX_LEN + 1]);
+        scratch.name_keys.resize(scratch.dynamic_inputs.len(), [0u8; NAME_MAX_LEN + 1]);
         scratch.name_lengths.clear();
         for (index, &(team_index, player_index, _)) in scratch.dynamic_inputs.iter().enumerate() {
             let raw = &raw_groups[team_index][player_index];
@@ -150,8 +148,8 @@ impl PreparedBattleRoster {
                     .split_once('@')
                     .expect("已经验证的 score profile 必须包含队名分隔符")
                     .0;
-                let factor_name = crate::player::eval_name::eval_str_common_with_rq(first_name, true, eval_rq);
-                let factor_team = crate::player::eval_name::eval_str_common_with_rq(profile_team, true, eval_rq);
+                let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(first_name, true, eval_rq);
+                let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(profile_team, true, eval_rq);
                 scratch.factor_eval_rq_bits = eval_rq.to_bits();
                 scratch.factor_name_len = name_len;
                 scratch.factor_team.clear();
@@ -281,7 +279,7 @@ impl PreparedBattleRoster {
         raw_groups: &[Vec<String>],
         eval_rq: f64,
         registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
+        skill_import: &BuiltinSkillImportMap,
         lazy_blueprint_players: &[PlrId],
     ) -> Result<Self, RuntimeBattleInitError> {
         let mut groups = Vec::with_capacity(raw_groups.len());
@@ -338,118 +336,6 @@ impl PreparedBattleRoster {
             .collect::<Vec<_>>();
         let player_alive = players.iter().map(|player| player.alive).collect();
         let players = players.into_iter().map(Some).collect();
-        let base_names_sorted = PreparedBattleInit::base_names_sorted(raw_groups);
-        let profile_seed_rc4_prefix = PreparedBattleInit::profile_seed_rc4_prefix(&base_names_sorted);
-        Ok(Self {
-            players,
-            player_alive,
-            input_groups,
-            base_names_sorted,
-            profile_seed_rc4_prefix,
-            id_key_names,
-            sorted_by_id_name,
-            recycle_score_buffers: false,
-        })
-    }
-
-    #[cfg(test)]
-    pub(super) fn from_groups_with_eval_rq_and_skill_import_selected_legacy(
-        raw_groups: &[Vec<String>],
-        eval_rq: f64,
-        registry: &ExtensionRegistry,
-        skill_import: &PlainLegacySkillImportMap,
-        lazy_blueprint_players: &[PlrId],
-    ) -> Result<Self, RuntimeBattleInitError> {
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-        let player_capacity = raw_groups.iter().map(Vec::len).sum();
-        let storage = Storage::new_arc_with_eval_rq_and_capacities(eval_rq, player_capacity, raw_groups.len());
-        let mut players = Vec::with_capacity(player_capacity);
-        let mut input_groups = Vec::with_capacity(raw_groups.len());
-
-        for (team_index, raw_group) in raw_groups.iter().enumerate() {
-            let mut group = Vec::with_capacity(raw_group.len());
-            for (player_index, raw) in raw_group.iter().enumerate() {
-                if Player::check_is_seed(raw) {
-                    continue;
-                }
-                let player = Player::new_from_namerena_raw(raw.clone(), storage.clone()).map_err(|error| {
-                    RuntimeBattleInitError::Player {
-                        team_index,
-                        player_index,
-                        raw: raw.clone(),
-                        message: format!("{error:?}"),
-                    }
-                })?;
-                let id: usize = player.id().try_into().expect("runtime prepared player id overflow");
-                assert_eq!(id, players.len(), "runtime prepared player ids must be dense");
-                players.push(player);
-                group.push(id);
-            }
-            if !group.is_empty() {
-                input_groups.push(group);
-            }
-        }
-        #[cfg(test)]
-        let parsed_elapsed = phase_started.elapsed();
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-
-        PreparedBattleInit::apply_team_upgrades(&mut players, &mut input_groups);
-        PreparedBattleInit::build_players(&mut players);
-        #[cfg(test)]
-        let built_elapsed = phase_started.elapsed();
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-
-        let player_count = players.len();
-        for player in players {
-            storage.just_insert_player(player);
-        }
-
-        let id_key_names = (0..player_count)
-            .map(|id| storage.get_player(&id).expect("runtime prepared player disappeared").id_key_name())
-            .collect::<Vec<_>>();
-        let mut sorted_by_id_name = (0..player_count).collect::<Vec<_>>();
-        sorted_by_id_name.sort_by(|left, right| id_key_names[*left].cmp(&id_key_names[*right]));
-
-        let mut team_by_player = vec![0; player_count];
-        for (team, group) in input_groups.iter().enumerate() {
-            for player in group {
-                team_by_player[*player] = team;
-            }
-        }
-        #[cfg(test)]
-        let indexed_elapsed = phase_started.elapsed();
-        #[cfg(test)]
-        let phase_started = std::time::Instant::now();
-        let players = (0..player_count)
-            .map(|id| {
-                let player = storage.get_player(&id).expect("runtime prepared player disappeared");
-                PreparedBattleInit::prepare_player(
-                    player,
-                    id,
-                    team_by_player[id],
-                    &storage,
-                    registry,
-                    skill_import,
-                    lazy_blueprint_players.contains(&id),
-                )
-            })
-            .collect::<Vec<_>>();
-        let player_alive = players.iter().map(|player| player.alive).collect();
-        let players = players.into_iter().map(Some).collect();
-        #[cfg(test)]
-        if std::env::var_os("TSWN_PROBE_PREPARED_INIT").is_some() {
-            eprintln!(
-                "[runtime_prepared_init] players={player_count} parse={}ns build={}ns index={}ns convert={}ns",
-                parsed_elapsed.as_nanos(),
-                built_elapsed.as_nanos(),
-                indexed_elapsed.as_nanos(),
-                phase_started.elapsed().as_nanos(),
-            );
-        }
-
         let base_names_sorted = PreparedBattleInit::base_names_sorted(raw_groups);
         let profile_seed_rc4_prefix = PreparedBattleInit::profile_seed_rc4_prefix(&base_names_sorted);
         Ok(Self {
@@ -640,9 +526,9 @@ mod native_roster_tests {
     }
 
     #[test]
-    fn native_roster_templates_match_legacy_initialization() {
+    fn native_roster_templates_are_deterministic() {
         let config = default_custom_runtime_import_config().expect("runtime profile should build");
-        let skill_import = PlainLegacySkillImportMap::new(&config.registry);
+        let skill_import = BuiltinSkillImportMap::new(&config.registry);
         let cases = [
             vec![
                 vec!["alice@red+剁手刀".to_owned(), "bob@red".to_owned(), "seed:7@!".to_owned()],
@@ -673,21 +559,28 @@ mod native_roster_tests {
             for lazy in [Vec::new(), (player_count > 0).then_some(vec![0]).unwrap_or_default()] {
                 let actual = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_selected(
                     groups,
-                    crate::player::eval_name::DEFAULT_EVAL_RQ,
+                    crate::namerena::eval_name::DEFAULT_EVAL_RQ,
                     &config.registry,
                     &skill_import,
                     &lazy,
                 )
                 .unwrap();
-                let expected = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_selected_legacy(
+                let expected = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_selected(
                     groups,
-                    crate::player::eval_name::DEFAULT_EVAL_RQ,
+                    crate::namerena::eval_name::DEFAULT_EVAL_RQ,
                     &config.registry,
                     &skill_import,
                     &lazy,
                 )
                 .unwrap();
                 assert_rosters_equal(&actual, &expected, &format!("case {case_index}, lazy={lazy:?}"));
+                assert_eq!(actual.players.len(), player_count);
+                for (id, player) in actual.players.iter().enumerate() {
+                    let player = player.as_ref().expect("native roster player must be prepared");
+                    assert_eq!(player.template.id, id);
+                    assert!(player.template.max_hp > 0);
+                    assert_eq!(player.lazy_blueprint_rq_bits.is_some(), lazy.contains(&id));
+                }
             }
         }
     }

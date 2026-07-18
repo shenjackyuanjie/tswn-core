@@ -83,7 +83,7 @@ fn custom_runner_fixture_matches_strict_diff_golden() {
         winner_team: None,
         round: 0,
         total_score: 97,
-        rng: crate::runtime::oracle::NormalizedRngCheckpoint::default(),
+        rng: crate::runtime::NormalizedRngCheckpoint::default(),
         entity_ids: vec![1, 2, 3, 4],
         teams: vec![0, 0, 1, 0],
         hp: vec![16, 10, 10, 8],
@@ -104,9 +104,9 @@ fn custom_runner_fixture_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 0,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
             NormalizedUpdateFrame {
                 message: "[0]攻击[1]".to_owned(),
@@ -115,9 +115,9 @@ fn custom_runner_fixture_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 4,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
             NormalizedUpdateFrame {
                 message: "[0]攻击[1]".to_owned(),
@@ -126,9 +126,9 @@ fn custom_runner_fixture_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 4,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
             NormalizedUpdateFrame {
                 message: "[1]回复体力[2]点".to_owned(),
@@ -137,9 +137,9 @@ fn custom_runner_fixture_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 2,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
             NormalizedUpdateFrame {
                 message: "[0]还剩[2]点血".to_owned(),
@@ -148,9 +148,9 @@ fn custom_runner_fixture_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 87,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
         ],
     };
@@ -161,7 +161,7 @@ fn custom_runner_fixture_matches_strict_diff_golden() {
     );
     assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().template.defense, 77);
     assert_eq!(runtime.entities.get(EntityIdx(3)).unwrap().template.resistance, 88);
-    assert_eq!(strict_diff(&expected, &actual), Ok(()));
+    assert_eq!(actual, expected);
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
         winner_team: Some(1),
         round: 0,
         total_score: 110,
-        rng: crate::runtime::oracle::NormalizedRngCheckpoint::default(),
+        rng: crate::runtime::NormalizedRngCheckpoint::default(),
         entity_ids: vec![1, 2, 3, 4],
         teams: vec![0, 1, 0, 0],
         hp: vec![0, 10, 0, 0],
@@ -237,9 +237,9 @@ fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 10,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
             NormalizedUpdateFrame {
                 message: "\n".to_owned(),
@@ -250,7 +250,7 @@ fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
                 score: 0,
                 delay0: 0,
                 delay1: 0,
-                update_type: crate::engine::update::UpdateType::NextLine,
+                update_type: crate::runtime::update::UpdateType::NextLine,
             },
             NormalizedUpdateFrame {
                 message: "[1]消失了".to_owned(),
@@ -259,9 +259,9 @@ fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 50,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
             NormalizedUpdateFrame {
                 message: "\n".to_owned(),
@@ -272,7 +272,7 @@ fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
                 score: 0,
                 delay0: 0,
                 delay1: 0,
-                update_type: crate::engine::update::UpdateType::NextLine,
+                update_type: crate::runtime::update::UpdateType::NextLine,
             },
             NormalizedUpdateFrame {
                 message: "[1]消失了".to_owned(),
@@ -281,14 +281,14 @@ fn custom_runner_minion_owner_death_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 50,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
         ],
     };
 
-    assert_eq!(strict_diff(&expected, &actual), Ok(()));
+    assert_eq!(actual, expected);
 }
 
 #[test]
@@ -344,7 +344,7 @@ fn custom_runner_merge_matches_strict_diff_golden() {
         winner_team: None,
         round: 0,
         total_score: 60,
-        rng: crate::runtime::oracle::NormalizedRngCheckpoint::default(),
+        rng: crate::runtime::NormalizedRngCheckpoint::default(),
         entity_ids: vec![1, 2],
         teams: vec![0, 1],
         hp: vec![10, 10],
@@ -367,7 +367,7 @@ fn custom_runner_merge_matches_strict_diff_golden() {
                 score: 0,
                 delay0: 0,
                 delay1: 0,
-                update_type: crate::engine::update::UpdateType::NextLine,
+                update_type: crate::runtime::update::UpdateType::NextLine,
             },
             NormalizedUpdateFrame {
                 message: "[0][吞噬]了[1]".to_owned(),
@@ -376,9 +376,9 @@ fn custom_runner_merge_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 60,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
             NormalizedUpdateFrame {
                 message: "[0]属性上升".to_owned(),
@@ -387,14 +387,14 @@ fn custom_runner_merge_matches_strict_diff_golden() {
                 targets: Vec::new(),
                 param: None,
                 score: 0,
-                delay0: crate::engine::update::DEFAULT_DELAY0_MS,
-                delay1: crate::engine::update::DEFAULT_DELAY1_MS,
-                update_type: crate::engine::update::UpdateType::None,
+                delay0: crate::runtime::update::DEFAULT_DELAY0_MS,
+                delay1: crate::runtime::update::DEFAULT_DELAY1_MS,
+                update_type: crate::runtime::update::UpdateType::None,
             },
         ],
     };
 
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().template.skills.skills(), &[skill_a]);
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().template.skills.levels(), &[2]);
-    assert_eq!(strict_diff(&expected, &actual), Ok(()));
+    assert_eq!(actual, expected);
 }

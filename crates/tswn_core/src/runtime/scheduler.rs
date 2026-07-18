@@ -3,7 +3,7 @@ use crate::runtime::extension::{
     ExtensionRegistry, ProcMask, RegistrationOrder, SkillId, SkillPostActionPhase, SkillPriority, StateId, TargetPolicy,
 };
 use crate::runtime::world::WorldArena;
-use crate::{player::MOVE_POINT_THRESHOLD, rc4::RC4};
+use crate::{rc4::RC4, runtime::MOVE_POINT_THRESHOLD};
 use smallvec::SmallVec;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

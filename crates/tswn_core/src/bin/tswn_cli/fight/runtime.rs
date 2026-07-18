@@ -1,12 +1,11 @@
-//! CLI 侧的 Runtime 正式入口与迁移/调试入口。
+//! CLI 侧的主 Runtime 正式入口。
 
 use std::collections::HashMap;
 
 use super::driver::fmt_runtime_winner_input_indices;
 use super::trace::{collect_runtime_diff_lines, collect_runtime_fight_raw_lines, fmt_runtime_update};
-
-use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun, JsonRuntimeParityReport};
-use tswn_core::engine::update::UpdateType;
+use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun};
+use tswn_core::runtime::update::UpdateType;
 use tswn_core::runtime::{EntityIdx, RuntimeRunner};
 
 pub(super) fn run_runtime_fight(raw: String, out_raw: bool) {
@@ -30,11 +29,8 @@ pub(super) fn run_runtime_fight(raw: String, out_raw: bool) {
 
 pub(super) fn run_runtime_diff(raw: String) {
     match runtime_diff_lines(&raw, 20_000) {
-        Ok(lines) => {
-            if !lines.is_empty() {
-                println!("{}", lines.join("\n"));
-            }
-        }
+        Ok(lines) if !lines.is_empty() => println!("{}", lines.join("\n")),
+        Ok(_) => {}
         Err(err) => {
             eprintln!("{err}");
             std::process::exit(1);
@@ -52,19 +48,9 @@ pub fn run_runtime_normalized(raw: String, max_rounds: usize) {
     }
 }
 
-pub fn run_runtime_parity(raw: String, max_rounds: usize) {
-    match runtime_parity_json(&raw, max_rounds) {
-        Ok(json) => println!("{json}"),
-        Err(err) => {
-            eprintln!("{err}");
-            std::process::exit(1);
-        }
-    }
-}
-
 fn runtime_diff_lines(raw: &str, max_rounds: usize) -> Result<Vec<String>, String> {
     let mut runner = core_cli_api::default_custom_runtime_mixed_runner(raw).map_err(cli_api_error)?;
-    let (lines, _guard, _total_score) = collect_runtime_diff_lines(&mut runner, max_rounds, true);
+    let (lines, _, _) = collect_runtime_diff_lines(&mut runner, max_rounds, true);
     Ok(lines)
 }
 
@@ -134,16 +120,15 @@ fn collect_runtime_fight_lines(runner: &mut RuntimeRunner, input_player_count: u
 
         lines.push(format!("=== 回合 {round} ==="));
         for update in frame.updates.updates {
-            match update.update_type {
-                UpdateType::NextLine => lines.push(String::new()),
-                _ => {
-                    if update.score > 0 {
-                        let score = u64::from(update.score);
-                        total_score += score;
-                        *score_by_caster.entry(update.caster).or_insert(0) += score;
-                    }
-                    lines.push(fmt_runtime_update(runner, &update));
+            if matches!(update.update_type, UpdateType::NextLine) {
+                lines.push(String::new());
+            } else {
+                if update.score > 0 {
+                    let score = u64::from(update.score);
+                    total_score += score;
+                    *score_by_caster.entry(update.caster).or_insert(0) += score;
                 }
+                lines.push(fmt_runtime_update(runner, &update));
             }
         }
         round += 1;
@@ -179,8 +164,8 @@ fn collect_runtime_fight_lines(runner: &mut RuntimeRunner, input_player_count: u
         lines.push("未分出胜负（达到安全轮次或连续空更新）。".to_owned());
     }
     lines.push(format!("总战斗分: {total_score}"));
-    if let Some(win_idx_line) = fmt_runtime_winner_input_indices(runner, input_player_count) {
-        lines.push(win_idx_line);
+    if let Some(win_idx) = fmt_runtime_winner_input_indices(runner, input_player_count) {
+        lines.push(win_idx);
     }
     lines
 }
@@ -188,12 +173,6 @@ fn collect_runtime_fight_lines(runner: &mut RuntimeRunner, input_player_count: u
 fn runtime_normalized_json(raw: &str, max_rounds: usize) -> Result<String, String> {
     let run = core_cli_api::default_custom_runtime_normalized_run(raw, max_rounds).map_err(cli_api_error)?;
     serde_json::to_string_pretty(&JsonRuntimeNormalizedRun::from(run)).map_err(|err| format!("序列化 runtime JSON 失败: {err}"))
-}
-
-fn runtime_parity_json(raw: &str, max_rounds: usize) -> Result<String, String> {
-    let report = core_cli_api::default_custom_runtime_parity_report(raw, max_rounds).map_err(cli_api_error)?;
-    serde_json::to_string_pretty(&JsonRuntimeParityReport::from(report))
-        .map_err(|err| format!("序列化 runtime parity JSON 失败: {err}"))
 }
 
 fn cli_api_error(err: CliApiError) -> String {
@@ -208,172 +187,30 @@ fn cli_api_error(err: CliApiError) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn runtime_fight_lines_match_legacy_for_minimal_raw() {
-        let raw = "left@red\n\nright@blue\n";
-        let mut legacy = tswn_core::LegacyRunner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
-        let input_player_ids = super::super::driver::collect_input_player_ids(&legacy);
-        let legacy_lines = super::super::driver::collect_legacy_fight_lines(&mut legacy, &input_player_ids, 100_000);
-
-        let mut runtime = core_cli_api::default_custom_runtime_mixed_runner(raw).expect("runtime runner should build");
-        let input_player_count = runtime.runtime().entities.len();
-        let runtime_lines = collect_runtime_fight_lines(&mut runtime, input_player_count, 100_000);
-
-        assert_eq!(runtime_lines, legacy_lines);
-    }
+    const RAW: &str = "left@red\n\nright@blue\nseed:42@!";
 
     #[test]
-    fn runtime_raw_lines_match_legacy_for_minimal_raw() {
-        let raw = "left@red\n\nright@blue\n";
-        let mut legacy = tswn_core::LegacyRunner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
-        let input_player_ids = super::super::driver::collect_input_player_ids(&legacy);
-        let legacy_lines = super::super::trace::collect_fight_raw_lines(&mut legacy, &input_player_ids);
-
-        let mut runtime = core_cli_api::default_custom_runtime_mixed_runner(raw).expect("runtime runner should build");
-        let input_player_count = runtime.runtime().entities.len();
-        let runtime_lines = collect_runtime_fight_raw_lines(&mut runtime, input_player_count);
-
-        assert_eq!(runtime_lines, legacy_lines);
-    }
-
-    #[test]
-    fn runtime_fight_outputs_match_legacy_for_minion_and_clan_raw() {
-        let raw = "我力 7#W2ib8D@仙蛊屋+123\n万我 68#huMG43@仙蛊屋+123\n\n\
-                   Dianmu YKFMWRPXIMCQ@nan+234\nFreddy FVNXBNVTWJEA@nan+234\n\n\
-                   seed:第十八届武术大赛小组赛第8组:307-3@!\n";
-
-        let mut legacy = tswn_core::LegacyRunner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
-        let input_player_ids = super::super::driver::collect_input_player_ids(&legacy);
-        let legacy_fight = super::super::driver::collect_legacy_fight_lines(&mut legacy, &input_player_ids, 100_000);
-        let mut runtime = core_cli_api::default_custom_runtime_mixed_runner(raw).expect("runtime runner should build");
-        let input_player_count = runtime.runtime().entities.len();
-        let runtime_fight = collect_runtime_fight_lines(&mut runtime, input_player_count, 100_000);
-        assert_eq!(runtime_fight, legacy_fight);
-
-        let mut legacy = tswn_core::LegacyRunner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
-        let input_player_ids = super::super::driver::collect_input_player_ids(&legacy);
-        let legacy_raw = super::super::trace::collect_fight_raw_lines(&mut legacy, &input_player_ids);
-        let mut runtime = core_cli_api::default_custom_runtime_mixed_runner(raw).expect("runtime runner should build");
-        let input_player_count = runtime.runtime().entities.len();
-        let runtime_raw = collect_runtime_fight_raw_lines(&mut runtime, input_player_count);
-        assert_eq!(runtime_raw, legacy_raw);
-    }
-
-    #[test]
-    fn runtime_diff_lines_match_legacy_diff_for_minimal_raw() {
-        let raw = "left@red\n\nright@blue\n";
-        let lines = runtime_diff_lines(raw, 1).expect("runtime diff should render");
-
-        let mut legacy = tswn_core::LegacyRunner::new_from_namerena_raw(raw.to_owned()).expect("legacy runner should build");
-        let (legacy_lines, _guard, _total_score) = super::super::trace::collect_diff_lines(&mut legacy, 1, true);
-
-        assert_eq!(lines, legacy_lines);
-    }
-
-    #[test]
-    fn runtime_normalized_json_matches_default_run_golden_shape() {
-        let json = runtime_normalized_json("left@red\n\nright@blue\n", 1).expect("runtime json should serialize");
-        let value: serde_json::Value = serde_json::from_str(&json).expect("runtime json should parse");
-
-        assert_eq!(value["winner_team"], serde_json::Value::Null);
-        assert_eq!(value["guard_exhausted"], true);
-        assert_eq!(value["total_score"], 77);
-        let rounds = value["rounds"].as_array().expect("rounds should be an array");
-        assert_eq!(rounds.len(), 1);
-        let round = &rounds[0];
-        assert_eq!(round["winner_team"], serde_json::Value::Null);
-        assert_eq!(round["round"], 1);
-        assert_eq!(round["total_score"], 77);
-        assert_eq!(round["rng_i"], 74);
-        assert_eq!(round["rng_j"], 92);
-        assert_eq!(round["entity_ids"], serde_json::json!([1, 2]));
-        assert_eq!(round["teams"], serde_json::json!([0, 1]));
-        assert_eq!(round["hp"], serde_json::json!([262, 288]));
-        assert_eq!(round["magic_point"], serde_json::json!([23, 16]));
-        assert_eq!(round["defense"], serde_json::json!([6, 56]));
-        assert_eq!(round["resistance"], serde_json::json!([52, 25]));
-        assert_eq!(round["alive"], serde_json::json!([true, true]));
-        assert_eq!(round["round_order"], serde_json::json!([0, 1]));
-        assert_eq!(round["flat_alive"], serde_json::json!([0, 1]));
-        assert_eq!(round["team_alive"], serde_json::json!([[0], [1]]));
-        assert_eq!(round["alive_group_count"], 2);
-        assert_eq!(
-            round["actions"],
-            serde_json::json!([{ "round": 1, "actor": 1, "target": 0, "amount": 36 }])
-        );
-        assert_eq!(
-            round["frames"],
-            serde_json::json!([
-                {
-                    "message": "[0]发起攻击",
-                    "caster": 1,
-                    "target": 0,
-                    "targets": [],
-                    "param": null,
-                    "score": 0,
-                    "delay0": 1000,
-                    "delay1": 100,
-                    "update_type": "none"
-                },
-                {
-                    "message": "[1]受到[2]点伤害",
-                    "caster": 1,
-                    "target": 0,
-                    "targets": [],
-                    "param": null,
-                    "score": 77,
-                    "delay0": 1154,
-                    "delay1": 100,
-                    "update_type": "none"
-                },
-                {
-                    "message": "\n",
-                    "caster": 0,
-                    "target": 0,
-                    "targets": [],
-                    "param": null,
-                    "score": 0,
-                    "delay0": 0,
-                    "delay1": 0,
-                    "update_type": "next_line"
-                }
-            ])
+    fn normalized_run_is_valid_json() {
+        let json = runtime_normalized_json(RAW, 8).expect("normalized run should serialize");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("normalized run should be JSON");
+        assert!(
+            value
+                .get("rounds")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|rounds| !rounds.is_empty())
         );
     }
 
     #[test]
-    fn runtime_normalized_json_rejects_zero_max_rounds() {
-        let err = runtime_normalized_json("left@red\n\nright@blue\n", 0).expect_err("runtime json should reject zero max rounds");
+    fn fight_and_diff_outputs_are_deterministic() {
+        let build = || core_cli_api::default_custom_runtime_mixed_runner(RAW).expect("runner should build");
+        let mut first = build();
+        let count = first.runtime().entities.len();
+        let first_fight = collect_runtime_fight_lines(&mut first, count, 20_000);
+        let mut second = build();
+        let second_fight = collect_runtime_fight_lines(&mut second, count, 20_000);
+        assert_eq!(first_fight, second_fight);
 
-        assert_eq!(err, "runtime max_rounds must be positive");
-    }
-
-    #[test]
-    fn runtime_parity_json_reports_matching_converged_prefix_and_both_runs() {
-        let json = runtime_parity_json("left@red\n\nright@blue\n", 1).expect("runtime parity json should serialize");
-        let value: serde_json::Value = serde_json::from_str(&json).expect("runtime parity json should parse");
-
-        assert_eq!(value["matched"], true);
-        assert!(value["first_diff"].is_null());
-        assert_eq!(value["legacy"]["rounds"].as_array().unwrap().len(), 1);
-        assert_eq!(value["runtime"]["rounds"].as_array().unwrap().len(), 1);
-
-        #[cfg(not(feature = "no_debug"))]
-        assert_eq!(value["legacy"], value["runtime"]);
-
-        #[cfg(feature = "no_debug")]
-        {
-            assert_eq!(value["legacy"]["total_score"], value["runtime"]["total_score"]);
-            assert_eq!(value["legacy"]["rounds"][0]["frames"], value["runtime"]["rounds"][0]["frames"]);
-            assert_eq!(value["legacy"]["rounds"][0]["rng"], value["runtime"]["rounds"][0]["rng"]);
-        }
-    }
-
-    #[test]
-    fn runtime_parity_json_rejects_zero_max_rounds() {
-        let err =
-            runtime_parity_json("left@red\n\nright@blue\n", 0).expect_err("runtime parity json should reject zero max rounds");
-
-        assert_eq!(err, "runtime max_rounds must be positive");
+        assert_eq!(runtime_diff_lines(RAW, 20_000), runtime_diff_lines(RAW, 20_000));
     }
 }

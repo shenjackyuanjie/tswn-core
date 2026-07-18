@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn cqp_matrix_keeps_input_order_and_win_totals() {
-        let eval_rq = crate::player::eval_name::WIN_RATE_EVAL_RQ;
+        let eval_rq = crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
         let matchups = vec![
             RuntimeCqpMatchup::new(vec![vec!["left@red".to_owned()], vec!["right@blue".to_owned()]]),
             RuntimeCqpMatchup::new(vec![vec!["alpha@red".to_owned()], vec!["beta@blue".to_owned()]]),

@@ -80,7 +80,7 @@ impl CombatRuntime {
             .max_hp;
         let heal = ((atp / 75.0).ceil() as i32).clamp(1, max_hp.max(1));
 
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[苏生术]",
             actor.0 as usize,
             target.0 as usize,
@@ -102,14 +102,14 @@ impl CombatRuntime {
         self.world.revive_round_actor(target);
         self.world.revive_alive(target, team);
 
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1][复活]了",
             actor.0 as usize,
             target.0 as usize,
             (heal + 60) as u32,
         ));
         let mut recover_update =
-            crate::engine::update::RunUpdate::new("[1]回复体力[2]点", actor.0 as usize, target.0 as usize, 0);
+            crate::runtime::update::RunUpdate::new("[1]回复体力[2]点", actor.0 as usize, target.0 as usize, 0);
         recover_update.param = Some(heal as u32);
         updates.add(recover_update);
 
@@ -210,7 +210,7 @@ impl CombatRuntime {
     }
 
     pub fn drain_plain_slow_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[减速术]",
             actor.0 as usize,
             target.0 as usize,
@@ -236,15 +236,15 @@ impl CombatRuntime {
             )
         };
         let immune = if target_flags.contains(PlayerKindFlags::BOOST) {
-            self.rng.r127() < crate::player::boost_value(&target_name)
+            self.rng.r127() < crate::namerena::boost_value(&target_name)
         } else if target_flags.contains(PlayerKindFlags::BOSS) {
-            let threshold = crate::player::boss::boss_immune_threshold(&target_name, "slow");
+            let threshold = crate::namerena::boss_immune_threshold(&target_name, "slow");
             (self.rng.next_u8() as i32) < threshold
         } else {
             false
         };
         if immune || (target_active && PlayerRuntime::dodge(owner_magic, target_resistance, &mut self.rng)) {
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",
                 target.0 as usize,
                 actor.0 as usize,
@@ -286,7 +286,7 @@ impl CombatRuntime {
             // 等待属性刷新才生效的倍率。已有迟缓只延长 step，不触发刷新。
             target_entity.refresh_runtime_stats_from_template();
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1]进入[迟缓]状态",
             actor.0 as usize,
             target.0 as usize,
@@ -295,7 +295,7 @@ impl CombatRuntime {
     }
 
     pub fn drain_plain_shadow_skill_into(&mut self, actor: EntityIdx, fixed_lane: usize, updates: &mut RunUpdates) {
-        self.ensure_plain_minion_blueprint(actor, crate::player::skill::act::minion::MinionKind::Shadow);
+        self.ensure_plain_minion_blueprint(actor, crate::namerena::MinionKind::Shadow);
         let blueprint_slot = self
             .registry
             .entity_slot_id_by_export_name(DEFAULT_CORE_SHADOW_BLUEPRINT_ENTITY_EXPORT)
@@ -447,7 +447,7 @@ impl CombatRuntime {
     }
 
     pub fn drain_plain_possess_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[附体]",
             actor.0 as usize,
             target.0 as usize,
@@ -478,9 +478,9 @@ impl CombatRuntime {
             );
         }
         let immune = if target_flags.contains(PlayerKindFlags::BOOST) {
-            self.rng.r127() < crate::player::boost_value(&target_name)
+            self.rng.r127() < crate::namerena::boost_value(&target_name)
         } else if target_flags.contains(PlayerKindFlags::BOSS) {
-            let threshold = crate::player::boss::boss_immune_threshold(&target_name, "berserk");
+            let threshold = crate::namerena::boss_immune_threshold(&target_name, "berserk");
             (self.rng.next_u8() as i32) < threshold
         } else {
             false
@@ -494,7 +494,7 @@ impl CombatRuntime {
             );
         }
         if dodged {
-            updates.add(crate::engine::update::RunUpdate::new(
+            updates.add(crate::runtime::update::RunUpdate::new(
                 "[0][回避]了攻击",
                 target.0 as usize,
                 actor.0 as usize,
@@ -518,7 +518,7 @@ impl CombatRuntime {
         if !target_entity.states.set_payload(10, StatePayload::Berserk { step: next_step }) {
             target_entity.states.add_entry(StateEntry::berserk(10, next_step));
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1]进入[狂暴]状态",
             actor.0 as usize,
             target.0 as usize,

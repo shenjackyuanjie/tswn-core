@@ -8,10 +8,9 @@
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
-use tswn_core::LegacyRunner as Runner;
 use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
-use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::runtime::{RuntimeBatchSummary, runtime_score, runtime_score_range};
+use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
+use tswn_core::runtime::{RuntimeBatchSummary, RuntimeRunner, runtime_score, runtime_score_range};
 use tswn_core::win_rate::WinRateTiming;
 
 use crate::args::{BenchThreadMode, NamerPfMode};
@@ -62,7 +61,7 @@ pub(super) fn run_bench_score(
     perf: bool,
     buckets_step: Option<usize>,
 ) {
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let target_group = groups.into_iter().next().unwrap_or_default();
     let target_count = target_group.len();
     if target_count == 0 {

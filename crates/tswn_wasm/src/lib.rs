@@ -35,27 +35,27 @@ pub fn version() -> String { env!("CARGO_PKG_VERSION").to_string() }
 pub fn core_version() -> String { tswn_core::version().to_string() }
 
 #[wasm_bindgen]
-pub fn default_eval_rq() -> f64 { tswn_core::player::eval_name::DEFAULT_EVAL_RQ }
+pub fn default_eval_rq() -> f64 { tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ }
 
 #[wasm_bindgen]
-pub fn win_rate_eval_rq() -> f64 { tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
+pub fn win_rate_eval_rq() -> f64 { tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ }
 
 #[wasm_bindgen]
 pub fn name_to_png_base64(name: String) -> String {
     install_panic_hook();
-    tswn_core::player::icon_render::render_icon_b64_from_name(&name)
+    tswn_core::namerena::icon_render::render_icon_b64_from_name(&name)
 }
 
 #[wasm_bindgen]
 pub fn name_to_png_bytes(name: String) -> Vec<u8> {
     install_panic_hook();
-    tswn_core::player::icon_render::render_icon_png_from_name(&name)
+    tswn_core::namerena::icon_render::render_icon_png_from_name(&name)
 }
 
 #[wasm_bindgen]
 pub fn name_to_icon_rgba(name: String) -> Vec<u8> {
     install_panic_hook();
-    tswn_core::player::icon_render::render_icon_vec_from_name(&name)
+    tswn_core::namerena::icon_render::render_icon_vec_from_name(&name)
 }
 
 #[wasm_bindgen]

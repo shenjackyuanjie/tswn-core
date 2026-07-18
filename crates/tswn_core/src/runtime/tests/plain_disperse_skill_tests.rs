@@ -122,7 +122,7 @@ fn plain_disperse_damage_then_clears_positive_state_and_magic_point() {
     assert_eq!(frame.updates.updates[1].score, expected_amount as u32);
     assert_eq!(
         frame.updates.updates[2].update_type,
-        crate::engine::update::UpdateType::NextLine
+        crate::runtime::update::UpdateType::NextLine
     );
     assert_eq!(frame.updates.updates[3].message, "[1]从[疾走]中解除");
 }
@@ -172,7 +172,7 @@ fn plain_disperse_refreshes_runtime_attract_after_clearing_iron() {
         updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec!["[1]受到[2]点伤害", "[1]的[铁壁]被打消了"]
@@ -213,7 +213,7 @@ fn plain_disperse_clears_before_post_damage_upgrade_activation() {
         updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec!["[1]受到[2]点伤害", "[0]做出[垂死]抗争", "[0]所有属性上升"]
@@ -269,7 +269,7 @@ fn lethal_disperse_emits_knockout_before_reraise_without_state_cancel_message() 
             .updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec![
@@ -338,7 +338,7 @@ fn plain_disperse_runs_before_default_attack_in_minimal_round() {
             .updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec!["[0]使用[净化]", "[1]受到[2]点伤害", "[1]从[疾走]中解除", "[0]攻击[1]"]
@@ -406,7 +406,7 @@ fn plain_disperse_scores_multiple_enemy_targets_without_dodge_rng() {
             .updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| (update.message.as_ref(), update.target))
             .collect::<Vec<_>>(),
         vec![("[0]使用[净化]", 2), ("[1]受到[2]点伤害[s_dmg120]", 2), ("[0]攻击[1]", 1)]

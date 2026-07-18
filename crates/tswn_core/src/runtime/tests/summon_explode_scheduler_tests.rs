@@ -44,7 +44,7 @@ fn summon_explode_defers_self_round_removal_until_after_target_death() {
             .updates
             .updates
             .iter()
-            .filter(|update| !matches!(update.update_type, crate::engine::update::UpdateType::NextLine))
+            .filter(|update| !matches!(update.update_type, crate::runtime::update::UpdateType::NextLine))
             .map(|update| update.message.as_ref())
             .collect::<Vec<_>>(),
         vec!["[0]使用[自爆]", "[1]受到[2]点伤害", "[1]被击倒了", "[1]消失了"]

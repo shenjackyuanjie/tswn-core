@@ -212,7 +212,7 @@ impl CombatRuntime {
     }
 
     pub fn drain_plain_thunder_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[雷击术]",
             actor.0 as usize,
             target.0 as usize,
@@ -279,7 +279,7 @@ impl CombatRuntime {
         if targets.is_empty() {
             return;
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[地裂术]",
             actor.0 as usize,
             targets[0].0 as usize,
@@ -316,7 +316,7 @@ impl CombatRuntime {
             .runtime
             .get_at(true, &mut self.rng)
             * 1.2999999523162842;
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]发起[吸血攻击]",
             actor.0 as usize,
             target.0 as usize,
@@ -332,7 +332,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime poison actor: {}", actor.0))
             .runtime
             .get_at(true, &mut self.rng);
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0][投毒]",
             actor.0 as usize,
             target.0 as usize,
@@ -351,7 +351,7 @@ impl CombatRuntime {
         let atp1 = actor_runtime.get_at(false, &mut self.rng) * 1.2000000476837158;
         let atp2 = actor_runtime.get_at(false, &mut self.rng) * 1.25;
         let atp = atp0.max(atp1).max(atp2);
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]发动[会心一击]",
             actor.0 as usize,
             target.0 as usize,
@@ -444,7 +444,7 @@ impl CombatRuntime {
             .unwrap_or_else(|| panic!("unknown runtime berserk actor: {}", actor.0))
             .runtime
             .get_at(true, &mut self.rng);
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[狂暴术]",
             actor.0 as usize,
             target.0 as usize,
@@ -526,7 +526,7 @@ impl CombatRuntime {
     }
 
     pub fn drain_plain_haste_skill_into(&mut self, actor: EntityIdx, target: EntityIdx, updates: &mut RunUpdates) {
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]使用[加速术]",
             actor.0 as usize,
             target.0 as usize,
@@ -593,7 +593,7 @@ impl CombatRuntime {
                 "runtime haste state should be inserted"
             );
         }
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[1]进入[疾走]状态",
             actor.0 as usize,
             target.0 as usize,
@@ -611,7 +611,7 @@ impl CombatRuntime {
         };
         let step = 3 + if charge_active { 4 } else { 0 };
         let protect = 110 + magic + if charge_active { 240 + magic * 4 } else { 0 };
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]发动[铁壁]",
             actor.0 as usize,
             actor.0 as usize,
@@ -650,7 +650,7 @@ impl CombatRuntime {
         }
         owner.runtime.move_state.speed_points -= 256;
         owner.refresh_runtime_stats_from_template();
-        updates.add(crate::engine::update::RunUpdate::new(
+        updates.add(crate::runtime::update::RunUpdate::new(
             "[0]防御力大幅上升",
             actor.0 as usize,
             actor.0 as usize,
@@ -756,7 +756,7 @@ impl CombatRuntime {
                     .get_at(false, &mut self.rng)
                     * (0.75 - hit_scores[position] * 0.15000000596046448);
                 hit_scores[position] += 1.0;
-                updates.add(crate::engine::update::RunUpdate::new(
+                updates.add(crate::runtime::update::RunUpdate::new(
                     if round == 0.0 { "[0]发起攻击" } else { "[0][连击]" },
                     actor.0 as usize,
                     target.0 as usize,
