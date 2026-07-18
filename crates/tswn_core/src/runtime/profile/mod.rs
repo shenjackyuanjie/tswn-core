@@ -553,6 +553,34 @@ impl PlainLegacySkillImportMap {
         )
     }
 
+    /// 将 namerena 纯数据技能表解析为 Runtime loadout，不构造 legacy 技能对象。
+    pub fn import_namerena(&self, spec: &crate::namerena::SkillLoadoutSpec) -> SkillLoadout {
+        use crate::namerena::BuiltinSkillRef;
+
+        let imported = spec
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                let skill_id = match entry.skill {
+                    BuiltinSkillRef::Normal(key) => self.plain_by_legacy_key.get(key).copied().flatten(),
+                    BuiltinSkillRef::SummonFire => self.special_by_runtime_kind[0].1,
+                    BuiltinSkillRef::SummonExplode => self.special_by_runtime_kind[1].1,
+                    BuiltinSkillRef::SummonShareDamage => self.special_by_runtime_kind[2].1,
+                    BuiltinSkillRef::Possess => self.special_by_runtime_kind[3].1,
+                }?;
+                Some((entry.key, skill_id, entry.level, entry.boosted, entry.boost.clone()))
+            })
+            .collect();
+        self.finish_import(
+            imported,
+            &spec.fixed_lanes,
+            &spec.active_order,
+            &spec.pre_action_order,
+            &spec.post_damage_order,
+            &spec.post_action_after_states,
+        )
+    }
+
     pub fn import_storage(&self, storage: &crate::player::skill::store::SkillStorage) -> SkillLoadout {
         let resolve = |key: usize| {
             let skill = storage.store.get(&key)?;
