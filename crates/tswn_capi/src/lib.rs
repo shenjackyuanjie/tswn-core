@@ -17,7 +17,7 @@ use std::ptr;
 use tswn_core::runtime::update::RunUpdates;
 use tswn_core::{PreparedRunner, Runner};
 
-const TSWN_CAPI_ABI_VERSION: u32 = 3;
+const TSWN_CAPI_ABI_VERSION: u32 = 4;
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
