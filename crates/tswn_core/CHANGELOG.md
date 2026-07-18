@@ -13,6 +13,10 @@
 
 - 冻结并通过 87 个 JS exact trace 与 37 个压力 golden；release 门禁同时检查输入 SHA-256、winner、rounds、score、最终 RC4、逐回合 canonical digest，以及旧对象路径和禁用符号均未回流。
 
+### 修复
+
+- `to-diy` 不再把 `mario@team+fire` 一类单玩家武器后缀误拆成队友；带队名的 `a@team+b@team` 分组继续兼容，无队名分组可使用无歧义的 `a++b`。
+
 ## [0.4.3] - 2026-07-18
 
 ### 性能优化

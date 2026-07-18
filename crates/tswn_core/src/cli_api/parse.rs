@@ -10,7 +10,7 @@ pub(super) fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult
     if old && minions {
         return Err(super::invalid_input("old and minions are mutually exclusive"));
     }
-    let groups = parse_plus_separated_groups(raw);
+    let groups = parse_to_diy_groups(raw);
     if groups.is_empty() {
         return Err(super::invalid_input("to_diy requires at least one player"));
     }
@@ -19,6 +19,47 @@ pub(super) fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult
         .map(|group| export_group(group, old, minions))
         .collect::<CliApiResult<Vec<_>>>()
         .map(|lines| lines.join("\n"))
+}
+
+fn parse_to_diy_groups(raw: &str) -> Vec<Vec<String>> {
+    raw.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let parsed = parse_plus_group_line(line);
+            let explicit_double_plus = has_double_plus_outside_quotes(line);
+            let unambiguous_teamed_group = parsed.len() > 1 && parsed.iter().all(|player| player_identity_has_team(player));
+            if explicit_double_plus || unambiguous_teamed_group {
+                parsed
+            } else {
+                vec![line.to_owned()]
+            }
+        })
+        .collect()
+}
+
+fn player_identity_has_team(raw: &str) -> bool { raw.split_once('+').map_or(raw, |(identity, _)| identity).contains('@') }
+
+fn has_double_plus_outside_quotes(raw: &str) -> bool {
+    let mut chars = raw.chars().peekable();
+    let mut in_string = false;
+    let mut escaped = false;
+    while let Some(ch) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+        } else if ch == '"' {
+            in_string = true;
+        } else if ch == '+' && chars.peek() == Some(&'+') {
+            return true;
+        }
+    }
+    false
 }
 
 fn export_group(group: &[String], old: bool, minions: bool) -> CliApiResult<String> {
@@ -303,6 +344,7 @@ fn push_group_segment(group: &mut Vec<String>, current: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::{export_player, parse_plus_separated_groups};
+    use crate::namerena::{NamerenaInput, PreparedRoster};
 
     #[test]
     fn parse_plus_groups_keeps_ol_overlay_with_whitespace() {
@@ -351,5 +393,61 @@ mod tests {
         assert_eq!(groups[0].len(), 2);
         assert!(groups[0][0].starts_with("1@a+diy["));
         assert!(groups[0][1].starts_with("2@a+diy["));
+    }
+
+    #[test]
+    fn export_player_keeps_single_plus_weapon_suffix_on_one_player() {
+        let raw = "mario@red+fire";
+        let original_input = NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]]).unwrap();
+        let original = PreparedRoster::build(&original_input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+
+        let exported = export_player(raw, false, true).unwrap();
+        assert!(exported.starts_with("mario@red+ol:"));
+        assert!(!exported.contains("+fire+ol:"));
+
+        let exported_input = NamerenaInput::from_raw_groups(&[vec![exported]]).unwrap();
+        let reparsed = PreparedRoster::build(&exported_input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        assert_eq!(reparsed.players.len(), 1);
+        assert_eq!(reparsed.players[0].attrs, original.players[0].attrs);
+        assert_eq!(reparsed.players[0].status, original.players[0].status);
+        let original_entries = original.players[0]
+            .skills
+            .entries
+            .iter()
+            .filter(|entry| entry.level > 0)
+            .cloned()
+            .collect::<Vec<_>>();
+        let reparsed_entries = reparsed.players[0]
+            .skills
+            .entries
+            .iter()
+            .filter(|entry| entry.level > 0)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(reparsed_entries, original_entries);
+        let original_order = original.players[0]
+            .skills
+            .active_order
+            .iter()
+            .filter(|key| original_entries.iter().any(|entry| entry.key == **key))
+            .collect::<Vec<_>>();
+        let reparsed_order = reparsed.players[0]
+            .skills
+            .active_order
+            .iter()
+            .filter(|key| reparsed_entries.iter().any(|entry| entry.key == **key))
+            .collect::<Vec<_>>();
+        assert_eq!(reparsed_order, original_order);
+    }
+
+    #[test]
+    fn export_player_accepts_double_plus_for_unteamed_group() {
+        let exported = export_player("mario++luigi", true, false).unwrap();
+        let groups = parse_plus_separated_groups(&exported);
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 2);
+        assert!(groups[0][0].starts_with("mario+diy["));
+        assert!(groups[0][1].starts_with("luigi+diy["));
     }
 }
