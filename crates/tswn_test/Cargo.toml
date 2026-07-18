@@ -8,6 +8,9 @@ publish = false
 runtime-corpus = []
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
 tswn_core = { path = "../tswn_core" }
 
 [[test]]

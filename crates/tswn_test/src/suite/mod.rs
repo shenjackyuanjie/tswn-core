@@ -365,36 +365,12 @@ fn parse_embedded_fight_case(case_text: &str, split_err: &str, empty_err: &str) 
 
 pub fn winner_names<E: EngineAdapter>(runner: &E::Runner) -> Vec<String> { E::winner_names(runner) }
 
-pub fn assert_runtime_matches_legacy(raw: &str, case_name: &str) {
-    assert_runtime_matches_legacy_with_eval_rq(raw, case_name, tswn_core::player::eval_name::DEFAULT_EVAL_RQ);
+pub fn assert_runtime_matches_frozen_golden(raw: &str, case_name: &str) {
+    crate::golden::assert_runtime_matches_frozen_golden(raw, case_name);
 }
 
-pub fn assert_runtime_matches_legacy_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {
-    let (groups, seed) = tswn_core::LegacyRunner::split_namerena_into_groups(raw.to_string());
-    let mut legacy = tswn_core::LegacyRunner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, eval_rq)
-        .expect("legacy 压力回归输入应能初始化");
-    let config = default_custom_runtime_import_config().expect("Runtime 压力回归配置应能初始化");
-    let mut runtime = RuntimeRunner::from_custom_mixed_namerena_raw_with_eval_rq(raw.to_string(), eval_rq, config)
-        .expect("Runtime 压力回归输入应能初始化");
-    let (expected_lines, expected_guard, expected_score) = collect_replay_lines::<CoreEngine>(&mut legacy, 20_000, false);
-    let (actual_lines, actual_guard, actual_score) = collect_replay_lines::<RuntimeEngine>(&mut runtime, 20_000, false);
-
-    assert!(expected_guard < 20_000, "{case_name} legacy 对局未在上限内结束");
-    assert!(actual_guard < 20_000, "{case_name} Runtime 对局未在上限内结束");
-    assert_trace_with_context(case_name, &actual_lines, &expected_lines);
-    assert_eq!(actual_guard, expected_guard, "{case_name} 回合数不一致");
-    assert_eq!(actual_score, expected_score, "{case_name} 总分不一致");
-
-    assert_eq!(
-        RuntimeEngine::winner_team_index(&runtime),
-        CoreEngine::winner_team_index(&legacy),
-        "{case_name} 胜者队伍不一致"
-    );
-    assert_eq!(
-        RuntimeEngine::rc4_state(&runtime),
-        CoreEngine::rc4_state(&legacy),
-        "{case_name} 最终 RNG 状态不一致"
-    );
+pub fn assert_runtime_matches_frozen_golden_with_eval_rq(raw: &str, case_name: &str, eval_rq: f64) {
+    crate::golden::assert_runtime_matches_frozen_golden_with_eval_rq(raw, case_name, eval_rq);
 }
 
 fn assert_trace_with_context(case_name: &str, actual_lines: &[String], expected_lines: &[String]) {

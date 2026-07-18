@@ -1,5 +1,6 @@
 //! tswn 各运行引擎共用的测试框架。
 
+pub mod golden;
 pub mod suite;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
