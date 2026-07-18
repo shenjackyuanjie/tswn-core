@@ -258,6 +258,7 @@ impl PreparedBattleInit {
         Ok((seed, score_buffers))
     }
 
+    #[cfg(test)]
     pub(super) fn apply_team_upgrades(players: &mut [Player], groups: &mut [Vec<PlrId>]) {
         for group in groups {
             group.sort_by(|left, right| players[*left].partial_cmp(&players[*right]).unwrap_or(std::cmp::Ordering::Equal));
@@ -276,6 +277,7 @@ impl PreparedBattleInit {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn build_players(players: &mut [Player]) {
         let mut order = (0..players.len()).collect::<Vec<_>>();
         order.sort_by(|left, right| players[*left].cmp_by_id_name(&players[*right]));
@@ -301,6 +303,7 @@ impl PreparedBattleInit {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn prepare_player(
         player: &Player,
         id: PlrId,
@@ -426,6 +429,156 @@ impl PreparedBattleInit {
             zombie_blueprint,
             lazy_blueprint_rq_bits: lazy_blueprints.then_some(storage.eval_rq().to_bits()),
         }
+    }
+
+    pub(super) fn prepare_namerena_player(
+        player: &crate::namerena::PreparedPlayer,
+        team: usize,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        eval_rq: f64,
+        lazy_blueprints: bool,
+    ) -> PreparedPlayerInit {
+        let skills = skill_import.import_namerena(&player.skills);
+        let kind = match player.class {
+            crate::namerena::PlayerClass::Boss => registry
+                .player_kind_id_by_export_name(DEFAULT_CORE_BOSS_KIND_EXPORT)
+                .expect("default runtime profile must register core boss kind"),
+            crate::namerena::PlayerClass::Boost => registry
+                .player_kind_id_by_export_name(DEFAULT_CORE_BOOST_KIND_EXPORT)
+                .expect("default runtime profile must register core boost kind"),
+            _ => PlayerTemplate::DEFAULT_KIND,
+        };
+        let child_clone_name_factor = Self::namerena_child_clone_name_factor(player, eval_rq);
+        let clone_build = CloneBuildData::from_legacy(player.attrs, player.weapon_attr_bonus, player.name_factor, &player.status)
+            .with_child_name_factor(child_clone_name_factor);
+        let mut template = Self::template_from_namerena_player(player, player.id, team, skills.clone());
+        template.kind = kind;
+        template.clone_build = Some(clone_build);
+
+        let shadow_blueprint = (!lazy_blueprints)
+            .then(|| registry.skill_id_by_export_name(BuiltinActiveSkill::Shadow.export_name()))
+            .flatten()
+            .filter(|skill| skills.skills().contains(skill))
+            .map(|_| {
+                Box::new(Self::template_from_namerena_minion(
+                    player.minion_blueprint(crate::namerena::MinionKind::Shadow, eval_rq),
+                    team,
+                    registry,
+                    skill_import,
+                    child_clone_name_factor,
+                ))
+            });
+        let summon_blueprint = (!lazy_blueprints)
+            .then(|| registry.skill_id_by_export_name(BuiltinActiveSkill::Summon.export_name()))
+            .flatten()
+            .filter(|skill| skills.skills().contains(skill))
+            .map(|_| {
+                Box::new(Self::template_from_namerena_minion(
+                    player.minion_blueprint(crate::namerena::MinionKind::Summon, eval_rq),
+                    team,
+                    registry,
+                    skill_import,
+                    child_clone_name_factor,
+                ))
+            });
+        let zombie_blueprint = (!lazy_blueprints)
+            .then(|| registry.skill_id_by_export_name(DEFAULT_CORE_ZOMBIE_SKILL_EXPORT))
+            .flatten()
+            .filter(|skill| skills.skills().contains(skill))
+            .map(|_| {
+                Box::new(Self::template_from_namerena_minion(
+                    player.minion_blueprint(crate::namerena::MinionKind::Zombie, eval_rq),
+                    team,
+                    registry,
+                    skill_import,
+                    child_clone_name_factor,
+                ))
+            });
+        let boss_state = match player.name.as_str() {
+            "covid" if player.class == crate::namerena::PlayerClass::Boss => PreparedBossState::Covid,
+            "lazy" if player.class == crate::namerena::PlayerClass::Boss => PreparedBossState::Lazy,
+            "saitama" if player.class == crate::namerena::PlayerClass::Boss => PreparedBossState::Saitama,
+            _ => PreparedBossState::None,
+        };
+        PreparedPlayerInit {
+            template,
+            hp: player.status.hp,
+            alive: player.status.alive(),
+            boss_state,
+            shadow_blueprint,
+            summon_blueprint,
+            zombie_blueprint,
+            lazy_blueprint_rq_bits: lazy_blueprints.then_some(eval_rq.to_bits()),
+        }
+    }
+
+    fn template_from_namerena_minion(
+        blueprint: crate::namerena::PreparedMinionBlueprint,
+        team: usize,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        child_clone_name_factor: f64,
+    ) -> PlayerTemplate {
+        let skills = skill_import.import_namerena(&blueprint.player.skills);
+        let kind = match blueprint.kind {
+            crate::namerena::MinionKind::Shadow => registry
+                .player_kind_id_by_export_name(DEFAULT_CORE_SHADOW_KIND_EXPORT)
+                .expect("runtime registry importing shadow must register core shadow kind"),
+            crate::namerena::MinionKind::Summon => registry
+                .player_kind_id_by_export_name(DEFAULT_CORE_SUMMON_KIND_EXPORT)
+                .expect("runtime registry importing summon must register core summon kind"),
+            crate::namerena::MinionKind::Zombie => registry
+                .player_kind_id_by_export_name(DEFAULT_CORE_ZOMBIE_KIND_EXPORT)
+                .expect("runtime registry importing zombie must register core zombie kind"),
+        };
+        let mut template = Self::template_from_namerena_player(&blueprint.player, 0, team, skills);
+        template.kind = kind;
+        template.reserved_player_ids_before_spawn = blueprint
+            .reserved_player_ids_before_spawn
+            .try_into()
+            .expect("runtime minion reserved player id count overflow");
+        template.clone_build = Some(
+            CloneBuildData::from_legacy(
+                blueprint.player.attrs,
+                blueprint.player.weapon_attr_bonus,
+                blueprint.player.name_factor,
+                &blueprint.player.status,
+            )
+            .with_child_name_factor(child_clone_name_factor),
+        );
+        template.reuse_skills_on_recast = blueprint.reuse_skills_on_recast;
+        template.reuse_stats_on_recast = blueprint.reuse_stats_on_recast;
+        template.inherit_owner_def_res = blueprint.inherit_owner_def_res;
+        template
+    }
+
+    fn namerena_child_clone_name_factor(player: &crate::namerena::PreparedPlayer, eval_rq: f64) -> f64 {
+        let factor_name = crate::player::eval_name::eval_str_common_with_rq(&player.name, true, eval_rq);
+        let factor_team = crate::player::eval_name::eval_str_common_with_rq(&player.clan_name, true, eval_rq);
+        factor_name.max(factor_team - 6.0)
+    }
+
+    fn template_from_namerena_player(
+        player: &crate::namerena::PreparedPlayer,
+        id: PlrId,
+        team: usize,
+        skills: SkillLoadout,
+    ) -> PlayerTemplate {
+        let status = &player.status;
+        PlayerTemplate::new(id, player.name.clone(), team, status.max_hp, status.attack)
+            .with_identity_names(player.id_key_name.clone(), player.clan_name.clone())
+            .with_display_name(player.display_name.clone())
+            .with_magic(status.magic)
+            .with_magic_point(status.magic_point)
+            .with_wisdom(status.wisdom)
+            .with_speed(status.speed)
+            .with_def_res(status.defense, status.resistance)
+            .with_agility(status.agility)
+            .with_at_boost(status.at_boost)
+            .with_target_score_stats(status.attr_sum, status.atk_sum, status.attract)
+            .with_speed_points(status.move_point)
+            .with_skill_loadout(skills)
     }
 
     /// 生成普通召唤物名字对应的 RC4 状态和 128 项名字底数。
@@ -594,6 +747,7 @@ impl PreparedBattleInit {
         template
     }
 
+    #[cfg(test)]
     fn build_shadow_blueprint(
         owner: &MinionBlueprintOwner,
         team: usize,
@@ -613,6 +767,7 @@ impl PreparedBattleInit {
         template
     }
 
+    #[cfg(test)]
     fn build_summon_blueprint(
         owner: &MinionBlueprintOwner,
         team: usize,
@@ -639,6 +794,7 @@ impl PreparedBattleInit {
         template
     }
 
+    #[cfg(test)]
     fn build_zombie_blueprint(
         owner: &MinionBlueprintOwner,
         team: usize,
@@ -659,6 +815,7 @@ impl PreparedBattleInit {
         template
     }
 
+    #[cfg(test)]
     fn clone_build_from_player(player: &Player, child_clone_name_factor: f64) -> CloneBuildData {
         let status = player.get_status();
         let (clone_attrs, clone_weapon_attr_bonus, clone_name_factor) = player.clone_build_inputs();
@@ -666,12 +823,14 @@ impl PreparedBattleInit {
             .with_child_name_factor(child_clone_name_factor)
     }
 
+    #[cfg(test)]
     fn child_clone_name_factor(player: &Player, eval_rq: f64) -> f64 {
         let factor_name = crate::player::eval_name::eval_str_common_with_rq(player.base_name().as_str(), true, eval_rq);
         let factor_team = crate::player::eval_name::eval_str_common_with_rq(player.clan_name().as_str(), true, eval_rq);
         factor_name.max(factor_team - 6.0)
     }
 
+    #[cfg(test)]
     fn template_from_player(player: &Player, id: PlrId, team: usize, skills: SkillLoadout) -> PlayerTemplate {
         let status = player.get_status();
         PlayerTemplate::new(id, player.id_name(), team, status.max_hp, status.attack)
@@ -783,6 +942,7 @@ impl PreparedBattleInit {
             .then_with(|| left.cmp(&right))
     }
 
+    #[cfg(test)]
     fn two_players_mut(players: &mut [Player], left: PlrId, right: PlrId) -> (&mut Player, &mut Player) {
         assert_ne!(left, right, "runtime battle init requested the same player twice");
         if left < right {

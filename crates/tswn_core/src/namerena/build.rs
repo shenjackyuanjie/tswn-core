@@ -376,7 +376,7 @@ impl PlayerBuild {
         let atk_sum = (attrs[0] as i32 - attrs[1] as i32 + attrs[2] as i32 + attrs[4] as i32 - attrs[5] as i32) * 2
             + attrs[3] as i32
             + attrs[6] as i32;
-        let status = PlayerStatus {
+        let mut status = PlayerStatus {
             alive: self.class != PlayerClass::Seed,
             hp: attrs[7] as i32,
             max_hp: attrs[7] as i32,
@@ -393,6 +393,14 @@ impl PlayerBuild {
             all_sum: attr_sum * 3 + attrs[7],
             ..PlayerStatus::default()
         };
+        // Legacy boss initialization installs runtime states after build. TestSubject also
+        // replaces the observable cold snapshot copied into Runtime templates.
+        if self.class == PlayerClass::Boss && self.name == "testsubject" {
+            self.name_factor = 0.0;
+            attrs = [80, 80, 80, 80, 80, 80, 80, 100];
+            status = status_from_attrs(attrs, self.name_factor, true);
+            status.magic_point = 1000;
+        }
         let skills = overlay_skills.map_or_else(
             || SkillLoadoutSpec::standard(&levels, &boosted, &boosts, &self.action_order),
             |skills| SkillLoadoutSpec::player_overlay(skills),
@@ -505,26 +513,30 @@ mod tests {
     use crate::engine::storage::Storage;
     use crate::player::Player;
 
-    fn assert_status(actual: &PlayerStatus, expected: &PlayerStatus) {
-        assert_eq!(actual.frozen, expected.frozen);
-        assert_eq!(actual.alive, expected.alive);
-        assert_eq!(actual.point, expected.point);
-        assert_eq!(actual.move_point, expected.move_point);
-        assert_eq!(actual.hp, expected.hp);
-        assert_eq!(actual.max_hp, expected.max_hp);
-        assert_eq!(actual.attack, expected.attack);
-        assert_eq!(actual.defense, expected.defense);
-        assert_eq!(actual.speed, expected.speed);
-        assert_eq!(actual.agility, expected.agility);
-        assert_eq!(actual.magic, expected.magic);
-        assert_eq!(actual.magic_point, expected.magic_point);
-        assert_eq!(actual.resistance, expected.resistance);
-        assert_eq!(actual.wisdom, expected.wisdom);
-        assert_eq!(actual.attr_sum, expected.attr_sum);
-        assert_eq!(actual.atk_sum, expected.atk_sum);
-        assert_eq!(actual.all_sum, expected.all_sum);
-        assert_eq!(actual.at_boost.to_bits(), expected.at_boost.to_bits());
-        assert_eq!(actual.attract.to_bits(), expected.attract.to_bits());
+    fn assert_status(actual: &PlayerStatus, expected: &PlayerStatus, context: &str) {
+        assert_eq!(actual.frozen, expected.frozen, "{context}: frozen");
+        assert_eq!(actual.alive, expected.alive, "{context}: alive");
+        assert_eq!(actual.point, expected.point, "{context}: point");
+        assert_eq!(actual.move_point, expected.move_point, "{context}: move point");
+        assert_eq!(actual.hp, expected.hp, "{context}: hp");
+        assert_eq!(actual.max_hp, expected.max_hp, "{context}: max hp");
+        assert_eq!(actual.attack, expected.attack, "{context}: attack");
+        assert_eq!(actual.defense, expected.defense, "{context}: defense");
+        assert_eq!(actual.speed, expected.speed, "{context}: speed");
+        assert_eq!(actual.agility, expected.agility, "{context}: agility");
+        assert_eq!(actual.magic, expected.magic, "{context}: magic");
+        assert_eq!(actual.magic_point, expected.magic_point, "{context}: magic point");
+        assert_eq!(actual.resistance, expected.resistance, "{context}: resistance");
+        assert_eq!(actual.wisdom, expected.wisdom, "{context}: wisdom");
+        assert_eq!(actual.attr_sum, expected.attr_sum, "{context}: attr sum");
+        assert_eq!(actual.atk_sum, expected.atk_sum, "{context}: attack sum");
+        assert_eq!(actual.all_sum, expected.all_sum, "{context}: all sum");
+        assert_eq!(
+            actual.at_boost.to_bits(),
+            expected.at_boost.to_bits(),
+            "{context}: attack boost"
+        );
+        assert_eq!(actual.attract.to_bits(), expected.attract.to_bits(), "{context}: attract");
     }
 
     fn assert_skills_match_legacy(actual: &SkillLoadoutSpec, expected: &Player, context: &str) {
@@ -583,6 +595,9 @@ mod tests {
             "alice",
             "alice@red",
             "covid@!",
+            "lazy@!",
+            "saitama@!",
+            "testsubject@!",
             "云剑狄卡敢@!",
             "target@!",
             "target@\u{0002}",
@@ -621,7 +636,7 @@ mod tests {
             assert_eq!(actual.id_key_name, expected.id_key_name(), "{raw}");
             assert_eq!(actual.display_name, expected.display_name(), "{raw}");
             assert_eq!(actual.overlay.as_ref(), expected.overlay.as_deref(), "{raw}");
-            assert_status(&actual.status, expected.get_status());
+            assert_status(&actual.status, expected.get_status(), raw);
             assert_skills_match_legacy(&actual.skills, &expected, raw);
         }
     }
@@ -688,7 +703,7 @@ mod tests {
                     crate::player::PlayerType::Clone,
                     "{context}: legacy class"
                 );
-                assert_status(&actual.player.status, expected.get_status());
+                assert_status(&actual.player.status, expected.get_status(), &context);
                 assert_skills_match_legacy(&actual.player.skills, &expected, &context);
 
                 assert_eq!(
@@ -764,7 +779,7 @@ mod tests {
         for (actual, expected) in actual.players.iter().zip(&expected) {
             assert_eq!(actual.name_base.as_slice(), expected.name_base.as_slice());
             assert_eq!(actual.attrs, expected.clone_build_inputs().0);
-            assert_status(&actual.status, expected.get_status());
+            assert_status(&actual.status, expected.get_status(), expected.id_name().as_str());
         }
     }
 }

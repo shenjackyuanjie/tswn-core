@@ -284,6 +284,82 @@ impl PreparedBattleRoster {
         skill_import: &PlainLegacySkillImportMap,
         lazy_blueprint_players: &[PlrId],
     ) -> Result<Self, RuntimeBattleInitError> {
+        let mut groups = Vec::with_capacity(raw_groups.len());
+        for (team_index, raw_group) in raw_groups.iter().enumerate() {
+            let mut group = Vec::with_capacity(raw_group.len());
+            for (player_index, raw) in raw_group.iter().enumerate() {
+                if crate::namerena::is_seed_line(raw) {
+                    continue;
+                }
+                let spec = crate::namerena::PlayerSpec::parse(raw).map_err(|error| RuntimeBattleInitError::Player {
+                    team_index,
+                    player_index,
+                    raw: raw.clone(),
+                    message: error.to_string(),
+                })?;
+                group.push(spec);
+            }
+            if !group.is_empty() {
+                groups.push(group);
+            }
+        }
+        let input = crate::namerena::NamerenaInput {
+            groups,
+            seed: Vec::new(),
+        };
+        let prepared = match crate::namerena::PreparedRoster::build(&input, eval_rq) {
+            Ok(prepared) => prepared,
+            Err(error) => match error {},
+        };
+        let player_count = prepared.players.len();
+        let input_groups = prepared.groups;
+        let id_key_names = prepared.players.iter().map(|player| player.id_key_name.clone()).collect::<Vec<_>>();
+        let mut sorted_by_id_name = (0..player_count).collect::<Vec<_>>();
+        sorted_by_id_name.sort_by(|left, right| id_key_names[*left].cmp(&id_key_names[*right]));
+        let mut team_by_player = vec![0; player_count];
+        for (team, group) in input_groups.iter().enumerate() {
+            for player in group {
+                team_by_player[*player] = team;
+            }
+        }
+        let players = prepared
+            .players
+            .iter()
+            .map(|player| {
+                PreparedBattleInit::prepare_namerena_player(
+                    player,
+                    team_by_player[player.id],
+                    registry,
+                    skill_import,
+                    eval_rq,
+                    lazy_blueprint_players.contains(&player.id),
+                )
+            })
+            .collect::<Vec<_>>();
+        let player_alive = players.iter().map(|player| player.alive).collect();
+        let players = players.into_iter().map(Some).collect();
+        let base_names_sorted = PreparedBattleInit::base_names_sorted(raw_groups);
+        let profile_seed_rc4_prefix = PreparedBattleInit::profile_seed_rc4_prefix(&base_names_sorted);
+        Ok(Self {
+            players,
+            player_alive,
+            input_groups,
+            base_names_sorted,
+            profile_seed_rc4_prefix,
+            id_key_names,
+            sorted_by_id_name,
+            recycle_score_buffers: false,
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) fn from_groups_with_eval_rq_and_skill_import_selected_legacy(
+        raw_groups: &[Vec<String>],
+        eval_rq: f64,
+        registry: &ExtensionRegistry,
+        skill_import: &PlainLegacySkillImportMap,
+        lazy_blueprint_players: &[PlrId],
+    ) -> Result<Self, RuntimeBattleInitError> {
         #[cfg(test)]
         let phase_started = std::time::Instant::now();
         let player_capacity = raw_groups.iter().map(Vec::len).sum();
@@ -538,5 +614,81 @@ impl PreparedBattleRoster {
 
     pub fn input_groups(&self) -> Vec<Vec<EntityIdx>> {
         self.input_groups.iter().map(|group| PreparedBattleInit::entity_order(group)).collect()
+    }
+}
+
+#[cfg(test)]
+mod native_roster_tests {
+    use super::*;
+
+    fn assert_rosters_equal(actual: &PreparedBattleRoster, expected: &PreparedBattleRoster, context: &str) {
+        assert_eq!(actual.players, expected.players, "{context}: players");
+        assert_eq!(actual.player_alive, expected.player_alive, "{context}: alive flags");
+        assert_eq!(actual.input_groups, expected.input_groups, "{context}: groups");
+        assert_eq!(actual.base_names_sorted, expected.base_names_sorted, "{context}: seed names");
+        assert_eq!(actual.id_key_names, expected.id_key_names, "{context}: id names");
+        assert_eq!(actual.sorted_by_id_name, expected.sorted_by_id_name, "{context}: id order");
+        assert_eq!(
+            actual.recycle_score_buffers, expected.recycle_score_buffers,
+            "{context}: recycle flag"
+        );
+        assert_eq!(
+            actual.profile_seed_rc4_prefix.as_ref().map(Rc4KeySchedulePrefix::len),
+            expected.profile_seed_rc4_prefix.as_ref().map(Rc4KeySchedulePrefix::len),
+            "{context}: seed prefix"
+        );
+    }
+
+    #[test]
+    fn native_roster_templates_match_legacy_initialization() {
+        let config = default_custom_runtime_import_config().expect("runtime profile should build");
+        let skill_import = PlainLegacySkillImportMap::new(&config.registry);
+        let cases = [
+            vec![
+                vec!["alice@red+剁手刀".to_owned(), "bob@red".to_owned(), "seed:7@!".to_owned()],
+                vec![
+                    "covid@!".to_owned(),
+                    "lazy@!".to_owned(),
+                    "saitama@!".to_owned(),
+                    "testsubject@!".to_owned(),
+                ],
+                vec![
+                    "云剑狄卡敢@!".to_owned(),
+                    "target@!".to_owned(),
+                    "target@\u{0002}".to_owned(),
+                    "target@\u{0003}".to_owned(),
+                ],
+            ],
+            vec![
+                vec![
+                    r#"owner@same+ol:{"attrs":[86,86,86,86,86,86,86,300],"skills":{"sklshadow":10,"sklsummon":10,"sklzombie":10},"shadow":{"attrs":[46,47,48,49,50,51,52,200],"skills":{"sklpossess":9}},"summon":{"attrs":[50,51,52,53,54,55,56,180],"skills":{"normal:sklrapid":9,"sklfire1":5,"summon:sklexplode":3},"reuse_skills_on_recast":true,"inherit_owner_def_res":true},"zombie":{"attrs":[40,41,42,43,44,45,46,90],"skills":{"sklrapid":7}}}"#.to_owned(),
+                    r#"diy@same+diy[72,39,69,76,67,66,0,84]{"sklfire":5,"sklheal":"40+30"}"#.to_owned(),
+                ],
+                vec!["plain".to_owned()],
+            ],
+        ];
+
+        for (case_index, groups) in cases.iter().enumerate() {
+            let player_count = groups.iter().flatten().filter(|raw| !crate::namerena::is_seed_line(raw)).count();
+            for lazy in [Vec::new(), (player_count > 0).then_some(vec![0]).unwrap_or_default()] {
+                let actual = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_selected(
+                    groups,
+                    crate::player::eval_name::DEFAULT_EVAL_RQ,
+                    &config.registry,
+                    &skill_import,
+                    &lazy,
+                )
+                .unwrap();
+                let expected = PreparedBattleRoster::from_groups_with_eval_rq_and_skill_import_selected_legacy(
+                    groups,
+                    crate::player::eval_name::DEFAULT_EVAL_RQ,
+                    &config.registry,
+                    &skill_import,
+                    &lazy,
+                )
+                .unwrap();
+                assert_rosters_equal(&actual, &expected, &format!("case {case_index}, lazy={lazy:?}"));
+            }
+        }
     }
 }

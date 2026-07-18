@@ -1,8 +1,11 @@
 use super::*;
+#[cfg(test)]
 use crate::engine::storage::Storage;
+#[cfg(test)]
+use crate::player::PlayerType;
 use crate::player::skill::act::minion::MinionBlueprintOwner;
 use crate::player::utils::trim_js_line_end;
-use crate::player::{Player, PlayerType, PlrId};
+use crate::player::{Player, PlrId};
 use crate::rc4::Rc4KeySchedulePrefix;
 
 mod init;

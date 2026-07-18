@@ -901,6 +901,7 @@ impl Player {
     /// 获取 短号系数
     pub fn get_name_factor(&self) -> f64 { self.name_factor }
 
+    #[cfg(test)]
     pub(crate) fn clone_build_inputs(&self) -> ([u32; 8], [i32; 8], f64) {
         (
             self.attr,
