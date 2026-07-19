@@ -1,9 +1,12 @@
 //! egui rendering for every Openbox tool.
 
+use std::cell::Cell;
+
 use eframe::egui;
 
 use tswn_openbox::backend::PairDetailMode;
 
+use super::help::{HelpTopic, help_icon};
 use super::state::{AccuracyPreset, CountMode, OpenboxApp, Tool};
 use super::widgets::{
     bench_output_controls, count_mode_controls, optional_file_output_controls, pick_named_output_file, thread_controls,
@@ -35,46 +38,93 @@ impl OpenboxApp {
     }
 
     pub(crate) fn namer_pf_ui(&mut self, ui: &mut egui::Ui) {
+        let requested_help = Cell::new(None);
         tool_header(ui, "namer-pf", "批量评分并筛选名字", &mut self.more_settings_open);
         section(ui, "精确度", |ui| {
-            main_accuracy_controls(ui, &mut self.namer_pf.count_mode, &mut self.namer_pf.accuracy);
+            main_accuracy_controls(
+                ui,
+                &mut self.namer_pf.count_mode,
+                &mut self.namer_pf.accuracy,
+                HelpTopic::NamerAccuracy,
+                &requested_help,
+            );
         });
-        section(ui, "评分项", |ui| {
+        section_with_help(ui, "评分项", HelpTopic::NamerMetrics, &requested_help, |ui| {
             namer_pf_metric_controls_clean(ui, self, false);
         });
-        section(ui, "名字", |ui| {
+        section_with_help(ui, "名字", HelpTopic::NamerNames, &requested_help, |ui| {
             self.namer_pf.names.ui(ui, "名字", "namer_pf_names", 14);
         });
+        if requested_help.get().is_some() {
+            self.active_help = requested_help.get();
+        }
     }
 
     pub(crate) fn batch_rate_ui(&mut self, ui: &mut egui::Ui) {
+        let requested_help = Cell::new(None);
         tool_header(ui, "cqd/cqp", "计算选手对靶子的平均胜率", &mut self.more_settings_open);
         section(ui, "常用设置", |ui| {
-            main_accuracy_controls(ui, &mut self.batch_rate.count_mode, &mut self.batch_rate.accuracy);
+            main_accuracy_controls(
+                ui,
+                &mut self.batch_rate.count_mode,
+                &mut self.batch_rate.accuracy,
+                HelpTopic::BatchAccuracy,
+                &requested_help,
+            );
             target_preset_controls(ui, &mut self.batch_rate.target_presets);
-            ui.checkbox(&mut self.batch_rate.show_matchups, "每组胜率");
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.batch_rate.show_matchups, "每组胜率");
+                help_icon(ui, HelpTopic::BatchMatchups, &requested_help);
+            });
         });
         section(ui, "输出", |ui| {
-            bench_output_controls(ui, &mut self.batch_rate.output, "tswn-openbox-cqd-cqp.txt", false, false);
+            bench_output_controls(
+                ui,
+                &mut self.batch_rate.output,
+                "tswn-openbox-cqd-cqp.txt",
+                false,
+                false,
+                &requested_help,
+            );
         });
-        section(ui, "选手列表", |ui| {
+        section_with_help(ui, "选手列表", HelpTopic::BatchPlayers, &requested_help, |ui| {
             self.batch_rate.players.ui(ui, "选手", "batch_players", 8);
         });
+        if requested_help.get().is_some() {
+            self.active_help = requested_help.get();
+        }
     }
 
     pub(crate) fn pair_ui(&mut self, ui: &mut egui::Ui) {
+        let requested_help = Cell::new(None);
         tool_header(ui, "pair", "计算选手与队友组合表现", &mut self.more_settings_open);
         section(ui, "常用设置", |ui| {
-            main_accuracy_controls(ui, &mut self.pair.count_mode, &mut self.pair.accuracy);
-            teammate_preset_controls(ui, &mut self.pair.teammate_presets);
-            pair_detail_controls(ui, self);
+            main_accuracy_controls(
+                ui,
+                &mut self.pair.count_mode,
+                &mut self.pair.accuracy,
+                HelpTopic::PairAccuracy,
+                &requested_help,
+            );
+            teammate_preset_controls(ui, &mut self.pair.teammate_presets, &requested_help, true);
+            pair_detail_controls(ui, self, &requested_help);
         });
-        section(ui, "输出", |ui| {
-            bench_output_controls(ui, &mut self.pair.output, "tswn-openbox-pair.txt", false, false);
+        section_with_help(ui, "输出", HelpTopic::PairScore, &requested_help, |ui| {
+            bench_output_controls(
+                ui,
+                &mut self.pair.output,
+                "tswn-openbox-pair.txt",
+                false,
+                false,
+                &requested_help,
+            );
         });
         section(ui, "选手列表", |ui| {
             self.pair.players.ui(ui, "选手", "pair_players", 6);
         });
+        if requested_help.get().is_some() {
+            self.active_help = requested_help.get();
+        }
     }
 
     pub(crate) fn more_settings_window(&mut self, ctx: &egui::Context) {
@@ -116,40 +166,58 @@ impl OpenboxApp {
     }
 
     fn namer_pf_more_settings(&mut self, ui: &mut egui::Ui) {
+        let requested_help = Cell::new(None);
         section(ui, "计算设置", |ui| {
             count_mode_controls(
                 ui,
                 &mut self.namer_pf.count_mode,
                 &mut self.namer_pf.accuracy,
                 &mut self.namer_pf.count,
+                &requested_help,
             );
-            thread_controls(ui, &mut self.namer_pf.auto_threads, &mut self.namer_pf.threads);
-            ui.checkbox(&mut self.namer_pf.keep_rq, "不低估短号");
+            thread_controls(ui, &mut self.namer_pf.auto_threads, &mut self.namer_pf.threads, &requested_help);
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.namer_pf.keep_rq, "不低估短号");
+                help_icon(ui, HelpTopic::KeepRq, &requested_help);
+            });
             ui.horizontal(|ui| {
                 ui.label("保留小数点后 X 位");
                 ui.add(egui::DragValue::new(&mut self.namer_pf.precision).range(0..=9).speed(1));
+                help_icon(ui, HelpTopic::ScorePrecision, &requested_help);
             });
         });
-        section(ui, "评分项", |ui| {
+        section_with_help(ui, "评分项", HelpTopic::NamerMetrics, &requested_help, |ui| {
             namer_pf_metric_controls_clean(ui, self, true);
         });
+        if requested_help.get().is_some() {
+            self.active_help = requested_help.get();
+        }
     }
 
     fn batch_rate_more_settings(&mut self, ui: &mut egui::Ui) {
+        let requested_help = Cell::new(None);
         section(ui, "计算设置", |ui| {
             count_mode_controls(
                 ui,
                 &mut self.batch_rate.count_mode,
                 &mut self.batch_rate.accuracy,
                 &mut self.batch_rate.count,
+                &requested_help,
             );
-            thread_controls(ui, &mut self.batch_rate.auto_threads, &mut self.batch_rate.threads);
+            thread_controls(
+                ui,
+                &mut self.batch_rate.auto_threads,
+                &mut self.batch_rate.threads,
+                &requested_help,
+            );
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.batch_rate.keep_rq, "不低估短号");
                 ui.checkbox(&mut self.batch_rate.double_plus, "DIYcqp（++分割名字）");
+                help_icon(ui, HelpTopic::KeepRq, &requested_help);
+                help_icon(ui, HelpTopic::BatchPlayers, &requested_help);
             });
         });
-        section(ui, "靶子", |ui| {
+        section_with_help(ui, "靶子", HelpTopic::ManualTargets, &requested_help, |ui| {
             ui.checkbox(&mut self.batch_rate.manual_targets, "使用手动靶子");
             if self.batch_rate.manual_targets {
                 ui.checkbox(&mut self.batch_rate.manual_target_double_plus, "DIY靶子（++分割名字）");
@@ -159,20 +227,40 @@ impl OpenboxApp {
             }
         });
         section(ui, "输出", |ui| {
-            highlight_delta_control(ui, &mut self.batch_rate.highlight_delta);
-            bench_output_controls(ui, &mut self.batch_rate.output, "tswn-openbox-cqd-cqp.txt", true, true);
+            highlight_delta_control(ui, &mut self.batch_rate.highlight_delta, &requested_help);
+            bench_output_controls(
+                ui,
+                &mut self.batch_rate.output,
+                "tswn-openbox-cqd-cqp.txt",
+                true,
+                true,
+                &requested_help,
+            );
         });
+        if requested_help.get().is_some() {
+            self.active_help = requested_help.get();
+        }
     }
 
     fn pair_more_settings(&mut self, ui: &mut egui::Ui) {
+        let requested_help = Cell::new(None);
         section(ui, "计算设置", |ui| {
-            count_mode_controls(ui, &mut self.pair.count_mode, &mut self.pair.accuracy, &mut self.pair.count);
-            thread_controls(ui, &mut self.pair.auto_threads, &mut self.pair.threads);
-            ui.checkbox(&mut self.pair.keep_rq, "不低估短号");
-            pair_detail_controls(ui, self);
+            count_mode_controls(
+                ui,
+                &mut self.pair.count_mode,
+                &mut self.pair.accuracy,
+                &mut self.pair.count,
+                &requested_help,
+            );
+            thread_controls(ui, &mut self.pair.auto_threads, &mut self.pair.threads, &requested_help);
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.pair.keep_rq, "不低估短号");
+                help_icon(ui, HelpTopic::KeepRq, &requested_help);
+            });
+            pair_detail_controls(ui, self, &requested_help);
         });
 
-        section(ui, "靶子", |ui| {
+        section_with_help(ui, "靶子", HelpTopic::ManualTargets, &requested_help, |ui| {
             ui.checkbox(&mut self.pair.manual_targets, "使用手动靶子");
             if self.pair.manual_targets {
                 self.pair.targets.ui(ui, "靶子", "pair_targets_more", 6);
@@ -181,7 +269,7 @@ impl OpenboxApp {
             }
         });
 
-        section(ui, "队友", |ui| {
+        section_with_help(ui, "队友", HelpTopic::PairTeammates, &requested_help, |ui| {
             ui.checkbox(&mut self.pair.manual_teammates, "使用手动队友");
             if self.pair.manual_teammates {
                 ui.horizontal(|ui| {
@@ -190,14 +278,17 @@ impl OpenboxApp {
                 });
                 self.pair.teammates.ui(ui, "队友", "pair_teammates_more", 6);
             } else {
-                teammate_preset_controls(ui, &mut self.pair.teammate_presets);
+                teammate_preset_controls(ui, &mut self.pair.teammate_presets, &requested_help, false);
             }
         });
 
-        section(ui, "输出", |ui| {
-            highlight_delta_control(ui, &mut self.pair.highlight_delta);
-            bench_output_controls(ui, &mut self.pair.output, "tswn-openbox-pair.txt", true, true);
+        section_with_help(ui, "输出", HelpTopic::PairScore, &requested_help, |ui| {
+            highlight_delta_control(ui, &mut self.pair.highlight_delta, &requested_help);
+            bench_output_controls(ui, &mut self.pair.output, "tswn-openbox-pair.txt", true, true, &requested_help);
         });
+        if requested_help.get().is_some() {
+            self.active_help = requested_help.get();
+        }
     }
 
     pub(crate) fn log_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -340,6 +431,28 @@ fn section<R>(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egu
     inner
 }
 
+fn section_with_help<R>(
+    ui: &mut egui::Ui,
+    title: &str,
+    topic: HelpTopic,
+    requested_help: &Cell<Option<HelpTopic>>,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let inner = egui::Frame::group(ui.style())
+        .inner_margin(egui::Margin::symmetric(SECTION_MARGIN_X, SECTION_MARGIN_Y))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(title).strong().size(15.0));
+                help_icon(ui, topic, requested_help);
+            });
+            ui.separator();
+            add_contents(ui)
+        })
+        .inner;
+    ui.add_space(SECTION_GAP);
+    inner
+}
+
 fn to_diy_basic_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     ui.horizontal(|ui| {
         if ui.checkbox(&mut app.to_diy.old, "旧 +diy").changed() && app.to_diy.old {
@@ -351,10 +464,11 @@ fn to_diy_basic_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     });
 }
 
-fn highlight_delta_control(ui: &mut egui::Ui, value: &mut String) {
+fn highlight_delta_control(ui: &mut egui::Ui, value: &mut String, requested_help: &Cell<Option<HelpTopic>>) {
     ui.horizontal(|ui| {
         ui.label("高亮超强名字");
         ui.add(egui::TextEdit::singleline(value).desired_width(72.0));
+        help_icon(ui, HelpTopic::Highlight, requested_help);
     });
 }
 
@@ -377,7 +491,12 @@ fn target_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets::
     }
 }
 
-fn teammate_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets::TeammatePresetState) {
+fn teammate_preset_controls(
+    ui: &mut egui::Ui,
+    state: &mut super::target_presets::TeammatePresetState,
+    requested_help: &Cell<Option<HelpTopic>>,
+    show_help: bool,
+) {
     ui.horizontal(|ui| {
         ui.label("队友");
         egui::ComboBox::from_id_salt(ui.next_auto_id())
@@ -399,17 +518,21 @@ fn teammate_preset_controls(ui: &mut egui::Ui, state: &mut super::target_presets
         if ui.button("刷新").clicked() {
             state.reload();
         }
+        if show_help {
+            help_icon(ui, HelpTopic::PairTeammates, requested_help);
+        }
     });
     if let Some(error) = &state.error {
         ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
     }
 }
 
-fn pair_detail_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
+fn pair_detail_controls(ui: &mut egui::Ui, app: &mut OpenboxApp, requested_help: &Cell<Option<HelpTopic>>) {
     ui.horizontal(|ui| {
         ui.radio_value(&mut app.pair.detail_mode, PairDetailMode::None, "不显示cqp");
         ui.radio_value(&mut app.pair.detail_mode, PairDetailMode::Every, "每组cqp");
         ui.radio_value(&mut app.pair.detail_mode, PairDetailMode::Top, "有效cqp");
+        help_icon(ui, HelpTopic::PairDetails, requested_help);
     });
     if app.pair.detail_mode == PairDetailMode::Every {
         ui.horizontal(|ui| {
@@ -419,7 +542,13 @@ fn pair_detail_controls(ui: &mut egui::Ui, app: &mut OpenboxApp) {
     }
 }
 
-fn main_accuracy_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &mut AccuracyPreset) {
+fn main_accuracy_controls(
+    ui: &mut egui::Ui,
+    mode: &mut CountMode,
+    accuracy: &mut AccuracyPreset,
+    topic: HelpTopic,
+    requested_help: &Cell<Option<HelpTopic>>,
+) {
     ui.horizontal(|ui| {
         ui.label("精确度");
         for preset in AccuracyPreset::ALL {
@@ -427,6 +556,7 @@ fn main_accuracy_controls(ui: &mut egui::Ui, mode: &mut CountMode, accuracy: &mu
                 *mode = CountMode::Accuracy;
             }
         }
+        help_icon(ui, topic, requested_help);
     });
 }
 

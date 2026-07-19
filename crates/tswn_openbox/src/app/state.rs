@@ -11,6 +11,8 @@ use eframe::egui;
 
 use tswn_openbox::backend::{NamerPfMetric, OutputMode, PairDetailMode, ProgressEvent};
 
+use super::help::HelpTopic;
+
 use super::source::TextSource;
 use super::target_presets::{TargetPresetState, TeammatePresetState};
 use super::widgets::{BenchOutputConfig, OptionalFileOutput};
@@ -250,6 +252,7 @@ pub struct OpenboxApp {
     pub theme_preference: egui::ThemePreference,
     pub tool: Tool,
     pub more_settings_open: bool,
+    pub(crate) active_help: Option<HelpTopic>,
     pub log: String,
     pub log_line_count: usize,
     pub highlight_lines: HashSet<usize>,
@@ -276,6 +279,7 @@ impl Default for OpenboxApp {
             theme_preference: egui::ThemePreference::System,
             tool: Tool::ToDiy,
             more_settings_open: false,
+            active_help: None,
             log: String::new(),
             log_line_count: 0,
             highlight_lines: HashSet::new(),

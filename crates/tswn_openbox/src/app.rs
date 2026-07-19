@@ -4,6 +4,7 @@
 //! 组织工具栏与左侧输入面板、中央日志面板，并将各工具 UI 分发给子模块渲染。
 
 mod actions;
+mod help;
 mod source;
 mod state;
 mod target_presets;
@@ -85,6 +86,7 @@ impl eframe::App for OpenboxApp {
         });
 
         self.more_settings_window(&ctx);
+        help::show_help_window(&ctx, &mut self.active_help);
     }
 }
 
