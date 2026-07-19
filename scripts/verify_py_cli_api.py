@@ -7,12 +7,14 @@ target directory, then checks:
 - summary APIs match the older top-level win-rate APIs;
 - score / namer-pf / batch-rate / pair-rate compose consistently;
 - to_diy roundtrips through Runner while preserving initial player status;
-- icon_info matches the byte/icon helpers at a structural level.
+- icon_info matches the byte/icon helpers at a structural level;
+- selected runtime exports remain aligned with the package type stubs.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib
 import os
 import platform
@@ -87,6 +89,43 @@ def assert_close(actual: float, expected: float, label: str, eps: float = 1e-9) 
 def assert_equal(actual: Any, expected: Any, label: str) -> None:
     if actual != expected:
         raise AssertionError(f"{label}: actual={actual!r}, expected={expected!r}")
+
+
+def stub_all(tree: ast.Module) -> set[str]:
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+            return set(ast.literal_eval(node.value))
+    raise AssertionError("stub does not define __all__")
+
+
+def verify_type_stubs(tswn_py: Any) -> None:
+    extension_tree = ast.parse((CRATE_DIR / "tswn_py" / "tswn_py.pyi").read_text(encoding="utf-8"))
+    init_tree = ast.parse((CRATE_DIR / "tswn_py" / "__init__.pyi").read_text(encoding="utf-8"))
+
+    extension_names = {
+        node.name for node in extension_tree.body if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    score_result = next(
+        node for node in extension_tree.body if isinstance(node, ast.ClassDef) and node.name == "ScoreResult"
+    )
+    score_members = {node.name for node in score_result.body if isinstance(node, ast.FunctionDef)}
+    init_imports = {
+        alias.asname or alias.name
+        for node in init_tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == "tswn_py"
+        for alias in node.names
+    }
+
+    normalized_name = "default_custom_runtime_normalized_run"
+    assert_equal("errors" in score_members, True, "ScoreResult.errors stub")
+    assert_equal(normalized_name in extension_names, True, "normalized-run extension stub")
+    assert_equal(normalized_name in stub_all(extension_tree), True, "normalized-run extension __all__")
+    assert_equal(normalized_name in init_imports, True, "normalized-run top-level re-export")
+    assert_equal(normalized_name in stub_all(init_tree), True, "normalized-run top-level __all__")
+    assert_equal(hasattr(tswn_py.ScoreResult, "errors"), True, "ScoreResult.errors runtime property")
+    assert_equal(hasattr(tswn_py, normalized_name), True, "normalized-run runtime export")
 
 
 @dataclass(frozen=True)
@@ -286,6 +325,7 @@ def main(argv: list[str]) -> int:
     print(f"imported tswn_py wrapper={tswn_py.wrapper_version_str()} core={tswn_py.core_version_str()}")
 
     checks = [
+        verify_type_stubs,
         verify_win_rate_apis,
         verify_score_and_namer_pf,
         verify_batch_and_pair,

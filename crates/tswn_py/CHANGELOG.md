@@ -8,6 +8,10 @@
 - 未显式提供 guard 的完成与 replay 路径统一使用 20,000 主回合上限；replay clip 继续只从 `parts[]` 暴露渲染语义。
 - 迁移时使用 `snapshot_players()` 代替旧玩家/世界对象 getter，使用 `winner_team_index()` / `winner_team_indices()` 查询胜者，逐回合推进统一调用 `main_round()`。
 
+### 修复
+
+- 类型存根补齐 `ScoreResult.errors` 与 `default_custom_runtime_normalized_run()`，并同步扩展模块及包顶层的重导出和 `__all__`。
+
 ## [0.4.0] - 2026-07-14
 
 ### ⚠️ Breaking Changes

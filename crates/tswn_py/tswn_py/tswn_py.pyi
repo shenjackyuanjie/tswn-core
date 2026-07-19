@@ -65,6 +65,8 @@ class ScoreResult:
     @property
     def total(self) -> int: ...
     @property
+    def errors(self) -> int: ...
+    @property
     def init_nanos(self) -> int: ...
     @property
     def fight_nanos(self) -> int: ...
@@ -202,6 +204,10 @@ def icon_info(name: str) -> IconInfo:
 def parse_group_lines(content: str, double_plus: bool = False) -> list[str]:
     ...
 
+def default_custom_runtime_normalized_run(raw: str, max_rounds: int) -> dict[str, object]:
+    """使用默认 custom Runtime profile 运行输入并返回 normalized-run 数据。"""
+    ...
+
 def name_to_png_base64(name: str) -> str:
     """将名字渲染为 PNG 并返回 Base64 字符串。"""
     ...
@@ -240,6 +246,7 @@ __all__ = [
     "to_diy_batch",
     "icon_info",
     "parse_group_lines",
+    "default_custom_runtime_normalized_run",
     "name_to_icon_rgba",
     "name_to_png_base64",
     "name_to_png_bytes",
