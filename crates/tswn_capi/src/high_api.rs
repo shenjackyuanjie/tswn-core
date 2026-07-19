@@ -1,7 +1,7 @@
 use std::ffi::c_char;
 
 use serde::Serialize;
-use tswn_core::cli_api::{self as core_cli_api, CliApiError};
+use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun};
 
 use crate::{
     FfiError, ffi_boundary, ffi_error, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t, write_json_result,
@@ -93,6 +93,7 @@ fn cli_api_error(err: CliApiError) -> FfiError {
     match err {
         CliApiError::InvalidInput(message) => ffi_error(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, message),
         CliApiError::Runner(err) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()),
+        CliApiError::Runtime(message) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, message),
     }
 }
 
@@ -466,4 +467,112 @@ pub unsafe extern "C" fn tswn_parse_group_lines_json(
         let value = core_cli_api::parse_group_lines(&content, double_plus != 0);
         write_json_result(out_json, &value)
     })
+}
+
+/// # Safety
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_default_custom_runtime_normalized_run_json(
+    raw_text_utf8: *const c_char,
+    max_rounds: usize,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let raw = unsafe { read_utf8(raw_text_utf8, "raw_text_utf8")? };
+        let value = core_cli_api::default_custom_runtime_normalized_run(&raw, max_rounds).map_err(cli_api_error)?;
+        write_json_result(out_json, &JsonRuntimeNormalizedRun::from(value))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_normalized_run_json_matches_default_run_golden_shape() {
+        let run = core_cli_api::default_custom_runtime_normalized_run("left@red\n\nright@blue\n", 1)
+            .expect("default custom runtime run should execute");
+        let json = JsonRuntimeNormalizedRun::from(run);
+
+        assert_eq!(json.rounds.len(), 1);
+        assert_eq!(json.winner_team, None);
+        assert_eq!(json.guard_exhausted, true);
+        assert_eq!(json.total_score, 77);
+
+        let round = &json.rounds[0];
+        assert_eq!(round.winner_team, None);
+        assert_eq!(round.round, 1);
+        assert_eq!(round.total_score, 77);
+        assert_eq!(round.rng_i, 74);
+        assert_eq!(round.rng_j, 92);
+        assert_eq!(round.entity_ids, vec![1, 2]);
+        assert_eq!(round.teams, vec![0, 1]);
+        assert_eq!(round.hp, vec![262, 288]);
+        assert_eq!(round.magic_point, vec![23, 16]);
+        assert_eq!(round.defense, vec![6, 56]);
+        assert_eq!(round.resistance, vec![52, 25]);
+        assert_eq!(round.alive, vec![true, true]);
+        assert_eq!(round.round_order, vec![0, 1]);
+        assert_eq!(round.flat_alive, vec![0, 1]);
+        assert_eq!(round.team_alive, vec![vec![0], vec![1]]);
+        assert_eq!(round.alive_group_count, 2);
+
+        assert_eq!(round.actions.len(), 1);
+        let action = &round.actions[0];
+        assert_eq!(action.round, 1);
+        assert_eq!(action.actor, 1);
+        assert_eq!(action.target, 0);
+        assert_eq!(action.amount, 36);
+
+        assert_eq!(round.frames.len(), 3);
+        let frame = &round.frames[0];
+        assert_eq!(frame.message, "[0]发起攻击");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
+        assert_eq!(frame.targets, Vec::<usize>::new());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 1000);
+        assert_eq!(frame.delay1, 100);
+        assert_eq!(frame.update_type, "none");
+
+        let frame = &round.frames[1];
+        assert_eq!(frame.message, "[1]受到[2]点伤害");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
+        assert_eq!(frame.targets, Vec::<usize>::new());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 77);
+        assert_eq!(frame.delay0, 1154);
+        assert_eq!(frame.delay1, 100);
+        assert_eq!(frame.update_type, "none");
+
+        let frame = &round.frames[2];
+        assert_eq!(frame.message, "\n");
+        assert_eq!(frame.caster, 0);
+        assert_eq!(frame.target, 0);
+        assert_eq!(frame.targets, Vec::<usize>::new());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 0);
+        assert_eq!(frame.delay1, 0);
+        assert_eq!(frame.update_type, "next_line");
+    }
+
+    #[test]
+    fn runtime_normalized_run_json_rejects_zero_max_rounds() {
+        let raw = std::ffi::CString::new("left@red\n\nright@blue\n").unwrap();
+        let mut out = tswn_str_t::default();
+
+        let status = unsafe { tswn_default_custom_runtime_normalized_run_json(raw.as_ptr(), 0, &mut out) };
+
+        assert_eq!(status, tswn_status_t::TSWN_ERR_INVALID_ARGUMENT);
+        assert_eq!(out.len, 0);
+        assert!(out.ptr.is_null());
+
+        let err = crate::tswn_last_error_message();
+        let message =
+            unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(err.ptr as *const u8, err.len)).to_owned() };
+        unsafe { crate::tswn_str_free(err) };
+        assert_eq!(message, "runtime max_rounds must be positive");
+    }
 }

@@ -5,6 +5,20 @@
 从仓库根目录运行时，推荐命令形式为 `uv run scripts/<name>.py ...`（Windows 侧使用 `uv` 管理环境），
 也可用 `python scripts/<name>.py ...`（需确保已激活虚拟环境）。
 
+## check_runtime_release.py
+
+验证主 Runtime 的 release 独立性与行为回归：
+
+- 检查已删除的 `engine` / `player` 源码路径和旧 Rust/CLI API 没有回流；
+- 校验 corpus 清单固定为 87 个 JS exact trace 与 37 个压力 golden；
+- 运行 release 与 `no_debug` 的主 Runtime 定向测试；
+- 传入 `--corpus` 时实际执行全部 124 项 corpus，否则只编译 corpus 测试目标。
+
+```powershell
+python scripts/check_runtime_release.py
+python scripts/check_runtime_release.py --corpus
+```
+
 ## build_all.py
 
 一次性聚合打包以下内容，并生成最终 zip：

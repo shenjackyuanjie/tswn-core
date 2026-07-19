@@ -6,11 +6,11 @@
 use std::fs;
 use std::path::Path;
 
-use tswn_core::player::icon::icon_from_raw_name;
-use tswn_core::player::icon_render::render_icon_vec_from_name;
+use tswn_core::namerena::icon::icon_from_raw_name;
+use tswn_core::namerena::icon_render::render_icon_vec_from_name;
 
 #[cfg(feature = "png_render")]
-use tswn_core::player::icon_render::{render_icon_b64_from_name, render_icon_png};
+use tswn_core::namerena::icon_render::{render_icon_b64_from_name, render_icon_png};
 
 pub fn print_icons(names: &[String]) {
     for name in names {

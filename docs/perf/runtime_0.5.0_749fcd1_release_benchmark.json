@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "benchmark_kind": "formal_release_medians_with_same_session_ab",
+  "date": "2026-07-18",
+  "benchmark_commit": "749fcd1ddec2fb6544f24b15c1c579cb3285a476",
+  "validated_branch_commit": "ba0a41d43bd17e535400da5491b795c1397ebad0",
+  "core_version": "0.5.0",
+  "runtime_benchmarked": "main",
+  "raw_artifacts": "target/full_bench_0.5.0_749fcd1",
+  "post_benchmark_changes": [
+    {
+      "commit": "5c7851f22cb86ec8966abcda0ccc78a3983376e1",
+      "scope": "to-diy input disambiguation",
+      "benchmark_path_affected": false
+    },
+    {
+      "commit": "ba0a41d43bd17e535400da5491b795c1397ebad0",
+      "scope": "cross-platform golden input hashing",
+      "benchmark_path_affected": false
+    }
+  ],
+  "environment": {
+    "cpu": "AMD Ryzen 7 5800X",
+    "physical_cores": 8,
+    "logical_processors": 16,
+    "os": "Windows 10 Pro 22H2 10.0.19045",
+    "target": "x86_64-pc-windows-msvc",
+    "rustc": "1.99.0-nightly (3d50c25bc 2026-07-16)",
+    "cargo": "1.99.0-nightly (59800466c 2026-07-07)",
+    "llvm": "22.1.8",
+    "node": "22.23.1",
+    "python": "3.12.10",
+    "profile": "release",
+    "lto": "fat",
+    "codegen_units": 1,
+    "no_debug": true,
+    "mimalloc": true
+  },
+  "input_sha256_lf": {
+    "score_mario": "9E93C72EEA75345FE27E32AEB9EF86E28B546C4F1A125CA6EFC794D2F7C84246",
+    "cqp_single": "87054C01EC6D456EC83C6A419F9147D373C21F60C2428BEE51627652426A24F6",
+    "cqp_double": "EF42B91EFD02EC33EB8029329C95775A571CE1AA285D54B0A3A4D8D218D8020D",
+    "target1": "227C69B2C8C5680B594D26525A1D4CC6383C2615B48AC410F679B06921B7210B",
+    "target2": "A285A267AE4438BC254FE0511F9FDD1C39A458532CF872984FFB1C035E81569D"
+  },
+  "archived_reference": {
+    "document": "runtime_0.4.3_9d3a3b9_release_benchmark.json",
+    "commit": "9d3a3b919e3df7fb857ec529869632d71766b36c",
+    "core_version": "0.4.3",
+    "comparison_caveat": "absolute medians were captured earlier in the day; use same_session_ab when archived values show machine drift"
+  },
+  "fixed30": {
+    "runs_per_case": 13000,
+    "single_thread": {
+      "repetitions": 3,
+      "groups": {
+        "overall": {
+          "us_per_battle": 28.59559076923076,
+          "init_us_per_battle": 2.8212505128205128,
+          "fight_us_per_battle": 25.65890666666667,
+          "wins": 150858,
+          "guard_exhausted": 3,
+          "raw_us_per_battle": [28.644304102564107, 28.59559076923076, 28.34954615384616],
+          "archive_0_4_3_us": 28.25722615384615,
+          "delta_percent": 1.197445
+        },
+        "core_1v1_2v2": {
+          "us_per_battle": 13.87440226244344,
+          "init_us_per_battle": 1.9580511312217195,
+          "fight_us_per_battle": 11.795160180995474,
+          "wins": 112305,
+          "guard_exhausted": 0,
+          "raw_us_per_battle": [13.938454751131223, 13.752182805429861, 13.87440226244344],
+          "archive_0_4_3_us": 13.837594117647058,
+          "delta_percent": 0.266001
+        },
+        "one_v_one": {
+          "us_per_battle": 8.959846853146852,
+          "init_us_per_battle": 1.5715209790209788,
+          "fight_us_per_battle": 7.268114685314685,
+          "wins": 70035,
+          "guard_exhausted": 0,
+          "raw_us_per_battle": [8.959846853146852, 8.845038461538461, 9.006523776223776],
+          "archive_0_4_3_us": 9.054765034965037,
+          "delta_percent": -1.048268
+        },
+        "two_v_two": {
+          "us_per_battle": 22.79884615384615,
+          "init_us_per_battle": 2.666689743589744,
+          "fight_us_per_battle": 19.997639743589744,
+          "wins": 42270,
+          "guard_exhausted": 0,
+          "raw_us_per_battle": [23.06590256410256, 22.748614102564105, 22.79884615384615],
+          "archive_0_4_3_us": 22.588203846153846,
+          "delta_percent": 0.932532
+        },
+        "stress_multi": {
+          "us_per_battle": 59.56802980769231,
+          "init_us_per_battle": 4.664109615384615,
+          "fight_us_per_battle": 54.68373076923077,
+          "wins": 23119,
+          "guard_exhausted": 3,
+          "raw_us_per_battle": [59.56802980769231, 59.8647548076923, 58.62803076923077],
+          "archive_0_4_3_us": 58.20867596153846,
+          "delta_percent": 2.335311
+        }
+      }
+    },
+    "auto_thread": {
+      "repetitions": 5,
+      "groups": {
+        "overall": {
+          "us_per_battle": 3.566580512820512,
+          "worker_init_us_per_battle": 4.7019387179487175,
+          "worker_fight_us_per_battle": 52.6064753846154,
+          "wins": 150858,
+          "guard_exhausted": 3,
+          "raw_us_per_battle": [3.4510841025641033, 3.5900607692307704, 3.6522461538461544, 3.566580512820512, 3.5416228205128197],
+          "archive_0_4_3_us": 3.6317400000000006,
+          "delta_percent": -1.794167
+        },
+        "core_1v1_2v2": {
+          "us_per_battle": 1.9077230769230766,
+          "worker_init_us_per_battle": 2.958680090497737,
+          "worker_fight_us_per_battle": 23.130062443438913,
+          "wins": 112305,
+          "guard_exhausted": 0,
+          "raw_us_per_battle": [1.733605882352941, 1.9168122171945703, 1.9077230769230766, 1.9247511312217191, 1.7745547511312216]
+        },
+        "one_v_one": {
+          "us_per_battle": 1.1843188811188812,
+          "worker_init_us_per_battle": 2.4008461538461536,
+          "worker_fight_us_per_battle": 14.042539860139861,
+          "wins": 70035,
+          "guard_exhausted": 0,
+          "raw_us_per_battle": [1.1723426573426576, 1.3285783216783216, 1.2613251748251748, 1.1843188811188812, 1.173909090909091]
+        },
+        "two_v_two": {
+          "us_per_battle": 2.9952410256410253,
+          "worker_init_us_per_battle": 3.960276923076923,
+          "worker_fight_us_per_battle": 39.40547051282051,
+          "wins": 42270,
+          "guard_exhausted": 0,
+          "raw_us_per_battle": [2.7625884615384613, 2.9952410256410253, 3.0927858974358973, 3.2822102564102567, 2.875738461538462]
+        },
+        "stress_multi": {
+          "us_per_battle": 7.222622115384615,
+          "worker_init_us_per_battle": 8.885654807692308,
+          "worker_fight_us_per_battle": 114.41999134615384,
+          "wins": 23119,
+          "guard_exhausted": 3,
+          "raw_us_per_battle": [7.087593269230768, 7.21403846153846, 7.2332374999999995, 7.222622115384615, 7.298471153846155]
+        }
+      }
+    }
+  },
+  "win_rate": {
+    "thread": 1,
+    "battles": 13000,
+    "wins": 7077,
+    "output_resolution_seconds": 0.001,
+    "primary": {
+      "repetitions": 5,
+      "wall_seconds": 0.101,
+      "init_seconds": 0.016,
+      "fight_seconds": 0.083,
+      "battles_per_second": 129107,
+      "raw_wall_seconds": [0.098, 0.096, 0.105, 0.101, 0.102],
+      "archive_0_4_3_seconds": 0.098,
+      "delta_percent": 3.061224
+    },
+    "confirmation": {
+      "repetitions": 5,
+      "wall_seconds": 0.099,
+      "init_seconds": 0.015,
+      "fight_seconds": 0.082,
+      "battles_per_second": 130904,
+      "raw_wall_seconds": [0.103, 0.1, 0.099, 0.097, 0.099],
+      "archive_0_4_3_seconds": 0.098,
+      "delta_percent": 1.020408
+    }
+  },
+  "score": {
+    "thread": 1,
+    "timing_scope": "core batch wall; excludes build, process startup, input read and report serialization",
+    "mario": {
+      "groups": 1,
+      "battles": 13000,
+      "wins": 4171,
+      "errors": 0,
+      "wall_seconds": 0.4360958,
+      "init_seconds": 0.1521399,
+      "fight_seconds": 0.2819385,
+      "raw_wall_seconds": [0.4386124, 0.4263978, 0.4350009, 0.4471582, 0.4360958],
+      "archive_0_4_3_seconds": 0.4281363,
+      "delta_percent": 1.859104
+    },
+    "cqp_single": {
+      "groups": 20,
+      "battles": 20000,
+      "wins": 14513,
+      "errors": 0,
+      "wall_seconds": 0.6891474,
+      "init_seconds": 0.2414425,
+      "fight_seconds": 0.4386641,
+      "raw_wall_seconds": [0.7071288, 0.6891474, 0.6874551, 0.6797369, 0.6976371],
+      "archive_0_4_3_seconds": 0.6721309,
+      "delta_percent": 2.531724
+    },
+    "cqp_double": {
+      "groups": 32,
+      "battles": 32000,
+      "wins": 30295,
+      "errors": 0,
+      "primary": {
+        "wall_seconds": 0.9786185,
+        "init_seconds": 0.3130295,
+        "fight_seconds": 0.6518593,
+        "raw_wall_seconds": [0.975905, 0.9859366, 1.0039072, 0.9723805, 0.9786185],
+        "archive_0_4_3_seconds": 0.9440798,
+        "delta_percent": 3.658451
+      },
+      "confirmation": {
+        "wall_seconds": 0.977382,
+        "init_seconds": 0.3117795,
+        "fight_seconds": 0.6527496,
+        "raw_wall_seconds": [0.9879235, 0.9841012, 0.9603548, 0.977382, 0.9665616],
+        "archive_0_4_3_seconds": 0.9440798,
+        "delta_percent": 3.527477
+      }
+    }
+  },
+  "openbox_formal": {
+    "repetitions_per_cell": 5,
+    "thread": "auto",
+    "cqp_single": {
+      "100": {
+        "wall_seconds": 0.103423,
+        "rss_kb": 14960,
+        "raw_wall_seconds": [0.103423, 0.112596, 0.101408, 0.103309, 0.110267],
+        "archive_0_4_3_seconds": 0.101573,
+        "archive_delta_percent": 1.82135,
+        "completed": "700/700"
+      },
+      "1000": {
+        "wall_seconds": 0.934295,
+        "rss_kb": 18724,
+        "raw_wall_seconds": [0.918672, 0.934295, 0.946649, 0.932959, 1.005226],
+        "archive_0_4_3_seconds": 0.867426,
+        "archive_delta_percent": 7.7089,
+        "completed": "700/700"
+      },
+      "10000": {
+        "wall_seconds": 9.323936,
+        "rss_kb": 12268,
+        "raw_wall_seconds": [9.755469, 9.446273, 9.323936, 9.156524, 9.226598],
+        "archive_0_4_3_seconds": 8.627235,
+        "archive_delta_percent": 8.0756,
+        "completed": "700/700"
+      }
+    },
+    "cqd_double": {
+      "100": {
+        "wall_seconds": 0.462006,
+        "rss_kb": 25272,
+        "raw_wall_seconds": [0.450879, 0.49534, 0.458841, 0.462677, 0.462006],
+        "archive_0_4_3_seconds": 0.414332,
+        "archive_delta_percent": 11.506232,
+        "completed": "1312/1312"
+      },
+      "1000": {
+        "wall_seconds": 4.522958,
+        "rss_kb": 27716,
+        "raw_wall_seconds": [4.522958, 4.477156, 4.547172, 4.403342, 4.541743],
+        "archive_0_4_3_seconds": 4.095233,
+        "archive_delta_percent": 10.444461,
+        "completed": "1312/1312"
+      },
+      "10000": {
+        "wall_seconds": 42.461972,
+        "rss_kb": 22220,
+        "raw_wall_seconds": [42.6507, 42.617812, 42.461972, 41.512921, 42.013557],
+        "archive_0_4_3_seconds": 39.57548,
+        "archive_delta_percent": 7.293637,
+        "completed": "1312/1312"
+      }
+    }
+  },
+  "same_session_ab": {
+    "baseline_commit": "9d3a3b919e3df7fb857ec529869632d71766b36c",
+    "current_commit": "749fcd1ddec2fb6544f24b15c1c579cb3285a476",
+    "repetitions": 5,
+    "order": "alternated old-new/new-old by repetition",
+    "score_cqp_double": {
+      "baseline_raw_seconds": [1.007973, 0.9716463, 0.9694278, 0.9857643, 0.9697282],
+      "current_raw_seconds": [1.0026015, 0.946278, 0.9604444, 0.9483478, 0.9859929],
+      "baseline_median_seconds": 0.9716463,
+      "current_median_seconds": 0.9604444,
+      "delta_percent": -1.152878,
+      "wins": 30295,
+      "errors": 0
+    },
+    "openbox": {
+      "cqp_single": {
+        "100": {
+          "baseline_raw_seconds": [0.113732, 0.109977, 0.106517, 0.110171, 0.118274],
+          "current_raw_seconds": [0.103529, 0.109969, 0.099912, 0.106897, 0.113492],
+          "baseline_median_seconds": 0.110171,
+          "current_median_seconds": 0.106897,
+          "delta_percent": -2.971744
+        },
+        "1000": {
+          "baseline_raw_seconds": [0.954441, 0.946745, 1.008462, 0.937246, 0.927149],
+          "current_raw_seconds": [0.992321, 0.95283, 0.914782, 0.941613, 0.906621],
+          "baseline_median_seconds": 0.946745,
+          "current_median_seconds": 0.941613,
+          "delta_percent": -0.542068
+        },
+        "10000": {
+          "baseline_raw_seconds": [9.377039, 9.441075, 9.137172, 8.893277, 9.190693],
+          "current_raw_seconds": [10.070053, 9.108584, 9.214454, 8.850083, 9.001261],
+          "baseline_median_seconds": 9.190693,
+          "current_median_seconds": 9.108584,
+          "delta_percent": -0.893393
+        }
+      },
+      "cqd_double": {
+        "100": {
+          "baseline_raw_seconds": [0.467018, 0.45805, 0.462475, 0.45279, 0.501224],
+          "current_raw_seconds": [0.470306, 0.444659, 0.448872, 0.467259, 0.58273],
+          "baseline_median_seconds": 0.462475,
+          "current_median_seconds": 0.467259,
+          "delta_percent": 1.034434
+        },
+        "1000": {
+          "baseline_raw_seconds": [4.415572, 4.358856, 4.285285, 4.259575, 4.268428],
+          "current_raw_seconds": [4.331838, 4.286525, 4.396281, 4.442181, 4.267075],
+          "baseline_median_seconds": 4.285285,
+          "current_median_seconds": 4.331838,
+          "delta_percent": 1.086345
+        },
+        "10000": {
+          "baseline_raw_seconds": [43.284575, 42.614597, 41.368108, 41.19448, 41.543473],
+          "current_raw_seconds": [42.16142, 42.388643, 40.629695, 41.027385, 41.873219],
+          "baseline_median_seconds": 41.543473,
+          "current_median_seconds": 41.873219,
+          "delta_percent": 0.793737
+        }
+      }
+    },
+    "machine_drift_evidence": {
+      "description": "the exact 0.4.3 binary was slower in this session than its archived medians, so archived OpenBox and double-score deltas are not used as the release gate",
+      "baseline_rerun_vs_archive_percent": {
+        "cqp_100": 8.464848,
+        "cqp_1000": 9.144181,
+        "cqp_10000": 6.531154,
+        "cqd_100": 11.619426,
+        "cqd_1000": 4.64081,
+        "cqd_10000": 4.972758,
+        "score_cqp_double": 2.919933
+      }
+    }
+  },
+  "release_validation": {
+    "workspace_tests": "passed",
+    "runtime_release_tests": "passed",
+    "runtime_no_debug_tests": "passed",
+    "runtime_cli_release_tests": "passed",
+    "runtime_corpus": "124/124",
+    "python_cli_api": "passed",
+    "node_show_contracts": "10/10",
+    "capi_release_distribution": "passed; examples skipped because cl/gcc was unavailable",
+    "capi_abi": 4,
+    "wasm_release_distribution": "passed"
+  },
+  "performance_gate": {
+    "maximum_allowed_regression_percent": 3.0,
+    "maximum_observed_regression_percent": 2.531724,
+    "maximum_observed_regression_metric": "score CQP single",
+    "maximum_same_session_ab_regression_percent": 1.086345,
+    "maximum_same_session_ab_regression_metric": "CQD count=1000",
+    "passed": true,
+    "perf_commit_required": false
+  }
+}

@@ -15,7 +15,8 @@ use error::WasmResult;
 pub use fight::FightSession;
 use model::{
     CliBatchRateResult, CliGroupWinRateResult, CliIconInfo, CliNamerPfResult, CliPairRateResult, CliScoreResult,
-    CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, WinRateOptions, WinRateResult,
+    CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeNormalizedRunView, WinRateOptions,
+    WinRateResult,
 };
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
@@ -34,27 +35,27 @@ pub fn version() -> String { env!("CARGO_PKG_VERSION").to_string() }
 pub fn core_version() -> String { tswn_core::version().to_string() }
 
 #[wasm_bindgen]
-pub fn default_eval_rq() -> f64 { tswn_core::player::eval_name::DEFAULT_EVAL_RQ }
+pub fn default_eval_rq() -> f64 { tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ }
 
 #[wasm_bindgen]
-pub fn win_rate_eval_rq() -> f64 { tswn_core::player::eval_name::WIN_RATE_EVAL_RQ }
+pub fn win_rate_eval_rq() -> f64 { tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ }
 
 #[wasm_bindgen]
 pub fn name_to_png_base64(name: String) -> String {
     install_panic_hook();
-    tswn_core::player::icon_render::render_icon_b64_from_name(&name)
+    tswn_core::namerena::icon_render::render_icon_b64_from_name(&name)
 }
 
 #[wasm_bindgen]
 pub fn name_to_png_bytes(name: String) -> Vec<u8> {
     install_panic_hook();
-    tswn_core::player::icon_render::render_icon_png_from_name(&name)
+    tswn_core::namerena::icon_render::render_icon_png_from_name(&name)
 }
 
 #[wasm_bindgen]
 pub fn name_to_icon_rgba(name: String) -> Vec<u8> {
     install_panic_hook();
-    tswn_core::player::icon_render::render_icon_vec_from_name(&name)
+    tswn_core::namerena::icon_render::render_icon_vec_from_name(&name)
 }
 
 #[wasm_bindgen]
@@ -216,6 +217,15 @@ pub fn pair_rate(
 }
 
 #[wasm_bindgen]
+pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usize) -> WasmResult<RuntimeNormalizedRunView> {
+    install_panic_hook();
+    tswn_core::cli_api::default_custom_runtime_normalized_run(&raw_input, max_rounds)
+        .map(tswn_core::cli_api::JsonRuntimeNormalizedRun::from)
+        .map(Into::into)
+        .map_err(error::cli_api_error)
+}
+
+#[wasm_bindgen]
 pub fn to_diy(name: String, old: Option<bool>, minions: Option<bool>) -> WasmResult<String> {
     install_panic_hook();
     tswn_core::cli_api::to_diy(&name, old.unwrap_or(false), minions.unwrap_or(false)).map_err(error::cli_api_error)
@@ -237,4 +247,90 @@ pub fn icon_info(name: String) -> CliIconInfo {
 pub fn parse_group_lines(content: String, double_plus: Option<bool>) -> Vec<String> {
     install_panic_hook();
     tswn_core::cli_api::parse_group_lines(&content, double_plus.unwrap_or(false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::UpdateTypeView;
+
+    #[test]
+    fn default_custom_runtime_normalized_run_exposes_wasm_view_golden_shape() {
+        let run = default_custom_runtime_normalized_run("left@red\n\nright@blue\n".to_string(), 1)
+            .expect("default custom runtime normalized run should execute");
+
+        assert_eq!(run.rounds.len(), 1);
+        assert_eq!(run.winner_team, None);
+        assert!(run.guard_exhausted);
+        assert_eq!(run.total_score, 77);
+
+        let round = &run.rounds[0];
+        assert_eq!(round.winner_team, None);
+        assert_eq!(round.round, 1);
+        assert_eq!(round.total_score, 77);
+        assert_eq!(round.rng_i, 74);
+        assert_eq!(round.rng_j, 92);
+        assert_eq!(round.entity_ids, vec![1, 2]);
+        assert_eq!(round.teams, vec![0, 1]);
+        assert_eq!(round.hp, vec![262, 288]);
+        assert_eq!(round.magic_point, vec![23, 16]);
+        assert_eq!(round.defense, vec![6, 56]);
+        assert_eq!(round.resistance, vec![52, 25]);
+        assert_eq!(round.alive, vec![true, true]);
+        assert_eq!(round.round_order, vec![0, 1]);
+        assert_eq!(round.flat_alive, vec![0, 1]);
+        assert_eq!(round.team_alive, vec![vec![0], vec![1]]);
+        assert_eq!(round.alive_group_count, 2);
+
+        assert_eq!(round.actions.len(), 1);
+        let action = &round.actions[0];
+        assert_eq!(action.round, 1);
+        assert_eq!(action.actor, 1);
+        assert_eq!(action.target, 0);
+        assert_eq!(action.amount, 36);
+
+        assert_eq!(round.frames.len(), 3);
+        let frame = &round.frames[0];
+        assert_eq!(frame.message, "[0]发起攻击");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
+        assert!(frame.targets.is_empty());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 1000);
+        assert_eq!(frame.delay1, 100);
+        assert_eq!(frame.update_type, UpdateTypeView::None);
+
+        let frame = &round.frames[1];
+        assert_eq!(frame.message, "[1]受到[2]点伤害");
+        assert_eq!(frame.caster, 1);
+        assert_eq!(frame.target, 0);
+        assert!(frame.targets.is_empty());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 77);
+        assert_eq!(frame.delay0, 1154);
+        assert_eq!(frame.delay1, 100);
+        assert_eq!(frame.update_type, UpdateTypeView::None);
+
+        let frame = &round.frames[2];
+        assert_eq!(frame.message, "\n");
+        assert_eq!(frame.caster, 0);
+        assert_eq!(frame.target, 0);
+        assert!(frame.targets.is_empty());
+        assert_eq!(frame.param, None);
+        assert_eq!(frame.score, 0);
+        assert_eq!(frame.delay0, 0);
+        assert_eq!(frame.delay1, 0);
+        assert_eq!(frame.update_type, UpdateTypeView::NextLine);
+    }
+
+    #[test]
+    fn default_custom_runtime_normalized_run_rejects_zero_max_rounds() {
+        let err = tswn_core::cli_api::default_custom_runtime_normalized_run("left@red\n\nright@blue\n", 0)
+            .expect_err("default custom runtime normalized run should reject zero max rounds");
+        let err = crate::error::cli_api_tswn_error(err);
+
+        assert_eq!(err.code, "INVALID_INPUT");
+        assert_eq!(err.message, "runtime max_rounds must be positive");
+    }
 }

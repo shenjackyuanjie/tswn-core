@@ -1,7 +1,8 @@
 use std::ffi::c_char;
 
-use tswn_core::engine::update::{RunUpdate, UpdateType};
-use tswn_core::player::PlrId;
+use tswn_core::runtime::PlrId;
+use tswn_core::runtime::update::{RunUpdate, UpdateType};
+use tswn_core::runtime::{EntityIdx, RuntimePlayerSnapshot};
 use tswn_core::{PreparedRunner, Runner};
 
 use crate::{
@@ -37,28 +38,27 @@ fn update_type_to_c(update_type: UpdateType) -> tswn_update_type_t {
     }
 }
 
-fn player_snapshot(player: &tswn_core::player::Player) -> tswn_player_snapshot_t {
-    let status = player.get_status();
+fn player_snapshot(player: RuntimePlayerSnapshot) -> tswn_player_snapshot_t {
     tswn_player_snapshot_t {
-        id: player.id(),
-        ptr: player.ptr() as u64,
-        hp: status.hp,
-        max_hp: status.max_hp,
-        magic_point: status.magic_point,
-        move_point: status.move_point,
-        attack: status.attack,
-        defense: status.defense,
-        speed: status.speed,
-        agility: status.agility,
-        magic: status.magic,
-        resistance: status.resistance,
-        wisdom: status.wisdom,
-        point: status.point,
-        all_sum: status.all_sum,
-        name_factor: player.get_name_factor(),
-        at_boost: status.at_boost,
-        attract: status.attract,
-        frozen: u8::from(status.frozen),
+        id: player.id as u64,
+        ptr: player.id as u64,
+        hp: player.hp,
+        max_hp: player.max_hp,
+        magic_point: player.magic_point,
+        move_point: player.move_point,
+        attack: player.attack,
+        defense: player.defense,
+        speed: player.speed,
+        agility: player.agility,
+        magic: player.magic,
+        resistance: player.resistance,
+        wisdom: player.wisdom,
+        point: player.point,
+        all_sum: player.all_sum,
+        name_factor: player.name_factor,
+        at_boost: player.at_boost,
+        attract: player.attract,
+        frozen: u8::from(player.frozen),
     }
 }
 
@@ -76,8 +76,8 @@ fn update_snapshot(update: &RunUpdate) -> tswn_update_snapshot_t {
     }
 }
 
-fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, eval_rq: f64, thread: u32) -> FfiResult<tswn_win_rate_result_t> {
-    let summary = tswn_core::win_rate::prepared_win_rate(prepared, n, eval_rq, thread)
+fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, _eval_rq: f64, thread: u32) -> FfiResult<tswn_win_rate_result_t> {
+    let summary = tswn_core::runtime::prepared_runtime_win_rate(prepared, n, thread)
         .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
     Ok(tswn_win_rate_result_t {
         wins: summary.wins as u64,
@@ -273,7 +273,7 @@ pub unsafe extern "C" fn tswn_runner_run_to_completion(runner: *mut tswn_runner_
     if runner.is_null() {
         0
     } else {
-        u8::from(unsafe { (*runner).inner.run_to_completion() })
+        u8::from(unsafe { (*runner).inner.run_binding_to_completion() })
     }
 }
 
@@ -332,7 +332,12 @@ pub unsafe extern "C" fn tswn_runner_input_group_copy(
             return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "runner is null"));
         }
         let input_groups = unsafe { &(*runner).inner.input_groups };
-        let group = input_groups.get(group_index).cloned().unwrap_or_default();
+        let group = input_groups
+            .get(group_index)
+            .into_iter()
+            .flatten()
+            .map(|entity| entity.0 as PlrId)
+            .collect::<Vec<_>>();
         copy_ids(&group, out_ids, cap, "out_ids")
     })
 }
@@ -352,7 +357,11 @@ pub unsafe extern "C" fn tswn_runner_player_input_group_index(
             return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "out_group_index is null"));
         }
 
-        let player_id = player_id as PlrId;
+        let player_id = EntityIdx(
+            player_id
+                .try_into()
+                .map_err(|_| ffi_error(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, "player id out of range"))?,
+        );
         let input_groups = unsafe { &(*runner).inner.input_groups };
         let group_index = input_groups
             .iter()
@@ -372,7 +381,7 @@ pub unsafe extern "C" fn tswn_runner_winner_len(runner: *const tswn_runner_t) ->
     if runner.is_null() {
         0
     } else {
-        unsafe { (*runner).inner.world.winner.as_ref().map(|w| w.len()).unwrap_or(0) }
+        unsafe { (*runner).inner.winner_ids().len() }
     }
 }
 
@@ -383,7 +392,7 @@ pub unsafe extern "C" fn tswn_runner_winner_copy(runner: *const tswn_runner_t, o
         if runner.is_null() {
             return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "runner is null"));
         }
-        let winners = unsafe { (*runner).inner.world.winner.clone().unwrap_or_default() };
+        let winners = unsafe { (*runner).inner.winner_ids() };
         copy_ids(&winners, out_ids, cap, "out_ids")
     })
 }
@@ -394,7 +403,7 @@ pub unsafe extern "C" fn tswn_runner_all_player_count(runner: *const tswn_runner
     if runner.is_null() {
         0
     } else {
-        unsafe { (*runner).inner.all_plr_len() }
+        unsafe { (*runner).inner.runtime.entities.len() }
     }
 }
 
@@ -409,7 +418,7 @@ pub unsafe extern "C" fn tswn_runner_all_player_ids_copy(
         if runner.is_null() {
             return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "runner is null"));
         }
-        let ids = unsafe { (*runner).inner.all_plrs() };
+        let ids = unsafe { (*runner).inner.all_player_ids() };
         copy_ids(&ids, out_ids, cap, "out_ids")
     })
 }
@@ -428,7 +437,7 @@ pub unsafe extern "C" fn tswn_runner_player_snapshot(
         if out_snapshot.is_null() {
             return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "out_snapshot is null"));
         }
-        let player = unsafe { (*runner).inner.storage.get_player(&(player_id as PlrId)) }
+        let player = unsafe { (*runner).inner.player_snapshot(player_id as PlrId) }
             .ok_or_else(|| ffi_error(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, "player not found"))?;
         unsafe {
             *out_snapshot = player_snapshot(player);

@@ -1,9 +1,26 @@
 # 更新日志
 
-## [Unreleased]
+## [0.5.0] - 2026-07-18
 
 ### 变更
 
+- `FightSession` 的构造、逐帧推进、状态快照和胜者查询全部切换到主 Runtime；`WinRateSession` 移除最后一处旧 Runner 解析依赖。
+- `FightSession` / `WinRateSession`、`ReplayClip` 与 `ReplayTextPart` 的 JS/JSON shape 保持不变，clip 仍只通过 `parts[]` 表达文本、血条和死亡特效；无显式回放 guard 时上限为 20,000 主回合。
+- 包版本进入 `0.5.0`；本轮不新增执行器选择项，也不恢复任何 clip 顶层渲染字段。
+
+## [0.4.0] - 2026-07-14
+
+### ⚠️ Breaking Changes
+
+- `ReplayClip` typed view 删除多项顶层渲染字段，调用方必须改读 `parts[]` 中的 `ReplayTextPart`。
+- 完整回放页面入口由 `examples/show.html` 改为 `examples/index.html`，并删除 legacy runtime URL fallback。
+- 无 runtime 参数的评分、胜率与 `WinRateSession` 默认改用 Runtime。
+
+### 变更
+
+- `win_rate_sync`、`group_win_rate` 与 `WinRateSession` 内部改用 Runtime prepared 批量执行；原有 JS 类名、进度和结果结构保持不变。
+- 完整回放示例从 `show.html` 重命名为 `examples/index.html`，并移除 `FightSession` / legacy runtime URL fallback；页面只调用 runtime normalized run，分享链接会清理历史 `engine` / `runtime` 参数。
+- 同步 `main` 在 `d266cfe` 之后的 replay part 语义与页面配色，覆盖生命之轮、机制死亡、死亡特效、百分比伤害 HP 条和最新调色板。
 - 精简 `ReplayClip` 导出字段，移除 `text_template`、`player_id`、`data`、`show_hp`、`hp_before`、`hp_after`、`death_effect` 与 `emoji`；这些渲染语义统一由 `parts[]` 中的 `ReplayTextPart` 表达，clip 只保留 delay、颜色/语义、关联 id、侧栏快照和胜利标记。
 - show 示例同步适配新 replay view：规范 `parts[]`、`caster_ids[]`、`target_ids[]` 与侧栏快照数组，并明确正文渲染只消费 `clip.parts[]` 的结构化语义。
 - replay view 同步修复生命之轮体力互换的血条数据：互换句中的两个玩家 part 都会携带各自正确的帧前/帧后 HP，并强制展示血条，即使血量没有实际变化。

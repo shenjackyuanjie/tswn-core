@@ -1,6 +1,8 @@
-use crate::engine::storage::Storage;
-use crate::player::Player;
-use crate::player::PlayerType;
+use crate::namerena::{
+    BuiltinSkillRef, MinionKind, NamerenaInput, PreparedMinionBlueprint, PreparedPlayer, PreparedRoster, SkillBoost,
+    SkillEntrySpec, SkillLoadoutSpec, classified_player_skill_name_for_export, classified_summon_minion_skill_name_for_export,
+    skill_name_for_export,
+};
 
 use super::CliApiResult;
 
@@ -8,7 +10,7 @@ pub(super) fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult
     if old && minions {
         return Err(super::invalid_input("old and minions are mutually exclusive"));
     }
-    let groups = parse_plus_separated_groups(raw);
+    let groups = parse_to_diy_groups(raw);
     if groups.is_empty() {
         return Err(super::invalid_input("to_diy requires at least one player"));
     }
@@ -19,79 +21,210 @@ pub(super) fn export_player(raw: &str, old: bool, minions: bool) -> CliApiResult
         .map(|lines| lines.join("\n"))
 }
 
-fn export_group(group: &[String], old: bool, minions: bool) -> CliApiResult<String> {
-    match group {
-        [] => Err(super::invalid_input("to_diy group is empty")),
-        [raw] => export_single_player(raw, old, minions),
-        _ => export_player_group(group, old, minions),
-    }
-}
-
-fn export_single_player(raw: &str, old: bool, minions: bool) -> CliApiResult<String> {
-    let storage = Storage::new_arc();
-    let mut player = Player::new_from_namerena_raw(raw.to_string(), storage)
-        .map_err(|err| super::invalid_input(format!("failed to build player from {raw}: {err}")))?;
-    player.build();
-    Ok(export_built_player(&player, old, minions))
-}
-
-fn export_player_group(group: &[String], old: bool, minions: bool) -> CliApiResult<String> {
-    let storage = Storage::new_arc();
-    let mut ids = Vec::with_capacity(group.len());
-    for raw in group {
-        let player = Player::new_from_namerena_raw(raw.to_string(), storage.clone())
-            .map_err(|err| super::invalid_input(format!("failed to build player from {raw}: {err}")))?;
-        ids.push(storage.just_insert_player(player));
-    }
-
-    let mut local_plrs = ids
-        .iter()
-        .map(|id| storage.just_get_player_mut(*id).expect("player not found when exporting to_diy group"))
-        .collect::<Vec<&mut Player>>();
-    local_plrs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    for i in 0..local_plrs.len() {
-        let (left, right) = local_plrs.split_at_mut(i + 1);
-        let plr_p = &mut left[i];
-        for plr_q in right.iter_mut() {
-            if plr_p.clan_name() == plr_q.clan_name() {
-                plr_p.upgrade(plr_q);
-                plr_q.upgrade(plr_p);
+fn parse_to_diy_groups(raw: &str) -> Vec<Vec<String>> {
+    raw.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let parsed = parse_plus_group_line(line);
+            let explicit_double_plus = has_double_plus_outside_quotes(line);
+            let unambiguous_teamed_group = parsed.len() > 1 && parsed.iter().all(|player| player_identity_has_team(player));
+            if explicit_double_plus || unambiguous_teamed_group {
+                parsed
+            } else {
+                vec![line.to_owned()]
             }
-        }
-    }
-
-    let mut sorted_ids = ids.clone();
-    sorted_ids.sort_by(|a, b| {
-        let plr_a = storage.get_player(a).expect("player not found when sorting to_diy group");
-        let plr_b = storage.get_player(b).expect("player not found when sorting to_diy group");
-        plr_a.cmp_by_id_name(plr_b)
-    });
-    for id in sorted_ids {
-        let player = storage.just_get_player_mut(id).expect("player not found when building to_diy group");
-        player.build();
-        if player.player_type() == PlayerType::Boss {
-            crate::player::boss::init_boss_state(player);
-        }
-    }
-
-    Ok(ids
-        .iter()
-        .map(|id| {
-            let player = storage.get_player(id).expect("player not found when exporting to_diy group");
-            export_built_player(player, old, minions)
         })
+        .collect()
+}
+
+fn player_identity_has_team(raw: &str) -> bool { raw.split_once('+').map_or(raw, |(identity, _)| identity).contains('@') }
+
+fn has_double_plus_outside_quotes(raw: &str) -> bool {
+    let mut chars = raw.chars().peekable();
+    let mut in_string = false;
+    let mut escaped = false;
+    while let Some(ch) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+        } else if ch == '"' {
+            in_string = true;
+        } else if ch == '+' && chars.peek() == Some(&'+') {
+            return true;
+        }
+    }
+    false
+}
+
+fn export_group(group: &[String], old: bool, minions: bool) -> CliApiResult<String> {
+    if group.is_empty() {
+        return Err(super::invalid_input("to_diy group is empty"));
+    }
+    let input = NamerenaInput::from_raw_groups(&[group.to_vec()])
+        .map_err(|error| super::invalid_input(format!("failed to parse player group: {error}")))?;
+    let roster = match PreparedRoster::build(&input, crate::namerena::eval_name::DEFAULT_EVAL_RQ) {
+        Ok(roster) => roster,
+        Err(error) => match error {},
+    };
+    Ok(roster
+        .players
+        .iter()
+        .map(|player| export_built_player(player, old, minions))
         .collect::<Vec<_>>()
         .join("+"))
 }
 
-fn export_built_player(player: &Player, old: bool, minions: bool) -> String {
+fn export_built_player(player: &PreparedPlayer, old: bool, minions: bool) -> String {
     if old {
-        player.to_diy_compact()
-    } else if minions {
-        player.to_ol_json_with_minions()
-    } else {
-        player.to_ol_json()
+        return format!(
+            "{}{}+diy[{}]{}",
+            player.name,
+            team_name_for_export(player),
+            attrs_to_overlay_json(player.attrs),
+            skills_to_json(&player.skills, SkillExportContext::Player)
+        );
     }
+
+    let mut fields = vec![
+        format!("\"attrs\":[{}]", attrs_to_overlay_json(player.attrs)),
+        format!("\"skills\":{}", skills_to_json(&player.skills, SkillExportContext::Player)),
+        format!(
+            "\"name_factor_enabled\":{}",
+            player.overlay.as_ref().is_none_or(|overlay| overlay.name_factor_enabled)
+        ),
+    ];
+    if minions {
+        append_minion_export(player, MinionKind::Shadow, "shadow", &mut fields);
+        append_minion_export(player, MinionKind::Summon, "summon", &mut fields);
+        append_minion_export(player, MinionKind::Zombie, "zombie", &mut fields);
+    }
+    format!("{}{}+ol:{{{}}}", player.name, team_name_for_export(player), fields.join(","))
+}
+
+fn team_name_for_export(player: &PreparedPlayer) -> String {
+    if player.clan_name == player.name {
+        String::new()
+    } else {
+        format!("@{}", player.clan_name)
+    }
+}
+
+fn attrs_to_overlay_json(attrs: [u32; 8]) -> String {
+    attrs
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| (if index < 7 { value + 36 } else { value }).to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+#[derive(Clone, Copy)]
+enum SkillExportContext {
+    Player,
+    GenericMinion,
+    SummonMinion,
+}
+
+fn skills_to_json(skills: &SkillLoadoutSpec, context: SkillExportContext) -> String {
+    let mut fields = Vec::new();
+    for key in &skills.active_order {
+        let Some(entry) = skills.entries.iter().find(|entry| entry.key == *key && entry.level > 0) else {
+            continue;
+        };
+        if entry.skill == BuiltinSkillRef::SummonShareDamage {
+            continue;
+        }
+        let name = skill_export_name(entry, context);
+        if fields.iter().any(|field: &String| field.starts_with(&format!("\"{name}\":"))) {
+            continue;
+        }
+        fields.push(format!("\"{name}\":{}", skill_level_json(entry)));
+    }
+    format!("{{{}}}", fields.join(","))
+}
+
+fn skill_export_name(entry: &SkillEntrySpec, context: SkillExportContext) -> String {
+    match context {
+        SkillExportContext::Player => classified_player_skill_name_for_export(entry.key).unwrap_or_else(|| match entry.skill {
+            BuiltinSkillRef::Normal(skill_id) => skill_name_for_export(skill_id),
+            BuiltinSkillRef::SummonFire => format!("summon:sklfire{}", usize::from(entry.key != 40) + 1),
+            BuiltinSkillRef::SummonExplode => "summon:sklexplode".to_owned(),
+            BuiltinSkillRef::Possess => "phantom:sklpossess".to_owned(),
+            BuiltinSkillRef::SummonShareDamage => unreachable!(),
+        }),
+        SkillExportContext::SummonMinion => {
+            classified_summon_minion_skill_name_for_export(entry.key).unwrap_or_else(|| match entry.skill {
+                BuiltinSkillRef::Normal(skill_id) => format!("normal:{}", skill_name_for_export(skill_id)),
+                BuiltinSkillRef::SummonFire => format!("sklfire{}", usize::from(entry.key != 0) + 1),
+                BuiltinSkillRef::SummonExplode => "sklexplode".to_owned(),
+                BuiltinSkillRef::Possess => "phantom:sklpossess".to_owned(),
+                BuiltinSkillRef::SummonShareDamage => unreachable!(),
+            })
+        }
+        SkillExportContext::GenericMinion => match entry.skill {
+            BuiltinSkillRef::Normal(skill_id) => format!("normal:{}", skill_name_for_export(skill_id)),
+            BuiltinSkillRef::SummonFire => "summon:sklfire1".to_owned(),
+            BuiltinSkillRef::SummonExplode => "summon:sklexplode".to_owned(),
+            BuiltinSkillRef::Possess => "phantom:sklpossess".to_owned(),
+            BuiltinSkillRef::SummonShareDamage => unreachable!(),
+        },
+    }
+}
+
+fn skill_level_json(entry: &SkillEntrySpec) -> String {
+    match &entry.boost {
+        Some(SkillBoost::SlotBoost { base, boost }) => format!("\"{base}+{boost}\""),
+        Some(SkillBoost::LastBoost(base)) => format!("\"2*{base}\""),
+        _ => entry.level.to_string(),
+    }
+}
+
+fn append_minion_export(player: &PreparedPlayer, kind: MinionKind, field: &str, fields: &mut Vec<String>) {
+    let overlay_present = player.overlay.as_ref().is_some_and(|overlay| match kind {
+        MinionKind::Shadow => overlay.shadow.is_some(),
+        MinionKind::Summon => overlay.summon.is_some(),
+        MinionKind::Zombie => overlay.zombie.is_some(),
+    });
+    let skill_id = match kind {
+        MinionKind::Shadow => 24,
+        MinionKind::Summon => 22,
+        MinionKind::Zombie => 32,
+    };
+    let skill_present = player
+        .skills
+        .entries
+        .iter()
+        .any(|entry| entry.skill == BuiltinSkillRef::Normal(skill_id) && entry.level > 0);
+    if !overlay_present && !skill_present {
+        return;
+    }
+    let blueprint = player.minion_blueprint(kind, crate::namerena::eval_name::DEFAULT_EVAL_RQ);
+    fields.push(format!("\"{field}\":{}", minion_to_json(&blueprint)));
+}
+
+fn minion_to_json(blueprint: &PreparedMinionBlueprint) -> String {
+    let context = if blueprint.kind == MinionKind::Summon {
+        SkillExportContext::SummonMinion
+    } else {
+        SkillExportContext::GenericMinion
+    };
+    let mut fields = vec![
+        format!("\"attrs\":[{}]", attrs_to_overlay_json(blueprint.player.attrs)),
+        format!("\"skills\":{}", skills_to_json(&blueprint.player.skills, context)),
+    ];
+    if blueprint.kind == MinionKind::Summon {
+        fields.push("\"reuse_skills_on_recast\":true".to_owned());
+        if blueprint.inherit_owner_def_res {
+            fields.push("\"inherit_owner_def_res\":true".to_owned());
+        }
+    }
+    format!("{{{}}}", fields.join(","))
 }
 
 pub(super) fn parse_plus_separated_groups(raw: &str) -> Vec<Vec<String>> {
@@ -211,6 +344,7 @@ fn push_group_segment(group: &mut Vec<String>, current: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::{export_player, parse_plus_separated_groups};
+    use crate::namerena::{NamerenaInput, PreparedRoster};
 
     #[test]
     fn parse_plus_groups_keeps_ol_overlay_with_whitespace() {
@@ -259,5 +393,61 @@ mod tests {
         assert_eq!(groups[0].len(), 2);
         assert!(groups[0][0].starts_with("1@a+diy["));
         assert!(groups[0][1].starts_with("2@a+diy["));
+    }
+
+    #[test]
+    fn export_player_keeps_single_plus_weapon_suffix_on_one_player() {
+        let raw = "mario@red+fire";
+        let original_input = NamerenaInput::from_raw_groups(&[vec![raw.to_owned()]]).unwrap();
+        let original = PreparedRoster::build(&original_input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+
+        let exported = export_player(raw, false, true).unwrap();
+        assert!(exported.starts_with("mario@red+ol:"));
+        assert!(!exported.contains("+fire+ol:"));
+
+        let exported_input = NamerenaInput::from_raw_groups(&[vec![exported]]).unwrap();
+        let reparsed = PreparedRoster::build(&exported_input, crate::namerena::eval_name::DEFAULT_EVAL_RQ).unwrap();
+        assert_eq!(reparsed.players.len(), 1);
+        assert_eq!(reparsed.players[0].attrs, original.players[0].attrs);
+        assert_eq!(reparsed.players[0].status, original.players[0].status);
+        let original_entries = original.players[0]
+            .skills
+            .entries
+            .iter()
+            .filter(|entry| entry.level > 0)
+            .cloned()
+            .collect::<Vec<_>>();
+        let reparsed_entries = reparsed.players[0]
+            .skills
+            .entries
+            .iter()
+            .filter(|entry| entry.level > 0)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(reparsed_entries, original_entries);
+        let original_order = original.players[0]
+            .skills
+            .active_order
+            .iter()
+            .filter(|key| original_entries.iter().any(|entry| entry.key == **key))
+            .collect::<Vec<_>>();
+        let reparsed_order = reparsed.players[0]
+            .skills
+            .active_order
+            .iter()
+            .filter(|key| reparsed_entries.iter().any(|entry| entry.key == **key))
+            .collect::<Vec<_>>();
+        assert_eq!(reparsed_order, original_order);
+    }
+
+    #[test]
+    fn export_player_accepts_double_plus_for_unteamed_group() {
+        let exported = export_player("mario++luigi", true, false).unwrap();
+        let groups = parse_plus_separated_groups(&exported);
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 2);
+        assert!(groups[0][0].starts_with("mario+diy["));
+        assert!(groups[0][1].starts_with("luigi+diy["));
     }
 }

@@ -9,6 +9,7 @@
 - `0.2.20`
 - `0.3.1`
 - `0.3.2`
+- `0.4.0` Runtime
 
 当前这份记录重点对应：
 
@@ -16,12 +17,14 @@
 - `0.3.1` 在补齐 WASM 查询接口后，按同口径补跑 benchmark，确认当前版本没有新异常，但相较 `0.2.20` 有一小段性能回退
 - `0.3.2` 新增 DIY / overlay 覆盖系统，按同口径补跑确认非 DIY 通路无性能回退
 - 当前表格已同步到 `0.3.2` 的稳定重跑结果，可直接和 `0.3.1`、`0.2.20`、`0.2.14` 做横向比较
+- `0.4.0` 的 fixed30、score、win-rate 与 CQP/CQD 统一结果另见 `docs/perf/runtime_0.4.0_baseline.md`
+- `0.5.0` 主 Runtime 独立化后的完整发版结果与 0.4.3 同机交替 A/B 见 `docs/perf/runtime_0.5.0_749fcd1_release_benchmark.md`
 
 ---
 
 ## 1. 口径
 
-- 编译参数：正式留档使用 `--release --features no_debug`；日常快速试跑可用 `--profile release-fast --features no_debug`，但不要和长期表格混用。benchmark 口径不启用 `mimalloc_alloc`。
+- 编译参数：正式留档使用 `--release --features no_debug`；日常快速试跑可用 `--profile release-fast --features no_debug`，但不要和长期表格混用。`0.4.0` 起原生默认 feature 包含 `mimalloc_alloc`；旧版本未启用 allocator 的历史数据保留原口径，不反向改写。
 - CLI：`tswn-cli bench win-rate ... --perf`
 - 单线程：追加 `--single-thread`
 - 多线程：直接使用 CLI 默认线程策略
@@ -30,6 +33,9 @@
   - `喘际瞬爆@昀澤` vs `蕾蒂·怀特洛可-65HEZHB264LFPFQ@Squall`
 
 说明：
+
+- Runtime `0.4.0` 的当前回归基线与 legacy score 硬目标见 [`runtime_0.4.0_baseline.md`](runtime_0.4.0_baseline.md)；
+- Runtime `0.5.0` 的发版基准与 3% 回退门禁见 [`runtime_0.5.0_749fcd1_release_benchmark.md`](runtime_0.5.0_749fcd1_release_benchmark.md)；
 
 - `Bun` 与 `0.2.12` 的数据来自 `docs\update\0.2.12.md` 中的同机历史记录；
 - `0.2.13` 数据来自 detached worktree：`f9b0e3c`；
@@ -43,65 +49,19 @@
 
 ## 2. 30-case 固定 benchmark
 
-两个固定样本适合做历史横向比较，但覆盖面太窄。当前长期固定性能回归集合统一使用 `docs/perf/fixed_cases_30`，共 30 个输入：覆盖原先多人、队伍、FFA 和复杂战斗路径，并额外强化 1v1 / 2v2 核心场景。
+`docs/perf/fixed_cases_30` 保留了覆盖 1v1、2v2、多人、队伍、FFA 与复杂状态链的
+30 个固定输入。0.5.0 删除旧执行器时，同时删除了依赖双栈对账的 `track_perf_cases`、
+`track_score_perf` 等辅助 binary；历史文档中的对应命令不再适用于当前分支。
 
-`track_perf_cases` 仍可从号库自动生成候选 case，再按实测复杂度抽取阶梯样本；固定 30-case 则直接通过 `--case-dir docs/perf/fixed_cases_30` 运行，不再依赖重新生成 case。固定目录报告会额外输出 `overall`、`core_1v1_2v2`、`one_v_one`、`two_v_two`、`stress_multi` 分组汇总，便于优先观察 1v1/2v2 主指标。运行口径见 `docs/perf/fixed_cases_30_benchmark.md`。
+0.5.0 的 fixed30 与 score 发版测量使用只调用公开主 Runtime API 的临时外部 harness，
+构建后未保留源码。被测提交、输入哈希、逐轮中位数和同机 A/B 结果见
+[`runtime_0.5.0_749fcd1_release_benchmark.md`](runtime_0.5.0_749fcd1_release_benchmark.md)。
+固定输入与 0.4.x 的旧工具输出格式说明继续保存在
+[`fixed_cases_30_benchmark.md`](fixed_cases_30_benchmark.md)，仅作为历史口径。
 
-固定 30-case 推荐运行：
-
-```powershell
-cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
-  --case-dir docs/perf/fixed_cases_30 `
-  --out-dir docs/perf/fixed_cases_30_results `
-  --bench-runs 13000 `
-  --thread 1
-```
-
-生成逻辑复用 `tswn_core::case_gen`，和 `tswn_case_miner` 的 case 枚举保持同一套规则：
-
-- 号库读取、去重、固定 seed shuffle；
-- 模式默认覆盖 `1v1,2v2,3v3v3,ffa_4,ffa_6,ffa_8`；
-- 每个模式默认生成 `4000` 个候选；
-- 先用 `64` 场/候选做复杂度采样，按 `µs/场` 排序；
-- 从排序结果中均匀抽取指定数量的 case；
-- 对选中 case 各跑正式 benchmark，输出 markdown/json 和原始输入文件。
-
-如需重新生成候选阶梯，可用：
-
-```powershell
-cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
-  --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' `
-  --out-dir '.\target\perf_cases' `
-  --modes '1v1,2v2,3v3v3,ffa' `
-  --ffa-sizes '4,6,8' `
-  --case-offset-per-mode 0 `
-  --max-cases-per-mode 4000 `
-  --select-count 30 `
-  --bench-runs 500000 `
-  --thread 1
-```
-
-如果只想先固定一批输入，不跑正式 benchmark：
-
-```powershell
-cargo run --release --features aux_bins,no_debug --bin track_perf_cases -- `
-  --library 'D:\githubs\namer\tswn-core\tests\sqp6000.txt' `
-  --out-dir '.\target\perf_cases' `
-  --select-only
-```
-
-输出文件：
-
-- `target/perf_cases/perf_cases.md`：可直接贴回本文的结果表；
-- `target/perf_cases/perf_cases.json`：结构化结果，适合脚本比较版本；
-- `target/perf_cases/cases/*.txt`：被选中的原始输入。
-
-建议长期记录时保留两组数据：
-
-- **固定 2 样本**：继续用于和旧版本表格对齐；
-- **30-case 固定样本**：用于发现核心 1v1/2v2 以及多人、召唤、复活、状态链等复杂路径中出现的性能回退。
-
-固定 30-case 的版本化结果记录和运行命令见 `docs/perf/fixed_cases_30_benchmark.md`。如果只是本地检查改动趋势，可以把命令中的 `--release` 换成 `--profile release-fast`；正式写入本文或对比历史结果时仍使用 `--release`。
+当前仓库可直接复测的长期入口是 `tswn-cli bench win-rate --perf` 与 OpenBox
+`openbox_mem_probe`；命令和发布要求见根目录 `rule.md`。如需恢复 fixed30 自动化，
+应新增只依赖公开主 Runtime API 的独立 benchmark harness，不得恢复旧执行器或 parity 入口。
 
 ---
 

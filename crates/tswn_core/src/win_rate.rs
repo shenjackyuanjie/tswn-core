@@ -1,16 +1,9 @@
-//! 胜率批量计算模块。
-//!
-//! 提供 [`WinRateTiming`]（计时统计）及 `prepared_win_rate()`（多线程批量对战计算），
-//! 支持指定场数、线程数和计时粒度，供 CLI / WASM / GUI 等上层使用。
+//! 主 Runtime 胜率批量计算接口。
 
-use std::fmt::Write as _;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use crate::error::runner::RunnerResult;
-use crate::{PreparedRunner, Runner};
-
-const PREPARED_WIN_RATE_PARALLEL_THRESHOLD: usize = 100;
+use crate::PreparedRunner;
+use crate::runtime::{
+    RuntimeBatchError, RuntimeBatchSummary, prepared_runtime_win_rate, prepared_runtime_win_rate_range, runtime_groups_win_rate,
+};
 
 #[cfg(target_family = "wasm")]
 fn platform_default_win_rate_workers() -> usize { 1 }
@@ -18,15 +11,12 @@ fn platform_default_win_rate_workers() -> usize { 1 }
 #[cfg(not(target_family = "wasm"))]
 fn platform_default_win_rate_workers() -> usize {
     std::thread::available_parallelism()
-        .map(|x| x.get().saturating_mul(5).div_ceil(4))
+        .map(|value| value.get().saturating_mul(5).div_ceil(4))
         .unwrap_or(1)
 }
 
 #[cfg(target_family = "wasm")]
-fn platform_limit_win_rate_workers(_workers: usize) -> usize {
-    // 浏览器环境下的 wasm 默认不暴露标准线程创建能力。
-    1
-}
+fn platform_limit_win_rate_workers(_workers: usize) -> usize { 1 }
 
 #[cfg(not(target_family = "wasm"))]
 fn platform_limit_win_rate_workers(workers: usize) -> usize { workers.max(1) }
@@ -55,127 +45,45 @@ impl WinRateSummary {
     pub fn win_rate_percent(self) -> f64 { self.wins as f64 * 100.0 / self.total.max(1) as f64 }
 }
 
+impl From<RuntimeBatchSummary> for WinRateSummary {
+    fn from(summary: RuntimeBatchSummary) -> Self {
+        Self {
+            wins: summary.wins,
+            total: summary.total,
+            timing: WinRateTiming {
+                init_nanos: summary.timing.init_nanos,
+                fight_nanos: summary.timing.fight_nanos,
+            },
+        }
+    }
+}
+
 pub fn resolve_win_rate_workers(thread: u32, total: usize) -> usize {
     let workers = match thread {
         0 => platform_default_win_rate_workers(),
         1 => 1,
-        n => n as usize,
+        count => count as usize,
     };
     platform_limit_win_rate_workers(workers).min(total.max(1))
 }
 
-// 复用调用方传入的 String，避免批量胜率计算时每局都重新分配 seed 行。
-// 返回切片是为了直接喂给 `Runner::new_from_prepared_with_seed()`，保持 raw 路径的
-// `seed:...` 整行语义，而不是只传裸 seed 值。
-// 胜率路径始终复刻 JS ProfileWinChance：第 0 局不显式传 seed，之后从
-// `PROFILE_START + round` 开始；eval_rq 只影响名称评分，不影响 seed 调度。
-fn seed_for_round(seed: &mut String, round: usize) -> &[String] {
-    if round == 0 {
-        &[]
-    } else {
-        seed.clear();
-        let _ = write!(seed, "seed:{}@!", crate::engine::PROFILE_START as usize + round);
-        std::slice::from_ref(seed)
-    }
+pub fn prepared_win_rate(
+    prepared: &PreparedRunner,
+    n: usize,
+    _eval_rq: f64,
+    thread: u32,
+) -> Result<WinRateSummary, RuntimeBatchError> {
+    prepared_runtime_win_rate(prepared, n, thread).map(Into::into)
 }
 
-pub fn prepared_win_rate(prepared: &PreparedRunner, n: usize, _eval_rq: f64, thread: u32) -> RunnerResult<WinRateSummary> {
-    let workers = resolve_win_rate_workers(thread, n);
-
-    if !should_parallelize_prepared_win_rate(workers, n) {
-        return run_prepared_win_rate_range(prepared, 0, n);
-    }
-
-    let prepared = Arc::new(prepared.clone());
-    let next = Arc::new(AtomicUsize::new(0));
-    let mut handles = Vec::with_capacity(workers);
-    for _ in 0..workers {
-        let prepared = Arc::clone(&prepared);
-        let next = Arc::clone(&next);
-        handles.push(std::thread::spawn(move || {
-            run_prepared_win_rate_worker(prepared.as_ref(), next.as_ref(), n)
-        }));
-    }
-
-    let mut merged = WinRateSummary::default();
-    for handle in handles {
-        let part = handle.join().expect("win-rate worker thread panicked")?;
-        merged.wins += part.wins;
-        merged.total += part.total;
-        merged.timing.merge(part.timing);
-    }
-    Ok(merged)
+pub fn groups_win_rate(groups: &[Vec<String>], n: usize, eval_rq: f64, thread: u32) -> Result<WinRateSummary, RuntimeBatchError> {
+    runtime_groups_win_rate(groups, n, eval_rq, thread).map(Into::into)
 }
 
-pub fn groups_win_rate(groups: &[Vec<String>], n: usize, eval_rq: f64, thread: u32) -> RunnerResult<WinRateSummary> {
-    // 这是一个“即调即用”的封装：prepare 完当前 groups 后马上完成整轮胜率计算，
-    // 不会把 `PreparedRunner` 返还给上层长期复用。默认走 uncached 可以避免外层批量调用
-    // `groups_win_rate()` 时把不同 matchup 的模板都残留在全局缓存里。
-    let prepared = Runner::prepare_groups_with_eval_rq_uncached(groups, eval_rq)?;
-    prepared_win_rate(&prepared, n, eval_rq, thread)
-}
-
-fn should_parallelize_prepared_win_rate(workers: usize, n: usize) -> bool {
-    workers > 1 && n >= PREPARED_WIN_RATE_PARALLEL_THRESHOLD
-}
-
-pub fn run_prepared_win_rate_range(prepared: &PreparedRunner, start: usize, end: usize) -> RunnerResult<WinRateSummary> {
-    let mut wins = 0usize;
-    let mut total = 0usize;
-    let mut seed = String::with_capacity(24);
-    let mut timing = WinRateTiming::default();
-
-    for i in start..end {
-        let seed_ref = seed_for_round(&mut seed, i);
-
-        let t_init = std::time::Instant::now();
-        let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)?;
-        timing.init_nanos += t_init.elapsed().as_nanos();
-
-        let t_fight = std::time::Instant::now();
-        runner.run_to_completion();
-        timing.fight_nanos += t_fight.elapsed().as_nanos();
-        total += 1;
-        if let Some(winners) = runner.world.winner.as_ref()
-            && let Some(team0) = runner.input_groups.first()
-            && winners.iter().any(|winner| team0.contains(winner))
-        {
-            wins += 1;
-        }
-    }
-
-    Ok(WinRateSummary { wins, total, timing })
-}
-
-fn run_prepared_win_rate_worker(prepared: &PreparedRunner, next: &AtomicUsize, end: usize) -> RunnerResult<WinRateSummary> {
-    let mut wins = 0usize;
-    let mut total = 0usize;
-    let mut seed = String::with_capacity(24);
-    let mut timing = WinRateTiming::default();
-
-    loop {
-        let i = next.fetch_add(1, Ordering::Relaxed);
-        if i >= end {
-            break;
-        }
-
-        let seed_ref = seed_for_round(&mut seed, i);
-
-        let t_init = std::time::Instant::now();
-        let mut runner = Runner::new_from_prepared_with_seed(prepared, seed_ref)?;
-        timing.init_nanos += t_init.elapsed().as_nanos();
-
-        let t_fight = std::time::Instant::now();
-        runner.run_to_completion();
-        timing.fight_nanos += t_fight.elapsed().as_nanos();
-        total += 1;
-        if let Some(winners) = runner.world.winner.as_ref()
-            && let Some(team0) = runner.input_groups.first()
-            && winners.iter().any(|winner| team0.contains(winner))
-        {
-            wins += 1;
-        }
-    }
-
-    Ok(WinRateSummary { wins, total, timing })
+pub fn run_prepared_win_rate_range(
+    prepared: &PreparedRunner,
+    start: usize,
+    end: usize,
+) -> Result<WinRateSummary, RuntimeBatchError> {
+    prepared_runtime_win_rate_range(prepared, start, end).map(Into::into)
 }

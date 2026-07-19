@@ -159,7 +159,11 @@ import {
   playbackDelay,
   buildReplayResultTableHtml,
 } from "./show-replay.js";
-import { ensureApi, buildReplay } from "./show-wasm.js";
+import {
+  buildShowShareUrl,
+  readStaticReplayInputFromSearch,
+} from "./show-routing.js";
+import { ensureApi, buildMainNormalizedReplay } from "./show-wasm.js";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -180,9 +184,6 @@ const INPUT_STORAGE_KEY = "tswn_wasm_show_input";
 const NICKNAME_STORAGE_KEY = "tswn_wasm_show_nicknames";
 /** @type {SpeedMode} 新战斗默认播放速度 */
 const DEFAULT_SPEED_MODE = "normal";
-/** @type {string[]} URL 参数名，值为 URL-safe Base64 编码后的原始对局输入 */
-const STATIC_INPUT_PARAM_NAMES = ["input", "replay", "data"];
-
 // ============================================================================
 // DOM 元素引用
 // ============================================================================
@@ -216,7 +217,6 @@ const versionInfo = document.querySelector("#versionInfo");
 const coreVersionInfo = document.querySelector("#coreVersionInfo");
 /** @type {HTMLElement} */
 const modulePathInfo = document.querySelector("#modulePathInfo");
-
 /** @type {HTMLButtonElement} */
 const startBtn = document.querySelector("#startBtn");
 /** @type {HTMLButtonElement} */
@@ -303,7 +303,6 @@ let playbackFinished = false;
 let rightControlsCollapsed = window.matchMedia("(max-width: 640px)").matches;
 /** @type {number|null} 分享复制提示的隐藏定时器 */
 let shareToastTimer = null;
-
 // 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
 restoreNicknameMap();
@@ -1101,59 +1100,15 @@ function showShareToast(message = "分享链接已复制") {
  * @returns {string}
  * @throws {Error} 当参数为空、Base64 不合法或 UTF-8 解码失败时抛出错误
  */
-function decodeBase64UrlUtf8(encoded) {
-  const compact = encoded.trim();
-  if (!compact) {
-    throw new Error("URL 参数为空。");
-  }
-  if (!/^[A-Za-z0-9_-]+={0,2}$/.test(compact)) {
-    throw new Error("不是合法的 URL-safe Base64。");
-  }
-
-  const base64 = compact.replace(/-/g, "+").replace(/_/g, "/");
-  if (base64.length % 4 === 1) {
-    throw new Error("Base64 长度不合法。");
-  }
-
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const binary = window.atob(padded);
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-}
-
-/**
- * 将 UTF-8 字符串编码成 URL-safe Base64。
- * @param {string} input
- * @returns {string}
- */
-function encodeBase64UrlUtf8(input) {
-  const bytes = new TextEncoder().encode(input);
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    const chunk = bytes.subarray(offset, offset + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return window
-    .btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 /**
  * 为当前对局输入生成分享链接。
  * @param {string} rawInput
  * @returns {string}
  */
 function buildShareUrl(rawInput) {
-  const url = new URL(window.location.href);
-  for (const paramName of STATIC_INPUT_PARAM_NAMES) {
-    url.searchParams.delete(paramName);
-  }
-  url.searchParams.set("input", encodeBase64UrlUtf8(rawInput));
-  url.hash = "";
-  return url.href;
+  return buildShowShareUrl(rawInput, {
+    href: window.location.href,
+  });
 }
 
 /**
@@ -1189,25 +1144,11 @@ async function copyTextToClipboard(text) {
  * @returns {{ ok: true, input: string, paramName: string }|{ ok: false, message: string }|null}
  */
 function readStaticReplayInputFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  for (const paramName of STATIC_INPUT_PARAM_NAMES) {
-    if (!params.has(paramName)) {
-      continue;
-    }
-    try {
-      return {
-        ok: true,
-        input: decodeBase64UrlUtf8(params.get(paramName) ?? ""),
-        paramName,
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        message: `URL 参数 ${paramName} 解码失败：${formatError(error)}`,
-      };
-    }
-  }
-  return null;
+  return readStaticReplayInputFromSearch(window.location.search);
+}
+
+async function buildMainReplay(rawInput) {
+  return buildMainNormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
 }
 
 // ============================================================================
@@ -1442,13 +1383,13 @@ async function startBattle({ persistInput = true } = {}) {
   stopPlaybackLoop();
   clearCurrentReplayView();
   setLoading(true);
-  setInputStatus("正在生成回放，请稍候...");
+  setInputStatus("正在使用 runtime normalized run 生成回放，请稍候...");
 
   try {
     currentReplay = applyNicknamesToReplay(
-      normalizeReplayPlayers(await buildReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo)),
+      normalizeReplayPlayers(await buildMainReplay(rawInput)),
     );
-    setInputStatus("回放已生成，开始自动播放。");
+    setInputStatus("runtime 回放已生成，开始自动播放。");
     closePanel(inputPanel);
     beginReplayPlayback(currentReplay);
   } catch (error) {
@@ -1695,7 +1636,7 @@ async function main() {
   syncPlaybackUi();
   syncRightControlsUi();
   if (staticInput?.ok) {
-    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在初始化回放...`);
+    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在使用 runtime normalized run 初始化回放...`);
   } else {
     setInputStatus(staticInput?.message ?? "会使用 show 风格自动播放整场战斗。", Boolean(staticInput));
     openInputEditor();

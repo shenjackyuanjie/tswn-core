@@ -3,8 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde::Deserialize;
-use tswn_core::engine::storage::Storage;
-use tswn_core::player::{Player, skill::skill_name_to_id};
+use tswn_core::cli_api;
+use tswn_core::namerena::skill_name_to_id;
 
 use super::tasks::NamerPfScores;
 
@@ -115,13 +115,10 @@ fn highest_skills(name_group: &[String]) -> Vec<BuiltSkill> {
 }
 
 fn skills_from_name(raw: &str) -> Vec<BuiltSkill> {
-    let storage = Storage::new_arc();
-    let mut player = match Player::new_from_namerena_raw(raw.to_string(), storage) {
-        Ok(player) => player,
+    let diy = match cli_api::to_diy(raw, true, false) {
+        Ok(diy) => diy,
         Err(_) => return Vec::new(),
     };
-    player.build();
-    let diy = player.to_diy_compact();
     extract_skill_object(&diy).map(parse_skill_object).unwrap_or_default()
 }
 

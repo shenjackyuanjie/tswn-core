@@ -12,6 +12,6 @@ runner = tswn_py.Runner.new_from_prepared_with_seed(prepared, seed)
 
 runner.run_to_completion()
 
-winner = runner.world_state.winner
-print(f"winner={winner}")
+winner_team = runner.winner_team_index()
+print(f"winner_team={winner_team}")
 print(f"input_groups={runner.input_groups}")

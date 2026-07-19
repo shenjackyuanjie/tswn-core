@@ -74,6 +74,12 @@ pub enum ParsedCommand {
         /// 显式指定的基准测试线程数。
         threads: Option<usize>,
     },
+    RuntimeNormalizedRun {
+        /// 使用默认 custom runtime profile 运行的 namerena raw 输入。
+        raw: String,
+        /// 最多推进的回合数。
+        max_rounds: usize,
+    },
     BenchAuto {
         /// 基准测试原始输入，按组数自动分流到评分或胜率测试。
         raw: String,

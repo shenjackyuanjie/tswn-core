@@ -7,9 +7,12 @@
 
 use std::time::{Duration, Instant};
 
-use tswn_core::Runner;
-use tswn_core::player::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::win_rate::{WinRateTiming, prepared_win_rate, run_prepared_win_rate_range};
+use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
+use tswn_core::runtime::{
+    PreparedRuntimeRunner, RuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range,
+    runtime_groups_win_rate,
+};
+use tswn_core::win_rate::WinRateTiming;
 
 use crate::args::BenchThreadMode;
 
@@ -26,7 +29,7 @@ struct BenchmarkInput {
 
 /// 解析 benchmark 输入，并识别 JS `!test!` score marker。
 fn parse_benchmark_input(raw: &str) -> BenchmarkInput {
-    let (mut groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let (mut groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let mut score_modifier = None;
 
     if groups.first().and_then(|group| group.first()).is_some_and(|name| name == "!test!") {
@@ -99,7 +102,7 @@ pub fn run_bench_winrate(
 }
 
 fn print_bench_winrate_matchup(raw: &str) {
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let groups: Vec<_> = groups.into_iter().filter(|group| !group.is_empty()).collect();
 
     match groups.as_slice() {
@@ -166,29 +169,14 @@ pub fn run_bench_group_win_rate(
 
 /// 普通 win-rate 的实际执行器。
 pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64) -> BenchSummary {
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    // 这里的模板只服务当前这一个 matchup；`batch-rate` / `bench pair` 的外层循环
-    // 会不断传入新的 `raw`，几乎没有缓存复用价值。改走 uncached 后，当前 matchup
-    // 跑完即可释放模板，不会把大量一次性对阵长期压在全局缓存里。
-    let prepared = match Runner::prepare_groups_with_eval_rq_uncached(&groups, eval_rq) {
-        Ok(prepared) => prepared,
-        Err(err) => {
-            eprintln!("构建胜率模板失败: {err}");
-            return BenchSummary {
-                wins: 0,
-                total: 0,
-                timing: WinRateTiming::default(),
-                elapsed: Duration::default(),
-            };
-        }
-    };
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let started_at = Instant::now();
 
     let thread = match mode {
         BenchThreadMode::SingleThread => 1,
         BenchThreadMode::Parallel => threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0),
     };
-    let summary = match prepared_win_rate(&prepared, n, eval_rq, thread) {
+    let summary = match runtime_groups_win_rate(&groups, n, eval_rq, thread) {
         Ok(summary) => summary,
         Err(err) => {
             eprintln!("执行胜率测试失败: {err}");
@@ -216,10 +204,13 @@ pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads
 /// 强制单线程以保证顺序正确。
 fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) -> BenchSummary {
     let step = step.max(1);
-    let (groups, _) = Runner::split_namerena_into_groups(raw.to_string());
-    // 分段输出和普通 win-rate 一样，只消费当前这一份模板；这里没有必要把模板写入
-    // 全局缓存，否则批量分析多个输入时缓存会只增不减。
-    let prepared = match Runner::prepare_groups_with_eval_rq_uncached(&groups, eval_rq) {
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
+    let prepared = match (|| -> Result<_, tswn_core::runtime::RuntimeBatchError> {
+        let config = default_custom_runtime_import_config()?;
+        Ok(PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(
+            &groups, eval_rq, config,
+        )?)
+    })() {
         Ok(prepared) => prepared,
         Err(err) => {
             eprintln!("构建胜率模板失败: {err}");
@@ -240,7 +231,7 @@ fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) ->
     let mut offset = 0usize;
     while offset < n {
         let chunk_end = (offset + step).min(n);
-        let chunk = match run_prepared_win_rate_range(&prepared, offset, chunk_end) {
+        let chunk = match prepared_runtime_win_rate_range(&prepared, offset, chunk_end) {
             Ok(chunk) => chunk,
             Err(err) => {
                 eprintln!("分段 [{offset}, {chunk_end}) 胜率测试失败: {err}");

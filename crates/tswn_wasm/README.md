@@ -98,11 +98,11 @@ frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子 `6
 同一句中的多个 `player` part 各自携带独立的 HP 前后值；生命之轮体力互换会强制双方都展示血条，即使某一方或双方 HP 没有变化。
 死亡特效只读取死亡句中 player part 的 `death_effect`；附体、自爆或 owner 死亡牵连等机制死亡会由底层在“被击倒/消失”句同步 HP 为 `0`。任何 `death_effect == true` 的 player part 都会同时返回 `show_hp == false`。
 
-`show.html` 的战斗正文渲染只消费 `RoundFrame.rows[].clips[]` 结构化 replay view：分行、分段 delay、文本片段、高亮色、玩家 HP 条、死亡效果和侧栏快照均来自底层字段。前端不再从 `message_template`、`message_rendered` 或 `hp_delta` 反推展示语义；`updates[]` 仅保留给结算统计等非正文渲染用途。
+`examples/index.html` 的战斗正文渲染只消费 `RoundFrame.rows[].clips[]` 结构化 replay view：分行、分段 delay、文本片段、高亮色、玩家 HP 条、死亡效果和侧栏快照均来自底层字段。前端不再从 `message_template`、`message_rendered` 或 `hp_delta` 反推展示语义；`updates[]` 仅保留给结算统计等非正文渲染用途。
 
 normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算表；fast、turbo 和单步跳转会即时显示。左侧玩家列表 HP 条使用较慢的过渡动画，以便看清血量变化。
 
-`show.html` 支持通过 `?input=<url-safe-base64>` 直接传入 UTF-8 对局输入并自动播放；`replay` / `data` 可作为兼容别名，解码失败时会停留在输入面板并显示错误。右下角控制栏的分享按钮会复制当前对局对应的 `input` 链接。
+`examples/index.html` 支持通过 `?input=<url-safe-base64>` 直接传入 UTF-8 对局输入并自动播放；`replay` / `data` 可作为兼容别名，解码失败时会停留在输入面板并显示错误。右下角控制栏的分享按钮会复制当前对局对应的 `input` 链接。
 
 ### 错误
 
@@ -124,11 +124,11 @@ normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算
 
 负面状态（红色）：`魅惑`、`诅咒`、`冰冻`、`中毒`、`迟缓`、`垂死`
 
-`show.html` 演示页面已内置状态标签渲染，在玩家面板中显示彩色 pill。
+`examples/index.html` 演示页面已内置状态标签渲染，在玩家面板中显示彩色 pill。
 
 ### 头像 Sprite 渲染
 
-`show.html` 演示页面使用 CSS Sprite 方式渲染玩家头像，不再生成大量 `<img src="data:...">` DOM 节点：
+`examples/index.html` 演示页面使用 CSS Sprite 方式渲染玩家头像，不再生成大量 `<img src="data:...">` DOM 节点：
 
 - `show-utils.js` 提供 `iconClassName()` / `buildIconClassCss()` 工具函数，将玩家的 PNG Base64 头像编码为 `.icon_N { background-image: url(...) }` 样式规则。
 - `show.js` 在回放开始时调用 `normalizeReplayPlayers()` 为玩家补齐 `iconClassId`（同队统一使用队首个玩家头像编号），并通过 `syncIconStyles()` 动态注入 `<style>` 标签。
@@ -145,7 +145,7 @@ normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算
 | 文件                                 | 说明                                                                                                                               |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `demo.html` / `demo.js` / `demo.css` | 快速功能验证（战斗 + 胜率）                                                                                                        |
-| `show.html` / `show.js` / `show.css` | 完整对局动画展示                                                                                                                   |
+| `index.html` / `show.js` / `show.css` | 完整对局动画展示                                                                                                                  |
 | `show-wasm.js`                       | WASM 模块加载与初始化                                                                                                              |
 | `show-utils.js`                      | DOM 渲染工具函数（含头像 Sprite 工具 `iconClassName()` / `buildIconClassCss()` / `withTeamIconClassIds()` / `renderIconSprite()`） |
 | `show-render.js`                     | 玩家状态 / 头像渲染（CSS Sprite 方式，`renderIconSprite()`）                                                                       |
@@ -156,7 +156,7 @@ normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算
 cd crates/tswn_wasm/dist/wasm
 python -m http.server 8000
 # 打开 http://127.0.0.1:8000/examples/demo.html
-# 或   http://127.0.0.1:8000/examples/show.html
+# 或   http://127.0.0.1:8000/examples/
 ```
 
 详细运行说明见 `examples/README.md`。
@@ -173,10 +173,6 @@ uv run scripts/build_wasm.py --release
 ```powershell
 cargo install wasm-bindgen-cli
 ```
-
-## 设计
-
-详见 [docs/tswn_wasm_design.md](../../docs/tswn_wasm_design.md)。
 
 ## 版本
 

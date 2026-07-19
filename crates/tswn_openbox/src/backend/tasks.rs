@@ -8,21 +8,23 @@ use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 use tswn_core::cli_api;
-use tswn_core::engine::storage::Storage;
-use tswn_core::player::{Player, eval_name::WIN_RATE_EVAL_RQ};
+use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
+use tswn_core::namerena::{NamerenaInput, PreparedRoster};
+use tswn_core::runtime::{RuntimeCqpMatchup, runtime_cqp_matchups};
 
 use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
 };
 use super::parse::{
-    parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups, parse_target_groups,
+    first_duplicate_name_in_matchup, parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels,
+    parse_plus_separated_groups, parse_target_groups,
 };
-use super::score::{BatchRateSummary, BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
+use super::score::{BatchRateSummary, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
 use super::types::{BatchRateInput, NamerPfInput, NamerPfMetric, NamerPfMetricOptions, OutputMode, PairInput, ProgressEvent};
 
@@ -51,15 +53,20 @@ pub fn run_to_diy(
             && names.len() == 1
             && let Some(detail_name) = single_to_diy_detail_name(name)
         {
-            let storage = Storage::new_arc();
-            let mut player = Player::new_from_namerena_raw(detail_name.to_string(), storage)
+            let input = NamerenaInput::from_raw_groups(&[vec![detail_name.clone()]])
                 .map_err(|err| format!("构建玩家失败: {detail_name}: {err}"))?;
-            player.build();
-            let status = player.get_status();
+            let roster = match PreparedRoster::build(&input, tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ) {
+                Ok(roster) => roster,
+                Err(error) => match error {},
+            };
+            let player = roster.players.first().ok_or_else(|| format!("构建玩家失败: {detail_name}: 无有效玩家"))?;
+            let status = player.status;
+            let diy =
+                cli_api::to_diy(&detail_name, true, false).map_err(|err| format!("导出玩家技能失败: {detail_name}: {err}"))?;
             let _ = writeln!(out);
             let _ = writeln!(out, "=== 原始信息 ===");
-            let _ = writeln!(out, "名字: {}", player.id_name());
-            let _ = writeln!(out, "队伍: {}", player.clan_name());
+            let _ = writeln!(out, "名字: {}", player.name);
+            let _ = writeln!(out, "队伍: {}", player.clan_name);
             let _ = writeln!(
                 out,
                 "八围: atk={} def={} spd={} agi={} mag={} res={} wis={} maxhp={}",
@@ -72,8 +79,8 @@ pub fn run_to_diy(
                 status.wisdom,
                 status.max_hp,
             );
-            let _ = writeln!(out, "技能: {}", player_diy_skill_object(&player));
-            let _ = writeln!(out, "name_factor: {:.6}", player.get_name_factor());
+            let _ = writeln!(out, "技能: {}", extract_diy_skill_object(&diy).unwrap_or("{}"));
+            let _ = writeln!(out, "name_factor: {:.6}", player.name_factor);
         }
     }
 
@@ -87,11 +94,6 @@ fn single_to_diy_detail_name(raw: &str) -> Option<String> {
         _ => None,
     }
 }
-fn player_diy_skill_object(player: &Player) -> String {
-    let diy = player.to_diy_compact();
-    extract_diy_skill_object(&diy).unwrap_or("{}").to_string()
-}
-
 fn extract_diy_skill_object(diy: &str) -> Option<&str> {
     let attrs_start = diy.find("+diy[")? + "+diy[".len();
     let attrs_end = attrs_start + diy[attrs_start..].find(']')?;
@@ -218,7 +220,10 @@ pub fn run_namer_pf(input: NamerPfInput, send: impl Fn(ProgressEvent)) {
             },
             || {
                 progress_done += 1;
-                send(ProgressEvent::Progress { done: progress_done, total });
+                send(ProgressEvent::Progress {
+                    done: progress_done,
+                    total,
+                });
             },
             |result| {
                 emit_namer_pf_result(
@@ -465,53 +470,83 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
     let total = player_groups.len() * target_groups.len();
     let mut done = 0usize;
 
-    let job_settings = BatchRateJobSettings {
-        n,
-        threads: input.options.threads,
-        eval_rq,
-        verbose: input.options.verbose,
-        collect_details: input.show_matchups,
-    };
-    let outer_workers = low_accuracy_outer_workers(n, player_groups.len(), outer_thread_spec(input.options.threads));
-    if outer_workers > 1 {
-        let job_settings = job_settings.with_threads(Some(1));
-        if let Err(err) = run_outer_parallel_ordered(
-            &player_groups,
-            outer_workers,
-            &input.cancel,
-            |index, player, tick| {
-                compute_batch_rate_result(
-                    player,
-                    &player_labels[index],
-                    &target_groups,
-                    job_settings,
-                    &input.cancel,
-                    tick,
-                )
+    let mut results = player_labels
+        .iter()
+        .map(|label| BatchRateJobResult {
+            label: label.clone(),
+            summary: BatchRateSummary {
+                avg: 0.0,
+                wins: 0,
+                total: 0,
+                valid_matchups: 0,
+                skipped_matchups: 0,
             },
-            || {
+            detail_rates: Vec::new(),
+        })
+        .collect::<Vec<_>>();
+    let mut requests = Vec::with_capacity(total);
+    let mut request_slots = Vec::with_capacity(total);
+    for (player_index, player) in player_groups.iter().enumerate() {
+        for (target_index, target) in target_groups.iter().enumerate() {
+            if first_duplicate_name_in_matchup(&[player.as_str(), target.as_str()]).is_some() {
+                results[player_index].summary.skipped_matchups += 1;
                 done += 1;
                 send(ProgressEvent::Progress { done, total });
-            },
-            |result| emit_batch_rate_result(&result, &input, &mut output, precision, &send),
-        ) {
-            send(ProgressEvent::Done(Err(err)));
+                continue;
+            }
+            requests.push(RuntimeCqpMatchup::new(vec![group_lines(player), group_lines(target)]));
+            request_slots.push((player_index, target_index));
+        }
+    }
+
+    let matrix = match runtime_cqp_matchups(
+        &requests,
+        n,
+        eval_rq,
+        outer_thread_spec(input.options.threads),
+        &input.cancel,
+        || {
+            done += 1;
+            send(ProgressEvent::Progress { done, total });
+        },
+    ) {
+        Ok(matrix) => matrix,
+        Err(err) => {
+            send(ProgressEvent::Done(Err(format!("cqd/cqp 执行失败: {err}"))));
             return;
         }
-    } else {
-        for (player, label) in player_groups.iter().zip(player_labels.iter()) {
-            let result = compute_batch_rate_result(player, label, &target_groups, job_settings, &input.cancel, || {
-                done += 1;
-                send(ProgressEvent::Progress { done, total });
-            });
-            if let Err(err) = emit_batch_rate_result(&result, &input, &mut output, precision, &send) {
-                send(ProgressEvent::Done(Err(err)));
-                return;
+    };
+
+    for ((player_index, target_index), outcome) in request_slots.into_iter().zip(matrix.matchups) {
+        let Some(outcome) = outcome else {
+            continue;
+        };
+        let result = &mut results[player_index];
+        match outcome.summary {
+            Ok(summary) => {
+                let percent = summary.win_rate_percent();
+                result.summary.avg += percent;
+                result.summary.wins += summary.wins;
+                result.summary.total += summary.total;
+                result.summary.valid_matchups += 1;
+                if input.show_matchups {
+                    result.detail_rates.push((percent, target_groups[target_index].clone()));
+                }
             }
-            if input.cancel.load(Ordering::Relaxed) {
-                send(ProgressEvent::Done(Ok("已停止。".to_string())));
-                return;
-            }
+            Err(_) => result.summary.skipped_matchups += 1,
+        }
+    }
+
+    for result in &mut results {
+        if result.summary.valid_matchups > 0 {
+            result.summary.avg /= result.summary.valid_matchups as f64;
+        }
+        if input.cancel.load(Ordering::Relaxed) && result.summary.valid_matchups == 0 && result.summary.skipped_matchups == 0 {
+            continue;
+        }
+        if let Err(err) = emit_batch_rate_result(result, &input, &mut output, precision, &send) {
+            send(ProgressEvent::Done(Err(err)));
+            return;
         }
     }
 
@@ -533,59 +568,14 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
     send(ProgressEvent::Done(Ok(final_message)));
 }
 
-#[derive(Clone, Copy)]
-struct BatchRateJobSettings {
-    n: usize,
-    threads: Option<usize>,
-    eval_rq: f64,
-    verbose: bool,
-    collect_details: bool,
-}
-
-impl BatchRateJobSettings {
-    fn with_threads(self, threads: Option<usize>) -> Self { Self { threads, ..self } }
-}
-
 struct BatchRateJobResult {
     label: String,
     summary: BatchRateSummary,
     detail_rates: Vec<(f64, String)>,
 }
 
-fn compute_batch_rate_result(
-    player: &str,
-    label: &str,
-    target_groups: &[String],
-    settings: BatchRateJobSettings,
-    cancel: &AtomicBool,
-    mut tick_target: impl FnMut(),
-) -> BatchRateJobResult {
-    let mut verbose = String::new();
-    let mut detail_rates = Vec::new();
-    let summary = bench_batch_rate_for_group(
-        player,
-        target_groups,
-        settings.n,
-        settings.threads,
-        settings.eval_rq,
-        settings.verbose,
-        &mut verbose,
-        cancel,
-        |_, _, target, outcome| {
-            if settings.collect_details
-                && let BatchTargetOutcome::Rate { percent, .. } = &outcome
-            {
-                detail_rates.push((*percent, target.to_string()));
-            }
-            tick_target();
-        },
-    );
-
-    BatchRateJobResult {
-        label: label.to_string(),
-        summary,
-        detail_rates,
-    }
+fn group_lines(group: &str) -> Vec<String> {
+    group.lines().map(str::trim).filter(|name| !name.is_empty()).map(str::to_owned).collect()
 }
 
 fn emit_batch_rate_result(
@@ -846,7 +836,7 @@ fn score_output_line_value(line: &str, mode: OutputMode) -> Option<f64> {
 
 fn eval_rq(keep_rq: bool) -> f64 {
     if keep_rq {
-        tswn_core::player::eval_name::DEFAULT_EVAL_RQ
+        tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ
     } else {
         WIN_RATE_EVAL_RQ
     }
@@ -856,18 +846,23 @@ fn player_to_ol(raw: &str) -> Result<String, String> {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return Ok(raw.to_string());
     }
-    let storage = Storage::new_arc();
-    let mut player = Player::new_from_namerena_raw(raw.to_string(), storage)
-        .map_err(|err| format!("转换 player-list 名字为 +ol 失败: {raw}: {err}"))?;
-    player.build();
-    Ok(player.to_ol_json())
+    cli_api::to_diy(raw, false, false).map_err(|err| format!("转换 player-list 名字为 +ol 失败: {raw}: {err}"))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
 
-    use super::{OutputMode, compare_score_output_lines, run_to_diy, score_output_line_value};
+    use tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ;
+
+    use crate::backend::CommonBenchOptions;
+
+    use super::{
+        BatchRateInput, OutputMode, ProgressEvent, bench_batch_rate_for_group, compare_score_output_lines,
+        format_batch_screen_log, run_batch_rate, run_to_diy, score_output_line_value,
+    };
 
     #[test]
     fn log_output_lines_sort_by_score_descending() {
@@ -915,5 +910,65 @@ mod tests {
         assert!(lines[1].starts_with("2@a+diy["));
         assert!(lines[2].starts_with("1@a+diy["));
         assert!(lines[2].contains("+2@a+diy["));
+    }
+
+    #[test]
+    fn batch_rate_runtime_matrix_matches_legacy_summary_and_order() {
+        let players = ["alpha@red", "beta@blue"];
+        let targets = ["gamma@green", "delta@yellow"];
+        let mut expected = Vec::new();
+        for player in players {
+            let mut verbose = String::new();
+            let cancel = AtomicBool::new(false);
+            let summary = bench_batch_rate_for_group(
+                player,
+                &targets.map(str::to_owned),
+                24,
+                Some(1),
+                DEFAULT_EVAL_RQ,
+                false,
+                &mut verbose,
+                &cancel,
+                |_, _, _, _| {},
+            );
+            expected.push(format_batch_screen_log(player, summary.avg, &[], 9));
+        }
+
+        let events = RefCell::new(Vec::new());
+        run_batch_rate(
+            BatchRateInput {
+                target_text: targets.join("\n"),
+                player_text: players.join("\n"),
+                target_double_plus: false,
+                player_double_plus: false,
+                show_matchups: false,
+                highlight_delta: None,
+                output_mode: OutputMode::Log,
+                output_file: None,
+                options: CommonBenchOptions {
+                    count: 24,
+                    threads: Some(4),
+                    keep_rq: true,
+                    verbose: false,
+                    min_screen: None,
+                    min_file: None,
+                    wr_precision: 9,
+                },
+                cancel: Arc::new(AtomicBool::new(false)),
+            },
+            |event| events.borrow_mut().push(event),
+        );
+
+        let events = events.into_inner();
+        let actual = events
+            .iter()
+            .filter_map(|event| match event {
+                ProgressEvent::Log(line) if players.iter().any(|player| line.contains(player)) => Some(line.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+        assert!(events.iter().any(|event| matches!(event, ProgressEvent::Progress { done: 4, total: 4 })));
+        assert!(events.iter().any(|event| matches!(event, ProgressEvent::Done(Ok(_)))));
     }
 }

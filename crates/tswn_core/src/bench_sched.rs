@@ -179,15 +179,7 @@ mod tests {
     fn single_worker_handles_empty_and_single_item() {
         let cancel = AtomicBool::new(false);
         let empty: Vec<usize> = Vec::new();
-        let count = run_outer_parallel_ordered(
-            &empty,
-            4,
-            &cancel,
-            |_, item: &usize, _| *item,
-            || {},
-            |_| Ok(()),
-        )
-        .unwrap();
+        let count = run_outer_parallel_ordered(&empty, 4, &cancel, |_, item: &usize, _| *item, || {}, |_| Ok(())).unwrap();
         assert_eq!(count, 0);
 
         let one = vec![7usize];
@@ -222,11 +214,7 @@ mod tests {
             || {},
             |value| {
                 emitted += 1;
-                if value == 0 {
-                    Err("boom".to_string())
-                } else {
-                    Ok(())
-                }
+                if value == 0 { Err("boom".to_string()) } else { Ok(()) }
             },
         );
 

@@ -1,5 +1,6 @@
-//! Shared test harness for tswn engines.
+//! tswn 各运行引擎共用的测试框架。
 
+pub mod golden;
 pub mod suite;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,10 +26,12 @@ pub trait EngineAdapter {
     fn have_winner(runner: &Self::Runner) -> bool;
     fn winner_names(runner: &Self::Runner) -> Vec<String>;
 
+    fn winner_team_index(_runner: &Self::Runner) -> Option<usize> { None }
+
     fn rc4_state(_runner: &Self::Runner) -> Option<(usize, usize)> { None }
 }
 
-pub struct CoreEngine;
+pub struct RuntimeEngine;
 
 #[macro_export]
 macro_rules! test_engine_suite {
@@ -46,8 +49,10 @@ macro_rules! test_engine_suite {
             #[test]
             fn small_seed_scores() { $crate::suite::simple::small_seed_scores::<$engine>(); }
             #[test]
-            fn case_d8c6_opening_matches_js_trace() {
-                $crate::suite::simple::case_d8c6_opening_matches_js_trace::<$engine>();
+            fn case_d8c6_opening_matches_js_trace() { $crate::suite::simple::case_d8c6_opening_matches_js_trace::<$engine>(); }
+            #[test]
+            fn case_large_67_summon_opening_matches_js_trace() {
+                $crate::suite::simple::case_large_67_summon_opening_matches_js_trace::<$engine>();
             }
         }
 

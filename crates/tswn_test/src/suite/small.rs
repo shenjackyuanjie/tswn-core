@@ -27,5 +27,3 @@ pub fn small_seed<E: crate::EngineAdapter>() {
     let winner = winner_names::<E>(&runner);
     assert_eq!(winner, vec!["aaaaa".to_string()]);
 }
-
-

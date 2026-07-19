@@ -1,6 +1,21 @@
 # 更新日志
 
-## [0.4.1] - unreleased
+## [0.6.0] - 2026-07-18
+
+### ⚠️ Breaking Changes
+
+- crate 版本进入 `0.6.0`，`tswn_capi_abi_version()` 从 `3` 升为 `4`；调用方必须重新编译并重新链接。
+
+### 变更
+
+- opaque runner、prepared、updates、snapshot、score 与 win-rate 接口改由主 Runtime 驱动，函数签名和结构体布局保持不变；无显式 guard 的 completion 统一限制为 20,000 主回合。
+- 删除仅用于旧/主引擎对账的 `tswn_default_custom_runtime_parity_json` 导出。
+
+## [0.5.0] - 2026-07-14
+
+### ⚠️ Breaking Changes
+
+- C ABI 函数签名与结构体布局不变，但无 runtime 参数的评分、胜率、批量与配队高层导出默认改用 Runtime；依赖 legacy 执行副作用或错误分类的调用方需要重新验证。
 
 ### 新增
 

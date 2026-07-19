@@ -28,6 +28,150 @@ const VAL_INIT: [u8; 256] = val!();
 /// 状态数组长度。
 pub const VAL_LEN: usize = 256;
 
+/// 对现有状态执行一轮 RC4 密钥调度。
+///
+/// 热路径会为每个玩家执行多次完整的 256 字节调度。这里用循环键下标代替取模，
+/// 并在一次边界证明后直接访问状态和密钥，避免在循环内反复做边界检查。
+#[inline]
+fn apply_key_scheduling(state: &mut [u8; VAL_LEN], keys: &[u8]) {
+    let key_len = keys.len();
+    assert!(key_len != 0, "RC4 密钥不能为空");
+
+    let state_ptr = state.as_mut_ptr();
+    let key_ptr = keys.as_ptr();
+    let mut key_index = 0usize;
+    let mut j = 0u8;
+
+    for x in 0..VAL_LEN {
+        // SAFETY: x 始终小于 VAL_LEN；key_index 在每轮末尾回绕，始终小于非零的 key_len；
+        // j 是 u8，转换后的下标天然落在 0..VAL_LEN。两个状态指针可能相同，逐字节交换对此安全。
+        unsafe {
+            let x_ptr = state_ptr.add(x);
+            j = j.wrapping_add(*x_ptr).wrapping_add(*key_ptr.add(key_index));
+            let j_ptr = state_ptr.add(j as usize);
+            let value = *x_ptr;
+            *x_ptr = *j_ptr;
+            *j_ptr = value;
+        }
+
+        key_index += 1;
+        if key_index == key_len {
+            key_index = 0;
+        }
+    }
+}
+
+/// 执行一条 KSA lane 的单步交换。
+#[inline(always)]
+fn apply_key_scheduling_step(state: &mut [u8; VAL_LEN], key: &[u8], x: usize, key_index: usize, j: &mut u8) {
+    let state_ptr = state.as_mut_ptr();
+    // SAFETY: 调用方保证 x 小于 256，key_index 小于非空 key 长度；j 为 u8，
+    // 因而状态数组的两个下标和密钥下标都始终在界内。
+    unsafe {
+        let x_ptr = state_ptr.add(x);
+        *j = j.wrapping_add(*x_ptr).wrapping_add(*key.as_ptr().add(key_index));
+        let j_ptr = state_ptr.add(*j as usize);
+        let value = *x_ptr;
+        *x_ptr = *j_ptr;
+        *j_ptr = value;
+    }
+}
+
+macro_rules! define_same_len_interleaved_ksa {
+    (
+        $name:ident,
+        $width:literal,
+        ($first_state:ident, $first_key:ident, $first_j:ident)
+        $(, ($state:ident, $key:ident, $j:ident))*
+        $(,)?
+    ) => {
+        #[inline]
+        fn $name(states: &mut [RC4; $width], keys: &[&[u8]; $width]) {
+            let [$first_state, $($state),*] = states;
+            let &[$first_key, $($key),*] = keys;
+            let key_len = $first_key.len();
+            debug_assert!(key_len != 0);
+            debug_assert!(keys.iter().all(|key| key.len() == key_len));
+            let mut $first_j = 0u8;
+            $(let mut $j = 0u8;)+
+            macro_rules! apply_all_lanes {
+                ($x:expr, $key_index:expr) => {{
+                    apply_key_scheduling_step(
+                        &mut $first_state.main_val,
+                        $first_key,
+                        $x,
+                        $key_index,
+                        &mut $first_j,
+                    );
+                    $(apply_key_scheduling_step(&mut $state.main_val, $key, $x, $key_index, &mut $j);)+
+                }};
+            }
+            if key_len == 9 {
+                let mut x = 0usize;
+                while x < 252 {
+                    apply_all_lanes!(x, 0);
+                    apply_all_lanes!(x + 1, 1);
+                    apply_all_lanes!(x + 2, 2);
+                    apply_all_lanes!(x + 3, 3);
+                    apply_all_lanes!(x + 4, 4);
+                    apply_all_lanes!(x + 5, 5);
+                    apply_all_lanes!(x + 6, 6);
+                    apply_all_lanes!(x + 7, 7);
+                    apply_all_lanes!(x + 8, 8);
+                    x += 9;
+                }
+                apply_all_lanes!(252, 0);
+                apply_all_lanes!(253, 1);
+                apply_all_lanes!(254, 2);
+                apply_all_lanes!(255, 3);
+                return;
+            }
+            let mut key_index = 0usize;
+            for x in 0..VAL_LEN {
+                apply_all_lanes!(x, key_index);
+                key_index += 1;
+                if key_index == key_len {
+                    key_index = 0;
+                }
+            }
+        }
+    };
+}
+
+define_same_len_interleaved_ksa!(apply_key_scheduling_interleaved_2, 2, (state0, key0, j0), (state1, key1, j1),);
+define_same_len_interleaved_ksa!(
+    apply_key_scheduling_interleaved_3,
+    3,
+    (state0, key0, j0),
+    (state1, key1, j1),
+    (state2, key2, j2),
+);
+define_same_len_interleaved_ksa!(
+    apply_key_scheduling_interleaved_4,
+    4,
+    (state0, key0, j0),
+    (state1, key1, j1),
+    (state2, key2, j2),
+    (state3, key3, j3),
+);
+
+/// 交错推进 key 长度不同的 KSA 链，作为通用回退路径。
+#[inline]
+fn apply_key_scheduling_interleaved_variable_keys<const N: usize>(states: &mut [RC4; N], keys: &[&[u8]; N]) {
+    let mut key_indices = [0usize; N];
+    let mut js = [0u8; N];
+    for x in 0..VAL_LEN {
+        for lane in 0..N {
+            let state = &mut states[lane].main_val;
+            let key = keys[lane];
+            let key_index = key_indices[lane];
+            js[lane] = js[lane].wrapping_add(state[x]).wrapping_add(key[key_index]);
+            state.swap(x, js[lane] as usize);
+            key_indices[lane] = if key_index + 1 == key.len() { 0 } else { key_index + 1 };
+        }
+    }
+}
+
 /// RC4 类
 /// 名竞的核心~
 #[allow(unused)]
@@ -40,6 +184,35 @@ pub struct RC4 {
     pub main_val: [u8; 256],
     #[cfg(not(feature = "no_debug"))]
     pub byte_count: u64,
+}
+
+/// RC4 第一轮 KSA 的可复用前缀检查点。
+///
+/// 如果连续密钥共享开头若干字节，可以从检查点继续剩余交换，避免重复执行
+/// 已经确定的依赖链。检查点最多覆盖第一轮的 256 个状态槽。
+#[derive(Debug, Clone)]
+pub struct Rc4KeySchedulePrefix {
+    key_prefix: Box<[u8]>,
+    main_val: [u8; VAL_LEN],
+    j: u8,
+}
+
+impl Rc4KeySchedulePrefix {
+    pub fn new(key_prefix: &[u8]) -> Self {
+        assert!(!key_prefix.is_empty(), "RC4 KSA 前缀不能为空");
+        let scheduled_len = key_prefix.len().min(VAL_LEN);
+        let key_prefix: Box<[u8]> = key_prefix[..scheduled_len].into();
+        let mut main_val = VAL_INIT;
+        let mut j = 0u8;
+        for x in 0..scheduled_len {
+            apply_key_scheduling_step(&mut main_val, &key_prefix, x, x, &mut j);
+        }
+        Self { key_prefix, main_val, j }
+    }
+
+    pub fn len(&self) -> usize { self.key_prefix.len() }
+
+    pub fn is_empty(&self) -> bool { self.key_prefix.is_empty() }
 }
 
 impl Default for RC4 {
@@ -92,16 +265,8 @@ impl RC4 {
     /// ```
     pub fn new(keys: &[u8], round: usize) -> Self {
         let mut val = VAL_INIT;
-        let mut j = 0;
-
-        let key_len = keys.len();
         for _ in 0..round {
-            j = 0;
-            for x in 0..256 {
-                let key_v = keys[x % key_len];
-                j = (j + val[x] as u32 + key_v as u32) & 255;
-                val.swap(x, j as usize);
-            }
+            apply_key_scheduling(&mut val, keys);
         }
         RC4 {
             i: 0,
@@ -112,17 +277,92 @@ impl RC4 {
         }
     }
 
+    /// 尝试从第一轮 KSA 前缀检查点构造状态。
+    ///
+    /// 密钥前缀不匹配时返回 `None`，调用方必须回退到完整调度。
+    #[inline(never)]
+    pub fn new_with_key_schedule_prefix(keys: &[u8], prefix: &Rc4KeySchedulePrefix) -> Option<Self> {
+        if keys.is_empty() || !keys.starts_with(&prefix.key_prefix) {
+            return None;
+        }
+
+        let mut main_val = prefix.main_val;
+        let mut j = prefix.j;
+        let mut key_index = prefix.len();
+        if key_index == keys.len() {
+            key_index = 0;
+        }
+        for x in prefix.len()..VAL_LEN {
+            apply_key_scheduling_step(&mut main_val, keys, x, key_index, &mut j);
+            key_index += 1;
+            if key_index == keys.len() {
+                key_index = 0;
+            }
+        }
+        Some(Self {
+            i: 0,
+            j: 0,
+            main_val,
+            #[cfg(not(feature = "no_debug"))]
+            byte_count: 0,
+        })
+    }
+
     /// update 一下
     pub fn update(&mut self, keys: &[u8], round: usize) {
-        let key_len = keys.len();
-        let mut j = 0;
         for _ in 0..round {
-            j = 0;
-            for x in 0..256 {
-                let key_v = keys[x % key_len];
-                j = (j + self.main_val[x] as u32 + key_v as u32) & 255;
-                self.main_val.swap(x, j as usize);
+            apply_key_scheduling(&mut self.main_val, keys);
+        }
+    }
+
+    /// 对 2～4 个独立状态交错执行相同轮数的 KSA；其他宽度回退到普通路径。
+    pub(crate) fn update_interleaved(states: &mut [Self], keys: &[&[u8]], round: usize) {
+        assert_eq!(states.len(), keys.len(), "RC4 交错 KSA 的状态和密钥数量必须一致");
+        assert!(keys.iter().all(|key| !key.is_empty()), "RC4 密钥不能为空");
+        let same_key_len = keys.windows(2).all(|pair| pair[0].len() == pair[1].len());
+        macro_rules! run_width {
+            ($width:literal, $same_len_fn:ident) => {{
+                let states: &mut [RC4; $width] = states.try_into().expect("RC4 交错 KSA 状态宽度错误");
+                let keys: &[&[u8]; $width] = keys.try_into().expect("RC4 交错 KSA 密钥宽度错误");
+                for _ in 0..round {
+                    if same_key_len {
+                        $same_len_fn(states, keys);
+                    } else {
+                        apply_key_scheduling_interleaved_variable_keys(states, keys);
+                    }
+                }
+            }};
+        }
+        match states.len() {
+            2 => run_width!(2, apply_key_scheduling_interleaved_2),
+            3 => run_width!(3, apply_key_scheduling_interleaved_3),
+            4 => run_width!(4, apply_key_scheduling_interleaved_4),
+            _ => {
+                for (state, key) in states.iter_mut().zip(keys) {
+                    state.update(key, round);
+                }
             }
+        }
+    }
+
+    /// 推进一步 PRGA。`i`、`j` 只取低 8 位，三个状态下标因此天然位于 256 字节 S-box 内。
+    #[inline(always)]
+    fn next_u8_untracked(&mut self) -> u8 {
+        let i = (self.i as u8).wrapping_add(1);
+        let state = self.main_val.as_mut_ptr();
+        // SAFETY: i 与 j 均为 u8；si、sj 也来自 u8 S-box，因此三个 add 下标都在 0..256。
+        // 先读取交换前的 si/sj 后直接写回，i == j 时仍与普通 swap 完全等价。
+        unsafe {
+            let i_ptr = state.add(i as usize);
+            let si = *i_ptr;
+            let j = (self.j as u8).wrapping_add(si);
+            let j_ptr = state.add(j as usize);
+            let sj = *j_ptr;
+            *i_ptr = sj;
+            *j_ptr = si;
+            self.i = u32::from(i);
+            self.j = u32::from(j);
+            *state.add(si.wrapping_add(sj) as usize)
         }
     }
 
@@ -143,11 +383,7 @@ impl RC4 {
     #[inline]
     pub fn xor_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            *byte ^=
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
+            *byte ^= self.next_u8_untracked();
         }
     }
 
@@ -155,25 +391,15 @@ impl RC4 {
     #[inline]
     pub fn js_xor_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            *byte ^=
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-
-            self.j = (self.j + (*byte) as u32) & 255; // 新增此行
+            *byte ^= self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(*byte));
         }
     }
 
     #[inline]
     pub fn xor_str(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            self.j = (byte
-                ^ self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255])
-                as u32;
+            self.j = u32::from(*byte ^ self.next_u8_untracked());
         }
     }
 
@@ -181,12 +407,8 @@ impl RC4 {
     #[inline]
     pub fn js_xor_str(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
-            let mut val = *byte;
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            val ^= self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            self.j = (self.j + val as u32) & 255; // 新增此行
+            let val = *byte ^ self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(val));
         }
     }
 
@@ -209,25 +431,16 @@ impl RC4 {
     #[inline]
     pub fn encrypt_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            *byte ^=
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            self.j = (self.j + *byte as u32) & 255;
+            *byte ^= self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(*byte));
         }
     }
 
     /// 只是加密, 不改变原来的字节
     pub fn encrypt_bytes_no_change(&mut self, bytes: &str) {
         for byte in bytes.as_bytes() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
-            let tmp =
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            let encrypted = *byte ^ tmp;
-            self.j = (self.j + encrypted as u32) & 255;
+            let encrypted = *byte ^ self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(encrypted));
         }
     }
 
@@ -251,13 +464,9 @@ impl RC4 {
     #[inline]
     pub fn decrypt_bytes(&mut self, bytes: &mut [u8]) {
         for byte in bytes.iter_mut() {
-            self.i = (self.i + 1) & 255;
-            self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-            self.main_val.swap(self.i as usize, self.j as usize);
             let byte_v = *byte;
-            *byte ^=
-                self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
-            self.j = (self.j + byte_v as u32) & 255;
+            *byte ^= self.next_u8_untracked();
+            self.j = u32::from((self.j as u8).wrapping_add(byte_v));
         }
     }
 
@@ -275,10 +484,7 @@ impl RC4 {
     #[inline]
     #[cfg_attr(not(feature = "no_debug"), track_caller)]
     pub fn next_u8(&mut self) -> u8 {
-        self.i = (self.i + 1) & 255;
-        self.j = (self.j + self.main_val[self.i as usize] as u32) & 255;
-        self.main_val.swap(self.i as usize, self.j as usize);
-        let val = self.main_val[(self.main_val[self.i as usize] as u32 + self.main_val[self.j as usize] as u32) as usize & 255];
+        let val = self.next_u8_untracked();
         #[cfg(not(feature = "no_debug"))]
         {
             if std::env::var("TSWN_PROBE_RC4").is_ok() {
@@ -366,14 +572,8 @@ impl RC4 {
     /// ```
     #[inline]
     pub fn round(&mut self, keys: &[u8], round: Option<usize>) {
-        let key_len = keys.len();
         for _ in 0..round.unwrap_or(1) {
-            let mut j = 0;
-            for i in 0..256 {
-                let key_v = keys[i % key_len];
-                j = (j + self.main_val[i] as u32 + key_v as u32) & 255;
-                self.main_val.swap(i, j as usize);
-            }
+            apply_key_scheduling(&mut self.main_val, keys);
         }
         self.i = 0;
         self.j = 0;
@@ -676,6 +876,118 @@ impl RC4 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reference_key_scheduling(mut state: [u8; VAL_LEN], keys: &[u8], rounds: usize) -> [u8; VAL_LEN] {
+        let key_len = keys.len();
+        for _ in 0..rounds {
+            let mut j = 0usize;
+            for x in 0..VAL_LEN {
+                j = (j + state[x] as usize + keys[x % key_len] as usize) & 255;
+                state.swap(x, j);
+            }
+        }
+        state
+    }
+
+    fn reference_next_u8(state: &mut [u8; VAL_LEN], i: &mut u32, j: &mut u32) -> u8 {
+        *i = i.wrapping_add(1) & 255;
+        *j = j.wrapping_add(state[*i as usize] as u32) & 255;
+        state.swap(*i as usize, *j as usize);
+        state[(state[*i as usize] as usize + state[*j as usize] as usize) & 255]
+    }
+
+    #[test]
+    fn unchecked_prga_matches_safe_reference() {
+        for key_len in [1usize, 2, 7, 16, 31, 255, 256] {
+            let keys = (0..key_len)
+                .map(|index| (index as u8).wrapping_mul(73).wrapping_add(41))
+                .collect::<Vec<_>>();
+            let mut actual = RC4::new(&keys, 2);
+            let mut expected_state = actual.main_val;
+            let mut expected_i = 0u32;
+            let mut expected_j = 0u32;
+            for step in 0..4096 {
+                let expected = reference_next_u8(&mut expected_state, &mut expected_i, &mut expected_j);
+                assert_eq!(actual.next_u8(), expected, "key_len={key_len}, step={step}");
+            }
+            assert_eq!(actual.main_val, expected_state, "key_len={key_len}");
+            assert_eq!((actual.i, actual.j), (expected_i, expected_j), "key_len={key_len}");
+        }
+    }
+
+    #[test]
+    fn optimized_key_scheduling_matches_safe_reference() {
+        for key_len in [1usize, 2, 3, 7, 16, 31, 255, 256] {
+            let keys: Vec<u8> = (0..key_len).map(|index| (index as u8).wrapping_mul(181).wrapping_add(160)).collect();
+
+            for rounds in [1usize, 2, 3] {
+                let expected = reference_key_scheduling(VAL_INIT, &keys, rounds);
+                assert_eq!(RC4::new(&keys, rounds).main_val, expected, "key_len={key_len}, rounds={rounds}");
+
+                let prefix = [0, 2, 97, 98, 99];
+                let initial = RC4::new(&prefix, 1).main_val;
+                let expected = reference_key_scheduling(initial, &keys, rounds);
+
+                let mut updated = RC4::new(&prefix, 1);
+                updated.update(&keys, rounds);
+                assert_eq!(updated.main_val, expected, "update: key_len={key_len}, rounds={rounds}");
+
+                let mut rounded = RC4::new(&prefix, 1);
+                rounded.i = 37;
+                rounded.j = 91;
+                rounded.round(&keys, Some(rounds));
+                assert_eq!(rounded.main_val, expected, "round: key_len={key_len}, rounds={rounds}");
+                assert_eq!((rounded.i, rounded.j), (0, 0));
+            }
+        }
+    }
+
+    #[test]
+    fn cached_key_schedule_prefix_matches_full_schedule() {
+        for key_len in [1usize, 2, 7, 31, 255, 256, 300] {
+            let keys = (0..key_len)
+                .map(|index| (index as u8).wrapping_mul(73).wrapping_add(19))
+                .collect::<Vec<_>>();
+            for prefix_len in [1usize, key_len.min(7), key_len.min(VAL_LEN)] {
+                let prefix = Rc4KeySchedulePrefix::new(&keys[..prefix_len]);
+                let actual = RC4::new_with_key_schedule_prefix(&keys, &prefix).expect("相同前缀应命中检查点");
+                let expected = RC4::new(&keys, 1);
+                assert_eq!(actual.main_val, expected.main_val, "key_len={key_len}, prefix_len={prefix_len}");
+            }
+        }
+
+        let prefix = Rc4KeySchedulePrefix::new(b"seed:");
+        assert!(RC4::new_with_key_schedule_prefix(b"other-key", &prefix).is_none());
+    }
+
+    #[test]
+    fn interleaved_key_scheduling_matches_independent_updates() {
+        for same_len in [false, true] {
+            for width in 1..=5 {
+                let keys = (0..width)
+                    .map(|lane| {
+                        let key_len = if same_len { 7 } else { lane + 2 };
+                        (0..key_len)
+                            .map(|index| (lane as u8).wrapping_mul(73).wrapping_add(index as u8).wrapping_add(1))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+                let mut expected = (0..width).map(|lane| RC4::new(&[0, lane as u8 + 1], 1)).collect::<Vec<_>>();
+                let mut actual = expected.clone();
+                for (state, key) in expected.iter_mut().zip(&keys) {
+                    state.update(key, 2);
+                }
+                let key_refs = keys.iter().map(Vec::as_slice).collect::<Vec<_>>();
+                RC4::update_interleaved(&mut actual, &key_refs, 2);
+                for lane in 0..width {
+                    assert_eq!(
+                        actual[lane].main_val, expected[lane].main_val,
+                        "same_len={same_len}, width={width}, lane={lane}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn rc4_sort_int_test() {

@@ -1,6 +1,23 @@
 # 更新日志
 
-## [Unreleased]
+## [0.5.0] - 2026-07-18
+
+### ⚠️ Breaking Changes
+
+- `Runner` / `PreparedRunner` 会话切换到主 Runtime；删除 `Runner.round_tick*`、`Storage`、`WorldState`、`Player` 及 parity helper，保留 `main_round`、完成态、RC4、胜者、snapshot 与 replay 接口。
+- 未显式提供 guard 的完成与 replay 路径统一使用 20,000 主回合上限；replay clip 继续只从 `parts[]` 暴露渲染语义。
+- 迁移时使用 `snapshot_players()` 代替旧玩家/世界对象 getter，使用 `winner_team_index()` / `winner_team_indices()` 查询胜者，逐回合推进统一调用 `main_round()`。
+
+### 修复
+
+- 类型存根补齐 `ScoreResult.errors` 与 `default_custom_runtime_normalized_run()`，并同步扩展模块及包顶层的重导出和 `__all__`。
+
+## [0.4.0] - 2026-07-14
+
+### ⚠️ Breaking Changes
+
+- `Runner.build_replay()` 的 clip dict 与类型存根删除多项顶层渲染字段，调用方必须改读 `parts[]`。
+- 无 runtime 参数的评分、胜率、批量与 `namer_pf` 顶层 helper 默认改用 Runtime。
 
 ### 变更
 

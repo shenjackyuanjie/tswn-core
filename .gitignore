@@ -3,9 +3,16 @@ vendor
 .lh
 __pycache__
 *.txt
+!cqp_double_target.txt
+!docs/perf/cqp/
+!docs/perf/cqp/*.txt
+!docs/perf/score/
+!docs/perf/score/*.txt
 !docs/perf/fixed_cases_30/
 !docs/perf/fixed_cases_30/*.txt
 tests
+!crates/tswn_core/src/runtime/tests/
+!crates/tswn_core/src/runtime/tests/*.rs
 .claude
 dist
 md5.js

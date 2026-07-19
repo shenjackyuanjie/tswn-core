@@ -10,9 +10,6 @@
 
 use std::path::PathBuf;
 
-#[cfg(test)]
-use std::path::Path;
-
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use super::input::{
@@ -67,6 +64,9 @@ enum CliCommand {
     ///   tswn-cli diff -f input.txt
     #[command(name = "diff", verbatim_doc_comment)]
     FightDiff(FightDiffCommand),
+    /// 运行 runtime 相关调试/迁移入口。
+    #[command(name = "runtime", verbatim_doc_comment)]
+    Runtime(RuntimeCommand),
     /// 运行基准测试相关功能。
     Bench(BenchCommand),
     /// 运行与 ica-plugin `/namer-pf` 相同的四项评分。
@@ -129,6 +129,35 @@ struct FightDiffCommand {
     /// 原始对战输入来源参数。
     #[command(flatten)]
     input: InputArgs,
+}
+
+#[derive(Debug, Args)]
+struct RuntimeCommand {
+    /// runtime 子命令。
+    #[command(subcommand)]
+    command: RuntimeSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum RuntimeSubcommand {
+    /// 使用默认 custom runtime profile 运行 raw 输入，并输出 normalized-run JSON。
+    ///
+    /// 示例:
+    ///   tswn-cli runtime normalized-run -r "left\n\nright" --max-rounds 8
+    ///   tswn-cli runtime normalized-run -f input.txt
+    #[command(name = "normalized-run", verbatim_doc_comment)]
+    NormalizedRun(RuntimeNormalizedRunCommand),
+}
+
+#[derive(Debug, Args)]
+struct RuntimeNormalizedRunCommand {
+    /// runtime 输入来源参数。
+    #[command(flatten)]
+    input: InputArgs,
+
+    /// 最多推进的回合数。
+    #[arg(long = "max-rounds", default_value_t = 20_000, value_parser = parse_positive_usize, value_name = "N")]
+    max_rounds: usize,
 }
 
 #[derive(Debug, Args)]
@@ -604,6 +633,12 @@ impl ParsedCli {
             CliCommand::FightDiff(cmd) => ParsedCommand::FightDiff {
                 raw: cmd.input.read_or_stdin()?,
             },
+            CliCommand::Runtime(RuntimeCommand { command }) => match command {
+                RuntimeSubcommand::NormalizedRun(cmd) => ParsedCommand::RuntimeNormalizedRun {
+                    raw: cmd.input.read_or_stdin()?,
+                    max_rounds: cmd.max_rounds,
+                },
+            },
             CliCommand::Bench(BenchCommand { command }) => match command {
                 BenchSubcommand::Auto(cmd) => ParsedCommand::BenchAuto {
                     raw: cmd.input.read_or_stdin()?,
@@ -763,244 +798,5 @@ impl InputArgs {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn to_diy_command_accepts_raw_out_file_and_old_flag() {
-        let cli = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario@team", "-o", "out.txt", "--old"]).unwrap();
-        match cli.command {
-            CliCommand::ToDiy(cmd) => {
-                assert_eq!(cmd.raw.as_deref(), Some("mario@team"));
-                assert_eq!(cmd.file, None);
-                assert_eq!(cmd.out_file.as_deref(), Some(Path::new("out.txt")));
-                assert!(cmd.old);
-                assert!(!cmd.minions);
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn to_diy_command_accepts_minions_flag() {
-        let cli = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario@team+shadow", "--minions"]).unwrap();
-        match cli.command {
-            CliCommand::ToDiy(cmd) => {
-                assert_eq!(cmd.raw.as_deref(), Some("mario@team+shadow"));
-                assert!(cmd.minions);
-                assert!(!cmd.old);
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn to_diy_command_rejects_old_with_minions() {
-        let err = Cli::try_parse_from(["tswn-cli", "to-diy", "-r", "mario", "--old", "--minions"]).unwrap_err();
-        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
-    }
-
-    #[test]
-    fn namer_pf_accepts_multiple_modes() {
-        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--mode", "pp", "qd"]).unwrap();
-        match cli.command {
-            CliCommand::NamerPf(cmd) => {
-                assert_eq!(cmd.mode, vec![NamerPfModeArg::Pp, NamerPfModeArg::Qd]);
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn namer_pf_accepts_keep_rq() {
-        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--keep-rq"]).unwrap();
-        match cli.command {
-            CliCommand::NamerPf(cmd) => {
-                assert!(cmd.keep_rq);
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn namer_pf_accepts_precision() {
-        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario", "--precision", "2"]).unwrap();
-        match cli.command {
-            CliCommand::NamerPf(cmd) => {
-                assert_eq!(cmd.precision, 2);
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn namer_pf_default_precision_is_zero() {
-        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario"]).unwrap();
-        let parsed = ParsedCli::from_cli(cli).unwrap();
-        match parsed.command {
-            ParsedCommand::NamerPf { precision, .. } => {
-                assert_eq!(precision, 0);
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn namer_pf_defaults_to_all_modes() {
-        let cli = Cli::try_parse_from(["tswn-cli", "namer-pf", "-r", "mario"]).unwrap();
-        let parsed = ParsedCli::from_cli(cli).unwrap();
-        match parsed.command {
-            ParsedCommand::NamerPf { modes, .. } => {
-                assert_eq!(modes, NamerPfMode::ALL.to_vec());
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn bench_win_rate_accepts_raw_two_line_plus_format() {
-        let cli = Cli::try_parse_from(["tswn-cli", "bench", "win-rate", "-r", "1@a+2@a\\n3@b+4@b"]).unwrap();
-        let parsed = ParsedCli::from_cli(cli).unwrap();
-        match parsed.command {
-            ParsedCommand::BenchWinRate { team1, team2, .. } => {
-                assert_eq!(team1, "1@a\n2@a");
-                assert_eq!(team2, "3@b\n4@b");
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn bench_win_rate_accepts_double_plus_format() {
-        let cli = Cli::try_parse_from([
-            "tswn-cli",
-            "bench",
-            "win-rate",
-            "-r",
-            "1@a+diy[x]++2@a\\n3@b++4@b",
-            "--double-plus",
-        ])
-        .unwrap();
-        let parsed = ParsedCli::from_cli(cli).unwrap();
-        match parsed.command {
-            ParsedCommand::BenchWinRate { team1, team2, .. } => {
-                assert_eq!(team1, "1@a+diy[x]\n2@a");
-                assert_eq!(team2, "3@b\n4@b");
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn bench_win_rate_rejects_positional_teams() {
-        let err = Cli::try_parse_from(["tswn-cli", "bench", "win-rate", "mario", "luigi"]).unwrap_err();
-        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
-    }
-
-    #[test]
-    fn bench_win_rate_rejects_missing_input() {
-        let err = Cli::try_parse_from(["tswn-cli", "bench", "win-rate"]).unwrap_err();
-        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
-    }
-
-    #[test]
-    fn batch_rate_rejects_log_and_pure_together() {
-        let err = Cli::try_parse_from([
-            "tswn-cli",
-            "bench",
-            "batch-rate",
-            "-l",
-            "targets.txt",
-            "-p",
-            "players.txt",
-            "-o",
-            "out.txt",
-            "--log",
-            "--pure",
-        ])
-        .unwrap_err();
-        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
-    }
-
-    #[test]
-    fn batch_rate_accepts_min_screen_and_min_file() {
-        let cli = Cli::try_parse_from([
-            "tswn-cli",
-            "bench",
-            "batch-rate",
-            "-l",
-            "targets.txt",
-            "-p",
-            "players.txt",
-            "--min-screen",
-            "66.5",
-            "-o",
-            "out.txt",
-            "--min-file",
-            "70",
-        ])
-        .unwrap();
-        match cli.command {
-            CliCommand::Bench(BenchCommand {
-                command: BenchSubcommand::BatchRate(cmd),
-            }) => {
-                assert_eq!(cmd.min_screen, Some(66.5));
-                assert_eq!(cmd.min_file, Some(70.0));
-                assert_eq!(cmd.wr_precision, 3);
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn batch_rate_accepts_wr_precision() {
-        let cli = Cli::try_parse_from([
-            "tswn-cli",
-            "bench",
-            "batch-rate",
-            "-l",
-            "targets.txt",
-            "-p",
-            "players.txt",
-            "--wr-precision",
-            "5",
-        ])
-        .unwrap();
-        match cli.command {
-            CliCommand::Bench(BenchCommand {
-                command: BenchSubcommand::BatchRate(cmd),
-            }) => assert_eq!(cmd.wr_precision, 5),
-            _ => panic!("unexpected command"),
-        }
-    }
-
-    #[test]
-    fn pair_accepts_required_args_and_wr_precision() {
-        let cli = Cli::try_parse_from([
-            "tswn-cli",
-            "bench",
-            "pair",
-            "-l",
-            "targets.txt",
-            "-p",
-            "players.txt",
-            "--teammate-list",
-            "teammates.txt",
-            "--head",
-            "3",
-            "--wr-precision",
-            "4",
-        ])
-        .unwrap();
-        match cli.command {
-            CliCommand::Bench(BenchCommand {
-                command: BenchSubcommand::Pair(cmd),
-            }) => {
-                assert_eq!(cmd.head, 3);
-                assert_eq!(cmd.wr_precision, 4);
-                assert_eq!(cmd.teammate_list, PathBuf::from("teammates.txt"));
-            }
-            _ => panic!("unexpected command"),
-        }
-    }
-}
+#[path = "cli_tests.rs"]
+mod cli_tests;

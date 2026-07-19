@@ -70,7 +70,7 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && . .venv-wsl/bin/activate && car
 
 - 这里激活 `.venv-wsl` 主要是为了统一 WSL 环境入口
 - 真正参与 CLI 构建的是 WSL 里的 Rust 工具链
-- 最终发布 CLI 默认启用 `mimalloc_alloc`；benchmark 口径仍不要带这个 feature
+- `tswn_core 0.4.0` 起原生默认 feature 已包含 `mimalloc_alloc`；最终发布与正式 benchmark 均保持默认 allocator，显式关闭默认 feature 时必须单独记录口径
 
 ### 4. 构建 WSL Openbox（如需 Linux GUI 产物）
 
@@ -271,8 +271,8 @@ wsl sh -lc "cd /mnt/d/githubs/namer/tswn-core && cargo build -p tswn_capi --rele
 
 | 组件         | 版本  |
 | ------------ | ----- |
-| tswn_core    | 0.3.11 |
-| tswn_capi    | 0.4.0 |
-| tswn_py      | 0.2.1 |
-| tswn_wasm    | 0.2.9 |
-| tswn_openbox | 0.3.6 |
+| tswn_core    | 0.5.0 |
+| tswn_capi    | 0.6.0 |
+| tswn_py      | 0.5.0 |
+| tswn_wasm    | 0.5.0 |
+| tswn_openbox | 0.3.12 |

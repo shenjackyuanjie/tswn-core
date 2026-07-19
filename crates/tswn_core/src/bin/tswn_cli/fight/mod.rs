@@ -18,3 +18,6 @@ mod trace;
 
 pub use driver::{run, run_diff};
 pub use raw_bench::run_raw;
+pub use runtime::run_runtime_normalized;
+
+mod runtime;
