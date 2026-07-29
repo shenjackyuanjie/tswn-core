@@ -191,6 +191,17 @@ python scripts/check_runtime_release.py --corpus
 - `--release`: 构建并导入 release 产物
 - `--skip-build`: 复用上一次生成的 `target/py_cli_api_verify/import/`，用于快速重跑断言
 
+## find_bun_tswn_namer_pf_mismatches.py
+
+查找 bun / tswn `/namer-pf` 四项评分不一致的消息。
+
+默认通过环境变量 `TSWN_PG_DSN` 连接 PostgreSQL；使用 `--tswn-version VERSION` 可只处理消息中
+`tswn: VERSION` 完全匹配的记录，例如：
+
+```powershell
+python scripts/find_bun_tswn_namer_pf_mismatches.py --tswn-version 0.3.12
+```
+
 ## find_bun_tswn_reply_mismatches.py
 
 查找 bun / tswn 胜率不一致的消息，并回查回复的原始消息内容。

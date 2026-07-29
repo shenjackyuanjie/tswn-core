@@ -31,6 +31,7 @@ SCORE_LINE_RE = re.compile(
     r"\s*$"
 )
 TSWN_SECTION_RE = re.compile(r"(?im)^\s*tswn:\s*$")
+TSWN_VERSION_LINE_RE = re.compile(r"(?im)^\s*tswn:\s*(?P<version>\S+)\s*$")
 NAMER_PF_COMMAND_RE = re.compile(r"^\s*/namer-pf(?:\s+(?P<rest>.*))?\s*$")
 SCORE_FIELDS = ("pp", "pd", "qp", "qd", "total")
 RETEST_TIMEOUT = 60
@@ -105,6 +106,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--content-like",
         default=None,
         help="content LIKE 条件；不传时按 --mode 选择默认筛选条件。",
+    )
+    parser.add_argument(
+        "--tswn-version",
+        default=None,
+        help="只处理 content 中 `tswn: <version>` 行版本号完全匹配的记录。",
     )
     parser.add_argument(
         "--case-id",
@@ -189,6 +195,12 @@ def parse_score_lines(text: str) -> list[PfScore]:
             )
         )
     return scores
+
+
+def extract_tswn_version(content: str) -> str | None:
+    """从消息 content 的独立 `tswn: <version>` 行提取版本号。"""
+    matches = TSWN_VERSION_LINE_RE.findall(content)
+    return matches[-1] if matches else None
 
 
 def normalize_old_score_label(label: str) -> str | None:
@@ -765,6 +777,12 @@ def main(argv: list[str]) -> int:
         sender_id=args.sender_id,
         content_like=args.content_like,
     )
+    if args.tswn_version is not None:
+        candidate_messages = [
+            row
+            for row in candidate_messages
+            if extract_tswn_version(row.content) == args.tswn_version
+        ]
     if args.case_id:
         wanted = set(args.case_id)
         candidate_messages = [row for row in candidate_messages if row.row_id in wanted]
