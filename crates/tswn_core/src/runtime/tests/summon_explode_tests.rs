@@ -46,6 +46,46 @@ fn summon_explode_combat_minion_emits_disappear_after_target_resolution() {
 }
 
 #[test]
+fn summon_explode_protect_redirect_applies_fire_stack_to_protector() {
+    let config = default_custom_runtime_import_config().expect("default runtime profile should build");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "target", 0, 1_000, 100),
+            PlayerTemplate::new(2, "protector", 0, 1_000, 100),
+            PlayerTemplate::new(3, "summon", 1, 5, 1).with_magic(100),
+            PlayerTemplate::new(4, "summon owner", 1, 1_000, 100),
+        ],
+        config.registry,
+    ));
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.magic_point = 100;
+    {
+        let target = &mut runtime.entities.get_mut(EntityIdx(0)).unwrap().runtime;
+        target.protect_from.push(ProtectLinkRuntime {
+            owner: EntityIdx(1),
+            level: 256,
+        });
+        target.protect_pre_defend_skill_count = Some(0);
+    }
+    runtime.effects.push(QueuedEffect::SummonExplode {
+        caster: EntityIdx(2),
+        target: EntityIdx(0),
+        fire_state_key: 91,
+    });
+
+    let frame = runtime.flush_effects().expect("protected summon explode should emit updates");
+
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().states.fire_mag(91), 0.0);
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.5);
+    assert!(
+        frame
+            .updates
+            .updates
+            .iter()
+            .any(|update| update.message == "[0][守护][1]" && update.caster == 1 && update.target == 0)
+    );
+}
+
+#[test]
 fn summon_explode_can_be_dodged_after_self_death() {
     let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::new(vec![
         PlayerTemplate::new(1, "owner", 0, 10, 3),
@@ -252,4 +292,112 @@ fn summon_explode_terminal_knockout_suppresses_self_disappear_replay() {
     );
     assert!(!runtime.entities.get(EntityIdx(1)).unwrap().runtime.alive);
     assert!(!runtime.entities.get(EntityIdx(2)).unwrap().runtime.alive);
+}
+
+#[test]
+fn summon_explode_owner_death_does_not_emit_duplicate_self_disappear() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let summon_kind = builder
+        .register_player_kind_with_policies(
+            "core",
+            "summon",
+            "core.kind.test-summon",
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
+            PlayerKindPolicies::default(),
+        )
+        .expect("summon kind should register");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "owner", 0, 3, 3).with_def_res(0, 0),
+            PlayerTemplate::new(2, "enemy-next", 1, 100, 3),
+            PlayerTemplate::new(3, "enemy-tail", 1, 100, 3),
+        ],
+        builder.build(),
+    ));
+    let owner = EntityIdx(0);
+    let summon = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(4, "summon", summon_kind, 0, 5, 1).with_magic(80),
+        &runtime.registry,
+        Some(owner),
+        Some(owner),
+    );
+    runtime.world.add_spawned_alive(summon, 0);
+    assert_eq!(runtime.world.next_actor(&runtime.entities), Some(owner));
+    assert_eq!(runtime.world.next_actor(&runtime.entities), Some(EntityIdx(1)));
+    assert_eq!(runtime.world.next_actor(&runtime.entities), Some(EntityIdx(2)));
+    assert_eq!(runtime.world.next_actor(&runtime.entities), Some(summon));
+    runtime.effects.push(QueuedEffect::SummonExplode {
+        caster: summon,
+        target: owner,
+        fire_state_key: 91,
+    });
+
+    let frame = runtime.flush_effects().expect("summon explode should kill owner and summon");
+
+    assert!(!runtime.entities.get(owner).unwrap().runtime.alive);
+    assert!(!runtime.entities.get(summon).unwrap().runtime.alive);
+    assert_eq!(
+        frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| update.message.as_ref() == "[1]消失了")
+            .count(),
+        1
+    );
+    assert_eq!(runtime.world.next_actor(&runtime.entities), Some(EntityIdx(1)));
+}
+
+#[test]
+fn summon_explode_owner_death_cleans_alive_linked_minion_before_deferred_caster() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let summon_kind = builder
+        .register_player_kind_with_policies(
+            "core",
+            "summon",
+            "core.kind.test-summon",
+            PlayerKindFlags::MINION | PlayerKindFlags::COMBAT_MINION,
+            PlayerKindPolicies::default(),
+        )
+        .expect("summon kind should register");
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "owner", 0, 3, 3).with_def_res(0, 0),
+            PlayerTemplate::new(2, "enemy", 1, 100, 3),
+        ],
+        builder.build(),
+    ));
+    let owner = EntityIdx(0);
+    let caster = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(3, "self-destruct caster", summon_kind, 0, 5, 1).with_magic(80),
+        &runtime.registry,
+        Some(owner),
+        Some(owner),
+    );
+    runtime.world.add_spawned_alive(caster, 0);
+    let linked = runtime.entities.spawn_from_template_with_owner(
+        PlayerTemplate::with_kind(4, "linked minion", summon_kind, 0, 5, 1),
+        &runtime.registry,
+        Some(owner),
+        Some(owner),
+    );
+    runtime.world.add_spawned_alive(linked, 0);
+    runtime.effects.push(QueuedEffect::SummonExplode {
+        caster,
+        target: owner,
+        fire_state_key: 91,
+    });
+
+    let frame = runtime.flush_effects().expect("summon explode should clean both linked minions");
+
+    assert_eq!(
+        frame
+            .updates
+            .updates
+            .iter()
+            .filter(|update| update.message.as_ref() == "[1]消失了")
+            .map(|update| update.target)
+            .collect::<Vec<_>>(),
+        vec![linked.0 as usize, caster.0 as usize]
+    );
 }

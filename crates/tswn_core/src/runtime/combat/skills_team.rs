@@ -458,6 +458,7 @@ impl CombatRuntime {
             let mut had_ice = false;
             let mut had_poison = false;
             let mut had_slow = false;
+            let mut should_refresh_stats = false;
             let negative_keys = target_entity
                 .states
                 .entries()
@@ -467,10 +468,12 @@ impl CombatRuntime {
                         StatePayload::FireMagHalfSteps(_) => true,
                         StatePayload::Ice { .. } => {
                             had_ice = true;
+                            should_refresh_stats = true;
                             true
                         }
                         StatePayload::Curse { .. } => {
                             had_curse = true;
+                            should_refresh_stats = true;
                             true
                         }
                         StatePayload::Poison { .. } => {
@@ -483,10 +486,12 @@ impl CombatRuntime {
                         }
                         StatePayload::Charm { .. } => {
                             had_charm = true;
+                            should_refresh_stats = true;
                             true
                         }
                         StatePayload::Slow { .. } => {
                             had_slow = true;
+                            should_refresh_stats = true;
                             true
                         }
                         _ => false,
@@ -500,7 +505,9 @@ impl CombatRuntime {
                     "runtime negative state disappeared during heal"
                 );
             }
-            target_entity.refresh_runtime_stats_from_template();
+            if should_refresh_stats {
+                target_entity.refresh_runtime_stats_from_template();
+            }
             (had_berserk, had_charm, had_curse, had_ice, had_poison, had_slow)
         };
 

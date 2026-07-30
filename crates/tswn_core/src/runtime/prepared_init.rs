@@ -3,6 +3,7 @@ use crate::namerena::{
     NAME_MAX_LEN, PlayerStats, is_seed_line, raw_namerena_to_id_name, raw_namerena_to_id_name_into, trim_js_line_end,
 };
 use crate::rc4::Rc4KeySchedulePrefix;
+use crate::runtime::entity::ScoreCloneSkillBoostPlan;
 
 mod init;
 mod roster;
@@ -75,6 +76,7 @@ struct ScoreProfileBuild {
     clan_name: String,
     name_base: [u8; 128],
     raw_name_base: [u8; 128],
+    normal_raw_name_base: [u8; 128],
     skill_order: [u32; 40],
     test_ex: bool,
 }
@@ -98,11 +100,6 @@ pub(crate) struct ScoreRoundScratch {
     profile_rngs: Vec<RC4>,
     dynamic_profiles: Vec<ScoreProfileBuild>,
     team_by_player: Vec<usize>,
-    factor_eval_rq_bits: u64,
-    factor_name_len: usize,
-    factor_team: String,
-    child_clone_name_factor: f64,
-    child_clone_name_factor_ready: bool,
 }
 
 /// score roster 构造与应用完成后交还下一轮的输出向量。
@@ -119,6 +116,7 @@ pub(crate) struct ScoreRosterBuffers {
 impl ScoreProfileBuild {
     fn from_rng(id: PlrId, name: String, clan_name: String, mut rand: RC4) -> Self {
         let mut name_base = score_name_base(&rand.main_val);
+        let normal_raw_name_base = name_base;
         let mut raw_name_base = name_base;
         let test_ex = clan_name == "!";
         if test_ex {
@@ -150,6 +148,7 @@ impl ScoreProfileBuild {
             clan_name,
             name_base,
             raw_name_base,
+            normal_raw_name_base,
             skill_order,
             test_ex,
         }
@@ -203,6 +202,23 @@ impl ScoreProfileBuild {
             boosted[key] = self.raw_name_base[offset..offset + 4].iter().min().copied().unwrap() <= 10;
             slot_skill_keys[slot] = Some(key);
         }
+        let mut initially_boosted_mask = 0u64;
+        for (slot, offset) in (64..128).step_by(4).enumerate() {
+            let Some(key) = slot_skill_keys[slot] else {
+                continue;
+            };
+            if self.normal_raw_name_base[offset..offset + 4].iter().copied().min().unwrap() <= 10 {
+                initially_boosted_mask |= 1u64 << key;
+            }
+        }
+        let slot_boosts = [(14usize, 60usize, 61usize), (15, 62, 63)].map(|(slot, left, right)| {
+            slot_skill_keys[slot].map(|key| {
+                (
+                    key.try_into().expect("score clone skill key must fit u8"),
+                    self.name_base[left].min(self.name_base[right]),
+                )
+            })
+        });
         for &key in self.skill_order.iter().rev() {
             let key = key as usize;
             if key < 25 && levels[key] > 0 && !boosted[key] {
@@ -259,7 +275,14 @@ impl ScoreProfileBuild {
             let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(&self.clan_name, true, eval_rq);
             factor_name.max(factor_team - 6.0)
         });
-        let clone_build = CloneBuildData::from_score_profile(attrs, child_clone_name_factor);
+        let clone_build = CloneBuildData::from_score_profile(
+            attrs,
+            child_clone_name_factor,
+            ScoreCloneSkillBoostPlan {
+                initially_boosted_mask,
+                slot_boosts,
+            },
+        );
         skill_import.reset_score_profile(&mut skills, &levels, &boosted, &boosts, &self.skill_order);
         id_key_name.clear();
         id_key_name.push_str(&self.name);

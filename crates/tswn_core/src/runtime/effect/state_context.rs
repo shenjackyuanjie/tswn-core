@@ -224,6 +224,16 @@ impl<'a> StateContext<'a> {
         Ok(())
     }
 
+    pub fn clear_owner_state_without_refresh(&mut self, legacy_order_key: u32) -> Result<(), EffectContextError> {
+        let Some(owner) = self.entities.get_mut(self.owner) else {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        };
+        if !owner.states.clear_legacy_key(legacy_order_key) {
+            return Err(EffectContextError::UnknownEntity(self.owner));
+        }
+        Ok(())
+    }
+
     pub fn adjust_owner_speed_points(&mut self, delta: i32) -> Result<(), EffectContextError> {
         let Some(owner) = self.entities.get_mut(self.owner) else {
             return Err(EffectContextError::UnknownEntity(self.owner));

@@ -58,12 +58,19 @@ pub struct CloneDerivedStats {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ScoreCloneSkillBoostPlan {
+    pub(crate) initially_boosted_mask: u64,
+    pub(crate) slot_boosts: [Option<(u8, u8)>; 2],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloneBuildData {
     attrs: [u32; 8],
     weapon_attr_bonus: [i32; 8],
     name_factor_bits: u64,
     child_name_factor_bits: u64,
     adjustments: CloneStatAdjustments,
+    score_skill_boost_plan: Option<ScoreCloneSkillBoostPlan>,
 }
 
 impl CloneBuildData {
@@ -88,6 +95,7 @@ impl CloneBuildData {
                 atk_sum: status.atk_sum - raw.atk_sum,
                 attract_delta_bits: (status.attract - f64::from_bits(raw.attract_bits)).to_bits(),
             },
+            score_skill_boost_plan: None,
         }
     }
 
@@ -96,8 +104,17 @@ impl CloneBuildData {
         self
     }
 
+    pub(crate) fn with_score_skill_boost_plan(mut self, score_skill_boost_plan: ScoreCloneSkillBoostPlan) -> Self {
+        self.score_skill_boost_plan = Some(score_skill_boost_plan);
+        self
+    }
+
     /// 直接构造未叠加武器和名字系数的数字 score profile 分身数据。
-    pub(crate) fn from_score_profile(attrs: [u32; 8], child_name_factor: f64) -> Self {
+    pub(crate) fn from_score_profile(
+        attrs: [u32; 8],
+        child_name_factor: f64,
+        score_skill_boost_plan: ScoreCloneSkillBoostPlan,
+    ) -> Self {
         Self {
             attrs,
             weapon_attr_bonus: [0; 8],
@@ -117,11 +134,14 @@ impl CloneBuildData {
                 atk_sum: 0,
                 attract_delta_bits: 0.0_f64.to_bits(),
             },
+            score_skill_boost_plan: Some(score_skill_boost_plan),
         }
     }
 
     /// 返回子分身与召唤物已经计算好的名字系数，避免技能触发时重复解析名字。
     pub(crate) fn child_name_factor(&self) -> f64 { f64::from_bits(self.child_name_factor_bits) }
+
+    pub(crate) fn score_skill_boost_plan(&self) -> Option<&ScoreCloneSkillBoostPlan> { self.score_skill_boost_plan.as_ref() }
 
     pub fn decay_owner(&mut self) {
         for attr in &mut self.attrs[..7] {

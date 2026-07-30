@@ -690,7 +690,10 @@ impl CombatRuntime {
                 )),
                 "runtime curse state key should be vacant"
             );
-            target_entity.runtime.atk_sum = target_entity.runtime.atk_sum.saturating_mul(4);
+            // legacy 的 `set_state(CurseState)` 会立即调用 `update_states()`。
+            // 除了让诅咒的 atk_sum 倍率生效，这次完整重算也会提交疾走中
+            // 等待下一次属性刷新的 faster 值。
+            target_entity.refresh_runtime_stats_from_template();
         }
         updates.add(crate::runtime::update::RunUpdate::new(
             "[1]被[诅咒]了",

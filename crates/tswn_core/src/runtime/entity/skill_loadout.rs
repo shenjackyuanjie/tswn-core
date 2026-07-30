@@ -517,6 +517,52 @@ impl SkillLoadout {
         clone
     }
 
+    pub(crate) fn rebuilt_for_score_clone(&self, plan: &super::ScoreCloneSkillBoostPlan) -> Self {
+        let mut clone = self.clone();
+        for lane in 0..clone.levels.len() {
+            let key = clone.fixed_lane_keys[lane];
+            clone.levels[lane] = self.build_levels[lane].min(self.levels[lane]);
+            clone.boosts[lane] = None;
+            clone.boosted[lane] = key < 64 && plan.initially_boosted_mask & (1u64 << key) != 0;
+        }
+
+        if let Some(lane) = clone
+            .active_order
+            .iter()
+            .rev()
+            .copied()
+            .find(|lane| clone.fixed_lane_keys[*lane] < 25 && clone.levels[*lane] > 0 && !clone.boosted[*lane])
+        {
+            let base = clone.levels[lane];
+            clone.levels[lane] = base.saturating_mul(2);
+            clone.boosted[lane] = true;
+            clone.boosts[lane] = Some(SkillBoost::LastBoost(base));
+        }
+
+        for &(key, max_boost) in plan.slot_boosts.iter().flatten() {
+            let key = usize::from(key);
+            let Some(lane) = clone.fixed_lane_keys.iter().position(|candidate| *candidate == key) else {
+                continue;
+            };
+            if clone.levels[lane] == 0 || clone.boosted[lane] {
+                continue;
+            }
+            let base = clone.levels[lane];
+            let boost = u32::from(max_boost).min(base);
+            clone.levels[lane] = base.saturating_add(boost);
+            clone.boosted[lane] = true;
+            clone.boosts[lane] = Some(SkillBoost::SlotBoost { base, boost });
+        }
+
+        clone
+            .pre_action_order
+            .retain(|lane| clone.levels.get(*lane).is_some_and(|level| *level > 0));
+        clone
+            .post_action_after_states
+            .retain(|(_, lane)| clone.levels.get(*lane).is_some_and(|level| *level > 0));
+        clone
+    }
+
     pub fn disable_action_lane(&mut self, fixed_lane: usize) {
         let before = self.active_order.len();
         self.active_order.retain(|lane| *lane != fixed_lane);

@@ -289,11 +289,10 @@ impl<'a> SkillContext<'a> {
             .unwrap_or_default()
             .iter()
             .copied()
-            .filter(|candidate| {
-                self.entities
-                    .get(*candidate)
-                    .is_some_and(|entity| entity.runtime.alive && entity.runtime.hp > 0)
-            })
+            // legacy 的 team.alive 只看 alive 标志。自爆会先把使魔 HP 设为 0，
+            // 等目标伤害链完成后才进入 on_die；这段窗口里使魔仍须作为无效候选
+            // 参与 Protect 的抽样和重试，以保持 RC4 消耗一致。
+            .filter(|candidate| self.entities.get(*candidate).is_some_and(|entity| entity.runtime.alive))
             .collect::<Vec<_>>();
 
         // legacy Protect 会先消耗 smart 判定，再处理有效友军列表为空的情况。

@@ -104,7 +104,7 @@ pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &Stat
 
     if next_count > 0 {
         context
-            .set_owner_state_payload(
+            .set_owner_state_payload_without_refresh(
                 entry.legacy_order_key,
                 StatePayload::Poison {
                     caster,
@@ -118,7 +118,7 @@ pub fn run_poison_post_action_state(context: &mut StateContext<'_>, entry: &Stat
     }
 
     context
-        .clear_owner_state(entry.legacy_order_key)
+        .clear_owner_state_without_refresh(entry.legacy_order_key)
         .expect("poison state payload should still exist");
 }
 

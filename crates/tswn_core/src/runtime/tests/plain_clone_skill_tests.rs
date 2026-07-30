@@ -51,3 +51,30 @@ fn plain_clone_inherits_summon_blueprint_and_can_summon() {
     runtime.emit_plain_lethal_replay_into(owner, summoned, &mut summon_death_updates);
     assert_eq!(summon_death_updates.updates.last().unwrap().message, "[1]消失了");
 }
+
+#[test]
+fn namer_pf_score_clone_rebuilds_reraise_level_like_legacy() {
+    let raw = "! #NHe2ywg@Unbound\n33555277@!\n\n33555278@!\n33555279@!";
+    let config = default_custom_runtime_import_config().expect("runtime config should build");
+    let mut runner = RuntimeRunner::from_custom_mixed_namerena_raw_with_eval_rq(
+        raw.to_owned(),
+        crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
+        config,
+    )
+    .expect("namer-pf round should build");
+
+    for _ in 0..14 {
+        runner.run_round();
+    }
+
+    let clone = runner
+        .runtime()
+        .entities
+        .get(EntityIdx(4))
+        .expect("round 14 should spawn the score profile clone");
+    let reraise_lane = (0..clone.template.skills.len())
+        .find(|lane| clone.template.skills.fixed_lane_key_at(*lane) == Some(28))
+        .expect("score profile clone should contain reraise");
+
+    assert_eq!(clone.template.skills.level_at(reraise_lane), Some(14));
+}

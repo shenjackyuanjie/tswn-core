@@ -146,6 +146,26 @@ fn plain_protect_rejects_combat_minion_after_legacy_retry_budget() {
 }
 
 #[test]
+fn plain_protect_keeps_zero_hp_alive_combat_minion_in_legacy_retry_candidates() {
+    let mut runtime = protect_runtime(DEFAULT_CORE_SUMMON_KIND_EXPORT);
+    runtime.entities.get_mut(EntityIdx(1)).unwrap().runtime.hp = 0;
+    let candidates = runtime.world.team_alive(0).unwrap().to_vec();
+    let mut expected_rng = runtime.rng.clone();
+    expected_rng.r127();
+    for _ in 0..5 {
+        assert_eq!(expected_rng.pick_skip(&candidates, 0), Some(1));
+    }
+    let mut updates = RunUpdates::new();
+
+    runtime.drain_plain_protect_post_action_into(EntityIdx(0), &mut updates);
+
+    assert_rng_state_eq(&runtime.rng, &expected_rng);
+    assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.protect_to, None);
+    assert!(runtime.entities.get(EntityIdx(1)).unwrap().runtime.protect_from.is_empty());
+    assert!(updates.updates.is_empty());
+}
+
+#[test]
 fn plain_protect_freezes_existing_pre_defend_skill_count_on_first_link() {
     let config = default_custom_runtime_import_config().expect("default runtime profile should build");
     let protect = config

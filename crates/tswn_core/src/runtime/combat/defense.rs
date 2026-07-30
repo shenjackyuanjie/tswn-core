@@ -671,8 +671,22 @@ impl CombatRuntime {
     }
 
     pub fn mark_dead_with_linked_minions_into(&mut self, owner: EntityIdx, team: usize, updates: &mut RunUpdates) {
-        self.cleanup_linked_minions_for_owner(owner, updates);
-        self.world.mark_dead(owner, team);
+        let has_deferred_self_death_minion = self.entities.iter().any(|(idx, entity)| {
+            idx != owner
+                && entity.runtime.owner == owner
+                && entity.runtime.alive
+                && entity.runtime.hp <= 0
+                && entity.runtime.is_combat_minion()
+        });
+        if has_deferred_self_death_minion {
+            // 自爆先把使魔标为 hp=0，随后伤害又击杀 owner 时，legacy 的
+            // death_queue 会先移除 owner，再处理使魔的延迟自杀。
+            self.world.mark_dead(owner, team);
+            self.cleanup_linked_minions_for_owner(owner, updates);
+        } else {
+            self.cleanup_linked_minions_for_owner(owner, updates);
+            self.world.mark_dead(owner, team);
+        }
     }
 
     pub fn cleanup_linked_minions_for_owner(&mut self, owner: EntityIdx, updates: &mut RunUpdates) {
@@ -723,6 +737,10 @@ impl CombatRuntime {
                 (idx != owner
                     && Some(idx) != excluded
                     && entity.runtime.alive
+                    // legacy owner 死亡清理会跳过已经 HP=0、但尚未进入自身
+                    // on_die 的 linked minion（典型场景是使魔自爆先标零，再击杀 owner）。
+                    // 它们必须留给外层延迟死亡链处理，才能保持消息和游标顺序。
+                    && entity.runtime.hp > 0
                     && (entity.runtime.owner == owner || (include_root_owner && entity.runtime.root_owner == owner))
                     && entity.runtime.is_combat_minion()
                     && keep(entity))

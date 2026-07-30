@@ -129,36 +129,6 @@ impl PreparedBattleRoster {
             scratch.name_lengths.push(name.len());
             scratch.name_keys[index][1..1 + name.len()].copy_from_slice(name.as_bytes());
         }
-        let shared_numeric_name_len = scratch.name_lengths.first().copied().filter(|&name_len| {
-            scratch.name_lengths.iter().all(|length| *length == name_len)
-                && scratch.dynamic_inputs.iter().all(|&(team_index, player_index, _)| {
-                    raw_groups[team_index][player_index]
-                        .split_once('@')
-                        .is_some_and(|(name, _)| name.as_bytes().iter().all(u8::is_ascii_digit))
-                })
-        });
-        let cached_child_clone_name_factor = shared_numeric_name_len.map(|name_len| {
-            if !scratch.child_clone_name_factor_ready
-                || scratch.factor_eval_rq_bits != eval_rq.to_bits()
-                || scratch.factor_name_len != name_len
-                || scratch.factor_team != profile_team
-            {
-                let (first_team, first_player, _) = scratch.dynamic_inputs[0];
-                let first_name = raw_groups[first_team][first_player]
-                    .split_once('@')
-                    .expect("已经验证的 score profile 必须包含队名分隔符")
-                    .0;
-                let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(first_name, true, eval_rq);
-                let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(profile_team, true, eval_rq);
-                scratch.factor_eval_rq_bits = eval_rq.to_bits();
-                scratch.factor_name_len = name_len;
-                scratch.factor_team.clear();
-                scratch.factor_team.push_str(profile_team);
-                scratch.child_clone_name_factor = factor_name.max(factor_team - 6.0);
-                scratch.child_clone_name_factor_ready = true;
-            }
-            scratch.child_clone_name_factor
-        });
         let key_refs = scratch
             .name_keys
             .iter()
@@ -246,7 +216,7 @@ impl PreparedBattleRoster {
             let prepared = profile.into_prepared(
                 scratch.team_by_player[id],
                 eval_rq,
-                cached_child_clone_name_factor,
+                None,
                 skill_import,
                 skills,
                 id_key_name,

@@ -404,6 +404,135 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore]
+    fn probe_score_outcomes_from_env() {
+        let target = std::env::var("TSWN_SCORE_PROBE_TARGET").expect("set TSWN_SCORE_PROBE_TARGET");
+        let modifier = std::env::var("TSWN_SCORE_PROBE_MODIFIER").unwrap_or_else(|_| "!".to_owned());
+        let eval_rq = crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
+        let target_group = vec![target];
+        let first_groups = ScoreMatchGroups::new(&target_group, &modifier).groups;
+        let config = default_custom_runtime_import_config().unwrap();
+        let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&first_groups, eval_rq, config).unwrap();
+        let mut match_groups = ScoreMatchGroups::new(&target_group, &modifier);
+        let mut runner = prepared.new_reusable_runner();
+        if let Ok(round_number) = std::env::var("TSWN_SCORE_PROBE_ROUND").map(|value| value.parse::<usize>().unwrap()) {
+            match_groups.set_round(round_number - 1);
+            prepared
+                .reset_score_groups_with_seed_and_eval_rq(
+                    &mut runner,
+                    &match_groups.groups,
+                    &match_groups.profile_player_ids,
+                    &match_groups.modifier,
+                    &match_groups.profile_team_rng,
+                    &mut match_groups.skill_buffers,
+                    &mut match_groups.identity_buffers,
+                    &mut match_groups.round_scratch,
+                    &mut match_groups.roster_buffers,
+                    &[],
+                    eval_rq,
+                )
+                .unwrap();
+            for _ in 0..BATCH_MAX_ROUNDS {
+                let outcome = runner.run_round();
+                if let Some(frame) = outcome.frame {
+                    for update in frame.updates.updates {
+                        if matches!(update.update_type, crate::runtime::update::UpdateType::NextLine) {
+                            continue;
+                        }
+                        let entity_name = |idx: usize| {
+                            runner
+                                .runtime()
+                                .entities
+                                .get(crate::runtime::EntityIdx(idx as u32))
+                                .map(|entity| entity.template.display_name.clone())
+                                .unwrap_or_else(|| format!("#{idx}"))
+                        };
+                        let caster = entity_name(update.caster);
+                        let target = entity_name(update.target);
+                        let mut message = update.message.replace("[0]", &caster).replace("[1]", &target);
+                        let param = update.param.unwrap_or(update.score).to_string();
+                        message = message.replace("[2]", &param);
+                        println!("UPDATE={message}");
+                    }
+                }
+                if outcome.winner_team.is_some() {
+                    break;
+                }
+            }
+            println!("OUTCOME={}", usize::from(runner.input_group_won(0)));
+            return;
+        }
+        let mut outcomes = String::with_capacity(10_000);
+        for round in 0..10_000 {
+            match_groups.set_round(round);
+            prepared
+                .reset_score_groups_with_seed_and_eval_rq(
+                    &mut runner,
+                    &match_groups.groups,
+                    &match_groups.profile_player_ids,
+                    &match_groups.modifier,
+                    &match_groups.profile_team_rng,
+                    &mut match_groups.skill_buffers,
+                    &mut match_groups.identity_buffers,
+                    &mut match_groups.round_scratch,
+                    &mut match_groups.roster_buffers,
+                    &[],
+                    eval_rq,
+                )
+                .unwrap();
+            runner.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
+            outcomes.push(if runner.input_group_won(0) { '1' } else { '0' });
+        }
+        println!("OUTCOMES={outcomes}");
+    }
+
+    fn score_round_target_won(target: &str, round_number: usize) -> bool {
+        let target_group = vec![target.to_owned()];
+        let modifier = "!";
+        let eval_rq = crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
+        let first_groups = ScoreMatchGroups::new(&target_group, modifier).groups;
+        let config = default_custom_runtime_import_config().unwrap();
+        let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&first_groups, eval_rq, config).unwrap();
+        let mut match_groups = ScoreMatchGroups::new(&target_group, modifier);
+        let mut runner = prepared.new_reusable_runner();
+        match_groups.set_round(round_number - 1);
+        prepared
+            .reset_score_groups_with_seed_and_eval_rq(
+                &mut runner,
+                &match_groups.groups,
+                &match_groups.profile_player_ids,
+                &match_groups.modifier,
+                &match_groups.profile_team_rng,
+                &mut match_groups.skill_buffers,
+                &mut match_groups.identity_buffers,
+                &mut match_groups.round_scratch,
+                &mut match_groups.roster_buffers,
+                &[],
+                eval_rq,
+            )
+            .unwrap();
+
+        for _ in 0..BATCH_MAX_ROUNDS {
+            let outcome = runner.run_round();
+            if outcome.winner_team.is_some() {
+                break;
+            }
+        }
+
+        runner.input_group_won(0)
+    }
+
+    #[test]
+    fn score_round_596_matches_legacy_clone_battle_outcome() {
+        assert!(score_round_target_won("艾泽莉娅 #IAPBVEKLIO@无惨", 596));
+    }
+
+    #[test]
+    fn score_round_9889_matches_legacy_heal_haste_outcome() {
+        assert!(!score_round_target_won("龟钧募犀红@Hell", 9889));
+    }
+
+    #[test]
     fn reusable_runner_reset_matches_fresh_runner() {
         let groups = vec![
             vec!["Don't_Force_It #f4fMecHe1@Shabby_fish".to_owned()],

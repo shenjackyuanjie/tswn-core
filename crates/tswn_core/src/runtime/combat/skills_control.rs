@@ -291,12 +291,16 @@ impl CombatRuntime {
                 .template
                 .name
                 .clone();
-            let clone_build = owner
+            let clone_build_data = owner
                 .template
                 .clone_build
                 .as_ref()
-                .unwrap_or_else(|| panic!("runtime clone build data missing for entity {}", actor.0))
-                .child();
+                .unwrap_or_else(|| panic!("runtime clone build data missing for entity {}", actor.0));
+            let clone_skills = clone_build_data.score_skill_boost_plan().map_or_else(
+                || owner.template.skills.rebuilt_for_clone(),
+                |plan| owner.template.skills.rebuilt_for_score_clone(plan),
+            );
+            let clone_build = clone_build_data.child();
             let shadow_blueprint = shadow_blueprint_slot.and_then(|slot| match owner.slots.get(slot) {
                 Some(SlotValue::PlayerTemplate(template)) => Some(template.as_ref().clone()),
                 Some(_) => panic!("runtime core shadow blueprint slot has invalid value"),
@@ -319,7 +323,7 @@ impl CombatRuntime {
                 owner.runtime.team,
                 owner.runtime.hp,
                 owner.runtime.magic,
-                owner.template.skills.rebuilt_for_clone(),
+                clone_skills,
                 clone_build,
                 shadow_blueprint,
                 summon_blueprint,

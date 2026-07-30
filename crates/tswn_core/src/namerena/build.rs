@@ -23,6 +23,8 @@ pub struct PreparedPlayer {
     pub weapon_attr_bonus: [i32; 8],
     pub name_base: [u8; 128],
     pub raw_name_base: [u8; 128],
+    pub clone_initially_boosted_mask: Option<u64>,
+    pub clone_slot_boosts: [Option<(u8, u8)>; 2],
     pub overlay: Option<PlayerOverlay>,
 }
 
@@ -62,6 +64,7 @@ struct PlayerBuild {
     class: PlayerClass,
     name_base: [u8; 128],
     raw_name_base: [u8; 128],
+    normal_raw_name_base: [u8; 128],
     action_order: [u32; 40],
     name_factor: f64,
     weapon: Option<WeaponBuild>,
@@ -213,6 +216,7 @@ impl PlayerBuild {
         let mut rand = RC4::new(&team_key[..1 + clan_name.len()], 1);
         rand.update(&name_key[..1 + spec.name.len()], 2);
         let mut name_base = map_name_base(&rand);
+        let normal_raw_name_base = name_base;
         let mut raw_name_base = name_base;
         match spec.class {
             PlayerClass::Test1 => {
@@ -284,6 +288,7 @@ impl PlayerBuild {
             class: spec.class,
             name_base,
             raw_name_base,
+            normal_raw_name_base,
             action_order,
             name_factor,
             weapon: (!has_diy).then(|| weapon_name.and_then(WeaponBuild::parse)).flatten(),
@@ -354,6 +359,29 @@ impl PlayerBuild {
         if let Some(weapon) = &self.weapon {
             weapon.post_upgrade(&mut attrs, &mut levels, &mut boosted);
         }
+        let clone_initially_boosted_mask = (overlay_skills.is_none()
+            && self.weapon.is_none()
+            && matches!(self.class, PlayerClass::Test1 | PlayerClass::Test2 | PlayerClass::TestEx))
+        .then(|| {
+            let mut mask = 0u64;
+            for (slot, offset) in (64..128).step_by(4).enumerate() {
+                let Some(key) = slot_skill_keys[slot] else {
+                    continue;
+                };
+                if self.normal_raw_name_base[offset..offset + 4].iter().copied().min().unwrap() <= 10 {
+                    mask |= 1u64 << key;
+                }
+            }
+            mask
+        });
+        let clone_slot_boosts = [(14usize, 60usize, 61usize), (15, 62, 63)].map(|(slot, left, right)| {
+            slot_skill_keys[slot].map(|key| {
+                (
+                    key.try_into().expect("clone skill key must fit u8"),
+                    self.name_base[left].min(self.name_base[right]),
+                )
+            })
+        });
         if overlay_skills.is_none() {
             for &key in self.action_order.iter().rev() {
                 let key = key as usize;
@@ -430,6 +458,8 @@ impl PlayerBuild {
             weapon_attr_bonus,
             name_base: self.name_base,
             raw_name_base: self.raw_name_base,
+            clone_initially_boosted_mask,
+            clone_slot_boosts,
             overlay: self.overlay,
         }
     }

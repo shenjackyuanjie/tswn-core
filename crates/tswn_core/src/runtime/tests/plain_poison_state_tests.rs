@@ -58,6 +58,58 @@ fn run_state_hooks_poison_post_action_ticks_damage_and_keeps_state() {
 }
 
 #[test]
+fn poison_post_action_does_not_refresh_pending_haste_multiplier() {
+    for count in [4, 1] {
+        let config = default_custom_runtime_import_config().expect("default runtime profile should build");
+        let poison_state = config
+            .registry
+            .state_id_by_export_name(DEFAULT_CORE_POISON_STATE_EXPORT)
+            .expect("default profile should register poison state");
+        let haste_state = config
+            .registry
+            .state_id_by_export_name(DEFAULT_CORE_HASTE_STATE_EXPORT)
+            .expect("default profile should register haste state");
+        let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+            vec![
+                PlayerTemplate::new(1, "left", 0, 100, 3).with_magic(16).with_speed(100),
+                PlayerTemplate::new(2, "right", 1, 100, 3),
+            ],
+            config.registry,
+        ));
+        let owner = runtime.entities.get_mut(EntityIdx(0)).unwrap();
+        owner.states.add_entry(StateEntry::haste_with_effective_faster(
+            PLAIN_HASTE_STATE_KEY,
+            haste_state,
+            4,
+            2,
+            5,
+            SkillPriority(210),
+        ));
+        owner.states.add_entry(StateEntry::poison(
+            PLAIN_POISON_STATE_KEY,
+            poison_state,
+            Some(1),
+            Some(0),
+            80.0,
+            count,
+            SkillPriority(150),
+        ));
+        assert_eq!(owner.effective_speed(), 200);
+
+        runtime
+            .run_state_hooks(EntityIdx(0), ProcMask::POST_ACTION)
+            .expect("poison tick should emit updates");
+
+        let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+        assert_eq!(
+            owner.states.entry(PLAIN_HASTE_STATE_KEY).and_then(StateEntry::haste_runtime_value),
+            Some((4, 2, 4))
+        );
+        assert_eq!(owner.effective_speed(), 200);
+    }
+}
+
+#[test]
 fn run_state_hooks_poison_post_action_clears_and_emits_release_after_tick() {
     let (mut runtime, _) = poison_runtime(40, 80.0, 1);
 

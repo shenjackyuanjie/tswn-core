@@ -290,8 +290,15 @@ impl PreparedBattleInit {
             _ => PlayerTemplate::DEFAULT_KIND,
         };
         let child_clone_name_factor = Self::namerena_child_clone_name_factor(player, eval_rq);
-        let clone_build = CloneBuildData::from_legacy(player.attrs, player.weapon_attr_bonus, player.name_factor, &player.status)
-            .with_child_name_factor(child_clone_name_factor);
+        let mut clone_build =
+            CloneBuildData::from_legacy(player.attrs, player.weapon_attr_bonus, player.name_factor, &player.status)
+                .with_child_name_factor(child_clone_name_factor);
+        if let Some(initially_boosted_mask) = player.clone_initially_boosted_mask {
+            clone_build = clone_build.with_score_skill_boost_plan(ScoreCloneSkillBoostPlan {
+                initially_boosted_mask,
+                slot_boosts: player.clone_slot_boosts,
+            });
+        }
         let mut template = Self::template_from_namerena_player(player, player.id, team, skills.clone());
         template.kind = kind;
         template.clone_build = Some(clone_build);
@@ -791,10 +798,16 @@ mod score_profile_tests {
                     );
 
                     let template = &actual.players[id].as_ref().expect("数字 profile 必须存在").template;
-                    let owner_attrs = template.clone_build.as_ref().expect("数字 profile 必须含分身数据").attrs();
+                    let clone_build = template.clone_build.as_ref().expect("数字 profile 必须含分身数据");
+                    let owner_attrs = clone_build.attrs();
                     let factor_name = crate::namerena::eval_name::eval_str_common_with_rq(&template.name, true, eval_rq);
                     let factor_team = crate::namerena::eval_name::eval_str_common_with_rq(&template.clan_name, true, eval_rq);
                     let child_factor = factor_name.max(factor_team - 6.0);
+                    assert_eq!(
+                        clone_build.child_name_factor().to_bits(),
+                        child_factor.to_bits(),
+                        "数字 profile 的分身名字系数不能复用同长度名字的值"
+                    );
                     for kind in [
                         crate::namerena::MinionKind::Shadow,
                         crate::namerena::MinionKind::Summon,

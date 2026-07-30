@@ -156,7 +156,12 @@ impl CombatRuntime {
                         0,
                     ));
                     let killed_caster = self.kill_entity_without_damage_mark_only_into(caster);
-                    self.drain_pre_defend_hooks_into(target, updates, &mut defend_value);
+                    self.drain_pre_defend_hooks_with_on_damage_into(
+                        target,
+                        updates,
+                        &mut defend_value,
+                        PlainAttackOnDamage::Fire(fire_state_key),
+                    );
                     let Some(atp) = defend_value.atp() else {
                         panic!("runtime PRE_DEFEND hooks must leave an atp value");
                     };
@@ -590,13 +595,17 @@ impl CombatRuntime {
     }
 
     pub fn drain_summon_explode_self_death_into(&mut self, caster: EntityIdx, updates: &mut RunUpdates) {
-        if self
+        let caster_entity = self
             .entities
             .get(caster)
-            .unwrap_or_else(|| panic!("runtime summon explode caster disappeared: {}", caster.0))
-            .runtime
-            .is_combat_minion()
-        {
+            .unwrap_or_else(|| panic!("runtime summon explode caster disappeared: {}", caster.0));
+        // 自爆伤害可能先杀死 owner；owner 的死亡清理会同步移除仍处于
+        // mark-only 状态的使魔。legacy 此时只保留 owner 清理产生的一次“消失”，
+        // 不会再次执行使魔自己的死亡链。
+        if !caster_entity.runtime.alive {
+            return;
+        }
+        if caster_entity.runtime.is_combat_minion() {
             self.emit_plain_lethal_replay_into(caster, caster, updates);
         }
         self.drain_die_hooks_into(caster, updates);
