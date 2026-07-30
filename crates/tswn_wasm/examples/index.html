@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>tswn_wasm Show Demo</title>
     <link rel="stylesheet" href="./show.css">
+    <script>
+        (() => {
+            try {
+                const theme = localStorage.getItem("tswn-show-theme");
+                if (theme === "light" || theme === "dark") {
+                    document.documentElement.dataset.theme = theme;
+                    document.documentElement.dataset.themeSource = "user";
+                    return;
+                }
+            } catch {
+                // 隐私模式或禁用存储时，仍然可以使用系统主题。
+            }
+            document.documentElement.dataset.theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            document.documentElement.dataset.themeSource = "system";
+        })();
+    </script>
 </head>
 <body>
     <div class="version-marker small">
@@ -147,6 +163,10 @@
             </button>
             <button id="shareBtn" class="micon" title="复制分享链接" aria-label="复制分享链接">
                 <svg class="svgicon" fill="white" height="24" width="24" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11A2.99 2.99 0 1 0 15 5c0 .24.04.47.09.7L8.04 9.81A3 3 0 1 0 8.04 14.2l7.12 4.18c-.05.2-.08.41-.08.62a2.92 2.92 0 1 0 2.92-2.92z"/></svg>
+            </button>
+            <button id="themeBtn" class="micon" type="button" title="切换到深色模式" aria-label="切换到深色模式" aria-pressed="false">
+                <svg id="themeLightIcon" class="svgicon" fill="white" height="24" width="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4V2h-1v2h1zm0 18v-2h-1v2h1zM4 11H2v1h2v-1zm18 0h-2v1h2v-1zM5.64 6.36 4.22 4.93l-.71.71 1.42 1.43.71-.71zm14.14 12.71-1.42-1.42-.71.71 1.42 1.42.71-.71zM5.64 17.64l-.71-.71-1.42 1.42.71.71 1.42-1.42zM19.07 4.93l-1.42 1.43.71.71 1.42-1.43-.71-.71zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/></svg>
+                <svg id="themeDarkIcon" class="svgicon" fill="white" height="24" width="24" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M20.74 15.06A8.5 8.5 0 0 1 8.94 3.26 8.5 8.5 0 1 0 20.74 15.06z"/></svg>
             </button>
             </div>
         </div>

@@ -251,6 +251,12 @@ const refreshBtn = document.querySelector("#refreshBtn");
 const shareBtn = document.querySelector("#shareBtn");
 /** @type {HTMLElement} */
 const shareToast = document.querySelector("#shareToast");
+/** @type {HTMLButtonElement} */
+const themeBtn = document.querySelector("#themeBtn");
+/** @type {SVGElement} */
+const themeLightIcon = document.querySelector("#themeLightIcon");
+/** @type {SVGElement} */
+const themeDarkIcon = document.querySelector("#themeDarkIcon");
 /** @type {HTMLElement} */
 const rightControls = document.querySelector("#rightControls");
 /** @type {HTMLButtonElement} */
@@ -303,6 +309,41 @@ let playbackFinished = false;
 let rightControlsCollapsed = window.matchMedia("(max-width: 640px)").matches;
 /** @type {number|null} 分享复制提示的隐藏定时器 */
 let shareToastTimer = null;
+const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const THEME_STORAGE_KEY = "tswn-show-theme";
+
+function currentTheme() {
+  return document.documentElement.dataset.theme ?? (themeMediaQuery.matches ? "dark" : "light");
+}
+
+function syncThemeUi() {
+  const isDark = currentTheme() === "dark";
+  themeLightIcon.toggleAttribute("hidden", !isDark);
+  themeDarkIcon.toggleAttribute("hidden", isDark);
+  const label = isDark ? "切换到浅色模式" : "切换到深色模式";
+  themeBtn.title = label;
+  themeBtn.setAttribute("aria-label", label);
+  themeBtn.setAttribute("aria-pressed", String(isDark));
+}
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.themeSource = "user";
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // 存储不可用时仍保留本次页面会话的主题。
+  }
+  syncThemeUi();
+}
+
+syncThemeUi();
+themeMediaQuery.addEventListener("change", () => {
+  if (document.documentElement.dataset.themeSource === "system") {
+    document.documentElement.dataset.theme = themeMediaQuery.matches ? "dark" : "light";
+    syncThemeUi();
+  }
+});
 // 页面初始化时尝试恢复上次保存的输入
 restoreInputValue();
 restoreNicknameMap();
@@ -1458,6 +1499,10 @@ refreshBtn.addEventListener("click", () => {
 
 shareBtn.addEventListener("click", () => {
   void copyCurrentShareUrl();
+});
+
+themeBtn.addEventListener("click", () => {
+  setTheme(currentTheme() === "dark" ? "light" : "dark");
 });
 
 toggleControlsBtn.addEventListener("click", () => {
