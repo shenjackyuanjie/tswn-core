@@ -21,7 +21,7 @@ use super::format::{
 };
 use super::parse::{
     parse_factored_target_groups, parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels,
-    parse_plus_separated_groups, parse_target_groups,
+    parse_target_groups,
 };
 use super::score::{BatchRateSummary, BatchTargetOutcome, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
@@ -647,18 +647,25 @@ fn emit_batch_rate_result(
 }
 
 pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
-    let target_groups = parse_plus_separated_groups(&input.target_text);
-    let players = parse_line_list(&input.player_text);
-    let teammates = parse_line_list(&input.teammate_text);
+    let (target_groups, target_factors) = match parse_pair_target_groups(&input.target_text, input.target_factor_enabled) {
+        Ok(targets) => targets,
+        Err(err) => {
+            send(ProgressEvent::Done(Err(err)));
+            return;
+        }
+    };
+    let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
+    let (teammate_groups, teammate_labels) =
+        parse_player_groups_with_labels(&input.teammate_text, input.teammate_double_plus);
     if target_groups.is_empty() {
         send(ProgressEvent::Done(Err("pair: 靶子列表为空。".to_string())));
         return;
     }
-    if players.is_empty() {
+    if player_groups.is_empty() {
         send(ProgressEvent::Done(Err("pair: 选手列表为空。".to_string())));
         return;
     }
-    if teammates.is_empty() {
+    if teammate_groups.is_empty() {
         send(ProgressEvent::Done(Err("pair: 队友列表为空。".to_string())));
         return;
     }
@@ -681,34 +688,34 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
     let head = input.head.max(1);
     let eval_rq = eval_rq(input.options.keep_rq);
     let precision = input.options.wr_precision.min(9);
-    let total = players.len() * teammates.len() * target_groups.len();
+    let total = player_groups.len() * teammate_groups.len() * target_groups.len();
     let mut done = 0usize;
 
-    for player in &players {
+    for (player_group, player_label) in player_groups.iter().zip(player_labels.iter()) {
         let started = Instant::now();
-        let converted_player = match player_to_ol(player) {
+        let converted_player = match player_group_to_ol(player_group) {
             Ok(value) => value,
             Err(err) => {
                 send(ProgressEvent::Done(Err(err)));
                 return;
             }
         };
-        let mut pair_rates = Vec::with_capacity(teammates.len());
+        let mut pair_rates = Vec::with_capacity(teammate_groups.len());
         let mut total_wins = 0usize;
         let mut total_battles = 0usize;
         let mut _total_valid_matchups = 0usize;
         let mut _total_skipped_matchups = 0usize;
         let mut verbose = String::new();
 
-        for teammate in &teammates {
-            let pair_group = format!("{converted_player}\n{teammate}");
+        for (teammate_group, teammate_label) in teammate_groups.iter().zip(teammate_labels.iter()) {
+            let pair_group = format!("{converted_player}\n{teammate_group}");
             if input.options.verbose {
-                let _ = writeln!(verbose, "teammate: {teammate}");
+                let _ = writeln!(verbose, "teammate: {teammate_label}");
             }
             let summary = bench_batch_rate_for_group(
                 &pair_group,
                 &target_groups,
-                None,
+                input.target_factor_enabled.then_some(target_factors.as_slice()),
                 n,
                 input.options.threads,
                 eval_rq,
@@ -721,7 +728,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
                 },
             );
             if summary.valid_matchups > 0 {
-                pair_rates.push((summary.avg, teammate.clone()));
+                pair_rates.push((summary.avg, teammate_label.clone()));
             }
             total_wins += summary.wins;
             total_battles += summary.total;
@@ -743,7 +750,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         {
             let line = format_pair_file_record(
                 input.output_mode,
-                player,
+                player_label,
                 final_score,
                 selected_count,
                 head,
@@ -758,7 +765,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
 
         if input.options.min_screen.is_none_or(|limit| final_score >= limit) {
             let log = format_pair_screen_log(
-                player,
+                player_label,
                 final_score,
                 selected_count,
                 &pair_rates,
@@ -789,6 +796,16 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         "完成。".to_string()
     };
     send(ProgressEvent::Done(Ok(final_message)));
+}
+
+fn parse_pair_target_groups(content: &str, factor_enabled: bool) -> Result<(Vec<String>, Vec<f64>), String> {
+    if factor_enabled {
+        parse_factored_target_groups(content)
+    } else {
+        let groups = parse_target_groups(content, false);
+        let factors = vec![1.0; groups.len()];
+        Ok((groups, factors))
+    }
 }
 
 fn should_highlight(score: f64, min_screen: Option<f64>, highlight_delta: Option<f64>) -> bool {
@@ -890,11 +907,15 @@ fn player_to_ol(raw: &str) -> Result<String, String> {
     Ok(player.to_ol_json())
 }
 
+fn player_group_to_ol(group: &str) -> Result<String, String> {
+    group.lines().map(player_to_ol).collect::<Result<Vec<_>, _>>().map(|players| players.join("\n"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::AtomicBool;
 
-    use super::{OutputMode, compare_score_output_lines, run_to_diy, score_output_line_value};
+    use super::{OutputMode, compare_score_output_lines, parse_pair_target_groups, run_to_diy, score_output_line_value};
 
     #[test]
     fn log_output_lines_sort_by_score_descending() {
@@ -913,6 +934,20 @@ mod tests {
             score_output_line_value(r#"{"label":"a","score":300.0}"#, OutputMode::Jsonl),
             Some(300.0)
         );
+    }
+
+    #[test]
+    fn pair_parses_factored_targets_with_their_weights() {
+        let raw = "[[targets]]\nfactor = 2\nplayers = [\"mario\", \"luigi\"]\n\n[[targets]]\nfactor = 0.5\nplayers = [\"peach\"]";
+        let (groups, factors) = parse_pair_target_groups(raw, true).expect("factored targets should parse");
+        assert_eq!(groups, vec!["mario\nluigi", "peach"]);
+        assert_eq!(factors, vec![2.0, 0.5]);
+    }
+
+    #[test]
+    fn pair_keeps_each_member_when_converting_a_multi_player_input_group() {
+        let group = "+ol:player-a\n+ol:player-b";
+        assert_eq!(super::player_group_to_ol(group).unwrap(), group);
     }
 
     #[test]

@@ -169,6 +169,8 @@ impl OpenboxApp {
             count_mode_controls(ui, &mut self.pair.count_mode, &mut self.pair.accuracy, &mut self.pair.count);
             thread_controls(ui, &mut self.pair.auto_threads, &mut self.pair.threads);
             ui.checkbox(&mut self.pair.keep_rq, "不低估短号");
+            ui.checkbox(&mut self.pair.player_double_plus, "DIY选手（++分割名字）");
+            ui.checkbox(&mut self.pair.teammate_double_plus, "DIY队友（++分割名字）");
             pair_detail_controls(ui, self);
         });
 

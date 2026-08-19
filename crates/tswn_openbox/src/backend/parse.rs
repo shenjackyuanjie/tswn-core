@@ -17,8 +17,6 @@ pub fn parse_line_list(content: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn parse_plus_separated_groups(content: &str) -> Vec<String> { parse_separated_groups(content, "+") }
-
 pub fn parse_target_groups(content: &str, double_plus: bool) -> Vec<String> {
     let separator = if double_plus { "++" } else { "+" };
     parse_separated_groups(content, separator)
@@ -198,6 +196,16 @@ mod tests {
     fn normal_target_list_still_splits_single_plus() {
         let groups = parse_target_groups("mario+luigi", false);
         assert_eq!(groups, vec!["mario\nluigi".to_string()]);
+    }
+
+    #[test]
+    fn labeled_groups_support_independent_single_and_double_plus_separators() {
+        let (players, player_labels) = parse_player_groups_with_labels("mario+luigi", false);
+        let (teammates, teammate_labels) = parse_player_groups_with_labels("peach++daisy", true);
+        assert_eq!(players, vec!["mario\nluigi"]);
+        assert_eq!(player_labels, vec!["mario+luigi"]);
+        assert_eq!(teammates, vec!["peach\ndaisy"]);
+        assert_eq!(teammate_labels, vec!["peach++daisy"]);
     }
 
     #[test]
