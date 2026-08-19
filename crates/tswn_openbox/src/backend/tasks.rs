@@ -22,7 +22,7 @@ use super::format::{
 };
 use super::parse::{
     first_duplicate_name_in_matchup, groups_have_same_players, parse_factored_target_groups, parse_line_list,
-    parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups, parse_target_groups,
+    parse_namer_pf_groups, parse_player_groups_with_labels, parse_target_groups,
 };
 use super::score::{BatchRateSummary, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
@@ -706,6 +706,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
             let summary = bench_batch_rate_for_group(
                 &pair_group,
                 &target_groups,
+                input.target_factor_enabled.then_some(target_factors.as_slice()),
                 n,
                 input.options.threads,
                 eval_rq,
@@ -957,6 +958,7 @@ mod tests {
             let summary = bench_batch_rate_for_group(
                 player,
                 &targets.map(str::to_owned),
+                None,
                 24,
                 Some(1),
                 DEFAULT_EVAL_RQ,

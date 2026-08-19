@@ -7,7 +7,7 @@ use tswn_core::runtime::{RuntimeRunner, runtime_groups_win_rate_timed, runtime_s
 use tswn_core::win_rate::WinRateTiming;
 
 use super::format::display_group;
-use super::parse::first_duplicate_name_in_matchup;
+use super::parse::{first_duplicate_name_in_matchup, groups_have_same_players};
 
 #[derive(Debug, Clone)]
 pub struct BenchSummary {
@@ -39,6 +39,7 @@ pub enum BatchTargetOutcome {
 pub fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],
+    target_factors: Option<&[f64]>,
     n: usize,
     threads: Option<usize>,
     eval_rq: f64,
@@ -48,6 +49,7 @@ pub fn bench_batch_rate_for_group(
     mut tick_target: impl FnMut(usize, usize, &str, BatchTargetOutcome),
 ) -> BatchRateSummary {
     let mut accumulated_rate = 0.0;
+    let mut accumulated_factor = 0.0;
     let mut accumulated_wins = 0usize;
     let mut accumulated_total = 0usize;
     let mut valid_matchups = 0usize;
@@ -58,7 +60,17 @@ pub fn bench_batch_rate_for_group(
         if cancel.load(Ordering::Relaxed) {
             break;
         }
-        if let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target]) {
+        let factor = target_factors.map_or(1.0, |factors| factors[index]);
+        if target_factors.is_some() && groups_have_same_players(player, target) {
+            accumulated_rate += 50.0 * factor;
+            accumulated_factor += factor;
+            accumulated_wins += 1;
+            accumulated_total += 2;
+            valid_matchups += 1;
+            tick_target(index, target_total, target, BatchTargetOutcome::Rate);
+            continue;
+        }
+        if target_factors.is_none() && let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target]) {
             skipped_matchups += 1;
             if verbose {
                 let _ = writeln!(
@@ -90,6 +102,7 @@ pub fn bench_batch_rate_for_group(
                     );
                 }
                 accumulated_rate += summary.win_rate_percent();
+                accumulated_factor += factor;
                 accumulated_wins += summary.wins;
                 accumulated_total += summary.total;
                 valid_matchups += 1;
@@ -113,7 +126,7 @@ pub fn bench_batch_rate_for_group(
 
     BatchRateSummary {
         avg: if valid_matchups > 0 {
-            accumulated_rate / valid_matchups as f64
+            if target_factors.is_some() { accumulated_rate / accumulated_factor.max(f64::MIN_POSITIVE) } else { accumulated_rate / valid_matchups as f64 }
         } else {
             0.0
         },

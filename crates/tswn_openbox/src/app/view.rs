@@ -257,6 +257,8 @@ impl OpenboxApp {
                 ui.checkbox(&mut self.pair.keep_rq, "不低估短号");
                 help_icon(ui, HelpTopic::KeepRq, &requested_help);
             });
+            ui.checkbox(&mut self.pair.player_double_plus, "DIY选手（++分割名字）");
+            ui.checkbox(&mut self.pair.teammate_double_plus, "DIY队友（++分割名字）");
             pair_detail_controls(ui, self, &requested_help);
         });
 
