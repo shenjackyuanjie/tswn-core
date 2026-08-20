@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### 新增
+
+- `tswn-cli bench batch-rate` / `cqp` 新增 `--target-factored`（别名 `--weighted-targets`）：读取 `[[targets]]` TOML 的 `factor` 与 `players`，按有效靶子权重计算平均胜率。
+- `tswn-cli bench pair` 同步支持 `--target-factored` 带权靶子；带权模式下完全相同的双方阵容按 `50%` 参与加权，部分重名仍正常计算。
+- `tswn-cli bench pair` 的 `player-list` 和 `teammate-list` 现在每行都可表示一个多人组合。选手默认用 `+` 分隔，可用 `--player-list-double-plus` 改为 `++`；队友默认用 `++`，可用 `--teammate-list-single-plus` 改为 `+`。
+
 ### 变更
 
 - 精简公共 `replay_view` 数据结构：`ReplayClip` 现在只承载播放、布局、关联 id、侧栏快照和胜利标记；玩家、数值、血条、死亡特效与 emoji 语义统一下沉到 `ReplayTextPart`，避免多玩家句子被 clip 级单一字段误表达。

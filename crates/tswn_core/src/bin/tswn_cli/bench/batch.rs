@@ -24,7 +24,7 @@ use super::common::{format_duration, thread_spec};
 use super::output::{
     display_group, first_duplicate_name_in_matchup, format_batch_rate_log_record, format_batch_rate_pure_record,
     format_batch_rate_record, format_pair_rate_record, format_rate, open_batch_rate_output, player_to_ol_or_exit,
-    print_perf_lines, write_batch_rate_record,
+    print_perf_lines, write_batch_rate_record, groups_have_same_players,
 };
 use super::winrate::bench_winrate_summary;
 
@@ -178,6 +178,8 @@ impl BatchRateSummary {
 #[allow(clippy::too_many_arguments)]
 pub fn run_bench_batch_rate(
     target_groups: &[String],
+    target_factors: &[f64],
+    target_factored: bool,
     player_groups: &[String],
     player_labels: &[String],
     n: usize,
@@ -238,6 +240,8 @@ pub fn run_bench_batch_rate(
     if outer_workers > 1 {
         run_bench_batch_rate_parallel(
             target_groups,
+            target_factors,
+            target_factored,
             player_groups,
             player_labels,
             n,
@@ -270,6 +274,8 @@ pub fn run_bench_batch_rate(
         let summary = bench_batch_rate_for_group(
             player,
             target_groups,
+            target_factors,
+            target_factored,
             n,
             mode,
             threads,
@@ -301,6 +307,41 @@ pub fn run_bench_batch_rate(
     progress.finish();
 }
 
+#[cfg(test)]
+mod tests {
+    use super::bench_batch_rate_for_group;
+    use crate::args::BenchThreadMode;
+
+    #[test]
+    fn factored_mirror_match_counts_as_weighted_fifty_percent() {
+        let targets = vec!["mario\nluigi".to_string()];
+        let factors = vec![2.0];
+        let mut verbose = String::new();
+        let summary = bench_batch_rate_for_group(
+            "luigi\nmario",
+            &targets,
+            &factors,
+            true,
+            1,
+            BenchThreadMode::SingleThread,
+            None,
+            4.0,
+            false,
+            &mut verbose,
+            |_, _| {},
+        );
+        assert_eq!(summary.avg, 50.0);
+        assert_eq!(summary.valid_matchups, 1);
+        assert_eq!(summary.skipped_matchups, 0);
+    }
+
+    #[test]
+    fn multi_player_input_group_converts_each_member() {
+        let group = "+ol:player-a\n+ol:player-b";
+        assert_eq!(super::player_group_to_ol_or_exit(group), group);
+    }
+}
+
 /// 外层并行下，单个选手算完后需要回传主线程的全部信息。
 struct BatchPlayerOutcome {
     label: String,
@@ -316,6 +357,8 @@ struct BatchPlayerOutcome {
 #[allow(clippy::too_many_arguments)]
 fn run_bench_batch_rate_parallel(
     target_groups: &[String],
+    target_factors: &[f64],
+    target_factored: bool,
     player_groups: &[String],
     player_labels: &[String],
     n: usize,
@@ -367,6 +410,8 @@ fn run_bench_batch_rate_parallel(
             let summary = bench_batch_rate_for_group(
                 player,
                 target_groups,
+                target_factors,
+                target_factored,
                 n,
                 BenchThreadMode::SingleThread,
                 threads,
@@ -542,6 +587,8 @@ fn draw_overall_progress(done: usize, total: usize, started: Instant) {
 fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],
+    target_factors: &[f64],
+    target_factored: bool,
     n: usize,
     mode: BenchThreadMode,
     threads: Option<usize>,
@@ -557,9 +604,29 @@ fn bench_batch_rate_for_group(
     let mut accumulated_timing = WinRateTiming::default();
     let mut valid_matchups = 0usize;
     let mut skipped_matchups = 0usize;
+    let mut accumulated_factor = 0.0;
 
     for (ti, target) in target_groups.iter().enumerate() {
-        if let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target.as_str()]) {
+        let factor = target_factors.get(ti).copied().unwrap_or(1.0);
+        if target_factored && groups_have_same_players(player, target) {
+            accumulated_rate += 50.0 * factor;
+            accumulated_factor += factor;
+            accumulated_wins += 1;
+            accumulated_total += 2;
+            valid_matchups += 1;
+            if verbose {
+                let _ = writeln!(
+                    verbose_buf,
+                    "  [{}/{}] vs {}  =>  50.00% (same players)",
+                    ti + 1,
+                    target_groups.len(),
+                    display_group(target),
+                );
+            }
+            tick_target(ti, target);
+            continue;
+        }
+        if !target_factored && let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target.as_str()]) {
             skipped_matchups += 1;
             if verbose {
                 let _ = writeln!(
@@ -589,7 +656,8 @@ fn bench_batch_rate_for_group(
                 summary.total
             );
         }
-        accumulated_rate += summary.win_rate_percent();
+        accumulated_rate += summary.win_rate_percent() * factor;
+        accumulated_factor += factor;
         accumulated_wins += summary.wins;
         accumulated_total += summary.total;
         accumulated_timing.merge(summary.timing);
@@ -597,8 +665,8 @@ fn bench_batch_rate_for_group(
         tick_target(ti, target);
     }
 
-    let avg = if valid_matchups > 0 {
-        accumulated_rate / valid_matchups as f64
+    let avg = if accumulated_factor > 0.0 {
+        accumulated_rate / accumulated_factor
     } else {
         0.0
     };
@@ -616,11 +684,19 @@ fn bench_batch_rate_for_group(
 }
 
 /// `bench pair` 入口。
+fn player_group_to_ol_or_exit(group: &str) -> String {
+    group.lines().map(player_to_ol_or_exit).collect::<Vec<_>>().join("\n")
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_bench_pair(
     target_groups: &[String],
+    target_factors: &[f64],
+    target_factored: bool,
     players: &[String],
+    player_labels: &[String],
     teammates: &[String],
+    teammate_labels: &[String],
     head: usize,
     n: usize,
     mode: BenchThreadMode,
@@ -674,9 +750,9 @@ pub fn run_bench_pair(
     let mut progress = BatchProgress::new(players.len(), total_matchups_per_player);
     progress.draw();
 
-    for (pi, player) in players.iter().enumerate() {
+    for (pi, (player, player_label)) in players.iter().zip(player_labels.iter()).enumerate() {
         let overall_started = Instant::now();
-        let converted_player = player_to_ol_or_exit(player);
+        let converted_player = player_group_to_ol_or_exit(player);
         let mut pair_rates = Vec::with_capacity(teammates.len());
         let mut total_wins = 0usize;
         let mut total_battles = 0usize;
@@ -687,17 +763,19 @@ pub fn run_bench_pair(
 
         if verbose {
             let _ = writeln!(&mut verbose_buf);
-            let _ = writeln!(&mut verbose_buf, "━━━━━━━━ [{}/{}] {} ━━━━━━━━", pi + 1, players.len(), player);
+            let _ = writeln!(&mut verbose_buf, "━━━━━━━━ [{}/{}] {} ━━━━━━━━", pi + 1, players.len(), player_label);
         }
 
-        for teammate in teammates {
+        for (teammate, teammate_label) in teammates.iter().zip(teammate_labels.iter()) {
             let pair_group = format!("{converted_player}\n{teammate}");
             if verbose {
-                let _ = writeln!(&mut verbose_buf, "  teammate: {teammate}");
+                let _ = writeln!(&mut verbose_buf, "  teammate: {teammate_label}");
             }
             let summary = bench_batch_rate_for_group(
                 &pair_group,
                 target_groups,
+                target_factors,
+                target_factored,
                 n,
                 mode,
                 threads,
@@ -707,7 +785,7 @@ pub fn run_bench_pair(
                 |_, _| progress.tick_target(),
             );
             if summary.valid_matchups > 0 {
-                pair_rates.push((summary.avg, teammate.clone()));
+                pair_rates.push((summary.avg, teammate_label.clone()));
             }
             total_wins += summary.wins;
             total_battles += summary.total;
@@ -737,7 +815,7 @@ pub fn run_bench_pair(
         };
         let aggregate_rate = total_wins as f64 * 100.0 / total_battles.max(1) as f64;
         let summary_json = format_pair_rate_record(
-            player,
+            player_label,
             final_score,
             selected_count,
             head,
@@ -751,8 +829,8 @@ pub fn run_bench_pair(
             total_skipped_matchups,
             wr_precision,
         );
-        let summary_log = format_batch_rate_log_record(player, final_score, wr_precision);
-        let summary_pure = format_batch_rate_pure_record(player);
+        let summary_log = format_batch_rate_log_record(player_label, final_score, wr_precision);
+        let summary_pure = format_batch_rate_pure_record(player_label);
 
         progress.complete_player(elapsed);
 
@@ -790,7 +868,7 @@ pub fn run_bench_pair(
             } else {
                 println!(
                     "{}\t最终分数: {}\ttop: {}/{}\t有效靶子: {}\t跳过重复: {}\t用时: {:.3}s  ({:.1}µs/场, {:.0} 场/s)",
-                    player,
+                    player_label,
                     format_rate(final_score, wr_precision),
                     selected_count,
                     head,

@@ -4217,6 +4217,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+ "toml",
 ]
 
 [[package]]

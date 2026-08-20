@@ -61,6 +61,23 @@ pub(super) fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String>
     None
 }
 
+pub(super) fn groups_have_same_players(left: &str, right: &str) -> bool {
+    let mut left = normalized_group_players(left);
+    let mut right = normalized_group_players(right);
+    left.sort_unstable();
+    right.sort_unstable();
+    left == right
+}
+
+fn normalized_group_players(group: &str) -> Vec<String> {
+    group
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(Player::raw_namerena_to_idname)
+        .collect()
+}
+
 /// 文件已存在时用户可选的动作。
 enum ExistingFileAction {
     Overwrite,

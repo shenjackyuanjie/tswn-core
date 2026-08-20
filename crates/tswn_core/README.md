@@ -38,6 +38,7 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt -o out.jsonl --log
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt -o names.txt --pure
 ./target/release/tswn-cli bench batch-rate -l targets.txt -p players.txt --wr-precision 5
+./target/release/tswn-cli bench batch-rate -l weighted-targets.toml -p players.txt --target-factored
 
 # namer-pf 四项评分；--precision 默认 0，控制分数输出的小数位数
 ./target/release/tswn-cli namer-pf -r "mario\nluigi" --mode pp qd --precision 2
@@ -45,13 +46,14 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 # 二人组队友筛选；player-list 和 teammate-list 都是每行一个名字
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 ./target/release/tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
+./target/release/tswn-cli bench pair -l weighted-targets.toml -p players.txt --teammate-list teammates.txt --head 3 --target-factored
 ```
 
 `to-diy --minions` 会额外导出 shadow / summon / zombie 模板。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；summon 的两个火球分别用 `sklfire1`、`sklfire2` 表示，自爆用 `sklexplode`，`skills` 保持普通 JSON object 形态，字段顺序就是行动顺序。0 熟练度技能会省略输出，解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名。
 
 OL 召唤物模板支持继续嵌套 `shadow` / `summon` / `zombie` 子模板，用于配置“召唤物的召唤物”。给使魔模板配置普通玩家技能时需要显式写 `normal:` 前缀，例如 `{"normal:sklsummon":255,"sklfire1":9}`；这样普通技能、使魔固定技能和幻影附体会保留在不同技能编号通道中，吞噬时也不会互相串槽。使魔召唤出的子使魔会按直接来源链路传导伤害；使魔分身仍沿用 root owner 命名/清理规则，但伤害分摊会直接传到主名字。
 
-`bench pair` 会为每个 player 与每个 teammate 组成二人组，分别计算 batch rate，并取最高的 `--head <N>` 个 batch rate 求和作为最终分数。player-list 中非 DIY/OL 名字会自动转为默认 `+ol` 格式。
+`bench pair` 会为每个选手组合与每个队友组合组成对局，分别计算 batch rate，并取最高的 `--head <N>` 个 batch rate 求和作为最终分数。选手每行默认按 `+` 分隔，使用 `--player-list-double-plus` 时改按 `++`；队友每行默认按 `++` 分隔，使用 `--teammate-list-single-plus` 时改按 `+`。选中带权靶子时加 `--target-factored`，即可按 TOML 中的 `factor` 计算加权平均。
 
 ### 作为库使用
 

@@ -16,9 +16,9 @@ use std::path::Path;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use super::input::{
-    cli_error, decode_raw, parse_line_list, parse_non_negative_f64, parse_percent_0_100, parse_player_groups_with_labels,
-    parse_plus_separated_groups, parse_positive_usize, parse_thread_count, parse_to_diy_file_names, parse_win_rate_teams,
-    parse_wr_precision, read_file, read_stdin,
+    cli_error, decode_raw, parse_factored_target_groups, parse_non_negative_f64, parse_percent_0_100,
+    parse_player_groups_with_labels, parse_plus_separated_groups, parse_positive_usize, parse_thread_count,
+    parse_to_diy_file_names, parse_win_rate_teams, parse_wr_precision, read_file, read_stdin,
 };
 use super::parsed::{BenchThreadMode, NamerPfMode, ParsedCli, ParsedCommand};
 
@@ -190,7 +190,7 @@ enum BenchSubcommand {
     BatchRate(BenchBatchRateCommand),
     /// 为每个选手和 teammate-list 中的每个队友组成二人组，计算各组合 batch rate 后取最高 head 个求和。
     ///
-    /// player-list 和 teammate-list 均为每行一个名字；player-list 不支持 `--player-list-double-plus`。
+    /// player-list 和 teammate-list 均为每行一个组合；选手默认使用 `+`，队友默认使用 `++`。
     ///
     /// 示例:
     ///   tswn-cli bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3 -n 10000
@@ -271,7 +271,7 @@ struct BenchGroupWinRateCommand {
 
 #[derive(Debug, Args)]
 struct BenchBatchRateCommand {
-    /// 靶子列表文件，每行一组，组内用 + 分隔，跳过空行；支持 `-l/--target-list`。
+    /// 靶子列表文件；默认每行一组、组内用 + 分隔。使用 --target-factored 时读取带权 TOML。
     #[arg(short = 'l', long = "target-list", value_name = "FILE")]
     target_list: PathBuf,
 
@@ -282,6 +282,10 @@ struct BenchBatchRateCommand {
     /// 使用 ++ 分隔 player-list 中的组内成员，避免拆开名字里的 +diy[...] / +ol:...。
     #[arg(long = "player-list-double-plus")]
     player_list_double_plus: bool,
+
+    /// 将 target-list 按带权 TOML 解析，并按 factor 计算加权平均值。
+    #[arg(long = "target-factored", alias = "weighted-targets")]
+    target_factored: bool,
 
     /// 批量胜率测试的公共基准测试参数。
     #[command(flatten)]
@@ -326,17 +330,33 @@ struct BenchBatchRateCommand {
 
 #[derive(Debug, Args)]
 struct BenchPairCommand {
-    /// 靶子列表文件，每行一组，组内用 + 分隔，跳过空行；支持 `-l/--target-list`。
+    /// 靶子列表文件；默认每行一组、组内用 + 分隔。使用 --target-factored 时读取带权 TOML。
     #[arg(short = 'l', long = "target-list", value_name = "FILE")]
     target_list: PathBuf,
 
-    /// 选手列表文件，每行一个名字，跳过空行；支持 `-p/--player-list`。
+    /// 选手列表文件，每行一个组合，跳过空行；支持 `-p/--player-list`。
     #[arg(short = 'p', long = "player-list", value_name = "FILE")]
     player_list: PathBuf,
 
-    /// 队友列表文件，每行一个名字，跳过空行。
+    /// 使用 `++` 分隔 player-list 每行中的成员；默认使用单个 `+`。
+    #[arg(long = "player-list-double-plus")]
+    player_list_double_plus: bool,
+
+    /// 队友列表文件，每行一个组合，跳过空行。
     #[arg(long = "teammate-list", value_name = "FILE")]
     teammate_list: PathBuf,
+
+    /// 使用单个 `+` 分隔 teammate-list 每行中的成员；默认使用 `++`。
+    #[arg(long = "teammate-list-single-plus", conflicts_with = "teammate_list_double_plus")]
+    teammate_list_single_plus: bool,
+
+    /// 显式使用 `++` 分隔 teammate-list 每行中的成员（默认行为）。
+    #[arg(long = "teammate-list-double-plus", hide = true, conflicts_with = "teammate_list_single_plus")]
+    teammate_list_double_plus: bool,
+
+    /// 将 target-list 按带权 TOML 解析，并按 factor 计算加权平均值。
+    #[arg(long = "target-factored", alias = "weighted-targets")]
+    target_factored: bool,
 
     /// 每名选手取最高的 N 个二人组 batch rate 求和。
     #[arg(long = "head", value_parser = parse_positive_usize, value_name = "N")]
@@ -642,12 +662,20 @@ impl ParsedCli {
                 },
                 BenchSubcommand::BatchRate(cmd) => {
                     let target_content = read_file(&cmd.target_list)?;
-                    let target_groups = parse_plus_separated_groups(&target_content);
+                    let (target_groups, target_factors) = if cmd.target_factored {
+                        parse_factored_target_groups(&target_content)?
+                    } else {
+                        let groups = parse_plus_separated_groups(&target_content);
+                        let factors = vec![1.0; groups.len()];
+                        (groups, factors)
+                    };
                     let player_content = read_file(&cmd.player_list)?;
                     let (player_groups, player_labels) =
                         parse_player_groups_with_labels(&player_content, cmd.player_list_double_plus);
                     ParsedCommand::BenchBatchRate {
                         target_groups,
+                        target_factors,
+                        target_factored: cmd.target_factored,
                         player_groups,
                         player_labels,
                         n: cmd.options.count.max(1),
@@ -667,13 +695,29 @@ impl ParsedCli {
                 }
                 BenchSubcommand::Pair(cmd) => {
                     let target_content = read_file(&cmd.target_list)?;
-                    let target_groups = parse_plus_separated_groups(&target_content);
+                    let (target_groups, target_factors) = if cmd.target_factored {
+                        parse_factored_target_groups(&target_content)?
+                    } else {
+                        let groups = parse_plus_separated_groups(&target_content);
+                        let factors = vec![1.0; groups.len()];
+                        (groups, factors)
+                    };
                     let player_content = read_file(&cmd.player_list)?;
                     let teammate_content = read_file(&cmd.teammate_list)?;
+                    let (players, player_labels) =
+                        parse_player_groups_with_labels(&player_content, cmd.player_list_double_plus);
+                    let (teammates, teammate_labels) = parse_player_groups_with_labels(
+                        &teammate_content,
+                        !cmd.teammate_list_single_plus || cmd.teammate_list_double_plus,
+                    );
                     ParsedCommand::BenchPair {
                         target_groups,
-                        players: parse_line_list(&player_content),
-                        teammates: parse_line_list(&teammate_content),
+                        target_factors,
+                        target_factored: cmd.target_factored,
+                        players,
+                        player_labels,
+                        teammates,
+                        teammate_labels,
                         head: cmd.head,
                         n: cmd.options.count.max(1),
                         mode: cmd.options.mode(),
@@ -999,6 +1043,37 @@ mod tests {
                 assert_eq!(cmd.head, 3);
                 assert_eq!(cmd.wr_precision, 4);
                 assert_eq!(cmd.teammate_list, PathBuf::from("teammates.txt"));
+            }
+            _ => panic!("unexpected command"),
+        }
+    }
+
+    #[test]
+    fn pair_accepts_grouping_and_factored_target_flags() {
+        let cli = Cli::try_parse_from([
+            "tswn-cli",
+            "bench",
+            "pair",
+            "-l",
+            "targets.toml",
+            "-p",
+            "players.txt",
+            "--teammate-list",
+            "teammates.txt",
+            "--head",
+            "3",
+            "--target-factored",
+            "--player-list-double-plus",
+            "--teammate-list-single-plus",
+        ])
+        .unwrap();
+        match cli.command {
+            CliCommand::Bench(BenchCommand {
+                command: BenchSubcommand::Pair(cmd),
+            }) => {
+                assert!(cmd.target_factored);
+                assert!(cmd.player_list_double_plus);
+                assert!(cmd.teammate_list_single_plus);
             }
             _ => panic!("unexpected command"),
         }

@@ -60,8 +60,10 @@ cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p play
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o out.jsonl --log
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt -o names.txt --pure
 cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l targets.txt -p players.txt --wr-precision 5
+cargo run -p tswn_core --bin tswn-cli -- bench batch-rate -l weighted-targets.toml -p players.txt --target-factored
 cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 3
 cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.txt --teammate-list teammates.txt --head 5 -o pair.txt --min-file 250
+cargo run -p tswn_core --bin tswn-cli -- bench pair -l weighted-targets.toml -p players.txt --teammate-list teammates.txt --head 3 --target-factored
 ```
 
 `to-diy --minions` 会在 `+ol` 输出中附带可生成的 shadow / summon / zombie 模板，用于更接近原始名字的评分与对战行为。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；使魔模板的 `skills` 使用普通 JSON object 格式，两个火球固定命名为 `sklfire1`、`sklfire2`，自爆命名为 `sklexplode`，字段顺序就是行动顺序。0 熟练度技能会省略输出；解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名，不再支持旧数组格式、`skill_order` 字段或旧的 `sklfire` 别名。
@@ -70,7 +72,21 @@ OL 召唤物模板可以继续嵌套 `shadow` / `summon` / `zombie` 子模板，
 
 `bench win-rate` 使用两行文本输入两队：两队之间用 `\n` 分隔，队内默认用 `+` 分隔；传入 `--double-plus` 时队内分隔符改为 `++`，方便保留名字里的 `+diy[...]` / `+ol:...`。`--keep-rq` 只切换玩家构造用的 rq，胜率模拟的 seed 仍固定使用 JS ProfileWinChance 口径：第 0 场无 seed，后续为 `seed:(33554431 + i)@!`。
 
-`bench pair` 会先把 `player-list` 中非 DIY/OL 的名字转换为默认 `+ol` 格式，再与 `teammate-list` 中每个队友组成二人组。它会对每个二人组计算一次 batch rate，并把最高的 `--head <N>` 个 batch rate 求和作为该选手的最终分数；`player-list` 和 `teammate-list` 都是每行一个名字。
+`bench pair` 会先把 `player-list` 中非 DIY/OL 的名字转换为默认 `+ol` 格式，再与 `teammate-list` 中每个队友组合组成对局。两个文件均按每行一个组合处理：选手默认使用单个 `+` 分隔成员，可用 `--player-list-double-plus` 改为 `++`；队友默认使用 `++`，可用 `--teammate-list-single-plus` 改为单个 `+`。带权靶子使用 `--target-factored` 读取 `[[targets]]` TOML，并按 `sum(胜率 * factor) / sum(factor)` 计算每个队友组合的平均值。
+
+例如，`players.txt`（默认 `+`）可以写成：
+
+```text
+a@team+b@team
+```
+
+`teammates.txt`（默认 `++`）可以写成：
+
+```text
+c@team++d@team
+```
+
+`bench batch-rate` 也支持 `--target-factored`；不加该选项时保持普通文本靶子的等权平均行为。
 
 常用差分 case miner：
 

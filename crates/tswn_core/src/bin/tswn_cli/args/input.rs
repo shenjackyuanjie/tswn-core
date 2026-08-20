@@ -139,6 +139,51 @@ pub(super) fn parse_plus_separated_groups(content: &str) -> Vec<String> {
         .collect()
 }
 
+/// 解析带权靶子 TOML。每个 `[[targets]]` 项包含正数 `factor` 和非空 `players` 数组。
+pub(super) fn parse_factored_target_groups(content: &str) -> Result<(Vec<String>, Vec<f64>), clap::Error> {
+    let table = toml::from_str::<toml::Table>(content)
+        .map_err(|err| cli_error(format!("带权靶子 TOML 解析失败: {err}")))?;
+    let entries = table
+        .get("targets")
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| cli_error("带权靶子 TOML 必须包含 targets 数组"))?;
+    if entries.is_empty() {
+        return Err(cli_error("带权靶子 TOML 中的 targets 不能为空"));
+    }
+
+    let mut groups = Vec::with_capacity(entries.len());
+    let mut factors = Vec::with_capacity(entries.len());
+    for (index, entry) in entries.iter().enumerate() {
+        let factor = match entry.get("factor") {
+            Some(toml::Value::Float(value)) => *value,
+            Some(toml::Value::Integer(value)) => *value as f64,
+            _ => return Err(cli_error(format!("带权靶子 targets[{index}].factor 必须是数字"))),
+        };
+        if !factor.is_finite() || factor <= 0.0 {
+            return Err(cli_error(format!("带权靶子 targets[{index}].factor 必须是有限正数")));
+        }
+        let players = entry
+            .get("players")
+            .and_then(toml::Value::as_array)
+            .ok_or_else(|| cli_error(format!("带权靶子 targets[{index}].players 必须是数组")))?;
+        let mut names = Vec::with_capacity(players.len());
+        for player in players {
+            let name = player
+                .as_str()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| cli_error(format!("带权靶子 targets[{index}].players 不能为空或包含空名字")))?;
+            names.push(name.to_string());
+        }
+        if names.is_empty() {
+            return Err(cli_error(format!("带权靶子 targets[{index}].players 不能为空")));
+        }
+        groups.push(names.join("\n"));
+        factors.push(factor);
+    }
+    Ok((groups, factors))
+}
+
 /// 解析 `bench win-rate` 的两队输入。
 ///
 /// 输入中每个非空行是一队；默认队内用 `+` 分隔，`double_plus=true` 时改用 `++` 分隔。
@@ -196,6 +241,14 @@ mod tests {
 
         assert_eq!(groups, vec![format!("{diy}\nbbbb")]);
         assert_eq!(labels, vec![raw]);
+    }
+
+    #[test]
+    fn factored_target_groups_parse_players_and_weights() {
+        let raw = "[[targets]]\nfactor = 2\nplayers = [\"a\", \"b\"]\n\n[[targets]]\nfactor = 0.5\nplayers = [\"c\"]";
+        let (groups, factors) = parse_factored_target_groups(raw).unwrap();
+        assert_eq!(groups, vec!["a\nb", "c"]);
+        assert_eq!(factors, vec![2.0, 0.5]);
     }
 
     #[test]
