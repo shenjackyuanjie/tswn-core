@@ -22,6 +22,8 @@ pub fn parse_target_groups(content: &str, double_plus: bool) -> Vec<String> {
     parse_separated_groups(content, separator)
 }
 
+pub fn parse_plus_separated_groups(content: &str) -> Vec<String> { parse_target_groups(content, false) }
+
 #[derive(Debug, Deserialize)]
 struct FactoredTargetFile {
     targets: Vec<FactoredTarget>,

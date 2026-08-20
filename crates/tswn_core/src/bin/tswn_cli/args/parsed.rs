@@ -131,6 +131,10 @@ pub enum ParsedCommand {
     BenchBatchRate {
         /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         target_groups: Vec<String>,
+        /// 与 `target_groups` 对应的靶子权重；普通文本靶子全部为 `1.0`。
+        target_factors: Vec<f64>,
+        /// 是否按带权靶子规则处理重名与平均值。
+        target_factored: bool,
         /// 选手组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         player_groups: Vec<String>,
         /// 选手组展示标签，保留文件中的原始行文本。
@@ -165,10 +169,18 @@ pub enum ParsedCommand {
     BenchPair {
         /// 靶子组列表；每项都已从 `+` 分隔行转换成 `\n` 分隔的 namerena 组字符串。
         target_groups: Vec<String>,
+        /// 与 `target_groups` 对应的靶子权重；普通文本靶子全部为 `1.0`。
+        target_factors: Vec<f64>,
+        /// 是否按带权靶子规则处理重名与平均值。
+        target_factored: bool,
         /// `player-list` 文件中的选手；每行一个名字。
         players: Vec<String>,
+        /// 选手组合的原始行标签。
+        player_labels: Vec<String>,
         /// `teammate-list` 文件中的队友；每行一个名字。
         teammates: Vec<String>,
+        /// 队友组合的原始行标签。
+        teammate_labels: Vec<String>,
         /// 每名选手取最高的 `head` 个二人组 `batch-rate` 结果求和。
         head: usize,
         /// 每组对局的模拟场数。

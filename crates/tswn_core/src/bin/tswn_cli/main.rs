@@ -35,7 +35,8 @@
 //!
 //! 输入约定：
 //! - 原始对战/benchmark 输入使用 namerena raw 文本，组与组之间用空行分隔。
-//! - `bench batch-rate` / `bench cqp` 使用文件列表时，每行一组，组内用 `+` 分隔多个名字。
+//! - `bench batch-rate` / `bench cqp` 使用文件列表时，每行一组，组内默认用 `+` 分隔多个名字；带权靶子可用 TOML。
+//! - `bench pair` 的选手和队友文件每行一个组合，选手默认用 `+`，队友默认用 `++`，可分别切换。
 //! - `to-diy` 单号模式接收一个名字，文件模式按行批量处理。
 //!
 //! 示例：
@@ -134,6 +135,8 @@ fn main() {
         }
         ParsedCommand::BenchBatchRate {
             target_groups,
+            target_factors,
+            target_factored,
             player_groups,
             player_labels,
             n,
@@ -157,6 +160,8 @@ fn main() {
             };
             bench::run_bench_batch_rate(
                 &target_groups,
+                &target_factors,
+                target_factored,
                 &player_groups,
                 &player_labels,
                 n,
@@ -176,8 +181,12 @@ fn main() {
         }
         ParsedCommand::BenchPair {
             target_groups,
+            target_factors,
+            target_factored,
             players,
+            player_labels,
             teammates,
+            teammate_labels,
             head,
             n,
             mode,
@@ -200,8 +209,12 @@ fn main() {
             };
             bench::run_bench_pair(
                 &target_groups,
+                &target_factors,
+                target_factored,
                 &players,
+                &player_labels,
                 &teammates,
+                &teammate_labels,
                 head,
                 n,
                 mode,
