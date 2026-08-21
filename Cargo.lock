@@ -4269,7 +4269,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_py"
-version = "0.5.2"
+version = "0.5.1"
 dependencies = [
  "pyo3",
  "smallvec",
@@ -4288,7 +4288,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_wasm"
-version = "0.5.2"
+version = "0.5.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
