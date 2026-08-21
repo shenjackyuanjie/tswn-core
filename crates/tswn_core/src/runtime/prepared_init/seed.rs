@@ -153,6 +153,18 @@ impl CombatRuntime {
             match entity.slots.get(lazy_slot) {
                 Some(SlotValue::U64(_)) => {}
                 Some(_) => panic!("runtime core lazy blueprint rq slot has invalid value"),
+                // 分身、幻影等战斗召唤物不会经过 score roster 的初始 profile，
+                // 因而没有该标记；但它们也可能带有召唤类技能，需要按自身模板
+                // 延迟构造下一层蓝图。
+                None if entity.runtime.is_combat_minion() => {
+                    #[cfg(not(feature = "no_debug"))]
+                    if std::env::var_os("TSWN_PROBE_MINION_BLUEPRINT").is_some() {
+                        eprintln!(
+                            "[probe:minion-blueprint] actor={} kind={kind:?} name={} source=combat-minion",
+                            actor.0, entity.template.name
+                        );
+                    }
+                }
                 None => return false,
             }
             let clone_build = entity
@@ -160,8 +172,17 @@ impl CombatRuntime {
                 .clone_build
                 .as_ref()
                 .unwrap_or_else(|| panic!("runtime lazy blueprint owner {} is missing clone build data", actor.0));
+            // JS 的 clone/minion 会把 `?N` 写到展示名，但内部名仍保留
+            // `?shadow` / `?summon`。`id_key_name` 保存的是这份内部身份，
+            // 这里继续拿它生成下一层蓝图，不能误用战报名。
+            let base_name = entity
+                .template
+                .id_key_name
+                .strip_suffix(&format!("@{}", entity.template.clan_name))
+                .unwrap_or(&entity.template.name)
+                .to_owned();
             (
-                entity.template.name.clone(),
+                base_name,
                 entity.template.clan_name.clone(),
                 clone_build.attrs(),
                 f64::from_bits(entity.template.at_boost_bits),

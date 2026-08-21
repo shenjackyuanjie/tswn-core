@@ -78,3 +78,21 @@ fn namer_pf_score_clone_rebuilds_reraise_level_like_legacy() {
 
     assert_eq!(clone.template.skills.level_at(reraise_lane), Some(14));
 }
+
+#[test]
+fn score_profile_custom_shadow_clone_can_cast_shadow() {
+    let raw = r#"涵虚不等式 PFVKEUPBU@TigerStar+ol:{"attrs":[89,85,88,77,48,96,97,327],"skills":{"sklclone":13,"sklcharm":7,"skldefend":10,"sklheal":5,"sklexchange":3,"sklshadow":"2*46","sklshield":9,"sklreflect":"6+6"},"name_factor_enabled":true,"shadow":{"attrs":[89,85,88,77,48,96,97,164],"skills":{"sklclone":13,"sklcharm":7,"skldefend":10,"sklheal":5,"sklexchange":3,"sklshadow":"2*46","sklshield":9,"sklreflect":"6+6"}}}
+33554431@!
+
+33554432@!
+33554433@!"#;
+    let config = default_custom_runtime_import_config().expect("runtime config should build");
+    let mut runner = RuntimeRunner::from_custom_mixed_namerena_raw_with_eval_rq(
+        raw.to_owned(),
+        crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
+        config,
+    )
+    .expect("custom shadow score round should build");
+
+    runner.run_to_completion_prevalidated(100_000);
+}
