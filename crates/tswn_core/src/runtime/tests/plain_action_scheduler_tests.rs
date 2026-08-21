@@ -119,6 +119,50 @@ fn plain_merge_restores_newly_enabled_hide_pre_action_lane() {
 }
 
 #[test]
+fn plain_skill_only_merge_refreshes_pending_haste_multiplier() {
+    let mut builder = ExtensionRegistryBuilder::default();
+    let merged_skill = builder
+        .register_skill("test", "merged", "test.skill.merged", TargetPolicy::None, SkillPriority(10))
+        .expect("merged skill should register");
+    let haste = builder
+        .register_state(
+            "core",
+            "haste",
+            DEFAULT_CORE_HASTE_STATE_EXPORT,
+            ProcMask::POST_ACTION,
+            SkillPriority(210),
+        )
+        .expect("haste state should register");
+    let registry = builder.build();
+    let mut runtime = CombatRuntime::from_template(PreparedCombatTemplate::with_registry(
+        vec![
+            PlayerTemplate::new(1, "owner", 0, 100, 3)
+                .with_speed(100)
+                .with_skill_loadout(SkillLoadout::from_skill_levels([(merged_skill, 0)])),
+            PlayerTemplate::new(2, "target", 1, 100, 3).with_skill_loadout(SkillLoadout::from_skill_levels([(merged_skill, 64)])),
+        ],
+        registry,
+    ));
+    runtime
+        .entities
+        .get_mut(EntityIdx(0))
+        .unwrap()
+        .states
+        .add_entry(StateEntry::haste_with_effective_faster(77, haste, 4, 2, 9, SkillPriority(210)));
+    let mut updates = RunUpdates::new();
+
+    assert!(runtime.apply_plain_merge_into(EntityIdx(0), EntityIdx(1), &mut updates));
+
+    let owner = runtime.entities.get(EntityIdx(0)).unwrap();
+    assert_eq!(owner.template.skills.level_at(0), Some(64));
+    assert_eq!(
+        owner.states.entry(77).and_then(StateEntry::haste_runtime_value),
+        Some((4, 4, 9))
+    );
+    assert_eq!(owner.effective_speed(), 400);
+}
+
+#[test]
 fn plain_merge_restores_hide_pre_action_for_minion_lane() {
     let mut builder = ExtensionRegistryBuilder::default();
     let minion_kind = builder

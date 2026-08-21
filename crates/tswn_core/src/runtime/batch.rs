@@ -533,6 +533,11 @@ mod tests {
     }
 
     #[test]
+    fn score_round_6539_matches_legacy_skill_only_merge_haste_outcome() {
+        assert!(!score_round_target_won("琉音芽玲亚 #AIBSXOQHSK@无惨", 6539));
+    }
+
+    #[test]
     fn reusable_runner_reset_matches_fresh_runner() {
         let groups = vec![
             vec!["Don't_Force_It #f4fMecHe1@Shabby_fish".to_owned()],

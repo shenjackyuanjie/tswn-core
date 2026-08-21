@@ -512,7 +512,7 @@ impl CombatRuntime {
                     .as_ref()
                     .expect("runtime merge owner build disappeared")
                     .derive_stats();
-                caster_entity.apply_derived_stats(stats);
+                caster_entity.template.apply_derived_stats(stats);
             }
             let post_action_state_cursor = caster_entity.states.post_action_registration_cursor();
             let before_levels = caster_entity.template.skills.levels().to_vec();
@@ -554,6 +554,11 @@ impl CombatRuntime {
             let transfer_move_points = target_move_points > caster_entity.runtime.move_state.speed_points;
             if transfer_move_points {
                 caster_entity.runtime.move_state.speed_points += target_move_points;
+            }
+            if merged_attrs || merged_skills {
+                // legacy Merge 在属性或技能发生变化后统一调用 update_states；即使本次
+                // 只合并了技能，也必须提交疾走等待下一次完整重算才生效的倍率。
+                caster_entity.refresh_runtime_stats_from_template();
             }
             (merged_attrs || merged_skills, transfer_magic_point, transfer_move_points)
         };
