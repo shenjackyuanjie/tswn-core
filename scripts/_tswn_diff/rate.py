@@ -21,6 +21,8 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 
+from .common import ensure_utf8_stdio
+
 
 BUN_RATE_RE = re.compile(r"最终胜率:\|(?P<rate>\d+\.\d+)%\|")
 TSWN_RATE_RE = re.compile(r"tswn: 胜率: (?P<rate>\d+\.\d+)%")
@@ -146,14 +148,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
 
     return parser.parse_args(argv)
-
-
-def ensure_utf8_stdio() -> None:
-    for stream_name in ("stdout", "stderr"):
-        stream = getattr(sys, stream_name, None)
-        reconfigure = getattr(stream, "reconfigure", None)
-        if callable(reconfigure):
-            reconfigure(encoding="utf-8")
 
 
 def validate_identifier(name: str, desc: str) -> str:

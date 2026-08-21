@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import find_bun_tswn_reply_mismatches as base
+from . import rate as base
+from .common import ensure_utf8_stdio
 
 
 SCORE_LINE_RE = re.compile(
@@ -168,14 +169,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if args.content_like is None:
         args.content_like = DEFAULT_CONTENT_LIKE_BY_MODE[args.mode]
     return args
-
-
-def ensure_utf8_stdio() -> None:
-    for stream_name in ("stdout", "stderr"):
-        stream = getattr(sys, stream_name, None)
-        reconfigure = getattr(stream, "reconfigure", None)
-        if callable(reconfigure):
-            reconfigure(encoding="utf-8")
 
 
 def parse_score_lines(text: str) -> list[PfScore]:
@@ -766,7 +759,7 @@ def main(argv: list[str]) -> int:
         print("缺少 DSN，请通过 --dsn 或环境变量 TSWN_PG_DSN 提供。", file=sys.stderr)
         return 1
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     schema_name = base.validate_identifier(args.schema, "schema")
     table_name = base.validate_identifier(args.table, "table")
 

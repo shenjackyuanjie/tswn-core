@@ -14,7 +14,8 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
-import find_bun_tswn_reply_mismatches as base
+from . import rate as base
+from .common import ensure_utf8_stdio
 
 
 PROFILE_START = 33_554_431
@@ -49,7 +50,7 @@ class CaseAnalysis:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     workspace_root = repo_root.parent
     parser = argparse.ArgumentParser(
         description="定位 bun 官方 win_rate 与 tswn 每局胜负分叉 round。",
@@ -118,14 +119,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="tswn-cli 可执行文件路径；默认优先使用 target/release/tswn-cli(.exe)。",
     )
     return parser.parse_args(argv)
-
-
-def ensure_utf8_stdio() -> None:
-    for stream_name in ("stdout", "stderr"):
-        stream = getattr(sys, stream_name, None)
-        reconfigure = getattr(stream, "reconfigure", None)
-        if callable(reconfigure):
-            reconfigure(encoding="utf-8")
 
 
 def resolve_tswn_bin(args: argparse.Namespace, repo_root: Path) -> list[str]:
@@ -565,7 +558,7 @@ def main(argv: list[str]) -> int:
         print("缺少 DSN，请通过 --dsn 或环境变量 TSWN_PG_DSN 提供。", file=sys.stderr)
         return 1
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     bun_helper = Path(args.bun_helper).resolve()
     md5_path = Path(args.md5_path).resolve()
     md5_fallback = Path(args.md5_fallback).resolve() if args.md5_fallback else None
