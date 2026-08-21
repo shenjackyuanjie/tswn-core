@@ -58,6 +58,7 @@ impl PlayerSpec {
         let (name, team) = identity
             .split_once('@')
             .map_or((identity, None), |(name, team)| (name, Some(trim_js_line_end(team))));
+        let team = team.filter(|team| !team.is_empty());
 
         if name.len() > NAME_MAX_LEN {
             return Err(PlayerSpecError::NameTooLong {
@@ -301,6 +302,14 @@ mod tests {
         assert_eq!(input.groups.len(), 2);
         assert_eq!(input.groups[0][0].name, "a");
         assert_eq!(input.groups[1][0].id_name(), "b@team");
+    }
+
+    #[test]
+    fn parses_trailing_empty_team_as_no_team() {
+        let spec = PlayerSpec::parse("宗铭丸 #DCVIDQJX@").unwrap();
+        assert_eq!(spec.name, "宗铭丸 #DCVIDQJX");
+        assert_eq!(spec.team, None);
+        assert_eq!(spec.id_name(), "宗铭丸 #DCVIDQJX");
     }
 
     #[test]

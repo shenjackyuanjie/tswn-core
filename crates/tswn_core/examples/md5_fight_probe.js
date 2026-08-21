@@ -39,20 +39,22 @@ const context = {
 context.global = context;
 context.globalThis = context;
 context.__probe_getAt = process.argv.includes("--get-at");
+context.__probe_tick = process.argv.includes("--tick");
 const actionArg = process.argv.find((arg) => arg.startsWith("--action="));
 if (actionArg) {
   context.__probe_action_skill_target = actionArg.slice("--action=".length);
 }
 vm.runInNewContext(code, context, { filename });
 
-function buildScoreMatchInput(modifier, round) {
+function buildScoreMatchInput(target, modifier, round) {
   const base = 33554431 + (round - 1) * 3;
-  return `aaaaaa\n${base}@${modifier}\n\n${base + 1}@${modifier}\n${base + 2}@${modifier}`;
+  return `${target}\n${base}@${modifier}\n\n${base + 1}@${modifier}\n${base + 2}@${modifier}`;
 }
 
 const modifier = process.argv[2] || "\u0002";
 const round = Number(process.argv[3] || 1);
-const input = buildScoreMatchInput(modifier, round);
+const target = process.argv[6] || "aaaaaa";
+const input = buildScoreMatchInput(target, modifier, round);
 
 const method = process.argv[4] || "fight_log";
 moduleObj.exports.run_env.probe_clone = process.argv[5] || "";

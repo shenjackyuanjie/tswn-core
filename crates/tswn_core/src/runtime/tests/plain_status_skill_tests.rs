@@ -629,14 +629,8 @@ fn plain_iron_refreshes_runtime_attract_after_shield_break() {
 
     assert_eq!(defend_value.damage(), Some(70));
     assert_eq!(
-        runtime
-            .entities
-            .get(EntityIdx(0))
-            .unwrap()
-            .states
-            .entry(PLAIN_IRON_STATE_KEY)
-            .and_then(StateEntry::iron_value),
-        Some((0, 0))
+        runtime.entities.get(EntityIdx(0)).unwrap().states.entry(PLAIN_IRON_STATE_KEY),
+        None
     );
     assert_eq!(runtime.entities.get(EntityIdx(0)).unwrap().runtime.attract(), 32_768.0);
     assert_eq!(

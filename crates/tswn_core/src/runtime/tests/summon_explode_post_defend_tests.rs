@@ -372,16 +372,7 @@ fn summon_explode_post_defend_iron_breaks_and_emits_cancel_replay() {
         runtime.entities.get(EntityIdx(1)).unwrap().runtime.hp,
         10_000 - (raw_amount - 3)
     );
-    assert_eq!(
-        runtime
-            .entities
-            .get(EntityIdx(1))
-            .unwrap()
-            .states
-            .entry(79)
-            .and_then(StateEntry::iron_value),
-        Some((0, 0))
-    );
+    assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.entry(79), None);
     assert_eq!(runtime.entities.get(EntityIdx(1)).unwrap().states.fire_mag(91), 0.5);
     assert_eq!(runtime.rng.i, expected_rng.i);
     assert_eq!(runtime.rng.j, expected_rng.j);

@@ -546,8 +546,11 @@ pub fn run_iron_post_defend_state(context: &mut StateContext<'_>, entry: &StateH
     }
 
     let remaining = damage - protect;
+    // legacy Iron.K 会在护盾被打破时立即注销全部 hook 并调用 update_states；
+    // 不能留下 step=0 的 post-action 条目，否则它会在下次行动后再次刷新状态，
+    // 把期间叠加的 Haste 倍率提前提交。
     context
-        .set_owner_state_payload(entry.legacy_order_key, StatePayload::Iron { protect: 0, step: 0 })
+        .clear_owner_state(entry.legacy_order_key)
         .expect("iron state payload should still exist");
     context.set_defend_damage(remaining);
     context.add_newline();

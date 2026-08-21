@@ -416,7 +416,26 @@ impl EntityRecord {
     }
 
     pub fn refresh_runtime_stats_from_template(&mut self) {
+        #[cfg(not(feature = "no_debug"))]
+        let probe_pending_haste = std::env::var("TSWN_PROBE_REFRESH")
+            .ok()
+            .filter(|needle| self.template.name.contains(needle))
+            .and_then(|_| {
+                self.states
+                    .entries()
+                    .iter()
+                    .find_map(StateEntry::haste_runtime_value)
+                    .filter(|(faster, effective_faster, _)| faster != effective_faster)
+            });
         self.states.refresh_effective_haste_faster();
+        #[cfg(not(feature = "no_debug"))]
+        if let Some(haste) = probe_pending_haste {
+            eprintln!(
+                "[refresh_probe:runtime] name={} pending={haste:?}\n{}",
+                self.template.name,
+                std::backtrace::Backtrace::force_capture(),
+            );
+        }
         let hide_level = self.runtime.hide.map(|hide| hide.level);
         self.runtime.attack = self.template.attack;
         self.runtime.magic = self.template.magic;

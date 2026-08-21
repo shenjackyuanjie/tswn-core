@@ -432,7 +432,11 @@ mod tests {
                     eval_rq,
                 )
                 .unwrap();
-            for _ in 0..BATCH_MAX_ROUNDS {
+            let max_probe_rounds = std::env::var("TSWN_SCORE_PROBE_MAX_ROUNDS")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(BATCH_MAX_ROUNDS);
+            for _ in 0..max_probe_rounds {
                 let outcome = runner.run_round();
                 if let Some(frame) = outcome.frame {
                     for update in frame.updates.updates {
@@ -538,6 +542,11 @@ mod tests {
     }
 
     #[test]
+    fn score_round_6670_matches_legacy_broken_iron_haste_outcome() {
+        assert!(!score_round_target_won("雪萤23848163494498@四象柯", 6670));
+    }
+
+    #[test]
     fn reusable_runner_reset_matches_fresh_runner() {
         let groups = vec![
             vec!["Don't_Force_It #f4fMecHe1@Shabby_fish".to_owned()],
@@ -581,6 +590,27 @@ mod tests {
             (single.wins, single.total, single.errors, single.guard_exhausted),
             (parallel.wins, parallel.total, parallel.errors, parallel.guard_exhausted)
         );
+    }
+
+    #[test]
+    fn score_trailing_empty_team_matches_no_team() {
+        let with_empty_team = runtime_score(
+            &["宗铭丸 #DCVIDQJX@".to_owned()],
+            "!",
+            256,
+            crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
+            1,
+        )
+        .unwrap();
+        let without_team = runtime_score(
+            &["宗铭丸 #DCVIDQJX".to_owned()],
+            "!",
+            256,
+            crate::namerena::eval_name::WIN_RATE_EVAL_RQ,
+            1,
+        )
+        .unwrap();
+        assert_eq!(with_empty_team.wins, without_team.wins);
     }
 
     #[test]
