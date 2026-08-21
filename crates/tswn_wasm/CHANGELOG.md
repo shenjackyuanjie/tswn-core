@@ -7,6 +7,8 @@
 - 同步 core 的 Merge 状态刷新修复；吞噬只合并技能时也会按旧版时机
   提交 Haste 倍率，WASM 导出与 JSON shape 不变。
 - 同步铁壁打破时立即注销状态，以及尾部空 `@` 按无队名解析的兼容修复。
+- 同步 `@team:metadata` 按 Bun 解析为无队名的修复，并修复目标与 score profile
+  同 clan 时的 core panic；WASM 导出与 JSON shape 不变。
 - 同步嵌套自定义幻影的延迟蓝图修复；`namer_pf()` / `score()` 遇到带 `Clone`、
   `Shadow` 的幻影不再触发 core panic，WASM 导出与 JSON shape 不变。
 

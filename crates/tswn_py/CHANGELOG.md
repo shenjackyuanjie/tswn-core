@@ -7,6 +7,8 @@
 - 同步 core 的 Merge 状态刷新修复；`namer_pf()` / `score()` 在吞噬仅
   合并技能的战斗中不再沿用旧的 Haste 生效倍率，Python API 形状不变。
 - 同步铁壁打破时立即注销状态，以及尾部空 `@` 按无队名解析的兼容修复。
+- 同步 `@team:metadata` 按 Bun 解析为无队名的修复，并修复目标与 score profile
+  同 clan 时的 core panic；Python API 形状不变。
 - 同步嵌套自定义幻影的延迟蓝图修复；`namer_pf()` / `score()` 遇到带 `Clone`、
   `Shadow` 的幻影不再触发 core panic，Python API 形状不变。
 

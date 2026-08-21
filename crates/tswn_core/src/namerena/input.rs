@@ -58,7 +58,9 @@ impl PlayerSpec {
         let (name, team) = identity
             .split_once('@')
             .map_or((identity, None), |(name, team)| (name, Some(trim_js_line_end(team))));
-        let team = team.filter(|team| !team.is_empty());
+        // JS `parse_names` 将带 `:` 的 `@` 后缀当作无队名处理；这类形式常被
+        // `/namer-pf` 输入附带的元数据使用，不能参与 clan 的 RC4 与属性构造。
+        let team = team.filter(|team| !team.is_empty() && !team.contains(':'));
 
         if name.len() > NAME_MAX_LEN {
             return Err(PlayerSpecError::NameTooLong {
@@ -310,6 +312,14 @@ mod tests {
         assert_eq!(spec.name, "宗铭丸 #DCVIDQJX");
         assert_eq!(spec.team, None);
         assert_eq!(spec.id_name(), "宗铭丸 #DCVIDQJX");
+    }
+
+    #[test]
+    fn parses_colon_team_suffix_as_no_team() {
+        let spec = PlayerSpec::parse("荧屏上的梦想 NWKm7L_6@dream_on_screen qp:6070").unwrap();
+        assert_eq!(spec.name, "荧屏上的梦想 NWKm7L_6");
+        assert_eq!(spec.team, None);
+        assert_eq!(spec.id_name(), "荧屏上的梦想 NWKm7L_6");
     }
 
     #[test]

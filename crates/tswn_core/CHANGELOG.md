@@ -13,6 +13,11 @@
   在后续行动中二次刷新、提前提交期间叠加的 Haste 倍率；对应 9 条历史差异。
 - 尾部空队名分隔符（如 `name@`）按旧版归一化为无队名，不再以空 clan 构造
   名字因子和角色属性；对应最后 1 条历史差异。
+- `@team:metadata` 形式按 Bun 归一化为无队名；此前 Rust 仅在 `id_name` 忽略
+  后缀，角色属性仍错误使用该 clan。`荧屏上的梦想 NWKm7L_6@dream_on_screen qp:6070`
+  的四项 10,000 局评分现恢复为 `3994|4163|2182|1175|11514`。
+- score 的动态 profile 与固定 target 同 clan 时会安全回退完整 roster 构造，
+  不再因该性能缓冲不可回收而 panic。
 - 自定义幻影携带 `Clone`、`Shadow` 等召唤类技能时，战斗召唤物也会按旧版内部名
   延迟构造下一层蓝图，不再因缺少 root score profile 标记而 panic。
 - 15 条 `tswn-cli 0.5.1` 历史 `namer-pf` 差异的 9 个唯一输入均已逐条精确复现
@@ -22,7 +27,8 @@
 
 - 扩展 score 单局探针：可指定真实目标和最大回合数，JS 侧可输出逐 tick 状态；
   `TSWN_PROBE_STEP=*` 可跟踪全部实体，`TSWN_PROBE_REFRESH` 可定位 pending Haste
-  的刷新调用栈，`TSWN_PROBE_MINION_BLUEPRINT=1` 可跟踪召唤物的延迟蓝图构造。
+  的刷新调用栈，`TSWN_PROBE_MINION_BLUEPRINT=1` 可跟踪召唤物的延迟蓝图构造；
+  测试专用的 `TSWN_SCORE_PROBE_DUPLICATE=1` 可构造 Bun 的重复目标评分形状。
   正式运行时探针继续由 `no_debug` feature 编译期移除。
 
 ## [0.5.1] - 2026-07-30

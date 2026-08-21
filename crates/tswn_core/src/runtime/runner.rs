@@ -796,7 +796,12 @@ impl PreparedRuntimeRunner {
         Self::clone_input_groups_reusing(&mut runner.input_groups, init.input_groups());
         let (seed_state, recycled_roster_buffers) = init.apply_and_recover_seed(&mut runner.runtime)?;
         if let Some(roster_buffers) = roster_buffers {
-            *roster_buffers = recycled_roster_buffers.expect("score 初始化必须交还 roster 缓冲区");
+            // 动态 profile 与固定 target 同 clan 等场景会回退完整 roster 构造。
+            // 该路径不持有 score 专用缓冲；保留调用方的空缓冲即可，下轮仍会走
+            // 完整构造，不能把这项性能优化当成初始化正确性的前置条件。
+            if let Some(recycled_roster_buffers) = recycled_roster_buffers {
+                *roster_buffers = recycled_roster_buffers;
+            }
         } else {
             debug_assert!(recycled_roster_buffers.is_none());
         }

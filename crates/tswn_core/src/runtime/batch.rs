@@ -409,7 +409,11 @@ mod tests {
         let target = std::env::var("TSWN_SCORE_PROBE_TARGET").expect("set TSWN_SCORE_PROBE_TARGET");
         let modifier = std::env::var("TSWN_SCORE_PROBE_MODIFIER").unwrap_or_else(|_| "!".to_owned());
         let eval_rq = crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
-        let target_group = vec![target];
+        let target_group = if std::env::var_os("TSWN_SCORE_PROBE_DUPLICATE").is_some() {
+            vec![target.clone(), target]
+        } else {
+            vec![target]
+        };
         let first_groups = ScoreMatchGroups::new(&target_group, &modifier).groups;
         let config = default_custom_runtime_import_config().unwrap();
         let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&first_groups, eval_rq, config).unwrap();
@@ -611,6 +615,31 @@ mod tests {
         )
         .unwrap();
         assert_eq!(with_empty_team.wins, without_team.wins);
+    }
+
+    #[test]
+    fn score_colon_team_suffix_matches_no_team() {
+        let modifier = "\u{0002}";
+        let eval_rq = crate::namerena::eval_name::WIN_RATE_EVAL_RQ;
+        let with_suffix = vec!["荧屏上的梦想 NWKm7L_6@dream_on_screen qp:6070".to_owned(); 2];
+        let without_team = vec!["荧屏上的梦想 NWKm7L_6".to_owned(); 2];
+
+        let with_suffix = runtime_score(&with_suffix, modifier, 256, eval_rq, 1).unwrap();
+        let without_team = runtime_score(&without_team, modifier, 256, eval_rq, 1).unwrap();
+
+        assert_eq!(with_suffix.wins, without_team.wins);
+        assert_eq!(with_suffix.total, without_team.total);
+        assert_eq!(with_suffix.errors, without_team.errors);
+        assert_eq!(with_suffix.guard_exhausted, without_team.guard_exhausted);
+    }
+
+    #[test]
+    fn score_target_sharing_profile_team_does_not_panic() {
+        let target = vec!["33554433@\u{0002}".to_owned()];
+        let summary = runtime_score(&target, "\u{0002}", 2, crate::namerena::eval_name::WIN_RATE_EVAL_RQ, 1).unwrap();
+
+        assert_eq!(summary.total, 2);
+        assert_eq!(summary.errors, 0);
     }
 
     #[test]
