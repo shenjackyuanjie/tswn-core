@@ -494,8 +494,6 @@ def build_ohos_env(native_sdk: Path, target: str) -> dict[str, str]:
 
     sep = "\x1f"
     rustflags = [
-        "-Z",
-        "mutable-noalias=no",
         "-Clink-arg=-target",
         f"-Clink-arg={link_target}",
         f"-Clink-arg=--sysroot={sysroot}",
