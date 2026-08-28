@@ -28,17 +28,19 @@ pub const DEFAULT_WIN_RATE_SAMPLES: usize = 100_000;
 /// 默认粘性：单人组 10，双人组 20，x 人组 10 * x。
 pub const DEFAULT_STICKINESS_PER_MEMBER: usize = 10;
 
-/// Odds/Golden 从第 10000 轮后开始累计，与 warmup_rounds 解耦。
-pub const ODDS_START_ROUND: usize = 10_000;
-
 /// 100000 轮后开始检查三位小数平均 CQD 是否稳定。
 pub const EARLY_STOP_START_ROUND: usize = 100_000;
 pub const EARLY_STOP_STABLE_ROUNDS: usize = 100;
 
+/// After this round, only groups that have already received non-zero Golden
+/// mass continue to participate in the iterative update.  The remaining Raw
+/// scores are reconstructed once from the final Golden target.
+pub const RAW_CORE_ONLY_START_ROUND: usize = 100_000;
+
 pub const KICK_AVG_CQD_THRESHOLD: f64 = 45.0;
 
-/// 跑完后自动封存阈值：单人组 47.5；双人/多人组 48.0。
-pub const ARCHIVE_AVG_CQD_THRESHOLD_SINGLE: f64 = 47.5;
+/// 跑完后自动封存阈值：单人组 47.0；双人/多人组 48.0。
+pub const ARCHIVE_AVG_CQD_THRESHOLD_SINGLE: f64 = 47.0;
 pub const ARCHIVE_AVG_CQD_THRESHOLD_MULTI: f64 = 48.0;
 
 pub fn archive_avg_cqd_threshold(lane_size: usize) -> f64 {
@@ -77,9 +79,7 @@ impl RankerConfig {
     }
 
     pub fn effective_stickiness(&self, lane_size: usize) -> usize {
-        self.stickiness
-            .unwrap_or(DEFAULT_STICKINESS_PER_MEMBER * lane_size.max(1))
-            .max(1)
+        self.stickiness.unwrap_or(DEFAULT_STICKINESS_PER_MEMBER * lane_size.max(1)).max(1)
     }
 }
 
@@ -96,10 +96,7 @@ fn read_env_bool(name: &str, default: bool) -> bool {
 }
 
 fn read_env_optional_usize(name: &str) -> Option<usize> {
-    std::env::var(name)
-        .ok()
-        .and_then(|x| x.parse::<usize>().ok())
-        .filter(|&x| x > 0)
+    std::env::var(name).ok().and_then(|x| x.parse::<usize>().ok()).filter(|&x| x > 0)
 }
 
 fn resolve_rate_pair_workers(requested_outer_workers: usize, total: usize) -> usize {
@@ -107,9 +104,7 @@ fn resolve_rate_pair_workers(requested_outer_workers: usize, total: usize) -> us
         return requested_outer_workers.max(1).min(total.max(1));
     }
 
-    let available = thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4);
+    let available = thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
 
     available.max(1).min(total.max(1))
 }
@@ -135,6 +130,9 @@ pub fn recompute_lane_until_stable(db: &Db, lane_size: usize, config: &RankerCon
 
     loop {
         recompute_pass += 1;
+        // 日常运行在 skip_archived=true 时只计算未封存项，以保留封存带来的算力收益。
+        // 只有用户显式选择跑全量（skip_archived=false）时，才重新计算并替换整个封存集合。
+        let reconcile_archives = !config.skip_archived;
         let groups = db.load_groups_by_lane_for_run(lane_size, config.skip_archived)?;
 
         if groups.len() < STANDARD_SIZE {
@@ -194,43 +192,38 @@ pub fn recompute_lane_until_stable(db: &Db, lane_size: usize, config: &RankerCon
         }
 
         let archive_candidates = core_result.archive_candidates;
+        let archive_rows: Vec<(GroupId, String, f64)> = archive_candidates
+            .iter()
+            .map(|candidate| (candidate.group_id, candidate.reason.clone(), candidate.average_cqd))
+            .collect();
+        let archived_count = if reconcile_archives {
+            db.replace_lane_archived_groups(lane_size, &archive_rows)?
+        } else if archive_candidates.is_empty() {
+            0
+        } else {
+            db.archive_group_combinations(&archive_rows)?
+        };
 
         if archive_candidates.is_empty() {
+            // Raw has changed, so any Correct reference recipe from the previous
+            // calibration no longer describes the saved lane results.
+            db.clear_correct_target_trace(lane_size)?;
             db.save_lane_results(lane_size, &result)?;
             db.set_lane_status(lane_size, "ready", result.len())?;
             let ready_message = if early_stopped {
                 format!(
                     "done: early stopped at round {} after avg cqd stayed unchanged for {} rounds at 3 decimals; skip_archived={}",
-                    final_round,
-                    EARLY_STOP_STABLE_ROUNDS,
-                    config.skip_archived
+                    final_round, EARLY_STOP_STABLE_ROUNDS, config.skip_archived
                 )
             } else {
-                format!(
-                    "done; skip_archived={}",
-                    config.skip_archived
-                )
+                format!("done; skip_archived={}", config.skip_archived)
             };
-            db.set_lane_progress(
-                lane_size,
-                "ready",
-                final_round,
-                config.total_rounds,
-                0,
-                0,
-                0,
-                &ready_message,
-            )?;
+            db.set_lane_progress(lane_size, "ready", final_round, config.total_rounds, 0, 0, 0, &ready_message)?;
             return Ok(());
         }
 
-        let archive_rows: Vec<(GroupId, String, f64)> = archive_candidates
-            .iter()
-            .map(|candidate| (candidate.group_id, candidate.reason.clone(), candidate.average_cqd))
-            .collect();
-        let archived_count = db.archive_group_combinations(&archive_rows)?;
-
         if !config.skip_archived {
+            db.clear_correct_target_trace(lane_size)?;
             db.save_lane_results(lane_size, &result)?;
             db.set_lane_status(lane_size, "ready", result.len())?;
             db.set_lane_progress(
@@ -305,24 +298,15 @@ fn run_core_algorithm(
     let mut nodes: Vec<RankNode> = groups.into_iter().map(RankNode::new).collect();
 
     // 初始靶子优先使用数据库中上一轮结果的 Score 前 50。
-    let (mut standard, smooth_from_start) = make_initial_standard_indices(
-        db,
-        lane_size,
-        &nodes,
-        &mut dsu,
-    )?;
+    let (mut standard, smooth_from_start) = make_initial_standard_indices(db, lane_size, &nodes, &mut dsu)?;
     if standard.len() < STANDARD_SIZE {
         return Ok(CoreAlgorithmResult::empty(0));
     }
 
     let initial_target_message = if smooth_from_start {
-        format!(
-            "initial target selected from database Score order with standard constraints; smoothing from round 1"
-        )
+        format!("initial target selected from database Score order with standard constraints; smoothing from round 1")
     } else {
-        format!(
-            "initial target selected by current make logic; warmup remains unsmoothed"
-        )
+        format!("initial target selected by current make logic; warmup remains unsmoothed")
     };
 
     db.set_lane_progress(
@@ -347,31 +331,65 @@ fn run_core_algorithm(
     let mut stable_avg_rounds = 0usize;
     let mut final_round = config.total_rounds;
     let mut early_stopped = false;
+    let mut core_indices: Option<Vec<usize>> = None;
+    let mut selected_flags = vec![false; nodes.len()];
 
     for round in 1..=config.total_rounds {
         rate_matrix.ensure_rates_for_standard(db, lane_size, round, &nodes, &standard, config)?;
 
-        fight_in_memory(&mut nodes, &standard, &rate_matrix);
+        if let Some(core) = core_indices.as_deref() {
+            fight_in_memory_for_indices(&mut nodes, core, &standard, &rate_matrix);
+        } else {
+            fight_in_memory(&mut nodes, &standard, &rate_matrix);
+        }
 
-        data(&mut nodes, round, config.warmup_rounds, stickiness, smooth_from_start);
+        if let Some(core) = core_indices.as_deref() {
+            data_for_indices(&mut nodes, core, round, config.warmup_rounds, stickiness, smooth_from_start);
+        } else {
+            data(&mut nodes, round, config.warmup_rounds, stickiness, smooth_from_start);
+        }
 
-        standard = make_standard_indices(&nodes, &mut dsu);
+        // Golden 必须记录本轮实际用于 fight 的同一组 standard，并与 Raw
+        // 平均使用完全相同的统计窗口。这样对未四舍五入的 Raw 有严格恒等式：
+        // Raw(i) = sum_g rate(i,g) * Golden(g) / STANDARD_SIZE。
+        if round >= config.warmup_rounds {
+            record_golden_round(&mut nodes, core_indices.as_deref(), &standard, &mut selected_flags);
+        }
+
+        if core_indices.is_none() && round >= RAW_CORE_ONLY_START_ROUND && round >= config.warmup_rounds {
+            let frozen_core = nodes
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, node)| (node.bz > 0).then_some(idx))
+                .collect::<Vec<_>>();
+            if frozen_core.len() < STANDARD_SIZE {
+                anyhow::bail!(
+                    "cannot enter Raw core-only mode: only {} groups have non-zero Golden after round {}",
+                    frozen_core.len(),
+                    round
+                );
+            }
+            core_indices = Some(frozen_core);
+            stable_avg_rounds = 0;
+            last_rounded_avg_cqd.fill(i64::MIN);
+        }
+
+        standard = if let Some(core) = core_indices.as_deref() {
+            make_standard_indices_from_candidates(&nodes, core, &mut dsu)
+        } else {
+            make_standard_indices(&nodes, &mut dsu)
+        };
         if standard.len() < STANDARD_SIZE {
             return Ok(CoreAlgorithmResult::empty(round));
         }
 
-        if round >= ODDS_START_ROUND {
-            let selected_ids: HashSet<usize> = standard.iter().copied().collect();
-            for (idx, node) in nodes.iter_mut().enumerate() {
-                node.odds_n += 1;
-                if selected_ids.contains(&idx) {
-                    node.bz += 1;
-                }
-            }
-        }
-
         if round >= EARLY_STOP_START_ROUND {
-            if avg_cqd_rounded_unchanged(&nodes, &mut last_rounded_avg_cqd) {
+            let unchanged = if let Some(core) = core_indices.as_deref() {
+                avg_cqd_rounded_unchanged_for_indices(&nodes, core, &mut last_rounded_avg_cqd)
+            } else {
+                avg_cqd_rounded_unchanged(&nodes, &mut last_rounded_avg_cqd)
+            };
+            if unchanged {
                 stable_avg_rounds += 1;
             } else {
                 stable_avg_rounds = 0;
@@ -390,8 +408,9 @@ fn run_core_algorithm(
                     0,
                     0,
                     &format!(
-                        "early stop at round {round}: avg cqd unchanged for {EARLY_STOP_STABLE_ROUNDS} consecutive rounds at 3 decimals, loaded_pairs={}, stickiness={stickiness}",
-                        rate_matrix.loaded_pair_count()
+                        "early stop at round {round}: Raw core avg cqd unchanged for {EARLY_STOP_STABLE_ROUNDS} consecutive rounds at 3 decimals, core_groups={}, loaded_pairs={}, stickiness={stickiness}, mode=golden_core_then_exact_replay",
+                        core_indices.as_ref().map_or(nodes.len(), Vec::len),
+                        rate_matrix.loaded_pair_count(),
                     ),
                 )?;
                 break;
@@ -416,21 +435,26 @@ fn run_core_algorithm(
                 0,
                 0,
                 &format!(
-                    "core algorithm round {}/{}, {:.2} rounds/s, elapsed {}, eta {}, loaded_pairs={}, stickiness={}, mode=lazy_rate_matrix",
+                    "core algorithm round {}/{}, {:.2} rounds/s, elapsed {}, eta {}, active_groups={}, loaded_pairs={}, stickiness={}, mode={}",
                     round,
                     config.total_rounds,
                     rounds_per_sec,
                     format_duration(elapsed),
                     format_duration(eta_sec),
+                    core_indices.as_ref().map_or(nodes.len(), Vec::len),
                     rate_matrix.loaded_pair_count(),
-                    stickiness
+                    stickiness,
+                    if core_indices.is_some() { "golden_core_only" } else { "full_iteration" },
                 ),
             )?;
         }
     }
 
+    let raw_scores = replay_raw_scores_from_golden(&nodes, &rate_matrix)?;
     let mut order: Vec<usize> = (0..nodes.len()).collect();
-    order.sort_by(|&a, &b| nodes[b].cqds.total_cmp(&nodes[a].cqds));
+    order.sort_by(|&a, &b| raw_scores[b].total_cmp(&raw_scores[a]));
+
+    validate_raw_golden_identity(&nodes, &raw_scores, &rate_matrix)?;
 
     let rows: Vec<LaneResultRow> = order
         .into_iter()
@@ -438,7 +462,7 @@ fn run_core_algorithm(
         .map(|(rank_idx, node_idx)| {
             let node = &nodes[node_idx];
             let skill_summary = crate::skill_eq::compute_group_skill_summary(&node.group.members);
-            let raw_average_cqd = round_to_3(node.avg_cqd());
+            let raw_average_cqd = round_to_3(raw_scores[node_idx]);
             LaneResultRow {
                 lane_size,
                 group_id: node.group.id,
@@ -454,7 +478,11 @@ fn run_core_algorithm(
                 raw_delta: None,
                 marginal_value: None,
                 constrained_rank: None,
-                selection_status: if node.group.is_blocked { "blocked".to_string() } else { "calibration_skipped".to_string() },
+                selection_status: if node.group.is_blocked {
+                    "blocked".to_string()
+                } else {
+                    "calibration_skipped".to_string()
+                },
                 type_label: skill_summary.type_label,
                 simple_type_label: skill_summary.simple_type_label,
                 winrate_type_label: None,
@@ -505,11 +533,82 @@ fn run_core_algorithm(
     })
 }
 
-fn find_archive_candidates(rows: &[LaneResultRow], nodes: &[RankNode]) -> Vec<ArchiveCandidate> {
-    let members_by_group_id: HashMap<GroupId, Vec<String>> = nodes
+fn replay_raw_scores_from_golden(nodes: &[RankNode], rate_matrix: &RateMatrix) -> anyhow::Result<Vec<f64>> {
+    let golden_support = nodes
         .iter()
-        .map(|node| (node.group.id, node.group.members.clone()))
-        .collect();
+        .enumerate()
+        .filter_map(|(idx, node)| {
+            let weight = node.golden_rate();
+            (weight > 0.0).then_some((idx, weight))
+        })
+        .collect::<Vec<_>>();
+
+    if golden_support.is_empty() {
+        return Ok(nodes.iter().map(RankNode::avg_cqd).collect());
+    }
+
+    let mut scores = Vec::with_capacity(nodes.len());
+    for (idx, node) in nodes.iter().enumerate() {
+        let mut weighted_rate = 0.0;
+        for &(target_idx, weight) in &golden_support {
+            let rate = rate_matrix.rates[idx][target_idx].ok_or_else(|| {
+                anyhow::anyhow!(
+                    "missing rate needed for Raw Golden replay: group_id={} target_group_id={}",
+                    node.group.id,
+                    nodes[target_idx].group.id
+                )
+            })?;
+            weighted_rate += rate * weight;
+        }
+        scores.push(weighted_rate / STANDARD_SIZE as f64);
+    }
+
+    Ok(scores)
+}
+
+fn validate_raw_golden_identity(nodes: &[RankNode], raw_scores: &[f64], rate_matrix: &RateMatrix) -> anyhow::Result<()> {
+    let Some(sample_count) = nodes.iter().find(|node| node.bz > 0).map(|node| node.odds_n) else {
+        return Ok(());
+    };
+    if sample_count == 0 {
+        return Ok(());
+    }
+    if nodes
+        .iter()
+        .any(|node| node.bz > 0 && (node.odds_n != sample_count || node.n != sample_count))
+    {
+        anyhow::bail!("Raw/Golden 核心统计窗口不一致，无法建立精确靶权重");
+    }
+    let golden_sum = nodes.iter().map(RankNode::golden_rate).sum::<f64>();
+    if (golden_sum - STANDARD_SIZE as f64).abs() > 1e-9 {
+        anyhow::bail!("Golden 权重总和应为 {}，实际为 {:.12}", STANDARD_SIZE, golden_sum);
+    }
+
+    if raw_scores.len() != nodes.len() {
+        anyhow::bail!("Raw Golden replay row count mismatch");
+    }
+    for (idx, node) in nodes.iter().enumerate().filter(|(_, node)| node.bz > 0) {
+        let replayed = raw_scores[idx];
+        let iterated = node.avg_cqd();
+        if (replayed - iterated).abs() > 1e-9 {
+            anyhow::bail!(
+                "Raw Golden replay mismatch for group_id={}: iterated={:.12}, replayed={:.12}",
+                node.group.id,
+                iterated,
+                replayed
+            );
+        }
+    }
+
+    // Keep this parameter in the validation boundary so future storage changes
+    // cannot accidentally validate scores against a different rate source.
+    let _ = rate_matrix.loaded_pair_count();
+    Ok(())
+}
+
+fn find_archive_candidates(rows: &[LaneResultRow], nodes: &[RankNode]) -> Vec<ArchiveCandidate> {
+    let members_by_group_id: HashMap<GroupId, Vec<String>> =
+        nodes.iter().map(|node| (node.group.id, node.group.members.clone())).collect();
 
     let mut by_group_id: HashMap<GroupId, ArchiveCandidate> = HashMap::new();
 
@@ -621,13 +720,7 @@ fn folded_result_groups_for_archive(
         // 新折叠规则：如果一个被屏蔽组合下面有未屏蔽且成员重复的组合，
         // 它不再当父行，而是折叠到那个更低的未屏蔽组合下。
         if rows[i].is_blocked {
-            if let Some(target_idx) = find_lower_unblocked_overlap(
-                rows,
-                members_by_group_id,
-                &consumed,
-                i,
-                parent_members,
-            ) {
+            if let Some(target_idx) = find_lower_unblocked_overlap(rows, members_by_group_id, &consumed, i, parent_members) {
                 pending.entry(target_idx).or_default().push(i);
                 consumed[i] = true;
                 continue;
@@ -651,13 +744,7 @@ fn folded_result_groups_for_archive(
             }
 
             if rows[j].is_blocked {
-                if let Some(target_idx) = find_lower_unblocked_overlap(
-                    rows,
-                    members_by_group_id,
-                    &consumed,
-                    j,
-                    child_members,
-                ) {
+                if let Some(target_idx) = find_lower_unblocked_overlap(rows, members_by_group_id, &consumed, j, child_members) {
                     pending.entry(target_idx).or_default().push(j);
                     consumed[j] = true;
                     continue;
@@ -731,13 +818,9 @@ impl RateMatrix {
         }
     }
 
-    fn get(&self, i: usize, j: usize) -> f64 {
-        self.rates[i][j].expect("rate should be loaded before fight")
-    }
+    fn get(&self, i: usize, j: usize) -> f64 { self.rates[i][j].expect("rate should be loaded before fight") }
 
-    fn loaded_pair_count(&self) -> usize {
-        self.loaded_pairs
-    }
+    fn loaded_pair_count(&self) -> usize { self.loaded_pairs }
 
     fn set_pair(&mut self, i: usize, j: usize, rate_i_to_j: f64) {
         if i == j {
@@ -800,12 +883,7 @@ impl RateMatrix {
                     continue;
                 }
 
-                missing_pairs.push((
-                    i,
-                    std_idx,
-                    nodes[i].group.clone(),
-                    nodes[std_idx].group.clone(),
-                ));
+                missing_pairs.push((i, std_idx, nodes[i].group.clone(), nodes[std_idx].group.clone()));
             }
         }
 
@@ -837,7 +915,11 @@ impl RateMatrix {
         let workers = resolve_rate_pair_workers(requested_outer_workers, total);
         let outer_label = format_outer_workers(requested_outer_workers, workers);
         let inner_label = format_inner_workers(inner_workers);
-        let mode = if requested_outer_workers == 0 { "dynamic_queue" } else { "static_chunks" };
+        let mode = if requested_outer_workers == 0 {
+            "dynamic_queue"
+        } else {
+            "static_chunks"
+        };
         let done = Arc::new(AtomicUsize::new(0));
         let rate_started = Arc::new(Instant::now());
 
@@ -873,6 +955,7 @@ impl RateMatrix {
 
                 handles.push(thread::spawn(move || -> anyhow::Result<Vec<(usize, usize, GroupId, GroupId, f64)>> {
                     let mut computed = Vec::new();
+                    let mut pending = Vec::with_capacity(RATE_PERSIST_CHECKPOINT_SIZE);
 
                     loop {
                         let pair_idx = next_pair.fetch_add(1, Ordering::Relaxed);
@@ -882,6 +965,8 @@ impl RateMatrix {
 
                         let rate = compute_rate_without_db(a, b, samples, inner_workers)?;
                         computed.push((*i, *j, a.id, b.id, rate));
+                        pending.push((a.id, b.id, rate));
+                        persist_rate_checkpoint(&db, &mut pending, samples, false)?;
 
                         let current = done.fetch_add(1, Ordering::Relaxed) + 1;
                         if should_report_rate_progress(current, total) {
@@ -910,6 +995,7 @@ impl RateMatrix {
                             )?;
                         }
                     }
+                    persist_rate_checkpoint(&db, &mut pending, samples, true)?;
 
                     Ok(computed)
                 }));
@@ -929,6 +1015,7 @@ impl RateMatrix {
 
                 handles.push(thread::spawn(move || -> anyhow::Result<Vec<(usize, usize, GroupId, GroupId, f64)>> {
                     let mut computed = Vec::with_capacity(end.saturating_sub(start));
+                    let mut pending = Vec::with_capacity(RATE_PERSIST_CHECKPOINT_SIZE);
 
                     for pair_idx in start..end {
                         let Some((i, j, a, b)) = missing_pairs.get(pair_idx) else {
@@ -937,6 +1024,8 @@ impl RateMatrix {
 
                         let rate = compute_rate_without_db(a, b, samples, inner_workers)?;
                         computed.push((*i, *j, a.id, b.id, rate));
+                        pending.push((a.id, b.id, rate));
+                        persist_rate_checkpoint(&db, &mut pending, samples, false)?;
 
                         let current = done.fetch_add(1, Ordering::Relaxed) + 1;
                         if should_report_rate_progress(current, total) {
@@ -965,6 +1054,7 @@ impl RateMatrix {
                             )?;
                         }
                     }
+                    persist_rate_checkpoint(&db, &mut pending, samples, true)?;
 
                     Ok(computed)
                 }));
@@ -1038,6 +1128,18 @@ fn fight_in_memory(nodes: &mut [RankNode], standard: &[usize], rate_matrix: &Rat
     }
 }
 
+fn fight_in_memory_for_indices(nodes: &mut [RankNode], active_indices: &[usize], standard: &[usize], rate_matrix: &RateMatrix) {
+    let standard_len = standard.len() as f64;
+
+    for &idx in active_indices {
+        let mut score = 0.0;
+        for &bz_idx in standard {
+            score += rate_matrix.get(idx, bz_idx);
+        }
+        nodes[idx].cqd = score / standard_len;
+    }
+}
+
 fn make_initial_standard_indices(
     db: &Db,
     lane_size: usize,
@@ -1056,11 +1158,7 @@ fn make_initial_standard_indices(
     // 2. 同一个 member 在靶子中只能出现一次
     let top_ids = db.lane_top_score_group_ids(lane_size, nodes.len(), None)?;
 
-    let id_to_idx: HashMap<GroupId, usize> = nodes
-        .iter()
-        .enumerate()
-        .map(|(idx, node)| (node.group.id, idx))
-        .collect();
+    let id_to_idx: HashMap<GroupId, usize> = nodes.iter().enumerate().map(|(idx, node)| (node.group.id, idx)).collect();
 
     let mut selected = Vec::with_capacity(STANDARD_SIZE);
     let mut selected_set = HashSet::<usize>::new();
@@ -1116,7 +1214,12 @@ fn make_initial_standard_indices(
     Ok((selected, used_history_target))
 }
 fn make_standard_indices(nodes: &[RankNode], dsu: &mut TeamDsu) -> Vec<usize> {
-    let mut order: Vec<usize> = (0..nodes.len()).collect();
+    let candidates = (0..nodes.len()).collect::<Vec<_>>();
+    make_standard_indices_from_candidates(nodes, &candidates, dsu)
+}
+
+fn make_standard_indices_from_candidates(nodes: &[RankNode], candidates: &[usize], dsu: &mut TeamDsu) -> Vec<usize> {
+    let mut order = candidates.to_vec();
     order.sort_by(|&a, &b| nodes[b].shenmixishu.total_cmp(&nodes[a].shenmixishu));
 
     let mut selected = Vec::with_capacity(STANDARD_SIZE);
@@ -1197,8 +1300,19 @@ fn try_select_standard_index(
 
     true
 }
-fn data(
+fn data(nodes: &mut [RankNode], round: usize, warmup_rounds: usize, stickiness: usize, smooth_from_start: bool) {
+    let alpha = 1.0 / stickiness.max(1) as f64;
+    let should_smooth = smooth_from_start || round >= warmup_rounds;
+    let starts_smoothing_this_round = (smooth_from_start && round == 1) || (!smooth_from_start && round == warmup_rounds);
+
+    for node in nodes {
+        update_node_data(node, round, warmup_rounds, alpha, should_smooth, starts_smoothing_this_round);
+    }
+}
+
+fn data_for_indices(
     nodes: &mut [RankNode],
+    active_indices: &[usize],
     round: usize,
     warmup_rounds: usize,
     stickiness: usize,
@@ -1214,27 +1328,75 @@ fn data(
     // 最终 Score 的统计窗口不变，仍然只在 warmup_rounds 后累计。
     let alpha = 1.0 / stickiness.max(1) as f64;
     let should_smooth = smooth_from_start || round >= warmup_rounds;
-    let starts_smoothing_this_round =
-        (smooth_from_start && round == 1) || (!smooth_from_start && round == warmup_rounds);
+    let starts_smoothing_this_round = (smooth_from_start && round == 1) || (!smooth_from_start && round == warmup_rounds);
 
-    for node in nodes.iter_mut() {
-        if round >= warmup_rounds {
-            node.n += 1;
-            node.cqds += node.cqd;
-            node.cqdss += node.cqd * node.cqd;
-            node.cqdmin = node.cqdmin.min(node.cqd);
-            node.cqdmax = node.cqdmax.max(node.cqd);
-        }
+    for &idx in active_indices {
+        update_node_data(
+            &mut nodes[idx],
+            round,
+            warmup_rounds,
+            alpha,
+            should_smooth,
+            starts_smoothing_this_round,
+        );
+    }
+}
 
-        if should_smooth {
-            if starts_smoothing_this_round {
-                node.shenmixishu = node.cqd * 100.0;
-            } else {
-                node.shenmixishu = (1.0 - alpha) * node.shenmixishu + (100.0 * alpha) * node.cqd;
-            }
+fn update_node_data(
+    node: &mut RankNode,
+    round: usize,
+    warmup_rounds: usize,
+    alpha: f64,
+    should_smooth: bool,
+    starts_smoothing_this_round: bool,
+) {
+    if round >= warmup_rounds {
+        node.n += 1;
+        node.cqds += node.cqd;
+        node.cqdss += node.cqd * node.cqd;
+        node.cqdmin = node.cqdmin.min(node.cqd);
+        node.cqdmax = node.cqdmax.max(node.cqd);
+    }
+
+    if should_smooth {
+        if starts_smoothing_this_round {
+            node.shenmixishu = node.cqd * 100.0;
         } else {
-            node.shenmixishu = node.cqd;
+            node.shenmixishu = (1.0 - alpha) * node.shenmixishu + (100.0 * alpha) * node.cqd;
         }
+    } else {
+        node.shenmixishu = node.cqd;
+    }
+}
+
+fn record_golden_round(
+    nodes: &mut [RankNode],
+    active_indices: Option<&[usize]>,
+    standard: &[usize],
+    selected_flags: &mut [bool],
+) {
+    for &idx in standard {
+        selected_flags[idx] = true;
+    }
+
+    if let Some(active) = active_indices {
+        for &idx in active {
+            nodes[idx].odds_n += 1;
+            if selected_flags[idx] {
+                nodes[idx].bz += 1;
+            }
+        }
+    } else {
+        for (idx, node) in nodes.iter_mut().enumerate() {
+            node.odds_n += 1;
+            if selected_flags[idx] {
+                node.bz += 1;
+            }
+        }
+    }
+
+    for &idx in standard {
+        selected_flags[idx] = false;
     }
 }
 
@@ -1252,25 +1414,45 @@ fn avg_cqd_rounded_unchanged(nodes: &[RankNode], last: &mut [i64]) -> bool {
     !changed
 }
 
-fn round_to_3(value: f64) -> f64 {
-    round_to_3_int(value) as f64 / 1000.0
+fn avg_cqd_rounded_unchanged_for_indices(nodes: &[RankNode], indices: &[usize], last: &mut [i64]) -> bool {
+    let mut changed = false;
+
+    for &idx in indices {
+        let value = round_to_3_int(nodes[idx].avg_cqd());
+        if last[idx] != value {
+            last[idx] = value;
+            changed = true;
+        }
+    }
+
+    !changed
 }
 
-fn round_to_3_int(value: f64) -> i64 {
-    (value * 1000.0).round() as i64
+fn round_to_3(value: f64) -> f64 { round_to_3_int(value) as f64 / 1000.0 }
+
+fn round_to_3_int(value: f64) -> i64 { (value * 1000.0).round() as i64 }
+
+fn ordered_index_pair(a: usize, b: usize) -> (usize, usize) { if a <= b { (a, b) } else { (b, a) } }
+
+fn should_report_rate_progress(done: usize, total: usize) -> bool { done == total || done % 10 == 0 }
+
+const RATE_PERSIST_CHECKPOINT_SIZE: usize = 100;
+
+fn persist_rate_checkpoint(
+    db: &Db,
+    pending: &mut Vec<(GroupId, GroupId, f64)>,
+    samples: usize,
+    force: bool,
+) -> anyhow::Result<()> {
+    if pending.len() < RATE_PERSIST_CHECKPOINT_SIZE && !force {
+        return Ok(());
+    }
+    db.save_rate_pairs_bulk(pending, samples)?;
+    pending.clear();
+    Ok(())
 }
 
-fn ordered_index_pair(a: usize, b: usize) -> (usize, usize) {
-    if a <= b { (a, b) } else { (b, a) }
-}
-
-fn should_report_rate_progress(done: usize, total: usize) -> bool {
-    done == total || done % 10 == 0
-}
-
-fn should_report_round(round: usize, total_rounds: usize) -> bool {
-    round == 1 || round == total_rounds || round % 1000 == 0
-}
+fn should_report_round(round: usize, total_rounds: usize) -> bool { round == 1 || round == total_rounds || round % 1000 == 0 }
 
 fn format_duration(seconds: f64) -> String {
     if seconds < 60.0 {
@@ -1279,5 +1461,67 @@ fn format_duration(seconds: f64) -> String {
         format!("{:.1}m", seconds / 60.0)
     } else {
         format!("{:.1}h", seconds / 3600.0)
+    }
+}
+
+#[cfg(test)]
+mod raw_core_tests {
+    use super::*;
+
+    fn test_node(id: GroupId) -> RankNode {
+        RankNode::new(StoredGroup {
+            id,
+            canonical: format!("group-{id}"),
+            display_raw: format!("group-{id}"),
+            lane_size: 1,
+            team_name: format!("team-{id}"),
+            members: vec![format!("member-{id}")],
+            is_blocked: false,
+        })
+    }
+
+    #[test]
+    fn core_only_golden_round_does_not_update_inactive_nodes() {
+        let mut nodes = vec![test_node(1), test_node(2), test_node(3)];
+        let mut selected_flags = vec![false; nodes.len()];
+
+        record_golden_round(&mut nodes, Some(&[0, 1]), &[1], &mut selected_flags);
+
+        assert_eq!((nodes[0].odds_n, nodes[0].bz), (1, 0));
+        assert_eq!((nodes[1].odds_n, nodes[1].bz), (1, 1));
+        assert_eq!((nodes[2].odds_n, nodes[2].bz), (0, 0));
+        assert!(selected_flags.iter().all(|selected| !selected));
+    }
+
+    #[test]
+    fn final_raw_is_exactly_replayed_for_inactive_nodes() {
+        let mut nodes = (0..=STANDARD_SIZE as i64).map(test_node).collect::<Vec<_>>();
+        let mut rate_matrix = RateMatrix::new(nodes.len());
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                rate_matrix.set_pair(i, j, 50.0 + (i as f64 - j as f64) * 0.1);
+            }
+        }
+
+        for node in nodes.iter_mut().take(STANDARD_SIZE) {
+            node.bz = 1;
+            node.odds_n = 1;
+            node.n = 1;
+        }
+
+        let raw_scores = replay_raw_scores_from_golden(&nodes, &rate_matrix).unwrap();
+        for (idx, node) in nodes.iter_mut().take(STANDARD_SIZE).enumerate() {
+            node.cqd = raw_scores[idx];
+            node.cqds = raw_scores[idx];
+            node.cqdss = raw_scores[idx] * raw_scores[idx];
+        }
+
+        let inactive_idx = STANDARD_SIZE;
+        let expected = (0..STANDARD_SIZE)
+            .map(|target_idx| rate_matrix.get(inactive_idx, target_idx))
+            .sum::<f64>()
+            / STANDARD_SIZE as f64;
+        assert!((raw_scores[inactive_idx] - expected).abs() < 1e-12);
+        validate_raw_golden_identity(&nodes, &raw_scores, &rate_matrix).unwrap();
     }
 }

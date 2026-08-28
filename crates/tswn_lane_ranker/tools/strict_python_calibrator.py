@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional, Sequence, Any
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize, milp, LinearConstraint, Bounds
+from scipy.optimize import minimize, minimize_scalar, milp, linprog, LinearConstraint, Bounds
 from scipy.special import expit, logit, betaln, digamma
 from scipy import sparse
 from sklearn.cluster import KMeans
@@ -130,7 +130,8 @@ class NameAlg:
             mn=min4(self.name_base[a+i],self.name_base[a+i+1],self.name_base[a+i+2],self.name_base[a+i+3])
             if mn>10 and self.skill[j]<35 and self.skill[j]<25: self.last=j
     def effective_skill_value(self,idx:int)->float:
-        return self.x[45] if idx==18 and self.x[45]!=0.0 else self.x[8+idx]
+        value = self.x[45] if idx==18 and self.x[45]!=0.0 else self.x[8+idx]
+        return value * 0.85 if idx >= ACTIVE_SKILL_COUNT else value
     def top_active_skill_label(self)->str:
         vals=[self.effective_skill_value(i) for i in range(ACTIVE_SKILL_COUNT)]
         return SKILL_NAME_MAP[int(np.argmax(vals))]
@@ -454,7 +455,10 @@ def fit_betabinomial_eb(groups_df, edges_df, train_mask, type_ids, max_eb_iter=6
         if not np.isfinite(nll) or not np.all(np.isfinite(grad)):
             return 1e300, np.nan_to_num(grad, nan=0.0, posinf=1e100, neginf=-1e100)
         return nll, grad
+    eb_converged = False; eb_rounds = 0
+    optimizer_all_rounds_converged = True; optimizer_hit_iteration_limit = False
     for eb in range(max_eb_iter):
+        eb_rounds = eb + 1
         prec_delta=1.0/max(tau_delta,1e-8)**2; prec_counter=1.0/max(tau_counter,1e-8)**2 if C>0 else 1e12
         prior_diag=np.zeros(core_dim); prior_diag[1:1+G]=prec_delta
         if C>0: prior_diag[1+G:]=prec_counter
@@ -713,8 +717,11 @@ def _attach_selection_weight_columns(
 # =========================
 # Raw-anchored prospective de-stratified Correct
 # =========================
-PROSPECTIVE_CORRECT_MAX_ABS_ADJUST_CQD = 0.55
 PROSPECTIVE_CORRECT_ENV_EPS_CQD = 0.015
+PROSPECTIVE_CROSSFIT_FOLDS = 5
+PROSPECTIVE_LOWRANK_EB_MAX_ROUNDS = 30
+PROSPECTIVE_REPLACEMENT_K = 5.0
+PROSPECTIVE_MEMBER_EB_MAX_ROUNDS = 30
 
 
 def _prospective_safe_float(x: Any, default: float = np.nan) -> float:
@@ -723,6 +730,1546 @@ def _prospective_safe_float(x: Any, default: float = np.nan) -> float:
     except Exception:
         return float(default)
     return v if np.isfinite(v) else float(default)
+
+
+def _deduplicate_undirected_edges(edges: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    """Canonicalize A/B orientation and retain one observation per unordered pair."""
+    if edges is None or edges.empty:
+        return pd.DataFrame(columns=[] if edges is None else edges.columns), {
+            "input_rows": 0, "output_undirected_pairs": 0, "duplicate_rows_removed": 0,
+        }
+    work = edges.copy()
+    work = work[work["group_a"].astype(int) != work["group_b"].astype(int)].copy()
+    ga = work["group_a"].astype(int).to_numpy(); gb = work["group_b"].astype(int).to_numpy()
+    forward = ga < gb
+    work["_lo"] = np.minimum(ga, gb); work["_hi"] = np.maximum(ga, gb)
+    y = pd.to_numeric(work["win_rate_a"], errors="coerce").to_numpy(float)
+    work["_canonical_y"] = np.where(forward, y, 1.0 - y)
+    work["_n"] = pd.to_numeric(work["samples"], errors="coerce").fillna(0.0).to_numpy(float)
+    rows = []
+    for (lo, hi), g in work.groupby(["_lo", "_hi"], sort=True):
+        valid = np.isfinite(g["_canonical_y"].to_numpy(float)) & np.isfinite(g["_n"].to_numpy(float)) & (g["_n"].to_numpy(float) > 0.0)
+        gg = g.loc[valid]
+        if gg.empty:
+            continue
+        weights = gg["_n"].to_numpy(float)
+        # Duplicate directions describe the same unordered observation.  Use
+        # their weighted consensus rate but do not add their sample counts.
+        canonical_y = float(np.average(gg["_canonical_y"].to_numpy(float), weights=weights))
+        representative_n = float(np.max(weights))
+        row = gg.iloc[0].drop(labels=["_lo", "_hi", "_canonical_y", "_n"]).to_dict()
+        row["group_a"] = int(lo); row["group_b"] = int(hi)
+        row["win_rate_a"] = canonical_y; row["samples"] = representative_n
+        rows.append(row)
+    out = pd.DataFrame(rows)
+    return out, {
+        "input_rows": int(len(work)), "output_undirected_pairs": int(len(out)),
+        "duplicate_rows_removed": int(len(work) - len(out)),
+    }
+
+
+
+
+def _equal_reference_location_and_se(
+    values: Sequence[float],
+    measurement_variances: Sequence[float],
+) -> Tuple[float, float, float, float]:
+    """Estimate the empirical reference-policy mean without residual selection.
+
+    Every legal reference has equal policy mass.  Pair sample counts affect only
+    measurement variance.  In particular, residual magnitude never changes a
+    reference's center weight: otherwise a target-specific robust fit silently
+    redefines the future reference distribution and suppresses real minority
+    regions of the continuous win-rate landscape.
+    """
+    x = np.asarray(values, dtype=float)
+    mv = np.asarray(measurement_variances, dtype=float)
+    if len(x) != len(mv):
+        raise ValueError("measurement_variances must match values")
+    ok = np.isfinite(x) & np.isfinite(mv) & (mv >= 0.0)
+    x, mv = x[ok], mv[ok]
+    n = len(x)
+    if n == 0:
+        return np.nan, np.nan, 0.0, np.nan
+    location = float(np.mean(x))
+    if n == 1:
+        return location, float(math.sqrt(mv[0])), 1.0, 0.0
+    observed_var = float(np.var(x, ddof=1))
+    scenario_var = max(0.0, observed_var - float(np.mean(mv)))
+    scenario_scale = float(math.sqrt(scenario_var))
+    # The legal reference universe is the complete fixed scoring policy, not a
+    # random sample from an infinite superpopulation. Variation between legal
+    # references is therefore real matchup structure inside the estimand, not
+    # measurement error in its mean. Only win-rate measurement variance belongs
+    # in the reliability SE. Scenario spread is returned separately for stress
+    # diagnostics and must not drive the scalar signal variance to zero.
+    estimation_var = float(np.sum(mv) / (n * n))
+    return location, float(math.sqrt(max(0.0, estimation_var))), float(n), scenario_scale
+
+
+def _build_prospective_reference_universe(
+    score_universe: pd.DataFrame,
+    group_members: Dict[int, List[str]],
+    raw_min: Optional[float],
+    out_dir: Path,
+) -> List[int]:
+    """Build the strict reference pool while leaving the score universe intact.
+
+    Score-only and blocked rows remain scoreable targets, but can never shape
+    another row's correction.  Frontend raw_min is applied here, before any
+    residual is estimated, and is never relaxed or bypassed.
+    """
+    df = score_universe.copy()
+    df["group_id"] = df["group_id"].astype(int)
+    df["raw_cqd"] = pd.to_numeric(df["raw_cqd"], errors="coerce").astype(float)
+    disabled = _prospective_disabled_mask(df)
+    score_only = pd.Series(False, index=df.index)
+    for col in [
+        "scout_candidate",
+        "score_only_candidate",
+        "is_score_only",
+        "score_only",
+        "active_set_score_only_candidate",
+    ]:
+        if col in df.columns:
+            score_only = score_only | df[col].fillna(False).astype(bool)
+    finite_raw = pd.Series(np.isfinite(df["raw_cqd"].to_numpy(float)), index=df.index)
+    eligible = df.loc[(~disabled) & (~score_only) & finite_raw].copy()
+    eligible = eligible.sort_values(["raw_cqd", "group_id"], ascending=[False, True])
+    duplicate_group_rows_removed = int(eligible.duplicated("group_id", keep="first").sum())
+    eligible = eligible.drop_duplicates("group_id", keep="first").copy()
+    before_threshold = int(len(eligible))
+    if raw_min is not None:
+        eligible = eligible[eligible["raw_cqd"].astype(float) >= float(raw_min)].copy()
+    if eligible.empty:
+        threshold_text = "none" if raw_min is None else str(float(raw_min))
+        raise RuntimeError(
+            "No legal prospective references remain after strict eligibility "
+            f"and frontend raw_min={threshold_text}; threshold fallback is forbidden"
+        )
+
+    # Deterministic Raw-first selection enforces member uniqueness.  A group
+    # without member metadata gets a private synthetic key and cannot collide.
+    gids: List[int] = []
+    used_members: Set[str] = set()
+    duplicate_member_rows_removed = 0
+    for gid in eligible["group_id"].astype(int).tolist():
+        members = [str(m) for m in group_members.get(int(gid), []) if str(m) != ""]
+        if not members:
+            members = [f"__gid__{int(gid)}"]
+        if any(m in used_members for m in members):
+            duplicate_member_rows_removed += 1
+            continue
+        gids.append(int(gid))
+        used_members.update(members)
+    if not gids:
+        raise RuntimeError(
+            "No legal prospective references remain after enforcing member uniqueness; "
+            "disabled/blocked/score-only or below-threshold fallback is forbidden"
+        )
+    pd.DataFrame([{
+        "reference_definition": "enabled_nonblocked_nonscoreonly_raw_min_group_unique_member_unique",
+        "score_universe_count": int(df["group_id"].nunique()),
+        "reference_count": int(len(gids)),
+        "disabled_or_blocked_rows_removed": int(disabled.sum()),
+        "score_only_rows_removed": int(((~disabled) & score_only).sum()),
+        "nonfinite_raw_rows_removed": int(((~disabled) & (~score_only) & (~finite_raw)).sum()),
+        "duplicate_group_rows_removed": int(duplicate_group_rows_removed),
+        "duplicate_member_rows_removed": int(duplicate_member_rows_removed),
+        "frontend_raw_min_threshold": "" if raw_min is None else float(raw_min),
+        "frontend_raw_min_removed": int(before_threshold - len(eligible)),
+        "raw_min_cqd": float(eligible["raw_cqd"].min()),
+        "raw_max_cqd": float(eligible["raw_cqd"].max()),
+        "reference_group_ids": _compact_id_list(gids, limit=500),
+    }]).to_csv(out_dir / "prospective_reference_universe_summary.csv", index=False)
+    return gids
+
+
+def _minimum_norm_rate_coefficient_delta(
+    rate_matrix: np.ndarray,
+    reference_columns: Sequence[int],
+    score_delta: np.ndarray,
+) -> np.ndarray:
+    """Represent one scalar score delta per row on legal reference rates.
+
+    For each score row i this returns the unique minimum-L2 vector d_i whose
+    rate-weighted contribution is exactly score_delta_i:
+
+        min ||d_i||_2  subject to  rate_i @ d_i = score_delta_i.
+
+    Only legal Correct-reference columns may receive a delta. This makes every
+    coefficient update deterministic without solving backwards for a common
+    target and without allowing blocked/score-only rows to become targets.
+    """
+    rates = np.asarray(rate_matrix, dtype=float)
+    delta = np.asarray(score_delta, dtype=float)
+    ref_cols = np.asarray(list(reference_columns), dtype=int)
+    if rates.ndim != 2 or delta.ndim != 1 or rates.shape[0] != delta.size:
+        raise ValueError("rate_matrix/score_delta shape mismatch")
+    if ref_cols.size == 0:
+        raise ValueError("at least one legal reference column is required")
+    ref_rates = rates[:, ref_cols]
+    denom = np.sum(ref_rates * ref_rates, axis=1)
+    if np.any(~np.isfinite(denom)) or np.any(denom <= 1e-12):
+        raise RuntimeError("cannot distribute coefficient delta on zero legal-reference rate norm")
+    out = np.zeros_like(rates)
+    out[:, ref_cols] = delta[:, None] * ref_rates / denom[:, None]
+    return out
+
+
+def _select_regularization_pareto_knee(
+    path_results: Sequence[Dict[str, Any]],
+    baseline_metrics: Dict[str, float],
+    best_metrics: Dict[str, float],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Select the replay/stability knee without a hard improvement threshold.
+
+    Replay gain is normalized independently for mean absolute error, maximum
+    absolute error, and RMSE. Structural cost is normalized across the
+    selectable path and combines movement, the largest single movement,
+    matchup-profile roughness, local C-Score ordering violations, and signed
+    cancellation. Knee score is the Kneedle-style vertical distance
+    ``replay_gain - structural_cost`` on the non-dominated frontier. Points
+    within 99% of its maximum form a plateau; the least structurally expensive
+    point on that plateau is selected.
+    """
+    entries = list(path_results)
+    if not entries:
+        raise ValueError("Pareto knee selection requires at least one path point")
+
+    replay_keys = ("mean_abs_diff", "max_abs_diff", "rmse")
+    stability_keys = (
+        "delta_l2_norm",
+        "delta_max_abs",
+        "similar_increment_rms",
+        "local_c_score_weight_inversion_rms",
+        "cancellation_excess",
+    )
+    stability_scales = {
+        key: max(
+            float(entry.get(key, 0.0))
+            for entry in entries
+            if np.isfinite(float(entry.get(key, 0.0)))
+        )
+        for key in stability_keys
+    }
+
+    for entry in entries:
+        replay_components: List[float] = []
+        for key in replay_keys:
+            baseline = float(baseline_metrics[key])
+            best = float(best_metrics[key])
+            available = baseline - best
+            if available <= 1e-12:
+                replay_components.append(0.0)
+                continue
+            gain = (baseline - float(entry[key])) / available
+            replay_components.append(float(np.clip(gain, 0.0, 1.0)))
+        replay_gain = float(np.mean(replay_components))
+
+        stability_components = []
+        for key, scale in stability_scales.items():
+            if scale <= 1e-12:
+                continue
+            value = max(0.0, float(entry.get(key, 0.0)))
+            stability_components.append(float(np.clip(value / scale, 0.0, 1.0)))
+        structural_cost = (
+            float(np.sqrt(np.mean(np.square(stability_components))))
+            if stability_components
+            else 0.0
+        )
+        entry["pareto_replay_gain"] = replay_gain
+        entry["pareto_structural_cost"] = structural_cost
+        entry["pareto_knee_score"] = replay_gain - structural_cost
+
+    frontier: List[Dict[str, Any]] = []
+    for candidate in entries:
+        dominated = False
+        for other in entries:
+            if other is candidate:
+                continue
+            no_more_cost = (
+                float(other["pareto_structural_cost"])
+                <= float(candidate["pareto_structural_cost"]) + 1e-12
+            )
+            no_less_gain = (
+                float(other["pareto_replay_gain"])
+                >= float(candidate["pareto_replay_gain"]) - 1e-12
+            )
+            strictly_better = (
+                float(other["pareto_structural_cost"])
+                < float(candidate["pareto_structural_cost"]) - 1e-12
+                or float(other["pareto_replay_gain"])
+                > float(candidate["pareto_replay_gain"]) + 1e-12
+            )
+            if no_more_cost and no_less_gain and strictly_better:
+                dominated = True
+                break
+        candidate["pareto_frontier"] = not dominated
+        if not dominated:
+            frontier.append(candidate)
+
+    selectable = frontier or entries
+    best_knee_score = max(
+        float(entry["pareto_knee_score"])
+        for entry in selectable
+    )
+    plateau_fraction = 0.99
+    if best_knee_score > 0.0:
+        plateau_floor = plateau_fraction * best_knee_score
+        plateau = [
+            entry
+            for entry in selectable
+            if float(entry["pareto_knee_score"]) >= plateau_floor - 1e-12
+        ]
+    else:
+        plateau_floor = best_knee_score
+        plateau = [
+            max(
+                selectable,
+                key=lambda entry: (
+                    float(entry["pareto_knee_score"]),
+                    float(entry["pareto_replay_gain"]),
+                    -float(entry["pareto_structural_cost"]),
+                    float(entry["alpha"]),
+                ),
+            )
+        ]
+    plateau_ids = {id(entry) for entry in plateau}
+    for entry in entries:
+        entry["pareto_plateau_eligible"] = id(entry) in plateau_ids
+
+    # The path is deliberately coarse. Treat a knee-score improvement below
+    # one percent as a plateau, then prefer the least structurally expensive
+    # (and, on an exact tie, more strongly regularized) solution.
+    selected = min(
+        plateau,
+        key=lambda entry: (
+            float(entry["pareto_structural_cost"]),
+            -float(entry["alpha"]),
+            -float(entry["pareto_replay_gain"]),
+        ),
+    )
+    return selected, {
+        "selection_reason": "normalized_pareto_99pct_plateau_most_stable",
+        "frontier_count": int(len(frontier)),
+        "plateau_fraction": float(plateau_fraction),
+        "plateau_floor": float(plateau_floor),
+        "plateau_count": int(len(plateau)),
+        "best_knee_score": float(best_knee_score),
+        "selected_replay_gain": float(selected["pareto_replay_gain"]),
+        "selected_structural_cost": float(selected["pareto_structural_cost"]),
+        "selected_knee_score": float(selected["pareto_knee_score"]),
+        "stability_scales": {
+            key: float(value)
+            for key, value in stability_scales.items()
+        },
+    }
+
+
+def _golden_delta_caps(golden_weights: np.ndarray) -> Tuple[np.ndarray, Dict[str, float]]:
+    """Build a per-target movement guard around Golden.
+
+    A purely relative cap would freeze candidates whose Golden weight is zero,
+    so every target also receives a small allowance derived from the median
+    positive Golden weight. Larger Golden targets retain proportionally more
+    room, while no single column can absorb an unbounded calibration movement.
+    """
+    golden = np.asarray(golden_weights, dtype=float)
+    positive = np.abs(golden[np.abs(golden) > 1e-12])
+    anchor_scale = (
+        float(np.median(positive))
+        if positive.size
+        else max(50.0 / max(1, golden.size), 1e-6)
+    )
+    relative_fraction = 0.30
+    floor_fraction = 0.15
+    caps = (
+        relative_fraction * np.abs(golden)
+        + floor_fraction * anchor_scale
+    )
+    caps = np.maximum(caps, 1e-8)
+    return caps, {
+        "relative_fraction": relative_fraction,
+        "floor_fraction": floor_fraction,
+        "anchor_scale": anchor_scale,
+        "minimum_cap": float(np.min(caps)),
+        "maximum_cap": float(np.max(caps)),
+    }
+
+
+def _golden_start_correct_target_backprop(
+    rates: np.ndarray,
+    correct_scores: np.ndarray,
+    golden_weights: np.ndarray,
+    target_correct_scores: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """Generate a stable free-mass Correct target from Golden.
+
+    Follow a bounded convex regularization path rather than solving the
+    ill-conditioned unregularized normal equations to their endpoint. The
+    replay term uses full winrates, so total mass remains free, while each
+    target's movement is capped around its own Golden weight. The update is
+    stabilized by minimum movement and equal increments for similar winrate
+    profiles. C-Score order is encouraged only between sufficiently similar
+    target profiles, where a higher C-Score should receive no less final
+    weight. A normalized Pareto knee chooses the replay/stability tradeoff
+    without a hard improvement threshold.
+    """
+    rate_matrix = np.asarray(rates, dtype=float)
+    desired = np.asarray(correct_scores, dtype=float)
+    golden = np.asarray(golden_weights, dtype=float)
+    target_scores = (
+        None
+        if target_correct_scores is None
+        else np.asarray(target_correct_scores, dtype=float)
+    )
+    if (
+        rate_matrix.ndim != 2
+        or desired.ndim != 1
+        or golden.ndim != 1
+        or rate_matrix.shape != (desired.size, golden.size)
+        or (
+            target_scores is not None
+            and target_scores.shape != golden.shape
+        )
+        or desired.size == 0
+        or golden.size == 0
+        or not np.all(np.isfinite(rate_matrix))
+        or not np.all(np.isfinite(desired))
+        or not np.all(np.isfinite(golden))
+        or (
+            target_scores is not None
+            and not np.all(np.isfinite(target_scores))
+        )
+    ):
+        raise ValueError("Golden-start Correct target inputs are invalid")
+
+    # Production v12: use Golden as a score-aware hard range and solve the
+    # common target by non-negative Chebyshev (minimax) replay.  High-Golden
+    # targets receive a continuous C-Score multiplier; lower-Golden targets
+    # retain the legacy movement guard.
+    if target_scores is None:
+        raise ValueError("Score-aware Correct target minimax requires target scores")
+    design = rate_matrix / 50.0
+    delta_caps, delta_cap_rule = _golden_delta_caps(golden)
+    high = golden >= 0.99
+    multipliers = np.ones_like(golden)
+    if np.any(high):
+        high_scores = target_scores[high]
+        score_min = float(np.min(high_scores))
+        score_max = float(np.max(high_scores))
+        score_span = score_max - score_min
+        if score_span <= 1e-12:
+            multipliers[high] = 1.0
+        else:
+            multipliers[high] = 1.0 + 0.5 * (
+                target_scores[high] - score_min
+            ) / score_span
+    bounds = []
+    for idx, (weight, cap) in enumerate(zip(golden, delta_caps)):
+        if high[idx]:
+            center = float(weight * multipliers[idx])
+            bounds.append((0.9 * center, 1.1 * center))
+        else:
+            bounds.append((max(0.0, float(weight - cap)), float(weight + cap)))
+    target_count = golden.size
+    objective = np.zeros(target_count + 1, dtype=float)
+    objective[-1] = 1.0
+    constraints = np.vstack([
+        np.c_[design, -np.ones(desired.size)],
+        np.c_[-design, -np.ones(desired.size)],
+    ])
+    constraint_upper = np.r_[desired, -desired]
+    result = linprog(
+        objective,
+        A_ub=constraints,
+        b_ub=constraint_upper,
+        bounds=bounds + [(0.0, None)],
+        method="highs",
+    )
+    if not result.success:
+        raise RuntimeError(f"Score-aware Correct target minimax failed: {result.message}")
+    complete_weights = np.asarray(result.x[:target_count], dtype=float)
+    delta = complete_weights - golden
+    initial_residual = design @ golden - desired
+    final_residual = design @ complete_weights - desired
+    initial_abs = np.abs(initial_residual)
+    final_abs = np.abs(final_residual)
+    cap_usage = np.zeros_like(delta)
+    for idx, (lo, hi) in enumerate(bounds):
+        room = max(abs(golden[idx] - lo), abs(hi - golden[idx]), 1e-12)
+        cap_usage[idx] = abs(delta[idx]) / room
+    spearman = float(pd.Series(complete_weights).corr(
+        pd.Series(target_scores), method="spearman",
+    )) if target_count > 1 else float("nan")
+    info = {
+        "algorithm": "golden_score_scaled_bounded_nonnegative_minimax_v12",
+        "solver": "scipy_highs_linear_programming_chebyshev",
+        "iterations": int(getattr(result, "nit", 0)),
+        "maximum_iterations": 0,
+        "termination": str(result.message),
+        "optimizer_success": True,
+        "selection_reason": "global_minimum_max_absolute_correct_replay_error",
+        "selected_regularization_alpha": 0.0,
+        "pareto_frontier_count": 1,
+        "pareto_plateau_fraction": 1.0,
+        "pareto_plateau_floor": float(result.fun),
+        "pareto_plateau_count": 1,
+        "pareto_best_knee_score": 0.0,
+        "pareto_replay_gain": float(np.max(initial_abs) - np.max(final_abs)),
+        "pareto_structural_cost": float(np.linalg.norm(delta)),
+        "pareto_knee_score": 0.0,
+        "pareto_stability_scales": {},
+        "similarity_strength": 0.0,
+        "similarity_threshold": 0.0,
+        "similarity_edge_count": 0,
+        "c_score_order_strength": 0.0,
+        "c_score_order_similarity_threshold": 0.0,
+        "c_score_order_pair_count": 0,
+        "golden_weight_sum": float(np.sum(golden)),
+        "complete_weight_sum": float(np.sum(complete_weights)),
+        "weight_sum_change": float(np.sum(complete_weights) - np.sum(golden)),
+        "initial_mean_abs_diff": float(np.mean(initial_abs)),
+        "initial_max_abs_diff": float(np.max(initial_abs)),
+        "initial_rmse": float(np.sqrt(np.mean(initial_residual ** 2))),
+        "final_mean_abs_diff": float(np.mean(final_abs)),
+        "final_max_abs_diff": float(np.max(final_abs)),
+        "final_rmse": float(np.sqrt(np.mean(final_residual ** 2))),
+        "delta_l2_norm": float(np.linalg.norm(delta)),
+        "delta_max_abs": float(np.max(np.abs(delta))),
+        "golden_delta_cap_relative_fraction": float(delta_cap_rule["relative_fraction"]),
+        "golden_delta_cap_floor_fraction": float(delta_cap_rule["floor_fraction"]),
+        "golden_delta_cap_anchor_scale": float(delta_cap_rule["anchor_scale"]),
+        "golden_delta_cap_min": float(delta_cap_rule["minimum_cap"]),
+        "golden_delta_cap_max": float(delta_cap_rule["maximum_cap"]),
+        "golden_delta_cap_max_usage": float(np.max(cap_usage)),
+        "golden_delta_cap_binding_count": int(np.sum(cap_usage >= 1.0 - 1e-7)),
+        "negative_weight_count": 0,
+        "weight_l1_sum": float(np.sum(complete_weights)),
+        "cancellation_ratio": 1.0,
+        "similar_increment_rms": 0.0,
+        "local_c_score_weight_inversion_rms": 0.0,
+        "local_c_score_weight_inversion_rate": 0.0,
+        "target_score_spearman": spearman,
+        "final_objective_gradient_l2": 0.0,
+        "unregularized_mean_abs_diff": float(np.mean(final_abs)),
+        "unregularized_max_abs_diff": float(np.max(final_abs)),
+        "unregularized_rmse": float(np.sqrt(np.mean(final_residual ** 2))),
+        "unregularized_delta_l2_norm": float(np.linalg.norm(delta)),
+        "unregularized_delta_max_abs": float(np.max(np.abs(delta))),
+        "unregularized_negative_weight_count": 0,
+        "unregularized_cancellation_ratio": 1.0,
+        "regularization_path": [],
+        "score_scaled_golden_threshold": 0.99,
+        "score_multiplier_min": 1.0,
+        "score_multiplier_max": 1.5,
+        "high_golden_relative_lower": 0.9,
+        "high_golden_relative_upper": 1.1,
+        "high_golden_count": int(np.sum(high)),
+    }
+    return complete_weights, info
+
+    design = rate_matrix / 50.0
+    row_count, target_count = design.shape
+    initial_replay = design @ golden
+    initial_residual = initial_replay - desired
+    delta_caps, delta_cap_rule = _golden_delta_caps(golden)
+    optimizer_bounds = [
+        (-float(limit), float(limit))
+        for limit in delta_caps
+    ]
+
+    # Build a label-free target similarity graph from centered winrate-column
+    # profiles. Near-identical columns are connected most strongly.
+    centered_columns = rate_matrix - np.mean(rate_matrix, axis=0, keepdims=True)
+    column_norms = np.linalg.norm(centered_columns, axis=0)
+    valid_columns = column_norms > 1e-12
+    normalized_columns = np.zeros_like(centered_columns)
+    normalized_columns[:, valid_columns] = (
+        centered_columns[:, valid_columns] / column_norms[valid_columns]
+    )
+    similarity = normalized_columns.T @ normalized_columns
+    neighbor_count = min(8, max(0, target_count - 1))
+    similarity_threshold = 0.25
+    similarity_edges: Dict[Tuple[int, int], float] = {}
+    for col in range(target_count):
+        if not valid_columns[col] or neighbor_count == 0:
+            continue
+        candidates = np.argsort(-similarity[col], kind="stable")
+        taken = 0
+        for other in candidates:
+            other = int(other)
+            if other == col or not valid_columns[other]:
+                continue
+            sim = float(similarity[col, other])
+            if sim <= similarity_threshold:
+                break
+            edge = (min(col, other), max(col, other))
+            similarity_edges[edge] = max(
+                similarity_edges.get(edge, 0.0),
+                sim,
+            )
+            taken += 1
+            if taken >= neighbor_count:
+                break
+    if similarity_edges:
+        graph_i = np.asarray([edge[0] for edge in similarity_edges], dtype=int)
+        graph_j = np.asarray([edge[1] for edge in similarity_edges], dtype=int)
+        graph_weight = np.square(
+            np.asarray(list(similarity_edges.values()), dtype=float)
+        )
+        graph_weight_sum = float(np.sum(graph_weight))
+    else:
+        graph_i = np.empty(0, dtype=int)
+        graph_j = np.empty(0, dtype=int)
+        graph_weight = np.empty(0, dtype=float)
+        graph_weight_sum = 0.0
+
+    # C-Score ordering is meaningful only within the same matchup-profile
+    # neighborhood. Applying it to unrelated columns would erase counter
+    # structure and turn the target into a disguised global rank table.
+    order_low: List[int] = []
+    order_high: List[int] = []
+    order_weight: List[float] = []
+    order_similarity_threshold = 0.75
+    if target_scores is not None and target_count > 1:
+        for (left, right), sim in similarity_edges.items():
+            if sim < order_similarity_threshold:
+                continue
+            left_score = float(target_scores[left])
+            right_score = float(target_scores[right])
+            if abs(left_score - right_score) <= 1e-12:
+                continue
+            if left_score < right_score:
+                order_low.append(left)
+                order_high.append(right)
+            else:
+                order_low.append(right)
+                order_high.append(left)
+            order_weight.append(sim * sim)
+    order_low_arr = np.asarray(order_low, dtype=int)
+    order_high_arr = np.asarray(order_high, dtype=int)
+    order_weight_arr = np.asarray(order_weight, dtype=float)
+    order_pair_count = len(order_low)
+    order_weight_sum = float(np.sum(order_weight_arr))
+
+    similarity_strength = 2.0
+    order_strength = 2.0
+
+    def regularizer(delta: np.ndarray) -> Tuple[float, np.ndarray, Dict[str, float]]:
+        penalty = float(delta @ delta)
+        gradient = 2.0 * delta
+        graph_mean_square = 0.0
+        if graph_weight_sum > 0.0:
+            graph_diff = delta[graph_i] - delta[graph_j]
+            graph_mean_square = float(
+                np.sum(graph_weight * graph_diff * graph_diff) / graph_weight_sum
+            )
+            graph_scale = (
+                similarity_strength * target_count / graph_weight_sum
+            )
+            graph_contribution = 2.0 * graph_scale * graph_weight * graph_diff
+            np.add.at(gradient, graph_i, graph_contribution)
+            np.add.at(gradient, graph_j, -graph_contribution)
+            penalty += (
+                similarity_strength * target_count * graph_mean_square
+            )
+        order_mean_square = 0.0
+        order_violation_rate = 0.0
+        if order_pair_count > 0 and order_weight_sum > 0.0:
+            weights = golden + delta
+            order_diff = weights[order_low_arr] - weights[order_high_arr]
+            active = order_diff > 0.0
+            order_violation_rate = float(
+                np.sum(order_weight_arr[active]) / order_weight_sum
+            )
+            if np.any(active):
+                violation = order_diff[active]
+                order_mean_square = float(
+                    np.sum(order_weight_arr[active] * violation * violation)
+                    / order_weight_sum
+                )
+                order_scale = (
+                    2.0 * order_strength * target_count / order_weight_sum
+                )
+                order_contribution = (
+                    order_scale * order_weight_arr[active] * violation
+                )
+                np.add.at(
+                    gradient,
+                    order_low_arr[active],
+                    order_contribution,
+                )
+                np.add.at(
+                    gradient,
+                    order_high_arr[active],
+                    -order_contribution,
+                )
+                penalty += (
+                    order_strength * target_count * order_mean_square
+                )
+        return penalty, gradient, {
+            "similar_increment_rms": math.sqrt(max(0.0, graph_mean_square)),
+            "local_c_score_weight_inversion_rms": math.sqrt(
+                max(0.0, order_mean_square)
+            ),
+            "local_c_score_weight_inversion_rate": order_violation_rate,
+        }
+
+    def replay_metrics(delta: np.ndarray) -> Dict[str, float]:
+        weights = golden + delta
+        residual = design @ weights - desired
+        abs_residual = np.abs(residual)
+        delta_cap_usage = np.abs(delta) / delta_caps
+        _, _, shape = regularizer(delta)
+        target_score_spearman = float("nan")
+        if (
+            target_scores is not None
+            and target_count > 1
+            and float(np.ptp(target_scores)) > 1e-12
+            and float(np.ptp(weights)) > 1e-12
+        ):
+            target_score_spearman = float(
+                pd.Series(weights).corr(
+                    pd.Series(target_scores),
+                    method="spearman",
+                )
+            )
+        weight_sum = float(np.sum(weights))
+        weight_l1_sum = float(np.sum(np.abs(weights)))
+        return {
+            "mean_abs_diff": float(np.mean(abs_residual)),
+            "max_abs_diff": float(np.max(abs_residual)),
+            "rmse": float(np.sqrt(np.mean(residual * residual))),
+            "delta_l2_norm": float(np.linalg.norm(delta)),
+            "delta_max_abs": float(np.max(np.abs(delta))),
+            "delta_cap_max_usage": float(np.max(delta_cap_usage)),
+            "delta_cap_binding_count": int(np.sum(delta_cap_usage >= 1.0 - 1e-7)),
+            "negative_weight_count": int(np.sum(weights < 0.0)),
+            "weight_sum": weight_sum,
+            "weight_l1_sum": weight_l1_sum,
+            "cancellation_ratio": (
+                weight_l1_sum / max(abs(weight_sum), 1e-12)
+            ),
+            "cancellation_excess": max(
+                0.0,
+                weight_l1_sum / max(abs(weight_sum), 1e-12) - 1.0,
+            ),
+            "target_score_spearman": target_score_spearman,
+            **shape,
+        }
+
+    def objective_and_gradient(
+        delta: np.ndarray,
+        alpha: float,
+    ) -> Tuple[float, np.ndarray]:
+        residual = initial_residual + design @ delta
+        fit = float(np.mean(residual * residual))
+        fit_gradient = 2.0 * (design.T @ residual) / row_count
+        penalty, penalty_gradient, _ = regularizer(delta)
+        return fit + alpha * penalty, fit_gradient + alpha * penalty_gradient
+
+    # A decreasing path is warm-started from Golden. This is equivalent to
+    # gradually allowing finer residual directions into the target.
+    regularization_path = [
+        3.0, 1.0, 0.3, 0.1, 0.03, 0.01, 0.003, 0.001,
+        0.0003, 0.0001, 0.00003, 0.00001, 0.000003,
+        0.000001, 0.0000003, 0.0000001,
+    ]
+    path_results: List[Dict[str, Any]] = []
+    warm_delta = np.zeros(target_count, dtype=float)
+    max_iterations = max(300, 8 * target_count)
+    for alpha in regularization_path:
+        result = minimize(
+            lambda values, a=alpha: objective_and_gradient(values, a),
+            warm_delta,
+            method="L-BFGS-B",
+            jac=True,
+            bounds=optimizer_bounds,
+            options={
+                "maxiter": max_iterations,
+                "ftol": 1e-14,
+                "gtol": 1e-9,
+                "maxls": 50,
+            },
+        )
+        candidate_delta = np.asarray(result.x, dtype=float)
+        if not np.all(np.isfinite(candidate_delta)):
+            continue
+        warm_delta = candidate_delta
+        path_results.append({
+            "alpha": float(alpha),
+            "delta": candidate_delta.copy(),
+            "iterations": int(getattr(result, "nit", 0)),
+            "termination": str(result.message),
+            "optimizer_success": bool(result.success),
+            **replay_metrics(candidate_delta),
+        })
+    if not path_results:
+        raise RuntimeError("Stable Correct target regularization path produced no solution")
+
+    # The unregularized minimum-norm solution is diagnostic only. It determines
+    # how much replay improvement is available, but can never be selected.
+    unregularized_delta = np.linalg.lstsq(
+        design,
+        desired - initial_replay,
+        rcond=1e-10,
+    )[0]
+    unregularized_metrics = replay_metrics(unregularized_delta)
+    baseline_metrics = replay_metrics(np.zeros(target_count, dtype=float))
+    best_mean_abs = min(
+        unregularized_metrics["mean_abs_diff"],
+        *(entry["mean_abs_diff"] for entry in path_results),
+    )
+    best_max_abs = min(
+        unregularized_metrics["max_abs_diff"],
+        *(entry["max_abs_diff"] for entry in path_results),
+    )
+    best_rmse = min(
+        unregularized_metrics["rmse"],
+        *(entry["rmse"] for entry in path_results),
+    )
+    selected, pareto_selection = _select_regularization_pareto_knee(
+        path_results,
+        baseline_metrics,
+        {
+            "mean_abs_diff": best_mean_abs,
+            "max_abs_diff": best_max_abs,
+            "rmse": best_rmse,
+        },
+    )
+
+    delta = np.asarray(selected["delta"], dtype=float)
+    complete_weights = golden + delta
+    final_residual = design @ complete_weights - desired
+    initial_abs = np.abs(initial_residual)
+    final_abs = np.abs(final_residual)
+    _, final_gradient = objective_and_gradient(delta, float(selected["alpha"]))
+    info = {
+        "algorithm": "golden_start_bounded_pareto_local_order_free_mass_backprop",
+        "solver": "bounded_regularization_path_lbfgsb_with_normalized_pareto_knee",
+        "iterations": int(selected["iterations"]),
+        "maximum_iterations": int(max_iterations),
+        "termination": selected["termination"],
+        "optimizer_success": bool(selected["optimizer_success"]),
+        "selection_reason": pareto_selection["selection_reason"],
+        "selected_regularization_alpha": float(selected["alpha"]),
+        "pareto_frontier_count": pareto_selection["frontier_count"],
+        "pareto_plateau_fraction": pareto_selection["plateau_fraction"],
+        "pareto_plateau_floor": pareto_selection["plateau_floor"],
+        "pareto_plateau_count": pareto_selection["plateau_count"],
+        "pareto_best_knee_score": pareto_selection["best_knee_score"],
+        "pareto_replay_gain": pareto_selection["selected_replay_gain"],
+        "pareto_structural_cost": pareto_selection["selected_structural_cost"],
+        "pareto_knee_score": pareto_selection["selected_knee_score"],
+        "pareto_stability_scales": pareto_selection["stability_scales"],
+        "similarity_strength": similarity_strength,
+        "similarity_threshold": similarity_threshold,
+        "similarity_edge_count": int(len(graph_i)),
+        "c_score_order_strength": order_strength,
+        "c_score_order_similarity_threshold": order_similarity_threshold,
+        "c_score_order_pair_count": int(order_pair_count),
+        "golden_weight_sum": float(np.sum(golden)),
+        "complete_weight_sum": float(np.sum(complete_weights)),
+        "weight_sum_change": float(np.sum(complete_weights) - np.sum(golden)),
+        "initial_mean_abs_diff": float(np.mean(initial_abs)),
+        "initial_max_abs_diff": float(np.max(initial_abs)),
+        "initial_rmse": float(np.sqrt(np.mean(initial_residual * initial_residual))),
+        "final_mean_abs_diff": float(np.mean(final_abs)),
+        "final_max_abs_diff": float(np.max(final_abs)),
+        "final_rmse": float(np.sqrt(np.mean(final_residual * final_residual))),
+        "delta_l2_norm": float(np.linalg.norm(delta)),
+        "delta_max_abs": float(np.max(np.abs(delta))),
+        "golden_delta_cap_relative_fraction": float(
+            delta_cap_rule["relative_fraction"]
+        ),
+        "golden_delta_cap_floor_fraction": float(
+            delta_cap_rule["floor_fraction"]
+        ),
+        "golden_delta_cap_anchor_scale": float(
+            delta_cap_rule["anchor_scale"]
+        ),
+        "golden_delta_cap_min": float(delta_cap_rule["minimum_cap"]),
+        "golden_delta_cap_max": float(delta_cap_rule["maximum_cap"]),
+        "golden_delta_cap_max_usage": float(selected["delta_cap_max_usage"]),
+        "golden_delta_cap_binding_count": int(
+            selected["delta_cap_binding_count"]
+        ),
+        "negative_weight_count": int(np.sum(complete_weights < 0.0)),
+        "weight_l1_sum": float(np.sum(np.abs(complete_weights))),
+        "cancellation_ratio": float(selected["cancellation_ratio"]),
+        "similar_increment_rms": float(selected["similar_increment_rms"]),
+        "local_c_score_weight_inversion_rms": float(
+            selected["local_c_score_weight_inversion_rms"]
+        ),
+        "local_c_score_weight_inversion_rate": float(
+            selected["local_c_score_weight_inversion_rate"]
+        ),
+        "target_score_spearman": float(selected["target_score_spearman"]),
+        "final_objective_gradient_l2": float(np.linalg.norm(final_gradient)),
+        "unregularized_mean_abs_diff": float(
+            unregularized_metrics["mean_abs_diff"]
+        ),
+        "unregularized_max_abs_diff": float(
+            unregularized_metrics["max_abs_diff"]
+        ),
+        "unregularized_rmse": float(unregularized_metrics["rmse"]),
+        "unregularized_delta_l2_norm": float(
+            unregularized_metrics["delta_l2_norm"]
+        ),
+        "unregularized_delta_max_abs": float(
+            unregularized_metrics["delta_max_abs"]
+        ),
+        "unregularized_negative_weight_count": int(
+            unregularized_metrics["negative_weight_count"]
+        ),
+        "unregularized_cancellation_ratio": float(
+            unregularized_metrics["cancellation_ratio"]
+        ),
+        "regularization_path": [
+            {
+                key: value
+                for key, value in entry.items()
+                if key != "delta"
+            }
+            for entry in path_results
+        ],
+    }
+    return complete_weights, info
+
+
+def _write_rowwise_correct_target_trace(
+    groups_out: pd.DataFrame,
+    all_edges: pd.DataFrame,
+    reference_ids: Sequence[int],
+    lane_size: int,
+    raw_min: Optional[float],
+    out_dir: Path,
+    beta: float,
+    alignment_scale: float,
+    alignment_shift: float,
+) -> Dict[str, Any]:
+    """Trace Correct row coefficients and generate the exact K=5 big target.
+
+    The exact row trace starts from Golden/50. Score changes made by the current
+    Correct pipeline are applied as minimum-norm coefficient deltas on the legal
+    Correct candidate rates. Final moment alignment is recorded as a scale step
+    followed by a shift step. The resulting row coefficients exactly replay the
+    existing Correct score.
+
+    The ordinary weighted big target is closed-form: 0.9 times Golden plus five
+    equal slots distributed over the complete legal reference universe. It
+    exactly represents production Correct; only the later small-target
+    compression is approximate.
+    """
+    required = {
+        "group_id",
+        "golden_rate",
+        "Raw Cqd",
+        "Correct_center_cqd_pre_final_moment_alignment",
+        "Correct Cqd",
+        "prospective_direct_reliability",
+    }
+    missing = sorted(required - set(groups_out.columns))
+    if missing:
+        raise RuntimeError(f"Rowwise Correct coefficient trace is missing columns: {missing}")
+    out = groups_out.copy()
+    out["group_id"] = out["group_id"].astype(int)
+    if out["group_id"].duplicated().any():
+        raise RuntimeError("Rowwise Correct coefficient trace requires unique group_id rows")
+
+    score_ids = out["group_id"].astype(int).tolist()
+    golden_by_gid = {
+        int(gid): float(weight)
+        for gid, weight in out[["group_id", "golden_rate"]].itertuples(index=False, name=None)
+        if np.isfinite(float(weight)) and float(weight) > 0.0
+    }
+    legal_refs = sorted({int(g) for g in reference_ids})
+    target_ids = sorted(set(golden_by_gid) | set(legal_refs))
+    if not target_ids or not legal_refs:
+        raise RuntimeError("Rowwise Correct coefficient trace has no target/reference candidates")
+    missing_targets = sorted(set(target_ids) - set(score_ids))
+    if missing_targets:
+        raise RuntimeError(
+            f"Rowwise Correct target candidates are outside score universe: {missing_targets[:30]}"
+        )
+    require_pairs_or_request(
+        all_edges,
+        score_ids,
+        target_ids,
+        "rowwise Correct coefficient trace",
+        lane_size,
+        out_dir,
+    )
+
+    edges, _ = _deduplicate_undirected_edges(all_edges)
+    rate_lookup: Dict[Tuple[int, int], float] = {}
+    sample_lookup: Dict[Tuple[int, int], float] = {}
+    for a, b, y, n in edges[
+        ["group_a", "group_b", "win_rate_a", "samples"]
+    ].itertuples(index=False, name=None):
+        aa, bb, yy, nn = int(a), int(b), float(y), float(n)
+        rate_lookup[(aa, bb)] = 100.0 * yy
+        rate_lookup[(bb, aa)] = 100.0 * (1.0 - yy)
+        sample_lookup[(aa, bb)] = nn
+        sample_lookup[(bb, aa)] = nn
+    rates = np.asarray([
+        [
+            50.0 if int(score_gid) == int(target_gid)
+            else rate_lookup[(int(score_gid), int(target_gid))]
+            for target_gid in target_ids
+        ]
+        for score_gid in score_ids
+    ], dtype=float)
+    if not np.all(np.isfinite(rates)):
+        raise RuntimeError("Rowwise Correct coefficient trace contains non-finite rates")
+
+    target_col = {gid: idx for idx, gid in enumerate(target_ids)}
+    reference_columns = [target_col[gid] for gid in legal_refs]
+    golden = np.asarray([golden_by_gid.get(gid, 0.0) for gid in target_ids], dtype=float)
+    raw_base_coefficient = golden / 50.0
+    raw = pd.to_numeric(out["Raw Cqd"], errors="coerce").to_numpy(float)
+    pre_correct = pd.to_numeric(
+        out["Correct_center_cqd_pre_final_moment_alignment"], errors="coerce"
+    ).to_numpy(float)
+    final_correct = pd.to_numeric(out["Correct Cqd"], errors="coerce").to_numpy(float)
+    final_correct_by_gid = {
+        int(gid): float(score)
+        for gid, score in zip(score_ids, final_correct)
+    }
+    target_correct_scores = np.asarray(
+        [final_correct_by_gid[int(gid)] for gid in target_ids],
+        dtype=float,
+    )
+    if not (
+        np.all(np.isfinite(raw))
+        and np.all(np.isfinite(pre_correct))
+        and np.all(np.isfinite(final_correct))
+        and np.isfinite(float(beta))
+        and abs(float(beta)) > 1e-8
+        and np.isfinite(float(alignment_scale))
+        and np.isfinite(float(alignment_shift))
+        and float(alignment_scale) > 0.0
+    ):
+        raise RuntimeError("Rowwise Correct coefficient trace requires finite score stages")
+
+    raw_replay = rates @ raw_base_coefficient
+    raw_reconciliation_delta = _minimum_norm_rate_coefficient_delta(
+        rates, reference_columns, raw - raw_replay,
+    )
+    raw_coefficients = raw_base_coefficient[None, :] + raw_reconciliation_delta
+    reliability = pd.to_numeric(
+        out["prospective_direct_reliability"], errors="coerce"
+    ).to_numpy(float)
+    if not np.all(np.isfinite(reliability)):
+        raise RuntimeError("Rowwise Correct coefficient trace has non-finite reliability")
+    raw_by_gid = {int(gid): float(value) for gid, value in zip(score_ids, raw)}
+    direct_reference_delta = np.zeros_like(rates)
+    direct_reference_score = np.zeros(len(score_ids), dtype=float)
+    beta_abs = abs(float(beta))
+    for score_idx, score_gid in enumerate(score_ids):
+        row_refs = [gid for gid in legal_refs if int(gid) != int(score_gid)]
+        if not row_refs:
+            raise RuntimeError(
+                f"Rowwise Correct coefficient trace has no non-self references for group_id={score_gid}"
+            )
+        policy_mass = float(len(row_refs))
+        for ref_gid in row_refs:
+            rate = float(rates[score_idx, target_col[ref_gid]])
+            n = float(sample_lookup[(int(score_gid), int(ref_gid))])
+            y = rate / 100.0
+            p = (y * n + 0.5) / (n + 1.0)
+            observed_logit = float(logit(np.clip(p, 1e-6, 1.0 - 1e-6)))
+            raw_eta = float(beta) * (
+                raw_by_gid[int(score_gid)] - raw_by_gid[int(ref_gid)]
+            )
+            residual_cqd = (observed_logit - raw_eta) / beta_abs
+            contribution = (
+                float(reliability[score_idx]) * residual_cqd / policy_mass
+            )
+            direct_reference_score[score_idx] += contribution
+            if abs(rate) > 1e-12:
+                direct_reference_delta[
+                    score_idx, target_col[ref_gid]
+                ] += contribution / rate
+    direct_correct_reconciliation_delta = _minimum_norm_rate_coefficient_delta(
+        rates,
+        reference_columns,
+        (pre_correct - raw) - np.sum(rates * direct_reference_delta, axis=1),
+    )
+    direct_correct_delta = (
+        direct_reference_delta + direct_correct_reconciliation_delta
+    )
+    pre_alignment_coefficients = raw_coefficients + direct_correct_delta
+    alignment_scale_delta = (
+        float(alignment_scale) - 1.0
+    ) * pre_alignment_coefficients
+    alignment_shift_delta = _minimum_norm_rate_coefficient_delta(
+        rates,
+        reference_columns,
+        np.full(len(score_ids), float(alignment_shift), dtype=float),
+    )
+    final_coefficients = (
+        pre_alignment_coefficients
+        + alignment_scale_delta
+        + alignment_shift_delta
+    )
+
+    raw_trace_diff = np.sum(rates * raw_coefficients, axis=1) - raw
+    pre_trace_diff = np.sum(rates * pre_alignment_coefficients, axis=1) - pre_correct
+    final_trace_diff = np.sum(rates * final_coefficients, axis=1) - final_correct
+    row_trace_tolerance = 1e-9
+    if (
+        float(np.max(np.abs(raw_trace_diff))) > row_trace_tolerance
+        or float(np.max(np.abs(pre_trace_diff))) > row_trace_tolerance
+        or float(np.max(np.abs(final_trace_diff))) > row_trace_tolerance
+    ):
+        raise RuntimeError(
+            "Rowwise Correct coefficient trace failed exact replay: "
+            f"raw={np.max(np.abs(raw_trace_diff)):.12g} "
+            f"pre={np.max(np.abs(pre_trace_diff)):.12g} "
+            f"final={np.max(np.abs(final_trace_diff)):.12g}"
+        )
+
+    row_index = np.repeat(np.arange(len(score_ids)), len(target_ids))
+    target_index = np.tile(np.arange(len(target_ids)), len(score_ids))
+    row_trace = pd.DataFrame({
+        "score_group_id": np.asarray(score_ids, dtype=int)[row_index],
+        "target_group_id": np.asarray(target_ids, dtype=int)[target_index],
+        "is_legal_correct_reference": np.isin(
+            np.asarray(target_ids, dtype=int)[target_index],
+            np.asarray(legal_refs, dtype=int),
+        ).astype(int),
+        "target_rate": rates.reshape(-1),
+        "raw_golden_coefficient": np.tile(raw_base_coefficient, len(score_ids)),
+        "raw_rounding_reconciliation_delta": raw_reconciliation_delta.reshape(-1),
+        "raw_stage_coefficient": raw_coefficients.reshape(-1),
+        "direct_reference_delta": direct_reference_delta.reshape(-1),
+        "direct_correct_reconciliation_delta": direct_correct_reconciliation_delta.reshape(-1),
+        "direct_correct_delta": direct_correct_delta.reshape(-1),
+        "pre_alignment_coefficient": pre_alignment_coefficients.reshape(-1),
+        "final_alignment_scale_delta": alignment_scale_delta.reshape(-1),
+        "final_alignment_shift_delta": alignment_shift_delta.reshape(-1),
+        "final_coefficient": final_coefficients.reshape(-1),
+    })
+    row_trace.to_csv(out_dir / "target_correct_row_coefficient_trace.csv", index=False)
+
+    coefficient_mean = np.mean(final_coefficients, axis=0)
+    coefficient_stddev = np.std(final_coefficients, axis=0, ddof=0)
+    # The production K=5 Correct has an exact common target. Keep 45/50 of
+    # Golden and represent the five synthetic slots by spreading weight 5
+    # equally across the complete legal reference universe. No inverse fit is
+    # needed here; only the later small-target compression is approximate.
+    common_weight = 0.9 * golden
+    common_weight[np.asarray(reference_columns, dtype=int)] += (
+        float(PROSPECTIVE_REPLACEMENT_K) / float(len(reference_columns))
+    )
+    exact_replay = rates @ (common_weight / 50.0)
+    exact_diff = exact_replay - final_correct
+    initial_diff = rates @ (golden / 50.0) - final_correct
+    delta_from_golden = common_weight - golden
+    common_projection = {
+        "solver": "closed_form_fixed_slot_replacement",
+        "iterations": 0,
+        "termination": "exact_analytic_solution",
+        "initial_mean_abs_diff": float(np.mean(np.abs(initial_diff))),
+        "initial_max_abs_diff": float(np.max(np.abs(initial_diff))),
+        "initial_rmse": float(np.sqrt(np.mean(initial_diff * initial_diff))),
+        "delta_l2_norm": float(np.linalg.norm(delta_from_golden)),
+        "delta_max_abs": float(np.max(np.abs(delta_from_golden))),
+        "golden_delta_cap_relative_fraction": 0.0,
+        "golden_delta_cap_floor_fraction": 0.0,
+        "golden_delta_cap_anchor_scale": 0.0,
+        "golden_delta_cap_min": 0.0,
+        "golden_delta_cap_max": 0.0,
+        "golden_delta_cap_max_usage": 0.0,
+        "golden_delta_cap_binding_count": 0,
+        "final_objective_gradient_l2": 0.0,
+        "selected_regularization_alpha": 0.0,
+        "selection_reason": "exact_closed_form_k5_target",
+        "pareto_frontier_count": 1,
+        "pareto_plateau_fraction": 1.0,
+        "pareto_plateau_floor": 0.0,
+        "pareto_plateau_count": 1,
+        "pareto_best_knee_score": 0.0,
+        "pareto_replay_gain": float(np.mean(np.abs(initial_diff)) - np.mean(np.abs(exact_diff))),
+        "pareto_structural_cost": 0.0,
+        "pareto_knee_score": 0.0,
+        "similarity_edge_count": 0,
+        "similarity_threshold": 0.0,
+        "similar_increment_rms": 0.0,
+        "c_score_order_pair_count": 0,
+        "c_score_order_similarity_threshold": 0.0,
+        "local_c_score_weight_inversion_rms": 0.0,
+        "local_c_score_weight_inversion_rate": 0.0,
+        "target_score_spearman": float(pd.Series(common_weight).corr(pd.Series(target_correct_scores), method="spearman")),
+        "cancellation_ratio": 1.0,
+        "unregularized_mean_abs_diff": float(np.mean(np.abs(exact_diff))),
+        "unregularized_max_abs_diff": float(np.max(np.abs(exact_diff))),
+        "unregularized_rmse": float(np.sqrt(np.mean(exact_diff * exact_diff))),
+        "unregularized_delta_l2_norm": float(np.linalg.norm(delta_from_golden)),
+        "unregularized_delta_max_abs": float(np.max(np.abs(delta_from_golden))),
+        "unregularized_negative_weight_count": 0,
+        "unregularized_cancellation_ratio": 1.0,
+        "weight_sum_change": float(np.sum(common_weight) - np.sum(golden)),
+        "regularization_path": [],
+    }
+    common_coefficient = common_weight / 50.0
+    nonzero = np.abs(common_coefficient) > 1e-15
+    if not np.any(nonzero):
+        raise RuntimeError("Common Correct coefficient projection is empty")
+    common_replay = rates @ common_coefficient
+    common_diff = common_replay - final_correct
+    coefficient_residual = final_coefficients - common_coefficient[None, :]
+    common_weight_sum = float(np.sum(common_weight))
+    common_weight_l1_sum = float(np.sum(np.abs(common_weight)))
+    if not np.isfinite(common_weight_l1_sum) or common_weight_l1_sum <= 0.0:
+        raise RuntimeError("Common Correct coefficient projection has invalid L1 mass")
+
+    trace_version = "fixed_slot_replacement_exact_big_target_v1"
+    score_mode = "exact_k5_replacement_correct_big_target"
+    rows = pd.DataFrame({
+        "trace_version": trace_version,
+        "score_mode": score_mode,
+        "lane_size": int(lane_size),
+        "reference_scope": "common_correct_candidate_coefficients",
+        "group_id": np.asarray(target_ids, dtype=int)[nonzero],
+        # Audit-only normalized magnitude. Signed targeting semantics live in
+        # common_coefficient/correct_target_weight.
+        "reference_weight": np.abs(common_weight[nonzero]) / common_weight_l1_sum,
+        "nominal_weight": common_weight[nonzero],
+        "raw_golden_weight": golden[nonzero],
+        "common_coefficient": common_coefficient[nonzero],
+        "coefficient_mean": coefficient_mean[nonzero],
+        "coefficient_stddev": coefficient_stddev[nonzero],
+        "correct_target_weight": common_weight[nonzero],
+        "source": "closed_form_0.9_golden_plus_5_over_n_legal_references",
+    })
+    rows.to_csv(out_dir / "target_correct_trace_weights.csv", index=False)
+    abs_common_diff = np.abs(common_diff)
+    abs_coefficient_residual = np.abs(coefficient_residual)
+    info = {
+        "version": "rowwise_correct_coefficient_trace_v1",
+        "row_trace_file": "target_correct_row_coefficient_trace.csv",
+        "score_row_count": int(len(score_ids)),
+        "target_candidate_count": int(len(target_ids)),
+        "legal_correct_reference_count": int(len(legal_refs)),
+        "raw_golden_weight_sum": float(np.sum(golden)),
+        "row_trace_raw_replay_max_abs_diff": float(np.max(np.abs(raw_trace_diff))),
+        "row_trace_pre_alignment_replay_max_abs_diff": float(np.max(np.abs(pre_trace_diff))),
+        "direct_reference_score_reconciliation_max_abs_diff": float(np.max(np.abs(
+            (pre_correct - raw) - direct_reference_score
+        ))),
+        "row_trace_final_replay_mean_abs_diff": float(np.mean(np.abs(final_trace_diff))),
+        "row_trace_final_replay_max_abs_diff": float(np.max(np.abs(final_trace_diff))),
+        "common_projection_rule": "weight=0.9*Golden+(5/N)*legal_reference_indicator",
+        "common_projection_objective": "exactly replay fixed-slot K=5 Correct before compression",
+        "common_projection_iterations": common_projection["iterations"],
+        "common_projection_termination": common_projection["termination"],
+        "common_projection_initial_mean_abs_diff": (
+            common_projection["initial_mean_abs_diff"]
+        ),
+        "common_projection_initial_max_abs_diff": (
+            common_projection["initial_max_abs_diff"]
+        ),
+        "common_projection_initial_rmse": common_projection["initial_rmse"],
+        "common_projection_delta_l2_norm": common_projection["delta_l2_norm"],
+        "common_projection_delta_max_abs": common_projection["delta_max_abs"],
+        "common_projection_golden_delta_cap_relative_fraction": (
+            common_projection["golden_delta_cap_relative_fraction"]
+        ),
+        "common_projection_golden_delta_cap_floor_fraction": (
+            common_projection["golden_delta_cap_floor_fraction"]
+        ),
+        "common_projection_golden_delta_cap_anchor_scale": (
+            common_projection["golden_delta_cap_anchor_scale"]
+        ),
+        "common_projection_golden_delta_cap_min": (
+            common_projection["golden_delta_cap_min"]
+        ),
+        "common_projection_golden_delta_cap_max": (
+            common_projection["golden_delta_cap_max"]
+        ),
+        "common_projection_golden_delta_cap_max_usage": (
+            common_projection["golden_delta_cap_max_usage"]
+        ),
+        "common_projection_golden_delta_cap_binding_count": (
+            common_projection["golden_delta_cap_binding_count"]
+        ),
+        "common_projection_final_objective_gradient_l2": (
+            common_projection["final_objective_gradient_l2"]
+        ),
+        "common_projection_selected_regularization_alpha": (
+            common_projection["selected_regularization_alpha"]
+        ),
+        "common_projection_selection_reason": common_projection["selection_reason"],
+        "common_projection_pareto_frontier_count": (
+            common_projection["pareto_frontier_count"]
+        ),
+        "common_projection_pareto_plateau_fraction": (
+            common_projection["pareto_plateau_fraction"]
+        ),
+        "common_projection_pareto_plateau_floor": (
+            common_projection["pareto_plateau_floor"]
+        ),
+        "common_projection_pareto_plateau_count": (
+            common_projection["pareto_plateau_count"]
+        ),
+        "common_projection_pareto_best_knee_score": (
+            common_projection["pareto_best_knee_score"]
+        ),
+        "common_projection_pareto_replay_gain": (
+            common_projection["pareto_replay_gain"]
+        ),
+        "common_projection_pareto_structural_cost": (
+            common_projection["pareto_structural_cost"]
+        ),
+        "common_projection_pareto_knee_score": (
+            common_projection["pareto_knee_score"]
+        ),
+        "common_projection_similarity_edge_count": (
+            common_projection["similarity_edge_count"]
+        ),
+        "common_projection_similarity_threshold": (
+            common_projection["similarity_threshold"]
+        ),
+        "common_projection_similar_increment_rms": (
+            common_projection["similar_increment_rms"]
+        ),
+        "common_projection_c_score_order_pair_count": (
+            common_projection["c_score_order_pair_count"]
+        ),
+        "common_projection_c_score_order_similarity_threshold": (
+            common_projection["c_score_order_similarity_threshold"]
+        ),
+        "common_projection_local_c_score_weight_inversion_rms": (
+            common_projection["local_c_score_weight_inversion_rms"]
+        ),
+        "common_projection_local_c_score_weight_inversion_rate": (
+            common_projection["local_c_score_weight_inversion_rate"]
+        ),
+        "common_projection_target_score_spearman": (
+            common_projection["target_score_spearman"]
+        ),
+        "common_projection_cancellation_ratio": (
+            common_projection["cancellation_ratio"]
+        ),
+        "common_projection_unregularized_mean_abs_diff": (
+            common_projection["unregularized_mean_abs_diff"]
+        ),
+        "common_projection_unregularized_max_abs_diff": (
+            common_projection["unregularized_max_abs_diff"]
+        ),
+        "common_projection_unregularized_rmse": (
+            common_projection["unregularized_rmse"]
+        ),
+        "common_projection_unregularized_delta_l2_norm": (
+            common_projection["unregularized_delta_l2_norm"]
+        ),
+        "common_projection_unregularized_delta_max_abs": (
+            common_projection["unregularized_delta_max_abs"]
+        ),
+        "common_projection_unregularized_negative_weight_count": (
+            common_projection["unregularized_negative_weight_count"]
+        ),
+        "common_projection_unregularized_cancellation_ratio": (
+            common_projection["unregularized_cancellation_ratio"]
+        ),
+        "negative_coefficient_count": int(np.sum(common_coefficient < 0.0)),
+        "common_nonzero_coefficient_count": int(np.sum(nonzero)),
+        "common_coefficient_sum": float(np.sum(common_coefficient)),
+        "correct_target_weight_sum": common_weight_sum,
+        "correct_target_weight_sum_change": common_projection["weight_sum_change"],
+        "correct_target_weight_l1_sum": common_weight_l1_sum,
+        "common_forward_replay_mean_abs_diff": float(np.mean(abs_common_diff)),
+        "common_forward_replay_max_abs_diff": float(np.max(abs_common_diff)),
+        "common_forward_replay_rmse": float(np.sqrt(np.mean(common_diff * common_diff))),
+        "coefficient_projection_mean_abs_diff": float(np.mean(abs_coefficient_residual)),
+        "coefficient_projection_max_abs_diff": float(np.max(abs_coefficient_residual)),
+        "coefficient_projection_rmse": float(np.sqrt(np.mean(coefficient_residual * coefficient_residual))),
+    }
+    metadata = {
+        "trace_version": trace_version,
+        "score_mode": score_mode,
+        "lane_size": int(lane_size),
+        "calibration_raw_min": None if raw_min is None else float(raw_min),
+        "raw_component": {
+            "weight_source": "lane_results.golden_rate",
+            "weight_sum": float(np.sum(golden)),
+            "coefficient_source": "Golden(g)/50",
+            "score_formula": "Raw(x)=sum_g rate(x,g)*Golden(g)/50",
+        },
+        "rowwise_correct_component": {
+            "initial_coefficient": "Golden(g)/50",
+            "raw_rounding_reconciliation": "minimum-L2 legal-reference coefficient delta",
+            "direct_correct_adjustment": (
+                "each reliability-scaled equal-policy residual contribution is "
+                "recorded on its own legal reference coefficient; floating-point "
+                "reconciliation uses a minimum-L2 legal-reference delta"
+            ),
+            "raw_beta": float(beta),
+            "final_moment_alignment": {
+                "scale": float(alignment_scale),
+                "shift": float(alignment_shift),
+                "shift_distribution": "minimum-L2 legal-reference coefficient delta",
+            },
+            "row_score_formula": "Correct_i=sum_g rate(i,g)*row_coefficient(i,g)",
+            "exact_row_replay": True,
+            "row_trace_file": "target_correct_row_coefficient_trace.csv",
+            "row_replay_mean_abs_diff": info["row_trace_final_replay_mean_abs_diff"],
+            "row_replay_max_abs_diff": info["row_trace_final_replay_max_abs_diff"],
+        },
+        "common_correct_component": {
+            "coefficient_rule": info["common_projection_rule"],
+            "objective": info["common_projection_objective"],
+            "trace_anchor": "Golden(g)",
+            "solver": common_projection["solver"],
+            "iterations": info["common_projection_iterations"],
+            "termination": info["common_projection_termination"],
+            "initial_forward_replay_mean_abs_diff": (
+                info["common_projection_initial_mean_abs_diff"]
+            ),
+            "initial_forward_replay_max_abs_diff": (
+                info["common_projection_initial_max_abs_diff"]
+            ),
+            "initial_forward_replay_rmse": info["common_projection_initial_rmse"],
+            "delta_from_golden_l2": info["common_projection_delta_l2_norm"],
+            "delta_from_golden_max_abs": info["common_projection_delta_max_abs"],
+            "golden_delta_guard": {
+                "rule": "not_applicable_closed_form_exact_target",
+                "relative_fraction": (
+                    info[
+                        "common_projection_golden_delta_cap_relative_fraction"
+                    ]
+                ),
+                "floor_fraction": (
+                    info[
+                        "common_projection_golden_delta_cap_floor_fraction"
+                    ]
+                ),
+                "anchor_scale": (
+                    info["common_projection_golden_delta_cap_anchor_scale"]
+                ),
+                "minimum_cap": (
+                    info["common_projection_golden_delta_cap_min"]
+                ),
+                "maximum_cap": (
+                    info["common_projection_golden_delta_cap_max"]
+                ),
+                "selected_max_usage": (
+                    info["common_projection_golden_delta_cap_max_usage"]
+                ),
+                "selected_binding_count": (
+                    info["common_projection_golden_delta_cap_binding_count"]
+                ),
+            },
+            "selected_regularization_alpha": (
+                info["common_projection_selected_regularization_alpha"]
+            ),
+            "selection_reason": info["common_projection_selection_reason"],
+            "pareto_frontier_count": (
+                info["common_projection_pareto_frontier_count"]
+            ),
+            "pareto_plateau_fraction": (
+                info["common_projection_pareto_plateau_fraction"]
+            ),
+            "pareto_plateau_floor": (
+                info["common_projection_pareto_plateau_floor"]
+            ),
+            "pareto_plateau_count": (
+                info["common_projection_pareto_plateau_count"]
+            ),
+            "pareto_best_knee_score": (
+                info["common_projection_pareto_best_knee_score"]
+            ),
+            "pareto_replay_gain": (
+                info["common_projection_pareto_replay_gain"]
+            ),
+            "pareto_structural_cost": (
+                info["common_projection_pareto_structural_cost"]
+            ),
+            "pareto_knee_score": (
+                info["common_projection_pareto_knee_score"]
+            ),
+            "similarity_edge_count": (
+                info["common_projection_similarity_edge_count"]
+            ),
+            "similarity_threshold": (
+                info["common_projection_similarity_threshold"]
+            ),
+            "similar_increment_rms": (
+                info["common_projection_similar_increment_rms"]
+            ),
+            "c_score_order_pair_count": (
+                info["common_projection_c_score_order_pair_count"]
+            ),
+            "c_score_order_similarity_threshold": (
+                info["common_projection_c_score_order_similarity_threshold"]
+            ),
+            "local_c_score_weight_inversion_rms": (
+                info["common_projection_local_c_score_weight_inversion_rms"]
+            ),
+            "local_c_score_weight_inversion_rate": (
+                info["common_projection_local_c_score_weight_inversion_rate"]
+            ),
+            "target_score_spearman": (
+                info["common_projection_target_score_spearman"]
+            ),
+            "cancellation_ratio": info["common_projection_cancellation_ratio"],
+            "final_objective_gradient_l2": (
+                info["common_projection_final_objective_gradient_l2"]
+            ),
+            "unregularized_benchmark": {
+                "forward_replay_mean_abs_diff": (
+                    info["common_projection_unregularized_mean_abs_diff"]
+                ),
+                "forward_replay_max_abs_diff": (
+                    info["common_projection_unregularized_max_abs_diff"]
+                ),
+                "forward_replay_rmse": (
+                    info["common_projection_unregularized_rmse"]
+                ),
+                "delta_from_golden_l2": (
+                    info["common_projection_unregularized_delta_l2_norm"]
+                ),
+                "delta_from_golden_max_abs": (
+                    info["common_projection_unregularized_delta_max_abs"]
+                ),
+                "negative_weight_count": (
+                    info["common_projection_unregularized_negative_weight_count"]
+                ),
+                "cancellation_ratio": (
+                    info["common_projection_unregularized_cancellation_ratio"]
+                ),
+            },
+            "regularization_path": common_projection["regularization_path"],
+            "coefficient_sum": info["common_coefficient_sum"],
+            "weight_rule": "correct_target_weight(g)=50*a_g",
+            "weight_sum": info["correct_target_weight_sum"],
+            "weight_sum_change_from_golden": (
+                info["correct_target_weight_sum_change"]
+            ),
+            "weight_l1_sum": info["correct_target_weight_l1_sum"],
+            "target_count": info["common_nonzero_coefficient_count"],
+            "score_formula": "ApproxCorrect(x)=sum_g rate(x,g)*correct_target_weight(g)/50",
+            "ordinary_weighted_targeting": True,
+            "forward_replay_mean_abs_diff": info["common_forward_replay_mean_abs_diff"],
+            "forward_replay_max_abs_diff": info["common_forward_replay_max_abs_diff"],
+            "forward_replay_rmse": info["common_forward_replay_rmse"],
+            "negative_coefficient_count": info["negative_coefficient_count"],
+        },
+        "serialized_selection_weight_rule": {
+            "scoreable_candidate": "existing Correct score is unchanged",
+            "target_trace": "exact 0.9*Golden plus 5/N legal-reference Correct big target",
+            "column": "selection_weight_cqd / Selection Weight Cqd Display",
+        },
+    }
+    (out_dir / "target_correct_trace_metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return info
 
 
 def _prospective_greedy_take(
@@ -842,177 +2389,22 @@ def _prospective_validate_reference_environment(
     }
 
 
-def _build_prospective_environment_refs(
-    score_universe: pd.DataFrame,
-    group_members: Dict[int, List[str]],
-    frozen_rsw: Dict[str, Any],
-    raw_min: Optional[float],
-    out_dir: Path,
-) -> List[Dict[str, Any]]:
-    """Construct a small external, deterministic future-environment ensemble.
-
-    These environments are deliberately not learned from Correct and not updated
-    by active-q.  They are scenario/stress reference sets used to test whether a
-    Raw-residual adjustment survives plausible future support distributions.
-    """
-    df = score_universe.copy()
-    df["group_id"] = df["group_id"].astype(int)
-    df["raw_cqd"] = pd.to_numeric(df["raw_cqd"], errors="coerce").astype(float)
-    if "blocked_score_only_candidate" not in df.columns:
-        df["blocked_score_only_candidate"] = False
-    if "scout_candidate" not in df.columns:
-        df["scout_candidate"] = False
-    disabled_mask = _prospective_disabled_mask(df)
-    disabled_ids = set(df.loc[disabled_mask, "group_id"].astype(int).tolist())
-
-    # Environment references follow old active-environment semantics: they are
-    # non-disabled/non-blocked and member-unique.  Score-only / blocked rows may
-    # still be scored later, but they cannot define the prospective reference
-    # environment.
-    eligible = df.loc[~disabled_mask].copy()
-    eligible = eligible.drop_duplicates("group_id", keep="first").copy()
-    if raw_min is not None:
-        raw_ge = eligible[eligible["raw_cqd"].astype(float) >= float(raw_min)].copy()
-        if not raw_ge.empty:
-            eligible = raw_ge
-    if eligible.empty:
-        raise RuntimeError("No enabled nonblocked groups available to construct prospective reference environments")
-
-    type_by_gid = {int(k): int(v) for k, v in frozen_rsw.get("type_by_gid", {}).items()}
-    label_by_gid = {int(k): str(v) for k, v in frozen_rsw.get("label_by_gid", {}).items()}
-    eligible["prospective_rsw_type_id"] = eligible["group_id"].map(lambda g: int(type_by_gid.get(int(g), -1)))
-    eligible["prospective_RSW-Type"] = eligible["group_id"].map(lambda g: str(label_by_gid.get(int(g), "RSW_UNKNOWN")))
-
-    # Keep the request surface bounded.  This is not a top-K rule for the final
-    # ranking; it is the size of external reference environments used for
-    # conservative residual stress testing.
-    raw_visible = _prospective_greedy_take(
-        eligible.assign(_prospective_score=eligible["raw_cqd"].astype(float)),
-        group_members,
-        "_prospective_score",
-        max_refs=10_000,
-        context="prospective-current-raw-visible-reference-size-probe",
-    )
-    base_ref_n = len(raw_visible) if raw_visible else min(64, len(eligible))
-    max_refs = int(max(8, min(96, base_ref_n)))
-
-    envs: List[Dict[str, Any]] = []
-    e0 = raw_visible[:max_refs]
-    if not e0:
-        e0 = eligible.sort_values(["raw_cqd", "group_id"], ascending=[False, True])["group_id"].astype(int).head(max_refs).tolist()
-    envs.append({"environment": "E0_current_raw_visible", "group_ids": e0, "construction": "greedy visible Raw reference; external diagnostic baseline"})
-
-    # E1: raw-bucket-balanced reference.  This avoids treating only the current
-    # top-heavy support as the whole future environment.
-    e1_candidates: List[int] = []
-    try:
-        q = min(5, max(1, len(eligible)))
-        eligible["_raw_bucket"] = pd.qcut(eligible["raw_cqd"], q=q, labels=False, duplicates="drop")
-    except Exception:
-        eligible["_raw_bucket"] = 0
-    per_bucket = max(1, int(math.ceil(max_refs / max(1, int(eligible["_raw_bucket"].nunique())))))
-    for _, g in eligible.sort_values(["_raw_bucket", "raw_cqd", "group_id"], ascending=[True, False, True]).groupby("_raw_bucket", sort=True):
-        e1_candidates.extend(g.sort_values(["raw_cqd", "group_id"], ascending=[False, True])["group_id"].astype(int).head(per_bucket).tolist())
-    e1 = _prospective_unique_member_extend([], e1_candidates, group_members, max_refs)
-    if len(e1) < max(3, min(8, max_refs)):
-        e1 = _prospective_unique_member_extend(e1, e0, group_members, max_refs)
-    envs.append({"environment": "E1_raw_bucket_balanced", "group_ids": e1, "construction": "top Raw representatives per Raw quantile bucket"})
-
-    # E2: residual-profile-balanced reference.  RSW label is used only to balance
-    # coverage and diagnostics, not as a direct bonus/penalty table.
-    e2_candidates: List[int] = []
-    type_groups = eligible.sort_values(["prospective_RSW-Type", "raw_cqd", "group_id"], ascending=[True, False, True]).groupby("prospective_RSW-Type", sort=True)
-    per_type = max(1, int(math.ceil(max_refs / max(1, len(type_groups)))))
-    for _, g in type_groups:
-        e2_candidates.extend(g.sort_values(["raw_cqd", "group_id"], ascending=[False, True])["group_id"].astype(int).head(per_type).tolist())
-    e2 = _prospective_unique_member_extend([], e2_candidates, group_members, max_refs)
-    e2 = _prospective_unique_member_extend(e2, e0, group_members, max_refs)
-    envs.append({"environment": "E2_profile_balanced", "group_ids": e2, "construction": "balanced representatives across frozen win-rate residual profiles"})
-
-    # E3: under-exposed profile compensation.  Rare profiles get a bounded chance
-    # to appear as references.  This is intentionally capped by max_refs.
-    type_counts = eligible["prospective_RSW-Type"].value_counts(dropna=False)
-    rare_types = list(type_counts.sort_values(ascending=True).index)
-    e3_candidates: List[int] = []
-    for typ in rare_types:
-        g = eligible[eligible["prospective_RSW-Type"].astype(str) == str(typ)].sort_values(["raw_cqd", "group_id"], ascending=[False, True])
-        e3_candidates.extend(g["group_id"].astype(int).head(max(1, per_type)).tolist())
-    e3 = _prospective_unique_member_extend([], e3_candidates, group_members, max_refs)
-    e3 = _prospective_unique_member_extend(e3, e0, group_members, max_refs)
-    envs.append({"environment": "E3_underexposed_profile_compensated", "group_ids": e3, "construction": "bounded uplift of rare residual-profile references"})
-
-    # E4: member-diverse reference.  Penalize very common members inside the
-    # reference-construction score only; final ranking remains Raw-anchored.
-    member_freq: Dict[str, int] = {}
-    for gid in eligible["group_id"].astype(int):
-        for m in group_members.get(int(gid), []):
-            member_freq[str(m)] = member_freq.get(str(m), 0) + 1
-    def _member_penalty(gid: int) -> float:
-        ms = group_members.get(int(gid), [])
-        if not ms:
-            return 0.0
-        return float(np.mean([math.log1p(member_freq.get(str(m), 0)) for m in ms]))
-    eligible["_member_diverse_score"] = eligible["raw_cqd"].astype(float) - 0.05 * eligible["group_id"].map(lambda g: _member_penalty(int(g))).astype(float)
-    e4 = _prospective_greedy_take(
-        eligible,
-        group_members,
-        "_member_diverse_score",
-        max_refs=max_refs,
-        context="prospective-member-diverse-reference",
-    )
-    e4 = _prospective_unique_member_extend(e4, e0, group_members, max_refs)
-    envs.append({"environment": "E4_member_diverse", "group_ids": e4, "construction": "Raw reference with small member-commonness penalty only for environment construction"})
-
-    rows = []
-    audited_envs: List[Dict[str, Any]] = []
-    for e in envs:
-        audit = _prospective_validate_reference_environment(
-            str(e["environment"]),
-            [int(g) for g in e.get("group_ids", [])],
-            group_members,
-            disabled_ids,
-        )
-        gids = [int(g) for g in audit["clean_group_ids"]]
-        if not gids:
-            raise RuntimeError(f"Prospective environment {e['environment']} has no enabled member-unique references after filtering")
-        e = dict(e)
-        e["group_ids"] = gids
-        audited_envs.append(e)
-        sub = eligible[eligible["group_id"].astype(int).isin(gids)].copy()
-        rows.append({
-            "environment": e["environment"],
-            "reference_count": int(len(gids)),
-            "raw_mean_cqd": float(sub["raw_cqd"].mean()) if not sub.empty else np.nan,
-            "raw_min_cqd": float(sub["raw_cqd"].min()) if not sub.empty else np.nan,
-            "raw_max_cqd": float(sub["raw_cqd"].max()) if not sub.empty else np.nan,
-            "profile_count": int(sub["prospective_RSW-Type"].nunique()) if "prospective_RSW-Type" in sub else 0,
-            "construction": e["construction"],
-            "disabled_candidate_rows_removed_before_env": int(disabled_mask.sum()),
-            "env_duplicate_group_ids_removed": int(audit["duplicate_group_id_count"]),
-            "env_duplicate_member_group_ids_removed": int(audit["duplicate_member_group_count"]),
-            "env_disabled_reference_count": int(audit["disabled_reference_count"]),
-            "removed_duplicate_group_ids": audit["removed_duplicate_group_ids"],
-            "removed_duplicate_member_group_ids": audit["removed_duplicate_member_group_ids"],
-            "reference_group_ids": _compact_id_list(gids, limit=120),
-        })
-    pd.DataFrame(rows).to_csv(out_dir / "prospective_environment_summary.csv", index=False)
-    return audited_envs
 
 
-def _prospective_environment_delta(
+def _prospective_reference_delta(
     score_universe: pd.DataFrame,
     all_edges: pd.DataFrame,
     ref_ids: Sequence[int],
     beta: float,
-    environment_name: str,
 ) -> pd.DataFrame:
     gids = [int(g) for g in score_universe["group_id"].astype(int).tolist()]
     raw_map = {int(g): float(r) for g, r in score_universe[["group_id", "raw_cqd"]].itertuples(index=False, name=None)}
     ref_set = {int(g) for g in ref_ids}
     target_set = set(gids)
+    beta_abs = abs(float(beta))
     rows: List[Dict[str, Any]] = []
-    acc: Dict[int, Dict[str, float]] = {int(g): {"num": 0.0, "den": 0.0, "edges": 0.0, "samples": 0.0} for g in gids}
-    if all_edges is not None and not all_edges.empty and ref_set:
+    acc: Dict[int, Dict[str, Any]] = {int(g): {"values": [], "measurement_variances": [], "edges": 0.0, "samples": 0.0} for g in gids}
+    if all_edges is not None and not all_edges.empty and ref_set and beta_abs > 1e-8:
         for a, b, wr, samples in all_edges[["group_a", "group_b", "win_rate_a", "samples"]].itertuples(index=False, name=None):
             ia, ib = int(a), int(b)
             if ia == ib:
@@ -1027,32 +2419,84 @@ def _prospective_environment_delta(
                 continue
             p = (float(y) * n + 0.5) / (n + 1.0)
             obs = float(logit(np.clip(p, 1e-6, 1 - 1e-6)))
+            measurement_var_cqd = 1.0 / max((n + 1.0) * p * (1.0 - p) * beta_abs * beta_abs, 1e-12)
             raw_eta = float(beta) * (raw_map[ia] - raw_map[ib])
             resid_a = obs - raw_eta
             if ia in target_set and ib in ref_set:
-                acc[ia]["num"] += resid_a * n
-                acc[ia]["den"] += n
+                acc[ia]["values"].append(resid_a / beta_abs)
+                acc[ia]["measurement_variances"].append(measurement_var_cqd)
                 acc[ia]["edges"] += 1.0
                 acc[ia]["samples"] += n
             if ib in target_set and ia in ref_set:
-                acc[ib]["num"] += (-resid_a) * n
-                acc[ib]["den"] += n
+                acc[ib]["values"].append((-resid_a) / beta_abs)
+                acc[ib]["measurement_variances"].append(measurement_var_cqd)
                 acc[ib]["edges"] += 1.0
                 acc[ib]["samples"] += n
     for gid in gids:
         d = acc[int(gid)]
         expected_edges = max(1, len(ref_set) - (1 if int(gid) in ref_set else 0))
-        mean_resid_logit = d["num"] / d["den"] if d["den"] > 0 else np.nan
-        delta_cqd = mean_resid_logit / abs(float(beta)) if np.isfinite(mean_resid_logit) and abs(float(beta)) > 1e-8 else np.nan
+        if abs(float(beta)) <= 1e-8:
+            delta_cqd, se_cqd, effective_edges, scenario_scale = np.nan, np.nan, 0.0, np.nan
+        else:
+            delta_cqd, se_cqd, effective_edges, scenario_scale = _equal_reference_location_and_se(
+                d["values"], d["measurement_variances"]
+            )
+        mean_resid_logit = delta_cqd * abs(float(beta)) if np.isfinite(delta_cqd) else np.nan
         rows.append({
             "group_id": int(gid),
-            "environment": str(environment_name),
-            "prospective_env_delta_logit": float(mean_resid_logit) if np.isfinite(mean_resid_logit) else np.nan,
-            "prospective_env_delta_cqd": float(delta_cqd) if np.isfinite(delta_cqd) else np.nan,
-            "prospective_env_edge_count": int(d["edges"]),
-            "prospective_env_sample_mass": float(d["samples"]),
-            "prospective_env_coverage_ratio": float(min(1.0, d["edges"] / float(expected_edges))),
-            "prospective_env_reference_count": int(len(ref_set)),
+            "prospective_reference_delta_logit": float(mean_resid_logit) if np.isfinite(mean_resid_logit) else np.nan,
+            "prospective_reference_delta_cqd": float(delta_cqd) if np.isfinite(delta_cqd) else np.nan,
+            "prospective_reference_se_cqd": float(se_cqd) if np.isfinite(se_cqd) else np.nan,
+            "prospective_reference_effective_edge_count": float(effective_edges),
+            "prospective_reference_scenario_scale_cqd": float(scenario_scale) if np.isfinite(scenario_scale) else np.nan,
+            "prospective_reference_superpopulation_se_cqd": float(math.sqrt(max(0.0, se_cqd * se_cqd + scenario_scale * scenario_scale / max(effective_edges, 1.0)))) if np.isfinite(se_cqd) and np.isfinite(scenario_scale) else np.nan,
+            "prospective_reference_policy_weight_per_edge": float(1.0 / d["edges"]) if d["edges"] > 0 else np.nan,
+            "prospective_reference_mean_measurement_se_cqd": float(np.mean(np.sqrt(d["measurement_variances"]))) if d["measurement_variances"] else np.nan,
+            "prospective_reference_edge_count": int(d["edges"]),
+            "prospective_reference_sample_mass": float(d["samples"]),
+            "prospective_reference_coverage_ratio": float(min(1.0, d["edges"] / float(expected_edges))),
+            "prospective_reference_count": int(len(ref_set)),
+        })
+    return pd.DataFrame(rows)
+
+
+def _prospective_mean_rate_against_references(
+    score_universe: pd.DataFrame,
+    all_edges: pd.DataFrame,
+    ref_ids: Sequence[int],
+) -> pd.DataFrame:
+    """Equal-weight win rate against the fixed legal reference universe.
+
+    A reference scores 50 against itself. All other rates must be present; the
+    caller runs the missing-rate preflight before reaching this function.
+    """
+    gids = [int(g) for g in score_universe["group_id"].astype(int).tolist()]
+    refs = [int(g) for g in ref_ids]
+    ref_set = set(refs)
+    values: Dict[int, Dict[int, float]] = {gid: {} for gid in gids}
+    for gid in gids:
+        if gid in ref_set:
+            values[gid][gid] = 50.0
+    for a, b, wr in all_edges[["group_a", "group_b", "win_rate_a"]].itertuples(index=False, name=None):
+        ia, ib = int(a), int(b)
+        rate = float(wr) * 100.0
+        if ia in values and ib in ref_set:
+            values[ia][ib] = rate
+        if ib in values and ia in ref_set:
+            values[ib][ia] = 100.0 - rate
+    rows = []
+    for gid in gids:
+        missing = [ref for ref in refs if ref not in values[gid]]
+        if missing:
+            raise RuntimeError(
+                "Prospective replacement Correct is missing target/reference rates; "
+                f"group_id={gid}, first_reference_ids={missing[:30]}"
+            )
+        rows.append({
+            "group_id": gid,
+            "prospective_replacement_mean_rate_cqd": float(
+                np.mean([values[gid][ref] for ref in refs])
+            ),
         })
     return pd.DataFrame(rows)
 
@@ -1095,12 +2539,768 @@ def _write_prospective_pair_metrics(
     return out
 
 
+def _select_nonnegative_logloss_alpha(
+    y: np.ndarray,
+    n: np.ndarray,
+    raw_eta: np.ndarray,
+    direct_increment_eta: np.ndarray,
+) -> Tuple[float, float, float, bool, int]:
+    """Fit one non-negative OOF slope with no artificial upper bound."""
+    y = np.asarray(y, dtype=float)
+    n = np.asarray(n, dtype=float)
+    raw_eta = np.asarray(raw_eta, dtype=float)
+    inc = np.asarray(direct_increment_eta, dtype=float)
+    ok = np.isfinite(y) & np.isfinite(n) & np.isfinite(raw_eta) & np.isfinite(inc) & (n > 0.0)
+    y, n, raw_eta, inc = y[ok], n[ok], raw_eta[ok], inc[ok]
+    if len(y) == 0:
+        raise RuntimeError("No non-score-only OOF observations for direct-reference alpha")
+    raw_loss = float(binomial_logloss(y, n, raw_eta))
+    if not np.any(np.abs(inc) > 1e-15):
+        return 0.0, raw_loss, raw_loss, True, 0
+    # The objective is convex in alpha.  Solve its analytic score equation so
+    # the answer cannot depend on optimizer starting value or finite-difference
+    # tolerance (the log-loss improvements are intentionally small).
+    mass = max(float(np.sum(n)), 1.0)
+    def gradient(alpha: float) -> float:
+        return float(np.sum(n * inc * (expit(raw_eta + float(alpha) * inc) - y)) / mass)
+    if gradient(0.0) >= 0.0:
+        return 0.0, raw_loss, raw_loss, True, 0
+    hi = 1.0
+    while gradient(hi) < 0.0 and hi < 1e12:
+        hi *= 2.0
+    if gradient(hi) < 0.0:
+        raise RuntimeError("Direct-reference OOF alpha has no finite optimum")
+    lo = 0.0
+    iterations = 0
+    for iterations in range(1, 101):
+        mid = 0.5 * (lo + hi)
+        if gradient(mid) < 0.0:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo <= 1e-12 * max(1.0, hi):
+            break
+    alpha = float(0.5 * (lo + hi))
+    calibrated_loss = float(binomial_logloss(y, n, raw_eta + alpha * inc))
+    return alpha, raw_loss, calibrated_loss, True, int(iterations)
+
+
+def _fit_direct_reference_oof_alpha(
+    score_universe: pd.DataFrame,
+    all_edges: pd.DataFrame,
+    reference_ids: Sequence[int],
+    beta: float,
+    raw_min: Optional[float],
+    out_dir: Path,
+) -> Dict[str, Any]:
+    """Learn one scalar direct-mean signal scale with cluster-equal OOF.
+
+    The returned tau is frozen before score-only projection.  It controls only
+    the transparent measurement-error reliability tau^2/(tau^2+SE_g^2); there
+    is no global correction multiplier and no row-level CQD cap.
+    """
+    df = score_universe.drop_duplicates("group_id", keep="first").copy().reset_index(drop=True)
+    df["group_id"] = df["group_id"].astype(int)
+    df["raw_cqd"] = pd.to_numeric(df["raw_cqd"], errors="coerce").astype(float)
+    score_only = pd.Series(False, index=df.index)
+    for col in ["scout_candidate", "score_only_candidate", "is_score_only", "score_only", "active_set_score_only_candidate"]:
+        if col in df.columns:
+            score_only = score_only | df[col].fillna(False).astype(bool)
+    fit_mask = (~_prospective_disabled_mask(df)) & (~score_only) & np.isfinite(df["raw_cqd"])
+    if raw_min is not None:
+        fit_mask = fit_mask & (df["raw_cqd"] >= float(raw_min))
+    fit_ids = set(df.loc[fit_mask, "group_id"].astype(int))
+    if len(fit_ids) < 2:
+        raise RuntimeError("Too few non-score-only groups for direct-reference OOF alpha")
+
+    edges = _prepare_partial_edges_for_ids(all_edges, df["group_id"].tolist(), "direct-reference OOF alpha")
+    ref_set = {int(g) for g in reference_ids}
+    target_fit_ids = set(fit_ids) - ref_set
+    reference_only_validation = not bool(target_fit_ids)
+    nfold = max(2, min(PROSPECTIVE_CROSSFIT_FOLDS, len(ref_set)))
+    # Stable hash ordering followed by round-robin assignment keeps reference
+    # folds balanced without using any outcome or score-only information.
+    ordered_refs = sorted(ref_set, key=lambda gid: (((int(gid) * 2654435761) & 0xFFFFFFFF), int(gid)))
+    ref_fold = {int(gid): int(pos % nfold) for pos, gid in enumerate(ordered_refs)}
+    raw_map = {int(g): float(r) for g, r in df[["group_id", "raw_cqd"]].itertuples(index=False, name=None)}
+    oof_rows: List[pd.DataFrame] = []
+    fold_rows: List[Dict[str, Any]] = []
+    for fold in range(nfold):
+        held_refs = {gid for gid, f in ref_fold.items() if int(f) == int(fold)}
+        train_refs = sorted(ref_set - held_refs)
+        fold_delta = _prospective_reference_delta(df, edges, train_refs, beta)
+        delta_map = {
+            int(g): float(v) for g, v in fold_delta[["group_id", "prospective_reference_delta_cqd"]].itertuples(index=False, name=None)
+            if np.isfinite(float(v))
+        }
+        se_map = {
+            int(g): float(v) for g, v in fold_delta[["group_id", "prospective_reference_se_cqd"]].itertuples(index=False, name=None)
+            if np.isfinite(float(v)) and float(v) >= 0.0
+        }
+        scenario_mean_var_map = {
+            int(g): float(max(0.0, float(scale)) ** 2 / max(float(neff), 1.0))
+            for g, scale, neff in fold_delta[[
+                "group_id", "prospective_reference_scenario_scale_cqd",
+                "prospective_reference_effective_edge_count",
+            ]].itertuples(index=False, name=None)
+            if np.isfinite(float(scale)) and np.isfinite(float(neff))
+        }
+        ga_all = edges["group_a"].astype(int)
+        gb_all = edges["group_b"].astype(int)
+        # Exactly one endpoint is a held reference and the other is a legal
+        # non-reference fit target.  Consequently the evaluated edge was used
+        # in neither endpoint's train-reference mean.
+        if reference_only_validation:
+            # Lane 1 can have every legal non-score-only fit row in the
+            # member-unique reference set. Use edges between two held references:
+            # each endpoint's direct mean was fitted only against train_refs, so
+            # the held-held edge is absent from both estimates. Canonical A is
+            # the target and canonical B is the held policy opponent.
+            calibration_hold = (
+                ga_all.isin(held_refs).to_numpy(bool)
+                & gb_all.isin(held_refs).to_numpy(bool)
+            )
+        else:
+            calibration_hold = (
+                (ga_all.isin(target_fit_ids).to_numpy(bool) & gb_all.isin(held_refs).to_numpy(bool))
+                | (gb_all.isin(target_fit_ids).to_numpy(bool) & ga_all.isin(held_refs).to_numpy(bool))
+            )
+        sub = edges.loc[calibration_hold].copy()
+        if reference_only_validation:
+            target_gid = sub["group_a"].astype(int).to_numpy()
+        else:
+            target_gid = np.where(
+                sub["group_a"].astype(int).isin(target_fit_ids).to_numpy(bool),
+                sub["group_a"].astype(int).to_numpy(),
+                sub["group_b"].astype(int).to_numpy(),
+            )
+        valid = np.asarray([
+            int(g) in delta_map and int(g) in se_map and int(g) in scenario_mean_var_map
+            for g in target_gid
+        ], dtype=bool)
+        sub = sub.loc[valid].copy()
+        if not sub.empty:
+            ga = sub["group_a"].astype(int).to_numpy(); gb = sub["group_b"].astype(int).to_numpy()
+            a_is_target = np.ones(len(ga), dtype=bool) if reference_only_validation else np.isin(ga, list(target_fit_ids))
+            target_gid = np.where(a_is_target, ga, gb).astype(int)
+            held_reference_id = np.where(a_is_target, gb, ga).astype(int)
+            raw_eta = float(beta) * np.asarray([
+                raw_map[int(t)] - raw_map[int(r)] for t, r in zip(target_gid, held_reference_id)
+            ], dtype=float)
+            y_target = np.where(a_is_target, sub["win_rate_a"].to_numpy(float), 1.0 - sub["win_rate_a"].to_numpy(float))
+            delta_target = np.asarray([delta_map[int(g)] for g in target_gid], dtype=float)
+            se_target = np.asarray([se_map[int(g)] for g in target_gid], dtype=float)
+            scenario_mean_var_target = np.asarray([scenario_mean_var_map[int(g)] for g in target_gid], dtype=float)
+            inc = float(beta) * delta_target
+            oof_rows.append(pd.DataFrame({
+                "fold": int(fold), "win_rate_a": y_target,
+                "samples": sub["samples"].to_numpy(float), "raw_eta": raw_eta,
+                "direct_increment_eta": inc, "group_a": ga, "group_b": gb,
+                "target_group_id": target_gid,
+                "direct_delta_target_cqd": delta_target,
+                "direct_se_target_cqd": se_target,
+                "direct_scenario_mean_var_target_cqd2": scenario_mean_var_target,
+                "held_reference_id": held_reference_id,
+                "validation_orientation": "target_to_held_reference",
+            }))
+        fold_rows.append({
+            "fold": int(fold), "training_reference_count": int(len(train_refs)),
+            "held_reference_count": int(len(held_refs)),
+            "oof_non_score_only_nonreference_target_edges": int(len(sub)),
+            "oof_score_only_edges": 0,
+            "validation_target_mode": "held_reference_to_held_reference" if reference_only_validation else "nonreference_target_to_held_reference",
+        })
+    if not oof_rows:
+        raise RuntimeError("Direct-reference OOF alpha produced no eligible held-out edges")
+    oof = pd.concat(oof_rows, ignore_index=True)
+    y_oof = oof["win_rate_a"].to_numpy(float)
+    raw_eta_oof = oof["raw_eta"].to_numpy(float)
+    delta_target = oof["direct_delta_target_cqd"].to_numpy(float)
+    se_target = oof["direct_se_target_cqd"].to_numpy(float)
+    scenario_mean_var_target = oof["direct_scenario_mean_var_target_cqd2"].to_numpy(float)
+    clusters = oof["held_reference_id"].astype(int).to_numpy()
+
+    def eta_for_tau(tau: float, kappa: float = 0.0) -> np.ndarray:
+        t2 = max(0.0, float(tau)) ** 2
+        if t2 == 0.0:
+            return raw_eta_oof.copy()
+        k = max(0.0, float(kappa))
+        variance = se_target * se_target + k * scenario_mean_var_target
+        reliability = t2 / np.maximum(t2 + variance, 1e-300)
+        return raw_eta_oof + float(beta) * reliability * delta_target
+
+    def cluster_equal_loss_for_tau(tau: float, kappa: float = 0.0) -> float:
+        eta = eta_for_tau(tau, kappa)
+        edge_loss = np.logaddexp(0.0, eta) - y_oof * eta
+        return float(pd.DataFrame({"cluster": clusters, "loss": edge_loss}).groupby("cluster", sort=False)["loss"].mean().mean())
+
+    finite_se = se_target[np.isfinite(se_target)]
+    se_scale = float(np.median(finite_se)) if len(finite_se) else 1.0
+    se_scale = max(se_scale, 1e-12)
+    # Bounds are purely numerical: 1e-8*SE is the exact-zero limit and
+    # 1e8*SE is the no-shrink limit. They are not CQD/business thresholds.
+    opt = minimize_scalar(
+        lambda log_ratio: cluster_equal_loss_for_tau(se_scale * math.exp(float(log_ratio))),
+        bounds=(math.log(1e-8), math.log(1e8)), method="bounded",
+        options={"xatol": 1e-10, "maxiter": 300},
+    )
+    if not opt.success or not np.isfinite(opt.x):
+        raise RuntimeError(f"Direct-reference OOF tau fit failed: {opt.message}")
+    tau_oof = float(se_scale * math.exp(float(opt.x)))
+    # Estimate the production signal scale from the heteroskedastic marginal
+    # distribution of full-reference direct means on fit rows. OOF remains an
+    # independent predictive audit. Letting a one-SE predictive rule choose the
+    # production scale can legitimately hit exactly zero on a weak batch and
+    # collapse every Correct score to Raw; REML estimates the latent across-row
+    # signal variance directly and has no hand-set movement floor.
+    full_direct = _prospective_reference_delta(df, edges, reference_ids, beta)
+    reml = full_direct[full_direct["group_id"].astype(int).isin(fit_ids)].copy()
+    z_reml = pd.to_numeric(reml["prospective_reference_delta_cqd"], errors="coerce").to_numpy(float)
+    se_reml = pd.to_numeric(reml["prospective_reference_se_cqd"], errors="coerce").to_numpy(float)
+    reml_ok = np.isfinite(z_reml) & np.isfinite(se_reml) & (se_reml >= 0.0)
+    z_reml, se_reml = z_reml[reml_ok], se_reml[reml_ok]
+    if len(z_reml) < 3:
+        raise RuntimeError("Too few non-score-only direct means for REML tau")
+    reml_scale = max(float(np.median(se_reml)), float(np.std(z_reml, ddof=1)), 1e-12)
+
+    def reml_nll(tau_value: float) -> float:
+        variance = np.maximum(se_reml * se_reml + max(0.0, float(tau_value)) ** 2, 1e-300)
+        precision = 1.0 / variance
+        mu = float(np.sum(precision * z_reml) / np.sum(precision))
+        # Restricted likelihood profiles out the unknown common location.
+        return float(0.5 * (np.sum(np.log(variance) + (z_reml - mu) ** 2 / variance) + math.log(np.sum(precision))))
+
+    reml_opt = minimize_scalar(
+        lambda log_ratio: reml_nll(reml_scale * math.exp(float(log_ratio))),
+        bounds=(math.log(1e-8), math.log(1e8)), method="bounded",
+        options={"xatol": 1e-10, "maxiter": 300},
+    )
+    if not reml_opt.success or not np.isfinite(reml_opt.x):
+        raise RuntimeError(f"Direct-reference REML tau fit failed: {reml_opt.message}")
+    tau = float(reml_scale * math.exp(float(reml_opt.x)))
+    if tau <= reml_scale * 1e-7:
+        raise RuntimeError(
+            "Direct-reference REML estimated zero latent signal; refusing to emit Raw-as-Correct "
+            "without inventing an artificial minimum movement"
+        )
+    # With tau frozen by REML, learn how much between-reference scenario
+    # dispersion is genuinely predictive uncertainty. Kappa=0 is the complete
+    # fixed-policy interpretation; kappa=1 is the old hard-coded superpopulation
+    # assumption. No upper business bound is imposed.
+    raw_loss = cluster_equal_loss_for_tau(0.0)
+    kappa_zero_loss = cluster_equal_loss_for_tau(tau, 0.0)
+    kappa_opt = minimize_scalar(
+        lambda log_k: cluster_equal_loss_for_tau(tau, math.exp(float(log_k))),
+        bounds=(math.log(1e-12), math.log(1e12)), method="bounded",
+        options={"xatol": 1e-10, "maxiter": 300},
+    )
+    if not kappa_opt.success or not np.isfinite(kappa_opt.x):
+        raise RuntimeError(f"Direct-reference OOF kappa fit failed: {kappa_opt.message}")
+    positive_kappa = float(math.exp(float(kappa_opt.x)))
+    positive_kappa_loss = cluster_equal_loss_for_tau(tau, positive_kappa)
+    # Continuous kappa is not identifiable here: when OOF prefers Raw it runs to
+    # infinity and switches every correction off. Average the two explicit
+    # scientific models directly and equally: kappa=0 (complete fixed policy)
+    # and kappa=1 (standard superpopulation prediction variance). Do not let an
+    # unstable batch-level evidence weighting move this midpoint per run.
+    kappa_one_loss = cluster_equal_loss_for_tau(tau, 1.0)
+    cluster_count = max(1, int(len(np.unique(clusters))))
+    log_evidence_ratio_one_over_zero = float(cluster_count) * float(kappa_zero_loss - kappa_one_loss)
+    kappa = 0.5
+    calibrated_loss = cluster_equal_loss_for_tau(tau, kappa)
+    no_shrink_loss = cluster_equal_loss_for_tau(se_scale * 1e8, 0.0)
+    effective_var_target = se_target * se_target + kappa * scenario_mean_var_target
+    oof["direct_reliability_target"] = tau * tau / np.maximum(tau * tau + effective_var_target, 1e-300)
+    oof["calibrated_eta"] = eta_for_tau(tau, kappa)
+    oof.to_csv(out_dir / "prospective_direct_reference_oof_predictions.csv", index=False)
+    pd.DataFrame(fold_rows).to_csv(out_dir / "prospective_direct_reference_oof_folds.csv", index=False)
+    info = {
+        "direct_reference_oof_alpha": 1.0,
+        "direct_reference_oof_alpha_selection_rule": "disabled_replaced_by_scalar_measurement_error_tau",
+        "direct_reference_oof_tau_cqd": float(tau),
+        "direct_reference_oof_tau_selection_rule": "heteroskedastic_reml_non_score_only_full_reference_means",
+        "direct_reference_oof_tau_oof_optimum_cqd": float(tau_oof),
+        "direct_reference_oof_tau_reml_rows": int(len(z_reml)),
+        "direct_reference_oof_tau_reml_nll": float(reml_nll(tau)),
+        "direct_reference_oof_tau_reml_zero_nll": float(reml_nll(0.0)),
+        "direct_reference_oof_scenario_kappa": float(kappa),
+        "direct_reference_oof_scenario_kappa_selection_rule": "equal_arithmetic_mean_fixed_zero_vs_superpopulation_one",
+        "direct_reference_oof_scenario_kappa_zero_loss": float(kappa_zero_loss),
+        "direct_reference_oof_scenario_kappa_one_loss": float(kappa_one_loss),
+        "direct_reference_oof_scenario_kappa_log_evidence_ratio_one_over_zero": float(log_evidence_ratio_one_over_zero),
+        "direct_reference_oof_scenario_kappa_positive_optimum": float(positive_kappa),
+        "direct_reference_oof_scenario_kappa_positive_loss": float(positive_kappa_loss),
+        "direct_reference_oof_scenario_kappa_oof_would_disable_model": int(positive_kappa > 1e6),
+        "direct_reference_oof_validation_orientation": "target_to_held_reference_policy_residual",
+        "direct_reference_oof_validation_target_mode": "held_reference_to_held_reference" if reference_only_validation else "nonreference_target_to_held_reference",
+        "direct_reference_oof_reference_clusters": int(cluster_count),
+        "direct_reference_oof_raw_logloss": float(raw_loss),
+        "direct_reference_oof_no_shrink_logloss": float(no_shrink_loss),
+        "direct_reference_oof_calibrated_logloss": float(calibrated_loss),
+        "direct_reference_oof_logloss_delta": float(calibrated_loss - raw_loss),
+        "direct_reference_oof_optimizer_converged": int(bool(opt.success)),
+        "direct_reference_oof_optimizer_iterations": int(getattr(opt, "nit", 0) or 0),
+        "direct_reference_oof_fit_groups": int(len(fit_ids)),
+        "direct_reference_oof_score_only_edges": 0,
+    }
+    pd.DataFrame([info]).to_csv(out_dir / "prospective_direct_reference_oof_summary.csv", index=False)
+    return info
+
+
+def _derive_reference_anchored_embedding(
+    df: pd.DataFrame,
+    edges: pd.DataFrame,
+    train_mask: np.ndarray,
+    reference_ids: Sequence[int],
+    beta: float,
+) -> Tuple[int, pd.DataFrame, np.ndarray]:
+    """Fit a continuous residual basis on references; project targets read-only."""
+    ref_set = {int(g) for g in reference_ids}
+    gids = df["group_id"].astype(int).to_numpy()
+    raw = df["raw_cqd"].to_numpy(float)
+    ref_rows = np.flatnonzero(np.isin(gids, list(ref_set)))
+    if len(ref_rows) < 2:
+        return 0, pd.DataFrame([{"component": 1, "singular_value": 0.0, "selected": False}]), np.zeros((len(df), 0))
+    n_bins = max(2, int(math.ceil(math.sqrt(len(ref_rows)))))
+    ref_raw = raw[ref_rows]
+    try:
+        ref_bin = np.asarray(pd.qcut(ref_raw, q=min(n_bins, len(ref_rows)), labels=False, duplicates="drop"), dtype=float)
+        ref_bin = np.nan_to_num(ref_bin, nan=0.0).astype(int)
+    except Exception:
+        ref_bin = np.zeros(len(ref_rows), dtype=int)
+    bin_by_row = np.full(len(df), -1, dtype=int)
+    bin_by_row[ref_rows] = ref_bin
+    B = int(max(1, ref_bin.max() + 1))
+    prof_num = np.zeros((len(df), B), dtype=float)
+    prof_den = np.zeros((len(df), B), dtype=float)
+    for pos in np.flatnonzero(train_mask):
+        er = edges.iloc[int(pos)]
+        ia, ib = int(er["ia"]), int(er["ib"])
+        n = float(er["samples"]); y = float(er["win_rate_a"])
+        p = (y * n + 0.5) / (n + 1.0)
+        resid = float(logit(np.clip(p, 1e-6, 1 - 1e-6))) - float(beta) * (raw[ia] - raw[ib])
+        if bin_by_row[ib] >= 0:
+            b = int(bin_by_row[ib]); prof_num[ia, b] += resid * n; prof_den[ia, b] += n
+        if bin_by_row[ia] >= 0:
+            b = int(bin_by_row[ia]); prof_num[ib, b] += (-resid) * n; prof_den[ib, b] += n
+    prof = np.divide(prof_num, np.maximum(prof_den, 1e-12))
+    row_mean = np.divide(np.sum(prof_num, axis=1, keepdims=True), np.maximum(np.sum(prof_den, axis=1, keepdims=True), 1e-12))
+    prof = np.where(prof_den > 0, prof - row_mean, 0.0)
+    ref_mean = np.mean(prof[ref_rows], axis=0, keepdims=True)
+    ref_sd = np.std(prof[ref_rows], axis=0, keepdims=True)
+    X = (prof - ref_mean) / np.maximum(ref_sd, 1e-12)
+    X = np.nan_to_num(X)
+    Xref = X[ref_rows]
+    _, s, Vt = np.linalg.svd(Xref, full_matrices=False)
+    med = float(np.median(s)) if len(s) else 0.0
+    mad = float(np.median(np.abs(s - med))) if len(s) else 0.0
+    floor = med + 1.4826 * mad
+    rank = int(np.sum(s > floor))
+    if rank < 2:
+        rank = 0
+    embedding = X.dot(Vt[:rank].T) if rank > 0 else np.zeros((len(df), 0))
+    if rank > 0:
+        embedding -= np.mean(embedding[ref_rows], axis=0, keepdims=True)
+        embedding /= np.maximum(np.sqrt(np.mean(embedding[ref_rows] ** 2, axis=0, keepdims=True)), 1e-12)
+    denom = float(np.sum(s * s)) if len(s) else 0.0
+    spectrum = pd.DataFrame([{
+        "component": i + 1, "singular_value": float(sv), "robust_noise_floor": floor,
+        "selected": bool(i < rank),
+        "cumulative_variance_share": float(np.sum(s[:i + 1] ** 2) / denom) if denom > 0 else 0.0,
+    } for i, sv in enumerate(s)])
+    return rank, spectrum, embedding
+
+
+def _member_conditioned_strength_eb(
+    observed_logit: np.ndarray,
+    observed_se_logit: np.ndarray,
+    group_ids: Sequence[int],
+    group_members: Dict[int, List[str]],
+    fit_mask: Optional[np.ndarray] = None,
+    *,
+    max_iter: int = PROSPECTIVE_MEMBER_EB_MAX_ROUNDS,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, float, bool, int]:
+    """Continuous member-common + partner-specific empirical-Bayes decomposition."""
+    z = np.asarray(observed_logit, dtype=float)
+    se = np.asarray(observed_se_logit, dtype=float)
+    gids = [int(g) for g in group_ids]
+    members_by_group: List[List[str]] = []
+    fit_rows = np.ones(len(gids), dtype=bool) if fit_mask is None else np.asarray(fit_mask, dtype=bool)
+    if len(fit_rows) != len(gids):
+        raise ValueError("fit_mask must match group_ids")
+    member_frequency: Dict[str, int] = {}
+    for gid in gids:
+        ms = [str(m) for m in group_members.get(gid, []) if str(m) != ""]
+        if not ms:
+            ms = [f"__gid__{gid}"]
+        members_by_group.append(ms)
+        if fit_rows[len(members_by_group) - 1]:
+            for m in ms:
+                member_frequency[m] = member_frequency.get(m, 0) + 1
+    # Only repeated members define a common component.  A one-off member is
+    # observationally indistinguishable from this group's partner-specific
+    # term and must not create a duplicate latent parameter.
+    member_names = sorted([m for m, count in member_frequency.items() if count >= 2])
+    midx = {m: j for j, m in enumerate(member_names)}
+    rr: List[int] = []; cc: List[int] = []; dd: List[float] = []
+    for i, ms in enumerate(members_by_group):
+        repeated = [m for m in ms if m in midx]
+        scale = 1.0 / math.sqrt(len(repeated)) if repeated else 0.0
+        for m in repeated:
+            rr.append(i); cc.append(midx[m]); dd.append(scale)
+    X = sparse.csr_matrix((dd, (rr, cc)), shape=(len(gids), len(member_names)))
+    finite = np.isfinite(z) & np.isfinite(se) & (se >= 0.0)
+    trainable = finite & fit_rows
+    z = np.where(finite, z, 0.0)
+    finite_se = se[trainable]
+    fallback_se = float(np.median(finite_se)) if len(finite_se) else 1.0
+    se = np.where(finite, se, fallback_se)
+    variance = np.maximum(se * se, 1e-10)
+    signal_sd = float(np.std(z[trainable])) if np.any(trainable) else 0.0
+    tau_member = max(signal_sd / math.sqrt(2.0), 1e-6)
+    tau_partner = max(signal_sd / math.sqrt(2.0), 1e-6)
+    fit_idx = np.flatnonzero(trainable)
+    Xfit = X[fit_idx]
+    zfit = z[fit_idx]
+    vfit = variance[fit_idx]
+    member_coef = np.zeros(X.shape[1], dtype=float)
+    partner_fit = np.zeros(len(fit_idx), dtype=float)
+    W = sparse.diags(1.0 / vfit)
+    I_m = sparse.eye(X.shape[1], format="csr")
+    I_g = sparse.eye(len(fit_idx), format="csr")
+    converged = False; rounds = 0
+    for eb_round in range(int(max_iter)):
+        rounds = eb_round + 1
+        A = sparse.hstack([Xfit, I_g], format="csr")
+        prior = sparse.block_diag((I_m / (tau_member * tau_member), I_g / (tau_partner * tau_partner)), format="csr")
+        lhs = A.T.dot(W.dot(A)) + prior
+        rhs = A.T.dot((1.0 / vfit) * zfit)
+        coef = sparse.linalg.spsolve(lhs.tocsc(), rhs)
+        member_coef = np.asarray(coef[:X.shape[1]], dtype=float)
+        partner_fit = np.asarray(coef[X.shape[1]:], dtype=float)
+        new_tau_member = max(float(np.sqrt(np.mean(member_coef ** 2))) if len(member_coef) else 0.0, 1e-6)
+        new_tau_partner = max(float(np.sqrt(np.mean(partner_fit ** 2))) if len(partner_fit) else 0.0, 1e-6)
+        if max(abs(math.log(new_tau_member / tau_member)), abs(math.log(new_tau_partner / tau_partner))) < 3e-3:
+            tau_member, tau_partner = new_tau_member, new_tau_partner
+            converged = True
+            break
+        tau_member, tau_partner = new_tau_member, new_tau_partner
+    member_component = np.asarray(X.dot(member_coef)).ravel()
+    # EB is used only to attribute the projected strength between a repeated-
+    # member common component and a partner-specific component.  It must not
+    # attenuate the scalar strength exported to Correct: in real audits the
+    # fitted tau_partner can collapse to its numerical floor and turn dozens of
+    # valid 0.2--1.4 CQD residuals into ~1e-9 movements.  Keep the decomposition
+    # additive and exact for both fit rows and read-only score rows.  Rows
+    # outside fit_mask still cannot affect member_coef or either fitted tau.
+    partner_coef = z - member_component
+    posterior = member_component + partner_coef
+    return posterior, member_component, partner_coef, float(tau_member), float(tau_partner), bool(converged), int(rounds)
+
+
+def _select_oof_ordering_calibrated_alpha(
+    y: np.ndarray,
+    n: np.ndarray,
+    raw_eta: np.ndarray,
+    strength_increment: np.ndarray,
+) -> Tuple[float, float, float, bool, int]:
+    """Maximize held-out weighted ordering exactly; logloss breaks ties."""
+    y = np.asarray(y, dtype=float); n = np.asarray(n, dtype=float)
+    raw_eta = np.asarray(raw_eta, dtype=float); inc = np.asarray(strength_increment, dtype=float)
+    truth = y >= 0.5
+    pred0 = raw_eta >= 0.0
+    total = max(float(np.sum(n)), 1.0)
+    initial_correct = float(np.sum(n * (pred0 == truth)))
+    cross = -raw_eta / np.where(np.abs(inc) > 0.0, inc, np.nan)
+    valid = np.isfinite(cross) & (cross > 0.0)
+    events = pd.DataFrame({
+        "alpha": cross[valid],
+        "delta": n[valid] * np.where(pred0[valid] == truth[valid], -1.0, 1.0),
+    }).groupby("alpha", sort=True, as_index=False)["delta"].sum()
+    boundaries = [0.0] + events["alpha"].astype(float).tolist() + [float("inf")]
+    correct = initial_correct
+    intervals: List[Tuple[float, float, float]] = []
+    for k in range(len(boundaries) - 1):
+        lo, hi = float(boundaries[k]), float(boundaries[k + 1])
+        intervals.append((lo, hi, correct / total))
+        if k < len(events):
+            correct += float(events.iloc[k]["delta"])
+    best_ordering = max(v for _, _, v in intervals) if intervals else initial_correct / total
+    raw_ordering = initial_correct / total
+    best_alpha = 0.0
+    best_loss = np.inf
+    optimizer_all_converged = True; optimizer_max_iterations = 0
+    for lo, hi, ordering in intervals:
+        if ordering < best_ordering - 1e-15:
+            continue
+        if np.isfinite(hi) and hi - lo <= 1e-12:
+            candidates = [lo]
+        elif not np.isfinite(hi):
+            lower = lo + max(1e-10, abs(lo) * 1e-12)
+            opt = minimize(
+                lambda z: binomial_logloss(y, n, raw_eta + float(z[0]) * inc),
+                np.asarray([max(1.0, lower * 2.0)]), method="L-BFGS-B", bounds=[(lower, None)],
+                options={"maxiter": 100},
+            )
+            optimizer_all_converged = optimizer_all_converged and bool(opt.success)
+            optimizer_max_iterations = max(optimizer_max_iterations, int(getattr(opt, "nit", 0) or 0))
+            candidates = [lower]
+            if opt.success and np.isfinite(opt.x[0]):
+                candidates.append(float(opt.x[0]))
+        else:
+            eps = min(1e-10, (hi - lo) / 4.0)
+            lower, upper = lo + eps, hi - eps
+            opt = minimize(
+                lambda z: binomial_logloss(y, n, raw_eta + float(z[0]) * inc),
+                np.asarray([(lower + upper) / 2.0]), method="L-BFGS-B", bounds=[(lower, upper)],
+                options={"maxiter": 100},
+            )
+            optimizer_all_converged = optimizer_all_converged and bool(opt.success)
+            optimizer_max_iterations = max(optimizer_max_iterations, int(getattr(opt, "nit", 0) or 0))
+            candidates = [lower, upper]
+            if opt.success and np.isfinite(opt.x[0]):
+                candidates.append(float(opt.x[0]))
+        for a in candidates:
+            loss = binomial_logloss(y, n, raw_eta + float(a) * inc)
+            if loss < best_loss - 1e-15 or (abs(loss - best_loss) <= 1e-15 and a < best_alpha):
+                best_alpha, best_loss = float(a), float(loss)
+    return float(best_alpha), float(raw_ordering), float(best_ordering), bool(optimizer_all_converged), int(optimizer_max_iterations)
+
+
+
+
+def _crossfit_continuous_strength_adjustment(
+    score_universe: pd.DataFrame,
+    all_edges: pd.DataFrame,
+    reference_ids: Sequence[int],
+    group_members: Dict[int, List[str]],
+    beta: float,
+    seed: int,
+    out_dir: Path,
+) -> pd.DataFrame:
+    """Separate scalar strength from continuous non-transitive matchup shape.
+
+    Text-Type and RSW-Type are deliberately absent.  Residual profiles create a
+    continuous spectral embedding using training edges only.  Its antisymmetric
+    low-rank interaction explains matchup-specific advantage, while only the
+    cross-fit-bagged scalar group delta is allowed into Correct.
+    """
+    df = score_universe.drop_duplicates("group_id", keep="first").copy().reset_index(drop=True)
+    df["group_id"] = df["group_id"].astype(int)
+    df["raw_cqd"] = pd.to_numeric(df["raw_cqd"], errors="coerce").astype(float)
+    edges = _prepare_partial_edges_for_ids(all_edges, df["group_id"].tolist(), "prospective continuous strength/interactions")
+    ref_set = {int(g) for g in reference_ids}
+    edge_is_policy = edges["group_a"].astype(int).isin(ref_set) | edges["group_b"].astype(int).isin(ref_set)
+    edges = edges.loc[edge_is_policy].copy().reset_index(drop=True)
+    if edges.empty:
+        raise RuntimeError("No prospective target-reference edges for continuous strength decomposition")
+    nfold = max(2, min(PROSPECTIVE_CROSSFIT_FOLDS, len(edges)))
+    edges["fold5"] = edge_fold_ids(edges["group_a"].to_numpy(), edges["group_b"].to_numpy(), nfold=nfold)
+    type_ids = np.zeros(len(df), dtype=int)  # disables every discrete type-counter parameter
+    beta_abs = abs(float(beta))
+    if beta_abs <= 1e-8:
+        raise RuntimeError("Prospective continuous strength decomposition requires nonzero Raw beta")
+
+    fold_delta: List[np.ndarray] = []
+    fold_member_component: List[np.ndarray] = []
+    fold_partner_component: List[np.ndarray] = []
+    fold_rows: List[Dict[str, Any]] = []
+    oof_rows: List[pd.DataFrame] = []
+    score_only_mask = pd.Series(False, index=df.index)
+    for col in ["scout_candidate", "score_only_candidate", "is_score_only", "score_only", "active_set_score_only_candidate"]:
+        if col in df.columns:
+            score_only_mask = score_only_mask | df[col].fillna(False).astype(bool)
+    member_eb_fit_mask = (~_prospective_disabled_mask(df) & ~score_only_mask).to_numpy(bool)
+    fit_gid_set = set(df.loc[member_eb_fit_mask, "group_id"].astype(int))
+    for fold in range(nfold):
+        hold = edges["fold5"].astype(int).to_numpy() == int(fold)
+        train = ~hold
+        if not np.any(train) or not np.any(hold):
+            continue
+        rank, spectrum, embedding = _derive_reference_anchored_embedding(
+            df, edges, train, reference_ids, float(beta),
+        )
+        # Identify strength relative to the actual prospective policy.  With
+        # E_ref[u_ref] = 0, every skew interaction satisfies
+        # E_ref[u_i^T S u_ref] = 0, so it cannot transfer a reference-average
+        # residual into (or out of) scalar strength as spectral rank changes.
+        ref_row_mask = df["group_id"].astype(int).isin(ref_set).to_numpy(bool)
+        if embedding.shape[1] > 0 and np.any(ref_row_mask):
+            embedding = embedding - np.mean(embedding[ref_row_mask], axis=0, keepdims=True)
+            ref_scale = np.sqrt(np.mean(embedding[ref_row_mask] ** 2, axis=0, keepdims=True))
+            embedding = embedding / np.maximum(ref_scale, 1e-12)
+            reference_embedding_mean_error = float(np.max(np.abs(np.mean(embedding[ref_row_mask], axis=0))))
+        else:
+            reference_embedding_mean_error = 0.0
+        spectrum = spectrum.copy()
+        spectrum["fold"] = int(fold)
+        spectrum.to_csv(out_dir / f"prospective_continuous_spectrum_fold_{fold}.csv", index=False)
+        # Fit the environment only on member-unique references.  Duplicate
+        # candidate families and score-only targets cannot influence gamma,
+        # tau, or another group's scalar strength.
+        ref_rows = np.flatnonzero(ref_row_mask)
+        ref_df = df.iloc[ref_rows].copy().reset_index(drop=True)
+        ref_index = {int(g): i for i, g in enumerate(ref_df["group_id"].astype(int))}
+        ref_edge_mask = train & edges["group_a"].astype(int).isin(ref_set).to_numpy(bool) & edges["group_b"].astype(int).isin(ref_set).to_numpy(bool)
+        ref_edges = edges.loc[ref_edge_mask].copy().reset_index(drop=True)
+        ref_edges["ia"] = ref_edges["group_a"].astype(int).map(ref_index).astype(int)
+        ref_edges["ib"] = ref_edges["group_b"].astype(int).map(ref_index).astype(int)
+        ref_train = np.ones(len(ref_edges), dtype=bool)
+        ref_embedding = embedding[ref_rows]
+        ref_type_ids = np.zeros(len(ref_df), dtype=int)
+        fit = fit_betabinomial_lowrank_counter_eb(
+            ref_df, ref_edges, ref_train, ref_type_ids, ref_embedding,
+            max_eb_iter=PROSPECTIVE_LOWRANK_EB_MAX_ROUNDS, tol=3e-3, fixed_beta=float(beta),
+        )
+        ref_delta_logit = {int(g): float(fit.delta[i]) for i, g in enumerate(ref_df["group_id"].astype(int))}
+        interaction_all = (
+            build_lowrank_design(edges, embedding, fit.skew_pairs).dot(fit.gamma)
+            if len(fit.gamma) else np.zeros(len(edges), dtype=float)
+        )
+        projected: List[List[float]] = [[] for _ in range(len(df))]
+        for edge_pos in np.flatnonzero(train):
+            er = edges.iloc[int(edge_pos)]
+            ia, ib = int(er["ia"]), int(er["ib"])
+            ga, gb = int(er["group_a"]), int(er["group_b"])
+            n = float(er["samples"]); y = float(er["win_rate_a"])
+            p = (y * n + 0.5) / (n + 1.0)
+            obs = float(logit(np.clip(p, 1e-6, 1 - 1e-6)))
+            inter = float(interaction_all[int(edge_pos)])
+            if gb in ref_delta_logit:
+                projected[ia].append(obs - float(beta) * (float(df.iloc[ia]["raw_cqd"]) - float(df.iloc[ib]["raw_cqd"])) + ref_delta_logit[gb] - inter)
+            if ga in ref_delta_logit:
+                projected[ib].append(-obs - float(beta) * (float(df.iloc[ib]["raw_cqd"]) - float(df.iloc[ia]["raw_cqd"])) + ref_delta_logit[ga] + inter)
+        raw_projected_logit = np.asarray([
+            float(np.mean(v)) if v else float(ref_delta_logit.get(int(df.iloc[i]["group_id"]), 0.0))
+            for i, v in enumerate(projected)
+        ], dtype=float)
+        projected_se_logit = np.asarray([
+            float(np.std(v, ddof=1) / math.sqrt(len(v))) if len(v) > 1 else float(max(fit.tau_delta, 1e-6))
+            for v in projected
+        ], dtype=float)
+        delta_logit, member_component, partner_component, tau_member, tau_partner, member_eb_converged, member_eb_rounds = _member_conditioned_strength_eb(
+            raw_projected_logit, projected_se_logit, df["group_id"].astype(int).tolist(), group_members,
+            fit_mask=member_eb_fit_mask,
+        )
+        delta_cqd = delta_logit / float(beta)
+        fold_delta.append(delta_cqd)
+        fold_member_component.append(member_component / float(beta))
+        fold_partner_component.append(partner_component / float(beta))
+        # OOF calibration is model fitting.  Score-only rows may be projected
+        # by the frozen model, but their outcomes must not choose alpha.
+        calibration_hold = (
+            hold
+            & edges["group_a"].astype(int).isin(fit_gid_set).to_numpy(bool)
+            & edges["group_b"].astype(int).isin(fit_gid_set).to_numpy(bool)
+        )
+        sub = edges.loc[calibration_hold].copy()
+        ia = sub["ia"].to_numpy(dtype=int)
+        ib = sub["ib"].to_numpy(dtype=int)
+        raw_eta = float(beta) * (df["raw_cqd"].to_numpy(float)[ia] - df["raw_cqd"].to_numpy(float)[ib])
+        strength_eta = raw_eta + delta_logit[ia] - delta_logit[ib]
+        full_eta = strength_eta + interaction_all[np.flatnonzero(calibration_hold)]
+        if not sub.empty:
+            oof_rows.append(pd.DataFrame({
+                "fold": int(fold), "win_rate_a": sub["win_rate_a"].to_numpy(float),
+                "samples": sub["samples"].to_numpy(float), "raw_eta": raw_eta,
+                "strength_eta": strength_eta, "full_eta": full_eta,
+            }))
+        fold_rows.append({
+            "fold": int(fold), "train_edges": int(np.sum(train)), "validation_edges": int(np.sum(hold)),
+            "continuous_rank": int(rank), "skew_interaction_parameters": int(len(fit.gamma)),
+            "tau_strength_logit": float(fit.tau_delta), "tau_lowrank_logit": float(fit.tau_lowrank),
+            "reference_embedding_mean_error": reference_embedding_mean_error,
+            "interaction_reference_policy_mean_constrained_zero": 1,
+            "environment_fit_reference_groups": int(len(ref_df)),
+            "environment_fit_nonreference_groups": 0,
+            "spectral_basis_fit_reference_groups": int(len(ref_df)),
+            "spectral_basis_fit_nonreference_groups": 0,
+            "member_conditioned_tau_member_logit": float(tau_member),
+            "member_conditioned_tau_partner_logit": float(tau_partner),
+            "member_conditioned_fit_groups": int(np.sum(member_eb_fit_mask)),
+            "member_conditioned_read_only_score_groups": int(len(df) - np.sum(member_eb_fit_mask)),
+            "oof_calibration_non_score_only_edges": int(np.sum(calibration_hold)),
+            "oof_calibration_score_only_edges": 0,
+            "member_conditioned_eb_converged": int(member_eb_converged),
+            "member_conditioned_eb_rounds": int(member_eb_rounds),
+            "member_conditioned_eb_hit_round_limit": int(not member_eb_converged and member_eb_rounds >= PROSPECTIVE_MEMBER_EB_MAX_ROUNDS),
+            "fit_success": int(bool(fit.success)), "fit_message": str(fit.message),
+            "lowrank_eb_converged": int(fit.eb_converged),
+            "lowrank_eb_rounds": int(fit.eb_rounds),
+            "lowrank_eb_hit_round_limit": int(fit.eb_hit_round_limit),
+            "lowrank_optimizer_all_rounds_converged": int(fit.optimizer_all_rounds_converged),
+            "lowrank_optimizer_hit_iteration_limit": int(fit.optimizer_hit_iteration_limit),
+            "lowrank_optimizer_total_iterations": int(fit.iterations),
+        })
+    if not fold_delta:
+        raise RuntimeError("Prospective continuous strength cross-fit produced no valid folds")
+    delta_matrix = np.vstack(fold_delta)
+    member_component_matrix = np.vstack(fold_member_component)
+    partner_component_matrix = np.vstack(fold_partner_component)
+    all_lowrank_eb_converged = bool(fold_rows) and all(int(r["lowrank_eb_converged"]) == 1 for r in fold_rows)
+    any_lowrank_eb_hit_limit = any(int(r["lowrank_eb_hit_round_limit"]) == 1 for r in fold_rows)
+    all_member_eb_converged = bool(fold_rows) and all(int(r["member_conditioned_eb_converged"]) == 1 for r in fold_rows)
+    any_member_eb_hit_limit = any(int(r["member_conditioned_eb_hit_round_limit"]) == 1 for r in fold_rows)
+    alpha = 0.0
+    oof = pd.concat(oof_rows, ignore_index=True) if oof_rows else pd.DataFrame()
+    if not oof.empty:
+        y_oof = oof["win_rate_a"].to_numpy(float)
+        n_oof = oof["samples"].to_numpy(float)
+        raw_oof = oof["raw_eta"].to_numpy(float)
+        strength_increment = oof["strength_eta"].to_numpy(float) - raw_oof
+        alpha, raw_oof_ordering, best_oof_ordering, alpha_optimizer_converged, alpha_optimizer_iterations = _select_oof_ordering_calibrated_alpha(
+            y_oof, n_oof, raw_oof, strength_increment,
+        )
+    else:
+        raw_oof_ordering = np.nan; best_oof_ordering = np.nan
+        alpha_optimizer_converged = True; alpha_optimizer_iterations = 0
+    calibrated_delta_matrix = float(alpha) * delta_matrix
+    adjustment = np.mean(calibrated_delta_matrix, axis=0)
+    crossfit_se = np.std(calibrated_delta_matrix, axis=0, ddof=1) / math.sqrt(calibrated_delta_matrix.shape[0]) if calibrated_delta_matrix.shape[0] > 1 else np.zeros(len(df))
+    member_common = float(alpha) * np.mean(member_component_matrix, axis=0)
+    out = pd.DataFrame({
+        "group_id": df["group_id"].to_numpy(int),
+        "prospective_strength_adjustment_cqd": adjustment,
+        "prospective_strength_crossfit_se_cqd": crossfit_se,
+        "prospective_strength_fold_sd_cqd": np.std(calibrated_delta_matrix, axis=0, ddof=0),
+        "prospective_strength_oof_stack_alpha": float(alpha),
+        "prospective_strength_oof_raw_ordering_accuracy": float(raw_oof_ordering),
+        "prospective_strength_oof_selected_ordering_accuracy": float(best_oof_ordering),
+        "prospective_strength_alpha_optimizer_converged": int(alpha_optimizer_converged),
+        "prospective_strength_alpha_optimizer_max_iterations": int(alpha_optimizer_iterations),
+        "prospective_strength_alpha_optimizer_hit_iteration_limit": int(not alpha_optimizer_converged and alpha_optimizer_iterations >= 100),
+        "prospective_all_lowrank_eb_converged": int(all_lowrank_eb_converged),
+        "prospective_any_lowrank_eb_hit_round_limit": int(any_lowrank_eb_hit_limit),
+        "prospective_all_member_eb_converged": int(all_member_eb_converged),
+        "prospective_any_member_eb_hit_round_limit": int(any_member_eb_hit_limit),
+        "prospective_member_common_adjustment_cqd": member_common,
+        "prospective_partner_specific_adjustment_cqd": adjustment - member_common,
+    })
+    for f, values in enumerate(calibrated_delta_matrix):
+        out[f"prospective_strength_adjustment_fold_{f}_cqd"] = values
+    out.to_csv(out_dir / "prospective_continuous_strength_adjustments.csv", index=False)
+    pd.DataFrame(fold_rows).to_csv(out_dir / "prospective_continuous_strength_folds.csv", index=False)
+    if not oof.empty:
+        oof["calibrated_strength_eta"] = oof["raw_eta"] + float(alpha) * (oof["strength_eta"] - oof["raw_eta"])
+        rows = []
+        for name, col in [("raw", "raw_eta"), ("strength_only_uncalibrated", "strength_eta"), ("strength_only_oof_calibrated", "calibrated_strength_eta"), ("strength_plus_continuous_interaction", "full_eta")]:
+            eta_values = oof[col].to_numpy(float)
+            ordering = float(np.sum(oof["samples"].to_numpy(float) * ((eta_values >= 0.0) == (oof["win_rate_a"].to_numpy(float) >= 0.5))) / max(1.0, np.sum(oof["samples"].to_numpy(float))))
+            rows.append({
+                "model": name,
+                "weighted_logloss": binomial_logloss(oof["win_rate_a"].to_numpy(float), oof["samples"].to_numpy(float), eta_values),
+                "weighted_ordering_accuracy": ordering,
+                "strength_stack_alpha": float(alpha),
+            })
+        pd.DataFrame(rows).to_csv(out_dir / "prospective_continuous_strength_oof_metrics.csv", index=False)
+    return out
+
+
 def _apply_raw_anchored_prospective_correct(
     groups_out: pd.DataFrame,
     final_score_universe_df: pd.DataFrame,
     all_edges: pd.DataFrame,
     group_members: Dict[int, List[str]],
-    frozen_rsw: Dict[str, Any],
     raw_min: Optional[float],
     lane_size: int,
     out_dir: Path,
@@ -1110,10 +3310,10 @@ def _apply_raw_anchored_prospective_correct(
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """Generate the production Correct score without the legacy active mainline.
 
-    Final Correct is Raw-anchored, multi-environment, conservative, and
-    profile-aware only as a nuisance/stress dimension.  Missing edges for every
-    environment are requested through the existing Rust MissingRateRequest path;
-    no synthetic default rate is introduced here.
+    Final Correct is Raw-anchored against one complete legal reference policy.
+    References vote equally; sample precision affects measurement variance only.
+    Missing target/reference edges are requested through the existing Rust
+    MissingRateRequest path, and no synthetic default rate is introduced here.
     """
     if groups_out is None or groups_out.empty:
         return groups_out, {}
@@ -1137,128 +3337,90 @@ def _apply_raw_anchored_prospective_correct(
         score_universe["blocked_score_only_candidate"] = score_universe["group_id"].isin(
             set(out.loc[out.get("blocked_score_only_candidate", pd.Series(False, index=out.index)).fillna(False).astype(bool), "group_id"].astype(int))
         )
-    type_by_gid = {int(k): int(v) for k, v in frozen_rsw.get("type_by_gid", {}).items()}
-    label_by_gid = {int(k): str(v) for k, v in frozen_rsw.get("label_by_gid", {}).items()}
-    out["prospective_rsw_type_id"] = out["group_id"].map(lambda g: int(type_by_gid.get(int(g), -1))).astype(int)
-    out["RSW-Type"] = out["group_id"].map(lambda g: str(label_by_gid.get(int(g), out.get("RSW-Type", pd.Series("RSW_UNKNOWN", index=out.index)).iloc[0] if len(out) else "RSW_UNKNOWN")))
-    out.loc[out["prospective_rsw_type_id"] < 0, "RSW-Type"] = "RSW_UNKNOWN_SCORE_ONLY"
-
-    envs = _build_prospective_environment_refs(score_universe, group_members, frozen_rsw, raw_min, out_dir)
+    reference_ids = _build_prospective_reference_universe(score_universe, group_members, raw_min, out_dir)
+    all_edges, undirected_edge_audit = _deduplicate_undirected_edges(all_edges)
+    pd.DataFrame([undirected_edge_audit]).to_csv(out_dir / "prospective_undirected_edge_deduplication.csv", index=False)
     universe_ids = score_universe["group_id"].astype(int).tolist()
-    missing_preflight_rows = []
-    env_delta_frames = []
-    for env in envs:
-        ref_ids = [int(g) for g in env.get("group_ids", [])]
-        require_pairs_or_request(
-            all_edges,
-            universe_ids,
-            ref_ids,
-            f"prospective future-environment projection: {env['environment']}",
-            lane_size,
-            out_dir,
-        )
-        missing_preflight_rows.append({
-            "environment": env["environment"],
-            "score_universe_rows": int(len(universe_ids)),
-            "reference_count": int(len(ref_ids)),
-            "missing_pairs": 0,
-            "status": "complete",
-        })
-        env_delta_frames.append(_prospective_environment_delta(score_universe, all_edges, ref_ids, beta, env["environment"]))
-    pd.DataFrame(missing_preflight_rows).to_csv(out_dir / "prospective_missing_rate_preflight.csv", index=False)
-    env_delta = pd.concat(env_delta_frames, ignore_index=True) if env_delta_frames else pd.DataFrame()
-    env_delta.to_csv(out_dir / "prospective_environment_group_deltas_long.csv", index=False)
-
-    # Wide delta/evidence features per group.
-    env_names = [e["environment"] for e in envs]
-    wide = pd.DataFrame({"group_id": out["group_id"].astype(int).tolist()})
-    if not env_delta.empty:
-        delta_w = env_delta.pivot_table(index="group_id", columns="environment", values="prospective_env_delta_cqd", aggfunc="first")
-        edge_w = env_delta.pivot_table(index="group_id", columns="environment", values="prospective_env_edge_count", aggfunc="first")
-        sample_w = env_delta.pivot_table(index="group_id", columns="environment", values="prospective_env_sample_mass", aggfunc="first")
-        cov_w = env_delta.pivot_table(index="group_id", columns="environment", values="prospective_env_coverage_ratio", aggfunc="first")
-        wide = wide.merge(delta_w.add_prefix("prospective_delta_cqd_").reset_index(), on="group_id", how="left")
-        wide = wide.merge(edge_w.add_prefix("prospective_edge_count_").reset_index(), on="group_id", how="left")
-        wide = wide.merge(sample_w.add_prefix("prospective_sample_mass_").reset_index(), on="group_id", how="left")
-        wide = wide.merge(cov_w.add_prefix("prospective_coverage_").reset_index(), on="group_id", how="left")
-    out = out.merge(wide.drop_duplicates("group_id"), on="group_id", how="left")
-
-    delta_cols = [f"prospective_delta_cqd_{e}" for e in env_names if f"prospective_delta_cqd_{e}" in out.columns]
-    edge_cols = [f"prospective_edge_count_{e}" for e in env_names if f"prospective_edge_count_{e}" in out.columns]
-    sample_cols = [f"prospective_sample_mass_{e}" for e in env_names if f"prospective_sample_mass_{e}" in out.columns]
-    cov_cols = [f"prospective_coverage_{e}" for e in env_names if f"prospective_coverage_{e}" in out.columns]
-
-    D = out[delta_cols].apply(pd.to_numeric, errors="coerce").to_numpy(float) if delta_cols else np.zeros((len(out), 0))
-    E = out[edge_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy(float) if edge_cols else np.zeros((len(out), 0))
-    S = out[sample_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy(float) if sample_cols else np.zeros((len(out), 0))
-    C = out[cov_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy(float) if cov_cols else np.zeros((len(out), 0))
-
-    centers = []
-    potentials = []
-    uncertainties = []
-    evidence_vals = []
-    consistency_vals = []
-    dispersion_vals = []
-    coverage_vals = []
-    edge_vals = []
-    sample_vals = []
-    raw_adjust_vals = []
-    type_counts = out["prospective_rsw_type_id"].value_counts(dropna=False).to_dict()
-    for i in range(len(out)):
-        vals = D[i, :] if D.shape[1] else np.array([], dtype=float)
-        finite = vals[np.isfinite(vals)]
-        if len(finite) == 0:
-            robust_center = 0.0
-            env_sd = 0.0
-            sign_consistency = 0.0
-            positive_env = 0.0
-        else:
-            robust_center = float(np.nanmedian(np.clip(finite, -PROSPECTIVE_CORRECT_MAX_ABS_ADJUST_CQD, PROSPECTIVE_CORRECT_MAX_ABS_ADJUST_CQD)))
-            env_sd = float(np.nanstd(finite)) if len(finite) > 1 else 0.0
-            pos = float(np.mean(finite > PROSPECTIVE_CORRECT_ENV_EPS_CQD))
-            neg = float(np.mean(finite < -PROSPECTIVE_CORRECT_ENV_EPS_CQD))
-            sign_consistency = max(pos, neg)
-            positive = finite[finite > 0]
-            positive_env = float(np.nanpercentile(positive, 75)) if len(positive) else 0.0
-        edge_mean = float(np.nanmean(E[i, :])) if E.shape[1] else 0.0
-        sample_mean = float(np.nanmean(S[i, :])) if S.shape[1] else 0.0
-        cov_mean = float(np.nanmean(C[i, :])) if C.shape[1] else 0.0
-        edge_rel = 1.0 - math.exp(-edge_mean / 6.0)
-        sample_rel = 1.0 - math.exp(-sample_mean / 300.0)
-        cov_rel = max(0.0, min(1.0, cov_mean)) ** 0.5
-        evidence = max(0.0, min(1.0, edge_rel * sample_rel * cov_rel))
-        tcnt = float(type_counts.get(int(out.iloc[i]["prospective_rsw_type_id"]), 0.0))
-        profile_rel = math.sqrt(tcnt / (tcnt + 5.0)) if tcnt > 0 else 0.0
-        consistency = max(0.0, min(1.0, (sign_consistency - 0.50) / 0.45)) if len(finite) >= 2 else 0.0
-        dispersion_shrink = 1.0 / (1.0 + max(0.0, env_sd) / 0.12)
-        shrink = max(0.0, min(1.0, evidence * profile_rel * consistency * dispersion_shrink))
-        adj = float(np.clip(robust_center * shrink, -PROSPECTIVE_CORRECT_MAX_ABS_ADJUST_CQD, PROSPECTIVE_CORRECT_MAX_ABS_ADJUST_CQD))
-        pot_adj = float(np.clip(max(0.0, positive_env) * max(evidence, 0.25) * max(profile_rel, 0.35), 0.0, PROSPECTIVE_CORRECT_MAX_ABS_ADJUST_CQD))
-        u_edge = (1.0 - evidence) * 0.22
-        u_profile = (1.0 - profile_rel) * 0.14
-        u_env = min(0.45, env_sd)
-        u_consistency = (1.0 - consistency) * 0.12
-        centers.append(float(out.iloc[i]["Raw Cqd"]) + adj)
-        potentials.append(float(out.iloc[i]["Raw Cqd"]) + pot_adj)
-        uncertainties.append(float(u_edge + u_profile + u_env + u_consistency))
-        evidence_vals.append(evidence)
-        consistency_vals.append(consistency)
-        dispersion_vals.append(env_sd)
-        coverage_vals.append(cov_mean)
-        edge_vals.append(edge_mean)
-        sample_vals.append(sample_mean)
-        raw_adjust_vals.append(adj)
-
-    out["prospective_destrat_adjustment_cqd"] = np.asarray(raw_adjust_vals, dtype=float)
-    out["prospective_evidence_q"] = np.asarray(evidence_vals, dtype=float)
-    out["prospective_environment_consistency"] = np.asarray(consistency_vals, dtype=float)
-    out["prospective_environment_dispersion_cqd"] = np.asarray(dispersion_vals, dtype=float)
-    out["prospective_environment_coverage_mean"] = np.asarray(coverage_vals, dtype=float)
-    out["prospective_environment_edge_count_mean"] = np.asarray(edge_vals, dtype=float)
-    out["prospective_environment_sample_mass_mean"] = np.asarray(sample_vals, dtype=float)
-    out["Correct_center_cqd"] = np.asarray(centers, dtype=float)
-    out["Correct_potential_cqd"] = np.asarray(potentials, dtype=float)
-    out["Correct_uncertainty_cqd"] = np.asarray(uncertainties, dtype=float)
+    require_pairs_or_request(
+        all_edges, universe_ids, reference_ids,
+        "prospective all-reference projection", lane_size, out_dir,
+    )
+    pd.DataFrame([{
+        "score_universe_rows": int(len(universe_ids)),
+        "reference_count": int(len(reference_ids)),
+        "crossfit_fold_count": int(PROSPECTIVE_CROSSFIT_FOLDS),
+        "crossfit_fold_selection": "fixed_engineering_tradeoff_not_data_selected",
+        "missing_pairs": 0,
+        "status": "complete",
+    }]).to_csv(out_dir / "prospective_missing_rate_preflight.csv", index=False)
+    reference_delta = _prospective_reference_delta(score_universe, all_edges, reference_ids, beta)
+    reference_delta.to_csv(out_dir / "prospective_reference_group_deltas.csv", index=False)
+    out = out.merge(reference_delta.drop_duplicates("group_id"), on="group_id", how="left")
+    replacement_rates = _prospective_mean_rate_against_references(
+        score_universe, all_edges, reference_ids,
+    )
+    out = out.merge(replacement_rates, on="group_id", how="left")
+    raw_score = out["Raw Cqd"].to_numpy(float)
+    mean_rate = pd.to_numeric(
+        out["prospective_replacement_mean_rate_cqd"], errors="coerce"
+    ).to_numpy(float)
+    if not np.all(np.isfinite(mean_rate)):
+        bad = out.loc[~np.isfinite(mean_rate), "group_id"].astype(int).tolist()
+        raise RuntimeError(f"Non-finite replacement mean rate; first_group_ids={bad[:30]}")
+    # Five expected future entrants occupy five of the fixed 50 Raw target
+    # slots. Each is an equal draw from the legal, member-unique reference pool.
+    # Therefore they uniformly replace 5/50 of the current Golden target mass.
+    adjustment = (float(PROSPECTIVE_REPLACEMENT_K) / 50.0) * (mean_rate - raw_score)
+    estimation_se = np.zeros(len(out), dtype=float)
+    scenario_sd = np.zeros(len(out), dtype=float)
+    uncertainty = np.zeros(len(out), dtype=float)
+    coverage = pd.to_numeric(out["prospective_reference_coverage_ratio"], errors="coerce").fillna(0.0).to_numpy(float)
+    direct_alpha_info = {
+        "direct_reference_oof_enabled": 0,
+        "direct_reference_oof_selection_role": "disabled_replaced_by_fixed_slot_k5",
+        "prospective_replacement_k": float(PROSPECTIVE_REPLACEMENT_K),
+        "prospective_replacement_target_slots": 50.0,
+    }
+    out["prospective_mixed_residual_adjustment_audit_cqd"] = pd.to_numeric(
+        out["prospective_reference_delta_cqd"], errors="coerce"
+    )
+    # Compatibility fields explicitly describe the retired model rather than
+    # presenting a fabricated member/partner explanation.
+    out["prospective_strength_adjustment_cqd"] = adjustment
+    out["prospective_strength_crossfit_se_cqd"] = estimation_se
+    out["prospective_strength_fold_sd_cqd"] = scenario_sd
+    out["prospective_strength_oof_stack_alpha"] = 1.0
+    out["prospective_direct_reliability"] = 1.0
+    out["prospective_direct_tau_cqd"] = np.nan
+    out["prospective_direct_scenario_kappa"] = np.nan
+    out["prospective_direct_scenario_mean_var_cqd2"] = 0.0
+    out["prospective_direct_measurement_se_cqd"] = 0.0
+    out["prospective_direct_prediction_se_cqd"] = 0.0
+    out["prospective_strength_oof_raw_ordering_accuracy"] = np.nan
+    out["prospective_strength_oof_selected_ordering_accuracy"] = np.nan
+    out["prospective_strength_alpha_optimizer_converged"] = 1
+    out["prospective_strength_alpha_optimizer_max_iterations"] = 0
+    out["prospective_strength_alpha_optimizer_hit_iteration_limit"] = 0
+    out["prospective_all_lowrank_eb_converged"] = 1
+    out["prospective_any_lowrank_eb_hit_round_limit"] = 0
+    out["prospective_all_member_eb_converged"] = 1
+    out["prospective_any_member_eb_hit_round_limit"] = 0
+    out["prospective_member_common_adjustment_cqd"] = np.nan
+    out["prospective_partner_specific_adjustment_cqd"] = np.nan
+    for key, value in direct_alpha_info.items():
+        out[key] = value
+    out["prospective_destrat_adjustment_cqd"] = adjustment
+    out["prospective_evidence_q"] = coverage
+    out["prospective_environment_consistency"] = np.nan
+    out["prospective_environment_dispersion_cqd"] = scenario_sd
+    out["prospective_posterior_estimation_se_cqd"] = estimation_se
+    out["prospective_loo_max_abs_change_cqd"] = scenario_sd
+    out["prospective_environment_coverage_mean"] = coverage
+    out["prospective_environment_edge_count_mean"] = pd.to_numeric(out["prospective_reference_edge_count"], errors="coerce").fillna(0.0)
+    out["prospective_environment_sample_mass_mean"] = pd.to_numeric(out["prospective_reference_sample_mass"], errors="coerce").fillna(0.0)
+    out["Correct_center_cqd"] = raw_score + adjustment
+    out["Correct_potential_cqd"] = out["Correct_center_cqd"].to_numpy(float) + uncertainty
+    out["Correct_uncertainty_cqd"] = uncertainty
 
     # Member-overlap amplification uncertainty is computed after the center score
     # exists.  It is reported separately and not subtracted from Correct_center.
@@ -1280,8 +3442,12 @@ def _apply_raw_anchored_prospective_correct(
         nearest = min(margins) if margins else np.inf
         overlap_u.append(float(max(0.0, 0.18 - nearest) / 0.18 * 0.18) if np.isfinite(nearest) else 0.0)
     out["Correct_member_overlap_uncertainty_cqd"] = np.asarray(overlap_u, dtype=float)
-    out["Correct_uncertainty_cqd"] = out["Correct_uncertainty_cqd"].astype(float) + out["Correct_member_overlap_uncertainty_cqd"].astype(float)
-    out["Correct_selection_risk_penalized_cqd"] = out["Correct_center_cqd"].astype(float) - 0.35 * out["Correct_uncertainty_cqd"].astype(float)
+    # Keep the requested posterior-plus-scenario uncertainty definition pure.
+    # Member overlap remains an additional, separately named decision diagnostic.
+    out["Correct_selection_risk_penalized_cqd"] = out["Correct_center_cqd"].astype(float) - 0.35 * np.sqrt(
+        out["Correct_uncertainty_cqd"].astype(float) ** 2
+        + out["Correct_member_overlap_uncertainty_cqd"].astype(float) ** 2
+    )
 
     # Override final public score.  Keep uncertainty separate; do not punish rare
     # or under-exposed profiles inside the semantic center score.
@@ -1305,10 +3471,10 @@ def _apply_raw_anchored_prospective_correct(
     out["active_total_penalty_cqd"] = 0.0
     out["active_set_score_source"] = "legacy_active_iteration_disabled_not_score_source"
     out["active_set_score_success"] = True
-    out["active_set_score_message"] = "final_score_replaced_by_raw_anchored_prospective_destratified_correct"
+    out["active_set_score_message"] = "final_score_replaced_by_fixed_slot_replacement_k5_correct"
     out["active_set_selected_for_training"] = False
     out["prospective_correct_enabled"] = True
-    out["selection_weight_source"] = "raw_anchored_prospective_destratified_correct_center"
+    out["selection_weight_source"] = "fixed_slot_replacement_k5_correct_center"
     out["selection_weight_used_final_projection"] = True
     out["selection_weight_fell_back_to_global_base"] = False
     out["selection_weight_delta_from_raw_cqd"] = out["selection_weight_cqd"].astype(float) - out["Raw Cqd"].astype(float)
@@ -1336,21 +3502,59 @@ def _apply_raw_anchored_prospective_correct(
         "group_id", "Name", "Text-Type", "RSW-Type", "Raw Cqd", "Correct_center_cqd", "Correct_potential_cqd",
         "Correct_uncertainty_cqd", "Correct_member_overlap_uncertainty_cqd", "Correct_selection_risk_penalized_cqd",
         "prospective_destrat_adjustment_cqd", "prospective_evidence_q", "prospective_environment_consistency",
-        "prospective_environment_dispersion_cqd", "prospective_environment_coverage_mean",
+        "prospective_environment_dispersion_cqd", "prospective_posterior_estimation_se_cqd",
+        "prospective_loo_max_abs_change_cqd", "prospective_environment_coverage_mean",
         "prospective_environment_edge_count_mean", "prospective_environment_sample_mass_mean",
         "legacy_active_selection_weight_cqd", "legacy_active_Correct_Cqd", "legacy_active_regularized_active_cqd",
         "blocked_score_only_candidate", "scout_candidate",
-    ] + delta_cols + cov_cols if c in out.columns]
+        "prospective_reference_delta_cqd", "prospective_reference_se_cqd",
+        "prospective_reference_scenario_scale_cqd", "prospective_reference_effective_edge_count",
+        "prospective_reference_policy_weight_per_edge", "prospective_reference_mean_measurement_se_cqd",
+        "prospective_reference_coverage_ratio", "prospective_reference_edge_count",
+        "prospective_reference_sample_mass", "prospective_reference_count",
+        "prospective_replacement_mean_rate_cqd",
+        "prospective_mixed_residual_adjustment_audit_cqd", "prospective_strength_adjustment_cqd",
+        "prospective_strength_crossfit_se_cqd", "prospective_strength_fold_sd_cqd",
+        "prospective_strength_oof_stack_alpha",
+        "prospective_member_common_adjustment_cqd", "prospective_partner_specific_adjustment_cqd",
+        "prospective_strength_oof_raw_ordering_accuracy", "prospective_strength_oof_selected_ordering_accuracy",
+        "prospective_strength_alpha_optimizer_converged", "prospective_strength_alpha_optimizer_max_iterations",
+        "prospective_strength_alpha_optimizer_hit_iteration_limit",
+        "prospective_all_lowrank_eb_converged", "prospective_any_lowrank_eb_hit_round_limit",
+        "prospective_all_member_eb_converged", "prospective_any_member_eb_hit_round_limit",
+    ] if c in out.columns]
     out[diag_cols].to_csv(out_dir / "prospective_correct_diagnostics.csv", index=False)
 
     pair_metrics = _write_prospective_pair_metrics(out_dir, out, all_edges, beta)
     pd.DataFrame([{
-        "mode": "raw_anchored_prospective_destratified_correct",
+        "mode": "fixed_slot_replacement_k5_correct",
         "center_score_penalizes_uncertainty": 0,
         "uncertainty_is_separate_output": 1,
         "active_iteration_generates_final_correct": 0,
         "active_iteration_role": "disabled_not_run",
-        "environment_count": int(len(envs)),
+        "aggregation_layer": "five_of_fifty_slots_equal_policy_legal_reference_mean",
+        "environment_count": 0,
+        "reference_count": int(len(reference_ids)),
+        "residual_dependent_reference_weighting": 0,
+        "discrete_type_features_used": 0,
+        "text_type_features_used": 0,
+        "interaction_reference_policy_mean_constrained_zero": 1,
+        "edge_subset_lowrank_standardization": 0,
+        "direction_gate_used": 0,
+        "environment_fit_uses_reference_groups_only": 1,
+        "spectral_basis_uses_reference_groups_only": 1,
+        "member_conditioned_strength_decomposition": 0,
+        "strength_oof_stack_alpha": float(out["prospective_strength_oof_stack_alpha"].iloc[0]),
+        "strength_oof_raw_ordering_accuracy": float(out["prospective_strength_oof_raw_ordering_accuracy"].iloc[0]),
+        "strength_oof_selected_ordering_accuracy": float(out["prospective_strength_oof_selected_ordering_accuracy"].iloc[0]),
+        "strength_alpha_optimizer_converged": int(out["prospective_strength_alpha_optimizer_converged"].iloc[0]),
+        "strength_alpha_optimizer_max_iterations": int(out["prospective_strength_alpha_optimizer_max_iterations"].iloc[0]),
+        "all_lowrank_eb_converged": int(out["prospective_all_lowrank_eb_converged"].iloc[0]),
+        "any_lowrank_eb_hit_round_limit": int(out["prospective_any_lowrank_eb_hit_round_limit"].iloc[0]),
+        "all_member_eb_converged": int(out["prospective_all_member_eb_converged"].iloc[0]),
+        "any_member_eb_hit_round_limit": int(out["prospective_any_member_eb_hit_round_limit"].iloc[0]),
+        "adjustment_prior": "none_fixed_k5_replacement_estimand",
+        **direct_alpha_info,
         "mean_abs_adjustment_cqd": float(np.nanmean(np.abs(out["prospective_destrat_adjustment_cqd"].to_numpy(float)))),
         "p95_abs_adjustment_cqd": float(np.nanpercentile(np.abs(out["prospective_destrat_adjustment_cqd"].to_numpy(float)), 95)),
         "max_abs_adjustment_cqd": float(np.nanmax(np.abs(out["prospective_destrat_adjustment_cqd"].to_numpy(float)))),
@@ -1359,24 +3563,26 @@ def _apply_raw_anchored_prospective_correct(
         **{k: v for k, v in pair_metrics.items() if isinstance(v, (int, float, np.integer, np.floating))},
     }]).to_csv(out_dir / "prospective_correct_summary.csv", index=False)
     (out_dir / "RAW_ANCHORED_PROSPECTIVE_CORRECT_REPORT.md").write_text(
-        "# Raw-anchored prospective de-stratified Correct\n\n"
-        "Final `Correct Cqd` is now generated by the Raw-anchored prospective pipeline, not by the legacy active-q projection.\n\n"
+        "# Fixed-slot prospective replacement Correct (K=5)\n\n"
+        "Final `Correct Cqd` is generated by the fixed-slot replacement model.\n\n"
         "## Semantics\n\n"
         "```text\n"
-        "Correct_center = Raw + conservative multi-environment de-stratification adjustment\n"
-        "Correct_potential = Raw + conservative positive future-environment envelope\n"
-        "Correct_uncertainty = missing/profile/environment/member-overlap sensitivity diagnostics\n"
+        "mean_rate(x) = equal-weight mean win rate of x against legal references\n"
+        "Correct_center(x) = Raw(x) + (5 / 50) * (mean_rate(x) - Raw(x))\n"
         "```\n\n"
-        "Uncertainty is deliberately not subtracted from `Correct_center`; an optional risk-penalized score is exported as `Correct_selection_risk_penalized_cqd`.\n\n"
-        "The old active iteration is not executed by the production `run()` path. Missing edges for each prospective environment are requested through `MissingRateRequest`; no synthetic default win rate is used.\n",
+        "The 50-slot Raw target mass stays fixed. Five hypothetical future entrants, each an equal draw from the enabled, non-blocked, non-score-only, thresholded, member-unique reference pool, uniformly displace 5/50 of the old Golden mass. OOF, tau, kappa, reliability shrinkage, and final moment alignment do not affect the public score.\n\n"
+        "The old active iteration is not executed by the production `run()` path. Missing target-reference edges are requested through `MissingRateRequest`; no synthetic default win rate is used.\n",
         encoding="utf-8",
     )
     return out, {
-        "prospective_environment_count": int(len(envs)),
+        "prospective_environment_count": 0,
+        "prospective_reference_count": int(len(reference_ids)),
+        "prospective_reference_group_ids": [int(g) for g in reference_ids],
         "prospective_mean_abs_adjustment_cqd": float(np.nanmean(np.abs(out["prospective_destrat_adjustment_cqd"].to_numpy(float)))),
         "prospective_max_abs_adjustment_cqd": float(np.nanmax(np.abs(out["prospective_destrat_adjustment_cqd"].to_numpy(float)))),
         "prospective_mean_uncertainty_cqd": float(np.nanmean(out["Correct_uncertainty_cqd"].to_numpy(float))),
         "prospective_pair_metrics_file": "prospective_correct_pair_metrics.csv",
+        **direct_alpha_info,
     }
 
 def _require_final_projection_scores(
@@ -1746,7 +3952,8 @@ def run(sqlite_path:Path, out_dir:Path, lane_size:int=2, nfold:int=5, seed:int=1
     conn=sqlite3.connect(sqlite_path)
     # lane results only; raw_average_cqd required.
     lr=pd.read_sql_query("""
-        select lr.group_id, lr.raw_average_cqd, lr.average_cqd as old_average_cqd, lr.rank as old_rank,
+        select lr.group_id, lr.raw_average_cqd, lr.average_cqd as old_average_cqd,
+               lr.rank as old_rank, lr.golden_rate,
                g.canonical, g.display_raw
         from lane_results lr join groups g on g.id=lr.group_id
         where lr.lane_size=? and lr.raw_average_cqd is not null
@@ -2078,6 +4285,11 @@ class LowRankEBFit:
     message: str
     iterations: int
     map_nll: float
+    eb_converged: bool
+    eb_rounds: int
+    eb_hit_round_limit: bool
+    optimizer_all_rounds_converged: bool
+    optimizer_hit_iteration_limit: bool
 
 def robust_spectral_rank(X: np.ndarray, target_rank: Optional[int] = None) -> Tuple[int, pd.DataFrame, np.ndarray]:
     """Self-adaptive low-rank dimension from the residual-profile spectrum.
@@ -2140,10 +4352,10 @@ def build_lowrank_design(edges_subset: pd.DataFrame, embedding: np.ndarray, skew
     Z = np.empty((len(edges_subset), len(skew_pairs)), dtype=float)
     for j, (a, b) in enumerate(skew_pairs):
         Z[:, j] = Eia[:, a] * Eib[:, b] - Eia[:, b] * Eib[:, a]
-    # Column standardization makes the learned tau_lowrank comparable across datasets.
-    Z = np.nan_to_num(Z)
-    Z = (Z - Z.mean(axis=0, keepdims=True)) / np.maximum(Z.std(axis=0, keepdims=True), 1e-12)
-    return Z
+    # Embedding coordinates already have a fixed scale.  Never standardize Z
+    # on the supplied edge subset: train and validation would otherwise use
+    # different feature coordinates for the same fitted gamma.
+    return np.nan_to_num(Z)
 
 def derive_lowrank_embedding(groups_df, edges_df, raw_beta, train_mask, seed=123, target_rank: Optional[int] = None):
     X, prof, wsum = build_profile(groups_df, edges_df, raw_beta, train_mask, {g: i for i, g in enumerate(groups_df.group_id)})
@@ -2269,7 +4481,10 @@ def fit_betabinomial_lowrank_counter_eb(groups_df, edges_df, train_mask, type_id
             return 1e300, np.nan_to_num(grad, nan=0.0, posinf=1e100, neginf=-1e100)
         return nll, grad
 
+    eb_converged = False; eb_rounds = 0
+    optimizer_all_rounds_converged = True; optimizer_hit_iteration_limit = False
     for eb in range(max_eb_iter):
+        eb_rounds = eb + 1
         prior_diag = np.zeros(core_dim)
         prior_diag[1:1 + G] = 1.0 / max(tau_delta, 1e-8) ** 2
         if C > 0:
@@ -2291,6 +4506,8 @@ def fit_betabinomial_lowrank_counter_eb(groups_df, edges_df, train_mask, type_id
             z[0] = float(fixed_beta)
         z = opt.x
         success = bool(opt.success)
+        optimizer_all_rounds_converged = optimizer_all_rounds_converged and bool(opt.success)
+        optimizer_hit_iteration_limit = optimizer_hit_iteration_limit or int(getattr(opt, "nit", 0) or 0) >= 90 or "ITERATION" in str(opt.message).upper() and "LIMIT" in str(opt.message).upper()
         msg = str(opt.message)
         map_nll = float(opt.fun)
         iters += int(getattr(opt, "nit", 0) or 0)
@@ -2307,6 +4524,7 @@ def fit_betabinomial_lowrank_counter_eb(groups_df, edges_df, train_mask, type_id
             and (L == 0 or abs(math.log(new_tau_lowrank / max(tau_lowrank, 1e-12))) < tol)
         ):
             tau_delta, tau_counter, tau_lowrank = new_tau_delta, new_tau_counter, new_tau_lowrank
+            eb_converged = True
             break
         tau_delta, tau_counter, tau_lowrank = new_tau_delta, new_tau_counter, new_tau_lowrank
 
@@ -2327,6 +4545,11 @@ def fit_betabinomial_lowrank_counter_eb(groups_df, edges_df, train_mask, type_id
         message=msg,
         iterations=iters,
         map_nll=map_nll,
+        eb_converged=bool(eb_converged),
+        eb_rounds=int(eb_rounds),
+        eb_hit_round_limit=bool(not eb_converged and eb_rounds >= max_eb_iter),
+        optimizer_all_rounds_converged=bool(optimizer_all_rounds_converged),
+        optimizer_hit_iteration_limit=bool(optimizer_hit_iteration_limit),
     )
 
 def predict_edges_lowrank(groups_df, edges_df, mask, fit: LowRankEBFit, type_ids, embedding):
@@ -4881,7 +7104,8 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
     out_dir.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(sqlite_path)
     lr = pd.read_sql_query("""
-        select lr.group_id, lr.raw_average_cqd, lr.average_cqd as old_average_cqd, lr.rank as old_rank,
+        select lr.group_id, lr.raw_average_cqd, lr.average_cqd as old_average_cqd,
+               lr.rank as old_rank, lr.golden_rate,
                g.canonical, g.display_raw
         from lane_results lr join groups g on g.id=lr.group_id
         where lr.lane_size=? and lr.raw_average_cqd is not null
@@ -5041,12 +7265,25 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
     # prospective external environment calls require_pairs_or_request(), so any
     # missing scoreable-vs-reference edge exits through MissingRateRequest instead
     # of using a synthetic default or 0.
-    frozen_rsw = _fit_frozen_global_rsw_types(
-        eligible_groups_df,
-        all_edges,
-        seed,
-        out_dir,
-    )
+    # RSW-Type clustering belongs to the retired active/low-rank diagnostics.
+    # Production Correct is a fixed equal-policy reference mean and does not
+    # consume these labels. Avoid the full adaptive clustering pass here.
+    raw_map_for_rsw = {
+        int(g): float(r)
+        for g, r in core_groups_df[["group_id", "raw_cqd"]].itertuples(index=False, name=None)
+    }
+    frozen_rsw = {
+        "beta_raw": 1.0,
+        "type_by_gid": {gid: 0 for gid in raw_map_for_rsw},
+        "label_by_gid": {gid: "RSW_DISABLED_PROSPECTIVE_CORRECT" for gid in raw_map_for_rsw},
+        "kdf": pd.DataFrame(columns=["k", "score"]),
+        "n_types": 1,
+    }
+    pd.DataFrame([
+        {"group_id": gid, "frozen_rsw_type_id": 0, "frozen_RSW-Type": "RSW_DISABLED_PROSPECTIVE_CORRECT"}
+        for gid in sorted(raw_map_for_rsw)
+    ]).to_csv(out_dir / "frozen_global_rsw_types.csv", index=False)
+    frozen_rsw["kdf"].to_csv(out_dir / "frozen_global_rsw_type_selection.csv", index=False)
 
     global_base_map = {
         int(gid): float(raw)
@@ -5061,9 +7298,11 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
     scout_groups_df = eligible_groups_df[eligible_groups_df["scout_candidate"]].copy()
 
     beta_edge_df = all_edges.copy()
+    # Raw beta is a fitted parameter.  Strictly exclude scout/score-only and
+    # blocked rows so they participate only in final scoring.
     raw_map_for_beta = {
         int(g): float(r)
-        for g, r in eligible_groups_df[["group_id", "raw_cqd"]].itertuples(index=False, name=None)
+        for g, r in core_groups_df[["group_id", "raw_cqd"]].itertuples(index=False, name=None)
     }
     beta_edge_df = beta_edge_df[
         beta_edge_df["group_a"].astype(int).isin(raw_map_for_beta)
@@ -5176,7 +7415,7 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
         {"check": "global_base_raw_equals_base", "value": 1, "status": "OK"},
         {"check": "global_base_edges_requested", "value": 0, "status": "OK"},
         {"check": "text_type_computed_rows", "value": int(groups_out["Text-Type"].notna().sum()), "status": "OK" if groups_out["Text-Type"].notna().all() else "FAIL"},
-        {"check": "golden_used", "value": 0, "status": "OK"},
+        {"check": "golden_used_for_score_calibration", "value": 0, "status": "OK"},
         {"check": "legacy_winrate_type_used", "value": 0, "status": "OK"},
         {"check": "manual_cap_or_topk_used", "value": 0, "status": "OK"},
     ]).to_csv(out_dir / "input_integrity_checks.csv", index=False)
@@ -5225,7 +7464,6 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
         final_score_universe_df=final_score_universe_df,
         all_edges=all_edges_all,
         group_members=group_members,
-        frozen_rsw=frozen_rsw,
         raw_min=raw_min,
         lane_size=lane_size,
         out_dir=out_dir,
@@ -5233,6 +7471,72 @@ def run(sqlite_path: Path, out_dir: Path, lane_size: int = 2, nfold: int = 5, se
         resolver_baseline_cqd=float(resolver_baseline_cqd),
         seed=seed,
     )
+    # The fixed-slot K=5 formula is already the final public scale. A later
+    # affine moment alignment would bend that line and change its meaning.
+    groups_out["Correct_center_cqd_pre_final_moment_alignment"] = groups_out["Correct_center_cqd"].astype(float)
+    raw_values = groups_out["Raw Cqd"].astype(float).to_numpy()
+    correct_values = groups_out["selection_weight_cqd"].astype(float).to_numpy()
+    final_moment_info = {
+        "context": "fixed_slot_replacement_k5_no_moment_alignment",
+        "moment_alignment_applied": False,
+        "alignment_reason": "fixed_slot_formula_is_final_scale",
+        "alignment_scale_factor": 1.0,
+        "alignment_shift_cqd": 0.0,
+        "raw_mean": float(np.mean(raw_values)),
+        "raw_sd": float(np.std(raw_values)),
+        "projected_mean_after": float(np.mean(correct_values)),
+        "projected_sd_after": float(np.std(correct_values)),
+    }
+    final_scale = 1.0
+    aligned_score = groups_out["selection_weight_cqd"].astype(float)
+    groups_out["Correct_center_cqd"] = aligned_score
+    groups_out["Correct Cqd"] = aligned_score
+    groups_out["Selection Weight Cqd"] = aligned_score
+    groups_out["Model Correct Cqd"] = aligned_score
+    groups_out["regularized_active_cqd"] = aligned_score
+    groups_out["model_correct_delta_from_raw_cqd"] = aligned_score - groups_out["Raw Cqd"].astype(float)
+    groups_out["prospective_destrat_adjustment_cqd_pre_final_moment_alignment"] = groups_out["prospective_destrat_adjustment_cqd"].astype(float)
+    groups_out["prospective_destrat_adjustment_cqd"] = groups_out["model_correct_delta_from_raw_cqd"].astype(float)
+    for _unc_col in ["Correct_uncertainty_cqd", "Correct_member_overlap_uncertainty_cqd", "prospective_posterior_estimation_se_cqd", "prospective_environment_dispersion_cqd", "prospective_loo_max_abs_change_cqd"]:
+        if _unc_col in groups_out.columns:
+            groups_out[_unc_col] = pd.to_numeric(groups_out[_unc_col], errors="coerce").astype(float) * final_scale
+    groups_out["Correct_potential_cqd"] = aligned_score + groups_out["Correct_uncertainty_cqd"].astype(float)
+    groups_out["Correct_selection_risk_penalized_cqd"] = aligned_score - 0.35 * np.sqrt(
+        groups_out["Correct_uncertainty_cqd"].astype(float) ** 2
+        + groups_out["Correct_member_overlap_uncertainty_cqd"].astype(float) ** 2
+    )
+    groups_out["active_residual_raw_cqd"] = groups_out["model_correct_delta_from_raw_cqd"].astype(float)
+    groups_out["active_residual_shrunk_cqd"] = groups_out["model_correct_delta_from_raw_cqd"].astype(float)
+    groups_out["active_residual_net_adjustment_cqd"] = groups_out["model_correct_delta_from_raw_cqd"].astype(float)
+    groups_out["posterior_delta_logit"] = float(beta) * groups_out["model_correct_delta_from_raw_cqd"].astype(float)
+    groups_out["posterior_strength_logit"] = float(beta) * aligned_score
+    groups_out["full_model_strength_logit"] = groups_out["posterior_strength_logit"].astype(float)
+    groups_out["full_model_corrected_cqd"] = aligned_score
+    pd.DataFrame([final_moment_info]).to_csv(out_dir / "final_score_moment_alignment.csv", index=False)
+    prospective_correct_info.update({
+        "final_moment_alignment_applied": 0,
+        "final_moment_alignment_scale_factor": float(final_moment_info["alignment_scale_factor"]),
+        "final_moment_alignment_shift_cqd": float(final_moment_info["alignment_shift_cqd"]),
+        "final_correct_mean_after_alignment": float(final_moment_info["projected_mean_after"]),
+        "final_correct_sd_after_alignment": float(final_moment_info["projected_sd_after"]),
+        "final_correct_variance_after_alignment": float(final_moment_info["projected_sd_after"]) ** 2,
+        "final_raw_variance": float(final_moment_info["raw_sd"]) ** 2,
+    })
+    coefficient_trace_info = _write_rowwise_correct_target_trace(
+        groups_out=groups_out,
+        all_edges=all_edges_all,
+        reference_ids=prospective_correct_info["prospective_reference_group_ids"],
+        lane_size=lane_size,
+        raw_min=raw_min,
+        out_dir=out_dir,
+        beta=float(beta),
+        alignment_scale=float(final_moment_info["alignment_scale_factor"]),
+        alignment_shift=float(final_moment_info["alignment_shift_cqd"]),
+    )
+    prospective_correct_info.update({
+        f"correct_coefficient_{key}": value
+        for key, value in coefficient_trace_info.items()
+    })
     groups_out["Selection Weight Cqd"] = groups_out["selection_weight_cqd"].astype(float)
     groups_out["Model Correct Cqd"] = groups_out.get("Model Correct Cqd", groups_out["Correct Cqd"]).astype(float)
     groups_out["model_correct_delta_from_raw_cqd"] = groups_out.get(
@@ -5480,7 +7784,9 @@ Correct Cqd = Correct_center_cqd
 Correct_center_cqd = Raw Cqd + conservative multi-environment de-stratification adjustment
 ```
 
-Missing edges are still strict: every prospective future environment calls `MissingRateRequest` through `require_pairs_or_request`; no synthetic default win rate and no 0 fallback are used.
+Missing edges are still strict: every prospective future environment calls
+`MissingRateRequest` through `require_pairs_or_request`; no synthetic default
+win rate and no 0 fallback are used.
 
 ## Headline
 

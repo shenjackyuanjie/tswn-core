@@ -11,7 +11,10 @@ use axum::{
 use serde_json::json;
 use tower_http::services::ServeDir;
 
-use crate::model::{AddGroupsRequest, AddWinratesRequest, BlockGroupRequest, BlockGroupsByTextRequest, ConstrainedSelectionRequest, MergeTeamsRequest, RecomputeLaneRequest, TargetGenerationRequest};
+use crate::model::{
+    AddGroupsRequest, AddWinratesRequest, BlockGroupRequest, BlockGroupsByTextRequest, ConstrainedSelectionRequest,
+    MergeTeamsRequest, RecomputeLaneRequest, TargetGenerationRequest,
+};
 use crate::service::AppService;
 
 pub type SharedService = Arc<AppService>;
@@ -37,13 +40,11 @@ pub fn router(service: AppService) -> Router {
         .route("/api/lanes/:lane_size/targets", post(generate_targets))
         .route("/api/lanes/:lane_size/pair-validation", post(pair_validation))
         .route("/api/jobs/:job_id", get(job))
-        .nest_service("/", ServeDir::new("crates/tswn_lane_ranker/static"))
+        .nest_service("/", ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")))
         .with_state(shared)
 }
 
-async fn health() -> Json<serde_json::Value> {
-    Json(json!({ "ok": true }))
-}
+async fn health() -> Json<serde_json::Value> { Json(json!({ "ok": true })) }
 
 async fn add_groups(
     State(service): State<SharedService>,
@@ -63,7 +64,6 @@ async fn add_winrates(
         .map_err(|err| anyhow::anyhow!("manual winrate task join error: {err}"))??;
     Ok(Json(serde_json::to_value(response)?))
 }
-
 
 async fn block_groups_by_text(
     State(service): State<SharedService>,
@@ -177,20 +177,34 @@ async fn calibration(
     Ok(Json(serde_json::to_value(response)?))
 }
 
-
 async fn generate_targets(
     State(service): State<SharedService>,
     Path(lane_size): Path<usize>,
     Json(req): Json<TargetGenerationRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let service_for_task = service.clone();
-    let response = tokio::task::spawn_blocking(move || service_for_task.generate_lane_targets(lane_size, req))
-        .await
-        .map_err(|err| anyhow::anyhow!("target generation task join error: {err}"))??;
+    let response = tokio::task::spawn_blocking(move || {
+        let result = service_for_task.generate_lane_targets(lane_size, req);
+        if let Err(err) = &result {
+            let group_count = service_for_task.db.lane_results(lane_size).map(|rows| rows.len()).unwrap_or(0);
+            let _ = service_for_task.db.set_lane_status(lane_size, "error", group_count);
+            let _ = service_for_task.db.set_lane_progress(
+                lane_size,
+                "target_generation_error",
+                0,
+                1,
+                0,
+                0,
+                0,
+                &format!("target generation failed: {err:#}"),
+            );
+        }
+        result
+    })
+    .await
+    .map_err(|err| anyhow::anyhow!("target generation task join error: {err}"))??;
     Ok(Json(serde_json::to_value(response)?))
 }
-
-
 
 async fn pair_validation(
     State(service): State<SharedService>,
@@ -212,7 +226,6 @@ async fn pair_validation(
     Ok(Json(response))
 }
 
-
 async fn lanes(State(service): State<SharedService>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(service.db.lane_statuses()?)?))
 }
@@ -231,10 +244,7 @@ async fn lane_progress(
     Ok(Json(serde_json::to_value(service.db.lane_progress(lane_size)?)?))
 }
 
-async fn job(
-    State(service): State<SharedService>,
-    Path(job_id): Path<i64>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+async fn job(State(service): State<SharedService>, Path(job_id): Path<i64>) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(serde_json::to_value(service.db.job(job_id)?)?))
 }
 
@@ -245,9 +255,7 @@ impl<E> From<E> for ApiError
 where
     E: Into<anyhow::Error>,
 {
-    fn from(err: E) -> Self {
-        Self(err.into())
-    }
+    fn from(err: E) -> Self { Self(err.into()) }
 }
 
 impl IntoResponse for ApiError {

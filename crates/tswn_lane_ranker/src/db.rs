@@ -4,7 +4,9 @@ use std::sync::{Arc, Mutex};
 use anyhow::Context;
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::model::{GroupId, JobId, LaneJob, LaneProgress, LaneResultRow, LaneStatus, StoredGroup};
+use crate::model::{
+    CorrectTargetTrace, CorrectTargetTraceWeight, GroupId, JobId, LaneJob, LaneProgress, LaneResultRow, LaneStatus, StoredGroup,
+};
 use crate::parser::ParsedGroup;
 use crate::team::TeamDsu;
 
@@ -22,6 +24,21 @@ fn ensure_lane_result_column(conn: &Connection, name: &str, definition: &str) ->
     Ok(())
 }
 
+fn ensure_correct_target_trace_weight_column(conn: &Connection, name: &str, definition: &str) -> anyhow::Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(correct_target_trace_weights)")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for row in rows {
+        if row? == name {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        &format!("ALTER TABLE correct_target_trace_weights ADD COLUMN {name} {definition}"),
+        [],
+    )?;
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
@@ -32,14 +49,15 @@ impl Db {
     pub fn open(path: &str) -> anyhow::Result<Self> {
         let conn = Connection::open(path).with_context(|| format!("open sqlite database: {path}"))?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        let db = Self { conn: Arc::new(Mutex::new(conn)), path: Arc::new(path.to_string()) };
+        let db = Self {
+            conn: Arc::new(Mutex::new(conn)),
+            path: Arc::new(path.to_string()),
+        };
         db.init()?;
         Ok(db)
     }
 
-    pub fn path(&self) -> &str {
-        self.path.as_str()
-    }
+    pub fn path(&self) -> &str { self.path.as_str() }
 
     fn init(&self) -> anyhow::Result<()> {
         let conn = self.conn.lock().unwrap();
@@ -99,6 +117,36 @@ impl Db {
                 PRIMARY KEY (lane_size, group_id),
                 FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS correct_target_trace_meta (
+                lane_size INTEGER PRIMARY KEY,
+                trace_version TEXT NOT NULL,
+                score_mode TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS correct_target_trace_weights (
+                lane_size INTEGER NOT NULL,
+                reference_scope TEXT NOT NULL,
+                group_id INTEGER NOT NULL,
+                reference_weight REAL NOT NULL,
+                nominal_weight REAL NOT NULL,
+                raw_golden_weight REAL NOT NULL,
+                calibration_log_multiplier REAL NOT NULL DEFAULT 0,
+                calibration_multiplier REAL NOT NULL DEFAULT 1,
+                common_coefficient REAL NOT NULL DEFAULT 0,
+                coefficient_mean REAL NOT NULL DEFAULT 0,
+                coefficient_stddev REAL NOT NULL DEFAULT 0,
+                correct_target_weight REAL NOT NULL,
+                source TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (lane_size, reference_scope, group_id),
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_correct_target_trace_weights_lane
+                ON correct_target_trace_weights(lane_size);
 
             CREATE TABLE IF NOT EXISTS lane_status (
                 lane_size INTEGER PRIMARY KEY,
@@ -194,6 +242,13 @@ impl Db {
         ensure_lane_result_column(&conn, "residual_profile_embedding_y", "REAL")?;
         ensure_lane_result_column(&conn, "residual_profile_shape_rms", "REAL")?;
         ensure_lane_result_column(&conn, "residual_profile_variance_feature", "REAL")?;
+        ensure_correct_target_trace_weight_column(&conn, "raw_golden_weight", "REAL NOT NULL DEFAULT 0")?;
+        ensure_correct_target_trace_weight_column(&conn, "calibration_log_multiplier", "REAL NOT NULL DEFAULT 0")?;
+        ensure_correct_target_trace_weight_column(&conn, "calibration_multiplier", "REAL NOT NULL DEFAULT 1")?;
+        ensure_correct_target_trace_weight_column(&conn, "correct_target_weight", "REAL NOT NULL DEFAULT 0")?;
+        ensure_correct_target_trace_weight_column(&conn, "common_coefficient", "REAL NOT NULL DEFAULT 0")?;
+        ensure_correct_target_trace_weight_column(&conn, "coefficient_mean", "REAL NOT NULL DEFAULT 0")?;
+        ensure_correct_target_trace_weight_column(&conn, "coefficient_stddev", "REAL NOT NULL DEFAULT 0")?;
 
         Ok(())
     }
@@ -203,11 +258,9 @@ impl Db {
         let tx = conn.transaction()?;
 
         let existing: Option<GroupId> = tx
-            .query_row(
-                "SELECT id FROM groups WHERE canonical = ?1",
-                params![parsed.canonical],
-                |row| row.get(0),
-            )
+            .query_row("SELECT id FROM groups WHERE canonical = ?1", params![parsed.canonical], |row| {
+                row.get(0)
+            })
             .optional()?;
 
         if let Some(id) = existing {
@@ -240,11 +293,7 @@ impl Db {
         self.load_groups_by_lane_for_run(lane_size, false)
     }
 
-    pub fn load_groups_by_lane_for_run(
-        &self,
-        lane_size: usize,
-        skip_archived: bool,
-    ) -> anyhow::Result<Vec<StoredGroup>> {
+    pub fn load_groups_by_lane_for_run(&self, lane_size: usize, skip_archived: bool) -> anyhow::Result<Vec<StoredGroup>> {
         let conn = self.conn.lock().unwrap();
         let sql = if skip_archived {
             "SELECT g.id, g.canonical, g.display_raw, g.lane_size, g.team_name,
@@ -305,7 +354,13 @@ impl Db {
             .query_row(
                 "SELECT id, lane_size, canonical FROM groups WHERE canonical = ?1",
                 params![canonical],
-                |row| Ok((row.get::<_, GroupId>(0)?, row.get::<_, i64>(1)? as usize, row.get::<_, String>(2)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, GroupId>(0)?,
+                        row.get::<_, i64>(1)? as usize,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
             )
             .optional()?;
         Ok(group)
@@ -373,7 +428,6 @@ impl Db {
         Ok(Some(group))
     }
 
-
     pub fn all_nonempty_lanes(&self) -> anyhow::Result<Vec<usize>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT DISTINCT lane_size FROM groups ORDER BY lane_size ASC")?;
@@ -418,11 +472,7 @@ impl Db {
         Ok(())
     }
 
-    pub fn save_rate_pairs_bulk(
-        &self,
-        rates: &[(GroupId, GroupId, f64)],
-        samples: usize,
-    ) -> anyhow::Result<()> {
+    pub fn save_rate_pairs_bulk(&self, rates: &[(GroupId, GroupId, f64)], samples: usize) -> anyhow::Result<()> {
         if rates.is_empty() {
             return Ok(());
         }
@@ -454,6 +504,18 @@ impl Db {
     pub fn delete_group_and_rates(&self, group_id: GroupId) -> anyhow::Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
+        let lane_size = tx
+            .query_row("SELECT lane_size FROM groups WHERE id = ?1", params![group_id], |row| {
+                row.get::<_, i64>(0)
+            })
+            .optional()?;
+        if let Some(lane_size) = lane_size {
+            tx.execute(
+                "DELETE FROM correct_target_trace_weights WHERE lane_size = ?1",
+                params![lane_size],
+            )?;
+            tx.execute("DELETE FROM correct_target_trace_meta WHERE lane_size = ?1", params![lane_size])?;
+        }
         tx.execute("DELETE FROM group_rates WHERE group_a = ?1 OR group_b = ?1", params![group_id])?;
         tx.execute("DELETE FROM lane_results WHERE group_id = ?1", params![group_id])?;
         tx.execute("DELETE FROM groups WHERE id = ?1", params![group_id])?;
@@ -461,12 +523,7 @@ impl Db {
         Ok(())
     }
 
-    pub fn archive_group_combination(
-        &self,
-        group_id: GroupId,
-        reason: &str,
-        average_cqd: f64,
-    ) -> anyhow::Result<bool> {
+    pub fn archive_group_combination(&self, group_id: GroupId, reason: &str, average_cqd: f64) -> anyhow::Result<bool> {
         let conn = self.conn.lock().unwrap();
         let group: Option<(String, usize)> = conn
             .query_row(
@@ -496,10 +553,7 @@ impl Db {
         Ok(true)
     }
 
-    pub fn archive_group_combinations(
-        &self,
-        candidates: &[(GroupId, String, f64)],
-    ) -> anyhow::Result<usize> {
+    pub fn archive_group_combinations(&self, candidates: &[(GroupId, String, f64)]) -> anyhow::Result<usize> {
         let mut archived = 0usize;
         for (group_id, reason, average_cqd) in candidates {
             if self.archive_group_combination(*group_id, reason, *average_cqd)? {
@@ -509,6 +563,50 @@ impl Db {
         Ok(archived)
     }
 
+    /// 用当前全量复核结果替换某条赛道的自动封存集合。
+    ///
+    /// 旧实现只会向 `archived_groups` 增加记录；而默认运行又会跳过这些记录，
+    /// 因此门槛或对局数据变化后，已经封存的组合永远没有机会自动恢复。
+    pub fn replace_lane_archived_groups(&self, lane_size: usize, candidates: &[(GroupId, String, f64)]) -> anyhow::Result<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        tx.execute("DELETE FROM archived_groups WHERE lane_size = ?1", params![lane_size as i64])?;
+
+        let mut archived = 0usize;
+        for (group_id, reason, average_cqd) in candidates {
+            let group: Option<(String, usize)> = tx
+                .query_row(
+                    "SELECT canonical, lane_size FROM groups WHERE id = ?1",
+                    params![group_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize)),
+                )
+                .optional()?;
+
+            let Some((canonical, group_lane_size)) = group else {
+                continue;
+            };
+            if group_lane_size != lane_size {
+                anyhow::bail!(
+                    "封存候选 {} 属于 {} 人赛道，不能写入 {} 人赛道",
+                    group_id,
+                    group_lane_size,
+                    lane_size
+                );
+            }
+
+            tx.execute(
+                "INSERT INTO archived_groups
+                 (group_id, canonical, lane_size, reason, average_cqd, archived_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                params![group_id, canonical, lane_size as i64, reason, average_cqd],
+            )?;
+            archived += 1;
+        }
+
+        tx.commit()?;
+        Ok(archived)
+    }
 
     pub fn set_group_blocked(&self, group_id: GroupId, blocked: bool) -> anyhow::Result<Option<(usize, String)>> {
         let conn = self.conn.lock().unwrap();
@@ -611,9 +709,172 @@ impl Db {
     }
 
     pub fn clear_lane_results(&self, lane_size: usize) -> anyhow::Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM lane_results WHERE lane_size = ?1", params![lane_size as i64])?;
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM correct_target_trace_weights WHERE lane_size = ?1",
+            params![lane_size as i64],
+        )?;
+        tx.execute(
+            "DELETE FROM correct_target_trace_meta WHERE lane_size = ?1",
+            params![lane_size as i64],
+        )?;
+        tx.execute("DELETE FROM lane_results WHERE lane_size = ?1", params![lane_size as i64])?;
+        tx.commit()?;
         Ok(())
+    }
+
+    pub fn clear_correct_target_trace(&self, lane_size: usize) -> anyhow::Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM correct_target_trace_weights WHERE lane_size = ?1",
+            params![lane_size as i64],
+        )?;
+        tx.execute(
+            "DELETE FROM correct_target_trace_meta WHERE lane_size = ?1",
+            params![lane_size as i64],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn replace_correct_target_trace(&self, lane_size: usize, trace: &CorrectTargetTrace) -> anyhow::Result<()> {
+        if trace.trace_version.trim().is_empty() || trace.score_mode.trim().is_empty() {
+            anyhow::bail!("correct target trace version and score mode must be non-empty");
+        }
+        let _: serde_json::Value =
+            serde_json::from_str(&trace.metadata_json).context("correct target trace metadata_json must be valid JSON")?;
+        if trace.weights.is_empty() {
+            anyhow::bail!("correct target trace must contain at least one reference weight");
+        }
+        let mut normalized_scope_sums: HashMap<&str, f64> = HashMap::new();
+        for row in &trace.weights {
+            if row.reference_scope.trim().is_empty() || row.source.trim().is_empty() {
+                anyhow::bail!("correct target trace scope and source must be non-empty");
+            }
+            if !row.reference_weight.is_finite()
+                || row.reference_weight <= 0.0
+                || !row.nominal_weight.is_finite()
+                || row.nominal_weight.abs() <= 1e-15
+                || !row.raw_golden_weight.is_finite()
+                || row.raw_golden_weight < 0.0
+                || !row.common_coefficient.is_finite()
+                || row.common_coefficient.abs() <= 1e-15
+                || !row.coefficient_mean.is_finite()
+                || !row.coefficient_stddev.is_finite()
+                || row.coefficient_stddev < 0.0
+                || !row.correct_target_weight.is_finite()
+                || row.correct_target_weight.abs() <= 1e-15
+                || (row.nominal_weight - row.correct_target_weight).abs() > 1e-10
+                || (50.0 * row.common_coefficient - row.correct_target_weight).abs() > 1e-8
+            {
+                anyhow::bail!(
+                    "correct target trace weights must be finite and non-zero for group_id={}",
+                    row.group_id
+                );
+            }
+            *normalized_scope_sums.entry(row.reference_scope.as_str()).or_insert(0.0) += row.reference_weight;
+        }
+        for (scope, sum) in normalized_scope_sums {
+            if (sum - 1.0).abs() > 1e-8 {
+                anyhow::bail!(
+                    "correct target trace normalized weights for scope={} must sum to 1, got {:.12}",
+                    scope,
+                    sum
+                );
+            }
+        }
+
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM correct_target_trace_weights WHERE lane_size = ?1",
+            params![lane_size as i64],
+        )?;
+        tx.execute(
+            "DELETE FROM correct_target_trace_meta WHERE lane_size = ?1",
+            params![lane_size as i64],
+        )?;
+        tx.execute(
+            "INSERT INTO correct_target_trace_meta
+             (lane_size, trace_version, score_mode, metadata_json, updated_at)
+             VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)",
+            params![lane_size as i64, trace.trace_version, trace.score_mode, trace.metadata_json,],
+        )?;
+        for row in &trace.weights {
+            tx.execute(
+                "INSERT INTO correct_target_trace_weights
+                 (lane_size, reference_scope, group_id, reference_weight, nominal_weight,
+                  raw_golden_weight, calibration_log_multiplier, calibration_multiplier,
+                  common_coefficient, coefficient_mean, coefficient_stddev,
+                  correct_target_weight, source, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1, ?7, ?8, ?9, ?10, ?11, CURRENT_TIMESTAMP)",
+                params![
+                    lane_size as i64,
+                    row.reference_scope,
+                    row.group_id,
+                    row.reference_weight,
+                    row.nominal_weight,
+                    row.raw_golden_weight,
+                    row.common_coefficient,
+                    row.coefficient_mean,
+                    row.coefficient_stddev,
+                    row.correct_target_weight,
+                    row.source,
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn correct_target_trace(&self, lane_size: usize) -> anyhow::Result<Option<CorrectTargetTrace>> {
+        let conn = self.conn.lock().unwrap();
+        let meta = conn
+            .query_row(
+                "SELECT trace_version, score_mode, metadata_json
+                 FROM correct_target_trace_meta WHERE lane_size = ?1",
+                params![lane_size as i64],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+            )
+            .optional()?;
+        let Some((trace_version, score_mode, metadata_json)) = meta else {
+            return Ok(None);
+        };
+
+        let mut stmt = conn.prepare(
+            "SELECT reference_scope, group_id, reference_weight, nominal_weight,
+                    raw_golden_weight, common_coefficient, coefficient_mean,
+                    coefficient_stddev, correct_target_weight, source
+             FROM correct_target_trace_weights
+             WHERE lane_size = ?1
+             ORDER BY reference_scope ASC, group_id ASC",
+        )?;
+        let rows = stmt.query_map(params![lane_size as i64], |row| {
+            Ok(CorrectTargetTraceWeight {
+                reference_scope: row.get(0)?,
+                group_id: row.get(1)?,
+                reference_weight: row.get(2)?,
+                nominal_weight: row.get(3)?,
+                raw_golden_weight: row.get(4)?,
+                common_coefficient: row.get(5)?,
+                coefficient_mean: row.get(6)?,
+                coefficient_stddev: row.get(7)?,
+                correct_target_weight: row.get(8)?,
+                source: row.get(9)?,
+            })
+        })?;
+        let mut weights = Vec::new();
+        for row in rows {
+            weights.push(row?);
+        }
+        Ok(Some(CorrectTargetTrace {
+            trace_version,
+            score_mode,
+            metadata_json,
+            weights,
+        }))
     }
 
     pub fn save_lane_results(&self, lane_size: usize, rows: &[LaneResultRow]) -> anyhow::Result<()> {
@@ -677,90 +938,82 @@ impl Db {
         Ok(())
     }
 
+    pub fn lane_statuses(&self) -> anyhow::Result<Vec<LaneStatus>> {
+        let tuples = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT lane_size, status, group_count FROM lane_status ORDER BY lane_size ASC")?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)? as usize,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)? as usize,
+                ))
+            })?;
 
-pub fn lane_statuses(&self) -> anyhow::Result<Vec<LaneStatus>> {
-    let tuples = {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT lane_size, status, group_count FROM lane_status ORDER BY lane_size ASC",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)? as usize,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)? as usize,
-            ))
-        })?;
+            let mut tuples = Vec::new();
+            for row in rows {
+                tuples.push(row?);
+            }
+            tuples
+        };
 
-        let mut tuples = Vec::new();
-        for row in rows {
-            tuples.push(row?);
+        let mut out = Vec::with_capacity(tuples.len());
+        for (lane_size, status, group_count) in tuples {
+            let progress = self.lane_progress(lane_size)?;
+            out.push(LaneStatus {
+                lane_size,
+                status,
+                group_count,
+                progress,
+            });
         }
-        tuples
-    };
-
-    let mut out = Vec::with_capacity(tuples.len());
-    for (lane_size, status, group_count) in tuples {
-        let progress = self.lane_progress(lane_size)?;
-        out.push(LaneStatus {
-            lane_size,
-            status,
-            group_count,
-            progress,
-        });
+        Ok(out)
     }
-    Ok(out)
-}
 
+    pub fn lane_top_score_group_ids(
+        &self,
+        lane_size: usize,
+        limit: usize,
+        min_average_cqd: Option<f64>,
+    ) -> anyhow::Result<Vec<GroupId>> {
+        let conn = self.conn.lock().unwrap();
+        let mut ids = Vec::new();
 
-pub fn lane_top_score_group_ids(
-    &self,
-    lane_size: usize,
-    limit: usize,
-    min_average_cqd: Option<f64>,
-) -> anyhow::Result<Vec<GroupId>> {
-    let conn = self.conn.lock().unwrap();
-    let mut ids = Vec::new();
-
-    if let Some(min_average_cqd) = min_average_cqd {
-        let mut stmt = conn.prepare(
-            "SELECT r.group_id
+        if let Some(min_average_cqd) = min_average_cqd {
+            let mut stmt = conn.prepare(
+                "SELECT r.group_id
              FROM lane_results r
              JOIN groups g ON g.id = r.group_id
              WHERE r.lane_size = ?1
                AND r.average_cqd >= ?2
              ORDER BY r.average_cqd DESC, r.rank ASC
              LIMIT ?3",
-        )?;
+            )?;
 
-        let rows = stmt.query_map(
-            params![lane_size as i64, min_average_cqd, limit as i64],
-            |row| row.get(0),
-        )?;
+            let rows = stmt.query_map(params![lane_size as i64, min_average_cqd, limit as i64], |row| row.get(0))?;
 
-        for row in rows {
-            ids.push(row?);
-        }
-    } else {
-        let mut stmt = conn.prepare(
-            "SELECT r.group_id
+            for row in rows {
+                ids.push(row?);
+            }
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT r.group_id
              FROM lane_results r
              JOIN groups g ON g.id = r.group_id
              WHERE r.lane_size = ?1
              ORDER BY r.average_cqd DESC, r.rank ASC
              LIMIT ?2",
-        )?;
+            )?;
 
-        let rows = stmt.query_map(params![lane_size as i64, limit as i64], |row| row.get(0))?;
+            let rows = stmt.query_map(params![lane_size as i64, limit as i64], |row| row.get(0))?;
 
-        for row in rows {
-            ids.push(row?);
+            for row in rows {
+                ids.push(row?);
+            }
         }
+
+        Ok(ids)
     }
-
-    Ok(ids)
-}
-
 
     pub fn lane_rate_map(&self, lane_size: usize) -> anyhow::Result<HashMap<(GroupId, GroupId), f64>> {
         let conn = self.conn.lock().unwrap();
@@ -772,11 +1025,7 @@ pub fn lane_top_score_group_ids(
              WHERE ga.lane_size = ?1 AND gb.lane_size = ?1",
         )?;
         let rows = stmt.query_map(params![lane_size as i64], |row| {
-            Ok((
-                row.get::<_, GroupId>(0)?,
-                row.get::<_, GroupId>(1)?,
-                row.get::<_, f64>(2)?,
-            ))
+            Ok((row.get::<_, GroupId>(0)?, row.get::<_, GroupId>(1)?, row.get::<_, f64>(2)?))
         })?;
 
         let mut out = HashMap::new();
@@ -791,9 +1040,7 @@ pub fn lane_top_score_group_ids(
         let conn = self.conn.lock().unwrap();
 
         let mut team_stmt = conn.prepare("SELECT name, parent FROM teams")?;
-        let team_rows = team_stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
+        let team_rows = team_stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
         let mut team_pairs = Vec::new();
         for row in team_rows {
             team_pairs.push(row?);
@@ -1061,13 +1308,79 @@ pub enum InsertGroupOutcome {
 }
 
 fn load_members_locked(conn: &Connection, group_id: GroupId) -> rusqlite::Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT member FROM group_members WHERE group_id = ?1 ORDER BY position ASC",
-    )?;
+    let mut stmt = conn.prepare("SELECT member FROM group_members WHERE group_id = ?1 ORDER BY position ASC")?;
     let rows = stmt.query_map(params![group_id], |row| row.get(0))?;
     let mut members = Vec::new();
     for row in rows {
         members.push(row?);
     }
     Ok(members)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse_group;
+
+    #[test]
+    fn correct_target_trace_roundtrips_and_is_invalidated_with_lane_results() {
+        let db = Db::open(":memory:").unwrap();
+        let parsed = parse_group("alice@A").unwrap();
+        let group_id = match db.insert_group(&parsed).unwrap() {
+            InsertGroupOutcome::Added(id) => id,
+            InsertGroupOutcome::Duplicated(id) => id,
+        };
+        let trace = CorrectTargetTrace {
+            trace_version: "raw_correct_stable_backprop_v8".to_string(),
+            score_mode: "exact_k5_replacement_correct_big_target".to_string(),
+            metadata_json: r#"{"lane_size":1}"#.to_string(),
+            weights: vec![CorrectTargetTraceWeight {
+                reference_scope: "common_correct_candidate_coefficients".to_string(),
+                group_id,
+                reference_weight: 1.0,
+                nominal_weight: 0.75,
+                raw_golden_weight: 0.5,
+                common_coefficient: 0.015,
+                coefficient_mean: 0.014,
+                coefficient_stddev: 0.002,
+                correct_target_weight: 0.75,
+                source: "test_row_coefficient_projection".to_string(),
+            }],
+        };
+
+        db.replace_correct_target_trace(1, &trace).unwrap();
+        let loaded = db.correct_target_trace(1).unwrap().unwrap();
+        assert_eq!(loaded.trace_version, trace.trace_version);
+        assert_eq!(loaded.score_mode, trace.score_mode);
+        assert_eq!(loaded.weights.len(), 1);
+        assert_eq!(loaded.weights[0].group_id, group_id);
+        assert_eq!(loaded.weights[0].reference_weight, 1.0);
+
+        db.clear_lane_results(1).unwrap();
+        assert!(db.correct_target_trace(1).unwrap().is_none());
+    }
+
+    #[test]
+    fn replacing_lane_archives_restores_groups_omitted_from_the_new_set() {
+        let db = Db::open(":memory:").unwrap();
+        let first = parse_group("alice@A").unwrap();
+        let second = parse_group("bob@B").unwrap();
+        let first_id = match db.insert_group(&first).unwrap() {
+            InsertGroupOutcome::Added(id) | InsertGroupOutcome::Duplicated(id) => id,
+        };
+        let second_id = match db.insert_group(&second).unwrap() {
+            InsertGroupOutcome::Added(id) | InsertGroupOutcome::Duplicated(id) => id,
+        };
+
+        db.archive_group_combination(first_id, "old_threshold", 47.2).unwrap();
+        db.archive_group_combination(second_id, "still_below_threshold", 46.8).unwrap();
+        assert!(db.load_groups_by_lane_for_run(1, true).unwrap().is_empty());
+
+        db.replace_lane_archived_groups(1, &[(second_id, "still_below_threshold".to_string(), 46.8)])
+            .unwrap();
+
+        let active = db.load_groups_by_lane_for_run(1, true).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, first_id);
+    }
 }

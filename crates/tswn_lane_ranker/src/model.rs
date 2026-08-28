@@ -51,9 +51,7 @@ impl RankNode {
         }
     }
 
-    pub fn avg_cqd(&self) -> f64 {
-        if self.n == 0 { self.cqd } else { self.cqds / self.n as f64 }
-    }
+    pub fn avg_cqd(&self) -> f64 { if self.n == 0 { self.cqd } else { self.cqds / self.n as f64 } }
 
     pub fn variance_cqd(&self) -> f64 {
         if self.n == 0 {
@@ -65,7 +63,11 @@ impl RankNode {
     }
 
     pub fn golden_rate(&self) -> f64 {
-        if self.odds_n == 0 { 0.0 } else { self.bz as f64 / self.odds_n as f64 }
+        if self.odds_n == 0 {
+            0.0
+        } else {
+            self.bz as f64 / self.odds_n as f64
+        }
     }
 }
 
@@ -196,7 +198,6 @@ pub struct LaneJob {
     pub error: Option<String>,
 }
 
-
 #[derive(Debug, Deserialize)]
 pub struct BlockGroupRequest {
     /// 外层 worker。0 或不填 = 自动 worker + 动态队列；>0 = 指定 worker 数 + 静态分块。
@@ -262,7 +263,6 @@ pub struct AddGroupsResponse {
     pub ignored: Vec<IgnoredGroup>,
     pub queued_lanes: Vec<usize>,
 }
-
 
 #[derive(Debug, Deserialize)]
 pub struct AddWinratesRequest {
@@ -365,22 +365,66 @@ pub struct ConstrainedSelectionResponse {
     pub cqd_threshold: f64,
 }
 
-
 #[derive(Debug, Deserialize)]
 pub struct TargetGenerationRequest {
-    /// 靶子主榜候选最低 C-Score。默认 49.0。
+    /// 兼容旧版 50 靶 API。direct trace 模式不再按 C-Score 截断。
     pub cqd_threshold: Option<f64>,
-    /// 前多少个靶子固定取 Correct 主榜 greedy 顶部。默认 40，总靶子数固定 50。
+    /// 兼容旧版 50 靶 API。direct trace 模式不再固定主榜前缀。
     pub fixed_main_count: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CorrectTargetTraceWeight {
+    pub reference_scope: String,
+    pub group_id: GroupId,
+    /// 仅用于审计展示的归一化公共权重，所有行之和为 1。
+    pub reference_weight: f64,
+    /// 可直接导出的普通靶权重，等于 50 * common_coefficient。
+    pub nominal_weight: f64,
+    /// Raw 阶段记录的原始 Golden 权重。
+    pub raw_golden_weight: f64,
+    /// 从 Golden 出发、经稳定自由总质量残差路径选择的带符号公共 Correct 系数 a_g。
+    pub common_coefficient: f64,
+    /// 所有逐行 Correct 系数在该候选列上的无约束均值。
+    pub coefficient_mean: f64,
+    /// 所有逐行 Correct 系数在该候选列上的总体标准差。
+    pub coefficient_stddev: f64,
+    /// 可直接用于普通带权打靶的权重 50*a_g。
+    pub correct_target_weight: f64,
+    pub source: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CorrectTargetTrace {
+    pub trace_version: String,
+    pub score_mode: String,
+    pub metadata_json: String,
+    pub weights: Vec<CorrectTargetTraceWeight>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TargetGenerationRow {
     pub target_rank: usize,
-    /// MILP target weight. The exported weighted config prints this first.
+    /// 入选项的大靶原权重加上从未入选大靶行搬运来的尾部增量。
     pub target_weight: f64,
-    /// fixed_main_prefix / weighted_milp_fill
+    /// 该入选项在完整 Correct 大靶中的原始权重。
+    #[serde(rename = "big_target_base_weight")]
+    pub base_weight: Option<f64>,
+    /// 锁定锚点加大靶画像覆盖选号后、进入最终调平前的初始权重。
+    #[serde(rename = "seed_initial_weight")]
+    pub seed_initial_weight: Option<f64>,
+    /// 从所有未入选大靶行承接的带符号权重。
+    #[serde(rename = "transported_tail_addition")]
+    pub fitted_tail_weight: Option<f64>,
+    /// 保持完整大靶总质量的内部血缘权重；导出权重由它按 n/M 缩放。
+    pub lineage_weight: Option<f64>,
+    /// locked_top3_proportional_mass_profile_seed_then_flatten
     pub phase: String,
+    pub trace_component: String,
+    /// 当前为 all_correct_candidates。
+    pub trace_scope: String,
+    pub trace_source: String,
+    pub reference_weight: Option<f64>,
     pub group_id: GroupId,
     pub canonical: String,
     pub team_name: String,
@@ -424,8 +468,59 @@ pub struct TargetReferenceAuditRow {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TargetGenerationSummary {
+    pub algorithm: String,
+    pub trace_version: String,
+    pub score_mode: String,
     pub lane_size: usize,
+    /// 压缩后实际保留的靶子数量 n。
     pub target_count: usize,
+    /// 直接打靶公式 Σ(rate*weight)/n 中的分母 n。
+    pub score_denominator: usize,
+    pub unique_group_count: usize,
+    pub raw_trace_count: usize,
+    pub correct_trace_count: usize,
+    pub correct_reference_scope_count: usize,
+    pub raw_weight_sum: f64,
+    pub correct_nominal_weight_sum: f64,
+    pub correct_target_weight_sum: f64,
+    pub correct_target_candidate_count: usize,
+    pub correct_target_nonzero_count: usize,
+    /// 公共 a_g 对已有 Correct Score 的平均绝对前向误差。
+    pub correct_forward_replay_mean_abs_diff: f64,
+    pub correct_forward_replay_max_abs_diff: f64,
+    pub correct_forward_replay_rmse: f64,
+    /// 逐行系数追溯对已有 Correct Score 的重放误差；应只含浮点噪声。
+    pub row_coefficient_replay_mean_abs_diff: f64,
+    pub row_coefficient_replay_max_abs_diff: f64,
+    pub exact_replay_requires_trace_semantics: bool,
+    /// 兼容旧 API 字段名；当前含义为压缩前完整 Correct 大靶权重和。
+    pub merged_weight_sum_before_normalization: f64,
+    pub merged_normalization_scale: f64,
+    pub support_base_weight_sum: f64,
+    pub tail_group_count: usize,
+    pub tail_weight_sum: f64,
+    pub fitted_addition_sum: f64,
+    pub fit_baseline_mean_abs_diff: f64,
+    pub fit_baseline_max_abs_diff: f64,
+    pub fit_baseline_rmse: f64,
+    pub fit_optimized_mean_abs_diff: f64,
+    pub fit_optimized_max_abs_diff: f64,
+    pub fit_optimized_rmse: f64,
+    pub fit_weight_regularization_applied: bool,
+    pub fit_baseline_addition_l2_norm: f64,
+    pub fit_optimized_addition_l2_norm: f64,
+    pub fit_optimized_addition_max_abs: f64,
+    pub fit_optimized_distance_from_proportional_l2: f64,
+    /// 以下四个字段保留旧 API 兼容。
+    pub fit_final_weight_std_limit: f64,
+    pub fit_final_weight_max_deviation_limit: f64,
+    pub fit_optimized_final_weight_std: f64,
+    pub fit_optimized_final_weight_max_deviation: f64,
+    /// 按最终 /n 计分时，压缩靶相对既有 Correct Score 的压平误差。
+    pub compressed_replay_mean_abs_diff: f64,
+    pub compressed_replay_max_abs_diff: f64,
+    pub compressed_replay_rmse: f64,
+    /// 以下字段保留旧版 API 兼容；新流程不执行旧 fixed/MILP。
     pub fixed_main_count: usize,
     pub optimized_count: usize,
     pub player_cap: usize,
@@ -454,9 +549,10 @@ pub struct TargetGenerationSummary {
 #[derive(Debug, Clone, Serialize)]
 pub struct TargetGenerationResponse {
     pub summary: TargetGenerationSummary,
-    /// Plain weighted target configuration, one line per target:
-    /// weight<TAB>canonical
+    /// 最终可直接使用的 `weight<TAB>canonical` 可变数量配置。
     pub target_config_text: String,
+    /// Correct 重放公式及常量，由产生当前 Correct 分数的校准运行记录。
+    pub trace_metadata: serde_json::Value,
     pub rows: Vec<TargetGenerationRow>,
     pub reference_audit_rows: Vec<TargetReferenceAuditRow>,
 }
