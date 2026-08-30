@@ -38,7 +38,7 @@ def group_win_rate(
     ...
 
 def prepared_win_rate(prepared: PreparedRunner, n: int, eval_rq: float | None = None, thread: int = 0) -> float:
-    """基于 PreparedRunner 计算第一组对其余组的胜率百分比。thread: 0=自动, 1=单线程, n=指定线程数。"""
+    """基于 PreparedRunner 计算胜率；eval_rq 只能省略或与创建值相同。"""
     ...
 
 def compute_show_timeline(updates: list[RunUpdate], player_count: int, scale: bool = True) -> list[TimedEvent]:
@@ -56,6 +56,14 @@ class WinRateResult:
     def init_nanos(self) -> int: ...
     @property
     def fight_nanos(self) -> int: ...
+
+class InvalidInputError(ValueError):
+    @property
+    def code(self) -> str: ...
+
+class TswnRuntimeError(RuntimeError):
+    @property
+    def code(self) -> str: ...
 
 class ScoreResult:
     @property
@@ -208,6 +216,15 @@ def default_custom_runtime_normalized_run(raw: str, max_rounds: int) -> dict[str
     """使用默认 custom Runtime profile 运行输入并返回 normalized-run 数据。"""
     ...
 
+def battle_replay(
+    raw: str,
+    eval_rq: float | None = None,
+    include_icons: bool = False,
+    max_rounds: int | None = None,
+) -> dict[str, object]:
+    """运行完整对局并返回 UI 可直接消费的结构化回放。"""
+    ...
+
 def name_to_png_base64(name: str) -> str:
     """将名字渲染为 PNG 并返回 Base64 字符串。"""
     ...
@@ -247,6 +264,7 @@ __all__ = [
     "icon_info",
     "parse_group_lines",
     "default_custom_runtime_normalized_run",
+    "battle_replay",
     "name_to_icon_rgba",
     "name_to_png_base64",
     "name_to_png_bytes",

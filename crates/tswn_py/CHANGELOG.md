@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 新增 `battle_replay()` 推荐高层入口与带稳定 `.code` 的 `InvalidInputError` / `TswnRuntimeError`；PreparedRunner 增加只读 `eval_rq`。
+
 ### 修复
 
 - 同步 core 的 Merge 状态刷新修复；`namer_pf()` / `score()` 在吞噬仅

@@ -20,3 +20,9 @@ impl PyRunnerError {
         }
     }
 }
+
+#[pyo3::pymethods]
+impl PyRunnerError {
+    #[getter]
+    fn code(&self) -> &'static str { "RUNNER_INIT_FAILED" }
+}

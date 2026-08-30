@@ -18,19 +18,34 @@ pub mod replay;
 #[pyo3(name = "PreparedRunner")]
 pub struct PyPreparedRunner {
     pub inner: CorePreparedRunner,
+    pub eval_rq: f64,
 }
 
 #[pymethods]
 impl PyPreparedRunner {
     #[pyo3(signature = (n, eval_rq=None, thread=0))]
     pub fn win_rate(&self, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResult<f64> {
-        let eval_rq = eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ);
-        crate::run_prepared_win_rate(&self.inner, n, eval_rq, thread)
+        if let Some(eval_rq) = eval_rq
+            && eval_rq.to_bits() != self.eval_rq.to_bits()
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "eval_rq is fixed when the PreparedRunner is created",
+            ));
+        }
+        crate::run_prepared_win_rate(&self.inner, n, thread)
     }
+
+    #[getter]
+    pub fn eval_rq(&self) -> f64 { self.eval_rq }
 }
 
 impl From<CorePreparedRunner> for PyPreparedRunner {
-    fn from(value: CorePreparedRunner) -> Self { Self { inner: value } }
+    fn from(value: CorePreparedRunner) -> Self {
+        Self {
+            inner: value,
+            eval_rq: tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ,
+        }
+    }
 }
 
 /// Runner 的 Python 封装
@@ -71,14 +86,17 @@ impl PyRunner {
     #[staticmethod]
     fn prepare_groups(groups: Vec<Vec<String>>) -> PyResult<PyPreparedRunner> {
         Runner::prepare_groups(&groups)
-            .map(Into::into)
+            .map(|inner| PyPreparedRunner {
+                inner,
+                eval_rq: tswn_core::namerena::eval_name::DEFAULT_EVAL_RQ,
+            })
             .map_err(|err| error::PyRunnerError::new(err).into())
     }
 
     #[staticmethod]
     fn prepare_groups_with_eval_rq(groups: Vec<Vec<String>>, eval_rq: f64) -> PyResult<PyPreparedRunner> {
         Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
-            .map(Into::into)
+            .map(|inner| PyPreparedRunner { inner, eval_rq })
             .map_err(|err| error::PyRunnerError::new(err).into())
     }
 

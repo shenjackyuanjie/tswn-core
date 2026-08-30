@@ -119,6 +119,7 @@ def verify_type_stubs(tswn_py: Any) -> None:
     }
 
     normalized_name = "default_custom_runtime_normalized_run"
+    battle_replay_name = "battle_replay"
     assert_equal("errors" in score_members, True, "ScoreResult.errors stub")
     assert_equal(normalized_name in extension_names, True, "normalized-run extension stub")
     assert_equal(normalized_name in stub_all(extension_tree), True, "normalized-run extension __all__")
@@ -126,6 +127,11 @@ def verify_type_stubs(tswn_py: Any) -> None:
     assert_equal(normalized_name in stub_all(init_tree), True, "normalized-run top-level __all__")
     assert_equal(hasattr(tswn_py.ScoreResult, "errors"), True, "ScoreResult.errors runtime property")
     assert_equal(hasattr(tswn_py, normalized_name), True, "normalized-run runtime export")
+    assert_equal(battle_replay_name in extension_names, True, "battle-replay extension stub")
+    assert_equal(battle_replay_name in stub_all(extension_tree), True, "battle-replay extension __all__")
+    assert_equal(battle_replay_name in init_imports, True, "battle-replay top-level re-export")
+    assert_equal(battle_replay_name in stub_all(init_tree), True, "battle-replay top-level __all__")
+    assert_equal(hasattr(tswn_py, battle_replay_name), True, "battle-replay runtime export")
 
 
 @dataclass(frozen=True)
@@ -307,6 +313,16 @@ def verify_icon_and_parsers(tswn_py: Any) -> None:
     assert_equal(parsed_double, ["mario+diy[1,2,3]\nluigi"], "parse_group_lines double plus")
 
 
+def verify_battle_replay(tswn_py: Any) -> None:
+    replay = tswn_py.battle_replay("left@red\n\nright@blue\n", max_rounds=20_000)
+    assert_equal(replay["finished"], True, "battle_replay finished")
+    assert_equal(replay["truncated"], False, "battle_replay truncated")
+    assert_equal(len(replay["initial_states"]), 2, "battle_replay initial states")
+    assert_equal(len(replay["frames"]) > 0, True, "battle_replay frames")
+    assert_equal(len(replay["winner_ids"]) > 0, True, "battle_replay winners")
+    assert_equal(any(frame["rows"] for frame in replay["frames"]), True, "battle_replay rows")
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Verify tswn_py CLI-aligned APIs")
     parser.add_argument("--release", action="store_true", help="build/import release artifact")
@@ -331,6 +347,7 @@ def main(argv: list[str]) -> int:
         verify_batch_and_pair,
         verify_to_diy_roundtrip,
         verify_icon_and_parsers,
+        verify_battle_replay,
     ]
     for check in checks:
         print(f"[check] {check.__name__}", flush=True)

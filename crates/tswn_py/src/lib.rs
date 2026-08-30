@@ -26,7 +26,7 @@ fn ensure_win_rate_group_count(groups: &[Vec<String>]) -> PyResult<()> {
     }
 }
 
-pub fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, _eval_rq: f64, thread: u32) -> PyResult<f64> {
+pub fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, thread: u32) -> PyResult<f64> {
     let summary =
         tswn_core::runtime::prepared_runtime_win_rate(prepared, n, thread).map_err(wrapper::error::PyRunnerError::new)?;
     Ok(summary.win_rate_percent())
@@ -59,7 +59,7 @@ fn win_rate(raw: String, n: usize, eval_rq: Option<f64>, thread: u32) -> PyResul
     let groups = Runner::split_namerena_into_groups(raw).0;
     ensure_win_rate_group_count(&groups)?;
     let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq).map_err(wrapper::error::PyRunnerError::new)?;
-    run_prepared_win_rate(&prepared, n, eval_rq, thread)
+    run_prepared_win_rate(&prepared, n, thread)
 }
 
 /// 以 CLI 默认语义批量计算 target 对多个 opponent 的胜率（百分比）
@@ -89,8 +89,12 @@ fn prepared_win_rate(
     eval_rq: Option<f64>,
     thread: u32,
 ) -> PyResult<f64> {
-    let eval_rq = eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ);
-    run_prepared_win_rate(&prepared.inner, n, eval_rq, thread)
+    if let Some(eval_rq) = eval_rq
+        && eval_rq.to_bits() != prepared.eval_rq.to_bits()
+    {
+        return Err(PyValueError::new_err("eval_rq is fixed when the PreparedRunner is created"));
+    }
+    run_prepared_win_rate(&prepared.inner, n, thread)
 }
 
 /// Compute show.html-compatible per-event delays for a list of RunUpdate objects.
@@ -147,6 +151,7 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cli_api::icon_info, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::parse_group_lines, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::default_custom_runtime_normalized_run, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::battle_replay, m)?)?;
     m.add_class::<cli_api::PyWinRateResult>()?;
     m.add_class::<cli_api::PyScoreResult>()?;
     m.add_class::<cli_api::PyNamerPfResult>()?;
@@ -159,5 +164,7 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<wrapper::PyRunUpdates>()?;
     m.add_class::<wrapper::rc4::PyRC4>()?;
     m.add_class::<wrapper::error::PyRunnerError>()?;
+    m.add_class::<cli_api::PyInvalidInputError>()?;
+    m.add_class::<cli_api::PyCliRuntimeError>()?;
     Ok(())
 }

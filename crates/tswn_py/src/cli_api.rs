@@ -4,13 +4,41 @@ use pyo3::{
     Py, PyAny, PyResult, Python,
     exceptions::{PyRuntimeError, PyValueError},
     pyclass, pyfunction, pymethods,
-    types::{PyDict, PyDictMethods, PyList},
+    types::{PyAnyMethods, PyDict, PyDictMethods, PyList},
 };
 use tswn_core::cli_api::{
     self as core_cli_api, CliApiError, JsonRuntimeNormalizedOutcome, JsonRuntimeNormalizedRun, JsonRuntimeUpdateFrame,
 };
 
 use crate::wrapper;
+
+/// Stable-code invalid input error for user-facing helper APIs.
+#[pyclass(extends=PyValueError)]
+#[pyo3(name = "InvalidInputError")]
+pub struct PyInvalidInputError;
+
+#[pymethods]
+impl PyInvalidInputError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+
+    #[getter]
+    fn code(&self) -> &'static str { "INVALID_INPUT" }
+}
+
+/// Stable-code runtime error for user-facing helper APIs.
+#[pyclass(extends=PyRuntimeError)]
+#[pyo3(name = "TswnRuntimeError")]
+pub struct PyCliRuntimeError;
+
+#[pymethods]
+impl PyCliRuntimeError {
+    #[new]
+    fn new(_message: &pyo3::Bound<'_, PyAny>) -> Self { Self }
+
+    #[getter]
+    fn code(&self) -> &'static str { "RUNTIME_FAILED" }
+}
 
 #[pyclass(skip_from_py_object)]
 #[pyo3(name = "WinRateResult")]
@@ -377,9 +405,9 @@ impl PyIconInfo {
 
 fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     match err {
-        CliApiError::InvalidInput(message) => PyValueError::new_err(message),
+        CliApiError::InvalidInput(message) => pyo3::PyErr::new::<PyInvalidInputError, _>(message),
         CliApiError::Runner(err) => wrapper::error::PyRunnerError::new(err).into(),
-        CliApiError::Runtime(message) => PyRuntimeError::new_err(message),
+        CliApiError::Runtime(message) => pyo3::PyErr::new::<PyCliRuntimeError, _>(message),
     }
 }
 
@@ -454,6 +482,28 @@ fn normalized_update_frame_to_pydict<'py>(py: Python<'py>, frame: JsonRuntimeUpd
     dict.set_item("delay1", frame.delay1)?;
     dict.set_item("update_type", frame.update_type)?;
     Ok(dict)
+}
+
+#[pyfunction(signature = (raw, eval_rq=None, include_icons=false, max_rounds=None))]
+pub fn battle_replay(
+    py: Python<'_>,
+    raw: String,
+    eval_rq: Option<f64>,
+    include_icons: bool,
+    max_rounds: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    let mut options = core_cli_api::BattleReplayOptions::default();
+    if let Some(eval_rq) = eval_rq {
+        options.eval_rq = eval_rq;
+    }
+    options.include_icons = include_icons;
+    if let Some(max_rounds) = max_rounds {
+        options.max_rounds = max_rounds;
+    }
+    let replay = core_cli_api::battle_replay(&raw, options).map_err(map_cli_error)?;
+    let json = serde_json::to_string(&replay).map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
+    let json_module = pyo3::types::PyModule::import(py, "json")?;
+    Ok(json_module.getattr("loads")?.call1((json,))?.unbind())
 }
 
 #[pyfunction(signature = (raw, n, eval_rq=None, thread=0))]
@@ -737,7 +787,8 @@ mod tests {
             let err = default_custom_runtime_normalized_run(py, "left@red\n\nright@blue\n".to_string(), 0)
                 .expect_err("default custom runtime normalized run should reject zero max rounds");
 
-            assert_eq!(err.to_string(), "ValueError: runtime max_rounds must be positive");
+            assert_eq!(err.to_string(), "InvalidInputError: runtime max_rounds must be positive");
+            assert!(err.matches(py, py.get_type::<PyValueError>()).unwrap());
         });
     }
 }

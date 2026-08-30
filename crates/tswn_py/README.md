@@ -62,6 +62,7 @@ rate = prepared.win_rate(1000)
 | `to_diy_batch(names, old, minions)`                   | 批量导出 DIY/OL overlay |
 | `icon_info(name)`                                     | 对齐 `icon show` 的图标结构信息 |
 | `parse_group_lines(content, double_plus)`             | 对齐 batch 列表文件的组解析 |
+| `battle_replay(raw, ...)`                              | 推荐的一次性完整 UI 回放     |
 | `compute_show_timeline(updates, player_count, scale)` | 按 show.html 语义计算事件播放延迟 |
 
 CLI 对齐 helper 返回结构化对象，方便脚本继续处理：
@@ -94,6 +95,10 @@ overlay = tswn_py.to_diy("mario@red+fire", minions=True)
 ```
 
 注意：`to_diy(old=True, minions=True)` 与 CLI 的 `--old` / `--minions` 一样互斥，会抛出 `ValueError`。
+
+`battle_replay(raw, eval_rq=None, include_icons=False, max_rounds=None)` 返回跨语言统一的 dict：包含初始/最终状态、`frames[].updates`、`frames[].rows[].clips[]`、赢家和完成状态；达到 guard 时返回 `truncated=True`。
+
+`Runner`、`PreparedRunner`、RC4 与基础 `win_rate` 是 Advanced API。`PreparedRunner.eval_rq` 在创建时固定；`win_rate(..., eval_rq=...)` 只能省略或传入该相同值。
 
 ### 直播回放辅助
 
