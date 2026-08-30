@@ -1952,7 +1952,8 @@ fn run_inherited_big_target_compression_solver(
                     .filter(|weights| weights.len() == big_weights.len())
                     .unwrap_or(big_weights);
                 let total_weight = validation_big_weights.iter().sum::<f64>();
-                let locked_original_weight_sum = response.locked_indices.iter().map(|&idx| validation_big_weights[idx]).sum::<f64>();
+                let locked_original_weight_sum =
+                    response.locked_indices.iter().map(|&idx| validation_big_weights[idx]).sum::<f64>();
                 let initial_selected_original_weight_sum =
                     response.initial_indices.iter().map(|&idx| validation_big_weights[idx]).sum::<f64>();
                 let initial_tail_weight_sum = total_weight - initial_selected_original_weight_sum;
@@ -2002,8 +2003,10 @@ fn run_inherited_big_target_compression_solver(
                     );
                 }
                 for (slot, &idx) in response.selected_indices.iter().enumerate() {
-                    let expected_base =
-                        validation_big_weights.get(idx).copied().ok_or_else(|| anyhow::anyhow!("压缩器返回越界索引 {idx}"))?;
+                    let expected_base = validation_big_weights
+                        .get(idx)
+                        .copied()
+                        .ok_or_else(|| anyhow::anyhow!("压缩器返回越界索引 {idx}"))?;
                     let base = response.base_weights[slot];
                     let addition = response.fitted_additions[slot];
                     let lineage = response.lineage_weights[slot];

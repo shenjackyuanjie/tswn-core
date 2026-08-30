@@ -156,7 +156,8 @@ impl CombatRuntime {
                 // 分身、幻影等战斗召唤物不会经过 score roster 的初始 profile，
                 // 因而没有该标记；但它们也可能带有召唤类技能，需要按自身模板
                 // 延迟构造下一层蓝图。
-                None if entity.runtime.is_combat_minion() => {
+                None if entity.runtime.is_combat_minion() =>
+                {
                     #[cfg(not(feature = "no_debug"))]
                     if std::env::var_os("TSWN_PROBE_MINION_BLUEPRINT").is_some() {
                         eprintln!(
