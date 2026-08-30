@@ -16,6 +16,7 @@ const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
     ("targets/target1.txt", include_str!("../../assets/targets/target1.txt")),
     ("targets/target2.txt", include_str!("../../assets/targets/target2.txt")),
     ("targets/target3.txt", include_str!("../../assets/targets/target3.txt")),
+    ("targets/newTarget1.toml", include_str!("../../assets/targets/newTarget1.toml")),
     ("targets/newTarget2.toml", include_str!("../../assets/targets/newTarget2.toml")),
     (
         "teammates/teammate_fz.txt",

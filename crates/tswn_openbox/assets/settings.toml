@@ -15,7 +15,13 @@ file = "targets/target3.txt"
 
 [[targets]]
 id = 4
-name = "新版二人组"
+name = "新版单人组"
+file = "targets/newTarget1.toml"
+factor_enabled = true
+
+[[targets]]
+id = 5
+name = "新版双人组"
 file = "targets/newTarget2.toml"
 factor_enabled = true
 
