@@ -20,7 +20,13 @@ use tswn_core::{PreparedRunner, Runner};
 const TSWN_CAPI_ABI_VERSION: u32 = 4;
 
 thread_local! {
-    static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
+    static LAST_ERROR: RefCell<Option<LastError>> = const { RefCell::new(None) };
+}
+
+#[derive(Clone)]
+struct LastError {
+    code: &'static str,
+    message: String,
 }
 
 #[repr(u32)]
@@ -108,6 +114,7 @@ pub struct tswn_runner_t {
 
 pub struct tswn_prepared_runner_t {
     inner: PreparedRunner,
+    eval_rq: f64,
 }
 
 pub struct tswn_updates_t {
@@ -116,19 +123,45 @@ pub struct tswn_updates_t {
 
 pub(crate) struct FfiError {
     status: tswn_status_t,
+    code: &'static str,
     message: String,
 }
 
 pub(crate) type FfiResult<T> = Result<T, FfiError>;
 
 pub(crate) fn ffi_error(status: tswn_status_t, message: impl Into<String>) -> FfiError {
+    ffi_error_with_code(status, error_code_for_status(status), message)
+}
+
+pub(crate) fn ffi_error_with_code(status: tswn_status_t, code: &'static str, message: impl Into<String>) -> FfiError {
     FfiError {
         status,
+        code,
         message: message.into(),
     }
 }
 
-pub(crate) fn set_last_error(message: impl Into<String>) { LAST_ERROR.with(|slot| *slot.borrow_mut() = Some(message.into())); }
+fn error_code_for_status(status: tswn_status_t) -> &'static str {
+    match status {
+        tswn_status_t::TSWN_ERR_NULL => "INVALID_ARGUMENT",
+        tswn_status_t::TSWN_ERR_INVALID_UTF8 => "INVALID_INPUT",
+        tswn_status_t::TSWN_ERR_INVALID_ARGUMENT => "INVALID_ARGUMENT",
+        tswn_status_t::TSWN_ERR_RUNNER => "RUNNER_INIT_FAILED",
+        tswn_status_t::TSWN_ERR_PANIC => "INTERNAL_ERROR",
+        tswn_status_t::TSWN_OK => "",
+    }
+}
+
+pub(crate) fn set_last_error(message: impl Into<String>) { set_last_error_with_code("INTERNAL_ERROR", message); }
+
+pub(crate) fn set_last_error_with_code(code: &'static str, message: impl Into<String>) {
+    LAST_ERROR.with(|slot| {
+        *slot.borrow_mut() = Some(LastError {
+            code,
+            message: message.into(),
+        });
+    });
+}
 
 fn clear_last_error() { LAST_ERROR.with(|slot| *slot.borrow_mut() = None); }
 
@@ -163,7 +196,7 @@ where
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(Ok(())) => tswn_status_t::TSWN_OK,
         Ok(Err(err)) => {
-            set_last_error(err.message);
+            set_last_error_with_code(err.code, err.message);
             err.status
         }
         Err(_) => {
@@ -232,7 +265,12 @@ pub extern "C" fn tswn_win_rate_eval_rq() -> f64 { tswn_core::namerena::eval_nam
 
 #[unsafe(no_mangle)]
 pub extern "C" fn tswn_last_error_message() -> tswn_str_t {
-    LAST_ERROR.with(|slot| into_tswn_str(slot.borrow().clone().unwrap_or_default()))
+    LAST_ERROR.with(|slot| into_tswn_str(slot.borrow().as_ref().map(|error| error.message.clone()).unwrap_or_default()))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn tswn_last_error_code() -> tswn_str_t {
+    LAST_ERROR.with(|slot| into_tswn_str(slot.borrow().as_ref().map(|error| error.code.to_owned()).unwrap_or_default()))
 }
 
 #[unsafe(no_mangle)]

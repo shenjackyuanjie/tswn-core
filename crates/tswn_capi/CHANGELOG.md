@@ -1,5 +1,15 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- 新增 `tswn_battle_replay_json()`、`tswn_last_error_code()`，并在公共头文件补齐此前遗漏的 `tswn_default_custom_runtime_normalized_run_json()` 声明。
+
+### 修复
+
+- PreparedRunner 的显式 `eval_rq` 现在验证创建值，不再静默忽略；`batch_rate` 区分未提供与显式空 labels。
+
 ## [0.6.0] - 2026-07-18
 
 ### ⚠️ Breaking Changes

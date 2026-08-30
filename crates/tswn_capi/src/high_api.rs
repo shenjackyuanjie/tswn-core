@@ -4,7 +4,7 @@ use serde::Serialize;
 use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun};
 
 use crate::{
-    FfiError, ffi_boundary, ffi_error, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t, write_json_result,
+    FfiError, ffi_boundary, ffi_error_with_code, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t, write_json_result,
     write_string_result,
 };
 
@@ -91,9 +91,11 @@ fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 fn cli_api_error(err: CliApiError) -> FfiError {
     match err {
-        CliApiError::InvalidInput(message) => ffi_error(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, message),
-        CliApiError::Runner(err) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()),
-        CliApiError::Runtime(message) => ffi_error(tswn_status_t::TSWN_ERR_RUNNER, message),
+        CliApiError::InvalidInput(message) => {
+            ffi_error_with_code(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, "INVALID_INPUT", message)
+        }
+        CliApiError::Runner(err) => ffi_error_with_code(tswn_status_t::TSWN_ERR_RUNNER, "RUNNER_INIT_FAILED", err.to_string()),
+        CliApiError::Runtime(message) => ffi_error_with_code(tswn_status_t::TSWN_ERR_RUNNER, "RUNTIME_FAILED", message),
     }
 }
 
@@ -378,7 +380,7 @@ pub unsafe extern "C" fn tswn_batch_rate_json(
             &target_groups,
             &player_groups,
             n,
-            if player_labels.is_empty() { None } else { Some(player_labels) },
+            (!player_labels_utf8.is_null()).then_some(player_labels),
             keep_rq != 0,
             thread,
         )
@@ -483,6 +485,33 @@ pub unsafe extern "C" fn tswn_default_custom_runtime_normalized_run_json(
     })
 }
 
+/// # Safety
+///
+/// `raw_text_utf8` must be a valid UTF-8 C string and `out_json` must be writable.
+/// The returned JSON string must be released with `tswn_str_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_battle_replay_json(
+    raw_text_utf8: *const c_char,
+    max_rounds: usize,
+    eval_rq: f64,
+    include_icons: u8,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let raw = unsafe { read_utf8(raw_text_utf8, "raw_text_utf8")? };
+        let result = core_cli_api::battle_replay(
+            &raw,
+            core_cli_api::BattleReplayOptions {
+                eval_rq,
+                include_icons: include_icons != 0,
+                max_rounds,
+            },
+        )
+        .map_err(cli_api_error)?;
+        write_json_result(out_json, &result)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -574,5 +603,54 @@ mod tests {
             unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(err.ptr as *const u8, err.len)).to_owned() };
         unsafe { crate::tswn_str_free(err) };
         assert_eq!(message, "runtime max_rounds must be positive");
+    }
+
+    #[test]
+    fn battle_replay_json_exposes_shared_render_shape() {
+        let raw = std::ffi::CString::new("left@red\n\nright@blue\n").unwrap();
+        let mut out = tswn_str_t::default();
+
+        let status = unsafe {
+            tswn_battle_replay_json(
+                raw.as_ptr(),
+                tswn_core::runtime::BINDING_COMPLETION_MAX_ROUNDS,
+                crate::tswn_default_eval_rq(),
+                0,
+                &mut out,
+            )
+        };
+
+        assert_eq!(status, tswn_status_t::TSWN_OK);
+        let json = unsafe { std::str::from_utf8(std::slice::from_raw_parts(out.ptr as *const u8, out.len)).unwrap() };
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(value["finished"], true);
+        assert!(value["frames"].as_array().is_some_and(|frames| !frames.is_empty()));
+        assert!(value["initial_states"].as_array().is_some_and(|states| states.len() == 2));
+        unsafe { crate::tswn_str_free(out) };
+    }
+
+    #[test]
+    fn public_c_header_declares_all_user_replay_exports() {
+        let header = include_str!("../include/tswn_capi.h");
+        assert!(header.contains("tswn_battle_replay_json"));
+        assert!(header.contains("tswn_default_custom_runtime_normalized_run_json"));
+        assert!(header.contains("tswn_last_error_code"));
+    }
+
+    #[test]
+    fn battle_replay_exposes_stable_c_error_code() {
+        let raw = std::ffi::CString::new("left\n\nright").unwrap();
+        let mut out = tswn_str_t::default();
+        let status = unsafe { tswn_battle_replay_json(raw.as_ptr(), 0, crate::tswn_default_eval_rq(), 0, &mut out) };
+
+        assert_eq!(status, tswn_status_t::TSWN_ERR_INVALID_ARGUMENT);
+        let code_value = crate::tswn_last_error_code();
+        let code = unsafe {
+            std::str::from_utf8(std::slice::from_raw_parts(code_value.ptr as *const u8, code_value.len))
+                .unwrap()
+                .to_owned()
+        };
+        unsafe { crate::tswn_str_free(code_value) };
+        assert_eq!(code, "INVALID_INPUT");
     }
 }

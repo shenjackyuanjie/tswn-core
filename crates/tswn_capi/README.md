@@ -20,6 +20,8 @@
 - `tswn-cli` 对齐的高层 helper（`*_json` / `tswn_to_diy`）
 - icon RGBA / PNG / Base64
 
+推荐使用 [跨语言高层 API 约定](../../docs/public_api.md) 中的 JSON helper；`Runner` 句柄和基础 `win_rate` 仍保留为 Advanced API。
+
 ## 版本与快照字段
 
 - 版本查询：
@@ -55,5 +57,9 @@
 - 评分与命配：`tswn_score_json(...)` / `tswn_namer_pf_json(...)`
 - 批量对抗与配对：`tswn_batch_rate_json(...)` / `tswn_pair_rate_json(...)`
 - 导出与解析：`tswn_to_diy(...)` / `tswn_to_diy_batch_json(...)` / `tswn_icon_info_json(...)` / `tswn_parse_group_lines_json(...)`
+- 完整回放：`tswn_battle_replay_json(...)`，返回可直接渲染的 players / frames / rows / clips JSON
+- 标准化轨迹：`tswn_default_custom_runtime_normalized_run_json(...)`
 
 这些接口返回的 `tswn_str_t` 都需要由调用方使用 `tswn_str_free()` 释放。
+
+高层调用失败后，除 status 外还可通过 `tswn_last_error_code()` 与 `tswn_last_error_message()` 获取稳定错误码和可读说明。

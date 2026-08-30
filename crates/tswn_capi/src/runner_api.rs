@@ -76,7 +76,7 @@ fn update_snapshot(update: &RunUpdate) -> tswn_update_snapshot_t {
     }
 }
 
-fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, _eval_rq: f64, thread: u32) -> FfiResult<tswn_win_rate_result_t> {
+fn run_prepared_win_rate(prepared: &PreparedRunner, n: usize, thread: u32) -> FfiResult<tswn_win_rate_result_t> {
     let summary = tswn_core::runtime::prepared_runtime_win_rate(prepared, n, thread)
         .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
     Ok(tswn_win_rate_result_t {
@@ -114,7 +114,19 @@ pub unsafe extern "C" fn tswn_prepared_win_rate(
     thread: u32,
     out_result: *mut tswn_win_rate_result_t,
 ) -> tswn_status_t {
-    unsafe { tswn_prepared_win_rate_with_eval_rq(prepared, n, thread, crate::tswn_win_rate_eval_rq(), out_result) }
+    ffi_boundary(|| {
+        if prepared.is_null() {
+            return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "prepared is null"));
+        }
+        if out_result.is_null() {
+            return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "out_result is null"));
+        }
+        let result = run_prepared_win_rate(unsafe { &(*prepared).inner }, n, thread)?;
+        unsafe {
+            *out_result = result;
+        }
+        Ok(())
+    })
 }
 
 /// # Safety
@@ -133,7 +145,13 @@ pub unsafe extern "C" fn tswn_prepared_win_rate_with_eval_rq(
         if out_result.is_null() {
             return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, "out_result is null"));
         }
-        let result = run_prepared_win_rate(unsafe { &(*prepared).inner }, n, eval_rq, thread)?;
+        if unsafe { (*prepared).eval_rq.to_bits() } != eval_rq.to_bits() {
+            return Err(ffi_error(
+                tswn_status_t::TSWN_ERR_INVALID_ARGUMENT,
+                "eval_rq is fixed when the PreparedRunner is created",
+            ));
+        }
+        let result = run_prepared_win_rate(unsafe { &(*prepared).inner }, n, thread)?;
         unsafe {
             *out_result = result;
         }
@@ -227,7 +245,10 @@ pub unsafe extern "C" fn tswn_prepared_runner_new_from_raw_with_eval_rq(
         let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
             .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
         unsafe {
-            *out_prepared = Box::into_raw(Box::new(tswn_prepared_runner_t { inner: prepared }));
+            *out_prepared = Box::into_raw(Box::new(tswn_prepared_runner_t {
+                inner: prepared,
+                eval_rq,
+            }));
         }
         Ok(())
     })
@@ -565,7 +586,7 @@ pub unsafe extern "C" fn tswn_win_rate_with_eval_rq(
         let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
             .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
         unsafe {
-            *out_result = run_prepared_win_rate(&prepared, n, eval_rq, thread)?;
+            *out_result = run_prepared_win_rate(&prepared, n, thread)?;
         }
         Ok(())
     })
@@ -622,7 +643,7 @@ pub unsafe extern "C" fn tswn_group_win_rate_with_eval_rq(
             let prepared = Runner::prepare_groups_with_eval_rq(&groups, eval_rq)
                 .map_err(|err| ffi_error(tswn_status_t::TSWN_ERR_RUNNER, err.to_string()))?;
             unsafe {
-                *out_results.add(index) = run_prepared_win_rate(&prepared, n, eval_rq, thread)?;
+                *out_results.add(index) = run_prepared_win_rate(&prepared, n, thread)?;
             }
         }
         Ok(())

@@ -12,6 +12,7 @@
  * - 库返回的动态字节统一使用 `tswn_bytes_t`
  * - `tswn_str_t` / `tswn_bytes_t` 必须分别通过 `tswn_str_free` / `tswn_bytes_free` 释放
  * - `win_rate` 相关接口只返回 `wins` / `total`，百分比由调用方自行计算
+ * - 推荐新调用方优先使用下方“CLI 对齐高层接口”与 `tswn_battle_replay_json`
  */
 
 #include <stddef.h>
@@ -113,6 +114,9 @@ double tswn_win_rate_eval_rq(void);
 
 /* 返回当前线程上最近一次错误消息。结果需用 `tswn_str_free` 释放。 */
 tswn_str_t tswn_last_error_message(void);
+
+/* 返回当前线程上最近一次错误的稳定错误码。结果需用 `tswn_str_free` 释放。 */
+tswn_str_t tswn_last_error_code(void);
 
 /* 清除当前线程上的最近一次错误消息。 */
 void tswn_clear_error(void);
@@ -252,7 +256,7 @@ tswn_status_t tswn_group_win_rate_with_eval_rq(
 tswn_status_t tswn_prepared_win_rate(const tswn_prepared_runner_t* prepared, size_t n, uint32_t thread, tswn_win_rate_result_t* out_result);
 
 /*
- * 基于 PreparedRunner 按显式 eval_rq 计算第一组对其余组的胜率统计。
+ * 基于 PreparedRunner 计算第一组对其余组的胜率统计，并验证 eval_rq 与创建模板时一致。
  * `thread` 语义：0=自动线程数，1=单线程，n=指定线程数。
  */
 tswn_status_t tswn_prepared_win_rate_with_eval_rq(
@@ -373,6 +377,26 @@ tswn_status_t tswn_to_diy_batch_json(
 );
 tswn_status_t tswn_icon_info_json(const char* name_utf8, tswn_str_t* out_json);
 tswn_status_t tswn_parse_group_lines_json(const char* content_utf8, uint8_t double_plus, tswn_str_t* out_json);
+
+/*
+ * 使用主 Runtime 跑完整场对局，并返回可直接渲染的结构化回放 JSON。
+ * `max_rounds` 必须为正数；建议传入 20000。`include_icons != 0` 时嵌入 PNG Base64 图标。
+ * 结果需用 `tswn_str_free` 释放。失败后可通过 tswn_last_error_code/message 查询详情。
+ */
+tswn_status_t tswn_battle_replay_json(
+    const char* raw_text_utf8,
+    size_t max_rounds,
+    double eval_rq,
+    uint8_t include_icons,
+    tswn_str_t* out_json
+);
+
+/* 返回默认 custom Runtime 的标准化执行轨迹 JSON。结果需用 `tswn_str_free` 释放。 */
+tswn_status_t tswn_default_custom_runtime_normalized_run_json(
+    const char* raw_text_utf8,
+    size_t max_rounds,
+    tswn_str_t* out_json
+);
 
 /* 图标辅助接口 */
 
