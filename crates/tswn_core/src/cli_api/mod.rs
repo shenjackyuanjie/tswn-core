@@ -2,6 +2,9 @@
 
 mod bench;
 mod parse;
+mod replay;
+
+pub use replay::{BattleReplay, BattleReplayOptions};
 
 use crate::namerena::eval_name;
 use crate::namerena::icon::icon_from_raw_name;
@@ -544,6 +547,11 @@ pub fn default_custom_runtime_normalized_run(raw: &str, max_rounds: usize) -> Cl
     ensure_runtime_max_rounds(max_rounds)?;
     let mut runner = default_custom_runtime_mixed_runner(raw)?;
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
+}
+
+/// Run one battle and return a complete, UI-ready replay shared by every language binding.
+pub fn battle_replay(raw: &str, options: BattleReplayOptions) -> CliApiResult<BattleReplay> {
+    replay::battle_replay(raw, options)
 }
 
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
