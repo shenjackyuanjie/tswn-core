@@ -38,6 +38,7 @@ fn main() {
     let input = BatchRateInput {
         target_text: targets,
         player_text: players,
+        target_factor_enabled: false,
         target_double_plus: false,
         player_double_plus: false,
         show_matchups: args.show_matchups,

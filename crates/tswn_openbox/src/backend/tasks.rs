@@ -21,8 +21,8 @@ use super::format::{
     format_batch_file_record, format_batch_screen_log, format_pair_file_record, format_pair_screen_log, format_rate,
 };
 use super::parse::{
-    first_duplicate_name_in_matchup, parse_line_list, parse_namer_pf_groups, parse_player_groups_with_labels,
-    parse_plus_separated_groups, parse_target_groups,
+    first_duplicate_name_in_matchup, groups_have_same_players, parse_factored_target_groups, parse_line_list,
+    parse_namer_pf_groups, parse_player_groups_with_labels, parse_plus_separated_groups, parse_target_groups,
 };
 use super::score::{BatchRateSummary, bench_batch_rate_for_group, namer_pf_score};
 use super::skill_board::{SkillBoardConfig, evaluate_skill_board};
@@ -439,7 +439,19 @@ impl NamerPfScores {
 }
 
 pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
-    let target_groups = parse_target_groups(&input.target_text, input.target_double_plus);
+    let (target_groups, target_factors) = if input.target_factor_enabled {
+        match parse_factored_target_groups(&input.target_text) {
+            Ok(targets) => targets,
+            Err(err) => {
+                send(ProgressEvent::Done(Err(err)));
+                return;
+            }
+        }
+    } else {
+        let groups = parse_target_groups(&input.target_text, input.target_double_plus);
+        let factors = vec![1.0; groups.len()];
+        (groups, factors)
+    };
     let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
     if target_groups.is_empty() {
         send(ProgressEvent::Done(Err("batch-rate: 靶子列表为空。".to_string())));
@@ -481,6 +493,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
                 valid_matchups: 0,
                 skipped_matchups: 0,
             },
+            accumulated_factor: 0.0,
             detail_rates: Vec::new(),
         })
         .collect::<Vec<_>>();
@@ -488,7 +501,23 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
     let mut request_slots = Vec::with_capacity(total);
     for (player_index, player) in player_groups.iter().enumerate() {
         for (target_index, target) in target_groups.iter().enumerate() {
-            if first_duplicate_name_in_matchup(&[player.as_str(), target.as_str()]).is_some() {
+            let factor = target_factors[target_index];
+            if input.target_factor_enabled && groups_have_same_players(player, target) {
+                const MIRROR_RATE: f64 = 50.0;
+                let result = &mut results[player_index];
+                result.summary.avg += MIRROR_RATE * factor;
+                result.summary.wins += 1;
+                result.summary.total += 2;
+                result.summary.valid_matchups += 1;
+                result.accumulated_factor += factor;
+                if input.show_matchups {
+                    result.detail_rates.push((MIRROR_RATE, target.clone()));
+                }
+                done += 1;
+                send(ProgressEvent::Progress { done, total });
+                continue;
+            }
+            if !input.target_factor_enabled && first_duplicate_name_in_matchup(&[player.as_str(), target.as_str()]).is_some() {
                 results[player_index].summary.skipped_matchups += 1;
                 done += 1;
                 send(ProgressEvent::Progress { done, total });
@@ -525,10 +554,12 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
         match outcome.summary {
             Ok(summary) => {
                 let percent = summary.win_rate_percent();
-                result.summary.avg += percent;
+                let factor = target_factors[target_index];
+                result.summary.avg += percent * factor;
                 result.summary.wins += summary.wins;
                 result.summary.total += summary.total;
                 result.summary.valid_matchups += 1;
+                result.accumulated_factor += factor;
                 if input.show_matchups {
                     result.detail_rates.push((percent, target_groups[target_index].clone()));
                 }
@@ -538,9 +569,11 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
     }
 
     for result in &mut results {
-        if result.summary.valid_matchups > 0 {
-            result.summary.avg /= result.summary.valid_matchups as f64;
-        }
+        result.summary.avg = if result.accumulated_factor > 0.0 {
+            result.summary.avg / result.accumulated_factor
+        } else {
+            0.0
+        };
         if input.cancel.load(Ordering::Relaxed) && result.summary.valid_matchups == 0 && result.summary.skipped_matchups == 0 {
             continue;
         }
@@ -571,6 +604,7 @@ pub fn run_batch_rate(input: BatchRateInput, send: impl Fn(ProgressEvent)) {
 struct BatchRateJobResult {
     label: String,
     summary: BatchRateSummary,
+    accumulated_factor: f64,
     detail_rates: Vec<(f64, String)>,
 }
 
@@ -939,6 +973,7 @@ mod tests {
             BatchRateInput {
                 target_text: targets.join("\n"),
                 player_text: players.join("\n"),
+                target_factor_enabled: false,
                 target_double_plus: false,
                 player_double_plus: false,
                 show_matchups: false,
@@ -969,6 +1004,44 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(actual, expected);
         assert!(events.iter().any(|event| matches!(event, ProgressEvent::Progress { done: 4, total: 4 })));
+        assert!(events.iter().any(|event| matches!(event, ProgressEvent::Done(Ok(_)))));
+    }
+
+    #[test]
+    fn factored_mirror_match_is_weighted_as_fifty_percent() {
+        let events = RefCell::new(Vec::new());
+        run_batch_rate(
+            BatchRateInput {
+                target_text: "[[targets]]\nfactor = 2.5\nplayers = [\"mario\", \"luigi\"]".to_string(),
+                player_text: "mario+luigi".to_string(),
+                target_factor_enabled: true,
+                target_double_plus: false,
+                player_double_plus: false,
+                show_matchups: true,
+                highlight_delta: None,
+                output_mode: OutputMode::Log,
+                output_file: None,
+                options: CommonBenchOptions {
+                    count: 1,
+                    threads: Some(1),
+                    keep_rq: true,
+                    verbose: false,
+                    min_screen: None,
+                    min_file: None,
+                    wr_precision: 9,
+                },
+                cancel: Arc::new(AtomicBool::new(false)),
+            },
+            |event| events.borrow_mut().push(event),
+        );
+
+        let events = events.into_inner();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, ProgressEvent::Log(log) if log.contains("50.000000000")))
+        );
+        assert!(events.iter().any(|event| matches!(event, ProgressEvent::Progress { done: 1, total: 1 })));
         assert!(events.iter().any(|event| matches!(event, ProgressEvent::Done(Ok(_)))));
     }
 }

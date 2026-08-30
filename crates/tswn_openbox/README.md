@@ -136,6 +136,11 @@ all = 32721
 
 对应原 `bench batch-rate`。普通设置中保留常用选项，更多设置中可以切换手动靶子、`DIYcqp（++分割名字）`、线程数、场数和输出细节。
 
+靶子预设可通过 `factor_enabled = true` 启用带权模式。带权靶子使用 TOML 文件，每个 `[[targets]]` 项包含一个有限正数权重 `factor` 和玩家数组 `players`。最终平均胜率按有效对局的
+`sum(胜率 * factor) / sum(factor)` 计算。
+
+带权模式下，如果选手组和靶子组包含完全相同的玩家（不要求顺序相同），该组直接记为 `50%` 并参与加权；只有部分玩家相同时仍正常计算，不会按重名跳过。未启用带权模式时保持原有重名跳过行为。
+
 不勾选“每组胜率”时输出：
 
 ```text
@@ -187,6 +192,12 @@ id = 2
 name = "pair默认靶子"
 file = "targets/pair-default.txt"
 
+[[targets]]
+id = 3
+name = "带权二人组"
+file = "targets/weighted-pairs.toml"
+factor_enabled = true
+
 [[teammate]]
 head = 3
 name = "默认队友"
@@ -197,9 +208,24 @@ file = "teammates/default.txt"
 
 - `targets[].id` 期望是数字。
 - `targets[].file` 是靶子列表文件。
+- `targets[].factor_enabled` 可以省略，默认为 `false`；设为 `true` 时，`file` 必须使用下述带权 TOML 格式。
 - `teammate[].head` 是 `pair` 的“保留前几”。
 - `teammate[].file` 是队友列表文件。
 - `pair` 默认优先选择 `targets` 中 `id = 2` 的靶子；如果不存在，则退回第一个靶子。
+
+带权靶子文件示例：
+
+```toml
+[[targets]]
+factor = 1.5
+players = ["mario", "luigi"]
+
+[[targets]]
+factor = 0.75
+players = ["peach", "fire"]
+```
+
+`factor` 必须是大于 `0` 的有限数值，`players` 不得为空或包含空名字。带权 TOML 目前用于 `cqd/cqp` 的预设靶子；手动靶子和 `pair` 继续使用原文本格式。
 
 `setting\score_now.toml` 用于 `namer-pf` 技能榜阈值。仓库中提供了一份示例/当前阈值文件。
 

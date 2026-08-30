@@ -16,6 +16,7 @@ const DEFAULT_SETTING_FILES: &[(&str, &str)] = &[
     ("targets/target1.txt", include_str!("../../assets/targets/target1.txt")),
     ("targets/target2.txt", include_str!("../../assets/targets/target2.txt")),
     ("targets/target3.txt", include_str!("../../assets/targets/target3.txt")),
+    ("targets/newTarget2.toml", include_str!("../../assets/targets/newTarget2.toml")),
     (
         "teammates/teammate_fz.txt",
         include_str!("../../assets/teammates/teammate_fz.txt"),
@@ -44,6 +45,7 @@ pub struct TargetPreset {
     pub name: String,
     pub path: PathBuf,
     pub diy: bool,
+    pub factor_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +163,8 @@ struct TargetPresetEntry {
     file: PathBuf,
     #[serde(default)]
     diy: bool,
+    #[serde(default)]
+    factor_enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,6 +199,7 @@ fn load_target_presets(loaded: LoadedSettingFile) -> Vec<TargetPreset> {
             name: entry.name,
             path: normalize_relative_path(&loaded.setting_dir, &entry.file),
             diy: entry.diy,
+            factor_enabled: entry.factor_enabled,
         });
     }
     items

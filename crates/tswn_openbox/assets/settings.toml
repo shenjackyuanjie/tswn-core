@@ -13,6 +13,12 @@ id = 3
 name = "三人组"
 file = "targets/target3.txt"
 
+[[targets]]
+id = 4
+name = "新版二人组"
+file = "targets/newTarget2.toml"
+factor_enabled = true
+
 [[teammate]]
 head = 5
 name = "刺评"
