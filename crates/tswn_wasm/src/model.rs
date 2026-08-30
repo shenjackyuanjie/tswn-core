@@ -40,9 +40,47 @@ pub struct WinRateOptions {
 impl WinRateOptions {
     pub fn resolved_eval_rq(&self) -> f64 { self.eval_rq.unwrap_or(tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ) }
 
-    pub fn resolved_thread(&self) -> u32 {
-        let _ = self.thread;
-        1
+    pub fn resolved_thread(&self) -> Result<u32, &'static str> {
+        match self.thread.unwrap_or(0) {
+            0 | 1 => Ok(1),
+            _ => Err("thread must be 0 or 1 for the wasm target"),
+        }
+    }
+}
+
+/// Options for the cross-binding, UI-ready battle replay API.
+#[derive(Debug, Clone, Deserialize, Tsify)]
+#[tsify(from_wasm_abi)]
+pub struct BattleReplayOptions {
+    #[tsify(optional)]
+    pub eval_rq: Option<f64>,
+    #[tsify(optional)]
+    pub include_icons: Option<bool>,
+    #[tsify(optional)]
+    pub max_rounds: Option<usize>,
+}
+
+impl Default for BattleReplayOptions {
+    fn default() -> Self {
+        Self {
+            eval_rq: None,
+            include_icons: None,
+            max_rounds: None,
+        }
+    }
+}
+
+impl BattleReplayOptions {
+    pub fn to_core(&self) -> core_cli_api::BattleReplayOptions {
+        let mut options = core_cli_api::BattleReplayOptions::default();
+        if let Some(eval_rq) = self.eval_rq {
+            options.eval_rq = eval_rq;
+        }
+        options.include_icons = self.include_icons.unwrap_or(false);
+        if let Some(max_rounds) = self.max_rounds {
+            options.max_rounds = max_rounds;
+        }
+        options
     }
 }
 

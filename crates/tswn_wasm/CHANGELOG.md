@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 新增 `battle_replay()` 高层入口，返回与 C/Python 对齐的完整 UI 回放结构。
+
+### 修复
+
+- `WinRateSession.thread > 1` 现在返回 `UNSUPPORTED_OPTION`，不再静默降级。
+
 ### 修复
 
 - 同步 core 的 Merge 状态刷新修复；吞噬只合并技能时也会按旧版时机

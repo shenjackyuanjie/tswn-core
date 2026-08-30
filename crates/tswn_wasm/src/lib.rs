@@ -14,9 +14,9 @@ use std::sync::Once;
 use error::WasmResult;
 pub use fight::FightSession;
 use model::{
-    CliBatchRateResult, CliGroupWinRateResult, CliIconInfo, CliNamerPfResult, CliPairRateResult, CliScoreResult,
-    CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeNormalizedRunView, WinRateOptions,
-    WinRateResult,
+    BattleReplayOptions, CliBatchRateResult, CliGroupWinRateResult, CliIconInfo, CliNamerPfResult, CliPairRateResult,
+    CliScoreResult, CliWinRateResult, FightOptions, FightReplay, FightSummary, GroupWinRateResult, RuntimeNormalizedRunView,
+    WinRateOptions, WinRateResult,
 };
 use wasm_bindgen::prelude::*;
 pub use win_rate::WinRateSession;
@@ -223,6 +223,15 @@ pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usiz
         .map(tswn_core::cli_api::JsonRuntimeNormalizedRun::from)
         .map(Into::into)
         .map_err(error::cli_api_error)
+}
+
+/// Run a complete battle and return the shared UI-ready replay JSON shape.
+#[wasm_bindgen]
+pub fn battle_replay(raw_input: String, options: Option<BattleReplayOptions>) -> WasmResult<JsValue> {
+    install_panic_hook();
+    let options = options.unwrap_or_default();
+    let replay = tswn_core::cli_api::battle_replay(&raw_input, options.to_core()).map_err(error::cli_api_error)?;
+    serde_wasm_bindgen::to_value(&replay).map_err(|err| error::internal_error(err.to_string()))
 }
 
 #[wasm_bindgen]

@@ -25,6 +25,8 @@ pub fn win_rate_invalid_groups() -> JsValue {
 
 pub fn internal_error(message: impl Into<String>) -> JsValue { error_value("INTERNAL_ERROR", message) }
 
+pub fn unsupported_option(message: impl Into<String>) -> JsValue { error_value("UNSUPPORTED_OPTION", message) }
+
 pub fn error_value(code: &'static str, message: impl Into<String>) -> JsValue {
     let error = TswnError::new(code, message);
     serde_wasm_bindgen::to_value(&error).unwrap_or_else(|_| JsValue::from_str(error.code))

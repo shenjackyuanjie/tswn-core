@@ -30,6 +30,7 @@
 | `batch_rate(...)` / `pair_rate(...)`                      | CLI 对齐的批量对抗 / 配对评分 helper                                |
 | `to_diy(...)` / `to_diy_batch(...)`                       | CLI 对齐的导出 helper                                               |
 | `icon_info(name)` / `parse_group_lines(...)`              | CLI 对齐的图标元信息 / 分组解析 helper                              |
+| `battle_replay(raw_input, options?)`                       | 跨语言统一的完整 UI 回放；返回 JSON-compatible replay shape         |
 
 ### FightSession
 
@@ -115,6 +116,9 @@ normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算
 - `RUNNER_INIT_FAILED` — Runner 初始化失败
 - `WIN_RATE_INVALID_GROUPS` — 胜率统计要求至少两个非空分组
 - `INTERNAL_ERROR` — 内部异常
+- `UNSUPPORTED_OPTION` — 当前 wasm target 不支持所传选项（例如 `WinRateSession.thread > 1`）
+
+`battle_replay(raw_input, { eval_rq?, include_icons?, max_rounds? })` 是推荐的一次性回放入口，返回初始/最终状态、逐回合 updates、`rows/clips/parts` 与赢家信息。`FightSession` / `WinRateSession` 保留为 Advanced API；WASM 目标下 WinRateSession 仅支持自动或单线程。
 
 ### 实时状态标签
 

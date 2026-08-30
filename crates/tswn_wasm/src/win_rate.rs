@@ -7,7 +7,7 @@ use tswn_core::Runner;
 use tswn_core::runtime::{PreparedRuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range};
 use wasm_bindgen::prelude::*;
 
-use crate::error::{WasmResult, invalid_input, runner_init_failed, win_rate_invalid_groups};
+use crate::error::{WasmResult, invalid_input, runner_init_failed, unsupported_option, win_rate_invalid_groups};
 use crate::model::{WinRateOptions, WinRateProgress, WinRateResult, WinRateTiming};
 
 fn build_prepared_runner(raw_input: String, eval_rq: f64) -> WasmResult<PreparedRuntimeRunner> {
@@ -87,7 +87,7 @@ impl WinRateSession {
 
     pub fn new_internal(raw_input: String, total_rounds: usize, options: WinRateOptions) -> WasmResult<Self> {
         let eval_rq = options.resolved_eval_rq();
-        let _thread = options.resolved_thread();
+        let _thread = options.resolved_thread().map_err(unsupported_option)?;
         let prepared = build_prepared_runner(raw_input, eval_rq)?;
         Ok(Self {
             prepared,
