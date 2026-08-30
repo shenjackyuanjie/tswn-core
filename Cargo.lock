@@ -4239,7 +4239,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_capi"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -4248,7 +4248,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_core"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "clap",
  "foldhash 0.2.0",
@@ -4309,9 +4309,10 @@ dependencies = [
 
 [[package]]
 name = "tswn_py"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "pyo3",
+ "serde_json",
  "smallvec",
  "tswn_core",
 ]
@@ -4328,7 +4329,7 @@ dependencies = [
 
 [[package]]
 name = "tswn_wasm"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
