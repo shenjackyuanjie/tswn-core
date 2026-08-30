@@ -5,12 +5,18 @@
 ### 新增
 
 - 顶部新增“关于”弹窗，显示 `tswn_openbox` 与 `tswn_core` 的当前版本，并链接到项目 GitHub 仓库。
+- 窗口标题与顶部栏标题旁直接显示 `tswn_openbox` 与 `tswn_core` 的版本号（构建时读取，无需手动维护）。
 - `cqd/cqp` 靶子预设新增可选配置 `factor_enabled`；启用后从 TOML 靶子文件读取每组 `factor` 与 `players`，并提供内嵌的 50 组带权二人靶子预设。
 
 ### 调整
 
 - 升级 GUI 框架至 `eframe`/`egui` 0.36.1，并更新 lockfile 中所有兼容依赖。
 - 带权 `cqd/cqp` 按 `sum(胜率 * factor) / sum(factor)` 计算平均胜率；完全相同的双方阵容按 50% 参与加权，部分重名仍正常计算。
+
+### 验证
+
+- `cargo +nightly fmt --check -p tswn_openbox`（`rustfmt.toml` 使用 nightly 专属选项，仓库新增 `AGENTS.md` 记录该约定）
+- `cargo check -p tswn_openbox`
 
 ## [0.3.13] - 2026-07-19
 

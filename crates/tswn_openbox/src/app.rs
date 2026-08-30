@@ -25,7 +25,7 @@ const INPUT_FOOTER_RESERVED_HEIGHT: f32 = 56.0;
 pub fn run() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("tswn openbox")
+            .with_title(format!("tswn openbox {}", env!("CARGO_PKG_VERSION")))
             .with_inner_size([1180.0, 780.0])
             .with_min_inner_size([960.0, 620.0]),
         ..Default::default()
@@ -118,6 +118,7 @@ fn top_bar_ui(ui: &mut egui::Ui, app: &mut OpenboxApp, ctx: &egui::Context) {
     ui.add_space(TOP_BAR_VERTICAL_SPACE);
     ui.horizontal(|ui| {
         ui.heading(egui::RichText::new("tswn openbox").size(23.0));
+        ui.label(egui::RichText::new(format!("v{} · core {}", env!("CARGO_PKG_VERSION"), tswn_core::version())).weak());
         ui.label(egui::RichText::new("本地工具箱").weak());
         ui.separator();
 
