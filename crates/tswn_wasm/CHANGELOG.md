@@ -10,8 +10,6 @@
 
 - `WinRateSession.thread > 1` 现在返回 `UNSUPPORTED_OPTION`，不再静默降级。
 
-### 修复
-
 - 同步 core 的 Merge 状态刷新修复；吞噬只合并技能时也会按旧版时机
   提交 Haste 倍率，WASM 导出与 JSON shape 不变。
 - 同步铁壁打破时立即注销状态，以及尾部空 `@` 按无队名解析的兼容修复。
