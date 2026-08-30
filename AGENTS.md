@@ -22,4 +22,4 @@
 
 ## 提交与 PR
 
-近期历史采用 Conventional Commit 风格，如 `feat(openbox): 添加版本信息弹窗`、`docs(repo): 添加 Agent 工作约定`。使用 `feat`、`fix`、`docs`、`chore` 等类型和简短 scope。PR 应说明动机、关键实现与验证命令；关联 issue；若更改 Openbox 或 WASM 可见界面，附截图或录屏。避免混入无关格式化、构建产物或本地配置。
+近期历史采用 Conventional Commit 风格，如 `feat(openbox): 添加版本信息弹窗`、`docs(repo): 添加 Agent 工作约定`。使用 `feat`、`fix`、`docs`、`chore` 等类型和简短 scope；提交主题和正文均使用中文。PR 应说明动机、关键实现与验证命令；关联 issue；若更改 Openbox 或 WASM 可见界面，附截图或录屏。避免混入无关格式化、构建产物或本地配置。
