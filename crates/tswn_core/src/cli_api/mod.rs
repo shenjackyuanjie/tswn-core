@@ -11,7 +11,7 @@ use crate::namerena::icon::icon_from_raw_name;
 use crate::runtime::update::UpdateType;
 use crate::runtime::{
     CustomRuntimeImportConfig, NormalizedOutcome, NormalizedUpdateFrame, RuntimeBatchSummary, RuntimeNormalizedRun,
-    RuntimeRunner, default_custom_runtime_import_config, runtime_groups_win_rate, runtime_score,
+    RuntimeRunner, default_custom_runtime_import_config, runtime_groups_win_rate_timed, runtime_score_timed,
 };
 use crate::win_rate::{WinRateSummary, WinRateTiming};
 
@@ -327,7 +327,7 @@ pub fn win_rate_summary(raw: &str, n: usize, eval_rq: Option<f64>, thread: u32) 
     let eval_rq = eval_rq.unwrap_or(eval_name::WIN_RATE_EVAL_RQ);
     let groups = RuntimeRunner::split_namerena_into_groups(raw.to_owned()).0;
     ensure_win_rate_group_count(&groups)?;
-    runtime_groups_win_rate(&groups, n.max(1), eval_rq, thread)
+    runtime_groups_win_rate_timed(&groups, n.max(1), eval_rq, thread)
         .map(Into::into)
         .map_err(runtime_batch_error)
 }
@@ -369,7 +369,7 @@ pub fn score(raw: &str, n: usize, mode: &str, eval_rq: Option<f64>, thread: u32)
     if target_group.is_empty() {
         return Err(invalid_input("score requires at least one player"));
     }
-    let summary = runtime_score(
+    let summary = runtime_score_timed(
         &target_group,
         score_mode.modifier(),
         n.max(1),

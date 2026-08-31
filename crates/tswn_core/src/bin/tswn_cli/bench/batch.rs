@@ -652,7 +652,7 @@ fn bench_batch_rate_for_group(
         }
 
         let raw = format!("{player}\n\n{target}");
-        let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq);
+        let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq, true);
         if verbose {
             let _ = writeln!(
                 verbose_buf,

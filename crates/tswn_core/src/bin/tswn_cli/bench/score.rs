@@ -10,7 +10,9 @@ use std::time::Instant;
 
 use tswn_core::bench_sched::{low_accuracy_outer_workers, run_outer_parallel_ordered};
 use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
-use tswn_core::runtime::{RuntimeBatchSummary, RuntimeRunner, runtime_score, runtime_score_range};
+use tswn_core::runtime::{
+    RuntimeBatchSummary, RuntimeRunner, runtime_score, runtime_score_range, runtime_score_range_timed, runtime_score_timed,
+};
 use tswn_core::win_rate::WinRateTiming;
 
 use crate::args::{BenchThreadMode, NamerPfMode};
@@ -41,9 +43,9 @@ pub(super) fn run_bench_score_with_modifier(
     println!("info: {target_count}");
 
     let summary = if let Some(step) = buckets_step.filter(|step| *step > 0) {
-        run_bench_score_with_bucket_output(&target_group, modifier, n, step)
+        run_bench_score_with_bucket_output(&target_group, modifier, n, step, perf)
     } else {
-        run_bench_score_inner(&target_group, modifier, n, mode, threads, WIN_RATE_EVAL_RQ, true)
+        run_bench_score_inner(&target_group, modifier, n, mode, threads, WIN_RATE_EVAL_RQ, true, perf)
     };
     let score = summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64;
     println!("{label}: {:.0} / 10000  ({}/{})", score, summary.wins, summary.total);
@@ -75,9 +77,9 @@ pub(super) fn run_bench_score(
 
     print!("[普通评分] ");
     let normal = if let Some(step) = buckets_step.filter(|step| *step > 0) {
-        run_bench_score_with_bucket_output(&target_group, "\u{0002}", n, step)
+        run_bench_score_with_bucket_output(&target_group, "\u{0002}", n, step, perf)
     } else {
-        run_bench_score_inner(&target_group, "\u{0002}", n, mode, threads, WIN_RATE_EVAL_RQ, true)
+        run_bench_score_inner(&target_group, "\u{0002}", n, mode, threads, WIN_RATE_EVAL_RQ, true, perf)
     };
     let ns = normal.wins as f64 * 10_000.0 / normal.total.max(1) as f64;
     println!("普通评分: {:.0} / 10000  ({}/{})", ns, normal.wins, normal.total);
@@ -87,9 +89,9 @@ pub(super) fn run_bench_score(
 
     print!("[!评分]    ");
     let bang = if let Some(step) = buckets_step.filter(|step| *step > 0) {
-        run_bench_score_with_bucket_output(&target_group, "!", n, step)
+        run_bench_score_with_bucket_output(&target_group, "!", n, step, perf)
     } else {
-        run_bench_score_inner(&target_group, "!", n, mode, threads, WIN_RATE_EVAL_RQ, true)
+        run_bench_score_inner(&target_group, "!", n, mode, threads, WIN_RATE_EVAL_RQ, true, perf)
     };
     let bs = bang.wins as f64 * 10_000.0 / bang.total.max(1) as f64;
     println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.wins, bang.total);
@@ -99,13 +101,24 @@ pub(super) fn run_bench_score(
 }
 
 /// 分段输出 score 累积结果。
-fn run_bench_score_with_bucket_output(target_group: &[String], modifier: &str, n: usize, step: usize) -> BenchSummary {
+fn run_bench_score_with_bucket_output(
+    target_group: &[String],
+    modifier: &str,
+    n: usize,
+    step: usize,
+    timed: bool,
+) -> BenchSummary {
     let started_at = Instant::now();
     let mut accumulated = RuntimeBatchSummary::default();
     let mut offset = 0usize;
     while offset < n {
         let chunk_end = (offset + step.max(1)).min(n);
-        match runtime_score_range(target_group, modifier, offset, chunk_end, WIN_RATE_EVAL_RQ) {
+        let chunk = if timed {
+            runtime_score_range_timed(target_group, modifier, offset, chunk_end, WIN_RATE_EVAL_RQ)
+        } else {
+            runtime_score_range(target_group, modifier, offset, chunk_end, WIN_RATE_EVAL_RQ)
+        };
+        match chunk {
             Ok(chunk) => accumulated.merge(chunk),
             Err(error) => {
                 eprintln!("分段 [{offset}, {chunk_end}) 评分失败: {error}");
@@ -137,13 +150,19 @@ fn run_bench_score_inner(
     threads: Option<usize>,
     eval_rq: f64,
     show_progress: bool,
+    timed: bool,
 ) -> BenchSummary {
     let started_at = Instant::now();
     let thread = match mode {
         BenchThreadMode::SingleThread => 1,
         BenchThreadMode::Parallel => thread_spec(threads),
     };
-    let summary = match runtime_score(target_group, modifier, n, eval_rq, thread) {
+    let scored = if timed {
+        runtime_score_timed(target_group, modifier, n, eval_rq, thread)
+    } else {
+        runtime_score(target_group, modifier, n, eval_rq, thread)
+    };
+    let summary = match scored {
         Ok(summary) => summary,
         Err(error) => {
             eprintln!("执行 Runtime 评分失败: {error}");
@@ -368,7 +387,7 @@ fn namer_pf_score(
         target_group.extend(base_group.iter().cloned());
     }
 
-    let summary = run_bench_score_inner(&target_group, modifier, n, mode, threads, eval_rq, false);
+    let summary = run_bench_score_inner(&target_group, modifier, n, mode, threads, eval_rq, false, false);
     summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64
 }
 

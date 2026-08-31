@@ -73,9 +73,31 @@ pub fn runtime_groups_win_rate(
     eval_rq: f64,
     thread: u32,
 ) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    runtime_groups_win_rate_with_timing::<false>(groups, n, eval_rq, thread)
+}
+
+/// 与 [`runtime_groups_win_rate`] 相同，但额外统计每场的 init / fight 耗时。
+///
+/// 逐场计时在 Windows 上是四次 QPC，单场只有几微秒的批量路径会因此多付 2%~3%；
+/// 因此只有真正要读 [`RuntimeBatchSummary::timing`] 的调用方才应该走 `_timed` 版本。
+pub fn runtime_groups_win_rate_timed(
+    groups: &[Vec<String>],
+    n: usize,
+    eval_rq: f64,
+    thread: u32,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    runtime_groups_win_rate_with_timing::<true>(groups, n, eval_rq, thread)
+}
+
+fn runtime_groups_win_rate_with_timing<const TIMED: bool>(
+    groups: &[Vec<String>],
+    n: usize,
+    eval_rq: f64,
+    thread: u32,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
     let config = default_custom_runtime_import_config()?;
     let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(groups, eval_rq, config)?;
-    prepared_runtime_win_rate(&prepared, n, thread)
+    prepared_runtime_win_rate_with_timing::<TIMED>(&prepared, n, thread)
 }
 
 pub fn prepared_runtime_win_rate(
@@ -83,9 +105,26 @@ pub fn prepared_runtime_win_rate(
     n: usize,
     thread: u32,
 ) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    prepared_runtime_win_rate_with_timing::<false>(prepared, n, thread)
+}
+
+/// 与 [`prepared_runtime_win_rate`] 相同，但额外统计每场的 init / fight 耗时。
+pub fn prepared_runtime_win_rate_timed(
+    prepared: &PreparedRuntimeRunner,
+    n: usize,
+    thread: u32,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    prepared_runtime_win_rate_with_timing::<true>(prepared, n, thread)
+}
+
+fn prepared_runtime_win_rate_with_timing<const TIMED: bool>(
+    prepared: &PreparedRuntimeRunner,
+    n: usize,
+    thread: u32,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
     let workers = resolve_win_rate_workers(thread, n);
     if workers <= 1 || n < BATCH_PARALLEL_THRESHOLD {
-        return run_prepared_range(prepared, 0, n).map_err(Into::into);
+        return run_prepared_range::<TIMED>(prepared, 0, n).map_err(Into::into);
     }
 
     let prepared = Arc::new(prepared.clone());
@@ -95,7 +134,7 @@ pub fn prepared_runtime_win_rate(
         let prepared = Arc::clone(&prepared);
         let next = Arc::clone(&next);
         handles.push(std::thread::spawn(move || {
-            run_prepared_worker(prepared.as_ref(), next.as_ref(), n)
+            run_prepared_worker::<TIMED>(prepared.as_ref(), next.as_ref(), n)
         }));
     }
 
@@ -113,10 +152,40 @@ pub fn prepared_runtime_win_rate_range(
     start: usize,
     end: usize,
 ) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
-    run_prepared_range(prepared, start, end).map_err(Into::into)
+    run_prepared_range::<false>(prepared, start, end).map_err(Into::into)
+}
+
+/// 与 [`prepared_runtime_win_rate_range`] 相同，但额外统计每场的 init / fight 耗时。
+pub fn prepared_runtime_win_rate_range_timed(
+    prepared: &PreparedRuntimeRunner,
+    start: usize,
+    end: usize,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    run_prepared_range::<true>(prepared, start, end).map_err(Into::into)
 }
 
 pub fn runtime_score(
+    target_group: &[String],
+    modifier: &str,
+    n: usize,
+    eval_rq: f64,
+    thread: u32,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    runtime_score_with_timing::<false>(target_group, modifier, n, eval_rq, thread)
+}
+
+/// 与 [`runtime_score`] 相同，但额外统计每场的 init / fight 耗时。
+pub fn runtime_score_timed(
+    target_group: &[String],
+    modifier: &str,
+    n: usize,
+    eval_rq: f64,
+    thread: u32,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    runtime_score_with_timing::<true>(target_group, modifier, n, eval_rq, thread)
+}
+
+fn runtime_score_with_timing<const TIMED: bool>(
     target_group: &[String],
     modifier: &str,
     n: usize,
@@ -132,7 +201,14 @@ pub fn runtime_score(
     )?);
     let workers = resolve_win_rate_workers(thread, n);
     if workers <= 1 || n < BATCH_PARALLEL_THRESHOLD {
-        return Ok(run_score_range(target_group, modifier, 0, n, eval_rq, prepared.as_ref()));
+        return Ok(run_score_range::<TIMED>(
+            target_group,
+            modifier,
+            0,
+            n,
+            eval_rq,
+            prepared.as_ref(),
+        ));
     }
 
     let next = Arc::new(AtomicUsize::new(0));
@@ -143,7 +219,7 @@ pub fn runtime_score(
         let next = Arc::clone(&next);
         let prepared = Arc::clone(&prepared);
         handles.push(std::thread::spawn(move || {
-            run_score_worker(&target_group, &modifier, next.as_ref(), n, eval_rq, prepared.as_ref())
+            run_score_worker::<TIMED>(&target_group, &modifier, next.as_ref(), n, eval_rq, prepared.as_ref())
         }));
     }
 
@@ -162,13 +238,34 @@ pub fn runtime_score_range(
     end: usize,
     eval_rq: f64,
 ) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    runtime_score_range_with_timing::<false>(target_group, modifier, start, end, eval_rq)
+}
+
+/// 与 [`runtime_score_range`] 相同，但额外统计每场的 init / fight 耗时。
+pub fn runtime_score_range_timed(
+    target_group: &[String],
+    modifier: &str,
+    start: usize,
+    end: usize,
+    eval_rq: f64,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
+    runtime_score_range_with_timing::<true>(target_group, modifier, start, end, eval_rq)
+}
+
+fn runtime_score_range_with_timing<const TIMED: bool>(
+    target_group: &[String],
+    modifier: &str,
+    start: usize,
+    end: usize,
+    eval_rq: f64,
+) -> Result<RuntimeBatchSummary, RuntimeBatchError> {
     let first_groups = ScoreMatchGroups::new(target_group, modifier).groups;
     let config = default_custom_runtime_import_config()?;
     let prepared = PreparedRuntimeRunner::from_custom_mixed_roster_with_eval_rq(&first_groups, eval_rq, config)?;
-    Ok(run_score_range(target_group, modifier, start, end, eval_rq, &prepared))
+    Ok(run_score_range::<TIMED>(target_group, modifier, start, end, eval_rq, &prepared))
 }
 
-fn run_prepared_range(
+fn run_prepared_range<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     start: usize,
     end: usize,
@@ -177,12 +274,12 @@ fn run_prepared_range(
     let mut seed = String::with_capacity(24);
     let mut runner = prepared.new_reusable_runner();
     for round in start..end {
-        run_prepared_round(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
+        run_prepared_round::<TIMED>(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
     }
     Ok(summary)
 }
 
-fn run_prepared_worker(
+fn run_prepared_worker<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     next: &AtomicUsize,
     end: usize,
@@ -195,24 +292,30 @@ fn run_prepared_worker(
         if round >= end {
             break;
         }
-        run_prepared_round(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
+        run_prepared_round::<TIMED>(prepared, &mut runner, profile_seed_for_round(&mut seed, round), &mut summary)?;
     }
     Ok(summary)
 }
 
-fn run_prepared_round(
+fn run_prepared_round<const TIMED: bool>(
     prepared: &PreparedRuntimeRunner,
     runner: &mut RuntimeRunner,
     seed: &[String],
     summary: &mut RuntimeBatchSummary,
 ) -> Result<(), CustomRuntimeImportError> {
-    let init_started = Instant::now();
+    // 单场只有几微秒，逐场计时在 Windows 上是四次 QPC，占比可达 2%~3%；
+    // 只有 `_timed` 入口会把 TIMED 打开，其余批量调用方完全不付这份开销。
+    let init_started = TIMED.then(Instant::now);
     prepared.reset_with_seed(runner, seed)?;
-    summary.timing.init_nanos += init_started.elapsed().as_nanos();
+    if let Some(init_started) = init_started {
+        summary.timing.init_nanos += init_started.elapsed().as_nanos();
+    }
 
-    let fight_started = Instant::now();
+    let fight_started = TIMED.then(Instant::now);
     let completion = runner.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
-    summary.timing.fight_nanos += fight_started.elapsed().as_nanos();
+    if let Some(fight_started) = fight_started {
+        summary.timing.fight_nanos += fight_started.elapsed().as_nanos();
+    }
     summary.total += 1;
     summary.guard_exhausted += usize::from(completion.guard_exhausted);
     summary.wins += usize::from(runner.input_group_won(0));
@@ -229,7 +332,7 @@ fn profile_seed_for_round(seed: &mut String, round: usize) -> &[String] {
     }
 }
 
-fn run_score_range(
+fn run_score_range<const TIMED: bool>(
     target_group: &[String],
     modifier: &str,
     start: usize,
@@ -241,12 +344,12 @@ fn run_score_range(
     let mut match_groups = ScoreMatchGroups::new(target_group, modifier);
     let mut runner = prepared.new_reusable_runner();
     for round in start..end {
-        run_score_round(round, eval_rq, prepared, &mut runner, &mut match_groups, &mut summary);
+        run_score_round::<TIMED>(round, eval_rq, prepared, &mut runner, &mut match_groups, &mut summary);
     }
     summary
 }
 
-fn run_score_worker(
+fn run_score_worker<const TIMED: bool>(
     target_group: &[String],
     modifier: &str,
     next: &AtomicUsize,
@@ -262,12 +365,12 @@ fn run_score_worker(
         if round >= end {
             break;
         }
-        run_score_round(round, eval_rq, prepared, &mut runner, &mut match_groups, &mut summary);
+        run_score_round::<TIMED>(round, eval_rq, prepared, &mut runner, &mut match_groups, &mut summary);
     }
     summary
 }
 
-fn run_score_round(
+fn run_score_round<const TIMED: bool>(
     round: usize,
     eval_rq: f64,
     prepared: &PreparedRuntimeRunner,
@@ -276,7 +379,7 @@ fn run_score_round(
     summary: &mut RuntimeBatchSummary,
 ) {
     match_groups.set_round(round);
-    let init_started = Instant::now();
+    let init_started = TIMED.then(Instant::now);
     if prepared
         .reset_score_groups_with_seed_and_eval_rq(
             runner,
@@ -296,11 +399,15 @@ fn run_score_round(
         summary.errors += 1;
         return;
     }
-    summary.timing.init_nanos += init_started.elapsed().as_nanos();
+    if let Some(init_started) = init_started {
+        summary.timing.init_nanos += init_started.elapsed().as_nanos();
+    }
 
-    let fight_started = Instant::now();
+    let fight_started = TIMED.then(Instant::now);
     let completion = runner.run_to_completion_prevalidated(BATCH_MAX_ROUNDS);
-    summary.timing.fight_nanos += fight_started.elapsed().as_nanos();
+    if let Some(fight_started) = fight_started {
+        summary.timing.fight_nanos += fight_started.elapsed().as_nanos();
+    }
     summary.total += 1;
     summary.guard_exhausted += usize::from(completion.guard_exhausted);
     summary.wins += usize::from(runner.input_group_won(0));

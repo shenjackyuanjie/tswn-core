@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tswn_core::namerena::eval_name::WIN_RATE_EVAL_RQ;
 use tswn_core::runtime::{
     PreparedRuntimeRunner, RuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range,
-    runtime_groups_win_rate,
+    prepared_runtime_win_rate_range_timed, runtime_groups_win_rate, runtime_groups_win_rate_timed,
 };
 use tswn_core::win_rate::WinRateTiming;
 
@@ -93,10 +93,10 @@ pub fn run_bench_winrate(
     print_bench_winrate_matchup(raw);
 
     if let Some(step) = buckets_step {
-        let summary = bench_winrate_with_buckets(raw, n, step, eval_rq);
+        let summary = bench_winrate_with_buckets(raw, n, step, eval_rq, perf);
         print_bench_winrate_summary(summary, perf);
     } else {
-        let summary = bench_winrate_summary(raw, n, mode, threads, eval_rq);
+        let summary = bench_winrate_summary(raw, n, mode, threads, eval_rq, perf);
         print_bench_winrate_summary(summary, perf);
     }
 }
@@ -143,7 +143,7 @@ pub fn run_bench_group_win_rate(
         println!();
         println!("[{}/{}] vs {}", index + 1, against.len(), display_group(opponent));
         let raw = format!("{target}\n\n{opponent}");
-        let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq);
+        let summary = bench_winrate_summary(&raw, n, mode, threads, eval_rq, perf);
         println!("胜率: {:.2}%  ({}/{})", summary.win_rate_percent(), summary.wins, summary.total);
         if perf {
             print_perf_lines(summary.elapsed, summary.timing, summary.total);
@@ -168,7 +168,14 @@ pub fn run_bench_group_win_rate(
 }
 
 /// 普通 win-rate 的实际执行器。
-pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads: Option<usize>, eval_rq: f64) -> BenchSummary {
+pub fn bench_winrate_summary(
+    raw: &str,
+    n: usize,
+    mode: BenchThreadMode,
+    threads: Option<usize>,
+    eval_rq: f64,
+    timed: bool,
+) -> BenchSummary {
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let started_at = Instant::now();
 
@@ -176,7 +183,12 @@ pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads
         BenchThreadMode::SingleThread => 1,
         BenchThreadMode::Parallel => threads.and_then(|x| u32::try_from(x).ok()).unwrap_or(0),
     };
-    let summary = match runtime_groups_win_rate(&groups, n, eval_rq, thread) {
+    let computed = if timed {
+        runtime_groups_win_rate_timed(&groups, n, eval_rq, thread)
+    } else {
+        runtime_groups_win_rate(&groups, n, eval_rq, thread)
+    };
+    let summary = match computed {
         Ok(summary) => summary,
         Err(err) => {
             eprintln!("执行胜率测试失败: {err}");
@@ -202,7 +214,7 @@ pub fn bench_winrate_summary(raw: &str, n: usize, mode: BenchThreadMode, threads
 
 /// 分段累积胜率测试。按 `step` 将 `n` 场分块，每块结束后输出一次累积胜率。
 /// 强制单线程以保证顺序正确。
-fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) -> BenchSummary {
+fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64, timed: bool) -> BenchSummary {
     let step = step.max(1);
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
     let prepared = match (|| -> Result<_, tswn_core::runtime::RuntimeBatchError> {
@@ -231,7 +243,12 @@ fn bench_winrate_with_buckets(raw: &str, n: usize, step: usize, eval_rq: f64) ->
     let mut offset = 0usize;
     while offset < n {
         let chunk_end = (offset + step).min(n);
-        let chunk = match prepared_runtime_win_rate_range(&prepared, offset, chunk_end) {
+        let range = if timed {
+            prepared_runtime_win_rate_range_timed(&prepared, offset, chunk_end)
+        } else {
+            prepared_runtime_win_rate_range(&prepared, offset, chunk_end)
+        };
+        let chunk = match range {
             Ok(chunk) => chunk,
             Err(err) => {
                 eprintln!("分段 [{offset}, {chunk_end}) 胜率测试失败: {err}");

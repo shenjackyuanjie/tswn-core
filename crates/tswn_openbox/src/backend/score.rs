@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tswn_core::runtime::{RuntimeRunner, runtime_groups_win_rate, runtime_score};
+use tswn_core::runtime::{RuntimeRunner, runtime_groups_win_rate_timed, runtime_score_timed};
 use tswn_core::win_rate::WinRateTiming;
 
 use super::format::display_group;
@@ -143,7 +143,7 @@ pub fn namer_pf_score(
 fn bench_winrate_summary(raw: &str, n: usize, threads: Option<usize>, eval_rq: f64) -> Result<BenchSummary, String> {
     let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
     let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
-    runtime_groups_win_rate(&groups, n, eval_rq, thread)
+    runtime_groups_win_rate_timed(&groups, n, eval_rq, thread)
         .map(|summary| BenchSummary {
             wins: summary.wins,
             total: summary.total,
@@ -163,7 +163,7 @@ fn run_bench_score_inner(
     eval_rq: f64,
 ) -> BenchSummary {
     let thread = threads.and_then(|value| u32::try_from(value).ok()).unwrap_or(0);
-    match runtime_score(target_group, modifier, n, eval_rq, thread) {
+    match runtime_score_timed(target_group, modifier, n, eval_rq, thread) {
         Ok(summary) => BenchSummary {
             wins: summary.wins,
             total: summary.total,

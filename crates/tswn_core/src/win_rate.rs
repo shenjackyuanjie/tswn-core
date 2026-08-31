@@ -2,7 +2,9 @@
 
 use crate::PreparedRunner;
 use crate::runtime::{
-    RuntimeBatchError, RuntimeBatchSummary, prepared_runtime_win_rate, prepared_runtime_win_rate_range, runtime_groups_win_rate,
+    RuntimeBatchError, RuntimeBatchSummary, prepared_runtime_win_rate, prepared_runtime_win_rate_range,
+    prepared_runtime_win_rate_range_timed, prepared_runtime_win_rate_timed, runtime_groups_win_rate,
+    runtime_groups_win_rate_timed,
 };
 
 #[cfg(target_family = "wasm")]
@@ -76,8 +78,30 @@ pub fn prepared_win_rate(
     prepared_runtime_win_rate(prepared, n, thread).map(Into::into)
 }
 
+/// 与 [`prepared_win_rate`] 相同，但填充 [`WinRateTiming`]。
+///
+/// 逐场计时本身要付 2%~3% 的开销，只有真的要读 init / fight 拆分的调用方才应该用这个入口。
+pub fn prepared_win_rate_timed(
+    prepared: &PreparedRunner,
+    n: usize,
+    _eval_rq: f64,
+    thread: u32,
+) -> Result<WinRateSummary, RuntimeBatchError> {
+    prepared_runtime_win_rate_timed(prepared, n, thread).map(Into::into)
+}
+
 pub fn groups_win_rate(groups: &[Vec<String>], n: usize, eval_rq: f64, thread: u32) -> Result<WinRateSummary, RuntimeBatchError> {
     runtime_groups_win_rate(groups, n, eval_rq, thread).map(Into::into)
+}
+
+/// 与 [`groups_win_rate`] 相同，但填充 [`WinRateTiming`]。
+pub fn groups_win_rate_timed(
+    groups: &[Vec<String>],
+    n: usize,
+    eval_rq: f64,
+    thread: u32,
+) -> Result<WinRateSummary, RuntimeBatchError> {
+    runtime_groups_win_rate_timed(groups, n, eval_rq, thread).map(Into::into)
 }
 
 pub fn run_prepared_win_rate_range(
@@ -86,4 +110,13 @@ pub fn run_prepared_win_rate_range(
     end: usize,
 ) -> Result<WinRateSummary, RuntimeBatchError> {
     prepared_runtime_win_rate_range(prepared, start, end).map(Into::into)
+}
+
+/// 与 [`run_prepared_win_rate_range`] 相同，但填充 [`WinRateTiming`]。
+pub fn run_prepared_win_rate_range_timed(
+    prepared: &PreparedRunner,
+    start: usize,
+    end: usize,
+) -> Result<WinRateSummary, RuntimeBatchError> {
+    prepared_runtime_win_rate_range_timed(prepared, start, end).map(Into::into)
 }

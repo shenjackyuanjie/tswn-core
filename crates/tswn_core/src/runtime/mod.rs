@@ -61,8 +61,9 @@ pub use trace::{RngCheckpoint, RuntimeTrace, TraceAction, TraceFrame};
 pub use world::WorldArena;
 
 pub use batch::{
-    RuntimeBatchError, RuntimeBatchSummary, prepared_runtime_win_rate, prepared_runtime_win_rate_range, runtime_groups_win_rate,
-    runtime_score, runtime_score_range,
+    RuntimeBatchError, RuntimeBatchSummary, prepared_runtime_win_rate, prepared_runtime_win_rate_range,
+    prepared_runtime_win_rate_range_timed, prepared_runtime_win_rate_timed, runtime_groups_win_rate,
+    runtime_groups_win_rate_timed, runtime_score, runtime_score_range, runtime_score_range_timed, runtime_score_timed,
 };
 pub use combat::{
     CombatRuntime, PreparedBuiltinSkillAction, PreparedPlainAction, PreparedTargetList, RoundOutcome, SelectedBuiltinSkill,

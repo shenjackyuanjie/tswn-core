@@ -4,7 +4,7 @@
 //! 一次性同步函数，计算第一组玩家对其余组的胜率百分比。
 
 use tswn_core::Runner;
-use tswn_core::runtime::{PreparedRuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range};
+use tswn_core::runtime::{PreparedRuntimeRunner, default_custom_runtime_import_config, prepared_runtime_win_rate_range_timed};
 use wasm_bindgen::prelude::*;
 
 use crate::error::{WasmResult, invalid_input, runner_init_failed, unsupported_option, win_rate_invalid_groups};
@@ -75,7 +75,7 @@ impl WinRateSession {
     fn step_internal(&mut self, batch_size: usize) -> WasmResult<WinRateProgress> {
         let batch_size = batch_size.max(1);
         let batch_end = self.total_rounds.min(self.next_round.saturating_add(batch_size));
-        let summary = prepared_runtime_win_rate_range(&self.prepared, self.next_round, batch_end)
+        let summary = prepared_runtime_win_rate_range_timed(&self.prepared, self.next_round, batch_end)
             .map_err(|error| runner_init_failed(error.to_string()))?;
         self.wins += summary.wins;
         self.init_nanos = self.init_nanos.saturating_add(nanos_to_u64(summary.timing.init_nanos));
