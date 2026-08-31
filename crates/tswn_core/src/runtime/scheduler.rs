@@ -435,7 +435,11 @@ impl PhaseScheduler {
             };
         }
         let mut entries = SmallVec::<[StateHookPlanEntry; 2]>::new();
-        for entry in entity.states.entries() {
+        // 运行期注册顺序与 entries 同下标，直接 zip 取值；
+        // 逐条按 legacy_order_key 反查会让整个 plan 构造退化成 O(n^2)。
+        let runtime_orders = entity.states.runtime_registration_orders();
+        debug_assert_eq!(runtime_orders.len(), entity.states.entries().len());
+        for (entry, &runtime_registration_order) in entity.states.entries().iter().zip(runtime_orders) {
             if !entry.hook_mask.intersects(hook) {
                 continue;
             }
@@ -445,10 +449,7 @@ impl PhaseScheduler {
                 legacy_order_key: entry.legacy_order_key,
                 priority: entry.priority_for_hook(hook),
                 registration_order: entry.registration_order,
-                runtime_registration_order: entity
-                    .states
-                    .runtime_registration_order(entry.legacy_order_key)
-                    .expect("runtime state hook entry must have a runtime registration order"),
+                runtime_registration_order,
             });
         }
         entries.sort_by_key(|entry| (entry.priority, entry.registration_order));

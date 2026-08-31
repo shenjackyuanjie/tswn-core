@@ -665,6 +665,12 @@ impl StateStore {
         self.runtime_registration_orders.get(index).copied()
     }
 
+    /// 按 `entries()` 的下标顺序返回运行期注册顺序。
+    ///
+    /// 需要为每个条目取注册顺序的调用方应该直接 zip 这两个切片；
+    /// 逐条走 [`Self::runtime_registration_order`] 会退化成 O(n^2)。
+    pub fn runtime_registration_orders(&self) -> &[u64] { &self.runtime_registration_orders }
+
     pub fn register_compressed_legacy_state(&mut self, state: CompressedLegacyState) -> bool {
         let bit = state.bit();
         if self.compressed_legacy_states & bit != 0 {
