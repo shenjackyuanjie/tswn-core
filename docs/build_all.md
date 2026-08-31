@@ -28,6 +28,10 @@
 - `scripts/build_all.py` 的 Windows CLI 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--cli-features`
 - `scripts/build_all.py --include-ohos-cli` 会额外构建 OHOS CLI，默认 feature 为 `no_debug`，产物名为 `tswn-cli_alpha_<core版本>_aarch64_unknown_linux_ohos_unsigned.bin`
 - `scripts/build_all.py` 的 Windows Openbox 默认 feature 为 `no_debug,mimalloc_alloc`；如需覆盖，可使用 `--openbox-features`
+- `scripts/build_all.py --release --pgo` 会改用 `scripts/pgo_build.py` 的 PGO 流程构建 Windows CLI：
+  插桩构建 → 用 `docs/perf/fixed_cases_30` 加评分输入做单线程训练 → `profile-use` 重建。
+  非训练输入实测约 `-25%`，代价是多一次完整构建加一轮训练；训练量用 `--pgo-train-runs` 调整。
+  PGO 需要在本机跑训练，因此不能与 `--target` 交叉编译同时使用，也要求 `llvm-profdata` 与 rustc 的 LLVM 大版本一致
 - 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `tswn_openbox` / `libtswn_capi.so`，聚合脚本也会一并收集
 - `tswn_wasm` 打包默认依赖 `wasm-bindgen-cli`，可通过 `cargo install wasm-bindgen-cli` 安装
 
