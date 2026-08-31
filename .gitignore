@@ -10,6 +10,8 @@ __pycache__
 !docs/perf/score/*.txt
 !docs/perf/fixed_cases_30/
 !docs/perf/fixed_cases_30/*.txt
+!docs/perf/pgo_training/
+!docs/perf/pgo_training/*.txt
 tests
 !crates/tswn_core/src/runtime/tests/
 !crates/tswn_core/src/runtime/tests/*.rs
