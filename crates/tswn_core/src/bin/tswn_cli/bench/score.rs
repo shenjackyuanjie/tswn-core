@@ -45,7 +45,18 @@ pub(super) fn run_bench_score_with_modifier(
     let summary = if let Some(step) = buckets_step.filter(|step| *step > 0) {
         run_bench_score_with_bucket_output(&target_group, modifier, n, step, perf)
     } else {
-        run_bench_score_inner(&target_group, modifier, n, mode, threads, WIN_RATE_EVAL_RQ, true, perf)
+        run_bench_score_inner(
+            &target_group,
+            modifier,
+            n,
+            mode,
+            threads,
+            WIN_RATE_EVAL_RQ,
+            ScoreBenchOptions {
+                show_progress: true,
+                timed: perf,
+            },
+        )
     };
     let score = summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64;
     println!("{label}: {:.0} / 10000  ({}/{})", score, summary.wins, summary.total);
@@ -79,7 +90,18 @@ pub(super) fn run_bench_score(
     let normal = if let Some(step) = buckets_step.filter(|step| *step > 0) {
         run_bench_score_with_bucket_output(&target_group, "\u{0002}", n, step, perf)
     } else {
-        run_bench_score_inner(&target_group, "\u{0002}", n, mode, threads, WIN_RATE_EVAL_RQ, true, perf)
+        run_bench_score_inner(
+            &target_group,
+            "\u{0002}",
+            n,
+            mode,
+            threads,
+            WIN_RATE_EVAL_RQ,
+            ScoreBenchOptions {
+                show_progress: true,
+                timed: perf,
+            },
+        )
     };
     let ns = normal.wins as f64 * 10_000.0 / normal.total.max(1) as f64;
     println!("普通评分: {:.0} / 10000  ({}/{})", ns, normal.wins, normal.total);
@@ -91,7 +113,18 @@ pub(super) fn run_bench_score(
     let bang = if let Some(step) = buckets_step.filter(|step| *step > 0) {
         run_bench_score_with_bucket_output(&target_group, "!", n, step, perf)
     } else {
-        run_bench_score_inner(&target_group, "!", n, mode, threads, WIN_RATE_EVAL_RQ, true, perf)
+        run_bench_score_inner(
+            &target_group,
+            "!",
+            n,
+            mode,
+            threads,
+            WIN_RATE_EVAL_RQ,
+            ScoreBenchOptions {
+                show_progress: true,
+                timed: perf,
+            },
+        )
     };
     let bs = bang.wins as f64 * 10_000.0 / bang.total.max(1) as f64;
     println!("!评分:     {:.0} / 10000  ({}/{})", bs, bang.wins, bang.total);
@@ -141,6 +174,15 @@ fn run_bench_score_with_bucket_output(
     }
 }
 
+/// score benchmark 执行器的输出与计时开关。
+#[derive(Debug, Clone, Copy)]
+struct ScoreBenchOptions {
+    /// 是否在跑完后打印进度行。
+    show_progress: bool,
+    /// 是否逐场统计 init / fight 耗时（只有 `--perf` 需要）。
+    timed: bool,
+}
+
 /// score benchmark 的统一执行器。
 fn run_bench_score_inner(
     target_group: &[String],
@@ -149,9 +191,9 @@ fn run_bench_score_inner(
     mode: BenchThreadMode,
     threads: Option<usize>,
     eval_rq: f64,
-    show_progress: bool,
-    timed: bool,
+    options: ScoreBenchOptions,
 ) -> BenchSummary {
+    let ScoreBenchOptions { show_progress, timed } = options;
     let started_at = Instant::now();
     let thread = match mode {
         BenchThreadMode::SingleThread => 1,
@@ -387,7 +429,18 @@ fn namer_pf_score(
         target_group.extend(base_group.iter().cloned());
     }
 
-    let summary = run_bench_score_inner(&target_group, modifier, n, mode, threads, eval_rq, false, false);
+    let summary = run_bench_score_inner(
+        &target_group,
+        modifier,
+        n,
+        mode,
+        threads,
+        eval_rq,
+        ScoreBenchOptions {
+            show_progress: false,
+            timed: false,
+        },
+    );
     summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64
 }
 
