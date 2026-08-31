@@ -230,7 +230,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--pgo-train-runs",
         type=int,
         default=5000,
-        help="PGO 每个训练输入的场数（默认 5000）",
+        help="CLI 的 PGO 每个训练输入场数（默认 5000）",
+    )
+    p.add_argument(
+        "--pgo-openbox-train-runs",
+        type=int,
+        default=1500,
+        help="Openbox 的 PGO 每个 CQP 靶子场数（默认 1500）",
     )
     p.add_argument(
         "--include-ohos-cli",
@@ -516,25 +522,23 @@ def build_ohos_env(native_sdk: Path, target: str) -> dict[str, str]:
     return env
 
 
-def build_cli_with_pgo(cli_features: str, train_runs: int) -> Path:
-    """用 scripts/pgo_build.py 走一遍 PGO 流程，返回优化后的 CLI 产物目录。
+def build_with_pgo(kind: str, features: str, train_runs: int) -> Path:
+    """用 scripts/pgo_build.py 走一遍 PGO 流程，返回优化后的产物目录。
 
     PGO 只对本机 target 有意义（需要在本机跑训练），因此交叉编译时不启用。
     """
     cmd: list[str | Path] = [
         sys.executable,
         SCRIPTS_DIR / "pgo_build.py",
-        "--package",
-        "tswn_core",
-        "--bin",
-        "tswn-cli",
+        "--kind",
+        kind,
         "--features",
-        cli_features,
+        features,
         "--train-runs",
         str(train_runs),
     ]
     run(cmd, cwd=ROOT)
-    return ROOT / "target" / "pgo" / "build-use" / "release"
+    return ROOT / "target" / "pgo" / kind / "build-use" / "release"
 
 
 def build_cli(
@@ -551,7 +555,7 @@ def build_cli(
             raise RuntimeError("PGO 需要在本机运行训练，不能和 --target 交叉编译一起用")
         if not release:
             raise RuntimeError("PGO 只在 release 口径下有意义")
-        out_dir = build_cli_with_pgo(cli_features=cli_features, train_runs=pgo_train_runs)
+        out_dir = build_with_pgo(kind="cli", features=cli_features, train_runs=pgo_train_runs)
     else:
         out_dir = cargo_profile_dir(release=release, target=target)
 
@@ -629,20 +633,29 @@ def build_openbox(
     target: str | None,
     openbox_features: str,
     extra_cargo: list[str],
+    pgo: bool = False,
+    pgo_train_runs: int = 1500,
 ) -> tuple[Path, list[Path]]:
-    out_dir = cargo_profile_dir(release=release, target=target)
+    if pgo:
+        if target:
+            raise RuntimeError("PGO 需要在本机运行训练，不能和 --target 交叉编译一起用")
+        if not release:
+            raise RuntimeError("PGO 只在 release 口径下有意义")
+        out_dir = build_with_pgo(kind="openbox", features=openbox_features, train_runs=pgo_train_runs)
+    else:
+        out_dir = cargo_profile_dir(release=release, target=target)
 
-    cmd: list[str] = ["cargo", "build", "-p", "tswn_openbox"]
-    if release:
-        cmd.append("--release")
-    if target:
-        cmd += ["--target", target]
-    if openbox_features.strip():
-        cmd += ["--features", openbox_features]
-    if extra_cargo:
-        cmd += extra_cargo
+        cmd: list[str] = ["cargo", "build", "-p", "tswn_openbox"]
+        if release:
+            cmd.append("--release")
+        if target:
+            cmd += ["--target", target]
+        if openbox_features.strip():
+            cmd += ["--features", openbox_features]
+        if extra_cargo:
+            cmd += extra_cargo
 
-    run(cmd, cwd=ROOT)
+        run(cmd, cwd=ROOT)
 
     binary = find_openbox_binary(out_dir)
     support = openbox_support_artifacts(binary)
@@ -1171,6 +1184,8 @@ def main(argv: list[str]) -> int:
             target=args.target,
             openbox_features=args.openbox_features,
             extra_cargo=args.cargo,
+            pgo=args.pgo,
+            pgo_train_runs=args.pgo_openbox_train_runs,
         )
         package_component_changelog(openbox_dir, changelog_src=OPENBOX_CHANGELOG)
         write_openbox_readme(openbox_dir, binary_path=binary_path, support_files=support_files)

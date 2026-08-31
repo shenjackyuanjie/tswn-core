@@ -32,6 +32,9 @@
   插桩构建 → 用 `docs/perf/fixed_cases_30` 加评分输入做单线程训练 → `profile-use` 重建。
   非训练输入实测约 `-25%`，代价是多一次完整构建加一轮训练；训练量用 `--pgo-train-runs` 调整。
   PGO 需要在本机跑训练，因此不能与 `--target` 交叉编译同时使用，也要求 `llvm-profdata` 与 rustc 的 LLVM 大版本一致
+- `--pgo` 同时作用于 Windows Openbox：训练负载走 `openbox_mem_probe` 的 CQP 批量胜率
+  （探针内部计时实测 `2.897s -> 2.262s`，约 `-21.9%`），场数用 `--pgo-openbox-train-runs` 调整。
+  CLI 与 Openbox 各用各的 profile，分别存放在 `target/pgo/cli/` 与 `target/pgo/openbox/`
 - 若仓库 `target/release/` 下已经存在 WSL 构建出的 Linux `tswn-cli` / `tswn_openbox` / `libtswn_capi.so`，聚合脚本也会一并收集
 - `tswn_wasm` 打包默认依赖 `wasm-bindgen-cli`，可通过 `cargo install wasm-bindgen-cli` 安装
 

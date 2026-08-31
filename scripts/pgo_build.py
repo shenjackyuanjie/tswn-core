@@ -34,6 +34,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = ROOT / "target" / "pgo"
 DEFAULT_TRAIN_DIR = ROOT / "docs" / "perf" / "fixed_cases_30"
 SCORE_TRAIN_INPUT = ROOT / "docs" / "perf" / "pgo_training" / "score.txt"
+CQP_PLAYERS = ROOT / "docs" / "perf" / "cqp" / "sqp6000_first20.txt"
+CQP_TARGET_DIR = ROOT / "crates" / "tswn_openbox" / "assets" / "targets"
 
 
 class PgoError(RuntimeError):
@@ -121,8 +123,10 @@ def cargo_env(extra_rustflags: str, keep_wrapper: bool) -> dict[str, str]:
     return env
 
 
-def cargo_build(package: str, binary: str, features: str, target_dir: Path, env: dict[str, str]) -> None:
-    command = ["cargo", "build", "--release", "-p", package, "--bin", binary, "--target-dir", str(target_dir)]
+def cargo_build(package: str, binary: str | None, features: str, target_dir: Path, env: dict[str, str]) -> None:
+    command = ["cargo", "build", "--release", "-p", package, "--target-dir", str(target_dir)]
+    if binary:
+        command += ["--bin", binary]
     if features:
         command += ["--features", features]
     run(command, env=env)
@@ -135,7 +139,7 @@ def train_inputs(train_dir: Path) -> list[Path]:
     return inputs
 
 
-def run_training(binary: Path, inputs: list[Path], runs: int, score_input: Path | None) -> None:
+def run_cli_training(binary: Path, inputs: list[Path], runs: int, score_input: Path | None) -> None:
     print(f"[pgo] 训练：{len(inputs)} 个胜率输入 x {runs} 场（单线程）", flush=True)
     for path in inputs:
         run(
@@ -145,6 +149,39 @@ def run_training(binary: Path, inputs: list[Path], runs: int, score_input: Path 
     if score_input is not None and score_input.exists():
         print("[pgo] 训练：评分路径", flush=True)
         run([str(binary), "bench", "auto", "-f", str(score_input), "-n", str(runs), "-s"], quiet=True)
+
+
+def run_openbox_training(binary: Path, runs: int) -> None:
+    """用 openbox_mem_probe 跑 CQP 批量胜率作为 openbox 的训练负载。
+
+    GUI 与探针链接同一份 tswn_core 热路径，因此探针采到的 profile 对 GUI 同样有效；
+    探针是无界面可脚本化的入口，适合做训练驱动。
+    """
+    targets = sorted(CQP_TARGET_DIR.glob("*.txt"))
+    if not targets or not CQP_PLAYERS.exists():
+        raise PgoError(f"openbox 训练输入缺失：{CQP_PLAYERS} / {CQP_TARGET_DIR}")
+    print(f"[pgo] 训练：{len(targets)} 份靶子 x {runs} 场（单线程 CQP）", flush=True)
+    for target in targets:
+        run(
+            [
+                str(binary),
+                "--players",
+                str(CQP_PLAYERS),
+                "--targets",
+                str(target),
+                "--limit",
+                "all",
+                "--target-limit",
+                "all",
+                "--count",
+                str(runs),
+                "--threads",
+                "1",
+                "--report-ms",
+                "600000",
+            ],
+            quiet=True,
+        )
 
 
 def merge_profiles(profdata: str, raw_dir: Path, out_file: Path) -> None:
@@ -157,16 +194,25 @@ def merge_profiles(profdata: str, raw_dir: Path, out_file: Path) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="PGO 构建 tswn 二进制")
-    parser.add_argument("--package", default="tswn_core", help="cargo package（默认 tswn_core）")
-    parser.add_argument("--bin", dest="binary", default="tswn-cli", help="要构建的 bin（默认 tswn-cli）")
+    parser.add_argument(
+        "--kind",
+        choices=("cli", "openbox"),
+        default="cli",
+        help="训练负载类型：cli 用 bench auto 跑固定 case，openbox 用 openbox_mem_probe 跑 CQP（默认 cli）",
+    )
     parser.add_argument(
         "--features",
-        default="no_debug",
-        help="追加的 cargo features，逗号分隔；传空字符串表示不追加（默认 no_debug）",
+        default=None,
+        help="追加的 cargo features，逗号分隔；默认 cli 用 no_debug、openbox 用 no_debug,mimalloc_alloc",
     )
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help=f"PGO 工作目录（默认 {DEFAULT_OUT_DIR}）")
     parser.add_argument("--train-dir", default=str(DEFAULT_TRAIN_DIR), help="训练输入目录")
-    parser.add_argument("--train-runs", type=int, default=5000, help="每个训练输入跑多少场（默认 5000）")
+    parser.add_argument(
+        "--train-runs",
+        type=int,
+        default=None,
+        help="每个训练输入跑多少场；默认 cli 用 5000、openbox 用 1500",
+    )
     parser.add_argument("--llvm-profdata", default=None, help="llvm-profdata 路径；默认自动查找")
     parser.add_argument("--skip-train", action="store_true", help="复用已有 profdata，只做 profile-use 构建")
     parser.add_argument("--keep-rustc-wrapper", action="store_true", help="保留 RUSTC_WRAPPER（默认在 PGO 构建中清掉）")
@@ -175,9 +221,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.kind == "cli":
+        package, instrumented_bin, final_bin = "tswn_core", "tswn-cli", "tswn-cli"
+        features = "no_debug" if args.features is None else args.features
+        train_runs = 5000 if args.train_runs is None else args.train_runs
+    else:
+        # openbox 的最终产物是 GUI，但训练要用可脚本化的探针；两者共享同一份 tswn_core 热路径。
+        package, instrumented_bin, final_bin = "tswn_openbox", "openbox_mem_probe", None
+        features = "no_debug,mimalloc_alloc" if args.features is None else args.features
+        train_runs = 1500 if args.train_runs is None else args.train_runs
+
     out_dir = Path(args.out_dir)
     if not out_dir.is_absolute():
         out_dir = ROOT / out_dir
+    out_dir = out_dir / args.kind
     raw_dir = out_dir / "profraw"
     profdata_file = out_dir / "merged.profdata"
     gen_target = out_dir / "build-generate"
@@ -192,27 +249,30 @@ def main(argv: list[str] | None = None) -> int:
             raw_dir.mkdir(parents=True, exist_ok=True)
 
             gen_env = cargo_env(f"-Cprofile-generate={raw_dir}", args.keep_rustc_wrapper)
-            cargo_build(args.package, args.binary, args.features, gen_target, gen_env)
+            cargo_build(package, instrumented_bin, features, gen_target, gen_env)
 
-            instrumented = gen_target / "release" / (args.binary + (".exe" if os.name == "nt" else ""))
+            suffix = ".exe" if os.name == "nt" else ""
+            instrumented = gen_target / "release" / (instrumented_bin + suffix)
             if not instrumented.exists():
                 raise PgoError(f"插桩二进制不存在：{instrumented}")
-            score_input = SCORE_TRAIN_INPUT if SCORE_TRAIN_INPUT.exists() else None
-            run_training(instrumented, train_inputs(Path(args.train_dir)), args.train_runs, score_input)
+            if args.kind == "cli":
+                score_input = SCORE_TRAIN_INPUT if SCORE_TRAIN_INPUT.exists() else None
+                run_cli_training(instrumented, train_inputs(Path(args.train_dir)), train_runs, score_input)
+            else:
+                run_openbox_training(instrumented, train_runs)
             merge_profiles(profdata, raw_dir, profdata_file)
         elif not profdata_file.exists():
             raise PgoError(f"--skip-train 需要已存在的 profdata：{profdata_file}")
 
         use_env = cargo_env(f"-Cprofile-use={profdata_file}", args.keep_rustc_wrapper)
-        cargo_build(args.package, args.binary, args.features, use_target, use_env)
+        cargo_build(package, final_bin, features, use_target, use_env)
     except PgoError as error:
         print(f"[pgo] 失败：{error}", file=sys.stderr)
         return 1
 
-    optimized = use_target / "release" / (args.binary + (".exe" if os.name == "nt" else ""))
     print()
     print(f"[pgo] profdata : {profdata_file}")
-    print(f"[pgo] 优化产物 : {optimized}")
+    print(f"[pgo] 产物目录 : {use_target / 'release'}")
     print("[pgo] 提醒：正式留档请记录被测 commit 与 profdata 的生成参数，不同 profile 的结果不可直接比较。")
     return 0
 

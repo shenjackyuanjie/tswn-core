@@ -74,9 +74,11 @@ target\release\openbox_mem_probe.exe `
 PGO 是当前收益最大的一项（非训练输入实测 -25% 左右），且不改运行时代码：
 
 ```powershell
-python scripts/pgo_build.py                    # 全流程：插桩 -> 训练 -> merge -> profile-use
+python scripts/pgo_build.py                    # CLI：插桩 -> 训练 -> merge -> profile-use
+python scripts/pgo_build.py --kind openbox     # Openbox：训练负载走 openbox_mem_probe 的 CQP
 python scripts/pgo_build.py --train-runs 8000  # 加大训练量
 python scripts/pgo_build.py --skip-train       # 复用已有 profdata 只重建
+python scripts/build_all.py --release --pgo    # 发布包的 CLI 与 Openbox 都用 PGO 产物
 ```
 
 约束：

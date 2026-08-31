@@ -41,34 +41,74 @@
 - 小于 **1.5%** 的差异不要写进任何长期表格，也不要作为"优化成功"的依据；
 - 只有 PGO 这种 20% 量级的收益才可以用粗糙的方式确认。
 
-## 2. 最终结果
+## 2. 全量 benchmark 结果
 
-同会话交替 A/B，60 万场单线程，4 轮取中位数：
+仓库的 benchmark 面不止 `bench win-rate` 一个入口，下面这张表是**全部跑过一遍**的结果。
 
-| 样本 | 基线 | 位图优化后 | PGO |
-| --- | ---: | ---: | ---: |
-| `aaa` vs `bbb`（非训练集） | `3.179s` | `3.160s`（-0.6%） | `2.337s`（**-26.5%**） |
-| 复杂 1v1（非训练集） | `4.949s` | `4.891s`（-1.2%） | `3.713s`（**-25.0%**） |
-| 2v2 | `12.171s` | `12.163s`（-0.1%） | `9.538s`（**-21.6%**） |
+三个构建，同会话交替顺序，3 轮取中位数，计的是整进程 wall clock（含启动与解析，
+因此百分比会比纯 fight 略被稀释）：
 
-三个构建在 13000 场上胜率完全一致（`48.99% (6369/13000)` / `52.41% (6813/13000)`）。
+- `base` = `d83a1d7`（本轮改动之前）
+- `head` = `a23f417`（本轮运行时改动，未开 PGO）
+- `head+PGO` = 同一份源码 + `scripts/pgo_build.py`
 
-### 已落地
+| benchmark 入口 | 规模 | 是否在 PGO 训练集内 | base | head | head+PGO |
+| --- | --- | --- | ---: | ---: | ---: |
+| `bench win-rate` 单线程 `aaa/bbb` | 60 万场 | 否 | `3.353s` | `3.243s`（-3.3%） | `2.287s`（**-31.8%**） |
+| `bench win-rate` 单线程 复杂 1v1 | 60 万场 | 否 | `5.059s` | `4.822s`（-4.7%） | `3.687s`（**-27.1%**） |
+| `bench win-rate` 单线程 2v2 | 30 万场 | 否 | `6.139s` | `6.049s`（-1.5%） | `4.826s`（**-21.4%**） |
+| `bench win-rate` 多线程 复杂 1v1 | 200 万场 | 否 | `2.123s` | `1.995s`（-6.0%） | `1.532s`（**-27.8%**） |
+| `bench auto` 评分（普通 + !评分） | 3 万场 | **是** | `2.348s` | `2.278s`（-3.0%） | `2.032s`（-13.5%） |
+| `bench batch-rate`（CQP） | 20 选手 × 41 靶 × 300 场 | 否 | `2.797s` | `2.724s`（-2.6%） | `2.230s`（**-20.3%**） |
+| `fixed_cases_30` 全 30 case | 每 case 8000 场 | **是** | `6.970s` | `6.755s`（-3.1%） | `5.593s`（-19.8%） |
+| `openbox_mem_probe` CQP（探针内部计时） | 20 选手 × 35 靶 × 3000 场 | 否 | `2.897s` | `2.752s`（-5.0%） | `2.262s`（**-21.9%**） |
+
+要点：
+
+- **每一条都变快了，没有任何一条回退。**
+- PGO 收益在 `-13.5% ~ -31.8%` 之间。**训练集内的两条反而不是最高的**——
+  score 只有 -13.5%，因为它的时间大头在每轮重建 roster 的 init 路径，
+  不像纯战斗循环那样受益于分支布局优化。
+- `head` vs `base`（纯运行时改动）是 `-1.5% ~ -6.0%`，方向一致但**单项都贴着噪声带**，
+  不要拆开归因到某一个提交；合起来可以认为是小幅正收益。
+- openbox 的 PGO 用的是独立 profile（`--kind openbox`，训练负载是 CQP 探针），
+  和 CLI 的 profile 不通用。
+
+三个 CLI 构建在 13000 场上胜率完全一致（`48.99% (6369/13000)` / `52.41% (6813/13000)`）。
+
+### 2.1 没有覆盖到的
+
+- `bench group-win-rate`、`bench pair`、`namer-pf`：走的是和 `batch-rate` 相同的核心路径，
+  没有单独测；
+- `tswn_py` / `tswn_capi` / `tswn_wasm` 包装层：没有单独测，也**没有接 PGO**
+  （wasm 目标下 PGO 不适用；py/capi 是 cdylib，要接需要单独写训练驱动）；
+- `tswn_ladder` / 两个 ranker：没测，同样没接 PGO；
+- `--perf` 模式本身仍然逐场计时，那条路径按设计就要付这份开销。
+
+### 2.2 已落地的改动
 
 | 提交 | 内容 | 实测 |
 | --- | --- | --- |
-| `perf(build)` | `scripts/pgo_build.py` PGO 流水线 | **-21.6% ~ -26.5%** |
-| `perf(core)` | 批量胜率/评分默认不再逐场计时（const 泛型 `TIMED` + `_timed` 入口） | 单线程持平，多线程 -1.2% |
-| `perf(core)` | `state_hook_plan` 不再按 key 反查注册顺序（去掉 O(n²)） | 噪声内，属实现缺陷修复 |
-| `perf(core)` | `StatePayloadKind` 位图做状态查询的快速否定 | -0.1% ~ -1.2% |
+| `perf(build)` | `scripts/pgo_build.py` PGO 流水线（cli / openbox 两种训练负载） | **-13.5% ~ -31.8%** |
+| `perf(build)` | `build_all.py --pgo` 让发布包直接用 PGO 产物 | 同上 |
+| `perf(core)` | 批量胜率/评分默认不再逐场计时（const 泛型 `TIMED` + `_timed` 入口） | 累计项，见上表 |
+| `perf(core)` | `state_hook_plan` 不再按 key 反查注册顺序（去掉 O(n²)） | 累计项，属实现缺陷修复 |
+| `perf(core)` | `StatePayloadKind` 位图做状态查询的快速否定 | 累计项 |
 
 ## 3. PGO：目前唯一的量级收益
 
 ```powershell
-python scripts/pgo_build.py                    # 全流程
-python scripts/pgo_build.py --train-runs 8000  # 加大训练量
-python scripts/pgo_build.py --skip-train       # 复用已有 profdata 只重建
+python scripts/pgo_build.py                       # CLI 全流程
+python scripts/pgo_build.py --kind openbox        # Openbox（训练负载走 CQP 探针）
+python scripts/pgo_build.py --train-runs 8000     # 加大训练量
+python scripts/pgo_build.py --skip-train          # 复用已有 profdata 只重建
+python scripts/build_all.py --release --pgo       # 发布包直接用 PGO 产物
 ```
+
+`--kind` 决定训练负载：`cli` 用 `bench auto` 跑固定 case，`openbox` 用
+`openbox_mem_probe` 跑 CQP。两者产出的 profile **不通用**，各自存在
+`target/pgo/<kind>/` 下。openbox 之所以能用探针训练，是因为 GUI 和探针链接
+同一份 `tswn_core` 热路径，而探针是无界面、可脚本化的入口。
 
 脚本要点：
 
