@@ -41,7 +41,7 @@ pub use effect::{
 pub use entity::{
     AssassinateRuntime, CloneBuildData, CloneDerivedStats, CompressedLegacyState, CounterRuntime, CovidInfectionEntry,
     EntityArena, EntityIdx, EntityRecord, HideRuntime, MoveState, PlayerPolicyOverrides, PlayerRuntime, PlayerTemplate,
-    ProtectLinkRuntime, RuntimeCorpseKind, SkillLoadout, StateEntry, StatePayload, StateStore,
+    ProtectLinkRuntime, RuntimeCorpseKind, SkillLoadout, StateEntry, StatePayload, StatePayloadKind, StateStore,
 };
 pub use extension::{
     BattleSlotId, BattleSlotSpec, DamageSharePolicy, EffectHandlerId, EffectHandlerSpec, EntitySlotId, EntitySlotSpec,

@@ -99,16 +99,21 @@ impl CombatRuntime {
 
     pub fn has_covid_infection(&self, target: EntityIdx) -> bool {
         self.entities.get(target).is_some_and(|entity| {
-            entity
-                .states
-                .entries()
-                .iter()
-                .any(|entry| matches!(&entry.payload, StatePayload::CovidInfection { .. }))
+            entity.states.may_contain(StatePayloadKind::CovidInfection)
+                && entity
+                    .states
+                    .entries()
+                    .iter()
+                    .any(|entry| matches!(&entry.payload, StatePayload::CovidInfection { .. }))
         })
     }
 
     pub fn lazy_boss_at_boost(&self, boss: EntityIdx) -> Option<f64> {
-        self.entities.get(boss)?.states.entries().iter().find_map(|entry| {
+        let states = &self.entities.get(boss)?.states;
+        if !states.may_contain(StatePayloadKind::LazyBoss) {
+            return None;
+        }
+        states.entries().iter().find_map(|entry| {
             let StatePayload::LazyBoss { at_boost_bits } = &entry.payload else {
                 return None;
             };
@@ -134,11 +139,12 @@ impl CombatRuntime {
 
     pub fn has_lazy_infection(&self, target: EntityIdx) -> bool {
         self.entities.get(target).is_some_and(|entity| {
-            entity
-                .states
-                .entries()
-                .iter()
-                .any(|entry| matches!(&entry.payload, StatePayload::LazyInfection { .. }))
+            entity.states.may_contain(StatePayloadKind::LazyInfection)
+                && entity
+                    .states
+                    .entries()
+                    .iter()
+                    .any(|entry| matches!(&entry.payload, StatePayload::LazyInfection { .. }))
         })
     }
 

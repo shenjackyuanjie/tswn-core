@@ -6,6 +6,9 @@ impl CombatRuntime {
             .entities
             .get(actor)
             .unwrap_or_else(|| panic!("unknown runtime effective-team actor: {}", actor.0));
+        if !actor_entity.states.may_contain(StatePayloadKind::Charm) {
+            return actor_entity.runtime.team;
+        }
         actor_entity
             .states
             .entries()

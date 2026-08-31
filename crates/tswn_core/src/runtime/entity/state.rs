@@ -590,6 +590,64 @@ const SCHEDULER_STATE_ICE: u8 = 1 << 0;
 const SCHEDULER_STATE_SPEED: u8 = 1 << 1;
 const SCHEDULER_STATE_ALL: u8 = SCHEDULER_STATE_ICE | SCHEDULER_STATE_SPEED;
 
+/// [`StatePayload`] 的种类标记，用于对状态表做"肯定不存在"的快速否定判断。
+///
+/// 战斗里有一批查询（懒惰 boss 加成、感染、魅惑改队、诅咒攻和、铁壁吸引）
+/// 每场要跑几十次，但绝大多数实体根本没有对应状态。先测一位再决定是否遍历，
+/// 可以把这些扫描的常见情况压成一次按位与。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatePayloadKind {
+    None,
+    FireMagHalfSteps,
+    Ice,
+    ShieldValue,
+    Curse,
+    Poison,
+    Haste,
+    Berserk,
+    Charm,
+    Slow,
+    Iron,
+    CovidBoss,
+    CovidInfection,
+    SaitamaBoss,
+    LazyBoss,
+    LazyInfection,
+}
+
+impl StatePayloadKind {
+    #[inline]
+    pub const fn bit(self) -> u16 { 1 << self as u16 }
+
+    #[inline]
+    const fn of(payload: &StatePayload) -> Self {
+        match payload {
+            StatePayload::None => Self::None,
+            StatePayload::FireMagHalfSteps(_) => Self::FireMagHalfSteps,
+            StatePayload::Ice { .. } => Self::Ice,
+            StatePayload::ShieldValue(_) => Self::ShieldValue,
+            StatePayload::Curse { .. } => Self::Curse,
+            StatePayload::Poison { .. } => Self::Poison,
+            StatePayload::Haste { .. } => Self::Haste,
+            StatePayload::Berserk { .. } => Self::Berserk,
+            StatePayload::Charm { .. } => Self::Charm,
+            StatePayload::Slow { .. } => Self::Slow,
+            StatePayload::Iron { .. } => Self::Iron,
+            StatePayload::CovidBoss { .. } => Self::CovidBoss,
+            StatePayload::CovidInfection { .. } => Self::CovidInfection,
+            StatePayload::SaitamaBoss { .. } => Self::SaitamaBoss,
+            StatePayload::LazyBoss { .. } => Self::LazyBoss,
+            StatePayload::LazyInfection { .. } => Self::LazyInfection,
+        }
+    }
+}
+
+/// 所有种类都可能存在；用于无法确定新 payload 种类的保守路径。
+const PAYLOAD_KIND_ALL: u16 = u16::MAX;
+
+#[inline]
+const fn payload_kind_bit(payload: &StatePayload) -> u16 { StatePayloadKind::of(payload).bit() }
+
 #[inline]
 fn scheduler_state_flags(payload: &StatePayload) -> u8 {
     match payload {
@@ -610,6 +668,8 @@ pub struct StateStore {
     compressed_legacy_states: u8,
     /// 调度器只关心冻结和速度类状态；无对应位时可跳过完整 entries 扫描。
     scheduler_state_flags: u8,
+    /// 当前可能存在的 [`StatePayloadKind`] 位图，允许是真实集合的超集。
+    payload_kinds: u16,
 }
 
 impl PartialEq for StateStore {
@@ -639,6 +699,7 @@ impl StateStore {
         self.next_runtime_registration_order = prepared.next_runtime_registration_order;
         self.compressed_legacy_states = prepared.compressed_legacy_states;
         self.scheduler_state_flags = prepared.scheduler_state_flags;
+        self.payload_kinds = prepared.payload_kinds;
     }
 
     /// 清空数字 score profile 的战斗状态，同时保留 SmallVec 容量。
@@ -652,9 +713,16 @@ impl StateStore {
         self.next_runtime_registration_order = 0;
         self.compressed_legacy_states = 0;
         self.scheduler_state_flags = 0;
+        self.payload_kinds = 0;
     }
 
     pub fn hook_mask(&self) -> ProcMask { self.hook_mask }
+
+    /// 状态表里是否**可能**存在该种类的 payload。
+    ///
+    /// 位图允许是真实集合的超集：返回 `false` 一定不存在，返回 `true` 仍需遍历确认。
+    #[inline]
+    pub fn may_contain(&self, kind: StatePayloadKind) -> bool { self.payload_kinds & kind.bit() != 0 }
 
     pub fn generation(&self) -> u32 { self.generation }
 
@@ -735,6 +803,9 @@ impl StateStore {
     }
 
     pub fn effective_atk_sum(&self, base_atk_sum: i32) -> i32 {
+        if !self.may_contain(StatePayloadKind::Curse) {
+            return base_atk_sum;
+        }
         self.entries.iter().fold(base_atk_sum, |atk_sum, entry| {
             if matches!(entry.payload, StatePayload::Curse { .. }) {
                 atk_sum.saturating_mul(4)
@@ -745,6 +816,9 @@ impl StateStore {
     }
 
     pub fn effective_attract(&self, base_attract: f64) -> f64 {
+        if !self.may_contain(StatePayloadKind::Iron) {
+            return base_attract;
+        }
         self.entries.iter().fold(base_attract, |attract, entry| match entry.payload {
             StatePayload::Iron { step, .. } if step > 0 => attract * 1.1200000047683716,
             _ => attract,
@@ -759,6 +833,7 @@ impl StateStore {
         let index = self.entries.iter().position(|entry| entry.legacy_order_key == legacy_order_key)?;
         // 调用方可通过公开可变引用替换 payload；升为保守全集，确保快路只会少命中而不会误跳过。
         self.scheduler_state_flags = SCHEDULER_STATE_ALL;
+        self.payload_kinds = PAYLOAD_KIND_ALL;
         self.entries.get_mut(index)
     }
 
@@ -881,6 +956,7 @@ impl StateStore {
         self.runtime_registration_orders.push(runtime_registration_order);
         self.hook_mask |= entry.hook_mask;
         self.scheduler_state_flags |= scheduler_state_flags(&entry.payload);
+        self.payload_kinds |= payload_kind_bit(&entry.payload);
         self.entries.push(entry);
         self.generation = self.generation.wrapping_add(1);
         true
@@ -939,11 +1015,14 @@ impl StateStore {
     fn rebuild_cached_metadata(&mut self) {
         let mut hook_mask = ProcMask::default();
         let mut state_flags = 0u8;
+        let mut payload_kinds = 0u16;
         for entry in &self.entries {
             hook_mask |= entry.hook_mask;
             state_flags |= scheduler_state_flags(&entry.payload);
+            payload_kinds |= payload_kind_bit(&entry.payload);
         }
         self.hook_mask = hook_mask;
         self.scheduler_state_flags = state_flags;
+        self.payload_kinds = payload_kinds;
     }
 }
