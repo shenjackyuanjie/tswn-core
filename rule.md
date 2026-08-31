@@ -57,9 +57,51 @@ target\release\openbox_mem_probe.exe `
 正式结果必须记录被测 commit、rustc/Cargo 版本、feature、输入哈希、线程口径和原始轮次；
 机器状态变化时，以同一会话中交替顺序的旧版/新版 A/B 为准。
 
+`--perf` 会打开逐场 init/fight 计时（四次 QPC/场）。不需要 init/fight 拆分时不要加
+`--perf`，批量路径默认走不计时的快路径；库调用方要读 timing 请用 `*_timed` 入口。
+
+### 噪声带
+
+同一个二进制在**不同会话之间**可以差到 3%（实测：`5.266/5.303/5.398` vs
+`5.103/5.141/5.226`）。因此：
+
+- 必须**同会话交替顺序**跑新旧二进制，至少 4~5 轮取中位数；
+- 小于 **1.5%** 的差异不得作为优化成立的依据，也不要写进长期表格；
+- "先跑三次旧的，再跑三次新的"这种方式量到的 2%~3% 基本都是机器漂移。
+
+## PGO 构建
+
+PGO 是当前收益最大的一项（非训练输入实测 -25% 左右），且不改运行时代码：
+
+```powershell
+python scripts/pgo_build.py                    # 全流程：插桩 -> 训练 -> merge -> profile-use
+python scripts/pgo_build.py --train-runs 8000  # 加大训练量
+python scripts/pgo_build.py --skip-train       # 复用已有 profdata 只重建
+```
+
+约束：
+
+- `llvm-profdata` 的 LLVM 大版本必须等于 `rustc -vV` 的 LLVM 大版本，脚本会强制校验；
+  没有时用 `rustup component add llvm-tools-preview`。
+- 训练强制单线程：LLVM 的 IR 插桩计数器不是原子的，多线程训练会丢计数。
+- 训练输入默认覆盖 `docs/perf/fixed_cases_30` 全部 30 个 case 加 score 路径；
+  只用单一样本训练会削弱泛化性。
+- PGO 结果留档必须同时记录 profdata 的生成参数，不同 profile 的结果不可直接比较。
+
 ## 采样
 
-Windows 上可用 `samply` 直接采样公开 CLI：
+`samply` 底层是 xperf/ETW 内核采样，**需要管理员权限**；非提权账户下它会正常跑完，
+但产出 `threads: []` 的空 profile（`wpr` 同样要提权）。这种情况下改用 PGO
+instrumentation 拿函数级执行计数：
+
+```powershell
+python scripts/pgo_build.py
+llvm-profdata show --topn=45 target\pgo\merged.profdata
+```
+
+结构体体积用 `cargo +nightly rustc -p tswn_core --release --lib -- -Zprint-type-sizes`。
+
+有管理员权限时，Windows 上可用 `samply` 直接采样公开 CLI：
 
 ```powershell
 cargo build -p tswn_core --release --features no_debug --bin tswn-cli
