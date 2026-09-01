@@ -193,6 +193,10 @@ impl<'a> SkillContext<'a> {
 
     pub fn add_update(&mut self, update: RunUpdate) { self.updates.add(update); }
 
+    pub fn add_plain_defense_with(&mut self, caster: usize, target: usize) {
+        self.updates.add_plain_defense_with(caster, target);
+    }
+
     pub fn add_newline(&mut self) { self.updates.add_newline(); }
 
     pub fn last_non_newline_update(&self) -> Option<&RunUpdate> { self.updates.last_non_newline_update() }

@@ -12,6 +12,8 @@ __pycache__
 !docs/perf/fixed_cases_30/*.txt
 !docs/perf/pgo_training/
 !docs/perf/pgo_training/*.txt
+!docs/perf/pgo_training_v2/
+!docs/perf/pgo_training_v2/**
 tests
 !crates/tswn_core/src/runtime/tests/
 !crates/tswn_core/src/runtime/tests/*.rs

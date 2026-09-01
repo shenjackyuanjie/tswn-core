@@ -10,12 +10,7 @@ pub fn run_defend_post_defend_skill(context: &mut SkillContext<'_>, entry: &Skil
         return;
     }
     let caster = context.defend_caster().expect("runtime defend skill must receive incoming caster");
-    context.add_update(crate::runtime::update::RunUpdate::new(
-        "[0][防御]",
-        context.owner_idx().0 as usize,
-        caster.0 as usize,
-        40,
-    ));
+    context.add_plain_defense_with(context.owner_idx().0 as usize, caster.0 as usize);
     context.set_defend_damage(damage / 2);
 }
 

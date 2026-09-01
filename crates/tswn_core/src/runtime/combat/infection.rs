@@ -175,12 +175,9 @@ impl CombatRuntime {
             .template
             .display_name
             .clone();
-        updates.add(crate::runtime::update::RunUpdate::new(
-            format!("[1]感染了{boss_display}"),
-            boss.0 as usize,
-            target.0 as usize,
-            0,
-        ));
+        updates.add_with(|| {
+            crate::runtime::update::RunUpdate::new(format!("[1]感染了{boss_display}"), boss.0 as usize, target.0 as usize, 0)
+        });
         true
     }
 
@@ -200,12 +197,14 @@ impl CombatRuntime {
             .template
             .display_name
             .clone();
-        updates.add(crate::runtime::update::RunUpdate::new(
-            format!("{owner_name}打开了{activity}, 这回合什么也没做"),
-            owner.0 as usize,
-            owner.0 as usize,
-            0,
-        ));
+        updates.add_with(|| {
+            crate::runtime::update::RunUpdate::new(
+                format!("{owner_name}打开了{activity}, 这回合什么也没做"),
+                owner.0 as usize,
+                owner.0 as usize,
+                0,
+            )
+        });
     }
 
     pub fn try_covid_spread_on_damage_into(
@@ -282,12 +281,9 @@ impl CombatRuntime {
             return false;
         }
 
-        updates.add(crate::runtime::update::RunUpdate::new(
-            format!("[1]感染了{boss_display}"),
-            boss.0 as usize,
-            target.0 as usize,
-            0,
-        ));
+        updates.add_with(|| {
+            crate::runtime::update::RunUpdate::new(format!("[1]感染了{boss_display}"), boss.0 as usize, target.0 as usize, 0)
+        });
         let all_alive = self.world.flat_alive().to_vec();
         for entity_idx in all_alive {
             let delta = if entity_idx == target { 2048 } else { -256 };
@@ -313,12 +309,9 @@ impl CombatRuntime {
             return;
         }
 
-        updates.add(crate::runtime::update::RunUpdate::new(
-            format!(" {owner_name}肺炎发作"),
-            boss.0 as usize,
-            owner.0 as usize,
-            0,
-        ));
+        updates.add_with(|| {
+            crate::runtime::update::RunUpdate::new(format!(" {owner_name}肺炎发作"), boss.0 as usize, owner.0 as usize, 0)
+        });
         let old_hp = self.entities.get(owner).unwrap().runtime.hp;
         let killed = self.apply_plain_attack_damage_with_covid_into(boss, owner, damage, None, updates);
         let actual_damage = if killed { old_hp } else { damage };
@@ -341,12 +334,14 @@ impl CombatRuntime {
         let boss_entity = self.entities.get_mut(boss).unwrap();
         boss_entity.runtime.hp = (boss_entity.runtime.hp + heal_amount).min(boss_entity.template.max_hp);
         let boss_display = boss_entity.template.display_name.clone();
-        updates.add(crate::runtime::update::RunUpdate::new(
-            format!("{boss_display}回复体力{heal_amount}点"),
-            boss.0 as usize,
-            boss.0 as usize,
-            0,
-        ));
+        updates.add_with(|| {
+            crate::runtime::update::RunUpdate::new(
+                format!("{boss_display}回复体力{heal_amount}点"),
+                boss.0 as usize,
+                boss.0 as usize,
+                0,
+            )
+        });
     }
 
     pub fn drain_lazy_flare_into(&mut self, owner: EntityIdx, boss: EntityIdx, updates: &mut RunUpdates) {
@@ -363,12 +358,14 @@ impl CombatRuntime {
         }
         let boss_display = self.entities.get(boss).unwrap().template.display_name.clone();
         let owner_name = self.entities.get(owner).unwrap().template.display_name.clone();
-        updates.add(crate::runtime::update::RunUpdate::new(
-            format!(" {owner_name}{boss_display}发作"),
-            boss.0 as usize,
-            owner.0 as usize,
-            0,
-        ));
+        updates.add_with(|| {
+            crate::runtime::update::RunUpdate::new(
+                format!(" {owner_name}{boss_display}发作"),
+                boss.0 as usize,
+                owner.0 as usize,
+                0,
+            )
+        });
         if self.apply_plain_attack_damage_with_covid_into(boss, owner, damage, None, updates) {
             self.drain_plain_lethal_damage_into(boss, owner, updates);
         }

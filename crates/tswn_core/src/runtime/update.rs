@@ -374,6 +374,41 @@ impl RunUpdates {
         }
     }
 
+    /// 与 [`Self::add`] 相同，但消息只在 `capture_updates=true` 时才构建。
+    ///
+    /// 批量胜率/评分走 no-capture 路径，`add(RunUpdate::new(...))` 会在构造完消息后
+    /// 立刻丢弃。用这个入口把构造推迟到真的需要缓存帧的时候，丢帧路径只做
+    /// `has_activity` / segment / 铁壁判定所需的身份记录，不触碰消息字符串。
+    #[inline]
+    pub fn add_with<F>(&mut self, build: F)
+    where
+        F: FnOnce() -> RunUpdate,
+    {
+        self.has_activity = true;
+        self.segment_has_activity = true;
+        if self.capture_updates {
+            self.updates.push(build());
+        } else {
+            // no-capture 仍需要保留"最后一条非换行是否为普通防御"的语义。
+            // 这个入口只用于非防御事件，因此直接把防御标记清掉；防御事件走
+            // add_plain_defense_with，不构造消息也能记录身份。
+            self.uncaptured_last_was_plain_defense = false;
+        }
+    }
+
+    /// no-capture 路径上不构造消息地记录"最后一条是普通防御"。
+    #[inline]
+    pub fn add_plain_defense_with(&mut self, caster: PlrId, target: PlrId) {
+        self.has_activity = true;
+        self.segment_has_activity = true;
+        if self.capture_updates {
+            self.updates.push(RunUpdate::new("[0][防御]", caster, target, 40));
+        } else {
+            self.uncaptured_last_was_plain_defense = true;
+            self.uncaptured_plain_defense = (caster, target);
+        }
+    }
+
     // /// 批量追加事件帧（从切片复制）。
     // pub fn add_all(&mut self, updates: &mut [RunUpdate]) { self.updates.extend_from_slice(updates); }
 }

@@ -194,12 +194,14 @@ impl CombatRuntime {
             hungry_update.delay1 = 2000;
             updates.add(hungry_update);
             updates.add_newline();
-            updates.add(crate::runtime::update::RunUpdate::new(
-                format!(" {display_name}离开了战场"),
-                actor.0 as usize,
-                actor.0 as usize,
-                0,
-            ));
+            updates.add_with(|| {
+                crate::runtime::update::RunUpdate::new(
+                    format!(" {display_name}离开了战场"),
+                    actor.0 as usize,
+                    actor.0 as usize,
+                    0,
+                )
+            });
             let team = {
                 let actor_entity = self
                     .entities
