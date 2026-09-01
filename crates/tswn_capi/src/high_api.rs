@@ -4,8 +4,8 @@ use serde::Serialize;
 use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun};
 
 use crate::{
-    FfiError, ffi_boundary, ffi_error_with_code, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t, write_json_result,
-    write_string_result,
+    FfiError, ffi_boundary, ffi_error_with_code, read_f64_array, read_utf8, read_utf8_array, tswn_status_t, tswn_str_t,
+    write_json_result, write_string_result,
 };
 
 #[derive(Serialize)]
@@ -392,6 +392,42 @@ pub unsafe extern "C" fn tswn_batch_rate_json(
 
 /// # Safety
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_batch_rate_factored_json(
+    target_groups_utf8: *const *const c_char,
+    target_groups_len: usize,
+    target_factors: *const f64,
+    target_factors_len: usize,
+    player_groups_utf8: *const *const c_char,
+    player_groups_len: usize,
+    n: usize,
+    player_labels_utf8: *const *const c_char,
+    player_labels_len: usize,
+    keep_rq: u8,
+    thread: u32,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let target_groups = unsafe { read_utf8_array(target_groups_utf8, target_groups_len, "target_groups_utf8")? };
+        let target_factors = unsafe { read_f64_array(target_factors, target_factors_len, "target_factors")? };
+        let player_groups = unsafe { read_utf8_array(player_groups_utf8, player_groups_len, "player_groups_utf8")? };
+        let player_labels = unsafe { read_utf8_array(player_labels_utf8, player_labels_len, "player_labels_utf8")? };
+        let result = core_cli_api::batch_rate_factored(
+            &target_groups,
+            &target_factors,
+            &player_groups,
+            n,
+            (!player_labels_utf8.is_null()).then_some(player_labels),
+            keep_rq != 0,
+            thread,
+        )
+        .map_err(cli_api_error)?;
+        let json = result.into_iter().map(JsonBatchRateResult::from).collect::<Vec<_>>();
+        write_json_result(out_json, &json)
+    })
+}
+
+/// # Safety
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_pair_rate_json(
     target_groups_utf8: *const *const c_char,
     target_groups_len: usize,
@@ -411,6 +447,44 @@ pub unsafe extern "C" fn tswn_pair_rate_json(
         let teammates = unsafe { read_utf8_array(teammates_utf8, teammates_len, "teammates_utf8")? };
         let result = core_cli_api::pair_rate(&target_groups, &players, &teammates, head, n, keep_rq != 0, thread)
             .map_err(cli_api_error)?;
+        let json = result.into_iter().map(JsonPairRateResult::from).collect::<Vec<_>>();
+        write_json_result(out_json, &json)
+    })
+}
+
+/// # Safety
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tswn_pair_rate_factored_json(
+    target_groups_utf8: *const *const c_char,
+    target_groups_len: usize,
+    target_factors: *const f64,
+    target_factors_len: usize,
+    players_utf8: *const *const c_char,
+    players_len: usize,
+    teammates_utf8: *const *const c_char,
+    teammates_len: usize,
+    head: usize,
+    n: usize,
+    keep_rq: u8,
+    thread: u32,
+    out_json: *mut tswn_str_t,
+) -> tswn_status_t {
+    ffi_boundary(|| {
+        let target_groups = unsafe { read_utf8_array(target_groups_utf8, target_groups_len, "target_groups_utf8")? };
+        let target_factors = unsafe { read_f64_array(target_factors, target_factors_len, "target_factors")? };
+        let players = unsafe { read_utf8_array(players_utf8, players_len, "players_utf8")? };
+        let teammates = unsafe { read_utf8_array(teammates_utf8, teammates_len, "teammates_utf8")? };
+        let result = core_cli_api::pair_rate_factored(
+            &target_groups,
+            &target_factors,
+            &players,
+            &teammates,
+            head,
+            n,
+            keep_rq != 0,
+            thread,
+        )
+        .map_err(cli_api_error)?;
         let json = result.into_iter().map(JsonPairRateResult::from).collect::<Vec<_>>();
         write_json_result(out_json, &json)
     })

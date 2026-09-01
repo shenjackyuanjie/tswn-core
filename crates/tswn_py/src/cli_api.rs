@@ -565,6 +565,29 @@ pub fn batch_rate(
         .map_err(map_cli_error)
 }
 
+#[pyfunction(signature = (target_groups, target_factors, player_groups, n, player_labels=None, keep_rq=false, thread=0))]
+pub fn batch_rate_factored(
+    target_groups: Vec<String>,
+    target_factors: Vec<f64>,
+    player_groups: Vec<String>,
+    n: usize,
+    player_labels: Option<Vec<String>>,
+    keep_rq: bool,
+    thread: u32,
+) -> PyResult<Vec<PyBatchRateResult>> {
+    core_cli_api::batch_rate_factored(
+        &target_groups,
+        &target_factors,
+        &player_groups,
+        n,
+        player_labels,
+        keep_rq,
+        thread,
+    )
+    .map(|results| results.into_iter().map(Into::into).collect())
+    .map_err(map_cli_error)
+}
+
 #[pyfunction(signature = (target_groups, players, teammates, head, n, keep_rq=false, thread=0))]
 pub fn pair_rate(
     target_groups: Vec<String>,
@@ -576,6 +599,22 @@ pub fn pair_rate(
     thread: u32,
 ) -> PyResult<Vec<PyPairRateResult>> {
     core_cli_api::pair_rate(&target_groups, &players, &teammates, head, n, keep_rq, thread)
+        .map(|results| results.into_iter().map(Into::into).collect())
+        .map_err(map_cli_error)
+}
+
+#[pyfunction(signature = (target_groups, target_factors, players, teammates, head, n, keep_rq=false, thread=0))]
+pub fn pair_rate_factored(
+    target_groups: Vec<String>,
+    target_factors: Vec<f64>,
+    players: Vec<String>,
+    teammates: Vec<String>,
+    head: usize,
+    n: usize,
+    keep_rq: bool,
+    thread: u32,
+) -> PyResult<Vec<PyPairRateResult>> {
+    core_cli_api::pair_rate_factored(&target_groups, &target_factors, &players, &teammates, head, n, keep_rq, thread)
         .map(|results| results.into_iter().map(Into::into).collect())
         .map_err(map_cli_error)
 }

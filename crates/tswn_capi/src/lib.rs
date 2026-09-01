@@ -268,6 +268,16 @@ pub extern "C" fn tswn_last_error_message() -> tswn_str_t {
     LAST_ERROR.with(|slot| into_tswn_str(slot.borrow().as_ref().map(|error| error.message.clone()).unwrap_or_default()))
 }
 
+pub(crate) unsafe fn read_f64_array(ptr: *const f64, len: usize, name: &str) -> FfiResult<Vec<f64>> {
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+    if ptr.is_null() {
+        return Err(ffi_error(tswn_status_t::TSWN_ERR_NULL, format!("{name} is null")));
+    }
+    Ok(unsafe { std::slice::from_raw_parts(ptr, len) }.to_vec())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn tswn_last_error_code() -> tswn_str_t {
     LAST_ERROR.with(|slot| into_tswn_str(slot.borrow().as_ref().map(|error| error.code.to_owned()).unwrap_or_default()))

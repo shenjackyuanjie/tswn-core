@@ -145,7 +145,9 @@ fn module_init(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cli_api::score, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::namer_pf, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::batch_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::batch_rate_factored, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::pair_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(cli_api::pair_rate_factored, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::to_diy, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::to_diy_batch, m)?)?;
     m.add_function(wrap_pyfunction!(cli_api::icon_info, m)?)?;

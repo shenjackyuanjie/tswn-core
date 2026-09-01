@@ -368,6 +368,37 @@ tswn_status_t tswn_pair_rate_json(
 );
 
 tswn_status_t tswn_to_diy(const char* name_utf8, uint8_t old, uint8_t minions, tswn_str_t* out_result);
+
+tswn_status_t tswn_batch_rate_factored_json(
+    const char* const* target_groups_utf8,
+    size_t target_groups_len,
+    const double* target_factors,
+    size_t target_factors_len,
+    const char* const* player_groups_utf8,
+    size_t player_groups_len,
+    size_t n,
+    const char* const* player_labels_utf8,
+    size_t player_labels_len,
+    uint8_t keep_rq,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
+
+tswn_status_t tswn_pair_rate_factored_json(
+    const char* const* target_groups_utf8,
+    size_t target_groups_len,
+    const double* target_factors,
+    size_t target_factors_len,
+    const char* const* players_utf8,
+    size_t players_len,
+    const char* const* teammates_utf8,
+    size_t teammates_len,
+    size_t head,
+    size_t n,
+    uint8_t keep_rq,
+    uint32_t thread,
+    tswn_str_t* out_json
+);
 tswn_status_t tswn_to_diy_batch_json(
     const char* const* names_utf8,
     size_t names_len,
