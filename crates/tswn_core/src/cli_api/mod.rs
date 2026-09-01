@@ -550,7 +550,18 @@ pub fn pair_rate_factored(
     let eval_rq = win_rate_eval_rq(keep_rq);
     players
         .iter()
-        .map(|player| bench::pair_rate_for_player(player, target_groups, Some(target_factors), teammates, head, n.max(1), thread, eval_rq))
+        .map(|player| {
+            bench::pair_rate_for_player(
+                player,
+                target_groups,
+                Some(target_factors),
+                teammates,
+                head,
+                n.max(1),
+                thread,
+                eval_rq,
+            )
+        })
         .collect()
 }
 

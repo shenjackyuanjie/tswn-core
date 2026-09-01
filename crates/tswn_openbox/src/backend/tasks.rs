@@ -653,8 +653,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         }
     };
     let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
-    let (teammate_groups, teammate_labels) =
-        parse_player_groups_with_labels(&input.teammate_text, input.teammate_double_plus);
+    let (teammate_groups, teammate_labels) = parse_player_groups_with_labels(&input.teammate_text, input.teammate_double_plus);
     if target_groups.is_empty() {
         send(ProgressEvent::Done(Err("pair: 靶子列表为空。".to_string())));
         return;
@@ -902,7 +901,11 @@ fn player_to_ol(raw: &str) -> Result<String, String> {
 }
 
 fn player_group_to_ol(group: &str) -> Result<String, String> {
-    group.lines().map(player_to_ol).collect::<Result<Vec<_>, _>>().map(|players| players.join("\n"))
+    group
+        .lines()
+        .map(player_to_ol)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|players| players.join("\n"))
 }
 
 #[cfg(test)]
@@ -917,8 +920,7 @@ mod tests {
 
     use super::{
         BatchRateInput, OutputMode, ProgressEvent, bench_batch_rate_for_group, compare_score_output_lines,
-        format_batch_screen_log, run_batch_rate, run_to_diy, score_output_line_value,
-        parse_pair_target_groups,
+        format_batch_screen_log, parse_pair_target_groups, run_batch_rate, run_to_diy, score_output_line_value,
     };
 
     #[test]

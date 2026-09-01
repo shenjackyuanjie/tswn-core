@@ -24,8 +24,7 @@ use super::common::{format_duration, thread_spec};
 use super::output::{
     display_group, first_duplicate_name_in_matchup, format_batch_rate_log_record, format_batch_rate_pure_record,
     format_batch_rate_record, format_pair_rate_record, format_rate, groups_have_same_players, open_batch_rate_output,
-    player_to_ol_or_exit,
-    print_perf_lines, write_batch_rate_record,
+    player_to_ol_or_exit, print_perf_lines, write_batch_rate_record,
 };
 use super::winrate::bench_winrate_summary;
 
@@ -755,9 +754,7 @@ fn bench_batch_rate_for_group(
 }
 
 /// `bench pair` 入口。
-fn player_group_to_ol_or_exit(group: &str) -> String {
-    group.lines().map(player_to_ol_or_exit).collect::<Vec<_>>().join("\n")
-}
+fn player_group_to_ol_or_exit(group: &str) -> String { group.lines().map(player_to_ol_or_exit).collect::<Vec<_>>().join("\n") }
 
 #[allow(clippy::too_many_arguments)]
 pub fn run_bench_pair(
@@ -834,7 +831,13 @@ pub fn run_bench_pair(
 
         if verbose {
             let _ = writeln!(&mut verbose_buf);
-            let _ = writeln!(&mut verbose_buf, "━━━━━━━━ [{}/{}] {} ━━━━━━━━", pi + 1, players.len(), player_label);
+            let _ = writeln!(
+                &mut verbose_buf,
+                "━━━━━━━━ [{}/{}] {} ━━━━━━━━",
+                pi + 1,
+                players.len(),
+                player_label
+            );
         }
 
         for (teammate, teammate_label) in teammates.iter().zip(teammate_labels.iter()) {

@@ -141,8 +141,7 @@ pub(super) fn parse_plus_separated_groups(content: &str) -> Vec<String> {
 
 /// 解析带权靶子 TOML。每个 `[[targets]]` 项包含正数 `factor` 和非空 `players` 数组。
 pub(super) fn parse_factored_target_groups(content: &str) -> Result<(Vec<String>, Vec<f64>), clap::Error> {
-    let table = toml::from_str::<toml::Table>(content)
-        .map_err(|err| cli_error(format!("带权靶子 TOML 解析失败: {err}")))?;
+    let table = toml::from_str::<toml::Table>(content).map_err(|err| cli_error(format!("带权靶子 TOML 解析失败: {err}")))?;
     let entries = table
         .get("targets")
         .and_then(toml::Value::as_array)

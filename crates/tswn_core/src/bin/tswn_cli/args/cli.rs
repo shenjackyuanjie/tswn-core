@@ -376,11 +376,18 @@ struct BenchPairCommand {
     teammate_list: PathBuf,
 
     /// 使用单个 `+` 分隔 teammate-list 每行中的成员；默认使用 `++`。
-    #[arg(long = "teammate-list-single-plus", conflicts_with = "teammate_list_double_plus")]
+    #[arg(
+        long = "teammate-list-single-plus",
+        conflicts_with = "teammate_list_double_plus"
+    )]
     teammate_list_single_plus: bool,
 
     /// 显式使用 `++` 分隔 teammate-list 每行中的成员（默认行为）。
-    #[arg(long = "teammate-list-double-plus", hide = true, conflicts_with = "teammate_list_single_plus")]
+    #[arg(
+        long = "teammate-list-double-plus",
+        hide = true,
+        conflicts_with = "teammate_list_single_plus"
+    )]
     teammate_list_double_plus: bool,
 
     /// 将 target-list 按带权 TOML 解析，并按 factor 计算加权平均值。
@@ -739,8 +746,7 @@ impl ParsedCli {
                     };
                     let player_content = read_file(&cmd.player_list)?;
                     let teammate_content = read_file(&cmd.teammate_list)?;
-                    let (players, player_labels) =
-                        parse_player_groups_with_labels(&player_content, cmd.player_list_double_plus);
+                    let (players, player_labels) = parse_player_groups_with_labels(&player_content, cmd.player_list_double_plus);
                     let (teammates, teammate_labels) = parse_player_groups_with_labels(
                         &teammate_content,
                         !cmd.teammate_list_single_plus || cmd.teammate_list_double_plus,

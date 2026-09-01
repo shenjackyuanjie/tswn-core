@@ -177,5 +177,9 @@ fn player_to_ol(raw: &str) -> CliApiResult<String> {
 }
 
 fn player_group_to_ol(group: &str) -> CliApiResult<String> {
-    group.lines().map(player_to_ol).collect::<CliApiResult<Vec<_>>>().map(|players| players.join("\n"))
+    group
+        .lines()
+        .map(player_to_ol)
+        .collect::<CliApiResult<Vec<_>>>()
+        .map(|players| players.join("\n"))
 }
