@@ -2,17 +2,14 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-09-01
+
 ### 新增
 
 - `tswn-cli bench batch-rate` / `cqp` 新增 `--target-factored`（别名 `--weighted-targets`）：读取 `[[targets]]` TOML 的 `factor` 与 `players`，按有效靶子权重计算平均胜率。
 - `tswn-cli bench pair` 同步支持 `--target-factored` 带权靶子；带权模式下完全相同的双方阵容按 `50%` 参与加权，部分重名仍正常计算。
 - `tswn-cli bench pair` 的 `player-list` 和 `teammate-list` 现在每行都可表示一个多人组合。选手默认用 `+` 分隔，可用 `--player-list-double-plus` 改为 `++`；队友默认用 `++`，可用 `--teammate-list-single-plus` 改为 `+`。
 - `cli_api::batch_rate_factored()` 与 `pair_rate_factored()` 支持为每个靶子提供正数权重；按加权平均聚合，且双方阵容完全相同时按 50% 计入结果。
-
-## [0.5.3] - 2026-08-31
-
-### 新增
-
 - `cli_api::battle_replay()` 提供跨语言共享的完整 UI 回放 DTO：初始/最终状态、逐回合 update、rows/clips/parts、赢家与截断状态均由 core 统一生成。
 
 ## [0.5.2] - 2026-08-21

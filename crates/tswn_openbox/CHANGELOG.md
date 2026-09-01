@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-01
+
 ### 新增
 
 - `pair` 选择 `factor_enabled = true` 的靶子预设时，支持带权 TOML 靶子，并按 `sum(胜率 * factor) / sum(factor)` 计算每个队友组合的平均 cqp。
