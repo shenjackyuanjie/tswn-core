@@ -1,11 +1,16 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，接受与靶子组一一对应的权重数组并返回加权结果。
+
 ## [0.5.2] - 2026-08-31
 
 ### 新增
 
 - 新增 `battle_replay()` 高层入口，返回与 C/Python 对齐的完整 UI 回放结构。
-- 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，接受与靶子组一一对应的权重数组并返回加权结果。
 
 ### 修复
 

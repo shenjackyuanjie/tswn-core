@@ -1,11 +1,16 @@
 # 更新日志
 
+## [Unreleased]
+
+### 新增
+
+- 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，支持按与靶子组等长的正数权重数组进行加权计算。
+
 ## [0.5.2] - 2026-08-31
 
 ### 新增
 
 - 新增 `battle_replay()` 推荐高层入口与带稳定 `.code` 的 `InvalidInputError` / `TswnRuntimeError`；PreparedRunner 增加只读 `eval_rq`。
-- 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，支持按与靶子组等长的正数权重数组进行加权计算。
 
 ### 修复
 
