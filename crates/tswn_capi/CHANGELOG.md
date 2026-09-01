@@ -5,6 +5,7 @@
 ### 新增
 
 - 新增 `tswn_battle_replay_json()`、`tswn_last_error_code()`，并在公共头文件补齐此前遗漏的 `tswn_default_custom_runtime_normalized_run_json()` 声明。
+- 新增 `tswn_batch_rate_factored_json()` 与 `tswn_pair_rate_factored_json()`；调用方通过 `double` 权重数组传入带权靶子组。
 
 ### 修复
 

@@ -5,6 +5,7 @@
 ### 新增
 
 - `cli_api::battle_replay()` 提供跨语言共享的完整 UI 回放 DTO：初始/最终状态、逐回合 update、rows/clips/parts、赢家与截断状态均由 core 统一生成。
+- `cli_api::batch_rate_factored()` 与 `pair_rate_factored()` 支持为每个靶子提供正数权重；按加权平均聚合，且双方阵容完全相同时按 50% 计入结果。
 
 ## [0.5.2] - 2026-08-21
 
