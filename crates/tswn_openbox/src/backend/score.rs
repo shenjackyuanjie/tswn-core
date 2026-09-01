@@ -7,7 +7,7 @@ use tswn_core::runtime::{RuntimeRunner, runtime_groups_win_rate_timed, runtime_s
 use tswn_core::win_rate::WinRateTiming;
 
 use super::format::display_group;
-use super::parse::first_duplicate_name_in_matchup;
+use super::parse::{first_duplicate_name_in_matchup, groups_have_same_players};
 
 #[derive(Debug, Clone)]
 pub struct BenchSummary {
@@ -39,6 +39,7 @@ pub enum BatchTargetOutcome {
 pub fn bench_batch_rate_for_group(
     player: &str,
     target_groups: &[String],
+    target_factors: Option<&[f64]>,
     n: usize,
     threads: Option<usize>,
     eval_rq: f64,
@@ -50,15 +51,37 @@ pub fn bench_batch_rate_for_group(
     let mut accumulated_rate = 0.0;
     let mut accumulated_wins = 0usize;
     let mut accumulated_total = 0usize;
+    let mut accumulated_factor = 0.0;
     let mut valid_matchups = 0usize;
     let mut skipped_matchups = 0usize;
+    let factored = target_factors.is_some();
 
     for (index, target) in target_groups.iter().enumerate() {
+        let factor = target_factors.and_then(|factors| factors.get(index)).copied().unwrap_or(1.0);
         let target_total = target_groups.len();
         if cancel.load(Ordering::Relaxed) {
             break;
         }
-        if let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target]) {
+        if factored && groups_have_same_players(player, target) {
+            const MIRROR_RATE: f64 = 50.0;
+            if verbose {
+                let _ = writeln!(
+                    verbose_buf,
+                    "  [{}/{}] vs {} => {MIRROR_RATE:.2}% (same players)",
+                    index + 1,
+                    target_total,
+                    display_group(target),
+                );
+            }
+            accumulated_rate += MIRROR_RATE * factor;
+            accumulated_factor += factor;
+            accumulated_wins += 1;
+            accumulated_total += 2;
+            valid_matchups += 1;
+            tick_target(index, target_total, target, BatchTargetOutcome::Rate);
+            continue;
+        }
+        if !factored && let Some(duplicate) = first_duplicate_name_in_matchup(&[player, target]) {
             skipped_matchups += 1;
             if verbose {
                 let _ = writeln!(
@@ -89,7 +112,8 @@ pub fn bench_batch_rate_for_group(
                         summary.total
                     );
                 }
-                accumulated_rate += summary.win_rate_percent();
+                accumulated_rate += summary.win_rate_percent() * factor;
+                accumulated_factor += factor;
                 accumulated_wins += summary.wins;
                 accumulated_total += summary.total;
                 valid_matchups += 1;
@@ -112,8 +136,8 @@ pub fn bench_batch_rate_for_group(
     }
 
     BatchRateSummary {
-        avg: if valid_matchups > 0 {
-            accumulated_rate / valid_matchups as f64
+        avg: if accumulated_factor > 0.0 {
+            accumulated_rate / accumulated_factor
         } else {
             0.0
         },

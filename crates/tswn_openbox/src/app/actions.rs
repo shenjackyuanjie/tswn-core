@@ -251,11 +251,22 @@ impl OpenboxApp {
     }
 
     pub fn start_pair(&mut self) {
-        let target_text = match read_target_text(&self.pair.targets, &self.pair.target_presets, self.pair.manual_targets) {
-            Ok(raw) => raw,
-            Err(err) => {
-                self.fail_before_start(err);
-                return;
+        let (target_text, target_factor_enabled) = if self.pair.manual_targets {
+            match self.pair.targets.read_all() {
+                Ok(raw) => (raw, false),
+                Err(err) => {
+                    self.fail_before_start(err);
+                    return;
+                }
+            }
+        } else {
+            let target_factor_enabled = self.pair.target_presets.selected().is_some_and(|preset| preset.factor_enabled);
+            match load_selected_target_text(&self.pair.target_presets) {
+                Ok(raw) => (raw, target_factor_enabled),
+                Err(err) => {
+                    self.fail_before_start(err);
+                    return;
+                }
             }
         };
         let player_text = match self.pair.players.read_all() {
@@ -318,8 +329,11 @@ impl OpenboxApp {
         let cancel = self.cancel_token();
         let input = PairInput {
             target_text,
+            target_factor_enabled,
             player_text,
+            player_double_plus: self.pair.player_double_plus,
             teammate_text,
+            teammate_double_plus: self.pair.teammate_double_plus,
             head: head.max(1),
             detail_mode: self.pair.detail_mode,
             detail_min,
@@ -516,18 +530,6 @@ fn resolve_output_path(output: &OptionalFileOutput) -> Result<Option<std::path::
         Some(path) => Ok(Some(path)),
         None if output.enabled => Err("请先选择输出文件。".to_string()),
         None => Ok(None),
-    }
-}
-
-fn read_target_text(
-    manual_source: &super::source::TextSource,
-    presets: &super::target_presets::TargetPresetState,
-    manual_targets: bool,
-) -> Result<String, String> {
-    if manual_targets {
-        manual_source.read_all()
-    } else {
-        load_selected_target_text(presets)
     }
 }
 

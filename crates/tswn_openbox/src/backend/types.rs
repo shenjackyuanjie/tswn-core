@@ -103,8 +103,11 @@ pub struct BatchRateInput {
 #[derive(Debug, Clone)]
 pub struct PairInput {
     pub target_text: String,
+    pub target_factor_enabled: bool,
     pub player_text: String,
+    pub player_double_plus: bool,
     pub teammate_text: String,
+    pub teammate_double_plus: bool,
     pub head: usize,
     pub detail_mode: PairDetailMode,
     pub detail_min: Option<f64>,

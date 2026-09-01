@@ -304,3 +304,34 @@ fn pair_accepts_required_args_and_wr_precision() {
         _ => panic!("unexpected command"),
     }
 }
+
+#[test]
+fn pair_accepts_grouping_and_factored_target_flags() {
+    let cli = Cli::try_parse_from([
+        "tswn-cli",
+        "bench",
+        "pair",
+        "-l",
+        "targets.toml",
+        "-p",
+        "players.txt",
+        "--teammate-list",
+        "teammates.txt",
+        "--head",
+        "3",
+        "--target-factored",
+        "--player-list-double-plus",
+        "--teammate-list-single-plus",
+    ])
+    .unwrap();
+    match cli.command {
+        CliCommand::Bench(BenchCommand {
+            command: BenchSubcommand::Pair(cmd),
+        }) => {
+            assert!(cmd.target_factored);
+            assert!(cmd.player_list_double_plus);
+            assert!(cmd.teammate_list_single_plus);
+        }
+        _ => panic!("unexpected command"),
+    }
+}

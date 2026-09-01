@@ -143,6 +143,12 @@
 - `CliApiError` 新增 `Runtime` 变体；对该枚举做穷举匹配的 Rust 调用方需要处理新分支。
 - 无 runtime 参数的评分、胜率、批量与 `namer-pf` 高层 API 以及独立 `bench` 默认改用 Runtime；需要旧栈对账时应使用仍显式提供的 legacy 入口。
 
+### 新增
+
+- `tswn-cli bench batch-rate` / `cqp` 新增 `--target-factored`（别名 `--weighted-targets`）：读取 `[[targets]]` TOML 的 `factor` 与 `players`，按有效靶子权重计算平均胜率。
+- `tswn-cli bench pair` 同步支持 `--target-factored` 带权靶子；带权模式下完全相同的双方阵容按 `50%` 参与加权，部分重名仍正常计算。
+- `tswn-cli bench pair` 的 `player-list` 和 `teammate-list` 现在每行都可表示一个多人组合。选手默认用 `+` 分隔，可用 `--player-list-double-plus` 改为 `++`；队友默认用 `++`，可用 `--teammate-list-single-plus` 改为 `+`。
+
 ### 变更
 
 - 新增 Runtime CQP/CQD matchup 矩阵执行器，CLI `bench batch-rate` / `cqp` 的自动线程路径改为按 `player × target` 动态派发给持久 worker；短任务自动使用 1.5 倍逻辑核，中长任务使用 2 倍逻辑核，显式 `-t` 与 `-s` 语义保持不变。
