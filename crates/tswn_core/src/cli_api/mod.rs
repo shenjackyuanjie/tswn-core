@@ -444,7 +444,7 @@ pub fn batch_rate(
         .iter()
         .zip(labels.iter())
         .map(|(player, label)| {
-            let summary = bench::batch_rate_for_group(player, target_groups, n.max(1), thread, eval_rq)?;
+            let summary = bench::batch_rate_for_group(player, target_groups, None, n.max(1), thread, eval_rq)?;
             Ok(BatchRateResult {
                 label: label.clone(),
                 avg_win_rate: summary.avg,
@@ -485,7 +485,72 @@ pub fn pair_rate(
     let eval_rq = win_rate_eval_rq(keep_rq);
     players
         .iter()
-        .map(|player| bench::pair_rate_for_player(player, target_groups, teammates, head, n.max(1), thread, eval_rq))
+        .map(|player| bench::pair_rate_for_player(player, target_groups, None, teammates, head, n.max(1), thread, eval_rq))
+        .collect()
+}
+
+pub fn batch_rate_factored(
+    target_groups: &[String],
+    target_factors: &[f64],
+    player_groups: &[String],
+    n: usize,
+    player_labels: Option<Vec<String>>,
+    keep_rq: bool,
+    thread: u32,
+) -> CliApiResult<Vec<BatchRateResult>> {
+    validate_factored_targets(target_groups, target_factors, "batch_rate_factored")?;
+    if player_groups.is_empty() {
+        return Err(invalid_input("batch_rate_factored requires at least one player group"));
+    }
+    let labels = player_labels.unwrap_or_else(|| player_groups.to_vec());
+    if labels.len() != player_groups.len() {
+        return Err(invalid_input("player_labels must match player_groups length"));
+    }
+    let eval_rq = win_rate_eval_rq(keep_rq);
+    player_groups
+        .iter()
+        .zip(labels.iter())
+        .map(|(player, label)| {
+            let summary = bench::batch_rate_for_group(player, target_groups, Some(target_factors), n.max(1), thread, eval_rq)?;
+            Ok(BatchRateResult {
+                label: label.clone(),
+                avg_win_rate: summary.avg,
+                aggregate_win_rate: summary.aggregate_rate,
+                wins: summary.wins,
+                total: summary.total,
+                valid_matchups: summary.valid_matchups,
+                skipped_matchups: summary.skipped_matchups,
+                init_nanos: summary.timing.init_nanos,
+                fight_nanos: summary.timing.fight_nanos,
+            })
+        })
+        .collect()
+}
+
+pub fn pair_rate_factored(
+    target_groups: &[String],
+    target_factors: &[f64],
+    players: &[String],
+    teammates: &[String],
+    head: usize,
+    n: usize,
+    keep_rq: bool,
+    thread: u32,
+) -> CliApiResult<Vec<PairRateResult>> {
+    validate_factored_targets(target_groups, target_factors, "pair_rate_factored")?;
+    if players.is_empty() {
+        return Err(invalid_input("pair_rate_factored requires at least one player"));
+    }
+    if teammates.is_empty() {
+        return Err(invalid_input("pair_rate_factored requires at least one teammate"));
+    }
+    if head == 0 {
+        return Err(invalid_input("head must be positive"));
+    }
+    let eval_rq = win_rate_eval_rq(keep_rq);
+    players
+        .iter()
+        .map(|player| bench::pair_rate_for_player(player, target_groups, Some(target_factors), teammates, head, n.max(1), thread, eval_rq))
         .collect()
 }
 
@@ -555,6 +620,19 @@ pub fn battle_replay(raw: &str, options: BattleReplayOptions) -> CliApiResult<Ba
 }
 
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
+
+fn validate_factored_targets(target_groups: &[String], target_factors: &[f64], api: &str) -> CliApiResult<()> {
+    if target_groups.is_empty() {
+        return Err(invalid_input(format!("{api} requires at least one target group")));
+    }
+    if target_factors.len() != target_groups.len() {
+        return Err(invalid_input("target_factors must match target_groups length"));
+    }
+    if target_factors.iter().any(|factor| !factor.is_finite() || *factor <= 0.0) {
+        return Err(invalid_input("target_factors must contain only finite positive values"));
+    }
+    Ok(())
+}
 
 fn runtime_batch_error(error: crate::runtime::RuntimeBatchError) -> CliApiError { CliApiError::Runtime(error.to_string()) }
 
@@ -641,6 +719,25 @@ mod tests {
         assert_eq!(runtime_update_type_name(UpdateType::Win), "win");
         assert_eq!(runtime_update_type_name(UpdateType::None), "none");
         assert_eq!(runtime_update_type_name(UpdateType::NextLine), "next_line");
+    }
+
+    #[test]
+    fn factored_batch_rate_treats_mirrors_as_weighted_fifty_percent() {
+        let targets = vec!["mario\nluigi".to_string()];
+        let players = vec!["luigi\nmario".to_string()];
+        let result = batch_rate_factored(&targets, &[2.0], &players, 1, None, false, 1).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].avg_win_rate, 50.0);
+        assert_eq!(result[0].wins, 1);
+        assert_eq!(result[0].total, 2);
+    }
+
+    #[test]
+    fn factored_batch_rate_validates_factor_length() {
+        let err = batch_rate_factored(&["mario".to_string()], &[], &["luigi".to_string()], 1, None, false, 1)
+            .expect_err("factor length must match target groups");
+        assert_eq!(err.to_string(), "target_factors must match target_groups length");
     }
 
     #[test]

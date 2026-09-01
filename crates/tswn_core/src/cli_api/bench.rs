@@ -25,6 +25,7 @@ pub(super) fn namer_pf_score(
 pub(super) fn batch_rate_for_group(
     player: &str,
     target_groups: &[String],
+    target_factors: Option<&[f64]>,
     n: usize,
     thread: u32,
     eval_rq: f64,
@@ -35,16 +36,28 @@ pub(super) fn batch_rate_for_group(
     let mut accumulated_timing = WinRateTiming::default();
     let mut valid_matchups = 0usize;
     let mut skipped_matchups = 0usize;
+    let mut accumulated_factor = 0.0;
+    let factored = target_factors.is_some();
 
-    for target in target_groups {
-        if first_duplicate_name_in_matchup(&[player, target.as_str()]).is_some() {
+    for (index, target) in target_groups.iter().enumerate() {
+        let factor = target_factors.and_then(|factors| factors.get(index)).copied().unwrap_or(1.0);
+        if factored && groups_have_same_players(player, target) {
+            accumulated_rate += 50.0 * factor;
+            accumulated_factor += factor;
+            accumulated_wins += 1;
+            accumulated_total += 2;
+            valid_matchups += 1;
+            continue;
+        }
+        if !factored && first_duplicate_name_in_matchup(&[player, target.as_str()]).is_some() {
             skipped_matchups += 1;
             continue;
         }
 
         let raw = format!("{player}\n\n{target}");
         let summary = super::win_rate_summary(&raw, n, Some(eval_rq), thread)?;
-        accumulated_rate += summary.win_rate;
+        accumulated_rate += summary.win_rate * factor;
+        accumulated_factor += factor;
         accumulated_wins += summary.wins;
         accumulated_total += summary.total;
         accumulated_timing.merge(WinRateTiming {
@@ -54,8 +67,8 @@ pub(super) fn batch_rate_for_group(
         valid_matchups += 1;
     }
 
-    let avg = if valid_matchups > 0 {
-        accumulated_rate / valid_matchups as f64
+    let avg = if accumulated_factor > 0.0 {
+        accumulated_rate / accumulated_factor
     } else {
         0.0
     };
@@ -74,13 +87,14 @@ pub(super) fn batch_rate_for_group(
 pub(super) fn pair_rate_for_player(
     player: &str,
     target_groups: &[String],
+    target_factors: Option<&[f64]>,
     teammates: &[String],
     head: usize,
     n: usize,
     thread: u32,
     eval_rq: f64,
 ) -> CliApiResult<PairRateResult> {
-    let converted_player = player_to_ol(player)?;
+    let converted_player = player_group_to_ol(player)?;
     let mut pair_rates = Vec::with_capacity(teammates.len());
     let mut total_wins = 0usize;
     let mut total_battles = 0usize;
@@ -90,7 +104,7 @@ pub(super) fn pair_rate_for_player(
 
     for teammate in teammates {
         let pair_group = format!("{converted_player}\n{teammate}");
-        let summary = batch_rate_for_group(&pair_group, target_groups, n, thread, eval_rq)?;
+        let summary = batch_rate_for_group(&pair_group, target_groups, target_factors, n, thread, eval_rq)?;
         if summary.valid_matchups > 0 {
             pair_rates.push(PairRateEntry {
                 name: teammate.clone(),
@@ -138,9 +152,30 @@ fn first_duplicate_name_in_matchup(groups: &[&str]) -> Option<String> {
     None
 }
 
+fn groups_have_same_players(left: &str, right: &str) -> bool {
+    let mut left = group_player_ids(left);
+    let mut right = group_player_ids(right);
+    left.sort_unstable();
+    right.sort_unstable();
+    left == right
+}
+
+fn group_player_ids(group: &str) -> Vec<String> {
+    group
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(crate::namerena::raw_namerena_to_id_name)
+        .collect()
+}
+
 fn player_to_ol(raw: &str) -> CliApiResult<String> {
     if raw.contains("+diy[") || raw.contains("+ol:") {
         return Ok(raw.to_string());
     }
     super::parse::export_player(raw, false, false)
+}
+
+fn player_group_to_ol(group: &str) -> CliApiResult<String> {
+    group.lines().map(player_to_ol).collect::<CliApiResult<Vec<_>>>().map(|players| players.join("\n"))
 }
