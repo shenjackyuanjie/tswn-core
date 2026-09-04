@@ -63,6 +63,10 @@
 `openbox_mem_probe`；命令和发布要求见根目录 `rule.md`。如需恢复 fixed30 自动化，
 应新增只依赖公开主 Runtime API 的独立 benchmark harness，不得恢复旧执行器或 parity 入口。
 
+管理员态的函数级 CPU 归因统一使用 AMD uProf CLI；其 `report.csv` 可供自动化 agent 读取，
+而 `samply` 仅作为人工查看火焰图和时间线的补充。采集命令、报告结构和 A/B 判读约束见
+[`amduprof.md`](amduprof.md)。
+
 ---
 
 ## 3. 100k 参考总表

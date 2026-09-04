@@ -92,9 +92,30 @@ python scripts/build_all.py --release --pgo    # 发布包的 CLI 与 Openbox �
 
 ## 采样
 
-`samply` 底层是 xperf/ETW 内核采样，**需要管理员权限**；非提权账户下它会正常跑完，
-但产出 `threads: []` 的空 profile（`wpr` 同样要提权）。这种情况下改用 PGO
-instrumentation 拿函数级执行计数：
+Windows 的管理员态主 CPU profiler 是 **AMD uProf CLI**（本机为 Zen 3）。它会把热点函数、
+调用栈和源码归因写入 CSV，适合让自动化 agent 直接读取；`samply` 保留为手动查看 Firefox
+火焰图 / 时间线的备选工具。完整流程见 [`docs/perf/amduprof.md`](docs/perf/amduprof.md)。
+
+先用 Time-Based Profile（TBP）定位热函数。采样工作负载应至少运行约 15 秒，且不要追加
+CLI 的 `--perf`（它会改变热路径的计时开销）：
+
+```powershell
+$uProf = (Get-Command AMDuProfCLI.exe -ErrorAction Stop).Source
+cargo build -p tswn_core --release --features no_debug --bin tswn-cli
+& $uProf collect --config tbp -g `
+  -o target\amduprof\before `
+  target\release\tswn-cli.exe bench win-rate `
+  -f docs\perf\fixed_cases_30\01_1v1-6a2ace7473581042.txt -n 3000000 -s
+& $uProf report -i target\amduprof\before --detail
+```
+
+uProf 5.3 的 `report` 不接受旧版本文档中的 `-o`；它会自动在采样目录创建
+`report.csv`。先看其中的 `HOTTEST FUNCTIONS` / `HOTTEST CALLSTACKS`，优化后再以新目录
+复跑。吞吐是否真正变好仍以本节上方规定的同会话交替 A/B benchmark 为准，不能以 profiler
+带来的 CPU_TIME 直接断言收益。
+
+AMD uProf 的 PMC / IBS 采样需要在已提权的终端（或已提权的 agent 会话）中执行。若没有
+管理员权限，改用 PGO instrumentation 拿函数级执行计数：
 
 ```powershell
 python scripts/pgo_build.py
@@ -103,7 +124,7 @@ llvm-profdata show --topn=45 target\pgo\merged.profdata
 
 结构体体积用 `cargo +nightly rustc -p tswn_core --release --lib -- -Zprint-type-sizes`。
 
-有管理员权限时，Windows 上可用 `samply` 直接采样公开 CLI：
+有管理员权限时，也可用 `samply` 直接采样公开 CLI，用于手动查看时间线：
 
 ```powershell
 cargo build -p tswn_core --release --features no_debug --bin tswn-cli
