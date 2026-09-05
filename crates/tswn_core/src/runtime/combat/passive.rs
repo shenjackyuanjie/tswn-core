@@ -67,7 +67,7 @@ impl CombatRuntime {
                 };
                 Some((skill, level, priority, registration_order))
             })
-            .collect::<Vec<_>>();
+            .collect::<smallvec::SmallVec<[_; 4]>>();
         // `post_damage_order` 保存钩子的实际注册顺序。Merge 可能在运行期启用
         // 原本为零级的槽位，因此固定槽位顺序和主动行动顺序都不足以复现该事件列表。
         plan.sort_by_key(|(_, _, priority, registration_order)| (*priority, *registration_order));
