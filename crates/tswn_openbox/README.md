@@ -1,6 +1,6 @@
 # tswn_openbox
 
-当前版本：`0.4.1`
+当前版本：`0.4.2`
 
 `tswn_openbox` 是一个带 GUI 的本地交互面板，把常用 `tswn-cli` 工作流做成点击即用的界面。目标是能跑、无使用门槛、界面简洁。
 
@@ -187,7 +187,9 @@ a@team+b@team
 c@team++d@team
 ```
 
-每个组合会把选手组和队友组拼接后，与每个靶子组进行计算。普通文本靶子仍按每行一个靶子组解析；带权 TOML 则按每个 `[[targets]]` 项的 `players` 作为靶子组，`factor` 只影响靶子组之间的平均值。手动靶子不启用带权 TOML，选择手动靶子时会忽略预设的 `factor_enabled`。
+每个组合会把选手组和队友组拼接后，与每个靶子组进行计算。普通文本靶子仍按每行一个靶子组解析；带权 TOML 则按每个 `[[targets]]` 项的 `players` 作为靶子组，靶子 `factor` 只影响靶子组之间的平均值。手动靶子不启用带权 TOML，选择手动靶子时会忽略预设的 `factor_enabled`。
+
+队友预设启用 `factor_enabled` 时，计算顺序是：先按靶子权重得到该队友组合的平均胜率，再乘以队友组的 `factor`，然后按乘权后的分数降序取前 `head` 个并求和。因此，队友权重会影响排名和最终分数，而不是只影响展示的平均胜率。手动输入队友时不会读取队友 TOML 权重。
 
 ## 配置文件
 
@@ -218,6 +220,12 @@ factor_enabled = true
 head = 3
 name = "默认队友"
 file = "teammates/default.txt"
+
+[[teammate]]
+head = 3
+name = "带权队友"
+file = "teammates/weighted.toml"
+factor_enabled = true
 ```
 
 说明：
@@ -228,6 +236,7 @@ file = "teammates/default.txt"
 - `teammate[].head` 是 `pair` 的“保留前几”。
 - `teammate[].file` 是队友列表文件。
 - `teammate[].factor_enabled` 可省略，默认为 `false`；设为 `true` 时，`file` 使用与带权靶子相同的 `[[targets]]` TOML 格式，并按每组 `factor` 调整队友组合分数后再取 `head`。
+- 选择“手动队友”后，预设中的 `factor_enabled` 和队友文件权重均不会生效；手动队友始终按文本列表解析。
 - `pair` 默认优先选择 `targets` 中 `id = 2` 的靶子；如果不存在，则退回第一个靶子。
 - `pair` 的选手和队友分组开关只影响行内分隔，不会改变换行分组；每行仍对应一个待评分的组合。
 

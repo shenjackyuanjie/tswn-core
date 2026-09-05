@@ -6,6 +6,16 @@
 
 - `pair` 队友预设新增可选 `factor_enabled`；启用后读取与带权靶子相同格式的 TOML 队友文件，将每个队友组合的平均胜率乘以对应 `factor` 后再按 `head` 取高分求和。
 
+### 文档
+
+- 补充 `pair` 带权队友的配置示例、靶子权重与队友权重的计算顺序，以及手动队友模式下权重配置不生效的说明。
+
+### 验证
+
+- `cargo check -p tswn_openbox`
+- `cargo test -p tswn_openbox`
+- `cargo +nightly fmt --check -p tswn_openbox`
+
 ## [0.4.2] - 2026-09-01
 
 ### 新增
