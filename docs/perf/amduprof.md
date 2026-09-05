@@ -17,7 +17,8 @@
 ## 标准热点采样
 
 TBP（Time-Based Profile）用于先找 CPU 热函数；`-g` 要求收集用户态调用栈。选择能运行至少
-约 15 秒的固定输入，避免样本太少。下面的 case 在当前机器很快，因此将次数调到 300 万：
+约 15 秒的固定输入，避免样本太少。下面的 case 在当前机器很快，因此将次数调到 600 万
+（2026-09-05 实测 300 万场约 13 秒，600 万场约 27 秒）：
 
 ```powershell
 $uProf = (Get-Command AMDuProfCLI.exe -ErrorAction Stop).Source
@@ -25,12 +26,18 @@ cargo build -p tswn_core --release --features no_debug --bin tswn-cli
 & $uProf collect --config tbp -g `
   -o target\amduprof\before `
   target\release\tswn-cli.exe bench win-rate `
-  -f docs\perf\fixed_cases_30\01_1v1-6a2ace7473581042.txt -n 3000000 -s
-& $uProf report -i target\amduprof\before --detail
+  -f docs\perf\fixed_cases_30\01_1v1-6a2ace7473581042.txt -n 6000000 -s
+& $uProf report -i target\amduprof\before --detail -g
 ```
 
 uProf 5.3 将结果自动写至 `target\amduprof\before\report.csv`；`report` 子命令不接受旧版本
 教程中的 `-o`。每次采样使用新的输出目录，例如 `before`、`after`，避免混合原始数据。
+
+`collect -g` 负责采集调用栈，`report -g` 才会把调用栈写入 CSV；两处都需要。
+默认只输出前 10 个函数，需要扩大范围时追加 `--cutoff 40`（`--cutoff 0` 输出全部）。
+查看内联热路径的机器指令可追加 `--disasm-full`，并用
+`--report-output target\amduprof\before\disasm.csv` 单独保存；检查报告是否完整，避免将
+生成失败的汇编报告当作完整热点数据。
 
 采样时不加 `tswn-cli --perf`：该选项会为每场比赛额外进行四次 QPC 计时，适合 init/fight
 粗分，不适合测正常热路径。
