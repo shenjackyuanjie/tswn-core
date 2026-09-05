@@ -108,6 +108,7 @@ pub struct PairInput {
     pub player_double_plus: bool,
     pub teammate_text: String,
     pub teammate_double_plus: bool,
+    pub teammate_factor_enabled: bool,
     pub head: usize,
     pub detail_mode: PairDetailMode,
     pub detail_min: Option<f64>,

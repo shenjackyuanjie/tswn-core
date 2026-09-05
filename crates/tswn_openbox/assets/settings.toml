@@ -29,23 +29,28 @@ factor_enabled = true
 head = 5
 name = "刺评"
 file = "teammates/teammate_fz.txt"
+factor_enabled = false
 
 [[teammate]]
 head = 5
 name = "辅评"
 file = "teammates/teammate_bc.txt"
+factor_enabled = false
 
 [[teammate]]
 head = 5
 name = "无刺评"
 file = "teammates/teammate_wc.txt"
+factor_enabled = false
 
 [[teammate]]
 head = 3
 name = "分身评"
 file = "teammates/teammate_pj.txt"
+factor_enabled = false
 
 [[teammate]]
 head = 3
 name = "配件评"
 file = "teammates/teammate_fs.txt"
+factor_enabled = false

@@ -61,6 +61,7 @@ pub struct TeammatePreset {
     pub head: usize,
     pub name: String,
     pub path: PathBuf,
+    pub factor_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -173,6 +174,8 @@ struct TeammatePresetEntry {
     head: usize,
     name: String,
     file: PathBuf,
+    #[serde(default)]
+    factor_enabled: bool,
 }
 
 pub fn load_selected_target_text(state: &TargetPresetState) -> Result<String, String> {
@@ -216,6 +219,7 @@ fn load_teammate_presets(loaded: LoadedSettingFile) -> Vec<TeammatePreset> {
             head: entry.head.max(1),
             name: entry.name,
             path: normalize_relative_path(&loaded.setting_dir, &entry.file),
+            factor_enabled: entry.factor_enabled,
         });
     }
     items

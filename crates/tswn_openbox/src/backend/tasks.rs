@@ -653,7 +653,14 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         }
     };
     let (player_groups, player_labels) = parse_player_groups_with_labels(&input.player_text, input.player_double_plus);
-    let (teammate_groups, teammate_labels) = parse_player_groups_with_labels(&input.teammate_text, input.teammate_double_plus);
+    let (teammate_groups, teammate_labels, teammate_factors) =
+        match parse_pair_teammate_groups(&input.teammate_text, input.teammate_double_plus, input.teammate_factor_enabled) {
+            Ok(value) => value,
+            Err(err) => {
+                send(ProgressEvent::Done(Err(err)));
+                return;
+            }
+        };
     if target_groups.is_empty() {
         send(ProgressEvent::Done(Err("pair: 靶子列表为空。".to_string())));
         return;
@@ -704,7 +711,7 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
         let mut _total_skipped_matchups = 0usize;
         let mut verbose = String::new();
 
-        for (teammate_group, teammate_label) in teammate_groups.iter().zip(teammate_labels.iter()) {
+        for (teammate_index, (teammate_group, teammate_label)) in teammate_groups.iter().zip(teammate_labels.iter()).enumerate() {
             let pair_group = format!("{converted_player}\n{teammate_group}");
             if input.options.verbose {
                 let _ = writeln!(verbose, "teammate: {teammate_label}");
@@ -725,7 +732,8 @@ pub fn run_pair(input: PairInput, send: impl Fn(ProgressEvent)) {
                 },
             );
             if summary.valid_matchups > 0 {
-                pair_rates.push((summary.avg, teammate_label.clone()));
+                let score = teammate_score(summary.avg, teammate_factors[teammate_index], input.teammate_factor_enabled);
+                pair_rates.push((score, teammate_label.clone()));
             }
             total_wins += summary.wins;
             total_battles += summary.total;
@@ -803,6 +811,26 @@ fn parse_pair_target_groups(content: &str, factor_enabled: bool) -> Result<(Vec<
         let factors = vec![1.0; groups.len()];
         Ok((groups, factors))
     }
+}
+
+fn parse_pair_teammate_groups(
+    content: &str,
+    double_plus: bool,
+    factor_enabled: bool,
+) -> Result<(Vec<String>, Vec<String>, Vec<f64>), String> {
+    if factor_enabled {
+        let (groups, factors) = parse_factored_target_groups(content)?;
+        let labels = groups.iter().map(|group| group.lines().collect::<Vec<_>>().join("+")).collect();
+        Ok((groups, labels, factors))
+    } else {
+        let (groups, labels) = parse_player_groups_with_labels(content, double_plus);
+        let factors = vec![1.0; groups.len()];
+        Ok((groups, labels, factors))
+    }
+}
+
+fn teammate_score(average_rate: f64, factor: f64, factor_enabled: bool) -> f64 {
+    if factor_enabled { average_rate * factor } else { average_rate }
 }
 
 fn should_highlight(score: f64, min_screen: Option<f64>, highlight_delta: Option<f64>) -> bool {
@@ -920,7 +948,8 @@ mod tests {
 
     use super::{
         BatchRateInput, OutputMode, ProgressEvent, bench_batch_rate_for_group, compare_score_output_lines,
-        format_batch_screen_log, parse_pair_target_groups, run_batch_rate, run_to_diy, score_output_line_value,
+        format_batch_screen_log, parse_pair_target_groups, parse_pair_teammate_groups, run_batch_rate, run_to_diy,
+        score_output_line_value,
     };
 
     #[test]
@@ -954,6 +983,21 @@ mod tests {
     fn pair_keeps_each_member_when_converting_a_multi_player_input_group() {
         let group = "+ol:player-a\n+ol:player-b";
         assert_eq!(super::player_group_to_ol(group).unwrap(), group);
+    }
+
+    #[test]
+    fn teammate_factor_changes_the_score_used_for_head_sorting() {
+        assert_eq!(super::teammate_score(80.0, 0.5, true), 40.0);
+        assert_eq!(super::teammate_score(80.0, 0.5, false), 80.0);
+    }
+
+    #[test]
+    fn pair_parses_factored_teammates_with_labels_and_weights() {
+        let raw = "[[targets]]\nfactor = 2\nplayers = [\"mario\", \"luigi\"]";
+        let (groups, labels, factors) = parse_pair_teammate_groups(raw, true, true).expect("valid teammates");
+        assert_eq!(groups, vec!["mario\nluigi"]);
+        assert_eq!(labels, vec!["mario+luigi"]);
+        assert_eq!(factors, vec![2.0]);
     }
 
     #[test]

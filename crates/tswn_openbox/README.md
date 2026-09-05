@@ -227,6 +227,7 @@ file = "teammates/default.txt"
 - `targets[].factor_enabled` 可以省略，默认为 `false`；设为 `true` 时，`file` 必须使用下述带权 TOML 格式。
 - `teammate[].head` 是 `pair` 的“保留前几”。
 - `teammate[].file` 是队友列表文件。
+- `teammate[].factor_enabled` 可省略，默认为 `false`；设为 `true` 时，`file` 使用与带权靶子相同的 `[[targets]]` TOML 格式，并按每组 `factor` 调整队友组合分数后再取 `head`。
 - `pair` 默认优先选择 `targets` 中 `id = 2` 的靶子；如果不存在，则退回第一个靶子。
 - `pair` 的选手和队友分组开关只影响行内分隔，不会改变换行分组；每行仍对应一个待评分的组合。
 
@@ -241,6 +242,8 @@ players = ["mario", "luigi"]
 factor = 0.75
 players = ["peach", "fire"]
 ```
+
+队友预设开启 `factor_enabled = true` 时，队友文件也使用上述 `[[targets]]` TOML 结构；每个队友组的平均胜率先乘以该组 `factor`，再按 `head` 取最高组合求和。
 
 `factor` 必须是大于 `0` 的有限数值，`players` 不得为空或包含空名字。带权 TOML 用于选中的 `cqd/cqp` 或 `pair` 靶子预设；手动靶子仍使用原文本格式。
 

@@ -289,6 +289,8 @@ impl OpenboxApp {
         } else {
             self.pair.teammate_presets.selected().map(|preset| preset.head).unwrap_or(self.pair.head)
         };
+        let teammate_factor_enabled =
+            !self.pair.manual_teammates && self.pair.teammate_presets.selected().is_some_and(|preset| preset.factor_enabled);
         let output_file = self.pair.output.file_output.path();
         let min_screen = match parse_optional_f64_at_least(&self.pair.output.min_screen, "日志阈值", 0.0) {
             Ok(value) => value,
@@ -334,6 +336,7 @@ impl OpenboxApp {
             player_double_plus: self.pair.player_double_plus,
             teammate_text,
             teammate_double_plus: self.pair.teammate_double_plus,
+            teammate_factor_enabled,
             head: head.max(1),
             detail_mode: self.pair.detail_mode,
             detail_min,
