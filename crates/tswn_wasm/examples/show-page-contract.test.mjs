@@ -37,3 +37,14 @@ test("show page removes runtime choice from generated share links", async () => 
   assert.match(script, /buildShowShareUrl\(rawInput, \{\s*href: window\.location\.href,\s*\}\)/s);
   assert.doesNotMatch(script, /runtimeEngine/);
 });
+
+test("detail panel keeps readable colors in light theme", async () => {
+  const css = await readExampleFile("show.css");
+
+  assert.match(css, /\.detail-card\s*\{[^}]*background: var\(--surface-soft\);[^}]*color: var\(--ink\);[^}]*\}/s);
+  assert.match(css, /\.detail-subtitle\s*\{[^}]*color: var\(--muted\);[^}]*\}/s);
+  assert.match(css, /\.detail-grid dt\s*\{[^}]*color: var\(--muted\);[^}]*\}/s);
+  assert.match(css, /\.detail-grid dd\s*\{[^}]*color: var\(--ink\);[^}]*\}/s);
+  assert.doesNotMatch(css, /\.detail-subtitle\s*\{[^}]*color: rgba\(255, 255, 255, 0\.9\);[^}]*\}/s);
+  assert.doesNotMatch(css, /\.detail-grid dd\s*\{[^}]*color: white;[^}]*\}/s);
+});

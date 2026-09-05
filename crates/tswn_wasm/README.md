@@ -141,6 +141,7 @@ normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算
 - `show-utils.js` 提供 `iconClassName()` / `buildIconClassCss()` 工具函数，将玩家的 PNG Base64 头像编码为 `.icon_N { background-image: url(...) }` 样式规则。
 - `show.js` 在回放开始时调用 `normalizeReplayPlayers()` 为玩家补齐 `iconClassId`（同队统一使用队首个玩家头像编号），并通过 `syncIconStyles()` 动态注入 `<style>` 标签。
 - 渲染层（`show-render.js` `/` `show-replay.js`）统一使用 `renderIconSprite(iconId, className)` 生成 `<span class="icon-sprite icon_N">` 节点，头像图片由 CSS background-image 加载。
+- 角色详情面板的正文、属性标签和说明文字使用主题变量；白天模式下浅色详情卡片使用深色文字，深色模式下保持浅色文字，避免文字与背景同色。
 
 #### 同队头像统一
 
