@@ -80,6 +80,9 @@ target\release\examples\perf_runtime.exe --mode score -i docs\perf\cqp\sqp6000_f
 而 `samply` 仅作为人工查看火焰图和时间线的补充。采集命令、报告结构和 A/B 判读约束见
 [`amduprof.md`](amduprof.md)。
 
+2026-09-05 的当前版本 uProf 调查、RC4 实验及受伤被动计划优化的完整 A/B 结果见
+[`rc4_20260905_profile.md`](rc4_20260905_profile.md)。
+
 ---
 
 ## 3. 100k 参考总表
