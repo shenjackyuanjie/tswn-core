@@ -105,8 +105,8 @@ cargo build -p tswn_core --release --features no_debug --bin tswn-cli
 & $uProf collect --config tbp -g `
   -o target\amduprof\before `
   target\release\tswn-cli.exe bench win-rate `
-  -f docs\perf\fixed_cases_30\01_1v1-6a2ace7473581042.txt -n 3000000 -s
-& $uProf report -i target\amduprof\before --detail
+  -f docs\perf\fixed_cases_30\01_1v1-6a2ace7473581042.txt -n 6000000 -s
+& $uProf report -i target\amduprof\before --detail -g
 ```
 
 uProf 5.3 的 `report` 不接受旧版本文档中的 `-o`；它会自动在采样目录创建

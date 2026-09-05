@@ -59,9 +59,22 @@
 固定输入与 0.4.x 的旧工具输出格式说明继续保存在
 [`fixed_cases_30_benchmark.md`](fixed_cases_30_benchmark.md)，仅作为历史口径。
 
-当前仓库可直接复测的长期入口是 `tswn-cli bench win-rate --perf` 与 OpenBox
-`openbox_mem_probe`；命令和发布要求见根目录 `rule.md`。如需恢复 fixed30 自动化，
-应新增只依赖公开主 Runtime API 的独立 benchmark harness，不得恢复旧执行器或 parity 入口。
+当前仓库可直接复测的入口包括 `tswn-cli bench win-rate --perf`、OpenBox
+`openbox_mem_probe` 和只依赖公开主 Runtime API 的 `perf_runtime` example；命令和发布要求见
+根目录 `rule.md`。`perf_runtime` 支持原始 fixed30 输入的 FFA / 多队语义，并逐文件输出 JSON 行：
+
+```powershell
+cargo build -p tswn_core --release --features no_debug --example perf_runtime
+target\release\examples\perf_runtime.exe -n 13000 --threads 1 --timed
+target\release\examples\perf_runtime.exe -n 13000 --threads 0 --timed
+target\release\examples\perf_runtime.exe --mode score -i docs\perf\score\mario.txt -n 13000 --timed
+target\release\examples\perf_runtime.exe --mode score -i docs\perf\cqp\sqp6000_first20.txt -n 1000 --timed
+```
+
+墙钟包含 Runtime 模板准备和批量执行，排除文件读取与 JSON 序列化；`--timed` 额外输出
+逐场 init/fight 计时，采样时应去掉该选项。目录输入按文件名排序，单文件输入可用于 uProf
+采样。score 模式对文件中按 namerena 规则拆出的每组分别评分，`-n` 是每组的场数，
+默认对手修饰符为 `!`。比较候选改动仍需同会话至少五轮交替 A/B，并检查胜场、errors 和 guard。
 
 管理员态的函数级 CPU 归因统一使用 AMD uProf CLI；其 `report.csv` 可供自动化 agent 读取，
 而 `samply` 仅作为人工查看火焰图和时间线的补充。采集命令、报告结构和 A/B 判读约束见
