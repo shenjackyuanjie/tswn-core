@@ -172,6 +172,9 @@ pub fn build_replay_view_frame<S: ReplayState>(
             quick_area_skill_active = true;
         }
 
+        if is_revive_update(update) {
+            apply_death_update(&mut running, update.target);
+        }
         let before = running.clone();
         if should_sync_reappeared_participants(update, event.tone) {
             sync_reappeared_participants(update, &mut running, &frame_state_map);
@@ -306,12 +309,14 @@ fn sync_reappeared_participants<S: ReplayState>(
 }
 
 fn should_sync_reappeared_participants(update: &RunUpdate, tone: ReplayTone) -> bool {
-    !matches!(tone, ReplayTone::Knockout | ReplayTone::Recover) && !is_reraise_update(update)
+    !matches!(tone, ReplayTone::Knockout | ReplayTone::Recover) && !is_reraise_update(update) && !is_revive_update(update)
 }
 
 fn is_reraise_update(update: &RunUpdate) -> bool {
     update.message.contains("[护身符]") && update.message.contains("抵挡了一次死亡")
 }
+
+fn is_revive_update(update: &RunUpdate) -> bool { update.message.contains("复活") }
 
 fn apply_hp_delta<S: ReplayState>(running: &mut HashMap<PlrId, S>, id: PlrId, hp_delta: i32) {
     let Some(state) = running.get(&id) else {
@@ -451,6 +456,8 @@ fn is_hp_swap_update(update: &RunUpdate) -> bool {
     update.message.contains("\u{4f53}\u{529b}\u{503c}\u{4e0e}") && update.message.contains("\u{4e92}\u{6362}")
 }
 
+fn is_entity_conversion_update(update: &RunUpdate) -> bool { update.message == "[2]变成了[1]" && !update.targets.is_empty() }
+
 fn build_clip_parts<S: ReplayState>(
     update: &RunUpdate,
     before: &HashMap<PlrId, S>,
@@ -462,6 +469,7 @@ fn build_clip_parts<S: ReplayState>(
     let death_effect_allowed = is_death_effect_update(update);
     let force_hp_marker = is_hp_marker_update(update);
     let force_show_hp = is_hp_swap_update(update);
+    let entity_conversion = is_entity_conversion_update(update);
 
     let mut rest = update.message.as_ref();
     while let Some(start) = rest.find('[') {
@@ -495,6 +503,14 @@ fn build_clip_parts<S: ReplayState>(
                     death_effect_allowed,
                     force_show_hp,
                 );
+            }
+            "2" if entity_conversion => {
+                for (index, player_id) in update.targets.iter().enumerate() {
+                    if index > 0 {
+                        parts.push(text_part(ReplayTextPartKind::Text, ",".to_string()));
+                    }
+                    push_player_part(&mut parts, *player_id, before, after, player_names, false, false);
+                }
             }
             "2" => push_data_part(&mut parts, &data),
             _ => {
@@ -861,6 +877,66 @@ mod tests {
         assert!(recover_part.show_hp);
         assert_eq!((recover_part.hp_before, recover_part.hp_after), (0, 8));
         assert!(!recover_part.death_effect);
+    }
+
+    #[test]
+    fn revive_then_recover_starts_from_zero_hp() {
+        let revive = RunUpdate::new("[1][复活]了", 0, 1, 0);
+        let mut recover = RunUpdate::new("[1]回复体力[2]点", 0, 1, 0);
+        recover.param = Some(40);
+        let events = [
+            ReplayEventView {
+                update: &revive,
+                tone: ReplayTone::Normal,
+                message_rendered: "target复活了",
+            },
+            ReplayEventView {
+                update: &recover,
+                tone: ReplayTone::Recover,
+                message_rendered: "target回复体力40点",
+            },
+        ];
+        // Runtime frame snapshots can still hold the previous action's HP.
+        // The revive update must reset the replay state before its recovery update.
+        let previous = vec![state(0, 100), state(1, 66)];
+        let frame = vec![state(0, 100), state(1, 40)];
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names(), false, &[]);
+        let revive_part = player_part(&view.rows[0].clips[0]);
+        let recover_part = player_part(&view.rows[0].clips[1]);
+
+        assert!(!revive_part.show_hp);
+        assert_eq!((revive_part.hp_before, revive_part.hp_after), (0, 0));
+        assert!(recover_part.show_hp);
+        assert_eq!((recover_part.hp_before, recover_part.hp_after), (0, 40));
+    }
+
+    #[test]
+    fn zombie_conversion_renders_corpse_as_player_part() {
+        let mut update = RunUpdate::new("[2]变成了[1]", 0, 2, 0);
+        update.targets.push(1);
+        let events = [ReplayEventView {
+            update: &update,
+            tone: ReplayTone::Normal,
+            message_rendered: "target变成了zombie",
+        }];
+        let previous = vec![state(0, 100), state(1, 0)];
+        let frame = vec![state(0, 100), state(1, 0), state(2, 60)];
+        let mut names = names();
+        names.insert(2, "zombie".to_string());
+
+        let view = build_replay_view_frame(&events, &previous, &frame, &names, false, &[]);
+        let parts = player_parts(&view.rows[0].clips[0]);
+
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].player_id, Some(1));
+        assert_eq!(parts[0].text, "target");
+        assert!(!parts[0].show_hp);
+        assert!(!parts[0].death_effect);
+        assert_eq!(parts[1].player_id, Some(2));
+        assert_eq!(parts[1].text, "zombie");
+        assert!(parts[1].show_hp);
+        assert_eq!((parts[1].hp_before, parts[1].hp_after), (60, 60));
     }
 
     #[test]

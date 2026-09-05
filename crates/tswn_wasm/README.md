@@ -97,6 +97,8 @@ session.result(); // WinRateResult — 含 timing（init_nanos, fight_nanos）
 左侧仍会单独显示对象 `#playerId`，用于区分唯一对象编号。`ReplayClip.delay` 按句子级规则给出：
 frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子 `600ms`，其他句子 `500ms`，按该顺序优先匹配。
 同一句中的多个 `player` part 各自携带独立的 HP 前后值；生命之轮体力互换会强制双方都展示血条，即使某一方或双方 HP 没有变化。
+复活句会固定为 `0 -> 0`，随后“回复体力”句才输出 `0 -> x` 的回血血条，不受运行时帧快照中旧 HP 的影响。
+“`[2]变成了[1]`”等实体转化句会为旧对象和新对象分别输出 `player` part，因此 show 可继续对被转化对象应用普通名字与头像效果。
 死亡特效只读取死亡句中 player part 的 `death_effect`；附体、自爆或 owner 死亡牵连等机制死亡会由底层在“被击倒/消失”句同步 HP 为 `0`。任何 `death_effect == true` 的 player part 都会同时返回 `show_hp == false`。
 
 `examples/index.html` 的战斗正文渲染只消费 `RoundFrame.rows[].clips[]` 结构化 replay view：分行、分段 delay、文本片段、高亮色、玩家 HP 条、死亡效果和侧栏快照均来自底层字段。前端不再从 `message_template`、`message_rendered` 或 `hp_delta` 反推展示语义；`updates[]` 仅保留给结算统计等非正文渲染用途。
