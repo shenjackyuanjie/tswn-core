@@ -489,7 +489,24 @@ function applyNicknamesToReplay(replay) {
 }
 
 function currentStateById(playerId) {
-  return currentVisibleStates.find((state) => state.id === playerId) ?? null;
+  const visibleState = currentVisibleStates.find((state) => state.id === playerId);
+  if (visibleState) {
+    return visibleState;
+  }
+  if (!currentReplay) {
+    return null;
+  }
+  for (const frame of [...(currentReplay.frames ?? [])].reverse()) {
+    const state = frame.states?.find((candidate) => candidate.id === playerId);
+    if (state) {
+      return state;
+    }
+  }
+  return (
+    currentReplay.final_states?.find((state) => state.id === playerId) ??
+    currentReplay.initial_states?.find((state) => state.id === playerId) ??
+    null
+  );
 }
 
 function inputPlayerById(playerId) {
@@ -1256,30 +1273,31 @@ function detailRow(label, value) {
 }
 
 function buildPlayerDetailHtml(player, state, canEditNickname) {
+  const source = state ?? player ?? null;
   const displayName = state ? replayDisplayName(state, state.id) : (player?.display_name ?? "未知角色");
   const rawName = player?._raw_display_name ?? state?._raw_display_name ?? displayName;
   const idName = player?.id_name ?? state?.id_name ?? "";
-  const statusLabels = Array.isArray(state?.status_labels) ? state.status_labels.join("、") : "";
+  const statusLabels = Array.isArray(source?.status_labels) ? source.status_labels.join("、") : "";
   const rows = [
     detailRow("原名", detailValue(rawName)),
     detailRow("ID 名", detailValue(idName)),
-    detailRow("playerId", detailNumber(player?.id ?? state?.id)),
-    detailRow("队伍", detailNumber(player?.team_index ?? state?.team_index)),
-    detailRow("HP", state ? `${detailNumber(state.hp)} / ${detailNumber(state.max_hp)}` : "-"),
-    detailRow("蓝量", detailNumber(state?.magic_point)),
-    detailRow("体力", state ? `${detailNumber(((state.move_point ?? 0) / 2048) * 100, 0)}%` : "-"),
-    detailRow("攻击", detailNumber(state?.attack)),
-    detailRow("防御", detailNumber(state?.defense)),
-    detailRow("速度", detailNumber(state?.speed)),
-    detailRow("敏捷", detailNumber(state?.agility)),
-    detailRow("魔力", detailNumber(state?.magic)),
-    detailRow("抗性", detailNumber(state?.resistance)),
-    detailRow("智慧", detailNumber(state?.wisdom)),
-    detailRow("评价", detailNumber(state?.point)),
-    detailRow("总和", detailNumber(state?.all_sum)),
-    detailRow("短名系数", detailNumber(state?.name_factor)),
-    detailRow("攻击加成", detailNumber(state?.at_boost)),
-    detailRow("吸引", detailNumber(state?.attract)),
+    detailRow("playerId", detailNumber(player?.id ?? source?.id)),
+    detailRow("队伍", detailNumber(player?.team_index ?? source?.team_index)),
+    detailRow("HP", source ? `${detailNumber(source.hp)} / ${detailNumber(source.max_hp)}` : "-"),
+    detailRow("蓝量", detailNumber(source?.magic_point)),
+    detailRow("体力", source ? `${detailNumber(((source.move_point ?? 0) / 2048) * 100, 0)}%` : "-"),
+    detailRow("攻击", detailNumber(source?.attack)),
+    detailRow("防御", detailNumber(source?.defense)),
+    detailRow("速度", detailNumber(source?.speed)),
+    detailRow("敏捷", detailNumber(source?.agility)),
+    detailRow("魔力", detailNumber(source?.magic)),
+    detailRow("抗性", detailNumber(source?.resistance)),
+    detailRow("智慧", detailNumber(source?.wisdom)),
+    detailRow("评价", detailNumber(source?.point)),
+    detailRow("总和", detailNumber(source?.all_sum)),
+    detailRow("短名系数", detailNumber(source?.name_factor)),
+    detailRow("攻击加成", detailNumber(source?.at_boost)),
+    detailRow("吸引", detailNumber(source?.attract)),
     detailRow("状态", detailValue(statusLabels)),
   ].join("");
 
@@ -1424,13 +1442,13 @@ async function startBattle({ persistInput = true } = {}) {
   stopPlaybackLoop();
   clearCurrentReplayView();
   setLoading(true);
-  setInputStatus("正在使用 runtime normalized run 生成回放，请稍候...");
+  setInputStatus("正在生成回放，请稍候...");
 
   try {
     currentReplay = applyNicknamesToReplay(
       normalizeReplayPlayers(await buildMainReplay(rawInput)),
     );
-    setInputStatus("runtime 回放已生成，开始自动播放。");
+    setInputStatus("回放已生成，开始自动播放。");
     closePanel(inputPanel);
     beginReplayPlayback(currentReplay);
   } catch (error) {
@@ -1681,7 +1699,7 @@ async function main() {
   syncPlaybackUi();
   syncRightControlsUi();
   if (staticInput?.ok) {
-    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在使用 runtime normalized run 初始化回放...`);
+    setInputStatus(`已读取 URL 参数 ${staticInput.paramName}，正在初始化回放...`);
   } else {
     setInputStatus(staticInput?.message ?? "会使用 show 风格自动播放整场战斗。", Boolean(staticInput));
     openInputEditor();

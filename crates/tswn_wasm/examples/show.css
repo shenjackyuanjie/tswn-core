@@ -751,6 +751,10 @@ button:hover {
     word-break: break-word;
 }
 
+.row.indented {
+    padding-left: 14px;
+}
+
 .frame-body .row:not(.separator)+.row:not(.separator) {
     margin-top: 4px;
     padding-left: 14px;

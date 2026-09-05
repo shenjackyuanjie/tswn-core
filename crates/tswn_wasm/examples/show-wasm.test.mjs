@@ -1,8 +1,66 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildFrameRows } from "./show-render.js";
-import { buildMainReplayFromNormalizedRun } from "./show-wasm.js";
+import { actorToken, buildFrameRows } from "./show-render.js";
+import { buildMainReplayFromBattleReplay, buildMainReplayFromNormalizedRun } from "./show-wasm.js";
+import { actorHpMetrics } from "./show-utils.js";
+
+test("revive HP bars render only the blue recovery segment", () => {
+  const metrics = actorHpMetrics(
+    { max_hp: 100, hp: 40, alive: true },
+    { max_hp: 100, hp: 0, alive: false },
+  );
+
+  assert.equal(metrics.fillWidth, 0);
+  assert.equal(metrics.previousWidth, 0);
+  assert.equal(metrics.deltaLeft, 0);
+  assert.equal(metrics.deltaWidth, 10);
+  assert.equal(metrics.deltaKind, "recover");
+});
+
+test("explicitly disabled death effect keeps a normal actor name", () => {
+  const html = actorToken(
+    { id: 2, display_name: "zombie", icon_class_id: 2 },
+    { max_hp: 100, hp: 0, alive: false },
+    { max_hp: 100, hp: 0, alive: false },
+    { tone: "normal" },
+    { showHp: false, deathEffect: false },
+  );
+
+  assert.doesNotMatch(html, /namedie/);
+  assert.match(html, /actor-name/);
+});
+
+test("battle replay players retain detail fields for the sidebar panel", () => {
+  const replay = buildMainReplayFromBattleReplay("alpha@red\n\nbeta@blue\n", {
+    initial_states: [
+      {
+        id: 0,
+        team_index: 0,
+        owner_id: null,
+        id_name: "alpha@red",
+        icon_key: "alpha@red",
+        display_name: "alpha@red",
+        attack: 55,
+        defense: 41,
+        speed: 184,
+        max_hp: 100,
+        hp: 100,
+      },
+    ],
+    frames: [],
+    final_states: [],
+    winner_ids: [],
+    winner_team_indices: [],
+    finished: false,
+    truncated: false,
+    state_granularity: "round",
+  });
+
+  assert.equal(replay.players[0].attack, 55);
+  assert.equal(replay.players[0].defense, 41);
+  assert.equal(replay.players[0].speed, 184);
+});
 
 test("buildMainReplayFromNormalizedRun returns show-compatible replay shape", () => {
   const rawInput = "seed: fixed\nleft@red\n\nright@blue\n";
@@ -232,6 +290,7 @@ test("runtime normalized replay renders show-compatible frame chunks", () => {
   assert.equal(damageChunks[0].target, "battleRows");
   assert.equal(damageChunks[0].delay, 200);
   assert.match(damageChunks[0].html, /round-block/);
+  assert.match(damageChunks[0].html, /row/);
   assert.match(damageChunks[0].html, /actor-token has-hp/);
   assert.match(damageChunks[0].html, /actor-hp-delta is-damage/);
   assert.match(damageChunks[0].html, /message-number">20<\/span>/);
@@ -242,6 +301,8 @@ test("runtime normalized replay renders show-compatible frame chunks", () => {
   assert.equal(winnerChunks[0].target, "battleRows");
   assert.match(winnerChunks[0].html, /namedie/);
   assert.match(winnerChunks[0].html, /actor-hp-delta is-damage/);
+  assert.equal(Boolean(replay.frames[1].rows[0].indent), false);
+  assert.equal(Boolean(replay.frames[1].rows[1].indent), false);
   assert.equal(winnerChunks[1].target, "frameBody");
   assert.equal(winnerChunks[1].delay, 1000);
   assert.match(winnerChunks[1].html, /winner-line/);

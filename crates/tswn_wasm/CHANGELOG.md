@@ -2,9 +2,23 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-09-05
+
 ### 新增
 
 - 新增 `batch_rate_factored()` 与 `pair_rate_factored()`，接受与靶子组一一对应的权重数组并返回加权结果。
+
+### 变更
+
+- show 示例改为直接调用公共 `battle_replay()` 接口，仅补充输入、种子与耗时等页面元数据；
+  正文的行、片段、HP、死亡效果和侧栏快照均透传 replay view，不再从 runtime normalized run 重建。
+- show 示例按 `ReplayRow.indent` 渲染缩进，并保留回放状态快照的完整属性供左侧角色详情使用。
+
+### 修复
+
+- 修复苏生时绿色当前血量段与蓝色回复段重叠的问题：`0 -> x` 仅显示完整的回复段。
+- 修复被召唤为丧尸等仍存活实体因 `alive == false` 推断而错误使用阵亡名字样式的问题；
+  名字死亡效果现在只读取底层 `ReplayTextPart.death_effect`。
 
 ## [0.5.2] - 2026-08-31
 

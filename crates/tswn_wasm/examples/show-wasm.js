@@ -2,7 +2,7 @@
  * @fileoverview tswn_wasm 战斗回放展示页 — WASM 模块加载与回放生成
  *
  * 负责动态加载 tswn_wasm WASM 模块（懒加载 + 缓存），
- * 以及根据用户输入调用 runtime normalized run 生成回放数据。
+ * 以及根据用户输入调用公共 battle_replay 接口生成回放数据。
  */
 
 // ============================================================================
@@ -579,8 +579,54 @@ function buildMainInitialStates(firstOutcome, playersById, maxHpById) {
     return inferMainRoundStartStates(states, states, updates);
 }
 
+function playersFromBattleReplayStates(states) {
+    return (states ?? [])
+        .filter((state) => state.owner_id == null)
+        .map((state) => ({
+            ...state,
+            id: Number(state.id),
+            team_index: Number(state.team_index ?? state.input_team_index ?? 0),
+            id_name: state.id_name ?? state.base_name ?? `entity_${state.id}`,
+            icon_key: state.icon_key ?? state.id_name ?? `entity_${state.id}`,
+            display_name: state.display_name ?? state.base_name ?? `#${state.id}`,
+            icon_png_base64: state.icon_png_base64 ?? null,
+        }));
+}
+
 /**
- * 将 runtime normalized run 转成当前 index.html 可消费的 replay shape。
+ * Wrap the shared `battle_replay()` view with the small amount of page metadata
+ * that the show page needs for sharing, labels, and icon lookup.
+ *
+ * The battle body is passed through unchanged: rows, clips, structured parts,
+ * sidebar snapshots, HP semantics, death effects, and delay come from the
+ * shared replay view.
+ *
+ * @param {string} rawInput
+ * @param {object} replay
+ * @param {number} [wasmDurationMs=0]
+ * @returns {FightReplay}
+ */
+export function buildMainReplayFromBattleReplay(rawInput, replay, wasmDurationMs = 0) {
+    const initialStates = replay?.initial_states ?? [];
+    return {
+        raw_input: rawInput,
+        seed_line: extractSpecifiedSeedLine(rawInput),
+        players: playersFromBattleReplayStates(initialStates),
+        initial_states: initialStates,
+        frames: replay?.frames ?? [],
+        winner_ids: replay?.winner_ids ?? [],
+        final_states: replay?.final_states ?? [],
+        finished: Boolean(replay?.finished),
+        truncated: Boolean(replay?.truncated),
+        winner_team_indices: replay?.winner_team_indices ?? [],
+        state_granularity: replay?.state_granularity ?? "round",
+        runtime: true,
+        wasm_duration_ms: wasmDurationMs,
+    };
+}
+
+/**
+ * 将公共 battle_replay 结果包装成当前 index.html 可消费的 replay shape。
  *
  * @param {string} rawInput
  * @param {object} run
@@ -632,12 +678,15 @@ export function buildMainReplayFromNormalizedRun(rawInput, run, wasmDurationMs =
  */
 export async function buildMainNormalizedReplay(rawInput, versionInfo, coreVersionInfo, modulePathInfo, options = {}) {
     const api = await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
-    if (typeof api.default_custom_runtime_normalized_run !== "function") {
-        throw new Error("当前 tswn_wasm 包未导出 default_custom_runtime_normalized_run");
+    if (typeof api.battle_replay !== "function") {
+        throw new Error("当前 tswn_wasm 包未导出 battle_replay");
     }
     const maxRounds = Math.max(1, Number(options.maxRounds ?? Main_DEFAULT_MAX_ROUNDS) || Main_DEFAULT_MAX_ROUNDS);
     const wasmStart = performance.now();
-    const run = api.default_custom_runtime_normalized_run(rawInput, maxRounds);
+    const replay = api.battle_replay(rawInput, {
+        include_icons: true,
+        max_rounds: maxRounds,
+    });
     const wasmDurationMs = performance.now() - wasmStart;
-    return buildMainReplayFromNormalizedRun(rawInput, run, wasmDurationMs);
+    return buildMainReplayFromBattleReplay(rawInput, replay, wasmDurationMs);
 }

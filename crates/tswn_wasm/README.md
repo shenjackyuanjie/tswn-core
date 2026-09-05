@@ -101,6 +101,8 @@ frame 首句 `900ms`，雷击/地裂行首句 `150ms`，展示血条的句子 `6
 
 `examples/index.html` 的战斗正文渲染只消费 `RoundFrame.rows[].clips[]` 结构化 replay view：分行、分段 delay、文本片段、高亮色、玩家 HP 条、死亡效果和侧栏快照均来自底层字段。前端不再从 `message_template`、`message_rendered` 或 `hp_delta` 反推展示语义；`updates[]` 仅保留给结算统计等非正文渲染用途。
 
+show 示例会完整保留 `initial_states`、帧内 `states` 与 `final_states` 的字段，角色详情优先读取当前可见快照，缺失时依次回退到历史、最终和初始快照。苏生 `0 -> x` 的 HP mini bar 只渲染回复段；角色名字是否使用阵亡样式只由对应 `player` part 的 `death_effect` 决定，不按 `alive` 猜测。
+
 normal 播放模式下，对战结束后会等待 `1500ms` 再显示底部结算表；fast、turbo 和单步跳转会即时显示。左侧玩家列表 HP 条使用较慢的过渡动画，以便看清血量变化。
 
 `examples/index.html` 支持通过 `?input=<url-safe-base64>` 直接传入 UTF-8 对局输入并自动播放；`replay` / `data` 可作为兼容别名，解码失败时会停留在输入面板并显示错误。右下角控制栏的分享按钮会复制当前对局对应的 `input` 链接。

@@ -587,22 +587,29 @@ export function actorHpMetrics(state, previousState) {
   const maxHp = Math.max(1, state.max_hp, previousState?.max_hp ?? 0);
   const hp = Math.max(0, Math.min(maxHp, state.hp));
   // 新对象按当前血量作为上一状态处理；复活/护符这类实体已存在的 0 -> x 仍正常显示回血。
+  const isRevive = previousState?.alive === false && hp > 0;
   const previousHp = previousState ? Math.max(0, Math.min(maxHp, previousState.hp)) : hp;
   // 血条长度调整为 血量 / 4 向上取整
   const totalWidth = Math.max(20, Math.ceil(maxHp / 4));
-  const fillWidth = hp > 0 ? Math.max(1, Math.ceil(hp / 4)) : 0;
+  const currentWidth = hp > 0 ? Math.max(1, Math.ceil(hp / 4)) : 0;
+  const fillWidth = isRevive ? 0 : currentWidth;
   const previousWidth = previousHp > 0 ? Math.max(1, Math.ceil(previousHp / 4)) : 0;
   const isRecover = hp > previousHp;
-  const deltaWidth =
-    previousHp > hp ? Math.max(1, previousWidth - fillWidth) : isRecover ? Math.max(1, fillWidth - previousWidth) : 0;
+  const deltaWidth = isRevive
+    ? currentWidth
+    : previousHp > hp
+      ? Math.max(1, previousWidth - fillWidth)
+      : isRecover
+        ? Math.max(1, fillWidth - previousWidth)
+        : 0;
 
   return {
     totalWidth,
     fillWidth,
     previousWidth,
-    deltaLeft: isRecover ? previousWidth : fillWidth,
+    deltaLeft: isRevive ? 0 : isRecover ? previousWidth : fillWidth,
     deltaWidth,
-    deltaKind: isRecover ? "recover" : previousHp > hp ? "damage" : "none",
+    deltaKind: isRevive || isRecover ? "recover" : previousHp > hp ? "damage" : "none",
   };
 }
 
