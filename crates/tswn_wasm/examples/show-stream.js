@@ -72,6 +72,7 @@ export class BattleStreamController {
         if (result == null) throw new Error("source 已结束但没有 result");
         this.terminalResult = result;
         this.sourceDone = true;
+        this.options.metrics?.sourceEnded();
         this.releaseSource();
         this.emit({ type: "result", data: result });
     }
@@ -89,6 +90,7 @@ export class BattleStreamController {
                 if (frame != null) {
                     if (frame.frame_index !== this.history.length) throw new Error("source frame_index 不连续");
                     this.history.push(frame);
+                    this.options.metrics?.frameReceived();
                     this.emit({ type: "frame", data: frame });
                 }
                 if (this.disposed || generation !== this.generation) return null;

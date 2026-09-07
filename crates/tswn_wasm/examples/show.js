@@ -168,6 +168,7 @@ import { ensureApi, createBattleStreamSource } from "./show-wasm.js";
 
 import { BattleStreamController } from "./show-stream.js";
 import { BattleDisplay } from "./show-display.js";
+import { BattleMetrics } from "./show-metrics.js";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -284,6 +285,8 @@ const stepForwardFrameBtn = document.querySelector("#stepForwardFrameBtn");
 let currentBattle = null;
 let streamController = null;
 let battleDisplay = null;
+let battleMetrics = null;
+let metricsReported = false;
 let streamError = null;
 let battleGenerationToken = 0;
 /** @type {FightState[]} 当前左侧面板对应的状态快照 */
@@ -589,6 +592,7 @@ function appendPlaybackChunk(chunk) {
     return;
   }
 
+  const renderStart = performance.now();
   if (chunk.target === "battleRows") {
     battleRows.insertAdjacentHTML("beforeend", chunk.html);
   } else if (chunk.target === "frameBody") {
@@ -602,6 +606,7 @@ function appendPlaybackChunk(chunk) {
 
   scrollBattleToBottom();
   renderChunkSidebar(chunk);
+  battleMetrics?.chunkRendered(performance.now() - renderStart);
 }
 
 function renderSidebarSnapshot(states, previousStates, involved) {
@@ -676,6 +681,16 @@ function appendReplayResultBlock(replay) {
     `<section class="battle-result-block">${buildReplayResultTableHtml(battleDisplay.battle(replay))}</section>`,
   );
   scrollBattleToBottom();
+  reportBattleMetrics();
+}
+
+function reportBattleMetrics() {
+  if (!metricsReported && battleMetrics && currentBattle?.source_done) {
+    metricsReported = true;
+    if (new URLSearchParams(window.location.search).get("perf") === "1") {
+      console.table(battleMetrics.snapshot());
+    }
+  }
 }
 
 function findNearestPlaybackCheckpointCursor(cursor) {
@@ -1341,6 +1356,7 @@ function clearCurrentNickname() {
  * @returns {Promise<void>}
  */
 async function startBattle({ persistInput = true } = {}) {
+  const clickStartedAt = performance.now();
   const rawInput = inputName.value.trim();
   if (!rawInput) {
     setInputStatus("请输入至少一个名字。", true);
@@ -1361,12 +1377,14 @@ async function startBattle({ persistInput = true } = {}) {
   const generation = ++battleGenerationToken;
   stopPlaybackLoop();
   clearCurrentReplayView();
+  battleMetrics = new BattleMetrics({ startedAt: clickStartedAt });
+  metricsReported = false;
   setLoading(true);
   setInputStatus("正在准备战斗...");
 
   let source = null;
   try {
-    source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
+    source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, { metrics: battleMetrics });
     if (generation !== battleGenerationToken) { source.dispose(); return; }
     currentBattle = {
       raw_input: source.raw_input, seed_line: source.seed_line,
@@ -1378,9 +1396,10 @@ async function startBattle({ persistInput = true } = {}) {
     // Initial DOM and loading state are ready before the first source pull.
     closePanel(inputPanel);
     beginReplayPlayback(currentBattle, { autoPlay: false });
+    battleMetrics.initialRendered();
     setLoading(false);
     setInputStatus("战斗已开始，正在逐帧播放。");
-    streamController = new BattleStreamController(source, { paused: true, onListenerError: failStreaming });
+    streamController = new BattleStreamController(source, { paused: true, onListenerError: failStreaming, metrics: battleMetrics });
     streamController.subscribe(event => {
       if (generation !== battleGenerationToken) return;
       if (event.type === "frame") {

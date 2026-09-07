@@ -17,7 +17,7 @@ const nativeSetTimeout = setTimeout;
 const timedSetTimeout = (fn, ms) => { if (ms === 0) zeroSleeps++; return nativeSetTimeout(fn, ms); };
 window.setTimeout = timedSetTimeout;
 const sandbox = { window, document: window.document, localStorage: window.localStorage,
-  navigator: {}, performance, setTimeout: timedSetTimeout, clearTimeout, URL, console,
+  navigator: {}, performance, setTimeout: timedSetTimeout, clearTimeout, URL, URLSearchParams, console,
   Element: window.Element, HTMLElement: window.HTMLElement, HTMLStyleElement: window.HTMLStyleElement,
   HTMLButtonElement: window.HTMLButtonElement, Node: window.Node };
 const context = vm.createContext(sandbox);

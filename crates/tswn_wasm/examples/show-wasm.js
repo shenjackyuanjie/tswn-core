@@ -121,7 +121,10 @@ function playersFromBattleReplayStates(states) {
  * `api` is an optional dependency injection point for adapter tests.
  */
 export async function createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, options = {}) {
+    const loadStart = performance.now();
     const api = options.api ?? await ensureApi(versionInfo, coreVersionInfo, modulePathInfo);
+    options.metrics?.wasmLoaded(performance.now() - loadStart);
+    const createStart = performance.now();
     if (typeof api.BattleSession !== "function") {
         throw new Error("当前 tswn_wasm 包未导出 BattleSession");
     }
@@ -148,6 +151,7 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
     try {
         const initialStates = session.initial_states();
         captureResult();
+        options.metrics?.sessionCreated(performance.now() - createStart);
         return {
             raw_input: rawInput,
             seed_line: extractSpecifiedSeedLine(rawInput),
@@ -156,6 +160,7 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
             async nextFrame() {
                 if (failure) throw failure;
                 if (disposed || terminalResult != null) return null;
+                const pullStart = performance.now();
                 try {
                     const frame = session.next_frame();
                     captureResult();
@@ -167,6 +172,8 @@ export async function createBattleStreamSource(rawInput, versionInfo, coreVersio
                     failure = error;
                     release();
                     throw error;
+                } finally {
+                    options.metrics?.framePulled(performance.now() - pullStart);
                 }
             },
             result() { return terminalResult; },
