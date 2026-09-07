@@ -32,7 +32,7 @@ async function load(path) {
   let code = await readFile(path, 'utf8');
   if (path.endsWith('show.js')) code = code.replace('void main();', '') + `
 export const pageTest = {
- startBattle, pausePlayback, resumePlayback, replayCurrent, stepPlaybackTo,
+ startBattle, pausePlayback, resumePlayback, replayCurrent, stepPlaybackTo, stepPlaybackForward,
  nextVisibleCursor, nextFrameCursor, previousVisibleCursor, previousFrameCursor,
  get battle() { return currentBattle; }, get plan() { return currentPlan; },
  get cursor() { return playbackCursor; }, get finished() { return playbackFinished; },
@@ -88,3 +88,58 @@ assert.equal(page.finished, true);
 assert.equal(nextSource.freed, 1);
 assert.ok(window.document.querySelector('.battle-result-block'));
 console.log('PASS: initial DOM before first frame; live tail; streamed terminal result; source release');
+
+// Replaying a completed battle uses the same received history.
+const completedSource = nextSource;
+await page.replayCurrent();
+await flush();
+assert.equal(completedSource.pulls, 3);
+assert.equal(page.finished, true);
+page.stepPlaybackTo(0);
+await page.stepPlaybackForward();
+assert.equal(page.cursor, page.nextVisibleCursor(0));
+page.stepPlaybackTo(page.previousVisibleCursor(page.cursor));
+assert.equal(page.cursor, 0);
+await page.stepPlaybackForward(true);
+assert.equal(page.cursor, page.plan.frames[0].end);
+page.stepPlaybackTo(page.previousFrameCursor(page.cursor));
+assert.equal(page.cursor, 0);
+
+nextSource = source(30);
+await page.startBattle();
+page.pausePlayback();
+nextSource.release();
+await flush();
+assert.equal(nextSource.pulls, 1, 'pause allows in-flight completion but no prefetch');
+await page.stepPlaybackForward(true);
+assert.equal(page.cursor, page.plan.frames[0].end);
+const oneFrame = page.stepPlaybackForward(true);
+await flush();
+assert.equal(nextSource.pulls, 2, 'step at live tail requests exactly one frame');
+nextSource.release();
+await oneFrame;
+await flush();
+assert.equal(nextSource.pulls, 2);
+assert.equal(page.cursor, page.plan.frames[1].end);
+page.stepPlaybackTo(0);
+page.resumePlayback();
+page.setSpeed('fast');
+await flush();
+assert.equal(nextSource.pulls, 3, 'history is consumed before the next live pull');
+page.pausePlayback();
+nextSource.release();
+await flush();
+await page.stepPlaybackForward(true);
+for (let i = 3; i < 23; i++) {
+  const pending = page.stepPlaybackForward(true);
+  await flush();
+  nextSource.release();
+  await pending;
+}
+const savedHtml = window.document.querySelector('#battleRows').innerHTML;
+const savedCursor = page.cursor;
+page.stepPlaybackTo(page.plan.frames[20].end);
+page.stepPlaybackTo(savedCursor);
+assert.equal(window.document.querySelector('#battleRows').innerHTML, savedHtml, 'checkpoint seek restores exact display');
+assert.equal(nextSource.pulls, 23);
+console.log('PASS: event/frame navigation; pause; one-frame demand; history resume; checkpoint; replay without recomputation');

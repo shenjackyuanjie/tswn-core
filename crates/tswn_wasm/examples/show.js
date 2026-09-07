@@ -305,6 +305,7 @@ let currentPlan = null;
 let playbackCheckpoints = new Map();
 /** @type {number} 当前已渲染到的 chunk 光标（指向“下一个要播放的 chunk”） */
 let playbackCursor = 0;
+let historyResumeBoundary = 0;
 /** @type {number} 用于打断旧播放循环的 token */
 let playbackLoopToken = 0;
 /** @type {number} 当前回放开始展示的时间戳 */
@@ -577,6 +578,7 @@ function clearCurrentReplayView() {
   currentPlan = null;
   playbackCheckpoints = new Map();
   playbackCursor = 0;
+  historyResumeBoundary = 0;
   playbackPaused = true;
   playbackFinished = false;
   currentVisibleStates = [];
@@ -943,7 +945,9 @@ async function autoplayFromCurrentCursor() {
     const chunk = currentPlan.flatChunks[playbackCursor];
     const framePlan = currentPlan.frames[chunk.frameIndex];
     streamController?.setPlaybackFrame(framePlan.frameIndex);
-    void streamController?.ensureBuffered().catch(() => {});
+    if (playbackCursor >= historyResumeBoundary) {
+      void streamController?.ensureBuffered().catch(() => {});
+    }
     const delay =
       playbackCursor === 0 && speedMode === "normal"
         ? 0
@@ -1008,6 +1012,7 @@ function beginReplayPlayback(replay, { autoPlay = true } = {}) {
   currentPlan = prepareReplayPlan(replay);
   playbackCheckpoints = new Map();
   playbackCursor = 0;
+  historyResumeBoundary = currentPlan.totalChunks;
   playbackPaused = false;
   playbackFinished = false;
   playbackStartedAt = performance.now();
@@ -1111,7 +1116,23 @@ function stepPlaybackTo(cursor) {
   playbackPaused = true;
   streamController?.setPaused(true);
   stopPlaybackLoop();
+  if (cursor < playbackCursor) historyResumeBoundary = currentPlan.totalChunks;
   renderPlaybackToCursor(cursor);
+  const frameIndex = currentPlan.frames.findLastIndex(frame => playbackCursor > frame.start);
+  streamController?.setPlaybackFrame(frameIndex);
+}
+
+async function stepPlaybackForward(byFrame = false) {
+  if (!currentBattle || !currentPlan) return;
+  pausePlayback();
+  const generation = battleGenerationToken;
+  const token = playbackLoopToken;
+  if (playbackCursor >= currentPlan.totalChunks && !currentBattle.source_done && !streamError) {
+    try { await streamController.ensureFrame(currentBattle.frames.length); }
+    catch { return; }
+    if (generation !== battleGenerationToken || token !== playbackLoopToken) return;
+  }
+  stepPlaybackTo(byFrame ? nextFrameCursor(playbackCursor) : nextVisibleCursor(playbackCursor));
 }
 
 /**
@@ -1621,7 +1642,7 @@ stepBackEventBtn.addEventListener("click", () => {
 });
 
 stepForwardEventBtn.addEventListener("click", () => {
-  stepPlaybackTo(nextVisibleCursor(playbackCursor));
+  void stepPlaybackForward();
 });
 
 stepBackFrameBtn.addEventListener("click", () => {
@@ -1629,7 +1650,7 @@ stepBackFrameBtn.addEventListener("click", () => {
 });
 
 stepForwardFrameBtn.addEventListener("click", () => {
-  stepPlaybackTo(nextFrameCursor(playbackCursor));
+  void stepPlaybackForward(true);
 });
 
 // 键盘快捷键
@@ -1652,7 +1673,7 @@ document.addEventListener("keydown", (event) => {
       event.preventDefault();
       break;
     case "ArrowRight":
-      stepPlaybackTo(nextVisibleCursor(playbackCursor));
+      void stepPlaybackForward();
       event.preventDefault();
       break;
     case "ArrowUp":
@@ -1660,7 +1681,7 @@ document.addEventListener("keydown", (event) => {
       event.preventDefault();
       break;
     case "ArrowDown":
-      stepPlaybackTo(nextFrameCursor(playbackCursor));
+      void stepPlaybackForward(true);
       event.preventDefault();
       break;
   }
