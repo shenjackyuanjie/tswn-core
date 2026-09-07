@@ -3,6 +3,7 @@
 //! 通过 `wasm-bindgen` 将战斗引擎的核心功能导出为 JavaScript 可调用的 API，
 //! 包括单次战斗回放、胜率统计及玩家图标生成。
 
+mod battle;
 mod error;
 mod fight;
 mod model;
@@ -11,6 +12,7 @@ mod win_rate;
 
 use std::sync::Once;
 
+pub use battle::BattleSession;
 use error::WasmResult;
 pub use fight::FightSession;
 use model::{
@@ -276,12 +278,12 @@ pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usiz
 }
 
 /// Run a complete battle and return the shared UI-ready replay JSON shape.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "BattleReplay")]
 pub fn battle_replay(raw_input: String, options: Option<BattleReplayOptions>) -> WasmResult<JsValue> {
     install_panic_hook();
     let options = options.unwrap_or_default();
     let replay = tswn_core::cli_api::battle_replay(&raw_input, options.to_core()).map_err(error::cli_api_error)?;
-    serde_wasm_bindgen::to_value(&replay).map_err(|err| error::internal_error(err.to_string()))
+    battle::dto_to_js(&replay)
 }
 
 #[wasm_bindgen]

@@ -51,7 +51,7 @@ impl WinRateOptions {
 /// Options for the cross-binding, UI-ready battle replay API.
 #[derive(Debug, Clone, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
-pub struct BattleReplayOptions {
+pub struct BattleOptions {
     #[tsify(optional)]
     pub eval_rq: Option<f64>,
     #[tsify(optional)]
@@ -60,7 +60,7 @@ pub struct BattleReplayOptions {
     pub max_rounds: Option<usize>,
 }
 
-impl Default for BattleReplayOptions {
+impl Default for BattleOptions {
     fn default() -> Self {
         Self {
             eval_rq: None,
@@ -70,9 +70,9 @@ impl Default for BattleReplayOptions {
     }
 }
 
-impl BattleReplayOptions {
-    pub fn to_core(&self) -> core_cli_api::BattleReplayOptions {
-        let mut options = core_cli_api::BattleReplayOptions::default();
+impl BattleOptions {
+    pub fn to_core(&self) -> core_cli_api::BattleOptions {
+        let mut options = core_cli_api::BattleOptions::default();
         if let Some(eval_rq) = self.eval_rq {
             options.eval_rq = eval_rq;
         }
@@ -652,3 +652,6 @@ impl From<core_cli_api::IconInfo> for CliIconInfo {
         }
     }
 }
+
+/// Compatibility name for one-shot callers.
+pub type BattleReplayOptions = BattleOptions;
