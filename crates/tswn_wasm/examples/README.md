@@ -28,7 +28,7 @@
 - 只消费 `RoundFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。
 - normal 播放模式下，对战结束后等待 `1500ms` 再显示底部结算表；fast / turbo / 单步跳转保持即时显示。左侧玩家 HP 条变化使用较慢动画，方便观察血量变化。
 - 角色详情面板跟随页面明暗主题切换；白天模式使用深色正文文字配浅色详情卡片，夜间模式使用浅色正文文字配深色详情卡片。
-- `show-wasm.js` 暴露 `buildMainNormalizedReplay()`，调用 WASM 的 `battle_replay()` 公共回放接口，并只补充页面所需的输入、种子和耗时元数据；`rows/clips/parts` 不再由前端从 normalized run 重新推断。
+- `show-wasm.js` 通过 `createBattleStreamSource()` 创建 `BattleSession`；页面先展示初始状态，再由 `BattleStreamController` 按需获取 core 提供的 `rows/clips/parts`。
 - `show-wasm.test.mjs` 覆盖 replay adapter 的纯输出和 `buildFrameRows()` HTML chunk 渲染；`show-routing.test.mjs` 覆盖 URL-safe input、旧 runtime 参数清理和分享链接行为。
 
 生成参数示例：
