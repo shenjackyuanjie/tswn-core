@@ -649,7 +649,7 @@ fn format_rate(value: f64, precision: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pyo3::types::{PyDict, PyDictMethods, PyList};
+    use pyo3::types::{PyAnyMethods, PyDict, PyDictMethods, PyList};
 
     #[test]
     fn default_custom_runtime_normalized_run_returns_python_dict_golden_shape() {
