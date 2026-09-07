@@ -1,4 +1,4 @@
-/** Local browser benchmark. Install tools: npm install --prefix target/web-test-tools playwright linkedom */
+/** 本地浏览器基准测试。安装工具：npm install --prefix target/web-test-tools playwright linkedom */
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';

@@ -93,7 +93,7 @@ assert.equal(nextSource.freed, 1);
 assert.ok(window.document.querySelector('.battle-result-block'));
 console.log('PASS: initial DOM before first frame; live tail; streamed terminal result; source release');
 
-// Replaying a completed battle uses the same received history.
+// 重播已完成战斗时使用同一份已接收历史。
 const completedSource = nextSource;
 await page.replayCurrent();
 await flush();
@@ -148,7 +148,7 @@ assert.equal(window.document.querySelector('#battleRows').innerHTML, savedHtml, 
 assert.equal(nextSource.pulls, 23);
 console.log('PASS: event/frame navigation; pause; one-frame demand; history resume; checkpoint; replay without recomputation');
 
-// A late frame from an aborted battle must not enter the replacement history.
+// 来自已中止战斗的迟到帧不得进入替换后的历史。
 const staleSource = source(2);
 nextSource = staleSource;
 await page.startBattle();
@@ -164,7 +164,7 @@ replacement.release();
 await flush();
 assert.equal(page.battle.frames.length, 1);
 
-// A pending source creation is also isolated, including loading state.
+// 待处理的源创建也相互隔离，包括加载状态。
 let finishCreate;
 nextSource = new Promise(resolve => { finishCreate = resolve; });
 const pendingStart = page.startBattle();
@@ -179,7 +179,7 @@ assert.equal(page.battle.frames.length, 0);
 nextSource.release();
 await flush();
 
-// Streaming failure retains rendered history and never renders a fake result.
+// 流式传输失败时保留已渲染历史，且绝不渲染伪造结果。
 await page.stepPlaybackForward(true);
 nextSource.nextFrame = async () => { throw new Error('test streaming failure'); };
 await page.stepPlaybackForward(true);
@@ -192,7 +192,7 @@ page.stepPlaybackTo(0);
 await page.stepPlaybackForward(true);
 assert.match(window.document.querySelector('#battleRows').textContent, /event0/);
 
-// Turbo yields according to visible chunks, not absolute cursor modulo.
+// Turbo 根据可见块让出执行权，而非根据绝对游标取模。
 let emitted = 0;
 nextSource = {
   ...source(30),

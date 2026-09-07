@@ -377,7 +377,7 @@ def verify_battle_session(tswn_py: Any) -> None:
                         shape(clip, "BattleReplayClip")
                         for part in clip["parts"]:
                             shape(part, "BattleReplayTextPart")
-            # Returned Python objects cannot mutate the Rust session snapshots.
+            # 返回的 Python 对象不能修改 Rust 会话快照。
             initial[0]["hp"] = -999
             assert_equal(session.initial_states(), replay["initial_states"], "snapshot ownership")
     for raw, kwargs, error_type, code in [

@@ -1,4 +1,4 @@
-// JSON stdin/stdout bridge for the actual wasm-bindgen Node package.
+// 实际 wasm-bindgen Node 包的 JSON 标准输入/输出桥接程序。
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 const require = createRequire(import.meta.url);

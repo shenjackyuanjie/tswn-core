@@ -32,7 +32,7 @@ function cleanupTempModule() {
   try {
     fs.rmSync(currentTempModulePath, { force: true });
   } catch (_error) {
-    // Some Bun failure paths can abort normal control flow; best-effort cleanup is enough here.
+    // 某些 Bun 失败路径会中止正常控制流；此处尽力清理即可。
   } finally {
     currentTempModulePath = null;
   }
