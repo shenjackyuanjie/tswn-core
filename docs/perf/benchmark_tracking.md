@@ -1,4 +1,4 @@
-# Performance
+# 性能
 
 本文用于长期记录 `tswn_core` 在 `tswn-cli bench win-rate` 路径上的性能结果，方便横向比较：
 

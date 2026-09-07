@@ -46,7 +46,7 @@ Runner        = Runtime 级 Advanced API
           ┌─────────┴─────────┐
           │                   │
           ▼                   ▼
-       History             Playback
+       历史                播放
                               │
                               ▼
                            Renderer
@@ -136,9 +136,9 @@ test:
 例如：
 
 ```text
-core: add canonical BattleSession state machine
-web: add append-only streaming replay plan
-cli: replace legacy raw output with fight jsonl
+core：添加规范 BattleSession 状态机
+web：添加仅追加的流式回放计划
+cli：以 fight jsonl 替换旧版原始输出
 ```
 
 ---
@@ -994,7 +994,7 @@ show-wasm.js
 
 show-stream.js
     BattleStreamController
-    frame history
+    帧历史
     2-frame buffer
     source lifecycle
     stream observers
@@ -1154,7 +1154,7 @@ session terminal 且 result 已复制到 JS
 页面保存两层数据：
 
 ```text
-canonical stream data
+规范流数据
 display derived data
 ```
 
@@ -1365,7 +1365,7 @@ TTFE：
 
 ---
 
-# 38. Replay plan 改为 append-only
+# 38. 回放计划改为仅追加
 
 当前：
 
@@ -1475,7 +1475,7 @@ source_done == false
 自动播放：
 
 ```text
-pull -> append plan -> continue
+拉取 -> 追加计划 -> 继续
 ```
 
 单步向前：
@@ -1590,9 +1590,9 @@ frame source pull 不改变 delay。
 
 ---
 
-# 46. Turbo
+# 46. 极速模式
 
-Turbo：
+极速模式：
 
 ```text
 clip delay = 0
@@ -1602,7 +1602,7 @@ clip delay = 0
 
 ```text
 pull frame
-append plan
+追加计划
 render
 ```
 
@@ -1646,7 +1646,7 @@ normal
     等待 1500 ms
     展示 result
 
-fast/turbo/step
+快进/极速/单步
     立即展示 result
 ```
 
@@ -1718,7 +1718,7 @@ raw input
 渲染时：
 
 ```text
-canonical player id/name
+规范玩家 id/name
     ↓
 nickname lookup
     ↓
@@ -2013,13 +2013,13 @@ startBattle 在开始播放前最多预取 2 个 frame
 本轮会准备好：
 
 ```text
-稳定 canonical BattlePlayerState
+稳定的规范 BattlePlayerState
 稳定 BattleReplayFrame
 frame_index
 round_index
 BattleStreamController
 subscribe(event)
-append-only canonical history
+仅追加的规范历史
 stream metrics
 async-compatible source interface
 ```
@@ -2041,7 +2041,7 @@ Monte Carlo
 以后任何新功能只需要：
 
 ```text
-订阅 canonical initial/frame/result
+订阅规范 initial/frame/result
 ```
 
 即可扩展，不需要再次修改播放/Runtime 基础架构。
@@ -2090,13 +2090,13 @@ generation isolation
 
 ---
 
-## 62.3 append-only plan tests
+## 62.3 仅追加计划测试
 
 覆盖：
 
 ```text
-frame 0 append
-frame 1 append
+追加第 0 帧
+追加第 1 帧
 chunk start/end 连续
 previousStates 正确
 totalChunks 单调增加
@@ -2105,7 +2105,7 @@ totalChunks 单调增加
 
 ---
 
-## 62.4 playback tests
+## 62.4 播放测试
 
 覆盖：
 
@@ -2125,7 +2125,7 @@ seek checkpoint
 
 ---
 
-## 62.5 nickname tests
+## 62.5 昵称测试
 
 验证：
 
@@ -2138,7 +2138,7 @@ canonical frame 不变
 
 ---
 
-## 62.6 icon tests
+## 62.6 图标测试
 
 验证：
 
@@ -2265,10 +2265,10 @@ BattleResult
 
 ---
 
-## Commit 1
+## 提交 1
 
 ```text
-core: add canonical battle dto and error codes
+core：添加规范战斗 DTO 和错误码
 ```
 
 内容：
@@ -2294,10 +2294,10 @@ cargo clippy -p tswn_core
 
 ---
 
-## Commit 2
+## 提交 2
 
 ```text
-core: add canonical BattleSession state machine
+core：添加规范 BattleSession 状态机
 ```
 
 内容：
@@ -2315,13 +2315,13 @@ icon cache
 测试：
 
 ```text
-BattleSession state machine tests
+BattleSession 状态机测试
 cargo test -p tswn_core
 ```
 
 ---
 
-## Commit 3
+## 提交 3
 
 ```text
 core: make battle_replay collect BattleSession
@@ -2338,16 +2338,16 @@ session/replay parity
 测试：
 
 ```text
-全 replay tests
+全部回放测试
 固定 battle fixture parity
 ```
 
 ---
 
-## Commit 4
+## 提交 4
 
 ```text
-py: expose BattleSession and typed battle dto
+py：暴露 BattleSession 和带类型的战斗 DTO
 ```
 
 内容：
@@ -2369,10 +2369,10 @@ verify_py_cli_api.py
 
 ---
 
-## Commit 5
+## 提交 5
 
 ```text
-wasm: expose canonical BattleSession
+wasm：暴露规范 BattleSession
 ```
 
 内容：
@@ -2388,12 +2388,12 @@ JS/TS shape
 
 ```text
 cargo test -p tswn_wasm
-wasm/node API tests
+wasm/node API 测试
 ```
 
 ---
 
-## Commit 6
+## 提交 6
 
 ```text
 wasm: route legacy FightSession through BattleSession
@@ -2410,16 +2410,16 @@ fight/fight_summary wrapper
 测试：
 
 ```text
-legacy compatibility tests
-canonical parity tests
+旧版兼容性测试
+规范一致性测试
 ```
 
 ---
 
-## Commit 7
+## 提交 7
 
 ```text
-capi: add BattleSession streaming api
+capi：添加 BattleSession 流式 API
 ```
 
 内容：
@@ -2443,7 +2443,7 @@ ABI remains 4
 
 ---
 
-## Commit 8
+## 提交 8
 
 ```text
 cli: remove legacy raw fight routing
@@ -2462,14 +2462,14 @@ cli: remove legacy raw fight routing
 测试：
 
 ```text
-clap tests
+clap 测试
 CLI compile
 确认旧入口不存在
 ```
 
 ---
 
-## Commit 9
+## 提交 9
 
 ```text
 cli: move diff under runtime diagnostics
@@ -2488,15 +2488,15 @@ diff -> runtime diff
 
 ```text
 runtime diff fixtures
-CLI help tests
+CLI 帮助测试
 ```
 
 ---
 
-## Commit 10
+## 提交 10
 
 ```text
-cli: add BattleSession-backed fight jsonl
+cli：添加由 BattleSession 支持的 fight jsonl
 ```
 
 内容：
@@ -2520,10 +2520,10 @@ frame parity
 
 ---
 
-## Commit 11
+## 提交 11
 
 ```text
-web: add BattleStreamSource wasm adapter
+web：添加 BattleStreamSource wasm 适配器
 ```
 
 内容：
@@ -2543,22 +2543,22 @@ initial metadata
 
 ```text
 show-wasm.test.mjs
-fake/adapter tests
+伪实现/适配器测试
 ```
 
 ---
 
-## Commit 12
+## 提交 12
 
 ```text
-web: add BattleStreamController and bounded prefetch
+web：添加 BattleStreamController 和有界预取
 ```
 
 内容：
 
 ```text
 show-stream.js
-history
+历史
 2-frame buffer
 observer
 generation
@@ -2576,10 +2576,10 @@ show-stream.test.mjs
 
 ---
 
-## Commit 13
+## 提交 13
 
 ```text
-web: make replay plan append-only
+web：使回放计划仅追加
 ```
 
 内容：
@@ -2596,13 +2596,13 @@ mark complete
 测试：
 
 ```text
-现有 playback tests
-新增 append plan tests
+现有播放测试
+新增追加计划测试
 ```
 
 ---
 
-## Commit 14
+## 提交 14
 
 ```text
 web: switch battle startup to live BattleSession
@@ -2631,10 +2631,10 @@ terminal
 
 ---
 
-## Commit 15
+## 提交 15
 
 ```text
-web: preserve pause step seek across streaming history
+web：在流式历史中保持暂停、单步和跳转
 ```
 
 内容：
@@ -2645,27 +2645,27 @@ step event
 step frame
 back
 checkpoint
-history then resume live
+历史后恢复实时流
 ```
 
 测试：
 
 ```text
-playback navigation tests
+播放导航测试
 ```
 
 ---
 
-## Commit 16
+## 提交 16
 
 ```text
-web: add bounded turbo streaming and source lifecycle
+web：添加有界极速流式传输和源生命周期
 ```
 
 内容：
 
 ```text
-turbo live pull
+极速实时拉取
 24 chunk yield
 buffer <= 2
 abort/new battle
@@ -2684,17 +2684,17 @@ no stale frame
 
 ---
 
-## Commit 17
+## 提交 17
 
 ```text
-web: separate canonical battle data from display decoration
+web：将规范战斗数据与显示装饰分离
 ```
 
 内容：
 
 ```text
 nickname render-time mapping
-canonical frames immutable by policy
+按策略保持规范帧不可变
 lazy icon cache
 dynamic entity icon registration
 ```
@@ -2703,14 +2703,14 @@ dynamic entity icon registration
 
 ```text
 nickname
-canonical data
+规范数据
 icon dedup
 dynamic entity
 ```
 
 ---
 
-## Commit 18
+## 提交 18
 
 ```text
 web: remove eager replay adapters
@@ -2727,7 +2727,7 @@ web: remove eager replay adapters
 测试：
 
 ```text
-node tests
+node 测试
 page contract
 无 buildMainNormalizedReplay 引用
 无 battle_replay page call
@@ -2735,10 +2735,10 @@ page contract
 
 ---
 
-## Commit 19
+## 提交 19
 
 ```text
-web: add streaming performance instrumentation
+web：添加流式性能埋点
 ```
 
 内容：
@@ -2754,16 +2754,16 @@ render metrics
 测试：
 
 ```text
-metric unit tests
+指标单元测试
 不记录 raw input
 ```
 
 ---
 
-## Commit 20
+## 提交 20
 
 ```text
-docs: record web streaming baseline and public api
+docs：记录 web 流式基线和公开 API
 ```
 
 内容：
@@ -2794,8 +2794,8 @@ docs examples smoke
 ```text
 1. 修改当前块
 2. rustfmt / JS format 仅限触及文件
-3. targeted tests
-4. clippy / type/stub tests
+3. 定向测试
+4. clippy / 类型/存根测试
 5. git diff 检查只含当前职责
 6. git status 确认无意外文件
 7. commit
@@ -2826,9 +2826,9 @@ cargo clippy \
   -p tswn_wasm \
   -p tswn_capi
 
-Python API verification
+Python API 验证
 
-WASM Node tests
+WASM Node 测试
 
 show-wasm.test.mjs
 show-stream.test.mjs
@@ -2836,12 +2836,12 @@ show-page-contract.test.mjs
 show-routing.test.mjs
 其他现有 show tests
 
-CLI contract tests
+CLI 契约测试
 ```
 
 ---
 
-# 69. 最终 Definition of Done
+# 69. 最终完成定义
 
 全部满足才结束本轮。
 
@@ -2864,7 +2864,7 @@ CLI contract tests
 - [x] TypedDict battle DTO
 - [x] WASM BattleSession
 - [x] WASM plain JS DTO
-- [x] FightSession 内部改用 canonical session
+- [x] FightSession 内部改用规范 session
 - [x] C BattleSession
 - [x] C versioned options
 - [x] C ABI 仍为 4
@@ -2887,7 +2887,7 @@ CLI contract tests
 - [x] 点击开始后立即渲染 initial
 - [x] 页面逐 frame 拉 Runtime
 - [x] buffer 最大 2
-- [x] canonical history append-only
+- [x] 规范历史仅追加
 - [x] pause 正常
 - [x] resume 正常
 - [x] forward event 正常
@@ -2895,10 +2895,10 @@ CLI contract tests
 - [x] backward 正常
 - [x] checkpoint seek 正常
 - [x] 历史回放后可继续 live
-- [x] turbo 不 eager-run 全场
-- [x] turbo 每 24 可见 chunk yield
+- [x] 极速模式不急切运行整场
+- [x] 极速模式每 24 个可见块让出执行权
 - [x] result 展示逻辑保持
-- [x] nickname 不修改 canonical frame
+- [x] 昵称不修改规范帧
 - [x] icon_key 懒加载/去重
 - [x] 动态实体正常
 - [x] source/session 正确 free
@@ -2909,13 +2909,13 @@ CLI contract tests
 - [x] next_frame p95 基线已记录
 - [x] web_streaming_baseline.md 已提交
 
-## Scope boundary
+## 范围边界
 
 - [x] 未实现任何模型
 - [x] 未定义 ModelState
 - [x] 未加入胜率字段
 - [x] 未加入模型 UI
-- [x] 但 canonical stream / observer / async source / metrics 已准备完成
+- [x] 但规范流 / observer / async source / metrics 已准备完成
 
 ---
 
@@ -2943,7 +2943,7 @@ BattleStreamController
          │
    ┌─────┴──────┐
    ▼            ▼
-History       Playback
+历史          播放
                 │
                 ▼
              Renderer

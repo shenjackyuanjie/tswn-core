@@ -1,6 +1,6 @@
 # name_factor 在 fight 和 bench/winrate 下的差异：为什么短号"变弱"了
 
-## TL;DR
+## 简要结论
 
 tswn-core 里打架和算胜率用的 rq（评估严格度）不一样：
 

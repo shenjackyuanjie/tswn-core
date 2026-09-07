@@ -1,4 +1,4 @@
-# AMD uProf CPU Profiling
+# AMD uProf CPU 性能分析
 
 本文规定 Windows 上 `tswn_core` 的管理员态函数级 CPU profiling 流程。目标是生成可由
 自动化 agent 直接读取的 `report.csv`，而不是只生成供人手浏览的火焰图。

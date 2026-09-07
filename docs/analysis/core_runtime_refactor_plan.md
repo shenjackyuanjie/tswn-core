@@ -409,7 +409,7 @@ pub trait TswnExtension {
 - register effect handler；
 - register replay/show renderer；
 - reserve typed slots；
-- declare capability for broader custom reads.
+- 为更广泛的自定义读取声明能力。
 
 规则：
 

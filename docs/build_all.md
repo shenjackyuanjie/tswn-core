@@ -1,4 +1,4 @@
-# Build All
+# 全量构建
 
 本文记录当前仓库实际可用的一套聚合构建流程，用于同时准备：
 
@@ -118,7 +118,7 @@ uv run scripts/build_all.py --release --clean --include-ohos-cli
 
 ## 产物位置
 
-### Python wheel
+### Python wheel 构建
 
 输出目录：
 

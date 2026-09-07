@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 优先级为 Runtime 错误、winner、max_rounds、no_progress。连续无可见进展的轮次达到 `max(1, 当前实体数) * 16` 时停止；该策略只在 core 实现。终止后重复 `next_frame()` 总是返回空；运行中 `result()` 为 null，终止后返回稳定的 `BattleResult`。Runtime 错误以异常/错误码返回，不伪装为截断结果。
 
-## Canonical DTO
+## 规范 DTO
 
 字段统一 snake_case；Python 返回精确 TypedDict 对应的 dict，WASM 返回 plain JS object / array / null，C 返回 UTF-8 JSON。定义见 [Rust DTO](../crates/tswn_core/src/cli_api/battle/dto.rs)、[Python TypedDict](../crates/tswn_py/tswn_py/_types_battle.pyi)、[TypeScript DTO](../crates/tswn_wasm/src/battle_types.d.ts)。
 
@@ -94,7 +94,7 @@ WASM 对象 handle 必须显式 `free()`。网页 source 在复制 terminal resu
 
 所有成功返回的 JSON 用 `tswn_str_free()` 释放，handle 用 `tswn_battle_session_free()` 释放。调用方不得并发操作同一 handle。完整可编译示例：[battle_session.c](../crates/tswn_capi/examples/battle_session.c)。
 
-## CLI JSONL
+## CLI JSONL 输出
 
 ```sh
 cargo run -p tswn_core --bin tswn-cli -- fight --jsonl -f input.txt --max-rounds 20000

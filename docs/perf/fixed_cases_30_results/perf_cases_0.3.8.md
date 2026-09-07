@@ -1,4 +1,4 @@
-# tswn_core Performance Case Ladder
+# tswn_core 性能用例阶梯
 
 - generated_at_unix: 1779333723
 - version: `0.3.7`
@@ -7,7 +7,7 @@
 - bench_runs: `13000`
 - thread: `1`
 
-## Selected Cases
+## 已选用例
 
 |   # | id                       | mode    | players | sample us/场 | input                                                                               |
 | --: | ------------------------ | ------- | ------: | -----------: | ----------------------------------------------------------------------------------- |
@@ -42,7 +42,7 @@
 |  29 | `2v2-b1e08a4b5faf6712`   | `2v2`   |       4 |          `-` | `D:\githubs\namer\tswn-core\docs/perf/fixed_cases_30\29_2v2-b1e08a4b5faf6712.txt`   |
 |  30 | `2v2-a2fa863c153307e2`   | `2v2`   |       4 |          `-` | `D:\githubs\namer\tswn-core\docs/perf/fixed_cases_30\30_2v2-a2fa863c153307e2.txt`   |
 
-## Summary Groups
+## 汇总分组
 
 | group          | cases |   runs | win rate |   elapsed |   us/场 |    场/s | init us/场 | fight us/场 |
 | -------------- | ----: | -----: | -------: | --------: | ------: | ------: | ---------: | ----------: |
@@ -52,7 +52,7 @@
 | `two_v_two`    |     6 |  78000 | `54.19%` |  `5.084s` |  `65.2` | `15342` |      `8.1` |      `53.3` |
 | `stress_multi` |     8 | 104000 | `22.23%` | `16.206s` | `155.8` |  `6417` |     `17.0` |     `131.6` |
 
-## Benchmark Results
+## 基准测试结果
 
 |   # | id                       |  runs | win rate |  elapsed |   us/场 |     场/s | init us/场 | fight us/场 |
 | --: | ------------------------ | ----: | -------: | -------: | ------: | -------: | ---------: | ----------: |
