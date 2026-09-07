@@ -86,3 +86,31 @@ test("generated TypeScript declares precise canonical DTOs and methods", () => {
     "export interface BattleResult", "export interface BattleReplayFrame",
   ]) assert.ok(declaration.includes(signature), signature);
 });
+
+test("legacy FightSession projects canonical frame semantics", () => {
+  const raw = readFileSync(resolve("crates/tswn_test/cases/runtime_stress", fixtures[3]), "utf8");
+  const canonical = wasm.battle_replay(raw);
+  const legacy = new wasm.FightSession(raw);
+  try {
+    const frames = [...legacy.run_to_end(1).frames, ...legacy.run_to_end().frames];
+    assert.equal(frames.length, canonical.frames.length);
+    for (let i = 0; i < frames.length; i++) {
+      const actual = frames[i];
+      const expected = canonical.frames[i];
+      assert.equal(actual.total_delay, expected.total_delay);
+      assert.deepEqual(actual.winner_ids, expected.winner_ids);
+      assert.equal(actual.finished, expected.finished);
+      assert.deepEqual((actual.rows || []).map(row => row.clips.map(clip =>
+        (clip.parts || []).map(part => [part.text, part.show_hp, part.hp_before, part.hp_after, part.death_effect]))),
+      expected.rows.map(row => row.clips.map(clip =>
+        clip.parts.map(part => [part.text, part.show_hp, part.hp_before, part.hp_after, part.death_effect]))));
+    }
+    assert.equal(legacy.is_done(), true);
+    assert.deepEqual(legacy.winner_ids(), canonical.winner_ids);
+    assert.deepEqual(legacy.step().updates, []);
+    const summary = wasm.fight_summary(raw, { capture_replay: false });
+    assert.deepEqual(summary.winner_ids, canonical.winner_ids);
+  } finally {
+    legacy.free();
+  }
+});
