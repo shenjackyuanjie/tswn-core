@@ -143,11 +143,9 @@
  */
 
 import {
-  buildStateMap,
   buildIconClassCss,
   escapeHtml,
   formatError,
-  normalizeReplayIconClasses,
   replayDisplayName,
   sleep,
   validateReplayInput,
@@ -169,6 +167,7 @@ import {
 import { ensureApi, createBattleStreamSource } from "./show-wasm.js";
 
 import { BattleStreamController } from "./show-stream.js";
+import { BattleDisplay } from "./show-display.js";
 
 // ============================================================================
 // 默认示例输入 — 可在页面中直接点击"示例"按钮填入
@@ -284,6 +283,7 @@ const stepForwardFrameBtn = document.querySelector("#stepForwardFrameBtn");
 /** @type {FightReplay|null} 当前已生成的回放数据 */
 let currentBattle = null;
 let streamController = null;
+let battleDisplay = null;
 let streamError = null;
 let battleGenerationToken = 0;
 /** @type {FightState[]} 当前左侧面板对应的状态快照 */
@@ -372,7 +372,7 @@ function rememberPlayers(players) {
   for (const player of players) {
     playersById.set(player.id, player);
   }
-  syncIconStyles(currentBattle?.icon_styles ?? players);
+  syncIconStyles(battleDisplay?.iconEntries() ?? []);
 }
 
 function ensureIconStyleTag() {
@@ -387,10 +387,6 @@ function ensureIconStyleTag() {
 
 function syncIconStyles(iconEntries) {
   ensureIconStyleTag().textContent = buildIconClassCss(iconEntries);
-}
-
-function normalizeReplayPlayers(replay) {
-  return normalizeReplayIconClasses(replay);
 }
 
 function actorNicknameKey(actor) {
@@ -410,92 +406,6 @@ function nicknameForKey(key) {
     return "";
   }
   return nicknameByIdName.get(normalizedKey) ?? nicknameByIdName.get(baseNicknameKey(normalizedKey)) ?? "";
-}
-
-function stateCanUsePlayerNickname(state) {
-  const minionKind = state?.minion_kind ?? null;
-  return minionKind == null || minionKind === "clone";
-}
-
-function ensureRawDisplayName(actor) {
-  if (!actor) {
-    return "";
-  }
-  if (actor._raw_display_name == null) {
-    actor._raw_display_name = actor.display_name ?? actor.id_name ?? "";
-  }
-  return actor._raw_display_name;
-}
-
-function applyNickname(actor, key) {
-  if (!actor || !key) {
-    return;
-  }
-  const rawDisplayName = ensureRawDisplayName(actor);
-  actor.display_name = nicknameForKey(key) || rawDisplayName;
-}
-
-function applyNicknamesToReplay(replay) {
-  const inputKeysById = new Map();
-  for (const player of replay.players ?? []) {
-    const key = actorNicknameKey(player);
-    if (!key) {
-      continue;
-    }
-    inputKeysById.set(player.id, key);
-    applyNickname(player, key);
-  }
-
-  const nicknameKeyForState = (state) => {
-    if (!state) {
-      return "";
-    }
-    if (!stateCanUsePlayerNickname(state)) {
-      return "";
-    }
-    return (
-      inputKeysById.get(state.id) ??
-      inputKeysById.get(state.owner_id) ??
-      actorNicknameKey(state)
-    );
-  };
-
-  const applyStateNickname = (state) => {
-    const key = nicknameKeyForState(state);
-    if (key) {
-      applyNickname(state, key);
-    }
-  };
-
-  const applyPartNickname = (part, stateById) => {
-    if (part?.kind !== "player" || part.player_id == null) {
-      return;
-    }
-    const state = stateById.get(part.player_id);
-    if (state && !stateCanUsePlayerNickname(state)) {
-      return;
-    }
-    const key = inputKeysById.get(part.player_id) || nicknameKeyForState(state) || part.text;
-    const nickname = nicknameForKey(key);
-    if (nickname) {
-      part.text = nickname;
-    }
-  };
-
-  (replay.initial_states ?? []).forEach(applyStateNickname);
-  for (const frame of replay.frames ?? []) {
-    (frame.states ?? []).forEach(applyStateNickname);
-    for (const row of frame.rows ?? []) {
-      for (const clip of row.clips ?? []) {
-        (clip.sidebar_states ?? []).forEach(applyStateNickname);
-        (clip.sidebar_previous_states ?? []).forEach(applyStateNickname);
-        const stateById = buildStateMap(clip.sidebar_states ?? frame.states ?? []);
-        (clip.parts ?? []).forEach((part) => applyPartNickname(part, stateById));
-      }
-    }
-  }
-  (replay.final_states ?? []).forEach(applyStateNickname);
-  return replay;
 }
 
 function currentStateById(playerId) {
@@ -574,6 +484,7 @@ function clearCurrentReplayView() {
   clearPlayerHighlight();
   streamController?.dispose();
   streamController = null;
+  battleDisplay = null;
   streamError = null;
   currentBattle = null;
   currentPlan = null;
@@ -594,12 +505,14 @@ function stopPlaybackLoop() {
 }
 
 function prepareReplayPlan(replay) {
-  const plan = createReplayPlan(replay.initial_states);
-  const workingPlayersById = new Map(replay.players.map((player) => [player.id, player]));
-  let previousStates = replay.initial_states;
+  const display = battleDisplay.battle(replay);
+  const plan = createReplayPlan(display.initial_states);
+  const workingPlayersById = new Map(display.players.map((player) => [player.id, player]));
+  let previousStates = display.initial_states;
   for (const frame of replay.frames) {
-    appendFrameToReplayPlan(plan, frame, previousStates, workingPlayersById);
-    previousStates = frame.states;
+    const displayFrame = battleDisplay.frame(frame);
+    appendFrameToReplayPlan(plan, displayFrame, previousStates, workingPlayersById);
+    previousStates = displayFrame.states;
   }
   if (replay.source_done) markReplayPlanComplete(plan, replay.result);
   return plan;
@@ -692,11 +605,11 @@ function appendPlaybackChunk(chunk) {
 }
 
 function renderSidebarSnapshot(states, previousStates, involved) {
-  currentVisibleStates = states;
+  currentVisibleStates = battleDisplay.states(states);
   renderPlayers(
-    currentBattle.players,
-    states,
-    previousStates,
+    battleDisplay.states(currentBattle.players),
+    currentVisibleStates,
+    battleDisplay.states(previousStates),
     involved,
     playerList,
     playersById,
@@ -737,6 +650,7 @@ function renderFrameSidebar(framePlan) {
 }
 
 function resetPlaybackView(replay) {
+  replay = battleDisplay.battle(replay);
   clearPlayerHighlight();
   closePanel(endPanel);
   currentVisibleStates = replay.initial_states;
@@ -759,7 +673,7 @@ function appendReplayResultBlock(replay) {
   }
   battleRows.insertAdjacentHTML(
     "beforeend",
-    `<section class="battle-result-block">${buildReplayResultTableHtml(replay)}</section>`,
+    `<section class="battle-result-block">${buildReplayResultTableHtml(battleDisplay.battle(replay))}</section>`,
   );
   scrollBattleToBottom();
 }
@@ -871,15 +785,7 @@ function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
   }
 
   if (playbackFinished) {
-    currentVisibleStates = currentBattle.final_states;
-    renderPlayers(
-      currentBattle.players,
-      currentBattle.final_states,
-      currentBattle.final_states,
-      null,
-      playerList,
-      playersById,
-    );
+    renderSidebarSnapshot(currentBattle.final_states, currentBattle.final_states, null);
     appendReplayResultBlock(currentBattle);
     storePlaybackCheckpoint(playbackCursor);
   }
@@ -889,7 +795,7 @@ function renderPlaybackToCursor(cursor, { forceReset = false } = {}) {
   }
 
   if (!playbackFinished) {
-    currentVisibleStates = visibleStatesForCursor(playbackCursor);
+    currentVisibleStates = battleDisplay.states(visibleStatesForCursor(playbackCursor));
   }
   scrollBattleToBottom();
   syncPlaybackUi();
@@ -983,15 +889,7 @@ async function autoplayFromCurrentCursor() {
   }
 
   playbackFinished = true;
-  currentVisibleStates = currentBattle.final_states;
-  renderPlayers(
-    currentBattle.players,
-    currentBattle.final_states,
-    currentBattle.final_states,
-    null,
-    playerList,
-    playersById,
-  );
+  renderSidebarSnapshot(currentBattle.final_states, currentBattle.final_states, null);
   if (speedMode === "normal") {
     const completed = await waitForPlaybackDelay(NORMAL_RESULT_REVEAL_DELAY_MS, token);
     if (!completed) {
@@ -1394,7 +1292,6 @@ function refreshCurrentReplayView() {
   if (!currentBattle || !currentPlan) {
     return;
   }
-  applyNicknamesToReplay(currentBattle);
   currentPlan = prepareReplayPlan(currentBattle);
   playbackCheckpoints = new Map();
   renderPlaybackToCursor(playbackCursor, { forceReset: true });
@@ -1477,6 +1374,7 @@ async function startBattle({ persistInput = true } = {}) {
       frames: [], result: null, source_done: false,
       winner_ids: [], final_states: source.initial_states,
     };
+    battleDisplay = new BattleDisplay(source.players, key => source.loadIcon(key), nicknameForKey);
     // Initial DOM and loading state are ready before the first source pull.
     closePanel(inputPanel);
     beginReplayPlayback(currentBattle, { autoPlay: false });
@@ -1488,7 +1386,10 @@ async function startBattle({ persistInput = true } = {}) {
       if (event.type === "frame") {
         const previousStates = currentBattle.frames.at(-1)?.states ?? currentBattle.initial_states;
         currentBattle.frames.push(event.data);
-        appendFrameToReplayPlan(currentPlan, event.data, previousStates, playersById);
+        const displayFrame = battleDisplay.frame(event.data);
+        for (const state of displayFrame.states) playersById.set(state.id, state);
+        syncIconStyles(battleDisplay.iconEntries());
+        appendFrameToReplayPlan(currentPlan, displayFrame, battleDisplay.states(previousStates), playersById);
       } else if (event.type === "result") {
         currentBattle.result = event.data;
         currentBattle.source_done = true;

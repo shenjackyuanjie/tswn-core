@@ -37,7 +37,7 @@ async function load(path) {
   if (path.endsWith('show.js')) code = code.replace('void main();', '') + `
 export const pageTest = {
  startBattle, pausePlayback, resumePlayback, replayCurrent, stepPlaybackTo, stepPlaybackForward,
- nextVisibleCursor, nextFrameCursor, previousVisibleCursor, previousFrameCursor,
+ nextVisibleCursor, nextFrameCursor, previousVisibleCursor, previousFrameCursor, openPlayerDetail, saveCurrentNickname,
  get battle() { return currentBattle; }, get plan() { return currentPlan; },
  get cursor() { return playbackCursor; }, get finished() { return playbackFinished; },
  setSpeed(value) { speedMode = value; },
@@ -205,3 +205,14 @@ const visibleChunks = page.plan.flatChunks.filter(chunk => chunk.visible).length
 assert.equal(zeroSleeps - sleepsBefore, Math.floor(visibleChunks / 24));
 assert.equal(emitted, 30);
 console.log('PASS: abort/generation isolation; source creation race; streaming error history; turbo visible-chunk yields');
+
+const canonicalBefore = JSON.stringify(page.battle);
+page.openPlayerDetail(1);
+window.document.querySelector('#nicknameInput').value = '新的昵称';
+page.saveCurrentNickname();
+assert.match(window.document.querySelector('#playerList').textContent, /新的昵称/);
+assert.equal(JSON.stringify(page.battle), canonicalBefore, 'editing a nickname cannot modify the battle DTO');
+page.stepPlaybackTo(0);
+assert.match(window.document.querySelector('#playerList').textContent, /新的昵称/);
+assert.equal(JSON.stringify(page.battle), canonicalBefore);
+console.log('PASS: page nickname edit rebuilds display and keeps canonical history unchanged');
