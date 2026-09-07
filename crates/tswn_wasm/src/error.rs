@@ -4,7 +4,7 @@
 //! 统一将错误序列化为 `JsValue` 以便 JavaScript 层处理。
 
 use serde::Serialize;
-use tswn_core::cli_api::CliApiError;
+use tswn_core::cli_api::{CliApiError, CliApiErrorCode};
 use wasm_bindgen::JsValue;
 
 #[derive(Debug, Clone, Serialize)]
@@ -15,17 +15,21 @@ pub struct TswnError {
 
 pub type WasmResult<T> = Result<T, JsValue>;
 
-pub fn invalid_input(message: impl Into<String>) -> JsValue { error_value("INVALID_INPUT", message) }
+pub fn invalid_input(message: impl Into<String>) -> JsValue { error_value(CliApiErrorCode::InvalidInput.as_str(), message) }
 
-pub fn runner_init_failed(message: impl Into<String>) -> JsValue { error_value("RUNNER_INIT_FAILED", message) }
+pub fn runner_init_failed(message: impl Into<String>) -> JsValue {
+    error_value(CliApiErrorCode::RunnerInitFailed.as_str(), message)
+}
 
 pub fn win_rate_invalid_groups() -> JsValue {
     error_value("WIN_RATE_INVALID_GROUPS", "win_rate requires at least two non-empty groups")
 }
 
-pub fn internal_error(message: impl Into<String>) -> JsValue { error_value("INTERNAL_ERROR", message) }
+pub fn internal_error(message: impl Into<String>) -> JsValue { error_value(CliApiErrorCode::InternalError.as_str(), message) }
 
-pub fn unsupported_option(message: impl Into<String>) -> JsValue { error_value("UNSUPPORTED_OPTION", message) }
+pub fn unsupported_option(message: impl Into<String>) -> JsValue {
+    error_value(CliApiErrorCode::UnsupportedOption.as_str(), message)
+}
 
 pub fn error_value(code: &'static str, message: impl Into<String>) -> JsValue {
     let error = TswnError::new(code, message);
