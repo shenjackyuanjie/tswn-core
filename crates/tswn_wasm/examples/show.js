@@ -152,8 +152,11 @@ import {
   sleep,
   validateReplayInput,
 } from "./show-utils.js";
-import { renderIdleState, renderPlayers, buildFrameRows } from "./show-render.js";
+import { renderIdleState, renderPlayers } from "./show-render.js";
 import {
+  createReplayPlan,
+  appendFrameToReplayPlan,
+  markReplayPlanComplete,
   renderReplayIntro,
   updateSpeedButtons,
   playbackDelay,
@@ -580,41 +583,15 @@ function stopPlaybackLoop() {
 }
 
 function prepareReplayPlan(replay) {
+  const plan = createReplayPlan(replay.initial_states);
   const workingPlayersById = new Map(replay.players.map((player) => [player.id, player]));
   let previousStates = replay.initial_states;
-  const frames = replay.frames.map((frame, frameIndex) => {
-    const framePlan = {
-      frameIndex,
-      frame,
-      previousStates,
-      start: 0,
-      end: 0,
-      frameVisibleCount: 0,
-    };
-    framePlan.chunks = buildFrameRows(frame, frameIndex, previousStates, workingPlayersById);
+  for (const frame of replay.frames) {
+    appendFrameToReplayPlan(plan, frame, previousStates, workingPlayersById);
     previousStates = frame.states;
-    return framePlan;
-  });
-
-  const flatChunks = [];
-  for (const framePlan of frames) {
-    framePlan.start = flatChunks.length;
-    for (const chunk of framePlan.chunks) {
-      flatChunks.push({
-        ...chunk,
-        frameIndex: framePlan.frameIndex,
-        visible: chunk.target !== "delay",
-      });
-    }
-    framePlan.end = flatChunks.length;
-    framePlan.frameVisibleCount = framePlan.chunks.filter((c) => c.target !== "delay").length;
   }
-
-  return {
-    frames,
-    flatChunks,
-    totalChunks: flatChunks.length,
-  };
+  markReplayPlanComplete(plan, replay);
+  return plan;
 }
 
 function currentFrameIndexFromCursor() {

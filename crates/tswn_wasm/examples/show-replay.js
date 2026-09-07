@@ -5,8 +5,39 @@
  * playReplay 主循环因需要频繁读写全局状态（playbackToken 等），保留在 show.js 中。
  */
 
-import { renderPlayers } from './show-render.js';
+import { renderPlayers, buildFrameRows } from './show-render.js';
 import { actorHpMetrics, escapeHtml, replayDisplayName, renderIconSprite } from './show-utils.js';
+
+/** Display plan grows with received canonical frames. Existing chunks stay unchanged. */
+export function createReplayPlan(initialStates) {
+    return { initialStates, frames: [], flatChunks: [], totalChunks: 0, complete: false, result: null };
+}
+
+export function appendFrameToReplayPlan(plan, frame, previousStates, playersById) {
+    if (plan.complete) throw new Error("cannot append to a completed replay plan");
+    const frameIndex = plan.frames.length;
+    if (frame.frame_index != null && frame.frame_index !== frameIndex) {
+        throw new Error("replay plan frame_index must be consecutive");
+    }
+    const chunks = buildFrameRows(frame, frameIndex, previousStates, playersById);
+    const framePlan = {
+        frameIndex, frame, previousStates, chunks,
+        start: plan.flatChunks.length,
+        end: plan.flatChunks.length + chunks.length,
+        frameVisibleCount: chunks.filter(chunk => chunk.target !== "delay").length,
+    };
+    for (const chunk of chunks) {
+        plan.flatChunks.push({ ...chunk, frameIndex, visible: chunk.target !== "delay" });
+    }
+    plan.frames.push(framePlan);
+    plan.totalChunks = plan.flatChunks.length;
+    return framePlan;
+}
+
+export function markReplayPlanComplete(plan, result) {
+    plan.complete = true;
+    plan.result = result;
+}
 
 // ============================================================================
 // 回放介绍与速度控制
