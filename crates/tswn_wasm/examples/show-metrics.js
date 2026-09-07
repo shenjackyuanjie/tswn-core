@@ -1,4 +1,4 @@
-/** Timing-only collector: no input, names, frames, or other battle payloads. */
+/** 仅收集计时：不收集输入、名称、帧或其他战斗载荷。 */
 export function percentile(samples, quantile) {
     if (samples.length === 0) return 0;
     const sorted = [...samples].sort((a, b) => a - b);

@@ -91,7 +91,7 @@ typedef struct tswn_update_snapshot_t {
     tswn_update_type_t update_type;
 } tswn_update_snapshot_t;
 
-/* Canonical User API. ABI 4 is preserved by additive exports. */
+/* 规范用户 API。通过追加导出保持 ABI 4 兼容。 */
 typedef struct tswn_battle_session_t tswn_battle_session_t;
 typedef struct tswn_battle_options_t {
     uint32_t struct_size;
@@ -107,11 +107,11 @@ typedef enum tswn_battle_stop_reason_t {
     TSWN_BATTLE_STOP_MAX_ROUNDS = 2, TSWN_BATTLE_STOP_NO_PROGRESS = 3
 } tswn_battle_stop_reason_t;
 
-/* Initialize before overriding fields. new accepts NULL options for defaults.
- * struct_size smaller than this version is rejected; larger future tails are ignored.
- * Each live handle must be freed once, and must not be used concurrently.
- * All returned strings are owned by the caller; release with tswn_str_free.
- * Optional outputs use has=0 and {NULL,0} when absent, including repeated terminal calls.
+/* 覆写字段前先初始化。new 接受 NULL options 以使用默认值。
+ * 小于当前版本的 struct_size 会被拒绝；更大的未来尾部会被忽略。
+ * 每个存活句柄必须释放一次，且不得并发使用。
+ * 所有返回字符串归调用方所有；使用 tswn_str_free 释放。
+ * 可选输出在缺失时使用 has=0 和 {NULL,0}，包括重复的终止调用。
  */
 void tswn_battle_options_default(tswn_battle_options_t* options);
 tswn_status_t tswn_battle_session_new(const char* raw_text_utf8, const tswn_battle_options_t* options, tswn_battle_session_t** out_session);

@@ -1,4 +1,4 @@
-//! egui rendering for every Openbox tool.
+//! 每个 Openbox 工具的 egui 渲染。
 
 use std::cell::Cell;
 

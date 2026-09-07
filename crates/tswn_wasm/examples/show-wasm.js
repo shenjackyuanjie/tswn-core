@@ -117,8 +117,8 @@ function playersFromBattleReplayStates(states) {
         }));
 }
 
-/** Create one incrementally driven WASM session. No frames are pulled at startup.
- * `api` is an optional dependency injection point for adapter tests.
+/** 创建一个增量驱动的 WASM 会话。启动时不拉取任何帧。
+ * `api` 是供适配器测试使用的可选依赖注入点。
  */
 export async function createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo, options = {}) {
     const loadStart = performance.now();

@@ -48,7 +48,7 @@ impl WinRateOptions {
     }
 }
 
-/// Options for the cross-binding, UI-ready battle replay API.
+/// 跨绑定、可供 UI 使用的战斗回放 API 选项。
 #[derive(Debug, Clone, Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
 pub struct BattleOptions {
@@ -653,5 +653,5 @@ impl From<core_cli_api::IconInfo> for CliIconInfo {
     }
 }
 
-/// Compatibility name for one-shot callers.
+/// 供一次性调用方使用的兼容名称。
 pub type BattleReplayOptions = BattleOptions;

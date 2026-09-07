@@ -1,4 +1,4 @@
-//! Contextual help for Openbox controls.
+//! Openbox 控件的上下文帮助。
 
 use std::cell::Cell;
 

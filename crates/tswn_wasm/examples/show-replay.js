@@ -8,7 +8,7 @@
 import { renderPlayers, buildFrameRows } from './show-render.js';
 import { actorHpMetrics, escapeHtml, replayDisplayName, renderIconSprite } from './show-utils.js';
 
-/** Display plan grows with received canonical frames. Existing chunks stay unchanged. */
+/** 显示计划随收到的规范帧增长。现有块保持不变。 */
 export function createReplayPlan(initialStates) {
     return { initialStates, frames: [], flatChunks: [], totalChunks: 0, complete: false, result: null };
 }

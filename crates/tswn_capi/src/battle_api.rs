@@ -1,4 +1,4 @@
-//! C ownership and options validation for the canonical battle stream.
+//! 规范战斗流的 C 所有权与选项校验。
 use crate::{
     FfiResult, ffi_boundary, ffi_error, high_api::cli_api_error, read_utf8, tswn_status_t, tswn_str_t, write_json_result,
 };
@@ -87,7 +87,7 @@ unsafe fn reset_optional(out_has: *mut u8, out_json: *mut tswn_str_t) -> FfiResu
 }
 
 /// # Safety
-/// `options` is null or points to writable storage for the current options struct.
+/// `options` 为 null，或指向当前选项结构的可写存储。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_options_default(options: *mut tswn_battle_options_t) {
     if !options.is_null() {
@@ -96,8 +96,8 @@ pub unsafe extern "C" fn tswn_battle_options_default(options: *mut tswn_battle_o
 }
 
 /// # Safety
-/// Input is a valid UTF-8 C string; options is null or has at least struct_size readable
-/// bytes. out_session is writable. The returned handle must be freed exactly once.
+/// 输入是有效的 UTF-8 C 字符串；options 为 null，或至少有 struct_size 个可读字节。out_session 可写。
+/// 返回的句柄必须恰好释放一次。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_session_new(
     raw_text_utf8: *const c_char,
@@ -118,7 +118,7 @@ pub unsafe extern "C" fn tswn_battle_session_new(
 }
 
 /// # Safety
-/// session is null or an owned, live handle returned by new, not used after this call.
+/// session 为 null，或是由 new 返回的、归调用方所有的存活句柄；本次调用后不得再使用它。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_session_free(session: *mut tswn_battle_session_t) {
     if !session.is_null() {
@@ -127,8 +127,7 @@ pub unsafe extern "C" fn tswn_battle_session_free(session: *mut tswn_battle_sess
 }
 
 /// # Safety
-/// session is live and exclusively borrowed; output pointers are writable.
-/// A returned string belongs to the caller and must be released with tswn_str_free.
+/// session 存活且被独占借用；输出指针可写。返回的字符串归调用方所有，必须用 tswn_str_free 释放。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_session_next_frame_json(
     session: *mut tswn_battle_session_t,
@@ -147,7 +146,7 @@ pub unsafe extern "C" fn tswn_battle_session_next_frame_json(
 }
 
 /// # Safety
-/// session is live; output pointers are writable. Free returned JSON with tswn_str_free.
+/// session 存活；输出指针可写。用 tswn_str_free 释放返回的 JSON。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_session_result_json(
     session: *const tswn_battle_session_t,
@@ -165,7 +164,7 @@ pub unsafe extern "C" fn tswn_battle_session_result_json(
 }
 
 /// # Safety
-/// session is live and out_json is writable. Free returned JSON with tswn_str_free.
+/// session 存活且 out_json 可写。用 tswn_str_free 释放返回的 JSON。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_session_initial_states_json(
     session: *const tswn_battle_session_t,
@@ -181,7 +180,7 @@ pub unsafe extern "C" fn tswn_battle_session_initial_states_json(
 }
 
 /// # Safety
-/// session is live and out_json is writable. Free returned JSON with tswn_str_free.
+/// session 存活且 out_json 可写。用 tswn_str_free 释放返回的 JSON。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_session_current_states_json(
     session: *const tswn_battle_session_t,
@@ -197,7 +196,7 @@ pub unsafe extern "C" fn tswn_battle_session_current_states_json(
 }
 
 /// # Safety
-/// session is live and out_value is writable.
+/// session 存活且 out_value 可写。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_session_status(
     session: *const tswn_battle_session_t,
@@ -220,7 +219,7 @@ pub unsafe extern "C" fn tswn_battle_session_status(
 }
 
 /// # Safety
-/// session is live and out_value is writable.
+/// session 存活且 out_value 可写。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_session_stop_reason(
     session: *const tswn_battle_session_t,
@@ -349,7 +348,7 @@ mod tests {
         let raw = CString::new("a\n\nb").unwrap();
         let mut handle = ptr::null_mut();
         unsafe {
-            // Only the prefix exists: rejecting it must not read beyond this allocation.
+            // 仅存在前缀：拒绝它时不得读取到这块分配之外。
             let short = 4u32;
             assert_eq!(
                 tswn_battle_session_new(raw.as_ptr(), (&short as *const u32).cast(), &mut handle),

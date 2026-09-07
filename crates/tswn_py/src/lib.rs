@@ -98,7 +98,7 @@ fn prepared_win_rate(
     run_prepared_win_rate(&prepared.inner, n, thread)
 }
 
-/// Compute show.html-compatible per-event delays for a list of RunUpdate objects.
+/// 为 RunUpdate 对象列表计算与 show.html 兼容的逐事件延迟。
 #[pyfunction(signature = (updates, player_count, scale=true))]
 fn compute_show_timeline(
     py: Python<'_>,

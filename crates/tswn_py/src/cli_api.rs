@@ -1,4 +1,4 @@
-//! Python-facing helpers aligned with the high-level `tswn-cli` commands.
+//! 与高层 `tswn-cli` 命令对齐、面向 Python 的辅助函数。
 
 use pyo3::{
     Py, PyAny, PyResult, Python,
@@ -12,7 +12,7 @@ use tswn_core::cli_api::{
 
 use crate::wrapper;
 
-/// Stable-code invalid input error for user-facing helper APIs.
+/// 面向用户辅助 API 的稳定错误码：输入无效。
 #[pyclass(extends=PyValueError)]
 #[pyo3(name = "InvalidInputError")]
 pub struct PyInvalidInputError;
@@ -26,7 +26,7 @@ impl PyInvalidInputError {
     fn code(&self) -> &'static str { core_cli_api::CliApiErrorCode::InvalidInput.as_str() }
 }
 
-/// Stable-code runtime error for user-facing helper APIs.
+/// 面向用户辅助 API 的稳定错误码：运行时错误。
 #[pyclass(extends=PyRuntimeError)]
 #[pyo3(name = "TswnRuntimeError")]
 pub struct PyCliRuntimeError;

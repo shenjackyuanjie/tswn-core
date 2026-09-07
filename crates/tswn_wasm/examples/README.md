@@ -1,4 +1,4 @@
-# tswn_wasm Examples
+# tswn_wasm 示例
 
 本目录提供 `tswn_wasm` 的浏览器示例页面。
 

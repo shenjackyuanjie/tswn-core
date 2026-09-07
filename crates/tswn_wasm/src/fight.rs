@@ -1,4 +1,4 @@
-//! Advanced compatibility API projected from the canonical BattleSession.
+//! 从规范 BattleSession 投影出的高级兼容 API。
 use crate::error::{WasmResult, cli_api_error};
 use crate::model::{
     FightOptions, FightReplay, FightSummary, MessageTone, MinionKindView, PlayerMeta, PlayerState, ReplayClip, ReplayRow,
@@ -162,7 +162,7 @@ impl FightSession {
         })
     }
 
-    /// `limit` limits this collection batch, without changing the canonical session budget.
+    /// `limit` 限制本次收集批次，但不改变规范会话预算。
     pub fn run_to_end_internal(&mut self, limit: Option<usize>) -> WasmResult<FightReplay> {
         let mut frames = Vec::new();
         for _ in 0..limit.unwrap_or(usize::MAX) {

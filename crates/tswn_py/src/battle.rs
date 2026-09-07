@@ -1,4 +1,4 @@
-//! Thin Python adapter over the canonical core BattleSession and DTOs.
+//! 规范 core BattleSession 和 DTO 之上的轻量 Python 适配器。
 use crate::cli_api::map_cli_error;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;

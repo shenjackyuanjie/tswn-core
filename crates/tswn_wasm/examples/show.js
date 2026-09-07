@@ -828,7 +828,7 @@ function resolveChunkDelay(frame, rawDelay) {
     const targetDelay = playbackDelay(frame, speedMode);
     return frame.total_delay > 0 ? Math.round((targetDelay * rawDelay) / frame.total_delay) : 0;
   }
-  // normal 模式直接使用 core replay view 给出的句子级 delay。
+  // normal 模式直接使用 core replay view 给出的句子级延迟。
   return rawDelay;
 }
 
@@ -919,7 +919,7 @@ async function autoplayFromCurrentCursor() {
   storePlaybackCheckpoint(playbackCursor);
   playbackPaused = true;
   streamController?.setPaused(true);
-  // 极速是一次性按钮：播完后自动回到暂停态
+  // turbo 是一次性按钮：播完后自动回到暂停态。
   if (speedMode === "turbo") {
     playbackPaused = true;
     speedMode = "normal";
@@ -1397,7 +1397,7 @@ async function startBattle({ persistInput = true } = {}) {
       winner_ids: [], final_states: source.initial_states,
     };
     battleDisplay = new BattleDisplay(source.players, key => source.loadIcon(key), nicknameForKey);
-    // Initial DOM and loading state are ready before the first source pull.
+    // 在首次拉取源代码前，初始 DOM 和加载状态已经就绪。
     closePanel(inputPanel);
     beginReplayPlayback(currentBattle, { autoPlay: false });
     battleMetrics.initialRendered();

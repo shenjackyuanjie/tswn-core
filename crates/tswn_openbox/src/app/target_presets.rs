@@ -1,4 +1,4 @@
-//! Preset loading from `setting/settings.toml`.
+//! 从 `setting/settings.toml` 加载预设。
 
 use std::fs;
 use std::io::ErrorKind;

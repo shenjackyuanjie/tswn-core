@@ -1,6 +1,6 @@
 #include "common.h"
 
-/* Stream canonical JSON payloads; every returned string is freed immediately. */
+/* 流式处理规范 JSON 载荷；每个返回字符串均立即释放。 */
 int main(void) {
     tswn_battle_options_t options;
     tswn_battle_session_t* session = NULL;

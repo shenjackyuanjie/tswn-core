@@ -1,4 +1,4 @@
-/** Display decoration never mutates canonical states, clips, parts or results. */
+/** 显示装饰绝不修改规范状态、片段、组成部分或结果。 */
 export class BattleDisplay {
     constructor(players, loadIcon, nicknameForKey = () => "") {
         this.roots = new Map(players.map(player => [player.id, player]));

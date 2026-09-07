@@ -1,4 +1,4 @@
-/** Internal canonical stream controller. Runtime policy remains in BattleSession. */
+/** 内部规范流控制器。Runtime 策略仍在 BattleSession 中。 */
 export const STREAM_BUFFER_FRAMES = 2;
 
 export class BattleStreamController {
@@ -30,7 +30,7 @@ export class BattleStreamController {
 
     setPaused(paused) { this.paused = Boolean(paused); }
 
-    /** Moving backwards reuses received history; it never rewinds the source. */
+    /** 向后移动时复用已接收历史；绝不回退源端。 */
     setPlaybackFrame(index) {
         if (!Number.isInteger(index) || index < -1 || index >= this.history.length) {
             throw new RangeError("playback frame must be in received history");
@@ -120,11 +120,11 @@ export class BattleStreamController {
         return this.bufferedFrames();
     }
 
-    /** Explicit navigation demand may walk forward through history one frame at a time. */
+    /** 明确的导航需求可逐帧向前遍历历史。 */
     async ensureFrame(index) {
         if (!Number.isInteger(index) || index < 0) throw new RangeError("frame index must be nonnegative");
         while (this.history.length <= index && !this.disposed && !this.sourceDone) {
-            // Frames passed by an explicit seek are history, rather than speculative buffer.
+            // 由明确跳转经过的帧属于历史，而非推测缓冲区。
             if (this.bufferedFrames() >= STREAM_BUFFER_FRAMES) {
                 this.consumedThrough = this.history.length - 1;
             }

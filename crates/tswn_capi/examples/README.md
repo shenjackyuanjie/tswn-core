@@ -1,4 +1,4 @@
-# C-API Examples
+# C-API 示例
 
 本目录提供 `tswn_capi` 的最小 C 示例。
 

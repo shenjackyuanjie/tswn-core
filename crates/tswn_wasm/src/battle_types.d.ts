@@ -1,4 +1,4 @@
-// Canonical core DTO shape. No separate Rust binding schema.
+// 规范 core DTO 形状。没有单独的 Rust 绑定 schema。
 export type BattleStatus = "running" | "finished" | "truncated";
 export type BattleStopReason = "winner" | "max_rounds" | "no_progress";
 export type BattleReplayOptions = BattleOptions;

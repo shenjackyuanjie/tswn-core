@@ -277,7 +277,7 @@ pub fn default_custom_runtime_normalized_run(raw_input: String, max_rounds: usiz
         .map_err(error::cli_api_error)
 }
 
-/// Run a complete battle and return the shared UI-ready replay JSON shape.
+/// 运行完整战斗，并返回共用、可供 UI 使用的回放 JSON 形状。
 #[wasm_bindgen(unchecked_return_type = "BattleReplay")]
 pub fn battle_replay(raw_input: String, options: Option<BattleReplayOptions>) -> WasmResult<JsValue> {
     install_panic_hook();

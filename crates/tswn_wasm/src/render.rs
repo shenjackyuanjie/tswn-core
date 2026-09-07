@@ -1,4 +1,4 @@
-//! Compatibility-only status labels for the legacy UpdateView DTO.
+//! 仅供兼容旧版 UpdateView DTO 的状态标签。
 
 fn push_unique_token(tokens: &mut Vec<String>, token: &str) {
     if token.is_empty() || tokens.iter().any(|existing| existing == token) {

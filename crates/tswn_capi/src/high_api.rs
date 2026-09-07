@@ -561,8 +561,8 @@ pub unsafe extern "C" fn tswn_default_custom_runtime_normalized_run_json(
 
 /// # Safety
 ///
-/// `raw_text_utf8` must be a valid UTF-8 C string and `out_json` must be writable.
-/// The returned JSON string must be released with `tswn_str_free`.
+/// `raw_text_utf8` 必须是有效的 UTF-8 C 字符串，且 `out_json` 必须可写。
+/// 返回的 JSON 字符串必须用 `tswn_str_free` 释放。
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tswn_battle_replay_json(
     raw_text_utf8: *const c_char,

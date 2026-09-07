@@ -1,4 +1,4 @@
-//! Canonical user-facing streaming API; DTOs are serialized directly from core.
+//! 规范的面向用户流式 API；DTO 直接从 core 序列化。
 use crate::{
     error::{WasmResult, cli_api_error, internal_error},
     model::BattleOptions,
