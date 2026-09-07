@@ -299,6 +299,7 @@ let playersById = new Map();
 const ICON_STYLE_ID = "tswn-show-icon-styles";
 const SEEK_CHECKPOINT_FRAME_INTERVAL = 20;
 const NORMAL_RESULT_REVEAL_DELAY_MS = 1500;
+const TURBO_YIELD_VISIBLE_CHUNKS = 24;
 /** @type {{ frames: Array<{ frameIndex: number, frame: FrameUpdate, previousStates: FightState[], start: number, end: number }>, flatChunks: Array<{ target: 'battleRows' | 'frameBody' | 'row' | 'delay', html: string, delay: number, frameIndex: number, visible: boolean, sidebarStates?: FightState[], sidebarPreviousStates?: FightState[], sidebarInvolved?: InvolvedSet }>, totalChunks: number }|null} */
 let currentPlan = null;
 /** @type {Map<number, { battle_rows_html: string, player_list_html: string, seed_line: string }>} */
@@ -926,6 +927,7 @@ async function autoplayFromCurrentCursor() {
   }
 
   const token = ++playbackLoopToken;
+  let turboVisibleChunks = 0;
   playbackPaused = false;
   streamController?.setPaused(false);
   syncPlaybackUi();
@@ -937,6 +939,7 @@ async function autoplayFromCurrentCursor() {
 
     if (playbackCursor >= currentPlan.totalChunks) {
       if (currentBattle.source_done) break;
+      if (streamError) { pausePlayback(); return; }
       try { await streamController.ensureFrame(currentBattle.frames.length); }
       catch { return; }
       if (token !== playbackLoopToken || playbackPaused) return;
@@ -967,7 +970,7 @@ async function autoplayFromCurrentCursor() {
       maybeStoreFrameCheckpoint(framePlan);
     }
 
-    if (speedMode === "turbo" && chunk.visible && playbackCursor % 24 === 0) {
+    if (speedMode === "turbo" && chunk.visible && ++turboVisibleChunks % TURBO_YIELD_VISIBLE_CHUNKS === 0) {
       await sleep(0);
       if (token !== playbackLoopToken || playbackPaused) {
         return;
@@ -1464,8 +1467,9 @@ async function startBattle({ persistInput = true } = {}) {
   setLoading(true);
   setInputStatus("正在准备战斗...");
 
+  let source = null;
   try {
-    const source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
+    source = await createBattleStreamSource(rawInput, versionInfo, coreVersionInfo, modulePathInfo);
     if (generation !== battleGenerationToken) { source.dispose(); return; }
     currentBattle = {
       raw_input: source.raw_input, seed_line: source.seed_line,
@@ -1478,7 +1482,7 @@ async function startBattle({ persistInput = true } = {}) {
     beginReplayPlayback(currentBattle, { autoPlay: false });
     setLoading(false);
     setInputStatus("战斗已开始，正在逐帧播放。");
-    streamController = new BattleStreamController(source, { paused: true });
+    streamController = new BattleStreamController(source, { paused: true, onListenerError: failStreaming });
     streamController.subscribe(event => {
       if (generation !== battleGenerationToken) return;
       if (event.type === "frame") {
@@ -1492,9 +1496,7 @@ async function startBattle({ persistInput = true } = {}) {
         currentBattle.winner_ids = event.data.winner_ids;
         markReplayPlanComplete(currentPlan, event.data);
       } else if (event.type === "error") {
-        streamError = event.error;
-        pausePlayback();
-        setInputStatus(formatError(event.error), true);
+        failStreaming(event.error);
       }
       syncPlaybackUi();
     });
@@ -1502,6 +1504,7 @@ async function startBattle({ persistInput = true } = {}) {
   } catch (error) {
     if (generation !== battleGenerationToken) return;
     streamController?.dispose();
+    source?.dispose();
     setInputStatus(formatError(error), true);
     openInputEditor();
   } finally {
@@ -1513,6 +1516,19 @@ async function startBattle({ persistInput = true } = {}) {
  * 重播当前回放（不重新生成）。
  * @returns {Promise<void>}
  */
+function failStreaming(error) {
+  streamError = error;
+  pausePlayback();
+  streamController?.dispose();
+  setInputStatus(formatError(error), true);
+}
+
+window.addEventListener("pagehide", () => {
+  battleGenerationToken += 1;
+  stopPlaybackLoop();
+  streamController?.dispose();
+});
+
 async function replayCurrent() {
   if (!currentBattle) {
     openInputEditor();

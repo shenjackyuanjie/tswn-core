@@ -12,8 +12,12 @@ window.location = { href: 'http://localhost/index.html', search: '' };
 window.localStorage = { getItem() { return null; }, setItem() {} };
 window.HTMLElement.prototype.focus = function () {};
 window.HTMLElement.prototype.select = function () {};
+let zeroSleeps = 0;
+const nativeSetTimeout = setTimeout;
+const timedSetTimeout = (fn, ms) => { if (ms === 0) zeroSleeps++; return nativeSetTimeout(fn, ms); };
+window.setTimeout = timedSetTimeout;
 const sandbox = { window, document: window.document, localStorage: window.localStorage,
-  navigator: {}, performance, setTimeout, clearTimeout, URL, console,
+  navigator: {}, performance, setTimeout: timedSetTimeout, clearTimeout, URL, console,
   Element: window.Element, HTMLElement: window.HTMLElement, HTMLStyleElement: window.HTMLStyleElement,
   HTMLButtonElement: window.HTMLButtonElement, Node: window.Node };
 const context = vm.createContext(sandbox);
@@ -39,9 +43,9 @@ export const pageTest = {
  setSpeed(value) { speedMode = value; },
 };`;
   const mod = new vm.SourceTextModule(code, { context, identifier: path });
-  modules.set(path, mod);
-  await mod.link((specifier, parent) => load(resolve(dirname(parent.identifier), specifier)));
-  return mod;
+  const linked = mod.link((specifier, parent) => load(resolve(dirname(parent.identifier), specifier))).then(() => mod);
+  modules.set(path, linked);
+  return linked;
 }
 const main = await load(resolve(root, 'show.js'));
 await main.evaluate();
@@ -143,3 +147,61 @@ page.stepPlaybackTo(savedCursor);
 assert.equal(window.document.querySelector('#battleRows').innerHTML, savedHtml, 'checkpoint seek restores exact display');
 assert.equal(nextSource.pulls, 23);
 console.log('PASS: event/frame navigation; pause; one-frame demand; history resume; checkpoint; replay without recomputation');
+
+// A late frame from an aborted battle must not enter the replacement history.
+const staleSource = source(2);
+nextSource = staleSource;
+await page.startBattle();
+const replacement = source(2);
+nextSource = replacement;
+await page.startBattle();
+page.pausePlayback();
+staleSource.release();
+await flush();
+assert.equal(staleSource.freed, 1);
+assert.equal(page.battle.frames.length, 0);
+replacement.release();
+await flush();
+assert.equal(page.battle.frames.length, 1);
+
+// A pending source creation is also isolated, including loading state.
+let finishCreate;
+nextSource = new Promise(resolve => { finishCreate = resolve; });
+const pendingStart = page.startBattle();
+const oldCreation = source(2);
+nextSource = source(2);
+await page.startBattle();
+page.pausePlayback();
+finishCreate(oldCreation);
+await pendingStart;
+assert.equal(oldCreation.freed, 1);
+assert.equal(page.battle.frames.length, 0);
+nextSource.release();
+await flush();
+
+// Streaming failure retains rendered history and never renders a fake result.
+await page.stepPlaybackForward(true);
+nextSource.nextFrame = async () => { throw new Error('test streaming failure'); };
+await page.stepPlaybackForward(true);
+assert.equal(page.battle.frames.length, 1);
+assert.equal(page.battle.result, null);
+assert.match(window.document.querySelector('#headerMeta').textContent, /test streaming failure/);
+assert.match(window.document.querySelector('#battleRows').textContent, /event0/);
+assert.equal(window.document.querySelector('.battle-result-block'), null);
+
+// Turbo yields according to visible chunks, not absolute cursor modulo.
+let emitted = 0;
+nextSource = {
+  ...source(30),
+  nextFrame() { return Promise.resolve(frame(emitted++)); },
+  isDone() { return emitted === 30; },
+};
+await page.startBattle();
+page.setSpeed('turbo');
+const sleepsBefore = zeroSleeps;
+for (let i = 0; !page.finished && i < 100; i++) await flush();
+assert.equal(page.finished, true);
+const visibleChunks = page.plan.flatChunks.filter(chunk => chunk.visible).length;
+assert.equal(zeroSleeps - sleepsBefore, Math.floor(visibleChunks / 24));
+assert.equal(emitted, 30);
+console.log('PASS: abort/generation isolation; source creation race; streaming error history; turbo visible-chunk yields');
