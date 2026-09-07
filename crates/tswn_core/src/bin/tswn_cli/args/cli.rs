@@ -48,14 +48,6 @@ enum CliCommand {
     ///   tswn-cli fight -f input.txt
     #[command(verbatim_doc_comment)]
     Fight(FightCommand),
-    /// 运行普通对战，并按 runner diff 的格式输出。
-    ///
-    /// 示例:
-    ///   tswn-cli diff
-    ///   tswn-cli diff -r "mario\nluigi\n\npeach\nbowser"
-    ///   tswn-cli diff -f input.txt
-    #[command(name = "diff", verbatim_doc_comment)]
-    FightDiff(FightDiffCommand),
     /// 运行 runtime 相关调试/迁移入口。
     #[command(name = "runtime", verbatim_doc_comment)]
     Runtime(RuntimeCommand),
@@ -108,6 +100,9 @@ struct RuntimeCommand {
 
 #[derive(Debug, Subcommand)]
 enum RuntimeSubcommand {
+    /// 按主 Runtime 诊断格式输出对局。
+    #[command(name = "diff")]
+    Diff(FightDiffCommand),
     /// 使用默认 custom runtime profile 运行 raw 输入，并输出 normalized-run JSON。
     ///
     /// 示例:
@@ -619,10 +614,10 @@ impl ParsedCli {
             CliCommand::Fight(cmd) => ParsedCommand::Fight {
                 raw: cmd.input.read_or_stdin()?,
             },
-            CliCommand::FightDiff(cmd) => ParsedCommand::FightDiff {
-                raw: cmd.input.read_or_stdin()?,
-            },
             CliCommand::Runtime(RuntimeCommand { command }) => match command {
+                RuntimeSubcommand::Diff(cmd) => ParsedCommand::RuntimeDiff {
+                    raw: cmd.input.read_or_stdin()?,
+                },
                 RuntimeSubcommand::NormalizedRun(cmd) => ParsedCommand::RuntimeNormalizedRun {
                     raw: cmd.input.read_or_stdin()?,
                     max_rounds: cmd.max_rounds,

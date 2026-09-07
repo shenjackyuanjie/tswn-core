@@ -60,7 +60,7 @@ pub enum ParsedCommand {
         /// 普通对战输入，使用 namerena raw 格式。
         raw: String,
     },
-    FightDiff {
+    RuntimeDiff {
         /// 普通对战输入，使用 namerena raw 格式，并按 runner diff 的格式输出。
         raw: String,
     },

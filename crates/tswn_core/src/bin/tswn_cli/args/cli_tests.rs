@@ -60,15 +60,16 @@ fn runtime_normalized_run_accepts_raw_and_max_rounds() {
 
 #[test]
 fn diff_uses_main_runtime_only() {
-    let cli = Cli::try_parse_from(["tswn-cli", "diff", "-r", "left\\n\\nright"]).unwrap();
+    assert!(Cli::try_parse_from(["tswn-cli", "diff", "-r", "a\\n\\nb"]).is_err());
+    let cli = Cli::try_parse_from(["tswn-cli", "runtime", "diff", "-r", "left\\n\\nright"]).unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();
     match parsed.command {
-        ParsedCommand::FightDiff { raw } => {
+        ParsedCommand::RuntimeDiff { raw } => {
             assert_eq!(raw, "left\n\nright");
         }
         _ => panic!("unexpected command"),
     }
-    assert!(Cli::try_parse_from(["tswn-cli", "diff", "-r", "left\\n\\nright", "--runtime", "legacy"]).is_err());
+    assert!(Cli::try_parse_from(["tswn-cli", "runtime", "diff", "-r", "left\\n\\nright", "--runtime", "legacy"]).is_err());
 }
 
 #[test]
