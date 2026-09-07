@@ -1,163 +1,17 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
-
 use crate::namerena::icon_render::render_icon_b64_from_name;
 use crate::replay_view::{
-    ReplayClip, ReplayEventView, ReplayRow, ReplayState, ReplayTextPart, ReplayTextPartKind, ReplayTone, build_replay_view_frame,
+    ReplayClip, ReplayEventView, ReplayRow, ReplayTextPart, ReplayTextPartKind, ReplayTone, build_replay_view_frame,
     hp_delta_for_tone, render_update_message,
 };
 use crate::runtime::update::{RunUpdates, UpdateType};
-use crate::runtime::{BINDING_COMPLETION_MAX_ROUNDS, PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
+use crate::runtime::{PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRunner};
 
-use super::{CliApiError, CliApiResult, invalid_input};
+use super::dto::*;
+use crate::cli_api::{CliApiError, CliApiResult, invalid_input};
 
-/// Options for the user-facing, complete battle replay.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BattleReplayOptions {
-    pub eval_rq: f64,
-    pub include_icons: bool,
-    pub max_rounds: usize,
-}
-
-impl Default for BattleReplayOptions {
-    fn default() -> Self {
-        Self {
-            eval_rq: crate::namerena::eval_name::DEFAULT_EVAL_RQ,
-            include_icons: false,
-            max_rounds: BINDING_COMPLETION_MAX_ROUNDS,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BattleReplay {
-    pub finished: bool,
-    pub truncated: bool,
-    pub initial_states: Vec<BattlePlayerState>,
-    pub frames: Vec<BattleReplayFrame>,
-    pub final_states: Vec<BattlePlayerState>,
-    pub winner_ids: Vec<usize>,
-    pub winner_team_indices: Vec<usize>,
-    pub state_granularity: &'static str,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BattlePlayerState {
-    pub id: usize,
-    pub team_index: usize,
-    pub input_team_index: Option<usize>,
-    pub owner_id: Option<usize>,
-    pub source_id: Option<usize>,
-    pub id_name: String,
-    pub id_key_name: String,
-    pub icon_key: String,
-    pub display_name: String,
-    pub display_index: usize,
-    pub base_name: String,
-    pub player_type: String,
-    pub minion_kind: Option<&'static str>,
-    pub icon_png_base64: Option<String>,
-    pub hp: i32,
-    pub max_hp: i32,
-    pub magic_point: i32,
-    pub move_point: i32,
-    pub attack: i32,
-    pub defense: i32,
-    pub speed: i32,
-    pub agility: i32,
-    pub magic: i32,
-    pub resistance: i32,
-    pub wisdom: i32,
-    pub point: u32,
-    pub all_sum: u32,
-    pub name_factor: f64,
-    pub at_boost: f64,
-    pub attract: f64,
-    pub frozen: bool,
-    pub alive: bool,
-    pub active: bool,
-    pub status_labels: Vec<String>,
-}
-
-impl ReplayState for BattlePlayerState {
-    fn id(&self) -> PlrId { self.id }
-
-    fn hp(&self) -> i32 { self.hp }
-
-    fn max_hp(&self) -> i32 { self.max_hp }
-
-    fn alive(&self) -> bool { self.alive }
-
-    fn with_hp_alive(&self, hp: i32, alive: bool) -> Self {
-        Self {
-            hp,
-            alive,
-            ..self.clone()
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BattleReplayFrame {
-    pub finished: bool,
-    pub winner_ids: Vec<usize>,
-    pub updates: Vec<BattleUpdate>,
-    pub rows: Vec<BattleReplayRow>,
-    pub states: Vec<BattlePlayerState>,
-    pub total_delay: i32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BattleUpdate {
-    pub update_type: &'static str,
-    pub tone: &'static str,
-    pub message_template: String,
-    pub message_rendered: String,
-    pub caster_id: Option<usize>,
-    pub target_id: Option<usize>,
-    pub target_ids: Vec<usize>,
-    pub param: Option<u32>,
-    pub score: u32,
-    pub delay0: i32,
-    pub delay1: i32,
-    pub hp_delta: Option<i32>,
-    pub is_win: bool,
-    pub is_next_line: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BattleReplayRow {
-    pub indent: bool,
-    pub clips: Vec<BattleReplayClip>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BattleReplayClip {
-    pub delay: i32,
-    pub color: String,
-    pub tone: &'static str,
-    pub parts: Vec<BattleReplayTextPart>,
-    pub caster_ids: Vec<usize>,
-    pub target_ids: Vec<usize>,
-    pub sidebar_states: Vec<BattlePlayerState>,
-    pub sidebar_previous_states: Vec<BattlePlayerState>,
-    pub winner: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BattleReplayTextPart {
-    pub kind: &'static str,
-    pub text: String,
-    pub player_id: Option<usize>,
-    pub show_hp: bool,
-    pub hp_before: i32,
-    pub hp_after: i32,
-    pub death_effect: bool,
-    pub emoji: Option<String>,
-}
-
-pub fn battle_replay(raw: &str, options: BattleReplayOptions) -> CliApiResult<BattleReplay> {
+pub fn battle_replay(raw: &str, options: BattleOptions) -> CliApiResult<BattleReplay> {
     if raw.trim().is_empty() {
         return Err(invalid_input("raw_input is empty"));
     }
@@ -167,14 +21,16 @@ pub fn battle_replay(raw: &str, options: BattleReplayOptions) -> CliApiResult<Ba
 
     let (groups, seed) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
     let mut runner = RuntimeRunner::new_from_groups_with_seed_and_eval_rq(&groups, &seed, options.eval_rq)
-        .map_err(|err| CliApiError::Runner(err.to_string()))?;
+        .map_err(|err| CliApiError::RunnerInit(err.to_string()))?;
     let initial_states = states_from_runner(&runner, options.include_icons);
     let mut previous_states = initial_states.clone();
     let mut frames = Vec::new();
     let mut idle_rounds = 0usize;
+    let mut rounds_advanced = 0usize;
 
     while !runner.have_winner() && frames.len() < options.max_rounds {
         let updates = runner.main_round();
+        rounds_advanced += 1;
         if updates.updates.is_empty() {
             idle_rounds += 1;
             if idle_rounds > 16usize.saturating_mul(runner.all_player_ids().len().max(1)) {
@@ -185,12 +41,29 @@ pub fn battle_replay(raw: &str, options: BattleReplayOptions) -> CliApiResult<Ba
         }
         idle_rounds = 0;
         let states = states_from_runner(&runner, options.include_icons);
-        frames.push(build_frame(&updates, &previous_states, &states, &runner));
+        let mut frame = build_frame(&updates, &previous_states, &states, &runner);
+        frame.frame_index = frames.len();
+        frame.round_index = rounds_advanced - 1;
+        frames.push(frame);
         previous_states = states;
     }
 
     let finished = runner.have_winner();
     Ok(BattleReplay {
+        status: if finished {
+            BattleStatus::Finished
+        } else {
+            BattleStatus::Truncated
+        },
+        stop_reason: if finished {
+            BattleStopReason::Winner
+        } else if frames.len() >= options.max_rounds {
+            BattleStopReason::MaxRounds
+        } else {
+            BattleStopReason::NoProgress
+        },
+        rounds_advanced,
+        frames_emitted: frames.len(),
         finished,
         truncated: !finished,
         initial_states,
@@ -275,6 +148,8 @@ fn build_frame(
     let winner_ids = runner.winner_ids();
     let replay = build_replay_view_frame(&events, previous_states, states, &names, runner.have_winner(), &winner_ids);
     BattleReplayFrame {
+        frame_index: 0,
+        round_index: 0,
         finished: runner.have_winner(),
         winner_ids,
         updates: converted,
@@ -416,7 +291,7 @@ mod tests {
 
     #[test]
     fn battle_replay_returns_render_ready_frames() {
-        let replay = battle_replay("left@red\n\nright@blue\n", BattleReplayOptions::default()).unwrap();
+        let replay = battle_replay("left@red\n\nright@blue\n", BattleOptions::default()).unwrap();
 
         assert!(replay.finished);
         assert!(!replay.frames.is_empty());
@@ -427,9 +302,9 @@ mod tests {
 
     #[test]
     fn battle_replay_rejects_zero_max_rounds() {
-        let options = BattleReplayOptions {
+        let options = BattleOptions {
             max_rounds: 0,
-            ..BattleReplayOptions::default()
+            ..BattleOptions::default()
         };
         let err = battle_replay("left\n\nright", options).unwrap_err();
         assert_eq!(err.to_string(), "battle_replay max_rounds must be positive");

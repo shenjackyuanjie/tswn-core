@@ -90,13 +90,13 @@ struct JsonIconInfo {
 fn nanos_to_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 fn cli_api_error(err: CliApiError) -> FfiError {
-    match err {
-        CliApiError::InvalidInput(message) => {
-            ffi_error_with_code(tswn_status_t::TSWN_ERR_INVALID_ARGUMENT, "INVALID_INPUT", message)
+    let status = match &err {
+        CliApiError::InvalidInput(_) | CliApiError::InvalidArgument(_) | CliApiError::UnsupportedOption(_) => {
+            tswn_status_t::TSWN_ERR_INVALID_ARGUMENT
         }
-        CliApiError::Runner(err) => ffi_error_with_code(tswn_status_t::TSWN_ERR_RUNNER, "RUNNER_INIT_FAILED", err.to_string()),
-        CliApiError::Runtime(message) => ffi_error_with_code(tswn_status_t::TSWN_ERR_RUNNER, "RUNTIME_FAILED", message),
-    }
+        _ => tswn_status_t::TSWN_ERR_RUNNER,
+    };
+    ffi_error_with_code(status, err.code().as_str(), err.to_string())
 }
 
 impl From<core_cli_api::WinRateResult> for JsonWinRateResult {

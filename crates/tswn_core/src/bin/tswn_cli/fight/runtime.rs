@@ -177,8 +177,11 @@ fn runtime_normalized_json(raw: &str, max_rounds: usize) -> Result<String, Strin
 
 fn cli_api_error(err: CliApiError) -> String {
     match err {
-        CliApiError::InvalidInput(message) => message,
-        CliApiError::Runner(err) => format!("构建 runtime 对局失败: {err}"),
+        CliApiError::InvalidInput(message)
+        | CliApiError::InvalidArgument(message)
+        | CliApiError::UnsupportedOption(message)
+        | CliApiError::Internal(message) => message,
+        CliApiError::RunnerInit(err) => format!("构建 runtime 对局失败: {err}"),
         CliApiError::Runtime(message) => format!("运行 runtime 对局失败: {message}"),
     }
 }

@@ -1,10 +1,11 @@
 //! High-level helper APIs aligned with `tswn-cli`.
 
+pub mod battle;
 mod bench;
 mod parse;
-mod replay;
 
-pub use replay::{BattleReplay, BattleReplayOptions};
+#[allow(deprecated)]
+pub use battle::{BattleOptions, BattleReplay, BattleReplayOptions, BattleResult, BattleStatus, BattleStopReason};
 
 use crate::namerena::eval_name;
 use crate::namerena::icon::icon_from_raw_name;
@@ -17,32 +18,62 @@ use crate::win_rate::{WinRateSummary, WinRateTiming};
 
 pub type CliApiResult<T> = Result<T, CliApiError>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CliApiErrorCode {
+    InvalidInput,
+    InvalidArgument,
+    UnsupportedOption,
+    RunnerInitFailed,
+    RuntimeFailed,
+    InternalError,
+}
+impl CliApiErrorCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidInput => "INVALID_INPUT",
+            Self::InvalidArgument => "INVALID_ARGUMENT",
+            Self::UnsupportedOption => "UNSUPPORTED_OPTION",
+            Self::RunnerInitFailed => "RUNNER_INIT_FAILED",
+            Self::RuntimeFailed => "RUNTIME_FAILED",
+            Self::InternalError => "INTERNAL_ERROR",
+        }
+    }
+}
+#[derive(Debug, Clone)]
 pub enum CliApiError {
     InvalidInput(String),
-    Runner(String),
+    InvalidArgument(String),
+    UnsupportedOption(String),
+    RunnerInit(String),
     Runtime(String),
+    Internal(String),
 }
-
+impl CliApiError {
+    pub fn code(&self) -> CliApiErrorCode {
+        match self {
+            Self::InvalidInput(_) => CliApiErrorCode::InvalidInput,
+            Self::InvalidArgument(_) => CliApiErrorCode::InvalidArgument,
+            Self::UnsupportedOption(_) => CliApiErrorCode::UnsupportedOption,
+            Self::RunnerInit(_) => CliApiErrorCode::RunnerInitFailed,
+            Self::Runtime(_) => CliApiErrorCode::RuntimeFailed,
+            Self::Internal(_) => CliApiErrorCode::InternalError,
+        }
+    }
+}
 impl std::fmt::Display for CliApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidInput(message) => f.write_str(message),
-            Self::Runner(message) => f.write_str(message),
+            Self::InvalidArgument(message) => f.write_str(message),
+            Self::UnsupportedOption(message) => f.write_str(message),
+            Self::RunnerInit(message) => f.write_str(message),
             Self::Runtime(message) => f.write_str(message),
+            Self::Internal(message) => f.write_str(message),
         }
     }
 }
-
-impl std::error::Error for CliApiError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::InvalidInput(_) => None,
-            Self::Runner(_) => None,
-            Self::Runtime(_) => None,
-        }
-    }
-}
+impl std::error::Error for CliApiError {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WinRateResult {
@@ -626,9 +657,7 @@ pub fn default_custom_runtime_normalized_run(raw: &str, max_rounds: usize) -> Cl
 }
 
 /// Run one battle and return a complete, UI-ready replay shared by every language binding.
-pub fn battle_replay(raw: &str, options: BattleReplayOptions) -> CliApiResult<BattleReplay> {
-    replay::battle_replay(raw, options)
-}
+pub fn battle_replay(raw: &str, options: BattleOptions) -> CliApiResult<BattleReplay> { battle::battle_replay(raw, options) }
 
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }
 

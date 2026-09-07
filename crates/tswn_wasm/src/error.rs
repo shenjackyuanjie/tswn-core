@@ -37,13 +37,7 @@ pub fn cli_api_error(err: CliApiError) -> JsValue {
     error_value(error.code, error.message)
 }
 
-pub fn cli_api_tswn_error(err: CliApiError) -> TswnError {
-    match err {
-        CliApiError::InvalidInput(message) => TswnError::new("INVALID_INPUT", message),
-        CliApiError::Runner(err) => TswnError::new("RUNNER_INIT_FAILED", err.to_string()),
-        CliApiError::Runtime(message) => TswnError::new("RUNTIME_FAILED", message),
-    }
-}
+pub fn cli_api_tswn_error(err: CliApiError) -> TswnError { TswnError::new(err.code().as_str(), err.to_string()) }
 
 impl TswnError {
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {

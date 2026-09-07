@@ -406,8 +406,10 @@ impl PyIconInfo {
 fn map_cli_error(err: CliApiError) -> pyo3::PyErr {
     match err {
         CliApiError::InvalidInput(message) => pyo3::PyErr::new::<PyInvalidInputError, _>(message),
-        CliApiError::Runner(err) => wrapper::error::PyRunnerError::new(err).into(),
+        CliApiError::RunnerInit(err) => wrapper::error::PyRunnerError::new(err).into(),
         CliApiError::Runtime(message) => pyo3::PyErr::new::<PyCliRuntimeError, _>(message),
+        CliApiError::InvalidArgument(message) | CliApiError::UnsupportedOption(message) => PyValueError::new_err(message),
+        CliApiError::Internal(message) => PyRuntimeError::new_err(message),
     }
 }
 
