@@ -1,4 +1,4 @@
-//! Ordinary battle and Runtime diagnostic command entry points.
+//! 普通战斗和 Runtime 诊断命令入口。
 mod driver;
 mod runtime;
 mod trace;

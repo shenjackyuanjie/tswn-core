@@ -1,4 +1,4 @@
-//! Canonical user-facing battle data and execution API.
+//! 规范的面向用户战斗数据与执行 API。
 mod dto;
 mod replay;
 mod session;

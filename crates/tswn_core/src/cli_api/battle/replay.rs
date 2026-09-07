@@ -1,7 +1,7 @@
 use super::{BattleSession, dto::*};
 use crate::cli_api::{CliApiError, CliApiResult};
 
-/// Collect the canonical session without introducing another execution policy.
+/// 收集规范会话，但不引入另一套执行策略。
 pub fn battle_replay(raw: &str, options: BattleOptions) -> CliApiResult<BattleReplay> {
     let mut session = BattleSession::new(raw, options)?;
     let initial_states = session.initial_states().to_vec();

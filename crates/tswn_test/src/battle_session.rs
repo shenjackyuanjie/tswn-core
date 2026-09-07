@@ -1,4 +1,4 @@
-//! Cross-module canonical session/replay contracts using frozen Runtime inputs.
+//! 使用冻结 Runtime 输入的跨模块规范会话/回放契约。
 use crate::golden::STRESS_CASES;
 use std::collections::HashSet;
 use tswn_core::cli_api::battle::{BattleOptions, BattleSession, battle_replay};

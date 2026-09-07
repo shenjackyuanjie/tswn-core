@@ -896,8 +896,8 @@ mod tests {
                 message_rendered: "target回复体力40点",
             },
         ];
-        // Runtime frame snapshots can still hold the previous action's HP.
-        // The revive update must reset the replay state before its recovery update.
+        // Runtime 帧快照仍可能保留上一个动作的 HP。
+        // 复活更新必须在其恢复更新前重置回放状态。
         let previous = vec![state(0, 100), state(1, 66)];
         let frame = vec![state(0, 100), state(1, 40)];
 

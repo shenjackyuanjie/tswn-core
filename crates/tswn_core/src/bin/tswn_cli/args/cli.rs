@@ -427,11 +427,11 @@ struct NamerPfCommand {
     #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
     thread: Option<usize>,
 
-    /// Keep rq=4 instead of using the win-rate/profile rq.
+    /// 保留 rq=4，而不使用 win-rate/profile rq。
     #[arg(long)]
     keep_rq: bool,
 
-    /// Score decimal places to keep (default: 0).
+    /// 要保留的分数小数位数（默认：0）。
     #[arg(long = "precision", default_value_t = 0, value_parser = parse_wr_precision, value_name = "N")]
     precision: usize,
 

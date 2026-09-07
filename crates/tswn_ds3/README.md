@@ -40,7 +40,7 @@ cargo run -p tswn_ds3 -- run --root D:\path\to\workspace
 
 ## 验证与测试
 
-### Rust golden tests
+### Rust golden 测试
 
 ```powershell
 cargo test -p tswn_ds3

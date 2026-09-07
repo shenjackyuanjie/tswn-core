@@ -2,7 +2,7 @@ use crate::replay_view::ReplayState;
 use crate::runtime::{BINDING_COMPLETION_MAX_ROUNDS, PlrId};
 use serde::Serialize;
 
-/// Options for the user-facing, complete battle replay.
+/// 面向用户的完整战斗回放选项。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BattleOptions {
     pub eval_rq: f64,

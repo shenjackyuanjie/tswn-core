@@ -1,4 +1,4 @@
-//! Human and JSONL consumers of the canonical battle stream.
+//! 规范战斗流的人类和 JSONL 消费端。
 use serde::Serialize;
 use std::{
     collections::HashMap,

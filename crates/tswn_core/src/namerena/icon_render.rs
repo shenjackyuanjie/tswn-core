@@ -9,7 +9,7 @@
 //! - **Base64 编码** — 将 PNG 编码为 data URL 格式 [需要 `png_render` feature]
 //! - **便捷接口** — 直接从玩家名称渲染图标
 //!
-//! ## Feature Flag
+//! ## 功能标志
 //!
 //! PNG 输出功能需要 `png_render` feature：
 //!

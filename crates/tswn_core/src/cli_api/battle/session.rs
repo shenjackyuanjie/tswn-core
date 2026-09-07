@@ -11,7 +11,7 @@ use crate::runtime::{PlrId, RuntimeMinionKind, RuntimePlayerSnapshot, RuntimeRun
 use super::dto::*;
 use crate::cli_api::{CliApiError, CliApiResult, invalid_input};
 
-/// Stateful, incremental user API. All round limits and terminal decisions live here.
+/// 有状态、增量式用户 API。所有回合限制和终止决策均在此处处理。
 #[derive(Debug)]
 pub struct BattleSession {
     runner: RuntimeRunner,
@@ -75,7 +75,7 @@ impl BattleSession {
     pub fn rounds_advanced(&self) -> usize { self.rounds_advanced }
     pub fn frames_emitted(&self) -> usize { self.frames_emitted }
 
-    /// Advance through empty Runtime rounds until a visible frame or a terminal result.
+    /// 推进经过空的 Runtime 回合，直至出现可见帧或终止结果。
     pub fn next_frame(&mut self) -> CliApiResult<Option<BattleReplayFrame>> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
@@ -84,8 +84,7 @@ impl BattleSession {
             return Ok(None);
         }
         loop {
-            // Runtime's checked entry point panics on invalid handler configuration;
-            // translate that validation failure before entering it.
+            // Runtime 的检查入口会在无效处理器配置时 panic；进入它之前先转换该校验失败。
             if let Err(error) = self.runner.validate_ready() {
                 let error = CliApiError::Runtime(error.to_string());
                 self.failure = Some(error.clone());
@@ -101,7 +100,7 @@ impl BattleSession {
             } else {
                 self.no_progress_rounds += 1;
             }
-            // Winner takes precedence even on the last permitted round or empty updates.
+            // 即使是允许的最后一回合或空更新，胜者也优先。
             self.stop_reason = if self.runner.have_winner() {
                 Some(BattleStopReason::Winner)
             } else if self.rounds_advanced >= self.options.max_rounds {
@@ -538,7 +537,7 @@ mod tests {
         )
         .unwrap();
         session.runner.runtime_mut().skill_handlers = Default::default();
-        // Also arrange a winner: invalid Runtime configuration must win precedence.
+        // 同时安排一个胜者：无效 Runtime 配置必须具有优先级。
         session.runner.runtime_mut().entities.get_mut(EntityIdx(1)).unwrap().runtime.alive = false;
         for _ in 0..2 {
             let error = session.next_frame().unwrap_err();

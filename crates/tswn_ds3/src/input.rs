@@ -14,12 +14,11 @@ pub struct InputRecord {
 #[allow(dead_code)]
 impl InputRecord {
     pub fn parse_scored_line(line: &str) -> Option<Self> {
-        // C++ two_*.exe parser behavior:
+        // C++ two_*.exe 解析器行为：
         // 1) `cin >> score; getchar(); cin >> ptt; getchar();`
-        // 2) then read the remainder of the line as raw name content.
+        // 2) 接着将本行剩余内容读取为原始名称内容。
         //
-        // This intentionally preserves trailing '\r' (for CRLF lines) and
-        // any extra spaces after the second numeric field.
+        // 这会有意保留尾随的 '\r'（用于 CRLF 行）和第二个数字字段后的任何额外空格。
         let bytes = line.as_bytes();
         let mut idx = 0usize;
 

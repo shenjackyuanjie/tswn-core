@@ -1,4 +1,4 @@
-//! High-level helper APIs aligned with `tswn-cli`.
+//! 与 `tswn-cli` 对齐的高层辅助 API。
 
 pub mod battle;
 mod bench;
@@ -656,7 +656,7 @@ pub fn default_custom_runtime_normalized_run(raw: &str, max_rounds: usize) -> Cl
     Ok(runner.run_until_winner_normalized_rounds(max_rounds))
 }
 
-/// Run one battle and return a complete, UI-ready replay shared by every language binding.
+/// 运行一场战斗，并返回供每种语言绑定共用、可直接供 UI 使用的完整回放。
 pub fn battle_replay(raw: &str, options: BattleOptions) -> CliApiResult<BattleReplay> { battle::battle_replay(raw, options) }
 
 pub(super) fn invalid_input(message: impl Into<String>) -> CliApiError { CliApiError::InvalidInput(message.into()) }

@@ -431,8 +431,8 @@ impl PlayerBuild {
             all_sum: attr_sum * 3 + attrs[7],
             ..PlayerStats::default()
         };
-        // Legacy boss initialization installs runtime states after build. TestSubject also
-        // replaces the observable cold snapshot copied into Runtime templates.
+        // 旧版 boss 初始化会在构建后安装 runtime 状态。TestSubject 也会替换复制到 Runtime 模板中的
+        // 可观察冷快照。
         if self.class == PlayerClass::Boss && self.name == "testsubject" {
             self.name_factor = 0.0;
             attrs = [80, 80, 80, 80, 80, 80, 80, 100];
