@@ -1,5 +1,9 @@
 # 更新日志
 
+## 未发布
+
+- 新增 canonical BattleSession 与 plain JS/TS DTO；旧 FightSession 委托 core；网页改为真实 streaming、两帧预取、显示层昵称图标和性能计时。
+
 ## [Unreleased]
 
 ### 修复

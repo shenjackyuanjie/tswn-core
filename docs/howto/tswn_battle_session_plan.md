@@ -2847,75 +2847,75 @@ CLI contract tests
 
 ## Core/API
 
-- [ ] BattleSession 是正式 User API
-- [ ] battle_replay 只 collect BattleSession
-- [ ] max_rounds 真实统计 main_round
-- [ ] no_progress 只在 core 一处实现
-- [ ] winner empty-update frame 不丢
-- [ ] frame_index / round_index 稳定
-- [ ] terminal next_frame 幂等
-- [ ] result 仅 terminal 后存在
-- [ ] error code 由 core 统一
+- [x] BattleSession 是正式 User API
+- [x] battle_replay 只 collect BattleSession
+- [x] max_rounds 真实统计 main_round
+- [x] no_progress 只在 core 一处实现
+- [x] winner empty-update frame 不丢
+- [x] frame_index / round_index 稳定
+- [x] terminal next_frame 幂等
+- [x] result 仅 terminal 后存在
+- [x] error code 由 core 统一
 
 ## Bindings
 
-- [ ] Python BattleSession
-- [ ] Python iterator
-- [ ] TypedDict battle DTO
-- [ ] WASM BattleSession
-- [ ] WASM plain JS DTO
-- [ ] FightSession 内部改用 canonical session
-- [ ] C BattleSession
-- [ ] C versioned options
-- [ ] C ABI 仍为 4
-- [ ] Cross-binding parity
+- [x] Python BattleSession
+- [x] Python iterator
+- [x] TypedDict battle DTO
+- [x] WASM BattleSession
+- [x] WASM plain JS DTO
+- [x] FightSession 内部改用 canonical session
+- [x] C BattleSession
+- [x] C versioned options
+- [x] C ABI 仍为 4
+- [x] Cross-binding parity
 
 ## CLI
 
-- [ ] 删除 raw
-- [ ] 删除 !test! magic
-- [ ] 删除 --out-raw
-- [ ] diff 移到 runtime diff
-- [ ] human fight 使用 BattleSession
-- [ ] fight --jsonl
-- [ ] JSONL 每行立即 flush
-- [ ] JSONL stdout 无 banner/error
+- [x] 删除 raw
+- [x] 删除 !test! magic
+- [x] 删除 --out-raw
+- [x] diff 移到 runtime diff
+- [x] human fight 使用 BattleSession
+- [x] fight --jsonl
+- [x] JSONL 每行立即 flush
+- [x] JSONL stdout 无 banner/error
 
 ## Web
 
-- [ ] 页面不调用完整 battle_replay
-- [ ] 点击开始后立即渲染 initial
-- [ ] 页面逐 frame 拉 Runtime
-- [ ] buffer 最大 2
-- [ ] canonical history append-only
-- [ ] pause 正常
-- [ ] resume 正常
-- [ ] forward event 正常
-- [ ] forward frame 正常
-- [ ] backward 正常
-- [ ] checkpoint seek 正常
-- [ ] 历史回放后可继续 live
-- [ ] turbo 不 eager-run 全场
-- [ ] turbo 每 24 可见 chunk yield
-- [ ] result 展示逻辑保持
-- [ ] nickname 不修改 canonical frame
-- [ ] icon_key 懒加载/去重
-- [ ] 动态实体正常
-- [ ] source/session 正确 free
-- [ ] abort 不泄漏旧 frame
-- [ ] streaming error 不伪装 truncated
-- [ ] eager replay adapter 全部删除
-- [ ] TTIS / TTFE 可测
-- [ ] next_frame p95 基线已记录
-- [ ] web_streaming_baseline.md 已提交
+- [x] 页面不调用完整 battle_replay
+- [x] 点击开始后立即渲染 initial
+- [x] 页面逐 frame 拉 Runtime
+- [x] buffer 最大 2
+- [x] canonical history append-only
+- [x] pause 正常
+- [x] resume 正常
+- [x] forward event 正常
+- [x] forward frame 正常
+- [x] backward 正常
+- [x] checkpoint seek 正常
+- [x] 历史回放后可继续 live
+- [x] turbo 不 eager-run 全场
+- [x] turbo 每 24 可见 chunk yield
+- [x] result 展示逻辑保持
+- [x] nickname 不修改 canonical frame
+- [x] icon_key 懒加载/去重
+- [x] 动态实体正常
+- [x] source/session 正确 free
+- [x] abort 不泄漏旧 frame
+- [x] streaming error 不伪装 truncated
+- [x] eager replay adapter 全部删除
+- [x] TTIS / TTFE 可测
+- [x] next_frame p95 基线已记录
+- [x] web_streaming_baseline.md 已提交
 
 ## Scope boundary
 
-- [ ] 未实现任何模型
-- [ ] 未定义 ModelState
-- [ ] 未加入胜率字段
-- [ ] 未加入模型 UI
-- [ ] 但 canonical stream / observer / async source / metrics 已准备完成
+- [x] 未实现任何模型
+- [x] 未定义 ModelState
+- [x] 未加入胜率字段
+- [x] 未加入模型 UI
+- [x] 但 canonical stream / observer / async source / metrics 已准备完成
 
 ---
 
@@ -2960,3 +2960,46 @@ result
 ```
 
 稳定流，而不需要再次修改 Runtime、回放语义、播放控制或跨语言 API。
+
+
+# 实施验收记录（2026-09-08）
+
+保留分块提交：Core 1–3、Python 4、WASM 5–6、C 7、CLI 8–10、Web 11–19、文档 20。最终回归发现的页面边界、Python 测试导入和 WASM 错误码引用各自独立修复提交；未 squash。
+
+| 规格范围 | 实现/证据 | 验证结果 |
+| --- | --- | --- |
+| 0–19：统一状态机、DTO、计数、终止、错误 | `crates/tswn_core/src/cli_api/battle/{dto,session,replay}.rs`；session 测试覆盖空 round 预算、空 updates 获胜、最后预算轮获胜、no_progress、重复 terminal、图标和 sticky runtime error | core 测试通过；collector 与 session 精确一致 |
+| 20：Python | `src/battle.rs`、`_types_battle.pyi`、`verify_py_cli_api.py` | 实际扩展的迭代器、全部 DTO keys、结果、ownership 与错误码验证通过 |
+| 21–22：WASM | `src/battle.rs`、`battle_types.d.ts`、兼容 FightSession | 原生测试、wasm32 build、真实 Node 包 7 项测试通过 |
+| 23：C | `src/battle_api.rs`、头文件、`examples/battle_session.c` | ABI 4、版本化 options、NULL/短结构/未来尾部/输出所有权、C 示例编译运行通过 |
+| 24–25：CLI | fight driver、runtime 子命令、`verify_cli_battle.py` | human / JSONL / stdin / 非零错误退出 / 已删除路由验证通过；writer 测试验证逐行 flush |
+| 26–39：网页 source / controller / plan | `show-wasm.js`、`show-stream.js`、`show-replay.js` | 不调用 eager replay；首屏先于 pull；2 帧 buffer、observer 顺序、追加区间、terminal/dispose 测试通过 |
+| 40–49：播放、导航、结算、重播、分享 | `show.js`、`verify_web_playback.mjs`、routing tests | normal/fast/turbo、pause/resume、单事件/单帧、回退、20 帧 checkpoint、历史续播、结算等待暂停恢复、重播不新建 source 均通过 |
+| 50–54：显示层与 renderer | `show-display.js`、display tests、canonical clip tests | frozen DTO 不变、昵称重建/未来帧、icon 去重、动态实体、HP/死亡/恢复/多目标/延时验证通过；真实浏览器截图检查通过 |
+| 55–56：错误与 generation | controller 和真实页面模块测试 | 中途错误保留历史不生成 result；异常后可回看；旧 pull/source 创建迟到结果隔离；显式 free |
+| 57–60：metrics 与浏览器基线 | [web_streaming_baseline.md](../perf/web_streaming_baseline.md)、`show-metrics.test.mjs` | 四类固定输入各 20 次；TTIS/TTFE、pull、render 分位数和计数齐全；全部 pull p95 < 16.7 ms |
+| 61：扩展边界 | canonical initial/frame/result、observer、async source、timing collector | 本轮没有 ModelState、模型训练/推理/字段/UI 或 Worker |
+| 62–63：测试矩阵 | 全部 show tests、页面模块 DOM tests、`tswn_test::battle_session` | frozen corpus 37 类 case；1v1/2v2/FFA4/6/8/3v3v3、四种动态实体及复活/守护/魅惑，明确断言实际覆盖 |
+| 64–65：真实跨语言 payload | `verify_battle_cross_binding.py`、`dump_battle_wasm.mjs` | Rust CLI / Python / C DLL / WASM，四 fixture × 1/20,000 轮，全部 initial/frames/result 字段精确相等 |
+| 66–68：分块与最终回归 | git 提交历史；最终测试命令 | 四主要 crate 与全 workspace cargo test、指定 clippy、Python / WASM / CLI / Web 检查通过；nightly fmt、git diff --check 通过 |
+| 69–70：文档与最终架构 | public_api、各绑定 README/CHANGELOG、CLI 示例、性能表格/截图与复现脚本 | Rust/Python/WASM 文档示例实际运行，C 示例编译运行；相对链接检查通过 |
+
+最终命令：
+
+```text
+cargo test -p tswn_core -p tswn_py -p tswn_wasm -p tswn_capi
+cargo test
+cargo clippy -p tswn_core -p tswn_py -p tswn_wasm -p tswn_capi
+cargo +nightly fmt --check
+python scripts/verify_py_cli_api.py
+python scripts/verify_cli_battle.py
+node --test scripts/verify_wasm_battle.test.mjs
+python scripts/verify_battle_cross_binding.py
+node --test crates/tswn_wasm/examples/show-*.test.mjs
+node --experimental-vm-modules scripts/verify_web_playback.mjs
+node scripts/benchmark_web_streaming.mjs
+python scripts/verify_battle_docs.py
+git diff --check
+```
+
+Clippy 通过但仍有仓库已有告警（如参数数量、可简化表达式）；没有将告警当作本轮 API 失败，也未做无关批量清理。golden/corpus 基线没有重生成。

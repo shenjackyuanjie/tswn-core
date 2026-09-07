@@ -7,7 +7,7 @@
 ## 当前状态
 
 - 核心 crate `tswn_core` 已经是当前主要实现，包含玩家构建、技能系统、战斗 runner、评分/胜率、RC4、图标渲染和 CLI。
-- CLI 已覆盖普通对战、raw 对战日志、diff 输出、benchmark、图标导出、DIY/OL overlay 导出等常用入口。
+- CLI 已覆盖普通对战、JSONL 流式日志、runtime diff 输出、benchmark、图标导出、DIY/OL overlay 导出等常用入口。
 - 仓库内同时维护 Python、WASM、C ABI、以及 `ds3` 相关实验/工具 crate。
 - 当前仍处在“行为兼容 + 差分追踪 + 性能整理”的开发状态，不是只提供稳定 SDK 的纯发布仓库。
 - `tests/`、`docs/diff/`、`tests/diff/`、`target/ts_diff_cases*` 一类目录主要服务于与旧 JS/TS 行为的差分定位。
@@ -47,8 +47,8 @@ cargo build --profile release-fast --features no_debug
 
 ```powershell
 cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
-cargo run -p tswn_core --bin tswn-cli -- fight --out-raw -f input.txt
-cargo run -p tswn_core --bin tswn-cli -- raw -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- fight --jsonl -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- runtime diff -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --max-rounds 20000
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire"
 cargo run -p tswn_core --bin tswn-cli -- to-diy -r "mario@team+fire" --old
@@ -67,7 +67,7 @@ cargo run -p tswn_core --bin tswn-cli -- bench pair -l targets.txt -p players.tx
 cargo run -p tswn_core --bin tswn-cli -- bench pair -l weighted-targets.toml -p players.txt --teammate-list teammates.txt --head 3 --target-factored
 ```
 
-`fight`（包括 `--out-raw`）、`diff`、`raw`（包括 `!test!` 评分/胜率）和独立 `bench` 只使用主 Runtime。CLI 不再提供执行器选择器或 parity 子命令；C、Python 与 WASM 绑定也都从同一主 Runtime 会话读取完成态、快照、RC4、胜者与回放。
+`fight` / `fight --jsonl` 使用正式 `BattleSession`；诊断使用 `runtime diff` / `runtime normalized-run`，评分和胜率使用明确的 `bench` 子命令。CLI 不再提供执行器选择器或 parity 子命令；C、Python 与 WASM 绑定也都从同一主 Runtime 会话读取完成态、快照、RC4、胜者与回放。
 
 `to-diy --minions` 会在 `+ol` 输出中附带可生成的 shadow / summon / zombie 模板，用于更接近原始名字的评分与对战行为。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；使魔模板的 `skills` 使用普通 JSON object 格式，两个火球固定命名为 `sklfire1`、`sklfire2`，自爆命名为 `sklexplode`，字段顺序就是行动顺序。0 熟练度技能会省略输出；解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名，不再支持旧数组格式、`skill_order` 字段或旧的 `sklfire` 别名。
 
@@ -123,7 +123,7 @@ python scripts/check_runtime_release.py --corpus
 
 ## 开发注意事项
 
-- Rust edition 使用 2024，工具链由 [`rust-toolchain.toml`](rust-toolchain.toml) 固定。
+- Rust edition 使用 2024；格式化必须使用 `cargo +nightly fmt`，以支持仓库的 nightly rustfmt 配置。
 - `no_debug` feature 用于 release/绑定场景，避免调试路径影响性能和输出。
 - `png_render` 是 `tswn_core` 默认 feature，用于图标 PNG/base64 输出。
 - 差分工具会大量写入 `target/`，这些产物通常不应提交。

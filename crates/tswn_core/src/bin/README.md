@@ -13,11 +13,13 @@
 ```powershell
 cargo run -p tswn_core --bin tswn-cli -- --help
 cargo run -p tswn_core --bin tswn-cli -- fight -f input.txt
+cargo run -p tswn_core --bin tswn-cli -- fight --jsonl -f input.txt --max-rounds 20000
+cargo run -p tswn_core --bin tswn-cli -- runtime diff -f input.txt
 cargo run -p tswn_core --bin tswn-cli -- bench win-rate -f input.txt -n 10000
 cargo run -p tswn_core --bin tswn-cli -- runtime normalized-run -f input.txt --max-rounds 20000
 ```
 
-`fight`、`diff`、`raw` 和 `bench` 均固定使用主 Runtime。CLI 不提供执行器选择器或 parity 子命令。
+`fight` / `fight --jsonl` 使用 BattleSession，`runtime diff` 与 `bench` 使用主 Runtime。旧 raw、顶层 diff、--out-raw 和 !test! 自动路由已移除。CLI 不提供执行器选择器或 parity 子命令。
 
 ## track / track_test
 

@@ -1,5 +1,9 @@
 # 更新日志
 
+## 未发布
+
+- 新增 BattleSession PyClass / 迭代器与完整 TypedDict；battle_replay 精确返回 BattleReplay，异常暴露统一错误码。
+
 ## [Unreleased]
 
 ### 新增

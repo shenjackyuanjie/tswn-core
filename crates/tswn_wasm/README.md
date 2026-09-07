@@ -4,7 +4,7 @@
 
 ## 目标
 
-为网页前端提供 JS 友好的 wasm 封装，不依赖裸指针 / 手动释放 / C ABI 字符串。
+为网页前端提供 JS 友好的 wasm 封装，不暴露裸指针或 C ABI 字符串；会话对象需要显式 `free()` 释放。
 可直接支撑类似 `fast-namerena/index.html` 的静态页面。
 
 ## 导出
@@ -32,7 +32,26 @@
 | `icon_info(name)` / `parse_group_lines(...)`              | CLI 对齐的图标元信息 / 分组解析 helper                              |
 | `battle_replay(raw_input, options?)`                       | 跨语言统一的完整 UI 回放；返回 JSON-compatible replay shape         |
 
-### FightSession
+### BattleSession（正式对局 API）
+
+```js
+const session = new wasm.BattleSession("alpha\n\nbeta", { include_icons: false, max_rounds: 20_000 });
+try {
+  console.log(session.initial_states());
+  for (let frame; (frame = session.next_frame()) !== null;) {
+    console.log(frame.frame_index, frame.round_index);
+  }
+  console.log(session.result());
+} finally {
+  session.free();
+}
+```
+
+完整方法与 DTO 见 [公共 API](../../docs/public_api.md)。返回值为 plain JS object，缺省值为 null，TypeScript 类型随生成包导出。`max_rounds` 包含空 round；terminal next_frame 幂等。`battle_replay` 仅收集同一个 session。
+
+示例页面先显示 initial states，再逐帧拉取，最多预取 2 帧；昵称与图标只装饰显示层。`?perf=1` 输出性能统计，参见 [性能基线](../../docs/perf/web_streaming_baseline.md)。
+
+### FightSession（Advanced / Compatibility）
 
 适合逐回合播动画：
 
@@ -48,7 +67,9 @@ session.step(); // RoundFrame — 推进一步
 //   { finished, winner_ids, updates, rows, states, total_delay }
 session.is_finished(); // bool — 是否已产生胜者
 session.winner_ids(); // number[] — 获胜方 ID 列表
-session.run_to_end(limit); // FightReplay — 跳过动画直接结算，可限制最大帧数
+session.run_to_end(limit); // FightReplay — 仅限制本次收集帧数；未完成可继续
+session.is_done(); // 包括正常结束和截断
+session.free(); // 显式释放
 ```
 
 ### WinRateSession

@@ -26,10 +26,10 @@ cargo build -p tswn_core --bin tswn-cli --release
 # 单局对战（stdin 输入）
 echo '<your raw input>' | ./target/release/tswn-cli fight
 
-# fight/diff/raw/bench 均使用主 Runtime
+# fight 使用 BattleSession，诊断与 bench 使用主 Runtime
 ./target/release/tswn-cli fight -f input.txt
-./target/release/tswn-cli diff -f input.txt
-./target/release/tswn-cli raw -f input.txt
+./target/release/tswn-cli runtime diff -f input.txt
+./target/release/tswn-cli fight --jsonl -f input.txt
 ./target/release/tswn-cli runtime normalized-run -f input.txt --max-rounds 20000
 
 # DIY/OL 导出
@@ -55,7 +55,7 @@ echo '<your raw input>' | ./target/release/tswn-cli fight
 ./target/release/tswn-cli bench pair -l weighted-targets.toml -p players.txt --teammate-list teammates.txt --head 3 --target-factored
 ```
 
-`raw` 输入以 `!test!` 开头时会进入主 Runtime 批量评分/胜率路径。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`；独立 `bench` 也已迁移到同一数据模型。
+`fight --jsonl` 逐行输出 initial/frame/result 并立即 flush；评分和胜率使用明确的 `bench` 子命令。CLI 不再提供 `--runtime` 执行器选择器或 `runtime parity`；独立 `bench` 也已迁移到同一数据模型。
 
 `to-diy --minions` 会额外导出 shadow / summon / zombie 模板。OL/DIY 的 `attrs` 都使用前七围 +36、HP 原样的编码；summon 的两个火球分别用 `sklfire1`、`sklfire2` 表示，自爆用 `sklexplode`，`skills` 保持普通 JSON object 形态，字段顺序就是行动顺序。0 熟练度技能会省略输出，解析时未带前缀的 `summon.skills` 只接受这三个 `skl` 槽位名。
 

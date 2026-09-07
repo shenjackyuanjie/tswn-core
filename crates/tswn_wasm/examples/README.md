@@ -2,6 +2,15 @@
 
 本目录提供 `tswn_wasm` 的浏览器示例页面。
 
+## Streaming 结构
+
+- `show-stream.js`：observer、完整 canonical history、最多 2 帧的预取和 source 生命周期。
+- `show-display.js`：昵称派生、按 icon_key 缓存图标；不修改原始 DTO。
+- `show-metrics.js`：TTIS / TTFE、拉帧和渲染计时；`?perf=1` 才输出统计。
+- `show.js` / `show-replay.js`：可增长的播放计划、暂停/单步/历史检查点/重播。
+
+测试：`node --test crates/tswn_wasm/examples/show-*.test.mjs`；页面行为测试和浏览器基线命令见 [性能基线](../../../docs/perf/web_streaming_baseline.md)。
+
 ## 示例一览
 
 ### `demo.html` — 快速功能验证
@@ -14,7 +23,7 @@
 
 - 全功能对战回放播放器，支持逐帧动画、分段推进。
 - 包含多文件模块：
-  - `show-wasm.js` — WASM 模块加载与公共 `battle_replay` 回放适配入口
+  - `show-wasm.js` — WASM 加载、`BattleSession` source 和显式释放
   - `show-utils.js` — DOM 渲染工具函数（头像、状态标签、`replayDisplayName()` 等）
   - `show-render.js` — 玩家状态 / 头像 / 状态标签渲染，seed 行展示
   - `show-replay.js` — 回放介绍、播放速度控制、逐段推进逻辑
@@ -22,7 +31,7 @@
 - 支持 normal / fast / turbo 三种播放速度。
 - 支持从原始输入中提取 `seed:` 行并显示在玩家列表顶部。
 - 支持通过 URL 参数直接传入对局输入并自动播放：`index.html?input=<url-safe-base64>`。参数值按 UTF-8 解码，Base64 使用 URL-safe 字符集（`+`→`-`、`/`→`_`，可省略末尾 `=`）。`replay` 和 `data` 可作为输入参数兼容别名；参数为空、Base64 非法或 UTF-8 解码失败时会停留在输入面板并显示错误。
-- 页面只使用公共 `battle_replay` replay view；历史 `engine` / `runtime` 参数会从分享链接中清理，不再提供 `FightSession` fallback。
+- 页面按需拉取公共 `BattleSession` 的 canonical replay view；历史 `engine` / `runtime` 参数会从分享链接中清理，不再提供 `FightSession` fallback。
 - 支持在右下角控制栏复制当前对局的分享链接，链接会使用同一套 `input` 参数格式。
 - 召唤单位（clone / summon / shadow / zombie）会按类型显示对应的中文名；分身名字里的编号使用底层 `display_index`，左侧仍单独保留 `#playerId`。
 - 只消费 `RoundFrame.rows[].clips[]` 结构化 replay view，由 WASM 提供延迟、文本片段、血条变化、死亡特效和侧栏快照信息；战斗正文不再从 `message_template` / `message_rendered` / `hp_delta` 反推展示语义。

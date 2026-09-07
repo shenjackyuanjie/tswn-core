@@ -1,5 +1,9 @@
 # 更新日志
 
+## 未发布
+
+- 正式 BattleSession 与统一 DTO/错误码；battle_replay 收集 session；CLI 新增 fight --jsonl，诊断迁至 runtime diff，移除 raw/--out-raw/!test! 自动路由。
+
 ## [Unreleased]
 
 ### 修复

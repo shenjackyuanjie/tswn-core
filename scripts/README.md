@@ -236,3 +236,15 @@ Bun 脚本，用于对 tswn-md5 模块进行 profile trace。
 - `.venv`（Windows 侧）由 `uv` 创建，`uv run` 会自动使用该环境
 - `.venv-wsl`（WSL 侧）是独立的 Linux 虚拟环境
 - 所有 `python scripts/...` 命令均可替换为 `uv run scripts/...`（Windows 侧推荐）
+
+## BattleSession 验收
+
+- `verify_py_cli_api.py`：构建 Python 扩展并检查 TypedDict、迭代器、错误码与 session/replay 一致性。
+- `verify_wasm_battle.test.mjs`：真实 Node WASM 包的 canonical DTO、错误与旧 FightSession 兼容测试。
+- `verify_cli_battle.py`：CLI JSONL、stdin、人类输出与删除命令的错误路径。
+- `verify_battle_cross_binding.py`：真实 Rust CLI / Python / C / WASM 的完整 payload 精确对比；调用 `dump_battle_wasm.mjs` 读取 Node WASM 输出。
+- `verify_web_playback.mjs`：真实页面模块与 DOM 的延迟 source 测试，需 `--experimental-vm-modules` 和 target/web-test-tools 下的 linkedom。
+- `benchmark_web_streaming.mjs`：独立桌面浏览器四组各 20 次性能测试，生成 timing JSON、表格和截图。
+- `verify_battle_docs.py`：从公共 API 文档提取 Rust / Python / WASM 示例并实际运行。
+
+完整构建与复现步骤见 [Web streaming 基线](../docs/perf/web_streaming_baseline.md)。

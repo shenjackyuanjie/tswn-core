@@ -14,13 +14,22 @@
 
 当前版本已覆盖：
 
-- `Runner` / `PreparedRunner` 生命周期
+- 正式 `BattleSession` 增量对局与 JSON DTO
+- Advanced `Runner` / `PreparedRunner` 生命周期
 - `RunUpdates` 基本读取
 - `win_rate` / `group_win_rate` / `prepared_win_rate`
 - `tswn-cli` 对齐的高层 helper（`*_json` / `tswn_to_diy`）
 - icon RGBA / PNG / Base64
 
 推荐使用 [跨语言高层 API 约定](../../docs/public_api.md) 中的 JSON helper；`Runner` 句柄和基础 `win_rate` 仍保留为 Advanced API。
+
+## BattleSession（ABI 4）
+
+`tswn_battle_options_default()` 初始化包含 `struct_size` 的 options，默认 include_icons=0、max_rounds=20,000。`tswn_battle_session_new()` 也接受 NULL options。尺寸过小、零轮数、非有限 eval_rq 或非 0/1 图标开关会拒绝。
+
+用 `initial_states_json()` 读取初始状态，反复 `next_frame_json()` 消费 frame，最后 `result_json()` 读取结果。后两者使用 `has` 标志，没有值时输出空字符串结构 `{NULL,0}`。状态/原因可以用 `status()` / `stop_reason()` 查询；计数、赢家与最终状态都包含在结果 JSON 中。所有函数名以 `tswn_battle_session_` 开头。
+
+字符串使用 `tswn_str_free()`，会话使用 `tswn_battle_session_free()` 释放。终止后 next_frame 幂等，错误不冒充 truncated。参见 [完整 C 示例](examples/battle_session.c) 与 [跨语言 contract](../../docs/public_api.md)。本轮增加符号，ABI 保持 4。
 
 ## 版本与快照字段
 
@@ -57,7 +66,7 @@
 - 评分与命配：`tswn_score_json(...)` / `tswn_namer_pf_json(...)`
 - 批量对抗与配对：`tswn_batch_rate_json(...)` / `tswn_pair_rate_json(...)`
 - 导出与解析：`tswn_to_diy(...)` / `tswn_to_diy_batch_json(...)` / `tswn_icon_info_json(...)` / `tswn_parse_group_lines_json(...)`
-- 完整回放：`tswn_battle_replay_json(...)`，返回可直接渲染的 players / frames / rows / clips JSON
+- 完整回放：`tswn_battle_replay_json(...)`，返回可直接渲染的 initial_states / final_states / frames / rows / clips JSON
 - 标准化轨迹：`tswn_default_custom_runtime_normalized_run_json(...)`
 
 这些接口返回的 `tswn_str_t` 都需要由调用方使用 `tswn_str_free()` 释放。

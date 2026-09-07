@@ -1,5 +1,9 @@
 # 更新日志
 
+## 未发布
+
+- ABI 4 新增 BattleSession opaque handle、版本化 options、逐帧/快照/result JSON 与状态查询。
+
 ## [Unreleased]
 
 ### 新增
