@@ -556,13 +556,17 @@ function syncPlaybackUi() {
   stepForwardFrameBtn.disabled =
     noReplay || !currentPlan || (currentBattle.source_done && playbackCursor >= currentPlan.totalChunks);
 
+  if (currentBattle) {
+    const teamCount = new Set(currentBattle.players.map(player => player.team_index)).size;
+    plistMeta.textContent = `${currentBattle.players.length} 名角色 · ${teamCount} 支队伍 · 已接收 ${currentBattle.frames.length} 帧。`;
+  }
   if (streamError) {
     headerMeta.textContent = `战斗读取失败：${formatError(streamError)}`;
   } else if (currentBattle) {
-    if (playbackPaused) {
-      headerMeta.textContent = `已暂停，可单步前后移动。当前位置：frame ${currentFrameIndexFromCursor()} / ${Math.max(0, currentBattle.frames.length - 1)}。`;
-    } else if (playbackFinished) {
+    if (playbackFinished) {
       headerMeta.textContent = `回放已结束，共 ${currentBattle.frames.length} 帧。`;
+    } else if (playbackPaused) {
+      headerMeta.textContent = `已暂停，可单步前后移动。当前位置：frame ${currentFrameIndexFromCursor()} / ${Math.max(0, currentBattle.frames.length - 1)}。`;
     }
   }
 }
@@ -842,7 +846,7 @@ async function waitForPlaybackDelay(ms, token) {
 }
 
 async function autoplayFromCurrentCursor() {
-  if (!currentBattle || !currentPlan || playbackFinished) {
+  if (!currentBattle || !currentPlan || (playbackFinished && battleRows.querySelector(".battle-result-block"))) {
     syncPlaybackUi();
     return;
   }
@@ -868,7 +872,7 @@ async function autoplayFromCurrentCursor() {
     }
     const chunk = currentPlan.flatChunks[playbackCursor];
     const framePlan = currentPlan.frames[chunk.frameIndex];
-    streamController?.setPlaybackFrame(framePlan.frameIndex);
+    if (!streamError) streamController?.setPlaybackFrame(framePlan.frameIndex);
     if (playbackCursor >= historyResumeBoundary) {
       void streamController?.ensureBuffered().catch(() => {});
     }
@@ -933,7 +937,7 @@ function beginReplayPlayback(replay, { autoPlay = true } = {}) {
   playbackFinished = false;
   playbackStartedAt = performance.now();
   stopPlaybackLoop();
-  streamController?.setPlaybackFrame(-1);
+  if (!streamError) streamController?.setPlaybackFrame(-1);
   renderPlaybackToCursor(0, { forceReset: true });
   if (autoPlay !== false) {
     void autoplayFromCurrentCursor();
@@ -1004,7 +1008,7 @@ function resumePlayback() {
     return;
   }
 
-  if (playbackFinished) {
+  if (playbackFinished && battleRows.querySelector(".battle-result-block")) {
     syncPlaybackUi();
     return;
   }
@@ -1035,7 +1039,7 @@ function stepPlaybackTo(cursor) {
   if (cursor < playbackCursor) historyResumeBoundary = currentPlan.totalChunks;
   renderPlaybackToCursor(cursor);
   const frameIndex = currentPlan.frames.findLastIndex(frame => playbackCursor > frame.start);
-  streamController?.setPlaybackFrame(frameIndex);
+  if (!streamError) streamController?.setPlaybackFrame(frameIndex);
 }
 
 async function stepPlaybackForward(byFrame = false) {

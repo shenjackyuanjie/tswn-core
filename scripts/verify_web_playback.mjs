@@ -188,6 +188,9 @@ assert.equal(page.battle.result, null);
 assert.match(window.document.querySelector('#headerMeta').textContent, /test streaming failure/);
 assert.match(window.document.querySelector('#battleRows').textContent, /event0/);
 assert.equal(window.document.querySelector('.battle-result-block'), null);
+page.stepPlaybackTo(0);
+await page.stepPlaybackForward(true);
+assert.match(window.document.querySelector('#battleRows').textContent, /event0/);
 
 // Turbo yields according to visible chunks, not absolute cursor modulo.
 let emitted = 0;
@@ -216,3 +219,17 @@ page.stepPlaybackTo(0);
 assert.match(window.document.querySelector('#playerList').textContent, /新的昵称/);
 assert.equal(JSON.stringify(page.battle), canonicalBefore);
 console.log('PASS: page nickname edit rebuilds display and keeps canonical history unchanged');
+
+let normalEmitted = 0;
+nextSource = { ...source(1), nextFrame() { normalEmitted++; return Promise.resolve(frame(0)); }, isDone() { return normalEmitted === 1; } };
+await page.startBattle();
+await flush();
+assert.equal(page.finished, true);
+assert.equal(window.document.querySelector('.battle-result-block'), null, 'normal result waits 1500 ms');
+page.pausePlayback();
+page.resumePlayback();
+const resultDeadline = performance.now() + 4000;
+while (!window.document.querySelector('.battle-result-block') && performance.now() < resultDeadline) await flush();
+assert.ok(window.document.querySelector('.battle-result-block'), 'resume during result delay eventually reveals result');
+assert.match(window.document.querySelector('#plistMeta').textContent, /已接收 1 帧/);
+console.log('PASS: normal result delay resumes after pause; failed history remains navigable; frame count stays current');
