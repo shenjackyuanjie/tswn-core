@@ -7,7 +7,7 @@
 //!
 //! 相关模块概览：
 //! - `tswn_cli/args/`: `clap` 参数定义、输入来源统一、子命令映射。
-//! - `tswn_cli/fight/`: 普通对战、raw 输出、diff 输出。
+//! - `tswn_cli/fight/`: 普通对战、diff 输出。
 //! - `tswn_cli/bench/`: 评分 / 胜率基准测试、批量评估、`namer-pf`。
 //! - `tswn_cli/icon.rs`: 图标预览、base64 导出、文件保存。
 //! - `tswn_cli/to_diy.rs`: DIY / OL 覆盖文本导出。
@@ -16,8 +16,7 @@
 //! 编译器会按 Rust 默认模块规则自动解析子模块，因此不再需要 `#[path = ...]`。
 //!
 //! 顶层命令概览：
-//! - `fight`: 用主 Runtime 运行普通对战，可选 `--out-raw` 输出聚合日志。
-//! - `raw`: 用主 Runtime 运行普通输入或 `!test!` 基准测试。
+//! - `fight`: 用主 Runtime 运行普通对战。
 //! - `diff`: 用主 Runtime 按 runner diff 格式输出。
 //! - `runtime normalized-run`: 输出主 Runtime 的 normalized run。
 //! - `bench auto`: 按输入组数自动切换评分基准测试或胜率基准测试。
@@ -31,7 +30,7 @@
 //!
 //! 输出约定：
 //! - 默认会打印欢迎 banner，便于交互式使用。
-//! - `fight --out-raw`、`raw`、`diff`、`runtime`、`namer-pf` 会跳过 banner，避免污染机器可读输出。
+//! - `diff`、`runtime`、`namer-pf` 会跳过 banner，避免污染机器可读输出。
 //!
 //! 输入约定：
 //! - 原始对战/benchmark 输入使用 namerena raw 文本，组与组之间用空行分隔。
@@ -42,7 +41,6 @@
 //! 示例：
 //! ```bash
 //! tswn-cli fight -r "mario\nluigi\n\npeach\nbowser"
-//! tswn-cli raw -r "mario\nluigi\n\npeach\nbowser"
 //! tswn-cli diff -r "mario\nluigi\n\npeach\nbowser"
 //! tswn-cli bench auto -r "mario" -n 10000 --perf
 //! tswn-cli bench win-rate -r "mario\nluigi" -n 10000 -t 4
@@ -77,19 +75,14 @@ fn main() {
 
     if !matches!(
         cli.command,
-        ParsedCommand::Fight { out_raw: true, .. }
-            | ParsedCommand::FightRaw { .. }
-            | ParsedCommand::FightDiff { .. }
-            | ParsedCommand::RuntimeNormalizedRun { .. }
-            | ParsedCommand::NamerPf { .. }
+        ParsedCommand::FightDiff { .. } | ParsedCommand::RuntimeNormalizedRun { .. } | ParsedCommand::NamerPf { .. }
     ) {
         print_banner();
     }
 
     match cli.command {
-        ParsedCommand::Fight { raw, out_raw } => fight::run(raw, out_raw),
+        ParsedCommand::Fight { raw } => fight::run(raw),
         ParsedCommand::FightDiff { raw } => fight::run_diff(raw),
-        ParsedCommand::FightRaw { raw, n, threads } => fight::run_raw(raw, n, threads),
         ParsedCommand::RuntimeNormalizedRun { raw, max_rounds } => fight::run_runtime_normalized(raw, max_rounds),
         ParsedCommand::BenchAuto {
             raw,

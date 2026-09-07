@@ -1,7 +1,7 @@
 //! `fight` / `diff` 的主 Runtime 入口。
 
 /// 运行普通对战。
-pub fn run(raw: String, out_raw: bool) { super::runtime::run_runtime_fight(raw, out_raw); }
+pub fn run(raw: String) { super::runtime::run_runtime_fight(raw); }
 
 /// 运行普通对战并按 runner diff 格式输出。
 pub fn run_diff(raw: String) { super::runtime::run_runtime_diff(raw); }

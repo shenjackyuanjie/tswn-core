@@ -20,51 +20,6 @@ use crate::args::{BenchThreadMode, NamerPfMode};
 use super::common::{BenchSummary, thread_spec};
 use super::output::{format_rate, print_perf_lines};
 
-/// 显式带 modifier 的 score benchmark 入口。
-pub(super) fn run_bench_score_with_modifier(
-    groups: &[Vec<String>],
-    modifier: &'static str,
-    n: usize,
-    mode: BenchThreadMode,
-    threads: Option<usize>,
-    perf: bool,
-    buckets_step: Option<usize>,
-) {
-    let target_group = groups.first().cloned().unwrap_or_default();
-    let target_count = target_group.len();
-    if target_count == 0 {
-        eprintln!("评分: 无目标玩家");
-        return;
-    }
-    let label = if modifier == "!" { "!评分" } else { "普通评分" };
-
-    println!("=== 实力评分测试 ({n} 场) ===");
-    println!("目标: {}", target_group.join(", "));
-    println!("info: {target_count}");
-
-    let summary = if let Some(step) = buckets_step.filter(|step| *step > 0) {
-        run_bench_score_with_bucket_output(&target_group, modifier, n, step, perf)
-    } else {
-        run_bench_score_inner(
-            &target_group,
-            modifier,
-            n,
-            mode,
-            threads,
-            WIN_RATE_EVAL_RQ,
-            ScoreBenchOptions {
-                show_progress: true,
-                timed: perf,
-            },
-        )
-    };
-    let score = summary.wins as f64 * 10_000.0 / summary.total.max(1) as f64;
-    println!("{label}: {:.0} / 10000  ({}/{})", score, summary.wins, summary.total);
-    if perf {
-        print_perf_lines(summary.elapsed, summary.timing, summary.total);
-    }
-}
-
 /// 标准 score benchmark 入口，同时输出普通评分与 `!评分`。
 pub(super) fn run_bench_score(
     raw: &str,

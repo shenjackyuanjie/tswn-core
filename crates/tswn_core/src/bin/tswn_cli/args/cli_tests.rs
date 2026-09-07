@@ -73,12 +73,11 @@ fn diff_uses_main_runtime_only() {
 
 #[test]
 fn fight_uses_main_runtime_only() {
-    let cli = Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright", "--out-raw"]).unwrap();
+    let cli = Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright"]).unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();
     match parsed.command {
-        ParsedCommand::Fight { raw, out_raw } => {
+        ParsedCommand::Fight { raw } => {
             assert_eq!(raw, "left\n\nright");
-            assert!(out_raw);
         }
         _ => panic!("unexpected command"),
     }
@@ -86,19 +85,9 @@ fn fight_uses_main_runtime_only() {
 }
 
 #[test]
-fn raw_fight_uses_main_runtime_only() {
-    let cli = Cli::try_parse_from(["tswn-cli", "raw", "-r", "left\\n\\nright", "-n", "3", "-t", "2"]).unwrap();
-    let parsed = ParsedCli::from_cli(cli).unwrap();
-    match parsed.command {
-        ParsedCommand::FightRaw { raw, n, threads } => {
-            assert_eq!(raw, "left\n\nright");
-            assert_eq!(n, 3);
-            assert_eq!(threads, Some(2));
-        }
-        _ => panic!("unexpected command"),
-    }
-    assert!(Cli::try_parse_from(["tswn-cli", "raw", "-r", "left\\n\\nright", "--runtime", "legacy"]).is_err());
-    assert!(Cli::try_parse_from(["tswn-cli", "runtime", "parity", "-r", "left\\n\\nright"]).is_err());
+fn legacy_raw_entry_points_are_rejected() {
+    assert!(Cli::try_parse_from(["tswn-cli", "raw", "-r", "left\\n\\nright"]).is_err());
+    assert!(Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright", "--out-raw"]).is_err());
 }
 
 #[test]

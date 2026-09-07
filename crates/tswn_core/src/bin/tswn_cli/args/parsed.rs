@@ -59,20 +59,10 @@ pub enum ParsedCommand {
     Fight {
         /// 普通对战输入，使用 namerena raw 格式。
         raw: String,
-        /// 是否改为输出 raw 聚合战斗日志。
-        out_raw: bool,
     },
     FightDiff {
         /// 普通对战输入，使用 namerena raw 格式，并按 runner diff 的格式输出。
         raw: String,
-    },
-    FightRaw {
-        /// 原始 namerena 输入，可能是普通对战，也可能是 `!test!` 基准测试输入。
-        raw: String,
-        /// 评分或胜率测试的模拟场数。
-        n: usize,
-        /// 显式指定的基准测试线程数。
-        threads: Option<usize>,
     },
     RuntimeNormalizedRun {
         /// 使用默认 custom runtime profile 运行的 namerena raw 输入。

@@ -3,12 +3,12 @@
 use std::collections::HashMap;
 
 use super::driver::fmt_runtime_winner_input_indices;
-use super::trace::{collect_runtime_diff_lines, collect_runtime_fight_raw_lines, fmt_runtime_update};
+use super::trace::{collect_runtime_diff_lines, fmt_runtime_update};
 use tswn_core::cli_api::{self as core_cli_api, CliApiError, JsonRuntimeNormalizedRun};
 use tswn_core::runtime::update::UpdateType;
 use tswn_core::runtime::{EntityIdx, RuntimeRunner};
 
-pub(super) fn run_runtime_fight(raw: String, out_raw: bool) {
+pub(super) fn run_runtime_fight(raw: String) {
     let mut runner = match core_cli_api::default_custom_runtime_mixed_runner(&raw).map_err(cli_api_error) {
         Ok(runner) => runner,
         Err(err) => {
@@ -17,11 +17,7 @@ pub(super) fn run_runtime_fight(raw: String, out_raw: bool) {
         }
     };
     let input_player_count = runner.runtime().entities.len();
-    let lines = if out_raw {
-        collect_runtime_fight_raw_lines(&mut runner, input_player_count)
-    } else {
-        collect_runtime_fight_lines(&mut runner, input_player_count, 100_000)
-    };
+    let lines = collect_runtime_fight_lines(&mut runner, input_player_count, 100_000);
     if !lines.is_empty() {
         println!("{}", lines.join("\n"));
     }

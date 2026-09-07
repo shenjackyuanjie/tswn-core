@@ -45,17 +45,9 @@ enum CliCommand {
     /// 示例:
     ///   tswn-cli fight
     ///   tswn-cli fight -r "mario\nluigi\n\npeach\nbowser"
-    ///   tswn-cli fight --out-raw -f input.txt
+    ///   tswn-cli fight -f input.txt
     #[command(verbatim_doc_comment)]
     Fight(FightCommand),
-    /// 运行原始 namerena 对战，并直接输出 raw 聚合战斗日志。
-    ///
-    /// 示例:
-    ///   tswn-cli raw
-    ///   tswn-cli raw -r "mario\nluigi\n\npeach\nbowser"
-    ///   tswn-cli raw -f input.txt
-    #[command(name = "raw", verbatim_doc_comment)]
-    FightRaw(FightRawCommand),
     /// 运行普通对战，并按 runner diff 的格式输出。
     ///
     /// 示例:
@@ -98,30 +90,6 @@ struct FightCommand {
     /// 普通对战输入来源参数。
     #[command(flatten)]
     input: InputArgs,
-
-    /// 输出 raw 聚合战斗日志。
-    #[arg(long)]
-    out_raw: bool,
-}
-
-#[derive(Debug, Args)]
-struct FightRawCommand {
-    /// 原始对战输入来源参数。
-    #[command(flatten)]
-    input: InputArgs,
-
-    /// 评分对局数量。
-    #[arg(
-        short = 'n',
-        long = "count",
-        default_value_t = 10000,
-        value_name = "N"
-    )]
-    count: usize,
-
-    /// 指定基准测试线程数。
-    #[arg(short = 't', long = "thread", value_parser = parse_thread_count, value_name = "N")]
-    thread: Option<usize>,
 }
 
 #[derive(Debug, Args)]
@@ -650,12 +618,6 @@ impl ParsedCli {
         let command = match cli.command {
             CliCommand::Fight(cmd) => ParsedCommand::Fight {
                 raw: cmd.input.read_or_stdin()?,
-                out_raw: cmd.out_raw,
-            },
-            CliCommand::FightRaw(cmd) => ParsedCommand::FightRaw {
-                raw: cmd.input.read_or_stdin()?,
-                n: cmd.count.max(1),
-                threads: cmd.thread,
             },
             CliCommand::FightDiff(cmd) => ParsedCommand::FightDiff {
                 raw: cmd.input.read_or_stdin()?,

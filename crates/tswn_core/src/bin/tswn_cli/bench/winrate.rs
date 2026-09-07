@@ -18,31 +18,7 @@ use crate::args::BenchThreadMode;
 
 use super::common::BenchSummary;
 use super::output::{display_group, print_perf_lines};
-use super::score::{run_bench_score, run_bench_score_with_modifier};
-
-/// benchmark 自动模式的解析结果。
-#[derive(Debug)]
-struct BenchmarkInput {
-    groups: Vec<Vec<String>>,
-    score_modifier: Option<&'static str>,
-}
-
-/// 解析 benchmark 输入，并识别 JS `!test!` score marker。
-fn parse_benchmark_input(raw: &str) -> BenchmarkInput {
-    let (mut groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_string());
-    let mut score_modifier = None;
-
-    if groups.first().and_then(|group| group.first()).is_some_and(|name| name == "!test!") {
-        let marker_group = groups.remove(0);
-        score_modifier = Some(if marker_group.get(1).is_some_and(|name| name == "!") {
-            "!"
-        } else {
-            "\u{0002}"
-        });
-    }
-
-    BenchmarkInput { groups, score_modifier }
-}
+use super::score::run_bench_score;
 
 /// 把拆开的 groups 重新拼回 namerena raw。
 fn groups_to_raw(groups: &[Vec<String>]) -> String {
@@ -64,17 +40,11 @@ pub fn run_benchmark(
     buckets_step: Option<usize>,
 ) {
     let raw = raw.trim();
-    let BenchmarkInput { groups, score_modifier } = parse_benchmark_input(raw);
+    let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.to_owned());
     let group_count = groups.iter().filter(|g| !g.is_empty()).count();
     match group_count {
         0 => eprintln!("benchmark: 输入为空或无有效玩家"),
-        1 => {
-            if let Some(modifier) = score_modifier {
-                run_bench_score_with_modifier(&groups, modifier, n, mode, threads, perf, buckets_step);
-            } else {
-                run_bench_score(&groups_to_raw(&groups), n, mode, threads, perf, buckets_step);
-            }
-        }
+        1 => run_bench_score(&groups_to_raw(&groups), n, mode, threads, perf, buckets_step),
         _ => run_bench_winrate(&groups_to_raw(&groups), n, mode, threads, WIN_RATE_EVAL_RQ, perf, buckets_step),
     }
 }
@@ -300,33 +270,11 @@ fn print_bench_winrate_summary(summary: BenchSummary, perf: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn parses_js_default_score_marker() {
-        let parsed = parse_benchmark_input("!test!\n\naaaa\nbbbb");
-        assert_eq!(parsed.score_modifier, Some("\u{0002}"));
-        assert_eq!(parsed.groups, vec![vec!["aaaa".to_string(), "bbbb".to_string()]]);
-    }
-
-    #[test]
-    fn parses_js_bang_score_marker() {
-        let parsed = parse_benchmark_input("!test!\n!\n\naaaa\nbbbb");
-        assert_eq!(parsed.score_modifier, Some("!"));
-        assert_eq!(parsed.groups, vec![vec!["aaaa".to_string(), "bbbb".to_string()]]);
-    }
-
-    #[test]
-    fn parses_js_win_rate_marker() {
-        let parsed = parse_benchmark_input("!test!\n\naaaa\n\nbbbb@!");
-        assert_eq!(parsed.score_modifier, Some("\u{0002}"));
-        assert_eq!(parsed.groups, vec![vec!["aaaa".to_string()], vec!["bbbb@!".to_string()]]);
-        assert_eq!(groups_to_raw(&parsed.groups), "aaaa\n\nbbbb@!");
-    }
-
-    #[test]
-    fn leaves_non_marker_input_unchanged() {
-        let parsed = parse_benchmark_input("aaaa\n\nbbbb@!");
-        assert_eq!(parsed.score_modifier, None);
-        assert_eq!(parsed.groups, vec![vec!["aaaa".to_string()], vec!["bbbb@!".to_string()]]);
+    fn benchmark_preserves_all_input_groups_without_magic_routing() {
+        let raw = "!test!\n\naaaa\n\nbbbb@!";
+        let (groups, _) = RuntimeRunner::split_namerena_into_groups(raw.into());
+        assert_eq!(groups.len(), 3);
+        assert_eq!(groups_to_raw(&groups), raw);
     }
 }
