@@ -57,6 +57,8 @@ impl NamerPfMode {
 #[derive(Debug)]
 pub enum ParsedCommand {
     Fight {
+        jsonl: bool,
+        max_rounds: usize,
         /// 普通对战输入，使用 namerena raw 格式。
         raw: String,
     },

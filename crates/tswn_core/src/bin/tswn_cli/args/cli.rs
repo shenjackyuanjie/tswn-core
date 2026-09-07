@@ -82,6 +82,12 @@ struct FightCommand {
     /// 普通对战输入来源参数。
     #[command(flatten)]
     input: InputArgs,
+    /// 逐条输出 initial / frame / result JSON，并立即刷新 stdout。
+    #[arg(long)]
+    jsonl: bool,
+    /// Runtime main_round 的总调用预算（空轮次也计数）。
+    #[arg(long, default_value_t = 20_000, value_parser = parse_positive_usize, value_name = "N")]
+    max_rounds: usize,
 }
 
 #[derive(Debug, Args)]
@@ -613,6 +619,8 @@ impl ParsedCli {
         let command = match cli.command {
             CliCommand::Fight(cmd) => ParsedCommand::Fight {
                 raw: cmd.input.read_or_stdin()?,
+                jsonl: cmd.jsonl,
+                max_rounds: cmd.max_rounds,
             },
             CliCommand::Runtime(RuntimeCommand { command }) => match command {
                 RuntimeSubcommand::Diff(cmd) => ParsedCommand::RuntimeDiff {

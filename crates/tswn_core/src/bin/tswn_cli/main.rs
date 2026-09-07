@@ -16,7 +16,7 @@
 //! 编译器会按 Rust 默认模块规则自动解析子模块，因此不再需要 `#[path = ...]`。
 //!
 //! 顶层命令概览：
-//! - `fight`: 用主 Runtime 运行普通对战。
+//! - `fight`: 使用 BattleSession 运行对战，支持 `--jsonl` 和 `--max-rounds`。
 //! - `runtime diff`: 用主 Runtime 按 runner diff 格式输出。
 //! - `runtime normalized-run`: 输出主 Runtime 的 normalized run。
 //! - `bench auto`: 按输入组数自动切换评分基准测试或胜率基准测试。
@@ -30,7 +30,7 @@
 //!
 //! 输出约定：
 //! - 默认会打印欢迎 banner，便于交互式使用。
-//! - `runtime`、`namer-pf` 会跳过 banner，避免污染机器可读输出。
+//! - `fight --jsonl`、`runtime`、`namer-pf` 会跳过 banner，避免污染机器可读输出。
 //!
 //! 输入约定：
 //! - 原始对战/benchmark 输入使用 namerena raw 文本，组与组之间用空行分隔。
@@ -75,13 +75,16 @@ fn main() {
 
     if !matches!(
         cli.command,
-        ParsedCommand::RuntimeDiff { .. } | ParsedCommand::RuntimeNormalizedRun { .. } | ParsedCommand::NamerPf { .. }
+        ParsedCommand::Fight { jsonl: true, .. }
+            | ParsedCommand::RuntimeDiff { .. }
+            | ParsedCommand::RuntimeNormalizedRun { .. }
+            | ParsedCommand::NamerPf { .. }
     ) {
         print_banner();
     }
 
     match cli.command {
-        ParsedCommand::Fight { raw } => fight::run(raw),
+        ParsedCommand::Fight { raw, jsonl, max_rounds } => fight::run(raw, jsonl, max_rounds),
         ParsedCommand::RuntimeDiff { raw } => fight::run_diff(raw),
         ParsedCommand::RuntimeNormalizedRun { raw, max_rounds } => fight::run_runtime_normalized(raw, max_rounds),
         ParsedCommand::BenchAuto {

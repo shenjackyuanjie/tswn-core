@@ -77,8 +77,10 @@ fn fight_uses_main_runtime_only() {
     let cli = Cli::try_parse_from(["tswn-cli", "fight", "-r", "left\\n\\nright"]).unwrap();
     let parsed = ParsedCli::from_cli(cli).unwrap();
     match parsed.command {
-        ParsedCommand::Fight { raw } => {
+        ParsedCommand::Fight { raw, jsonl, max_rounds } => {
             assert_eq!(raw, "left\n\nright");
+            assert!(!jsonl);
+            assert_eq!(max_rounds, 20_000);
         }
         _ => panic!("unexpected command"),
     }
@@ -324,4 +326,18 @@ fn pair_accepts_grouping_and_factored_target_flags() {
         }
         _ => panic!("unexpected command"),
     }
+}
+
+#[test]
+fn fight_jsonl_accepts_positive_runtime_round_budget() {
+    let cli = Cli::try_parse_from(["tswn-cli", "fight", "-r", "a\\n\\nb", "--jsonl", "--max-rounds", "3"]).unwrap();
+    assert!(matches!(
+        ParsedCli::from_cli(cli).unwrap().command,
+        ParsedCommand::Fight {
+            jsonl: true,
+            max_rounds: 3,
+            ..
+        }
+    ));
+    assert!(Cli::try_parse_from(["tswn-cli", "fight", "-r", "a", "--max-rounds", "0"]).is_err());
 }
